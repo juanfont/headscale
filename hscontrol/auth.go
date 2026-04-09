@@ -70,6 +70,20 @@ func (h *Headscale) handleRegister(
 		// We do not look up nodes by [key.MachinePublic] as it might belong to multiple
 		// nodes, separated by users and this path is handling expiring/logout paths.
 		if node, ok := h.state.GetNodeByNodeKey(req.NodeKey); ok {
+			// Refuse to act on a node looked up purely by NodeKey unless
+			// the Noise session's machine key matches the cached node.
+			// Without this check anyone holding a target's NodeKey could
+			// open a Noise session with a throwaway machine key and read
+			// the owner's User/Login back through nodeToRegisterResponse.
+			// handleLogout enforces the same check on its own path.
+			if node.MachineKey() != machineKey {
+				return nil, NewHTTPError(
+					http.StatusUnauthorized,
+					"node exists with a different machine key",
+					nil,
+				)
+			}
+
 			// When tailscaled restarts, it sends RegisterRequest with Auth=nil and Expiry=zero.
 			// Return the current node state without modification.
 			// See: https://github.com/juanfont/headscale/issues/2862
