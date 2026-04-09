@@ -36,6 +36,12 @@ import (
 // compatibility tests. Users get norse-god names; nodes get original-151
 // pokémon names — matching the anonymized identifiers tscap writes into
 // the capture files (see github.com/kradalby/tscap/anonymize).
+//
+// odin and freya live on @example.com; thor is intentionally kept on
+// @dalby.cc so that "localpart:*@example.com" resolves to exactly two
+// users (matching SaaS output) and the "user on a different email
+// domain" case stays covered by scenarios like ssh-d1 that use
+// "localpart:*@dalby.cc".
 func setupSSHDataCompatUsers() types.Users {
 	return types.Users{
 		{
@@ -46,7 +52,7 @@ func setupSSHDataCompatUsers() types.Users {
 		{
 			Model: gorm.Model{ID: 2},
 			Name:  "thor",
-			Email: "thor@example.com",
+			Email: "thor@dalby.cc",
 		},
 		{
 			Model: gorm.Model{ID: 3},
