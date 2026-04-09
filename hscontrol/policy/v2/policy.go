@@ -72,6 +72,10 @@ type PolicyManager struct {
 	// Avoids repeated MatchesFromFilterRules allocations in ComputeNodePeers/BuildPeerMap.
 	perNodeMatcherCache map[types.NodeID][]matcher.Match
 
+	// globalMatcherCache caches []matcher.Match built from the global (non-autogroup:self)
+	// filter rules. These are identical for every node and only need to be built once.
+	globalMatcherCache []matcher.Match
+
 	// perNodeSrcIdxCache maps (nodeID, matcherOwnerID) to source matcher indices
 	// within that owner's per-node matcher set. This extends the srcMatcherCache
 	// concept to per-node matchers used in the autogroup:self path.
@@ -251,6 +255,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 		clear(pm.filterRulesMap)
 		pm.perNodeMatcherCache = nil
 		pm.perNodeSrcIdxCache = nil
+		pm.globalMatcherCache = nil
 		pm.clearResolveCache()
 	}
 
@@ -445,6 +450,7 @@ func (pm *PolicyManager) ensureFilterCompiled() error {
 		pm.srcMatcherCache = nil
 		pm.perNodeMatcherCache = nil
 		pm.perNodeSrcIdxCache = nil
+		pm.globalMatcherCache = nil
 		matcher.ResetIPSetCache()
 	}
 
@@ -651,26 +657,59 @@ func canAccessIndexed(matchers []matcher.Match, srcIndices []int, dst types.Node
 	return false
 }
 
-// getNodeMatchers returns cached []matcher.Match for a node's per-node filter rules
-// (autogroup:self path). Compiles and caches on first call per node.
+// getNodeMatchers returns cached []matcher.Match for a node's filter rules.
+// For autogroup:self policies, this combines cached global matchers (built once
+// from the ~5000 non-autogroup:self rules) with per-node matchers (built from
+// the ~2 autogroup:self rules). This avoids rebuilding matchers for the global
+// rules on every node.
 // Must be called with pm.mu held.
 func (pm *PolicyManager) getNodeMatchers(node types.NodeView) []matcher.Match {
 	if cached, ok := pm.perNodeMatcherCache[node.ID()]; ok {
 		return cached
 	}
 
-	rules, err := pm.compileFilterRulesForNodeLocked(node)
-	if err != nil {
-		return nil
+	if !pm.usesAutogroupSelf {
+		// Non-autogroup:self: all nodes share the same matchers (pm.matchers).
+		// Just return those directly.
+		return pm.matchers
 	}
-	matchers := matcher.MatchesFromFilterRules(rules)
+
+	// Build global matchers once from the pre-compiled global rules.
+	if pm.globalMatcherCache == nil {
+		pm.ensureResolveCacheForCompilation()
+		if pm.pol.globalRulesForNode == nil {
+			globalRules, err := pm.pol.compileNonAutogroupSelfRules(pm.users, pm.nodes)
+			if err == nil {
+				pm.pol.globalRulesForNode = globalRules
+			}
+		}
+		pm.globalMatcherCache = matcher.MatchesFromFilterRules(pm.pol.globalRulesForNode)
+	}
+
+	// Build per-node matchers from only the autogroup:self ACLs (~2 rules).
+	pm.ensureResolveCacheForCompilation()
+	selfRules, err := pm.pol.compileAutogroupSelfRulesForNode(pm.users, node, pm.nodes)
+	if err != nil {
+		// Fall back to global matchers only
+		return pm.globalMatcherCache
+	}
+
+	var combined []matcher.Match
+	if len(selfRules) > 0 {
+		selfMatchers := matcher.MatchesFromFilterRules(selfRules)
+		combined = make([]matcher.Match, 0, len(pm.globalMatcherCache)+len(selfMatchers))
+		combined = append(combined, pm.globalMatcherCache...)
+		combined = append(combined, selfMatchers...)
+	} else {
+		combined = pm.globalMatcherCache
+	}
 
 	if pm.perNodeMatcherCache == nil {
 		pm.perNodeMatcherCache = make(map[types.NodeID][]matcher.Match)
 	}
-	pm.perNodeMatcherCache[node.ID()] = matchers
+	pm.perNodeMatcherCache[node.ID()] = combined
 
-	return matchers
+	return combined
 }
 
 // getPerNodeSrcIndices returns the indices within a node's per-node matcher set
@@ -1022,8 +1061,9 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, bool
 		clear(pm.compiledFilterRulesMap)
 		clear(pm.filterRulesMap)
 		pm.perNodeMatcherCache = nil
-		pm.clearResolveCache()
 		pm.perNodeSrcIdxCache = nil
+		pm.globalMatcherCache = nil
+		pm.clearResolveCache()
 
 		// Eagerly resolve tag owners (needed for NodeCanHaveTag during registration)
 		tagMap, err := resolveTagOwners(pm.pol, pm.users, pm.nodes)

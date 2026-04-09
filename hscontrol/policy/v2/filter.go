@@ -166,6 +166,43 @@ func (pol *Policy) compileFilterRulesForNode(
 	return mergeFilterRules(combined), nil
 }
 
+// compileAutogroupSelfRulesForNode compiles only the ACLs that use autogroup:self,
+// expanded for a specific node. Returns just the per-node rules (not the global ones).
+func (pol *Policy) compileAutogroupSelfRulesForNode(
+	users types.Users,
+	node types.NodeView,
+	nodes views.Slice[types.NodeView],
+) ([]tailcfg.FilterRule, error) {
+	if pol == nil {
+		return nil, nil
+	}
+
+	var rules []tailcfg.FilterRule
+
+	for _, acl := range pol.ACLs {
+		if acl.Action != ActionAccept {
+			return nil, ErrInvalidAction
+		}
+		if !aclUsesAutogroupSelf(acl) {
+			continue
+		}
+
+		aclRules, err := pol.compileACLWithAutogroupSelf(acl, users, node, nodes)
+		if err != nil {
+			log.Trace().Err(err).Msgf("compiling ACL")
+			continue
+		}
+
+		for _, rule := range aclRules {
+			if rule != nil {
+				rules = append(rules, *rule)
+			}
+		}
+	}
+
+	return rules, nil
+}
+
 // aclUsesAutogroupSelf checks whether an ACL has autogroup:self in any destination.
 func aclUsesAutogroupSelf(acl ACL) bool {
 	for _, dest := range acl.Destinations {
