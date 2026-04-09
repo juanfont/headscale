@@ -67,6 +67,22 @@ type PolicyManager struct {
 	// IPs appear in the source set. This avoids iterating all matchers in CanAccess
 	// when only a small subset are relevant. Invalidated when filters are recompiled.
 	srcMatcherCache map[types.NodeID][]int
+
+	// perNodeMatcherCache caches compiled []matcher.Match per node for autogroup:self.
+	// Avoids repeated MatchesFromFilterRules allocations in ComputeNodePeers/BuildPeerMap.
+	perNodeMatcherCache map[types.NodeID][]matcher.Match
+
+	// perNodeSrcIdxCache maps (nodeID, matcherOwnerID) to source matcher indices
+	// within that owner's per-node matcher set. This extends the srcMatcherCache
+	// concept to per-node matchers used in the autogroup:self path.
+	perNodeSrcIdxCache map[perNodeSrcKey][]int
+}
+
+// perNodeSrcKey is a composite key for caching source matcher indices
+// within a specific node's per-node matcher set (autogroup:self path).
+type perNodeSrcKey struct {
+	srcNodeID     types.NodeID // the node whose IPs we check against sources
+	matcherOwner  types.NodeID // the node whose matcher set we're indexing into
 }
 
 // filterAndPolicy combines the compiled filter rules with policy content for hashing.
@@ -233,6 +249,8 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 		clear(pm.sshPolicyMap)
 		clear(pm.compiledFilterRulesMap)
 		clear(pm.filterRulesMap)
+		pm.perNodeMatcherCache = nil
+		pm.perNodeSrcIdxCache = nil
 	}
 
 	// If nothing changed, no need to update nodes
@@ -419,6 +437,8 @@ func (pm *PolicyManager) ensureFilterCompiled() error {
 		pm.filterHash = filterHash
 		pm.matchers = matcher.MatchesFromFilterRules(pm.filter)
 		pm.srcMatcherCache = nil
+		pm.perNodeMatcherCache = nil
+		pm.perNodeSrcIdxCache = nil
 	}
 
 	return nil
@@ -538,24 +558,14 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 	// but peer relationships require the full bidirectional access rules.
 	nodeMatchers := make(map[types.NodeID][]matcher.Match, nodes.Len())
 	for _, node := range nodes.All() {
-		filter, err := pm.compileFilterRulesForNodeLocked(node)
-		if err != nil {
-			continue
-		}
-		// Include all nodes in nodeMatchers, even those with empty filters.
-		// Empty filters result in empty matchers where CanAccess() returns false,
-		// but the node still needs to be in the map so hasFilterX is true.
-		// This ensures symmetric visibility works correctly: if node A can access
-		// node B, both should see each other regardless of B's filter rules.
-		nodeMatchers[node.ID()] = matcher.MatchesFromFilterRules(filter)
+		// Use cached per-node matchers (same cache as ComputeNodePeers).
+		m := pm.getNodeMatchers(node)
+		// Include all nodes, even those with nil matchers (empty filters).
+		nodeMatchers[node.ID()] = m
 	}
 
-	// Check each node pair for peer relationships.
+	// Check each node pair for peer relationships using source-index optimization.
 	// Start j at i+1 to avoid checking the same pair twice and creating duplicates.
-	// We use symmetric visibility: if EITHER node can access the other, BOTH see
-	// each other. This matches the global filter path behavior and ensures that
-	// one-way access rules (e.g., admin -> tagged server) still allow both nodes
-	// to see each other as peers, which is required for network connectivity.
 	for i := range nodes.Len() {
 		nodeI := nodes.At(i)
 		matchersI, hasFilterI := nodeMatchers[nodeI.ID()]
@@ -564,13 +574,15 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 			nodeJ := nodes.At(j)
 			matchersJ, hasFilterJ := nodeMatchers[nodeJ.ID()]
 
-			// If either node can access the other, both should see each other as peers.
-			// This symmetric visibility is required for proper network operation:
-			// - Admin with *:* rule should see tagged servers (even if servers
-			//   can't access admin)
-			// - Servers should see admin so they can respond to admin's connections
-			canIAccessJ := hasFilterI && nodeI.CanAccess(matchersI, nodeJ)
-			canJAccessI := hasFilterJ && nodeJ.CanAccess(matchersJ, nodeI)
+			var canIAccessJ, canJAccessI bool
+			if hasFilterI && len(matchersI) > 0 {
+				srcIdx := pm.getPerNodeSrcIndices(nodeI, nodeI.ID(), matchersI)
+				canIAccessJ = canAccessIndexed(matchersI, srcIdx, nodeJ)
+			}
+			if !canIAccessJ && hasFilterJ && len(matchersJ) > 0 {
+				srcIdx := pm.getPerNodeSrcIndices(nodeJ, nodeJ.ID(), matchersJ)
+				canJAccessI = canAccessIndexed(matchersJ, srcIdx, nodeI)
+			}
 
 			if canIAccessJ || canJAccessI {
 				ret[nodeI.ID()] = append(ret[nodeI.ID()], nodeJ)
@@ -632,6 +644,53 @@ func canAccessIndexed(matchers []matcher.Match, srcIndices []int, dst types.Node
 	return false
 }
 
+// getNodeMatchers returns cached []matcher.Match for a node's per-node filter rules
+// (autogroup:self path). Compiles and caches on first call per node.
+// Must be called with pm.mu held.
+func (pm *PolicyManager) getNodeMatchers(node types.NodeView) []matcher.Match {
+	if cached, ok := pm.perNodeMatcherCache[node.ID()]; ok {
+		return cached
+	}
+
+	rules, err := pm.compileFilterRulesForNodeLocked(node)
+	if err != nil {
+		return nil
+	}
+	matchers := matcher.MatchesFromFilterRules(rules)
+
+	if pm.perNodeMatcherCache == nil {
+		pm.perNodeMatcherCache = make(map[types.NodeID][]matcher.Match)
+	}
+	pm.perNodeMatcherCache[node.ID()] = matchers
+
+	return matchers
+}
+
+// getPerNodeSrcIndices returns the indices within a node's per-node matcher set
+// where srcNode's IPs appear in the source set. Cached per (srcNode, matcherOwner) pair.
+// Must be called with pm.mu held.
+func (pm *PolicyManager) getPerNodeSrcIndices(srcNode types.NodeView, matcherOwnerID types.NodeID, nodeMatchers []matcher.Match) []int {
+	key := perNodeSrcKey{srcNodeID: srcNode.ID(), matcherOwner: matcherOwnerID}
+	if cached, ok := pm.perNodeSrcIdxCache[key]; ok {
+		return cached
+	}
+
+	ips := srcNode.IPs()
+	indices := make([]int, 0, 16)
+	for i := range nodeMatchers {
+		if nodeMatchers[i].SrcsContainsIPs(ips...) {
+			indices = append(indices, i)
+		}
+	}
+
+	if pm.perNodeSrcIdxCache == nil {
+		pm.perNodeSrcIdxCache = make(map[perNodeSrcKey][]int)
+	}
+	pm.perNodeSrcIdxCache[key] = indices
+
+	return indices
+}
+
 // ComputeNodePeers computes the list of peers visible to a single node by
 // checking it against all provided nodes. This is O(N) per new node instead of
 // O(N²) for a full BuildPeerMap. Used by the NodeStore's incremental snapshot
@@ -674,24 +733,28 @@ func (pm *PolicyManager) ComputeNodePeers(
 			}
 		}
 	} else {
-		// autogroup:self: compile per-node matchers and check
-		nodeMatchers, err := pm.compileFilterRulesForNodeLocked(node)
-		if err != nil {
+		// autogroup:self: use cached per-node matchers with source-index optimization.
+		// Each node has its own matcher set (autogroup:self expands differently per user).
+		// We cache both the matchers and source indices to avoid repeated compilation
+		// and O(matchers) scans on every pair check.
+		nodeMatcherList := pm.getNodeMatchers(node)
+		if nodeMatcherList == nil {
 			return nil
 		}
-		nodeMatcherList := matcher.MatchesFromFilterRules(nodeMatchers)
+		nodeSrcIdx := pm.getPerNodeSrcIndices(node, node.ID(), nodeMatcherList)
 
 		for _, other := range allNodes {
 			if other.ID() == node.ID() {
 				continue
 			}
-			otherMatchers, err := pm.compileFilterRulesForNodeLocked(other)
-			if err != nil {
+			otherMatcherList := pm.getNodeMatchers(other)
+			if otherMatcherList == nil {
 				continue
 			}
-			otherMatcherList := matcher.MatchesFromFilterRules(otherMatchers)
+			otherSrcIdx := pm.getPerNodeSrcIndices(other, other.ID(), otherMatcherList)
 
-			if node.CanAccess(nodeMatcherList, other) || other.CanAccess(otherMatcherList, node) {
+			if canAccessIndexed(nodeMatcherList, nodeSrcIdx, other) ||
+				canAccessIndexed(otherMatcherList, otherSrcIdx, node) {
 				peers = append(peers, other)
 			}
 		}
@@ -917,6 +980,8 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, bool
 		clear(pm.sshPolicyMap)
 		clear(pm.compiledFilterRulesMap)
 		clear(pm.filterRulesMap)
+		pm.perNodeMatcherCache = nil
+		pm.perNodeSrcIdxCache = nil
 
 		// Eagerly resolve tag owners (needed for NodeCanHaveTag during registration)
 		tagMap, err := resolveTagOwners(pm.pol, pm.users, pm.nodes)
@@ -1328,12 +1393,22 @@ func (pm *PolicyManager) invalidateAutogroupSelfCache(oldNodes, newNodes views.S
 			if _, affected := affectedUsers[nodeUserID]; affected {
 				delete(pm.compiledFilterRulesMap, nodeID)
 				delete(pm.filterRulesMap, nodeID)
+				delete(pm.perNodeMatcherCache, nodeID)
 			}
 		} else {
 			// Node not found in either old or new list, clear it
 			delete(pm.compiledFilterRulesMap, nodeID)
 			delete(pm.filterRulesMap, nodeID)
+			delete(pm.perNodeMatcherCache, nodeID)
 		}
+	}
+
+	// Clear per-node source index cache entries involving affected nodes.
+	// Rather than iterating the entire cache to find entries involving affected users,
+	// clear the whole per-node src index cache when any user is affected. This is safe
+	// because the cache is rebuilt lazily and only used during ComputeNodePeers.
+	if len(affectedUsers) > 0 {
+		pm.perNodeSrcIdxCache = nil
 	}
 
 	if len(affectedUsers) > 0 {
