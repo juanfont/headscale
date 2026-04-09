@@ -1,6 +1,7 @@
 package hscontrol
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -400,6 +401,7 @@ func (ns *noiseServer) SSHActionHandler(
 	reqLog.Trace().Caller().Msg("SSH action request")
 
 	action, err := ns.sshAction(
+		req.Context(),
 		reqLog,
 		srcNodeID, dstNodeID,
 		req.URL.Query().Get("auth_id"),
@@ -437,6 +439,7 @@ func (ns *noiseServer) SSHActionHandler(
 //  3. Follow-up request — an auth_id is present, wait for the auth
 //     verdict and accept or reject.
 func (ns *noiseServer) sshAction(
+	ctx context.Context,
 	reqLog zerolog.Logger,
 	srcNodeID, dstNodeID types.NodeID,
 	authIDStr string,
@@ -456,7 +459,7 @@ func (ns *noiseServer) sshAction(
 	// Follow-up request with auth_id — wait for the auth verdict.
 	if authIDStr != "" {
 		return ns.sshActionFollowUp(
-			reqLog, &action, authIDStr,
+			ctx, reqLog, &action, authIDStr,
 			srcNodeID, dstNodeID,
 			checkFound,
 		)
@@ -542,8 +545,10 @@ func (ns *noiseServer) sshActionHoldAndDelegate(
 }
 
 // sshActionFollowUp handles follow-up requests where the client
-// provides an auth_id. It blocks until the auth session resolves.
+// provides an auth_id. It blocks until the auth session resolves or
+// the request context is cancelled (e.g. the client disconnects).
 func (ns *noiseServer) sshActionFollowUp(
+	ctx context.Context,
 	reqLog zerolog.Logger,
 	action *tailcfg.SSHAction,
 	authIDStr string,
@@ -598,7 +603,21 @@ func (ns *noiseServer) sshActionFollowUp(
 
 	reqLog.Trace().Caller().Msg("SSH action follow-up")
 
-	verdict := <-auth.WaitForAuth()
+	var verdict types.AuthVerdict
+	select {
+	case <-ctx.Done():
+		// The client disconnected (or its request timed out) before the
+		// auth session resolved. Return an error so the parked goroutine
+		// is freed; without this select sshActionFollowUp would block
+		// until the cache eviction callback signalled FinishAuth, which
+		// could be up to register_cache_expiration (15 minutes).
+		return nil, NewHTTPError(
+			http.StatusUnauthorized,
+			"ssh action follow-up cancelled",
+			ctx.Err(),
+		)
+	case verdict = <-auth.WaitForAuth():
+	}
 
 	if !verdict.Accept() {
 		action.Reject = true
