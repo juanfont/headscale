@@ -1733,6 +1733,11 @@ type Policy struct {
 	nodeIPsByUser map[uint]*netipx.IPSet   `json:"-"`
 	nodeIPsByTag  map[string]*netipx.IPSet `json:"-"`
 
+	// globalRulesForNode caches the compiled filter rules from all ACLs that
+	// do NOT reference autogroup:self. These are identical for every node and
+	// only need to be compiled once per cycle. Cleared when resolveCache is cleared.
+	globalRulesForNode []tailcfg.FilterRule `json:"-"`
+
 	Groups        Groups             `json:"groups,omitempty"`
 	Hosts         Hosts              `json:"hosts,omitempty"`
 	TagOwners     TagOwners          `json:"tagOwners,omitempty"`

@@ -118,11 +118,22 @@ func (pol *Policy) compileFilterRulesForNode(
 		return tailcfg.FilterAllowAll, nil
 	}
 
-	var rules []tailcfg.FilterRule
+	// Optimization: only compile ACLs that actually use autogroup:self per node.
+	// Non-autogroup:self ACLs produce identical output regardless of node, so we
+	// compile them once via compileFilterRules (cached as globalRulesForNode) and
+	// reuse across all nodes. This reduces per-node work from O(all_rules) to
+	// O(autogroup_self_rules) — typically 2 rules instead of 5000.
+	var autogroupSelfRules []tailcfg.FilterRule
 
 	for _, acl := range pol.ACLs {
 		if acl.Action != ActionAccept {
 			return nil, ErrInvalidAction
+		}
+
+		// Skip ACLs that don't reference autogroup:self in destinations —
+		// they're already included in the global filter.
+		if !aclUsesAutogroupSelf(acl) {
+			continue
 		}
 
 		aclRules, err := pol.compileACLWithAutogroupSelf(acl, users, node, nodes)
@@ -133,12 +144,118 @@ func (pol *Policy) compileFilterRulesForNode(
 
 		for _, rule := range aclRules {
 			if rule != nil {
-				rules = append(rules, *rule)
+				autogroupSelfRules = append(autogroupSelfRules, *rule)
 			}
 		}
 	}
 
-	return mergeFilterRules(rules), nil
+	// Combine with pre-compiled global rules (non-autogroup:self ACLs).
+	if pol.globalRulesForNode == nil {
+		// Compile global rules once (all ACLs without autogroup:self).
+		globalRules, err := pol.compileNonAutogroupSelfRules(users, nodes)
+		if err != nil {
+			return nil, err
+		}
+		pol.globalRulesForNode = globalRules
+	}
+
+	combined := make([]tailcfg.FilterRule, 0, len(pol.globalRulesForNode)+len(autogroupSelfRules))
+	combined = append(combined, pol.globalRulesForNode...)
+	combined = append(combined, autogroupSelfRules...)
+
+	return mergeFilterRules(combined), nil
+}
+
+// aclUsesAutogroupSelf checks whether an ACL has autogroup:self in any destination.
+func aclUsesAutogroupSelf(acl ACL) bool {
+	for _, dest := range acl.Destinations {
+		if ag, ok := dest.Alias.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
+			return true
+		}
+	}
+	return false
+}
+
+// compileNonAutogroupSelfRules compiles all ACL rules that do NOT reference
+// autogroup:self. These produce identical output for every node, so they only
+// need to be compiled once.
+func (pol *Policy) compileNonAutogroupSelfRules(
+	users types.Users,
+	nodes views.Slice[types.NodeView],
+) ([]tailcfg.FilterRule, error) {
+	var rules []tailcfg.FilterRule
+
+	for _, acl := range pol.ACLs {
+		if acl.Action != ActionAccept {
+			return nil, ErrInvalidAction
+		}
+
+		if aclUsesAutogroupSelf(acl) {
+			continue
+		}
+
+		srcIPs, err := acl.Sources.Resolve(pol, users, nodes)
+		if err != nil {
+			log.Trace().Caller().Err(err).Msgf("resolving source ips")
+		}
+
+		if srcIPs == nil || len(srcIPs.Prefixes()) == 0 {
+			continue
+		}
+
+		protocols := acl.Protocol.parseProtocol()
+
+		var destPorts []tailcfg.NetPortRange
+
+		for _, dest := range acl.Destinations {
+			if _, isWildcard := dest.Alias.(Asterix); isWildcard {
+				for _, port := range dest.Ports {
+					destPorts = append(destPorts, tailcfg.NetPortRange{
+						IP:    "*",
+						Ports: port,
+					})
+				}
+				continue
+			}
+
+			if ag, isAutoGroup := dest.Alias.(*AutoGroup); isAutoGroup && ag.Is(AutoGroupInternet) {
+				continue
+			}
+
+			ips, err := dest.Resolve(pol, users, nodes)
+			if err != nil {
+				log.Trace().Caller().Err(err).Msgf("resolving destination ips")
+			}
+
+			if ips == nil {
+				continue
+			}
+
+			prefixes := ips.Prefixes()
+
+			for _, pref := range prefixes {
+				for _, port := range dest.Ports {
+					pr := tailcfg.NetPortRange{
+						IP:    pref.String(),
+						Ports: port,
+					}
+					destPorts = append(destPorts, pr)
+				}
+			}
+		}
+
+		if len(destPorts) == 0 {
+			continue
+		}
+
+		rules = append(rules, tailcfg.FilterRule{
+			SrcIPs:   ipSetToPrefixStringList(srcIPs),
+			DstPorts: destPorts,
+			IPProto:  protocols,
+		})
+	}
+
+	return rules, nil
 }
 
 // compileACLWithAutogroupSelf compiles a single ACL rule, handling

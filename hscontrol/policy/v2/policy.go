@@ -824,6 +824,7 @@ func (pm *PolicyManager) clearResolveCache() {
 	pm.pol.resolveCache = nil
 	pm.pol.nodeIPsByUser = nil
 	pm.pol.nodeIPsByTag = nil
+	pm.pol.globalRulesForNode = nil
 	matcher.ResetIPSetCache()
 }
 
