@@ -80,13 +80,19 @@ func parseCapabilityVersion(req *http.Request) (tailcfg.CapabilityVersion, error
 	return tailcfg.CapabilityVersion(clientCapabilityVersion), nil
 }
 
+// verifyBodyLimit caps the request body for /verify. The DERP verify
+// protocol payload (tailcfg.DERPAdmitClientRequest) is a few hundred
+// bytes; 4 KiB is generous and prevents an unauthenticated client from
+// OOMing the public router with arbitrarily large POSTs.
+const verifyBodyLimit int64 = 4 * 1024
+
 func (h *Headscale) handleVerifyRequest(
 	req *http.Request,
 	writer io.Writer,
 ) error {
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
-		return fmt.Errorf("reading request body: %w", err)
+		return NewHTTPError(http.StatusRequestEntityTooLarge, "request body too large", fmt.Errorf("reading request body: %w", err))
 	}
 
 	var derpAdmitClientRequest tailcfg.DERPAdmitClientRequest
@@ -123,6 +129,8 @@ func (h *Headscale) VerifyHandler(
 		httpError(writer, errMethodNotAllowed)
 		return
 	}
+
+	req.Body = http.MaxBytesReader(writer, req.Body, verifyBodyLimit)
 
 	err := h.handleVerifyRequest(req, writer)
 	if err != nil {
