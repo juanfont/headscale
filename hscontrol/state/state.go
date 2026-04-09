@@ -2100,7 +2100,13 @@ func (s *State) HandleNodeFromPreAuthKey(
 				return nil, fmt.Errorf("saving node: %w", err)
 			}
 
-			if !pak.Reusable {
+			// Only mark the key used on the *first* registration. On
+			// re-registration the same key is already used and the
+			// atomic compare-and-set in UsePreAuthKey would otherwise
+			// reject it as "authkey already used". This is the path
+			// behind issue #2830 where containers restart with the
+			// same one-shot key.
+			if !pak.Reusable && !pak.Used {
 				err = hsdb.UsePreAuthKey(tx, pak)
 				if err != nil {
 					return nil, fmt.Errorf("using pre auth key: %w", err)
