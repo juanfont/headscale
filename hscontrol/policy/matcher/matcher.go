@@ -53,20 +53,40 @@ func MatchFromFilterRule(rule tailcfg.FilterRule) Match {
 	return MatchFromStrings(rule.SrcIPs, dests)
 }
 
+// ipSetCache caches ParseIPSet results keyed by the input string.
+// Reset between compilation cycles via ResetIPSetCache.
+var ipSetCache map[string]*netipx.IPSet
+
+// ResetIPSetCache clears the cached ParseIPSet results.
+// Call this when the node list or policy changes to avoid stale entries.
+func ResetIPSetCache() {
+	ipSetCache = nil
+}
+
+func cachedParseIPSet(s string) *netipx.IPSet {
+	if ipSetCache != nil {
+		if cached, ok := ipSetCache[s]; ok {
+			return cached
+		}
+	}
+	set, _ := util.ParseIPSet(s, nil)
+	if ipSetCache == nil {
+		ipSetCache = make(map[string]*netipx.IPSet, 256)
+	}
+	ipSetCache[s] = set
+	return set
+}
+
 func MatchFromStrings(sources, destinations []string) Match {
 	srcs := new(netipx.IPSetBuilder)
 	dests := new(netipx.IPSetBuilder)
 
 	for _, srcIP := range sources {
-		set, _ := util.ParseIPSet(srcIP, nil)
-
-		srcs.AddSet(set)
+		srcs.AddSet(cachedParseIPSet(srcIP))
 	}
 
 	for _, dest := range destinations {
-		set, _ := util.ParseIPSet(dest, nil)
-
-		dests.AddSet(set)
+		dests.AddSet(cachedParseIPSet(dest))
 	}
 
 	srcsSet, _ := srcs.IPSet()

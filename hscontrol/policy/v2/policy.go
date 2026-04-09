@@ -445,6 +445,7 @@ func (pm *PolicyManager) ensureFilterCompiled() error {
 		pm.srcMatcherCache = nil
 		pm.perNodeMatcherCache = nil
 		pm.perNodeSrcIdxCache = nil
+		matcher.ResetIPSetCache()
 	}
 
 	return nil
@@ -783,9 +784,6 @@ func (pm *PolicyManager) compileFilterRulesForNodeLocked(node types.NodeView) ([
 	}
 
 	// Enable resolve cache and node IP indexes for per-node compilation.
-	// These are normally only set during ensureFilterCompiled (global filter),
-	// but per-node compilation in the autogroup:self path also benefits from
-	// cached Username/Tag/Group resolution and O(1) IP lookups.
 	pm.ensureResolveCacheForCompilation()
 
 	// Compile per-node rules with autogroup:self expanded
@@ -826,6 +824,7 @@ func (pm *PolicyManager) clearResolveCache() {
 	pm.pol.resolveCache = nil
 	pm.pol.nodeIPsByUser = nil
 	pm.pol.nodeIPsByTag = nil
+	matcher.ResetIPSetCache()
 }
 
 // filterForNodeLocked returns the filter rules for a specific node, already reduced
