@@ -148,7 +148,7 @@ type PostgresConfig struct {
 	Port                int
 	Name                string
 	User                string
-	Pass                string
+	Pass                string `json:"-"` // never serialise the database password
 	Ssl                 string
 	MaxOpenConnections  int
 	MaxIdleConnections  int
@@ -198,7 +198,7 @@ type OIDCConfig struct {
 	OnlyStartIfOIDCIsAvailable bool
 	Issuer                     string
 	ClientID                   string
-	ClientSecret               string
+	ClientSecret               string `json:"-"` // never serialise the OIDC client secret
 	Scope                      []string
 	ExtraParams                map[string]string
 	AllowedDomains             []string
@@ -237,7 +237,7 @@ type TaildropConfig struct {
 
 type CLIConfig struct {
 	Address  string
-	APIKey   string
+	APIKey   string `json:"-"` // never serialise the headscale admin API key
 	Timeout  time.Duration
 	Insecure bool
 }
