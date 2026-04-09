@@ -22,6 +22,7 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/gorilla/mux v1.8.1
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/jagottsicher/termcolor v1.0.2
 	github.com/oauth2-proxy/mockoidc v0.0.0-20240214162133-caebfff84d25
 	github.com/ory/dockertest/v3 v3.12.0
@@ -54,7 +55,6 @@ require (
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.1
 	tailscale.com v1.96.5
-	zgo.at/zcache/v2 v2.4.1
 	zombiezen.com/go/postgrestest v1.0.1
 )
 

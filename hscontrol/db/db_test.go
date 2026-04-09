@@ -8,13 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
-	"zgo.at/zcache/v2"
 )
 
 // TestSQLiteMigrationAndDataValidation tests specific SQLite migration scenarios
@@ -160,10 +158,6 @@ func TestSQLiteMigrationAndDataValidation(t *testing.T) {
 			}
 		})
 	}
-}
-
-func emptyCache() *zcache.Cache[types.AuthID, types.AuthRequest] {
-	return zcache.New[types.AuthID, types.AuthRequest](time.Minute, time.Hour)
 }
 
 func createSQLiteFromSQLFile(sqlFilePath, dbPath string) error {
@@ -379,7 +373,6 @@ func dbForTestWithPath(t *testing.T, sqlFilePath string) *HSDatabase {
 				Mode: types.PolicyModeDB,
 			},
 		},
-		emptyCache(),
 	)
 	if err != nil {
 		t.Fatalf("setting up database: %s", err)
@@ -439,7 +432,6 @@ func TestSQLiteAllTestdataMigrations(t *testing.T) {
 						Mode: types.PolicyModeDB,
 					},
 				},
-				emptyCache(),
 			)
 			require.NoError(t, err)
 		})

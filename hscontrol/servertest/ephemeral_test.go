@@ -18,10 +18,10 @@ import (
 // fake-clock advancement, but three blockers prevent adoption
 // as of Go 1.26:
 //
-//  1. zcache janitor goroutine: No Close() method; stopped only via
-//     runtime.SetFinalizer which runs outside synctest bubbles.
-//     - https://github.com/patrickmn/go-cache/issues/185
-//     - https://github.com/golang/go/issues/75113 (Go1.27: finalizers inside bubble)
+//  1. golang-lru/v2/expirable janitor goroutine: No Close() method;
+//     the deleteExpired ticker goroutine never exits because the done
+//     channel is never closed (documented as a v3 TODO upstream).
+//     - https://github.com/hashicorp/golang-lru/blob/v2.0.7/expirable/expirable_lru.go#L78-L81
 //
 //  2. database/sql internal goroutines: Uses sync.RWMutex which is not
 //     durably blocking in synctest, causing hangs.

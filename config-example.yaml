@@ -445,12 +445,16 @@ taildrop:
   # When enabled, nodes can send files to other nodes owned by the same user.
   # Tagged devices and cross-user transfers are not permitted by Tailscale clients.
   enabled: true
-
 # Advanced performance tuning parameters.
 # The defaults are carefully chosen and should rarely need adjustment.
 # Only modify these if you have identified a specific performance issue.
 #
 # tuning:
+#   # Maximum number of pending registration entries in the auth cache.
+#   # Oldest entries are evicted when the cap is reached.
+#   #
+#   # register_cache_max_entries: 1024
+#
 #   # NodeStore write batching configuration.
 #   # The NodeStore batches write operations before rebuilding peer relationships,
 #   # which is computationally expensive. Batching reduces rebuild frequency.

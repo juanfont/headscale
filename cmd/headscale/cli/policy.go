@@ -28,7 +28,7 @@ func bypassDatabase() (*db.HSDatabase, error) {
 		return nil, fmt.Errorf("loading config: %w", err)
 	}
 
-	d, err := db.NewHeadscaleDatabase(cfg, nil)
+	d, err := db.NewHeadscaleDatabase(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("opening database: %w", err)
 	}
