@@ -20,7 +20,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
-	"zgo.at/zcache/v2"
 )
 
 var errNodeNotFoundAfterAdd = errors.New("node not found after adding to batcher")
@@ -107,11 +106,6 @@ func wrapBatcherForTest(b *Batcher, state *state.State) *testBatcherWrapper {
 // allBatcherFunctions contains all batcher implementations to test.
 var allBatcherFunctions = []batcherTestCase{
 	{"Default", NewBatcherAndMapper},
-}
-
-// emptyCache creates an empty registration cache for testing.
-func emptyCache() *zcache.Cache[types.AuthID, types.AuthRequest] {
-	return zcache.New[types.AuthID, types.AuthRequest](time.Minute, time.Hour)
 }
 
 // Test configuration constants.
@@ -211,10 +205,7 @@ func setupBatcherWithTestData(
 	}
 
 	// Create database and populate it with test data
-	database, err := db.NewHeadscaleDatabase(
-		cfg,
-		emptyCache(),
-	)
+	database, err := db.NewHeadscaleDatabase(cfg)
 	if err != nil {
 		t.Fatalf("setting up database: %s", err)
 	}

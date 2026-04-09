@@ -34,7 +34,6 @@ func newSQLiteTestDB() (*HSDatabase, error) {
 				Mode: types.PolicyModeDB,
 			},
 		},
-		emptyCache(),
 	)
 	if err != nil {
 		return nil, err
@@ -95,7 +94,6 @@ func newHeadscaleDBFromPostgresURL(t *testing.T, pu *url.URL) *HSDatabase {
 				Mode: types.PolicyModeDB,
 			},
 		},
-		emptyCache(),
 	)
 	if err != nil {
 		t.Fatal(err)

@@ -278,13 +278,15 @@ type Tuning struct {
 	// updates for connected clients.
 	BatcherWorkers int
 
-	// RegisterCacheCleanup is the interval between cleanup operations for
-	// expired registration cache entries.
-	RegisterCacheCleanup time.Duration
-
 	// RegisterCacheExpiration is how long registration cache entries remain
-	// valid before being eligible for cleanup.
+	// valid before being eligible for eviction.
 	RegisterCacheExpiration time.Duration
+
+	// RegisterCacheMaxEntries bounds the number of pending registration
+	// entries the auth cache will hold. Older entries are evicted (LRU)
+	// when the cap is reached, preventing unauthenticated cache-fill DoS.
+	// A value of 0 falls back to defaultRegisterCacheMaxEntries (1024).
+	RegisterCacheMaxEntries int
 
 	// NodeStoreBatchSize controls how many write operations are accumulated
 	// before rebuilding the in-memory node snapshot.
@@ -1192,8 +1194,8 @@ func LoadServerConfig() (*Config, error) {
 
 				return DefaultBatcherWorkers()
 			}(),
-			RegisterCacheCleanup:    viper.GetDuration("tuning.register_cache_cleanup"),
 			RegisterCacheExpiration: viper.GetDuration("tuning.register_cache_expiration"),
+			RegisterCacheMaxEntries: viper.GetInt("tuning.register_cache_max_entries"),
 			NodeStoreBatchSize:      viper.GetInt("tuning.node_store_batch_size"),
 			NodeStoreBatchTimeout:   viper.GetDuration("tuning.node_store_batch_timeout"),
 		},

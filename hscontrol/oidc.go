@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/templates"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -19,14 +20,17 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/oauth2"
-	"zgo.at/zcache/v2"
 )
 
 const (
 	randomByteSize           = 16
 	defaultOAuthOptionsCount = 3
 	authCacheExpiration      = time.Minute * 15
-	authCacheCleanup         = time.Minute * 20
+
+	// authCacheMaxEntries bounds the OIDC state→AuthInfo cache to prevent
+	// unauthenticated cache-fill DoS via repeated /register/{auth_id} or
+	// /auth/{auth_id} GETs that mint OIDC state cookies.
+	authCacheMaxEntries = 1024
 )
 
 var (
@@ -55,9 +59,10 @@ type AuthProviderOIDC struct {
 	serverURL string
 	cfg       *types.OIDCConfig
 
-	// authCache holds auth information between
-	// the auth and the callback steps.
-	authCache *zcache.Cache[string, AuthInfo]
+	// authCache holds auth information between the auth and the callback
+	// steps. It is a bounded LRU keyed by OIDC state, evicting oldest
+	// entries to keep the cache footprint constant under attack.
+	authCache *expirable.LRU[string, AuthInfo]
 
 	oidcProvider *oidc.Provider
 	oauth2Config *oauth2.Config
@@ -84,9 +89,10 @@ func NewAuthProviderOIDC(
 		Scopes:       cfg.Scope,
 	}
 
-	authCache := zcache.New[string, AuthInfo](
+	authCache := expirable.NewLRU[string, AuthInfo](
+		authCacheMaxEntries,
+		nil,
 		authCacheExpiration,
-		authCacheCleanup,
 	)
 
 	return &AuthProviderOIDC{
@@ -188,7 +194,7 @@ func (a *AuthProviderOIDC) authHandler(
 	extras = append(extras, oidc.Nonce(nonce))
 
 	// Cache the registration info
-	a.authCache.Set(state, registrationInfo)
+	a.authCache.Add(state, registrationInfo)
 
 	authURL := a.oauth2Config.AuthCodeURL(state, extras...)
 	log.Debug().Caller().Msgf("redirecting to %s for authentication", authURL)

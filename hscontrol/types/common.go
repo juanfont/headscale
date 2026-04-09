@@ -221,40 +221,65 @@ func (r AuthID) Validate() error {
 	return nil
 }
 
-// AuthRequest represent a pending authentication request from a user or a node.
-// If it is a registration request, the node field will be populate with the node that is trying to register.
-// When the authentication process is finished, the node that has been authenticated will be sent through the Finished channel.
-// The closed field is used to ensure that the Finished channel is only closed once, and that no more nodes are sent through it after it has been closed.
+// AuthRequest represents a pending authentication request from a user or a
+// node. It carries the minimum data needed to either complete a node
+// registration (regData populated) or signal the verdict of an interactive
+// auth flow (no payload). Verdict delivery is via the finished channel; the
+// closed flag guards FinishAuth against double-close.
+//
+// AuthRequest is always handled by pointer so the channel and atomic flag
+// have a single canonical instance even when stored in caches that
+// internally copy values.
 type AuthRequest struct {
-	node     *Node
+	// regData is populated for node-registration flows (interactive web
+	// or OIDC). It carries only the minimal subset of registration data
+	// the auth callback needs to promote this request into a real node;
+	// see RegistrationData for the rationale behind keeping the payload
+	// small.
+	//
+	// nil for non-registration flows (e.g. SSH check). Use
+	// RegistrationData() to read it safely.
+	regData *RegistrationData
+
 	finished chan AuthVerdict
 	closed   *atomic.Bool
 }
 
-func NewAuthRequest() AuthRequest {
-	return AuthRequest{
+// NewAuthRequest creates a pending auth request with no payload, suitable
+// for non-registration flows that only need a verdict channel.
+func NewAuthRequest() *AuthRequest {
+	return &AuthRequest{
 		finished: make(chan AuthVerdict, 1),
 		closed:   &atomic.Bool{},
 	}
 }
 
-func NewRegisterAuthRequest(node Node) AuthRequest {
-	return AuthRequest{
-		node:     &node,
+// NewRegisterAuthRequest creates a pending auth request carrying the
+// minimal RegistrationData for a node-registration flow. The data is
+// stored by pointer; callers must not mutate it after handing it off.
+func NewRegisterAuthRequest(data *RegistrationData) *AuthRequest {
+	return &AuthRequest{
+		regData:  data,
 		finished: make(chan AuthVerdict, 1),
 		closed:   &atomic.Bool{},
 	}
 }
 
-// Node returns the node that is trying to register.
-// It will panic if the AuthRequest is not a registration request.
-// Can _only_ be used in the registration path.
-func (rn *AuthRequest) Node() NodeView {
-	if rn.node == nil {
-		panic("Node can only be used in registration requests")
+// RegistrationData returns the cached registration payload. It panics if
+// called on an AuthRequest that was not created via
+// NewRegisterAuthRequest, mirroring the previous Node() contract.
+func (rn *AuthRequest) RegistrationData() *RegistrationData {
+	if rn.regData == nil {
+		panic("RegistrationData can only be used in registration requests")
 	}
 
-	return rn.node.View()
+	return rn.regData
+}
+
+// IsRegistration reports whether this auth request carries registration
+// data (i.e. it was created via NewRegisterAuthRequest).
+func (rn *AuthRequest) IsRegistration() bool {
+	return rn.regData != nil
 }
 
 func (rn *AuthRequest) FinishAuth(verdict AuthVerdict) {

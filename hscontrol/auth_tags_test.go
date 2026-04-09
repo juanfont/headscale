@@ -696,7 +696,7 @@ func TestExpiryDuringPersonalToTaggedConversion(t *testing.T) {
 	// Step 1: Create user-owned node WITH expiry set
 	clientExpiry := time.Now().Add(24 * time.Hour)
 	registrationID1 := types.MustAuthID()
-	regEntry1 := types.NewRegisterAuthRequest(types.Node{
+	regEntry1 := types.NewRegisterAuthRequest(&types.RegistrationData{
 		MachineKey: machineKey.Public(),
 		NodeKey:    nodeKey1.Public(),
 		Hostname:   "personal-to-tagged",
@@ -718,7 +718,7 @@ func TestExpiryDuringPersonalToTaggedConversion(t *testing.T) {
 	// Step 2: Re-auth with tags (Personal → Tagged conversion)
 	nodeKey2 := key.NewNode()
 	registrationID2 := types.MustAuthID()
-	regEntry2 := types.NewRegisterAuthRequest(types.Node{
+	regEntry2 := types.NewRegisterAuthRequest(&types.RegistrationData{
 		MachineKey: machineKey.Public(),
 		NodeKey:    nodeKey2.Public(),
 		Hostname:   "personal-to-tagged",
@@ -768,7 +768,7 @@ func TestExpiryDuringTaggedToPersonalConversion(t *testing.T) {
 
 	// Step 1: Create tagged node (expiry should be nil)
 	registrationID1 := types.MustAuthID()
-	regEntry1 := types.NewRegisterAuthRequest(types.Node{
+	regEntry1 := types.NewRegisterAuthRequest(&types.RegistrationData{
 		MachineKey: machineKey.Public(),
 		NodeKey:    nodeKey1.Public(),
 		Hostname:   "tagged-to-personal",
@@ -790,7 +790,7 @@ func TestExpiryDuringTaggedToPersonalConversion(t *testing.T) {
 	nodeKey2 := key.NewNode()
 	clientExpiry := time.Now().Add(48 * time.Hour)
 	registrationID2 := types.MustAuthID()
-	regEntry2 := types.NewRegisterAuthRequest(types.Node{
+	regEntry2 := types.NewRegisterAuthRequest(&types.RegistrationData{
 		MachineKey: machineKey.Public(),
 		NodeKey:    nodeKey2.Public(),
 		Hostname:   "tagged-to-personal",
