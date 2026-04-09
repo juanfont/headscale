@@ -196,6 +196,9 @@ func TestReduceFilterRules(t *testing.T) {
 						netip.MustParsePrefix("10.33.0.0/16"),
 					},
 				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("10.33.0.0/16"),
+				},
 			},
 			peers: types.Nodes{
 				&types.Node{
@@ -518,6 +521,7 @@ func TestReduceFilterRules(t *testing.T) {
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{netip.MustParsePrefix("8.0.0.0/16"), netip.MustParsePrefix("16.0.0.0/16")},
 				},
+				ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("8.0.0.0/16"), netip.MustParsePrefix("16.0.0.0/16")},
 			},
 			peers: types.Nodes{
 				&types.Node{
@@ -601,6 +605,7 @@ func TestReduceFilterRules(t *testing.T) {
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{netip.MustParsePrefix("8.0.0.0/8"), netip.MustParsePrefix("16.0.0.0/8")},
 				},
+				ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("8.0.0.0/8"), netip.MustParsePrefix("16.0.0.0/8")},
 			},
 			peers: types.Nodes{
 				&types.Node{
@@ -676,7 +681,8 @@ func TestReduceFilterRules(t *testing.T) {
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{netip.MustParsePrefix("172.16.0.0/24")},
 				},
-				Tags: []string{"tag:access-servers"},
+				ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("172.16.0.0/24")},
+				Tags:           []string{"tag:access-servers"},
 			},
 			peers: types.Nodes{
 				&types.Node{
@@ -784,16 +790,13 @@ func TestReduceFilterRules(t *testing.T) {
 	}
 }
 
-// TestReduceFilterRulesPartialApproval documents the behavior of
-// ReduceFilterRules when RoutableIPs (advertised) and SubnetRoutes
-// (approved) differ. In production, SubnetRoutes is always a subset
-// of RoutableIPs, but the two code paths in ReduceFilterRules handle
-// them independently:
-//   - Lines 56-68: Check RoutableIPs (advertised, may be unapproved)
-//   - Lines 73-79: Check SubnetRoutes (approved only)
-//
-// This test documents that ReduceFilterRules includes filter rules
-// for advertised-but-unapproved routes via the RoutableIPs check.
+// TestReduceFilterRulesPartialApproval verifies that ReduceFilterRules
+// only preserves filter rules for routes that are both advertised
+// (RoutableIPs) AND approved (ApprovedRoutes), matching Tailscale
+// SaaS behavior. Advertised-but-unapproved routes do not cause rule
+// preservation: SaaS never generates filter rules for unapproved
+// routes, and headscale consults node.SubnetRoutes() (which filters
+// by approval) rather than Hostinfo.RoutableIPs() (which does not).
 func TestReduceFilterRulesPartialApproval(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -828,7 +831,7 @@ func TestReduceFilterRulesPartialApproval(t *testing.T) {
 			wantRoutes: []string{"10.33.0.0/16"},
 		},
 		{
-			name: "unapproved-route-still-included-via-routableips",
+			name: "unapproved-route-excluded",
 			node: &types.Node{
 				IPv4: ap("100.64.0.1"),
 				IPv6: ap("fd7a:115c:a1e0::1"),
@@ -853,11 +856,11 @@ func TestReduceFilterRulesPartialApproval(t *testing.T) {
 					},
 				},
 			},
-			// The RoutableIPs check (line 63) matches because
-			// 172.16.0.0/24 IS in RoutableIPs. The rule is
-			// kept even though the route is not approved.
-			wantCount:  1,
-			wantRoutes: []string{"172.16.0.0/24"},
+			// SubnetRoutes() does NOT contain 172.16.0.0/24
+			// (only approved routes), and the ACL dst does not
+			// overlap the node's own IPs, so the rule is
+			// dropped. This matches Tailscale SaaS behavior.
+			wantCount: 0,
 		},
 		{
 			name: "neither-advertised-nor-approved-excluded",

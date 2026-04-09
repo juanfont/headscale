@@ -6,7 +6,6 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
-	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
 
@@ -48,33 +47,18 @@ func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcf
 				continue DEST_LOOP
 			}
 
-			// If the node advertises routes, ensure filter rules
-			// targeting those routes are preserved. Exit routes
-			// (0.0.0.0/0, ::/0) are skipped because exit nodes
-			// handle traffic via AllowedIPs/routing, not packet
-			// filter rules. This matches Tailscale SaaS behavior.
-			//
-			// NOTE: This uses RoutableIPs (advertised routes)
-			// rather than SubnetRoutes (approved routes). The two
-			// sets are identical in all 98 golden file captures
-			// from Tailscale SaaS, so we cannot determine from
-			// captured data which set Tailscale actually checks.
-			// RoutableIPs is a superset of SubnetRoutes (which
-			// further filters by approval), so this is the more
-			// permissive choice. See MISSING_SAAS_DATA.md for
-			// the capture needed to resolve this ambiguity.
-			if node.Hostinfo().Valid() {
-				routableIPs := node.Hostinfo().RoutableIPs()
-				if routableIPs.Len() > 0 {
-					for _, routableIP := range routableIPs.All() {
-						if tsaddr.IsExitRoute(routableIP) {
-							continue
-						}
-						if expanded.OverlapsPrefix(routableIP) {
-							dests = append(dests, dest)
-							continue DEST_LOOP
-						}
-					}
+			// If the node has approved subnet routes, preserve
+			// filter rules targeting those routes. SubnetRoutes()
+			// returns only approved, non-exit routes — matching
+			// Tailscale SaaS behavior, which does not generate
+			// filter rules for advertised-but-unapproved routes.
+			// Exit routes (0.0.0.0/0, ::/0) are excluded by
+			// SubnetRoutes() and handled separately via
+			// AllowedIPs/routing.
+			for _, subnetRoute := range node.SubnetRoutes() {
+				if expanded.OverlapsPrefix(subnetRoute) {
+					dests = append(dests, dest)
+					continue DEST_LOOP
 				}
 			}
 		}
@@ -127,23 +111,16 @@ func reduceCapGrantRule(
 			}
 		}
 
-		// Also check routable IPs (subnet routes) — nodes that
-		// advertise routes should receive CapGrant rules for
-		// destinations that overlap their routes.
-		if node.Hostinfo().Valid() {
-			routableIPs := node.Hostinfo().RoutableIPs()
-			if routableIPs.Len() > 0 {
-				for _, dst := range cg.Dsts {
-					for _, routableIP := range routableIPs.All() {
-						if tsaddr.IsExitRoute(routableIP) {
-							continue
-						}
-
-						if dst.Overlaps(routableIP) {
-							// For route overlaps, keep the original prefix.
-							matchingDsts = append(matchingDsts, dst)
-						}
-					}
+		// Also check approved subnet routes — nodes serving
+		// approved routes should receive CapGrant rules for
+		// destinations that overlap those routes. SubnetRoutes()
+		// excludes both unapproved and exit routes, matching
+		// Tailscale SaaS behavior.
+		for _, dst := range cg.Dsts {
+			for _, subnetRoute := range node.SubnetRoutes() {
+				if dst.Overlaps(subnetRoute) {
+					// For route overlaps, keep the original prefix.
+					matchingDsts = append(matchingDsts, dst)
 				}
 			}
 		}
