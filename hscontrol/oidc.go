@@ -31,7 +31,16 @@ const (
 	// unauthenticated cache-fill DoS via repeated /register/{auth_id} or
 	// /auth/{auth_id} GETs that mint OIDC state cookies.
 	authCacheMaxEntries = 1024
+
+	// cookieNamePrefixLen is the number of leading characters from a
+	// state/nonce value that getCookieName splices into the cookie name.
+	// State and nonce values that are shorter than this are rejected at
+	// the callback boundary so getCookieName cannot panic on a slice
+	// out-of-range.
+	cookieNamePrefixLen = 6
 )
+
+var errOIDCStateTooShort = errors.New("oidc state parameter is too short")
 
 var (
 	errEmptyOIDCCallbackParams = errors.New("empty OIDC callback params")
@@ -461,6 +470,14 @@ func extractCodeAndStateParamFromRequest(
 		return "", "", NewHTTPError(http.StatusBadRequest, "missing code or state parameter", errEmptyOIDCCallbackParams)
 	}
 
+	// Reject states that are too short for getCookieName to splice
+	// into a cookie name. Without this guard a request with
+	// ?state=abc panics on the slice out-of-range and is recovered by
+	// chi's middleware.Recoverer, amplifying small-DoS log noise.
+	if len(state) < cookieNamePrefixLen {
+		return "", "", NewHTTPError(http.StatusBadRequest, "invalid state parameter", errOIDCStateTooShort)
+	}
+
 	return code, state, nil
 }
 
@@ -731,8 +748,11 @@ func renderAuthSuccessTemplate(
 }
 
 // getCookieName generates a unique cookie name based on a cookie value.
+// Callers must ensure value has at least cookieNamePrefixLen bytes;
+// extractCodeAndStateParamFromRequest enforces this for the state
+// parameter, and setCSRFCookie always supplies a 64-byte random value.
 func getCookieName(baseName, value string) string {
-	return fmt.Sprintf("%s_%s", baseName, value[:6])
+	return fmt.Sprintf("%s_%s", baseName, value[:cookieNamePrefixLen])
 }
 
 func setCSRFCookie(w http.ResponseWriter, r *http.Request, name string) (string, error) {
