@@ -1,0 +1,22 @@
+# 2026/04/02 09:35:12.480954 [TestRapid_Merge_PeerPatchesAliasing] [rapid] draw numPatches: 1
+# 2026/04/02 09:35:12.480958 [TestRapid_Merge_PeerPatchesAliasing] [rapid] draw extraCap: 1
+# 2026/04/02 09:35:12.480959 [TestRapid_Merge_PeerPatchesAliasing] [rapid] draw patchNodeID: 0x1
+# 2026/04/02 09:35:12.480961 [TestRapid_Merge_PeerPatchesAliasing] [rapid] draw otherNumPatches: 1
+# 2026/04/02 09:35:12.480961 [TestRapid_Merge_PeerPatchesAliasing] [rapid] draw patchNodeID: 0x1
+# 2026/04/02 09:35:12.480962 [TestRapid_Merge_PeerPatchesAliasing] CONFIRMED: Merge wrote through to receiver's backing array at positions [1:2]
+# 2026/04/02 09:35:12.480963 [TestRapid_Merge_PeerPatchesAliasing] BUG: Merge used shared backing array for PeerPatches append. Receiver's backing array (beyond len) was overwritten by other's patches.
+# 
+v0.4.8#7892895882017992085
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0

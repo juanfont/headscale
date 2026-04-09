@@ -1,0 +1,3 @@
+# 2026/04/02 11:30:54.164411 [TestRapid_TailscaleUserID_OrphanedNodePanic] BUG: TailscaleUserID() on orphaned node (Tags=nil, UserID=nil) returned 0 silently instead of panicking or returning an error — this invalid state should not produce a usable UserID
+# 
+v0.4.8#6605995047929941207

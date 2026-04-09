@@ -1,0 +1,27 @@
+# 2026/04/02 09:34:27.162498 [TestRapid_MigrationTagMerge_SliceAliasingBug] [rapid] draw existingTags: []string{"tag:b"}
+# 2026/04/02 09:34:27.162515 [TestRapid_MigrationTagMerge_SliceAliasingBug] [rapid] draw validatedTags: []string{"tag:a"}
+# 2026/04/02 09:34:27.162517 [TestRapid_MigrationTagMerge_SliceAliasingBug] [rapid] draw extraCap: 1
+# 2026/04/02 09:34:27.162518 [TestRapid_MigrationTagMerge_SliceAliasingBug] BUG: append+sort corrupted original slice through aliasing:
+#   original:  [tag:b]
+#   corrupted: [tag:a]
+#   merged:    [tag:a tag:b]
+#   cap(original)=2, len(original)=1
+# 
+v0.4.8#18259847529409177388
+0x0
+0x0
+0x0
+0x0
+0x0
+0x1
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0

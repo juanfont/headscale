@@ -1,0 +1,8 @@
+# 2026/04/02 10:12:44.736625 [TestRapid_PolicyChangeWithRoutes_AllowedIPsConsistent] [rapid] draw advertiserIdx: 1
+# 2026/04/02 10:12:47.335391 [TestRapid_PolicyChangeWithRoutes_AllowedIPsConsistent] user1 peer node-0 sees node-1 with AllowedIPs: [100.64.0.2/32 fd7a:115c:a1e0::2/128]
+# 2026/04/02 10:12:47.335407 [TestRapid_PolicyChangeWithRoutes_AllowedIPsConsistent] BUG: user1 node node-0 lost route 10.99.0.0/24 from node-1 after restrictive policy
+# 
+v0.4.8#842248544926023541
+0x0
+0x0
+0x1

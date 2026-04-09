@@ -1,0 +1,41 @@
+# 2026/04/02 09:34:26.054973 [TestRapid_RoutesChanged_MutationSafety] [rapid] draw oldRoutes: []netip.Prefix{}
+# 2026/04/02 09:34:26.054994 [TestRapid_RoutesChanged_MutationSafety] [rapid] draw newRoutes: []netip.Prefix{netip.Prefix{ip:netip.Addr{addr:netip.uint128{hi:0x0, lo:0xffff00000000}, z:unique.Handle[net/netip.addrDetail]{value:(*netip.addrDetail)(0x39aadc0c8558)}}, bitsPlusOne:0x3}, netip.Prefix{ip:netip.Addr{addr:netip.uint128{hi:0x0, lo:0xffff00000000}, z:unique.Handle[net/netip.addrDetail]{value:(*netip.addrDetail)(0x39aadc0c8558)}}, bitsPlusOne:0x2}}
+# 2026/04/02 09:34:26.055016 [TestRapid_RoutesChanged_MutationSafety] routesChanged mutated newHI.RoutableIPs:
+#   before: [0.0.0.0/2 0.0.0.0/1]
+#   after:  [0.0.0.0/1 0.0.0.0/2]
+# 
+v0.4.8#14484703370932847812
+0x0
+0x6666666666666
+0x0
+0x0
+0x1
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x6666666666666
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
