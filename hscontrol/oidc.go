@@ -346,30 +346,13 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
-	// If this is a registration flow, then we need to register the node.
+	// If this is a registration flow, render the confirmation
+	// interstitial instead of finalising the registration immediately.
+	// Without an explicit user click, a single GET to
+	// /register/{auth_id} could silently complete a registration when
+	// the IdP allows silent SSO.
 	if authInfo.Registration {
-		newNode, err := a.handleRegistration(user, authInfo.AuthID, nodeExpiry)
-		if err != nil {
-			if errors.Is(err, db.ErrNodeNotFoundRegistrationCache) {
-				log.Debug().Caller().Str("auth_id", authInfo.AuthID.String()).Msg("registration session expired before authorization completed")
-				httpError(writer, NewHTTPError(http.StatusGone, "login session expired, try again", err))
-
-				return
-			}
-
-			httpError(writer, err)
-
-			return
-		}
-
-		content := renderRegistrationSuccessTemplate(user, newNode)
-
-		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
-		writer.WriteHeader(http.StatusOK)
-
-		if _, err := writer.Write(content.Bytes()); err != nil { //nolint:noinlineerr
-			util.LogErr(err, "Failed to write HTTP response")
-		}
+		a.renderRegistrationConfirmInterstitial(writer, req, authInfo.AuthID, user, nodeExpiry)
 
 		return
 	}
@@ -674,6 +657,202 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 	}
 
 	return user, c, nil
+}
+
+// registerConfirmCSRFCookie is the cookie name used to bind the
+// /register/confirm POST handler's CSRF token to the OIDC callback that
+// rendered the interstitial. It includes a per-session prefix derived
+// from the auth ID so cookies for unrelated registrations on the same
+// browser do not collide.
+const registerConfirmCSRFCookie = "headscale_register_confirm"
+
+// renderRegistrationConfirmInterstitial captures the resolved OIDC
+// identity and node expiry into the cached AuthRequest, sets the CSRF
+// cookie, and renders the confirmation page that the user must
+// explicitly submit before the registration is finalised.
+func (a *AuthProviderOIDC) renderRegistrationConfirmInterstitial(
+	writer http.ResponseWriter,
+	req *http.Request,
+	authID types.AuthID,
+	user *types.User,
+	nodeExpiry *time.Time,
+) {
+	authReq, ok := a.h.state.GetAuthCacheEntry(authID)
+	if !ok {
+		log.Debug().Caller().Str("auth_id", authID.String()).Msg("registration session expired before authorization completed")
+		httpError(writer, NewHTTPError(http.StatusGone, "login session expired, try again", nil))
+
+		return
+	}
+
+	if !authReq.IsRegistration() {
+		log.Warn().Caller().
+			Str("auth_id", authID.String()).
+			Msg("OIDC callback hit registration path with auth request that is not a node registration")
+		httpError(writer, NewHTTPError(http.StatusBadRequest, "auth session is not for node registration", nil))
+
+		return
+	}
+
+	csrf, err := util.GenerateRandomStringURLSafe(32)
+	if err != nil {
+		httpError(writer, fmt.Errorf("generating csrf token: %w", err))
+
+		return
+	}
+
+	authReq.SetPendingConfirmation(&types.PendingRegistrationConfirmation{
+		UserID:     user.ID,
+		NodeExpiry: nodeExpiry,
+		CSRF:       csrf,
+	})
+
+	http.SetCookie(writer, &http.Cookie{
+		Name:     registerConfirmCSRFCookie,
+		Value:    csrf,
+		Path:     "/register/confirm/" + authID.String(),
+		MaxAge:   int(authCacheExpiration.Seconds()),
+		Secure:   req.TLS != nil,
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	})
+
+	regData := authReq.RegistrationData()
+
+	info := templates.RegisterConfirmInfo{
+		FormAction:    "/register/confirm/" + authID.String(),
+		CSRFTokenName: registerConfirmCSRFCookie,
+		CSRFToken:     csrf,
+		User:          user.Display(),
+		Hostname:      regData.Hostname,
+		MachineKey:    regData.MachineKey.ShortString(),
+	}
+	if regData.Hostinfo != nil {
+		info.OS = regData.Hostinfo.OS
+	}
+
+	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+	writer.WriteHeader(http.StatusOK)
+
+	if _, err := writer.Write([]byte(templates.RegisterConfirm(info).Render())); err != nil { //nolint:noinlineerr
+		util.LogErr(err, "Failed to write HTTP response")
+	}
+}
+
+// RegisterConfirmHandler is the POST endpoint behind the OIDC
+// registration confirmation interstitial. It validates the CSRF cookie
+// against the form-submitted token, finalises the registration via
+// handleRegistration, and renders the success page.
+func (a *AuthProviderOIDC) RegisterConfirmHandler(
+	writer http.ResponseWriter,
+	req *http.Request,
+) {
+	if req.Method != http.MethodPost {
+		httpError(writer, errMethodNotAllowed)
+
+		return
+	}
+
+	authID, err := authIDFromRequest(req)
+	if err != nil {
+		httpError(writer, err)
+
+		return
+	}
+
+	// Cap the form body. The confirmation form is a single CSRF token,
+	// so 4 KiB is generous and prevents an unauthenticated client from
+	// submitting an arbitrarily large body to ParseForm.
+	req.Body = http.MaxBytesReader(writer, req.Body, 4*1024)
+
+	if err := req.ParseForm(); err != nil { //nolint:noinlineerr,gosec // body is bounded above
+		httpError(writer, NewHTTPError(http.StatusBadRequest, "invalid form", err))
+
+		return
+	}
+
+	formCSRF := req.PostFormValue(registerConfirmCSRFCookie) //nolint:gosec // body is bounded above
+	if formCSRF == "" {
+		httpError(writer, NewHTTPError(http.StatusBadRequest, "missing csrf token", nil))
+
+		return
+	}
+
+	cookie, err := req.Cookie(registerConfirmCSRFCookie)
+	if err != nil {
+		httpError(writer, NewHTTPError(http.StatusForbidden, "missing csrf cookie", err))
+
+		return
+	}
+
+	if cookie.Value != formCSRF {
+		httpError(writer, NewHTTPError(http.StatusForbidden, "csrf token mismatch", nil))
+
+		return
+	}
+
+	authReq, ok := a.h.state.GetAuthCacheEntry(authID)
+	if !ok {
+		httpError(writer, NewHTTPError(http.StatusGone, "registration session expired", nil))
+
+		return
+	}
+
+	pending := authReq.PendingConfirmation()
+	if pending == nil {
+		httpError(writer, NewHTTPError(http.StatusForbidden, "registration not OIDC-authorized", nil))
+
+		return
+	}
+
+	if pending.CSRF != cookie.Value {
+		httpError(writer, NewHTTPError(http.StatusForbidden, "csrf token does not match cached registration", nil))
+
+		return
+	}
+
+	user, err := a.h.state.GetUserByID(types.UserID(pending.UserID))
+	if err != nil {
+		httpError(writer, fmt.Errorf("looking up user: %w", err))
+
+		return
+	}
+
+	newNode, err := a.handleRegistration(user, authID, pending.NodeExpiry)
+	if err != nil {
+		if errors.Is(err, db.ErrNodeNotFoundRegistrationCache) {
+			httpError(writer, NewHTTPError(http.StatusGone, "registration session expired", err))
+
+			return
+		}
+
+		httpError(writer, err)
+
+		return
+	}
+
+	// Clear the CSRF cookie now that the registration is final.
+	http.SetCookie(writer, &http.Cookie{
+		Name:     registerConfirmCSRFCookie,
+		Value:    "",
+		Path:     "/register/confirm/" + authID.String(),
+		MaxAge:   -1,
+		Secure:   req.TLS != nil,
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	})
+
+	content := renderRegistrationSuccessTemplate(user, newNode)
+
+	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+	writer.WriteHeader(http.StatusOK)
+
+	// renderRegistrationSuccessTemplate's output only embeds
+	// HTML-escaped values from a server-side template, so the gosec
+	// XSS warning is a false positive here.
+	if _, err := writer.Write(content.Bytes()); err != nil { //nolint:noinlineerr,gosec
+		util.LogErr(err, "Failed to write HTTP response")
+	}
 }
 
 func (a *AuthProviderOIDC) handleRegistration(

@@ -485,6 +485,7 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *chi.Mux {
 
 	if provider, ok := h.authProvider.(*AuthProviderOIDC); ok {
 		r.Get("/oidc/callback", provider.OIDCCallbackHandler)
+		r.Post("/register/confirm/{auth_id}", provider.RegisterConfirmHandler)
 	}
 
 	r.Get("/apple", h.AppleConfigMessage)
