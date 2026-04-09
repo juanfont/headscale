@@ -331,11 +331,22 @@ func (hsdb *HSDatabase) DeletePreAuthKey(id uint64) error {
 	})
 }
 
-// UsePreAuthKey marks a PreAuthKey as used.
+// UsePreAuthKey atomically marks a PreAuthKey as used. The UPDATE is
+// guarded by `used = false` so two concurrent registrations racing for
+// the same single-use key cannot both succeed: the first commits and
+// the second returns PAKError("authkey already used"). Without the
+// guard the previous code (Update("used", true) with no WHERE) would
+// silently let both transactions claim the key.
 func UsePreAuthKey(tx *gorm.DB, k *types.PreAuthKey) error {
-	err := tx.Model(k).Update("used", true).Error
-	if err != nil {
-		return fmt.Errorf("updating key used status in database: %w", err)
+	res := tx.Model(&types.PreAuthKey{}).
+		Where("id = ? AND used = ?", k.ID, false).
+		Update("used", true)
+	if res.Error != nil {
+		return fmt.Errorf("updating key used status in database: %w", res.Error)
+	}
+
+	if res.RowsAffected == 0 {
+		return types.PAKError("authkey already used")
 	}
 
 	k.Used = true
