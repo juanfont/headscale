@@ -20,7 +20,8 @@ func TestRapid_NewAuthID_AlwaysValid(t *testing.T) {
 			t.Fatalf("NewAuthID() returned error: %v", err)
 		}
 
-		if err := aid.Validate(); err != nil {
+		err = aid.Validate()
+		if err != nil {
 			t.Fatalf("NewAuthID() produced invalid AuthID %q: %v", aid, err)
 		}
 	})
@@ -61,6 +62,7 @@ func TestRapid_NewAuthID_Unique(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewAuthID() returned error: %v", err)
 		}
+
 		b, err := NewAuthID()
 		if err != nil {
 			t.Fatalf("NewAuthID() returned error: %v", err)
@@ -95,9 +97,11 @@ func TestRapid_AuthID_WrongPrefix_Error(t *testing.T) {
 			wrongPrefix = wrongPrefix[:10]
 			suffixLen = AuthIDLength - 10
 		}
+
 		suffix := rapid.StringMatching(`[A-Za-z0-9_-]{`+strings.Repeat("1", 0)+`}`).Draw(t, "suffix")
 		// Build a fixed-length string
 		padded := wrongPrefix + strings.Repeat("x", suffixLen)
+
 		if len(suffix) > 0 {
 			_ = suffix // used for generation entropy, actual padding via Repeat
 		}
@@ -108,6 +112,7 @@ func TestRapid_AuthID_WrongPrefix_Error(t *testing.T) {
 		if err == nil {
 			t.Fatalf("AuthID with wrong prefix %q should fail validation", aid)
 		}
+
 		if !errors.Is(err, ErrInvalidAuthIDPrefix) {
 			t.Fatalf("expected ErrInvalidAuthIDPrefix, got: %v", err)
 		}
@@ -125,10 +130,12 @@ func TestRapid_AuthID_ArbitraryNonPrefixed_Error(t *testing.T) {
 		}
 
 		aid := AuthID(s)
+
 		err := aid.Validate()
 		if err == nil {
 			t.Fatalf("AuthID %q without correct prefix should fail", aid)
 		}
+
 		if !errors.Is(err, ErrInvalidAuthIDPrefix) {
 			t.Fatalf("expected ErrInvalidAuthIDPrefix for %q, got: %v", aid, err)
 		}
@@ -155,6 +162,7 @@ func TestRapid_AuthID_WrongLength_Error(t *testing.T) {
 		for len(suffix) < suffixLen {
 			suffix += "x"
 		}
+
 		if len(suffix) > suffixLen {
 			suffix = suffix[:suffixLen]
 		}
@@ -166,6 +174,7 @@ func TestRapid_AuthID_WrongLength_Error(t *testing.T) {
 			t.Fatalf("AuthID with length %d should fail (expected %d), value: %q",
 				len(aid), AuthIDLength, aid)
 		}
+
 		if !errors.Is(err, ErrInvalidAuthIDLength) {
 			t.Fatalf("expected ErrInvalidAuthIDLength for len=%d, got: %v", len(aid), err)
 		}

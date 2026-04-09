@@ -2,9 +2,9 @@ package routes
 
 import (
 	"fmt"
+	"maps"
 	"net/netip"
 	"slices"
-	"sort"
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -42,17 +42,22 @@ func genRandomPrefix(t *rapid.T, label string) netip.Prefix {
 	isV6 := rapid.Bool().Draw(t, label+"_isV6")
 	if isV6 {
 		bits := rapid.IntRange(0, 128).Draw(t, label+"_bits")
+
 		var b [16]byte
 		for i := range b {
 			b[i] = byte(rapid.IntRange(0, 255).Draw(t, label+"_byte"))
 		}
+
 		return netip.PrefixFrom(netip.AddrFrom16(b), bits).Masked()
 	}
+
 	bits := rapid.IntRange(0, 32).Draw(t, label+"_bits")
+
 	var b [4]byte
 	for i := range b {
 		b[i] = byte(rapid.IntRange(0, 255).Draw(t, label+"_byte"))
 	}
+
 	return netip.PrefixFrom(netip.AddrFrom4(b), bits).Masked()
 }
 
@@ -64,15 +69,19 @@ func genPrefixes(t *rapid.T) []netip.Prefix {
 		// Arbitrary random prefixes mode.
 		n := rapid.IntRange(0, 8).Draw(t, "numRandomPrefixes")
 		seen := make(map[string]bool, n)
+
 		result := make([]netip.Prefix, 0, n)
 		for len(result) < n {
 			p := genRandomPrefix(t, fmt.Sprintf("rndPfx%d", len(result)))
+
 			key := p.String()
 			if !seen[key] {
 				seen[key] = true
+
 				result = append(result, p)
 			}
 		}
+
 		return result
 	}
 	// Fixed pool mode (original behavior).
@@ -108,6 +117,7 @@ func newReferenceModel() *referenceModel {
 func (m *referenceModel) setRoutes(node types.NodeID, prefixes []netip.Prefix) bool {
 	// Filter out exit routes and build the set.
 	filtered := make(map[netip.Prefix]struct{})
+
 	for _, p := range prefixes {
 		if !tsaddr.IsExitRoute(p) {
 			filtered[p] = struct{}{}
@@ -127,6 +137,7 @@ func (m *referenceModel) setRoutes(node types.NodeID, prefixes []netip.Prefix) b
 func (m *referenceModel) recalcPrimaries() bool {
 	// Build prefix -> sorted list of advertisers.
 	advertisers := make(map[netip.Prefix][]types.NodeID)
+
 	for nid, prefixes := range m.routes {
 		for p := range prefixes {
 			advertisers[p] = append(advertisers[p], nid)
@@ -134,9 +145,7 @@ func (m *referenceModel) recalcPrimaries() bool {
 	}
 	// Sort each list by NodeID (ascending) for deterministic selection.
 	for p := range advertisers {
-		sort.Slice(advertisers[p], func(i, j int) bool {
-			return advertisers[p][i] < advertisers[p][j]
-		})
+		slices.Sort(advertisers[p])
 	}
 
 	changed := false
@@ -158,6 +167,7 @@ func (m *referenceModel) recalcPrimaries() bool {
 	for prefix := range m.primaries {
 		if _, ok := advertisers[prefix]; !ok {
 			delete(m.primaries, prefix)
+
 			changed = true
 		}
 	}
@@ -169,12 +179,15 @@ func (m *referenceModel) recalcPrimaries() bool {
 // (mirrors PrimaryRoutes.PrimaryRoutes).
 func (m *referenceModel) primaryRoutesFor(id types.NodeID) []netip.Prefix {
 	var routes []netip.Prefix
+
 	for prefix, nid := range m.primaries {
 		if nid == id {
 			routes = append(routes, prefix)
 		}
 	}
+
 	slices.SortFunc(routes, netip.Prefix.Compare)
+
 	return routes
 }
 
@@ -184,11 +197,14 @@ func (m *referenceModel) allNodeIDs() []types.NodeID {
 	for nid := range m.routes {
 		seen[nid] = struct{}{}
 	}
+
 	ids := make([]types.NodeID, 0, len(seen))
 	for nid := range seen {
 		ids = append(ids, nid)
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+
+	slices.Sort(ids)
+
 	return ids
 }
 
@@ -233,6 +249,7 @@ func TestRapid(t *testing.T) {
 				if len(gotRoutes) == 0 {
 					gotRoutes = nil
 				}
+
 				if len(wantRoutes) == 0 {
 					wantRoutes = nil
 				}
@@ -253,11 +270,14 @@ func TestRapid(t *testing.T) {
 
 // checkAllInvariants verifies all required invariants hold.
 // Uses DebugJSON() and PrimaryRoutes() (public API) for verification.
+//
+//nolint:gocyclo // complex invariant checker with many assertions
 func checkAllInvariants(t *rapid.T, pr *PrimaryRoutes, model *referenceModel) {
 	debug := pr.DebugJSON()
 
 	// Collect all advertised prefixes (union across all nodes).
 	allAdvertised := make(map[netip.Prefix]bool)
+
 	for _, prefixes := range debug.AvailableRoutes {
 		for _, p := range prefixes {
 			allAdvertised[p] = true
@@ -289,6 +309,7 @@ func checkAllInvariants(t *rapid.T, pr *PrimaryRoutes, model *referenceModel) {
 		if !ok {
 			t.Fatalf("invariant 2: primary node %d for prefix %s has no routes at all", nodeID, p)
 		}
+
 		if !slices.Contains(nodeRoutes, p) {
 			t.Fatalf("invariant 2: primary node %d for prefix %s does not advertise that prefix (routes: %v)",
 				nodeID, p, nodeRoutes)
@@ -310,6 +331,7 @@ func checkAllInvariants(t *rapid.T, pr *PrimaryRoutes, model *referenceModel) {
 			}
 		}
 	}
+
 	for prefixStr := range debug.PrimaryRoutes {
 		p := netip.MustParsePrefix(prefixStr)
 		if tsaddr.IsExitRoute(p) {
@@ -330,15 +352,19 @@ func checkAllInvariants(t *rapid.T, pr *PrimaryRoutes, model *referenceModel) {
 	for nid := range model.routes {
 		knownCheckIDs[nid] = true
 	}
+
 	for _, nid := range primaries {
 		knownCheckIDs[nid] = true
 	}
+
 	for nid := range debug.AvailableRoutes {
 		knownCheckIDs[nid] = true
 	}
+
 	for id := range knownCheckIDs {
 		routes := pr.PrimaryRoutes(id)
 		hasPrimaries := len(routes) > 0
+
 		shouldHave := expectedPrimaryNodes[id]
 		if hasPrimaries != shouldHave {
 			t.Fatalf("invariant 5: isPrimary inconsistency for node %d: PrimaryRoutes returned %v but expected isPrimary=%v",
@@ -354,16 +380,19 @@ func checkAllInvariants(t *rapid.T, pr *PrimaryRoutes, model *referenceModel) {
 		if !ok {
 			t.Fatalf("invariant 6: prefix %s in model primaries but not in SUT", p)
 		}
+
 		if sutNode != modelNode {
 			t.Fatalf("invariant 6: primary for %s: SUT=%d, model=%d (lowest-ID violation)",
 				p, sutNode, modelNode)
 		}
 	}
+
 	for p, sutNode := range primaries {
 		modelNode, ok := model.primaries[p]
 		if !ok {
 			t.Fatalf("invariant 6: prefix %s in SUT primaries but not in model", p)
 		}
+
 		if sutNode != modelNode {
 			t.Fatalf("invariant 6: primary for %s: SUT=%d, model=%d", p, sutNode, modelNode)
 		}
@@ -376,26 +405,23 @@ func checkAllInvariants(t *rapid.T, pr *PrimaryRoutes, model *referenceModel) {
 	allNodeIDs := model.allNodeIDs()
 	// Also include nodes that might be in the SUT but not in model routes.
 	for nodeID := range debug.AvailableRoutes {
-		found := false
-		for _, id := range allNodeIDs {
-			if id == nodeID {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if !slices.Contains(allNodeIDs, nodeID) {
 			allNodeIDs = append(allNodeIDs, nodeID)
 		}
 	}
+
 	for _, nodeID := range allNodeIDs {
 		gotRoutes := pr.PrimaryRoutes(nodeID)
 		wantRoutes := model.primaryRoutesFor(nodeID)
+
 		if len(gotRoutes) == 0 {
 			gotRoutes = nil
 		}
+
 		if len(wantRoutes) == 0 {
 			wantRoutes = nil
 		}
+
 		if !slices.Equal(gotRoutes, wantRoutes) {
 			t.Fatalf("invariant 7 (stability via model): PrimaryRoutes(%d): got %v, want %v",
 				nodeID, gotRoutes, wantRoutes)
@@ -405,19 +431,23 @@ func checkAllInvariants(t *rapid.T, pr *PrimaryRoutes, model *referenceModel) {
 	// Cross-check: every primary prefix appears exactly once across all known nodes'
 	// PrimaryRoutes results.
 	seenPrefixes := make(map[netip.Prefix]types.NodeID)
+
 	for id := range knownCheckIDs {
 		for _, p := range pr.PrimaryRoutes(id) {
 			if prev, ok := seenPrefixes[p]; ok {
 				t.Fatalf("invariant cross-check: prefix %s claimed by both node %d and node %d",
 					p, prev, id)
 			}
+
 			seenPrefixes[p] = id
 		}
 	}
+
 	if len(seenPrefixes) != len(primaries) {
 		t.Fatalf("invariant cross-check: PrimaryRoutes across all nodes yields %d prefixes, but DebugJSON has %d",
 			len(seenPrefixes), len(primaries))
 	}
+
 	for p, nodeID := range seenPrefixes {
 		if primaries[p] != nodeID {
 			t.Fatalf("invariant cross-check: prefix %s: PrimaryRoutes says node %d, DebugJSON says node %d",
@@ -430,15 +460,18 @@ func checkAllInvariants(t *rapid.T, pr *PrimaryRoutes, model *referenceModel) {
 		t.Fatalf("available routes count mismatch: SUT=%d, model=%d",
 			len(debug.AvailableRoutes), len(model.routes))
 	}
+
 	for nodeID, modelPrefixes := range model.routes {
 		sutPrefixes, ok := debug.AvailableRoutes[nodeID]
 		if !ok {
 			t.Fatalf("node %d in model routes but not in SUT AvailableRoutes", nodeID)
 		}
+
 		modelSorted := make([]netip.Prefix, 0, len(modelPrefixes))
 		for p := range modelPrefixes {
 			modelSorted = append(modelSorted, p)
 		}
+
 		slices.SortFunc(modelSorted, netip.Prefix.Compare)
 		// sutPrefixes are already sorted by DebugJSON.
 		if !slices.Equal(sutPrefixes, modelSorted) {
@@ -453,11 +486,11 @@ func checkAllInvariants(t *rapid.T, pr *PrimaryRoutes, model *referenceModel) {
 // checkInvariantsStandalone verifies all required invariants without a reference model.
 // Used by tests that don't maintain a parallel model but still want to check structural integrity.
 func checkInvariantsStandalone(t *rapid.T, pr *PrimaryRoutes, knownNodeIDs []types.NodeID) {
-
 	debug := pr.DebugJSON()
 
 	// Collect all advertised prefixes.
 	allAdvertised := make(map[netip.Prefix]bool)
+
 	for _, prefixes := range debug.AvailableRoutes {
 		for _, p := range prefixes {
 			allAdvertised[p] = true
@@ -477,6 +510,7 @@ func checkInvariantsStandalone(t *rapid.T, pr *PrimaryRoutes, knownNodeIDs []typ
 			t.Fatalf("invariant 1: prefix %s is advertised but has no primary", p)
 		}
 	}
+
 	if len(primaries) != len(allAdvertised) {
 		t.Fatalf("invariant 1: primaries count (%d) != advertised prefixes count (%d)",
 			len(primaries), len(allAdvertised))
@@ -488,6 +522,7 @@ func checkInvariantsStandalone(t *rapid.T, pr *PrimaryRoutes, knownNodeIDs []typ
 		if !ok {
 			t.Fatalf("invariant 2: primary node %d for prefix %s has no routes", nodeID, p)
 		}
+
 		if !slices.Contains(nodeRoutes, p) {
 			t.Fatalf("invariant 2: primary node %d for prefix %s does not advertise it", nodeID, p)
 		}
@@ -514,9 +549,11 @@ func checkInvariantsStandalone(t *rapid.T, pr *PrimaryRoutes, knownNodeIDs []typ
 	for _, nodeID := range primaries {
 		expectedPrimaryNodes[nodeID] = true
 	}
+
 	for _, id := range knownNodeIDs {
 		routes := pr.PrimaryRoutes(id)
 		hasPrimaries := len(routes) > 0
+
 		shouldHave := expectedPrimaryNodes[id]
 		if hasPrimaries != shouldHave {
 			t.Fatalf("invariant 5: isPrimary inconsistency for node %d: has=%v, expected=%v",
@@ -526,11 +563,13 @@ func checkInvariantsStandalone(t *rapid.T, pr *PrimaryRoutes, knownNodeIDs []typ
 
 	// Cross-check: each primary prefix appears exactly once.
 	seenPrefixes := make(map[netip.Prefix]types.NodeID)
+
 	for _, id := range knownNodeIDs {
 		for _, p := range pr.PrimaryRoutes(id) {
 			if prev, ok := seenPrefixes[p]; ok {
 				t.Fatalf("cross-check: prefix %s claimed by both node %d and node %d", p, prev, id)
 			}
+
 			seenPrefixes[p] = id
 		}
 	}
@@ -575,6 +614,7 @@ func TestRapid_PrimaryRoutes_FailoverChain(t *testing.T) {
 		// Verify initial primary matches model (first node added, due to stability).
 		debug := pr.DebugJSON()
 		gotPrimary := debug.PrimaryRoutes[prefix.String()]
+
 		wantPrimary := model.primaries[prefix]
 		if gotPrimary != wantPrimary {
 			t.Fatalf("initial primary: got %d, want %d (model)", gotPrimary, wantPrimary)
@@ -601,18 +641,22 @@ func TestRapid_PrimaryRoutes_FailoverChain(t *testing.T) {
 				if len(debug.PrimaryRoutes) != 0 {
 					t.Fatalf("step %d: all nodes removed but primaries remain: %v", step, debug.PrimaryRoutes)
 				}
+
 				if len(model.primaries) != 0 {
 					t.Fatalf("step %d: all nodes removed but model primaries remain: %v", step, model.primaries)
 				}
+
 				break
 			}
 
 			debug := pr.DebugJSON()
+
 			gotPrimary, ok := debug.PrimaryRoutes[prefix.String()]
 			if !ok {
 				t.Fatalf("step %d: prefix %s has no primary after removing node %d",
 					step, prefix, removedID)
 			}
+
 			wantPrimary := model.primaries[prefix]
 
 			if gotPrimary != wantPrimary {
@@ -626,7 +670,9 @@ func TestRapid_PrimaryRoutes_FailoverChain(t *testing.T) {
 				for id := range remaining {
 					remainingIDs = append(remainingIDs, id)
 				}
-				sort.Slice(remainingIDs, func(i, j int) bool { return remainingIDs[i] < remainingIDs[j] })
+
+				slices.Sort(remainingIDs)
+
 				expectedMinID := remainingIDs[0]
 				if gotPrimary != expectedMinID {
 					t.Fatalf("step %d: after removing primary %d, new primary is %d, want lowest remaining %d",
@@ -670,13 +716,16 @@ func TestRapid_PrimaryRoutes_OverlappingPrefixes(t *testing.T) {
 		// Helper: verify SUT matches model for all three prefixes.
 		checkPrimariesMatchModel := func(step string) {
 			debug := pr.DebugJSON()
+
 			for _, pfx := range []netip.Prefix{widePrefix, narrowPrefix, midPrefix} {
 				modelPrimary, modelHas := model.primaries[pfx]
+
 				sutPrimary, sutHas := debug.PrimaryRoutes[pfx.String()]
 				if modelHas != sutHas {
 					t.Fatalf("%s: prefix %s: model has primary=%v, SUT has primary=%v",
 						step, pfx, modelHas, sutHas)
 				}
+
 				if modelHas && modelPrimary != sutPrimary {
 					t.Fatalf("%s: prefix %s: model primary=%d, SUT primary=%d",
 						step, pfx, modelPrimary, sutPrimary)
@@ -779,15 +828,16 @@ func TestRapid_PrimaryRoutes_RapidFlap(t *testing.T) {
 
 		numOps := rapid.IntRange(20, 50).Draw(t, "numOps")
 
-		for i := 0; i < numOps; i++ {
+		for i := range numOps {
 			// Pick a random node.
 			nodeIdx := rapid.IntRange(0, 2).Draw(t, fmt.Sprintf("op%d_nodeIdx", i))
-			node := nodes[nodeIdx]
+			node := nodes[nodeIdx] //nolint:gosec // nodeIdx bounded to [0, 2], nodes is [3]
 
 			// Pick a random action: 0=remove, 1=add prefix0, 2=add prefix1, 3=add both.
 			action := rapid.IntRange(0, 3).Draw(t, fmt.Sprintf("op%d_action", i))
 
 			var setPrefixes []netip.Prefix
+
 			switch action {
 			case 0:
 				// Remove: set empty.
@@ -795,9 +845,9 @@ func TestRapid_PrimaryRoutes_RapidFlap(t *testing.T) {
 			case 1:
 				setPrefixes = []netip.Prefix{prefixes[0]}
 			case 2:
-				setPrefixes = []netip.Prefix{prefixes[1]}
+				setPrefixes = []netip.Prefix{prefixes[1]} //nolint:gosec // prefixes is [2]netip.Prefix
 			case 3:
-				setPrefixes = []netip.Prefix{prefixes[0], prefixes[1]}
+				setPrefixes = []netip.Prefix{prefixes[0], prefixes[1]} //nolint:gosec // prefixes is [2]netip.Prefix
 			}
 
 			gotChanged := pr.SetRoutes(node, setPrefixes...)
@@ -810,6 +860,7 @@ func TestRapid_PrimaryRoutes_RapidFlap(t *testing.T) {
 
 			// Check ALL invariants after every single operation.
 			debug := pr.DebugJSON()
+
 			primaries := make(map[netip.Prefix]types.NodeID)
 			for pStr, nid := range debug.PrimaryRoutes {
 				primaries[netip.MustParsePrefix(pStr)] = nid
@@ -821,16 +872,19 @@ func TestRapid_PrimaryRoutes_RapidFlap(t *testing.T) {
 				if !ok {
 					t.Fatalf("op %d: prefix %s in model but not SUT", i, p)
 				}
+
 				if sutNode != modelNode {
 					t.Fatalf("op %d: prefix %s: SUT primary=%d, model primary=%d",
 						i, p, sutNode, modelNode)
 				}
 			}
+
 			for p, sutNode := range primaries {
 				modelNode, ok := model.primaries[p]
 				if !ok {
 					t.Fatalf("op %d: prefix %s in SUT but not model", i, p)
 				}
+
 				if sutNode != modelNode {
 					t.Fatalf("op %d: prefix %s: SUT primary=%d, model primary=%d",
 						i, p, sutNode, modelNode)
@@ -850,8 +904,9 @@ func TestRapid_PrimaryRoutes_BulkOperations(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		// Generate 10-20 distinct non-exit prefixes.
 		numPrefixes := rapid.IntRange(10, 20).Draw(t, "numPrefixes")
+
 		bulkPrefixes := make([]netip.Prefix, numPrefixes)
-		for i := 0; i < numPrefixes; i++ {
+		for i := range numPrefixes {
 			// Use 10.{i/256}.{i%256}.0/24 to guarantee uniqueness.
 			bulkPrefixes[i] = netip.MustParsePrefix(
 				fmt.Sprintf("10.%d.%d.0/24", i/256, i%256),
@@ -875,11 +930,13 @@ func TestRapid_PrimaryRoutes_BulkOperations(t *testing.T) {
 		if len(debug.PrimaryRoutes) != numPrefixes {
 			t.Fatalf("expected %d primaries, got %d", numPrefixes, len(debug.PrimaryRoutes))
 		}
+
 		for _, p := range bulkPrefixes {
 			primary, ok := debug.PrimaryRoutes[p.String()]
 			if !ok {
 				t.Fatalf("prefix %s has no primary after node1 added", p)
 			}
+
 			if primary != node1 {
 				t.Fatalf("prefix %s: primary is %d, want node1=%d", p, primary, node1)
 			}
@@ -913,11 +970,13 @@ func TestRapid_PrimaryRoutes_BulkOperations(t *testing.T) {
 		if len(debug.PrimaryRoutes) != numPrefixes {
 			t.Fatalf("after removing node1: expected %d primaries, got %d", numPrefixes, len(debug.PrimaryRoutes))
 		}
+
 		for _, p := range bulkPrefixes {
 			primary, ok := debug.PrimaryRoutes[p.String()]
 			if !ok {
 				t.Fatalf("prefix %s has no primary after node1 removed", p)
 			}
+
 			if primary != node2 {
 				t.Fatalf("prefix %s: primary is %d, want node2=%d after failover", p, primary, node2)
 			}
@@ -935,6 +994,7 @@ func TestRapid_PrimaryRoutes_BulkOperations(t *testing.T) {
 		if len(debug.PrimaryRoutes) != 0 {
 			t.Fatalf("after removing all nodes, %d primaries remain", len(debug.PrimaryRoutes))
 		}
+
 		if len(debug.AvailableRoutes) != 0 {
 			t.Fatalf("after removing all nodes, %d available routes remain", len(debug.AvailableRoutes))
 		}
@@ -956,10 +1016,10 @@ func TestRapid_PrimaryRoutes_ChangedReturnValue(t *testing.T) {
 		// Snapshot the current primaries from the SUT.
 		snapshotPrimaries := func() map[string]types.NodeID {
 			debug := pr.DebugJSON()
+
 			snap := make(map[string]types.NodeID, len(debug.PrimaryRoutes))
-			for k, v := range debug.PrimaryRoutes {
-				snap[k] = v
-			}
+			maps.Copy(snap, debug.PrimaryRoutes)
+
 			return snap
 		}
 
@@ -968,11 +1028,13 @@ func TestRapid_PrimaryRoutes_ChangedReturnValue(t *testing.T) {
 			if len(a) != len(b) {
 				return false
 			}
+
 			for k, v := range a {
 				if b[k] != v {
 					return false
 				}
 			}
+
 			return true
 		}
 
@@ -980,14 +1042,16 @@ func TestRapid_PrimaryRoutes_ChangedReturnValue(t *testing.T) {
 
 		numOps := rapid.IntRange(20, 50).Draw(t, "numOps")
 
-		for i := 0; i < numOps; i++ {
+		for i := range numOps {
 			node := types.NodeID(rapid.Uint64Range(1, 20).Draw(t, fmt.Sprintf("op%d_node", i)))
 			allKnownIDs[node] = true
 
 			// Generate random prefixes (including possibly empty = removal).
 			numP := rapid.IntRange(0, 4).Draw(t, fmt.Sprintf("op%d_numP", i))
+
 			var setPrefixes []netip.Prefix
-			for j := 0; j < numP; j++ {
+
+			for j := range numP {
 				p := rapid.SampledFrom(prefixPool).Draw(t, fmt.Sprintf("op%d_p%d", i, j))
 				setPrefixes = append(setPrefixes, p)
 			}
@@ -1017,6 +1081,7 @@ func TestRapid_PrimaryRoutes_ChangedReturnValue(t *testing.T) {
 			for id := range allKnownIDs {
 				ids = append(ids, id)
 			}
+
 			checkInvariantsStandalone(t, pr, ids)
 		}
 

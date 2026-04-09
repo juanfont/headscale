@@ -30,6 +30,7 @@ func genValidDNSName() *rapid.Generator[string] {
 		innerLen := rapid.IntRange(0, 49).Draw(t, "innerLen")
 		first := rapid.StringMatching(`[a-z0-9]`).Draw(t, "first")
 		last := rapid.StringMatching(`[a-z0-9]`).Draw(t, "last")
+
 		inner := ""
 		if innerLen > 0 {
 			inner = rapid.StringMatching(`[a-z0-9\-.]{0,49}`).Draw(t, "inner")
@@ -37,15 +38,19 @@ func genValidDNSName() *rapid.Generator[string] {
 				inner = inner[:innerLen]
 			}
 		}
+
 		result := first + inner + last
 		result = strings.TrimRight(result, "-.")
+
 		result = strings.TrimLeft(result, "-.")
 		if len(result) < 2 {
 			result = "aa"
 		}
+
 		if len(result) > 53 {
 			result = result[:53]
 		}
+
 		return result
 	})
 }
@@ -156,6 +161,7 @@ func TestRapid_GenerateGivenName_SuffixVaries(t *testing.T) {
 		name := genValidDNSName().Draw(t, "name")
 
 		r1, err1 := generateGivenName(name, true)
+
 		r2, err2 := generateGivenName(name, true)
 		if err1 != nil || err2 != nil {
 			return
@@ -183,6 +189,7 @@ func TestRapid_GenerateGivenName_NoSuffix_StripsInvalidChars(t *testing.T) {
 
 		// The result should be the lowercased input with invalid chars removed
 		expectedBase := strings.ToLower(name)
+
 		expectedBase = invalidDNSRegex.ReplaceAllString(expectedBase, "")
 		if len(expectedBase) > util.LabelHostnameLength {
 			// If input was too long, generateGivenName returns an error, not truncation
@@ -208,11 +215,12 @@ func genTagDB() *rapid.Generator[string] {
 	})
 }
 
-// genUniqueTagsDB generates a slice of unique tags.
-func genUniqueTagsDB(minLen, maxLen int) *rapid.Generator[[]string] {
+// genUniqueTagsDB generates a slice of 1..maxLen unique tags.
+func genUniqueTagsDB(maxLen int) *rapid.Generator[[]string] {
 	return rapid.Custom[[]string](func(t *rapid.T) []string {
-		n := rapid.IntRange(minLen, maxLen).Draw(t, "numTags")
+		n := rapid.IntRange(1, maxLen).Draw(t, "numTags")
 		seen := make(map[string]bool, n)
+
 		result := make([]string, 0, n)
 		for len(result) < n {
 			tag := genTagDB().Draw(t, "tag")
@@ -221,6 +229,7 @@ func genUniqueTagsDB(minLen, maxLen int) *rapid.Generator[[]string] {
 				result = append(result, tag)
 			}
 		}
+
 		return result
 	})
 }
@@ -245,21 +254,24 @@ func genUniqueTagsDB(minLen, maxLen int) *rapid.Generator[[]string] {
 func TestRapid_MigrationTagMerge_SliceAliasingBug(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		// Generate unique existing tags
-		existingTags := genUniqueTagsDB(1, 6).Draw(t, "existingTags")
+		existingTags := genUniqueTagsDB(6).Draw(t, "existingTags")
 
 		// Generate unique validated tags (different from existing)
-		validatedTags := genUniqueTagsDB(1, 4).Draw(t, "validatedTags")
+		validatedTags := genUniqueTagsDB(4).Draw(t, "validatedTags")
 
 		// Filter out any validated tags that are already in existing
 		var uniqueValidated []string
+
 		for _, vt := range validatedTags {
 			if !slices.Contains(existingTags, vt) {
 				uniqueValidated = append(uniqueValidated, vt)
 			}
 		}
+
 		if len(uniqueValidated) == 0 {
 			return // nothing to merge
 		}
+
 		validatedTags = uniqueValidated
 
 		// Simulate the node.Tags slice with EXTRA CAPACITY
@@ -302,8 +314,8 @@ func TestRapid_MigrationTagMerge_SliceAliasingBug(t *testing.T) {
 
 func TestRapid_MigrationTagMerge_SafePattern(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
-		existingTags := genUniqueTagsDB(1, 6).Draw(t, "existingTags")
-		validatedTags := genUniqueTagsDB(1, 4).Draw(t, "validatedTags")
+		existingTags := genUniqueTagsDB(6).Draw(t, "existingTags")
+		validatedTags := genUniqueTagsDB(4).Draw(t, "validatedTags")
 
 		// Simulate the node.Tags slice with EXTRA CAPACITY
 		extraCap := rapid.IntRange(1, 10).Draw(t, "extraCap")
@@ -333,6 +345,7 @@ func TestRapid_MigrationTagMerge_SafePattern(t *testing.T) {
 				t.Fatalf("mergedTags missing existing tag %q: %v", tag, mergedTags)
 			}
 		}
+
 		for _, tag := range validatedTags {
 			if !slices.Contains(mergedTags, tag) {
 				t.Fatalf("mergedTags missing validated tag %q: %v", tag, mergedTags)

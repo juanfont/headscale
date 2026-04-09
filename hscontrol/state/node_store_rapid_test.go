@@ -28,7 +28,7 @@ func genNodeID() *rapid.Generator[types.NodeID] {
 // genUserID generates a UserID in a small range to create multi-node-per-user scenarios.
 func genUserID() *rapid.Generator[uint] {
 	return rapid.Custom[uint](func(t *rapid.T) uint {
-		return uint(rapid.IntRange(1, 10).Draw(t, "userID"))
+		return uint(rapid.IntRange(1, 10).Draw(t, "userID")) //nolint:gosec // positive bounded value
 	})
 }
 
@@ -45,6 +45,7 @@ func genTags(maxLen int) *rapid.Generator[[]string] {
 	return rapid.Custom[[]string](func(t *rapid.T) []string {
 		n := rapid.IntRange(0, maxLen).Draw(t, "numTags")
 		seen := make(map[string]bool, n)
+
 		result := make([]string, 0, n)
 		for len(result) < n {
 			tag := genTag().Draw(t, "tag")
@@ -53,6 +54,7 @@ func genTags(maxLen int) *rapid.Generator[[]string] {
 				result = append(result, tag)
 			}
 		}
+
 		return result
 	})
 }
@@ -71,10 +73,13 @@ func genNode() *rapid.Generator[types.Node] {
 
 		// Generate deterministic IPs from the node ID to avoid collisions in
 		// simple cases but still have meaningful values.
-		var ipv4Ptr *netip.Addr
-		var ipv6Ptr *netip.Addr
+		var (
+			ipv4Ptr *netip.Addr
+			ipv6Ptr *netip.Addr
+		)
 
 		// 30% chance to set IPv4 to nil.
+
 		if rapid.IntRange(0, 9).Draw(t, "nilIPv4") >= 3 {
 			ipv4 := netip.AddrFrom4([4]byte{
 				100,
@@ -122,11 +127,13 @@ func genNode() *rapid.Generator[types.Node] {
 func genNodeMap(maxSize int) *rapid.Generator[map[types.NodeID]types.Node] {
 	return rapid.Custom[map[types.NodeID]types.Node](func(t *rapid.T) map[types.NodeID]types.Node {
 		n := rapid.IntRange(0, maxSize).Draw(t, "mapSize")
+
 		nodes := make(map[types.NodeID]types.Node, n)
 		for len(nodes) < n {
 			node := genNode().Draw(t, "node")
 			nodes[node.ID] = node
 		}
+
 		return nodes
 	})
 }
@@ -140,13 +147,16 @@ func allVisiblePeersFunc(nodes []types.NodeView) map[types.NodeID][]types.NodeVi
 	ret := make(map[types.NodeID][]types.NodeView, len(nodes))
 	for _, node := range nodes {
 		var peers []types.NodeView
+
 		for _, n := range nodes {
 			if n.ID() != node.ID() {
 				peers = append(peers, n)
 			}
 		}
+
 		ret[node.ID()] = peers
 	}
+
 	return ret
 }
 
@@ -156,6 +166,7 @@ func noVisiblePeersFunc(nodes []types.NodeView) map[types.NodeID][]types.NodeVie
 	for _, node := range nodes {
 		ret[node.ID()] = nil
 	}
+
 	return ret
 }
 
@@ -164,13 +175,12 @@ func noVisiblePeersFunc(nodes []types.NodeView) map[types.NodeID][]types.NodeVie
 // we guarantee symmetry: if Y is in peers(X), then X is in peers(Y).
 func symmetricRandomPeersFunc(t *rapid.T, ids []types.NodeID) PeersFunc {
 	// Build a symmetric adjacency set.
-	type edge struct{ a, b types.NodeID }
 	adj := make(map[types.NodeID]map[types.NodeID]bool)
 	for _, id := range ids {
 		adj[id] = make(map[types.NodeID]bool)
 	}
 
-	for i := 0; i < len(ids); i++ {
+	for i := range ids {
 		for j := i + 1; j < len(ids); j++ {
 			if rapid.Bool().Draw(t, fmt.Sprintf("edge-%d-%d", ids[i], ids[j])) {
 				adj[ids[i]][ids[j]] = true
@@ -181,6 +191,7 @@ func symmetricRandomPeersFunc(t *rapid.T, ids []types.NodeID) PeersFunc {
 
 	return func(nodes []types.NodeView) map[types.NodeID][]types.NodeView {
 		ret := make(map[types.NodeID][]types.NodeView, len(nodes))
+
 		nodesByID := make(map[types.NodeID]types.NodeView, len(nodes))
 		for _, n := range nodes {
 			nodesByID[n.ID()] = n
@@ -188,13 +199,16 @@ func symmetricRandomPeersFunc(t *rapid.T, ids []types.NodeID) PeersFunc {
 
 		for _, node := range nodes {
 			var peers []types.NodeView
+
 			for peerID := range adj[node.ID()] {
 				if pv, ok := nodesByID[peerID]; ok {
 					peers = append(peers, pv)
 				}
 			}
+
 			ret[node.ID()] = peers
 		}
+
 		return ret
 	}
 }
@@ -220,9 +234,9 @@ func nodeIDs(nodes map[types.NodeID]types.Node) []types.NodeID {
 	for id := range nodes {
 		ids = append(ids, id)
 	}
-	slices.SortFunc(ids, func(a, b types.NodeID) int {
-		return cmp.Compare(a, b)
-	})
+
+	slices.SortFunc(ids, cmp.Compare)
+
 	return ids
 }
 
@@ -255,6 +269,7 @@ func TestRapid_Snapshot_NodesByIDCompleteness(t *testing.T) {
 			if !ok {
 				t.Fatalf("node %d missing from nodesByID", id)
 			}
+
 			if got.ID != node.ID {
 				t.Fatalf("nodesByID[%d].ID = %d, want %d", id, got.ID, node.ID)
 			}
@@ -283,6 +298,7 @@ func TestRapid_Snapshot_NodesByNodeKeyConsistency(t *testing.T) {
 				t.Fatalf("node %d (NodeKey=%s) missing from nodesByNodeKey",
 					node.ID, node.NodeKey.ShortString())
 			}
+
 			if nv.ID() != node.ID {
 				t.Fatalf("nodesByNodeKey lookup for node %d returned node %d",
 					node.ID, nv.ID())
@@ -309,11 +325,13 @@ func TestRapid_Snapshot_NodesByMachineKeyConsistency(t *testing.T) {
 			}
 
 			typedUID := node.TypedUserID()
+
 			nv, ok := userMap[typedUID]
 			if !ok {
 				t.Fatalf("node %d not found in nodesByMachineKey[MK][UserID=%d]",
 					node.ID, typedUID)
 			}
+
 			if nv.ID() != node.ID {
 				t.Fatalf("nodesByMachineKey lookup for node %d returned node %d",
 					node.ID, nv.ID())
@@ -329,6 +347,7 @@ func TestRapid_Snapshot_NodesByMachineKeyConsistency(t *testing.T) {
 				t.Fatalf("MachineKey collision: nodes %d and %d share the same MachineKey",
 					prev, node.ID)
 			}
+
 			mkToNode[node.MachineKey] = node.ID
 		}
 	})
@@ -369,6 +388,7 @@ func TestRapid_Snapshot_NodesByUserIncludesUserOwnedNodes(t *testing.T) {
 			}
 
 			uid := node.TypedUserID()
+
 			userNodes, ok := snap.nodesByUser[uid]
 			if !ok {
 				t.Fatalf("user-owned node %d (user=%d) has no entry in nodesByUser",
@@ -376,12 +396,14 @@ func TestRapid_Snapshot_NodesByUserIncludesUserOwnedNodes(t *testing.T) {
 			}
 
 			found := false
+
 			for _, nv := range userNodes {
 				if nv.ID() == node.ID {
 					found = true
 					break
 				}
 			}
+
 			if !found {
 				t.Fatalf("user-owned node %d not found in nodesByUser[%d]",
 					node.ID, uid)
@@ -434,12 +456,14 @@ func TestRapid_Snapshot_PeersByNodeSymmetry(t *testing.T) {
 				}
 
 				found := false
+
 				for _, rp := range reversePeers {
 					if rp.ID() == nodeID {
 						found = true
 						break
 					}
 				}
+
 				if !found {
 					t.Fatalf("symmetry violation: %d in peers(%d), but %d not in peers(%d)",
 						peer.ID(), nodeID, nodeID, peer.ID())
@@ -475,6 +499,7 @@ func TestRapid_Snapshot_AllNodesNotSortedInvariant(t *testing.T) {
 			if seen[nv.ID()] {
 				t.Fatalf("duplicate ID %d in allNodes", nv.ID())
 			}
+
 			seen[nv.ID()] = true
 		}
 
@@ -500,6 +525,7 @@ func TestRapid_Snapshot_EmptyInputEmptySnapshot(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		// Use any PeersFunc strategy — doesn't matter for empty input.
 		strategy := rapid.IntRange(0, 1).Draw(t, "strategy")
+
 		var pf PeersFunc
 		if strategy == 0 {
 			pf = allVisiblePeersFunc
@@ -512,18 +538,23 @@ func TestRapid_Snapshot_EmptyInputEmptySnapshot(t *testing.T) {
 		if len(snap.allNodes) != 0 {
 			t.Fatalf("empty input: allNodes has %d entries", len(snap.allNodes))
 		}
+
 		if len(snap.nodesByID) != 0 {
 			t.Fatalf("empty input: nodesByID has %d entries", len(snap.nodesByID))
 		}
+
 		if len(snap.nodesByNodeKey) != 0 {
 			t.Fatalf("empty input: nodesByNodeKey has %d entries", len(snap.nodesByNodeKey))
 		}
+
 		if len(snap.nodesByMachineKey) != 0 {
 			t.Fatalf("empty input: nodesByMachineKey has %d entries", len(snap.nodesByMachineKey))
 		}
+
 		if len(snap.nodesByUser) != 0 {
 			t.Fatalf("empty input: nodesByUser has %d entries", len(snap.nodesByUser))
 		}
+
 		if len(snap.peersByNode) != 0 {
 			t.Fatalf("empty input: peersByNode has %d entries", len(snap.peersByNode))
 		}
@@ -543,6 +574,7 @@ func TestRapid_Snapshot_NodesByUserPartitionsUntagged(t *testing.T) {
 
 		// Count untagged nodes in input.
 		untaggedCount := 0
+
 		for _, node := range nodes {
 			if !node.IsTagged() {
 				untaggedCount++
@@ -574,6 +606,7 @@ func TestRapid_Snapshot_AllNodesMatchesNodesByID(t *testing.T) {
 			if allNodeIDs[nv.ID()] {
 				t.Fatalf("duplicate ID %d in allNodes", nv.ID())
 			}
+
 			allNodeIDs[nv.ID()] = true
 		}
 
@@ -583,6 +616,7 @@ func TestRapid_Snapshot_AllNodesMatchesNodesByID(t *testing.T) {
 				t.Fatalf("nodesByID has ID %d not found in allNodes", id)
 			}
 		}
+
 		for id := range allNodeIDs {
 			if _, ok := snap.nodesByID[id]; !ok {
 				t.Fatalf("allNodes has ID %d not found in nodesByID", id)
@@ -650,6 +684,7 @@ func genIPv4AddrState() *rapid.Generator[netip.Addr] {
 		for i := range b {
 			b[i] = byte(rapid.IntRange(0, 255).Draw(t, "byte"))
 		}
+
 		return netip.AddrFrom4(b)
 	})
 }
@@ -659,6 +694,7 @@ func genSubnetPrefix() *rapid.Generator[netip.Prefix] {
 	return rapid.Custom[netip.Prefix](func(t *rapid.T) netip.Prefix {
 		bits := rapid.IntRange(1, 32).Draw(t, "bits")
 		addr := genIPv4AddrState().Draw(t, "addr")
+
 		return netip.PrefixFrom(addr, bits).Masked()
 	})
 }
@@ -697,6 +733,7 @@ func TestRapid_RoutesChanged_MutationSafety(t *testing.T) {
 			// Need at least 2 elements for sorting to potentially reorder
 			return
 		}
+
 		newHI := &tailcfg.Hostinfo{
 			RoutableIPs: newRoutes,
 		}
@@ -771,12 +808,14 @@ func TestRapid_RoutesChanged_OrderIndependent(t *testing.T) {
 // Returns the nodes slice (for NewNodeStore) and a map of ID -> Node.
 func makeTestNodes(n int) (types.Nodes, map[types.NodeID]types.Node) {
 	nodesMap := make(map[types.NodeID]types.Node, n)
+
 	nodesSlice := make(types.Nodes, 0, n)
 	for i := 1; i <= n; i++ {
-		node := createTestNode(types.NodeID(i), uint(i), fmt.Sprintf("user-%d", i), fmt.Sprintf("node-%d", i))
+		node := createTestNode(types.NodeID(i), uint(i), fmt.Sprintf("user-%d", i), fmt.Sprintf("node-%d", i)) //nolint:gosec // test with small bounded values
 		nodesMap[node.ID] = node
 		nodesSlice = append(nodesSlice, &node)
 	}
+
 	return nodesSlice, nodesMap
 }
 
@@ -784,6 +823,7 @@ func makeTestNodes(n int) (types.Nodes, map[types.NodeID]types.Node) {
 func startTestStore(nodes types.Nodes, pf PeersFunc) *NodeStore {
 	store := NewNodeStore(nodes, pf, TestBatchSize, TestBatchTimeout)
 	store.Start()
+
 	return store
 }
 
@@ -799,7 +839,9 @@ func startTestStore(nodes types.Nodes, pf PeersFunc) *NodeStore {
 func TestRapid_NodeStore_UpdateNode_CallbackSeesLatestState(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
 		const numNodes = 5
+
 		nodesSlice, nodesMap := makeTestNodes(numNodes)
+
 		store := startTestStore(nodesSlice, allVisiblePeersFunc)
 		defer store.Stop()
 
@@ -813,8 +855,8 @@ func TestRapid_NodeStore_UpdateNode_CallbackSeesLatestState(t *testing.T) {
 		// the hostname. After each update returns, verify that the store
 		// reflects ALL prior updates.
 		for i := 1; i <= numNodes; i++ {
-			nodeID := types.NodeID(i)
-			newHostname := fmt.Sprintf("updated-%s", suffixes[i])
+			nodeID := types.NodeID(i) //nolint:gosec // bounded loop variable
+			newHostname := "updated-" + suffixes[i]
 
 			_, ok := store.UpdateNode(nodeID, func(n *types.Node) {
 				n.Hostname = newHostname
@@ -825,12 +867,14 @@ func TestRapid_NodeStore_UpdateNode_CallbackSeesLatestState(t *testing.T) {
 
 			// After this update returns, verify nodes 1..i are updated
 			for j := 1; j <= i; j++ {
-				jID := types.NodeID(j)
+				jID := types.NodeID(j) //nolint:gosec // bounded loop variable
+
 				nv, exists := store.GetNode(jID)
 				if !exists {
 					rt.Fatalf("after updating node %d, GetNode(%d) not found", i, j)
 				}
-				expectedHostname := fmt.Sprintf("updated-%s", suffixes[j])
+
+				expectedHostname := "updated-" + suffixes[j]
 				if nv.Hostname() != expectedHostname {
 					rt.Fatalf("after updating node %d, node %d hostname = %q, want %q",
 						i, j, nv.Hostname(), expectedHostname)
@@ -839,11 +883,13 @@ func TestRapid_NodeStore_UpdateNode_CallbackSeesLatestState(t *testing.T) {
 
 			// Nodes i+1..N should still have their original hostname
 			for j := i + 1; j <= numNodes; j++ {
-				jID := types.NodeID(j)
+				jID := types.NodeID(j) //nolint:gosec // bounded loop variable
+
 				nv, exists := store.GetNode(jID)
 				if !exists {
 					rt.Fatalf("after updating node %d, GetNode(%d) not found", i, j)
 				}
+
 				origHostname := nodesMap[jID].Hostname
 				if nv.Hostname() != origHostname {
 					rt.Fatalf("after updating node %d, node %d should be unchanged: got %q, want %q",
@@ -865,6 +911,7 @@ func TestRapid_NodeStore_ListPeers_ConsistentWithGetByID(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
 		numNodes := rapid.IntRange(4, 8).Draw(rt, "numNodes")
 		nodesSlice, _ := makeTestNodes(numNodes)
+
 		store := startTestStore(nodesSlice, allVisiblePeersFunc)
 		defer store.Stop()
 
@@ -898,6 +945,7 @@ func TestRapid_NodeStore_ListPeers_ConsistentWithGetByID(t *testing.T) {
 				if peerIDSet[peerID] {
 					rt.Fatalf("ListPeers(%d) contains duplicate peer %d", node.ID(), peerID)
 				}
+
 				peerIDSet[peerID] = true
 			}
 
@@ -910,8 +958,10 @@ func TestRapid_NodeStore_ListPeers_ConsistentWithGetByID(t *testing.T) {
 					if peerIDSet[other.ID()] {
 						rt.Fatalf("node %d appears in its own peer list", node.ID())
 					}
+
 					continue
 				}
+
 				if !peerIDSet[other.ID()] {
 					rt.Fatalf("node %d should be peer of %d but is not in ListPeers",
 						other.ID(), node.ID())
@@ -932,6 +982,7 @@ func TestRapid_NodeStore_ListPeers_ConsistentWithGetByID(t *testing.T) {
 func TestRapid_NodeStore_PolicyChange_PeerMapRebuild(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
 		const numNodes = 6
+
 		nodesSlice, _ := makeTestNodes(numNodes)
 
 		// Start with allow-all
@@ -940,7 +991,7 @@ func TestRapid_NodeStore_PolicyChange_PeerMapRebuild(t *testing.T) {
 
 		// Phase 1: verify everyone sees everyone (N-1 peers each)
 		for i := 1; i <= numNodes; i++ {
-			peers := store.ListPeers(types.NodeID(i))
+			peers := store.ListPeers(types.NodeID(i)) //nolint:gosec // bounded loop variable
 			if peers.Len() != numNodes-1 {
 				rt.Fatalf("phase1: node %d has %d peers, want %d", i, peers.Len(), numNodes-1)
 			}
@@ -952,6 +1003,7 @@ func TestRapid_NodeStore_PolicyChange_PeerMapRebuild(t *testing.T) {
 			ret := make(map[types.NodeID][]types.NodeView, len(nodes))
 			for _, node := range nodes {
 				var peers []types.NodeView
+
 				if node.ID()%2 == 1 {
 					// Odd node: can see other odd nodes
 					for _, n := range nodes {
@@ -960,8 +1012,10 @@ func TestRapid_NodeStore_PolicyChange_PeerMapRebuild(t *testing.T) {
 						}
 					}
 				}
+
 				ret[node.ID()] = peers
 			}
+
 			return ret
 		}
 
@@ -970,6 +1024,7 @@ func TestRapid_NodeStore_PolicyChange_PeerMapRebuild(t *testing.T) {
 
 		// Count odd/even nodes
 		oddCount := 0
+
 		for i := 1; i <= numNodes; i++ {
 			if i%2 == 1 {
 				oddCount++
@@ -978,7 +1033,7 @@ func TestRapid_NodeStore_PolicyChange_PeerMapRebuild(t *testing.T) {
 
 		// Verify odd nodes see only other odd nodes
 		for i := 1; i <= numNodes; i++ {
-			peers := store.ListPeers(types.NodeID(i))
+			peers := store.ListPeers(types.NodeID(i)) //nolint:gosec // bounded loop variable
 			if i%2 == 1 {
 				// Odd node should see oddCount-1 peers (other odd nodes)
 				if peers.Len() != oddCount-1 {
@@ -992,12 +1047,10 @@ func TestRapid_NodeStore_PolicyChange_PeerMapRebuild(t *testing.T) {
 							i, peers.At(j).ID())
 					}
 				}
-			} else {
+			} else if peers.Len() != 0 {
 				// Even node should see zero peers
-				if peers.Len() != 0 {
-					rt.Fatalf("phase2: even node %d has %d peers, want 0",
-						i, peers.Len())
-				}
+				rt.Fatalf("phase2: even node %d has %d peers, want 0",
+					i, peers.Len())
 			}
 		}
 
@@ -1006,7 +1059,7 @@ func TestRapid_NodeStore_PolicyChange_PeerMapRebuild(t *testing.T) {
 		store.RebuildPeerMaps()
 
 		for i := 1; i <= numNodes; i++ {
-			peers := store.ListPeers(types.NodeID(i))
+			peers := store.ListPeers(types.NodeID(i)) //nolint:gosec // bounded loop variable
 			if peers.Len() != numNodes-1 {
 				rt.Fatalf("phase3: node %d has %d peers, want %d", i, peers.Len(), numNodes-1)
 			}
@@ -1024,7 +1077,9 @@ func TestRapid_NodeStore_PolicyChange_PeerMapRebuild(t *testing.T) {
 func TestRapid_NodeStore_NodeKeyLookup_AfterKeyRotation(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
 		const numNodes = 4
+
 		nodesSlice, nodesMap := makeTestNodes(numNodes)
+
 		store := startTestStore(nodesSlice, allVisiblePeersFunc)
 		defer store.Stop()
 
@@ -1037,6 +1092,7 @@ func TestRapid_NodeStore_NodeKeyLookup_AfterKeyRotation(t *testing.T) {
 		if !exists {
 			rt.Fatalf("pre-rotation: GetNodeByNodeKey(oldKey) not found for node %d", targetID)
 		}
+
 		if nv.ID() != targetID {
 			rt.Fatalf("pre-rotation: GetNodeByNodeKey(oldKey) returned node %d, want %d",
 				nv.ID(), targetID)
@@ -1065,6 +1121,7 @@ func TestRapid_NodeStore_NodeKeyLookup_AfterKeyRotation(t *testing.T) {
 		if !existsNew {
 			rt.Fatalf("post-rotation: GetNodeByNodeKey(newKey) not found for node %d", targetID)
 		}
+
 		if nvNew.ID() != targetID {
 			rt.Fatalf("post-rotation: GetNodeByNodeKey(newKey) returned node %d, want %d",
 				nvNew.ID(), targetID)
@@ -1072,12 +1129,14 @@ func TestRapid_NodeStore_NodeKeyLookup_AfterKeyRotation(t *testing.T) {
 
 		// Other nodes' keys should still work
 		for i := 2; i <= numNodes; i++ {
-			nID := types.NodeID(i)
+			nID := types.NodeID(i) //nolint:gosec // bounded loop variable
 			origKey := nodesMap[nID].NodeKey
+
 			nv2, exists2 := store.GetNodeByNodeKey(origKey)
 			if !exists2 {
 				rt.Fatalf("post-rotation: node %d's original key no longer resolves", nID)
 			}
+
 			if nv2.ID() != nID {
 				rt.Fatalf("post-rotation: node %d's key resolves to node %d", nID, nv2.ID())
 			}
@@ -1096,7 +1155,9 @@ func TestRapid_NodeStore_NodeKeyLookup_AfterKeyRotation(t *testing.T) {
 func TestRapid_NodeStore_DeleteNode_FullCleanup(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
 		const numNodes = 5
+
 		nodesSlice, nodesMap := makeTestNodes(numNodes)
+
 		store := startTestStore(nodesSlice, allVisiblePeersFunc)
 		defer store.Stop()
 
@@ -1148,7 +1209,9 @@ func TestRapid_NodeStore_DeleteNode_FullCleanup(t *testing.T) {
 			if i == int(deleteID) {
 				continue
 			}
-			nID := types.NodeID(i)
+
+			nID := types.NodeID(i) //nolint:gosec // bounded loop variable
+
 			peers := store.ListPeers(nID)
 			for j := range peers.Len() {
 				if peers.At(j).ID() == deleteID {

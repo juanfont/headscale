@@ -35,10 +35,12 @@ func genValidHostname() *rapid.Generator[string] {
 		}
 		// Ensure no leading/trailing - or .
 		result = strings.TrimLeft(result, "-.")
+
 		result = strings.TrimRight(result, "-.")
 		if len(result) < 2 {
 			result = "aa"
 		}
+
 		return result
 	})
 }
@@ -54,10 +56,12 @@ func genValidUsername() *rapid.Generator[string] {
 	return rapid.Custom[string](func(t *rapid.T) string {
 		first := rapid.StringMatching(`[a-zA-Z]`).Draw(t, "first")
 		restLen := rapid.IntRange(1, 30).Draw(t, "restLen")
+
 		rest := rapid.StringMatching(`[a-zA-Z0-9\-._]{1,30}`).Draw(t, "rest")
 		if len(rest) > restLen {
 			rest = rest[:restLen]
 		}
+
 		return first + rest
 	})
 }
@@ -70,6 +74,7 @@ func genValidUsername() *rapid.Generator[string] {
 func TestRapid_ValidateHostname_AcceptsValid(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		hostname := genValidHostname().Draw(t, "hostname")
+
 		err := ValidateHostname(hostname)
 		if err != nil {
 			t.Fatalf("ValidateHostname(%q) = %v, want nil", hostname, err)
@@ -84,6 +89,7 @@ func TestRapid_ValidateHostname_RejectsShort(t *testing.T) {
 		if len(short) >= 2 {
 			return // skip if generator produced 2+ chars
 		}
+
 		err := ValidateHostname(short)
 		if err == nil {
 			t.Fatalf("ValidateHostname(%q) should reject short hostname", short)
@@ -96,13 +102,16 @@ func TestRapid_ValidateHostname_RejectsLong(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		// Generate a string > 63 lowercase alphanum chars
 		extra := rapid.IntRange(64, 128).Draw(t, "len")
+
 		long := rapid.StringMatching(`[a-z0-9]{64,128}`).Draw(t, "long")
 		if len(long) > extra {
 			long = long[:extra]
 		}
+
 		if len(long) <= LabelHostnameLength {
 			return
 		}
+
 		err := ValidateHostname(long)
 		if err == nil {
 			t.Fatalf("ValidateHostname(%q) should reject long hostname (len=%d)", long, len(long))
@@ -117,10 +126,12 @@ func TestRapid_ValidateHostname_RejectsUppercase(t *testing.T) {
 		// Insert an uppercase letter at a random position
 		pos := rapid.IntRange(0, len(hostname)-1).Draw(t, "pos")
 		upper := rapid.StringMatching(`[A-Z]`).Draw(t, "upper")
+
 		mixed := hostname[:pos] + upper + hostname[pos:]
 		if len(mixed) > LabelHostnameLength {
 			mixed = mixed[:LabelHostnameLength]
 		}
+
 		err := ValidateHostname(mixed)
 		if err == nil {
 			t.Fatalf("ValidateHostname(%q) should reject hostname with uppercase", mixed)
@@ -230,6 +241,7 @@ func TestRapid_NormaliseHostname_PreservesValid(t *testing.T) {
 func TestRapid_ValidateUsername_AcceptsValid(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		username := genValidUsername().Draw(t, "username")
+
 		err := ValidateUsername(username)
 		if err != nil {
 			t.Fatalf("ValidateUsername(%q) = %v, want nil", username, err)
@@ -244,6 +256,7 @@ func TestRapid_ValidateUsername_RejectsShort(t *testing.T) {
 		if len(short) >= 2 {
 			return
 		}
+
 		err := ValidateUsername(short)
 		if err == nil {
 			t.Fatalf("ValidateUsername(%q) should reject short username", short)
@@ -264,6 +277,7 @@ func TestRapid_ValidateUsername_RejectsNonLetterStart(t *testing.T) {
 		}).Draw(t, "first")
 		rest := rapid.StringMatching(`[a-z0-9]{1,10}`).Draw(t, "rest")
 		username := string(firstRune) + rest
+
 		err := ValidateUsername(username)
 		if err == nil {
 			t.Fatalf("ValidateUsername(%q) should reject non-letter start", username)
@@ -277,6 +291,7 @@ func TestRapid_ValidateUsername_RejectsMultipleAt(t *testing.T) {
 		username := genValidUsername().Draw(t, "username")
 		// Append two @ signs
 		withAts := username + "@domain@extra"
+
 		err := ValidateUsername(withAts)
 		if err == nil {
 			t.Fatalf("ValidateUsername(%q) should reject multiple @ signs", withAts)
@@ -295,7 +310,7 @@ func TestRapid_ValidateUsername_RejectsMultipleAt(t *testing.T) {
 // on /32 prefixes (lastOctet=4 is out of range for a 4-byte IP).
 func TestRapid_GenerateIPv4DNSRootDomain_AllEndWithArpa(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
-		prefix := genMaskedIPv4Prefix(8, 31).Draw(t, "prefix")
+		prefix := genMaskedIPv4Prefix(31).Draw(t, "prefix")
 
 		fqdns := GenerateIPv4DNSRootDomain(prefix)
 
@@ -315,15 +330,17 @@ func TestRapid_GenerateIPv4DNSRootDomain_AllEndWithArpa(t *testing.T) {
 // Note: bits restricted to [8, 31] to avoid /32 panic.
 func TestRapid_GenerateIPv4DNSRootDomain_DeterministicCount(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
-		prefix := genMaskedIPv4Prefix(8, 31).Draw(t, "prefix")
+		prefix := genMaskedIPv4Prefix(31).Draw(t, "prefix")
 
 		fqdns := GenerateIPv4DNSRootDomain(prefix)
 
 		bits := prefix.Bits()
+
 		wildcardBits := ByteSize - bits%ByteSize
 		if wildcardBits == ByteSize {
 			wildcardBits = ByteSize
 		}
+
 		expectedCount := 1 << wildcardBits
 
 		if len(fqdns) != expectedCount {
@@ -337,7 +354,7 @@ func TestRapid_GenerateIPv4DNSRootDomain_DeterministicCount(t *testing.T) {
 // Note: bits restricted to [8, 31] to avoid /32 panic.
 func TestRapid_GenerateIPv4DNSRootDomain_NoDuplicates(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
-		prefix := genMaskedIPv4Prefix(8, 31).Draw(t, "prefix")
+		prefix := genMaskedIPv4Prefix(31).Draw(t, "prefix")
 
 		fqdns := GenerateIPv4DNSRootDomain(prefix)
 
@@ -347,6 +364,7 @@ func TestRapid_GenerateIPv4DNSRootDomain_NoDuplicates(t *testing.T) {
 			if seen[s] {
 				t.Fatalf("duplicate FQDN at index %d: %q (prefix=%s)", i, s, prefix)
 			}
+
 			seen[s] = true
 		}
 	})

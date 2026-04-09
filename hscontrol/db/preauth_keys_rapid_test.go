@@ -1,12 +1,15 @@
 package db
 
 import (
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"pgregory.net/rapid"
 )
+
+const authkeyExpiredMsg = "authkey expired"
 
 // ============================================================================
 // Generators
@@ -40,13 +43,17 @@ var base64URLSafeAlphabet = func() []byte {
 	for c := byte('A'); c <= 'Z'; c++ {
 		chars = append(chars, c)
 	}
+
 	for c := byte('a'); c <= 'z'; c++ {
 		chars = append(chars, c)
 	}
+
 	for c := byte('0'); c <= '9'; c++ {
 		chars = append(chars, c)
 	}
+
 	chars = append(chars, '-', '_')
+
 	return chars
 }()
 
@@ -54,10 +61,12 @@ var base64URLSafeAlphabet = func() []byte {
 func genBase64URLSafeString(minLen, maxLen int) *rapid.Generator[string] {
 	return rapid.Custom[string](func(t *rapid.T) string {
 		n := rapid.IntRange(minLen, maxLen).Draw(t, "len")
+
 		buf := make([]byte, n)
 		for i := range buf {
 			buf[i] = genBase64URLSafeChar().Draw(t, "char")
 		}
+
 		return string(buf)
 	})
 }
@@ -70,6 +79,7 @@ func genBase64URLSafeString(minLen, maxLen int) *rapid.Generator[string] {
 func TestRapid_PreAuthKeyValidate_NilKey_Error(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		var pak *types.PreAuthKey
+
 		err := pak.Validate()
 		if err == nil {
 			t.Fatal("nil PreAuthKey should return error")
@@ -95,12 +105,16 @@ func TestRapid_PreAuthKeyValidate_Expired_Error(t *testing.T) {
 		if err == nil {
 			t.Fatalf("expired key (exp=%v) should return error", pastTime)
 		}
-		pakErr, ok := err.(types.PAKError)
+
+		var pakErr types.PAKError
+
+		ok := errors.As(err, &pakErr)
 		if !ok {
 			t.Fatalf("expected PAKError, got %T: %v", err, err)
 		}
-		if string(pakErr) != "authkey expired" {
-			t.Fatalf("expected 'authkey expired', got %q", pakErr)
+
+		if string(pakErr) != authkeyExpiredMsg {
+			t.Fatalf("expected %q, got %q", authkeyExpiredMsg, pakErr)
 		}
 	})
 }
@@ -110,6 +124,7 @@ func TestRapid_PreAuthKeyValidate_NonReusableUsed_Error(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		// Not expired: either nil expiration or future expiration.
 		var expiration *time.Time
+
 		if rapid.Bool().Draw(t, "hasExpiration") {
 			ft := genFutureTime().Draw(t, "expiration")
 			expiration = &ft
@@ -126,10 +141,14 @@ func TestRapid_PreAuthKeyValidate_NonReusableUsed_Error(t *testing.T) {
 		if err == nil {
 			t.Fatal("non-reusable used key should return error")
 		}
-		pakErr, ok := err.(types.PAKError)
+
+		var pakErr types.PAKError
+
+		ok := errors.As(err, &pakErr)
 		if !ok {
 			t.Fatalf("expected PAKError, got %T: %v", err, err)
 		}
+
 		if string(pakErr) != "authkey already used" {
 			t.Fatalf("expected 'authkey already used', got %q", pakErr)
 		}
@@ -141,6 +160,7 @@ func TestRapid_PreAuthKeyValidate_ReusableUsed_OK(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		// Not expired: either nil expiration or future expiration.
 		var expiration *time.Time
+
 		if rapid.Bool().Draw(t, "hasExpiration") {
 			ft := genFutureTime().Draw(t, "expiration")
 			expiration = &ft
@@ -167,6 +187,7 @@ func TestRapid_PreAuthKeyValidate_ValidUnexpiredUnused_OK(t *testing.T) {
 
 		// Not expired: either nil expiration or future expiration.
 		var expiration *time.Time
+
 		if rapid.Bool().Draw(t, "hasExpiration") {
 			ft := genFutureTime().Draw(t, "expiration")
 			expiration = &ft
@@ -207,12 +228,15 @@ func TestRapid_PreAuthKeyValidate_ExpirationTakesPrecedence(t *testing.T) {
 				reusable, used)
 		}
 		// The error should specifically be about expiration, not about being used.
-		pakErr, ok := err.(types.PAKError)
+		var pakErr types.PAKError
+
+		ok := errors.As(err, &pakErr)
 		if !ok {
 			t.Fatalf("expected PAKError, got %T: %v", err, err)
 		}
-		if string(pakErr) != "authkey expired" {
-			t.Fatalf("expected 'authkey expired' for expired key, got %q", pakErr)
+
+		if string(pakErr) != authkeyExpiredMsg {
+			t.Fatalf("expected %q for expired key, got %q", authkeyExpiredMsg, pakErr)
 		}
 	})
 }
@@ -234,11 +258,14 @@ func TestRapid_PreAuthKeyValidate_NilExpirationNeverExpires(t *testing.T) {
 		err := pak.Validate()
 		if err != nil {
 			// If there's an error, it must NOT be about expiration.
-			pakErr, ok := err.(types.PAKError)
+			var pakErr types.PAKError
+
+			ok := errors.As(err, &pakErr)
 			if !ok {
 				t.Fatalf("expected PAKError, got %T: %v", err, err)
 			}
-			if string(pakErr) == "authkey expired" {
+
+			if string(pakErr) == authkeyExpiredMsg {
 				t.Fatal("nil expiration should never trigger expiration error")
 			}
 		}
@@ -296,6 +323,7 @@ func TestRapid_IsValidBase64URLSafe_InvalidChars_False(t *testing.T) {
 				'<', '>', ',', '.', ';', ':', '\'', '"', '`', '~',
 				'\t', '\n', '\r', '\x00',
 			}
+
 			return rapid.SampledFrom(candidates).Draw(t, "invalidChar")
 		}).Draw(t, "invalidByte")
 
@@ -319,6 +347,7 @@ func TestRapid_IsValidBase64URLSafe_ArbitraryUnicode(t *testing.T) {
 
 		// Manually verify: check each rune.
 		expected := true
+
 		for _, c := range s {
 			if (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' && c != '_' {
 				expected = false

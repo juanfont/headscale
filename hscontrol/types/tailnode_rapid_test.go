@@ -28,7 +28,7 @@ func genNodeID() *rapid.Generator[NodeID] {
 // genUserID generates a random user ID pointer (non-nil, positive).
 func genUserID() *rapid.Generator[*uint] {
 	return rapid.Custom[*uint](func(t *rapid.T) *uint {
-		uid := uint(rapid.IntRange(1, 100000).Draw(t, "userID"))
+		uid := uint(rapid.IntRange(1, 100000).Draw(t, "userID")) //nolint:gosec // positive bounded value
 		return &uid
 	})
 }
@@ -77,6 +77,7 @@ func genExpiry() *rapid.Generator[*time.Time] {
 		// Offset from now: negative = past (expired), positive = future (not expired)
 		offsetSec := rapid.Int64Range(-86400*365, 86400*365).Draw(t, "offsetSec")
 		exp := time.Now().Add(time.Duration(offsetSec) * time.Second)
+
 		return &exp
 	})
 }
@@ -105,8 +106,10 @@ func genLastSeen() *rapid.Generator[*time.Time] {
 		if !hasLastSeen {
 			return nil
 		}
+
 		offsetSec := rapid.Int64Range(1, 86400*30).Draw(t, "lastSeenOffset")
 		ls := time.Now().Add(-time.Duration(offsetSec) * time.Second)
+
 		return &ls
 	})
 }
@@ -115,10 +118,12 @@ func genLastSeen() *rapid.Generator[*time.Time] {
 func genPrimaryRoutes(maxLen int) *rapid.Generator[[]netip.Prefix] {
 	return rapid.Custom[[]netip.Prefix](func(t *rapid.T) []netip.Prefix {
 		n := rapid.IntRange(0, maxLen).Draw(t, "nPrimaryRoutes")
+
 		routes := make([]netip.Prefix, n)
 		for i := range routes {
 			routes[i] = genSubnetPrefix().Draw(t, "primaryRoute")
 		}
+
 		return routes
 	})
 }
@@ -138,6 +143,7 @@ func genExitRouteConfig() *rapid.Generator[exitRouteConfig] {
 		// Include both v4 and v6 exit routes, both announced and approved
 		announced := []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()}
 		approved := []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()}
+
 		return exitRouteConfig{
 			Announced:      announced,
 			ApprovedRoutes: approved,
@@ -179,11 +185,9 @@ func genTailNodeInput() *rapid.Generator[tailNodeInput] {
 		if len(tags) == 0 {
 			// User-owned: must have a UserID
 			userID = genUserID().Draw(t, "userID")
-		} else {
+		} else if rapid.Bool().Draw(t, "taggedHasUserID") {
 			// Tagged: optionally has a "created by" UserID
-			if rapid.Bool().Draw(t, "taggedHasUserID") {
-				userID = genUserID().Draw(t, "taggedUserID")
-			}
+			userID = genUserID().Draw(t, "taggedUserID")
 		}
 
 		// Build hostinfo with exit routes announced
@@ -214,6 +218,7 @@ func genTailNodeInput() *rapid.Generator[tailNodeInput] {
 			v6 := genIPv6Addr().Draw(t, "ipv6")
 			node.IPv6 = &v6
 		}
+
 		node.IPv4 = &v4
 
 		cfg := &Config{
@@ -244,6 +249,7 @@ func callTailNode(inp tailNodeInput) (*tailcfg.Node, error) {
 	routeFunc := func(_ NodeID) []netip.Prefix {
 		return inp.PrimaryRoutes
 	}
+
 	return nv.TailNode(inp.CapVer, routeFunc, inp.Config)
 }
 
@@ -254,12 +260,13 @@ func callTailNode(inp tailNodeInput) (*tailcfg.Node, error) {
 func TestRapid_TailNode_IDPreservation(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		inp := genTailNodeInput().Draw(t, "input")
+
 		out, err := callTailNode(inp)
 		if err != nil {
 			t.Fatalf("TailNode error: %v", err)
 		}
 
-		expected := tailcfg.NodeID(inp.Node.ID)
+		expected := tailcfg.NodeID(inp.Node.ID) //nolint:gosec // test ID conversion
 		if out.ID != expected {
 			t.Fatalf("ID mismatch: got %d, want %d", out.ID, expected)
 		}
@@ -273,6 +280,7 @@ func TestRapid_TailNode_IDPreservation(t *testing.T) {
 func TestRapid_TailNode_StableIDBase10(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		inp := genTailNodeInput().Draw(t, "input")
+
 		out, err := callTailNode(inp)
 		if err != nil {
 			t.Fatalf("TailNode error: %v", err)
@@ -292,6 +300,7 @@ func TestRapid_TailNode_StableIDBase10(t *testing.T) {
 func TestRapid_TailNode_AddressesEqualPrefixes(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		inp := genTailNodeInput().Draw(t, "input")
+
 		out, err := callTailNode(inp)
 		if err != nil {
 			t.Fatalf("TailNode error: %v", err)
@@ -312,6 +321,7 @@ func TestRapid_TailNode_AddressesEqualPrefixes(t *testing.T) {
 func TestRapid_TailNode_AddressesSubsetOfAllowedIPs(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		inp := genTailNodeInput().Draw(t, "input")
+
 		out, err := callTailNode(inp)
 		if err != nil {
 			t.Fatalf("TailNode error: %v", err)
@@ -332,6 +342,7 @@ func TestRapid_TailNode_AddressesSubsetOfAllowedIPs(t *testing.T) {
 func TestRapid_TailNode_AllowedIPsSorted(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		inp := genTailNodeInput().Draw(t, "input")
+
 		out, err := callTailNode(inp)
 		if err != nil {
 			t.Fatalf("TailNode error: %v", err)
@@ -352,6 +363,7 @@ func TestRapid_TailNode_AllowedIPsSorted(t *testing.T) {
 func TestRapid_TailNode_AllowedIPsComposition(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		inp := genTailNodeInput().Draw(t, "input")
+
 		out, err := callTailNode(inp)
 		if err != nil {
 			t.Fatalf("TailNode error: %v", err)
@@ -378,6 +390,7 @@ func TestRapid_TailNode_AllowedIPsComposition(t *testing.T) {
 func TestRapid_TailNode_MachineAuthorizedComplementsExpired(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		inp := genTailNodeInput().Draw(t, "input")
+
 		out, err := callTailNode(inp)
 		if err != nil {
 			t.Fatalf("TailNode error: %v", err)
@@ -394,6 +407,7 @@ func TestRapid_TailNode_MachineAuthorizedComplementsExpired(t *testing.T) {
 func TestRapid_TailNode_ExpiredMatchesIsExpired(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		inp := genTailNodeInput().Draw(t, "input")
+
 		out, err := callTailNode(inp)
 		if err != nil {
 			t.Fatalf("TailNode error: %v", err)
@@ -416,6 +430,7 @@ func TestRapid_TailNode_ExpiredMatchesIsExpired(t *testing.T) {
 func TestRapid_TailNode_TagsAsIdentity(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		inp := genTailNodeInput().Draw(t, "input")
+
 		out, err := callTailNode(inp)
 		if err != nil {
 			t.Fatalf("TailNode error: %v", err)
@@ -431,7 +446,8 @@ func TestRapid_TailNode_TagsAsIdentity(t *testing.T) {
 			if inp.Node.UserID == nil {
 				t.Fatal("user-owned node has nil UserID (generator bug)")
 			}
-			expected := tailcfg.UserID(int64(*inp.Node.UserID))
+
+			expected := tailcfg.UserID(int64(*inp.Node.UserID)) //nolint:gosec // test ID conversion
 			if out.User != expected {
 				t.Fatalf("user-owned node User=%d, want %d", out.User, expected)
 			}
@@ -467,6 +483,7 @@ func TestRapid_TailNode_TaggedUserIDConstant(t *testing.T) {
 func TestRapid_TailNode_NameFormat(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		inp := genTailNodeInput().Draw(t, "input")
+
 		out, err := callTailNode(inp)
 		if err != nil {
 			t.Fatalf("TailNode error: %v", err)
@@ -484,12 +501,10 @@ func TestRapid_TailNode_NameFormat(t *testing.T) {
 			if out.Name != expected {
 				t.Fatalf("Name mismatch:\n  got:  %q\n  want: %q", out.Name, expected)
 			}
-		} else {
+		} else if out.Name != inp.Node.GivenName {
 			// Without base domain, Name is just GivenName
-			if out.Name != inp.Node.GivenName {
-				t.Fatalf("Name=%q without BaseDomain, want GivenName=%q",
-					out.Name, inp.Node.GivenName)
-			}
+			t.Fatalf("Name=%q without BaseDomain, want GivenName=%q",
+				out.Name, inp.Node.GivenName)
 		}
 	})
 }
@@ -498,6 +513,7 @@ func TestRapid_TailNode_NameFormat(t *testing.T) {
 func TestRapid_TailNode_NameContainsGivenName(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		inp := genTailNodeInput().Draw(t, "input")
+
 		out, err := callTailNode(inp)
 		if err != nil {
 			t.Fatalf("TailNode error: %v", err)
@@ -517,6 +533,7 @@ func TestRapid_TailNode_NameContainsGivenName(t *testing.T) {
 func TestRapid_TailNode_KeyPreservation(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		inp := genTailNodeInput().Draw(t, "input")
+
 		out, err := callTailNode(inp)
 		if err != nil {
 			t.Fatalf("TailNode error: %v", err)
@@ -525,9 +542,11 @@ func TestRapid_TailNode_KeyPreservation(t *testing.T) {
 		if out.Key != inp.Node.NodeKey {
 			t.Fatalf("NodeKey mismatch: got %v, want %v", out.Key, inp.Node.NodeKey)
 		}
+
 		if out.Machine != inp.Node.MachineKey {
 			t.Fatalf("MachineKey mismatch: got %v, want %v", out.Machine, inp.Node.MachineKey)
 		}
+
 		if out.DiscoKey != inp.Node.DiscoKey {
 			t.Fatalf("DiscoKey mismatch: got %v, want %v", out.DiscoKey, inp.Node.DiscoKey)
 		}
@@ -541,6 +560,7 @@ func TestRapid_TailNode_KeyPreservation(t *testing.T) {
 func TestRapid_TailNode_CapMapMandatoryEntries(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		inp := genTailNodeInput().Draw(t, "input")
+
 		out, err := callTailNode(inp)
 		if err != nil {
 			t.Fatalf("TailNode error: %v", err)
@@ -549,6 +569,7 @@ func TestRapid_TailNode_CapMapMandatoryEntries(t *testing.T) {
 		if _, ok := out.CapMap[tailcfg.CapabilityAdmin]; !ok {
 			t.Fatal("CapMap missing CapabilityAdmin")
 		}
+
 		if _, ok := out.CapMap[tailcfg.CapabilitySSH]; !ok {
 			t.Fatal("CapMap missing CapabilitySSH")
 		}
@@ -559,6 +580,7 @@ func TestRapid_TailNode_CapMapMandatoryEntries(t *testing.T) {
 func TestRapid_TailNode_CapMapRandomizeClientPort(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		inp := genTailNodeInput().Draw(t, "input")
+
 		out, err := callTailNode(inp)
 		if err != nil {
 			t.Fatalf("TailNode error: %v", err)
@@ -568,6 +590,7 @@ func TestRapid_TailNode_CapMapRandomizeClientPort(t *testing.T) {
 		if inp.Config.RandomizeClientPort && !hasCap {
 			t.Fatal("RandomizeClientPort=true but cap not in CapMap")
 		}
+
 		if !inp.Config.RandomizeClientPort && hasCap {
 			t.Fatal("RandomizeClientPort=false but cap present in CapMap")
 		}
@@ -578,6 +601,7 @@ func TestRapid_TailNode_CapMapRandomizeClientPort(t *testing.T) {
 func TestRapid_TailNode_CapMapTaildrop(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		inp := genTailNodeInput().Draw(t, "input")
+
 		out, err := callTailNode(inp)
 		if err != nil {
 			t.Fatalf("TailNode error: %v", err)
@@ -587,6 +611,7 @@ func TestRapid_TailNode_CapMapTaildrop(t *testing.T) {
 		if inp.Config.Taildrop.Enabled && !hasCap {
 			t.Fatal("Taildrop.Enabled=true but CapabilityFileSharing not in CapMap")
 		}
+
 		if !inp.Config.Taildrop.Enabled && hasCap {
 			t.Fatal("Taildrop.Enabled=false but CapabilityFileSharing present in CapMap")
 		}
@@ -600,6 +625,7 @@ func TestRapid_TailNode_CapMapTaildrop(t *testing.T) {
 func TestRapid_TailNode_LastSeenNilForOnlineNodes(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		inp := genTailNodeInput().Draw(t, "input")
+
 		out, err := callTailNode(inp)
 		if err != nil {
 			t.Fatalf("TailNode error: %v", err)
@@ -618,6 +644,7 @@ func TestRapid_TailNode_LastSeenNilForOnlineNodes(t *testing.T) {
 func TestRapid_TailNode_LastSeenSetWhenOfflineWithLastSeen(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		inp := genTailNodeInput().Draw(t, "input")
+
 		out, err := callTailNode(inp)
 		if err != nil {
 			t.Fatalf("TailNode error: %v", err)
@@ -631,6 +658,7 @@ func TestRapid_TailNode_LastSeenSetWhenOfflineWithLastSeen(t *testing.T) {
 		if shouldHaveLastSeen && out.LastSeen == nil {
 			t.Fatal("offline node with LastSeen should have LastSeen set in output")
 		}
+
 		if !shouldHaveLastSeen && out.LastSeen != nil {
 			t.Fatalf("node should not have LastSeen set (hasLastSeen=%v, isOnlineValid=%v, isOffline=%v), got %v",
 				hasLastSeen, isOnlineValid, isOffline, *out.LastSeen)
@@ -642,6 +670,7 @@ func TestRapid_TailNode_LastSeenSetWhenOfflineWithLastSeen(t *testing.T) {
 func TestRapid_TailNode_LastSeenValuePreserved(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		inp := genTailNodeInput().Draw(t, "input")
+
 		out, err := callTailNode(inp)
 		if err != nil {
 			t.Fatalf("TailNode error: %v", err)
@@ -672,6 +701,7 @@ func TestRapid_TailNode_Deterministic(t *testing.T) {
 		if (err1 != nil) != (err2 != nil) {
 			t.Fatalf("non-deterministic error: %v vs %v", err1, err2)
 		}
+
 		if err1 != nil {
 			return
 		}
@@ -680,24 +710,31 @@ func TestRapid_TailNode_Deterministic(t *testing.T) {
 		if out1.ID != out2.ID {
 			t.Fatalf("ID non-deterministic: %d vs %d", out1.ID, out2.ID)
 		}
+
 		if out1.StableID != out2.StableID {
 			t.Fatalf("StableID non-deterministic: %q vs %q", out1.StableID, out2.StableID)
 		}
+
 		if out1.Name != out2.Name {
 			t.Fatalf("Name non-deterministic: %q vs %q", out1.Name, out2.Name)
 		}
+
 		if out1.User != out2.User {
 			t.Fatalf("User non-deterministic: %d vs %d", out1.User, out2.User)
 		}
+
 		if out1.Key != out2.Key {
 			t.Fatalf("Key non-deterministic")
 		}
+
 		if !slices.Equal(out1.AllowedIPs, out2.AllowedIPs) {
 			t.Fatalf("AllowedIPs non-deterministic")
 		}
+
 		if out1.Expired != out2.Expired {
 			t.Fatalf("Expired non-deterministic")
 		}
+
 		if out1.MachineAuthorized != out2.MachineAuthorized {
 			t.Fatalf("MachineAuthorized non-deterministic")
 		}
@@ -708,6 +745,7 @@ func TestRapid_TailNode_Deterministic(t *testing.T) {
 func TestRapid_TailNode_CapVersionPassthrough(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		inp := genTailNodeInput().Draw(t, "input")
+
 		out, err := callTailNode(inp)
 		if err != nil {
 			t.Fatalf("TailNode error: %v", err)
@@ -723,6 +761,7 @@ func TestRapid_TailNode_CapVersionPassthrough(t *testing.T) {
 func TestRapid_TailNode_TagsPreserved(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		inp := genTailNodeInput().Draw(t, "input")
+
 		out, err := callTailNode(inp)
 		if err != nil {
 			t.Fatalf("TailNode error: %v", err)
@@ -739,6 +778,7 @@ func TestRapid_TailNode_TagsPreserved(t *testing.T) {
 func TestRapid_TailNode_PrimaryRoutesPreserved(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		inp := genTailNodeInput().Draw(t, "input")
+
 		out, err := callTailNode(inp)
 		if err != nil {
 			t.Fatalf("TailNode error: %v", err)
@@ -746,6 +786,7 @@ func TestRapid_TailNode_PrimaryRoutesPreserved(t *testing.T) {
 
 		// TailNode filters exit routes from PrimaryRoutes (for HA tracking).
 		var expectedPrimary []netip.Prefix
+
 		for _, r := range inp.PrimaryRoutes {
 			if !tsaddr.IsExitRoute(r) {
 				expectedPrimary = append(expectedPrimary, r)
@@ -763,6 +804,7 @@ func TestRapid_TailNode_PrimaryRoutesPreserved(t *testing.T) {
 func TestRapid_TailNode_OnlineIsCloned(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		inp := genTailNodeInput().Draw(t, "input")
+
 		out, err := callTailNode(inp)
 		if err != nil {
 			t.Fatalf("TailNode error: %v", err)
@@ -790,6 +832,7 @@ func TestRapid_TailNode_OnlineIsCloned(t *testing.T) {
 func TestRapid_TailNode_KeyExpiryUTC(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		inp := genTailNodeInput().Draw(t, "input")
+
 		out, err := callTailNode(inp)
 		if err != nil {
 			t.Fatalf("TailNode error: %v", err)

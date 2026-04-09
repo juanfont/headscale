@@ -25,7 +25,7 @@ import (
 
 // genTailcfgNodeID generates a tailcfg.NodeID in [1, 50].
 func genTailcfgNodeID(t *rapid.T) tailcfg.NodeID {
-	return tailcfg.NodeID(rapid.Uint64Range(1, 50).Draw(t, "tailcfgNodeID"))
+	return tailcfg.NodeID(rapid.Uint64Range(1, 50).Draw(t, "tailcfgNodeID")) //nolint:gosec // test with small bounded values
 }
 
 // genTailcfgNodeIDSlice generates a slice of 0..maxLen unique tailcfg.NodeIDs.
@@ -33,6 +33,7 @@ func genTailcfgNodeIDSlice(maxLen int) *rapid.Generator[[]tailcfg.NodeID] {
 	return rapid.Custom[[]tailcfg.NodeID](func(t *rapid.T) []tailcfg.NodeID {
 		n := rapid.IntRange(0, maxLen).Draw(t, "numPeerIDs")
 		seen := make(map[tailcfg.NodeID]bool, n)
+
 		result := make([]tailcfg.NodeID, 0, n)
 		for len(result) < n {
 			id := genTailcfgNodeID(t)
@@ -41,6 +42,7 @@ func genTailcfgNodeIDSlice(maxLen int) *rapid.Generator[[]tailcfg.NodeID] {
 				result = append(result, id)
 			}
 		}
+
 		return result
 	})
 }
@@ -50,6 +52,7 @@ func genTailcfgNodeIDSet(maxLen int) *rapid.Generator[[]tailcfg.NodeID] {
 	return rapid.Custom[[]tailcfg.NodeID](func(t *rapid.T) []tailcfg.NodeID {
 		ids := genTailcfgNodeIDSlice(maxLen).Draw(t, "idSet")
 		slices.Sort(ids)
+
 		return ids
 	})
 }
@@ -64,6 +67,7 @@ func genNodeIDSlice(maxLen int) *rapid.Generator[[]types.NodeID] {
 	return rapid.Custom[[]types.NodeID](func(t *rapid.T) []types.NodeID {
 		n := rapid.IntRange(0, maxLen).Draw(t, "numNodeIDs")
 		seen := make(map[types.NodeID]bool, n)
+
 		result := make([]types.NodeID, 0, n)
 		for len(result) < n {
 			id := genNodeID(t)
@@ -72,6 +76,7 @@ func genNodeIDSlice(maxLen int) *rapid.Generator[[]types.NodeID] {
 				result = append(result, id)
 			}
 		}
+
 		return result
 	})
 }
@@ -87,12 +92,14 @@ func genMapResponseFull(t *rapid.T) *tailcfg.MapResponse {
 	switch mode {
 	case 0: // Full peer list
 		peerIDs := genTailcfgNodeIDSlice(15).Draw(t, "peersFull")
+
 		resp.Peers = make([]*tailcfg.Node, len(peerIDs))
 		for i, id := range peerIDs {
 			resp.Peers[i] = &tailcfg.Node{ID: id}
 		}
 	case 1: // Incremental: PeersChanged
 		changedIDs := genTailcfgNodeIDSlice(8).Draw(t, "peersChanged")
+
 		resp.PeersChanged = make([]*tailcfg.Node, len(changedIDs))
 		for i, id := range changedIDs {
 			resp.PeersChanged[i] = &tailcfg.Node{ID: id}
@@ -145,16 +152,20 @@ func genAdversarialChange(t *rapid.T) change.Change {
 		// overlap) to avoid triggering the batcher's node cleanup logic
 		// which deletes nodes whose IDs appear in change.PeersRemoved.
 		nOverlap := rapid.IntRange(0, 3).Draw(t, "advOverlapN")
+
 		overlap := make([]types.NodeID, nOverlap)
 		for i := range overlap {
 			overlap[i] = types.NodeID(rapid.Uint64Range(100, 200).Draw(t, fmt.Sprintf("advOverlap%d", i)))
 		}
+
 		extraChanged := genNodeIDSlice(2).Draw(t, "advExtraChanged")
 		nExtra := rapid.IntRange(0, 2).Draw(t, "advExtraRemovedN")
+
 		extraRemoved := make([]types.NodeID, nExtra)
 		for i := range extraRemoved {
 			extraRemoved[i] = types.NodeID(rapid.Uint64Range(100, 200).Draw(t, fmt.Sprintf("advExtraRemoved%d", i)))
 		}
+
 		return change.Change{
 			Reason:       "adversarial-overlap",
 			TargetNode:   0,
@@ -164,6 +175,7 @@ func genAdversarialChange(t *rapid.T) change.Change {
 		}
 	case 2: // OriginNode == TargetNode (self-referencing)
 		selfID := types.NodeID(rapid.Uint64Range(1, 10).Draw(t, "advSelfID"))
+
 		return change.Change{
 			Reason:       "adversarial-self-ref",
 			TargetNode:   selfID,
@@ -174,10 +186,12 @@ func genAdversarialChange(t *rapid.T) change.Change {
 	case 3: // All flags true simultaneously
 		// Use high NodeIDs (100+) for PeersRemoved to avoid batcher node cleanup.
 		nRemoved := rapid.IntRange(0, 5).Draw(t, "advAllRemovedN")
+
 		removed := make([]types.NodeID, nRemoved)
 		for i := range removed {
 			removed[i] = types.NodeID(rapid.Uint64Range(100, 200).Draw(t, fmt.Sprintf("advAllRemoved%d", i)))
 		}
+
 		return change.Change{
 			Reason:                         "adversarial-all-flags",
 			TargetNode:                     types.NodeID(rapid.Uint64Range(1, 10).Draw(t, "advAllTarget")),
@@ -262,10 +276,12 @@ func (m *mockNC) computePeerDiff(currentPeers []tailcfg.NodeID) []tailcfg.NodeID
 	}
 
 	var removed []tailcfg.NodeID
+
 	m.peers.Range(func(id tailcfg.NodeID, _ struct{}) bool {
 		if _, exists := currentSet[id]; !exists {
 			removed = append(removed, id)
 		}
+
 		return true
 	})
 
@@ -274,12 +290,14 @@ func (m *mockNC) computePeerDiff(currentPeers []tailcfg.NodeID) []tailcfg.NodeID
 
 func (m *mockNC) updateSentPeers(resp *tailcfg.MapResponse) {
 	m.updateCalls++
+
 	if resp == nil {
 		return
 	}
 
 	if resp.Peers != nil {
 		m.peers.Clear()
+
 		for _, peer := range resp.Peers {
 			m.peers.Store(peer.ID, struct{}{})
 		}
@@ -323,6 +341,7 @@ func TestRapid_ComputePeerDiff_IsSetDifference(t *testing.T) {
 		}
 
 		var expected []tailcfg.NodeID
+
 		for _, id := range lastSent {
 			if _, inCurrent := currentSet[id]; !inCurrent {
 				expected = append(expected, id)
@@ -399,6 +418,7 @@ func TestRapid_UpdateSentPeers_ThenDiff_Roundtrip(t *testing.T) {
 		// Generate a new full peer list.
 		peerIDs := genTailcfgNodeIDSet(15).Draw(t, "newPeers")
 		now := time.Now()
+
 		resp := &tailcfg.MapResponse{
 			ControlTime: &now,
 			Peers:       make([]*tailcfg.Node, len(peerIDs)),
@@ -435,6 +455,7 @@ func TestRapid_UpdateSentPeers_ThenDiff_Roundtrip(t *testing.T) {
 
 		// Build the reduced current list.
 		var reduced []tailcfg.NodeID
+
 		for _, id := range peerIDs {
 			if !removeSet[id] {
 				reduced = append(reduced, id)
@@ -449,6 +470,7 @@ func TestRapid_UpdateSentPeers_ThenDiff_Roundtrip(t *testing.T) {
 		for id := range removeSet {
 			expectedRemoved = append(expectedRemoved, id)
 		}
+
 		slices.Sort(expectedRemoved)
 
 		if !slices.Equal(diff2, expectedRemoved) {
@@ -466,6 +488,7 @@ func TestRapid_UpdateSentPeers_IncrementalAdd(t *testing.T) {
 		// Start with a full list.
 		initial := genTailcfgNodeIDSet(10).Draw(t, "initial")
 		now := time.Now()
+
 		resp := &tailcfg.MapResponse{
 			ControlTime: &now,
 			Peers:       make([]*tailcfg.Node, len(initial)),
@@ -473,10 +496,12 @@ func TestRapid_UpdateSentPeers_IncrementalAdd(t *testing.T) {
 		for i, id := range initial {
 			resp.Peers[i] = &tailcfg.Node{ID: id}
 		}
+
 		mc.updateSentPeers(resp)
 
 		// Add some peers via PeersChanged.
 		added := genTailcfgNodeIDSlice(5).Draw(t, "added")
+
 		addResp := &tailcfg.MapResponse{
 			ControlTime:  &now,
 			PeersChanged: make([]*tailcfg.Node, len(added)),
@@ -484,6 +509,7 @@ func TestRapid_UpdateSentPeers_IncrementalAdd(t *testing.T) {
 		for i, id := range added {
 			addResp.PeersChanged[i] = &tailcfg.Node{ID: id}
 		}
+
 		mc.updateSentPeers(addResp)
 
 		// All initial + added should be tracked.
@@ -491,6 +517,7 @@ func TestRapid_UpdateSentPeers_IncrementalAdd(t *testing.T) {
 		for _, id := range initial {
 			allExpected[id] = struct{}{}
 		}
+
 		for _, id := range added {
 			allExpected[id] = struct{}{}
 		}
@@ -507,6 +534,7 @@ func TestRapid_UpdateSentPeers_IncrementalAdd(t *testing.T) {
 			if _, ok := allExpected[id]; !ok {
 				t.Fatalf("unexpected tracked peer %d", id)
 			}
+
 			return true
 		})
 	})
@@ -520,6 +548,7 @@ func TestRapid_UpdateSentPeers_IncrementalRemove(t *testing.T) {
 		// Start with a full list.
 		initial := genTailcfgNodeIDSet(10).Draw(t, "initial")
 		now := time.Now()
+
 		resp := &tailcfg.MapResponse{
 			ControlTime: &now,
 			Peers:       make([]*tailcfg.Node, len(initial)),
@@ -527,6 +556,7 @@ func TestRapid_UpdateSentPeers_IncrementalRemove(t *testing.T) {
 		for i, id := range initial {
 			resp.Peers[i] = &tailcfg.Node{ID: id}
 		}
+
 		mc.updateSentPeers(resp)
 
 		// Remove some peers.
@@ -545,10 +575,12 @@ func TestRapid_UpdateSentPeers_IncrementalRemove(t *testing.T) {
 		// Verify removed peers are gone, rest remain.
 		for _, id := range initial {
 			_, tracked := mc.lastSentPeers.Load(id)
+
 			_, wasRemoved := removeSet[id]
 			if wasRemoved && tracked {
 				t.Fatalf("peer %d should have been removed but is still tracked", id)
 			}
+
 			if !wasRemoved && !tracked {
 				t.Fatalf("peer %d should still be tracked but is missing", id)
 			}
@@ -570,6 +602,7 @@ func TestRapid_UpdateSentPeers_NilIsNoop(t *testing.T) {
 
 		// Count tracked peers - should be unchanged.
 		var tracked []tailcfg.NodeID
+
 		mc.lastSentPeers.Range(func(id tailcfg.NodeID, _ struct{}) bool {
 			tracked = append(tracked, id)
 			return true
@@ -604,9 +637,11 @@ func TestRapid_UpdateSentPeers_ModelCheck(t *testing.T) {
 					model[peer.ID] = struct{}{}
 				}
 			}
+
 			for _, peer := range resp.PeersChanged {
 				model[peer.ID] = struct{}{}
 			}
+
 			for _, id := range resp.PeersRemoved {
 				delete(model, id)
 			}
@@ -614,6 +649,7 @@ func TestRapid_UpdateSentPeers_ModelCheck(t *testing.T) {
 
 		// Verify the real state matches the model.
 		actual := make(map[tailcfg.NodeID]struct{})
+
 		mc.lastSentPeers.Range(func(id tailcfg.NodeID, _ struct{}) bool {
 			actual[id] = struct{}{}
 			return true
@@ -648,15 +684,17 @@ func TestRapid_AddToBatch_FullOverride(t *testing.T) {
 
 		// Register some nodes.
 		nNodes := rapid.IntRange(1, 10).Draw(t, "nNodes")
+
 		nodeIDs := make([]types.NodeID, nNodes)
 		for i := range nodeIDs {
-			nodeIDs[i] = types.NodeID(i + 1)
+			nodeIDs[i] = types.NodeID(i + 1) //nolint:gosec // bounded loop variable
 			b.nodes.Store(nodeIDs[i], newMultiChannelNodeConn(nodeIDs[i], nil))
 		}
 
 		// Pre-populate nodes with non-Full pending changes so we can
 		// verify that a subsequent Full batch replaces them.
 		nPreChanges := rapid.IntRange(1, 4).Draw(t, "nPreChanges")
+
 		preChanges := make([]change.Change, nPreChanges)
 		for i := range preChanges {
 			preChanges[i] = change.Change{
@@ -673,18 +711,22 @@ func TestRapid_AddToBatch_FullOverride(t *testing.T) {
 			if nc == nil {
 				return true
 			}
+
 			nc.pendingMu.Lock()
 			n := len(nc.pending)
 			nc.pendingMu.Unlock()
+
 			if n == 0 {
 				t.Fatalf("node %d: pre-population failed, expected pending changes", nodeID)
 			}
+
 			return true
 		})
 
 		// Generate a batch of changes, ensuring at least one is Full.
 		// Mix in adversarial changes to stress edge cases.
 		nChanges := rapid.IntRange(1, 8).Draw(t, "nChanges")
+
 		changes := make([]change.Change, nChanges)
 		for i := range changes {
 			if rapid.IntRange(0, 2).Draw(t, fmt.Sprintf("changeType%d", i)) == 0 {
@@ -733,7 +775,7 @@ func TestRapid_AddToBatch_DoubleFullStillOne(t *testing.T) {
 
 		nNodes := rapid.IntRange(1, 5).Draw(t, "nNodes")
 		for i := range nNodes {
-			id := types.NodeID(i + 1)
+			id := types.NodeID(i + 1) //nolint:gosec // bounded loop variable
 			b.nodes.Store(id, newMultiChannelNodeConn(id, nil))
 		}
 
@@ -773,9 +815,10 @@ func TestRapid_AddToBatch_TargetedOnlyInTarget(t *testing.T) {
 
 		// Register nodes.
 		nNodes := rapid.IntRange(2, 8).Draw(t, "nNodes")
+
 		nodeIDs := make([]types.NodeID, nNodes)
 		for i := range nodeIDs {
-			nodeIDs[i] = types.NodeID(i + 1)
+			nodeIDs[i] = types.NodeID(i + 1) //nolint:gosec // bounded loop variable
 			b.nodes.Store(nodeIDs[i], newMultiChannelNodeConn(nodeIDs[i], nil))
 		}
 
@@ -823,9 +866,10 @@ func TestRapid_AddToBatch_BroadcastReachesAll(t *testing.T) {
 
 		// Register nodes.
 		nNodes := rapid.IntRange(1, 8).Draw(t, "nNodes")
+
 		nodeIDs := make([]types.NodeID, nNodes)
 		for i := range nodeIDs {
-			nodeIDs[i] = types.NodeID(i + 1)
+			nodeIDs[i] = types.NodeID(i + 1) //nolint:gosec // bounded loop variable
 			b.nodes.Store(nodeIDs[i], newMultiChannelNodeConn(nodeIDs[i], nil))
 		}
 
@@ -862,9 +906,10 @@ func TestRapid_AddToBatch_MixedTargetedAndBroadcast(t *testing.T) {
 		b := NewBatcher(time.Hour, 1, nil)
 
 		nNodes := rapid.IntRange(2, 6).Draw(t, "nNodes")
+
 		nodeIDs := make([]types.NodeID, nNodes)
 		for i := range nodeIDs {
-			nodeIDs[i] = types.NodeID(i + 1)
+			nodeIDs[i] = types.NodeID(i + 1) //nolint:gosec // bounded loop variable
 			b.nodes.Store(nodeIDs[i], newMultiChannelNodeConn(nodeIDs[i], nil))
 		}
 
@@ -873,6 +918,7 @@ func TestRapid_AddToBatch_MixedTargetedAndBroadcast(t *testing.T) {
 		if bcast.IsEmpty() {
 			bcast.IncludeSelf = true
 		}
+
 		bcast.SendAllPeers = false
 		bcast.IncludePolicy = false
 		bcast.IncludeDERPMap = false
@@ -907,11 +953,13 @@ func TestRapid_AddToBatch_MixedTargetedAndBroadcast(t *testing.T) {
 				// Note: broadcast changes with TargetNode=0 pass FilterForNode
 				// for all nodes, so each non-target gets exactly the broadcast.
 				hasTargeted := false
+
 				for _, p := range pending {
 					if p.TargetNode != 0 && p.TargetNode != nodeID {
 						hasTargeted = true
 					}
 				}
+
 				if hasTargeted {
 					t.Fatalf("non-target node %d has targeted change for another node",
 						nodeID)
@@ -936,10 +984,10 @@ func TestRapid_GenerateMapResponse_EmptyChange_AlwaysNil(t *testing.T) {
 		nc := newMockNC(id)
 
 		resp, err := generateMapResponse(nc, nil, change.Change{})
-
 		if err != nil {
 			t.Fatalf("empty change should not error, got %v", err)
 		}
+
 		if resp != nil {
 			t.Fatal("empty change should return nil response")
 		}
@@ -1005,10 +1053,10 @@ func TestRapid_GenerateMapResponse_SelfOnlyOtherNode(t *testing.T) {
 		}
 
 		resp, err := generateMapResponse(nc, &mapper{}, ch)
-
 		if err != nil {
 			t.Fatalf("expected nil error, got %v", err)
 		}
+
 		if resp != nil {
 			t.Fatal("self-only change for other node should return nil response")
 		}
@@ -1047,10 +1095,12 @@ func TestRapid_MultiChannelSend_FanOut(t *testing.T) {
 		if nGood+nBad == 0 {
 			// No connections: send should succeed silently.
 			now := time.Now()
+
 			err := mc.send(&tailcfg.MapResponse{ControlTime: &now})
 			if err != nil {
 				t.Fatalf("send with 0 connections should succeed, got %v", err)
 			}
+
 			return
 		}
 
@@ -1135,8 +1185,8 @@ func TestRapid_MultiChannelSend_FailedRemoved_Persistent(t *testing.T) {
 		// Second send: should succeed with only good connections.
 		now2 := time.Now()
 		data2 := &tailcfg.MapResponse{ControlTime: &now2}
-		err := mc.send(data2)
 
+		err := mc.send(data2)
 		if err != nil {
 			t.Fatalf("second send should succeed with only good connections, got %v", err)
 		}
@@ -1163,13 +1213,14 @@ func TestRapid_MultiChannelSend_ConcurrentSafety(t *testing.T) {
 		nSends := rapid.IntRange(1, 10).Draw(t, "nSends")
 		nAdds := rapid.IntRange(0, 5).Draw(t, "nAdds")
 
-		var wg sync.WaitGroup
-		var panicked atomic.Bool
+		var (
+			wg       sync.WaitGroup
+			panicked atomic.Bool
+		)
 
 		// Concurrent sends.
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+
+		wg.Go(func() {
 			defer func() {
 				if r := recover(); r != nil {
 					panicked.Store(true)
@@ -1180,12 +1231,11 @@ func TestRapid_MultiChannelSend_ConcurrentSafety(t *testing.T) {
 				now := time.Now()
 				_ = mc.send(&tailcfg.MapResponse{ControlTime: &now})
 			}
-		}()
+		})
 
 		// Concurrent adds.
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+
+		wg.Go(func() {
 			defer func() {
 				if r := recover(); r != nil {
 					panicked.Store(true)
@@ -1197,7 +1247,7 @@ func TestRapid_MultiChannelSend_ConcurrentSafety(t *testing.T) {
 				mc.addConnection(makeConnectionEntry(
 					fmt.Sprintf("add-%d", i), ch))
 			}
-		}()
+		})
 
 		wg.Wait()
 
@@ -1220,9 +1270,10 @@ func TestRapid_AddToBatch_PeersRemovedCleanup(t *testing.T) {
 
 		// Register nodes.
 		nNodes := rapid.IntRange(2, 10).Draw(t, "nNodes")
+
 		nodeIDs := make([]types.NodeID, nNodes)
 		for i := range nodeIDs {
-			nodeIDs[i] = types.NodeID(i + 1)
+			nodeIDs[i] = types.NodeID(i + 1) //nolint:gosec // bounded loop variable
 			b.nodes.Store(nodeIDs[i], newMultiChannelNodeConn(nodeIDs[i], nil))
 		}
 
@@ -1230,11 +1281,13 @@ func TestRapid_AddToBatch_PeersRemovedCleanup(t *testing.T) {
 		nRemove := rapid.IntRange(0, nNodes/2).Draw(t, "nRemove")
 		removedIDs := make([]types.NodeID, nRemove)
 		picked := make(map[int]bool)
+
 		for i := range removedIDs {
 			idx := rapid.IntRange(0, nNodes-1).Draw(t, fmt.Sprintf("removeIdx%d", i))
 			for picked[idx] {
 				idx = (idx + 1) % nNodes
 			}
+
 			picked[idx] = true
 			removedIDs[i] = nodeIDs[idx]
 		}
@@ -1257,6 +1310,7 @@ func TestRapid_AddToBatch_PeersRemovedCleanup(t *testing.T) {
 			if removedSet[id] {
 				t.Fatalf("node %d should have been removed from batcher", id)
 			}
+
 			return true
 		})
 
@@ -1265,6 +1319,7 @@ func TestRapid_AddToBatch_PeersRemovedCleanup(t *testing.T) {
 			if removedSet[id] {
 				continue
 			}
+
 			if _, ok := b.nodes.Load(id); !ok {
 				t.Fatalf("node %d should still exist in batcher", id)
 			}
@@ -1283,16 +1338,19 @@ func TestRapid_AppendDrainPending_Roundtrip(t *testing.T) {
 		mc := newMultiChannelNodeConn(1, nil)
 
 		nBatches := rapid.IntRange(1, 5).Draw(t, "nBatches")
-		var allChanges []change.Change
+
+		allChanges := make([]change.Change, 0, nBatches*4)
 
 		for i := range nBatches {
 			nChanges := rapid.IntRange(0, 4).Draw(t, fmt.Sprintf("nChanges%d", i))
+
 			batch := make([]change.Change, nChanges)
 			for j := range batch {
 				batch[j] = change.Change{
 					Reason: fmt.Sprintf("batch%d-change%d", i, j),
 				}
 			}
+
 			allChanges = append(allChanges, batch...)
 			mc.appendPending(batch...)
 		}
@@ -1346,17 +1404,21 @@ func TestRapid_ConnectionLifecycle(t *testing.T) {
 			case 0: // add connection
 				ch := make(chan *tailcfg.MapResponse, 1)
 				mc.addConnection(makeConnectionEntry("c", ch))
+
 				hasActiveConns = true
 			case 1: // mark connected
 				mc.markConnected()
+
 				disconnectedAtNil = true
 			case 2: // mark disconnected
 				mc.markDisconnected()
+
 				disconnectedAtNil = false
 			case 3: // remove all connections
 				mc.mutex.Lock()
 				mc.connections = nil
 				mc.mutex.Unlock()
+
 				hasActiveConns = false
 			}
 
@@ -1395,6 +1457,7 @@ func TestRapid_AddToBatch_FilterForNode_SkipsSelfOrigin(t *testing.T) {
 
 		// Generate 3-8 broadcast changes with varying OriginNode values
 		nChanges := rapid.IntRange(3, 8).Draw(t, "nChanges")
+
 		changes := make([]change.Change, nChanges)
 		for i := range changes {
 			origin := rapid.SampledFrom(nodeIDs).Draw(t, fmt.Sprintf("origin%d", i))
@@ -1443,6 +1506,7 @@ func TestRapid_AddToBatch_FilterForNode_SkipsSelfOrigin(t *testing.T) {
 
 			// Verify that self-origin changes ARE present (documenting actual behavior)
 			hasSelfOrigin := false
+
 			for _, p := range pending {
 				if p.OriginNode == nodeID {
 					hasSelfOrigin = true
@@ -1452,6 +1516,7 @@ func TestRapid_AddToBatch_FilterForNode_SkipsSelfOrigin(t *testing.T) {
 
 			// Count how many broadcast changes have this node as origin
 			selfOriginCount := 0
+
 			for _, ch := range changes {
 				if ch.OriginNode == nodeID {
 					selfOriginCount++
@@ -1512,10 +1577,12 @@ func TestRapid_AddToBatch_TargetedBroadcastInteraction(t *testing.T) {
 
 		hasTargeted := false
 		hasBroadcast := false
+
 		for _, p := range pending1 {
 			if p.TargetNode == 1 && p.Reason == "targeted-for-1" {
 				hasTargeted = true
 			}
+
 			if p.TargetNode == 0 && p.Reason == "broadcast-peers" {
 				hasBroadcast = true
 			}
@@ -1524,6 +1591,7 @@ func TestRapid_AddToBatch_TargetedBroadcastInteraction(t *testing.T) {
 		if !hasTargeted {
 			t.Fatalf("node 1: missing targeted change, pending=%+v", pending1)
 		}
+
 		if !hasBroadcast {
 			t.Fatalf("node 1: missing broadcast change, pending=%+v", pending1)
 		}
@@ -1548,6 +1616,7 @@ func TestRapid_AddToBatch_TargetedBroadcastInteraction(t *testing.T) {
 				t.Fatalf("node %d: expected 1 pending (broadcast only), got %d",
 					nodeID, len(pending))
 			}
+
 			if pending[0].Reason != "broadcast-peers" {
 				t.Fatalf("node %d: expected broadcast change, got %+v",
 					nodeID, pending[0])
@@ -1590,6 +1659,7 @@ func TestRapid_AddToBatch_FullUpdateOverridesTargeted(t *testing.T) {
 			nc.pendingMu.Lock()
 			n := len(nc.pending)
 			nc.pendingMu.Unlock()
+
 			if n == 0 {
 				t.Fatalf("node %d: pre-population failed", id)
 			}
@@ -1655,6 +1725,7 @@ func TestRapid_DrainPending_AtomicSwap(t *testing.T) {
 
 		// Add 5-20 random changes
 		nChanges := rapid.IntRange(5, 20).Draw(t, "nChanges")
+
 		expected := make([]change.Change, nChanges)
 		for i := range expected {
 			expected[i] = change.Change{
@@ -1688,10 +1759,12 @@ func TestRapid_DrainPending_AtomicSwap(t *testing.T) {
 				t.Fatalf("change %d: reason mismatch: got %q, want %q",
 					i, ch.Reason, expected[i].Reason)
 			}
+
 			if ch.OriginNode != expected[i].OriginNode {
 				t.Fatalf("change %d: OriginNode mismatch: got %d, want %d",
 					i, ch.OriginNode, expected[i].OriginNode)
 			}
+
 			if ch.IncludeSelf != expected[i].IncludeSelf {
 				t.Fatalf("change %d: IncludeSelf mismatch: got %v, want %v",
 					i, ch.IncludeSelf, expected[i].IncludeSelf)
@@ -1781,12 +1854,14 @@ func TestRapid_AddToBatch_PeersRemovedCleanup_NoGhostNodes(t *testing.T) {
 			}
 
 			found := false
+
 			for _, p := range pending {
 				if p.Reason == "conflicting-change" {
 					found = true
 					break
 				}
 			}
+
 			if !found {
 				t.Fatalf("node %d: pending should contain 'conflicting-change', got %+v", id, pending)
 			}
@@ -1794,6 +1869,7 @@ func TestRapid_AddToBatch_PeersRemovedCleanup_NoGhostNodes(t *testing.T) {
 
 		// Additional property-based variation: randomize which nodes are in each set
 		b2 := NewBatcher(time.Hour, 1, nil)
+
 		allIDs := []types.NodeID{1, 2, 3, 4, 5, 6, 7, 8}
 		for _, id := range allIDs {
 			b2.nodes.Store(id, newMultiChannelNodeConn(id, nil))
@@ -1823,6 +1899,7 @@ func TestRapid_AddToBatch_PeersRemovedCleanup_NoGhostNodes(t *testing.T) {
 			if removedSet[id] && exists {
 				t.Fatalf("node %d should be removed (in PeersRemoved) but still exists", id)
 			}
+
 			if !removedSet[id] && !exists {
 				t.Fatalf("node %d should still exist (not in PeersRemoved) but is missing", id)
 			}

@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -39,7 +40,7 @@ func genTestUsers(t *rapid.T) types.Users {
 
 	for i := range count {
 		users[i] = types.User{
-			Model: gorm.Model{ID: uint(i + 1)},
+			Model: gorm.Model{ID: uint(i + 1)}, //nolint:gosec // positive bounded value
 			Name:  fmt.Sprintf("user%d", i+1),
 			Email: fmt.Sprintf("user%d@example.com", i+1),
 		}
@@ -62,7 +63,7 @@ func genTestNodes(t *rapid.T, users types.Users, withTags bool) types.Nodes {
 		ipv6 := netip.AddrFrom16(ipv6Bytes)
 
 		node := &types.Node{
-			ID:       types.NodeID(i + 1),
+			ID:       types.NodeID(i + 1), //nolint:gosec // positive bounded value
 			Hostname: fmt.Sprintf("node%d", i+1),
 			IPv4:     &ipv4,
 			IPv6:     &ipv6,
@@ -100,7 +101,7 @@ func genACLSourceAlias(t *rapid.T, users types.Users) string {
 		return u.Name + "@"
 	default:
 		// autogroup:member
-		return "autogroup:member"
+		return string(AutoGroupMember)
 	}
 }
 
@@ -114,7 +115,7 @@ func genACLDestAlias(t *rapid.T, users types.Users) string {
 		u := users[rapid.IntRange(0, len(users)-1).Draw(t, "dstUser")]
 		return u.Name + "@:*"
 	default:
-		return "autogroup:member:*"
+		return string(AutoGroupMember) + ":*"
 	}
 }
 
@@ -123,7 +124,8 @@ func genACLDestAlias(t *rapid.T, users types.Users) string {
 func genSimplePolicy(t *rapid.T, users types.Users) string {
 	aclCount := rapid.IntRange(1, 3).Draw(t, "aclCount")
 
-	var acls []string
+	acls := make([]string, 0, aclCount)
+
 	for i := range aclCount {
 		src := genACLSourceAlias(t, users)
 		dst := genACLDestAlias(t, users)
@@ -147,6 +149,7 @@ func genWildcardPolicy() string {
 // prefix-matching code paths beyond just /32 host routes.
 func genFilterRule(t *rapid.T) tailcfg.FilterRule {
 	srcCount := rapid.IntRange(1, 3).Draw(t, "srcCount")
+
 	srcIPs := make([]string, srcCount)
 	for i := range srcCount {
 		octet := rapid.IntRange(1, 254).Draw(t, fmt.Sprintf("srcOctet%d", i))
@@ -155,6 +158,7 @@ func genFilterRule(t *rapid.T) tailcfg.FilterRule {
 	}
 
 	dstCount := rapid.IntRange(1, 3).Draw(t, "dstCount")
+
 	dstPorts := make([]tailcfg.NetPortRange, dstCount)
 	for i := range dstCount {
 		octet := rapid.IntRange(1, 254).Draw(t, fmt.Sprintf("dstOctet%d", i))
@@ -176,10 +180,12 @@ func genFilterRule(t *rapid.T) tailcfg.FilterRule {
 // genFilterRules generates 1-5 random FilterRules.
 func genFilterRules(t *rapid.T) []tailcfg.FilterRule {
 	count := rapid.IntRange(1, 5).Draw(t, "ruleCount")
+
 	rules := make([]tailcfg.FilterRule, count)
 	for i := range count {
 		rules[i] = genFilterRule(t)
 	}
+
 	return rules
 }
 
@@ -221,8 +227,9 @@ func genFilterRulesForNode(t *rapid.T, node *types.Node) []tailcfg.FilterRule {
 	rules := make([]tailcfg.FilterRule, 0, nTargeting+nRandom)
 
 	// Rules targeting the node's IP in DstPorts.
-	for i := 0; i < nTargeting; i++ {
+	for i := range nTargeting {
 		srcCount := rapid.IntRange(1, 3).Draw(t, fmt.Sprintf("tSrcCount%d", i))
+
 		srcIPs := make([]string, srcCount)
 		for j := range srcCount {
 			octet := rapid.IntRange(1, 254).Draw(t, fmt.Sprintf("tSrcOctet%d_%d", i, j))
@@ -257,8 +264,9 @@ func genFilterRulesForNode(t *rapid.T, node *types.Node) []tailcfg.FilterRule {
 	}
 
 	// Random rules that don't target the node (use IPs far from CGNAT node range).
-	for i := 0; i < nRandom; i++ {
+	for i := range nRandom {
 		srcCount := rapid.IntRange(1, 2).Draw(t, fmt.Sprintf("rSrcCount%d", i))
+
 		srcIPs := make([]string, srcCount)
 		for j := range srcCount {
 			octet := rapid.IntRange(1, 254).Draw(t, fmt.Sprintf("rSrcOctet%d_%d", i, j))
@@ -287,10 +295,14 @@ func genFilterRulesForNode(t *rapid.T, node *types.Node) []tailcfg.FilterRule {
 }
 
 // extractRuleIPs extracts all unique SrcIPs and DstPort IPs from rules as parsed addresses.
-func extractRuleIPs(rules []tailcfg.FilterRule) (srcAddrs, dstAddrs []netip.Addr, dstPorts []uint16) {
+func extractRuleIPs(rules []tailcfg.FilterRule) ([]netip.Addr, []netip.Addr, []uint16) {
 	srcSeen := make(map[netip.Addr]bool)
 	dstSeen := make(map[netip.Addr]bool)
 	portSeen := make(map[uint16]bool)
+
+	var srcAddrs, dstAddrs []netip.Addr
+
+	var dstPorts []uint16
 
 	for _, rule := range rules {
 		for _, src := range rule.SrcIPs {
@@ -298,17 +310,20 @@ func extractRuleIPs(rules []tailcfg.FilterRule) (srcAddrs, dstAddrs []netip.Addr
 			if err != nil {
 				continue
 			}
+
 			addr := pfx.Addr()
 			if !srcSeen[addr] {
 				srcSeen[addr] = true
 				srcAddrs = append(srcAddrs, addr)
 			}
 		}
+
 		for _, dp := range rule.DstPorts {
 			pfx, err := netip.ParsePrefix(dp.IP)
 			if err != nil {
 				continue
 			}
+
 			addr := pfx.Addr()
 			if !dstSeen[addr] {
 				dstSeen[addr] = true
@@ -413,11 +428,13 @@ func TestRapid_BuildPeerMap_SelfExclusion(t *testing.T) {
 func matchRules(rules []tailcfg.FilterRule, srcIP, dstIP netip.Addr, dstPort uint16) bool {
 	for _, rule := range rules {
 		srcMatch := false
+
 		for _, srcCIDR := range rule.SrcIPs {
 			ipSet, err := util.ParseIPSet(srcCIDR, nil)
 			if err != nil {
 				continue
 			}
+
 			if ipSet.Contains(srcIP) {
 				srcMatch = true
 				break
@@ -433,6 +450,7 @@ func matchRules(rules []tailcfg.FilterRule, srcIP, dstIP netip.Addr, dstPort uin
 			if err != nil {
 				continue
 			}
+
 			if ipSet.Contains(dstIP) && dstPort >= dp.Ports.First && dstPort <= dp.Ports.Last {
 				return true
 			}
@@ -452,6 +470,7 @@ func TestRapid_MergeFilterRules_SemanticEquivalence(t *testing.T) {
 		} else {
 			rules = genFilterRules(t)
 		}
+
 		merged := mergeFilterRules(rules)
 
 		// Extract actual IPs and ports from the rules so we probe addresses
@@ -470,6 +489,7 @@ func TestRapid_MergeFilterRules_SemanticEquivalence(t *testing.T) {
 							"original=%v merged=%v\noriginal rules: %+v\nmerged rules: %+v",
 							srcIP, dstIP, port, originalMatch, mergedMatch, rules, merged)
 					}
+
 					_ = i
 					_ = j
 				}
@@ -478,7 +498,7 @@ func TestRapid_MergeFilterRules_SemanticEquivalence(t *testing.T) {
 
 		// Also probe with some random IPs for false==false cases.
 		randomProbes := rapid.IntRange(3, 8).Draw(t, "randomProbes")
-		for i := 0; i < randomProbes; i++ {
+		for i := range randomProbes {
 			srcIP := genIPInCGNAT(t, fmt.Sprintf("rndSrc%d", i))
 			dstIP := genIPInCGNAT(t, fmt.Sprintf("rndDst%d", i))
 			dstPort := rapid.Uint16().Draw(t, fmt.Sprintf("rndPort%d", i))
@@ -517,6 +537,7 @@ func TestRapid_ReduceFilterRules_SubsetProperty(t *testing.T) {
 
 		// Collect all DstPorts from the original rules.
 		originalDstSet := make(map[string]bool)
+
 		for _, rule := range rules {
 			for _, dp := range rule.DstPorts {
 				key := fmt.Sprintf("%s:%d-%d", dp.IP, dp.Ports.First, dp.Ports.Last)
@@ -544,6 +565,7 @@ func TestRapid_ReduceFilterRules_SubsetProperty(t *testing.T) {
 		// Verify reduced rules contain DstPorts targeting the node's IP.
 		nodeIP := node.IPv4.String() + "/32"
 		hasNodeDst := false
+
 		for _, rule := range reduced {
 			for _, dp := range rule.DstPorts {
 				if dp.IP == nodeIP {
@@ -551,6 +573,7 @@ func TestRapid_ReduceFilterRules_SubsetProperty(t *testing.T) {
 				}
 			}
 		}
+
 		if !hasNodeDst {
 			t.Fatalf("reduced rules should contain DstPorts targeting node IP %s but don't\nreduced: %+v",
 				nodeIP, reduced)
@@ -604,6 +627,7 @@ func TestRapid_WildcardPolicy_FullMesh(t *testing.T) {
 		nodes := genTestNodesNoTags(t, users)
 
 		polJSON := genWildcardPolicy()
+
 		pm, err := NewPolicyManager([]byte(polJSON), users, nodes.ViewSlice())
 		if err != nil {
 			t.Fatalf("failed to create policy manager with wildcard policy: %v", err)
@@ -624,6 +648,7 @@ func TestRapid_WildcardPolicy_FullMesh(t *testing.T) {
 				if other.ID == n.ID {
 					continue
 				}
+
 				found := slices.ContainsFunc(peers, func(nv types.NodeView) bool {
 					return nv.ID() == other.ID
 				})
@@ -798,16 +823,20 @@ func TestRapid_MergeFilterRules_Idempotent(t *testing.T) {
 			if !slices.Equal(merged1[i].SrcIPs, merged2[i].SrcIPs) {
 				t.Fatalf("merge not idempotent: SrcIPs differ at index %d", i)
 			}
+
 			if len(merged1[i].DstPorts) != len(merged2[i].DstPorts) {
 				t.Fatalf("merge not idempotent: DstPorts length differ at index %d", i)
 			}
+
 			for j := range merged1[i].DstPorts {
 				dp1 := merged1[i].DstPorts[j]
+
 				dp2 := merged2[i].DstPorts[j]
 				if dp1.IP != dp2.IP {
 					t.Fatalf("merge not idempotent: DstPorts[%d][%d].IP differ: %q vs %q",
 						i, j, dp1.IP, dp2.IP)
 				}
+
 				if dp1.Ports != dp2.Ports {
 					t.Fatalf("merge not idempotent: DstPorts[%d][%d].Ports differ: %v vs %v",
 						i, j, dp1.Ports, dp2.Ports)
@@ -841,7 +870,7 @@ func TestRapid_SetNodes_MaintainsSymmetry(t *testing.T) {
 		newIPv6Bytes := [16]byte{0xfd, 0x7a, 0x11, 0x5c, 0xa1, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0, 0, byte(newIdx + 1)}
 		newIPv6 := netip.AddrFrom16(newIPv6Bytes)
 		newNode := &types.Node{
-			ID:       types.NodeID(newIdx + 1),
+			ID:       types.NodeID(newIdx + 1), //nolint:gosec // positive bounded value
 			Hostname: fmt.Sprintf("node%d", newIdx+1),
 			IPv4:     &newIPv4,
 			IPv6:     &newIPv6,
@@ -850,6 +879,7 @@ func TestRapid_SetNodes_MaintainsSymmetry(t *testing.T) {
 		}
 
 		updatedNodes := append(slices.Clone(nodes), newNode)
+
 		_, err = pm.SetNodes(updatedNodes.ViewSlice())
 		if err != nil {
 			t.Fatalf("SetNodes failed: %v", err)
@@ -861,6 +891,7 @@ func TestRapid_SetNodes_MaintainsSymmetry(t *testing.T) {
 		for nodeID, peers := range peerMap {
 			for _, peer := range peers {
 				peerPeers := peerMap[peer.ID()]
+
 				found := slices.ContainsFunc(peerPeers, func(nv types.NodeView) bool {
 					return nv.ID() == nodeID
 				})
@@ -895,6 +926,7 @@ func TestRapid_ReduceFilterRules_PreservesSrcIPs(t *testing.T) {
 
 		// Collect all SrcIPs from original.
 		origSrcIPSet := make(map[string]bool)
+
 		for _, rule := range rules {
 			for _, src := range rule.SrcIPs {
 				origSrcIPSet[src] = true
@@ -921,21 +953,25 @@ func TestRapid_ReduceFilterRules_PreservesSrcIPs(t *testing.T) {
 		for _, rule := range rules {
 			nodeIP := node.IPv4.String() + "/32"
 			targetsNode := false
+
 			for _, dp := range rule.DstPorts {
 				if dp.IP == nodeIP {
 					targetsNode = true
 					break
 				}
 			}
+
 			if targetsNode {
 				// This rule should appear in reduced with identical SrcIPs.
 				foundRule := false
+
 				for _, rr := range reduced {
 					if slices.Equal(rr.SrcIPs, rule.SrcIPs) {
 						foundRule = true
 						break
 					}
 				}
+
 				if !foundRule {
 					t.Fatalf("targeting rule with SrcIPs %v was not preserved in reduced output\nreduced: %+v",
 						rule.SrcIPs, reduced)
@@ -970,6 +1006,7 @@ func TestRapid_BuildPeerMap_NoDuplicates(t *testing.T) {
 					t.Fatalf("duplicate peer: node %d has peer %d listed twice",
 						nodeID, peer.ID())
 				}
+
 				seen[peer.ID()] = true
 			}
 		}
@@ -1020,6 +1057,7 @@ func TestRapid_SetPolicy_FilterConsistency(t *testing.T) {
 
 		// Change to a new random policy
 		newPol := genSimplePolicy(t, users)
+
 		_, err = pm.SetPolicy([]byte(newPol))
 		if err != nil {
 			t.Skip("invalid generated policy for SetPolicy")
@@ -1039,6 +1077,7 @@ func TestRapid_SetPolicy_FilterConsistency(t *testing.T) {
 		for nodeID, peers := range peerMap {
 			for _, peer := range peers {
 				peerPeers := peerMap[peer.ID()]
+
 				found := slices.ContainsFunc(peerPeers, func(nv types.NodeView) bool {
 					return nv.ID() == nodeID
 				})
@@ -1064,6 +1103,7 @@ func TestRapid_MergeFilterRules_UniqueKeys(t *testing.T) {
 		merged := mergeFilterRules(rules)
 
 		keys := make(map[string]int)
+
 		for _, rule := range merged {
 			key := filterRuleKey(rule)
 			keys[key]++
@@ -1099,6 +1139,7 @@ func TestRapid_PolicyJSON_FullRoundtrip(t *testing.T) {
 		pm1.mu.Lock()
 		polBytes, err := json.Marshal(pm1.pol)
 		pm1.mu.Unlock()
+
 		if err != nil {
 			t.Fatalf("failed to marshal policy: %v", err)
 		}
@@ -1135,7 +1176,7 @@ func TestRapid_PolicyJSON_FullRoundtrip(t *testing.T) {
 
 		// Also probe with some random IPs for false==false cases.
 		randomProbes := rapid.IntRange(3, 8).Draw(t, "randomProbes")
-		for i := 0; i < randomProbes; i++ {
+		for i := range randomProbes {
 			srcIP := genIPInCGNAT(t, fmt.Sprintf("rtSrc%d", i))
 			dstIP := genIPInCGNAT(t, fmt.Sprintf("rtDst%d", i))
 			dstPort := rapid.Uint16().Draw(t, fmt.Sprintf("rtPort%d", i))
@@ -1158,8 +1199,8 @@ func TestRapid_PolicyJSON_FullRoundtrip(t *testing.T) {
 
 // genMixedNodes generates 4-8 nodes where some are tagged with "tag:server"
 // and the rest are untagged user-owned nodes.
-// tagProb controls the probability of a node being tagged (0.0 to 1.0).
-func genMixedNodes(t *rapid.T, users types.Users, tagProb float64) types.Nodes {
+// Each node has a 50% probability of being tagged.
+func genMixedNodes(t *rapid.T, users types.Users) types.Nodes {
 	count := rapid.IntRange(4, 8).Draw(t, "mixedNodeCount")
 	nodes := make(types.Nodes, count)
 
@@ -1170,7 +1211,7 @@ func genMixedNodes(t *rapid.T, users types.Users, tagProb float64) types.Nodes {
 		ipv6 := netip.AddrFrom16(ipv6Bytes)
 
 		node := &types.Node{
-			ID:       types.NodeID(i + 1),
+			ID:       types.NodeID(i + 1), //nolint:gosec // positive bounded value
 			Hostname: fmt.Sprintf("node%d", i+1),
 			IPv4:     &ipv4,
 			IPv6:     &ipv6,
@@ -1179,7 +1220,7 @@ func genMixedNodes(t *rapid.T, users types.Users, tagProb float64) types.Nodes {
 		}
 
 		// Use the probability to decide tagging; rapid.Float64 draws [0,1).
-		if rapid.Float64Range(0, 1).Draw(t, fmt.Sprintf("tagDraw%d", i)) < tagProb {
+		if rapid.Float64Range(0, 1).Draw(t, fmt.Sprintf("tagDraw%d", i)) < 0.5 {
 			node.Tags = []string{"tag:server"}
 		}
 
@@ -1190,23 +1231,24 @@ func genMixedNodes(t *rapid.T, users types.Users, tagProb float64) types.Nodes {
 }
 
 // genTwoUserNodes generates exactly 2 nodes per user for exactly 2 users.
-func genTwoUserNodes(t *rapid.T, users types.Users) types.Nodes {
+func genTwoUserNodes(_ *rapid.T, users types.Users) types.Nodes {
 	if len(users) < 2 {
 		// Ensure at least 2 users; callers should pass >= 2.
 		panic("genTwoUserNodes requires at least 2 users")
 	}
 
 	nodes := make(types.Nodes, 4)
-	for userIdx := 0; userIdx < 2; userIdx++ {
+
+	for userIdx := range 2 {
 		user := users[userIdx]
-		for nodeInUser := 0; nodeInUser < 2; nodeInUser++ {
+		for nodeInUser := range 2 {
 			i := userIdx*2 + nodeInUser
 			ipv4 := netip.AddrFrom4([4]byte{100, 64, 0, byte(i + 1)})
 			ipv6Bytes := [16]byte{0xfd, 0x7a, 0x11, 0x5c, 0xa1, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0, 0, byte(i + 1)}
 			ipv6 := netip.AddrFrom16(ipv6Bytes)
 
 			nodes[i] = &types.Node{
-				ID:       types.NodeID(i + 1),
+				ID:       types.NodeID(i + 1), //nolint:gosec // positive bounded value
 				Hostname: fmt.Sprintf("node%d", i+1),
 				IPv4:     &ipv4,
 				IPv6:     &ipv6,
@@ -1230,15 +1272,17 @@ func TestRapid_BuildPeerMap_TagBasedACL_Symmetry(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		users := genTestUsers(t)
 		// Ensure at least some tagged and untagged by drawing nodes with ~50% tag probability.
-		nodes := genMixedNodes(t, users, 0.5)
+		nodes := genMixedNodes(t, users)
 
 		// Count tagged vs untagged to ensure meaningful test data.
 		nTagged := 0
+
 		for _, n := range nodes {
 			if n.IsTagged() {
 				nTagged++
 			}
 		}
+
 		nUntagged := len(nodes) - nTagged
 		if nTagged == 0 || nUntagged == 0 {
 			t.Skip("need at least one tagged and one untagged node")
@@ -1265,6 +1309,7 @@ func TestRapid_BuildPeerMap_TagBasedACL_Symmetry(t *testing.T) {
 					t.Fatalf("symmetry violation: node %d sees %d, but %d has no peer list",
 						nodeID, peer.ID(), peer.ID())
 				}
+
 				found := slices.ContainsFunc(peerPeers, func(nv types.NodeView) bool {
 					return nv.ID() == nodeID
 				})
@@ -1284,6 +1329,7 @@ func TestRapid_BuildPeerMap_TagBasedACL_Symmetry(t *testing.T) {
 				for i, p := range peers {
 					peerIDs[i] = p.ID()
 				}
+
 				t.Fatalf("untagged node %d should have no peers under tag-only ACL, but has: %v",
 					n.ID, peerIDs)
 			}
@@ -1294,6 +1340,7 @@ func TestRapid_BuildPeerMap_TagBasedACL_Symmetry(t *testing.T) {
 			if !n.IsTagged() {
 				continue
 			}
+
 			for _, peer := range peerMap[n.ID] {
 				if !peer.IsTagged() {
 					t.Fatalf("tagged node %d sees untagged node %d under tag-only ACL",
@@ -1307,10 +1354,12 @@ func TestRapid_BuildPeerMap_TagBasedACL_Symmetry(t *testing.T) {
 			if !n.IsTagged() {
 				continue
 			}
+
 			for _, other := range nodes {
 				if other.ID == n.ID || !other.IsTagged() {
 					continue
 				}
+
 				found := slices.ContainsFunc(peerMap[n.ID], func(nv types.NodeView) bool {
 					return nv.ID() == other.ID
 				})
@@ -1332,14 +1381,16 @@ func TestRapid_BuildPeerMap_TagBasedACL_Symmetry(t *testing.T) {
 func TestRapid_BuildPeerMap_AutogroupMember_TaggedPartition(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		users := genTestUsers(t)
-		nodes := genMixedNodes(t, users, 0.5)
+		nodes := genMixedNodes(t, users)
 
 		nTagged := 0
+
 		for _, n := range nodes {
 			if n.IsTagged() {
 				nTagged++
 			}
 		}
+
 		nUntagged := len(nodes) - nTagged
 		if nTagged == 0 || nUntagged == 0 {
 			t.Skip("need at least one tagged and one untagged node")
@@ -1363,10 +1414,12 @@ func TestRapid_BuildPeerMap_AutogroupMember_TaggedPartition(t *testing.T) {
 			if n.IsTagged() {
 				continue
 			}
+
 			for _, other := range nodes {
 				if other.ID == n.ID || other.IsTagged() {
 					continue
 				}
+
 				found := slices.ContainsFunc(peerMap[n.ID], func(nv types.NodeView) bool {
 					return nv.ID() == other.ID
 				})
@@ -1382,6 +1435,7 @@ func TestRapid_BuildPeerMap_AutogroupMember_TaggedPartition(t *testing.T) {
 			if n.IsTagged() {
 				continue
 			}
+
 			for _, peer := range peerMap[n.ID] {
 				if peer.IsTagged() {
 					t.Fatalf("untagged node %d should not see tagged node %d under autogroup:member ACL",
@@ -1395,11 +1449,13 @@ func TestRapid_BuildPeerMap_AutogroupMember_TaggedPartition(t *testing.T) {
 			if !n.IsTagged() {
 				continue
 			}
+
 			if len(peerMap[n.ID]) > 0 {
 				peerIDs := make([]types.NodeID, len(peerMap[n.ID]))
 				for i, p := range peerMap[n.ID] {
 					peerIDs[i] = p.ID()
 				}
+
 				t.Fatalf("tagged node %d should have no peers under autogroup:member ACL, but has: %v",
 					n.ID, peerIDs)
 			}
@@ -1446,6 +1502,7 @@ func TestRapid_BuildPeerMap_RestrictivePolicy_Isolation(t *testing.T) {
 				if otherID == id {
 					continue
 				}
+
 				found := slices.ContainsFunc(peers, func(nv types.NodeView) bool {
 					return nv.ID() == otherID
 				})
@@ -1463,6 +1520,7 @@ func TestRapid_BuildPeerMap_RestrictivePolicy_Isolation(t *testing.T) {
 				for i, p := range peers {
 					peerIDs[i] = p.ID()
 				}
+
 				t.Fatalf("user2 node %d should have no peers, but has: %v", id, peerIDs)
 			}
 		}
@@ -1486,20 +1544,23 @@ func TestRapid_BuildPeerMap_RestrictivePolicy_Isolation(t *testing.T) {
 func TestRapid_BuildPeerMap_TaggedNodeNotInMember(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		users := genTestUsers(t)
-		nodes := genMixedNodes(t, users, 0.5)
+		nodes := genMixedNodes(t, users)
 
 		nTagged := 0
+
 		for _, n := range nodes {
 			if n.IsTagged() {
 				nTagged++
 			}
 		}
+
 		if nTagged == 0 || nTagged == len(nodes) {
 			t.Skip("need at least one tagged and one untagged node")
 		}
 
 		// Resolve autogroup:member.
 		ag := AutoGroupMember
+
 		memberSet, err := ag.Resolve(nil, users, nodes.ViewSlice())
 		if err != nil {
 			t.Fatalf("failed to resolve autogroup:member: %v", err)
@@ -1510,6 +1571,7 @@ func TestRapid_BuildPeerMap_TaggedNodeNotInMember(t *testing.T) {
 			if !n.IsTagged() {
 				continue
 			}
+
 			for _, ip := range n.IPs() {
 				if memberSet.Contains(ip) {
 					t.Fatalf("tagged node %d (tags: %v) has IP %s in autogroup:member set",
@@ -1523,6 +1585,7 @@ func TestRapid_BuildPeerMap_TaggedNodeNotInMember(t *testing.T) {
 			if n.IsTagged() {
 				continue
 			}
+
 			for _, ip := range n.IPs() {
 				if !memberSet.Contains(ip) {
 					t.Fatalf("untagged node %d IP %s should be in autogroup:member set", n.ID, ip)
@@ -1532,6 +1595,7 @@ func TestRapid_BuildPeerMap_TaggedNodeNotInMember(t *testing.T) {
 
 		// Complement check: resolve autogroup:tagged and verify disjointness.
 		agTagged := AutoGroupTagged
+
 		taggedSet, err := agTagged.Resolve(nil, users, nodes.ViewSlice())
 		if err != nil {
 			t.Fatalf("failed to resolve autogroup:tagged: %v", err)
@@ -1541,6 +1605,7 @@ func TestRapid_BuildPeerMap_TaggedNodeNotInMember(t *testing.T) {
 		for _, n := range nodes {
 			for _, ip := range n.IPs() {
 				inMember := memberSet.Contains(ip)
+
 				inTagged := taggedSet.Contains(ip)
 				if inMember && inTagged {
 					t.Fatalf("node %d IP %s is in both autogroup:member AND autogroup:tagged",
@@ -1557,14 +1622,17 @@ func TestRapid_BuildPeerMap_TaggedNodeNotInMember(t *testing.T) {
 //   rules that don't appear for untagged nodes (and vice versa).
 // ---------------------------------------------------------------------------
 
+//nolint:gocyclo // complex property-based test with many assertions
 func TestRapid_FilterForNode_TaggedVsUntagged(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		users := genTestUsers(t)
-		nodes := genMixedNodes(t, users, 0.5)
+		nodes := genMixedNodes(t, users)
 
 		nTagged := 0
 		nUntagged := 0
+
 		var aTaggedNode, anUntaggedNode *types.Node
+
 		for _, n := range nodes {
 			if n.IsTagged() {
 				nTagged++
@@ -1574,6 +1642,7 @@ func TestRapid_FilterForNode_TaggedVsUntagged(t *testing.T) {
 				anUntaggedNode = n
 			}
 		}
+
 		if nTagged == 0 || nUntagged == 0 {
 			t.Skip("need at least one tagged and one untagged node")
 		}
@@ -1605,11 +1674,13 @@ func TestRapid_FilterForNode_TaggedVsUntagged(t *testing.T) {
 		// Property 1: Tagged node's filter should only contain DstPorts targeting
 		// tagged node IPs (tag:server -> tag:server).
 		taggedIPs := make(map[string]bool)
+
 		for _, n := range nodes {
 			if n.IsTagged() {
 				if n.IPv4 != nil {
 					taggedIPs[netip.PrefixFrom(*n.IPv4, n.IPv4.BitLen()).String()] = true
 				}
+
 				if n.IPv6 != nil {
 					taggedIPs[netip.PrefixFrom(*n.IPv6, n.IPv6.BitLen()).String()] = true
 				}
@@ -1621,7 +1692,8 @@ func TestRapid_FilterForNode_TaggedVsUntagged(t *testing.T) {
 				if dp.IP == "*" {
 					continue // wildcard is ok
 				}
-				if !taggedIPs[dp.IP] {
+
+				if !taggedIPs[dp.IP] { //nolint:staticcheck // SA9003: intentionally empty — documents filter scoping behavior
 					// DstPort targets a non-tagged node — this is expected
 					// if the tagged node is also user-owned by user1.
 					// Since tags define identity, this tagged node won't
@@ -1652,10 +1724,12 @@ func TestRapid_FilterForNode_TaggedVsUntagged(t *testing.T) {
 		// Property 3: FilterForNode results should be a subset of what compileFilterRules produces.
 		// The global filter contains all rules; per-node filter is reduced.
 		globalFilter, _ := pm.Filter()
+
 		for _, rule := range taggedFilter {
 			for _, dp := range rule.DstPorts {
 				// Each DstPort in the per-node filter must exist in the global filter.
 				found := false
+
 				for _, gRule := range globalFilter {
 					for _, gDp := range gRule.DstPorts {
 						if dp.IP == gDp.IP && dp.Ports == gDp.Ports {
@@ -1663,10 +1737,12 @@ func TestRapid_FilterForNode_TaggedVsUntagged(t *testing.T) {
 							break
 						}
 					}
+
 					if found {
 						break
 					}
 				}
+
 				if !found && dp.IP != "*" {
 					t.Fatalf("tagged node filter has DstPort %s:%v not found in global filter",
 						dp.IP, dp.Ports)
@@ -1677,6 +1753,7 @@ func TestRapid_FilterForNode_TaggedVsUntagged(t *testing.T) {
 		for _, rule := range untaggedFilter {
 			for _, dp := range rule.DstPorts {
 				found := false
+
 				for _, gRule := range globalFilter {
 					for _, gDp := range gRule.DstPorts {
 						if dp.IP == gDp.IP && dp.Ports == gDp.Ports {
@@ -1684,10 +1761,12 @@ func TestRapid_FilterForNode_TaggedVsUntagged(t *testing.T) {
 							break
 						}
 					}
+
 					if found {
 						break
 					}
 				}
+
 				if !found && dp.IP != "*" {
 					t.Fatalf("untagged node filter has DstPort %s:%v not found in global filter",
 						dp.IP, dp.Ports)
@@ -1708,6 +1787,7 @@ func TestRapid_FilterForNode_TaggedVsUntagged(t *testing.T) {
 //   rule allows the traffic, the pair appears in the peer map.
 // ---------------------------------------------------------------------------
 
+//nolint:gocyclo // complex property-based test with many assertions
 func TestRapid_BuildPeerMap_OverlappingACLs_NoFalseNegatives(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		// 3 users, 6 nodes (2 per user)
@@ -1718,13 +1798,14 @@ func TestRapid_BuildPeerMap_OverlappingACLs_NoFalseNegatives(t *testing.T) {
 		}
 
 		nodes := make(types.Nodes, 6)
+
 		for i := range 6 {
 			user := users[i/2]
 			ipv4 := netip.AddrFrom4([4]byte{100, 64, 0, byte(i + 1)})
 			ipv6Bytes := [16]byte{0xfd, 0x7a, 0x11, 0x5c, 0xa1, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0, 0, byte(i + 1)}
 			ipv6 := netip.AddrFrom16(ipv6Bytes)
 			nodes[i] = &types.Node{
-				ID:       types.NodeID(i + 1),
+				ID:       types.NodeID(i + 1), //nolint:gosec // positive bounded value
 				Hostname: fmt.Sprintf("node%d", i+1),
 				IPv4:     &ipv4,
 				IPv6:     &ipv6,
@@ -1748,7 +1829,7 @@ func TestRapid_BuildPeerMap_OverlappingACLs_NoFalseNegatives(t *testing.T) {
 			"user1@",
 			"user2@",
 			"user3@",
-			"autogroup:member",
+			string(AutoGroupMember),
 		}
 		// Pool of destination alias generators — note IP-based refs use actual node IPs
 		dstChoices := []string{
@@ -1765,7 +1846,8 @@ func TestRapid_BuildPeerMap_OverlappingACLs_NoFalseNegatives(t *testing.T) {
 			"100.64.0.6/32:*",
 		}
 
-		var acls []aclSpec
+		acls := make([]aclSpec, 0, numRules)
+
 		for i := range numRules {
 			srcIdx := rapid.IntRange(0, len(srcChoices)-1).Draw(t, fmt.Sprintf("srcIdx%d", i))
 			dstIdx := rapid.IntRange(0, len(dstChoices)-1).Draw(t, fmt.Sprintf("dstIdx%d", i))
@@ -1773,13 +1855,14 @@ func TestRapid_BuildPeerMap_OverlappingACLs_NoFalseNegatives(t *testing.T) {
 		}
 
 		// Build policy JSON
-		var aclStrings []string
+		aclStrings := make([]string, 0, len(acls))
 		for _, acl := range acls {
 			aclStrings = append(aclStrings, fmt.Sprintf(
 				`{"action":"accept","src":[%q],"dst":[%q]}`,
 				acl.src, acl.dst,
 			))
 		}
+
 		polJSON := fmt.Sprintf(`{"acls":[%s]}`, strings.Join(aclStrings, ","))
 
 		pm, err := NewPolicyManager([]byte(polJSON), users, nodes.ViewSlice())
@@ -1817,12 +1900,8 @@ func TestRapid_BuildPeerMap_OverlappingACLs_NoFalseNegatives(t *testing.T) {
 							if err != nil {
 								return false
 							}
-							for _, ip := range n.IPs() {
-								if prefix.Contains(ip) {
-									return true
-								}
-							}
-							return false
+
+							return slices.ContainsFunc(n.IPs(), prefix.Contains)
 						}
 					}
 
@@ -1832,6 +1911,7 @@ func TestRapid_BuildPeerMap_OverlappingACLs_NoFalseNegatives(t *testing.T) {
 						if idx := strings.LastIndex(dst, ":"); idx >= 0 {
 							dstAlias = dst[:idx]
 						}
+
 						switch {
 						case dstAlias == "*":
 							return true
@@ -1846,12 +1926,8 @@ func TestRapid_BuildPeerMap_OverlappingACLs_NoFalseNegatives(t *testing.T) {
 							if err != nil {
 								return false
 							}
-							for _, ip := range n.IPs() {
-								if prefix.Contains(ip) {
-									return true
-								}
-							}
-							return false
+
+							return slices.ContainsFunc(n.IPs(), prefix.Contains)
 						}
 					}
 
@@ -1891,6 +1967,7 @@ func peerIDs(peers []types.NodeView) []types.NodeID {
 	for i, p := range peers {
 		ids[i] = p.ID()
 	}
+
 	return ids
 }
 
@@ -1909,13 +1986,14 @@ func TestRapid_FilterForNode_PortSpecific_Correctness(t *testing.T) {
 
 		// 2 nodes per user
 		nodes := make(types.Nodes, 4)
+
 		for i := range 4 {
 			user := users[i/2]
 			ipv4 := netip.AddrFrom4([4]byte{100, 64, 0, byte(i + 1)})
 			ipv6Bytes := [16]byte{0xfd, 0x7a, 0x11, 0x5c, 0xa1, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0, 0, byte(i + 1)}
 			ipv6 := netip.AddrFrom16(ipv6Bytes)
 			nodes[i] = &types.Node{
-				ID:       types.NodeID(i + 1),
+				ID:       types.NodeID(i + 1), //nolint:gosec // positive bounded value
 				Hostname: fmt.Sprintf("node%d", i+1),
 				IPv4:     &ipv4,
 				IPv6:     &ipv6,
@@ -1928,11 +2006,12 @@ func TestRapid_FilterForNode_PortSpecific_Correctness(t *testing.T) {
 		portPool := []uint16{22, 80, 443, 8080, 5432}
 		numPorts := rapid.IntRange(1, 3).Draw(t, "numPorts")
 		selectedPorts := make([]uint16, numPorts)
+
 		portStrs := make([]string, numPorts)
 		for i := range numPorts {
 			pIdx := rapid.IntRange(0, len(portPool)-1).Draw(t, fmt.Sprintf("portIdx%d", i))
 			selectedPorts[i] = portPool[pIdx]
-			portStrs[i] = fmt.Sprintf("%d", portPool[pIdx])
+			portStrs[i] = strconv.FormatUint(uint64(portPool[pIdx]), 10)
 		}
 
 		// Deduplicate ports for comparison
@@ -1972,7 +2051,9 @@ func TestRapid_FilterForNode_PortSpecific_Correctness(t *testing.T) {
 				ip   string
 				port uint16
 			}
+
 			gotPorts := make(map[ipPort]bool)
+
 			for _, rule := range filter {
 				for _, dp := range rule.DstPorts {
 					// For single-port ranges
@@ -1997,6 +2078,7 @@ func TestRapid_FilterForNode_PortSpecific_Correctness(t *testing.T) {
 					// Also check as prefix format
 					found = gotPorts[ipPort{nodeIPv4 + "/32", p}]
 				}
+
 				if !found {
 					t.Fatalf("FilterForNode for node %d (IP=%s): missing port %d in filter rules\n"+
 						"expected ports: %v\nfilter: %+v\npolicy: %s",
@@ -2069,13 +2151,14 @@ func TestRapid_PolicyManager_SetNodes_PeerMapUpdates(t *testing.T) {
 
 		// Start with 4 nodes (2 per user)
 		initialNodes := make(types.Nodes, 4)
+
 		for i := range 4 {
 			user := users[i/2]
 			ipv4 := netip.AddrFrom4([4]byte{100, 64, 0, byte(i + 1)})
 			ipv6Bytes := [16]byte{0xfd, 0x7a, 0x11, 0x5c, 0xa1, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0, 0, byte(i + 1)}
 			ipv6 := netip.AddrFrom16(ipv6Bytes)
 			initialNodes[i] = &types.Node{
-				ID:       types.NodeID(i + 1),
+				ID:       types.NodeID(i + 1), //nolint:gosec // positive bounded value
 				Hostname: fmt.Sprintf("node%d", i+1),
 				IPv4:     &ipv4,
 				IPv6:     &ipv6,
@@ -2113,14 +2196,15 @@ func TestRapid_PolicyManager_SetNodes_PeerMapUpdates(t *testing.T) {
 
 		// Step 2: Add 2 new nodes (one per user)
 		expandedNodes := slices.Clone(initialNodes)
-		for i := 0; i < 2; i++ {
+
+		for i := range 2 {
 			newIdx := 4 + i
 			user := users[i]
 			ipv4 := netip.AddrFrom4([4]byte{100, 64, 0, byte(newIdx + 1)})
 			ipv6Bytes := [16]byte{0xfd, 0x7a, 0x11, 0x5c, 0xa1, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0, 0, byte(newIdx + 1)}
 			ipv6 := netip.AddrFrom16(ipv6Bytes)
 			expandedNodes = append(expandedNodes, &types.Node{
-				ID:       types.NodeID(newIdx + 1),
+				ID:       types.NodeID(newIdx + 1), //nolint:gosec // positive bounded value
 				Hostname: fmt.Sprintf("node%d", newIdx+1),
 				IPv4:     &ipv4,
 				IPv6:     &ipv6,
@@ -2141,6 +2225,7 @@ func TestRapid_PolicyManager_SetNodes_PeerMapUpdates(t *testing.T) {
 		if !slices.ContainsFunc(peers5, func(nv types.NodeView) bool { return nv.ID() == 1 }) {
 			t.Fatalf("after expand: new node 5 (user1) should see node 1 (user1)\npeerMap[5]=%v", peerIDs(peers5))
 		}
+
 		if !slices.ContainsFunc(peers5, func(nv types.NodeView) bool { return nv.ID() == 2 }) {
 			t.Fatalf("after expand: new node 5 (user1) should see node 2 (user1)\npeerMap[5]=%v", peerIDs(peers5))
 		}
@@ -2154,12 +2239,14 @@ func TestRapid_PolicyManager_SetNodes_PeerMapUpdates(t *testing.T) {
 		if !slices.ContainsFunc(peers6, func(nv types.NodeView) bool { return nv.ID() == 3 }) {
 			t.Fatalf("after expand: new node 6 (user2) should see node 3 (user2)\npeerMap[6]=%v", peerIDs(peers6))
 		}
+
 		if !slices.ContainsFunc(peers6, func(nv types.NodeView) bool { return nv.ID() == 4 }) {
 			t.Fatalf("after expand: new node 6 (user2) should see node 4 (user2)\npeerMap[6]=%v", peerIDs(peers6))
 		}
 
 		// Step 3: Remove the 2 original user2 nodes (3, 4), keep the rest
 		var shrunkNodes types.Nodes
+
 		for _, n := range expandedNodes {
 			if n.ID != 3 && n.ID != 4 {
 				shrunkNodes = append(shrunkNodes, n)
@@ -2196,11 +2283,13 @@ func TestRapid_PolicyManager_SetNodes_PeerMapUpdates(t *testing.T) {
 			peers := peerMap3[id]
 			expectedPeerCount := 2 // the other two user1 nodes
 			user1PeerCount := 0
+
 			for _, p := range peers {
 				if p.ID() == 1 || p.ID() == 2 || p.ID() == 5 {
 					user1PeerCount++
 				}
 			}
+
 			if user1PeerCount != expectedPeerCount {
 				t.Fatalf("after shrink: user1 node %d should see %d user1 peers, got %d\npeerMap[%d]=%v",
 					id, expectedPeerCount, user1PeerCount, id, peerIDs(peers))
@@ -2225,6 +2314,7 @@ func TestRapid_BuildPeerMap_TagOwnership_TransitiveResolution(t *testing.T) {
 		// Create nodes: some with tag:a, some with tag:b, some untagged
 		// Use deterministic layout with some randomness
 		numNodes := rapid.IntRange(4, 8).Draw(t, "numNodes")
+
 		nodes := make(types.Nodes, numNodes)
 		for i := range numNodes {
 			user := users[i%len(users)]
@@ -2232,7 +2322,7 @@ func TestRapid_BuildPeerMap_TagOwnership_TransitiveResolution(t *testing.T) {
 			ipv6Bytes := [16]byte{0xfd, 0x7a, 0x11, 0x5c, 0xa1, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0, 0, byte(i + 1)}
 			ipv6 := netip.AddrFrom16(ipv6Bytes)
 			nodes[i] = &types.Node{
-				ID:       types.NodeID(i + 1),
+				ID:       types.NodeID(i + 1), //nolint:gosec // positive bounded value
 				Hostname: fmt.Sprintf("node%d", i+1),
 				IPv4:     &ipv4,
 				IPv6:     &ipv6,
@@ -2247,21 +2337,24 @@ func TestRapid_BuildPeerMap_TagOwnership_TransitiveResolution(t *testing.T) {
 				nodes[i].Tags = []string{"tag:a"}
 			case 1:
 				nodes[i].Tags = []string{"tag:b"}
-			// case 2: untagged
+				// case 2: untagged
 			}
 		}
 
 		// Ensure we have at least one tagged-a and one tagged-b node
 		hasTagA := false
 		hasTagB := false
+
 		for _, n := range nodes {
 			if slices.Contains(n.Tags, "tag:a") {
 				hasTagA = true
 			}
+
 			if slices.Contains(n.Tags, "tag:b") {
 				hasTagB = true
 			}
 		}
+
 		if !hasTagA || !hasTagB {
 			t.Skip("need at least one tag:a and one tag:b node")
 		}
@@ -2288,6 +2381,7 @@ func TestRapid_BuildPeerMap_TagOwnership_TransitiveResolution(t *testing.T) {
 
 		// Collect tag:a nodes
 		var tagANodes []types.NodeID
+
 		for _, n := range nodes {
 			if slices.Contains(n.Tags, "tag:a") {
 				tagANodes = append(tagANodes, n.ID)
@@ -2301,6 +2395,7 @@ func TestRapid_BuildPeerMap_TagOwnership_TransitiveResolution(t *testing.T) {
 				if otherID == id {
 					continue
 				}
+
 				found := slices.ContainsFunc(peers, func(nv types.NodeView) bool {
 					return nv.ID() == otherID
 				})
@@ -2316,12 +2411,14 @@ func TestRapid_BuildPeerMap_TagOwnership_TransitiveResolution(t *testing.T) {
 		for _, id := range tagANodes {
 			for _, peer := range peerMap[id] {
 				isTagA := false
+
 				for _, n := range nodes {
 					if n.ID == peer.ID() && slices.Contains(n.Tags, "tag:a") {
 						isTagA = true
 						break
 					}
 				}
+
 				if !isTagA {
 					t.Fatalf("tag:a node %d should only see other tag:a nodes, but sees node %d",
 						id, peer.ID())
@@ -2336,6 +2433,7 @@ func TestRapid_BuildPeerMap_TagOwnership_TransitiveResolution(t *testing.T) {
 			// Only user1's untagged nodes should be able to own tag:a (via tag:b -> user1@)
 			if n.User != nil && n.User.Name == "user1" && !n.IsTagged() {
 				canHaveTagA := pm.NodeCanHaveTag(n.View(), "tag:a")
+
 				canHaveTagB := pm.NodeCanHaveTag(n.View(), "tag:b")
 				if !canHaveTagB {
 					t.Fatalf("user1 untagged node %d should be able to have tag:b (direct ownership)", n.ID)
@@ -2363,13 +2461,14 @@ func TestRapid_BuildPeerMap_AutogroupSelf_OnlyOwnerPorts(t *testing.T) {
 		}
 
 		nodes := make(types.Nodes, 6)
+
 		for i := range 6 {
 			user := users[i/3]
 			ipv4 := netip.AddrFrom4([4]byte{100, 64, 0, byte(i + 1)})
 			ipv6Bytes := [16]byte{0xfd, 0x7a, 0x11, 0x5c, 0xa1, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0, 0, byte(i + 1)}
 			ipv6 := netip.AddrFrom16(ipv6Bytes)
 			nodes[i] = &types.Node{
-				ID:       types.NodeID(i + 1),
+				ID:       types.NodeID(i + 1), //nolint:gosec // positive bounded value
 				Hostname: fmt.Sprintf("node%d", i+1),
 				IPv4:     &ipv4,
 				IPv6:     &ipv6,
@@ -2401,11 +2500,13 @@ func TestRapid_BuildPeerMap_AutogroupSelf_OnlyOwnerPorts(t *testing.T) {
 
 			// Collect all IPs that are same-user
 			sameUserIPs := make(map[string]bool)
+
 			for _, other := range nodes {
 				if other.User.ID == node.User.ID {
 					if other.IPv4 != nil {
 						sameUserIPs[other.IPv4.String()] = true
 					}
+
 					if other.IPv6 != nil {
 						sameUserIPs[other.IPv6.String()] = true
 					}
@@ -2414,11 +2515,13 @@ func TestRapid_BuildPeerMap_AutogroupSelf_OnlyOwnerPorts(t *testing.T) {
 
 			// Collect all IPs from different users
 			otherUserIPs := make(map[string]bool)
+
 			for _, other := range nodes {
 				if other.User.ID != node.User.ID {
 					if other.IPv4 != nil {
 						otherUserIPs[other.IPv4.String()] = true
 					}
+
 					if other.IPv6 != nil {
 						otherUserIPs[other.IPv6.String()] = true
 					}
@@ -2434,7 +2537,9 @@ func TestRapid_BuildPeerMap_AutogroupSelf_OnlyOwnerPorts(t *testing.T) {
 
 					// Parse the IP (might be with or without /32 prefix)
 					ipStr := dp.IP
-					if prefix, err := netip.ParsePrefix(ipStr); err == nil {
+
+					prefix, err := netip.ParsePrefix(ipStr)
+					if err == nil {
 						ipStr = prefix.Addr().String()
 					}
 
@@ -2458,7 +2563,9 @@ func TestRapid_BuildPeerMap_AutogroupSelf_OnlyOwnerPorts(t *testing.T) {
 					}
 
 					ipStr := dp.IP
-					if prefix, err := netip.ParsePrefix(ipStr); err == nil {
+
+					prefix, err := netip.ParsePrefix(ipStr)
+					if err == nil {
 						ipStr = prefix.Addr().String()
 					}
 

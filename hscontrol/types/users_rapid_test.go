@@ -25,14 +25,17 @@ func genURLIssuer() *rapid.Generator[string] {
 		scheme := rapid.SampledFrom([]string{"https", "http"}).Draw(t, "scheme")
 		host := rapid.StringMatching(`[a-z]{3,12}\.[a-z]{2,5}`).Draw(t, "host")
 		nParts := rapid.IntRange(0, 3).Draw(t, "nParts")
+
 		parts := make([]string, nParts)
 		for i := range parts {
 			parts[i] = rapid.StringMatching(`[a-z0-9]{1,10}`).Draw(t, "part")
 		}
+
 		path := ""
 		if len(parts) > 0 {
 			path = "/" + strings.Join(parts, "/")
 		}
+
 		return scheme + "://" + host + path
 	})
 }
@@ -99,7 +102,9 @@ func TestRapid_CleanIdentifier_NoDoubleSlashes(t *testing.T) {
 
 		// Strip the scheme (e.g., "https://") before checking
 		toCheck := result
-		if u, err := url.Parse(result); err == nil && u.Scheme != "" {
+
+		u, err := url.Parse(result)
+		if err == nil && u.Scheme != "" {
 			toCheck = u.Path
 		}
 
@@ -175,6 +180,7 @@ func TestRapid_OIDCClaims_Identifier_AlwaysCleaned(t *testing.T) {
 // Property: When both Iss and Sub are empty, Identifier returns "".
 func TestRapid_OIDCClaims_Identifier_BothEmptyIsEmpty(t *testing.T) {
 	claims := &OIDCClaims{Iss: "", Sub: ""}
+
 	result := claims.Identifier()
 	if result != "" {
 		t.Fatalf("Identifier() = %q for empty Iss+Sub, want \"\"", result)
@@ -251,7 +257,7 @@ func TestRapid_OIDCClaims_Identifier_OnlySubSetReturnsCleanedSub(t *testing.T) {
 // Property: Username never returns empty string — there's always a fallback.
 func TestRapid_Username_NeverEmpty(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
-		id := uint(rapid.IntRange(1, 10000).Draw(t, "id"))
+		id := uint(rapid.IntRange(1, 10000).Draw(t, "id")) //nolint:gosec // positive bounded value
 		user := &User{
 			Model: gorm.Model{ID: id},
 		}
@@ -260,9 +266,11 @@ func TestRapid_Username_NeverEmpty(t *testing.T) {
 		if rapid.Bool().Draw(t, "hasEmail") {
 			user.Email = rapid.StringMatching(`[a-z]{3,10}@[a-z]{3,8}\.[a-z]{2,4}`).Draw(t, "email")
 		}
+
 		if rapid.Bool().Draw(t, "hasName") {
 			user.Name = rapid.StringMatching(`[a-z]{2,15}`).Draw(t, "name")
 		}
+
 		if rapid.Bool().Draw(t, "hasProvider") {
 			user.ProviderIdentifier = sql.NullString{
 				String: genURLIssuer().Draw(t, "provider") + "/sub",

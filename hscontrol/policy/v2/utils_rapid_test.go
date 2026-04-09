@@ -2,6 +2,7 @@ package v2
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -28,7 +29,7 @@ func genValidPortNum() *rapid.Generator[uint16] {
 func genValidPortStr() *rapid.Generator[string] {
 	return rapid.Custom[string](func(t *rapid.T) string {
 		port := genValidPortNum().Draw(t, "port")
-		return fmt.Sprintf("%d", port)
+		return strconv.FormatUint(uint64(port), 10)
 	})
 }
 
@@ -36,10 +37,12 @@ func genValidPortStr() *rapid.Generator[string] {
 func genPortRange() *rapid.Generator[string] {
 	return rapid.Custom[string](func(t *rapid.T) string {
 		first := genValidPortNum().Draw(t, "first")
+
 		last := genValidPortNum().Draw(t, "last")
 		if first > last {
 			first, last = last, first
 		}
+
 		return fmt.Sprintf("%d-%d", first, last)
 	})
 }
@@ -80,6 +83,7 @@ func TestRapid_SplitDestinationAndPort_Roundtrip(t *testing.T) {
 		if gotDest != dest {
 			t.Fatalf("dest mismatch: got %q, want %q (input=%q)", gotDest, dest, input)
 		}
+
 		if gotPort != port {
 			t.Fatalf("port mismatch: got %q, want %q (input=%q)", gotPort, port, input)
 		}
@@ -104,6 +108,7 @@ func TestRapid_SplitDestinationAndPort_BracketedIPv6(t *testing.T) {
 			t.Fatalf("dest mismatch for bracketed IPv6: got %q, want %q (input=%q)",
 				gotDest, addr, input)
 		}
+
 		if gotPort != port {
 			t.Fatalf("port mismatch for bracketed IPv6: got %q, want %q (input=%q)",
 				gotPort, port, input)
@@ -161,9 +166,11 @@ func TestRapid_ParsePortRange_WildcardIsAny(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parsePortRange(\"*\") unexpected error: %v", err)
 		}
+
 		if len(result) != 1 {
 			t.Fatalf("parsePortRange(\"*\") returned %d ranges, want 1", len(result))
 		}
+
 		if result[0] != tailcfg.PortRangeAny {
 			t.Fatalf("parsePortRange(\"*\") = %v, want PortRangeAny(%v)", result[0], tailcfg.PortRangeAny)
 		}
@@ -175,15 +182,17 @@ func TestRapid_ParsePortRange_WildcardIsAny(t *testing.T) {
 func TestRapid_ParsePortRange_SinglePortFirstEqLast(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		port := genValidPortNum().Draw(t, "port")
-		portStr := fmt.Sprintf("%d", port)
+		portStr := strconv.FormatUint(uint64(port), 10)
 
 		result, err := parsePortRange(portStr)
 		if err != nil {
 			t.Fatalf("parsePortRange(%q) unexpected error: %v", portStr, err)
 		}
+
 		if len(result) != 1 {
 			t.Fatalf("parsePortRange(%q) returned %d ranges, want 1", portStr, len(result))
 		}
+
 		if result[0].First != port || result[0].Last != port {
 			t.Fatalf("parsePortRange(%q) = {First:%d, Last:%d}, want {First:%d, Last:%d}",
 				portStr, result[0].First, result[0].Last, port, port)
@@ -201,6 +210,7 @@ func TestRapid_ParsePortRange_RangeFirstLELast(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parsePortRange(%q) unexpected error: %v", rangeStr, err)
 		}
+
 		for i, pr := range result {
 			if pr.First > pr.Last {
 				t.Fatalf("parsePortRange(%q)[%d] inverted range: First=%d > Last=%d",
@@ -216,11 +226,13 @@ func TestRapid_ParsePortRange_CommaSeparated(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		nPorts := rapid.IntRange(1, 5).Draw(t, "nPorts")
 		ports := make([]uint16, nPorts)
+
 		portStrs := make([]string, nPorts)
 		for i := range nPorts {
 			ports[i] = genValidPortNum().Draw(t, fmt.Sprintf("port_%d", i))
-			portStrs[i] = fmt.Sprintf("%d", ports[i])
+			portStrs[i] = strconv.FormatUint(uint64(ports[i]), 10)
 		}
+
 		input := strings.Join(portStrs, ",")
 
 		result, err := parsePortRange(input)
@@ -267,12 +279,13 @@ func TestRapid_ParsePortRange_InvertedRangeError(t *testing.T) {
 func TestRapid_ParsePort_ValidRoundtrip(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		port := rapid.Uint16().Draw(t, "port")
-		portStr := fmt.Sprintf("%d", port)
+		portStr := strconv.FormatUint(uint64(port), 10)
 
 		result, err := parsePort(portStr)
 		if err != nil {
 			t.Fatalf("parsePort(%q) unexpected error: %v", portStr, err)
 		}
+
 		if result != port {
 			t.Fatalf("parsePort(%q) = %d, want %d", portStr, result, port)
 		}
@@ -284,7 +297,7 @@ func TestRapid_ParsePort_ValidRoundtrip(t *testing.T) {
 func TestRapid_ParsePort_RejectsNegative(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		neg := rapid.IntRange(-65535, -1).Draw(t, "neg")
-		input := fmt.Sprintf("%d", neg)
+		input := strconv.Itoa(neg)
 
 		_, err := parsePort(input)
 		if err == nil {
@@ -298,7 +311,7 @@ func TestRapid_ParsePort_RejectsNegative(t *testing.T) {
 func TestRapid_ParsePort_RejectsOverflow(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		over := rapid.IntRange(65536, 100000).Draw(t, "over")
-		input := fmt.Sprintf("%d", over)
+		input := strconv.Itoa(over)
 
 		_, err := parsePort(input)
 		if err == nil {

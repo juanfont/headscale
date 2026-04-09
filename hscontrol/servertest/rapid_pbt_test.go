@@ -14,6 +14,14 @@ import (
 	"tailscale.com/types/netmap"
 )
 
+const (
+	policyAllowAll    = "allow-all"
+	policyDefault     = "default"
+	policyRestrictive = "restrictive"
+
+	defaultUserName = "default"
+)
+
 // meshState is the model that tracks expected state alongside the
 // real harness. It records which client indices are connected vs
 // disconnected so invariant checks can filter appropriately.
@@ -103,7 +111,7 @@ type policyEntry struct {
 // is active.
 var policyPool = []policyEntry{
 	{
-		label: "allow-all",
+		label: policyAllowAll,
 		doc: []byte(`{
 			"acls": [
 				{"action": "accept", "src": ["*"], "dst": ["*:*"]}
@@ -507,7 +515,7 @@ func TestRapidMeshChurn(t *testing.T) {
 			tb:            t,
 			connected:     []bool{true, true, true, true},
 			totalAdded:    initialCount,
-			currentPolicy: "default",
+			currentPolicy: policyDefault,
 		}
 
 		checkMeshInvariants(rt, state, "initial churn mesh")
@@ -579,7 +587,7 @@ func TestRapidPolicyToggle(t *testing.T) {
 			tb:            t,
 			connected:     make([]bool, initialCount),
 			totalAdded:    initialCount,
-			currentPolicy: "default",
+			currentPolicy: policyDefault,
 		}
 
 		for i := range initialCount {
@@ -665,7 +673,7 @@ type fullStackState struct {
 	// Server-managed users beyond the default.
 	users map[string]*types.User
 
-	// Policy tracking: "allow-all" or "restrictive".
+	// Policy tracking: policyAllowAll or policyRestrictive.
 	currentPolicy string
 
 	// Route tracking: client index -> advertised prefixes.
@@ -803,7 +811,7 @@ func awaitFullStackConvergence(fs *fullStackState, timeout time.Duration) bool {
 
 			// Under allow-all/default, require full mesh among
 			// connected non-deleted clients.
-			if fs.currentPolicy == "allow-all" || fs.currentPolicy == "default" {
+			if fs.currentPolicy == policyAllowAll || fs.currentPolicy == policyDefault {
 				if len(nm.Peers) < len(connected)-1 {
 					allGood = false
 
@@ -813,7 +821,7 @@ func awaitFullStackConvergence(fs *fullStackState, timeout time.Duration) bool {
 
 			// Under restrictive policy, check policy-specific
 			// peer counts.
-			if fs.currentPolicy == "restrictive" {
+			if fs.currentPolicy == policyRestrictive {
 				userName := ""
 
 				for idx := range fs.connected {
@@ -824,8 +832,8 @@ func awaitFullStackConvergence(fs *fullStackState, timeout time.Duration) bool {
 					}
 				}
 
-				if userName == "default" {
-					defaultCount := len(fs.fsConnectedIndicesForUser("default"))
+				if userName == defaultUserName {
+					defaultCount := len(fs.fsConnectedIndicesForUser(defaultUserName))
 					expectedPeers := defaultCount - 1
 
 					if len(nm.Peers) < expectedPeers {
@@ -833,13 +841,11 @@ func awaitFullStackConvergence(fs *fullStackState, timeout time.Duration) bool {
 
 						break
 					}
-				} else {
+				} else if len(nm.Peers) > 0 {
 					// Non-default users should have 0 peers.
-					if len(nm.Peers) > 0 {
-						allGood = false
+					allGood = false
 
-						break
-					}
+					break
 				}
 			}
 		}
@@ -858,6 +864,8 @@ func awaitFullStackConvergence(fs *fullStackState, timeout time.Duration) bool {
 
 // checkFullStackInvariants verifies invariants for the full-stack
 // test, including server-side state consistency.
+//
+//nolint:gocyclo // complex invariant checker with many assertions
 func checkFullStackInvariants(rt *rapid.T, fs *fullStackState, opDesc string) {
 	connected := fs.fsConnectedClients()
 	if len(connected) == 0 {
@@ -1000,6 +1008,7 @@ func checkFullStackInvariants(rt *rapid.T, fs *fullStackState, opDesc string) {
 				rt.Fatalf("%s: BUG: deleted client %s still visible to %s "+
 					"after convergence wait",
 					opDesc, deletedName, c.Name)
+
 				deletedStillVisible = true
 			}
 		}
@@ -1009,7 +1018,7 @@ func checkFullStackInvariants(rt *rapid.T, fs *fullStackState, opDesc string) {
 	// should see each other. Skip when deleted nodes are still
 	// visible (stale peers inflate the count but don't indicate
 	// a real issue).
-	if !deletedStillVisible && (fs.currentPolicy == "allow-all" || fs.currentPolicy == "default") {
+	if !deletedStillVisible && (fs.currentPolicy == policyAllowAll || fs.currentPolicy == policyDefault) {
 		expectedMinPeers := len(connected) - 1
 
 		for _, c := range connected {
@@ -1031,18 +1040,18 @@ func checkFullStackInvariants(rt *rapid.T, fs *fullStackState, opDesc string) {
 	// user should ONLY see "default" user nodes (connected or
 	// disconnected, but not deleted). Clients in other users should
 	// see no peers. Skip when deleted nodes are still visible.
-	if !deletedStillVisible && fs.currentPolicy == "restrictive" {
+	if !deletedStillVisible && fs.currentPolicy == policyRestrictive {
 		// Build the set of all non-deleted default-user client
 		// names. Disconnected nodes may still appear in peer lists.
 		defaultNames := make(map[string]bool)
 
 		for i, name := range fs.userNames {
-			if !fs.deleted[i] && name == "default" {
+			if !fs.deleted[i] && name == defaultUserName {
 				defaultNames[fs.harness.Client(i).Name] = true
 			}
 		}
 
-		connectedDefaultCount := len(fs.fsConnectedIndicesForUser("default"))
+		connectedDefaultCount := len(fs.fsConnectedIndicesForUser(defaultUserName))
 
 		for _, idx := range fs.fsConnectedIndices() {
 			c := fs.harness.Client(idx)
@@ -1052,7 +1061,7 @@ func checkFullStackInvariants(rt *rapid.T, fs *fullStackState, opDesc string) {
 				continue
 			}
 
-			if fs.userNames[idx] == "default" {
+			if fs.userNames[idx] == defaultUserName {
 				// Default user clients should see only other
 				// default-user nodes.
 				for _, p := range nm.Peers {
@@ -1078,20 +1087,18 @@ func checkFullStackInvariants(rt *rapid.T, fs *fullStackState, opDesc string) {
 						"client %s has %d peers, want >= %d",
 						opDesc, c.Name, len(nm.Peers), expectedMinPeers)
 				}
-			} else {
+			} else if len(nm.Peers) > 0 {
 				// Non-default user clients should see no peers
 				// under the restrictive policy.
 				//
 				// BUG FINDING: After complex sequences involving
 				// DeleteNode + ReconnectClient, non-default users
 				// retain stale visibility of reconnecting nodes.
-				if len(nm.Peers) > 0 {
-					rt.Fatalf("BUG: %s: non-default client %s (user=%s) "+
-						"has %d peers, want 0 under restrictive "+
-						"policy (peers: %v)",
-						opDesc, c.Name, fs.userNames[idx],
-						len(nm.Peers), c.PeerNames())
-				}
+				rt.Fatalf("BUG: %s: non-default client %s (user=%s) "+
+					"has %d peers, want 0 under restrictive "+
+					"policy (peers: %v)",
+					opDesc, c.Name, fs.userNames[idx],
+					len(nm.Peers), c.PeerNames())
 			}
 		}
 	}
@@ -1127,15 +1134,15 @@ func TestRapidFullStackOperations(t *testing.T) {
 			deleted:          make([]bool, initialCount),
 			userNames:        make([]string, initialCount),
 			totalAdded:       initialCount,
-			users:            map[string]*types.User{"default": h.DefaultUser(), "second-user": secondUser},
-			currentPolicy:    "default",
+			users:            map[string]*types.User{defaultUserName: h.DefaultUser(), "second-user": secondUser},
+			currentPolicy:    policyDefault,
 			advertisedRoutes: make(map[int][]netip.Prefix),
 			approvedRoutes:   make(map[int][]netip.Prefix),
 		}
 
 		for i := range initialCount {
 			fs.connected[i] = true
-			fs.userNames[i] = "default"
+			fs.userNames[i] = defaultUserName
 		}
 
 		checkFullStackInvariants(rt, fs, "initial full-stack mesh")
@@ -1150,7 +1157,7 @@ func TestRapidFullStackOperations(t *testing.T) {
 				_ = fs.harness.AddClient(t)
 				fs.connected = append(fs.connected, true)
 				fs.deleted = append(fs.deleted, false)
-				fs.userNames = append(fs.userNames, "default")
+				fs.userNames = append(fs.userNames, defaultUserName)
 				fs.totalAdded++
 
 				opDesc := fmt.Sprintf("AddClientDefaultUser(total=%d)", fs.totalAdded)
@@ -1198,7 +1205,9 @@ func TestRapidFullStackOperations(t *testing.T) {
 
 				// Find the node on the server by hostname.
 				nodes := fs.harness.Server.State().ListNodes()
+
 				var nodeView types.NodeView
+
 				found := false
 
 				for _, nv := range nodes.All() {
@@ -1240,6 +1249,7 @@ func TestRapidFullStackOperations(t *testing.T) {
 
 				// Give the batcher time to process the delete
 				// change and propagate to remaining clients.
+				//nolint:forbidigo // deterministic delay for batcher tick processing in PBT; no pollable condition
 				time.Sleep(2 * time.Second)
 
 				// Attempt convergence. Delete propagation can be
@@ -1258,9 +1268,9 @@ func TestRapidFullStackOperations(t *testing.T) {
 			// "default" user nodes. The second-user is isolated.
 			"SetRestrictivePolicy": func(rt *rapid.T) {
 				// Headscale ACLs reference users with a trailing "@".
-				defaultUserRef := fs.users["default"].Name + "@"
+				defaultUserRef := fs.users[defaultUserName].Name + "@"
 
-				policy := []byte(fmt.Sprintf(`{
+				policy := fmt.Appendf(nil, `{
 					"acls": [
 						{
 							"action": "accept",
@@ -1268,10 +1278,10 @@ func TestRapidFullStackOperations(t *testing.T) {
 							"dst": ["%s:*"]
 						}
 					]
-				}`, defaultUserRef, defaultUserRef))
+				}`, defaultUserRef, defaultUserRef)
 
 				fs.harness.ChangePolicy(t, policy)
-				fs.currentPolicy = "restrictive"
+				fs.currentPolicy = policyRestrictive
 
 				opDesc := "SetRestrictivePolicy"
 
@@ -1282,6 +1292,7 @@ func TestRapidFullStackOperations(t *testing.T) {
 
 				// Give extra time for restrictive policy to propagate
 				// peer removal to non-default users.
+				//nolint:forbidigo // deterministic delay for policy propagation in PBT; no pollable condition
 				time.Sleep(500 * time.Millisecond)
 
 				checkFullStackInvariants(rt, fs, opDesc)
@@ -1294,7 +1305,7 @@ func TestRapidFullStackOperations(t *testing.T) {
 						{"action": "accept", "src": ["*"], "dst": ["*:*"]}
 					]
 				}`))
-				fs.currentPolicy = "allow-all"
+				fs.currentPolicy = policyAllowAll
 
 				opDesc := "SetAllowAllPolicy"
 
@@ -1339,6 +1350,7 @@ func TestRapidFullStackOperations(t *testing.T) {
 
 				// Find the node ID on the server.
 				var nodeID types.NodeID
+
 				foundNode := false
 
 				nodes := fs.harness.Server.State().ListNodes()
@@ -1358,6 +1370,7 @@ func TestRapidFullStackOperations(t *testing.T) {
 				}
 
 				// Wait a bit for the server to process the hostinfo.
+				//nolint:forbidigo // deterministic delay for hostinfo processing in PBT; no pollable condition
 				time.Sleep(500 * time.Millisecond)
 
 				// Approve the route.
@@ -1550,7 +1563,7 @@ func TestRapid_PolicyToggle_PeerCountConverges(t *testing.T) {
 		// Build the restrictive policy: only harness-default can
 		// talk to harness-default.
 		defaultUserRef := h.DefaultUser().Name + "@"
-		restrictivePolicy := []byte(fmt.Sprintf(`{
+		restrictivePolicy := fmt.Appendf(nil, `{
 			"acls": [
 				{
 					"action": "accept",
@@ -1558,7 +1571,7 @@ func TestRapid_PolicyToggle_PeerCountConverges(t *testing.T) {
 					"dst": ["%s:*"]
 				}
 			]
-		}`, defaultUserRef, defaultUserRef))
+		}`, defaultUserRef, defaultUserRef)
 
 		allowAllPolicy := []byte(`{
 			"acls": [
@@ -1579,6 +1592,7 @@ func TestRapid_PolicyToggle_PeerCountConverges(t *testing.T) {
 				// Gather diagnostics.
 				for _, c := range allClients {
 					nm := c.Netmap()
+
 					peerCount := 0
 					if nm != nil {
 						peerCount = len(nm.Peers)
@@ -1637,6 +1651,7 @@ func TestRapid_PolicyToggle_PeerCountConverges(t *testing.T) {
 				[]int{3, 3, 3, 3}, convergenceTimeout) {
 				for _, c := range allClients {
 					nm := c.Netmap()
+
 					peerCount := 0
 					if nm != nil {
 						peerCount = len(nm.Peers)
@@ -1695,6 +1710,7 @@ func TestRapid_DisconnectReconnect_PeerVisibilityRestored(t *testing.T) {
 		)
 
 		allClients := h.Clients()
+
 		connected := make([]bool, numClients)
 		for i := range connected {
 			connected[i] = true
@@ -1711,6 +1727,7 @@ func TestRapid_DisconnectReconnect_PeerVisibilityRestored(t *testing.T) {
 		for i := range iterations {
 			// Pick a random connected client to disconnect.
 			var connectedIndices []int
+
 			for j, c := range connected {
 				if c {
 					connectedIndices = append(connectedIndices, j)
@@ -1720,10 +1737,12 @@ func TestRapid_DisconnectReconnect_PeerVisibilityRestored(t *testing.T) {
 			idx := rapid.SampledFrom(connectedIndices).Draw(rt, fmt.Sprintf("disconnect_%d", i))
 			client := allClients[idx]
 			client.Disconnect(t)
+
 			connected[idx] = false
 
 			// Build the list of remaining connected clients.
 			var remainingClients []*servertest.TestClient
+
 			for j, c := range connected {
 				if c {
 					remainingClients = append(remainingClients, allClients[j])
@@ -1736,9 +1755,8 @@ func TestRapid_DisconnectReconnect_PeerVisibilityRestored(t *testing.T) {
 			// (non-ephemeral) nodes may linger, so we wait for at
 			// least the expected count but allow more.
 			deadline := time.After(convergenceTimeout)
-			converged := false
 
-			for !converged {
+			for {
 				allGood := true
 
 				for _, c := range remainingClients {
@@ -1751,8 +1769,6 @@ func TestRapid_DisconnectReconnect_PeerVisibilityRestored(t *testing.T) {
 				}
 
 				if allGood {
-					converged = true
-
 					break
 				}
 
@@ -1760,6 +1776,7 @@ func TestRapid_DisconnectReconnect_PeerVisibilityRestored(t *testing.T) {
 				case <-deadline:
 					for _, c := range remainingClients {
 						nm := c.Netmap()
+
 						peerCount := 0
 						if nm != nil {
 							peerCount = len(nm.Peers)
@@ -1796,6 +1813,7 @@ func TestRapid_DisconnectReconnect_PeerVisibilityRestored(t *testing.T) {
 
 			// Reconnect the client.
 			client.Reconnect(t)
+
 			connected[idx] = true
 
 			// Wait for full mesh to be restored.
@@ -1807,6 +1825,7 @@ func TestRapid_DisconnectReconnect_PeerVisibilityRestored(t *testing.T) {
 			if !awaitPeerCounts(allClients, expectedFull, convergenceTimeout) {
 				for _, c := range allClients {
 					nm := c.Netmap()
+
 					peerCount := 0
 					if nm != nil {
 						peerCount = len(nm.Peers)
@@ -1870,6 +1889,8 @@ func findNodeIDByHostname(rt *rapid.T, srv *servertest.TestServer, hostname stri
 //   - Approve via server State().SetApprovedRoutes
 //   - Wait for propagation
 //   - Check: other clients' netmap has the peer with the route in AllowedIPs
+//
+//nolint:gocyclo // complex property-based test with many assertions
 func TestRapid_RouteAdvertisement_PeersGetAllowedIPs(t *testing.T) {
 	t.Parallel()
 
@@ -2056,6 +2077,8 @@ func TestRapid_RouteAdvertisement_PeersGetAllowedIPs(t *testing.T) {
 //   - Switch to restrictive (user1 only)
 //   - Verify: user1 peers still see the route, user2 peers don't see the node at all
 //   - Switch back to allow-all, verify route visible again
+//
+//nolint:gocyclo // complex property-based test with many assertions
 func TestRapid_PolicyChangeWithRoutes_AllowedIPsConsistent(t *testing.T) {
 	t.Parallel()
 
@@ -2103,6 +2126,7 @@ func TestRapid_PolicyChangeWithRoutes_AllowedIPsConsistent(t *testing.T) {
 		_ = advertiser.Direct().SendUpdate(ctx)
 
 		// Wait for hostinfo propagation.
+		//nolint:forbidigo // deterministic delay for hostinfo propagation in PBT; no pollable condition
 		time.Sleep(1 * time.Second)
 
 		// Approve the route.
@@ -2163,7 +2187,7 @@ func TestRapid_PolicyChangeWithRoutes_AllowedIPsConsistent(t *testing.T) {
 
 		// --- Switch to restrictive policy ---
 		defaultUserRef := h.DefaultUser().Name + "@"
-		restrictivePolicy := []byte(fmt.Sprintf(`{
+		restrictivePolicy := fmt.Appendf(nil, `{
 			"acls": [
 				{
 					"action": "accept",
@@ -2171,7 +2195,7 @@ func TestRapid_PolicyChangeWithRoutes_AllowedIPsConsistent(t *testing.T) {
 					"dst": ["%s:*"]
 				}
 			]
-		}`, defaultUserRef, defaultUserRef))
+		}`, defaultUserRef, defaultUserRef)
 
 		h.ChangePolicy(t, restrictivePolicy)
 
@@ -2181,6 +2205,7 @@ func TestRapid_PolicyChangeWithRoutes_AllowedIPsConsistent(t *testing.T) {
 			[]int{1, 1, 0, 0}, convergenceTimeout) {
 			for _, c := range allClients {
 				nm := c.Netmap()
+
 				peerCount := 0
 				if nm != nil {
 					peerCount = len(nm.Peers)
@@ -2255,6 +2280,7 @@ func TestRapid_PolicyChangeWithRoutes_AllowedIPsConsistent(t *testing.T) {
 					for k := range p.AllowedIPs().Len() {
 						if p.AllowedIPs().At(k) == routePrefix {
 							hi := p.Hostinfo()
+
 							peerName := "<unknown>"
 							if hi.Valid() {
 								peerName = hi.Hostname()
@@ -2282,6 +2308,7 @@ func TestRapid_PolicyChangeWithRoutes_AllowedIPsConsistent(t *testing.T) {
 			[]int{3, 3, 3, 3}, convergenceTimeout) {
 			for _, c := range allClients {
 				nm := c.Netmap()
+
 				peerCount := 0
 				if nm != nil {
 					peerCount = len(nm.Peers)
@@ -2302,15 +2329,8 @@ func TestRapid_PolicyChangeWithRoutes_AllowedIPsConsistent(t *testing.T) {
 			}
 
 			routeDeadline := time.After(convergenceTimeout)
-			routeSeen := false
 
-			for !routeSeen {
-				if peerHasRoute(c, advertiser.Name, routePrefix) {
-					routeSeen = true
-
-					break
-				}
-
+			for !peerHasRoute(c, advertiser.Name, routePrefix) {
 				select {
 				case <-routeDeadline:
 					nm := c.Netmap()

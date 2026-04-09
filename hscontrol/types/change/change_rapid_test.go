@@ -29,17 +29,19 @@ func genNodeIDSlice(t *rapid.T) []types.NodeID {
 // genPeerPatch generates a *tailcfg.PeerChange with a random NodeID.
 func genPeerPatch(t *rapid.T) *tailcfg.PeerChange {
 	return &tailcfg.PeerChange{
-		NodeID: tailcfg.NodeID(rapid.Uint64Range(1, 20).Draw(t, "patchNodeID")),
+		NodeID: tailcfg.NodeID(rapid.Uint64Range(1, 20).Draw(t, "patchNodeID")), //nolint:gosec // test with small bounded values
 	}
 }
 
 // genPeerPatches generates 0..4 PeerChange pointers.
 func genPeerPatches(t *rapid.T) []*tailcfg.PeerChange {
 	n := rapid.IntRange(0, 4).Draw(t, "numPatches")
+
 	patches := make([]*tailcfg.PeerChange, n)
 	for i := range patches {
 		patches[i] = genPeerPatch(t)
 	}
+
 	return patches
 }
 
@@ -93,14 +95,17 @@ func cloneChange(c Change) Change {
 		out.PeersChanged = make([]types.NodeID, len(c.PeersChanged))
 		copy(out.PeersChanged, c.PeersChanged)
 	}
+
 	if c.PeersRemoved != nil {
 		out.PeersRemoved = make([]types.NodeID, len(c.PeersRemoved))
 		copy(out.PeersRemoved, c.PeersRemoved)
 	}
+
 	if c.PeerPatches != nil {
 		out.PeerPatches = make([]*tailcfg.PeerChange, len(c.PeerPatches))
 		copy(out.PeerPatches, c.PeerPatches)
 	}
+
 	return out
 }
 
@@ -122,9 +127,11 @@ func nodeIDSet(ids []types.NodeID) []types.NodeID {
 	if len(ids) == 0 {
 		return nil
 	}
+
 	s := make([]types.NodeID, len(ids))
 	copy(s, ids)
 	slices.Sort(s)
+
 	return slices.Compact(s)
 }
 
@@ -198,26 +205,32 @@ func TestRapid_Merge_IdentityElement(t *testing.T) {
 			t.Fatalf("right identity violated booleans:\n  a = %v\n  a⊕0 = %v",
 				boolFields(a), boolFields(rightID))
 		}
+
 		if !slices.Equal(nodeIDSet(rightID.PeersChanged), nodeIDSet(a.PeersChanged)) {
 			t.Fatalf("right identity violated PeersChanged:\n  a = %v\n  a⊕0 = %v",
 				a.PeersChanged, rightID.PeersChanged)
 		}
+
 		if !slices.Equal(nodeIDSet(rightID.PeersRemoved), nodeIDSet(a.PeersRemoved)) {
 			t.Fatalf("right identity violated PeersRemoved:\n  a = %v\n  a⊕0 = %v",
 				a.PeersRemoved, rightID.PeersRemoved)
 		}
+
 		if len(rightID.PeerPatches) != len(a.PeerPatches) {
 			t.Fatalf("right identity violated PeerPatches len: a=%d, a⊕0=%d",
 				len(a.PeerPatches), len(rightID.PeerPatches))
 		}
+
 		if rightID.OriginNode != a.OriginNode {
 			t.Fatalf("right identity violated OriginNode: a=%d, a⊕0=%d",
 				a.OriginNode, rightID.OriginNode)
 		}
+
 		if rightID.TargetNode != a.TargetNode {
 			t.Fatalf("right identity violated TargetNode: a=%d, a⊕0=%d",
 				a.TargetNode, rightID.TargetNode)
 		}
+
 		if a.Reason != "" && rightID.Reason != a.Reason {
 			t.Fatalf("right identity violated Reason: a=%q, a⊕0=%q",
 				a.Reason, rightID.Reason)
@@ -230,22 +243,27 @@ func TestRapid_Merge_IdentityElement(t *testing.T) {
 			t.Fatalf("left identity violated booleans:\n  a = %v\n  0⊕a = %v",
 				boolFields(a), boolFields(leftID))
 		}
+
 		if !slices.Equal(nodeIDSet(leftID.PeersChanged), nodeIDSet(a.PeersChanged)) {
 			t.Fatalf("left identity violated PeersChanged:\n  a = %v\n  0⊕a = %v",
 				a.PeersChanged, leftID.PeersChanged)
 		}
+
 		if !slices.Equal(nodeIDSet(leftID.PeersRemoved), nodeIDSet(a.PeersRemoved)) {
 			t.Fatalf("left identity violated PeersRemoved:\n  a = %v\n  0⊕a = %v",
 				a.PeersRemoved, leftID.PeersRemoved)
 		}
+
 		if len(leftID.PeerPatches) != len(a.PeerPatches) {
 			t.Fatalf("left identity violated PeerPatches len: a=%d, 0⊕a=%d",
 				len(a.PeerPatches), len(leftID.PeerPatches))
 		}
+
 		if leftID.OriginNode != a.OriginNode {
 			t.Fatalf("left identity violated OriginNode: a=%d, 0⊕a=%d",
 				a.OriginNode, leftID.OriginNode)
 		}
+
 		if leftID.TargetNode != a.TargetNode {
 			t.Fatalf("left identity violated TargetNode: a=%d, 0⊕a=%d",
 				a.TargetNode, leftID.TargetNode)
@@ -288,6 +306,7 @@ func TestRapid_Merge_PeerSetCommutativity(t *testing.T) {
 			t.Fatalf("PeersChanged commutativity violated:\n  a⊕b = %v\n  b⊕a = %v",
 				ab.PeersChanged, ba.PeersChanged)
 		}
+
 		if !slices.Equal(ab.PeersRemoved, ba.PeersRemoved) {
 			t.Fatalf("PeersRemoved commutativity violated:\n  a⊕b = %v\n  b⊕a = %v",
 				ab.PeersRemoved, ba.PeersRemoved)
@@ -311,6 +330,7 @@ func TestRapid_Merge_IsEmptyMonotonicity(t *testing.T) {
 			t.Fatalf("IsEmpty monotonicity violated (left non-empty):\n  a = %+v\n  b = %+v\n  a⊕b = %+v",
 				a, b, merged)
 		}
+
 		if !b.IsEmpty() && merged.IsEmpty() {
 			t.Fatalf("IsEmpty monotonicity violated (right non-empty):\n  a = %+v\n  b = %+v\n  a⊕b = %+v",
 				a, b, merged)
@@ -333,6 +353,7 @@ func TestRapid_Merge_IsFullMonotonicity(t *testing.T) {
 		if a.IsFull() && !merged.IsFull() {
 			t.Fatalf("IsFull monotonicity violated (left full):\n  a = %+v\n  a⊕b = %+v", a, merged)
 		}
+
 		if b.IsFull() && !merged.IsFull() {
 			t.Fatalf("IsFull monotonicity violated (right full):\n  b = %+v\n  a⊕b = %+v", b, merged)
 		}
@@ -389,6 +410,7 @@ func TestRapid_Type_ClassificationSoundness(t *testing.T) {
 func TestRapid_FilterForNode_Partition(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		n := rapid.IntRange(0, 10).Draw(t, "numChanges")
+
 		cs := make([]Change, n)
 		for i := range cs {
 			cs[i] = genChange(t)
@@ -408,6 +430,7 @@ func TestRapid_FilterForNode_Partition(t *testing.T) {
 				t.Fatalf("broadcast[%d].TargetNode = %d, want 0", i, c.TargetNode)
 			}
 		}
+
 		for i, c := range targeted {
 			if c.TargetNode == 0 {
 				t.Fatalf("targeted[%d].TargetNode = 0, want non-zero", i)
@@ -425,11 +448,13 @@ func TestRapid_FilterForNode_Partition(t *testing.T) {
 		}
 
 		expectedCount := 0
+
 		for _, c := range cs {
 			if c.ShouldSendToNode(testNodeID) {
 				expectedCount++
 			}
 		}
+
 		if len(filtered) != expectedCount {
 			t.Fatalf("FilterForNode(%d): got %d, want %d", testNodeID, len(filtered), expectedCount)
 		}
@@ -452,6 +477,7 @@ func TestRapid_FilterForNode_Partition(t *testing.T) {
 func TestRapid_HasFull_Equivalence(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		n := rapid.IntRange(0, 10).Draw(t, "numChanges")
+
 		cs := make([]Change, n)
 		for i := range cs {
 			cs[i] = genChange(t)
@@ -549,6 +575,7 @@ func TestRapid_UniqueNodeIDs_PreservesValues(t *testing.T) {
 			if result != nil {
 				t.Fatalf("uniqueNodeIDs(empty) = %v, want nil", result)
 			}
+
 			return
 		}
 
@@ -557,6 +584,7 @@ func TestRapid_UniqueNodeIDs_PreservesValues(t *testing.T) {
 		for _, id := range result {
 			resultSet[id] = true
 		}
+
 		for _, id := range raw {
 			if !resultSet[id] {
 				t.Fatalf("input value %d dropped: input=%v, output=%v", id, raw, result)
@@ -568,6 +596,7 @@ func TestRapid_UniqueNodeIDs_PreservesValues(t *testing.T) {
 		for _, id := range raw {
 			inputSet[id] = true
 		}
+
 		for _, id := range result {
 			if !inputSet[id] {
 				t.Fatalf("output value %d not in input: input=%v, output=%v", id, raw, result)
@@ -622,17 +651,21 @@ func TestRapid_Merge_MutationSafety(t *testing.T) {
 		if boolFields(a) != aBools {
 			t.Fatal("Merge mutated receiver's boolean fields")
 		}
+
 		if a.OriginNode != aOrigin || a.TargetNode != aTarget || a.Reason != aReason {
 			t.Fatal("Merge mutated receiver's scalar fields")
 		}
+
 		if !slices.Equal(a.PeersChanged, aPeersChanged) {
 			t.Fatalf("Merge mutated receiver's PeersChanged: before=%v, after=%v",
 				aPeersChanged, a.PeersChanged)
 		}
+
 		if !slices.Equal(a.PeersRemoved, aPeersRemoved) {
 			t.Fatalf("Merge mutated receiver's PeersRemoved: before=%v, after=%v",
 				aPeersRemoved, a.PeersRemoved)
 		}
+
 		if !slices.Equal(a.PeerPatches, aPeerPatches) {
 			t.Fatal("Merge mutated receiver's PeerPatches")
 		}
@@ -641,17 +674,21 @@ func TestRapid_Merge_MutationSafety(t *testing.T) {
 		if boolFields(b) != bBools {
 			t.Fatal("Merge mutated argument's boolean fields")
 		}
+
 		if b.OriginNode != bOrigin || b.TargetNode != bTarget || b.Reason != bReason {
 			t.Fatal("Merge mutated argument's scalar fields")
 		}
+
 		if !slices.Equal(b.PeersChanged, bPeersChanged) {
 			t.Fatalf("Merge mutated argument's PeersChanged: before=%v, after=%v",
 				bPeersChanged, b.PeersChanged)
 		}
+
 		if !slices.Equal(b.PeersRemoved, bPeersRemoved) {
 			t.Fatalf("Merge mutated argument's PeersRemoved: before=%v, after=%v",
 				bPeersRemoved, b.PeersRemoved)
 		}
+
 		if !slices.Equal(b.PeerPatches, bPeerPatches) {
 			t.Fatal("Merge mutated argument's PeerPatches")
 		}
@@ -675,6 +712,7 @@ func TestRapid_Merge_AliasingWithSpareCapacity(t *testing.T) {
 		// Create PeersChanged with deliberate spare capacity
 		n := rapid.IntRange(1, 6).Draw(t, "numPeers")
 		extraCap := rapid.IntRange(1, 8).Draw(t, "extraCap")
+
 		peersChanged := make([]types.NodeID, n, n+extraCap)
 		for i := range peersChanged {
 			peersChanged[i] = types.NodeID(rapid.Uint64Range(1, 20).Draw(t, "peerID"))
@@ -688,6 +726,7 @@ func TestRapid_Merge_AliasingWithSpareCapacity(t *testing.T) {
 		if len(otherPeers) == 0 {
 			return // need at least one to trigger append aliasing
 		}
+
 		b := Change{
 			PeersChanged: otherPeers,
 		}
@@ -725,6 +764,7 @@ func TestRapid_Merge_PeerPatchesAliasing(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		n := rapid.IntRange(1, 4).Draw(t, "numPatches")
 		extraCap := rapid.IntRange(1, 4).Draw(t, "extraCap")
+
 		patches := make([]*tailcfg.PeerChange, n, n+extraCap)
 		for i := range patches {
 			patches[i] = genPeerPatch(t)
@@ -734,10 +774,12 @@ func TestRapid_Merge_PeerPatchesAliasing(t *testing.T) {
 
 		// Create other patches with explicit allocation (no spare capacity)
 		otherN := rapid.IntRange(1, 4).Draw(t, "otherNumPatches")
+
 		otherPatches := make([]*tailcfg.PeerChange, otherN)
 		for i := range otherPatches {
 			otherPatches[i] = genPeerPatch(t)
 		}
+
 		b := Change{PeerPatches: otherPatches}
 
 		origLen := len(a.PeerPatches)
@@ -778,12 +820,14 @@ func TestRapid_Merge_PeerPatchesAliasing(t *testing.T) {
 			// beyond a.PeerPatches's length. We can verify by reslicing.
 			extendedView := a.PeerPatches[:n+otherN]
 			hasOverwrite := false
+
 			for i := n; i < n+otherN; i++ {
 				if extendedView[i] == otherPatches[i-n] {
 					hasOverwrite = true
 					break
 				}
 			}
+
 			if hasOverwrite {
 				t.Logf("CONFIRMED: Merge wrote through to receiver's backing array at positions [%d:%d]",
 					n, n+otherN)
@@ -791,7 +835,7 @@ func TestRapid_Merge_PeerPatchesAliasing(t *testing.T) {
 				// While len(a.PeerPatches) is still n, the data at positions [n:n+otherN]
 				// in the backing array has been overwritten. Any code that captures
 				// a pointer to the array or reslices it will see corrupted data.
-				t.Fatalf("BUG: Merge used shared backing array for PeerPatches append. "+
+				t.Fatalf("BUG: Merge used shared backing array for PeerPatches append. " +
 					"Receiver's backing array (beyond len) was overwritten by other's patches.")
 			}
 		}
@@ -819,6 +863,7 @@ func TestRapid_Constructors_FullUpdateIsFull(t *testing.T) {
 func TestRapid_Constructors_SelfUpdateIsSelfOnly(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		n := genNodeID(t) // always > 0 since genNodeID uses [1, 20]
+
 		s := SelfUpdate(n)
 		if !s.IsSelfOnly() {
 			t.Fatalf("SelfUpdate(%d) is not self-only: %+v", n, s)
@@ -839,6 +884,7 @@ func TestRapid_FilterForNode_TargetedChangesForOtherNodesDropped(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		// Generate two distinct node IDs: the target and a bystander.
 		targetID := genNodeID(t)
+
 		bystanderID := genNodeID(t)
 		for bystanderID == targetID {
 			bystanderID = genNodeID(t)
@@ -846,19 +892,21 @@ func TestRapid_FilterForNode_TargetedChangesForOtherNodesDropped(t *testing.T) {
 
 		// Build a change targeted at targetID, but with PeersChanged
 		// that includes bystanderID — an adversarial combination.
-		peersChanged := []types.NodeID{bystanderID}
 		// Optionally add more peers to make it interesting.
 		extra := genNodeIDSlice(t)
+
+		peersChanged := make([]types.NodeID, 0, 1+len(extra))
+		peersChanged = append(peersChanged, bystanderID)
 		peersChanged = append(peersChanged, extra...)
 
 		ch := Change{
-			Reason:       "targeted with bystander in PeersChanged",
-			TargetNode:   targetID,
-			PeersChanged: peersChanged,
-			IncludeDNS:   rapid.Bool().Draw(t, "includeDNS"),
+			Reason:        "targeted with bystander in PeersChanged",
+			TargetNode:    targetID,
+			PeersChanged:  peersChanged,
+			IncludeDNS:    rapid.Bool().Draw(t, "includeDNS"),
 			IncludePolicy: rapid.Bool().Draw(t, "includePolicy"),
-			PeersRemoved: genNodeIDSlice(t),
-			PeerPatches:  genPeerPatches(t),
+			PeersRemoved:  genNodeIDSlice(t),
+			PeerPatches:   genPeerPatches(t),
 		}
 
 		// FilterForNode for the bystander: should DROP this change
@@ -922,6 +970,7 @@ func TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge(t *testing.T) {
 
 		// Merge the individually filtered results.
 		var path2Result Change
+
 		switch {
 		case len(filteredA) == 0 && len(filteredB) == 0:
 			// Both filtered out: path1 should also be empty.
@@ -930,6 +979,7 @@ func TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge(t *testing.T) {
 					"  A = %+v\n  B = %+v\n  nodeID = %d\n  merged = %+v\n  path1 = %+v",
 					len(path1), a, b, nodeID, merged, path1)
 			}
+
 			return
 		case len(filteredA) == 1 && len(filteredB) == 0:
 			path2Result = filteredA[0]
@@ -996,6 +1046,7 @@ func TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge(t *testing.T) {
 func TestRapid_SplitTargetedAndBroadcast_PartitionCompleteness(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		n := rapid.IntRange(0, 15).Draw(t, "numChanges")
+
 		cs := make([]Change, n)
 		for i := range cs {
 			cs[i] = genChange(t)
@@ -1029,6 +1080,7 @@ func TestRapid_SplitTargetedAndBroadcast_PartitionCompleteness(t *testing.T) {
 		// Since SplitTargetedAndBroadcast iterates in order, each output preserves
 		// the relative order of its elements from the input.
 		bi, ti := 0, 0
+
 		for _, c := range cs {
 			if c.TargetNode == 0 {
 				if bi >= len(broadcast) {
@@ -1042,11 +1094,13 @@ func TestRapid_SplitTargetedAndBroadcast_PartitionCompleteness(t *testing.T) {
 					boolFields(got) != boolFields(c) {
 					t.Fatalf("broadcast[%d] doesn't match input: got %+v, want %+v", bi, got, c)
 				}
+
 				bi++
 			} else {
 				if ti >= len(targeted) {
 					t.Fatalf("Ran out of targeted changes at input with TargetNode=%d", c.TargetNode)
 				}
+
 				got := targeted[ti]
 				if got.TargetNode != c.TargetNode ||
 					got.OriginNode != c.OriginNode ||
@@ -1054,6 +1108,7 @@ func TestRapid_SplitTargetedAndBroadcast_PartitionCompleteness(t *testing.T) {
 					boolFields(got) != boolFields(c) {
 					t.Fatalf("targeted[%d] doesn't match input: got %+v, want %+v", ti, got, c)
 				}
+
 				ti++
 			}
 		}
@@ -1062,6 +1117,7 @@ func TestRapid_SplitTargetedAndBroadcast_PartitionCompleteness(t *testing.T) {
 		if bi != len(broadcast) {
 			t.Fatalf("Extra broadcast changes: consumed %d of %d", bi, len(broadcast))
 		}
+
 		if ti != len(targeted) {
 			t.Fatalf("Extra targeted changes: consumed %d of %d", ti, len(targeted))
 		}
@@ -1099,10 +1155,12 @@ func TestRapid_ShouldSendToNode_ConsistentWithFilterForNode(t *testing.T) {
 				t.Fatalf("FilterForNode returned %d changes for single input, expected 0 or 1",
 					len(filtered))
 			}
+
 			got := filtered[0]
 			if boolFields(got) != boolFields(ch) {
 				t.Fatalf("FilterForNode modified boolean fields of the change")
 			}
+
 			if got.TargetNode != ch.TargetNode || got.OriginNode != ch.OriginNode {
 				t.Fatalf("FilterForNode modified TargetNode or OriginNode")
 			}
@@ -1131,7 +1189,8 @@ func TestRapid_Merge_BooleanOR_WithPeerSets(t *testing.T) {
 		aBools := boolFields(a)
 		bBools := boolFields(b)
 		mBools := boolFields(merged)
-		for i := 0; i < len(aBools); i++ {
+
+		for i := range aBools { //nolint:gosec // aBools and bBools have same length from boolFields
 			expected := aBools[i] || bBools[i]
 			if mBools[i] != expected {
 				names := Change{}.boolFieldNames()
@@ -1145,6 +1204,7 @@ func TestRapid_Merge_BooleanOR_WithPeerSets(t *testing.T) {
 			append([]types.NodeID{}, a.PeersChanged...),
 			b.PeersChanged...,
 		))
+
 		gotChanged := nodeIDSet(merged.PeersChanged)
 		if !slices.Equal(gotChanged, expectedChanged) {
 			t.Fatalf("BUG: PeersChanged is not union.\n"+
@@ -1158,6 +1218,7 @@ func TestRapid_Merge_BooleanOR_WithPeerSets(t *testing.T) {
 			append([]types.NodeID{}, a.PeersRemoved...),
 			b.PeersRemoved...,
 		))
+
 		gotRemoved := nodeIDSet(merged.PeersRemoved)
 		if !slices.Equal(gotRemoved, expectedRemoved) {
 			t.Fatalf("BUG: PeersRemoved is not union.\n"+
@@ -1178,6 +1239,7 @@ func TestRapid_Merge_BooleanOR_WithPeerSets(t *testing.T) {
 		if a.SendAllPeers && !merged.SendAllPeers {
 			t.Fatal("BUG: a.SendAllPeers=true but merged.SendAllPeers=false")
 		}
+
 		if b.SendAllPeers && !merged.SendAllPeers {
 			t.Fatal("BUG: b.SendAllPeers=true but merged.SendAllPeers=false")
 		}
@@ -1198,6 +1260,7 @@ func TestRapid_Merge_BooleanOR_WithPeerSets(t *testing.T) {
 		if !advMerged.IncludePolicy {
 			t.Fatal("Adversarial: merged lost IncludePolicy from A")
 		}
+
 		if !advMerged.IncludeDNS {
 			t.Fatal("Adversarial: merged lost IncludeDNS from B")
 		}

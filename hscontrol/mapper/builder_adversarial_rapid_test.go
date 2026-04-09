@@ -61,10 +61,10 @@ func TestRapid_GenerateMapResponse_SelfOnlyForOtherNode_ReturnsNil(t *testing.T)
 
 		// The self-only guard: IsSelfOnly() && TargetNode != nodeID → return nil
 		resp, err := generateMapResponse(nc, &mapper{}, ch)
-
 		if err != nil {
 			t.Fatalf("expected nil error for self-only change to other node, got: %v", err)
 		}
+
 		if resp != nil {
 			t.Fatalf("SelfUpdate(%d) should return nil for receiver %d, but got non-nil response",
 				selfID, receiverID)
@@ -88,7 +88,7 @@ func TestRapid_GenerateMapResponse_SelfOnlyForOtherNode_ReturnsNil(t *testing.T)
 		//
 		// We can't actually test FullSelf going through buildFromChange here because
 		// it requires a real mapper with state. But we verify the guard logic.
-		if fullSelf.IsTargetedToNode() && fullSelf.TargetNode != receiverID {
+		if fullSelf.IsTargetedToNode() && fullSelf.TargetNode != receiverID { //nolint:staticcheck // SA9003: intentionally empty — documents guard logic behavior
 			// This targeted change would NOT be filtered by generateMapResponse's
 			// self-only guard because IsSelfOnly() is false.
 			// In production, addToBatch's SplitTargetedAndBroadcast prevents this.
@@ -135,13 +135,15 @@ func TestRapid_GenerateMapResponse_SelfUpdate_IncludesSelf(t *testing.T) {
 			PeersChanged:   genNodeIDSlice(3).Draw(t, "peersChanged"),
 			PeerPatches: func() []*tailcfg.PeerChange {
 				n := rapid.IntRange(0, 3).Draw(t, "numPatches")
+
 				patches := make([]*tailcfg.PeerChange, n)
 				for i := range patches {
 					patches[i] = &tailcfg.PeerChange{
-						NodeID:     tailcfg.NodeID(rapid.Uint64Range(1, 50).Draw(t, "patchNodeID")),
+						NodeID:     tailcfg.NodeID(rapid.Uint64Range(1, 50).Draw(t, "patchNodeID")), //nolint:gosec // test with small bounded values
 						DERPRegion: rapid.IntRange(1, 10).Draw(t, "patchDERP"),
 					}
 				}
+
 				return patches
 			}(),
 		}
@@ -159,6 +161,7 @@ func TestRapid_GenerateMapResponse_SelfUpdate_IncludesSelf(t *testing.T) {
 
 		// Verify the empty change guard returns nil for empty changes
 		emptyChange := change.Change{}
+
 		resp, err := generateMapResponse(nc, &mapper{}, emptyChange)
 		if err != nil || resp != nil {
 			t.Fatalf("empty change should return (nil, nil), got (%v, %v)", resp, err)
@@ -190,7 +193,7 @@ func TestRapid_GenerateMapResponse_SelfUpdate_IncludesSelf(t *testing.T) {
 		// Verify the routing priority: RequiresRuntimePeerComputation takes
 		// priority over isSelfUpdate. If both are true, the policy path is taken
 		// which includes more data than selfMapResponse.
-		if ch.RequiresRuntimePeerComputation && isSelfUpdate {
+		if ch.RequiresRuntimePeerComputation && isSelfUpdate { //nolint:staticcheck // SA9003: intentionally empty — documents routing priority
 			// policyChangeResponse(nodeID, ver, removedPeers, currentPeers, includeSelf=true)
 			// This path includes policy, SSH, self, and peers — MORE than selfMapResponse.
 		}
@@ -242,6 +245,7 @@ func TestRapid_GenerateMapResponse_EmptyChange_ReturnsNil(t *testing.T) {
 		if err != nil {
 			t.Fatalf("empty change should not error, got: %v", err)
 		}
+
 		if resp != nil {
 			t.Fatal("empty change should return nil response")
 		}
@@ -253,10 +257,11 @@ func TestRapid_GenerateMapResponse_EmptyChange_ReturnsNil(t *testing.T) {
 func TestRapid_GenerateMapResponse_EmptyChange_PeerPatchesNotEmpty(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		nPatches := rapid.IntRange(1, 5).Draw(t, "nPatches")
+
 		patches := make([]*tailcfg.PeerChange, nPatches)
 		for i := range patches {
 			patches[i] = &tailcfg.PeerChange{
-				NodeID:     tailcfg.NodeID(rapid.Uint64Range(1, 50).Draw(t, "patchNodeID")),
+				NodeID:     tailcfg.NodeID(rapid.Uint64Range(1, 50).Draw(t, "patchNodeID")), //nolint:gosec // test with small bounded values
 				DERPRegion: rapid.IntRange(1, 10).Draw(t, "patchDERP"),
 			}
 		}
@@ -312,12 +317,12 @@ func TestRapid_GenerateMapResponse_IsEmptyConsistency(t *testing.T) {
 			TargetNode: types.NodeID(rapid.Uint64Range(0, 5).Draw(t, "target")),
 			OriginNode: types.NodeID(rapid.Uint64Range(0, 5).Draw(t, "origin")),
 			// Randomly set one content field or leave all empty
-			IncludeSelf:    rapid.Bool().Draw(t, "inclSelf"),
-			IncludeDERPMap: rapid.Bool().Draw(t, "inclDERP"),
-			IncludeDNS:     rapid.Bool().Draw(t, "inclDNS"),
-			IncludeDomain:  rapid.Bool().Draw(t, "inclDomain"),
-			IncludePolicy:  rapid.Bool().Draw(t, "inclPolicy"),
-			SendAllPeers:   rapid.Bool().Draw(t, "sendAll"),
+			IncludeSelf:                    rapid.Bool().Draw(t, "inclSelf"),
+			IncludeDERPMap:                 rapid.Bool().Draw(t, "inclDERP"),
+			IncludeDNS:                     rapid.Bool().Draw(t, "inclDNS"),
+			IncludeDomain:                  rapid.Bool().Draw(t, "inclDomain"),
+			IncludePolicy:                  rapid.Bool().Draw(t, "inclPolicy"),
+			SendAllPeers:                   rapid.Bool().Draw(t, "sendAll"),
 			RequiresRuntimePeerComputation: rapid.Bool().Draw(t, "reqRuntime"),
 		}
 
@@ -329,6 +334,7 @@ func TestRapid_GenerateMapResponse_IsEmptyConsistency(t *testing.T) {
 			if err != nil {
 				t.Fatalf("empty change should not error, got: %v", err)
 			}
+
 			if resp != nil {
 				t.Fatalf("IsEmpty()=true but generateMapResponse returned non-nil response for change: %+v", ch)
 			}
@@ -371,6 +377,7 @@ func TestRapid_BuildFromChange_PeersChangedAndRemoved(t *testing.T) {
 
 		changedIDs := make([]types.NodeID, nChanged)
 		changedSet := make(map[types.NodeID]bool)
+
 		for i := range changedIDs {
 			id := types.NodeID(rapid.Uint64Range(1, 50).Draw(t, fmt.Sprintf("changedID_%d", i)))
 			changedIDs[i] = id
@@ -469,8 +476,9 @@ func TestRapid_GenerateMapResponse_RuntimePeerComputation_WithRemovedPeers(t *te
 		nPrevious := rapid.IntRange(1, 15).Draw(t, "nPrevious")
 		previousPeers := make([]tailcfg.NodeID, 0, nPrevious)
 		previousSet := make(map[tailcfg.NodeID]bool)
+
 		for len(previousPeers) < nPrevious {
-			id := tailcfg.NodeID(rapid.Uint64Range(1, 50).Draw(t, "prevID"))
+			id := tailcfg.NodeID(rapid.Uint64Range(1, 50).Draw(t, "prevID")) //nolint:gosec // test with small bounded values
 			if !previousSet[id] {
 				previousSet[id] = true
 				previousPeers = append(previousPeers, id)
@@ -499,10 +507,12 @@ func TestRapid_GenerateMapResponse_RuntimePeerComputation_WithRemovedPeers(t *te
 		for id := range currentSet {
 			currentIDs = append(currentIDs, id)
 		}
+
 		removed := nc.computePeerDiff(currentIDs)
 
 		// Build expected removed set
 		expectedRemoved := make(map[tailcfg.NodeID]bool)
+
 		for _, id := range previousPeers {
 			if !currentSet[id] {
 				expectedRemoved[id] = true
@@ -525,7 +535,8 @@ func TestRapid_GenerateMapResponse_RuntimePeerComputation_WithRemovedPeers(t *te
 		// policyChangeResponse does: types.NodeID(tailcfg.NodeID) then .NodeID()
 		for _, id := range removed {
 			// Simulate the conversion in policyChangeResponse lines 232-234
-			typesID := types.NodeID(id)
+			typesID := types.NodeID(id) //nolint:gosec // testing roundtrip conversion precision
+
 			backToTailcfg := typesID.NodeID()
 			if backToTailcfg != id {
 				t.Fatalf("roundtrip conversion lost precision: %d → types.NodeID(%d) → %d",
@@ -554,9 +565,10 @@ func TestRapid_PolicyChangeResponse_RemovedAndCurrentPeers(t *testing.T) {
 		// Generate removed peer IDs (as tailcfg.NodeID, which is what
 		// policyChangeResponse receives)
 		nRemoved := rapid.IntRange(0, 5).Draw(t, "nRemoved")
+
 		removedPeers := make([]tailcfg.NodeID, nRemoved)
 		for i := range removedPeers {
-			removedPeers[i] = tailcfg.NodeID(rapid.Uint64Range(1, 50).Draw(t, fmt.Sprintf("removedPeer_%d", i)))
+			removedPeers[i] = tailcfg.NodeID(rapid.Uint64Range(1, 50).Draw(t, fmt.Sprintf("removedPeer_%d", i))) //nolint:gosec // test with small bounded values
 		}
 
 		// The conversion in policyChangeResponse (lines 232-234):
@@ -573,7 +585,7 @@ func TestRapid_PolicyChangeResponse_RemovedAndCurrentPeers(t *testing.T) {
 		if len(removedPeers) > 0 {
 			removedIDs := make([]types.NodeID, len(removedPeers))
 			for i, id := range removedPeers {
-				removedIDs[i] = types.NodeID(id)
+				removedIDs[i] = types.NodeID(id) //nolint:gosec // testing roundtrip conversion
 			}
 
 			builder := m.NewMapResponseBuilder(nodeID).
@@ -633,13 +645,15 @@ func TestRapid_BuildFromChange_SelfUpdateDropsOtherFields(t *testing.T) {
 			PeersRemoved:   genNodeIDSlice(3).Draw(t, "peersRemoved"),
 			PeerPatches: func() []*tailcfg.PeerChange {
 				n := rapid.IntRange(0, 3).Draw(t, "nPatches")
+
 				patches := make([]*tailcfg.PeerChange, n)
 				for i := range patches {
 					patches[i] = &tailcfg.PeerChange{
-						NodeID:     tailcfg.NodeID(rapid.Uint64Range(1, 50).Draw(t, "pNodeID")),
+						NodeID:     tailcfg.NodeID(rapid.Uint64Range(1, 50).Draw(t, "pNodeID")), //nolint:gosec // test with small bounded values
 						DERPRegion: rapid.IntRange(1, 10).Draw(t, "pDERP"),
 					}
 				}
+
 				return patches
 			}(),
 		}
@@ -659,18 +673,23 @@ func TestRapid_BuildFromChange_SelfUpdateDropsOtherFields(t *testing.T) {
 		if ch.IncludeDERPMap {
 			droppedFields++
 		}
+
 		if ch.IncludeDNS {
 			droppedFields++
 		}
+
 		if ch.IncludePolicy {
 			droppedFields++
 		}
+
 		if len(ch.PeersChanged) > 0 {
 			droppedFields++
 		}
+
 		if len(ch.PeersRemoved) > 0 {
 			droppedFields++
 		}
+
 		if len(ch.PeerPatches) > 0 {
 			droppedFields++
 		}
@@ -728,18 +747,11 @@ func TestRapid_GenerateMapResponse_RoutingPriority(t *testing.T) {
 
 		isSelfUpdate := ch.OriginNode != 0 && ch.OriginNode == nodeID
 
-		if reqRuntime && isSelfUpdate {
-			// Branch 1 wins: policyChangeResponse with includeSelf=true
-			// The self info IS included via WithSelfNode() in policyChangeResponse
-			// PLUS policy, SSH, and peer changes/removals.
-		} else if !reqRuntime && isSelfUpdate {
-			// Branch 2: selfMapResponse — ONLY self info, everything else dropped
-		} else if reqRuntime && !isSelfUpdate {
-			// Branch 1: policyChangeResponse with includeSelf=false
-			// Policy, SSH, peer changes/removals, but NO self info
-		} else {
-			// Branch 3: buildFromChange — normal path, respects all Change flags
-		}
+		// Branch routing documentation:
+		// - reqRuntime && isSelfUpdate: Branch 1 — policyChangeResponse with includeSelf=true
+		// - !reqRuntime && isSelfUpdate: Branch 2 — selfMapResponse (ONLY self info)
+		// - reqRuntime && !isSelfUpdate: Branch 1 — policyChangeResponse with includeSelf=false
+		// - else: Branch 3 — buildFromChange (normal path)
 
 		// Verify the routing decision matches what the code does
 		expectedBranch := 3 // default
@@ -781,11 +793,11 @@ func TestRapid_GenerateMapResponse_RoutingPriority(t *testing.T) {
 func TestRapid_PeersRemoved_DoubleConversionPrecision(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		// Generate edge-case NodeIDs including large values
-		id := tailcfg.NodeID(rapid.Uint64().Draw(t, "nodeID"))
+		id := tailcfg.NodeID(rapid.Uint64().Draw(t, "nodeID")) //nolint:gosec // deliberately testing full uint64 range
 
 		// Simulate the policyChangeResponse conversion chain:
 		// tailcfg.NodeID → types.NodeID → .NodeID() → tailcfg.NodeID
-		typesID := types.NodeID(id)
+		typesID := types.NodeID(id) //nolint:gosec // testing roundtrip conversion precision
 		roundtripped := typesID.NodeID()
 
 		if roundtripped != id {
@@ -821,7 +833,9 @@ func TestRapid_GenerateMapResponse_IsSelfOnlyGuardBoundary(t *testing.T) {
 		if !ch1.IsSelfOnly() {
 			t.Fatal("SelfUpdate should be self-only")
 		}
+
 		nc := newMockNC(selfID)
+
 		resp1, err := generateMapResponse(nc, &mapper{}, ch1)
 		if err != nil || resp1 != nil {
 			t.Fatalf("SelfUpdate(%d) for receiver %d: expected (nil, nil), got (%v, %v)",
@@ -890,10 +904,11 @@ func TestRapid_GenerateMapResponse_IsSelfOnlyGuardBoundary(t *testing.T) {
 func TestRapid_BuildFromChange_PeerPatchesAlwaysIncluded(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		nPatches := rapid.IntRange(1, 5).Draw(t, "nPatches")
+
 		patches := make([]*tailcfg.PeerChange, nPatches)
 		for i := range patches {
 			patches[i] = &tailcfg.PeerChange{
-				NodeID:     tailcfg.NodeID(rapid.Uint64Range(1, 50).Draw(t, fmt.Sprintf("patchNodeID_%d", i))),
+				NodeID:     tailcfg.NodeID(rapid.Uint64Range(1, 50).Draw(t, fmt.Sprintf("patchNodeID_%d", i))), //nolint:gosec // test with small bounded values
 				DERPRegion: rapid.IntRange(1, 10).Draw(t, fmt.Sprintf("patchDERP_%d", i)),
 			}
 		}
@@ -959,6 +974,7 @@ func TestRapid_BuildFromChange_PeerPatchesAlwaysIncluded(t *testing.T) {
 func TestRapid_Builder_PeersRemovedNotSorted(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		nRemoved := rapid.IntRange(2, 10).Draw(t, "nRemoved")
+
 		removedIDs := make([]types.NodeID, nRemoved)
 		for i := range removedIDs {
 			removedIDs[i] = types.NodeID(rapid.Uint64Range(1, 1000).Draw(t, fmt.Sprintf("removedID_%d", i)))

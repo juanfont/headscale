@@ -19,6 +19,7 @@ func genIPv4Addr() *rapid.Generator[netip.Addr] {
 		for i := range b {
 			b[i] = byte(rapid.IntRange(0, 255).Draw(t, "byte"))
 		}
+
 		return netip.AddrFrom4(b)
 	})
 }
@@ -30,6 +31,7 @@ func genIPv6Addr() *rapid.Generator[netip.Addr] {
 		for i := range b {
 			b[i] = byte(rapid.IntRange(0, 255).Draw(t, "byte"))
 		}
+
 		return netip.AddrFrom16(b)
 	})
 }
@@ -40,15 +42,17 @@ func genIPAddr() *rapid.Generator[netip.Addr] {
 		if rapid.Bool().Draw(t, "isV6") {
 			return genIPv6Addr().Draw(t, "addr")
 		}
+
 		return genIPv4Addr().Draw(t, "addr")
 	})
 }
 
-// genMaskedIPv4Prefix generates a random masked IPv4 prefix with bits in [minBits, maxBits].
-func genMaskedIPv4Prefix(minBits, maxBits int) *rapid.Generator[netip.Prefix] {
+// genMaskedIPv4Prefix generates a random masked IPv4 prefix with bits in [8, maxBits].
+func genMaskedIPv4Prefix(maxBits int) *rapid.Generator[netip.Prefix] {
 	return rapid.Custom[netip.Prefix](func(t *rapid.T) netip.Prefix {
-		bits := rapid.IntRange(minBits, maxBits).Draw(t, "bits")
+		bits := rapid.IntRange(8, maxBits).Draw(t, "bits")
 		addr := genIPv4Addr().Draw(t, "addr")
+
 		return netip.PrefixFrom(addr, bits).Masked()
 	})
 }
@@ -70,12 +74,14 @@ func genIPv4AddrInPrefix(prefix netip.Prefix) *rapid.Generator[netip.Addr] {
 
 		// Generate a random offset within the host range
 		maxOffset := uint32((1 << hostBits) - 1)
-		offset := uint32(rapid.Uint32Range(0, maxOffset).Draw(t, "offset"))
+		offset := rapid.Uint32Range(0, maxOffset).Draw(t, "offset")
 
 		// Combine network part with random host part
 		result := baseInt | offset
+
 		var b [4]byte
 		binary.BigEndian.PutUint32(b[:], result)
+
 		return netip.AddrFrom4(b)
 	})
 }
@@ -103,7 +109,7 @@ func TestRapid_ParseIPSet_WildcardContainsAll(t *testing.T) {
 // Property: For a random CIDR, every IP within it is contained by ParseIPSet.
 func TestRapid_ParseIPSet_CIDRContainsMember(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
-		prefix := genMaskedIPv4Prefix(8, 30).Draw(t, "prefix")
+		prefix := genMaskedIPv4Prefix(30).Draw(t, "prefix")
 		member := genIPv4AddrInPrefix(prefix).Draw(t, "member")
 
 		ipSet, err := ParseIPSet(prefix.String(), nil)
@@ -145,7 +151,7 @@ func TestRapid_ParseIPSet_SingleIPContainsOnly(t *testing.T) {
 // Property: For a /24 prefix, random IPs outside the prefix are NOT contained.
 func TestRapid_ParseIPSet_CIDRDoesNotContainOutside(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
-		prefix := genMaskedIPv4Prefix(8, 24).Draw(t, "prefix")
+		prefix := genMaskedIPv4Prefix(24).Draw(t, "prefix")
 		candidate := genIPv4Addr().Draw(t, "candidate")
 
 		// Skip if the candidate is actually inside the prefix

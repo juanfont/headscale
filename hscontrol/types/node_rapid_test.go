@@ -23,17 +23,20 @@ func genAddrPort() *rapid.Generator[netip.AddrPort] {
 		port := rapid.Uint16().Draw(t, "port")
 
 		var addr netip.Addr
+
 		if isV6 {
 			var b [16]byte
 			for i := range b {
 				b[i] = byte(rapid.IntRange(0, 255).Draw(t, "byte"))
 			}
+
 			addr = netip.AddrFrom16(b)
 		} else {
 			var b [4]byte
 			for i := range b {
 				b[i] = byte(rapid.IntRange(0, 255).Draw(t, "byte"))
 			}
+
 			addr = netip.AddrFrom4(b)
 		}
 
@@ -53,6 +56,7 @@ func genIPv4Addr() *rapid.Generator[netip.Addr] {
 		for i := range b {
 			b[i] = byte(rapid.IntRange(0, 255).Draw(t, "byte"))
 		}
+
 		return netip.AddrFrom4(b)
 	})
 }
@@ -64,6 +68,7 @@ func genIPv6Addr() *rapid.Generator[netip.Addr] {
 		for i := range b {
 			b[i] = byte(rapid.IntRange(0, 255).Draw(t, "byte"))
 		}
+
 		return netip.AddrFrom16(b)
 	})
 }
@@ -78,10 +83,13 @@ func genSubnetPrefix() *rapid.Generator[netip.Prefix] {
 		if isV6 {
 			bits := rapid.IntRange(0, 128).Draw(t, "bits")
 			addr := genIPv6Addr().Draw(t, "addr")
+
 			return netip.PrefixFrom(addr, bits).Masked()
 		}
+
 		bits := rapid.IntRange(0, 32).Draw(t, "bits")
 		addr := genIPv4Addr().Draw(t, "addr")
+
 		return netip.PrefixFrom(addr, bits).Masked()
 	})
 }
@@ -99,6 +107,7 @@ func genTags(maxLen int) *rapid.Generator[[]string] {
 	return rapid.Custom[[]string](func(t *rapid.T) []string {
 		n := rapid.IntRange(0, maxLen).Draw(t, "numTags")
 		seen := make(map[string]bool, n)
+
 		result := make([]string, 0, n)
 		for len(result) < n {
 			tag := genTag().Draw(t, "tag")
@@ -107,6 +116,7 @@ func genTags(maxLen int) *rapid.Generator[[]string] {
 				result = append(result, tag)
 			}
 		}
+
 		return result
 	})
 }
@@ -122,6 +132,7 @@ func genNodeWithIPs() *rapid.Generator[*Node] {
 			v4 := genIPv4Addr().Draw(t, "ipv4")
 			node.IPv4 = &v4
 		}
+
 		if hasV6 {
 			v6 := genIPv6Addr().Draw(t, "ipv6")
 			node.IPv6 = &v6
@@ -229,6 +240,7 @@ func TestRapid_Prefixes_HostPrefixes(t *testing.T) {
 			if pfx.Addr() != ips[i] {
 				t.Fatalf("Prefixes()[%d] addr = %s, want %s", i, pfx.Addr(), ips[i])
 			}
+
 			expectedBits := ips[i].BitLen()
 			if pfx.Bits() != expectedBits {
 				t.Fatalf("Prefixes()[%d] bits = %d, want %d (host prefix)",
@@ -251,6 +263,7 @@ func TestRapid_Prefixes_CountMatchesIPs(t *testing.T) {
 			if prefixes != nil {
 				t.Fatalf("Prefixes() = %v for node with no IPs, want nil", prefixes)
 			}
+
 			return
 		}
 
@@ -269,6 +282,7 @@ func TestRapid_Prefixes_CountMatchesIPs(t *testing.T) {
 func TestRapid_SubnetRoutes_NoExitRoutes(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		nRoutes := rapid.IntRange(0, 8).Draw(t, "nRoutes")
+
 		announced := make([]netip.Prefix, nRoutes)
 		for i := range announced {
 			// Mix in some exit routes and some subnet routes
@@ -304,6 +318,7 @@ func TestRapid_SubnetRoutes_SubsetOfApproved(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		// Generate announced routes (non-exit only).
 		nAnnounced := rapid.IntRange(1, 6).Draw(t, "nAnnounced")
+
 		announced := make([]netip.Prefix, nAnnounced)
 		for i := range announced {
 			announced[i] = genSubnetPrefix().Draw(t, "announced")
@@ -317,12 +332,12 @@ func TestRapid_SubnetRoutes_SubsetOfApproved(t *testing.T) {
 
 		approved := make([]netip.Prefix, 0, nFromAnnounced+nExtra)
 		// Draw indices from announced to include
-		for i := 0; i < nFromAnnounced; i++ {
+		for i := range nFromAnnounced {
 			idx := rapid.IntRange(0, nAnnounced-1).Draw(t, fmt.Sprintf("approvedIdx%d", i))
 			approved = append(approved, announced[idx])
 		}
 		// Add extra random prefixes
-		for i := 0; i < nExtra; i++ {
+		for i := range nExtra {
 			approved = append(approved, genSubnetPrefix().Draw(t, fmt.Sprintf("extraApproved%d", i)))
 		}
 
@@ -338,6 +353,7 @@ func TestRapid_SubnetRoutes_SubsetOfApproved(t *testing.T) {
 			if !slices.Contains(announced, route) {
 				t.Fatalf("SubnetRoutes() contains %s not in announced", route)
 			}
+
 			if !slices.Contains(approved, route) {
 				t.Fatalf("SubnetRoutes() contains %s not in approved", route)
 			}
@@ -345,10 +361,12 @@ func TestRapid_SubnetRoutes_SubsetOfApproved(t *testing.T) {
 
 		// Compute expected intersection: non-exit announced that are also approved.
 		expectedCount := 0
+
 		for _, a := range announced {
 			if tsaddr.IsExitRoute(a) {
 				continue
 			}
+
 			if slices.Contains(approved, a) {
 				expectedCount++
 			}
@@ -370,6 +388,7 @@ func TestRapid_SubnetRoutes_IntersectionCorrectness(t *testing.T) {
 		poolSize := rapid.IntRange(3, 8).Draw(t, "poolSize")
 		pool := make([]netip.Prefix, 0, poolSize)
 		seen := make(map[netip.Prefix]bool)
+
 		for len(pool) < poolSize {
 			pfx := genSubnetPrefix().Draw(t, fmt.Sprintf("pool%d", len(pool)))
 			if !seen[pfx] {
@@ -381,6 +400,7 @@ func TestRapid_SubnetRoutes_IntersectionCorrectness(t *testing.T) {
 		// Partition pool indices into: shared, announced-only, approved-only.
 		announced := make([]netip.Prefix, 0)
 		approved := make([]netip.Prefix, 0)
+
 		var expectedIntersection []netip.Prefix
 
 		for i, pfx := range pool {
@@ -409,11 +429,13 @@ func TestRapid_SubnetRoutes_IntersectionCorrectness(t *testing.T) {
 		// SubnetRoutes excludes them. genSubnetPrefix with bits=0
 		// can produce exit routes via .Masked().
 		var filteredExpected []netip.Prefix
+
 		for _, pfx := range expectedIntersection {
 			if !tsaddr.IsExitRoute(pfx) {
 				filteredExpected = append(filteredExpected, pfx)
 			}
 		}
+
 		expectedIntersection = filteredExpected
 
 		node := &Node{
@@ -453,6 +475,7 @@ func TestRapid_SubnetRoutes_IntersectionCorrectness(t *testing.T) {
 func TestRapid_ExitRoutes_OnlyExitRoutes(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		nRoutes := rapid.IntRange(0, 6).Draw(t, "nRoutes")
+
 		announced := make([]netip.Prefix, nRoutes)
 		for i := range announced {
 			if rapid.Bool().Draw(t, "isExit") {
@@ -484,6 +507,7 @@ func TestRapid_ExitRoutes_OnlyExitRoutes(t *testing.T) {
 func TestRapid_ExitRoutes_SubsetOfApproved(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		nRoutes := rapid.IntRange(0, 6).Draw(t, "nRoutes")
+
 		announced := make([]netip.Prefix, nRoutes)
 		for i := range announced {
 			if rapid.Bool().Draw(t, "isExit") {
@@ -499,6 +523,7 @@ func TestRapid_ExitRoutes_SubsetOfApproved(t *testing.T) {
 
 		// Only approve a random subset of announced routes
 		nApproved := rapid.IntRange(0, len(announced)).Draw(t, "nApproved")
+
 		approved := make([]netip.Prefix, nApproved)
 		for i := range approved {
 			idx := rapid.IntRange(0, len(announced)-1).Draw(t, "approvedIdx")
@@ -525,6 +550,7 @@ func TestRapid_ExitRoutes_SubsetOfApproved(t *testing.T) {
 func TestRapid_Routes_ExitAndSubnetPartition(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		nRoutes := rapid.IntRange(0, 8).Draw(t, "nRoutes")
+
 		announced := make([]netip.Prefix, nRoutes)
 		for i := range announced {
 			if rapid.Bool().Draw(t, "isExit") {
@@ -550,7 +576,9 @@ func TestRapid_Routes_ExitAndSubnetPartition(t *testing.T) {
 			if !slices.Contains(node.ApprovedRoutes, route) {
 				continue
 			}
+
 			inExit := slices.Contains(exitRoutes, route)
+
 			inSubnet := slices.Contains(subnetRoutes, route)
 			if !inExit && !inSubnet {
 				t.Fatalf("route %s is approved+announced but in neither ExitRoutes nor SubnetRoutes", route)
@@ -586,6 +614,7 @@ func TestRapid_IsTagged_XorUserOwned(t *testing.T) {
 		if node.IsTagged() && node.IsUserOwned() {
 			t.Fatalf("node with tags %v is both tagged and user-owned", tags)
 		}
+
 		if !node.IsTagged() && !node.IsUserOwned() {
 			t.Fatal("node is neither tagged nor user-owned")
 		}
@@ -602,7 +631,7 @@ func TestRapid_IsTagged_WithUserID_StillTagged(t *testing.T) {
 			tags = []string{"tag:server"}
 		}
 
-		uid := uint(rapid.IntRange(1, 10000).Draw(t, "userID"))
+		uid := uint(rapid.IntRange(1, 10000).Draw(t, "userID")) //nolint:gosec // positive bounded value
 		node := &Node{
 			Tags:   tags,
 			UserID: &uid,
@@ -645,14 +674,15 @@ func TestRapid_TailscaleUserID_Tagged(t *testing.T) {
 			tags = []string{"tag:test"}
 		}
 
-		uid := uint(rapid.IntRange(1, 1000).Draw(t, "userID"))
+		uid := uint(rapid.IntRange(1, 1000).Draw(t, "userID")) //nolint:gosec // positive bounded value
 		node := &Node{
 			Tags:   tags,
 			UserID: &uid,
 		}
 		nv := node.View()
 
-		expected := tailcfg.UserID(int64(TaggedDevicesUserID))
+		expected := tailcfg.UserID(int64(TaggedDevicesUserID)) //nolint:gosec // constant value
+
 		got := nv.TailscaleUserID()
 		if got != expected {
 			t.Fatalf("TailscaleUserID() = %d for tagged node, want %d (TaggedDevices)",
@@ -664,14 +694,15 @@ func TestRapid_TailscaleUserID_Tagged(t *testing.T) {
 // Property: User-owned nodes return their actual UserID.
 func TestRapid_TailscaleUserID_UserOwned(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
-		uid := uint(rapid.IntRange(1, 1000).Draw(t, "userID"))
+		uid := uint(rapid.IntRange(1, 1000).Draw(t, "userID")) //nolint:gosec // positive bounded value
 		node := &Node{
 			Tags:   nil, // user-owned
 			UserID: &uid,
 		}
 		nv := node.View()
 
-		expected := tailcfg.UserID(int64(uid))
+		expected := tailcfg.UserID(int64(uid)) //nolint:gosec // positive bounded value
+
 		got := nv.TailscaleUserID()
 		if got != expected {
 			t.Fatalf("TailscaleUserID() = %d for user-owned node, want %d",
@@ -683,8 +714,8 @@ func TestRapid_TailscaleUserID_UserOwned(t *testing.T) {
 // Property: TailscaleUserID for tagged nodes is constant regardless of UserID value.
 func TestRapid_TailscaleUserID_TaggedConstant(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
-		uid1 := uint(rapid.IntRange(1, 1000).Draw(t, "uid1"))
-		uid2 := uint(rapid.IntRange(1, 1000).Draw(t, "uid2"))
+		uid1 := uint(rapid.IntRange(1, 1000).Draw(t, "uid1")) //nolint:gosec // positive bounded value
+		uid2 := uint(rapid.IntRange(1, 1000).Draw(t, "uid2")) //nolint:gosec // positive bounded value
 		tags := []string{"tag:server"}
 
 		nv1 := (&Node{Tags: tags, UserID: &uid1}).View()
@@ -716,10 +747,12 @@ func TestRapid_TailscaleUserID_OrphanedNodePanic(t *testing.T) {
 
 		// Use recover to catch panics — this documents the crash.
 		var panicVal any
+
 		func() {
 			defer func() {
 				panicVal = recover()
 			}()
+
 			_ = nv.TailscaleUserID()
 		}()
 
@@ -761,10 +794,12 @@ func TestRapid_OwnerName_NilUserNilTagsPanic(t *testing.T) {
 		// Owner() on a non-tagged node with nil User returns UserView{ж: nil}.
 		// Calling Name() on that should panic with nil pointer dereference.
 		var panicVal any
+
 		func() {
 			defer func() {
 				panicVal = recover()
 			}()
+
 			owner := nv.Owner()
 			_ = owner.Name()
 		}()
@@ -783,6 +818,7 @@ func TestRapid_OwnerName_NilUserNilTagsPanic(t *testing.T) {
 		if !owner.Valid() {
 			return // acceptable: invalid owner
 		}
+
 		_ = owner.Name() // safe to call since owner is valid
 	})
 }
@@ -799,10 +835,12 @@ func TestRapid_HasNetworkChanges_Reflexive(t *testing.T) {
 
 		// Add some routes to make the test more interesting
 		nRoutes := rapid.IntRange(0, 4).Draw(t, "nRoutes")
+
 		announced := make([]netip.Prefix, nRoutes)
 		for i := range announced {
 			announced[i] = genSubnetPrefix().Draw(t, "route")
 		}
+
 		node.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: announced}
 		node.ApprovedRoutes = slices.Clone(announced)
 
@@ -827,9 +865,10 @@ func TestRapid_HasPolicyChange_Reflexive(t *testing.T) {
 
 		// Add tags or userID for richer test coverage
 		tags := genTags(4).Draw(t, "tags")
+
 		node.Tags = tags
 		if len(tags) == 0 {
-			uid := uint(rapid.IntRange(1, 10000).Draw(t, "userID"))
+			uid := uint(rapid.IntRange(1, 10000).Draw(t, "userID")) //nolint:gosec // positive bounded value
 			node.UserID = &uid
 		}
 
@@ -869,6 +908,7 @@ func TestRapid_GetFQDN_EmptyBaseDomainReturnsGivenName(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetFQDN with empty baseDomain should not error: %v", err)
 		}
+
 		if fqdn != givenName {
 			t.Fatalf("GetFQDN(\"\") = %q, want %q", fqdn, givenName)
 		}
@@ -886,6 +926,7 @@ func TestRapid_GetFQDN_WithBaseDomainEndsWithDot(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetFQDN error: %v", err)
 		}
+
 		if !strings.HasSuffix(fqdn, ".") {
 			t.Fatalf("GetFQDN(%q) = %q, should end with '.'", baseDomain, fqdn)
 		}
@@ -906,6 +947,7 @@ func TestRapid_GetFQDN_LengthNeverExceeds255(t *testing.T) {
 			// Error is acceptable — means it would have exceeded 255
 			return
 		}
+
 		if len(fqdn) > MaxHostnameLength {
 			t.Fatalf("GetFQDN returned %d-char hostname (max %d): %q",
 				len(fqdn), MaxHostnameLength, fqdn)
@@ -972,6 +1014,7 @@ func TestRapid_PeerChangeFromMapRequest_Roundtrip(t *testing.T) {
 			if node.Hostinfo == nil || node.Hostinfo.NetInfo == nil {
 				t.Fatal("After roundtrip, Hostinfo or NetInfo is nil")
 			}
+
 			if node.Hostinfo.NetInfo.PreferredDERP != newDerpRegion {
 				t.Fatalf("After roundtrip, DERPRegion = %d, want %d",
 					node.Hostinfo.NetInfo.PreferredDERP, newDerpRegion)
@@ -1033,9 +1076,11 @@ func TestRapid_PeerChangeFromMapRequest_IdenticalNoChange(t *testing.T) {
 		if change.Key != nil {
 			t.Fatalf("PeerChange.Key should be nil for identical node, got %v", change.Key)
 		}
+
 		if change.DiscoKey != nil {
 			t.Fatalf("PeerChange.DiscoKey should be nil for identical node, got %v", change.DiscoKey)
 		}
+
 		if change.Endpoints != nil {
 			t.Fatalf("PeerChange.Endpoints should be nil for identical node, got %v", change.Endpoints)
 		}
@@ -1058,10 +1103,12 @@ func TestRapid_PeerChangeFromMapRequest_IdenticalNoChange(t *testing.T) {
 func genNodes(maxLen int) *rapid.Generator[Nodes] {
 	return rapid.Custom[Nodes](func(t *rapid.T) Nodes {
 		n := rapid.IntRange(0, maxLen).Draw(t, "numNodes")
+
 		nodes := make(Nodes, n)
 		for i := range nodes {
 			nodes[i] = genNodeWithIPs().Draw(t, fmt.Sprintf("node%d", i))
 		}
+
 		return nodes
 	})
 }
@@ -1075,14 +1122,7 @@ func TestRapid_FilterByIP_SubsetOfInput(t *testing.T) {
 		result := nodes.FilterByIP(ip)
 
 		for _, rn := range result {
-			found := false
-			for _, n := range nodes {
-				if n == rn {
-					found = true
-					break
-				}
-			}
-			if !found {
+			if !slices.Contains(nodes, rn) {
 				t.Fatalf("FilterByIP returned node not in input: %v", rn)
 			}
 		}
@@ -1118,6 +1158,7 @@ func TestRapid_FilterByIP_NoFalseNegatives(t *testing.T) {
 
 		// Count nodes in input that have the IP
 		expectedCount := 0
+
 		for _, node := range nodes {
 			if (node.IPv4 != nil && *node.IPv4 == ip) ||
 				(node.IPv6 != nil && *node.IPv6 == ip) {

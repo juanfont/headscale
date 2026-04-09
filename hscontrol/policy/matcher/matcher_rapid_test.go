@@ -18,6 +18,7 @@ func genIPv4Addr() *rapid.Generator[netip.Addr] {
 		for i := range b {
 			b[i] = byte(rapid.IntRange(0, 255).Draw(t, "byte"))
 		}
+
 		return netip.AddrFrom4(b)
 	})
 }
@@ -29,6 +30,7 @@ func genIPv6Addr() *rapid.Generator[netip.Addr] {
 		for i := range b {
 			b[i] = byte(rapid.IntRange(0, 255).Draw(t, "byte"))
 		}
+
 		return netip.AddrFrom16(b)
 	})
 }
@@ -39,6 +41,7 @@ func genIPAddr() *rapid.Generator[netip.Addr] {
 		if rapid.Bool().Draw(t, "isV6") {
 			return genIPv6Addr().Draw(t, "addr")
 		}
+
 		return genIPv4Addr().Draw(t, "addr")
 	})
 }
@@ -48,6 +51,7 @@ func genMaskedIPv4Prefix(minBits, maxBits int) *rapid.Generator[netip.Prefix] {
 	return rapid.Custom[netip.Prefix](func(t *rapid.T) netip.Prefix {
 		bits := rapid.IntRange(minBits, maxBits).Draw(t, "bits")
 		addr := genIPv4Addr().Draw(t, "addr")
+
 		return netip.PrefixFrom(addr, bits).Masked()
 	})
 }
@@ -59,15 +63,17 @@ func genIPv4AddrInPrefix(prefix netip.Prefix) *rapid.Generator[netip.Addr] {
 		bits := prefix.Bits()
 
 		baseInt := uint32(base[0])<<24 | uint32(base[1])<<16 | uint32(base[2])<<8 | uint32(base[3])
+
 		hostBits := 32 - bits
 		if hostBits == 0 {
 			return prefix.Addr()
 		}
 
 		maxOffset := uint32((1 << hostBits) - 1)
-		offset := uint32(rapid.Uint32Range(0, maxOffset).Draw(t, "offset"))
+		offset := rapid.Uint32Range(0, maxOffset).Draw(t, "offset")
 
 		result := baseInt | offset
+
 		return netip.AddrFrom4([4]byte{
 			byte(result >> 24),
 			byte(result >> 16),

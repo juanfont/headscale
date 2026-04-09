@@ -2,6 +2,7 @@ package mapper
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 
@@ -10,6 +11,8 @@ import (
 	"pgregory.net/rapid"
 	"tailscale.com/tailcfg"
 )
+
+var errInjected = errors.New("injected error")
 
 // ============================================================================
 // Generators
@@ -35,6 +38,7 @@ func genConfig() *rapid.Generator[*types.Config] {
 		baseDomain := rapid.StringMatching(`[a-z]{2,8}\.[a-z]{2,4}`).Draw(t, "baseDomain")
 		serverURL := "https://" + rapid.StringMatching(`[a-z]{3,12}\.[a-z]{2,4}`).Draw(t, "serverHost")
 		logTailEnabled := rapid.Bool().Draw(t, "logTailEnabled")
+
 		return &types.Config{
 			BaseDomain: baseDomain,
 			ServerURL:  serverURL,
@@ -49,10 +53,12 @@ func genConfig() *rapid.Generator[*types.Config] {
 func genNodeIDs(maxLen int) *rapid.Generator[[]types.NodeID] {
 	return rapid.Custom[[]types.NodeID](func(t *rapid.T) []types.NodeID {
 		n := rapid.IntRange(0, maxLen).Draw(t, "numIDs")
+
 		ids := make([]types.NodeID, n)
 		for i := range ids {
 			ids[i] = genBuilderNodeID().Draw(t, "id")
 		}
+
 		return ids
 	})
 }
@@ -61,7 +67,7 @@ func genNodeIDs(maxLen int) *rapid.Generator[[]types.NodeID] {
 func genPeerChange() *rapid.Generator[*tailcfg.PeerChange] {
 	return rapid.Custom[*tailcfg.PeerChange](func(t *rapid.T) *tailcfg.PeerChange {
 		return &tailcfg.PeerChange{
-			NodeID:     tailcfg.NodeID(rapid.Uint64Range(1, 1<<53).Draw(t, "changeNodeID")),
+			NodeID:     tailcfg.NodeID(rapid.Uint64Range(1, 1<<53).Draw(t, "changeNodeID")), //nolint:gosec // test with bounded values
 			DERPRegion: rapid.IntRange(0, 100).Draw(t, "derpRegion"),
 		}
 	})
@@ -71,10 +77,12 @@ func genPeerChange() *rapid.Generator[*tailcfg.PeerChange] {
 func genPeerChanges(maxLen int) *rapid.Generator[[]*tailcfg.PeerChange] {
 	return rapid.Custom[[]*tailcfg.PeerChange](func(t *rapid.T) []*tailcfg.PeerChange {
 		n := rapid.IntRange(0, maxLen).Draw(t, "numChanges")
+
 		changes := make([]*tailcfg.PeerChange, n)
 		for i := range changes {
 			changes[i] = genPeerChange().Draw(t, "change")
 		}
+
 		return changes
 	})
 }
@@ -109,11 +117,14 @@ const (
 func genActions() *rapid.Generator[[]builderAction] {
 	return rapid.Custom[[]builderAction](func(t *rapid.T) []builderAction {
 		n := rapid.IntRange(0, int(actionCount)).Draw(t, "numActions")
+
 		actions := make([]builderAction, n)
 		for i := range actions {
 			actions[i] = builderAction(rapid.IntRange(0, int(actionCount)-1).Draw(t, "action"))
 		}
+
 		slices.Sort(actions)
+
 		return slices.Compact(actions)
 	})
 }
@@ -132,6 +143,8 @@ func applyActions(b *MapResponseBuilder, actions []builderAction, capVer tailcfg
 			b.WithDebugConfig()
 		case actionDebugType:
 			b.WithDebugType(fullResponseDebug)
+		case actionCount:
+			// sentinel value — not a real action
 		}
 	}
 }
@@ -185,6 +198,7 @@ func TestRapid_Builder_ControlTimeAlwaysSet(t *testing.T) {
 		if resp.ControlTime == nil {
 			t.Fatal("ControlTime must not be nil")
 		}
+
 		if resp.ControlTime.IsZero() {
 			t.Fatal("ControlTime must not be zero")
 		}
@@ -201,6 +215,7 @@ func TestRapid_Builder_EmptyBuilderMinimalResponse(t *testing.T) {
 		nodeID := genBuilderNodeID().Draw(t, "nodeID")
 
 		m := newTestMapper(cfg)
+
 		resp, err := m.NewMapResponseBuilder(nodeID).Build()
 		if err != nil {
 			t.Fatalf("empty builder should not error: %v", err)
@@ -210,36 +225,47 @@ func TestRapid_Builder_EmptyBuilderMinimalResponse(t *testing.T) {
 		if resp.Node != nil {
 			t.Fatal("empty builder should have nil Node")
 		}
+
 		if resp.DERPMap != nil {
 			t.Fatal("empty builder should have nil DERPMap")
 		}
+
 		if resp.Peers != nil {
 			t.Fatal("empty builder should have nil Peers")
 		}
+
 		if resp.PeersChanged != nil {
 			t.Fatal("empty builder should have nil PeersChanged")
 		}
+
 		if resp.PeersChangedPatch != nil {
 			t.Fatal("empty builder should have nil PeersChangedPatch")
 		}
+
 		if resp.PeersRemoved != nil {
 			t.Fatal("empty builder should have nil PeersRemoved")
 		}
+
 		if resp.Domain != "" {
 			t.Fatalf("empty builder should have empty Domain, got %q", resp.Domain)
 		}
+
 		if resp.Debug != nil {
 			t.Fatal("empty builder should have nil Debug")
 		}
+
 		if resp.PacketFilters != nil {
 			t.Fatal("empty builder should have nil PacketFilters")
 		}
+
 		if resp.DNSConfig != nil {
 			t.Fatal("empty builder should have nil DNSConfig")
 		}
+
 		if resp.SSHPolicy != nil {
 			t.Fatal("empty builder should have nil SSHPolicy")
 		}
+
 		if resp.UserProfiles != nil {
 			t.Fatal("empty builder should have nil UserProfiles")
 		}
@@ -248,6 +274,7 @@ func TestRapid_Builder_EmptyBuilderMinimalResponse(t *testing.T) {
 		if resp.KeepAlive {
 			t.Fatal("KeepAlive must be false")
 		}
+
 		if resp.ControlTime == nil || resp.ControlTime.IsZero() {
 			t.Fatal("ControlTime must be set even for empty builder")
 		}
@@ -272,7 +299,7 @@ func TestRapid_Builder_ErrorAccumulation(t *testing.T) {
 
 		// Inject errors
 		for i := range nErrors {
-			b.addError(errors.New("injected error " + rapid.StringMatching(`[a-z]{3,8}`).Draw(t, "errMsg")))
+			b.addError(fmt.Errorf("%w: %s", errInjected, rapid.StringMatching(`[a-z]{3,8}`).Draw(t, "errMsg")))
 
 			// Intersperse some WithX calls to show that chaining continues
 			if i < len(actions) {
@@ -287,6 +314,7 @@ func TestRapid_Builder_ErrorAccumulation(t *testing.T) {
 		if err == nil {
 			t.Fatal("Build() must return error when errors were added")
 		}
+
 		if resp != nil {
 			t.Fatal("Build() must return nil response when errors exist")
 		}
@@ -317,6 +345,7 @@ func TestRapid_Builder_NilErrorIgnored(t *testing.T) {
 		if err != nil {
 			t.Fatalf("nil errors should be ignored, got: %v", err)
 		}
+
 		if resp == nil {
 			t.Fatal("response should not be nil when no real errors exist")
 		}
@@ -379,6 +408,7 @@ func TestRapid_Builder_PeersRemovedEmpty(t *testing.T) {
 		if resp.PeersRemoved == nil {
 			t.Fatal("PeersRemoved should be non-nil (allocated empty slice)")
 		}
+
 		if len(resp.PeersRemoved) != 0 {
 			t.Fatalf("PeersRemoved should be empty, got %d elements", len(resp.PeersRemoved))
 		}
@@ -426,6 +456,7 @@ func TestRapid_Builder_PeersRemovedOverwrites(t *testing.T) {
 		for _, id := range secondIDs {
 			secondSet[id.NodeID()] = true
 		}
+
 		for _, id := range resp.PeersRemoved {
 			if !secondSet[id] {
 				t.Fatalf("PeersRemoved contains %d which is not in the second call set", id)
@@ -474,6 +505,7 @@ func TestRapid_Builder_PeerChangedPatchNil(t *testing.T) {
 		nodeID := genBuilderNodeID().Draw(t, "nodeID")
 
 		m := newTestMapper(cfg)
+
 		resp, err := m.NewMapResponseBuilder(nodeID).
 			WithPeerChangedPatch(nil).
 			Build()
@@ -501,6 +533,7 @@ func TestRapid_Builder_Deterministic(t *testing.T) {
 
 		build := func() *tailcfg.MapResponse {
 			m := newTestMapper(cfg)
+
 			resp, err := m.NewMapResponseBuilder(nodeID).
 				WithCapabilityVersion(capVer).
 				WithDomain().
@@ -512,6 +545,7 @@ func TestRapid_Builder_Deterministic(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected Build error: %v", err)
 			}
+
 			return resp
 		}
 
@@ -530,6 +564,7 @@ func TestRapid_Builder_Deterministic(t *testing.T) {
 
 		// CollectServices
 		v1, s1 := r1.CollectServices.Get()
+
 		v2, s2 := r2.CollectServices.Get()
 		if v1 != v2 || s1 != s2 {
 			t.Fatal("CollectServices non-deterministic")
@@ -539,6 +574,7 @@ func TestRapid_Builder_Deterministic(t *testing.T) {
 		if (r1.Debug == nil) != (r2.Debug == nil) {
 			t.Fatal("Debug presence non-deterministic")
 		}
+
 		if r1.Debug != nil && r1.Debug.DisableLogTail != r2.Debug.DisableLogTail {
 			t.Fatal("Debug.DisableLogTail non-deterministic")
 		}
@@ -552,10 +588,12 @@ func TestRapid_Builder_Deterministic(t *testing.T) {
 		if len(r1.PeersChangedPatch) != len(r2.PeersChangedPatch) {
 			t.Fatal("PeersChangedPatch length non-deterministic")
 		}
+
 		for i := range r1.PeersChangedPatch {
 			if r1.PeersChangedPatch[i].NodeID != r2.PeersChangedPatch[i].NodeID {
 				t.Fatalf("PeersChangedPatch[%d].NodeID non-deterministic", i)
 			}
+
 			if r1.PeersChangedPatch[i].DERPRegion != r2.PeersChangedPatch[i].DERPRegion {
 				t.Fatalf("PeersChangedPatch[%d].DERPRegion non-deterministic", i)
 			}
@@ -573,6 +611,7 @@ func TestRapid_Builder_WithDomainMatchesConfig(t *testing.T) {
 		nodeID := genBuilderNodeID().Draw(t, "nodeID")
 
 		m := newTestMapper(cfg)
+
 		resp, err := m.NewMapResponseBuilder(nodeID).
 			WithDomain().
 			Build()
@@ -597,6 +636,7 @@ func TestRapid_Builder_CollectServicesAlwaysFalse(t *testing.T) {
 		nodeID := genBuilderNodeID().Draw(t, "nodeID")
 
 		m := newTestMapper(cfg)
+
 		resp, err := m.NewMapResponseBuilder(nodeID).
 			WithCollectServicesDisabled().
 			Build()
@@ -608,6 +648,7 @@ func TestRapid_Builder_CollectServicesAlwaysFalse(t *testing.T) {
 		if !isSet {
 			t.Fatal("CollectServices should be explicitly set after WithCollectServicesDisabled")
 		}
+
 		if val {
 			t.Fatal("CollectServices must be false after WithCollectServicesDisabled")
 		}
@@ -624,6 +665,7 @@ func TestRapid_Builder_DebugConfigLogTailInversion(t *testing.T) {
 		nodeID := genBuilderNodeID().Draw(t, "nodeID")
 
 		m := newTestMapper(cfg)
+
 		resp, err := m.NewMapResponseBuilder(nodeID).
 			WithDebugConfig().
 			Build()
@@ -684,12 +726,14 @@ func TestRapid_Builder_FluentChainReturnsSamePointer(t *testing.T) {
 		}
 
 		ids := genNodeIDs(3).Draw(t, "ids")
+
 		b7 := b.WithPeersRemoved(ids...)
 		if b7 != b {
 			t.Fatal("WithPeersRemoved returned different pointer")
 		}
 
 		changes := genPeerChanges(3).Draw(t, "changes")
+
 		b8 := b.WithPeerChangedPatch(changes)
 		if b8 != b {
 			t.Fatal("WithPeerChangedPatch returned different pointer")
@@ -710,6 +754,7 @@ func TestRapid_Builder_OrderIndependence(t *testing.T) {
 
 		// Build with one order
 		m1 := newTestMapper(cfg)
+
 		r1, err := m1.NewMapResponseBuilder(nodeID).
 			WithCapabilityVersion(capVer).
 			WithDomain().
@@ -723,6 +768,7 @@ func TestRapid_Builder_OrderIndependence(t *testing.T) {
 
 		// Build with reversed order
 		m2 := newTestMapper(cfg)
+
 		r2, err := m2.NewMapResponseBuilder(nodeID).
 			WithPeersRemoved(removedIDs...).
 			WithDebugConfig().
@@ -740,6 +786,7 @@ func TestRapid_Builder_OrderIndependence(t *testing.T) {
 		}
 
 		v1, s1 := r1.CollectServices.Get()
+
 		v2, s2 := r2.CollectServices.Get()
 		if v1 != v2 || s1 != s2 {
 			t.Fatal("CollectServices differs")
@@ -748,6 +795,7 @@ func TestRapid_Builder_OrderIndependence(t *testing.T) {
 		if (r1.Debug == nil) != (r2.Debug == nil) {
 			t.Fatal("Debug presence differs")
 		}
+
 		if r1.Debug != nil && r1.Debug.DisableLogTail != r2.Debug.DisableLogTail {
 			t.Fatal("Debug.DisableLogTail differs")
 		}

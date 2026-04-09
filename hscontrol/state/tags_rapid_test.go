@@ -8,11 +8,6 @@ import (
 	"pgregory.net/rapid"
 )
 
-// ptrOf returns a pointer to the given value.
-func ptrOf[T any](v T) *T {
-	return &v
-}
-
 // ============================================================================
 // Generators
 // ============================================================================
@@ -22,6 +17,7 @@ func genNonEmptyTags(maxLen int) *rapid.Generator[[]string] {
 	return rapid.Custom[[]string](func(t *rapid.T) []string {
 		n := rapid.IntRange(1, maxLen).Draw(t, "numTags")
 		seen := make(map[string]bool, n)
+
 		result := make([]string, 0, n)
 		for len(result) < n {
 			tag := genTag().Draw(t, "tag")
@@ -30,6 +26,7 @@ func genNonEmptyTags(maxLen int) *rapid.Generator[[]string] {
 				result = append(result, tag)
 			}
 		}
+
 		return result
 	})
 }
@@ -38,7 +35,7 @@ func genNonEmptyTags(maxLen int) *rapid.Generator[[]string] {
 // validateNodeOwnership: 4-quadrant property tests
 // ============================================================================
 
-// Quadrant 1: tagged node + no UserID -> ok
+// Quadrant 1: tagged node + no UserID -> ok.
 func TestRapid_ValidateNodeOwnership_TaggedNoUser_OK(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		tags := genNonEmptyTags(5).Draw(t, "tags")
@@ -57,7 +54,7 @@ func TestRapid_ValidateNodeOwnership_TaggedNoUser_OK(t *testing.T) {
 	})
 }
 
-// Quadrant 2: tagged node + UserID set -> error (ErrTaggedNodeHasUser)
+// Quadrant 2: tagged node + UserID set -> error (ErrTaggedNodeHasUser).
 func TestRapid_ValidateNodeOwnership_TaggedWithUser_Error(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		tags := genNonEmptyTags(5).Draw(t, "tags")
@@ -67,20 +64,21 @@ func TestRapid_ValidateNodeOwnership_TaggedWithUser_Error(t *testing.T) {
 		node := &types.Node{
 			Hostname: hostname,
 			Tags:     tags,
-			UserID:   ptrOf(uid),
+			UserID:   &uid,
 		}
 
 		err := validateNodeOwnership(node)
 		if err == nil {
 			t.Fatalf("tagged node with UserID should fail, but got nil")
 		}
+
 		if !errors.Is(err, ErrTaggedNodeHasUser) {
 			t.Fatalf("expected ErrTaggedNodeHasUser, got: %v", err)
 		}
 	})
 }
 
-// Quadrant 3: not tagged + no UserID -> error (ErrNodeHasNeitherUserNorTags)
+// Quadrant 3: not tagged + no UserID -> error (ErrNodeHasNeitherUserNorTags).
 func TestRapid_ValidateNodeOwnership_UntaggedNoUser_Error(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		hostname := rapid.StringMatching(`[a-z][a-z0-9]{2,10}`).Draw(t, "hostname")
@@ -95,13 +93,14 @@ func TestRapid_ValidateNodeOwnership_UntaggedNoUser_Error(t *testing.T) {
 		if err == nil {
 			t.Fatal("untagged node without UserID should fail, but got nil")
 		}
+
 		if !errors.Is(err, ErrNodeHasNeitherUserNorTags) {
 			t.Fatalf("expected ErrNodeHasNeitherUserNorTags, got: %v", err)
 		}
 	})
 }
 
-// Quadrant 4: not tagged + UserID set -> ok
+// Quadrant 4: not tagged + UserID set -> ok.
 func TestRapid_ValidateNodeOwnership_UntaggedWithUser_OK(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		uid := genUserID().Draw(t, "uid")
@@ -110,7 +109,7 @@ func TestRapid_ValidateNodeOwnership_UntaggedWithUser_OK(t *testing.T) {
 		node := &types.Node{
 			Hostname: hostname,
 			Tags:     nil,
-			UserID:   ptrOf(uid),
+			UserID:   &uid,
 		}
 
 		err := validateNodeOwnership(node)
@@ -130,9 +129,10 @@ func TestRapid_ValidateNodeOwnership_NoPanic(t *testing.T) {
 		hostname := rapid.StringMatching(`[a-z][a-z0-9]{2,10}`).Draw(t, "hostname")
 
 		var userID *uint
+
 		if hasUser {
 			uid := genUserID().Draw(t, "uid")
-			userID = ptrOf(uid)
+			userID = &uid
 		}
 
 		node := &types.Node{
@@ -178,7 +178,7 @@ func TestRapid_ValidateNodeOwnership_EmptyTagsEqualsUntagged(t *testing.T) {
 		node := &types.Node{
 			Hostname: hostname,
 			Tags:     []string{},
-			UserID:   ptrOf(uid),
+			UserID:   &uid,
 		}
 
 		// Empty tags = not tagged, so user-owned node with UserID should be valid.
@@ -193,6 +193,7 @@ func TestRapid_ValidateNodeOwnership_EmptyTagsEqualsUntagged(t *testing.T) {
 			Tags:     []string{},
 			UserID:   nil,
 		}
+
 		err = validateNodeOwnership(nodeNoUser)
 		if !errors.Is(err, ErrNodeHasNeitherUserNorTags) {
 			t.Fatalf("empty tags + no UserID should be ErrNodeHasNeitherUserNorTags, got: %v", err)

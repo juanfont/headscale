@@ -15,33 +15,22 @@ import (
 // Generators
 // ============================================================================
 
-// genCGNATPrefix generates a valid IPv4 CGNAT prefix within 100.64.0.0/10.
-// Uses prefix lengths from /10 to /28 to ensure a reasonable address space.
-func genCGNATPrefix() *rapid.Generator[netip.Prefix] {
-	return rapid.Custom[netip.Prefix](func(t *rapid.T) netip.Prefix {
-		bits := rapid.IntRange(10, 28).Draw(t, "bits")
-		// Start from the CGNAT base 100.64.0.0 and vary within the /10
-		b2 := byte(rapid.IntRange(64, 127).Draw(t, "b2"))
-		b3 := byte(rapid.IntRange(0, 255).Draw(t, "b3"))
-		b4 := byte(rapid.IntRange(0, 255).Draw(t, "b4"))
-		addr := netip.AddrFrom4([4]byte{100, b2, b3, b4})
-		pfx := netip.PrefixFrom(addr, bits).Masked()
-		return pfx
-	})
-}
-
 // genULAPrefix generates a valid IPv6 ULA prefix (fd00::/8).
 // Uses prefix lengths from /48 to /112 to avoid enormous ranges.
 func genULAPrefix() *rapid.Generator[netip.Prefix] {
 	return rapid.Custom[netip.Prefix](func(t *rapid.T) netip.Prefix {
 		bits := rapid.IntRange(48, 112).Draw(t, "bits")
+
 		var b [16]byte
+
 		b[0] = 0xfd
 		for i := 1; i < 8; i++ {
 			b[i] = byte(rapid.IntRange(0, 255).Draw(t, "byte"))
 		}
+
 		addr := netip.AddrFrom16(b)
 		pfx := netip.PrefixFrom(addr, bits).Masked()
+
 		return pfx
 	})
 }
@@ -55,6 +44,7 @@ func genSmallCGNATPrefix() *rapid.Generator[netip.Prefix] {
 		b3 := byte(rapid.IntRange(0, 255).Draw(t, "b3"))
 		addr := netip.AddrFrom4([4]byte{100, b2, b3, 0})
 		pfx := netip.PrefixFrom(addr, bits).Masked()
+
 		return pfx
 	})
 }
@@ -84,6 +74,7 @@ func TestRapid_RandomNext_SameFamily(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		// Choose IPv4 or IPv6
 		isV6 := rapid.Bool().Draw(t, "isV6")
+
 		var pfx netip.Prefix
 		if isV6 {
 			pfx = genULAPrefix().Draw(t, "prefix")
@@ -151,6 +142,7 @@ func TestRapid_IsTailscaleReservedIP_ServiceIPsReserved(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		// Pick one of the two service IPs at random
 		choice := rapid.IntRange(0, 1).Draw(t, "choice")
+
 		var ip netip.Addr
 		if choice == 0 {
 			ip = tsaddr.TailscaleServiceIP()
@@ -178,6 +170,7 @@ func TestRapid_IsTailscaleReservedIP_NormalCGNATNotReserved(t *testing.T) {
 		if tsaddr.ChromeOSVMRange().Contains(ip) {
 			return
 		}
+
 		if ip == tsaddr.TailscaleServiceIP() {
 			return
 		}
@@ -202,6 +195,7 @@ func TestRapid_GetIPPrefixEndpoints_ContainedInPrefix(t *testing.T) {
 		if !pfx.Contains(network) {
 			t.Fatalf("network %s not in prefix %s", network, pfx)
 		}
+
 		if !pfx.Contains(broadcast) {
 			t.Fatalf("broadcast %s not in prefix %s", broadcast, pfx)
 		}
@@ -260,6 +254,7 @@ func genTinyIPv4Prefix() *rapid.Generator[netip.Prefix] {
 		b3 := byte(rapid.IntRange(0, 255).Draw(t, "b3"))
 		addr := netip.AddrFrom4([4]byte{100, 64, b3, 0})
 		pfx := netip.PrefixFrom(addr, bits).Masked()
+
 		return pfx
 	})
 }
@@ -271,7 +266,9 @@ func genTinyIPv6Prefix() *rapid.Generator[netip.Prefix] {
 		// fd7a:115c:a1e0:XXXX::Y0/124
 		b7 := byte(rapid.IntRange(0, 255).Draw(t, "b7"))
 		b8 := byte(rapid.IntRange(0, 255).Draw(t, "b8"))
+
 		var b [16]byte
+
 		b[0] = 0xfd
 		b[1] = 0x7a
 		b[2] = 0x11
@@ -283,6 +280,7 @@ func genTinyIPv6Prefix() *rapid.Generator[netip.Prefix] {
 		// Leave bytes 8-15 as zero; the /124 mask handles the rest.
 		addr := netip.AddrFrom16(b)
 		pfx := netip.PrefixFrom(addr, 124).Masked()
+
 		return pfx
 	})
 }
@@ -310,15 +308,19 @@ func newIPAllocatorModel(
 func allocableCount(pfx netip.Prefix) int {
 	rang := netipx.RangeOfPrefix(pfx)
 	count := 0
+
 	for ip := rang.From(); ip.Compare(rang.To()) <= 0; ip = ip.Next() {
 		if ip == rang.From() || ip == rang.To() {
 			continue // network and broadcast
 		}
+
 		if isTailscaleReservedIP(ip) {
 			continue
 		}
+
 		count++
 	}
+
 	return count
 }
 
@@ -332,6 +334,7 @@ func checkIPAllocatorInvariants(
 	for ip := range model.allocated {
 		// 1. All allocated IPs are within the configured prefix.
 		inV4 := model.prefix4.Contains(ip)
+
 		inV6 := model.prefix6.Contains(ip)
 		if !inV4 && !inV6 {
 			t.Fatalf(
@@ -405,7 +408,9 @@ func TestRapid_IPAllocator_Stateful_Random(t *testing.T) {
 
 		b7 := byte(rapid.IntRange(0, 255).Draw(rt, "b7"))
 		b8 := byte(rapid.IntRange(0, 255).Draw(rt, "b8"))
+
 		var b6 [16]byte
+
 		b6[0] = 0xfd
 		b6[1] = 0x7a
 		b6[2] = 0x11
@@ -428,20 +433,18 @@ func TestRapid_IPAllocator_Stateful_Random(t *testing.T) {
 		model := newIPAllocatorModel(prefix4, prefix6)
 		maxV4 := allocableCount(prefix4)
 		maxV6 := allocableCount(prefix6)
-		maxPairs := maxV4
-		if maxV6 < maxPairs {
-			maxPairs = maxV6
-		}
+
+		maxPairs := min(maxV6, maxV4)
 
 		// Cap at half capacity to keep random allocation fast.
-		allocCap := maxPairs / 2
-		if allocCap < 2 {
-			allocCap = 2
-		}
+		allocCap := max(maxPairs/2, 2)
 
 		allocatedPairs := 0
-		var allocatedV4s []netip.Addr
-		var allocatedV6s []netip.Addr
+
+		var (
+			allocatedV4s []netip.Addr
+			allocatedV6s []netip.Addr
+		)
 
 		rt.Repeat(map[string]func(*rapid.T){
 			"Allocate": func(rt *rapid.T) {
@@ -462,18 +465,22 @@ func TestRapid_IPAllocator_Stateful_Random(t *testing.T) {
 					if model.allocated[*ip4] {
 						rt.Fatalf("Allocate: duplicate IPv4 %s", ip4)
 					}
+
 					model.allocated[*ip4] = true
 					allocatedV4s = append(allocatedV4s, *ip4)
 				}
+
 				if ip6 != nil {
 					if model.allocated[*ip6] {
 						rt.Fatalf("Allocate: duplicate IPv6 %s", ip6)
 					}
+
 					model.allocated[*ip6] = true
 					allocatedV6s = append(allocatedV6s, *ip6)
 				}
 
 				allocatedPairs++
+
 				checkIPAllocatorInvariants(rt, model, "Allocate")
 			},
 
@@ -500,6 +507,7 @@ func TestRapid_IPAllocator_Stateful_Random(t *testing.T) {
 				allocatedV6s = allocatedV6s[:last]
 
 				allocatedPairs--
+
 				checkIPAllocatorInvariants(rt, model, "Free")
 			},
 
@@ -508,6 +516,7 @@ func TestRapid_IPAllocator_Stateful_Random(t *testing.T) {
 				if remaining <= 0 {
 					rt.Skip("at allocation cap")
 				}
+
 				n := rapid.IntRange(1, remaining).Draw(rt, "n")
 
 				for i := range n {
@@ -529,9 +538,11 @@ func TestRapid_IPAllocator_Stateful_Random(t *testing.T) {
 								i, n, ip4,
 							)
 						}
+
 						model.allocated[*ip4] = true
 						allocatedV4s = append(allocatedV4s, *ip4)
 					}
+
 					if ip6 != nil {
 						if model.allocated[*ip6] {
 							rt.Fatalf(
@@ -540,9 +551,11 @@ func TestRapid_IPAllocator_Stateful_Random(t *testing.T) {
 								i, n, ip6,
 							)
 						}
+
 						model.allocated[*ip6] = true
 						allocatedV6s = append(allocatedV6s, *ip6)
 					}
+
 					allocatedPairs++
 				}
 
@@ -573,17 +586,16 @@ func runIPAllocatorStatefulSequential(
 
 	// The actual limit is min(maxV4, maxV6) because Next() allocates
 	// one from each family atomically.
-	maxPairs := maxV4
-	if maxV6 < maxPairs {
-		maxPairs = maxV6
-	}
+	maxPairs := min(maxV6, maxV4)
 
 	// Track how many pairs are currently allocated (net of frees).
 	allocatedPairs := 0
 
 	// Keep ordered lists so we can pick random IPs to free.
-	var allocatedV4s []netip.Addr
-	var allocatedV6s []netip.Addr
+	var (
+		allocatedV4s []netip.Addr
+		allocatedV6s []netip.Addr
+	)
 
 	// exhausted tracks whether the allocator has reported exhaustion.
 	// The sequential cursor never wraps, so once exhausted it stays
@@ -601,11 +613,11 @@ func runIPAllocatorStatefulSequential(
 							"(sequential cursor past end)",
 					)
 				}
+
 				return
 			}
 
 			ip4, ip6, err := alloc.Next()
-
 			if err != nil {
 				// Sequential cursor went past the prefix end.
 				// This is valid: it can happen when we've
@@ -629,6 +641,7 @@ func runIPAllocatorStatefulSequential(
 				if model.allocated[*ip4] {
 					rt.Fatalf("Allocate: duplicate IPv4 %s", ip4)
 				}
+
 				model.allocated[*ip4] = true
 				allocatedV4s = append(allocatedV4s, *ip4)
 			}
@@ -637,6 +650,7 @@ func runIPAllocatorStatefulSequential(
 				if model.allocated[*ip6] {
 					rt.Fatalf("Allocate: duplicate IPv6 %s", ip6)
 				}
+
 				model.allocated[*ip6] = true
 				allocatedV6s = append(allocatedV6s, *ip6)
 			}
@@ -698,6 +712,7 @@ func runIPAllocatorStatefulSequential(
 							i, n, ip4,
 						)
 					}
+
 					model.allocated[*ip4] = true
 					allocatedV4s = append(allocatedV4s, *ip4)
 				}
@@ -709,6 +724,7 @@ func runIPAllocatorStatefulSequential(
 							i, n, ip6,
 						)
 					}
+
 					model.allocated[*ip6] = true
 					allocatedV6s = append(allocatedV6s, *ip6)
 				}
@@ -740,10 +756,8 @@ func TestRapid_IPAllocator_Exhaustion_Sequential(t *testing.T) {
 
 		maxV4 := allocableCount(prefix4)
 		maxV6 := allocableCount(prefix6)
-		maxPairs := maxV4
-		if maxV6 < maxPairs {
-			maxPairs = maxV6
-		}
+
+		maxPairs := min(maxV6, maxV4)
 
 		seen4 := make(map[netip.Addr]bool)
 		seen6 := make(map[netip.Addr]bool)
@@ -757,10 +771,12 @@ func TestRapid_IPAllocator_Exhaustion_Sequential(t *testing.T) {
 					len(seen4), maxPairs, err,
 				)
 			}
+
 			if ip4 != nil {
 				if seen4[*ip4] {
 					rt.Fatalf("exhaustion: duplicate IPv4 %s", ip4)
 				}
+
 				seen4[*ip4] = true
 
 				if !prefix4.Contains(*ip4) {
@@ -769,11 +785,13 @@ func TestRapid_IPAllocator_Exhaustion_Sequential(t *testing.T) {
 						ip4, prefix4,
 					)
 				}
+
 				if isTailscaleReservedIP(*ip4) {
 					rt.Fatalf(
 						"exhaustion: IPv4 %s is reserved", ip4,
 					)
 				}
+
 				net4, bcast4 := getIPPrefixEndpointsViaRange(prefix4)
 				if *ip4 == net4 || *ip4 == bcast4 {
 					rt.Fatalf(
@@ -782,10 +800,12 @@ func TestRapid_IPAllocator_Exhaustion_Sequential(t *testing.T) {
 					)
 				}
 			}
+
 			if ip6 != nil {
 				if seen6[*ip6] {
 					rt.Fatalf("exhaustion: duplicate IPv6 %s", ip6)
 				}
+
 				seen6[*ip6] = true
 
 				if !prefix6.Contains(*ip6) {
@@ -794,11 +814,13 @@ func TestRapid_IPAllocator_Exhaustion_Sequential(t *testing.T) {
 						ip6, prefix6,
 					)
 				}
+
 				if isTailscaleReservedIP(*ip6) {
 					rt.Fatalf(
 						"exhaustion: IPv6 %s is reserved", ip6,
 					)
 				}
+
 				net6, bcast6 := getIPPrefixEndpointsViaRange(prefix6)
 				if *ip6 == net6 || *ip6 == bcast6 {
 					rt.Fatalf(
