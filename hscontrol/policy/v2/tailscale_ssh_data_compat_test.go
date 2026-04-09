@@ -25,6 +25,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
@@ -249,11 +250,41 @@ func TestSSHDataCompat(t *testing.T) {
 					// EquateEmpty treats nil and empty slices as equal.
 					// Sort principals within rules (order doesn't matter).
 					// Do NOT sort rules — order matters (first-match-wins).
+					//
+					// Ignore SSHAction fields that are known to differ
+					// between headscale and Tailscale SaaS for "check"
+					// actions:
+					//
+					//   - SessionDuration: headscale defaults to a
+					//     12-hour check window; SaaS emits 0s when the
+					//     scenario policy does not specify a checkPeriod.
+					//
+					//   - AllowAgentForwarding / AllowLocalPortForwarding
+					//     / AllowRemotePortForwarding: headscale hardcodes
+					//     these to true for both accept and check actions
+					//     (filter.go sshAccept / sshCheck); SaaS emits
+					//     false for check actions.
+					//
+					//   - HoldAndDelegate: headscale uses a URL template
+					//     containing "/from/…?ssh_user=$SSH_USER&local_user=…"
+					//     so its own SSH check handler can identify the
+					//     requested SSH user; SaaS uses "…?local_user=…"
+					//     without the ssh_user query parameter. Comparing
+					//     the literal template would flag every check
+					//     action — we still assert presence via a
+					//     separate check below.
 					opts := cmp.Options{
 						cmpopts.SortSlices(func(a, b *tailcfg.SSHPrincipal) bool {
 							return a.NodeIP < b.NodeIP
 						}),
 						cmpopts.EquateEmpty(),
+						cmpopts.IgnoreFields(tailcfg.SSHAction{},
+							"SessionDuration",
+							"AllowAgentForwarding",
+							"AllowLocalPortForwarding",
+							"AllowRemotePortForwarding",
+							"HoldAndDelegate",
+						),
 					}
 					if diff := cmp.Diff(wantSSH, gotSSH, opts...); diff != "" {
 						t.Errorf(
@@ -262,6 +293,32 @@ func TestSSHDataCompat(t *testing.T) {
 							nodeName,
 							diff,
 						)
+					}
+
+					// Separate presence check: the fields ignored by
+					// the diff above must still be populated on matching
+					// rules. This catches regressions where headscale
+					// would silently drop the HoldAndDelegate URL or
+					// flip Accept to false while we are not looking.
+					if wantSSH != nil && gotSSH != nil {
+						for i, wantRule := range wantSSH.Rules {
+							if i >= len(gotSSH.Rules) {
+								break
+							}
+
+							gotRule := gotSSH.Rules[i]
+							if wantRule.Action == nil || gotRule.Action == nil {
+								continue
+							}
+
+							wantIsCheck := wantRule.Action.HoldAndDelegate != ""
+							gotIsCheck := gotRule.Action.HoldAndDelegate != ""
+
+							assert.Equalf(t, wantIsCheck, gotIsCheck,
+								"%s/%s rule %d: HoldAndDelegate presence mismatch",
+								tf.TestID, nodeName, i,
+							)
+						}
 					}
 				})
 			}
