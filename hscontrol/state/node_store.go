@@ -526,8 +526,8 @@ func (s *NodeStore) DebugString() string {
 	sb.WriteString("=== NodeStore Debug Information ===\n\n")
 
 	// Basic counts
-	sb.WriteString(fmt.Sprintf("Total Nodes: %d\n", len(snapshot.nodesByID)))
-	sb.WriteString(fmt.Sprintf("Users with Nodes: %d\n", len(snapshot.nodesByUser)))
+	fmt.Fprintf(&sb, "Total Nodes: %d\n", len(snapshot.nodesByID))
+	fmt.Fprintf(&sb, "Users with Nodes: %d\n", len(snapshot.nodesByUser))
 	sb.WriteString("\n")
 
 	// User distribution (shows internal UserID tracking, not display owner)
@@ -541,7 +541,7 @@ func (s *NodeStore) DebugString() string {
 				userName = nodes[0].User().Name()
 			}
 
-			sb.WriteString(fmt.Sprintf("  - User %d (%s): %d nodes\n", userID, userName, len(nodes)))
+			fmt.Fprintf(&sb, "  - User %d (%s): %d nodes\n", userID, userName, len(nodes))
 		}
 	}
 
@@ -557,20 +557,20 @@ func (s *NodeStore) DebugString() string {
 
 		totalPeers += peerCount
 		if node, exists := snapshot.nodesByID[nodeID]; exists {
-			sb.WriteString(fmt.Sprintf("  - Node %d (%s): %d peers\n",
-				nodeID, node.Hostname, peerCount))
+			fmt.Fprintf(&sb, "  - Node %d (%s): %d peers\n",
+				nodeID, node.Hostname, peerCount)
 		}
 	}
 
 	if len(snapshot.peersByNode) > 0 {
 		avgPeers := float64(totalPeers) / float64(len(snapshot.peersByNode))
-		sb.WriteString(fmt.Sprintf("  - Average peers per node: %.1f\n", avgPeers))
+		fmt.Fprintf(&sb, "  - Average peers per node: %.1f\n", avgPeers)
 	}
 
 	sb.WriteString("\n")
 
 	// Node key index
-	sb.WriteString(fmt.Sprintf("NodeKey Index: %d entries\n", len(snapshot.nodesByNodeKey)))
+	fmt.Fprintf(&sb, "NodeKey Index: %d entries\n", len(snapshot.nodesByNodeKey))
 	sb.WriteString("\n")
 
 	return sb.String()

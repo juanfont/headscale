@@ -786,6 +786,7 @@ func TestBug3_CleanupOfflineNodes_TOCTOU(t *testing.T) {
 	entry.lastUsed.Store(time.Now().Unix())
 	mc.addConnection(entry)
 	mc.markConnected()
+
 	lb.channels[targetNode] = newCh
 
 	// Now run cleanup. Node 3 is in the candidates list (old disconnect
