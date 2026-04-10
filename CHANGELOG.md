@@ -15,7 +15,8 @@ overall our implementation was very close.
 
 SSH rules with `"action": "check"` are now supported. When a client initiates a SSH connection to a node
 with a `check` action policy, the user is prompted to authenticate via OIDC or CLI approval before access
-is granted.
+is granted. OIDC approval requires the authenticated user to own the source node; tagged source nodes
+cannot use SSH check-mode.
 
 A new `headscale auth` CLI command group supports the approval flow:
 
@@ -24,6 +25,7 @@ A new `headscale auth` CLI command group supports the approval flow:
 - `headscale auth register --auth-id <id> --user <user>` registers a node (replaces deprecated `headscale nodes register`)
 
 [#1850](https://github.com/juanfont/headscale/pull/1850)
+[#3180](https://github.com/juanfont/headscale/pull/3180)
 
 ### Grants
 
@@ -60,6 +62,10 @@ internet is a security-sensitive choice. `autogroup:danger-all` can only be used
 
 ### Changes
 
+- **OIDC registration**: Add a confirmation page before completing node registration, showing the device hostname and machine key fingerprint [#3180](https://github.com/juanfont/headscale/pull/3180)
+- **Debug endpoints**: Omit secret fields (`Pass`, `ClientSecret`, `APIKey`) from `/debug/config` JSON output [#3180](https://github.com/juanfont/headscale/pull/3180)
+- **Debug endpoints**: Route `statsviz` through `tsweb.Protected` [#3180](https://github.com/juanfont/headscale/pull/3180)
+- Remove gRPC reflection from the remote (TCP) server [#3180](https://github.com/juanfont/headscale/pull/3180)
 - **Node Expiry**: Add `node.expiry` configuration option to set a default node key expiry for nodes registered via auth key [#3122](https://github.com/juanfont/headscale/pull/3122)
   - Tagged nodes (registered with tagged pre-auth keys) are exempt from default expiry
   - `oidc.expiry` has been removed; use `node.expiry` instead (applies to all registration methods including OIDC)
