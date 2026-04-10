@@ -66,6 +66,7 @@ func findTests() []string {
 	}
 
 	args := []string{
+		"--type", "go",
 		"--regexp", "func (Test.+)\\(.*",
 		"../../integration/",
 		"--replace", "$1",
