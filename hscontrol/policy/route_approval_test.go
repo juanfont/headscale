@@ -220,7 +220,7 @@ func TestNodeCanApproveRoute(t *testing.T) {
 					}
 				}
 			}`,
-			canApprove: false,
+			canApprove: true,
 		},
 		{
 			name:  "all-IPv4-routes-exitnode-approval",
@@ -326,7 +326,7 @@ func TestNodeCanApproveRoute(t *testing.T) {
 					}
 				}
 			}`,
-			canApprove: false,
+			canApprove: true,
 		},
 		{
 			name:  "specific-IPv6-route-with-all-routes-policy",

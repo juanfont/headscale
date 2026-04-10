@@ -799,6 +799,9 @@ func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Pr
 		return false
 	}
 
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
 	// If the route to-be-approved is an exit route, then we need to check
 	// if the node is in allowed to approve it. This is treated differently
 	// than the auto-approvers, as the auto-approvers are not allowed to
@@ -806,19 +809,17 @@ func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Pr
 	// However, an auto approver might be /0, meaning that they can approve
 	// all routes available, just not exit nodes.
 	if tsaddr.IsExitRoute(route) {
-		if pm.exitSet == nil {
-			return false
+		if pm.exitSet != nil && slices.ContainsFunc(node.IPs(), pm.exitSet.Contains) {
+			return true
 		}
 
-		if slices.ContainsFunc(node.IPs(), pm.exitSet.Contains) {
-			return true
+		// Also check autoApproveMap for exit routes configured via the routes map.
+		if approvers, ok := pm.autoApproveMap[route]; ok {
+			return slices.ContainsFunc(node.IPs(), approvers.Contains)
 		}
 
 		return false
 	}
-
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
 
 	// The fast path is that a node requests to approve a prefix
 	// where there is an exact entry, e.g. 10.0.0.0/8, then

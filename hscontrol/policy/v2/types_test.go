@@ -3141,6 +3141,32 @@ func TestNodeCanApproveRoute(t *testing.T) {
 			want:  true,
 		},
 		{
+			name: "exit-node-approval-via-routes",
+			policy: &Policy{
+				AutoApprovers: AutoApproverPolicy{
+					Routes: map[netip.Prefix]AutoApprovers{
+						tsaddr.AllIPv4(): {new(Username("user1@"))},
+					},
+				},
+			},
+			node:  nodes[0],
+			route: tsaddr.AllIPv4(),
+			want:  true,
+		},
+		{
+			name: "exit-node-ipv6-approval-via-routes",
+			policy: &Policy{
+				AutoApprovers: AutoApproverPolicy{
+					Routes: map[netip.Prefix]AutoApprovers{
+						tsaddr.AllIPv6(): {new(Username("user1@"))},
+					},
+				},
+			},
+			node:  nodes[0],
+			route: tsaddr.AllIPv6(),
+			want:  true,
+		},
+		{
 			name: "no-approval",
 			policy: &Policy{
 				AutoApprovers: AutoApproverPolicy{
