@@ -1015,20 +1015,11 @@ func TestRoutesCompatExitNodePeerVisibility(t *testing.T) {
 	// b8: autogroup:member -> autogroup:internet:* — no filter rules at all
 	exitNodeTests := []struct {
 		testID string
-		// exitNodeNames are nodes with tag:exit
-		exitNodeNames []string
 		// expectedNullAll: if true, all captures should be null
 		expectedNullAll bool
 	}{
-		{
-			testID:        "routes-b2-tag-exit-excludes-exit-routes",
-			exitNodeNames: []string{"exit-node", "multi-router"},
-		},
-		{
-			testID:          "routes-b8-autogroup-internet-no-filters",
-			exitNodeNames:   []string{"exit-node", "multi-router"},
-			expectedNullAll: true,
-		},
+		{testID: "routes-b2-tag-exit-excludes-exit-routes"},
+		{testID: "routes-b8-autogroup-internet-no-filters", expectedNullAll: true},
 	}
 
 	for _, tc := range exitNodeTests {
@@ -1036,6 +1027,22 @@ func TestRoutesCompatExitNodePeerVisibility(t *testing.T) {
 			"testdata", "routes_results", tc.testID+".hujson",
 		)
 		tf := loadRoutesTestFile(t, file)
+
+		// Derive exit node names from the topology instead of
+		// hard-coding them. The topology's tag arrays are the
+		// source of truth for which nodes are exit nodes.
+		var exitNodeNames []string
+
+		for name, node := range tf.Topology.Nodes {
+			if slices.Contains(node.Tags, "tag:exit") {
+				exitNodeNames = append(exitNodeNames, name)
+			}
+		}
+
+		sort.Strings(exitNodeNames)
+		require.NotEmpty(t, exitNodeNames,
+			"%s: topology has no nodes with tag:exit", tf.TestID,
+		)
 
 		t.Run(tf.TestID, func(t *testing.T) {
 			t.Parallel()
@@ -1051,7 +1058,7 @@ func TestRoutesCompatExitNodePeerVisibility(t *testing.T) {
 			if tc.expectedNullAll {
 				// All captures null: verify no CanAccess pairs
 				// involving exit nodes via this ACL alone.
-				for _, exitName := range tc.exitNodeNames {
+				for _, exitName := range exitNodeNames {
 					exitNode := findNodeByGivenName(
 						nodes, exitName,
 					)
@@ -1086,9 +1093,9 @@ func TestRoutesCompatExitNodePeerVisibility(t *testing.T) {
 			// For b2: tag:exit -> tag:exit:*, only exit nodes
 			// should see each other. Verify exit<->exit pairs
 			// have CanAccess=true.
-			for i, name1 := range tc.exitNodeNames {
-				for j := i + 1; j < len(tc.exitNodeNames); j++ {
-					name2 := tc.exitNodeNames[j]
+			for i, name1 := range exitNodeNames {
+				for j := i + 1; j < len(exitNodeNames); j++ {
+					name2 := exitNodeNames[j]
 					node1 := findNodeByGivenName(nodes, name1)
 					node2 := findNodeByGivenName(nodes, name2)
 
@@ -1122,7 +1129,7 @@ func TestRoutesCompatExitNodePeerVisibility(t *testing.T) {
 
 			// Verify non-exit nodes don't peer with exit nodes
 			// through this restricted ACL.
-			for _, exitName := range tc.exitNodeNames {
+			for _, exitName := range exitNodeNames {
 				exitNode := findNodeByGivenName(
 					nodes, exitName,
 				)
@@ -1133,9 +1140,9 @@ func TestRoutesCompatExitNodePeerVisibility(t *testing.T) {
 						continue
 					}
 
-					// Skip other exit nodes
-					isExit := slices.Contains(tc.exitNodeNames, other.GivenName)
-
+					isExit := slices.Contains(
+						exitNodeNames, other.GivenName,
+					)
 					if isExit {
 						continue
 					}
