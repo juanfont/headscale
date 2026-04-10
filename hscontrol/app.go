@@ -509,6 +509,10 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *chi.Mux {
 		r.Use(h.httpAuthenticationMiddleware)
 		r.HandleFunc("/v1/*", grpcMux.ServeHTTP)
 	})
+	// Ping response endpoint: receives HEAD from clients responding
+	// to a PingRequest. The unguessable ping ID serves as authentication.
+	r.Head("/machine/ping-response", h.PingResponseHandler)
+
 	r.Get("/favicon.ico", FaviconHandler)
 	r.Get("/", BlankHandler)
 

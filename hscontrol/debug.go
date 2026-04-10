@@ -1,16 +1,21 @@
 package hscontrol
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
 	"net/netip"
 	"strings"
+	"time"
 
 	"github.com/arl/statsviz"
+	"github.com/juanfont/headscale/hscontrol/templates"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"tailscale.com/tailcfg"
 	"tailscale.com/tsweb"
 )
 
@@ -324,6 +329,42 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		}
 	}))
 
+	// Ping endpoint: sends a PingRequest to a node and waits for it to respond.
+	// Supports POST (form submit) and GET with ?node= (clickable quick-ping links).
+	debug.Handle("ping", "Ping a node to check connectivity", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var (
+			query  string
+			result *templates.PingResult
+		)
+
+		switch r.Method {
+		case http.MethodPost:
+			r.Body = http.MaxBytesReader(w, r.Body, 4096) //nolint:mnd
+
+			err := r.ParseForm()
+			if err != nil {
+				http.Error(w, "bad form data", http.StatusBadRequest)
+				return
+			}
+
+			query = r.FormValue("node")
+			result = h.doPing(r.Context(), query)
+		case http.MethodGet:
+			// Support ?node= for auto-ping links from other debug pages.
+			if q := r.URL.Query().Get("node"); q != "" {
+				query = q
+				result = h.doPing(r.Context(), query)
+			}
+		}
+
+		nodes := h.connectedNodesList()
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		//nolint:gosec // elem-go auto-escapes all attribute values; no XSS risk.
+		_, _ = w.Write([]byte(templates.PingPage(query, result, nodes).Render()))
+	}))
+
 	// statsviz.Register would mount handlers directly on the raw mux,
 	// bypassing the access gate. Build the server by hand and wrap
 	// each handler with protectedDebugHandler.
@@ -435,4 +476,95 @@ func (h *Headscale) debugBatcherJSON() DebugBatcherInfo {
 	}
 
 	return info
+}
+
+// connectedNodesList returns a list of connected nodes for the ping page.
+func (h *Headscale) connectedNodesList() []templates.ConnectedNode {
+	debugInfo := h.mapBatcher.Debug()
+
+	var nodes []templates.ConnectedNode
+
+	for nodeID, info := range debugInfo {
+		if !info.Connected {
+			continue
+		}
+
+		nv, ok := h.state.GetNodeByID(nodeID)
+		if !ok {
+			continue
+		}
+
+		cn := templates.ConnectedNode{
+			ID:       nodeID,
+			Hostname: nv.Hostname(),
+		}
+
+		for _, ip := range nv.IPs() {
+			cn.IPs = append(cn.IPs, ip.String())
+		}
+
+		nodes = append(nodes, cn)
+	}
+
+	return nodes
+}
+
+const pingTimeout = 30 * time.Second
+
+// doPing sends a PingRequest to the node identified by query and waits for a response.
+func (h *Headscale) doPing(ctx context.Context, query string) *templates.PingResult {
+	if query == "" {
+		return &templates.PingResult{
+			Status:  "error",
+			Message: "No node specified.",
+		}
+	}
+
+	node, ok := h.state.ResolveNode(query)
+	if !ok {
+		return &templates.PingResult{
+			Status:  "error",
+			Message: fmt.Sprintf("Node %q not found.", query),
+		}
+	}
+
+	nodeID := node.ID()
+
+	if !h.mapBatcher.IsConnected(nodeID) {
+		return &templates.PingResult{
+			Status:  "error",
+			NodeID:  nodeID,
+			Message: fmt.Sprintf("Node %d is not connected.", nodeID),
+		}
+	}
+
+	pingID, responseCh := h.state.RegisterPing(nodeID)
+	defer h.state.CancelPing(pingID)
+
+	callbackURL := h.cfg.ServerURL + "/machine/ping-response?id=" + pingID
+	h.Change(change.PingNode(nodeID, &tailcfg.PingRequest{
+		URL: callbackURL,
+		Log: true,
+	}))
+
+	select {
+	case latency := <-responseCh:
+		return &templates.PingResult{
+			Status:  "ok",
+			Latency: latency,
+			NodeID:  nodeID,
+		}
+	case <-time.After(pingTimeout):
+		return &templates.PingResult{
+			Status:  "timeout",
+			NodeID:  nodeID,
+			Message: fmt.Sprintf("No response after %s.", pingTimeout),
+		}
+	case <-ctx.Done():
+		return &templates.PingResult{
+			Status:  "error",
+			NodeID:  nodeID,
+			Message: "Request cancelled.",
+		}
+	}
 }

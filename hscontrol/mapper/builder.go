@@ -277,6 +277,12 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 	return tailPeers, nil
 }
 
+// WithPingRequest adds a PingRequest to the response.
+func (b *MapResponseBuilder) WithPingRequest(pr *tailcfg.PingRequest) *MapResponseBuilder {
+	b.resp.PingRequest = pr
+	return b
+}
+
 // WithPeerChangedPatch adds peer change patches.
 func (b *MapResponseBuilder) WithPeerChangedPatch(changes []*tailcfg.PeerChange) *MapResponseBuilder {
 	b.resp.PeersChangedPatch = changes

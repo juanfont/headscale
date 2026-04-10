@@ -39,6 +39,11 @@ type Change struct {
 	// must be computed at runtime per-node. Used for policy changes
 	// where each node may have different peer visibility.
 	RequiresRuntimePeerComputation bool
+
+	// PingRequest, if non-nil, is a ping request to send to the node.
+	// Used by the debug ping endpoint to verify node connectivity.
+	// PingRequest is always targeted to a specific node via TargetNode.
+	PingRequest *tailcfg.PingRequest
 }
 
 // boolFieldNames returns all boolean field names for exhaustive testing.
@@ -93,6 +98,11 @@ func (r Change) Merge(other Change) Change {
 		merged.TargetNode = other.TargetNode
 	}
 
+	// Preserve PingRequest (first wins).
+	if merged.PingRequest == nil {
+		merged.PingRequest = other.PingRequest
+	}
+
 	if r.Reason != "" && other.Reason != "" && r.Reason != other.Reason {
 		merged.Reason = r.Reason + "; " + other.Reason
 	} else if other.Reason != "" {
@@ -109,6 +119,10 @@ func (r Change) IsEmpty() bool {
 	}
 
 	if r.RequiresRuntimePeerComputation {
+		return false
+	}
+
+	if r.PingRequest != nil {
 		return false
 	}
 
@@ -166,6 +180,10 @@ func (r Change) Type() string {
 
 	if r.IncludeDERPMap || r.IncludeDNS || r.IncludeDomain || r.IncludePolicy {
 		return "config"
+	}
+
+	if r.PingRequest != nil {
+		return "ping"
 	}
 
 	return "unknown"
@@ -452,6 +470,16 @@ func UserRemoved() Change {
 	c.Reason = "user removed"
 
 	return c
+}
+
+// PingNode creates a Change that sends a PingRequest to a specific node.
+// The node will respond to the PingRequest URL to prove connectivity.
+func PingNode(nodeID types.NodeID, pr *tailcfg.PingRequest) Change {
+	return Change{
+		Reason:      "ping node",
+		TargetNode:  nodeID,
+		PingRequest: pr,
+	}
 }
 
 // ExtraRecords returns a Change for when DNS extra records change.
