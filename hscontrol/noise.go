@@ -295,6 +295,26 @@ func (ns *noiseServer) NotImplementedHandler(writer http.ResponseWriter, req *ht
 	http.Error(writer, "Not implemented yet", http.StatusNotImplemented)
 }
 
+// PingResponseHandler handles HEAD requests from clients responding to a
+// PingRequest. The client calls this endpoint to prove connectivity.
+// The unguessable ping ID serves as authentication.
+func (h *Headscale) PingResponseHandler(
+	writer http.ResponseWriter,
+	req *http.Request,
+) {
+	pingID := req.URL.Query().Get("id")
+	if pingID == "" {
+		http.Error(writer, "missing ping ID", http.StatusBadRequest)
+		return
+	}
+
+	if h.state.CompletePing(pingID) {
+		writer.WriteHeader(http.StatusOK)
+	} else {
+		http.Error(writer, "unknown or expired ping", http.StatusNotFound)
+	}
+}
+
 func urlParam[T any](req *http.Request, key string) (T, error) {
 	var zero T
 

@@ -146,6 +146,9 @@ type State struct {
 	// only proceeds when the generation it carries matches the latest.
 	connectGen sync.Map // types.NodeID → *atomic.Uint64
 
+	// pings tracks pending ping requests and their response channels.
+	pings *pingTracker
+
 	// sshCheckAuth tracks when source nodes last completed SSH check auth.
 	//
 	// For rules without explicit checkPeriod (default 12h), auth covers any
@@ -256,6 +259,7 @@ func NewState(cfg *types.Config) (*State, error) {
 		authCache:     authCache,
 		primaryRoutes: routes.New(),
 		nodeStore:     nodeStore,
+		pings:         newPingTracker(),
 
 		sshCheckAuth: make(map[sshCheckPair]time.Time),
 	}, nil
@@ -697,6 +701,37 @@ func (s *State) GetNodeByNodeKey(nodeKey key.NodePublic) (types.NodeView, bool) 
 // it isn't an invalid node (this is more of a node error or node is broken).
 func (s *State) GetNodeByMachineKey(machineKey key.MachinePublic, userID types.UserID) (types.NodeView, bool) {
 	return s.nodeStore.GetNodeByMachineKey(machineKey, userID)
+}
+
+// ResolveNode looks up a node by numeric ID, IPv4/IPv6 address, hostname, or given name.
+// It tries ID first, then IP, then name matching.
+func (s *State) ResolveNode(query string) (types.NodeView, bool) {
+	// Try numeric ID first.
+	id, idErr := types.ParseNodeID(query)
+	if idErr == nil {
+		return s.GetNodeByID(id)
+	}
+
+	// Try IP address.
+	addr, addrErr := netip.ParseAddr(query)
+	if addrErr == nil {
+		for _, n := range s.ListNodes().All() {
+			if slices.Contains(n.IPs(), addr) {
+				return n, true
+			}
+		}
+
+		return types.NodeView{}, false
+	}
+
+	// Try hostname / given name.
+	for _, n := range s.ListNodes().All() {
+		if n.Hostname() == query || n.GivenName() == query {
+			return n, true
+		}
+	}
+
+	return types.NodeView{}, false
 }
 
 // ListNodes retrieves specific nodes by ID, or all nodes if no IDs provided.
