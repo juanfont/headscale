@@ -636,12 +636,8 @@ func convertViaPolicy(raw json.RawMessage) []byte {
 	s := string(raw)
 	// Anonymized SaaS emails as written by tscap/anonymize.
 	s = strings.ReplaceAll(s, "odin@example.com", "tag-user@")
-	s = strings.ReplaceAll(s, "thor@example.com", "tag-user@")
+	s = strings.ReplaceAll(s, "thor@example.org", "tag-user@")
 	s = strings.ReplaceAll(s, "freya@example.com", "tag-user@")
-	// Pre-anonymization emails (legacy captures / local reruns).
-	s = strings.ReplaceAll(s, "kratail2tid@passkey", "tag-user@")
-	s = strings.ReplaceAll(s, "kristoffer@dalby.cc", "tag-user@")
-	s = strings.ReplaceAll(s, "monitorpasskeykradalby@passkey", "tag-user@")
 
 	return []byte(s)
 }

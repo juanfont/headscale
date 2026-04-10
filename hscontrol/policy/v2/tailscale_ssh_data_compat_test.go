@@ -35,6 +35,12 @@ import (
 // compatibility tests. Users get norse-god names; nodes get original-151
 // pokémon names — matching the anonymized identifiers tscap writes into
 // the capture files (see github.com/kradalby/tscap/anonymize).
+//
+// odin and freya live on @example.com; thor lives on @example.org so
+// that "localpart:*@example.com" resolves to exactly two users
+// (matching SaaS output) and the "user on a different email domain"
+// case stays covered by scenarios like ssh-d1 that use
+// "localpart:*@example.org".
 func setupSSHDataCompatUsers() types.Users {
 	return types.Users{
 		{
@@ -45,7 +51,7 @@ func setupSSHDataCompatUsers() types.Users {
 		{
 			Model: gorm.Model{ID: 2},
 			Name:  "thor",
-			Email: "thor@example.com",
+			Email: "thor@example.org",
 		},
 		{
 			Model: gorm.Model{ID: 3},
@@ -156,7 +162,6 @@ func TestSSHDataCompat(t *testing.T) {
 	t.Logf("Loaded %d SSH test files", len(files))
 
 	users := setupSSHDataCompatUsers()
-	nodes := setupSSHDataCompatNodes(users)
 
 	for _, file := range files {
 		tf := loadSSHTestFile(t, file)
@@ -179,6 +184,11 @@ func TestSSHDataCompat(t *testing.T) {
 				t.Skipf("%s: SaaS rejected the policy (api_response_code=%d); no expected SSH rules captured", tf.TestID, tf.Input.APIResponseCode)
 				return
 			}
+
+			// Build nodes per-scenario from this file's topology.
+			// tscap uses clean-slate mode, so each scenario has
+			// different node IPs.
+			nodes := buildGrantsNodesFromCapture(users, tf)
 
 			// Use the captured full policy verbatim. Anonymization in
 			// tscap already rewrites SaaS emails to @example.com.

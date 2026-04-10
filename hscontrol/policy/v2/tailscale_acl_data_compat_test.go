@@ -45,7 +45,7 @@ func ptrAddr(s string) *netip.Addr {
 func setupACLCompatUsers() types.Users {
 	return types.Users{
 		{Model: gorm.Model{ID: 1}, Name: "odin", Email: "odin@example.com"},
-		{Model: gorm.Model{ID: 2}, Name: "thor", Email: "thor@example.com"},
+		{Model: gorm.Model{ID: 2}, Name: "thor", Email: "thor@example.org"},
 		{Model: gorm.Model{ID: 3}, Name: "freya", Email: "freya@example.com"},
 	}
 }
@@ -292,23 +292,6 @@ func TestACLCompat(t *testing.T) {
 
 	t.Logf("Loaded %d ACL test files", len(files))
 
-	// Build nodes from the first non-error file's topology.
-	// All files share the same 19-node tailnet topology.
-	var users types.Users
-
-	var nodes types.Nodes
-
-	for _, file := range files {
-		tf := loadACLTestFile(t, file)
-		if !tf.Error && len(tf.Topology.Nodes) > 0 {
-			users, nodes = buildACLUsersAndNodes(t, tf)
-
-			break
-		}
-	}
-
-	require.NotEmpty(t, nodes, "no non-error ACL file found")
-
 	for _, file := range files {
 		tf := loadACLTestFile(t, file)
 
@@ -330,6 +313,13 @@ func TestACLCompat(t *testing.T) {
 
 				return
 			}
+
+			// Build nodes per-scenario from this file's topology.
+			// tscap uses clean-slate mode, so each scenario has
+			// different node IPs; using a shared topology would
+			// cause IP mismatches in filter rule comparisons.
+			users, nodes := buildACLUsersAndNodes(t, tf)
+			require.NotEmpty(t, nodes, "%s: topology is empty", tf.TestID)
 
 			testACLSuccess(t, tf, users, nodes)
 		})

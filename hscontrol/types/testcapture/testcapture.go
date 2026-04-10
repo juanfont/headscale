@@ -18,6 +18,7 @@
 package testcapture
 
 import (
+	"bytes"
 	"encoding/json"
 	"time"
 
@@ -125,11 +126,34 @@ type Input struct {
 	ScenarioPath string `json:"scenario_path,omitempty"`
 }
 
+// MarshalJSON writes FullPolicy as a raw JSON object rather than a
+// double-quoted string. Consumers (including via_compat_test.go which
+// uses its own local types) expect to parse full_policy as a JSON
+// object, not a JSON string. The UnmarshalJSON below accepts both
+// forms on read so old and new captures are interchangeable.
+func (i Input) MarshalJSON() ([]byte, error) {
+	type alias Input
+
+	raw := struct {
+		alias
+
+		FullPolicy json.RawMessage `json:"full_policy"`
+	}{
+		alias: alias(i),
+	}
+
+	if i.FullPolicy != "" {
+		raw.FullPolicy = json.RawMessage(i.FullPolicy)
+	}
+
+	return json.Marshal(raw)
+}
+
 // UnmarshalJSON handles both the current on-disk shape (full_policy
 // as a JSON-encoded string) and the legacy shape (full_policy as a
 // JSON object). Legacy objects are re-marshaled into a string at
 // load time so consumers see the typed field uniformly. New captures
-// always write the string form via the default Marshaler.
+// always write the object form via the custom MarshalJSON above.
 func (i *Input) UnmarshalJSON(data []byte) error {
 	type alias Input
 
@@ -165,21 +189,17 @@ func (i *Input) UnmarshalJSON(data []byte) error {
 
 		return nil
 	}
-	// Legacy: full_policy is a raw JSON object. Compact and store as
-	// the equivalent string.
-	var v any
+	// Legacy (and new MarshalJSON output): full_policy is a raw JSON
+	// object. Compact whitespace but preserve key ordering so the
+	// round-trip is stable.
+	var buf bytes.Buffer
 
-	err = json.Unmarshal(raw.FullPolicy, &v)
+	err = json.Compact(&buf, raw.FullPolicy)
 	if err != nil {
 		return err
 	}
 
-	compact, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	i.FullPolicy = string(compact)
+	i.FullPolicy = buf.String()
 
 	return nil
 }

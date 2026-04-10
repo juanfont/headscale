@@ -414,9 +414,20 @@ func (pol *Policy) compileSSHPolicy(
 						appendRules(taggedPrincipals, 0, false)
 					}
 				} else {
-					if principals := resolvedAddrsToPrincipals(srcIPs); len(principals) > 0 {
+					// Merge user and tagged principals into a
+					// single list. Tagged principals preserve
+					// per-tag duplication (a node with N tags
+					// appears N times, matching SaaS behavior).
+					var allPrincipals []*tailcfg.SSHPrincipal
+					for _, uid := range userIDs {
+						allPrincipals = append(allPrincipals, principalsByUser[uid]...)
+					}
+
+					allPrincipals = append(allPrincipals, taggedPrincipals...)
+
+					if len(allPrincipals) > 0 {
 						rules = append(rules, &tailcfg.SSHRule{
-							Principals: principals,
+							Principals: allPrincipals,
 							SSHUsers:   baseUserMap,
 							Action:     &action,
 							AcceptEnv:  acceptEnv,
@@ -557,9 +568,7 @@ func groupSourcesByUser(
 ) ([]uint, map[uint][]*tailcfg.SSHPrincipal, []*tailcfg.SSHPrincipal) {
 	userIPSets := make(map[uint]*netipx.IPSetBuilder)
 
-	var taggedIPSet netipx.IPSetBuilder
-
-	hasTagged := false
+	var taggedPrincipals []*tailcfg.SSHPrincipal
 
 	for _, n := range nodes.All() {
 		if !slices.ContainsFunc(n.IPs(), srcIPs.Contains) {
@@ -567,9 +576,17 @@ func groupSourcesByUser(
 		}
 
 		if n.IsTagged() {
-			n.AppendToIPSet(&taggedIPSet)
-
-			hasTagged = true
+			// Tailscale SaaS resolves autogroup:tagged by
+			// iterating tag membership lists. A node with N
+			// tags produces N copies of its IPs in the
+			// principal list. Match that behavior so the SSH
+			// wire format is identical.
+			for range n.Tags().Len() {
+				for _, ip := range n.IPs() {
+					taggedPrincipals = append(taggedPrincipals,
+						&tailcfg.SSHPrincipal{NodeIP: ip.String()})
+				}
+			}
 
 			continue
 		}
@@ -605,16 +622,7 @@ func groupSourcesByUser(
 
 	slices.Sort(userIDs)
 
-	var tagged []*tailcfg.SSHPrincipal
-
-	if hasTagged {
-		taggedSet, err := taggedIPSet.IPSet()
-		if err == nil && taggedSet != nil {
-			tagged = ipSetToPrincipals(taggedSet)
-		}
-	}
-
-	return userIDs, principalsByUser, tagged
+	return userIDs, principalsByUser, taggedPrincipals
 }
 
 func ipSetToPrefixStringList(ips *netipx.IPSet) []string {
