@@ -42,7 +42,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go4.org/netipx"
 	"gorm.io/gorm"
-	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
 
@@ -773,22 +772,6 @@ func TestRoutesCompatAutoApproval(t *testing.T) {
 				t.Run(nodeName, func(t *testing.T) {
 					for _, routeStr := range nodeDef.RoutableIPs {
 						route := netip.MustParsePrefix(routeStr)
-
-						// Skip exit routes (0.0.0.0/0, ::/0).
-						// Tailscale SaaS stores exit routes
-						// under autoApprovers.routes alongside
-						// regular subnets, while headscale uses
-						// a separate autoApprovers.exitNode
-						// field. NodeCanApproveRoute checks the
-						// exitSet (from exitNode) first and
-						// never reaches the autoApproveMap
-						// (from routes), causing a known format
-						// mismatch. This is not a bug — just a
-						// structural difference in where exit
-						// routes are declared.
-						if tsaddr.IsExitRoute(route) {
-							continue
-						}
 
 						wantApproved := approvedSet[route]
 						gotApproved := pm.NodeCanApproveRoute(
