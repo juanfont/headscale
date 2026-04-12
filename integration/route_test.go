@@ -3495,8 +3495,8 @@ func TestGrantViaSubnetSteering(t *testing.T) {
 }
 
 // TestSubnetToSubnetACL verifies that when ACL rules reference only subnet
-// CIDRs as source and destination, the subnet routers for those subnets
-// see each other as peers and exchange routes, enabling end-to-end
+// CIDRs as source and destination, the subnet routers for those subnets see
+// each other as peers and exchange routes, enabling end-to-end
 // connectivity between the two physical subnets.
 //
 // This is a regression test for https://github.com/juanfont/headscale/issues/3157
@@ -3522,6 +3522,7 @@ func TestSubnetToSubnetACL(t *testing.T) {
 
 	scenario, err := NewScenario(spec)
 	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	prefA, err := scenario.SubnetOfNetwork("usernet1")
@@ -3592,6 +3593,7 @@ func TestSubnetToSubnetACL(t *testing.T) {
 
 	// Wait for advertisements to propagate.
 	var nodes []*v1.Node
+
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		nodes, err = headscale.ListNodes()
 		assert.NoError(c, err)

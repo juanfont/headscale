@@ -49,15 +49,15 @@ func CommentHeader(c *Capture) string {
 	}
 
 	if !c.CapturedAt.IsZero() {
-		b.WriteString(fmt.Sprintf("Captured at:    %s\n", c.CapturedAt.UTC().Format("2006-01-02T15:04:05Z")))
+		fmt.Fprintf(&b, "Captured at:    %s\n", c.CapturedAt.UTC().Format("2006-01-02T15:04:05Z"))
 	}
 
 	if c.ToolVersion != "" {
-		b.WriteString(fmt.Sprintf("tscap version:  %s\n", c.ToolVersion))
+		fmt.Fprintf(&b, "tscap version:  %s\n", c.ToolVersion)
 	}
 
 	if c.SchemaVersion != 0 {
-		b.WriteString(fmt.Sprintf("schema version: %d\n", c.SchemaVersion))
+		fmt.Fprintf(&b, "schema version: %d\n", c.SchemaVersion)
 	}
 
 	return strings.TrimRight(b.String(), "\n")
