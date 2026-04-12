@@ -318,12 +318,34 @@ App connectors are configured in the `appConnectors` field of your ACL policy:
 | `domains` | Yes | A list of domain names to route through the connector. Supports wildcards like `*.example.com` |
 | `routes` | No | Optional list of IP prefixes to pre-configure as routes (in addition to dynamically discovered routes from DNS) |
 
+### Auto-approving Routes
+
+App connectors work as dynamic subnet routers under the hood. When a connector
+resolves DNS for a configured domain, it advertises the resulting IP addresses
+as subnet routes. For these routes to take effect automatically, you must
+configure `autoApprovers` to approve routes from the connector nodes:
+
+```json
+{
+  "autoApprovers": {
+    "routes": {
+      "0.0.0.0/0": ["tag:connector"],
+      "::/0": ["tag:connector"]
+    }
+  }
+}
+```
+
+Without `autoApprovers`, each dynamically discovered route would require manual
+approval.
+
 ### How It Works
 
 1. Configure tagged nodes as app connectors in your ACL policy
-2. Nodes with the specified tags that advertise themselves as app connectors will receive the domain configuration
-3. When clients query DNS for the configured domains, traffic is automatically routed through the connector nodes
-4. The connector nodes resolve the DNS and forward traffic to the destination
+2. Configure `autoApprovers` to auto-approve routes from your connector tags
+3. Nodes with the specified tags that advertise themselves as app connectors will receive the domain configuration
+4. When clients query DNS for the configured domains, traffic is automatically routed through the connector nodes
+5. The connector nodes resolve the DNS and forward traffic to the destination
 
 ### Example: Multiple Connectors
 

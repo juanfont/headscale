@@ -310,9 +310,12 @@ func DERPMap() Change {
 
 // PolicyChange creates a response for policy changes.
 // Policy changes require runtime peer visibility computation.
+// IncludeSelf is set because policy changes can affect the node's
+// own capabilities (e.g., app connector configuration in CapMap).
 func PolicyChange() Change {
 	return Change{
 		Reason:                         "policy change",
+		IncludeSelf:                    true,
 		IncludePolicy:                  true,
 		RequiresRuntimePeerComputation: true,
 	}
