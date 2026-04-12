@@ -1108,37 +1108,32 @@ func (s *State) GetNodePrimaryRoutes(nodeID types.NodeID) []netip.Prefix {
 }
 
 // RoutesForPeer computes the routes a peer should advertise in a viewer's
-// AllowedIPs, applying via grant steering on top of global primary
-// election.
+// AllowedIPs, combining primary routes (from HA election), approved exit
+// routes, and via grant steering.
 //
-// Exit routes (0.0.0.0/0, ::/0) are deliberately NOT included here.
-// Tailscale SaaS only ever places exit routes in the self node's own
-// AllowedIPs (handled separately by mapper.WithSelfNode), never in a
-// peer's AllowedIPs when that peer is viewed from another node.
-// Verified by polling /localapi/v0/status against a live SaaS tailnet
-// running the via-grant-v31 scenario: even nodes that hold an
-// explicit via grant for an exit-route peer see the peer's
-// AllowedIPs as just its /32 + /128, with ExitNodeOption=false.
-//
-// autogroup:internet via grants are also a no-op in this path:
-// ViaRoutesForPeer skips AutoGroup destinations (see policy.go),
-// so neither viaResult.Include nor viaResult.Exclude can carry
-// exit-route prefixes.
+// Approved exit routes (0.0.0.0/0, ::/0) are included alongside subnet
+// routes. SaaS golden data (routes-ea* captures) confirms that approved
+// exit routes appear in every peer's AllowedIPs, while unapproved ones
+// (routes-b9) do not. TestRoutesCompatPeerAllowedIPs validates this
+// against all captured netmaps.
 func (s *State) RoutesForPeer(
 	viewer, peer types.NodeView,
 	matchers []matcher.Match,
 ) []netip.Prefix {
 	viaResult := s.polMan.ViaRoutesForPeer(viewer, peer)
 	globalPrimaries := s.primaryRoutes.PrimaryRoutes(peer.ID())
+	exitRoutes := peer.ExitRoutes()
 
 	// Fast path: no via grants affect this pair.
 	if len(viaResult.Include) == 0 && len(viaResult.Exclude) == 0 {
-		return policy.ReduceRoutes(viewer, globalPrimaries, matchers)
+		allRoutes := slices.Concat(globalPrimaries, exitRoutes)
+
+		return policy.ReduceRoutes(viewer, allRoutes, matchers)
 	}
 
 	// Slow path: drop excluded routes, reduce, append via-included.
-	routes := make([]netip.Prefix, 0, len(globalPrimaries))
-	for _, p := range globalPrimaries {
+	routes := make([]netip.Prefix, 0, len(globalPrimaries)+len(exitRoutes))
+	for _, p := range slices.Concat(globalPrimaries, exitRoutes) {
 		if !slices.Contains(viaResult.Exclude, p) {
 			routes = append(routes, p)
 		}

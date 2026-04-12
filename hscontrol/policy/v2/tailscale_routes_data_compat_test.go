@@ -1383,3 +1383,147 @@ func TestRoutesCompatNoFalsePositivePeers(t *testing.T) {
 		})
 	}
 }
+
+// prefixStrings converts a slice of netip.Prefix to sorted strings for
+// readable comparison in test assertions.
+func prefixStrings(pfxs []netip.Prefix) []string {
+	out := make([]string, len(pfxs))
+	for i, p := range pfxs {
+		out[i] = p.String()
+	}
+
+	sort.Strings(out)
+
+	return out
+}
+
+// TestRoutesCompatPeerAllowedIPs validates that headscale computes the same
+// peer AllowedIPs as Tailscale SaaS. For each golden file that contains
+// netmap captures, the test compares the AllowedIPs that SaaS delivered
+// for each peer against what headscale's ReduceRoutes (the core of
+// RoutesForPeer) would produce.
+//
+// This is the authoritative proof that approved exit routes (0.0.0.0/0,
+// ::/0) belong in peer AllowedIPs: the ea-series captures from SaaS show
+// exit routes in every peer's AllowedIPs when they are approved, and
+// absent when they are not (b9 series).
+func TestRoutesCompatPeerAllowedIPs(t *testing.T) {
+	t.Parallel()
+
+	files, err := filepath.Glob(
+		filepath.Join("testdata", "routes_results", "routes-*.hujson"),
+	)
+	require.NoError(t, err, "failed to glob test files")
+	require.NotEmpty(t, files)
+
+	// Count how many files actually had netmap data to test.
+	testedFiles := 0
+
+	for _, file := range files {
+		tf := loadRoutesTestFile(t, file)
+
+		// Only test files that have netmap captures with peers.
+		hasNetmap := false
+
+		for _, capture := range tf.Captures {
+			if capture.Netmap != nil && len(capture.Netmap.Peers) > 0 {
+				hasNetmap = true
+
+				break
+			}
+		}
+
+		if !hasNetmap {
+			continue
+		}
+
+		testedFiles++
+
+		t.Run(tf.TestID, func(t *testing.T) {
+			t.Parallel()
+
+			if reason, ok := routesSkipReasons[tf.TestID]; ok {
+				t.Skipf("TODO: %s", reason)
+
+				return
+			}
+
+			if tf.Error {
+				t.Skipf("%s: SaaS rejected the policy", tf.TestID)
+
+				return
+			}
+
+			users, nodes := buildRoutesUsersAndNodes(t, tf.Topology)
+			policyJSON := convertPolicyUserEmails(tf.Input.FullPolicy)
+
+			pm, err := NewPolicyManager(policyJSON, users, nodes.ViewSlice())
+			require.NoError(t, err, "%s: failed to create policy manager", tf.TestID)
+
+			for viewerName, capture := range tf.Captures {
+				if capture.Netmap == nil || len(capture.Netmap.Peers) == 0 {
+					continue
+				}
+
+				viewer := findNodeByGivenName(nodes, viewerName)
+				if viewer == nil {
+					continue
+				}
+
+				t.Run(viewerName, func(t *testing.T) {
+					matchers, err := pm.MatchersForNode(viewer.View())
+					require.NoError(t, err)
+
+					for _, nmPeer := range capture.Netmap.Peers {
+						// Extract the short name from the FQDN.
+						peerName := strings.Split(nmPeer.Name(), ".")[0]
+
+						peer := findNodeByGivenName(nodes, peerName)
+						if peer == nil {
+							continue
+						}
+
+						// Compute what headscale would put in AllowedIPs.
+						//
+						// The SaaS netmap PrimaryRoutes tells us which
+						// subnet routes won HA election. Exit routes
+						// (0.0.0.0/0, ::/0) are never in PrimaryRoutes
+						// but DO appear in AllowedIPs when approved.
+						// This mirrors RoutesForPeer: primaryRoutes + exitRoutes
+						// filtered through ReduceRoutes.
+						peerPrimaries := nmPeer.PrimaryRoutes().AsSlice()
+						exitRoutes := peer.ExitRoutes()
+						allRoutes := slices.Concat(peerPrimaries, exitRoutes)
+
+						var reducedRoutes []netip.Prefix
+
+						for _, route := range allRoutes {
+							if viewer.View().CanAccessRoute(matchers, route) {
+								reducedRoutes = append(reducedRoutes, route)
+							}
+						}
+
+						gotAllowedIPs := slices.Concat(
+							peer.View().Prefixes(), reducedRoutes,
+						)
+						slices.SortFunc(gotAllowedIPs, netip.Prefix.Compare)
+
+						wantAllowedIPs := nmPeer.AllowedIPs().AsSlice()
+						slices.SortFunc(wantAllowedIPs, netip.Prefix.Compare)
+
+						assert.Equalf(t,
+							prefixStrings(wantAllowedIPs),
+							prefixStrings(gotAllowedIPs),
+							"%s/%s: peer %s AllowedIPs mismatch",
+							tf.TestID, viewerName, peerName,
+						)
+					}
+				})
+			}
+		})
+	}
+
+	require.Positive(t, testedFiles,
+		"no golden files with netmap data found — test is vacuous",
+	)
+}
