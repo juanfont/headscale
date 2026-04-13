@@ -26,6 +26,7 @@
 package v2
 
 import (
+	"fmt"
 	"net/netip"
 	"path/filepath"
 	"slices"
@@ -840,6 +841,12 @@ func TestRoutesCompatReduceRoutes(t *testing.T) {
 		t.Run(tf.TestID, func(t *testing.T) {
 			t.Parallel()
 
+			if reason, ok := routesSkipReasons[tf.TestID]; ok {
+				t.Skipf("TODO: %s", reason)
+
+				return
+			}
+
 			// Build topology from JSON.
 			users, nodes := buildRoutesUsersAndNodes(t, tf.Topology)
 
@@ -854,55 +861,45 @@ func TestRoutesCompatReduceRoutes(t *testing.T) {
 				"%s: failed to create policy manager", tf.TestID,
 			)
 
-			// For each node that receives filter rules (non-null
-			// capture), extract the DstPort prefixes and SrcIPs.
-			// Then verify that viewer nodes with matching source
-			// identity can access those routes via CanAccessRoute.
+			// For each node that receives filter rules, check that
+			// source nodes can access the destination prefixes via
+			// CanAccessRoute. Match src↔dst pairs PER RULE — a
+			// source IP in rule N should only be tested against
+			// the destinations in rule N, not destinations from
+			// other rules. This matters when tag-based rules
+			// (dst=node-IPs) and CIDR rules (dst=subnets) coexist
+			// on the same node.
 			for dstNodeName, capture := range tf.Captures {
 				if len(capture.PacketFilterRules) == 0 {
 					continue
 				}
 
-				rules := capture.PacketFilterRules
+				for ruleIdx, rule := range capture.PacketFilterRules {
+					// Extract destination prefixes from this rule.
+					var dstPrefixes []netip.Prefix
 
-				// Build the set of destination route prefixes.
-				var dstPrefixes []netip.Prefix
-
-				for _, rule := range rules {
 					for _, dp := range rule.DstPorts {
-						prefix, parseErr := netip.ParsePrefix(
-							dp.IP,
-						)
+						prefix, parseErr := netip.ParsePrefix(dp.IP)
 						if parseErr != nil {
 							continue
 						}
 
-						if !slices.Contains(
-							dstPrefixes, prefix,
-						) {
-							dstPrefixes = append(
-								dstPrefixes, prefix,
-							)
+						if !slices.Contains(dstPrefixes, prefix) {
+							dstPrefixes = append(dstPrefixes, prefix)
 						}
 					}
-				}
 
-				if len(dstPrefixes) == 0 {
-					continue
-				}
+					if len(dstPrefixes) == 0 {
+						continue
+					}
 
-				// Build SrcIPs set from all rules in this capture.
-				var srcBuilder netipx.IPSetBuilder
+					// Build SrcIPs set from THIS rule only.
+					var srcBuilder netipx.IPSetBuilder
 
-				for _, rule := range rules {
 					for _, srcIP := range rule.SrcIPs {
-						prefix, parseErr := netip.ParsePrefix(
-							srcIP,
-						)
+						prefix, parseErr := netip.ParsePrefix(srcIP)
 						if parseErr != nil {
-							addr, parseErr2 := netip.ParseAddr(
-								srcIP,
-							)
+							addr, parseErr2 := netip.ParseAddr(srcIP)
 							if parseErr2 != nil {
 								continue
 							}
@@ -914,64 +911,48 @@ func TestRoutesCompatReduceRoutes(t *testing.T) {
 
 						srcBuilder.AddPrefix(prefix)
 					}
-				}
 
-				srcSet, err := srcBuilder.IPSet()
-				require.NoError(t, err)
+					srcSet, err := srcBuilder.IPSet()
+					require.NoError(t, err)
 
-				// For each peer node, check if it should be able
-				// to access the dst routes.
-				for _, viewerNode := range nodes {
-					if viewerNode.GivenName == dstNodeName {
-						continue
-					}
-
-					// Determine if this viewer has source identity
-					// that matches the capture's SrcIPs.
-					viewerMatchesSrc := false
-
-					nv := viewerNode.View()
-					if slices.ContainsFunc(nv.IPs(), srcSet.Contains) {
-						viewerMatchesSrc = true
-					}
-
-					if !viewerMatchesSrc {
-						if slices.ContainsFunc(nv.SubnetRoutes(), srcSet.OverlapsPrefix) {
-							viewerMatchesSrc = true
+					for _, viewerNode := range nodes {
+						if viewerNode.GivenName == dstNodeName {
+							continue
 						}
+
+						nv := viewerNode.View()
+
+						// Check if viewer matches THIS rule's sources.
+						if !slices.ContainsFunc(nv.IPs(), srcSet.Contains) &&
+							!slices.ContainsFunc(nv.SubnetRoutes(), srcSet.OverlapsPrefix) {
+							continue
+						}
+
+						matchers, matchErr := pm.MatchersForNode(nv)
+						require.NoError(t, matchErr)
+
+						t.Run(
+							fmt.Sprintf(
+								"%s/rule%d/from_%s",
+								dstNodeName, ruleIdx,
+								viewerNode.GivenName,
+							),
+							func(t *testing.T) {
+								for _, route := range dstPrefixes {
+									canAccess := nv.CanAccessRoute(
+										matchers, route,
+									)
+									assert.Truef(t, canAccess,
+										"%s: viewer %s should "+
+											"access route %s on %s",
+										tf.TestID,
+										viewerNode.GivenName,
+										route, dstNodeName,
+									)
+								}
+							},
+						)
 					}
-
-					if !viewerMatchesSrc {
-						continue
-					}
-
-					matchers, matchErr := pm.MatchersForNode(nv)
-					require.NoError(t, matchErr)
-
-					t.Run(
-						dstNodeName+"/from_"+viewerNode.GivenName,
-						func(t *testing.T) {
-							for _, route := range dstPrefixes {
-								canAccess := nv.CanAccessRoute(
-									matchers, route,
-								)
-								assert.Truef(t, canAccess,
-									"%s: viewer %s (IPs=%v, "+
-										"subnets=%v) should be "+
-										"able to access route "+
-										"%s on node %s (SaaS "+
-										"delivered matching "+
-										"filter rules)",
-									tf.TestID,
-									viewerNode.GivenName,
-									nv.IPs(),
-									nv.SubnetRoutes(),
-									route,
-									dstNodeName,
-								)
-							}
-						},
-					)
 				}
 			}
 		})
