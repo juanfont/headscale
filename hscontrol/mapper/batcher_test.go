@@ -141,9 +141,9 @@ type node struct {
 	ch chan *tailcfg.MapResponse
 
 	// Update tracking (all accessed atomically for thread safety)
-	updateCount   int64
-	patchCount    int64
-	fullCount     int64
+	updateCount   atomic.Int64
+	patchCount    atomic.Int64
+	fullCount     atomic.Int64
 	maxPeersCount atomic.Int64
 	lastPeerCount atomic.Int64
 	stop          chan struct{}
@@ -404,14 +404,14 @@ func (n *node) start() {
 		for {
 			select {
 			case data := <-n.ch:
-				atomic.AddInt64(&n.updateCount, 1)
+				n.updateCount.Add(1)
 
 				// Parse update and track detailed stats
 				info := parseUpdateAndAnalyze(data)
 				{
 					// Track update types
 					if info.IsFull {
-						atomic.AddInt64(&n.fullCount, 1)
+						n.fullCount.Add(1)
 						n.lastPeerCount.Store(int64(info.PeerCount))
 						// Update max peers seen using compare-and-swap for thread safety
 						for {
@@ -427,7 +427,7 @@ func (n *node) start() {
 					}
 
 					if info.IsPatch {
-						atomic.AddInt64(&n.patchCount, 1)
+						n.patchCount.Add(1)
 						// For patches, we track how many patch items using compare-and-swap
 						for {
 							current := n.maxPeersCount.Load()
@@ -466,9 +466,9 @@ func (n *node) cleanup() NodeStats {
 	}
 
 	return NodeStats{
-		TotalUpdates:  atomic.LoadInt64(&n.updateCount),
-		PatchUpdates:  atomic.LoadInt64(&n.patchCount),
-		FullUpdates:   atomic.LoadInt64(&n.fullCount),
+		TotalUpdates:  n.updateCount.Load(),
+		PatchUpdates:  n.patchCount.Load(),
+		FullUpdates:   n.fullCount.Load(),
 		MaxPeersSeen:  int(n.maxPeersCount.Load()),
 		LastPeerCount: int(n.lastPeerCount.Load()),
 	}
@@ -509,7 +509,7 @@ func TestEnhancedNodeTracking(t *testing.T) {
 
 	// Wait for tracking goroutine to process the update
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.GreaterOrEqual(c, atomic.LoadInt64(&testNode.updateCount), int64(1), "should have processed the update")
+		assert.GreaterOrEqual(c, testNode.updateCount.Load(), int64(1), "should have processed the update")
 	}, time.Second, 10*time.Millisecond, "waiting for update to be processed")
 
 	// Check stats
@@ -553,7 +553,7 @@ func TestEnhancedTrackingWithBatcher(t *testing.T) {
 
 			// Wait for updates to be processed (at least 1 update received)
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				assert.GreaterOrEqual(c, atomic.LoadInt64(&testNode.updateCount), int64(1), "should have received updates")
+				assert.GreaterOrEqual(c, testNode.updateCount.Load(), int64(1), "should have received updates")
 			}, time.Second, 10*time.Millisecond, "waiting for updates to be processed")
 
 			// Check stats
@@ -2141,8 +2141,8 @@ func TestNodeDeletedWhileChangesPending(t *testing.T) {
 
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
 				// Node 1 and 2 should receive updates
-				stats1 := NodeStats{TotalUpdates: atomic.LoadInt64(&node1.updateCount)}
-				stats2 := NodeStats{TotalUpdates: atomic.LoadInt64(&node2.updateCount)}
+				stats1 := NodeStats{TotalUpdates: node1.updateCount.Load()}
+				stats2 := NodeStats{TotalUpdates: node2.updateCount.Load()}
 				assert.Positive(c, stats1.TotalUpdates, "node1 should have received updates")
 				assert.Positive(c, stats2.TotalUpdates, "node2 should have received updates")
 			}, 5*time.Second, 100*time.Millisecond, "waiting for remaining nodes to receive updates")

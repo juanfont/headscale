@@ -359,7 +359,7 @@ func writeTestDataFile(versions map[string]tailcfg.CapabilityVersion, minSupport
 	content.WriteString("\t{3, false, []string{")
 
 	for i, version := range latest3 {
-		content.WriteString(fmt.Sprintf("\"%s\"", version))
+		fmt.Fprintf(&content, "\"%s\"", version)
 
 		if i < len(latest3)-1 {
 			content.WriteString(", ")
@@ -374,7 +374,7 @@ func writeTestDataFile(versions map[string]tailcfg.CapabilityVersion, minSupport
 	for i, version := range latest2 {
 		// Strip v prefix for this test case
 		verNoV := strings.TrimPrefix(version, "v")
-		content.WriteString(fmt.Sprintf("\"%s\"", verNoV))
+		fmt.Fprintf(&content, "\"%s\"", verNoV)
 
 		if i < len(latest2)-1 {
 			content.WriteString(", ")
@@ -384,11 +384,11 @@ func writeTestDataFile(versions map[string]tailcfg.CapabilityVersion, minSupport
 	content.WriteString("}},\n")
 
 	// Latest N without v prefix (all supported)
-	content.WriteString(fmt.Sprintf("\t{%d, true, []string{\n", supportedMajorMinorVersions))
+	fmt.Fprintf(&content, "\t{%d, true, []string{\n", supportedMajorMinorVersions)
 
 	for _, version := range latest10 {
 		verNoV := strings.TrimPrefix(version, "v")
-		content.WriteString(fmt.Sprintf("\t\t\"%s\",\n", verNoV))
+		fmt.Fprintf(&content, "\t\t\"%s\",\n", verNoV)
 	}
 
 	content.WriteString("\t}},\n")
@@ -417,7 +417,7 @@ func writeTestDataFile(versions map[string]tailcfg.CapabilityVersion, minSupport
 
 	// Add minimum supported version
 	minVersionString := capVerToTailscaleVer[minSupportedCapVer]
-	content.WriteString(fmt.Sprintf("\t{%d, \"%s\"},\n", minSupportedCapVer, minVersionString))
+	fmt.Fprintf(&content, "\t{%d, \"%s\"},\n", minSupportedCapVer, minVersionString)
 
 	// Add a few more test cases
 	capsSorted := xmaps.Keys(capVerToTailscaleVer)
@@ -431,7 +431,7 @@ func writeTestDataFile(versions map[string]tailcfg.CapabilityVersion, minSupport
 
 		if capVer != minSupportedCapVer { // Don't duplicate the min version test
 			version := capVerToTailscaleVer[capVer]
-			content.WriteString(fmt.Sprintf("\t{%d, \"%s\"},\n", capVer, version))
+			fmt.Fprintf(&content, "\t{%d, \"%s\"},\n", capVer, version)
 
 			testCount++
 		}

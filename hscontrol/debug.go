@@ -395,13 +395,13 @@ func (h *Headscale) debugBatcher() string {
 		}
 
 		if node.activeConnections > 0 {
-			sb.WriteString(fmt.Sprintf("Node %d:\t%s (%d connections)\n", node.id, status, node.activeConnections))
+			fmt.Fprintf(&sb, "Node %d:\t%s (%d connections)\n", node.id, status, node.activeConnections)
 		} else {
-			sb.WriteString(fmt.Sprintf("Node %d:\t%s\n", node.id, status))
+			fmt.Fprintf(&sb, "Node %d:\t%s\n", node.id, status)
 		}
 	}
 
-	sb.WriteString(fmt.Sprintf("\nSummary: %d connected, %d total\n", connectedCount, totalNodes))
+	fmt.Fprintf(&sb, "\nSummary: %d connected, %d total\n", connectedCount, totalNodes)
 
 	return sb.String()
 }
