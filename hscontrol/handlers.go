@@ -44,6 +44,54 @@ func httpError(w http.ResponseWriter, err error) {
 	}
 }
 
+// httpUserError logs an error and sends a styled HTML error page.
+// Use this for browser-facing error paths (OIDC, registration confirm)
+// where the user should see a branded page instead of plain text.
+// Technical details go to the server log; the HTML page only shows
+// an actionable message derived from the HTTP status code.
+func httpUserError(w http.ResponseWriter, err error) {
+	code := http.StatusInternalServerError
+
+	if herr, ok := errors.AsType[HTTPError](err); ok {
+		if herr.Code != 0 {
+			code = herr.Code
+		}
+
+		log.Error().Err(herr.Err).Int("code", code).Msgf("user msg: %s", herr.Msg)
+	} else {
+		log.Error().Err(err).Int("code", code).Msg("http internal server error")
+	}
+
+	userMsg := userMessageForStatusCode(code)
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(code)
+
+	page := templates.AuthError(templates.AuthErrorResult{
+		Title:   "Headscale - Error",
+		Heading: http.StatusText(code),
+		Message: userMsg,
+	})
+
+	_, werr := w.Write([]byte(page.Render()))
+	if werr != nil {
+		log.Error().Err(werr).Msg("failed to write HTML error response")
+	}
+}
+
+func userMessageForStatusCode(code int) string {
+	switch {
+	case code == http.StatusUnauthorized || code == http.StatusForbidden:
+		return "You are not authorized. Please contact your administrator."
+	case code == http.StatusGone:
+		return "Your session has expired. Please try again."
+	case code >= 400 && code < 500:
+		return "The request could not be processed. Please try again."
+	default:
+		return "Something went wrong. Please try again later."
+	}
+}
+
 // HTTPError represents an error that is surfaced to the user via web.
 type HTTPError struct {
 	Code int    // HTTP response code to send to client; 0 means 500
