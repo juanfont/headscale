@@ -17,12 +17,12 @@ func mdTypesetBody(children ...elem.Node) *elem.Element {
 			styles.Display:         "flex",
 			styles.FlexDirection:   "column",
 			styles.AlignItems:      "center",
-			styles.BackgroundColor: "#ffffff",
+			styles.BackgroundColor: "var(--hs-bg)",
 			styles.Padding:         "3rem 1.5rem",
 		}.ToInline(),
 		"translate": "no",
 	},
-		elem.Div(attrs.Props{
+		elem.Main(attrs.Props{
 			attrs.Class: "md-typeset",
 			attrs.Style: styles.Props{
 				styles.MaxWidth: "min(800px, 90vw)",
