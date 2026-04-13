@@ -196,6 +196,20 @@ func runViaMapCompat(t *testing.T, gf goldenFile) {
 	// approver tag for a route prefix, the node should advertise it.
 	nodeRoutes := inferNodeRoutes(gf)
 
+	// Build approved routes from topology. The topology's approved_routes
+	// field records what SaaS actually approved (which may be a subset of
+	// routable_ips). Using this instead of approving all advertised routes
+	// ensures exit routes are only approved when SaaS approved them.
+	nodeApproved := map[string][]netip.Prefix{}
+
+	for name, node := range gf.Topology.Nodes {
+		for _, r := range node.ApprovedRoutes {
+			nodeApproved[name] = append(
+				nodeApproved[name], netip.MustParsePrefix(r),
+			)
+		}
+	}
+
 	// Advertise and approve routes FIRST. Via grants depend on routes
 	// being advertised for compileViaGrant to produce filter rules.
 	for name, c := range clients {
@@ -216,7 +230,9 @@ func runViaMapCompat(t *testing.T, gf goldenFile) {
 		cancel()
 
 		nodeID := findNodeID(t, srv, name)
-		_, routeChange, err := srv.State().SetApprovedRoutes(nodeID, routes)
+		_, routeChange, err := srv.State().SetApprovedRoutes(
+			nodeID, nodeApproved[name],
+		)
 		require.NoError(t, err)
 		srv.App.Change(routeChange)
 	}
