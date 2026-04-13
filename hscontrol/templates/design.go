@@ -39,6 +39,10 @@ const (
 	// Success colors.
 	colorSuccess      = "#059669" //nolint:unused // Success states
 	colorSuccessLight = "#d1fae5" //nolint:unused // Success backgrounds
+
+	// Error colors.
+	colorError      = "#dc2626" //nolint:unused // Error states (red-600)
+	colorErrorLight = "#fee2e2" //nolint:unused // Error backgrounds (red-100)
 )
 
 // Spacing System
@@ -406,6 +410,47 @@ func checkboxIcon() elem.Node {
 </svg>`)
 }
 
+// errorBox creates a red error feedback box with an X-circle icon.
+// The heading is displayed as bold red text, and children are rendered below it.
+// Pairs with successBox for consistent feedback styling.
+//
+//nolint:unused // Used in auth_error.go template.
+func errorBox(heading string, children ...elem.Node) *elem.Element {
+	return elem.Div(attrs.Props{
+		attrs.Style: styles.Props{
+			styles.Display:         "flex",
+			styles.AlignItems:      "center",
+			styles.Gap:             spaceM,
+			styles.Padding:         spaceL,
+			styles.BackgroundColor: colorErrorLight,
+			styles.Border:          "1px solid " + colorError,
+			styles.BorderRadius:    "0.5rem",
+			styles.MarginBottom:    spaceXL,
+		}.ToInline(),
+	},
+		errorIcon(),
+		elem.Div(nil,
+			append([]elem.Node{
+				elem.Strong(attrs.Props{
+					attrs.Style: styles.Props{
+						styles.Display:      "block",
+						styles.Color:        colorError,
+						styles.FontSize:     fontSizeH3,
+						styles.MarginBottom: spaceXS,
+					}.ToInline(),
+				}, elem.Text(heading)),
+			}, children...)...,
+		),
+	)
+}
+
+// errorIcon returns the error X-circle SVG icon as raw HTML.
+func errorIcon() elem.Node {
+	return elem.Raw(`<svg id="error-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 512 512">
+  <path fill="#dc2626" d="M256 32C132.3 32 32 132.3 32 256s100.3 224 224 224 224-100.3 224-224S379.7 32 256 32zm97.7 272.7c6.2 6.2 6.2 16.4 0 22.6-3.1 3.1-7.2 4.7-11.3 4.7s-8.2-1.6-11.3-4.7L256 251.3l-75.1 76c-3.1 3.1-7.2 4.7-11.3 4.7s-8.2-1.6-11.3-4.7c-6.2-6.2-6.2-16.4 0-22.6l75.1-76-75.1-76c-6.2-6.2-6.2-16.4 0-22.6s16.4-6.2 22.6 0l75.1 76 75.1-76c6.2-6.2 16.4-6.2 22.6 0s6.2 16.4 0 22.6L278.6 229l75.1 75.7z"></path>
+</svg>`)
+}
+
 // warningBox creates a warning message box with icon and content.
 //
 //nolint:unused // Used in apple.go template.
@@ -504,8 +549,8 @@ func statusMessage(message string, isSuccess bool) *elem.Element {
 	textColor := colorSuccess
 
 	if !isSuccess {
-		bgColor = "#fee2e2"   // red-100
-		textColor = "#dc2626" // red-600
+		bgColor = colorErrorLight
+		textColor = colorError
 	}
 
 	return elem.Div(attrs.Props{
