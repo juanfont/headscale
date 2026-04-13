@@ -375,26 +375,30 @@ func orDivider() *elem.Element {
 //
 //nolint:unused // Used in auth_success.go template.
 func successBox(heading string, children ...elem.Node) *elem.Element {
-	return elem.Div(attrs.Props{
-		attrs.Style: styles.Props{
-			styles.Display:         "flex",
-			styles.AlignItems:      "center",
-			styles.Gap:             spaceM,
-			styles.Padding:         spaceL,
-			styles.BackgroundColor: colorSuccessLight,
-			styles.Border:          "1px solid " + colorSuccess,
-			styles.BorderRadius:    "0.5rem",
-			styles.MarginBottom:    spaceXL,
-		}.ToInline(),
-	},
+	return elem.Div(
+		attrs.Props{
+			attrs.Style: styles.Props{
+				styles.Display:         "flex",
+				styles.AlignItems:      "center",
+				styles.Gap:             spaceM,
+				styles.Padding:         spaceL,
+				styles.BackgroundColor: "var(--hs-success-bg)",
+				styles.Border:          "1px solid var(--hs-success)",
+				styles.BorderRadius:    "0.5rem",
+				styles.MarginBottom:    spaceXL,
+			}.ToInline(),
+			attrs.Role:  "status",
+			"aria-live": "polite",
+		},
 		checkboxIcon(),
 		elem.Div(nil,
 			append([]elem.Node{
 				elem.Strong(attrs.Props{
 					attrs.Style: styles.Props{
 						styles.Display:      "block",
-						styles.Color:        colorSuccess,
+						styles.Color:        "var(--hs-success)",
 						styles.FontSize:     fontSizeH3,
+						styles.FontWeight:   "700",
 						styles.MarginBottom: spaceXS,
 					}.ToInline(),
 				}, elem.Text(heading)),
@@ -405,8 +409,8 @@ func successBox(heading string, children ...elem.Node) *elem.Element {
 
 // checkboxIcon returns the success checkbox SVG icon as raw HTML.
 func checkboxIcon() elem.Node {
-	return elem.Raw(`<svg id="checkbox" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 512 512">
-  <path d="M256 32C132.3 32 32 132.3 32 256s100.3 224 224 224 224-100.3 224-224S379.7 32 256 32zm114.9 149.1L231.8 359.6c-1.1 1.1-2.9 3.5-5.1 3.5-2.3 0-3.8-1.6-5.1-2.9-1.3-1.3-78.9-75.9-78.9-75.9l-1.5-1.5c-.6-.9-1.1-2-1.1-3.2 0-1.2.5-2.3 1.1-3.2.4-.4.7-.7 1.1-1.2 7.7-8.1 23.3-24.5 24.3-25.5 1.3-1.3 2.4-3 4.8-3 2.5 0 4.1 2.1 5.3 3.3 1.2 1.2 45 43.3 45 43.3l111.3-143c1-.8 2.2-1.4 3.5-1.4 1.3 0 2.5.5 3.5 1.3l30.6 24.1c.8 1 1.3 2.2 1.3 3.5.1 1.3-.4 2.4-1 3.3z"></path>
+	return elem.Raw(`<svg id="checkbox" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 512 512" style="flex-shrink:0">
+  <path fill="currentColor" d="M256 32C132.3 32 32 132.3 32 256s100.3 224 224 224 224-100.3 224-224S379.7 32 256 32zm114.9 149.1L231.8 359.6c-1.1 1.1-2.9 3.5-5.1 3.5-2.3 0-3.8-1.6-5.1-2.9-1.3-1.3-78.9-75.9-78.9-75.9l-1.5-1.5c-.6-.9-1.1-2-1.1-3.2 0-1.2.5-2.3 1.1-3.2.4-.4.7-.7 1.1-1.2 7.7-8.1 23.3-24.5 24.3-25.5 1.3-1.3 2.4-3 4.8-3 2.5 0 4.1 2.1 5.3 3.3 1.2 1.2 45 43.3 45 43.3l111.3-143c1-.8 2.2-1.4 3.5-1.4 1.3 0 2.5.5 3.5 1.3l30.6 24.1c.8 1 1.3 2.2 1.3 3.5.1 1.3-.4 2.4-1 3.3z"></path>
 </svg>`)
 }
 
@@ -416,26 +420,30 @@ func checkboxIcon() elem.Node {
 //
 //nolint:unused // Used in auth_error.go template.
 func errorBox(heading string, children ...elem.Node) *elem.Element {
-	return elem.Div(attrs.Props{
-		attrs.Style: styles.Props{
-			styles.Display:         "flex",
-			styles.AlignItems:      "center",
-			styles.Gap:             spaceM,
-			styles.Padding:         spaceL,
-			styles.BackgroundColor: colorErrorLight,
-			styles.Border:          "1px solid " + colorError,
-			styles.BorderRadius:    "0.5rem",
-			styles.MarginBottom:    spaceXL,
-		}.ToInline(),
-	},
+	return elem.Div(
+		attrs.Props{
+			attrs.Style: styles.Props{
+				styles.Display:         "flex",
+				styles.AlignItems:      "center",
+				styles.Gap:             spaceM,
+				styles.Padding:         spaceL,
+				styles.BackgroundColor: "var(--hs-error-bg)",
+				styles.Border:          "1px solid var(--hs-error)",
+				styles.BorderRadius:    "0.5rem",
+				styles.MarginBottom:    spaceXL,
+			}.ToInline(),
+			attrs.Role:  "alert",
+			"aria-live": "assertive",
+		},
 		errorIcon(),
 		elem.Div(nil,
 			append([]elem.Node{
 				elem.Strong(attrs.Props{
 					attrs.Style: styles.Props{
 						styles.Display:      "block",
-						styles.Color:        colorError,
+						styles.Color:        "var(--hs-error)",
 						styles.FontSize:     fontSizeH3,
+						styles.FontWeight:   "700",
 						styles.MarginBottom: spaceXS,
 					}.ToInline(),
 				}, elem.Text(heading)),
@@ -446,8 +454,8 @@ func errorBox(heading string, children ...elem.Node) *elem.Element {
 
 // errorIcon returns the error X-circle SVG icon as raw HTML.
 func errorIcon() elem.Node {
-	return elem.Raw(`<svg id="error-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 512 512">
-  <path fill="#dc2626" d="M256 32C132.3 32 32 132.3 32 256s100.3 224 224 224 224-100.3 224-224S379.7 32 256 32zm97.7 272.7c6.2 6.2 6.2 16.4 0 22.6-3.1 3.1-7.2 4.7-11.3 4.7s-8.2-1.6-11.3-4.7L256 251.3l-75.1 76c-3.1 3.1-7.2 4.7-11.3 4.7s-8.2-1.6-11.3-4.7c-6.2-6.2-6.2-16.4 0-22.6l75.1-76-75.1-76c-6.2-6.2-6.2-16.4 0-22.6s16.4-6.2 22.6 0l75.1 76 75.1-76c6.2-6.2 16.4-6.2 22.6 0s6.2 16.4 0 22.6L278.6 229l75.1 75.7z"></path>
+	return elem.Raw(`<svg id="error-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 512 512" style="flex-shrink:0">
+  <path fill="currentColor" d="M256 32C132.3 32 32 132.3 32 256s100.3 224 224 224 224-100.3 224-224S379.7 32 256 32zm97.7 272.7c6.2 6.2 6.2 16.4 0 22.6-3.1 3.1-7.2 4.7-11.3 4.7s-8.2-1.6-11.3-4.7L256 251.3l-75.1 76c-3.1 3.1-7.2 4.7-11.3 4.7s-8.2-1.6-11.3-4.7c-6.2-6.2-6.2-16.4 0-22.6l75.1-76-75.1-76c-6.2-6.2-6.2-16.4 0-22.6s16.4-6.2 22.6 0l75.1 76 75.1-76c6.2-6.2 16.4-6.2 22.6 0s6.2 16.4 0 22.6L278.6 229l75.1 75.7z"></path>
 </svg>`)
 }
 
@@ -461,29 +469,25 @@ func warningBox(title, message string) *elem.Element {
 			styles.AlignItems:      "flex-start",
 			styles.Gap:             spaceM,
 			styles.Padding:         spaceL,
-			styles.BackgroundColor: "#fef3c7",           // yellow-100
-			styles.Border:          "1px solid #f59e0b", // yellow-500
+			styles.BackgroundColor: "var(--hs-warning-bg)",
+			styles.Border:          "1px solid var(--hs-warning-border)",
 			styles.BorderRadius:    "0.5rem",
 			styles.MarginTop:       spaceL,
 			styles.MarginBottom:    spaceL,
 		}.ToInline(),
+		attrs.Role: "note",
 	},
-		elem.Raw(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 2px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`),
+		elem.Raw(`<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--hs-warning-border)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 2px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`),
 		elem.Div(nil,
 			elem.Strong(attrs.Props{
 				attrs.Style: styles.Props{
 					styles.Display:      "block",
-					styles.Color:        "#92400e", // yellow-800
+					styles.Color:        "var(--hs-warning-text)",
 					styles.FontSize:     fontSizeH3,
 					styles.MarginBottom: spaceXS,
 				}.ToInline(),
 			}, elem.Text(title)),
-			elem.Div(attrs.Props{
-				attrs.Style: styles.Props{
-					styles.Color:    colorTextPrimary,
-					styles.FontSize: fontSizeBase,
-				}.ToInline(),
-			}, elem.Text(message)),
+			elem.Div(nil, elem.Text(message)),
 		),
 	)
 }
@@ -496,16 +500,18 @@ func downloadButton(href, text string) *elem.Element {
 		attrs.Href:     href,
 		attrs.Download: "headscale_macos.mobileconfig",
 		attrs.Style: styles.Props{
-			styles.Display:         "inline-block",
+			styles.Display:         "inline-flex",
+			styles.AlignItems:      "center",
 			styles.Padding:         "0.75rem 1.5rem",
-			styles.BackgroundColor: "#3b82f6", // blue-500
+			styles.BackgroundColor: "var(--md-primary-fg-color)",
 			styles.Color:           "#ffffff",
 			styles.TextDecoration:  "none",
-			styles.BorderRadius:    "0.5rem",
+			styles.BorderRadius:    "0.375rem",
 			styles.FontWeight:      "500",
-			styles.Transition:      "background-color 0.2s",
+			styles.Transition:      "background-color 150ms ease-out",
 			styles.MarginRight:     spaceM,
 			styles.MarginBottom:    spaceM,
+			"min-height":           "44px",
 		}.ToInline(),
 	}, elem.Text(text))
 }
