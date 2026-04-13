@@ -444,8 +444,9 @@ func errorBox(heading string, children ...elem.Node) *elem.Element {
 
 // errorIcon returns the error X-circle SVG icon as raw HTML.
 func errorIcon() elem.Node {
-	return elem.Raw(`<svg id="error-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 512 512" style="flex-shrink:0">
-  <path fill="currentColor" d="M256 32C132.3 32 32 132.3 32 256s100.3 224 224 224 224-100.3 224-224S379.7 32 256 32zm97.7 272.7c6.2 6.2 6.2 16.4 0 22.6-3.1 3.1-7.2 4.7-11.3 4.7s-8.2-1.6-11.3-4.7L256 251.3l-75.1 76c-3.1 3.1-7.2 4.7-11.3 4.7s-8.2-1.6-11.3-4.7c-6.2-6.2-6.2-16.4 0-22.6l75.1-76-75.1-76c-6.2-6.2-6.2-16.4 0-22.6s16.4-6.2 22.6 0l75.1 76 75.1-76c6.2-6.2 16.4-6.2 22.6 0s6.2 16.4 0 22.6L278.6 229l75.1 75.7z"></path>
+	return elem.Raw(`<svg id="error-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" style="flex-shrink:0">
+  <circle cx="12" cy="12" r="10" fill="currentColor"/>
+  <path d="M15 9l-6 6M9 9l6 6" stroke="var(--hs-error-bg, #fee2e2)" stroke-width="2" stroke-linecap="round"/>
 </svg>`)
 }
 
