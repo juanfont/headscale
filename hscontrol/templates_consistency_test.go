@@ -25,6 +25,14 @@ func TestTemplateHTMLConsistency(t *testing.T) {
 			}).Render(),
 		},
 		{
+			name: "Auth Error",
+			html: templates.AuthError(templates.AuthErrorResult{
+				Title:   "Headscale - Error",
+				Heading: "Forbidden",
+				Message: "You are not authorized. Please contact your administrator.",
+			}).Render(),
+		},
+		{
 			name: "Auth Web Register",
 			html: templates.AuthWeb(
 				"Machine registration",
@@ -99,6 +107,14 @@ func TestTemplateModernHTMLFeatures(t *testing.T) {
 			}).Render(),
 		},
 		{
+			name: "Auth Error",
+			html: templates.AuthError(templates.AuthErrorResult{
+				Title:   "Headscale - Error",
+				Heading: "Forbidden",
+				Message: "You are not authorized. Please contact your administrator.",
+			}).Render(),
+		},
+		{
 			name: "Auth Web Register",
 			html: templates.AuthWeb(
 				"Machine registration",
@@ -163,6 +179,15 @@ func TestTemplateExternalLinkSecurity(t *testing.T) {
 				"https://headscale.net/stable/",
 				"https://tailscale.com/kb/",
 			},
+		},
+		{
+			name: "Auth Error",
+			html: templates.AuthError(templates.AuthErrorResult{
+				Title:   "Headscale - Error",
+				Heading: "Forbidden",
+				Message: "You are not authorized. Please contact your administrator.",
+			}).Render(),
+			externalURLs: []string{}, // No external links
 		},
 		{
 			name: "Auth Web Register",
@@ -246,6 +271,14 @@ func TestTemplateAccessibilityAttributes(t *testing.T) {
 				Verb:    "Registered",
 				User:    "test@example.com",
 				Message: "You can now close this window.",
+			}).Render(),
+		},
+		{
+			name: "Auth Error",
+			html: templates.AuthError(templates.AuthErrorResult{
+				Title:   "Headscale - Error",
+				Heading: "Forbidden",
+				Message: "You are not authorized. Please contact your administrator.",
 			}).Render(),
 		},
 		{

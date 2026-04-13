@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var errTestUnexpected = errors.New("unexpected failure")
+
 // TestHandleVerifyRequest_OversizedBodyRejected verifies that the
 // /verify handler refuses POST bodies larger than verifyBodyLimit.
 // The MaxBytesReader is applied in VerifyHandler, so we simulate
@@ -54,4 +56,74 @@ func errorAsHTTPError(err error) (HTTPError, bool) {
 	}
 
 	return HTTPError{}, false
+}
+
+func TestHttpUserError(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		err            error
+		wantCode       int
+		wantContains   string
+		wantNotContain string
+	}{
+		{
+			name:           "forbidden_renders_authorization_message",
+			err:            NewHTTPError(http.StatusForbidden, "csrf token mismatch", nil),
+			wantCode:       http.StatusForbidden,
+			wantContains:   "You are not authorized. Please contact your administrator.",
+			wantNotContain: "csrf token mismatch",
+		},
+		{
+			name:           "unauthorized_renders_authorization_message",
+			err:            NewHTTPError(http.StatusUnauthorized, "unauthorised domain", nil),
+			wantCode:       http.StatusUnauthorized,
+			wantContains:   "You are not authorized. Please contact your administrator.",
+			wantNotContain: "unauthorised domain",
+		},
+		{
+			name:           "gone_renders_session_expired",
+			err:            NewHTTPError(http.StatusGone, "login session expired, try again", nil),
+			wantCode:       http.StatusGone,
+			wantContains:   "Your session has expired. Please try again.",
+			wantNotContain: "login session expired",
+		},
+		{
+			name:           "bad_request_renders_generic_retry",
+			err:            NewHTTPError(http.StatusBadRequest, "state not found", nil),
+			wantCode:       http.StatusBadRequest,
+			wantContains:   "The request could not be processed. Please try again.",
+			wantNotContain: "state not found",
+		},
+		{
+			name:         "plain_error_renders_500",
+			err:          errTestUnexpected,
+			wantCode:     http.StatusInternalServerError,
+			wantContains: "Something went wrong. Please try again later.",
+		},
+		{
+			name:         "html_structure_present",
+			err:          NewHTTPError(http.StatusGone, "session expired", nil),
+			wantCode:     http.StatusGone,
+			wantContains: "<!DOCTYPE html>",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rec := httptest.NewRecorder()
+			httpUserError(rec, tt.err)
+
+			assert.Equal(t, tt.wantCode, rec.Code)
+			assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
+			assert.Contains(t, rec.Body.String(), tt.wantContains)
+
+			if tt.wantNotContain != "" {
+				assert.NotContains(t, rec.Body.String(), tt.wantNotContain)
+			}
+		})
+	}
 }
