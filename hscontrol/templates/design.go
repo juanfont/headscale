@@ -108,15 +108,11 @@ func responsiveContainer(children ...elem.Node) *elem.Element {
 func card(title string, children ...elem.Node) *elem.Element {
 	cardContent := children
 	if title != "" {
-		// Prepend title as H3 if provided
 		cardContent = append([]elem.Node{
 			elem.H3(attrs.Props{
 				attrs.Style: styles.Props{
 					styles.MarginTop:    "0",
 					styles.MarginBottom: spaceM,
-					styles.FontSize:     fontSizeH3,
-					styles.LineHeight:   lineHeightH3, // 1.5 - H3 line height
-					styles.Color:        colorTextSecondary,
 				}.ToInline(),
 			}, elem.Text(title)),
 		}, children...)
@@ -124,12 +120,12 @@ func card(title string, children ...elem.Node) *elem.Element {
 
 	return elem.Div(attrs.Props{
 		attrs.Style: styles.Props{
-			styles.Background:   colorBackgroundCard,
-			styles.Border:       "1px solid " + colorBorderLight,
-			styles.BorderRadius: "0.5rem",                   // 8px rounded corners
-			styles.Padding:      "clamp(1rem, 3vw, 1.5rem)", // Responsive padding
+			styles.Background:   "var(--hs-bg)",
+			styles.Border:       "1px solid var(--hs-border)",
+			styles.BorderRadius: "0.5rem",
+			styles.Padding:      "clamp(1rem, 3vw, 1.5rem)",
 			styles.MarginBottom: spaceL,
-			styles.BoxShadow:    "0 1px 3px rgba(0,0,0,0.1)", // Subtle shadow
+			styles.BoxShadow:    "0 1px 3px rgba(0,0,0,0.1)",
 		}.ToInline(),
 	}, cardContent...)
 }
@@ -333,6 +329,12 @@ func inlineCode(code string) *elem.Element {
 //
 //nolint:unused // Used in apple.go template.
 func orDivider() *elem.Element {
+	lineStyle := styles.Props{
+		styles.Flex:            "1",
+		styles.Height:          "1px",
+		styles.BackgroundColor: "var(--hs-border)",
+	}.ToInline()
+
 	return elem.Div(attrs.Props{
 		attrs.Style: styles.Props{
 			styles.Display:      "flex",
@@ -343,29 +345,17 @@ func orDivider() *elem.Element {
 			styles.Width:        "100%",
 		}.ToInline(),
 	},
-		elem.Div(attrs.Props{
-			attrs.Style: styles.Props{
-				styles.Flex:            "1",
-				styles.Height:          "1px",
-				styles.BackgroundColor: colorBorderLight,
-			}.ToInline(),
-		}),
+		elem.Div(attrs.Props{attrs.Style: lineStyle}),
 		elem.Strong(attrs.Props{
 			attrs.Style: styles.Props{
-				styles.Color:      colorTextSecondary,
+				styles.Color:      "var(--md-default-fg-color--light)",
 				styles.FontSize:   fontSizeBase,
 				styles.FontWeight: "500",
 				"text-transform":  "uppercase",
 				"letter-spacing":  "0.05em",
 			}.ToInline(),
 		}, elem.Text("or")),
-		elem.Div(attrs.Props{
-			attrs.Style: styles.Props{
-				styles.Flex:            "1",
-				styles.Height:          "1px",
-				styles.BackgroundColor: colorBorderLight,
-			}.ToInline(),
-		}),
+		elem.Div(attrs.Props{attrs.Style: lineStyle}),
 	)
 }
 
@@ -526,10 +516,6 @@ func externalLink(href, text string) *elem.Element {
 		attrs.Href:   href,
 		attrs.Rel:    "noreferrer noopener",
 		attrs.Target: "_blank",
-		attrs.Style: styles.Props{
-			styles.Color:          colorPrimaryAccent, // #4051b5 - base link color
-			styles.TextDecoration: "none",
-		}.ToInline(),
 	}, elem.Text(text))
 }
 
