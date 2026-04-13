@@ -3,6 +3,7 @@ package templates
 import (
 	"github.com/chasefleming/elem-go"
 	"github.com/chasefleming/elem-go/attrs"
+	"github.com/chasefleming/elem-go/styles"
 )
 
 // RegisterConfirmInfo carries the human-readable information shown on
@@ -49,11 +50,13 @@ type RegisterConfirmInfo struct {
 // silently complete a phishing-style registration when the victim's
 // IdP allows silent SSO.
 func RegisterConfirm(info RegisterConfirmInfo) *elem.Element {
-	deviceList := elem.Ul(nil,
-		elem.Li(nil, elem.Strong(nil, elem.Text("Hostname: ")), elem.Text(info.Hostname)),
-		elem.Li(nil, elem.Strong(nil, elem.Text("OS: ")), elem.Text(displayOrUnknown(info.OS))),
-		elem.Li(nil, elem.Strong(nil, elem.Text("Machine key: ")), Code(elem.Text(info.MachineKey))),
-		elem.Li(nil, elem.Strong(nil, elem.Text("Will be registered to: ")), elem.Text(info.User)),
+	deviceList := deviceTable(
+		[4][2]string{
+			{"Hostname", info.Hostname},
+			{"OS", displayOrUnknown(info.OS)},
+			{"Machine key", info.MachineKey},
+			{"Registered to", info.User},
+		},
 	)
 
 	form := elem.Form(
@@ -90,6 +93,43 @@ func RegisterConfirm(info RegisterConfirmInfo) *elem.Element {
 			pageFooter(),
 		),
 	)
+}
+
+func deviceTable(rows [4][2]string) *elem.Element {
+	tableRows := make([]elem.Node, 0, len(rows))
+	for _, row := range rows {
+		val := elem.Node(elem.Text(row[1]))
+		if row[0] == "Machine key" {
+			val = Code(elem.Text(row[1]))
+		}
+
+		tableRows = append(tableRows, elem.Tr(nil,
+			elem.Td(attrs.Props{
+				attrs.Style: styles.Props{
+					styles.Padding:      "0.5rem 1rem 0.5rem 0",
+					styles.FontWeight:   "600",
+					styles.WhiteSpace:   "nowrap",
+					styles.Color:        "var(--md-default-fg-color--light)",
+					styles.BorderBottom: "1px solid var(--hs-border)",
+				}.ToInline(),
+			}, elem.Text(row[0])),
+			elem.Td(attrs.Props{
+				attrs.Style: styles.Props{
+					styles.Padding:      "0.5rem 0",
+					styles.BorderBottom: "1px solid var(--hs-border)",
+				}.ToInline(),
+			}, val),
+		))
+	}
+
+	return elem.Table(attrs.Props{
+		attrs.Style: styles.Props{
+			styles.Width:          "100%",
+			styles.BorderCollapse: "collapse",
+			styles.MarginTop:      "1em",
+			styles.MarginBottom:   "1.5em",
+		}.ToInline(),
+	}, tableRows...)
 }
 
 func displayOrUnknown(s string) string {
