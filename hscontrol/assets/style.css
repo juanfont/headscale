@@ -221,7 +221,6 @@ input:focus-visible {
 @media (max-width: 768px) {
   .headscale-logo {
     width: 200px;
-    margin-left: 0;
   }
 }
 
