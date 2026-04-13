@@ -60,6 +60,7 @@ func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcf
 						if tsaddr.IsExitRoute(routableIP) {
 							continue
 						}
+
 						if expanded.OverlapsPrefix(routableIP) {
 							dests = append(dests, dest)
 							continue DEST_LOOP

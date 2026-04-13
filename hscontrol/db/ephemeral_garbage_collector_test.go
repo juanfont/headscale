@@ -379,7 +379,7 @@ func TestEphemeralGarbageCollectorConcurrentScheduleAndClose(t *testing.T) {
 	stopScheduling := make(chan struct{})
 
 	// Track how many nodes have been scheduled
-	var scheduledCount int64
+	var scheduledCount atomic.Int64
 
 	// Launch goroutines that continuously schedule nodes
 	for schedulerIndex := range numSchedulers {
@@ -396,7 +396,7 @@ func TestEphemeralGarbageCollectorConcurrentScheduleAndClose(t *testing.T) {
 				default:
 					nodeID := types.NodeID(baseNodeID + j + 1) //nolint:gosec // safe conversion in test
 					gc.Schedule(nodeID, 1*time.Hour)           // Long expiry to ensure it doesn't trigger during test
-					atomic.AddInt64(&scheduledCount, 1)
+					scheduledCount.Add(1)
 
 					// Yield to other goroutines to introduce variability
 					runtime.Gosched()
@@ -410,7 +410,7 @@ func TestEphemeralGarbageCollectorConcurrentScheduleAndClose(t *testing.T) {
 		defer wg.Done()
 
 		// Wait until enough nodes have been scheduled
-		for atomic.LoadInt64(&scheduledCount) < int64(numSchedulers*closeAfterNodes) {
+		for scheduledCount.Load() < int64(numSchedulers*closeAfterNodes) {
 			runtime.Gosched()
 		}
 

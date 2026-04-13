@@ -633,7 +633,7 @@ func TestEphemeralGarbageCollectorLoads(t *testing.T) {
 
 	want := 1000
 
-	var deletedCount int64
+	var deletedCount atomic.Int64
 
 	e := NewEphemeralGarbageCollector(func(ni types.NodeID) {
 		mu.Lock()
@@ -644,7 +644,7 @@ func TestEphemeralGarbageCollectorLoads(t *testing.T) {
 
 		got = append(got, ni)
 
-		atomic.AddInt64(&deletedCount, 1)
+		deletedCount.Add(1)
 	})
 	go e.Start()
 
@@ -655,7 +655,7 @@ func TestEphemeralGarbageCollectorLoads(t *testing.T) {
 
 	// Wait for all deletions to complete
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		count := atomic.LoadInt64(&deletedCount)
+		count := deletedCount.Load()
 		assert.Equal(c, int64(want), count, "all nodes should be deleted")
 	}, 10*time.Second, 50*time.Millisecond, "waiting for all deletions")
 

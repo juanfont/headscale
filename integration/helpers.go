@@ -341,11 +341,11 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 					stateStr = stateOnline
 				}
 
-				failureReport.WriteString(fmt.Sprintf("node:%d is not fully %s (timestamp: %s):\n", nodeID, stateStr, time.Now().Format(TimestampFormat)))
-				failureReport.WriteString(fmt.Sprintf("  - batcher: %t (expected: %t)\n", status.Batcher, expectedOnline))
-				failureReport.WriteString(fmt.Sprintf("    - conn count: %d\n", status.BatcherConnCount))
-				failureReport.WriteString(fmt.Sprintf("  - mapresponses: %t (expected: %t, down with at least one peer)\n", status.MapResponses, expectedOnline))
-				failureReport.WriteString(fmt.Sprintf("  - nodestore: %t (expected: %t)\n", status.NodeStore, expectedOnline))
+				fmt.Fprintf(&failureReport, "node:%d is not fully %s (timestamp: %s):\n", nodeID, stateStr, time.Now().Format(TimestampFormat))
+				fmt.Fprintf(&failureReport, "  - batcher: %t (expected: %t)\n", status.Batcher, expectedOnline)
+				fmt.Fprintf(&failureReport, "    - conn count: %d\n", status.BatcherConnCount)
+				fmt.Fprintf(&failureReport, "  - mapresponses: %t (expected: %t, down with at least one peer)\n", status.MapResponses, expectedOnline)
+				fmt.Fprintf(&failureReport, "  - nodestore: %t (expected: %t)\n", status.NodeStore, expectedOnline)
 			}
 		}
 
@@ -359,7 +359,7 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 				prevReport = failureReport.String()
 			}
 
-			failureReport.WriteString(fmt.Sprintf("validation_timestamp: %s\n", time.Now().Format(TimestampFormat)))
+			fmt.Fprintf(&failureReport, "validation_timestamp: %s\n", time.Now().Format(TimestampFormat))
 			// Note: timeout_remaining not available in this context
 
 			assert.Fail(c, failureReport.String())

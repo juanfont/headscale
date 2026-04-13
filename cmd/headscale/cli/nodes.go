@@ -175,8 +175,10 @@ Use --disable to disable key expiry (node will never expire).`,
 		now := time.Now()
 
 		expiryTime := now
+
 		if expiry != "" {
 			var err error
+
 			expiryTime, err = time.Parse(time.RFC3339, expiry)
 			if err != nil {
 				return fmt.Errorf("parsing expiry time: %w", err)
@@ -397,6 +399,7 @@ func nodesToPtables(
 		}
 
 		var ipBuilder strings.Builder
+
 		for _, addr := range node.GetIpAddresses() {
 			ip, err := netip.ParseAddr(addr)
 			if err == nil {

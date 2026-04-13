@@ -933,7 +933,7 @@ func warnBanner(lines []string) {
 	b.WriteString("###                                                          ###\n")
 
 	for _, line := range lines {
-		b.WriteString(fmt.Sprintf("###  %-54s  ###\n", line))
+		fmt.Fprintf(&b, "###  %-54s  ###\n", line)
 	}
 
 	b.WriteString("###                                                          ###\n")

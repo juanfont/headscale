@@ -1790,10 +1790,12 @@ func (s *State) HandleNodeFromAuthPath(
 	// the initial Hostinfo from the cached client-supplied Hostinfo (or
 	// an empty stub if the client did not send one).
 	hostname := regData.Hostname
+
 	hostinfo := &tailcfg.Hostinfo{}
 	if regData.Hostinfo != nil {
 		hostinfo = regData.Hostinfo.Clone()
 	}
+
 	hostinfo.Hostname = hostname
 
 	// Lookup existing nodes
