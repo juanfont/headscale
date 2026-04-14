@@ -97,6 +97,7 @@ internet is a security-sensitive choice. `autogroup:danger-all` can only be used
 - Policy validation error messages now include field context (e.g., `src=`, `dst=`) and are more descriptive [#2180](https://github.com/juanfont/headscale/pull/2180)
 - Remove old migrations for the debian package [#3185](https://github.com/juanfont/headscale/pull/3185)
 - Install `config-example.yaml` as example for the debian package [#3186](https://github.com/juanfont/headscale/pull/3186)
+- Fix hostnames with spaces or non-DNS characters (e.g. `Joe's Mac mini`) being rejected on MapRequest updates; they are now normalised to a valid DNS label [#3188](https://github.com/juanfont/headscale/issues/3188)
 
 ## 0.28.1 (202x-xx-xx)
 
