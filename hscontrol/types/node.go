@@ -634,14 +634,15 @@ func (node *Node) RegisterMethodToV1Enum() v1.RegisterMethod {
 }
 
 // ApplyHostnameFromHostInfo takes a Hostinfo struct and updates the node.
+// Hostnames that are not valid DNS labels (e.g. "Joe's Mac mini") are run
+// through util.NormaliseHostname; the update is dropped only if the
+// normalised value is still invalid.
 func (node *Node) ApplyHostnameFromHostInfo(hostInfo *tailcfg.Hostinfo) {
 	if hostInfo == nil {
 		return
 	}
 
-	newHostname := strings.ToLower(hostInfo.Hostname)
-
-	err := util.ValidateHostname(newHostname)
+	newHostname, err := util.NormaliseHostname(hostInfo.Hostname)
 	if err != nil {
 		log.Warn().
 			Str("node.id", node.ID.String()).
@@ -651,6 +652,14 @@ func (node *Node) ApplyHostnameFromHostInfo(hostInfo *tailcfg.Hostinfo) {
 			Msg("Rejecting invalid hostname update from hostinfo")
 
 		return
+	}
+
+	if hostInfo.Hostname != newHostname {
+		log.Info().
+			Str("node.id", node.ID.String()).
+			Str("raw_hostname", hostInfo.Hostname).
+			Str("normalised_hostname", newHostname).
+			Msg("Normalised hostname from hostinfo")
 	}
 
 	if node.Hostname != newHostname {

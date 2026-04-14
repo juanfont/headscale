@@ -393,11 +393,11 @@ func TestApplyHostnameFromHostInfo(t *testing.T) {
 				Hostname:  "valid-hostname",
 			},
 			change: &tailcfg.Hostinfo{
-				Hostname: "hostname-with-💩",
+				Hostname: "hostname-with-🎉",
 			},
 			want: Node{
 				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname", // Should reject and keep old hostname
+				Hostname:  "valid-hostname",
 			},
 		},
 		{
@@ -411,11 +411,11 @@ func TestApplyHostnameFromHostInfo(t *testing.T) {
 			},
 			want: Node{
 				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname", // Should keep old hostname
+				Hostname:  "valid-hostname",
 			},
 		},
 		{
-			name: "invalid-hostname-with-special-chars-rejected",
+			name: "hostname-with-special-chars-normalised",
 			nodeBefore: Node{
 				GivenName: "valid-hostname",
 				Hostname:  "valid-hostname",
@@ -424,8 +424,8 @@ func TestApplyHostnameFromHostInfo(t *testing.T) {
 				Hostname: "node-with-special!@#$%",
 			},
 			want: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname", // Should reject and keep old hostname
+				GivenName: "node-with-special",
+				Hostname:  "node-with-special",
 			},
 		},
 		{
@@ -471,7 +471,7 @@ func TestApplyHostnameFromHostInfo(t *testing.T) {
 			},
 		},
 		{
-			name: "at_sign_rejected",
+			name: "at_sign_normalised",
 			nodeBefore: Node{
 				GivenName: "valid-hostname",
 				Hostname:  "valid-hostname",
@@ -480,12 +480,12 @@ func TestApplyHostnameFromHostInfo(t *testing.T) {
 				Hostname: "Test@Host",
 			},
 			want: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
+				GivenName: "testhost",
+				Hostname:  "testhost",
 			},
 		},
 		{
-			name: "chinese_chars_with_dash_rejected",
+			name: "chinese_chars_with_dash_normalised",
 			nodeBefore: Node{
 				GivenName: "valid-hostname",
 				Hostname:  "valid-hostname",
@@ -494,8 +494,8 @@ func TestApplyHostnameFromHostInfo(t *testing.T) {
 				Hostname: "server-北京-01", //nolint:gosmopolitan // intentional i18n test data
 			},
 			want: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
+				GivenName: "server--01",
+				Hostname:  "server--01",
 			},
 		},
 		{
@@ -597,7 +597,7 @@ func TestApplyHostnameFromHostInfo(t *testing.T) {
 			},
 		},
 		{
-			name: "too_long_hostname_rejected",
+			name: "too_long_hostname_truncated",
 			nodeBefore: Node{
 				GivenName: "valid-hostname",
 				Hostname:  "valid-hostname",
@@ -606,12 +606,12 @@ func TestApplyHostnameFromHostInfo(t *testing.T) {
 				Hostname: strings.Repeat("t", 65),
 			},
 			want: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
+				GivenName: strings.Repeat("t", 63),
+				Hostname:  strings.Repeat("t", 63),
 			},
 		},
 		{
-			name: "underscore_rejected",
+			name: "underscore_normalised",
 			nodeBefore: Node{
 				GivenName: "valid-hostname",
 				Hostname:  "valid-hostname",
@@ -620,8 +620,24 @@ func TestApplyHostnameFromHostInfo(t *testing.T) {
 				Hostname: "test_node",
 			},
 			want: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
+				GivenName: "testnode",
+				Hostname:  "testnode",
+			},
+		},
+		{
+			// Regression: hostnames like "Joe's Mac mini" were previously dropped
+			// with "Rejecting invalid hostname update from hostinfo".
+			name: "apostrophe_and_spaces_normalised",
+			nodeBefore: Node{
+				GivenName: "invalid-abc12345",
+				Hostname:  "invalid-abc12345",
+			},
+			change: &tailcfg.Hostinfo{
+				Hostname: "Joe's Mac mini",
+			},
+			want: Node{
+				GivenName: "joesmacmini",
+				Hostname:  "joesmacmini",
 			},
 		},
 	}
