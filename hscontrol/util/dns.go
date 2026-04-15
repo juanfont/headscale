@@ -23,7 +23,11 @@ const (
 	LabelHostnameLength = 63
 )
 
-var invalidDNSRegex = regexp.MustCompile("[^a-z0-9-.]+")
+var (
+	invalidDNSRegex        = regexp.MustCompile("[^a-z0-9-.]+")
+	hostnameHyphenizer     = regexp.MustCompile(`[\s_]+`)
+	consecutiveHyphenRegex = regexp.MustCompile(`-+`)
+)
 
 // DNS validation errors.
 var (
@@ -115,7 +119,10 @@ func ValidateHostname(name string) error {
 //
 // Transformations applied:
 // - Converts to lowercase
+// - Replaces whitespace and underscores with hyphens
 // - Removes invalid DNS characters
+// - Collapses consecutive hyphens
+// - Trims leading and trailing hyphens
 // - Truncates to 63 characters if needed
 //
 // After transformation, validates the result.
@@ -129,13 +136,25 @@ func NormaliseHostname(name string) (string, error) {
 	// Transform to lowercase
 	name = strings.ToLower(name)
 
+	// Replace common word separators with hyphens to preserve readability.
+	name = hostnameHyphenizer.ReplaceAllString(name, "-")
+
 	// Strip invalid DNS characters
 	name = invalidDNSRegex.ReplaceAllString(name, "")
+
+	// Collapse consecutive hyphens introduced by replacement or stripping.
+	name = consecutiveHyphenRegex.ReplaceAllString(name, "-")
+
+	// Trim invalid boundary hyphens after stripping.
+	name = strings.Trim(name, "-")
 
 	// Truncate to DNS label limit
 	if len(name) > LabelHostnameLength {
 		name = name[:LabelHostnameLength]
 	}
+
+	// Truncation can reintroduce an invalid trailing hyphen.
+	name = strings.Trim(name, "-")
 
 	// Validate result after transformation
 	err = ValidateHostname(name)

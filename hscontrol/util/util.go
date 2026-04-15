@@ -310,11 +310,9 @@ func EnsureHostname(hostinfo tailcfg.HostinfoView, machineKey, nodeKey string) s
 		return "node-" + keyPrefix
 	}
 
-	lowercased := strings.ToLower(hostinfo.Hostname())
-
-	err := ValidateHostname(lowercased)
+	normalised, err := NormaliseHostname(hostinfo.Hostname())
 	if err == nil {
-		return lowercased
+		return normalised
 	}
 
 	return InvalidString()

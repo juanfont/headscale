@@ -639,9 +639,7 @@ func (node *Node) ApplyHostnameFromHostInfo(hostInfo *tailcfg.Hostinfo) {
 		return
 	}
 
-	newHostname := strings.ToLower(hostInfo.Hostname)
-
-	err := util.ValidateHostname(newHostname)
+	newHostname, err := util.NormaliseHostname(hostInfo.Hostname)
 	if err != nil {
 		log.Warn().
 			Str("node.id", node.ID.String()).
@@ -663,10 +661,7 @@ func (node *Node) ApplyHostnameFromHostInfo(hostInfo *tailcfg.Hostinfo) {
 			Msg("Updating hostname from hostinfo")
 
 		if node.GivenNameHasBeenChanged() {
-			// Strip invalid DNS characters for givenName display
-			givenName := strings.ToLower(newHostname)
-			givenName = invalidDNSRegex.ReplaceAllString(givenName, "")
-			node.GivenName = givenName
+			node.GivenName = newHostname
 		}
 
 		node.Hostname = newHostname

@@ -46,23 +46,39 @@ func TestNormaliseHostname(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "invalid: too long name truncated leaves trailing hyphen",
+			name: "normalise: whitespace and apostrophe",
+			args: args{
+				name: "Yuri's MacBook Pro",
+			},
+			want:    "yuris-macbook-pro",
+			wantErr: false,
+		},
+		{
+			name: "normalise: underscores and spaces become single hyphens",
+			args: args{
+				name: "test__  host_name",
+			},
+			want:    "test-host-name",
+			wantErr: false,
+		},
+		{
+			name: "normalise: too long name is truncated and trimmed",
 			args: args{
 				name: "super-long-useruseruser-name-that-should-be-a-little-more-than-63-chars",
 			},
-			want:    "",
-			wantErr: true,
+			want:    "super-long-useruseruser-name-that-should-be-a-little-more-than",
+			wantErr: false,
 		},
 		{
-			name:    "invalid: emoji stripped leaves trailing hyphen",
+			name:    "normalise: emoji stripped leaves valid hostname",
 			args:    args{name: "hostname-with-💩"},
-			want:    "",
-			wantErr: true,
+			want:    "hostname-with",
+			wantErr: false,
 		},
 		{
 			name:    "normalise: multiple emojis stripped",
 			args:    args{name: "node-🎉-🚀-test"},
-			want:    "node---test",
+			want:    "node-test",
 			wantErr: false,
 		},
 		{
@@ -72,16 +88,16 @@ func TestNormaliseHostname(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "invalid: emoji at start leaves leading hyphen",
+			name:    "normalise: emoji at start trims leading hyphen",
 			args:    args{name: "🚀-rocket-node"},
-			want:    "",
-			wantErr: true,
+			want:    "rocket-node",
+			wantErr: false,
 		},
 		{
-			name:    "invalid: emoji at end leaves trailing hyphen",
+			name:    "normalise: emoji at end trims trailing hyphen",
 			args:    args{name: "node-test-🎉"},
-			want:    "",
-			wantErr: true,
+			want:    "node-test",
+			wantErr: false,
 		},
 	}
 	for _, tt := range tests {
