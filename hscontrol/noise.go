@@ -169,7 +169,7 @@ func (h *Headscale) NoiseUpgradeHandler(
 		r.Post("/map", ns.PollNetMapHandler)
 
 		// SSH Check mode endpoint, consulted to validate if a given SSH connection should be accepted or rejected.
-		r.Get("/ssh/action/from/{src_node_id}/to/{dst_node_id}", ns.SSHActionHandler)
+		r.Get("/ssh/action/{src_node_id}/to/{dst_node_id}", ns.SSHActionHandler)
 
 		// Not implemented yet
 		//
@@ -414,7 +414,6 @@ func (ns *noiseServer) SSHActionHandler(
 	reqLog := log.With().
 		Uint64("src_node_id", srcNodeID.Uint64()).
 		Uint64("dst_node_id", dstNodeID.Uint64()).
-		Str("ssh_user", req.URL.Query().Get("ssh_user")).
 		Str("local_user", req.URL.Query().Get("local_user")).
 		Logger()
 
@@ -515,8 +514,8 @@ func (ns *noiseServer) sshActionHoldAndDelegate(
 ) (*tailcfg.SSHAction, error) {
 	holdURL, err := url.Parse(
 		ns.headscale.cfg.ServerURL +
-			"/machine/ssh/action/from/$SRC_NODE_ID/to/$DST_NODE_ID" +
-			"?ssh_user=$SSH_USER&local_user=$LOCAL_USER",
+			"/machine/ssh/action/$SRC_NODE_ID/to/$DST_NODE_ID" +
+			"?local_user=$LOCAL_USER",
 	)
 	if err != nil {
 		return nil, NewHTTPError(
