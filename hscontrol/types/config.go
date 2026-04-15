@@ -60,6 +60,22 @@ type EphemeralConfig struct {
 	InactivityTimeout time.Duration
 }
 
+// HARouteConfig contains configuration for HA subnet router health probing.
+type HARouteConfig struct {
+	// ProbeInterval is how often HA subnet routers are probed.
+	// A zero or negative duration disables probing.
+	ProbeInterval time.Duration
+
+	// ProbeTimeout is the maximum time to wait for a probe response
+	// before declaring a node unhealthy. Must be less than ProbeInterval.
+	ProbeTimeout time.Duration
+}
+
+// RouteConfig contains configuration for route behaviour.
+type RouteConfig struct {
+	HA HARouteConfig
+}
+
 // NodeConfig contains configuration for node lifecycle and expiry.
 type NodeConfig struct {
 	// Expiry is the default key expiry duration for non-tagged nodes.
@@ -70,6 +86,9 @@ type NodeConfig struct {
 
 	// Ephemeral contains configuration for ephemeral node lifecycle.
 	Ephemeral EphemeralConfig
+
+	// Routes contains configuration for route behaviour.
+	Routes RouteConfig
 }
 
 // Config contains the initial Headscale configuration.
@@ -414,6 +433,8 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("node.expiry", "0")
 	viper.SetDefault("node.ephemeral.inactivity_timeout", "120s")
+	viper.SetDefault("node.routes.ha.probe_interval", "10s")
+	viper.SetDefault("node.routes.ha.probe_timeout", "5s")
 
 	viper.SetDefault("tuning.notifier_send_timeout", "800ms")
 	viper.SetDefault("tuning.batch_change_delay", "800ms")
@@ -573,6 +594,34 @@ func validateServerConfig() error {
 	if viper.GetBool("dns.override_local_dns") {
 		if global := viper.GetStringSlice("dns.nameservers.global"); len(global) == 0 {
 			errorText += "Fatal config error: dns.nameservers.global must be set when dns.override_local_dns is true\n"
+		}
+	}
+
+	// Validate HA health probing parameters
+	if haInterval := viper.GetDuration(
+		"node.routes.ha.probe_interval",
+	); haInterval > 0 {
+		if haInterval < 2*time.Second {
+			errorText += fmt.Sprintf(
+				"Fatal config error: node.routes.ha.probe_interval (%s) must be >= 2s\n",
+				haInterval,
+			)
+		}
+
+		haTimeout := viper.GetDuration("node.routes.ha.probe_timeout")
+		if haTimeout < 1*time.Second {
+			errorText += fmt.Sprintf(
+				"Fatal config error: node.routes.ha.probe_timeout (%s) must be >= 1s\n",
+				haTimeout,
+			)
+		}
+
+		if haTimeout >= haInterval {
+			errorText += fmt.Sprintf(
+				"Fatal config error: node.routes.ha.probe_timeout (%s) must be less than node.routes.ha.probe_interval (%s)\n",
+				haTimeout,
+				haInterval,
+			)
 		}
 	}
 
@@ -1128,6 +1177,12 @@ func LoadServerConfig() (*Config, error) {
 			Expiry: resolveNodeExpiry(),
 			Ephemeral: EphemeralConfig{
 				InactivityTimeout: resolveEphemeralInactivityTimeout(),
+			},
+			Routes: RouteConfig{
+				HA: HARouteConfig{
+					ProbeInterval: viper.GetDuration("node.routes.ha.probe_interval"),
+					ProbeTimeout:  viper.GetDuration("node.routes.ha.probe_timeout"),
+				},
 			},
 		},
 
