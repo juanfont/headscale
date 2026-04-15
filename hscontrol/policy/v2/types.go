@@ -67,8 +67,8 @@ var (
 
 // Grant validation errors.
 var (
-	ErrGrantMissingIPOrApp             = errors.New("grants must specify either 'ip' or 'app' field")
-	ErrGrantInvalidViaTag              = errors.New("grant 'via' tag is not defined in policy")
+	ErrGrantMissingIPOrApp             = errors.New("ip and app can not both be empty")
+	ErrGrantViaNotATag                 = errors.New("via can only be a tag")
 	ErrProtocolPortInvalidFormat       = errors.New("expected only one colon in Internet protocol and port type")
 	ErrCapNameInvalidForm              = errors.New("capability name must have the form {domain}/{path}")
 	ErrCapNameTailscaleDomain          = errors.New("capability name must not be in the tailscale.com domain")
@@ -2550,7 +2550,7 @@ func (p *Policy) validate() error {
 
 				err := p.TagOwners.Contains(tagOwner)
 				if err != nil {
-					errs = append(errs, err)
+					errs = append(errs, fmt.Errorf("src=%w", err))
 				}
 			}
 		}
@@ -2587,11 +2587,14 @@ func (p *Policy) validate() error {
 			}
 		}
 
-		// Validate via tags
+		// Validate via tags. Wording matches Tailscale SaaS
+		// ("tag %q not found"), which differs from the ACL-src
+		// wording ("src=tag not found: %q").
 		for _, viaTag := range grant.Via {
 			err := p.TagOwners.Contains(&viaTag)
 			if err != nil {
-				errs = append(errs, fmt.Errorf("%w in grant via: %q", ErrGrantInvalidViaTag, viaTag))
+				//nolint:err113 // SaaS-aligned dynamic phrasing; no caller does errors.Is.
+				errs = append(errs, fmt.Errorf("tag %q not found", viaTag))
 			}
 		}
 
@@ -3001,11 +3004,19 @@ func unmarshalPolicy(b []byte) (*Policy, error) {
 	ast.Standardize()
 
 	if err = json.Unmarshal(ast.Pack(), &policy, policyJSONOpts...); err != nil { //nolint:noinlineerr
-		if serr, ok := errors.AsType[*json.SemanticError](err); ok && errors.Is(serr.Err, json.ErrUnknownName) {
-			ptr := serr.JSONPointer
-			name := ptr.LastToken()
+		if serr, ok := errors.AsType[*json.SemanticError](err); ok {
+			if errors.Is(serr.Err, json.ErrUnknownName) {
+				ptr := serr.JSONPointer
+				name := ptr.LastToken()
 
-			return nil, fmt.Errorf("%w: %q", ErrUnknownField, name)
+				return nil, fmt.Errorf("%w: %q", ErrUnknownField, name)
+			}
+
+			// Non-tag entries in grant.via surface as type errors on
+			// []Tag; match SaaS wording instead of Go's JSON diagnostic.
+			if strings.Contains(string(serr.JSONPointer), "/via/") {
+				return nil, ErrGrantViaNotATag
+			}
 		}
 
 		return nil, fmt.Errorf("parsing policy from bytes: %w", err)
@@ -3039,59 +3050,4 @@ func validateProtocolPortCompatibility(protocol Protocol, destinations []AliasWi
 	}
 
 	return nil
-}
-
-// usesAutogroupSelf checks if the policy uses autogroup:self in any ACL or SSH rules.
-func (p *Policy) usesAutogroupSelf() bool {
-	if p == nil {
-		return false
-	}
-
-	// Check ACL rules
-	for _, acl := range p.ACLs {
-		for _, src := range acl.Sources {
-			if ag, ok := src.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
-				return true
-			}
-		}
-
-		for _, dest := range acl.Destinations {
-			if ag, ok := dest.Alias.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
-				return true
-			}
-		}
-	}
-
-	// Check SSH rules
-	for _, ssh := range p.SSHs {
-		for _, src := range ssh.Sources {
-			if ag, ok := src.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
-				return true
-			}
-		}
-
-		for _, dest := range ssh.Destinations {
-			if ag, ok := dest.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
-// hasViaGrants returns true if any grant in the policy has a
-// non-empty Via field, requiring per-node filter compilation.
-func (p *Policy) hasViaGrants() bool {
-	if p == nil {
-		return false
-	}
-
-	for _, grant := range p.Grants {
-		if len(grant.Via) > 0 {
-			return true
-		}
-	}
-
-	return false
 }

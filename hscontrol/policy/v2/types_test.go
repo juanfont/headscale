@@ -4629,7 +4629,7 @@ func TestUnmarshalGrants(t *testing.T) {
 	]
 }
 `,
-			wantErr: "grants must specify either 'ip' or 'app' field",
+			wantErr: "ip and app can not both be empty",
 		},
 		{
 			name: "valid-grant-empty-sources",
@@ -4698,7 +4698,7 @@ func TestUnmarshalGrants(t *testing.T) {
 	]
 }
 `,
-			wantErr: "grant 'via' tag is not defined in policy",
+			wantErr: `tag "tag:undefined-router" not found`,
 		},
 		{
 			name: "invalid-grant-undefined-source-group",
