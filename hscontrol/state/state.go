@@ -1146,42 +1146,72 @@ func (s *State) GetNodePrimaryRoutes(nodeID types.NodeID) []netip.Prefix {
 	return s.primaryRoutes.PrimaryRoutes(nodeID)
 }
 
-// RoutesForPeer computes the routes a peer should advertise to a specific viewer,
-// applying via grant steering on top of global primary election and exit routes.
-// When no via grants apply, this falls back to existing behavior (global primaries + exit routes).
+// RoutesForPeer computes the routes a peer should advertise in a viewer's
+// AllowedIPs, combining primary routes (from HA election), approved exit
+// routes, and via grant steering.
+//
+// Approved exit routes (0.0.0.0/0, ::/0) are included alongside subnet
+// routes — they appear in every peer's AllowedIPs, while unapproved
+// ones do not.
 func (s *State) RoutesForPeer(
 	viewer, peer types.NodeView,
 	matchers []matcher.Match,
 ) []netip.Prefix {
 	viaResult := s.polMan.ViaRoutesForPeer(viewer, peer)
-
 	globalPrimaries := s.primaryRoutes.PrimaryRoutes(peer.ID())
 	exitRoutes := peer.ExitRoutes()
 
-	// Fast path: no via grants affect this pair — existing behavior.
+	var reduced []netip.Prefix
+
+	// Fast path: no via grants affect this pair.
 	if len(viaResult.Include) == 0 && len(viaResult.Exclude) == 0 {
 		allRoutes := slices.Concat(globalPrimaries, exitRoutes)
 
-		return policy.ReduceRoutes(viewer, allRoutes, matchers)
-	}
+		reduced = policy.ReduceRoutes(viewer, allRoutes, matchers)
+	} else {
+		// Slow path: drop excluded routes, reduce, append via-included.
+		routes := make([]netip.Prefix, 0, len(globalPrimaries)+len(exitRoutes))
+		for _, p := range slices.Concat(globalPrimaries, exitRoutes) {
+			if !slices.Contains(viaResult.Exclude, p) {
+				routes = append(routes, p)
+			}
+		}
 
-	// Remove excluded routes (steered to a different peer for this viewer).
-	var routes []netip.Prefix
+		reduced = policy.ReduceRoutes(viewer, routes, matchers)
 
-	for _, p := range slices.Concat(globalPrimaries, exitRoutes) {
-		if !slices.Contains(viaResult.Exclude, p) {
-			routes = append(routes, p)
+		// Append via-included routes. The via grant IS the authorization
+		// (no matcher filter needed), but HA primary election applies
+		// when a regular (non-via) grant also covers the same prefix.
+		//
+		// Rules:
+		//   - Peer is HA primary → always include
+		//   - Peer is NOT primary, no regular grant → include
+		//     (per-viewer via steering)
+		//   - Peer is NOT primary, regular grant exists → exclude
+		//     (HA primary wins)
+		for _, p := range viaResult.Include {
+			if slices.Contains(reduced, p) {
+				continue
+			}
+
+			if slices.Contains(globalPrimaries, p) {
+				reduced = append(reduced, p)
+			} else if !slices.Contains(viaResult.UsePrimary, p) {
+				reduced = append(reduced, p)
+			}
 		}
 	}
 
-	// Reduce only the non-via routes through matchers.
-	reduced := policy.ReduceRoutes(viewer, routes, matchers)
-
-	// Append via-included routes directly — the via grant IS the authorization,
-	// so these must not be filtered by the viewer's matchers.
-	for _, p := range viaResult.Include {
-		if !slices.Contains(reduced, p) {
-			reduced = append(reduced, p)
+	// Co-router visibility: when the viewer advertises the same prefix
+	// that the peer is HA primary for, the viewer must see that route
+	// regardless of matcher authorization. HA secondaries need this to
+	// know which peer is primary for their shared prefix.
+	viewerSubnets := viewer.SubnetRoutes()
+	if len(viewerSubnets) > 0 {
+		for _, p := range globalPrimaries {
+			if slices.Contains(viewerSubnets, p) && !slices.Contains(reduced, p) {
+				reduced = append(reduced, p)
+			}
 		}
 	}
 
