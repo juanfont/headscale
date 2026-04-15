@@ -273,6 +273,13 @@ func WithTuning(batchTimeout time.Duration, mapSessionChanSize int) Option {
 	}
 }
 
+func WithHAProbing(interval, timeout time.Duration) Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.env["HEADSCALE_NODE_ROUTES_HA_PROBE_INTERVAL"] = interval.String()
+		hsic.env["HEADSCALE_NODE_ROUTES_HA_PROBE_TIMEOUT"] = timeout.String()
+	}
+}
+
 func WithTimezone(timezone string) Option {
 	return func(hsic *HeadscaleInContainer) {
 		hsic.env["TZ"] = timezone

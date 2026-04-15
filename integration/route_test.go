@@ -3493,3 +3493,241 @@ func TestGrantViaSubnetSteering(t *testing.T) {
 		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, assertTimeout, 200*time.Millisecond, "Client B traceroute should go through Router B")
 }
+
+// TestHASubnetRouterPingFailover tests HA failover triggered by the
+// health prober rather than by a full disconnect. The primary router
+// stays connected (Noise session alive) but its ping callback is
+// blocked via iptables, so the prober marks it unhealthy and fails
+// over to the next available router.
+func TestHASubnetRouterPingFailover(t *testing.T) {
+	IntegrationSkip(t)
+
+	propagationTime := integrationutil.ScaledTimeout(60 * time.Second)
+
+	spec := ScenarioSpec{
+		NodesPerUser: 2,
+		Users:        []string{"user1", "user2"},
+		Networks: map[string]NetworkSpec{
+			"usernet1": {Users: []string{"user1"}},
+			"usernet2": {Users: []string{"user2"}},
+		},
+		ExtraService: map[string][]extraServiceFunc{
+			"usernet1": {Webservice},
+		},
+		Versions: []string{"head"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{
+			tsic.WithAcceptRoutes(),
+			tsic.WithPackages("iptables"),
+		},
+		hsic.WithTestName("rt-hapingfail"),
+		hsic.WithHAProbing(10*time.Second, 5*time.Second),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	requireNoErrListClients(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+
+	prefp, err := scenario.SubnetOfNetwork("usernet1")
+	require.NoError(t, err)
+
+	pref := *prefp
+	t.Logf("usernet1 prefix: %s", pref.String())
+
+	usernet1, err := scenario.Network("usernet1")
+	require.NoError(t, err)
+
+	services, err := scenario.Services("usernet1")
+	require.NoError(t, err)
+	require.Len(t, services, 1)
+
+	web := services[0]
+	webip := netip.MustParseAddr(web.GetIPInNetwork(usernet1))
+	weburl := fmt.Sprintf("http://%s/etc/hostname", webip)
+
+	sort.SliceStable(allClients, func(i, j int) bool {
+		return allClients[i].MustStatus().Self.ID < allClients[j].MustStatus().Self.ID
+	})
+
+	subRouter1 := allClients[0]
+	subRouter2 := allClients[1]
+	client := allClients[2]
+
+	t.Logf("Router 1: %s, Router 2: %s, Client: %s",
+		subRouter1.Hostname(), subRouter2.Hostname(), client.Hostname())
+
+	// Advertise same route on both routers.
+	for _, r := range []TailscaleClient{subRouter1, subRouter2} {
+		_, _, err = r.Execute([]string{
+			"tailscale", "set", "--advertise-routes=" + pref.String(),
+		})
+		require.NoError(t, err)
+	}
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	var nodes []*v1.Node
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err = headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 4)
+	}, propagationTime, 200*time.Millisecond)
+
+	// Approve routes on both routers.
+	_, err = headscale.ApproveRoutes(
+		MustFindNode(subRouter1.Hostname(), nodes).GetId(),
+		[]netip.Prefix{pref},
+	)
+	require.NoError(t, err)
+
+	_, err = headscale.ApproveRoutes(
+		MustFindNode(subRouter2.Hostname(), nodes).GetId(),
+		[]netip.Prefix{pref},
+	)
+	require.NoError(t, err)
+
+	nodeID1 := types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId())
+	nodeID2 := types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId())
+
+	// Wait for HA to be set up: router 1 primary, router 2 standby.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		pr, err := headscale.PrimaryRoutes()
+		assert.NoError(c, err)
+
+		assert.Equal(c, map[string]types.NodeID{
+			pref.String(): nodeID1,
+		}, pr.PrimaryRoutes, "router 1 should be primary")
+
+		assert.Contains(c, pr.AvailableRoutes, nodeID1)
+		assert.Contains(c, pr.AvailableRoutes, nodeID2)
+	}, propagationTime, 200*time.Millisecond, "waiting for HA setup")
+
+	// Verify connectivity through router 1.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		result, err := client.Curl(weburl)
+		assert.NoError(c, err)
+		assert.Len(c, result, 13)
+	}, propagationTime, 200*time.Millisecond, "client should reach webservice through router 1")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		tr, err := client.Traceroute(webip)
+		assert.NoError(c, err)
+
+		ip, err := subRouter1.IPv4()
+		if !assert.NoError(c, err) {
+			return
+		}
+
+		assertTracerouteViaIPWithCollect(c, tr, ip)
+	}, propagationTime, 200*time.Millisecond, "traceroute should go through router 1")
+
+	t.Log("=== HA setup verified. Blocking ping callbacks on router 1 via iptables ===")
+
+	// Block NEW outbound TCP from router 1 to headscale.
+	// Preserves the existing Noise HTTP/2 long-poll (ESTABLISHED).
+	hsIP := headscale.GetIPInNetwork(usernet1)
+	iptablesAdd := []string{
+		"iptables", "-A", "OUTPUT",
+		"-d", hsIP,
+		"-p", "tcp", "--dport", "8080",
+		"-m", "state", "--state", "NEW",
+		"-j", "DROP",
+	}
+
+	_, _, err = subRouter1.Execute(iptablesAdd)
+	require.NoError(t, err, "failed to add iptables rule")
+
+	t.Logf("Blocked new TCP connections from %s to headscale at %s:8080",
+		subRouter1.Hostname(), hsIP)
+
+	// Wait for the prober to detect the failure and trigger failover.
+	// Probe interval=10s, timeout=5s → failover within ~15s.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		pr, err := headscale.PrimaryRoutes()
+		assert.NoError(c, err)
+
+		assert.Equal(c, map[string]types.NodeID{
+			pref.String(): nodeID2,
+		}, pr.PrimaryRoutes, "router 2 should be primary after ping failover")
+
+		assert.Contains(c, pr.UnhealthyNodes, nodeID1,
+			"router 1 should be marked unhealthy")
+
+		// Router 1 still in available routes (still connected, just unhealthy).
+		assert.Contains(c, pr.AvailableRoutes, nodeID1)
+		assert.Contains(c, pr.AvailableRoutes, nodeID2)
+	}, propagationTime, 1*time.Second, "waiting for ping-based failover")
+
+	t.Log("Failover detected. Verifying connectivity through router 2.")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		result, err := client.Curl(weburl)
+		assert.NoError(c, err)
+		assert.Len(c, result, 13)
+	}, propagationTime, 200*time.Millisecond, "client should reach webservice through router 2")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		tr, err := client.Traceroute(webip)
+		assert.NoError(c, err)
+
+		ip, err := subRouter2.IPv4()
+		if !assert.NoError(c, err) {
+			return
+		}
+
+		assertTracerouteViaIPWithCollect(c, tr, ip)
+	}, propagationTime, 200*time.Millisecond, "traceroute should go through router 2")
+
+	t.Log("=== Recovery: removing iptables block on router 1 ===")
+
+	iptablesDel := []string{
+		"iptables", "-D", "OUTPUT",
+		"-d", hsIP,
+		"-p", "tcp", "--dport", "8080",
+		"-m", "state", "--state", "NEW",
+		"-j", "DROP",
+	}
+
+	_, _, err = subRouter1.Execute(iptablesDel)
+	require.NoError(t, err, "failed to remove iptables rule")
+
+	// Wait for the prober to detect recovery.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		pr, err := headscale.PrimaryRoutes()
+		assert.NoError(c, err)
+
+		// Router 1 should be healthy again but NOT primary (no flapping).
+		assert.Equal(c, map[string]types.NodeID{
+			pref.String(): nodeID2,
+		}, pr.PrimaryRoutes, "router 2 should remain primary (no flapping)")
+
+		assert.Empty(c, pr.UnhealthyNodes,
+			"no nodes should be unhealthy after recovery")
+	}, propagationTime, 1*time.Second, "waiting for recovery without flapping")
+
+	// Traffic should still go through router 2 (stability).
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		tr, err := client.Traceroute(webip)
+		assert.NoError(c, err)
+
+		ip, err := subRouter2.IPv4()
+		if !assert.NoError(c, err) {
+			return
+		}
+
+		assertTracerouteViaIPWithCollect(c, tr, ip)
+	}, propagationTime, 200*time.Millisecond, "traceroute should still go through router 2 after recovery")
+}
