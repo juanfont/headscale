@@ -276,6 +276,31 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 		extraRecordsUpdate = make(chan []tailcfg.DNSRecord)
 	}
 
+	var (
+		haProber     *state.HAHealthProber
+		haHealthChan <-chan time.Time
+	)
+	if h.cfg.Node.Routes.HA.ProbeInterval > 0 {
+		haProber = state.NewHAHealthProber(
+			h.state,
+			h.cfg.Node.Routes.HA,
+			h.cfg.ServerURL,
+			h.mapBatcher.IsConnected,
+		)
+
+		haTicker := time.NewTicker(h.cfg.Node.Routes.HA.ProbeInterval)
+		defer haTicker.Stop()
+
+		haHealthChan = haTicker.C
+
+		log.Info().
+			Dur("interval", h.cfg.Node.Routes.HA.ProbeInterval).
+			Dur("timeout", h.cfg.Node.Routes.HA.ProbeTimeout).
+			Msg("HA subnet router health probing enabled")
+	} else {
+		haHealthChan = make(<-chan time.Time)
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -332,6 +357,9 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			h.cfg.TailcfgDNSConfig.ExtraRecords = records
 
 			h.Change(change.ExtraRecords())
+
+		case <-haHealthChan:
+			haProber.ProbeOnce(ctx, h.Change)
 		}
 	}
 }
@@ -1111,6 +1139,11 @@ func (h *Headscale) StartBatcherForTest(tb testing.TB) {
 	h.mapBatcher = mapper.NewBatcherAndMapper(h.cfg, h.state)
 	h.mapBatcher.Start()
 	tb.Cleanup(func() { h.mapBatcher.Close() })
+}
+
+// MapBatcher returns the map response batcher (for test use).
+func (h *Headscale) MapBatcher() *mapper.Batcher {
+	return h.mapBatcher
 }
 
 // StartEphemeralGCForTest starts the ephemeral node garbage collector.
