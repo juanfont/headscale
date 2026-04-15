@@ -198,13 +198,50 @@ func TestRegistrationHandler_OversizedBody(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
+// TestSSHActionRoute_OldPathReturns404 pins the wire-format shape of the
+// SSH check-action endpoint. Pre-alignment headscale served
+// /machine/ssh/action/from/{src}/to/{dst}?ssh_user=...; the current
+// endpoint is /machine/ssh/action/{src}/to/{dst}?local_user=.... If
+// someone re-adds the old route shape, this fails.
+func TestSSHActionRoute_OldPathReturns404(t *testing.T) {
+	t.Parallel()
+
+	r := chi.NewRouter()
+	r.Route("/machine", func(r chi.Router) {
+		r.Get("/ssh/action/{src_node_id}/to/{dst_node_id}", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+	})
+
+	cases := []struct {
+		name string
+		path string
+		want int
+	}{
+		{"new", "/machine/ssh/action/1/to/2", http.StatusOK},
+		{"old-with-from", "/machine/ssh/action/from/1/to/2", http.StatusNotFound},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, tc.path, nil)
+			rec := httptest.NewRecorder()
+			r.ServeHTTP(rec, req)
+
+			assert.Equal(t, tc.want, rec.Code)
+		})
+	}
+}
+
 // newSSHActionRequest builds an httptest request with the chi URL params
 // SSHActionHandler reads (src_node_id and dst_node_id), so the handler
 // can be exercised directly without going through the chi router.
 func newSSHActionRequest(t *testing.T, src, dst types.NodeID) *http.Request {
 	t.Helper()
 
-	url := fmt.Sprintf("/machine/ssh/action/from/%d/to/%d", src.Uint64(), dst.Uint64())
+	url := fmt.Sprintf("/machine/ssh/action/%d/to/%d", src.Uint64(), dst.Uint64())
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 
 	rctx := chi.NewRouteContext()
@@ -315,7 +352,7 @@ func TestSSHActionFollowUp_RejectsBindingMismatch(t *testing.T) {
 	}
 
 	url := fmt.Sprintf(
-		"/machine/ssh/action/from/%d/to/%d?auth_id=%s",
+		"/machine/ssh/action/%d/to/%d?auth_id=%s",
 		srcOther.ID.Uint64(), dstOther.ID.Uint64(), authID.String(),
 	)
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
