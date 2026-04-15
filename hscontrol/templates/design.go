@@ -533,6 +533,39 @@ func instructionStep(_ int, text string) *elem.Element {
 	}, elem.Text(text))
 }
 
+// detailsBox creates a collapsible <details>/<summary> section.
+// Styled to match the card/box component family (border, radius, CSS variables).
+// Collapsed by default; the user clicks the summary to expand.
+//
+//nolint:unused // Used in ping.go template.
+func detailsBox(summary string, children ...elem.Node) *elem.Element {
+	return elem.Details(attrs.Props{
+		attrs.Style: styles.Props{
+			styles.Background:   "var(--hs-bg)",
+			styles.Border:       "1px solid var(--hs-border)",
+			styles.BorderRadius: "0.5rem",
+			styles.Padding:      spaceS + " " + spaceM,
+			styles.MarginTop:    spaceL,
+			styles.MarginBottom: spaceL,
+		}.ToInline(),
+	},
+		elem.Summary(attrs.Props{
+			attrs.Style: styles.Props{
+				"cursor":          "pointer",
+				styles.FontWeight: "500",
+				styles.Color:      "var(--md-default-fg-color--light)",
+				styles.Padding:    spaceS + " 0",
+			}.ToInline(),
+		}, elem.Text(summary)),
+		elem.Div(attrs.Props{
+			attrs.Style: styles.Props{
+				styles.PaddingTop: spaceS,
+				styles.Color:      "var(--md-default-fg-color)",
+			}.ToInline(),
+		}, children...),
+	)
+}
+
 // Status Message Component
 // For displaying success/error/info messages with appropriate styling.
 //
