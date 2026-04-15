@@ -43,21 +43,29 @@ internet is a security-sensitive choice. `autogroup:danger-all` can only be used
 
 ### BREAKING
 
-- **ACL Policy**: Wildcard (`*`) in ACL sources and destinations now resolves to Tailscale's CGNAT range (`100.64.0.0/10`) and ULA range (`fd7a:115c:a1e0::/48`) instead of all IPs (`0.0.0.0/0` and `::/0`) [#3036](https://github.com/juanfont/headscale/pull/3036)
+#### ACL Policy
+
+- Wildcard (`*`) in ACL sources and destinations now resolves to Tailscale's CGNAT range (`100.64.0.0/10`) and ULA range (`fd7a:115c:a1e0::/48`) instead of all IPs (`0.0.0.0/0` and `::/0`) [#3036](https://github.com/juanfont/headscale/pull/3036)
   - This better matches Tailscale's security model where `*` means "any node in the tailnet" rather than "any IP address"
   - Policies that need to match all IP addresses including non-Tailscale IPs should use `autogroup:danger-all` as a source, or explicit CIDR ranges as destinations [#2180](https://github.com/juanfont/headscale/pull/2180)
   - `autogroup:danger-all` can only be used as a source; it cannot be used as a destination
   - **Note**: Users with non-standard IP ranges configured in `prefixes.ipv4` or `prefixes.ipv6` (which is unsupported and produces a warning) will need to explicitly specify their CIDR ranges in ACL rules instead of using `*`
-- **ACL Policy**: Validate autogroup:self source restrictions matching Tailscale behavior - tags, hosts, and IPs are rejected as sources for autogroup:self destinations [#3036](https://github.com/juanfont/headscale/pull/3036)
+- Validate autogroup:self source restrictions matching Tailscale behavior - tags, hosts, and IPs are rejected as sources for autogroup:self destinations [#3036](https://github.com/juanfont/headscale/pull/3036)
   - Policies using tags, hosts, or IP addresses as sources for autogroup:self destinations will now fail validation
-- **Upgrade path**: Headscale now enforces a strict version upgrade path [#3083](https://github.com/juanfont/headscale/pull/3083)
+- The `proto:icmp` protocol name now only includes ICMPv4 (protocol 1), matching Tailscale behavior [#3036](https://github.com/juanfont/headscale/pull/3036)
+  - Previously, `proto:icmp` included both ICMPv4 and ICMPv6
+  - Use `proto:ipv6-icmp` or protocol number `58` explicitly for ICMPv6
+
+#### Upgrade Path
+
+- Headscale now enforces a strict version upgrade path [#3083](https://github.com/juanfont/headscale/pull/3083)
   - Skipping minor versions (e.g. 0.27 → 0.29) is blocked; upgrade one minor version at a time
   - Downgrading to a previous minor version is blocked
   - Patch version changes within the same minor are always allowed
-- **ACL Policy**: The `proto:icmp` protocol name now only includes ICMPv4 (protocol 1), matching Tailscale behavior [#3036](https://github.com/juanfont/headscale/pull/3036)
-  - Previously, `proto:icmp` included both ICMPv4 and ICMPv6
-  - Use `proto:ipv6-icmp` or protocol number `58` explicitly for ICMPv6
-- **CLI**: `headscale nodes register` is deprecated in favour of `headscale auth register --auth-id <id> --user <user>` [#1850](https://github.com/juanfont/headscale/pull/1850)
+
+#### CLI
+
+- `headscale nodes register` is deprecated in favour of `headscale auth register --auth-id <id> --user <user>` [#1850](https://github.com/juanfont/headscale/pull/1850)
   - The old command continues to work but will be removed in a future release
 
 ### HA subnet router health probing
@@ -72,40 +80,68 @@ connected" routers that maintain their control session but cannot route packets.
 
 ### Changes
 
-- **Debug endpoints**: Add node connectivity ping page for verifying control-plane reachability [#3183](https://github.com/juanfont/headscale/pull/3183)
-- **OIDC registration**: Add a confirmation page before completing node registration, showing the device hostname and machine key fingerprint [#3180](https://github.com/juanfont/headscale/pull/3180)
-- **Debug endpoints**: Omit secret fields (`Pass`, `ClientSecret`, `APIKey`) from `/debug/config` JSON output [#3180](https://github.com/juanfont/headscale/pull/3180)
-- **Debug endpoints**: Route `statsviz` through `tsweb.Protected` [#3180](https://github.com/juanfont/headscale/pull/3180)
-- Remove gRPC reflection from the remote (TCP) server [#3180](https://github.com/juanfont/headscale/pull/3180)
-- **Node Expiry**: Add `node.expiry` configuration option to set a default node key expiry for nodes registered via auth key [#3122](https://github.com/juanfont/headscale/pull/3122)
-  - Tagged nodes (registered with tagged pre-auth keys) are exempt from default expiry
-  - `oidc.expiry` has been removed; use `node.expiry` instead (applies to all registration methods including OIDC)
-  - `ephemeral_node_inactivity_timeout` is deprecated in favour of `node.ephemeral.inactivity_timeout`
-- **SSH Policy**: Add support for `localpart:*@<domain>` in SSH rule `users` field, mapping each matching user's email local-part as their OS username [#3091](https://github.com/juanfont/headscale/pull/3091)
-- **ACL Policy**: Add ICMP and IPv6-ICMP protocols to default filter rules when no protocol is specified [#3036](https://github.com/juanfont/headscale/pull/3036)
-- **ACL Policy**: Fix autogroup:self handling for tagged nodes - tagged nodes no longer incorrectly receive autogroup:self filter rules [#3036](https://github.com/juanfont/headscale/pull/3036)
-- **ACL Policy**: Use CIDR format for autogroup:self destination IPs matching Tailscale behavior [#3036](https://github.com/juanfont/headscale/pull/3036)
-- **ACL Policy**: Merge filter rules with identical SrcIPs and IPProto matching Tailscale behavior - multiple ACL rules with the same source now produce a single FilterRule with combined DstPorts [#3036](https://github.com/juanfont/headscale/pull/3036)
-- Remove deprecated `--namespace` flag from `nodes list`, `nodes register`, and `debug create-node` commands (use `--user` instead) [#3093](https://github.com/juanfont/headscale/pull/3093)
-- Remove deprecated `namespace`/`ns` command aliases for `users` and `machine`/`machines` aliases for `nodes` [#3093](https://github.com/juanfont/headscale/pull/3093)
-- Add SSH `check` action support with OIDC and CLI-based approval flows [#1850](https://github.com/juanfont/headscale/pull/1850)
-- Add `headscale auth register`, `headscale auth approve`, and `headscale auth reject` CLI commands [#1850](https://github.com/juanfont/headscale/pull/1850)
-- Add `auth` related routes to the API. The `auth/register` endpoint now expects data as JSON [#1850](https://github.com/juanfont/headscale/pull/1850)
-- Deprecate `headscale nodes register --key` in favour of `headscale auth register --auth-id` [#1850](https://github.com/juanfont/headscale/pull/1850)
-- Generalise auth templates into reusable `AuthSuccess` and `AuthWeb` components [#1850](https://github.com/juanfont/headscale/pull/1850)
-- Unify auth pipeline with `AuthVerdict` type, supporting registration, reauthentication, and SSH checks [#1850](https://github.com/juanfont/headscale/pull/1850)
-- Add support for policy grants with `ip`, `app`, and `via` fields [#2180](https://github.com/juanfont/headscale/pull/2180)
-- Add `autogroup:danger-all` as a source-only autogroup resolving to all IP addresses [#2180](https://github.com/juanfont/headscale/pull/2180)
-- Add capability grants for Taildrive (`cap/drive`) and peer relay (`cap/relay`) with automatic companion capabilities [#2180](https://github.com/juanfont/headscale/pull/2180)
-- Add per-viewer via route steering — grants with `via` tags control which subnet router or exit node handles traffic for each group of viewers [#2180](https://github.com/juanfont/headscale/pull/2180)
-- Enable Taildrive node attributes on all nodes; actual access is controlled by `cap/drive` grants [#2180](https://github.com/juanfont/headscale/pull/2180)
-- Fix exit nodes incorrectly receiving filter rules for destinations that only overlap via exit routes [#2180](https://github.com/juanfont/headscale/pull/2180)
+#### ACL Policy
+
+- Fix subnet-to-subnet peer visibility — subnet routers now correctly become peers when ACL rules reference only subnet CIDRs as sources, without requiring node IP rules [#3175](https://github.com/juanfont/headscale/pull/3175)
+- Fix filter rule reduction to use only approved subnet routes instead of all advertised routes, matching Tailscale SaaS behavior [#3175](https://github.com/juanfont/headscale/pull/3175)
+- Add ICMP and IPv6-ICMP protocols to default filter rules when no protocol is specified [#3036](https://github.com/juanfont/headscale/pull/3036)
+- Fix autogroup:self handling for tagged nodes - tagged nodes no longer incorrectly receive autogroup:self filter rules [#3036](https://github.com/juanfont/headscale/pull/3036)
+- Use CIDR format for autogroup:self destination IPs matching Tailscale behavior [#3036](https://github.com/juanfont/headscale/pull/3036)
+- Merge filter rules with identical SrcIPs and IPProto matching Tailscale behavior - multiple ACL rules with the same source now produce a single FilterRule with combined DstPorts [#3036](https://github.com/juanfont/headscale/pull/3036)
+- Fix exit nodes incorrectly receiving filter rules for destinations that only overlap via exit routes [#3169](https://github.com/juanfont/headscale/issues/3169) [#3175](https://github.com/juanfont/headscale/pull/3175)
 - Fix address-based aliases (hosts, raw IPs) incorrectly expanding to include the matching node's other address family [#2180](https://github.com/juanfont/headscale/pull/2180)
 - Fix identity-based aliases (tags, users, groups) resolving to IPv4 only; they now include both IPv4 and IPv6 matching Tailscale behavior [#2180](https://github.com/juanfont/headscale/pull/2180)
 - Fix wildcard (`*`) source in ACLs now using actually-approved subnet routes instead of autoApprover policy prefixes [#2180](https://github.com/juanfont/headscale/pull/2180)
 - Fix non-wildcard source IPs being dropped when combined with wildcard `*` in the same ACL rule [#2180](https://github.com/juanfont/headscale/pull/2180)
 - Fix exit node approval not triggering filter rule recalculation for peers [#2180](https://github.com/juanfont/headscale/pull/2180)
 - Policy validation error messages now include field context (e.g., `src=`, `dst=`) and are more descriptive [#2180](https://github.com/juanfont/headscale/pull/2180)
+
+#### Grants
+
+- Add support for policy grants with `ip`, `app`, and `via` fields [#2180](https://github.com/juanfont/headscale/pull/2180)
+- Add `autogroup:danger-all` as a source-only autogroup resolving to all IP addresses [#2180](https://github.com/juanfont/headscale/pull/2180)
+- Add capability grants for Taildrive (`cap/drive`) and peer relay (`cap/relay`) with automatic companion capabilities [#2180](https://github.com/juanfont/headscale/pull/2180)
+- Add per-viewer via route steering — grants with `via` tags control which subnet router or exit node handles traffic for each group of viewers [#2180](https://github.com/juanfont/headscale/pull/2180)
+- Enable Taildrive node attributes on all nodes; actual access is controlled by `cap/drive` grants [#2180](https://github.com/juanfont/headscale/pull/2180)
+
+#### SSH Policy
+
+- Add support for `localpart:*@<domain>` in SSH rule `users` field, mapping each matching user's email local-part as their OS username [#3091](https://github.com/juanfont/headscale/pull/3091)
+- Add SSH `check` action support with OIDC and CLI-based approval flows [#1850](https://github.com/juanfont/headscale/pull/1850)
+
+#### CLI
+
+- Add `headscale auth register`, `headscale auth approve`, and `headscale auth reject` CLI commands [#1850](https://github.com/juanfont/headscale/pull/1850)
+- Deprecate `headscale nodes register --key` in favour of `headscale auth register --auth-id` [#1850](https://github.com/juanfont/headscale/pull/1850)
+- Remove deprecated `--namespace` flag from `nodes list`, `nodes register`, and `debug create-node` commands (use `--user` instead) [#3093](https://github.com/juanfont/headscale/pull/3093)
+- Remove deprecated `namespace`/`ns` command aliases for `users` and `machine`/`machines` aliases for `nodes` [#3093](https://github.com/juanfont/headscale/pull/3093)
+
+#### API
+
+- Add `auth` related routes. The `auth/register` endpoint now expects data as JSON [#1850](https://github.com/juanfont/headscale/pull/1850)
+- Remove gRPC reflection from the remote (TCP) server [#3180](https://github.com/juanfont/headscale/pull/3180)
+
+#### OIDC
+
+- Add a confirmation page before completing node registration, showing the device hostname and machine key fingerprint [#3180](https://github.com/juanfont/headscale/pull/3180)
+- Generalise auth templates into reusable `AuthSuccess` and `AuthWeb` components [#1850](https://github.com/juanfont/headscale/pull/1850)
+- Unify auth pipeline with `AuthVerdict` type, supporting registration, reauthentication, and SSH checks [#1850](https://github.com/juanfont/headscale/pull/1850)
+
+#### Configuration
+
+- Add `node.expiry` configuration option to set a default node key expiry for nodes registered via auth key [#3122](https://github.com/juanfont/headscale/pull/3122)
+  - Tagged nodes (registered with tagged pre-auth keys) are exempt from default expiry
+  - `oidc.expiry` has been removed; use `node.expiry` instead (applies to all registration methods including OIDC)
+  - `ephemeral_node_inactivity_timeout` is deprecated in favour of `node.ephemeral.inactivity_timeout`
+
+#### Debug
+
+- Add node connectivity ping page for verifying control-plane reachability [#3183](https://github.com/juanfont/headscale/pull/3183)
+- Omit secret fields (`Pass`, `ClientSecret`, `APIKey`) from `/debug/config` JSON output [#3180](https://github.com/juanfont/headscale/pull/3180)
+- Route `statsviz` through `tsweb.Protected` [#3180](https://github.com/juanfont/headscale/pull/3180)
+
+#### Other
+
 - Remove old migrations for the debian package [#3185](https://github.com/juanfont/headscale/pull/3185)
 - Install `config-example.yaml` as example for the debian package [#3186](https://github.com/juanfont/headscale/pull/3186)
 
