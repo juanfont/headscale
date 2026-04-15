@@ -1,22 +1,23 @@
 // This file implements a data-driven test runner for ACL compatibility tests.
-// It loads JSON golden files from testdata/acl_results/ACL-*.json and compares
-// headscale's ACL engine output against the expected packet filter rules.
+// It loads HuJSON golden files from testdata/acl_results/acl-*.hujson and
+// compares headscale's ACL engine output against the expected packet filter
+// rules captured from Tailscale SaaS by the tscap tool.
 //
-// The JSON files were converted from the original inline Go struct test cases
-// in tailscale_acl_compat_test.go. Each file contains:
-//   - A full policy (groups, tagOwners, hosts, acls)
-//   - Expected packet_filter_rules per node (5 nodes)
-//   - Or an error response for invalid policies
+// Each file is a testcapture.Capture containing:
+//   - The full policy that was POSTed to the Tailscale SaaS API
+//   - The 8-node topology used for the capture run
+//   - Expected packet_filter_rules per node (or error metadata for
+//     scenarios that the SaaS rejected)
 //
-// Test data source: testdata/acl_results/ACL-*.json
-// Original source: Tailscale SaaS API captures + headscale-generated expansions
+// Test data source: testdata/acl_results/acl-*.hujson
+// Source format:    github.com/juanfont/headscale/hscontrol/types/testcapture
 
 package v2
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/netip"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -25,9 +26,8 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/stretchr/testify/assert"
+	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/require"
-	"github.com/tailscale/hujson"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 )
@@ -40,55 +40,56 @@ func ptrAddr(s string) *netip.Addr {
 }
 
 // setupACLCompatUsers returns the 3 test users for ACL compatibility tests.
-// Email addresses use @example.com domain, matching the converted Tailscale
-// policy format (Tailscale uses @passkey and @dalby.cc).
+// Names and emails match the anonymized identifiers tscap writes into the
+// capture files (see github.com/kradalby/tscap/anonymize): users get
+// norse-god names and nodes get original-151 pokémon names.
 func setupACLCompatUsers() types.Users {
 	return types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "kratail2tid", Email: "kratail2tid@example.com"},
-		{Model: gorm.Model{ID: 2}, Name: "kristoffer", Email: "kristoffer@example.com"},
-		{Model: gorm.Model{ID: 3}, Name: "monitorpasskeykradalby", Email: "monitorpasskeykradalby@example.com"},
+		{Model: gorm.Model{ID: 1}, Name: "odin", Email: "odin@example.com"},
+		{Model: gorm.Model{ID: 2}, Name: "thor", Email: "thor@example.org"},
+		{Model: gorm.Model{ID: 3}, Name: "freya", Email: "freya@example.com"},
 	}
 }
 
 // setupACLCompatNodes returns the 8 test nodes for ACL compatibility tests.
-// Uses the same topology as the grants compat tests.
+// Node GivenNames match tscap's anonymized pokémon naming.
 func setupACLCompatNodes(users types.Users) types.Nodes {
 	return types.Nodes{
 		{
-			ID: 1, GivenName: "user1",
+			ID: 1, GivenName: "bulbasaur",
 			User: &users[0], UserID: &users[0].ID,
 			IPv4: ptrAddr("100.90.199.68"), IPv6: ptrAddr("fd7a:115c:a1e0::2d01:c747"),
 			Hostinfo: &tailcfg.Hostinfo{},
 		},
 		{
-			ID: 2, GivenName: "user-kris",
+			ID: 2, GivenName: "ivysaur",
 			User: &users[1], UserID: &users[1].ID,
 			IPv4: ptrAddr("100.110.121.96"), IPv6: ptrAddr("fd7a:115c:a1e0::1737:7960"),
 			Hostinfo: &tailcfg.Hostinfo{},
 		},
 		{
-			ID: 3, GivenName: "user-mon",
+			ID: 3, GivenName: "venusaur",
 			User: &users[2], UserID: &users[2].ID,
 			IPv4: ptrAddr("100.103.90.82"), IPv6: ptrAddr("fd7a:115c:a1e0::9e37:5a52"),
 			Hostinfo: &tailcfg.Hostinfo{},
 		},
 		{
-			ID: 4, GivenName: "tagged-server",
+			ID: 4, GivenName: "beedrill",
 			IPv4: ptrAddr("100.108.74.26"), IPv6: ptrAddr("fd7a:115c:a1e0::b901:4a87"),
 			Tags: []string{"tag:server"}, Hostinfo: &tailcfg.Hostinfo{},
 		},
 		{
-			ID: 5, GivenName: "tagged-prod",
+			ID: 5, GivenName: "kakuna",
 			IPv4: ptrAddr("100.103.8.15"), IPv6: ptrAddr("fd7a:115c:a1e0::5b37:80f"),
 			Tags: []string{"tag:prod"}, Hostinfo: &tailcfg.Hostinfo{},
 		},
 		{
-			ID: 6, GivenName: "tagged-client",
+			ID: 6, GivenName: "weedle",
 			IPv4: ptrAddr("100.83.200.69"), IPv6: ptrAddr("fd7a:115c:a1e0::c537:c845"),
 			Tags: []string{"tag:client"}, Hostinfo: &tailcfg.Hostinfo{},
 		},
 		{
-			ID: 7, GivenName: "subnet-router",
+			ID: 7, GivenName: "squirtle",
 			IPv4: ptrAddr("100.92.142.61"), IPv6: ptrAddr("fd7a:115c:a1e0::3e37:8e3d"),
 			Tags: []string{"tag:router"},
 			Hostinfo: &tailcfg.Hostinfo{
@@ -97,7 +98,7 @@ func setupACLCompatNodes(users types.Users) types.Nodes {
 			ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("10.33.0.0/16")},
 		},
 		{
-			ID: 8, GivenName: "exit-node",
+			ID: 8, GivenName: "charmander",
 			IPv4: ptrAddr("100.85.66.106"), IPv6: ptrAddr("fd7a:115c:a1e0::7c37:426a"),
 			Tags: []string{"tag:exit"}, Hostinfo: &tailcfg.Hostinfo{},
 		},
@@ -140,40 +141,21 @@ func cmpOptions() []cmp.Option {
 
 			return a.Bits() < b.Bits()
 		}),
-		// Compare json.RawMessage semantically rather than by exact
-		// bytes to handle indentation differences between the policy
-		// source and the golden capture data.
-		cmp.Comparer(func(a, b json.RawMessage) bool {
-			var va, vb any
-
-			err := json.Unmarshal(a, &va)
-			if err != nil {
-				return string(a) == string(b)
-			}
-
-			err = json.Unmarshal(b, &vb)
-			if err != nil {
-				return string(a) == string(b)
-			}
-
-			ja, _ := json.Marshal(va)
-			jb, _ := json.Marshal(vb)
-
-			return string(ja) == string(jb)
-		}),
 		// Compare tailcfg.RawMessage semantically (it's a string type
-		// containing JSON) to handle indentation differences.
+		// containing JSON) to handle indentation differences. Both
+		// sides must be valid JSON — golden data parse failures are
+		// always errors.
 		cmp.Comparer(func(a, b tailcfg.RawMessage) bool {
 			var va, vb any
 
 			err := json.Unmarshal([]byte(a), &va)
 			if err != nil {
-				return a == b
+				panic(fmt.Sprintf("golden RawMessage A unparseable: %v", err))
 			}
 
 			err = json.Unmarshal([]byte(b), &vb)
 			if err != nil {
-				return a == b
+				panic(fmt.Sprintf("golden RawMessage B unparseable: %v", err))
 			}
 
 			ja, _ := json.Marshal(va)
@@ -184,69 +166,94 @@ func cmpOptions() []cmp.Option {
 	}
 }
 
-// aclTestFile represents the JSON structure of a captured ACL test file.
-type aclTestFile struct {
-	TestID           string `json:"test_id"`
-	Source           string `json:"source"` // "tailscale_saas" or "headscale_adapted"
-	Error            bool   `json:"error"`
-	HeadscaleDiffers bool   `json:"headscale_differs"`
-	ParentTest       string `json:"parent_test"`
-	Input            struct {
-		FullPolicy      json.RawMessage `json:"full_policy"`
-		APIResponseCode int             `json:"api_response_code"`
-		APIResponseBody *struct {
-			Message string `json:"message"`
-		} `json:"api_response_body"`
-	} `json:"input"`
-	Topology struct {
-		Nodes map[string]struct {
-			Hostname       string   `json:"hostname"`
-			Tags           []string `json:"tags"`
-			IPv4           string   `json:"ipv4"`
-			IPv6           string   `json:"ipv6"`
-			User           string   `json:"user"`
-			RoutableIPs    []string `json:"routable_ips"`
-			ApprovedRoutes []string `json:"approved_routes"`
-		} `json:"nodes"`
-	} `json:"topology"`
-	Captures map[string]struct {
-		PacketFilterRules json.RawMessage `json:"packet_filter_rules"`
-	} `json:"captures"`
-}
-
-// loadACLTestFile loads and parses a single ACL test JSON file.
-func loadACLTestFile(t *testing.T, path string) aclTestFile {
+// buildACLUsersAndNodes constructs users and nodes from an ACL
+// golden file's topology. This ensures the test creates the same
+// nodes that were present during the Tailscale SaaS capture.
+func buildACLUsersAndNodes(
+	t *testing.T,
+	tf *testcapture.Capture,
+) (types.Users, types.Nodes) {
 	t.Helper()
 
-	content, err := os.ReadFile(path)
-	require.NoError(t, err, "failed to read test file %s", path)
+	users := setupACLCompatUsers()
+	nodes := make(types.Nodes, 0, len(tf.Topology.Nodes))
+	autoID := 1
 
-	ast, err := hujson.Parse(content)
-	require.NoError(t, err, "failed to parse HuJSON in %s", path)
-	ast.Standardize()
+	for name, nodeDef := range tf.Topology.Nodes {
+		node := &types.Node{
+			ID:        types.NodeID(autoID), //nolint:gosec
+			GivenName: name,
+			IPv4:      ptrAddr(nodeDef.IPv4),
+			IPv6:      ptrAddr(nodeDef.IPv6),
+			Tags:      nodeDef.Tags,
+		}
+		autoID++
 
-	var tf aclTestFile
+		hostinfo := &tailcfg.Hostinfo{}
 
-	err = json.Unmarshal(ast.Pack(), &tf)
-	require.NoError(t, err, "failed to unmarshal test file %s", path)
+		if len(nodeDef.RoutableIPs) > 0 {
+			routableIPs := make(
+				[]netip.Prefix, 0, len(nodeDef.RoutableIPs),
+			)
 
-	return tf
+			for _, r := range nodeDef.RoutableIPs {
+				routableIPs = append(
+					routableIPs, netip.MustParsePrefix(r),
+				)
+			}
+
+			hostinfo.RoutableIPs = routableIPs
+		}
+
+		node.Hostinfo = hostinfo
+
+		if len(nodeDef.ApprovedRoutes) > 0 {
+			approved := make(
+				[]netip.Prefix, 0, len(nodeDef.ApprovedRoutes),
+			)
+
+			for _, r := range nodeDef.ApprovedRoutes {
+				approved = append(
+					approved, netip.MustParsePrefix(r),
+				)
+			}
+
+			node.ApprovedRoutes = approved
+		} else {
+			node.ApprovedRoutes = []netip.Prefix{}
+		}
+
+		// Assign user — untagged nodes get user1
+		if len(nodeDef.Tags) == 0 {
+			if nodeDef.User != "" {
+				for i := range users {
+					if users[i].Name == nodeDef.User {
+						node.User = &users[i]
+						node.UserID = &users[i].ID
+
+						break
+					}
+				}
+			} else {
+				node.User = &users[0]
+				node.UserID = &users[0].ID
+			}
+		}
+
+		nodes = append(nodes, node)
+	}
+
+	return users, nodes
 }
 
-// aclSkipReasons documents WHY tests are expected to fail and WHAT needs to be
-// implemented to fix them. Tests are grouped by root cause.
-//
-// Impact summary:
-//
-//	SRCIPS_FORMAT            - tests: SrcIPs use adapted format (100.64.0.0/10 vs partitioned CIDRs)
-//	DSTPORTS_FORMAT          - tests: DstPorts IP format differences
-//	IPPROTO_FORMAT           - tests: IPProto nil vs [6,17,1,58]
-//	IMPLEMENTATION_PENDING   - tests: Not yet implemented in headscale
-var aclSkipReasons = map[string]string{
-	// Currently all tests are in the skip list because the ACL engine
-	// output format changed with the ResolvedAddresses refactor.
-	// Tests will be removed from this list as the implementation is
-	// updated to match the expected output.
+// loadACLTestFile loads and parses a single ACL capture HuJSON file.
+func loadACLTestFile(t *testing.T, path string) *testcapture.Capture {
+	t.Helper()
+
+	c, err := testcapture.Read(path)
+	require.NoError(t, err, "failed to read test file %s", path)
+
+	return c
 }
 
 // TestACLCompat is a data-driven test that loads all ACL-*.json test files
@@ -260,19 +267,16 @@ func TestACLCompat(t *testing.T) {
 	t.Parallel()
 
 	files, err := filepath.Glob(
-		filepath.Join("testdata", "acl_results", "ACL-*.hujson"),
+		filepath.Join("testdata", "acl_results", "acl-*.hujson"),
 	)
 	require.NoError(t, err, "failed to glob test files")
 	require.NotEmpty(
 		t,
 		files,
-		"no ACL-*.hujson test files found in testdata/acl_results/",
+		"no acl-*.hujson test files found in testdata/acl_results/",
 	)
 
 	t.Logf("Loaded %d ACL test files", len(files))
-
-	users := setupACLCompatUsers()
-	nodes := setupACLCompatNodes(users)
 
 	for _, file := range files {
 		tf := loadACLTestFile(t, file)
@@ -280,21 +284,18 @@ func TestACLCompat(t *testing.T) {
 		t.Run(tf.TestID, func(t *testing.T) {
 			t.Parallel()
 
-			// Check skip list
-			if reason, ok := aclSkipReasons[tf.TestID]; ok {
-				t.Skipf(
-					"TODO: %s — see aclSkipReasons for details",
-					reason,
-				)
-
-				return
-			}
-
 			if tf.Error {
 				testACLError(t, tf)
 
 				return
 			}
+
+			// Build nodes per-scenario from this file's topology.
+			// tscap uses clean-slate mode, so each scenario has
+			// different node IPs; using a shared topology would
+			// cause IP mismatches in filter rule comparisons.
+			users, nodes := buildACLUsersAndNodes(t, tf)
+			require.NotEmpty(t, nodes, "%s: topology is empty", tf.TestID)
 
 			testACLSuccess(t, tf, users, nodes)
 		})
@@ -302,23 +303,19 @@ func TestACLCompat(t *testing.T) {
 }
 
 // testACLError verifies that an invalid policy produces the expected error.
-func testACLError(t *testing.T, tf aclTestFile) {
+func testACLError(t *testing.T, tf *testcapture.Capture) {
 	t.Helper()
 
 	policyJSON := convertPolicyUserEmails(tf.Input.FullPolicy)
 
 	pol, err := unmarshalPolicy(policyJSON)
 	if err != nil {
-		// Parse-time error — valid for some error tests
+		// Parse-time error.
 		if tf.Input.APIResponseBody != nil {
 			wantMsg := tf.Input.APIResponseBody.Message
 			if wantMsg != "" {
-				assert.Contains(
-					t,
-					err.Error(),
-					wantMsg,
-					"%s: error message should contain expected substring",
-					tf.TestID,
+				assertACLErrorContains(
+					t, err, wantMsg, tf.TestID,
 				)
 			}
 		}
@@ -331,49 +328,11 @@ func testACLError(t *testing.T, tf aclTestFile) {
 		if tf.Input.APIResponseBody != nil {
 			wantMsg := tf.Input.APIResponseBody.Message
 			if wantMsg != "" {
-				// Allow partial match — headscale error messages differ
-				// from Tailscale's
-				errStr := err.Error()
-				if !strings.Contains(errStr, wantMsg) {
-					// Try matching key parts
-					matched := false
-
-					for _, part := range []string{
-						"autogroup:self",
-						"not valid on the src",
-						"port range",
-						"tag not found",
-						"undefined",
-					} {
-						if strings.Contains(wantMsg, part) &&
-							strings.Contains(errStr, part) {
-							matched = true
-
-							break
-						}
-					}
-
-					if !matched {
-						t.Logf(
-							"%s: error message difference\n  want (tailscale): %q\n  got (headscale):  %q",
-							tf.TestID,
-							wantMsg,
-							errStr,
-						)
-					}
-				}
+				assertACLErrorContains(
+					t, err, wantMsg, tf.TestID,
+				)
 			}
 		}
-
-		return
-	}
-
-	// For headscale_differs tests, headscale may accept what Tailscale rejects
-	if tf.HeadscaleDiffers {
-		t.Logf(
-			"%s: headscale accepts this policy (Tailscale rejects it)",
-			tf.TestID,
-		)
 
 		return
 	}
@@ -384,11 +343,37 @@ func testACLError(t *testing.T, tf aclTestFile) {
 	)
 }
 
+// assertACLErrorContains requires that headscale's error contains the
+// Tailscale SaaS error message verbatim. Divergence means an emitter
+// needs to be aligned, not papered over with a translation table.
+func assertACLErrorContains(
+	t *testing.T,
+	err error,
+	wantMsg string,
+	testID string,
+) {
+	t.Helper()
+
+	errStr := err.Error()
+	if strings.Contains(errStr, wantMsg) {
+		return
+	}
+
+	t.Errorf(
+		"%s: error message mismatch\n"+
+			"  want (tailscale): %q\n"+
+			"  got  (headscale): %q",
+		testID,
+		wantMsg,
+		errStr,
+	)
+}
+
 // testACLSuccess verifies that a valid policy produces the expected
 // packet filter rules for each node.
 func testACLSuccess(
 	t *testing.T,
-	tf aclTestFile,
+	tf *testcapture.Capture,
 	users types.Users,
 	nodes types.Nodes,
 ) {
@@ -415,9 +400,6 @@ func testACLSuccess(
 
 	for nodeName, capture := range tf.Captures {
 		t.Run(nodeName, func(t *testing.T) {
-			captureIsNull := len(capture.PacketFilterRules) == 0 ||
-				string(capture.PacketFilterRules) == "null" //nolint:goconst
-
 			node := findNodeByGivenName(nodes, nodeName)
 			if node == nil {
 				t.Skipf(
@@ -447,21 +429,7 @@ func testACLSuccess(
 				compiledRules,
 			)
 
-			// Parse expected rules from JSON
-			var wantRules []tailcfg.FilterRule
-			if !captureIsNull {
-				err = json.Unmarshal(
-					capture.PacketFilterRules,
-					&wantRules,
-				)
-				require.NoError(
-					t,
-					err,
-					"%s/%s: failed to unmarshal expected rules",
-					tf.TestID,
-					nodeName,
-				)
-			}
+			wantRules := capture.PacketFilterRules
 
 			// Compare
 			opts := append(
