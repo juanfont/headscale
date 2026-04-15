@@ -574,6 +574,10 @@ func (s *State) Connect(id types.NodeID) ([]change.Change, uint64) {
 
 	log.Info().EmbedObject(node).Msg("node connected")
 
+	// Reconnecting clears any prior unhealthy state — the node proved
+	// basic connectivity by establishing the Noise session.
+	s.primaryRoutes.ClearUnhealthy(id)
+
 	// Use the node's current routes for primary route update.
 	// AllApprovedRoutes() returns only the intersection of announced and approved routes.
 	routeChange := s.primaryRoutes.SetRoutes(id, node.AllApprovedRoutes()...)
@@ -1182,6 +1186,11 @@ func (s *State) RoutesForPeer(
 	}
 
 	return reduced
+}
+
+// PrimaryRoutes returns the primary routes tracker.
+func (s *State) PrimaryRoutes() *routes.PrimaryRoutes {
+	return s.primaryRoutes
 }
 
 // PrimaryRoutesString returns a string representation of all primary routes.
