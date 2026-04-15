@@ -36,6 +36,10 @@ traffic through specific tagged subnet routers or exit nodes. The `ip` field wor
 Grants can be mixed with ACLs in the same policy file.
 [#2180](https://github.com/juanfont/headscale/pull/2180)
 
+Fix: `CapGrant` destinations are now included in the peer map matcher, ensuring that grant-only
+relay policies correctly establish peer visibility between the grant issuer and recipient.
+[#3192](https://github.com/juanfont/headscale/pull/3192)
+
 As part of this, we added `autogroup:danger-all`. It resolves to `0.0.0.0/0` and `::/0` — all IP
 addresses, including those outside the tailnet. This replaces the old behaviour where `*` matched
 all IPs (see BREAKING below). The name is intentionally scary: accepting traffic from the entire

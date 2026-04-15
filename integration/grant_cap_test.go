@@ -64,6 +64,159 @@ func parsePeerRelay(pr string) (netip.AddrPort, string, bool) {
 	return ap, vni, true
 }
 
+// TestGrantCapRelayAppOnly validates that a grant with only the app
+// field (cap/relay, no IP connectivity grant) is sufficient for peer
+// visibility and correct cap routing. This is the integration-level
+// regression test for the MatchFromFilterRule fix that includes
+// CapGrant.Dsts in the peer map.
+//
+// Without the fix, nodes connected only by a CapGrant would not appear
+// in each other's peer lists because CapGrant destinations were not
+// included in the matcher's destination set.
+//
+//  1. Only a relay cap grant exists (no ACL rules, no IP grants)
+//  2. All nodes see each other as peers (peer map includes CapGrant.Dsts)
+//  3. Cap grants compile correctly (cap/relay on relay, cap/relay-target on clients)
+//  4. Wrong caps must NOT be present (negative checks)
+func TestGrantCapRelayAppOnly(t *testing.T) {
+	IntegrationSkip(t)
+
+	assertTimeout := 120 * time.Second
+
+	spec := ScenarioSpec{
+		NodesPerUser: 0,
+		Users:        []string{"relay", "client"},
+		Networks: map[string]NetworkSpec{
+			"usernet1": {Users: []string{"relay", "client"}},
+		},
+		Versions: []string{"head"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	// Policy has ONLY a relay cap grant — no IP connectivity.
+	// Without the CapGrant.Dsts fix, this grant alone would not
+	// establish peer visibility between relay and client.
+	pol := &policyv2.Policy{
+		TagOwners: policyv2.TagOwners{
+			policyv2.Tag("tag:relay"): policyv2.Owners{usernameOwner("relay@")},
+		},
+		Grants: []policyv2.Grant{
+			{
+				Sources:      policyv2.Aliases{usernamep("client@")},
+				Destinations: policyv2.Aliases{tagp("tag:relay")},
+				App: tailcfg.PeerCapMap{
+					tailcfg.PeerCapabilityRelay: {tailcfg.RawMessage("{}")},
+				},
+			},
+		},
+	}
+
+	headscale, err := scenario.Headscale(
+		hsic.WithTestName("grant-cap-relay-app-only"),
+		hsic.WithACLPolicy(pol),
+		hsic.WithPolicyMode(types.PolicyModeDB),
+	)
+	requireNoErrGetHeadscale(t, err)
+
+	usernet1, err := scenario.Network("usernet1")
+	require.NoError(t, err)
+
+	_, err = scenario.CreateUser("relay")
+	require.NoError(t, err)
+	_, err = scenario.CreateUser("client")
+	require.NoError(t, err)
+
+	userMap, err := headscale.MapUsers()
+	require.NoError(t, err)
+
+	// --- Create relay node (tagged) ---
+	relayR, err := scenario.CreateTailscaleNode("head",
+		tsic.WithNetwork(usernet1),
+	)
+	require.NoError(t, err)
+	defer func() { _, _, _ = relayR.Shutdown() }()
+
+	pakRelay, err := scenario.CreatePreAuthKeyWithTags(
+		userMap["relay"].GetId(), false, false, []string{"tag:relay"},
+	)
+	require.NoError(t, err)
+	err = relayR.Login(headscale.GetEndpoint(), pakRelay.GetKey())
+	require.NoError(t, err)
+	err = relayR.WaitForRunning(30 * time.Second)
+	require.NoError(t, err)
+
+	// --- Create client node (user-owned, no tags) ---
+	clientN, err := scenario.CreateTailscaleNode("head",
+		tsic.WithNetwork(usernet1),
+	)
+	require.NoError(t, err)
+	defer func() { _, _, _ = clientN.Shutdown() }()
+
+	pakClient, err := scenario.CreatePreAuthKey(
+		userMap["client"].GetId(), false, false,
+	)
+	require.NoError(t, err)
+	err = clientN.Login(headscale.GetEndpoint(), pakClient.GetKey())
+	require.NoError(t, err)
+	err = clientN.WaitForRunning(30 * time.Second)
+	require.NoError(t, err)
+
+	// ===== Phase 1: Validate peer visibility =====
+	// This is the core assertion: with only a CapGrant (no IP grant),
+	// both nodes must still appear in each other's peer list.
+	t.Log("Phase 1: Validate peer visibility with app-only grant")
+
+	allNodes := []TailscaleClient{relayR, clientN}
+	for _, node := range allNodes {
+		err = node.WaitForPeers(1, 60*time.Second, 1*time.Second)
+		require.NoErrorf(t, err, "node %s failed to see its peer", node.Hostname())
+	}
+
+	relayIPv4 := relayR.MustIPv4()
+	clientIPv4 := clientN.MustIPv4()
+
+	// ===== Phase 2: Validate cap grants in packet filters =====
+	t.Log("Phase 2: Validate cap grants in packet filters")
+
+	// Relay should have cap/relay targeting its own IP.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		pf, err := relayR.PacketFilter()
+		assert.NoError(c, err)
+		assert.True(c, hasCapMatchForIP(pf, tailcfg.PeerCapabilityRelay, relayIPv4),
+			"Relay should have cap/relay with Dst matching relay's IP %s", relayIPv4)
+	}, assertTimeout, 500*time.Millisecond, "relay should have cap/relay targeting its own IP")
+
+	// Client should have cap/relay-target targeting client's IP.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		pf, err := clientN.PacketFilter()
+		assert.NoError(c, err)
+		assert.True(c, hasCapMatchForIP(pf, tailcfg.PeerCapabilityRelayTarget, clientIPv4),
+			"Client should have cap/relay-target with Dst matching client's IP %s", clientIPv4)
+	}, assertTimeout, 500*time.Millisecond, "client should have cap/relay-target")
+
+	// ===== Phase 3: Negative checks =====
+	t.Log("Phase 3: Negative cap checks")
+
+	// Relay should NOT have cap/relay-target.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		pf, err := relayR.PacketFilter()
+		assert.NoError(c, err)
+		assert.False(c, hasCapMatchInPacketFilter(pf, tailcfg.PeerCapabilityRelayTarget),
+			"Relay should NOT have cap/relay-target")
+	}, 10*time.Second, 500*time.Millisecond, "relay should not have cap/relay-target")
+
+	// Client should NOT have cap/relay.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		pf, err := clientN.PacketFilter()
+		assert.NoError(c, err)
+		assert.False(c, hasCapMatchInPacketFilter(pf, tailcfg.PeerCapabilityRelay),
+			"Client should NOT have cap/relay")
+	}, 10*time.Second, 500*time.Millisecond, "client should not have cap/relay")
+}
+
 // TestGrantCapRelay validates the full peer relay lifecycle:
 //  1. No direct connection between isolated clients
 //  2. Cap grants compile correctly (relay + relay-target in packet filters)

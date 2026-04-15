@@ -49,6 +49,11 @@ func MatchFromFilterRule(rule tailcfg.FilterRule) Match {
 	for _, dest := range rule.DstPorts {
 		dests = append(dests, dest.IP)
 	}
+	for _, grant := range rule.CapGrant {
+		for _, dst := range grant.Dsts {
+			dests = append(dests, dst.String())
+		}
+	}
 
 	return MatchFromStrings(rule.SrcIPs, dests)
 }
