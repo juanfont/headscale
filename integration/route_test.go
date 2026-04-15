@@ -3276,9 +3276,12 @@ func TestGrantViaSubnetSteering(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create Router A (tag:router-a) on usernet1.
+	// Routers advertise routes but must NOT accept peer routes — with
+	// co-router visibility the HA primary's subnet appears in the
+	// co-router's AllowedIPs, and --accept-routes would install a
+	// system route that conflicts with local subnet forwarding.
 	routerA, err := scenario.CreateTailscaleNode("head",
 		tsic.WithNetwork(usernet1),
-		tsic.WithAcceptRoutes(),
 	)
 	require.NoError(t, err)
 
@@ -3296,7 +3299,6 @@ func TestGrantViaSubnetSteering(t *testing.T) {
 	// Create Router B (tag:router-b) on usernet1.
 	routerB, err := scenario.CreateTailscaleNode("head",
 		tsic.WithNetwork(usernet1),
-		tsic.WithAcceptRoutes(),
 	)
 	require.NoError(t, err)
 
