@@ -18,7 +18,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/puzpuzpuz/xsync/v4"
-	"github.com/rs/zerolog"
 	"tailscale.com/tailcfg"
 )
 
@@ -182,9 +181,6 @@ func benchBatcher(nodeCount, bufferSize int) (*Batcher, map[types.NodeID]chan *t
 // BenchmarkAddToBatch_Broadcast measures the cost of broadcasting a change
 // to all nodes via addToBatch (no worker processing, just queuing).
 func BenchmarkAddToBatch_Broadcast(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, nodeCount := range []int{10, 100, 1000} {
 		b.Run(fmt.Sprintf("%dnodes", nodeCount), func(b *testing.B) {
 			batcher, _ := benchBatcher(nodeCount, 10)
@@ -213,9 +209,6 @@ func BenchmarkAddToBatch_Broadcast(b *testing.B) {
 // BenchmarkAddToBatch_Targeted measures the cost of adding a targeted change
 // to a single node.
 func BenchmarkAddToBatch_Targeted(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, nodeCount := range []int{10, 100, 1000} {
 		b.Run(fmt.Sprintf("%dnodes", nodeCount), func(b *testing.B) {
 			batcher, _ := benchBatcher(nodeCount, 10)
@@ -251,9 +244,6 @@ func BenchmarkAddToBatch_Targeted(b *testing.B) {
 
 // BenchmarkAddToBatch_FullUpdate measures the cost of a FullUpdate broadcast.
 func BenchmarkAddToBatch_FullUpdate(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, nodeCount := range []int{10, 100, 1000} {
 		b.Run(fmt.Sprintf("%dnodes", nodeCount), func(b *testing.B) {
 			batcher, _ := benchBatcher(nodeCount, 10)
@@ -275,9 +265,6 @@ func BenchmarkAddToBatch_FullUpdate(b *testing.B) {
 // BenchmarkProcessBatchedChanges measures the cost of moving pending changes
 // to the work queue.
 func BenchmarkProcessBatchedChanges(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, nodeCount := range []int{10, 100, 1000} {
 		b.Run(fmt.Sprintf("%dpending", nodeCount), func(b *testing.B) {
 			batcher, _ := benchBatcher(nodeCount, 10)
@@ -311,9 +298,6 @@ func BenchmarkProcessBatchedChanges(b *testing.B) {
 // BenchmarkBroadcastToN measures end-to-end broadcast: addToBatch + processBatchedChanges
 // to N nodes. Does NOT include worker processing (MapResponse generation).
 func BenchmarkBroadcastToN(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, nodeCount := range []int{10, 100, 1000} {
 		b.Run(fmt.Sprintf("%dnodes", nodeCount), func(b *testing.B) {
 			batcher, _ := benchBatcher(nodeCount, 10)
@@ -339,9 +323,6 @@ func BenchmarkBroadcastToN(b *testing.B) {
 // BenchmarkMultiChannelBroadcast measures the cost of sending a MapResponse
 // to N nodes each with varying connection counts.
 func BenchmarkMultiChannelBroadcast(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, nodeCount := range []int{10, 100, 1000} {
 		b.Run(fmt.Sprintf("%dnodes", nodeCount), func(b *testing.B) {
 			batcher, _ := benchBatcher(nodeCount, b.N+1)
@@ -387,9 +368,6 @@ func BenchmarkMultiChannelBroadcast(b *testing.B) {
 // BenchmarkConcurrentAddToBatch measures addToBatch throughput under
 // concurrent access from multiple goroutines.
 func BenchmarkConcurrentAddToBatch(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, nodeCount := range []int{10, 100, 1000} {
 		b.Run(fmt.Sprintf("%dnodes", nodeCount), func(b *testing.B) {
 			batcher, _ := benchBatcher(nodeCount, 10)
@@ -440,9 +418,6 @@ func BenchmarkConcurrentAddToBatch(b *testing.B) {
 
 // BenchmarkIsConnected measures the read throughput of IsConnected checks.
 func BenchmarkIsConnected(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, nodeCount := range []int{10, 100, 1000} {
 		b.Run(fmt.Sprintf("%dnodes", nodeCount), func(b *testing.B) {
 			batcher, _ := benchBatcher(nodeCount, 1)
@@ -464,9 +439,6 @@ func BenchmarkIsConnected(b *testing.B) {
 
 // BenchmarkConnectedMap measures the cost of building the full connected map.
 func BenchmarkConnectedMap(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, nodeCount := range []int{10, 100, 1000} {
 		b.Run(fmt.Sprintf("%dnodes", nodeCount), func(b *testing.B) {
 			batcher, channels := benchBatcher(nodeCount, 1)
@@ -499,9 +471,6 @@ func BenchmarkConnectedMap(b *testing.B) {
 // BenchmarkConnectionChurn measures the cost of add/remove connection cycling
 // which simulates client reconnection patterns.
 func BenchmarkConnectionChurn(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, nodeCount := range []int{10, 100, 1000} {
 		b.Run(fmt.Sprintf("%dnodes", nodeCount), func(b *testing.B) {
 			batcher, channels := benchBatcher(nodeCount, 10)
@@ -545,9 +514,6 @@ func BenchmarkConnectionChurn(b *testing.B) {
 // BenchmarkConcurrentSendAndChurn measures the combined cost of sends happening
 // concurrently with connection churn - the hot path in production.
 func BenchmarkConcurrentSendAndChurn(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, nodeCount := range []int{10, 100} {
 		b.Run(fmt.Sprintf("%dnodes", nodeCount), func(b *testing.B) {
 			batcher, channels := benchBatcher(nodeCount, 100)
@@ -620,9 +586,6 @@ func BenchmarkAddNode(b *testing.B) {
 		b.Skip("skipping full pipeline benchmark in short mode")
 	}
 
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, nodeCount := range []int{10, 100} {
 		b.Run(fmt.Sprintf("%dnodes", nodeCount), func(b *testing.B) {
 			testData, cleanup := setupBatcherWithTestData(b, NewBatcherAndMapper, 1, nodeCount, largeBufferSize)
@@ -683,9 +646,6 @@ func BenchmarkFullPipeline(b *testing.B) {
 		b.Skip("skipping full pipeline benchmark in short mode")
 	}
 
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, nodeCount := range []int{10, 100} {
 		b.Run(fmt.Sprintf("%dnodes", nodeCount), func(b *testing.B) {
 			testData, cleanup := setupBatcherWithTestData(b, NewBatcherAndMapper, 1, nodeCount, largeBufferSize)
@@ -737,9 +697,6 @@ func BenchmarkMapResponseFromChange(b *testing.B) {
 	if testing.Short() {
 		b.Skip("skipping full pipeline benchmark in short mode")
 	}
-
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
 
 	for _, nodeCount := range []int{10, 100} {
 		b.Run(fmt.Sprintf("%dnodes", nodeCount), func(b *testing.B) {

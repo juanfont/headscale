@@ -16,7 +16,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
@@ -574,12 +573,6 @@ func TestEnhancedTrackingWithBatcher(t *testing.T) {
 // and ensure all nodes can see all other nodes. This is a critical test for mesh network
 // functionality where every node must be able to communicate with every other node.
 func TestBatcherScalabilityAllToAll(t *testing.T) {
-	// Reduce verbose application logging for cleaner test output
-	originalLevel := zerolog.GlobalLevel()
-	defer zerolog.SetGlobalLevel(originalLevel)
-
-	zerolog.SetGlobalLevel(zerolog.ErrorLevel)
-
 	// Test cases: different node counts to stress test the all-to-all connectivity
 	testCases := []struct {
 		name      string
