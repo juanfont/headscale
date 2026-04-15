@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/ory/dockertest/v3"
@@ -12,6 +14,55 @@ import (
 )
 
 var ErrContainerNotFound = errors.New("container not found")
+
+const (
+	dockerRetryAttempts = 5
+	dockerRetryDelay    = 250 * time.Millisecond
+)
+
+func isTransientDockerTransportErr(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+
+	return strings.Contains(msg, "broken pipe") ||
+		strings.Contains(msg, "connection reset by peer") ||
+		strings.Contains(msg, "unexpected eof") ||
+		strings.Contains(msg, "eof")
+}
+
+func withDockerRetry(op string, fn func() error) error {
+	var lastErr error
+
+	for attempt := 1; attempt <= dockerRetryAttempts; attempt++ {
+		err := fn()
+		if err == nil {
+			return nil
+		}
+
+		lastErr = err
+
+		if !isTransientDockerTransportErr(err) || attempt == dockerRetryAttempts {
+			break
+		}
+
+		delay := time.Duration(attempt) * dockerRetryDelay
+		log.Printf(
+			"transient docker error on %s (attempt %d/%d): %v; retrying in %s",
+			op,
+			attempt,
+			dockerRetryAttempts,
+			err,
+			delay,
+		)
+
+		time.Sleep(delay)
+	}
+
+	return fmt.Errorf("%s: %w", op, lastErr)
+}
 
 func GetFirstOrCreateNetwork(pool *dockertest.Pool, name string) (*dockertest.Network, error) {
 	return GetFirstOrCreateNetworkWithSubnet(pool, name, "")
@@ -23,9 +74,17 @@ func GetFirstOrCreateNetwork(pool *dockertest.Pool, name string) (*dockertest.Ne
 // that need to be reachable through Tailscale exit nodes, since Tailscale's
 // shrinkDefaultRoute strips RFC1918 ranges from exit node forwarding filters.
 func GetFirstOrCreateNetworkWithSubnet(pool *dockertest.Pool, name, subnet string) (*dockertest.Network, error) {
-	networks, err := pool.NetworksByName(name)
+	var (
+		networks []dockertest.Network
+		err      error
+	)
+
+	err = withDockerRetry("looking up network names", func() error {
+		networks, err = pool.NetworksByName(name)
+		return err
+	})
 	if err != nil {
-		return nil, fmt.Errorf("looking up network names: %w", err)
+		return nil, err
 	}
 
 	if len(networks) == 0 {
@@ -40,18 +99,25 @@ func GetFirstOrCreateNetworkWithSubnet(pool *dockertest.Pool, name, subnet strin
 			})
 		}
 
-		if _, err := pool.CreateNetwork(name, opts...); err == nil { //nolint:noinlineerr // intentional inline check
-			// Create does not give us an updated version of the resource, so we need to
-			// get it again.
-			networks, err := pool.NetworksByName(name)
-			if err != nil {
-				return nil, err
-			}
-
-			return &networks[0], nil
-		} else {
-			return nil, fmt.Errorf("creating network: %w", err)
+		err = withDockerRetry("creating network", func() error {
+			_, err = pool.CreateNetwork(name, opts...)
+			return err
+		})
+		if err != nil {
+			return nil, err
 		}
+
+		// Create does not give us an updated version of the resource, so we need to
+		// get it again.
+		err = withDockerRetry("looking up created network", func() error {
+			networks, err = pool.NetworksByName(name)
+			return err
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		return &networks[0], nil
 	}
 
 	return &networks[0], nil
@@ -62,18 +128,32 @@ func AddContainerToNetwork(
 	network *dockertest.Network,
 	testContainer string,
 ) error {
-	containers, err := pool.Client.ListContainers(docker.ListContainersOptions{
-		All: true,
-		Filters: map[string][]string{
-			"name": {testContainer},
-		},
+	var (
+		containers []docker.APIContainers
+		err        error
+	)
+
+	err = withDockerRetry("listing containers for network connect", func() error {
+		containers, err = pool.Client.ListContainers(docker.ListContainersOptions{
+			All: true,
+			Filters: map[string][]string{
+				"name": {testContainer},
+			},
+		})
+		return err
 	})
 	if err != nil {
 		return err
 	}
 
-	err = pool.Client.ConnectNetwork(network.Network.ID, docker.NetworkConnectionOptions{
-		Container: containers[0].ID,
+	if len(containers) == 0 {
+		return ErrContainerNotFound
+	}
+
+	err = withDockerRetry("connecting container to network", func() error {
+		return pool.Client.ConnectNetwork(network.Network.ID, docker.NetworkConnectionOptions{
+			Container: containers[0].ID,
+		})
 	})
 	if err != nil {
 		return err

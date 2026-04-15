@@ -1690,15 +1690,29 @@ func Webservice(s *Scenario, networkName string) (*dockertest.Resource, error) {
 	// Add integration test labels if running under hi tool
 	dockertestutil.DockerAddIntegrationLabels(webOpts, "web")
 
-	webBOpts := &dockertest.BuildOptions{
-		Dockerfile: hsic.IntegrationTestDockerFileName,
-		ContextDir: dockerContextPath,
+	// Use a prebuilt python image to avoid repeatedly building
+	// Dockerfile.integration for the static web test service.
+	webRepo := "python"
+	webTag := "3.13-alpine"
+	if img := os.Getenv("HEADSCALE_INTEGRATION_WEBSERVICE_IMAGE"); img != "" {
+		repo, tag, ok := strings.Cut(img, ":")
+		if !ok {
+			return nil, fmt.Errorf(
+				"invalid HEADSCALE_INTEGRATION_WEBSERVICE_IMAGE format, expected repository:tag",
+			)
+		}
+
+		webRepo = repo
+		webTag = tag
 	}
 
-	web, err := s.pool.BuildAndRunWithBuildOptions(
-		webBOpts,
+	webOpts.Repository = webRepo
+	webOpts.Tag = webTag
+
+	web, err := s.pool.RunWithOptions(
 		webOpts,
-		dockertestutil.DockerRestartPolicy)
+		dockertestutil.DockerRestartPolicy,
+	)
 	if err != nil {
 		return nil, err
 	}
