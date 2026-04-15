@@ -60,8 +60,19 @@ internet is a security-sensitive choice. `autogroup:danger-all` can only be used
 - **CLI**: `headscale nodes register` is deprecated in favour of `headscale auth register --auth-id <id> --user <user>` [#1850](https://github.com/juanfont/headscale/pull/1850)
   - The old command continues to work but will be removed in a future release
 
+### HA subnet router health probing
+
+Headscale now actively probes HA subnet routers to detect nodes that are connected but not
+forwarding traffic. The control plane periodically pings HA subnet routers via the Noise
+control channel and fails over to a healthy standby if the primary stops responding. This is
+enabled by default (`node.routes.ha.probe_interval: 10s`, `probe_timeout: 5s`) and only
+active when HA routes exist (2+ nodes advertising the same prefix). Set `probe_interval` to
+`0` to disable. This complements the existing disconnect-based failover, catching "zombie
+connected" routers that maintain their control session but cannot route packets.
+
 ### Changes
 
+- **Debug endpoints**: Add node connectivity ping page for verifying control-plane reachability [#3183](https://github.com/juanfont/headscale/pull/3183)
 - **OIDC registration**: Add a confirmation page before completing node registration, showing the device hostname and machine key fingerprint [#3180](https://github.com/juanfont/headscale/pull/3180)
 - **Debug endpoints**: Omit secret fields (`Pass`, `ClientSecret`, `APIKey`) from `/debug/config` JSON output [#3180](https://github.com/juanfont/headscale/pull/3180)
 - **Debug endpoints**: Route `statsviz` through `tsweb.Protected` [#3180](https://github.com/juanfont/headscale/pull/3180)
