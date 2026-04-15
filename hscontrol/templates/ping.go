@@ -41,11 +41,12 @@ func PingPage(query string, result *PingResult, nodes []ConnectedNode) *elem.Ele
 		headscaleLogo(),
 		H1(elem.Text("Ping Node")),
 		P(elem.Text("Check if a connected node responds to a PingRequest.")),
+		pingExplanation(),
 		pingForm(query),
 	}
 
 	if result != nil {
-		children = append(children, pingResult(result))
+		children = append(children, pingResultSection(result))
 	}
 
 	if len(nodes) > 0 {
@@ -60,27 +61,32 @@ func PingPage(query string, result *PingResult, nodes []ConnectedNode) *elem.Ele
 	)
 }
 
+func pingExplanation() *elem.Element {
+	return detailsBox("How does this work?",
+		Ol(
+			elem.Li(nil, elem.Text(
+				"The server sends a PingRequest to the target node via its MapResponse stream.",
+			)),
+			elem.Li(nil, elem.Text(
+				"The node's Tailscale client receives the request and responds back to the server.",
+			)),
+			elem.Li(nil, elem.Text(
+				"The server measures the round-trip latency from send to callback.",
+			)),
+			elem.Li(nil, elem.Text(
+				"If no response arrives within 30 seconds, the ping times out.",
+			)),
+		),
+		P(elem.Raw(
+			"This tests the <strong>full control plane path</strong>"+
+				" — map stream delivery, client processing, and network"+
+				" connectivity back to the server."+
+				" It does not test ICMP or WireGuard tunnel connectivity.",
+		)),
+	)
+}
+
 func pingForm(query string) *elem.Element {
-	inputStyle := styles.Props{
-		styles.Padding:      spaceS,
-		styles.Border:       "1px solid " + colorBorderMedium,
-		styles.BorderRadius: "0.25rem",
-		styles.FontSize:     fontSizeBase,
-		styles.FontFamily:   fontFamilySystem,
-		styles.Width:        "280px",
-	}
-
-	buttonStyle := styles.Props{
-		styles.Padding:         spaceS + " " + spaceM,
-		styles.BackgroundColor: colorPrimaryAccent,
-		styles.Color:           "#ffffff",
-		styles.Border:          "none",
-		styles.BorderRadius:    "0.25rem",
-		styles.FontSize:        fontSizeBase,
-		styles.FontFamily:      fontFamilySystem,
-		"cursor":               "pointer",
-	}
-
 	return elem.Form(attrs.Props{
 		attrs.Method: "POST",
 		attrs.Action: "/debug/ping",
@@ -88,6 +94,7 @@ func pingForm(query string) *elem.Element {
 			styles.Display:    "flex",
 			styles.Gap:        spaceS,
 			styles.AlignItems: "center",
+			styles.FlexWrap:   "wrap",
 			styles.MarginTop:  spaceM,
 		}.ToInline(),
 	},
@@ -97,11 +104,18 @@ func pingForm(query string) *elem.Element {
 			attrs.Value:       query,
 			attrs.Placeholder: "Node ID, IP, or hostname",
 			attrs.Autofocus:   "true",
-			attrs.Style:       inputStyle.ToInline(),
+			attrs.Style: styles.Props{
+				styles.Padding:      "0.75rem " + spaceM,
+				styles.Border:       "1px solid var(--hs-border)",
+				styles.BorderRadius: "0.375rem",
+				styles.Width:        "280px",
+				styles.MaxWidth:     "100%",
+				styles.Background:   "var(--hs-bg)",
+				styles.Color:        "var(--md-default-fg-color)",
+			}.ToInline(),
 		}),
 		elem.Button(attrs.Props{
-			attrs.Type:  "submit",
-			attrs.Style: buttonStyle.ToInline(),
+			attrs.Type: "submit",
 		}, elem.Text("Ping")),
 	)
 }
@@ -113,27 +127,28 @@ func connectedNodeList(nodes []ConnectedNode) *elem.Element {
 		label := fmt.Sprintf("%s (ID: %d, %s)", n.Hostname, n.ID, strings.Join(n.IPs, ", "))
 		href := fmt.Sprintf("/debug/ping?node=%d", n.ID)
 
-		items = append(items, elem.Li(nil,
-			elem.A(attrs.Props{
-				attrs.Href: href,
-				attrs.Style: styles.Props{
-					styles.Color: colorPrimaryAccent,
-				}.ToInline(),
-			}, elem.Text(label)),
-		))
+		items = append(items, elem.Li(nil, A(href, elem.Text(label))))
 	}
 
 	return elem.Div(attrs.Props{
 		attrs.Style: styles.Props{
-			styles.MarginTop: spaceL,
+			styles.MarginTop: space2XL,
 		}.ToInline(),
 	},
 		H2(elem.Text("Connected Nodes")),
-		elem.Ul(nil, items...),
+		Ul(items...),
 	)
 }
 
-func pingResult(result *PingResult) *elem.Element {
+func pingResultSection(result *PingResult) *elem.Element {
+	return elem.Div(attrs.Props{
+		attrs.Style: styles.Props{
+			styles.MarginTop: spaceXL,
+		}.ToInline(),
+	}, pingResultBox(result))
+}
+
+func pingResultBox(result *PingResult) *elem.Element {
 	switch result.Status {
 	case "ok":
 		return successBox(
