@@ -1071,7 +1071,7 @@ func TestCompileSSHPolicy_CheckAction(t *testing.T) {
 	assert.False(t, rule.Action.Reject)
 	assert.NotEmpty(t, rule.Action.HoldAndDelegate)
 	assert.Contains(t, rule.Action.HoldAndDelegate, "/machine/ssh/action/")
-	assert.Equal(t, 24*time.Hour, rule.Action.SessionDuration)
+	assert.Equal(t, time.Duration(0), rule.Action.SessionDuration)
 
 	// Verify check params are NOT encoded in the URL (looked up server-side).
 	assert.NotContains(t, rule.Action.HoldAndDelegate, "check_explicit")
@@ -2632,25 +2632,24 @@ func TestCompileSSHPolicy_CheckPeriodVariants(t *testing.T) {
 
 	nodes := types.Nodes{&node}
 
+	// SaaS always sends SessionDuration=0 in the wire format
+	// regardless of checkPeriod. The check period is resolved
+	// server-side, not embedded in the SSHAction.
 	tests := []struct {
-		name         string
-		checkPeriod  *SSHCheckPeriod
-		wantDuration time.Duration
+		name        string
+		checkPeriod *SSHCheckPeriod
 	}{
 		{
-			name:         "nil period defaults to 12h",
-			checkPeriod:  nil,
-			wantDuration: SSHCheckPeriodDefault,
+			name:        "nil period",
+			checkPeriod: nil,
 		},
 		{
-			name:         "always period uses 0",
-			checkPeriod:  &SSHCheckPeriod{Always: true},
-			wantDuration: 0,
+			name:        "always period",
+			checkPeriod: &SSHCheckPeriod{Always: true},
 		},
 		{
-			name:         "explicit 2h",
-			checkPeriod:  &SSHCheckPeriod{Duration: 2 * time.Hour},
-			wantDuration: 2 * time.Hour,
+			name:        "explicit 2h",
+			checkPeriod: &SSHCheckPeriod{Duration: 2 * time.Hour},
 		},
 	}
 
@@ -2682,7 +2681,7 @@ func TestCompileSSHPolicy_CheckPeriodVariants(t *testing.T) {
 			require.Len(t, sshPolicy.Rules, 1)
 
 			rule := sshPolicy.Rules[0]
-			assert.Equal(t, tt.wantDuration, rule.Action.SessionDuration)
+			assert.Equal(t, time.Duration(0), rule.Action.SessionDuration)
 			// Check params must NOT be in the URL; they are
 			// resolved server-side via SSHCheckParams.
 			assert.NotContains(t, rule.Action.HoldAndDelegate, "check_explicit")
@@ -3832,7 +3831,7 @@ func TestCompileViaGrant(t *testing.T) {
 			nodeView := tt.node.View()
 			nodesSlice := tt.nodes.ViewSlice()
 
-			got, err := tt.pol.compileViaGrant(tt.grant, users, nodeView, nodesSlice)
+			cg, err := tt.pol.compileOneGrant(tt.grant, users, nodesSlice)
 
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)
@@ -3841,6 +3840,11 @@ func TestCompileViaGrant(t *testing.T) {
 			}
 
 			require.NoError(t, err)
+
+			var got []tailcfg.FilterRule
+			if cg != nil {
+				got = compileViaForNode(cg, nodeView)
+			}
 
 			if tt.name == "wildcard sources include subnet routes in SrcIPs" {
 				// Wildcard resolves to CGNAT ranges; just check the route is appended.
@@ -3997,9 +4001,10 @@ func TestCompileGrantWithAutogroupSelf_GrantPaths(t *testing.T) {
 
 			nodeView := tt.node.View()
 			nodesSlice := allNodes.ViewSlice()
+			userIdx := buildUserNodeIndex(nodesSlice)
 
-			got, err := tt.pol.compileGrantWithAutogroupSelf(
-				tt.grant, users, nodeView, nodesSlice,
+			cg, err := tt.pol.compileOneGrant(
+				tt.grant, users, nodesSlice,
 			)
 
 			if tt.wantErr != nil {
@@ -4009,6 +4014,13 @@ func TestCompileGrantWithAutogroupSelf_GrantPaths(t *testing.T) {
 			}
 
 			require.NoError(t, err)
+
+			var got []tailcfg.FilterRule
+			if cg != nil {
+				got = append(got, cg.rules...)
+				got = append(got, compileAutogroupSelf(cg, nodeView, userIdx)...)
+				got = mergeFilterRules(got)
+			}
 
 			switch tt.name {
 			case "autogroup:self destination for untagged node produces same-user devices":
