@@ -183,6 +183,7 @@ connected" routers that maintain their control session but cannot route packets.
 
 - Remove old migrations for the debian package [#3185](https://github.com/juanfont/headscale/pull/3185)
 - Install `config-example.yaml` as example for the debian package [#3186](https://github.com/juanfont/headscale/pull/3186)
+- **Node Expiry**: Fix user owned re registration with zero client expiry and no default storing `0001-01-01 00:00:00` in the database instead of NULL [#3199](https://github.com/juanfont/headscale/pull/3199)
 
 ## 0.28.0 (2026-02-04)
 
