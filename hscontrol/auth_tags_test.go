@@ -1119,3 +1119,67 @@ func TestReregistrationAppliesDefaultExpiry(t *testing.T) {
 	assert.True(t, node2.Expiry().Get().After(firstExpiry),
 		"re-registration expiry should be later than initial registration expiry")
 }
+
+// TestReregistrationZeroExpiryStaysNil tests that when a user-owned node
+// re-registers with zero client expiry and node.expiry is disabled (0),
+// the node's expiry stays nil rather than being set to a pointer to zero
+// time. Regression test for the else branch introduced in commit 6337a3db
+// which assigned `&regReq.Expiry` (pointer to time.Time{}) instead of nil,
+// causing the database row to hold `0001-01-01 00:00:00` instead of NULL.
+func TestReregistrationZeroExpiryStaysNil(t *testing.T) {
+	t.Parallel()
+
+	// node.expiry = 0 means "no default expiry"
+	app := createTestAppWithNodeExpiry(t, 0)
+
+	user := app.state.CreateUserForTest("node-owner")
+
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	// Initial registration with zero client expiry
+	regReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "reregister-zero-expiry",
+		},
+		Expiry: time.Time{},
+	}
+
+	resp, err := app.handleRegisterWithAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+	require.True(t, resp.MachineAuthorized)
+
+	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+	assert.False(t, node.Expiry().Valid(),
+		"initial registration with zero expiry and no default should leave expiry nil")
+
+	// Re-register with a new node key but same machine key + user
+	nodeKey2 := key.NewNode()
+	regReq2 := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey2.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "reregister-zero-expiry",
+		},
+		Expiry: time.Time{}, // still zero
+	}
+
+	resp2, err := app.handleRegisterWithAuthKey(regReq2, machineKey.Public())
+	require.NoError(t, err)
+	require.True(t, resp2.MachineAuthorized)
+
+	node2, found := app.state.GetNodeByNodeKey(nodeKey2.Public())
+	require.True(t, found)
+	assert.False(t, node2.Expiry().Valid(),
+		"re-registration with zero client expiry and no default should leave expiry nil, not pointer to zero time")
+}

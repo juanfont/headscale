@@ -2176,7 +2176,9 @@ func (s *State) HandleNodeFromPreAuthKey(
 			// Tagged nodes keep their existing expiry (disabled).
 			// User-owned nodes update expiry from the client request,
 			// falling back to the configured default if the client
-			// did not request a specific expiry.
+			// did not request a specific expiry. If neither is set,
+			// clear the expiry so the database holds NULL instead of
+			// a pointer to zero time.
 			if !node.IsTagged() {
 				if !regReq.Expiry.IsZero() {
 					node.Expiry = &regReq.Expiry
@@ -2184,7 +2186,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 					exp := time.Now().Add(s.cfg.Node.Expiry)
 					node.Expiry = &exp
 				} else {
-					node.Expiry = &regReq.Expiry
+					node.Expiry = nil
 				}
 			}
 		})
@@ -2271,6 +2273,15 @@ func (s *State) HandleNodeFromPreAuthKey(
 			pakUser = *pak.User
 		}
 
+		// Only pass the client-requested expiry when it is actually set.
+		// A pointer to a zero time.Time gets persisted as "0001-01-01 00:00:00"
+		// rather than NULL, which breaks downstream consumers that distinguish
+		// "no expiry" from "expires at year 1".
+		var reqExpiry *time.Time
+		if !regReq.Expiry.IsZero() {
+			reqExpiry = &regReq.Expiry
+		}
+
 		var err error
 
 		finalNode, err = s.createAndSaveNewNode(newNodeParams{
@@ -2281,7 +2292,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 			Hostname:               hostname,
 			Hostinfo:               validHostinfo,
 			Endpoints:              nil, // Endpoints not available in RegisterRequest
-			Expiry:                 &regReq.Expiry,
+			Expiry:                 reqExpiry,
 			RegisterMethod:         util.RegisterMethodAuthKey,
 			PreAuthKey:             pak,
 			ExistingNodeForNetinfo: cmp.Or(existingNodeAnyUser, types.NodeView{}),
