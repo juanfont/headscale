@@ -1,6 +1,7 @@
 package hscontrol
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -667,6 +668,147 @@ func TestTaggedNodeReauthPreservesDisabledExpiry(t *testing.T) {
 	assert.True(t, nodeAfterReauth.IsTagged(), "Node should still be tagged")
 	assert.False(t, nodeAfterReauth.Expiry().Valid(),
 		"Tagged node should have expiry PRESERVED as disabled after re-auth")
+}
+
+// TestTaggedNodeRestartPreservesNilExpiry tests that a tagged node whose
+// tailscaled restarts (sending Auth=nil, Expiry=zero) keeps its nil expiry.
+//
+// The handleRegister guard required node.Expiry().Valid(), false for the
+// nil expiry tagged nodes are created with. The request fell through to
+// handleLogout, which wrote &time.Time{} over the original nil and flipped
+// the API representation from null to "0001-01-01T00:00:00Z".
+func TestTaggedNodeRestartPreservesNilExpiry(t *testing.T) {
+	app := createTestApp(t)
+
+	user := app.state.CreateUserForTest("tag-restart")
+	tags := []string{"tag:agent"}
+
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, tags)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	regReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "tagged-restart-test",
+		},
+	}
+
+	resp, err := app.handleRegisterWithAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+	require.True(t, resp.MachineAuthorized)
+
+	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+	require.True(t, node.IsTagged())
+	require.False(t, node.Expiry().Valid(), "tagged node should have nil expiry after registration")
+	require.False(t, node.IsExpired(), "tagged node with nil expiry should not be expired")
+
+	// tailscaled restart: RegisterRequest with Auth=nil and Expiry=time.Time{}
+	// (the Go zero value) is what the client sends when it restarts with
+	// persisted state.
+	restartReq := tailcfg.RegisterRequest{
+		Auth:    nil,
+		NodeKey: nodeKey.Public(),
+		Expiry:  time.Time{},
+	}
+
+	restartResp, err := app.handleRegister(context.Background(), restartReq, machineKey.Public())
+	require.NoError(t, err)
+
+	require.True(t, restartResp.MachineAuthorized,
+		"restart should not require re-authorization")
+	require.False(t, restartResp.NodeKeyExpired,
+		"restart should not mark node key as expired")
+	require.Equal(t, types.TaggedDevices.View().TailscaleUser(), restartResp.User,
+		"response should identify node as tagged device")
+
+	nodeAfterRestart, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+
+	assert.True(t, nodeAfterRestart.IsTagged(), "node should still be tagged")
+	assert.False(t, nodeAfterRestart.IsExpired(), "node should not be expired after restart")
+	assert.False(t, nodeAfterRestart.Expiry().Valid(),
+		"tagged node expiry must remain nil (not zero-time) after restart")
+
+	var dbNode types.Node
+	require.NoError(t,
+		app.state.DB().DB.First(&dbNode, nodeAfterRestart.ID().Uint64()).Error)
+	assert.Nil(t, dbNode.Expiry,
+		"database expiry column must be NULL after restart, not a pointer to zero-time")
+}
+
+// TestUntaggedNodeRestartPreservesNilExpiry tests that an untagged node
+// registered against a preauth key with no default node.expiry keeps its
+// nil expiry when tailscaled restarts. Same root cause as the tagged
+// variant: the dropped node.Expiry().Valid() check covers any nil-expiry
+// node, regardless of ownership.
+func TestUntaggedNodeRestartPreservesNilExpiry(t *testing.T) {
+	app := createTestAppWithNodeExpiry(t, 0)
+
+	user := app.state.CreateUserForTest("untagged-restart")
+
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	regReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "untagged-restart-test",
+		},
+		Expiry: time.Time{},
+	}
+
+	resp, err := app.handleRegisterWithAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+	require.True(t, resp.MachineAuthorized)
+
+	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+	require.False(t, node.IsTagged(), "node should be user-owned, not tagged")
+	require.False(t, node.Expiry().Valid(),
+		"untagged node with no default expiry should have nil expiry after registration")
+	require.False(t, node.IsExpired())
+
+	restartReq := tailcfg.RegisterRequest{
+		Auth:    nil,
+		NodeKey: nodeKey.Public(),
+		Expiry:  time.Time{},
+	}
+
+	restartResp, err := app.handleRegister(context.Background(), restartReq, machineKey.Public())
+	require.NoError(t, err)
+
+	require.True(t, restartResp.MachineAuthorized,
+		"restart should not require re-authorization")
+	require.False(t, restartResp.NodeKeyExpired,
+		"restart should not mark node key as expired")
+
+	nodeAfterRestart, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+
+	assert.False(t, nodeAfterRestart.IsTagged(), "node should still be user-owned")
+	assert.False(t, nodeAfterRestart.IsExpired(), "node should not be expired after restart")
+	assert.False(t, nodeAfterRestart.Expiry().Valid(),
+		"untagged node expiry must remain nil (not zero-time) after restart")
+
+	var dbNode types.Node
+	require.NoError(t,
+		app.state.DB().DB.First(&dbNode, nodeAfterRestart.ID().Uint64()).Error)
+	assert.Nil(t, dbNode.Expiry,
+		"database expiry column must be NULL after restart, not a pointer to zero-time "+
+			"(this is what `sqlite3 ... 'select expiry from nodes'` sees)")
 }
 
 // TestExpiryDuringPersonalToTaggedConversion tests that when a personal node
