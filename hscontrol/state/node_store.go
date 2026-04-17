@@ -1,8 +1,10 @@
 package state
 
 import (
+	"errors"
 	"fmt"
 	"maps"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -12,6 +14,19 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"tailscale.com/types/key"
 	"tailscale.com/types/views"
+	"tailscale.com/util/dnsname"
+)
+
+// fallbackGivenName is the DNS label used when a node is written with
+// an empty GivenName. Matches Tailscale SaaS behaviour for empty
+// sanitised labels.
+const fallbackGivenName = "node"
+
+// Errors returned by SetGivenName. ErrNodeNotFound is defined in
+// state.go and reused here.
+var (
+	ErrGivenNameTaken   = errors.New("given name already in use by another node")
+	ErrGivenNameInvalid = errors.New("given name is not a valid DNS label")
 )
 
 const (
@@ -19,6 +34,7 @@ const (
 	del             = 2
 	update          = 3
 	rebuildPeerMaps = 4
+	setName         = 5
 )
 
 const prometheusNamespace = "headscale"
@@ -146,6 +162,9 @@ type work struct {
 	nodeResult chan types.NodeView // Channel to return the resulting node after batch application
 	// For rebuildPeerMaps operation
 	rebuildResult chan struct{}
+	// For setName operation (admin rename, reject-on-collision path).
+	name      string
+	errResult chan error
 }
 
 // PutNode adds or updates a node in the store.
@@ -245,6 +264,49 @@ func (s *NodeStore) DeleteNode(id types.NodeID) {
 	nodeStoreOperations.WithLabelValues("delete").Inc()
 }
 
+// SetGivenName sets node.GivenName on the node identified by id,
+// rejecting the write if the name is already held by another node.
+// Intended for the admin rename path, where auto-bumping a
+// user-supplied name would be surprising.
+//
+// Returns:
+//   - the stored NodeView and nil on success
+//   - ErrGivenNameInvalid   if name is not a valid DNS label
+//   - ErrGivenNameTaken     if another node already holds name
+//   - ErrNodeNotFound       if no node with id exists
+//
+// Runs as a single writer-goroutine op, so the uniqueness check and
+// the write are atomic with respect to concurrent PutNode/UpdateNode.
+func (s *NodeStore) SetGivenName(id types.NodeID, name string) (types.NodeView, error) {
+	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("set_name"))
+	defer timer.ObserveDuration()
+
+	w := work{
+		op:         setName,
+		nodeID:     id,
+		name:       name,
+		result:     make(chan struct{}),
+		nodeResult: make(chan types.NodeView, 1),
+		errResult:  make(chan error, 1),
+	}
+
+	nodeStoreQueueDepth.Inc()
+
+	s.writeQueue <- w
+
+	<-w.result
+	nodeStoreQueueDepth.Dec()
+
+	nodeStoreOperations.WithLabelValues("set_name").Inc()
+
+	err := <-w.errResult
+	if err != nil {
+		return types.NodeView{}, err
+	}
+
+	return <-w.nodeResult, nil
+}
+
 // Start initializes the NodeStore and starts processing the write queue.
 func (s *NodeStore) Start() {
 	s.writeQueue = make(chan work)
@@ -318,18 +380,31 @@ func (s *NodeStore) applyBatch(batch []work) {
 	// Track rebuildPeerMaps operations
 	var rebuildOps []*work
 
+	// setErrResults collects per-work errors from the setName path so
+	// they can be delivered after the snapshot swap, together with the
+	// NodeView for that work.
+	setErrResults := make(map[*work]error)
+
 	for i := range batch {
 		w := &batch[i]
 		switch w.op {
 		case put:
-			nodes[w.nodeID] = w.node
+			n := w.node
+			n.GivenName = resolveGivenName(nodes, n.ID, n.GivenName)
+
+			nodes[w.nodeID] = n
 			if w.nodeResult != nil {
 				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
 			}
 		case update:
 			// Update the specific node identified by nodeID
 			if n, exists := nodes[w.nodeID]; exists {
+				oldGivenName := n.GivenName
 				w.updateFn(&n)
+
+				if n.GivenName != oldGivenName {
+					n.GivenName = resolveGivenName(nodes, n.ID, n.GivenName)
+				}
 				nodes[w.nodeID] = n
 			}
 
@@ -342,6 +417,41 @@ func (s *NodeStore) applyBatch(batch []work) {
 			if w.nodeResult != nil {
 				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
 			}
+		case setName:
+			n, exists := nodes[w.nodeID]
+			if !exists {
+				setErrResults[w] = ErrNodeNotFound
+				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
+
+				continue
+			}
+
+			if dnsname.ValidLabel(w.name) != nil {
+				setErrResults[w] = ErrGivenNameInvalid
+				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
+
+				continue
+			}
+
+			taken := false
+
+			for id, other := range nodes {
+				if id != w.nodeID && other.GivenName == w.name {
+					taken = true
+					break
+				}
+			}
+
+			if taken {
+				setErrResults[w] = ErrGivenNameTaken
+				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
+
+				continue
+			}
+
+			n.GivenName = w.name
+			nodes[w.nodeID] = n
+			nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
 		case rebuildPeerMaps:
 			// rebuildPeerMaps doesn't modify nodes, it just forces the snapshot rebuild
 			// below to recalculate peer relationships using the current peersFunc
@@ -363,6 +473,12 @@ func (s *NodeStore) applyBatch(batch []work) {
 				w.nodeResult <- nodeView
 
 				close(w.nodeResult)
+
+				if w.errResult != nil {
+					w.errResult <- setErrResults[w]
+
+					close(w.errResult)
+				}
 			}
 		} else {
 			// Node was deleted or doesn't exist
@@ -370,6 +486,12 @@ func (s *NodeStore) applyBatch(batch []work) {
 				w.nodeResult <- types.NodeView{} // Send invalid view
 
 				close(w.nodeResult)
+
+				if w.errResult != nil {
+					w.errResult <- setErrResults[w]
+
+					close(w.errResult)
+				}
 			}
 		}
 	}
@@ -384,6 +506,40 @@ func (s *NodeStore) applyBatch(batch []work) {
 		if w.op != rebuildPeerMaps {
 			close(w.result)
 		}
+	}
+}
+
+// resolveGivenName returns a unique DNS label for the node identified
+// by self, based on the caller-supplied base label. If base is empty
+// it falls back to fallbackGivenName ("node"). The label's own holder
+// (self) is excluded from the collision scan so an idempotent write
+// keeps the current label.
+//
+// On collision the label is bumped as base, base-1, base-2, …, first
+// unused wins. Must be called from the NodeStore writer goroutine
+// (inside applyBatch) so the nodes map reflects all earlier ops in
+// the batch and no other writer can interleave.
+func resolveGivenName(nodes map[types.NodeID]types.Node, self types.NodeID, base string) string {
+	if base == "" {
+		base = fallbackGivenName
+	}
+
+	taken := make(map[string]struct{}, len(nodes))
+	for id, n := range nodes {
+		if id == self {
+			continue
+		}
+
+		taken[n.GivenName] = struct{}{}
+	}
+
+	candidate := base
+	for i := 1; ; i++ {
+		if _, busy := taken[candidate]; !busy {
+			return candidate
+		}
+
+		candidate = base + "-" + strconv.Itoa(i)
 	}
 }
 
