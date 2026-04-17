@@ -69,6 +69,46 @@ func TestPolicyManager(t *testing.T) {
 	}
 }
 
+func TestBuildPeerMapFromAppOnlyRelayGrant(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "alice", Email: "alice@headscale.net"},
+		{Model: gorm.Model{ID: 2}, Name: "bob", Email: "bob@headscale.net"},
+	}
+
+	relay := node("relay", "100.64.0.3", "fd7a:115c:a1e0::3", users[0])
+	relay.ID = 1
+	relay.Tags = []string{"tag:relay"}
+
+	client := node("client", "100.64.0.2", "fd7a:115c:a1e0::2", users[1])
+	client.ID = 2
+
+	nodes := types.Nodes{relay, client}
+
+	policy := `{
+		"tagOwners": {
+			"tag:relay": ["alice@"]
+		},
+		"grants": [
+			{
+				"src": ["bob@"],
+				"dst": ["tag:relay"],
+				"app": {
+					"tailscale.com/cap/relay": [{}]
+				}
+			}
+		]
+	}`
+
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	peerMap := pm.BuildPeerMap(nodes.ViewSlice())
+	require.Len(t, peerMap[relay.ID], 1)
+	require.Len(t, peerMap[client.ID], 1)
+	require.Equal(t, client.ID, peerMap[relay.ID][0].ID())
+	require.Equal(t, relay.ID, peerMap[client.ID][0].ID())
+}
+
 func TestInvalidateAutogroupSelfCache(t *testing.T) {
 	users := types.Users{
 		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@headscale.net"},
