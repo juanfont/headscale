@@ -2,6 +2,7 @@ package matcher
 
 import (
 	"net/netip"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -428,4 +429,44 @@ func TestDebugString(t *testing.T) {
 	assert.Contains(t, s, "Destinations:")
 	assert.Contains(t, s, "10.0.0.0/8")
 	assert.Contains(t, s, "192.168.1.0/24")
+
+	// Sources appear before Destinations in the output.
+	assert.Less(
+		t,
+		strings.Index(s, "Sources:"),
+		strings.Index(s, "Destinations:"),
+		"Sources section must precede Destinations",
+	)
+}
+
+func TestDebugString_Empty(t *testing.T) {
+	t.Parallel()
+
+	m := MatchFromStrings(nil, nil)
+
+	s := m.DebugString()
+	assert.Contains(t, s, "Match:")
+	assert.Contains(t, s, "Sources:")
+	assert.Contains(t, s, "Destinations:")
+	assert.NotContains(t, s, "/")
+}
+
+// TestMatchFromStrings_MalformedFailsOpen asserts that unparseable
+// entries are silently dropped and do not crash or widen the Match.
+func TestMatchFromStrings_MalformedFailsOpen(t *testing.T) {
+	t.Parallel()
+
+	m := MatchFromStrings(
+		[]string{"not-a-cidr", "10.0.0.0/8"},
+		[]string{"also-bogus", "192.168.1.0/24"},
+	)
+
+	assert.True(t, m.SrcsContainsIPs(netip.MustParseAddr("10.1.2.3")),
+		"valid src entry must still match")
+	assert.False(t, m.SrcsContainsIPs(netip.MustParseAddr("1.1.1.1")),
+		"malformed src entry must not widen the set")
+	assert.True(t, m.DestsContainsIP(netip.MustParseAddr("192.168.1.10")),
+		"valid dst entry must still match")
+	assert.False(t, m.DestsContainsIP(netip.MustParseAddr("8.8.8.8")),
+		"malformed dst entry must not widen the set")
 }
