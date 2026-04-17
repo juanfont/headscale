@@ -24,7 +24,6 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	"gorm.io/gorm/schema"
-	"zgo.at/zcache/v2"
 )
 
 //go:embed schema.sql
@@ -45,19 +44,15 @@ const (
 )
 
 type HSDatabase struct {
-	DB       *gorm.DB
-	cfg      *types.Config
-	regCache *zcache.Cache[types.AuthID, types.AuthRequest]
+	DB  *gorm.DB
+	cfg *types.Config
 }
 
 // NewHeadscaleDatabase creates a new database connection and runs migrations.
 // It accepts the full configuration to allow migrations access to policy settings.
 //
 //nolint:gocyclo // complex database initialization with many migrations
-func NewHeadscaleDatabase(
-	cfg *types.Config,
-	regCache *zcache.Cache[types.AuthID, types.AuthRequest],
-) (*HSDatabase, error) {
+func NewHeadscaleDatabase(cfg *types.Config) (*HSDatabase, error) {
 	dbConn, err := openDB(cfg.Database)
 	if err != nil {
 		return nil, err
@@ -677,7 +672,7 @@ AND auth_key_id NOT IN (
 							continue
 						}
 
-						mergedTags := append(existingTags, validatedTags...)
+						mergedTags := append(slices.Clone(existingTags), validatedTags...)
 						slices.Sort(mergedTags)
 						mergedTags = slices.Compact(mergedTags)
 
@@ -838,9 +833,8 @@ WHERE tags IS NOT NULL AND tags != '[]' AND tags != '';
 	}
 
 	db := HSDatabase{
-		DB:       dbConn,
-		cfg:      cfg,
-		regCache: regCache,
+		DB:  dbConn,
+		cfg: cfg,
 	}
 
 	return &db, err

@@ -7,10 +7,20 @@ import (
 	"sync"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/ory/dockertest/v3"
 )
 
-const dockerExecuteTimeout = time.Second * 10
+// defaultExecuteTimeout returns the timeout for docker exec commands.
+// On CI runners, docker exec latency is higher due to resource
+// contention, so the timeout is doubled.
+func defaultExecuteTimeout() time.Duration {
+	if util.IsCI() {
+		return 20 * time.Second
+	}
+
+	return 10 * time.Second
+}
 
 var (
 	ErrDockertestCommandFailed  = errors.New("dockertest command failed")
@@ -64,7 +74,7 @@ func ExecuteCommand(
 	stderr := buffer{}
 
 	execConfig := ExecuteCommandConfig{
-		timeout: dockerExecuteTimeout,
+		timeout: defaultExecuteTimeout(),
 	}
 
 	for _, opt := range options {

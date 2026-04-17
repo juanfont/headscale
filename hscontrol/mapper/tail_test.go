@@ -3,6 +3,7 @@ package mapper
 import (
 	"encoding/json"
 	"net/netip"
+	"slices"
 	"testing"
 	"time"
 
@@ -74,9 +75,11 @@ func TestTailNode(t *testing.T) {
 				MachineAuthorized: true,
 
 				CapMap: tailcfg.NodeCapMap{
-					tailcfg.CapabilityFileSharing: []tailcfg.RawMessage{},
-					tailcfg.CapabilityAdmin:       []tailcfg.RawMessage{},
-					tailcfg.CapabilitySSH:         []tailcfg.RawMessage{},
+					tailcfg.CapabilityFileSharing:    []tailcfg.RawMessage{},
+					tailcfg.CapabilityAdmin:          []tailcfg.RawMessage{},
+					tailcfg.CapabilitySSH:            []tailcfg.RawMessage{},
+					tailcfg.NodeAttrsTaildriveShare:  []tailcfg.RawMessage{},
+					tailcfg.NodeAttrsTaildriveAccess: []tailcfg.RawMessage{},
 				},
 			},
 			wantErr: false,
@@ -163,9 +166,11 @@ func TestTailNode(t *testing.T) {
 				MachineAuthorized: true,
 
 				CapMap: tailcfg.NodeCapMap{
-					tailcfg.CapabilityFileSharing: []tailcfg.RawMessage{},
-					tailcfg.CapabilityAdmin:       []tailcfg.RawMessage{},
-					tailcfg.CapabilitySSH:         []tailcfg.RawMessage{},
+					tailcfg.CapabilityFileSharing:    []tailcfg.RawMessage{},
+					tailcfg.CapabilityAdmin:          []tailcfg.RawMessage{},
+					tailcfg.CapabilitySSH:            []tailcfg.RawMessage{},
+					tailcfg.NodeAttrsTaildriveShare:  []tailcfg.RawMessage{},
+					tailcfg.NodeAttrsTaildriveAccess: []tailcfg.RawMessage{},
 				},
 			},
 			wantErr: false,
@@ -188,9 +193,11 @@ func TestTailNode(t *testing.T) {
 				MachineAuthorized: true,
 
 				CapMap: tailcfg.NodeCapMap{
-					tailcfg.CapabilityFileSharing: []tailcfg.RawMessage{},
-					tailcfg.CapabilityAdmin:       []tailcfg.RawMessage{},
-					tailcfg.CapabilitySSH:         []tailcfg.RawMessage{},
+					tailcfg.CapabilityFileSharing:    []tailcfg.RawMessage{},
+					tailcfg.CapabilityAdmin:          []tailcfg.RawMessage{},
+					tailcfg.CapabilitySSH:            []tailcfg.RawMessage{},
+					tailcfg.NodeAttrsTaildriveShare:  []tailcfg.RawMessage{},
+					tailcfg.NodeAttrsTaildriveAccess: []tailcfg.RawMessage{},
 				},
 			},
 			wantErr: false,
@@ -214,10 +221,13 @@ func TestTailNode(t *testing.T) {
 			// This is a hack to avoid having a second node to test the primary route.
 			// This should be baked into the test case proper if it is extended in the future.
 			_ = primary.SetRoutes(2, netip.MustParsePrefix("192.168.0.0/24"))
-			got, err := tt.node.View().TailNode(
+			nv := tt.node.View()
+			got, err := nv.TailNode(
 				0,
 				func(id types.NodeID) []netip.Prefix {
-					return primary.PrimaryRoutes(id)
+					// Route function returns primaries + exit routes
+					// (matching the real caller contract).
+					return slices.Concat(primary.PrimaryRoutes(id), nv.ExitRoutes())
 				},
 				cfg,
 			)

@@ -1,0 +1,112 @@
+---
+name: Build (main)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "*.nix"
+      - "go.*"
+      - "**/*.go"
+      - ".github/workflows/container-main.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  container:
+    if: github.repository == 'juanfont/headscale'
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - name: Login to DockerHub
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Login to GHCR
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: nixbuild/nix-quick-install-action@2c9db80fb984ceb1bcaa77cdda3fdf8cfba92035 # v34
+      - uses: nix-community/cache-nix-action@135667ec418502fa5a3598af6fb9eb733888ce6a # v6.1.3
+        with:
+          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix',
+            '**/flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Set commit timestamp
+        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> $GITHUB_ENV
+
+      - name: Build and push to GHCR
+        env:
+          KO_DOCKER_REPO: ghcr.io/juanfont/headscale
+          KO_DEFAULTBASEIMAGE: gcr.io/distroless/base-debian13
+          CGO_ENABLED: "0"
+        run: |
+          nix develop --command -- ko build \
+            --bare \
+            --platform=linux/amd64,linux/arm64 \
+            --tags=main-${GITHUB_SHA::7},development \
+            ./cmd/headscale
+
+      - name: Push to Docker Hub
+        env:
+          KO_DOCKER_REPO: headscale/headscale
+          KO_DEFAULTBASEIMAGE: gcr.io/distroless/base-debian13
+          CGO_ENABLED: "0"
+        run: |
+          nix develop --command -- ko build \
+            --bare \
+            --platform=linux/amd64,linux/arm64 \
+            --tags=main-${GITHUB_SHA::7},development \
+            ./cmd/headscale
+
+  binaries:
+    if: github.repository == 'juanfont/headscale'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - uses: nixbuild/nix-quick-install-action@2c9db80fb984ceb1bcaa77cdda3fdf8cfba92035 # v34
+      - uses: nix-community/cache-nix-action@135667ec418502fa5a3598af6fb9eb733888ce6a # v6.1.3
+        with:
+          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix',
+            '**/flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Build binary
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: nix develop --command -- go build -o headscale ./cmd/headscale
+
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: headscale-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: headscale

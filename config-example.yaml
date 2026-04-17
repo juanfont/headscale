@@ -50,12 +50,21 @@ noise:
 # List of IP prefixes to allocate tailaddresses from.
 # Each prefix consists of either an IPv4 or IPv6 address,
 # and the associated prefix length, delimited by a slash.
-# It must be within IP ranges supported by the Tailscale
-# client - i.e., subnets of 100.64.0.0/10 and fd7a:115c:a1e0::/48.
-# See below:
-# IPv6: https://github.com/tailscale/tailscale/blob/22ebb25e833264f58d7c3f534a8b166894a89536/net/tsaddr/tsaddr.go#LL81C52-L81C71
+#
+# WARNING: These prefixes MUST be subsets of the standard Tailscale ranges:
+#   - IPv4: 100.64.0.0/10 (CGNAT range)
+#   - IPv6: fd7a:115c:a1e0::/48 (Tailscale ULA range)
+#
+# Using a SUBSET of these ranges is supported and useful if you want to
+# limit IP allocation to a smaller block (e.g., 100.64.0.0/24).
+#
+# Using ranges OUTSIDE of CGNAT/ULA is NOT supported and will cause
+# undefined behaviour. The Tailscale client has hard-coded assumptions
+# about these ranges and will break in subtle, hard-to-debug ways.
+#
+# See:
 # IPv4: https://github.com/tailscale/tailscale/blob/22ebb25e833264f58d7c3f534a8b166894a89536/net/tsaddr/tsaddr.go#L33
-# Any other range is NOT supported, and it will cause unexpected issues.
+# IPv6: https://github.com/tailscale/tailscale/blob/22ebb25e833264f58d7c3f534a8b166894a89536/net/tsaddr/tsaddr.go#LL81C52-L81C71
 prefixes:
   v4: 100.64.0.0/10
   v6: fd7a:115c:a1e0::/48
@@ -136,8 +145,45 @@ derp:
 # Disables the automatic check for headscale updates on startup
 disable_check_updates: false
 
-# Time before an inactive ephemeral node is deleted?
-ephemeral_node_inactivity_timeout: 30m
+# Node lifecycle configuration.
+node:
+  # Default key expiry for non-tagged nodes, regardless of registration method
+  # (auth key, CLI, web auth). Tagged nodes are exempt and never expire.
+  #
+  # This is the base default. OIDC can override this via oidc.expiry.
+  # If a client explicitly requests a specific expiry, the client value is used.
+  #
+  # Setting the value to "0" means no default expiry (nodes never expire unless
+  # explicitly expired via `headscale nodes expire`).
+  #
+  # Tailscale SaaS uses 180d; set to a positive duration to match that behaviour.
+  #
+  # Default: 0 (no default expiry)
+  expiry: 0
+
+  ephemeral:
+    # Time before an inactive ephemeral node is deleted.
+    inactivity_timeout: 30m
+
+  # HA subnet router health probing.
+  #
+  # When HA routes exist (2+ nodes advertising the same prefix), headscale
+  # pings each HA node every probe_interval via the Noise channel. If a node
+  # fails to respond within probe_timeout it is marked unhealthy and the
+  # primary role moves to the next healthy node. A node that later responds
+  # is marked healthy again but does NOT reclaim primary (avoids flapping).
+  #
+  # Worst-case detection time is probe_interval + probe_timeout (15s default).
+  # No-op when no HA routes exist. Set probe_interval to 0 to disable.
+  routes:
+    ha:
+      # How often to ping HA subnet routers. Set to 0 to disable probing.
+      # Must be >= 2s when enabled.
+      probe_interval: 10s
+
+      # How long to wait for a ping response before marking a node unhealthy.
+      # Must be >= 1s and less than probe_interval.
+      probe_timeout: 5s
 
 database:
   # Database type. Available options: sqlite, postgres
@@ -346,15 +392,11 @@ unix_socket_permission: "0770"
 #   # `LoadCredential` straightforward:
 #   client_secret_path: "${CREDENTIALS_DIRECTORY}/oidc_client_secret"
 #
-#   # The amount of time a node is authenticated with OpenID until it expires
-#   # and needs to reauthenticate.
-#   # Setting the value to "0" will mean no expiry.
-#   expiry: 180d
-#
 #   # Use the expiry from the token received from OpenID when the user logged
 #   # in. This will typically lead to frequent need to reauthenticate and should
 #   # only be enabled if you know what you are doing.
-#   # Note: enabling this will cause `oidc.expiry` to be ignored.
+#   # Note: enabling this will cause `node.expiry` to be ignored for
+#   # OIDC-authenticated nodes.
 #   use_expiry_from_token: false
 #
 #   # The OIDC scopes to use, defaults to "openid", "profile" and "email".
@@ -428,6 +470,11 @@ taildrop:
 # Only modify these if you have identified a specific performance issue.
 #
 # tuning:
+#   # Maximum number of pending registration entries in the auth cache.
+#   # Oldest entries are evicted when the cap is reached.
+#   #
+#   # register_cache_max_entries: 1024
+#
 #   # NodeStore write batching configuration.
 #   # The NodeStore batches write operations before rebuilding peer relationships,
 #   # which is computationally expensive. Batching reduces rebuild frequency.

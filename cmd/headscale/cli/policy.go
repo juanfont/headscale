@@ -28,7 +28,7 @@ func bypassDatabase() (*db.HSDatabase, error) {
 		return nil, fmt.Errorf("loading config: %w", err)
 	}
 
-	d, err := db.NewHeadscaleDatabase(cfg, nil)
+	d, err := db.NewHeadscaleDatabase(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("opening database: %w", err)
 	}
@@ -63,6 +63,7 @@ var getPolicy = &cobra.Command{
 	Aliases: []string{"show", "view", "fetch"},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var policyData string
+
 		if bypass, _ := cmd.Flags().GetBool(bypassFlag); bypass {
 			if !confirmAction(cmd, "DO NOT run this command if an instance of headscale is running, are you sure headscale is not running?") {
 				return errAborted

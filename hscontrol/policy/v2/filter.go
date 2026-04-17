@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -22,90 +23,184 @@ var (
 	errSelfInSources = errors.New("autogroup:self cannot be used in sources")
 )
 
+// companionCaps maps certain well-known Tailscale capabilities to
+// their companion capability. When a grant includes one of these
+// capabilities, Tailscale automatically generates an additional
+// FilterRule with the companion capability and a nil CapMap value.
+var companionCaps = map[tailcfg.PeerCapability]tailcfg.PeerCapability{
+	tailcfg.PeerCapabilityTaildrive: tailcfg.PeerCapabilityTaildriveSharer,
+	tailcfg.PeerCapabilityRelay:     tailcfg.PeerCapabilityRelayTarget,
+}
+
+// companionCapGrantRules returns additional FilterRules for any
+// well-known capabilities that have companion caps. Companion rules
+// are **reversed**: SrcIPs come from the original destinations and
+// CapGrant Dsts come from the original sources. This allows
+// ReduceFilterRules to distribute companion rules to source nodes
+// (e.g. drive-sharer goes to the member nodes, not the destination).
+// Rules are ordered by the original capability name.
+//
+// dstIPStrings are the resolved destination IPs as strings (used as
+// companion SrcIPs). srcPrefixes are the resolved source IPs as
+// netip.Prefix (used as companion CapGrant Dsts).
+func companionCapGrantRules(
+	dstIPStrings []string,
+	srcPrefixes []netip.Prefix,
+	capMap tailcfg.PeerCapMap,
+) []tailcfg.FilterRule {
+	// Process in deterministic order by original capability name.
+	type pair struct {
+		original  tailcfg.PeerCapability
+		companion tailcfg.PeerCapability
+	}
+
+	var pairs []pair
+
+	for cap, companion := range companionCaps {
+		if _, ok := capMap[cap]; ok {
+			pairs = append(pairs, pair{cap, companion})
+		}
+	}
+
+	slices.SortFunc(pairs, func(a, b pair) int {
+		return cmp.Compare(a.original, b.original)
+	})
+
+	companions := make([]tailcfg.FilterRule, 0, len(pairs))
+
+	for _, p := range pairs {
+		companions = append(companions, tailcfg.FilterRule{
+			SrcIPs: dstIPStrings,
+			CapGrant: []tailcfg.CapGrant{
+				{
+					Dsts: srcPrefixes,
+					CapMap: tailcfg.PeerCapMap{
+						p.companion: nil,
+					},
+				},
+			},
+		})
+	}
+
+	return companions
+}
+
+// sourcesHaveWildcard returns true if any of the source aliases is
+// a wildcard (*). Used to determine whether approved subnet routes
+// should be appended to SrcIPs.
+func sourcesHaveWildcard(srcs Aliases) bool {
+	for _, src := range srcs {
+		if _, ok := src.(Asterix); ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+// sourcesHaveDangerAll returns true if any of the source aliases is
+// autogroup:danger-all. When present, SrcIPs should be ["*"] to
+// represent all IP addresses including non-Tailscale addresses.
+func sourcesHaveDangerAll(srcs Aliases) bool {
+	for _, src := range srcs {
+		if ag, ok := src.(*AutoGroup); ok && ag.Is(AutoGroupDangerAll) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// srcIPsWithRoutes returns the SrcIPs string slice, appending
+// approved subnet routes when the sources include a wildcard.
+// When hasDangerAll is true, returns ["*"] to represent all IPs.
+func srcIPsWithRoutes(
+	resolved ResolvedAddresses,
+	hasWildcard bool,
+	hasDangerAll bool,
+	nodes views.Slice[types.NodeView],
+) []string {
+	if hasDangerAll {
+		return []string{"*"}
+	}
+
+	ips := resolved.Strings()
+	if hasWildcard {
+		ips = append(ips, approvedSubnetRoutes(nodes)...)
+	}
+
+	return ips
+}
+
 // compileFilterRules takes a set of nodes and an ACLPolicy and generates a
 // set of Tailscale compatible FilterRules used to allow traffic on clients.
 func (pol *Policy) compileFilterRules(
 	users types.Users,
 	nodes views.Slice[types.NodeView],
 ) ([]tailcfg.FilterRule, error) {
-	if pol == nil || pol.ACLs == nil {
+	if pol == nil || (pol.ACLs == nil && len(pol.Grants) == 0) {
 		return tailcfg.FilterAllowAll, nil
 	}
 
-	var rules []tailcfg.FilterRule
+	return globalFilterRules(pol.compileGrants(users, nodes)), nil
+}
 
-	for _, acl := range pol.ACLs {
-		if acl.Action != ActionAccept {
-			return nil, ErrInvalidAction
+func (pol *Policy) destinationsToNetPortRange(
+	users types.Users,
+	nodes views.Slice[types.NodeView],
+	dests Aliases,
+	ports []tailcfg.PortRange,
+) []tailcfg.NetPortRange {
+	var ret []tailcfg.NetPortRange
+
+	for _, dest := range dests {
+		// Check if destination is a wildcard - use "*" directly instead of expanding
+		if _, isWildcard := dest.(Asterix); isWildcard {
+			for _, port := range ports {
+				ret = append(ret, tailcfg.NetPortRange{
+					IP:    "*",
+					Ports: port,
+				})
+			}
+
+			continue
 		}
 
-		srcIPs, err := acl.Sources.Resolve(pol, users, nodes)
+		// autogroup:internet does not generate packet filters - it's handled
+		// by exit node routing via AllowedIPs, not by packet filtering.
+		if ag, isAutoGroup := dest.(*AutoGroup); isAutoGroup && ag.Is(AutoGroupInternet) {
+			continue
+		}
+
+		ips, err := dest.Resolve(pol, users, nodes)
 		if err != nil {
-			log.Trace().Caller().Err(err).Msgf("resolving source ips")
+			log.Trace().Caller().Err(err).Msgf("resolving destination ips")
 		}
 
-		if srcIPs == nil || len(srcIPs.Prefixes()) == 0 {
+		if ips == nil {
+			log.Debug().Caller().Msgf("destination resolved to nil ips: %v", dest)
 			continue
 		}
 
-		protocols := acl.Protocol.parseProtocol()
+		prefixes := ips.Prefixes()
 
-		var destPorts []tailcfg.NetPortRange
-
-		for _, dest := range acl.Destinations {
-			// Check if destination is a wildcard - use "*" directly instead of expanding
-			if _, isWildcard := dest.Alias.(Asterix); isWildcard {
-				for _, port := range dest.Ports {
-					destPorts = append(destPorts, tailcfg.NetPortRange{
-						IP:    "*",
-						Ports: port,
-					})
+		for _, pref := range prefixes {
+			for _, port := range ports {
+				pr := tailcfg.NetPortRange{
+					IP:    pref.String(),
+					Ports: port,
+				}
+				// Drop the prefix bits if its a single IP.
+				if pref.IsSingleIP() {
+					pr.IP = pref.Addr().String()
 				}
 
-				continue
-			}
-
-			// autogroup:internet does not generate packet filters - it's handled
-			// by exit node routing via AllowedIPs, not by packet filtering.
-			if ag, isAutoGroup := dest.Alias.(*AutoGroup); isAutoGroup && ag.Is(AutoGroupInternet) {
-				continue
-			}
-
-			ips, err := dest.Resolve(pol, users, nodes)
-			if err != nil {
-				log.Trace().Caller().Err(err).Msgf("resolving destination ips")
-			}
-
-			if ips == nil {
-				log.Debug().Caller().Msgf("destination resolved to nil ips: %v", dest)
-				continue
-			}
-
-			prefixes := ips.Prefixes()
-
-			for _, pref := range prefixes {
-				for _, port := range dest.Ports {
-					pr := tailcfg.NetPortRange{
-						IP:    pref.String(),
-						Ports: port,
-					}
-					destPorts = append(destPorts, pr)
-				}
+				ret = append(ret, pr)
 			}
 		}
-
-		if len(destPorts) == 0 {
-			continue
-		}
-
-		rules = append(rules, tailcfg.FilterRule{
-			SrcIPs:   ipSetToPrefixStringList(srcIPs),
-			DstPorts: destPorts,
-			IPProto:  protocols,
-		})
 	}
 
-	return mergeFilterRules(rules), nil
+	return ret
 }
 
 // compileFilterRulesForNode compiles filter rules for a specific node.
@@ -118,205 +213,10 @@ func (pol *Policy) compileFilterRulesForNode(
 		return tailcfg.FilterAllowAll, nil
 	}
 
-	var rules []tailcfg.FilterRule
+	grants := pol.compileGrants(users, nodes)
+	userIdx := buildUserNodeIndex(nodes)
 
-	for _, acl := range pol.ACLs {
-		if acl.Action != ActionAccept {
-			return nil, ErrInvalidAction
-		}
-
-		aclRules, err := pol.compileACLWithAutogroupSelf(acl, users, node, nodes)
-		if err != nil {
-			log.Trace().Err(err).Msgf("compiling ACL")
-			continue
-		}
-
-		for _, rule := range aclRules {
-			if rule != nil {
-				rules = append(rules, *rule)
-			}
-		}
-	}
-
-	return mergeFilterRules(rules), nil
-}
-
-// compileACLWithAutogroupSelf compiles a single ACL rule, handling
-// autogroup:self per-node while supporting all other alias types normally.
-// It returns a slice of filter rules because when an ACL has both autogroup:self
-// and other destinations, they need to be split into separate rules with different
-// source filtering logic.
-//
-//nolint:gocyclo // complex ACL compilation logic
-func (pol *Policy) compileACLWithAutogroupSelf(
-	acl ACL,
-	users types.Users,
-	node types.NodeView,
-	nodes views.Slice[types.NodeView],
-) ([]*tailcfg.FilterRule, error) {
-	var (
-		autogroupSelfDests []AliasWithPorts
-		otherDests         []AliasWithPorts
-	)
-
-	for _, dest := range acl.Destinations {
-		if ag, ok := dest.Alias.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
-			autogroupSelfDests = append(autogroupSelfDests, dest)
-		} else {
-			otherDests = append(otherDests, dest)
-		}
-	}
-
-	protocols := acl.Protocol.parseProtocol()
-
-	var rules []*tailcfg.FilterRule
-
-	var resolvedSrcIPs []*netipx.IPSet
-
-	for _, src := range acl.Sources {
-		if ag, ok := src.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
-			return nil, errSelfInSources
-		}
-
-		ips, err := src.Resolve(pol, users, nodes)
-		if err != nil {
-			log.Trace().Caller().Err(err).Msgf("resolving source ips")
-		}
-
-		if ips != nil {
-			resolvedSrcIPs = append(resolvedSrcIPs, ips)
-		}
-	}
-
-	if len(resolvedSrcIPs) == 0 {
-		return rules, nil
-	}
-
-	// Handle autogroup:self destinations (if any)
-	// Tagged nodes don't participate in autogroup:self (identity is tag-based, not user-based)
-	if len(autogroupSelfDests) > 0 && !node.IsTagged() {
-		// Pre-filter to same-user untagged devices once - reuse for both sources and destinations
-		sameUserNodes := make([]types.NodeView, 0)
-
-		for _, n := range nodes.All() {
-			if !n.IsTagged() && n.User().ID() == node.User().ID() {
-				sameUserNodes = append(sameUserNodes, n)
-			}
-		}
-
-		if len(sameUserNodes) > 0 {
-			// Filter sources to only same-user untagged devices
-			var srcIPs netipx.IPSetBuilder
-
-			for _, ips := range resolvedSrcIPs {
-				for _, n := range sameUserNodes {
-					// Check if any of this node's IPs are in the source set
-					if slices.ContainsFunc(n.IPs(), ips.Contains) {
-						n.AppendToIPSet(&srcIPs)
-					}
-				}
-			}
-
-			srcSet, err := srcIPs.IPSet()
-			if err != nil {
-				return nil, err
-			}
-
-			if srcSet != nil && len(srcSet.Prefixes()) > 0 {
-				var destPorts []tailcfg.NetPortRange
-
-				for _, dest := range autogroupSelfDests {
-					for _, n := range sameUserNodes {
-						for _, port := range dest.Ports {
-							for _, ip := range n.IPs() {
-								destPorts = append(destPorts, tailcfg.NetPortRange{
-									IP:    netip.PrefixFrom(ip, ip.BitLen()).String(),
-									Ports: port,
-								})
-							}
-						}
-					}
-				}
-
-				if len(destPorts) > 0 {
-					rules = append(rules, &tailcfg.FilterRule{
-						SrcIPs:   ipSetToPrefixStringList(srcSet),
-						DstPorts: destPorts,
-						IPProto:  protocols,
-					})
-				}
-			}
-		}
-	}
-
-	if len(otherDests) > 0 {
-		var srcIPs netipx.IPSetBuilder
-
-		for _, ips := range resolvedSrcIPs {
-			srcIPs.AddSet(ips)
-		}
-
-		srcSet, err := srcIPs.IPSet()
-		if err != nil {
-			return nil, err
-		}
-
-		if srcSet != nil && len(srcSet.Prefixes()) > 0 {
-			var destPorts []tailcfg.NetPortRange
-
-			for _, dest := range otherDests {
-				// Check if destination is a wildcard - use "*" directly instead of expanding
-				if _, isWildcard := dest.Alias.(Asterix); isWildcard {
-					for _, port := range dest.Ports {
-						destPorts = append(destPorts, tailcfg.NetPortRange{
-							IP:    "*",
-							Ports: port,
-						})
-					}
-
-					continue
-				}
-
-				// autogroup:internet does not generate packet filters - it's handled
-				// by exit node routing via AllowedIPs, not by packet filtering.
-				if ag, isAutoGroup := dest.Alias.(*AutoGroup); isAutoGroup && ag.Is(AutoGroupInternet) {
-					continue
-				}
-
-				ips, err := dest.Resolve(pol, users, nodes)
-				if err != nil {
-					log.Trace().Caller().Err(err).Msgf("resolving destination ips")
-				}
-
-				if ips == nil {
-					log.Debug().Caller().Msgf("destination resolved to nil ips: %v", dest)
-					continue
-				}
-
-				prefixes := ips.Prefixes()
-
-				for _, pref := range prefixes {
-					for _, port := range dest.Ports {
-						pr := tailcfg.NetPortRange{
-							IP:    pref.String(),
-							Ports: port,
-						}
-						destPorts = append(destPorts, pr)
-					}
-				}
-			}
-
-			if len(destPorts) > 0 {
-				rules = append(rules, &tailcfg.FilterRule{
-					SrcIPs:   ipSetToPrefixStringList(srcSet),
-					DstPorts: destPorts,
-					IPProto:  protocols,
-				})
-			}
-		}
-	}
-
-	return rules, nil
+	return filterRulesForNode(grants, node, userIdx), nil
 }
 
 var sshAccept = tailcfg.SSHAction{
@@ -330,6 +230,8 @@ var sshAccept = tailcfg.SSHAction{
 // checkPeriodFromRule extracts the check period duration from an SSH rule.
 // Returns SSHCheckPeriodDefault if no checkPeriod is configured,
 // 0 if checkPeriod is "always", or the configured duration otherwise.
+// This is used server-side by SSHCheckParams to resolve the real period
+// when the client calls back; the wire format always sends 0.
 func checkPeriodFromRule(rule SSH) time.Duration {
 	switch {
 	case rule.CheckPeriod == nil:
@@ -341,13 +243,13 @@ func checkPeriodFromRule(rule SSH) time.Duration {
 	}
 }
 
-func sshCheck(baseURL string, duration time.Duration) tailcfg.SSHAction {
-	holdURL := baseURL + "/machine/ssh/action/from/$SRC_NODE_ID/to/$DST_NODE_ID?ssh_user=$SSH_USER&local_user=$LOCAL_USER"
+func sshCheck(baseURL string, _ time.Duration) tailcfg.SSHAction {
+	holdURL := baseURL + "/machine/ssh/action/$SRC_NODE_ID/to/$DST_NODE_ID?local_user=$LOCAL_USER"
 
 	return tailcfg.SSHAction{
 		Reject:          false,
 		Accept:          false,
-		SessionDuration: duration,
+		SessionDuration: 0,
 		// Replaced in the client:
 		//   * $SRC_NODE_IP (URL escaped)
 		//   * $SRC_NODE_ID (Node.ID as int64 string)
@@ -356,9 +258,9 @@ func sshCheck(baseURL string, duration time.Duration) tailcfg.SSHAction {
 		//   * $SSH_USER (URL escaped, ssh user requested)
 		//   * $LOCAL_USER (URL escaped, local user mapped)
 		HoldAndDelegate:           holdURL,
-		AllowAgentForwarding:      true,
-		AllowLocalPortForwarding:  true,
-		AllowRemotePortForwarding: true,
+		AllowAgentForwarding:      false,
+		AllowLocalPortForwarding:  false,
+		AllowRemotePortForwarding: false,
 	}
 }
 
@@ -490,7 +392,9 @@ func (pol *Policy) compileSSHPolicy(
 				}
 
 				if ips != nil {
-					dest.AddSet(ips)
+					for _, pref := range ips.Prefixes() {
+						dest.AddPrefix(pref)
+					}
 				}
 			}
 
@@ -513,16 +417,27 @@ func (pol *Policy) compileSSHPolicy(
 						appendRules(taggedPrincipals, 0, false)
 					}
 				} else {
-					if principals := ipSetToPrincipals(srcIPs); len(principals) > 0 {
+					// Merge user and tagged principals into a
+					// single list. Tagged principals preserve
+					// per-tag duplication (a node with N tags
+					// appears N times, matching SaaS behavior).
+					var allPrincipals []*tailcfg.SSHPrincipal
+					for _, uid := range userIDs {
+						allPrincipals = append(allPrincipals, principalsByUser[uid]...)
+					}
+
+					allPrincipals = append(allPrincipals, taggedPrincipals...)
+
+					if len(allPrincipals) > 0 {
 						rules = append(rules, &tailcfg.SSHRule{
-							Principals: principals,
+							Principals: allPrincipals,
 							SSHUsers:   baseUserMap,
 							Action:     &action,
 							AcceptEnv:  acceptEnv,
 						})
 					}
 				}
-			} else if hasLocalpart && node.InIPSet(srcIPs) {
+			} else if hasLocalpart && slices.ContainsFunc(node.IPs(), srcIPs.Contains) {
 				// Self-access: source node not in destination set
 				// receives rules scoped to its own user.
 				if node.IsTagged() {
@@ -566,6 +481,23 @@ func (pol *Policy) compileSSHPolicy(
 	return &tailcfg.SSHPolicy{
 		Rules: rules,
 	}, nil
+}
+
+// resolvedAddrsToPrincipals converts ResolvedAddresses into SSH principals, one per address.
+func resolvedAddrsToPrincipals(addrs ResolvedAddresses) []*tailcfg.SSHPrincipal {
+	if addrs == nil {
+		return nil
+	}
+
+	var principals []*tailcfg.SSHPrincipal
+
+	for addr := range addrs.Iter() {
+		principals = append(principals, &tailcfg.SSHPrincipal{
+			NodeIP: addr.String(),
+		})
+	}
+
+	return principals
 }
 
 // ipSetToPrincipals converts an IPSet into SSH principals, one per address.
@@ -635,13 +567,11 @@ func resolveLocalparts(
 // Only includes nodes whose IPs are in the srcIPs set.
 func groupSourcesByUser(
 	nodes views.Slice[types.NodeView],
-	srcIPs *netipx.IPSet,
+	srcIPs ResolvedAddresses,
 ) ([]uint, map[uint][]*tailcfg.SSHPrincipal, []*tailcfg.SSHPrincipal) {
 	userIPSets := make(map[uint]*netipx.IPSetBuilder)
 
-	var taggedIPSet netipx.IPSetBuilder
-
-	hasTagged := false
+	var taggedPrincipals []*tailcfg.SSHPrincipal
 
 	for _, n := range nodes.All() {
 		if !slices.ContainsFunc(n.IPs(), srcIPs.Contains) {
@@ -649,9 +579,17 @@ func groupSourcesByUser(
 		}
 
 		if n.IsTagged() {
-			n.AppendToIPSet(&taggedIPSet)
-
-			hasTagged = true
+			// Tailscale SaaS resolves autogroup:tagged by
+			// iterating tag membership lists. A node with N
+			// tags produces N copies of its IPs in the
+			// principal list. Match that behavior so the SSH
+			// wire format is identical.
+			for range n.Tags().Len() {
+				for _, ip := range n.IPs() {
+					taggedPrincipals = append(taggedPrincipals,
+						&tailcfg.SSHPrincipal{NodeIP: ip.String()})
+				}
+			}
 
 			continue
 		}
@@ -687,16 +625,7 @@ func groupSourcesByUser(
 
 	slices.Sort(userIDs)
 
-	var tagged []*tailcfg.SSHPrincipal
-
-	if hasTagged {
-		taggedSet, err := taggedIPSet.IPSet()
-		if err == nil && taggedSet != nil {
-			tagged = ipSetToPrincipals(taggedSet)
-		}
-	}
-
-	return userIDs, principalsByUser, tagged
+	return userIDs, principalsByUser, taggedPrincipals
 }
 
 func ipSetToPrefixStringList(ips *netipx.IPSet) []string {
@@ -727,6 +656,8 @@ func filterRuleKey(rule tailcfg.FilterRule) string {
 
 // mergeFilterRules merges rules with identical SrcIPs and IPProto by combining
 // their DstPorts. DstPorts are NOT deduplicated to match Tailscale behavior.
+// CapGrant rules (which have no DstPorts) are passed through without merging
+// since CapGrant and DstPorts are mutually exclusive in a FilterRule.
 func mergeFilterRules(rules []tailcfg.FilterRule) []tailcfg.FilterRule {
 	if len(rules) <= 1 {
 		return rules
@@ -736,6 +667,14 @@ func mergeFilterRules(rules []tailcfg.FilterRule) []tailcfg.FilterRule {
 	result := make([]tailcfg.FilterRule, 0, len(rules))
 
 	for _, rule := range rules {
+		// CapGrant rules are not merged — they are structurally
+		// different from DstPorts rules and passed through as-is.
+		if len(rule.CapGrant) > 0 {
+			result = append(result, rule)
+
+			continue
+		}
+
 		key := filterRuleKey(rule)
 
 		if idx, exists := keyToIdx[key]; exists {

@@ -287,16 +287,13 @@ information on auto approvers.
 
 ## High availability
 
-Headscale has limited support for high availability routing. Multiple subnet routers with overlapping routes or multiple
-exit nodes can be used to provide high availability for users. If one router node goes offline, another one can serve
-the same routes to clients. Please see the official [Tailscale documentation on high
-availability](https://tailscale.com/kb/1115/high-availability#subnet-router-high-availability) for details.
+Headscale supports high availability routing. Multiple subnet routers with overlapping routes or multiple exit nodes can
+be used to provide high availability for users. If one router node goes offline, another one can serve the same routes
+to clients. Please see the official [Tailscale documentation on high
+availability](https://tailscale.com/docs/how-to/set-up-high-availability#subnet-router-high-availability) for details.
 
-!!! bug
-
-    In certain situations it might take up to 16 minutes for Headscale to detect a node as offline. A failover node
-    might not be selected fast enough, if such a node is used as subnet router or exit node causing service
-    interruptions for clients. See [issue 2129](https://github.com/juanfont/headscale/issues/2129) for more information.
+This feature is enabled by default when at least two nodes advertise the same prefix. See the configuration options
+`node.routes.ha` in the [configuration file](./configuration.md) for details.
 
 ## Troubleshooting
 

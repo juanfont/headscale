@@ -3,10 +3,12 @@ package v2
 import (
 	"errors"
 	"fmt"
+	"iter"
 	"net/netip"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-json-experiment/json"
@@ -60,7 +62,19 @@ const (
 
 // ACL validation errors.
 var (
-	ErrACLAutogroupSelfInvalidSource = errors.New("autogroup:self destination requires sources to be users, groups, or autogroup:member only")
+	ErrACLAutogroupSelfInvalidSource = errors.New("autogroup:self can only be used with users, groups, or supported autogroups")
+)
+
+// Grant validation errors.
+var (
+	ErrGrantMissingIPOrApp             = errors.New("ip and app can not both be empty")
+	ErrGrantViaNotATag                 = errors.New("via can only be a tag")
+	ErrProtocolPortInvalidFormat       = errors.New("expected only one colon in Internet protocol and port type")
+	ErrCapNameInvalidForm              = errors.New("capability name must have the form {domain}/{path}")
+	ErrCapNameTailscaleDomain          = errors.New("capability name must not be in the tailscale.com domain")
+	ErrGrantAutogroupSelfInvalidSource = errors.New("autogroup:self can only be used with users, groups, or supported autogroups")
+	ErrGrantAppWithAutogroupInternet   = errors.New("cannot use app grants with autogroup:internet")
+	ErrGrantDefaultRouteCIDR           = errors.New("to allow all IP addresses, use \"*\" or \"autogroup:internet\"")
 )
 
 // Policy validation errors.
@@ -88,7 +102,7 @@ var (
 	ErrGroupValueNotArray          = errors.New("group value must be an array of users")
 	ErrNestedGroups                = errors.New("nested groups are not allowed")
 	ErrInvalidHostIP               = errors.New("hostname contains invalid IP address")
-	ErrTagNotDefined               = errors.New("tag not defined in policy")
+	ErrTagNotDefined               = errors.New("tag not found")
 	ErrAutoApproverNotAlias        = errors.New("auto approver is not an alias")
 	ErrInvalidACLAction            = errors.New("invalid ACL action")
 	ErrInvalidSSHAction            = errors.New("invalid SSH action")
@@ -97,9 +111,10 @@ var (
 	ErrProtocolOutOfRange          = errors.New("protocol number out of range (0-255)")
 	ErrAutogroupNotSupported       = errors.New("autogroup not supported in headscale")
 	ErrAutogroupInternetSrc        = errors.New("autogroup:internet can only be used in ACL destinations")
-	ErrAutogroupSelfSrc            = errors.New("autogroup:self can only be used in ACL destinations")
+	ErrAutogroupSelfSrc            = errors.New("\"autogroup:self\" not valid on the src side of a rule")
 	ErrAutogroupNotSupportedACLSrc = errors.New("autogroup not supported for ACL sources")
 	ErrAutogroupNotSupportedACLDst = errors.New("autogroup not supported for ACL destinations")
+	ErrAutogroupDangerAllDst       = errors.New("cannot use autogroup:danger-all as a dst")
 	ErrAutogroupNotSupportedSSHSrc = errors.New("autogroup not supported for SSH sources")
 	ErrAutogroupNotSupportedSSHDst = errors.New("autogroup not supported for SSH destinations")
 	ErrAutogroupNotSupportedSSHUsr = errors.New("autogroup not supported for SSH user")
@@ -111,6 +126,88 @@ var (
 	ErrUnknownField                = errors.New("unknown field")
 	ErrProtocolNoSpecificPorts     = errors.New("protocol does not support specific ports")
 )
+
+type resolved struct {
+	ips netipx.IPSet
+}
+
+func newResolved(ipb *netipx.IPSetBuilder) (resolved, error) {
+	ips, err := ipb.IPSet()
+	if err != nil {
+		return resolved{}, err
+	}
+
+	return resolved{ips: *ips}, nil
+}
+
+func newResolvedAddresses(ips *netipx.IPSet, err error) (ResolvedAddresses, error) {
+	if ips == nil {
+		return nil, err
+	}
+
+	return resolved{ips: *ips}, err
+}
+
+func ipSetToStrings(ips *netipx.IPSet) []string {
+	var result []string
+
+	for _, r := range ips.Ranges() {
+		if r.From() == r.To() {
+			result = append(result, r.From().String())
+			continue
+		}
+
+		if p, ok := r.Prefix(); ok {
+			result = append(result, p.String())
+			continue
+		}
+
+		result = append(result, r.String())
+	}
+
+	return result
+}
+
+func (res resolved) Strings() []string {
+	return ipSetToStrings(&res.ips)
+}
+
+func (res resolved) Prefixes() []netip.Prefix {
+	ret := res.ips.Prefixes()
+
+	return ret
+}
+
+func (res resolved) Empty() bool {
+	return len(res.ips.Prefixes()) == 0
+}
+
+func (res resolved) Iter() iter.Seq[netip.Addr] {
+	return util.IPSetAddrIter(&res.ips)
+}
+
+func (res resolved) Contains(ip netip.Addr) bool {
+	return res.ips.Contains(ip)
+}
+
+type ResolvedAddresses interface {
+	// Strings returns a slice of string representations of IP addresses,
+	// it will return the appropriate representation for the underlying Alias.
+	// Some should be returned as Prefixes and some as IP ranges.
+	Strings() []string
+
+	// Prefixes returns a slice of netip.Prefix representations of IP addresses.
+	Prefixes() []netip.Prefix
+
+	// Empty reports if there are no addresses in the ResolvedAddresses.
+	Empty() bool
+
+	// Iter returns an iterator over netip.Addr representations of IP addresses.
+	Iter() iter.Seq[netip.Addr]
+
+	// Contains reports if the given IP address is contained in the ResolvedAddresses.
+	Contains(ip netip.Addr) bool
+}
 
 type Asterix int
 
@@ -182,16 +279,51 @@ func (a Asterix) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (a Asterix) Resolve(_ *Policy, _ types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
-	var ips netipx.IPSetBuilder
+var asterixResolved = sync.OnceValue(func() *netipx.IPSet {
+	var ipb netipx.IPSetBuilder
+	ipb.AddPrefix(tsaddr.TailscaleULARange())
+	ipb.AddPrefix(tsaddr.CGNATRange())
+	ipb.RemovePrefix(tsaddr.ChromeOSVMRange())
 
-	// Use Tailscale's CGNAT range for IPv4 and ULA range for IPv6.
-	// This matches Tailscale's behavior where wildcard (*) refers to
-	// "any node in the tailnet" which uses these address ranges.
-	ips.AddPrefix(tsaddr.CGNATRange())
-	ips.AddPrefix(tsaddr.TailscaleULARange())
+	ips, err := ipb.IPSet()
+	if err != nil {
+		panic(fmt.Sprintf("failed to build IPSet for wildcard: %v", err))
+	}
 
-	return ips.IPSet()
+	return ips
+})
+
+func (a Asterix) Resolve(p *Policy, u types.Users, n views.Slice[types.NodeView]) (ResolvedAddresses, error) {
+	return newResolvedAddresses(a.resolve(p, u, n))
+}
+
+func (a Asterix) resolve(_ *Policy, _ types.Users, _ views.Slice[types.NodeView]) (*netipx.IPSet, error) {
+	return asterixResolved(), nil
+}
+
+// approvedSubnetRoutes collects all approved non-exit subnet routes
+// advertised across all nodes. Per Tailscale documentation, wildcard
+// (*) SrcIPs include "any approved subnets".
+//
+// These are collected separately from the Asterix IPSet because
+// IPSet merges overlapping ranges (e.g. 10.0.0.0/8 absorbs
+// 10.33.0.0/16), but Tailscale preserves individual route entries.
+func approvedSubnetRoutes(nodes views.Slice[types.NodeView]) []string {
+	seen := make(map[string]bool)
+
+	var routes []string
+
+	for _, node := range nodes.All() {
+		for _, route := range node.SubnetRoutes() {
+			s := route.String()
+			if !seen[s] {
+				seen[s] = true
+				routes = append(routes, s)
+			}
+		}
+	}
+
+	return routes
 }
 
 // Username is a string that represents a username, it must contain an @.
@@ -274,7 +406,11 @@ func (u *Username) resolveUser(users types.Users) (types.User, error) {
 	return potentialUsers[0], nil
 }
 
-func (u *Username) Resolve(_ *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
+func (u *Username) Resolve(_ *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ResolvedAddresses, error) {
+	return newResolvedAddresses(u.resolve(nil, users, nodes))
+}
+
+func (u *Username) resolve(_ *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var (
 		ips  netipx.IPSetBuilder
 		errs []error
@@ -353,14 +489,18 @@ func (g *Group) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(*g))
 }
 
-func (g *Group) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
+func (g *Group) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ResolvedAddresses, error) {
+	return newResolvedAddresses(g.resolve(p, users, nodes))
+}
+
+func (g *Group) resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var (
 		ips  netipx.IPSetBuilder
 		errs []error
 	)
 
 	for _, user := range p.Groups[*g] {
-		uips, err := user.Resolve(nil, users, nodes)
+		uips, err := user.resolve(nil, users, nodes)
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -393,7 +533,11 @@ func (t *Tag) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (t *Tag) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
+func (t *Tag) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ResolvedAddresses, error) {
+	return newResolvedAddresses(t.resolve(p, users, nodes))
+}
+
+func (t *Tag) resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 
 	for _, node := range nodes.All() {
@@ -445,7 +589,11 @@ func (h *Host) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (h *Host) Resolve(p *Policy, _ types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
+func (h *Host) Resolve(p *Policy, _ types.Users, nodes views.Slice[types.NodeView]) (ResolvedAddresses, error) {
+	return newResolvedAddresses(h.resolve(p, nil, nodes))
+}
+
+func (h *Host) resolve(p *Policy, _ types.Users, _ views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var (
 		ips  netipx.IPSetBuilder
 		errs []error
@@ -461,24 +609,10 @@ func (h *Host) Resolve(p *Policy, _ types.Users, nodes views.Slice[types.NodeVie
 		errs = append(errs, err)
 	}
 
+	// Address-based aliases (host names) resolve to exactly the
+	// literal prefix from the hosts map. They do NOT expand to
+	// include the matching node's other IP addresses.
 	ips.AddPrefix(netip.Prefix(pref))
-
-	// If the IP is a single host, look for a node to ensure we add all the IPs of
-	// the node to the IPSet.
-	appendIfNodeHasIP(nodes, &ips, netip.Prefix(pref))
-
-	// TODO(kradalby): I am a bit unsure what is the correct way to do this,
-	// should a host with a non single IP be able to resolve the full host (inc all IPs).
-	ipsTemp, err := ips.IPSet()
-	if err != nil {
-		errs = append(errs, err)
-	}
-
-	for _, node := range nodes.All() {
-		if node.InIPSet(ipsTemp) {
-			node.AppendToIPSet(&ips)
-		}
-	}
 
 	return buildIPSetMultiErr(&ips, errs)
 }
@@ -542,43 +676,34 @@ func (p *Prefix) UnmarshalJSON(b []byte) error {
 // of the Prefix and the Policy, Users, and Nodes.
 //
 // See [Policy], [types.Users], and [types.Nodes] for more details.
-func (p *Prefix) Resolve(_ *Policy, _ types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
+func (p *Prefix) Resolve(_ *Policy, _ types.Users, nodes views.Slice[types.NodeView]) (ResolvedAddresses, error) {
+	return newResolvedAddresses(p.resolve(nil, nil, nodes))
+}
+
+func (p *Prefix) resolve(_ *Policy, _ types.Users, _ views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var (
 		ips  netipx.IPSetBuilder
 		errs []error
 	)
 
+	// Address-based aliases resolve to exactly the literal prefix.
+	// Unlike identity-based aliases (tags, users, groups), they do
+	// NOT expand to include the matching node's other IP addresses.
 	ips.AddPrefix(netip.Prefix(*p))
-	// If the IP is a single host, look for a node to ensure we add all the IPs of
-	// the node to the IPSet.
-	appendIfNodeHasIP(nodes, &ips, netip.Prefix(*p))
 
 	return buildIPSetMultiErr(&ips, errs)
-}
-
-// appendIfNodeHasIP appends the IPs of the nodes to the IPSet if the node has the
-// IP address in the prefix.
-func appendIfNodeHasIP(nodes views.Slice[types.NodeView], ips *netipx.IPSetBuilder, pref netip.Prefix) {
-	if !pref.IsSingleIP() && !tsaddr.IsTailscaleIP(pref.Addr()) {
-		return
-	}
-
-	for _, node := range nodes.All() {
-		if node.HasIP(pref.Addr()) {
-			node.AppendToIPSet(ips)
-		}
-	}
 }
 
 // AutoGroup is a special string which is always prefixed with `autogroup:`.
 type AutoGroup string
 
 const (
-	AutoGroupInternet AutoGroup = "autogroup:internet"
-	AutoGroupMember   AutoGroup = "autogroup:member"
-	AutoGroupNonRoot  AutoGroup = "autogroup:nonroot"
-	AutoGroupTagged   AutoGroup = "autogroup:tagged"
-	AutoGroupSelf     AutoGroup = "autogroup:self"
+	AutoGroupInternet  AutoGroup = "autogroup:internet"
+	AutoGroupMember    AutoGroup = "autogroup:member"
+	AutoGroupNonRoot   AutoGroup = "autogroup:nonroot"
+	AutoGroupTagged    AutoGroup = "autogroup:tagged"
+	AutoGroupSelf      AutoGroup = "autogroup:self"
+	AutoGroupDangerAll AutoGroup = "autogroup:danger-all"
 )
 
 var autogroups = []AutoGroup{
@@ -587,6 +712,7 @@ var autogroups = []AutoGroup{
 	AutoGroupNonRoot,
 	AutoGroupTagged,
 	AutoGroupSelf,
+	AutoGroupDangerAll,
 }
 
 func (ag *AutoGroup) Validate() error {
@@ -617,7 +743,11 @@ func (ag *AutoGroup) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(*ag))
 }
 
-func (ag *AutoGroup) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
+func (ag *AutoGroup) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ResolvedAddresses, error) {
+	return newResolvedAddresses(ag.resolve(p, users, nodes))
+}
+
+func (ag *AutoGroup) resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var build netipx.IPSetBuilder
 
 	switch *ag {
@@ -655,6 +785,15 @@ func (ag *AutoGroup) Resolve(p *Policy, users types.Users, nodes views.Slice[typ
 		// specially during policy compilation per-node for security.
 		return nil, ErrAutogroupSelfRequiresPerNodeResolution
 
+	case AutoGroupDangerAll:
+		// autogroup:danger-all matches ALL IP addresses, including
+		// non-Tailscale addresses. Resolves to 0.0.0.0/0 + ::/0.
+		// Filter compilation converts this to SrcIPs: ["*"].
+		build.AddPrefix(netip.MustParsePrefix("0.0.0.0/0"))
+		build.AddPrefix(netip.MustParsePrefix("::/0"))
+
+		return build.IPSet()
+
 	case AutoGroupNonRoot:
 		// autogroup:nonroot represents non-root users on multi-user devices.
 		// This is not supported in headscale and requires OS-level user detection.
@@ -682,7 +821,9 @@ type Alias interface {
 	// of the Alias and the Policy, Users and Nodes.
 	// This is an interface definition and the implementation is independent of
 	// the Alias type.
-	Resolve(pol *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error)
+	Resolve(pol *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ResolvedAddresses, error)
+
+	resolve(pol *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error)
 }
 
 type AliasWithPorts struct {
@@ -706,6 +847,8 @@ func (ve *AliasWithPorts) UnmarshalJSON(b []byte) error {
 			err       error
 		)
 
+		originalDst := vs
+
 		if strings.Contains(vs, ":") {
 			vs, portsPart, err = splitDestinationAndPort(vs)
 			if err != nil {
@@ -714,7 +857,10 @@ func (ve *AliasWithPorts) UnmarshalJSON(b []byte) error {
 
 			ports, err := parsePortRange(portsPart)
 			if err != nil {
-				return err
+				return fmt.Errorf(
+					"dst=%q: port range %q: %w",
+					originalDst, portsPart, err,
+				)
 			}
 
 			ve.Ports = ports
@@ -736,6 +882,98 @@ func (ve *AliasWithPorts) UnmarshalJSON(b []byte) error {
 	}
 
 	return nil
+}
+
+// ProtocolPort is a representation of the "network layer capabilities"
+// of a Grant.
+type ProtocolPort struct {
+	Ports    []tailcfg.PortRange
+	Protocol Protocol
+}
+
+func (ve *ProtocolPort) UnmarshalJSON(b []byte) error {
+	var v any
+
+	err := json.Unmarshal(b, &v)
+	if err != nil {
+		return err
+	}
+
+	switch vs := v.(type) {
+	case string:
+		if vs == "*" {
+			ve.Protocol = ProtocolNameWildcard
+			ve.Ports = []tailcfg.PortRange{tailcfg.PortRangeAny}
+
+			return nil
+		}
+
+		// Only contains a port, no protocol
+		if !strings.Contains(vs, ":") {
+			ports, err := parsePortRange(vs)
+			if err != nil {
+				return fmt.Errorf("port range %q: %w", vs, err)
+			}
+
+			ve.Protocol = ProtocolNameWildcard
+			ve.Ports = ports
+
+			return nil
+		}
+
+		parts := strings.Split(vs, ":")
+		if len(parts) != 2 {
+			return fmt.Errorf("%w, got: %v(%d)", ErrProtocolPortInvalidFormat, parts, len(parts))
+		}
+
+		protocol := Protocol(parts[0])
+
+		err := protocol.validate()
+		if err != nil {
+			return err
+		}
+
+		portsPart := parts[1]
+
+		ports, err := parsePortRange(portsPart)
+		if err != nil {
+			return fmt.Errorf("port range %q: %w", portsPart, err)
+		}
+
+		ve.Protocol = protocol
+		ve.Ports = ports
+
+	default:
+		return fmt.Errorf("%w: %T", ErrTypeNotSupported, vs)
+	}
+
+	return nil
+}
+
+func (ve ProtocolPort) MarshalJSON() ([]byte, error) {
+	// Handle wildcard protocol with all ports
+	if ve.Protocol == ProtocolNameWildcard && len(ve.Ports) == 1 &&
+		ve.Ports[0].First == 0 && ve.Ports[0].Last == 65535 {
+		return json.Marshal("*")
+	}
+
+	// Build port string
+	var portParts []string
+
+	for _, portRange := range ve.Ports {
+		if portRange.First == portRange.Last {
+			portParts = append(portParts, strconv.FormatUint(uint64(portRange.First), 10))
+		} else {
+			portParts = append(portParts, fmt.Sprintf("%d-%d", portRange.First, portRange.Last))
+		}
+	}
+
+	portStr := strings.Join(portParts, ",")
+
+	// Combine protocol and ports
+	result := fmt.Sprintf("%s:%s", ve.Protocol, portStr)
+
+	return json.Marshal(result)
 }
 
 func isWildcard(str string) bool {
@@ -856,14 +1094,14 @@ func (a *Aliases) MarshalJSON() ([]byte, error) {
 	return json.Marshal(aliases)
 }
 
-func (a *Aliases) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
+func (a *Aliases) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ResolvedAddresses, error) {
 	var (
 		ips  netipx.IPSetBuilder
 		errs []error
 	)
 
 	for _, alias := range *a {
-		aips, err := alias.Resolve(p, users, nodes)
+		aips, err := alias.resolve(p, users, nodes)
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -871,7 +1109,7 @@ func (a *Aliases) Resolve(p *Policy, users types.Users, nodes views.Slice[types.
 		ips.AddSet(aips)
 	}
 
-	return buildIPSetMultiErr(&ips, errs)
+	return newResolvedAddresses(buildIPSetMultiErr(&ips, errs))
 }
 
 func buildIPSetMultiErr(ipBuilder *netipx.IPSetBuilder, errs []error) (*netipx.IPSet, error) {
@@ -1298,7 +1536,7 @@ func resolveAutoApprovers(p *Policy, users types.Users, nodes views.Slice[types.
 				return nil, nil, fmt.Errorf("%w: %v", ErrAutoApproverNotAlias, autoApprover)
 			}
 			// If it does not resolve, that means the autoApprover is not associated with any IP addresses.
-			ips, _ := aa.Resolve(p, users, nodes)
+			ips, _ := aa.resolve(p, users, nodes)
 			routes[prefix].AddSet(ips)
 		}
 	}
@@ -1313,7 +1551,7 @@ func resolveAutoApprovers(p *Policy, users types.Users, nodes views.Slice[types.
 				return nil, nil, fmt.Errorf("%w: %v", ErrAutoApproverNotAlias, autoApprover)
 			}
 			// If it does not resolve, that means the autoApprover is not associated with any IP addresses.
-			ips, _ := aa.Resolve(p, users, nodes)
+			ips, _ := aa.resolve(p, users, nodes)
 			exitNodeSetBuilder.AddSet(ips)
 		}
 	}
@@ -1367,7 +1605,7 @@ func (a *Action) UnmarshalJSON(b []byte) error {
 	case "accept":
 		*a = ActionAccept
 	default:
-		return fmt.Errorf("%w: %q, must be %q", ErrInvalidACLAction, str, ActionAccept)
+		return fmt.Errorf("action=%q is not supported: %w", str, ErrInvalidACLAction)
 	}
 
 	return nil
@@ -1467,14 +1705,13 @@ func (p *Protocol) Description() string {
 	}
 }
 
-// parseProtocol converts a Protocol to its IANA protocol numbers.
+// toIANAProtocolNumbers converts a Protocol to its IANA protocol numbers.
 // Since validation happens during UnmarshalJSON, this method should not fail for valid Protocol values.
-func (p *Protocol) parseProtocol() []int {
+func (p *Protocol) toIANAProtocolNumbers() []int {
 	switch *p {
 	case "":
-		// Empty protocol applies to TCP, UDP, ICMP, and ICMPv6 traffic
-		// This matches Tailscale's behavior for protocol defaults
-		return []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP}
+		// Empty means the same as wildcard-ish, the client will add the default protocols (TCP, UDP, ICMP) if empty.
+		return nil
 	case ProtocolNameWildcard:
 		// Wildcard protocol - defensive handling (should not reach here due to validation)
 		return nil
@@ -1583,6 +1820,23 @@ const (
 	ProtocolFC       = 133 // Fibre Channel
 )
 
+// ProtocolNumberToName maps IANA protocol numbers to their protocol name strings.
+var ProtocolNumberToName = map[int]Protocol{
+	ProtocolICMP:     ProtocolNameICMP,
+	ProtocolIGMP:     ProtocolNameIGMP,
+	ProtocolIPv4:     ProtocolNameIPv4,
+	ProtocolTCP:      ProtocolNameTCP,
+	ProtocolEGP:      ProtocolNameEGP,
+	ProtocolIGP:      ProtocolNameIGP,
+	ProtocolUDP:      ProtocolNameUDP,
+	ProtocolGRE:      ProtocolNameGRE,
+	ProtocolESP:      ProtocolNameESP,
+	ProtocolAH:       ProtocolNameAH,
+	ProtocolIPv6ICMP: ProtocolNameIPv6ICMP,
+	ProtocolSCTP:     ProtocolNameSCTP,
+	ProtocolFC:       ProtocolNameFC,
+}
+
 type ACL struct {
 	Action       Action           `json:"action"`
 	Protocol     Protocol         `json:"proto"`
@@ -1632,6 +1886,86 @@ func (a *ACL) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+type Grant struct {
+	// TODO(kradalby): Validate grant src/dst according to ts docs
+	Sources      Aliases `json:"src"`
+	Destinations Aliases `json:"dst"`
+
+	// TODO(kradalby): validate that either of these fields are included
+	InternetProtocols []ProtocolPort     `json:"ip,omitempty"`
+	App               tailcfg.PeerCapMap `json:"app,omitzero"`
+
+	Via []Tag `json:"via,omitzero"`
+}
+
+// aclToGrants converts an ACL rule to one or more equivalent Grant rules.
+func aclToGrants(acl ACL) []Grant {
+	ret := make([]Grant, 0, len(acl.Destinations))
+
+	// Check if the ACL has any non-autogroup destinations. If so,
+	// reorder to place non-self grants before self grants. This matches
+	// Tailscale's behavior where autogroup-only ACLs (self + member)
+	// preserve policy order, but ACLs with groups, users, tags, or
+	// hosts emit non-self rules first.
+	hasNonAutogroup := false
+
+	for _, dst := range acl.Destinations {
+		if _, ok := dst.Alias.(*AutoGroup); !ok {
+			hasNonAutogroup = true
+
+			break
+		}
+	}
+
+	if hasNonAutogroup {
+		// Non-self destinations first, self destinations second.
+		for _, dst := range acl.Destinations {
+			if ag, ok := dst.Alias.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
+				continue
+			}
+
+			ret = append(ret, Grant{
+				Sources:      acl.Sources,
+				Destinations: Aliases{dst.Alias},
+				InternetProtocols: []ProtocolPort{{
+					Protocol: acl.Protocol,
+					Ports:    dst.Ports,
+				}},
+			})
+		}
+
+		for _, dst := range acl.Destinations {
+			ag, ok := dst.Alias.(*AutoGroup)
+			if !ok || !ag.Is(AutoGroupSelf) {
+				continue
+			}
+
+			ret = append(ret, Grant{
+				Sources:      acl.Sources,
+				Destinations: Aliases{dst.Alias},
+				InternetProtocols: []ProtocolPort{{
+					Protocol: acl.Protocol,
+					Ports:    dst.Ports,
+				}},
+			})
+		}
+	} else {
+		// All-autogroup ACL: preserve policy order.
+		for _, dst := range acl.Destinations {
+			ret = append(ret, Grant{
+				Sources:      acl.Sources,
+				Destinations: Aliases{dst.Alias},
+				InternetProtocols: []ProtocolPort{{
+					Protocol: acl.Protocol,
+					Ports:    dst.Ports,
+				}},
+			})
+		}
+	}
+
+	return ret
+}
+
 // Policy represents a Tailscale Network Policy.
 // TODO(kradalby):
 // Add validation method checking:
@@ -1649,6 +1983,7 @@ type Policy struct {
 	Hosts         Hosts              `json:"hosts,omitempty"`
 	TagOwners     TagOwners          `json:"tagOwners,omitempty"`
 	ACLs          []ACL              `json:"acls,omitempty"`
+	Grants        []Grant            `json:"grants,omitempty"`
 	AutoApprovers AutoApproverPolicy `json:"autoApprovers"`
 	SSHs          []SSH              `json:"ssh,omitempty"`
 }
@@ -1658,7 +1993,7 @@ type Policy struct {
 
 var (
 	// TODO(kradalby): Add these checks for tagOwners and autoApprovers.
-	autogroupForSrc       = []AutoGroup{AutoGroupMember, AutoGroupTagged}
+	autogroupForSrc       = []AutoGroup{AutoGroupMember, AutoGroupTagged, AutoGroupDangerAll}
 	autogroupForDst       = []AutoGroup{AutoGroupInternet, AutoGroupMember, AutoGroupTagged, AutoGroupSelf}
 	autogroupForSSHSrc    = []AutoGroup{AutoGroupMember, AutoGroupTagged}
 	autogroupForSSHDst    = []AutoGroup{AutoGroupMember, AutoGroupTagged, AutoGroupSelf}
@@ -1703,6 +2038,10 @@ func validateAutogroupForSrc(src *AutoGroup) error {
 func validateAutogroupForDst(dst *AutoGroup) error {
 	if dst == nil {
 		return nil
+	}
+
+	if dst.Is(AutoGroupDangerAll) {
+		return ErrAutogroupDangerAllDst
 	}
 
 	if !slices.Contains(autogroupForDst, *dst) {
@@ -1858,6 +2197,81 @@ func validateACLSrcDstCombination(sources Aliases, destinations []AliasWithPorts
 	return nil
 }
 
+// validateCapabilityName validates that a capability name has the form
+// {domain}/{path} (no URL scheme) and is not in the tailscale.com domain
+// (unless it's on the allowlist of user-grantable capabilities).
+// Tailscale SaaS enforces these rules to prevent confusion with built-in
+// capabilities and URL-formatted names.
+func validateCapabilityName(name string) error {
+	// Reject URL schemes (e.g., "https://tailscale.com/cap/ingress")
+	if strings.Contains(name, "://") {
+		return ErrCapNameInvalidForm
+	}
+
+	// Reject caps in the tailscale.com domain unless allowlisted.
+	if strings.HasPrefix(name, "tailscale.com/") {
+		if !tailscaleCapAllowlist[tailcfg.PeerCapability(name)] {
+			return ErrCapNameTailscaleDomain
+		}
+	}
+
+	return nil
+}
+
+// tailscaleCapAllowlist contains the tailscale.com/cap/* capability names
+// that users are allowed to specify in grant app fields. Companion caps
+// (drive-sharer, relay-target) and internal caps (ingress, funnel) are
+// generated by the server and cannot be specified by users.
+var tailscaleCapAllowlist = map[tailcfg.PeerCapability]bool{
+	tailcfg.PeerCapabilityTaildrive:  true, // tailscale.com/cap/drive
+	tailcfg.PeerCapabilityRelay:      true, // tailscale.com/cap/relay
+	tailcfg.PeerCapabilityWebUI:      true, // tailscale.com/cap/webui
+	tailcfg.PeerCapabilityKubernetes: true, // tailscale.com/cap/kubernetes
+	tailcfg.PeerCapabilityTsIDP:      true, // tailscale.com/cap/tsidp
+}
+
+// validateGrantSrcDstCombination validates grant-specific source/destination
+// combinations. Grants are stricter than ACLs: wildcard (*) sources are NOT
+// allowed with autogroup:self destinations because * includes tags, and tags
+// cannot use autogroup:self. ACLs allow this combination because ACL
+// autogroup:self evaluation narrows it per-node, but grants reject it at
+// validation time.
+func validateGrantSrcDstCombination(sources Aliases, destinations Aliases) error {
+	hasAutogroupSelf := false
+
+	for _, dst := range destinations {
+		if ag, ok := dst.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
+			hasAutogroupSelf = true
+
+			break
+		}
+	}
+
+	if !hasAutogroupSelf {
+		return nil
+	}
+
+	for _, src := range sources {
+		switch v := src.(type) {
+		case *Username, *Group:
+			continue
+		case *AutoGroup:
+			if v.Is(AutoGroupMember) {
+				continue
+			}
+
+			return ErrGrantAutogroupSelfInvalidSource
+		case Asterix:
+			// Grants reject wildcard with autogroup:self (unlike ACLs)
+			return ErrGrantAutogroupSelfInvalidSource
+		default:
+			return ErrGrantAutogroupSelfInvalidSource
+		}
+	}
+
+	return nil
+}
+
 // validate reports if there are any errors in a policy after
 // the unmarshaling process.
 // It runs through all rules and checks if there are any inconsistencies
@@ -1907,7 +2321,7 @@ func (p *Policy) validate() error {
 
 				err := p.TagOwners.Contains(tagOwner)
 				if err != nil {
-					errs = append(errs, err)
+					errs = append(errs, fmt.Errorf("src=%w", err))
 				}
 			}
 		}
@@ -1938,7 +2352,7 @@ func (p *Policy) validate() error {
 			case *Tag:
 				err := p.TagOwners.Contains(h)
 				if err != nil {
-					errs = append(errs, err)
+					errs = append(errs, fmt.Errorf("dst=%q: %w", *h, err))
 				}
 			}
 		}
@@ -2052,6 +2466,145 @@ func (p *Policy) validate() error {
 					errs = append(errs, err)
 				}
 			}
+		}
+	}
+
+	for _, grant := range p.Grants {
+		// Validate that grants have at least ip or app
+		hasIP := len(grant.InternetProtocols) > 0
+		hasApp := len(grant.App) > 0
+
+		if !hasIP && !hasApp {
+			errs = append(errs, ErrGrantMissingIPOrApp)
+		}
+
+		// Validate capability name format in app grants.
+		// Tailscale requires cap names to be {domain}/{path} (no URL scheme)
+		// and rejects caps in the tailscale.com domain.
+		for capName := range grant.App {
+			err := validateCapabilityName(string(capName))
+			if err != nil {
+				errs = append(errs, err)
+			}
+		}
+
+		// Validate that app grants are not used with autogroup:internet.
+		if hasApp {
+			for _, dst := range grant.Destinations {
+				if ag, ok := dst.(*AutoGroup); ok && ag.Is(AutoGroupInternet) {
+					errs = append(errs, ErrGrantAppWithAutogroupInternet)
+
+					break
+				}
+			}
+		}
+
+		// Validate destinations do not contain raw default route CIDRs.
+		// Tailscale rejects 0.0.0.0/0 and ::/0 as grant dst, requiring
+		// "*" or "autogroup:internet" instead.
+		for _, dst := range grant.Destinations {
+			if p, ok := dst.(*Prefix); ok {
+				prefix := netip.Prefix(*p)
+				if prefix.Bits() == 0 {
+					errs = append(errs, fmt.Errorf(
+						"dst %q: %w",
+						prefix.String(), ErrGrantDefaultRouteCIDR,
+					))
+
+					break
+				}
+			}
+		}
+
+		// Validate sources (empty arrays are allowed — they produce no rules)
+		for _, src := range grant.Sources {
+			switch src := src.(type) {
+			case *Host:
+				h := src
+				if !p.Hosts.exist(*h) {
+					errs = append(errs, fmt.Errorf("%w: %q", ErrHostNotDefined, *h))
+				}
+			case *AutoGroup:
+				ag := src
+
+				err := validateAutogroupSupported(ag)
+				if err != nil {
+					errs = append(errs, err)
+					continue
+				}
+
+				err = validateAutogroupForSrc(ag)
+				if err != nil {
+					errs = append(errs, err)
+					continue
+				}
+			case *Group:
+				g := src
+
+				err := p.Groups.Contains(g)
+				if err != nil {
+					errs = append(errs, err)
+				}
+			case *Tag:
+				tagOwner := src
+
+				err := p.TagOwners.Contains(tagOwner)
+				if err != nil {
+					errs = append(errs, fmt.Errorf("src=%w", err))
+				}
+			}
+		}
+
+		// Validate destinations (empty arrays are allowed — they produce no rules)
+		for _, dst := range grant.Destinations {
+			switch h := dst.(type) {
+			case *Host:
+				if !p.Hosts.exist(*h) {
+					errs = append(errs, fmt.Errorf("%w: %q", ErrHostNotDefined, *h))
+				}
+			case *AutoGroup:
+				err := validateAutogroupSupported(h)
+				if err != nil {
+					errs = append(errs, err)
+					continue
+				}
+
+				err = validateAutogroupForDst(h)
+				if err != nil {
+					errs = append(errs, err)
+					continue
+				}
+			case *Group:
+				err := p.Groups.Contains(h)
+				if err != nil {
+					errs = append(errs, err)
+				}
+			case *Tag:
+				err := p.TagOwners.Contains(h)
+				if err != nil {
+					errs = append(errs, err)
+				}
+			}
+		}
+
+		// Validate via tags. Wording matches Tailscale SaaS
+		// ("tag %q not found"), which differs from the ACL-src
+		// wording ("src=tag not found: %q").
+		for _, viaTag := range grant.Via {
+			err := p.TagOwners.Contains(&viaTag)
+			if err != nil {
+				//nolint:err113 // SaaS-aligned dynamic phrasing; no caller does errors.Is.
+				errs = append(errs, fmt.Errorf("tag %q not found", viaTag))
+			}
+		}
+
+		// Validate grant-specific source/destination combinations.
+		// Grants are stricter than ACLs: wildcard (*) src with autogroup:self
+		// dst is rejected because * includes tags, and tags cannot use
+		// autogroup:self.
+		err := validateGrantSrcDstCombination(grant.Sources, grant.Destinations)
+		if err != nil {
+			errs = append(errs, err)
 		}
 	}
 
@@ -2328,14 +2881,14 @@ func (a *SSHSrcAliases) MarshalJSON() ([]byte, error) {
 	return json.Marshal(aliases)
 }
 
-func (a *SSHSrcAliases) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
+func (a *SSHSrcAliases) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ResolvedAddresses, error) {
 	var (
 		ips  netipx.IPSetBuilder
 		errs []error
 	)
 
 	for _, alias := range *a {
-		aips, err := alias.Resolve(p, users, nodes)
+		aips, err := alias.resolve(p, users, nodes)
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -2343,7 +2896,7 @@ func (a *SSHSrcAliases) Resolve(p *Policy, users types.Users, nodes views.Slice[
 		ips.AddSet(aips)
 	}
 
-	return buildIPSetMultiErr(&ips, errs)
+	return newResolvedAddresses(buildIPSetMultiErr(&ips, errs))
 }
 
 // SSHDstAliases is a list of aliases that can be used as destinations in an SSH rule.
@@ -2451,11 +3004,19 @@ func unmarshalPolicy(b []byte) (*Policy, error) {
 	ast.Standardize()
 
 	if err = json.Unmarshal(ast.Pack(), &policy, policyJSONOpts...); err != nil { //nolint:noinlineerr
-		if serr, ok := errors.AsType[*json.SemanticError](err); ok && errors.Is(serr.Err, json.ErrUnknownName) {
-			ptr := serr.JSONPointer
-			name := ptr.LastToken()
+		if serr, ok := errors.AsType[*json.SemanticError](err); ok {
+			if errors.Is(serr.Err, json.ErrUnknownName) {
+				ptr := serr.JSONPointer
+				name := ptr.LastToken()
 
-			return nil, fmt.Errorf("%w: %q", ErrUnknownField, name)
+				return nil, fmt.Errorf("%w: %q", ErrUnknownField, name)
+			}
+
+			// Non-tag entries in grant.via surface as type errors on
+			// []Tag; match SaaS wording instead of Go's JSON diagnostic.
+			if strings.Contains(string(serr.JSONPointer), "/via/") {
+				return nil, ErrGrantViaNotATag
+			}
 		}
 
 		return nil, fmt.Errorf("parsing policy from bytes: %w", err)
@@ -2489,43 +3050,4 @@ func validateProtocolPortCompatibility(protocol Protocol, destinations []AliasWi
 	}
 
 	return nil
-}
-
-// usesAutogroupSelf checks if the policy uses autogroup:self in any ACL or SSH rules.
-func (p *Policy) usesAutogroupSelf() bool {
-	if p == nil {
-		return false
-	}
-
-	// Check ACL rules
-	for _, acl := range p.ACLs {
-		for _, src := range acl.Sources {
-			if ag, ok := src.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
-				return true
-			}
-		}
-
-		for _, dest := range acl.Destinations {
-			if ag, ok := dest.Alias.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
-				return true
-			}
-		}
-	}
-
-	// Check SSH rules
-	for _, ssh := range p.SSHs {
-		for _, src := range ssh.Sources {
-			if ag, ok := src.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
-				return true
-			}
-		}
-
-		for _, dest := range ssh.Destinations {
-			if ag, ok := dest.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
-				return true
-			}
-		}
-	}
-
-	return false
 }

@@ -32,9 +32,6 @@ func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 	err = scenario.CreateHeadscaleEnvWithLoginURL(
 		nil,
 		hsic.WithTestName("webauthping"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithDERPAsIP(),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -53,8 +50,7 @@ func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 		return x.String()
 	})
 
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 }
 
 func TestAuthWebFlowLogoutAndReloginSameUser(t *testing.T) {
@@ -73,8 +69,6 @@ func TestAuthWebFlowLogoutAndReloginSameUser(t *testing.T) {
 	err = scenario.CreateHeadscaleEnvWithLoginURL(
 		nil,
 		hsic.WithTestName("weblogout"),
-		hsic.WithDERPAsIP(),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -93,8 +87,7 @@ func TestAuthWebFlowLogoutAndReloginSameUser(t *testing.T) {
 		return x.String()
 	})
 
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 
 	headscale, err := scenario.Headscale()
 	requireNoErrGetHeadscale(t, err)
@@ -114,7 +107,7 @@ func TestAuthWebFlowLogoutAndReloginSameUser(t *testing.T) {
 		listNodes, err = headscale.ListNodes()
 		assert.NoError(ct, err, "Failed to list nodes after web authentication")
 		assert.Len(ct, listNodes, len(allClients), "Expected %d nodes after web auth, got %d", len(allClients), len(listNodes))
-	}, 30*time.Second, 2*time.Second, "validating node count matches client count after web authentication")
+	}, integrationutil.ScaledTimeout(30*time.Second), 2*time.Second, "validating node count matches client count after web authentication")
 
 	nodeCountBeforeLogout := len(listNodes)
 	t.Logf("node count before logout: %d", nodeCountBeforeLogout)
@@ -161,7 +154,7 @@ func TestAuthWebFlowLogoutAndReloginSameUser(t *testing.T) {
 		listNodes, err = headscale.ListNodes()
 		assert.NoError(ct, err, "Failed to list nodes after web flow logout")
 		assert.Len(ct, listNodes, nodeCountBeforeLogout, "Node count should remain unchanged after logout - expected %d nodes, got %d", nodeCountBeforeLogout, len(listNodes))
-	}, 60*time.Second, 2*time.Second, "validating node persistence in database after web flow logout")
+	}, integrationutil.ScaledTimeout(60*time.Second), 2*time.Second, "validating node persistence in database after web flow logout")
 	t.Logf("node count first login: %d, after relogin: %d", nodeCountBeforeLogout, len(listNodes))
 
 	// Validate connection state after relogin
@@ -174,8 +167,7 @@ func TestAuthWebFlowLogoutAndReloginSameUser(t *testing.T) {
 		return x.String()
 	})
 
-	success = pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 
 	for _, client := range allClients {
 		ips, err := client.IPs()
@@ -239,8 +231,6 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 	err = scenario.CreateHeadscaleEnvWithLoginURL(
 		nil,
 		hsic.WithTestName("webflowrelnewuser"),
-		hsic.WithDERPAsIP(),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -275,7 +265,7 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 		listNodes, err = headscale.ListNodes()
 		assert.NoError(ct, err, "Failed to list nodes after initial web authentication")
 		assert.Len(ct, listNodes, len(allClients), "Expected %d nodes after web auth, got %d", len(allClients), len(listNodes))
-	}, 30*time.Second, 2*time.Second, "validating node count matches client count after initial web authentication")
+	}, integrationutil.ScaledTimeout(30*time.Second), 2*time.Second, "validating node count matches client count after initial web authentication")
 
 	nodeCountBeforeLogout := len(listNodes)
 	t.Logf("node count before logout: %d", nodeCountBeforeLogout)
@@ -335,7 +325,7 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 		user1Nodes, err = headscale.ListNodes("user1")
 		assert.NoError(ct, err, "Failed to list nodes for user1 after web flow relogin")
 		assert.Len(ct, user1Nodes, len(allClients), "User1 should have all %d clients after web flow relogin, got %d nodes", len(allClients), len(user1Nodes))
-	}, 60*time.Second, 2*time.Second, "validating user1 has all client nodes after web flow user switch relogin")
+	}, integrationutil.ScaledTimeout(60*time.Second), 2*time.Second, "validating user1 has all client nodes after web flow user switch relogin")
 
 	// Collect expected node IDs for user1 after relogin
 	expectedUser1Nodes := make([]types.NodeID, 0, len(user1Nodes))
@@ -357,7 +347,7 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 		user2Nodes, err = headscale.ListNodes("user2")
 		assert.NoError(ct, err, "Failed to list nodes for user2 after CLI registration to user1")
 		assert.Len(ct, user2Nodes, len(allClients)/2, "User2 should still have %d old nodes (likely expired) after CLI registration to user1, got %d nodes", len(allClients)/2, len(user2Nodes))
-	}, 30*time.Second, 2*time.Second, "validating user2 old nodes remain in database after CLI registration to user1")
+	}, integrationutil.ScaledTimeout(30*time.Second), 2*time.Second, "validating user2 old nodes remain in database after CLI registration to user1")
 
 	t.Logf("Validating client login states after web flow user switch at %s", time.Now().Format(TimestampFormat))
 
@@ -366,7 +356,7 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 			status, err := client.Status()
 			assert.NoError(ct, err, "Failed to get status for client %s", client.Hostname())
 			assert.Equal(ct, "user1@test.no", status.User[status.Self.UserID].LoginName, "Client %s should be logged in as user1 after web flow user switch, got %s", client.Hostname(), status.User[status.Self.UserID].LoginName)
-		}, 30*time.Second, 2*time.Second, "validating %s is logged in as user1 after web flow user switch", client.Hostname())
+		}, integrationutil.ScaledTimeout(30*time.Second), 2*time.Second, "validating %s is logged in as user1 after web flow user switch", client.Hostname())
 	}
 
 	// Test connectivity after user switch
@@ -377,6 +367,5 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 		return x.String()
 	})
 
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d after web flow user switch", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 }

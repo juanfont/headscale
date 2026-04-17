@@ -19,7 +19,7 @@ var (
 	ErrInvalidPortRangeFormat = errors.New("invalid port range format")
 	ErrPortRangeInverted      = errors.New("invalid port range: first port is greater than last port")
 	ErrPortMustBePositive     = errors.New("first port must be >0, or use '*' for wildcard")
-	ErrInvalidPortNumber      = errors.New("invalid port number")
+	ErrInvalidPortNumber      = errors.New("invalid first integer")
 	ErrPortNumberOutOfRange   = errors.New("port number out of range")
 	ErrBracketsNotIPv6        = errors.New("square brackets are only valid around IPv6 addresses")
 )

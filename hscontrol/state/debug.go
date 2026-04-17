@@ -69,7 +69,7 @@ func (s *State) DebugOverview() string {
 	sb.WriteString("=== Headscale State Overview ===\n\n")
 
 	// Node statistics
-	sb.WriteString(fmt.Sprintf("Nodes: %d total\n", allNodes.Len()))
+	fmt.Fprintf(&sb, "Nodes: %d total\n", allNodes.Len())
 
 	userNodeCounts := make(map[string]int)
 	onlineCount := 0
@@ -97,26 +97,26 @@ func (s *State) DebugOverview() string {
 		}
 	}
 
-	sb.WriteString(fmt.Sprintf("  - Online: %d\n", onlineCount))
-	sb.WriteString(fmt.Sprintf("  - Expired: %d\n", expiredCount))
-	sb.WriteString(fmt.Sprintf("  - Ephemeral: %d\n", ephemeralCount))
+	fmt.Fprintf(&sb, "  - Online: %d\n", onlineCount)
+	fmt.Fprintf(&sb, "  - Expired: %d\n", expiredCount)
+	fmt.Fprintf(&sb, "  - Ephemeral: %d\n", ephemeralCount)
 	sb.WriteString("\n")
 
 	// User statistics
-	sb.WriteString(fmt.Sprintf("Users: %d total\n", len(users)))
+	fmt.Fprintf(&sb, "Users: %d total\n", len(users))
 
 	for userName, nodeCount := range userNodeCounts {
-		sb.WriteString(fmt.Sprintf("  - %s: %d nodes\n", userName, nodeCount))
+		fmt.Fprintf(&sb, "  - %s: %d nodes\n", userName, nodeCount)
 	}
 
 	sb.WriteString("\n")
 
 	// Policy information
 	sb.WriteString("Policy:\n")
-	sb.WriteString(fmt.Sprintf("  - Mode: %s\n", s.cfg.Policy.Mode))
+	fmt.Fprintf(&sb, "  - Mode: %s\n", s.cfg.Policy.Mode)
 
 	if s.cfg.Policy.Mode == types.PolicyModeFile {
-		sb.WriteString(fmt.Sprintf("  - Path: %s\n", s.cfg.Policy.Path))
+		fmt.Fprintf(&sb, "  - Path: %s\n", s.cfg.Policy.Path)
 	}
 
 	sb.WriteString("\n")
@@ -124,7 +124,7 @@ func (s *State) DebugOverview() string {
 	// DERP information
 	derpMap := s.derpMap.Load()
 	if derpMap != nil {
-		sb.WriteString(fmt.Sprintf("DERP: %d regions configured\n", len(derpMap.Regions)))
+		fmt.Fprintf(&sb, "DERP: %d regions configured\n", len(derpMap.Regions))
 	} else {
 		sb.WriteString("DERP: not configured\n")
 	}
@@ -137,7 +137,7 @@ func (s *State) DebugOverview() string {
 		routeCount = 0
 	}
 
-	sb.WriteString(fmt.Sprintf("Primary Routes: %d active\n", routeCount))
+	fmt.Fprintf(&sb, "Primary Routes: %d active\n", routeCount)
 	sb.WriteString("\n")
 
 	// Registration cache
@@ -163,18 +163,18 @@ func (s *State) DebugDERPMap() string {
 
 	sb.WriteString("=== DERP Map Configuration ===\n\n")
 
-	sb.WriteString(fmt.Sprintf("Total Regions: %d\n\n", len(derpMap.Regions)))
+	fmt.Fprintf(&sb, "Total Regions: %d\n\n", len(derpMap.Regions))
 
 	for regionID, region := range derpMap.Regions {
-		sb.WriteString(fmt.Sprintf("Region %d: %s\n", regionID, region.RegionName))
-		sb.WriteString(fmt.Sprintf("  - Nodes: %d\n", len(region.Nodes)))
+		fmt.Fprintf(&sb, "Region %d: %s\n", regionID, region.RegionName)
+		fmt.Fprintf(&sb, "  - Nodes: %d\n", len(region.Nodes))
 
 		for _, node := range region.Nodes {
-			sb.WriteString(fmt.Sprintf("    - %s (%s:%d)\n",
-				node.Name, node.HostName, node.DERPPort))
+			fmt.Fprintf(&sb, "    - %s (%s:%d)\n",
+				node.Name, node.HostName, node.DERPPort)
 
 			if node.STUNPort != 0 {
-				sb.WriteString(fmt.Sprintf("      STUN: %d\n", node.STUNPort))
+				fmt.Fprintf(&sb, "      STUN: %d\n", node.STUNPort)
 			}
 		}
 
@@ -211,15 +211,13 @@ func (s *State) DebugSSHPolicies() map[string]*tailcfg.SSHPolicy {
 
 // DebugRegistrationCache returns debug information about the registration cache.
 func (s *State) DebugRegistrationCache() map[string]any {
-	// The cache doesn't expose internal statistics, so we provide basic info
-	result := map[string]any{
-		"type":       "zcache",
-		"expiration": registerCacheExpiration.String(),
-		"cleanup":    registerCacheCleanup.String(),
-		"status":     "active",
+	return map[string]any{
+		"type":        "expirable-lru",
+		"expiration":  registerCacheExpiration.String(),
+		"max_entries": defaultRegisterCacheMaxEntries,
+		"current_len": s.authCache.Len(),
+		"status":      "active",
 	}
-
-	return result
 }
 
 // DebugConfig returns debug information about the current configuration.

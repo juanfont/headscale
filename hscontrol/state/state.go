@@ -1,5 +1,12 @@
-// Package state provides core state management for Headscale, coordinating
-// between subsystems like database, IP allocation, policy management, and DERP routing.
+// Package state provides core state management for Headscale,
+// coordinating between subsystems like database, IP allocation,
+// policy management, and DERP routing.
+//
+// The central type State owns a copy-on-write NodeStore
+// (node_store.go), a PrimaryRoutes HA ledger, the PolicyManager, and a
+// pingTracker for PingRequest correlation. Cross-subsystem operations
+// (node updates, policy evaluation, IP allocation) go through State
+// rather than directly to the database.
 
 package state
 
@@ -15,6 +22,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hashicorp/golang-lru/v2/expirable"
 	hsdb "github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
@@ -30,15 +38,18 @@ import (
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 	"tailscale.com/types/views"
-	zcache "zgo.at/zcache/v2"
 )
 
 const (
 	// registerCacheExpiration defines how long node registration entries remain in cache.
 	registerCacheExpiration = time.Minute * 15
 
-	// registerCacheCleanup defines the interval for cleaning up expired cache entries.
-	registerCacheCleanup = time.Minute * 20
+	// defaultRegisterCacheMaxEntries is the default upper bound on the number
+	// of pending registration entries the auth cache will hold. With a 15-minute
+	// TTL and a stripped-down RegistrationData payload (~200 bytes per entry),
+	// 1024 entries cap the worst-case cache footprint at well under 1 MiB even
+	// under sustained unauthenticated cache-fill attempts.
+	defaultRegisterCacheMaxEntries = 1024
 
 	// defaultNodeStoreBatchSize is the default number of write operations to batch
 	// before rebuilding the in-memory node snapshot.
@@ -63,6 +74,39 @@ var ErrNodeNotInNodeStore = errors.New("node no longer exists in NodeStore")
 
 // ErrNodeNameNotUnique is returned when a node name is not unique.
 var ErrNodeNameNotUnique = errors.New("node name is not unique")
+
+// nodeUpdateColumns lists all Node columns that should be written
+// during a struct-based GORM Updates() call.  Listing them explicitly
+// forces GORM to include nil/zero-value fields (e.g. UserID=nil when
+// converting a user-owned node to tagged) that struct-based Updates()
+// would otherwise silently skip.
+//
+// Excluded columns:
+//   - AuthKeyID, AuthKey: prevents GORM from persisting stale
+//     PreAuthKey references after a key has been deleted (#2862).
+//   - User: GORM association, not a real column.
+//   - IsOnline: runtime-only field (gorm:"-").
+//
+// Expiry is included here but may be omitted at call sites that must
+// not touch it (see persistNodeToDB).
+var nodeUpdateColumns = []string{
+	"MachineKey",
+	"NodeKey",
+	"DiscoKey",
+	"Endpoints",
+	"Hostinfo",
+	"IPv4",
+	"IPv6",
+	"Hostname",
+	"GivenName",
+	"UserID",
+	"RegisterMethod",
+	"Tags",
+	"Expiry",
+	"LastSeen",
+	"ApprovedRoutes",
+	"UpdatedAt",
+}
 
 // ErrRegistrationExpired is returned when a registration has expired.
 var ErrRegistrationExpired = errors.New("registration expired")
@@ -93,11 +137,24 @@ type State struct {
 	// polMan handles policy evaluation and management
 	polMan policy.PolicyManager
 
-	// authCache caches any pending authentication requests, from either auth type (Web and OIDC).
-	authCache *zcache.Cache[types.AuthID, types.AuthRequest]
+	// authCache holds any pending authentication requests from either auth
+	// type (Web and OIDC). It is a bounded LRU keyed by AuthID; oldest
+	// entries are evicted once the size cap is reached, and entries that
+	// time out have their auth verdict resolved with ErrRegistrationExpired
+	// via the eviction callback so any waiting goroutines wake.
+	authCache *expirable.LRU[types.AuthID, *types.AuthRequest]
 
 	// primaryRoutes tracks primary route assignments for nodes
 	primaryRoutes *routes.PrimaryRoutes
+
+	// connectGen tracks a per-node monotonic generation counter so stale
+	// Disconnect() calls from old poll sessions are rejected. Connect()
+	// increments the counter and returns the current value; Disconnect()
+	// only proceeds when the generation it carries matches the latest.
+	connectGen sync.Map // types.NodeID → *atomic.Uint64
+
+	// pings tracks pending ping requests and their response channels.
+	pings *pingTracker
 
 	// sshCheckAuth tracks when source nodes last completed SSH check auth.
 	//
@@ -127,26 +184,20 @@ func NewState(cfg *types.Config) (*State, error) {
 		cacheExpiration = cfg.Tuning.RegisterCacheExpiration
 	}
 
-	cacheCleanup := registerCacheCleanup
-	if cfg.Tuning.RegisterCacheCleanup != 0 {
-		cacheCleanup = cfg.Tuning.RegisterCacheCleanup
+	cacheMaxEntries := defaultRegisterCacheMaxEntries
+	if cfg.Tuning.RegisterCacheMaxEntries > 0 {
+		cacheMaxEntries = cfg.Tuning.RegisterCacheMaxEntries
 	}
 
-	authCache := zcache.New[types.AuthID, types.AuthRequest](
-		cacheExpiration,
-		cacheCleanup,
-	)
-
-	authCache.OnEvicted(
-		func(id types.AuthID, rn types.AuthRequest) {
+	authCache := expirable.NewLRU[types.AuthID, *types.AuthRequest](
+		cacheMaxEntries,
+		func(id types.AuthID, rn *types.AuthRequest) {
 			rn.FinishAuth(types.AuthVerdict{Err: ErrRegistrationExpired})
 		},
+		cacheExpiration,
 	)
 
-	db, err := hsdb.NewHeadscaleDatabase(
-		cfg,
-		authCache,
-	)
+	db, err := hsdb.NewHeadscaleDatabase(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("initializing database: %w", err)
 	}
@@ -215,6 +266,7 @@ func NewState(cfg *types.Config) (*State, error) {
 		authCache:     authCache,
 		primaryRoutes: routes.New(),
 		nodeStore:     nodeStore,
+		pings:         newPingTracker(),
 
 		sshCheckAuth: make(map[sshCheckPair]time.Time),
 	}, nil
@@ -222,6 +274,7 @@ func NewState(cfg *types.Config) (*State, error) {
 
 // Close gracefully shuts down the State instance and releases all resources.
 func (s *State) Close() error {
+	s.pings.drain()
 	s.nodeStore.Stop()
 
 	err := s.db.Close()
@@ -443,14 +496,11 @@ func (s *State) persistNodeToDB(node types.NodeView) (types.NodeView, change.Cha
 
 	nodePtr := node.AsStruct()
 
-	// Use Omit to prevent overwriting certain fields during MapRequest updates:
-	// - "expiry": should only be updated through explicit SetNodeExpiry calls or re-registration
-	// - "AuthKeyID", "AuthKey": prevents GORM from persisting stale PreAuthKey references that
-	//   may exist in NodeStore after a PreAuthKey has been deleted. The database handles setting
-	//   auth_key_id to NULL via ON DELETE SET NULL. Without this, Updates() would fail with a
-	//   foreign key constraint error when trying to reference a deleted PreAuthKey.
-	// See also: https://github.com/juanfont/headscale/issues/2862
-	err := s.db.DB.Omit("expiry", "AuthKeyID", "AuthKey").Updates(nodePtr).Error
+	// Explicitly select all node columns so GORM includes nil/zero-value
+	// fields (e.g. UserID=nil when converting a user-owned node to tagged).
+	// Omit "Expiry" here: expiry is only updated through explicit
+	// SetNodeExpiry calls or re-registration, not during MapRequest updates.
+	err := s.db.DB.Select(nodeUpdateColumns).Omit("Expiry").Updates(nodePtr).Error
 	if err != nil {
 		return types.NodeView{}, change.Change{}, fmt.Errorf("saving node: %w", err)
 	}
@@ -508,7 +558,15 @@ func (s *State) DeleteNode(node types.NodeView) (change.Change, error) {
 }
 
 // Connect marks a node as connected and updates its primary routes in the state.
-func (s *State) Connect(id types.NodeID) []change.Change {
+// It returns the list of changes and a generation number. The generation number
+// must be passed to Disconnect() so that stale disconnects from old poll sessions
+// are rejected (see the grace period logic in poll.go).
+func (s *State) Connect(id types.NodeID) ([]change.Change, uint64) {
+	// Increment the connect generation for this node. This ensures that any
+	// in-flight Disconnect() from a previous session will see a stale generation
+	// and become a no-op.
+	gen := s.nextConnectGen(id)
+
 	// Update online status in NodeStore before creating change notification
 	// so the NodeStore already reflects the correct state when other nodes
 	// process the NodeCameOnline change for full map generation.
@@ -517,12 +575,16 @@ func (s *State) Connect(id types.NodeID) []change.Change {
 		// n.LastSeen = ptr.To(now)
 	})
 	if !ok {
-		return nil
+		return nil, gen
 	}
 
 	c := []change.Change{change.NodeOnlineFor(node)}
 
 	log.Info().EmbedObject(node).Msg("node connected")
+
+	// Reconnecting clears any prior unhealthy state — the node proved
+	// basic connectivity by establishing the Noise session.
+	s.primaryRoutes.ClearUnhealthy(id)
 
 	// Use the node's current routes for primary route update.
 	// AllApprovedRoutes() returns only the intersection of announced and approved routes.
@@ -532,11 +594,60 @@ func (s *State) Connect(id types.NodeID) []change.Change {
 		c = append(c, change.NodeAdded(id))
 	}
 
-	return c
+	// Mirror Disconnect: a node coming online may (re)enable cap/relay
+	// grants targeting it, reintroduce identity-based aliases that
+	// resolve to its tags/IPs, and so on. Always trigger a PolicyChange
+	// so peers can recompute their netmap and pick up any policy
+	// elements that depend on this node being present.
+	c = append(c, change.PolicyChange())
+
+	return c, gen
+}
+
+// nextConnectGen atomically increments and returns the connect generation for a node.
+func (s *State) nextConnectGen(id types.NodeID) uint64 {
+	val, _ := s.connectGen.LoadOrStore(id, &atomic.Uint64{})
+
+	counter, ok := val.(*atomic.Uint64)
+	if !ok {
+		return 0
+	}
+
+	return counter.Add(1)
+}
+
+// connectGeneration returns the current connect generation for a node.
+func (s *State) connectGeneration(id types.NodeID) uint64 {
+	val, ok := s.connectGen.Load(id)
+	if !ok {
+		return 0
+	}
+
+	counter, ok := val.(*atomic.Uint64)
+	if !ok {
+		return 0
+	}
+
+	return counter.Load()
 }
 
 // Disconnect marks a node as disconnected and updates its primary routes in the state.
-func (s *State) Disconnect(id types.NodeID) ([]change.Change, error) {
+// The gen parameter is the generation returned by Connect(). If a newer Connect() has
+// been called since the session that is disconnecting, the generation will not match
+// and this call becomes a no-op, preventing stale disconnects from overwriting the
+// online status set by a newer session.
+func (s *State) Disconnect(id types.NodeID, gen uint64) ([]change.Change, error) {
+	// Check if this disconnect is stale. A newer Connect() will have incremented
+	// the generation, so if ours doesn't match, a newer session owns this node.
+	if current := s.connectGeneration(id); current != gen {
+		log.Debug().
+			Uint64("disconnect_gen", gen).
+			Uint64("current_gen", current).
+			Msg("stale disconnect rejected, newer session active")
+
+		return nil, nil
+	}
+
 	node, ok := s.nodeStore.UpdateNode(id, func(n *types.Node) {
 		now := time.Now()
 		n.LastSeen = &now
@@ -563,15 +674,18 @@ func (s *State) Disconnect(id types.NodeID) ([]change.Change, error) {
 
 	// The node is disconnecting so make sure that none of the routes it
 	// announced are served to any nodes.
-	routeChange := s.primaryRoutes.SetRoutes(id)
+	s.primaryRoutes.SetRoutes(id)
 
-	cs := []change.Change{change.NodeOfflineFor(node), c}
-
-	// If we have a policy change or route change, return that as it's more comprehensive
-	// Otherwise, return the NodeOffline change to ensure nodes are notified
-	if c.IsFull() || routeChange {
-		cs = append(cs, change.PolicyChange())
-	}
+	// A node going offline can affect policy compilation in ways beyond
+	// subnet routes: cap/relay grants targeting this node, identity-based
+	// aliases (tags, groups, users) that reference its tags/IPs, via
+	// routes steered through it, and so on. Always trigger a PolicyChange
+	// so peers receive a recomputed netmap and drop any cached state
+	// derived from this node (including peer relay allocations).
+	//
+	// TODO(kradalby): fires one full netmap recompute per peer on
+	// every connect/disconnect. Coalesce in mapper/batcher.go:addToBatch.
+	cs := []change.Change{change.NodeOfflineFor(node), c, change.PolicyChange()}
 
 	return cs, nil
 }
@@ -599,6 +713,59 @@ func (s *State) GetNodeByNodeKey(nodeKey key.NodePublic) (types.NodeView, bool) 
 // it isn't an invalid node (this is more of a node error or node is broken).
 func (s *State) GetNodeByMachineKey(machineKey key.MachinePublic, userID types.UserID) (types.NodeView, bool) {
 	return s.nodeStore.GetNodeByMachineKey(machineKey, userID)
+}
+
+// ResolveNode looks up a node by numeric ID, IPv4/IPv6 address, given
+// name, or hostname. It tries ID first, then IP, then GivenName
+// (unique per tailnet), then Hostname (client-reported, may collide).
+// Within the name passes, the lowest NodeID wins so repeated calls
+// are deterministic across snapshot iterations.
+func (s *State) ResolveNode(query string) (types.NodeView, bool) {
+	// Try numeric ID first.
+	id, idErr := types.ParseNodeID(query)
+	if idErr == nil {
+		return s.GetNodeByID(id)
+	}
+
+	// Try IP address.
+	addr, addrErr := netip.ParseAddr(query)
+	if addrErr == nil {
+		var match types.NodeView
+
+		for _, n := range s.ListNodes().All() {
+			if !slices.Contains(n.IPs(), addr) {
+				continue
+			}
+
+			if !match.Valid() || n.ID() < match.ID() {
+				match = n
+			}
+		}
+
+		return match, match.Valid()
+	}
+
+	// Try GivenName then Hostname, each with a stable tie-break on
+	// lowest NodeID.
+	var givenMatch, hostMatch types.NodeView
+
+	for _, n := range s.ListNodes().All() {
+		if n.GivenName() == query {
+			if !givenMatch.Valid() || n.ID() < givenMatch.ID() {
+				givenMatch = n
+			}
+		} else if n.Hostname() == query {
+			if !hostMatch.Valid() || n.ID() < hostMatch.ID() {
+				hostMatch = n
+			}
+		}
+	}
+
+	if givenMatch.Valid() {
+		return givenMatch, true
+	}
+
+	return hostMatch, hostMatch.Valid()
 }
 
 // ListNodes retrieves specific nodes by ID, or all nodes if no IDs provided.
@@ -637,7 +804,11 @@ func (s *State) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) views.Sl
 		return s.nodeStore.ListPeers(nodeID)
 	}
 
-	// For specific peerIDs, filter from all nodes
+	// For specific peerIDs, filter from all nodes.
+	// This path is used for incremental updates (NodeAdded, NodeChanged)
+	// where the caller already knows which peer IDs are involved.
+	// The peer visibility filtering happens in the mapper's buildTailPeers
+	// via MatchersForNode/ReduceNodes.
 	allNodes := s.nodeStore.ListNodes()
 
 	nodeIDSet := make(map[types.NodeID]struct{}, len(peerIDs))
@@ -1005,6 +1176,83 @@ func (s *State) GetNodePrimaryRoutes(nodeID types.NodeID) []netip.Prefix {
 	return s.primaryRoutes.PrimaryRoutes(nodeID)
 }
 
+// RoutesForPeer computes the routes a peer should advertise in a viewer's
+// AllowedIPs, combining primary routes (from HA election), approved exit
+// routes, and via grant steering.
+//
+// Approved exit routes (0.0.0.0/0, ::/0) are included alongside subnet
+// routes — they appear in every peer's AllowedIPs, while unapproved
+// ones do not.
+func (s *State) RoutesForPeer(
+	viewer, peer types.NodeView,
+	matchers []matcher.Match,
+) []netip.Prefix {
+	viaResult := s.polMan.ViaRoutesForPeer(viewer, peer)
+	globalPrimaries := s.primaryRoutes.PrimaryRoutes(peer.ID())
+	exitRoutes := peer.ExitRoutes()
+
+	var reduced []netip.Prefix
+
+	// Fast path: no via grants affect this pair.
+	if len(viaResult.Include) == 0 && len(viaResult.Exclude) == 0 {
+		allRoutes := slices.Concat(globalPrimaries, exitRoutes)
+
+		reduced = policy.ReduceRoutes(viewer, allRoutes, matchers)
+	} else {
+		// Slow path: drop excluded routes, reduce, append via-included.
+		routes := make([]netip.Prefix, 0, len(globalPrimaries)+len(exitRoutes))
+		for _, p := range slices.Concat(globalPrimaries, exitRoutes) {
+			if !slices.Contains(viaResult.Exclude, p) {
+				routes = append(routes, p)
+			}
+		}
+
+		reduced = policy.ReduceRoutes(viewer, routes, matchers)
+
+		// Append via-included routes. The via grant IS the authorization
+		// (no matcher filter needed), but HA primary election applies
+		// when a regular (non-via) grant also covers the same prefix.
+		//
+		// Rules:
+		//   - Peer is HA primary → always include
+		//   - Peer is NOT primary, no regular grant → include
+		//     (per-viewer via steering)
+		//   - Peer is NOT primary, regular grant exists → exclude
+		//     (HA primary wins)
+		for _, p := range viaResult.Include {
+			if slices.Contains(reduced, p) {
+				continue
+			}
+
+			if slices.Contains(globalPrimaries, p) {
+				reduced = append(reduced, p)
+			} else if !slices.Contains(viaResult.UsePrimary, p) {
+				reduced = append(reduced, p)
+			}
+		}
+	}
+
+	// Co-router visibility: when the viewer advertises the same prefix
+	// that the peer is HA primary for, the viewer must see that route
+	// regardless of matcher authorization. HA secondaries need this to
+	// know which peer is primary for their shared prefix.
+	viewerSubnets := viewer.SubnetRoutes()
+	if len(viewerSubnets) > 0 {
+		for _, p := range globalPrimaries {
+			if slices.Contains(viewerSubnets, p) && !slices.Contains(reduced, p) {
+				reduced = append(reduced, p)
+			}
+		}
+	}
+
+	return reduced
+}
+
+// PrimaryRoutes returns the primary routes tracker.
+func (s *State) PrimaryRoutes() *routes.PrimaryRoutes {
+	return s.primaryRoutes
+}
+
 // PrimaryRoutesString returns a string representation of all primary routes.
 func (s *State) PrimaryRoutesString() string {
 	return s.primaryRoutes.String()
@@ -1070,6 +1318,15 @@ func (s *State) CreateNodeForTest(user *types.User, hostname ...string) *types.N
 	return s.db.CreateNodeForTest(user, hostname...)
 }
 
+// PutNodeInStoreForTest writes a test node into the in-memory NodeStore
+// so handlers backed by NodeStore lookups (e.g. GetNodeByID) can see it.
+// CreateNodeForTest only saves to the database, which is fine for tests
+// that exercise the DB layer directly but insufficient for handler tests
+// that go through State.
+func (s *State) PutNodeInStoreForTest(node types.Node) types.NodeView {
+	return s.nodeStore.PutNode(node)
+}
+
 // CreateRegisteredNodeForTest creates a test node with allocated IPs. This is a convenience wrapper around the database layer.
 func (s *State) CreateRegisteredNodeForTest(user *types.User, hostname ...string) *types.Node {
 	return s.db.CreateRegisteredNodeForTest(user, hostname...)
@@ -1110,19 +1367,14 @@ func (s *State) DeletePreAuthKey(id uint64) error {
 	return s.db.DeletePreAuthKey(id)
 }
 
-// GetAuthCacheEntry retrieves a node registration from cache.
+// GetAuthCacheEntry retrieves a pending auth request from the cache.
 func (s *State) GetAuthCacheEntry(id types.AuthID) (*types.AuthRequest, bool) {
-	entry, found := s.authCache.Get(id)
-	if !found {
-		return nil, false
-	}
-
-	return &entry, true
+	return s.authCache.Get(id)
 }
 
-// SetAuthCacheEntry stores a node registration in cache.
-func (s *State) SetAuthCacheEntry(id types.AuthID, entry types.AuthRequest) {
-	s.authCache.Set(id, entry)
+// SetAuthCacheEntry stores a pending auth request in the cache.
+func (s *State) SetAuthCacheEntry(id types.AuthID, entry *types.AuthRequest) {
+	s.authCache.Add(id, entry)
 }
 
 // SetLastSSHAuth records a successful SSH check authentication
@@ -1152,25 +1404,6 @@ func (s *State) ClearSSHCheckAuth() {
 	defer s.sshCheckMu.Unlock()
 
 	s.sshCheckAuth = make(map[sshCheckPair]time.Time)
-}
-
-// logHostinfoValidation logs warnings when hostinfo is nil or has empty hostname.
-func logHostinfoValidation(nv types.NodeView, username, hostname string) {
-	if !nv.Hostinfo().Valid() {
-		log.Warn().
-			Caller().
-			EmbedObject(nv).
-			Str(zf.UserName, username).
-			Str(zf.GeneratedHostname, hostname).
-			Msg("Registration had nil hostinfo, generated default hostname")
-	} else if nv.Hostinfo().Hostname() == "" {
-		log.Warn().
-			Caller().
-			EmbedObject(nv).
-			Str(zf.UserName, username).
-			Str(zf.GeneratedHostname, hostname).
-			Msg("Registration had empty hostname, generated default")
-	}
 }
 
 // preserveNetInfo preserves NetInfo from an existing node for faster DERP connectivity.
@@ -1207,15 +1440,15 @@ type newNodeParams struct {
 type authNodeUpdateParams struct {
 	// Node to update; must be valid and in NodeStore.
 	ExistingNode types.NodeView
-	// Client data: keys, hostinfo, endpoints.
-	RegEntry *types.AuthRequest
+	// Cached registration payload from the originating client request.
+	RegData *types.RegistrationData
 	// Pre-validated hostinfo; NetInfo preserved from ExistingNode.
 	ValidHostinfo *tailcfg.Hostinfo
 	// Hostname from hostinfo, or generated from keys if client omits it.
 	Hostname string
 	// Auth user; may differ from ExistingNode.User() on conversion.
 	User *types.User
-	// Overrides RegEntry.Node.Expiry; ignored for tagged nodes.
+	// Overrides RegData.Expiry; ignored for tagged nodes.
 	Expiry *time.Time
 	// Only used when IsConvertFromTag=true.
 	RegisterMethod string
@@ -1227,7 +1460,7 @@ type authNodeUpdateParams struct {
 // an existing node. It updates the node in NodeStore, processes RequestTags, and
 // persists changes to the database.
 func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView, error) {
-	regNv := params.RegEntry.Node()
+	regData := params.RegData
 	// Log the operation type
 	if params.IsConvertFromTag {
 		log.Info().
@@ -1237,15 +1470,17 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 	} else {
 		log.Info().
 			Object("existing", params.ExistingNode).
-			Object("incoming", regNv).
+			Str("incoming.hostname", regData.Hostname).
+			Str("incoming.machine_key", regData.MachineKey.ShortString()).
 			Msg("Updating existing node registration via reauth")
 	}
 
-	// Process RequestTags during reauth (#2979)
-	// Due to json:",omitempty", we treat empty/nil as "clear tags"
+	// Process RequestTags during reauth (#2979).
+	// Due to json:",omitempty", empty/nil from the cached Hostinfo
+	// means "clear tags".
 	var requestTags []string
-	if regNv.Hostinfo().Valid() {
-		requestTags = regNv.Hostinfo().RequestTags().AsSlice()
+	if regData.Hostinfo != nil {
+		requestTags = regData.Hostinfo.RequestTags
 	}
 
 	oldTags := params.ExistingNode.Tags().AsSlice()
@@ -1263,8 +1498,8 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 
 	// Update existing node in NodeStore - validation passed, safe to mutate
 	updatedNodeView, ok := s.nodeStore.UpdateNode(params.ExistingNode.ID(), func(node *types.Node) {
-		node.NodeKey = regNv.NodeKey()
-		node.DiscoKey = regNv.DiscoKey()
+		node.NodeKey = regData.NodeKey
+		node.DiscoKey = regData.DiscoKey
 		node.Hostname = params.Hostname
 
 		// Preserve NetInfo from existing node when re-registering
@@ -1275,16 +1510,20 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 			params.ValidHostinfo,
 		)
 
-		node.Endpoints = regNv.Endpoints().AsSlice()
-		node.IsOnline = new(false)
+		node.Endpoints = regData.Endpoints
+		// Do NOT reset IsOnline here. Online status is managed exclusively by
+		// Connect()/Disconnect() in the poll session lifecycle. Resetting it
+		// during re-registration causes a false offline blip: the change
+		// notification triggers a map regeneration showing the node as offline
+		// to peers, even though Connect() will immediately set it back to true.
 		node.LastSeen = new(time.Now())
 
-		// Set RegisterMethod - for conversion this is the new method,
-		// for reauth we preserve the existing one from regEntry
+		// On conversion (tagged → user) we set the new register method.
+		// On plain reauth we preserve the existing node.RegisterMethod;
+		// the cached RegistrationData no longer carries it because the
+		// producer never populated it.
 		if params.IsConvertFromTag {
 			node.RegisterMethod = params.RegisterMethod
-		} else {
-			node.RegisterMethod = regNv.RegisterMethod()
 		}
 
 		// Track tagged status BEFORE processing tags
@@ -1304,7 +1543,7 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 			if params.Expiry != nil {
 				node.Expiry = params.Expiry
 			} else {
-				node.Expiry = regNv.Expiry().Clone()
+				node.Expiry = regData.Expiry
 			}
 		case !wasTagged && isTagged:
 			// Personal → Tagged: clear expiry (tagged nodes don't expire)
@@ -1314,27 +1553,39 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 			if params.Expiry != nil {
 				node.Expiry = params.Expiry
 			} else {
-				node.Expiry = regNv.Expiry().Clone()
+				node.Expiry = regData.Expiry
 			}
 		case !isTagged:
 			// Personal → Personal: update expiry from client
 			if params.Expiry != nil {
 				node.Expiry = params.Expiry
 			} else {
-				node.Expiry = regNv.Expiry().Clone()
+				node.Expiry = regData.Expiry
 			}
 		}
 		// Tagged → Tagged: keep existing expiry (nil) - no action needed
+
+		// Apply default node expiry for non-tagged nodes when the
+		// resolved expiry is still nil or zero (e.g., CLI registration
+		// where the client did not request a specific expiry).
+		needsDefaultExpiry := !node.IsTagged() &&
+			(node.Expiry == nil || node.Expiry.IsZero()) &&
+			s.cfg.Node.Expiry > 0
+		if needsDefaultExpiry {
+			exp := time.Now().Add(s.cfg.Node.Expiry)
+			node.Expiry = &exp
+		}
 	})
 
 	if !ok {
 		return types.NodeView{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, params.ExistingNode.ID())
 	}
 
-	// Persist to database
-	// Omit AuthKeyID/AuthKey to prevent stale PreAuthKey references from causing FK errors.
+	// Persist to database.
+	// Explicitly select all node columns so GORM includes nil/zero-value fields
+	// (see nodeUpdateColumns comment).
 	_, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-		err := tx.Omit("AuthKeyID", "AuthKey").Updates(updatedNodeView.AsStruct()).Error
+		err := tx.Select(nodeUpdateColumns).Updates(updatedNodeView.AsStruct()).Error
 		if err != nil {
 			return nil, fmt.Errorf("saving node: %w", err)
 		}
@@ -1380,6 +1631,7 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 		Hostinfo:       params.Hostinfo,
 		Endpoints:      params.Endpoints,
 		LastSeen:       new(time.Now()),
+		IsOnline:       new(false), // Explicitly offline until Connect() is called
 		RegisterMethod: params.RegisterMethod,
 		Expiry:         params.Expiry,
 	}
@@ -1444,6 +1696,17 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 				Strs(zf.NodeTags, nodeToRegister.Tags).
 				Msg("approved advertise-tags during registration")
 		}
+	}
+
+	// Apply default node expiry for non-tagged nodes when the client
+	// did not request a specific expiry.
+	// Tagged nodes are exempt — they never expire.
+	needsDefaultExpiry := !nodeToRegister.IsTagged() &&
+		(nodeToRegister.Expiry == nil || nodeToRegister.Expiry.IsZero()) &&
+		s.cfg.Node.Expiry > 0
+	if needsDefaultExpiry {
+		exp := time.Now().Add(s.cfg.Node.Expiry)
+		nodeToRegister.Expiry = &exp
 	}
 
 	// Validate before saving
@@ -1625,29 +1888,22 @@ func (s *State) HandleNodeFromAuthPath(
 		return types.NodeView{}, change.Change{}, fmt.Errorf("finding user: %w", err)
 	}
 
-	// Ensure we have a valid hostname from the registration cache entry
-	hostname := util.EnsureHostname(
-		regEntry.Node().Hostinfo(),
-		regEntry.Node().MachineKey().String(),
-		regEntry.Node().NodeKey().String(),
-	)
+	regData := regEntry.RegistrationData()
 
-	// Ensure we have valid hostinfo
+	// Hostname was already validated/normalised at producer time. Build
+	// the initial Hostinfo from the cached client-supplied Hostinfo (or
+	// an empty stub if the client did not send one).
+	hostname := regData.Hostname
+
 	hostinfo := &tailcfg.Hostinfo{}
-	if regEntry.Node().Hostinfo().Valid() {
-		hostinfo = regEntry.Node().Hostinfo().AsStruct()
+	if regData.Hostinfo != nil {
+		hostinfo = regData.Hostinfo.Clone()
 	}
 
 	hostinfo.Hostname = hostname
 
-	logHostinfoValidation(
-		regEntry.Node(),
-		user.Name,
-		hostname,
-	)
-
 	// Lookup existing nodes
-	machineKey := regEntry.Node().MachineKey()
+	machineKey := regData.MachineKey
 	existingNodeSameUser, _ := s.nodeStore.GetNodeByMachineKey(machineKey, types.UserID(user.ID))
 	existingNodeAnyUser, _ := s.nodeStore.GetNodeByMachineKeyAnyUser(machineKey)
 
@@ -1669,7 +1925,7 @@ func (s *State) HandleNodeFromAuthPath(
 
 	// Common params for update operations
 	updateParams := authNodeUpdateParams{
-		RegEntry:       regEntry,
+		RegData:        regData,
 		ValidHostinfo:  hostinfo,
 		Hostname:       hostname,
 		User:           user,
@@ -1704,7 +1960,7 @@ func (s *State) HandleNodeFromAuthPath(
 			Msg("Creating new node for different user (same machine key exists for another user)")
 
 		finalNode, err = s.createNewNodeFromAuth(
-			logger, user, regEntry, hostname, hostinfo,
+			logger, user, regData, hostname, hostinfo,
 			expiry, registrationMethod, existingNodeAnyUser,
 		)
 		if err != nil {
@@ -1712,7 +1968,7 @@ func (s *State) HandleNodeFromAuthPath(
 		}
 	} else {
 		finalNode, err = s.createNewNodeFromAuth(
-			logger, user, regEntry, hostname, hostinfo,
+			logger, user, regData, hostname, hostinfo,
 			expiry, registrationMethod, types.NodeView{},
 		)
 		if err != nil {
@@ -1723,8 +1979,8 @@ func (s *State) HandleNodeFromAuthPath(
 	// Signal to waiting clients
 	regEntry.FinishAuth(types.AuthVerdict{Node: finalNode})
 
-	// Delete from registration cache
-	s.authCache.Delete(authID)
+	// Remove from registration cache
+	s.authCache.Remove(authID)
 
 	// Update policy managers
 	usersChange, err := s.updatePolicyManagerUsers()
@@ -1753,7 +2009,7 @@ func (s *State) HandleNodeFromAuthPath(
 func (s *State) createNewNodeFromAuth(
 	logger zerolog.Logger,
 	user *types.User,
-	regEntry *types.AuthRequest,
+	regData *types.RegistrationData,
 	hostname string,
 	validHostinfo *tailcfg.Hostinfo,
 	expiry *time.Time,
@@ -1766,13 +2022,13 @@ func (s *State) createNewNodeFromAuth(
 
 	return s.createAndSaveNewNode(newNodeParams{
 		User:                   *user,
-		MachineKey:             regEntry.Node().MachineKey(),
-		NodeKey:                regEntry.Node().NodeKey(),
-		DiscoKey:               regEntry.Node().DiscoKey(),
+		MachineKey:             regData.MachineKey,
+		NodeKey:                regData.NodeKey,
+		DiscoKey:               regData.DiscoKey,
 		Hostname:               hostname,
 		Hostinfo:               validHostinfo,
-		Endpoints:              regEntry.Node().Endpoints().AsSlice(),
-		Expiry:                 cmp.Or(expiry, regEntry.Node().Expiry().Clone()),
+		Endpoints:              regData.Endpoints,
+		Expiry:                 cmp.Or(expiry, regData.Expiry),
 		RegisterMethod:         registrationMethod,
 		ExistingNodeForNetinfo: existingNodeForNetinfo,
 	})
@@ -1917,13 +2173,24 @@ func (s *State) HandleNodeFromPreAuthKey(
 			// Only update AuthKey reference.
 			node.AuthKey = pak
 			node.AuthKeyID = &pak.ID
-			node.IsOnline = new(false)
+			// Do NOT reset IsOnline here. Online status is managed exclusively by
+			// Connect()/Disconnect() in the poll session lifecycle. Resetting it
+			// during re-registration causes a false offline blip to peers.
 			node.LastSeen = new(time.Now())
 
 			// Tagged nodes keep their existing expiry (disabled).
-			// User-owned nodes update expiry from the client request.
+			// User-owned nodes update expiry from the client request,
+			// falling back to the configured default if the client
+			// did not request a specific expiry.
 			if !node.IsTagged() {
-				node.Expiry = &regReq.Expiry
+				if !regReq.Expiry.IsZero() {
+					node.Expiry = &regReq.Expiry
+				} else if s.cfg.Node.Expiry > 0 {
+					exp := time.Now().Add(s.cfg.Node.Expiry)
+					node.Expiry = &exp
+				} else {
+					node.Expiry = &regReq.Expiry
+				}
 			}
 		})
 
@@ -1932,14 +2199,20 @@ func (s *State) HandleNodeFromPreAuthKey(
 		}
 
 		_, err = hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-			// Use Updates() to preserve fields not modified by UpdateNode.
-			// Omit AuthKeyID/AuthKey to prevent stale PreAuthKey references from causing FK errors.
-			err := tx.Omit("AuthKeyID", "AuthKey").Updates(updatedNodeView.AsStruct()).Error
+			// Explicitly select all node columns so GORM includes nil/zero-value fields
+			// (see nodeUpdateColumns comment).
+			err := tx.Select(nodeUpdateColumns).Updates(updatedNodeView.AsStruct()).Error
 			if err != nil {
 				return nil, fmt.Errorf("saving node: %w", err)
 			}
 
-			if !pak.Reusable {
+			// Only mark the key used on the *first* registration. On
+			// re-registration the same key is already used and the
+			// atomic compare-and-set in UsePreAuthKey would otherwise
+			// reject it as "authkey already used". This is the path
+			// behind issue #2830 where containers restart with the
+			// same one-shot key.
+			if !pak.Reusable && !pak.Used {
 				err = hsdb.UsePreAuthKey(tx, pak)
 				if err != nil {
 					return nil, fmt.Errorf("using pre auth key: %w", err)
@@ -2160,7 +2433,12 @@ func (s *State) autoApproveNodes() ([]change.Change, error) {
 	return cs, nil
 }
 
-// UpdateNodeFromMapRequest processes a MapRequest and updates the node.
+// UpdateNodeFromMapRequest is the sync point where Hostinfo changes,
+// endpoint updates, and route advertisements from a MapRequest land in
+// the NodeStore. It produces a change.Change summarising what actually
+// moved so downstream subsystems (mapper, policy, primary routes) can
+// react accordingly.
+//
 // TODO(kradalby): This is essentially a patch update that could be sent directly to nodes,
 // which means we could shortcut the whole change thing if there are no other important updates.
 // When a field is added to this function, remember to also add it to:
@@ -2312,7 +2590,7 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		return change.Change{}, fmt.Errorf("saving to database: %w", err)
 	}
 
-	if policyChange.IsFull() {
+	if !policyChange.IsEmpty() {
 		return policyChange, nil
 	}
 
@@ -2379,7 +2657,7 @@ func routesChanged(oldNode types.NodeView, newHI *tailcfg.Hostinfo) bool {
 		oldRoutes = oldNode.AsStruct().Hostinfo.RoutableIPs
 	}
 
-	newRoutes := newHI.RoutableIPs
+	newRoutes := slices.Clone(newHI.RoutableIPs)
 	if newRoutes == nil {
 		newRoutes = []netip.Prefix{}
 	}

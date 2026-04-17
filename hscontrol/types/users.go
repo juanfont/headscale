@@ -304,21 +304,14 @@ func (c *OIDCClaims) Identifier() string {
 	subject := c.Sub
 
 	var result string
-	// Try to parse as URL to handle URL joining correctly
-	if u, err := url.Parse(issuer); err == nil && u.Scheme != "" { //nolint:noinlineerr
-		// For URLs, use proper URL path joining
-		if joined, err := url.JoinPath(issuer, subject); err == nil { //nolint:noinlineerr
-			result = joined
-		}
-	}
-
-	// If URL joining failed or issuer wasn't a URL, do simple string join
-	if result == "" {
-		// Default case: simple string joining with slash
-		issuer = strings.TrimSuffix(issuer, "/")
-		subject = strings.TrimPrefix(subject, "/")
-		result = issuer + "/" + subject
-	}
+	// Always use simple string concatenation with a slash separator.
+	// url.JoinPath resolves path-traversal segments like ".." and ".",
+	// which can silently drop the subject and cause identifier collisions
+	// between distinct OIDC users (e.g., Sub=".." produces the same
+	// identifier as an empty Sub).
+	issuer = strings.TrimSuffix(issuer, "/")
+	subject = strings.TrimPrefix(subject, "/")
+	result = issuer + "/" + subject
 
 	// Clean the result and return it
 	return CleanIdentifier(result)

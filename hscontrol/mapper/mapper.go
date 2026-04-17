@@ -44,7 +44,7 @@ type mapper struct {
 	// Configuration
 	state   *state.State
 	cfg     *types.Config
-	batcher Batcher
+	batcher *Batcher
 
 	created time.Time
 }
@@ -306,6 +306,10 @@ func (m *mapper) buildFromChange(
 
 	if len(resp.PeerPatches) > 0 {
 		builder.WithPeerChangedPatch(resp.PeerPatches)
+	}
+
+	if resp.PingRequest != nil {
+		builder.WithPingRequest(resp.PingRequest)
 	}
 
 	return builder.Build()

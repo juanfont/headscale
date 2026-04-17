@@ -819,27 +819,16 @@ func (api headscaleV1APIServer) DebugCreateNode(
 		Interface("route-str", request.GetRoutes()).
 		Msg("Creating routes for node")
 
-	hostinfo := tailcfg.Hostinfo{
-		RoutableIPs: routes,
-		OS:          "TestOS",
-		Hostname:    request.GetName(),
-	}
-
 	registrationId, err := types.AuthIDFromString(request.GetKey())
 	if err != nil {
 		return nil, err
 	}
 
-	newNode := types.Node{
+	regData := &types.RegistrationData{
 		NodeKey:    key.NewNode().Public(),
 		MachineKey: key.NewMachine().Public(),
 		Hostname:   request.GetName(),
-		User:       user,
-
-		Expiry:   &time.Time{},
-		LastSeen: &time.Time{},
-
-		Hostinfo: &hostinfo,
+		Expiry:     &time.Time{}, // zero time, not nil — preserves proto JSON round-trip semantics
 	}
 
 	log.Debug().
@@ -847,10 +836,27 @@ func (api headscaleV1APIServer) DebugCreateNode(
 		Str("registration_id", registrationId.String()).
 		Msg("adding debug machine via CLI, appending to registration cache")
 
-	authRegReq := types.NewRegisterAuthRequest(newNode)
+	authRegReq := types.NewRegisterAuthRequest(regData)
 	api.h.state.SetAuthCacheEntry(registrationId, authRegReq)
 
-	return &v1.DebugCreateNodeResponse{Node: newNode.Proto()}, nil
+	// Echo back a synthetic Node so the debug response surface stays
+	// stable. The actual node is created later by AuthApprove via
+	// HandleNodeFromAuthPath using the cached RegistrationData.
+	echoNode := types.Node{
+		NodeKey:    regData.NodeKey,
+		MachineKey: regData.MachineKey,
+		Hostname:   regData.Hostname,
+		User:       user,
+		Expiry:     &time.Time{},
+		LastSeen:   &time.Time{},
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname:    request.GetName(),
+			OS:          "TestOS",
+			RoutableIPs: routes,
+		},
+	}
+
+	return &v1.DebugCreateNodeResponse{Node: echoNode.Proto()}, nil
 }
 
 func (api headscaleV1APIServer) Health(

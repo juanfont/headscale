@@ -27,8 +27,6 @@ builds:
       - linux_arm64
     flags:
       - -mod=readonly
-    tags:
-      - ts2019
 
 archives:
   - id: golang-cross
@@ -44,10 +42,9 @@ source:
     - "vendor/"
 
 nfpms:
-  # Configure nFPM for .deb and .rpm releases
+  # Configure nFPM for .deb releases
   #
-  # See https://nfpm.goreleaser.com/configuration/
-  # and https://goreleaser.com/customization/nfpm/
+  # See https://goreleaser.com/customization/package/nfpm/
   #
   # Useful tools for debugging .debs:
   # List file contents: dpkg -c dist/headscale...deb
@@ -81,6 +78,8 @@ nfpms:
         dst: /usr/lib/systemd/system/headscale.service
       - dst: /var/lib/headscale
         type: dir
+      - src: ./config-example.yaml
+        dst: /usr/share/doc/headscale/examples/config-example.yaml
       - src: LICENSE
         dst: /usr/share/doc/headscale/copyright
     scripts:

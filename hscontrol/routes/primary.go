@@ -27,6 +27,10 @@ type PrimaryRoutes struct {
 	// primaries is a map of prefixes to the node that is the primary for that prefix.
 	primaries map[netip.Prefix]types.NodeID
 	isPrimary map[types.NodeID]bool
+
+	// unhealthy tracks nodes that failed health probes. Unhealthy nodes
+	// are skipped during primary selection but remain in the routes map.
+	unhealthy set.Set[types.NodeID]
 }
 
 func New() *PrimaryRoutes {
@@ -34,6 +38,7 @@ func New() *PrimaryRoutes {
 		routes:    make(map[types.NodeID]set.Set[netip.Prefix]),
 		primaries: make(map[netip.Prefix]types.NodeID),
 		isPrimary: make(map[types.NodeID]bool),
+		unhealthy: make(set.Set[types.NodeID]),
 	}
 }
 
@@ -92,13 +97,13 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 			Msg("processing prefix for primary route selection")
 
 		if node, ok := pr.primaries[prefix]; ok {
-			// If the current primary is still available, continue.
-			if slices.Contains(nodes, node) {
+			// If the current primary is still available and healthy, continue.
+			if slices.Contains(nodes, node) && !pr.unhealthy.Contains(node) {
 				log.Debug().
 					Caller().
 					Str(zf.Prefix, prefix.String()).
 					Uint64("currentPrimary", node.Uint64()).
-					Msg("current primary still available, keeping it")
+					Msg("current primary still available and healthy, keeping it")
 
 				continue
 			} else {
@@ -106,18 +111,46 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 					Caller().
 					Str(zf.Prefix, prefix.String()).
 					Uint64("oldPrimary", node.Uint64()).
-					Msg("current primary no longer available")
+					Bool("unhealthy", pr.unhealthy.Contains(node)).
+					Msg("current primary no longer available or unhealthy")
 			}
 		}
 
-		if len(nodes) >= 1 {
-			pr.primaries[prefix] = nodes[0]
+		// Select the first healthy node as primary.
+		// If all nodes are unhealthy, fall back to the first node
+		// (degraded service is better than no service).
+		var selected types.NodeID
+
+		found := false
+
+		for _, n := range nodes {
+			if !pr.unhealthy.Contains(n) {
+				selected = n
+				found = true
+
+				break
+			}
+		}
+
+		if !found && len(nodes) >= 1 {
+			selected = nodes[0]
+			found = true
+
+			log.Warn().
+				Caller().
+				Str(zf.Prefix, prefix.String()).
+				Uint64("fallbackPrimary", selected.Uint64()).
+				Msg("all nodes unhealthy for prefix, keeping first as degraded primary")
+		}
+
+		if found {
+			pr.primaries[prefix] = selected
 			changed = true
 
 			log.Debug().
 				Caller().
 				Str(zf.Prefix, prefix.String()).
-				Uint64("newPrimary", nodes[0].Uint64()).
+				Uint64("newPrimary", selected.Uint64()).
 				Msg("selected new primary for prefix")
 		}
 	}
@@ -164,12 +197,14 @@ func (pr *PrimaryRoutes) SetRoutes(node types.NodeID, prefixes ...netip.Prefix) 
 		Strs("prefixes", util.PrefixesToString(prefixes)).
 		Msg("PrimaryRoutes.SetRoutes called")
 
-	// If no routes are being set, remove the node from the routes map.
+	// If no routes are being set, remove the node from the routes map
+	// and clear any unhealthy state.
 	if len(prefixes) == 0 {
 		wasPresent := false
 
 		if _, ok := pr.routes[node]; ok {
 			delete(pr.routes, node)
+			pr.unhealthy.Delete(node)
 
 			wasPresent = true
 
@@ -245,6 +280,99 @@ func (pr *PrimaryRoutes) PrimaryRoutes(id types.NodeID) []netip.Prefix {
 	return routes
 }
 
+// SetNodeHealthy marks a node as healthy or unhealthy and recalculates
+// primary routes. Returns true if primaries changed.
+func (pr *PrimaryRoutes) SetNodeHealthy(
+	node types.NodeID,
+	healthy bool,
+) bool {
+	pr.mu.Lock()
+	defer pr.mu.Unlock()
+
+	if healthy {
+		if !pr.unhealthy.Contains(node) {
+			return false
+		}
+
+		pr.unhealthy.Delete(node)
+
+		log.Debug().
+			Caller().
+			Uint64(zf.NodeID, node.Uint64()).
+			Msg("node marked healthy")
+	} else {
+		if pr.unhealthy.Contains(node) {
+			return false
+		}
+
+		pr.unhealthy.Add(node)
+
+		log.Info().
+			Caller().
+			Uint64(zf.NodeID, node.Uint64()).
+			Msg("node marked unhealthy")
+	}
+
+	return pr.updatePrimaryLocked()
+}
+
+// ClearUnhealthy removes a node from the unhealthy set without
+// recalculating primaries. Used when a node reconnects to give
+// it a fresh start.
+func (pr *PrimaryRoutes) ClearUnhealthy(node types.NodeID) {
+	pr.mu.Lock()
+	defer pr.mu.Unlock()
+
+	if pr.unhealthy.Contains(node) {
+		pr.unhealthy.Delete(node)
+
+		log.Debug().
+			Caller().
+			Uint64(zf.NodeID, node.Uint64()).
+			Msg("cleared unhealthy state on reconnect")
+	}
+}
+
+// HANodes returns a snapshot of prefixes that have 2+ nodes
+// advertising them (HA configurations), mapped to the node IDs.
+// Node IDs are sorted deterministically.
+func (pr *PrimaryRoutes) HANodes() map[netip.Prefix][]types.NodeID {
+	pr.mu.Lock()
+	defer pr.mu.Unlock()
+
+	// Build prefix → nodes map.
+	prefixNodes := make(map[netip.Prefix][]types.NodeID)
+
+	ids := types.NodeIDs(xmaps.Keys(pr.routes))
+	sort.Sort(ids)
+
+	for _, id := range ids {
+		routes := pr.routes[id]
+		for route := range routes {
+			prefixNodes[route] = append(prefixNodes[route], id)
+		}
+	}
+
+	// Keep only prefixes with 2+ advertisers.
+	result := make(map[netip.Prefix][]types.NodeID)
+
+	for prefix, nodes := range prefixNodes {
+		if len(nodes) >= 2 {
+			result[prefix] = nodes
+		}
+	}
+
+	return result
+}
+
+// IsNodeHealthy returns whether the node is currently considered healthy.
+func (pr *PrimaryRoutes) IsNodeHealthy(node types.NodeID) bool {
+	pr.mu.Lock()
+	defer pr.mu.Unlock()
+
+	return !pr.unhealthy.Contains(node)
+}
+
 func (pr *PrimaryRoutes) String() string {
 	pr.mu.Lock()
 	defer pr.mu.Unlock()
@@ -285,6 +413,9 @@ type DebugRoutes struct {
 
 	// PrimaryRoutes maps route prefixes to the primary node serving them
 	PrimaryRoutes map[string]types.NodeID `json:"primary_routes"`
+
+	// UnhealthyNodes lists nodes that have failed health probes.
+	UnhealthyNodes []types.NodeID `json:"unhealthy_nodes,omitempty"`
 }
 
 // DebugJSON returns a structured representation of the primary routes state suitable for JSON serialization.
@@ -307,6 +438,23 @@ func (pr *PrimaryRoutes) DebugJSON() DebugRoutes {
 	// Populate primary routes
 	for prefix, nodeID := range pr.primaries {
 		debug.PrimaryRoutes[prefix.String()] = nodeID
+	}
+
+	// Populate unhealthy nodes
+	if pr.unhealthy.Len() > 0 {
+		nodes := pr.unhealthy.Slice()
+		slices.SortFunc(nodes, func(a, b types.NodeID) int {
+			if a < b {
+				return -1
+			}
+
+			if a > b {
+				return 1
+			}
+
+			return 0
+		})
+		debug.UnhealthyNodes = nodes
 	}
 
 	return debug

@@ -13,6 +13,7 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/integration/hsic"
+	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -62,7 +63,7 @@ func TestAPIAuthenticationBypass(t *testing.T) {
 		assert.NoError(ct, err)
 		assert.NotEmpty(ct, apiKeyOutput)
 		validAPIKey = strings.TrimSpace(apiKeyOutput)
-	}, 20*time.Second, 1*time.Second)
+	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 
 	// Get the API endpoint
 	endpoint := headscale.GetEndpoint()
@@ -435,7 +436,6 @@ func TestGRPCAuthenticationBypass(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
 		hsic.WithTestName("grpcauthtest"),
-		hsic.WithTLS(),
 		hsic.WithConfigEnv(map[string]string{
 			// Enable gRPC on the standard port
 			"HEADSCALE_GRPC_LISTEN_ADDR": "0.0.0.0:50443",
@@ -560,7 +560,6 @@ func TestCLIWithConfigAuthenticationBypass(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
 		hsic.WithTestName("cliconfigauth"),
-		hsic.WithTLS(),
 		hsic.WithConfigEnv(map[string]string{
 			"HEADSCALE_GRPC_LISTEN_ADDR": "0.0.0.0:50443",
 		}),

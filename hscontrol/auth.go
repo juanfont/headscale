@@ -1,7 +1,6 @@
 package hscontrol
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -71,6 +70,20 @@ func (h *Headscale) handleRegister(
 		// We do not look up nodes by [key.MachinePublic] as it might belong to multiple
 		// nodes, separated by users and this path is handling expiring/logout paths.
 		if node, ok := h.state.GetNodeByNodeKey(req.NodeKey); ok {
+			// Refuse to act on a node looked up purely by NodeKey unless
+			// the Noise session's machine key matches the cached node.
+			// Without this check anyone holding a target's NodeKey could
+			// open a Noise session with a throwaway machine key and read
+			// the owner's User/Login back through nodeToRegisterResponse.
+			// handleLogout enforces the same check on its own path.
+			if node.MachineKey() != machineKey {
+				return nil, NewHTTPError(
+					http.StatusUnauthorized,
+					"node exists with a different machine key",
+					nil,
+				)
+			}
+
 			// When tailscaled restarts, it sends RegisterRequest with Auth=nil and Expiry=zero.
 			// Return the current node state without modification.
 			// See: https://github.com/juanfont/headscale/issues/2862
@@ -302,30 +315,9 @@ func (h *Headscale) reqToNewRegisterResponse(
 		return nil, NewHTTPError(http.StatusInternalServerError, "failed to generate registration ID", err)
 	}
 
-	// Ensure we have a valid hostname
-	hostname := util.EnsureHostname(
-		req.Hostinfo.View(),
-		machineKey.String(),
-		req.NodeKey.String(),
+	authRegReq := types.NewRegisterAuthRequest(
+		registrationDataFromRequest(req, machineKey),
 	)
-
-	// Ensure we have valid hostinfo
-	hostinfo := cmp.Or(req.Hostinfo, &tailcfg.Hostinfo{})
-	hostinfo.Hostname = hostname
-
-	nodeToRegister := types.Node{
-		Hostname:   hostname,
-		MachineKey: machineKey,
-		NodeKey:    req.NodeKey,
-		Hostinfo:   hostinfo,
-		LastSeen:   new(time.Now()),
-	}
-
-	if !req.Expiry.IsZero() {
-		nodeToRegister.Expiry = &req.Expiry
-	}
-
-	authRegReq := types.NewRegisterAuthRequest(nodeToRegister)
 
 	log.Info().Msgf("new followup node registration using auth id: %s", newAuthID)
 	h.state.SetAuthCacheEntry(newAuthID, authRegReq)
@@ -333,6 +325,36 @@ func (h *Headscale) reqToNewRegisterResponse(
 	return &tailcfg.RegisterResponse{
 		AuthURL: h.authProvider.RegisterURL(newAuthID),
 	}, nil
+}
+
+// registrationDataFromRequest builds the RegistrationData payload stored
+// in the auth cache for a pending registration. The original Hostinfo is
+// retained so that consumers (auth callback, observability) see the
+// fields the client originally announced; the bounded-LRU cap on the
+// cache is what bounds the unauthenticated cache-fill DoS surface.
+func registrationDataFromRequest(
+	req tailcfg.RegisterRequest,
+	machineKey key.MachinePublic,
+) *types.RegistrationData {
+	hostname := util.EnsureHostname(
+		req.Hostinfo.View(),
+		machineKey.String(),
+		req.NodeKey.String(),
+	)
+
+	regData := &types.RegistrationData{
+		MachineKey: machineKey,
+		NodeKey:    req.NodeKey,
+		Hostname:   hostname,
+		Hostinfo:   req.Hostinfo,
+	}
+
+	if !req.Expiry.IsZero() {
+		expiry := req.Expiry
+		regData.Expiry = &expiry
+	}
+
+	return regData
 }
 
 func (h *Headscale) handleRegisterWithAuthKey(
@@ -408,49 +430,23 @@ func (h *Headscale) handleRegisterInteractive(
 		return nil, fmt.Errorf("generating registration ID: %w", err)
 	}
 
-	// Ensure we have a valid hostname
-	hostname := util.EnsureHostname(
-		req.Hostinfo.View(),
-		machineKey.String(),
-		req.NodeKey.String(),
-	)
-
-	// Ensure we have valid hostinfo
-	hostinfo := cmp.Or(req.Hostinfo, &tailcfg.Hostinfo{})
 	if req.Hostinfo == nil {
 		log.Warn().
 			Str("machine.key", machineKey.ShortString()).
 			Str("node.key", req.NodeKey.ShortString()).
-			Str("generated.hostname", hostname).
 			Msg("Received registration request with nil hostinfo, generated default hostname")
 	} else if req.Hostinfo.Hostname == "" {
 		log.Warn().
 			Str("machine.key", machineKey.ShortString()).
 			Str("node.key", req.NodeKey.ShortString()).
-			Str("generated.hostname", hostname).
 			Msg("Received registration request with empty hostname, generated default")
 	}
 
-	hostinfo.Hostname = hostname
-
-	nodeToRegister := types.Node{
-		Hostname:   hostname,
-		MachineKey: machineKey,
-		NodeKey:    req.NodeKey,
-		Hostinfo:   hostinfo,
-		LastSeen:   new(time.Now()),
-	}
-
-	if !req.Expiry.IsZero() {
-		nodeToRegister.Expiry = &req.Expiry
-	}
-
-	authRegReq := types.NewRegisterAuthRequest(nodeToRegister)
-
-	h.state.SetAuthCacheEntry(
-		authID,
-		authRegReq,
+	authRegReq := types.NewRegisterAuthRequest(
+		registrationDataFromRequest(req, machineKey),
 	)
+
+	h.state.SetAuthCacheEntry(authID, authRegReq)
 
 	log.Info().Msgf("starting node registration using auth id: %s", authID)
 

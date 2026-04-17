@@ -65,6 +65,12 @@ Please have a look at the [`documentation`](https://headscale.net/stable/).
 
 For NixOS users, a module is available in [`nix/`](./nix/).
 
+## Builds from `main`
+
+Development builds from the `main` branch are available as container images and
+binaries. See the [development builds](https://headscale.net/stable/setup/install/main/)
+documentation for details.
+
 ## Talks
 
 - Fosdem 2026 (video): [Headscale & Tailscale: The complementary open source clone](https://fosdem.org/2026/schedule/event/KYQ3LL-headscale-the-complementary-open-source-clone/)

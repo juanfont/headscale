@@ -33,7 +33,8 @@ node can be approved with:
 - [Headscale API](api.md)
 - Or delegated to an identity provider via [OpenID Connect](oidc.md)
 
-Web authentication relies on the presence of a Headscale user. Use the `headscale users` command to create a new user:
+Web authentication relies on the presence of a Headscale user. Use the `headscale users` command to create a new
+user[^1]:
 
 ```console
 headscale users create <USER>
@@ -98,7 +99,7 @@ Its best suited for automation.
 
 === "Personal devices"
 
-    A personal node is always assigned to a Headscale user. Use the `headscale users` command to create a new user:
+    A personal node is always assigned to a Headscale user. Use the `headscale users` command to create a new user[^1]:
 
     ```console
     headscale users create <USER>
@@ -139,3 +140,5 @@ Its best suited for automation.
     The registration of a tagged node is complete and it should be listed as "online" in the output of
     `headscale nodes list`. The "User" column displays `tagged-devices` as the owner of the node. See the "Tags" column for the list of
     assigned tags.
+
+[^1]: [Ensure that the Headscale username does not end with `@`.](oidc.md#reference-a-user-in-the-policy)

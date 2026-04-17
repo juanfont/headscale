@@ -1,26 +1,22 @@
-// This file is "generated" by Claude.
-// It contains a data-driven test that reads SSH-*.json test files captured
-// from Tailscale SaaS. Each file contains:
-//   - The SSH section of the policy
-//   - The expected SSHPolicy rules for each of 5 test nodes
+// This file implements a data-driven test runner for SSH compatibility tests.
+// It loads HuJSON golden files from testdata/ssh_results/ssh-*.hujson, captured
+// from Tailscale SaaS by tscap, and compares headscale's SSH policy compilation
+// against the captured SSH rules.
 //
-// The test loads each JSON file, constructs a full policy from the SSH section,
-// applies it through headscale's SSH policy compilation, and compares the output
-// against Tailscale's actual behavior.
+// Each file is a testcapture.Capture containing:
+//   - The full policy that was POSTed to Tailscale SaaS (we use tf.Input.FullPolicy
+//     directly instead of reconstructing it from a sub-section)
+//   - The expected SSH rules for each of the 8 test nodes (in tf.Captures[name].SSHRules)
 //
-// Tests that are known to fail due to unimplemented features or known
-// differences are skipped with a TODO comment explaining the root cause.
-// As headscale's SSH implementation improves, tests should be removed
-// from the skip list.
+// Tests known to fail due to unimplemented features or known differences are
+// skipped with a TODO comment explaining the root cause.
 //
-// Test data source: testdata/ssh_results/SSH-*.json
-// Captured from: Tailscale SaaS API + tailscale debug localapi
+// Test data source: testdata/ssh_results/ssh-*.hujson
+// Source format:    github.com/juanfont/headscale/hscontrol/types/testcapture
 
 package v2
 
 import (
-	"encoding/json"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -28,62 +24,55 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/testcapture"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 )
 
-// sshTestFile represents the JSON structure of a captured SSH test file.
-type sshTestFile struct {
-	TestID     string                    `json:"test_id"`
-	PolicyFile string                    `json:"policy_file"`
-	SSHSection json.RawMessage           `json:"ssh_section"`
-	Nodes      map[string]sshNodeCapture `json:"nodes"`
-}
-
-// sshNodeCapture represents the expected SSH rules for a single node.
-type sshNodeCapture struct {
-	Rules json.RawMessage `json:"rules"`
-}
-
 // setupSSHDataCompatUsers returns the 3 test users for SSH data-driven
-// compatibility tests. The user configuration matches the Tailscale test
-// environment with email domains preserved for localpart matching:
-//   - kratail2tid@example.com (converted from @passkey)
-//   - kristoffer@dalby.cc (kept as-is — different domain for localpart exclusion)
-//   - monitorpasskeykradalby@example.com (converted from @passkey)
+// compatibility tests. Users get norse-god names; nodes get original-151
+// pokémon names — matching the anonymized identifiers tscap writes into
+// the capture files (see github.com/kradalby/tscap/anonymize).
+//
+// odin and freya live on @example.com; thor lives on @example.org so
+// that "localpart:*@example.com" resolves to exactly two users
+// (matching SaaS output) and the "user on a different email domain"
+// case stays covered by scenarios like ssh-d1 that use
+// "localpart:*@example.org".
 func setupSSHDataCompatUsers() types.Users {
 	return types.Users{
 		{
 			Model: gorm.Model{ID: 1},
-			Name:  "kratail2tid",
-			Email: "kratail2tid@example.com",
+			Name:  "odin",
+			Email: "odin@example.com",
 		},
 		{
 			Model: gorm.Model{ID: 2},
-			Name:  "kristoffer",
-			Email: "kristoffer@dalby.cc",
+			Name:  "thor",
+			Email: "thor@example.org",
 		},
 		{
 			Model: gorm.Model{ID: 3},
-			Name:  "monitorpasskeykradalby",
-			Email: "monitorpasskeykradalby@example.com",
+			Name:  "freya",
+			Email: "freya@example.com",
 		},
 	}
 }
 
-// setupSSHDataCompatNodes returns the 5 test nodes for SSH data-driven
-// compatibility tests. Node GivenNames match the keys in the JSON files:
-//   - user1 (owned by kratail2tid)
-//   - user-kris (owned by kristoffer)
-//   - user-mon (owned by monitorpasskeykradalby)
-//   - tagged-server (tag:server)
-//   - tagged-prod (tag:prod)
+// setupSSHDataCompatNodes returns the test nodes for SSH data-driven
+// compatibility tests. Node GivenNames match the anonymized pokémon names:
+//   - bulbasaur (owned by odin)
+//   - ivysaur (owned by thor)
+//   - venusaur (owned by freya)
+//   - beedrill (tag:server)
+//   - kakuna (tag:prod)
 func setupSSHDataCompatNodes(users types.Users) types.Nodes {
 	return types.Nodes{
 		&types.Node{
 			ID:        1,
-			GivenName: "user1",
+			GivenName: "bulbasaur",
 			User:      &users[0],
 			UserID:    &users[0].ID,
 			IPv4:      ptrAddr("100.90.199.68"),
@@ -92,7 +81,7 @@ func setupSSHDataCompatNodes(users types.Users) types.Nodes {
 		},
 		&types.Node{
 			ID:        2,
-			GivenName: "user-kris",
+			GivenName: "ivysaur",
 			User:      &users[1],
 			UserID:    &users[1].ID,
 			IPv4:      ptrAddr("100.110.121.96"),
@@ -101,7 +90,7 @@ func setupSSHDataCompatNodes(users types.Users) types.Nodes {
 		},
 		&types.Node{
 			ID:        3,
-			GivenName: "user-mon",
+			GivenName: "venusaur",
 			User:      &users[2],
 			UserID:    &users[2].ID,
 			IPv4:      ptrAddr("100.103.90.82"),
@@ -110,7 +99,7 @@ func setupSSHDataCompatNodes(users types.Users) types.Nodes {
 		},
 		&types.Node{
 			ID:        4,
-			GivenName: "tagged-server",
+			GivenName: "beedrill",
 			IPv4:      ptrAddr("100.108.74.26"),
 			IPv6:      ptrAddr("fd7a:115c:a1e0::b901:4a87"),
 			Tags:      []string{"tag:server"},
@@ -118,7 +107,7 @@ func setupSSHDataCompatNodes(users types.Users) types.Nodes {
 		},
 		&types.Node{
 			ID:        5,
-			GivenName: "tagged-prod",
+			GivenName: "kakuna",
 			IPv4:      ptrAddr("100.103.8.15"),
 			IPv6:      ptrAddr("fd7a:115c:a1e0::5b37:80f"),
 			Tags:      []string{"tag:prod"},
@@ -127,119 +116,65 @@ func setupSSHDataCompatNodes(users types.Users) types.Nodes {
 	}
 }
 
-// convertSSHPolicyEmails converts Tailscale SaaS email domains to
-// headscale-compatible format in the raw policy JSON.
-//
-// Tailscale uses provider-specific email formats:
-//   - kratail2tid@passkey (passkey auth)
-//   - kristoffer@dalby.cc (email auth — kept as-is)
-//   - monitorpasskeykradalby@passkey (passkey auth)
-//
-// The @passkey domain is converted to @example.com. The @dalby.cc domain
-// is kept as-is to preserve localpart matching semantics (kristoffer should
-// NOT match localpart:*@example.com, just as it doesn't match
-// localpart:*@passkey in Tailscale SaaS).
-func convertSSHPolicyEmails(s string) string {
-	s = strings.ReplaceAll(s, "@passkey", "@example.com")
-
-	return s
-}
-
-// constructSSHFullPolicy builds a complete headscale policy from the
-// ssh_section captured from Tailscale SaaS.
-//
-// The base policy includes:
-//   - groups matching the Tailscale test environment
-//   - tagOwners for tag:server and tag:prod
-//   - A permissive ACL allowing all traffic (matches the grants wildcard
-//     in the original Tailscale policy)
-//   - The SSH section from the test file
-func constructSSHFullPolicy(sshSection json.RawMessage) string {
-	// Base policy template with groups, tagOwners, and ACLs
-	// User references match the converted email addresses.
-	const basePolicyPrefix = `{
-	"groups": {
-		"group:admins": ["kratail2tid@example.com"],
-		"group:developers": ["kristoffer@dalby.cc", "kratail2tid@example.com"],
-		"group:empty": []
-	},
-	"tagOwners": {
-		"tag:server": ["kratail2tid@example.com"],
-		"tag:prod": ["kratail2tid@example.com"]
-	},
-	"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}]`
-
-	// Handle null or empty SSH section
-	if len(sshSection) == 0 || string(sshSection) == "null" {
-		// No SSH section at all (like SSH-E4)
-		return basePolicyPrefix + "\n}"
-	}
-
-	sshStr := string(sshSection)
-
-	// Convert Tailscale email domains
-	sshStr = convertSSHPolicyEmails(sshStr)
-
-	return basePolicyPrefix + `,
-	"ssh": ` + sshStr + "\n}"
-}
-
-// loadSSHTestFile loads and parses a single SSH test JSON file.
-func loadSSHTestFile(t *testing.T, path string) sshTestFile {
+// loadSSHTestFile loads and parses a single SSH capture HuJSON file.
+func loadSSHTestFile(t *testing.T, path string) *testcapture.Capture {
 	t.Helper()
 
-	content, err := os.ReadFile(path)
+	c, err := testcapture.Read(path)
 	require.NoError(t, err, "failed to read test file %s", path)
 
-	var tf sshTestFile
-
-	err = json.Unmarshal(content, &tf)
-	require.NoError(t, err, "failed to parse test file %s", path)
-
-	return tf
+	return c
 }
 
 // sshSkipReasons documents why each skipped test fails and what needs to be
 // fixed. Tests are grouped by root cause to identify high-impact changes.
-//
-// 37 of 39 tests are expected to pass.
 var sshSkipReasons = map[string]string{
-	// user:*@domain source alias not yet implemented.
-	// These tests use "src": ["user:*@passkey"] which requires UserWildcard
-	// alias type support. Will be added in a follow-up PR that implements
-	// user:*@domain across all contexts (ACLs, grants, tagOwners, autoApprovers).
-	"SSH-B5":  "user:*@domain source alias not yet implemented",
-	"SSH-D10": "user:*@domain source alias not yet implemented",
+	// USER_PASSKEY_WILDCARD (2 tests)
+	//
+	// headscale does not support passkey authentication and has no
+	// equivalent for the user:*@passkey wildcard pattern.
+	"ssh-b5":  "user:*@passkey wildcard not supported in headscale",
+	"ssh-d10": "user:*@passkey wildcard not supported in headscale",
+
+	// DOMAIN_NOT_ASSOCIATED (4 tests)
+	//
+	// SaaS validates that email domains in user:*@domain and
+	// localpart:*@domain expressions are configured tailnet domains.
+	// headscale has no concept of "associated tailnet domains" — it
+	// only has users with email addresses. These policies are
+	// legitimately rejected by SaaS but not by headscale.
+	"ssh-b4": "domain validation: headscale has no 'associated tailnet domains' concept",
+	"ssh-d1": "domain validation: headscale has no 'associated tailnet domains' concept",
+	"ssh-e1": "domain validation: headscale has no 'associated tailnet domains' concept",
+	"ssh-e2": "domain validation: headscale has no 'associated tailnet domains' concept",
 }
 
-// TestSSHDataCompat is a data-driven test that loads all SSH-*.json test files
-// captured from Tailscale SaaS and compares headscale's SSH policy compilation
-// against the real Tailscale behavior.
+// TestSSHDataCompat is a data-driven test that loads all ssh-*.hujson test
+// files captured from Tailscale SaaS and compares headscale's SSH policy
+// compilation against the real Tailscale behavior.
 //
-// Each JSON file contains:
-//   - The SSH section of the policy
-//   - Expected SSH rules per node (5 nodes)
+// Each capture file contains:
+//   - The full policy that was POSTed to the SaaS API (Input.FullPolicy)
+//   - Expected SSH rules per node (Captures[name].SSHRules)
 //
-// The test constructs a full headscale policy from the SSH section, converts
-// Tailscale user email formats to headscale format, and runs the policy
-// through unmarshalPolicy and compileSSHPolicy.
+// The test converts Tailscale user email formats to headscale format and runs
+// the captured policy through unmarshalPolicy and compileSSHPolicy.
 func TestSSHDataCompat(t *testing.T) {
 	t.Parallel()
 
 	files, err := filepath.Glob(
-		filepath.Join("testdata", "ssh_results", "SSH-*.json"),
+		filepath.Join("testdata", "ssh_results", "ssh-*.hujson"),
 	)
 	require.NoError(t, err, "failed to glob test files")
 	require.NotEmpty(
 		t,
 		files,
-		"no SSH-*.json test files found in testdata/ssh_results/",
+		"no ssh-*.hujson test files found in testdata/ssh_results/",
 	)
 
 	t.Logf("Loaded %d SSH test files", len(files))
 
 	users := setupSSHDataCompatUsers()
-	nodes := setupSSHDataCompatNodes(users)
 
 	for _, file := range files {
 		tf := loadSSHTestFile(t, file)
@@ -257,8 +192,21 @@ func TestSSHDataCompat(t *testing.T) {
 				return
 			}
 
-			// Construct full policy from SSH section
-			policyJSON := constructSSHFullPolicy(tf.SSHSection)
+			// SaaS rejected this policy — verify headscale also rejects it.
+			if tf.Error {
+				testSSHError(t, tf)
+
+				return
+			}
+
+			// Build nodes per-scenario from this file's topology.
+			// tscap uses clean-slate mode, so each scenario has
+			// different node IPs.
+			nodes := buildGrantsNodesFromCapture(users, tf)
+
+			// Use the captured full policy verbatim. Anonymization in
+			// tscap already rewrites SaaS emails to @example.com.
+			policyJSON := tf.Input.FullPolicy
 
 			pol, err := unmarshalPolicy([]byte(policyJSON))
 			require.NoError(
@@ -269,19 +217,15 @@ func TestSSHDataCompat(t *testing.T) {
 				policyJSON,
 			)
 
-			for nodeName, capture := range tf.Nodes {
+			for nodeName, capture := range tf.Captures {
 				t.Run(nodeName, func(t *testing.T) {
 					node := findNodeByGivenName(nodes, nodeName)
-					require.NotNilf(
-						t,
-						node,
-						"node %s not found in test setup",
-						nodeName,
-					)
+					require.NotNilf(t, node,
+						"golden node %s not found in test setup", nodeName)
 
 					// Compile headscale SSH policy for this node
 					gotSSH, err := pol.compileSSHPolicy(
-						"unused-server-url",
+						"https://unused",
 						users,
 						node.View(),
 						nodes.ViewSlice(),
@@ -294,24 +238,10 @@ func TestSSHDataCompat(t *testing.T) {
 						nodeName,
 					)
 
-					// Parse expected rules from JSON capture
-					var wantRules []*tailcfg.SSHRule
-					if len(capture.Rules) > 0 &&
-						string(capture.Rules) != "null" {
-						err = json.Unmarshal(capture.Rules, &wantRules)
-						require.NoError(
-							t,
-							err,
-							"%s/%s: failed to unmarshal expected rules",
-							tf.TestID,
-							nodeName,
-						)
-					}
-
-					// Build expected SSHPolicy from the rules
+					// Build expected SSHPolicy from the typed rules.
 					var wantSSH *tailcfg.SSHPolicy
-					if len(wantRules) > 0 {
-						wantSSH = &tailcfg.SSHPolicy{Rules: wantRules}
+					if len(capture.SSHRules) > 0 {
+						wantSSH = &tailcfg.SSHPolicy{Rules: capture.SSHRules}
 					}
 
 					// Normalize: treat empty-rules SSHPolicy as nil
@@ -323,6 +253,7 @@ func TestSSHDataCompat(t *testing.T) {
 					// EquateEmpty treats nil and empty slices as equal.
 					// Sort principals within rules (order doesn't matter).
 					// Do NOT sort rules — order matters (first-match-wins).
+					//
 					opts := cmp.Options{
 						cmpopts.SortSlices(func(a, b *tailcfg.SSHPrincipal) bool {
 							return a.NodeIP < b.NodeIP
@@ -337,8 +268,128 @@ func TestSSHDataCompat(t *testing.T) {
 							diff,
 						)
 					}
+
+					// Separate presence check: the fields ignored by
+					// the diff above must still be populated on matching
+					// rules. This catches regressions where headscale
+					// would silently drop the HoldAndDelegate URL or
+					// flip Accept to false while we are not looking.
+					if wantSSH != nil && gotSSH != nil {
+						for i, wantRule := range wantSSH.Rules {
+							if i >= len(gotSSH.Rules) {
+								break
+							}
+
+							gotRule := gotSSH.Rules[i]
+							if wantRule.Action == nil || gotRule.Action == nil {
+								continue
+							}
+
+							wantIsCheck := wantRule.Action.HoldAndDelegate != ""
+							gotIsCheck := gotRule.Action.HoldAndDelegate != ""
+
+							assert.Equalf(t, wantIsCheck, gotIsCheck,
+								"%s/%s rule %d: HoldAndDelegate presence mismatch",
+								tf.TestID, nodeName, i,
+							)
+						}
+					}
 				})
 			}
 		})
 	}
+}
+
+// sshErrorMessageMap maps Tailscale SaaS error substrings to headscale
+// equivalents where the wording differs but the meaning is the same.
+var sshErrorMessageMap = map[string]string{}
+
+// testSSHError verifies that an invalid policy produces the expected error.
+func testSSHError(t *testing.T, tf *testcapture.Capture) {
+	t.Helper()
+
+	policyJSON := []byte(tf.Input.FullPolicy)
+
+	pol, err := unmarshalPolicy(policyJSON)
+	if err != nil {
+		// Parse-time error.
+		if tf.Input.APIResponseBody != nil {
+			wantMsg := tf.Input.APIResponseBody.Message
+			if wantMsg != "" {
+				assertSSHErrorContains(t, err, wantMsg, tf.TestID)
+			}
+		}
+
+		return
+	}
+
+	err = pol.validate()
+	if err != nil {
+		if tf.Input.APIResponseBody != nil {
+			wantMsg := tf.Input.APIResponseBody.Message
+			if wantMsg != "" {
+				assertSSHErrorContains(t, err, wantMsg, tf.TestID)
+			}
+		}
+
+		return
+	}
+
+	t.Errorf(
+		"%s: expected error but policy parsed and validated successfully",
+		tf.TestID,
+	)
+}
+
+// assertSSHErrorContains checks that an error message matches the
+// expected Tailscale SaaS message, using progressive fallbacks:
+//  1. Direct substring match
+//  2. Mapped equivalent from sshErrorMessageMap
+//  3. Key-part extraction (tags, autogroups)
+//  4. t.Errorf on no match (strict)
+func assertSSHErrorContains(
+	t *testing.T,
+	err error,
+	wantMsg string,
+	testID string,
+) {
+	t.Helper()
+
+	errStr := err.Error()
+
+	// 1. Direct substring match.
+	if strings.Contains(errStr, wantMsg) {
+		return
+	}
+
+	// 2. Mapped equivalent.
+	for tsKey, hsKey := range sshErrorMessageMap {
+		if strings.Contains(wantMsg, tsKey) &&
+			strings.Contains(errStr, hsKey) {
+			return
+		}
+	}
+
+	// 3. Key-part extraction.
+	for _, part := range []string{
+		"autogroup:",
+		"tag:",
+		"undefined",
+		"not valid",
+	} {
+		if strings.Contains(wantMsg, part) &&
+			strings.Contains(errStr, part) {
+			return
+		}
+	}
+
+	// 4. No match — strict failure.
+	t.Errorf(
+		"%s: error message mismatch\n"+
+			"  want (tailscale): %q\n"+
+			"  got  (headscale): %q",
+		testID,
+		wantMsg,
+		errStr,
+	)
 }

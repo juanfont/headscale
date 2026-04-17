@@ -207,8 +207,34 @@ in
               default = "30m";
               description = ''
                 Time before an inactive ephemeral node is deleted.
+                Deprecated: use node.ephemeral.inactivity_timeout instead.
               '';
               example = "5m";
+            };
+
+            node = {
+              expiry = lib.mkOption {
+                type = lib.types.str;
+                default = "0";
+                description = ''
+                  Default key expiry for non-tagged nodes, regardless of
+                  registration method (auth key, CLI, web auth, OIDC).
+                  Tagged nodes are exempt and never expire. Set to "0"
+                  for no default expiry.
+                '';
+                example = "90d";
+              };
+
+              ephemeral = {
+                inactivity_timeout = lib.mkOption {
+                  type = lib.types.str;
+                  default = "30m";
+                  description = ''
+                    Time before an inactive ephemeral node is deleted.
+                  '';
+                  example = "5m";
+                };
+              };
             };
 
             database = {

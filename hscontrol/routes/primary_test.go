@@ -24,6 +24,7 @@ func TestPrimaryRoutes(t *testing.T) {
 		expectedRoutes    map[types.NodeID]set.Set[netip.Prefix]
 		expectedPrimaries map[netip.Prefix]types.NodeID
 		expectedIsPrimary map[types.NodeID]bool
+		expectedUnhealthy set.Set[types.NodeID]
 		expectedChange    bool
 
 		// primaries is a map of prefixes to the node that is the primary for that prefix.
@@ -413,6 +414,161 @@ func TestPrimaryRoutes(t *testing.T) {
 			expectedChange: false,
 		},
 		{
+			name: "unhealthy-primary-fails-over",
+			operations: func(pr *PrimaryRoutes) bool {
+				pr.SetRoutes(1, mp("192.168.1.0/24"))
+				pr.SetRoutes(2, mp("192.168.1.0/24"))
+
+				return pr.SetNodeHealthy(1, false)
+			},
+			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
+				1: {mp("192.168.1.0/24"): {}},
+				2: {mp("192.168.1.0/24"): {}},
+			},
+			expectedPrimaries: map[netip.Prefix]types.NodeID{
+				mp("192.168.1.0/24"): 2,
+			},
+			expectedIsPrimary: map[types.NodeID]bool{
+				2: true,
+			},
+			expectedUnhealthy: set.Set[types.NodeID]{1: {}},
+			expectedChange:    true,
+		},
+		{
+			name: "unhealthy-non-primary-no-change",
+			operations: func(pr *PrimaryRoutes) bool {
+				pr.SetRoutes(1, mp("192.168.1.0/24"))
+				pr.SetRoutes(2, mp("192.168.1.0/24"))
+
+				return pr.SetNodeHealthy(2, false)
+			},
+			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
+				1: {mp("192.168.1.0/24"): {}},
+				2: {mp("192.168.1.0/24"): {}},
+			},
+			expectedPrimaries: map[netip.Prefix]types.NodeID{
+				mp("192.168.1.0/24"): 1,
+			},
+			expectedIsPrimary: map[types.NodeID]bool{
+				1: true,
+			},
+			expectedUnhealthy: set.Set[types.NodeID]{2: {}},
+			expectedChange:    false,
+		},
+		{
+			name: "all-unhealthy-keeps-current-primary",
+			operations: func(pr *PrimaryRoutes) bool {
+				pr.SetRoutes(1, mp("192.168.1.0/24"))
+				pr.SetRoutes(2, mp("192.168.1.0/24"))
+				pr.SetNodeHealthy(1, false) // failover to 2
+
+				return pr.SetNodeHealthy(2, false) // both unhealthy, falls back to first sorted (1)
+			},
+			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
+				1: {mp("192.168.1.0/24"): {}},
+				2: {mp("192.168.1.0/24"): {}},
+			},
+			expectedPrimaries: map[netip.Prefix]types.NodeID{
+				mp("192.168.1.0/24"): 1,
+			},
+			expectedIsPrimary: map[types.NodeID]bool{
+				1: true,
+			},
+			expectedUnhealthy: set.Set[types.NodeID]{1: {}, 2: {}},
+			expectedChange:    true,
+		},
+		{
+			name: "recovery-marks-healthy-no-flap",
+			operations: func(pr *PrimaryRoutes) bool {
+				pr.SetRoutes(1, mp("192.168.1.0/24"))
+				pr.SetRoutes(2, mp("192.168.1.0/24"))
+				pr.SetRoutes(3, mp("192.168.1.0/24"))
+				pr.SetNodeHealthy(1, false) // failover to 2
+
+				return pr.SetNodeHealthy(1, true) // recovered, but 2 stays primary
+			},
+			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
+				1: {mp("192.168.1.0/24"): {}},
+				2: {mp("192.168.1.0/24"): {}},
+				3: {mp("192.168.1.0/24"): {}},
+			},
+			expectedPrimaries: map[netip.Prefix]types.NodeID{
+				mp("192.168.1.0/24"): 2,
+			},
+			expectedIsPrimary: map[types.NodeID]bool{
+				2: true,
+			},
+			expectedChange: false,
+		},
+		{
+			name: "clear-unhealthy-on-reconnect",
+			operations: func(pr *PrimaryRoutes) bool {
+				pr.SetRoutes(1, mp("192.168.1.0/24"))
+				pr.SetRoutes(2, mp("192.168.1.0/24"))
+				pr.SetNodeHealthy(1, false) // failover to 2
+				pr.ClearUnhealthy(1)        // reconnect clears unhealthy
+
+				// 2 stays primary (stability), but 1 is healthy again
+				return pr.SetNodeHealthy(1, false) // can be marked unhealthy again
+			},
+			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
+				1: {mp("192.168.1.0/24"): {}},
+				2: {mp("192.168.1.0/24"): {}},
+			},
+			expectedPrimaries: map[netip.Prefix]types.NodeID{
+				mp("192.168.1.0/24"): 2,
+			},
+			expectedIsPrimary: map[types.NodeID]bool{
+				2: true,
+			},
+			expectedUnhealthy: set.Set[types.NodeID]{1: {}},
+			expectedChange:    false,
+		},
+		{
+			name: "unhealthy-then-deregister",
+			operations: func(pr *PrimaryRoutes) bool {
+				pr.SetRoutes(1, mp("192.168.1.0/24"))
+				pr.SetRoutes(2, mp("192.168.1.0/24"))
+				pr.SetNodeHealthy(1, false)
+
+				return pr.SetRoutes(1) // deregister clears routes and unhealthy
+			},
+			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
+				2: {mp("192.168.1.0/24"): {}},
+			},
+			expectedPrimaries: map[netip.Prefix]types.NodeID{
+				mp("192.168.1.0/24"): 2,
+			},
+			expectedIsPrimary: map[types.NodeID]bool{
+				2: true,
+			},
+			expectedChange: false,
+		},
+		{
+			name: "unhealthy-primary-three-nodes-cascade",
+			operations: func(pr *PrimaryRoutes) bool {
+				pr.SetRoutes(1, mp("192.168.1.0/24"))
+				pr.SetRoutes(2, mp("192.168.1.0/24"))
+				pr.SetRoutes(3, mp("192.168.1.0/24"))
+				pr.SetNodeHealthy(1, false) // failover to 2
+
+				return pr.SetNodeHealthy(2, false) // failover to 3
+			},
+			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
+				1: {mp("192.168.1.0/24"): {}},
+				2: {mp("192.168.1.0/24"): {}},
+				3: {mp("192.168.1.0/24"): {}},
+			},
+			expectedPrimaries: map[netip.Prefix]types.NodeID{
+				mp("192.168.1.0/24"): 3,
+			},
+			expectedIsPrimary: map[types.NodeID]bool{
+				3: true,
+			},
+			expectedUnhealthy: set.Set[types.NodeID]{1: {}, 2: {}},
+			expectedChange:    true,
+		},
+		{
 			name: "concurrent-access",
 			operations: func(pr *PrimaryRoutes) bool {
 				var wg sync.WaitGroup
@@ -475,6 +631,86 @@ func TestPrimaryRoutes(t *testing.T) {
 
 			if diff := cmp.Diff(tt.expectedIsPrimary, pr.isPrimary, comps...); diff != "" {
 				t.Errorf("isPrimary mismatch (-want +got):\n%s", diff)
+			}
+
+			if diff := cmp.Diff(tt.expectedUnhealthy, pr.unhealthy, comps...); diff != "" {
+				t.Errorf("unhealthy mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestHANodes(t *testing.T) {
+	tests := []struct {
+		name     string
+		setup    func(pr *PrimaryRoutes)
+		expected map[netip.Prefix][]types.NodeID
+	}{
+		{
+			name: "single-node-not-ha",
+			setup: func(pr *PrimaryRoutes) {
+				pr.SetRoutes(1, mp("192.168.1.0/24"))
+			},
+			expected: nil,
+		},
+		{
+			name: "two-nodes-same-prefix-is-ha",
+			setup: func(pr *PrimaryRoutes) {
+				pr.SetRoutes(1, mp("192.168.1.0/24"))
+				pr.SetRoutes(2, mp("192.168.1.0/24"))
+			},
+			expected: map[netip.Prefix][]types.NodeID{
+				mp("192.168.1.0/24"): {1, 2},
+			},
+		},
+		{
+			name: "two-nodes-different-prefixes-not-ha",
+			setup: func(pr *PrimaryRoutes) {
+				pr.SetRoutes(1, mp("192.168.1.0/24"))
+				pr.SetRoutes(2, mp("192.168.2.0/24"))
+			},
+			expected: nil,
+		},
+		{
+			name: "three-nodes-two-share-prefix",
+			setup: func(pr *PrimaryRoutes) {
+				pr.SetRoutes(1, mp("192.168.1.0/24"))
+				pr.SetRoutes(2, mp("192.168.1.0/24"))
+				pr.SetRoutes(3, mp("10.0.0.0/8"))
+			},
+			expected: map[netip.Prefix][]types.NodeID{
+				mp("192.168.1.0/24"): {1, 2},
+			},
+		},
+		{
+			name: "three-nodes-all-share",
+			setup: func(pr *PrimaryRoutes) {
+				pr.SetRoutes(1, mp("192.168.1.0/24"))
+				pr.SetRoutes(2, mp("192.168.1.0/24"))
+				pr.SetRoutes(3, mp("192.168.1.0/24"))
+			},
+			expected: map[netip.Prefix][]types.NodeID{
+				mp("192.168.1.0/24"): {1, 2, 3},
+			},
+		},
+		{
+			name: "empty",
+			setup: func(_ *PrimaryRoutes) {
+			},
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pr := New()
+			tt.setup(pr)
+
+			got := pr.HANodes()
+
+			comps := append(util.Comparers, cmpopts.EquateEmpty())
+			if diff := cmp.Diff(tt.expected, got, comps...); diff != "" {
+				t.Errorf("HANodes mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

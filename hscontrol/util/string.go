@@ -98,12 +98,12 @@ func TailcfgFilterRulesToString(rules []tailcfg.FilterRule) string {
 	var sb strings.Builder
 
 	for index, rule := range rules {
-		sb.WriteString(fmt.Sprintf(`
+		fmt.Fprintf(&sb, `
 {
   SrcIPs: %v
   DstIPs: %v
 }
-`, rule.SrcIPs, rule.DstPorts))
+`, rule.SrcIPs, rule.DstPorts)
 
 		if index < len(rules)-1 {
 			sb.WriteString(", ")
