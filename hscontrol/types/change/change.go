@@ -1,3 +1,7 @@
+// Package change declares the Change type: a compact description of
+// what must land in a MapResponse. The mapper reads Change values to
+// build responses without inspecting state, and Merge combines
+// multiple pending changes for a single tick.
 package change
 
 import (
@@ -99,6 +103,13 @@ func (r Change) Merge(other Change) Change {
 	}
 
 	// Preserve PingRequest (first wins).
+	//
+	// Foot-gun: if two PingRequests to the same target merge in the
+	// same tick, only the first is emitted. The client-side
+	// isUniquePingRequest check then suppresses the second when it
+	// eventually arrives, and the caller waits out the full
+	// pingTimeout. Call sites must avoid issuing rapid successive
+	// pings to one node within a single batcher tick.
 	if merged.PingRequest == nil {
 		merged.PingRequest = other.PingRequest
 	}
@@ -472,8 +483,9 @@ func UserRemoved() Change {
 	return c
 }
 
-// PingNode creates a Change that sends a PingRequest to a specific node.
-// The node will respond to the PingRequest URL to prove connectivity.
+// PingNode creates a Change that sends a PingRequest to a specific
+// node. pr must be non-nil and nodeID must be non-zero; the node
+// responds to the PingRequest URL to prove connectivity.
 func PingNode(nodeID types.NodeID, pr *tailcfg.PingRequest) Change {
 	return Change{
 		Reason:      "ping node",
