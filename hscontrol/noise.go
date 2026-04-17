@@ -302,6 +302,11 @@ func (h *Headscale) PingResponseHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
+	if req.Method != http.MethodHead {
+		http.Error(writer, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	pingID := req.URL.Query().Get("id")
 	if pingID == "" {
 		http.Error(writer, "missing ping ID", http.StatusBadRequest)
