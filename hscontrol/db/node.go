@@ -5,11 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
-	"regexp"
 	"slices"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -21,6 +19,7 @@ import (
 	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/types/key"
+	"tailscale.com/util/dnsname"
 )
 
 const (
@@ -33,8 +32,6 @@ const (
 
 // ErrNodeNameNotUnique is returned when a node name is not unique.
 var ErrNodeNameNotUnique = errors.New("node name is not unique")
-
-var invalidDNSRegex = regexp.MustCompile("[^a-z0-9-.]+")
 
 var (
 	ErrNodeNotFound                  = errors.New("node not found")
@@ -291,7 +288,7 @@ func SetLastSeen(tx *gorm.DB, nodeID types.NodeID, lastSeen time.Time) error {
 func RenameNode(tx *gorm.DB,
 	nodeID types.NodeID, newName string,
 ) error {
-	err := util.ValidateHostname(newName)
+	err := dnsname.ValidLabel(newName)
 	if err != nil {
 		return fmt.Errorf("renaming node: %w", err)
 	}
@@ -299,8 +296,7 @@ func RenameNode(tx *gorm.DB,
 	// Check if the new name is unique
 	var count int64
 
-	err = tx.Model(&types.Node{}).Where("given_name = ? AND id != ?", newName, nodeID).Count(&count).Error
-	if err != nil {
+	if err := tx.Model(&types.Node{}).Where("given_name = ? AND id != ?", newName, nodeID).Count(&count).Error; err != nil { //nolint:noinlineerr
 		return fmt.Errorf("checking name uniqueness: %w", err)
 	}
 
@@ -427,22 +423,11 @@ func RegisterNodeForTest(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *n
 	node.IPv4 = ipv4
 	node.IPv6 = ipv6
 
-	var err error
-
-	node.Hostname, err = util.NormaliseHostname(node.Hostname)
-	if err != nil {
-		newHostname := util.InvalidString()
-		log.Info().Err(err).Str(zf.InvalidHostname, node.Hostname).Str(zf.NewHostname, newHostname).Msgf("invalid hostname, replacing")
-		node.Hostname = newHostname
-	}
-
 	if node.GivenName == "" {
-		givenName, err := EnsureUniqueGivenName(tx, node.Hostname)
-		if err != nil {
-			return nil, fmt.Errorf("ensuring unique given name: %w", err)
+		node.GivenName = dnsname.SanitizeHostname(node.Hostname)
+		if node.GivenName == "" {
+			node.GivenName = "node"
 		}
-
-		node.GivenName = givenName
 	}
 
 	if err := tx.Save(&node).Error; err != nil { //nolint:noinlineerr
@@ -482,72 +467,6 @@ func NodeSetMachineKey(
 	return tx.Model(node).Updates(types.Node{
 		MachineKey: machineKey,
 	}).Error
-}
-
-func generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
-	// Strip invalid DNS characters for givenName
-	suppliedName = strings.ToLower(suppliedName)
-	suppliedName = invalidDNSRegex.ReplaceAllString(suppliedName, "")
-
-	if len(suppliedName) > util.LabelHostnameLength {
-		return "", types.ErrHostnameTooLong
-	}
-
-	if randomSuffix {
-		// Trim if a hostname will be longer than 63 chars after adding the hash.
-		trimmedHostnameLength := util.LabelHostnameLength - NodeGivenNameHashLength - NodeGivenNameTrimSize
-		if len(suppliedName) > trimmedHostnameLength {
-			suppliedName = suppliedName[:trimmedHostnameLength]
-		}
-
-		suffix, err := util.GenerateRandomStringDNSSafe(NodeGivenNameHashLength)
-		if err != nil {
-			return "", err
-		}
-
-		suppliedName += "-" + suffix
-	}
-
-	return suppliedName, nil
-}
-
-func isUniqueName(tx *gorm.DB, name string) (bool, error) {
-	nodes := types.Nodes{}
-
-	err := tx.
-		Where("given_name = ?", name).Find(&nodes).Error
-	if err != nil {
-		return false, err
-	}
-
-	return len(nodes) == 0, nil
-}
-
-// EnsureUniqueGivenName generates a unique given name for a node based on its hostname.
-func EnsureUniqueGivenName(
-	tx *gorm.DB,
-	name string,
-) (string, error) {
-	givenName, err := generateGivenName(name, false)
-	if err != nil {
-		return "", err
-	}
-
-	unique, err := isUniqueName(tx, givenName)
-	if err != nil {
-		return "", err
-	}
-
-	if !unique {
-		postfixedName, err := generateGivenName(name, true)
-		if err != nil {
-			return "", err
-		}
-
-		givenName = postfixedName
-	}
-
-	return givenName, nil
 }
 
 // EphemeralGarbageCollector is a garbage collector that will delete nodes after

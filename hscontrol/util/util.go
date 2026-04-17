@@ -1,7 +1,6 @@
 package util
 
 import (
-	"cmp"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -12,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"tailscale.com/tailcfg"
 	"tailscale.com/util/cmpver"
 )
 
@@ -280,44 +278,6 @@ func IsCI() bool {
 	}
 
 	return false
-}
-
-// EnsureHostname guarantees a valid hostname for node registration.
-// It extracts a hostname from Hostinfo, providing sensible defaults
-// if Hostinfo is nil or Hostname is empty. This prevents nil pointer dereferences
-// and ensures nodes always have a valid hostname.
-// The hostname is truncated to 63 characters to comply with DNS label length limits (RFC 1123).
-// This function never fails - it always returns a valid hostname.
-//
-// Strategy:
-// 1. If hostinfo is nil/empty → generate default from keys
-// 2. If hostname is provided → normalise it
-// 3. If normalisation fails → generate invalid-<random> replacement
-//
-// Returns the guaranteed-valid hostname to use.
-func EnsureHostname(hostinfo tailcfg.HostinfoView, machineKey, nodeKey string) string {
-	if !hostinfo.Valid() || hostinfo.Hostname() == "" {
-		key := cmp.Or(machineKey, nodeKey)
-		if key == "" {
-			return "unknown-node"
-		}
-
-		keyPrefix := key
-		if len(key) > 8 {
-			keyPrefix = key[:8]
-		}
-
-		return "node-" + keyPrefix
-	}
-
-	lowercased := strings.ToLower(hostinfo.Hostname())
-
-	err := ValidateHostname(lowercased)
-	if err == nil {
-		return lowercased
-	}
-
-	return InvalidString()
 }
 
 // GenerateRegistrationKey generates a vanity key for tracking web authentication

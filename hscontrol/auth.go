@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
@@ -336,11 +335,10 @@ func registrationDataFromRequest(
 	req tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) *types.RegistrationData {
-	hostname := util.EnsureHostname(
-		req.Hostinfo.View(),
-		machineKey.String(),
-		req.NodeKey.String(),
-	)
+	var hostname string
+	if req.Hostinfo != nil {
+		hostname = req.Hostinfo.Hostname
+	}
 
 	regData := &types.RegistrationData{
 		MachineKey: machineKey,

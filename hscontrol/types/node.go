@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -15,7 +14,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"go4.org/netipx"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"tailscale.com/net/tsaddr"
@@ -31,8 +29,6 @@ var (
 	ErrNodeUserHasNoName    = errors.New("node user has no name")
 	ErrCannotRemoveAllTags  = errors.New("cannot remove all tags from node")
 	ErrInvalidNodeView      = errors.New("cannot convert invalid NodeView to tailcfg.Node")
-
-	invalidDNSRegex = regexp.MustCompile("[^a-z0-9-.]+")
 )
 
 // RouteFunc is a function that takes a node ID and returns a list of
@@ -169,15 +165,6 @@ func (ns Nodes) ViewSlice() views.Slice[NodeView] {
 	}
 
 	return views.SliceOf(vs)
-}
-
-// GivenNameHasBeenChanged returns whether the `givenName` can be automatically changed based on the `Hostname` of the node.
-func (node *Node) GivenNameHasBeenChanged() bool {
-	// Strip invalid DNS characters for givenName comparison
-	normalised := strings.ToLower(node.Hostname)
-	normalised = invalidDNSRegex.ReplaceAllString(normalised, "")
-
-	return node.GivenName == normalised
 }
 
 // IsExpired returns whether the node registration has expired.
@@ -692,52 +679,6 @@ func (node *Node) RegisterMethodToV1Enum() v1.RegisterMethod {
 		return v1.RegisterMethod_REGISTER_METHOD_CLI
 	default:
 		return v1.RegisterMethod_REGISTER_METHOD_UNSPECIFIED
-	}
-}
-
-// ApplyHostnameFromHostInfo takes a Hostinfo struct and updates the node.
-func (node *Node) ApplyHostnameFromHostInfo(hostInfo *tailcfg.Hostinfo) {
-	if hostInfo == nil {
-		return
-	}
-
-	newHostname := strings.ToLower(hostInfo.Hostname)
-
-	err := util.ValidateHostname(newHostname)
-	if err != nil {
-		log.Warn().
-			Str("node.id", node.ID.String()).
-			Str("current_hostname", node.Hostname).
-			Str("rejected_hostname", hostInfo.Hostname).
-			Err(err).
-			Msg("Rejecting invalid hostname update from hostinfo")
-
-		return
-	}
-
-	if node.Hostname != newHostname {
-		log.Trace().
-			Str("node.id", node.ID.String()).
-			Str("old_hostname", node.Hostname).
-			Str("new_hostname", newHostname).
-			Str("old_given_name", node.GivenName).
-			Bool("given_name_changed", node.GivenNameHasBeenChanged()).
-			Msg("Updating hostname from hostinfo")
-
-		if node.GivenNameHasBeenChanged() {
-			// Strip invalid DNS characters for givenName display
-			givenName := strings.ToLower(newHostname)
-			givenName = invalidDNSRegex.ReplaceAllString(givenName, "")
-			node.GivenName = givenName
-		}
-
-		node.Hostname = newHostname
-
-		log.Trace().
-			Str("node.id", node.ID.String()).
-			Str("new_hostname", node.Hostname).
-			Str("new_given_name", node.GivenName).
-			Msg("Hostname updated")
 	}
 }
 

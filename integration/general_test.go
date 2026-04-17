@@ -12,8 +12,8 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/hsic"
+	"tailscale.com/util/dnsname"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/rs/zerolog/log"
@@ -760,10 +760,19 @@ func TestTaildrop(t *testing.T) {
 func TestUpdateHostnameFromClient(t *testing.T) {
 	IntegrationSkip(t)
 
+	// Hostnames chosen to exercise the SaaS sanitisation rules end-to-end:
+	//   - Joe's Mac mini → apostrophes dropped + spaces to dashes (#3188)
+	//   - Test@Host      → `@` replaced with dash
+	//   - mail.server    → dots replaced with dashes (MagicDNS breaker)
+	// Pre-rewrite these were rejected by ApplyHostnameFromHostInfo with
+	// "invalid characters" and the node was stuck on an invalid-<rand>
+	// GivenName with the HostName update dropped. The assertions below
+	// verify both raw preservation (node.Name) and SaaS-matching sanitisation
+	// (node.GivenName) for each awkward input.
 	hostnames := map[string]string{
-		"1": "user1-host",
-		"2": "user2-host",
-		"3": "user3-host",
+		"1": "Joe's Mac mini",
+		"2": "Test@Host",
+		"3": "mail.server",
 	}
 
 	spec := ScenarioSpec{
@@ -825,10 +834,9 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 			hostname := hostnames[strconv.FormatUint(node.GetId(), 10)]
 			assert.Equal(ct, hostname, node.GetName(), "Node name should match hostname")
 
-			// GivenName is normalized (lowercase, invalid chars stripped)
-			normalised, err := util.NormaliseHostname(hostname)
-			assert.NoError(ct, err)
-			assert.Equal(ct, normalised, node.GetGivenName(), "Given name should match FQDN rules")
+			// GivenName is sanitised via dnsname.SanitizeHostname (SaaS algorithm).
+			assert.Equal(ct, dnsname.SanitizeHostname(hostname), node.GetGivenName(),
+				"Given name should match SaaS hostname-sanitisation rules")
 		}
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 
@@ -925,8 +933,7 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 		for _, node := range nodes {
 			hostname := hostnames[strconv.FormatUint(node.GetId(), 10)]
 			givenName := fmt.Sprintf("%d-givenname", node.GetId())
-			// Hostnames are lowercased before being stored, so "NEW" becomes "new"
-			if node.GetName() != hostname+"new" || node.GetGivenName() != givenName {
+			if node.GetName() != hostname+"NEW" || node.GetGivenName() != givenName {
 				return false
 			}
 		}

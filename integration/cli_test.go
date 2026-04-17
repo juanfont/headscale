@@ -1590,7 +1590,7 @@ func TestNodeRenameCommand(t *testing.T) {
 			strings.Repeat("t", 64),
 		},
 	)
-	require.ErrorContains(t, err, "must not exceed 63 characters")
+	require.ErrorContains(t, err, "is too long, max length is 63 bytes")
 
 	var listAllAfterRenameAttempt []v1.Node
 
