@@ -1,5 +1,12 @@
-// Package state provides core state management for Headscale, coordinating
-// between subsystems like database, IP allocation, policy management, and DERP routing.
+// Package state provides core state management for Headscale,
+// coordinating between subsystems like database, IP allocation,
+// policy management, and DERP routing.
+//
+// The central type State owns a copy-on-write NodeStore
+// (node_store.go), a PrimaryRoutes HA ledger, the PolicyManager, and a
+// pingTracker for PingRequest correlation. Cross-subsystem operations
+// (node updates, policy evaluation, IP allocation) go through State
+// rather than directly to the database.
 
 package state
 
@@ -708,8 +715,11 @@ func (s *State) GetNodeByMachineKey(machineKey key.MachinePublic, userID types.U
 	return s.nodeStore.GetNodeByMachineKey(machineKey, userID)
 }
 
-// ResolveNode looks up a node by numeric ID, IPv4/IPv6 address, hostname, or given name.
-// It tries ID first, then IP, then name matching.
+// ResolveNode looks up a node by numeric ID, IPv4/IPv6 address, given
+// name, or hostname. It tries ID first, then IP, then GivenName
+// (unique per tailnet), then Hostname (client-reported, may collide).
+// Within the name passes, the lowest NodeID wins so repeated calls
+// are deterministic across snapshot iterations.
 func (s *State) ResolveNode(query string) (types.NodeView, bool) {
 	// Try numeric ID first.
 	id, idErr := types.ParseNodeID(query)
@@ -720,23 +730,42 @@ func (s *State) ResolveNode(query string) (types.NodeView, bool) {
 	// Try IP address.
 	addr, addrErr := netip.ParseAddr(query)
 	if addrErr == nil {
+		var match types.NodeView
+
 		for _, n := range s.ListNodes().All() {
-			if slices.Contains(n.IPs(), addr) {
-				return n, true
+			if !slices.Contains(n.IPs(), addr) {
+				continue
+			}
+
+			if !match.Valid() || n.ID() < match.ID() {
+				match = n
 			}
 		}
 
-		return types.NodeView{}, false
+		return match, match.Valid()
 	}
 
-	// Try hostname / given name.
+	// Try GivenName then Hostname, each with a stable tie-break on
+	// lowest NodeID.
+	var givenMatch, hostMatch types.NodeView
+
 	for _, n := range s.ListNodes().All() {
-		if n.Hostname() == query || n.GivenName() == query {
-			return n, true
+		if n.GivenName() == query {
+			if !givenMatch.Valid() || n.ID() < givenMatch.ID() {
+				givenMatch = n
+			}
+		} else if n.Hostname() == query {
+			if !hostMatch.Valid() || n.ID() < hostMatch.ID() {
+				hostMatch = n
+			}
 		}
 	}
 
-	return types.NodeView{}, false
+	if givenMatch.Valid() {
+		return givenMatch, true
+	}
+
+	return hostMatch, hostMatch.Valid()
 }
 
 // ListNodes retrieves specific nodes by ID, or all nodes if no IDs provided.
@@ -2404,7 +2433,12 @@ func (s *State) autoApproveNodes() ([]change.Change, error) {
 	return cs, nil
 }
 
-// UpdateNodeFromMapRequest processes a MapRequest and updates the node.
+// UpdateNodeFromMapRequest is the sync point where Hostinfo changes,
+// endpoint updates, and route advertisements from a MapRequest land in
+// the NodeStore. It produces a change.Change summarising what actually
+// moved so downstream subsystems (mapper, policy, primary routes) can
+// react accordingly.
+//
 // TODO(kradalby): This is essentially a patch update that could be sent directly to nodes,
 // which means we could shortcut the whole change thing if there are no other important updates.
 // When a field is added to this function, remember to also add it to:
