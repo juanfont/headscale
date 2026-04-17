@@ -2,6 +2,7 @@ package templates
 
 import (
 	"fmt"
+	"html"
 	"strings"
 	"time"
 
@@ -101,7 +102,7 @@ func pingForm(query string) *elem.Element {
 		elem.Input(attrs.Props{
 			attrs.Type:        "text",
 			attrs.Name:        "node",
-			attrs.Value:       query,
+			attrs.Value:       html.EscapeString(query),
 			attrs.Placeholder: "Node ID, IP, or hostname",
 			attrs.Autofocus:   "true",
 			attrs.Style: styles.Props{
