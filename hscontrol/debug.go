@@ -540,6 +540,9 @@ func (h *Headscale) doPing(ctx context.Context, query string) *templates.PingRes
 	pingID, responseCh := h.state.RegisterPing(nodeID)
 	defer h.state.CancelPing(pingID)
 
+	// The callback hits /machine/ping-response on the main TLS router,
+	// not the noise chain, so URLIsNoise stays false. Operators running
+	// server_url over plain HTTP are on their own — don't do that.
 	callbackURL := h.cfg.ServerURL + "/machine/ping-response?id=" + pingID
 	h.Change(change.PingNode(nodeID, &tailcfg.PingRequest{
 		URL: callbackURL,
