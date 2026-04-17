@@ -115,6 +115,7 @@ connected" routers that maintain their control session but cannot route packets.
 - Deprecate `headscale nodes register --key` in favour of `headscale auth register --auth-id` [#1850](https://github.com/juanfont/headscale/pull/1850)
 - Remove deprecated `--namespace` flag from `nodes list`, `nodes register`, and `debug create-node` commands (use `--user` instead) [#3093](https://github.com/juanfont/headscale/pull/3093)
 - Remove deprecated `namespace`/`ns` command aliases for `users` and `machine`/`machines` aliases for `nodes` [#3093](https://github.com/juanfont/headscale/pull/3093)
+- **User deletion**: Fix `DestroyUser` deleting all pre-auth keys in the database instead of only the target user's keys [#3155](https://github.com/juanfont/headscale/pull/3155)
 
 #### API
 
@@ -144,12 +145,6 @@ connected" routers that maintain their control session but cannot route packets.
 
 - Remove old migrations for the debian package [#3185](https://github.com/juanfont/headscale/pull/3185)
 - Install `config-example.yaml` as example for the debian package [#3186](https://github.com/juanfont/headscale/pull/3186)
-
-## 0.28.1 (202x-xx-xx)
-
-### Changes
-
-- **User deletion**: Fix `DestroyUser` deleting all pre-auth keys in the database instead of only the target user's keys [#3155](https://github.com/juanfont/headscale/pull/3155)
 
 ## 0.28.0 (2026-02-04)
 
