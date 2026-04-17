@@ -267,6 +267,7 @@ func NewState(cfg *types.Config) (*State, error) {
 
 // Close gracefully shuts down the State instance and releases all resources.
 func (s *State) Close() error {
+	s.pings.drain()
 	s.nodeStore.Stop()
 
 	err := s.db.Close()

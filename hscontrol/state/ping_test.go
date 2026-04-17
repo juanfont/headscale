@@ -140,6 +140,27 @@ func TestPingTracker_TwoToSameNode(t *testing.T) {
 	}
 }
 
+func TestPingTracker_Drain(t *testing.T) {
+	pt := newPingTracker()
+
+	_, ch1 := pt.register(types.NodeID(1))
+	_, ch2 := pt.register(types.NodeID(2))
+
+	pt.drain()
+
+	// Drained channels must be closed so blocked readers unblock.
+	for i, ch := range []<-chan time.Duration{ch1, ch2} {
+		select {
+		case _, ok := <-ch:
+			assert.False(t, ok, "channel %d should be closed, got value", i)
+		case <-time.After(time.Second):
+			t.Fatalf("channel %d not closed by drain", i)
+		}
+	}
+
+	assert.Empty(t, pt.pending, "pending map should be empty after drain")
+}
+
 func TestPingTracker_LatencyNonNegative(t *testing.T) {
 	pt := newPingTracker()
 
