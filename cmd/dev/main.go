@@ -28,6 +28,11 @@ var errHealthTimeout = errors.New("health check timed out")
 
 var errEmptyAuthKey = errors.New("empty auth key in response")
 
+// maxDevPort is the highest --port value that keeps both the derived
+// metrics port (port+1010) and gRPC port (port+42363) inside the valid
+// 1..65535 TCP range.
+const maxDevPort = 23172
+
 const devConfig = `---
 server_url: http://127.0.0.1:%d
 listen_addr: 127.0.0.1:%d
@@ -75,6 +80,13 @@ unix_socket_permission: "0770"
 func main() {
 	flag.Parse()
 	log.SetFlags(0)
+
+	if *port < 1 || *port > maxDevPort {
+		log.Fatalf(
+			"--port must be in 1..%d (higher values overflow the derived gRPC port); got %d",
+			maxDevPort, *port,
+		)
+	}
 
 	http.DefaultClient.Timeout = 2 * time.Second
 	http.DefaultClient.CheckRedirect = func(*http.Request, []*http.Request) error {
