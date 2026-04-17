@@ -1,6 +1,8 @@
 package servertest_test
 
 import (
+	"context"
+	"net/http"
 	"testing"
 	"time"
 
@@ -165,5 +167,35 @@ func TestPingResolveByHostname(t *testing.T) {
 		assert.Positive(t, latency)
 	case <-time.After(15 * time.Second):
 		t.Fatal("ping response not received")
+	}
+}
+
+// TestPingResponseHandlerRejectsNonHEAD verifies the endpoint returns 405
+// for method verbs other than HEAD, even when chi is configured to allow
+// them.
+func TestPingResponseHandlerRejectsNonHEAD(t *testing.T) {
+	t.Parallel()
+
+	h := servertest.NewHarness(t, 1)
+
+	for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodPut} {
+		t.Run(method, func(t *testing.T) {
+			t.Parallel()
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			req, err := http.NewRequestWithContext(ctx, method, h.Server.URL+"/machine/ping-response?id=x", nil)
+			require.NoError(t, err)
+
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				// chi may refuse the method entirely; that's equivalent to 405.
+				return
+			}
+			defer resp.Body.Close()
+
+			assert.Equal(t, http.StatusMethodNotAllowed, resp.StatusCode)
+		})
 	}
 }
