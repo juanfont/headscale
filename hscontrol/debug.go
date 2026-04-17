@@ -379,7 +379,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 	debugHTTPServer := &http.Server{
 		Addr:         h.cfg.MetricsAddr,
-		Handler:      debugMux,
+		Handler:      securityHeaders(debugMux),
 		ReadTimeout:  types.HTTPTimeout,
 		WriteTimeout: 0,
 	}
