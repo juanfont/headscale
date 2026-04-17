@@ -30,8 +30,8 @@ nodes in the Tailscale network. It assigns the IP addresses of the clients,
 creates the boundaries between each user, enables sharing machines between users,
 and exposes the advertised routes of your nodes.
 
-A [Tailscale network (tailnet)](https://tailscale.com/kb/1136/tailnet/) is private
-network which Tailscale assigns to a user in terms of private users or an
+A [Tailscale network (tailnet)](https://tailscale.com/docs/concepts/tailnet) is
+private network which Tailscale assigns to a user in terms of private users or an
 organisation.
 
 ## Design goal

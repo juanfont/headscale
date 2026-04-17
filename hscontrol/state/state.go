@@ -162,7 +162,7 @@ type State struct {
 	// destination — keyed by (src, Dst=0) where 0 is a sentinel meaning "any".
 	// Ref: "Once re-authenticated to a destination, the user can access the
 	// device and any other device in the tailnet without re-verification
-	// for the next 12 hours." — https://tailscale.com/kb/1193/tailscale-ssh
+	// for the next 12 hours." — https://tailscale.com/docs/features/tailscale-ssh
 	//
 	// For rules with explicit checkPeriod, auth covers only that specific
 	// destination — keyed by (src, dst).

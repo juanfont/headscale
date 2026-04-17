@@ -53,7 +53,7 @@ func AuthSuccess(result AuthSuccessResult) *elem.Element {
 					externalLink("https://headscale.net/stable/", "Headscale documentation"),
 				),
 				elem.Li(nil,
-					externalLink("https://tailscale.com/kb/", "Tailscale knowledge base"),
+					externalLink("https://tailscale.com/docs", "Tailscale docs"),
 				),
 			),
 			pageFooter(),

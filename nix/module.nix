@@ -337,7 +337,7 @@ in
                 type = lib.types.bool;
                 default = true;
                 description = ''
-                  Whether to use [MagicDNS](https://tailscale.com/kb/1081/magicdns/).
+                  Whether to use [MagicDNS](https://tailscale.com/docs/features/magicdns).
                 '';
                 example = false;
               };
@@ -360,7 +360,7 @@ in
                 type = lib.types.bool;
                 default = true;
                 description = ''
-                  Whether to [override clients' DNS servers](https://tailscale.com/kb/1054/dns#override-dns-servers).
+                  Whether to [override clients' DNS servers](https://tailscale.com/docs/reference/dns-in-tailscale#override-dns-servers).
                 '';
                 example = false;
               };
@@ -380,7 +380,7 @@ in
                 default = { };
                 description = ''
                   Split DNS configuration (map of domains and which DNS server to use for each).
-                  See <https://tailscale.com/kb/1054/dns/>.
+                  See <https://tailscale.com/docs/reference/dns-in-tailscale>.
                 '';
                 example = {
                   "foo.bar.com" = [ "1.1.1.1" ];

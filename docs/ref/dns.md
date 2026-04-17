@@ -6,8 +6,8 @@ within the `dns` section of the [configuration file](./configuration.md).
 ## Setting extra DNS records
 
 Headscale allows to set extra DNS records which are made available via
-[MagicDNS](https://tailscale.com/kb/1081/magicdns). Extra DNS records can be configured either via static entries in the
-[configuration file](./configuration.md) or from a JSON file that Headscale continuously watches for changes:
+[MagicDNS](https://tailscale.com/docs/features/magicdns). Extra DNS records can be configured either via static entries
+in the [configuration file](./configuration.md) or from a JSON file that Headscale continuously watches for changes:
 
 - Use the `dns.extra_records` option in the [configuration file](./configuration.md) for entries that are static and
   don't change while Headscale is running. Those entries are processed when Headscale is starting up and changes to the

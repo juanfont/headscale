@@ -1,7 +1,8 @@
 # Routes
 
-Headscale supports route advertising and can be used to manage [subnet routers](https://tailscale.com/kb/1019/subnets)
-and [exit nodes](https://tailscale.com/kb/1103/exit-nodes) for a tailnet.
+Headscale supports route advertising and can be used to manage [subnet
+routers](https://tailscale.com/docs/features/subnet-routers) and [exit
+nodes](https://tailscale.com/docs/features/exit-nodes) for a tailnet.
 
 - [Subnet routers](#subnet-router) may be used to connect an existing network such as a virtual
   private cloud or an on-premise network with your tailnet. Use a subnet router to access devices where Tailscale can't
@@ -72,8 +73,8 @@ $ sudo tailscale set --accept-routes
 ```
 
 Please refer to the official [Tailscale
-documentation](https://tailscale.com/kb/1019/subnets#use-your-subnet-routes-from-other-devices) for how to use a subnet
-router on different operating systems.
+documentation](https://tailscale.com/docs/features/subnet-routers#use-your-subnet-routes-from-other-devices) for how to
+use a subnet router on different operating systems.
 
 ### Restrict the use of a subnet router with ACL
 
@@ -135,8 +136,9 @@ Advertise the route `192.168.0.0/24` from a subnet router that also advertises t
 $ sudo tailscale up --login-server <YOUR_HEADSCALE_URL> --advertise-tags tag:router --advertise-routes 192.168.0.0/24
 ```
 
-Please see the [official Tailscale documentation](https://tailscale.com/kb/1337/acl-syntax#autoapprovers) for more
-information on auto approvers.
+Please see the [official Tailscale
+documentation](https://tailscale.com/docs/reference/syntax/policy-file#auto-approvers) for more information on auto
+approvers.
 
 ## Exit node
 
@@ -199,8 +201,8 @@ The exit node can now be used on a node with:
 $ sudo tailscale set --exit-node myexit
 ```
 
-Please refer to the official [Tailscale documentation](https://tailscale.com/kb/1103/exit-nodes#use-the-exit-node) for
-how to use an exit node on different operating systems.
+Please refer to the official [Tailscale documentation](https://tailscale.com/docs/features/exit-nodes#use-the-exit-node)
+for how to use an exit node on different operating systems.
 
 ### Restrict the use of an exit node with ACL
 
@@ -282,8 +284,8 @@ Advertise a node as exit node and also advertise the tag `tag:exit` when joining
 $ sudo tailscale up --login-server <YOUR_HEADSCALE_URL> --advertise-tags tag:exit --advertise-exit-node
 ```
 
-Please see the [official Tailscale documentation](https://tailscale.com/kb/1337/acl-syntax#autoapprovers) for more
-information on auto approvers.
+Please see the [official Tailscale documentation](https://tailscale.com/docs/reference/syntax/policy-file#autoapprovers)
+for more information on auto approvers.
 
 ## High availability
 
@@ -300,5 +302,5 @@ This feature is enabled by default when at least two nodes advertise the same pr
 ### Enable IP forwarding
 
 A subnet router or exit node is routing traffic on behalf of other nodes and thus requires IP forwarding. Check the
-official [Tailscale documentation](https://tailscale.com/kb/1019/subnets/?tab=linux#enable-ip-forwarding) for how to
+official [Tailscale documentation](https://tailscale.com/docs/features/subnet-routers#enable-ip-forwarding) for how to
 enable IP forwarding.

@@ -128,7 +128,7 @@ derp:
   #
   # This option is mostly interesting for people hosting
   # their own DERP servers:
-  # https://tailscale.com/kb/1118/custom-derp-servers/
+  # https://tailscale.com/docs/reference/derp-servers/custom-derp-servers
   #
   # paths:
   #   - /etc/headscale/derp-example.yaml
@@ -283,7 +283,7 @@ log:
 ## Policy
 # headscale supports Tailscale's ACL policies.
 # Please have a look to their KB to better
-# understand the concepts: https://tailscale.com/kb/1018/acls/
+# understand the concepts: https://tailscale.com/docs/features/access-control/acls
 policy:
   # The mode can be "file" or "database" that defines
   # where the ACL policies are stored and read from.
@@ -297,9 +297,9 @@ policy:
 # headscale supports Tailscale's DNS configuration and MagicDNS.
 # Please have a look to their KB to better understand the concepts:
 #
-# - https://tailscale.com/kb/1054/dns/
-# - https://tailscale.com/kb/1081/magicdns/
-# - https://tailscale.com/blog/2021-09-private-dns-with-magicdns/
+# - https://tailscale.com/docs/features/access-control/acls
+# - https://tailscale.com/docs/features/magicdns
+# - https://tailscale.com/blog/2021-09-private-dns-with-magicdns
 #
 # Please note that for the DNS configuration to have any effect,
 # clients must have the `--accept-dns=true` option enabled. This is the
@@ -309,12 +309,12 @@ policy:
 # Setting _any_ of the configuration and `--accept-dns=true` on the
 # clients will integrate with the DNS manager on the client or
 # overwrite /etc/resolv.conf.
-# https://tailscale.com/kb/1235/resolv-conf
+# https://tailscale.com/docs/reference/faq/dns-resolv-conf
 #
 # If you want stop Headscale from managing the DNS configuration
 # all the fields under `dns` should be set to empty values.
 dns:
-  # Whether to use [MagicDNS](https://tailscale.com/kb/1081/magicdns/).
+  # Whether to use [MagicDNS](https://tailscale.com/docs/features/magicdns).
   magic_dns: true
 
   # Defines the base domain to create the hostnames for MagicDNS.
@@ -336,11 +336,11 @@ dns:
       - 2606:4700:4700::1111
       - 2606:4700:4700::1001
 
-      # NextDNS (see https://tailscale.com/kb/1218/nextdns/).
+      # NextDNS (see https://tailscale.com/docs/integrations/nextdns).
       # "abc123" is example NextDNS ID, replace with yours.
       # - https://dns.nextdns.io/abc123
 
-    # Split DNS (see https://tailscale.com/kb/1054/dns/),
+    # Split DNS (see https://tailscale.com/docs/reference/dns-in-tailscale#restricted-nameservers),
     # a map of domains and which DNS server to use for each.
     split: {}
       # foo.bar.com:
@@ -445,7 +445,7 @@ unix_socket_permission: "0770"
 # Logtail is Tailscales logging and auditing infrastructure, it allows the
 # control panel to instruct tailscale nodes to log their activity to a remote
 # server. To disable logging on the client side, please refer to:
-# https://tailscale.com/kb/1011/log-mesh-traffic#opting-out-of-client-logging
+# https://tailscale.com/docs/features/logging#opt-out-of-client-logging
 logtail:
   # Enable logtail for tailscale nodes of this Headscale instance.
   # As there is currently no support for overriding the log server in Headscale, this is
@@ -454,12 +454,12 @@ logtail:
 
 # Enabling this option makes devices prefer a random port for WireGuard traffic over the
 # default static port 41641. This option is intended as a workaround for some buggy
-# firewall devices. See https://tailscale.com/kb/1181/firewalls/ for more information.
+# firewall devices. See https://tailscale.com/docs/integrations/firewalls for more information.
 randomize_client_port: false
 
 # Taildrop configuration
 # Taildrop is the file sharing feature of Tailscale, allowing nodes to send files to each other.
-# https://tailscale.com/kb/1106/taildrop/
+# https://tailscale.com/docs/features/taildrop
 taildrop:
   # Enable or disable Taildrop for all nodes.
   # When enabled, nodes can send files to other nodes owned by the same user.

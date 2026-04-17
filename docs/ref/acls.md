@@ -3,7 +3,8 @@ Headscale implements the same policy ACLs as Tailscale.com, adapted to the self-
 For instance, instead of referring to users when defining groups you must
 use users (which are the equivalent to user/logins in Tailscale.com).
 
-Please check https://tailscale.com/kb/1018/acls/ for further information.
+Please check [manage permissions using ACLs](https://tailscale.com/docs/features/access-control/acls) for further
+information.
 
 When using ACL's the User borders are no longer applied. All machines
 whichever the User have the ability to communicate with other hosts as
@@ -15,8 +16,8 @@ To enable and configure ACLs in Headscale, you need to specify the path to your 
 
 Your ACL policy file must be formatted using [huJSON](https://github.com/tailscale/hujson).
 
-Info on how these policies are written can be found
-[here](https://tailscale.com/kb/1018/acls/).
+Info on how these policies are written can be found in [Tailscale's ACL
+documentation](https://tailscale.com/docs/features/access-control/acls).
 
 Please reload or restart Headscale after updating the ACL file. Headscale may be reloaded either via its systemd service
 (`sudo systemctl reload headscale`) or by sending a SIGHUP signal (`sudo kill -HUP $(pidof headscale)`) to the main
@@ -24,13 +25,13 @@ process. Headscale logs the result of ACL policy processing after each reload.
 
 ## Simple Examples
 
-- [**Allow All**](https://tailscale.com/kb/1192/acl-samples#allow-all-default-acl): If you define an ACL file but completely omit the `"acls"` field from its content, Headscale will default to an "allow all" policy. This means all devices connected to your tailnet will be able to communicate freely with each other.
+- [**Allow All**](https://tailscale.com/docs/reference/examples/acls#allow-all-default-acl): If you define an ACL file but completely omit the `"acls"` field from its content, Headscale will default to an "allow all" policy. This means all devices connected to your tailnet will be able to communicate freely with each other.
 
     ```json
     {}
     ```
 
-- [**Deny All**](https://tailscale.com/kb/1192/acl-samples#deny-all): To prevent all communication within your tailnet, you can include an empty array for the `"acls"` field in your policy file.
+- [**Deny All**](https://tailscale.com/docs/reference/examples/acls#deny-all): To prevent all communication within your tailnet, you can include an empty array for the `"acls"` field in your policy file.
 
     ```json
     {
@@ -87,7 +88,7 @@ Here are the ACL's to implement the same permissions as above:
     "group:intern": ["intern1@"]
   },
   // tagOwners in tailscale is an association between a TAG and the people allowed to set this TAG on a server.
-  // This is documented [here](https://tailscale.com/kb/1068/acl-tags#defining-a-tag)
+  // This is documented [here](https://tailscale.com/docs/features/tags)
   // and explained [here](https://tailscale.com/blog/rbac-like-it-was-meant-to-be/)
   "tagOwners": {
     // the administrators can add servers in production
