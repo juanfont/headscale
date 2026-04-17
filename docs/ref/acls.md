@@ -286,3 +286,87 @@ Used in Tailscale SSH rules to allow access to any user except root. Can only be
   "users": ["autogroup:nonroot"]
 }
 ```
+
+## App Connectors
+
+Headscale supports [App Connectors](https://tailscale.com/kb/1281/app-connectors), which allow you to route traffic to specific domains through designated connector nodes. This is useful for accessing internal applications or services that are only reachable from certain nodes in your tailnet.
+
+App connectors are configured in the `appConnectors` field of your ACL policy:
+
+```json
+{
+  "tagOwners": {
+    "tag:connector": ["admin@"]
+  },
+  "appConnectors": [
+    {
+      "name": "Internal Apps",
+      "connectors": ["tag:connector"],
+      "domains": ["internal.example.com", "*.corp.example.com"],
+      "routes": ["10.0.0.0/8"]
+    }
+  ]
+}
+```
+
+### Configuration Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | No | A human-readable name for this app connector configuration |
+| `connectors` | Yes | A list of tags (e.g., `tag:connector`) or `*` (all nodes) that identifies which nodes can serve as connectors |
+| `domains` | Yes | A list of domain names to route through the connector. Supports wildcards like `*.example.com` |
+| `routes` | No | Optional list of IP prefixes to pre-configure as routes (in addition to dynamically discovered routes from DNS) |
+
+### Auto-approving Routes
+
+App connectors work as dynamic subnet routers under the hood. When a connector
+resolves DNS for a configured domain, it advertises the resulting IP addresses
+as subnet routes. For these routes to take effect automatically, you must
+configure `autoApprovers` to approve routes from the connector nodes:
+
+```json
+{
+  "autoApprovers": {
+    "routes": {
+      "0.0.0.0/0": ["tag:connector"],
+      "::/0": ["tag:connector"]
+    }
+  }
+}
+```
+
+Without `autoApprovers`, each dynamically discovered route would require manual
+approval.
+
+### How It Works
+
+1. Configure tagged nodes as app connectors in your ACL policy
+2. Configure `autoApprovers` to auto-approve routes from your connector tags
+3. Nodes with the specified tags that advertise themselves as app connectors will receive the domain configuration
+4. When clients query DNS for the configured domains, traffic is automatically routed through the connector nodes
+5. The connector nodes resolve the DNS and forward traffic to the destination
+
+### Example: Multiple Connectors
+
+```json
+{
+  "tagOwners": {
+    "tag:web-connector": ["admin@"],
+    "tag:db-connector": ["admin@"]
+  },
+  "appConnectors": [
+    {
+      "name": "Web Applications",
+      "connectors": ["tag:web-connector"],
+      "domains": ["*.internal.example.com", "dashboard.corp.example.com"]
+    },
+    {
+      "name": "Database Access",
+      "connectors": ["tag:db-connector"],
+      "domains": ["db.internal.example.com"],
+      "routes": ["10.20.30.0/24"]
+    }
+  ]
+}
+```

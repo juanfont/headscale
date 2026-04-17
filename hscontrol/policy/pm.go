@@ -36,6 +36,10 @@ type PolicyManager interface {
 	// NodeCanApproveRoute reports whether the given node can approve the given route.
 	NodeCanApproveRoute(node types.NodeView, route netip.Prefix) bool
 
+	// AppConnectorConfigForNode returns the app connector configuration for a node
+	// that is advertising itself as an app connector.
+	AppConnectorConfigForNode(node types.NodeView) []AppConnectorAttr
+
 	// ViaRoutesForPeer computes via grant effects for a viewer-peer pair.
 	// It returns which routes should be included (peer is via-designated for viewer)
 	// and excluded (steered to a different peer). When no via grants apply,
@@ -45,6 +49,10 @@ type PolicyManager interface {
 	Version() int
 	DebugString() string
 }
+
+// AppConnectorAttr describes a set of domains serviced by app connectors.
+// Re-exported from v2 package for convenience.
+type AppConnectorAttr = policyv2.AppConnectorAttr
 
 // NewPolicyManager returns a new policy manager.
 func NewPolicyManager(pol []byte, users []types.User, nodes views.Slice[types.NodeView]) (PolicyManager, error) {
