@@ -361,7 +361,6 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
-		//nolint:gosec // elem-go auto-escapes all attribute values; no XSS risk.
 		_, _ = w.Write([]byte(templates.PingPage(query, result, nodes).Render()))
 	}))
 
