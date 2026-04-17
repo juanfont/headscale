@@ -60,7 +60,8 @@ jobs:
             let events = (gh api $"repos/($env.GH_REPO)/issues/($number)/events"
               --paginate | from json | flatten)
             let label_event = ($events
-              | where event == "labeled" and label.name == "needs-more-info"
+              | where event == "labeled"
+              | where label.name == "needs-more-info"
               | last)
             let label_added_at = ($label_event.created_at | into datetime)
 
