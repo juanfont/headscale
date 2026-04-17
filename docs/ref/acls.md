@@ -286,3 +286,9 @@ Used in Tailscale SSH rules to allow access to any user except root. Can only be
   "users": ["autogroup:nonroot"]
 }
 ```
+
+### `autogroup:danger-all`
+
+This autogroup resolves to all IP addresses (`0.0.0.0/0` and `::/0`) which also includes all IP addresses outside the
+standard Tailscale IP ranges. [This autogroup can only be used as
+source](https://tailscale.com/docs/reference/targets-and-selectors#autogroupdanger-all).
