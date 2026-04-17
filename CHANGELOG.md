@@ -41,7 +41,45 @@ addresses, including those outside the tailnet. This replaces the old behaviour 
 all IPs (see BREAKING below). The name is intentionally scary: accepting traffic from the entire
 internet is a security-sensitive choice. `autogroup:danger-all` can only be used as a source.
 
+### Hostname handling (cleanroom rewrite)
+
+The hostname ingest pipeline has been rewritten to match Tailscale SaaS byte-for-byte.
+Headscale previously had three overlapping regexes and two disagreeing entry points
+(registration vs map-request update), which caused a recurring class of bugs: names
+containing apostrophes, spaces, dots, or non-ASCII characters were alternately rejected
+(dropping updates with log spam) or stored as `invalid-<rand>` surrogates
+([#3188](https://github.com/juanfont/headscale/issues/3188),
+[#2926](https://github.com/juanfont/headscale/issues/2926),
+[#2343](https://github.com/juanfont/headscale/issues/2343),
+[#2762](https://github.com/juanfont/headscale/issues/2762),
+[#2177](https://github.com/juanfont/headscale/issues/2177),
+[#2121](https://github.com/juanfont/headscale/issues/2121),
+[#2449](https://github.com/juanfont/headscale/issues/2449),
+[#363](https://github.com/juanfont/headscale/issues/363)).
+
+What changed:
+
+- Sanitisation and validation now come directly from
+  `tailscale.com/util/dnsname.SanitizeHostname` / `ValidLabel`.
+- Admin rename (`headscale nodes rename`) now validates via `dnsname.ValidLabel` and
+  rejects labels already held by another node (previously coerced invalid input silently).
+
+Examples that previously regressed and now work:
+
+| Input                | Raw (Hostname)       | DNS label (GivenName) |
+| -------------------- | -------------------- | --------------------- |
+| `Joe's Mac mini`     | `Joe's Mac mini`     | `joes-mac-mini`       |
+| `Yuri's MacBook Pro` | `Yuri's MacBook Pro` | `yuris-macbook-pro`   |
+| `Test@Host`          | `Test@Host`          | `test-host`           |
+| `mail.server`        | `mail.server`        | `mail-server`         |
+| `My-PC!`             | `My-PC!`             | `my-pc`               |
+| `我的电脑`           | `我的电脑`           | `node`                |
+
 ### BREAKING
+
+#### Hostname handling
+
+- The `GivenName` collision policy changed from an 8-char random hash suffix (`laptop-abc12xyz`) to a monotonic numeric suffix (`laptop`, `laptop-1`, `laptop-2`, …), matching Tailscale SaaS. Empty / all-non-ASCII hostnames now fall back to the literal `node` instead of `invalid-<rand>`. MagicDNS names change on upgrade for any node whose previous label was a random-suffix form; the raw `Hostname` column is unchanged.
 
 #### ACL Policy
 
