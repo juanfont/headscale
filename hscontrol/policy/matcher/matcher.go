@@ -53,6 +53,11 @@ func MatchFromFilterRule(rule tailcfg.FilterRule) Match {
 	return MatchFromStrings(rule.SrcIPs, dests)
 }
 
+// MatchFromStrings builds a Match from raw source and destination
+// strings. Unparseable entries are silently dropped (fail-open): the
+// resulting Match is narrower than the input described, but never
+// wider. Callers that need strict validation should pre-validate
+// their inputs via util.ParseIPSet.
 func MatchFromStrings(sources, destinations []string) Match {
 	srcs := new(netipx.IPSetBuilder)
 	dests := new(netipx.IPSetBuilder)
@@ -96,18 +101,20 @@ func (m *Match) DestsOverlapsPrefixes(prefixes ...netip.Prefix) bool {
 	return slices.ContainsFunc(prefixes, m.dests.OverlapsPrefix)
 }
 
-// DestsIsTheInternet reports if the destination contains "the internet"
-// which is a IPSet that represents "autogroup:internet" and is special
-// cased for exit nodes.
-// This checks if dests is a superset of TheInternet(), which handles
-// merged filter rules where TheInternet is combined with other destinations.
+// DestsIsTheInternet reports whether the destination covers "the
+// internet" — the set represented by autogroup:internet, special-cased
+// for exit nodes. Returns true if either family's /0 is contained
+// (0.0.0.0/0 or ::/0), or if dests is a superset of TheInternet(). A
+// single-family /0 counts because operators may write it directly and
+// it still denotes the whole internet for that family.
 func (m *Match) DestsIsTheInternet() bool {
 	if m.dests.ContainsPrefix(tsaddr.AllIPv4()) ||
 		m.dests.ContainsPrefix(tsaddr.AllIPv6()) {
 		return true
 	}
 
-	// Check if dests contains all prefixes of TheInternet (superset check)
+	// Superset-of-TheInternet check handles merged filter rules
+	// where the internet prefixes are combined with other dests.
 	theInternet := util.TheInternet()
 	for _, prefix := range theInternet.Prefixes() {
 		if !m.dests.ContainsPrefix(prefix) {
