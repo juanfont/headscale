@@ -167,10 +167,6 @@ node:
 
   # HA subnet router health probing.
   #
-  # A subnet router can hold its control-plane session open yet be unable to
-  # forward traffic ("zombie connected"). The normal disconnect-based failover
-  # never fires because the Noise session is still alive.
-  #
   # When HA routes exist (2+ nodes advertising the same prefix), headscale
   # pings each HA node every probe_interval via the Noise channel. If a node
   # fails to respond within probe_timeout it is marked unhealthy and the
@@ -179,7 +175,6 @@ node:
   #
   # Worst-case detection time is probe_interval + probe_timeout (15s default).
   # No-op when no HA routes exist. Set probe_interval to 0 to disable.
-  # probe_timeout must be less than probe_interval.
   routes:
     ha:
       # How often to ping HA subnet routers. Set to 0 to disable probing.
