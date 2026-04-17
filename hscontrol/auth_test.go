@@ -816,10 +816,12 @@ func TestAuthenticationFlows(t *testing.T) {
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper //nolint:thelper
 				assert.True(t, resp.MachineAuthorized)
 
-				// Node should be created with generated hostname
+				// Raw hostname is preserved (empty in, empty stored), and
+				// GivenName falls back to the literal "node" per SaaS.
 				node, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
 				assert.True(t, found)
-				assert.NotEmpty(t, node.Hostname())
+				assert.Empty(t, node.Hostname())
+				assert.Equal(t, "node", node.GivenName())
 			},
 		},
 		// TEST: Nil hostinfo is handled with defensive code
@@ -854,12 +856,12 @@ func TestAuthenticationFlows(t *testing.T) {
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper //nolint:thelper
 				assert.True(t, resp.MachineAuthorized)
 
-				// Node should be created with generated hostname from defensive code
+				// With nil Hostinfo the raw hostname stays empty and GivenName
+				// falls back to the literal "node" per the SaaS spec.
 				node, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
 				assert.True(t, found)
-				assert.NotEmpty(t, node.Hostname())
-				// Hostname should start with "node-" (generated from machine key)
-				assert.True(t, strings.HasPrefix(node.Hostname(), "node-"))
+				assert.Empty(t, node.Hostname())
+				assert.Equal(t, "node", node.GivenName())
 			},
 		},
 
@@ -2251,9 +2253,9 @@ func TestAuthenticationFlows(t *testing.T) {
 				assert.True(t, found, "node should be registered despite nil hostinfo")
 
 				if found {
-					// Should have some default hostname or handle nil gracefully
-					hostname := node.Hostname()
-					assert.NotEmpty(t, hostname, "should have some hostname even with nil hostinfo")
+					// Raw hostname stays empty; GivenName falls back to "node".
+					assert.Empty(t, node.Hostname())
+					assert.Equal(t, "node", node.GivenName())
 				}
 			},
 		},
