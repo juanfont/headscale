@@ -11,8 +11,8 @@ Tailscale's identity model distinguishes between personal and tagged nodes:
   workstations or mobile phones. End-user devices are managed by a single user.
 - A tagged node (or service-based node or non-human node) provides services to the network. Common examples include web-
   and database servers. Those nodes are typically managed by a team of users. Some additional restrictions apply for
-  tagged nodes, e.g. a tagged node is not allowed to [Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh) into a
-  personal node.
+  tagged nodes, e.g. a tagged node is not allowed to [Tailscale SSH](https://tailscale.com/docs/features/tailscale-ssh)
+  into a personal node.
 
 Headscale implements Tailscale's identity model and distinguishes between personal and tagged nodes where a personal
 node is owned by a Headscale user and a tagged node is owned by a tag. Tagged devices are grouped under the special user
@@ -61,8 +61,8 @@ headscale users create <USER>
 === "Tagged devices"
 
     Your Headscale user needs to be authorized to register tagged devices. This authorization is specified in the
-    [`tagOwners`](https://tailscale.com/kb/1337/policy-syntax#tag-owners) section of the [ACL](acls.md). A simple
-    example looks like this:
+    [`tagOwners`](https://tailscale.com/docs/reference/syntax/policy-file#tag-owners) section of the [ACL](acls.md). A
+    simple example looks like this:
 
     ```json title="The user alice can register nodes tagged with tag:server"
     {

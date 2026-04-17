@@ -33,7 +33,8 @@ all the time, please enable "Unattended mode":
 - Enable `Run unattended`
 - Confirm the "Unattended mode" message
 
-See also [Keep Tailscale running when I'm not logged in to my computer](https://tailscale.com/kb/1088/run-unattended)
+See also [Keep Tailscale running when I'm not logged in to my
+computer](https://tailscale.com/docs/how-to/run-unattended).
 
 ### Failing node registration
 

@@ -1,8 +1,8 @@
 # DERP
 
-A [DERP (Designated Encrypted Relay for Packets) server](https://tailscale.com/kb/1232/derp-servers) is mainly used to
-relay traffic between two nodes in case a direct connection can't be established. Headscale provides an embedded DERP
-server to ensure seamless connectivity between nodes.
+A [DERP (Designated Encrypted Relay for Packets) server](https://tailscale.com/docs/reference/derp-servers) is mainly
+used to relay traffic between two nodes in case a direct connection can't be established. Headscale provides an embedded
+DERP server to ensure seamless connectivity between nodes.
 
 ## Configuration
 
@@ -31,8 +31,8 @@ traversal. [Check DERP server connectivity](#check-derp-server-connectivity) to 
 ### Remove Tailscale's DERP servers
 
 Once enabled, Headscale's embedded DERP is added to the list of free-to-use [DERP
-servers](https://tailscale.com/kb/1232/derp-servers) offered by Tailscale Inc. To only use Headscale's embedded DERP
-server, disable the loading of the default DERP map:
+servers](https://tailscale.com/docs/reference/derp-servers) offered by Tailscale Inc. To only use Headscale's embedded
+DERP server, disable the loading of the default DERP map:
 
 ```yaml title="config.yaml" hl_lines="6"
 derp:
@@ -59,8 +59,8 @@ maps fetched via URL or to offer your own, custom DERP servers to nodes.
 
 === "Remove specific DERP regions"
 
-    The free-to-use [DERP servers](https://tailscale.com/kb/1232/derp-servers) are organized into regions via a region
-    ID. You can explicitly disable a specific region by setting its region ID to `null`. The following sample
+    The free-to-use [DERP servers](https://tailscale.com/docs/reference/derp-servers) are organized into regions via a
+    region ID. You can explicitly disable a specific region by setting its region ID to `null`. The following sample
     `derp.yaml` disables the New York DERP region (which has the region ID 1):
 
     ```yaml title="derp.yaml"

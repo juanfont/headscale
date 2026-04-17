@@ -53,7 +53,7 @@ var (
 )
 
 // SSH check period constants per Tailscale docs:
-// https://tailscale.com/kb/1193/tailscale-ssh
+// https://tailscale.com/docs/features/tailscale-ssh#checkperiod
 const (
 	SSHCheckPeriodDefault = 12 * time.Hour
 	SSHCheckPeriodMin     = time.Minute

@@ -177,7 +177,7 @@ func TestTemplateExternalLinkSecurity(t *testing.T) {
 			}).Render(),
 			externalURLs: []string{
 				"https://headscale.net/stable/",
-				"https://tailscale.com/kb/",
+				"https://tailscale.com/docs",
 			},
 		},
 		{

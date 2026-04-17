@@ -29,11 +29,11 @@ A new `headscale auth` CLI command group supports the approval flow:
 
 ### Grants
 
-We now support [Tailscale grants](https://tailscale.com/kb/1324/grants) alongside ACLs. Grants
-extend what you can express in a policy beyond packet filtering: the `app` field controls
-application-level features like Taildrive file sharing and peer relay, and the `via` field steers
-traffic through specific tagged subnet routers or exit nodes. The `ip` field works like an ACL rule.
-Grants can be mixed with ACLs in the same policy file.
+We now support [Tailscale grants](https://tailscale.com/docs/features/access-control/grants)
+alongside ACLs. Grants extend what you can express in a policy beyond packet filtering: the `app`
+field controls application-level features like Taildrive file sharing and peer relay, and the `via`
+field steers traffic through specific tagged subnet routers or exit nodes. The `ip` field works like
+an ACL rule. Grants can be mixed with ACLs in the same policy file.
 [#2180](https://github.com/juanfont/headscale/pull/2180)
 
 As part of this, we added `autogroup:danger-all`. It resolves to `0.0.0.0/0` and `::/0` — all IP
@@ -155,7 +155,7 @@ connected" routers that maintain their control session but cannot route packets.
 Tags are now implemented following the Tailscale model where tags and user ownership are mutually exclusive. Devices can be either
 user-owned (authenticated via web/OIDC) or tagged (authenticated via tagged PreAuthKeys). Tagged devices receive their identity from
 tags rather than users, making them suitable for servers and infrastructure. Applying a tag to a device removes user-based
-ownership. See the [Tailscale tags documentation](https://tailscale.com/kb/1068/tags) for details on how tags work.
+ownership. See the [Tailscale tags documentation](https://tailscale.com/docs/features/tags) for details on how tags work.
 
 User-owned nodes can now request tags during registration using `--advertise-tags`. Tags are validated against the `tagOwners` policy
 and applied at registration time. Tags can be managed via the CLI or API after registration. Tagged nodes can return to user-owned
@@ -254,7 +254,7 @@ sequentially through each stable release, selecting the latest patch version ava
 
 - **SSH Policy**: SSH source/destination validation now enforces Tailscale's security model [#3010](https://github.com/juanfont/headscale/issues/3010)
 
-  Per [Tailscale SSH documentation](https://tailscale.com/kb/1193/tailscale-ssh), the following rules are now enforced:
+  Per [Tailscale SSH documentation](https://tailscale.com/docs/features/tailscale-ssh), the following rules are now enforced:
   1. **Tags cannot SSH to user-owned devices**: SSH rules with `tag:*` or `autogroup:tagged` as source cannot have username destinations (e.g., `alice@`) or `autogroup:member`/`autogroup:self` as destination
   2. **Username destinations require same-user source**: If destination is a specific username (e.g., `alice@`), the source must be that exact same user only. Use `autogroup:self` for same-user SSH access instead
 
@@ -383,8 +383,8 @@ DERPMap updates when upstream is changed.
 
 This release adds support for the three missing autogroups: `self`
 (experimental), `member`, and `tagged`. Please refer to the
-[documentation](https://tailscale.com/kb/1018/autogroups/) for a detailed
-explanation.
+[documentation](https://tailscale.com/docs/reference/targets-and-selectors#autogroups)
+for a detailed explanation.
 
 `autogroup:self` is marked as experimental and should be used with caution, but
 we need help testing it. Experimental here means two things; first, generating
@@ -547,7 +547,7 @@ The SSH policy has been reworked to be more consistent with the rest of the
 policy. In addition, several inconsistencies between our implementation and
 Tailscale's upstream has been closed and this might be a breaking change for
 some users. Please refer to the
-[upstream documentation](https://tailscale.com/kb/1337/acl-syntax#tailscale-ssh)
+[upstream documentation](https://tailscale.com/docs/reference/syntax/policy-file#tailscale-ssh)
 for more information on which types are allowed in `src`, `dst` and `users`.
 
 There is one large inconsistency left, we allow `*` as a destination as we
@@ -1061,7 +1061,7 @@ part of adopting [#1460](https://github.com/juanfont/headscale/pull/1460).
 
 - Added support for Tailscale TS2021 protocol [#738](https://github.com/juanfont/headscale/pull/738)
 - Add experimental support for
-  [SSH ACL](https://tailscale.com/kb/1018/acls/#tailscale-ssh) (see docs for
+  [SSH ACL](https://tailscale.com/docs/reference/syntax/policy-file#tailscale-ssh) (see docs for
   limitations) [#847](https://github.com/juanfont/headscale/pull/847)
   - Please note that this support should be considered _partially_ implemented
   - SSH ACLs status:
@@ -1138,7 +1138,7 @@ part of adopting [#1460](https://github.com/juanfont/headscale/pull/1460).
 ### BREAKING
 
 - Old ACL syntax is no longer supported ("users" & "ports" -> "src" & "dst").
-  Please check [the new syntax](https://tailscale.com/kb/1018/acls/).
+  Please check [the new syntax](https://tailscale.com/docs/features/access-control/acls).
 
 ### Changes
 
@@ -1168,7 +1168,7 @@ part of adopting [#1460](https://github.com/juanfont/headscale/pull/1460).
 - Add -c option to specify config file from command line [#285](https://github.com/juanfont/headscale/issues/285)
   [#612](https://github.com/juanfont/headscale/pull/601)
 - Add configuration option to allow Tailscale clients to use a random WireGuard
-  port. [kb/1181/firewalls](https://tailscale.com/kb/1181/firewalls)
+  port. [Tailscale docs](https://tailscale.com/docs/reference/syntax/policy-file#randomizeclientport)
   [#624](https://github.com/juanfont/headscale/pull/624)
 - Improve obtuse UX regarding missing configuration
   (`ephemeral_node_inactivity_timeout` not set)

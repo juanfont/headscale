@@ -145,7 +145,7 @@ This is essentially how Tailscale works. If traffic is allowed to flow in one di
 in their output of `tailscale status`. Traffic is still filtered according to the ACL, with the exception of
 `tailscale ping` which is always allowed in either direction.
 
-See also <https://tailscale.com/kb/1087/device-visibility>.
+See also <https://tailscale.com/docs/concepts/device-visibility>.
 
 ## My policy is stored in the database and Headscale refuses to start due to an invalid policy. How can I recover?
 
@@ -199,7 +199,7 @@ Nodes should reconnect within a few seconds and pickup their newly assigned IP a
 ## How can I avoid to send logs to Tailscale Inc?
 
 A Tailscale client [collects logs about its operation and connection attempts with other
-clients](https://tailscale.com/kb/1011/log-mesh-traffic#client-logs) and sends them to a central log service operated by
+clients](https://tailscale.com/docs/features/logging#client-logs) and sends them to a central log service operated by
 Tailscale Inc.
 
 Headscale, by default, instructs clients to disable log submission to the central log service. This configuration is
@@ -209,5 +209,5 @@ applied by a client once it successfully connected with Headscale. See the confi
 Alternatively, logging can also be disabled on the client side. This is independent of Headscale and opting out of
 client logging disables log submission early during client startup. The configuration is operating system specific and
 is usually achieved by setting the environment variable `TS_NO_LOGS_NO_SUPPORT=true` or by passing the flag
-`--no-logs-no-support` to `tailscaled`. See
-<https://tailscale.com/kb/1011/log-mesh-traffic#opting-out-of-client-logging> for details.
+`--no-logs-no-support` to `tailscaled`. See <https://tailscale.com/docs/features/logging#opt-out-of-client-logging> for
+details.

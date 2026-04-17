@@ -193,7 +193,7 @@ func (node *Node) IsExpired() bool {
 }
 
 // IsEphemeral returns if the node is registered as an Ephemeral node.
-// https://tailscale.com/kb/1111/ephemeral-nodes/
+// https://tailscale.com/docs/features/ephemeral-nodes
 func (node *Node) IsEphemeral() bool {
 	return node.AuthKey != nil && node.AuthKey.Ephemeral
 }
@@ -968,7 +968,7 @@ func (nv NodeView) IsExpired() bool {
 }
 
 // IsEphemeral returns if the node is registered as an Ephemeral node.
-// https://tailscale.com/kb/1111/ephemeral-nodes/
+// https://tailscale.com/docs/features/ephemeral-nodes
 func (nv NodeView) IsEphemeral() bool {
 	if !nv.Valid() {
 		return false
