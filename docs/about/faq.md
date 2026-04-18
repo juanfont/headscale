@@ -191,7 +191,7 @@ following steps can be used to migrate from unsupported IP prefixes back to the 
     SET ipv4=concat('100.64.', id/256, '.', id%256),
         ipv6=concat('fd7a:115c:a1e0::', format('%x', id));
     ```
-- Update the [policy](../ref/acls.md) to reflect the IP address changes (if any)
+- Update the [policy](../ref/policy.md) to reflect the IP address changes (if any)
 - Start Headscale
 
 Nodes should reconnect within a few seconds and pickup their newly assigned IP addresses.

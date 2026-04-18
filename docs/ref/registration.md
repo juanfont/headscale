@@ -61,8 +61,8 @@ headscale users create <USER>
 === "Tagged devices"
 
     Your Headscale user needs to be authorized to register tagged devices. This authorization is specified in the
-    [`tagOwners`](https://tailscale.com/docs/reference/syntax/policy-file#tag-owners) section of the [ACL](acls.md). A
-    simple example looks like this:
+    [`tagOwners`](https://tailscale.com/docs/reference/syntax/policy-file#tag-owners) section of the
+    [policy](policy.md). A simple example looks like this:
 
     ```json title="The user alice can register nodes tagged with tag:server"
     {
