@@ -295,7 +295,7 @@ policy:
 ## DNS
 #
 # headscale supports Tailscale's DNS configuration and MagicDNS.
-# Please have a look to their KB to better understand the concepts:
+# Please have a look to their docs to better understand the concepts:
 #
 # - https://tailscale.com/docs/features/access-control/acls
 # - https://tailscale.com/docs/features/magicdns
