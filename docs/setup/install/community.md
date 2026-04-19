@@ -1,7 +1,7 @@
 # Community packages
 
 Several Linux distributions and community members provide packages for headscale. Those packages may be used instead of
-the [official releases](./official.md) provided by the headscale maintainers. Such packages offer improved integration
+the [official releases](official.md) provided by the headscale maintainers. Such packages offer improved integration
 for their targeted operating system and usually:
 
 - setup a dedicated local user account to run headscale

@@ -295,7 +295,7 @@ to clients. Please see the official [Tailscale documentation on high
 availability](https://tailscale.com/docs/how-to/set-up-high-availability#subnet-router-high-availability) for details.
 
 This feature is enabled by default when at least two nodes advertise the same prefix. See the configuration options
-`node.routes.ha` in the [configuration file](./configuration.md) for details.
+`node.routes.ha` in the [configuration file](configuration.md) for details.
 
 ## Troubleshooting
 
