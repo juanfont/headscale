@@ -283,9 +283,9 @@ Authelia is fully supported by Headscale.
 
 ### Google OAuth
 
-!!! warning "No username due to missing preferred_username"
+!!! warning "No username due to missing preferred_username claim"
 
-    Google OAuth does not send the `preferred_username` claim when the scope `profile` is requested. The username in
+    Google OAuth does not send the `preferred_username` claim when the `profile` scope is requested. The username in
     Headscale will be blank/not set.
 
 In order to integrate Headscale with Google, you'll need to have a [Google Cloud
