@@ -17,7 +17,7 @@ Registry](https://github.com/juanfont/headscale/pkgs/container/headscale). The c
 
 ## Configure and run headscale
 
-1. Create a directory on the container host to store headscale's [configuration](../../ref/configuration.md) and the [SQLite](https://www.sqlite.org/) database:
+1. Create a directory on the container host to store headscale's [configuration](../../ref/configuration.md) and the SQLite database:
 
     ```shell
     mkdir -p ./headscale/{config,lib}
