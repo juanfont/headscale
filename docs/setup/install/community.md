@@ -10,8 +10,8 @@ for their targeted operating system and usually:
 
 !!! warning "Community packages might be outdated"
 
-    The packages mentioned on this page might be outdated or unmaintained. Use the [official releases](./official.md) to
-    get the current stable version or to test pre-releases.
+    The packages mentioned on this page might be outdated or unmaintained. Use the [official releases](official.md) to
+    get the current stable version or to [test pre-releases](main.md).
 
     [![Packaging status](https://repology.org/badge/vertical-allrepos/headscale.svg)](https://repology.org/project/headscale/versions)
 
