@@ -97,7 +97,7 @@ Continue on the [getting started page](../../usage/getting-started.md) to regist
 
 ## Debugging headscale running in Docker
 
-The Headscale container image is based on a "distroless" image that does not contain a shell or any other debug tools. If you need to debug headscale running in the Docker container, you can use the `-debug` variant, for example `docker.io/headscale/headscale:x.x.x-debug`.
+The Headscale container image is based on a distroless image that does not contain a shell or any other debug tools. If you need to debug headscale running in the Docker container, you can use the `-debug` variant, for example `docker.io/headscale/headscale:x.x.x-debug`.
 
 ### Running the debug Docker container
 
