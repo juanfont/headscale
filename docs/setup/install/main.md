@@ -39,7 +39,7 @@ docker run \
   serve
 ```
 
-See [Running headscale in a container](./container.md) for full container setup instructions.
+See [Running headscale in a container](container.md) for full container setup instructions.
 
 ## Binaries
 
@@ -54,5 +54,5 @@ via [nightly.link](https://nightly.link/juanfont/headscale/workflows/container-m
 | macOS | arm64 | [headscale-darwin-arm64](https://nightly.link/juanfont/headscale/workflows/container-main/main/headscale-darwin-arm64.zip) |
 
 After downloading and extracting the archive, make the binary executable and follow the
-[standalone binary installation](./official.md#using-standalone-binaries-advanced)
+[standalone binary installation](official.md#using-standalone-binaries-advanced)
 instructions for setting up the service.
