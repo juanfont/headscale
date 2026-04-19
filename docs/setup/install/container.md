@@ -7,9 +7,8 @@
 
     **It might be outdated and it might miss necessary steps**.
 
-This documentation has the goal of showing a user how-to set up and run headscale in a container. A container runtime
-such as [Docker](https://www.docker.com) or [Podman](https://podman.io) is required. The container image can be found on
-[Docker Hub](https://hub.docker.com/r/headscale/headscale) and [GitHub Container
+A container runtime such as [Docker](https://www.docker.com) or [Podman](https://podman.io) is required. The container
+image can be found on [Docker Hub](https://hub.docker.com/r/headscale/headscale) and [GitHub Container
 Registry](https://github.com/juanfont/headscale/pkgs/container/headscale). The container image URLs are:
 
 - [Docker Hub](https://hub.docker.com/r/headscale/headscale): `docker.io/headscale/headscale:<VERSION>`
