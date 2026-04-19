@@ -53,7 +53,7 @@ Headscale provides a metrics and debug endpoint. It allows to introspect differe
 
 - Information about the Go runtime, memory usage and statistics
 - Connected nodes and pending registrations
-- Active ACLs, filters and SSH policy
+- Active policy, filters and SSH policy
 - Current DERPMap
 - Prometheus metrics
 

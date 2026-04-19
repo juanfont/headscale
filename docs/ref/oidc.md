@@ -214,14 +214,14 @@ You may refer to users in the Headscale policy via:
     {
       "groups": {
         "group:alice": [
-          "https://soo.example.com/oauth2/openid/59ac9125-c31b-46c5-814e-06242908cf57@"
+          "https://sso.example.com/oauth2/openid/59ac9125-c31b-46c5-814e-06242908cf57@"
         ]
       },
-      "acls": [
+      "grants": [
         {
-          "action": "accept",
           "src": ["group:alice"],
-          "dst": ["*:*"]
+          "dst": ["*"],
+          "ip": ["*"]
         }
       ]
     }
@@ -246,7 +246,7 @@ endpoint.
 
 - Support for OpenID Connect aims to be generic and vendor independent. It offers only limited support for quirks of
   specific identity providers.
-- OIDC groups cannot be used in ACLs.
+- OIDC groups cannot be used in policy rules.
 - The username provided by the identity provider needs to adhere to this pattern:
     - The username must be at least two characters long.
     - It must only contain letters, digits, hyphens, dots, underscores, and up to a single `@`.
