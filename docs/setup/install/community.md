@@ -23,9 +23,6 @@ Arch Linux offers a package for headscale, install via:
 pacman -S headscale
 ```
 
-The [AUR package `headscale-git`](https://aur.archlinux.org/packages/headscale-git) can be used to build the current
-development version.
-
 ## Fedora, RHEL, CentOS
 
 A third-party repository for various RPM based distributions is available at:
