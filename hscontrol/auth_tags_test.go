@@ -1126,6 +1126,11 @@ func TestReregistrationAppliesDefaultExpiry(t *testing.T) {
 // time. Regression test for the else branch introduced in commit 6337a3db
 // which assigned `&regReq.Expiry` (pointer to time.Time{}) instead of nil,
 // causing the database row to hold `0001-01-01 00:00:00` instead of NULL.
+//
+// The same !regReq.Expiry.IsZero() gate at state.go:2221-2228 is shared by
+// the tags-only PreAuthKey path (createAndSaveNewNode also receives nil
+// when the client sends zero expiry), so this regression is covered for
+// tagged nodes by inspection.
 func TestReregistrationZeroExpiryStaysNil(t *testing.T) {
 	t.Parallel()
 
