@@ -108,7 +108,7 @@ var createAPIKeyCmd = &cobra.Command{
 	Long: `
 Creates a new Api key, the Api key is only visible on creation
 and cannot be retrieved again.
-If you loose a key, create a new one and revoke (expire) the old one.`,
+If you lose a key, create a new one and revoke (expire) the old one.`,
 	Aliases: []string{"c", "new"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
