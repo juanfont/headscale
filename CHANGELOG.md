@@ -165,6 +165,7 @@ connected" routers that maintain their control session but cannot route packets.
 - Add a confirmation page before completing node registration, showing the device hostname and machine key fingerprint [#3180](https://github.com/juanfont/headscale/pull/3180)
 - Generalise auth templates into reusable `AuthSuccess` and `AuthWeb` components [#1850](https://github.com/juanfont/headscale/pull/1850)
 - Unify auth pipeline with `AuthVerdict` type, supporting registration, reauthentication, and SSH checks [#1850](https://github.com/juanfont/headscale/pull/1850)
+- Add OAuth2 refresh token support for OIDC-authenticated nodes. When the IdP issues a refresh token (requires the `offline_access` scope), headscale stores it and refreshes the node's expiry in the background before the access token expires, keeping the node authenticated without user interaction. Sessions for nodes offline past a configurable grace period are invalidated. Configurable via `oidc.token_refresh.{check_interval,expiry_threshold,session_invalidation_grace_period}` [#2704](https://github.com/juanfont/headscale/pull/2704)
 
 #### Configuration
 
