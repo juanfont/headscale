@@ -14,12 +14,33 @@ import (
 var ErrContainerNotFound = errors.New("container not found")
 
 func GetFirstOrCreateNetwork(pool *dockertest.Pool, name string) (*dockertest.Network, error) {
+	return GetFirstOrCreateNetworkWithSubnet(pool, name, "")
+}
+
+// GetFirstOrCreateNetworkWithSubnet creates a Docker network with an optional
+// custom subnet. When subnet is empty, Docker auto-assigns from its default
+// pool. Use RFC 5737 TEST-NET ranges (e.g. "198.51.100.0/24") for networks
+// that need to be reachable through Tailscale exit nodes, since Tailscale's
+// shrinkDefaultRoute strips RFC1918 ranges from exit node forwarding filters.
+func GetFirstOrCreateNetworkWithSubnet(pool *dockertest.Pool, name, subnet string) (*dockertest.Network, error) {
 	networks, err := pool.NetworksByName(name)
 	if err != nil {
 		return nil, fmt.Errorf("looking up network names: %w", err)
 	}
+
 	if len(networks) == 0 {
-		if _, err := pool.CreateNetwork(name); err == nil {
+		var opts []func(*docker.CreateNetworkOptions)
+		if subnet != "" {
+			opts = append(opts, func(config *docker.CreateNetworkOptions) {
+				config.IPAM = &docker.IPAMOptions{
+					Config: []docker.IPAMConfig{
+						{Subnet: subnet},
+					},
+				}
+			})
+		}
+
+		if _, err := pool.CreateNetwork(name, opts...); err == nil { //nolint:noinlineerr // intentional inline check
 			// Create does not give us an updated version of the resource, so we need to
 			// get it again.
 			networks, err := pool.NetworksByName(name)
@@ -90,6 +111,7 @@ func RandomFreeHostPort() (int, error) {
 // CleanUnreferencedNetworks removes networks that are not referenced by any containers.
 func CleanUnreferencedNetworks(pool *dockertest.Pool) error {
 	filter := "name=hs-"
+
 	networks, err := pool.NetworksByName(filter)
 	if err != nil {
 		return fmt.Errorf("getting networks by filter %q: %w", filter, err)
@@ -122,6 +144,7 @@ func CleanImagesInCI(pool *dockertest.Pool) error {
 	}
 
 	removedCount := 0
+
 	for _, image := range images {
 		// Only remove dangling (untagged) images to avoid forcing rebuilds
 		// Dangling images have no RepoTags or only have "<none>:<none>"

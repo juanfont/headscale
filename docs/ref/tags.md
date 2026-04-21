@@ -1,7 +1,7 @@
 # Tags
 
-Headscale supports Tailscale tags. Please read [Tailscale's tag documentation](https://tailscale.com/kb/1068/tags) to
-learn how tags work and how to use them.
+Headscale supports Tailscale tags. Please read [Tailscale's tag documentation](https://tailscale.com/docs/features/tags)
+to learn how tags work and how to use them.
 
 Tags can be applied during [node registration](registration.md):
 
@@ -45,10 +45,10 @@ tailscale up --login-server <YOUR_HEADSCALE_URL> --advertise-tags= --force-reaut
 ```
 
 Usually, a browser window with further instructions is opened. This page explains how to complete the registration on
-your Headscale server and it also prints the registration key required to approve the node:
+your Headscale server and it also prints the Auth ID required to approve the node:
 
 ```console
-headscale nodes register --user <USER> --key <REGISTRATION_KEY>
+headscale auth register --user <USER> --auth-id <AUTH_ID>
 ```
 
 All previously assigned tags get removed and the node is now owned by the user specified in the above command.

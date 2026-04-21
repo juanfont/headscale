@@ -1,6 +1,7 @@
 package types
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -26,7 +27,7 @@ func TestReadConfig(t *testing.T) {
 		{
 			name:       "unmarshal-dns-full-config",
 			configPath: "testdata/dns_full.yaml",
-			setup: func(t *testing.T) (any, error) {
+			setup: func(t *testing.T) (any, error) { //nolint:thelper
 				dns, err := dns()
 				if err != nil {
 					return nil, err
@@ -61,7 +62,7 @@ func TestReadConfig(t *testing.T) {
 		{
 			name:       "dns-to-tailcfg.DNSConfig",
 			configPath: "testdata/dns_full.yaml",
-			setup: func(t *testing.T) (any, error) {
+			setup: func(t *testing.T) (any, error) { //nolint:thelper
 				dns, err := dns()
 				if err != nil {
 					return nil, err
@@ -92,7 +93,7 @@ func TestReadConfig(t *testing.T) {
 		{
 			name:       "unmarshal-dns-full-no-magic",
 			configPath: "testdata/dns_full_no_magic.yaml",
-			setup: func(t *testing.T) (any, error) {
+			setup: func(t *testing.T) (any, error) { //nolint:thelper
 				dns, err := dns()
 				if err != nil {
 					return nil, err
@@ -127,7 +128,7 @@ func TestReadConfig(t *testing.T) {
 		{
 			name:       "dns-to-tailcfg.DNSConfig",
 			configPath: "testdata/dns_full_no_magic.yaml",
-			setup: func(t *testing.T) (any, error) {
+			setup: func(t *testing.T) (any, error) { //nolint:thelper
 				dns, err := dns()
 				if err != nil {
 					return nil, err
@@ -158,7 +159,7 @@ func TestReadConfig(t *testing.T) {
 		{
 			name:       "base-domain-in-server-url-err",
 			configPath: "testdata/base-domain-in-server-url.yaml",
-			setup: func(t *testing.T) (any, error) {
+			setup: func(t *testing.T) (any, error) { //nolint:thelper
 				return LoadServerConfig()
 			},
 			want:    nil,
@@ -167,7 +168,7 @@ func TestReadConfig(t *testing.T) {
 		{
 			name:       "base-domain-not-in-server-url",
 			configPath: "testdata/base-domain-not-in-server-url.yaml",
-			setup: func(t *testing.T) (any, error) {
+			setup: func(t *testing.T) (any, error) { //nolint:thelper
 				cfg, err := LoadServerConfig()
 				if err != nil {
 					return nil, err
@@ -187,7 +188,7 @@ func TestReadConfig(t *testing.T) {
 		{
 			name:       "dns-override-true-errors",
 			configPath: "testdata/dns-override-true-error.yaml",
-			setup: func(t *testing.T) (any, error) {
+			setup: func(t *testing.T) (any, error) { //nolint:thelper
 				return LoadServerConfig()
 			},
 			wantErr: "Fatal config error: dns.nameservers.global must be set when dns.override_local_dns is true",
@@ -195,7 +196,7 @@ func TestReadConfig(t *testing.T) {
 		{
 			name:       "dns-override-true",
 			configPath: "testdata/dns-override-true.yaml",
-			setup: func(t *testing.T) (any, error) {
+			setup: func(t *testing.T) (any, error) { //nolint:thelper
 				_, err := LoadServerConfig()
 				if err != nil {
 					return nil, err
@@ -221,7 +222,7 @@ func TestReadConfig(t *testing.T) {
 		{
 			name:       "policy-path-is-loaded",
 			configPath: "testdata/policy-path-is-loaded.yaml",
-			setup: func(t *testing.T) (any, error) {
+			setup: func(t *testing.T) (any, error) { //nolint:thelper // inline test closure
 				cfg, err := LoadServerConfig()
 				if err != nil {
 					return nil, err
@@ -242,6 +243,7 @@ func TestReadConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			viper.Reset()
+
 			err := LoadConfig(tt.configPath, true)
 			require.NoError(t, err)
 
@@ -276,14 +278,14 @@ func TestReadConfigFromEnv(t *testing.T) {
 				"HEADSCALE_DATABASE_SQLITE_WRITE_AHEAD_LOG": "false",
 				"HEADSCALE_PREFIXES_V4":                     "100.64.0.0/10",
 			},
-			setup: func(t *testing.T) (any, error) {
+			setup: func(t *testing.T) (any, error) { //nolint:thelper // inline test closure
 				t.Logf("all settings: %#v", viper.AllSettings())
 
 				assert.Equal(t, "trace", viper.GetString("log.level"))
 				assert.Equal(t, "100.64.0.0/10", viper.GetString("prefixes.v4"))
 				assert.False(t, viper.GetBool("database.sqlite.write_ahead_log"))
 
-				return nil, nil
+				return nil, nil //nolint:nilnil // test setup returns nil to indicate no expected value
 			},
 			want: nil,
 		},
@@ -300,7 +302,7 @@ func TestReadConfigFromEnv(t *testing.T) {
 				// "HEADSCALE_DNS_NAMESERVERS_SPLIT":  `{foo.bar.com: ["1.1.1.1"]}`,
 				// "HEADSCALE_DNS_EXTRA_RECORDS":      `[{ name: "prometheus.myvpn.example.com", type: "A", value: "100.64.0.4" }]`,
 			},
-			setup: func(t *testing.T) (any, error) {
+			setup: func(t *testing.T) (any, error) { //nolint:thelper // inline test closure
 				t.Logf("all settings: %#v", viper.AllSettings())
 
 				dns, err := dns()
@@ -335,6 +337,7 @@ func TestReadConfigFromEnv(t *testing.T) {
 			}
 
 			viper.Reset()
+
 			err := LoadConfig("testdata/minimal.yaml", true)
 			require.NoError(t, err)
 
@@ -349,11 +352,10 @@ func TestReadConfigFromEnv(t *testing.T) {
 }
 
 func TestTLSConfigValidation(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "headscale")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// defer os.RemoveAll(tmpDir)
+	tmpDir := t.TempDir()
+
+	var err error
+
 	configYaml := []byte(`---
 tls_letsencrypt_hostname: example.com
 tls_letsencrypt_challenge_type: ""
@@ -363,6 +365,7 @@ noise:
 
 	// Populate a custom config file
 	configFilePath := filepath.Join(tmpDir, "config.yaml")
+
 	err = os.WriteFile(configFilePath, configYaml, 0o600)
 	if err != nil {
 		t.Fatalf("Couldn't write file %s", configFilePath)
@@ -398,10 +401,12 @@ server_url: http://127.0.0.1:8080
 tls_letsencrypt_hostname: example.com
 tls_letsencrypt_challenge_type: TLS-ALPN-01
 `)
+
 	err = os.WriteFile(configFilePath, configYaml, 0o600)
 	if err != nil {
 		t.Fatalf("Couldn't write file %s", configFilePath)
 	}
+
 	err = LoadConfig(tmpDir, false)
 	require.NoError(t, err)
 }
@@ -463,7 +468,45 @@ func TestSafeServerURL(t *testing.T) {
 
 				return
 			}
+
 			assert.NoError(t, err)
 		})
+	}
+}
+
+// TestConfigJSONOmitsSecrets verifies that marshalling a Config to JSON
+// (as /debug/config does via state.DebugConfig) does not leak the
+// Postgres password, the OIDC client secret, or the headscale admin
+// API key. Operators who widen metrics_listen_addr to 0.0.0.0 should
+// not be able to read these back via debug endpoints reachable over
+// CGNAT/loopback.
+func TestConfigJSONOmitsSecrets(t *testing.T) {
+	const (
+		secretPostgresPass = "p0stgres-secret-marker"
+		secretClientSecret = "oidc-client-secret-marker"    //nolint:gosec // test marker, not a real credential
+		secretAPIKey       = "headscale-cli-api-key-marker" //nolint:gosec // test marker, not a real credential
+	)
+
+	cfg := &Config{
+		Database: DatabaseConfig{
+			Postgres: PostgresConfig{
+				Pass: secretPostgresPass,
+			},
+		},
+		OIDC: OIDCConfig{
+			ClientSecret: secretClientSecret,
+		},
+		CLI: CLIConfig{
+			APIKey: secretAPIKey,
+		},
+	}
+
+	out, err := json.Marshal(cfg)
+	require.NoError(t, err)
+
+	body := string(out)
+	for _, secret := range []string{secretPostgresPass, secretClientSecret, secretAPIKey} {
+		assert.NotContains(t, body, secret,
+			"marshalled Config must not contain secret %q", secret)
 	}
 }

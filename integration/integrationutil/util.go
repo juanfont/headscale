@@ -28,12 +28,25 @@ func PeerSyncTimeout() time.Duration {
 	if util.IsCI() {
 		return 120 * time.Second
 	}
+
 	return 60 * time.Second
 }
 
 // PeerSyncRetryInterval returns the retry interval for peer synchronization checks.
 func PeerSyncRetryInterval() time.Duration {
 	return 100 * time.Millisecond
+}
+
+// ScaledTimeout returns the given timeout, scaled for CI environments
+// where resource contention causes slower state propagation.
+// Uses a 2x multiplier, consistent with PeerSyncTimeout (60s/120s)
+// and dockertestMaxWait (300s/600s).
+func ScaledTimeout(d time.Duration) time.Duration {
+	if util.IsCI() {
+		return d * 2
+	}
+
+	return d
 }
 
 func WriteFileToContainer(
@@ -59,17 +72,17 @@ func WriteFileToContainer(
 
 	err := tarWriter.WriteHeader(header)
 	if err != nil {
-		return fmt.Errorf("failed write file header to tar: %w", err)
+		return fmt.Errorf("writing file header to tar: %w", err)
 	}
 
 	_, err = io.Copy(tarWriter, file)
 	if err != nil {
-		return fmt.Errorf("failed to copy file to tar: %w", err)
+		return fmt.Errorf("copying file to tar: %w", err)
 	}
 
 	err = tarWriter.Close()
 	if err != nil {
-		return fmt.Errorf("failed to close tar: %w", err)
+		return fmt.Errorf("closing tar: %w", err)
 	}
 
 	// Ensure the directory is present inside the container
@@ -79,7 +92,7 @@ func WriteFileToContainer(
 		[]string{},
 	)
 	if err != nil {
-		return fmt.Errorf("failed to ensure directory: %w", err)
+		return fmt.Errorf("ensuring directory: %w", err)
 	}
 
 	err = pool.Client.UploadToContainer(
@@ -119,7 +132,11 @@ func FetchPathFromContainer(
 }
 
 // nolint
-func CreateCertificate(hostname string) ([]byte, []byte, error) {
+// CreateCertificate generates a CA certificate and a server certificate
+// signed by that CA for the given hostname. It returns the CA certificate
+// PEM (for trust stores), server certificate PEM, and server private key
+// PEM.
+func CreateCertificate(hostname string) (caCertPEM, certPEM, keyPEM []byte, err error) {
 	// From:
 	// https://shaneutt.com/blog/golang-ca-and-signed-cert-go/
 
@@ -143,7 +160,27 @@ func CreateCertificate(hostname string) ([]byte, []byte, error) {
 
 	caPrivKey, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
+	}
+
+	caBytes, err := x509.CreateCertificate(
+		rand.Reader,
+		ca,
+		ca,
+		&caPrivKey.PublicKey,
+		caPrivKey,
+	)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	caPEM := new(bytes.Buffer)
+	err = pem.Encode(caPEM, &pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: caBytes,
+	})
+	if err != nil {
+		return nil, nil, nil, err
 	}
 
 	cert := &x509.Certificate{
@@ -164,7 +201,7 @@ func CreateCertificate(hostname string) ([]byte, []byte, error) {
 
 	certPrivKey, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	certBytes, err := x509.CreateCertificate(
@@ -175,55 +212,55 @@ func CreateCertificate(hostname string) ([]byte, []byte, error) {
 		caPrivKey,
 	)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
-	certPEM := new(bytes.Buffer)
-
-	err = pem.Encode(certPEM, &pem.Block{
+	serverCertPEM := new(bytes.Buffer)
+	err = pem.Encode(serverCertPEM, &pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: certBytes,
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	certPrivKeyPEM := new(bytes.Buffer)
-
 	err = pem.Encode(certPrivKeyPEM, &pem.Block{
 		Type:  "RSA PRIVATE KEY",
 		Bytes: x509.MarshalPKCS1PrivateKey(certPrivKey),
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
-	return certPEM.Bytes(), certPrivKeyPEM.Bytes(), nil
+	return caPEM.Bytes(), serverCertPEM.Bytes(), certPrivKeyPEM.Bytes(), nil
 }
 
 func BuildExpectedOnlineMap(all map[types.NodeID][]tailcfg.MapResponse) map[types.NodeID]map[types.NodeID]bool {
 	res := make(map[types.NodeID]map[types.NodeID]bool)
 	for nid, mrs := range all {
 		res[nid] = make(map[types.NodeID]bool)
+
 		for _, mr := range mrs {
 			for _, peer := range mr.Peers {
 				if peer.Online != nil {
-					res[nid][types.NodeID(peer.ID)] = *peer.Online
+					res[nid][types.NodeID(peer.ID)] = *peer.Online //nolint:gosec // safe conversion for peer ID
 				}
 			}
 
 			for _, peer := range mr.PeersChanged {
 				if peer.Online != nil {
-					res[nid][types.NodeID(peer.ID)] = *peer.Online
+					res[nid][types.NodeID(peer.ID)] = *peer.Online //nolint:gosec // safe conversion for peer ID
 				}
 			}
 
 			for _, peer := range mr.PeersChangedPatch {
 				if peer.Online != nil {
-					res[nid][types.NodeID(peer.NodeID)] = *peer.Online
+					res[nid][types.NodeID(peer.NodeID)] = *peer.Online //nolint:gosec // safe conversion for peer ID
 				}
 			}
 		}
 	}
+
 	return res
 }

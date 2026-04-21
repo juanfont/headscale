@@ -24,7 +24,6 @@ import (
 
 const (
 	nextDNSDoHPrefix     = "https://dns.nextdns.io"
-	mapperIDLength       = 8
 	debugMapResponsePerm = 0o755
 )
 
@@ -45,11 +44,12 @@ type mapper struct {
 	// Configuration
 	state   *state.State
 	cfg     *types.Config
-	batcher Batcher
+	batcher *Batcher
 
 	created time.Time
 }
 
+//nolint:unused
 type patch struct {
 	timestamp time.Time
 	change    *tailcfg.PeerChange
@@ -60,7 +60,6 @@ func newMapper(
 	state *state.State,
 ) *mapper {
 	// uid, _ := util.GenerateRandomStringDNSSafe(mapperIDLength)
-
 	return &mapper{
 		state: state,
 		cfg:   cfg,
@@ -76,23 +75,26 @@ func generateUserProfiles(
 ) []tailcfg.UserProfile {
 	userMap := make(map[uint]*types.UserView)
 	ids := make([]uint, 0, len(userMap))
+
 	user := node.Owner()
 	if !user.Valid() {
 		log.Error().
-			Uint64("node.id", node.ID().Uint64()).
-			Str("node.name", node.Hostname()).
+			EmbedObject(node).
 			Msg("node has no valid owner, skipping user profile generation")
 
 		return nil
 	}
+
 	userID := user.Model().ID
 	userMap[userID] = &user
 	ids = append(ids, userID)
+
 	for _, peer := range peers.All() {
 		peerUser := peer.Owner()
 		if !peerUser.Valid() {
 			continue
 		}
+
 		peerUserID := peerUser.Model().ID
 		userMap[peerUserID] = &peerUser
 		ids = append(ids, peerUserID)
@@ -100,7 +102,9 @@ func generateUserProfiles(
 
 	slices.Sort(ids)
 	ids = slices.Compact(ids)
+
 	var profiles []tailcfg.UserProfile
+
 	for _, id := range ids {
 		if userMap[id] != nil {
 			profiles = append(profiles, userMap[id].TailscaleUserProfile())
@@ -150,6 +154,8 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, node types.NodeView) {
 }
 
 // fullMapResponse returns a MapResponse for the given node.
+//
+//nolint:unused
 func (m *mapper) fullMapResponse(
 	nodeID types.NodeID,
 	capVer tailcfg.CapabilityVersion,
@@ -302,6 +308,10 @@ func (m *mapper) buildFromChange(
 		builder.WithPeerChangedPatch(resp.PeerPatches)
 	}
 
+	if resp.PingRequest != nil {
+		builder.WithPingRequest(resp.PingRequest)
+	}
+
 	return builder.Build()
 }
 
@@ -317,6 +327,7 @@ func writeDebugMapResponse(
 
 	perms := fs.FileMode(debugMapResponsePerm)
 	mPath := path.Join(debugDumpMapResponsePath, fmt.Sprintf("%d", nodeID))
+
 	err = os.MkdirAll(mPath, perms)
 	if err != nil {
 		panic(err)
@@ -329,7 +340,8 @@ func writeDebugMapResponse(
 		fmt.Sprintf("%s-%s.json", now, t),
 	)
 
-	log.Trace().Msgf("Writing MapResponse to %s", mapResponsePath)
+	log.Trace().Msgf("writing MapResponse to %s", mapResponsePath)
+
 	err = os.WriteFile(mapResponsePath, body, perms)
 	if err != nil {
 		panic(err)
@@ -338,7 +350,7 @@ func writeDebugMapResponse(
 
 func (m *mapper) debugMapResponses() (map[types.NodeID][]tailcfg.MapResponse, error) {
 	if debugDumpMapResponsePath == "" {
-		return nil, nil
+		return nil, nil //nolint:nilnil // intentional: no data when debug path not set
 	}
 
 	return ReadMapResponsesFromDirectory(debugDumpMapResponsePath)
@@ -351,6 +363,7 @@ func ReadMapResponsesFromDirectory(dir string) (map[types.NodeID][]tailcfg.MapRe
 	}
 
 	result := make(map[types.NodeID][]tailcfg.MapResponse)
+
 	for _, node := range nodes {
 		if !node.IsDir() {
 			continue
@@ -358,7 +371,7 @@ func ReadMapResponsesFromDirectory(dir string) (map[types.NodeID][]tailcfg.MapRe
 
 		nodeIDu, err := strconv.ParseUint(node.Name(), 10, 64)
 		if err != nil {
-			log.Error().Err(err).Msgf("Parsing node ID from dir %s", node.Name())
+			log.Error().Err(err).Msgf("parsing node ID from dir %s", node.Name())
 			continue
 		}
 
@@ -366,7 +379,7 @@ func ReadMapResponsesFromDirectory(dir string) (map[types.NodeID][]tailcfg.MapRe
 
 		files, err := os.ReadDir(path.Join(dir, node.Name()))
 		if err != nil {
-			log.Error().Err(err).Msgf("Reading dir %s", node.Name())
+			log.Error().Err(err).Msgf("reading dir %s", node.Name())
 			continue
 		}
 
@@ -381,14 +394,15 @@ func ReadMapResponsesFromDirectory(dir string) (map[types.NodeID][]tailcfg.MapRe
 
 			body, err := os.ReadFile(path.Join(dir, node.Name(), file.Name()))
 			if err != nil {
-				log.Error().Err(err).Msgf("Reading file %s", file.Name())
+				log.Error().Err(err).Msgf("reading file %s", file.Name())
 				continue
 			}
 
 			var resp tailcfg.MapResponse
+
 			err = json.Unmarshal(body, &resp)
 			if err != nil {
-				log.Error().Err(err).Msgf("Unmarshalling file %s", file.Name())
+				log.Error().Err(err).Msgf("unmarshalling file %s", file.Name())
 				continue
 			}
 

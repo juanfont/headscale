@@ -16,7 +16,7 @@ type OIDCSession struct {
 
 	// Session identification
 	SessionID      string         `gorm:"uniqueIndex;not null"`
-	RegistrationID RegistrationID `gorm:"not null"` // For reusing HandleNodeFromAuthPath
+	RegistrationID AuthID `gorm:"not null"` // For reusing HandleNodeFromAuthPath
 
 	// Token data
 	RefreshToken string `gorm:"type:text"` // TODO: Encrypt?

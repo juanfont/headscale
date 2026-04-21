@@ -239,7 +239,7 @@ func TestCreateOrUpdateOIDCSession(t *testing.T) {
 	tests := []struct {
 		name           string
 		user           *types.User
-		registrationID types.RegistrationID
+		registrationID types.AuthID
 		token          *oauth2.Token
 		nodeExpiry     time.Time
 		expectError    bool
@@ -248,7 +248,7 @@ func TestCreateOrUpdateOIDCSession(t *testing.T) {
 		{
 			name:           "create new session with refresh token",
 			user:           user,
-			registrationID: types.RegistrationID("reg-123"),
+			registrationID: types.AuthID("reg-123"),
 			token: &oauth2.Token{
 				AccessToken:  "access-token",
 				RefreshToken: "refresh-token",
@@ -261,7 +261,7 @@ func TestCreateOrUpdateOIDCSession(t *testing.T) {
 		{
 			name:           "skip session creation without refresh token",
 			user:           user,
-			registrationID: types.RegistrationID("reg-456"),
+			registrationID: types.AuthID("reg-456"),
 			token: &oauth2.Token{
 				AccessToken: "access-token-only",
 				Expiry:      time.Now().Add(1 * time.Hour),
@@ -273,7 +273,7 @@ func TestCreateOrUpdateOIDCSession(t *testing.T) {
 		{
 			name:           "update existing session",
 			user:           user,
-			registrationID: types.RegistrationID("reg-789"),
+			registrationID: types.AuthID("reg-789"),
 			token: &oauth2.Token{
 				AccessToken:  "new-access-token",
 				RefreshToken: "new-refresh-token",
@@ -447,23 +447,21 @@ func TestDetermineNodeExpiry(t *testing.T) {
 	oidcProvider := &AuthProviderOIDC{
 		cfg: &types.OIDCConfig{
 			UseExpiryFromToken: true,
-			Expiry:             180 * 24 * time.Hour, // Default expiry
 		},
 	}
 
-	now := time.Now()
-	idTokenExpiry := now.Add(2 * time.Hour)
+	idTokenExpiry := time.Now().Add(2 * time.Hour)
 
-	// Test with UseExpiryFromToken = true
+	// UseExpiryFromToken = true: return the token expiry.
 	expiry := oidcProvider.determineNodeExpiry(idTokenExpiry)
-	assert.Equal(t, idTokenExpiry, expiry)
+	require.NotNil(t, expiry)
+	assert.Equal(t, idTokenExpiry, *expiry)
 
-	// Test with UseExpiryFromToken = false
+	// UseExpiryFromToken = false: return nil so the caller falls back
+	// to the global NodeConfig.Expiry default.
 	oidcProvider.cfg.UseExpiryFromToken = false
 	expiry = oidcProvider.determineNodeExpiry(idTokenExpiry)
-	// Should return current time + cfg.Expiry
-	expectedExpiry := now.Add(oidcProvider.cfg.Expiry)
-	assert.WithinDuration(t, expectedExpiry, expiry, 1*time.Second)
+	assert.Nil(t, expiry)
 }
 
 func TestRefreshExpiredTokens(t *testing.T) {
@@ -504,7 +502,7 @@ func TestRefreshExpiredTokens(t *testing.T) {
 				return &types.OIDCSession{
 					NodeID:         node.ID,
 					SessionID:      "valid-session",
-					RegistrationID: types.RegistrationID("reg-123"),
+					RegistrationID: types.AuthID("reg-123"),
 					RefreshToken:   "refresh-token",
 					TokenExpiry:    &[]time.Time{now.Add(2 * time.Hour)}[0],
 					IsActive:       true,
@@ -520,7 +518,7 @@ func TestRefreshExpiredTokens(t *testing.T) {
 				return &types.OIDCSession{
 					NodeID:         node.ID,
 					SessionID:      "no-token-session",
-					RegistrationID: types.RegistrationID("reg-456"),
+					RegistrationID: types.AuthID("reg-456"),
 					RefreshToken:   "",                                         // No refresh token
 					TokenExpiry:    &[]time.Time{now.Add(10 * time.Minute)}[0], // Expiring soon
 					IsActive:       true,
@@ -536,7 +534,7 @@ func TestRefreshExpiredTokens(t *testing.T) {
 				return &types.OIDCSession{
 					NodeID:         node.ID,
 					SessionID:      "valid-token-session",
-					RegistrationID: types.RegistrationID("reg-789"),
+					RegistrationID: types.AuthID("reg-789"),
 					RefreshToken:   "refresh-token",
 					TokenExpiry:    &[]time.Time{now.Add(2 * time.Hour)}[0], // Not expiring soon
 					IsActive:       true,                                    // Active but token not expiring

@@ -3,16 +3,16 @@
 Headscale and Tailscale provide debug and introspection capabilities that can be helpful when things don't work as
 expected. This page explains some debugging techniques to help pinpoint problems.
 
-Please also have a look at [Tailscale's Troubleshooting guide](https://tailscale.com/kb/1023/troubleshooting). It offers
-a many tips and suggestions to troubleshoot common issues.
+Please also have a look at [Tailscale's Troubleshooting guide](https://tailscale.com/docs/reference/troubleshooting). It
+offers a many tips and suggestions to troubleshoot common issues.
 
 ## Tailscale
 
 The Tailscale client itself offers many commands to introspect its state as well as the state of the network:
 
-- [Check local network conditions](https://tailscale.com/kb/1080/cli#netcheck): `tailscale netcheck`
-- [Get the client status](https://tailscale.com/kb/1080/cli#status): `tailscale status --json`
-- [Get DNS status](https://tailscale.com/kb/1080/cli#dns): `tailscale dns status --all`
+- [Check local network conditions](https://tailscale.com/docs/reference/tailscale-cli#netcheck): `tailscale netcheck`
+- [Get the client status](https://tailscale.com/docs/reference/tailscale-cli#status): `tailscale status --json`
+- [Get DNS status](https://tailscale.com/docs/reference/tailscale-cli#dns): `tailscale dns status --all`
 - Client logs: `tailscale debug daemon-logs`
 - Client netmap: `tailscale debug netmap`
 - Test DERP connection: `tailscale debug derp headscale`

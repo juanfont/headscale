@@ -25,13 +25,14 @@ func TestDERPVerifyEndpoint(t *testing.T) {
 	// Generate random hostname for the headscale instance
 	hash, err := util.GenerateRandomStringDNSSafe(6)
 	require.NoError(t, err)
+
 	testName := "derpverify"
 	hostname := fmt.Sprintf("hs-%s-%s", testName, hash)
 
 	headscalePort := 8080
 
 	// Create cert for headscale
-	certHeadscale, keyHeadscale, err := integrationutil.CreateCertificate(hostname)
+	caHeadscale, certHeadscale, keyHeadscale, err := integrationutil.CreateCertificate(hostname)
 	require.NoError(t, err)
 
 	spec := ScenarioSpec{
@@ -40,11 +41,12 @@ func TestDERPVerifyEndpoint(t *testing.T) {
 	}
 
 	scenario, err := NewScenario(spec)
+
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	derper, err := scenario.CreateDERPServer("head",
-		dsic.WithCACert(certHeadscale),
+		dsic.WithCACert(caHeadscale),
 		dsic.WithVerifyClientURL(fmt.Sprintf("https://%s/verify", net.JoinHostPort(hostname, strconv.Itoa(headscalePort)))),
 	)
 	require.NoError(t, err)
@@ -70,10 +72,18 @@ func TestDERPVerifyEndpoint(t *testing.T) {
 		},
 	}
 
+	// WithHostname is used instead of WithTestName because the hostname
+	// must match the pre-generated TLS certificate created above.
+	// The test name "derpverify" is embedded in the hostname variable.
+	//
+	// WithCACert passes the external DERP server's certificate so
+	// tailscale clients trust it. WithCustomTLS and WithDERPConfig
+	// configure headscale to use the external DERP server created
+	// above instead of the default embedded one.
 	err = scenario.CreateHeadscaleEnv([]tsic.Option{tsic.WithCACert(derper.GetCert())},
 		hsic.WithHostname(hostname),
 		hsic.WithPort(headscalePort),
-		hsic.WithCustomTLS(certHeadscale, keyHeadscale),
+		hsic.WithCustomTLS(caHeadscale, certHeadscale, keyHeadscale),
 		hsic.WithDERPConfig(derpMap))
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -104,13 +114,16 @@ func DERPVerify(
 	defer c.Close()
 
 	var result error
-	if err := c.Connect(t.Context()); err != nil {
+
+	err := c.Connect(t.Context())
+	if err != nil {
 		result = fmt.Errorf("client Connect: %w", err)
 	}
-	if m, err := c.Recv(); err != nil {
+
+	if m, err := c.Recv(); err != nil { //nolint:noinlineerr
 		result = fmt.Errorf("client first Recv: %w", err)
 	} else if v, ok := m.(derp.ServerInfoMessage); !ok {
-		result = fmt.Errorf("client first Recv was unexpected type %T", v)
+		result = fmt.Errorf("client first Recv was unexpected type %T", v) //nolint:err113
 	}
 
 	if expectSuccess && result != nil {

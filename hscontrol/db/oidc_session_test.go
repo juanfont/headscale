@@ -42,7 +42,7 @@ func TestInvalidateOIDCSessionsForNode(t *testing.T) {
 	session := &types.OIDCSession{
 		NodeID:         types.NodeID(node.ID),
 		SessionID:      "test-session-id-1",
-		RegistrationID: types.RegistrationID("test-reg-id-1"),
+		RegistrationID: types.AuthID("test-reg-id-1"),
 		RefreshToken:   "test-refresh-token",
 		TokenExpiry:    &tokenExpiry,
 		IsActive:       true,
@@ -121,7 +121,7 @@ func TestFindAndInvalidateOIDCSessions(t *testing.T) {
 	session1 := &types.OIDCSession{
 		NodeID:         types.NodeID(node1.ID),
 		SessionID:      "expired-session-1",
-		RegistrationID: types.RegistrationID("reg-1"),
+		RegistrationID: types.AuthID("reg-1"),
 		RefreshToken:   "refresh-1",
 		TokenExpiry:    &expiredTime1,
 		IsActive:       true,
@@ -136,7 +136,7 @@ func TestFindAndInvalidateOIDCSessions(t *testing.T) {
 	session2 := &types.OIDCSession{
 		NodeID:         types.NodeID(node2.ID),
 		SessionID:      "expired-session-2",
-		RegistrationID: types.RegistrationID("reg-2"),
+		RegistrationID: types.AuthID("reg-2"),
 		RefreshToken:   "refresh-2",
 		TokenExpiry:    &expiredTime2,
 		IsActive:       true,
@@ -148,7 +148,7 @@ func TestFindAndInvalidateOIDCSessions(t *testing.T) {
 	session3 := &types.OIDCSession{
 		NodeID:         types.NodeID(node3.ID),
 		SessionID:      "valid-session",
-		RegistrationID: types.RegistrationID("reg-3"),
+		RegistrationID: types.AuthID("reg-3"),
 		RefreshToken:   "refresh-3",
 		TokenExpiry:    &validTime,
 		IsActive:       true,
@@ -226,7 +226,7 @@ func TestFindOIDCSessionCandidatesWithNoneExpired(t *testing.T) {
 	session := &types.OIDCSession{
 		NodeID:         types.NodeID(node.ID),
 		SessionID:      "valid-only-session",
-		RegistrationID: types.RegistrationID("reg-valid"),
+		RegistrationID: types.AuthID("reg-valid"),
 		RefreshToken:   "refresh-valid",
 		TokenExpiry:    &validTime,
 		IsActive:       true,
@@ -274,7 +274,7 @@ func TestInvalidateOIDCSessionsTransaction(t *testing.T) {
 		session := &types.OIDCSession{
 			NodeID:         types.NodeID(node.ID),
 			SessionID:      fmt.Sprintf("session-%d", i),
-			RegistrationID: types.RegistrationID(fmt.Sprintf("reg-%d", i)),
+			RegistrationID: types.AuthID(fmt.Sprintf("reg-%d", i)),
 			RefreshToken:   fmt.Sprintf("refresh-%d", i),
 			TokenExpiry:    &tokenExpiry,
 			IsActive:       true,

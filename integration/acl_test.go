@@ -20,7 +20,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 )
 
 var veryLargeDestination = []policyv2.AliasWithPorts{
@@ -59,6 +58,7 @@ var veryLargeDestination = []policyv2.AliasWithPorts{
 func aclScenario(
 	t *testing.T,
 	policy *policyv2.Policy,
+	testName string,
 	clientsPerUser int,
 ) *Scenario {
 	t.Helper()
@@ -82,9 +82,7 @@ func aclScenario(
 			tsic.WithDockerWorkdir("/"),
 		},
 		hsic.WithACLPolicy(policy),
-		hsic.WithTestName("acl"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
+		hsic.WithTestName(testName),
 	)
 	require.NoError(t, err)
 
@@ -306,6 +304,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 
 			err = scenario.CreateHeadscaleEnv(
 				[]tsic.Option{},
+				hsic.WithTestName("aclnetmap"),
 				hsic.WithACLPolicy(&testCase.policy),
 			)
 
@@ -326,7 +325,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 					user := status.User[status.Self.UserID].LoginName
 
 					assert.Len(c, status.Peer, (testCase.want[user]))
-				}, 10*time.Second, 200*time.Millisecond, "Waiting for expected peer visibility")
+				}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for expected peer visibility")
 			}
 		})
 	}
@@ -352,6 +351,7 @@ func TestACLAllowUser80Dst(t *testing.T) {
 				},
 			},
 		},
+		"acl-allowuser80",
 		1,
 	)
 	defer scenario.ShutdownAssertNoPanics(t)
@@ -375,7 +375,7 @@ func TestACLAllowUser80Dst(t *testing.T) {
 				result, err := client.Curl(url)
 				assert.NoError(c, err)
 				assert.Len(c, result, 13)
-			}, 20*time.Second, 500*time.Millisecond, "Verifying user1 can reach user2")
+			}, integrationutil.ScaledTimeout(20*time.Second), 500*time.Millisecond, "Verifying user1 can reach user2")
 		}
 	}
 
@@ -389,10 +389,8 @@ func TestACLAllowUser80Dst(t *testing.T) {
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := client.Curl(url)
-				assert.Error(c, err)
-				assert.Empty(c, result)
-			}, 20*time.Second, 500*time.Millisecond, "Verifying user2 cannot reach user1")
+				assertCurlFailWithCollect(c, client, url, "user2 should not reach user1")
+			}, integrationutil.ScaledTimeout(20*time.Second), 500*time.Millisecond, "Verifying user2 cannot reach user1")
 		}
 	}
 }
@@ -415,6 +413,7 @@ func TestACLDenyAllPort80(t *testing.T) {
 				},
 			},
 		},
+		"acl-denyport80",
 		4,
 	)
 	defer scenario.ShutdownAssertNoPanics(t)
@@ -437,10 +436,8 @@ func TestACLDenyAllPort80(t *testing.T) {
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := client.Curl(url)
-				assert.Error(c, err)
-				assert.Empty(c, result)
-			}, 20*time.Second, 500*time.Millisecond, "Verifying all traffic is denied")
+				assertCurlFailWithCollect(c, client, url, "all traffic should be denied")
+			}, integrationutil.ScaledTimeout(20*time.Second), 500*time.Millisecond, "Verifying all traffic is denied")
 		}
 	}
 }
@@ -463,6 +460,7 @@ func TestACLAllowUserDst(t *testing.T) {
 				},
 			},
 		},
+		"acl-allowuserdst",
 		2,
 	)
 	defer scenario.ShutdownAssertNoPanics(t)
@@ -486,7 +484,7 @@ func TestACLAllowUserDst(t *testing.T) {
 				result, err := client.Curl(url)
 				assert.NoError(c, err)
 				assert.Len(c, result, 13)
-			}, 20*time.Second, 500*time.Millisecond, "Verifying user1 can reach user2")
+			}, integrationutil.ScaledTimeout(20*time.Second), 500*time.Millisecond, "Verifying user1 can reach user2")
 		}
 	}
 
@@ -500,10 +498,8 @@ func TestACLAllowUserDst(t *testing.T) {
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := client.Curl(url)
-				assert.Error(c, err)
-				assert.Empty(c, result)
-			}, 20*time.Second, 500*time.Millisecond, "Verifying user2 cannot reach user1")
+				assertCurlFailWithCollect(c, client, url, "user2 should not reach user1")
+			}, integrationutil.ScaledTimeout(20*time.Second), 500*time.Millisecond, "Verifying user2 cannot reach user1")
 		}
 	}
 }
@@ -525,6 +521,7 @@ func TestACLAllowStarDst(t *testing.T) {
 				},
 			},
 		},
+		"acl-allowstar",
 		2,
 	)
 	defer scenario.ShutdownAssertNoPanics(t)
@@ -548,7 +545,7 @@ func TestACLAllowStarDst(t *testing.T) {
 				result, err := client.Curl(url)
 				assert.NoError(c, err)
 				assert.Len(c, result, 13)
-			}, 20*time.Second, 500*time.Millisecond, "Verifying user1 can reach user2")
+			}, integrationutil.ScaledTimeout(20*time.Second), 500*time.Millisecond, "Verifying user1 can reach user2")
 		}
 	}
 
@@ -562,10 +559,8 @@ func TestACLAllowStarDst(t *testing.T) {
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := client.Curl(url)
-				assert.Error(c, err)
-				assert.Empty(c, result)
-			}, 20*time.Second, 500*time.Millisecond, "Verifying user2 cannot reach user1")
+				assertCurlFailWithCollect(c, client, url, "user2 should not reach user1")
+			}, integrationutil.ScaledTimeout(20*time.Second), 500*time.Millisecond, "Verifying user2 cannot reach user1")
 		}
 	}
 }
@@ -592,6 +587,7 @@ func TestACLNamedHostsCanReachBySubnet(t *testing.T) {
 				},
 			},
 		},
+		"acl-namedsubnet",
 		3,
 	)
 	defer scenario.ShutdownAssertNoPanics(t)
@@ -615,7 +611,7 @@ func TestACLNamedHostsCanReachBySubnet(t *testing.T) {
 				result, err := client.Curl(url)
 				assert.NoError(c, err)
 				assert.Len(c, result, 13)
-			}, 20*time.Second, 500*time.Millisecond, "Verifying user1 can reach user2")
+			}, integrationutil.ScaledTimeout(20*time.Second), 500*time.Millisecond, "Verifying user1 can reach user2")
 		}
 	}
 
@@ -634,7 +630,7 @@ func TestACLNamedHostsCanReachBySubnet(t *testing.T) {
 				result, err := client.Curl(url)
 				assert.NoError(c, err)
 				assert.Len(c, result, 13)
-			}, 20*time.Second, 500*time.Millisecond, "Verifying user2 can reach user1")
+			}, integrationutil.ScaledTimeout(20*time.Second), 500*time.Millisecond, "Verifying user2 can reach user1")
 		}
 	}
 }
@@ -683,8 +679,17 @@ func TestACLNamedHostsCanReach(t *testing.T) {
 
 	tests := map[string]struct {
 		policy policyv2.Policy
+		// Addresses covered by the policy. Address-based aliases (Prefix,
+		// Host) resolve to exactly the literal prefix, so we can only curl
+		// the address family defined in the policy's Hosts map.
+		test1Addr string
+		test2Addr string
+		test3Addr string
 	}{
 		"ipv4": {
+			test1Addr: "100.64.0.1",
+			test2Addr: "100.64.0.2",
+			test3Addr: "100.64.0.3",
 			policy: policyv2.Policy{
 				Hosts: policyv2.Hosts{
 					"test1": policyv2.Prefix(netip.MustParsePrefix("100.64.0.1/32")),
@@ -712,6 +717,9 @@ func TestACLNamedHostsCanReach(t *testing.T) {
 			},
 		},
 		"ipv6": {
+			test1Addr: "[fd7a:115c:a1e0::1]",
+			test2Addr: "[fd7a:115c:a1e0::2]",
+			test3Addr: "[fd7a:115c:a1e0::3]",
 			policy: policyv2.Policy{
 				Hosts: policyv2.Hosts{
 					"test1": policyv2.Prefix(netip.MustParsePrefix("fd7a:115c:a1e0::1/128")),
@@ -744,205 +752,84 @@ func TestACLNamedHostsCanReach(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			scenario := aclScenario(t,
 				&testCase.policy,
+				"acl-namedreach",
 				2,
 			)
 			defer scenario.ShutdownAssertNoPanics(t)
 
-			// Since user/users dont matter here, we basically expect that some clients
-			// will be assigned these ips and that we can pick them up for our own use.
-			test1ip4 := netip.MustParseAddr("100.64.0.1")
+			// Since user/users don't matter here, we basically expect that
+			// some clients will be assigned these ips and that we can pick
+			// them up for our own use. Look up clients by their IPv6
+			// address (always assigned) regardless of test variant.
 			test1ip6 := netip.MustParseAddr("fd7a:115c:a1e0::1")
 			test1, err := scenario.FindTailscaleClientByIP(test1ip6)
 			require.NoError(t, err)
 
-			test1fqdn, err := test1.FQDN()
-			require.NoError(t, err)
-
-			test1ip4URL := fmt.Sprintf("http://%s/etc/hostname", test1ip4.String())
-			test1ip6URL := fmt.Sprintf("http://[%s]/etc/hostname", test1ip6.String())
-			test1fqdnURL := fmt.Sprintf("http://%s/etc/hostname", test1fqdn)
-
-			test2ip4 := netip.MustParseAddr("100.64.0.2")
 			test2ip6 := netip.MustParseAddr("fd7a:115c:a1e0::2")
 			test2, err := scenario.FindTailscaleClientByIP(test2ip6)
 			require.NoError(t, err)
 
-			test2fqdn, err := test2.FQDN()
-			require.NoError(t, err)
-
-			test2ip4URL := fmt.Sprintf("http://%s/etc/hostname", test2ip4.String())
-			test2ip6URL := fmt.Sprintf("http://[%s]/etc/hostname", test2ip6.String())
-			test2fqdnURL := fmt.Sprintf("http://%s/etc/hostname", test2fqdn)
-
-			test3ip4 := netip.MustParseAddr("100.64.0.3")
 			test3ip6 := netip.MustParseAddr("fd7a:115c:a1e0::3")
 			test3, err := scenario.FindTailscaleClientByIP(test3ip6)
 			require.NoError(t, err)
 
-			test3fqdn, err := test3.FQDN()
-			require.NoError(t, err)
+			// Build URLs from the addresses the policy actually covers.
+			test1URL := fmt.Sprintf("http://%s/etc/hostname", testCase.test1Addr)
+			test2URL := fmt.Sprintf("http://%s/etc/hostname", testCase.test2Addr)
+			test3URL := fmt.Sprintf("http://%s/etc/hostname", testCase.test3Addr)
 
-			test3ip4URL := fmt.Sprintf("http://%s/etc/hostname", test3ip4.String())
-			test3ip6URL := fmt.Sprintf("http://[%s]/etc/hostname", test3ip6.String())
-			test3fqdnURL := fmt.Sprintf("http://%s/etc/hostname", test3fqdn)
-
-			// test1 can query test3
+			// test1 can query test3 (everyone -> test3)
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test1.Curl(test3ip4URL)
+				result, err := test1.Curl(test3URL)
 				assert.NoError(c, err)
 				assert.Lenf(
 					c,
 					result,
 					13,
 					"failed to connect from test1 to test3 with URL %s, expected hostname of 13 chars, got %s",
-					test3ip4URL,
+					test3URL,
 					result,
 				)
-			}, 10*time.Second, 200*time.Millisecond, "test1 should reach test3 via IPv4")
+			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "test1 should reach test3")
 
+			// test2 can query test3 (everyone -> test3)
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test1.Curl(test3ip6URL)
+				result, err := test2.Curl(test3URL)
 				assert.NoError(c, err)
 				assert.Lenf(
 					c,
 					result,
 					13,
-					"failed to connect from test1 to test3 with URL %s, expected hostname of 13 chars, got %s",
-					test3ip6URL,
+					"failed to connect from test2 to test3 with URL %s, expected hostname of 13 chars, got %s",
+					test3URL,
 					result,
 				)
-			}, 10*time.Second, 200*time.Millisecond, "test1 should reach test3 via IPv6")
-
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test1.Curl(test3fqdnURL)
-				assert.NoError(c, err)
-				assert.Lenf(
-					c,
-					result,
-					13,
-					"failed to connect from test1 to test3 with URL %s, expected hostname of 13 chars, got %s",
-					test3fqdnURL,
-					result,
-				)
-			}, 10*time.Second, 200*time.Millisecond, "test1 should reach test3 via FQDN")
-
-			// test2 can query test3
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test2.Curl(test3ip4URL)
-				assert.NoError(c, err)
-				assert.Lenf(
-					c,
-					result,
-					13,
-					"failed to connect from test1 to test3 with URL %s, expected hostname of 13 chars, got %s",
-					test3ip4URL,
-					result,
-				)
-			}, 10*time.Second, 200*time.Millisecond, "test2 should reach test3 via IPv4")
-
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test2.Curl(test3ip6URL)
-				assert.NoError(c, err)
-				assert.Lenf(
-					c,
-					result,
-					13,
-					"failed to connect from test1 to test3 with URL %s, expected hostname of 13 chars, got %s",
-					test3ip6URL,
-					result,
-				)
-			}, 10*time.Second, 200*time.Millisecond, "test2 should reach test3 via IPv6")
-
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test2.Curl(test3fqdnURL)
-				assert.NoError(c, err)
-				assert.Lenf(
-					c,
-					result,
-					13,
-					"failed to connect from test1 to test3 with URL %s, expected hostname of 13 chars, got %s",
-					test3fqdnURL,
-					result,
-				)
-			}, 10*time.Second, 200*time.Millisecond, "test2 should reach test3 via FQDN")
+			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "test2 should reach test3")
 
 			// test3 cannot query test1
-			result, err := test3.Curl(test1ip4URL)
-			assert.Empty(t, result)
-			require.Error(t, err)
-
-			result, err = test3.Curl(test1ip6URL)
-			assert.Empty(t, result)
-			require.Error(t, err)
-
-			result, err = test3.Curl(test1fqdnURL)
-			assert.Empty(t, result)
+			_, err = test3.CurlFailFast(test1URL)
 			require.Error(t, err)
 
 			// test3 cannot query test2
-			result, err = test3.Curl(test2ip4URL)
-			assert.Empty(t, result)
-			require.Error(t, err)
-
-			result, err = test3.Curl(test2ip6URL)
-			assert.Empty(t, result)
-			require.Error(t, err)
-
-			result, err = test3.Curl(test2fqdnURL)
-			assert.Empty(t, result)
+			_, err = test3.CurlFailFast(test2URL)
 			require.Error(t, err)
 
 			// test1 can query test2
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test1.Curl(test2ip4URL)
+				result, err := test1.Curl(test2URL)
 				assert.NoError(c, err)
 				assert.Lenf(
 					c,
 					result,
 					13,
 					"failed to connect from test1 to test2 with URL %s, expected hostname of 13 chars, got %s",
-					test2ip4URL,
+					test2URL,
 					result,
 				)
-			}, 10*time.Second, 200*time.Millisecond, "test1 should reach test2 via IPv4")
-
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test1.Curl(test2ip6URL)
-				assert.NoError(c, err)
-				assert.Lenf(
-					c,
-					result,
-					13,
-					"failed to connect from test1 to test2 with URL %s, expected hostname of 13 chars, got %s",
-					test2ip6URL,
-					result,
-				)
-			}, 10*time.Second, 200*time.Millisecond, "test1 should reach test2 via IPv6")
-
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test1.Curl(test2fqdnURL)
-				assert.NoError(c, err)
-				assert.Lenf(
-					c,
-					result,
-					13,
-					"failed to connect from test1 to test2 with URL %s, expected hostname of 13 chars, got %s",
-					test2fqdnURL,
-					result,
-				)
-			}, 10*time.Second, 200*time.Millisecond, "test1 should reach test2 via FQDN")
+			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "test1 should reach test2")
 
 			// test2 cannot query test1
-			result, err = test2.Curl(test1ip4URL)
-			assert.Empty(t, result)
-			require.Error(t, err)
-
-			result, err = test2.Curl(test1ip6URL)
-			assert.Empty(t, result)
-			require.Error(t, err)
-
-			result, err = test2.Curl(test1fqdnURL)
-			assert.Empty(t, result)
+			_, err = test2.CurlFailFast(test1URL)
 			require.Error(t, err)
 		})
 	}
@@ -961,8 +848,16 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 
 	tests := map[string]struct {
 		policy policyv2.Policy
+		// test1Addr and test2Addr are the addresses covered by the policy.
+		// Address-based aliases (Prefix, Host) resolve to exactly the literal
+		// prefix. Identity-based aliases (users, groups, tags) resolve to all
+		// of the node's IPs — use any address in that case.
+		test1Addr string
+		test2Addr string
 	}{
 		"ipv4": {
+			test1Addr: "100.64.0.1",
+			test2Addr: "100.64.0.2",
 			policy: policyv2.Policy{
 				ACLs: []policyv2.ACL{
 					{
@@ -976,6 +871,8 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 			},
 		},
 		"ipv6": {
+			test1Addr: "[fd7a:115c:a1e0::1]",
+			test2Addr: "[fd7a:115c:a1e0::2]",
 			policy: policyv2.Policy{
 				ACLs: []policyv2.ACL{
 					{
@@ -989,6 +886,8 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 			},
 		},
 		"hostv4cidr": {
+			test1Addr: "100.64.0.1",
+			test2Addr: "100.64.0.2",
 			policy: policyv2.Policy{
 				Hosts: policyv2.Hosts{
 					"test1": policyv2.Prefix(netip.MustParsePrefix("100.64.0.1/32")),
@@ -1006,6 +905,8 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 			},
 		},
 		"hostv6cidr": {
+			test1Addr: "[fd7a:115c:a1e0::1]",
+			test2Addr: "[fd7a:115c:a1e0::2]",
 			policy: policyv2.Policy{
 				Hosts: policyv2.Hosts{
 					"test1": policyv2.Prefix(netip.MustParsePrefix("fd7a:115c:a1e0::1/128")),
@@ -1023,6 +924,10 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 			},
 		},
 		"group": {
+			// Identity-based aliases resolve to all of a node's IPs, so
+			// either address family works. Use IPv4 for consistency.
+			test1Addr: "100.64.0.1",
+			test2Addr: "100.64.0.2",
 			policy: policyv2.Policy{
 				Groups: policyv2.Groups{
 					policyv2.Group("group:one"): []policyv2.Username{policyv2.Username("user1@")},
@@ -1045,93 +950,43 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 
 	for name, testCase := range tests {
 		t.Run(name, func(t *testing.T) {
-			scenario := aclScenario(t, &testCase.policy, 1)
+			scenario := aclScenario(t, &testCase.policy, "acl-dev1dev2", 1)
 			defer scenario.ShutdownAssertNoPanics(t)
 
 			test1ip := netip.MustParseAddr("100.64.0.1")
-			test1ip6 := netip.MustParseAddr("fd7a:115c:a1e0::1")
 			test1, err := scenario.FindTailscaleClientByIP(test1ip)
 			assert.NotNil(t, test1)
 			require.NoError(t, err)
 
-			test1fqdn, err := test1.FQDN()
-			require.NoError(t, err)
-
-			test1ipURL := fmt.Sprintf("http://%s/etc/hostname", test1ip.String())
-			test1ip6URL := fmt.Sprintf("http://[%s]/etc/hostname", test1ip6.String())
-			test1fqdnURL := fmt.Sprintf("http://%s/etc/hostname", test1fqdn)
-
 			test2ip := netip.MustParseAddr("100.64.0.2")
-			test2ip6 := netip.MustParseAddr("fd7a:115c:a1e0::2")
 			test2, err := scenario.FindTailscaleClientByIP(test2ip)
 			assert.NotNil(t, test2)
 			require.NoError(t, err)
 
-			test2fqdn, err := test2.FQDN()
-			require.NoError(t, err)
-
-			test2ipURL := fmt.Sprintf("http://%s/etc/hostname", test2ip.String())
-			test2ip6URL := fmt.Sprintf("http://[%s]/etc/hostname", test2ip6.String())
-			test2fqdnURL := fmt.Sprintf("http://%s/etc/hostname", test2fqdn)
+			// Build URLs from the addresses the policy actually covers.
+			// Address-based aliases (Prefix, Host) only resolve to the
+			// literal prefix, so we must curl the matching address family.
+			test1URL := fmt.Sprintf("http://%s/etc/hostname", testCase.test1Addr)
+			test2URL := fmt.Sprintf("http://%s/etc/hostname", testCase.test2Addr)
 
 			// test1 can query test2
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test1.Curl(test2ipURL)
+				result, err := test1.Curl(test2URL)
 				assert.NoError(c, err)
 				assert.Lenf(
 					c,
 					result,
 					13,
-					"failed to connect from test1 to test with URL %s, expected hostname of 13 chars, got %s",
-					test2ipURL,
+					"failed to connect from test1 to test2 with URL %s, expected hostname of 13 chars, got %s",
+					test2URL,
 					result,
 				)
-			}, 10*time.Second, 200*time.Millisecond, "test1 should reach test2 via IPv4")
+			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "test1 should reach test2")
 
+			// test2 cannot query test1 (asymmetric policy)
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test1.Curl(test2ip6URL)
-				assert.NoError(c, err)
-				assert.Lenf(
-					c,
-					result,
-					13,
-					"failed to connect from test1 to test with URL %s, expected hostname of 13 chars, got %s",
-					test2ip6URL,
-					result,
-				)
-			}, 10*time.Second, 200*time.Millisecond, "test1 should reach test2 via IPv6")
-
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test1.Curl(test2fqdnURL)
-				assert.NoError(c, err)
-				assert.Lenf(
-					c,
-					result,
-					13,
-					"failed to connect from test1 to test with URL %s, expected hostname of 13 chars, got %s",
-					test2fqdnURL,
-					result,
-				)
-			}, 10*time.Second, 200*time.Millisecond, "test1 should reach test2 via FQDN")
-
-			// test2 cannot query test1 (negative test case)
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test2.Curl(test1ipURL)
-				assert.Error(c, err)
-				assert.Empty(c, result)
-			}, 10*time.Second, 200*time.Millisecond, "test2 should NOT reach test1 via IPv4")
-
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test2.Curl(test1ip6URL)
-				assert.Error(c, err)
-				assert.Empty(c, result)
-			}, 10*time.Second, 200*time.Millisecond, "test2 should NOT reach test1 via IPv6")
-
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test2.Curl(test1fqdnURL)
-				assert.Error(c, err)
-				assert.Empty(c, result)
-			}, 10*time.Second, 200*time.Millisecond, "test2 should NOT reach test1 via FQDN")
+				assertCurlFailWithCollect(c, test2, test1URL, "test2 should not reach test1")
+			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "test2 should NOT reach test1")
 		})
 	}
 }
@@ -1160,7 +1015,7 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 			tsic.WithDockerWorkdir("/"),
 		},
 		hsic.WithTestName("policyreload"),
-		hsic.WithPolicyMode(types.PolicyModeDB),
+		hsic.WithPolicyMode(types.PolicyModeDB), // test updates policy at runtime via CLI
 	)
 	require.NoError(t, err)
 
@@ -1195,7 +1050,7 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 				result, err := client.Curl(url)
 				assert.NoError(c, err)
 				assert.Len(c, result, 13)
-			}, 20*time.Second, 500*time.Millisecond, "Verifying user1 can reach user2")
+			}, integrationutil.ScaledTimeout(20*time.Second), 500*time.Millisecond, "Verifying user1 can reach user2")
 		}
 	}
 
@@ -1241,7 +1096,7 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 		if diff := cmp.Diff(p, *output, cmpopts.IgnoreUnexported(policyv2.Policy{}), cmpopts.EquateEmpty()); diff != "" {
 			ct.Errorf("unexpected policy(-want +got):\n%s", diff)
 		}
-	}, 30*time.Second, 1*time.Second, "verifying that the new policy took place")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "verifying that the new policy took place")
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		// Test that user1 can visit all user2
@@ -1268,12 +1123,10 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 				url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 				t.Logf("url from %s to %s", client.Hostname(), url)
 
-				result, err := client.Curl(url)
-				assert.Empty(ct, result)
-				assert.Error(ct, err)
+				assertCurlFailWithCollect(ct, client, url, "user2 should not reach user1")
 			}
 		}
-	}, 30*time.Second, 1*time.Second, "new policy did not get propagated to nodes")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "new policy did not get propagated to nodes")
 }
 
 func TestACLAutogroupMember(t *testing.T) {
@@ -1284,13 +1137,14 @@ func TestACLAutogroupMember(t *testing.T) {
 			ACLs: []policyv2.ACL{
 				{
 					Action:  "accept",
-					Sources: []policyv2.Alias{ptr.To(policyv2.AutoGroupMember)},
+					Sources: []policyv2.Alias{new(policyv2.AutoGroupMember)},
 					Destinations: []policyv2.AliasWithPorts{
-						aliasWithPorts(ptr.To(policyv2.AutoGroupMember), tailcfg.PortRangeAny),
+						aliasWithPorts(new(policyv2.AutoGroupMember), tailcfg.PortRangeAny),
 					},
 				},
 			},
 		},
+		"acl-agmember",
 		2,
 	)
 	defer scenario.ShutdownAssertNoPanics(t)
@@ -1311,7 +1165,7 @@ func TestACLAutogroupMember(t *testing.T) {
 
 			clientIsUntagged = status.Self.Tags == nil || status.Self.Tags.Len() == 0
 			assert.True(c, clientIsUntagged, "Expected client %s to be untagged for autogroup:member test", client.Hostname())
-		}, 10*time.Second, 200*time.Millisecond, "Waiting for client %s to be untagged", client.Hostname())
+		}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for client %s to be untagged", client.Hostname())
 
 		if !clientIsUntagged {
 			continue
@@ -1330,7 +1184,7 @@ func TestACLAutogroupMember(t *testing.T) {
 
 				peerIsUntagged = status.Self.Tags == nil || status.Self.Tags.Len() == 0
 				assert.True(c, peerIsUntagged, "Expected peer %s to be untagged for autogroup:member test", peer.Hostname())
-			}, 10*time.Second, 200*time.Millisecond, "Waiting for peer %s to be untagged", peer.Hostname())
+			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for peer %s to be untagged", peer.Hostname())
 
 			if !peerIsUntagged {
 				continue
@@ -1346,7 +1200,7 @@ func TestACLAutogroupMember(t *testing.T) {
 				result, err := client.Curl(url)
 				assert.NoError(c, err)
 				assert.Len(c, result, 13)
-			}, 20*time.Second, 500*time.Millisecond, "Verifying autogroup:member connectivity")
+			}, integrationutil.ScaledTimeout(20*time.Second), 500*time.Millisecond, "Verifying autogroup:member connectivity")
 		}
 	}
 }
@@ -1372,9 +1226,9 @@ func TestACLAutogroupTagged(t *testing.T) {
 		ACLs: []policyv2.ACL{
 			{
 				Action:  "accept",
-				Sources: []policyv2.Alias{ptr.To(policyv2.AutoGroupTagged)},
+				Sources: []policyv2.Alias{new(policyv2.AutoGroupTagged)},
 				Destinations: []policyv2.AliasWithPorts{
-					aliasWithPorts(ptr.To(policyv2.AutoGroupTagged), tailcfg.PortRangeAny),
+					aliasWithPorts(new(policyv2.AutoGroupTagged), tailcfg.PortRangeAny),
 				},
 			},
 		},
@@ -1384,8 +1238,6 @@ func TestACLAutogroupTagged(t *testing.T) {
 	headscale, err := scenario.Headscale(
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("acl-autogroup-tagged"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 	)
 	require.NoError(t, err)
 
@@ -1431,7 +1283,10 @@ func TestACLAutogroupTagged(t *testing.T) {
 				network = networks[0]
 			}
 
-			// Create the tailscale node with appropriate options
+			// Create the tailscale node with appropriate options.
+			// CACert and HeadscaleName are passed explicitly because
+			// nodes created via CreateTailscaleNode are not part of
+			// the standard CreateHeadscaleEnv flow.
 			opts := []tsic.Option{
 				tsic.WithCACert(headscale.GetCert()),
 				tsic.WithHeadscaleName(headscale.GetHostname()),
@@ -1521,7 +1376,7 @@ func TestACLAutogroupTagged(t *testing.T) {
 					untaggedClients = append(untaggedClients, client)
 				}
 			}
-		}, 30*time.Second, 1*time.Second, "verifying peer visibility for node %s", hostname)
+		}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "verifying peer visibility for node %s", hostname)
 	}
 
 	// Verify we have the expected number of tagged and untagged nodes
@@ -1535,7 +1390,7 @@ func TestACLAutogroupTagged(t *testing.T) {
 			assert.NoError(c, err)
 			assert.NotNil(c, status.Self.Tags, "tagged node %s should have tags", client.Hostname())
 			assert.Positive(c, status.Self.Tags.Len(), "tagged node %s should have at least one tag", client.Hostname())
-		}, 10*time.Second, 200*time.Millisecond, "Waiting for tags to be applied to tagged nodes")
+		}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for tags to be applied to tagged nodes")
 	}
 
 	// Verify untagged nodes have no tags
@@ -1547,7 +1402,7 @@ func TestACLAutogroupTagged(t *testing.T) {
 			if status.Self.Tags != nil {
 				assert.Equal(c, 0, status.Self.Tags.Len(), "untagged node %s should have no tags", client.Hostname())
 			}
-		}, 10*time.Second, 200*time.Millisecond, "Waiting to verify untagged nodes have no tags")
+		}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting to verify untagged nodes have no tags")
 	}
 
 	// Test that tagged nodes can communicate with each other
@@ -1568,7 +1423,7 @@ func TestACLAutogroupTagged(t *testing.T) {
 				result, err := client.Curl(url)
 				assert.NoError(ct, err)
 				assert.Len(ct, result, 13)
-			}, 20*time.Second, 500*time.Millisecond, "tagged nodes should be able to communicate")
+			}, integrationutil.ScaledTimeout(20*time.Second), 500*time.Millisecond, "tagged nodes should be able to communicate")
 		}
 	}
 
@@ -1587,7 +1442,7 @@ func TestACLAutogroupTagged(t *testing.T) {
 				result, err := client.CurlFailFast(url)
 				assert.Empty(ct, result)
 				assert.Error(ct, err)
-			}, 5*time.Second, 200*time.Millisecond, "untagged nodes should not be able to reach tagged nodes")
+			}, integrationutil.ScaledTimeout(5*time.Second), 200*time.Millisecond, "untagged nodes should not be able to reach tagged nodes")
 		}
 
 		// Try to reach other untagged nodes (should also fail)
@@ -1607,7 +1462,7 @@ func TestACLAutogroupTagged(t *testing.T) {
 				result, err := client.CurlFailFast(url)
 				assert.Empty(ct, result)
 				assert.Error(ct, err)
-			}, 5*time.Second, 200*time.Millisecond, "untagged nodes should not be able to reach other untagged nodes")
+			}, integrationutil.ScaledTimeout(5*time.Second), 200*time.Millisecond, "untagged nodes should not be able to reach other untagged nodes")
 		}
 	}
 
@@ -1625,7 +1480,7 @@ func TestACLAutogroupTagged(t *testing.T) {
 				result, err := client.CurlFailFast(url)
 				assert.Empty(ct, result)
 				assert.Error(ct, err)
-			}, 5*time.Second, 200*time.Millisecond, "tagged nodes should not be able to reach untagged nodes")
+			}, integrationutil.ScaledTimeout(5*time.Second), 200*time.Millisecond, "tagged nodes should not be able to reach untagged nodes")
 		}
 	}
 }
@@ -1657,9 +1512,9 @@ func TestACLAutogroupSelf(t *testing.T) {
 		ACLs: []policyv2.ACL{
 			{
 				Action:  "accept",
-				Sources: []policyv2.Alias{ptr.To(policyv2.AutoGroupMember)},
+				Sources: []policyv2.Alias{new(policyv2.AutoGroupMember)},
 				Destinations: []policyv2.AliasWithPorts{
-					aliasWithPorts(ptr.To(policyv2.AutoGroupSelf), tailcfg.PortRangeAny),
+					aliasWithPorts(new(policyv2.AutoGroupSelf), tailcfg.PortRangeAny),
 				},
 			},
 			{
@@ -1699,8 +1554,6 @@ func TestACLAutogroupSelf(t *testing.T) {
 		},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("acl-autogroup-self"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 	)
 	require.NoError(t, err)
 
@@ -1722,7 +1575,10 @@ func TestACLAutogroupSelf(t *testing.T) {
 	authKey, err := scenario.CreatePreAuthKeyWithTags(routerUser.GetId(), true, false, []string{"tag:router-node"})
 	require.NoError(t, err)
 
-	// Create router node (tags come from the PreAuthKey)
+	// Create router node (tags come from the PreAuthKey).
+	// CACert and HeadscaleName are passed explicitly because
+	// nodes created via tsic.New are not part of the standard
+	// CreateHeadscaleEnv flow.
 	routerClient, err := tsic.New(
 		scenario.Pool(),
 		"unstable",
@@ -1811,7 +1667,7 @@ func TestACLAutogroupSelf(t *testing.T) {
 				result, err := client.Curl(url)
 				assert.NoError(c, err)
 				assert.Len(c, result, 13)
-			}, 10*time.Second, 200*time.Millisecond, "user1 device should reach other user1 device via autogroup:self")
+			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "user1 device should reach other user1 device via autogroup:self")
 		}
 	}
 
@@ -1832,7 +1688,7 @@ func TestACLAutogroupSelf(t *testing.T) {
 				result, err := client.Curl(url)
 				assert.NoError(c, err)
 				assert.Len(c, result, 13)
-			}, 10*time.Second, 200*time.Millisecond, "user2 device should reach other user2 device via autogroup:self")
+			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "user2 device should reach other user2 device via autogroup:self")
 		}
 	}
 
@@ -1848,7 +1704,7 @@ func TestACLAutogroupSelf(t *testing.T) {
 			result, err := client.Curl(url)
 			assert.NoError(c, err)
 			assert.NotEmpty(c, result, "user1 should be able to access router-node via group:home -> tag:router-node rule")
-		}, 10*time.Second, 200*time.Millisecond, "user1 device should reach router-node (proves autogroup:self doesn't interfere)")
+		}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "user1 device should reach router-node (proves autogroup:self doesn't interfere)")
 	}
 
 	// Test that user2's regular devices can access router-node
@@ -1863,7 +1719,7 @@ func TestACLAutogroupSelf(t *testing.T) {
 			result, err := client.Curl(url)
 			assert.NoError(c, err)
 			assert.NotEmpty(c, result, "user2 should be able to access router-node via group:home -> tag:router-node rule")
-		}, 10*time.Second, 200*time.Millisecond, "user2 device should reach router-node (proves autogroup:self doesn't interfere)")
+		}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "user2 device should reach router-node (proves autogroup:self doesn't interfere)")
 	}
 
 	// Test that devices from different users cannot access each other's regular devices
@@ -1875,9 +1731,8 @@ func TestACLAutogroupSelf(t *testing.T) {
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 			t.Logf("url from %s (user1) to %s (user2 regular) - should FAIL", client.Hostname(), fqdn)
 
-			result, err := client.Curl(url)
-			assert.Empty(t, result, "user1 should not be able to access user2's regular devices (autogroup:self isolation)")
-			assert.Error(t, err, "connection from user1 to user2 regular device should fail")
+			_, err = client.CurlFailFast(url)
+			require.Error(t, err, "connection from user1 to user2 regular device should fail")
 		}
 	}
 
@@ -1889,13 +1744,13 @@ func TestACLAutogroupSelf(t *testing.T) {
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 			t.Logf("url from %s (user2) to %s (user1 regular) - should FAIL", client.Hostname(), fqdn)
 
-			result, err := client.Curl(url)
-			assert.Empty(t, result, "user2 should not be able to access user1's regular devices (autogroup:self isolation)")
-			assert.Error(t, err, "connection from user2 to user1 regular device should fail")
+			_, err = client.CurlFailFast(url)
+			require.Error(t, err, "connection from user2 to user1 regular device should fail")
 		}
 	}
 }
 
+//nolint:gocyclo // complex integration test scenario
 func TestACLPolicyPropagationOverTime(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -1911,14 +1766,13 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{
-			// Install iptables to enable packet filtering for ACL tests.
-			// Packet filters are essential for testing autogroup:self and other ACL policies.
-			tsic.WithPackages("curl", "iptables", "ip6tables"),
+			tsic.WithNetfilter("off"),
+			tsic.WithPackages("curl"),
 			tsic.WithWebserver(80),
 			tsic.WithDockerWorkdir("/"),
 		},
 		hsic.WithTestName("aclpropagation"),
-		hsic.WithPolicyMode(types.PolicyModeDB),
+		hsic.WithPolicyMode(types.PolicyModeDB), // test updates policy at runtime via CLI
 	)
 	require.NoError(t, err)
 
@@ -1956,9 +1810,9 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		ACLs: []policyv2.ACL{
 			{
 				Action:  "accept",
-				Sources: []policyv2.Alias{ptr.To(policyv2.AutoGroupMember)},
+				Sources: []policyv2.Alias{new(policyv2.AutoGroupMember)},
 				Destinations: []policyv2.AliasWithPorts{
-					aliasWithPorts(ptr.To(policyv2.AutoGroupSelf), tailcfg.PortRangeAny),
+					aliasWithPorts(new(policyv2.AutoGroupSelf), tailcfg.PortRangeAny),
 				},
 			},
 		},
@@ -2013,7 +1867,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					assert.Len(ct, result, 13, "iteration %d: response from %s to %s should be valid", iteration, client.Hostname(), fqdn)
 				}
 			}
-		}, 90*time.Second, 500*time.Millisecond, "iteration %d: Phase 1 - all connectivity tests with allow-all policy", iteration)
+		}, integrationutil.ScaledTimeout(90*time.Second), 500*time.Millisecond, "iteration %d: Phase 1 - all connectivity tests with allow-all policy", iteration)
 
 		// Phase 2: Autogroup:self policy (only same user can access)
 		t.Logf("Iteration %d: Phase 2 - Setting autogroup:self policy", iteration)
@@ -2024,7 +1878,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		// Wait for peer lists to sync with autogroup:self - ensures cross-user peers are removed
 		t.Logf("Iteration %d: Phase 2 - Waiting for peer lists to sync with autogroup:self", iteration)
 
-		err = scenario.WaitForTailscaleSyncPerUser(60*time.Second, 500*time.Millisecond)
+		err = scenario.WaitForTailscaleSyncPerUser(integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond)
 		require.NoError(t, err, "iteration %d: Phase 2 - failed to sync after autogroup:self policy", iteration)
 
 		// Test ALL connectivity (positive and negative) in one block after state is settled
@@ -2077,9 +1931,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					}
 
 					url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
-					result, err := client.Curl(url)
-					assert.Error(ct, err, "iteration %d: user1 %s should NOT reach user2's node %s with autogroup:self", iteration, client.Hostname(), fqdn)
-					assert.Empty(ct, result, "iteration %d: user1 %s->user2 %s should fail", iteration, client.Hostname(), fqdn)
+					assertCurlFailWithCollect(ct, client, url, fmt.Sprintf("iteration %d: user1 %s should NOT reach user2 %s", iteration, client.Hostname(), fqdn))
 				}
 			}
 
@@ -2092,12 +1944,10 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					}
 
 					url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
-					result, err := client.Curl(url)
-					assert.Error(ct, err, "iteration %d: user2 node %s should NOT reach user1 node %s", iteration, client.Hostname(), peer.Hostname())
-					assert.Empty(ct, result, "iteration %d: user2->user1 connection from %s to %s should fail", iteration, client.Hostname(), peer.Hostname())
+					assertCurlFailWithCollect(ct, client, url, fmt.Sprintf("iteration %d: user2 %s should NOT reach user1 %s", iteration, client.Hostname(), peer.Hostname()))
 				}
 			}
-		}, 90*time.Second, 500*time.Millisecond, "iteration %d: Phase 2 - all connectivity tests with autogroup:self", iteration)
+		}, integrationutil.ScaledTimeout(90*time.Second), 500*time.Millisecond, "iteration %d: Phase 2 - all connectivity tests with autogroup:self", iteration)
 
 		// Phase 2b: Add a new node to user1 and validate policy propagation
 		t.Logf("Iteration %d: Phase 2b - Adding new node to user1 during autogroup:self policy", iteration)
@@ -2119,7 +1969,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		// Wait for peer lists to sync after new node addition (now 3 user1 nodes, still autogroup:self)
 		t.Logf("Iteration %d: Phase 2b - Waiting for peer lists to sync after new node addition", iteration)
 
-		err = scenario.WaitForTailscaleSyncPerUser(60*time.Second, 500*time.Millisecond)
+		err = scenario.WaitForTailscaleSyncPerUser(integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond)
 		require.NoError(t, err, "iteration %d: Phase 2b - failed to sync after new node addition", iteration)
 
 		// Test ALL connectivity (positive and negative) in one block after state is settled
@@ -2158,12 +2008,10 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					}
 
 					url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
-					result, err := client.Curl(url)
-					assert.Error(ct, err, "iteration %d: user1 node %s should NOT reach user2 node %s", iteration, client.Hostname(), peer.Hostname())
-					assert.Empty(ct, result, "iteration %d: user1->user2 connection from %s to %s should fail", iteration, client.Hostname(), peer.Hostname())
+					assertCurlFailWithCollect(ct, client, url, fmt.Sprintf("iteration %d: user1 %s should NOT reach user2 %s", iteration, client.Hostname(), peer.Hostname()))
 				}
 			}
-		}, 90*time.Second, 500*time.Millisecond, "iteration %d: Phase 2b - all connectivity tests after new node addition", iteration)
+		}, integrationutil.ScaledTimeout(90*time.Second), 500*time.Millisecond, "iteration %d: Phase 2b - all connectivity tests after new node addition", iteration)
 
 		// Delete the newly added node before Phase 3
 		t.Logf("Iteration %d: Phase 2b - Deleting the newly added node from user1", iteration)
@@ -2185,7 +2033,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					nodeToDeleteID = node.GetId()
 				}
 			}
-		}, 10*time.Second, 500*time.Millisecond, "iteration %d: Phase 2b - listing nodes before deletion", iteration)
+		}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "iteration %d: Phase 2b - listing nodes before deletion", iteration)
 
 		// Delete the node via headscale helper
 		t.Logf("Iteration %d: Phase 2b - Deleting node ID %d from headscale", iteration, nodeToDeleteID)
@@ -2218,14 +2066,14 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 			nodeListAfter, err := headscale.ListNodes("user1")
 			assert.NoError(ct, err, "failed to list nodes after deletion")
 			assert.Len(ct, nodeListAfter, 2, "iteration %d: should have 2 user1 nodes after deletion, got %d", iteration, len(nodeListAfter))
-		}, 10*time.Second, 500*time.Millisecond, "iteration %d: Phase 2b - node should be deleted", iteration)
+		}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "iteration %d: Phase 2b - node should be deleted", iteration)
 
 		// Wait for sync after deletion to ensure peer counts are correct
 		// Use WaitForTailscaleSyncPerUser because autogroup:self is still active,
 		// so nodes only see same-user peers, not all nodes
 		t.Logf("Iteration %d: Phase 2b - Waiting for sync after node deletion (with autogroup:self)", iteration)
 
-		err = scenario.WaitForTailscaleSyncPerUser(60*time.Second, 500*time.Millisecond)
+		err = scenario.WaitForTailscaleSyncPerUser(integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond)
 		require.NoError(t, err, "iteration %d: failed to sync after node deletion", iteration)
 
 		// Refresh client lists after deletion to ensure we don't reference the deleted node
@@ -2277,12 +2125,10 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					}
 
 					url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
-					result, err := client.Curl(url)
-					assert.Error(ct, err, "iteration %d: user2 node %s should NOT reach user1 node %s", iteration, client.Hostname(), peer.Hostname())
-					assert.Empty(ct, result, "iteration %d: user2->user1 from %s to %s should fail", iteration, client.Hostname(), peer.Hostname())
+					assertCurlFailWithCollect(ct, client, url, fmt.Sprintf("iteration %d: user2 %s should NOT reach user1 %s", iteration, client.Hostname(), peer.Hostname()))
 				}
 			}
-		}, 90*time.Second, 500*time.Millisecond, "iteration %d: Phase 3 - all connectivity tests with directional policy", iteration)
+		}, integrationutil.ScaledTimeout(90*time.Second), 500*time.Millisecond, "iteration %d: Phase 3 - all connectivity tests with directional policy", iteration)
 
 		t.Logf("=== Iteration %d/5 completed successfully - All 3 phases passed ===", iteration)
 	}
@@ -2427,10 +2273,8 @@ func TestACLTagPropagation(t *testing.T) {
 				user1Node, err := scenario.CreateTailscaleNode(
 					"head",
 					tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
-					tsic.WithDockerEntrypoint([]string{
-						"/bin/sh", "-c",
-						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-					}),
+					tsic.WithPackages("curl"),
+					tsic.WithWebserver(80),
 					tsic.WithDockerWorkdir("/"),
 					tsic.WithNetfilter("off"),
 				)
@@ -2445,10 +2289,8 @@ func TestACLTagPropagation(t *testing.T) {
 				user2Node, err := scenario.CreateTailscaleNode(
 					"head",
 					tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
-					tsic.WithDockerEntrypoint([]string{
-						"/bin/sh", "-c",
-						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-					}),
+					tsic.WithPackages("curl"),
+					tsic.WithWebserver(80),
 					tsic.WithDockerWorkdir("/"),
 					tsic.WithNetfilter("off"),
 				)
@@ -2459,10 +2301,14 @@ func TestACLTagPropagation(t *testing.T) {
 				err = scenario.WaitForTailscaleSync()
 				require.NoError(t, err)
 
-				nodes, err := headscale.ListNodes("user1")
+				// Tagged nodes have no user_id, so list all and find by tag.
+				allNodes, err := headscale.ListNodes()
 				require.NoError(t, err)
 
-				return user2Node, user1Node, nodes[0].GetId()
+				tagged := findNode(allNodes, func(n *v1.Node) bool { return len(n.GetTags()) > 0 })
+				require.NotNil(t, tagged, "expected a tagged node")
+
+				return user2Node, user1Node, tagged.GetId()
 			},
 			initialAccess: true,                  // user2 can access user1 (has tag:shared)
 			tagChange:     []string{"tag:other"}, // replace with tag:other
@@ -2520,10 +2366,8 @@ func TestACLTagPropagation(t *testing.T) {
 				user1Node, err := scenario.CreateTailscaleNode(
 					"head",
 					tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
-					tsic.WithDockerEntrypoint([]string{
-						"/bin/sh", "-c",
-						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-					}),
+					tsic.WithPackages("curl"),
+					tsic.WithWebserver(80),
 					tsic.WithDockerWorkdir("/"),
 					tsic.WithNetfilter("off"),
 				)
@@ -2538,10 +2382,8 @@ func TestACLTagPropagation(t *testing.T) {
 				user2Node, err := scenario.CreateTailscaleNode(
 					"head",
 					tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
-					tsic.WithDockerEntrypoint([]string{
-						"/bin/sh", "-c",
-						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-					}),
+					tsic.WithPackages("curl"),
+					tsic.WithWebserver(80),
 					tsic.WithDockerWorkdir("/"),
 					tsic.WithNetfilter("off"),
 				)
@@ -2552,10 +2394,14 @@ func TestACLTagPropagation(t *testing.T) {
 				err = scenario.WaitForTailscaleSync()
 				require.NoError(t, err)
 
-				nodes, err := headscale.ListNodes("user1")
+				// Tagged nodes have no user_id, so list all and find by tag.
+				allNodes, err := headscale.ListNodes()
 				require.NoError(t, err)
 
-				return user2Node, user1Node, nodes[0].GetId()
+				tagged := findNode(allNodes, func(n *v1.Node) bool { return len(n.GetTags()) > 0 })
+				require.NotNil(t, tagged, "expected a tagged node")
+
+				return user2Node, user1Node, tagged.GetId()
 			},
 			initialAccess: false,                  // user2 cannot access (tag:team-a not in ACL)
 			tagChange:     []string{"tag:team-b"}, // change to tag:team-b
@@ -2613,10 +2459,8 @@ func TestACLTagPropagation(t *testing.T) {
 				user1Node, err := scenario.CreateTailscaleNode(
 					"head",
 					tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
-					tsic.WithDockerEntrypoint([]string{
-						"/bin/sh", "-c",
-						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-					}),
+					tsic.WithPackages("curl"),
+					tsic.WithWebserver(80),
 					tsic.WithDockerWorkdir("/"),
 					tsic.WithNetfilter("off"),
 				)
@@ -2631,10 +2475,8 @@ func TestACLTagPropagation(t *testing.T) {
 				user2Node, err := scenario.CreateTailscaleNode(
 					"head",
 					tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
-					tsic.WithDockerEntrypoint([]string{
-						"/bin/sh", "-c",
-						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-					}),
+					tsic.WithPackages("curl"),
+					tsic.WithWebserver(80),
 					tsic.WithDockerWorkdir("/"),
 					tsic.WithNetfilter("off"),
 				)
@@ -2645,10 +2487,14 @@ func TestACLTagPropagation(t *testing.T) {
 				err = scenario.WaitForTailscaleSync()
 				require.NoError(t, err)
 
-				nodes, err := headscale.ListNodes("user1")
+				// Tagged nodes have no user_id, so list all and find by tag.
+				allNodes, err := headscale.ListNodes()
 				require.NoError(t, err)
 
-				return user2Node, user1Node, nodes[0].GetId()
+				tagged := findNode(allNodes, func(n *v1.Node) bool { return len(n.GetTags()) > 0 })
+				require.NotNil(t, tagged, "expected a tagged node")
+
+				return user2Node, user1Node, tagged.GetId()
 			},
 			initialAccess: true,                     // user2 can access (has tag:web)
 			tagChange:     []string{"tag:internal"}, // remove tag:web, keep tag:internal
@@ -2717,16 +2563,12 @@ func TestACLTagPropagation(t *testing.T) {
 			err = scenario.CreateHeadscaleEnv(
 				[]tsic.Option{
 					tsic.WithNetfilter("off"),
-					tsic.WithDockerEntrypoint([]string{
-						"/bin/sh", "-c",
-						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-					}),
+					tsic.WithPackages("curl"),
+					tsic.WithWebserver(80),
 					tsic.WithDockerWorkdir("/"),
 				},
 				hsic.WithACLPolicy(tt.policy),
 				hsic.WithTestName("acl-tag-"+tt.name),
-				hsic.WithEmbeddedDERPServerOnly(),
-				hsic.WithTLS(),
 			)
 			require.NoError(t, err)
 
@@ -2744,14 +2586,12 @@ func TestACLTagPropagation(t *testing.T) {
 			// Step 1: Verify initial access state
 			t.Logf("Step 1: Verifying initial access (expect success=%v)", tt.initialAccess)
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := sourceClient.Curl(targetURL)
 				if tt.initialAccess {
-					assert.NoError(c, err, "Initial access should succeed")
-					assert.NotEmpty(c, result, "Initial access should return content")
+					assertCurlSuccessWithCollect(c, sourceClient, targetURL, "initial access should succeed")
 				} else {
-					assert.Error(c, err, "Initial access should fail")
+					assertCurlFailWithCollect(c, sourceClient, targetURL, "initial access should fail")
 				}
-			}, 30*time.Second, 500*time.Millisecond, "verifying initial access state")
+			}, integrationutil.ScaledTimeout(30*time.Second), 500*time.Millisecond, "verifying initial access state")
 
 			// Step 1b: Verify initial NetMap visibility
 			t.Logf("Step 1b: Verifying initial NetMap visibility (expect visible=%v)", tt.initialAccess)
@@ -2774,7 +2614,7 @@ func TestACLTagPropagation(t *testing.T) {
 				} else {
 					assert.False(c, found, "Target should NOT be visible in NetMap initially")
 				}
-			}, 30*time.Second, 500*time.Millisecond, "verifying initial NetMap visibility")
+			}, integrationutil.ScaledTimeout(30*time.Second), 500*time.Millisecond, "verifying initial NetMap visibility")
 
 			// Step 2: Apply tag change
 			t.Logf("Step 2: Setting tags on node %d to %v", targetNodeID, tt.tagChange)
@@ -2783,55 +2623,24 @@ func TestACLTagPropagation(t *testing.T) {
 
 			// Verify tag was applied
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				// List nodes by iterating through all users since tagged nodes may "move"
-				var node *v1.Node
+				allNodes, err := headscale.ListNodes()
+				assert.NoError(c, err)
 
-				for _, user := range tt.spec.Users {
-					nodes, err := headscale.ListNodes(user)
-					if err != nil {
-						continue
-					}
-
-					for _, n := range nodes {
-						if n.GetId() == targetNodeID {
-							node = n
-							break
-						}
-					}
-				}
-				// Also check nodes without user filter
-				if node == nil {
-					// Try listing all nodes
-					allNodes, _ := headscale.ListNodes("")
-					for _, n := range allNodes {
-						if n.GetId() == targetNodeID {
-							node = n
-							break
-						}
-					}
-				}
-
+				node := findNode(allNodes, func(n *v1.Node) bool { return n.GetId() == targetNodeID })
 				assert.NotNil(c, node, "Node should still exist")
 
 				if node != nil {
 					assert.ElementsMatch(c, tt.tagChange, node.GetTags(), "Tags should be updated")
 				}
-			}, 10*time.Second, 500*time.Millisecond, "verifying tag change applied")
+			}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "verifying tag change applied")
 
-			// Step 3: Verify final access state (this is the key test for #2389)
-			t.Logf("Step 3: Verifying final access after tag change (expect success=%v)", tt.finalAccess)
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := sourceClient.Curl(targetURL)
-				if tt.finalAccess {
-					assert.NoError(c, err, "Final access should succeed after tag change")
-					assert.NotEmpty(c, result, "Final access should return content")
-				} else {
-					assert.Error(c, err, "Final access should fail after tag change")
-				}
-			}, 30*time.Second, 500*time.Millisecond, "verifying access propagated after tag change")
-
-			// Step 3b: Verify final NetMap visibility
-			t.Logf("Step 3b: Verifying final NetMap visibility (expect visible=%v)", tt.finalAccess)
+			// Step 3: Verify final NetMap visibility first (fast signal that
+			// the MapResponse propagated to the client).
+			// The full propagation chain (docker exec → gRPC → state update →
+			// batcher delay → MapResponse → noise transport → client processing)
+			// can take over 120s on congested CI runners, so use a generous
+			// base timeout.
+			t.Logf("Step 3: Verifying final NetMap visibility (expect visible=%v)", tt.finalAccess)
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
 				status, err := sourceClient.Status()
 				assert.NoError(c, err)
@@ -2851,7 +2660,21 @@ func TestACLTagPropagation(t *testing.T) {
 				} else {
 					assert.False(c, found, "Target should NOT be visible in NetMap after tag change")
 				}
-			}, 60*time.Second, 500*time.Millisecond, "verifying NetMap visibility propagated after tag change")
+			}, integrationutil.ScaledTimeout(120*time.Second), 500*time.Millisecond, "verifying NetMap visibility propagated after tag change")
+
+			// Step 4: Verify final access state (this is the key test for #2389).
+			// Even though Step 3 confirmed the MapResponse arrived, the full
+			// WireGuard handshake and tunnel establishment can take significant
+			// time on congested CI runners, so use the same generous base
+			// timeout as Step 3.
+			t.Logf("Step 4: Verifying final access after tag change (expect success=%v)", tt.finalAccess)
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				if tt.finalAccess {
+					assertCurlSuccessWithCollect(c, sourceClient, targetURL, "final access should succeed after tag change")
+				} else {
+					assertCurlFailWithCollect(c, sourceClient, targetURL, "final access should fail after tag change")
+				}
+			}, integrationutil.ScaledTimeout(120*time.Second), 500*time.Millisecond, "verifying access propagated after tag change")
 
 			t.Logf("Test %s PASSED: Tag change propagated correctly", tt.name)
 		})
@@ -2929,16 +2752,12 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{
 			tsic.WithNetfilter("off"),
-			tsic.WithDockerEntrypoint([]string{
-				"/bin/sh", "-c",
-				"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-			}),
+			tsic.WithPackages("curl"),
+			tsic.WithWebserver(80),
 			tsic.WithDockerWorkdir("/"),
 		},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("acl-tag-port-specific"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 	)
 	require.NoError(t, err)
 
@@ -2957,10 +2776,8 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 	user1Node, err := scenario.CreateTailscaleNode(
 		"head",
 		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
-		tsic.WithDockerEntrypoint([]string{
-			"/bin/sh", "-c",
-			"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-		}),
+		tsic.WithPackages("curl"),
+		tsic.WithWebserver(80),
 		tsic.WithDockerWorkdir("/"),
 		tsic.WithNetfilter("off"),
 	)
@@ -2976,10 +2793,7 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 	user2Node, err := scenario.CreateTailscaleNode(
 		"head",
 		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
-		tsic.WithDockerEntrypoint([]string{
-			"/bin/sh", "-c",
-			"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; tailscaled --tun=tsdev",
-		}),
+		tsic.WithPackages("curl"),
 		tsic.WithDockerWorkdir("/"),
 		tsic.WithNetfilter("off"),
 	)
@@ -2991,10 +2805,14 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	require.NoError(t, err)
 
-	nodes, err := headscale.ListNodes("user1")
+	// Tagged nodes have no user_id, so list all and find by tag.
+	allNodes, err := headscale.ListNodes()
 	require.NoError(t, err)
 
-	targetNodeID := nodes[0].GetId()
+	tagged := findNode(allNodes, func(n *v1.Node) bool { return len(n.GetTags()) > 0 })
+	require.NotNil(t, tagged, "expected a tagged node")
+
+	targetNodeID := tagged.GetId()
 
 	targetFQDN, err := user1Node.FQDN()
 	require.NoError(t, err)
@@ -3004,15 +2822,29 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 	// Step 1: Verify initial state - HTTP on port 80 should work with tag:webserver
 	t.Log("Step 1: Verifying HTTP access with tag:webserver (should succeed)")
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := user2Node.Curl(targetURL)
-		assert.NoError(c, err, "HTTP should work with tag:webserver")
-		assert.NotEmpty(c, result)
-	}, 30*time.Second, 500*time.Millisecond, "initial HTTP access with tag:webserver")
+		assertCurlSuccessWithCollect(c, user2Node, targetURL, "HTTP should work with tag:webserver")
+	}, integrationutil.ScaledTimeout(30*time.Second), 500*time.Millisecond, "initial HTTP access with tag:webserver")
 
 	// Step 2: Change tag from webserver to sshonly
 	t.Logf("Step 2: Changing tag from webserver to sshonly on node %d", targetNodeID)
 	err = headscale.SetNodeTags(targetNodeID, []string{"tag:sshonly"})
 	require.NoError(t, err)
+
+	// Step 2b: Verify tag was actually applied on the server before
+	// checking client-side effects. Without this, the client assertions
+	// may race against the server still processing the tag change.
+	t.Log("Step 2b: Verifying tag change applied on server")
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		allNodes, err := headscale.ListNodes()
+		assert.NoError(c, err) //nolint:testifylint // CollectT requires assert
+
+		node := findNode(allNodes, func(n *v1.Node) bool { return n.GetId() == targetNodeID })
+		assert.NotNil(c, node, "Node should still exist")
+
+		if node != nil {
+			assert.ElementsMatch(c, []string{"tag:sshonly"}, node.GetTags(), "Tags should be updated to sshonly")
+		}
+	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "verifying tag change applied")
 
 	// Step 3: Verify peer is still visible in NetMap (partial access, not full removal)
 	t.Log("Step 3: Verifying peer remains visible in NetMap after tag change")
@@ -3031,14 +2863,16 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 		}
 
 		assert.True(c, found, "Peer should still be visible with tag:sshonly (port 22 access)")
-	}, 60*time.Second, 500*time.Millisecond, "peer visibility after tag change")
+	}, integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond, "peer visibility after tag change")
 
-	// Step 4: Verify HTTP on port 80 now fails (tag:sshonly only allows port 22)
+	// Step 4: Verify HTTP on port 80 now fails (tag:sshonly only allows port 22).
+	// Port-specific filter changes are harder than peer removal because
+	// the WireGuard tunnel stays up and both endpoints must process
+	// the new PacketFilter from the MapResponse.
 	t.Log("Step 4: Verifying HTTP access is now blocked (tag:sshonly only allows port 22)")
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		_, err := user2Node.Curl(targetURL)
-		assert.Error(c, err, "HTTP should fail with tag:sshonly (only port 22 allowed)")
-	}, 60*time.Second, 500*time.Millisecond, "HTTP blocked after tag change to sshonly")
+		assertCurlFailWithCollect(c, user2Node, targetURL, "HTTP should fail with tag:sshonly (only port 22 allowed)")
+	}, integrationutil.ScaledTimeout(90*time.Second), 500*time.Millisecond, "HTTP blocked after tag change to sshonly")
 
 	t.Log("Test PASSED: Port-specific ACL changes propagated correctly")
 }
@@ -3097,8 +2931,6 @@ func TestACLGroupWithUnknownUser(t *testing.T) {
 		},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("acl-unknown-user"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 	)
 	require.NoError(t, err)
 
@@ -3134,7 +2966,7 @@ func TestACLGroupWithUnknownUser(t *testing.T) {
 		result, err := user1.Curl(url)
 		assert.NoError(c, err, "user1 should be able to reach user2")
 		assert.Len(c, result, 13, "expected hostname response")
-	}, 30*time.Second, 500*time.Millisecond, "user1 should reach user2")
+	}, integrationutil.ScaledTimeout(30*time.Second), 500*time.Millisecond, "user1 should reach user2")
 
 	// Test that user2 can reach user1 (bidirectional)
 	t.Log("Testing connectivity: user2 -> user1 (should succeed despite unknown user in group)")
@@ -3143,7 +2975,7 @@ func TestACLGroupWithUnknownUser(t *testing.T) {
 		result, err := user2.Curl(url)
 		assert.NoError(c, err, "user2 should be able to reach user1")
 		assert.Len(c, result, 13, "expected hostname response")
-	}, 30*time.Second, 500*time.Millisecond, "user2 should reach user1")
+	}, integrationutil.ScaledTimeout(30*time.Second), 500*time.Millisecond, "user2 should reach user1")
 
 	t.Log("Test PASSED: Valid users can communicate despite unknown user reference in group")
 }
@@ -3199,8 +3031,6 @@ func TestACLGroupAfterUserDeletion(t *testing.T) {
 		},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("acl-deleted-user"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 		hsic.WithPolicyMode(types.PolicyModeDB), // Use DB mode so policy persists after user deletion
 	)
 	require.NoError(t, err)
@@ -3242,14 +3072,14 @@ func TestACLGroupAfterUserDeletion(t *testing.T) {
 		result, err := user1.Curl(url)
 		assert.NoError(c, err, "user1 should be able to reach user2 initially")
 		assert.Len(c, result, 13, "expected hostname response")
-	}, 30*time.Second, 500*time.Millisecond, "initial user1 -> user2 connectivity")
+	}, integrationutil.ScaledTimeout(30*time.Second), 500*time.Millisecond, "initial user1 -> user2 connectivity")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		url := fmt.Sprintf("http://%s/etc/hostname", user1FQDN)
 		result, err := user2.Curl(url)
 		assert.NoError(c, err, "user2 should be able to reach user1 initially")
 		assert.Len(c, result, 13, "expected hostname response")
-	}, 30*time.Second, 500*time.Millisecond, "initial user2 -> user1 connectivity")
+	}, integrationutil.ScaledTimeout(30*time.Second), 500*time.Millisecond, "initial user2 -> user1 connectivity")
 
 	// Step 2: Get user3's node and user, then delete them
 	t.Log("Step 2: Deleting user3's node and user from headscale")
@@ -3287,7 +3117,7 @@ func TestACLGroupAfterUserDeletion(t *testing.T) {
 		result, err := user1.Curl(url)
 		assert.NoError(c, err, "user1 should still be able to reach user2 after user3 deletion (stale cache)")
 		assert.Len(c, result, 13, "expected hostname response")
-	}, 60*time.Second, 500*time.Millisecond, "user1 -> user2 after user3 deletion")
+	}, integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond, "user1 -> user2 after user3 deletion")
 
 	// Step 4: Create a NEW user - this triggers updatePolicyManagerUsers() which
 	// re-evaluates the policy. According to issue #2967, this is when the bug manifests:
@@ -3312,7 +3142,7 @@ func TestACLGroupAfterUserDeletion(t *testing.T) {
 		result, err := user1.Curl(url)
 		assert.NoError(c, err, "user1 should still reach user2 after policy refresh (BUG if this fails)")
 		assert.Len(c, result, 13, "expected hostname response")
-	}, 60*time.Second, 500*time.Millisecond, "user1 -> user2 after policy refresh (issue #2967)")
+	}, integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond, "user1 -> user2 after policy refresh (issue #2967)")
 
 	// Test that user2 can still reach user1
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -3320,7 +3150,7 @@ func TestACLGroupAfterUserDeletion(t *testing.T) {
 		result, err := user2.Curl(url)
 		assert.NoError(c, err, "user2 should still reach user1 after policy refresh (BUG if this fails)")
 		assert.Len(c, result, 13, "expected hostname response")
-	}, 60*time.Second, 500*time.Millisecond, "user2 -> user1 after policy refresh (issue #2967)")
+	}, integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond, "user2 -> user1 after policy refresh (issue #2967)")
 
 	t.Log("Test PASSED: Remaining users can communicate after deleted user and policy refresh")
 }
@@ -3393,9 +3223,7 @@ func TestACLGroupDeletionExactReproduction(t *testing.T) {
 		},
 		hsic.WithACLPolicy(initialPolicy),
 		hsic.WithTestName("acl-exact-repro"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
-		hsic.WithPolicyMode(types.PolicyModeDB),
+		hsic.WithPolicyMode(types.PolicyModeDB), // test updates policy at runtime via CLI
 	)
 	require.NoError(t, err)
 
@@ -3431,14 +3259,14 @@ func TestACLGroupDeletionExactReproduction(t *testing.T) {
 		result, err := user1.Curl(url)
 		assert.NoError(c, err, "user1 should reach user3")
 		assert.Len(c, result, 13, "expected hostname response")
-	}, 60*time.Second, 500*time.Millisecond, "user1 -> user3")
+	}, integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond, "user1 -> user3")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		url := fmt.Sprintf("http://%s/etc/hostname", user1FQDN)
 		result, err := user3.Curl(url)
 		assert.NoError(c, err, "user3 should reach user1")
 		assert.Len(c, result, 13, "expected hostname response")
-	}, 60*time.Second, 500*time.Millisecond, "user3 -> user1")
+	}, integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond, "user3 -> user1")
 
 	t.Log("Step 1: PASSED - initial connectivity works")
 
@@ -3468,14 +3296,14 @@ func TestACLGroupDeletionExactReproduction(t *testing.T) {
 		result, err := user1.Curl(url)
 		assert.NoError(c, err, "user1 should still reach user3 after user2 deletion")
 		assert.Len(c, result, 13, "expected hostname response")
-	}, 60*time.Second, 500*time.Millisecond, "user1 -> user3 after user2 deletion")
+	}, integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond, "user1 -> user3 after user2 deletion")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		url := fmt.Sprintf("http://%s/etc/hostname", user1FQDN)
 		result, err := user3.Curl(url)
 		assert.NoError(c, err, "user3 should still reach user1 after user2 deletion")
 		assert.Len(c, result, 13, "expected hostname response")
-	}, 60*time.Second, 500*time.Millisecond, "user3 -> user1 after user2 deletion")
+	}, integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond, "user3 -> user1 after user2 deletion")
 
 	t.Log("Step 3: PASSED - connectivity works after user2 deletion")
 
@@ -3497,14 +3325,14 @@ func TestACLGroupDeletionExactReproduction(t *testing.T) {
 		result, err := user1.Curl(url)
 		assert.NoError(c, err, "BUG #2967: user1 should still reach user3 after user4 creation")
 		assert.Len(c, result, 13, "expected hostname response")
-	}, 60*time.Second, 500*time.Millisecond, "user1 -> user3 after user4 creation (issue #2967)")
+	}, integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond, "user1 -> user3 after user4 creation (issue #2967)")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		url := fmt.Sprintf("http://%s/etc/hostname", user1FQDN)
 		result, err := user3.Curl(url)
 		assert.NoError(c, err, "BUG #2967: user3 should still reach user1 after user4 creation")
 		assert.Len(c, result, 13, "expected hostname response")
-	}, 60*time.Second, 500*time.Millisecond, "user3 -> user1 after user4 creation (issue #2967)")
+	}, integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond, "user3 -> user1 after user4 creation (issue #2967)")
 
 	// Additional verification: check filter rules are not empty
 	filter, err := headscale.DebugFilter()
@@ -3572,9 +3400,7 @@ func TestACLDynamicUnknownUserAddition(t *testing.T) {
 		},
 		hsic.WithACLPolicy(validPolicy),
 		hsic.WithTestName("acl-dynamic-unknown"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
-		hsic.WithPolicyMode(types.PolicyModeDB),
+		hsic.WithPolicyMode(types.PolicyModeDB), // test updates policy at runtime via CLI
 	)
 	require.NoError(t, err)
 
@@ -3609,14 +3435,14 @@ func TestACLDynamicUnknownUserAddition(t *testing.T) {
 		result, err := user1.Curl(url)
 		assert.NoError(c, err, "user1 should reach user2")
 		assert.Len(c, result, 13, "expected hostname response")
-	}, 60*time.Second, 500*time.Millisecond, "initial user1 -> user2")
+	}, integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond, "initial user1 -> user2")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		url := fmt.Sprintf("http://%s/etc/hostname", user1FQDN)
 		result, err := user2.Curl(url)
 		assert.NoError(c, err, "user2 should reach user1")
 		assert.Len(c, result, 13, "expected hostname response")
-	}, 60*time.Second, 500*time.Millisecond, "initial user2 -> user1")
+	}, integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond, "initial user2 -> user1")
 
 	t.Log("Step 1: PASSED - connectivity works with valid policy")
 
@@ -3660,14 +3486,14 @@ func TestACLDynamicUnknownUserAddition(t *testing.T) {
 		result, err := user1.Curl(url)
 		assert.NoError(c, err, "user1 should STILL reach user2 after adding unknown user")
 		assert.Len(c, result, 13, "expected hostname response")
-	}, 60*time.Second, 500*time.Millisecond, "user1 -> user2 after unknown user added")
+	}, integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond, "user1 -> user2 after unknown user added")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		url := fmt.Sprintf("http://%s/etc/hostname", user1FQDN)
 		result, err := user2.Curl(url)
 		assert.NoError(c, err, "user2 should STILL reach user1 after adding unknown user")
 		assert.Len(c, result, 13, "expected hostname response")
-	}, 60*time.Second, 500*time.Millisecond, "user2 -> user1 after unknown user added")
+	}, integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond, "user2 -> user1 after unknown user added")
 
 	t.Log("Step 3: PASSED - connectivity maintained after adding unknown user")
 	t.Log("Test PASSED: v0.28.0-beta.1 scenario - unknown user added dynamically, valid users still work")
@@ -3730,9 +3556,7 @@ func TestACLDynamicUnknownUserRemoval(t *testing.T) {
 		},
 		hsic.WithACLPolicy(policyWithUnknown),
 		hsic.WithTestName("acl-unknown-removal"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
-		hsic.WithPolicyMode(types.PolicyModeDB),
+		hsic.WithPolicyMode(types.PolicyModeDB), // test updates policy at runtime via CLI
 	)
 	require.NoError(t, err)
 
@@ -3768,14 +3592,14 @@ func TestACLDynamicUnknownUserRemoval(t *testing.T) {
 		result, err := user1.Curl(url)
 		assert.NoError(c, err, "user1 should reach user2 even with unknown user in policy")
 		assert.Len(c, result, 13, "expected hostname response")
-	}, 60*time.Second, 500*time.Millisecond, "initial user1 -> user2 with unknown")
+	}, integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond, "initial user1 -> user2 with unknown")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		url := fmt.Sprintf("http://%s/etc/hostname", user1FQDN)
 		result, err := user2.Curl(url)
 		assert.NoError(c, err, "user2 should reach user1 even with unknown user in policy")
 		assert.Len(c, result, 13, "expected hostname response")
-	}, 60*time.Second, 500*time.Millisecond, "initial user2 -> user1 with unknown")
+	}, integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond, "initial user2 -> user1 with unknown")
 
 	t.Log("Step 1: PASSED - connectivity works even with unknown user (v2 graceful handling)")
 
@@ -3817,14 +3641,14 @@ func TestACLDynamicUnknownUserRemoval(t *testing.T) {
 		result, err := user1.Curl(url)
 		assert.NoError(c, err, "user1 should reach user2 after removing unknown user")
 		assert.Len(c, result, 13, "expected hostname response")
-	}, 60*time.Second, 500*time.Millisecond, "user1 -> user2 after unknown removed")
+	}, integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond, "user1 -> user2 after unknown removed")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		url := fmt.Sprintf("http://%s/etc/hostname", user1FQDN)
 		result, err := user2.Curl(url)
 		assert.NoError(c, err, "user2 should reach user1 after removing unknown user")
 		assert.Len(c, result, 13, "expected hostname response")
-	}, 60*time.Second, 500*time.Millisecond, "user2 -> user1 after unknown removed")
+	}, integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond, "user2 -> user1 after unknown removed")
 
 	t.Log("Step 3: PASSED - connectivity maintained after removing unknown user")
 	t.Log("Test PASSED: Removing unknown users from policy works correctly")

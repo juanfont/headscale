@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/mail"
 	"net/url"
@@ -12,11 +13,16 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 )
+
+// ErrCannotParseBoolean is returned when a value cannot be parsed as boolean.
+var ErrCannotParseBoolean = errors.New("cannot parse value as boolean")
 
 type UserID uint64
 
@@ -40,9 +46,11 @@ var TaggedDevices = User{
 func (u Users) String() string {
 	var sb strings.Builder
 	sb.WriteString("[ ")
+
 	for _, user := range u {
 		fmt.Fprintf(&sb, "%d: %s, ", user.ID, user.Name)
 	}
+
 	sb.WriteString(" ]")
 
 	return sb.String()
@@ -53,7 +61,8 @@ func (u Users) String() string {
 // At the end of the day, users in Tailscale are some kind of 'bubbles' or users
 // that contain our machines.
 type User struct {
-	gorm.Model
+	gorm.Model //nolint:embeddedstructfieldcheck
+
 	// The index `idx_name_provider_identifier` is to enforce uniqueness
 	// between Name and ProviderIdentifier. This ensures that
 	// you can have multiple users with the same name in OIDC,
@@ -89,6 +98,7 @@ func (u *User) StringID() string {
 	if u == nil {
 		return ""
 	}
+
 	return strconv.FormatUint(uint64(u.ID), 10)
 }
 
@@ -128,7 +138,7 @@ func (u *User) profilePicURL() string {
 
 func (u *User) TailscaleUser() tailcfg.User {
 	return tailcfg.User{
-		ID:            tailcfg.UserID(u.ID),
+		ID:            tailcfg.UserID(u.ID), //nolint:gosec // UserID is bounded
 		DisplayName:   u.Display(),
 		ProfilePicURL: u.profilePicURL(),
 		Created:       u.CreatedAt,
@@ -148,7 +158,7 @@ func (u UserView) ID() uint {
 
 func (u *User) TailscaleLogin() tailcfg.Login {
 	return tailcfg.Login{
-		ID:            tailcfg.LoginID(u.ID),
+		ID:            tailcfg.LoginID(u.ID), //nolint:gosec // safe conversion for user ID
 		Provider:      u.Provider,
 		LoginName:     u.Username(),
 		DisplayName:   u.Display(),
@@ -162,7 +172,7 @@ func (u UserView) TailscaleLogin() tailcfg.Login {
 
 func (u *User) TailscaleUserProfile() tailcfg.UserProfile {
 	return tailcfg.UserProfile{
-		ID:            tailcfg.UserID(u.ID),
+		ID:            tailcfg.UserID(u.ID), //nolint:gosec // UserID is bounded
 		LoginName:     u.Username(),
 		DisplayName:   u.Display(),
 		ProfilePicURL: u.profilePicURL(),
@@ -182,6 +192,7 @@ func (u *User) Proto() *v1.User {
 	if name == "" {
 		name = u.Username()
 	}
+
 	return &v1.User{
 		Id:            uint64(u.ID),
 		Name:          name,
@@ -194,7 +205,31 @@ func (u *User) Proto() *v1.User {
 	}
 }
 
-// JumpCloud returns a JSON where email_verified is returned as a
+// MarshalZerologObject implements zerolog.LogObjectMarshaler for safe logging.
+func (u *User) MarshalZerologObject(e *zerolog.Event) {
+	if u == nil {
+		return
+	}
+
+	e.Uint(zf.UserID, u.ID)
+	e.Str(zf.UserName, u.Username())
+	e.Str(zf.UserDisplay, u.Display())
+
+	if u.Provider != "" {
+		e.Str(zf.UserProvider, u.Provider)
+	}
+}
+
+// MarshalZerologObject implements zerolog.LogObjectMarshaler for UserView.
+func (u UserView) MarshalZerologObject(e *zerolog.Event) {
+	if !u.Valid() {
+		return
+	}
+
+	u.ж.MarshalZerologObject(e)
+}
+
+// FlexibleBoolean handles JumpCloud's JSON where email_verified is returned as a
 // string "true" or "false" instead of a boolean.
 // This maps bool to a specific type with a custom unmarshaler to
 // ensure we can decode it from a string.
@@ -203,9 +238,10 @@ type FlexibleBoolean bool
 
 func (bit *FlexibleBoolean) UnmarshalJSON(data []byte) error {
 	var val any
+
 	err := json.Unmarshal(data, &val)
 	if err != nil {
-		return fmt.Errorf("could not unmarshal data: %w", err)
+		return fmt.Errorf("unmarshalling data: %w", err)
 	}
 
 	switch v := val.(type) {
@@ -214,12 +250,13 @@ func (bit *FlexibleBoolean) UnmarshalJSON(data []byte) error {
 	case string:
 		pv, err := strconv.ParseBool(v)
 		if err != nil {
-			return fmt.Errorf("could not parse %s as boolean: %w", v, err)
+			return fmt.Errorf("parsing %s as boolean: %w", v, err)
 		}
+
 		*bit = FlexibleBoolean(pv)
 
 	default:
-		return fmt.Errorf("could not parse %v as boolean", v)
+		return fmt.Errorf("%w: %v", ErrCannotParseBoolean, v)
 	}
 
 	return nil
@@ -253,9 +290,11 @@ func (c *OIDCClaims) Identifier() string {
 	if c.Iss == "" && c.Sub == "" {
 		return ""
 	}
+
 	if c.Iss == "" {
 		return CleanIdentifier(c.Sub)
 	}
+
 	if c.Sub == "" {
 		return CleanIdentifier(c.Iss)
 	}
@@ -265,21 +304,14 @@ func (c *OIDCClaims) Identifier() string {
 	subject := c.Sub
 
 	var result string
-	// Try to parse as URL to handle URL joining correctly
-	if u, err := url.Parse(issuer); err == nil && u.Scheme != "" {
-		// For URLs, use proper URL path joining
-		if joined, err := url.JoinPath(issuer, subject); err == nil {
-			result = joined
-		}
-	}
-
-	// If URL joining failed or issuer wasn't a URL, do simple string join
-	if result == "" {
-		// Default case: simple string joining with slash
-		issuer = strings.TrimSuffix(issuer, "/")
-		subject = strings.TrimPrefix(subject, "/")
-		result = issuer + "/" + subject
-	}
+	// Always use simple string concatenation with a slash separator.
+	// url.JoinPath resolves path-traversal segments like ".." and ".",
+	// which can silently drop the subject and cause identifier collisions
+	// between distinct OIDC users (e.g., Sub=".." produces the same
+	// identifier as an empty Sub).
+	issuer = strings.TrimSuffix(issuer, "/")
+	subject = strings.TrimPrefix(subject, "/")
+	result = issuer + "/" + subject
 
 	// Clean the result and return it
 	return CleanIdentifier(result)
@@ -340,6 +372,7 @@ func CleanIdentifier(identifier string) string {
 			cleanParts = append(cleanParts, trimmed)
 		}
 	}
+
 	if len(cleanParts) == 0 {
 		return ""
 	}
@@ -366,7 +399,7 @@ func (u *User) FromClaim(claims *OIDCClaims, emailVerifiedRequired bool) {
 	if err == nil {
 		u.Name = claims.Username
 	} else {
-		log.Debug().Caller().Err(err).Msgf("Username %s is not valid", claims.Username)
+		log.Debug().Caller().Err(err).Msgf("username %s is not valid", claims.Username)
 	}
 
 	if claims.EmailVerified || !FlexibleBoolean(emailVerifiedRequired) {
@@ -382,6 +415,7 @@ func (u *User) FromClaim(claims *OIDCClaims, emailVerifiedRequired bool) {
 	if claims.Iss == "" && !strings.HasPrefix(identifier, "/") {
 		identifier = "/" + identifier
 	}
+
 	u.ProviderIdentifier = sql.NullString{String: identifier, Valid: true}
 	u.DisplayName = claims.Name
 	u.ProfilePicURL = claims.ProfilePictureURL

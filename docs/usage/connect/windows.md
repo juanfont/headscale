@@ -33,7 +33,8 @@ all the time, please enable "Unattended mode":
 - Enable `Run unattended`
 - Confirm the "Unattended mode" message
 
-See also [Keep Tailscale running when I'm not logged in to my computer](https://tailscale.com/kb/1088/run-unattended)
+See also [Keep Tailscale running when I'm not logged in to my
+computer](https://tailscale.com/docs/how-to/run-unattended).
 
 ### Failing node registration
 
@@ -54,6 +55,6 @@ This typically means that the registry keys above was not set appropriately.
 To reset and try again, it is important to do the following:
 
 1. Shut down the Tailscale service (or the client running in the tray)
-2. Delete Tailscale Application data folder, located at `C:\Users\<USERNAME>\AppData\Local\Tailscale` and try to connect again.
-3. Ensure the Windows node is deleted from headscale (to ensure fresh setup)
-4. Start Tailscale on the Windows machine and retry the login.
+1. Delete Tailscale Application data folder, located at `C:\Users\<USERNAME>\AppData\Local\Tailscale` and try to connect again.
+1. Ensure the Windows node is deleted from headscale (to ensure fresh setup)
+1. Start Tailscale on the Windows machine and retry the login.

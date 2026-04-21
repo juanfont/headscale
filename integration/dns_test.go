@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/integration/hsic"
+	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -66,7 +67,7 @@ func TestResolveMagicDNS(t *testing.T) {
 				for _, ip := range ips {
 					assert.Contains(ct, result, ip.String(), "IP %s should be found in DNS resolution result from %s to %s", ip.String(), client.Hostname(), peer.Hostname())
 				}
-			}, 30*time.Second, 2*time.Second)
+			}, integrationutil.ScaledTimeout(30*time.Second), 2*time.Second)
 		}
 	}
 }
@@ -86,14 +87,13 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 
 	const erPath = "/tmp/extra_records.json"
 
-	extraRecords := []tailcfg.DNSRecord{
-		{
-			Name:  "test.myvpn.example.com",
-			Type:  "A",
-			Value: "6.6.6.6",
-		},
-	}
-	b, _ := json.Marshal(extraRecords)
+	extraRecords := make([]tailcfg.DNSRecord, 0, 2)
+	extraRecords = append(extraRecords, tailcfg.DNSRecord{
+		Name:  "test.myvpn.example.com",
+		Type:  "A",
+		Value: "6.6.6.6",
+	})
+	b, _ := json.Marshal(extraRecords) //nolint:errchkjson
 
 	err = scenario.CreateHeadscaleEnv([]tsic.Option{
 		tsic.WithPackages("python3", "curl", "bind-tools"),
@@ -105,8 +105,6 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 			"HEADSCALE_DNS_EXTRA_RECORDS_PATH": erPath,
 		}),
 		hsic.WithFileInContainer(erPath, b),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -133,7 +131,7 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 	require.NoError(t, err)
 
 	// Write the file directly into place from the docker API.
-	b0, _ := json.Marshal([]tailcfg.DNSRecord{
+	b0, _ := json.Marshal([]tailcfg.DNSRecord{ //nolint:errchkjson
 		{
 			Name:  "docker.myvpn.example.com",
 			Type:  "A",
@@ -155,7 +153,7 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 		Type:  "A",
 		Value: "7.7.7.7",
 	})
-	b2, _ := json.Marshal(extraRecords)
+	b2, _ := json.Marshal(extraRecords) //nolint:errchkjson
 
 	err = hs.WriteFile(erPath+"2", b2)
 	require.NoError(t, err)
@@ -169,7 +167,7 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 
 	// Write a new file and copy it to the path to ensure the reload
 	// works when a file is copied into place.
-	b3, _ := json.Marshal([]tailcfg.DNSRecord{
+	b3, _ := json.Marshal([]tailcfg.DNSRecord{ //nolint:errchkjson
 		{
 			Name:  "copy.myvpn.example.com",
 			Type:  "A",
@@ -187,7 +185,7 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 	}
 
 	// Write in place to ensure pipe like behaviour works
-	b4, _ := json.Marshal([]tailcfg.DNSRecord{
+	b4, _ := json.Marshal([]tailcfg.DNSRecord{ //nolint:errchkjson
 		{
 			Name:  "docker.myvpn.example.com",
 			Type:  "A",
@@ -213,7 +211,7 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 			assert.NoError(ct, err)
 			assert.Contains(ct, result, "9.9.9.9")
 		}
-	}, 10*time.Second, 1*time.Second)
+	}, integrationutil.ScaledTimeout(10*time.Second), 1*time.Second)
 
 	// Write a new file, the backoff mechanism should make the filewatcher pick it up
 	// again.

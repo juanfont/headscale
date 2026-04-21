@@ -1,0 +1,240 @@
+// SSH-D12
+//
+// SSH:  accept: src=['autogroup:member'] dst=['tag:server'] users=['localpart:*@passkey', 'ubuntu']
+//
+// Expected: SSH rules on 4 of 5 nodes
+{
+  "test_id": "SSH-D12",
+  "ssh_section": [
+    {
+      "action": "accept",
+      "src": [
+        "autogroup:member"
+      ],
+      "dst": [
+        "tag:server"
+      ],
+      "users": [
+        "localpart:*@passkey",
+        "ubuntu"
+      ]
+    }
+  ],
+  "nodes": {
+    "user1": {
+      "rules": [
+        {
+          "principals": [
+            {
+              "nodeIP": "100.90.199.68"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::2d01:c747"
+            }
+          ],
+          "sshUsers": {
+            "root": "",
+            "ubuntu": "ubuntu"
+          },
+          "action": {
+            "accept": true,
+            "allowAgentForwarding": true,
+            "allowLocalPortForwarding": true,
+            "allowRemotePortForwarding": true
+          }
+        },
+        {
+          "principals": [
+            {
+              "nodeIP": "100.90.199.68"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::2d01:c747"
+            }
+          ],
+          "sshUsers": {
+            "kratail2tid": "kratail2tid"
+          },
+          "action": {
+            "accept": true,
+            "allowAgentForwarding": true,
+            "allowLocalPortForwarding": true,
+            "allowRemotePortForwarding": true
+          }
+        }
+      ]
+    },
+    "user-kris": {
+      "rules": [
+        {
+          "principals": [
+            {
+              "nodeIP": "100.110.121.96"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::1737:7960"
+            }
+          ],
+          "sshUsers": {
+            "root": "",
+            "ubuntu": "ubuntu"
+          },
+          "action": {
+            "accept": true,
+            "allowAgentForwarding": true,
+            "allowLocalPortForwarding": true,
+            "allowRemotePortForwarding": true
+          }
+        }
+      ]
+    },
+    "user-mon": {
+      "rules": [
+        {
+          "principals": [
+            {
+              "nodeIP": "100.103.90.82"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::9e37:5a52"
+            }
+          ],
+          "sshUsers": {
+            "root": "",
+            "ubuntu": "ubuntu"
+          },
+          "action": {
+            "accept": true,
+            "allowAgentForwarding": true,
+            "allowLocalPortForwarding": true,
+            "allowRemotePortForwarding": true
+          }
+        },
+        {
+          "principals": [
+            {
+              "nodeIP": "100.103.90.82"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::9e37:5a52"
+            }
+          ],
+          "sshUsers": {
+            "monitorpasskeykradalby": "monitorpasskeykradalby"
+          },
+          "action": {
+            "accept": true,
+            "allowAgentForwarding": true,
+            "allowLocalPortForwarding": true,
+            "allowRemotePortForwarding": true
+          }
+        }
+      ]
+    },
+    "tagged-server": {
+      "rules": [
+        {
+          "principals": [
+            {
+              "nodeIP": "100.90.199.68"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::2d01:c747"
+            }
+          ],
+          "sshUsers": {
+            "root": "",
+            "ubuntu": "ubuntu"
+          },
+          "action": {
+            "accept": true,
+            "allowAgentForwarding": true,
+            "allowLocalPortForwarding": true,
+            "allowRemotePortForwarding": true
+          }
+        },
+        {
+          "principals": [
+            {
+              "nodeIP": "100.90.199.68"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::2d01:c747"
+            }
+          ],
+          "sshUsers": {
+            "kratail2tid": "kratail2tid"
+          },
+          "action": {
+            "accept": true,
+            "allowAgentForwarding": true,
+            "allowLocalPortForwarding": true,
+            "allowRemotePortForwarding": true
+          }
+        },
+        {
+          "principals": [
+            {
+              "nodeIP": "100.110.121.96"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::1737:7960"
+            }
+          ],
+          "sshUsers": {
+            "root": "",
+            "ubuntu": "ubuntu"
+          },
+          "action": {
+            "accept": true,
+            "allowAgentForwarding": true,
+            "allowLocalPortForwarding": true,
+            "allowRemotePortForwarding": true
+          }
+        },
+        {
+          "principals": [
+            {
+              "nodeIP": "100.103.90.82"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::9e37:5a52"
+            }
+          ],
+          "sshUsers": {
+            "root": "",
+            "ubuntu": "ubuntu"
+          },
+          "action": {
+            "accept": true,
+            "allowAgentForwarding": true,
+            "allowLocalPortForwarding": true,
+            "allowRemotePortForwarding": true
+          }
+        },
+        {
+          "principals": [
+            {
+              "nodeIP": "100.103.90.82"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::9e37:5a52"
+            }
+          ],
+          "sshUsers": {
+            "monitorpasskeykradalby": "monitorpasskeykradalby"
+          },
+          "action": {
+            "accept": true,
+            "allowAgentForwarding": true,
+            "allowLocalPortForwarding": true,
+            "allowRemotePortForwarding": true
+          }
+        }
+      ]
+    },
+    "tagged-prod": {
+      "rules": []
+    }
+  }
+}

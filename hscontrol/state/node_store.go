@@ -1,8 +1,10 @@
 package state
 
 import (
+	"errors"
 	"fmt"
 	"maps"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -12,6 +14,19 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"tailscale.com/types/key"
 	"tailscale.com/types/views"
+	"tailscale.com/util/dnsname"
+)
+
+// fallbackGivenName is the DNS label used when a node is written with
+// an empty GivenName. Matches Tailscale SaaS behaviour for empty
+// sanitised labels.
+const fallbackGivenName = "node"
+
+// Errors returned by SetGivenName. ErrNodeNotFound is defined in
+// state.go and reused here.
+var (
+	ErrGivenNameTaken   = errors.New("given name already in use by another node")
+	ErrGivenNameInvalid = errors.New("given name is not a valid DNS label")
 )
 
 const (
@@ -19,6 +34,7 @@ const (
 	del             = 2
 	update          = 3
 	rebuildPeerMaps = 4
+	setName         = 5
 )
 
 const prometheusNamespace = "headscale"
@@ -55,8 +71,8 @@ var (
 	})
 	nodeStoreNodesCount = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: prometheusNamespace,
-		Name:      "nodestore_nodes_total",
-		Help:      "Total number of nodes in the NodeStore",
+		Name:      "nodestore_nodes",
+		Help:      "Number of nodes in the NodeStore",
 	})
 	nodeStorePeersCalculationDuration = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: prometheusNamespace,
@@ -97,6 +113,7 @@ func NewNodeStore(allNodes types.Nodes, peersFunc PeersFunc, batchSize int, batc
 	for _, n := range allNodes {
 		nodes[n.ID] = *n
 	}
+
 	snap := snapshotFromNodes(nodes, peersFunc)
 
 	store := &NodeStore{
@@ -145,6 +162,9 @@ type work struct {
 	nodeResult chan types.NodeView // Channel to return the resulting node after batch application
 	// For rebuildPeerMaps operation
 	rebuildResult chan struct{}
+	// For setName operation (admin rename, reject-on-collision path).
+	name      string
+	errResult chan error
 }
 
 // PutNode adds or updates a node in the store.
@@ -165,11 +185,14 @@ func (s *NodeStore) PutNode(n types.Node) types.NodeView {
 	}
 
 	nodeStoreQueueDepth.Inc()
+
 	s.writeQueue <- work
+
 	<-work.result
 	nodeStoreQueueDepth.Dec()
 
 	resultNode := <-work.nodeResult
+
 	nodeStoreOperations.WithLabelValues("put").Inc()
 
 	return resultNode
@@ -205,11 +228,14 @@ func (s *NodeStore) UpdateNode(nodeID types.NodeID, updateFn func(n *types.Node)
 	}
 
 	nodeStoreQueueDepth.Inc()
+
 	s.writeQueue <- work
+
 	<-work.result
 	nodeStoreQueueDepth.Dec()
 
 	resultNode := <-work.nodeResult
+
 	nodeStoreOperations.WithLabelValues("update").Inc()
 
 	// Return the node and whether it exists (is valid)
@@ -229,11 +255,56 @@ func (s *NodeStore) DeleteNode(id types.NodeID) {
 	}
 
 	nodeStoreQueueDepth.Inc()
+
 	s.writeQueue <- work
+
 	<-work.result
 	nodeStoreQueueDepth.Dec()
 
 	nodeStoreOperations.WithLabelValues("delete").Inc()
+}
+
+// SetGivenName sets node.GivenName on the node identified by id,
+// rejecting the write if the name is already held by another node.
+// Intended for the admin rename path, where auto-bumping a
+// user-supplied name would be surprising.
+//
+// Returns:
+//   - the stored NodeView and nil on success
+//   - ErrGivenNameInvalid   if name is not a valid DNS label
+//   - ErrGivenNameTaken     if another node already holds name
+//   - ErrNodeNotFound       if no node with id exists
+//
+// Runs as a single writer-goroutine op, so the uniqueness check and
+// the write are atomic with respect to concurrent PutNode/UpdateNode.
+func (s *NodeStore) SetGivenName(id types.NodeID, name string) (types.NodeView, error) {
+	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("set_name"))
+	defer timer.ObserveDuration()
+
+	w := work{
+		op:         setName,
+		nodeID:     id,
+		name:       name,
+		result:     make(chan struct{}),
+		nodeResult: make(chan types.NodeView, 1),
+		errResult:  make(chan error, 1),
+	}
+
+	nodeStoreQueueDepth.Inc()
+
+	s.writeQueue <- w
+
+	<-w.result
+	nodeStoreQueueDepth.Dec()
+
+	nodeStoreOperations.WithLabelValues("set_name").Inc()
+
+	err := <-w.errResult
+	if err != nil {
+		return types.NodeView{}, err
+	}
+
+	return <-w.nodeResult, nil
 }
 
 // Start initializes the NodeStore and starts processing the write queue.
@@ -262,8 +333,10 @@ func (s *NodeStore) processWrite() {
 				if len(batch) != 0 {
 					s.applyBatch(batch)
 				}
+
 				return
 			}
+
 			batch = append(batch, w)
 			if len(batch) >= s.batchSize {
 				s.applyBatch(batch)
@@ -307,20 +380,34 @@ func (s *NodeStore) applyBatch(batch []work) {
 	// Track rebuildPeerMaps operations
 	var rebuildOps []*work
 
+	// setErrResults collects per-work errors from the setName path so
+	// they can be delivered after the snapshot swap, together with the
+	// NodeView for that work.
+	setErrResults := make(map[*work]error)
+
 	for i := range batch {
 		w := &batch[i]
 		switch w.op {
 		case put:
-			nodes[w.nodeID] = w.node
+			n := w.node
+			n.GivenName = resolveGivenName(nodes, n.ID, n.GivenName)
+
+			nodes[w.nodeID] = n
 			if w.nodeResult != nil {
 				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
 			}
 		case update:
 			// Update the specific node identified by nodeID
 			if n, exists := nodes[w.nodeID]; exists {
+				oldGivenName := n.GivenName
 				w.updateFn(&n)
+
+				if n.GivenName != oldGivenName {
+					n.GivenName = resolveGivenName(nodes, n.ID, n.GivenName)
+				}
 				nodes[w.nodeID] = n
 			}
+
 			if w.nodeResult != nil {
 				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
 			}
@@ -330,6 +417,41 @@ func (s *NodeStore) applyBatch(batch []work) {
 			if w.nodeResult != nil {
 				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
 			}
+		case setName:
+			n, exists := nodes[w.nodeID]
+			if !exists {
+				setErrResults[w] = ErrNodeNotFound
+				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
+
+				continue
+			}
+
+			if dnsname.ValidLabel(w.name) != nil {
+				setErrResults[w] = ErrGivenNameInvalid
+				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
+
+				continue
+			}
+
+			taken := false
+
+			for id, other := range nodes {
+				if id != w.nodeID && other.GivenName == w.name {
+					taken = true
+					break
+				}
+			}
+
+			if taken {
+				setErrResults[w] = ErrGivenNameTaken
+				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
+
+				continue
+			}
+
+			n.GivenName = w.name
+			nodes[w.nodeID] = n
+			nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
 		case rebuildPeerMaps:
 			// rebuildPeerMaps doesn't modify nodes, it just forces the snapshot rebuild
 			// below to recalculate peer relationships using the current peersFunc
@@ -349,13 +471,27 @@ func (s *NodeStore) applyBatch(batch []work) {
 			nodeView := node.View()
 			for _, w := range workItems {
 				w.nodeResult <- nodeView
+
 				close(w.nodeResult)
+
+				if w.errResult != nil {
+					w.errResult <- setErrResults[w]
+
+					close(w.errResult)
+				}
 			}
 		} else {
 			// Node was deleted or doesn't exist
 			for _, w := range workItems {
 				w.nodeResult <- types.NodeView{} // Send invalid view
+
 				close(w.nodeResult)
+
+				if w.errResult != nil {
+					w.errResult <- setErrResults[w]
+
+					close(w.errResult)
+				}
 			}
 		}
 	}
@@ -370,6 +506,40 @@ func (s *NodeStore) applyBatch(batch []work) {
 		if w.op != rebuildPeerMaps {
 			close(w.result)
 		}
+	}
+}
+
+// resolveGivenName returns a unique DNS label for the node identified
+// by self, based on the caller-supplied base label. If base is empty
+// it falls back to fallbackGivenName ("node"). The label's own holder
+// (self) is excluded from the collision scan so an idempotent write
+// keeps the current label.
+//
+// On collision the label is bumped as base, base-1, base-2, …, first
+// unused wins. Must be called from the NodeStore writer goroutine
+// (inside applyBatch) so the nodes map reflects all earlier ops in
+// the batch and no other writer can interleave.
+func resolveGivenName(nodes map[types.NodeID]types.Node, self types.NodeID, base string) string {
+	if base == "" {
+		base = fallbackGivenName
+	}
+
+	taken := make(map[string]struct{}, len(nodes))
+	for id, n := range nodes {
+		if id == self {
+			continue
+		}
+
+		taken[n.GivenName] = struct{}{}
+	}
+
+	candidate := base
+	for i := 1; ; i++ {
+		if _, busy := taken[candidate]; !busy {
+			return candidate
+		}
+
+		candidate = base + "-" + strconv.Itoa(i)
 	}
 }
 
@@ -400,6 +570,7 @@ func snapshotFromNodes(nodes map[types.NodeID]types.Node, peersFunc PeersFunc) S
 		peersByNode: func() map[types.NodeID][]types.NodeView {
 			peersTimer := prometheus.NewTimer(nodeStorePeersCalculationDuration)
 			defer peersTimer.ObserveDuration()
+
 			return peersFunc(allNodes)
 		}(),
 		nodesByUser: make(map[types.UserID][]types.NodeView),
@@ -410,13 +581,19 @@ func snapshotFromNodes(nodes map[types.NodeID]types.Node, peersFunc PeersFunc) S
 		nodeView := n.View()
 		userID := n.TypedUserID()
 
-		newSnap.nodesByUser[userID] = append(newSnap.nodesByUser[userID], nodeView)
+		// Tagged nodes are owned by their tags, not a user,
+		// so they are not indexed by user.
+		if !n.IsTagged() {
+			newSnap.nodesByUser[userID] = append(newSnap.nodesByUser[userID], nodeView)
+		}
+
 		newSnap.nodesByNodeKey[n.NodeKey] = nodeView
 
 		// Build machine key index
 		if newSnap.nodesByMachineKey[n.MachineKey] == nil {
 			newSnap.nodesByMachineKey[n.MachineKey] = make(map[types.UserID]types.NodeView)
 		}
+
 		newSnap.nodesByMachineKey[n.MachineKey][userID] = nodeView
 	}
 
@@ -505,54 +682,51 @@ func (s *NodeStore) DebugString() string {
 	sb.WriteString("=== NodeStore Debug Information ===\n\n")
 
 	// Basic counts
-	sb.WriteString(fmt.Sprintf("Total Nodes: %d\n", len(snapshot.nodesByID)))
-	sb.WriteString(fmt.Sprintf("Users with Nodes: %d\n", len(snapshot.nodesByUser)))
+	fmt.Fprintf(&sb, "Total Nodes: %d\n", len(snapshot.nodesByID))
+	fmt.Fprintf(&sb, "Users with Nodes: %d\n", len(snapshot.nodesByUser))
 	sb.WriteString("\n")
 
 	// User distribution (shows internal UserID tracking, not display owner)
 	sb.WriteString("Nodes by Internal User ID:\n")
+
 	for userID, nodes := range snapshot.nodesByUser {
 		if len(nodes) > 0 {
 			userName := "unknown"
-			taggedCount := 0
-			if len(nodes) > 0 && nodes[0].Valid() {
+
+			if nodes[0].Valid() && nodes[0].User().Valid() {
 				userName = nodes[0].User().Name()
-				// Count tagged nodes (which have UserID set but are owned by "tagged-devices")
-				for _, n := range nodes {
-					if n.IsTagged() {
-						taggedCount++
-					}
-				}
 			}
 
-			if taggedCount > 0 {
-				sb.WriteString(fmt.Sprintf("  - User %d (%s): %d nodes (%d tagged)\n", userID, userName, len(nodes), taggedCount))
-			} else {
-				sb.WriteString(fmt.Sprintf("  - User %d (%s): %d nodes\n", userID, userName, len(nodes)))
-			}
+			fmt.Fprintf(&sb, "  - User %d (%s): %d nodes\n", userID, userName, len(nodes))
 		}
 	}
+
 	sb.WriteString("\n")
 
 	// Peer relationships summary
 	sb.WriteString("Peer Relationships:\n")
+
 	totalPeers := 0
+
 	for nodeID, peers := range snapshot.peersByNode {
 		peerCount := len(peers)
+
 		totalPeers += peerCount
 		if node, exists := snapshot.nodesByID[nodeID]; exists {
-			sb.WriteString(fmt.Sprintf("  - Node %d (%s): %d peers\n",
-				nodeID, node.Hostname, peerCount))
+			fmt.Fprintf(&sb, "  - Node %d (%s): %d peers\n",
+				nodeID, node.Hostname, peerCount)
 		}
 	}
+
 	if len(snapshot.peersByNode) > 0 {
 		avgPeers := float64(totalPeers) / float64(len(snapshot.peersByNode))
-		sb.WriteString(fmt.Sprintf("  - Average peers per node: %.1f\n", avgPeers))
+		fmt.Fprintf(&sb, "  - Average peers per node: %.1f\n", avgPeers)
 	}
+
 	sb.WriteString("\n")
 
 	// Node key index
-	sb.WriteString(fmt.Sprintf("NodeKey Index: %d entries\n", len(snapshot.nodesByNodeKey)))
+	fmt.Fprintf(&sb, "NodeKey Index: %d entries\n", len(snapshot.nodesByNodeKey))
 	sb.WriteString("\n")
 
 	return sb.String()
@@ -591,6 +765,7 @@ func (s *NodeStore) RebuildPeerMaps() {
 	}
 
 	s.writeQueue <- w
+
 	<-result
 }
 

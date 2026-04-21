@@ -13,6 +13,9 @@ import (
 	"tailscale.com/types/logger"
 )
 
+// ErrNoCertDomains is returned when no cert domains are available for HTTPS.
+var ErrNoCertDomains = errors.New("no cert domains available for HTTPS")
+
 func runTailSQLService(ctx context.Context, logf logger.Logf, stateDir, dbPath string) error {
 	opts := tailsql.Options{
 		Hostname: "tailsql-headscale",
@@ -41,15 +44,17 @@ func runTailSQLService(ctx context.Context, logf logger.Logf, stateDir, dbPath s
 	defer tsNode.Close()
 
 	logf("Starting tailscale (hostname=%q)", opts.Hostname)
+
 	lc, err := tsNode.LocalClient()
 	if err != nil {
 		return fmt.Errorf("connect local client: %w", err)
 	}
+
 	opts.LocalClient = lc // for authentication
 
 	// Make sure the Tailscale node starts up. It might not, if it is a new node
 	// and the user did not provide an auth key.
-	if st, err := tsNode.Up(ctx); err != nil {
+	if st, err := tsNode.Up(ctx); err != nil { //nolint:noinlineerr
 		return fmt.Errorf("starting tailscale: %w", err)
 	} else {
 		logf("tailscale started, node state %q", st.BackendState)
@@ -71,28 +76,38 @@ func runTailSQLService(ctx context.Context, logf logger.Logf, stateDir, dbPath s
 		// When serving TLS, add a redirect from HTTP on port 80 to HTTPS on 443.
 		certDomains := tsNode.CertDomains()
 		if len(certDomains) == 0 {
-			return errors.New("no cert domains available for HTTPS")
+			return ErrNoCertDomains
 		}
+
 		base := "https://" + certDomains[0]
-		go http.Serve(lst, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			target := base + r.RequestURI
-			http.Redirect(w, r, target, http.StatusPermanentRedirect)
-		}))
+
+		go func() {
+			_ = http.Serve(lst, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { //nolint:gosec
+				target := base + r.RequestURI
+				http.Redirect(w, r, target, http.StatusPermanentRedirect)
+			}))
+		}()
 		// log.Printf("Redirecting HTTP to HTTPS at %q", base)
 
 		// For the real service, start a separate listener.
 		// Note: Replaces the port 80 listener.
 		var err error
+
 		lst, err = tsNode.ListenTLS("tcp", ":443")
 		if err != nil {
 			return fmt.Errorf("listen TLS: %w", err)
 		}
+
 		logf("enabled serving via HTTPS")
 	}
 
 	mux := tsql.NewMux()
 	tsweb.Debugger(mux)
-	go http.Serve(lst, mux)
+
+	go func() {
+		_ = http.Serve(lst, mux) //nolint:gosec
+	}()
+
 	logf("TailSQL started")
 	<-ctx.Done()
 	logf("TailSQL shutting down...")

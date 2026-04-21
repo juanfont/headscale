@@ -3,6 +3,7 @@ package mapper
 import (
 	"encoding/json"
 	"net/netip"
+	"slices"
 	"testing"
 	"time"
 
@@ -13,12 +14,12 @@ import (
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
-	"tailscale.com/types/ptr"
 )
 
 func TestTailNode(t *testing.T) {
 	mustNK := func(str string) key.NodePublic {
 		var k key.NodePublic
+
 		_ = k.UnmarshalText([]byte(str))
 
 		return k
@@ -26,6 +27,7 @@ func TestTailNode(t *testing.T) {
 
 	mustDK := func(str string) key.DiscoPublic {
 		var k key.DiscoPublic
+
 		_ = k.UnmarshalText([]byte(str))
 
 		return k
@@ -33,6 +35,7 @@ func TestTailNode(t *testing.T) {
 
 	mustMK := func(str string) key.MachinePublic {
 		var k key.MachinePublic
+
 		_ = k.UnmarshalText([]byte(str))
 
 		return k
@@ -72,9 +75,11 @@ func TestTailNode(t *testing.T) {
 				MachineAuthorized: true,
 
 				CapMap: tailcfg.NodeCapMap{
-					tailcfg.CapabilityFileSharing: []tailcfg.RawMessage{},
-					tailcfg.CapabilityAdmin:       []tailcfg.RawMessage{},
-					tailcfg.CapabilitySSH:         []tailcfg.RawMessage{},
+					tailcfg.CapabilityFileSharing:    []tailcfg.RawMessage{},
+					tailcfg.CapabilityAdmin:          []tailcfg.RawMessage{},
+					tailcfg.CapabilitySSH:            []tailcfg.RawMessage{},
+					tailcfg.NodeAttrsTaildriveShare:  []tailcfg.RawMessage{},
+					tailcfg.NodeAttrsTaildriveAccess: []tailcfg.RawMessage{},
 				},
 			},
 			wantErr: false,
@@ -95,7 +100,7 @@ func TestTailNode(t *testing.T) {
 				IPv4:      iap("100.64.0.1"),
 				Hostname:  "mini",
 				GivenName: "mini",
-				UserID:    ptr.To(uint(0)),
+				UserID:    new(uint(0)),
 				User: &types.User{
 					Name: "mini",
 				},
@@ -137,8 +142,8 @@ func TestTailNode(t *testing.T) {
 				Addresses: []netip.Prefix{netip.MustParsePrefix("100.64.0.1/32")},
 				AllowedIPs: []netip.Prefix{
 					tsaddr.AllIPv4(),
-					netip.MustParsePrefix("192.168.0.0/24"),
 					netip.MustParsePrefix("100.64.0.1/32"),
+					netip.MustParsePrefix("192.168.0.0/24"),
 					tsaddr.AllIPv6(),
 				},
 				PrimaryRoutes: []netip.Prefix{
@@ -161,9 +166,11 @@ func TestTailNode(t *testing.T) {
 				MachineAuthorized: true,
 
 				CapMap: tailcfg.NodeCapMap{
-					tailcfg.CapabilityFileSharing: []tailcfg.RawMessage{},
-					tailcfg.CapabilityAdmin:       []tailcfg.RawMessage{},
-					tailcfg.CapabilitySSH:         []tailcfg.RawMessage{},
+					tailcfg.CapabilityFileSharing:    []tailcfg.RawMessage{},
+					tailcfg.CapabilityAdmin:          []tailcfg.RawMessage{},
+					tailcfg.CapabilitySSH:            []tailcfg.RawMessage{},
+					tailcfg.NodeAttrsTaildriveShare:  []tailcfg.RawMessage{},
+					tailcfg.NodeAttrsTaildriveAccess: []tailcfg.RawMessage{},
 				},
 			},
 			wantErr: false,
@@ -186,9 +193,11 @@ func TestTailNode(t *testing.T) {
 				MachineAuthorized: true,
 
 				CapMap: tailcfg.NodeCapMap{
-					tailcfg.CapabilityFileSharing: []tailcfg.RawMessage{},
-					tailcfg.CapabilityAdmin:       []tailcfg.RawMessage{},
-					tailcfg.CapabilitySSH:         []tailcfg.RawMessage{},
+					tailcfg.CapabilityFileSharing:    []tailcfg.RawMessage{},
+					tailcfg.CapabilityAdmin:          []tailcfg.RawMessage{},
+					tailcfg.CapabilitySSH:            []tailcfg.RawMessage{},
+					tailcfg.NodeAttrsTaildriveShare:  []tailcfg.RawMessage{},
+					tailcfg.NodeAttrsTaildriveAccess: []tailcfg.RawMessage{},
 				},
 			},
 			wantErr: false,
@@ -212,10 +221,13 @@ func TestTailNode(t *testing.T) {
 			// This is a hack to avoid having a second node to test the primary route.
 			// This should be baked into the test case proper if it is extended in the future.
 			_ = primary.SetRoutes(2, netip.MustParsePrefix("192.168.0.0/24"))
-			got, err := tt.node.View().TailNode(
+			nv := tt.node.View()
+			got, err := nv.TailNode(
 				0,
 				func(id types.NodeID) []netip.Prefix {
-					return primary.PrimaryRoutes(id)
+					// Route function returns primaries + exit routes
+					// (matching the real caller contract).
+					return slices.Concat(primary.PrimaryRoutes(id), nv.ExitRoutes())
 				},
 				cfg,
 			)
@@ -255,7 +267,7 @@ func TestNodeExpiry(t *testing.T) {
 		},
 		{
 			name:         "localtime",
-			exp:          tp(time.Time{}.Local()),
+			exp:          tp(time.Time{}.Local()), //nolint:gosmopolitan
 			wantTimeZero: true,
 		},
 	}
@@ -284,7 +296,9 @@ func TestNodeExpiry(t *testing.T) {
 			if err != nil {
 				t.Fatalf("nodeExpiry() error = %v", err)
 			}
+
 			var deseri tailcfg.Node
+
 			err = json.Unmarshal(seri, &deseri)
 			if err != nil {
 				t.Fatalf("nodeExpiry() error = %v", err)

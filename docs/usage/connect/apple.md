@@ -25,7 +25,8 @@ Install the official Tailscale iOS client from the [App Store](https://apps.appl
 
 ### Installation
 
-Choose one of the available [Tailscale clients for macOS](https://tailscale.com/kb/1065/macos-variants) and install it.
+Choose one of the available [Tailscale clients for macOS](https://tailscale.com/docs/concepts/macos-variants) and
+install it.
 
 ### Configuring the headscale URL
 

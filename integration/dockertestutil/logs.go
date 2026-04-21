@@ -47,6 +47,7 @@ func SaveLog(
 	}
 
 	var stdout, stderr bytes.Buffer
+
 	err = WriteLog(pool, resource, &stdout, &stderr)
 	if err != nil {
 		return "", "", err
@@ -55,6 +56,7 @@ func SaveLog(
 	log.Printf("Saving logs for %s to %s\n", resource.Container.Name, basePath)
 
 	stdoutPath := path.Join(basePath, resource.Container.Name+".stdout.log")
+
 	err = os.WriteFile(
 		stdoutPath,
 		stdout.Bytes(),
@@ -65,6 +67,7 @@ func SaveLog(
 	}
 
 	stderrPath := path.Join(basePath, resource.Container.Name+".stderr.log")
+
 	err = os.WriteFile(
 		stderrPath,
 		stderr.Bytes(),

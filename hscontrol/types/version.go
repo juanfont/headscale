@@ -30,17 +30,15 @@ func (v *VersionInfo) String() string {
 		version += "-dirty"
 	}
 
-	sb.WriteString(fmt.Sprintf("headscale version %s\n", version))
-	sb.WriteString(fmt.Sprintf("commit: %s\n", v.Commit))
-	sb.WriteString(fmt.Sprintf("build time: %s\n", v.BuildTime))
-	sb.WriteString(fmt.Sprintf("built with: %s %s/%s\n", v.Go.Version, v.Go.OS, v.Go.Arch))
+	fmt.Fprintf(&sb, "headscale version %s\n", version)
+	fmt.Fprintf(&sb, "commit: %s\n", v.Commit)
+	fmt.Fprintf(&sb, "build time: %s\n", v.BuildTime)
+	fmt.Fprintf(&sb, "built with: %s %s/%s\n", v.Go.Version, v.Go.OS, v.Go.Arch)
 
 	return sb.String()
 }
 
-var buildInfo = sync.OnceValues(func() (*debug.BuildInfo, bool) {
-	return debug.ReadBuildInfo()
-})
+var buildInfo = sync.OnceValues(debug.ReadBuildInfo)
 
 var GetVersionInfo = sync.OnceValue(func() *VersionInfo {
 	info := &VersionInfo{

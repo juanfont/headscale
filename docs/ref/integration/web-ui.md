@@ -20,5 +20,7 @@ Headscale doesn't provide a built-in web interface but users may pick one from t
 - [headscale-console](https://github.com/rickli-cloud/headscale-console) - WebAssembly-based client supporting SSH, VNC
   and RDP with optional self-service capabilities
 - [headscale-piying](https://github.com/wszgrcy/headscale-piying) - headscale web ui,support visual ACL configuration
+- [HeadControl](https://github.com/ahmadzip/HeadControl) - Minimal Headscale admin dashboard, built with Go and HTMX
+- [Headscale Manager](https://github.com/hkdone/headscalemanager) - Headscale UI for Android
 
 You can ask for support on our [Discord server](https://discord.gg/c84AZQhmpx) in the "web-interfaces" channel.

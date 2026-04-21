@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
-	"tailscale.com/types/ptr"
 )
 
 func TestCreateAndDestroyUser(t *testing.T) {
@@ -74,18 +73,133 @@ func TestDestroyUserErrors(t *testing.T) {
 				pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 				require.NoError(t, err)
 
+				pakID := pak.ID
+
 				node := types.Node{
 					ID:             0,
 					Hostname:       "testnode",
 					UserID:         &user.ID,
 					RegisterMethod: util.RegisterMethodAuthKey,
-					AuthKeyID:      ptr.To(pak.ID),
+					AuthKeyID:      &pakID,
 				}
 				trx := db.DB.Save(&node)
 				require.NoError(t, trx.Error)
 
 				err = db.DestroyUser(types.UserID(user.ID))
 				assert.ErrorIs(t, err, ErrUserStillHasNodes)
+			},
+		},
+		{
+			// https://github.com/juanfont/headscale/issues/3077
+			// Tagged nodes have user_id = NULL, so they do not block
+			// user deletion and are unaffected by ON DELETE CASCADE.
+			name: "success_user_only_has_tagged_nodes",
+			test: func(t *testing.T, db *HSDatabase) {
+				t.Helper()
+
+				user, err := db.CreateUser(types.User{Name: "test"})
+				require.NoError(t, err)
+
+				// Create a tagged node with no user_id (the invariant).
+				node := types.Node{
+					ID:             0,
+					Hostname:       "tagged-node",
+					RegisterMethod: util.RegisterMethodAuthKey,
+					Tags:           []string{"tag:server"},
+				}
+				trx := db.DB.Save(&node)
+				require.NoError(t, trx.Error)
+
+				err = db.DestroyUser(types.UserID(user.ID))
+				require.NoError(t, err)
+
+				// User is gone.
+				_, err = db.GetUserByID(types.UserID(user.ID))
+				require.ErrorIs(t, err, ErrUserNotFound)
+
+				// Tagged node survives.
+				var survivingNode types.Node
+
+				result := db.DB.First(&survivingNode, "id = ?", node.ID)
+				require.NoError(t, result.Error)
+				assert.Nil(t, survivingNode.UserID)
+				assert.Equal(t, []string{"tag:server"}, survivingNode.Tags)
+			},
+		},
+		{
+			// A user who has both tagged and user-owned nodes cannot
+			// be deleted; the user-owned nodes still block deletion.
+			name: "error_user_has_tagged_and_owned_nodes",
+			test: func(t *testing.T, db *HSDatabase) {
+				t.Helper()
+
+				user, err := db.CreateUser(types.User{Name: "test"})
+				require.NoError(t, err)
+
+				// Tagged node: no user_id.
+				taggedNode := types.Node{
+					ID:             0,
+					Hostname:       "tagged-node",
+					RegisterMethod: util.RegisterMethodAuthKey,
+					Tags:           []string{"tag:server"},
+				}
+				trx := db.DB.Save(&taggedNode)
+				require.NoError(t, trx.Error)
+
+				// User-owned node: has user_id.
+				ownedNode := types.Node{
+					ID:             0,
+					Hostname:       "owned-node",
+					UserID:         &user.ID,
+					RegisterMethod: util.RegisterMethodAuthKey,
+				}
+				trx = db.DB.Save(&ownedNode)
+				require.NoError(t, trx.Error)
+
+				err = db.DestroyUser(types.UserID(user.ID))
+				require.ErrorIs(t, err, ErrUserStillHasNodes)
+			},
+		},
+		{
+			// Regression test for https://github.com/juanfont/headscale/issues/3154
+			// DestroyUser must only delete the target user's pre-auth keys,
+			// not all pre-auth keys in the database.
+			name: "success_only_deletes_own_preauthkeys",
+			test: func(t *testing.T, db *HSDatabase) {
+				t.Helper()
+
+				userA := db.CreateUserForTest("usera")
+				userB := db.CreateUserForTest("userb")
+
+				// Create 2 keys for userA, 1 key for userB.
+				_, err := db.CreatePreAuthKey(userA.TypedID(), false, false, nil, nil)
+				require.NoError(t, err)
+				_, err = db.CreatePreAuthKey(userA.TypedID(), false, false, nil, nil)
+				require.NoError(t, err)
+				_, err = db.CreatePreAuthKey(userB.TypedID(), false, false, nil, nil)
+				require.NoError(t, err)
+
+				// Sanity check: 3 keys exist.
+				allKeys, err := db.ListPreAuthKeys()
+				require.NoError(t, err)
+				require.Len(t, allKeys, 3)
+
+				// Delete userB.
+				err = db.DestroyUser(types.UserID(userB.ID))
+				require.NoError(t, err)
+
+				// Only userA's 2 keys should remain.
+				remaining, err := db.ListPreAuthKeys()
+				require.NoError(t, err)
+				assert.Len(t, remaining, 2,
+					"expected 2 keys for userA, got %d — DestroyUser deleted keys from other users",
+					len(remaining))
+
+				for _, key := range remaining {
+					assert.NotNil(t, key.UserID)
+					assert.Equal(t, userA.ID, *key.UserID,
+						"remaining key should belong to userA")
+				}
 			},
 		},
 	}

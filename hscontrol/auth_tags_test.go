@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -11,10 +12,53 @@ import (
 	"tailscale.com/types/key"
 )
 
+// createTestAppWithNodeExpiry creates a test app with a specific node.expiry config.
+func createTestAppWithNodeExpiry(t *testing.T, nodeExpiry time.Duration) *Headscale {
+	t.Helper()
+
+	tmpDir := t.TempDir()
+
+	cfg := types.Config{
+		ServerURL:           "http://localhost:8080",
+		NoisePrivateKeyPath: tmpDir + "/noise_private.key",
+		Node: types.NodeConfig{
+			Expiry: nodeExpiry,
+		},
+		Database: types.DatabaseConfig{
+			Type: "sqlite3",
+			Sqlite: types.SqliteConfig{
+				Path: tmpDir + "/headscale_test.db",
+			},
+		},
+		OIDC: types.OIDCConfig{},
+		Policy: types.PolicyConfig{
+			Mode: types.PolicyModeDB,
+		},
+		Tuning: types.Tuning{
+			BatchChangeDelay: 100 * time.Millisecond,
+			BatcherWorkers:   1,
+		},
+	}
+
+	app, err := NewHeadscale(&cfg)
+	require.NoError(t, err)
+
+	app.mapBatcher = mapper.NewBatcherAndMapper(&cfg, app.state)
+	app.mapBatcher.Start()
+
+	t.Cleanup(func() {
+		if app.mapBatcher != nil {
+			app.mapBatcher.Close()
+		}
+	})
+
+	return app
+}
+
 // TestTaggedPreAuthKeyCreatesTaggedNode tests that a PreAuthKey with tags creates
 // a tagged node with:
 // - Tags from the PreAuthKey
-// - UserID tracking who created the key (informational "created by")
+// - Nil UserID (tagged nodes are owned by tags, not a user)
 // - IsTagged() returns true.
 func TestTaggedPreAuthKeyCreatesTaggedNode(t *testing.T) {
 	app := createTestApp(t)
@@ -51,11 +95,10 @@ func TestTaggedPreAuthKeyCreatesTaggedNode(t *testing.T) {
 	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
 	require.True(t, found)
 
-	// Critical assertions for tags-as-identity model
+	// Tagged nodes are owned by their tags, not a user.
 	assert.True(t, node.IsTagged(), "Node should be tagged")
 	assert.ElementsMatch(t, tags, node.Tags().AsSlice(), "Node should have tags from PreAuthKey")
-	assert.True(t, node.UserID().Valid(), "Node should have UserID tracking creator")
-	assert.Equal(t, user.ID, node.UserID().Get(), "UserID should track PreAuthKey creator")
+	assert.False(t, node.UserID().Valid(), "Tagged node should not have UserID")
 
 	// Verify node is identified correctly
 	assert.True(t, node.IsTagged(), "Tagged node is not user-owned")
@@ -129,9 +172,10 @@ func TestReAuthDoesNotReapplyTags(t *testing.T) {
 	assert.True(t, nodeAfterReauth.IsTagged(), "Node should still be tagged")
 	assert.ElementsMatch(t, initialTags, nodeAfterReauth.Tags().AsSlice(), "Tags should remain unchanged on re-auth")
 
-	// Verify only one node was created (no duplicates)
-	nodes := app.state.ListNodesByUser(types.UserID(user.ID))
-	assert.Equal(t, 1, nodes.Len(), "Should have exactly one node")
+	// Verify only one node was created (no duplicates).
+	// Tagged nodes are not indexed by user, so check the global list.
+	allNodes := app.state.ListNodes()
+	assert.Equal(t, 1, allNodes.Len(), "Should have exactly one node")
 }
 
 // NOTE: TestSetTagsOnUserOwnedNode functionality is covered by gRPC tests in grpcv1_test.go
@@ -294,13 +338,13 @@ func TestMultipleNodesWithSameReusableTaggedPreAuthKey(t *testing.T) {
 	assert.ElementsMatch(t, tags, node1.Tags().AsSlice(), "First node should have PreAuthKey tags")
 	assert.ElementsMatch(t, tags, node2.Tags().AsSlice(), "Second node should have PreAuthKey tags")
 
-	// Both nodes should track the same creator
-	assert.Equal(t, user.ID, node1.UserID().Get(), "First node should track creator")
-	assert.Equal(t, user.ID, node2.UserID().Get(), "Second node should track creator")
+	// Tagged nodes should not have UserID set.
+	assert.False(t, node1.UserID().Valid(), "First node should not have UserID")
+	assert.False(t, node2.UserID().Valid(), "Second node should not have UserID")
 
-	// Verify we have exactly 2 nodes
-	nodes := app.state.ListNodesByUser(types.UserID(user.ID))
-	assert.Equal(t, 2, nodes.Len(), "Should have exactly two nodes")
+	// Verify we have exactly 2 nodes.
+	allNodes := app.state.ListNodes()
+	assert.Equal(t, 2, allNodes.Len(), "Should have exactly two nodes")
 }
 
 // TestNonReusableTaggedPreAuthKey tests that a non-reusable PreAuthKey with tags
@@ -359,9 +403,9 @@ func TestNonReusableTaggedPreAuthKey(t *testing.T) {
 	_, err = app.handleRegisterWithAuthKey(regReq2, machineKey2.Public())
 	require.Error(t, err, "Should not be able to reuse non-reusable PreAuthKey")
 
-	// Verify only one node was created
-	nodes := app.state.ListNodesByUser(types.UserID(user.ID))
-	assert.Equal(t, 1, nodes.Len(), "Should have exactly one node")
+	// Verify only one node was created.
+	allNodes := app.state.ListNodes()
+	assert.Equal(t, 1, allNodes.Len(), "Should have exactly one node")
 }
 
 // TestExpiredTaggedPreAuthKey tests that an expired PreAuthKey with tags
@@ -651,8 +695,8 @@ func TestExpiryDuringPersonalToTaggedConversion(t *testing.T) {
 
 	// Step 1: Create user-owned node WITH expiry set
 	clientExpiry := time.Now().Add(24 * time.Hour)
-	registrationID1 := types.MustRegistrationID()
-	regEntry1 := types.NewRegisterNode(types.Node{
+	registrationID1 := types.MustAuthID()
+	regEntry1 := types.NewRegisterAuthRequest(&types.RegistrationData{
 		MachineKey: machineKey.Public(),
 		NodeKey:    nodeKey1.Public(),
 		Hostname:   "personal-to-tagged",
@@ -662,7 +706,7 @@ func TestExpiryDuringPersonalToTaggedConversion(t *testing.T) {
 		},
 		Expiry: &clientExpiry,
 	})
-	app.state.SetRegistrationCacheEntry(registrationID1, regEntry1)
+	app.state.SetAuthCacheEntry(registrationID1, regEntry1)
 
 	node, _, err := app.state.HandleNodeFromAuthPath(
 		registrationID1, types.UserID(user.ID), nil, "webauth",
@@ -673,8 +717,8 @@ func TestExpiryDuringPersonalToTaggedConversion(t *testing.T) {
 
 	// Step 2: Re-auth with tags (Personal → Tagged conversion)
 	nodeKey2 := key.NewNode()
-	registrationID2 := types.MustRegistrationID()
-	regEntry2 := types.NewRegisterNode(types.Node{
+	registrationID2 := types.MustAuthID()
+	regEntry2 := types.NewRegisterAuthRequest(&types.RegistrationData{
 		MachineKey: machineKey.Public(),
 		NodeKey:    nodeKey2.Public(),
 		Hostname:   "personal-to-tagged",
@@ -684,7 +728,7 @@ func TestExpiryDuringPersonalToTaggedConversion(t *testing.T) {
 		},
 		Expiry: &clientExpiry, // Client still sends expiry
 	})
-	app.state.SetRegistrationCacheEntry(registrationID2, regEntry2)
+	app.state.SetAuthCacheEntry(registrationID2, regEntry2)
 
 	nodeAfter, _, err := app.state.HandleNodeFromAuthPath(
 		registrationID2, types.UserID(user.ID), nil, "webauth",
@@ -723,8 +767,8 @@ func TestExpiryDuringTaggedToPersonalConversion(t *testing.T) {
 	nodeKey1 := key.NewNode()
 
 	// Step 1: Create tagged node (expiry should be nil)
-	registrationID1 := types.MustRegistrationID()
-	regEntry1 := types.NewRegisterNode(types.Node{
+	registrationID1 := types.MustAuthID()
+	regEntry1 := types.NewRegisterAuthRequest(&types.RegistrationData{
 		MachineKey: machineKey.Public(),
 		NodeKey:    nodeKey1.Public(),
 		Hostname:   "tagged-to-personal",
@@ -733,7 +777,7 @@ func TestExpiryDuringTaggedToPersonalConversion(t *testing.T) {
 			RequestTags: []string{"tag:server"}, // Tagged node
 		},
 	})
-	app.state.SetRegistrationCacheEntry(registrationID1, regEntry1)
+	app.state.SetAuthCacheEntry(registrationID1, regEntry1)
 
 	node, _, err := app.state.HandleNodeFromAuthPath(
 		registrationID1, types.UserID(user.ID), nil, "webauth",
@@ -745,8 +789,8 @@ func TestExpiryDuringTaggedToPersonalConversion(t *testing.T) {
 	// Step 2: Re-auth with empty tags (Tagged → Personal conversion)
 	nodeKey2 := key.NewNode()
 	clientExpiry := time.Now().Add(48 * time.Hour)
-	registrationID2 := types.MustRegistrationID()
-	regEntry2 := types.NewRegisterNode(types.Node{
+	registrationID2 := types.MustAuthID()
+	regEntry2 := types.NewRegisterAuthRequest(&types.RegistrationData{
 		MachineKey: machineKey.Public(),
 		NodeKey:    nodeKey2.Public(),
 		Hostname:   "tagged-to-personal",
@@ -756,7 +800,7 @@ func TestExpiryDuringTaggedToPersonalConversion(t *testing.T) {
 		},
 		Expiry: &clientExpiry, // Client requests expiry
 	})
-	app.state.SetRegistrationCacheEntry(registrationID2, regEntry2)
+	app.state.SetAuthCacheEntry(registrationID2, regEntry2)
 
 	nodeAfter, _, err := app.state.HandleNodeFromAuthPath(
 		registrationID2, types.UserID(user.ID), nil, "webauth",
@@ -832,4 +876,246 @@ func TestReAuthWithDifferentMachineKey(t *testing.T) {
 	require.True(t, found)
 	assert.True(t, node2.IsTagged())
 	assert.ElementsMatch(t, tags, node2.Tags().AsSlice())
+}
+
+// TestUntaggedAuthKeyZeroExpiryGetsDefault tests that when node.expiry is configured
+// and a client registers with an untagged auth key without requesting a specific expiry,
+// the node gets the configured default expiry.
+// This is the core fix for https://github.com/juanfont/headscale/issues/1711
+func TestUntaggedAuthKeyZeroExpiryGetsDefault(t *testing.T) {
+	t.Parallel()
+
+	nodeExpiry := 180 * 24 * time.Hour // 180 days
+	app := createTestAppWithNodeExpiry(t, nodeExpiry)
+
+	user := app.state.CreateUserForTest("node-owner")
+
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	// Client sends zero expiry (the default behaviour of tailscale up --authkey).
+	regReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "default-expiry-test",
+		},
+		Expiry: time.Time{}, // zero — no client-requested expiry
+	}
+
+	resp, err := app.handleRegisterWithAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+	require.True(t, resp.MachineAuthorized)
+
+	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+
+	assert.False(t, node.IsTagged())
+	assert.True(t, node.Expiry().Valid(), "node should have expiry set from config default")
+	assert.False(t, node.IsExpired(), "node should not be expired yet")
+
+	expectedExpiry := time.Now().Add(nodeExpiry)
+	assert.WithinDuration(t, expectedExpiry, node.Expiry().Get(), 10*time.Second,
+		"node expiry should be ~180 days from now")
+}
+
+// TestTaggedAuthKeyIgnoresNodeExpiry tests that tagged nodes still get nil
+// expiry even when node.expiry is configured.
+func TestTaggedAuthKeyIgnoresNodeExpiry(t *testing.T) {
+	t.Parallel()
+
+	nodeExpiry := 180 * 24 * time.Hour
+	app := createTestAppWithNodeExpiry(t, nodeExpiry)
+
+	user := app.state.CreateUserForTest("tag-creator")
+	tags := []string{"tag:server"}
+
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, tags)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	regReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "tagged-no-expiry",
+		},
+		Expiry: time.Time{},
+	}
+
+	resp, err := app.handleRegisterWithAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+	require.True(t, resp.MachineAuthorized)
+
+	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+
+	assert.True(t, node.IsTagged())
+	assert.False(t, node.Expiry().Valid(),
+		"tagged node should have expiry disabled (nil) even with node.expiry configured")
+}
+
+// TestNodeExpiryZeroDisablesDefault tests that setting node.expiry to 0
+// preserves the old behaviour where nodes registered without a client-requested
+// expiry get no expiry (never expire).
+func TestNodeExpiryZeroDisablesDefault(t *testing.T) {
+	t.Parallel()
+
+	// node.expiry = 0 means "no default expiry"
+	app := createTestAppWithNodeExpiry(t, 0)
+
+	user := app.state.CreateUserForTest("node-owner")
+
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	regReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "no-default-expiry",
+		},
+		Expiry: time.Time{}, // zero
+	}
+
+	resp, err := app.handleRegisterWithAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+	require.True(t, resp.MachineAuthorized)
+
+	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+
+	assert.False(t, node.IsTagged())
+	assert.False(t, node.IsExpired(), "node should not be expired")
+
+	// With node.expiry=0 and zero client expiry, the node gets a zero expiry
+	// which IsExpired() treats as "never expires" — backwards compatible.
+	if node.Expiry().Valid() {
+		assert.True(t, node.Expiry().Get().IsZero(),
+			"with node.expiry=0 and zero client expiry, expiry should be zero time")
+	}
+}
+
+// TestClientNonZeroExpiryTakesPrecedence tests that when a client explicitly
+// requests an expiry, that value is used instead of the configured default.
+func TestClientNonZeroExpiryTakesPrecedence(t *testing.T) {
+	t.Parallel()
+
+	nodeExpiry := 180 * 24 * time.Hour // 180 days
+	app := createTestAppWithNodeExpiry(t, nodeExpiry)
+
+	user := app.state.CreateUserForTest("node-owner")
+
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	// Client explicitly requests 24h expiry
+	clientExpiry := time.Now().Add(24 * time.Hour)
+
+	regReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "client-expiry-test",
+		},
+		Expiry: clientExpiry,
+	}
+
+	resp, err := app.handleRegisterWithAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+	require.True(t, resp.MachineAuthorized)
+
+	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+
+	assert.True(t, node.Expiry().Valid(), "node should have expiry set")
+	assert.WithinDuration(t, clientExpiry, node.Expiry().Get(), 5*time.Second,
+		"client-requested expiry should take precedence over node.expiry default")
+}
+
+// TestReregistrationAppliesDefaultExpiry tests that when a node re-registers
+// with an untagged auth key and the client sends zero expiry, the configured
+// default is applied.
+func TestReregistrationAppliesDefaultExpiry(t *testing.T) {
+	t.Parallel()
+
+	nodeExpiry := 90 * 24 * time.Hour // 90 days
+	app := createTestAppWithNodeExpiry(t, nodeExpiry)
+
+	user := app.state.CreateUserForTest("node-owner")
+
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	// Initial registration with zero expiry
+	regReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "reregister-test",
+		},
+		Expiry: time.Time{},
+	}
+
+	resp, err := app.handleRegisterWithAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+	require.True(t, resp.MachineAuthorized)
+
+	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+	assert.True(t, node.Expiry().Valid(), "initial registration should get default expiry")
+
+	firstExpiry := node.Expiry().Get()
+
+	// Re-register with a new node key but same machine key
+	nodeKey2 := key.NewNode()
+	regReq2 := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey2.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "reregister-test",
+		},
+		Expiry: time.Time{}, // still zero
+	}
+
+	resp2, err := app.handleRegisterWithAuthKey(regReq2, machineKey.Public())
+	require.NoError(t, err)
+	require.True(t, resp2.MachineAuthorized)
+
+	node2, found := app.state.GetNodeByNodeKey(nodeKey2.Public())
+	require.True(t, found)
+	assert.True(t, node2.Expiry().Valid(), "re-registration should also get default expiry")
+
+	// The expiry should be refreshed (new 90d from now), not the old one
+	expectedExpiry := time.Now().Add(nodeExpiry)
+	assert.WithinDuration(t, expectedExpiry, node2.Expiry().Get(), 10*time.Second,
+		"re-registration should refresh the default expiry")
+	assert.True(t, node2.Expiry().Get().After(firstExpiry),
+		"re-registration expiry should be later than initial registration expiry")
 }

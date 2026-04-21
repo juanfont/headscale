@@ -1,7 +1,7 @@
 ---
 site_name: Headscale
 site_url: https://juanfont.github.io/headscale/
-edit_uri: blob/main/docs/ # Change the master branch to main as we are using main as a main branch
+edit_uri: blob/main/docs/
 site_author: Headscale authors
 site_description: >-
   An open source, self-hosted implementation of the Tailscale control server.
@@ -15,7 +15,7 @@ copyright: Copyright &copy; 2026 Headscale authors
 
 # Configuration
 theme:
-  name: material
+  name: materialx
   features:
     - announce.dismiss
     - content.action.edit
@@ -47,7 +47,6 @@ theme:
         name: Switch to light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: white
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
@@ -111,7 +110,7 @@ extra:
     - icon: fontawesome/brands/discord
       link: https://discord.gg/c84AZQhmpx
   headscale:
-    version: 0.28.0-beta.2
+    version: 0.28.0
 
 # Extensions
 markdown_extensions:
@@ -138,10 +137,7 @@ markdown_extensions:
       pygments_lang_class: true
   - pymdownx.inlinehilite
   - pymdownx.keys
-  - pymdownx.magiclink:
-      repo_url_shorthand: true
-      user: squidfunk
-      repo: mkdocs-material
+  - pymdownx.magiclink
   - pymdownx.mark
   - pymdownx.smartsymbols
   - pymdownx.superfences:
@@ -174,6 +170,7 @@ nav:
           - Community packages: setup/install/community.md
           - Container: setup/install/container.md
           - Build from source: setup/install/source.md
+          - Development builds: setup/install/main.md
       - Upgrade: setup/upgrade.md
   - Usage:
       - Getting started: usage/getting-started.md

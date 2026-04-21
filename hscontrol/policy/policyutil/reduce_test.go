@@ -16,7 +16,6 @@ import (
 	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 	"tailscale.com/util/must"
 )
 
@@ -144,13 +143,13 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.1"),
 				IPv6: ap("fd7a:115c:a1e0:ab12:4843:2222:6273:2221"),
-				User: ptr.To(users[0]),
+				User: new(users[0]),
 			},
 			peers: types.Nodes{
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0:ab12:4843:2222:6273:2222"),
-					User: ptr.To(users[0]),
+					User: new(users[0]),
 				},
 			},
 			want: []tailcfg.FilterRule{},
@@ -191,54 +190,44 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.1"),
 				IPv6: ap("fd7a:115c:a1e0::1"),
-				User: ptr.To(users[1]),
+				User: new(users[1]),
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{
 						netip.MustParsePrefix("10.33.0.0/16"),
 					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("10.33.0.0/16"),
 				},
 			},
 			peers: types.Nodes{
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: ptr.To(users[1]),
+					User: new(users[1]),
 				},
 			},
 			want: []tailcfg.FilterRule{
+				// Merged: Both ACL rules combined (same SrcIPs)
 				{
 					SrcIPs: []string{
-						"100.64.0.1/32",
-						"100.64.0.2/32",
-						"fd7a:115c:a1e0::1/128",
-						"fd7a:115c:a1e0::2/128",
+						"100.64.0.1-100.64.0.2",
+						"fd7a:115c:a1e0::1-fd7a:115c:a1e0::2",
 					},
 					DstPorts: []tailcfg.NetPortRange{
 						{
-							IP:    "100.64.0.1/32",
+							IP:    "100.64.0.1",
 							Ports: tailcfg.PortRangeAny,
 						},
 						{
-							IP:    "fd7a:115c:a1e0::1/128",
+							IP:    "fd7a:115c:a1e0::1",
 							Ports: tailcfg.PortRangeAny,
 						},
-					},
-					IPProto: []int{6, 17},
-				},
-				{
-					SrcIPs: []string{
-						"100.64.0.1/32",
-						"100.64.0.2/32",
-						"fd7a:115c:a1e0::1/128",
-						"fd7a:115c:a1e0::2/128",
-					},
-					DstPorts: []tailcfg.NetPortRange{
 						{
 							IP:    "10.33.0.0/16",
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
-					IPProto: []int{6, 17},
 				},
 			},
 		},
@@ -283,19 +272,19 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.1"),
 				IPv6: ap("fd7a:115c:a1e0::1"),
-				User: ptr.To(users[1]),
+				User: new(users[1]),
 			},
 			peers: types.Nodes{
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: ptr.To(users[2]),
+					User: new(users[2]),
 				},
 				// "internal" exit node
 				&types.Node{
 					IPv4: ap("100.64.0.100"),
 					IPv6: ap("fd7a:115c:a1e0::100"),
-					User: ptr.To(users[3]),
+					User: new(users[3]),
 					Hostinfo: &tailcfg.Hostinfo{
 						RoutableIPs: tsaddr.ExitRoutes(),
 					},
@@ -344,7 +333,7 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.100"),
 				IPv6: ap("fd7a:115c:a1e0::100"),
-				User: ptr.To(users[3]),
+				User: new(users[3]),
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: tsaddr.ExitRoutes(),
 				},
@@ -353,33 +342,29 @@ func TestReduceFilterRules(t *testing.T) {
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: ptr.To(users[2]),
+					User: new(users[2]),
 				},
 				&types.Node{
 					IPv4: ap("100.64.0.1"),
 					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: ptr.To(users[1]),
+					User: new(users[1]),
 				},
 			},
 			want: []tailcfg.FilterRule{
+				// Only the internal:* rule generates filters.
+				// autogroup:internet does NOT generate packet filters - it's handled
+				// by exit node routing via AllowedIPs, not by packet filtering.
 				{
-					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
+					SrcIPs: []string{
+						"100.64.0.1-100.64.0.2",
+						"fd7a:115c:a1e0::1-fd7a:115c:a1e0::2",
+					},
 					DstPorts: []tailcfg.NetPortRange{
 						{
-							IP:    "100.64.0.100/32",
-							Ports: tailcfg.PortRangeAny,
-						},
-						{
-							IP:    "fd7a:115c:a1e0::100/128",
+							IP:    "100.64.0.100",
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
-					IPProto: []int{6, 17},
-				},
-				{
-					SrcIPs:   []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
-					DstPorts: hsExitNodeDestForTest,
-					IPProto:  []int{6, 17},
 				},
 			},
 		},
@@ -453,7 +438,7 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.100"),
 				IPv6: ap("fd7a:115c:a1e0::100"),
-				User: ptr.To(users[3]),
+				User: new(users[3]),
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: tsaddr.ExitRoutes(),
 				},
@@ -462,64 +447,31 @@ func TestReduceFilterRules(t *testing.T) {
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: ptr.To(users[2]),
+					User: new(users[2]),
 				},
 				&types.Node{
 					IPv4: ap("100.64.0.1"),
 					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: ptr.To(users[1]),
+					User: new(users[1]),
 				},
 			},
 			want: []tailcfg.FilterRule{
+				// Exit routes (0.0.0.0/0, ::/0) are skipped when checking RoutableIPs
+				// overlap, matching Tailscale SaaS behavior. Only destinations that
+				// contain the node's own Tailscale IP (via InIPSet) are kept.
+				// Here, 64.0.0.0/2 contains 100.64.0.100 (CGNAT range), so it matches.
 				{
-					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
-					DstPorts: []tailcfg.NetPortRange{
-						{
-							IP:    "100.64.0.100/32",
-							Ports: tailcfg.PortRangeAny,
-						},
-						{
-							IP:    "fd7a:115c:a1e0::100/128",
-							Ports: tailcfg.PortRangeAny,
-						},
+					SrcIPs: []string{
+						"100.64.0.1-100.64.0.2",
+						"fd7a:115c:a1e0::1-fd7a:115c:a1e0::2",
 					},
-					IPProto: []int{6, 17},
-				},
-				{
-					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
 					DstPorts: []tailcfg.NetPortRange{
-						{IP: "0.0.0.0/5", Ports: tailcfg.PortRangeAny},
-						{IP: "8.0.0.0/7", Ports: tailcfg.PortRangeAny},
-						{IP: "11.0.0.0/8", Ports: tailcfg.PortRangeAny},
-						{IP: "12.0.0.0/6", Ports: tailcfg.PortRangeAny},
-						{IP: "16.0.0.0/4", Ports: tailcfg.PortRangeAny},
-						{IP: "32.0.0.0/3", Ports: tailcfg.PortRangeAny},
+						{
+							IP:    "100.64.0.100",
+							Ports: tailcfg.PortRangeAny,
+						},
 						{IP: "64.0.0.0/2", Ports: tailcfg.PortRangeAny},
-						{IP: "128.0.0.0/3", Ports: tailcfg.PortRangeAny},
-						{IP: "160.0.0.0/5", Ports: tailcfg.PortRangeAny},
-						{IP: "168.0.0.0/6", Ports: tailcfg.PortRangeAny},
-						{IP: "172.0.0.0/12", Ports: tailcfg.PortRangeAny},
-						{IP: "172.32.0.0/11", Ports: tailcfg.PortRangeAny},
-						{IP: "172.64.0.0/10", Ports: tailcfg.PortRangeAny},
-						{IP: "172.128.0.0/9", Ports: tailcfg.PortRangeAny},
-						{IP: "173.0.0.0/8", Ports: tailcfg.PortRangeAny},
-						{IP: "174.0.0.0/7", Ports: tailcfg.PortRangeAny},
-						{IP: "176.0.0.0/4", Ports: tailcfg.PortRangeAny},
-						{IP: "192.0.0.0/9", Ports: tailcfg.PortRangeAny},
-						{IP: "192.128.0.0/11", Ports: tailcfg.PortRangeAny},
-						{IP: "192.160.0.0/13", Ports: tailcfg.PortRangeAny},
-						{IP: "192.169.0.0/16", Ports: tailcfg.PortRangeAny},
-						{IP: "192.170.0.0/15", Ports: tailcfg.PortRangeAny},
-						{IP: "192.172.0.0/14", Ports: tailcfg.PortRangeAny},
-						{IP: "192.176.0.0/12", Ports: tailcfg.PortRangeAny},
-						{IP: "192.192.0.0/10", Ports: tailcfg.PortRangeAny},
-						{IP: "193.0.0.0/8", Ports: tailcfg.PortRangeAny},
-						{IP: "194.0.0.0/7", Ports: tailcfg.PortRangeAny},
-						{IP: "196.0.0.0/6", Ports: tailcfg.PortRangeAny},
-						{IP: "200.0.0.0/5", Ports: tailcfg.PortRangeAny},
-						{IP: "208.0.0.0/4", Ports: tailcfg.PortRangeAny},
 					},
-					IPProto: []int{6, 17},
 				},
 			},
 		},
@@ -565,41 +517,36 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.100"),
 				IPv6: ap("fd7a:115c:a1e0::100"),
-				User: ptr.To(users[3]),
+				User: new(users[3]),
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{netip.MustParsePrefix("8.0.0.0/16"), netip.MustParsePrefix("16.0.0.0/16")},
 				},
+				ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("8.0.0.0/16"), netip.MustParsePrefix("16.0.0.0/16")},
 			},
 			peers: types.Nodes{
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: ptr.To(users[2]),
+					User: new(users[2]),
 				},
 				&types.Node{
 					IPv4: ap("100.64.0.1"),
 					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: ptr.To(users[1]),
+					User: new(users[1]),
 				},
 			},
 			want: []tailcfg.FilterRule{
+				// Merged: Both ACL rules combined (same SrcIPs)
 				{
-					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
-					DstPorts: []tailcfg.NetPortRange{
-						{
-							IP:    "100.64.0.100/32",
-							Ports: tailcfg.PortRangeAny,
-						},
-						{
-							IP:    "fd7a:115c:a1e0::100/128",
-							Ports: tailcfg.PortRangeAny,
-						},
+					SrcIPs: []string{
+						"100.64.0.1-100.64.0.2",
+						"fd7a:115c:a1e0::1-fd7a:115c:a1e0::2",
 					},
-					IPProto: []int{6, 17},
-				},
-				{
-					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
 					DstPorts: []tailcfg.NetPortRange{
+						{
+							IP:    "100.64.0.100",
+							Ports: tailcfg.PortRangeAny,
+						},
 						{
 							IP:    "8.0.0.0/8",
 							Ports: tailcfg.PortRangeAny,
@@ -609,7 +556,6 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
-					IPProto: []int{6, 17},
 				},
 			},
 		},
@@ -655,41 +601,36 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.100"),
 				IPv6: ap("fd7a:115c:a1e0::100"),
-				User: ptr.To(users[3]),
+				User: new(users[3]),
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{netip.MustParsePrefix("8.0.0.0/8"), netip.MustParsePrefix("16.0.0.0/8")},
 				},
+				ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("8.0.0.0/8"), netip.MustParsePrefix("16.0.0.0/8")},
 			},
 			peers: types.Nodes{
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: ptr.To(users[2]),
+					User: new(users[2]),
 				},
 				&types.Node{
 					IPv4: ap("100.64.0.1"),
 					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: ptr.To(users[1]),
+					User: new(users[1]),
 				},
 			},
 			want: []tailcfg.FilterRule{
+				// Merged: Both ACL rules combined (same SrcIPs)
 				{
-					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
-					DstPorts: []tailcfg.NetPortRange{
-						{
-							IP:    "100.64.0.100/32",
-							Ports: tailcfg.PortRangeAny,
-						},
-						{
-							IP:    "fd7a:115c:a1e0::100/128",
-							Ports: tailcfg.PortRangeAny,
-						},
+					SrcIPs: []string{
+						"100.64.0.1-100.64.0.2",
+						"fd7a:115c:a1e0::1-fd7a:115c:a1e0::2",
 					},
-					IPProto: []int{6, 17},
-				},
-				{
-					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
 					DstPorts: []tailcfg.NetPortRange{
+						{
+							IP:    "100.64.0.100",
+							Ports: tailcfg.PortRangeAny,
+						},
 						{
 							IP:    "8.0.0.0/16",
 							Ports: tailcfg.PortRangeAny,
@@ -699,7 +640,6 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
-					IPProto: []int{6, 17},
 				},
 			},
 		},
@@ -737,37 +677,40 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.100"),
 				IPv6: ap("fd7a:115c:a1e0::100"),
-				User: ptr.To(users[3]),
+				User: new(users[3]),
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{netip.MustParsePrefix("172.16.0.0/24")},
 				},
-				Tags: []string{"tag:access-servers"},
+				ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("172.16.0.0/24")},
+				Tags:           []string{"tag:access-servers"},
 			},
 			peers: types.Nodes{
 				&types.Node{
 					IPv4: ap("100.64.0.1"),
 					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: ptr.To(users[1]),
+					User: new(users[1]),
 				},
 			},
 			want: []tailcfg.FilterRule{
 				{
-					SrcIPs: []string{"100.64.0.1/32", "fd7a:115c:a1e0::1/128"},
+					SrcIPs: []string{
+						"100.64.0.1",
+						"fd7a:115c:a1e0::1",
+					},
 					DstPorts: []tailcfg.NetPortRange{
 						{
-							IP:    "100.64.0.100/32",
+							IP:    "100.64.0.100",
 							Ports: tailcfg.PortRangeAny,
 						},
 						{
-							IP:    "fd7a:115c:a1e0::100/128",
+							IP:    "fd7a:115c:a1e0::100",
 							Ports: tailcfg.PortRangeAny,
 						},
 						{
-							IP:    "172.16.0.21/32",
+							IP:    "172.16.0.21",
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
-					IPProto: []int{6, 17},
 				},
 			},
 		},
@@ -804,13 +747,13 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.2"),
 				IPv6: ap("fd7a:115c:a1e0::2"),
-				User: ptr.To(users[3]),
+				User: new(users[3]),
 			},
 			peers: types.Nodes{
 				&types.Node{
 					IPv4: ap("100.64.0.1"),
 					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: ptr.To(users[1]),
+					User: new(users[1]),
 					Hostinfo: &tailcfg.Hostinfo{
 						RoutableIPs: []netip.Prefix{p("172.16.0.0/24"), p("10.10.11.0/24"), p("10.10.12.0/24")},
 					},
@@ -822,12 +765,18 @@ func TestReduceFilterRules(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		for idx, pmf := range policy.PolicyManagerFuncsForTest([]byte(tt.pol)) {
+		for idx, pmf := range policy.PolicyManagerFuncsForTest(
+			[]byte(tt.pol),
+		) {
 			t.Run(fmt.Sprintf("%s-index%d", tt.name, idx), func(t *testing.T) {
-				var pm policy.PolicyManager
-				var err error
+				var (
+					pm  policy.PolicyManager
+					err error
+				)
+
 				pm, err = pmf(users, append(tt.peers, tt.node).ViewSlice())
 				require.NoError(t, err)
+
 				got, _ := pm.Filter()
 				t.Logf("full filter:\n%s", must.Get(json.MarshalIndent(got, "", "  ")))
 				got = policyutil.ReduceFilterRules(tt.node.View(), got)
@@ -838,5 +787,496 @@ func TestReduceFilterRules(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// TestReduceFilterRulesPartialApproval verifies that ReduceFilterRules
+// only preserves filter rules for routes that are both advertised
+// (RoutableIPs) AND approved (ApprovedRoutes), matching Tailscale
+// SaaS behavior. Advertised-but-unapproved routes do not cause rule
+// preservation: SaaS never generates filter rules for unapproved
+// routes, and headscale consults node.SubnetRoutes() (which filters
+// by approval) rather than Hostinfo.RoutableIPs() (which does not).
+func TestReduceFilterRulesPartialApproval(t *testing.T) {
+	tests := []struct {
+		name       string
+		node       *types.Node
+		rules      []tailcfg.FilterRule
+		wantCount  int
+		wantRoutes []string
+	}{
+		{
+			name: "approved-route-included",
+			node: &types.Node{
+				IPv4: ap("100.64.0.1"),
+				IPv6: ap("fd7a:115c:a1e0::1"),
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						netip.MustParsePrefix("10.33.0.0/16"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("10.33.0.0/16"),
+				},
+			},
+			rules: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"*"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "10.33.0.0/16", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+			wantCount:  1,
+			wantRoutes: []string{"10.33.0.0/16"},
+		},
+		{
+			name: "unapproved-route-excluded",
+			node: &types.Node{
+				IPv4: ap("100.64.0.1"),
+				IPv6: ap("fd7a:115c:a1e0::1"),
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						netip.MustParsePrefix("10.33.0.0/16"),
+						// Advertised but NOT approved:
+						netip.MustParsePrefix("172.16.0.0/24"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					// Only 10.33.0.0/16 approved
+					netip.MustParsePrefix("10.33.0.0/16"),
+				},
+			},
+			rules: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"*"},
+					DstPorts: []tailcfg.NetPortRange{
+						// Targets the unapproved route
+						{IP: "172.16.0.0/24", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+			// SubnetRoutes() does NOT contain 172.16.0.0/24
+			// (only approved routes), and the ACL dst does not
+			// overlap the node's own IPs, so the rule is
+			// dropped. This matches Tailscale SaaS behavior.
+			wantCount: 0,
+		},
+		{
+			name: "neither-advertised-nor-approved-excluded",
+			node: &types.Node{
+				IPv4: ap("100.64.0.1"),
+				IPv6: ap("fd7a:115c:a1e0::1"),
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						netip.MustParsePrefix("10.33.0.0/16"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("10.33.0.0/16"),
+				},
+			},
+			rules: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"*"},
+					DstPorts: []tailcfg.NetPortRange{
+						// Not advertised, not approved
+						{IP: "192.168.0.0/16", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+			wantCount: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := policyutil.ReduceFilterRules(
+				tt.node.View(), tt.rules,
+			)
+			require.Len(t, got, tt.wantCount,
+				"rule count mismatch")
+
+			if tt.wantCount > 0 {
+				var gotRoutes []string
+				for _, dp := range got[0].DstPorts {
+					gotRoutes = append(gotRoutes, dp.IP)
+				}
+
+				require.Equal(t, tt.wantRoutes, gotRoutes)
+			}
+		})
+	}
+}
+
+// TestReduceFilterRulesCapGrant tests the CapGrant branch of
+// ReduceFilterRules, which was previously untested. All existing
+// test cases use ACL-only policies with DstPorts rules.
+func TestReduceFilterRulesCapGrant(t *testing.T) {
+	tests := []struct {
+		name  string
+		node  *types.Node
+		rules []tailcfg.FilterRule
+		want  []tailcfg.FilterRule
+	}{
+		{
+			name: "capgrant-matches-node-ip-narrowed",
+			node: &types.Node{
+				IPv4: ap("100.64.0.1"),
+				IPv6: ap("fd7a:115c:a1e0::1"),
+			},
+			rules: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"10.0.0.0/8"},
+					CapGrant: []tailcfg.CapGrant{
+						{
+							Dsts: []netip.Prefix{
+								// Broad IPv4 prefix containing node IP
+								netip.MustParsePrefix("100.64.0.0/10"),
+							},
+							CapMap: tailcfg.PeerCapMap{
+								"tailscale.com/cap/drive-sharer": nil,
+							},
+						},
+					},
+				},
+			},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"10.0.0.0/8"},
+					CapGrant: []tailcfg.CapGrant{
+						{
+							Dsts: []netip.Prefix{
+								// Only IPv4 narrowed (IPv6 not in /10)
+								netip.MustParsePrefix("100.64.0.1/32"),
+							},
+							CapMap: tailcfg.PeerCapMap{
+								"tailscale.com/cap/drive-sharer": nil,
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "capgrant-no-match-filtered-out",
+			node: &types.Node{
+				IPv4: ap("100.64.0.1"),
+				IPv6: ap("fd7a:115c:a1e0::1"),
+			},
+			rules: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"10.0.0.0/8"},
+					CapGrant: []tailcfg.CapGrant{
+						{
+							Dsts: []netip.Prefix{
+								// Different IP — doesn't match this node
+								netip.MustParsePrefix("100.64.0.99/32"),
+							},
+							CapMap: tailcfg.PeerCapMap{
+								"tailscale.com/cap/drive-sharer": nil,
+							},
+						},
+					},
+				},
+			},
+			want: []tailcfg.FilterRule{},
+		},
+		{
+			name: "capgrant-with-subnet-route-overlap",
+			node: &types.Node{
+				IPv4: ap("100.64.0.1"),
+				IPv6: ap("fd7a:115c:a1e0::1"),
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						netip.MustParsePrefix("10.33.0.0/16"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("10.33.0.0/16"),
+				},
+			},
+			rules: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"*"},
+					CapGrant: []tailcfg.CapGrant{
+						{
+							Dsts: []netip.Prefix{
+								// Subnet route overlap
+								netip.MustParsePrefix("10.0.0.0/8"),
+							},
+							CapMap: tailcfg.PeerCapMap{
+								"tailscale.com/cap/relay-target": nil,
+							},
+						},
+					},
+				},
+			},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"*"},
+					CapGrant: []tailcfg.CapGrant{
+						{
+							Dsts: []netip.Prefix{
+								// 10.0.0.0/8 doesn't contain node's
+								// CGNAT IP (100.64.0.1), so no IP
+								// narrowing. Only route overlap kept
+								// as original prefix.
+								netip.MustParsePrefix("10.0.0.0/8"),
+							},
+							CapMap: tailcfg.PeerCapMap{
+								"tailscale.com/cap/relay-target": nil,
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "capgrant-exit-route-skipped",
+			node: &types.Node{
+				IPv4: ap("100.64.0.1"),
+				IPv6: ap("fd7a:115c:a1e0::1"),
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: tsaddr.ExitRoutes(),
+				},
+				ApprovedRoutes: tsaddr.ExitRoutes(),
+			},
+			rules: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"*"},
+					CapGrant: []tailcfg.CapGrant{
+						{
+							Dsts: []netip.Prefix{
+								// 0.0.0.0/0 overlaps the exit route
+								// but exit routes should be skipped
+								netip.MustParsePrefix("0.0.0.0/0"),
+							},
+							CapMap: tailcfg.PeerCapMap{
+								"tailscale.com/cap/drive-sharer": nil,
+							},
+						},
+					},
+				},
+			},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"*"},
+					CapGrant: []tailcfg.CapGrant{
+						{
+							Dsts: []netip.Prefix{
+								// Node IP narrowed (0.0.0.0/0
+								// contains the node's IP)
+								netip.MustParsePrefix("100.64.0.1/32"),
+							},
+							CapMap: tailcfg.PeerCapMap{
+								"tailscale.com/cap/drive-sharer": nil,
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "mixed-dstports-and-capgrant-rules",
+			node: &types.Node{
+				IPv4: ap("100.64.0.1"),
+				IPv6: ap("fd7a:115c:a1e0::1"),
+			},
+			rules: []tailcfg.FilterRule{
+				{
+					// DstPorts rule that matches
+					SrcIPs: []string{"10.0.0.0/8"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.64.0.1", Ports: tailcfg.PortRangeAny},
+					},
+				},
+				{
+					// CapGrant rule that matches
+					SrcIPs: []string{"10.0.0.0/8"},
+					CapGrant: []tailcfg.CapGrant{
+						{
+							Dsts: []netip.Prefix{
+								netip.MustParsePrefix("100.64.0.1/32"),
+							},
+							CapMap: tailcfg.PeerCapMap{
+								"tailscale.com/cap/drive-sharer": nil,
+							},
+						},
+					},
+				},
+				{
+					// CapGrant rule that doesn't match
+					SrcIPs: []string{"10.0.0.0/8"},
+					CapGrant: []tailcfg.CapGrant{
+						{
+							Dsts: []netip.Prefix{
+								netip.MustParsePrefix("100.64.0.99/32"),
+							},
+							CapMap: tailcfg.PeerCapMap{
+								"tailscale.com/cap/drive-sharer": nil,
+							},
+						},
+					},
+				},
+			},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"10.0.0.0/8"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.64.0.1", Ports: tailcfg.PortRangeAny},
+					},
+				},
+				{
+					SrcIPs: []string{"10.0.0.0/8"},
+					CapGrant: []tailcfg.CapGrant{
+						{
+							Dsts: []netip.Prefix{
+								netip.MustParsePrefix("100.64.0.1/32"),
+							},
+							CapMap: tailcfg.PeerCapMap{
+								"tailscale.com/cap/drive-sharer": nil,
+							},
+						},
+					},
+				},
+				// Third rule filtered out — doesn't match node
+			},
+		},
+		{
+			name: "capgrant-ipv4-only-node",
+			node: &types.Node{
+				IPv4: ap("100.64.0.1"),
+				// IPv6 is nil, single-IP node
+			},
+			rules: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"10.0.0.0/8"},
+					CapGrant: []tailcfg.CapGrant{
+						{
+							Dsts: []netip.Prefix{
+								netip.MustParsePrefix("100.64.0.1/32"),
+							},
+							CapMap: tailcfg.PeerCapMap{
+								"tailscale.com/cap/drive-sharer": nil,
+							},
+						},
+					},
+				},
+			},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"10.0.0.0/8"},
+					CapGrant: []tailcfg.CapGrant{
+						{
+							Dsts: []netip.Prefix{
+								netip.MustParsePrefix("100.64.0.1/32"),
+							},
+							CapMap: tailcfg.PeerCapMap{
+								"tailscale.com/cap/drive-sharer": nil,
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "capgrant-zero-ip-node-no-panic",
+			node: &types.Node{
+				// Both IPv4 and IPv6 are nil, zero IPs.
+				// Must not panic.
+			},
+			rules: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"10.0.0.0/8"},
+					CapGrant: []tailcfg.CapGrant{
+						{
+							Dsts: []netip.Prefix{
+								netip.MustParsePrefix("100.64.0.1/32"),
+							},
+							CapMap: tailcfg.PeerCapMap{
+								"tailscale.com/cap/drive-sharer": nil,
+							},
+						},
+					},
+				},
+			},
+			want: []tailcfg.FilterRule{},
+		},
+		{
+			// A broad prefix that both contains the node IP (/32 narrow)
+			// and overlaps one of its approved subnet routes (route
+			// preserved) would otherwise be emitted twice.
+			name: "capgrant-ip-and-route-overlap-dedup",
+			node: &types.Node{
+				IPv4: ap("100.64.0.1"),
+				IPv6: ap("fd7a:115c:a1e0::1"),
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						netip.MustParsePrefix("100.64.0.0/24"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("100.64.0.0/24"),
+				},
+			},
+			rules: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"*"},
+					CapGrant: []tailcfg.CapGrant{
+						{
+							Dsts: []netip.Prefix{
+								netip.MustParsePrefix("100.64.0.0/24"),
+							},
+							CapMap: tailcfg.PeerCapMap{
+								"tailscale.com/cap/relay-target": nil,
+							},
+						},
+					},
+				},
+			},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"*"},
+					CapGrant: []tailcfg.CapGrant{
+						{
+							Dsts: []netip.Prefix{
+								netip.MustParsePrefix("100.64.0.1/32"),
+								netip.MustParsePrefix("100.64.0.0/24"),
+							},
+							CapMap: tailcfg.PeerCapMap{
+								"tailscale.com/cap/relay-target": nil,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := policyutil.ReduceFilterRules(tt.node.View(), tt.rules)
+
+			require.Len(t, got, len(tt.want),
+				"rule count mismatch")
+
+			for i := range tt.want {
+				require.Equal(t, tt.want[i].SrcIPs, got[i].SrcIPs,
+					"rule[%d] SrcIPs", i)
+				require.Len(t, got[i].DstPorts, len(tt.want[i].DstPorts),
+					"rule[%d] DstPorts count", i)
+				require.Len(t, got[i].CapGrant, len(tt.want[i].CapGrant),
+					"rule[%d] CapGrant count", i)
+
+				for j := range tt.want[i].CapGrant {
+					require.ElementsMatch(t,
+						tt.want[i].CapGrant[j].Dsts,
+						got[i].CapGrant[j].Dsts,
+						"rule[%d].CapGrant[%d] Dsts", i, j,
+					)
+				}
+			}
+		})
 	}
 }

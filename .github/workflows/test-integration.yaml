@@ -12,7 +12,7 @@ jobs:
   # sqlite: Runs all integration tests with SQLite backend.
   # postgres: Runs a subset of tests with PostgreSQL to verify database compatibility.
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     outputs:
       files-changed: ${{ steps.changed-files.outputs.files }}
     steps:
@@ -69,6 +69,25 @@ jobs:
           name: go-cache
           path: go-cache.tar.gz
           retention-days: 10
+      - name: Pin Docker to v28 (avoid v29 breaking changes)
+        if: steps.changed-files.outputs.files == 'true'
+        run: |
+          # Docker 29 breaks docker build via Go client libraries and
+          # docker load/save with certain tarball formats.
+          # Pin to Docker 28.x until our tooling is updated.
+          # https://github.com/actions/runner-images/issues/13474
+          sudo install -m 0755 -d /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+            | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+            https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+            | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+          sudo apt-get update -qq
+          VERSION=$(apt-cache madison docker-ce | grep '28\.5' | head -1 | awk '{print $3}')
+          sudo apt-get install -y --allow-downgrades \
+            "docker-ce=${VERSION}" "docker-ce-cli=${VERSION}"
+          sudo systemctl restart docker
+          docker version
       - name: Build headscale image
         if: steps.changed-files.outputs.files == 'true'
         run: |
@@ -100,10 +119,28 @@ jobs:
           path: tailscale-head-image.tar.gz
           retention-days: 10
   build-postgres:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     needs: build
     if: needs.build.outputs.files-changed == 'true'
     steps:
+      - name: Pin Docker to v28 (avoid v29 breaking changes)
+        run: |
+          # Docker 29 breaks docker build via Go client libraries and
+          # docker load/save with certain tarball formats.
+          # Pin to Docker 28.x until our tooling is updated.
+          # https://github.com/actions/runner-images/issues/13474
+          sudo install -m 0755 -d /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+            | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+            https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+            | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+          sudo apt-get update -qq
+          VERSION=$(apt-cache madison docker-ce | grep '28\.5' | head -1 | awk '{print $3}')
+          sudo apt-get install -y --allow-downgrades \
+            "docker-ce=${VERSION}" "docker-ce-cli=${VERSION}"
+          sudo systemctl restart docker
+          docker version
       - name: Pull and save postgres image
         run: |
           docker pull postgres:latest
@@ -194,9 +231,12 @@ jobs:
           - TestUpdateHostnameFromClient
           - TestExpireNode
           - TestSetNodeExpiryInFuture
+          - TestDisableNodeExpiry
           - TestNodeOnlineStatus
           - TestPingAllByIPManyUpDown
           - Test2118DeletingOnlineNodePanics
+          - TestGrantCapRelay
+          - TestGrantCapDrive
           - TestEnablingRoutes
           - TestHASubnetRouterFailover
           - TestSubnetRouteACL
@@ -210,6 +250,8 @@ jobs:
           - TestAutoApproveMultiNetwork/webauth-user.*
           - TestAutoApproveMultiNetwork/webauth-group.*
           - TestSubnetRouteACLFiltering
+          - TestGrantViaSubnetSteering
+          - TestHASubnetRouterPingFailover
           - TestHeadscale
           - TestTailscaleNodesJoiningHeadcale
           - TestSSHOneUserToAll
@@ -218,6 +260,13 @@ jobs:
           - TestSSHIsBlockedInACL
           - TestSSHUserOnlyIsolation
           - TestSSHAutogroupSelf
+          - TestSSHOneUserToOneCheckModeCLI
+          - TestSSHOneUserToOneCheckModeOIDC
+          - TestSSHCheckModeUnapprovedTimeout
+          - TestSSHCheckModeCheckPeriodCLI
+          - TestSSHCheckModeAutoApprove
+          - TestSSHCheckModeNegativeCLI
+          - TestSSHLocalpart
           - TestTagsAuthKeyWithTagRequestDifferentTag
           - TestTagsAuthKeyWithTagNoAdvertiseFlag
           - TestTagsAuthKeyWithTagCannotAddViaCLI

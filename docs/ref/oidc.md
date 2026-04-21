@@ -46,9 +46,9 @@ A basic configuration connects Headscale to an identity provider and typically r
 
 === "Identity provider"
 
-    * Create a new confidential client (`Client ID`, `Client secret`)
-    * Add Headscale's OIDC callback URL as valid redirect URL: `https://headscale.example.com/oidc/callback`
-    * Configure additional parameters to improve user experience such as: name, description, logo, …
+    - Create a new confidential client (`Client ID`, `Client secret`)
+    - Add Headscale's OIDC callback URL as valid redirect URL: `https://headscale.example.com/oidc/callback`
+    - Configure additional parameters to improve user experience such as: name, description, logo, …
 
 ### Enable PKCE (recommended)
 
@@ -69,8 +69,8 @@ recommended and needs to be configured for Headscale and the identity provider a
 
 === "Identity provider"
 
-    * Enable PKCE for the headscale client
-    * Set the PKCE challenge method to "S256"
+    - Enable PKCE for the headscale client
+    - Set the PKCE challenge method to "S256"
 
 ### Authorize users with filters
 
@@ -81,11 +81,11 @@ are configured, a user needs to pass all of them.
 
 === "Allowed domains"
 
-    * Check the email domain of each authenticating user against the list of allowed domains and only authorize users
+    - Check the email domain of each authenticating user against the list of allowed domains and only authorize users
       whose email domain matches `example.com`.
-    * A verified email address is required [unless email verification is disabled](#control-email-verification).
-    * Access allowed: `alice@example.com`
-    * Access denied: `bob@example.net`
+    - A verified email address is required [unless email verification is disabled](#control-email-verification).
+    - Access allowed: `alice@example.com`
+    - Access denied: `bob@example.net`
 
     ```yaml hl_lines="5-6"
     oidc:
@@ -98,11 +98,11 @@ are configured, a user needs to pass all of them.
 
 === "Allowed users/emails"
 
-    * Check the email address of each authenticating user against the list of allowed email addresses and only authorize
+    - Check the email address of each authenticating user against the list of allowed email addresses and only authorize
       users whose email is part of the `allowed_users` list.
-    * A verified email address is required [unless email verification is disabled](#control-email-verification).
-    * Access allowed: `alice@example.com`, `bob@example.net`
-    * Access denied: `mallory@example.net`
+    - A verified email address is required [unless email verification is disabled](#control-email-verification).
+    - Access allowed: `alice@example.com`, `bob@example.net`
+    - Access denied: `mallory@example.net`
 
     ```yaml hl_lines="5-7"
     oidc:
@@ -116,10 +116,10 @@ are configured, a user needs to pass all of them.
 
 === "Allowed groups"
 
-    * Use the OIDC `groups` claim of each authenticating user to get their group membership and only authorize users
+    - Use the OIDC `groups` claim of each authenticating user to get their group membership and only authorize users
       which are members in at least one of the referenced groups.
-    * Access allowed: users in the `headscale_users` group
-    * Access denied: users without groups, users with other groups
+    - Access allowed: users in the `headscale_users` group
+    - Access denied: users without groups, users with other groups
 
     ```yaml hl_lines="5-7"
     oidc:
@@ -151,16 +151,12 @@ oidc:
 ### Customize node expiration
 
 The node expiration is the amount of time a node is authenticated with OpenID Connect until it expires and needs to
-reauthenticate. The default node expiration is 180 days. This can either be customized or set to the expiration from the
-Access Token.
+reauthenticate. The default node expiration can be configured via the top-level `node.expiry` setting.
 
 === "Customize node expiration"
 
-    ```yaml hl_lines="5"
-    oidc:
-      issuer: "https://sso.example.com"
-      client_id: "headscale"
-      client_secret: "generated-secret"
+    ```yaml hl_lines="2"
+    node:
       expiry: 30d   # Use 0 to disable node expiration
     ```
 
@@ -168,7 +164,6 @@ Access Token.
 
     Please keep in mind that the Access Token is typically a short-lived token that expires within a few minutes. You
     will have to configure token expiration in your identity provider to avoid frequent re-authentication.
-
 
     ```yaml hl_lines="5"
     oidc:
@@ -181,6 +176,7 @@ Access Token.
 !!! tip "Expire a node and force re-authentication"
 
     A node can be expired immediately via:
+
     ```console
     headscale node expire -i <NODE_ID>
     ```
@@ -191,13 +187,16 @@ You may refer to users in the Headscale policy via:
 
 - Email address
 - Username
-- Provider identifier (only available in the database or from your identity provider)
+- Provider identifier (this value is currently only available from the [API](api.md), database or directly from your
+  identity provider)
 
 !!! note "A user identifier in the policy must contain a single `@`"
 
     The Headscale policy requires a single `@` to reference a user. If the username or provider identifier doesn't
-    already contain a single `@`, it needs to be appended at the end. For example: the username `ssmith` has to be
-    written as `ssmith@` to be correctly identified as user within the policy.
+    already contain a single `@`, it needs to be appended at the end. For example: the Headscale username `ssmith` has
+    to be written as `ssmith@` to be correctly identified as user within the policy.
+
+    Ensure that the Headscale username itself does not end with `@`.
 
 !!! warning "Email address or username might be updated by users"
 
@@ -205,6 +204,34 @@ You may refer to users in the Headscale policy via:
     configuration, the values for username or email address might change over time. This might have unexpected
     consequences for Headscale where a policy might no longer work or a user might obtain more access by hijacking an
     existing username or email address.
+
+!!! tip "Howto use the provider identifier in the policy"
+
+    The provider identifier uniquely identifies an OIDC user and a well-behaving identity provider guarantees that this
+    value never changes for a particular user. It is usually an opaque and long string and its value is currently only
+    available from the [API](api.md), database or directly from your identity provider).
+
+    Use the [API](api.md) with the `/api/v1/user` endpoint to fetch the provider identifier (`providerId`). The value
+    (be sure to append an `@` in case the provider identifier doesn't already contain an `@` somewhere) can be used
+    directly to reference a user in the policy. To improve readability of the policy, one may use the `groups` section
+    as an alias:
+
+    ```json
+    {
+      "groups": {
+        "group:alice": [
+          "https://soo.example.com/oauth2/openid/59ac9125-c31b-46c5-814e-06242908cf57@"
+        ]
+      },
+      "acls": [
+        {
+          "action": "accept",
+          "src": ["group:alice"],
+          "dst": ["*:*"]
+        }
+      ]
+    }
+    ```
 
 ## Supported OIDC claims
 
@@ -258,6 +285,7 @@ Authelia is fully supported by Headscale.
 - Authentik is fully supported by Headscale.
 - [Headscale does not support JSON Web Encryption](https://github.com/juanfont/headscale/issues/2446). Leave the field
   `Encryption Key` in the providers section unset.
+- See Authentik's [Integrate with Headscale](https://integrations.goauthentik.io/networking/headscale/)
 
 ### Google OAuth
 
@@ -279,22 +307,30 @@ Console.
 #### Steps
 
 1. Go to [Google Console](https://console.cloud.google.com) and login or create an account if you don't have one.
-2. Create a project (if you don't already have one).
-3. On the left hand menu, go to `APIs and services` -> `Credentials`
-4. Click `Create Credentials` -> `OAuth client ID`
-5. Under `Application Type`, choose `Web Application`
-6. For `Name`, enter whatever you like
-7. Under `Authorised redirect URIs`, add Headscale's OIDC callback URL: `https://headscale.example.com/oidc/callback`
-8. Click `Save` at the bottom of the form
-9. Take note of the `Client ID` and `Client secret`, you can also download it for reference if you need it.
-10. [Configure Headscale following the "Basic configuration" steps](#basic-configuration). The issuer URL for Google
-    OAuth is: `https://accounts.google.com`.
+1. Create a project (if you don't already have one).
+1. On the left hand menu, go to `APIs and services` -> `Credentials`
+1. Click `Create Credentials` -> `OAuth client ID`
+1. Under `Application Type`, choose `Web Application`
+1. For `Name`, enter whatever you like
+1. Under `Authorised redirect URIs`, add Headscale's OIDC callback URL: `https://headscale.example.com/oidc/callback`
+1. Click `Save` at the bottom of the form
+1. Take note of the `Client ID` and `Client secret`, you can also download it for reference if you need it.
+1. [Configure Headscale following the "Basic configuration" steps](#basic-configuration). The issuer URL for Google
+   OAuth is: `https://accounts.google.com`.
 
 ### Kanidm
 
 - Kanidm is fully supported by Headscale.
 - Groups for the [allowed groups filter](#authorize-users-with-filters) need to be specified with their full SPN, for
   example: `headscale_users@sso.example.com`.
+- Kanidm sends the full SPN (`alice@sso.example.com`) as `preferred_username` by default. Headscale stores this value as
+  username which might be confusing as the username and email fields now contain values that look like an email address.
+  [Kanidm can be configured to send the short username as `preferred_username` attribute
+  instead](https://kanidm.github.io/kanidm/stable/integrations/oauth2.html#short-names):
+    ```console
+    kanidm system oauth2 prefer-short-username <client name>
+    ```
+    Once configured, the short username in Headscale will be `alice` and can be referred to as `alice@` in the policy.
 
 ### Keycloak
 
@@ -338,3 +374,9 @@ oidc:
 
 Groups for the [allowed groups filter](#authorize-users-with-filters) need to be specified with their group ID(UUID) instead
 of the group name.
+
+## Switching OIDC providers
+
+Headscale only supports a single OIDC provider in its configuration, but it does store the provider identifier of each user. When switching providers, this might lead to issues with existing users: all user details (name, email, groups) might be identical with the new provider, but the identifier will differ. Headscale will be unable to create a new user as the name and email will already be in use for the existing users.
+
+At this time, you will need to manually update the `provider_identifier` column in the `users` table for each user with the appropriate value for the new provider. The identifier is built from the `iss` and `sub` claims of the OIDC ID token, for example `https://id.example.com/12340987`.

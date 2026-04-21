@@ -11,7 +11,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"tailscale.com/types/ptr"
+	"gorm.io/gorm"
 )
 
 func TestCreatePreAuthKey(t *testing.T) {
@@ -24,7 +24,7 @@ func TestCreatePreAuthKey(t *testing.T) {
 			test: func(t *testing.T, db *HSDatabase) {
 				t.Helper()
 
-				_, err := db.CreatePreAuthKey(ptr.To(types.UserID(12345)), true, false, nil, nil)
+				_, err := db.CreatePreAuthKey(new(types.UserID(12345)), true, false, nil, nil)
 				assert.Error(t, err)
 			},
 		},
@@ -127,7 +127,7 @@ func TestCannotDeleteAssignedPreAuthKey(t *testing.T) {
 		Hostname:       "testest",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(key.ID),
+		AuthKeyID:      new(key.ID),
 	}
 	db.DB.Save(&node)
 
@@ -444,4 +444,46 @@ func TestMultipleLegacyKeysAllowed(t *testing.T) {
 	`, duplicatePrefix, hash2, user.ID, true, false, false, now).Error
 	require.Error(t, err, "duplicate non-empty prefix should be rejected")
 	assert.Contains(t, err.Error(), "UNIQUE constraint failed", "should fail with UNIQUE constraint error")
+}
+
+// TestUsePreAuthKeyAtomicCAS verifies that UsePreAuthKey is an atomic
+// compare-and-set: a second call against an already-used key reports
+// PAKError("authkey already used") rather than silently succeeding.
+func TestUsePreAuthKeyAtomicCAS(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
+	user, err := db.CreateUser(types.User{Name: "atomic-cas"})
+	require.NoError(t, err)
+
+	pakNew, err := db.CreatePreAuthKey(user.TypedID(), false /* reusable */, false, nil, nil)
+	require.NoError(t, err)
+
+	pak, err := db.GetPreAuthKey(pakNew.Key)
+	require.NoError(t, err)
+	require.False(t, pak.Reusable, "test sanity: key must be single-use")
+
+	// First Use should commit cleanly.
+	err = db.Write(func(tx *gorm.DB) error {
+		return UsePreAuthKey(tx, pak)
+	})
+	require.NoError(t, err, "first UsePreAuthKey should succeed")
+
+	// Reload from disk to drop the in-memory Used=true the first call
+	// set on the struct, simulating a second concurrent transaction
+	// that loaded the same row before the first one committed.
+	stale, err := db.GetPreAuthKey(pakNew.Key)
+	require.NoError(t, err)
+
+	stale.Used = false
+
+	err = db.Write(func(tx *gorm.DB) error {
+		return UsePreAuthKey(tx, stale)
+	})
+	require.Error(t, err, "second UsePreAuthKey on the same single-use key must fail")
+
+	var pakErr types.PAKError
+	require.ErrorAs(t, err, &pakErr,
+		"second UsePreAuthKey error must be a PAKError, got: %v", err)
+	assert.Equal(t, "authkey already used", pakErr.Error())
 }

@@ -23,5 +23,5 @@ jobs:
             since being marked as stale."
           days-before-pr-stale: -1
           days-before-pr-close: -1
-          exempt-issue-labels: "no-stale-bot"
+          exempt-issue-labels: "no-stale-bot,needs-more-info"
           repo-token: ${{ secrets.GITHUB_TOKEN }}

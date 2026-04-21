@@ -26,8 +26,8 @@
       overlays.default = _: prev:
         let
           pkgs = nixpkgs.legacyPackages.${prev.stdenv.hostPlatform.system};
-          buildGo = pkgs.buildGo125Module;
-          vendorHash = "sha256-jkeB9XUTEGt58fPOMpE4/e3+JQoMQTgf0RlthVBmfG0=";
+          buildGo = pkgs.buildGo126Module;
+          vendorHash = "sha256-1jVYsI73Sa9/xigxldfvH0TkQThJIGGIq+1A7ARZ068=";
         in
         {
           headscale = buildGo {
@@ -62,16 +62,16 @@
 
           protoc-gen-grpc-gateway = buildGo rec {
             pname = "grpc-gateway";
-            version = "2.27.7";
+            version = "2.28.0";
 
             src = pkgs.fetchFromGitHub {
               owner = "grpc-ecosystem";
               repo = "grpc-gateway";
               rev = "v${version}";
-              sha256 = "sha256-6R0EhNnOBEISJddjkbVTcBvUuU5U3r9Hu2UPfAZDep4=";
+              sha256 = "sha256-93omvHb+b+S0w4D+FGEEwYYDjgumJFDAruc1P4elfvA=";
             };
 
-            vendorHash = "sha256-SOAbRrzMf2rbKaG9PGSnPSLY/qZVgbHcNjOLmVonycY=";
+            vendorHash = "sha256-jVP5zfFPfHeAEApKNJzZwuZLA+DjKgkL7m2DFG72UNs=";
 
             nativeBuildInputs = [ pkgs.installShellFiles ];
 
@@ -80,13 +80,13 @@
 
           protobuf-language-server = buildGo rec {
             pname = "protobuf-language-server";
-            version = "1cf777d";
+            version = "ab4c128";
 
             src = pkgs.fetchFromGitHub {
               owner = "lasorda";
               repo = "protobuf-language-server";
-              rev = "1cf777de4d35a6e493a689e3ca1a6183ce3206b6";
-              sha256 = "sha256-9MkBQPxr/TDr/sNz/Sk7eoZwZwzdVbE5u6RugXXk5iY=";
+              rev = "ab4c128f00774d51bd6d1f4cfa735f4b7c8619e3";
+              sha256 = "sha256-yF6kG+qTRxVO/qp2V9HgTyFBeOm5RQzeqdZFrdidwxM=";
             };
 
             vendorHash = "sha256-4nTpKBe7ekJsfQf+P6edT/9Vp2SBYbKz1ITawD3bhkI=";
@@ -94,19 +94,46 @@
             subPackages = [ "." ];
           };
 
-          # Upstream does not override buildGoModule properly,
-          # importing a specific module, so comment out for now.
-          # golangci-lint = prev.golangci-lint.override {
-          #   buildGoModule = buildGo;
-          # };
-          # golangci-lint-langserver = prev.golangci-lint.override {
-          #   buildGoModule = buildGo;
-          # };
+          # Build golangci-lint with Go 1.26 (upstream uses hardcoded Go version)
+          golangci-lint = buildGo rec {
+            pname = "golangci-lint";
+            version = "2.11.4";
 
-          # The package uses buildGo125Module, not the convention.
-          # goreleaser = prev.goreleaser.override {
-          #   buildGoModule = buildGo;
-          # };
+            src = pkgs.fetchFromGitHub {
+              owner = "golangci";
+              repo = "golangci-lint";
+              rev = "v${version}";
+              hash = "sha256-B19aLvfNRY9TOYw/71f2vpNUuSIz8OI4dL0ijGezsas=";
+            };
+
+            vendorHash = "sha256-xuoj4+U4tB5gpABKq4Dbp2cxnljxdYoBbO8A7DqPM5E=";
+
+            subPackages = [ "cmd/golangci-lint" ];
+
+            nativeBuildInputs = [ pkgs.installShellFiles ];
+
+            ldflags = [
+              "-s"
+              "-w"
+              "-X main.version=${version}"
+              "-X main.commit=v${version}"
+              "-X main.date=1970-01-01T00:00:00Z"
+            ];
+
+            postInstall = ''
+              for shell in bash zsh fish; do
+                HOME=$TMPDIR $out/bin/golangci-lint completion $shell > golangci-lint.$shell
+                installShellCompletion golangci-lint.$shell
+              done
+            '';
+
+            meta = {
+              description = "Fast linters runner for Go";
+              homepage = "https://golangci-lint.run/";
+              changelog = "https://github.com/golangci/golangci-lint/blob/v${version}/CHANGELOG.md";
+              mainProgram = "golangci-lint";
+            };
+          };
 
           gotestsum = prev.gotestsum.override {
             buildGoModule = buildGo;
@@ -120,9 +147,9 @@
             buildGoModule = buildGo;
           };
 
-          # gopls = prev.gopls.override {
-          #   buildGoModule = buildGo;
-          # };
+          gopls = prev.gopls.override {
+            buildGoLatestModule = buildGo;
+          };
         };
     }
     // flake-utils.lib.eachDefaultSystem
@@ -132,14 +159,14 @@
           overlays = [ self.overlays.default ];
           inherit system;
         };
-        buildDeps = with pkgs; [ git go_1_25 gnumake ];
+        buildDeps = with pkgs; [ git go_1_26 gnumake ];
         devDeps = with pkgs;
           buildDeps
           ++ [
             golangci-lint
             golangci-lint-langserver
             golines
-            nodePackages.prettier
+            prettier
             nixpkgs-fmt
             goreleaser
             nfpm
@@ -152,6 +179,10 @@
             yq-go
             ripgrep
             postgresql
+            python314Packages.mdformat
+            python314Packages.mdformat-footnote
+            python314Packages.mdformat-frontmatter
+            python314Packages.mdformat-mkdocs
             prek
 
             # 'dot' is needed for pprof graphs

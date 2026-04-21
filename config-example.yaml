@@ -50,12 +50,21 @@ noise:
 # List of IP prefixes to allocate tailaddresses from.
 # Each prefix consists of either an IPv4 or IPv6 address,
 # and the associated prefix length, delimited by a slash.
-# It must be within IP ranges supported by the Tailscale
-# client - i.e., subnets of 100.64.0.0/10 and fd7a:115c:a1e0::/48.
-# See below:
-# IPv6: https://github.com/tailscale/tailscale/blob/22ebb25e833264f58d7c3f534a8b166894a89536/net/tsaddr/tsaddr.go#LL81C52-L81C71
+#
+# WARNING: These prefixes MUST be subsets of the standard Tailscale ranges:
+#   - IPv4: 100.64.0.0/10 (CGNAT range)
+#   - IPv6: fd7a:115c:a1e0::/48 (Tailscale ULA range)
+#
+# Using a SUBSET of these ranges is supported and useful if you want to
+# limit IP allocation to a smaller block (e.g., 100.64.0.0/24).
+#
+# Using ranges OUTSIDE of CGNAT/ULA is NOT supported and will cause
+# undefined behaviour. The Tailscale client has hard-coded assumptions
+# about these ranges and will break in subtle, hard-to-debug ways.
+#
+# See:
 # IPv4: https://github.com/tailscale/tailscale/blob/22ebb25e833264f58d7c3f534a8b166894a89536/net/tsaddr/tsaddr.go#L33
-# Any other range is NOT supported, and it will cause unexpected issues.
+# IPv6: https://github.com/tailscale/tailscale/blob/22ebb25e833264f58d7c3f534a8b166894a89536/net/tsaddr/tsaddr.go#LL81C52-L81C71
 prefixes:
   v4: 100.64.0.0/10
   v6: fd7a:115c:a1e0::/48
@@ -119,7 +128,7 @@ derp:
   #
   # This option is mostly interesting for people hosting
   # their own DERP servers:
-  # https://tailscale.com/kb/1118/custom-derp-servers/
+  # https://tailscale.com/docs/reference/derp-servers/custom-derp-servers
   #
   # paths:
   #   - /etc/headscale/derp-example.yaml
@@ -136,8 +145,44 @@ derp:
 # Disables the automatic check for headscale updates on startup
 disable_check_updates: false
 
-# Time before an inactive ephemeral node is deleted?
-ephemeral_node_inactivity_timeout: 30m
+# Node lifecycle configuration.
+node:
+  # Default key expiry for non-tagged nodes, regardless of registration method
+  # (auth key, CLI, web auth, OIDC). Tagged nodes are exempt and never expire.
+  #
+  # If a client explicitly requests a specific expiry, the client value is used.
+  #
+  # Setting the value to "0" means no default expiry (nodes never expire unless
+  # explicitly expired via `headscale nodes expire`).
+  #
+  # Tailscale SaaS uses 180d; set to a positive duration to match that behaviour.
+  #
+  # Default: 0 (no default expiry)
+  expiry: 0
+
+  ephemeral:
+    # Time before an inactive ephemeral node is deleted.
+    inactivity_timeout: 30m
+
+  # HA subnet router health probing.
+  #
+  # When HA routes exist (2+ nodes advertising the same prefix), headscale
+  # pings each HA node every probe_interval via the Noise channel. If a node
+  # fails to respond within probe_timeout it is marked unhealthy and the
+  # primary role moves to the next healthy node. A node that later responds
+  # is marked healthy again but does NOT reclaim primary (avoids flapping).
+  #
+  # Worst-case detection time is probe_interval + probe_timeout (15s default).
+  # No-op when no HA routes exist. Set probe_interval to 0 to disable.
+  routes:
+    ha:
+      # How often to ping HA subnet routers. Set to 0 to disable probing.
+      # Must be >= 2s when enabled.
+      probe_interval: 10s
+
+      # How long to wait for a ping response before marking a node unhealthy.
+      # Must be >= 1s and less than probe_interval.
+      probe_timeout: 5s
 
 database:
   # Database type. Available options: sqlite, postgres
@@ -237,7 +282,7 @@ log:
 ## Policy
 # headscale supports Tailscale's ACL policies.
 # Please have a look to their KB to better
-# understand the concepts: https://tailscale.com/kb/1018/acls/
+# understand the concepts: https://tailscale.com/docs/features/access-control/acls
 policy:
   # The mode can be "file" or "database" that defines
   # where the ACL policies are stored and read from.
@@ -251,9 +296,9 @@ policy:
 # headscale supports Tailscale's DNS configuration and MagicDNS.
 # Please have a look to their KB to better understand the concepts:
 #
-# - https://tailscale.com/kb/1054/dns/
-# - https://tailscale.com/kb/1081/magicdns/
-# - https://tailscale.com/blog/2021-09-private-dns-with-magicdns/
+# - https://tailscale.com/docs/features/access-control/acls
+# - https://tailscale.com/docs/features/magicdns
+# - https://tailscale.com/blog/2021-09-private-dns-with-magicdns
 #
 # Please note that for the DNS configuration to have any effect,
 # clients must have the `--accept-dns=true` option enabled. This is the
@@ -263,12 +308,12 @@ policy:
 # Setting _any_ of the configuration and `--accept-dns=true` on the
 # clients will integrate with the DNS manager on the client or
 # overwrite /etc/resolv.conf.
-# https://tailscale.com/kb/1235/resolv-conf
+# https://tailscale.com/docs/reference/faq/dns-resolv-conf
 #
 # If you want stop Headscale from managing the DNS configuration
 # all the fields under `dns` should be set to empty values.
 dns:
-  # Whether to use [MagicDNS](https://tailscale.com/kb/1081/magicdns/).
+  # Whether to use [MagicDNS](https://tailscale.com/docs/features/magicdns).
   magic_dns: true
 
   # Defines the base domain to create the hostnames for MagicDNS.
@@ -290,11 +335,11 @@ dns:
       - 2606:4700:4700::1111
       - 2606:4700:4700::1001
 
-      # NextDNS (see https://tailscale.com/kb/1218/nextdns/).
+      # NextDNS (see https://tailscale.com/docs/integrations/nextdns).
       # "abc123" is example NextDNS ID, replace with yours.
       # - https://dns.nextdns.io/abc123
 
-    # Split DNS (see https://tailscale.com/kb/1054/dns/),
+    # Split DNS (see https://tailscale.com/docs/reference/dns-in-tailscale#restricted-nameservers),
     # a map of domains and which DNS server to use for each.
     split: {}
       # foo.bar.com:
@@ -346,15 +391,11 @@ unix_socket_permission: "0770"
 #   # `LoadCredential` straightforward:
 #   client_secret_path: "${CREDENTIALS_DIRECTORY}/oidc_client_secret"
 #
-#   # The amount of time a node is authenticated with OpenID until it expires
-#   # and needs to reauthenticate.
-#   # Setting the value to "0" will mean no expiry.
-#   expiry: 180d
-#
 #   # Use the expiry from the token received from OpenID when the user logged
 #   # in. This will typically lead to frequent need to reauthenticate and should
 #   # only be enabled if you know what you are doing.
-#   # Note: enabling this will cause `oidc.expiry` to be ignored.
+#   # Note: enabling this will cause `node.expiry` to be ignored for
+#   # OIDC-authenticated nodes.
 #   use_expiry_from_token: false
 #
 #   # Token refresh and session management configuration
@@ -417,7 +458,7 @@ unix_socket_permission: "0770"
 # Logtail is Tailscales logging and auditing infrastructure, it allows the
 # control panel to instruct tailscale nodes to log their activity to a remote
 # server. To disable logging on the client side, please refer to:
-# https://tailscale.com/kb/1011/log-mesh-traffic#opting-out-of-client-logging
+# https://tailscale.com/docs/features/logging#opt-out-of-client-logging
 logtail:
   # Enable logtail for tailscale nodes of this Headscale instance.
   # As there is currently no support for overriding the log server in Headscale, this is
@@ -426,12 +467,12 @@ logtail:
 
 # Enabling this option makes devices prefer a random port for WireGuard traffic over the
 # default static port 41641. This option is intended as a workaround for some buggy
-# firewall devices. See https://tailscale.com/kb/1181/firewalls/ for more information.
+# firewall devices. See https://tailscale.com/docs/integrations/firewalls for more information.
 randomize_client_port: false
 
 # Taildrop configuration
 # Taildrop is the file sharing feature of Tailscale, allowing nodes to send files to each other.
-# https://tailscale.com/kb/1106/taildrop/
+# https://tailscale.com/docs/features/taildrop
 taildrop:
   # Enable or disable Taildrop for all nodes.
   # When enabled, nodes can send files to other nodes owned by the same user.
@@ -442,6 +483,11 @@ taildrop:
 # Only modify these if you have identified a specific performance issue.
 #
 # tuning:
+#   # Maximum number of pending registration entries in the auth cache.
+#   # Oldest entries are evicted when the cap is reached.
+#   #
+#   # register_cache_max_entries: 1024
+#
 #   # NodeStore write batching configuration.
 #   # The NodeStore batches write operations before rebuilding peer relationships,
 #   # which is computationally expensive. Batching reduces rebuild frequency.

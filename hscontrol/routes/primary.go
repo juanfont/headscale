@@ -10,6 +10,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
 	xmaps "golang.org/x/exp/maps"
 	"tailscale.com/net/tsaddr"
@@ -26,6 +27,10 @@ type PrimaryRoutes struct {
 	// primaries is a map of prefixes to the node that is the primary for that prefix.
 	primaries map[netip.Prefix]types.NodeID
 	isPrimary map[types.NodeID]bool
+
+	// unhealthy tracks nodes that failed health probes. Unhealthy nodes
+	// are skipped during primary selection but remain in the routes map.
+	unhealthy set.Set[types.NodeID]
 }
 
 func New() *PrimaryRoutes {
@@ -33,6 +38,7 @@ func New() *PrimaryRoutes {
 		routes:    make(map[types.NodeID]set.Set[netip.Prefix]),
 		primaries: make(map[netip.Prefix]types.NodeID),
 		isPrimary: make(map[types.NodeID]bool),
+		unhealthy: make(set.Set[types.NodeID]),
 	}
 }
 
@@ -79,7 +85,7 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 	for prefix, nodes := range allPrimaries {
 		log.Debug().
 			Caller().
-			Str("prefix", prefix.String()).
+			Str(zf.Prefix, prefix.String()).
 			Uints64("availableNodes", func() []uint64 {
 				ids := make([]uint64, len(nodes))
 				for i, id := range nodes {
@@ -88,34 +94,64 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 
 				return ids
 			}()).
-			Msg("Processing prefix for primary route selection")
+			Msg("processing prefix for primary route selection")
 
 		if node, ok := pr.primaries[prefix]; ok {
-			// If the current primary is still available, continue.
-			if slices.Contains(nodes, node) {
+			// If the current primary is still available and healthy, continue.
+			if slices.Contains(nodes, node) && !pr.unhealthy.Contains(node) {
 				log.Debug().
 					Caller().
-					Str("prefix", prefix.String()).
+					Str(zf.Prefix, prefix.String()).
 					Uint64("currentPrimary", node.Uint64()).
-					Msg("Current primary still available, keeping it")
+					Msg("current primary still available and healthy, keeping it")
 
 				continue
 			} else {
 				log.Debug().
 					Caller().
-					Str("prefix", prefix.String()).
+					Str(zf.Prefix, prefix.String()).
 					Uint64("oldPrimary", node.Uint64()).
-					Msg("Current primary no longer available")
+					Bool("unhealthy", pr.unhealthy.Contains(node)).
+					Msg("current primary no longer available or unhealthy")
 			}
 		}
-		if len(nodes) >= 1 {
-			pr.primaries[prefix] = nodes[0]
+
+		// Select the first healthy node as primary.
+		// If all nodes are unhealthy, fall back to the first node
+		// (degraded service is better than no service).
+		var selected types.NodeID
+
+		found := false
+
+		for _, n := range nodes {
+			if !pr.unhealthy.Contains(n) {
+				selected = n
+				found = true
+
+				break
+			}
+		}
+
+		if !found && len(nodes) >= 1 {
+			selected = nodes[0]
+			found = true
+
+			log.Warn().
+				Caller().
+				Str(zf.Prefix, prefix.String()).
+				Uint64("fallbackPrimary", selected.Uint64()).
+				Msg("all nodes unhealthy for prefix, keeping first as degraded primary")
+		}
+
+		if found {
+			pr.primaries[prefix] = selected
 			changed = true
+
 			log.Debug().
 				Caller().
-				Str("prefix", prefix.String()).
-				Uint64("newPrimary", nodes[0].Uint64()).
-				Msg("Selected new primary for prefix")
+				Str(zf.Prefix, prefix.String()).
+				Uint64("newPrimary", selected.Uint64()).
+				Msg("selected new primary for prefix")
 		}
 	}
 
@@ -124,9 +160,10 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 		if _, ok := allPrimaries[prefix]; !ok {
 			log.Debug().
 				Caller().
-				Str("prefix", prefix.String()).
-				Msg("Cleaning up primary route that no longer has available nodes")
+				Str(zf.Prefix, prefix.String()).
+				Msg("cleaning up primary route that no longer has available nodes")
 			delete(pr.primaries, prefix)
+
 			changed = true
 		}
 	}
@@ -138,8 +175,8 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 
 	log.Debug().
 		Caller().
-		Bool("changed", changed).
-		Str("finalState", pr.stringLocked()).
+		Bool(zf.Changes, changed).
+		Str(zf.FinalState, pr.stringLocked()).
 		Msg("updatePrimaryLocked completed")
 
 	return changed
@@ -153,30 +190,35 @@ func (pr *PrimaryRoutes) SetRoutes(node types.NodeID, prefixes ...netip.Prefix) 
 	pr.mu.Lock()
 	defer pr.mu.Unlock()
 
-	log.Debug().
+	nlog := log.With().Uint64(zf.NodeID, node.Uint64()).Logger()
+
+	nlog.Debug().
 		Caller().
-		Uint64("node.id", node.Uint64()).
 		Strs("prefixes", util.PrefixesToString(prefixes)).
 		Msg("PrimaryRoutes.SetRoutes called")
 
-	// If no routes are being set, remove the node from the routes map.
+	// If no routes are being set, remove the node from the routes map
+	// and clear any unhealthy state.
 	if len(prefixes) == 0 {
 		wasPresent := false
+
 		if _, ok := pr.routes[node]; ok {
 			delete(pr.routes, node)
+			pr.unhealthy.Delete(node)
+
 			wasPresent = true
-			log.Debug().
+
+			nlog.Debug().
 				Caller().
-				Uint64("node.id", node.Uint64()).
-				Msg("Removed node from primary routes (no prefixes)")
+				Msg("removed node from primary routes (no prefixes)")
 		}
+
 		changed := pr.updatePrimaryLocked()
-		log.Debug().
+		nlog.Debug().
 			Caller().
-			Uint64("node.id", node.Uint64()).
 			Bool("wasPresent", wasPresent).
-			Bool("changed", changed).
-			Str("newState", pr.stringLocked()).
+			Bool(zf.Changes, changed).
+			Str(zf.NewState, pr.stringLocked()).
 			Msg("SetRoutes completed (remove)")
 
 		return changed
@@ -191,25 +233,22 @@ func (pr *PrimaryRoutes) SetRoutes(node types.NodeID, prefixes ...netip.Prefix) 
 
 	if rs.Len() != 0 {
 		pr.routes[node] = rs
-		log.Debug().
+		nlog.Debug().
 			Caller().
-			Uint64("node.id", node.Uint64()).
 			Strs("routes", util.PrefixesToString(rs.Slice())).
-			Msg("Updated node routes in primary route manager")
+			Msg("updated node routes in primary route manager")
 	} else {
 		delete(pr.routes, node)
-		log.Debug().
+		nlog.Debug().
 			Caller().
-			Uint64("node.id", node.Uint64()).
-			Msg("Removed node from primary routes (only exit routes)")
+			Msg("removed node from primary routes (only exit routes)")
 	}
 
 	changed := pr.updatePrimaryLocked()
-	log.Debug().
+	nlog.Debug().
 		Caller().
-		Uint64("node.id", node.Uint64()).
-		Bool("changed", changed).
-		Str("newState", pr.stringLocked()).
+		Bool(zf.Changes, changed).
+		Str(zf.NewState, pr.stringLocked()).
 		Msg("SetRoutes completed (update)")
 
 	return changed
@@ -236,9 +275,102 @@ func (pr *PrimaryRoutes) PrimaryRoutes(id types.NodeID) []netip.Prefix {
 		}
 	}
 
-	tsaddr.SortPrefixes(routes)
+	slices.SortFunc(routes, netip.Prefix.Compare)
 
 	return routes
+}
+
+// SetNodeHealthy marks a node as healthy or unhealthy and recalculates
+// primary routes. Returns true if primaries changed.
+func (pr *PrimaryRoutes) SetNodeHealthy(
+	node types.NodeID,
+	healthy bool,
+) bool {
+	pr.mu.Lock()
+	defer pr.mu.Unlock()
+
+	if healthy {
+		if !pr.unhealthy.Contains(node) {
+			return false
+		}
+
+		pr.unhealthy.Delete(node)
+
+		log.Debug().
+			Caller().
+			Uint64(zf.NodeID, node.Uint64()).
+			Msg("node marked healthy")
+	} else {
+		if pr.unhealthy.Contains(node) {
+			return false
+		}
+
+		pr.unhealthy.Add(node)
+
+		log.Info().
+			Caller().
+			Uint64(zf.NodeID, node.Uint64()).
+			Msg("node marked unhealthy")
+	}
+
+	return pr.updatePrimaryLocked()
+}
+
+// ClearUnhealthy removes a node from the unhealthy set without
+// recalculating primaries. Used when a node reconnects to give
+// it a fresh start.
+func (pr *PrimaryRoutes) ClearUnhealthy(node types.NodeID) {
+	pr.mu.Lock()
+	defer pr.mu.Unlock()
+
+	if pr.unhealthy.Contains(node) {
+		pr.unhealthy.Delete(node)
+
+		log.Debug().
+			Caller().
+			Uint64(zf.NodeID, node.Uint64()).
+			Msg("cleared unhealthy state on reconnect")
+	}
+}
+
+// HANodes returns a snapshot of prefixes that have 2+ nodes
+// advertising them (HA configurations), mapped to the node IDs.
+// Node IDs are sorted deterministically.
+func (pr *PrimaryRoutes) HANodes() map[netip.Prefix][]types.NodeID {
+	pr.mu.Lock()
+	defer pr.mu.Unlock()
+
+	// Build prefix → nodes map.
+	prefixNodes := make(map[netip.Prefix][]types.NodeID)
+
+	ids := types.NodeIDs(xmaps.Keys(pr.routes))
+	sort.Sort(ids)
+
+	for _, id := range ids {
+		routes := pr.routes[id]
+		for route := range routes {
+			prefixNodes[route] = append(prefixNodes[route], id)
+		}
+	}
+
+	// Keep only prefixes with 2+ advertisers.
+	result := make(map[netip.Prefix][]types.NodeID)
+
+	for prefix, nodes := range prefixNodes {
+		if len(nodes) >= 2 {
+			result[prefix] = nodes
+		}
+	}
+
+	return result
+}
+
+// IsNodeHealthy returns whether the node is currently considered healthy.
+func (pr *PrimaryRoutes) IsNodeHealthy(node types.NodeID) bool {
+	pr.mu.Lock()
+	defer pr.mu.Unlock()
+
+	return !pr.unhealthy.Contains(node)
 }
 
 func (pr *PrimaryRoutes) String() string {
@@ -255,12 +387,14 @@ func (pr *PrimaryRoutes) stringLocked() string {
 
 	ids := types.NodeIDs(xmaps.Keys(pr.routes))
 	sort.Sort(ids)
+
 	for _, id := range ids {
 		prefixes := pr.routes[id]
 		fmt.Fprintf(&sb, "\nNode %d: %s", id, strings.Join(util.PrefixesToString(prefixes.Slice()), ", "))
 	}
 
 	fmt.Fprintln(&sb, "\n\nCurrent primary routes:")
+
 	for route, nodeID := range pr.primaries {
 		fmt.Fprintf(&sb, "\nRoute %s: %d", route, nodeID)
 	}
@@ -279,6 +413,9 @@ type DebugRoutes struct {
 
 	// PrimaryRoutes maps route prefixes to the primary node serving them
 	PrimaryRoutes map[string]types.NodeID `json:"primary_routes"`
+
+	// UnhealthyNodes lists nodes that have failed health probes.
+	UnhealthyNodes []types.NodeID `json:"unhealthy_nodes,omitempty"`
 }
 
 // DebugJSON returns a structured representation of the primary routes state suitable for JSON serialization.
@@ -294,13 +431,30 @@ func (pr *PrimaryRoutes) DebugJSON() DebugRoutes {
 	// Populate available routes
 	for nodeID, routes := range pr.routes {
 		prefixes := routes.Slice()
-		tsaddr.SortPrefixes(prefixes)
+		slices.SortFunc(prefixes, netip.Prefix.Compare)
 		debug.AvailableRoutes[nodeID] = prefixes
 	}
 
 	// Populate primary routes
 	for prefix, nodeID := range pr.primaries {
 		debug.PrimaryRoutes[prefix.String()] = nodeID
+	}
+
+	// Populate unhealthy nodes
+	if pr.unhealthy.Len() > 0 {
+		nodes := pr.unhealthy.Slice()
+		slices.SortFunc(nodes, func(a, b types.NodeID) int {
+			if a < b {
+				return -1
+			}
+
+			if a > b {
+				return 1
+			}
+
+			return 0
+		})
+		debug.UnhealthyNodes = nodes
 	}
 
 	return debug

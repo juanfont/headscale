@@ -7,10 +7,20 @@ import (
 	"sync"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/ory/dockertest/v3"
 )
 
-const dockerExecuteTimeout = time.Second * 10
+// defaultExecuteTimeout returns the timeout for docker exec commands.
+// On CI runners, docker exec latency is higher due to resource
+// contention, so the timeout is doubled.
+func defaultExecuteTimeout() time.Duration {
+	if util.IsCI() {
+		return 20 * time.Second
+	}
+
+	return 10 * time.Second
+}
 
 var (
 	ErrDockertestCommandFailed  = errors.New("dockertest command failed")
@@ -38,9 +48,10 @@ type buffer struct {
 
 // Write appends the contents of p to the buffer, growing the buffer as needed. It returns
 // the number of bytes written.
-func (b *buffer) Write(p []byte) (n int, err error) {
+func (b *buffer) Write(p []byte) (int, error) {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
+
 	return b.store.Write(p)
 }
 
@@ -49,6 +60,7 @@ func (b *buffer) Write(p []byte) (n int, err error) {
 func (b *buffer) String() string {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
+
 	return b.store.String()
 }
 
@@ -62,11 +74,12 @@ func ExecuteCommand(
 	stderr := buffer{}
 
 	execConfig := ExecuteCommandConfig{
-		timeout: dockerExecuteTimeout,
+		timeout: defaultExecuteTimeout(),
 	}
 
 	for _, opt := range options {
-		if err := opt(&execConfig); err != nil {
+		err := opt(&execConfig)
+		if err != nil {
 			return "", "", fmt.Errorf("execute-command/options: %w", err)
 		}
 	}
@@ -105,7 +118,6 @@ func ExecuteCommand(
 			// log.Println("Command: ", cmd)
 			// log.Println("stdout: ", stdout.String())
 			// log.Println("stderr: ", stderr.String())
-
 			return stdout.String(), stderr.String(), fmt.Errorf("command failed, stderr: %s: %w", stderr.String(), ErrDockertestCommandFailed)
 		}
 

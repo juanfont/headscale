@@ -12,12 +12,12 @@ import (
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
+	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 )
 
 func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
@@ -31,18 +31,12 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			}
 
 			scenario, err := NewScenario(spec)
+
 			require.NoError(t, err)
 			defer scenario.ShutdownAssertNoPanics(t)
 
 			opts := []hsic.Option{
-				hsic.WithTestName("pingallbyip"),
-				hsic.WithEmbeddedDERPServerOnly(),
-				hsic.WithDERPAsIP(),
-			}
-			if https {
-				opts = append(opts, []hsic.Option{
-					hsic.WithTLS(),
-				}...)
+				hsic.WithTestName("authkey-relogsame"),
 			}
 
 			err = scenario.CreateHeadscaleEnv([]tsic.Option{}, opts...)
@@ -61,7 +55,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			requireNoErrGetHeadscale(t, err)
 
 			expectedNodes := collectExpectedNodeIDs(t, allClients)
-			requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected", 120*time.Second)
+			requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected", integrationutil.ScaledTimeout(120*time.Second))
 
 			// Validate that all nodes have NetInfo and DERP servers before logout
 			requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP before logout", 3*time.Minute)
@@ -69,18 +63,24 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			// assertClientsState(t, allClients)
 
 			clientIPs := make(map[TailscaleClient][]netip.Addr)
+
 			for _, client := range allClients {
 				ips, err := client.IPs()
 				if err != nil {
 					t.Fatalf("failed to get IPs for client %s: %s", client.Hostname(), err)
 				}
+
 				clientIPs[client] = ips
 			}
 
-			var listNodes []*v1.Node
-			var nodeCountBeforeLogout int
+			var (
+				listNodes             []*v1.Node
+				nodeCountBeforeLogout int
+			)
+
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
 				var err error
+
 				listNodes, err = headscale.ListNodes()
 				assert.NoError(c, err)
 				assert.Len(c, listNodes, len(allClients))
@@ -88,7 +88,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 				for _, node := range listNodes {
 					assertLastSeenSetWithCollect(c, node)
 				}
-			}, 10*time.Second, 200*time.Millisecond, "Waiting for expected node list before logout")
+			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for expected node list before logout")
 
 			nodeCountBeforeLogout = len(listNodes)
 			t.Logf("node count before logout: %d", nodeCountBeforeLogout)
@@ -104,17 +104,18 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			requireNoErrLogout(t, err)
 
 			// After taking down all nodes, verify all systems show nodes offline
-			requireAllClientsOnline(t, headscale, expectedNodes, false, "all nodes should have logged out", 120*time.Second)
+			requireAllClientsOnline(t, headscale, expectedNodes, false, "all nodes should have logged out", integrationutil.ScaledTimeout(120*time.Second))
 
 			t.Logf("all clients logged out")
 
 			t.Logf("Validating node persistence after logout at %s", time.Now().Format(TimestampFormat))
 			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 				var err error
+
 				listNodes, err = headscale.ListNodes()
 				assert.NoError(ct, err, "Failed to list nodes after logout")
 				assert.Len(ct, listNodes, nodeCountBeforeLogout, "Node count should match before logout count - expected %d nodes, got %d", nodeCountBeforeLogout, len(listNodes))
-			}, 30*time.Second, 2*time.Second, "validating node persistence after logout (nodes should remain in database)")
+			}, integrationutil.ScaledTimeout(30*time.Second), 2*time.Second, "validating node persistence after logout (nodes should remain in database)")
 
 			for _, node := range listNodes {
 				assertLastSeenSet(t, node)
@@ -148,16 +149,17 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			t.Logf("Validating node persistence after relogin at %s", time.Now().Format(TimestampFormat))
 			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 				var err error
+
 				listNodes, err = headscale.ListNodes()
 				assert.NoError(ct, err, "Failed to list nodes after relogin")
 				assert.Len(ct, listNodes, nodeCountBeforeLogout, "Node count should remain unchanged after relogin - expected %d nodes, got %d", nodeCountBeforeLogout, len(listNodes))
-			}, 60*time.Second, 2*time.Second, "validating node count stability after same-user auth key relogin")
+			}, integrationutil.ScaledTimeout(60*time.Second), 2*time.Second, "validating node count stability after same-user auth key relogin")
 
 			for _, node := range listNodes {
 				assertLastSeenSet(t, node)
 			}
 
-			requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected to batcher", 120*time.Second)
+			requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected to batcher", integrationutil.ScaledTimeout(120*time.Second))
 
 			// Wait for Tailscale sync before validating NetInfo to ensure proper state propagation
 			err = scenario.WaitForTailscaleSync()
@@ -173,8 +175,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 				return x.String()
 			})
 
-			success := pingAllHelper(t, allClients, allAddrs)
-			t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+			assertPingAll(t, allClients, allAddrs)
 
 			for _, client := range allClients {
 				ips, err := client.IPs()
@@ -201,6 +202,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
 				var err error
+
 				listNodes, err = headscale.ListNodes()
 				assert.NoError(c, err)
 				assert.Len(c, listNodes, nodeCountBeforeLogout)
@@ -208,7 +210,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 				for _, node := range listNodes {
 					assertLastSeenSetWithCollect(c, node)
 				}
-			}, 10*time.Second, 200*time.Millisecond, "Waiting for node list after relogin")
+			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for node list after relogin")
 		})
 	}
 }
@@ -232,8 +234,6 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 
 	err = scenario.CreateHeadscaleEnv([]tsic.Option{},
 		hsic.WithTestName("keyrelognewuser"),
-		hsic.WithTLS(),
-		hsic.WithDERPAsIP(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -252,17 +252,21 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	expectedNodes := collectExpectedNodeIDs(t, allClients)
 
 	// Validate initial connection state
-	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected after initial login", 120*time.Second)
+	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected after initial login", integrationutil.ScaledTimeout(120*time.Second))
 	requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after initial login", 3*time.Minute)
 
-	var listNodes []*v1.Node
-	var nodeCountBeforeLogout int
+	var (
+		listNodes             []*v1.Node
+		nodeCountBeforeLogout int
+	)
+
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		var err error
+
 		listNodes, err = headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, listNodes, len(allClients))
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for expected node list before logout")
+	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for expected node list before logout")
 
 	nodeCountBeforeLogout = len(listNodes)
 	t.Logf("node count before logout: %d", nodeCountBeforeLogout)
@@ -278,7 +282,7 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	requireNoErrLogout(t, err)
 
 	// Validate that all nodes are offline after logout
-	requireAllClientsOnline(t, headscale, expectedNodes, false, "all nodes should be offline after logout", 120*time.Second)
+	requireAllClientsOnline(t, headscale, expectedNodes, false, "all nodes should be offline after logout", integrationutil.ScaledTimeout(120*time.Second))
 
 	t.Logf("all clients logged out")
 
@@ -301,13 +305,15 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	}
 
 	var user1Nodes []*v1.Node
+
 	t.Logf("Validating user1 node count after relogin at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
+
 		user1Nodes, err = headscale.ListNodes("user1")
 		assert.NoError(ct, err, "Failed to list nodes for user1 after relogin")
 		assert.Len(ct, user1Nodes, len(allClients), "User1 should have all %d clients after relogin, got %d nodes", len(allClients), len(user1Nodes))
-	}, 60*time.Second, 2*time.Second, "validating user1 has all client nodes after auth key relogin")
+	}, integrationutil.ScaledTimeout(60*time.Second), 2*time.Second, "validating user1 has all client nodes after auth key relogin")
 
 	// Collect expected node IDs for user1 after relogin
 	expectedUser1Nodes := make([]types.NodeID, 0, len(user1Nodes))
@@ -316,28 +322,31 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	}
 
 	// Validate connection state after relogin as user1
-	requireAllClientsOnline(t, headscale, expectedUser1Nodes, true, "all user1 nodes should be connected after relogin", 120*time.Second)
+	requireAllClientsOnline(t, headscale, expectedUser1Nodes, true, "all user1 nodes should be connected after relogin", integrationutil.ScaledTimeout(120*time.Second))
 	requireAllClientsNetInfoAndDERP(t, headscale, expectedUser1Nodes, "all user1 nodes should have NetInfo and DERP after relogin", 3*time.Minute)
 
 	// Validate that user2 still has their original nodes after user1's re-authentication
 	// When nodes re-authenticate with a different user's pre-auth key, NEW nodes are created
 	// for the new user. The original nodes remain with the original user.
 	var user2Nodes []*v1.Node
+
 	t.Logf("Validating user2 node persistence after user1 relogin at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
+
 		user2Nodes, err = headscale.ListNodes("user2")
 		assert.NoError(ct, err, "Failed to list nodes for user2 after user1 relogin")
 		assert.Len(ct, user2Nodes, len(allClients)/2, "User2 should still have %d clients after user1 relogin, got %d nodes", len(allClients)/2, len(user2Nodes))
-	}, 30*time.Second, 2*time.Second, "validating user2 nodes persist after user1 relogin (should not be affected)")
+	}, integrationutil.ScaledTimeout(30*time.Second), 2*time.Second, "validating user2 nodes persist after user1 relogin (should not be affected)")
 
 	t.Logf("Validating client login states after user switch at %s", time.Now().Format(TimestampFormat))
+
 	for _, client := range allClients {
 		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 			status, err := client.Status()
 			assert.NoError(ct, err, "Failed to get status for client %s", client.Hostname())
 			assert.Equal(ct, "user1@test.no", status.User[status.Self.UserID].LoginName, "Client %s should be logged in as user1 after user switch, got %s", client.Hostname(), status.User[status.Self.UserID].LoginName)
-		}, 30*time.Second, 2*time.Second, fmt.Sprintf("validating %s is logged in as user1 after auth key user switch", client.Hostname()))
+		}, integrationutil.ScaledTimeout(30*time.Second), 2*time.Second, "validating %s is logged in as user1 after auth key user switch", client.Hostname())
 	}
 }
 
@@ -352,17 +361,12 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 			}
 
 			scenario, err := NewScenario(spec)
+
 			require.NoError(t, err)
 			defer scenario.ShutdownAssertNoPanics(t)
 
 			opts := []hsic.Option{
-				hsic.WithTestName("pingallbyip"),
-				hsic.WithDERPAsIP(),
-			}
-			if https {
-				opts = append(opts, []hsic.Option{
-					hsic.WithTLS(),
-				}...)
+				hsic.WithTestName("authkey-rlogexpired"),
 			}
 
 			err = scenario.CreateHeadscaleEnv([]tsic.Option{}, opts...)
@@ -377,11 +381,13 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 			// assertClientsState(t, allClients)
 
 			clientIPs := make(map[TailscaleClient][]netip.Addr)
+
 			for _, client := range allClients {
 				ips, err := client.IPs()
 				if err != nil {
 					t.Fatalf("failed to get IPs for client %s: %s", client.Hostname(), err)
 				}
+
 				clientIPs[client] = ips
 			}
 
@@ -392,17 +398,21 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 			expectedNodes := collectExpectedNodeIDs(t, allClients)
 
 			// Validate initial connection state
-			requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected after initial login", 120*time.Second)
+			requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected after initial login", integrationutil.ScaledTimeout(120*time.Second))
 			requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after initial login", 3*time.Minute)
 
-			var listNodes []*v1.Node
-			var nodeCountBeforeLogout int
+			var (
+				listNodes             []*v1.Node
+				nodeCountBeforeLogout int
+			)
+
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
 				var err error
+
 				listNodes, err = headscale.ListNodes()
 				assert.NoError(c, err)
 				assert.Len(c, listNodes, len(allClients))
-			}, 10*time.Second, 200*time.Millisecond, "Waiting for expected node list before logout")
+			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for expected node list before logout")
 
 			nodeCountBeforeLogout = len(listNodes)
 			t.Logf("node count before logout: %d", nodeCountBeforeLogout)
@@ -418,7 +428,7 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 			requireNoErrLogout(t, err)
 
 			// Validate that all nodes are offline after logout
-			requireAllClientsOnline(t, headscale, expectedNodes, false, "all nodes should be offline after logout", 120*time.Second)
+			requireAllClientsOnline(t, headscale, expectedNodes, false, "all nodes should be offline after logout", integrationutil.ScaledTimeout(120*time.Second))
 
 			t.Logf("all clients logged out")
 
@@ -478,7 +488,7 @@ func TestAuthKeyDeleteKey(t *testing.T) {
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("delkey"), hsic.WithTLS(), hsic.WithDERPAsIP())
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("delkey"))
 	requireNoErrHeadscaleEnv(t, err)
 
 	headscale, err := scenario.Headscale()
@@ -517,14 +527,14 @@ func TestAuthKeyDeleteKey(t *testing.T) {
 		user1Nodes, err = headscale.ListNodes("user1")
 		assert.NoError(c, err)
 		assert.Len(c, user1Nodes, 1)
-	}, 30*time.Second, 500*time.Millisecond, "waiting for node to be registered")
+	}, integrationutil.ScaledTimeout(30*time.Second), 500*time.Millisecond, "waiting for node to be registered")
 
 	nodeID := user1Nodes[0].GetId()
 	nodeName := user1Nodes[0].GetName()
 	t.Logf("Node %d (%s) created successfully with auth_key_id=%d", nodeID, nodeName, authKeyID)
 
 	// Verify node is online
-	requireAllClientsOnline(t, headscale, []types.NodeID{types.NodeID(nodeID)}, true, "node should be online initially", 120*time.Second)
+	requireAllClientsOnline(t, headscale, []types.NodeID{types.NodeID(nodeID)}, true, "node should be online initially", integrationutil.ScaledTimeout(120*time.Second))
 
 	// DELETE the pre-auth key using the API
 	t.Logf("Deleting pre-auth key ID %d using API", authKeyID)
@@ -544,7 +554,7 @@ func TestAuthKeyDeleteKey(t *testing.T) {
 		status, err := client.Status()
 		assert.NoError(c, err)
 		assert.Equal(c, "Stopped", status.BackendState)
-	}, 10*time.Second, 200*time.Millisecond, "client should be stopped")
+	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "client should be stopped")
 
 	err = client.Up()
 	require.NoError(t, err)
@@ -552,7 +562,7 @@ func TestAuthKeyDeleteKey(t *testing.T) {
 	// Verify node comes back online
 	// This will FAIL without the fix because auth key validation will reject deleted key
 	// With the fix, MachineKey identity allows reconnection even with deleted key
-	requireAllClientsOnline(t, headscale, []types.NodeID{types.NodeID(nodeID)}, true, "node should reconnect after restart despite deleted key", 120*time.Second)
+	requireAllClientsOnline(t, headscale, []types.NodeID{types.NodeID(nodeID)}, true, "node should reconnect after restart despite deleted key", integrationutil.ScaledTimeout(120*time.Second))
 
 	t.Logf("✓ Node successfully reconnected after its auth key was deleted")
 }
@@ -596,7 +606,6 @@ func TestAuthKeyLogoutAndReloginRoutesPreserved(t *testing.T) {
 			tsic.WithExtraLoginArgs([]string{"--advertise-routes=" + advertiseRoute}),
 		},
 		hsic.WithTestName("routelogout"),
-		hsic.WithTLS(),
 		hsic.WithACLPolicy(
 			&policyv2.Policy{
 				ACLs: []policyv2.ACL{
@@ -608,7 +617,7 @@ func TestAuthKeyLogoutAndReloginRoutesPreserved(t *testing.T) {
 				},
 				AutoApprovers: policyv2.AutoApproverPolicy{
 					Routes: map[netip.Prefix]policyv2.AutoApprovers{
-						netip.MustParsePrefix(advertiseRoute): {ptr.To(policyv2.Username(user + "@test.no"))},
+						netip.MustParsePrefix(advertiseRoute): {new(policyv2.Username(user + "@test.no"))},
 					},
 				},
 			},
@@ -650,7 +659,7 @@ func TestAuthKeyLogoutAndReloginRoutesPreserved(t *testing.T) {
 			assert.Contains(c, initialNode.GetSubnetRoutes(), advertiseRoute,
 				"Subnet routes should contain %s", advertiseRoute)
 		}
-	}, 30*time.Second, 500*time.Millisecond, "initial route should be serving")
+	}, integrationutil.ScaledTimeout(30*time.Second), 500*time.Millisecond, "initial route should be serving")
 
 	require.NotNil(t, initialNode, "Initial node should be found")
 	initialNodeID := initialNode.GetId()
@@ -668,7 +677,7 @@ func TestAuthKeyLogoutAndReloginRoutesPreserved(t *testing.T) {
 		status, err := client.Status()
 		assert.NoError(ct, err)
 		assert.Equal(ct, "NeedsLogin", status.BackendState, "Expected NeedsLogin state after logout")
-	}, 30*time.Second, 1*time.Second, "waiting for logout to complete")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "waiting for logout to complete")
 
 	t.Logf("Logout completed, node should still exist in database")
 
@@ -677,7 +686,7 @@ func TestAuthKeyLogoutAndReloginRoutesPreserved(t *testing.T) {
 		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1, "Node should persist in database after logout")
-	}, 10*time.Second, 500*time.Millisecond, "node should persist after logout")
+	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "node should persist after logout")
 
 	// Step 3: Re-authenticate with the SAME user (using auth key)
 	t.Logf("Step 3: Re-authenticating with same user at %s", time.Now().Format(TimestampFormat))
@@ -698,7 +707,7 @@ func TestAuthKeyLogoutAndReloginRoutesPreserved(t *testing.T) {
 		status, err := client.Status()
 		assert.NoError(ct, err)
 		assert.Equal(ct, "Running", status.BackendState, "Expected Running state after relogin")
-	}, 30*time.Second, 1*time.Second, "waiting for relogin to complete")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "waiting for relogin to complete")
 
 	t.Logf("Re-authentication completed at %s", time.Now().Format(TimestampFormat))
 
@@ -732,7 +741,7 @@ func TestAuthKeyLogoutAndReloginRoutesPreserved(t *testing.T) {
 			assert.Equal(c, initialNodeID, node.GetId(),
 				"Node ID should be preserved after same-user relogin")
 		}
-	}, 30*time.Second, 500*time.Millisecond,
+	}, integrationutil.ScaledTimeout(30*time.Second), 500*time.Millisecond,
 		"BUG #2896: routes should remain SERVING after logout/relogin with same user")
 
 	t.Logf("Test completed - verifying issue #2896 fix")

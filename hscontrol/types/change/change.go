@@ -1,6 +1,11 @@
+// Package change declares the Change type: a compact description of
+// what must land in a MapResponse. The mapper reads Change values to
+// build responses without inspecting state, and Merge combines
+// multiple pending changes for a single tick.
 package change
 
 import (
+	"fmt"
 	"slices"
 	"time"
 
@@ -38,6 +43,11 @@ type Change struct {
 	// must be computed at runtime per-node. Used for policy changes
 	// where each node may have different peer visibility.
 	RequiresRuntimePeerComputation bool
+
+	// PingRequest, if non-nil, is a ping request to send to the node.
+	// Used by the debug ping endpoint to verify node connectivity.
+	// PingRequest is always targeted to a specific node via TargetNode.
+	PingRequest *tailcfg.PingRequest
 }
 
 // boolFieldNames returns all boolean field names for exhaustive testing.
@@ -66,9 +76,9 @@ func (r Change) Merge(other Change) Change {
 	merged.SendAllPeers = r.SendAllPeers || other.SendAllPeers
 	merged.RequiresRuntimePeerComputation = r.RequiresRuntimePeerComputation || other.RequiresRuntimePeerComputation
 
-	merged.PeersChanged = uniqueNodeIDs(append(r.PeersChanged, other.PeersChanged...))
-	merged.PeersRemoved = uniqueNodeIDs(append(r.PeersRemoved, other.PeersRemoved...))
-	merged.PeerPatches = append(r.PeerPatches, other.PeerPatches...)
+	merged.PeersChanged = uniqueNodeIDs(slices.Concat(r.PeersChanged, other.PeersChanged))
+	merged.PeersRemoved = uniqueNodeIDs(slices.Concat(r.PeersRemoved, other.PeersRemoved))
+	merged.PeerPatches = slices.Concat(r.PeerPatches, other.PeerPatches)
 
 	// Preserve OriginNode for self-update detection.
 	// If either change has OriginNode set, keep it so the mapper
@@ -78,8 +88,30 @@ func (r Change) Merge(other Change) Change {
 	}
 
 	// Preserve TargetNode for targeted responses.
+	// Merging two changes targeted at different nodes is not supported
+	// because the merged result can only have one TargetNode, which
+	// would cause the other target's content to be misrouted.
+	if merged.TargetNode != 0 && other.TargetNode != 0 && merged.TargetNode != other.TargetNode {
+		panic(fmt.Sprintf(
+			"cannot merge changes with different TargetNode: %d != %d",
+			merged.TargetNode, other.TargetNode,
+		))
+	}
+
 	if merged.TargetNode == 0 {
 		merged.TargetNode = other.TargetNode
+	}
+
+	// Preserve PingRequest (first wins).
+	//
+	// Foot-gun: if two PingRequests to the same target merge in the
+	// same tick, only the first is emitted. The client-side
+	// isUniquePingRequest check then suppresses the second when it
+	// eventually arrives, and the caller waits out the full
+	// pingTimeout. Call sites must avoid issuing rapid successive
+	// pings to one node within a single batcher tick.
+	if merged.PingRequest == nil {
+		merged.PingRequest = other.PingRequest
 	}
 
 	if r.Reason != "" && other.Reason != "" && r.Reason != other.Reason {
@@ -98,6 +130,10 @@ func (r Change) IsEmpty() bool {
 	}
 
 	if r.RequiresRuntimePeerComputation {
+		return false
+	}
+
+	if r.PingRequest != nil {
 		return false
 	}
 
@@ -155,6 +191,10 @@ func (r Change) Type() string {
 
 	if r.IncludeDERPMap || r.IncludeDNS || r.IncludeDomain || r.IncludePolicy {
 		return "config"
+	}
+
+	if r.PingRequest != nil {
+		return "ping"
 	}
 
 	return "unknown"
@@ -333,7 +373,7 @@ func NodeOnline(nodeID types.NodeID) Change {
 		PeerPatches: []*tailcfg.PeerChange{
 			{
 				NodeID: nodeID.NodeID(),
-				Online: ptrTo(true),
+				Online: new(true),
 			},
 		},
 	}
@@ -346,7 +386,7 @@ func NodeOffline(nodeID types.NodeID) Change {
 		PeerPatches: []*tailcfg.PeerChange{
 			{
 				NodeID: nodeID.NodeID(),
-				Online: ptrTo(false),
+				Online: new(false),
 			},
 		},
 	}
@@ -363,11 +403,6 @@ func KeyExpiry(nodeID types.NodeID, expiry *time.Time) Change {
 			},
 		},
 	}
-}
-
-// ptrTo returns a pointer to the given value.
-func ptrTo[T any](v T) *T {
-	return &v
 }
 
 // High-level change constructors
@@ -446,6 +481,17 @@ func UserRemoved() Change {
 	c.Reason = "user removed"
 
 	return c
+}
+
+// PingNode creates a Change that sends a PingRequest to a specific
+// node. pr must be non-nil and nodeID must be non-zero; the node
+// responds to the PingRequest URL to prove connectivity.
+func PingNode(nodeID types.NodeID, pr *tailcfg.PingRequest) Change {
+	return Change{
+		Reason:      "ping node",
+		TargetNode:  nodeID,
+		PingRequest: pr,
+	}
 }
 
 // ExtraRecords returns a Change for when DNS extra records change.

@@ -2,7 +2,7 @@
 version: 2
 before:
   hooks:
-    - go mod tidy -compat=1.25
+    - go mod tidy -compat=1.26
     - go mod vendor
 
 release:
@@ -12,29 +12,6 @@ release:
     ## Upgrade
 
     Please follow the steps outlined in the [upgrade guide](https://headscale.net/stable/setup/upgrade/) to update your existing Headscale installation.
-
-    **It's best to update from one stable version to the next** (e.g., 0.24.0 → 0.25.1 → 0.26.1) in case you are multiple releases behind. You should always pick the latest available patch release.
-
-    Be sure to check the changelog above for version-specific upgrade instructions and breaking changes.
-
-    ### Backup Your Database
-
-    **Always backup your database before upgrading.** Here's how to backup a SQLite database:
-
-    ```bash
-    # Stop headscale
-    systemctl stop headscale
-
-    # Backup sqlite database
-    cp /var/lib/headscale/db.sqlite /var/lib/headscale/db.sqlite.backup
-
-    # Backup sqlite WAL/SHM files (if they exist)
-    cp /var/lib/headscale/db.sqlite-wal /var/lib/headscale/db.sqlite-wal.backup
-    cp /var/lib/headscale/db.sqlite-shm /var/lib/headscale/db.sqlite-shm.backup
-
-    # Start headscale (migration will run automatically)
-    systemctl start headscale
-    ```
 
 builds:
   - id: headscale
@@ -50,8 +27,6 @@ builds:
       - linux_arm64
     flags:
       - -mod=readonly
-    tags:
-      - ts2019
 
 archives:
   - id: golang-cross
@@ -67,10 +42,9 @@ source:
     - "vendor/"
 
 nfpms:
-  # Configure nFPM for .deb and .rpm releases
+  # Configure nFPM for .deb releases
   #
-  # See https://nfpm.goreleaser.com/configuration/
-  # and https://goreleaser.com/customization/nfpm/
+  # See https://goreleaser.com/customization/package/nfpm/
   #
   # Useful tools for debugging .debs:
   # List file contents: dpkg -c dist/headscale...deb
@@ -104,6 +78,8 @@ nfpms:
         dst: /usr/lib/systemd/system/headscale.service
       - dst: /var/lib/headscale
         type: dir
+      - src: ./config-example.yaml
+        dst: /usr/share/doc/headscale/examples/config-example.yaml
       - src: LICENSE
         dst: /usr/share/doc/headscale/copyright
     scripts:

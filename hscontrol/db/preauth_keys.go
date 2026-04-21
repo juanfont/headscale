@@ -138,8 +138,8 @@ func CreatePreAuthKey(
 		Hash:       hash,    // Store hash
 	}
 
-	if err := tx.Save(&key).Error; err != nil {
-		return nil, fmt.Errorf("failed to create key in the database: %w", err)
+	if err := tx.Save(&key).Error; err != nil { //nolint:noinlineerr
+		return nil, fmt.Errorf("creating key in database: %w", err)
 	}
 
 	return &types.PreAuthKeyNew{
@@ -155,9 +155,7 @@ func CreatePreAuthKey(
 }
 
 func (hsdb *HSDatabase) ListPreAuthKeys() ([]types.PreAuthKey, error) {
-	return Read(hsdb.DB, func(rx *gorm.DB) ([]types.PreAuthKey, error) {
-		return ListPreAuthKeys(rx)
-	})
+	return Read(hsdb.DB, ListPreAuthKeys)
 }
 
 // ListPreAuthKeys returns all PreAuthKeys in the database.
@@ -165,6 +163,18 @@ func ListPreAuthKeys(tx *gorm.DB) ([]types.PreAuthKey, error) {
 	var keys []types.PreAuthKey
 
 	err := tx.Preload("User").Find(&keys).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return keys, nil
+}
+
+// ListPreAuthKeysByUser returns all PreAuthKeys belonging to a specific user.
+func ListPreAuthKeysByUser(tx *gorm.DB, uid types.UserID) ([]types.PreAuthKey, error) {
+	var keys []types.PreAuthKey
+
+	err := tx.Preload("User").Where("user_id = ?", uint(uid)).Find(&keys).Error
 	if err != nil {
 		return nil, err
 	}
@@ -296,7 +306,7 @@ func DestroyPreAuthKey(tx *gorm.DB, id uint64) error {
 			Where("auth_key_id = ?", id).
 			Update("auth_key_id", nil).Error
 		if err != nil {
-			return fmt.Errorf("failed to clear auth_key_id on nodes: %w", err)
+			return fmt.Errorf("clearing auth_key_id on nodes: %w", err)
 		}
 
 		// Then delete the pre-auth key
@@ -321,18 +331,30 @@ func (hsdb *HSDatabase) DeletePreAuthKey(id uint64) error {
 	})
 }
 
-// UsePreAuthKey marks a PreAuthKey as used.
+// UsePreAuthKey atomically marks a PreAuthKey as used. The UPDATE is
+// guarded by `used = false` so two concurrent registrations racing for
+// the same single-use key cannot both succeed: the first commits and
+// the second returns PAKError("authkey already used"). Without the
+// guard the previous code (Update("used", true) with no WHERE) would
+// silently let both transactions claim the key.
 func UsePreAuthKey(tx *gorm.DB, k *types.PreAuthKey) error {
-	err := tx.Model(k).Update("used", true).Error
-	if err != nil {
-		return fmt.Errorf("failed to update key used status in the database: %w", err)
+	res := tx.Model(&types.PreAuthKey{}).
+		Where("id = ? AND used = ?", k.ID, false).
+		Update("used", true)
+	if res.Error != nil {
+		return fmt.Errorf("updating key used status in database: %w", res.Error)
+	}
+
+	if res.RowsAffected == 0 {
+		return types.PAKError("authkey already used")
 	}
 
 	k.Used = true
+
 	return nil
 }
 
-// MarkExpirePreAuthKey marks a PreAuthKey as expired.
+// ExpirePreAuthKey marks a PreAuthKey as expired.
 func ExpirePreAuthKey(tx *gorm.DB, id uint64) error {
 	now := time.Now()
 	return tx.Model(&types.PreAuthKey{}).Where("id = ?", id).Update("expiration", now).Error

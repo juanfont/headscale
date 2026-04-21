@@ -12,8 +12,8 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/hsic"
+	"tailscale.com/util/dnsname"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/rs/zerolog/log"
@@ -41,8 +41,9 @@ func TestPingAllByIP(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
 		hsic.WithTestName("pingallbyip"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
+		// All other tests use the default sequential allocation.
+		// This test uses random allocation to ensure it does not
+		// break basic connectivity.
 		hsic.WithIPAllocationStrategy(types.IPAllocationStrategyRandom),
 	)
 	requireNoErrHeadscaleEnv(t, err)
@@ -67,7 +68,7 @@ func TestPingAllByIP(t *testing.T) {
 		require.NoError(t, err, "failed to parse node ID")
 		expectedNodes = append(expectedNodes, types.NodeID(nodeID))
 	}
-	requireAllClientsOnline(t, hs, expectedNodes, true, "all clients should be online across all systems", 30*time.Second)
+	requireAllClientsOnline(t, hs, expectedNodes, true, "all clients should be online across all systems", integrationutil.ScaledTimeout(30*time.Second))
 
 	// assertClientsState(t, allClients)
 
@@ -81,10 +82,9 @@ func TestPingAllByIP(t *testing.T) {
 
 	// Test our DebugBatcher functionality
 	t.Logf("Testing DebugBatcher functionality...")
-	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected to the batcher", 30*time.Second)
+	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected to the batcher", integrationutil.ScaledTimeout(30*time.Second))
 
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 }
 
 func TestPingAllByIPPublicDERP(t *testing.T) {
@@ -102,6 +102,12 @@ func TestPingAllByIPPublicDERP(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
 		hsic.WithTestName("pingallbyippubderp"),
+		// Explicitly use public DERP relays instead of the embedded
+		// DERP server to verify connectivity through Tailscale's
+		// infrastructure. TLS is disabled because the headscale
+		// server does not need to terminate TLS for this test.
+		hsic.WithPublicDERP(),
+		hsic.WithoutTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -120,14 +126,15 @@ func TestPingAllByIPPublicDERP(t *testing.T) {
 		return x.String()
 	})
 
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 }
 
 func TestEphemeral(t *testing.T) {
 	testEphemeralWithOptions(t, hsic.WithTestName("ephemeral"))
 }
 
+// TestEphemeralInAlternateTimezone verifies that ephemeral node
+// expiry works correctly when the server runs in a non-UTC timezone.
 func TestEphemeralInAlternateTimezone(t *testing.T) {
 	testEphemeralWithOptions(
 		t,
@@ -186,8 +193,7 @@ func testEphemeralWithOptions(t *testing.T, opts ...hsic.Option) {
 		return x.String()
 	})
 
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 
 	for _, client := range allClients {
 		err := client.Logout()
@@ -205,7 +211,7 @@ func testEphemeralWithOptions(t *testing.T, opts ...hsic.Option) {
 		nodes, err := headscale.ListNodes()
 		assert.NoError(ct, err)
 		assert.Len(ct, nodes, 0, "All ephemeral nodes should be cleaned up after logout")
-	}, 30*time.Second, 2*time.Second)
+	}, integrationutil.ScaledTimeout(30*time.Second), 2*time.Second)
 }
 
 // TestEphemeral2006DeletedTooQuickly verifies that ephemeral nodes are not
@@ -266,8 +272,7 @@ func TestEphemeral2006DeletedTooQuickly(t *testing.T) {
 	})
 
 	// All ephemeral nodes should be online and reachable.
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 
 	// Take down all clients, this should start an expiry timer for each.
 	for _, client := range allClients {
@@ -292,10 +297,8 @@ func TestEphemeral2006DeletedTooQuickly(t *testing.T) {
 		err = scenario.WaitForTailscaleSync()
 		assert.NoError(ct, err)
 
-		success = pingAllHelper(t, allClients, allAddrs)
-		assert.Greater(ct, success, 0, "Ephemeral nodes should be able to reconnect and ping")
-	}, 60*time.Second, 2*time.Second)
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+		assertPingAllWithCollect(ct, allClients, allAddrs)
+	}, integrationutil.ScaledTimeout(60*time.Second), 2*time.Second)
 
 	// Take down all clients, this should start an expiry timer for each.
 	for _, client := range allClients {
@@ -313,7 +316,7 @@ func TestEphemeral2006DeletedTooQuickly(t *testing.T) {
 			assert.NoError(ct, err)
 			assert.Len(ct, nodes, 0, "Ephemeral nodes should be expired and removed for user %s", userName)
 		}
-	}, 4*time.Minute, 10*time.Second)
+	}, integrationutil.ScaledTimeout(4*time.Minute), 10*time.Second)
 
 	for _, userName := range spec.Users {
 		nodes, err := headscale.ListNodes(userName)
@@ -358,9 +361,7 @@ func TestPingAllByHostname(t *testing.T) {
 	allHostnames, err := scenario.ListTailscaleClientsFQDNs()
 	requireNoErrListFQDN(t, err)
 
-	success := pingAllHelper(t, allClients, allHostnames)
-
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allClients))
+	assertPingAll(t, allClients, allHostnames)
 }
 
 // If subtests are parallel, then they will start before setup is run.
@@ -387,8 +388,6 @@ func TestTaildrop(t *testing.T) {
 
 	err = scenario.CreateHeadscaleEnv([]tsic.Option{},
 		hsic.WithTestName("taildrop"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -551,7 +550,7 @@ func TestTaildrop(t *testing.T) {
 				// Should NOT see tagged client
 				assert.False(ct, isInFileTargets(fts, taggedClient.Hostname()),
 					"user1 client %s should NOT see tagged client %s in FileTargets", client.Hostname(), taggedClient.Hostname())
-			}, 10*time.Second, 1*time.Second)
+			}, integrationutil.ScaledTimeout(10*time.Second), 1*time.Second)
 		}
 	})
 
@@ -580,7 +579,7 @@ func TestTaildrop(t *testing.T) {
 				// Should NOT see tagged client
 				assert.False(ct, isInFileTargets(fts, taggedClient.Hostname()),
 					"user2 client %s should NOT see tagged client %s in FileTargets", client.Hostname(), taggedClient.Hostname())
-			}, 10*time.Second, 1*time.Second)
+			}, integrationutil.ScaledTimeout(10*time.Second), 1*time.Second)
 		}
 	})
 
@@ -590,7 +589,7 @@ func TestTaildrop(t *testing.T) {
 			fts, err := getFileTargets(taggedClient)
 			assert.NoError(ct, err)
 			assert.Empty(ct, fts, "tagged client %s should have no FileTargets", taggedClient.Hostname())
-		}, 10*time.Second, 1*time.Second)
+		}, integrationutil.ScaledTimeout(10*time.Second), 1*time.Second)
 	})
 
 	// Test 4: Same-user file transfer works (user1 -> user1) for all version combinations
@@ -620,7 +619,7 @@ func TestTaildrop(t *testing.T) {
 						t.Logf("Sending file from %s to %s", sender.Hostname(), receiver.Hostname())
 						_, _, err := sender.Execute(sendCommand)
 						assert.NoError(ct, err)
-					}, 10*time.Second, 1*time.Second)
+					}, integrationutil.ScaledTimeout(10*time.Second), 1*time.Second)
 				})
 			}
 		}
@@ -761,10 +760,19 @@ func TestTaildrop(t *testing.T) {
 func TestUpdateHostnameFromClient(t *testing.T) {
 	IntegrationSkip(t)
 
+	// Hostnames chosen to exercise the SaaS sanitisation rules end-to-end:
+	//   - Joe's Mac mini → apostrophes dropped + spaces to dashes (#3188)
+	//   - Test@Host      → `@` replaced with dash
+	//   - mail.server    → dots replaced with dashes (MagicDNS breaker)
+	// Pre-rewrite these were rejected by ApplyHostnameFromHostInfo with
+	// "invalid characters" and the node was stuck on an invalid-<rand>
+	// GivenName with the HostName update dropped. The assertions below
+	// verify both raw preservation (node.Name) and SaaS-matching sanitisation
+	// (node.GivenName) for each awkward input.
 	hostnames := map[string]string{
-		"1": "user1-host",
-		"2": "user2-host",
-		"3": "user3-host",
+		"1": "Joe's Mac mini",
+		"2": "Test@Host",
+		"3": "mail.server",
 	}
 
 	spec := ScenarioSpec{
@@ -826,12 +834,11 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 			hostname := hostnames[strconv.FormatUint(node.GetId(), 10)]
 			assert.Equal(ct, hostname, node.GetName(), "Node name should match hostname")
 
-			// GivenName is normalized (lowercase, invalid chars stripped)
-			normalised, err := util.NormaliseHostname(hostname)
-			assert.NoError(ct, err)
-			assert.Equal(ct, normalised, node.GetGivenName(), "Given name should match FQDN rules")
+			// GivenName is sanitised via dnsname.SanitizeHostname (SaaS algorithm).
+			assert.Equal(ct, dnsname.SanitizeHostname(hostname), node.GetGivenName(),
+				"Given name should match SaaS hostname-sanitisation rules")
 		}
-	}, 20*time.Second, 1*time.Second)
+	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 
 	// Rename givenName in nodes
 	for _, node := range nodes {
@@ -887,7 +894,7 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 				}
 			}
 		}
-	}, 60*time.Second, 2*time.Second)
+	}, integrationutil.ScaledTimeout(60*time.Second), 2*time.Second)
 
 	for _, client := range allClients {
 		status := client.MustStatus()
@@ -926,8 +933,7 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 		for _, node := range nodes {
 			hostname := hostnames[strconv.FormatUint(node.GetId(), 10)]
 			givenName := fmt.Sprintf("%d-givenname", node.GetId())
-			// Hostnames are lowercased before being stored, so "NEW" becomes "new"
-			if node.GetName() != hostname+"new" || node.GetGivenName() != givenName {
+			if node.GetName() != hostname+"NEW" || node.GetGivenName() != givenName {
 				return false
 			}
 		}
@@ -965,8 +971,7 @@ func TestExpireNode(t *testing.T) {
 		return x.String()
 	})
 
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("before expire: %d successful pings out of %d", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 
 	for _, client := range allClients {
 		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -975,7 +980,7 @@ func TestExpireNode(t *testing.T) {
 
 			// Assert that we have the original count - self
 			assert.Len(ct, status.Peers(), spec.NodesPerUser-1, "Client %s should see correct number of peers", client.Hostname())
-		}, 30*time.Second, 1*time.Second)
+		}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second)
 	}
 
 	headscale, err := scenario.Headscale()
@@ -1014,7 +1019,7 @@ func TestExpireNode(t *testing.T) {
 				}
 			}
 		}
-	}, 3*time.Minute, 10*time.Second)
+	}, integrationutil.ScaledTimeout(3*time.Minute), 10*time.Second)
 
 	now := time.Now()
 
@@ -1064,7 +1069,7 @@ func TestExpireNode(t *testing.T) {
 					)
 				}
 			}
-		}, 10*time.Second, 200*time.Millisecond, "Waiting for expired node status to propagate")
+		}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for expired node status to propagate")
 	}
 }
 
@@ -1161,7 +1166,104 @@ func TestSetNodeExpiryInFuture(t *testing.T) {
 					"node %q should not be marked as expired",
 					peerStatus.HostName,
 				)
-			}, 3*time.Minute, 5*time.Second, "Waiting for future expiry to propagate",
+			}, integrationutil.ScaledTimeout(3*time.Minute), 5*time.Second, "Waiting for future expiry to propagate",
+		)
+	}
+}
+
+// TestDisableNodeExpiry tests disabling key expiry for a node.
+// First sets an expiry, then disables it and verifies the node never expires.
+func TestDisableNodeExpiry(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		NodesPerUser: len(MustTestVersions),
+		Users:        []string{"user1"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("disableexpiry"))
+	requireNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	requireNoErrListClients(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	// First set an expiry on the node.
+	result, err := headscale.Execute(
+		[]string{
+			"headscale", "nodes", "expire",
+			"--identifier", "1",
+			"--output", "json",
+			"--expiry", time.Now().Add(time.Hour).Format(time.RFC3339),
+		},
+	)
+	require.NoError(t, err)
+
+	var node v1.Node
+	err = json.Unmarshal([]byte(result), &node)
+	require.NoError(t, err)
+	require.NotNil(t, node.GetExpiry(), "node should have an expiry set")
+
+	// Now disable the expiry.
+	result, err = headscale.Execute(
+		[]string{
+			"headscale", "nodes", "expire",
+			"--identifier", "1",
+			"--output", "json",
+			"--disable",
+		},
+	)
+	require.NoError(t, err)
+
+	var nodeDisabled v1.Node
+	err = json.Unmarshal([]byte(result), &nodeDisabled)
+	require.NoError(t, err)
+
+	// Expiry should be nil (or zero time) when disabled.
+	if nodeDisabled.GetExpiry() != nil {
+		require.True(t, nodeDisabled.GetExpiry().AsTime().IsZero(),
+			"node expiry should be zero/nil after disabling")
+	}
+
+	var nodeKey key.NodePublic
+	err = nodeKey.UnmarshalText([]byte(nodeDisabled.GetNodeKey()))
+	require.NoError(t, err)
+
+	// Verify peers see the node as not expired.
+	for _, client := range allClients {
+		if client.Hostname() == nodeDisabled.GetName() {
+			continue
+		}
+
+		assert.EventuallyWithT(
+			t, func(ct *assert.CollectT) {
+				status, err := client.Status()
+				assert.NoError(ct, err)
+
+				peerStatus, ok := status.Peer[nodeKey]
+				assert.True(ct, ok, "node key should be present in peer list")
+
+				if !ok {
+					return
+				}
+
+				// Node should not be expired.
+				assert.Falsef(
+					ct,
+					peerStatus.Expired,
+					"node %q should not be marked as expired after disabling expiry",
+					peerStatus.HostName,
+				)
+			}, integrationutil.ScaledTimeout(3*time.Minute), 5*time.Second, "waiting for disabled expiry to propagate",
 		)
 	}
 }
@@ -1196,8 +1298,7 @@ func TestNodeOnlineStatus(t *testing.T) {
 		return x.String()
 	})
 
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("before expire: %d successful pings out of %d", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 
 	for _, client := range allClients {
 		assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -1206,7 +1307,7 @@ func TestNodeOnlineStatus(t *testing.T) {
 
 			// Assert that we have the original count - self
 			assert.Len(c, status.Peers(), len(MustTestVersions)-1)
-		}, 10*time.Second, 200*time.Millisecond, "Waiting for expected peer count")
+		}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for expected peer count")
 	}
 
 	headscale, err := scenario.Headscale()
@@ -1247,7 +1348,7 @@ func TestNodeOnlineStatus(t *testing.T) {
 					time.Since(start),
 				)
 			}
-		}, 15*time.Second, 1*time.Second)
+		}, integrationutil.ScaledTimeout(15*time.Second), 1*time.Second)
 
 		// Verify that all nodes report all nodes to be online
 		for _, client := range allClients {
@@ -1280,7 +1381,7 @@ func TestNodeOnlineStatus(t *testing.T) {
 						time.Since(start),
 					)
 				}
-			}, 15*time.Second, 1*time.Second)
+			}, integrationutil.ScaledTimeout(15*time.Second), 1*time.Second)
 		}
 
 		// Check maximum once per second
@@ -1306,9 +1407,6 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
 		hsic.WithTestName("pingallbyipmany"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithDERPAsIP(),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -1340,10 +1438,9 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 		require.NoError(t, err)
 		expectedNodes = append(expectedNodes, types.NodeID(nodeID))
 	}
-	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected to batcher", 30*time.Second)
+	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected to batcher", integrationutil.ScaledTimeout(30*time.Second))
 
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 
 	for run := range 3 {
 		t.Logf("Starting DownUpPing run %d at %s", run+1, time.Now().Format(TimestampFormat))
@@ -1366,7 +1463,7 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 		t.Logf("All nodes taken down at %s", time.Now().Format(TimestampFormat))
 
 		// After taking down all nodes, verify all systems show nodes offline
-		requireAllClientsOnline(t, headscale, expectedNodes, false, fmt.Sprintf("Run %d: all nodes should be offline after Down()", run+1), 120*time.Second)
+		requireAllClientsOnline(t, headscale, expectedNodes, false, fmt.Sprintf("Run %d: all nodes should be offline after Down()", run+1), integrationutil.ScaledTimeout(120*time.Second))
 
 		for _, client := range allClients {
 			c := client
@@ -1382,7 +1479,7 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 		t.Logf("All nodes brought up at %s", time.Now().Format(TimestampFormat))
 
 		// After bringing up all nodes, verify batcher shows all reconnected
-		requireAllClientsOnline(t, headscale, expectedNodes, true, fmt.Sprintf("Run %d: all nodes should be reconnected after Up()", run+1), 120*time.Second)
+		requireAllClientsOnline(t, headscale, expectedNodes, true, fmt.Sprintf("Run %d: all nodes should be reconnected after Up()", run+1), integrationutil.ScaledTimeout(120*time.Second))
 
 		// Wait for sync and successful pings after nodes come back up
 		err = scenario.WaitForTailscaleSync()
@@ -1390,10 +1487,9 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 
 		t.Logf("All nodes synced up %s", time.Now().Format(TimestampFormat))
 
-		requireAllClientsOnline(t, headscale, expectedNodes, true, fmt.Sprintf("Run %d: all systems should show nodes online after reconnection", run+1), 60*time.Second)
+		requireAllClientsOnline(t, headscale, expectedNodes, true, fmt.Sprintf("Run %d: all systems should show nodes online after reconnection", run+1), integrationutil.ScaledTimeout(60*time.Second))
 
-		success := pingAllHelper(t, allClients, allAddrs)
-		assert.Equalf(t, len(allClients)*len(allIps), success, "%d successful pings out of %d", success, len(allClients)*len(allIps))
+		assertPingAll(t, allClients, allAddrs)
 
 		// Clean up context for this run
 		cancel()
@@ -1415,8 +1511,6 @@ func Test2118DeletingOnlineNodePanics(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
 		hsic.WithTestName("deletenocrash"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -1433,8 +1527,7 @@ func Test2118DeletingOnlineNodePanics(t *testing.T) {
 		return x.String()
 	})
 
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 
 	headscale, err := scenario.Headscale()
 	require.NoError(t, err)
@@ -1489,7 +1582,7 @@ func Test2118DeletingOnlineNodePanics(t *testing.T) {
 		)
 		assert.NoError(ct, err)
 		assert.Len(ct, nodeListAfter, 1, "Node should be deleted from list")
-	}, 10*time.Second, 1*time.Second)
+	}, integrationutil.ScaledTimeout(10*time.Second), 1*time.Second)
 
 	err = executeAndUnmarshal(
 		headscale,

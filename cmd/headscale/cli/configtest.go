@@ -1,7 +1,8 @@
 package cli
 
 import (
-	"github.com/rs/zerolog/log"
+	"fmt"
+
 	"github.com/spf13/cobra"
 )
 
@@ -13,10 +14,12 @@ var configTestCmd = &cobra.Command{
 	Use:   "configtest",
 	Short: "Test the configuration.",
 	Long:  "Run a test of the configuration and exit.",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		_, err := newHeadscaleServerWithConfig()
 		if err != nil {
-			log.Fatal().Caller().Err(err).Msg("Error initializing")
+			return fmt.Errorf("configuration error: %w", err)
 		}
+
+		return nil
 	},
 }

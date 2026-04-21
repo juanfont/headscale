@@ -9,7 +9,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
-	"tailscale.com/net/tsaddr"
 	"tailscale.com/types/views"
 )
 
@@ -111,7 +110,7 @@ func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView, currentApprove
 	}
 
 	// Sort and deduplicate
-	tsaddr.SortPrefixes(newApproved)
+	slices.SortFunc(newApproved, netip.Prefix.Compare)
 	newApproved = slices.Compact(newApproved)
 	newApproved = lo.Filter(newApproved, func(route netip.Prefix, index int) bool {
 		return route.IsValid()
@@ -120,12 +119,13 @@ func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView, currentApprove
 	// Sort the current approved for comparison
 	sortedCurrent := make([]netip.Prefix, len(currentApproved))
 	copy(sortedCurrent, currentApproved)
-	tsaddr.SortPrefixes(sortedCurrent)
+	slices.SortFunc(sortedCurrent, netip.Prefix.Compare)
 
 	// Only update if the routes actually changed
 	if !slices.Equal(sortedCurrent, newApproved) {
 		// Log what changed
 		var added, kept []netip.Prefix
+
 		for _, route := range newApproved {
 			if !slices.Contains(sortedCurrent, route) {
 				added = append(added, route)
@@ -136,8 +136,7 @@ func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView, currentApprove
 
 		if len(added) > 0 {
 			log.Debug().
-				Uint64("node.id", nv.ID().Uint64()).
-				Str("node.name", nv.Hostname()).
+				EmbedObject(nv).
 				Strs("routes.added", util.PrefixesToString(added)).
 				Strs("routes.kept", util.PrefixesToString(kept)).
 				Int("routes.total", len(newApproved)).

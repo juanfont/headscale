@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math/big"
 	"net/netip"
-	"regexp"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -22,7 +21,6 @@ import (
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
-	"tailscale.com/types/ptr"
 )
 
 func TestGetNode(t *testing.T) {
@@ -102,6 +100,8 @@ func TestExpireNode(t *testing.T) {
 	pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 	require.NoError(t, err)
 
+	pakID := pak.ID
+
 	_, err = db.getNode(types.UserID(user.ID), "testnode")
 	require.Error(t, err)
 
@@ -115,7 +115,7 @@ func TestExpireNode(t *testing.T) {
 		Hostname:       "testnode",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(pak.ID),
+		AuthKeyID:      &pakID,
 		Expiry:         &time.Time{},
 	}
 	db.DB.Save(node)
@@ -127,13 +127,55 @@ func TestExpireNode(t *testing.T) {
 	assert.False(t, nodeFromDB.IsExpired())
 
 	now := time.Now()
-	err = db.NodeSetExpiry(nodeFromDB.ID, now)
+	err = db.NodeSetExpiry(nodeFromDB.ID, &now)
 	require.NoError(t, err)
 
 	nodeFromDB, err = db.getNode(types.UserID(user.ID), "testnode")
 	require.NoError(t, err)
 
 	assert.True(t, nodeFromDB.IsExpired())
+}
+
+func TestDisableNodeExpiry(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
+	user, err := db.CreateUser(types.User{Name: "test"})
+	require.NoError(t, err)
+
+	pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+	require.NoError(t, err)
+
+	pakID := pak.ID
+	node := &types.Node{
+		ID:             0,
+		MachineKey:     key.NewMachine().Public(),
+		NodeKey:        key.NewNode().Public(),
+		Hostname:       "testnode",
+		UserID:         &user.ID,
+		RegisterMethod: util.RegisterMethodAuthKey,
+		AuthKeyID:      &pakID,
+		Expiry:         &time.Time{},
+	}
+	db.DB.Save(node)
+
+	// Set an expiry first.
+	past := time.Now().Add(-time.Hour)
+	err = db.NodeSetExpiry(node.ID, &past)
+	require.NoError(t, err)
+
+	nodeFromDB, err := db.getNode(types.UserID(user.ID), "testnode")
+	require.NoError(t, err)
+	assert.True(t, nodeFromDB.IsExpired(), "node should be expired")
+
+	// Disable expiry by setting nil.
+	err = db.NodeSetExpiry(node.ID, nil)
+	require.NoError(t, err)
+
+	nodeFromDB, err = db.getNode(types.UserID(user.ID), "testnode")
+	require.NoError(t, err)
+	assert.False(t, nodeFromDB.IsExpired(), "node should not be expired after disabling expiry")
+	assert.Nil(t, nodeFromDB.Expiry, "expiry should be nil after disabling")
 }
 
 func TestSetTags(t *testing.T) {
@@ -146,6 +188,8 @@ func TestSetTags(t *testing.T) {
 	pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 	require.NoError(t, err)
 
+	pakID := pak.ID
+
 	_, err = db.getNode(types.UserID(user.ID), "testnode")
 	require.Error(t, err)
 
@@ -159,7 +203,7 @@ func TestSetTags(t *testing.T) {
 		Hostname:       "testnode",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(pak.ID),
+		AuthKeyID:      &pakID,
 	}
 
 	trx := db.DB.Save(node)
@@ -182,121 +226,6 @@ func TestSetTags(t *testing.T) {
 	assert.Equal(t, []string{"tag:bar", "tag:test", "tag:unknown"}, node.Tags)
 }
 
-func TestHeadscale_generateGivenName(t *testing.T) {
-	type args struct {
-		suppliedName string
-		randomSuffix bool
-	}
-	tests := []struct {
-		name    string
-		args    args
-		want    *regexp.Regexp
-		wantErr bool
-	}{
-		{
-			name: "simple node name generation",
-			args: args{
-				suppliedName: "testnode",
-				randomSuffix: false,
-			},
-			want:    regexp.MustCompile("^testnode$"),
-			wantErr: false,
-		},
-		{
-			name: "UPPERCASE node name generation",
-			args: args{
-				suppliedName: "TestNode",
-				randomSuffix: false,
-			},
-			want:    regexp.MustCompile("^testnode$"),
-			wantErr: false,
-		},
-		{
-			name: "node name with 53 chars",
-			args: args{
-				suppliedName: "testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine",
-				randomSuffix: false,
-			},
-			want:    regexp.MustCompile("^testmaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaachine$"),
-			wantErr: false,
-		},
-		{
-			name: "node name with 63 chars",
-			args: args{
-				suppliedName: "nodeeeeeee12345678901234567890123456789012345678901234567890123",
-				randomSuffix: false,
-			},
-			want:    regexp.MustCompile("^nodeeeeeee12345678901234567890123456789012345678901234567890123$"),
-			wantErr: false,
-		},
-		{
-			name: "node name with 64 chars",
-			args: args{
-				suppliedName: "nodeeeeeee123456789012345678901234567890123456789012345678901234",
-				randomSuffix: false,
-			},
-			want:    nil,
-			wantErr: true,
-		},
-		{
-			name: "node name with 73 chars",
-			args: args{
-				suppliedName: "nodeeeeeee123456789012345678901234567890123456789012345678901234567890123",
-				randomSuffix: false,
-			},
-			want:    nil,
-			wantErr: true,
-		},
-		{
-			name: "node name with random suffix",
-			args: args{
-				suppliedName: "test",
-				randomSuffix: true,
-			},
-			want:    regexp.MustCompile(fmt.Sprintf("^test-[a-z0-9]{%d}$", NodeGivenNameHashLength)),
-			wantErr: false,
-		},
-		{
-			name: "node name with 63 chars with random suffix",
-			args: args{
-				suppliedName: "nodeeee12345678901234567890123456789012345678901234567890123",
-				randomSuffix: true,
-			},
-			want:    regexp.MustCompile(fmt.Sprintf("^nodeeee1234567890123456789012345678901234567890123456-[a-z0-9]{%d}$", NodeGivenNameHashLength)),
-			wantErr: false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := generateGivenName(tt.args.suppliedName, tt.args.randomSuffix)
-			if (err != nil) != tt.wantErr {
-				t.Errorf(
-					"Headscale.GenerateGivenName() error = %v, wantErr %v",
-					err,
-					tt.wantErr,
-				)
-
-				return
-			}
-
-			if tt.want != nil && !tt.want.MatchString(got) {
-				t.Errorf(
-					"Headscale.GenerateGivenName() = %v, does not match %v",
-					tt.want,
-					got,
-				)
-			}
-
-			if len(got) > util.LabelHostnameLength {
-				t.Errorf(
-					"Headscale.GenerateGivenName() = %v is larger than allowed DNS segment %d",
-					got,
-					util.LabelHostnameLength,
-				)
-			}
-		})
-	}
-}
 
 func TestAutoApproveRoutes(t *testing.T) {
 	tests := []struct {
@@ -443,7 +372,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 					Hostinfo: &tailcfg.Hostinfo{
 						RoutableIPs: tt.routes,
 					},
-					IPv4: ptr.To(netip.MustParseAddr("100.64.0.1")),
+					IPv4: new(netip.MustParseAddr("100.64.0.1")),
 				}
 
 				err = adb.DB.Save(&node).Error
@@ -460,17 +389,17 @@ func TestAutoApproveRoutes(t *testing.T) {
 						RoutableIPs: tt.routes,
 					},
 					Tags: []string{"tag:exit"},
-					IPv4: ptr.To(netip.MustParseAddr("100.64.0.2")),
+					IPv4: new(netip.MustParseAddr("100.64.0.2")),
 				}
 
 				err = adb.DB.Save(&nodeTagged).Error
 				require.NoError(t, err)
 
 				users, err := adb.ListUsers()
-				assert.NoError(t, err)
+				require.NoError(t, err)
 
 				nodes, err := adb.ListNodes()
-				assert.NoError(t, err)
+				require.NoError(t, err)
 
 				pm, err := pmf(users, nodes.ViewSlice())
 				require.NoError(t, err)
@@ -498,6 +427,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 				if len(expectedRoutes1) == 0 {
 					expectedRoutes1 = nil
 				}
+
 				if diff := cmp.Diff(expectedRoutes1, node1ByID.AllApprovedRoutes(), util.Comparers...); diff != "" {
 					t.Errorf("unexpected enabled routes (-want +got):\n%s", diff)
 				}
@@ -509,6 +439,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 				if len(expectedRoutes2) == 0 {
 					expectedRoutes2 = nil
 				}
+
 				if diff := cmp.Diff(expectedRoutes2, node2ByID.AllApprovedRoutes(), util.Comparers...); diff != "" {
 					t.Errorf("unexpected enabled routes (-want +got):\n%s", diff)
 				}
@@ -520,6 +451,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 func TestEphemeralGarbageCollectorOrder(t *testing.T) {
 	want := []types.NodeID{1, 3}
 	got := []types.NodeID{}
+
 	var mu sync.Mutex
 
 	deletionCount := make(chan struct{}, 10)
@@ -527,6 +459,7 @@ func TestEphemeralGarbageCollectorOrder(t *testing.T) {
 	e := NewEphemeralGarbageCollector(func(ni types.NodeID) {
 		mu.Lock()
 		defer mu.Unlock()
+
 		got = append(got, ni)
 
 		deletionCount <- struct{}{}
@@ -576,12 +509,14 @@ func TestEphemeralGarbageCollectorOrder(t *testing.T) {
 }
 
 func TestEphemeralGarbageCollectorLoads(t *testing.T) {
-	var got []types.NodeID
-	var mu sync.Mutex
+	var (
+		got []types.NodeID
+		mu  sync.Mutex
+	)
 
 	want := 1000
 
-	var deletedCount int64
+	var deletedCount atomic.Int64
 
 	e := NewEphemeralGarbageCollector(func(ni types.NodeID) {
 		mu.Lock()
@@ -589,9 +524,10 @@ func TestEphemeralGarbageCollectorLoads(t *testing.T) {
 
 		// Yield to other goroutines to introduce variability
 		runtime.Gosched()
+
 		got = append(got, ni)
 
-		atomic.AddInt64(&deletedCount, 1)
+		deletedCount.Add(1)
 	})
 	go e.Start()
 
@@ -602,7 +538,7 @@ func TestEphemeralGarbageCollectorLoads(t *testing.T) {
 
 	// Wait for all deletions to complete
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		count := atomic.LoadInt64(&deletedCount)
+		count := deletedCount.Load()
 		assert.Equal(c, int64(want), count, "all nodes should be deleted")
 	}, 10*time.Second, 50*time.Millisecond, "waiting for all deletions")
 
@@ -616,9 +552,12 @@ func TestEphemeralGarbageCollectorLoads(t *testing.T) {
 	}
 }
 
-func generateRandomNumber(t *testing.T, max int64) int64 {
+//nolint:unused
+func generateRandomNumber(t *testing.T, maxVal int64) int64 {
 	t.Helper()
-	maxB := big.NewInt(max)
+
+	maxB := big.NewInt(maxVal)
+
 	n, err := rand.Int(rand.Reader, maxB)
 	if err != nil {
 		t.Fatalf("getting random number: %s", err)
@@ -642,6 +581,9 @@ func TestListEphemeralNodes(t *testing.T) {
 	pakEph, err := db.CreatePreAuthKey(user.TypedID(), false, true, nil, nil)
 	require.NoError(t, err)
 
+	pakID := pak.ID
+	pakEphID := pakEph.ID
+
 	node := types.Node{
 		ID:             0,
 		MachineKey:     key.NewMachine().Public(),
@@ -649,7 +591,7 @@ func TestListEphemeralNodes(t *testing.T) {
 		Hostname:       "test",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(pak.ID),
+		AuthKeyID:      &pakID,
 	}
 
 	nodeEph := types.Node{
@@ -659,7 +601,7 @@ func TestListEphemeralNodes(t *testing.T) {
 		Hostname:       "ephemeral",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(pakEph.ID),
+		AuthKeyID:      &pakEphID,
 	}
 
 	err = db.DB.Save(&node).Error
@@ -683,278 +625,6 @@ func TestListEphemeralNodes(t *testing.T) {
 	assert.Equal(t, nodeEph.Hostname, ephemeralNodes[0].Hostname)
 }
 
-func TestNodeNaming(t *testing.T) {
-	db, err := newSQLiteTestDB()
-	if err != nil {
-		t.Fatalf("creating db: %s", err)
-	}
-
-	user, err := db.CreateUser(types.User{Name: "test"})
-	require.NoError(t, err)
-
-	user2, err := db.CreateUser(types.User{Name: "user2"})
-	require.NoError(t, err)
-
-	node := types.Node{
-		ID:             0,
-		MachineKey:     key.NewMachine().Public(),
-		NodeKey:        key.NewNode().Public(),
-		Hostname:       "test",
-		UserID:         &user.ID,
-		RegisterMethod: util.RegisterMethodAuthKey,
-		Hostinfo:       &tailcfg.Hostinfo{},
-	}
-
-	node2 := types.Node{
-		ID:             0,
-		MachineKey:     key.NewMachine().Public(),
-		NodeKey:        key.NewNode().Public(),
-		Hostname:       "test",
-		UserID:         &user2.ID,
-		RegisterMethod: util.RegisterMethodAuthKey,
-		Hostinfo:       &tailcfg.Hostinfo{},
-	}
-
-	// Using non-ASCII characters in the hostname can
-	// break your network, so they should be replaced when registering
-	// a node.
-	// https://github.com/juanfont/headscale/issues/2343
-	nodeInvalidHostname := types.Node{
-		MachineKey:     key.NewMachine().Public(),
-		NodeKey:        key.NewNode().Public(),
-		Hostname:       "我的电脑",
-		UserID:         &user2.ID,
-		RegisterMethod: util.RegisterMethodAuthKey,
-	}
-
-	nodeShortHostname := types.Node{
-		MachineKey:     key.NewMachine().Public(),
-		NodeKey:        key.NewNode().Public(),
-		Hostname:       "a",
-		UserID:         &user2.ID,
-		RegisterMethod: util.RegisterMethodAuthKey,
-	}
-
-	err = db.DB.Save(&node).Error
-	require.NoError(t, err)
-
-	err = db.DB.Save(&node2).Error
-	require.NoError(t, err)
-
-	err = db.DB.Transaction(func(tx *gorm.DB) error {
-		_, err := RegisterNodeForTest(tx, node, nil, nil)
-		if err != nil {
-			return err
-		}
-		_, err = RegisterNodeForTest(tx, node2, nil, nil)
-		if err != nil {
-			return err
-		}
-		_, err = RegisterNodeForTest(tx, nodeInvalidHostname, ptr.To(mpp("100.64.0.66/32").Addr()), nil)
-		_, err = RegisterNodeForTest(tx, nodeShortHostname, ptr.To(mpp("100.64.0.67/32").Addr()), nil)
-		return err
-	})
-	require.NoError(t, err)
-
-	nodes, err := db.ListNodes()
-	require.NoError(t, err)
-
-	assert.Len(t, nodes, 4)
-
-	t.Logf("node1 %s %s", nodes[0].Hostname, nodes[0].GivenName)
-	t.Logf("node2 %s %s", nodes[1].Hostname, nodes[1].GivenName)
-	t.Logf("node3 %s %s", nodes[2].Hostname, nodes[2].GivenName)
-	t.Logf("node4 %s %s", nodes[3].Hostname, nodes[3].GivenName)
-
-	assert.Equal(t, nodes[0].Hostname, nodes[0].GivenName)
-	assert.NotEqual(t, nodes[1].Hostname, nodes[1].GivenName)
-	assert.Equal(t, nodes[0].Hostname, nodes[1].Hostname)
-	assert.NotEqual(t, nodes[0].Hostname, nodes[1].GivenName)
-	assert.Contains(t, nodes[1].GivenName, nodes[0].Hostname)
-	assert.Equal(t, nodes[0].GivenName, nodes[1].Hostname)
-	assert.Len(t, nodes[0].Hostname, 4)
-	assert.Len(t, nodes[1].Hostname, 4)
-	assert.Len(t, nodes[0].GivenName, 4)
-	assert.Len(t, nodes[1].GivenName, 13)
-	assert.Contains(t, nodes[2].Hostname, "invalid-") // invalid chars
-	assert.Contains(t, nodes[2].GivenName, "invalid-")
-	assert.Contains(t, nodes[3].Hostname, "invalid-") // too short
-	assert.Contains(t, nodes[3].GivenName, "invalid-")
-
-	// Nodes can be renamed to a unique name
-	err = db.Write(func(tx *gorm.DB) error {
-		return RenameNode(tx, nodes[0].ID, "newname")
-	})
-	require.NoError(t, err)
-
-	nodes, err = db.ListNodes()
-	require.NoError(t, err)
-	assert.Len(t, nodes, 4)
-	assert.Equal(t, "test", nodes[0].Hostname)
-	assert.Equal(t, "newname", nodes[0].GivenName)
-
-	// Nodes can reuse name that is no longer used
-	err = db.Write(func(tx *gorm.DB) error {
-		return RenameNode(tx, nodes[1].ID, "test")
-	})
-	require.NoError(t, err)
-
-	nodes, err = db.ListNodes()
-	require.NoError(t, err)
-	assert.Len(t, nodes, 4)
-	assert.Equal(t, "test", nodes[0].Hostname)
-	assert.Equal(t, "newname", nodes[0].GivenName)
-	assert.Equal(t, "test", nodes[1].GivenName)
-
-	// Nodes cannot be renamed to used names
-	err = db.Write(func(tx *gorm.DB) error {
-		return RenameNode(tx, nodes[0].ID, "test")
-	})
-	assert.ErrorContains(t, err, "name is not unique")
-
-	// Rename invalid chars
-	err = db.Write(func(tx *gorm.DB) error {
-		return RenameNode(tx, nodes[2].ID, "我的电脑")
-	})
-	assert.ErrorContains(t, err, "invalid characters")
-
-	// Rename too short
-	err = db.Write(func(tx *gorm.DB) error {
-		return RenameNode(tx, nodes[3].ID, "a")
-	})
-	assert.ErrorContains(t, err, "at least 2 characters")
-
-	// Rename with emoji
-	err = db.Write(func(tx *gorm.DB) error {
-		return RenameNode(tx, nodes[0].ID, "hostname-with-💩")
-	})
-	assert.ErrorContains(t, err, "invalid characters")
-
-	// Rename with only emoji
-	err = db.Write(func(tx *gorm.DB) error {
-		return RenameNode(tx, nodes[0].ID, "🚀")
-	})
-	assert.ErrorContains(t, err, "invalid characters")
-}
-
-func TestRenameNodeComprehensive(t *testing.T) {
-	db, err := newSQLiteTestDB()
-	if err != nil {
-		t.Fatalf("creating db: %s", err)
-	}
-
-	user, err := db.CreateUser(types.User{Name: "test"})
-	require.NoError(t, err)
-
-	node := types.Node{
-		ID:             0,
-		MachineKey:     key.NewMachine().Public(),
-		NodeKey:        key.NewNode().Public(),
-		Hostname:       "testnode",
-		UserID:         &user.ID,
-		RegisterMethod: util.RegisterMethodAuthKey,
-		Hostinfo:       &tailcfg.Hostinfo{},
-	}
-
-	err = db.DB.Save(&node).Error
-	require.NoError(t, err)
-
-	err = db.DB.Transaction(func(tx *gorm.DB) error {
-		_, err := RegisterNodeForTest(tx, node, nil, nil)
-		return err
-	})
-	require.NoError(t, err)
-
-	nodes, err := db.ListNodes()
-	require.NoError(t, err)
-	assert.Len(t, nodes, 1)
-
-	tests := []struct {
-		name    string
-		newName string
-		wantErr string
-	}{
-		{
-			name:    "uppercase_rejected",
-			newName: "User2-Host",
-			wantErr: "must be lowercase",
-		},
-		{
-			name:    "underscore_rejected",
-			newName: "test_node",
-			wantErr: "invalid characters",
-		},
-		{
-			name:    "at_sign_uppercase_rejected",
-			newName: "Test@Host",
-			wantErr: "must be lowercase",
-		},
-		{
-			name:    "at_sign_rejected",
-			newName: "test@host",
-			wantErr: "invalid characters",
-		},
-		{
-			name:    "chinese_chars_with_dash_rejected",
-			newName: "server-北京-01",
-			wantErr: "invalid characters",
-		},
-		{
-			name:    "chinese_only_rejected",
-			newName: "我的电脑",
-			wantErr: "invalid characters",
-		},
-		{
-			name:    "emoji_with_text_rejected",
-			newName: "laptop-🚀",
-			wantErr: "invalid characters",
-		},
-		{
-			name:    "mixed_chinese_emoji_rejected",
-			newName: "测试💻机器",
-			wantErr: "invalid characters",
-		},
-		{
-			name:    "only_emojis_rejected",
-			newName: "🎉🎊",
-			wantErr: "invalid characters",
-		},
-		{
-			name:    "only_at_signs_rejected",
-			newName: "@@@",
-			wantErr: "invalid characters",
-		},
-		{
-			name:    "starts_with_dash_rejected",
-			newName: "-test",
-			wantErr: "cannot start or end with a hyphen",
-		},
-		{
-			name:    "ends_with_dash_rejected",
-			newName: "test-",
-			wantErr: "cannot start or end with a hyphen",
-		},
-		{
-			name:    "too_long_hostname_rejected",
-			newName: "this-is-a-very-long-hostname-that-exceeds-sixty-three-characters-limit",
-			wantErr: "must not exceed 63 characters",
-		},
-		{
-			name:    "too_short_hostname_rejected",
-			newName: "a",
-			wantErr: "at least 2 characters",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := db.Write(func(tx *gorm.DB) error {
-				return RenameNode(tx, nodes[0].ID, tt.newName)
-			})
-			assert.ErrorContains(t, err, tt.wantErr)
-		})
-	}
-}
 
 func TestListPeers(t *testing.T) {
 	// Setup test database
@@ -1000,6 +670,7 @@ func TestListPeers(t *testing.T) {
 		if err != nil {
 			return err
 		}
+
 		_, err = RegisterNodeForTest(tx, node2, nil, nil)
 
 		return err
@@ -1085,6 +756,7 @@ func TestListNodes(t *testing.T) {
 		if err != nil {
 			return err
 		}
+
 		_, err = RegisterNodeForTest(tx, node2, nil, nil)
 
 		return err

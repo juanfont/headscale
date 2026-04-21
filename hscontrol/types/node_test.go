@@ -113,6 +113,183 @@ func Test_NodeCanAccess(t *testing.T) {
 			},
 			want: true,
 		},
+		// Subnet-to-subnet tests for issue #3157.
+		// When ACL src and dst are both subnet CIDRs, subnet
+		// routers advertising those subnets must see each other.
+		{
+			name: "subnet-to-subnet-src-router-sees-dst-router-3157",
+			node1: Node{
+				IPv4: iap("100.64.0.1"),
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						netip.MustParsePrefix("10.88.8.0/24"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("10.88.8.0/24"),
+				},
+			},
+			node2: Node{
+				IPv4: iap("100.64.0.2"),
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						netip.MustParsePrefix("10.99.9.0/24"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("10.99.9.0/24"),
+				},
+			},
+			rules: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"10.88.8.0/24"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "10.99.9.0/24", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			// With a unidirectional ACL (src=A→dst=B), the dst
+			// router cannot access the src router. Bidirectional
+			// peer visibility comes from ReduceNodes checking
+			// both A.CanAccess(B) || B.CanAccess(A).
+			name: "subnet-to-subnet-unidirectional-dst-cannot-access-src-3157",
+			node1: Node{
+				IPv4: iap("100.64.0.2"),
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						netip.MustParsePrefix("10.99.9.0/24"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("10.99.9.0/24"),
+				},
+			},
+			node2: Node{
+				IPv4: iap("100.64.0.1"),
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						netip.MustParsePrefix("10.88.8.0/24"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("10.88.8.0/24"),
+				},
+			},
+			rules: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"10.88.8.0/24"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "10.99.9.0/24", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			// With a bidirectional ACL, both routers can access
+			// each other.
+			name: "subnet-to-subnet-bidirectional-3157",
+			node1: Node{
+				IPv4: iap("100.64.0.2"),
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						netip.MustParsePrefix("10.99.9.0/24"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("10.99.9.0/24"),
+				},
+			},
+			node2: Node{
+				IPv4: iap("100.64.0.1"),
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						netip.MustParsePrefix("10.88.8.0/24"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("10.88.8.0/24"),
+				},
+			},
+			rules: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"10.88.8.0/24"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "10.99.9.0/24", Ports: tailcfg.PortRangeAny},
+					},
+				},
+				{
+					SrcIPs: []string{"10.99.9.0/24"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "10.88.8.0/24", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "subnet-to-subnet-regular-node-excluded-3157",
+			node1: Node{
+				IPv4: iap("100.64.0.3"),
+			},
+			node2: Node{
+				IPv4: iap("100.64.0.2"),
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						netip.MustParsePrefix("10.99.9.0/24"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("10.99.9.0/24"),
+				},
+			},
+			rules: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"10.88.8.0/24"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "10.99.9.0/24", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "subnet-to-subnet-unrelated-router-excluded-3157",
+			node1: Node{
+				IPv4: iap("100.64.0.3"),
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						netip.MustParsePrefix("172.16.0.0/24"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("172.16.0.0/24"),
+				},
+			},
+			node2: Node{
+				IPv4: iap("100.64.0.2"),
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						netip.MustParsePrefix("10.99.9.0/24"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("10.99.9.0/24"),
+				},
+			},
+			rules: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"10.88.8.0/24"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "10.99.9.0/24", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+			want: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -124,6 +301,40 @@ func Test_NodeCanAccess(t *testing.T) {
 				t.Errorf("canAccess() failed: want (%t), got (%t)", tt.want, got)
 			}
 		})
+	}
+}
+
+// Test_NodeCanAccess_Unidirectional asserts that a one-way rule grants
+// access in one direction only. A unidirectional ACL is a valid and
+// intentional pattern; the "OR" aggregation in the v1 compat harness
+// loses this asymmetry, which motivated the directional split in
+// TestRoutesCompatPeerVisibility.
+func Test_NodeCanAccess_Unidirectional(t *testing.T) {
+	iap := func(ipStr string) *netip.Addr {
+		ip := netip.MustParseAddr(ipStr)
+		return &ip
+	}
+
+	nodeA := Node{IPv4: iap("100.64.0.1")}
+	nodeB := Node{IPv4: iap("100.64.0.2")}
+
+	rules := []tailcfg.FilterRule{
+		{
+			SrcIPs: []string{"100.64.0.1/32"},
+			DstPorts: []tailcfg.NetPortRange{
+				{IP: "100.64.0.2/32", Ports: tailcfg.PortRangeAny},
+			},
+		},
+	}
+
+	matchers := matcher.MatchesFromFilterRules(rules)
+
+	if !nodeA.CanAccess(matchers, &nodeB) {
+		t.Errorf("A→B: want true, got false")
+	}
+
+	if nodeB.CanAccess(matchers, &nodeA) {
+		t.Errorf("B→A: want false, got true (unidirectional rule leaked reverse access)")
 	}
 }
 
@@ -165,7 +376,7 @@ func TestNodeFQDN(t *testing.T) {
 				},
 			},
 			domain:  "example.com",
-			wantErr: "failed to create valid FQDN: node has no given name",
+			wantErr: "creating valid FQDN: node has no given name",
 		},
 		{
 			name: "too-long-username",
@@ -173,7 +384,7 @@ func TestNodeFQDN(t *testing.T) {
 				GivenName: strings.Repeat("a", 256),
 			},
 			domain:  "example.com",
-			wantErr: fmt.Sprintf("failed to create valid FQDN (%s.example.com.): hostname too long, cannot except 255 ASCII chars", strings.Repeat("a", 256)),
+			wantErr: fmt.Sprintf("creating valid FQDN (%s.example.com.): hostname too long, cannot accept more than 255 ASCII chars", strings.Repeat("a", 256)),
 		},
 		{
 			name: "no-dnsconfig",
@@ -339,303 +550,6 @@ func TestPeerChangeFromMapRequest(t *testing.T) {
 	}
 }
 
-func TestApplyHostnameFromHostInfo(t *testing.T) {
-	tests := []struct {
-		name       string
-		nodeBefore Node
-		change     *tailcfg.Hostinfo
-		want       Node
-	}{
-		{
-			name: "hostinfo-not-exists",
-			nodeBefore: Node{
-				GivenName: "manual-test.local",
-				Hostname:  "TestHost.Local",
-			},
-			change: nil,
-			want: Node{
-				GivenName: "manual-test.local",
-				Hostname:  "TestHost.Local",
-			},
-		},
-		{
-			name: "hostinfo-exists-no-automatic-givenName",
-			nodeBefore: Node{
-				GivenName: "manual-test.local",
-				Hostname:  "TestHost.Local",
-			},
-			change: &tailcfg.Hostinfo{
-				Hostname: "NewHostName.Local",
-			},
-			want: Node{
-				GivenName: "manual-test.local",
-				Hostname:  "newhostname.local",
-			},
-		},
-		{
-			name: "hostinfo-exists-automatic-givenName",
-			nodeBefore: Node{
-				GivenName: "automaticname.test",
-				Hostname:  "AutomaticName.Test",
-			},
-			change: &tailcfg.Hostinfo{
-				Hostname: "NewHostName.Local",
-			},
-			want: Node{
-				GivenName: "newhostname.local",
-				Hostname:  "newhostname.local",
-			},
-		},
-		{
-			name: "invalid-hostname-with-emoji-rejected",
-			nodeBefore: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-			change: &tailcfg.Hostinfo{
-				Hostname: "hostname-with-💩",
-			},
-			want: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname", // Should reject and keep old hostname
-			},
-		},
-		{
-			name: "invalid-hostname-with-unicode-rejected",
-			nodeBefore: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-			change: &tailcfg.Hostinfo{
-				Hostname: "我的电脑",
-			},
-			want: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname", // Should keep old hostname
-			},
-		},
-		{
-			name: "invalid-hostname-with-special-chars-rejected",
-			nodeBefore: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-			change: &tailcfg.Hostinfo{
-				Hostname: "node-with-special!@#$%",
-			},
-			want: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname", // Should reject and keep old hostname
-			},
-		},
-		{
-			name: "invalid-hostname-too-short-rejected",
-			nodeBefore: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-			change: &tailcfg.Hostinfo{
-				Hostname: "a",
-			},
-			want: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname", // Should keep old hostname
-			},
-		},
-		{
-			name: "invalid-hostname-uppercase-accepted-lowercased",
-			nodeBefore: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-			change: &tailcfg.Hostinfo{
-				Hostname: "ValidHostName",
-			},
-			want: Node{
-				GivenName: "validhostname", // GivenName follows hostname when it changes
-				Hostname:  "validhostname", // Uppercase is lowercased, not rejected
-			},
-		},
-		{
-			name: "uppercase_to_lowercase_accepted",
-			nodeBefore: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-			change: &tailcfg.Hostinfo{
-				Hostname: "User2-Host",
-			},
-			want: Node{
-				GivenName: "user2-host",
-				Hostname:  "user2-host",
-			},
-		},
-		{
-			name: "at_sign_rejected",
-			nodeBefore: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-			change: &tailcfg.Hostinfo{
-				Hostname: "Test@Host",
-			},
-			want: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-		},
-		{
-			name: "chinese_chars_with_dash_rejected",
-			nodeBefore: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-			change: &tailcfg.Hostinfo{
-				Hostname: "server-北京-01",
-			},
-			want: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-		},
-		{
-			name: "chinese_only_rejected",
-			nodeBefore: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-			change: &tailcfg.Hostinfo{
-				Hostname: "我的电脑",
-			},
-			want: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-		},
-		{
-			name: "emoji_with_text_rejected",
-			nodeBefore: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-			change: &tailcfg.Hostinfo{
-				Hostname: "laptop-🚀",
-			},
-			want: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-		},
-		{
-			name: "mixed_chinese_emoji_rejected",
-			nodeBefore: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-			change: &tailcfg.Hostinfo{
-				Hostname: "测试💻机器",
-			},
-			want: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-		},
-		{
-			name: "only_emojis_rejected",
-			nodeBefore: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-			change: &tailcfg.Hostinfo{
-				Hostname: "🎉🎊",
-			},
-			want: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-		},
-		{
-			name: "only_at_signs_rejected",
-			nodeBefore: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-			change: &tailcfg.Hostinfo{
-				Hostname: "@@@",
-			},
-			want: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-		},
-		{
-			name: "starts_with_dash_rejected",
-			nodeBefore: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-			change: &tailcfg.Hostinfo{
-				Hostname: "-test",
-			},
-			want: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-		},
-		{
-			name: "ends_with_dash_rejected",
-			nodeBefore: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-			change: &tailcfg.Hostinfo{
-				Hostname: "test-",
-			},
-			want: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-		},
-		{
-			name: "too_long_hostname_rejected",
-			nodeBefore: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-			change: &tailcfg.Hostinfo{
-				Hostname: strings.Repeat("t", 65),
-			},
-			want: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-		},
-		{
-			name: "underscore_rejected",
-			nodeBefore: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-			change: &tailcfg.Hostinfo{
-				Hostname: "test_node",
-			},
-			want: Node{
-				GivenName: "valid-hostname",
-				Hostname:  "valid-hostname",
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.nodeBefore.ApplyHostnameFromHostInfo(tt.change)
-
-			if diff := cmp.Diff(tt.want, tt.nodeBefore, util.Comparers...); diff != "" {
-				t.Errorf("Patch unexpected result (-want +got):\n%s", diff)
-			}
-		})
-	}
-}
 
 func TestApplyPeerChange(t *testing.T) {
 	tests := []struct {
@@ -957,6 +871,37 @@ func TestHasNetworkChanges(t *testing.T) {
 				Hostname: "new-name",
 			},
 			changed: false,
+		},
+		{
+			name: "ExitRoutes approved",
+			old: &Node{
+				ID:       1,
+				IPv4:     mustIPPtr("100.64.0.1"),
+				Hostinfo: &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0")}},
+			},
+			new: &Node{
+				ID:             1,
+				IPv4:           mustIPPtr("100.64.0.1"),
+				Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0")}},
+				ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0")},
+			},
+			changed: true,
+		},
+		{
+			name: "ExitRoutes unchanged when SubnetRoutes change",
+			old: &Node{
+				ID:             1,
+				IPv4:           mustIPPtr("100.64.0.1"),
+				Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0"), netip.MustParsePrefix("10.0.0.0/24")}},
+				ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0")},
+			},
+			new: &Node{
+				ID:             1,
+				IPv4:           mustIPPtr("100.64.0.1"),
+				Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0"), netip.MustParsePrefix("10.0.0.0/24")}},
+				ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0"), netip.MustParsePrefix("10.0.0.0/24")},
+			},
+			changed: true,
 		},
 	}
 

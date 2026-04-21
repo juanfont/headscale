@@ -17,12 +17,12 @@ func mdTypesetBody(children ...elem.Node) *elem.Element {
 			styles.Display:         "flex",
 			styles.FlexDirection:   "column",
 			styles.AlignItems:      "center",
-			styles.BackgroundColor: "#ffffff",
+			styles.BackgroundColor: "var(--hs-bg)",
 			styles.Padding:         "3rem 1.5rem",
 		}.ToInline(),
 		"translate": "no",
 	},
-		elem.Div(attrs.Props{
+		elem.Main(attrs.Props{
 			attrs.Class: "md-typeset",
 			attrs.Style: styles.Props{
 				styles.MaxWidth: "min(800px, 90vw)",
@@ -124,26 +124,20 @@ func headscaleLogo() elem.Node {
 
 // pageFooter creates a consistent footer for all pages.
 func pageFooter() *elem.Element {
-	footerStyle := styles.Props{
-		styles.MarginTop:  space3XL,
-		styles.TextAlign:  "center",
-		styles.FontSize:   fontSizeSmall,
-		styles.Color:      colorTextSecondary,
-		styles.LineHeight: lineHeightBase,
-	}
-
-	linkStyle := styles.Props{
-		styles.Color:          colorTextSecondary,
-		styles.TextDecoration: "underline",
-	}
-
-	return elem.Div(attrs.Props{attrs.Style: footerStyle.ToInline()},
+	return elem.Footer(attrs.Props{
+		attrs.Style: styles.Props{
+			styles.MarginTop:  space3XL,
+			styles.TextAlign:  "center",
+			styles.FontSize:   fontSizeSmall,
+			styles.Color:      "var(--md-default-fg-color--light)",
+			styles.LineHeight: lineHeightBase,
+		}.ToInline(),
+	},
 		elem.Text("Powered by "),
 		elem.A(attrs.Props{
 			attrs.Href:   "https://github.com/juanfont/headscale",
 			attrs.Rel:    "noreferrer noopener",
 			attrs.Target: "_blank",
-			attrs.Style:  linkStyle.ToInline(),
 		}, elem.Text("Headscale")),
 	)
 }

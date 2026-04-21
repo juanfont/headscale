@@ -46,7 +46,6 @@ The headscale documentation and the provided examples are written with a few ass
 
 Please adjust to your local environment accordingly.
 
-[^1]:
-    The Tailscale client assumes HTTPS on port 443 in certain situations. Serving headscale either via HTTP or via HTTPS
-    on a port other than 443 is possible but sticking with HTTPS on port 443 is strongly recommended for production
-    setups. See [issue 2164](https://github.com/juanfont/headscale/issues/2164) for more information.
+[^1]: The Tailscale client assumes HTTPS on port 443 in certain situations. Serving headscale either via HTTP or via
+    HTTPS on a port other than 443 is possible but sticking with HTTPS on port 443 is strongly recommended for
+    production setups. See [issue 2164](https://github.com/juanfont/headscale/issues/2164) for more information.

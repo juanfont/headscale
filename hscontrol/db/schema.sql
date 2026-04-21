@@ -79,6 +79,8 @@ CREATE TABLE nodes(
   ipv6 text,
   hostname text,
   given_name varchar(63),
+  -- user_id is NULL for tagged nodes (owned by tags, not a user).
+  -- Only set for user-owned nodes (no tags).
   user_id integer,
   register_method text,
   tags text,
@@ -125,3 +127,9 @@ CREATE UNIQUE INDEX idx_oidc_sessions_session_id ON oidc_sessions(session_id);
 CREATE INDEX idx_oidc_sessions_token_expiry ON oidc_sessions(token_expiry);
 CREATE INDEX idx_oidc_sessions_is_active ON oidc_sessions(is_active);
 CREATE INDEX idx_oidc_sessions_deleted_at ON oidc_sessions(deleted_at);
+
+CREATE TABLE database_versions(
+  id integer PRIMARY KEY,
+  version text NOT NULL,
+  updated_at datetime
+);

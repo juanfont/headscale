@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/integration/hsic"
+	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,14 +22,14 @@ func TestDERPServerScenario(t *testing.T) {
 	spec := ScenarioSpec{
 		NodesPerUser: 1,
 		Users:        []string{"user1", "user2", "user3"},
-		Networks: map[string][]string{
-			"usernet1": {"user1"},
-			"usernet2": {"user2"},
-			"usernet3": {"user3"},
+		Networks: map[string]NetworkSpec{
+			"usernet1": {Users: []string{"user1"}},
+			"usernet2": {Users: []string{"user2"}},
+			"usernet3": {Users: []string{"user3"}},
 		},
 	}
 
-	derpServerScenario(t, spec, false, func(scenario *Scenario) {
+	derpServerScenario(t, spec, "derp-tcp", false, func(scenario *Scenario) {
 		allClients, err := scenario.ListTailscaleClients()
 		requireNoErrListClients(t, err)
 		t.Logf("checking %d clients for websocket connections", len(allClients))
@@ -71,14 +72,14 @@ func TestDERPServerWebsocketScenario(t *testing.T) {
 	spec := ScenarioSpec{
 		NodesPerUser: 1,
 		Users:        []string{"user1", "user2", "user3"},
-		Networks: map[string][]string{
-			"usernet1": {"user1"},
-			"usernet2": {"user2"},
-			"usernet3": {"user3"},
+		Networks: map[string]NetworkSpec{
+			"usernet1": {Users: []string{"user1"}},
+			"usernet2": {Users: []string{"user2"}},
+			"usernet3": {Users: []string{"user3"}},
 		},
 	}
 
-	derpServerScenario(t, spec, true, func(scenario *Scenario) {
+	derpServerScenario(t, spec, "derp-ws", true, func(scenario *Scenario) {
 		allClients, err := scenario.ListTailscaleClients()
 		requireNoErrListClients(t, err)
 		t.Logf("checking %d clients for websocket connections", len(allClients))
@@ -103,6 +104,7 @@ func TestDERPServerWebsocketScenario(t *testing.T) {
 func derpServerScenario(
 	t *testing.T,
 	spec ScenarioSpec,
+	testName string,
 	websocket bool,
 	furtherAssertions ...func(*Scenario),
 ) {
@@ -117,11 +119,11 @@ func derpServerScenario(
 		[]tsic.Option{
 			tsic.WithWebsocketDERP(websocket),
 		},
-		hsic.WithTestName("derpserver"),
+		hsic.WithTestName(testName),
+		// Expose STUN port for DERP NAT traversal.
 		hsic.WithExtraPorts([]string{"3478/udp"}),
-		hsic.WithEmbeddedDERPServerOnly(),
+		// DERP clients expect the server on the standard HTTPS port.
 		hsic.WithPort(443),
-		hsic.WithTLS(),
 		hsic.WithConfigEnv(map[string]string{
 			"HEADSCALE_DERP_AUTO_UPDATE_ENABLED":   "true",
 			"HEADSCALE_DERP_UPDATE_FREQUENCY":      "10s",
@@ -151,7 +153,7 @@ func derpServerScenario(
 				assert.NotContains(ct, health, "could not connect to the 'Headscale Embedded DERP' relay server.",
 					"Client %s should be connected to Headscale Embedded DERP", client.Hostname())
 			}
-		}, 30*time.Second, 2*time.Second)
+		}, integrationutil.ScaledTimeout(30*time.Second), 2*time.Second)
 	}
 
 	success := pingDerpAllHelper(t, allClients, allHostnames)
@@ -172,7 +174,7 @@ func derpServerScenario(
 				assert.NotContains(ct, health, "could not connect to the 'Headscale Embedded DERP' relay server.",
 					"Client %s should be connected to Headscale Embedded DERP after first run", client.Hostname())
 			}
-		}, 30*time.Second, 2*time.Second)
+		}, integrationutil.ScaledTimeout(30*time.Second), 2*time.Second)
 	}
 
 	t.Logf("Run 1: %d successful pings out of %d", success, len(allClients)*len(allHostnames))
@@ -198,7 +200,7 @@ func derpServerScenario(
 				assert.NotContains(ct, health, "could not connect to the 'Headscale Embedded DERP' relay server.",
 					"Client %s should be connected to Headscale Embedded DERP after second run", client.Hostname())
 			}
-		}, 30*time.Second, 2*time.Second)
+		}, integrationutil.ScaledTimeout(30*time.Second), 2*time.Second)
 	}
 
 	t.Logf("Run2: %d successful pings out of %d", success, len(allClients)*len(allHostnames))

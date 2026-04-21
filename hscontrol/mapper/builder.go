@@ -1,8 +1,8 @@
 package mapper
 
 import (
-	"errors"
 	"net/netip"
+	"slices"
 	"sort"
 	"time"
 
@@ -36,6 +36,7 @@ const (
 // NewMapResponseBuilder creates a new builder with basic fields set.
 func (m *mapper) NewMapResponseBuilder(nodeID types.NodeID) *MapResponseBuilder {
 	now := time.Now()
+
 	return &MapResponseBuilder{
 		resp: &tailcfg.MapResponse{
 			KeepAlive:   false,
@@ -69,7 +70,7 @@ func (b *MapResponseBuilder) WithCapabilityVersion(capVer tailcfg.CapabilityVers
 func (b *MapResponseBuilder) WithSelfNode() *MapResponseBuilder {
 	nv, ok := b.mapper.state.GetNodeByID(b.nodeID)
 	if !ok {
-		b.addError(errors.New("node not found"))
+		b.addError(ErrNodeNotFoundMapper)
 		return b
 	}
 
@@ -78,7 +79,10 @@ func (b *MapResponseBuilder) WithSelfNode() *MapResponseBuilder {
 	tailnode, err := nv.TailNode(
 		b.capVer,
 		func(id types.NodeID) []netip.Prefix {
-			return policy.ReduceRoutes(nv, b.mapper.state.GetNodePrimaryRoutes(id), matchers)
+			// Self node: include own primaries + exit routes (no via steering for self).
+			primaries := policy.ReduceRoutes(nv, b.mapper.state.GetNodePrimaryRoutes(id), matchers)
+
+			return slices.Concat(primaries, nv.ExitRoutes())
 		},
 		b.mapper.cfg)
 	if err != nil {
@@ -123,6 +127,7 @@ func (b *MapResponseBuilder) WithDebugConfig() *MapResponseBuilder {
 	b.resp.Debug = &tailcfg.Debug{
 		DisableLogTail: !b.mapper.cfg.LogTail.Enabled,
 	}
+
 	return b
 }
 
@@ -130,7 +135,7 @@ func (b *MapResponseBuilder) WithDebugConfig() *MapResponseBuilder {
 func (b *MapResponseBuilder) WithSSHPolicy() *MapResponseBuilder {
 	node, ok := b.mapper.state.GetNodeByID(b.nodeID)
 	if !ok {
-		b.addError(errors.New("node not found"))
+		b.addError(ErrNodeNotFoundMapper)
 		return b
 	}
 
@@ -149,7 +154,7 @@ func (b *MapResponseBuilder) WithSSHPolicy() *MapResponseBuilder {
 func (b *MapResponseBuilder) WithDNSConfig() *MapResponseBuilder {
 	node, ok := b.mapper.state.GetNodeByID(b.nodeID)
 	if !ok {
-		b.addError(errors.New("node not found"))
+		b.addError(ErrNodeNotFoundMapper)
 		return b
 	}
 
@@ -162,7 +167,7 @@ func (b *MapResponseBuilder) WithDNSConfig() *MapResponseBuilder {
 func (b *MapResponseBuilder) WithUserProfiles(peers views.Slice[types.NodeView]) *MapResponseBuilder {
 	node, ok := b.mapper.state.GetNodeByID(b.nodeID)
 	if !ok {
-		b.addError(errors.New("node not found"))
+		b.addError(ErrNodeNotFoundMapper)
 		return b
 	}
 
@@ -175,7 +180,7 @@ func (b *MapResponseBuilder) WithUserProfiles(peers views.Slice[types.NodeView])
 func (b *MapResponseBuilder) WithPacketFilters() *MapResponseBuilder {
 	node, ok := b.mapper.state.GetNodeByID(b.nodeID)
 	if !ok {
-		b.addError(errors.New("node not found"))
+		b.addError(ErrNodeNotFoundMapper)
 		return b
 	}
 
@@ -229,7 +234,7 @@ func (b *MapResponseBuilder) WithPeerChanges(peers views.Slice[types.NodeView]) 
 func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) ([]*tailcfg.Node, error) {
 	node, ok := b.mapper.state.GetNodeByID(b.nodeID)
 	if !ok {
-		return nil, errors.New("node not found")
+		return nil, ErrNodeNotFoundMapper
 	}
 
 	// Get unreduced matchers for peer relationship determination.
@@ -250,14 +255,18 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 		changedViews = peers
 	}
 
-	tailPeers, err := types.TailNodes(
-		changedViews, b.capVer,
-		func(id types.NodeID) []netip.Prefix {
-			return policy.ReduceRoutes(node, b.mapper.state.GetNodePrimaryRoutes(id), matchers)
-		},
-		b.mapper.cfg)
-	if err != nil {
-		return nil, err
+	// Build tail nodes with per-peer via-aware route function.
+	tailPeers := make([]*tailcfg.Node, 0, changedViews.Len())
+
+	for _, peer := range changedViews.All() {
+		tn, err := peer.TailNode(b.capVer, func(_ types.NodeID) []netip.Prefix {
+			return b.mapper.state.RoutesForPeer(node, peer, matchers)
+		}, b.mapper.cfg)
+		if err != nil {
+			return nil, err
+		}
+
+		tailPeers = append(tailPeers, tn)
 	}
 
 	// Peers is always returned sorted by Node.ID.
@@ -268,6 +277,12 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 	return tailPeers, nil
 }
 
+// WithPingRequest adds a PingRequest to the response.
+func (b *MapResponseBuilder) WithPingRequest(pr *tailcfg.PingRequest) *MapResponseBuilder {
+	b.resp.PingRequest = pr
+	return b
+}
+
 // WithPeerChangedPatch adds peer change patches.
 func (b *MapResponseBuilder) WithPeerChangedPatch(changes []*tailcfg.PeerChange) *MapResponseBuilder {
 	b.resp.PeersChangedPatch = changes
@@ -276,20 +291,22 @@ func (b *MapResponseBuilder) WithPeerChangedPatch(changes []*tailcfg.PeerChange)
 
 // WithPeersRemoved adds removed peer IDs.
 func (b *MapResponseBuilder) WithPeersRemoved(removedIDs ...types.NodeID) *MapResponseBuilder {
-	var tailscaleIDs []tailcfg.NodeID
+	tailscaleIDs := make([]tailcfg.NodeID, 0, len(removedIDs))
 	for _, id := range removedIDs {
 		tailscaleIDs = append(tailscaleIDs, id.NodeID())
 	}
+
 	b.resp.PeersRemoved = tailscaleIDs
 
 	return b
 }
 
-// Build finalizes the response and returns marshaled bytes
+// Build finalizes the response and returns marshaled bytes.
 func (b *MapResponseBuilder) Build() (*tailcfg.MapResponse, error) {
 	if len(b.errs) > 0 {
 		return nil, multierr.New(b.errs...)
 	}
+
 	if debugDumpMapResponsePath != "" {
 		writeDebugMapResponse(b.resp, b.debugType, b.nodeID)
 	}

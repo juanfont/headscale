@@ -10,7 +10,7 @@ import (
 )
 
 var PrefixComparer = cmp.Comparer(func(x, y netip.Prefix) bool {
-	return x == y
+	return x.Compare(y) == 0
 })
 
 var IPComparer = cmp.Comparer(func(x, y netip.Addr) bool {
@@ -33,7 +33,7 @@ var DkeyComparer = cmp.Comparer(func(x, y key.DiscoPublic) bool {
 	return x.String() == y.String()
 })
 
-var ViewSliceIPProtoComparer = cmp.Comparer(func(a, b views.Slice[ipproto.Proto]) bool { return views.SliceEqual(a, b) })
+var ViewSliceIPProtoComparer = cmp.Comparer(views.SliceEqual[ipproto.Proto])
 
 var Comparers []cmp.Option = []cmp.Option{
 	IPComparer, PrefixComparer, AddrPortComparer, MkeyComparer, NkeyComparer, DkeyComparer, ViewSliceIPProtoComparer,
