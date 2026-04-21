@@ -24,7 +24,7 @@ func InvalidateOIDCSessionsForNode(tx *gorm.DB, nodeID types.NodeID) error {
 
 	result := tx.Model(&types.OIDCSession{}).
 		Where("node_id = ? AND is_active = ?", nodeID, true).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"is_active":     false,
 			"last_seen_at":  time.Now(),
 			"refresh_token": nil,
@@ -51,52 +51,46 @@ func InvalidateOIDCSessionsForNode(tx *gorm.DB, nodeID types.NodeID) error {
 	return nil
 }
 
-// InvalidateExpiredOIDCSessions invalidates sessions for nodes that have been offline too long
-func (hsdb *HSDatabase) InvalidateExpiredOIDCSessions(offlineGracePeriod time.Duration) error {
-	return hsdb.Write(func(tx *gorm.DB) error {
-		return InvalidateExpiredOIDCSessions(tx, offlineGracePeriod)
-	})
-}
-
-// InvalidateExpiredOIDCSessions invalidates sessions for nodes that have been offline too long
-func InvalidateExpiredOIDCSessions(tx *gorm.DB, offlineGracePeriod time.Duration) error {
-	// Find active sessions where the node has been offline for longer than the grace period
+// FindOIDCSessionCandidatesForInvalidation finds active sessions where the node's
+// database last_seen is older than the grace period. These are candidates only —
+// the caller should verify the node is actually offline (e.g., via NodeStore) before
+// invalidating, since last_seen in the database may be stale for online nodes.
+func (hsdb *HSDatabase) FindOIDCSessionCandidatesForInvalidation(offlineGracePeriod time.Duration) ([]types.OIDCSession, error) {
 	cutoff := time.Now().Add(-offlineGracePeriod)
 
 	var sessions []types.OIDCSession
-	err := tx.Joins("JOIN nodes ON nodes.id = oidc_sessions.node_id").
-		Where("oidc_sessions.is_active = ? AND nodes.last_seen IS NOT NULL AND nodes.last_seen < ?", true, cutoff).
-		Find(&sessions).Error
+	err := hsdb.Read(func(tx *gorm.DB) error {
+		return tx.Joins("JOIN nodes ON nodes.id = oidc_sessions.node_id").
+			Where("oidc_sessions.is_active = ? AND nodes.last_seen IS NOT NULL AND nodes.last_seen < ?", true, cutoff).
+			Find(&sessions).Error
+	})
 	if err != nil {
-		return fmt.Errorf("failed to find expired OIDC sessions: %w", err)
+		return nil, fmt.Errorf("failed to find OIDC session candidates for invalidation: %w", err)
 	}
 
-	if len(sessions) == 0 {
+	return sessions, nil
+}
+
+// InvalidateOIDCSessionsByIDs invalidates the specified OIDC sessions by their session IDs.
+// Unlike InvalidateOIDCSessionsForNode, this preserves the refresh token so that nodes
+// returning online can attempt session recovery without requiring manual re-authentication.
+func (hsdb *HSDatabase) InvalidateOIDCSessionsByIDs(sessionIDs []string) error {
+	if len(sessionIDs) == 0 {
 		return nil
 	}
 
-	// Invalidate these sessions
-	sessionIDs := make([]string, len(sessions))
-	for i, session := range sessions {
-		sessionIDs[i] = session.SessionID
-	}
+	return hsdb.Write(func(tx *gorm.DB) error {
+		result := tx.Model(&types.OIDCSession{}).
+			Where("session_id IN ?", sessionIDs).
+			Updates(map[string]any{
+				"is_active":    false,
+				"last_seen_at": time.Now(),
+			})
 
-	result := tx.Model(&types.OIDCSession{}).
-		Where("session_id IN ?", sessionIDs).
-		Updates(map[string]interface{}{
-			"is_active":     false,
-			"last_seen_at":  time.Now(),
-			"refresh_token": nil,
-		})
+		if result.Error != nil {
+			return fmt.Errorf("failed to invalidate OIDC sessions: %w", result.Error)
+		}
 
-	if result.Error != nil {
-		return fmt.Errorf("failed to invalidate expired OIDC sessions: %w", result.Error)
-	}
-
-	log.Info().
-		Int("sessions_invalidated", len(sessions)).
-		Dur("grace_period", offlineGracePeriod).
-		Msg("OIDC: Invalidated sessions for nodes offline beyond grace period")
-
-	return nil
+		return nil
+	})
 }

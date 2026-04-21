@@ -15,6 +15,7 @@ import (
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
+	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/oauth2-proxy/mockoidc"
 	"github.com/samber/lo"
@@ -1937,7 +1938,7 @@ func TestOIDCNodeOfflineOnlineSessionManagement(t *testing.T) {
 
 	scenario, err := NewScenario(spec)
 
-	assertNoErr(t, err)
+	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	oidcMap := map[string]string{
@@ -1953,16 +1954,16 @@ func TestOIDCNodeOfflineOnlineSessionManagement(t *testing.T) {
 		hsic.WithTestName("oidcnodeoffline"),
 		hsic.WithConfigEnv(oidcMap),
 	)
-	assertNoErrHeadscaleEnv(t, err)
+	require.NoError(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
-	assertNoErrListClients(t, err)
+	require.NoError(t, err)
 
 	allIps, err := scenario.ListTailscaleClientsIPs()
-	assertNoErrListClientIPs(t, err)
+	require.NoError(t, err)
 
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	require.NoError(t, err)
 
 	// Verify initial connectivity
 	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
@@ -1976,7 +1977,7 @@ func TestOIDCNodeOfflineOnlineSessionManagement(t *testing.T) {
 	firstClient := allClients[0]
 	t.Logf("Taking node %s offline", firstClient.Hostname())
 	err = firstClient.Down()
-	assertNoErr(t, err)
+	require.NoError(t, err)
 
 	// Wait for a bit to ensure the node is marked as offline
 	time.Sleep(30 * time.Second)
@@ -1985,21 +1986,21 @@ func TestOIDCNodeOfflineOnlineSessionManagement(t *testing.T) {
 	t.Log("Verifying offline node is not reachable")
 
 	status, err := firstClient.Status()
-	assertNoErr(t, err)
+	require.NoError(t, err)
 	assert.NotEqual(t, "Running", status.BackendState, "Node should not be in Running state when offline")
 
 	// Bring the node back online
 	t.Logf("Bringing node %s back online", firstClient.Hostname())
 	err = firstClient.Up()
-	assertNoErr(t, err)
+	require.NoError(t, err)
 
 	// Wait for the node to reconnect and re-authenticate
-	err = firstClient.WaitForRunning()
-	assertNoErr(t, err)
+	err = firstClient.WaitForRunning(integrationutil.PeerSyncTimeout())
+	require.NoError(t, err)
 
 	// Re-sync and verify connectivity is restored
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	require.NoError(t, err)
 
 	success = pingAllHelper(t, allClients, allAddrs)
 	t.Logf("After reconnection: %d successful pings out of %d", success, len(allClients)*len(allIps))
@@ -2012,22 +2013,22 @@ func TestOIDCNodeOfflineOnlineSessionManagement(t *testing.T) {
 		t.Logf("Cycle %d: Taking node offline", i+1)
 
 		err = firstClient.Down()
-		assertNoErr(t, err)
+		require.NoError(t, err)
 
 		time.Sleep(10 * time.Second)
 
 		t.Logf("Cycle %d: Bringing node online", i+1)
 
 		err = firstClient.Up()
-		assertNoErr(t, err)
+		require.NoError(t, err)
 
-		err = firstClient.WaitForRunning()
-		assertNoErr(t, err)
+		err = firstClient.WaitForRunning(integrationutil.PeerSyncTimeout())
+		require.NoError(t, err)
 	}
 
 	// Final connectivity check
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	require.NoError(t, err)
 
 	success = pingAllHelper(t, allClients, allAddrs)
 	t.Logf("Final connectivity check: %d successful pings out of %d", success, len(allClients)*len(allIps))
@@ -2052,7 +2053,7 @@ func TestOIDCTokenRefreshWithExpiry(t *testing.T) {
 
 	scenario, err := NewScenario(spec)
 
-	assertNoErr(t, err)
+	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	oidcMap := map[string]string{
@@ -2068,16 +2069,16 @@ func TestOIDCTokenRefreshWithExpiry(t *testing.T) {
 		hsic.WithTestName("oidctokenrefresh"),
 		hsic.WithConfigEnv(oidcMap),
 	)
-	assertNoErrHeadscaleEnv(t, err)
+	require.NoError(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
-	assertNoErrListClients(t, err)
+	require.NoError(t, err)
 
 	allIps, err := scenario.ListTailscaleClientsIPs()
-	assertNoErrListClientIPs(t, err)
+	require.NoError(t, err)
 
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	require.NoError(t, err)
 
 	// Verify initial connectivity
 	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
@@ -2101,7 +2102,7 @@ func TestOIDCTokenRefreshWithExpiry(t *testing.T) {
 	// Verify nodes are still authenticated and not in NeedsLogin state
 	for _, client := range allClients {
 		status, err := client.Status()
-		assertNoErr(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, "Running", status.BackendState, "Node should still be in Running state after token refresh")
 	}
 

@@ -109,7 +109,7 @@ CREATE TABLE oidc_sessions(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   node_id INTEGER NOT NULL,
   session_id TEXT NOT NULL,
-  registration_id INTEGER NOT NULL,
+  registration_id TEXT NOT NULL,
   refresh_token TEXT,
   token_expiry DATETIME,
   last_refreshed_at DATETIME,

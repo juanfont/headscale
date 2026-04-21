@@ -695,13 +695,13 @@ AND auth_key_id NOT IN (
 					if !tx.Migrator().HasTable(&types.OIDCSession{}) {
 						// Create the table with database-specific SQL
 						var sql string
-						if cfg.Type == types.DatabasePostgres {
+						if cfg.Database.Type == types.DatabasePostgres {
 							sql = `
 								CREATE TABLE oidc_sessions (
 									id SERIAL PRIMARY KEY,
 									node_id INTEGER NOT NULL,
 									session_id TEXT NOT NULL,
-									registration_id INTEGER NOT NULL,
+									registration_id TEXT NOT NULL,
 									refresh_token TEXT,
 									token_expiry TIMESTAMP,
 									last_refreshed_at TIMESTAMP,
@@ -719,7 +719,7 @@ AND auth_key_id NOT IN (
 									id INTEGER PRIMARY KEY AUTOINCREMENT,
 									node_id INTEGER NOT NULL,
 									session_id TEXT NOT NULL,
-									registration_id INTEGER NOT NULL,
+									registration_id TEXT NOT NULL,
 									refresh_token TEXT,
 									token_expiry DATETIME,
 									last_refreshed_at DATETIME,
@@ -771,6 +771,7 @@ AND auth_key_id NOT IN (
 			&types.APIKey{},
 			&types.Node{},
 			&types.Policy{},
+			&types.OIDCSession{},
 		)
 		if err != nil {
 			return err
@@ -786,6 +787,11 @@ AND auth_key_id NOT IN (
 			`DROP INDEX IF EXISTS "idx_name_provider_identifier"`,
 			`DROP INDEX IF EXISTS "idx_name_no_provider_identifier"`,
 			`DROP INDEX IF EXISTS "idx_pre_auth_keys_prefix"`,
+			`DROP INDEX IF EXISTS "idx_oidc_sessions_node_id"`,
+			`DROP INDEX IF EXISTS "idx_oidc_sessions_session_id"`,
+			`DROP INDEX IF EXISTS "idx_oidc_sessions_token_expiry"`,
+			`DROP INDEX IF EXISTS "idx_oidc_sessions_is_active"`,
+			`DROP INDEX IF EXISTS "idx_oidc_sessions_deleted_at"`,
 		}
 
 		for _, dropSQL := range dropIndexes {
@@ -804,6 +810,11 @@ AND auth_key_id NOT IN (
 			`CREATE UNIQUE INDEX idx_name_provider_identifier ON users(name, provider_identifier)`,
 			`CREATE UNIQUE INDEX idx_name_no_provider_identifier ON users(name) WHERE provider_identifier IS NULL`,
 			`CREATE UNIQUE INDEX idx_pre_auth_keys_prefix ON pre_auth_keys(prefix) WHERE prefix IS NOT NULL AND prefix != ''`,
+			`CREATE UNIQUE INDEX idx_oidc_sessions_node_id ON oidc_sessions(node_id)`,
+			`CREATE UNIQUE INDEX idx_oidc_sessions_session_id ON oidc_sessions(session_id)`,
+			`CREATE INDEX idx_oidc_sessions_token_expiry ON oidc_sessions(token_expiry)`,
+			`CREATE INDEX idx_oidc_sessions_is_active ON oidc_sessions(is_active)`,
+			`CREATE INDEX idx_oidc_sessions_deleted_at ON oidc_sessions(deleted_at)`,
 		}
 
 		for _, indexSQL := range indexes {

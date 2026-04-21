@@ -228,7 +228,9 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
-	nodeExpiry := a.determineNodeExpiry(idToken.Expiry)
+	// Use access token expiry (not ID token) for node expiry calculation.
+	// Access tokens typically have longer lifetimes (e.g., 90min vs 60min on Azure AD)
+	nodeExpiry := a.determineNodeExpiry(oauth2Token.Expiry)
 
 	var claims types.OIDCClaims
 	if err := idToken.Claims(&claims); err != nil {
@@ -421,7 +423,7 @@ func (a *AuthProviderOIDC) createOrUpdateOIDCSession(registrationID types.Regist
 	session.LastSeenAt = &now
 
 	// Try to update existing session first
-	existingSession, err := a.state.GetOIDCSessionByNodeID(nodeID)
+	existingSession, err := a.h.state.GetOIDCSessionByNodeID(nodeID)
 	if err == nil {
 		// Update existing session
 		existingSession.RefreshToken = token.RefreshToken
@@ -431,14 +433,14 @@ func (a *AuthProviderOIDC) createOrUpdateOIDCSession(registrationID types.Regist
 		existingSession.LastSeenAt = &now
 		existingSession.IsActive = true
 
-		err = a.state.SaveOIDCSession(existingSession)
+		err = a.h.state.SaveOIDCSession(existingSession)
 		if err != nil {
 			return fmt.Errorf("failed to update OIDC session: %w", err)
 		}
 
 	} else {
 		// Create new session
-		err = a.state.CreateOIDCSession(session)
+		err = a.h.state.CreateOIDCSession(session)
 		if err != nil {
 			return fmt.Errorf("failed to create OIDC session: %w", err)
 		}
@@ -468,17 +470,18 @@ func (a *AuthProviderOIDC) RefreshOIDCSession(ctx context.Context, session *type
 	nodeExpiry := a.determineNodeExpiry(newToken.Expiry)
 
 	// Load the node for logging
-	node, err := a.state.GetNodeWithUser(session.NodeID)
+	node, err := a.h.state.GetNodeWithUser(session.NodeID)
 	if err != nil {
 		return fmt.Errorf("failed to load node: %w", err)
 	}
 
 	// Update the node expiry directly for token refresh
 	// We don't use HandleNodeFromAuthPath for refresh as the node is already registered
-	err = a.state.UpdateNodeExpiry(session.NodeID, nodeExpiry)
+	_, c, err := a.h.state.SetNodeExpiry(session.NodeID, nodeExpiry)
 	if err != nil {
 		return fmt.Errorf("failed to update node expiry: %w", err)
 	}
+	a.h.Change(c)
 
 	// Update the local node object for consistency
 	node.Expiry = &nodeExpiry
@@ -500,7 +503,7 @@ func (a *AuthProviderOIDC) RefreshOIDCSession(ctx context.Context, session *type
 	session.LastRefreshedAt = &now
 
 	// Save the updated session
-	err = a.state.SaveOIDCSession(session)
+	err = a.h.state.SaveOIDCSession(session)
 	if err != nil {
 		log.Error().Err(err).
 			Str("session_id", session.SessionID).
@@ -511,37 +514,74 @@ func (a *AuthProviderOIDC) RefreshOIDCSession(ctx context.Context, session *type
 	return nil
 }
 
-// RefreshExpiredTokens checks for and refreshes OIDC sessions that will expire soon
+// RefreshExpiredTokens checks for and refreshes OIDC sessions that will expire soon.
+// It also attempts to recover inactive sessions for nodes that have come back online
+// after being offline beyond the grace period.
 func (a *AuthProviderOIDC) RefreshExpiredTokens(ctx context.Context) error {
-	var sessions []types.OIDCSession
-
 	// Find active sessions with tokens expiring in the configured threshold time
 	currentTime := time.Now().UTC()
 	threshold := currentTime.Add(a.cfg.TokenRefresh.ExpiryThreshold)
 
-	// Only refresh tokens for sessions linked to OIDC-registered nodes
-	sessions, err := a.state.GetOIDCSessionsNeedingRefresh(threshold, "oidc")
+	sessions, err := a.h.state.GetOIDCSessionsNeedingRefresh(threshold, "oidc")
 	if err != nil {
 		return fmt.Errorf("failed to query sessions with expiring tokens: %w", err)
 	}
 
-	if len(sessions) == 0 {
-		return nil
+	if len(sessions) > 0 {
+		log.Debug().Msgf("OIDC: Found %d sessions with tokens expiring soon, refreshing...", len(sessions))
 	}
-
-	log.Debug().Msgf("OIDC: Found %d sessions with tokens expiring soon, refreshing...", len(sessions))
 
 	for _, session := range sessions {
 		if err := a.RefreshOIDCSession(ctx, &session); err != nil {
 			log.Error().Err(err).
 				Str("session_id", session.SessionID).
-				Uint("user_id", session.Node.UserID).
+				Uint64("user_id", uint64(session.Node.TypedUserID())).
 				Uint64("node_id", uint64(session.NodeID)).
 				Msg("OIDC: Failed to refresh session, deactivating")
-			// Deactivate the session if refresh fails
 			session.Deactivate()
-			a.state.SaveOIDCSession(&session)
+			a.h.state.SaveOIDCSession(&session)
 			continue
+		}
+	}
+
+	// Recovery pass: attempt to reactivate inactive sessions for nodes that have
+	// come back online. The grace period invalidation preserves refresh tokens,
+	// so we can try to refresh them. If the IdP rejects the token, the session
+	// stays inactive and the refresh token is cleared.
+	recoverySessions, err := a.h.state.GetInactiveOIDCSessionsForOnlineNodes("oidc")
+	if err != nil {
+		log.Error().Err(err).Msg("OIDC: Failed to query inactive sessions for recovery")
+		return nil
+	}
+
+	for _, session := range recoverySessions {
+		log.Info().
+			Str("session_id", session.SessionID).
+			Uint64("node_id", uint64(session.NodeID)).
+			Msg("OIDC: Attempting to recover inactive session for online node")
+
+		if err := a.RefreshOIDCSession(ctx, &session); err != nil {
+			log.Warn().Err(err).
+				Str("session_id", session.SessionID).
+				Uint64("node_id", uint64(session.NodeID)).
+				Msg("OIDC: Failed to recover session, clearing refresh token")
+			session.Deactivate()
+			session.RefreshToken = ""
+			a.h.state.SaveOIDCSession(&session)
+			continue
+		}
+
+		// Refresh succeeded — reactivate the session
+		session.IsActive = true
+		if err := a.h.state.SaveOIDCSession(&session); err != nil {
+			log.Error().Err(err).
+				Str("session_id", session.SessionID).
+				Msg("OIDC: Failed to save recovered session")
+		} else {
+			log.Info().
+				Str("session_id", session.SessionID).
+				Uint64("node_id", uint64(session.NodeID)).
+				Msg("OIDC: Successfully recovered inactive session for online node")
 		}
 	}
 
@@ -748,7 +788,8 @@ func (a *AuthProviderOIDC) handleRegistration(
 	// Send both changes. Empty changes are ignored by Change().
 	a.h.Change(nodeChange, routesChange)
 
-	return &node.ID, !nodeChange.IsEmpty(), nil
+	nodeID := node.ID()
+	return &nodeID, !nodeChange.IsEmpty(), nil
 }
 
 func renderOIDCCallbackTemplate(

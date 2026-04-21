@@ -9,11 +9,9 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
-	"tailscale.com/types/key"
 )
 
 func TestDoOIDCAuthorization(t *testing.T) {
@@ -185,26 +183,7 @@ func TestDoOIDCAuthorization(t *testing.T) {
 func createTestNode(t *testing.T, st *state.State, user *types.User, hostname string) *types.Node {
 	t.Helper()
 
-	nodeKey := key.NewNode()
-	discoKey := key.NewDisco()
-	machineKey := key.NewMachine()
-	nodeExpiry := time.Now().Add(24 * time.Hour)
-
-	node := &types.Node{
-		MachineKey:     machineKey.Public(),
-		NodeKey:        nodeKey.Public(),
-		DiscoKey:       discoKey.Public(),
-		Hostname:       hostname,
-		GivenName:      hostname,
-		UserID:         user.ID,
-		RegisterMethod: util.RegisterMethodOIDC,
-		Expiry:         &nodeExpiry,
-	}
-
-	createdNode, _, err := st.CreateNode(node)
-	require.NoError(t, err)
-
-	return createdNode
+	return st.CreateNodeForTest(user, hostname)
 }
 
 // setupTestState creates a test state with database
@@ -244,7 +223,7 @@ func TestCreateOrUpdateOIDCSession(t *testing.T) {
 
 	// Create test OIDC provider
 	oidcProvider := &AuthProviderOIDC{
-		state: st,
+		h: &Headscale{state: st},
 	}
 
 	// Create test user
@@ -255,22 +234,7 @@ func TestCreateOrUpdateOIDCSession(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create test node
-	nodeKey := key.NewNode()
-	discoKey := key.NewDisco()
-	machineKey := key.NewMachine()
-	nodeExpiry := time.Now().Add(24 * time.Hour)
-	node := &types.Node{
-		MachineKey:     machineKey.Public(),
-		NodeKey:        nodeKey.Public(),
-		DiscoKey:       discoKey.Public(),
-		Hostname:       "test-node",
-		GivenName:      "test-node",
-		UserID:         createdUser.ID,
-		RegisterMethod: util.RegisterMethodOIDC,
-		Expiry:         &nodeExpiry,
-	}
-	createdNode, _, err := st.CreateNode(node)
-	require.NoError(t, err)
+	createdNode := createTestNode(t, st, createdUser, "test-node")
 
 	tests := []struct {
 		name           string
@@ -508,7 +472,7 @@ func TestRefreshExpiredTokens(t *testing.T) {
 
 	// Create test OIDC provider
 	oidcProvider := &AuthProviderOIDC{
-		state: st,
+		h: &Headscale{state: st},
 		cfg: &types.OIDCConfig{
 			Issuer:   "https://test.example.com",
 			ClientID: "test-client-id",
@@ -629,7 +593,7 @@ func TestRefreshOIDCSessionValidation(t *testing.T) {
 
 	// Create test OIDC provider
 	oidcProvider := &AuthProviderOIDC{
-		state: st,
+		h: &Headscale{state: st},
 		cfg: &types.OIDCConfig{
 			Issuer:   "https://test.example.com",
 			ClientID: "test-client-id",
