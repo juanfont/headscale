@@ -362,7 +362,9 @@ func TestRefreshTokenValidation(t *testing.T) {
 }
 
 func TestRefreshExpiredTokensLogic(t *testing.T) {
-	// Test the logic that determines which sessions need refresh without DB
+	// Test the logic that determines which sessions need refresh without DB.
+	// Mirrors RefreshExpiredTokens which consults cfg.TokenRefresh.ExpiryThreshold.
+	cfg := types.TokenRefreshConfig{ExpiryThreshold: 5 * time.Minute}
 	now := time.Now()
 
 	tests := []struct {
@@ -432,7 +434,7 @@ func TestRefreshExpiredTokensLogic(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Test the logic that determines if a session needs refresh
 			// This mirrors the logic in RefreshExpiredTokens
-			threshold := now.Add(5 * time.Minute)
+			threshold := now.Add(cfg.ExpiryThreshold)
 			needsRefresh := tt.session.IsActive &&
 				tt.session.RefreshToken != "" &&
 				tt.session.TokenExpiry != nil &&

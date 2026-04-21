@@ -6,6 +6,10 @@ import (
 	"gorm.io/gorm"
 )
 
+// oidcSessionNow is the clock used by OIDCSession methods. Tests may
+// override this to exercise expiry logic without manipulating wall time.
+var oidcSessionNow = time.Now
+
 // OIDCSession represents an OIDC authentication session linked to a specific node
 type OIDCSession struct {
 	gorm.Model
@@ -36,12 +40,12 @@ func (s *OIDCSession) TableName() string {
 
 // IsExpired checks if the session's token has expired
 func (s *OIDCSession) IsExpired() bool {
-	return s.TokenExpiry != nil && s.TokenExpiry.Before(time.Now())
+	return s.TokenExpiry != nil && s.TokenExpiry.Before(oidcSessionNow())
 }
 
 // IsExpiringSoon checks if the session's token will expire within the given duration
 func (s *OIDCSession) IsExpiringSoon(duration time.Duration) bool {
-	return s.TokenExpiry != nil && s.TokenExpiry.Before(time.Now().Add(duration))
+	return s.TokenExpiry != nil && s.TokenExpiry.Before(oidcSessionNow().Add(duration))
 }
 
 // Deactivate marks the session as inactive
@@ -51,6 +55,6 @@ func (s *OIDCSession) Deactivate() {
 
 // UpdateLastSeen updates the last seen timestamp
 func (s *OIDCSession) UpdateLastSeen() {
-	now := time.Now()
+	now := oidcSessionNow()
 	s.LastSeenAt = &now
 }

@@ -528,14 +528,14 @@ func (a *AuthProviderOIDC) createOrUpdateOIDCSession(registrationID types.AuthID
 
 		err = a.h.state.SaveOIDCSession(existingSession)
 		if err != nil {
-			return fmt.Errorf("failed to update OIDC session: %w", err)
+			return fmt.Errorf("updating OIDC session (node_id=%s, session_id=%s): %w", nodeID, existingSession.SessionID, err)
 		}
 
 	} else {
 		// Create new session
 		err = a.h.state.CreateOIDCSession(session)
 		if err != nil {
-			return fmt.Errorf("failed to create OIDC session: %w", err)
+			return fmt.Errorf("creating OIDC session (node_id=%s, session_id=%s): %w", nodeID, session.SessionID, err)
 		}
 	}
 
