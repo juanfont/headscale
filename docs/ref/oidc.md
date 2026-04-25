@@ -227,6 +227,64 @@ You may refer to users in the Headscale policy via:
     }
     ```
 
+### Use OIDC groups in ACL policies
+
+Headscale can persist the OIDC `groups` claim on each user at login time and resolve it from ACL `group:<name>` rules.
+This lets administrators reference identity-provider groups (e.g. Workspace groups, Entra ID groups, Authentik groups)
+directly in their policy file without maintaining a parallel list of group memberships in `policy.hujson`.
+
+This is opt-in. With `oidc.groups.enabled: false` (the default), the `groups` claim is ignored and ACL groups behave
+exactly as they did before — only the static membership list in `policy.hujson` is consulted.
+
+When `oidc.groups.enabled: true`, an ACL rule referencing `group:<name>` matches a user when *either* of the following
+holds:
+
+* the user's username is listed under `group:<name>` in `policy.hujson`, **or**
+* the user's most recent OIDC `groups` claim contains `<name>`
+
+The two sources are additive — static memberships continue to work unchanged.
+
+=== "Standard `groups` claim"
+
+    For identity providers that emit the standard OpenID Connect `groups` claim — which includes most providers
+    (Authentik, Authelia, Keycloak, Okta with the right scope, Google Workspace via Dex, Entra ID via app role
+    mappings, etc.) — only the `enabled` flag is required.
+
+    ```yaml hl_lines="5-7"
+    oidc:
+      issuer: "https://sso.example.com"
+      client_id: "headscale"
+      client_secret: "generated-secret"
+      scope: ["openid", "profile", "email", "groups"]
+      groups:
+        enabled: true
+    ```
+
+=== "Custom claim name"
+
+    For providers that expose group memberships under a different claim name (e.g. AWS Cognito's `cognito:groups`,
+    or providers that use `roles`), set `oidc.groups.claim` to the custom name. The standard `groups` claim
+    is still parsed for the existing `allowed_groups` filter; the custom claim is read on top of that for ACL
+    resolution.
+
+    ```yaml hl_lines="5-8"
+    oidc:
+      issuer: "https://sso.example.com"
+      client_id: "headscale"
+      client_secret: "generated-secret"
+      scope: ["openid", "profile", "email", "cognito:groups"]
+      groups:
+        enabled: true
+        claim: "cognito:groups"
+    ```
+
+Group memberships are refreshed on every login. To force a refresh — for instance after granting a user a new role at
+the IdP — have them re-authenticate (`tailscale up --force-reauth` on a connected node).
+
+The persisted membership list is also surfaced via the gRPC `User.groups` field, so administrators can introspect what
+headscale received with `headscale users list -o json`.
+
+
 ## Supported OIDC claims
 
 Headscale uses [the standard OIDC claims](https://openid.net/specs/openid-connect-core-1_0.html#StandardClaims) to
@@ -240,13 +298,12 @@ endpoint.
 | username            | `preferred_username` | Depends on identity provider, eg: `ssmith`, `ssmith@idp.example.com`, `\\example.com\ssmith`      |
 | profile picture     | `picture`            | URL to a profile picture or avatar                                                                |
 | provider identifier | `iss`, `sub`         | A stable and unique identifier for a user, typically a combination of `iss` and `sub` OIDC claims |
-|                     | `groups`             | [Only used to filter for allowed groups](#authorize-users-with-filters)                           |
+| group memberships   | `groups`             | Used by `allowed_groups`; also fed into ACL `group:<name>` rules when [`oidc.groups.enabled`](#use-oidc-groups-in-acl-policies) is set. The claim name is configurable via `oidc.groups.claim`. |
 
 ## Limitations
 
 - Support for OpenID Connect aims to be generic and vendor independent. It offers only limited support for quirks of
   specific identity providers.
-- OIDC groups cannot be used in ACLs.
 - The username provided by the identity provider needs to adhere to this pattern:
     - The username must be at least two characters long.
     - It must only contain letters, digits, hyphens, dots, underscores, and up to a single `@`.

@@ -41,6 +41,14 @@ addresses, including those outside the tailnet. This replaces the old behaviour 
 all IPs (see BREAKING below). The name is intentionally scary: accepting traffic from the entire
 internet is a security-sensitive choice. `autogroup:danger-all` can only be used as a source.
 
+### OIDC groups in ACLs
+
+`oidc.groups.enabled: true` makes Headscale persist the OIDC `groups` claim on each user at login
+and resolve it from ACL `group:<name>` rules. A user matches `group:foo` if listed under it in
+`policy.hujson` or if their persisted IdP groups claim contains `foo`. `oidc.groups.claim`
+overrides the default claim name (e.g. AWS Cognito's `cognito:groups`). Default off; opt-in.
+[#3216](https://github.com/juanfont/headscale/pull/3216)
+
 ### Hostname handling (cleanroom rewrite)
 
 The hostname ingest pipeline has been rewritten to match Tailscale SaaS byte-for-byte.
@@ -165,6 +173,7 @@ connected" routers that maintain their control session but cannot route packets.
 - Add a confirmation page before completing node registration, showing the device hostname and machine key fingerprint [#3180](https://github.com/juanfont/headscale/pull/3180)
 - Generalise auth templates into reusable `AuthSuccess` and `AuthWeb` components [#1850](https://github.com/juanfont/headscale/pull/1850)
 - Unify auth pipeline with `AuthVerdict` type, supporting registration, reauthentication, and SSH checks [#1850](https://github.com/juanfont/headscale/pull/1850)
+- Persist OIDC `groups` claim on User and resolve it from ACL `group:` rules; opt-in via `oidc.groups.enabled` (default off), claim name configurable via `oidc.groups.claim` [#3216](https://github.com/juanfont/headscale/pull/3216)
 
 #### Configuration
 
