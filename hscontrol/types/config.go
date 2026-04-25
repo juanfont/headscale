@@ -226,6 +226,22 @@ type OIDCConfig struct {
 	EmailVerifiedRequired      bool
 	UseExpiryFromToken         bool
 	PKCE                       PKCEConfig
+	Groups                     OIDCGroupsConfig
+}
+
+// OIDCGroupsConfig controls whether group memberships from the OIDC provider
+// flow into the policy engine and become usable in ACL rules. Disabled by
+// default — when off, headscale ignores any `groups` claim returned by the IdP
+// and ACLs continue to depend solely on statically-configured group memberships
+// in policy.hujson, exactly as before.
+//
+// When Enabled, the user's Groups field is populated on every login from the
+// claim named by `Claim` (default: "groups"), and ACL rules referencing
+// `group:<name>` will match the OIDC-provided group as well as any statically
+// configured members.
+type OIDCGroupsConfig struct {
+	Enabled bool
+	Claim   string
 }
 
 type DERPConfig struct {
@@ -426,6 +442,8 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("oidc.pkce.enabled", false)
 	viper.SetDefault("oidc.pkce.method", "S256")
 	viper.SetDefault("oidc.email_verified_required", true)
+	viper.SetDefault("oidc.groups.enabled", false)
+	viper.SetDefault("oidc.groups.claim", "groups")
 
 	viper.SetDefault("logtail.enabled", false)
 	viper.SetDefault("randomize_client_port", false)
@@ -1216,6 +1234,10 @@ func LoadServerConfig() (*Config, error) {
 			PKCE: PKCEConfig{
 				Enabled: viper.GetBool("oidc.pkce.enabled"),
 				Method:  viper.GetString("oidc.pkce.method"),
+			},
+			Groups: OIDCGroupsConfig{
+				Enabled: viper.GetBool("oidc.groups.enabled"),
+				Claim:   viper.GetString("oidc.groups.claim"),
 			},
 		},
 
