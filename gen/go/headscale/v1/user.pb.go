@@ -32,6 +32,11 @@ type User struct {
 	ProviderId    string                 `protobuf:"bytes,6,opt,name=provider_id,json=providerId,proto3" json:"provider_id,omitempty"`
 	Provider      string                 `protobuf:"bytes,7,opt,name=provider,proto3" json:"provider,omitempty"`
 	ProfilePicUrl string                 `protobuf:"bytes,8,opt,name=profile_pic_url,json=profilePicUrl,proto3" json:"profile_pic_url,omitempty"`
+	// Group memberships imported from the OIDC `groups` claim (or the
+	// configured equivalent), populated when `oidc.groups.enabled` is set.
+	// Empty for users that signed up before the feature was enabled, for
+	// CLI-created users, or when the IdP does not assert groups.
+	Groups        []string `protobuf:"bytes,9,rep,name=groups,proto3" json:"groups,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -120,6 +125,13 @@ func (x *User) GetProfilePicUrl() string {
 		return x.ProfilePicUrl
 	}
 	return ""
+}
+
+func (x *User) GetGroups() []string {
+	if x != nil {
+		return x.Groups
+	}
+	return nil
 }
 
 type CreateUserRequest struct {
@@ -518,7 +530,7 @@ var File_headscale_v1_user_proto protoreflect.FileDescriptor
 
 const file_headscale_v1_user_proto_rawDesc = "" +
 	"\n" +
-	"\x17headscale/v1/user.proto\x12\fheadscale.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x83\x02\n" +
+	"\x17headscale/v1/user.proto\x12\fheadscale.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x9b\x02\n" +
 	"\x04User\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x129\n" +
@@ -529,7 +541,8 @@ const file_headscale_v1_user_proto_rawDesc = "" +
 	"\vprovider_id\x18\x06 \x01(\tR\n" +
 	"providerId\x12\x1a\n" +
 	"\bprovider\x18\a \x01(\tR\bprovider\x12&\n" +
-	"\x0fprofile_pic_url\x18\b \x01(\tR\rprofilePicUrl\"\x81\x01\n" +
+	"\x0fprofile_pic_url\x18\b \x01(\tR\rprofilePicUrl\x12\x16\n" +
+	"\x06groups\x18\t \x03(\tR\x06groups\"\x81\x01\n" +
 	"\x11CreateUserRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12\x14\n" +

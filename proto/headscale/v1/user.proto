@@ -13,6 +13,11 @@ message User {
   string provider_id = 6;
   string provider = 7;
   string profile_pic_url = 8;
+  // Group memberships imported from the OIDC `groups` claim (or the
+  // configured equivalent), populated when `oidc.groups.enabled` is set.
+  // Empty for users that signed up before the feature was enabled, for
+  // CLI-created users, or when the IdP does not assert groups.
+  repeated string groups = 9;
 }
 
 message CreateUserRequest {

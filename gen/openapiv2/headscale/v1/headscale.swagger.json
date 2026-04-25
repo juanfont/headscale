@@ -1485,6 +1485,13 @@
         },
         "profilePicUrl": {
           "type": "string"
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Group memberships imported from the OIDC `groups` claim (or the\nconfigured equivalent), populated when `oidc.groups.enabled` is set.\nEmpty for users that signed up before the feature was enabled, for\nCLI-created users, or when the IdP does not assert groups."
         }
       }
     }

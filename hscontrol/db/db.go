@@ -228,7 +228,13 @@ AND auth_key_id NOT IN (
 					for _, user := range users {
 						user.ProviderIdentifier.String = types.CleanIdentifier(user.ProviderIdentifier.String)
 
-						err := tx.Save(user).Error
+						// Skip the `groups` column when re-saving rows in
+						// this older migration: the column is created by
+						// a later migration in this list and does not
+						// yet exist at the time this one runs against a
+						// fresh DB. tx.Omit lets the gorm Save go through
+						// without referencing it.
+						err := tx.Omit("groups").Save(user).Error
 						if err != nil {
 							return fmt.Errorf("saving user: %w", err)
 						}
@@ -695,6 +701,23 @@ AND auth_key_id NOT IN (
 							Msg("Migrated validated RequestTags from host_info to tags column")
 					}
 
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			{
+				// Adds the users.groups column so the OIDC `groups` claim
+				// can be persisted and referenced from ACL `group:<name>`
+				// rules. Storage-only; whether the claim is actually read
+				// from the IdP is gated by the `oidc.groups.enabled`
+				// config flag, which defaults to off.
+				ID: "202601241200-user-oidc-groups",
+				Migrate: func(tx *gorm.DB) error {
+					if !tx.Migrator().HasColumn(&types.User{}, "groups") {
+						if err := tx.Migrator().AddColumn(&types.User{}, "groups"); err != nil {
+							return fmt.Errorf("adding groups column to users: %w", err)
+						}
+					}
 					return nil
 				},
 				Rollback: func(db *gorm.DB) error { return nil },

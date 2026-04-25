@@ -92,6 +92,12 @@ type User struct {
 	Provider string
 
 	ProfilePicURL string
+
+	// Groups is the list of group identifiers captured from the OIDC
+	// `groups` claim on login. Stored so the policy matcher can resolve
+	// `group:<oidc-group>` references in the tailnet policy file (which
+	// otherwise only matches by user identifier).
+	Groups []string `gorm:"serializer:json"`
 }
 
 func (u *User) StringID() string {
@@ -202,6 +208,7 @@ func (u *User) Proto() *v1.User {
 		ProviderId:    u.ProviderIdentifier.String,
 		Provider:      u.Provider,
 		ProfilePicUrl: u.ProfilePicURL,
+		Groups:        append([]string(nil), u.Groups...),
 	}
 }
 
@@ -380,6 +387,32 @@ func CleanIdentifier(identifier string) string {
 	return strings.Join(cleanParts, "/")
 }
 
+// ExtractGroupsClaim returns the list of groups from a raw OIDC claims map
+// under the configured claim name. The "standard" claim is `groups`, but
+// some IdPs expose group memberships under different names (e.g. `roles`,
+// `cognito:groups`). Returns an empty slice if the claim is missing or the
+// shape isn't a JSON array of strings.
+func ExtractGroupsClaim(rawClaims map[string]any, claimName string) []string {
+	if claimName == "" {
+		claimName = "groups"
+	}
+	val, ok := rawClaims[claimName]
+	if !ok {
+		return nil
+	}
+	list, ok := val.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(list))
+	for _, item := range list {
+		if s, ok := item.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 type OIDCUserInfo struct {
 	Sub               string          `json:"sub"`
 	Name              string          `json:"name"`
@@ -394,7 +427,16 @@ type OIDCUserInfo struct {
 
 // FromClaim overrides a User from OIDC claims.
 // All fields will be updated, except for the ID.
-func (u *User) FromClaim(claims *OIDCClaims, emailVerifiedRequired bool) {
+// FromClaim populates the User fields from an OIDC ID token's claims.
+//
+// emailVerifiedRequired: when true, only sets the user's email if the IdP
+// asserts the address is verified.
+//
+// groupsEnabled: when true, persists the claims.Groups list so the policy
+// engine can match `group:<name>` rules against IdP-provided memberships.
+// When false, OIDC groups are ignored (existing behavior pre-feature) and
+// any previously-stored memberships are cleared on the next login.
+func (u *User) FromClaim(claims *OIDCClaims, emailVerifiedRequired, groupsEnabled bool) {
 	err := util.ValidateUsername(claims.Username)
 	if err == nil {
 		u.Name = claims.Username
@@ -420,4 +462,14 @@ func (u *User) FromClaim(claims *OIDCClaims, emailVerifiedRequired bool) {
 	u.DisplayName = claims.Name
 	u.ProfilePicURL = claims.ProfilePictureURL
 	u.Provider = util.RegisterMethodOIDC
+	// Persist (or wipe) OIDC groups based on whether the feature is enabled.
+	// When enabled, removed memberships at the IdP are reflected on next
+	// sign-in because we overwrite unconditionally. When disabled, an empty
+	// slice ensures stale data from a previous "enabled" period doesn't keep
+	// granting access.
+	if groupsEnabled {
+		u.Groups = append([]string(nil), claims.Groups...)
+	} else {
+		u.Groups = nil
+	}
 }
