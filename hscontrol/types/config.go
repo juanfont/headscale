@@ -102,6 +102,10 @@ type Config struct {
 	PrefixV4            *netip.Prefix
 	PrefixV6            *netip.Prefix
 	IPAllocation        IPAllocationStrategy
+	// PrefixesByNamespace maps namespace (user) names to their dedicated IPv4 prefix.
+	// Nodes belonging to a namespace will be allocated IPs from that namespace's prefix.
+	// Falls back to PrefixV4/PrefixV6 when a namespace is not listed here.
+	PrefixesByNamespace map[string]netip.Prefix
 	NoisePrivateKeyPath string
 	BaseDomain          string
 	Log                 LogConfig
@@ -1113,6 +1117,18 @@ func LoadServerConfig() (*Config, error) {
 		)
 	}
 
+	// Parse per-namespace prefix overrides.
+	// Config key: prefixes.by_namespace.<name> = "100.64.x.0/24"
+	prefixesByNamespace := make(map[string]netip.Prefix)
+	nsByNS := viper.GetStringMapString("prefixes.by_namespace")
+	for ns, cidr := range nsByNS {
+		p, err := netip.ParsePrefix(cidr)
+		if err != nil {
+			return nil, fmt.Errorf("parsing prefixes.by_namespace[%q]: %w", ns, err)
+		}
+		prefixesByNamespace[ns] = p
+	}
+
 	dnsConfig, err := dns()
 	if err != nil {
 		return nil, err
@@ -1162,9 +1178,10 @@ func LoadServerConfig() (*Config, error) {
 		GRPCAllowInsecure:  viper.GetBool("grpc_allow_insecure"),
 		DisableUpdateCheck: false,
 
-		PrefixV4:     prefix4,
-		PrefixV6:     prefix6,
-		IPAllocation: alloc,
+		PrefixV4:            prefix4,
+		PrefixV6:            prefix6,
+		IPAllocation:        alloc,
+		PrefixesByNamespace: prefixesByNamespace,
 
 		NoisePrivateKeyPath: util.AbsolutePathFromConfigPath(
 			viper.GetString("noise.private_key_path"),

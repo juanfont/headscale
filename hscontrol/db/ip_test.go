@@ -153,6 +153,7 @@ func TestIPAllocatorSequential(t *testing.T) {
 				tt.prefix4,
 				tt.prefix6,
 				types.IPAllocationStrategySequential,
+				nil,
 			)
 
 			var (
@@ -258,7 +259,7 @@ func TestIPAllocatorRandom(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			db := tt.dbFunc()
 
-			alloc, _ := NewIPAllocator(db, tt.prefix4, tt.prefix6, types.IPAllocationStrategyRandom)
+			alloc, _ := NewIPAllocator(db, tt.prefix4, tt.prefix6, types.IPAllocationStrategyRandom, nil)
 
 			for range tt.getCount {
 				got4, got6, err := alloc.Next()
@@ -458,6 +459,7 @@ func TestBackfillIPAddresses(t *testing.T) {
 				tt.prefix4,
 				tt.prefix6,
 				types.IPAllocationStrategySequential,
+				nil,
 			)
 			if err != nil {
 				t.Fatalf("failed to set up ip alloc: %s", err)
@@ -493,6 +495,7 @@ func TestIPAllocatorNextNoReservedIPs(t *testing.T) {
 		new(tsaddr.CGNATRange()),
 		new(tsaddr.TailscaleULARange()),
 		types.IPAllocationStrategySequential,
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("failed to set up ip alloc: %s", err)

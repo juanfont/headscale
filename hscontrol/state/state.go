@@ -204,7 +204,7 @@ func NewState(cfg *types.Config) (*State, error) {
 		return nil, fmt.Errorf("initializing database: %w", err)
 	}
 
-	ipAlloc, err := hsdb.NewIPAllocator(db, cfg.PrefixV4, cfg.PrefixV6, cfg.IPAllocation)
+	ipAlloc, err := hsdb.NewIPAllocator(db, cfg.PrefixV4, cfg.PrefixV6, cfg.IPAllocation, cfg.PrefixesByNamespace)
 	if err != nil {
 		return nil, fmt.Errorf("initializing IP allocator: %w", err)
 	}
@@ -1712,8 +1712,13 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 		return types.NodeView{}, err
 	}
 
-	// Allocate new IPs
-	ipv4, ipv6, err := s.ipAlloc.Next()
+	// Allocate new IPs, using the namespace-specific prefix if configured.
+	namespace := ""
+	if nodeToRegister.User != nil {
+		namespace = nodeToRegister.User.Name
+	}
+
+	ipv4, ipv6, err := s.ipAlloc.NextForNamespace(namespace)
 	if err != nil {
 		return types.NodeView{}, fmt.Errorf("allocating IPs: %w", err)
 	}

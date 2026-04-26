@@ -47,6 +47,17 @@ type IPAllocator struct {
 	// database fails, the IP will be allocated here
 	// until the next restart of Headscale.
 	usedIPs netipx.IPSetBuilder
+
+	// nsPrefixes maps namespace name -> dedicated IPv4 prefix.
+	// When set, nodes in that namespace are allocated from this prefix
+	// instead of the global prefix4.
+	nsPrefixes map[string]netip.Prefix
+
+	// nsPrev tracks the previous IP handed out per namespace prefix.
+	nsPrev map[string]netip.Addr
+
+	// nsUsed tracks used IPs per namespace prefix (keyed by prefix string).
+	nsUsed map[string]*netipx.IPSetBuilder
 }
 
 // NewIPAllocator returns a new IPAllocator singleton which
@@ -58,12 +69,15 @@ func NewIPAllocator(
 	db *HSDatabase,
 	prefix4, prefix6 *netip.Prefix,
 	strategy types.IPAllocationStrategy,
+	nsPrefixes map[string]netip.Prefix,
 ) (*IPAllocator, error) {
 	ret := IPAllocator{
-		prefix4: prefix4,
-		prefix6: prefix6,
-
-		strategy: strategy,
+		prefix4:    prefix4,
+		prefix6:    prefix6,
+		strategy:   strategy,
+		nsPrefixes: nsPrefixes,
+		nsPrev:     make(map[string]netip.Addr),
+		nsUsed:     make(map[string]*netipx.IPSetBuilder),
 	}
 
 	var (
@@ -110,6 +124,18 @@ func NewIPAllocator(
 		ret.prev6 = network6
 	}
 
+	// Initialise per-namespace prefix pools: reserve network/broadcast addresses
+	// and set the starting prev pointer for each namespace prefix.
+	for ns, pfx := range nsPrefixes {
+		pfxCopy := pfx
+		nsb := &netipx.IPSetBuilder{}
+		network, broadcast := util.GetIPPrefixEndpoints(pfxCopy)
+		nsb.Add(network)
+		nsb.Add(broadcast)
+		ret.nsUsed[ns] = nsb
+		ret.nsPrev[ns] = network
+	}
+
 	// Fetch all the IP Addresses currently handed out from the Database
 	// and add them to the used IP set.
 	for _, addrStr := range append(v4s, v6s...) {
@@ -119,7 +145,14 @@ func NewIPAllocator(
 				return nil, fmt.Errorf("parsing IP address from database: %w", err)
 			}
 
+			// Add to global used set.
 			ips.Add(addr)
+
+			// Also add to any namespace pool whose prefix contains this IP,
+			// so we don't re-issue IPs that were previously allocated.
+			for _, nsb := range ret.nsUsed {
+				nsb.Add(addr)
+			}
 		}
 	}
 
@@ -168,6 +201,66 @@ func (i *IPAllocator) Next() (*netip.Addr, *netip.Addr, error) {
 	return ret4, ret6, nil
 }
 
+// NextForNamespace allocates an IPv4 address for the given namespace.
+// If the namespace has a dedicated prefix configured (via PrefixesByNamespace),
+// the IP is drawn from that pool. Otherwise it falls back to the global prefix4.
+// IPv6 is always allocated from the global prefix6 (namespace-specific v6 is not supported).
+func (i *IPAllocator) NextForNamespace(namespace string) (*netip.Addr, *netip.Addr, error) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	var (
+		err  error
+		ret4 *netip.Addr
+		ret6 *netip.Addr
+	)
+
+	// Determine which IPv4 prefix to use for this namespace.
+	if nsPfx, ok := i.nsPrefixes[namespace]; ok {
+		nsb := i.nsUsed[namespace]
+		prev := i.nsPrev[namespace]
+
+		ret4, err = i.nextFromBuilder(prev, &nsPfx, nsb)
+		if err != nil {
+			return nil, nil, fmt.Errorf("allocating IPv4 for namespace %q: %w", namespace, err)
+		}
+
+		i.nsPrev[namespace] = *ret4
+
+		log.Debug().
+			Str("namespace", namespace).
+			Str("prefix", nsPfx.String()).
+			Str("ip", ret4.String()).
+			Msg("allocated IP from namespace-specific prefix")
+	} else if i.prefix4 != nil {
+		// Fallback to global prefix.
+		ret4, err = i.next(i.prev4, i.prefix4)
+		if err != nil {
+			return nil, nil, fmt.Errorf("allocating IPv4 address: %w", err)
+		}
+
+		i.prev4 = *ret4
+
+		log.Debug().
+			Str("namespace", namespace).
+			Str("prefix", i.prefix4.String()).
+			Str("ip", ret4.String()).
+			Msg("allocated IP from global prefix (namespace not configured)")
+	}
+
+	// IPv6 always uses the global prefix6.
+	if i.prefix6 != nil {
+		ret6, err = i.next(i.prev6, i.prefix6)
+		if err != nil {
+			return nil, nil, fmt.Errorf("allocating IPv6 address: %w", err)
+		}
+
+		i.prev6 = *ret6
+	}
+
+	return ret4, ret6, nil
+}
+
 var ErrCouldNotAllocateIP = errors.New("failed to allocate IP")
 
 func (i *IPAllocator) nextLocked(prev netip.Addr, prefix *netip.Prefix) (*netip.Addr, error) {
@@ -175,6 +268,56 @@ func (i *IPAllocator) nextLocked(prev netip.Addr, prefix *netip.Prefix) (*netip.
 	defer i.mu.Unlock()
 
 	return i.next(prev, prefix)
+}
+
+// nextFromBuilder is like next but uses a caller-supplied IPSetBuilder
+// instead of the global i.usedIPs. Used for per-namespace prefix pools.
+func (i *IPAllocator) nextFromBuilder(prev netip.Addr, prefix *netip.Prefix, builder *netipx.IPSetBuilder) (*netip.Addr, error) {
+	var (
+		err error
+		ip  netip.Addr
+	)
+
+	switch i.strategy {
+	case types.IPAllocationStrategySequential:
+		ip = prev.Next()
+	case types.IPAllocationStrategyRandom:
+		ip, err = randomNext(*prefix)
+		if err != nil {
+			return nil, fmt.Errorf("getting random IP: %w", err)
+		}
+	}
+
+	set, err := builder.IPSet()
+	if err != nil {
+		return nil, err
+	}
+
+	for {
+		if !prefix.Contains(ip) {
+			return nil, ErrCouldNotAllocateIP
+		}
+
+		if set.Contains(ip) || isTailscaleReservedIP(ip) {
+			switch i.strategy {
+			case types.IPAllocationStrategySequential:
+				ip = ip.Next()
+			case types.IPAllocationStrategyRandom:
+				ip, err = randomNext(*prefix)
+				if err != nil {
+					return nil, fmt.Errorf("getting random IP: %w", err)
+				}
+			}
+
+			continue
+		}
+
+		builder.Add(ip)
+		// Also mark in global usedIPs to prevent cross-namespace collisions.
+		i.usedIPs.Add(ip)
+
+		return &ip, nil
+	}
 }
 
 func (i *IPAllocator) next(prev netip.Addr, prefix *netip.Prefix) (*netip.Addr, error) {
@@ -301,10 +444,16 @@ func (db *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
 		for _, node := range nodes {
 			log.Trace().Caller().EmbedObject(node).Msg("ip backfill check started because node found in database")
 
+			// Determine the namespace name for this node (used for per-namespace prefix lookup).
+			namespace := ""
+			if node.User != nil {
+				namespace = node.User.Name
+			}
+
 			changed := false
 			// IPv4 prefix is set, but node ip is missing, alloc
-			if i.prefix4 != nil && node.IPv4 == nil {
-				ret4, err := i.nextLocked(i.prev4, i.prefix4)
+			if (i.prefix4 != nil || len(i.nsPrefixes) > 0) && node.IPv4 == nil {
+				ret4, _, err := i.NextForNamespace(namespace)
 				if err != nil {
 					return fmt.Errorf("allocating IPv4 for node(%d): %w", node.ID, err)
 				}
@@ -312,12 +461,12 @@ func (db *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
 				node.IPv4 = ret4
 				changed = true
 
-				ret = append(ret, fmt.Sprintf("assigned IPv4 %q to Node(%d) %q", ret4.String(), node.ID, node.Hostname))
+				ret = append(ret, fmt.Sprintf("assigned IPv4 %q to Node(%d) %q (namespace %q)", ret4.String(), node.ID, node.Hostname, namespace))
 			}
 
 			// IPv6 prefix is set, but node ip is missing, alloc
 			if i.prefix6 != nil && node.IPv6 == nil {
-				ret6, err := i.nextLocked(i.prev6, i.prefix6)
+				_, ret6, err := i.NextForNamespace(namespace)
 				if err != nil {
 					return fmt.Errorf("allocating IPv6 for node(%d): %w", node.ID, err)
 				}
@@ -329,7 +478,7 @@ func (db *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
 			}
 
 			// IPv4 prefix is not set, but node has IP, remove
-			if i.prefix4 == nil && node.IPv4 != nil {
+			if i.prefix4 == nil && len(i.nsPrefixes) == 0 && node.IPv4 != nil {
 				ret = append(ret, fmt.Sprintf("removing IPv4 %q from Node(%d) %q", node.IPv4.String(), node.ID, node.Hostname))
 				node.IPv4 = nil
 				changed = true
