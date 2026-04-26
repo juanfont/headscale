@@ -204,19 +204,19 @@ $ sudo tailscale set --exit-node myexit
 Please refer to the official [Tailscale documentation](https://tailscale.com/docs/features/exit-nodes#use-the-exit-node)
 for how to use an exit node on different operating systems.
 
-### Restrict the use of an exit node with ACL
+### Restrict the use of an exit node with a policy
 
-An exit node is offered to all nodes in a tailnet. By default, without an ACL enabled, all nodes in a tailnet can select
-and use an exit node. Configure `autogroup:internet` in an ACL rule to restrict who can use _any_ of the available exit
-nodes.
+An exit node is offered to all nodes in a tailnet. By default, without a policy enabled, all nodes in a tailnet can
+select and use an exit node. Configure `autogroup:internet` in a policy rule to restrict who can use _any_ of the
+available exit nodes.
 
 ```json title="Example use of autogroup:internet"
 {
-  "acls": [
+  "grants": [
     {
-      "action": "accept",
       "src": ["..."],
-      "dst": ["autogroup:internet:*"]
+      "dst": ["autogroup:internet"],
+      "ip": ["*"]
     }
   ]
 }
