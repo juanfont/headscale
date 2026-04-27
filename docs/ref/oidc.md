@@ -19,14 +19,6 @@ OpenID requires configuration in Headscale and your identity provider:
   Additionally, there might be some useful hints in the [Identity provider specific
   configuration](#identity-provider-specific-configuration) section below.
 
-  # Customize the scopes used in the OIDC flow, defaults to "openid", "profile" and "email" and add custom query
-  # parameters to the Authorize Endpoint request. Scopes default to "openid", "profile" and "email".
-  # To enable automatic token refresh, add "offline_access" to the scope list.
-  scope: ["openid", "profile", "email", "custom"]
-  # Optional: Passed on to the browser login request – used to tweak behaviour for the OIDC provider
-  extra_params:
-    domain_hint: example.com
-
 A basic configuration connects Headscale to an identity provider and typically requires:
 
 - OpenID Connect Issuer URL from the identity provider. Headscale uses the OpenID Connect Discovery Protocol 1.0 to
@@ -180,6 +172,64 @@ reauthenticate. The default node expiration can be configured via the top-level 
     ```console
     headscale node expire -i <NODE_ID>
     ```
+
+### Automatic token refresh
+
+Headscale can renew a node's expiry in the background using the OAuth2 refresh token flow. When enabled, users do not
+need to re-authenticate through the browser on every access token expiry — Headscale silently exchanges the refresh
+token for a new access token and extends the node's expiry before it runs out.
+
+Enable by adding `offline_access` to the scope list. Most identity providers require this scope to issue a refresh
+token.
+
+=== "Headscale"
+
+    ```yaml hl_lines="5"
+    oidc:
+      issuer: "https://sso.example.com"
+      client_id: "headscale"
+      client_secret: "generated-secret"
+      scope: ["openid", "profile", "email", "offline_access"]
+    node:
+      expiry: 180d
+    ```
+
+=== "Identity provider"
+
+    - Ensure the Headscale client is allowed to issue refresh tokens (usually the default for confidential/web clients).
+    - Some providers require explicit consent for the `offline_access` scope on first login.
+
+When a node goes offline for longer than the grace period, its session is marked inactive but the refresh token is
+preserved. When the node reconnects, Headscale retries the refresh token: if the IdP still accepts it, the session is
+silently reactivated; if the IdP rejects it (revocation, Conditional Access, expired refresh token), the node is
+expired immediately and the user is prompted to sign in again on next contact.
+
+Defaults are generally fine, but the following settings are configurable:
+
+```yaml
+oidc:
+  token_refresh:
+    check_interval: 15m                       # How often the background job runs
+    expiry_threshold: 30m                     # Refresh tokens whose access token expires within this window
+    session_invalidation_grace_period: 30m    # How long a node can be offline before its session is invalidated
+```
+
+!!! tip "Recommended: leave `use_expiry_from_token` unset when using refresh tokens"
+
+    Setting `oidc.use_expiry_from_token: true` ties the node's lifetime to the short-lived OAuth2 access token (often
+    under an hour). This was historically used as a revocation-safety measure, but causes an interstitial re-auth
+    prompt every time a user reopens their laptop after the access token expiry has passed — even though a valid
+    refresh token is still on file.
+
+    With refresh tokens enabled, keep `use_expiry_from_token: false` (the default) and rely on `node.expiry` as the
+    long-term ceiling. IdP revocation (account removal, password change, admin revoke, Conditional Access) is
+    propagated to the node automatically: the next background refresh that the IdP rejects will set the node's expiry
+    to `now`, cutting the client off on the next map request regardless of the `node.expiry` ceiling.
+
+!!! note "Refresh tokens are stored in the Headscale database"
+
+    Refresh tokens are long-lived credentials. They are stored in plaintext in the `oidc_sessions` table — restrict
+    database access accordingly. Encryption at rest is planned as a follow-up.
 
 ### Reference a user in the policy
 

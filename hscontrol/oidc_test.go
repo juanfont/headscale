@@ -445,6 +445,61 @@ func TestRefreshExpiredTokensLogic(t *testing.T) {
 	}
 }
 
+func TestIsOIDCAuthRejection(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "nil",
+			err:  nil,
+			want: false,
+		},
+		{
+			name: "plain error (network/timeout)",
+			err:  fmt.Errorf("dial tcp: i/o timeout"),
+			want: false,
+		},
+		{
+			name: "invalid_grant — refresh token rejected for credential reasons",
+			err:  &oauth2.RetrieveError{ErrorCode: "invalid_grant"},
+			want: true,
+		},
+		{
+			name: "invalid_client — operator misconfiguration, must NOT expire nodes",
+			err:  &oauth2.RetrieveError{ErrorCode: "invalid_client"},
+			want: false,
+		},
+		{
+			name: "unauthorized_client — app-level misconfiguration, not user-scoped",
+			err:  &oauth2.RetrieveError{ErrorCode: "unauthorized_client"},
+			want: false,
+		},
+		{
+			name: "invalid_request — protocol-level error, not a user rejection",
+			err:  &oauth2.RetrieveError{ErrorCode: "invalid_request"},
+			want: false,
+		},
+		{
+			name: "wrapped invalid_grant still detected",
+			err:  fmt.Errorf("refresh failed: %w", &oauth2.RetrieveError{ErrorCode: "invalid_grant"}),
+			want: true,
+		},
+		{
+			name: "empty ErrorCode (e.g. 5xx IdP outage)",
+			err:  &oauth2.RetrieveError{ErrorCode: ""},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, isOIDCAuthRejection(tt.err))
+		})
+	}
+}
+
 func TestDetermineNodeExpiry(t *testing.T) {
 	oidcProvider := &AuthProviderOIDC{
 		cfg: &types.OIDCConfig{

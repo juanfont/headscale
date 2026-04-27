@@ -558,8 +558,13 @@ func (a *AuthProviderOIDC) RefreshOIDCSession(ctx context.Context, session *type
 		return fmt.Errorf("failed to refresh OIDC token: %w", err)
 	}
 
-	// Calculate new node expiry based on the access token expiry (not ID token)
-	// Access tokens determine when we need to refresh, so node should live as long as access token
+	// Calculate new node expiry based on the access token expiry (not ID token).
+	// When UseExpiryFromToken is true, node expiry tracks the access token
+	// lifetime and must be extended on every refresh. When it's false,
+	// determineNodeExpiry returns nil and we intentionally leave node.expiry
+	// alone — the value set at registration (from node.expiry config) acts
+	// as the periodic browser-reauth ceiling, independent of the refresh
+	// cycle.
 	nodeExpiry := a.determineNodeExpiry(newToken.Expiry)
 
 	// Load the node for logging
@@ -568,16 +573,16 @@ func (a *AuthProviderOIDC) RefreshOIDCSession(ctx context.Context, session *type
 		return fmt.Errorf("failed to load node: %w", err)
 	}
 
-	// Update the node expiry directly for token refresh
-	// We don't use HandleNodeFromAuthPath for refresh as the node is already registered
-	_, c, err := a.h.state.SetNodeExpiry(session.NodeID, nodeExpiry)
-	if err != nil {
-		return fmt.Errorf("failed to update node expiry: %w", err)
-	}
-	a.h.Change(c)
+	if nodeExpiry != nil {
+		_, c, err := a.h.state.SetNodeExpiry(session.NodeID, nodeExpiry)
+		if err != nil {
+			return fmt.Errorf("failed to update node expiry: %w", err)
+		}
+		a.h.Change(c)
 
-	// Update the local node object for consistency
-	node.Expiry = nodeExpiry
+		// Update the local node object for consistency
+		node.Expiry = nodeExpiry
+	}
 
 	// Update the session with new token information
 	now := time.Now().UTC()
@@ -607,6 +612,47 @@ func (a *AuthProviderOIDC) RefreshOIDCSession(ctx context.Context, session *type
 	return nil
 }
 
+// isOIDCAuthRejection reports whether the error from an oauth2 token exchange
+// indicates the IdP actively rejected the user's credential (refresh token
+// expired, account disabled, admin revoked sessions, Conditional Access
+// block) — i.e. a signal specific to this user that should propagate to
+// node.expiry. Operator-level problems (wrong client secret, app not
+// authorized for this grant type) must not expire nodes, because a
+// misconfiguration would otherwise lock out the entire fleet.
+//
+// We key off the OAuth2 error_code in the token error response
+// (RFC 6749 §5.2), not just the HTTP status. Only invalid_grant is
+// scoped to the user's credential.
+func isOIDCAuthRejection(err error) bool {
+	var re *oauth2.RetrieveError
+	if !errors.As(err, &re) {
+		return false
+	}
+	return re.ErrorCode == "invalid_grant"
+}
+
+// expireNodeOnIdPRejection forces the node's expiry to now so the client is
+// cut off on its next map request. Called when the IdP has rejected a
+// refresh token, which means the user is no longer authorized at the IdP
+// and the node should lose access regardless of the configured
+// node.expiry ceiling.
+func (a *AuthProviderOIDC) expireNodeOnIdPRejection(nodeID types.NodeID, sessionID string) {
+	now := time.Now()
+	_, c, err := a.h.state.SetNodeExpiry(nodeID, &now)
+	if err != nil {
+		log.Error().Err(err).
+			Str("session_id", sessionID).
+			Uint64("node_id", uint64(nodeID)).
+			Msg("OIDC: Failed to expire node after IdP rejection")
+		return
+	}
+	a.h.Change(c)
+	log.Info().
+		Str("session_id", sessionID).
+		Uint64("node_id", uint64(nodeID)).
+		Msg("OIDC: Node expired because IdP rejected the refresh token")
+}
+
 // RefreshExpiredTokens checks for and refreshes OIDC sessions that will expire soon.
 // It also attempts to recover inactive sessions for nodes that have come back online
 // after being offline beyond the grace period.
@@ -633,6 +679,14 @@ func (a *AuthProviderOIDC) RefreshExpiredTokens(ctx context.Context) error {
 				Msg("OIDC: Failed to refresh session, deactivating")
 			session.Deactivate()
 			a.h.state.SaveOIDCSession(&session)
+			// If the IdP actively rejected the refresh token (not a
+			// transient network/IdP failure), propagate the revocation
+			// to node.expiry so the client is cut off on next contact.
+			// Without this, a long node.expiry ceiling would keep the
+			// node alive despite the user losing IdP access.
+			if isOIDCAuthRejection(err) {
+				a.expireNodeOnIdPRejection(session.NodeID, session.SessionID)
+			}
 			continue
 		}
 	}
@@ -661,6 +715,11 @@ func (a *AuthProviderOIDC) RefreshExpiredTokens(ctx context.Context) error {
 			session.Deactivate()
 			session.RefreshToken = ""
 			a.h.state.SaveOIDCSession(&session)
+			// IdP rejected the stored refresh token — propagate the
+			// revocation to node.expiry so the client is cut off.
+			if isOIDCAuthRejection(err) {
+				a.expireNodeOnIdPRejection(session.NodeID, session.SessionID)
+			}
 			continue
 		}
 
