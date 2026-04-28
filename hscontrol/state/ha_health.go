@@ -46,7 +46,7 @@ func (p *HAHealthProber) ProbeOnce(
 	ctx context.Context,
 	dispatch func(...change.Change),
 ) {
-	haNodes := p.state.primaryRoutes.HANodes()
+	haNodes := p.state.nodeStore.HANodes()
 	if len(haNodes) == 0 {
 		return
 	}
@@ -97,7 +97,7 @@ func (p *HAHealthProber) ProbeOnce(
 					Dur("latency", latency).
 					Msg("HA probe: node responded")
 
-				if p.state.primaryRoutes.SetNodeHealthy(id, true) {
+				if p.state.SetNodeUnhealthy(id, false) {
 					dispatch(change.PolicyChange())
 
 					log.Info().
@@ -121,7 +121,7 @@ func (p *HAHealthProber) ProbeOnce(
 					Dur("timeout", p.cfg.ProbeTimeout).
 					Msg("HA probe: node did not respond")
 
-				if p.state.primaryRoutes.SetNodeHealthy(id, false) {
+				if p.state.SetNodeUnhealthy(id, true) {
 					dispatch(change.PolicyChange())
 
 					log.Info().

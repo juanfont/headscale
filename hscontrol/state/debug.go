@@ -2,11 +2,12 @@ package state
 
 import (
 	"fmt"
+	"net/netip"
+	"slices"
 	"strings"
 	"time"
 
 	hsdb "github.com/juanfont/headscale/hscontrol/db"
-	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"tailscale.com/tailcfg"
 )
@@ -132,8 +133,10 @@ func (s *State) DebugOverview() string {
 	sb.WriteString("\n")
 
 	// Route information
-	routeCount := len(strings.Split(strings.TrimSpace(s.primaryRoutes.String()), "\n"))
-	if s.primaryRoutes.String() == "" {
+	primaryStr := s.PrimaryRoutesString()
+
+	routeCount := len(strings.Split(strings.TrimSpace(primaryStr), "\n"))
+	if primaryStr == "" {
 		routeCount = 0
 	}
 
@@ -253,9 +256,55 @@ func (s *State) DebugFilter() ([]tailcfg.FilterRule, error) {
 	return filter, nil
 }
 
-// DebugRoutes returns the current primary routes information as a structured object.
-func (s *State) DebugRoutes() routes.DebugRoutes {
-	return s.primaryRoutes.DebugJSON()
+// DebugRoutes returns the current primary routes information as a
+// structured object built from the NodeStore snapshot.
+func (s *State) DebugRoutes() types.DebugRoutes {
+	debug := types.DebugRoutes{
+		AvailableRoutes: make(map[types.NodeID][]netip.Prefix),
+		PrimaryRoutes:   make(map[string]types.NodeID),
+	}
+
+	for _, nv := range s.nodeStore.ListNodes().All() {
+		if !nv.Valid() {
+			continue
+		}
+
+		online, known := nv.IsOnline().GetOk()
+		if !known || !online {
+			continue
+		}
+
+		approved := nv.AllApprovedRoutes()
+		if len(approved) == 0 {
+			continue
+		}
+
+		slices.SortFunc(approved, netip.Prefix.Compare)
+		debug.AvailableRoutes[nv.ID()] = approved
+	}
+
+	for prefix, id := range s.nodeStore.PrimaryRoutes() {
+		debug.PrimaryRoutes[prefix.String()] = id
+	}
+
+	var unhealthy []types.NodeID
+
+	for _, nv := range s.nodeStore.ListNodes().All() {
+		if !nv.Valid() {
+			continue
+		}
+
+		if !s.nodeStore.IsNodeHealthy(nv.ID()) {
+			unhealthy = append(unhealthy, nv.ID())
+		}
+	}
+
+	if len(unhealthy) > 0 {
+		slices.Sort(unhealthy)
+		debug.UnhealthyNodes = unhealthy
+	}
+
+	return debug
 }
 
 // DebugRoutesString returns the current primary routes information as a string.
@@ -322,8 +371,10 @@ func (s *State) DebugOverviewJSON() DebugOverviewInfo {
 	}
 
 	// Route information
-	routeCount := len(strings.Split(strings.TrimSpace(s.primaryRoutes.String()), "\n"))
-	if s.primaryRoutes.String() == "" {
+	primaryStr := s.PrimaryRoutesString()
+
+	routeCount := len(strings.Split(strings.TrimSpace(primaryStr), "\n"))
+	if primaryStr == "" {
 		routeCount = 0
 	}
 

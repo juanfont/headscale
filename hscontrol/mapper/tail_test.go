@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
@@ -209,25 +208,30 @@ func TestTailNode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			primary := routes.New()
 			cfg := &types.Config{
 				BaseDomain:          tt.baseDomain,
 				TailcfgDNSConfig:    tt.dnsConfig,
 				RandomizeClientPort: false,
 				Taildrop:            types.TaildropConfig{Enabled: true},
 			}
-			_ = primary.SetRoutes(tt.node.ID, tt.node.SubnetRoutes()...)
 
-			// This is a hack to avoid having a second node to test the primary route.
-			// This should be baked into the test case proper if it is extended in the future.
-			_ = primary.SetRoutes(2, netip.MustParsePrefix("192.168.0.0/24"))
+			// Stub primary-route lookup: tt.node owns its SubnetRoutes,
+			// node ID 2 owns 192.168.0.0/24 (a hack carried over from
+			// the original routes-package-driven version of this test —
+			// avoids spinning up a second node just to validate that
+			// other nodes' primaries don't leak into tt.node's TailNode
+			// output).
+			primaries := map[types.NodeID][]netip.Prefix{
+				tt.node.ID: tt.node.SubnetRoutes(),
+				2:          {netip.MustParsePrefix("192.168.0.0/24")},
+			}
 			nv := tt.node.View()
 			got, err := nv.TailNode(
 				0,
 				func(id types.NodeID) []netip.Prefix {
 					// Route function returns primaries + exit routes
 					// (matching the real caller contract).
-					return slices.Concat(primary.PrimaryRoutes(id), nv.ExitRoutes())
+					return slices.Concat(primaries[id], nv.ExitRoutes())
 				},
 				cfg,
 			)
