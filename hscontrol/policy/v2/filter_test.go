@@ -3537,11 +3537,26 @@ func TestFilterAllowAllFix(t *testing.T) {
 			wantFilterAllow: true,
 		},
 		{
-			name: "nil ACLs and empty grants returns FilterAllowAll",
+			name: "nil ACLs and empty grants denies all",
 			pol: &Policy{
 				Grants: []Grant{},
 			},
-			wantFilterAllow: true,
+			wantFilterAllow: false,
+		},
+		{
+			name: "empty ACLs and nil grants denies all",
+			pol: &Policy{
+				ACLs: []ACL{},
+			},
+			wantFilterAllow: false,
+		},
+		{
+			name: "empty ACLs and empty grants denies all",
+			pol: &Policy{
+				ACLs:   []ACL{},
+				Grants: []Grant{},
+			},
+			wantFilterAllow: false,
 		},
 		{
 			name: "both ACLs and grants should not return FilterAllowAll",

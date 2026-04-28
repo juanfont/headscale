@@ -44,6 +44,20 @@ func TestPolicyManager(t *testing.T) {
 			wantFilter:   tailcfg.FilterAllowAll,
 			wantMatchers: matcher.MatchesFromFilterRules(tailcfg.FilterAllowAll),
 		},
+		{
+			name:         "empty-acls-denies-all",
+			pol:          `{"acls": []}`,
+			nodes:        types.Nodes{},
+			wantFilter:   nil,
+			wantMatchers: matcher.MatchesFromFilterRules(nil),
+		},
+		{
+			name:         "empty-grants-denies-all",
+			pol:          `{"grants": []}`,
+			nodes:        types.Nodes{},
+			wantFilter:   nil,
+			wantMatchers: matcher.MatchesFromFilterRules(nil),
+		},
 	}
 
 	for _, tt := range tests {

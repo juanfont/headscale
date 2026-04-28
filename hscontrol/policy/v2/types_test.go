@@ -5212,3 +5212,32 @@ func TestGrantMarshalJSON(t *testing.T) {
 		})
 	}
 }
+
+// TestUnmarshalPolicyEmptyArrays locks in the JSON unmarshal contract
+// the FilterAllowAll guards depend on: an absent "acls" or "grants"
+// field produces a nil slice, while an explicit empty array produces
+// a non-nil empty slice. The compileFilterRules guard distinguishes
+// these to differentiate "no policy → allow all" from "explicit
+// empty rule set → deny all" (matching Tailscale SaaS).
+func TestUnmarshalPolicyEmptyArrays(t *testing.T) {
+	cases := []struct {
+		name        string
+		input       string
+		aclsIsNil   bool
+		grantsIsNil bool
+	}{
+		{name: "empty-object", input: "{}", aclsIsNil: true, grantsIsNil: true},
+		{name: "empty-acls", input: `{"acls": []}`, aclsIsNil: false, grantsIsNil: true},
+		{name: "empty-grants", input: `{"grants": []}`, aclsIsNil: true, grantsIsNil: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pol, err := unmarshalPolicy([]byte(tc.input))
+			require.NoError(t, err)
+			require.NotNil(t, pol)
+			require.Equal(t, tc.aclsIsNil, pol.ACLs == nil, "ACLs nil-ness")
+			require.Equal(t, tc.grantsIsNil, pol.Grants == nil, "Grants nil-ness")
+		})
+	}
+}

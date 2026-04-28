@@ -101,7 +101,7 @@ func (pol *Policy) compileGrants(
 	users types.Users,
 	nodes views.Slice[types.NodeView],
 ) []compiledGrant {
-	if pol == nil || (pol.ACLs == nil && len(pol.Grants) == 0) {
+	if pol == nil || (pol.ACLs == nil && pol.Grants == nil) {
 		return nil
 	}
 
