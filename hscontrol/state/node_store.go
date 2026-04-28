@@ -916,6 +916,36 @@ func (s *NodeStore) IsNodeHealthy(id types.NodeID) bool {
 	return !n.Unhealthy
 }
 
+// PrimaryRoutes returns the snapshot's prefix→primary map. The map is
+// owned by the snapshot and must not be mutated; it is safe to read
+// concurrently because snapshots are immutable once published.
+func (s *NodeStore) PrimaryRoutes() map[netip.Prefix]types.NodeID {
+	return s.data.Load().routes
+}
+
+// PrimaryRoutesString renders the snapshot's prefix→primary map for
+// debug output and test diagnostics.
+func (s *NodeStore) PrimaryRoutesString() string {
+	snap := s.data.Load()
+	if len(snap.routes) == 0 {
+		return ""
+	}
+
+	prefixes := make([]netip.Prefix, 0, len(snap.routes))
+	for p := range snap.routes {
+		prefixes = append(prefixes, p)
+	}
+
+	slices.SortFunc(prefixes, netip.Prefix.Compare)
+
+	var b strings.Builder
+	for _, p := range prefixes {
+		fmt.Fprintf(&b, "%s: %d\n", p, snap.routes[p])
+	}
+
+	return b.String()
+}
+
 // RebuildPeerMaps rebuilds the peer relationship map using the current peersFunc.
 // This must be called after policy changes because peersFunc uses PolicyManager's
 // filters to determine which nodes can see each other. Without rebuilding, the

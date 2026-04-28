@@ -141,8 +141,9 @@ func TestConnectDisconnectRace(t *testing.T) {
 			i, route, primary)
 
 		if t.Failed() {
-			t.Logf("primaryRoutes state at failure: %s",
-				srv.State().PrimaryRoutes())
+			t.Logf("primaryRoutes state at failure:\n%s",
+				srv.State().PrimaryRoutesString())
+
 			return
 		}
 	}
