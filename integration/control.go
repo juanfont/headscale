@@ -6,7 +6,6 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
-	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/ory/dockertest/v3"
@@ -43,7 +42,7 @@ type ControlServer interface {
 	GetIPInNetwork(network *dockertest.Network) string
 	SetPolicy(pol *policyv2.Policy) error
 	GetAllMapReponses() (map[types.NodeID][]tailcfg.MapResponse, error)
-	PrimaryRoutes() (*routes.DebugRoutes, error)
+	PrimaryRoutes() (*types.DebugRoutes, error)
 	DebugBatcher() (*hscontrol.DebugBatcherInfo, error)
 	DebugNodeStore() (map[types.NodeID]types.Node, error)
 	DebugFilter() ([]tailcfg.FilterRule, error)
