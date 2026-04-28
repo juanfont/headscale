@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -12,6 +14,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/types/key"
 	"tailscale.com/types/views"
 	"tailscale.com/util/dnsname"
@@ -114,7 +117,7 @@ func NewNodeStore(allNodes types.Nodes, peersFunc PeersFunc, batchSize int, batc
 		nodes[n.ID] = *n
 	}
 
-	snap := snapshotFromNodes(nodes, peersFunc)
+	snap := snapshotFromNodes(nodes, peersFunc, nil)
 
 	store := &NodeStore{
 		peersFunc:    peersFunc,
@@ -144,6 +147,12 @@ type Snapshot struct {
 	peersByNode       map[types.NodeID][]types.NodeView
 	nodesByUser       map[types.UserID][]types.NodeView
 	allNodes          []types.NodeView
+
+	// routes maps each prefix to its current primary advertiser. The
+	// previous assignment is carried over when still valid so the
+	// primary does not flap on every unrelated batch.
+	routes         map[netip.Prefix]types.NodeID
+	isPrimaryRoute map[types.NodeID]bool
 }
 
 // PeersFunc is a function that takes a list of nodes and returns a map
@@ -459,7 +468,8 @@ func (s *NodeStore) applyBatch(batch []work) {
 		}
 	}
 
-	newSnap := snapshotFromNodes(nodes, s.peersFunc)
+	prev := s.data.Load()
+	newSnap := snapshotFromNodes(nodes, s.peersFunc, prev.routes)
 	s.data.Store(&newSnap)
 
 	// Update node count gauge
@@ -543,12 +553,14 @@ func resolveGivenName(nodes map[types.NodeID]types.Node, self types.NodeID, base
 	}
 }
 
-// snapshotFromNodes creates a new Snapshot from the provided nodes.
-// It builds a lot of "indexes" to make lookups fast for datasets we
-// that is used frequently, like nodesByNodeKey, peersByNode, and nodesByUser.
-// This is not a fast operation, it is the "slow" part of our copy-on-write
-// structure, but it allows us to have fast reads and efficient lookups.
-func snapshotFromNodes(nodes map[types.NodeID]types.Node, peersFunc PeersFunc) Snapshot {
+// snapshotFromNodes builds the index maps and primary-route table for
+// a new Snapshot. prevRoutes carries forward the previous primary
+// assignment so a still-valid choice survives unrelated batches.
+func snapshotFromNodes(
+	nodes map[types.NodeID]types.Node,
+	peersFunc PeersFunc,
+	prevRoutes map[netip.Prefix]types.NodeID,
+) Snapshot {
 	timer := prometheus.NewTimer(nodeStoreSnapshotBuildDuration)
 	defer timer.ObserveDuration()
 
@@ -556,6 +568,8 @@ func snapshotFromNodes(nodes map[types.NodeID]types.Node, peersFunc PeersFunc) S
 	for _, n := range nodes {
 		allNodes = append(allNodes, n.View())
 	}
+
+	routes, isPrimaryRoute := electPrimaryRoutes(nodes, prevRoutes)
 
 	newSnap := Snapshot{
 		nodesByID:         nodes,
@@ -574,6 +588,9 @@ func snapshotFromNodes(nodes map[types.NodeID]types.Node, peersFunc PeersFunc) S
 			return peersFunc(allNodes)
 		}(),
 		nodesByUser: make(map[types.UserID][]types.NodeView),
+
+		routes:         routes,
+		isPrimaryRoute: isPrimaryRoute,
 	}
 
 	// Build nodesByUser, nodesByNodeKey, and nodesByMachineKey maps
@@ -598,6 +615,81 @@ func snapshotFromNodes(nodes map[types.NodeID]types.Node, peersFunc PeersFunc) S
 	}
 
 	return newSnap
+}
+
+// electPrimaryRoutes picks the primary advertiser for each non-exit
+// prefix. The previous primary is preserved when it is still online
+// and healthy (anti-flap); otherwise the lowest-NodeID healthy
+// advertiser wins, falling back to the lowest-NodeID candidate when
+// every advertiser is unhealthy so peers see *some* primary instead
+// of none.
+func electPrimaryRoutes(
+	nodes map[types.NodeID]types.Node,
+	prev map[netip.Prefix]types.NodeID,
+) (map[netip.Prefix]types.NodeID, map[types.NodeID]bool) {
+	ids := make([]types.NodeID, 0, len(nodes))
+	for id := range nodes {
+		ids = append(ids, id)
+	}
+
+	slices.Sort(ids)
+
+	advertisers := make(map[netip.Prefix][]types.NodeID)
+
+	for _, id := range ids {
+		n := nodes[id]
+		if n.IsOnline == nil || !*n.IsOnline {
+			continue
+		}
+
+		for _, p := range n.AllApprovedRoutes() {
+			if tsaddr.IsExitRoute(p) {
+				continue
+			}
+
+			advertisers[p] = append(advertisers[p], id)
+		}
+	}
+
+	routes := make(map[netip.Prefix]types.NodeID, len(advertisers))
+	for prefix, candidates := range advertisers {
+		if cur, ok := prev[prefix]; ok &&
+			slices.Contains(candidates, cur) &&
+			!nodes[cur].Unhealthy {
+			routes[prefix] = cur
+			continue
+		}
+
+		var (
+			selected types.NodeID
+			found    bool
+		)
+
+		for _, c := range candidates {
+			if !nodes[c].Unhealthy {
+				selected = c
+				found = true
+
+				break
+			}
+		}
+
+		if !found && len(candidates) >= 1 {
+			selected = candidates[0]
+			found = true
+		}
+
+		if found {
+			routes[prefix] = selected
+		}
+	}
+
+	isPrimaryRoute := make(map[types.NodeID]bool, len(routes))
+	for _, id := range routes {
+		isPrimaryRoute[id] = true
+	}
+
+	return routes, isPrimaryRoute
 }
 
 // GetNode retrieves a node by its ID.
@@ -750,6 +842,78 @@ func (s *NodeStore) ListPeers(id types.NodeID) views.Slice[types.NodeView] {
 	nodeStoreOperations.WithLabelValues("list_peers").Inc()
 
 	return views.SliceOf(s.data.Load().peersByNode[id])
+}
+
+// PrimaryRouteFor returns the current primary advertiser for prefix.
+func (s *NodeStore) PrimaryRouteFor(prefix netip.Prefix) (types.NodeID, bool) {
+	id, ok := s.data.Load().routes[prefix]
+	return id, ok
+}
+
+// PrimaryRoutesForNode returns the prefixes for which id is the current
+// primary advertiser.
+func (s *NodeStore) PrimaryRoutesForNode(id types.NodeID) []netip.Prefix {
+	snap := s.data.Load()
+	if !snap.isPrimaryRoute[id] {
+		return nil
+	}
+
+	out := make([]netip.Prefix, 0)
+
+	for prefix, nodeID := range snap.routes {
+		if nodeID == id {
+			out = append(out, prefix)
+		}
+	}
+
+	return out
+}
+
+// HANodes returns the prefixes with two or more online advertisers, the
+// candidate set the HA prober needs to monitor.
+func (s *NodeStore) HANodes() map[netip.Prefix][]types.NodeID {
+	snap := s.data.Load()
+
+	advertisers := make(map[netip.Prefix][]types.NodeID)
+
+	for id, n := range snap.nodesByID {
+		if n.IsOnline == nil || !*n.IsOnline {
+			continue
+		}
+
+		for _, p := range n.AllApprovedRoutes() {
+			if tsaddr.IsExitRoute(p) {
+				continue
+			}
+
+			advertisers[p] = append(advertisers[p], id)
+		}
+	}
+
+	out := make(map[netip.Prefix][]types.NodeID)
+
+	for p, ids := range advertisers {
+		if len(ids) < 2 {
+			continue
+		}
+
+		slices.Sort(ids)
+		out[p] = ids
+	}
+
+	return out
+}
+
+// IsNodeHealthy reports whether the HA prober considers id healthy.
+// Unknown nodes report healthy so absence does not exclude them from
+// election.
+func (s *NodeStore) IsNodeHealthy(id types.NodeID) bool {
+	n, ok := s.data.Load().nodesByID[id]
+	if !ok {
+		return true
+	}
+
+	return !n.Unhealthy
 }
 
 // RebuildPeerMaps rebuilds the peer relationship map using the current peersFunc.

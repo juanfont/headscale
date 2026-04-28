@@ -150,7 +150,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			nodes, peersFunc := tt.setupFunc()
-			snapshot := snapshotFromNodes(nodes, peersFunc)
+			snapshot := snapshotFromNodes(nodes, peersFunc, nil)
 			tt.validate(t, nodes, snapshot)
 		})
 	}
