@@ -6,6 +6,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"go4.org/netipx"
 	"tailscale.com/tailcfg"
 )
 
@@ -18,6 +19,7 @@ import (
 func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcfg.FilterRule {
 	ret := []tailcfg.FilterRule{}
 	subnetRoutes := node.SubnetRoutes()
+	hasExitRoutes := node.IsExitNode()
 
 	for _, rule := range rules {
 		// Handle CapGrant rules separately — they use CapGrant[].Dsts
@@ -56,6 +58,14 @@ func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcf
 			// AllowedIPs/routing.
 			if slices.ContainsFunc(subnetRoutes, expanded.OverlapsPrefix) {
 				dests = append(dests, dest)
+				continue
+			}
+
+			// Exit-route advertisers need rules targeting the
+			// public internet so the kernel filter accepts
+			// traffic forwarded by autogroup:internet sources.
+			if hasExitRoutes && ipSetSubsetOf(expanded, util.TheInternet()) {
+				dests = append(dests, dest)
 			}
 		}
 
@@ -69,6 +79,20 @@ func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcf
 	}
 
 	return ret
+}
+
+func ipSetSubsetOf(candidate, container *netipx.IPSet) bool {
+	if candidate == nil || container == nil {
+		return false
+	}
+
+	for _, pref := range candidate.Prefixes() {
+		if !container.ContainsPrefix(pref) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // reduceCapGrantRule filters a CapGrant rule to only include CapGrant

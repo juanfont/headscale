@@ -10,6 +10,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
 
@@ -1805,4 +1806,51 @@ func TestViaRoutesForPeer(t *testing.T) {
 			"client should NOT be able to access 10.0.0.0/24 via matchers alone; "+
 				"state.RoutesForPeer adds via routes after ReduceRoutes to fix this")
 	})
+}
+
+// TestBuildPeerMap_AutogroupInternetMakesExitNodeVisible reproduces
+// juanfont/headscale#3212. An ACL that grants access only via
+// `autogroup:internet` must keep the exit node visible to the source
+// in BuildPeerMap so the Tailscale client surfaces it in
+// `tailscale exit-node list`. Authoritative SaaS captures
+// (tscap routes-b17/b18, 2026-04-28) confirm SaaS includes the exit
+// node in the source's Peers with 0.0.0.0/0 and ::/0 in AllowedIPs.
+func TestBuildPeerMap_AutogroupInternetMakesExitNodeVisible(t *testing.T) {
+	t.Parallel()
+
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "alice", Email: "alice@headscale.net"},
+	}
+
+	aliceNode := node("alice-laptop", "100.64.0.10", "fd7a:115c:a1e0::a", users[0])
+	aliceNode.ID = 1
+
+	exitRoutes := []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()}
+	exitNode := node("alice-exit", "100.64.0.1", "fd7a:115c:a1e0::1", users[0])
+	exitNode.ID = 2
+	exitNode.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: exitRoutes}
+	exitNode.ApprovedRoutes = exitRoutes
+
+	nodes := types.Nodes{aliceNode, exitNode}
+
+	policy := `{
+		"acls": [
+			{"action": "accept", "src": ["alice@headscale.net"], "dst": ["autogroup:internet:*"]}
+		]
+	}`
+
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	peerMap := pm.BuildPeerMap(nodes.ViewSlice())
+
+	require.True(t,
+		slices.ContainsFunc(peerMap[aliceNode.ID], func(n types.NodeView) bool {
+			return n.ID() == exitNode.ID
+		}),
+		"alice should see the exit node as a peer when an ACL grants autogroup:internet (#3212)")
+
+	_, matchers := pm.Filter()
+	require.True(t, aliceNode.View().CanAccess(matchers, exitNode.View()),
+		"alice.CanAccess(exit) should be true via DestsIsTheInternet()+IsExitNode() (#3212)")
 }

@@ -166,12 +166,6 @@ func (pol *Policy) destinationsToNetPortRange(
 			continue
 		}
 
-		// autogroup:internet does not generate packet filters - it's handled
-		// by exit node routing via AllowedIPs, not by packet filtering.
-		if ag, isAutoGroup := dest.(*AutoGroup); isAutoGroup && ag.Is(AutoGroupInternet) {
-			continue
-		}
-
 		ips, err := dest.Resolve(pol, users, nodes)
 		if err != nil {
 			log.Trace().Caller().Err(err).Msgf("resolving destination ips")
