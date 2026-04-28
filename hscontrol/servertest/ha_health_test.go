@@ -186,6 +186,103 @@ func TestHAHealthProbe_ConnectClearsUnhealthy(t *testing.T) {
 		"reconnect should clear unhealthy state")
 }
 
+// TestHAHealthProbe_SetApprovedRoutesEmptyClearsUnhealthy verifies
+// that clearing a node's approved routes also clears any stale
+// Unhealthy bit, mirroring the legacy routes.SetRoutes(empty)
+// auto-clear. Without this, a probe timeout that lands just before
+// SetApprovedRoutes would surface as a stale unhealthy node forever.
+func TestHAHealthProbe_SetApprovedRoutesEmptyClearsUnhealthy(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t)
+	user := srv.CreateUser(t, "ha-clear-approve")
+
+	route := netip.MustParsePrefix("10.100.0.0/24")
+
+	c1 := servertest.NewClient(t, srv, "ha-ca-r1", servertest.WithUser(user))
+	c2 := servertest.NewClient(t, srv, "ha-ca-r2", servertest.WithUser(user))
+
+	c1.WaitForPeers(t, 1, 10*time.Second)
+	c2.WaitForPeers(t, 1, 10*time.Second)
+
+	nodeID1 := advertiseAndApproveRoute(t, srv, c1, route)
+	advertiseAndApproveRoute(t, srv, c2, route)
+
+	srv.State().SetNodeUnhealthy(nodeID1, true)
+	require.False(t, srv.State().IsNodeHealthy(nodeID1))
+
+	_, _, err := srv.State().SetApprovedRoutes(nodeID1, nil)
+	require.NoError(t, err)
+
+	assert.True(t, srv.State().IsNodeHealthy(nodeID1),
+		"clearing approved routes should drop stale Unhealthy bit")
+}
+
+// TestHAHealthProbe_DisconnectClearsUnhealthy verifies that
+// Disconnect resets a stale Unhealthy bit. An offline node is not an
+// HA candidate; carrying the bit forward leaks into DebugRoutes.
+//
+// The poll handler waits a 10s grace period before calling
+// state.Disconnect, so the assertion is wrapped in Eventually with a
+// generous timeout.
+func TestHAHealthProbe_DisconnectClearsUnhealthy(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t)
+	user := srv.CreateUser(t, "ha-clear-disc")
+
+	route := netip.MustParsePrefix("10.101.0.0/24")
+
+	c1 := servertest.NewClient(t, srv, "ha-cd-r1", servertest.WithUser(user))
+	c2 := servertest.NewClient(t, srv, "ha-cd-r2", servertest.WithUser(user))
+
+	c1.WaitForPeers(t, 1, 10*time.Second)
+	c2.WaitForPeers(t, 1, 10*time.Second)
+
+	nodeID1 := advertiseAndApproveRoute(t, srv, c1, route)
+	advertiseAndApproveRoute(t, srv, c2, route)
+
+	srv.State().SetNodeUnhealthy(nodeID1, true)
+	require.False(t, srv.State().IsNodeHealthy(nodeID1))
+
+	c1.Disconnect(t)
+
+	assert.Eventually(t, func() bool {
+		return srv.State().IsNodeHealthy(nodeID1)
+	}, 15*time.Second, 200*time.Millisecond,
+		"disconnect should drop stale Unhealthy bit")
+}
+
+// TestHAHealthProbe_SetUnhealthyNoRoutesIsNoOp verifies the
+// defensive guard for the still-online-but-no-routes case: a probe
+// that fires after SetApprovedRoutes(empty) should not be allowed
+// to install a stale Unhealthy bit either.
+func TestHAHealthProbe_SetUnhealthyNoRoutesIsNoOp(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t)
+	user := srv.CreateUser(t, "ha-guard-noroutes")
+
+	route := netip.MustParsePrefix("10.103.0.0/24")
+
+	c1 := servertest.NewClient(t, srv, "ha-gn-r1", servertest.WithUser(user))
+	c2 := servertest.NewClient(t, srv, "ha-gn-r2", servertest.WithUser(user))
+
+	c1.WaitForPeers(t, 1, 10*time.Second)
+	c2.WaitForPeers(t, 1, 10*time.Second)
+
+	nodeID1 := advertiseAndApproveRoute(t, srv, c1, route)
+	advertiseAndApproveRoute(t, srv, c2, route)
+
+	_, _, err := srv.State().SetApprovedRoutes(nodeID1, nil)
+	require.NoError(t, err)
+
+	srv.State().SetNodeUnhealthy(nodeID1, true)
+
+	assert.True(t, srv.State().IsNodeHealthy(nodeID1),
+		"SetNodeUnhealthy on node with no approved routes should be a no-op")
+}
+
 // TestHAHealthProbe_NoHARoutes verifies that the prober is a no-op
 // when no HA configuration exists.
 func TestHAHealthProbe_NoHARoutes(t *testing.T) {
