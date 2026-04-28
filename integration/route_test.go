@@ -1702,6 +1702,145 @@ func TestEnablingExitRoutes(t *testing.T) {
 	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "clients should see new routes")
 }
 
+// TestExitRoutesWithAutogroupInternetACL reproduces juanfont/headscale#3212.
+// When an ACL grants access via autogroup:internet, the source nodes must
+// still see approved exit nodes as peers with 0.0.0.0/0 and ::/0 in their
+// AllowedIPs — that visibility is what drives `tailscale exit-node list`.
+//
+// Tailscale SaaS surfaces exit nodes on the autogroup:internet path
+// (verified against a live tailnet on 2026-04-28; see captures
+// routes-b17/b18 in tscap). The bug was that headscale stripped
+// autogroup:internet rules from both the client packet filter AND the
+// matcher source used by Node.CanAccess, breaking exit-node visibility.
+func TestExitRoutesWithAutogroupInternetACL(t *testing.T) {
+	IntegrationSkip(t)
+
+	user := "user2"
+
+	spec := ScenarioSpec{
+		NodesPerUser: 2,
+		Users:        []string{user},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoErrorf(t, err, "failed to create scenario")
+
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{
+			tsic.WithExtraLoginArgs([]string{"--advertise-exit-node"}),
+		},
+		hsic.WithTestName("rt-exit-aginternet"),
+		hsic.WithACLPolicy(&policyv2.Policy{
+			ACLs: []policyv2.ACL{
+				{
+					Action:  "accept",
+					Sources: []policyv2.Alias{usernamep(user + "@")},
+					Destinations: []policyv2.AliasWithPorts{
+						aliasWithPorts(
+							new(policyv2.AutoGroupInternet),
+							tailcfg.PortRangeAny,
+						),
+					},
+				},
+			},
+		}),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	requireNoErrListClients(t, err)
+
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+
+	// The autogroup:internet ACL grants no peer visibility until the
+	// exit routes are approved (Node.IsExitNode() flips on approval),
+	// so the standard WaitForTailscaleSync wait would deadlock here —
+	// the post-approval EventuallyWithT block below covers the peer
+	// state we actually care about.
+	var nodes []*v1.Node
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err = headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 2)
+
+		requireNodeRouteCountWithCollect(c, nodes[0], 2, 0, 0)
+		requireNodeRouteCountWithCollect(c, nodes[1], 2, 0, 0)
+	}, integrationutil.ScaledTimeout(20*time.Second), 200*time.Millisecond,
+		"Waiting for exit-route advertisements to propagate")
+
+	// Approve exit routes on both nodes so either could serve as
+	// alice's exit. The bug fix is about visibility, not which node
+	// is chosen.
+	_, err = headscale.ApproveRoutes(
+		nodes[0].GetId(),
+		[]netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()},
+	)
+	require.NoError(t, err)
+	_, err = headscale.ApproveRoutes(
+		nodes[1].GetId(),
+		[]netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()},
+	)
+	require.NoError(t, err)
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err = headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 2)
+
+		requireNodeRouteCountWithCollect(c, nodes[0], 2, 2, 2)
+		requireNodeRouteCountWithCollect(c, nodes[1], 2, 2, 2)
+	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond,
+		"approved exit routes should propagate to nodes")
+
+	// The end-to-end UX assertion: every client must see the OTHER
+	// node as a peer carrying both default-route prefixes in
+	// AllowedIPs. Tailscale derives PeerStatus.ExitNodeOption from
+	// those AllowedIPs, which is what `tailscale exit-node list`
+	// reads (see tailscale.com/ipn/ipnlocal/local.go).
+	for _, client := range allClients {
+		assert.EventuallyWithT(t, func(c *assert.CollectT) {
+			status, err := client.Status()
+			assert.NoError(c, err)
+
+			peerCount := 0
+
+			for _, peerKey := range status.Peers() {
+				peerStatus := status.Peer[peerKey]
+				peerCount++
+
+				assert.NotNilf(c, peerStatus.AllowedIPs,
+					"peer %s has nil AllowedIPs", peerStatus.HostName)
+
+				if peerStatus.AllowedIPs != nil {
+					ips := peerStatus.AllowedIPs.AsSlice()
+					assert.Containsf(c, ips, tsaddr.AllIPv4(),
+						"peer %s lacks 0.0.0.0/0 in AllowedIPs",
+						peerStatus.HostName)
+					assert.Containsf(c, ips, tsaddr.AllIPv6(),
+						"peer %s lacks ::/0 in AllowedIPs",
+						peerStatus.HostName)
+				}
+
+				assert.Truef(c, peerStatus.ExitNodeOption,
+					"peer %s should be exposed as an exit-node "+
+						"option (autogroup:internet ACL must "+
+						"keep exit-node visibility — #3212)",
+					peerStatus.HostName)
+			}
+
+			assert.Equalf(c, 1, peerCount,
+				"client %s should see the other node as a peer "+
+					"via the autogroup:internet ACL",
+				status.Self.HostName)
+		}, integrationutil.ScaledTimeout(15*time.Second), 500*time.Millisecond,
+			"client should see exit nodes as peers via autogroup:internet ACL")
+	}
+}
+
 // TestSubnetRouterMultiNetwork is an evolution of the subnet router test.
 // This test will set up multiple docker networks and use two isolated tailscale
 // clients and a service available in one of the networks to validate that a
