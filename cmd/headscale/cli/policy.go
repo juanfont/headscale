@@ -48,6 +48,7 @@ func init() {
 	policyCmd.AddCommand(setPolicy)
 
 	checkPolicy.Flags().StringP("file", "f", "", "Path to a policy file in HuJSON format")
+	checkPolicy.Flags().BoolP(bypassFlag, "", false, "Uses the headscale config to directly access the database, bypassing gRPC and does not require the server to be running. Required to validate that user@ tokens resolve against the user database; without it, the check is syntax-only.")
 	mustMarkRequired(checkPolicy, "file")
 	policyCmd.AddCommand(checkPolicy)
 }
@@ -178,12 +179,35 @@ var checkPolicy = &cobra.Command{
 			return fmt.Errorf("reading policy file: %w", err)
 		}
 
-		_, err = policy.NewPolicyManager(policyBytes, nil, views.Slice[types.NodeView]{})
+		var users []types.User
+
+		if bypass, _ := cmd.Flags().GetBool(bypassFlag); bypass {
+			if !confirmAction(cmd, "DO NOT run this command if an instance of headscale is running, are you sure headscale is not running?") {
+				return errAborted
+			}
+
+			d, err := bypassDatabase()
+			if err != nil {
+				return err
+			}
+			defer d.Close()
+
+			users, err = d.ListUsers()
+			if err != nil {
+				return fmt.Errorf("loading users for policy validation: %w", err)
+			}
+		}
+
+		_, err = policy.NewPolicyManager(policyBytes, users, views.Slice[types.NodeView]{})
 		if err != nil {
 			return fmt.Errorf("parsing policy file: %w", err)
 		}
 
-		fmt.Println("Policy is valid")
+		if users == nil {
+			fmt.Println("Policy syntax is valid (run with --" + bypassFlag + " to also validate user references against the database)")
+		} else {
+			fmt.Println("Policy is valid")
+		}
 
 		return nil
 	},
