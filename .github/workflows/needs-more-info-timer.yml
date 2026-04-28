@@ -58,7 +58,7 @@ jobs:
 
             # Find when needs-more-info was last added
             let events = (gh api $"repos/($env.GH_REPO)/issues/($number)/events"
-              --paginate | from json | flatten)
+              --paginate | from json)
             let label_event = ($events
               | where event == "labeled"
               | where label.name == "needs-more-info"
@@ -67,7 +67,7 @@ jobs:
 
             # Check for non-bot comments after the label was added
             let comments = (gh api $"repos/($env.GH_REPO)/issues/($number)/comments"
-              --paginate | from json | flatten)
+              --paginate | from json)
             let human_responses = ($comments
               | where user.type != "Bot"
               | where { ($in.created_at | into datetime) > $label_added_at })
