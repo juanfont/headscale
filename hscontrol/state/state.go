@@ -120,6 +120,14 @@ type sshCheckPair struct {
 	Dst types.NodeID
 }
 
+// nodeLock pairs a per-node Connect generation counter with a mutex
+// that serialises Connect/Disconnect transitions for that node.
+// See the State.nodeLocks field for the rationale (issue #3203).
+type nodeLock struct {
+	mu  sync.Mutex
+	gen atomic.Uint64
+}
+
 // State manages Headscale's core state, coordinating between database, policy management,
 // IP allocation, and DERP routing. All methods are thread-safe.
 type State struct {
@@ -149,11 +157,21 @@ type State struct {
 	// primaryRoutes tracks primary route assignments for nodes
 	primaryRoutes *routes.PrimaryRoutes
 
-	// connectGen tracks a per-node monotonic generation counter so stale
-	// Disconnect() calls from old poll sessions are rejected. Connect()
-	// increments the counter and returns the current value; Disconnect()
-	// only proceeds when the generation it carries matches the latest.
-	connectGen sync.Map // types.NodeID → *atomic.Uint64
+	// nodeLocks pairs a per-node monotonic Connect generation counter with
+	// a mutex that serialises Connect/Disconnect transitions for that
+	// node. Connect bumps gen and rewrites primaryRoutes for id;
+	// Disconnect re-checks gen UNDER the lock and only proceeds when its
+	// captured generation still matches. This closes the TOCTOU window
+	// between the gen check and the NodeStore + primaryRoutes mutations
+	// that allowed a stale Disconnect to overwrite a fresh Connect's
+	// primary route assignment (issue #3203).
+	//
+	// TODO(#3203 follow-up): if a similar race is found in
+	// SetApprovedRoutes, UpdateNodeFromMapRequest's route path, or
+	// SetNodeHealthy, those mutators should acquire this same per-node
+	// lock. Each requires its own reproduction test before being brought
+	// under the lock.
+	nodeLocks sync.Map // types.NodeID → *nodeLock
 
 	// pings tracks pending ping requests and their response channels.
 	pings *pingTracker
@@ -563,11 +581,22 @@ func (s *State) DeleteNode(node types.NodeView) (change.Change, error) {
 // It returns the list of changes and a generation number. The generation number
 // must be passed to Disconnect() so that stale disconnects from old poll sessions
 // are rejected (see the grace period logic in poll.go).
+//
+// The per-node lock is held across the entire body so that Connect's
+// gen bump, NodeStore mutation, and primaryRoutes.SetRoutes are atomic
+// with respect to a concurrent Disconnect on the same node. Without
+// this, a stale Disconnect that passed its gen check could overwrite
+// the fresh Connect's online status and approved-route assignment
+// (issue #3203).
 func (s *State) Connect(id types.NodeID) ([]change.Change, uint64) {
+	nl := s.nodeLockFor(id)
+	nl.mu.Lock()
+	defer nl.mu.Unlock()
+
 	// Increment the connect generation for this node. This ensures that any
 	// in-flight Disconnect() from a previous session will see a stale generation
 	// and become a no-op.
-	gen := s.nextConnectGen(id)
+	gen := nl.gen.Add(1)
 
 	// Update online status in NodeStore before creating change notification
 	// so the NodeStore already reflects the correct state when other nodes
@@ -596,41 +625,22 @@ func (s *State) Connect(id types.NodeID) ([]change.Change, uint64) {
 		c = append(c, change.NodeAdded(id))
 	}
 
-	// Mirror Disconnect: a node coming online may (re)enable cap/relay
-	// grants targeting it, reintroduce identity-based aliases that
-	// resolve to its tags/IPs, and so on. Always trigger a PolicyChange
-	// so peers can recompute their netmap and pick up any policy
-	// elements that depend on this node being present.
+	// Coming online may re-enable cap/relay grants and identity-based
+	// aliases targeting this node, so peers need a fresh netmap.
 	c = append(c, change.PolicyChange())
 
 	return c, gen
 }
 
-// nextConnectGen atomically increments and returns the connect generation for a node.
-func (s *State) nextConnectGen(id types.NodeID) uint64 {
-	val, _ := s.connectGen.LoadOrStore(id, &atomic.Uint64{})
-
-	counter, ok := val.(*atomic.Uint64)
-	if !ok {
-		return 0
+// nodeLockFor returns the per-node lock for id, creating it on first
+// use. The returned *nodeLock is stable for the lifetime of the State —
+// callers may cache the reference across operations on the same node.
+func (s *State) nodeLockFor(id types.NodeID) *nodeLock {
+	if v, ok := s.nodeLocks.Load(id); ok {
+		return v.(*nodeLock)
 	}
-
-	return counter.Add(1)
-}
-
-// connectGeneration returns the current connect generation for a node.
-func (s *State) connectGeneration(id types.NodeID) uint64 {
-	val, ok := s.connectGen.Load(id)
-	if !ok {
-		return 0
-	}
-
-	counter, ok := val.(*atomic.Uint64)
-	if !ok {
-		return 0
-	}
-
-	return counter.Load()
+	v, _ := s.nodeLocks.LoadOrStore(id, &nodeLock{})
+	return v.(*nodeLock)
 }
 
 // Disconnect marks a node as disconnected and updates its primary routes in the state.
@@ -638,10 +648,22 @@ func (s *State) connectGeneration(id types.NodeID) uint64 {
 // been called since the session that is disconnecting, the generation will not match
 // and this call becomes a no-op, preventing stale disconnects from overwriting the
 // online status set by a newer session.
+//
+// The per-node lock is acquired before the gen check so that the check
+// and the subsequent NodeStore + primaryRoutes mutations are atomic
+// with respect to a concurrent Connect on the same node. A stale
+// Disconnect that observed an out-of-date gen must not be allowed to
+// proceed even partially — see issue #3203.
 func (s *State) Disconnect(id types.NodeID, gen uint64) ([]change.Change, error) {
+	nl := s.nodeLockFor(id)
+	nl.mu.Lock()
+	defer nl.mu.Unlock()
+
 	// Check if this disconnect is stale. A newer Connect() will have incremented
 	// the generation, so if ours doesn't match, a newer session owns this node.
-	if current := s.connectGeneration(id); current != gen {
+	// The check happens UNDER the lock so a concurrent Connect cannot bump gen
+	// between this read and the mutations below.
+	if current := nl.gen.Load(); current != gen {
 		log.Debug().
 			Uint64("disconnect_gen", gen).
 			Uint64("current_gen", current).
@@ -653,7 +675,6 @@ func (s *State) Disconnect(id types.NodeID, gen uint64) ([]change.Change, error)
 	node, ok := s.nodeStore.UpdateNode(id, func(n *types.Node) {
 		now := time.Now()
 		n.LastSeen = &now
-		// NodeStore is the source of truth for all node state including online status.
 		n.IsOnline = new(false)
 	})
 
@@ -663,12 +684,10 @@ func (s *State) Disconnect(id types.NodeID, gen uint64) ([]change.Change, error)
 
 	log.Info().EmbedObject(node).Msg("node disconnected")
 
-	// Special error handling for disconnect - we log errors but continue
-	// because NodeStore is already updated and we need to notify peers
+	// Persist LastSeen best-effort: NodeStore already reflects offline
+	// and peers still need the change notifications below.
 	_, c, err := s.persistNodeToDB(node)
 	if err != nil {
-		// Log error but don't fail the disconnection - NodeStore is already updated
-		// and we need to send change notifications to peers
 		log.Error().Err(err).EmbedObject(node).Msg("failed to update last seen in database")
 
 		c = change.Change{}
