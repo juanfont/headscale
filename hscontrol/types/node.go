@@ -154,6 +154,16 @@ type Node struct {
 	DeletedAt *time.Time
 
 	IsOnline *bool `gorm:"-"`
+
+	// Unhealthy excludes the node from primary route election while
+	// online. Written by the HA prober. Runtime-only.
+	Unhealthy bool `gorm:"-"`
+
+	// SessionEpoch identifies a poll session. Connect bumps it; a
+	// Disconnect carrying a stale value is dropped, so a deferred
+	// disconnect from a previous session cannot overwrite a newer
+	// Connect. Runtime-only.
+	SessionEpoch uint64 `gorm:"-"`
 }
 
 type Nodes []*Node
