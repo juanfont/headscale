@@ -951,11 +951,13 @@ func TestReduceNodesFromPolicy(t *testing.T) {
   ]
 }`,
 			node: n(1, "100.64.0.1", "mobile", "mobile"),
-			// autogroup:internet does not generate packet filters - it's handled
-			// by exit node routing via AllowedIPs, not by packet filtering.
-			// Only server is visible through the mobile -> server:80 rule.
+			// autogroup:internet emits no client packet filter, but it
+			// must still produce a matcher: Node.CanAccess uses
+			// matcher.DestsIsTheInternet() + IsExitNode() to surface
+			// exit-node peers (juanfont/headscale#3212).
 			want: types.Nodes{
 				n(2, "100.64.0.2", "server", "server"),
+				n(3, "100.64.0.3", "exit", "server", "0.0.0.0/0", "::/0"),
 			},
 			wantMatchers: 1,
 		},

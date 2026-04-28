@@ -4101,6 +4101,14 @@ func TestDestinationsToNetPortRange_AutogroupInternet(t *testing.T) {
 	pol := &Policy{}
 	ports := []tailcfg.PortRange{tailcfg.PortRangeAny}
 
+	// autogroup:internet must surface as DstPorts (not be skipped at
+	// compile time). The matcher derived from these FilterRules is
+	// what makes Node.CanAccess return true for exit-node peers via
+	// DestsIsTheInternet (#3212). The wire format is currently the
+	// canonical CIDR breakdown of util.TheInternet(); aligning it to
+	// the SaaS range form is tracked separately.
+	internetPrefixCount := len(util.TheInternet().Prefixes())
+
 	tests := []struct {
 		name     string
 		dests    Aliases
@@ -4108,9 +4116,9 @@ func TestDestinationsToNetPortRange_AutogroupInternet(t *testing.T) {
 		wantStar bool
 	}{
 		{
-			name:    "autogroup:internet produces no DstPorts",
+			name:    "autogroup:internet produces TheInternet DstPorts",
 			dests:   Aliases{agp(string(AutoGroupInternet))},
-			wantLen: 0,
+			wantLen: internetPrefixCount,
 		},
 		{
 			name:     "wildcard produces DstPorts with star",
