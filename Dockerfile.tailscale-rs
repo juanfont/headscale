@@ -1,0 +1,26 @@
+FROM rust:1.94-bookworm AS builder
+
+ARG TAILSCALE_RS_REPO=https://github.com/tailscale/tailscale-rs.git
+ARG TAILSCALE_RS_REF=main
+
+WORKDIR /app
+RUN git clone --depth 1 --branch "$TAILSCALE_RS_REF" "$TAILSCALE_RS_REPO" .
+
+# Re-export ts_control's insecure-keyfetch feature through the tailscale
+# crate so the axum example can fetch the headscale control key over
+# plain HTTP. The integration harness serves the control plane without
+# TLS, and upstream only allows plain-HTTP key fetches when this Cargo
+# feature is compiled in.
+RUN sed -i '/^axum = \["dep:axum"\]/a insecure-keyfetch = ["ts_control/insecure-keyfetch"]' Cargo.toml
+
+RUN cargo build --release --features axum,insecure-keyfetch --example axum
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    ca-certificates \
+    iproute2 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/target/release/examples/axum /usr/local/bin/axum
