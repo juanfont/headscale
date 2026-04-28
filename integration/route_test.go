@@ -3871,3 +3871,429 @@ func TestHASubnetRouterPingFailover(t *testing.T) {
 		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, propagationTime, 200*time.Millisecond, "traceroute should still go through router 2 after recovery")
 }
+
+// TestHASubnetRouterFailoverBothOffline reproduces issue #3203:
+// HA tracking loses the secondary subnet router after all routers serving
+// the route have been offline simultaneously and one of them returns.
+// See https://github.com/juanfont/headscale/issues/3203.
+//
+// Existing TestHASubnetRouterFailover keeps subRouter3 online across both
+// failover steps, so the all-offline transition is uncovered. This test
+// uses two routers and walks them both offline before bringing r2 back.
+//
+// Two assertion sets split the failure surface:
+//   - R1: server-side primary route table restores after reconnect.
+//     If R1 fails, the bug is in state.Connect / primaryRoutes.
+//   - R2: client's view shows r2 online with the route in PrimaryRoutes.
+//     If R1 passes and R2 fails, the bug is in change broadcast /
+//     mapBatcher / multiChannelNodeConn.
+func TestHASubnetRouterFailoverBothOffline(t *testing.T) {
+	IntegrationSkip(t)
+
+	propagationTime := integrationutil.ScaledTimeout(60 * time.Second)
+
+	spec := ScenarioSpec{
+		NodesPerUser: 2,
+		Users:        []string{"user1", "user2"},
+		Networks: map[string]NetworkSpec{
+			"usernet1": {Users: []string{"user1"}},
+			"usernet2": {Users: []string{"user2"}},
+		},
+		ExtraService: map[string][]extraServiceFunc{
+			"usernet1": {Webservice},
+		},
+		Versions: []string{"head"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{tsic.WithAcceptRoutes()},
+		hsic.WithTestName("rt-haboth"),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	requireNoErrListClients(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+
+	prefp, err := scenario.SubnetOfNetwork("usernet1")
+	require.NoError(t, err)
+
+	pref := *prefp
+	t.Logf("usernet1 prefix: %s", pref.String())
+
+	usernet1, err := scenario.Network("usernet1")
+	require.NoError(t, err)
+
+	services, err := scenario.Services("usernet1")
+	require.NoError(t, err)
+	require.Len(t, services, 1)
+
+	web := services[0]
+	webip := netip.MustParseAddr(web.GetIPInNetwork(usernet1))
+	weburl := fmt.Sprintf("http://%s/etc/hostname", webip)
+
+	sort.SliceStable(allClients, func(i, j int) bool {
+		return allClients[i].MustStatus().Self.ID < allClients[j].MustStatus().Self.ID
+	})
+
+	subRouter1 := allClients[0]
+	subRouter2 := allClients[1]
+	client := allClients[2]
+
+	t.Logf("Router 1: %s, Router 2: %s, Client: %s",
+		subRouter1.Hostname(), subRouter2.Hostname(), client.Hostname())
+
+	// Advertise the same route on both routers.
+	for _, r := range []TailscaleClient{subRouter1, subRouter2} {
+		_, _, err = r.Execute([]string{
+			"tailscale", "set", "--advertise-routes=" + pref.String(),
+		})
+		require.NoErrorf(t, err, "failed to advertise route on %s", r.Hostname())
+	}
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	var nodes []*v1.Node
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err = headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 4)
+	}, propagationTime, 200*time.Millisecond, "nodes should be registered")
+
+	// Approve the route on both routers explicitly.
+	_, err = headscale.ApproveRoutes(
+		MustFindNode(subRouter1.Hostname(), nodes).GetId(),
+		[]netip.Prefix{pref},
+	)
+	require.NoError(t, err)
+
+	_, err = headscale.ApproveRoutes(
+		MustFindNode(subRouter2.Hostname(), nodes).GetId(),
+		[]netip.Prefix{pref},
+	)
+	require.NoError(t, err)
+
+	nodeID1 := types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId())
+	nodeID2 := types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId())
+
+	// Sanity: r1 starts as primary (lower NodeID).
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		pr, err := headscale.PrimaryRoutes()
+		assert.NoError(c, err)
+		assert.Equal(c, map[string]types.NodeID{
+			pref.String(): nodeID1,
+		}, pr.PrimaryRoutes, "router 1 should be primary initially")
+	}, propagationTime, 200*time.Millisecond, "waiting for HA setup")
+
+	// Confirm initial connectivity through r1.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		result, err := client.Curl(weburl)
+		assert.NoError(c, err)
+		assert.Len(c, result, 13)
+	}, propagationTime, 200*time.Millisecond, "client reaches webservice via r1")
+
+	t.Log("=== Step 1: r1 goes offline. r2 should take over. ===")
+
+	require.NoError(t, subRouter1.Down())
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		pr, err := headscale.PrimaryRoutes()
+		assert.NoError(c, err)
+		assert.Equal(c, map[string]types.NodeID{
+			pref.String(): nodeID2,
+		}, pr.PrimaryRoutes, "r2 should be primary after r1 offline")
+	}, propagationTime, 500*time.Millisecond, "waiting for failover to r2")
+
+	t.Log("=== Step 2: r2 also goes offline. No primary should remain. ===")
+
+	require.NoError(t, subRouter2.Down())
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		pr, err := headscale.PrimaryRoutes()
+		assert.NoError(c, err)
+		assert.Empty(c, pr.PrimaryRoutes,
+			"no primary should be assigned while both routers are offline")
+	}, propagationTime, 500*time.Millisecond, "waiting for both routers to be offline")
+
+	t.Log("=== Step 3: r2 returns. ===")
+	t.Log("    R1: server-side primary route state must restore r2 as primary.")
+	t.Log("    R2: client must observe r2 online with the route in PrimaryRoutes.")
+
+	require.NoError(t, subRouter2.Up())
+
+	// R1 — server side.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		pr, err := headscale.PrimaryRoutes()
+		assert.NoError(c, err)
+		assert.Equal(c, map[string]types.NodeID{
+			pref.String(): nodeID2,
+		}, pr.PrimaryRoutes,
+			"R1: r2 should be re-registered as primary after reconnect — issue #3203")
+	}, propagationTime, 500*time.Millisecond, "R1: waiting for server-side primary restore")
+
+	// R2 — client view.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		clientStatus, err := client.Status()
+		assert.NoError(c, err)
+
+		srs2 := subRouter2.MustStatus()
+
+		peer := clientStatus.Peer[srs2.Self.PublicKey]
+		if !assert.NotNil(c, peer, "r2 peer should be in client status") {
+			return
+		}
+
+		assert.True(c, peer.Online,
+			"R2: client should see r2 online after reconnect — issue #3203")
+
+		if assert.NotNil(c, peer.PrimaryRoutes,
+			"R2: r2 should have PrimaryRoutes set in client status") {
+			assert.Contains(c, peer.PrimaryRoutes.AsSlice(), pref,
+				"R2: client's view of r2 should include the route as primary")
+		}
+
+		requirePeerSubnetRoutesWithCollect(c, peer, []netip.Prefix{pref})
+	}, propagationTime, 500*time.Millisecond, "R2: waiting for client to see r2 with primary route")
+
+	// End-to-end traffic should reach the webservice via r2.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		result, err := client.Curl(weburl)
+		assert.NoError(c, err)
+		assert.Len(c, result, 13)
+	}, propagationTime, 200*time.Millisecond, "client reaches webservice via r2 after recovery")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		tr, err := client.Traceroute(webip)
+		assert.NoError(c, err)
+
+		ip, err := subRouter2.IPv4()
+		if !assert.NoError(c, err, "failed to get IPv4 for r2") {
+			return
+		}
+
+		assertTracerouteViaIPWithCollect(c, tr, ip)
+	}, propagationTime, 200*time.Millisecond, "traceroute should go through r2 after recovery")
+}
+
+// TestHASubnetRouterFailoverBothOfflineCablePull is a stricter variant of
+// TestHASubnetRouterFailoverBothOffline that simulates a cable pull rather
+// than a graceful tailscale down. The two differ in what the server sees:
+//
+//   - tailscale down: poll connection closes cleanly; defer fires
+//     immediately; grace period starts and ends predictably.
+//   - cable pull: server's noise long-poll is wedged in a half-open TCP
+//     connection until kernel keepalives time out (often >60 s). When
+//     the cable returns, two server-side longpoll sessions can overlap.
+//
+// Issue #3203 reports the bug after cable pulls; this variant blocks all
+// traffic between the router container and headscale via iptables and then
+// removes the block to mimic that behaviour.
+func TestHASubnetRouterFailoverBothOfflineCablePull(t *testing.T) {
+	IntegrationSkip(t)
+
+	propagationTime := integrationutil.ScaledTimeout(120 * time.Second)
+
+	spec := ScenarioSpec{
+		NodesPerUser: 2,
+		Users:        []string{"user1", "user2"},
+		Networks: map[string]NetworkSpec{
+			"usernet1": {Users: []string{"user1"}},
+			"usernet2": {Users: []string{"user2"}},
+		},
+		ExtraService: map[string][]extraServiceFunc{
+			"usernet1": {Webservice},
+		},
+		Versions: []string{"head"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{
+			tsic.WithAcceptRoutes(),
+			tsic.WithPackages("iptables"),
+		},
+		hsic.WithTestName("rt-hacable"),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	requireNoErrListClients(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+
+	prefp, err := scenario.SubnetOfNetwork("usernet1")
+	require.NoError(t, err)
+
+	pref := *prefp
+
+	usernet1, err := scenario.Network("usernet1")
+	require.NoError(t, err)
+
+	services, err := scenario.Services("usernet1")
+	require.NoError(t, err)
+	require.Len(t, services, 1)
+
+	web := services[0]
+	webip := netip.MustParseAddr(web.GetIPInNetwork(usernet1))
+	weburl := fmt.Sprintf("http://%s/etc/hostname", webip)
+
+	sort.SliceStable(allClients, func(i, j int) bool {
+		return allClients[i].MustStatus().Self.ID < allClients[j].MustStatus().Self.ID
+	})
+
+	subRouter1 := allClients[0]
+	subRouter2 := allClients[1]
+	client := allClients[2]
+
+	for _, r := range []TailscaleClient{subRouter1, subRouter2} {
+		_, _, err = r.Execute([]string{
+			"tailscale", "set", "--advertise-routes=" + pref.String(),
+		})
+		require.NoErrorf(t, err, "advertise route on %s", r.Hostname())
+	}
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	var nodes []*v1.Node
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err = headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 4)
+	}, propagationTime, 200*time.Millisecond, "nodes registered")
+
+	_, err = headscale.ApproveRoutes(
+		MustFindNode(subRouter1.Hostname(), nodes).GetId(),
+		[]netip.Prefix{pref},
+	)
+	require.NoError(t, err)
+
+	_, err = headscale.ApproveRoutes(
+		MustFindNode(subRouter2.Hostname(), nodes).GetId(),
+		[]netip.Prefix{pref},
+	)
+	require.NoError(t, err)
+
+	nodeID2 := types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId())
+
+	// Sanity: r1 starts as primary.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		pr, err := headscale.PrimaryRoutes()
+		assert.NoError(c, err)
+		assert.NotEmpty(c, pr.PrimaryRoutes, "a primary should exist")
+	}, propagationTime, 200*time.Millisecond, "HA setup")
+
+	hsIP := headscale.GetIPInNetwork(usernet1)
+
+	// "Cable pull" — drop all traffic in BOTH directions to/from headscale.
+	// Unlike the NEW-state-only filter used by TestHASubnetRouterPingFailover,
+	// this also breaks the existing ESTABLISHED long-poll, mimicking a
+	// physically severed link.
+	cablePull := func(r TailscaleClient) {
+		t.Helper()
+
+		for _, chain := range []string{"OUTPUT", "INPUT"} {
+			_, _, err := r.Execute([]string{
+				"iptables", "-A", chain,
+				"-d", hsIP, "-j", "DROP",
+			})
+			require.NoErrorf(t, err, "iptables -A %s on %s", chain, r.Hostname())
+			_, _, err = r.Execute([]string{
+				"iptables", "-A", chain,
+				"-s", hsIP, "-j", "DROP",
+			})
+			require.NoErrorf(t, err, "iptables -A %s -s on %s", chain, r.Hostname())
+		}
+	}
+
+	cableReplug := func(r TailscaleClient) {
+		t.Helper()
+
+		for _, chain := range []string{"OUTPUT", "INPUT"} {
+			_, _, err := r.Execute([]string{
+				"iptables", "-D", chain,
+				"-d", hsIP, "-j", "DROP",
+			})
+			require.NoErrorf(t, err, "iptables -D %s on %s", chain, r.Hostname())
+			_, _, err = r.Execute([]string{
+				"iptables", "-D", chain,
+				"-s", hsIP, "-j", "DROP",
+			})
+			require.NoErrorf(t, err, "iptables -D %s -s on %s", chain, r.Hostname())
+		}
+	}
+
+	t.Log("=== Cable-pull r1. Server should eventually fail r1 over to r2. ===")
+	cablePull(subRouter1)
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		pr, err := headscale.PrimaryRoutes()
+		assert.NoError(c, err)
+		assert.Equal(c, map[string]types.NodeID{
+			pref.String(): nodeID2,
+		}, pr.PrimaryRoutes, "r2 should become primary after r1 cable pull")
+	}, propagationTime, 1*time.Second, "waiting for r2 promotion")
+
+	t.Log("=== Cable-pull r2 while r1 is still cable-pulled. ===")
+	cablePull(subRouter2)
+
+	// Some primary may transiently flip back to r1 (offline) here — see the
+	// user's "failover to n1 (offline)" observation in the issue. We do not
+	// assert on that intermediate state; we just assert recovery below.
+
+	t.Log("=== Reconnect r2 (cable plugged back in). ===")
+	cableReplug(subRouter2)
+
+	// R1 — server side primary table should restore r2 as primary.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		pr, err := headscale.PrimaryRoutes()
+		assert.NoError(c, err)
+		assert.Equal(c, map[string]types.NodeID{
+			pref.String(): nodeID2,
+		}, pr.PrimaryRoutes,
+			"R1: r2 should be re-registered as primary after cable replug — issue #3203")
+	}, propagationTime, 1*time.Second, "R1: waiting for r2 to be primary again")
+
+	// R2 — client should observe r2 online with the route.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		clientStatus, err := client.Status()
+		assert.NoError(c, err)
+
+		srs2 := subRouter2.MustStatus()
+
+		peer := clientStatus.Peer[srs2.Self.PublicKey]
+		if !assert.NotNil(c, peer) {
+			return
+		}
+
+		assert.True(c, peer.Online,
+			"R2: client should see r2 online — issue #3203")
+
+		if assert.NotNil(c, peer.PrimaryRoutes) {
+			assert.Contains(c, peer.PrimaryRoutes.AsSlice(), pref)
+		}
+	}, propagationTime, 1*time.Second, "R2: waiting for client to see r2")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		result, err := client.Curl(weburl)
+		assert.NoError(c, err)
+		assert.Len(c, result, 13)
+	}, propagationTime, 1*time.Second, "client reaches webservice via r2 after recovery")
+}

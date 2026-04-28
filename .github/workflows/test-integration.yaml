@@ -251,6 +251,8 @@ jobs:
           - TestSubnetRouteACLFiltering
           - TestGrantViaSubnetSteering
           - TestHASubnetRouterPingFailover
+          - TestHASubnetRouterFailoverBothOffline
+          - TestHASubnetRouterFailoverBothOfflineCablePull
           - TestHeadscale
           - TestTailscaleNodesJoiningHeadcale
           - TestSSHOneUserToAll
