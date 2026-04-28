@@ -258,7 +258,16 @@ func (v NodeView) DeletedAt() views.ValuePointer[time.Time] {
 
 func (v NodeView) IsOnline() views.ValuePointer[bool] { return views.ValuePointerOf(v.ж.IsOnline) }
 
-func (v NodeView) String() string { return v.ж.String() }
+// Unhealthy excludes the node from primary route election while
+// online. Written by the HA prober. Runtime-only.
+func (v NodeView) Unhealthy() bool { return v.ж.Unhealthy }
+
+// SessionEpoch identifies a poll session. Connect bumps it; a
+// Disconnect carrying a stale value is dropped, so a deferred
+// disconnect from a previous session cannot overwrite a newer
+// Connect. Runtime-only.
+func (v NodeView) SessionEpoch() uint64 { return v.ж.SessionEpoch }
+func (v NodeView) String() string       { return v.ж.String() }
 
 // A compilation failure here means this code must be regenerated, with the command at the top of this file.
 var _NodeViewNeedsRegeneration = Node(struct {
@@ -285,6 +294,8 @@ var _NodeViewNeedsRegeneration = Node(struct {
 	UpdatedAt      time.Time
 	DeletedAt      *time.Time
 	IsOnline       *bool
+	Unhealthy      bool
+	SessionEpoch   uint64
 }{})
 
 // View returns a read-only view of PreAuthKey.
