@@ -599,6 +599,9 @@ func (s *State) Disconnect(id types.NodeID, epoch uint64) ([]change.Change, erro
 		now := time.Now()
 		n.LastSeen = &now
 		n.IsOnline = new(false)
+		// Offline nodes are not HA candidates; drop any stale
+		// Unhealthy bit so it does not surface in DebugRoutes.
+		n.Unhealthy = false
 	})
 
 	if !ok {
@@ -899,6 +902,12 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (t
 
 	n, ok := s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
 		node.ApprovedRoutes = routes
+		// A node with no approved routes is no longer an HA
+		// candidate; drop any stale Unhealthy bit (mirrors the
+		// legacy routes.SetRoutes(empty) auto-clear).
+		if len(node.AllApprovedRoutes()) == 0 {
+			node.Unhealthy = false
+		}
 	})
 
 	if !ok {
@@ -2561,6 +2570,14 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 					Bool(zf.RouteChanged, routeChange).
 					Msg("applying route approval results")
 			}
+		}
+
+		// AllApprovedRoutes is announced ∩ approved; a Hostinfo
+		// update that shrinks the announced set can drop the node
+		// out of HA candidacy without touching ApprovedRoutes.
+		// Clear any stale Unhealthy bit in that case.
+		if len(currentNode.AllApprovedRoutes()) == 0 {
+			currentNode.Unhealthy = false
 		}
 	})
 
