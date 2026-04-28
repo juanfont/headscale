@@ -54,6 +54,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.1
+	pgregory.net/rapid v1.2.0
 	tailscale.com v1.96.5
 	zombiezen.com/go/postgrestest v1.0.1
 )
