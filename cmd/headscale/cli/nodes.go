@@ -322,6 +322,7 @@ func nodesToPtables(
 		"Expiration",
 		"Connected",
 		"Expired",
+		"Client Version",
 	}
 	tableData := pterm.TableData{tableHeader}
 
@@ -427,6 +428,7 @@ func nodesToPtables(
 			expiryTime,
 			online,
 			expired,
+			node.GetClientVersion(),
 		}
 		tableData = append(
 			tableData,
