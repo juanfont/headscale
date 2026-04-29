@@ -1,0 +1,39 @@
+name: Commit Lint
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Rule unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: hustcer/setup-nu@920172d92eb04671776f3ba69d605d3b09351c30 # v3.22
+        with:
+          version: "*"
+      - name: Run rule unit tests
+        run: nu commit-lint.test.nu
+        working-directory: .github/scripts
+
+  check:
+    name: Issue references in commits
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          fetch-depth: 0
+      - uses: hustcer/setup-nu@920172d92eb04671776f3ba69d605d3b09351c30 # v3.22
+        with:
+          version: "*"
+      - name: Check that PR commits reference an issue
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          nu -c 'use .github/scripts/commit-lint.nu *; lint-range $env.BASE_SHA $env.HEAD_SHA'
