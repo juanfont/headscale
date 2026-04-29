@@ -4159,29 +4159,41 @@ func TestHASubnetRouterFailoverBothOfflineCablePull(t *testing.T) {
 	}, propagationTime, 1*time.Second, "client reaches webservice via r2 after recovery")
 }
 
-// TestHASubnetRouterFailoverDockerDisconnect reproduces the report
-// from issue #3203 by simulating a real cable pull at the docker
-// daemon level. The container's network interface is removed via
-// `docker network disconnect`, which leaves any in-flight TCP
-// connection half-open at the peer — exactly the failure mode the
-// reporter observed when disconnecting a Proxmox interface, and the
-// one that iptables-based simulations cannot reproduce because the
-// container's kernel still owns the socket.
+// TestHASubnetRouterFailoverDockerDisconnect drives a full
+// up/down/up/down lifecycle of two HA subnet routers using real
+// docker network disconnects — the same failure primitive nblock
+// observed when pulling a Proxmox interface in issue #3203.
+// iptables-based simulations cannot reproduce this because the
+// container's kernel still owns the socket; only daemon-level
+// disconnect leaves the long-poll TCP half-open at the peer.
 //
-// The behaviour under test is the **no-flap invariant**: once the
-// primary has failed over to r2 and r2 itself loses connectivity,
-// the primary must NOT flap back to r1, which is also offline.
-// Today the all-unhealthy fallback in electPrimaryRoutes flips back
-// to candidates[0] (lowest NodeID) regardless of online state,
-// producing the user-visible "switches back to offline node 1"
-// pathology.
+// Phases (each builds on the prev):
+//   1. r1 starts as primary (lowest NodeID).
+//   2. r1 alone fails and recovers.
+//      2a. r1 down → r2 promoted.
+//      2b. r1 up   → r2 retains (anti-flap on prev-primary return).
+//   3. r2 alone fails and recovers (standby is now r1).
+//      3a. r2 down → r1 promoted.
+//      3b. r2 up   → r1 retains.
+//   4. Sequential dual failure — the issue #3203 bug.
+//      4a. r1 down → r2 promoted.
+//      4b. r2 down → primary must NOT flap to offline r1.
+//      4c. r2 up   → r2 primary again, traffic resumes.
+//      4d. r1 up   → r2 retains.
+//   5. Simultaneous dual failure.
+//      5a. r1 + r2 down → primary must NOT flap to offline r1.
+//      5b. r1 + r2 up   → r2 retains.
 //
-// This test is expected to FAIL on the current branch — that is the
-// reproduction. A separate change will fix the algorithm.
+// The no-flap assertions in 4b and 5a are the regression barriers
+// for #3203 — currently FAIL on this branch. The other phases
+// guard against future algorithm changes silently regressing one
+// lifecycle while fixing another.
 func TestHASubnetRouterFailoverDockerDisconnect(t *testing.T) {
 	IntegrationSkip(t)
 
 	propagationTime := integrationutil.ScaledTimeout(120 * time.Second)
+	holdWindow := integrationutil.ScaledTimeout(20 * time.Second)
+	flapWindow := integrationutil.ScaledTimeout(40 * time.Second)
 
 	spec := ScenarioSpec{
 		NodesPerUser: 2,
@@ -4271,82 +4283,133 @@ func TestHASubnetRouterFailoverDockerDisconnect(t *testing.T) {
 	nodeID1 := types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId())
 	nodeID2 := types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId())
 
-	// Sanity: r1 (lowest NodeID) starts as primary.
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		pr, err := headscale.PrimaryRoutes()
-		assert.NoError(c, err)
-		assert.Equal(c, map[string]types.NodeID{
-			pref.String(): nodeID1,
-		}, pr.PrimaryRoutes, "r1 should start as primary")
-	}, propagationTime, 200*time.Millisecond, "HA setup")
+	// requirePrimary blocks until headscale reports want as the
+	// primary advertiser for pref.
+	requirePrimary := func(want types.NodeID, msg string) {
+		t.Helper()
+		assert.EventuallyWithT(t, func(c *assert.CollectT) {
+			pr, err := headscale.PrimaryRoutes()
+			assert.NoError(c, err)
+			assert.Equal(c, map[string]types.NodeID{
+				pref.String(): want,
+			}, pr.PrimaryRoutes, msg)
+		}, propagationTime, 1*time.Second, msg)
+	}
 
-	// Verify client traffic reaches the webservice via r1 before any
-	// failover so the post-disconnect state is comparable.
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := client.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
-	}, propagationTime, 1*time.Second, "client reaches webservice via r1 before disconnects")
+	// requireTrafficWorks asserts the client can reach the webservice
+	// across the tailnet (i.e. via whichever router is primary).
+	requireTrafficWorks := func(msg string) {
+		t.Helper()
+		assert.EventuallyWithT(t, func(c *assert.CollectT) {
+			result, err := client.Curl(weburl)
+			assert.NoError(c, err)
+			assert.Len(c, result, 13)
+		}, propagationTime, 1*time.Second, msg)
+	}
 
-	t.Log("=== Cable-pull r1 via docker network disconnect. ===")
+	// requirePrimaryStable asserts primary == want for the entire
+	// window. Catches transient flaps and verifies anti-flap on
+	// prev-primary return.
+	requirePrimaryStable := func(want types.NodeID, window time.Duration, msg string) {
+		t.Helper()
+		require.Never(t, func() bool {
+			pr, err := headscale.PrimaryRoutes()
+			if err != nil {
+				return false
+			}
+			owner, ok := pr.PrimaryRoutes[pref.String()]
+
+			return !ok || owner != want
+		}, window, 1*time.Second, msg)
+	}
+
+	// ============================================================
+	// Phase 1: initial state — r1 (lowest NodeID) is primary.
+	// ============================================================
+	t.Log("=== Phase 1: initial state — r1 should be primary. ===")
+	requirePrimary(nodeID1, "phase 1: r1 primary at start")
+	requireTrafficWorks("phase 1: client reaches webservice via r1")
+
+	// ============================================================
+	// Phase 2: r1 alone fails and returns; r2 takes over and stays.
+	// ============================================================
+	t.Log("=== Phase 2a: cable-pull r1, expect failover to r2. ===")
 	require.NoError(t, subRouter1.DisconnectFromNetwork(usernet1),
-		"docker disconnect r1 from usernet1")
+		"phase 2a: docker disconnect r1")
+	requirePrimary(nodeID2, "phase 2a: r2 promoted after r1 down")
+	requireTrafficWorks("phase 2a: client reaches webservice via r2")
 
-	// Eventually r2 should take over as primary. With ProbeInterval
-	// 10s + ProbeTimeout 5s the worst-case detection is ~15s, plus
-	// the 10s poll-grace before state.Disconnect runs.
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		pr, err := headscale.PrimaryRoutes()
-		assert.NoError(c, err)
-		assert.Equal(c, map[string]types.NodeID{
-			pref.String(): nodeID2,
-		}, pr.PrimaryRoutes, "r2 should become primary after r1 docker disconnect")
-	}, propagationTime, 1*time.Second, "waiting for r2 promotion")
+	t.Log("=== Phase 2b: reconnect r1, r2 must stay primary. ===")
+	require.NoError(t, subRouter1.ReconnectToNetwork(usernet1),
+		"phase 2b: docker reconnect r1")
+	requirePrimaryStable(nodeID2, holdWindow,
+		"phase 2b: r2 must stay primary across r1 return (anti-flap)")
+	requireTrafficWorks("phase 2b: client still reaches webservice via r2")
 
-	t.Log("=== Cable-pull r2 while r1 is still disconnected. ===")
+	// ============================================================
+	// Phase 3: r2 alone fails and returns; standby is now r1.
+	// ============================================================
+	t.Log("=== Phase 3a: cable-pull r2, expect failover to r1. ===")
 	require.NoError(t, subRouter2.DisconnectFromNetwork(usernet1),
-		"docker disconnect r2 from usernet1")
+		"phase 3a: docker disconnect r2")
+	requirePrimary(nodeID1, "phase 3a: r1 promoted after r2 down")
+	requireTrafficWorks("phase 3a: client reaches webservice via r1")
 
-	// No-flap assertion (the bug under test).
-	//
-	// Both r1 and r2 are now offline at the network layer. r2 was
-	// the standing primary. The HA prober will mark r2 unhealthy
-	// within ~15s; once it does, the all-unhealthy fallback in the
-	// algorithm flips primary to candidates[0] (r1, lowest NodeID).
-	//
-	// Per the user's report this is wrong — the primary should not
-	// jump to a node that is itself offline. Assert primary stays r2
-	// across a window long enough to cover the prober tick and the
-	// fallback decision.
-	flapWindow := integrationutil.ScaledTimeout(40 * time.Second)
-	require.Never(t, func() bool {
-		pr, err := headscale.PrimaryRoutes()
-		if err != nil {
-			return false
-		}
-
-		owner, ok := pr.PrimaryRoutes[pref.String()]
-
-		return ok && owner == nodeID1
-	}, flapWindow, 1*time.Second,
-		"primary must not flap to offline r1 (issue #3203 reporter follow-up)")
-
-	t.Log("=== Reconnect r2 to docker network. ===")
+	t.Log("=== Phase 3b: reconnect r2, r1 must stay primary. ===")
 	require.NoError(t, subRouter2.ReconnectToNetwork(usernet1),
-		"docker reconnect r2 to usernet1")
+		"phase 3b: docker reconnect r2")
+	requirePrimaryStable(nodeID1, holdWindow,
+		"phase 3b: r1 must stay primary across r2 return (anti-flap)")
+	requireTrafficWorks("phase 3b: client still reaches webservice via r1")
 
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		pr, err := headscale.PrimaryRoutes()
-		assert.NoError(c, err)
-		assert.Equal(c, map[string]types.NodeID{
-			pref.String(): nodeID2,
-		}, pr.PrimaryRoutes,
-			"r2 should be primary again after reconnect — issue #3203")
-	}, propagationTime, 1*time.Second, "waiting for r2 to be primary again")
+	// ============================================================
+	// Phase 4: sequential dual failure — the issue #3203 bug. The
+	// flap target is r1 because under cable-pull both routers
+	// linger as IsOnline=true (half-open TCP), both go Unhealthy,
+	// and electPrimaryRoutes' all-unhealthy fallback selects the
+	// lowest NodeID regardless of who was prev primary.
+	// ============================================================
+	t.Log("=== Phase 4a: cable-pull r1, expect failover to r2. ===")
+	require.NoError(t, subRouter1.DisconnectFromNetwork(usernet1),
+		"phase 4a: docker disconnect r1")
+	requirePrimary(nodeID2, "phase 4a: r2 promoted after r1 down")
 
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := client.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
-	}, propagationTime, 1*time.Second, "client reaches webservice via r2 after recovery")
+	t.Log("=== Phase 4b: cable-pull r2, primary must NOT flap to offline r1. ===")
+	require.NoError(t, subRouter2.DisconnectFromNetwork(usernet1),
+		"phase 4b: docker disconnect r2")
+	requirePrimaryStable(nodeID2, flapWindow,
+		"phase 4b: primary must not flap to offline r1 (issue #3203)")
+
+	t.Log("=== Phase 4c: reconnect r2, r2 should resume as primary. ===")
+	require.NoError(t, subRouter2.ReconnectToNetwork(usernet1),
+		"phase 4c: docker reconnect r2")
+	requirePrimary(nodeID2, "phase 4c: r2 primary after reconnect")
+	requireTrafficWorks("phase 4c: client reaches webservice via r2 after recovery")
+
+	t.Log("=== Phase 4d: reconnect r1, r2 must stay primary. ===")
+	require.NoError(t, subRouter1.ReconnectToNetwork(usernet1),
+		"phase 4d: docker reconnect r1")
+	requirePrimaryStable(nodeID2, holdWindow,
+		"phase 4d: r2 must stay primary across r1 return")
+	requireTrafficWorks("phase 4d: client still reaches webservice via r2")
+
+	// ============================================================
+	// Phase 5: simultaneous dual failure (whole-segment outage).
+	// prev going in is r2 — the no-flap invariant must hold.
+	// ============================================================
+	t.Log("=== Phase 5a: cable-pull r1 and r2 simultaneously. ===")
+	require.NoError(t, subRouter1.DisconnectFromNetwork(usernet1),
+		"phase 5a: docker disconnect r1")
+	require.NoError(t, subRouter2.DisconnectFromNetwork(usernet1),
+		"phase 5a: docker disconnect r2")
+	requirePrimaryStable(nodeID2, flapWindow,
+		"phase 5a: primary must not flap to offline r1 (issue #3203)")
+
+	t.Log("=== Phase 5b: reconnect both, r2 should remain primary. ===")
+	require.NoError(t, subRouter1.ReconnectToNetwork(usernet1),
+		"phase 5b: docker reconnect r1")
+	require.NoError(t, subRouter2.ReconnectToNetwork(usernet1),
+		"phase 5b: docker reconnect r2")
+	requirePrimary(nodeID2, "phase 5b: r2 primary after both reconnect")
+	requireTrafficWorks("phase 5b: client reaches webservice via r2")
 }
