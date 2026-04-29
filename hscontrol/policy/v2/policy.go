@@ -187,6 +187,16 @@ func NewPolicyManager(b []byte, users []types.User, nodes views.Slice[types.Node
 		return nil, err
 	}
 
+	// Boot path: log a warning if the stored policy's tests would
+	// fail against the current users and nodes, but keep the server
+	// running. A stale stored policy (e.g. referencing a user that
+	// was deleted while the server was offline) should not block
+	// boot; the operator finds out via logs and re-runs the write
+	// boundary when they are ready.
+	if testErr := pm.RunTests(); testErr != nil { //nolint:noinlineerr // boot path: warn-and-continue, not return
+		log.Warn().Err(testErr).Msg("policy tests failed at boot; server starting anyway, fix the policy and reload")
+	}
+
 	return &pm, nil
 }
 
@@ -447,6 +457,15 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 		return false, fmt.Errorf("validating policy user references: %w", err)
 	}
 
+	// SetPolicy is the user-write boundary. Tests evaluate against a
+	// sandbox compiled from the new policy + current users/nodes; if
+	// they fail, return without mutating the live PolicyManager so the
+	// failed write does not knock the running config offline.
+	err = evaluateTests(pol, pm.users, pm.nodes)
+	if err != nil {
+		return false, err
+	}
+
 	// Log policy metadata for debugging
 	log.Debug().
 		Int("policy.bytes", len(polB)).
@@ -455,6 +474,7 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 		Int("hosts.count", len(pol.Hosts)).
 		Int("tagOwners.count", len(pol.TagOwners)).
 		Int("autoApprovers.routes.count", len(pol.AutoApprovers.Routes)).
+		Int("tests.count", len(pol.Tests)).
 		Msg("Policy parsed successfully")
 
 	pm.pol = pol
