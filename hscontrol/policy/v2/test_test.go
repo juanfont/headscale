@@ -338,6 +338,61 @@ func TestNewPolicyManagerSkipsTests(t *testing.T) {
 	require.ErrorIs(t, err, errPolicyTestsFailed)
 }
 
+// TestRunTestsEmptyProtoMatchesDefaultProtocols captures the bug where a
+// test entry with no `proto` field fails to match a filter rule whose
+// IPProto is restricted to a default protocol (TCP, UDP, ICMP, ICMPv6).
+// Tailscale's client default set is {6, 17, 1, 58} when proto is omitted,
+// so a TCP-only rule must satisfy an empty-proto test.
+//
+// The capture
+// testdata/policytest_results/policytest-allpass-acls-and-grants-mixed.hujson
+// is the captured signal for this same bug (api_response_code 200, two
+// passing tests including `tag:client → webserver:80` with no proto over
+// a `ip: tcp:80` grant).
+func TestRunTestsEmptyProtoMatchesDefaultProtocols(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "odin", Email: "odin@example.com"},
+	}
+	nodes := types.Nodes{
+		{
+			ID:       1,
+			Hostname: "client",
+			IPv4:     ap("100.64.0.10"),
+			IPv6:     ap("fd7a:115c:a1e0::a"),
+			Tags:     []string{"tag:client"},
+		},
+		{
+			ID:       2,
+			Hostname: "webserver",
+			IPv4:     ap("100.64.0.16"),
+			IPv6:     ap("fd7a:115c:a1e0::10"),
+			Tags:     []string{"tag:server"},
+		},
+	}
+
+	policy := `{
+		"tagOwners": {
+			"tag:client": ["odin@example.com"],
+			"tag:server": ["odin@example.com"]
+		},
+		"hosts": {
+			"webserver": "100.64.0.16"
+		},
+		"grants": [
+			{"src": ["tag:client"], "dst": ["webserver"], "ip": ["tcp:80"]}
+		],
+		"tests": [
+			{"src": "tag:client", "accept": ["webserver:80"]}
+		]
+	}`
+
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err, "policy must parse and compile")
+
+	require.NoError(t, pm.RunTests(),
+		"empty-proto test must match a tcp-only grant rule (TCP is in the client default set)")
+}
+
 // TestPolicyTestResultsErrorsRendering checks the multi-line render layout
 // since the body becomes the user-facing error.
 func TestPolicyTestResultsErrorsRendering(t *testing.T) {
