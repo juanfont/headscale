@@ -807,6 +807,21 @@ func (t *TailscaleInContainer) Down() error {
 	return nil
 }
 
+// DisconnectFromNetwork detaches the container from network at the
+// docker daemon level. The container's network interface for that
+// network disappears and any in-flight TCP connection is left
+// half-open at the peer — the same failure mode a real cable pull
+// produces, which iptables-based simulations cannot reproduce.
+func (t *TailscaleInContainer) DisconnectFromNetwork(network *dockertest.Network) error {
+	return dockertestutil.DisconnectContainerFromNetwork(t.pool, network, t.hostname)
+}
+
+// ReconnectToNetwork is the inverse of DisconnectFromNetwork: it
+// re-attaches the container to network so traffic can flow again.
+func (t *TailscaleInContainer) ReconnectToNetwork(network *dockertest.Network) error {
+	return dockertestutil.ReconnectContainerToNetwork(t.pool, network, t.hostname)
+}
+
 // IPs returns the netip.Addr of the Tailscale instance.
 func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 	if len(t.ips) != 0 {
