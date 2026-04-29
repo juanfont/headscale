@@ -314,8 +314,17 @@ func parseDestinationAlias(dst string) (*AliasWithPorts, error) {
 // srcReachesDst walks the compiled filter rules and reports whether
 // traffic from src to any prefix in dstPrefixes on at least one of ports
 // (or any port when ports is empty) is allowed under proto.
+//
+// An empty test proto means the Tailscale client default set
+// {TCP, UDP, ICMP, ICMPv6} — the protocols the client tries when proto
+// is omitted. The captured Tailscale matches show these four IANA
+// numbers explicitly when no proto is set, so a rule restricted to any
+// of them satisfies an empty-proto test.
 func srcReachesDst(src netip.Prefix, dstPrefixes []netip.Prefix, ports []tailcfg.PortRange, proto Protocol, filter []tailcfg.FilterRule) bool {
 	requestedProtos := proto.toIANAProtocolNumbers()
+	if len(requestedProtos) == 0 {
+		requestedProtos = []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP}
+	}
 
 	for _, rule := range filter {
 		if !ruleMatchesSource(rule, src) {
@@ -354,19 +363,13 @@ func ruleMatchesSource(rule tailcfg.FilterRule, src netip.Prefix) bool {
 	return false
 }
 
-// ruleMatchesProto reports whether the rule permits the requested
-// protocols. An unset rule.IPProto means "any protocol" and matches
-// everything; an empty requestedProtos (proto == "") means the default
-// set, which matches any rule including unset ones.
+// ruleMatchesProto reports whether the rule permits any of requestedProtos.
+// An unset rule.IPProto means "any protocol" and matches everything.
+// requestedProtos is the per-test protocol set: a single proto for an
+// explicit test.Proto, or the default set when test.Proto is empty.
 func ruleMatchesProto(rule tailcfg.FilterRule, requestedProtos []int) bool {
 	if len(rule.IPProto) == 0 {
 		return true
-	}
-
-	if len(requestedProtos) == 0 {
-		// Default set: a rule restricted to a non-default protocol does
-		// not match the default request.
-		return false
 	}
 
 	for _, ruleProto := range rule.IPProto {
