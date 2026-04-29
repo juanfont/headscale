@@ -138,23 +138,10 @@ func TestRunTests(t *testing.T) {
 			wantErrSub:  []string{"ghost@headscale.net", "failed to resolve source"},
 			wantNoErrIs: errPolicyTestsFailed,
 		},
-		{
-			name: "malformed-dst-missing-port",
-			policy: `{
-				"acls": [{
-					"action": "accept",
-					"src": ["*"],
-					"dst": ["*:*"]
-				}],
-				"tests": [{
-					"src": "alice@headscale.net",
-					"accept": ["alice-laptop"]
-				}]
-			}`,
-			wantPass:    false,
-			wantErrSub:  []string{"alice-laptop", "error testing"},
-			wantNoErrIs: errPolicyTestsFailed,
-		},
+		// "malformed-dst-missing-port" used to live here; structural
+		// shape errors are now caught at parse by validateTests, so
+		// RunTests no longer sees them. The parse-side behaviour is
+		// covered by TestUnmarshalPolicy/tests-* in types_test.go.
 		{
 			name: "wildcard-src-passes",
 			policy: `{

@@ -2051,6 +2051,142 @@ func TestUnmarshalPolicy(t *testing.T) {
 `,
 			wantErr: "invalid localpart format",
 		},
+		// A test entry with neither accept nor deny asserts nothing
+		// and is silently accepted today. Tailscale rejects the policy.
+		{
+			name: "tests-empty-assertions",
+			input: `
+{
+	"acls": [
+		{"action": "accept", "src": ["*"], "dst": ["*:22"]}
+	],
+	"tests": [
+		{"src": "*"}
+	]
+}
+`,
+			wantErr: `test entry must have at least one of "accept" or "deny"`,
+		},
+		// Tests can only describe connection-oriented reachability, so
+		// proto must be tcp, udp, sctp, or empty. Tailscale rejects
+		// proto=icmp on a test entry even though icmp is valid in rules.
+		{
+			name: "tests-proto-icmp-not-allowed",
+			input: `
+{
+	"acls": [
+		{"action": "accept", "proto": "icmp", "src": ["*"], "dst": ["*:*"]}
+	],
+	"tests": [
+		{"src": "*", "proto": "icmp", "accept": ["*:*"]}
+	]
+}
+`,
+			wantErr: `test protocol must be tcp, udp, sctp, or empty`,
+		},
+		// A test asserts one connection attempt to one specific port.
+		// Port ranges, lists, and wildcards conflate multiple attempts
+		// and have no single answer; Tailscale rejects them in tests.
+		{
+			name: "tests-dst-port-range-not-allowed",
+			input: `
+{
+	"acls": [
+		{"action": "accept", "src": ["*"], "dst": ["*:8000-8100"]}
+	],
+	"tests": [
+		{"src": "*", "accept": ["*:8000-8100"]}
+	]
+}
+`,
+			wantErr: `test destination port must be a single port`,
+		},
+		// autogroup:internet is delivered via exit-node AllowedIPs, not
+		// packet-filter rules, so reachability to it has no meaning in
+		// the filter model used by tests. Tailscale rejects it in
+		// test destinations even though it is valid in rule destinations.
+		{
+			name: "tests-dst-autogroup-internet-not-allowed",
+			input: `
+{
+	"tagOwners": {
+		"tag:client": ["admin@example.com"]
+	},
+	"acls": [
+		{"action": "accept", "src": ["tag:client"], "dst": ["autogroup:internet:*"]}
+	],
+	"tests": [
+		{"src": "tag:client", "deny": ["autogroup:internet:*"]}
+	]
+}
+`,
+			wantErr: `autogroup:internet not valid as a test destination`,
+		},
+		// A test asserts one connection attempt to one specific host.
+		// Tailscale rejects raw `/N` notation in test dsts even when
+		// the prefix is `/32` — the alias parser distinguishes a bare
+		// IP literal from an explicit single-host CIDR even though
+		// they cover the same address.
+		{
+			name: "tests-dst-cidr-prefix32-not-allowed",
+			input: `
+{
+	"tagOwners": {
+		"tag:client": ["admin@example.com"]
+	},
+	"acls": [
+		{"action": "accept", "src": ["tag:client"], "dst": ["100.64.0.16/32:22"]}
+	],
+	"tests": [
+		{"src": "tag:client", "accept": ["100.64.0.16/32:22"]}
+	]
+}
+`,
+			wantErr: `test destination must be a single host, not a CIDR range`,
+		},
+		// Multi-host prefixes in test dsts are rejected for the same
+		// reason port ranges are: the assertion has no single answer
+		// once the prefix covers more than one host.
+		{
+			name: "tests-dst-cidr-multi-host-not-allowed",
+			input: `
+{
+	"tagOwners": {
+		"tag:client": ["admin@example.com"]
+	},
+	"acls": [
+		{"action": "accept", "src": ["tag:client"], "dst": ["10.0.0.0/8:22"]}
+	],
+	"tests": [
+		{"src": "tag:client", "accept": ["10.0.0.0/8:22"]}
+	]
+}
+`,
+			wantErr: `test destination must be a single host, not a CIDR range`,
+		},
+		// hosts: aliases with a multi-host RHS are rejected after
+		// resolution. The alias text has no slash but the alias still
+		// resolves to a range, which is the rule SaaS enforces.
+		{
+			name: "tests-dst-host-alias-cidr-not-allowed",
+			input: `
+{
+	"tagOwners": {
+		"tag:client": ["admin@example.com"]
+	},
+	"hosts": {
+		"internal": "10.0.0.0/8"
+	},
+	"acls": [
+		{"action": "accept", "src": ["tag:client"], "dst": ["internal:22"]}
+	],
+	"tests": [
+		{"src": "tag:client", "accept": ["internal:22"]}
+	]
+}
+`,
+			wantErr: `test destination must be a single host, not a CIDR range`,
+		},
 	}
 
 	cmps := append(util.Comparers,

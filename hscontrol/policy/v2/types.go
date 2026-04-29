@@ -125,6 +125,11 @@ var (
 	ErrUnknownSSHSrcAlias          = errors.New("unknown SSH source alias type")
 	ErrUnknownField                = errors.New("unknown field")
 	ErrProtocolNoSpecificPorts     = errors.New("protocol does not support specific ports")
+	ErrTestEmptyAssertions         = errors.New("test entry must have at least one of \"accept\" or \"deny\"")
+	ErrTestProtocolNotAllowed      = errors.New("test protocol must be tcp, udp, sctp, or empty")
+	ErrTestDestinationMultiPort    = errors.New("test destination port must be a single port")
+	ErrTestDestinationCIDR         = errors.New("test destination must be a single host, not a CIDR range")
+	ErrAutogroupInternetTestDst    = errors.New("autogroup:internet not valid as a test destination")
 )
 
 type resolved struct {
@@ -2676,6 +2681,10 @@ func (p *Policy) validate() error {
 		}
 	}
 
+	if err := validateTests(p, p.Tests); err != nil { //nolint:noinlineerr
+		errs = append(errs, err)
+	}
+
 	if len(errs) > 0 {
 		return multierr.New(errs...)
 	}
@@ -3046,6 +3055,88 @@ func validateProtocolPortCompatibility(protocol Protocol, destinations []AliasWi
 			// Check if it's not a wildcard port (0-65535)
 			if portRange.First != 0 || portRange.Last != 65535 {
 				return fmt.Errorf("%w: %q, only \"*\" is allowed", ErrProtocolNoSpecificPorts, protocol)
+			}
+		}
+	}
+
+	return nil
+}
+
+// validateTests enforces the four shape rules a tests-block entry must
+// follow: a tests entry describes one connection attempt to one specific
+// destination port over a connection-oriented protocol and asserts
+// whether that attempt is allowed or denied. The same shapes remain
+// valid inside ACL or Grant destinations where the rule does not apply.
+func validateTests(pol *Policy, tests []PolicyTest) error {
+	var errs []error
+
+	for i, t := range tests {
+		if len(t.Accept) == 0 && len(t.Deny) == 0 {
+			errs = append(errs, fmt.Errorf("test %d: %w", i, ErrTestEmptyAssertions))
+		}
+
+		if t.Proto != "" &&
+			t.Proto != ProtocolNameTCP &&
+			t.Proto != ProtocolNameUDP &&
+			t.Proto != ProtocolNameSCTP {
+			errs = append(errs, fmt.Errorf("test %d: %w: %q", i, ErrTestProtocolNotAllowed, t.Proto))
+		}
+
+		for _, dst := range t.Accept {
+			err := validateTestDestination(pol, dst)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("test %d, accept %q: %w", i, dst, err))
+			}
+		}
+
+		for _, dst := range t.Deny {
+			err := validateTestDestination(pol, dst)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("test %d, deny %q: %w", i, dst, err))
+			}
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("%w:\n%w", errPolicyTestsFailed, multierr.New(errs...))
+	}
+
+	return nil
+}
+
+// validateTestDestination enforces that a tests-block dst describes one
+// connection attempt to one specific host on one specific port. SaaS
+// rejects three shapes that violate the rule: autogroup:internet (routed
+// by exit-node AllowedIPs, not the packet filter); multi-port
+// (range/list/wildcard, no single allow/deny answer); and CIDR ranges
+// — both raw `/N` syntax and `hosts:`-table aliases whose RHS is a
+// multi-host prefix. Bare IP literals reach this function as *Prefix
+// /32 or /128 just like explicit `/32` / `/128` does, so the CIDR
+// check inspects the raw input string for `/` rather than the parsed
+// alias type.
+func validateTestDestination(pol *Policy, dst string) error {
+	awp, err := parseDestinationAlias(dst)
+	if err != nil {
+		return err
+	}
+
+	if ag, ok := awp.Alias.(*AutoGroup); ok && *ag == AutoGroupInternet {
+		return ErrAutogroupInternetTestDst
+	}
+
+	if len(awp.Ports) != 1 || awp.Ports[0].First != awp.Ports[0].Last {
+		return ErrTestDestinationMultiPort
+	}
+
+	if _, isPrefix := awp.Alias.(*Prefix); isPrefix && strings.Contains(dst, "/") {
+		return ErrTestDestinationCIDR
+	}
+
+	if h, isHost := awp.Alias.(*Host); isHost && pol != nil {
+		if pref, ok := pol.Hosts[*h]; ok {
+			p := netip.Prefix(pref)
+			if p.Bits() < p.Addr().BitLen() {
+				return ErrTestDestinationCIDR
 			}
 		}
 	}
