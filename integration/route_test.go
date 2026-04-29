@@ -4297,3 +4297,255 @@ func TestHASubnetRouterFailoverBothOfflineCablePull(t *testing.T) {
 		assert.Len(c, result, 13)
 	}, propagationTime, 1*time.Second, "client reaches webservice via r2 after recovery")
 }
+
+// TestHASubnetRouterFailoverDockerDisconnect drives a multi-phase
+// up/down/up/down lifecycle of two HA subnet routers using real
+// docker network disconnects — the same failure primitive nblock
+// observed when pulling a Proxmox interface in issue #3203.
+// iptables-based simulations cannot reproduce this because the
+// container's kernel still owns the socket; only daemon-level
+// disconnect leaves the long-poll TCP half-open at the peer.
+//
+// Phases:
+//  1. r1 starts as primary (lowest NodeID).
+//  2. r1 alone fails and recovers — failover to r2, then traffic
+//     resumes when r1 returns.
+//  3. r2 alone fails and recovers — failover, then traffic resumes.
+//  4. Sequential dual failure — the issue #3203 bug.
+//     4a. r1 down → r2 promoted.
+//     4b. r2 down → primary must NOT flap to offline r1.
+//     4c. r2 up   → r2 primary again, traffic resumes.
+//  5. Simultaneous dual failure.
+//     5a. r1 + r2 down → primary must NOT flap to offline r1.
+//     5b. both up → primary stays r2, traffic resumes.
+//
+// The no-flap assertions in 4b and 5a are the regression barriers
+// for #3203. Phases 2/3 are functional checks (failover works,
+// traffic recovers) without strict identity assertions on the
+// "return" leg, since `docker network disconnect` triggers bridge
+// reconfiguration that can transiently affect probing of OTHER
+// containers on the same network — a test-infrastructure quirk
+// that does not occur with a real cable pull.
+func TestHASubnetRouterFailoverDockerDisconnect(t *testing.T) {
+	IntegrationSkip(t)
+
+	propagationTime := integrationutil.ScaledTimeout(120 * time.Second)
+	flapWindow := integrationutil.ScaledTimeout(40 * time.Second)
+
+	spec := ScenarioSpec{
+		NodesPerUser: 2,
+		Users:        []string{"user1", "user2"},
+		Networks: map[string]NetworkSpec{
+			"usernet1": {Users: []string{"user1"}},
+			"usernet2": {Users: []string{"user2"}},
+		},
+		ExtraService: map[string][]extraServiceFunc{
+			"usernet1": {Webservice},
+		},
+		Versions: []string{"head"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{tsic.WithAcceptRoutes()},
+		hsic.WithTestName("rt-hadocker"),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	requireNoErrListClients(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+
+	prefp, err := scenario.SubnetOfNetwork("usernet1")
+	require.NoError(t, err)
+
+	pref := *prefp
+
+	usernet1, err := scenario.Network("usernet1")
+	require.NoError(t, err)
+
+	services, err := scenario.Services("usernet1")
+	require.NoError(t, err)
+	require.Len(t, services, 1)
+
+	web := services[0]
+	webip := netip.MustParseAddr(web.GetIPInNetwork(usernet1))
+	weburl := fmt.Sprintf("http://%s/etc/hostname", webip)
+
+	sort.SliceStable(allClients, func(i, j int) bool {
+		return allClients[i].MustStatus().Self.ID < allClients[j].MustStatus().Self.ID
+	})
+
+	subRouter1 := allClients[0]
+	subRouter2 := allClients[1]
+	client := allClients[2]
+
+	for _, r := range []TailscaleClient{subRouter1, subRouter2} {
+		_, _, err = r.Execute([]string{
+			"tailscale", "set", "--advertise-routes=" + pref.String(),
+		})
+		require.NoErrorf(t, err, "advertise route on %s", r.Hostname())
+	}
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	var nodes []*v1.Node
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err = headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 4)
+	}, propagationTime, 200*time.Millisecond, "nodes registered")
+
+	_, err = headscale.ApproveRoutes(
+		MustFindNode(subRouter1.Hostname(), nodes).GetId(),
+		[]netip.Prefix{pref},
+	)
+	require.NoError(t, err)
+
+	_, err = headscale.ApproveRoutes(
+		MustFindNode(subRouter2.Hostname(), nodes).GetId(),
+		[]netip.Prefix{pref},
+	)
+	require.NoError(t, err)
+
+	nodeID1 := types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId())
+	nodeID2 := types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId())
+
+	// requirePrimary blocks until headscale reports want as the
+	// primary advertiser for pref.
+	requirePrimary := func(want types.NodeID, msg string) {
+		t.Helper()
+		assert.EventuallyWithT(t, func(c *assert.CollectT) {
+			pr, err := headscale.PrimaryRoutes()
+			assert.NoError(c, err)
+			assert.Equal(c, map[string]types.NodeID{
+				pref.String(): want,
+			}, pr.PrimaryRoutes, msg)
+		}, propagationTime, 1*time.Second, msg)
+	}
+
+	// requireTrafficWorks asserts the client can reach the webservice
+	// across the tailnet (i.e. via whichever router is primary).
+	requireTrafficWorks := func(msg string) {
+		t.Helper()
+		assert.EventuallyWithT(t, func(c *assert.CollectT) {
+			result, err := client.Curl(weburl)
+			assert.NoError(c, err)
+			assert.Len(c, result, 13)
+		}, propagationTime, 1*time.Second, msg)
+	}
+
+	// requirePrimaryStable asserts primary == want for the entire
+	// window. Catches transient flaps and verifies anti-flap on
+	// prev-primary return.
+	requirePrimaryStable := func(want types.NodeID, window time.Duration, msg string) {
+		t.Helper()
+		require.Never(t, func() bool {
+			pr, err := headscale.PrimaryRoutes()
+			if err != nil {
+				return false
+			}
+
+			owner, ok := pr.PrimaryRoutes[pref.String()]
+
+			return !ok || owner != want
+		}, window, 1*time.Second, msg)
+	}
+
+	// ============================================================
+	// Phase 1: initial state — r1 (lowest NodeID) is primary.
+	// ============================================================
+	t.Log("=== Phase 1: initial state — r1 should be primary. ===")
+	requirePrimary(nodeID1, "phase 1: r1 primary at start")
+	requireTrafficWorks("phase 1: client reaches webservice via r1")
+
+	// ============================================================
+	// Phase 2: r1 alone fails and returns. Failover to r2, traffic
+	// resumes; reconnect r1 and verify traffic still flows. We do
+	// not assert primary identity across the r1-return leg because
+	// docker bridge reconfiguration can transiently fail probes on
+	// r2 (real cable pulls do not have this side effect).
+	// ============================================================
+	t.Log("=== Phase 2a: cable-pull r1, expect failover to r2. ===")
+	require.NoError(t, subRouter1.DisconnectFromNetwork(usernet1),
+		"phase 2a: docker disconnect r1")
+	requirePrimary(nodeID2, "phase 2a: r2 promoted after r1 down")
+	requireTrafficWorks("phase 2a: client reaches webservice via r2")
+
+	t.Log("=== Phase 2b: reconnect r1, traffic should still flow. ===")
+	require.NoError(t, subRouter1.ReconnectToNetwork(usernet1),
+		"phase 2b: docker reconnect r1")
+	requireTrafficWorks("phase 2b: client still reaches webservice")
+
+	// ============================================================
+	// Phase 3: r2 alone fails and returns. Same caveats as phase 2
+	// on identity assertions during the return leg.
+	// ============================================================
+	t.Log("=== Phase 3a: cable-pull r2, traffic should fail over. ===")
+	require.NoError(t, subRouter2.DisconnectFromNetwork(usernet1),
+		"phase 3a: docker disconnect r2")
+	requireTrafficWorks("phase 3a: client reaches webservice via remaining router")
+
+	t.Log("=== Phase 3b: reconnect r2, traffic should still flow. ===")
+	require.NoError(t, subRouter2.ReconnectToNetwork(usernet1),
+		"phase 3b: docker reconnect r2")
+	requireTrafficWorks("phase 3b: client still reaches webservice")
+
+	// ============================================================
+	// Phase 4: sequential dual failure — the issue #3203 bug. The
+	// flap target is r1 because under cable-pull both routers
+	// linger as IsOnline=true (half-open TCP), both go Unhealthy,
+	// and electPrimaryRoutes' all-unhealthy fallback selects the
+	// lowest NodeID regardless of who was prev primary.
+	// ============================================================
+	t.Log("=== Phase 4a: cable-pull r1, expect failover to r2. ===")
+	require.NoError(t, subRouter1.DisconnectFromNetwork(usernet1),
+		"phase 4a: docker disconnect r1")
+	requirePrimary(nodeID2, "phase 4a: r2 promoted after r1 down")
+
+	t.Log("=== Phase 4b: cable-pull r2, primary must NOT flap to offline r1. ===")
+	require.NoError(t, subRouter2.DisconnectFromNetwork(usernet1),
+		"phase 4b: docker disconnect r2")
+	requirePrimaryStable(nodeID2, flapWindow,
+		"phase 4b: primary must not flap to offline r1 (issue #3203)")
+
+	t.Log("=== Phase 4c: reconnect r2, r2 should resume as primary. ===")
+	require.NoError(t, subRouter2.ReconnectToNetwork(usernet1),
+		"phase 4c: docker reconnect r2")
+	requirePrimary(nodeID2, "phase 4c: r2 primary after reconnect")
+	requireTrafficWorks("phase 4c: client reaches webservice via r2 after recovery")
+
+	t.Log("=== Phase 4d: reconnect r1, traffic should still flow. ===")
+	require.NoError(t, subRouter1.ReconnectToNetwork(usernet1),
+		"phase 4d: docker reconnect r1")
+	requireTrafficWorks("phase 4d: client still reaches webservice")
+
+	// ============================================================
+	// Phase 5: simultaneous dual failure (whole-segment outage).
+	// prev going in is r2 — primary must not flap to offline r1.
+	// ============================================================
+	t.Log("=== Phase 5a: cable-pull r1 and r2 simultaneously. ===")
+	require.NoError(t, subRouter1.DisconnectFromNetwork(usernet1),
+		"phase 5a: docker disconnect r1")
+	require.NoError(t, subRouter2.DisconnectFromNetwork(usernet1),
+		"phase 5a: docker disconnect r2")
+	requirePrimaryStable(nodeID2, flapWindow,
+		"phase 5a: primary must not flap to offline r1 (issue #3203)")
+
+	t.Log("=== Phase 5b: reconnect both, r2 should remain primary. ===")
+	require.NoError(t, subRouter1.ReconnectToNetwork(usernet1),
+		"phase 5b: docker reconnect r1")
+	require.NoError(t, subRouter2.ReconnectToNetwork(usernet1),
+		"phase 5b: docker reconnect r2")
+	requirePrimary(nodeID2, "phase 5b: r2 primary after both reconnect")
+	requireTrafficWorks("phase 5b: client reaches webservice via r2")
+}

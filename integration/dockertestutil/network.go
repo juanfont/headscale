@@ -91,6 +91,47 @@ func AddContainerToNetwork(
 	return nil
 }
 
+// DisconnectContainerFromNetwork removes the container from network at
+// the docker daemon level. Mirrors a physical cable pull: the
+// container's network interface for that network disappears and any
+// in-flight TCP connections are left half-open, exactly the failure
+// mode iptables-based simulations cannot reproduce.
+func DisconnectContainerFromNetwork(
+	pool *dockertest.Pool,
+	network *dockertest.Network,
+	testContainer string,
+) error {
+	containers, err := pool.Client.ListContainers(docker.ListContainersOptions{
+		All: true,
+		Filters: map[string][]string{
+			"name": {testContainer},
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	if len(containers) == 0 {
+		return fmt.Errorf("%w: %s", ErrContainerNotFound, testContainer)
+	}
+
+	return pool.Client.DisconnectNetwork(network.Network.ID, docker.NetworkConnectionOptions{
+		Container: containers[0].ID,
+		Force:     true,
+	})
+}
+
+// ReconnectContainerToNetwork is the inverse of
+// DisconnectContainerFromNetwork — re-attaches the container to the
+// network so traffic can flow again.
+func ReconnectContainerToNetwork(
+	pool *dockertest.Pool,
+	network *dockertest.Network,
+	testContainer string,
+) error {
+	return AddContainerToNetwork(pool, network, testContainer)
+}
+
 // RandomFreeHostPort asks the kernel for a free open port that is ready to use.
 // (from https://github.com/phayes/freeport)
 func RandomFreeHostPort() (int, error) {

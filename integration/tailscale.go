@@ -58,6 +58,8 @@ type TailscaleClient interface {
 	ReadFile(path string) ([]byte, error)
 	PacketFilter() ([]filter.Match, error)
 	ConnectToNetwork(network *dockertest.Network) error
+	DisconnectFromNetwork(network *dockertest.Network) error
+	ReconnectToNetwork(network *dockertest.Network) error
 
 	// FailingPeersAsString returns a formatted-ish multi-line-string of peers in the client
 	// and a bool indicating if the clients online count and peer count is equal.
