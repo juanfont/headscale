@@ -253,6 +253,7 @@ jobs:
           - TestHASubnetRouterPingFailover
           - TestHASubnetRouterFailoverBothOffline
           - TestHASubnetRouterFailoverBothOfflineCablePull
+          - TestHASubnetRouterFailoverDockerDisconnect
           - TestHeadscale
           - TestTailscaleNodesJoiningHeadcale
           - TestSSHOneUserToAll
