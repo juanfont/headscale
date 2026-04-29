@@ -37,9 +37,7 @@ import (
 // Each entry is a real bug to fix in a follow-up; documenting them here
 // keeps the compat suite green and the divergence list visible.
 var knownPolicyTesterDivergences = map[string]string{ //nolint:gosec // strings here are human-readable notes, not credentials
-	"policytest-allpass-acls-and-grants-mixed":      "evaluator denies tag:client → webserver:80 in mixed acls+grants policy; SaaS accepts (Updates #1803)",
-	"policytest-proto-numeric":                      "validateProtocolPortCompatibility rejects numeric proto \"6\" with specific ports; SaaS accepts (Updates #1803)",
-	"policytest-accept-fail-proto-numeric-mismatch": "validateProtocolPortCompatibility rejects numeric proto \"6\" with specific ports; SaaS accepts (Updates #1803)",
+	"policytest-allpass-acls-and-grants-mixed": "evaluator denies tag:client → webserver:80 in mixed acls+grants policy; SaaS accepts (Updates #1803)",
 }
 
 // policyTesterCompatUsers / policyTesterCompatNodes mirror the small
