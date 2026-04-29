@@ -98,7 +98,12 @@ func (m *primariesModel) updatePrimaries() {
 		}
 
 		if !found && len(nodes) >= 1 {
-			selected = nodes[0]
+			if cur, ok := m.primary[p]; ok && slices.Contains(nodes, cur) {
+				selected = cur
+			} else {
+				selected = nodes[0]
+			}
+
 			found = true
 		}
 

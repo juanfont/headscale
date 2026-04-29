@@ -620,9 +620,12 @@ func snapshotFromNodes(
 // electPrimaryRoutes picks the primary advertiser for each non-exit
 // prefix. The previous primary is preserved when it is still online
 // and healthy (anti-flap); otherwise the lowest-NodeID healthy
-// advertiser wins, falling back to the lowest-NodeID candidate when
-// every advertiser is unhealthy so peers see *some* primary instead
-// of none.
+// advertiser wins. When every advertiser is unhealthy the previous
+// primary is preserved if still a candidate, falling back to the
+// lowest-NodeID candidate so peers see *some* primary instead of
+// none. Anti-flap in the all-unhealthy case matters under cable-pull
+// where IsOnline lags reality and a naive lowest-ID fallback churns
+// primaries to a node that is itself unreachable (issue #3203).
 func electPrimaryRoutes(
 	nodes map[types.NodeID]types.Node,
 	prev map[netip.Prefix]types.NodeID,
@@ -675,7 +678,12 @@ func electPrimaryRoutes(
 		}
 
 		if !found && len(candidates) >= 1 {
-			selected = candidates[0]
+			if cur, ok := prev[prefix]; ok && slices.Contains(candidates, cur) {
+				selected = cur
+			} else {
+				selected = candidates[0]
+			}
+
 			found = true
 		}
 
