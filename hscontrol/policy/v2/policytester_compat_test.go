@@ -37,18 +37,9 @@ import (
 // Each entry is a real bug to fix in a follow-up; documenting them here
 // keeps the compat suite green and the divergence list visible.
 var knownPolicyTesterDivergences = map[string]string{ //nolint:gosec // strings here are human-readable notes, not credentials
-	"policytest-allpass-acls-and-grants-mixed":                   "evaluator denies tag:client → webserver:80 in mixed acls+grants policy; SaaS accepts (Updates #1803)",
-	"policytest-proto-numeric":                                   "validateProtocolPortCompatibility rejects numeric proto \"6\" with specific ports; SaaS accepts (Updates #1803)",
-	"policytest-accept-fail-proto-numeric-mismatch":              "validateProtocolPortCompatibility rejects numeric proto \"6\" with specific ports; SaaS accepts (Updates #1803)",
-	"policytest-port-shape-range":                                "SaaS rejects port-range syntax in test dst; evaluator accepts (Updates #1803)",
-	"policytest-port-shape-list":                                 "SaaS rejects port-list syntax in test dst; evaluator accepts (Updates #1803)",
-	"policytest-port-shape-wildcard":                             "SaaS rejects port-wildcard in test dst when paired with non-wildcard rule; evaluator accepts (Updates #1803)",
-	"policytest-proto-icmp":                                      "SaaS rejects proto=icmp tests; evaluator accepts (Updates #1803)",
-	"policytest-deny-fail-autogroup-internet-dst":                "SaaS rejects deny-fail with autogroup:internet dst; evaluator passes (Updates #1803)",
-	"policytest-malformed-test-missing-accept-and-deny":          "SaaS rejects test entry with neither accept nor deny; evaluator passes (Updates #1803)",
-	"policytest-allpass-grants-only-tag-src-cidr-dst":            "SaaS rejects test dst that resolves to a multi-host CIDR; evaluator accepts based on filter coverage (Updates #1803)",
-	"policytest-allpass-grants-only-tag-src-prefix32-dst":        "SaaS rejects /32 CIDR dst (distinct from bare IP literal); evaluator accepts (Updates #1803)",
-	"policytest-allpass-grants-only-tag-src-host-alias-cidr-dst": "SaaS rejects hosts:-alias to CIDR as test dst; evaluator accepts (Updates #1803)",
+	"policytest-allpass-acls-and-grants-mixed":      "evaluator denies tag:client → webserver:80 in mixed acls+grants policy; SaaS accepts (Updates #1803)",
+	"policytest-proto-numeric":                      "validateProtocolPortCompatibility rejects numeric proto \"6\" with specific ports; SaaS accepts (Updates #1803)",
+	"policytest-accept-fail-proto-numeric-mismatch": "validateProtocolPortCompatibility rejects numeric proto \"6\" with specific ports; SaaS accepts (Updates #1803)",
 }
 
 // policyTesterCompatUsers / policyTesterCompatNodes mirror the small
@@ -141,29 +132,42 @@ func TestPolicyTesterCompat(t *testing.T) {
 
 			policyJSON := []byte(c.Input.FullPolicy)
 
-			pm, err := NewPolicyManager(policyJSON, users, nodes.ViewSlice())
-			require.NoError(t, err, "policy must parse during boot path")
+			pm, parseErr := NewPolicyManager(policyJSON, users, nodes.ViewSlice())
 
-			_, setErr := pm.SetPolicy(policyJSON)
-
+			// Tailscale validates and runs tests as one POST step:
+			// either failure mode produces the same 400. Headscale
+			// splits structural validation (parse) from test
+			// evaluation (SetPolicy). For the compat assertion, the
+			// two are equivalent — whichever surfaces first carries
+			// the captured body.
 			if c.Input.APIResponseCode == 200 {
+				require.NoError(t, parseErr, "tailscale accepted this policy; headscale must parse it")
+
+				_, setErr := pm.SetPolicy(policyJSON)
 				require.NoError(t, setErr, "tailscale accepted this policy; headscale tests should pass")
 
 				return
 			}
 
-			// Failure case: tailscale rejected the policy with a body
-			// captured in APIResponseBody.Message. Our error must
-			// contain that body as a substring.
-			require.Error(t, setErr, "tailscale rejected; headscale tests should also fail")
+			var got error
+
+			switch {
+			case parseErr != nil:
+				got = parseErr
+			default:
+				_, setErr := pm.SetPolicy(policyJSON)
+				got = setErr
+			}
+
+			require.Error(t, got, "tailscale rejected; headscale must reject too")
 
 			if c.Input.APIResponseBody == nil || c.Input.APIResponseBody.Message == "" {
 				return
 			}
 
 			want := c.Input.APIResponseBody.Message
-			if !strings.Contains(setErr.Error(), want) {
-				t.Errorf("error body mismatch\n  tailscale wants: %q\n  headscale got:   %q", want, setErr.Error())
+			if !strings.Contains(got.Error(), want) {
+				t.Errorf("error body mismatch\n  tailscale wants: %q\n  headscale got:   %q", want, got.Error())
 			}
 		})
 	}
