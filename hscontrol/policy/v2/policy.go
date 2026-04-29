@@ -447,6 +447,15 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 		return false, fmt.Errorf("validating policy user references: %w", err)
 	}
 
+	// SetPolicy is the user-write boundary. Tests evaluate against a
+	// sandbox compiled from the new policy + current users/nodes; if
+	// they fail, return without mutating the live PolicyManager so the
+	// failed write does not knock the running config offline.
+	err = evaluateTests(pol, pm.users, pm.nodes)
+	if err != nil {
+		return false, err
+	}
+
 	// Log policy metadata for debugging
 	log.Debug().
 		Int("policy.bytes", len(polB)).
@@ -455,6 +464,7 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 		Int("hosts.count", len(pol.Hosts)).
 		Int("tagOwners.count", len(pol.TagOwners)).
 		Int("autoApprovers.routes.count", len(pol.AutoApprovers.Routes)).
+		Int("tests.count", len(pol.Tests)).
 		Msg("Policy parsed successfully")
 
 	pm.pol = pol
