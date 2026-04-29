@@ -409,7 +409,7 @@ func TestGrantsCompat(t *testing.T) {
 			// different node IPs.
 			nodes := buildGrantsNodesFromCapture(users, tf)
 
-			// Use the captured full policy verbatim (anonymization
+			// Use the captured full policy as is (anonymization
 			// in tscap already rewrote SaaS emails).
 			policyJSON := convertPolicyUserEmails(tf.Input.FullPolicy)
 
@@ -457,7 +457,7 @@ func testGrantError(t *testing.T, policyJSON []byte, tf *testcapture.Capture) {
 }
 
 // assertGrantErrorContains requires that headscale's error contains
-// the Tailscale SaaS error message verbatim. Divergence means an
+// the Tailscale SaaS error message exactly. Divergence means an
 // emitter needs to be aligned, not papered over with a translation
 // table.
 func assertGrantErrorContains(t *testing.T, err error, wantMsg string, testID string) {

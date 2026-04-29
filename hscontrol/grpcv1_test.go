@@ -596,7 +596,7 @@ func TestDeleteUser_TaggedNodeSurvives(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, resp.MachineAuthorized)
 
-	// Verify the registered node has nil UserID (enforced invariant).
+	// Verify the registered node has nil UserID (enforced at registration).
 	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
 	require.True(t, found)
 	require.True(t, node.IsTagged())

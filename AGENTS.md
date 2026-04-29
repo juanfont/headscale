@@ -198,7 +198,7 @@ databases. The `migrationsRequiringFKDisabled` map in
 
 Headscale enforces **tags XOR user ownership**: every node is either
 tagged (owned by tags) or user-owned (owned by a user namespace), never
-both. This is a load-bearing architectural invariant.
+both. This is a load-bearing architectural rule.
 
 - **Use `node.IsTagged()`** (`hscontrol/types/node.go:221`) to determine
   ownership, not `node.UserID().Valid()`. A tagged node may still have

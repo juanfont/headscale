@@ -100,7 +100,7 @@ func TestDestroyUserErrors(t *testing.T) {
 				user, err := db.CreateUser(types.User{Name: "test"})
 				require.NoError(t, err)
 
-				// Create a tagged node with no user_id (the invariant).
+				// Create a tagged node with no user_id (the rule for tagged nodes).
 				node := types.Node{
 					ID:             0,
 					Hostname:       "tagged-node",
