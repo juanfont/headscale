@@ -1,6 +1,7 @@
 package hscontrol
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -667,6 +668,75 @@ func TestTaggedNodeReauthPreservesDisabledExpiry(t *testing.T) {
 	assert.True(t, nodeAfterReauth.IsTagged(), "Node should still be tagged")
 	assert.False(t, nodeAfterReauth.Expiry().Valid(),
 		"Tagged node should have expiry PRESERVED as disabled after re-auth")
+}
+
+// TestTaggedNodeRestartPreservesNilExpiry tests that when a tagged node's
+// tailscaled restarts (sending Auth=nil, Expiry=zero), the nil expiry is
+// preserved. Regression test for https://github.com/juanfont/headscale/issues/3170
+//
+// Bug: the guard in handleRegister checked node.Expiry().Valid() which
+// returns false for nil expiry (tagged nodes). This caused the request
+// to fall through to handleLogout, which wrote &time.Time{} (zero-time)
+// over the original nil, changing the API representation from null to
+// "0001-01-01T00:00:00Z".
+func TestTaggedNodeRestartPreservesNilExpiry(t *testing.T) {
+	app := createTestApp(t)
+
+	user := app.state.CreateUserForTest("tag-restart")
+	tags := []string{"tag:agent"}
+
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, tags)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	regReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "tagged-restart-test",
+		},
+	}
+
+	resp, err := app.handleRegisterWithAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+	require.True(t, resp.MachineAuthorized)
+
+	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+	require.True(t, node.IsTagged())
+	require.False(t, node.Expiry().Valid(), "tagged node should have nil expiry after registration")
+	require.False(t, node.IsExpired(), "tagged node with nil expiry should not be expired")
+
+	// Simulate tailscaled restart: sends RegisterRequest with Auth=nil
+	// and Expiry=time.Time{} (Go zero value). This is what tailscaled
+	// sends when it restarts with persisted state.
+	restartReq := tailcfg.RegisterRequest{
+		Auth:    nil,
+		NodeKey: nodeKey.Public(),
+		Expiry:  time.Time{},
+	}
+
+	restartResp, err := app.handleRegister(context.Background(), restartReq, machineKey.Public())
+	require.NoError(t, err)
+
+	require.True(t, restartResp.MachineAuthorized,
+		"restart should not require re-authorization")
+	require.False(t, restartResp.NodeKeyExpired,
+		"restart should not mark node key as expired")
+	require.Equal(t, types.TaggedDevices.View().TailscaleUser(), restartResp.User,
+		"response should identify node as tagged device")
+
+	nodeAfterRestart, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+
+	assert.True(t, nodeAfterRestart.IsTagged(), "node should still be tagged")
+	assert.False(t, nodeAfterRestart.IsExpired(), "node should not be expired after restart")
+	assert.False(t, nodeAfterRestart.Expiry().Valid(),
+		"tagged node expiry must remain nil (not zero-time) after restart")
 }
 
 // TestExpiryDuringPersonalToTaggedConversion tests that when a personal node

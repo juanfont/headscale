@@ -183,6 +183,7 @@ connected" routers that maintain their control session but cannot route packets.
 
 - Remove old migrations for the debian package [#3185](https://github.com/juanfont/headscale/pull/3185)
 - Install `config-example.yaml` as example for the debian package [#3186](https://github.com/juanfont/headscale/pull/3186)
+- **Node Expiry**: Fix tagged nodes' nil expiry resetting to zero-time when tailscaled restarts, completing the fix from [#2862](https://github.com/juanfont/headscale/issues/2862) [#3170](https://github.com/juanfont/headscale/issues/3170)
 
 ## 0.28.0 (2026-02-04)
 
