@@ -26,10 +26,11 @@ import (
 
 // errPolicyTestsFailed wraps the rendered failure body so callers can
 // type-assert when they need to react differently to test failures vs. parse
-// errors. The Error() output is the user-facing message and is intended to
-// match Tailscale SaaS verbatim once the corpus is captured via tscap.
+// errors. The Error() prefix is "test(s) failed", the same string Tailscale
+// SaaS returns in the api_response_body.message — see
+// hscontrol/policy/v2/testdata/policytest_results/.
 var (
-	errPolicyTestsFailed   = errors.New("policy tests failed")
+	errPolicyTestsFailed   = errors.New("test(s) failed")
 	errTestDestinationNoIP = errors.New("destination resolved to no IP addresses")
 )
 
@@ -76,9 +77,11 @@ type PolicyTestResults struct {
 	Results   []PolicyTestResult `json:"results"`
 }
 
-// Errors renders the failure body. Format is intended to byte-exact match
-// Tailscale SaaS once captured via tscap; until the corpus lands, the
-// strings below are best-effort and will be updated to match.
+// Errors renders the per-test failure breakdown joined by newlines.
+// Tailscale SaaS itself only returns the literal "test(s) failed" — we
+// keep the per-test detail because it is significantly more useful in
+// CLI / config-reload paths where the user does not have a separate
+// audit endpoint to consult.
 func (r PolicyTestResults) Errors() string {
 	if r.AllPassed {
 		return ""
