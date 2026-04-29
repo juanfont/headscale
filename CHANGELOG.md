@@ -27,6 +27,22 @@ A new `headscale auth` CLI command group supports the approval flow:
 [#1850](https://github.com/juanfont/headscale/pull/1850)
 [#3180](https://github.com/juanfont/headscale/pull/3180)
 
+### Policy tests (beta)
+
+Headscale now evaluates the `tests` block in a policy file. Tests assert reachability between
+named sources and destinations and cover the whole policy — both `acls` and `grants` rules
+contribute. They run on user-initiated writes via `headscale policy set`, the file watcher, and
+`headscale policy check`. A failing test rejects the write before it is applied, with the same
+error message Tailscale SaaS would return for the same policy.
+
+Tests do not run at boot. An already-stored policy that no longer passes — for example because a
+referenced user was deleted while the server was offline — logs a warning and the server keeps
+running.
+
+This feature is **beta** while behavioural coverage against Tailscale SaaS broadens.
+
+[#3229](https://github.com/juanfont/headscale/pull/3229)
+
 ### Grants
 
 We now support [Tailscale grants](https://tailscale.com/docs/features/access-control/grants)
@@ -133,6 +149,7 @@ connected" routers that maintain their control session but cannot route packets.
 - Fix non-wildcard source IPs being dropped when combined with wildcard `*` in the same ACL rule [#2180](https://github.com/juanfont/headscale/pull/2180)
 - Fix exit node approval not triggering filter rule recalculation for peers [#2180](https://github.com/juanfont/headscale/pull/2180)
 - Policy validation error messages now include field context (e.g., `src=`, `dst=`) and are more descriptive [#2180](https://github.com/juanfont/headscale/pull/2180)
+- Evaluate the policy `tests` block on user-initiated writes across both `acls` and `grants`; reject policies whose tests fail (beta) [#1803](https://github.com/juanfont/headscale/issues/1803)
 
 #### Grants
 
@@ -154,6 +171,7 @@ connected" routers that maintain their control session but cannot route packets.
 - Remove deprecated `--namespace` flag from `nodes list`, `nodes register`, and `debug create-node` commands (use `--user` instead) [#3093](https://github.com/juanfont/headscale/pull/3093)
 - Remove deprecated `namespace`/`ns` command aliases for `users` and `machine`/`machines` aliases for `nodes` [#3093](https://github.com/juanfont/headscale/pull/3093)
 - **User deletion**: Fix `DestroyUser` deleting all pre-auth keys in the database instead of only the target user's keys [#3155](https://github.com/juanfont/headscale/pull/3155)
+- `headscale policy check` evaluates the `tests` block when invoked with `--bypass-grpc-and-access-database-directly`; without the flag it warns instead of running the tests against empty data [#1803](https://github.com/juanfont/headscale/issues/1803)
 
 #### API
 
