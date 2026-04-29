@@ -1986,6 +1986,7 @@ type Policy struct {
 	Grants        []Grant            `json:"grants,omitempty"`
 	AutoApprovers AutoApproverPolicy `json:"autoApprovers"`
 	SSHs          []SSH              `json:"ssh,omitempty"`
+	Tests         []PolicyTest       `json:"tests,omitempty"`
 }
 
 // MarshalJSON is deliberately not implemented for Policy.
