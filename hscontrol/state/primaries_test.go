@@ -200,18 +200,41 @@ func TestPrimaries_RecoveryFromUnhealthyNoFlap(t *testing.T) {
 	f.requirePrimary(mp("192.168.1.0/24"), 2)
 }
 
-func TestPrimaries_AllUnhealthyKeepsLowestIDPrimary(t *testing.T) {
-	// When every advertiser is unhealthy the algorithm degrades to
-	// the lowest-ID advertiser rather than going dark — peers should
-	// still see *some* primary so connectivity can recover when one
-	// of them flips healthy.
+func TestPrimaries_AllUnhealthyKeepsAPrimary(t *testing.T) {
+	// Anti-blackhole: when every advertiser is unhealthy the
+	// algorithm keeps *some* primary so peers can recover once one
+	// flips healthy. The specific node is the prev primary when
+	// reachable (see PreservesPrevious); this test only pins the
+	// existence rule.
+	prefix := mp("192.168.1.0/24")
 	f := newPrimariesFixture(t, 1, 2)
-	f.advertise(1, mp("192.168.1.0/24"))
-	f.advertise(2, mp("192.168.1.0/24"))
+	f.advertise(1, prefix)
+	f.advertise(2, prefix)
 	f.unhealthy(1)
 	f.unhealthy(2)
 
-	f.requirePrimary(mp("192.168.1.0/24"), 1)
+	_, ok := f.ns.PrimaryRouteFor(prefix)
+	require.True(t, ok, "all-unhealthy must still produce some primary")
+}
+
+func TestPrimaries_AllUnhealthyPreservesPrevious(t *testing.T) {
+	// Issue #3203: once a failover has moved primary to a higher-ID
+	// node, a subsequent all-unhealthy state must NOT churn primary
+	// back to the lowest-ID candidate. Under cable-pull semantics
+	// both nodes can linger as IsOnline=true (half-open TCP) and
+	// both go Unhealthy — naive `candidates[0]` would flap the
+	// primary to a node that is itself unreachable.
+	prefix := mp("10.0.0.0/24")
+	f := newPrimariesFixture(t, 1, 2)
+	f.advertise(1, prefix)
+	f.advertise(2, prefix)
+	f.requirePrimary(prefix, 1)
+
+	f.unhealthy(1)
+	f.requirePrimary(prefix, 2)
+
+	f.unhealthy(2)
+	f.requirePrimary(prefix, 2)
 }
 
 func TestPrimaries_ExitRouteNotElected(t *testing.T) {
