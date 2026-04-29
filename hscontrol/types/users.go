@@ -229,6 +229,29 @@ func (u UserView) MarshalZerologObject(e *zerolog.Event) {
 	u.ж.MarshalZerologObject(e)
 }
 
+// FlexibleStringSlice handles OIDC providers (e.g. JumpCloud) that return the
+// groups claim as a plain string when the user belongs to a single group,
+// instead of a single-element array.
+// Single group:    {"groups": "MyGroup"}
+// Multiple groups: {"groups": ["Group1", "Group2"]}
+type FlexibleStringSlice []string
+
+func (f *FlexibleStringSlice) UnmarshalJSON(data []byte) error {
+	var arr []string
+	if err := json.Unmarshal(data, &arr); err == nil {
+		*f = arr
+		return nil
+	}
+
+	var single string
+	if err := json.Unmarshal(data, &single); err == nil {
+		*f = []string{single}
+		return nil
+	}
+
+	return fmt.Errorf("cannot parse %s as string or []string", string(data))
+}
+
 // FlexibleBoolean handles JumpCloud's JSON where email_verified is returned as a
 // string "true" or "false" instead of a boolean.
 // This maps bool to a specific type with a custom unmarshaler to
@@ -269,9 +292,9 @@ type OIDCClaims struct {
 
 	// Name is the user's full name.
 	Name              string          `json:"name,omitempty"`
-	Groups            []string        `json:"groups,omitempty"`
-	Email             string          `json:"email,omitempty"`
-	EmailVerified     FlexibleBoolean `json:"email_verified,omitempty"`
+	Groups            FlexibleStringSlice `json:"groups,omitempty"`
+	Email             string              `json:"email,omitempty"`
+	EmailVerified     FlexibleBoolean     `json:"email_verified,omitempty"`
 	ProfilePictureURL string          `json:"picture,omitempty"`
 	Username          string          `json:"preferred_username,omitempty"`
 }
@@ -387,9 +410,9 @@ type OIDCUserInfo struct {
 	FamilyName        string          `json:"family_name"`
 	PreferredUsername string          `json:"preferred_username"`
 	Email             string          `json:"email"`
-	EmailVerified     FlexibleBoolean `json:"email_verified,omitempty"`
-	Groups            []string        `json:"groups"`
-	Picture           string          `json:"picture"`
+	EmailVerified     FlexibleBoolean     `json:"email_verified,omitempty"`
+	Groups            FlexibleStringSlice `json:"groups"`
+	Picture           string              `json:"picture"`
 }
 
 // FromClaim overrides a User from OIDC claims.
