@@ -27,7 +27,7 @@
         let
           pkgs = nixpkgs.legacyPackages.${prev.stdenv.hostPlatform.system};
           buildGo = pkgs.buildGo126Module;
-          vendorHash = "sha256-Jquzx8xIkV28S8DnZVH8apQ4q+Q92e5yVX13fxodw8Y=";
+          vendorHash = (builtins.fromJSON (builtins.readFile ./flakehashes.json)).vendor.sri;
         in
         {
           headscale = buildGo {
@@ -38,8 +38,8 @@
             # Only run unit tests when testing a build
             checkFlags = [ "-short" ];
 
-            # When updating go.mod or go.sum, a new sha will need to be calculated,
-            # update this if you have a mismatch after doing a change to those files.
+            # vendorHash is read from flakehashes.json; refresh via:
+            #   go run ./cmd/vendorhash update
             inherit vendorHash;
 
             subPackages = [ "cmd/headscale" ];
@@ -223,13 +223,7 @@
                 "nix-vendor-sri"
                 ''
                   set -eu
-
-                  OUT=$(mktemp -d -t nar-hash-XXXXXX)
-                  rm -rf "$OUT"
-
-                  go mod vendor -o "$OUT"
-                  go run tailscale.com/cmd/nardump --sri "$OUT"
-                  rm -rf "$OUT"
+                  exec go run ./cmd/vendorhash update "$@"
                 '')
 
               (pkgs.writeShellScriptBin
