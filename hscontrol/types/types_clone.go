@@ -13,7 +13,6 @@ import (
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
-	"tailscale.com/types/ptr"
 )
 
 // Clone makes a deep copy of User.
@@ -49,34 +48,34 @@ func (src *Node) Clone() *Node {
 	dst.Endpoints = append(src.Endpoints[:0:0], src.Endpoints...)
 	dst.Hostinfo = src.Hostinfo.Clone()
 	if dst.IPv4 != nil {
-		dst.IPv4 = ptr.To(*src.IPv4)
+		dst.IPv4 = new(*src.IPv4)
 	}
 	if dst.IPv6 != nil {
-		dst.IPv6 = ptr.To(*src.IPv6)
+		dst.IPv6 = new(*src.IPv6)
 	}
 	if dst.UserID != nil {
-		dst.UserID = ptr.To(*src.UserID)
+		dst.UserID = new(*src.UserID)
 	}
 	if dst.User != nil {
-		dst.User = ptr.To(*src.User)
+		dst.User = new(*src.User)
 	}
 	dst.Tags = append(src.Tags[:0:0], src.Tags...)
 	if dst.AuthKeyID != nil {
-		dst.AuthKeyID = ptr.To(*src.AuthKeyID)
+		dst.AuthKeyID = new(*src.AuthKeyID)
 	}
 	dst.AuthKey = src.AuthKey.Clone()
 	if dst.Expiry != nil {
-		dst.Expiry = ptr.To(*src.Expiry)
+		dst.Expiry = new(*src.Expiry)
 	}
 	if dst.LastSeen != nil {
-		dst.LastSeen = ptr.To(*src.LastSeen)
+		dst.LastSeen = new(*src.LastSeen)
 	}
 	dst.ApprovedRoutes = append(src.ApprovedRoutes[:0:0], src.ApprovedRoutes...)
 	if dst.DeletedAt != nil {
-		dst.DeletedAt = ptr.To(*src.DeletedAt)
+		dst.DeletedAt = new(*src.DeletedAt)
 	}
 	if dst.IsOnline != nil {
-		dst.IsOnline = ptr.To(*src.IsOnline)
+		dst.IsOnline = new(*src.IsOnline)
 	}
 	return dst
 }
@@ -120,17 +119,17 @@ func (src *PreAuthKey) Clone() *PreAuthKey {
 	*dst = *src
 	dst.Hash = append(src.Hash[:0:0], src.Hash...)
 	if dst.UserID != nil {
-		dst.UserID = ptr.To(*src.UserID)
+		dst.UserID = new(*src.UserID)
 	}
 	if dst.User != nil {
-		dst.User = ptr.To(*src.User)
+		dst.User = new(*src.User)
 	}
 	dst.Tags = append(src.Tags[:0:0], src.Tags...)
 	if dst.CreatedAt != nil {
-		dst.CreatedAt = ptr.To(*src.CreatedAt)
+		dst.CreatedAt = new(*src.CreatedAt)
 	}
 	if dst.Expiration != nil {
-		dst.Expiration = ptr.To(*src.Expiration)
+		dst.Expiration = new(*src.Expiration)
 	}
 	return dst
 }

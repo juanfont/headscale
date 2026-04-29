@@ -60,3 +60,13 @@ repos:
         language: system
         types: [go]
         pass_filenames: false
+
+      # vendor-hash keeps flakehashes.json in sync with go.mod/go.sum.
+      # Hot path (no input change) is a sha256 over two small files;
+      # only fires `go mod vendor` when the fingerprint actually drifts.
+      - id: vendor-hash
+        name: vendor-hash
+        entry: nix develop --command -- go run ./cmd/vendorhash check
+        language: system
+        files: ^(go\.mod|go\.sum|flakehashes\.json)$
+        pass_filenames: false
