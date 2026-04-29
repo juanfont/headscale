@@ -26,6 +26,7 @@ import (
 	"tailscale.com/types/views"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -779,6 +780,35 @@ func (api headscaleV1APIServer) SetPolicy(
 		Msg("gRPC SetPolicy completed successfully because response prepared")
 
 	return response, nil
+}
+
+// CheckPolicy validates the given policy against the server's live users
+// and nodes, running its `tests` block as a sandbox. Nothing is persisted
+// and the live PolicyManager is not touched. Works regardless of
+// policy.mode so operators can validate a policy file before storing it.
+func (api headscaleV1APIServer) CheckPolicy(
+	_ context.Context,
+	request *v1.CheckPolicyRequest,
+) (*v1.CheckPolicyResponse, error) {
+	polB := []byte(request.GetPolicy())
+
+	users, err := api.h.state.ListAllUsers()
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "loading users: %s", err)
+	}
+
+	nodes := api.h.state.ListNodes()
+
+	pm, err := policyv2.NewPolicyManager(polB, users, nodes)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	if _, err := pm.SetPolicy(polB); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	return &v1.CheckPolicyResponse{}, nil
 }
 
 // The following service calls are for testing and debugging
