@@ -213,6 +213,12 @@ type PKCEConfig struct {
 	Method  string
 }
 
+type TokenRefreshConfig struct {
+	CheckInterval                  time.Duration
+	ExpiryThreshold                time.Duration
+	SessionInvalidationGracePeriod time.Duration
+}
+
 type OIDCConfig struct {
 	OnlyStartIfOIDCIsAvailable bool
 	Issuer                     string
@@ -225,6 +231,7 @@ type OIDCConfig struct {
 	AllowedGroups              []string
 	EmailVerifiedRequired      bool
 	UseExpiryFromToken         bool
+	TokenRefresh               TokenRefreshConfig
 	PKCE                       PKCEConfig
 }
 
@@ -423,6 +430,9 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("oidc.scope", []string{oidc.ScopeOpenID, "profile", "email"})
 	viper.SetDefault("oidc.only_start_if_oidc_is_available", true)
 	viper.SetDefault("oidc.use_expiry_from_token", false)
+	viper.SetDefault("oidc.token_refresh.check_interval", "15m")
+	viper.SetDefault("oidc.token_refresh.expiry_threshold", "30m")
+	viper.SetDefault("oidc.token_refresh.session_invalidation_grace_period", "30m")
 	viper.SetDefault("oidc.pkce.enabled", false)
 	viper.SetDefault("oidc.pkce.method", "S256")
 	viper.SetDefault("oidc.email_verified_required", true)
@@ -1212,7 +1222,12 @@ func LoadServerConfig() (*Config, error) {
 			AllowedUsers:          viper.GetStringSlice("oidc.allowed_users"),
 			AllowedGroups:         viper.GetStringSlice("oidc.allowed_groups"),
 			EmailVerifiedRequired: viper.GetBool("oidc.email_verified_required"),
-			UseExpiryFromToken:    viper.GetBool("oidc.use_expiry_from_token"),
+			UseExpiryFromToken: viper.GetBool("oidc.use_expiry_from_token"),
+			TokenRefresh: TokenRefreshConfig{
+				CheckInterval:                  viper.GetDuration("oidc.token_refresh.check_interval"),
+				ExpiryThreshold:                viper.GetDuration("oidc.token_refresh.expiry_threshold"),
+				SessionInvalidationGracePeriod: viper.GetDuration("oidc.token_refresh.session_invalidation_grace_period"),
+			},
 			PKCE: PKCEConfig{
 				Enabled: viper.GetBool("oidc.pkce.enabled"),
 				Method:  viper.GetString("oidc.pkce.method"),

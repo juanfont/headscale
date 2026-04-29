@@ -334,6 +334,15 @@ func (hsdb *HSDatabase) DeleteNode(node *types.Node) error {
 func DeleteNode(tx *gorm.DB,
 	node *types.Node,
 ) error {
+	// Invalidate OIDC sessions for this node before deletion
+	if err := InvalidateOIDCSessionsForNode(tx, node.ID); err != nil {
+		log.Error().Err(err).
+			Uint64("node_id", uint64(node.ID)).
+			Str("node", node.Hostname).
+			Msg("Failed to invalidate OIDC sessions for deleted node")
+		// Continue with deletion even if session invalidation fails
+	}
+
 	// Unscoped causes the node to be fully removed from the database.
 	err := tx.Unscoped().Delete(&types.Node{}, node.ID).Error
 	if err != nil {
@@ -350,6 +359,14 @@ func (hsdb *HSDatabase) DeleteEphemeralNode(
 	nodeID types.NodeID,
 ) error {
 	return hsdb.Write(func(tx *gorm.DB) error {
+		// Invalidate OIDC sessions for this node before deletion
+		if err := InvalidateOIDCSessionsForNode(tx, nodeID); err != nil {
+			log.Error().Err(err).
+				Uint64("node_id", uint64(nodeID)).
+				Msg("Failed to invalidate OIDC sessions for deleted ephemeral node")
+			// Continue with deletion even if session invalidation fails
+		}
+
 		err := tx.Unscoped().Delete(&types.Node{}, nodeID).Error
 		if err != nil {
 			return err

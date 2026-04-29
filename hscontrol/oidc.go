@@ -269,7 +269,9 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
-	nodeExpiry := a.determineNodeExpiry(idToken.Expiry)
+	// Use access token expiry (not ID token) for node expiry calculation.
+	// Access tokens typically have longer lifetimes (e.g., 90min vs 60min on Azure AD)
+	nodeExpiry := a.determineNodeExpiry(oauth2Token.Expiry)
 
 	var claims types.OIDCClaims
 	if err := idToken.Claims(&claims); err != nil { //nolint:noinlineerr
@@ -343,7 +345,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	// /register/{auth_id} could silently complete a registration when
 	// the IdP allows silent SSO.
 	if authInfo.Registration {
-		a.renderRegistrationConfirmInterstitial(writer, req, authInfo.AuthID, user, nodeExpiry)
+		a.renderRegistrationConfirmInterstitial(writer, req, authInfo.AuthID, user, nodeExpiry, oauth2Token)
 
 		return
 	}
@@ -480,6 +482,262 @@ func (a *AuthProviderOIDC) getOauth2Token(
 	}
 
 	return oauth2Token, err
+}
+
+// createOrUpdateOIDCSession creates or updates an OIDC session for a node
+func (a *AuthProviderOIDC) createOrUpdateOIDCSession(registrationID types.AuthID, token *oauth2.Token, nodeID types.NodeID) error {
+	if token.RefreshToken == "" {
+		log.Warn().
+			Str("node_id", nodeID.String()).
+			Str("registration_id", registrationID.String()).
+			Msg("OIDC: No refresh token in OAuth2 token, skipping session creation (check offline_access scope)")
+		return nil
+	}
+
+	// Generate session ID
+	sessionID, err := util.GenerateRandomStringURLSafe(32)
+	if err != nil {
+		return fmt.Errorf("failed to generate session ID: %w", err)
+	}
+
+	// Create or update session
+	tokenExpiryUTC := token.Expiry.UTC()
+	session := &types.OIDCSession{
+		NodeID:         nodeID,
+		SessionID:      sessionID,
+		RegistrationID: registrationID,
+		RefreshToken:   token.RefreshToken,
+		TokenExpiry:    &tokenExpiryUTC,
+		IsActive:       true,
+	}
+
+	now := time.Now().UTC()
+	session.LastRefreshedAt = &now
+	session.LastSeenAt = &now
+
+	// Try to update existing session first
+	existingSession, err := a.h.state.GetOIDCSessionByNodeID(nodeID)
+	if err == nil {
+		// Update existing session
+		existingSession.RefreshToken = token.RefreshToken
+		tokenExpiryUTC := token.Expiry.UTC()
+		existingSession.TokenExpiry = &tokenExpiryUTC
+		existingSession.LastRefreshedAt = &now
+		existingSession.LastSeenAt = &now
+		existingSession.IsActive = true
+
+		err = a.h.state.SaveOIDCSession(existingSession)
+		if err != nil {
+			return fmt.Errorf("updating OIDC session (node_id=%s, session_id=%s): %w", nodeID, existingSession.SessionID, err)
+		}
+
+	} else {
+		// Create new session
+		err = a.h.state.CreateOIDCSession(session)
+		if err != nil {
+			return fmt.Errorf("creating OIDC session (node_id=%s, session_id=%s): %w", nodeID, session.SessionID, err)
+		}
+	}
+
+	return nil
+}
+
+// RefreshOIDCSession refreshes an expired OIDC session using the stored refresh token
+// and updates the node expiry using the existing HandleNodeFromAuthPath flow
+func (a *AuthProviderOIDC) RefreshOIDCSession(ctx context.Context, session *types.OIDCSession) error {
+	if session.RefreshToken == "" {
+		return fmt.Errorf("no refresh token available for session %s", session.SessionID)
+	}
+
+	tokenSource := a.oauth2Config.TokenSource(ctx, &oauth2.Token{
+		RefreshToken: session.RefreshToken,
+	})
+
+	newToken, err := tokenSource.Token()
+	if err != nil {
+		return fmt.Errorf("failed to refresh OIDC token: %w", err)
+	}
+
+	// Calculate new node expiry based on the access token expiry (not ID token).
+	// When UseExpiryFromToken is true, node expiry tracks the access token
+	// lifetime and must be extended on every refresh. When it's false,
+	// determineNodeExpiry returns nil and we intentionally leave node.expiry
+	// alone — the value set at registration (from node.expiry config) acts
+	// as the periodic browser-reauth ceiling, independent of the refresh
+	// cycle.
+	nodeExpiry := a.determineNodeExpiry(newToken.Expiry)
+
+	// Load the node for logging
+	node, err := a.h.state.GetNodeWithUser(session.NodeID)
+	if err != nil {
+		return fmt.Errorf("failed to load node: %w", err)
+	}
+
+	if nodeExpiry != nil {
+		_, c, err := a.h.state.SetNodeExpiry(session.NodeID, nodeExpiry)
+		if err != nil {
+			return fmt.Errorf("failed to update node expiry: %w", err)
+		}
+		a.h.Change(c)
+
+		// Update the local node object for consistency
+		node.Expiry = nodeExpiry
+	}
+
+	// Update the session with new token information
+	now := time.Now().UTC()
+
+	if newToken.RefreshToken != "" {
+		session.RefreshToken = newToken.RefreshToken
+	} else {
+		log.Debug().
+			Str("session_id", session.SessionID).
+			Msg("OIDC: No new refresh token received, keeping existing one")
+	}
+
+	// Store token expiry in UTC to avoid timezone issues
+	utcExpiry := newToken.Expiry.UTC()
+	session.TokenExpiry = &utcExpiry
+	session.LastRefreshedAt = &now
+
+	// Save the updated session
+	err = a.h.state.SaveOIDCSession(session)
+	if err != nil {
+		log.Error().Err(err).
+			Str("session_id", session.SessionID).
+			Msg("OIDC: Failed to save updated session to database")
+		return fmt.Errorf("failed to save updated session: %w", err)
+	}
+
+	return nil
+}
+
+// isOIDCAuthRejection reports whether the error from an oauth2 token exchange
+// indicates the IdP actively rejected the user's credential (refresh token
+// expired, account disabled, admin revoked sessions, Conditional Access
+// block) — i.e. a signal specific to this user that should propagate to
+// node.expiry. Operator-level problems (wrong client secret, app not
+// authorized for this grant type) must not expire nodes, because a
+// misconfiguration would otherwise lock out the entire fleet.
+//
+// We key off the OAuth2 error_code in the token error response
+// (RFC 6749 §5.2), not just the HTTP status. Only invalid_grant is
+// scoped to the user's credential.
+func isOIDCAuthRejection(err error) bool {
+	var re *oauth2.RetrieveError
+	if !errors.As(err, &re) {
+		return false
+	}
+	return re.ErrorCode == "invalid_grant"
+}
+
+// expireNodeOnIdPRejection forces the node's expiry to now so the client is
+// cut off on its next map request. Called when the IdP has rejected a
+// refresh token, which means the user is no longer authorized at the IdP
+// and the node should lose access regardless of the configured
+// node.expiry ceiling.
+func (a *AuthProviderOIDC) expireNodeOnIdPRejection(nodeID types.NodeID, sessionID string) {
+	now := time.Now()
+	_, c, err := a.h.state.SetNodeExpiry(nodeID, &now)
+	if err != nil {
+		log.Error().Err(err).
+			Str("session_id", sessionID).
+			Uint64("node_id", uint64(nodeID)).
+			Msg("OIDC: Failed to expire node after IdP rejection")
+		return
+	}
+	a.h.Change(c)
+	log.Info().
+		Str("session_id", sessionID).
+		Uint64("node_id", uint64(nodeID)).
+		Msg("OIDC: Node expired because IdP rejected the refresh token")
+}
+
+// RefreshExpiredTokens checks for and refreshes OIDC sessions that will expire soon.
+// It also attempts to recover inactive sessions for nodes that have come back online
+// after being offline beyond the grace period.
+func (a *AuthProviderOIDC) RefreshExpiredTokens(ctx context.Context) error {
+	// Find active sessions with tokens expiring in the configured threshold time
+	currentTime := time.Now().UTC()
+	threshold := currentTime.Add(a.cfg.TokenRefresh.ExpiryThreshold)
+
+	sessions, err := a.h.state.GetOIDCSessionsNeedingRefresh(threshold, "oidc")
+	if err != nil {
+		return fmt.Errorf("failed to query sessions with expiring tokens: %w", err)
+	}
+
+	if len(sessions) > 0 {
+		log.Debug().Msgf("OIDC: Found %d sessions with tokens expiring soon, refreshing...", len(sessions))
+	}
+
+	for _, session := range sessions {
+		if err := a.RefreshOIDCSession(ctx, &session); err != nil {
+			log.Error().Err(err).
+				Str("session_id", session.SessionID).
+				Uint64("user_id", uint64(session.Node.TypedUserID())).
+				Uint64("node_id", uint64(session.NodeID)).
+				Msg("OIDC: Failed to refresh session, deactivating")
+			session.Deactivate()
+			a.h.state.SaveOIDCSession(&session)
+			// If the IdP actively rejected the refresh token (not a
+			// transient network/IdP failure), propagate the revocation
+			// to node.expiry so the client is cut off on next contact.
+			// Without this, a long node.expiry ceiling would keep the
+			// node alive despite the user losing IdP access.
+			if isOIDCAuthRejection(err) {
+				a.expireNodeOnIdPRejection(session.NodeID, session.SessionID)
+			}
+			continue
+		}
+	}
+
+	// Recovery pass: attempt to reactivate inactive sessions for nodes that have
+	// come back online. The grace period invalidation preserves refresh tokens,
+	// so we can try to refresh them. If the IdP rejects the token, the session
+	// stays inactive and the refresh token is cleared.
+	recoverySessions, err := a.h.state.GetInactiveOIDCSessionsForOnlineNodes("oidc")
+	if err != nil {
+		log.Error().Err(err).Msg("OIDC: Failed to query inactive sessions for recovery")
+		return nil
+	}
+
+	for _, session := range recoverySessions {
+		log.Info().
+			Str("session_id", session.SessionID).
+			Uint64("node_id", uint64(session.NodeID)).
+			Msg("OIDC: Attempting to recover inactive session for online node")
+
+		if err := a.RefreshOIDCSession(ctx, &session); err != nil {
+			log.Warn().Err(err).
+				Str("session_id", session.SessionID).
+				Uint64("node_id", uint64(session.NodeID)).
+				Msg("OIDC: Failed to recover session, clearing refresh token")
+			session.Deactivate()
+			session.RefreshToken = ""
+			a.h.state.SaveOIDCSession(&session)
+			// IdP rejected the stored refresh token — propagate the
+			// revocation to node.expiry so the client is cut off.
+			if isOIDCAuthRejection(err) {
+				a.expireNodeOnIdPRejection(session.NodeID, session.SessionID)
+			}
+			continue
+		}
+
+		// Refresh succeeded — reactivate the session
+		session.IsActive = true
+		if err := a.h.state.SaveOIDCSession(&session); err != nil {
+			log.Error().Err(err).
+				Str("session_id", session.SessionID).
+				Msg("OIDC: Failed to save recovered session")
+		} else {
+			log.Info().
+				Str("session_id", session.SessionID).
+				Uint64("node_id", uint64(session.NodeID)).
+				Msg("OIDC: Successfully recovered inactive session for online node")
+		}
+	}
+
+	return nil
 }
 
 // extractIDToken extracts the ID token from the oauth2 token.
@@ -667,6 +925,7 @@ func (a *AuthProviderOIDC) renderRegistrationConfirmInterstitial(
 	authID types.AuthID,
 	user *types.User,
 	nodeExpiry *time.Time,
+	oauth2Token *oauth2.Token,
 ) {
 	authReq, ok := a.h.state.GetAuthCacheEntry(authID)
 	if !ok {
@@ -693,9 +952,11 @@ func (a *AuthProviderOIDC) renderRegistrationConfirmInterstitial(
 	}
 
 	authReq.SetPendingConfirmation(&types.PendingRegistrationConfirmation{
-		UserID:     user.ID,
-		NodeExpiry: nodeExpiry,
-		CSRF:       csrf,
+		UserID:       user.ID,
+		NodeExpiry:   nodeExpiry,
+		CSRF:         csrf,
+		RefreshToken: oauth2Token.RefreshToken,
+		TokenExpiry:  oauth2Token.Expiry,
 	})
 
 	http.SetCookie(writer, &http.Cookie{
@@ -809,7 +1070,7 @@ func (a *AuthProviderOIDC) RegisterConfirmHandler(
 		return
 	}
 
-	newNode, err := a.handleRegistration(user, authID, pending.NodeExpiry)
+	nodeID, newNode, err := a.handleRegistration(user, authID, pending.NodeExpiry)
 	if err != nil {
 		if errors.Is(err, db.ErrNodeNotFoundRegistrationCache) {
 			httpUserError(writer, NewHTTPError(http.StatusGone, "registration session expired", err))
@@ -820,6 +1081,21 @@ func (a *AuthProviderOIDC) RegisterConfirmHandler(
 		httpUserError(writer, err)
 
 		return
+	}
+
+	// Create or update OIDC session for this node using the refresh
+	// token captured in the OIDC callback. Failures are logged but do
+	// not fail the registration — the node is already registered, and
+	// the session is only needed for silent re-authentication before
+	// node expiry.
+	if pending.RefreshToken != "" {
+		oauth2Token := &oauth2.Token{
+			RefreshToken: pending.RefreshToken,
+			Expiry:       pending.TokenExpiry,
+		}
+		if err := a.createOrUpdateOIDCSession(authID, oauth2Token, *nodeID); err != nil {
+			log.Error().Err(err).Msg("Failed to create OIDC session")
+		}
 	}
 
 	// Clear the CSRF cookie now that the registration is final.
@@ -850,7 +1126,7 @@ func (a *AuthProviderOIDC) handleRegistration(
 	user *types.User,
 	registrationID types.AuthID,
 	expiry *time.Time,
-) (bool, error) {
+) (*types.NodeID, bool, error) {
 	node, nodeChange, err := a.h.state.HandleNodeFromAuthPath(
 		registrationID,
 		types.UserID(user.ID),
@@ -858,7 +1134,7 @@ func (a *AuthProviderOIDC) handleRegistration(
 		util.RegisterMethodOIDC,
 	)
 	if err != nil {
-		return false, fmt.Errorf("registering node: %w", err)
+		return nil, false, fmt.Errorf("registering node: %w", err)
 	}
 
 	// This is a bit of a back and forth, but we have a bit of a chicken and egg
@@ -874,13 +1150,14 @@ func (a *AuthProviderOIDC) handleRegistration(
 	// eventbus.
 	routesChange, err := a.h.state.AutoApproveRoutes(node)
 	if err != nil {
-		return false, fmt.Errorf("auto approving routes: %w", err)
+		return nil, false, fmt.Errorf("auto approving routes: %w", err)
 	}
 
 	// Send both changes. Empty changes are ignored by Change().
 	a.h.Change(nodeChange, routesChange)
 
-	return !nodeChange.IsEmpty(), nil
+	nodeID := node.ID()
+	return &nodeID, !nodeChange.IsEmpty(), nil
 }
 
 func renderRegistrationSuccessTemplate(

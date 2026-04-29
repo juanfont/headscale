@@ -244,6 +244,19 @@ type PendingRegistrationConfirmation struct {
 	UserID     uint
 	NodeExpiry *time.Time
 	CSRF       string
+
+	// RefreshToken is the OAuth2 refresh token returned by the IdP for
+	// the user that resolved this registration. Carried from the OIDC
+	// callback through to the confirm handler so the latter can create
+	// an OIDCSession after the node has been registered. Empty if the
+	// IdP did not return a refresh token (e.g. missing offline_access
+	// scope).
+	RefreshToken string
+
+	// TokenExpiry is the access token expiry time, used as the OIDC
+	// session's token_expiry. Stored so the background refresher can
+	// determine when to refresh the session.
+	TokenExpiry time.Time
 }
 
 // AuthRequest represents a pending authentication request from a user or a

@@ -2735,3 +2735,131 @@ func (s *State) maybeUpdateNodeRoutes(
 
 	return s.SetNodeRoutes(id, node.AllApprovedRoutes()...)
 }
+
+// InvalidateExpiredOIDCSessions invalidates sessions for nodes that have been offline
+// for longer than the configured grace period. It cross-checks the NodeStore to avoid
+// invalidating sessions for nodes that are currently online, since the database last_seen
+// field may be stale (it is only updated on disconnect, not while a node is connected).
+func (s *State) InvalidateExpiredOIDCSessions(offlineGracePeriod time.Duration) error {
+	candidates, err := s.db.FindOIDCSessionCandidatesForInvalidation(offlineGracePeriod)
+	if err != nil {
+		return err
+	}
+
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	// Filter out nodes that are currently online in the NodeStore.
+	// The database last_seen is only updated on disconnect, so online nodes
+	// will have a stale last_seen value and should not be invalidated.
+	var sessionIDs []string
+	for _, session := range candidates {
+		nodeView, exists := s.nodeStore.GetNode(session.NodeID)
+		if exists && nodeView.Valid() && nodeView.IsOnline().Valid() && nodeView.IsOnline().Get() {
+			log.Debug().
+				Uint64("node_id", uint64(session.NodeID)).
+				Str("session_id", session.SessionID).
+				Msg("OIDC: Skipping session invalidation for online node (stale DB last_seen)")
+			continue
+		}
+		sessionIDs = append(sessionIDs, session.SessionID)
+	}
+
+	if len(sessionIDs) == 0 {
+		return nil
+	}
+
+	if err := s.db.InvalidateOIDCSessionsByIDs(sessionIDs); err != nil {
+		return err
+	}
+
+	log.Info().
+		Int("sessions_invalidated", len(sessionIDs)).
+		Dur("grace_period", offlineGracePeriod).
+		Msg("OIDC: Invalidated sessions for nodes offline beyond grace period")
+
+	return nil
+}
+
+// GetOIDCSessionByNodeID retrieves an OIDC session by node ID.
+func (s *State) GetOIDCSessionByNodeID(nodeID types.NodeID) (*types.OIDCSession, error) {
+	var session types.OIDCSession
+	err := s.db.Read(func(tx *gorm.DB) error {
+		return tx.Where("node_id = ?", nodeID).First(&session).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &session, nil
+}
+
+// SaveOIDCSession saves or updates an OIDC session.
+func (s *State) SaveOIDCSession(session *types.OIDCSession) error {
+	return s.db.Write(func(tx *gorm.DB) error {
+		return tx.Save(session).Error
+	})
+}
+
+// CreateOIDCSession creates a new OIDC session.
+func (s *State) CreateOIDCSession(session *types.OIDCSession) error {
+	return s.db.Write(func(tx *gorm.DB) error {
+		return tx.Create(session).Error
+	})
+}
+
+// GetNodeWithUser retrieves a node with its associated user.
+func (s *State) GetNodeWithUser(nodeID types.NodeID) (*types.Node, error) {
+	var node types.Node
+	err := s.db.Read(func(tx *gorm.DB) error {
+		return tx.Preload("User").First(&node, nodeID).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &node, nil
+}
+
+// GetOIDCSessionsNeedingRefresh retrieves OIDC sessions that need token refresh.
+func (s *State) GetOIDCSessionsNeedingRefresh(threshold time.Time, registerMethod string) ([]types.OIDCSession, error) {
+	var sessions []types.OIDCSession
+	err := s.db.Read(func(tx *gorm.DB) error {
+		return tx.Preload("Node").Preload("Node.User").
+			Joins("JOIN nodes ON nodes.id = oidc_sessions.node_id").
+			Where("oidc_sessions.is_active = ? AND oidc_sessions.token_expiry IS NOT NULL AND oidc_sessions.token_expiry < ? AND oidc_sessions.refresh_token != '' AND nodes.register_method = ?",
+				true, threshold, registerMethod).
+			Find(&sessions).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return sessions, nil
+}
+
+// GetInactiveOIDCSessionsForOnlineNodes retrieves inactive OIDC sessions that still have
+// refresh tokens and whose nodes are currently online. These are candidates for session
+// recovery — nodes that went offline beyond the grace period but have since reconnected.
+func (s *State) GetInactiveOIDCSessionsForOnlineNodes(registerMethod string) ([]types.OIDCSession, error) {
+	var candidates []types.OIDCSession
+	err := s.db.Read(func(tx *gorm.DB) error {
+		return tx.Preload("Node").Preload("Node.User").
+			Joins("JOIN nodes ON nodes.id = oidc_sessions.node_id").
+			Where("oidc_sessions.is_active = ? AND oidc_sessions.refresh_token != '' AND nodes.register_method = ?",
+				false, registerMethod).
+			Find(&candidates).Error
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to query inactive OIDC sessions: %w", err)
+	}
+
+	// Filter to only include nodes that are currently online in the NodeStore
+	var sessions []types.OIDCSession
+	for _, session := range candidates {
+		nodeView, exists := s.nodeStore.GetNode(session.NodeID)
+		if exists && nodeView.Valid() && nodeView.IsOnline().Valid() && nodeView.IsOnline().Get() {
+			sessions = append(sessions, session)
+		}
+	}
+
+	return sessions, nil
+}

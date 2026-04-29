@@ -148,9 +148,8 @@ disable_check_updates: false
 # Node lifecycle configuration.
 node:
   # Default key expiry for non-tagged nodes, regardless of registration method
-  # (auth key, CLI, web auth). Tagged nodes are exempt and never expire.
+  # (auth key, CLI, web auth, OIDC). Tagged nodes are exempt and never expire.
   #
-  # This is the base default. OIDC can override this via oidc.expiry.
   # If a client explicitly requests a specific expiry, the client value is used.
   #
   # Setting the value to "0" means no default expiry (nodes never expire unless
@@ -396,19 +395,38 @@ unix_socket_permission: "0770"
 #   # in. This will typically lead to frequent need to reauthenticate and should
 #   # only be enabled if you know what you are doing.
 #   # Note: enabling this will cause `node.expiry` to be ignored for
-#   # OIDC-authenticated nodes.
+#   # OIDC-authenticated nodes. Leave this `false` when using the automatic
+#   # token refresh (see `scope` and `token_refresh` below).
 #   use_expiry_from_token: false
 #
-#   # The OIDC scopes to use, defaults to "openid", "profile" and "email".
-#   # Custom scopes can be configured as needed, be sure to always include the
-#   # required "openid" scope.
-#   scope: ["openid", "profile", "email"]
+#   # Automatic token refresh is active when `offline_access` is in `scope`
+#   # and the IdP returns a refresh token. Headscale then renews the node's
+#   # expiry in the background; if the IdP later rejects the refresh token
+#   # (revocation, password change, Conditional Access), the node is expired
+#   # immediately so access is cut off regardless of `node.expiry`.
+#   token_refresh:
+#     # How often the background refresh job runs (default: 15m)
+#     check_interval: 15m
+#
+#     # Refresh tokens whose access token expires within this window (default: 30m)
+#     expiry_threshold: 30m
+#
+#     # Sessions for nodes offline longer than this duration are marked
+#     # inactive; the refresh token is preserved so the session can be
+#     # silently reactivated on reconnect (default: 30m).
+#     session_invalidation_grace_period: 30m
 #
 #   # Only verified email addresses are synchronized to the user profile by
 #   # default. Unverified emails may be allowed in case an identity provider
 #   # does not send the "email_verified: true" claim or email verification is
 #   # not required.
 #   email_verified_required: true
+#
+#   # Customize the scopes used in the OIDC flow, defaults to "openid", "profile" and "email" and add custom query
+#   # parameters to the Authorize Endpoint request. Scopes default to "openid", "profile" and "email".
+#   # To enable automatic token refresh, add "offline_access" to the scope list.
+#
+#   scope: ["openid", "profile", "email", "offline_access"]
 #
 #   # Provide custom key/value pairs which get sent to the identity provider's
 #   # authorization endpoint.
