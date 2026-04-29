@@ -344,7 +344,7 @@ func testACLError(t *testing.T, tf *testcapture.Capture) {
 }
 
 // assertACLErrorContains requires that headscale's error contains the
-// Tailscale SaaS error message verbatim. Divergence means an emitter
+// Tailscale SaaS error message exactly. Divergence means an emitter
 // needs to be aligned, not papered over with a translation table.
 func assertACLErrorContains(
 	t *testing.T,

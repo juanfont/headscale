@@ -12,7 +12,7 @@
 // notification returns a stale Peers slice — see the comment on
 // Node.Netmap below) for months.
 //
-// All four corpora (acl, routes, grant, ssh) use the same Capture
+// All four capture types (acl, routes, grant, ssh) use the same Capture
 // shape. SSH scenarios populate Captures[name].SSHRules; the others
 // populate Captures[name].PacketFilterRules + Captures[name].Netmap.
 package testcapture
@@ -36,7 +36,7 @@ const SchemaVersion = 1
 
 // Capture is one captured run of one scenario.
 //
-// All four corpora (acl, routes, grant, ssh) use this same shape.
+// All four capture types (acl, routes, grant, ssh) use this same shape.
 // SSH scenarios populate Captures[name].SSHRules; the others populate
 // Captures[name].PacketFilterRules + Captures[name].Netmap.
 type Capture struct {
@@ -100,7 +100,7 @@ type Capture struct {
 // re-marshaled to a string at load time so consumers see the typed
 // field uniformly.
 type Input struct {
-	// FullPolicy is the verbatim policy that was POSTed to the SaaS
+	// FullPolicy is the unchanged policy that was POSTed to the SaaS
 	// API. Stored as a string because it is opaque JSON that round-
 	// trips losslessly without parsing — headscale's policy parser
 	// reads it on demand.
@@ -116,7 +116,7 @@ type Input struct {
 	// before pushing the policy.
 	Tailnet TailnetInput `json:"tailnet"`
 
-	// ScenarioHuJSON is the verbatim contents of the scenario file
+	// ScenarioHuJSON is the unchanged contents of the scenario file
 	// (HuJSON). Reading this back is enough to re-run the exact
 	// same scenario.
 	ScenarioHuJSON string `json:"scenario_hujson"`
@@ -171,7 +171,7 @@ func (i *Input) UnmarshalJSON(data []byte) error {
 	*i = Input(raw.alias)
 	// raw.FullPolicy might be a JSON-encoded string ("...") or a JSON
 	// object/array/null. Try string first; on failure use the raw bytes
-	// verbatim, normalised to compact form.
+	// as is, normalised to compact form.
 	if len(raw.FullPolicy) == 0 || string(raw.FullPolicy) == "null" {
 		i.FullPolicy = ""
 		return nil
@@ -276,7 +276,7 @@ type TopologyNode struct {
 // Node is the captured state for one node, keyed by GivenName in
 // Capture.Captures.
 //
-// All four corpora populate the same struct. Different fields are
+// All four capture types populate the same struct. Different fields are
 // used by different test types:
 //
 //   - acl, routes, grant: PacketFilterRules + PacketFilterMatches + Netmap

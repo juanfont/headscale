@@ -13,8 +13,8 @@ import (
 //
 //	<Description, possibly multi-line>
 //
-//	Nodes with filter rules: <X> of <Y>           ← for non-SSH corpora
-//	Nodes with SSH rules: <X> of <Y>              ← for SSH corpora
+//	Nodes with filter rules: <X> of <Y>           ← for non-SSH captures
+//	Nodes with SSH rules: <X> of <Y>              ← for SSH captures
 //	Captured at:    <RFC3339 UTC>
 //	tscap version:  <ToolVersion>
 //	schema version: <SchemaVersion>
@@ -67,9 +67,9 @@ func CommentHeader(c *Capture) string {
 // non-empty captured data, or the empty string if there are no
 // captures at all.
 //
-// The phrasing depends on which fields the corpus uses:
-//   - SSH corpora populate SSHRules
-//   - other corpora populate PacketFilterRules
+// The phrasing depends on which fields the capture uses:
+//   - SSH captures populate SSHRules
+//   - other captures populate PacketFilterRules
 //
 // If both fields appear (mixed/unusual), filter rules wins.
 func captureStats(c *Capture) string {

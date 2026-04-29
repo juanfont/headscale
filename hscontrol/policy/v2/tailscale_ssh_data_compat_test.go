@@ -204,7 +204,7 @@ func TestSSHDataCompat(t *testing.T) {
 			// different node IPs.
 			nodes := buildGrantsNodesFromCapture(users, tf)
 
-			// Use the captured full policy verbatim. Anonymization in
+			// Use the captured full policy as is. Anonymization in
 			// tscap already rewrites SaaS emails to @example.com.
 			policyJSON := tf.Input.FullPolicy
 

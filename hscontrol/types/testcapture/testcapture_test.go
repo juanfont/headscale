@@ -404,7 +404,7 @@ func TestCommentHeader_EmptyFilterRulesCountAsEmpty(t *testing.T) {
 	}
 
 	header := testcapture.CommentHeader(c)
-	// Only "b" and "c" are non-nil, so the corpus is detected as
+	// Only "b" and "c" are non-nil, so the capture is detected as
 	// "filter rules" — and only "c" actually has rules. With the new
 	// typed semantics, b's empty slice still counts as "set" (not
 	// nil), so the denominator is 2 of 3 capture entries that have

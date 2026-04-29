@@ -1552,7 +1552,7 @@ func testRoutesError(t *testing.T, tf *testcapture.Capture) {
 }
 
 // assertRoutesErrorContains requires that headscale's error contains
-// the Tailscale SaaS error message verbatim. Divergence means an
+// the Tailscale SaaS error message exactly. Divergence means an
 // emitter needs to be aligned, not papered over with a translation
 // table.
 func assertRoutesErrorContains(

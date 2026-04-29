@@ -19,7 +19,7 @@ func TestPingPageEscapesQuery(t *testing.T) {
 		t.Run(p, func(t *testing.T) {
 			out := PingPage(p, nil, nil).Render()
 			if strings.Contains(out, p) {
-				t.Fatalf("unescaped payload rendered verbatim: %q", p)
+				t.Fatalf("payload rendered without escaping: %q", p)
 			}
 		})
 	}
