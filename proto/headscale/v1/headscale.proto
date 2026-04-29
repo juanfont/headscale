@@ -86,6 +86,13 @@ service HeadscaleService {
     };
   }
 
+  rpc GetNodeByNodeKey(GetNodeByNodeKeyRequest)
+      returns (GetNodeByNodeKeyResponse) {
+    option (google.api.http) = {
+      get : "/api/v1/node/by-node-key/{node_key}"
+    };
+  }
+
   rpc SetTags(SetTagsRequest) returns (SetTagsResponse) {
     option (google.api.http) = {
       post : "/api/v1/node/{node_id}/tags"

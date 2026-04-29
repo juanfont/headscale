@@ -542,6 +542,131 @@ func TestSetTags_UserDeletionDoesNotCascadeToTaggedNode(t *testing.T) {
 	assert.Nil(t, dbNode.UserID)
 }
 
+// TestGetNodeByNodeKey_Success tests that a registered node can be looked up by its public key.
+func TestGetNodeByNodeKey_Success(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+
+	user := app.state.CreateUserForTest("test-user")
+
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	regReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "lookup-test-node",
+		},
+	}
+	_, err = app.handleRegisterWithAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+
+	apiServer := newHeadscaleV1APIServer(app)
+
+	resp, err := apiServer.GetNodeByNodeKey(context.Background(), &v1.GetNodeByNodeKeyRequest{
+		NodeKey: nodeKey.Public().String(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp.GetNode())
+	assert.Equal(t, "lookup-test-node", resp.GetNode().GetName())
+	assert.Equal(t, nodeKey.Public().String(), resp.GetNode().GetNodeKey())
+}
+
+// TestGetNodeByNodeKey_NotFound tests that looking up a non-existent node key returns NotFound.
+func TestGetNodeByNodeKey_NotFound(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	apiServer := newHeadscaleV1APIServer(app)
+
+	// Use a valid but unregistered node key
+	nodeKey := key.NewNode()
+
+	_, err := apiServer.GetNodeByNodeKey(context.Background(), &v1.GetNodeByNodeKeyRequest{
+		NodeKey: nodeKey.Public().String(),
+	})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok, "error should be a gRPC status error")
+	assert.Equal(t, codes.NotFound, st.Code())
+	assert.Contains(t, st.Message(), "node not found")
+}
+
+// TestGetNodeByNodeKey_InvalidKey tests that a malformed node key returns InvalidArgument.
+func TestGetNodeByNodeKey_InvalidKey(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	apiServer := newHeadscaleV1APIServer(app)
+
+	tests := []struct {
+		name    string
+		nodeKey string
+	}{
+		{name: "empty string", nodeKey: ""},
+		{name: "garbage", nodeKey: "not-a-valid-key"},
+		{name: "truncated", nodeKey: "nodekey:abc123"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := apiServer.GetNodeByNodeKey(context.Background(), &v1.GetNodeByNodeKeyRequest{
+				NodeKey: tt.nodeKey,
+			})
+			require.Error(t, err)
+			st, ok := status.FromError(err)
+			require.True(t, ok, "error should be a gRPC status error")
+			assert.Equal(t, codes.InvalidArgument, st.Code())
+			assert.Contains(t, st.Message(), "invalid node_key")
+		})
+	}
+}
+
+// TestGetNodeByNodeKey_OnlineStatus tests that the online field is populated in the response.
+func TestGetNodeByNodeKey_OnlineStatus(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+
+	user := app.state.CreateUserForTest("test-user")
+
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	regReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "online-test-node",
+		},
+	}
+	_, err = app.handleRegisterWithAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+
+	apiServer := newHeadscaleV1APIServer(app)
+
+	// Freshly registered node without an active poll session should not be online
+	resp, err := apiServer.GetNodeByNodeKey(context.Background(), &v1.GetNodeByNodeKeyRequest{
+		NodeKey: nodeKey.Public().String(),
+	})
+	require.NoError(t, err)
+	assert.False(t, resp.GetNode().GetOnline(), "node without active poll session should not be online")
+}
+
 // TestDeleteUser_ReturnsProperChangeSignal tests issue #2967 fix:
 // When a user is deleted, the state should return a non-empty change signal
 // to ensure policy manager is updated and clients are notified immediately.
