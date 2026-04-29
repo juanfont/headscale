@@ -1756,13 +1756,27 @@ func (p *Protocol) toIANAProtocolNumbers() []int {
 }
 
 // UnmarshalJSON implements JSON unmarshaling for Protocol.
+//
+// Tailscale accepts both named ("tcp") and numeric IANA ("6") forms.
+// Storing whichever form the user wrote leaves downstream code with
+// two equivalents to handle separately, and any consumer that
+// branches on the named form would silently mishandle the numeric
+// equivalent. Canonicalising to the named form here makes Protocol
+// hold one value post-parse — every downstream consumer sees the
+// same form regardless of what the user wrote.
 func (p *Protocol) UnmarshalJSON(b []byte) error {
 	str := strings.Trim(string(b), `"`)
 
 	// Normalize to lowercase for case-insensitive matching
 	*p = Protocol(strings.ToLower(str))
 
-	// Validate the protocol
+	num, atoiErr := strconv.Atoi(string(*p))
+	if atoiErr == nil && num >= 0 && num <= 255 {
+		if name, ok := ProtocolNumberToName[num]; ok {
+			*p = name
+		}
+	}
+
 	err := p.validate()
 	if err != nil {
 		return err

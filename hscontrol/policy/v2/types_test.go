@@ -2187,6 +2187,42 @@ func TestUnmarshalPolicy(t *testing.T) {
 `,
 			wantErr: `test destination must be a single host, not a CIDR range`,
 		},
+		// Tailscale accepts numeric IANA protocol form ("6", "17",
+		// "132") wherever the named form is allowed, including with
+		// specific ports. validateProtocolPortCompatibility today only
+		// recognises the named constants and rejects the numeric form.
+		{
+			name: "protocol-numeric-tcp-with-specific-port-allowed",
+			input: `
+{
+	"acls": [
+		{
+			"action": "accept",
+			"proto": "6",
+			"src": ["*"],
+			"dst": ["*:443"]
+		}
+	]
+}
+`,
+			want: &Policy{
+				ACLs: []ACL{
+					{
+						Action:   "accept",
+						Protocol: "tcp",
+						Sources: Aliases{
+							Wildcard,
+						},
+						Destinations: []AliasWithPorts{
+							{
+								Alias: Wildcard,
+								Ports: []tailcfg.PortRange{{First: 443, Last: 443}},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	cmps := append(util.Comparers,
