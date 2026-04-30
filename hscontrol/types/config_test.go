@@ -220,6 +220,36 @@ func TestReadConfig(t *testing.T) {
 			},
 		},
 		{
+			name:       "unmarshal-dns-profiles",
+			configPath: "testdata/dns_profiles.yaml",
+			setup: func(t *testing.T) (any, error) { //nolint:thelper
+				dns, err := dns()
+				if err != nil {
+					return nil, err
+				}
+
+				return dns, nil
+			},
+			want: DNSConfig{
+				MagicDNS:   true,
+				BaseDomain: "example.com",
+				Nameservers: Nameservers{
+					Global: []string{"1.1.1.1", "1.0.0.1"},
+					Split:  map[string][]string{},
+				},
+				Profiles: []DNSProfile{
+					{
+						IPs:         []string{"100.64.0.2"},
+						Nameservers: []string{"1.1.1.1", "1.0.0.1"},
+					},
+					{
+						IPs:         []string{"100.64.0.3"},
+						Nameservers: []string{"8.8.8.8", "8.8.4.4"},
+					},
+				},
+			},
+		},
+		{
 			name:       "policy-path-is-loaded",
 			configPath: "testdata/policy-path-is-loaded.yaml",
 			setup: func(t *testing.T) (any, error) { //nolint:thelper // inline test closure
