@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"go4.org/netipx"
 	"tailscale.com/tailcfg"
@@ -671,11 +672,10 @@ func compileViaForNode(
 		return nil
 	}
 
-	// Find matching destination prefixes.
+	// Find matching destination prefixes. SubnetRoutes() excludes exit
+	// routes, so the *Prefix check below sees only subnet advertisements;
+	// the *AutoGroup AutoGroupInternet branch checks IsExitNode() instead.
 	nodeSubnetRoutes := node.SubnetRoutes()
-	if len(nodeSubnetRoutes) == 0 {
-		return nil
-	}
 
 	var viaDstPrefixes []netip.Prefix
 
@@ -689,8 +689,19 @@ func compileViaForNode(
 				)
 			}
 		case *AutoGroup:
-			// autogroup:internet via grants do not produce
-			// PacketFilter rules on exit nodes.
+			// autogroup:internet on a via-tagged exit advertiser
+			// becomes a rule whose DstPorts enumerate
+			// util.TheInternet(). The matchers derived from this
+			// rule let Node.CanAccess surface the exit node to the
+			// grant source via DestsIsTheInternet. ReduceFilterRules
+			// strips the rule from the wire format on non-exit
+			// advertisers, preserving SaaS PacketFilter encoding.
+			if d.Is(AutoGroupInternet) && node.IsExitNode() {
+				viaDstPrefixes = append(
+					viaDstPrefixes,
+					util.TheInternet().Prefixes()...,
+				)
+			}
 		}
 	}
 
