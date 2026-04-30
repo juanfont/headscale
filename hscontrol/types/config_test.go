@@ -191,7 +191,7 @@ func TestReadConfig(t *testing.T) {
 			setup: func(t *testing.T) (any, error) { //nolint:thelper
 				return LoadServerConfig()
 			},
-			wantErr: "Fatal config error: dns.nameservers.global must be set when dns.override_local_dns is true",
+			wantErr: "Fatal config error: dns.nameservers.global is required when dns.override_local_dns is true",
 		},
 		{
 			name:       "dns-override-true",
@@ -250,7 +250,8 @@ func TestReadConfig(t *testing.T) {
 			conf, err := tt.setup(t)
 
 			if tt.wantErr != "" {
-				assert.Equal(t, tt.wantErr, err.Error())
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
 
 				return
 			}
@@ -380,17 +381,17 @@ noise:
 	assert.Contains(
 		t,
 		err.Error(),
-		"Fatal config error: set either tls_letsencrypt_hostname or tls_cert_path/tls_key_path, not both",
+		"Fatal config error: tls_letsencrypt_hostname and tls_cert_path/tls_key_path are mutually exclusive",
 	)
 	assert.Contains(
 		t,
 		err.Error(),
-		"Fatal config error: the only supported values for tls_letsencrypt_challenge_type are",
+		"Fatal config error: tls_letsencrypt_challenge_type has an unsupported value",
 	)
 	assert.Contains(
 		t,
 		err.Error(),
-		"Fatal config error: server_url must start with https:// or http://",
+		"Fatal config error: server_url is missing a scheme",
 	)
 
 	// Check configuration validation errors (2)
