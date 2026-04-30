@@ -778,7 +778,12 @@ func (h *Headscale) Serve() error {
 
 		grpcListener, err = new(net.ListenConfig).Listen(context.Background(), "tcp", h.cfg.GRPCAddr)
 		if err != nil {
-			return fmt.Errorf("binding to TCP address: %w", err)
+			return &types.ListenerBindError{
+				Listener: "gRPC",
+				YAMLKey:  "grpc_listen_addr",
+				Addr:     h.cfg.GRPCAddr,
+				Err:      err,
+			}
 		}
 
 		errorGroup.Go(func() error { return grpcServer.Serve(grpcListener) })
@@ -815,7 +820,12 @@ func (h *Headscale) Serve() error {
 	}
 
 	if err != nil {
-		return fmt.Errorf("binding to TCP address: %w", err)
+		return &types.ListenerBindError{
+			Listener: "main HTTP",
+			YAMLKey:  "listen_addr",
+			Addr:     h.cfg.Addr,
+			Err:      err,
+		}
 	}
 
 	errorGroup.Go(func() error { return httpServer.Serve(httpListener) })
@@ -831,7 +841,12 @@ func (h *Headscale) Serve() error {
 	if h.cfg.MetricsAddr != "" {
 		debugHTTPListener, err = (&net.ListenConfig{}).Listen(ctx, "tcp", h.cfg.MetricsAddr)
 		if err != nil {
-			return fmt.Errorf("binding to TCP address: %w", err)
+			return &types.ListenerBindError{
+				Listener: "metrics",
+				YAMLKey:  "metrics_listen_addr",
+				Addr:     h.cfg.MetricsAddr,
+				Err:      err,
+			}
 		}
 
 		debugHTTPServer = h.debugHTTPServer()
