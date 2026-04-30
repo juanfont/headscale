@@ -687,7 +687,81 @@ func validateServerConfig() error {
 		})
 	}
 
+	validateDERPConfig(v)
+	validateDatabaseConfig(v)
+	validateMagicDNSConfig(v)
+
 	return v.Err()
+}
+
+// validateDERPConfig records ConfigErrors when the embedded DERP server
+// is enabled without the addresses or paths it needs.
+func validateDERPConfig(v *configValidator) {
+	if !viper.GetBool("derp.server.enabled") {
+		return
+	}
+
+	if viper.GetString("derp.server.stun_listen_addr") == "" {
+		v.Add(&ConfigError{
+			Reason: "derp.server.stun_listen_addr is required when the embedded DERP server is enabled",
+			Current: []KV{
+				{"derp.server.enabled", true},
+				{"derp.server.stun_listen_addr", ""},
+			},
+			Hint: `set derp.server.stun_listen_addr (e.g. "0.0.0.0:3478"), or set derp.server.enabled: false`,
+			See:  "https://headscale.net/stable/ref/integration/derp/",
+		})
+	}
+
+	if !viper.GetBool("derp.server.automatically_add_embedded_derp_region") &&
+		len(viper.GetStringSlice("derp.paths")) == 0 {
+		v.Add(&ConfigError{
+			Reason: "derp.paths is required when derp.server.automatically_add_embedded_derp_region is false",
+			Current: []KV{
+				{"derp.server.automatically_add_embedded_derp_region", false},
+				{"derp.paths", "[]"},
+			},
+			Hint: "list at least one DERP map JSON file in derp.paths, or set automatically_add_embedded_derp_region: true",
+		})
+	}
+}
+
+// validateDatabaseConfig records a ConfigError when database.type is not
+// one of the supported backends.
+func validateDatabaseConfig(v *configValidator) {
+	t := viper.GetString("database.type")
+	switch t {
+	case DatabaseSqlite, DatabasePostgres, "sqlite":
+		return
+	}
+
+	v.Add(&ConfigError{
+		Reason:  "database.type has an unsupported value",
+		Current: []KV{{"database.type", t}},
+		Allowed: []string{"sqlite", "sqlite3", "postgres"},
+		Hint:    "pick one of the allowed values; sqlite is the default for single-host deployments",
+		See:     "https://headscale.net/stable/ref/database/",
+	})
+}
+
+// validateMagicDNSConfig records a ConfigError when MagicDNS is enabled
+// without a base_domain.
+func validateMagicDNSConfig(v *configValidator) {
+	if !viper.GetBool("dns.magic_dns") {
+		return
+	}
+
+	if viper.GetString("dns.base_domain") == "" {
+		v.Add(&ConfigError{
+			Reason: "dns.base_domain is required when dns.magic_dns is true",
+			Current: []KV{
+				{"dns.magic_dns", true},
+				{"dns.base_domain", ""},
+			},
+			Hint: `set dns.base_domain to a domain you control (e.g. "ts.example.net"), or set dns.magic_dns: false`,
+			See:  "https://headscale.net/stable/ref/dns/",
+		})
+	}
 }
 
 func tlsConfig() TLSConfig {
@@ -725,11 +799,6 @@ func derpConfig() DERPConfig {
 		"derp.server.automatically_add_embedded_derp_region",
 	)
 
-	if serverEnabled && stunAddr == "" {
-		log.Fatal().
-			Msg("derp.server.stun_listen_addr must be set if derp.server.enabled is true")
-	}
-
 	urlStrs := viper.GetStringSlice("derp.urls")
 
 	urls := make([]url.URL, len(urlStrs))
@@ -747,11 +816,6 @@ func derpConfig() DERPConfig {
 	}
 
 	paths := viper.GetStringSlice("derp.paths")
-
-	if serverEnabled && !automaticallyAddEmbeddedDerpRegion && len(paths) == 0 {
-		log.Fatal().
-			Msg("Disabling derp.server.automatically_add_embedded_derp_region requires to configure the derp server in derp.paths")
-	}
 
 	autoUpdate := viper.GetBool("derp.auto_update_enabled")
 	updateFrequency := viper.GetDuration("derp.update_frequency")
@@ -839,9 +903,6 @@ func databaseConfig() DatabaseConfig {
 		break
 	case "sqlite":
 		type_ = "sqlite3"
-	default:
-		log.Fatal().
-			Msgf("invalid database type %q, must be sqlite, sqlite3 or postgres", type_)
 	}
 
 	return DatabaseConfig{
@@ -978,10 +1039,6 @@ func (d *DNSConfig) splitResolvers() map[string][]*dnstype.Resolver {
 
 func dnsToTailcfgDNS(dns DNSConfig) *tailcfg.DNSConfig {
 	cfg := tailcfg.DNSConfig{}
-
-	if dns.BaseDomain == "" && dns.MagicDNS {
-		log.Fatal().Msg("dns.base_domain must be set when using MagicDNS (dns.magic_dns)")
-	}
 
 	cfg.Proxied = dns.MagicDNS
 
