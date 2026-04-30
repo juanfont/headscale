@@ -164,7 +164,7 @@ func TestReadConfig(t *testing.T) {
 				return LoadServerConfig()
 			},
 			want:    nil,
-			wantErr: errServerURLSuffix.Error(),
+			wantErr: "server_url is a subdomain of dns.base_domain",
 		},
 		{
 			name:       "base-domain-not-in-server-url",
@@ -463,6 +463,69 @@ dns:
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
+}
+
+func TestLoadServerConfig_CollectsAcrossSubBuilders(t *testing.T) {
+	viper.Reset()
+
+	tmpDir := t.TempDir()
+	cfg := `---
+server_url: https://example.com
+listen_addr: 0.0.0.0:8080
+prefixes:
+  v4: not-a-cidr
+  v6: also-not-a-cidr
+  allocation: bogus
+oidc:
+  client_secret: hunter2
+  client_secret_path: /nonexistent/secret
+noise:
+  private_key_path: noise_private.key
+database:
+  type: sqlite3
+dns:
+  magic_dns: false
+  override_local_dns: false
+  base_domain: example.com
+`
+	require.NoError(t, os.WriteFile(
+		filepath.Join(tmpDir, "config.yaml"), []byte(cfg), 0o600))
+	require.NoError(t, LoadConfig(tmpDir, false))
+
+	_, err := LoadServerConfig()
+	require.Error(t, err)
+
+	got := ConfigErrors(err)
+	assert.GreaterOrEqual(t, len(got), 4,
+		"expected sub-builder errors collected into one report; got %d: %v",
+		len(got), reasons(got))
+
+	// Sentinels stay reachable through ConfigError.Cause.
+	require.ErrorIs(t, err, ErrInvalidAllocationStrategy,
+		"wrapped ErrInvalidAllocationStrategy not in chain")
+	require.ErrorIs(t, err, errOidcMutuallyExclusive,
+		"wrapped errOidcMutuallyExclusive not in chain")
+
+	// Each sub-builder failure surfaces its YAML key in the rendered output.
+	rendered := err.Error()
+	for _, want := range []string{
+		"prefixes.v4",
+		"prefixes.v6",
+		"prefixes.allocation",
+		"oidc.client_secret",
+	} {
+		assert.Contains(t, rendered, want,
+			"expected rendered error to mention %q", want)
+	}
+}
+
+func reasons(errs []*ConfigError) []string {
+	out := make([]string, len(errs))
+	for i, e := range errs {
+		out[i] = e.Reason
+	}
+
+	return out
 }
 
 func TestDeprecatedKeysFlowThroughValidator(t *testing.T) {

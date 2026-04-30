@@ -503,9 +503,21 @@ func resolveNodeExpiry() time.Duration {
 	return time.Duration(expiry)
 }
 
+// validateServerConfig is the test-only entry point. Production code
+// goes through LoadServerConfig, which lifts the validator to span
+// every config-time sub-builder so the operator sees every problem
+// in one render.
 func validateServerConfig() error {
 	v := &configValidator{}
+	validateServerConfigInto(v)
 
+	return v.Err()
+}
+
+// validateServerConfigInto runs every viper-level validation rule
+// against the provided validator. Caller owns the validator and is
+// responsible for inspecting v.Err() once all sub-builders have run.
+func validateServerConfigInto(v *configValidator) {
 	depr := deprecator{seen: make(set.Set[string])}
 
 	// Register aliases for backward compatibility
@@ -681,8 +693,6 @@ func validateServerConfig() error {
 	validatePKCEConfig(v)
 
 	depr.Apply(v)
-
-	return v.Err()
 }
 
 // validatePKCEConfig records a ConfigError when oidc.enabled is true
@@ -1163,25 +1173,44 @@ func LoadCLIConfig() (*Config, error) {
 // LoadServerConfig returns the full Headscale configuration to
 // host a Headscale server. This is called as part of `headscale serve`.
 func LoadServerConfig() (*Config, error) {
-	if err := validateServerConfig(); err != nil { //nolint:noinlineerr
-		return nil, err
-	}
+	v := &configValidator{}
+	validateServerConfigInto(v)
 
 	logConfig := logConfig()
 	zerolog.SetGlobalLevel(logConfig.Level)
 
 	prefix4, v4NonStandard, err := prefixV4()
 	if err != nil {
-		return nil, err
+		v.Add(&ConfigError{
+			Reason:  "prefixes.v4 is not a valid CIDR",
+			Current: []KV{{"prefixes.v4", viper.GetString("prefixes.v4")}},
+			Detail:  err.Error(),
+			Hint:    `use CIDR form, e.g. "100.64.0.0/10" (CGNAT, headscale default)`,
+			Cause:   err,
+		})
 	}
 
 	prefix6, v6NonStandard, err := prefixV6()
 	if err != nil {
-		return nil, err
+		v.Add(&ConfigError{
+			Reason:  "prefixes.v6 is not a valid CIDR",
+			Current: []KV{{"prefixes.v6", viper.GetString("prefixes.v6")}},
+			Detail:  err.Error(),
+			Hint:    `use CIDR form, e.g. "fd7a:115c:a1e0::/48" (Tailscale ULA, headscale default)`,
+			Cause:   err,
+		})
 	}
 
 	if prefix4 == nil && prefix6 == nil {
-		return nil, ErrNoPrefixConfigured
+		v.Add(&ConfigError{
+			Reason: "no IP prefix configured for the tailnet",
+			Current: []KV{
+				{"prefixes.v4", viper.GetString("prefixes.v4")},
+				{"prefixes.v6", viper.GetString("prefixes.v6")},
+			},
+			Hint:  `set at least one of prefixes.v4 (default: "100.64.0.0/10") or prefixes.v6 (default: "fd7a:115c:a1e0::/48")`,
+			Cause: ErrNoPrefixConfigured,
+		})
 	}
 
 	if v4NonStandard || v6NonStandard {
@@ -1215,38 +1244,60 @@ func LoadServerConfig() (*Config, error) {
 	case string(IPAllocationStrategyRandom):
 		alloc = IPAllocationStrategyRandom
 	default:
-		return nil, fmt.Errorf(
-			"%w: %q, allowed options: %s, %s",
-			ErrInvalidAllocationStrategy,
-			allocStr,
-			IPAllocationStrategySequential,
-			IPAllocationStrategyRandom,
-		)
+		v.Add(&ConfigError{
+			Reason:  "prefixes.allocation has an unsupported value",
+			Current: []KV{{"prefixes.allocation", allocStr}},
+			Allowed: []string{
+				string(IPAllocationStrategySequential),
+				string(IPAllocationStrategyRandom),
+			},
+			Hint:  "pick one of the allowed values; sequential is the default",
+			Cause: ErrInvalidAllocationStrategy,
+		})
 	}
 
 	dnsConfig, err := dns()
 	if err != nil {
-		return nil, err
+		v.Add(&ConfigError{
+			Reason:  "dns.extra_records cannot be parsed",
+			Current: []KV{{"dns.extra_records", "<inline records>"}},
+			Detail:  err.Error(),
+			Hint:    "check the YAML syntax; see config-example.yaml for the expected shape",
+			Cause:   err,
+		})
 	}
 
-	derpConfig := derpConfig()
-	logTailConfig := logtailConfig()
 	randomizeClientPort := viper.GetBool("randomize_client_port")
 
 	oidcClientSecret := viper.GetString("oidc.client_secret")
-
 	oidcClientSecretPath := viper.GetString("oidc.client_secret_path")
-	if oidcClientSecretPath != "" && oidcClientSecret != "" {
-		return nil, errOidcMutuallyExclusive
-	}
 
-	if oidcClientSecretPath != "" {
+	switch {
+	case oidcClientSecretPath != "" && oidcClientSecret != "":
+		v.Add(&ConfigError{
+			Reason: "oidc.client_secret and oidc.client_secret_path are mutually exclusive",
+			Current: []KV{
+				{"oidc.client_secret", "<redacted>"},
+				{"oidc.client_secret_path", oidcClientSecretPath},
+			},
+			Hint:  "keep one source for the secret; the path form is recommended so the secret stays out of config files",
+			See:   "https://headscale.net/stable/ref/oidc/",
+			Cause: errOidcMutuallyExclusive,
+		})
+
+	case oidcClientSecretPath != "":
 		secretBytes, err := os.ReadFile(os.ExpandEnv(oidcClientSecretPath))
 		if err != nil {
-			return nil, err
+			v.Add(&ConfigError{
+				Reason:  "oidc.client_secret_path cannot be read",
+				Current: []KV{{"oidc.client_secret_path", oidcClientSecretPath}},
+				Detail:  err.Error(),
+				Hint:    "ensure the file exists and is readable by the headscale user",
+				Cause:   err,
+			})
+		} else {
+			oidcClientSecret = strings.TrimSpace(string(secretBytes))
 		}
-
-		oidcClientSecret = strings.TrimSpace(string(secretBytes))
 	}
 
 	serverURL := viper.GetString("server_url")
@@ -1261,8 +1312,13 @@ func LoadServerConfig() (*Config, error) {
 	if dnsConfig.BaseDomain != "" {
 		err := isSafeServerURL(serverURL, dnsConfig.BaseDomain)
 		if err != nil {
-			return nil, err
+			addServerURLConfigError(v, serverURL, dnsConfig.BaseDomain, err)
 		}
+	}
+
+	err = v.Err()
+	if err != nil {
+		return nil, err
 	}
 
 	return &Config{
@@ -1282,7 +1338,7 @@ func LoadServerConfig() (*Config, error) {
 		),
 		BaseDomain: dnsConfig.BaseDomain,
 
-		DERP: derpConfig,
+		DERP: derpConfig(),
 
 		Node: NodeConfig{
 			Expiry: resolveNodeExpiry(),
@@ -1330,7 +1386,7 @@ func LoadServerConfig() (*Config, error) {
 			},
 		},
 
-		LogTail:             logTailConfig,
+		LogTail:             logtailConfig(),
 		RandomizeClientPort: randomizeClientPort,
 		Taildrop: TaildropConfig{
 			Enabled: viper.GetBool("taildrop.enabled"),
@@ -1366,6 +1422,45 @@ func LoadServerConfig() (*Config, error) {
 			NodeStoreBatchTimeout:   viper.GetDuration("tuning.node_store_batch_timeout"),
 		},
 	}, nil
+}
+
+// addServerURLConfigError pushes a structured ConfigError onto v for
+// each isSafeServerURL failure mode so the operator sees the issue
+// rendered consistently with the rest of the config-load report.
+func addServerURLConfigError(v *configValidator, serverURL, baseDomain string, err error) {
+	current := []KV{
+		{"server_url", serverURL},
+		{"dns.base_domain", baseDomain},
+	}
+
+	switch {
+	case errors.Is(err, errServerURLSame):
+		v.Add(&ConfigError{
+			Reason:  "server_url and dns.base_domain refer to the same hostname",
+			Current: current,
+			Hint:    "give server_url a host distinct from dns.base_domain (Tailscale takes over base_domain via MagicDNS)",
+			See:     "https://headscale.net/stable/ref/dns/",
+			Cause:   errServerURLSame,
+		})
+
+	case errors.Is(err, errServerURLSuffix):
+		v.Add(&ConfigError{
+			Reason:  "server_url is a subdomain of dns.base_domain",
+			Current: current,
+			Hint:    "host headscale on a domain outside dns.base_domain (Tailscale takes over base_domain via MagicDNS)",
+			See:     "https://headscale.net/stable/ref/dns/",
+			Cause:   errServerURLSuffix,
+		})
+
+	default:
+		v.Add(&ConfigError{
+			Reason:  "server_url cannot be parsed",
+			Current: []KV{{"server_url", serverURL}},
+			Detail:  err.Error(),
+			Hint:    "set server_url to an absolute URL, e.g. https://headscale.example.com",
+			Cause:   err,
+		})
+	}
 }
 
 // BaseDomain cannot be a suffix of the server URL.
