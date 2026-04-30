@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+
+	"github.com/spf13/viper"
 )
 
 var errEmptyListenAddr = errors.New("address is empty")
@@ -77,4 +79,64 @@ func isWildcardHost(h string) bool {
 	}
 
 	return false
+}
+
+// validateListenerCollisions records a *ConfigError for each pair of
+// configured TCP listeners that would bind the same kernel socket. The
+// ACME HTTP-01 challenge listener is only considered when a hostname is
+// set and the HTTP-01 challenge is selected.
+func validateListenerCollisions(v *configValidator) {
+	type spec struct {
+		key, addr string
+		active    bool
+	}
+
+	listenAddr := viper.GetString("listen_addr")
+	grpcAddr := viper.GetString("grpc_listen_addr")
+	metricsAddr := viper.GetString("metrics_listen_addr")
+	acmeAddr := viper.GetString("tls_letsencrypt_listen")
+
+	listeners := []spec{
+		{"listen_addr", listenAddr, listenAddr != ""},
+		{"grpc_listen_addr", grpcAddr, grpcAddr != ""},
+		{"metrics_listen_addr", metricsAddr, metricsAddr != ""},
+		{
+			key:  "tls_letsencrypt_listen",
+			addr: acmeAddr,
+			active: acmeAddr != "" &&
+				viper.GetString("tls_letsencrypt_hostname") != "" &&
+				viper.GetString("tls_letsencrypt_challenge_type") == HTTP01ChallengeType,
+		},
+	}
+
+	for i := range listeners {
+		for j := i + 1; j < len(listeners); j++ {
+			a, b := listeners[i], listeners[j]
+			if !a.active || !b.active {
+				continue
+			}
+
+			overlap, err := listenersOverlap(a.addr, b.addr)
+			if err != nil {
+				v.Add(&ConfigError{
+					Reason:  "cannot parse " + a.key,
+					Current: []KV{{a.key, a.addr}},
+					Detail:  err.Error(),
+					Hint:    `use host:port form, e.g. "0.0.0.0:8080"`,
+				})
+
+				continue
+			}
+
+			if overlap {
+				v.Add(&ConfigError{
+					Reason:        fmt.Sprintf("%s and %s would bind the same TCP socket", a.key, b.key),
+					Current:       []KV{{a.key, a.addr}},
+					ConflictsWith: []KV{{b.key, b.addr}},
+					Hint:          "give each listener a distinct port, or bind them to different non-wildcard hosts",
+					See:           "https://headscale.net/stable/ref/tls/",
+				})
+			}
+		}
+	}
 }

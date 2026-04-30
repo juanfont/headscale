@@ -411,6 +411,55 @@ tls_letsencrypt_challenge_type: TLS-ALPN-01
 	require.NoError(t, err)
 }
 
+func TestTLSLetsEncryptListenAddrCollision(t *testing.T) {
+	tests := []struct {
+		name          string
+		listenAddr    string
+		leListen      string
+		hostname      string
+		challengeType string
+		wantErr       string // empty = expect no error
+	}{
+		{"collision-numeric", ":80", ":80", "example.com", "HTTP-01", "would bind the same TCP socket"},
+		{"collision-named-vs-numeric", "0.0.0.0:80", ":http", "example.com", "HTTP-01", "would bind the same TCP socket"},
+		{"collision-https-named", ":443", ":https", "example.com", "HTTP-01", "would bind the same TCP socket"},
+		{"canonical", "0.0.0.0:443", ":http", "example.com", "HTTP-01", ""},
+		{"no-hostname-skipped", "0.0.0.0:80", ":http", "", "HTTP-01", ""},
+		{"tls-alpn-01-skipped", "0.0.0.0:80", ":http", "example.com", "TLS-ALPN-01", ""},
+		{"different-numeric", ":8080", ":8081", "example.com", "HTTP-01", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+
+			tmpDir := t.TempDir()
+			cfg := fmt.Sprintf(`---
+server_url: https://example.com
+listen_addr: %q
+tls_letsencrypt_hostname: %q
+tls_letsencrypt_challenge_type: %q
+tls_letsencrypt_listen: %q
+noise:
+  private_key_path: noise_private.key
+dns:
+  override_local_dns: false
+`, tt.listenAddr, tt.hostname, tt.challengeType, tt.leListen)
+			require.NoError(t, os.WriteFile(
+				filepath.Join(tmpDir, "config.yaml"), []byte(cfg), 0o600))
+			require.NoError(t, LoadConfig(tmpDir, false))
+
+			err := validateServerConfig()
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
 // OK
 // server_url: headscale.com, base: clients.headscale.com
 // server_url: headscale.com, base: headscale.net
