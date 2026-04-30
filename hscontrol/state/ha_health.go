@@ -71,8 +71,6 @@ func (p *HAHealthProber) ProbeOnce(
 
 	var wg sync.WaitGroup
 
-	deadline := time.After(p.cfg.ProbeTimeout)
-
 	for _, id := range nodeIDs {
 		if !p.isConnected(id) {
 			log.Debug().
@@ -90,6 +88,9 @@ func (p *HAHealthProber) ProbeOnce(
 		}))
 
 		wg.Go(func() {
+			timer := time.NewTimer(p.cfg.ProbeTimeout)
+			defer timer.Stop()
+
 			select {
 			case latency := <-responseCh:
 				log.Debug().
@@ -105,7 +106,7 @@ func (p *HAHealthProber) ProbeOnce(
 						Msg("HA probe: node recovered, recalculating primaries")
 				}
 
-			case <-deadline:
+			case <-timer.C:
 				p.state.CancelPing(pingID)
 
 				if !p.isConnected(id) {
