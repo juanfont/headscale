@@ -442,7 +442,10 @@ tls_letsencrypt_challenge_type: %q
 tls_letsencrypt_listen: %q
 noise:
   private_key_path: noise_private.key
+database:
+  type: sqlite3
 dns:
+  magic_dns: false
   override_local_dns: false
 `, tt.listenAddr, tt.hostname, tt.challengeType, tt.leListen)
 			require.NoError(t, os.WriteFile(
