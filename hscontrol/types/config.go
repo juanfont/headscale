@@ -569,6 +569,9 @@ func validateServerConfig() error {
 			Msg("Warning: when using tls_letsencrypt_hostname with TLS-ALPN-01 as challenge type, headscale must be reachable on port 443, i.e. listen_addr should probably end in :443")
 	}
 
+	v := &configValidator{}
+	validateListenerCollisions(v)
+
 	if (viper.GetString("tls_letsencrypt_challenge_type") != HTTP01ChallengeType) &&
 		(viper.GetString("tls_letsencrypt_challenge_type") != TLSALPN01ChallengeType) {
 		errorText += "Fatal config error: the only supported values for tls_letsencrypt_challenge_type are HTTP-01 and TLS-ALPN-01\n"
@@ -643,10 +646,10 @@ func validateServerConfig() error {
 
 	if errorText != "" {
 		// nolint
-		return errors.New(strings.TrimSuffix(errorText, "\n"))
+		v.AddErr(errors.New(strings.TrimSuffix(errorText, "\n")))
 	}
 
-	return nil
+	return v.Err()
 }
 
 func tlsConfig() TLSConfig {
