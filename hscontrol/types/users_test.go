@@ -61,6 +61,57 @@ func TestUnmarshallOIDCClaims(t *testing.T) {
 				EmailVerified: false,
 			},
 		},
+		{
+			name: "groups-array",
+			jsonstr: `
+{
+  "sub": "test4",
+  "email": "test4@test.no",
+  "email_verified": true,
+  "groups": ["Group1", "Group2"]
+}
+			`,
+			want: OIDCClaims{
+				Sub:           "test4",
+				Email:         "test4@test.no",
+				EmailVerified: true,
+				Groups:        FlexibleStringSlice{"Group1", "Group2"},
+			},
+		},
+		{
+			name: "groups-single-string",
+			jsonstr: `
+{
+  "sub": "test5",
+  "email": "test5@test.no",
+  "email_verified": true,
+  "groups": "SingleGroup"
+}
+			`,
+			want: OIDCClaims{
+				Sub:           "test5",
+				Email:         "test5@test.no",
+				EmailVerified: true,
+				Groups:        FlexibleStringSlice{"SingleGroup"},
+			},
+		},
+		{
+			name: "groups-empty-array",
+			jsonstr: `
+{
+  "sub": "test6",
+  "email": "test6@test.no",
+  "email_verified": true,
+  "groups": []
+}
+			`,
+			want: OIDCClaims{
+				Sub:           "test6",
+				Email:         "test6@test.no",
+				EmailVerified: true,
+				Groups:        FlexibleStringSlice{},
+			},
+		},
 	}
 
 	for _, tt := range tests {
