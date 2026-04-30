@@ -3,6 +3,7 @@ tailscale/
 .vscode/
 .claude/
 logs/
+.codex
 
 *.prof
 

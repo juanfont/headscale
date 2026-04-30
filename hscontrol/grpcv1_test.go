@@ -2,6 +2,7 @@ package hscontrol
 
 import (
 	"context"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -14,6 +15,64 @@ import (
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
+
+func TestGetNode_IncludesEndpoints(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+
+	user := app.state.CreateUserForTest("endpoint-user")
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	regReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "endpoint-node",
+		},
+	}
+	_, err = app.handleRegisterWithAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+
+	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+
+	endpoints := []netip.AddrPort{
+		netip.MustParseAddrPort("198.51.100.42:41642"),
+		netip.MustParseAddrPort("192.0.2.10:56265"),
+		netip.MustParseAddrPort("[2001:db8::42]:56265"),
+	}
+
+	_, err = app.state.UpdateNodeFromMapRequest(node.ID(), tailcfg.MapRequest{
+		NodeKey:   node.NodeKey(),
+		DiscoKey:  node.DiscoKey(),
+		Endpoints: endpoints,
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "endpoint-node",
+		},
+	})
+	require.NoError(t, err)
+
+	apiServer := newHeadscaleV1APIServer(app)
+
+	resp, err := apiServer.GetNode(context.Background(), &v1.GetNodeRequest{
+		NodeId: uint64(node.ID()),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.NotNil(t, resp.GetNode())
+	assert.Equal(t, []string{
+		"198.51.100.42:41642",
+		"192.0.2.10:56265",
+		"[2001:db8::42]:56265",
+	}, resp.GetNode().GetEndpoints())
+}
 
 func Test_validateTag(t *testing.T) {
 	type args struct {

@@ -313,6 +313,20 @@ func (node *Node) IPsAsString() []string {
 	return ret
 }
 
+func (node *Node) EndpointsAsString() []string {
+	if len(node.Endpoints) == 0 {
+		return nil
+	}
+
+	ret := make([]string, 0, len(node.Endpoints))
+
+	for _, endpoint := range node.Endpoints {
+		ret = append(ret, endpoint.String())
+	}
+
+	return ret
+}
+
 func (node *Node) InIPSet(set *netipx.IPSet) bool {
 	return slices.ContainsFunc(node.IPs(), set.Contains)
 }
@@ -471,6 +485,7 @@ func (node *Node) Proto() *v1.Node {
 		// routes that are actively served from the node.
 		ApprovedRoutes:  util.PrefixesToString(node.ApprovedRoutes),
 		AvailableRoutes: util.PrefixesToString(node.AnnouncedRoutes()),
+		Endpoints:       node.EndpointsAsString(),
 
 		RegisterMethod: node.RegisterMethodToV1Enum(),
 
