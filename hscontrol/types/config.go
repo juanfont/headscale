@@ -546,19 +546,39 @@ func validateServerConfig() error {
 
 	depr.Log()
 
+	v := &configValidator{}
+
 	if viper.IsSet("dns.extra_records") && viper.IsSet("dns.extra_records_path") {
-		log.Fatal().Msg("fatal config error: dns.extra_records and dns.extra_records_path are mutually exclusive. Please remove one of them from your config file")
+		v.Add(&ConfigError{
+			Reason: "dns.extra_records and dns.extra_records_path are mutually exclusive",
+			Current: []KV{
+				{"dns.extra_records_path", viper.GetString("dns.extra_records_path")},
+				{"dns.extra_records", "<inline records>"},
+			},
+			Hint: "keep one (a path is recommended for production); remove the other",
+		})
 	}
 
-	// Collect any validation errors and return them all at once
-	var errorText string
 	if (viper.GetString("tls_letsencrypt_hostname") != "") &&
 		((viper.GetString("tls_cert_path") != "") || (viper.GetString("tls_key_path") != "")) {
-		errorText += "Fatal config error: set either tls_letsencrypt_hostname or tls_cert_path/tls_key_path, not both\n"
+		v.Add(&ConfigError{
+			Reason:  "tls_letsencrypt_hostname and tls_cert_path/tls_key_path are mutually exclusive",
+			Current: []KV{{"tls_letsencrypt_hostname", viper.GetString("tls_letsencrypt_hostname")}},
+			ConflictsWith: []KV{
+				{"tls_cert_path", viper.GetString("tls_cert_path")},
+				{"tls_key_path", viper.GetString("tls_key_path")},
+			},
+			Hint: "choose one TLS strategy and unset the other (Let's Encrypt OR a static keypair)",
+			See:  "https://headscale.net/stable/ref/tls/",
+		})
 	}
 
 	if viper.GetString("noise.private_key_path") == "" {
-		errorText += "Fatal config error: headscale now requires a new `noise.private_key_path` field in the config file for the Tailscale v2 protocol\n"
+		v.Add(&ConfigError{
+			Reason: "noise.private_key_path is required",
+			Hint:   "set noise.private_key_path: /var/lib/headscale/noise_private.key (or any writable path)",
+			See:    "https://headscale.net/stable/setup/install/official/",
+		})
 	}
 
 	if (viper.GetString("tls_letsencrypt_hostname") != "") &&
@@ -569,17 +589,24 @@ func validateServerConfig() error {
 			Msg("Warning: when using tls_letsencrypt_hostname with TLS-ALPN-01 as challenge type, headscale must be reachable on port 443, i.e. listen_addr should probably end in :443")
 	}
 
-	v := &configValidator{}
 	validateListenerCollisions(v)
 
-	if (viper.GetString("tls_letsencrypt_challenge_type") != HTTP01ChallengeType) &&
-		(viper.GetString("tls_letsencrypt_challenge_type") != TLSALPN01ChallengeType) {
-		errorText += "Fatal config error: the only supported values for tls_letsencrypt_challenge_type are HTTP-01 and TLS-ALPN-01\n"
+	if ct := viper.GetString("tls_letsencrypt_challenge_type"); ct != HTTP01ChallengeType && ct != TLSALPN01ChallengeType {
+		v.Add(&ConfigError{
+			Reason:  "tls_letsencrypt_challenge_type has an unsupported value",
+			Current: []KV{{"tls_letsencrypt_challenge_type", ct}},
+			Allowed: []string{HTTP01ChallengeType, TLSALPN01ChallengeType},
+			Hint:    "pick one of the allowed values; HTTP-01 is the default",
+		})
 	}
 
-	if !strings.HasPrefix(viper.GetString("server_url"), "http://") &&
-		!strings.HasPrefix(viper.GetString("server_url"), "https://") {
-		errorText += "Fatal config error: server_url must start with https:// or http://\n"
+	serverURL := viper.GetString("server_url")
+	if !strings.HasPrefix(serverURL, "http://") && !strings.HasPrefix(serverURL, "https://") {
+		v.Add(&ConfigError{
+			Reason:  "server_url is missing a scheme",
+			Current: []KV{{"server_url", serverURL}},
+			Hint:    "prefix the URL with https:// (recommended) or http://",
+		})
 	}
 
 	// Minimum inactivity time out is keepalive timeout (60s) plus a few seconds
@@ -588,65 +615,76 @@ func validateServerConfig() error {
 
 	ephemeralTimeout := resolveEphemeralInactivityTimeout()
 	if ephemeralTimeout <= minInactivityTimeout {
-		errorText += fmt.Sprintf(
-			"Fatal config error: node.ephemeral.inactivity_timeout (%s) is set too low, must be more than %s",
-			ephemeralTimeout,
-			minInactivityTimeout,
-		)
+		v.Add(&ConfigError{
+			Reason:  "node.ephemeral.inactivity_timeout is below the minimum",
+			Current: []KV{{"node.ephemeral.inactivity_timeout", ephemeralTimeout.String()}},
+			Minimum: minInactivityTimeout.String(),
+			Hint:    "raise the value above the keepalive interval (60s) plus a safety margin",
+		})
 	}
 
 	if viper.GetBool("dns.override_local_dns") {
 		if global := viper.GetStringSlice("dns.nameservers.global"); len(global) == 0 {
-			errorText += "Fatal config error: dns.nameservers.global must be set when dns.override_local_dns is true\n"
+			v.Add(&ConfigError{
+				Reason: "dns.nameservers.global is required when dns.override_local_dns is true",
+				Current: []KV{
+					{"dns.override_local_dns", true},
+					{"dns.nameservers.global", "[]"},
+				},
+				Hint: "list at least one upstream nameserver, or set dns.override_local_dns: false",
+				See:  "https://headscale.net/stable/ref/dns/",
+			})
 		}
 	}
 
 	// Validate HA health probing parameters
-	if haInterval := viper.GetDuration(
-		"node.routes.ha.probe_interval",
-	); haInterval > 0 {
+	if haInterval := viper.GetDuration("node.routes.ha.probe_interval"); haInterval > 0 {
 		if haInterval < 2*time.Second {
-			errorText += fmt.Sprintf(
-				"Fatal config error: node.routes.ha.probe_interval (%s) must be >= 2s\n",
-				haInterval,
-			)
+			v.Add(&ConfigError{
+				Reason:  "node.routes.ha.probe_interval is below the minimum",
+				Current: []KV{{"node.routes.ha.probe_interval", haInterval.String()}},
+				Minimum: "2s",
+				Hint:    "raise the value to at least the minimum",
+			})
 		}
 
 		haTimeout := viper.GetDuration("node.routes.ha.probe_timeout")
 		if haTimeout < 1*time.Second {
-			errorText += fmt.Sprintf(
-				"Fatal config error: node.routes.ha.probe_timeout (%s) must be >= 1s\n",
-				haTimeout,
-			)
+			v.Add(&ConfigError{
+				Reason:  "node.routes.ha.probe_timeout is below the minimum",
+				Current: []KV{{"node.routes.ha.probe_timeout", haTimeout.String()}},
+				Minimum: "1s",
+				Hint:    "raise the value to at least the minimum",
+			})
 		}
 
 		if haTimeout >= haInterval {
-			errorText += fmt.Sprintf(
-				"Fatal config error: node.routes.ha.probe_timeout (%s) must be less than node.routes.ha.probe_interval (%s)\n",
-				haTimeout,
-				haInterval,
-			)
+			v.Add(&ConfigError{
+				Reason: "node.routes.ha.probe_timeout must be less than node.routes.ha.probe_interval",
+				Current: []KV{
+					{"node.routes.ha.probe_timeout", haTimeout.String()},
+					{"node.routes.ha.probe_interval", haInterval.String()},
+				},
+				Hint: "lower probe_timeout below probe_interval (a probe must finish before the next one starts)",
+			})
 		}
 	}
 
 	// Validate tuning parameters
 	if size := viper.GetInt("tuning.node_store_batch_size"); size <= 0 {
-		errorText += fmt.Sprintf(
-			"Fatal config error: tuning.node_store_batch_size must be positive, got %d\n",
-			size,
-		)
+		v.Add(&ConfigError{
+			Reason:  "tuning.node_store_batch_size must be positive",
+			Current: []KV{{"tuning.node_store_batch_size", size}},
+			Hint:    fmt.Sprintf("set to a positive integer (default: %d)", defaultNodeStoreBatchSize),
+		})
 	}
 
 	if timeout := viper.GetDuration("tuning.node_store_batch_timeout"); timeout <= 0 {
-		errorText += fmt.Sprintf(
-			"Fatal config error: tuning.node_store_batch_timeout must be positive, got %s\n",
-			timeout,
-		)
-	}
-
-	if errorText != "" {
-		// nolint
-		v.AddErr(errors.New(strings.TrimSuffix(errorText, "\n")))
+		v.Add(&ConfigError{
+			Reason:  "tuning.node_store_batch_timeout must be positive",
+			Current: []KV{{"tuning.node_store_batch_timeout", timeout.String()}},
+			Hint:    "set to a positive duration (default: 500ms)",
+		})
 	}
 
 	return v.Err()
