@@ -553,10 +553,9 @@ func resolveNodeExpiry() time.Duration {
 }
 
 func validateServerConfig() error {
-	depr := deprecator{
-		warns:  make(set.Set[string]),
-		fatals: make(set.Set[string]),
-	}
+	v := &configValidator{}
+
+	depr := deprecator{seen: make(set.Set[string])}
 
 	// Register aliases for backward compatibility
 	// Has to be called _after_ viper.ReadInConfig()
@@ -605,10 +604,6 @@ func validateServerConfig() error {
 			return err
 		}
 	}
-
-	depr.Log()
-
-	v := &configValidator{}
 
 	if viper.IsSet("dns.extra_records") && viper.IsSet("dns.extra_records_path") {
 		v.Add(&ConfigError{
@@ -752,8 +747,32 @@ func validateServerConfig() error {
 	validateDERPConfig(v)
 	validateDatabaseConfig(v)
 	validateMagicDNSConfig(v)
+	validatePKCEConfig(v)
+
+	depr.Apply(v)
 
 	return v.Err()
+}
+
+// validatePKCEConfig records a ConfigError when oidc.enabled is true
+// and oidc.pkce.method is not one of the allowed values.
+func validatePKCEConfig(v *configValidator) {
+	if !viper.GetBool("oidc.enabled") {
+		return
+	}
+
+	method := viper.GetString("oidc.pkce.method")
+
+	err := validatePKCEMethod(method)
+	if err != nil {
+		v.Add(&ConfigError{
+			Reason:  "oidc.pkce.method has an unsupported value",
+			Current: []KV{{"oidc.pkce.method", method}},
+			Allowed: []string{PKCEMethodPlain, PKCEMethodS256},
+			Hint:    "pick one of the allowed values; S256 is recommended",
+			Cause:   err,
+		})
+	}
 }
 
 // validateDERPConfig records ConfigErrors when the embedded DERP server
@@ -1445,20 +1464,61 @@ func isSafeServerURL(serverURL, baseDomain string) error {
 	return nil
 }
 
-type deprecator struct {
-	warns  set.Set[string]
-	fatals set.Set[string]
+// deprecation describes a configuration key that is no longer
+// supported. NewKey is the replacement (when one exists) or empty
+// when the key has been removed without a replacement.
+type deprecation struct {
+	OldKey string
+	NewKey string
+	Hint   string
 }
 
-// fatal deprecates and adds an entry to the fatal list of options if the oldKey is set.
+// deprecator collects deprecated configuration keys observed in the
+// current viper config. Warns are non-blocking and surface via
+// log.Warn; fatals are pushed onto a configValidator as ConfigError
+// entries so they merge with the rest of the validation report
+// instead of pre-empting it via log.Fatal.
+type deprecator struct {
+	seen   set.Set[string]
+	warns  []deprecation
+	fatals []deprecation
+}
+
+func (d *deprecator) addWarn(dep deprecation) {
+	if d.seen.Contains(dep.OldKey) {
+		return
+	}
+
+	d.seen.Add(dep.OldKey)
+	d.warns = append(d.warns, dep)
+}
+
+func (d *deprecator) addFatal(dep deprecation) {
+	if d.seen.Contains(dep.OldKey) {
+		return
+	}
+
+	d.seen.Add(dep.OldKey)
+	d.fatals = append(d.fatals, dep)
+}
+
+// warnWithAlias registers an alias from newKey to oldKey and records
+// a non-blocking warning when oldKey is set.
+//
+//nolint:unused
+func (d *deprecator) warnWithAlias(newKey, oldKey string) {
+	// NOTE: RegisterAlias is called with NEW KEY -> OLD KEY
+	viper.RegisterAlias(newKey, oldKey)
+
+	if viper.IsSet(oldKey) {
+		d.addWarn(deprecation{OldKey: oldKey, NewKey: newKey})
+	}
+}
+
+// fatal records a removed key (no replacement) as a config error.
 func (d *deprecator) fatal(oldKey string) {
 	if viper.IsSet(oldKey) {
-		d.fatals.Add(
-			fmt.Sprintf(
-				"The %q configuration key has been removed. Please see the changelog for more details.",
-				oldKey,
-			),
-		)
+		d.addFatal(deprecation{OldKey: oldKey})
 	}
 }
 
@@ -1468,83 +1528,92 @@ func (d *deprecator) fatal(oldKey string) {
 // policy side.
 func (d *deprecator) fatalWithHint(oldKey, hint string) {
 	if viper.IsSet(oldKey) {
-		d.fatals.Add(
-			fmt.Sprintf(
-				"The %q configuration key has been removed. %s",
-				oldKey,
-				hint,
-			),
-		)
+		d.addFatal(deprecation{OldKey: oldKey, Hint: hint})
 	}
 }
 
-// fatalIfNewKeyIsNotUsed deprecates and adds an entry to the fatal list of options if the oldKey is set and the new key is _not_ set.
-// If the new key is set, a warning is emitted instead.
+// fatalIfNewKeyIsNotUsed records a config error when oldKey is set
+// without newKey, or a warning when both are set (oldKey ignored,
+// newKey takes precedence).
 func (d *deprecator) fatalIfNewKeyIsNotUsed(newKey, oldKey string) {
-	if viper.IsSet(oldKey) && !viper.IsSet(newKey) {
-		d.fatals.Add(
-			fmt.Sprintf(
-				"The %q configuration key is deprecated. Please use %q instead. %q has been removed.",
-				oldKey,
-				newKey,
-				oldKey,
-			),
-		)
-	} else if viper.IsSet(oldKey) {
-		d.warns.Add(fmt.Sprintf("The %q configuration key is deprecated. Please use %q instead. %q has been removed.", oldKey, newKey, oldKey))
+	if !viper.IsSet(oldKey) {
+		return
 	}
+
+	if !viper.IsSet(newKey) {
+		d.addFatal(deprecation{OldKey: oldKey, NewKey: newKey})
+
+		return
+	}
+
+	d.addWarn(deprecation{OldKey: oldKey, NewKey: newKey})
 }
 
-// fatalIfSet fatals if the oldKey is set at all, regardless of whether
-// the newKey is set. Use this when the old key has been fully removed
-// and any use of it should be a hard error.
+// fatalIfSet records a config error any time oldKey is set, naming
+// newKey as the replacement.
 func (d *deprecator) fatalIfSet(oldKey, newKey string) {
 	if viper.IsSet(oldKey) {
-		d.fatals.Add(
-			fmt.Sprintf(
-				"The %q configuration key has been removed. Please use %q instead.",
-				oldKey,
-				newKey,
-			),
-		)
+		d.addFatal(deprecation{OldKey: oldKey, NewKey: newKey})
 	}
 }
 
-// warn deprecates and adds an option to log a warning if the oldKey is set.
+// warnNoAlias records a non-blocking warning when oldKey is set,
+// pointing operators at newKey.
 //
 //nolint:unused
 func (d *deprecator) warnNoAlias(newKey, oldKey string) {
 	if viper.IsSet(oldKey) {
-		d.warns.Add(
-			fmt.Sprintf(
-				"The %q configuration key is deprecated. Please use %q instead. %q has been removed.",
-				oldKey,
-				newKey,
-				oldKey,
-			),
-		)
+		d.addWarn(deprecation{OldKey: oldKey, NewKey: newKey})
 	}
 }
 
-func (d *deprecator) String() string {
-	var b strings.Builder
-
-	for _, w := range d.warns.Slice() {
-		fmt.Fprintf(&b, "WARN: %s\n", w)
+// warn records a non-blocking warning when oldKey is set, with no
+// replacement to point at.
+//
+//nolint:unused
+func (d *deprecator) warn(oldKey string) {
+	if viper.IsSet(oldKey) {
+		d.addWarn(deprecation{OldKey: oldKey})
 	}
-
-	for _, f := range d.fatals.Slice() {
-		fmt.Fprintf(&b, "FATAL: %s\n", f)
-	}
-
-	return b.String()
 }
 
-func (d *deprecator) Log() {
-	if len(d.fatals) > 0 {
-		log.Fatal().Msg("\n" + d.String())
-	} else if len(d.warns) > 0 {
-		log.Warn().Msg("\n" + d.String())
+// Apply emits warns via log.Warn and pushes one *ConfigError per
+// fatal onto v. Run after the rest of validation so deprecated-key
+// failures surface alongside the other config errors in a single
+// pass.
+func (d *deprecator) Apply(v *configValidator) {
+	for _, w := range d.warns {
+		if w.NewKey != "" {
+			log.Warn().Msgf(
+				"configuration key %q is deprecated; use %q instead",
+				w.OldKey, w.NewKey)
+
+			continue
+		}
+
+		log.Warn().Msgf("configuration key %q is deprecated", w.OldKey)
+	}
+
+	for _, f := range d.fatals {
+		ce := &ConfigError{
+			Current: []KV{{f.OldKey, viper.Get(f.OldKey)}},
+		}
+
+		if f.NewKey != "" {
+			ce.Reason = fmt.Sprintf(
+				"configuration key %s has been removed; use %s instead",
+				f.OldKey, f.NewKey)
+			ce.Hint = fmt.Sprintf("remove %s and set %s", f.OldKey, f.NewKey)
+		} else {
+			ce.Reason = fmt.Sprintf("configuration key %s has been removed", f.OldKey)
+			if f.Hint != "" {
+				ce.Hint = f.Hint
+			} else {
+				ce.Hint = fmt.Sprintf("remove %s; see the CHANGELOG for context", f.OldKey)
+			}
+		}
+
+		v.Add(ce)
 	}
 }
 
