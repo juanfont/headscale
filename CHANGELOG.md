@@ -116,6 +116,30 @@ active when HA routes exist (2+ nodes advertising the same prefix). Set `probe_i
 `0` to disable. This complements the existing disconnect-based failover, catching "zombie
 connected" routers that maintain their control session but cannot route packets.
 
+### Config validation and listener errors
+
+Two TCP listeners assigned the same kernel socket are now rejected at config load with a
+multi-line `Fatal config error` block that names both YAML keys, quotes the configured
+values, and links to the docs. The most common case is `listen_addr: 0.0.0.0:80` together
+with `tls_letsencrypt_hostname` — both endpoints try to claim port 80, and the second bind
+previously failed at runtime with a misleading `address already in use` log even though no
+other process was involved. Validation now reports every problem in one pass instead of
+failing fast on the first, and the structured error type integrates with `errors.Is`,
+`errors.As`, and `errors.Join`.
+
+Runtime bind failures now use a typed `*ListenerBindError` whose `Error()` names the
+listener (`main HTTP`, `gRPC`, `metrics`, `ACME HTTP-01 challenge`) and the YAML key that
+drove the address. `errors.Is` and `errors.As` walk through to `syscall.EADDRINUSE` /
+`syscall.EACCES`, and the CLI appends a one-line operator hint — an `ss -tlnp` invocation
+for "in use", a `setcap` / `CAP_NET_BIND_SERVICE` pointer for "permission denied".
+
+The ACME HTTP-01 challenge listener was launched in an orphan goroutine that called
+`log.Fatal` on bind failure. It now binds eagerly during TLS setup and runs through the
+main errgroup, so a bind failure surfaces as a normal error and clean shutdown reaches
+every server.
+
+[#3227](https://github.com/juanfont/headscale/issues/3227)
+
 ### Changes
 
 #### ACL Policy

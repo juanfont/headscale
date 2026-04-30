@@ -16,6 +16,11 @@ server_url: http://127.0.0.1:8080
 #
 # For production:
 # listen_addr: 0.0.0.0:8080
+#
+# When tls_letsencrypt_hostname is set with the HTTP-01 challenge,
+# headscale also binds tls_letsencrypt_listen (default :http / port 80)
+# to serve the ACME challenge. Choose a different port here, or front
+# headscale with a reverse proxy that terminates TLS itself.
 listen_addr: 127.0.0.1:8080
 
 # Address to listen to /metrics and /debug, you may want
@@ -267,6 +272,10 @@ tls_letsencrypt_challenge_type: HTTP-01
 # When HTTP-01 challenge is chosen, letsencrypt must set up a
 # verification endpoint, and it will be listening on:
 # :http = port 80
+#
+# This must not collide with listen_addr, grpc_listen_addr, or
+# metrics_listen_addr. Headscale validates this at startup and will
+# refuse to launch if two listeners would bind the same socket.
 tls_letsencrypt_listen: ":http"
 
 ## Use already defined certificates:
