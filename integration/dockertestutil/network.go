@@ -132,7 +132,6 @@ func DisconnectContainerFromNetwork(
 	return retryDockerOp(context.Background(), func() error {
 		return pool.Client.DisconnectNetwork(network.Network.ID, docker.NetworkConnectionOptions{
 			Container: containers[0].ID,
-			Force:     true,
 		})
 	})
 }
