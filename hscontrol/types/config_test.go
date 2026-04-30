@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -461,6 +462,56 @@ dns:
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})
+	}
+}
+
+func TestDeprecatedKeysFlowThroughValidator(t *testing.T) {
+	viper.Reset()
+
+	tmpDir := t.TempDir()
+	cfg := `---
+server_url: https://example.com
+listen_addr: 0.0.0.0:8080
+oidc:
+  expiry: 1h
+dns_config:
+  use_username_in_magic_dns: true
+noise:
+  private_key_path: noise_private.key
+database:
+  type: sqlite3
+dns:
+  magic_dns: false
+  override_local_dns: false
+`
+	require.NoError(t, os.WriteFile(
+		filepath.Join(tmpDir, "config.yaml"), []byte(cfg), 0o600))
+	require.NoError(t, LoadConfig(tmpDir, false))
+
+	err := validateServerConfig()
+	require.Error(t, err)
+
+	got := ConfigErrors(err)
+	require.GreaterOrEqual(t, len(got), 2,
+		"expected fatal deprecated keys to surface as ConfigErrors; got %d", len(got))
+
+	reasons := make([]string, 0, len(got))
+	for _, ce := range got {
+		reasons = append(reasons, ce.Reason)
+	}
+
+	wantSubstrs := []string{"oidc.expiry", "dns_config.use_username_in_magic_dns"}
+	for _, want := range wantSubstrs {
+		var found bool
+
+		for _, r := range reasons {
+			if strings.Contains(r, want) {
+				found = true
+				break
+			}
+		}
+
+		assert.True(t, found, "expected ConfigError mentioning %q in reasons %v", want, reasons)
 	}
 }
 
