@@ -500,15 +500,78 @@ func (g *Group) resolve(p *Policy, users types.Users, nodes views.Slice[types.No
 	)
 
 	for _, user := range p.Groups[*g] {
+		// Existing behaviour: treat each entry as a user identifier
+		// (email / Name / provider id).
 		uips, err := user.resolve(nil, users, nodes)
-		if err != nil {
-			errs = append(errs, err)
+		if err == nil {
+			ips.AddSet(uips)
 		}
 
-		ips.AddSet(uips)
+		// Additionally, treat the entry as an OIDC group identifier:
+		// pull in every node whose owner has this group in their
+		// persisted `Groups` claim. This lets policy files reference
+		// IdP groups directly, e.g.
+		//   "group:admins": ["security-team@example.com"]
+		// where `security-team@example.com` is an OIDC-asserted group
+		// name (from the IdP's `groups` claim), not a headscale user.
+		memberStr := strings.TrimSuffix(user.String(), "@")
+		resolveOIDCGroup(memberStr, users, nodes, &ips)
+
+		// If neither path produced a match, surface the original
+		// user-lookup error so operators still get a clear signal
+		// when an identifier truly does not correspond to anything.
+		if err != nil && !userHasOIDCGroup(memberStr, users) {
+			errs = append(errs, err)
+		}
 	}
 
 	return buildIPSetMultiErr(&ips, errs)
+}
+
+// resolveOIDCGroup collects node IPs for every user whose OIDC groups
+// claim contains `group`, appending them to ips.
+func resolveOIDCGroup(
+	group string,
+	users types.Users,
+	nodes views.Slice[types.NodeView],
+	ips *netipx.IPSetBuilder,
+) {
+	matchingUserIDs := make(map[uint]struct{})
+	for _, u := range users {
+		for _, g := range u.Groups {
+			if g == group {
+				matchingUserIDs[u.ID] = struct{}{}
+				break
+			}
+		}
+	}
+
+	if len(matchingUserIDs) == 0 {
+		return
+	}
+
+	for _, node := range nodes.All() {
+		if node.IsTagged() || !node.User().Valid() {
+			continue
+		}
+		if _, ok := matchingUserIDs[uint(node.User().ID())]; ok {
+			node.AppendToIPSet(ips)
+		}
+	}
+}
+
+// userHasOIDCGroup reports whether any user carries `group` in their
+// persisted OIDC Groups claim. Used to suppress noisy user-lookup
+// errors when a policy entry is intentionally an IdP group.
+func userHasOIDCGroup(group string, users types.Users) bool {
+	for _, u := range users {
+		for _, g := range u.Groups {
+			if g == group {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Tag is a special string which is always prefixed with `tag:`.

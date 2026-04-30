@@ -477,6 +477,10 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 					Valid:  true,
 				},
 				ProfilePicURL: "https://cdn.casbin.org/img/casbin.svg",
+				// FromClaim persists the OIDC `groups` claim when the feature
+				// is enabled (the test below passes groupsEnabled=true), so
+				// the policy matcher can resolve `group:<idp-group>` rules.
+				Groups: []string{"org1/department1", "org1/department2"},
 			},
 		},
 	}
@@ -493,11 +497,102 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 
 			var user User
 
-			user.FromClaim(&got, tt.emailVerifiedRequired)
-
+			// Run with OIDC groups enabled so existing test fixtures that
+			// assert User.Groups is populated continue to validate the
+			// claim-to-user pipeline.
+			user.FromClaim(&got, tt.emailVerifiedRequired, true)
 			if diff := cmp.Diff(user, tt.want); diff != "" {
 				t.Errorf("TestOIDCClaimsJSONToUser() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
+}
+
+func TestExtractGroupsClaim(t *testing.T) {
+	tests := []struct {
+		name      string
+		raw       map[string]any
+		claimName string
+		want      []string
+	}{
+		{
+			name:      "default claim name when blank",
+			raw:       map[string]any{"groups": []any{"a", "b"}},
+			claimName: "",
+			want:      []string{"a", "b"},
+		},
+		{
+			name:      "explicit standard claim",
+			raw:       map[string]any{"groups": []any{"a", "b"}},
+			claimName: "groups",
+			want:      []string{"a", "b"},
+		},
+		{
+			name:      "custom claim name (Cognito-style)",
+			raw:       map[string]any{"cognito:groups": []any{"admins", "engineers"}},
+			claimName: "cognito:groups",
+			want:      []string{"admins", "engineers"},
+		},
+		{
+			name:      "custom claim name (roles)",
+			raw:       map[string]any{"roles": []any{"role1", "role2"}, "groups": []any{"ignored"}},
+			claimName: "roles",
+			want:      []string{"role1", "role2"},
+		},
+		{
+			name:      "missing claim",
+			raw:       map[string]any{"other": "value"},
+			claimName: "groups",
+			want:      nil,
+		},
+		{
+			name:      "non-array claim is dropped",
+			raw:       map[string]any{"groups": "not-an-array"},
+			claimName: "groups",
+			want:      nil,
+		},
+		{
+			name:      "mixed-type array drops non-string entries",
+			raw:       map[string]any{"groups": []any{"keep", 42, "also-keep", true}},
+			claimName: "groups",
+			want:      []string{"keep", "also-keep"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ExtractGroupsClaim(tt.raw, tt.claimName)
+			if diff := cmp.Diff(got, tt.want); diff != "" {
+				t.Errorf("ExtractGroupsClaim mismatch (-got +want):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestFromClaimGroupsGating(t *testing.T) {
+	claims := &OIDCClaims{
+		Sub:           "user-1",
+		Iss:           "https://idp.example.com",
+		Email:         "alice@example.com",
+		EmailVerified: true,
+		Username:      "alice",
+		Groups:        []string{"admins", "engineers"},
+	}
+
+	t.Run("disabled wipes any prior groups", func(t *testing.T) {
+		u := User{Groups: []string{"stale", "from", "previous", "login"}}
+		u.FromClaim(claims, true, false)
+		if u.Groups != nil {
+			t.Errorf("expected Groups to be nil when feature disabled, got %v", u.Groups)
+		}
+	})
+
+	t.Run("enabled persists claim groups", func(t *testing.T) {
+		var u User
+		u.FromClaim(claims, true, true)
+		want := []string{"admins", "engineers"}
+		if diff := cmp.Diff(u.Groups, want); diff != "" {
+			t.Errorf("Groups mismatch (-got +want):\n%s", diff)
+		}
+	})
 }
