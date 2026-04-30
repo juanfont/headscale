@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -17,7 +18,10 @@ const (
 	bypassFlag = "bypass-grpc-and-access-database-directly" //nolint:gosec // not a credential
 )
 
-var errAborted = errors.New("command aborted by user")
+var (
+	errAborted            = errors.New("command aborted by user")
+	errTestsRequireBypass = errors.New("policy contains a tests block; rerun with --" + bypassFlag + " to evaluate it (headscale must not be running)")
+)
 
 // bypassDatabase loads the server config and opens the database directly,
 // bypassing the gRPC server. The caller is responsible for closing the
@@ -48,6 +52,7 @@ func init() {
 	policyCmd.AddCommand(setPolicy)
 
 	checkPolicy.Flags().StringP("file", "f", "", "Path to a policy file in HuJSON format")
+	checkPolicy.Flags().BoolP(bypassFlag, "", false, "Open the database directly to evaluate the policy's tests block. Required when the policy contains tests and headscale is not running.")
 	mustMarkRequired(checkPolicy, "file")
 	policyCmd.AddCommand(checkPolicy)
 }
@@ -170,6 +175,10 @@ var setPolicy = &cobra.Command{
 var checkPolicy = &cobra.Command{
 	Use:   "check",
 	Short: "Check the Policy file for errors",
+	Long: `
+	Check parses the policy and validates its structure. If the policy contains a
+	"tests" block, those tests are evaluated against the live users and nodes:
+	pass --` + bypassFlag + ` to open the database directly when headscale is not running.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		policyPath, _ := cmd.Flags().GetString("file")
 
@@ -178,13 +187,70 @@ var checkPolicy = &cobra.Command{
 			return fmt.Errorf("reading policy file: %w", err)
 		}
 
-		_, err = policy.NewPolicyManager(policyBytes, nil, views.Slice[types.NodeView]{})
+		bypass, _ := cmd.Flags().GetBool(bypassFlag)
+
+		// Without bypass we don't have users or nodes to resolve test
+		// aliases against. Validate structure and warn explicitly if
+		// tests are present, rather than running them with empty data
+		// and reporting spurious failures.
+		if !bypass {
+			_, err = policy.NewPolicyManager(policyBytes, nil, views.Slice[types.NodeView]{})
+			if err != nil {
+				return fmt.Errorf("parsing policy file: %w", err)
+			}
+
+			if policyHasTestsBlock(policyBytes) {
+				return errTestsRequireBypass
+			}
+
+			fmt.Println("Policy is valid")
+
+			return nil
+		}
+
+		if !confirmAction(cmd, "DO NOT run this command if an instance of headscale is running, are you sure headscale is not running?") {
+			return errAborted
+		}
+
+		d, err := bypassDatabase()
+		if err != nil {
+			return err
+		}
+		defer d.Close()
+
+		users, err := d.ListUsers()
+		if err != nil {
+			return fmt.Errorf("loading users: %w", err)
+		}
+
+		nodes, err := d.ListNodes()
+		if err != nil {
+			return fmt.Errorf("loading nodes: %w", err)
+		}
+
+		// NewPolicyManager validates structure but intentionally skips
+		// test evaluation (boot path). SetPolicy is the user-write
+		// boundary and is what runs the tests block.
+		pm, err := policy.NewPolicyManager(policyBytes, users, nodes.ViewSlice())
 		if err != nil {
 			return fmt.Errorf("parsing policy file: %w", err)
+		}
+
+		_, err = pm.SetPolicy(policyBytes)
+		if err != nil {
+			return err
 		}
 
 		fmt.Println("Policy is valid")
 
 		return nil
 	},
+}
+
+// policyHasTestsBlock is a cheap textual probe for `"tests"` so callers
+// can warn the user when they need to rerun with bypass. False positives
+// (e.g. a comment containing the word) are harmless: the user is told to
+// pass a flag they could have passed anyway.
+func policyHasTestsBlock(b []byte) bool {
+	return bytes.Contains(b, []byte(`"tests"`))
 }
