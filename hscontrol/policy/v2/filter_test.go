@@ -3668,6 +3668,27 @@ func TestCompileViaGrant(t *testing.T) {
 		Hostinfo: &tailcfg.Hostinfo{},
 	}
 
+	// Expected rule for autogroup:internet on a via-tagged exit
+	// advertiser: SrcIPs scoped to the grant source, DstPorts
+	// enumerating util.TheInternet() prefixes.
+	internetDstPorts := make(
+		[]tailcfg.NetPortRange, 0, len(util.TheInternet().Prefixes()),
+	)
+
+	for _, p := range util.TheInternet().Prefixes() {
+		internetDstPorts = append(internetDstPorts, tailcfg.NetPortRange{
+			IP:    p.String(),
+			Ports: tailcfg.PortRangeAny,
+		})
+	}
+
+	internetWant := []tailcfg.FilterRule{
+		{
+			SrcIPs:   []string{"100.64.0.10"},
+			DstPorts: internetDstPorts,
+		},
+	}
+
 	tests := []struct {
 		name    string
 		grant   Grant
@@ -3724,11 +3745,12 @@ func TestCompileViaGrant(t *testing.T) {
 			},
 		},
 		{
-			// autogroup:internet via grants do NOT produce PacketFilter rules
-			// on exit nodes. Tailscale SaaS handles exit traffic forwarding
-			// through the client's exit node mechanism, not PacketFilter.
-			// Verified by golden captures GRANT-V14 through GRANT-V36.
-			name: "autogroup:internet with exit routes produces no rules",
+			// autogroup:internet on a via-tagged exit advertiser
+			// produces a rule with DstPorts enumerating
+			// util.TheInternet(). The matchers derived from this
+			// rule let Node.CanAccess surface the exit node to
+			// grant sources via DestsIsTheInternet.
+			name: "autogroup:internet with exit routes produces TheInternet rule",
 			grant: Grant{
 				Sources:           Aliases{up("testuser@")},
 				Destinations:      Aliases{agp(string(AutoGroupInternet))},
@@ -3738,7 +3760,7 @@ func TestCompileViaGrant(t *testing.T) {
 			node:  exitNode,
 			nodes: types.Nodes{exitNode, srcNode},
 			pol:   &Policy{},
-			want:  nil,
+			want:  internetWant,
 		},
 		{
 			name: "autogroup:internet without exit routes returns nil",

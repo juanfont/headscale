@@ -903,10 +903,16 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 					matchedPrefixes = append(matchedPrefixes, dstPrefix)
 				}
 			case *AutoGroup:
-				// autogroup:internet via grants do NOT affect AllowedIPs or
-				// route steering for exit nodes. Tailscale SaaS handles exit
-				// traffic forwarding through the client's exit node selection
-				// mechanism, not through AllowedIPs.
+				// Per-viewer steering for autogroup:internet: a peer
+				// advertising approved exit routes is the via-tagged
+				// node's analogue of "advertises the destination".
+				// The downstream Include/Exclude split below restricts
+				// alice to exit nodes carrying the via tag.
+				if d.Is(AutoGroupInternet) && peer.IsExitNode() {
+					matchedPrefixes = append(
+						matchedPrefixes, peer.ExitRoutes()...,
+					)
+				}
 			}
 		}
 

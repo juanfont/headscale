@@ -1640,10 +1640,14 @@ func TestViaRoutesForPeer(t *testing.T) {
 		require.NoError(t, err)
 
 		result := pm.ViaRoutesForPeer(nodes[0].View(), nodes[1].View())
-		// Include should have only the subnet route.
-		// autogroup:internet does not produce via route effects.
+		// Include contains the subnet route plus the peer's approved
+		// exit routes — the peer holds tag:router and advertises exit
+		// routes, so autogroup:internet steering applies alongside the
+		// explicit prefix.
 		require.Contains(t, result.Include, mp("10.0.0.0/24"))
-		require.Len(t, result.Include, 1)
+		require.Contains(t, result.Include, mp("0.0.0.0/0"))
+		require.Contains(t, result.Include, mp("::/0"))
+		require.Len(t, result.Include, 3)
 		require.Empty(t, result.Exclude)
 	})
 
@@ -1713,17 +1717,20 @@ func TestViaRoutesForPeer(t *testing.T) {
 		pm, err := NewPolicyManager([]byte(pol), users, nodes.ViewSlice())
 		require.NoError(t, err)
 
-		// autogroup:internet via grants do NOT affect AllowedIPs or
-		// route steering. Tailscale SaaS handles exit traffic through
-		// the client's exit node mechanism, not ViaRoutesForPeer.
-		// Verified by golden captures GRANT-V14 through GRANT-V36.
+		// autogroup:internet via grants surface the peer's approved
+		// exit routes when the peer carries the via tag, and exclude
+		// them when it does not — restricting which exit nodes the
+		// viewer may use, per Tailscale's grants-via spec for
+		// autogroup:internet.
 		resultExit := pm.ViaRoutesForPeer(nodes[0].View(), nodes[1].View())
-		require.Empty(t, resultExit.Include)
+		require.Contains(t, resultExit.Include, mp("0.0.0.0/0"))
+		require.Contains(t, resultExit.Include, mp("::/0"))
 		require.Empty(t, resultExit.Exclude)
 
 		resultOther := pm.ViaRoutesForPeer(nodes[0].View(), nodes[2].View())
 		require.Empty(t, resultOther.Include)
-		require.Empty(t, resultOther.Exclude)
+		require.Contains(t, resultOther.Exclude, mp("0.0.0.0/0"))
+		require.Contains(t, resultOther.Exclude, mp("::/0"))
 	})
 
 	t.Run("via_routes_survive_reduce_routes", func(t *testing.T) {
