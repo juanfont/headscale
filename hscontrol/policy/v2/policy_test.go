@@ -1854,3 +1854,164 @@ func TestBuildPeerMap_AutogroupInternetMakesExitNodeVisible(t *testing.T) {
 	require.True(t, aliceNode.View().CanAccess(matchers, exitNode.View()),
 		"alice.CanAccess(exit) should be true via DestsIsTheInternet()+IsExitNode() (#3212)")
 }
+
+// Reproduction for #3160: ambiguous user@ used to silently drop rules.
+func TestNewPolicyManager_DuplicateUsername(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 2}, Name: "yala"},
+		{Model: gorm.Model{ID: 7}, Name: "yala", Email: "yala@yala.yala"},
+	}
+
+	polB := []byte(`{
+  "groups":    {"group:admins": ["yala@"]},
+  "tagOwners": {"tag:ssh": ["group:admins"]},
+  "acls":      [{"action":"accept","src":["*"],"dst":["*:*"]}],
+  "ssh": [
+    {"action":"accept","src":["group:admins"],"dst":["tag:ssh"],"users":["root"]}
+  ]
+}`)
+
+	_, err := NewPolicyManager(polB, users, types.Nodes{}.ViewSlice())
+	require.Error(t, err, "NewPolicyManager must reject policy with ambiguous username")
+	require.ErrorIs(t, err, ErrMultipleUsersFound)
+	require.Contains(t, err.Error(), "yala@",
+		"error must name the offending token")
+}
+
+// Missing-user tokens stay tolerant per #2863; only multi-match blocks load.
+func TestNewPolicyManager_UnknownUsernameTolerant(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "alice"},
+	}
+
+	polB := []byte(`{
+  "acls": [{"action":"accept","src":["ghost@"],"dst":["*:*"]}]
+}`)
+
+	_, err := NewPolicyManager(polB, users, types.Nodes{}.ViewSlice())
+	require.NoError(t, err, "missing-user references must not block policy load (#2863)")
+}
+
+// Rejected SetPolicy must keep the previous policy intact.
+func TestSetPolicy_DuplicateUsername(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 2}, Name: "yala"},
+		{Model: gorm.Model{ID: 7}, Name: "yala", Email: "yala@yala.yala"},
+	}
+
+	good := []byte(`{
+  "acls": [{"action":"accept","src":["*"],"dst":["*:*"]}]
+}`)
+
+	pm, err := NewPolicyManager(good, users, types.Nodes{}.ViewSlice())
+	require.NoError(t, err)
+
+	bad := []byte(`{
+  "groups": {"group:admins": ["yala@"]},
+  "acls":   [{"action":"accept","src":["group:admins"],"dst":["*:*"]}]
+}`)
+
+	_, err = pm.SetPolicy(bad)
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrMultipleUsersFound)
+
+	filter, _ := pm.Filter()
+	require.NotNil(t, filter, "filter must remain populated after rejected SetPolicy")
+}
+
+// Empty users → syntax-only check, used by `headscale policy check`.
+func TestValidateUserReferences_EmptyUsersTolerant(t *testing.T) {
+	polB := []byte(`{
+  "groups":    {"group:admins": ["yala@"]},
+  "tagOwners": {"tag:ssh": ["group:admins"]},
+  "acls":      [{"action":"accept","src":["yala@"],"dst":["*:*"]}],
+  "ssh": [
+    {"action":"accept","src":["yala@"],"dst":["tag:ssh"],"users":["root"]}
+  ]
+}`)
+
+	_, err := NewPolicyManager(polB, nil, types.Nodes{}.ViewSlice())
+	require.NoError(t, err, "nil users must skip user-reference validation")
+
+	_, err = NewPolicyManager(polB, types.Users{}, types.Nodes{}.ViewSlice())
+	require.NoError(t, err, "empty users must skip user-reference validation")
+}
+
+// One case per AST site so a dropped walk fails the matching subtest.
+func TestValidateUserReferences_AllSites(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "alice"},
+		{Model: gorm.Model{ID: 2}, Name: "dup"},
+		{Model: gorm.Model{ID: 3}, Name: "dup"},
+	}
+
+	tests := []struct {
+		name string
+		pol  string
+	}{
+		{
+			name: "groups",
+			pol: `{
+  "groups": {"group:admins": ["dup@"]},
+  "acls":   [{"action":"accept","src":["group:admins"],"dst":["*:*"]}]
+}`,
+		},
+		{
+			name: "tagOwners",
+			pol: `{
+  "tagOwners": {"tag:ssh": ["dup@"]},
+  "acls":      [{"action":"accept","src":["*"],"dst":["*:*"]}]
+}`,
+		},
+		{
+			name: "autoApprovers.routes",
+			pol: `{
+  "autoApprovers": {"routes": {"10.0.0.0/8": ["dup@"]}},
+  "acls":          [{"action":"accept","src":["*"],"dst":["*:*"]}]
+}`,
+		},
+		{
+			name: "autoApprovers.exitNode",
+			pol: `{
+  "autoApprovers": {"exitNode": ["dup@"]},
+  "acls":          [{"action":"accept","src":["*"],"dst":["*:*"]}]
+}`,
+		},
+		{
+			name: "acls.src",
+			pol: `{
+  "acls": [{"action":"accept","src":["dup@"],"dst":["*:*"]}]
+}`,
+		},
+		{
+			name: "acls.dst",
+			pol: `{
+  "acls": [{"action":"accept","src":["alice@"],"dst":["dup@:*"]}]
+}`,
+		},
+		{
+			name: "ssh.src",
+			pol: `{
+  "tagOwners": {"tag:ssh": ["alice@"]},
+  "acls":      [{"action":"accept","src":["*"],"dst":["*:*"]}],
+  "ssh": [{"action":"accept","src":["dup@"],"dst":["tag:ssh"],"users":["root"]}]
+}`,
+		},
+		{
+			// ErrSSHUserDestRequiresSameUser forces src==dst when dst is a user.
+			name: "ssh.dst",
+			pol: `{
+  "acls": [{"action":"accept","src":["*"],"dst":["*:*"]}],
+  "ssh": [{"action":"accept","src":["dup@"],"dst":["dup@"],"users":["root"]}]
+}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewPolicyManager([]byte(tt.pol), users, types.Nodes{}.ViewSlice())
+			require.Error(t, err, "site %q must surface duplicate-user errors", tt.name)
+			require.ErrorIs(t, err, ErrMultipleUsersFound)
+		})
+	}
+}

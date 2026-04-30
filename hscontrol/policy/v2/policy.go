@@ -20,6 +20,7 @@ import (
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/views"
 	"tailscale.com/util/deephash"
+	"tailscale.com/util/multierr"
 )
 
 // ErrInvalidTagOwner is returned when a tag owner is not an Alias type.
@@ -73,6 +74,91 @@ type filterAndPolicy struct {
 	Policy *Policy
 }
 
+// validateUserReferences surfaces ambiguous user@ tokens at policy load so
+// duplicate DB rows fail loudly instead of silently dropping rules (#3160).
+// Missing-user tokens stay tolerant (#2863). Empty users → no-op for
+// syntax-only checks.
+func validateUserReferences(pol *Policy, users types.Users) error {
+	if pol == nil || len(users) == 0 {
+		return nil
+	}
+
+	var errs []error
+
+	check := func(u *Username) {
+		if u == nil {
+			return
+		}
+
+		_, err := u.resolveUser(users)
+		if err != nil && errors.Is(err, ErrMultipleUsersFound) {
+			errs = append(errs, err)
+		}
+	}
+
+	checkAlias := func(a Alias) {
+		if u, ok := a.(*Username); ok {
+			check(u)
+		}
+	}
+
+	checkOwner := func(o Owner) {
+		if u, ok := o.(*Username); ok {
+			check(u)
+		}
+	}
+
+	checkAutoApprover := func(aa AutoApprover) {
+		if u, ok := aa.(*Username); ok {
+			check(u)
+		}
+	}
+
+	for _, usernames := range pol.Groups {
+		for i := range usernames {
+			check(&usernames[i])
+		}
+	}
+
+	for _, owners := range pol.TagOwners {
+		for _, o := range owners {
+			checkOwner(o)
+		}
+	}
+
+	for _, approvers := range pol.AutoApprovers.Routes {
+		for _, aa := range approvers {
+			checkAutoApprover(aa)
+		}
+	}
+
+	for _, aa := range pol.AutoApprovers.ExitNode {
+		checkAutoApprover(aa)
+	}
+
+	for _, acl := range pol.ACLs {
+		for _, src := range acl.Sources {
+			checkAlias(src)
+		}
+
+		for _, dst := range acl.Destinations {
+			checkAlias(dst.Alias)
+		}
+	}
+
+	for _, ssh := range pol.SSHs {
+		for _, src := range ssh.Sources {
+			checkAlias(src)
+		}
+
+		for _, dst := range ssh.Destinations {
+			checkAlias(dst)
+		}
+	}
+
+	return multierr.New(errs...)
+}
+
 // NewPolicyManager creates a new PolicyManager from a policy file and a list of users and nodes.
 // It returns an error if the policy file is invalid.
 // The policy manager will update the filter rules based on the users and nodes.
@@ -80,6 +166,11 @@ func NewPolicyManager(b []byte, users []types.User, nodes views.Slice[types.Node
 	policy, err := unmarshalPolicy(b)
 	if err != nil {
 		return nil, fmt.Errorf("parsing policy: %w", err)
+	}
+
+	err = validateUserReferences(policy, users)
+	if err != nil {
+		return nil, fmt.Errorf("validating policy user references: %w", err)
 	}
 
 	pm := PolicyManager{
@@ -350,6 +441,11 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
+
+	err = validateUserReferences(pol, pm.users)
+	if err != nil {
+		return false, fmt.Errorf("validating policy user references: %w", err)
+	}
 
 	// Log policy metadata for debugging
 	log.Debug().
