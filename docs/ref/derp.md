@@ -6,8 +6,8 @@ DERP server to ensure seamless connectivity between nodes.
 
 ## Configuration
 
-DERP related settings are configured within the `derp` section of the [configuration file](./configuration.md). The
-following sections only use a few of the available settings, check the [example configuration](./configuration.md) for
+DERP related settings are configured within the `derp` section of the [configuration file](configuration.md). The
+following sections only use a few of the available settings, check the [example configuration](configuration.md) for
 all available configuration options.
 
 ### Enable embedded DERP
@@ -163,7 +163,7 @@ Any Tailscale client may be used to introspect the DERP map and to check for con
 - Check connectivity with the embedded DERP[^1]:`tailscale debug derp headscale`
 
 Additional DERP related metrics and information is available via the [metrics and debug
-endpoint](./debug.md#metrics-and-debug-endpoint).
+endpoint](debug.md#metrics-and-debug-endpoint).
 
 ## Limitations
 
@@ -171,4 +171,4 @@ endpoint](./debug.md#metrics-and-debug-endpoint).
   endpoint via HTTP on port tcp/80.
 - There are no speed or throughput optimisations, the main purpose is to assist in node connectivity.
 
-[^1]: This assumes that the default region code of the [configuration file](./configuration.md) is used.
+[^1]: This assumes that the default region code of the [configuration file](configuration.md) is used.

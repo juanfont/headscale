@@ -1,6 +1,6 @@
 mike~=2.1
 mkdocs-include-markdown-plugin~=7.2
 mkdocs-macros-plugin~=1.5
-mkdocs-materialx[imaging]~=10.1
+mkdocs-materialx~=10.1
 mkdocs-minify-plugin~=0.8
 mkdocs-redirects~=1.2

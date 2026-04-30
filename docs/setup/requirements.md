@@ -17,8 +17,8 @@ The ports in use vary with the intended scenario and enabled features. Some of t
 - tcp/80
     - Expose publicly: yes
     - HTTP, used by Let's Encrypt to verify ownership via the HTTP-01 challenge.
-    - Only required if the built-in Let's Enrypt client with the HTTP-01 challenge is used. See [TLS](../ref/tls.md) for
-      details.
+    - Only required if the built-in Let's Encrypt client with the HTTP-01 challenge is used. See [TLS](../ref/tls.md)
+      for details.
 - tcp/443
     - Expose publicly: yes
     - HTTPS, required to make Headscale available to Tailscale clients[^1]
@@ -40,7 +40,7 @@ The headscale documentation and the provided examples are written with a few ass
 - Headscale is running as system service via a dedicated local user `headscale`.
 - The [configuration](../ref/configuration.md) is loaded from `/etc/headscale/config.yaml`.
 - SQLite is used as database.
-- The data directory for headscale (used for private keys, ACLs, SQLite database, …) is located in `/var/lib/headscale`.
+- The data directory for headscale (used for private keys, policy, SQLite database, …) is located in `/var/lib/headscale`.
 - URLs and values that need to be replaced by the user are either denoted as `<VALUE_TO_CHANGE>` or use placeholder
   values such as `headscale.example.com`.
 

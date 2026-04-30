@@ -53,19 +53,19 @@ Headscale provides a metrics and debug endpoint. It allows to introspect differe
 
 - Information about the Go runtime, memory usage and statistics
 - Connected nodes and pending registrations
-- Active ACLs, filters and SSH policy
+- Active policy, filters and SSH policy
 - Current DERPMap
 - Prometheus metrics
 
 !!! warning "Keep the metrics and debug endpoint private"
 
     The listen address and port can be configured with the `metrics_listen_addr` variable in the [configuration
-    file](./configuration.md). By default it listens on localhost, port 9090.
+    file](configuration.md). By default it listens on localhost, port 9090.
 
     Keep the metrics and debug endpoint private to your internal network and don't expose it to the Internet.
 
     The metrics and debug interface can be disabled completely by setting `metrics_listen_addr: null` in the
-    [configuration file](./configuration.md).
+    [configuration file](configuration.md).
 
 Query metrics via <http://localhost:9090/metrics> and get an overview of available debug information via
 <http://localhost:9090/debug/>. Metrics may be queried from outside localhost but the debug interface is subject to

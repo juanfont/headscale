@@ -281,21 +281,21 @@ log:
   format: text
 
 ## Policy
-# headscale supports Tailscale's ACL policies.
-# Please have a look to their KB to better
-# understand the concepts: https://tailscale.com/docs/features/access-control/acls
+# Headscale supports a wide range of Tailscale policy features such as ACLs and
+# Grants. Please have a look at their docs to better understand the concepts:
+# ACLs: https://tailscale.com/docs/features/access-control/acls
+# Grants: https://tailscale.com/docs/features/access-control/grants
 policy:
   # The mode can be "file" or "database" that defines
-  # where the ACL policies are stored and read from.
+  # where the policies are stored and read from.
   mode: file
-  # If the mode is set to "file", the path to a
-  # HuJSON file containing ACL policies.
+  # If the mode is set to "file", the path to a HuJSON file containing policies.
   path: ""
 
 ## DNS
 #
 # headscale supports Tailscale's DNS configuration and MagicDNS.
-# Please have a look to their KB to better understand the concepts:
+# Please have a look to their docs to better understand the concepts:
 #
 # - https://tailscale.com/docs/features/access-control/acls
 # - https://tailscale.com/docs/features/magicdns

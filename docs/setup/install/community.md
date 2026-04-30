@@ -1,7 +1,7 @@
 # Community packages
 
 Several Linux distributions and community members provide packages for headscale. Those packages may be used instead of
-the [official releases](./official.md) provided by the headscale maintainers. Such packages offer improved integration
+the [official releases](official.md) provided by the headscale maintainers. Such packages offer improved integration
 for their targeted operating system and usually:
 
 - setup a dedicated local user account to run headscale
@@ -10,8 +10,8 @@ for their targeted operating system and usually:
 
 !!! warning "Community packages might be outdated"
 
-    The packages mentioned on this page might be outdated or unmaintained. Use the [official releases](./official.md) to
-    get the current stable version or to test pre-releases.
+    The packages mentioned on this page might be outdated or unmaintained. Use the [official releases](official.md) to
+    get the current stable version or to [test pre-releases](main.md).
 
     [![Packaging status](https://repology.org/badge/vertical-allrepos/headscale.svg)](https://repology.org/project/headscale/versions)
 
@@ -22,9 +22,6 @@ Arch Linux offers a package for headscale, install via:
 ```shell
 pacman -S headscale
 ```
-
-The [AUR package `headscale-git`](https://aur.archlinux.org/packages/headscale-git) can be used to build the current
-development version.
 
 ## Fedora, RHEL, CentOS
 

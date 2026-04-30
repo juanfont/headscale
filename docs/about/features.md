@@ -21,11 +21,10 @@ provides on overview of Headscale's feature and compatibility with the Tailscale
 - [x] Dual stack (IPv4 and IPv6)
 - [x] Ephemeral nodes
 - [x] Embedded [DERP server](../ref/derp.md)
-- [x] Access control lists ([GitHub label "policy"](https://github.com/juanfont/headscale/labels/policy%20%F0%9F%93%9D))
-    - [x] ACL management via API
-    - [x] Some [Autogroups](https://tailscale.com/docs/reference/targets-and-selectors#autogroups), currently:
-      `autogroup:internet`, `autogroup:nonroot`, `autogroup:member`, `autogroup:tagged`, `autogroup:self`,
-      `autogroup:danger-all`
+- [x] Policy ([GitHub label "policy"](https://github.com/juanfont/headscale/labels/policy%20%F0%9F%93%9D))
+    - [x] ACLs
+    - [x] Grants
+    - [x] Some [Autogroups](../ref/policy.md#autogroups)
     - [x] [Auto approvers](https://tailscale.com/docs/reference/syntax/policy-file#auto-approvers) for [subnet
       routers](../ref/routes.md#automatically-approve-routes-of-a-subnet-router) and [exit
       nodes](../ref/routes.md#automatically-approve-an-exit-node-with-auto-approvers)

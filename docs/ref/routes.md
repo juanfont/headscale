@@ -76,29 +76,29 @@ Please refer to the official [Tailscale
 documentation](https://tailscale.com/docs/features/subnet-routers#use-your-subnet-routes-from-other-devices) for how to
 use a subnet router on different operating systems.
 
-### Restrict the use of a subnet router with ACL
+### Restrict the use of a subnet router with a policy
 
-The routes announced by subnet routers are available to the nodes in a tailnet. By default, without an ACL enabled, all
-nodes can accept and use such routes. Configure an ACL to explicitly manage who can use routes.
+The routes announced by subnet routers are available to the nodes in a tailnet. By default, without a policy enabled,
+all nodes can accept and use such routes. Configure a policy to explicitly manage who can use routes.
 
-The ACL snippet below defines three hosts, a subnet router `router`, a regular node `node` and `service.example.net` as
-internal service that can be reached via a route on the subnet router `router`. It allows the node `node` to access
+The policy snippet below defines three hosts, a subnet router `router`, a regular node `node` and `service.example.net`
+as internal service that can be reached via a route on the subnet router `router`. It allows the node `node` to access
 `service.example.net` on port 80 and 443 which is reachable via the subnet router. Access to the subnet router itself is
 denied.
 
 ```json title="Access the routes of a subnet router without the subnet router itself"
 {
   "hosts": {
-    // the router is not referenced but announces 192.168.0.0/24"
+    // the router is not referenced but announces 192.168.0.0/24
     "router": "100.64.0.1/32",
     "node": "100.64.0.2/32",
     "service.example.net": "192.168.0.1/32"
   },
-  "acls": [
+  "grants": [
     {
-      "action": "accept",
       "src": ["node"],
-      "dst": ["service.example.net:80,443"]
+      "dst": ["service.example.net"],
+      "ip": ["80,443"]
     }
   ]
 }
@@ -107,10 +107,10 @@ denied.
 ### Automatically approve routes of a subnet router
 
 The initial setup of a subnet router usually requires manual approval of their announced routes on the control server
-before they can be used by a node in a tailnet. Headscale supports the `autoApprovers` section of an ACL to automate the
-approval of routes served with a subnet router.
+before they can be used by a node in a tailnet. Headscale supports the `autoApprovers` section in a policy to automate
+the approval of routes served with a subnet router.
 
-The ACL snippet below defines the tag `tag:router` owned by the user `alice`. This tag is used for `routes` in the
+The policy snippet below defines the tag `tag:router` owned by the user `alice`. This tag is used for `routes` in the
 `autoApprovers` section. The IPv4 route `192.168.0.0/24` is automatically approved once announced by a subnet router
 that advertises the tag `tag:router`.
 
@@ -124,7 +124,7 @@ that advertises the tag `tag:router`.
       "192.168.0.0/24": ["tag:router"]
     }
   },
-  "acls": [
+  "grants": [
     // more rules
   ]
 }
@@ -204,19 +204,19 @@ $ sudo tailscale set --exit-node myexit
 Please refer to the official [Tailscale documentation](https://tailscale.com/docs/features/exit-nodes#use-the-exit-node)
 for how to use an exit node on different operating systems.
 
-### Restrict the use of an exit node with ACL
+### Restrict the use of an exit node with a policy
 
-An exit node is offered to all nodes in a tailnet. By default, without an ACL enabled, all nodes in a tailnet can select
-and use an exit node. Configure `autogroup:internet` in an ACL rule to restrict who can use _any_ of the available exit
-nodes.
+An exit node is offered to all nodes in a tailnet. By default, without a policy enabled, all nodes in a tailnet can
+select and use an exit node. Configure `autogroup:internet` in a policy rule to restrict who can use _any_ of the
+available exit nodes.
 
 ```json title="Example use of autogroup:internet"
 {
-  "acls": [
+  "grants": [
     {
-      "action": "accept",
       "src": ["..."],
-      "dst": ["autogroup:internet:*"]
+      "dst": ["autogroup:internet"],
+      "ip": ["*"]
     }
   ]
 }
@@ -295,7 +295,7 @@ to clients. Please see the official [Tailscale documentation on high
 availability](https://tailscale.com/docs/how-to/set-up-high-availability#subnet-router-high-availability) for details.
 
 This feature is enabled by default when at least two nodes advertise the same prefix. See the configuration options
-`node.routes.ha` in the [configuration file](./configuration.md) for details.
+`node.routes.ha` in the [configuration file](configuration.md) for details.
 
 ## Troubleshooting
 
