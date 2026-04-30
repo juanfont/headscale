@@ -31,12 +31,12 @@ func (e *ListenerBindError) Error() string {
 
 func (e *ListenerBindError) Unwrap() error { return e.Err }
 
-// portFromAddr resolves the numeric port of a TCP listen address.
+// PortFromAddr resolves the numeric port of a TCP listen address.
 // Accepts host:port form with either a numeric port or one of the named
 // services "http" / "https". The named-service table is intentionally
 // hardcoded so this stays a pure string->int mapping with no network or
 // /etc/services lookups.
-func portFromAddr(addr string) (int, error) {
+func PortFromAddr(addr string) (int, error) {
 	if addr == "" {
 		return 0, errEmptyListenAddr
 	}
@@ -61,35 +61,22 @@ func portFromAddr(addr string) (int, error) {
 	return p, nil
 }
 
-// listenersOverlap reports whether two TCP listen addresses would
+// listenersOverlap reports whether two parsed TCP listen addresses would
 // compete for the same kernel socket. Mirrors kernel rules:
 //   - different ports                              → false
 //   - same port + a wildcard host on either side   → true
 //   - same port + identical specific host          → true
 //   - same port + different specific hosts         → false
-func listenersOverlap(a, b string) (bool, error) {
-	aPort, err := portFromAddr(a)
-	if err != nil {
-		return false, err
-	}
-
-	bPort, err := portFromAddr(b)
-	if err != nil {
-		return false, err
-	}
-
+func listenersOverlap(aHost string, aPort int, bHost string, bPort int) bool {
 	if aPort != bPort {
-		return false, nil
+		return false
 	}
-
-	aHost, _, _ := net.SplitHostPort(a)
-	bHost, _, _ := net.SplitHostPort(b)
 
 	if isWildcardHost(aHost) || isWildcardHost(bHost) {
-		return true, nil
+		return true
 	}
 
-	return aHost == bHost, nil
+	return aHost == bHost
 }
 
 func isWildcardHost(h string) bool {
@@ -105,9 +92,17 @@ func isWildcardHost(h string) bool {
 // configured TCP listeners that would bind the same kernel socket. The
 // ACME HTTP-01 challenge listener is only considered when a hostname is
 // set and the HTTP-01 challenge is selected.
+//
+// Parsing happens up-front, once per listener: a malformed address
+// produces a ConfigError tied to its own YAML key, so an operator can
+// see exactly which value to fix instead of guessing from a paired
+// comparison.
 func validateListenerCollisions(v *configValidator) {
 	type spec struct {
 		key, addr string
+		host      string
+		port      int
+		parsed    bool
 		active    bool
 	}
 
@@ -117,9 +112,9 @@ func validateListenerCollisions(v *configValidator) {
 	acmeAddr := viper.GetString("tls_letsencrypt_listen")
 
 	listeners := []spec{
-		{"listen_addr", listenAddr, listenAddr != ""},
-		{"grpc_listen_addr", grpcAddr, grpcAddr != ""},
-		{"metrics_listen_addr", metricsAddr, metricsAddr != ""},
+		{key: "listen_addr", addr: listenAddr, active: listenAddr != ""},
+		{key: "grpc_listen_addr", addr: grpcAddr, active: grpcAddr != ""},
+		{key: "metrics_listen_addr", addr: metricsAddr, active: metricsAddr != ""},
 		{
 			key:  "tls_letsencrypt_listen",
 			addr: acmeAddr,
@@ -130,33 +125,47 @@ func validateListenerCollisions(v *configValidator) {
 	}
 
 	for i := range listeners {
+		l := &listeners[i]
+		if !l.active {
+			continue
+		}
+
+		port, err := PortFromAddr(l.addr)
+		if err != nil {
+			v.Add(&ConfigError{
+				Reason:  "cannot parse " + l.key,
+				Current: []KV{{l.key, l.addr}},
+				Detail:  err.Error(),
+				Hint:    `use host:port form, e.g. "0.0.0.0:8080"`,
+			})
+
+			continue
+		}
+
+		host, _, _ := net.SplitHostPort(l.addr)
+		l.host = host
+		l.port = port
+		l.parsed = true
+	}
+
+	for i := range listeners {
 		for j := i + 1; j < len(listeners); j++ {
 			a, b := listeners[i], listeners[j]
-			if !a.active || !b.active {
+			if !a.parsed || !b.parsed {
 				continue
 			}
 
-			overlap, err := listenersOverlap(a.addr, b.addr)
-			if err != nil {
-				v.Add(&ConfigError{
-					Reason:  "cannot parse " + a.key,
-					Current: []KV{{a.key, a.addr}},
-					Detail:  err.Error(),
-					Hint:    `use host:port form, e.g. "0.0.0.0:8080"`,
-				})
-
+			if !listenersOverlap(a.host, a.port, b.host, b.port) {
 				continue
 			}
 
-			if overlap {
-				v.Add(&ConfigError{
-					Reason:        fmt.Sprintf("%s and %s would bind the same TCP socket", a.key, b.key),
-					Current:       []KV{{a.key, a.addr}},
-					ConflictsWith: []KV{{b.key, b.addr}},
-					Hint:          "give each listener a distinct port, or bind them to different non-wildcard hosts",
-					See:           "https://headscale.net/stable/ref/tls/",
-				})
-			}
+			v.Add(&ConfigError{
+				Reason:        fmt.Sprintf("%s and %s would bind the same TCP socket", a.key, b.key),
+				Current:       []KV{{a.key, a.addr}},
+				ConflictsWith: []KV{{b.key, b.addr}},
+				Hint:          "give each listener a distinct port, or bind them to different non-wildcard hosts",
+				See:           "https://headscale.net/stable/ref/tls/",
+			})
 		}
 	}
 }
