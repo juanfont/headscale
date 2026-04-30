@@ -31,12 +31,12 @@ func (e *ListenerBindError) Error() string {
 
 func (e *ListenerBindError) Unwrap() error { return e.Err }
 
-// portFromAddr resolves the numeric port of a TCP listen address.
+// PortFromAddr resolves the numeric port of a TCP listen address.
 // Accepts host:port form with either a numeric port or one of the named
 // services "http" / "https". The named-service table is intentionally
 // hardcoded so this stays a pure string->int mapping with no network or
 // /etc/services lookups.
-func portFromAddr(addr string) (int, error) {
+func PortFromAddr(addr string) (int, error) {
 	if addr == "" {
 		return 0, errEmptyListenAddr
 	}
@@ -68,12 +68,12 @@ func portFromAddr(addr string) (int, error) {
 //   - same port + identical specific host          → true
 //   - same port + different specific hosts         → false
 func listenersOverlap(a, b string) (bool, error) {
-	aPort, err := portFromAddr(a)
+	aPort, err := PortFromAddr(a)
 	if err != nil {
 		return false, err
 	}
 
-	bPort, err := portFromAddr(b)
+	bPort, err := PortFromAddr(b)
 	if err != nil {
 		return false, err
 	}

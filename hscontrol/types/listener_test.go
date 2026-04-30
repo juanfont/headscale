@@ -33,7 +33,7 @@ func TestPortFromAddr(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := portFromAddr(tt.addr)
+			got, err := PortFromAddr(tt.addr)
 			if tt.wantErr {
 				require.Error(t, err)
 				return

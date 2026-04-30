@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"syscall"
 
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/spf13/cobra"
 	"github.com/tailscale/squibble"
 )
@@ -28,10 +30,40 @@ var serveCmd = &cobra.Command{
 		}
 
 		err = app.Serve()
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return fmt.Errorf("headscale ran into an error and had to shut down: %w", err)
+		if err == nil || errors.Is(err, http.ErrServerClosed) {
+			return nil
 		}
 
-		return nil
+		return classifyServeError(err)
 	},
+}
+
+// classifyServeError augments specific error classes with operator
+// hints. The underlying chain is left intact so errors.Is / errors.As
+// continue to walk to ListenerBindError, syscall.EADDRINUSE, etc.
+func classifyServeError(err error) error {
+	var bindErr *types.ListenerBindError
+	if !errors.As(err, &bindErr) {
+		return err
+	}
+
+	switch {
+	case errors.Is(err, syscall.EADDRINUSE):
+		port, _ := types.PortFromAddr(bindErr.Addr)
+
+		return fmt.Errorf(
+			"%w\n\nHint: another process on this host is bound to the same address. "+
+				"Find it with: sudo ss -tlnp 'sport = :%d'",
+			err, port)
+
+	case errors.Is(err, syscall.EACCES):
+		return fmt.Errorf(
+			"%w\n\nHint: binding to a privileged port (<1024) requires root or "+
+				"CAP_NET_BIND_SERVICE. The shipped systemd unit grants this capability; "+
+				"if running manually, use sudo or "+
+				"`setcap cap_net_bind_service=+ep ./headscale`",
+			err)
+	}
+
+	return err
 }
