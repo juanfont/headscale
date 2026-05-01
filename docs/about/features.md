@@ -13,15 +13,17 @@ provides on overview of Headscale's feature and compatibility with the Tailscale
     - [x] [Global and restricted nameservers (split DNS)](https://tailscale.com/docs/reference/dns-in-tailscale#nameservers)
     - [x] [search domains](https://tailscale.com/docs/reference/dns-in-tailscale#search-domains)
     - [x] [Extra DNS records (Headscale only)](../ref/dns.md#setting-extra-dns-records)
-- [x] [Taildrop (File Sharing)](https://tailscale.com/docs/features/taildrop)
+- [x] [Taildrop](https://tailscale.com/docs/features/taildrop)
 - [x] [Tags](../ref/tags.md)
 - [x] [Routes](../ref/routes.md)
     - [x] [Subnet routers](../ref/routes.md#subnet-router)
     - [x] [Exit nodes](../ref/routes.md#exit-node)
+    - [x] [Route filtering with Via](https://tailscale.com/docs/features/access-control/grants/grants-via)
 - [x] Dual stack (IPv4 and IPv6)
 - [x] Ephemeral nodes
 - [x] Embedded [DERP server](../ref/derp.md)
-- [x] Policy ([GitHub label "policy"](https://github.com/juanfont/headscale/labels/policy%20%F0%9F%93%9D))
+- [x] [Peer relays](https://tailscale.com/docs/features/peer-relay)
+- [x] [Policy](../ref/policy.md) ([GitHub label "policy"](https://github.com/juanfont/headscale/labels/policy%20%F0%9F%93%9D))
     - [x] ACLs
     - [x] Grants
     - [x] Some [Autogroups](../ref/policy.md#autogroups)
