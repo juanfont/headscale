@@ -24,6 +24,9 @@ import (
 // ErrCannotParseBoolean is returned when a value cannot be parsed as boolean.
 var ErrCannotParseBoolean = errors.New("cannot parse value as boolean")
 
+// ErrCannotParseStringSlice is returned when a value cannot be parsed as string or []string.
+var ErrCannotParseStringSlice = errors.New("cannot parse value as string or []string")
+
 type UserID uint64
 
 type Users []User
@@ -232,24 +235,24 @@ func (u UserView) MarshalZerologObject(e *zerolog.Event) {
 // FlexibleStringSlice handles OIDC providers (e.g. JumpCloud) that return the
 // groups claim as a plain string when the user belongs to a single group,
 // instead of a single-element array.
-// Single group:    {"groups": "MyGroup"}
-// Multiple groups: {"groups": ["Group1", "Group2"]}
 type FlexibleStringSlice []string
 
 func (f *FlexibleStringSlice) UnmarshalJSON(data []byte) error {
 	var arr []string
-	if err := json.Unmarshal(data, &arr); err == nil {
+	err := json.Unmarshal(data, &arr)
+	if err == nil {
 		*f = arr
 		return nil
 	}
 
 	var single string
-	if err := json.Unmarshal(data, &single); err == nil {
+	err = json.Unmarshal(data, &single)
+	if err == nil {
 		*f = []string{single}
 		return nil
 	}
 
-	return fmt.Errorf("cannot parse %s as string or []string", string(data))
+	return fmt.Errorf("%w: %s", ErrCannotParseStringSlice, string(data))
 }
 
 // FlexibleBoolean handles JumpCloud's JSON where email_verified is returned as a
