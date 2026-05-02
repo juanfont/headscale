@@ -63,6 +63,9 @@ type PolicyManager struct {
 	// needsPerNodeFilter is true when any compiled grant requires
 	// per-node work (autogroup:self or via grants).
 	needsPerNodeFilter bool
+
+	// nodeAttrsMap maps node ID to the CapMap compiled from nodeAttrs.
+	nodeAttrsMap map[uint]tailcfg.NodeCapMap
 }
 
 // filterAndPolicy combines the compiled filter rules with policy content for hashing.
@@ -107,6 +110,9 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	pm.compiledGrants = pm.pol.compileGrants(pm.users, pm.nodes)
 	pm.userNodeIdx = buildUserNodeIndex(pm.nodes)
 	pm.needsPerNodeFilter = hasPerNodeGrants(pm.compiledGrants)
+
+	// Compile nodeAttrs into per-node CapMap.
+	pm.nodeAttrsMap = pm.pol.compileNodeAttrs(pm.users, pm.nodes)
 
 	var filter []tailcfg.FilterRule
 	if pm.pol == nil || (pm.pol.ACLs == nil && pm.pol.Grants == nil) {
@@ -529,6 +535,23 @@ func (pm *PolicyManager) FilterForNode(node types.NodeView) ([]tailcfg.FilterRul
 	defer pm.mu.Unlock()
 
 	return pm.filterForNodeLocked(node), nil
+}
+
+// NodeCapMap returns the CapMap compiled from nodeAttrs for the given node.
+// It includes capabilities granted via the policy file's nodeAttrs section.
+func (pm *PolicyManager) NodeCapMap(node types.NodeView) tailcfg.NodeCapMap {
+	if pm == nil {
+		return nil
+	}
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	if pm.nodeAttrsMap == nil {
+		return nil
+	}
+
+	return pm.nodeAttrsMap[uint(node.ID())]
 }
 
 // MatchersForNode returns the matchers for peer relationship determination for a specific node.

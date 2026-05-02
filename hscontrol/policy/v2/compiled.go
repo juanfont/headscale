@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"maps"
 	"net/netip"
 	"slices"
 
@@ -92,6 +93,78 @@ func buildUserNodeIndex(
 	}
 
 	return idx
+}
+
+// compileNodeAttrs resolves nodeAttrs into a per-node CapMap.
+// Each target string is parsed as an Alias and resolved against the current
+// nodes. Matching nodes receive all capabilities listed in Attrs.
+func (pol *Policy) compileNodeAttrs(
+	users types.Users,
+	nodes views.Slice[types.NodeView],
+) map[uint]tailcfg.NodeCapMap {
+	if pol == nil || len(pol.NodeAttrs) == 0 {
+		return nil
+	}
+
+	result := make(map[uint]tailcfg.NodeCapMap)
+
+	for _, nag := range pol.NodeAttrs {
+		// Parse targets as aliases.
+		var targets Aliases
+		for _, t := range nag.Targets {
+			alias, err := parseAlias(t)
+			if err != nil {
+				log.Trace().Err(err).Str("target", t).Msg("parsing nodeAttr target")
+				continue
+			}
+			targets = append(targets, alias)
+		}
+
+		if len(targets) == 0 {
+			continue
+		}
+
+		resolved, err := targets.Resolve(pol, users, nodes)
+		if err != nil {
+			log.Trace().Err(err).Msg("resolving nodeAttr targets")
+			continue
+		}
+
+		if resolved.Empty() {
+			continue
+		}
+
+		// Build capabilities from Attrs.
+		capMap := make(tailcfg.NodeCapMap)
+		for _, attr := range nag.Attrs {
+			capMap[tailcfg.NodeCapability(attr)] = []tailcfg.RawMessage{}
+		}
+
+		// Match against nodes by IP.
+		for _, n := range nodes.All() {
+			matched := false
+			for _, ip := range n.IPs() {
+				if resolved.Contains(ip) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				continue
+			}
+
+			uid := uint(n.ID())
+			if existing, ok := result[uid]; ok {
+				for k, v := range capMap {
+					existing[k] = v
+				}
+			} else {
+				result[uid] = maps.Clone(capMap)
+			}
+		}
+	}
+
+	return result
 }
 
 // compileGrants resolves all policy grants into compiledGrant structs.

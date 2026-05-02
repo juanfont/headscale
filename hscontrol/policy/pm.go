@@ -42,6 +42,9 @@ type PolicyManager interface {
 	// both fields are empty and the caller falls back to existing behavior.
 	ViaRoutesForPeer(viewer, peer types.NodeView) types.ViaRouteResult
 
+	// NodeCapMap returns capabilities granted to the node via policy nodeAttrs.
+	NodeCapMap(node types.NodeView) tailcfg.NodeCapMap
+
 	Version() int
 	DebugString() string
 }

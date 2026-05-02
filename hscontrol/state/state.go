@@ -1048,6 +1048,11 @@ func (s *State) MatchersForNode(node types.NodeView) ([]matcher.Match, error) {
 	return s.polMan.MatchersForNode(node)
 }
 
+// NodeCapMap returns the CapMap compiled from nodeAttrs for the given node.
+func (s *State) NodeCapMap(node types.NodeView) tailcfg.NodeCapMap {
+	return s.polMan.NodeCapMap(node)
+}
+
 // NodeCanHaveTag checks if a node is allowed to have a specific tag.
 func (s *State) NodeCanHaveTag(node types.NodeView, tag string) bool {
 	return s.polMan.NodeCanHaveTag(node, tag)

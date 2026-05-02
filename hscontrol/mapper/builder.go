@@ -90,6 +90,16 @@ func (b *MapResponseBuilder) WithSelfNode() *MapResponseBuilder {
 		return b
 	}
 
+	// Merge policy nodeAttrs CapMap into the self node.
+	if capMap := b.mapper.state.NodeCapMap(nv); capMap != nil {
+		if tailnode.CapMap == nil {
+			tailnode.CapMap = make(tailcfg.NodeCapMap)
+		}
+		for k, v := range capMap {
+			tailnode.CapMap[k] = v
+		}
+	}
+
 	b.resp.Node = tailnode
 
 	return b
@@ -264,6 +274,16 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 		}, b.mapper.cfg)
 		if err != nil {
 			return nil, err
+		}
+
+		// Merge policy nodeAttrs CapMap into the peer node.
+		if capMap := b.mapper.state.NodeCapMap(peer); capMap != nil {
+			if tn.CapMap == nil {
+				tn.CapMap = make(tailcfg.NodeCapMap)
+			}
+			for k, v := range capMap {
+				tn.CapMap[k] = v
+			}
 		}
 
 		tailPeers = append(tailPeers, tn)
