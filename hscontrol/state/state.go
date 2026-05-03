@@ -311,7 +311,10 @@ func (s *State) ReloadPolicy() ([]change.Change, error) {
 	s.nodeStore.RebuildPeerMaps()
 
 	//nolint:prealloc // cs starts with one element and may grow
-	cs := []change.Change{change.PolicyChange()}
+	c := change.PolicyChange()
+	c.IncludeSelf = true // nodeAttrs may affect self CapMap
+	c.Reason = "policy reload with self"
+	cs := []change.Change{c}
 
 	// Always call autoApproveNodes during policy reload, regardless of whether
 	// the policy content has changed. This ensures that routes are re-evaluated
