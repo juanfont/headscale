@@ -197,3 +197,29 @@ func TestNodeCapMapIPv6(t *testing.T) {
 	require.NotNil(t, capMap)
 	require.Contains(t, capMap, tailcfg.NodeCapability("ipv6-cap"))
 }
+
+func BenchmarkCompileNodeAttrs(b *testing.B) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "alice", Email: "alice@headscale.net"},
+		{Model: gorm.Model{ID: 2}, Name: "bob", Email: "bob@headscale.net"},
+	}
+
+	nodes := types.Nodes{
+		{ID: 1, Hostname: "node1", IPv4: ap("100.64.0.1"), IPv6: ap("fd7a:115c:a1e0::1"), User: &users[0], UserID: &users[0].ID},
+		{ID: 2, Hostname: "node2", IPv4: ap("100.64.0.2"), IPv6: ap("fd7a:115c:a1e0::2"), User: &users[1], UserID: &users[1].ID},
+		{ID: 3, Hostname: "node3", IPv4: ap("100.64.0.3"), IPv6: ap("fd7a:115c:a1e0::3"), User: &users[0], UserID: &users[0].ID, Tags: []string{"tag:server"}},
+	}
+
+	pol := &Policy{
+		NodeAttrs: []NodeAttrGrant{
+			{Targets: []string{"alice@"}, Attrs: []string{"funnel", "custom:abac-allow"}},
+			{Targets: []string{"tag:server"}, Attrs: []string{"custom:admin"}},
+		},
+	}
+
+	nodeViews := nodes.ViewSlice()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = pol.compileNodeAttrs(users, nodeViews)
+	}
+}
