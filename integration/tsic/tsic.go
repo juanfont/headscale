@@ -519,7 +519,7 @@ func New(
 				)
 			}
 		}
-	case "unstable":
+	case "latest", "unstable":
 		tailscaleOptions.Repository = "tailscale/tailscale"
 		tailscaleOptions.Tag = version
 
