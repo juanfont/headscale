@@ -1920,10 +1920,15 @@ func (s *State) HandleNodeFromAuthPath(
 	} else if existingNodeOwnedByOtherUser {
 		oldUser := existingNodeAnyUser.User()
 
+		oldUserName := ""
+		if oldUser.Valid() {
+			oldUserName = oldUser.Name()
+		}
+
 		logger.Info().
 			Str(zf.ExistingNodeName, existingNodeAnyUser.Hostname()).
 			Uint64(zf.ExistingNodeID, existingNodeAnyUser.ID().Uint64()).
-			Str(zf.OldUser, oldUser.Name()).
+			Str(zf.OldUser, oldUserName).
 			Msg("Creating new node for different user (same machine key exists for another user)")
 
 		finalNode, err = s.createNewNodeFromAuth(
@@ -2223,7 +2228,12 @@ func (s *State) HandleNodeFromPreAuthKey(
 		if belongsToDifferentUser {
 			// Node exists but belongs to a different user.
 			// Create a new node for the new user (do not transfer).
-			oldUserName := existingNodeAnyUser.User().Name()
+			oldUser := existingNodeAnyUser.User()
+
+			oldUserName := ""
+			if oldUser.Valid() {
+				oldUserName = oldUser.Name()
+			}
 
 			log.Info().
 				Caller().

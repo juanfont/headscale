@@ -3988,3 +3988,116 @@ func TestTaggedNodeWithoutUserToDifferentUser(t *testing.T) {
 		nodeAfterReauth.ID().Uint64(), nodeAfterReauth.Tags().AsSlice(),
 		nodeAfterReauth.IsTagged(), nodeAfterReauth.UserID().Get())
 }
+
+// TestHandleNodeFromPreAuthKey_OldUserNil_NoPanic asserts that
+// HandleNodeFromPreAuthKey does not panic when the in-memory NodeStore
+// holds a non-tagged node whose UserID points at a user but whose User
+// pointer is nil (orphan snapshot, e.g. a Preload("User") join missed
+// the row). Re-registering the same machine key under a different user
+// enters the "different user" branch and would otherwise crash at
+// oldUser.Name() in UserView.Name when the backing pointer is nil.
+func TestHandleNodeFromPreAuthKey_OldUserNil_NoPanic(t *testing.T) {
+	app := createTestApp(t)
+
+	userA := app.state.CreateUserForTest("preauth-orphan-old")
+	userB := app.state.CreateUserForTest("preauth-orphan-new")
+
+	machineKey := key.NewMachine()
+	orphanNodeKey := key.NewNode()
+
+	userIDA := userA.ID
+	orphan := types.Node{
+		ID:             99001,
+		MachineKey:     machineKey.Public(),
+		NodeKey:        orphanNodeKey.Public(),
+		Hostname:       "preauth-orphan",
+		GivenName:      "preauth-orphan",
+		UserID:         &userIDA,
+		User:           nil,
+		RegisterMethod: "authkey",
+	}
+	app.state.PutNodeInStoreForTest(orphan)
+
+	pakB, err := app.state.CreatePreAuthKey(userB.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+
+	newNodeKey := key.NewNode()
+	regReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pakB.Key,
+		},
+		NodeKey: newNodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "preauth-orphan-newuser",
+		},
+		Expiry: time.Now().Add(24 * time.Hour),
+	}
+
+	resp, err := app.handleRegisterWithAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err, "registration must not panic when old user is nil")
+	require.NotNil(t, resp)
+	require.True(t, resp.MachineAuthorized)
+
+	var registered types.NodeView
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		var found bool
+
+		registered, found = app.state.GetNodeByNodeKey(newNodeKey.Public())
+		assert.True(c, found, "new node should be available in NodeStore")
+	}, 1*time.Second, 50*time.Millisecond, "waiting for new node")
+
+	assert.NotEqual(t, types.NodeID(99001), registered.ID(), "new node, not orphan")
+	assert.Equal(t, userB.ID, registered.UserID().Get(), "new node belongs to userB")
+}
+
+// TestHandleNodeFromAuthPath_OldUserNil_NoPanic is the parallel guard
+// for the gRPC/OIDC entry point. Same orphan shape as
+// TestHandleNodeFromPreAuthKey_OldUserNil_NoPanic; HandleNodeFromAuthPath
+// has its own oldUser.Name() log line in the existingNodeOwnedByOtherUser
+// branch and panics independently of the noise registration path.
+func TestHandleNodeFromAuthPath_OldUserNil_NoPanic(t *testing.T) {
+	app := createTestApp(t)
+
+	userA := app.state.CreateUserForTest("authpath-orphan-old")
+	userB := app.state.CreateUserForTest("authpath-orphan-new")
+
+	machineKey := key.NewMachine()
+	orphanNodeKey := key.NewNode()
+
+	userIDA := userA.ID
+	orphan := types.Node{
+		ID:             99002,
+		MachineKey:     machineKey.Public(),
+		NodeKey:        orphanNodeKey.Public(),
+		Hostname:       "authpath-orphan",
+		GivenName:      "authpath-orphan",
+		UserID:         &userIDA,
+		User:           nil,
+		RegisterMethod: "oidc",
+	}
+	app.state.PutNodeInStoreForTest(orphan)
+
+	newNodeKey := key.NewNode()
+	authID := types.MustAuthID()
+	regEntry := types.NewRegisterAuthRequest(&types.RegistrationData{
+		MachineKey: machineKey.Public(),
+		NodeKey:    newNodeKey.Public(),
+		Hostname:   "authpath-orphan-newuser",
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "authpath-orphan-newuser",
+		},
+	})
+	app.state.SetAuthCacheEntry(authID, regEntry)
+
+	node, _, err := app.state.HandleNodeFromAuthPath(
+		authID,
+		types.UserID(userB.ID),
+		nil,
+		"oidc",
+	)
+	require.NoError(t, err, "auth-path registration must not panic on nil old user")
+	require.True(t, node.Valid())
+	assert.NotEqual(t, types.NodeID(99002), node.ID(), "new node, not orphan")
+	assert.Equal(t, userB.ID, node.UserID().Get(), "new node belongs to userB")
+}
