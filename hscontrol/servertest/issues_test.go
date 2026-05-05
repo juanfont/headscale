@@ -9,6 +9,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/servertest"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
@@ -130,6 +131,39 @@ func TestIssuesMapContent(t *testing.T) {
 			assert.NotEmpty(t, peerProfile.DisplayName(),
 				"peer user profile should have a display name")
 		}
+	})
+
+	// When a new cross-user peer first becomes visible via a policy change,
+	// MapResponse should carry that peer's UserProfile alongside it.
+	// Otherwise the netmap has a peer whose owner is unknown and code
+	// reading nm.UserProfiles[peer.User()] sees a zero UserProfileView.
+	t.Run("policy_change_carries_user_profile_for_new_peer", func(t *testing.T) {
+		t.Parallel()
+
+		srv := servertest.NewServer(t)
+		user1 := srv.CreateUser(t, "pc-user1")
+		c1 := servertest.NewClient(t, srv, "pc-node1", servertest.WithUser(user1))
+
+		c1.WaitForCondition(t, "c1 has its initial netmap",
+			5*time.Second,
+			func(nm *netmap.NetworkMap) bool { return nm.SelfNode.Valid() })
+
+		// Pre-register node2 directly so c1's first view of it arrives
+		// via the policy-change broadcast, not via a per-node NodeAdded.
+		user2 := srv.CreateUser(t, "pc-user2")
+		node2 := srv.State().CreateRegisteredNodeForTest(user2, "pc-node2")
+		node2.User = user2
+		srv.State().PutNodeInStoreForTest(*node2)
+
+		srv.App.Change(change.PolicyChange())
+		c1.WaitForPeers(t, 1, 5*time.Second)
+
+		nm := c1.Netmap()
+		peer := nm.Peers[0]
+		profile, ok := nm.UserProfiles[peer.User()]
+		require.True(t, ok,
+			"peer is visible but nm.UserProfiles[%d] is missing", peer.User())
+		assert.Equal(t, "pc-user2", profile.LoginName())
 	})
 }
 
