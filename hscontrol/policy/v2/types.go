@@ -1898,6 +1898,14 @@ type Grant struct {
 	Via []Tag `json:"via,omitzero"`
 }
 
+// NodeAttrGrant maps a set of node attributes to nodes matching a target.
+// Targets are strings that can be resolved as aliases (tags, users, groups,
+// autogroups, or wildcard).
+type NodeAttrGrant struct {
+	Targets []string `json:"target"`
+	Attrs   []string `json:"attr"`
+}
+
 // aclToGrants converts an ACL rule to one or more equivalent Grant rules.
 func aclToGrants(acl ACL) []Grant {
 	ret := make([]Grant, 0, len(acl.Destinations))
@@ -1984,6 +1992,7 @@ type Policy struct {
 	TagOwners     TagOwners          `json:"tagOwners,omitempty"`
 	ACLs          []ACL              `json:"acls,omitempty"`
 	Grants        []Grant            `json:"grants,omitempty"`
+	NodeAttrs     []NodeAttrGrant    `json:"nodeAttrs,omitempty"`
 	AutoApprovers AutoApproverPolicy `json:"autoApprovers"`
 	SSHs          []SSH              `json:"ssh,omitempty"`
 }

@@ -311,7 +311,10 @@ func (s *State) ReloadPolicy() ([]change.Change, error) {
 	s.nodeStore.RebuildPeerMaps()
 
 	//nolint:prealloc // cs starts with one element and may grow
-	cs := []change.Change{change.PolicyChange()}
+	c := change.PolicyChange()
+	c.IncludeSelf = true // nodeAttrs may affect self CapMap
+	c.Reason = "policy reload with self"
+	cs := []change.Change{c}
 
 	// Always call autoApproveNodes during policy reload, regardless of whether
 	// the policy content has changed. This ensures that routes are re-evaluated
@@ -1046,6 +1049,11 @@ func (s *State) FilterForNode(node types.NodeView) ([]tailcfg.FilterRule, error)
 // MatchersForNode returns matchers for peer relationship determination (unreduced).
 func (s *State) MatchersForNode(node types.NodeView) ([]matcher.Match, error) {
 	return s.polMan.MatchersForNode(node)
+}
+
+// NodeCapMap returns the CapMap compiled from nodeAttrs for the given node.
+func (s *State) NodeCapMap(node types.NodeView) tailcfg.NodeCapMap {
+	return s.polMan.NodeCapMap(node)
 }
 
 // NodeCanHaveTag checks if a node is allowed to have a specific tag.
