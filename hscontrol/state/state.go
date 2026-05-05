@@ -2712,3 +2712,12 @@ func peerChangeEmpty(peerChange tailcfg.PeerChange) bool {
 		peerChange.LastSeen == nil &&
 		peerChange.KeyExpiry == nil
 }
+
+// RandomizeClientPort returns whether the randomizeClientPort setting is enabled in the current policy.
+func (s *State) RandomizeClientPort() bool {
+	if s.polMan == nil {
+		return false
+	}
+
+	return s.polMan.RandomizeClientPort()
+}

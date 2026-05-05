@@ -452,11 +452,6 @@ logtail:
   # disabled by default. Enabling this will make your clients send logs to Tailscale Inc.
   enabled: false
 
-# Enabling this option makes devices prefer a random port for WireGuard traffic over the
-# default static port 41641. This option is intended as a workaround for some buggy
-# firewall devices. See https://tailscale.com/docs/integrations/firewalls for more information.
-randomize_client_port: false
-
 # Taildrop configuration
 # Taildrop is the file sharing feature of Tailscale, allowing nodes to send files to each other.
 # https://tailscale.com/docs/features/taildrop

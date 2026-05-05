@@ -44,6 +44,7 @@ type PolicyManager interface {
 
 	Version() int
 	DebugString() string
+	RandomizeClientPort() bool
 }
 
 // NewPolicyManager returns a new policy manager.

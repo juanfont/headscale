@@ -130,9 +130,8 @@ type Config struct {
 
 	OIDC OIDCConfig
 
-	LogTail             LogTailConfig
-	RandomizeClientPort bool
-	Taildrop            TaildropConfig
+	LogTail  LogTailConfig
+	Taildrop TaildropConfig
 
 	CLI CLIConfig
 
@@ -428,7 +427,6 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("oidc.email_verified_required", true)
 
 	viper.SetDefault("logtail.enabled", false)
-	viper.SetDefault("randomize_client_port", false)
 	viper.SetDefault("taildrop.enabled", true)
 
 	viper.SetDefault("node.expiry", "0")
@@ -535,6 +533,8 @@ func validateServerConfig() error {
 
 	// Removed: oidc.expiry -> node.expiry
 	depr.fatalIfSet("oidc.expiry", "node.expiry")
+
+	depr.fatalIfSet("randomize_client_port", "policy file: randomizeClientPort")
 
 	if viper.GetBool("oidc.enabled") {
 		err := validatePKCEMethod(viper.GetString("oidc.pkce.method"))
@@ -1120,7 +1120,6 @@ func LoadServerConfig() (*Config, error) {
 
 	derpConfig := derpConfig()
 	logTailConfig := logtailConfig()
-	randomizeClientPort := viper.GetBool("randomize_client_port")
 
 	oidcClientSecret := viper.GetString("oidc.client_secret")
 
@@ -1219,8 +1218,7 @@ func LoadServerConfig() (*Config, error) {
 			},
 		},
 
-		LogTail:             logTailConfig,
-		RandomizeClientPort: randomizeClientPort,
+		LogTail: logTailConfig,
 		Taildrop: TaildropConfig{
 			Enabled: viper.GetBool("taildrop.enabled"),
 		},

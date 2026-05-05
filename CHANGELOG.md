@@ -101,6 +101,10 @@ Examples that previously regressed and now work:
   - Downgrading to a previous minor version is blocked
   - Patch version changes within the same minor are always allowed
 
+#### Configuration
+
+- The global `randomize_client_port` option has been removed from `config.yaml`. Set `"randomizeClientPort": true` at the root of the ACL policy file instead. Headscale refuses to start if the old key is present.
+
 #### CLI
 
 - `headscale nodes register` is deprecated in favour of `headscale auth register --auth-id <id> --user <user>` [#1850](https://github.com/juanfont/headscale/pull/1850)

@@ -1449,3 +1449,14 @@ func resolveTagOwners(p *Policy, users types.Users, nodes views.Slice[types.Node
 
 	return ret, nil
 }
+
+func (pm *PolicyManager) RandomizeClientPort() bool {
+	if pm == nil || pm.pol == nil {
+		return false
+	}
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	return pm.pol.RandomizeClientPort
+}

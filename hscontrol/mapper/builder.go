@@ -90,6 +90,14 @@ func (b *MapResponseBuilder) WithSelfNode() *MapResponseBuilder {
 		return b
 	}
 
+	if b.mapper.state.RandomizeClientPort() {
+		if tailnode.CapMap == nil {
+			tailnode.CapMap = make(tailcfg.NodeCapMap)
+		}
+
+		tailnode.CapMap[tailcfg.NodeAttrRandomizeClientPort] = []tailcfg.RawMessage{}
+	}
+
 	b.resp.Node = tailnode
 
 	return b
@@ -264,6 +272,14 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 		}, b.mapper.cfg)
 		if err != nil {
 			return nil, err
+		}
+
+		if b.mapper.state.RandomizeClientPort() {
+			if tn.CapMap == nil {
+				tn.CapMap = make(tailcfg.NodeCapMap)
+			}
+
+			tn.CapMap[tailcfg.NodeAttrRandomizeClientPort] = []tailcfg.RawMessage{}
 		}
 
 		tailPeers = append(tailPeers, tn)

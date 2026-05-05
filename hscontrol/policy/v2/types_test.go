@@ -2051,6 +2051,11 @@ func TestUnmarshalPolicy(t *testing.T) {
 `,
 			wantErr: "invalid localpart format",
 		},
+		{
+			name:  "randomize-client-port",
+			input: `{"randomizeClientPort": true}`,
+			want:  &Policy{RandomizeClientPort: true},
+		},
 	}
 
 	cmps := append(util.Comparers,

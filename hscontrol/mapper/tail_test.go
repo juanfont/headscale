@@ -209,10 +209,9 @@ func TestTailNode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &types.Config{
-				BaseDomain:          tt.baseDomain,
-				TailcfgDNSConfig:    tt.dnsConfig,
-				RandomizeClientPort: false,
-				Taildrop:            types.TaildropConfig{Enabled: true},
+				BaseDomain:       tt.baseDomain,
+				TailcfgDNSConfig: tt.dnsConfig,
+				Taildrop:         types.TaildropConfig{Enabled: true},
 			}
 
 			// Stub primary-route lookup: tt.node owns its SubnetRoutes,
