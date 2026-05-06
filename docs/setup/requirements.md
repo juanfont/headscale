@@ -17,7 +17,7 @@ The ports in use vary with the intended scenario and enabled features. Some of t
 - tcp/80
     - Expose publicly: yes
     - HTTP, used by Let's Encrypt to verify ownership via the HTTP-01 challenge.
-    - Only required if the built-in Let's Enrypt client with the HTTP-01 challenge is used. See [TLS](../ref/tls.md) for
+    - Only required if the built-in Let's Encrypt client with the HTTP-01 challenge is used. See [TLS](../ref/tls.md) for
       details.
 - tcp/443
     - Expose publicly: yes
