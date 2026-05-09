@@ -147,9 +147,13 @@ func (api headscaleV1APIServer) CreatePreAuthKey(
 	ctx context.Context,
 	request *v1.CreatePreAuthKeyRequest,
 ) (*v1.CreatePreAuthKeyResponse, error) {
-	var expiration time.Time
+	// A nil expiration in the request means "never expires"; pass nil through
+	// to the database so the column is stored as NULL rather than the zero
+	// time.Time (0001-01-01), which would mark the key as expired immediately.
+	var expiration *time.Time
 	if request.GetExpiration() != nil {
-		expiration = request.GetExpiration().AsTime()
+		t := request.GetExpiration().AsTime()
+		expiration = &t
 	}
 
 	for _, tag := range request.AclTags {
@@ -174,7 +178,7 @@ func (api headscaleV1APIServer) CreatePreAuthKey(
 		userID,
 		request.GetReusable(),
 		request.GetEphemeral(),
-		&expiration,
+		expiration,
 		request.AclTags,
 	)
 	if err != nil {
@@ -592,12 +596,16 @@ func (api headscaleV1APIServer) CreateApiKey(
 	ctx context.Context,
 	request *v1.CreateApiKeyRequest,
 ) (*v1.CreateApiKeyResponse, error) {
-	var expiration time.Time
+	// A nil expiration in the request means "never expires"; pass nil through
+	// to the database so the column is stored as NULL rather than the zero
+	// time.Time (0001-01-01), which would mark the key as expired immediately.
+	var expiration *time.Time
 	if request.GetExpiration() != nil {
-		expiration = request.GetExpiration().AsTime()
+		t := request.GetExpiration().AsTime()
+		expiration = &t
 	}
 
-	apiKey, _, err := api.h.state.CreateAPIKey(&expiration)
+	apiKey, _, err := api.h.state.CreateAPIKey(expiration)
 	if err != nil {
 		return nil, err
 	}
