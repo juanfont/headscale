@@ -1935,3 +1935,362 @@ func TestOIDCReloginSameUserRoutesPreserved(t *testing.T) {
 
 	t.Logf("Test completed - verifying issue #2896 fix for OIDC")
 }
+
+// TestOIDCGroupsClaimPopulatesUser exercises the full mockoidc → headscale →
+// gRPC ListUsers pipeline. With `oidc.groups.enabled=true` and a mock user
+// emitting a `groups` claim, the User row must have Groups persisted and
+// surfaced via the gRPC User message.
+//
+// This is the "end-to-end test addressing maintainer concern" from
+// juanfont/headscale#1121 — proves the feature without needing a third-party
+// IdP. Default is opt-in, so disabling it (or omitting the env) keeps the
+// previous behavior (no groups persisted).
+func TestOIDCGroupsClaimPopulatesUser(t *testing.T) {
+	IntegrationSkip(t)
+
+	const username = "engineer"
+
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{},
+		OIDCUsers: []mockoidc.MockUser{
+			oidcMockUserWithGroups(username, true, "engineers", "platform"),
+		},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	oidcMap := map[string]string{
+		"HEADSCALE_OIDC_ISSUER":             scenario.mockOIDC.Issuer(),
+		"HEADSCALE_OIDC_CLIENT_ID":          scenario.mockOIDC.ClientID(),
+		"HEADSCALE_OIDC_GROUPS_ENABLED":     "true",
+		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
+		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
+	}
+
+	err = scenario.CreateHeadscaleEnvWithLoginURL(
+		nil,
+		hsic.WithTestName("oidcgroupsclaim"),
+		hsic.WithConfigEnv(oidcMap),
+		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	require.NoError(t, scenario.WaitForTailscaleSync())
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	users, err := headscale.ListUsers()
+	require.NoError(t, err)
+
+	var got *v1.User
+	for _, u := range users {
+		if u.GetEmail() == username+"@headscale.net" {
+			got = u
+			break
+		}
+	}
+	require.NotNil(t, got, "OIDC user not registered after login")
+
+	wantGroups := []string{"engineers", "platform"}
+	if diff := cmp.Diff(wantGroups, got.GetGroups(),
+		cmpopts.SortSlices(func(a, b string) bool { return a < b })); diff != "" {
+		t.Fatalf("Groups mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestOIDCGroupsDisabledDoesNotPersist is the negative companion: with the
+// feature flag off (the default), even a mock user emitting groups in its
+// claim should not have those memberships persisted. This guards against
+// silent default-behavior changes for existing deployments on upgrade.
+func TestOIDCGroupsDisabledDoesNotPersist(t *testing.T) {
+	IntegrationSkip(t)
+
+	const username = "engineer"
+
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{},
+		OIDCUsers: []mockoidc.MockUser{
+			oidcMockUserWithGroups(username, true, "engineers"),
+		},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	// Note: HEADSCALE_OIDC_GROUPS_ENABLED is intentionally omitted to
+	// exercise the default-off behavior.
+	oidcMap := map[string]string{
+		"HEADSCALE_OIDC_ISSUER":             scenario.mockOIDC.Issuer(),
+		"HEADSCALE_OIDC_CLIENT_ID":          scenario.mockOIDC.ClientID(),
+		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
+		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
+	}
+
+	err = scenario.CreateHeadscaleEnvWithLoginURL(
+		nil,
+		hsic.WithTestName("oidcgroupsdisabled"),
+		hsic.WithConfigEnv(oidcMap),
+		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	require.NoError(t, scenario.WaitForTailscaleSync())
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	users, err := headscale.ListUsers()
+	require.NoError(t, err)
+
+	var got *v1.User
+	for _, u := range users {
+		if u.GetEmail() == username+"@headscale.net" {
+			got = u
+			break
+		}
+	}
+	require.NotNil(t, got, "OIDC user not registered after login")
+
+	if len(got.GetGroups()) != 0 {
+		t.Fatalf("expected no groups when feature disabled, got %v", got.GetGroups())
+	}
+}
+
+// TestOIDCGroupsCustomClaimName proves that a deployment with an IdP that
+// exposes group memberships under a non-standard claim name (e.g. "roles" or
+// Cognito's "cognito:groups") can configure headscale to read from that name.
+//
+// We can't reconfigure mockoidc to emit a non-default claim name, so this
+// test runs the configured-claim-name path negatively: by pointing
+// `oidc.groups.claim` at a name mockoidc does NOT emit, the user's persisted
+// Groups should be empty even though mockoidc sends a `groups` claim. This
+// is the same code path that, against a real IdP using e.g. "roles", would
+// successfully extract the role list — what differs is only the name.
+func TestOIDCGroupsCustomClaimName(t *testing.T) {
+	IntegrationSkip(t)
+
+	const username = "engineer"
+
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{},
+		OIDCUsers: []mockoidc.MockUser{
+			oidcMockUserWithGroups(username, true, "engineers"),
+		},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	oidcMap := map[string]string{
+		"HEADSCALE_OIDC_ISSUER":             scenario.mockOIDC.Issuer(),
+		"HEADSCALE_OIDC_CLIENT_ID":          scenario.mockOIDC.ClientID(),
+		"HEADSCALE_OIDC_GROUPS_ENABLED":     "true",
+		"HEADSCALE_OIDC_GROUPS_CLAIM":       "roles", // mockoidc emits "groups", not "roles"
+		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
+		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
+	}
+
+	err = scenario.CreateHeadscaleEnvWithLoginURL(
+		nil,
+		hsic.WithTestName("oidcgroupscustomclaim"),
+		hsic.WithConfigEnv(oidcMap),
+		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	require.NoError(t, scenario.WaitForTailscaleSync())
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	users, err := headscale.ListUsers()
+	require.NoError(t, err)
+
+	var got *v1.User
+	for _, u := range users {
+		if u.GetEmail() == username+"@headscale.net" {
+			got = u
+			break
+		}
+	}
+	require.NotNil(t, got, "OIDC user not registered after login")
+
+	if len(got.GetGroups()) != 0 {
+		t.Fatalf("groups extracted from claim %q should be empty (mockoidc only emits %q): got %v",
+			"roles", "groups", got.GetGroups())
+	}
+}
+
+// TestOIDCGroupsClaimRefreshOnRelogin verifies that when an OIDC re-login
+// mutates the user's `groups` claim, the change propagates to peers that
+// were already connected — no headscale restart required. Guards against
+// regression in the State.UpdateUser → Headscale.Change broadcast path
+// that would otherwise leave peer netmaps stale until something else
+// triggered a refresh.
+//
+// The OIDC user logs in twice: first with no groups claim, then with
+// groups=["group1"]. The policy resolves `group:test` via the OIDC
+// claim. An anchor peer is connected throughout and inspects its own
+// PacketFilter to assert the OIDC user only appears as a Src for the
+// `group:test`-gated rule after the second login.
+func TestOIDCGroupsClaimRefreshOnRelogin(t *testing.T) {
+	IntegrationSkip(t)
+
+	const oidcUsername = "engineer"
+	const anchorUser = "anchor"
+
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{anchorUser},
+		OIDCUsers: []mockoidc.MockUser{
+			oidcMockUser(oidcUsername, true),                     // initial login: no groups
+			oidcMockUserWithGroups(oidcUsername, true, "group1"), // relogin: groups=[group1]
+		},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	oidcMap := map[string]string{
+		"HEADSCALE_OIDC_ISSUER":             scenario.mockOIDC.Issuer(),
+		"HEADSCALE_OIDC_CLIENT_ID":          scenario.mockOIDC.ClientID(),
+		"HEADSCALE_OIDC_GROUPS_ENABLED":     "true",
+		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
+		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
+	}
+
+	err = scenario.CreateHeadscaleEnvWithLoginURL(
+		nil,
+		hsic.WithTestName("oidcgroupsrefresh"),
+		hsic.WithConfigEnv(oidcMap),
+		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
+		hsic.WithACLPolicy(&policyv2.Policy{
+			Groups: policyv2.Groups{
+				policyv2.Group("group:test"): []policyv2.Username{policyv2.Username("group1@")},
+			},
+			ACLs: []policyv2.ACL{
+				{
+					Action:  "accept",
+					Sources: []policyv2.Alias{groupp("group:test")},
+					Destinations: []policyv2.AliasWithPorts{
+						aliasWithPorts(prefixp("100.64.0.0/10"), tailcfg.PortRangeAny),
+					},
+				},
+			},
+		}),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	// Anchor peer was created by the scenario and connected via CLI.
+	// It stays connected for the entire test — the assertion below
+	// reads its PacketFilter, which only refreshes via the broadcast
+	// path under test.
+	anchorClients, err := scenario.ListTailscaleClients()
+	require.NoError(t, err)
+	require.Len(t, anchorClients, 1, "expected exactly one anchor client before OIDC login")
+	anchor := anchorClients[0]
+
+	// Bring up the OIDC client and complete the first login (mockoidc
+	// serves the no-groups record).
+	oidcClient, err := scenario.CreateTailscaleNode("unstable",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]))
+	require.NoError(t, err)
+
+	u, err := oidcClient.LoginWithURL(headscale.GetEndpoint())
+	require.NoError(t, err)
+
+	_, err = doLoginURL(oidcClient.Hostname(), u)
+	require.NoError(t, err)
+
+	require.NoError(t, scenario.WaitForTailscaleSync())
+
+	oidcIPv4, err := oidcClient.IPv4()
+	require.NoError(t, err)
+
+	// anchorSeesOIDCAsSrc reports whether anchor's PacketFilter
+	// contains any rule whose Srcs includes the OIDC user's IP. With
+	// the test policy, the only way for that IP to appear is through
+	// the `group:test` rule, which only resolves to it once the
+	// groups claim is asserted.
+	anchorSeesOIDCAsSrc := func() bool {
+		pf, err := anchor.PacketFilter()
+		if err != nil {
+			return false
+		}
+		for _, m := range pf {
+			for _, src := range m.Srcs {
+				if src.Contains(oidcIPv4) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	// Pre-relogin: OIDC user has no groups, group:test resolves to an
+	// empty set, the rule drops out, anchor's filter never lists the
+	// OIDC IP as Src.
+	assert.Never(t, func() bool { return anchorSeesOIDCAsSrc() },
+		5*time.Second, 500*time.Millisecond,
+		"OIDC user must not appear as Src on anchor before group claim is asserted")
+
+	// Trigger the relogin. Logout twice (workaround mirrored from
+	// TestOIDCReloginSameNodeSameUser), wait for NeedsLogin, then
+	// log in again. mockoidc serves the second record this time,
+	// which carries groups=["group1"].
+	require.NoError(t, oidcClient.Logout())
+	require.NoError(t, oidcClient.Logout())
+
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		status, err := oidcClient.Status()
+		assert.NoError(ct, err)
+		assert.Equal(ct, "NeedsLogin", status.BackendState)
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second,
+		"waiting for logout to settle before relogin")
+
+	u, err = oidcClient.LoginWithURL(headscale.GetEndpoint())
+	require.NoError(t, err)
+
+	_, err = doLoginURL(oidcClient.Hostname(), u)
+	require.NoError(t, err)
+
+	// Sanity check: ListUsers must reflect the new claim. This alone
+	// passes regardless of the broadcast — it only proves the row was
+	// updated in the DB.
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		users, err := headscale.ListUsers()
+		assert.NoError(ct, err)
+		for _, u := range users {
+			if u.GetEmail() == oidcUsername+"@headscale.net" {
+				if diff := cmp.Diff([]string{"group1"}, u.GetGroups()); diff != "" {
+					ct.Errorf("groups not persisted after relogin (-want +got):\n%s", diff)
+				}
+				return
+			}
+		}
+		ct.Errorf("OIDC user not present in ListUsers after relogin")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second,
+		"OIDC user record should reflect the new groups claim after relogin")
+
+	// The real assertion: the anchor's PacketFilter must update to
+	// include the OIDC user's IP as Src for the group:test rule. If
+	// the broadcast path is broken, anchor keeps its pre-relogin
+	// netmap and this fails until the headscale process restarts.
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		assert.True(ct, anchorSeesOIDCAsSrc(),
+			"OIDC user must appear as Src in anchor's PacketFilter after the relogin's groups claim; if this never converges, the State.UpdateUser → Headscale.Change broadcast was not invoked")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second,
+		"anchor PacketFilter should refresh after OIDC relogin adds groups claim")
+}

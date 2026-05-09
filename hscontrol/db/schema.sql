@@ -12,6 +12,8 @@ CREATE TABLE users(
   provider_identifier text,
   provider text,
   profile_pic_url text,
+  -- Group memberships from the OIDC `groups` claim, JSON-serialized.
+  groups text,
 
   created_at datetime,
   updated_at datetime,

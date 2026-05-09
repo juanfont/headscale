@@ -277,6 +277,17 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
+	// When OIDC groups are enabled with a non-default claim name, decode the
+	// token a second time into a generic map and pull the configured field
+	// out. This keeps the canonical struct (`json:"groups"`) untouched so
+	// providers that use the standard claim name don't need any config.
+	if a.cfg.Groups.Enabled && a.cfg.Groups.Claim != "" && a.cfg.Groups.Claim != "groups" {
+		var raw map[string]any
+		if err := idToken.Claims(&raw); err == nil {
+			claims.Groups = types.ExtractGroupsClaim(raw, a.cfg.Groups.Claim)
+		}
+	}
+
 	// Fetch user information (email, groups, name, etc) from the userinfo endpoint
 	// https://openid.net/specs/openid-connect-core-1_0.html#UserInfo
 	var userinfo *oidc.UserInfo
@@ -302,6 +313,16 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		if userinfo2.Groups != nil {
 			claims.Groups = userinfo2.Groups
 		}
+		// Same custom-claim treatment for the userinfo response — overrides
+		// the value just copied above when a non-standard claim name is set.
+		if a.cfg.Groups.Enabled && a.cfg.Groups.Claim != "" && a.cfg.Groups.Claim != "groups" {
+			var rawUI map[string]any
+			if err := userinfo.Claims(&rawUI); err == nil {
+				if g := types.ExtractGroupsClaim(rawUI, a.cfg.Groups.Claim); g != nil {
+					claims.Groups = g
+				}
+			}
+		}
 	} else {
 		util.LogErr(err, "could not get userinfo; only using claims from id token")
 	}
@@ -314,7 +335,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
-	user, _, err := a.createOrUpdateUserFromClaim(&claims)
+	user, userChange, err := a.createOrUpdateUserFromClaim(&claims)
 	if err != nil {
 		httpUserError(writer, NewHTTPError(
 			http.StatusInternalServerError,
@@ -324,6 +345,14 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 
 		return
 	}
+
+	// Broadcast the user-update so peers refresh netmaps when the
+	// login mutated ACL-affecting state. Without this, a freshly
+	// populated `groups` claim is correctly persisted and reflected in
+	// the policy manager's user cache, but already-connected peers
+	// keep their pre-login netmaps until some other event triggers a
+	// refresh. Empty changes are ignored by Change.
+	a.h.Change(userChange)
 
 	// TODO(kradalby): Is this comment right?
 	// If the node exists, then the node should be reauthenticated,
@@ -630,7 +659,7 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 		user = &types.User{}
 	}
 
-	user.FromClaim(claims, a.cfg.EmailVerifiedRequired)
+	user.FromClaim(claims, a.cfg.EmailVerifiedRequired, a.cfg.Groups.Enabled)
 
 	if newUser {
 		user, c, err = a.h.state.CreateUser(*user)

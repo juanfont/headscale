@@ -428,6 +428,19 @@ unix_socket_permission: "0770"
 #   allowed_groups:
 #     - /headscale
 #
+#   # Use OIDC groups in ACL `group:<name>` rules.
+#   # When enabled, the user's group memberships from the identity provider's
+#   # `groups` claim (or the claim configured via `claim:` below) are persisted
+#   # on each login and resolved by the policy engine alongside any static
+#   # memberships in policy.hujson. Default is off — enable to stop maintaining
+#   # group memberships in two places.
+#   groups:
+#     enabled: false
+#     # Override when the identity provider exposes group memberships under a
+#     # non-standard claim name (e.g. AWS Cognito's `cognito:groups`, custom
+#     # `roles` claims).
+#     claim: groups
+#
 #   # Optional: PKCE (Proof Key for Code Exchange) configuration
 #   # PKCE adds an additional layer of security to the OAuth 2.0 authorization code flow
 #   # by preventing authorization code interception attacks

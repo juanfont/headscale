@@ -4,13 +4,13 @@ deps:
   - remote: buf.build
     owner: googleapis
     repository: googleapis
-    commit: 61b203b9a9164be9a834f58c37be6f62
-    digest: shake256:e619113001d6e284ee8a92b1561e5d4ea89a47b28bf0410815cb2fa23914df8be9f1a6a98dcf069f5bc2d829a2cfb1ac614863be45cd4f8a5ad8606c5f200224
+    commit: c17df5b2beca46928cc87d5656bd5343
+    digest: shake256:c62ecead9b13485a02893cd678a6c81e40879bf00ea509bbc6fd8f1b2cc33eccf6a85c259b08d1e0f052f693cbfc7dfda236e9665b1d6869b8e1132a794a61e2
   - remote: buf.build
     owner: grpc-ecosystem
     repository: grpc-gateway
-    commit: 4c5ba75caaf84e928b7137ae5c18c26a
-    digest: shake256:e174ad9408f3e608f6157907153ffec8d310783ee354f821f57178ffbeeb8faa6bb70b41b61099c1783c82fe16210ebd1279bc9c9ee6da5cffba9f0e675b8b99
+    commit: 4836b6d552304e1bbe47e66a523f0daa
+    digest: shake256:9747ec8da8c45fe6e0c9860f5495897b28c77b985c2c65a75a54c22f2f1f168039f06925aca6cd8d856a723b60eb80d510d6db1f7d0f3bd27f8d91a8a8c6182c
   - remote: buf.build
     owner: ufoundit-dev
     repository: protoc-gen-gorm

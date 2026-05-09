@@ -115,6 +115,12 @@ func (v UserView) ProviderIdentifier() sql.NullString { return v.ж.ProviderIden
 func (v UserView) Provider() string      { return v.ж.Provider }
 func (v UserView) ProfilePicURL() string { return v.ж.ProfilePicURL }
 
+// Groups is the list of group identifiers captured from the OIDC
+// `groups` claim on login. Stored so the policy matcher can resolve
+// `group:<oidc-group>` references in the tailnet policy file (which
+// otherwise only matches by user identifier).
+func (v UserView) Groups() views.Slice[string] { return views.SliceOf(v.ж.Groups) }
+
 // A compilation failure here means this code must be regenerated, with the command at the top of this file.
 var _UserViewNeedsRegeneration = User(struct {
 	gorm.Model
@@ -124,6 +130,7 @@ var _UserViewNeedsRegeneration = User(struct {
 	ProviderIdentifier sql.NullString
 	Provider           string
 	ProfilePicURL      string
+	Groups             []string
 }{})
 
 // View returns a read-only view of Node.
