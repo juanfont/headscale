@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/netip"
 	"slices"
 	"strings"
@@ -64,6 +65,16 @@ type PolicyManager struct {
 	// needsPerNodeFilter is true when any compiled grant requires
 	// per-node work (autogroup:self or via grants).
 	needsPerNodeFilter bool
+
+	// nodeAttrsMap is the per-node CapMap compiled from policy.NodeAttrs.
+	// nodeAttrsHashes shadow it for change detection between updateLocked
+	// runs. nodeAttrsChanged accumulates the union of all per-call diffs
+	// since the last drain — refresh APPENDS, never overwrites, so a
+	// concurrent SetUsers/SetNodes between SetPolicy and the drain
+	// cannot silently lose the policy-reload diff.
+	nodeAttrsMap     map[types.NodeID]tailcfg.NodeCapMap
+	nodeAttrsHashes  map[types.NodeID]deephash.Sum
+	nodeAttrsChanged []types.NodeID
 }
 
 // filterAndPolicy combines the compiled filter rules with policy content for hashing.
@@ -298,6 +309,16 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	pm.exitSet = exitSet
 	pm.exitSetHash = exitSetHash
 
+	// Recompile per-node nodeAttrs CapMap and append the diff to
+	// pm.nodeAttrsChanged. The drain (NodesWithChangedCapMap) returns
+	// the accumulated union of every change since the last drain;
+	// SetUsers/SetNodes appending between SetPolicy and the drain
+	// cannot lose the policy-reload diff.
+	err = pm.refreshNodeAttrsLocked()
+	if err != nil {
+		return false, err
+	}
+
 	// Determine if we need to send updates to nodes
 	// filterChanged now includes policy content changes (via combined hash),
 	// so it will detect changes even for autogroup:self where compiled filter is empty
@@ -473,6 +494,7 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 		Int("groups.count", len(pol.Groups)).
 		Int("hosts.count", len(pol.Hosts)).
 		Int("tagOwners.count", len(pol.TagOwners)).
+		Int("nodeAttrs.count", len(pol.NodeAttrs)).
 		Int("autoApprovers.routes.count", len(pol.AutoApprovers.Routes)).
 		Int("tests.count", len(pol.Tests)).
 		Msg("Policy parsed successfully")
@@ -1570,4 +1592,126 @@ func resolveTagOwners(p *Policy, users types.Users, nodes views.Slice[types.Node
 	}
 
 	return ret, nil
+}
+
+// refreshNodeAttrsLocked recompiles the per-node nodeAttrs CapMap and
+// appends the IDs whose CapMap differs from the previous snapshot
+// (including newly-targeted nodes and nodes that lost all attrs) to
+// pm.nodeAttrsChanged. Append, not overwrite: a concurrent
+// SetUsers/SetNodes between SetPolicy and a NodesWithChangedCapMap
+// drain cannot clobber the policy-reload diff.
+//
+// Caller must hold pm.mu.
+func (pm *PolicyManager) refreshNodeAttrsLocked() error {
+	// Fast path for the common steady-state shape: tailnet has no
+	// nodeAttrs entries and never had any. Skip the compile + per-node
+	// hash walk entirely. As soon as the operator adds a nodeAttrs
+	// entry pm.nodeAttrsHashes becomes non-empty and the gate opens.
+	if pm.pol != nil &&
+		len(pm.pol.NodeAttrs) == 0 &&
+		!pm.pol.RandomizeClientPort &&
+		len(pm.nodeAttrsHashes) == 0 {
+		return nil
+	}
+
+	newMap, err := pm.pol.compileNodeAttrs(pm.users, pm.nodes)
+	if err != nil {
+		return fmt.Errorf("compiling nodeAttrs: %w", err)
+	}
+
+	newHashes := make(map[types.NodeID]deephash.Sum, len(newMap))
+	for id, capMap := range newMap {
+		newHashes[id] = deephash.Hash(&capMap)
+	}
+
+	// Walk the union of old and new node IDs and emit the delta.
+	seen := make(map[types.NodeID]struct{}, len(newHashes)+len(pm.nodeAttrsHashes))
+
+	var changed []types.NodeID
+
+	for id, h := range newHashes {
+		seen[id] = struct{}{}
+		if pm.nodeAttrsHashes[id] != h {
+			changed = append(changed, id)
+		}
+	}
+
+	for id := range pm.nodeAttrsHashes {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		// Node lost all nodeAttrs since the last update.
+		changed = append(changed, id)
+	}
+
+	pm.nodeAttrsMap = newMap
+	pm.nodeAttrsHashes = newHashes
+	pm.nodeAttrsChanged = append(pm.nodeAttrsChanged, changed...)
+
+	return nil
+}
+
+// NodeCapMap returns the policy-derived CapMap for the given node, or
+// nil when the node has no nodeAttrs entries that target it. The
+// returned map is a defensive clone — caller mutations cannot reach
+// the manager-owned cache.
+func (pm *PolicyManager) NodeCapMap(id types.NodeID) tailcfg.NodeCapMap {
+	if pm == nil {
+		return nil
+	}
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	src := pm.nodeAttrsMap[id]
+	if len(src) == 0 {
+		return nil
+	}
+
+	out := make(tailcfg.NodeCapMap, len(src))
+	maps.Copy(out, src)
+
+	return out
+}
+
+// NodeCapMaps returns a snapshot of the per-node policy CapMap. The
+// mapper calls this once per request to amortise lock acquisitions
+// over a peer-loop instead of taking the lock per peer. The returned
+// map is a fresh container; the inner [tailcfg.NodeCapMap] values are
+// shared with the manager and must be treated as read-only.
+func (pm *PolicyManager) NodeCapMaps() map[types.NodeID]tailcfg.NodeCapMap {
+	if pm == nil {
+		return nil
+	}
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	out := make(map[types.NodeID]tailcfg.NodeCapMap, len(pm.nodeAttrsMap))
+	maps.Copy(out, pm.nodeAttrsMap)
+
+	return out
+}
+
+// NodesWithChangedCapMap returns the IDs of nodes whose nodeAttrs
+// CapMap shifted across one or more updateLocked calls since the
+// last drain. The buffer drains on return. The mapper calls this
+// once per ReloadPolicy to decide which nodes need a SelfUpdate.
+//
+// refreshNodeAttrsLocked APPENDS to the buffer; the drain returns
+// the union of every change since the previous read. A concurrent
+// SetUsers/SetNodes between SetPolicy and a drain cannot silently
+// lose the policy-reload diff.
+func (pm *PolicyManager) NodesWithChangedCapMap() []types.NodeID {
+	if pm == nil {
+		return nil
+	}
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	out := pm.nodeAttrsChanged
+	pm.nodeAttrsChanged = nil
+
+	return out
 }

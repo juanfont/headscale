@@ -77,6 +77,26 @@ var (
 	ErrGrantDefaultRouteCIDR           = errors.New("to allow all IP addresses, use \"*\" or \"autogroup:internet\"")
 )
 
+// NodeAttrs validation errors.
+var (
+	ErrNodeAttrsIPPoolReserved      = errors.New("nodeAttrs ipPool must not overlap reserved Tailscale ranges")
+	ErrNodeAttrsIPPoolOutOfRange    = errors.New("nodeAttrs ipPool must be within 100.64.0.0/10")
+	ErrNodeAttrsAutogroupNotAllowed = errors.New("nodeAttrs target does not support this autogroup")
+	ErrNodeAttrUnsupported          = errors.New("nodeAttrs uses a feature headscale does not yet support")
+	ErrNodeAttrIPPoolUnsupported    = errors.New("nodeAttrs ipPool requires the IP allocator (https://github.com/juanfont/headscale/issues/2912)")
+	ErrNodeAttrTargetUnsupported    = errors.New("nodeAttrs target alias type is not supported")
+)
+
+// nodeAttrUnsupportedCaps lists caps that headscale parses but cannot act on
+// today. Each entry maps to the tracking issue an operator can follow. The
+// caps are accepted by Tailscale SaaS, but delivering them via headscale
+// without the matching server-side machinery would be misleading -- nodes
+// would advertise a feature that does not work. Reject at policy load and
+// point operators at the issue.
+var nodeAttrUnsupportedCaps = map[tailcfg.NodeCapability]string{
+	tailcfg.NodeAttrFunnel: "https://github.com/juanfont/headscale/issues/2527",
+}
+
 // Policy validation errors.
 var (
 	ErrUnknownAliasType            = errors.New("unknown alias type")
@@ -1917,6 +1937,19 @@ type Grant struct {
 	Via []Tag `json:"via,omitzero"`
 }
 
+// NodeAttrGrant attaches Tailscale node capabilities (and/or an IP-pool
+// preference) to every node selected by Targets. The Targets aliases are
+// resolved exactly like ACL/grant sources, so users, groups, tags, hosts,
+// prefixes, autogroup:member, autogroup:tagged, and "*" are all valid.
+//
+// IPPool is parsed and validated for forward compatibility with the IP
+// allocator; the policy compiler does not consume it yet.
+type NodeAttrGrant struct {
+	Targets Aliases                  `json:"target"`
+	Attrs   []tailcfg.NodeCapability `json:"attr,omitempty"`
+	IPPool  []netip.Prefix           `json:"ipPool,omitempty"`
+}
+
 // aclToGrants converts an ACL rule to one or more equivalent Grant rules.
 func aclToGrants(acl ACL) []Grant {
 	ret := make([]Grant, 0, len(acl.Destinations))
@@ -1998,14 +2031,16 @@ type Policy struct {
 	// callers using it should panic if not
 	validated bool `json:"-"`
 
-	Groups        Groups             `json:"groups,omitempty"`
-	Hosts         Hosts              `json:"hosts,omitempty"`
-	TagOwners     TagOwners          `json:"tagOwners,omitempty"`
-	ACLs          []ACL              `json:"acls,omitempty"`
-	Grants        []Grant            `json:"grants,omitempty"`
-	AutoApprovers AutoApproverPolicy `json:"autoApprovers"`
-	SSHs          []SSH              `json:"ssh,omitempty"`
-	Tests         []PolicyTest       `json:"tests,omitempty"`
+	Groups              Groups             `json:"groups,omitempty"`
+	Hosts               Hosts              `json:"hosts,omitempty"`
+	TagOwners           TagOwners          `json:"tagOwners,omitempty"`
+	ACLs                []ACL              `json:"acls,omitempty"`
+	Grants              []Grant            `json:"grants,omitempty"`
+	NodeAttrs           []NodeAttrGrant    `json:"nodeAttrs,omitempty"`
+	AutoApprovers       AutoApproverPolicy `json:"autoApprovers"`
+	SSHs                []SSH              `json:"ssh,omitempty"`
+	Tests               []PolicyTest       `json:"tests,omitempty"`
+	RandomizeClientPort bool               `json:"randomizeClientPort,omitempty"`
 }
 
 // MarshalJSON is deliberately not implemented for Policy.
@@ -2018,10 +2053,23 @@ var (
 	autogroupForSSHSrc    = []AutoGroup{AutoGroupMember, AutoGroupTagged}
 	autogroupForSSHDst    = []AutoGroup{AutoGroupMember, AutoGroupTagged, AutoGroupSelf}
 	autogroupForSSHUser   = []AutoGroup{AutoGroupNonRoot}
+	autogroupForNodeAttrs = []AutoGroup{AutoGroupMember, AutoGroupTagged}
 	autogroupNotSupported = []AutoGroup{}
 
 	errUnknownProtocolWildcard = errors.New("proto name \"*\" not known; use protocol number 0-255 or protocol name (icmp, tcp, udp, etc.)")
 )
+
+// reservedTSRanges are CGNAT subranges that Tailscale uses internally and that
+// nodeAttrs ipPool entries must not overlap.
+//
+//   - 100.100.100.0/24 is MagicDNS / TSMP
+//   - 100.115.92.0/23 is the Quad100 / IPN service range
+//
+// (See https://tailscale.com/kb/1304/ip-pool for the operator-facing list.)
+var reservedTSRanges = []netip.Prefix{
+	netip.MustParsePrefix("100.100.100.0/24"),
+	netip.MustParsePrefix("100.115.92.0/23"),
+}
 
 func validateAutogroupSupported(ag *AutoGroup) error {
 	if ag == nil {
@@ -2066,6 +2114,47 @@ func validateAutogroupForDst(dst *AutoGroup) error {
 
 	if !slices.Contains(autogroupForDst, *dst) {
 		return fmt.Errorf("%w: %q, can be %v", ErrAutogroupNotSupportedACLDst, *dst, autogroupForDst)
+	}
+
+	return nil
+}
+
+// validateAutogroupForNodeAttrs accepts only the autogroups that make sense
+// as a nodeAttrs target: autogroup:member and autogroup:tagged.
+// autogroup:self / autogroup:internet / autogroup:danger-all are rejected —
+// none of them describes a stable identity set that a node-level attribute
+// can attach to. autogroup:admin / autogroup:owner are rejected one layer
+// up: AutoGroup.UnmarshalJSON returns ErrInvalidAutogroup at parse time
+// because those values aren't in the allowed set, so the policy never
+// reaches this validator.
+func validateAutogroupForNodeAttrs(ag *AutoGroup) error {
+	if ag == nil {
+		return nil
+	}
+
+	if !slices.Contains(autogroupForNodeAttrs, *ag) {
+		return fmt.Errorf("%w: %q, can be %v", ErrNodeAttrsAutogroupNotAllowed, *ag, autogroupForNodeAttrs)
+	}
+
+	return nil
+}
+
+// validateNodeAttrIPPool rejects ipPool entries outside the CGNAT range or
+// overlapping the Tailscale-reserved subranges (MagicDNS, Quad100/IPN). A
+// prefix is considered "within" CGNAT when it is at least as specific as
+// 100.64.0.0/10 and its first address lies inside it.
+func validateNodeAttrIPPool(prefix netip.Prefix) error {
+	cgnat := tsaddr.CGNATRange()
+	masked := prefix.Masked()
+
+	if masked.Bits() < cgnat.Bits() || !cgnat.Contains(masked.Addr()) {
+		return fmt.Errorf("%w: %q", ErrNodeAttrsIPPoolOutOfRange, prefix)
+	}
+
+	for _, reserved := range reservedTSRanges {
+		if masked.Overlaps(reserved) {
+			return fmt.Errorf("%w: %q overlaps %q", ErrNodeAttrsIPPoolReserved, prefix, reserved)
+		}
 	}
 
 	return nil
@@ -2625,6 +2714,68 @@ func (p *Policy) validate() error {
 		err := validateGrantSrcDstCombination(grant.Sources, grant.Destinations)
 		if err != nil {
 			errs = append(errs, err)
+		}
+	}
+
+	for _, na := range p.NodeAttrs {
+		// SaaS accepts entries with neither attr nor ipPool (they
+		// compile to a no-op); headscale follows suit so policies
+		// captured against SaaS round-trip cleanly.
+		for _, target := range na.Targets {
+			switch t := target.(type) {
+			case *Host:
+				if !p.Hosts.exist(*t) {
+					errs = append(errs, fmt.Errorf("%w: %q", ErrHostNotDefined, *t))
+				}
+			case *AutoGroup:
+				err := validateAutogroupSupported(t)
+				if err != nil {
+					errs = append(errs, err)
+
+					continue
+				}
+
+				err = validateAutogroupForNodeAttrs(t)
+				if err != nil {
+					errs = append(errs, err)
+				}
+			case *Group:
+				err := p.Groups.Contains(t)
+				if err != nil {
+					errs = append(errs, err)
+				}
+			case *Tag:
+				err := p.TagOwners.Contains(t)
+				if err != nil {
+					errs = append(errs, err)
+				}
+			case *Username, *Prefix, Asterix:
+				// User / prefix / wildcard targets are accepted at
+				// parse time and resolved at compile time (where a
+				// typo'd username surfaces as a propagated Resolve
+				// error from compileNodeAttrs). Mirrors the grant
+				// source-side validation shape.
+			default:
+				errs = append(errs, fmt.Errorf("%w: %q (%T)", ErrNodeAttrTargetUnsupported, target, target))
+			}
+		}
+
+		for _, attr := range na.Attrs {
+			issue, ok := nodeAttrUnsupportedCaps[attr]
+			if ok {
+				errs = append(errs, fmt.Errorf("%w: %q tracked in %s", ErrNodeAttrUnsupported, attr, issue))
+			}
+		}
+
+		if len(na.IPPool) > 0 {
+			errs = append(errs, ErrNodeAttrIPPoolUnsupported)
+		}
+
+		for _, prefix := range na.IPPool {
+			err := validateNodeAttrIPPool(prefix)
+			if err != nil {
+				errs = append(errs, err)
+			}
 		}
 	}
 
