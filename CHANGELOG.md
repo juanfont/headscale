@@ -58,6 +58,69 @@ addresses, including those outside the tailnet. This replaces the old behaviour 
 all IPs (see BREAKING below). The name is intentionally scary: accepting traffic from the entire
 internet is a security-sensitive choice. `autogroup:danger-all` can only be used as a source.
 
+### Node attributes (`nodeAttrs`)
+
+ACL policies now accept a `nodeAttrs` block. Each entry hands a list of
+Tailscale node capabilities to every node matching `target`. The accepted
+target forms are the same as `acls.src` and `grants.src`: users, groups,
+tags, hosts, prefixes, `autogroup:member`, `autogroup:tagged`, and `*`.
+
+```jsonc
+{
+  "randomizeClientPort": true,
+  "nodeAttrs": [
+    { "target": ["autogroup:tagged"], "attr": ["disable-captive-portal-detection"] },
+    { "target": ["alice@example.com"], "attr": ["nextdns:abc123"] },
+  ],
+}
+```
+
+Frequently requested capabilities this unlocks include `magicdns-aaaa`,
+`disable-relay-server`, `disable-captive-portal-detection`,
+`nextdns:<profile>` / `nextdns:no-device-info`, `randomize-client-port`,
+and the Taildrive `drive:share` / `drive:access` pair. The set is not
+limited to these — any string-only cap an operator places in policy
+reaches clients unchanged.
+
+`randomizeClientPort` also lands as a top-level policy field that toggles
+the default for every node, replacing the old server-config knob.
+
+Policies that use the `funnel` cap, `ipPool` blocks, or
+`autogroup:admin` / `autogroup:owner` targets are rejected at load —
+those features depend on machinery headscale does not yet ship.
+
+[#3251](https://github.com/juanfont/headscale/pull/3251)
+
+### Taildrive
+
+Taildrive ([file-sync between
+nodes](https://tailscale.com/docs/features/taildrive)) is now
+configurable through policy. Grant `drive:share` to the node that
+hosts files and `drive:access` to nodes that read or write them; pair
+with a `tailscale.com/cap/drive` grant to set the per-share access
+mode:
+
+```jsonc
+{
+  "nodeAttrs": [
+    { "target": ["tag:fileserver"], "attr": ["drive:share"] },
+    { "target": ["autogroup:member"], "attr": ["drive:access"] },
+  ],
+  "grants": [
+    {
+      "src": ["autogroup:member"],
+      "dst": ["tag:fileserver"],
+      "app": {
+        "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+      },
+    },
+  ],
+}
+```
+
+A wildcard `nodeAttrs` (`"target": ["*"]`) hands the caps to every
+node when fine-grained control is not needed.
+
 ### Hostname handling (cleanroom rewrite)
 
 The hostname ingest pipeline has been rewritten to match Tailscale SaaS byte-for-byte.
@@ -117,6 +180,28 @@ Examples that previously regressed and now work:
   - Skipping minor versions (e.g. 0.27 → 0.29) is blocked; upgrade one minor version at a time
   - Downgrading to a previous minor version is blocked
   - Patch version changes within the same minor are always allowed
+
+#### Configuration
+
+- The `randomize_client_port` server-config key was removed; the
+  toggle now lives in the policy file as a top-level
+  `randomizeClientPort` field, matching the Tailscale-hosted schema.
+  Headscale refuses to start when the old key is set. Move it to the
+  policy file referenced by `policy.path` (defaults to
+  `/etc/headscale/policy.hujson`):
+
+  ```jsonc
+  {
+    "randomizeClientPort": true,
+  }
+  ```
+
+  If you do not have a policy file yet, create one with that minimal
+  content and point `policy.path` at it. The default carries over —
+  empty / absent policy means `randomizeClientPort: false`, matching
+  the previous behaviour for operators who never set the key. Per-node
+  opt-in via `nodeAttrs` is also supported and stacks on top of the
+  global default.
 
 #### CLI
 
