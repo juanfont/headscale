@@ -1,6 +1,6 @@
 // This file implements a data-driven test runner for grant compatibility
 // tests. It loads HuJSON golden files from testdata/grant_results/grant-*.hujson
-// and via-grant-*.hujson, captured from Tailscale SaaS by tscap, and compares
+// and via-grant-*.hujson, captured from a Tailscale-hosted control plane, and compares
 // headscale's grants engine output against the captured packet filter rules.
 //
 // Each file is a testcapture.Capture containing:
@@ -35,8 +35,8 @@ import (
 
 // setupGrantsCompatUsers returns the 3 test users for grants compatibility tests.
 // Users get norse-god names; nodes get original-151 pokémon names — matching
-// the anonymized identifiers tscap writes into the capture files
-// (see github.com/kradalby/tscap/anonymize).
+// the anonymized identifiers the capture tool writes into the capture files
+// .
 func setupGrantsCompatUsers() types.Users {
 	return types.Users{
 		{Model: gorm.Model{ID: 1}, Name: "odin", Email: "odin@example.com"},
@@ -269,7 +269,7 @@ func findGrantsNode(nodes types.Nodes, name string) *types.Node {
 }
 
 // buildGrantsNodesFromCapture constructs types.Nodes from a capture's
-// topology section. Each scenario in tscap uses clean-slate mode, so
+// topology section. Each scenario in the capture tool uses clean-slate mode, so
 // node IPs differ between scenarios; this builds the node set with
 // the IPs that were actually present during that capture.
 func buildGrantsNodesFromCapture(
@@ -332,7 +332,7 @@ func buildGrantsNodesFromCapture(
 }
 
 // convertPolicyUserEmails used to map SaaS-side emails to @example.com.
-// tscap now anonymizes the policy JSON at write time (kratail2tid -> odin,
+// captures anonymize the policy JSON at write time (kratail2tid -> odin,
 // kristoffer -> thor, monitorpasskeykradalby -> freya), so the captured
 // FullPolicy is already in its final form and this is a passthrough that
 // just adapts the captured string value to the []byte that the policy
@@ -405,12 +405,12 @@ func TestGrantsCompat(t *testing.T) {
 			}
 
 			// Build nodes per-scenario from this file's topology.
-			// tscap uses clean-slate mode, so each scenario has
+			// the capture tool uses clean-slate mode, so each scenario has
 			// different node IPs.
 			nodes := buildGrantsNodesFromCapture(users, tf)
 
 			// Use the captured full policy as is (anonymization
-			// in tscap already rewrote SaaS emails).
+			// the capture tool already rewrote SaaS emails).
 			policyJSON := convertPolicyUserEmails(tf.Input.FullPolicy)
 
 			if tf.Input.APIResponseCode == 400 || tf.Error {
