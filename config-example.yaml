@@ -458,10 +458,18 @@ logtail:
 # https://tailscale.com/docs/features/taildrop
 taildrop:
   # Enable or disable Taildrop tailnet-wide. When disabled, headscale
-  # withholds `https://tailscale.com/cap/file-sharing` from every node's
-  # CapMap, matching the admin-console "Send Files" toggle on the
-  # Tailscale-hosted control plane.
+  # withholds `https://tailscale.com/cap/file-sharing` from every
+  # node's CapMap.
   enabled: true
+
+# Default node auto-update behaviour. When enabled, every node's
+# CapMap carries `default-auto-update: [true]` so clients that have
+# not made a local opt-in / opt-out choice run auto-updates by
+# default. Setting it back to false flips the default for future
+# clients; clients that already stored the value locally keep their
+# choice.
+auto_update:
+  enabled: false
 # Advanced performance tuning parameters.
 # The defaults are carefully chosen and should rarely need adjustment.
 # Only modify these if you have identified a specific performance issue.

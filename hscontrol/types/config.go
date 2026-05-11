@@ -130,8 +130,9 @@ type Config struct {
 
 	OIDC OIDCConfig
 
-	LogTail  LogTailConfig
-	Taildrop TaildropConfig
+	LogTail    LogTailConfig
+	Taildrop   TaildropConfig
+	AutoUpdate AutoUpdateConfig
 
 	CLI CLIConfig
 
@@ -250,6 +251,15 @@ type LogTailConfig struct {
 }
 
 type TaildropConfig struct {
+	Enabled bool
+}
+
+// AutoUpdateConfig controls the tailnet-wide default for client
+// auto-update. When Enabled is true, headscale emits the
+// [tailcfg.NodeAttrDefaultAutoUpdate] cap with value [true] on every
+// node's CapMap; clients fall back to that default unless they have
+// opted in or out locally.
+type AutoUpdateConfig struct {
 	Enabled bool
 }
 
@@ -428,6 +438,7 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("logtail.enabled", false)
 	viper.SetDefault("taildrop.enabled", true)
+	viper.SetDefault("auto_update.enabled", false)
 
 	viper.SetDefault("node.expiry", "0")
 	viper.SetDefault("node.ephemeral.inactivity_timeout", "120s")
@@ -1229,6 +1240,9 @@ func LoadServerConfig() (*Config, error) {
 		LogTail: logTailConfig,
 		Taildrop: TaildropConfig{
 			Enabled: viper.GetBool("taildrop.enabled"),
+		},
+		AutoUpdate: AutoUpdateConfig{
+			Enabled: viper.GetBool("auto_update.enabled"),
 		},
 
 		Policy: policyConfig(),

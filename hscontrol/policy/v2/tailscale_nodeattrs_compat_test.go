@@ -239,9 +239,20 @@ func testNodeAttrsSuccess(
 	got, err := pol.compileNodeAttrs(users, nodes.ViewSlice())
 	require.NoErrorf(t, err, "%s: compileNodeAttrs", tf.TestID)
 
-	// Mirror the prod self-build: route function is irrelevant for CapMap;
-	// Taildrop.Enabled=true matches the SaaS-captured tailnets.
+	// Mirror the prod self-build: route function is irrelevant for CapMap.
+	//
+	// Taildrop.Enabled defaults to true here because every capture is
+	// taken with the SaaS default Send Files state. The Tailscale v2
+	// TailnetSettings API does not expose the Send Files toggle, so
+	// tscap cannot vary it; the off-path is covered directly by
+	// TestTaildropDisabledWithholdsFileSharingCap in servertest.
+	// TODO: wire Taildrop.Enabled from tf.Input.Tailnet.Settings.FileSharing
+	// once the field is added to the public TailnetSettings API.
 	cfg := &types.Config{Taildrop: types.TaildropConfig{Enabled: true}}
+	if v := tf.Input.Tailnet.Settings.DevicesAutoUpdatesOn; v != nil && *v {
+		cfg.AutoUpdate = types.AutoUpdateConfig{Enabled: true}
+	}
+
 	emptyRoutes := func(types.NodeID) []netip.Prefix { return nil }
 
 	selfCapMap := func(t *testing.T, node *types.Node) tailcfg.NodeCapMap {

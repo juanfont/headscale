@@ -1203,6 +1203,18 @@ func (nv NodeView) TailNode(
 		capMap[tailcfg.CapabilityFileSharing] = []tailcfg.RawMessage{}
 	}
 
+	// default-auto-update is always emitted; the value is a JSON bool
+	// reflecting cfg.AutoUpdate.Enabled. Clients read this on first
+	// netmap and store the default locally; subsequent control-plane
+	// changes are ignored unless the client has not yet opted in or
+	// out.
+	autoUpdateVal := tailcfg.RawMessage("false")
+	if cfg.AutoUpdate.Enabled {
+		autoUpdateVal = tailcfg.RawMessage("true")
+	}
+
+	capMap[tailcfg.NodeAttrDefaultAutoUpdate] = []tailcfg.RawMessage{autoUpdateVal}
+
 	// Policy nodeAttrs overlay the baseline on the self view. Peers
 	// pass nil; their CapMap is replaced downstream by [policyv2.PeerCapMap].
 	maps.Copy(capMap, selfPolicyCaps)
