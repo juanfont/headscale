@@ -73,5 +73,4 @@ func TestConfigLoading(t *testing.T) {
 	assert.Equal(t, "HTTP-01", viper.GetString("tls_letsencrypt_challenge_type"))
 	assert.Equal(t, fs.FileMode(0o770), util.GetFileMode("unix_socket_permission"))
 	assert.False(t, viper.GetBool("logtail.enabled"))
-	assert.False(t, viper.GetBool("randomize_client_port"))
 }

@@ -130,9 +130,8 @@ type Config struct {
 
 	OIDC OIDCConfig
 
-	LogTail             LogTailConfig
-	RandomizeClientPort bool
-	Taildrop            TaildropConfig
+	LogTail  LogTailConfig
+	Taildrop TaildropConfig
 
 	CLI CLIConfig
 
@@ -428,7 +427,6 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("oidc.email_verified_required", true)
 
 	viper.SetDefault("logtail.enabled", false)
-	viper.SetDefault("randomize_client_port", false)
 	viper.SetDefault("taildrop.enabled", true)
 
 	viper.SetDefault("node.expiry", "0")
@@ -529,6 +527,16 @@ func validateServerConfig() error {
 	// Removed since version v0.26.0
 	depr.fatal("oidc.strip_email_domain")
 	depr.fatal("oidc.map_legacy_users")
+
+	// Removed since v0.29.0: `randomize_client_port` moved to the ACL
+	// policy as a top-level `randomizeClientPort` field, matching the
+	// Tailscale-hosted control plane schema. Per-node `nodeAttrs`
+	// entries granting `https://tailscale.com/cap/randomize-client-port`
+	// also work.
+	depr.fatalWithHint("randomize_client_port",
+		`Set "randomizeClientPort": true at the top level of your policy file `+
+			`(see policy.path / policy.mode), or grant the cap per-node via a `+
+			`"nodeAttrs" entry. See CHANGELOG.md (BREAKING / Configuration).`)
 
 	// Deprecated: ephemeral_node_inactivity_timeout -> node.ephemeral.inactivity_timeout
 	depr.warnNoAlias("node.ephemeral.inactivity_timeout", "ephemeral_node_inactivity_timeout")
@@ -1120,7 +1128,6 @@ func LoadServerConfig() (*Config, error) {
 
 	derpConfig := derpConfig()
 	logTailConfig := logtailConfig()
-	randomizeClientPort := viper.GetBool("randomize_client_port")
 
 	oidcClientSecret := viper.GetString("oidc.client_secret")
 
@@ -1219,8 +1226,7 @@ func LoadServerConfig() (*Config, error) {
 			},
 		},
 
-		LogTail:             logTailConfig,
-		RandomizeClientPort: randomizeClientPort,
+		LogTail: logTailConfig,
 		Taildrop: TaildropConfig{
 			Enabled: viper.GetBool("taildrop.enabled"),
 		},
@@ -1325,6 +1331,22 @@ func (d *deprecator) fatal(oldKey string) {
 			fmt.Sprintf(
 				"The %q configuration key has been removed. Please see the changelog for more details.",
 				oldKey,
+			),
+		)
+	}
+}
+
+// fatalWithHint behaves like fatal but appends a remediation pointer to
+// the message so operators see exactly what to do without leaving the
+// terminal. Use it when the removed key has a clean replacement on the
+// policy side.
+func (d *deprecator) fatalWithHint(oldKey, hint string) {
+	if viper.IsSet(oldKey) {
+		d.fatals.Add(
+			fmt.Sprintf(
+				"The %q configuration key has been removed. %s",
+				oldKey,
+				hint,
 			),
 		)
 	}

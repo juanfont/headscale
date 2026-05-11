@@ -1181,23 +1181,28 @@ func (nv NodeView) TailNode(
 		}
 	}
 
+	// Baseline caps every node receives regardless of the ACL policy.
+	// The set matches what Tailscale SaaS emits with default tailnet
+	// settings, anchored against captured netmaps in
+	// hscontrol/policy/v2/testdata/nodeattrs_results — including the
+	// nodeattrs-tailnet-* probe captures which exercise individual
+	// tailnet-settings overlays (devices_auto_updates_on, magic_dns)
+	// against the SaaS API and confirm the CapMap shape stays stable.
+	// Where headscale exposes an equivalent operator knob it gates
+	// the cap accordingly: cfg.Taildrop.Enabled gates
+	// CapabilityFileSharing, matching the SaaS admin-console
+	// "Send Files" toggle. Policy nodeAttrs add to this baseline in
+	// the mapper; they cannot remove from it.
 	capMap := tailcfg.NodeCapMap{
-		tailcfg.CapabilityAdmin: []tailcfg.RawMessage{},
-		tailcfg.CapabilitySSH:   []tailcfg.RawMessage{},
-	}
-	if cfg.RandomizeClientPort {
-		capMap[tailcfg.NodeAttrRandomizeClientPort] = []tailcfg.RawMessage{}
+		tailcfg.CapabilityAdmin:          []tailcfg.RawMessage{},
+		tailcfg.CapabilitySSH:            []tailcfg.RawMessage{},
+		tailcfg.NodeAttrsTaildriveShare:  []tailcfg.RawMessage{},
+		tailcfg.NodeAttrsTaildriveAccess: []tailcfg.RawMessage{},
 	}
 
 	if cfg.Taildrop.Enabled {
 		capMap[tailcfg.CapabilityFileSharing] = []tailcfg.RawMessage{}
 	}
-
-	// Enable Taildrive sharing and access on all nodes. The actual
-	// access control is enforced by cap/drive grants in FilterRules;
-	// without a matching grant these attributes alone do nothing.
-	capMap[tailcfg.NodeAttrsTaildriveShare] = []tailcfg.RawMessage{}
-	capMap[tailcfg.NodeAttrsTaildriveAccess] = []tailcfg.RawMessage{}
 
 	tNode := tailcfg.Node{
 		//nolint:gosec // G115: NodeID values are within int64 range
