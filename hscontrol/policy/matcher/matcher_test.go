@@ -180,6 +180,78 @@ func TestMatchFromFilterRule(t *testing.T) {
 			srcMatch: true,
 			dstMatch: false,
 		},
+		{
+			// Regression: cap-grant-only rules (e.g. cap/relay)
+			// carry their destinations in CapGrant.Dsts. The
+			// matcher must surface those for peer-visibility
+			// derivation. https://github.com/juanfont/headscale/issues/3256
+			name: "CapGrant Dsts populate destination set",
+			rule: tailcfg.FilterRule{
+				SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32"},
+				CapGrant: []tailcfg.CapGrant{
+					{
+						Dsts: []netip.Prefix{
+							netip.MustParsePrefix("100.64.0.3/32"),
+						},
+						CapMap: tailcfg.PeerCapMap{
+							tailcfg.PeerCapabilityRelay: nil,
+						},
+					},
+				},
+			},
+			checkSrc: netip.MustParseAddr("100.64.0.1"),
+			checkDst: netip.MustParseAddr("100.64.0.3"),
+			srcMatch: true,
+			dstMatch: true,
+		},
+		{
+			// Companion cap-grant shape produced by
+			// companionCapGrantRules: SrcIPs are the original
+			// destinations, CapGrant.Dsts are the original sources.
+			name: "companion CapGrant Dsts populate destination set",
+			rule: tailcfg.FilterRule{
+				SrcIPs: []string{"100.64.0.3/32"},
+				CapGrant: []tailcfg.CapGrant{
+					{
+						Dsts: []netip.Prefix{
+							netip.MustParsePrefix("100.64.0.1/32"),
+							netip.MustParsePrefix("100.64.0.2/32"),
+						},
+						CapMap: tailcfg.PeerCapMap{
+							tailcfg.PeerCapabilityRelayTarget: nil,
+						},
+					},
+				},
+			},
+			checkSrc: netip.MustParseAddr("100.64.0.3"),
+			checkDst: netip.MustParseAddr("100.64.0.2"),
+			srcMatch: true,
+			dstMatch: true,
+		},
+		{
+			// Mixed rule: DstPorts and CapGrant both contribute to dests.
+			name: "DstPorts and CapGrant Dsts both contribute",
+			rule: tailcfg.FilterRule{
+				SrcIPs: []string{"100.64.0.1/32"},
+				DstPorts: []tailcfg.NetPortRange{
+					{IP: "10.0.0.0/8"},
+				},
+				CapGrant: []tailcfg.CapGrant{
+					{
+						Dsts: []netip.Prefix{
+							netip.MustParsePrefix("100.64.0.3/32"),
+						},
+						CapMap: tailcfg.PeerCapMap{
+							tailcfg.PeerCapabilityRelay: nil,
+						},
+					},
+				},
+			},
+			checkSrc: netip.MustParseAddr("100.64.0.1"),
+			checkDst: netip.MustParseAddr("100.64.0.3"),
+			srcMatch: true,
+			dstMatch: true,
+		},
 	}
 
 	for _, tt := range tests {

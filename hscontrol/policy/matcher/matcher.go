@@ -44,13 +44,40 @@ func MatchesFromFilterRules(rules []tailcfg.FilterRule) []Match {
 	return matches
 }
 
+// MatchFromFilterRule derives a Match from a tailcfg.FilterRule. The
+// destination IP set is the union of DstPorts[].IP and CapGrant[].Dsts:
+// cap-grant-only rules (e.g. tailscale.com/cap/relay) carry their
+// destinations in CapGrant.Dsts and would otherwise contribute nothing
+// to peer-visibility derivation in BuildPeerMap / ReduceNodes, hiding
+// the cap target from the source unless a companion IP-level rule
+// also exists.
 func MatchFromFilterRule(rule tailcfg.FilterRule) Match {
-	dests := make([]string, 0, len(rule.DstPorts))
-	for _, dest := range rule.DstPorts {
-		dests = append(dests, dest.IP)
+	srcs := new(netipx.IPSetBuilder)
+	dests := new(netipx.IPSetBuilder)
+
+	for _, srcIP := range rule.SrcIPs {
+		set, _ := util.ParseIPSet(srcIP, nil)
+		srcs.AddSet(set)
 	}
 
-	return MatchFromStrings(rule.SrcIPs, dests)
+	for _, dp := range rule.DstPorts {
+		set, _ := util.ParseIPSet(dp.IP, nil)
+		dests.AddSet(set)
+	}
+
+	for _, cg := range rule.CapGrant {
+		for _, pref := range cg.Dsts {
+			dests.AddPrefix(pref)
+		}
+	}
+
+	srcsSet, _ := srcs.IPSet()
+	destsSet, _ := dests.IPSet()
+
+	return Match{
+		srcs:  srcsSet,
+		dests: destsSet,
+	}
 }
 
 // MatchFromStrings builds a Match from raw source and destination

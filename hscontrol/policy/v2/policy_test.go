@@ -2022,3 +2022,181 @@ func TestValidateUserReferences_AllSites(t *testing.T) {
 		})
 	}
 }
+
+// TestPeerRelayGrantMakesRelayVisible is a regression test for
+// https://github.com/juanfont/headscale/issues/3256.
+//
+// A grant that uses only `app: { "tailscale.com/cap/relay": [] }` must
+// make the relay node visible to the source nodes (and vice-versa).
+// Before the fix, MatchFromFilterRule only considered DstPorts as
+// destinations and ignored CapGrant.Dsts, so cap-grant-only rules
+// produced matchers with an empty destination set and BuildPeerMap
+// could not detect the cap-relay relationship.
+//
+// Sub-tests cover every alias shape documented for peer-relay grants
+// at https://tailscale.com/docs/features/peer-relay: tag→tag,
+// hostname→hostname (`hosts` block lookup), autogroup:member→hostname,
+// and a direct Tailscale-IP destination. Each must establish mutual
+// visibility between sources and the relay node without any companion
+// IP-level grant.
+func TestPeerRelayGrantMakesRelayVisible(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "alice", Email: "alice@headscale.net"},
+		{Model: gorm.Model{ID: 2}, Name: "tagowner", Email: "tagowner@headscale.net"},
+	}
+
+	// Helper for tagged nodes belonging to the tag-owner user.
+	taggedNode := func(id types.NodeID, hostname, v4, v6 string, tags ...string) *types.Node {
+		return &types.Node{
+			ID:       id,
+			Hostname: hostname,
+			IPv4:     ap(v4),
+			IPv6:     ap(v6),
+			User:     new(users[1]),
+			UserID:   new(users[1].ID),
+			Tags:     tags,
+		}
+	}
+
+	userNode := func(id types.NodeID, hostname, v4, v6 string) *types.Node {
+		return &types.Node{
+			ID:       id,
+			Hostname: hostname,
+			IPv4:     ap(v4),
+			IPv6:     ap(v6),
+			User:     new(users[0]),
+			UserID:   new(users[0].ID),
+		}
+	}
+
+	tests := []struct {
+		name    string
+		nodes   types.Nodes
+		policy  string
+		srcIDs  []types.NodeID // expected to see the relay
+		relayID types.NodeID
+	}{
+		{
+			// Issue #3256 example: hosts block + autogroup:member src,
+			// hostname dst.
+			name: "hosts+autogroup_member src, hostname dst",
+			nodes: types.Nodes{
+				userNode(1, "n1", "100.64.0.1", "fd7a:115c:a1e0::1"),
+				userNode(2, "n2", "100.64.0.2", "fd7a:115c:a1e0::2"),
+				userNode(3, "peer-relay", "100.64.0.3", "fd7a:115c:a1e0::3"),
+			},
+			policy: `{
+				"hosts": {
+					"n1":         "100.64.0.1/32",
+					"n2":         "100.64.0.2/32",
+					"peer-relay": "100.64.0.3/32"
+				},
+				"grants": [
+					{"src": ["n1"], "dst": ["n2"], "ip": ["*"]},
+					{
+						"src": ["autogroup:member"],
+						"dst": ["peer-relay"],
+						"app": {"tailscale.com/cap/relay": []}
+					}
+				]
+			}`,
+			srcIDs:  []types.NodeID{1, 2},
+			relayID: 3,
+		},
+		{
+			// Tailscale docs example 1: tag → tag.
+			name: "tag src, tag dst",
+			nodes: types.Nodes{
+				taggedNode(1, "vpc-a", "100.64.0.1", "fd7a:115c:a1e0::1", "tag:us-east-vpc"),
+				taggedNode(2, "vpc-b", "100.64.0.2", "fd7a:115c:a1e0::2", "tag:us-east-vpc"),
+				taggedNode(3, "relay-1", "100.64.0.3", "fd7a:115c:a1e0::3", "tag:us-east-relays"),
+			},
+			policy: `{
+				"tagOwners": {
+					"tag:us-east-vpc":    ["tagowner@headscale.net"],
+					"tag:us-east-relays": ["tagowner@headscale.net"]
+				},
+				"grants": [
+					{
+						"src": ["tag:us-east-vpc"],
+						"dst": ["tag:us-east-relays"],
+						"app": {"tailscale.com/cap/relay": []}
+					}
+				]
+			}`,
+			srcIDs:  []types.NodeID{1, 2},
+			relayID: 3,
+		},
+		{
+			// Direct Tailscale-IP destination (no hosts alias).
+			name: "tag src, raw Tailscale IP dst",
+			nodes: types.Nodes{
+				taggedNode(1, "client-a", "100.64.0.1", "fd7a:115c:a1e0::1", "tag:client"),
+				taggedNode(2, "client-b", "100.64.0.2", "fd7a:115c:a1e0::2", "tag:client"),
+				userNode(3, "peer-relay", "100.64.0.3", "fd7a:115c:a1e0::3"),
+			},
+			policy: `{
+				"tagOwners": {
+					"tag:client": ["tagowner@headscale.net"]
+				},
+				"grants": [
+					{
+						"src": ["tag:client"],
+						"dst": ["100.64.0.3/32"],
+						"app": {"tailscale.com/cap/relay": []}
+					}
+				]
+			}`,
+			srcIDs:  []types.NodeID{1, 2},
+			relayID: 3,
+		},
+		{
+			// User → hostname relay using `hosts` aliasing.
+			name: "user src, hostname dst via hosts block",
+			nodes: types.Nodes{
+				userNode(1, "n1", "100.64.0.1", "fd7a:115c:a1e0::1"),
+				userNode(3, "peer-relay", "100.64.0.3", "fd7a:115c:a1e0::3"),
+			},
+			policy: `{
+				"hosts": {
+					"peer-relay": "100.64.0.3/32"
+				},
+				"grants": [
+					{
+						"src": ["alice@headscale.net"],
+						"dst": ["peer-relay"],
+						"app": {"tailscale.com/cap/relay": []}
+					}
+				]
+			}`,
+			srcIDs:  []types.NodeID{1},
+			relayID: 3,
+		},
+	}
+
+	containsID := func(peers []types.NodeView, id types.NodeID) bool {
+		return slices.ContainsFunc(peers, func(nv types.NodeView) bool {
+			return nv.ID() == id
+		})
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pm, err := NewPolicyManager(
+				[]byte(tt.policy), users, tt.nodes.ViewSlice(),
+			)
+			require.NoError(t, err)
+
+			peerMap := pm.BuildPeerMap(tt.nodes.ViewSlice())
+
+			for _, srcID := range tt.srcIDs {
+				require.True(t, containsID(peerMap[srcID], tt.relayID),
+					"node %d must see relay %d via cap/relay alone",
+					srcID, tt.relayID)
+				require.True(t, containsID(peerMap[tt.relayID], srcID),
+					"relay %d must see node %d via cap/relay alone",
+					tt.relayID, srcID)
+			}
+		})
+	}
+}
