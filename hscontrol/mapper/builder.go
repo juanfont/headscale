@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/policy"
+	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/views"
@@ -264,6 +265,11 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 		changedViews = peers
 	}
 
+	// Snapshot the per-node policy CapMap once per peer-list build
+	// instead of locking the policy manager per peer. The per-call
+	// path used to take pm.mu N times for an N-peer response.
+	allCapMaps := b.mapper.state.NodeCapMaps()
+
 	// Build tail nodes with per-peer via-aware route function.
 	tailPeers := make([]*tailcfg.Node, 0, changedViews.Len())
 
@@ -275,21 +281,15 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 			return nil, err
 		}
 
-		// Each peer's CapMap travels alongside the peer entry --
-		// Tailscale's client reads it for `NodeAttrSuggestExitNode`,
-		// `NodeAttrDNSSubdomainResolve`, and other peer-self attrs
-		// (see tstest/integration/testcontrol/testcontrol.go:1350,
-		// ipn/ipnlocal/local.go:7562, ipn/ipnlocal/node_backend.go:745).
-		// TailNode already stamped the baseline; merge the
-		// peer's own policy nodeAttrs delta on top so peer-side
-		// consumers see the same value the peer sees on its self entry.
-		if policyCaps := b.mapper.state.NodeCapMap(peer.ID()); len(policyCaps) > 0 {
-			if tn.CapMap == nil {
-				tn.CapMap = make(tailcfg.NodeCapMap, len(policyCaps))
-			}
-
-			maps.Copy(tn.CapMap, policyCaps)
-		}
+		// [tailcfg.Node.CapMap] on a peer carries the small set of
+		// caps the Tailscale client reads from the peer view rather
+		// than the self view (suggest-exit-node, dns-subdomain-resolve
+		// — see ipn/ipnlocal/local.go:7534 and node_backend.go:745).
+		// The Tailscale-hosted control plane stamps these only when
+		// the peer satisfies the cap's emission condition; every other
+		// cap stays off the peer view, leaving CapMap empty for most
+		// peers. [policyv2.PeerCapMap] encodes those conditions.
+		tn.CapMap = policyv2.PeerCapMap(peer, allCapMaps[peer.ID()])
 
 		tailPeers = append(tailPeers, tn)
 	}
