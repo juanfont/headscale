@@ -239,6 +239,20 @@ func testNodeAttrsSuccess(
 	got, err := pol.compileNodeAttrs(users, nodes.ViewSlice())
 	require.NoErrorf(t, err, "%s: compileNodeAttrs", tf.TestID)
 
+	// Mirror the prod self-build: route function is irrelevant for CapMap;
+	// Taildrop.Enabled=true matches the SaaS-captured tailnets.
+	cfg := &types.Config{Taildrop: types.TaildropConfig{Enabled: true}}
+	emptyRoutes := func(types.NodeID) []netip.Prefix { return nil }
+
+	selfCapMap := func(t *testing.T, node *types.Node) tailcfg.NodeCapMap {
+		t.Helper()
+
+		tn, err := node.View().TailNode(0, emptyRoutes, cfg, got[node.ID])
+		require.NoErrorf(t, err, "%s/%s: TailNode", tf.TestID, node.GivenName)
+
+		return tn.CapMap
+	}
+
 	for nodeName, capture := range tf.Captures {
 		if capture.Netmap == nil || !capture.Netmap.SelfNode.Valid() {
 			continue
@@ -249,7 +263,7 @@ func testNodeAttrsSuccess(
 			require.NotNilf(t, node,
 				"node %q from capture not found in test setup", nodeName)
 
-			gotSelf := stripUnmodelledTailnetStateCaps(got[node.ID])
+			gotSelf := stripUnmodelledTailnetStateCaps(selfCapMap(t, node))
 			wantSelf := stripUnmodelledTailnetStateCaps(
 				capMapFromView(capture.Netmap.SelfNode.CapMap()),
 			)

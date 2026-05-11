@@ -16,6 +16,8 @@ import (
 )
 
 func TestTailNode(t *testing.T) {
+	t.Parallel()
+
 	mustNK := func(str string) key.NodePublic {
 		var k key.NodePublic
 
@@ -51,7 +53,6 @@ func TestTailNode(t *testing.T) {
 	tests := []struct {
 		name       string
 		node       *types.Node
-		pol        []byte
 		dnsConfig  *tailcfg.DNSConfig
 		baseDomain string
 		want       *tailcfg.Node
@@ -208,6 +209,8 @@ func TestTailNode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			cfg := &types.Config{
 				BaseDomain:       tt.baseDomain,
 				TailcfgDNSConfig: tt.dnsConfig,
@@ -233,6 +236,7 @@ func TestTailNode(t *testing.T) {
 					return slices.Concat(primaries[id], nv.ExitRoutes())
 				},
 				cfg,
+				nil,
 			)
 
 			if (err != nil) != tt.wantErr {
@@ -289,6 +293,7 @@ func TestNodeExpiry(t *testing.T) {
 					return []netip.Prefix{}
 				},
 				&types.Config{Taildrop: types.TaildropConfig{Enabled: true}},
+				nil,
 			)
 			if err != nil {
 				t.Fatalf("nodeExpiry() error = %v", err)
