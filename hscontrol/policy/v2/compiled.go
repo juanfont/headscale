@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"fmt"
 	"net/netip"
 	"slices"
 
@@ -92,6 +93,92 @@ func buildUserNodeIndex(
 	}
 
 	return idx
+}
+
+// compileNodeAttrs returns the per-node CapMap derived from policy
+// nodeAttrs plus the tailnet-wide RandomizeClientPort flag.
+//
+// Returns an error when a target alias fails to resolve so the caller
+// surfaces a corrupt policy instead of silently granting a partial set
+// of attrs.
+func (pol *Policy) compileNodeAttrs(
+	users types.Users,
+	nodes views.Slice[types.NodeView],
+) (map[types.NodeID]tailcfg.NodeCapMap, error) {
+	empty := map[types.NodeID]tailcfg.NodeCapMap{}
+
+	if pol == nil {
+		return empty, nil
+	}
+
+	if len(pol.NodeAttrs) == 0 && !pol.RandomizeClientPort {
+		return empty, nil
+	}
+
+	result := make(map[types.NodeID]tailcfg.NodeCapMap)
+	stamp := func(id types.NodeID, attr tailcfg.NodeCapability) {
+		capMap, ok := result[id]
+		if !ok {
+			capMap = tailcfg.NodeCapMap{}
+			result[id] = capMap
+		}
+
+		// nil RawMessage matches the wire format from a Tailscale-hosted
+		// control plane: capabilities without companion data marshal as
+		// `null` rather than `[]`. Storing nil keeps the merge stable
+		// and lets the compat test diff cleanly against captured
+		// netmaps.
+		if _, exists := capMap[attr]; !exists {
+			capMap[attr] = nil
+		}
+	}
+
+	// Cache each node's IPs once per call. Without the cache, the
+	// node-attr inner loop would call NodeView.IPs() once per attr
+	// per node — O(grants × nodes) allocations of a 2-element slice
+	// for what is invariant per node within a single policy compile.
+	type nodeIPs struct {
+		id  types.NodeID
+		ips []netip.Addr
+	}
+
+	nodeList := make([]nodeIPs, 0, nodes.Len())
+	for _, n := range nodes.All() {
+		nodeList = append(nodeList, nodeIPs{id: n.ID(), ips: n.IPs()})
+	}
+
+	if pol.RandomizeClientPort {
+		for _, ni := range nodeList {
+			stamp(ni.id, tailcfg.NodeAttrRandomizeClientPort)
+		}
+	}
+
+	for _, na := range pol.NodeAttrs {
+		if len(na.Attrs) == 0 {
+			continue
+		}
+
+		resolved, err := na.Targets.Resolve(pol, users, nodes)
+		if err != nil {
+			return nil, fmt.Errorf("nodeAttrs target %s: %w", na.Targets, err)
+		}
+
+		if resolved == nil {
+			continue
+		}
+
+		for _, ni := range nodeList {
+			if !slices.ContainsFunc(ni.ips, resolved.Contains) {
+				continue
+			}
+
+			for _, attr := range na.Attrs {
+				stamp(ni.id, attr)
+			}
+		}
+	}
+
+	return result, nil
 }
 
 // compileGrants resolves all policy grants into compiledGrant structs.
