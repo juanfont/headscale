@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -114,9 +115,25 @@ func generateUserProfiles(
 	return profiles
 }
 
+// nextDNSAttrPrefix is the form Tailscale uses for per-node NextDNS profile
+// selection: an "attr" entry of "nextdns:<profile-id>" overrides the resolver
+// path, and "nextdns:no-device-info" suppresses the metadata-appending step.
+// See https://tailscale.com/docs/integrations/nextdns.
+const (
+	nextDNSAttrPrefix                        = "nextdns:"
+	nextDNSAttrNoInfo tailcfg.NodeCapability = "nextdns:no-device-info"
+)
+
+// nextDNSProfileRE bounds the characters accepted in a `nextdns:<profile>`
+// suffix. NextDNS profile IDs are short alphanumeric strings; restricting
+// to that charset prevents a policy author from injecting `?`, `/`, `@`,
+// or `..` into the resolver URL via a crafted cap name.
+var nextDNSProfileRE = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
+
 func generateDNSConfig(
 	cfg *types.Config,
 	node types.NodeView,
+	capMap tailcfg.NodeCapMap,
 ) *tailcfg.DNSConfig {
 	if cfg.TailcfgDNSConfig == nil {
 		return nil
@@ -124,32 +141,129 @@ func generateDNSConfig(
 
 	dnsConfig := cfg.TailcfgDNSConfig.Clone()
 
-	addNextDNSMetadata(dnsConfig.Resolvers, node)
+	profile := nextDNSProfileFromCapMap(capMap)
+	if profile != "" {
+		applyNextDNSProfile(dnsConfig.Resolvers, profile)
+		applyNextDNSProfile(dnsConfig.FallbackResolvers, profile)
+
+		for suffix, rs := range dnsConfig.Routes {
+			applyNextDNSProfile(rs, profile)
+			dnsConfig.Routes[suffix] = rs
+		}
+	}
+
+	if _, suppressMetadata := capMap[nextDNSAttrNoInfo]; !suppressMetadata {
+		addNextDNSMetadata(dnsConfig.Resolvers, node)
+		addNextDNSMetadata(dnsConfig.FallbackResolvers, node)
+
+		for suffix, rs := range dnsConfig.Routes {
+			addNextDNSMetadata(rs, node)
+			dnsConfig.Routes[suffix] = rs
+		}
+	}
 
 	return dnsConfig
 }
 
-// If any nextdns DoH resolvers are present in the list of resolvers it will
-// take metadata from the node metadata and instruct tailscale to add it
-// to the requests. This makes it possible to identify from which device the
-// requests come in the NextDNS dashboard.
+// nextDNSProfileFromCapMap returns the policy-selected
+// `nextdns:<profile>` value on the node, or the empty string when none
+// is set or the cap is malformed. The reserved
+// `nextdns:no-device-info` string is not a profile — it controls
+// metadata appending and is handled separately.
 //
-// This will produce a resolver like:
-// `https://dns.nextdns.io/<nextdns-id>?device_name=node-name&device_model=linux&device_ip=100.64.0.1`
+// The profile pick is deterministic across reloads: cap keys are
+// gathered, sorted, and the first valid profile wins. Map iteration
+// order in Go is randomised, so taking the literal first match would
+// cause the chosen profile to flip between reloads when a node has
+// multiple `nextdns:` caps. The profile string is also validated
+// against [nextDNSProfileRE] so a crafted cap cannot inject path or
+// query characters into the resolver URL.
+func nextDNSProfileFromCapMap(capMap tailcfg.NodeCapMap) string {
+	if len(capMap) == 0 {
+		return ""
+	}
+
+	candidates := make([]string, 0, len(capMap))
+
+	for cap := range capMap {
+		if cap == nextDNSAttrNoInfo {
+			continue
+		}
+
+		profile, ok := strings.CutPrefix(string(cap), nextDNSAttrPrefix)
+		if !ok || profile == "" {
+			continue
+		}
+
+		if !nextDNSProfileRE.MatchString(profile) {
+			log.Warn().
+				Str("cap", string(cap)).
+				Msg("nextdns profile rejected: must match [A-Za-z0-9._-]{1,64}")
+
+			continue
+		}
+
+		candidates = append(candidates, profile)
+	}
+
+	if len(candidates) == 0 {
+		return ""
+	}
+
+	slices.Sort(candidates)
+
+	return candidates[0]
+}
+
+// nextDNSDoHHost matches a NextDNS DoH resolver address. The check is
+// anchored on the host segment so a typo-squatted operator-configured
+// resolver such as `https://dns.nextdns.io.attacker.example/x` does
+// not slip through.
+func nextDNSDoHHost(addr string) bool {
+	return addr == nextDNSDoHPrefix ||
+		strings.HasPrefix(addr, nextDNSDoHPrefix+"/") ||
+		strings.HasPrefix(addr, nextDNSDoHPrefix+"?")
+}
+
+// applyNextDNSProfile rewrites every NextDNS DoH resolver to point at
+// the given profile, dropping any existing profile path or query. Per
+// the Tailscale spec the per-node profile overrides the global value,
+// so the rewrite is unconditional rather than additive.
+func applyNextDNSProfile(resolvers []*dnstype.Resolver, profile string) {
+	for _, resolver := range resolvers {
+		if !nextDNSDoHHost(resolver.Addr) {
+			continue
+		}
+
+		resolver.Addr = nextDNSDoHPrefix + "/" + profile
+	}
+}
+
+// addNextDNSMetadata appends device metadata as a query string to
+// every NextDNS DoH resolver. Existing query parameters on the
+// resolver address are preserved by parsing the URL and merging into
+// its [url.URL.RawQuery] rather than concatenating with `?`.
 func addNextDNSMetadata(resolvers []*dnstype.Resolver, node types.NodeView) {
 	for _, resolver := range resolvers {
-		if strings.HasPrefix(resolver.Addr, nextDNSDoHPrefix) {
-			attrs := url.Values{
-				"device_name":  []string{node.Hostname()},
-				"device_model": []string{node.Hostinfo().OS()},
-			}
-
-			if len(node.IPs()) > 0 {
-				attrs.Add("device_ip", node.IPs()[0].String())
-			}
-
-			resolver.Addr = fmt.Sprintf("%s?%s", resolver.Addr, attrs.Encode())
+		if !nextDNSDoHHost(resolver.Addr) {
+			continue
 		}
+
+		u, err := url.Parse(resolver.Addr)
+		if err != nil {
+			continue
+		}
+
+		q := u.Query()
+		q.Set("device_name", node.Hostname())
+		q.Set("device_model", node.Hostinfo().OS())
+
+		if ips := node.IPs(); len(ips) > 0 {
+			q.Set("device_ip", ips[0].String())
+		}
+
+		u.RawQuery = q.Encode()
+		resolver.Addr = u.String()
 	}
 }
 

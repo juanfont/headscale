@@ -42,6 +42,7 @@ type serverConfig struct {
 	ephemeralTimeout time.Duration
 	nodeExpiry       time.Duration
 	batcherWorkers   int
+	taildropEnabled  bool
 }
 
 func defaultServerConfig() *serverConfig {
@@ -50,6 +51,7 @@ func defaultServerConfig() *serverConfig {
 		bufferedChanSize: 30,
 		batcherWorkers:   1,
 		ephemeralTimeout: 30 * time.Second,
+		taildropEnabled:  true,
 	}
 }
 
@@ -71,6 +73,15 @@ func WithEphemeralTimeout(d time.Duration) ServerOption {
 // WithNodeExpiry sets the default node key expiry duration.
 func WithNodeExpiry(d time.Duration) ServerOption {
 	return func(c *serverConfig) { c.nodeExpiry = d }
+}
+
+// WithTaildropEnabled toggles the Taildrop file-sharing feature.
+// Defaults to true to match production. Pass false to verify
+// behaviour when an operator has switched the toggle off — e.g.
+// that [tailcfg.CapabilityFileSharing] is withheld from the
+// always-on baseline.
+func WithTaildropEnabled(enabled bool) ServerOption {
+	return func(c *serverConfig) { c.taildropEnabled = enabled }
 }
 
 // NewServer creates and starts a Headscale test server.
@@ -111,6 +122,7 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 		Policy: types.PolicyConfig{
 			Mode: types.PolicyModeDB,
 		},
+		Taildrop: types.TaildropConfig{Enabled: sc.taildropEnabled},
 		Tuning: types.Tuning{
 			BatchChangeDelay:               sc.batchDelay,
 			BatcherWorkers:                 sc.batcherWorkers,
