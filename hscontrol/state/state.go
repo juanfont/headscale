@@ -313,6 +313,18 @@ func (s *State) ReloadPolicy() ([]change.Change, error) {
 	//nolint:prealloc // cs starts with one element and may grow
 	cs := []change.Change{change.PolicyChange()}
 
+	// Per-node selective self refresh for nodeAttrs. A broadcast
+	// PolicyChange() re-renders peer lists and packet filters but
+	// never repopulates a node's own [tailcfg.Node.CapMap]; that
+	// lives on the self entry only. The drain returns every node ID
+	// whose cap output shifted across recent updateLocked calls —
+	// refreshNodeAttrsLocked appends rather than overwrites so a
+	// concurrent SetUsers/SetNodes between SetPolicy and the drain
+	// cannot silently lose the policy-reload diff.
+	for _, id := range s.polMan.NodesWithChangedCapMap() {
+		cs = append(cs, change.SelfUpdate(id))
+	}
+
 	// Always call autoApproveNodes during policy reload, regardless of whether
 	// the policy content has changed. This ensures that routes are re-evaluated
 	// when they might have been manually disabled but could now be auto-approved
@@ -1046,6 +1058,19 @@ func (s *State) FilterForNode(node types.NodeView) ([]tailcfg.FilterRule, error)
 // MatchersForNode returns matchers for peer relationship determination (unreduced).
 func (s *State) MatchersForNode(node types.NodeView) ([]matcher.Match, error) {
 	return s.polMan.MatchersForNode(node)
+}
+
+// NodeCapMap returns the policy-derived CapMap for the given node, suitable
+// for merging into tailcfg.Node.CapMap when the node is rendered as self or
+// as someone else's peer.
+func (s *State) NodeCapMap(id types.NodeID) tailcfg.NodeCapMap {
+	return s.polMan.NodeCapMap(id)
+}
+
+// NodeCapMaps returns a snapshot of every node's policy CapMap so
+// callers can amortise lock acquisition over a peer loop.
+func (s *State) NodeCapMaps() map[types.NodeID]tailcfg.NodeCapMap {
+	return s.polMan.NodeCapMaps()
 }
 
 // NodeCanHaveTag checks if a node is allowed to have a specific tag.

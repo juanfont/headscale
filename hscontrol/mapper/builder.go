@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"maps"
 	"net/netip"
 	"slices"
 	"sort"
@@ -90,6 +91,14 @@ func (b *MapResponseBuilder) WithSelfNode() *MapResponseBuilder {
 		return b
 	}
 
+	if policyCaps := b.mapper.state.NodeCapMap(nv.ID()); len(policyCaps) > 0 {
+		if tailnode.CapMap == nil {
+			tailnode.CapMap = make(tailcfg.NodeCapMap, len(policyCaps))
+		}
+
+		maps.Copy(tailnode.CapMap, policyCaps)
+	}
+
 	b.resp.Node = tailnode
 
 	return b
@@ -158,7 +167,7 @@ func (b *MapResponseBuilder) WithDNSConfig() *MapResponseBuilder {
 		return b
 	}
 
-	b.resp.DNSConfig = generateDNSConfig(b.mapper.cfg, node)
+	b.resp.DNSConfig = generateDNSConfig(b.mapper.cfg, node, b.mapper.state.NodeCapMap(node.ID()))
 
 	return b
 }
@@ -264,6 +273,22 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 		}, b.mapper.cfg)
 		if err != nil {
 			return nil, err
+		}
+
+		// Each peer's CapMap travels alongside the peer entry --
+		// Tailscale's client reads it for `NodeAttrSuggestExitNode`,
+		// `NodeAttrDNSSubdomainResolve`, and other peer-self attrs
+		// (see tstest/integration/testcontrol/testcontrol.go:1350,
+		// ipn/ipnlocal/local.go:7562, ipn/ipnlocal/node_backend.go:745).
+		// TailNode already stamped the baseline; merge the
+		// peer's own policy nodeAttrs delta on top so peer-side
+		// consumers see the same value the peer sees on its self entry.
+		if policyCaps := b.mapper.state.NodeCapMap(peer.ID()); len(policyCaps) > 0 {
+			if tn.CapMap == nil {
+				tn.CapMap = make(tailcfg.NodeCapMap, len(policyCaps))
+			}
+
+			maps.Copy(tn.CapMap, policyCaps)
 		}
 
 		tailPeers = append(tailPeers, tn)
