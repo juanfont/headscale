@@ -204,6 +204,13 @@ service HeadscaleService {
       body : "*"
     };
   }
+
+  rpc CheckPolicy(CheckPolicyRequest) returns (CheckPolicyResponse) {
+    option (google.api.http) = {
+      post : "/api/v1/policy/check"
+      body : "*"
+    };
+  }
   // --- Policy end ---
 
   // --- Health start ---
