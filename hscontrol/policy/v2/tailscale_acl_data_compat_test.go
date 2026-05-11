@@ -1,7 +1,7 @@
 // This file implements a data-driven test runner for ACL compatibility tests.
 // It loads HuJSON golden files from testdata/acl_results/acl-*.hujson and
 // compares headscale's ACL engine output against the expected packet filter
-// rules captured from Tailscale SaaS by the tscap tool.
+// rules captured from a Tailscale-hosted control plane by an external capture tool.
 //
 // Each file is a testcapture.Capture containing:
 //   - The full policy that was POSTed to the Tailscale SaaS API
@@ -40,8 +40,8 @@ func ptrAddr(s string) *netip.Addr {
 }
 
 // setupACLCompatUsers returns the 3 test users for ACL compatibility tests.
-// Names and emails match the anonymized identifiers tscap writes into the
-// capture files (see github.com/kradalby/tscap/anonymize): users get
+// Names and emails match the anonymized identifiers the capture tool writes into the
+// capture files users get
 // norse-god names and nodes get original-151 pokémon names.
 func setupACLCompatUsers() types.Users {
 	return types.Users{
@@ -52,7 +52,7 @@ func setupACLCompatUsers() types.Users {
 }
 
 // setupACLCompatNodes returns the 8 test nodes for ACL compatibility tests.
-// Node GivenNames match tscap's anonymized pokémon naming.
+// Node GivenNames match the anonymized pokémon naming.
 func setupACLCompatNodes(users types.Users) types.Nodes {
 	return types.Nodes{
 		{
@@ -291,7 +291,7 @@ func TestACLCompat(t *testing.T) {
 			}
 
 			// Build nodes per-scenario from this file's topology.
-			// tscap uses clean-slate mode, so each scenario has
+			// the capture tool uses clean-slate mode, so each scenario has
 			// different node IPs; using a shared topology would
 			// cause IP mismatches in filter rule comparisons.
 			users, nodes := buildACLUsersAndNodes(t, tf)

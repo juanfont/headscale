@@ -1820,8 +1820,8 @@ func TestViaRoutesForPeer(t *testing.T) {
 // `autogroup:internet` must keep the exit node visible to the source
 // in BuildPeerMap so the Tailscale client surfaces it in
 // `tailscale exit-node list`. Authoritative SaaS captures
-// (tscap routes-b17/b18, 2026-04-28) confirm SaaS includes the exit
-// node in the source's Peers with 0.0.0.0/0 and ::/0 in AllowedIPs.
+// (routes-b17/b18, 2026-04-28) confirm SaaS includes the exit node
+// in the source's Peers with 0.0.0.0/0 and ::/0 in AllowedIPs.
 func TestBuildPeerMap_AutogroupInternetMakesExitNodeVisible(t *testing.T) {
 	t.Parallel()
 

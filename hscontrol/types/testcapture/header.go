@@ -16,7 +16,7 @@ import (
 //	Nodes with filter rules: <X> of <Y>           ← for non-SSH captures
 //	Nodes with SSH rules: <X> of <Y>              ← for SSH captures
 //	Captured at:    <RFC3339 UTC>
-//	tscap version:  <ToolVersion>
+//	tool version:   <ToolVersion>
 //	schema version: <SchemaVersion>
 //
 // Both `tool_version` and `schema_version` are also stored as
@@ -53,7 +53,7 @@ func CommentHeader(c *Capture) string {
 	}
 
 	if c.ToolVersion != "" {
-		fmt.Fprintf(&b, "tscap version:  %s\n", c.ToolVersion)
+		fmt.Fprintf(&b, "tool version:   %s\n", c.ToolVersion)
 	}
 
 	if c.SchemaVersion != 0 {

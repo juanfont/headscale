@@ -34,7 +34,7 @@ func sampleACLCapture() *testcapture.Capture {
 		Description:   "wildcard ACL: every node sees every other node",
 		Category:      "acl",
 		CapturedAt:    time.Date(2026, 4, 7, 12, 34, 56, 0, time.UTC),
-		ToolVersion:   "tscap-test-0.0.0",
+		ToolVersion:   "capture-test-0.0.0",
 		Tailnet:       "kratail2tid@passkey",
 		Input: testcapture.Input{
 			FullPolicy:      `{"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`,
@@ -102,7 +102,7 @@ func sampleSSHCapture() *testcapture.Capture {
 		Description:   "ssh accept autogroup:member to autogroup:self",
 		Category:      "ssh",
 		CapturedAt:    time.Date(2026, 4, 7, 13, 0, 0, 0, time.UTC),
-		ToolVersion:   "tscap-test-0.0.0",
+		ToolVersion:   "capture-test-0.0.0",
 		Tailnet:       "kratail2tid@passkey",
 		Input: testcapture.Input{
 			FullPolicy:      `{"ssh":[{"action":"accept","src":["autogroup:member"],"dst":["autogroup:self"],"users":["root"]}]}`,
@@ -238,7 +238,7 @@ func TestWrite_ProducesCommentHeader(t *testing.T) {
 		t.Errorf("header missing capture timestamp; got:\n%s", header)
 	}
 
-	if !strings.Contains(header, "tscap version:") || !strings.Contains(header, "tscap-test-0.0.0") {
+	if !strings.Contains(header, "tool version:") || !strings.Contains(header, "capture-test-0.0.0") {
 		t.Errorf("header missing tool version; got:\n%s", header)
 	}
 

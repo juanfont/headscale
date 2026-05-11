@@ -1,7 +1,7 @@
 // This file implements a data-driven test runner for SSH compatibility tests.
 // It loads HuJSON golden files from testdata/ssh_results/ssh-*.hujson, captured
-// from Tailscale SaaS by tscap, and compares headscale's SSH policy compilation
-// against the captured SSH rules.
+// from a Tailscale-hosted control plane, and compares headscale's SSH policy
+// compilation against the captured SSH rules.
 //
 // Each file is a testcapture.Capture containing:
 //   - The full policy that was POSTed to Tailscale SaaS (we use tf.Input.FullPolicy
@@ -33,8 +33,8 @@ import (
 
 // setupSSHDataCompatUsers returns the 3 test users for SSH data-driven
 // compatibility tests. Users get norse-god names; nodes get original-151
-// pokémon names — matching the anonymized identifiers tscap writes into
-// the capture files (see github.com/kradalby/tscap/anonymize).
+// pokémon names — matching the anonymized identifiers the capture
+// tool writes into the capture files.
 //
 // odin and freya live on @example.com; thor lives on @example.org so
 // that "localpart:*@example.com" resolves to exactly two users
@@ -210,12 +210,12 @@ func TestSSHDataCompat(t *testing.T) {
 			}
 
 			// Build nodes per-scenario from this file's topology.
-			// tscap uses clean-slate mode, so each scenario has
+			// the capture tool uses clean-slate mode, so each scenario has
 			// different node IPs.
 			nodes := buildGrantsNodesFromCapture(users, tf)
 
 			// Use the captured full policy as is. Anonymization in
-			// tscap already rewrites SaaS emails to @example.com.
+			// captures already rewrite SaaS emails to @example.com.
 			policyJSON := tf.Input.FullPolicy
 
 			pol, err := unmarshalPolicy([]byte(policyJSON))

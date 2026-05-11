@@ -229,7 +229,7 @@
 			"Cap":                  131,
 			"Tags":                 ["tag:exit"],
 			"Online":               true,
-			"CapMap":               {"suggest-charmander": null},
+			"CapMap":               {"suggest-exit-node": null},
 			"ComputedName":         "charmander",
 			"ComputedNameWithHost": "charmander"
 		}, {
@@ -257,7 +257,7 @@
 			"Cap":                  131,
 			"Tags":                 ["tag:exit", "tag:router"],
 			"Online":               true,
-			"CapMap":               {"suggest-charmander": null},
+			"CapMap":               {"suggest-exit-node": null},
 			"ComputedName":         "wartortle",
 			"ComputedNameWithHost": "wartortle"
 		}],
@@ -1176,7 +1176,7 @@
 			"Cap":                  131,
 			"Tags":                 ["tag:exit"],
 			"Online":               true,
-			"CapMap":               {"suggest-charmander": null},
+			"CapMap":               {"suggest-exit-node": null},
 			"ComputedName":         "charmander",
 			"ComputedNameWithHost": "charmander"
 		}, {
@@ -1204,7 +1204,7 @@
 			"Cap":                  131,
 			"Tags":                 ["tag:exit", "tag:router"],
 			"Online":               true,
-			"CapMap":               {"suggest-charmander": null},
+			"CapMap":               {"suggest-exit-node": null},
 			"ComputedName":         "wartortle",
 			"ComputedNameWithHost": "wartortle"
 		}],
@@ -2126,7 +2126,7 @@
 			"Cap":                  131,
 			"Tags":                 ["tag:exit"],
 			"Online":               true,
-			"CapMap":               {"suggest-charmander": null},
+			"CapMap":               {"suggest-exit-node": null},
 			"ComputedName":         "charmander",
 			"ComputedNameWithHost": "charmander"
 		}, {
@@ -2154,7 +2154,7 @@
 			"Cap":                  131,
 			"Tags":                 ["tag:exit", "tag:router"],
 			"Online":               true,
-			"CapMap":               {"suggest-charmander": null},
+			"CapMap":               {"suggest-exit-node": null},
 			"ComputedName":         "wartortle",
 			"ComputedNameWithHost": "wartortle"
 		}],
@@ -3077,7 +3077,7 @@
 			"Cap":                  131,
 			"Tags":                 ["tag:exit"],
 			"Online":               true,
-			"CapMap":               {"suggest-charmander": null},
+			"CapMap":               {"suggest-exit-node": null},
 			"ComputedName":         "charmander",
 			"ComputedNameWithHost": "charmander"
 		}, {
@@ -3105,7 +3105,7 @@
 			"Cap":                  131,
 			"Tags":                 ["tag:exit", "tag:router"],
 			"Online":               true,
-			"CapMap":               {"suggest-charmander": null},
+			"CapMap":               {"suggest-exit-node": null},
 			"ComputedName":         "wartortle",
 			"ComputedNameWithHost": "wartortle"
 		}],
@@ -4204,7 +4204,7 @@
 			"Tags":                 ["tag:exit", "tag:router"],
 			"PrimaryRoutes":        ["172.16.0.0/24"],
 			"Online":               true,
-			"CapMap":               {"suggest-charmander": null},
+			"CapMap":               {"suggest-exit-node": null},
 			"ComputedName":         "wartortle",
 			"ComputedNameWithHost": "wartortle"
 		}, {
@@ -5410,7 +5410,7 @@
 			"Cap":                  131,
 			"Tags":                 ["tag:exit"],
 			"Online":               true,
-			"CapMap":               {"suggest-charmander": null},
+			"CapMap":               {"suggest-exit-node": null},
 			"ComputedName":         "charmander",
 			"ComputedNameWithHost": "charmander"
 		}, {
@@ -5438,7 +5438,7 @@
 			"Cap":                  131,
 			"Tags":                 ["tag:exit", "tag:router"],
 			"Online":               true,
-			"CapMap":               {"suggest-charmander": null},
+			"CapMap":               {"suggest-exit-node": null},
 			"ComputedName":         "wartortle",
 			"ComputedNameWithHost": "wartortle"
 		}],
@@ -6355,7 +6355,7 @@
 			"Cap":                  131,
 			"Tags":                 ["tag:exit"],
 			"Online":               true,
-			"CapMap":               {"suggest-charmander": null},
+			"CapMap":               {"suggest-exit-node": null},
 			"ComputedName":         "charmander",
 			"ComputedNameWithHost": "charmander"
 		}, {
@@ -6383,7 +6383,7 @@
 			"Cap":                  131,
 			"Tags":                 ["tag:exit", "tag:router"],
 			"Online":               true,
-			"CapMap":               {"suggest-charmander": null},
+			"CapMap":               {"suggest-exit-node": null},
 			"ComputedName":         "wartortle",
 			"ComputedNameWithHost": "wartortle"
 		}],
@@ -7306,7 +7306,7 @@
 			"Cap":                  131,
 			"Tags":                 ["tag:exit"],
 			"Online":               true,
-			"CapMap":               {"suggest-charmander": null},
+			"CapMap":               {"suggest-exit-node": null},
 			"ComputedName":         "charmander",
 			"ComputedNameWithHost": "charmander"
 		}, {
@@ -7334,7 +7334,7 @@
 			"Cap":                  131,
 			"Tags":                 ["tag:exit", "tag:router"],
 			"Online":               true,
-			"CapMap":               {"suggest-charmander": null},
+			"CapMap":               {"suggest-exit-node": null},
 			"ComputedName":         "wartortle",
 			"ComputedNameWithHost": "wartortle"
 		}],
@@ -8257,7 +8257,7 @@
 			"Cap":                  131,
 			"Tags":                 ["tag:exit"],
 			"Online":               true,
-			"CapMap":               {"suggest-charmander": null},
+			"CapMap":               {"suggest-exit-node": null},
 			"ComputedName":         "charmander",
 			"ComputedNameWithHost": "charmander"
 		}, {
@@ -8285,7 +8285,7 @@
 			"Cap":                  131,
 			"Tags":                 ["tag:exit", "tag:router"],
 			"Online":               true,
-			"CapMap":               {"suggest-charmander": null},
+			"CapMap":               {"suggest-exit-node": null},
 			"ComputedName":         "wartortle",
 			"ComputedNameWithHost": "wartortle"
 		}],
@@ -9202,7 +9202,7 @@
 			"Cap":                  131,
 			"Tags":                 ["tag:exit"],
 			"Online":               true,
-			"CapMap":               {"suggest-charmander": null},
+			"CapMap":               {"suggest-exit-node": null},
 			"ComputedName":         "charmander",
 			"ComputedNameWithHost": "charmander"
 		}, {
@@ -9230,7 +9230,7 @@
 			"Cap":                  131,
 			"Tags":                 ["tag:exit", "tag:router"],
 			"Online":               true,
-			"CapMap":               {"suggest-charmander": null},
+			"CapMap":               {"suggest-exit-node": null},
 			"ComputedName":         "wartortle",
 			"ComputedNameWithHost": "wartortle"
 		}],
@@ -10274,7 +10274,7 @@
 			"Cap":                  131,
 			"Tags":                 ["tag:exit"],
 			"Online":               true,
-			"CapMap":               {"suggest-charmander": null},
+			"CapMap":               {"suggest-exit-node": null},
 			"ComputedName":         "charmander",
 			"ComputedNameWithHost": "charmander"
 		}, {
@@ -11535,7 +11535,7 @@
 			"Cap":                  131,
 			"Tags":                 ["tag:exit"],
 			"Online":               true,
-			"CapMap":               {"suggest-charmander": null},
+			"CapMap":               {"suggest-exit-node": null},
 			"ComputedName":         "charmander",
 			"ComputedNameWithHost": "charmander"
 		}, {
@@ -11563,7 +11563,7 @@
 			"Cap":                  131,
 			"Tags":                 ["tag:exit", "tag:router"],
 			"Online":               true,
-			"CapMap":               {"suggest-charmander": null},
+			"CapMap":               {"suggest-exit-node": null},
 			"ComputedName":         "wartortle",
 			"ComputedNameWithHost": "wartortle"
 		}],

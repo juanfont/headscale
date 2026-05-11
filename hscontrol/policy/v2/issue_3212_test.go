@@ -1,4 +1,4 @@
-// Tests pinned against tscap captures for juanfont/headscale#3212.
+// Tests pinned against captures for juanfont/headscale#3212.
 //
 // The captures were taken on 2026-04-28 against a live Tailscale SaaS
 // tailnet. They reproduce the literal #3212 setup: an ACL granting

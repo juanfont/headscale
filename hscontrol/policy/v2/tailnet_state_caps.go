@@ -1,0 +1,244 @@
+package v2
+
+// This file enumerates [tailcfg.NodeCapability] values that participate
+// in [tailcfg.Node.CapMap] on the wire (both the SelfNode and the peer
+// view) but where headscale's emission shape diverges from Tailscale's
+// hosted control plane. The compat test in
+// tailscale_nodeattrs_compat_test.go strips these from BOTH sides before
+// [cmp.Diff] so the rest of the wire shape is compared in full, with no
+// per-cap allowlist in the test itself.
+//
+// Each entry is documented with: the cap's purpose (cross-referenced to
+// Tailscale source), why headscale's shape diverges, and a tracking
+// issue where one exists. Entries that are unlikely to ever be modelled
+// in headscale (internal magicsock or SSH server tuning) land at the
+// end of the list.
+//
+// Coverage that this comparison loses lives elsewhere:
+//   - hscontrol/servertest/nodeattrs_test.go::TestNodeAttrsBaselineCapsAlwaysOn
+//     verifies the always-on baseline (admin, ssh, file-sharing,
+//     drive:share, drive:access).
+//   - per-feature tests in this package verify the policy compile
+//     output that feeds the merged CapMap.
+
+import (
+	"slices"
+	"strings"
+
+	"github.com/juanfont/headscale/hscontrol/types"
+	"tailscale.com/tailcfg"
+)
+
+// PeerCapMap returns the subset of peerSelfCaps the Tailscale client
+// reads from the peer view (rather than the self view) given the
+// peer's state. Returns nil when no peer-consumed cap applies, matching
+// the empirical wire shape where [tailcfg.Node.CapMap] is omitted for
+// most peers.
+//
+// Caps the client reads from the peer view rather than the self view
+// (suggest-exit-node, dns-subdomain-resolve — see
+// ipn/ipnlocal/local.go:7534 and node_backend.go:745) are emitted only
+// when the peer satisfies the cap's emission condition. This function
+// encodes those conditions; the mapper calls it from buildTailPeers and
+// the compat test calls it to compute the expected per-peer wire shape.
+func PeerCapMap(peer types.NodeView, peerSelfCaps tailcfg.NodeCapMap) tailcfg.NodeCapMap {
+	if len(peerSelfCaps) == 0 {
+		return nil
+	}
+
+	var out tailcfg.NodeCapMap
+
+	// suggest-exit-node — surfaced on Peer.CapMap when the peer
+	// advertises exit routes AND those routes are approved. Client
+	// reads at ipn/ipnlocal/local.go:7534. Approval gating prevents
+	// the suggestion from following an advertised-but-not-yet-trusted
+	// node.
+	if peer.IsExitNode() {
+		if v, ok := peerSelfCaps[tailcfg.NodeAttrSuggestExitNode]; ok {
+			if out == nil {
+				out = tailcfg.NodeCapMap{}
+			}
+
+			out[tailcfg.NodeAttrSuggestExitNode] = v
+		}
+	}
+
+	return out
+}
+
+// unmodelledTailnetStateCaps lists [tailcfg.NodeCapability] values
+// stripped on both sides of the compat diff. Order:
+//
+//  1. Caps gated on a user-role concept headscale does not model.
+//  2. Caps gated on a tailnet feature headscale does not implement.
+//  3. Caps where headscale emits an always-on baseline and the hosted
+//     control plane emits only when policy targets them.
+//  4. Caps that are tailnet-state metadata (display name, key
+//     duration, etc.) where the values are not derivable from
+//     headscale config in a way that round-trips through the
+//     anonymized capture.
+//  5. Caps that are internal magicsock or embedded-SSH tuning with no
+//     headscale-side equivalent. Listed last — unlikely to be
+//     adopted.
+var unmodelledTailnetStateCaps = []tailcfg.NodeCapability{
+	// --- 1. User-role gated ---
+
+	// [tailcfg.CapabilityAdmin]: the hosted control plane stamps this
+	// on nodes whose owning user has the admin role; tagged nodes
+	// inherit from a tagOwner with the role. Headscale has no
+	// user-role model — [types.Node.TailNode] emits it as part of
+	// the always-on baseline. Stripping on both sides keeps the diff
+	// from failing on every user-owned non-admin node in a capture.
+	// Long-term fix is autogroup:admin support.
+	tailcfg.CapabilityAdmin,
+
+	// [tailcfg.CapabilityOwner]: same shape as is-admin, conditional
+	// on the "owner" role rather than admin. Headscale does not emit
+	// this cap at all. autogroup:owner support is tracked under
+	// NO_USER_ROLES — see the compat skip list.
+	tailcfg.CapabilityOwner,
+
+	// --- 2. Feature not implemented ---
+
+	// [tailcfg.CapabilityTailnetLock]: tailnet-lock signs node keys
+	// with a tailnet-wide signing key so peers can detect silent
+	// re-keying by the control plane. Client reads at
+	// ipn/ipnlocal/local.go:1752 (b.capTailnetLock). Headscale has no
+	// tailnet-lock implementation.
+	tailcfg.CapabilityTailnetLock,
+
+	// [tailcfg.NodeAttrServiceHost]: marks a node as approved to host
+	// VIP services (Tailscale Services). Client reads via
+	// UnmarshalNodeCapViewJSON at ipn/ipnlocal/local.go:2704.
+	// Headscale does not implement Tailscale Services.
+	tailcfg.NodeAttrServiceHost,
+
+	// [tailcfg.NodeAttrStoreAppCRoutes]: tells an app-connector node
+	// to persist learned routes across restarts. Client reads via
+	// controlknobs:148. Headscale does not implement app connectors.
+	tailcfg.NodeAttrStoreAppCRoutes,
+
+	// [tailcfg.CapabilityWarnFunnelNoHTTPS]: deprecated in Tailscale
+	// 2023-08-09. Should not appear in fresh captures — listed
+	// defensively in case a stale tailnet still emits it.
+	tailcfg.CapabilityWarnFunnelNoHTTPS,
+
+	// --- 3. Headscale baseline; hosted control plane policy-driven ---
+
+	// [tailcfg.CapabilitySSH] and [tailcfg.CapabilityFileSharing]:
+	// emitted unconditionally by [types.Node.TailNode] (file-sharing
+	// gated on cfg.Taildrop.Enabled). The compat test compares the
+	// policy compile output, not the full TailNode-merged shape, so
+	// these baseline keys sit only on the captured side and would diff
+	// on every scenario without stripping. Coverage for the headscale
+	// emit lives in TestNodeAttrsBaselineCapsAlwaysOn.
+	tailcfg.CapabilitySSH,
+	tailcfg.CapabilityFileSharing,
+
+	// [tailcfg.NodeAttrsTaildriveShare] and
+	// [tailcfg.NodeAttrsTaildriveAccess]: the hosted control plane
+	// emits these only when policy targets them; headscale's
+	// [types.Node.TailNode] emits them as part of the always-on
+	// baseline so taildrive features work out of the box on
+	// self-hosted tailnets. Stripping on both sides keeps the diff
+	// from flagging this on every scenario; rewriting the drive
+	// baseline onto a policy-driven emit path is a separate
+	// follow-up.
+	tailcfg.NodeAttrsTaildriveShare,
+	tailcfg.NodeAttrsTaildriveAccess,
+
+	// --- 4. Tailnet-state metadata not derivable from headscale config ---
+
+	// [tailcfg.NodeAttrTailnetDisplayName]: tailnet display name
+	// surfaced in the client UI. The hosted control plane emits the
+	// tailnet admin's email; headscale would have to invent a value
+	// from cfg.Domain() that does not round-trip through the
+	// anonymized capture string. Skip rather than diverge on a value
+	// with no real-world equivalent.
+	tailcfg.NodeAttrTailnetDisplayName,
+
+	// [tailcfg.NodeAttrDefaultAutoUpdate]: tailnet-wide default for
+	// client auto-update behavior. Headscale has no equivalent
+	// tailnet setting and would emit an invented constant. Skip
+	// until the auto-update default lands as a real config knob.
+	tailcfg.NodeAttrDefaultAutoUpdate,
+
+	// [tailcfg.NodeAttrMaxKeyDuration]: tailnet-wide max key duration
+	// value. Headscale has cfg.Node.Expiry but does not surface it
+	// as a cap today; the hosted control plane emits this only when
+	// a non-default value is configured.
+	tailcfg.NodeAttrMaxKeyDuration,
+
+	// [tailcfg.NodeAttrNativeIPV4]: peer-consumed cap conditional on
+	// tailnet ipv4 reachability state. Out of scope for the current
+	// peer-cap adoption (only suggest-exit-node is wired in this
+	// PR).
+	tailcfg.NodeAttrNativeIPV4,
+
+	// --- 5. Internal tuning, no headscale equivalent ---
+
+	// [tailcfg.NodeAttrProbeUDPLifetime]: tunes magicsock's UDP
+	// path-lifetime probe behavior. Internal performance knob; not
+	// policy-driven. Client reads via controlknobs:147.
+	tailcfg.NodeAttrProbeUDPLifetime,
+
+	// [tailcfg.NodeAttrSSHBehaviorV1]: configures the embedded SSH
+	// server (no su, in-process SFTP). Internal tuning; the embedded
+	// server picks Tailscale-vendored defaults without the cap.
+	tailcfg.NodeAttrSSHBehaviorV1,
+
+	// [tailcfg.NodeAttrSSHEnvironmentVariables]: gates SendEnv
+	// forwarding in the embedded SSH server. Internal; default chosen
+	// by the server.
+	tailcfg.NodeAttrSSHEnvironmentVariables,
+}
+
+// strippedCapPrefixes lists URL/string prefixes for parameterized or
+// pattern-named caps that should be stripped alongside
+// [unmodelledTailnetStateCaps].
+var strippedCapPrefixes = []string{
+	// "https://tailscale.com/cap/funnel-ports?…": parameterized cap
+	// (e.g. "?ports=80,443") issued when funnel is configured.
+	// Funnel is not supported.
+	"https://tailscale.com/cap/funnel-ports?",
+}
+
+// stripUnmodelledTailnetStateCaps returns a copy of cm with
+// [unmodelledTailnetStateCaps] and [strippedCapPrefixes] removed. Used
+// by the compat test on both sides before [cmp.Diff].
+func stripUnmodelledTailnetStateCaps(cm tailcfg.NodeCapMap) tailcfg.NodeCapMap {
+	if len(cm) == 0 {
+		return nil
+	}
+
+	out := make(tailcfg.NodeCapMap, len(cm))
+
+	for k, v := range cm {
+		if isUnmodelledTailnetStateCap(k) {
+			continue
+		}
+
+		out[k] = v
+	}
+
+	if len(out) == 0 {
+		return nil
+	}
+
+	return out
+}
+
+func isUnmodelledTailnetStateCap(k tailcfg.NodeCapability) bool {
+	if slices.Contains(unmodelledTailnetStateCaps, k) {
+		return true
+	}
+
+	s := string(k)
+	for _, p := range strippedCapPrefixes {
+		if strings.HasPrefix(s, p) {
+			return true
+		}
+	}
+
+	return false
+}
