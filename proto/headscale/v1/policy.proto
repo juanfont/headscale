@@ -17,3 +17,7 @@ message GetPolicyResponse {
   string policy = 1;
   google.protobuf.Timestamp updated_at = 2;
 }
+
+message CheckPolicyRequest { string policy = 1; }
+
+message CheckPolicyResponse {}
