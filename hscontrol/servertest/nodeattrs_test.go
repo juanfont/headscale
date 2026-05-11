@@ -166,10 +166,12 @@ func TestNodeAttrsRevokesWhenRemoved(t *testing.T) {
 }
 
 // TestNodeAttrsBaselineCapsAlwaysOn verifies that the SaaS-baseline caps
-// (Admin, SSH, FileSharing, Taildrive share/access) are emitted on every
-// node regardless of whether the policy mentions them. Tailscale clients
-// expect these to be present, and Tailscale SaaS emits them
-// unconditionally; headscale matches that shape.
+// (Admin, SSH, FileSharing) are emitted on every node regardless of
+// whether the policy mentions them. Tailscale SaaS emits these
+// unconditionally for default tailnet settings; headscale matches that
+// shape. Taildrive (drive:share / drive:access) is policy-driven per
+// Tailscale's docs and is verified through TestNodeAttrsAddsToBaseline
+// and the integration TestGrantCapDrive flow.
 func TestNodeAttrsBaselineCapsAlwaysOn(t *testing.T) {
 	t.Parallel()
 
@@ -187,8 +189,6 @@ func TestNodeAttrsBaselineCapsAlwaysOn(t *testing.T) {
 				tailcfg.CapabilityAdmin,
 				tailcfg.CapabilitySSH,
 				tailcfg.CapabilityFileSharing,
-				tailcfg.NodeAttrsTaildriveShare,
-				tailcfg.NodeAttrsTaildriveAccess,
 			} {
 				if !hasCap(nm, w) {
 					return false

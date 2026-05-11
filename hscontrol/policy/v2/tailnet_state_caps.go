@@ -1,22 +1,16 @@
 package v2
 
 // This file enumerates [tailcfg.NodeCapability] values that the
-// compat test in tailscale_nodeattrs_compat_test.go strips from BOTH
-// sides before [cmp.Diff]. The test builds the self-view CapMap via
-// [types.NodeView.TailNode] -- the same call the mapper makes -- so
-// every cap NOT in this list is compared in full as it lands on the
-// wire.
+// Tailscale-hosted control plane emits where headscale has no
+// equivalent concept yet. The compat test in
+// tailscale_nodeattrs_compat_test.go builds the self-view CapMap via
+// [types.NodeView.TailNode] -- the same call the mapper makes -- and
+// strips these from BOTH sides before [cmp.Diff]; every other cap is
+// compared in full as it lands on the wire.
 //
-// Entries fall into two groups:
-//  1. Caps SaaS emits that headscale has no concept of (admin / owner
-//     user roles, tailnet lock, services host, app connectors,
-//     tailnet-state metadata).
-//  2. Caps headscale emits unconditionally where SaaS gates emission
-//     on a tailnet-config knob headscale does not surface (the
-//     taildrive pair). The feature works; the gating differs.
-//
-// Each entry documents its purpose, the reason for divergence, and a
-// tracking issue where one exists.
+// Each entry documents its purpose (cross-referenced to Tailscale
+// source), why headscale does not emit it, and a tracking issue where
+// one exists.
 
 import (
 	"slices"
@@ -74,9 +68,6 @@ func PeerCapMap(peer types.NodeView, peerSelfCaps tailcfg.NodeCapMap) tailcfg.No
 //     anonymized capture.
 //  4. Caps that are internal magicsock or embedded-SSH tuning with no
 //     headscale-side equivalent.
-//  5. Baseline-divergence caps -- features headscale supports but
-//     emits unconditionally where SaaS gates on a tailnet-config
-//     toggle headscale does not surface yet.
 var unmodelledTailnetStateCaps = []tailcfg.NodeCapability{
 	// --- 1. User-role gated ---
 
@@ -164,20 +155,6 @@ var unmodelledTailnetStateCaps = []tailcfg.NodeCapability{
 	// forwarding in the embedded SSH server. Internal; default chosen
 	// by the server.
 	tailcfg.NodeAttrSSHEnvironmentVariables,
-
-	// --- 5. Baseline-divergence — feature supported, gating differs ---
-
-	// [tailcfg.NodeAttrsTaildriveShare] and
-	// [tailcfg.NodeAttrsTaildriveAccess]: the hosted control plane
-	// emits these only when policy or a tailnet-config toggle grants
-	// them. [types.Node.TailNode] emits both unconditionally so
-	// taildrive works out of the box on self-hosted tailnets. The
-	// feature is supported on both sides; only the emission gating
-	// differs. Strip until headscale grows an equivalent operator
-	// toggle (analogous to cfg.Taildrop.Enabled gating
-	// CapabilityFileSharing).
-	tailcfg.NodeAttrsTaildriveShare,
-	tailcfg.NodeAttrsTaildriveAccess,
 }
 
 // strippedCapPrefixes lists URL/string prefixes for parameterized or

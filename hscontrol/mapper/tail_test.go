@@ -75,11 +75,9 @@ func TestTailNode(t *testing.T) {
 				MachineAuthorized: true,
 
 				CapMap: tailcfg.NodeCapMap{
-					tailcfg.CapabilityAdmin:          []tailcfg.RawMessage{},
-					tailcfg.CapabilitySSH:            []tailcfg.RawMessage{},
-					tailcfg.CapabilityFileSharing:    []tailcfg.RawMessage{},
-					tailcfg.NodeAttrsTaildriveShare:  []tailcfg.RawMessage{},
-					tailcfg.NodeAttrsTaildriveAccess: []tailcfg.RawMessage{},
+					tailcfg.CapabilityAdmin:       []tailcfg.RawMessage{},
+					tailcfg.CapabilitySSH:         []tailcfg.RawMessage{},
+					tailcfg.CapabilityFileSharing: []tailcfg.RawMessage{},
 				},
 			},
 			wantErr: false,
@@ -166,11 +164,9 @@ func TestTailNode(t *testing.T) {
 				MachineAuthorized: true,
 
 				CapMap: tailcfg.NodeCapMap{
-					tailcfg.CapabilityAdmin:          []tailcfg.RawMessage{},
-					tailcfg.CapabilitySSH:            []tailcfg.RawMessage{},
-					tailcfg.CapabilityFileSharing:    []tailcfg.RawMessage{},
-					tailcfg.NodeAttrsTaildriveShare:  []tailcfg.RawMessage{},
-					tailcfg.NodeAttrsTaildriveAccess: []tailcfg.RawMessage{},
+					tailcfg.CapabilityAdmin:       []tailcfg.RawMessage{},
+					tailcfg.CapabilitySSH:         []tailcfg.RawMessage{},
+					tailcfg.CapabilityFileSharing: []tailcfg.RawMessage{},
 				},
 			},
 			wantErr: false,
@@ -193,11 +189,9 @@ func TestTailNode(t *testing.T) {
 				MachineAuthorized: true,
 
 				CapMap: tailcfg.NodeCapMap{
-					tailcfg.CapabilityAdmin:          []tailcfg.RawMessage{},
-					tailcfg.CapabilitySSH:            []tailcfg.RawMessage{},
-					tailcfg.CapabilityFileSharing:    []tailcfg.RawMessage{},
-					tailcfg.NodeAttrsTaildriveShare:  []tailcfg.RawMessage{},
-					tailcfg.NodeAttrsTaildriveAccess: []tailcfg.RawMessage{},
+					tailcfg.CapabilityAdmin:       []tailcfg.RawMessage{},
+					tailcfg.CapabilitySSH:         []tailcfg.RawMessage{},
+					tailcfg.CapabilityFileSharing: []tailcfg.RawMessage{},
 				},
 			},
 			wantErr: false,

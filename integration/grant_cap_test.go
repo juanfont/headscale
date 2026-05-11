@@ -553,6 +553,19 @@ func TestGrantCapDrive(t *testing.T) {
 			policyv2.Tag("tag:ro-client"): policyv2.Owners{usernameOwner("roclient@")},
 			policyv2.Tag("tag:no-access"): policyv2.Owners{usernameOwner("noaccess@")},
 		},
+		// Taildrive caps (drive:share / drive:access) are policy-driven
+		// per https://tailscale.com/docs/features/taildrive; no longer
+		// emitted as TailNode baseline. Stamp on every node so the
+		// SelfNode.CapMap assertions below remain meaningful.
+		NodeAttrs: []policyv2.NodeAttrGrant{
+			{
+				Targets: policyv2.Aliases{policyv2.Wildcard},
+				Attrs: []tailcfg.NodeCapability{
+					tailcfg.NodeAttrsTaildriveShare,
+					tailcfg.NodeAttrsTaildriveAccess,
+				},
+			},
+		},
 		Grants: []policyv2.Grant{
 			// Grant 1: IP connectivity between ALL nodes.
 			{
