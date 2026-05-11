@@ -1,7 +1,6 @@
 package mapper
 
 import (
-	"maps"
 	"net/netip"
 	"slices"
 	"sort"
@@ -86,18 +85,12 @@ func (b *MapResponseBuilder) WithSelfNode() *MapResponseBuilder {
 
 			return slices.Concat(primaries, nv.ExitRoutes())
 		},
-		b.mapper.cfg)
+		b.mapper.cfg,
+		b.mapper.state.NodeCapMap(nv.ID()),
+	)
 	if err != nil {
 		b.addError(err)
 		return b
-	}
-
-	if policyCaps := b.mapper.state.NodeCapMap(nv.ID()); len(policyCaps) > 0 {
-		if tailnode.CapMap == nil {
-			tailnode.CapMap = make(tailcfg.NodeCapMap, len(policyCaps))
-		}
-
-		maps.Copy(tailnode.CapMap, policyCaps)
 	}
 
 	b.resp.Node = tailnode
@@ -276,7 +269,7 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 	for _, peer := range changedViews.All() {
 		tn, err := peer.TailNode(b.capVer, func(_ types.NodeID) []netip.Prefix {
 			return b.mapper.state.RoutesForPeer(node, peer, matchers)
-		}, b.mapper.cfg)
+		}, b.mapper.cfg, nil)
 		if err != nil {
 			return nil, err
 		}

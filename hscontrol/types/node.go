@@ -3,6 +3,7 @@ package types
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"net/netip"
 	"slices"
 	"strconv"
@@ -1127,7 +1128,9 @@ func TailNodes(
 	tNodes := make([]*tailcfg.Node, 0, nodes.Len())
 
 	for _, node := range nodes.All() {
-		tNode, err := node.TailNode(capVer, primaryRouteFunc, cfg)
+		// nil selfPolicyCaps: this batch builds peer views; the caller
+		// sets each peer's CapMap from [policyv2.PeerCapMap].
+		tNode, err := node.TailNode(capVer, primaryRouteFunc, cfg, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -1139,10 +1142,17 @@ func TailNodes(
 }
 
 // TailNode converts a NodeView into a Tailscale tailcfg.Node.
+//
+// selfPolicyCaps is the per-node CapMap from [policy.PolicyManager.NodeCapMap]
+// and is merged into the baseline. Pass it when building the self view of the
+// requesting node; pass nil when building peer views (peer-side
+// [tailcfg.Node.CapMap] is set by the caller from
+// [policyv2.PeerCapMap]).
 func (nv NodeView) TailNode(
 	capVer tailcfg.CapabilityVersion,
 	primaryRouteFunc RouteFunc,
 	cfg *Config,
+	selfPolicyCaps tailcfg.NodeCapMap,
 ) (*tailcfg.Node, error) {
 	if !nv.Valid() {
 		return nil, ErrInvalidNodeView
@@ -1203,6 +1213,10 @@ func (nv NodeView) TailNode(
 	if cfg.Taildrop.Enabled {
 		capMap[tailcfg.CapabilityFileSharing] = []tailcfg.RawMessage{}
 	}
+
+	// Policy nodeAttrs overlay the baseline on the self view. Peers
+	// pass nil; their CapMap is replaced downstream by [policyv2.PeerCapMap].
+	maps.Copy(capMap, selfPolicyCaps)
 
 	tNode := tailcfg.Node{
 		//nolint:gosec // G115: NodeID values are within int64 range

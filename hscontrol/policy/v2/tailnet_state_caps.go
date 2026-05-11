@@ -1,25 +1,22 @@
 package v2
 
-// This file enumerates [tailcfg.NodeCapability] values that participate
-// in [tailcfg.Node.CapMap] on the wire (both the SelfNode and the peer
-// view) but where headscale's emission shape diverges from Tailscale's
-// hosted control plane. The compat test in
-// tailscale_nodeattrs_compat_test.go strips these from BOTH sides before
-// [cmp.Diff] so the rest of the wire shape is compared in full, with no
-// per-cap allowlist in the test itself.
+// This file enumerates [tailcfg.NodeCapability] values that the
+// compat test in tailscale_nodeattrs_compat_test.go strips from BOTH
+// sides before [cmp.Diff]. The test builds the self-view CapMap via
+// [types.NodeView.TailNode] -- the same call the mapper makes -- so
+// every cap NOT in this list is compared in full as it lands on the
+// wire.
 //
-// Each entry is documented with: the cap's purpose (cross-referenced to
-// Tailscale source), why headscale's shape diverges, and a tracking
-// issue where one exists. Entries that are unlikely to ever be modelled
-// in headscale (internal magicsock or SSH server tuning) land at the
-// end of the list.
+// Entries fall into two groups:
+//  1. Caps SaaS emits that headscale has no concept of (admin / owner
+//     user roles, tailnet lock, services host, app connectors,
+//     tailnet-state metadata).
+//  2. Caps headscale emits unconditionally where SaaS gates emission
+//     on a tailnet-config knob headscale does not surface (the
+//     taildrive pair). The feature works; the gating differs.
 //
-// Coverage that this comparison loses lives elsewhere:
-//   - hscontrol/servertest/nodeattrs_test.go::TestNodeAttrsBaselineCapsAlwaysOn
-//     verifies the always-on baseline (admin, ssh, file-sharing,
-//     drive:share, drive:access).
-//   - per-feature tests in this package verify the policy compile
-//     output that feeds the merged CapMap.
+// Each entry documents its purpose, the reason for divergence, and a
+// tracking issue where one exists.
 
 import (
 	"slices"
@@ -71,15 +68,15 @@ func PeerCapMap(peer types.NodeView, peerSelfCaps tailcfg.NodeCapMap) tailcfg.No
 //
 //  1. Caps gated on a user-role concept headscale does not model.
 //  2. Caps gated on a tailnet feature headscale does not implement.
-//  3. Caps where headscale emits an always-on baseline and the hosted
-//     control plane emits only when policy targets them.
-//  4. Caps that are tailnet-state metadata (display name, key
+//  3. Caps that are tailnet-state metadata (display name, key
 //     duration, etc.) where the values are not derivable from
 //     headscale config in a way that round-trips through the
 //     anonymized capture.
-//  5. Caps that are internal magicsock or embedded-SSH tuning with no
-//     headscale-side equivalent. Listed last — unlikely to be
-//     adopted.
+//  4. Caps that are internal magicsock or embedded-SSH tuning with no
+//     headscale-side equivalent.
+//  5. Baseline-divergence caps -- features headscale supports but
+//     emits unconditionally where SaaS gates on a tailnet-config
+//     toggle headscale does not surface yet.
 var unmodelledTailnetStateCaps = []tailcfg.NodeCapability{
 	// --- 1. User-role gated ---
 
@@ -123,31 +120,7 @@ var unmodelledTailnetStateCaps = []tailcfg.NodeCapability{
 	// defensively in case a stale tailnet still emits it.
 	tailcfg.CapabilityWarnFunnelNoHTTPS,
 
-	// --- 3. Headscale baseline; hosted control plane policy-driven ---
-
-	// [tailcfg.CapabilitySSH] and [tailcfg.CapabilityFileSharing]:
-	// emitted unconditionally by [types.Node.TailNode] (file-sharing
-	// gated on cfg.Taildrop.Enabled). The compat test compares the
-	// policy compile output, not the full TailNode-merged shape, so
-	// these baseline keys sit only on the captured side and would diff
-	// on every scenario without stripping. Coverage for the headscale
-	// emit lives in TestNodeAttrsBaselineCapsAlwaysOn.
-	tailcfg.CapabilitySSH,
-	tailcfg.CapabilityFileSharing,
-
-	// [tailcfg.NodeAttrsTaildriveShare] and
-	// [tailcfg.NodeAttrsTaildriveAccess]: the hosted control plane
-	// emits these only when policy targets them; headscale's
-	// [types.Node.TailNode] emits them as part of the always-on
-	// baseline so taildrive features work out of the box on
-	// self-hosted tailnets. Stripping on both sides keeps the diff
-	// from flagging this on every scenario; rewriting the drive
-	// baseline onto a policy-driven emit path is a separate
-	// follow-up.
-	tailcfg.NodeAttrsTaildriveShare,
-	tailcfg.NodeAttrsTaildriveAccess,
-
-	// --- 4. Tailnet-state metadata not derivable from headscale config ---
+	// --- 3. Tailnet-state metadata not derivable from headscale config ---
 
 	// [tailcfg.NodeAttrTailnetDisplayName]: tailnet display name
 	// surfaced in the client UI. The hosted control plane emits the
@@ -175,7 +148,7 @@ var unmodelledTailnetStateCaps = []tailcfg.NodeCapability{
 	// PR).
 	tailcfg.NodeAttrNativeIPV4,
 
-	// --- 5. Internal tuning, no headscale equivalent ---
+	// --- 4. Internal tuning, no headscale equivalent ---
 
 	// [tailcfg.NodeAttrProbeUDPLifetime]: tunes magicsock's UDP
 	// path-lifetime probe behavior. Internal performance knob; not
@@ -191,6 +164,20 @@ var unmodelledTailnetStateCaps = []tailcfg.NodeCapability{
 	// forwarding in the embedded SSH server. Internal; default chosen
 	// by the server.
 	tailcfg.NodeAttrSSHEnvironmentVariables,
+
+	// --- 5. Baseline-divergence — feature supported, gating differs ---
+
+	// [tailcfg.NodeAttrsTaildriveShare] and
+	// [tailcfg.NodeAttrsTaildriveAccess]: the hosted control plane
+	// emits these only when policy or a tailnet-config toggle grants
+	// them. [types.Node.TailNode] emits both unconditionally so
+	// taildrive works out of the box on self-hosted tailnets. The
+	// feature is supported on both sides; only the emission gating
+	// differs. Strip until headscale grows an equivalent operator
+	// toggle (analogous to cfg.Taildrop.Enabled gating
+	// CapabilityFileSharing).
+	tailcfg.NodeAttrsTaildriveShare,
+	tailcfg.NodeAttrsTaildriveAccess,
 }
 
 // strippedCapPrefixes lists URL/string prefixes for parameterized or
