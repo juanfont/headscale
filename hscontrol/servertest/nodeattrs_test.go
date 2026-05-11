@@ -165,13 +165,12 @@ func TestNodeAttrsRevokesWhenRemoved(t *testing.T) {
 		})
 }
 
-// TestNodeAttrsBaselineCapsAlwaysOn verifies that the SaaS-baseline caps
-// (Admin, SSH, FileSharing) are emitted on every node regardless of
-// whether the policy mentions them. Tailscale SaaS emits these
-// unconditionally for default tailnet settings; headscale matches that
-// shape. Taildrive (drive:share / drive:access) is policy-driven per
-// Tailscale's docs and is verified through TestNodeAttrsAddsToBaseline
-// and the integration TestGrantCapDrive flow.
+// TestNodeAttrsBaselineCapsAlwaysOn verifies that the baseline caps
+// (Admin, SSH, FileSharing, DefaultAutoUpdate) are emitted on every
+// node regardless of whether the policy mentions them. Taildrive
+// (drive:share / drive:access) is policy-driven and is verified
+// through TestNodeAttrsAddsToBaseline and the integration
+// TestGrantCapDrive flow.
 func TestNodeAttrsBaselineCapsAlwaysOn(t *testing.T) {
 	t.Parallel()
 
@@ -189,6 +188,7 @@ func TestNodeAttrsBaselineCapsAlwaysOn(t *testing.T) {
 				tailcfg.CapabilityAdmin,
 				tailcfg.CapabilitySSH,
 				tailcfg.CapabilityFileSharing,
+				tailcfg.NodeAttrDefaultAutoUpdate,
 			} {
 				if !hasCap(nm, w) {
 					return false
@@ -196,6 +196,30 @@ func TestNodeAttrsBaselineCapsAlwaysOn(t *testing.T) {
 			}
 
 			return true
+		})
+}
+
+// TestTaildropDisabledWithholdsFileSharingCap asserts the off path of
+// the Taildrop config gate. The Tailscale v2 API does not expose the
+// equivalent tailnet setting, so the nodeAttrs compat suite cannot
+// vary it; this test covers the headscale side directly.
+func TestTaildropDisabledWithholdsFileSharingCap(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t, servertest.WithTaildropEnabled(false))
+	user := srv.CreateUser(t, "taildrop-off-user")
+
+	c := servertest.NewClient(t, srv, "taildrop-off-node", servertest.WithUser(user))
+	c.WaitForCondition(t, "file-sharing absent when taildrop disabled",
+		10*time.Second,
+		func(nm *netmap.NetworkMap) bool {
+			if nm == nil || !nm.SelfNode.Valid() {
+				return false
+			}
+
+			return !hasCap(nm, tailcfg.CapabilityFileSharing) &&
+				hasCap(nm, tailcfg.CapabilityAdmin) &&
+				hasCap(nm, tailcfg.CapabilitySSH)
 		})
 }
 

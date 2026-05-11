@@ -85,6 +85,11 @@ reaches clients unchanged.
 `randomizeClientPort` also lands as a top-level policy field that toggles
 the default for every node, replacing the old server-config knob.
 
+A new `auto_update.enabled` config option controls the tailnet-wide
+default for client auto-update. When true, every node's CapMap carries
+`default-auto-update: [true]` so fresh clients pick up the default
+unless they make a local opt-in / opt-out choice.
+
 Policies that use the `funnel` cap, `ipPool` blocks, or
 `autogroup:admin` / `autogroup:owner` targets are rejected at load —
 those features depend on machinery headscale does not yet ship.

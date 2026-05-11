@@ -75,9 +75,10 @@ func TestTailNode(t *testing.T) {
 				MachineAuthorized: true,
 
 				CapMap: tailcfg.NodeCapMap{
-					tailcfg.CapabilityAdmin:       []tailcfg.RawMessage{},
-					tailcfg.CapabilitySSH:         []tailcfg.RawMessage{},
-					tailcfg.CapabilityFileSharing: []tailcfg.RawMessage{},
+					tailcfg.CapabilityAdmin:           []tailcfg.RawMessage{},
+					tailcfg.CapabilitySSH:             []tailcfg.RawMessage{},
+					tailcfg.CapabilityFileSharing:     []tailcfg.RawMessage{},
+					tailcfg.NodeAttrDefaultAutoUpdate: []tailcfg.RawMessage{tailcfg.RawMessage("false")},
 				},
 			},
 			wantErr: false,
@@ -164,9 +165,10 @@ func TestTailNode(t *testing.T) {
 				MachineAuthorized: true,
 
 				CapMap: tailcfg.NodeCapMap{
-					tailcfg.CapabilityAdmin:       []tailcfg.RawMessage{},
-					tailcfg.CapabilitySSH:         []tailcfg.RawMessage{},
-					tailcfg.CapabilityFileSharing: []tailcfg.RawMessage{},
+					tailcfg.CapabilityAdmin:           []tailcfg.RawMessage{},
+					tailcfg.CapabilitySSH:             []tailcfg.RawMessage{},
+					tailcfg.CapabilityFileSharing:     []tailcfg.RawMessage{},
+					tailcfg.NodeAttrDefaultAutoUpdate: []tailcfg.RawMessage{tailcfg.RawMessage("false")},
 				},
 			},
 			wantErr: false,
@@ -189,9 +191,10 @@ func TestTailNode(t *testing.T) {
 				MachineAuthorized: true,
 
 				CapMap: tailcfg.NodeCapMap{
-					tailcfg.CapabilityAdmin:       []tailcfg.RawMessage{},
-					tailcfg.CapabilitySSH:         []tailcfg.RawMessage{},
-					tailcfg.CapabilityFileSharing: []tailcfg.RawMessage{},
+					tailcfg.CapabilityAdmin:           []tailcfg.RawMessage{},
+					tailcfg.CapabilitySSH:             []tailcfg.RawMessage{},
+					tailcfg.CapabilityFileSharing:     []tailcfg.RawMessage{},
+					tailcfg.NodeAttrDefaultAutoUpdate: []tailcfg.RawMessage{tailcfg.RawMessage("false")},
 				},
 			},
 			wantErr: false,
@@ -241,6 +244,102 @@ func TestTailNode(t *testing.T) {
 
 			if diff := cmp.Diff(tt.want, got, cmpopts.EquateEmpty()); diff != "" {
 				t.Errorf("TailNode() unexpected result (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestTailNodeBaselineGates focuses on the cfg-driven baseline cap
+// emission: cfg.Taildrop.Enabled gates [tailcfg.CapabilityFileSharing]
+// and cfg.AutoUpdate.Enabled controls the value of
+// [tailcfg.NodeAttrDefaultAutoUpdate]. Admin and SSH are unconditional
+// baseline.
+func TestTailNodeBaselineGates(t *testing.T) {
+	t.Parallel()
+
+	autoUpdate := func(b bool) []tailcfg.RawMessage {
+		if b {
+			return []tailcfg.RawMessage{tailcfg.RawMessage("true")}
+		}
+
+		return []tailcfg.RawMessage{tailcfg.RawMessage("false")}
+	}
+
+	tests := []struct {
+		name string
+		cfg  *types.Config
+		want tailcfg.NodeCapMap
+	}{
+		{
+			name: "taildrop_on_autoupdate_off",
+			cfg: &types.Config{
+				Taildrop:   types.TaildropConfig{Enabled: true},
+				AutoUpdate: types.AutoUpdateConfig{Enabled: false},
+			},
+			want: tailcfg.NodeCapMap{
+				tailcfg.CapabilityAdmin:           []tailcfg.RawMessage{},
+				tailcfg.CapabilitySSH:             []tailcfg.RawMessage{},
+				tailcfg.CapabilityFileSharing:     []tailcfg.RawMessage{},
+				tailcfg.NodeAttrDefaultAutoUpdate: autoUpdate(false),
+			},
+		},
+		{
+			name: "taildrop_off_autoupdate_off",
+			cfg: &types.Config{
+				Taildrop:   types.TaildropConfig{Enabled: false},
+				AutoUpdate: types.AutoUpdateConfig{Enabled: false},
+			},
+			want: tailcfg.NodeCapMap{
+				tailcfg.CapabilityAdmin:           []tailcfg.RawMessage{},
+				tailcfg.CapabilitySSH:             []tailcfg.RawMessage{},
+				tailcfg.NodeAttrDefaultAutoUpdate: autoUpdate(false),
+			},
+		},
+		{
+			name: "taildrop_on_autoupdate_on",
+			cfg: &types.Config{
+				Taildrop:   types.TaildropConfig{Enabled: true},
+				AutoUpdate: types.AutoUpdateConfig{Enabled: true},
+			},
+			want: tailcfg.NodeCapMap{
+				tailcfg.CapabilityAdmin:           []tailcfg.RawMessage{},
+				tailcfg.CapabilitySSH:             []tailcfg.RawMessage{},
+				tailcfg.CapabilityFileSharing:     []tailcfg.RawMessage{},
+				tailcfg.NodeAttrDefaultAutoUpdate: autoUpdate(true),
+			},
+		},
+		{
+			name: "taildrop_off_autoupdate_on",
+			cfg: &types.Config{
+				Taildrop:   types.TaildropConfig{Enabled: false},
+				AutoUpdate: types.AutoUpdateConfig{Enabled: true},
+			},
+			want: tailcfg.NodeCapMap{
+				tailcfg.CapabilityAdmin:           []tailcfg.RawMessage{},
+				tailcfg.CapabilitySSH:             []tailcfg.RawMessage{},
+				tailcfg.NodeAttrDefaultAutoUpdate: autoUpdate(true),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			node := &types.Node{GivenName: "baseline-node", Hostinfo: &tailcfg.Hostinfo{}}
+
+			got, err := node.View().TailNode(
+				0,
+				func(types.NodeID) []netip.Prefix { return nil },
+				tt.cfg,
+				nil,
+			)
+			if err != nil {
+				t.Fatalf("TailNode: %v", err)
+			}
+
+			if diff := cmp.Diff(tt.want, got.CapMap, cmpopts.EquateEmpty()); diff != "" {
+				t.Errorf("CapMap mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

@@ -121,12 +121,6 @@ var unmodelledTailnetStateCaps = []tailcfg.NodeCapability{
 	// with no real-world equivalent.
 	tailcfg.NodeAttrTailnetDisplayName,
 
-	// [tailcfg.NodeAttrDefaultAutoUpdate]: tailnet-wide default for
-	// client auto-update behavior. Headscale has no equivalent
-	// tailnet setting and would emit an invented constant. Skip
-	// until the auto-update default lands as a real config knob.
-	tailcfg.NodeAttrDefaultAutoUpdate,
-
 	// [tailcfg.NodeAttrMaxKeyDuration]: tailnet-wide max key duration
 	// value. Headscale has cfg.Node.Expiry but does not surface it
 	// as a cap today; the hosted control plane emits this only when
