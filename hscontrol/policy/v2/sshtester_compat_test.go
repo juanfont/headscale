@@ -29,9 +29,26 @@ import (
 )
 
 // knownSSHTesterDivergences tracks scenarios where headscale and SaaS
-// disagree on whether a policy is accepted. Empty until captures land
-// and any genuine engine bugs are uncovered.
-var knownSSHTesterDivergences = map[string]string{}
+// disagree on whether a policy is accepted. Each entry should describe
+// the engine area a follow-up PR needs to touch.
+var knownSSHTesterDivergences = map[string]string{
+	// SaaS resolves an IP-literal sshTests src to the owning node's
+	// user identity and matches it against compiled SSH principals;
+	// headscale's resolveSSHTestSource returns srcUserID=0 for any
+	// non-Username alias and only consults principal NodeIPs, so an
+	// IP that names a user-owned node misses every accept rule keyed
+	// by that user. Fix in hscontrol/policy/v2/sshtest.go — extend
+	// resolveSSHTestSource to recover the owning user when the src
+	// resolves to exactly one user-owned node.
+	"sshtest-ip-literal-src": "headscale does not map an IP-literal sshTests src to the owning node's user; SaaS does",
+
+	// SaaS rejects `users: ["*"]` on an `ssh` rule at policy-parse
+	// time with `user "*" is not valid`; headscale accepts the
+	// wildcard and proceeds to evaluate sshTests against it. Fix in
+	// hscontrol/policy/v2/types.go — reject `*` as an SSH login user
+	// during SSH-rule validation.
+	"sshtest-user-wildcard": "headscale accepts `users: [\"*\"]` on ssh rules; SaaS rejects with `user \"*\" is not valid`",
+}
 
 func TestSSHTesterCompat(t *testing.T) {
 	t.Parallel()
