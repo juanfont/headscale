@@ -14,10 +14,19 @@ import (
 	"github.com/ory/dockertest/v3/docker"
 )
 
-var ErrContainerNotFound = errors.New("container not found")
+var (
+	ErrContainerNotFound = errors.New("container not found")
+	ErrConditionTimeout  = errors.New("condition not met within timeout")
+)
 
 // retryDockerOp absorbs eventual-consistency races in libnetwork endpoint cleanup.
+// Pulls its backoff bounds from retry.go so every helper that drives a
+// docker control-plane call uses the same budget.
 func retryDockerOp(ctx context.Context, op func() error) error {
+	bo := backoff.NewExponentialBackOff()
+	bo.InitialInterval = DockerOpInitialInterval
+	bo.MaxInterval = DockerOpMaxInterval
+
 	_, err := backoff.Retry(ctx, func() (struct{}, error) {
 		err := op()
 		if err != nil {
@@ -25,7 +34,7 @@ func retryDockerOp(ctx context.Context, op func() error) error {
 		}
 
 		return struct{}{}, nil
-	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxElapsedTime(30*time.Second))
+	}, backoff.WithBackOff(bo), backoff.WithMaxElapsedTime(DockerOpMaxElapsedTime))
 
 	return err
 }
@@ -145,6 +154,126 @@ func ReconnectContainerToNetwork(
 	testContainer string,
 ) error {
 	return AddContainerToNetwork(pool, network, testContainer)
+}
+
+// DisconnectAndReconnect performs a disconnect-then-reconnect cycle on
+// a single container, polling libnetwork between the two halves until
+// the daemon's view has settled. The settle waits matter because
+// `pool.Client.DisconnectNetwork` returns as soon as the API call is
+// acknowledged, but bridge reprogramming continues for several seconds
+// afterwards — and immediately re-attaching during that window has
+// been observed to fail with "network is unreachable" on contended
+// CI runners.
+//
+// settleTimeout caps both halves of the wait. Use ~5 s for most cases;
+// pass DockerOpMaxElapsedTime when the test is already budgeting a
+// long convergence window. Callers that need the underlying primitives
+// can still call DisconnectContainerFromNetwork and
+// ReconnectContainerToNetwork directly, but doing so opts out of the
+// settle waits and is a flake risk.
+func DisconnectAndReconnect(
+	pool *dockertest.Pool,
+	network *dockertest.Network,
+	testContainer string,
+	settleTimeout time.Duration,
+) error {
+	err := DisconnectContainerFromNetwork(pool, network, testContainer)
+	if err != nil {
+		return fmt.Errorf("disconnecting %s from %s: %w", testContainer, network.Network.Name, err)
+	}
+
+	err = waitNetworkContainerAbsent(pool, network, testContainer, settleTimeout)
+	if err != nil {
+		return fmt.Errorf("waiting for disconnect to settle: %w", err)
+	}
+
+	err = ReconnectContainerToNetwork(pool, network, testContainer)
+	if err != nil {
+		return fmt.Errorf("reconnecting %s to %s: %w", testContainer, network.Network.Name, err)
+	}
+
+	err = waitNetworkContainerPresent(pool, network, testContainer, settleTimeout)
+	if err != nil {
+		return fmt.Errorf("waiting for reconnect to settle: %w", err)
+	}
+
+	return nil
+}
+
+// waitNetworkContainerAbsent polls libnetwork until the container's
+// endpoint no longer appears in network.Containers. Returns nil as
+// soon as the absence is observed, or an error if the timeout elapses.
+func waitNetworkContainerAbsent(
+	pool *dockertest.Pool,
+	network *dockertest.Network,
+	testContainer string,
+	timeout time.Duration,
+) error {
+	return pollUntil(timeout, func() (bool, error) {
+		net, err := pool.Client.NetworkInfo(network.Network.ID)
+		if err != nil {
+			return false, fmt.Errorf("inspecting network %s: %w", network.Network.Name, err)
+		}
+
+		for _, c := range net.Containers {
+			if c.Name == testContainer || c.Name == "/"+testContainer {
+				return false, nil
+			}
+		}
+
+		return true, nil
+	})
+}
+
+// waitNetworkContainerPresent polls libnetwork until the container's
+// endpoint appears in network.Containers with a non-empty IPv4 address.
+// An entry without an address means libnetwork is still reprogramming.
+func waitNetworkContainerPresent(
+	pool *dockertest.Pool,
+	network *dockertest.Network,
+	testContainer string,
+	timeout time.Duration,
+) error {
+	return pollUntil(timeout, func() (bool, error) {
+		net, err := pool.Client.NetworkInfo(network.Network.ID)
+		if err != nil {
+			return false, fmt.Errorf("inspecting network %s: %w", network.Network.Name, err)
+		}
+
+		for _, c := range net.Containers {
+			if (c.Name == testContainer || c.Name == "/"+testContainer) && c.IPv4Address != "" {
+				return true, nil
+			}
+		}
+
+		return false, nil
+	})
+}
+
+// pollUntil ticks every DockerOpInitialInterval until check returns
+// done=true or timeout elapses. A non-nil check error aborts the loop.
+func pollUntil(timeout time.Duration, check func() (done bool, err error)) error {
+	deadline := time.Now().Add(timeout)
+
+	ticker := time.NewTicker(DockerOpInitialInterval)
+	defer ticker.Stop()
+
+	for {
+		done, err := check()
+		if err != nil {
+			return err
+		}
+
+		if done {
+			return nil
+		}
+
+		if time.Now().After(deadline) {
+			return fmt.Errorf("%w: %s", ErrConditionTimeout, timeout)
+		}
+
+		<-ticker.C
+	}
 }
 
 // RandomFreeHostPort asks the kernel for a free open port that is ready to use.
