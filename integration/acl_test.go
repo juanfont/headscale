@@ -3233,12 +3233,12 @@ func TestACLGroupDeletionExactReproduction(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		url := fmt.Sprintf("http://%s/etc/hostname", user3FQDN)
 		assertCurlDockerHostname(c, user1, url, "user1 should reach user3")
-	}, integrationutil.HAConvergeTimeout, integrationutil.SlowPoll, "user1 -> user3")
+	}, integrationutil.PolicyPropagationTimeout, integrationutil.SlowPoll, "user1 -> user3")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		url := fmt.Sprintf("http://%s/etc/hostname", user1FQDN)
 		assertCurlDockerHostname(c, user3, url, "user3 should reach user1")
-	}, integrationutil.HAConvergeTimeout, integrationutil.SlowPoll, "user3 -> user1")
+	}, integrationutil.PolicyPropagationTimeout, integrationutil.SlowPoll, "user3 -> user1")
 
 	t.Log("Step 1: PASSED - initial connectivity works")
 
@@ -3266,12 +3266,12 @@ func TestACLGroupDeletionExactReproduction(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		url := fmt.Sprintf("http://%s/etc/hostname", user3FQDN)
 		assertCurlDockerHostname(c, user1, url, "user1 should still reach user3 after user2 deletion")
-	}, integrationutil.HAConvergeTimeout, integrationutil.SlowPoll, "user1 -> user3 after user2 deletion")
+	}, integrationutil.PolicyPropagationTimeout, integrationutil.SlowPoll, "user1 -> user3 after user2 deletion")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		url := fmt.Sprintf("http://%s/etc/hostname", user1FQDN)
 		assertCurlDockerHostname(c, user3, url, "user3 should still reach user1 after user2 deletion")
-	}, integrationutil.HAConvergeTimeout, integrationutil.SlowPoll, "user3 -> user1 after user2 deletion")
+	}, integrationutil.PolicyPropagationTimeout, integrationutil.SlowPoll, "user3 -> user1 after user2 deletion")
 
 	t.Log("Step 3: PASSED - connectivity works after user2 deletion")
 
@@ -3291,12 +3291,12 @@ func TestACLGroupDeletionExactReproduction(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		url := fmt.Sprintf("http://%s/etc/hostname", user3FQDN)
 		assertCurlDockerHostname(c, user1, url, "BUG #2967: user1 should still reach user3 after user4 creation")
-	}, integrationutil.HAConvergeTimeout, integrationutil.SlowPoll, "user1 -> user3 after user4 creation (issue #2967)")
+	}, integrationutil.PolicyPropagationTimeout, integrationutil.SlowPoll, "user1 -> user3 after user4 creation (issue #2967)")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		url := fmt.Sprintf("http://%s/etc/hostname", user1FQDN)
 		assertCurlDockerHostname(c, user3, url, "BUG #2967: user3 should still reach user1 after user4 creation")
-	}, integrationutil.HAConvergeTimeout, integrationutil.SlowPoll, "user3 -> user1 after user4 creation (issue #2967)")
+	}, integrationutil.PolicyPropagationTimeout, integrationutil.SlowPoll, "user3 -> user1 after user4 creation (issue #2967)")
 
 	// Additional verification: check filter rules are not empty
 	filter, err := headscale.DebugFilter()
