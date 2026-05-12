@@ -471,7 +471,7 @@ func doSSHWithRetryAsUser(
 
 			// For all other errors, assert no error to trigger retry
 			assert.NoError(ct, err)
-		}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond)
+		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll)
 	} else {
 		// For failure cases, just execute once
 		result, stderr, err = client.Execute(command)
@@ -701,7 +701,7 @@ func findSSHCheckAuthID(t *testing.T, headscale ControlServer) string {
 		}
 
 		assert.NotEmpty(c, authID, "auth-id not found in headscale logs")
-	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "waiting for SSH check auth-id in headscale logs")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "waiting for SSH check auth-id in headscale logs")
 
 	return authID
 }
@@ -810,7 +810,7 @@ func findNewSSHCheckAuthID(
 		}
 
 		assert.NotEmpty(c, authID, "new auth-id not found in headscale logs")
-	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "waiting for new SSH check auth-id")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "waiting for new SSH check auth-id")
 
 	return authID
 }

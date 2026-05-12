@@ -114,7 +114,7 @@ func TestEnablingRoutes(t *testing.T) {
 
 				assert.Nil(c, peerStatus.PrimaryRoutes)
 			}
-		}, integrationutil.ScaledTimeout(5*time.Second), 200*time.Millisecond, "Verifying no routes are active before approval")
+		}, integrationutil.ScaledTimeout(5*time.Second), integrationutil.FastPoll, "Verifying no routes are active before approval")
 	}
 
 	for _, node := range nodes {
@@ -159,7 +159,7 @@ func TestEnablingRoutes(t *testing.T) {
 				requirePeerSubnetRoutesWithCollect(c, peerStatus, []netip.Prefix{netip.MustParsePrefix(expectedRoutes[string(peerStatus.ID)])})
 			}
 		}
-	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "clients should see new routes")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "clients should see new routes")
 
 	_, err = headscale.ApproveRoutes(
 		1,
@@ -195,7 +195,7 @@ func TestEnablingRoutes(t *testing.T) {
 				assert.Len(c, node.GetSubnetRoutes(), 1)    // 10.0.2.0/24
 			}
 		}
-	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "route state changes should propagate to nodes")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "route state changes should propagate to nodes")
 
 	// Verify that the clients can see the new routes
 	for _, client := range allClients {
@@ -215,7 +215,7 @@ func TestEnablingRoutes(t *testing.T) {
 					requirePeerSubnetRoutesWithCollect(c, peerStatus, []netip.Prefix{netip.MustParsePrefix("10.0.2.0/24")})
 				}
 			}
-		}, integrationutil.ScaledTimeout(5*time.Second), 200*time.Millisecond, "Verifying final route state visible to clients")
+		}, integrationutil.ScaledTimeout(5*time.Second), integrationutil.FastPoll, "Verifying final route state visible to clients")
 	}
 }
 
@@ -223,7 +223,7 @@ func TestEnablingRoutes(t *testing.T) {
 func TestHASubnetRouterFailover(t *testing.T) {
 	IntegrationSkip(t)
 
-	propagationTime := integrationutil.ScaledTimeout(60 * time.Second)
+	propagationTime := integrationutil.HAConvergeTimeout
 
 	// Helper function to validate primary routes table state
 	validatePrimaryRoutes := func(t *testing.T, headscale ControlServer, expectedRoutes *types.DebugRoutes, message string) {
@@ -511,7 +511,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 			requireNodeRouteCountWithCollect(c, nodes[1], 1, 1, 0)
 			requireNodeRouteCountWithCollect(c, nodes[2], 1, 0, 0)
 		}
-	}, integrationutil.ScaledTimeout(3*time.Second), 200*time.Millisecond, "HA setup verification: Router 2 approved as STANDBY (available=1, approved=1, subnet=0), Router 1 stays PRIMARY (subnet=1)")
+	}, integrationutil.ScaledTimeout(3*time.Second), integrationutil.FastPoll, "HA setup verification: Router 2 approved as STANDBY (available=1, approved=1, subnet=0), Router 1 stays PRIMARY (subnet=1)")
 
 	// Verify that the client has routes from the primary machine
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -626,7 +626,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		requireNodeRouteCountWithCollect(c, nodes[0], 1, 1, 1)
 		requireNodeRouteCountWithCollect(c, nodes[1], 1, 1, 0)
 		requireNodeRouteCountWithCollect(c, nodes[2], 1, 1, 0)
-	}, integrationutil.ScaledTimeout(3*time.Second), 200*time.Millisecond, "Full HA verification: Router 3 approved as second STANDBY (available=1, approved=1, subnet=0), Router 1 PRIMARY, Router 2 first STANDBY")
+	}, integrationutil.ScaledTimeout(3*time.Second), integrationutil.FastPoll, "Full HA verification: Router 3 approved as second STANDBY (available=1, approved=1, subnet=0), Router 1 PRIMARY, Router 2 first STANDBY")
 
 	// Verify that the client has routes from the primary machine
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -988,7 +988,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 				pref,
 			)
 		}
-	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "Full recovery verification: All 3 routers online, Router 3 remains PRIMARY (no flapping) with routes")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "Full recovery verification: All 3 routers online, Router 3 remains PRIMARY (no flapping) with routes")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertCurlSuccessReturnsCount(c, client, weburl, 13, "Verifying client can reach webservice through router 3 after full recovery")
@@ -1040,7 +1040,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		requireNodeRouteCountWithCollect(c, MustFindNode(subRouter1.Hostname(), nodes), 1, 1, 1)
 		requireNodeRouteCountWithCollect(c, MustFindNode(subRouter2.Hostname(), nodes), 1, 1, 0)
 		requireNodeRouteCountWithCollect(c, MustFindNode(subRouter3.Hostname(), nodes), 1, 0, 0)
-	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "Route disable verification: Router 3 route disabled, Router 1 should be new PRIMARY, Router 2 STANDBY")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "Route disable verification: Router 3 route disabled, Router 1 should be new PRIMARY, Router 2 STANDBY")
 
 	// Verify that the route is announced from subnet router 1
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -1126,7 +1126,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		requireNodeRouteCountWithCollect(c, MustFindNode(subRouter1.Hostname(), nodes), 1, 0, 0)
 		requireNodeRouteCountWithCollect(c, MustFindNode(subRouter2.Hostname(), nodes), 1, 1, 1)
 		requireNodeRouteCountWithCollect(c, MustFindNode(subRouter3.Hostname(), nodes), 1, 0, 0)
-	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "Second route disable verification: Router 1 route disabled, Router 2 should be new PRIMARY")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "Second route disable verification: Router 1 route disabled, Router 2 should be new PRIMARY")
 
 	// Verify that the route is announced from subnet router 1
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -1404,7 +1404,7 @@ func TestSubnetRouteACL(t *testing.T) {
 				_, _, err = client.Execute(command)
 				assert.NoErrorf(c, err, "failed to advertise route: %s", err)
 			}
-		}, integrationutil.ScaledTimeout(5*time.Second), 200*time.Millisecond, "Configuring route advertisements")
+		}, integrationutil.ScaledTimeout(5*time.Second), integrationutil.FastPoll, "Configuring route advertisements")
 	}
 
 	err = scenario.WaitForTailscaleSync()
@@ -1458,7 +1458,7 @@ func TestSubnetRouteACL(t *testing.T) {
 				assert.Nil(c, peerStatus.PrimaryRoutes)
 				requirePeerSubnetRoutesWithCollect(c, peerStatus, nil)
 			}
-		}, integrationutil.ScaledTimeout(5*time.Second), 200*time.Millisecond, "Verifying no routes are active before approval")
+		}, integrationutil.ScaledTimeout(5*time.Second), integrationutil.FastPoll, "Verifying no routes are active before approval")
 	}
 
 	_, err = headscale.ApproveRoutes(
@@ -1475,7 +1475,7 @@ func TestSubnetRouteACL(t *testing.T) {
 
 		requireNodeRouteCountWithCollect(c, nodes[0], 1, 1, 1)
 		requireNodeRouteCountWithCollect(c, nodes[1], 0, 0, 0)
-	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "route state changes should propagate to nodes")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "route state changes should propagate to nodes")
 
 	// Verify that the client has routes from the primary machine
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -1494,7 +1494,7 @@ func TestSubnetRouteACL(t *testing.T) {
 		}
 
 		requirePeerSubnetRoutesWithCollect(c, srs1PeerStatus, []netip.Prefix{netip.MustParsePrefix(expectedRoutes["1"])})
-	}, integrationutil.ScaledTimeout(5*time.Second), 200*time.Millisecond, "Verifying client can see subnet routes from router")
+	}, integrationutil.ScaledTimeout(5*time.Second), integrationutil.FastPoll, "Verifying client can see subnet routes from router")
 
 	// Wait for packet filter updates to propagate to client netmap
 	wantClientFilter := []filter.Match{
@@ -1529,7 +1529,7 @@ func TestSubnetRouteACL(t *testing.T) {
 		if diff := cmpdiff.Diff(wantClientFilter, clientNm.PacketFilter, util.ViewSliceIPProtoComparer, util.PrefixComparer); diff != "" {
 			assert.Fail(c, fmt.Sprintf("Client (%s) filter, unexpected result (-want +got):\n%s", client.Hostname(), diff))
 		}
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for client packet filter to update")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for client packet filter to update")
 
 	// Wait for packet filter updates to propagate to subnet router netmap
 	// The two ACL rules (group:admins -> group:admins:* and group:admins -> 10.33.0.0/16:*)
@@ -1570,7 +1570,7 @@ func TestSubnetRouteACL(t *testing.T) {
 		if diff := cmpdiff.Diff(wantSubnetFilter, subnetNm.PacketFilter, util.ViewSliceIPProtoComparer, util.PrefixComparer); diff != "" {
 			assert.Fail(c, fmt.Sprintf("Subnet (%s) filter, unexpected result (-want +got):\n%s", subRouter1.Hostname(), diff))
 		}
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for subnet router packet filter to update")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for subnet router packet filter to update")
 }
 
 // TestEnablingExitRoutes tests enabling exit routes for clients.
@@ -1619,7 +1619,7 @@ func TestEnablingExitRoutes(t *testing.T) {
 
 		requireNodeRouteCountWithCollect(c, nodes[0], 2, 0, 0)
 		requireNodeRouteCountWithCollect(c, nodes[1], 2, 0, 0)
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for route advertisements to propagate")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for route advertisements to propagate")
 
 	// Verify that no routes has been sent to the client,
 	// they are not yet enabled.
@@ -1633,7 +1633,7 @@ func TestEnablingExitRoutes(t *testing.T) {
 
 				assert.Nil(c, peerStatus.PrimaryRoutes)
 			}
-		}, integrationutil.ScaledTimeout(5*time.Second), 200*time.Millisecond, "Verifying no exit routes are active before approval")
+		}, integrationutil.ScaledTimeout(5*time.Second), integrationutil.FastPoll, "Verifying no exit routes are active before approval")
 	}
 
 	// Enable all routes, but do v4 on one and v6 on other to ensure they
@@ -1657,7 +1657,7 @@ func TestEnablingExitRoutes(t *testing.T) {
 
 		requireNodeRouteCountWithCollect(c, nodes[0], 2, 2, 2)
 		requireNodeRouteCountWithCollect(c, nodes[1], 2, 2, 2)
-	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "route state changes should propagate to both nodes")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "route state changes should propagate to both nodes")
 
 	// Wait for route state changes to propagate to clients
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -1678,7 +1678,7 @@ func TestEnablingExitRoutes(t *testing.T) {
 				}
 			}
 		}
-	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "clients should see new routes")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "clients should see new routes")
 }
 
 // TestExitRoutesWithAutogroupInternetACL reproduces juanfont/headscale#3212.
@@ -1748,7 +1748,7 @@ func TestExitRoutesWithAutogroupInternetACL(t *testing.T) {
 
 		requireNodeRouteCountWithCollect(c, nodes[0], 2, 0, 0)
 		requireNodeRouteCountWithCollect(c, nodes[1], 2, 0, 0)
-	}, integrationutil.ScaledTimeout(20*time.Second), 200*time.Millisecond,
+	}, integrationutil.ScaledTimeout(20*time.Second), integrationutil.FastPoll,
 		"Waiting for exit-route advertisements to propagate")
 
 	// Approve exit routes on both nodes so either could serve as
@@ -1772,7 +1772,7 @@ func TestExitRoutesWithAutogroupInternetACL(t *testing.T) {
 
 		requireNodeRouteCountWithCollect(c, nodes[0], 2, 2, 2)
 		requireNodeRouteCountWithCollect(c, nodes[1], 2, 2, 2)
-	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond,
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll,
 		"approved exit routes should propagate to nodes")
 
 	// The end-to-end UX assertion: every client must see the OTHER
@@ -1815,7 +1815,7 @@ func TestExitRoutesWithAutogroupInternetACL(t *testing.T) {
 				"client %s should see the other node as a peer "+
 					"via the autogroup:internet ACL",
 				status.Self.HostName)
-		}, integrationutil.ScaledTimeout(15*time.Second), 500*time.Millisecond,
+		}, integrationutil.ScaledTimeout(15*time.Second), integrationutil.SlowPoll,
 			"client should see exit nodes as peers via autogroup:internet ACL")
 	}
 }
@@ -1910,7 +1910,7 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 			assert.Nil(c, peerStatus.PrimaryRoutes)
 			requirePeerSubnetRoutesWithCollect(c, peerStatus, nil)
 		}
-	}, integrationutil.ScaledTimeout(5*time.Second), 200*time.Millisecond, "Verifying no routes are active before approval")
+	}, integrationutil.ScaledTimeout(5*time.Second), integrationutil.FastPoll, "Verifying no routes are active before approval")
 
 	// Enable route
 	_, err = headscale.ApproveRoutes(
@@ -1927,7 +1927,7 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 2)
 		requireNodeRouteCountWithCollect(c, nodes[0], 1, 1, 1)
-	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "route state changes should propagate to nodes")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "route state changes should propagate to nodes")
 
 	// Verify that the routes have been sent to the client
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -1943,7 +1943,7 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 
 			requirePeerSubnetRoutesWithCollect(c, peerStatus, []netip.Prefix{*pref})
 		}
-	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "routes should be visible to client")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "routes should be visible to client")
 
 	usernet1, err := scenario.Network("usernet1")
 	require.NoError(t, err)
@@ -1960,7 +1960,7 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertCurlSuccessReturnsCount(c, user2c, url, 13, "Verifying client can reach webservice through subnet route")
-	}, integrationutil.ScaledTimeout(5*time.Second), 200*time.Millisecond, "Verifying client can reach webservice through subnet route")
+	}, integrationutil.ScaledTimeout(5*time.Second), integrationutil.FastPoll, "Verifying client can reach webservice through subnet route")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		tr, err := user2c.Traceroute(webip)
@@ -1972,7 +1972,7 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 		}
 
 		assertTracerouteViaIPWithCollect(c, tr, ip)
-	}, integrationutil.ScaledTimeout(5*time.Second), 200*time.Millisecond, "Verifying traceroute goes through subnet router")
+	}, integrationutil.ScaledTimeout(5*time.Second), integrationutil.FastPoll, "Verifying traceroute goes through subnet router")
 }
 
 func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
@@ -2066,7 +2066,7 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 			assert.Nil(c, peerStatus.PrimaryRoutes)
 			requirePeerSubnetRoutesWithCollect(c, peerStatus, nil)
 		}
-	}, integrationutil.ScaledTimeout(5*time.Second), 200*time.Millisecond, "Verifying no routes sent to client before approval")
+	}, integrationutil.ScaledTimeout(5*time.Second), integrationutil.FastPoll, "Verifying no routes sent to client before approval")
 
 	// Approve exit routes and subnet route.
 	_, err = headscale.ApproveRoutes(nodes[0].GetId(), []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6(), *route})
@@ -2078,7 +2078,7 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 2)
 		requireNodeRouteCountWithCollect(c, nodes[0], 3, 3, 3)
-	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "route state changes should propagate to nodes")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "route state changes should propagate to nodes")
 
 	// Wait for exit routes to be visible to the client.
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2089,7 +2089,7 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 			peerStatus := status.Peer[peerKey]
 			assert.True(c, peerStatus.ExitNodeOption, "peer should be an exit node option")
 		}
-	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "exit routes should be visible to client")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "exit routes should be visible to client")
 
 	// Tell user2c to use user1c as an exit node.
 	command = []string{
@@ -3270,7 +3270,7 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 
 		// Check that the router has 3 routes now approved and available
 		requireNodeRouteCountWithCollect(c, routerNode, 3, 3, 3)
-	}, integrationutil.ScaledTimeout(15*time.Second), 500*time.Millisecond, "route state changes should propagate")
+	}, integrationutil.ScaledTimeout(15*time.Second), integrationutil.SlowPoll, "route state changes should propagate")
 
 	// Now check the client node status
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -3285,11 +3285,11 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 
 		// The node should only have 1 subnet route
 		requirePeerSubnetRoutesWithCollect(c, routerPeerStatus, []netip.Prefix{*route})
-	}, integrationutil.ScaledTimeout(5*time.Second), 200*time.Millisecond, "Verifying node sees filtered subnet routes")
+	}, integrationutil.ScaledTimeout(5*time.Second), integrationutil.FastPoll, "Verifying node sees filtered subnet routes")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertCurlSuccessReturnsCount(c, nodeClient, weburl, 13, "Verifying node can reach webservice through allowed route")
-	}, integrationutil.ScaledTimeout(60*time.Second), 200*time.Millisecond, "Verifying node can reach webservice through allowed route")
+	}, integrationutil.HAConvergeTimeout, integrationutil.FastPoll, "Verifying node can reach webservice through allowed route")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		tr, err := nodeClient.Traceroute(webip)
@@ -3301,7 +3301,7 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 		}
 
 		assertTracerouteViaIPWithCollect(c, tr, ip)
-	}, integrationutil.ScaledTimeout(60*time.Second), 200*time.Millisecond, "Verifying traceroute goes through router")
+	}, integrationutil.HAConvergeTimeout, integrationutil.FastPoll, "Verifying traceroute goes through router")
 }
 
 // TestGrantViaSubnetSteering validates that via grants steer different source
@@ -3632,7 +3632,7 @@ func TestGrantViaSubnetSteering(t *testing.T) {
 func TestHASubnetRouterPingFailover(t *testing.T) {
 	IntegrationSkip(t)
 
-	propagationTime := integrationutil.ScaledTimeout(60 * time.Second)
+	propagationTime := integrationutil.HAConvergeTimeout
 
 	spec := ScenarioSpec{
 		NodesPerUser: 2,
@@ -3876,7 +3876,7 @@ func TestHASubnetRouterPingFailover(t *testing.T) {
 func TestHASubnetRouterFailoverBothOffline(t *testing.T) {
 	IntegrationSkip(t)
 
-	propagationTime := integrationutil.ScaledTimeout(60 * time.Second)
+	propagationTime := integrationutil.HAConvergeTimeout
 
 	spec := ScenarioSpec{
 		NodesPerUser: 2,
@@ -4083,7 +4083,7 @@ func TestHASubnetRouterFailoverBothOffline(t *testing.T) {
 func TestHASubnetRouterFailoverBothOfflineCablePull(t *testing.T) {
 	IntegrationSkip(t)
 
-	propagationTime := integrationutil.ScaledTimeout(120 * time.Second)
+	propagationTime := integrationutil.HASlowConvergeTimeout
 
 	spec := ScenarioSpec{
 		NodesPerUser: 2,
@@ -4309,7 +4309,7 @@ func TestHASubnetRouterFailoverBothOfflineCablePull(t *testing.T) {
 func TestHASubnetRouterFailoverDockerDisconnect(t *testing.T) {
 	IntegrationSkip(t)
 
-	propagationTime := integrationutil.ScaledTimeout(120 * time.Second)
+	propagationTime := integrationutil.HASlowConvergeTimeout
 	flapWindow := integrationutil.ScaledTimeout(40 * time.Second)
 
 	spec := ScenarioSpec{

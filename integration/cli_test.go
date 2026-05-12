@@ -147,7 +147,7 @@ func TestUserCommand(t *testing.T) {
 			&listByUsername,
 		)
 		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for user list by username")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for user list by username")
 
 	slices.SortFunc(listByUsername, sortWithID)
 
@@ -178,7 +178,7 @@ func TestUserCommand(t *testing.T) {
 			&listByID,
 		)
 		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for user list by ID")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for user list by ID")
 
 	slices.SortFunc(listByID, sortWithID)
 
@@ -264,7 +264,7 @@ func TestUserCommand(t *testing.T) {
 		)
 		assert.NoError(c, err)
 		assert.Empty(c, listAfterNameDelete)
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for user list after name delete")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for user list after name delete")
 }
 
 func TestPreAuthKeyCommand(t *testing.T) {
@@ -315,7 +315,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 				&preAuthKey,
 			)
 			assert.NoError(c, err)
-		}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for preauth key creation")
+		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for preauth key creation")
 
 		keys[index] = &preAuthKey
 	}
@@ -337,7 +337,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 			&listedPreAuthKeys,
 		)
 		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for preauth keys list")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for preauth keys list")
 
 	// There is one key created by "scenario.CreateHeadscaleEnv"
 	assert.Len(t, listedPreAuthKeys, 4)
@@ -413,7 +413,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 			&listedPreAuthKeysAfterExpire,
 		)
 		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for preauth keys list after expire")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for preauth keys list after expire")
 
 	assert.True(t, listedPreAuthKeysAfterExpire[1].GetExpiration().AsTime().Before(time.Now()))
 	assert.True(t, listedPreAuthKeysAfterExpire[2].GetExpiration().AsTime().After(time.Now()))
@@ -457,7 +457,7 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 			&preAuthKey,
 		)
 		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for preauth key creation without expiry")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for preauth key creation without expiry")
 
 	var listedPreAuthKeys []v1.PreAuthKey
 
@@ -474,7 +474,7 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 			&listedPreAuthKeys,
 		)
 		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for preauth keys list")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for preauth keys list")
 
 	// There is one key created by "scenario.CreateHeadscaleEnv"
 	assert.Len(t, listedPreAuthKeys, 2)
@@ -523,7 +523,7 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 			&preAuthReusableKey,
 		)
 		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for reusable preauth key creation")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for reusable preauth key creation")
 
 	var preAuthEphemeralKey v1.PreAuthKey
 
@@ -543,7 +543,7 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 			&preAuthEphemeralKey,
 		)
 		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for ephemeral preauth key creation")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for ephemeral preauth key creation")
 
 	assert.True(t, preAuthEphemeralKey.GetEphemeral())
 	assert.False(t, preAuthEphemeralKey.GetReusable())
@@ -563,7 +563,7 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 			&listedPreAuthKeys,
 		)
 		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for preauth keys list after reusable/ephemeral creation")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for preauth keys list after reusable/ephemeral creation")
 
 	// There is one key created by "scenario.CreateHeadscaleEnv"
 	assert.Len(t, listedPreAuthKeys, 3)
@@ -621,7 +621,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 			&user2Key,
 		)
 		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for user2 preauth key creation")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for user2 preauth key creation")
 
 	var listNodes []*v1.Node
 
@@ -653,7 +653,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		assert.NoError(ct, err)
 		assert.NotContains(ct, []string{"Starting", "Running"}, status.BackendState,
 			"Expected node to be logged out, backend state: %s", status.BackendState)
-	}, integrationutil.ScaledTimeout(30*time.Second), 2*time.Second)
+	}, integrationutil.StatusReadyTimeout, 2*time.Second)
 
 	err = client.Login(headscale.GetEndpoint(), user2Key.GetKey())
 	require.NoError(t, err)
@@ -665,7 +665,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		// With tags-as-identity model, tagged nodes show as TaggedDevices user (2147455555)
 		// The PreAuthKey was created with tags, so the node is tagged
 		assert.Equal(ct, "userid:2147455555", status.Self.UserID.String(), "Expected node to be logged in as tagged-devices user")
-	}, integrationutil.ScaledTimeout(30*time.Second), 2*time.Second)
+	}, integrationutil.StatusReadyTimeout, 2*time.Second)
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
@@ -730,7 +730,7 @@ func TestTaggedNodesCLIOutput(t *testing.T) {
 			&user2Key,
 		)
 		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for user2 tagged preauth key creation")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for user2 tagged preauth key creation")
 
 	allClients, err := scenario.ListTailscaleClients()
 	requireNoErrListClients(t, err)
@@ -751,7 +751,7 @@ func TestTaggedNodesCLIOutput(t *testing.T) {
 		assert.NoError(ct, err)
 		assert.NotContains(ct, []string{"Starting", "Running"}, status.BackendState,
 			"Expected node to be logged out, backend state: %s", status.BackendState)
-	}, integrationutil.ScaledTimeout(30*time.Second), 2*time.Second)
+	}, integrationutil.StatusReadyTimeout, 2*time.Second)
 
 	// Log in with the tagged PreAuthKey (from user2, with tags)
 	err = client.Login(headscale.GetEndpoint(), user2Key.GetKey())
@@ -763,7 +763,7 @@ func TestTaggedNodesCLIOutput(t *testing.T) {
 		assert.Equal(ct, "Running", status.BackendState, "Expected node to be logged in, backend state: %s", status.BackendState)
 		// With tags-as-identity model, tagged nodes show as TaggedDevices user (2147455555)
 		assert.Equal(ct, "userid:2147455555", status.Self.UserID.String(), "Expected node to be logged in as tagged-devices user")
-	}, integrationutil.ScaledTimeout(30*time.Second), 2*time.Second)
+	}, integrationutil.StatusReadyTimeout, 2*time.Second)
 
 	// Wait for the second node to appear
 	var listNodes []*v1.Node
@@ -850,7 +850,7 @@ func TestApiKeyCommand(t *testing.T) {
 			&listedAPIKeys,
 		)
 		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for API keys list")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for API keys list")
 
 	assert.Len(t, listedAPIKeys, 5)
 
@@ -925,7 +925,7 @@ func TestApiKeyCommand(t *testing.T) {
 			&listedAfterExpireAPIKeys,
 		)
 		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for API keys list after expire")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for API keys list after expire")
 
 	for index := range listedAfterExpireAPIKeys {
 		if _, ok := expiredPrefixes[listedAfterExpireAPIKeys[index].GetPrefix()]; ok {
@@ -967,7 +967,7 @@ func TestApiKeyCommand(t *testing.T) {
 			&listedAPIKeysAfterDelete,
 		)
 		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for API keys list after delete")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for API keys list after delete")
 
 	assert.Len(t, listedAPIKeysAfterDelete, 4)
 
@@ -996,7 +996,7 @@ func TestApiKeyCommand(t *testing.T) {
 			&listedAPIKeysAfterExpireByID,
 		)
 		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for API keys list after expire by ID")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for API keys list after expire by ID")
 
 	// Verify the key was expired
 	for idx := range listedAPIKeysAfterExpireByID {
@@ -1032,7 +1032,7 @@ func TestApiKeyCommand(t *testing.T) {
 			&listedAPIKeysAfterDeleteByID,
 		)
 		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for API keys list after delete by ID")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for API keys list after delete by ID")
 
 	assert.Len(t, listedAPIKeysAfterDeleteByID, 3)
 
@@ -1109,7 +1109,7 @@ func TestNodeCommand(t *testing.T) {
 				&node,
 			)
 			assert.NoError(c, err)
-		}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for node registration")
+		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for node registration")
 
 		nodes[index] = &node
 	}
@@ -1194,7 +1194,7 @@ func TestNodeCommand(t *testing.T) {
 				&node,
 			)
 			assert.NoError(c, err)
-		}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for other-user node registration")
+		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for other-user node registration")
 
 		otherUserMachines[index] = &node
 	}
@@ -1219,7 +1219,7 @@ func TestNodeCommand(t *testing.T) {
 			&listAllWithotherUser,
 		)
 		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for nodes list after adding other-user nodes")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for nodes list after adding other-user nodes")
 
 	// All nodes, nodes + otherUser
 	assert.Len(t, listAllWithotherUser, 7)
@@ -1248,7 +1248,7 @@ func TestNodeCommand(t *testing.T) {
 			&listOnlyotherUserMachineUser,
 		)
 		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for nodes list filtered by other-user")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for nodes list filtered by other-user")
 
 	assert.Len(t, listOnlyotherUserMachineUser, 2)
 
@@ -1368,7 +1368,7 @@ func TestNodeExpireCommand(t *testing.T) {
 				&node,
 			)
 			assert.NoError(c, err)
-		}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for node-expire-user node registration")
+		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for node-expire-user node registration")
 
 		nodes[index] = &node
 	}
@@ -1390,7 +1390,7 @@ func TestNodeExpireCommand(t *testing.T) {
 			&listAll,
 		)
 		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for nodes list in expire test")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for nodes list in expire test")
 
 	assert.Len(t, listAll, 5)
 
@@ -1429,7 +1429,7 @@ func TestNodeExpireCommand(t *testing.T) {
 			&listAllAfterExpiry,
 		)
 		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for nodes list after expiry")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for nodes list after expiry")
 
 	assert.Len(t, listAllAfterExpiry, 5)
 
@@ -1506,7 +1506,7 @@ func TestNodeRenameCommand(t *testing.T) {
 				&node,
 			)
 			assert.NoError(c, err)
-		}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for node-rename-command node registration")
+		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for node-rename-command node registration")
 
 		nodes[index] = &node
 	}
@@ -1528,7 +1528,7 @@ func TestNodeRenameCommand(t *testing.T) {
 			&listAll,
 		)
 		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for nodes list in rename test")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for nodes list in rename test")
 
 	assert.Len(t, listAll, 5)
 
@@ -1569,7 +1569,7 @@ func TestNodeRenameCommand(t *testing.T) {
 			&listAllAfterRename,
 		)
 		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for nodes list after rename")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for nodes list after rename")
 
 	assert.Len(t, listAllAfterRename, 5)
 
@@ -1607,7 +1607,7 @@ func TestNodeRenameCommand(t *testing.T) {
 			&listAllAfterRenameAttempt,
 		)
 		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for nodes list after failed rename attempt")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for nodes list after failed rename attempt")
 
 	assert.Len(t, listAllAfterRenameAttempt, 5)
 
@@ -1696,7 +1696,7 @@ func TestPolicyCommand(t *testing.T) {
 			&output,
 		)
 		assert.NoError(c, err)
-	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for policy get command")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for policy get command")
 
 	assert.Len(t, output.TagOwners, 1)
 	assert.Len(t, output.ACLs, 1)
