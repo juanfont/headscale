@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cenkalti/backoff/v5"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
@@ -523,8 +524,11 @@ func checkImageAvailableLocally(ctx context.Context, cli *client.Client, imageNa
 }
 
 // ensureImageAvailable checks if the image is available locally first, then pulls if needed.
+// Pulls go through dockertestutil.RegistryAuth so Docker Hub credentials
+// configured via DOCKERHUB_USERNAME / DOCKERHUB_TOKEN or ~/.docker/config.json
+// are used. Transient errors (rate limits, 5xx) are retried with backoff;
+// the Docker SDK does not auto-load config.json on its own.
 func ensureImageAvailable(ctx context.Context, cli *client.Client, imageName string, verbose bool) error {
-	// First check if image is available locally
 	available, err := checkImageAvailableLocally(ctx, cli, imageName)
 	if err != nil {
 		return fmt.Errorf("checking local image availability: %w", err)
@@ -538,32 +542,64 @@ func ensureImageAvailable(ctx context.Context, cli *client.Client, imageName str
 		return nil
 	}
 
-	// Image not available locally, try to pull it
 	if verbose {
 		log.Printf("Image %s not found locally, pulling...", imageName)
 	}
 
-	reader, err := cli.ImagePull(ctx, imageName, image.PullOptions{})
+	registryAuth, err := dockertestutil.RegistryAuth()
 	if err != nil {
-		return fmt.Errorf("pulling image %s: %w", imageName, err)
+		return fmt.Errorf("resolving registry auth: %w", err)
 	}
-	defer reader.Close()
 
-	if verbose {
-		_, err = io.Copy(os.Stdout, reader)
-		if err != nil {
-			return fmt.Errorf("reading pull output: %w", err)
-		}
-	} else {
-		_, err = io.Copy(io.Discard, reader)
-		if err != nil {
-			return fmt.Errorf("reading pull output: %w", err)
-		}
+	_, err = backoff.Retry(
+		ctx,
+		func() (struct{}, error) {
+			reader, pullErr := cli.ImagePull(ctx, imageName, image.PullOptions{RegistryAuth: registryAuth})
+			if pullErr != nil {
+				if isPermanentDockerPullError(pullErr) {
+					return struct{}{}, backoff.Permanent(pullErr)
+				}
 
+				return struct{}{}, fmt.Errorf("pulling image %s: %w", imageName, pullErr)
+			}
+			defer reader.Close()
+
+			sink := io.Discard
+			if verbose {
+				sink = os.Stdout
+			}
+
+			_, copyErr := io.Copy(sink, reader)
+			if copyErr != nil {
+				return struct{}{}, fmt.Errorf("reading pull output: %w", copyErr)
+			}
+
+			return struct{}{}, nil
+		},
+		backoff.WithBackOff(backoff.NewExponentialBackOff()),
+		backoff.WithMaxElapsedTime(60*time.Second),
+	)
+	if err != nil {
+		return err
+	}
+
+	if !verbose {
 		log.Printf("Image %s pulled successfully", imageName)
 	}
 
 	return nil
+}
+
+// isPermanentDockerPullError reports whether retrying the SDK pull is pointless.
+// Mirrors the heuristic in dockertestutil.PullWithAuth so the two surfaces agree.
+func isPermanentDockerPullError(err error) bool {
+	msg := strings.ToLower(err.Error())
+
+	return strings.Contains(msg, "manifest unknown") ||
+		strings.Contains(msg, "manifest not found") ||
+		strings.Contains(msg, "repository does not exist") ||
+		strings.Contains(msg, "name unknown") ||
+		strings.Contains(msg, "no such image")
 }
 
 // listControlFiles displays the headscale test artifacts created in the control logs directory.

@@ -7,6 +7,8 @@ import (
 	"log"
 	"os/exec"
 	"strings"
+
+	"github.com/juanfont/headscale/integration/dockertestutil"
 )
 
 var ErrSystemChecksFailed = errors.New("system checks failed")
@@ -34,6 +36,7 @@ func runDoctorCheck(ctx context.Context) error {
 	if dockerResult.Status == "PASS" {
 		results = append(results, checkDockerContext(ctx))
 		results = append(results, checkDockerSocket(ctx))
+		results = append(results, checkDockerHubCredentials())
 		results = append(results, checkGolangImage(ctx))
 	}
 
@@ -187,6 +190,33 @@ func checkDockerSocket(ctx context.Context) DoctorResult {
 		Name:    "Docker Socket",
 		Status:  "PASS",
 		Message: fmt.Sprintf("Docker socket accessible (Server: %s)", info.ServerVersion),
+	}
+}
+
+// checkDockerHubCredentials warns when no Docker Hub credentials are
+// configured. Anonymous pulls are rate-limited to ~100 per 6 h per
+// source IP; in CI that limit gets shared across every test on the
+// runner's egress IP and is the floor of the "singleton" flake set.
+// Returns WARN (not FAIL) — local dev sometimes works anonymously.
+func checkDockerHubCredentials() DoctorResult {
+	_, _, source := dockertestutil.Credentials()
+	if source == dockertestutil.CredentialSourceAnonymous {
+		return DoctorResult{
+			Name:    "Docker Hub Credentials",
+			Status:  "WARN",
+			Message: "No Docker Hub credentials found — pulls will be rate-limited (100/6h per IP)",
+			Suggestions: []string{
+				"Run: docker login",
+				"Or export DOCKERHUB_USERNAME and DOCKERHUB_TOKEN",
+				"In CI: ensure the docker/login-action step is configured with secrets",
+			},
+		}
+	}
+
+	return DoctorResult{
+		Name:    "Docker Hub Credentials",
+		Status:  "PASS",
+		Message: fmt.Sprintf("Credentials available (source: %s)", source),
 	}
 }
 
