@@ -3045,6 +3045,32 @@ func assertTracerouteViaIPWithCollect(c *assert.CollectT, tr util.Traceroute, ip
 	}
 }
 
+// assertTracerouteFirstHopInWithCollect asserts the first hop of a
+// traceroute belongs to a set of accepted addresses. Use this in HA
+// failover tests where the data plane is allowed to settle on any of
+// several valid primaries; an exact-match check on a single address
+// flakes during the convergence window even when the eventual state
+// is correct. The set semantics also make failure messages more
+// useful — testify shows which address was seen versus which were
+// allowed.
+//
+//nolint:unused // callsite swap lands in a follow-up commit in this PR
+func assertTracerouteFirstHopInWithCollect(c *assert.CollectT, tr util.Traceroute, expected []netip.Addr) {
+	assert.NotNil(c, tr)
+	assert.True(c, tr.Success)
+	assert.NoError(c, tr.Err) //nolint:testifylint // using assert.CollectT
+	assert.NotEmpty(c, tr.Route)
+
+	if len(tr.Route) > 0 {
+		expectedStrs := make([]string, 0, len(expected))
+		for _, addr := range expected {
+			expectedStrs = append(expectedStrs, addr.String())
+		}
+
+		assert.Contains(c, expectedStrs, tr.Route[0].IP.String())
+	}
+}
+
 func SortPeerStatus(a, b *ipnstate.PeerStatus) int {
 	return cmp.Compare(a.ID, b.ID)
 }
