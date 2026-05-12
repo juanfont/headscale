@@ -571,8 +571,6 @@ func assertCurlSuccessWithCollect(c *assert.CollectT, client TailscaleClient, ur
 // and EventuallyWithT was unable to retry meaningfully. This helper
 // owns the asserting pair so future fixes to Curl benefit every site.
 // For use inside EventuallyWithT blocks.
-//
-//nolint:unused // callsite swap lands in a follow-up commit in this PR
 func assertCurlSuccessReturnsCount(c *assert.CollectT, client TailscaleClient, url string, expected int, msg string) {
 	result, err := client.Curl(url)
 	assert.NoError(c, err, msg) //nolint:testifylint // CollectT requires assert, not require

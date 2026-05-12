@@ -458,9 +458,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	t.Logf("[%s] Starting test section", time.Now().Format(TimestampFormat))
 	t.Logf("  Expected: Traffic flows through router 1 as it's the only approved route")
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := client.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
+		assertCurlSuccessReturnsCount(c, client, weburl, 13, "Verifying client can reach webservice through router 1")
 	}, propagationTime, 200*time.Millisecond, "Verifying client can reach webservice through router 1")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -575,9 +573,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	t.Logf("  Expected: Router 1 continues to handle all traffic (no change from before)")
 	t.Logf("  Expected: Router 2 is ready to take over if router 1 fails")
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := client.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
+		assertCurlSuccessReturnsCount(c, client, weburl, 13, "Verifying client can reach webservice through router 1 in HA mode")
 	}, propagationTime, 200*time.Millisecond, "Verifying client can reach webservice through router 1 in HA mode")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -673,9 +669,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}, propagationTime, 200*time.Millisecond, "Verifying full HA with 3 routers: Router 1 PRIMARY, Routers 2 & 3 STANDBY")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := client.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
+		assertCurlSuccessReturnsCount(c, client, weburl, 13, "Verifying client can reach webservice through router 1 with full HA")
 	}, propagationTime, 200*time.Millisecond, "Verifying client can reach webservice through router 1 with full HA")
 
 	// Wait for traceroute to work correctly through the expected router
@@ -766,9 +760,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}, propagationTime, 200*time.Millisecond, "Failover verification: Router 1 offline, Router 2 should be new PRIMARY with routes, Router 3 still STANDBY")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := client.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
+		assertCurlSuccessReturnsCount(c, client, weburl, 13, "Verifying client can reach webservice through router 2 after failover")
 	}, propagationTime, 200*time.Millisecond, "Verifying client can reach webservice through router 2 after failover")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -840,9 +832,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}, propagationTime, 200*time.Millisecond, "Second failover verification: Router 1 & 2 offline, Router 3 should be new PRIMARY (last router standing) with routes")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := client.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
+		assertCurlSuccessReturnsCount(c, client, weburl, 13, "Verifying client can reach webservice through router 3 after second failover")
 	}, propagationTime, 200*time.Millisecond, "Verifying client can reach webservice through router 3 after second failover")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -920,9 +910,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}, propagationTime, 200*time.Millisecond, "Recovery verification: Router 1 back online as STANDBY, Router 3 remains PRIMARY (no flapping) with routes")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := client.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
+		assertCurlSuccessReturnsCount(c, client, weburl, 13, "Verifying client can still reach webservice through router 3 after router 1 recovery")
 	}, propagationTime, 200*time.Millisecond, "Verifying client can still reach webservice through router 3 after router 1 recovery")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -1003,9 +991,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "Full recovery verification: All 3 routers online, Router 3 remains PRIMARY (no flapping) with routes")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := client.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
+		assertCurlSuccessReturnsCount(c, client, weburl, 13, "Verifying client can reach webservice through router 3 after full recovery")
 	}, propagationTime, 200*time.Millisecond, "Verifying client can reach webservice through router 3 after full recovery")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -1090,9 +1076,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}, propagationTime, 200*time.Millisecond, "Verifying Router 1 becomes PRIMARY after Router 3 route disabled")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := client.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
+		assertCurlSuccessReturnsCount(c, client, weburl, 13, "Verifying client can reach webservice through router 1 after route disable")
 	}, propagationTime, 200*time.Millisecond, "Verifying client can reach webservice through router 1 after route disable")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -1178,9 +1162,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}, propagationTime, 200*time.Millisecond, "Verifying Router 2 becomes PRIMARY after Router 1 route disabled")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := client.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
+		assertCurlSuccessReturnsCount(c, client, weburl, 13, "Verifying client can reach webservice through router 2 after second route disable")
 	}, propagationTime, 200*time.Millisecond, "Verifying client can reach webservice through router 2 after second route disable")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -1265,9 +1247,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}, propagationTime, 200*time.Millisecond, "Verifying Router 2 remains PRIMARY after Router 1 route re-enabled")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := client.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
+		assertCurlSuccessReturnsCount(c, client, weburl, 13, "Verifying client can reach webservice through router 2 after route re-enable")
 	}, propagationTime, 200*time.Millisecond, "Verifying client can reach webservice through router 2 after route re-enable")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -1979,9 +1959,7 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 	t.Logf("url from %s to %s", user2c.Hostname(), url)
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := user2c.Curl(url)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
+		assertCurlSuccessReturnsCount(c, user2c, url, 13, "Verifying client can reach webservice through subnet route")
 	}, integrationutil.ScaledTimeout(5*time.Second), 200*time.Millisecond, "Verifying client can reach webservice through subnet route")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2142,9 +2120,7 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 	weburl := fmt.Sprintf("http://%s/etc/hostname", webip)
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := user2c.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
+		assertCurlSuccessReturnsCount(c, user2c, weburl, 13, "user2 should reach webservice via exit node")
 	}, 10*time.Second, 200*time.Millisecond, "user2 should reach webservice via exit node")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2719,9 +2695,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 					t.Logf("url from %s to %s", client.Hostname(), url)
 
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
-						result, err := client.Curl(url)
-						assert.NoError(c, err)
-						assert.Len(c, result, 13)
+						assertCurlSuccessReturnsCount(c, client, url, 13, "Verifying client can reach webservice through auto-approved route")
 					}, assertTimeout, 200*time.Millisecond, "Verifying client can reach webservice through auto-approved route")
 
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2785,9 +2759,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 					t.Logf("url from %s to %s", client.Hostname(), url)
 
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
-						result, err := client.Curl(url)
-						assert.NoError(c, err)
-						assert.Len(c, result, 13)
+						assertCurlSuccessReturnsCount(c, client, url, 13, "Verifying client can still reach webservice after policy change")
 					}, assertTimeout, 200*time.Millisecond, "Verifying client can still reach webservice after policy change")
 
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2882,9 +2854,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 					t.Logf("url from %s to %s", client.Hostname(), url)
 
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
-						result, err := client.Curl(url)
-						assert.NoError(c, err)
-						assert.Len(c, result, 13)
+						assertCurlSuccessReturnsCount(c, client, url, 13, "Verifying client can reach webservice after route re-approval")
 					}, assertTimeout, 200*time.Millisecond, "Verifying client can reach webservice after route re-approval")
 
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -3318,9 +3288,7 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 	}, integrationutil.ScaledTimeout(5*time.Second), 200*time.Millisecond, "Verifying node sees filtered subnet routes")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := nodeClient.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
+		assertCurlSuccessReturnsCount(c, nodeClient, weburl, 13, "Verifying node can reach webservice through allowed route")
 	}, integrationutil.ScaledTimeout(60*time.Second), 200*time.Millisecond, "Verifying node can reach webservice through allowed route")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -3621,16 +3589,12 @@ func TestGrantViaSubnetSteering(t *testing.T) {
 
 	// Verify Client A can reach the webservice.
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := clientA.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
+		assertCurlSuccessReturnsCount(c, clientA, weburl, 13, "Client A should reach webservice")
 	}, assertTimeout, 200*time.Millisecond, "Client A should reach webservice")
 
 	// Verify Client B can reach the webservice.
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := clientB.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
+		assertCurlSuccessReturnsCount(c, clientB, weburl, 13, "Client B should reach webservice")
 	}, assertTimeout, 200*time.Millisecond, "Client B should reach webservice")
 
 	// Verify Client A's traffic goes through Router A.
@@ -3783,9 +3747,7 @@ func TestHASubnetRouterPingFailover(t *testing.T) {
 
 	// Verify connectivity through router 1.
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := client.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
+		assertCurlSuccessReturnsCount(c, client, weburl, 13, "client should reach webservice through router 1")
 	}, propagationTime, 200*time.Millisecond, "client should reach webservice through router 1")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -3840,9 +3802,7 @@ func TestHASubnetRouterPingFailover(t *testing.T) {
 	t.Log("Failover detected. Verifying connectivity through router 2.")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := client.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
+		assertCurlSuccessReturnsCount(c, client, weburl, 13, "client should reach webservice through router 2")
 	}, propagationTime, 200*time.Millisecond, "client should reach webservice through router 2")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -4023,9 +3983,7 @@ func TestHASubnetRouterFailoverBothOffline(t *testing.T) {
 
 	// Confirm initial connectivity through r1.
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := client.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
+		assertCurlSuccessReturnsCount(c, client, weburl, 13, "client reaches webservice via r1")
 	}, propagationTime, 200*time.Millisecond, "client reaches webservice via r1")
 
 	t.Log("=== Step 1: r1 goes offline. r2 should take over. ===")
@@ -4093,9 +4051,7 @@ func TestHASubnetRouterFailoverBothOffline(t *testing.T) {
 
 	// End-to-end traffic should reach the webservice via r2.
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := client.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
+		assertCurlSuccessReturnsCount(c, client, weburl, 13, "client reaches webservice via r2 after recovery")
 	}, propagationTime, 200*time.Millisecond, "client reaches webservice via r2 after recovery")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -4318,9 +4274,7 @@ func TestHASubnetRouterFailoverBothOfflineCablePull(t *testing.T) {
 	}, propagationTime, 1*time.Second, "R2: waiting for client to see r2")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := client.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
+		assertCurlSuccessReturnsCount(c, client, weburl, 13, "client reaches webservice via r2 after recovery")
 	}, propagationTime, 1*time.Second, "client reaches webservice via r2 after recovery")
 }
 
@@ -4464,9 +4418,7 @@ func TestHASubnetRouterFailoverDockerDisconnect(t *testing.T) {
 	requireTrafficWorks := func(msg string) {
 		t.Helper()
 		assert.EventuallyWithT(t, func(c *assert.CollectT) {
-			result, err := client.Curl(weburl)
-			assert.NoError(c, err)
-			assert.Len(c, result, 13)
+			assertCurlSuccessReturnsCount(c, client, weburl, 13, msg)
 		}, propagationTime, 1*time.Second, msg)
 	}
 
