@@ -559,22 +559,15 @@ func assertCurlSuccessWithCollect(c *assert.CollectT, client TailscaleClient, ur
 	assert.NotEmpty(c, result, msg)
 }
 
-// assertCurlSuccessReturnsCount asserts that a curl request succeeds
-// and the response body contains exactly `expected` items (lines or
-// tokens — caller's choice of payload). Use this when the test cares
-// about the number of returned entries, e.g. a tailscale status page
-// listing N peer hostnames after a policy refresh.
-//
-// Inline `client.Curl(url) + assert.NoError + assert.Len(...)` blocks
-// are flake-prone: tsic.Curl historically returned (empty, nil) on a
-// 0-byte HTTP 200 body, so assert.NoError passed but assert.Len failed
-// and EventuallyWithT was unable to retry meaningfully. This helper
-// owns the asserting pair so future fixes to Curl benefit every site.
-// For use inside EventuallyWithT blocks.
-func assertCurlSuccessReturnsCount(c *assert.CollectT, client TailscaleClient, url string, expected int, msg string) {
+// assertCurlDockerHostname curls url and asserts the body is the
+// 13-byte Docker auto-generated container hostname (12 hex chars +
+// trailing newline from /etc/hostname). For use inside EventuallyWithT.
+func assertCurlDockerHostname(c *assert.CollectT, client TailscaleClient, url, msg string) {
+	const dockerHostnameLen = 13
+
 	result, err := client.Curl(url)
 	assert.NoError(c, err, msg) //nolint:testifylint // CollectT requires assert, not require
-	assert.Len(c, result, expected, msg)
+	assert.Len(c, result, dockerHostnameLen, msg)
 }
 
 // assertPolicyLoadedWithCollect asserts that headscale's parsed
