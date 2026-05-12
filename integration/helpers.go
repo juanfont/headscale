@@ -570,14 +570,9 @@ func assertCurlDockerHostname(c *assert.CollectT, client TailscaleClient, url, m
 	assert.Len(c, result, dockerHostnameLen, msg)
 }
 
-// assertPolicyLoadedWithCollect asserts that headscale's parsed
-// filter table has at least minRules entries — i.e. the most recent
-// SetPolicy or CreateUser call has been compiled and is ready to be
-// dispatched to nodes. Use as a pre-flight check before asserting on
-// node-to-node reachability that depends on the new policy: without
-// this gate, the assertion fires during the server-side reload window
-// and curl/ping reads return stale state. For use inside
-// EventuallyWithT blocks.
+// assertPolicyLoadedWithCollect asserts headscale's filter has at
+// least minRules entries — the post-SetPolicy gate before any
+// peer-reachability assertion. For use inside EventuallyWithT.
 //
 //nolint:unused // callsite swap lands in a follow-up commit in this PR
 func assertPolicyLoadedWithCollect(c *assert.CollectT, headscale ControlServer, minRules int, msg string) {
@@ -586,21 +581,8 @@ func assertPolicyLoadedWithCollect(c *assert.CollectT, headscale ControlServer, 
 	assert.GreaterOrEqual(c, len(rules), minRules, msg)
 }
 
-// policyLoadedBarrier returns a SyncOption-compatible pre-barrier that
-// polls headscale.DebugFilter() until the filter table contains at
-// least minRules entries. Pair with Scenario.WaitForTailscaleSyncPerUser
-// to close the policy-reload write barrier in tests that push a policy
-// and then assert on peer reachability:
-//
-//	scenario.WaitForTailscaleSyncPerUser(
-//	    integrationutil.PolicyPropagationTimeout,
-//	    integrationutil.SlowPoll,
-//	    WithPreBarrier(policyLoadedBarrier(headscale, expectedRuleCount)),
-//	)
-//
-// The poll interval matches the rest of the suite's policy waits
-// (SlowPoll) and the timeout is taken from the surrounding call's
-// context so a slow control plane can't escape the wait budget.
+// policyLoadedBarrier returns a SyncOption pre-barrier that polls
+// headscale.DebugFilter() until at least minRules entries appear.
 //
 //nolint:unused // callsite swap lands in a follow-up commit in this PR
 func policyLoadedBarrier(headscale ControlServer, minRules int) func(context.Context) error {

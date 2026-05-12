@@ -193,11 +193,8 @@ func checkDockerSocket(ctx context.Context) DoctorResult {
 	}
 }
 
-// checkDockerHubCredentials warns when no Docker Hub credentials are
-// configured. Anonymous pulls are rate-limited to ~100 per 6 h per
-// source IP; in CI that limit gets shared across every test on the
-// runner's egress IP and is the floor of the "singleton" flake set.
-// Returns WARN (not FAIL) — local dev sometimes works anonymously.
+// checkDockerHubCredentials warns when pulls would be anonymous and
+// therefore rate-limited.
 func checkDockerHubCredentials() DoctorResult {
 	_, _, source := dockertestutil.Credentials()
 	if source == dockertestutil.CredentialSourceAnonymous {

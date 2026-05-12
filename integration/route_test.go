@@ -1390,12 +1390,9 @@ func TestSubnetRouteACL(t *testing.T) {
 
 	client := allClients[1]
 
-	// `tailscale set --advertise-routes` is a state-mutating call;
-	// it must not run inside EventuallyWithT (project policy in
-	// cmd/hi/README.md) because retrying a mutation can mask real
-	// failures and double-apply side effects. The status read does
-	// belong in a retry though, since Self.ID may not be populated
-	// instantly after a fresh connection.
+	// Read Self.ID inside a retry (it lags initial connection); apply
+	// the route mutation outside, since retrying a mutation hides
+	// real failures.
 	for _, client := range allClients {
 		var status *ipnstate.Status
 
@@ -3030,14 +3027,8 @@ func assertTracerouteViaIPWithCollect(c *assert.CollectT, tr util.Traceroute, ip
 	}
 }
 
-// assertTracerouteFirstHopInWithCollect asserts the first hop of a
-// traceroute belongs to a set of accepted addresses. Use this in HA
-// failover tests where the data plane is allowed to settle on any of
-// several valid primaries; an exact-match check on a single address
-// flakes during the convergence window even when the eventual state
-// is correct. The set semantics also make failure messages more
-// useful — testify shows which address was seen versus which were
-// allowed.
+// assertTracerouteFirstHopInWithCollect asserts the first hop is one
+// of expected — for HA tests where any valid primary is acceptable.
 //
 //nolint:unused // callsite swap lands in a follow-up commit in this PR
 func assertTracerouteFirstHopInWithCollect(c *assert.CollectT, tr util.Traceroute, expected []netip.Addr) {

@@ -17,8 +17,6 @@ import (
 
 const dockerHubServer = "https://index.docker.io/v1/"
 
-// CredentialSource identifies where Docker Hub credentials were resolved
-// from. Useful for logging without leaking the credentials themselves.
 type CredentialSource string
 
 const (
@@ -27,16 +25,9 @@ const (
 	CredentialSourceAnonymous CredentialSource = "anonymous"
 )
 
-// Credentials resolves Docker Hub credentials in priority order:
-//
-//  1. DOCKERHUB_USERNAME / DOCKERHUB_TOKEN environment variables (CI).
-//  2. ~/.docker/config.json (local dev with `docker login`).
-//  3. Anonymous — Docker Hub rate-limits unauthenticated pulls to
-//     100 per 6 h per source IP, the floor that the suite's
-//     "singleton" flakes ride.
-//
-// The returned source is for telemetry only; the username and password
-// are the actual values to pass to a Docker client.
+// Credentials resolves Docker Hub credentials from
+// DOCKERHUB_USERNAME/DOCKERHUB_TOKEN, then ~/.docker/config.json, then
+// anonymous. The Docker Go SDKs do not read config.json on their own.
 func Credentials() (string, string, CredentialSource) {
 	if u := os.Getenv("DOCKERHUB_USERNAME"); u != "" {
 		return u, os.Getenv("DOCKERHUB_TOKEN"), CredentialSourceEnv
@@ -50,10 +41,7 @@ func Credentials() (string, string, CredentialSource) {
 	return "", "", CredentialSourceAnonymous
 }
 
-// AuthConfiguration returns Docker Hub auth for the dockertest pool
-// (which uses fsouza/go-dockerclient under the hood). Pass to
-// pool.Client.PullImage or assemble into RegistryAuth strings for the
-// modern Docker SDK.
+// AuthConfiguration returns Docker Hub auth for the dockertest pool.
 func AuthConfiguration() docker.AuthConfiguration {
 	u, p, _ := Credentials()
 
@@ -64,9 +52,8 @@ func AuthConfiguration() docker.AuthConfiguration {
 	}
 }
 
-// RegistryAuth returns base64-encoded credentials suitable for the
-// modern Docker SDK's image.PullOptions{RegistryAuth: ...}. Returns an
-// empty string when no credentials are configured.
+// RegistryAuth returns base64-encoded credentials for the modern
+// Docker SDK's image.PullOptions{RegistryAuth: ...}, or "" when none.
 func RegistryAuth() (string, error) {
 	u, p, _ := Credentials()
 	if u == "" && p == "" {
@@ -86,14 +73,8 @@ func RegistryAuth() (string, error) {
 	return base64.URLEncoding.EncodeToString(b), nil
 }
 
-// PullWithAuth ensures imageRef is available locally, using resolved
-// Docker Hub credentials when a pull is needed. It is a no-op when the
-// image is already resident — the common path in CI where the build
-// jobs pre-pull images as artefacts.
-//
-// Transient pull errors (rate limits, 5xx, timeouts) are retried with
-// exponential backoff up to ~60 s. Permanent errors (image not found)
-// bail fast.
+// PullWithAuth ensures imageRef is local, pulling with auth and
+// retrying transient errors when it is not.
 func PullWithAuth(pool *dockertest.Pool, imageRef string) error {
 	if img, _ := pool.Client.InspectImage(imageRef); img != nil {
 		return nil
@@ -129,8 +110,6 @@ func PullWithAuth(pool *dockertest.Pool, imageRef string) error {
 	return nil
 }
 
-// splitImageRef splits "repo:tag" into its components, defaulting tag
-// to "latest" when the reference has no colon.
 func splitImageRef(ref string) (string, string) {
 	if i := strings.LastIndex(ref, ":"); i >= 0 {
 		return ref[:i], ref[i+1:]
@@ -139,9 +118,6 @@ func splitImageRef(ref string) (string, string) {
 	return ref, "latest"
 }
 
-// isPermanentPullError reports whether retrying the pull is pointless.
-// "manifest unknown" and friends mean the registry doesn't have the tag;
-// 429s, 5xx, and timeouts are transient.
 func isPermanentPullError(err error) bool {
 	msg := strings.ToLower(err.Error())
 
@@ -152,11 +128,8 @@ func isPermanentPullError(err error) bool {
 		strings.Contains(msg, "no such image")
 }
 
-// credentialsFromConfig reads ~/.docker/config.json and extracts the
-// Docker Hub credentials. Returns ok=false if the file is missing,
-// unparseable, or has no Hub entry. Does not invoke credential
-// helpers (docker-credential-osxkeychain etc.); users on those setups
-// should set DOCKERHUB_USERNAME / DOCKERHUB_TOKEN instead.
+// credentialsFromConfig reads the Hub entry from ~/.docker/config.json.
+// Credential helpers (osxkeychain etc.) are not supported; use env vars.
 func credentialsFromConfig() (string, string, bool) {
 	home, err := os.UserHomeDir()
 	if err != nil {

@@ -523,11 +523,8 @@ func checkImageAvailableLocally(ctx context.Context, cli *client.Client, imageNa
 	return true, nil
 }
 
-// ensureImageAvailable checks if the image is available locally first, then pulls if needed.
-// Pulls go through dockertestutil.RegistryAuth so Docker Hub credentials
-// configured via DOCKERHUB_USERNAME / DOCKERHUB_TOKEN or ~/.docker/config.json
-// are used. Transient errors (rate limits, 5xx) are retried with backoff;
-// the Docker SDK does not auto-load config.json on its own.
+// ensureImageAvailable pulls imageName if missing, using Docker Hub
+// credentials and retrying transient errors.
 func ensureImageAvailable(ctx context.Context, cli *client.Client, imageName string, verbose bool) error {
 	available, err := checkImageAvailableLocally(ctx, cli, imageName)
 	if err != nil {
@@ -590,8 +587,6 @@ func ensureImageAvailable(ctx context.Context, cli *client.Client, imageName str
 	return nil
 }
 
-// isPermanentDockerPullError reports whether retrying the SDK pull is pointless.
-// Mirrors the heuristic in dockertestutil.PullWithAuth so the two surfaces agree.
 func isPermanentDockerPullError(err error) bool {
 	msg := strings.ToLower(err.Error())
 

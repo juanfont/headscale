@@ -784,38 +784,24 @@ func (s *Scenario) WaitForTailscaleSync() error {
 	return err
 }
 
-// SyncOption configures WaitForTailscaleSyncPerUser. The zero options
-// set preserves the historical behaviour (gate only on per-client peer
-// count parity).
+// SyncOption configures WaitForTailscaleSyncPerUser.
 type SyncOption func(*syncOptions)
 
 type syncOptions struct {
 	preBarrier func(context.Context) error
 }
 
-// WithPreBarrier installs a precondition check that runs before any
-// per-user peer-count wait begins. Use this to gate the sync wait on
-// a server-side signal — for example, that the most recent SetPolicy
-// call has been dispatched as a MapResponse, or that the headscale
-// filter table reflects the new rule count — so a slow control plane
-// cannot fool a test into asserting on a stale netmap.
-//
-// If the barrier returns an error, WaitForTailscaleSyncPerUser returns
-// it without running the per-user waits. The barrier is given a
-// context whose deadline is the same timeout passed to the outer call,
-// so a hung barrier cannot exceed the wait budget.
+// WithPreBarrier runs a precondition check before per-user peer-count
+// waits begin, sharing the outer timeout via context. Use to gate on
+// a server-side signal (e.g. policy compile) that the peer-count
+// alone cannot observe.
 func WithPreBarrier(barrier func(context.Context) error) SyncOption {
 	return func(o *syncOptions) { o.preBarrier = barrier }
 }
 
-// WaitForTailscaleSyncPerUser blocks execution until each TailscaleClient has the expected
-// number of peers for its user. This is useful for policies like autogroup:self where nodes
-// only see same-user peers, not all nodes in the network.
-//
-// Optional SyncOption values let the caller add a pre-barrier (see
-// WithPreBarrier) so the wait can also gate on server-side
-// dispatch signals — closing the policy-reload write barrier that
-// otherwise allows curl/ping/status reads to see stale state.
+// WaitForTailscaleSyncPerUser blocks until each TailscaleClient has
+// the expected per-user peer count (necessary for policies like
+// autogroup:self where cross-user peers are invisible).
 func (s *Scenario) WaitForTailscaleSyncPerUser(timeout, retryInterval time.Duration, opts ...SyncOption) error {
 	options := syncOptions{}
 	for _, opt := range opts {

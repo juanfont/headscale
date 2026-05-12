@@ -114,18 +114,10 @@ func AddContainerToNetwork(
 	})
 }
 
-// DisconnectContainerFromNetwork removes the container from network at
-// the docker daemon level. Mirrors a physical cable pull: the
-// container's network interface for that network disappears and any
-// in-flight TCP connections are left half-open, exactly the failure
-// mode iptables-based simulations cannot reproduce.
-//
-// Returns only after libnetwork's view of the network reflects the
-// disconnect (the container's endpoint is gone from network.Containers).
-// pool.Client.DisconnectNetwork acknowledges the API call as soon as
-// the request is accepted, but bridge reprogramming continues for
-// several seconds afterwards; callers that immediately re-attach see
-// "network is unreachable" from libnetwork's stale state.
+// DisconnectContainerFromNetwork detaches the container at the docker
+// daemon level (cable-pull semantics) and waits for libnetwork to drop
+// the endpoint before returning — re-attaching during the
+// reprogramming window otherwise fails with "network is unreachable".
 func DisconnectContainerFromNetwork(
 	pool *dockertest.Pool,
 	network *dockertest.Network,
@@ -157,11 +149,8 @@ func DisconnectContainerFromNetwork(
 	return waitNetworkContainerAbsent(pool, network, testContainer, DockerOpMaxElapsedTime)
 }
 
-// ReconnectContainerToNetwork is the inverse of
-// DisconnectContainerFromNetwork — re-attaches the container to the
-// network so traffic can flow again. Returns only after libnetwork
-// has assigned the container a fresh IPv4 address on the bridge; the
-// raw ConnectNetwork API call returns before the address is wired up.
+// ReconnectContainerToNetwork inverts DisconnectContainerFromNetwork
+// and waits until libnetwork has wired up a fresh IPv4 address.
 func ReconnectContainerToNetwork(
 	pool *dockertest.Pool,
 	network *dockertest.Network,
@@ -195,9 +184,6 @@ func DisconnectAndReconnect(
 	return nil
 }
 
-// waitNetworkContainerAbsent polls libnetwork until the container's
-// endpoint no longer appears in network.Containers. Returns nil as
-// soon as the absence is observed, or an error if the timeout elapses.
 func waitNetworkContainerAbsent(
 	pool *dockertest.Pool,
 	network *dockertest.Network,
@@ -220,9 +206,6 @@ func waitNetworkContainerAbsent(
 	})
 }
 
-// waitNetworkContainerPresent polls libnetwork until the container's
-// endpoint appears in network.Containers with a non-empty IPv4 address.
-// An entry without an address means libnetwork is still reprogramming.
 func waitNetworkContainerPresent(
 	pool *dockertest.Pool,
 	network *dockertest.Network,
