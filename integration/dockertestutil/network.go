@@ -119,6 +119,13 @@ func AddContainerToNetwork(
 // container's network interface for that network disappears and any
 // in-flight TCP connections are left half-open, exactly the failure
 // mode iptables-based simulations cannot reproduce.
+//
+// Returns only after libnetwork's view of the network reflects the
+// disconnect (the container's endpoint is gone from network.Containers).
+// pool.Client.DisconnectNetwork acknowledges the API call as soon as
+// the request is accepted, but bridge reprogramming continues for
+// several seconds afterwards; callers that immediately re-attach see
+// "network is unreachable" from libnetwork's stale state.
 func DisconnectContainerFromNetwork(
 	pool *dockertest.Pool,
 	network *dockertest.Network,
@@ -138,63 +145,61 @@ func DisconnectContainerFromNetwork(
 		return fmt.Errorf("%w: %s", ErrContainerNotFound, testContainer)
 	}
 
-	return retryDockerOp(context.Background(), func() error {
+	err = retryDockerOp(context.Background(), func() error {
 		return pool.Client.DisconnectNetwork(network.Network.ID, docker.NetworkConnectionOptions{
 			Container: containers[0].ID,
 		})
 	})
+	if err != nil {
+		return err
+	}
+
+	return waitNetworkContainerAbsent(pool, network, testContainer, DockerOpMaxElapsedTime)
 }
 
 // ReconnectContainerToNetwork is the inverse of
 // DisconnectContainerFromNetwork — re-attaches the container to the
-// network so traffic can flow again.
+// network so traffic can flow again. Returns only after libnetwork
+// has assigned the container a fresh IPv4 address on the bridge; the
+// raw ConnectNetwork API call returns before the address is wired up.
 func ReconnectContainerToNetwork(
 	pool *dockertest.Pool,
 	network *dockertest.Network,
 	testContainer string,
 ) error {
-	return AddContainerToNetwork(pool, network, testContainer)
+	err := AddContainerToNetwork(pool, network, testContainer)
+	if err != nil {
+		return err
+	}
+
+	return waitNetworkContainerPresent(pool, network, testContainer, DockerOpMaxElapsedTime)
 }
 
 // DisconnectAndReconnect performs a disconnect-then-reconnect cycle on
-// a single container, polling libnetwork between the two halves until
-// the daemon's view has settled. The settle waits matter because
-// `pool.Client.DisconnectNetwork` returns as soon as the API call is
-// acknowledged, but bridge reprogramming continues for several seconds
-// afterwards — and immediately re-attaching during that window has
-// been observed to fail with "network is unreachable" on contended
-// CI runners.
+// a single container. Both halves use the settle-aware primitives, so
+// the function only returns after libnetwork has finished
+// reprogramming both the disconnect and the reconnect — there is no
+// window where bridge state is half-reconfigured and a subsequent
+// network operation could observe "network is unreachable".
 //
-// settleTimeout caps both halves of the wait. Use ~5 s for most cases;
-// pass DockerOpMaxElapsedTime when the test is already budgeting a
-// long convergence window. Callers that need the underlying primitives
-// can still call DisconnectContainerFromNetwork and
-// ReconnectContainerToNetwork directly, but doing so opts out of the
-// settle waits and is a flake risk.
+// The settleTimeout argument is preserved for API compatibility but
+// is no longer needed at this layer; the underlying
+// DisconnectContainerFromNetwork and ReconnectContainerToNetwork now
+// drive their own settle waits using DockerOpMaxElapsedTime.
 func DisconnectAndReconnect(
 	pool *dockertest.Pool,
 	network *dockertest.Network,
 	testContainer string,
-	settleTimeout time.Duration,
+	_ time.Duration,
 ) error {
 	err := DisconnectContainerFromNetwork(pool, network, testContainer)
 	if err != nil {
 		return fmt.Errorf("disconnecting %s from %s: %w", testContainer, network.Network.Name, err)
 	}
 
-	err = waitNetworkContainerAbsent(pool, network, testContainer, settleTimeout)
-	if err != nil {
-		return fmt.Errorf("waiting for disconnect to settle: %w", err)
-	}
-
 	err = ReconnectContainerToNetwork(pool, network, testContainer)
 	if err != nil {
 		return fmt.Errorf("reconnecting %s to %s: %w", testContainer, network.Network.Name, err)
-	}
-
-	err = waitNetworkContainerPresent(pool, network, testContainer, settleTimeout)
-	if err != nil {
-		return fmt.Errorf("waiting for reconnect to settle: %w", err)
 	}
 
 	return nil
