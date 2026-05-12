@@ -206,6 +206,7 @@ connected" routers that maintain their control session but cannot route packets.
 - Install `config-example.yaml` as example for the debian package [#3186](https://github.com/juanfont/headscale/pull/3186)
 - **Node Expiry**: Fix user owned re registration with zero client expiry and no default storing `0001-01-01 00:00:00` in the database instead of NULL [#3199](https://github.com/juanfont/headscale/pull/3199)
   - Pre-existing rows with `0001-01-01 00:00:00` are not backfilled; they clear themselves the next time the node re-registers
+- **Pre-Auth Key / API Key Expiry**: Fix `CreatePreAuthKey` and `CreateApiKey` gRPC handlers persisting `0001-01-01 00:00:00` instead of NULL when the request omitted the expiration, which made the key appear expired immediately. Pre-existing rows are not backfilled.
 
 ## 0.28.0 (2026-02-04)
 

@@ -821,3 +821,49 @@ func TestDeleteApiKey_BothIdentifiers(t *testing.T) {
 	assert.Equal(t, codes.InvalidArgument, st.Code())
 	assert.Contains(t, st.Message(), "provide either id or prefix, not both")
 }
+
+// TestCreatePreAuthKey_NoExpiration tests that omitting the expiration in
+// CreatePreAuthKeyRequest creates a key with no expiration (NULL in the
+// database) rather than the zero time.Time (0001-01-01) which would mark the
+// key as expired immediately.
+func TestCreatePreAuthKey_NoExpiration(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	apiServer := newHeadscaleV1APIServer(app)
+
+	user := app.state.CreateUserForTest("test-user")
+
+	createResp, err := apiServer.CreatePreAuthKey(context.Background(), &v1.CreatePreAuthKeyRequest{
+		User: uint64(user.ID),
+	})
+	require.NoError(t, err)
+
+	pak := createResp.GetPreAuthKey()
+	require.NotNil(t, pak)
+	assert.Nil(t, pak.GetExpiration(), "expiration should be unset when not requested")
+
+	listResp, err := apiServer.ListPreAuthKeys(context.Background(), &v1.ListPreAuthKeysRequest{})
+	require.NoError(t, err)
+	require.Len(t, listResp.GetPreAuthKeys(), 1)
+	assert.Nil(t, listResp.GetPreAuthKeys()[0].GetExpiration(), "expiration should be unset in listing")
+}
+
+// TestCreateApiKey_NoExpiration tests that omitting the expiration in
+// CreateApiKeyRequest creates a key with no expiration (NULL in the database)
+// rather than the zero time.Time (0001-01-01) which would mark the key as
+// expired immediately.
+func TestCreateApiKey_NoExpiration(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	apiServer := newHeadscaleV1APIServer(app)
+
+	_, err := apiServer.CreateApiKey(context.Background(), &v1.CreateApiKeyRequest{})
+	require.NoError(t, err)
+
+	listResp, err := apiServer.ListApiKeys(context.Background(), &v1.ListApiKeysRequest{})
+	require.NoError(t, err)
+	require.Len(t, listResp.GetApiKeys(), 1)
+	assert.Nil(t, listResp.GetApiKeys()[0].GetExpiration(), "expiration should be unset when not requested")
+}
