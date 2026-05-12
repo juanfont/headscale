@@ -44,6 +44,10 @@ This feature is **beta** while behavioural coverage against Tailscale SaaS broad
 
 [#3229](https://github.com/juanfont/headscale/pull/3229)
 
+### SSH policy tests (beta)
+
+`sshTests` policy assertions are now evaluated at write boundaries. Operators writing `"sshTests": [{"src": "alice@example.com", "dst": ["tag:server"], "accept": ["root"]}]` could previously ship a policy whose own assertions were silently violated by the SSH rule list; the misconfiguration only surfaced when a user actually attempted SSH and got Permission denied. `headscale policy set` and `headscale policy check` now compile the same SSH rules clients receive, replay each `sshTests` entry through them, and reject the write when any `accept` user cannot reach a dst, any `deny` user can reach one, or any `check` user reaches a dst via a non-check rule. Parse-time shape rules forbid `dst` entries with a `:port` suffix (SSH port is implicit), `autogroup:internet` destinations, CIDR-shaped destinations, references to tags not in `tagOwners`, and entries with an empty `src` or `dst`. Stored policies whose `sshTests` fail at boot log a warning and the server continues, so a stale reference to a deleted user does not block restart.
+
 ### Grants
 
 We now support [Tailscale grants](https://tailscale.com/docs/features/access-control/grants)
