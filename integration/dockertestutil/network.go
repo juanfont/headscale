@@ -175,22 +175,12 @@ func ReconnectContainerToNetwork(
 	return waitNetworkContainerPresent(pool, network, testContainer, DockerOpMaxElapsedTime)
 }
 
-// DisconnectAndReconnect performs a disconnect-then-reconnect cycle on
-// a single container. Both halves use the settle-aware primitives, so
-// the function only returns after libnetwork has finished
-// reprogramming both the disconnect and the reconnect — there is no
-// window where bridge state is half-reconfigured and a subsequent
-// network operation could observe "network is unreachable".
-//
-// The settleTimeout argument is preserved for API compatibility but
-// is no longer needed at this layer; the underlying
-// DisconnectContainerFromNetwork and ReconnectContainerToNetwork now
-// drive their own settle waits using DockerOpMaxElapsedTime.
+// DisconnectAndReconnect calls Disconnect followed by Reconnect; both
+// primitives drive their own libnetwork settle waits.
 func DisconnectAndReconnect(
 	pool *dockertest.Pool,
 	network *dockertest.Network,
 	testContainer string,
-	_ time.Duration,
 ) error {
 	err := DisconnectContainerFromNetwork(pool, network, testContainer)
 	if err != nil {
