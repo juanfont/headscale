@@ -398,6 +398,12 @@ jobs:
           - TestEphemeral2006DeletedTooQuickly
           - TestPingAllByIPManyUpDown
           - TestSubnetRouterMultiNetwork
+          # TestHASubnetRouterFailover is the highest-failure-rate HA test
+          # on sqlite. Rotate it into the postgres matrix so we can compare
+          # flake rates side-by-side: a clean postgres signal points at a
+          # sqlite-only timing window; equal flakiness points at the
+          # NodeStore / mapper logic above the storage layer.
+          - TestHASubnetRouterFailover
     uses: ./.github/workflows/integration-test-template.yml
     secrets: inherit
     with:
