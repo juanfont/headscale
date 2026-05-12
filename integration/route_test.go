@@ -1390,21 +1390,36 @@ func TestSubnetRouteACL(t *testing.T) {
 
 	client := allClients[1]
 
+	// `tailscale set --advertise-routes` is a state-mutating call;
+	// it must not run inside EventuallyWithT (project policy in
+	// cmd/hi/README.md) because retrying a mutation can mask real
+	// failures and double-apply side effects. The status read does
+	// belong in a retry though, since Self.ID may not be populated
+	// instantly after a fresh connection.
 	for _, client := range allClients {
-		assert.EventuallyWithT(t, func(c *assert.CollectT) {
-			status, err := client.Status()
-			assert.NoError(c, err)
+		var status *ipnstate.Status
 
-			if route, ok := expectedRoutes[string(status.Self.ID)]; ok {
-				command := []string{
-					"tailscale",
-					"set",
-					"--advertise-routes=" + route,
-				}
-				_, _, err = client.Execute(command)
-				assert.NoErrorf(c, err, "failed to advertise route: %s", err)
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			s, err := client.Status()
+			assert.NoError(c, err)
+			assert.NotNil(c, s)
+
+			if s != nil {
+				status = s
 			}
-		}, integrationutil.ScaledTimeout(5*time.Second), integrationutil.FastPoll, "Configuring route advertisements")
+		}, integrationutil.ScaledTimeout(5*time.Second), integrationutil.FastPoll, "Reading client status before route advertisement")
+
+		route, ok := expectedRoutes[string(status.Self.ID)]
+		if !ok {
+			continue
+		}
+
+		_, _, err = client.Execute([]string{
+			"tailscale",
+			"set",
+			"--advertise-routes=" + route,
+		})
+		require.NoErrorf(t, err, "failed to advertise route on %s", client.Hostname())
 	}
 
 	err = scenario.WaitForTailscaleSync()
