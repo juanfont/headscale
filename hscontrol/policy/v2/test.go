@@ -29,9 +29,15 @@ import (
 // errors. The Error() prefix is "test(s) failed", the same string Tailscale
 // SaaS returns in the api_response_body.message — see
 // hscontrol/policy/v2/testdata/policytest_results/.
+//
+// errSSHPolicyTestsFailed wraps sshTests failures. Tailscale SaaS returns the
+// same literal "test(s) failed" body for both ACL tests and SSH tests, but
+// the two sentinels are kept as distinct values so callers can use errors.Is
+// to tell them apart while still matching the SaaS body byte-for-byte.
 var (
-	errPolicyTestsFailed   = errors.New("test(s) failed")
-	errTestDestinationNoIP = errors.New("destination resolved to no IP addresses")
+	errPolicyTestsFailed    = errors.New("test(s) failed")
+	errSSHPolicyTestsFailed = errors.New("test(s) failed")
+	errTestDestinationNoIP  = errors.New("destination resolved to no IP addresses")
 )
 
 // PolicyTest is one entry in the policy's `tests` block.
@@ -51,6 +57,36 @@ type PolicyTest struct {
 	// Deny lists destinations in `host:port` form that must NOT be reachable
 	// from Src. A test fails if any entry is allowed by the compiled filter.
 	Deny []string `json:"deny,omitempty"`
+}
+
+// SSHPolicyTest is one entry in the policy's `sshTests` block. Unlike the
+// ACL `tests` block, sshTests describe SSH login attempts: a source alias
+// connects to each destination host and tries each named login user. The
+// accept / deny / check arrays carry usernames, not destinations — every
+// listed user is asserted against every entry in dst.
+type SSHPolicyTest struct {
+	// Src is a single source alias (user, group, tag, host, or IP). Same
+	// shape as PolicyTest.Src — Tailscale only supports one src per entry.
+	Src string `json:"src"`
+
+	// Dst lists destination host aliases the test exercises. Tags, hosts,
+	// and the SSH-compatible autogroups are valid; ports, CIDR ranges, and
+	// autogroup:internet are rejected at parse time.
+	Dst []string `json:"dst"`
+
+	// Accept lists SSH login users that must be allowed by an action:accept
+	// or action:check rule when Src connects to each entry in Dst.
+	Accept []string `json:"accept,omitempty"`
+
+	// Deny lists SSH login users that must NOT be allowed by any rule when
+	// Src connects to each entry in Dst.
+	Deny []string `json:"deny,omitempty"`
+
+	// Check lists SSH login users that must be allowed by an action:check
+	// rule specifically. action:accept matches do not satisfy a check
+	// assertion. Engine evaluation is not implemented yet; parse-time
+	// validation accepts the field so policies can be authored ahead of it.
+	Check []string `json:"check,omitempty"`
 }
 
 // PolicyTestResult is the outcome of a single PolicyTest.
