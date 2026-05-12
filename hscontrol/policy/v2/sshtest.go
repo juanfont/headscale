@@ -264,12 +264,26 @@ func runSSHPolicyTest(
 		return res
 	}
 
-	dstNodes, err := resolveSSHTestDestNodes(test.Dst, pol, users, nodes, srcUserID)
+	dstNodes, emptyDsts, err := resolveSSHTestDestNodes(test.Dst, pol, users, nodes, srcUserID)
 	if err != nil {
 		res.Passed = false
 		res.Errors = append(res.Errors,
 			fmt.Sprintf("failed to resolve destinations: %v", err))
 
+		return res
+	}
+
+	// SaaS treats a dst alias that resolves to no nodes as a failure
+	// when the entry has anything to assert. Without this branch, the
+	// per-assertion loops below run zero iterations and the test
+	// passes silently — wrong shape, missed regression.
+	for _, dst := range emptyDsts {
+		res.Passed = false
+		res.Errors = append(res.Errors,
+			fmt.Sprintf("dst alias %q resolved to no nodes", dst))
+	}
+
+	if len(dstNodes) == 0 {
 		return res
 	}
 
@@ -334,6 +348,7 @@ func evaluateAssertion(
 	kind sshAssertion,
 	res *SSHPolicyTestResult,
 ) {
+dstLoop:
 	for _, dst := range dstNodes {
 		dstPol, err := compiledSSHPolicy(pol, users, nodes, cache, dst)
 		if err != nil {
@@ -347,8 +362,8 @@ func evaluateAssertion(
 
 		dstLabel := dst.Hostname()
 
-		// reachableAccept covers "any matching accept-or-check rule";
-		// reachableCheck restricts to check-action matches only.
+		// acceptHit covers "any matching accept-or-check rule";
+		// checkHit restricts to check-action matches only.
 		acceptHit := false
 		checkHit := false
 
@@ -371,14 +386,14 @@ func evaluateAssertion(
 					res.Passed = false
 					res.AcceptFail = appendUserDst(res.AcceptFail, user, dstLabel)
 
-					goto nextDst
+					continue dstLoop
 				}
 			case assertDeny:
 				if a {
 					res.Passed = false
 					res.DenyFail = appendUserDst(res.DenyFail, user, dstLabel)
 
-					goto nextDst
+					continue dstLoop
 				}
 			case assertCheck:
 				if !c {
@@ -392,7 +407,7 @@ func evaluateAssertion(
 						res.AcceptOK = appendUserDst(res.AcceptOK, user, dstLabel)
 					}
 
-					goto nextDst
+					continue dstLoop
 				}
 			}
 		}
@@ -409,8 +424,6 @@ func evaluateAssertion(
 				res.CheckOK = appendUserDst(res.CheckOK, user, dstLabel)
 			}
 		}
-
-	nextDst:
 	}
 }
 
@@ -482,25 +495,32 @@ func resolveSSHTestDestNodes(
 	users []types.User,
 	nodes views.Slice[types.NodeView],
 	srcUserID uint,
-) ([]types.NodeView, error) {
+) ([]types.NodeView, []string, error) {
 	seen := make(map[types.NodeID]struct{})
 
-	var out []types.NodeView
+	var (
+		out       []types.NodeView
+		emptyDsts []string
+	)
 
 	for _, dst := range dsts {
 		alias, err := parseAlias(dst)
 		if err != nil {
-			return nil, fmt.Errorf("invalid destination %q: %w", dst, err)
+			return nil, nil, fmt.Errorf("invalid destination %q: %w", dst, err)
 		}
+
+		matched := false
 
 		if ag, ok := alias.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
 			// autogroup:self → destinations are the non-tagged
 			// nodes owned by the same user as src. A tagged or
 			// IP-only src has no user identity, so the dst set
-			// is empty (matches SaaS, which treats this as a
-			// no-op assertion that the engine then reports as a
-			// failure via the empty-dst-nodes branch below).
+			// is empty and the caller surfaces it as a failure
+			// (matches SaaS, which treats a no-node dst as a
+			// failing assertion).
 			if srcUserID == 0 {
+				emptyDsts = append(emptyDsts, dst)
+
 				continue
 			}
 
@@ -517,6 +537,8 @@ func resolveSSHTestDestNodes(
 					continue
 				}
 
+				matched = true
+
 				if _, dup := seen[n.ID()]; dup {
 					continue
 				}
@@ -525,15 +547,21 @@ func resolveSSHTestDestNodes(
 				out = append(out, n)
 			}
 
+			if !matched {
+				emptyDsts = append(emptyDsts, dst)
+			}
+
 			continue
 		}
 
 		ips, err := alias.Resolve(pol, users, nodes)
 		if err != nil {
-			return nil, fmt.Errorf("resolving destination %q: %w", dst, err)
+			return nil, nil, fmt.Errorf("resolving destination %q: %w", dst, err)
 		}
 
 		if ips == nil || ips.Empty() {
+			emptyDsts = append(emptyDsts, dst)
+
 			continue
 		}
 
@@ -542,13 +570,15 @@ func resolveSSHTestDestNodes(
 		// the resolved prefixes.
 		set, err := prefixesToIPSet(ips.Prefixes())
 		if err != nil {
-			return nil, fmt.Errorf("building IPSet for %q: %w", dst, err)
+			return nil, nil, fmt.Errorf("building IPSet for %q: %w", dst, err)
 		}
 
 		for _, n := range nodes.All() {
 			if !n.InIPSet(set) {
 				continue
 			}
+
+			matched = true
 
 			if _, dup := seen[n.ID()]; dup {
 				continue
@@ -557,9 +587,13 @@ func resolveSSHTestDestNodes(
 			seen[n.ID()] = struct{}{}
 			out = append(out, n)
 		}
+
+		if !matched {
+			emptyDsts = append(emptyDsts, dst)
+		}
 	}
 
-	return out, nil
+	return out, emptyDsts, nil
 }
 
 // prefixesToIPSet builds a netipx.IPSet from a slice of prefixes. The

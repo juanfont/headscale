@@ -61,61 +61,6 @@ func setupSSHDataCompatUsers() types.Users {
 	}
 }
 
-// setupSSHDataCompatNodes returns the test nodes for SSH data-driven
-// compatibility tests. Node GivenNames match the anonymized pokémon names:
-//   - bulbasaur (owned by odin)
-//   - ivysaur (owned by thor)
-//   - venusaur (owned by freya)
-//   - beedrill (tag:server)
-//   - kakuna (tag:prod)
-func setupSSHDataCompatNodes(users types.Users) types.Nodes {
-	return types.Nodes{
-		&types.Node{
-			ID:        1,
-			GivenName: "bulbasaur",
-			User:      &users[0],
-			UserID:    &users[0].ID,
-			IPv4:      ptrAddr("100.90.199.68"),
-			IPv6:      ptrAddr("fd7a:115c:a1e0::2d01:c747"),
-			Hostinfo:  &tailcfg.Hostinfo{},
-		},
-		&types.Node{
-			ID:        2,
-			GivenName: "ivysaur",
-			User:      &users[1],
-			UserID:    &users[1].ID,
-			IPv4:      ptrAddr("100.110.121.96"),
-			IPv6:      ptrAddr("fd7a:115c:a1e0::1737:7960"),
-			Hostinfo:  &tailcfg.Hostinfo{},
-		},
-		&types.Node{
-			ID:        3,
-			GivenName: "venusaur",
-			User:      &users[2],
-			UserID:    &users[2].ID,
-			IPv4:      ptrAddr("100.103.90.82"),
-			IPv6:      ptrAddr("fd7a:115c:a1e0::9e37:5a52"),
-			Hostinfo:  &tailcfg.Hostinfo{},
-		},
-		&types.Node{
-			ID:        4,
-			GivenName: "beedrill",
-			IPv4:      ptrAddr("100.108.74.26"),
-			IPv6:      ptrAddr("fd7a:115c:a1e0::b901:4a87"),
-			Tags:      []string{"tag:server"},
-			Hostinfo:  &tailcfg.Hostinfo{},
-		},
-		&types.Node{
-			ID:        5,
-			GivenName: "kakuna",
-			IPv4:      ptrAddr("100.103.8.15"),
-			IPv6:      ptrAddr("fd7a:115c:a1e0::5b37:80f"),
-			Tags:      []string{"tag:prod"},
-			Hostinfo:  &tailcfg.Hostinfo{},
-		},
-	}
-}
-
 // loadSSHTestFile loads and parses a single SSH capture HuJSON file.
 func loadSSHTestFile(t *testing.T, path string) *testcapture.Capture {
 	t.Helper()
