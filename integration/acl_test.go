@@ -3120,13 +3120,13 @@ func TestACLGroupAfterUserDeletion(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		url := fmt.Sprintf("http://%s/etc/hostname", user2FQDN)
 		assertCurlDockerHostname(c, user1, url, "user1 should still reach user2 after policy refresh (BUG if this fails)")
-	}, integrationutil.HAConvergeTimeout, integrationutil.SlowPoll, "user1 -> user2 after policy refresh (issue #2967)")
+	}, integrationutil.PolicyPropagationTimeout, integrationutil.SlowPoll, "user1 -> user2 after policy refresh (issue #2967)")
 
 	// Test that user2 can still reach user1
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		url := fmt.Sprintf("http://%s/etc/hostname", user1FQDN)
 		assertCurlDockerHostname(c, user2, url, "user2 should still reach user1 after policy refresh (BUG if this fails)")
-	}, integrationutil.HAConvergeTimeout, integrationutil.SlowPoll, "user2 -> user1 after policy refresh (issue #2967)")
+	}, integrationutil.PolicyPropagationTimeout, integrationutil.SlowPoll, "user2 -> user1 after policy refresh (issue #2967)")
 
 	t.Log("Test PASSED: Remaining users can communicate after deleted user and policy refresh")
 }

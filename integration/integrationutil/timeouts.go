@@ -13,8 +13,9 @@ var (
 	HASlowConvergeTimeout = ScaledTimeout(120 * time.Second)
 
 	// PolicyPropagationTimeout: post-SetPolicy filter rules and peer
-	// reachability to reflect the change.
-	PolicyPropagationTimeout = ScaledTimeout(90 * time.Second)
+	// reachability to reflect the change. Sized for wgengine's
+	// rule-reload lag on contended CI runners (~2 min observed).
+	PolicyPropagationTimeout = ScaledTimeout(180 * time.Second)
 
 	// AuthFlowTimeout: OIDC / web-auth / preauth-key flows to reach
 	// Running.
