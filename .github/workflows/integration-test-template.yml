@@ -17,6 +17,11 @@ on:
 jobs:
   test:
     runs-on: ubuntu-24.04-arm
+    # Hard cap on the runner so a hung hi run or a stuck container does
+    # not hold the runner for the default 6 h. `hi run --timeout=120m`
+    # below caps the test itself; this is the outer backstop covering
+    # cleanup, image loads, and any unexpected wait.
+    timeout-minutes: 35
     env:
       # Github does not allow us to access secrets in pull requests,
       # so this env var is used to check if we have the secret or not.
@@ -67,6 +72,11 @@ jobs:
         with:
           name: postgres-image
           path: /tmp/artifacts
+      - name: Download prepulled images
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: prepulled-images
+          path: /tmp/artifacts
       - name: Pin Docker to v28 (avoid v29 breaking changes)
         run: |
           # Docker 29 breaks docker build via Go client libraries and
@@ -85,12 +95,23 @@ jobs:
             "docker-ce=${VERSION}" "docker-ce-cli=${VERSION}"
           sudo systemctl restart docker
           docker version
+      - name: Login to Docker Hub
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        if: env.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Load Docker images, Go cache, and prepare binary
         run: |
           gunzip -c /tmp/artifacts/headscale-image.tar.gz | docker load
           gunzip -c /tmp/artifacts/tailscale-head-image.tar.gz | docker load
           if [ -f /tmp/artifacts/postgres-image.tar.gz ]; then
             gunzip -c /tmp/artifacts/postgres-image.tar.gz | docker load
+          fi
+          if [ -f /tmp/artifacts/prepulled-images.tar.gz ]; then
+            gunzip -c /tmp/artifacts/prepulled-images.tar.gz | docker load
           fi
           chmod +x /tmp/artifacts/hi
           docker images
