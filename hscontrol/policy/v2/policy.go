@@ -197,6 +197,10 @@ func NewPolicyManager(b []byte, users []types.User, nodes views.Slice[types.Node
 		log.Warn().Err(testErr).Msg("policy tests failed at boot; server starting anyway, fix the policy and reload")
 	}
 
+	if testErr := pm.RunSSHTests(); testErr != nil { //nolint:noinlineerr // boot path: warn-and-continue, not return
+		log.Warn().Err(testErr).Msg("policy sshTests failed at boot; server starting anyway, fix the policy and reload")
+	}
+
 	return &pm, nil
 }
 
@@ -461,9 +465,16 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 	// sandbox compiled from the new policy + current users/nodes; if
 	// they fail, return without mutating the live PolicyManager so the
 	// failed write does not knock the running config offline.
-	err = evaluateTests(pol, pm.users, pm.nodes)
-	if err != nil {
-		return false, err
+	//
+	// Aggregate ACL and SSH test failures via multierr so operators
+	// see both classes in a single response instead of having to
+	// fix-and-retry to discover the second one.
+	testErr := multierr.New(
+		evaluateTests(pol, pm.users, pm.nodes),
+		evaluateSSHTests(pol, pm.users, pm.nodes),
+	)
+	if testErr != nil {
+		return false, testErr
 	}
 
 	// Log policy metadata for debugging

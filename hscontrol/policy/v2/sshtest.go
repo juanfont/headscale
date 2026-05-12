@@ -1,0 +1,714 @@
+package v2
+
+import (
+	"fmt"
+	"net/netip"
+	"slices"
+	"strings"
+
+	"github.com/juanfont/headscale/hscontrol/types"
+	"go4.org/netipx"
+	"tailscale.com/tailcfg"
+	"tailscale.com/types/views"
+)
+
+// The sshTests block is Tailscale's parallel of the ACL `tests` block for
+// SSH-shaped rules: each entry asserts that a source identity reaching out
+// to one or more destination hosts can SSH in as the named login users —
+// or, conversely, must be refused. The block runs at the same user-write
+// boundary as `tests` (SetPolicy, `headscale policy check`, file-mode
+// reload after a change). Boot-time reload skips evaluation so a stored
+// policy referencing a now-deleted entity does not block startup.
+//
+// Three assertion kinds:
+//
+//   - accept[user]: from src, every dst must be reachable as user via an
+//     action:accept OR action:check rule. Check counts as reachable for
+//     the accept assertion because both actions resolve to "the user is
+//     allowed to start a session" at the wire layer.
+//   - deny[user]: from src, no dst is reachable as user. A test passes
+//     when no rule allows the user at all (or every matching rule's
+//     SSHUsers map blocks the user).
+//   - check[user]: from src, every dst must be reachable as user via a
+//     rule whose action is specifically check (HoldAndDelegate is the
+//     wire signal — see filter.go sshCheck). An accept-only match
+//     fails the check assertion: SaaS keeps the distinction so policy
+//     authors can pin sensitive logins to check rules.
+
+// SSHPolicyTestResult is the outcome of a single SSHPolicyTest.
+//
+// Each map is keyed by login user and records the per-dst breakdown so
+// the rendered error tells the operator which (src, user, dst) triple
+// went the wrong way.
+type SSHPolicyTestResult struct {
+	Src    string   `json:"src"`
+	Passed bool     `json:"passed"`
+	Errors []string `json:"errors,omitempty"`
+
+	AcceptOK   map[string][]string `json:"accept_ok,omitempty"`
+	AcceptFail map[string][]string `json:"accept_fail,omitempty"`
+	DenyOK     map[string][]string `json:"deny_ok,omitempty"`
+	DenyFail   map[string][]string `json:"deny_fail,omitempty"`
+	CheckOK    map[string][]string `json:"check_ok,omitempty"`
+	CheckFail  map[string][]string `json:"check_fail,omitempty"`
+}
+
+// SSHPolicyTestResults aggregates one evaluation run.
+type SSHPolicyTestResults struct {
+	AllPassed bool                  `json:"all_passed"`
+	Results   []SSHPolicyTestResult `json:"results"`
+}
+
+// Errors renders the per-test failure breakdown joined by newlines.
+//
+// Tailscale SaaS returns only the literal "test(s) failed" body for
+// either assertion class. We keep the per-test detail because operators
+// invoking SetPolicy from the CLI or file-mode reload have no separate
+// audit endpoint, so the rendered body is the only signal they get.
+func (r SSHPolicyTestResults) Errors() string {
+	if r.AllPassed {
+		return ""
+	}
+
+	var lines []string
+
+	for _, res := range r.Results {
+		if res.Passed {
+			continue
+		}
+
+		for _, e := range res.Errors {
+			lines = append(lines, fmt.Sprintf("%s: %s", res.Src, e))
+		}
+
+		for _, user := range sortedUsers(res.AcceptFail) {
+			for _, dst := range res.AcceptFail[user] {
+				lines = append(lines, fmt.Sprintf(
+					"%s/%s -> %s: expected ALLOWED, got DENIED",
+					res.Src, displayUser(user), dst,
+				))
+			}
+		}
+
+		for _, user := range sortedUsers(res.DenyFail) {
+			for _, dst := range res.DenyFail[user] {
+				lines = append(lines, fmt.Sprintf(
+					"%s/%s -> %s: expected DENIED, got ALLOWED",
+					res.Src, displayUser(user), dst,
+				))
+			}
+		}
+
+		for _, user := range sortedUsers(res.CheckFail) {
+			for _, dst := range res.CheckFail[user] {
+				lines = append(lines, fmt.Sprintf(
+					"%s/%s -> %s: expected ALLOWED via check, got %s",
+					res.Src, displayUser(user), dst,
+					checkFailReason(res, user, dst),
+				))
+			}
+		}
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// sortedUsers returns the keys of m sorted by user name so error
+// rendering is deterministic across runs.
+func sortedUsers(m map[string][]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+
+	slices.Sort(keys)
+
+	return keys
+}
+
+// displayUser formats a login user for the rendered error. An empty
+// string is shown as `""` so the operator can see that the assertion
+// referenced an empty username (which is itself a failure case).
+func displayUser(u string) string {
+	if u == "" {
+		return `""`
+	}
+
+	return u
+}
+
+// checkFailReason annotates a check-fail line with whether the user
+// reached the dst via an accept rule (so the operator knows to flip the
+// rule to action:check) or did not reach the dst at all.
+func checkFailReason(res SSHPolicyTestResult, user, dst string) string {
+	if slices.Contains(res.AcceptOK[user], dst) {
+		return "ALLOWED via accept"
+	}
+
+	return "DENIED"
+}
+
+// RunSSHTests evaluates the policy's sshTests block against the live
+// users and nodes and returns a wrapped error when any assertion fails.
+// Callers that need the per-test breakdown can call runSSHPolicyTests
+// directly with their own compile cache.
+func (pm *PolicyManager) RunSSHTests() error {
+	if pm == nil || pm.pol == nil || len(pm.pol.SSHTests) == 0 {
+		return nil
+	}
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	cache := make(map[types.NodeID]*tailcfg.SSHPolicy)
+	results := runSSHPolicyTests(pm.pol, pm.users, pm.nodes, cache)
+
+	if results.AllPassed {
+		return nil
+	}
+
+	return fmt.Errorf("%w:\n%s", errSSHPolicyTestsFailed, results.Errors())
+}
+
+// evaluateSSHTests is the user-write sandbox: run sshTests against pol
+// + current users/nodes without mutating any live state. It mirrors
+// evaluateTests for the ACL block.
+func evaluateSSHTests(
+	pol *Policy,
+	users []types.User,
+	nodes views.Slice[types.NodeView],
+) error {
+	if pol == nil || len(pol.SSHTests) == 0 {
+		return nil
+	}
+
+	cache := make(map[types.NodeID]*tailcfg.SSHPolicy)
+	results := runSSHPolicyTests(pol, users, nodes, cache)
+
+	if results.AllPassed {
+		return nil
+	}
+
+	return fmt.Errorf("%w:\n%s", errSSHPolicyTestsFailed, results.Errors())
+}
+
+// runSSHPolicyTests evaluates every sshTests entry against pol. The
+// cache is keyed by destination node ID and reused across entries so a
+// 10-entry block hitting 4 dst nodes pays 4 compiles, not 40.
+func runSSHPolicyTests(
+	pol *Policy,
+	users []types.User,
+	nodes views.Slice[types.NodeView],
+	cache map[types.NodeID]*tailcfg.SSHPolicy,
+) SSHPolicyTestResults {
+	results := SSHPolicyTestResults{
+		AllPassed: true,
+		Results:   make([]SSHPolicyTestResult, 0, len(pol.SSHTests)),
+	}
+
+	for _, test := range pol.SSHTests {
+		res := runSSHPolicyTest(test, pol, users, nodes, cache)
+		if !res.Passed {
+			results.AllPassed = false
+		}
+
+		results.Results = append(results.Results, res)
+	}
+
+	return results
+}
+
+// runSSHPolicyTest evaluates one SSHPolicyTest entry against pol.
+//
+// Order of operations: resolve src → resolve dst nodes → reject empty
+// assertion blocks → walk accept/deny/check arrays, asking the per-dst
+// compiled SSH policy whether the user can reach the dst.
+func runSSHPolicyTest(
+	test SSHPolicyTest,
+	pol *Policy,
+	users []types.User,
+	nodes views.Slice[types.NodeView],
+	cache map[types.NodeID]*tailcfg.SSHPolicy,
+) SSHPolicyTestResult {
+	res := SSHPolicyTestResult{
+		Src:    test.Src,
+		Passed: true,
+	}
+
+	srcAddrs, srcUserID, err := resolveSSHTestSource(test.Src, pol, users, nodes)
+	if err != nil {
+		res.Passed = false
+		res.Errors = append(res.Errors,
+			fmt.Sprintf("failed to resolve source %q: %v", test.Src, err))
+
+		return res
+	}
+
+	if len(srcAddrs) == 0 {
+		res.Passed = false
+		res.Errors = append(res.Errors,
+			fmt.Sprintf("source %q resolved to no IP addresses", test.Src))
+
+		return res
+	}
+
+	// Tailscale SaaS treats an entry with no accept/deny/check arrays
+	// as "nothing to assert", which is reported as a failure. Catching
+	// it here keeps the engine output mirroring SaaS for parse-accepted
+	// inputs.
+	if len(test.Accept) == 0 && len(test.Deny) == 0 && len(test.Check) == 0 {
+		res.Passed = false
+		res.Errors = append(res.Errors,
+			"no accept, deny, or check assertions specified")
+
+		return res
+	}
+
+	dstNodes, err := resolveSSHTestDestNodes(test.Dst, pol, users, nodes, srcUserID)
+	if err != nil {
+		res.Passed = false
+		res.Errors = append(res.Errors,
+			fmt.Sprintf("failed to resolve destinations: %v", err))
+
+		return res
+	}
+
+	for _, user := range test.Accept {
+		evaluateAssertion(
+			pol, users, nodes, cache,
+			srcAddrs, dstNodes, user,
+			assertAccept, &res,
+		)
+	}
+
+	for _, user := range test.Deny {
+		evaluateAssertion(
+			pol, users, nodes, cache,
+			srcAddrs, dstNodes, user,
+			assertDeny, &res,
+		)
+	}
+
+	for _, user := range test.Check {
+		evaluateAssertion(
+			pol, users, nodes, cache,
+			srcAddrs, dstNodes, user,
+			assertCheck, &res,
+		)
+	}
+
+	return res
+}
+
+// sshAssertion is the kind of assertion being evaluated for a single
+// (src, dst, user) triple.
+type sshAssertion int
+
+const (
+	assertAccept sshAssertion = iota
+	assertDeny
+	assertCheck
+)
+
+// evaluateAssertion walks every (srcAddr, dstNode) pair for one user and
+// records the outcome in res. The semantics:
+//
+//   - accept passes iff every (srcAddr, dstNode) reaches the dst via at
+//     least one rule whose action is accept or check.
+//   - deny passes iff no (srcAddr, dstNode) is reachable as user.
+//   - check passes iff every (srcAddr, dstNode) reaches the dst via at
+//     least one check rule (HoldAndDelegate set). An accept-only match
+//     fails the check assertion — SaaS keeps the two categories
+//     distinct.
+//
+// Empty username is parse-accepted but reports as a failure here: SSH
+// login users cannot be empty, so the assertion can never be satisfied.
+func evaluateAssertion(
+	pol *Policy,
+	users []types.User,
+	nodes views.Slice[types.NodeView],
+	cache map[types.NodeID]*tailcfg.SSHPolicy,
+	srcAddrs []netip.Addr,
+	dstNodes []types.NodeView,
+	user string,
+	kind sshAssertion,
+	res *SSHPolicyTestResult,
+) {
+	for _, dst := range dstNodes {
+		dstPol, err := compiledSSHPolicy(pol, users, nodes, cache, dst)
+		if err != nil {
+			res.Passed = false
+			res.Errors = append(res.Errors,
+				fmt.Sprintf("compiling SSH policy for %s: %v",
+					dst.Hostname(), err))
+
+			continue
+		}
+
+		dstLabel := dst.Hostname()
+
+		// reachableAccept covers "any matching accept-or-check rule";
+		// reachableCheck restricts to check-action matches only.
+		acceptHit := false
+		checkHit := false
+
+		for _, srcAddr := range srcAddrs {
+			a, c := reachability(dstPol, srcAddr, user)
+			if a {
+				acceptHit = true
+			}
+
+			if c {
+				checkHit = true
+			}
+
+			// accept and deny require ALL src IPs to reach (or all
+			// to be blocked). A single counter-example fails the
+			// assertion.
+			switch kind {
+			case assertAccept:
+				if !a {
+					res.Passed = false
+					res.AcceptFail = appendUserDst(res.AcceptFail, user, dstLabel)
+
+					goto nextDst
+				}
+			case assertDeny:
+				if a {
+					res.Passed = false
+					res.DenyFail = appendUserDst(res.DenyFail, user, dstLabel)
+
+					goto nextDst
+				}
+			case assertCheck:
+				if !c {
+					res.Passed = false
+					res.CheckFail = appendUserDst(res.CheckFail, user, dstLabel)
+
+					// Record whether the accept side passed so
+					// the rendered error can say "ALLOWED via
+					// accept" instead of "DENIED".
+					if a {
+						res.AcceptOK = appendUserDst(res.AcceptOK, user, dstLabel)
+					}
+
+					goto nextDst
+				}
+			}
+		}
+
+		switch kind {
+		case assertAccept:
+			if acceptHit {
+				res.AcceptOK = appendUserDst(res.AcceptOK, user, dstLabel)
+			}
+		case assertDeny:
+			res.DenyOK = appendUserDst(res.DenyOK, user, dstLabel)
+		case assertCheck:
+			if checkHit {
+				res.CheckOK = appendUserDst(res.CheckOK, user, dstLabel)
+			}
+		}
+
+	nextDst:
+	}
+}
+
+// appendUserDst appends dst to m[user], lazily allocating m.
+func appendUserDst(m map[string][]string, user, dst string) map[string][]string {
+	if m == nil {
+		m = make(map[string][]string)
+	}
+
+	m[user] = append(m[user], dst)
+
+	return m
+}
+
+// resolveSSHTestSource resolves the src alias into a list of
+// netip.Addr (one per principal address the SSH compiler would emit
+// for the same source). For user-shaped sources, srcUserID returns the
+// resolved user's ID so autogroup:self destinations can scope to the
+// same user. Returns ID 0 when the source is a tag, host, or IP.
+func resolveSSHTestSource(
+	src string,
+	pol *Policy,
+	users []types.User,
+	nodes views.Slice[types.NodeView],
+) ([]netip.Addr, uint, error) {
+	alias, err := parseAlias(src)
+	if err != nil {
+		return nil, 0, fmt.Errorf("invalid alias: %w", err)
+	}
+
+	addrs, err := alias.Resolve(pol, users, nodes)
+	if err != nil {
+		return nil, 0, fmt.Errorf("resolving: %w", err)
+	}
+
+	if addrs == nil || addrs.Empty() {
+		return nil, 0, nil
+	}
+
+	out := make([]netip.Addr, 0)
+	for a := range addrs.Iter() {
+		out = append(out, a)
+	}
+
+	var userID uint
+
+	u, ok := alias.(*Username)
+	if ok {
+		resolved, rErr := u.resolveUser(users)
+		if rErr == nil {
+			userID = resolved.ID
+		}
+	}
+
+	return out, userID, nil
+}
+
+// resolveSSHTestDestNodes resolves every dst alias in the test entry
+// to its destination NodeViews. autogroup:self requires special
+// handling because it cannot resolve in the general (non-per-node)
+// context — see AutoGroup.resolve in types.go.
+//
+// For non-self aliases, the resolved IPSet is matched against each
+// node's IPs via InIPSet (the same primitive the SSH compiler uses to
+// decide whether a node is a destination of a given rule).
+func resolveSSHTestDestNodes(
+	dsts []string,
+	pol *Policy,
+	users []types.User,
+	nodes views.Slice[types.NodeView],
+	srcUserID uint,
+) ([]types.NodeView, error) {
+	seen := make(map[types.NodeID]struct{})
+
+	var out []types.NodeView
+
+	for _, dst := range dsts {
+		alias, err := parseAlias(dst)
+		if err != nil {
+			return nil, fmt.Errorf("invalid destination %q: %w", dst, err)
+		}
+
+		if ag, ok := alias.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
+			// autogroup:self → destinations are the non-tagged
+			// nodes owned by the same user as src. A tagged or
+			// IP-only src has no user identity, so the dst set
+			// is empty (matches SaaS, which treats this as a
+			// no-op assertion that the engine then reports as a
+			// failure via the empty-dst-nodes branch below).
+			if srcUserID == 0 {
+				continue
+			}
+
+			for _, n := range nodes.All() {
+				if n.IsTagged() {
+					continue
+				}
+
+				if !n.User().Valid() {
+					continue
+				}
+
+				if n.User().ID() != srcUserID {
+					continue
+				}
+
+				if _, dup := seen[n.ID()]; dup {
+					continue
+				}
+
+				seen[n.ID()] = struct{}{}
+				out = append(out, n)
+			}
+
+			continue
+		}
+
+		ips, err := alias.Resolve(pol, users, nodes)
+		if err != nil {
+			return nil, fmt.Errorf("resolving destination %q: %w", dst, err)
+		}
+
+		if ips == nil || ips.Empty() {
+			continue
+		}
+
+		// Compile to an IPSet for the InIPSet primitive. ResolvedAddresses
+		// already wraps one; expose it via the IPSet builder by walking
+		// the resolved prefixes.
+		set, err := prefixesToIPSet(ips.Prefixes())
+		if err != nil {
+			return nil, fmt.Errorf("building IPSet for %q: %w", dst, err)
+		}
+
+		for _, n := range nodes.All() {
+			if !n.InIPSet(set) {
+				continue
+			}
+
+			if _, dup := seen[n.ID()]; dup {
+				continue
+			}
+
+			seen[n.ID()] = struct{}{}
+			out = append(out, n)
+		}
+	}
+
+	return out, nil
+}
+
+// prefixesToIPSet builds a netipx.IPSet from a slice of prefixes. The
+// SSH compiler does the same dance via netipx.IPSetBuilder; we mirror
+// the shape so InIPSet (the node-side primitive) behaves identically
+// for test evaluation and live compilation.
+func prefixesToIPSet(prefixes []netip.Prefix) (*netipx.IPSet, error) {
+	var b netipx.IPSetBuilder
+
+	for _, p := range prefixes {
+		b.AddPrefix(p)
+	}
+
+	return b.IPSet()
+}
+
+// compiledSSHPolicy returns the per-node compiled SSH policy, populating
+// cache on miss. baseURL is empty because the engine only needs the
+// "is this rule a check rule" signal (HoldAndDelegate non-empty), not
+// the actual URL contents.
+func compiledSSHPolicy(
+	pol *Policy,
+	users []types.User,
+	nodes views.Slice[types.NodeView],
+	cache map[types.NodeID]*tailcfg.SSHPolicy,
+	node types.NodeView,
+) (*tailcfg.SSHPolicy, error) {
+	if sshPol, ok := cache[node.ID()]; ok {
+		return sshPol, nil
+	}
+
+	sshPol, err := pol.compileSSHPolicy("", users, node, nodes)
+	if err != nil {
+		return nil, err
+	}
+
+	cache[node.ID()] = sshPol
+
+	return sshPol, nil
+}
+
+// reachability walks dstPolicy.Rules and reports whether srcAddr is
+// allowed to log in as user via:
+//
+//   - any rule (first return) — satisfies accept assertions
+//   - a check rule specifically (second return) — satisfies check assertions
+//
+// A nil policy is treated as "no rule matches", which is the right
+// answer for both accept (DENIED) and check (DENIED) and for deny
+// (PASS, because the deny assertion inverts).
+func reachability(
+	dstPolicy *tailcfg.SSHPolicy,
+	srcAddr netip.Addr,
+	user string,
+) (bool, bool) {
+	if dstPolicy == nil {
+		return false, false
+	}
+
+	var acceptHit, checkHit bool
+
+	for _, rule := range dstPolicy.Rules {
+		if !principalContainsAddr(rule.Principals, srcAddr) {
+			continue
+		}
+
+		if !sshUserMapAllows(rule.SSHUsers, user) {
+			continue
+		}
+
+		if rule.Action == nil {
+			continue
+		}
+
+		acceptHit = true
+
+		if rule.Action.HoldAndDelegate != "" {
+			checkHit = true
+		}
+
+		// Early-out only when both bits are set; a rule that
+		// satisfies one assertion may not satisfy the other.
+		if acceptHit && checkHit {
+			return acceptHit, checkHit
+		}
+	}
+
+	return acceptHit, checkHit
+}
+
+// principalContainsAddr reports whether any principal has a NodeIP
+// matching srcAddr. The SSH compiler emits one principal per source
+// IP, so an exact-match comparison is correct.
+func principalContainsAddr(
+	principals []*tailcfg.SSHPrincipal,
+	srcAddr netip.Addr,
+) bool {
+	for _, p := range principals {
+		if p == nil {
+			continue
+		}
+
+		if p.NodeIP == "" {
+			continue
+		}
+
+		addr, err := netip.ParseAddr(p.NodeIP)
+		if err != nil {
+			continue
+		}
+
+		if addr == srcAddr {
+			return true
+		}
+	}
+
+	return false
+}
+
+// sshUserMapAllows reports whether SSHUsers permits user. The wire
+// shape (see filter.go compileSSHPolicy):
+//
+//   - SSHUsers["root"] == "root" when the rule's users list contains
+//     "root", and == "" otherwise (the empty mapping means "root NOT
+//     allowed", per Tailscale's SSH evaluator).
+//   - SSHUsers["*"] == "=" when the rule's users list contains
+//     autogroup:nonroot — wildcard fallback for any non-root user.
+//   - SSHUsers[<literal>] == <literal> for every named SSH user in
+//     the rule.
+//
+// An empty user input (which the parse layer accepts but treats as
+// a failure case) cannot match any map entry.
+func sshUserMapAllows(m map[string]string, user string) bool {
+	if user == "" {
+		return false
+	}
+
+	if v, ok := m[user]; ok {
+		return v != ""
+	}
+
+	if user == "root" {
+		return false
+	}
+
+	// Wildcard fallback for non-root users.
+	if v, ok := m["*"]; ok {
+		return v != ""
+	}
+
+	return false
+}
