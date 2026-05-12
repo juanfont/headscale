@@ -3,6 +3,7 @@ package integration
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -556,6 +557,83 @@ func assertCurlSuccessWithCollect(c *assert.CollectT, client TailscaleClient, ur
 	result, err := client.Curl(url)
 	assert.NoError(c, err, msg) //nolint:testifylint // CollectT requires assert, not require
 	assert.NotEmpty(c, result, msg)
+}
+
+// assertCurlSuccessReturnsCount asserts that a curl request succeeds
+// and the response body contains exactly `expected` items (lines or
+// tokens — caller's choice of payload). Use this when the test cares
+// about the number of returned entries, e.g. a tailscale status page
+// listing N peer hostnames after a policy refresh.
+//
+// Inline `client.Curl(url) + assert.NoError + assert.Len(...)` blocks
+// are flake-prone: tsic.Curl historically returned (empty, nil) on a
+// 0-byte HTTP 200 body, so assert.NoError passed but assert.Len failed
+// and EventuallyWithT was unable to retry meaningfully. This helper
+// owns the asserting pair so future fixes to Curl benefit every site.
+// For use inside EventuallyWithT blocks.
+//
+//nolint:unused // callsite swap lands in a follow-up commit in this PR
+func assertCurlSuccessReturnsCount(c *assert.CollectT, client TailscaleClient, url string, expected int, msg string) {
+	result, err := client.Curl(url)
+	assert.NoError(c, err, msg) //nolint:testifylint // CollectT requires assert, not require
+	assert.Len(c, result, expected, msg)
+}
+
+// assertPolicyLoadedWithCollect asserts that headscale's parsed
+// filter table has at least minRules entries — i.e. the most recent
+// SetPolicy or CreateUser call has been compiled and is ready to be
+// dispatched to nodes. Use as a pre-flight check before asserting on
+// node-to-node reachability that depends on the new policy: without
+// this gate, the assertion fires during the server-side reload window
+// and curl/ping reads return stale state. For use inside
+// EventuallyWithT blocks.
+//
+//nolint:unused // callsite swap lands in a follow-up commit in this PR
+func assertPolicyLoadedWithCollect(c *assert.CollectT, headscale ControlServer, minRules int, msg string) {
+	rules, err := headscale.DebugFilter()
+	assert.NoError(c, err, msg) //nolint:testifylint // CollectT requires assert, not require
+	assert.GreaterOrEqual(c, len(rules), minRules, msg)
+}
+
+// policyLoadedBarrier returns a SyncOption-compatible pre-barrier that
+// polls headscale.DebugFilter() until the filter table contains at
+// least minRules entries. Pair with Scenario.WaitForTailscaleSyncPerUser
+// to close the policy-reload write barrier in tests that push a policy
+// and then assert on peer reachability:
+//
+//	scenario.WaitForTailscaleSyncPerUser(
+//	    integrationutil.PolicyPropagationTimeout,
+//	    integrationutil.SlowPoll,
+//	    WithPreBarrier(policyLoadedBarrier(headscale, expectedRuleCount)),
+//	)
+//
+// The poll interval matches the rest of the suite's policy waits
+// (SlowPoll) and the timeout is taken from the surrounding call's
+// context so a slow control plane can't escape the wait budget.
+//
+//nolint:unused // callsite swap lands in a follow-up commit in this PR
+func policyLoadedBarrier(headscale ControlServer, minRules int) func(context.Context) error {
+	return func(ctx context.Context) error {
+		ticker := time.NewTicker(integrationutil.SlowPoll)
+		defer ticker.Stop()
+
+		for {
+			rules, err := headscale.DebugFilter()
+			if err == nil && len(rules) >= minRules {
+				return nil
+			}
+
+			select {
+			case <-ctx.Done():
+				if err != nil {
+					return fmt.Errorf("policy-loaded barrier (last err %w): %w", err, ctx.Err())
+				}
+
+				return fmt.Errorf("policy-loaded barrier: filter has %d rules, want >= %d: %w", len(rules), minRules, ctx.Err())
+			case <-ticker.C:
+			}
+		}
+	}
 }
 
 // assertCurlFailWithCollect asserts that a curl request fails. Uses
