@@ -5413,3 +5413,225 @@ func TestUnmarshalPolicyEmptyArrays(t *testing.T) {
 		})
 	}
 }
+
+// TestUnmarshalPolicySSHTests covers the parse-time shape rules for the
+// sshTests block. Positive rows confirm the SSHPolicyTest struct fields
+// round-trip through JSON. Rejection rows pin each parse-time sentinel
+// against a representative malformed input. SaaS evaluation-time failures
+// (empty assertions, empty user strings) are deliberately accepted at
+// parse — they share the "test(s) failed" body with true failures and
+// land with the engine.
+func TestUnmarshalPolicySSHTests(t *testing.T) {
+	cases := []struct {
+		name           string
+		input          string
+		wantErr        error   // sentinel for errors.Is; nil means parse must succeed
+		extraSentinels []error // additional sentinels reachable via errors.Is
+		check          func(t *testing.T, pol *Policy)
+	}{
+		{
+			name: "valid-minimal-shape",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "thor@example.org", "dst": ["tag:server"], "accept": ["root"]}
+  ]
+}
+`,
+			check: func(t *testing.T, pol *Policy) {
+				t.Helper()
+				require.Len(t, pol.SSHTests, 1)
+				got := pol.SSHTests[0]
+				require.Equal(t, "thor@example.org", got.Src)
+				require.Equal(t, []string{"tag:server"}, got.Dst)
+				require.Equal(t, []string{"root"}, got.Accept)
+				require.Empty(t, got.Deny)
+				require.Empty(t, got.Check)
+			},
+		},
+		{
+			name: "valid-all-three-action-arrays",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {
+      "src": "thor@example.org",
+      "dst": ["tag:server"],
+      "accept": ["root"],
+      "deny":   ["nobody"],
+      "check":  ["alice"]
+    }
+  ]
+}
+`,
+			check: func(t *testing.T, pol *Policy) {
+				t.Helper()
+				require.Len(t, pol.SSHTests, 1)
+				got := pol.SSHTests[0]
+				require.Equal(t, []string{"root"}, got.Accept)
+				require.Equal(t, []string{"nobody"}, got.Deny)
+				require.Equal(t, []string{"alice"}, got.Check)
+			},
+		},
+		{
+			// Empty accept+deny+check is rejected by SaaS at evaluation,
+			// not at parse — the captured body is the same "test(s) failed"
+			// that true evaluation failures emit. The parse layer must let
+			// this through so the engine reports it consistently.
+			name: "valid-empty-arrays-engine-deferred",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "thor@example.org", "dst": ["tag:server"]}
+  ]
+}
+`,
+			check: func(t *testing.T, pol *Policy) {
+				t.Helper()
+				require.Len(t, pol.SSHTests, 1)
+				got := pol.SSHTests[0]
+				require.Empty(t, got.Accept)
+				require.Empty(t, got.Deny)
+				require.Empty(t, got.Check)
+			},
+		},
+		{
+			// `tag:server:22` parses as a Tag because isTag only checks
+			// the `tag:` prefix; the colon-port suffix is retained in the
+			// tag string and the tagOwners lookup misses. SaaS reports
+			// this as an unknown tag with the bad value quoted.
+			name: "dst-with-port",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "thor@example.org", "dst": ["tag:server:22"], "accept": ["root"]}
+  ]
+}
+`,
+			wantErr: ErrSSHTestDstUnknownTag,
+		},
+		{
+			name: "dst-cidr",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "thor@example.org", "dst": ["10.0.0.0/8"], "accept": ["root"]}
+  ]
+}
+`,
+			wantErr: ErrSSHTestDstDisallowedElement,
+		},
+		{
+			name: "dst-autogroup-internet",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "thor@example.org", "dst": ["autogroup:internet"], "accept": ["root"]}
+  ]
+}
+`,
+			wantErr: ErrSSHTestDstDisallowedElement,
+		},
+		{
+			name: "dst-unknown-tag",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "thor@example.org", "dst": ["tag:not-in-tagOwners"], "accept": ["root"]}
+  ]
+}
+`,
+			wantErr: ErrSSHTestDstUnknownTag,
+		},
+		{
+			name: "empty-src",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "", "dst": ["tag:server"], "accept": ["root"]}
+  ]
+}
+`,
+			wantErr: ErrSSHTestEmptySrc,
+		},
+		{
+			name: "empty-dst",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "thor@example.org", "dst": [], "accept": ["root"]}
+  ]
+}
+`,
+			wantErr: ErrSSHTestEmptyDst,
+		},
+		{
+			// Multiple shape failures in one entry must aggregate through
+			// multierr.New under errSSHPolicyTestsFailed so the surfaced
+			// body matches the SaaS body byte-for-byte and every
+			// individual sentinel remains reachable via errors.Is.
+			name: "multierr-wrap",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "", "dst": ["10.0.0.0/8", "autogroup:internet"], "accept": ["root"]}
+  ]
+}
+`,
+			wantErr:        ErrSSHTestEmptySrc,
+			extraSentinels: []error{ErrSSHTestDstDisallowedElement},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pol, err := unmarshalPolicy([]byte(tc.input))
+
+			if tc.wantErr == nil {
+				require.NoError(t, err)
+				require.NotNil(t, pol)
+
+				if tc.check != nil {
+					tc.check(t, pol)
+				}
+
+				return
+			}
+
+			require.Error(t, err)
+			require.ErrorIs(
+				t,
+				err, tc.wantErr,
+				"want errors.Is(err, %v); got %v",
+				tc.wantErr,
+				err,
+			)
+			require.Contains(
+				t,
+				err.Error(), "test(s) failed",
+				`want err to contain "test(s) failed"; got %q`,
+				err.Error(),
+			)
+
+			for _, sentinel := range tc.extraSentinels {
+				require.ErrorIs(
+					t,
+					err, sentinel,
+					"want errors.Is(err, %v); got %v",
+					sentinel,
+					err,
+				)
+			}
+		})
+	}
+}
