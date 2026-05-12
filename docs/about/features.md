@@ -13,7 +13,9 @@ provides on overview of Headscale's feature and compatibility with the Tailscale
     - [x] [Global and restricted nameservers (split DNS)](https://tailscale.com/docs/reference/dns-in-tailscale#nameservers)
     - [x] [search domains](https://tailscale.com/docs/reference/dns-in-tailscale#search-domains)
     - [x] [Extra DNS records (Headscale only)](../ref/dns.md#setting-extra-dns-records)
-- [x] [Taildrop](https://tailscale.com/docs/features/taildrop)
+- [x] File sharing
+    - [x] [Taildrive](https://tailscale.com/docs/features/taildrive)
+    - [x] [Taildrop](https://tailscale.com/docs/features/taildrop)
 - [x] [Tags](../ref/tags.md)
 - [x] [Routes](../ref/routes.md)
     - [x] [Subnet routers](../ref/routes.md#subnet-router)
@@ -31,6 +33,8 @@ provides on overview of Headscale's feature and compatibility with the Tailscale
       routers](../ref/routes.md#automatically-approve-routes-of-a-subnet-router) and [exit
       nodes](../ref/routes.md#automatically-approve-an-exit-node-with-auto-approvers)
     - [x] [Tailscale SSH](https://tailscale.com/docs/features/tailscale-ssh)
+    - [x] [Tests](https://tailscale.com/docs/reference/syntax/policy-file#tests) and
+      [sshTests](https://tailscale.com/docs/reference/syntax/policy-file#ssh-tests)
 - [x] [Node registration using Single-Sign-On (OpenID Connect)](../ref/oidc.md) ([GitHub label "OIDC"](https://github.com/juanfont/headscale/labels/OIDC))
     - [x] Basic registration
     - [x] Update user profile from identity provider
