@@ -570,39 +570,38 @@ func assertCurlDockerHostname(c *assert.CollectT, client TailscaleClient, url, m
 	assert.Len(c, result, dockerHostnameLen, msg)
 }
 
-// assertPolicyLoadedWithCollect asserts headscale's filter has at
-// least minRules entries — the post-SetPolicy gate before any
-// peer-reachability assertion. For use inside EventuallyWithT.
-//
-//nolint:unused // callsite swap lands in a follow-up commit in this PR
-func assertPolicyLoadedWithCollect(c *assert.CollectT, headscale ControlServer, minRules int, msg string) {
+// snapshotPolicyFilter returns the current filter rule count for use
+// with policyChangedBarrier.
+func snapshotPolicyFilter(t *testing.T, headscale ControlServer) int {
+	t.Helper()
+
 	rules, err := headscale.DebugFilter()
-	assert.NoError(c, err, msg) //nolint:testifylint // CollectT requires assert, not require
-	assert.GreaterOrEqual(c, len(rules), minRules, msg)
+	require.NoError(t, err, "snapshot policy filter")
+
+	return len(rules)
 }
 
-// policyLoadedBarrier returns a SyncOption pre-barrier that polls
-// headscale.DebugFilter() until at least minRules entries appear.
-//
-//nolint:unused // callsite swap lands in a follow-up commit in this PR
-func policyLoadedBarrier(headscale ControlServer, minRules int) func(context.Context) error {
+// policyChangedBarrier returns a SyncOption pre-barrier that waits
+// until headscale's filter rule count differs from baseline. Pair
+// with snapshotPolicyFilter taken *before* SetPolicy.
+func policyChangedBarrier(headscale ControlServer, baseline int) func(context.Context) error {
 	return func(ctx context.Context) error {
 		ticker := time.NewTicker(integrationutil.SlowPoll)
 		defer ticker.Stop()
 
 		for {
 			rules, err := headscale.DebugFilter()
-			if err == nil && len(rules) >= minRules {
+			if err == nil && len(rules) != baseline {
 				return nil
 			}
 
 			select {
 			case <-ctx.Done():
 				if err != nil {
-					return fmt.Errorf("policy-loaded barrier (last err %w): %w", err, ctx.Err())
+					return fmt.Errorf("policy-changed barrier (last err %w): %w", err, ctx.Err())
 				}
 
-				return fmt.Errorf("policy-loaded barrier: filter has %d rules, want >= %d: %w", len(rules), minRules, ctx.Err())
+				return fmt.Errorf("policy-changed barrier: filter still has %d rules: %w", baseline, ctx.Err())
 			case <-ticker.C:
 			}
 		}

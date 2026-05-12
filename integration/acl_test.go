@@ -1850,13 +1850,19 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		// Phase 2: Autogroup:self policy (only same user can access)
 		t.Logf("Iteration %d: Phase 2 - Setting autogroup:self policy", iteration)
 
+		prePolicyFilter := snapshotPolicyFilter(t, headscale)
+
 		err = headscale.SetPolicy(autogroupSelfPolicy)
 		require.NoError(t, err)
 
 		// Wait for peer lists to sync with autogroup:self - ensures cross-user peers are removed
 		t.Logf("Iteration %d: Phase 2 - Waiting for peer lists to sync with autogroup:self", iteration)
 
-		err = scenario.WaitForTailscaleSyncPerUser(integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond)
+		err = scenario.WaitForTailscaleSyncPerUser(
+			integrationutil.PolicyPropagationTimeout,
+			integrationutil.SlowPoll,
+			WithPreBarrier(policyChangedBarrier(headscale, prePolicyFilter)),
+		)
 		require.NoError(t, err, "iteration %d: Phase 2 - failed to sync after autogroup:self policy", iteration)
 
 		// Test ALL connectivity (positive and negative) in one block after state is settled
