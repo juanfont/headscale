@@ -32,16 +32,6 @@ import (
 // disagree on whether a policy is accepted. Each entry should describe
 // the engine area a follow-up PR needs to touch.
 var knownSSHTesterDivergences = map[string]string{
-	// SaaS resolves an IP-literal sshTests src to the owning node's
-	// user identity and matches it against compiled SSH principals;
-	// headscale's resolveSSHTestSource returns srcUserID=0 for any
-	// non-Username alias and only consults principal NodeIPs, so an
-	// IP that names a user-owned node misses every accept rule keyed
-	// by that user. Fix in hscontrol/policy/v2/sshtest.go — extend
-	// resolveSSHTestSource to recover the owning user when the src
-	// resolves to exactly one user-owned node.
-	"sshtest-ip-literal-src": "headscale does not map an IP-literal sshTests src to the owning node's user; SaaS does",
-
 	// SaaS rejects `users: ["*"]` on an `ssh` rule at policy-parse
 	// time with `user "*" is not valid`; headscale accepts the
 	// wildcard and proceeds to evaluate sshTests against it. Fix in
@@ -61,7 +51,6 @@ func TestSSHTesterCompat(t *testing.T) {
 	}
 
 	users := setupSSHDataCompatUsers()
-	nodes := setupSSHDataCompatNodes(users)
 
 	for _, file := range files {
 		c, err := testcapture.Read(file)
@@ -73,6 +62,14 @@ func TestSSHTesterCompat(t *testing.T) {
 			if reason, skip := knownSSHTesterDivergences[c.TestID]; skip {
 				t.Skip(reason)
 			}
+
+			// Per-capture nodes mean the topology IPs (which a
+			// policy `hosts` mapping references by literal IP)
+			// resolve to real nodes in the test fixture. Without
+			// this the static fixture's IPs do not overlap with
+			// the captures and host-alias dsts resolve to no
+			// nodes — that path is now a load-bearing failure.
+			nodes := buildGrantsNodesFromCapture(users, c)
 
 			policyJSON := []byte(c.Input.FullPolicy)
 

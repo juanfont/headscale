@@ -82,10 +82,11 @@ type SSHPolicyTest struct {
 	// Src connects to each entry in Dst.
 	Deny []string `json:"deny,omitempty"`
 
-	// Check lists SSH login users that must be allowed by an action:check
-	// rule specifically. action:accept matches do not satisfy a check
-	// assertion. Engine evaluation is not implemented yet; parse-time
-	// validation accepts the field so policies can be authored ahead of it.
+	// Check lists SSH login users that must reach every dst via an
+	// action:check rule specifically (the HoldAndDelegate signal on the
+	// compiled SSH policy). An action:accept rule alone does not satisfy
+	// a check assertion — SaaS keeps the two categories distinct so
+	// policy authors can pin sensitive logins to check rules.
 	Check []string `json:"check,omitempty"`
 }
 

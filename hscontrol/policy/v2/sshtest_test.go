@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -8,7 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
-	"tailscale.com/tailcfg"
 )
 
 // sshTestUsers/sshTestNodes are reused across the table below to keep
@@ -564,24 +564,6 @@ func TestRunSSHTests(t *testing.T) {
 			wantPass: true,
 		},
 		{
-			name: "tag-as-dst-single-node",
-			policy: `{
-				"tagOwners": { "tag:server": ["alice@headscale.net"] },
-				"ssh": [{
-					"action": "accept",
-					"src":    ["alice@headscale.net"],
-					"dst":    ["tag:server"],
-					"users":  ["root"]
-				}],
-				"sshTests": [{
-					"src":    "alice@headscale.net",
-					"dst":    ["tag:server"],
-					"accept": ["root"]
-				}]
-			}`,
-			wantPass: true,
-		},
-		{
 			name: "host-alias-as-dst",
 			policy: `{
 				` + commonHosts + `,
@@ -618,9 +600,19 @@ func TestRunSSHTests(t *testing.T) {
 			wantErrSub: []string{"alice@headscale.net", "root", "expected ALLOWED"},
 		},
 		{
+			// ACL grants only TCP:80 to alice; no rule grants TCP:22.
+			// SSH rule independently allows root@tag:server. The
+			// sshTests assertion must pass on the SSH layer alone,
+			// proving the engine does not require an ACL packet-
+			// filter rule for the SSH port.
 			name: "acl-denies-tcp22-ssh-rule-allows",
 			policy: `{
 				"tagOwners": { "tag:server": ["alice@headscale.net"] },
+				"acls": [{
+					"action": "accept",
+					"src":    ["alice@headscale.net"],
+					"dst":    ["tag:server:80"]
+				}],
 				"ssh": [{
 					"action": "accept",
 					"src":    ["alice@headscale.net"],
@@ -703,6 +695,40 @@ func TestRunSSHTests(t *testing.T) {
 			}`,
 			wantPass:   false,
 			wantErrSub: []string{"alice@headscale.net", "expected ALLOWED"},
+		},
+		{
+			// tag:empty has an owner but no tagged nodes, so the dst
+			// alias resolves to no nodes. Without the empty-dst guard
+			// the per-assertion loop runs zero iterations and the
+			// test silently passes — exactly the regression the
+			// guard exists to catch.
+			name: "dst-tag-with-no-tagged-nodes-fails",
+			policy: `{
+				"tagOwners": { "tag:empty": ["alice@headscale.net"] },
+				"sshTests": [{
+					"src":    "alice@headscale.net",
+					"dst":    ["tag:empty"],
+					"accept": ["root"]
+				}]
+			}`,
+			wantPass:   false,
+			wantErrSub: []string{"tag:empty", "resolved to no nodes"},
+		},
+		{
+			// autogroup:self from a tag src has no user identity to
+			// scope to, so the dst alias resolves to no nodes. Same
+			// empty-dst guard, distinct trigger path.
+			name: "dst-autogroup-self-from-tag-src-fails",
+			policy: `{
+				"tagOwners": { "tag:prod": ["alice@headscale.net"] },
+				"sshTests": [{
+					"src":    "tag:prod",
+					"dst":    ["autogroup:self"],
+					"accept": ["root"]
+				}]
+			}`,
+			wantPass:   false,
+			wantErrSub: []string{"autogroup:self", "resolved to no nodes"},
 		},
 	}
 
@@ -813,10 +839,17 @@ func TestSetPolicyRejectsFailingSSHTests(t *testing.T) {
 
 	// Snapshot SSHPolicy output for alice-laptop before the rejected
 	// write — the live PolicyManager state must still describe the
-	// previous (good) rules afterwards.
+	// previous (good) rules afterwards. JSON-marshal the snapshot so
+	// the comparison sees rule content, not just object identity: a
+	// hypothetical mutation that preserves the slice length but
+	// rewrites principals or SSHUsers would slip past a count-only
+	// assertion.
 	aliceView := nodes.ViewSlice().At(0)
 
 	beforePol, err := pm.SSHPolicy("", aliceView)
+	require.NoError(t, err)
+
+	beforeJSON, err := json.Marshal(beforePol)
 	require.NoError(t, err)
 
 	changed, err := pm.SetPolicy([]byte(bad))
@@ -827,7 +860,11 @@ func TestSetPolicyRejectsFailingSSHTests(t *testing.T) {
 
 	afterPol, err := pm.SSHPolicy("", aliceView)
 	require.NoError(t, err)
-	require.Equal(t, sshRuleCount(beforePol), sshRuleCount(afterPol),
+
+	afterJSON, err := json.Marshal(afterPol)
+	require.NoError(t, err)
+
+	require.JSONEq(t, string(beforeJSON), string(afterJSON),
 		"live SSH policy must not change after a rejected SetPolicy")
 }
 
@@ -903,6 +940,12 @@ func TestSetPolicyAggregatesACLAndSSHTestFailures(t *testing.T) {
 		"aggregated error must include the ACL failure message")
 	assert.Contains(t, body, "bob@headscale.net",
 		"aggregated error must include the bob src")
+	// The SSH renderer emits "src/user -> dst" form; the ACL renderer
+	// emits "src -> dst". Substring "/root -> " is unique to the SSH
+	// body, so finding it inside the aggregated error proves the SSH
+	// failure rendering was concatenated alongside the ACL body.
+	assert.Contains(t, body, "/root -> ",
+		"aggregated error must include the SSH-shape src/user -> dst rendering")
 }
 
 // TestNewPolicyManagerWarnsOnSSHTestsFailure asserts the boot path does
@@ -976,15 +1019,4 @@ func TestSSHPolicyTestResultsErrorsRendering(t *testing.T) {
 
 	assert.Equal(t, 3, strings.Count(rendered, "\n")+1,
 		"expected one line per failing assertion")
-}
-
-// sshRuleCount returns the number of rules in p, treating nil as 0.
-// Used by TestSetPolicyRejectsFailingSSHTests to verify a rejected
-// SetPolicy leaves the live SSH policy untouched.
-func sshRuleCount(p *tailcfg.SSHPolicy) int {
-	if p == nil {
-		return 0
-	}
-
-	return len(p.Rules)
 }
