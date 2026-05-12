@@ -17,11 +17,6 @@ on:
 jobs:
   test:
     runs-on: ubuntu-24.04-arm
-    # Hard cap on the runner so a hung hi run or a stuck container does
-    # not hold the runner for the default 6 h. `hi run --timeout=120m`
-    # below caps the test itself; this is the outer backstop covering
-    # cleanup, image loads, and any unexpected wait.
-    timeout-minutes: 35
     env:
       # Github does not allow us to access secrets in pull requests,
       # so this env var is used to check if we have the secret or not.
