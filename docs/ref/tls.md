@@ -30,6 +30,10 @@ Headscale only supports two values for `tls_letsencrypt_challenge_type`: `HTTP-0
 
 For `HTTP-01`, headscale must be reachable on port 80 for the Let's Encrypt automated validation, in addition to whatever port is configured in `listen_addr`. By default, headscale listens on port 80 on all local IPs for Let's Encrypt automated validation.
 
+!!! warning "`listen_addr` cannot also be port 80"
+
+    `listen_addr` and `tls_letsencrypt_listen` must not bind the same TCP socket. A common mistake is setting `listen_addr: 0.0.0.0:80` together with `tls_letsencrypt_hostname` — both endpoints try to claim port 80, and the second bind fails with `address already in use` even though no other process is involved. Headscale validates this at startup and refuses to launch with a `Fatal config error: listen_addr and tls_letsencrypt_listen would bind the same TCP socket` message. Use `listen_addr: 0.0.0.0:443` (or any non-80 port) when HTTP-01 is enabled.
+
 If you need to change the ip and/or port used by headscale for the Let's Encrypt validation process, set `tls_letsencrypt_listen` to the appropriate value. This can be handy if you are running headscale as a non-root user (or can't run `setcap`). Keep in mind, however, that Let's Encrypt will _only_ connect to port 80 for the validation callback, so if you change `tls_letsencrypt_listen` you will also need to configure something else (e.g. a firewall rule) to forward the traffic from port 80 to the ip:port combination specified in `tls_letsencrypt_listen`.
 
 #### TLS-ALPN-01

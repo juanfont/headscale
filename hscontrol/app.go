@@ -731,10 +731,12 @@ func (h *Headscale) Serve() error {
 	// Set up REMOTE listeners
 	//
 
-	tlsConfig, err := h.getTLSSettings()
+	tlsBundle, err := h.getTLSSettings(ctx)
 	if err != nil {
 		return fmt.Errorf("configuring TLS settings: %w", err)
 	}
+
+	tlsConfig := tlsBundle.Config
 
 	//
 	//
@@ -778,7 +780,12 @@ func (h *Headscale) Serve() error {
 
 		grpcListener, err = new(net.ListenConfig).Listen(context.Background(), "tcp", h.cfg.GRPCAddr)
 		if err != nil {
-			return fmt.Errorf("binding to TCP address: %w", err)
+			return &types.ListenerBindError{
+				Listener: "gRPC",
+				YAMLKey:  "grpc_listen_addr",
+				Addr:     h.cfg.GRPCAddr,
+				Err:      err,
+			}
 		}
 
 		errorGroup.Go(func() error { return grpcServer.Serve(grpcListener) })
@@ -815,13 +822,32 @@ func (h *Headscale) Serve() error {
 	}
 
 	if err != nil {
-		return fmt.Errorf("binding to TCP address: %w", err)
+		return &types.ListenerBindError{
+			Listener: "main HTTP",
+			YAMLKey:  "listen_addr",
+			Addr:     h.cfg.Addr,
+			Err:      err,
+		}
 	}
 
 	errorGroup.Go(func() error { return httpServer.Serve(httpListener) })
 
 	log.Info().
 		Msgf("listening and serving HTTP on: %s", h.cfg.Addr)
+
+	if tlsBundle.ACMEServer != nil {
+		log.Info().Msgf(
+			"listening and serving ACME HTTP-01 challenge on: %s",
+			tlsBundle.ACMEListener.Addr())
+		errorGroup.Go(func() error {
+			err := tlsBundle.ACMEServer.Serve(tlsBundle.ACMEListener)
+			if err != nil && !errors.Is(err, http.ErrServerClosed) {
+				return fmt.Errorf("ACME HTTP-01 challenge listener: %w", err)
+			}
+
+			return nil
+		})
+	}
 
 	// Only start debug/metrics server if address is configured
 	var debugHTTPServer *http.Server
@@ -831,7 +857,12 @@ func (h *Headscale) Serve() error {
 	if h.cfg.MetricsAddr != "" {
 		debugHTTPListener, err = (&net.ListenConfig{}).Listen(ctx, "tcp", h.cfg.MetricsAddr)
 		if err != nil {
-			return fmt.Errorf("binding to TCP address: %w", err)
+			return &types.ListenerBindError{
+				Listener: "metrics",
+				YAMLKey:  "metrics_listen_addr",
+				Addr:     h.cfg.MetricsAddr,
+				Err:      err,
+			}
 		}
 
 		debugHTTPServer = h.debugHTTPServer()
@@ -928,6 +959,17 @@ func (h *Headscale) Serve() error {
 					log.Error().Err(err).Msg("failed to shutdown http")
 				}
 
+				if tlsBundle.ACMEServer != nil {
+					info("shutting down ACME HTTP-01 challenge server")
+
+					err := tlsBundle.ACMEServer.Shutdown(shutdownCtx)
+					if err != nil {
+						log.Error().Err(err).Msg("failed to shutdown ACME HTTP-01 server")
+					}
+
+					tlsBundle.ACMEListener.Close()
+				}
+
 				info("closing batcher")
 				h.mapBatcher.Close()
 
@@ -987,9 +1029,17 @@ func (h *Headscale) Serve() error {
 	return errorGroup.Wait()
 }
 
-func (h *Headscale) getTLSSettings() (*tls.Config, error) {
-	var err error
+// tlsBundle carries the TLS settings produced by getTLSSettings. When
+// HTTP-01 ACME is configured, ACMEServer and ACMEListener are populated
+// so the caller can register the challenge listener with the errgroup
+// and wire it into the shutdown path. Otherwise both are nil.
+type tlsBundle struct {
+	Config       *tls.Config
+	ACMEServer   *http.Server
+	ACMEListener net.Listener
+}
 
+func (h *Headscale) getTLSSettings(ctx context.Context) (*tlsBundle, error) {
 	if h.cfg.TLS.LetsEncrypt.Hostname != "" {
 		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
 			log.Warn().
@@ -1016,7 +1066,7 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 			// Configuration via autocert with TLS-ALPN-01 (https://tools.ietf.org/html/rfc8737)
 			// The RFC requires that the validation is done on port 443; in other words, headscale
 			// must be reachable on port 443.
-			return certManager.TLSConfig(), nil
+			return &tlsBundle{Config: certManager.TLSConfig()}, nil
 
 		case types.HTTP01ChallengeType:
 			// Configuration via autocert with HTTP-01. This requires listening on
@@ -1028,40 +1078,52 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 				ReadTimeout: types.HTTPTimeout,
 			}
 
-			go func() {
-				err := server.ListenAndServe()
-				log.Fatal().
-					Caller().
-					Err(err).
-					Msg("failed to set up a HTTP server")
-			}()
+			listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", server.Addr)
+			if err != nil {
+				return nil, &types.ListenerBindError{
+					Listener: "ACME HTTP-01 challenge",
+					YAMLKey:  "tls_letsencrypt_listen",
+					Addr:     server.Addr,
+					Err:      err,
+				}
+			}
 
-			return certManager.TLSConfig(), nil
+			return &tlsBundle{
+				Config:       certManager.TLSConfig(),
+				ACMEServer:   server,
+				ACMEListener: listener,
+			}, nil
 
 		default:
 			return nil, errUnsupportedLetsEncryptChallengeType
 		}
-	} else if h.cfg.TLS.CertPath == "" {
+	}
+
+	if h.cfg.TLS.CertPath == "" {
 		if !strings.HasPrefix(h.cfg.ServerURL, "http://") {
 			log.Warn().Msg("listening without TLS but ServerURL does not start with http://")
 		}
 
-		return nil, err
-	} else {
-		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
-			log.Warn().Msg("listening with TLS but ServerURL does not start with https://")
-		}
-
-		tlsConfig := &tls.Config{
-			NextProtos:   []string{"http/1.1"},
-			Certificates: make([]tls.Certificate, 1),
-			MinVersion:   tls.VersionTLS12,
-		}
-
-		tlsConfig.Certificates[0], err = tls.LoadX509KeyPair(h.cfg.TLS.CertPath, h.cfg.TLS.KeyPath)
-
-		return tlsConfig, err
+		return &tlsBundle{}, nil
 	}
+
+	if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
+		log.Warn().Msg("listening with TLS but ServerURL does not start with https://")
+	}
+
+	cert, err := tls.LoadX509KeyPair(h.cfg.TLS.CertPath, h.cfg.TLS.KeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("loading TLS keypair (tls_cert_path=%q, tls_key_path=%q): %w",
+			h.cfg.TLS.CertPath, h.cfg.TLS.KeyPath, err)
+	}
+
+	tlsConfig := &tls.Config{
+		NextProtos:   []string{"http/1.1"},
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	}
+
+	return &tlsBundle{Config: tlsConfig}, nil
 }
 
 func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
