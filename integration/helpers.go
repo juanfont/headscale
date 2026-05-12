@@ -3,7 +3,7 @@ package integration
 import (
 	"bufio"
 	"bytes"
-	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -570,41 +570,51 @@ func assertCurlDockerHostname(c *assert.CollectT, client TailscaleClient, url, m
 	assert.Len(c, result, dockerHostnameLen, msg)
 }
 
-// snapshotPolicyFilter returns the current filter rule count for use
-// with policyChangedBarrier.
-func snapshotPolicyFilter(t *testing.T, headscale ControlServer) int {
+// snapshotClientFilters captures each client's current netmap
+// PacketFilter as a JSON fingerprint, keyed by hostname. Pair with
+// waitForClientFilterChange.
+func snapshotClientFilters(t *testing.T, clients []TailscaleClient) map[string]string {
 	t.Helper()
 
-	rules, err := headscale.DebugFilter()
-	require.NoError(t, err, "snapshot policy filter")
+	out := make(map[string]string, len(clients))
 
-	return len(rules)
+	for _, c := range clients {
+		nm, err := c.Netmap()
+		require.NoError(t, err, "snapshot netmap for %s", c.Hostname())
+
+		b, err := json.Marshal(nm.PacketFilter)
+		require.NoError(t, err, "marshal PacketFilter for %s", c.Hostname())
+
+		out[c.Hostname()] = string(b)
+	}
+
+	return out
 }
 
-// policyChangedBarrier returns a SyncOption pre-barrier that waits
-// until headscale's filter rule count differs from baseline. Pair
-// with snapshotPolicyFilter taken *before* SetPolicy.
-func policyChangedBarrier(headscale ControlServer, baseline int) func(context.Context) error {
-	return func(ctx context.Context) error {
-		ticker := time.NewTicker(integrationutil.SlowPoll)
-		defer ticker.Stop()
+// waitForClientFilterChange polls each client until its netmap
+// PacketFilter fingerprint differs from baselines[Hostname]. Use
+// after SetPolicy to gate on client-side filter application before
+// asserting reachability.
+func waitForClientFilterChange(t *testing.T, clients []TailscaleClient, baselines map[string]string, timeout time.Duration) {
+	t.Helper()
 
-		for {
-			rules, err := headscale.DebugFilter()
-			if err == nil && len(rules) != baseline {
-				return nil
+	for _, client := range clients {
+		c := client
+		baseline := baselines[c.Hostname()]
+
+		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+			nm, err := c.Netmap()
+			if !assert.NoError(ct, err, "fetch netmap for %s", c.Hostname()) {
+				return
 			}
 
-			select {
-			case <-ctx.Done():
-				if err != nil {
-					return fmt.Errorf("policy-changed barrier (last err %w): %w", err, ctx.Err())
-				}
-
-				return fmt.Errorf("policy-changed barrier: filter still has %d rules: %w", baseline, ctx.Err())
-			case <-ticker.C:
+			b, err := json.Marshal(nm.PacketFilter)
+			if !assert.NoError(ct, err, "marshal PacketFilter for %s", c.Hostname()) {
+				return
 			}
-		}
+
+			assert.NotEqual(ct, baseline, string(b), "client %s PacketFilter unchanged since baseline", c.Hostname())
+		}, timeout, integrationutil.SlowPoll, "client %s PacketFilter should change after SetPolicy", c.Hostname())
 	}
 }
 

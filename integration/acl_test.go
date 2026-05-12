@@ -1850,7 +1850,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		// Phase 2: Autogroup:self policy (only same user can access)
 		t.Logf("Iteration %d: Phase 2 - Setting autogroup:self policy", iteration)
 
-		prePolicyFilter := snapshotPolicyFilter(t, headscale)
+		preFilters := snapshotClientFilters(t, allClients)
 
 		err = headscale.SetPolicy(autogroupSelfPolicy)
 		require.NoError(t, err)
@@ -1861,9 +1861,15 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		err = scenario.WaitForTailscaleSyncPerUser(
 			integrationutil.PolicyPropagationTimeout,
 			integrationutil.SlowPoll,
-			WithPreBarrier(policyChangedBarrier(headscale, prePolicyFilter)),
 		)
 		require.NoError(t, err, "iteration %d: Phase 2 - failed to sync after autogroup:self policy", iteration)
+
+		// Gate on each client's wgengine having applied the new
+		// PacketFilter before asserting reachability. WaitForTailscale
+		// SyncPerUser only checks peer-count parity, which trips
+		// before the filter rules have actually replaced the
+		// allow-all rules.
+		waitForClientFilterChange(t, allClients, preFilters, integrationutil.PolicyPropagationTimeout)
 
 		// Test ALL connectivity (positive and negative) in one block after state is settled
 		t.Logf("Iteration %d: Phase 2 - Testing all connectivity with autogroup:self", iteration)

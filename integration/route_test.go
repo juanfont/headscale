@@ -223,7 +223,10 @@ func TestEnablingRoutes(t *testing.T) {
 func TestHASubnetRouterFailover(t *testing.T) {
 	IntegrationSkip(t)
 
-	propagationTime := integrationutil.HAConvergeTimeout
+	// HASlowConverge (not HAConverge): tailscale's wgengine sometimes
+	// keeps routing through the previous primary for ~2 min after
+	// the netmap update flips PrimaryRoutes server-side.
+	propagationTime := integrationutil.HASlowConvergeTimeout
 
 	// Helper function to validate primary routes table state
 	validatePrimaryRoutes := func(t *testing.T, headscale ControlServer, expectedRoutes *types.DebugRoutes, message string) {
@@ -3024,26 +3027,6 @@ func assertTracerouteViaIPWithCollect(c *assert.CollectT, tr util.Traceroute, ip
 	// but assert.NotEmpty above ensures len(tr.Route) > 0
 	if len(tr.Route) > 0 {
 		assert.Equal(c, tr.Route[0].IP.String(), ip.String())
-	}
-}
-
-// assertTracerouteFirstHopInWithCollect asserts the first hop is one
-// of expected — for HA tests where any valid primary is acceptable.
-//
-//nolint:unused // callsite swap lands in a follow-up commit in this PR
-func assertTracerouteFirstHopInWithCollect(c *assert.CollectT, tr util.Traceroute, expected []netip.Addr) {
-	assert.NotNil(c, tr)
-	assert.True(c, tr.Success)
-	assert.NoError(c, tr.Err) //nolint:testifylint // using assert.CollectT
-	assert.NotEmpty(c, tr.Route)
-
-	if len(tr.Route) > 0 {
-		expectedStrs := make([]string, 0, len(expected))
-		for _, addr := range expected {
-			expectedStrs = append(expectedStrs, addr.String())
-		}
-
-		assert.Contains(c, expectedStrs, tr.Route[0].IP.String())
 	}
 }
 
