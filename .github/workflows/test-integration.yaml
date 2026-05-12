@@ -168,70 +168,8 @@ jobs:
           name: postgres-image
           path: postgres-image.tar.gz
           retention-days: 10
-  # build-prepulled: Pre-pulls every Docker Hub image the integration
-  # suite needs at runtime (legacy Tailscale versions from
-  # MustTestVersions plus the golang toolchain image) and uploads them
-  # as a single artefact. With this in place, the per-test runners do
-  # not have to pull from Docker Hub, which sidesteps the anonymous
-  # 100-pull-per-6h rate limit that historically caused suite-wide
-  # singleton flakes whenever the shared runner IP got throttled.
-  # The image list comes from `hi images tailscale` and
-  # `hi images golang`, which read MustTestVersions and go.mod
-  # respectively, so CI never duplicates the source of truth.
-  build-prepulled:
-    runs-on: ubuntu-24.04-arm
-    needs: build
-    if: needs.build.outputs.files-changed == 'true'
-    steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
-      - name: Pin Docker to v28 (avoid v29 breaking changes)
-        run: |
-          sudo install -m 0755 -d /etc/apt/keyrings
-          curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-            | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-            https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
-            | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-          sudo apt-get update -qq
-          VERSION=$(apt-cache madison docker-ce | grep '28\.5' | head -1 | awk '{print $3}')
-          sudo apt-get install -y --allow-downgrades \
-            "docker-ce=${VERSION}" "docker-ce-cli=${VERSION}"
-          sudo systemctl restart docker
-          docker version
-      - name: Login to Docker Hub
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-        if: env.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Download hi binary
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
-        with:
-          name: hi-binary
-          path: /tmp/artifacts
-      - name: Pull and save prepulled images
-        run: |
-          chmod +x /tmp/artifacts/hi
-          {
-            /tmp/artifacts/hi images tailscale
-            /tmp/artifacts/hi images golang
-          } > /tmp/prepull.txt
-          echo "Images to pre-pull:"
-          cat /tmp/prepull.txt
-          while read -r img; do
-            docker pull "$img"
-          done < /tmp/prepull.txt
-          docker save $(tr '\n' ' ' < /tmp/prepull.txt) | gzip > prepulled-images.tar.gz
-      - name: Upload prepulled images
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
-        with:
-          name: prepulled-images
-          path: prepulled-images.tar.gz
-          retention-days: 10
   sqlite:
-    needs: [build, build-prepulled]
+    needs: build
     if: needs.build.outputs.files-changed == 'true'
     strategy:
       fail-fast: false
@@ -387,7 +325,7 @@ jobs:
       postgres_flag: "--postgres=0"
       database_name: "sqlite"
   postgres:
-    needs: [build, build-postgres, build-prepulled]
+    needs: [build, build-postgres]
     if: needs.build.outputs.files-changed == 'true'
     strategy:
       fail-fast: false
@@ -398,12 +336,6 @@ jobs:
           - TestEphemeral2006DeletedTooQuickly
           - TestPingAllByIPManyUpDown
           - TestSubnetRouterMultiNetwork
-          # TestHASubnetRouterFailover is the highest-failure-rate HA test
-          # on sqlite. Rotate it into the postgres matrix so we can compare
-          # flake rates side-by-side: a clean postgres signal points at a
-          # sqlite-only timing window; equal flakiness points at the
-          # NodeStore / mapper logic above the storage layer.
-          - TestHASubnetRouterFailover
     uses: ./.github/workflows/integration-test-template.yml
     secrets: inherit
     with:

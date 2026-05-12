@@ -72,11 +72,6 @@ jobs:
         with:
           name: postgres-image
           path: /tmp/artifacts
-      - name: Download prepulled images
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
-        with:
-          name: prepulled-images
-          path: /tmp/artifacts
       - name: Pin Docker to v28 (avoid v29 breaking changes)
         run: |
           # Docker 29 breaks docker build via Go client libraries and
@@ -109,9 +104,6 @@ jobs:
           gunzip -c /tmp/artifacts/tailscale-head-image.tar.gz | docker load
           if [ -f /tmp/artifacts/postgres-image.tar.gz ]; then
             gunzip -c /tmp/artifacts/postgres-image.tar.gz | docker load
-          fi
-          if [ -f /tmp/artifacts/prepulled-images.tar.gz ]; then
-            gunzip -c /tmp/artifacts/prepulled-images.tar.gz | docker load
           fi
           chmod +x /tmp/artifacts/hi
           docker images

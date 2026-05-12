@@ -30,22 +30,6 @@ func main() {
 				},
 			},
 			{
-				Name: "images",
-				Help: "Print Docker image references the integration suite needs",
-				Commands: []*command.C{
-					{
-						Name: "tailscale",
-						Help: "Print legacy Tailscale images that must be pre-pulled",
-						Run:  listTailscaleImages,
-					},
-					{
-						Name: "golang",
-						Help: "Print golang image matching the Go toolchain in go.mod",
-						Run:  listGolangImage,
-					},
-				},
-			},
-			{
 				Name: "clean",
 				Help: "Clean Docker resources",
 				Commands: []*command.C{
