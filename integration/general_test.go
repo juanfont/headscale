@@ -1320,6 +1320,11 @@ func TestNodeOnlineStatus(t *testing.T) {
 
 	log.Printf("Starting online test from %v to %v", start, end)
 
+	// Pace the outer loop at one iteration per second so the
+	// continuous online-check does not hammer the docker daemon.
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+
 	for {
 		// Let the test run continuously for X minutes to verify
 		// all nodes stay connected and has the expected status over time.
@@ -1384,8 +1389,7 @@ func TestNodeOnlineStatus(t *testing.T) {
 			}, integrationutil.ScaledTimeout(15*time.Second), 1*time.Second)
 		}
 
-		// Check maximum once per second
-		time.Sleep(time.Second)
+		<-tick.C
 	}
 }
 
