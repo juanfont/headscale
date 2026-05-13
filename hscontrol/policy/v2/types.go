@@ -53,6 +53,7 @@ var (
 	ErrSSHActionMustBeSpecified           = errors.New("action must be specified")
 	ErrSSHActionInvalid                   = errors.New("is not a valid action")
 	ErrSSHDestinationHostAlias            = errors.New("invalid dst")
+	ErrTagNameMustStartWithLetter         = errors.New("tag names must start with a letter, after 'tag:'")
 )
 
 // SSH check period constants per Tailscale docs:
@@ -525,12 +526,27 @@ func (g *Group) resolve(p *Policy, users types.Users, nodes views.Slice[types.No
 // Tag is a special string which is always prefixed with `tag:`.
 type Tag string
 
+// Validate enforces the `tag:` prefix and the SaaS rule that the
+// first character after the prefix is an ASCII letter ([A-Za-z]).
+// Subsequent characters may be ASCII letters, digits, hyphens, or
+// dots — those are checked by the existing alias parser elsewhere.
 func (t *Tag) Validate() error {
-	if isTag(string(*t)) {
-		return nil
+	s := string(*t)
+	if !isTag(s) {
+		return fmt.Errorf("%w, got: %q", ErrInvalidTagFormat, *t)
 	}
 
-	return fmt.Errorf("%w, got: %q", ErrInvalidTagFormat, *t)
+	rest := strings.TrimPrefix(s, "tag:")
+	if rest == "" {
+		return ErrTagNameMustStartWithLetter
+	}
+
+	first := rest[0]
+	if !((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z')) {
+		return ErrTagNameMustStartWithLetter
+	}
+
+	return nil
 }
 
 func (t *Tag) UnmarshalJSON(b []byte) error {
@@ -3116,6 +3132,16 @@ func unmarshalPolicy(b []byte) (*Policy, error) {
 			// []Tag; match SaaS wording instead of Go's JSON diagnostic.
 			if strings.Contains(string(serr.JSONPointer), "/via/") {
 				return nil, ErrGrantViaNotATag
+			}
+
+			// Non-ASCII tag-name failures surface from Tag.Validate
+			// at unmarshal time. Reshape the error to mirror SaaS
+			// (`tagOwners["tag:X"]: …`).
+			if errors.Is(serr.Err, ErrTagNameMustStartWithLetter) {
+				ptr := serr.JSONPointer
+				name := ptr.LastToken()
+
+				return nil, fmt.Errorf("tagOwners[%q]: %w", name, ErrTagNameMustStartWithLetter)
 			}
 		}
 
