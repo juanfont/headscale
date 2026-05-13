@@ -48,7 +48,7 @@ func init() {
 	policyCmd.AddCommand(setPolicy)
 
 	checkPolicy.Flags().StringP("file", "f", "", "Path to a policy file in HuJSON format")
-	checkPolicy.Flags().BoolP(bypassFlag, "", false, "Open the database directly (no gRPC, no running server) to validate user@ token references and to evaluate the policy's tests block. Required when those checks are needed.")
+	checkPolicy.Flags().BoolP(bypassFlag, "", false, "Open the database directly (no gRPC, no running server) to resolve user references and to evaluate the policy's tests and sshTests blocks. Required when those checks are needed.")
 	mustMarkRequired(checkPolicy, "file")
 	policyCmd.AddCommand(checkPolicy)
 }
@@ -173,8 +173,8 @@ var checkPolicy = &cobra.Command{
 	Short: "Check the Policy file for errors",
 	Long: `
 	Check validates the policy against the server's live users and nodes,
-	running any "tests" block. By default the command is a thin frontend
-	for a gRPC call to a running headscale; pass --` + bypassFlag + ` to
+	running any "tests" or "sshTests" block. By default the command is a
+	thin frontend for a gRPC call to a running headscale; pass --` + bypassFlag + ` to
 	open the database directly when headscale is not running.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		policyPath, _ := cmd.Flags().GetString("file")
@@ -208,7 +208,7 @@ var checkPolicy = &cobra.Command{
 			// NewPolicyManager validates structure and user references
 			// but intentionally skips test evaluation (boot path).
 			// SetPolicy is the user-write boundary and is what runs the
-			// tests block.
+			// tests and sshTests blocks.
 			pm, err := policy.NewPolicyManager(policyBytes, users, nodes.ViewSlice())
 			if err != nil {
 				return fmt.Errorf("parsing policy file: %w", err)
