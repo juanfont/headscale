@@ -863,6 +863,12 @@ type Alias interface {
 	Validate() error
 	UnmarshalJSON(b []byte) error
 
+	// String renders the alias back to its policy-file form. Implementations
+	// are expected to return a value that round-trips through parseAlias for
+	// any alias the parser accepted, so callers can use it as a stable
+	// identity in rendered errors and logs.
+	String() string
+
 	// Resolve resolves the Alias to an IPSet. The IPSet will contain all the IP
 	// addresses that the Alias represents within Headscale. It is the product
 	// of the Alias and the Policy, Users and Nodes.
@@ -3437,7 +3443,7 @@ func validateSSHTests(pol *Policy, tests []SSHPolicyTest) error {
 	var errs []error
 
 	for i, t := range tests {
-		if t.Src == "" {
+		if t.Src == nil {
 			errs = append(errs, fmt.Errorf("sshTest %d: %w", i, ErrSSHTestEmptySrc))
 		}
 
@@ -3468,11 +3474,8 @@ func validateSSHTests(pol *Policy, tests []SSHPolicyTest) error {
 // (only valid in ACL destinations, not SSH ones). Tag entries must
 // reference a tag that exists in tagOwners; bare hosts must resolve to a
 // single-address prefix.
-func validateSSHTestDestination(pol *Policy, dst string) error {
-	alias, err := parseAlias(dst)
-	if err != nil {
-		return fmt.Errorf("%w %q", ErrSSHTestDstDisallowedElement, dst)
-	}
+func validateSSHTestDestination(pol *Policy, alias Alias) error {
+	dst := alias.String()
 
 	switch a := alias.(type) {
 	case *AutoGroup:
@@ -3484,12 +3487,12 @@ func validateSSHTestDestination(pol *Policy, dst string) error {
 		}
 
 	case *Prefix:
-		// A CIDR literal in dst is rejected. A bare IP parses as a Prefix
-		// with no slash in the input string — distinguish on the raw text
-		// the same way validateTestDestination does.
-		if strings.Contains(dst, "/") {
-			return fmt.Errorf("%w %q", ErrSSHTestDstDisallowedElement, dst)
-		}
+		// IP / CIDR dsts are rejected: SSH dsts name hosts, tags, or
+		// SSH-compatible autogroups, not raw addresses. Bare IPs and
+		// `/BitLen` literals parse to the same Prefix value so this
+		// branch covers both with one disallowed-element answer.
+		_ = a
+		return fmt.Errorf("%w %q", ErrSSHTestDstDisallowedElement, dst)
 
 	case *Tag:
 		// A tag must be declared in tagOwners. The `tag:server:22` shape

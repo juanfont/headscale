@@ -230,8 +230,13 @@ func runSSHPolicyTest(
 	nodes views.Slice[types.NodeView],
 	cache map[types.NodeID]*tailcfg.SSHPolicy,
 ) SSHPolicyTestResult {
+	srcLabel := ""
+	if test.Src != nil {
+		srcLabel = test.Src.String()
+	}
+
 	res := SSHPolicyTestResult{
-		Src:    test.Src,
+		Src:    srcLabel,
 		Passed: true,
 	}
 
@@ -239,7 +244,7 @@ func runSSHPolicyTest(
 	if err != nil {
 		res.Passed = false
 		res.Errors = append(res.Errors,
-			fmt.Sprintf("failed to resolve source %q: %v", test.Src, err))
+			fmt.Sprintf("failed to resolve source %q: %v", srcLabel, err))
 
 		return res
 	}
@@ -247,7 +252,7 @@ func runSSHPolicyTest(
 	if len(srcAddrs) == 0 {
 		res.Passed = false
 		res.Errors = append(res.Errors,
-			fmt.Sprintf("source %q resolved to no IP addresses", test.Src))
+			fmt.Sprintf("source %q resolved to no IP addresses", srcLabel))
 
 		return res
 	}
@@ -290,7 +295,7 @@ func runSSHPolicyTest(
 	for _, user := range test.Accept {
 		evaluateAssertion(
 			pol, users, nodes, cache,
-			srcAddrs, dstNodes, user,
+			srcAddrs, dstNodes, user.String(),
 			assertAccept, &res,
 		)
 	}
@@ -298,7 +303,7 @@ func runSSHPolicyTest(
 	for _, user := range test.Deny {
 		evaluateAssertion(
 			pol, users, nodes, cache,
-			srcAddrs, dstNodes, user,
+			srcAddrs, dstNodes, user.String(),
 			assertDeny, &res,
 		)
 	}
@@ -306,7 +311,7 @@ func runSSHPolicyTest(
 	for _, user := range test.Check {
 		evaluateAssertion(
 			pol, users, nodes, cache,
-			srcAddrs, dstNodes, user,
+			srcAddrs, dstNodes, user.String(),
 			assertCheck, &res,
 		)
 	}
@@ -438,23 +443,22 @@ func appendUserDst(m map[string][]string, user, dst string) map[string][]string 
 	return m
 }
 
-// resolveSSHTestSource resolves the src alias into a list of
+// resolveSSHTestSource resolves the typed src alias into a list of
 // netip.Addr (one per principal address the SSH compiler would emit
 // for the same source). For user-shaped sources, srcUserID returns the
 // resolved user's ID so autogroup:self destinations can scope to the
 // same user. Returns ID 0 when the source is a tag, host, or IP.
 func resolveSSHTestSource(
-	src string,
+	src Alias,
 	pol *Policy,
 	users []types.User,
 	nodes views.Slice[types.NodeView],
 ) ([]netip.Addr, uint, error) {
-	alias, err := parseAlias(src)
-	if err != nil {
-		return nil, 0, fmt.Errorf("invalid alias: %w", err)
+	if src == nil {
+		return nil, 0, nil
 	}
 
-	addrs, err := alias.Resolve(pol, users, nodes)
+	addrs, err := src.Resolve(pol, users, nodes)
 	if err != nil {
 		return nil, 0, fmt.Errorf("resolving: %w", err)
 	}
@@ -470,7 +474,7 @@ func resolveSSHTestSource(
 
 	var userID uint
 
-	u, ok := alias.(*Username)
+	u, ok := src.(*Username)
 	if ok {
 		resolved, rErr := u.resolveUser(users)
 		if rErr == nil {
@@ -490,7 +494,7 @@ func resolveSSHTestSource(
 // node's IPs via InIPSet (the same primitive the SSH compiler uses to
 // decide whether a node is a destination of a given rule).
 func resolveSSHTestDestNodes(
-	dsts []string,
+	dsts SSHTestDestinations,
 	pol *Policy,
 	users []types.User,
 	nodes views.Slice[types.NodeView],
@@ -503,12 +507,8 @@ func resolveSSHTestDestNodes(
 		emptyDsts []string
 	)
 
-	for _, dst := range dsts {
-		alias, err := parseAlias(dst)
-		if err != nil {
-			return nil, nil, fmt.Errorf("invalid destination %q: %w", dst, err)
-		}
-
+	for _, alias := range dsts {
+		dstLabel := alias.String()
 		matched := false
 
 		if ag, ok := alias.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
@@ -519,7 +519,7 @@ func resolveSSHTestDestNodes(
 			// (matches SaaS, which treats a no-node dst as a
 			// failing assertion).
 			if srcUserID == 0 {
-				emptyDsts = append(emptyDsts, dst)
+				emptyDsts = append(emptyDsts, dstLabel)
 
 				continue
 			}
@@ -548,7 +548,7 @@ func resolveSSHTestDestNodes(
 			}
 
 			if !matched {
-				emptyDsts = append(emptyDsts, dst)
+				emptyDsts = append(emptyDsts, dstLabel)
 			}
 
 			continue
@@ -556,11 +556,11 @@ func resolveSSHTestDestNodes(
 
 		ips, err := alias.Resolve(pol, users, nodes)
 		if err != nil {
-			return nil, nil, fmt.Errorf("resolving destination %q: %w", dst, err)
+			return nil, nil, fmt.Errorf("resolving destination %q: %w", dstLabel, err)
 		}
 
 		if ips == nil || ips.Empty() {
-			emptyDsts = append(emptyDsts, dst)
+			emptyDsts = append(emptyDsts, dstLabel)
 
 			continue
 		}
@@ -570,7 +570,7 @@ func resolveSSHTestDestNodes(
 		// the resolved prefixes.
 		set, err := prefixesToIPSet(ips.Prefixes())
 		if err != nil {
-			return nil, nil, fmt.Errorf("building IPSet for %q: %w", dst, err)
+			return nil, nil, fmt.Errorf("building IPSet for %q: %w", dstLabel, err)
 		}
 
 		for _, n := range nodes.All() {
@@ -589,7 +589,7 @@ func resolveSSHTestDestNodes(
 		}
 
 		if !matched {
-			emptyDsts = append(emptyDsts, dst)
+			emptyDsts = append(emptyDsts, dstLabel)
 		}
 	}
 

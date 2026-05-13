@@ -6003,9 +6003,12 @@ func TestUnmarshalPolicySSHTests(t *testing.T) {
 				t.Helper()
 				require.Len(t, pol.SSHTests, 1)
 				got := pol.SSHTests[0]
-				require.Equal(t, "thor@example.org", got.Src)
-				require.Equal(t, []string{"tag:server"}, got.Dst)
-				require.Equal(t, []string{"root"}, got.Accept)
+				require.IsType(t, (*Username)(nil), got.Src)
+				require.Equal(t, "thor@example.org", got.Src.String())
+				require.Len(t, got.Dst, 1)
+				require.IsType(t, (*Tag)(nil), got.Dst[0])
+				require.Equal(t, "tag:server", got.Dst[0].String())
+				require.Equal(t, []SSHUser{"root"}, got.Accept)
 				require.Empty(t, got.Deny)
 				require.Empty(t, got.Check)
 			},
@@ -6030,9 +6033,9 @@ func TestUnmarshalPolicySSHTests(t *testing.T) {
 				t.Helper()
 				require.Len(t, pol.SSHTests, 1)
 				got := pol.SSHTests[0]
-				require.Equal(t, []string{"root"}, got.Accept)
-				require.Equal(t, []string{"nobody"}, got.Deny)
-				require.Equal(t, []string{"alice"}, got.Check)
+				require.Equal(t, []SSHUser{"root"}, got.Accept)
+				require.Equal(t, []SSHUser{"nobody"}, got.Deny)
+				require.Equal(t, []SSHUser{"alice"}, got.Check) //nolint:goconst
 			},
 		},
 		{

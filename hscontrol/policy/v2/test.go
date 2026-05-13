@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/go-json-experiment/json"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"tailscale.com/tailcfg"
@@ -67,27 +68,92 @@ type PolicyTest struct {
 type SSHPolicyTest struct {
 	// Src is a single source alias (user, group, tag, host, or IP). Same
 	// shape as PolicyTest.Src — Tailscale only supports one src per entry.
-	Src string `json:"src"`
+	Src Alias `json:"src"`
 
 	// Dst lists destination host aliases the test exercises. Tags, hosts,
 	// and the SSH-compatible autogroups are valid; ports, CIDR ranges, and
 	// autogroup:internet are rejected at parse time.
-	Dst []string `json:"dst"`
+	Dst SSHTestDestinations `json:"dst"`
 
 	// Accept lists SSH login users that must be allowed by an action:accept
 	// or action:check rule when Src connects to each entry in Dst.
-	Accept []string `json:"accept,omitempty"`
+	Accept []SSHUser `json:"accept,omitempty"`
 
 	// Deny lists SSH login users that must NOT be allowed by any rule when
 	// Src connects to each entry in Dst.
-	Deny []string `json:"deny,omitempty"`
+	Deny []SSHUser `json:"deny,omitempty"`
 
 	// Check lists SSH login users that must reach every dst via an
 	// action:check rule specifically (the HoldAndDelegate signal on the
 	// compiled SSH policy). An action:accept rule alone does not satisfy
 	// a check assertion — SaaS keeps the two categories distinct so
 	// policy authors can pin sensitive logins to check rules.
-	Check []string `json:"check,omitempty"`
+	Check []SSHUser `json:"check,omitempty"`
+}
+
+// SSHTestDestinations is the list of destination aliases an sshTests entry
+// targets. Unmarshalling reuses the same alias parser the rest of the
+// policy engine drives so each element lands as a typed Alias; the parse-
+// time shape rules in validateSSHTestDestination continue to enforce the
+// SSH-specific restrictions (no :port, no CIDR, no autogroup:internet,
+// known tag).
+type SSHTestDestinations []Alias
+
+// UnmarshalJSON walks the JSON array, dispatching each element through
+// AliasEnc so trimming and prefix detection match the rest of the parser.
+func (d *SSHTestDestinations) UnmarshalJSON(b []byte) error {
+	var aliases []AliasEnc
+
+	err := json.Unmarshal(b, &aliases, policyJSONOpts...)
+	if err != nil {
+		return err
+	}
+
+	*d = make([]Alias, len(aliases))
+	for i, a := range aliases {
+		(*d)[i] = a.Alias
+	}
+
+	return nil
+}
+
+// UnmarshalJSON drives the typed shape of SSHPolicyTest. The wire format
+// is unchanged: src is a JSON string parsed through parseAlias; dst is an
+// array of strings handled by SSHTestDestinations; accept/deny/check are
+// arrays of strings handled per element by SSHUser.UnmarshalJSON. An
+// empty src string lands as a nil Alias so the empty-src case stays a
+// validation-time error with the SaaS-aligned ErrSSHTestEmptySrc body
+// rather than a raw parser failure.
+func (t *SSHPolicyTest) UnmarshalJSON(b []byte) error {
+	var raw struct {
+		Src    string              `json:"src"`
+		Dst    SSHTestDestinations `json:"dst"`
+		Accept []SSHUser           `json:"accept,omitempty"`
+		Deny   []SSHUser           `json:"deny,omitempty"`
+		Check  []SSHUser           `json:"check,omitempty"`
+	}
+
+	err := json.Unmarshal(b, &raw, policyJSONOpts...)
+	if err != nil {
+		return err
+	}
+
+	trimmedSrc := strings.TrimSpace(raw.Src)
+	if trimmedSrc != "" {
+		alias, parseErr := parseAlias(trimmedSrc)
+		if parseErr != nil {
+			return parseErr
+		}
+
+		t.Src = alias
+	}
+
+	t.Dst = raw.Dst
+	t.Accept = raw.Accept
+	t.Deny = raw.Deny
+	t.Check = raw.Check
+
+	return nil
 }
 
 // PolicyTestResult is the outcome of a single PolicyTest.
