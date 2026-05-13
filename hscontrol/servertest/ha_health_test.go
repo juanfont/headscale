@@ -283,6 +283,77 @@ func TestHAHealthProbe_SetUnhealthyNoRoutesIsNoOp(t *testing.T) {
 		"SetNodeUnhealthy on node with no approved routes should be a no-op")
 }
 
+// TestHAHealthProbe_ReconnectDuringProbeKeepsHealthy reproduces the
+// race that surfaced as a TestHASubnetRouterFailover flake: a probe
+// dispatched against the previous poll session sees the timeout fire
+// while the client is briefly disconnected. With the session guard in
+// [HAHealthProber.ProbeOnce], the timeout path observes the reconnect
+// and bails out instead of installing a spurious Unhealthy bit.
+//
+// Without the guard, the primary fails over to the standby and the
+// anti-flap election preserves that choice even after the original
+// primary is fully back online.
+func TestHAHealthProbe_ReconnectDuringProbeKeepsHealthy(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t)
+	user := srv.CreateUser(t, "ha-probe-reconnect")
+
+	route := netip.MustParsePrefix("10.102.0.0/24")
+
+	c1 := servertest.NewClient(t, srv, "ha-pr-r1", servertest.WithUser(user))
+	c2 := servertest.NewClient(t, srv, "ha-pr-r2", servertest.WithUser(user))
+
+	c1.WaitForPeers(t, 1, 10*time.Second)
+	c2.WaitForPeers(t, 1, 10*time.Second)
+
+	nodeID1 := advertiseAndApproveRoute(t, srv, c1, route)
+	advertiseAndApproveRoute(t, srv, c2, route)
+
+	// Node 1 is primary (lowest ID, healthy).
+	require.Contains(t,
+		srv.State().GetNodePrimaryRoutes(nodeID1), route,
+		"node 1 should be primary initially")
+
+	prober := state.NewHAHealthProber(
+		srv.State(),
+		types.HARouteConfig{
+			ProbeInterval: 30 * time.Second,
+			ProbeTimeout:  2 * time.Second,
+		},
+		srv.URL,
+		srv.App.MapBatcher().IsConnected,
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	// TestClient does not implement ping responses, so every probe
+	// times out. We exploit that to observe the timeout path under a
+	// reconnect race: kick a probe in a goroutine, bounce the
+	// primary's poll session, and confirm the prober drops the stale
+	// timeout instead of marking the node unhealthy.
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		prober.ProbeOnce(ctx, srv.App.Change)
+	}()
+
+	c1.Disconnect(t)
+	c1.Reconnect(t)
+	c1.WaitForPeers(t, 1, 10*time.Second)
+
+	<-done
+
+	assert.True(t, srv.State().IsNodeHealthy(nodeID1),
+		"reconnect during probe must not flip node unhealthy")
+	assert.Contains(t,
+		srv.State().GetNodePrimaryRoutes(nodeID1), route,
+		"node 1 should remain primary after stale-probe timeout")
+}
+
 // TestHAHealthProbe_NoHARoutes verifies that the prober is a no-op
 // when no HA configuration exists.
 func TestHAHealthProbe_NoHARoutes(t *testing.T) {
