@@ -153,7 +153,7 @@ func derpServerScenario(
 				assert.NotContains(ct, health, "could not connect to the 'Headscale Embedded DERP' relay server.",
 					"Client %s should be connected to Headscale Embedded DERP", client.Hostname())
 			}
-		}, integrationutil.ScaledTimeout(30*time.Second), 2*time.Second)
+		}, integrationutil.StatusReadyTimeout, 2*time.Second)
 	}
 
 	success := pingDerpAllHelper(t, allClients, allHostnames)
@@ -174,7 +174,7 @@ func derpServerScenario(
 				assert.NotContains(ct, health, "could not connect to the 'Headscale Embedded DERP' relay server.",
 					"Client %s should be connected to Headscale Embedded DERP after first run", client.Hostname())
 			}
-		}, integrationutil.ScaledTimeout(30*time.Second), 2*time.Second)
+		}, integrationutil.StatusReadyTimeout, 2*time.Second)
 	}
 
 	t.Logf("Run 1: %d successful pings out of %d", success, len(allClients)*len(allHostnames))
@@ -200,7 +200,7 @@ func derpServerScenario(
 				assert.NotContains(ct, health, "could not connect to the 'Headscale Embedded DERP' relay server.",
 					"Client %s should be connected to Headscale Embedded DERP after second run", client.Hostname())
 			}
-		}, integrationutil.ScaledTimeout(30*time.Second), 2*time.Second)
+		}, integrationutil.StatusReadyTimeout, 2*time.Second)
 	}
 
 	t.Logf("Run2: %d successful pings out of %d", success, len(allClients)*len(allHostnames))
