@@ -54,6 +54,7 @@ var (
 	ErrSSHActionInvalid                   = errors.New("is not a valid action")
 	ErrSSHDestinationHostAlias            = errors.New("invalid dst")
 	ErrTagNameMustStartWithLetter         = errors.New("tag names must start with a letter, after 'tag:'")
+	ErrGroupMembersCannotBeRecursive      = errors.New("group members cannot be recursive")
 )
 
 // SSH check period constants per Tailscale docs:
@@ -124,7 +125,6 @@ var (
 	ErrGroupNotDefined             = errors.New("group not defined in policy")
 	ErrInvalidGroupMember          = errors.New("invalid group member type")
 	ErrGroupValueNotArray          = errors.New("group value must be an array of users")
-	ErrNestedGroups                = errors.New("nested groups are not allowed")
 	ErrInvalidHostIP               = errors.New("hostname contains invalid IP address")
 	ErrTagNotDefined               = errors.New("tag not found")
 	ErrAutoApproverNotAlias        = errors.New("auto approver is not an alias")
@@ -1408,6 +1408,27 @@ func (g *Groups) UnmarshalJSON(b []byte) error {
 		}
 	}
 
+	// SaaS rejects any group-in-group reference (cycle, chain,
+	// self-cycle) with `groups["X"]: "Y": group members cannot be
+	// recursive`. Iterate keys in descending alphabetical order so
+	// the reported (X, Y) pair matches the SaaS engine, which
+	// reports the deepest non-leaf parent first.
+	keys := make([]string, 0, len(rawGroups))
+	for k := range rawGroups {
+		keys = append(keys, k)
+	}
+
+	slices.Sort(keys)
+	slices.Reverse(keys)
+
+	for _, key := range keys {
+		for _, u := range rawGroups[key] {
+			if isGroup(u) {
+				return fmt.Errorf("groups[%q]: %q: %w", key, u, ErrGroupMembersCannotBeRecursive)
+			}
+		}
+	}
+
 	*g = make(Groups)
 
 	for key, value := range rawGroups {
@@ -1420,10 +1441,6 @@ func (g *Groups) UnmarshalJSON(b []byte) error {
 
 			err := username.Validate()
 			if err != nil {
-				if isGroup(u) {
-					return fmt.Errorf("%w: found %q inside %q", ErrNestedGroups, u, group)
-				}
-
 				return err
 			}
 

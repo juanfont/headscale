@@ -407,8 +407,50 @@ func TestUnmarshalPolicy(t *testing.T) {
 	},
 }
 `,
-			// wantErr: `username must contain @, got: "group:inner"`,
-			wantErr: `nested groups are not allowed: found "group:inner" inside "group:example"`,
+			wantErr: `groups["group:example"]: "group:inner": group members cannot be recursive`,
+		},
+		{
+			// SaaS reports the deepest non-leaf parent first: for
+			// the three-deep chain `a -> b -> c -> user`, the
+			// reported pair is `b -> c` rather than `a -> b`.
+			name: "group-nested-three-deep",
+			input: `
+{
+	"groups": {
+		"group:a": ["group:b"],
+		"group:b": ["group:c"],
+		"group:c": ["thor@example.org"],
+	},
+}
+`,
+			wantErr: `groups["group:b"]: "group:c": group members cannot be recursive`,
+		},
+		{
+			// Cycle `a <-> b`: reported as `b -> a` so the body
+			// matches SaaS exactly.
+			name: "group-nested-cycle",
+			input: `
+{
+	"groups": {
+		"group:a": ["group:b"],
+		"group:b": ["group:a"],
+	},
+}
+`,
+			wantErr: `groups["group:b"]: "group:a": group members cannot be recursive`,
+		},
+		{
+			// Self-cycle: the same group appears as its own
+			// member. Same wording.
+			name: "group-nested-self-cycle",
+			input: `
+{
+	"groups": {
+		"group:a": ["group:a"],
+	},
+}
+`,
+			wantErr: `groups["group:a"]: "group:a": group members cannot be recursive`,
 		},
 		{
 			name: "invalid-addr",
