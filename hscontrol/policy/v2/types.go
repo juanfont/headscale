@@ -863,6 +863,12 @@ type Alias interface {
 	Validate() error
 	UnmarshalJSON(b []byte) error
 
+	// String renders the alias back to its policy-file form. Implementations
+	// are expected to return a value that round-trips through parseAlias for
+	// any alias the parser accepted, so callers can use it as a stable
+	// identity in rendered errors and logs.
+	String() string
+
 	// Resolve resolves the Alias to an IPSet. The IPSet will contain all the IP
 	// addresses that the Alias represents within Headscale. It is the product
 	// of the Alias and the Policy, Users and Nodes.
@@ -2927,10 +2933,6 @@ func (p *SSHCheckPeriod) UnmarshalJSON(b []byte) error {
 		return nil
 	}
 
-	// time.ParseDuration produces error strings like
-	// `time: invalid duration "abc"` which match SaaS body wording
-	// exactly; model.ParseDuration wraps the same parse with custom
-	// phrasing and would diverge.
 	d, err := time.ParseDuration(str)
 	if err != nil {
 		return err
@@ -3407,7 +3409,7 @@ func validateSSHTests(pol *Policy, tests []SSHPolicyTest) error {
 	var errs []error
 
 	for i, t := range tests {
-		if t.Src == "" {
+		if t.Src == nil {
 			errs = append(errs, fmt.Errorf("sshTest %d: %w", i, ErrSSHTestEmptySrc))
 		}
 
@@ -3439,11 +3441,8 @@ func validateSSHTests(pol *Policy, tests []SSHPolicyTest) error {
 //
 // A bare IP literal (single-host /BitLen prefix) is accepted. Tag
 // entries must exist in tagOwners.
-func validateSSHTestDestination(pol *Policy, dst string) error {
-	alias, err := parseAlias(dst)
-	if err != nil {
-		return fmt.Errorf("%w %q", ErrSSHTestDstDisallowedElement, dst)
-	}
+func validateSSHTestDestination(pol *Policy, alias Alias) error {
+	dst := alias.String()
 
 	switch a := alias.(type) {
 	case *AutoGroup:
@@ -3454,9 +3453,10 @@ func validateSSHTestDestination(pol *Policy, dst string) error {
 		}
 
 	case *Prefix:
-		// Bare IP parses to a *Prefix without slash; reject any
-		// explicit CIDR.
-		if strings.Contains(dst, "/") {
+		// A bare IP parses as `/BitLen` and is a valid single-host dst;
+		// any narrower CIDR is a multi-host range and is rejected.
+		p := netip.Prefix(*a)
+		if p.Bits() < p.Addr().BitLen() {
 			return fmt.Errorf("%w %q", ErrSSHTestDstDisallowedElement, dst)
 		}
 
