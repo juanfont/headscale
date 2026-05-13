@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/go-json-experiment/json"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"tailscale.com/tailcfg"
@@ -57,23 +58,80 @@ type PolicyTest struct {
 // listed user is asserted against every entry in Dst.
 type SSHPolicyTest struct {
 	// Src is a single source alias (user, group, tag, host, or IP).
-	Src string `json:"src"`
+	Src Alias `json:"src"`
 
 	// Dst lists destinations the test exercises (tag, host, or SSH-
 	// compatible autogroup). Ports, CIDRs, and autogroup:internet are
 	// rejected at parse time.
-	Dst []string `json:"dst"`
+	Dst SSHTestDestinations `json:"dst"`
 
 	// Accept lists users that must reach every Dst via an accept- or
 	// check-action rule.
-	Accept []string `json:"accept,omitempty"`
+	Accept []SSHUser `json:"accept,omitempty"`
 
 	// Deny lists users that must NOT reach any Dst.
-	Deny []string `json:"deny,omitempty"`
+	Deny []SSHUser `json:"deny,omitempty"`
 
 	// Check lists users that must reach every Dst via a check-action
 	// rule specifically; an accept-action rule does not satisfy this.
-	Check []string `json:"check,omitempty"`
+	Check []SSHUser `json:"check,omitempty"`
+}
+
+// SSHTestDestinations is the typed list of destination aliases an
+// sshTests entry targets. validateSSHTestDestination enforces the
+// SSH-specific shape rules (no :port, no CIDR, no autogroup:internet,
+// known tag).
+type SSHTestDestinations []Alias
+
+func (d *SSHTestDestinations) UnmarshalJSON(b []byte) error {
+	var aliases []AliasEnc
+
+	err := json.Unmarshal(b, &aliases, policyJSONOpts...)
+	if err != nil {
+		return err
+	}
+
+	*d = make([]Alias, len(aliases))
+	for i, a := range aliases {
+		(*d)[i] = a.Alias
+	}
+
+	return nil
+}
+
+// UnmarshalJSON parses each typed field. An empty src lands as a nil
+// Alias so validation surfaces ErrSSHTestEmptySrc rather than a parser
+// failure.
+func (t *SSHPolicyTest) UnmarshalJSON(b []byte) error {
+	var raw struct {
+		Src    string              `json:"src"`
+		Dst    SSHTestDestinations `json:"dst"`
+		Accept []SSHUser           `json:"accept,omitempty"`
+		Deny   []SSHUser           `json:"deny,omitempty"`
+		Check  []SSHUser           `json:"check,omitempty"`
+	}
+
+	err := json.Unmarshal(b, &raw, policyJSONOpts...)
+	if err != nil {
+		return err
+	}
+
+	trimmedSrc := strings.TrimSpace(raw.Src)
+	if trimmedSrc != "" {
+		alias, parseErr := parseAlias(trimmedSrc)
+		if parseErr != nil {
+			return parseErr
+		}
+
+		t.Src = alias
+	}
+
+	t.Dst = raw.Dst
+	t.Accept = raw.Accept
+	t.Deny = raw.Deny
+	t.Check = raw.Check
+
+	return nil
 }
 
 // PolicyTestResult is the outcome of a single PolicyTest.
