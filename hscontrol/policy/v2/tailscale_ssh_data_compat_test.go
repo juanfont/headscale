@@ -87,18 +87,6 @@ var sshSkipReasons = map[string]string{
 	// equivalent for the user:*@passkey wildcard pattern.
 	"ssh-b5":  "user:*@passkey wildcard not supported in headscale",
 	"ssh-d10": "user:*@passkey wildcard not supported in headscale",
-
-	// TAG_OWNER_CYCLE_TOLERATED (2 tests)
-	//
-	// SaaS accepts tagOwners with circular references (tag:a -> tag:b,
-	// tag:b -> tag:a or tag:a -> tag:a) and resolves them as the empty
-	// owner set. headscale's TagOwnerSet resolver eagerly detects
-	// circular tag references and rejects the policy at parse time.
-	// Pick a side and adjust: either match SaaS by treating cycles as
-	// "no owners" instead of an error, or document that headscale is
-	// intentionally stricter and remove these scenarios.
-	"ssh-tag-owner-cycle":          "headscale rejects tagOwner cycles that SaaS accepts as empty owner set",
-	"ssh-tag-owner-self-reference": "headscale rejects self-referencing tagOwner that SaaS accepts as empty owner set",
 }
 
 // sshRejectSkipReasons documents APIResponseCode != 200 captures where

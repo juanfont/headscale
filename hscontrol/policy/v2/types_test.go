@@ -4153,13 +4153,45 @@ func TestFlattenTagOwners(t *testing.T) {
 			wantErr: "",
 		},
 		{
-			name: "circular-reference",
+			// SaaS tolerates tag:a <-> tag:b cycles by dropping the
+			// cycle edge; both tags resolve to an empty owner set
+			// because neither chain reaches a non-tag owner.
+			name: "circular-reference-resolves-to-empty",
 			input: TagOwners{
 				Tag("tag:a"): Owners{new(Tag("tag:b"))},
 				Tag("tag:b"): Owners{new(Tag("tag:a"))},
 			},
-			want:    nil,
-			wantErr: "circular reference detected: tag:a -> tag:b",
+			want: TagOwners{
+				Tag("tag:a"): nil,
+				Tag("tag:b"): nil,
+			},
+			wantErr: "",
+		},
+		{
+			// tag:a -> tag:a self-reference: the only owner is the
+			// cycle edge itself; result is empty.
+			name: "self-reference-resolves-to-empty",
+			input: TagOwners{
+				Tag("tag:a"): Owners{new(Tag("tag:a"))},
+			},
+			want: TagOwners{
+				Tag("tag:a"): nil,
+			},
+			wantErr: "",
+		},
+		{
+			// Cycle plus a sibling non-tag owner: the cycle edge
+			// drops out, the sibling owner survives.
+			name: "cycle-plus-sibling-keeps-sibling",
+			input: TagOwners{
+				Tag("tag:a"): Owners{new(Tag("tag:b")), new(Username("alice@example.com"))},
+				Tag("tag:b"): Owners{new(Tag("tag:a"))},
+			},
+			want: TagOwners{
+				Tag("tag:a"): Owners{new(Username("alice@example.com"))},
+				Tag("tag:b"): Owners{new(Username("alice@example.com"))},
+			},
+			wantErr: "",
 		},
 		{
 			name: "mixed-owners",
@@ -4218,7 +4250,9 @@ func TestFlattenTagOwners(t *testing.T) {
 			wantErr: "",
 		},
 		{
-			name: "tag-long-circular-chain",
+			// Long cycle: every tag eventually points back to itself.
+			// Each tag resolves to the empty owner set.
+			name: "tag-long-circular-chain-resolves-to-empty",
 			input: TagOwners{
 				Tag("tag:a"): Owners{new(Tag("tag:g"))},
 				Tag("tag:b"): Owners{new(Tag("tag:a"))},
@@ -4228,7 +4262,16 @@ func TestFlattenTagOwners(t *testing.T) {
 				Tag("tag:f"): Owners{new(Tag("tag:e"))},
 				Tag("tag:g"): Owners{new(Tag("tag:f"))},
 			},
-			wantErr: "circular reference detected: tag:a -> tag:b -> tag:c -> tag:d -> tag:e -> tag:f -> tag:g",
+			want: TagOwners{
+				Tag("tag:a"): nil,
+				Tag("tag:b"): nil,
+				Tag("tag:c"): nil,
+				Tag("tag:d"): nil,
+				Tag("tag:e"): nil,
+				Tag("tag:f"): nil,
+				Tag("tag:g"): nil,
+			},
+			wantErr: "",
 		},
 		{
 			name: "undefined-tag-reference",

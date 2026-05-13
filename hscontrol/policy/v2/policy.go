@@ -1478,27 +1478,18 @@ func (pm *PolicyManager) invalidateGlobalPolicyCache(newNodes views.Slice[types.
 	}
 }
 
-// flattenTags flattens the TagOwners by resolving nested tags and detecting cycles.
-// It will return a Owners list where all the Tag types have been resolved to their underlying Owners.
+// flattenTags flattens the TagOwners by resolving nested tags. Cycles
+// in the ownership graph (tag:a -> tag:b -> tag:a, or tag:a -> tag:a)
+// are tolerated to match SaaS: the cycle-causing edge is dropped, the
+// remaining owners propagate, and the cycle itself contributes no
+// addresses. Non-cycle owners on the cycled tags still resolve.
+// Undefined-tag references remain a hard error.
 func flattenTags(tagOwners TagOwners, tag Tag, visiting map[Tag]bool, chain []Tag) (Owners, error) {
 	if visiting[tag] {
-		cycleStart := 0
-
-		for i, t := range chain {
-			if t == tag {
-				cycleStart = i
-				break
-			}
-		}
-
-		cycleTags := make([]string, len(chain[cycleStart:]))
-		for i, t := range chain[cycleStart:] {
-			cycleTags[i] = string(t)
-		}
-
-		slices.Sort(cycleTags)
-
-		return nil, fmt.Errorf("%w: %s", ErrCircularReference, strings.Join(cycleTags, " -> "))
+		// Cycle: this tag is already on the resolution stack. SaaS
+		// drops the edge instead of failing, so we return an empty
+		// owner set and let the caller continue with any siblings.
+		return nil, nil
 	}
 
 	visiting[tag] = true

@@ -34,8 +34,6 @@ const Wildcard = Asterix(0)
 
 var ErrAutogroupSelfRequiresPerNodeResolution = errors.New("autogroup:self requires per-node resolution and cannot be resolved in this context")
 
-var ErrCircularReference = errors.New("circular reference detected")
-
 var ErrUndefinedTagReference = errors.New("references undefined tag")
 
 // SSH validation errors.
