@@ -203,6 +203,7 @@ jobs:
           - TestAuthWebFlowLogoutAndReloginSameUser
           - TestAuthWebFlowLogoutAndReloginNewUser
           - TestPolicyCheckCommand
+          - TestSSHTestsRejectFailingPolicy
           - TestUserCommand
           - TestPreAuthKeyCommand
           - TestPreAuthKeyCommandWithoutExpiry
