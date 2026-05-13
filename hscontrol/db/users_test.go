@@ -123,7 +123,7 @@ func TestDestroyUserErrors(t *testing.T) {
 				result := db.DB.First(&survivingNode, "id = ?", node.ID)
 				require.NoError(t, result.Error)
 				assert.Nil(t, survivingNode.UserID)
-				assert.Equal(t, []string{"tag:server"}, survivingNode.Tags)
+				assert.Equal(t, []string{"tag:server"}, survivingNode.Tags.List())
 			},
 		},
 		{

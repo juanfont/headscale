@@ -563,7 +563,7 @@ func TestIssuesNodeStoreConsistency(t *testing.T) {
 		require.NoError(t, err, "node should be in database")
 
 		nsRoutes := nsView.ApprovedRoutes().AsSlice()
-		dbRoutes := dbNode.ApprovedRoutes
+		dbRoutes := dbNode.ApprovedRoutes.List()
 
 		assert.Equal(t, nsRoutes, dbRoutes,
 			"NodeStore and DB should agree on approved routes")

@@ -122,7 +122,7 @@ func TestSQLiteMigrationAndDataValidation(t *testing.T) {
 				// Expected: tags = ["tag:server"] (no duplicates)
 				node4 := findNode("node4")
 				require.NotNil(t, node4, "node4 should exist")
-				assert.Equal(t, []string{"tag:server"}, node4.Tags, "node4 should have tag:server without duplicates")
+				assert.Equal(t, []string{"tag:server"}, node4.Tags.List(), "node4 should have tag:server without duplicates") //nolint:goconst // descriptive test assertions read better with the literal inline
 
 				// Node 5: user2 has no RequestTags
 				// Expected: tags = [] (unchanged)

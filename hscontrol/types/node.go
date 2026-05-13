@@ -120,7 +120,7 @@ type Node struct {
 	NodeKey    key.NodePublic    `gorm:"serializer:text"`
 	DiscoKey   key.DiscoPublic   `gorm:"serializer:text"`
 
-	Endpoints []netip.AddrPort `gorm:"serializer:json"`
+	Endpoints AddrPorts `gorm:"serializer:json"`
 
 	Hostinfo *tailcfg.Hostinfo `gorm:"column:host_info;serializer:json"`
 
@@ -150,7 +150,7 @@ type Node struct {
 	// When non-empty, the node is "tagged" and tags define its identity.
 	// Empty for user-owned nodes.
 	// Tags cannot be removed once set (one-way transition).
-	Tags []string `gorm:"column:tags;serializer:json"`
+	Tags Strings `gorm:"column:tags;serializer:json"`
 
 	// When a node has been created with a PreAuthKey, we need to
 	// prevent the preauthkey from being deleted before the node.
@@ -169,7 +169,7 @@ type Node struct {
 	// as a subnet router. They are not necessarily the routes that the node
 	// announces at the moment.
 	// See [Node.Hostinfo]
-	ApprovedRoutes []netip.Prefix `gorm:"column:approved_routes;serializer:json"`
+	ApprovedRoutes Prefixes `gorm:"column:approved_routes;serializer:json"`
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
