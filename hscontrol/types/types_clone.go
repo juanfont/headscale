@@ -86,7 +86,7 @@ var _NodeCloneNeedsRegeneration = Node(struct {
 	MachineKey     key.MachinePublic
 	NodeKey        key.NodePublic
 	DiscoKey       key.DiscoPublic
-	Endpoints      []netip.AddrPort
+	Endpoints      AddrPorts
 	Hostinfo       *tailcfg.Hostinfo
 	IPv4           *netip.Addr
 	IPv6           *netip.Addr
@@ -95,12 +95,12 @@ var _NodeCloneNeedsRegeneration = Node(struct {
 	UserID         *uint
 	User           *User
 	RegisterMethod string
-	Tags           []string
+	Tags           Strings
 	AuthKeyID      *uint64
 	AuthKey        *PreAuthKey
 	Expiry         *time.Time
 	LastSeen       *time.Time
-	ApprovedRoutes []netip.Prefix
+	ApprovedRoutes Prefixes
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 	DeletedAt      *time.Time
