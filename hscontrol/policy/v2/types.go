@@ -3318,11 +3318,12 @@ func validateSSHTests(pol *Policy, tests []SSHPolicyTest) error {
 // validateSSHTestDestination enforces that an sshTests dst entry names a
 // single SSH-reachable host. Tailscale SaaS rejects three shapes at parse
 // time: a `:port` suffix (read by the parser as an unknown tag, hence the
-// "unknown tag" error wording); a CIDR-shaped value (raw `/N` or a
-// `hosts:` entry whose RHS is a multi-host prefix); and autogroup:internet
-// (only valid in ACL destinations, not SSH ones). Tag entries must
-// reference a tag that exists in tagOwners; bare hosts must resolve to a
-// single-address prefix.
+// "unknown tag" error wording); a multi-host CIDR (raw `/N` narrower than
+// the address width, or a `hosts:` entry whose RHS is a multi-host prefix);
+// and autogroup:internet (only valid in ACL destinations, not SSH ones).
+// A bare IP literal — which parses to a `/BitLen` prefix — names a single
+// host and is accepted. Tag entries must reference a tag that exists in
+// tagOwners; bare hosts must resolve to a single-address prefix.
 func validateSSHTestDestination(pol *Policy, alias Alias) error {
 	dst := alias.String()
 
@@ -3336,12 +3337,16 @@ func validateSSHTestDestination(pol *Policy, alias Alias) error {
 		}
 
 	case *Prefix:
-		// IP / CIDR dsts are rejected: SSH dsts name hosts, tags, or
-		// SSH-compatible autogroups, not raw addresses. Bare IPs and
-		// `/BitLen` literals parse to the same Prefix value so this
-		// branch covers both with one disallowed-element answer.
-		_ = a
-		return fmt.Errorf("%w %q", ErrSSHTestDstDisallowedElement, dst)
+		// SaaS accepts a bare IP (parsed to a `/BitLen` prefix) as a
+		// single SSH-reachable host but rejects a narrower CIDR like
+		// `10.0.0.0/24`. Distinguish the two by mask width: a prefix
+		// whose Bits() matches the address BitLen() is a single host
+		// and passes; anything narrower is a multi-host range and is
+		// rejected the same way as raw `/N`.
+		p := netip.Prefix(*a)
+		if p.Bits() < p.Addr().BitLen() {
+			return fmt.Errorf("%w %q", ErrSSHTestDstDisallowedElement, dst)
+		}
 
 	case *Tag:
 		// A tag must be declared in tagOwners. The `tag:server:22` shape

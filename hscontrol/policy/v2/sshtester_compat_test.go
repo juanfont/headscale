@@ -31,7 +31,18 @@ import (
 // knownSSHTesterDivergences tracks scenarios where headscale and SaaS
 // disagree on whether a policy is accepted. Each entry should describe
 // the engine area a follow-up PR needs to touch.
-var knownSSHTesterDivergences = map[string]string{}
+var knownSSHTesterDivergences = map[string]string{
+	// SaaS parse-accepts a bare IPv6 sshTests dst but engine-rejects
+	// the same input with "test(s) failed" while the matching IPv4
+	// scenario engine-passes. The two captures share the same topology
+	// and the same policy shape, so the asymmetry is in the SaaS
+	// sshTests evaluator's IPv6 handling, not in any rule the user
+	// wrote. Headscale's evaluator resolves both literals to the
+	// tagged node that carries them and the assertion passes — a
+	// follow-up needs to either reproduce the SaaS-side IPv6 quirk or
+	// confirm this is a SaaS bug we will not match.
+	"sshtest-malformed-dst-bare-ipv6": "engine: SaaS rejects bare IPv6 sshTests dst; headscale accepts (IPv4 mirror passes both sides)",
+}
 
 func TestSSHTesterCompat(t *testing.T) {
 	t.Parallel()

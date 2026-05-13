@@ -6090,6 +6090,52 @@ func TestUnmarshalPolicySSHTests(t *testing.T) {
 			wantErr: ErrSSHTestDstDisallowedElement,
 		},
 		{
+			// SaaS accepts a bare IPv4 literal as a host address. The
+			// Prefix parser turns it into a /32 so validateSSHTestDestination
+			// must match Bits() against Addr().BitLen() rather than reject
+			// the whole *Prefix branch.
+			name: "dst-bare-ipv4-accepted",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "thor@example.org", "dst": ["100.64.0.16"], "accept": ["root"]}
+  ]
+}
+`,
+			check: func(t *testing.T, pol *Policy) {
+				t.Helper()
+				require.Len(t, pol.SSHTests, 1)
+				got := pol.SSHTests[0]
+				require.Len(t, got.Dst, 1)
+				pref, ok := got.Dst[0].(*Prefix)
+				require.True(t, ok, "want *Prefix, got %T", got.Dst[0])
+				require.Equal(t, "100.64.0.16/32", pref.String())
+			},
+		},
+		{
+			// IPv6 mirror of the IPv4 case: bare `fd7a::10` parses to
+			// /128 and must pass the parse-time shape check.
+			name: "dst-bare-ipv6-accepted",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "thor@example.org", "dst": ["fd7a:115c:a1e0::10"], "accept": ["root"]}
+  ]
+}
+`,
+			check: func(t *testing.T, pol *Policy) {
+				t.Helper()
+				require.Len(t, pol.SSHTests, 1)
+				got := pol.SSHTests[0]
+				require.Len(t, got.Dst, 1)
+				pref, ok := got.Dst[0].(*Prefix)
+				require.True(t, ok, "want *Prefix, got %T", got.Dst[0])
+				require.Equal(t, "fd7a:115c:a1e0::10/128", pref.String())
+			},
+		},
+		{
 			name: "dst-autogroup-internet",
 			input: `
 {
