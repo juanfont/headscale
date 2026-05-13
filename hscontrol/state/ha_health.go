@@ -8,6 +8,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
+	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
 	"tailscale.com/util/set"
@@ -20,6 +21,11 @@ type HAHealthProber struct {
 	cfg         types.HARouteConfig
 	serverURL   string
 	isConnected func(types.NodeID) bool
+
+	// lastStableSession defers a timeout-driven unhealthy decision
+	// for sessions younger than one probe cycle, giving wgengine
+	// time to apply the new netmap on a freshly reconnected node.
+	lastStableSession *xsync.Map[types.NodeID, uint64]
 }
 
 // NewHAHealthProber creates a prober that uses the given State for
@@ -32,34 +38,68 @@ func NewHAHealthProber(
 	isConnected func(types.NodeID) bool,
 ) *HAHealthProber {
 	return &HAHealthProber{
-		state:       s,
-		cfg:         cfg,
-		serverURL:   serverURL,
-		isConnected: isConnected,
+		state:             s,
+		cfg:               cfg,
+		serverURL:         serverURL,
+		isConnected:       isConnected,
+		lastStableSession: xsync.NewMap[types.NodeID, uint64](),
 	}
 }
 
-// ProbeOnce pings all HA subnet router nodes. PingNode changes are
-// dispatched immediately via dispatch so nodes can respond before the
-// timeout. Health-related policy changes are also dispatched inline.
+// markSessionStable records session and returns true iff the same
+// value was already present from a prior cycle.
+func (p *HAHealthProber) markSessionStable(id types.NodeID, session uint64) bool {
+	prev, loaded := p.lastStableSession.LoadAndStore(id, session)
+	return loaded && prev == session
+}
+
+// forgetSession drops the recorded session so a node returning to
+// HA candidacy starts fresh.
+func (p *HAHealthProber) forgetSession(id types.NodeID) {
+	p.lastStableSession.Delete(id)
+}
+
+// ProbeOnce pings all HA subnet router nodes and dispatches health
+// changes inline. A timeout that fires after the node reconnected,
+// or against a session younger than one probe cycle, is dropped so
+// wgengine has time to apply the new netmap before a failover.
 func (p *HAHealthProber) ProbeOnce(
 	ctx context.Context,
 	dispatch func(...change.Change),
 ) {
 	haNodes := p.state.nodeStore.HANodes()
+
+	// Drop stable-session entries for nodes that are no longer HA
+	// candidates so a future reappearance starts fresh.
+	seen := make(set.Set[types.NodeID])
+
+	for _, nodes := range haNodes {
+		for _, id := range nodes {
+			seen.Add(id)
+		}
+	}
+
+	p.lastStableSession.Range(func(id types.NodeID, _ uint64) bool {
+		if !seen.Contains(id) {
+			p.lastStableSession.Delete(id)
+		}
+
+		return true
+	})
+
 	if len(haNodes) == 0 {
 		return
 	}
 
 	// Deduplicate node IDs across prefixes.
-	seen := make(set.Set[types.NodeID])
-
 	var nodeIDs []types.NodeID
+
+	dedup := make(set.Set[types.NodeID])
 
 	for _, nodes := range haNodes {
 		for _, id := range nodes {
-			if !seen.Contains(id) {
-				seen.Add(id)
+			if !dedup.Contains(id) {
+				dedup.Add(id)
 				nodeIDs = append(nodeIDs, id)
 			}
 		}
@@ -77,8 +117,18 @@ func (p *HAHealthProber) ProbeOnce(
 				Uint64(zf.NodeID, id.Uint64()).
 				Msg("HA probe: skipping offline node")
 
+			p.forgetSession(id)
+
 			continue
 		}
+
+		nv, ok := p.state.GetNodeByID(id)
+		if !ok {
+			continue
+		}
+
+		probeSession := nv.SessionEpoch()
+		stable := p.markSessionStable(id, probeSession)
 
 		pingID, responseCh := p.state.RegisterPing(id)
 		callbackURL := p.serverURL + "/machine/ping-response?id=" + pingID
@@ -113,6 +163,30 @@ func (p *HAHealthProber) ProbeOnce(
 					log.Debug().
 						Uint64(zf.NodeID, id.Uint64()).
 						Msg("HA probe: node went offline during probe, skipping")
+
+					return
+				}
+
+				curr, ok := p.state.GetNodeByID(id)
+				if !ok {
+					return
+				}
+
+				if curr.SessionEpoch() != probeSession {
+					log.Debug().
+						Uint64(zf.NodeID, id.Uint64()).
+						Uint64("probe_session", probeSession).
+						Uint64("current_session", curr.SessionEpoch()).
+						Msg("HA probe: node reconnected during probe, skipping")
+
+					return
+				}
+
+				if !stable {
+					log.Debug().
+						Uint64(zf.NodeID, id.Uint64()).
+						Uint64("probe_session", probeSession).
+						Msg("HA probe: probe of fresh session timed out, deferring to next cycle")
 
 					return
 				}
