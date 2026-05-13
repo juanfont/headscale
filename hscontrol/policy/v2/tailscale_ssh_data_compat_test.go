@@ -106,21 +106,6 @@ var sshRejectSkipReasons = map[string]string{
 	"ssh-e1": "domain validation: headscale has no 'associated tailnet domains' concept",
 	"ssh-e2": "domain validation: headscale has no 'associated tailnet domains' concept",
 	"ssh-malformed-user-localpart-multi-glob": "domain validation: headscale has no 'associated tailnet domains' concept (same gap as ssh-b4/d1/e1/e2)",
-
-	// GROUP_NESTING_ERROR_BODY (3 tests)
-	//
-	// SaaS rejects any group-in-group reference (cycle, chain,
-	// self-cycle) with the structured message
-	// `groups["X"]: "Y": group members cannot be recursive`.
-	// headscale rejects too but the error surfaces as a generic
-	// `parsing policy: parsing policy from bytes: json: unable to
-	// unmarshal …` because the group resolver fails before the
-	// validation phase that would emit a specific message. Wire the
-	// resolver's "group references a group" detection to produce the
-	// SaaS-style structured error so the body matches.
-	"ssh-group-nested-cycle":      "group nesting rejected with different error body (parse error vs structured 'group members cannot be recursive')",
-	"ssh-group-nested-three-deep": "group nesting rejected with different error body (parse error vs structured 'group members cannot be recursive')",
-	"ssh-group-nested-two-deep":   "group nesting rejected with different error body (parse error vs structured 'group members cannot be recursive')",
 }
 
 // TestSSHDataCompat is a data-driven test that loads all ssh-*.hujson test
