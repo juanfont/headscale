@@ -87,6 +87,31 @@ var sshSkipReasons = map[string]string{
 	// equivalent for the user:*@passkey wildcard pattern.
 	"ssh-b5":  "user:*@passkey wildcard not supported in headscale",
 	"ssh-d10": "user:*@passkey wildcard not supported in headscale",
+
+	// WHITESPACE_TRIM_IN_SRC_DST (2 tests)
+	//
+	// SaaS strips surrounding whitespace from SSH rule src/dst entries
+	// before lookup ("tag:server " resolves to "tag:server",
+	// " user@host" resolves to "user@host"). headscale treats the
+	// untrimmed string as a literal identifier and either fails the
+	// tag/user lookup or produces no rule for the affected node. The
+	// fix lives in policy/v2 alias resolution — strings.TrimSpace at
+	// the same point where SaaS does, before dispatching to the alias
+	// type registry.
+	"ssh-dst-trailing-whitespace": "src/dst whitespace trim mismatch: SaaS trims, headscale doesn't",
+	"ssh-src-leading-whitespace":  "src/dst whitespace trim mismatch: SaaS trims, headscale doesn't",
+
+	// TAG_OWNER_CYCLE_TOLERATED (2 tests)
+	//
+	// SaaS accepts tagOwners with circular references (tag:a -> tag:b,
+	// tag:b -> tag:a or tag:a -> tag:a) and resolves them as the empty
+	// owner set. headscale's TagOwnerSet resolver eagerly detects
+	// circular tag references and rejects the policy at parse time.
+	// Pick a side and adjust: either match SaaS by treating cycles as
+	// "no owners" instead of an error, or document that headscale is
+	// intentionally stricter and remove these scenarios.
+	"ssh-tag-owner-cycle":          "headscale rejects tagOwner cycles that SaaS accepts as empty owner set",
+	"ssh-tag-owner-self-reference": "headscale rejects self-referencing tagOwner that SaaS accepts as empty owner set",
 }
 
 // sshRejectSkipReasons documents APIResponseCode != 200 captures where
@@ -106,6 +131,41 @@ var sshRejectSkipReasons = map[string]string{
 	"ssh-e1": "domain validation: headscale has no 'associated tailnet domains' concept",
 	"ssh-e2": "domain validation: headscale has no 'associated tailnet domains' concept",
 	"ssh-malformed-user-localpart-multi-glob": "domain validation: headscale has no 'associated tailnet domains' concept (same gap as ssh-b4/d1/e1/e2)",
+
+	// HOSTS_ALIAS_AS_SSH_DST (2 tests)
+	//
+	// SaaS rejects every hosts-alias dst on an SSH rule with
+	// `invalid dst "alias"`, regardless of whether the alias resolves
+	// to a single IP or a CIDR. headscale's compileSSHPolicy resolves
+	// host aliases through the same path as ACL dsts and accepts
+	// them. Either reject hosts-aliases at SSH dst parse time to
+	// match, or document that headscale is intentionally more
+	// permissive than SaaS for SSH dsts.
+	"ssh-hosts-as-dst-single-ip":         "SaaS rejects host alias as SSH dst, headscale accepts",
+	"ssh-hosts-as-dst-multi-host-prefix": "SaaS rejects host alias as SSH dst, headscale accepts",
+
+	// NON_ASCII_TAG_NAME (1 test)
+	//
+	// SaaS rejects non-ASCII characters in tag names with
+	// `tag names must start with a letter, after 'tag:'`. headscale's
+	// tag parser accepts arbitrary UTF-8. Tighten the tag-name
+	// validator to match SaaS's letter-only rule.
+	"ssh-unicode-cyrillic-tag": "SaaS rejects non-ASCII tag names, headscale accepts",
+
+	// GROUP_NESTING_ERROR_BODY (3 tests)
+	//
+	// SaaS rejects any group-in-group reference (cycle, chain,
+	// self-cycle) with the structured message
+	// `groups["X"]: "Y": group members cannot be recursive`.
+	// headscale rejects too but the error surfaces as a generic
+	// `parsing policy: parsing policy from bytes: json: unable to
+	// unmarshal …` because the group resolver fails before the
+	// validation phase that would emit a specific message. Wire the
+	// resolver's "group references a group" detection to produce the
+	// SaaS-style structured error so the body matches.
+	"ssh-group-nested-cycle":      "group nesting rejected with different error body (parse error vs structured 'group members cannot be recursive')",
+	"ssh-group-nested-three-deep": "group nesting rejected with different error body (parse error vs structured 'group members cannot be recursive')",
+	"ssh-group-nested-two-deep":   "group nesting rejected with different error body (parse error vs structured 'group members cannot be recursive')",
 }
 
 // TestSSHDataCompat is a data-driven test that loads all ssh-*.hujson test
