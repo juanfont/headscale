@@ -265,6 +265,7 @@ connected" routers that maintain their control session but cannot route packets.
 - Remove deprecated `namespace`/`ns` command aliases for `users` and `machine`/`machines` aliases for `nodes` [#3093](https://github.com/juanfont/headscale/pull/3093)
 - **User deletion**: Fix `DestroyUser` deleting all pre-auth keys in the database instead of only the target user's keys [#3155](https://github.com/juanfont/headscale/pull/3155)
 - `headscale policy check` evaluates the `tests` block when invoked with `--bypass-grpc-and-access-database-directly`; without the flag it warns instead of running the tests against empty data [#1803](https://github.com/juanfont/headscale/issues/1803)
+- Fix `headscale nodes approve-routes list-routes -i <id>` so `-i` filters by node; previously the invocation silently cleared all approved routes on the target node [#3147](https://github.com/juanfont/headscale/pull/3147)
 
 #### API
 

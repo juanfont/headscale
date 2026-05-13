@@ -49,12 +49,9 @@ func init() {
 	tagCmd.Flags().StringSliceP("tags", "t", []string{}, "List of tags to add to the node")
 	nodeCmd.AddCommand(tagCmd)
 
-	approveRoutesCmd.PersistentFlags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
+	approveRoutesCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
 	mustMarkRequired(approveRoutesCmd, "identifier")
 	approveRoutesCmd.Flags().StringSliceP("routes", "r", []string{}, `List of routes that will be approved (comma-separated, e.g. "10.0.0.0/8,192.168.0.0/24" or empty string to remove all approved routes)`)
-	// Register list-routes as a subcommand of approve-routes so that
-	// `headscale nodes approve-routes list-routes -i <id>` works as expected.
-	// The -i flag is inherited from approve-routes via PersistentFlags.
 	approveRoutesCmd.AddCommand(listNodeRoutesCmd)
 	nodeCmd.AddCommand(approveRoutesCmd)
 
@@ -496,6 +493,7 @@ var tagCmd = &cobra.Command{
 var approveRoutesCmd = &cobra.Command{
 	Use:   "approve-routes",
 	Short: "Manage the approved routes of a node",
+	Args:  cobra.NoArgs,
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		identifier, _ := cmd.Flags().GetUint64("identifier")
 		routes, _ := cmd.Flags().GetStringSlice("routes")
