@@ -4893,6 +4893,82 @@ func TestAliasEncUnmarshalTrim(t *testing.T) {
 	}
 }
 
+// TestTagValidateFirstCharLetter exercises the SaaS rule that the
+// first character after `tag:` must be an ASCII letter. Digits,
+// punctuation, and non-ASCII Unicode letters are rejected with the
+// same body SaaS produces. Subsequent characters are unconstrained.
+func TestTagValidateFirstCharLetter(t *testing.T) {
+	tests := []struct {
+		name    string
+		tag     Tag
+		wantErr error
+	}{
+		{
+			name: "ascii lowercase letter",
+			tag:  Tag("tag:server"),
+		},
+		{
+			name: "ascii uppercase letter",
+			tag:  Tag("tag:Server"),
+		},
+		{
+			name: "ascii letter then digit",
+			tag:  Tag("tag:a1"),
+		},
+		{
+			name:    "leading digit rejected",
+			tag:     Tag("tag:1server"),
+			wantErr: ErrTagNameMustStartWithLetter,
+		},
+		{
+			name:    "leading hyphen rejected",
+			tag:     Tag("tag:-server"),
+			wantErr: ErrTagNameMustStartWithLetter,
+		},
+		{
+			name:    "cyrillic letter rejected",
+			tag:     Tag("tag:сервер"),
+			wantErr: ErrTagNameMustStartWithLetter,
+		},
+		{
+			name:    "empty name rejected",
+			tag:     Tag("tag:"),
+			wantErr: ErrTagNameMustStartWithLetter,
+		},
+		{
+			name:    "missing prefix rejected",
+			tag:     Tag("server"),
+			wantErr: ErrInvalidTagFormat,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.tag.Validate()
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+		})
+	}
+}
+
+// TestUnmarshalPolicyCyrillicTagOwner verifies the full SaaS body
+// (`tagOwners["tag:сервер"]: …`) surfaces when a non-ASCII tag
+// appears as a tagOwners key.
+func TestUnmarshalPolicyCyrillicTagOwner(t *testing.T) {
+	policy := []byte(`{"tagOwners": {"tag:сервер": ["odin@example.com"]}}`)
+
+	_, err := unmarshalPolicy(policy)
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrTagNameMustStartWithLetter)
+	require.Contains(t, err.Error(),
+		`tagOwners["tag:сервер"]: tag names must start with a letter, after 'tag:'`)
+}
+
 // TestSSHCheckPeriodInvalidDuration verifies the SaaS body for the
 // malformed-duration case (`time: invalid duration "abc"`).
 func TestSSHCheckPeriodInvalidDuration(t *testing.T) {

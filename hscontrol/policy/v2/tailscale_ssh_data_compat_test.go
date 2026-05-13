@@ -107,14 +107,6 @@ var sshRejectSkipReasons = map[string]string{
 	"ssh-e2": "domain validation: headscale has no 'associated tailnet domains' concept",
 	"ssh-malformed-user-localpart-multi-glob": "domain validation: headscale has no 'associated tailnet domains' concept (same gap as ssh-b4/d1/e1/e2)",
 
-	// NON_ASCII_TAG_NAME (1 test)
-	//
-	// SaaS rejects non-ASCII characters in tag names with
-	// `tag names must start with a letter, after 'tag:'`. headscale's
-	// tag parser accepts arbitrary UTF-8. Tighten the tag-name
-	// validator to match SaaS's letter-only rule.
-	"ssh-unicode-cyrillic-tag": "SaaS rejects non-ASCII tag names, headscale accepts",
-
 	// GROUP_NESTING_ERROR_BODY (3 tests)
 	//
 	// SaaS rejects any group-in-group reference (cycle, chain,
