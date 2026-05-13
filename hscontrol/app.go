@@ -219,7 +219,19 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		}
 
 		for _, d := range magicDNSDomains {
-			app.cfg.TailcfgDNSConfig.Routes[d.WithoutTrailingDot()] = nil
+			// Empty non-nil slice rather than nil: tailcfg.DNSConfig.Clone
+			// and dns.Config.Clone in tailscale drop map entries whose
+			// value is nil (see tailscale.com/tailcfg/tailcfg_clone.go and
+			// tailscale.com/net/dns/dns_clone.go: `if sv == nil { continue }`).
+			// Sending nil here caused the client's wgengine LinkChange:major
+			// handler to clobber /etc/resolv.conf on every tunnel-IP rebind
+			// — the handler reapplies a Clone of lastDNSConfig and the magic
+			// DNS routes vanish, taking the resolver with them for ~6 min
+			// until the next route-changing netmap. Empty slice survives
+			// Clone and carries the same "resolve locally" semantics
+			// (tailscale.com/ipn/ipnlocal/node_backend.go:869 documents the
+			// empty-resolver Routes form for Issue 2706).
+			app.cfg.TailcfgDNSConfig.Routes[d.WithoutTrailingDot()] = []*dnstype.Resolver{}
 		}
 	}
 
