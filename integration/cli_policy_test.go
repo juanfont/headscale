@@ -200,9 +200,9 @@ func TestSSHTestsRejectFailingPolicy(t *testing.T) {
 		},
 		SSHTests: []policyv2.SSHPolicyTest{
 			{
-				Src:    user1,
-				Dst:    []string{"autogroup:member"},
-				Accept: []string{"root"},
+				Src:    usernamep(user1),
+				Dst:    policyv2.SSHTestDestinations{new(policyv2.AutoGroupMember)},
+				Accept: []policyv2.SSHUser{policyv2.SSHUser("root")},
 			},
 		},
 	}
@@ -215,9 +215,9 @@ func TestSSHTestsRejectFailingPolicy(t *testing.T) {
 	badPolicy := goodPolicy
 	badPolicy.SSHTests = []policyv2.SSHPolicyTest{
 		{
-			Src:    user2,
-			Dst:    []string{"autogroup:member"},
-			Accept: []string{"root"},
+			Src:    usernamep(user2),
+			Dst:    policyv2.SSHTestDestinations{new(policyv2.AutoGroupMember)},
+			Accept: []policyv2.SSHUser{policyv2.SSHUser("root")},
 		},
 	}
 
