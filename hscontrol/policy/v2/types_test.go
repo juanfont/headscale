@@ -4400,9 +4400,19 @@ func TestSSHCheckPeriodValidate(t *testing.T) {
 			period: SSHCheckPeriod{Duration: 168 * time.Hour},
 		},
 		{
+			name:    "168h0m1s above maximum",
+			period:  SSHCheckPeriod{Duration: 168*time.Hour + time.Second},
+			wantErr: ErrSSHCheckPeriodAboveMax,
+		},
+		{
 			name:    "169h above maximum",
 			period:  SSHCheckPeriod{Duration: 169 * time.Hour},
 			wantErr: ErrSSHCheckPeriodAboveMax,
+		},
+		{
+			name:    "negative duration rejected",
+			period:  SSHCheckPeriod{Duration: -time.Minute},
+			wantErr: ErrSSHCheckPeriodNegative,
 		},
 	}
 
@@ -4477,6 +4487,27 @@ func TestSSHCheckPeriodPolicyValidation(t *testing.T) {
 			},
 		},
 		{
+			name: "check with 168h exactly is valid",
+			ssh: SSH{
+				Action:       SSHActionCheck,
+				Sources:      SSHSrcAliases{up("user@")},
+				Destinations: SSHDstAliases{agp("autogroup:member")},
+				Users:        SSHUsers{"root"},
+				CheckPeriod:  &SSHCheckPeriod{Duration: 168 * time.Hour},
+			},
+		},
+		{
+			name: "check with 168h0m1s just above max is invalid",
+			ssh: SSH{
+				Action:       SSHActionCheck,
+				Sources:      SSHSrcAliases{up("user@")},
+				Destinations: SSHDstAliases{agp("autogroup:member")},
+				Users:        SSHUsers{"root"},
+				CheckPeriod:  &SSHCheckPeriod{Duration: 168*time.Hour + time.Second},
+			},
+			wantErr: ErrSSHCheckPeriodAboveMax,
+		},
+		{
 			name: "check with 200h above max is invalid",
 			ssh: SSH{
 				Action:       SSHActionCheck,
@@ -4486,6 +4517,17 @@ func TestSSHCheckPeriodPolicyValidation(t *testing.T) {
 				CheckPeriod:  &SSHCheckPeriod{Duration: 200 * time.Hour},
 			},
 			wantErr: ErrSSHCheckPeriodAboveMax,
+		},
+		{
+			name: "check with negative duration is invalid",
+			ssh: SSH{
+				Action:       SSHActionCheck,
+				Sources:      SSHSrcAliases{up("user@")},
+				Destinations: SSHDstAliases{agp("autogroup:member")},
+				Users:        SSHUsers{"root"},
+				CheckPeriod:  &SSHCheckPeriod{Duration: -time.Minute},
+			},
+			wantErr: ErrSSHCheckPeriodNegative,
 		},
 	}
 
@@ -4596,12 +4638,153 @@ func TestSSHRuleSaaSValidation(t *testing.T) {
 // TestSSHActionInvalidUnmarshal verifies the SaaS-aligned wording for
 // non-empty unknown actions surfaces at JSON parse time.
 func TestSSHActionInvalidUnmarshal(t *testing.T) {
-	var a SSHAction
+	tests := []struct {
+		name      string
+		input     string
+		wantValue SSHAction
+		wantErr   error
+		wantMsg   string
+	}{
+		{
+			name:      "exact match accept",
+			input:     `"accept"`,
+			wantValue: SSHActionAccept,
+		},
+		{
+			name:      "exact match check",
+			input:     `"check"`,
+			wantValue: SSHActionCheck,
+		},
+		{
+			name:      "whitespace trimmed to accept",
+			input:     `" accept "`,
+			wantValue: SSHActionAccept,
+		},
+		{
+			name:    "uppercase rejected",
+			input:   `"ACCEPT"`,
+			wantErr: ErrSSHActionInvalid,
+			wantMsg: `"ACCEPT" is not a valid action`,
+		},
+		{
+			name:    "mixedcase rejected",
+			input:   `"Accept"`,
+			wantErr: ErrSSHActionInvalid,
+			wantMsg: `"Accept" is not a valid action`,
+		},
+		{
+			name:    "whitespace trimmed then mixedcase rejected",
+			input:   `" Accept"`,
+			wantErr: ErrSSHActionInvalid,
+			wantMsg: `"Accept" is not a valid action`,
+		},
+		{
+			name:    "unknown action rejected",
+			input:   `"deny"`,
+			wantErr: ErrSSHActionInvalid,
+			wantMsg: `"deny" is not a valid action`,
+		},
+	}
 
-	err := json.Unmarshal([]byte(`"deny"`), &a)
-	require.Error(t, err)
-	require.ErrorIs(t, err, ErrSSHActionInvalid)
-	require.Contains(t, err.Error(), `"deny" is not a valid action`)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var a SSHAction
+
+			err := json.Unmarshal([]byte(tt.input), &a)
+			if tt.wantErr != nil {
+				require.Error(t, err)
+				require.ErrorIs(t, err, tt.wantErr)
+				require.Contains(t, err.Error(), tt.wantMsg)
+
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, tt.wantValue, a)
+		})
+	}
+}
+
+// TestSSHUserUnmarshalTrim verifies per-element whitespace trimming so
+// that the compiled `sshUsers` map matches SaaS exactly. A
+// whitespace-only entry collapses to "" and is left for the per-rule
+// validate() pass to reject via ErrSSHUserInvalid.
+func TestSSHUserUnmarshalTrim(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  SSHUser
+	}{
+		{
+			name:  "leading whitespace trimmed",
+			input: `" root"`,
+			want:  SSHUser("root"),
+		},
+		{
+			name:  "trailing whitespace trimmed",
+			input: `"root "`,
+			want:  SSHUser("root"),
+		},
+		{
+			name:  "whitespace-only collapses to empty",
+			input: `"  "`,
+			want:  SSHUser(""),
+		},
+		{
+			name:  "no trim needed",
+			input: `"root"`,
+			want:  SSHUser("root"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var u SSHUser
+
+			err := json.Unmarshal([]byte(tt.input), &u)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, u)
+		})
+	}
+}
+
+// TestSSHUserTrimEndToEnd verifies that a policy with `[" root"]`
+// parses cleanly and that the policy validate() pass treats `[" "]`
+// as the empty-user case (per-element trim happens at unmarshal time).
+func TestSSHUserTrimEndToEnd(t *testing.T) {
+	t.Run("leading whitespace user accepted and trimmed", func(t *testing.T) {
+		policy := `
+{
+	"tagOwners": {"tag:server": ["odin@example.com"]},
+	"ssh": [{
+		"action": "accept",
+		"src":    ["autogroup:member"],
+		"dst":    ["tag:server"],
+		"users":  [" root"]
+	}]
+}`
+		pol, err := unmarshalPolicy([]byte(policy))
+		require.NoError(t, err)
+		require.Len(t, pol.SSHs, 1)
+		require.Equal(t, SSHUsers{SSHUser("root")}, pol.SSHs[0].Users)
+	})
+
+	t.Run("whitespace-only user rejected as empty", func(t *testing.T) {
+		policy := `
+{
+	"tagOwners": {"tag:server": ["odin@example.com"]},
+	"ssh": [{
+		"action": "accept",
+		"src":    ["autogroup:member"],
+		"dst":    ["tag:server"],
+		"users":  [" "]
+	}]
+}`
+		_, err := unmarshalPolicy([]byte(policy))
+		require.Error(t, err)
+		require.ErrorIs(t, err, ErrSSHUserInvalid)
+		require.Contains(t, err.Error(), `user "" is not valid`)
+	})
 }
 
 // TestSSHCheckPeriodInvalidDuration verifies the SaaS body for the
@@ -4612,6 +4795,17 @@ func TestSSHCheckPeriodInvalidDuration(t *testing.T) {
 	err := json.Unmarshal([]byte(`"abc"`), &p)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), `time: invalid duration "abc"`)
+}
+
+// TestSSHCheckPeriodNegativeMessage verifies the SaaS body for the
+// negative-duration case (`checkPeriod -1m0s must be a positive duration`).
+func TestSSHCheckPeriodNegativeMessage(t *testing.T) {
+	p := SSHCheckPeriod{Duration: -time.Minute}
+
+	err := p.Validate()
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrSSHCheckPeriodNegative)
+	require.Contains(t, err.Error(), "checkPeriod -1m0s must be a positive duration")
 }
 
 func TestUnmarshalGrants(t *testing.T) {
