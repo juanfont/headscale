@@ -52,6 +52,7 @@ var (
 	ErrSSHAcceptEnvEmpty                  = errors.New("acceptEnv values cannot be empty")
 	ErrSSHActionMustBeSpecified           = errors.New("action must be specified")
 	ErrSSHActionInvalid                   = errors.New("is not a valid action")
+	ErrSSHDestinationHostAlias            = errors.New("invalid dst")
 )
 
 // SSH check period constants per Tailscale docs:
@@ -2490,6 +2491,13 @@ func (p *Policy) validate() error {
 				if err != nil {
 					errs = append(errs, err)
 				}
+			case *Host:
+				// SaaS rejects every hosts-table alias on an SSH
+				// dst with `invalid dst "alias"`, whether the
+				// alias resolves to a single IP or a CIDR. The
+				// equivalent ACL rule accepts the same aliases,
+				// so reject here rather than at parse time.
+				errs = append(errs, fmt.Errorf("%w %q", ErrSSHDestinationHostAlias, string(*dst)))
 			}
 		}
 

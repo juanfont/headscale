@@ -83,10 +83,6 @@ func sshTestNodes(users types.Users) types.Nodes {
 	}
 }
 
-// commonHosts contains every host alias the table below references
-// as an sshTests dst. Embedded in the JSON policy under "hosts".
-const commonHosts = `"hosts": { "alice-laptop": "100.64.0.1", "bob-laptop": "100.64.0.2" }`
-
 // TestRunSSHTests covers the engine's per-test outcome reporting. Each
 // row constructs a PolicyManager (whose SetPolicy sandbox also exercises
 // evaluateSSHTests) and asserts on the resulting RunSSHTests behaviour.
@@ -558,24 +554,6 @@ func TestRunSSHTests(t *testing.T) {
 				"sshTests": [{
 					"src":    "tag:prod",
 					"dst":    ["tag:server"],
-					"accept": ["root"]
-				}]
-			}`,
-			wantPass: true,
-		},
-		{
-			name: "host-alias-as-dst",
-			policy: `{
-				` + commonHosts + `,
-				"ssh": [{
-					"action": "accept",
-					"src":    ["bob@headscale.net"],
-					"dst":    ["alice-laptop"],
-					"users":  ["root"]
-				}],
-				"sshTests": [{
-					"src":    "bob@headscale.net",
-					"dst":    ["alice-laptop"],
 					"accept": ["root"]
 				}]
 			}`,

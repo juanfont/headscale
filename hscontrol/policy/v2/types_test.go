@@ -4660,11 +4660,25 @@ func TestSSHRuleSaaSValidation(t *testing.T) {
 				s.AcceptEnv = []string{"**"}
 			}),
 		},
+		{
+			// SaaS rejects hosts-table aliases on SSH dst with
+			// `invalid dst "srv"`. headscale validates the same
+			// regardless of whether the alias resolves to a
+			// single IP or a CIDR.
+			name: "host alias as SSH dst rejected",
+			ssh: baseSSH(func(s *SSH) {
+				s.Destinations = SSHDstAliases{hp("srv")}
+			}),
+			wantErr: ErrSSHDestinationHostAlias,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pol := &Policy{SSHs: []SSH{tt.ssh}}
+			pol := &Policy{
+				Hosts: Hosts{Host("srv"): Prefix(mp("100.64.0.16/32"))},
+				SSHs:  []SSH{tt.ssh},
+			}
 			err := pol.validate()
 
 			if tt.wantErr != nil {
