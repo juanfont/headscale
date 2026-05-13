@@ -46,7 +46,35 @@ This feature is **beta** while behavioural coverage against Tailscale SaaS broad
 
 ### SSH policy tests (beta)
 
-`sshTests` policy assertions are now evaluated at write boundaries. Operators writing `"sshTests": [{"src": "alice@example.com", "dst": ["tag:server"], "accept": ["root"]}]` could previously ship a policy whose own assertions were silently violated by the SSH rule list; the misconfiguration only surfaced when a user actually attempted SSH and got Permission denied. `headscale policy set` and `headscale policy check` now compile the same SSH rules clients receive, replay each `sshTests` entry through them, and reject the write when any `accept` user cannot reach a dst, any `deny` user can reach one, or any `check` user reaches a dst via a non-check rule. Parse-time shape rules forbid `dst` entries with a `:port` suffix (SSH port is implicit), `autogroup:internet` destinations, CIDR-shaped destinations, references to tags not in `tagOwners`, and entries with an empty `src` or `dst`. Stored policies whose `sshTests` fail at boot log a warning and the server continues, so a stale reference to a deleted user does not block restart.
+Headscale now evaluates the `sshTests` block in a policy file. Tests assert which SSH login users
+can connect from a named source to named destinations against the same SSH rules clients receive.
+They run on `headscale policy set`, on SIGHUP reload (`systemctl reload headscale` /
+`kill -HUP $(pidof headscale)`), and on `headscale policy check`. A failing test rejects the write
+before it is applied, with the same error message Tailscale SaaS would return for the same policy.
+
+An entry has the shape:
+
+```hujson
+"sshTests": [
+    {
+        "src":    "alice@example.com",
+        "dst":    ["tag:server"],
+        "accept": ["root"],
+        "deny":   ["alice"],
+        "check":  ["ubuntu"]
+    }
+]
+```
+
+`accept` asserts the listed login users reach every dst via an accept- or check-action SSH rule,
+`deny` asserts none of them reach any dst, and `check` requires reachability specifically via a
+check-action rule.
+
+At boot a stored policy whose sshTests no longer pass — for example because a referenced user was
+deleted while the server was offline — logs a warning and the server keeps running. Fix the policy
+and reload.
+
+This feature is **beta** while behavioural coverage against Tailscale SaaS broadens.
 
 ### Grants
 
