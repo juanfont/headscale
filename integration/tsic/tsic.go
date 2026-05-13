@@ -67,6 +67,7 @@ var (
 	errTailscaleImageRequiredInCI      = errors.New("HEADSCALE_INTEGRATION_TAILSCALE_IMAGE must be set in CI for HEAD version")
 	errContainerNotInitialized         = errors.New("container not initialized")
 	errFQDNNotYetAvailable             = errors.New("FQDN not yet available")
+	errCurlEmptyResponseBody           = errors.New("curl returned empty response body")
 )
 
 const (
@@ -1532,6 +1533,15 @@ func (t *TailscaleInContainer) Curl(url string, opts ...CurlOption) (string, err
 		return result, err
 	}
 
+	// curl exit 0 with an empty body usually means a mid-stream reset
+	// after headers (HTTP 200 with the connection torn down before the
+	// body arrived). Without this signal, callers wrapping the call in
+	// EventuallyWithT see assert.NoError pass and assert.Len fail with
+	// no error to drive a retry.
+	if result == "" {
+		return result, fmt.Errorf("%w: %s from %s", errCurlEmptyResponseBody, url, t.Hostname())
+	}
+
 	return result, nil
 }
 
@@ -1547,8 +1557,16 @@ func (t *TailscaleInContainer) CurlFailFast(url string) (string, error) {
 }
 
 func (t *TailscaleInContainer) Traceroute(ip netip.Addr) (util.Traceroute, error) {
+	// -w 1: wait at most 1s for each probe response. busybox's default
+	//       is 5s, which means an EventuallyWithT loop at 200ms ticks
+	//       can spend 25 ticks worth of budget on a single Traceroute.
+	// -q 1: send 1 probe per hop instead of 3. The HA tests only care
+	//       about the first hop's identity; the other probes are dead
+	//       weight for the same retry budget.
 	command := []string{
 		"traceroute",
+		"-w", "1",
+		"-q", "1",
 		ip.String(),
 	}
 
