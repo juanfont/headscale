@@ -107,18 +107,6 @@ var sshRejectSkipReasons = map[string]string{
 	"ssh-e2": "domain validation: headscale has no 'associated tailnet domains' concept",
 	"ssh-malformed-user-localpart-multi-glob": "domain validation: headscale has no 'associated tailnet domains' concept (same gap as ssh-b4/d1/e1/e2)",
 
-	// HOSTS_ALIAS_AS_SSH_DST (2 tests)
-	//
-	// SaaS rejects every hosts-alias dst on an SSH rule with
-	// `invalid dst "alias"`, regardless of whether the alias resolves
-	// to a single IP or a CIDR. headscale's compileSSHPolicy resolves
-	// host aliases through the same path as ACL dsts and accepts
-	// them. Either reject hosts-aliases at SSH dst parse time to
-	// match, or document that headscale is intentionally more
-	// permissive than SaaS for SSH dsts.
-	"ssh-hosts-as-dst-single-ip":         "SaaS rejects host alias as SSH dst, headscale accepts",
-	"ssh-hosts-as-dst-multi-host-prefix": "SaaS rejects host alias as SSH dst, headscale accepts",
-
 	// NON_ASCII_TAG_NAME (1 test)
 	//
 	// SaaS rejects non-ASCII characters in tag names with
