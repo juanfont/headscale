@@ -24,14 +24,13 @@ import (
 // The tests evaluate against the compiled global filter rules, which fold in
 // both `acls` and `grants`, so the `tests` block validates the whole policy.
 
-// errPolicyTestsFailed wraps the rendered failure body so callers can
-// type-assert when they need to react differently to test failures vs. parse
-// errors. The Error() prefix is "test(s) failed", the same string Tailscale
-// SaaS returns in the api_response_body.message — see
-// hscontrol/policy/v2/testdata/policytest_results/.
+// errPolicyTestsFailed and errSSHPolicyTestsFailed share the
+// "test(s) failed" prefix but stay distinct so callers can use
+// errors.Is to tell ACL-test and SSH-test failures apart.
 var (
-	errPolicyTestsFailed   = errors.New("test(s) failed")
-	errTestDestinationNoIP = errors.New("destination resolved to no IP addresses")
+	errPolicyTestsFailed    = errors.New("test(s) failed")
+	errSSHPolicyTestsFailed = errors.New("test(s) failed")
+	errTestDestinationNoIP  = errors.New("destination resolved to no IP addresses")
 )
 
 // PolicyTest is one entry in the policy's `tests` block.
@@ -51,6 +50,30 @@ type PolicyTest struct {
 	// Deny lists destinations in `host:port` form that must NOT be reachable
 	// from Src. A test fails if any entry is allowed by the compiled filter.
 	Deny []string `json:"deny,omitempty"`
+}
+
+// SSHPolicyTest is one entry in the policy's `sshTests` block. The
+// accept/deny/check arrays carry usernames, not destinations — every
+// listed user is asserted against every entry in Dst.
+type SSHPolicyTest struct {
+	// Src is a single source alias (user, group, tag, host, or IP).
+	Src string `json:"src"`
+
+	// Dst lists destinations the test exercises (tag, host, or SSH-
+	// compatible autogroup). Ports, CIDRs, and autogroup:internet are
+	// rejected at parse time.
+	Dst []string `json:"dst"`
+
+	// Accept lists users that must reach every Dst via an accept- or
+	// check-action rule.
+	Accept []string `json:"accept,omitempty"`
+
+	// Deny lists users that must NOT reach any Dst.
+	Deny []string `json:"deny,omitempty"`
+
+	// Check lists users that must reach every Dst via a check-action
+	// rule specifically; an accept-action rule does not satisfy this.
+	Check []string `json:"check,omitempty"`
 }
 
 // PolicyTestResult is the outcome of a single PolicyTest.

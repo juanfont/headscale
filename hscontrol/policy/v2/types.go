@@ -153,6 +153,10 @@ var (
 	ErrTestDestinationMultiPort    = errors.New("test destination port must be a single port")
 	ErrTestDestinationCIDR         = errors.New("test destination must be a single host, not a CIDR range")
 	ErrAutogroupInternetTestDst    = errors.New("autogroup:internet not valid as a test destination")
+	ErrSSHTestEmptySrc             = errors.New("SSH tests entry must have a non-empty src")
+	ErrSSHTestEmptyDst             = errors.New("SSH tests entry must have at least one dst")
+	ErrSSHTestDstUnknownTag        = errors.New("SSH tests dst contains unknown tag")
+	ErrSSHTestDstDisallowedElement = errors.New("SSH tests dst contains disallowed element")
 )
 
 type resolved struct {
@@ -2084,6 +2088,7 @@ type Policy struct {
 	AutoApprovers       AutoApproverPolicy `json:"autoApprovers"`
 	SSHs                []SSH              `json:"ssh,omitempty"`
 	Tests               []PolicyTest       `json:"tests,omitempty"`
+	SSHTests            []SSHPolicyTest    `json:"sshTests,omitempty"`
 	RandomizeClientPort bool               `json:"randomizeClientPort,omitempty"`
 }
 
@@ -2891,6 +2896,10 @@ func (p *Policy) validate() error {
 		errs = append(errs, err)
 	}
 
+	if err := validateSSHTests(p, p.SSHTests); err != nil { //nolint:noinlineerr
+		errs = append(errs, err)
+	}
+
 	if len(errs) > 0 {
 		return multierr.New(errs...)
 	}
@@ -3384,6 +3393,101 @@ func validateTestDestination(pol *Policy, dst string) error {
 			if p.Bits() < p.Addr().BitLen() {
 				return ErrTestDestinationCIDR
 			}
+		}
+	}
+
+	return nil
+}
+
+// validateSSHTests enforces parse-time shape on every sshTests entry:
+// non-empty src, at least one dst, and each dst describing a single
+// SSH-reachable host. Login-user assertions land with the engine so
+// failures surface through the same errSSHPolicyTestsFailed wrapper.
+func validateSSHTests(pol *Policy, tests []SSHPolicyTest) error {
+	var errs []error
+
+	for i, t := range tests {
+		if t.Src == "" {
+			errs = append(errs, fmt.Errorf("sshTest %d: %w", i, ErrSSHTestEmptySrc))
+		}
+
+		if len(t.Dst) == 0 {
+			errs = append(errs, fmt.Errorf("sshTest %d: %w", i, ErrSSHTestEmptyDst))
+		}
+
+		for _, dst := range t.Dst {
+			err := validateSSHTestDestination(pol, dst)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("sshTest %d: %w", i, err))
+			}
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("%w:\n%w", errSSHPolicyTestsFailed, multierr.New(errs...))
+	}
+
+	return nil
+}
+
+// validateSSHTestDestination rejects sshTests dst shapes that cannot
+// name a single SSH-reachable host:
+//
+//   - `host:port` suffixes (parsed as an unknown tag),
+//   - multi-host CIDRs (raw `/N` or a hosts: entry resolving wider),
+//   - autogroup:internet (valid as ACL dst only).
+//
+// A bare IP literal (single-host /BitLen prefix) is accepted. Tag
+// entries must exist in tagOwners.
+func validateSSHTestDestination(pol *Policy, dst string) error {
+	alias, err := parseAlias(dst)
+	if err != nil {
+		return fmt.Errorf("%w %q", ErrSSHTestDstDisallowedElement, dst)
+	}
+
+	switch a := alias.(type) {
+	case *AutoGroup:
+		// autogroup:internet is the only autogroup not valid here;
+		// member/tagged/self/nonroot pass to engine evaluation.
+		if *a == AutoGroupInternet {
+			return fmt.Errorf("%w %q", ErrSSHTestDstDisallowedElement, dst)
+		}
+
+	case *Prefix:
+		// Bare IP parses to a *Prefix without slash; reject any
+		// explicit CIDR.
+		if strings.Contains(dst, "/") {
+			return fmt.Errorf("%w %q", ErrSSHTestDstDisallowedElement, dst)
+		}
+
+	case *Tag:
+		// A tag must be declared in tagOwners. `tag:server:22` lands
+		// here too because isTag only checks the prefix, so the lookup
+		// misses and the colon-port suffix surfaces as unknown-tag.
+		if pol == nil {
+			return fmt.Errorf("%w %q", ErrSSHTestDstUnknownTag, string(*a))
+		}
+
+		err := pol.TagOwners.Contains(a)
+		if err != nil {
+			return fmt.Errorf("%w %q", ErrSSHTestDstUnknownTag, string(*a))
+		}
+
+	case *Host:
+		// A hosts: alias that resolves to multiple addresses is a CIDR
+		// in disguise.
+		if pol == nil {
+			return nil
+		}
+
+		pref, ok := pol.Hosts[*a]
+		if !ok {
+			return nil
+		}
+
+		p := netip.Prefix(pref)
+		if p.Bits() < p.Addr().BitLen() {
+			return fmt.Errorf("%w %q", ErrSSHTestDstDisallowedElement, dst)
 		}
 	}
 
