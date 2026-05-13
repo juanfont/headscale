@@ -2946,10 +2946,6 @@ func (p *SSHCheckPeriod) UnmarshalJSON(b []byte) error {
 		return nil
 	}
 
-	// time.ParseDuration produces error strings like
-	// `time: invalid duration "abc"` which match SaaS body wording
-	// exactly; model.ParseDuration wraps the same parse with custom
-	// phrasing and would diverge.
 	d, err := time.ParseDuration(str)
 	if err != nil {
 		return err
