@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/require"
@@ -163,4 +164,117 @@ func TestPolicyCheckCommand(t *testing.T) {
 			require.Contains(t, stdout, tt.wantStdout)
 		})
 	}
+}
+
+// TestSSHTestsRejectFailingPolicy asserts `headscale policy set` rejects
+// a policy whose sshTests fail, surfaces the engine's "test(s) failed"
+// sentinel, and leaves the stored policy unchanged. autogroup:member as
+// dst lets every scenario node count, so no tagged node is needed.
+func TestSSHTestsRejectFailingPolicy(t *testing.T) {
+	IntegrationSkip(t)
+
+	const (
+		user1 = "user1@"
+		user2 = "user2@"
+	)
+
+	// Good policy: user1@ may SSH as root, and the sshTests asserts it.
+	goodPolicy := policyv2.Policy{
+		SSHs: []policyv2.SSH{
+			{
+				Action:  policyv2.SSHActionAccept,
+				Sources: policyv2.SSHSrcAliases{usernamep(user1)},
+				Destinations: policyv2.SSHDstAliases{
+					new(policyv2.AutoGroupMember),
+				},
+				Users: []policyv2.SSHUser{policyv2.SSHUser("root")},
+			},
+		},
+		SSHTests: []policyv2.SSHPolicyTest{
+			{
+				Src:    usernamep(user1),
+				Dst:    policyv2.SSHTestDestinations{new(policyv2.AutoGroupMember)},
+				Accept: []policyv2.SSHUser{policyv2.SSHUser("root")},
+			},
+		},
+	}
+
+	// Bad policy: same SSH rule, but the sshTests asserts user2@ — who
+	// the rule does not admit — can SSH. Must be rejected.
+	badPolicy := goodPolicy
+	badPolicy.SSHTests = []policyv2.SSHPolicyTest{
+		{
+			Src:    usernamep(user2),
+			Dst:    policyv2.SSHTestDestinations{new(policyv2.AutoGroupMember)},
+			Accept: []policyv2.SSHUser{policyv2.SSHUser("root")},
+		},
+	}
+
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{"user1", "user2"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoError(t, err)
+
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{},
+		hsic.WithTestName("cli-policyset-sshtests"),
+		hsic.WithConfigEnv(map[string]string{
+			"HEADSCALE_POLICY_MODE": types.PolicyModeDB,
+		}),
+	)
+	require.NoError(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	goodBytes, err := json.Marshal(goodPolicy)
+	require.NoError(t, err)
+
+	badBytes, err := json.Marshal(badPolicy)
+	require.NoError(t, err)
+
+	const (
+		goodPath = "/etc/headscale/policy-good.json"
+		badPath  = "/etc/headscale/policy-bad.json"
+	)
+
+	require.NoError(t, headscale.WriteFile(goodPath, goodBytes))
+	require.NoError(t, headscale.WriteFile(badPath, badBytes))
+
+	// Establish the good policy as the live policy.
+	_, err = headscale.Execute([]string{
+		"headscale", "policy", "set", "-f", goodPath,
+	})
+	require.NoError(t, err, "setting the good policy must succeed")
+
+	// Confirm the server returns the good policy.
+	stdoutBefore, err := headscale.Execute([]string{
+		"headscale", "policy", "get",
+	})
+	require.NoError(t, err)
+	require.JSONEq(t, string(goodBytes), stdoutBefore,
+		"server should report the good policy after the initial set")
+
+	// Attempt to overwrite with a policy whose sshTests fail. The CLI
+	// must surface the engine's "test(s) failed" sentinel and exit
+	// non-zero.
+	_, err = headscale.Execute([]string{
+		"headscale", "policy", "set", "-f", badPath,
+	})
+	require.Error(t, err, "setting a policy with failing sshTests must fail")
+	require.ErrorContains(t, err, "test(s) failed",
+		"CLI error must surface the engine's test failure sentinel")
+
+	// The rejected write must not have mutated the stored policy.
+	stdoutAfter, err := headscale.Execute([]string{
+		"headscale", "policy", "get",
+	})
+	require.NoError(t, err)
+	require.JSONEq(t, string(goodBytes), stdoutAfter,
+		"stored policy must be unchanged after a rejected set")
 }
