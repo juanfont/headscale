@@ -1414,11 +1414,9 @@ func (g *Groups) UnmarshalJSON(b []byte) error {
 		}
 	}
 
-	// SaaS rejects any group-in-group reference (cycle, chain,
-	// self-cycle) with `groups["X"]: "Y": group members cannot be
-	// recursive`. Iterate keys in descending alphabetical order so
-	// the reported (X, Y) pair matches the SaaS engine, which
-	// reports the deepest non-leaf parent first.
+	// Reject group-in-group references. Reverse-sort the keys so the
+	// reported (parent, child) pair names the deepest non-leaf parent
+	// first.
 	keys := make([]string, 0, len(rawGroups))
 	for k := range rawGroups {
 		keys = append(keys, k)
@@ -1698,15 +1696,9 @@ func (a *SSHAction) String() string {
 	return string(*a)
 }
 
-// UnmarshalJSON implements JSON unmarshaling for SSHAction.
-//
-// Empty strings are accepted at parse time; the per-rule validate()
-// pass surfaces them with `action must be specified` to match SaaS.
-// Non-empty unknown values fail here with `"foo" is not a valid action`.
-//
-// SaaS trims surrounding whitespace before comparing, then complains
-// about the trimmed content; the resulting error quotes the trimmed
-// value (e.g. `" Accept "` → `"Accept" is not a valid action`).
+// UnmarshalJSON trims surrounding whitespace before matching, lets the
+// empty string through (per-rule Validate() surfaces it later), and
+// rejects every other unknown value here.
 func (a *SSHAction) UnmarshalJSON(b []byte) error {
 	str := strings.TrimSpace(strings.Trim(string(b), `"`))
 	switch str {
@@ -2529,34 +2521,26 @@ func (p *Policy) validate() error {
 	}
 
 	for _, ssh := range p.SSHs {
-		// SaaS rejects empty/missing `action` with `action must be
-		// specified`; an empty SSHAction survives parse intentionally
-		// so this validate pass surfaces the SaaS-aligned wording.
+		// Empty action and users survive parse; surface them here.
 		if ssh.Action == "" {
 			errs = append(errs, ErrSSHActionMustBeSpecified)
 		}
 
-		// SaaS rejects empty/missing `users` with `users must be
-		// specified`; non-canonical user strings (autogroup:*, group:,
-		// tag:, malformed localpart:) are accepted and flow through to
-		// compileSSHPolicy as literals — matching SaaS compile output.
 		if len(ssh.Users) == 0 {
 			errs = append(errs, ErrSSHUsersMustBeSpecified)
 		}
 
+		// "" and "*" are not valid login users; any other string
+		// (including autogroup, group, tag, malformed localpart) is
+		// treated as a literal user name.
 		for _, user := range ssh.Users {
-			// SaaS rejects `""` and `"*"` as user logins; everything
-			// else (including autogroup:*, group:, tag:, malformed
-			// localpart:) is accepted and treated as a literal.
 			switch user {
 			case "", "*":
 				errs = append(errs, fmt.Errorf("user %q %w", user, ErrSSHUserInvalid))
 			}
 		}
 
-		// SaaS rejects empty entries in `acceptEnv` with
-		// `acceptEnv values cannot be empty`. The wildcard `*` and
-		// double-glob `**` are accepted (only empty string is invalid).
+		// acceptEnv entries cannot be empty; "*" and "**" are valid.
 		for _, env := range ssh.AcceptEnv {
 			if env == "" {
 				errs = append(errs, ErrSSHAcceptEnvEmpty)
@@ -2620,11 +2604,8 @@ func (p *Policy) validate() error {
 					errs = append(errs, err)
 				}
 			case *Host:
-				// SaaS rejects every hosts-table alias on an SSH
-				// dst with `invalid dst "alias"`, whether the
-				// alias resolves to a single IP or a CIDR. The
-				// equivalent ACL rule accepts the same aliases,
-				// so reject here rather than at parse time.
+				// Hosts-table aliases are valid on ACL dst but
+				// rejected here for SSH dst.
 				errs = append(errs, fmt.Errorf("%w %q", ErrSSHDestinationHostAlias, string(*dst)))
 			}
 		}
@@ -2971,22 +2952,18 @@ func (p SSHCheckPeriod) MarshalJSON() ([]byte, error) {
 	return fmt.Appendf(nil, "%q", p.Duration.String()), nil
 }
 
-// Validate checks that the SSHCheckPeriod is within allowed bounds.
-// SaaS rejects negative durations with `must be a positive duration`
-// and anything above 168h with `is above the max (168h)`; the 168h
-// upper bound is inclusive.
+// Validate rejects negative durations and anything above the inclusive
+// 168h max.
 func (p *SSHCheckPeriod) Validate() error {
 	if p.Always {
 		return nil
 	}
 
 	if p.Duration < 0 {
-		// SaaS body: `checkPeriod -1m0s must be a positive duration`.
 		return fmt.Errorf("checkPeriod %s %w", p.Duration, ErrSSHCheckPeriodNegative)
 	}
 
 	if p.Duration > SSHCheckPeriodMax {
-		// SaaS body: `checkPeriod 200h0m0s is above the max (168h)`.
 		return fmt.Errorf("checkPeriod %s %w", p.Duration, ErrSSHCheckPeriodAboveMax)
 	}
 
@@ -3166,20 +3143,18 @@ func (u SSHUsers) ContainsNonRoot() bool {
 }
 
 // ContainsLocalpart returns true if any entry is a canonical
-// `localpart:*@<domain>` form. Non-canonical strings that merely start
-// with `localpart:` (e.g. `localpart:`, `localpart:foo`) are treated as
-// literal user names per SaaS behaviour.
+// `localpart:*@<domain>` form. Non-canonical strings starting with
+// `localpart:` are treated as literal usernames.
 func (u SSHUsers) ContainsLocalpart() bool {
 	return slices.ContainsFunc(u, func(user SSHUser) bool {
 		return user.IsCanonicalLocalpart()
 	})
 }
 
-// NormalUsers returns SSH users handled by the literal user map: every
-// entry except root, autogroup:nonroot, and canonical
-// `localpart:*@<domain>`. Malformed `localpart:` strings flow through
-// here so they end up in the compiled SSHUsers map literally — matching
-// SaaS, which also keeps them verbatim.
+// NormalUsers returns users that land in the compiled literal user map
+// (everything except root, autogroup:nonroot, and canonical
+// `localpart:*@<domain>`). Malformed `localpart:` strings stay here as
+// literals.
 func (u SSHUsers) NormalUsers() []SSHUser {
 	return slicesx.Filter(nil, u, func(user SSHUser) bool {
 		return user != "root" && user != SSHUser(AutoGroupNonRoot) && !user.IsCanonicalLocalpart()
@@ -3255,12 +3230,9 @@ func (u SSHUser) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(u))
 }
 
-// UnmarshalJSON trims surrounding whitespace per element so a policy
-// like `"users": [" root"]` stores `"root"` and compiles to the same
-// `sshUsers: {"root": "root"}` map SaaS produces. A whitespace-only
-// entry like `[" "]` collapses to `""` and falls through to the
-// per-rule validate() pass, which surfaces the SaaS-aligned
-// `user "" is not valid`.
+// UnmarshalJSON trims surrounding whitespace per element. A whitespace-
+// only entry collapses to `""` and surfaces as `user "" is not valid` in
+// the per-rule Validate() pass.
 func (u *SSHUser) UnmarshalJSON(b []byte) error {
 	var s string
 	if err := json.Unmarshal(b, &s); err != nil { //nolint:noinlineerr
@@ -3299,14 +3271,13 @@ func unmarshalPolicy(b []byte) (*Policy, error) {
 			}
 
 			// Non-tag entries in grant.via surface as type errors on
-			// []Tag; match SaaS wording instead of Go's JSON diagnostic.
+			// []Tag; rephrase to the wire-compatible body.
 			if strings.Contains(string(serr.JSONPointer), "/via/") {
 				return nil, ErrGrantViaNotATag
 			}
 
 			// Non-ASCII tag-name failures surface from Tag.Validate
-			// at unmarshal time. Reshape the error to mirror SaaS
-			// (`tagOwners["tag:X"]: …`).
+			// at unmarshal time. Reshape to `tagOwners["tag:X"]: …`.
 			if errors.Is(serr.Err, ErrTagNameMustStartWithLetter) {
 				ptr := serr.JSONPointer
 				name := ptr.LastToken()
@@ -3390,16 +3361,15 @@ func validateTests(pol *Policy, tests []PolicyTest) error {
 	return nil
 }
 
-// validateTestDestination enforces that a tests-block dst describes one
-// connection attempt to one specific host on one specific port. SaaS
-// rejects three shapes that violate the rule: autogroup:internet (routed
-// by exit-node AllowedIPs, not the packet filter); multi-port
-// (range/list/wildcard, no single allow/deny answer); and CIDR ranges
-// — both raw `/N` syntax and `hosts:`-table aliases whose RHS is a
-// multi-host prefix. Bare IP literals reach this function as *Prefix
-// /32 or /128 just like explicit `/32` / `/128` does, so the CIDR
-// check inspects the raw input string for `/` rather than the parsed
-// alias type.
+// validateTestDestination rejects tests-block dst shapes that cannot
+// describe one connection to one host on one port:
+//
+//   - autogroup:internet (routed by exit-node AllowedIPs),
+//   - multi-port ranges, lists, or wildcards,
+//   - CIDR ranges (raw `/N` or hosts: aliases that resolve wider).
+//
+// Bare IPs parse as /32 or /128 like explicit forms, so the CIDR
+// check inspects the raw input rather than the parsed alias type.
 func validateTestDestination(pol *Policy, dst string) error {
 	awp, err := parseDestinationAlias(dst)
 	if err != nil {
@@ -3430,15 +3400,10 @@ func validateTestDestination(pol *Policy, dst string) error {
 	return nil
 }
 
-// validateSSHTests enforces the parse-time shape rules an sshTests entry
-// must satisfy: a non-empty src alias, at least one dst, and a dst list
-// whose entries each describe a single SSH-reachable host. Login-user
-// assertions (accept/deny/check) are not validated here — SaaS reports
-// empty assertion arrays and empty user strings through the same
-// "test(s) failed" body it uses for true evaluation failures, so those
-// cases stay with the engine. Both the parse-time errors and the
-// engine-time failures share the errSSHPolicyTestsFailed wrapper so
-// callers see one consistent body.
+// validateSSHTests enforces parse-time shape on every sshTests entry:
+// non-empty src, at least one dst, and each dst describing a single
+// SSH-reachable host. Login-user assertions land with the engine so
+// failures surface through the same errSSHPolicyTestsFailed wrapper.
 func validateSSHTests(pol *Policy, tests []SSHPolicyTest) error {
 	var errs []error
 
@@ -3466,44 +3431,38 @@ func validateSSHTests(pol *Policy, tests []SSHPolicyTest) error {
 	return nil
 }
 
-// validateSSHTestDestination enforces that an sshTests dst entry names a
-// single SSH-reachable host. Tailscale SaaS rejects three shapes at parse
-// time: a `:port` suffix (read by the parser as an unknown tag, hence the
-// "unknown tag" error wording); a multi-host CIDR (raw `/N` narrower than
-// the address width, or a `hosts:` entry whose RHS is a multi-host prefix);
-// and autogroup:internet (only valid in ACL destinations, not SSH ones).
-// A bare IP literal — which parses to a `/BitLen` prefix — names a single
-// host and is accepted. Tag entries must reference a tag that exists in
-// tagOwners; bare hosts must resolve to a single-address prefix.
+// validateSSHTestDestination rejects sshTests dst shapes that cannot
+// name a single SSH-reachable host:
+//
+//   - `host:port` suffixes (parsed as an unknown tag),
+//   - multi-host CIDRs (raw `/N` or a hosts: entry resolving wider),
+//   - autogroup:internet (valid as ACL dst only).
+//
+// A bare IP literal (single-host /BitLen prefix) is accepted. Tag
+// entries must exist in tagOwners.
 func validateSSHTestDestination(pol *Policy, alias Alias) error {
 	dst := alias.String()
 
 	switch a := alias.(type) {
 	case *AutoGroup:
-		// autogroup:internet is the only autogroup SaaS rejects at parse.
-		// Other autogroups (member, tagged, self, nonroot) are valid SSH
-		// dst aliases and pass through to engine evaluation.
+		// autogroup:internet is the only autogroup not valid here;
+		// member/tagged/self/nonroot pass to engine evaluation.
 		if *a == AutoGroupInternet {
 			return fmt.Errorf("%w %q", ErrSSHTestDstDisallowedElement, dst)
 		}
 
 	case *Prefix:
-		// SaaS accepts a bare IP (parsed to a `/BitLen` prefix) as a
-		// single SSH-reachable host but rejects a narrower CIDR like
-		// `10.0.0.0/24`. Distinguish the two by mask width: a prefix
-		// whose Bits() matches the address BitLen() is a single host
-		// and passes; anything narrower is a multi-host range and is
-		// rejected the same way as raw `/N`.
+		// A bare IP parses as `/BitLen` and is a valid single-host dst;
+		// any narrower CIDR is a multi-host range and is rejected.
 		p := netip.Prefix(*a)
 		if p.Bits() < p.Addr().BitLen() {
 			return fmt.Errorf("%w %q", ErrSSHTestDstDisallowedElement, dst)
 		}
 
 	case *Tag:
-		// A tag must be declared in tagOwners. The `tag:server:22` shape
-		// reaches this branch because isTag only checks the `tag:` prefix
-		// — the colon-port suffix is preserved in the Tag string and the
-		// tagOwners lookup misses, reproducing the SaaS error wording.
+		// A tag must be declared in tagOwners. `tag:server:22` lands
+		// here too because isTag only checks the prefix, so the lookup
+		// misses and the colon-port suffix surfaces as unknown-tag.
 		if pol == nil {
 			return fmt.Errorf("%w %q", ErrSSHTestDstUnknownTag, string(*a))
 		}
@@ -3514,8 +3473,8 @@ func validateSSHTestDestination(pol *Policy, alias Alias) error {
 		}
 
 	case *Host:
-		// A hosts: entry that resolves to a multi-host prefix is a CIDR
-		// in disguise — reject it the same way as raw `/N`.
+		// A hosts: alias that resolves to multiple addresses is a CIDR
+		// in disguise.
 		if pol == nil {
 			return nil
 		}

@@ -166,14 +166,10 @@ func TestPolicyCheckCommand(t *testing.T) {
 	}
 }
 
-// TestSSHTestsRejectFailingPolicy asserts that `headscale policy set`
-// rejects a policy whose sshTests evaluate to a failure, surfaces the
-// engine's "test(s) failed" sentinel on stderr, and leaves the previously
-// stored policy untouched. The good policy admits user1@ → autogroup:member
-// as root; the bad policy reuses the same SSH rule but asserts user2@ can
-// SSH, which the rule denies. autogroup:member as dst means every
-// scenario node is a member, so dst resolution finds real nodes without
-// requiring a separately-tagged node.
+// TestSSHTestsRejectFailingPolicy asserts `headscale policy set` rejects
+// a policy whose sshTests fail, surfaces the engine's "test(s) failed"
+// sentinel, and leaves the stored policy unchanged. autogroup:member as
+// dst lets every scenario node count, so no tagged node is needed.
 func TestSSHTestsRejectFailingPolicy(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -182,9 +178,7 @@ func TestSSHTestsRejectFailingPolicy(t *testing.T) {
 		user2 = "user2@"
 	)
 
-	// Good policy: SSH rule and sshTests agree — user1@ may SSH as root
-	// to any autogroup:member node, and the sshTests entry asserts exactly
-	// that.
+	// Good policy: user1@ may SSH as root, and the sshTests asserts it.
 	goodPolicy := policyv2.Policy{
 		SSHs: []policyv2.SSH{
 			{
@@ -205,11 +199,8 @@ func TestSSHTestsRejectFailingPolicy(t *testing.T) {
 		},
 	}
 
-	// Bad policy: same SSH rule, but the sshTests block asserts that
-	// user2@ can SSH as root to autogroup:member. The rule only admits
-	// user1@, so the assertion must fail and the write must be rejected.
-	// SSHTests is a slice (reference type), so reassigning the field
-	// rather than mutating in place preserves goodPolicy.SSHTests.
+	// Bad policy: same SSH rule, but the sshTests asserts user2@ — who
+	// the rule does not admit — can SSH. Must be rejected.
 	badPolicy := goodPolicy
 	badPolicy.SSHTests = []policyv2.SSHPolicyTest{
 		{

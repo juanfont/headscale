@@ -25,16 +25,9 @@ import (
 // The tests evaluate against the compiled global filter rules, which fold in
 // both `acls` and `grants`, so the `tests` block validates the whole policy.
 
-// errPolicyTestsFailed wraps the rendered failure body so callers can
-// type-assert when they need to react differently to test failures vs. parse
-// errors. The Error() prefix is "test(s) failed", the same string Tailscale
-// SaaS returns in the api_response_body.message — see
-// hscontrol/policy/v2/testdata/policytest_results/.
-//
-// errSSHPolicyTestsFailed wraps sshTests failures. Tailscale SaaS returns the
-// same literal "test(s) failed" body for both ACL tests and SSH tests, but
-// the two sentinels are kept as distinct values so callers can use errors.Is
-// to tell them apart while still matching the SaaS body byte-for-byte.
+// errPolicyTestsFailed and errSSHPolicyTestsFailed share the
+// "test(s) failed" prefix but stay distinct so callers can use
+// errors.Is to tell ACL-test and SSH-test failures apart.
 var (
 	errPolicyTestsFailed    = errors.New("test(s) failed")
 	errSSHPolicyTestsFailed = errors.New("test(s) failed")
@@ -60,47 +53,36 @@ type PolicyTest struct {
 	Deny []string `json:"deny,omitempty"`
 }
 
-// SSHPolicyTest is one entry in the policy's `sshTests` block. Unlike the
-// ACL `tests` block, sshTests describe SSH login attempts: a source alias
-// connects to each destination host and tries each named login user. The
-// accept / deny / check arrays carry usernames, not destinations — every
-// listed user is asserted against every entry in dst.
+// SSHPolicyTest is one entry in the policy's `sshTests` block. The
+// accept/deny/check arrays carry usernames, not destinations — every
+// listed user is asserted against every entry in Dst.
 type SSHPolicyTest struct {
-	// Src is a single source alias (user, group, tag, host, or IP). Same
-	// shape as PolicyTest.Src — Tailscale only supports one src per entry.
+	// Src is a single source alias (user, group, tag, host, or IP).
 	Src Alias `json:"src"`
 
-	// Dst lists destination host aliases the test exercises. Tags, hosts,
-	// and the SSH-compatible autogroups are valid; ports, CIDR ranges, and
-	// autogroup:internet are rejected at parse time.
+	// Dst lists destinations the test exercises (tag, host, or SSH-
+	// compatible autogroup). Ports, CIDRs, and autogroup:internet are
+	// rejected at parse time.
 	Dst SSHTestDestinations `json:"dst"`
 
-	// Accept lists SSH login users that must be allowed by an action:accept
-	// or action:check rule when Src connects to each entry in Dst.
+	// Accept lists users that must reach every Dst via an accept- or
+	// check-action rule.
 	Accept []SSHUser `json:"accept,omitempty"`
 
-	// Deny lists SSH login users that must NOT be allowed by any rule when
-	// Src connects to each entry in Dst.
+	// Deny lists users that must NOT reach any Dst.
 	Deny []SSHUser `json:"deny,omitempty"`
 
-	// Check lists SSH login users that must reach every dst via an
-	// action:check rule specifically (the HoldAndDelegate signal on the
-	// compiled SSH policy). An action:accept rule alone does not satisfy
-	// a check assertion — SaaS keeps the two categories distinct so
-	// policy authors can pin sensitive logins to check rules.
+	// Check lists users that must reach every Dst via a check-action
+	// rule specifically; an accept-action rule does not satisfy this.
 	Check []SSHUser `json:"check,omitempty"`
 }
 
-// SSHTestDestinations is the list of destination aliases an sshTests entry
-// targets. Unmarshalling reuses the same alias parser the rest of the
-// policy engine drives so each element lands as a typed Alias; the parse-
-// time shape rules in validateSSHTestDestination continue to enforce the
-// SSH-specific restrictions (no :port, no CIDR, no autogroup:internet,
+// SSHTestDestinations is the typed list of destination aliases an
+// sshTests entry targets. validateSSHTestDestination enforces the
+// SSH-specific shape rules (no :port, no CIDR, no autogroup:internet,
 // known tag).
 type SSHTestDestinations []Alias
 
-// UnmarshalJSON walks the JSON array, dispatching each element through
-// AliasEnc so trimming and prefix detection match the rest of the parser.
 func (d *SSHTestDestinations) UnmarshalJSON(b []byte) error {
 	var aliases []AliasEnc
 
@@ -117,13 +99,9 @@ func (d *SSHTestDestinations) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// UnmarshalJSON drives the typed shape of SSHPolicyTest. The wire format
-// is unchanged: src is a JSON string parsed through parseAlias; dst is an
-// array of strings handled by SSHTestDestinations; accept/deny/check are
-// arrays of strings handled per element by SSHUser.UnmarshalJSON. An
-// empty src string lands as a nil Alias so the empty-src case stays a
-// validation-time error with the SaaS-aligned ErrSSHTestEmptySrc body
-// rather than a raw parser failure.
+// UnmarshalJSON parses each typed field. An empty src lands as a nil
+// Alias so validation surfaces ErrSSHTestEmptySrc rather than a parser
+// failure.
 func (t *SSHPolicyTest) UnmarshalJSON(b []byte) error {
 	var raw struct {
 		Src    string              `json:"src"`

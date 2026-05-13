@@ -15,9 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// knownSSHTesterDivergences documents captures where headscale and the
-// upstream control plane disagree. Each entry names the engine area a
-// follow-up needs to touch.
+// knownSSHTesterDivergences names the engine gap for each capture where
+// headscale and upstream disagree.
 var knownSSHTesterDivergences = map[string]string{
 	"sshtest-malformed-dst-bare-ipv6": "bare-IPv6 sshTests dst: upstream parse-accepts then engine-rejects; headscale accepts (IPv4 mirror passes both sides)",
 }
@@ -45,11 +44,8 @@ func TestSSHTesterCompat(t *testing.T) {
 				t.Skip(reason)
 			}
 
-			// Per-capture nodes: each capture pins its own
-			// topology IPs, and policy `hosts` aliases reference
-			// them by literal IP. A shared fixture would leave
-			// host-alias dsts resolving to no nodes — surface
-			// the path as a load-bearing failure instead.
+			// Each capture pins its own topology IPs; build nodes
+			// from the capture so host-alias dsts resolve.
 			nodes := buildGrantsNodesFromCapture(users, c)
 
 			policyJSON := []byte(c.Input.FullPolicy)
