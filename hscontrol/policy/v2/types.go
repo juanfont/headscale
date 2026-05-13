@@ -153,6 +153,10 @@ var (
 	ErrTestDestinationMultiPort    = errors.New("test destination port must be a single port")
 	ErrTestDestinationCIDR         = errors.New("test destination must be a single host, not a CIDR range")
 	ErrAutogroupInternetTestDst    = errors.New("autogroup:internet not valid as a test destination")
+	ErrSSHTestEmptySrc             = errors.New("SSH tests entry must have a non-empty src")
+	ErrSSHTestEmptyDst             = errors.New("SSH tests entry must have at least one dst")
+	ErrSSHTestDstUnknownTag        = errors.New("SSH tests dst contains unknown tag")
+	ErrSSHTestDstDisallowedElement = errors.New("SSH tests dst contains disallowed element")
 )
 
 type resolved struct {
@@ -2092,6 +2096,7 @@ type Policy struct {
 	AutoApprovers       AutoApproverPolicy `json:"autoApprovers"`
 	SSHs                []SSH              `json:"ssh,omitempty"`
 	Tests               []PolicyTest       `json:"tests,omitempty"`
+	SSHTests            []SSHPolicyTest    `json:"sshTests,omitempty"`
 	RandomizeClientPort bool               `json:"randomizeClientPort,omitempty"`
 }
 
@@ -2910,6 +2915,10 @@ func (p *Policy) validate() error {
 		errs = append(errs, err)
 	}
 
+	if err := validateSSHTests(p, p.SSHTests); err != nil { //nolint:noinlineerr
+		errs = append(errs, err)
+	}
+
 	if len(errs) > 0 {
 		return multierr.New(errs...)
 	}
@@ -3413,6 +3422,108 @@ func validateTestDestination(pol *Policy, dst string) error {
 			if p.Bits() < p.Addr().BitLen() {
 				return ErrTestDestinationCIDR
 			}
+		}
+	}
+
+	return nil
+}
+
+// validateSSHTests enforces the parse-time shape rules an sshTests entry
+// must satisfy: a non-empty src alias, at least one dst, and a dst list
+// whose entries each describe a single SSH-reachable host. Login-user
+// assertions (accept/deny/check) are not validated here — SaaS reports
+// empty assertion arrays and empty user strings through the same
+// "test(s) failed" body it uses for true evaluation failures, so those
+// cases stay with the engine. Both the parse-time errors and the
+// engine-time failures share the errSSHPolicyTestsFailed wrapper so
+// callers see one consistent body.
+func validateSSHTests(pol *Policy, tests []SSHPolicyTest) error {
+	var errs []error
+
+	for i, t := range tests {
+		if t.Src == "" {
+			errs = append(errs, fmt.Errorf("sshTest %d: %w", i, ErrSSHTestEmptySrc))
+		}
+
+		if len(t.Dst) == 0 {
+			errs = append(errs, fmt.Errorf("sshTest %d: %w", i, ErrSSHTestEmptyDst))
+		}
+
+		for _, dst := range t.Dst {
+			err := validateSSHTestDestination(pol, dst)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("sshTest %d: %w", i, err))
+			}
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("%w:\n%w", errSSHPolicyTestsFailed, multierr.New(errs...))
+	}
+
+	return nil
+}
+
+// validateSSHTestDestination enforces that an sshTests dst entry names a
+// single SSH-reachable host. Tailscale SaaS rejects three shapes at parse
+// time: a `:port` suffix (read by the parser as an unknown tag, hence the
+// "unknown tag" error wording); a CIDR-shaped value (raw `/N` or a
+// `hosts:` entry whose RHS is a multi-host prefix); and autogroup:internet
+// (only valid in ACL destinations, not SSH ones). Tag entries must
+// reference a tag that exists in tagOwners; bare hosts must resolve to a
+// single-address prefix.
+func validateSSHTestDestination(pol *Policy, dst string) error {
+	alias, err := parseAlias(dst)
+	if err != nil {
+		return fmt.Errorf("%w %q", ErrSSHTestDstDisallowedElement, dst)
+	}
+
+	switch a := alias.(type) {
+	case *AutoGroup:
+		// autogroup:internet is the only autogroup SaaS rejects at parse.
+		// Other autogroups (member, tagged, self, nonroot) are valid SSH
+		// dst aliases and pass through to engine evaluation.
+		if *a == AutoGroupInternet {
+			return fmt.Errorf("%w %q", ErrSSHTestDstDisallowedElement, dst)
+		}
+
+	case *Prefix:
+		// A CIDR literal in dst is rejected. A bare IP parses as a Prefix
+		// with no slash in the input string — distinguish on the raw text
+		// the same way validateTestDestination does.
+		if strings.Contains(dst, "/") {
+			return fmt.Errorf("%w %q", ErrSSHTestDstDisallowedElement, dst)
+		}
+
+	case *Tag:
+		// A tag must be declared in tagOwners. The `tag:server:22` shape
+		// reaches this branch because isTag only checks the `tag:` prefix
+		// — the colon-port suffix is preserved in the Tag string and the
+		// tagOwners lookup misses, reproducing the SaaS error wording.
+		if pol == nil {
+			return fmt.Errorf("%w %q", ErrSSHTestDstUnknownTag, string(*a))
+		}
+
+		err := pol.TagOwners.Contains(a)
+		if err != nil {
+			return fmt.Errorf("%w %q", ErrSSHTestDstUnknownTag, string(*a))
+		}
+
+	case *Host:
+		// A hosts: entry that resolves to a multi-host prefix is a CIDR
+		// in disguise — reject it the same way as raw `/N`.
+		if pol == nil {
+			return nil
+		}
+
+		pref, ok := pol.Hosts[*a]
+		if !ok {
+			return nil
+		}
+
+		p := netip.Prefix(pref)
+		if p.Bits() < p.Addr().BitLen() {
+			return fmt.Errorf("%w %q", ErrSSHTestDstDisallowedElement, dst)
 		}
 	}
 
