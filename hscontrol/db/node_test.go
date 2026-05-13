@@ -178,55 +178,6 @@ func TestDisableNodeExpiry(t *testing.T) {
 	assert.Nil(t, nodeFromDB.Expiry, "expiry should be nil after disabling")
 }
 
-func TestSetTags(t *testing.T) {
-	db, err := newSQLiteTestDB()
-	require.NoError(t, err)
-
-	user, err := db.CreateUser(types.User{Name: "test"})
-	require.NoError(t, err)
-
-	pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
-	require.NoError(t, err)
-
-	pakID := pak.ID
-
-	_, err = db.getNode(types.UserID(user.ID), "testnode")
-	require.Error(t, err)
-
-	nodeKey := key.NewNode()
-	machineKey := key.NewMachine()
-
-	node := &types.Node{
-		ID:             0,
-		MachineKey:     machineKey.Public(),
-		NodeKey:        nodeKey.Public(),
-		Hostname:       "testnode",
-		UserID:         &user.ID,
-		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      &pakID,
-	}
-
-	trx := db.DB.Save(node)
-	require.NoError(t, trx.Error)
-
-	// assign simple tags
-	sTags := []string{"tag:test", "tag:foo"}
-	err = db.SetTags(node.ID, sTags)
-	require.NoError(t, err)
-	node, err = db.getNode(types.UserID(user.ID), "testnode")
-	require.NoError(t, err)
-	assert.Equal(t, sTags, node.Tags)
-
-	// assign duplicate tags, expect no errors but no doubles in DB
-	eTags := []string{"tag:bar", "tag:test", "tag:unknown", "tag:test"}
-	err = db.SetTags(node.ID, eTags)
-	require.NoError(t, err)
-	node, err = db.getNode(types.UserID(user.ID), "testnode")
-	require.NoError(t, err)
-	assert.Equal(t, []string{"tag:bar", "tag:test", "tag:unknown"}, node.Tags)
-}
-
-
 func TestAutoApproveRoutes(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -409,13 +360,15 @@ func TestAutoApproveRoutes(t *testing.T) {
 				assert.Equal(t, tt.expectChange, changed1)
 
 				if changed1 {
-					err = SetApprovedRoutes(adb.DB, node.ID, newRoutes1)
+					node.ApprovedRoutes = types.Prefixes(newRoutes1)
+					err = adb.DB.Save(&node).Error
 					require.NoError(t, err)
 				}
 
 				newRoutes2, changed2 := policy.ApproveRoutesWithPolicy(pm, nodeTagged.View(), nodeTagged.ApprovedRoutes, tt.routes)
 				if changed2 {
-					err = SetApprovedRoutes(adb.DB, nodeTagged.ID, newRoutes2)
+					nodeTagged.ApprovedRoutes = types.Prefixes(newRoutes2)
+					err = adb.DB.Save(&nodeTagged).Error
 					require.NoError(t, err)
 				}
 
@@ -624,7 +577,6 @@ func TestListEphemeralNodes(t *testing.T) {
 	assert.Equal(t, nodeEph.UserID, ephemeralNodes[0].UserID)
 	assert.Equal(t, nodeEph.Hostname, ephemeralNodes[0].Hostname)
 }
-
 
 func TestListPeers(t *testing.T) {
 	// Setup test database

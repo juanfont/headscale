@@ -1,11 +1,9 @@
 package db
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
-	"slices"
 	"sort"
 	"strconv"
 	"sync"
@@ -17,7 +15,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
-	"tailscale.com/net/tsaddr"
 	"tailscale.com/types/key"
 	"tailscale.com/util/dnsname"
 )
@@ -186,87 +183,6 @@ func GetNodeByNodeKey(
 	}
 
 	return &mach, nil
-}
-
-func (hsdb *HSDatabase) SetTags(
-	nodeID types.NodeID,
-	tags []string,
-) error {
-	return hsdb.Write(func(tx *gorm.DB) error {
-		return SetTags(tx, nodeID, tags)
-	})
-}
-
-// SetTags takes a NodeID and update the forced tags.
-// It will overwrite any tags with the new list.
-func SetTags(
-	tx *gorm.DB,
-	nodeID types.NodeID,
-	tags []string,
-) error {
-	if len(tags) == 0 {
-		// if no tags are provided, we remove all tags
-		err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("tags", "[]").Error
-		if err != nil {
-			return fmt.Errorf("removing tags: %w", err)
-		}
-
-		return nil
-	}
-
-	slices.Sort(tags)
-	tags = slices.Compact(tags)
-
-	b, err := json.Marshal(tags)
-	if err != nil {
-		return err
-	}
-
-	err = tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("tags", string(b)).Error
-	if err != nil {
-		return fmt.Errorf("updating tags: %w", err)
-	}
-
-	return nil
-}
-
-// SetApprovedRoutes takes a Node struct pointer and updates the approved routes.
-func SetApprovedRoutes(
-	tx *gorm.DB,
-	nodeID types.NodeID,
-	routes []netip.Prefix,
-) error {
-	if len(routes) == 0 {
-		// if no routes are provided, we remove all
-		err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("approved_routes", "[]").Error
-		if err != nil {
-			return fmt.Errorf("removing approved routes: %w", err)
-		}
-
-		return nil
-	}
-
-	// When approving exit routes, ensure both IPv4 and IPv6 are included
-	// If either 0.0.0.0/0 or ::/0 is being approved, both should be approved
-	hasIPv4Exit := slices.Contains(routes, tsaddr.AllIPv4())
-	hasIPv6Exit := slices.Contains(routes, tsaddr.AllIPv6())
-
-	if hasIPv4Exit && !hasIPv6Exit {
-		routes = append(routes, tsaddr.AllIPv6())
-	} else if hasIPv6Exit && !hasIPv4Exit {
-		routes = append(routes, tsaddr.AllIPv4())
-	}
-
-	b, err := json.Marshal(routes)
-	if err != nil {
-		return err
-	}
-
-	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("approved_routes", string(b)).Error; err != nil { //nolint:noinlineerr
-		return fmt.Errorf("updating approved routes: %w", err)
-	}
-
-	return nil
 }
 
 // SetLastSeen sets a node's last seen field indicating that we
