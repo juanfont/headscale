@@ -44,6 +44,30 @@ This feature is **beta** while behavioural coverage against Tailscale SaaS broad
 
 [#3229](https://github.com/juanfont/headscale/pull/3229)
 
+### SSH policy tests (beta)
+
+Headscale now evaluates the `sshTests` block in a policy file. Each entry names a source, one or
+more destination hosts, and three optional user lists: `accept` asserts the listed login users
+reach every destination via an accept- or check-action SSH rule, `deny` asserts none of them
+reach any destination, and `check` requires reachability specifically through a check-action
+rule. Tests run on `headscale policy set`, on SIGHUP reload (`systemctl reload headscale` /
+`kill -HUP $(pidof headscale)`), and on `headscale policy check`. A failing test rejects the
+write before it is applied, with the same error message Tailscale SaaS would return for the same
+policy.
+
+At boot a stored policy whose sshTests no longer pass — for example because a referenced user was
+deleted while the server was offline — logs a warning and the server keeps running. Fix the
+policy and reload.
+
+This feature is **beta** while behavioural coverage against Tailscale SaaS broadens.
+
+### SSH rule validation
+
+SSH rule parsing now trims surrounding whitespace on `action`, `users`, `src`, and `dst`,
+rejects empty or wildcard entries in `users`, rejects empty `acceptEnv`, and rejects negative
+`checkPeriod`. `hosts:` aliases are rejected as SSH destinations, non-ASCII tag names are
+rejected at parse time, and the wording for group-nesting cycles matches Tailscale SaaS.
+
 ### Grants
 
 We now support [Tailscale grants](https://tailscale.com/docs/features/access-control/grants)
