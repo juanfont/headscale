@@ -8,6 +8,7 @@ import (
 	"io"
 	"maps"
 	"net/netip"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -27,6 +28,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
+	"tailscale.com/wgengine/filter"
 )
 
 const (
@@ -556,6 +558,56 @@ func assertCurlSuccessWithCollect(c *assert.CollectT, client TailscaleClient, ur
 	result, err := client.Curl(url)
 	assert.NoError(c, err, msg) //nolint:testifylint // CollectT requires assert, not require
 	assert.NotEmpty(c, result, msg)
+}
+
+// assertCurlDockerHostname curls url and asserts the body is the
+// 13-byte Docker auto-generated container hostname (12 hex chars +
+// trailing newline from /etc/hostname). For use inside EventuallyWithT.
+func assertCurlDockerHostname(c *assert.CollectT, client TailscaleClient, url, msg string) {
+	const dockerHostnameLen = 13
+
+	result, err := client.Curl(url)
+	assert.NoError(c, err, msg) //nolint:testifylint // CollectT requires assert, not require
+	assert.Len(c, result, dockerHostnameLen, msg)
+}
+
+// snapshotClientFilters snapshots each client's current netmap
+// PacketFilter keyed by hostname. Pair with waitForClientFilterChange.
+func snapshotClientFilters(t *testing.T, clients []TailscaleClient) map[string][]filter.Match {
+	t.Helper()
+
+	out := make(map[string][]filter.Match, len(clients))
+
+	for _, c := range clients {
+		nm, err := c.Netmap()
+		require.NoError(t, err, "snapshot netmap for %s", c.Hostname())
+
+		out[c.Hostname()] = nm.PacketFilter
+	}
+
+	return out
+}
+
+// waitForClientFilterChange polls each client until its netmap
+// PacketFilter differs from baselines[Hostname]. Use after SetPolicy
+// to gate on client-side filter application before asserting
+// reachability.
+func waitForClientFilterChange(t *testing.T, clients []TailscaleClient, baselines map[string][]filter.Match, timeout time.Duration) {
+	t.Helper()
+
+	for _, client := range clients {
+		c := client
+		baseline := baselines[c.Hostname()]
+
+		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+			nm, err := c.Netmap()
+			if !assert.NoError(ct, err, "fetch netmap for %s", c.Hostname()) {
+				return
+			}
+
+			assert.False(ct, reflect.DeepEqual(baseline, nm.PacketFilter), "client %s PacketFilter unchanged since baseline", c.Hostname())
+		}, timeout, integrationutil.SlowPoll, "client %s PacketFilter should change after SetPolicy", c.Hostname())
+	}
 }
 
 // assertCurlFailWithCollect asserts that a curl request fails. Uses
