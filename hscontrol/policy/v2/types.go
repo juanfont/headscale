@@ -863,6 +863,12 @@ type Alias interface {
 	Validate() error
 	UnmarshalJSON(b []byte) error
 
+	// String renders the alias back to its policy-file form. Implementations
+	// are expected to return a value that round-trips through parseAlias for
+	// any alias the parser accepted, so callers can use it as a stable
+	// identity in rendered errors and logs.
+	String() string
+
 	// Resolve resolves the Alias to an IPSet. The IPSet will contain all the IP
 	// addresses that the Alias represents within Headscale. It is the product
 	// of the Alias and the Policy, Users and Nodes.
@@ -2946,10 +2952,6 @@ func (p *SSHCheckPeriod) UnmarshalJSON(b []byte) error {
 		return nil
 	}
 
-	// time.ParseDuration produces error strings like
-	// `time: invalid duration "abc"` which match SaaS body wording
-	// exactly; model.ParseDuration wraps the same parse with custom
-	// phrasing and would diverge.
 	d, err := time.ParseDuration(str)
 	if err != nil {
 		return err
@@ -3441,7 +3443,7 @@ func validateSSHTests(pol *Policy, tests []SSHPolicyTest) error {
 	var errs []error
 
 	for i, t := range tests {
-		if t.Src == "" {
+		if t.Src == nil {
 			errs = append(errs, fmt.Errorf("sshTest %d: %w", i, ErrSSHTestEmptySrc))
 		}
 
@@ -3467,16 +3469,14 @@ func validateSSHTests(pol *Policy, tests []SSHPolicyTest) error {
 // validateSSHTestDestination enforces that an sshTests dst entry names a
 // single SSH-reachable host. Tailscale SaaS rejects three shapes at parse
 // time: a `:port` suffix (read by the parser as an unknown tag, hence the
-// "unknown tag" error wording); a CIDR-shaped value (raw `/N` or a
-// `hosts:` entry whose RHS is a multi-host prefix); and autogroup:internet
-// (only valid in ACL destinations, not SSH ones). Tag entries must
-// reference a tag that exists in tagOwners; bare hosts must resolve to a
-// single-address prefix.
-func validateSSHTestDestination(pol *Policy, dst string) error {
-	alias, err := parseAlias(dst)
-	if err != nil {
-		return fmt.Errorf("%w %q", ErrSSHTestDstDisallowedElement, dst)
-	}
+// "unknown tag" error wording); a multi-host CIDR (raw `/N` narrower than
+// the address width, or a `hosts:` entry whose RHS is a multi-host prefix);
+// and autogroup:internet (only valid in ACL destinations, not SSH ones).
+// A bare IP literal — which parses to a `/BitLen` prefix — names a single
+// host and is accepted. Tag entries must reference a tag that exists in
+// tagOwners; bare hosts must resolve to a single-address prefix.
+func validateSSHTestDestination(pol *Policy, alias Alias) error {
+	dst := alias.String()
 
 	switch a := alias.(type) {
 	case *AutoGroup:
@@ -3488,10 +3488,14 @@ func validateSSHTestDestination(pol *Policy, dst string) error {
 		}
 
 	case *Prefix:
-		// A CIDR literal in dst is rejected. A bare IP parses as a Prefix
-		// with no slash in the input string — distinguish on the raw text
-		// the same way validateTestDestination does.
-		if strings.Contains(dst, "/") {
+		// SaaS accepts a bare IP (parsed to a `/BitLen` prefix) as a
+		// single SSH-reachable host but rejects a narrower CIDR like
+		// `10.0.0.0/24`. Distinguish the two by mask width: a prefix
+		// whose Bits() matches the address BitLen() is a single host
+		// and passes; anything narrower is a multi-host range and is
+		// rejected the same way as raw `/N`.
+		p := netip.Prefix(*a)
+		if p.Bits() < p.Addr().BitLen() {
 			return fmt.Errorf("%w %q", ErrSSHTestDstDisallowedElement, dst)
 		}
 
