@@ -14,7 +14,6 @@ import (
 	"github.com/go-json-experiment/json"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/prometheus/common/model"
 	"github.com/tailscale/hujson"
 	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
@@ -35,8 +34,6 @@ const Wildcard = Asterix(0)
 
 var ErrAutogroupSelfRequiresPerNodeResolution = errors.New("autogroup:self requires per-node resolution and cannot be resolved in this context")
 
-var ErrCircularReference = errors.New("circular reference detected")
-
 var ErrUndefinedTagReference = errors.New("references undefined tag")
 
 // SSH validation errors.
@@ -46,17 +43,25 @@ var (
 	ErrSSHAutogroupSelfRequiresUserSource = errors.New("autogroup:self destination requires source to contain only users or groups, not tags or autogroup:tagged")
 	ErrSSHTagSourceToAutogroupMember      = errors.New("tags in SSH source cannot access autogroup:member (user-owned devices)")
 	ErrSSHWildcardDestination             = errors.New("wildcard (*) is not supported as SSH destination")
-	ErrSSHCheckPeriodBelowMin             = errors.New("checkPeriod below minimum of 1 minute")
-	ErrSSHCheckPeriodAboveMax             = errors.New("checkPeriod above maximum of 168 hours (1 week)")
+	ErrSSHCheckPeriodAboveMax             = errors.New("is above the max (168h)")
+	ErrSSHCheckPeriodNegative             = errors.New("must be a positive duration")
 	ErrSSHCheckPeriodOnNonCheck           = errors.New("checkPeriod is only valid with action \"check\"")
 	ErrInvalidLocalpart                   = errors.New("invalid localpart format, must be localpart:*@<domain>")
+	ErrSSHUsersMustBeSpecified            = errors.New("users must be specified")
+	ErrSSHUserInvalid                     = errors.New("is not valid")
+	ErrSSHAcceptEnvEmpty                  = errors.New("acceptEnv values cannot be empty")
+	ErrSSHActionMustBeSpecified           = errors.New("action must be specified")
+	ErrSSHActionInvalid                   = errors.New("is not a valid action")
+	ErrSSHDestinationHostAlias            = errors.New("invalid dst")
+	ErrTagNameMustStartWithLetter         = errors.New("tag names must start with a letter, after 'tag:'")
+	ErrGroupMembersCannotBeRecursive      = errors.New("group members cannot be recursive")
 )
 
 // SSH check period constants per Tailscale docs:
 // https://tailscale.com/docs/features/tailscale-ssh#checkperiod
+// SaaS imposes no minimum (0s is accepted) so headscale matches.
 const (
 	SSHCheckPeriodDefault = 12 * time.Hour
-	SSHCheckPeriodMin     = time.Minute
 	SSHCheckPeriodMax     = 168 * time.Hour
 )
 
@@ -120,7 +125,6 @@ var (
 	ErrGroupNotDefined             = errors.New("group not defined in policy")
 	ErrInvalidGroupMember          = errors.New("invalid group member type")
 	ErrGroupValueNotArray          = errors.New("group value must be an array of users")
-	ErrNestedGroups                = errors.New("nested groups are not allowed")
 	ErrInvalidHostIP               = errors.New("hostname contains invalid IP address")
 	ErrTagNotDefined               = errors.New("tag not found")
 	ErrAutoApproverNotAlias        = errors.New("auto approver is not an alias")
@@ -137,7 +141,6 @@ var (
 	ErrAutogroupDangerAllDst       = errors.New("cannot use autogroup:danger-all as a dst")
 	ErrAutogroupNotSupportedSSHSrc = errors.New("autogroup not supported for SSH sources")
 	ErrAutogroupNotSupportedSSHDst = errors.New("autogroup not supported for SSH destinations")
-	ErrAutogroupNotSupportedSSHUsr = errors.New("autogroup not supported for SSH user")
 	ErrHostNotDefined              = errors.New("host not defined in policy")
 	ErrSSHSourceAliasNotSupported  = errors.New("alias not supported for SSH source")
 	ErrSSHDestAliasNotSupported    = errors.New("alias not supported for SSH destination")
@@ -539,12 +542,27 @@ func (g *Group) resolve(p *Policy, users types.Users, nodes views.Slice[types.No
 // Tag is a special string which is always prefixed with `tag:`.
 type Tag string
 
+// Validate enforces the `tag:` prefix and the SaaS rule that the
+// first character after the prefix is an ASCII letter ([A-Za-z]).
+// Subsequent characters may be ASCII letters, digits, hyphens, or
+// dots — those are checked by the existing alias parser elsewhere.
 func (t *Tag) Validate() error {
-	if isTag(string(*t)) {
-		return nil
+	s := string(*t)
+	if !isTag(s) {
+		return fmt.Errorf("%w, got: %q", ErrInvalidTagFormat, *t)
 	}
 
-	return fmt.Errorf("%w, got: %q", ErrInvalidTagFormat, *t)
+	rest := strings.TrimPrefix(s, "tag:")
+	if rest == "" {
+		return ErrTagNameMustStartWithLetter
+	}
+
+	first := rest[0]
+	if (first < 'a' || first > 'z') && (first < 'A' || first > 'Z') {
+		return ErrTagNameMustStartWithLetter
+	}
+
+	return nil
 }
 
 func (t *Tag) UnmarshalJSON(b []byte) error {
@@ -1056,10 +1074,17 @@ func parseAlias(vs string) (Alias, error) {
 // AliasEnc is used to deserialize a Alias.
 type AliasEnc struct{ Alias }
 
+// UnmarshalJSON trims surrounding whitespace from each alias string
+// before dispatching so that `"tag:server "` or `" odin@example.com"`
+// resolves to the same tag or user SaaS would resolve. SaaS trims
+// before lookup; a literal-match policy here would drop the affected
+// node from every rule referencing it.
 func (ve *AliasEnc) UnmarshalJSON(b []byte) error {
 	ptr, err := unmarshalPointer(
 		b,
-		parseAlias,
+		func(s string) (Alias, error) {
+			return parseAlias(strings.TrimSpace(s))
+		},
 	)
 	if err != nil {
 		return err
@@ -1379,6 +1404,27 @@ func (g *Groups) UnmarshalJSON(b []byte) error {
 		}
 	}
 
+	// SaaS rejects any group-in-group reference (cycle, chain,
+	// self-cycle) with `groups["X"]: "Y": group members cannot be
+	// recursive`. Iterate keys in descending alphabetical order so
+	// the reported (X, Y) pair matches the SaaS engine, which
+	// reports the deepest non-leaf parent first.
+	keys := make([]string, 0, len(rawGroups))
+	for k := range rawGroups {
+		keys = append(keys, k)
+	}
+
+	slices.Sort(keys)
+	slices.Reverse(keys)
+
+	for _, key := range keys {
+		for _, u := range rawGroups[key] {
+			if isGroup(u) {
+				return fmt.Errorf("groups[%q]: %q: %w", key, u, ErrGroupMembersCannotBeRecursive)
+			}
+		}
+	}
+
 	*g = make(Groups)
 
 	for key, value := range rawGroups {
@@ -1391,10 +1437,6 @@ func (g *Groups) UnmarshalJSON(b []byte) error {
 
 			err := username.Validate()
 			if err != nil {
-				if isGroup(u) {
-					return fmt.Errorf("%w: found %q inside %q", ErrNestedGroups, u, group)
-				}
-
 				return err
 			}
 
@@ -1647,15 +1689,25 @@ func (a *SSHAction) String() string {
 }
 
 // UnmarshalJSON implements JSON unmarshaling for SSHAction.
+//
+// Empty strings are accepted at parse time; the per-rule validate()
+// pass surfaces them with `action must be specified` to match SaaS.
+// Non-empty unknown values fail here with `"foo" is not a valid action`.
+//
+// SaaS trims surrounding whitespace before comparing, then complains
+// about the trimmed content; the resulting error quotes the trimmed
+// value (e.g. `" Accept "` → `"Accept" is not a valid action`).
 func (a *SSHAction) UnmarshalJSON(b []byte) error {
-	str := strings.Trim(string(b), `"`)
+	str := strings.TrimSpace(strings.Trim(string(b), `"`))
 	switch str {
+	case "":
+		*a = SSHAction("")
 	case "accept":
 		*a = SSHActionAccept
 	case "check":
 		*a = SSHActionCheck
 	default:
-		return fmt.Errorf("%w: %q, must be one of: accept, check", ErrInvalidSSHAction, str)
+		return fmt.Errorf("%q %w", str, ErrSSHActionInvalid)
 	}
 
 	return nil
@@ -2052,7 +2104,6 @@ var (
 	autogroupForDst       = []AutoGroup{AutoGroupInternet, AutoGroupMember, AutoGroupTagged, AutoGroupSelf}
 	autogroupForSSHSrc    = []AutoGroup{AutoGroupMember, AutoGroupTagged}
 	autogroupForSSHDst    = []AutoGroup{AutoGroupMember, AutoGroupTagged, AutoGroupSelf}
-	autogroupForSSHUser   = []AutoGroup{AutoGroupNonRoot}
 	autogroupForNodeAttrs = []AutoGroup{AutoGroupMember, AutoGroupTagged}
 	autogroupNotSupported = []AutoGroup{}
 
@@ -2187,18 +2238,6 @@ func validateAutogroupForSSHDst(dst *AutoGroup) error {
 
 	if !slices.Contains(autogroupForSSHDst, *dst) {
 		return fmt.Errorf("%w: %q, can be %v", ErrAutogroupNotSupportedSSHDst, *dst, autogroupForSSHDst)
-	}
-
-	return nil
-}
-
-func validateAutogroupForSSHUser(user *AutoGroup) error {
-	if user == nil {
-		return nil
-	}
-
-	if !slices.Contains(autogroupForSSHUser, *user) {
-		return fmt.Errorf("%w: %q, can be %v", ErrAutogroupNotSupportedSSHUsr, *user, autogroupForSSHUser)
 	}
 
 	return nil
@@ -2479,23 +2518,37 @@ func (p *Policy) validate() error {
 	}
 
 	for _, ssh := range p.SSHs {
+		// SaaS rejects empty/missing `action` with `action must be
+		// specified`; an empty SSHAction survives parse intentionally
+		// so this validate pass surfaces the SaaS-aligned wording.
+		if ssh.Action == "" {
+			errs = append(errs, ErrSSHActionMustBeSpecified)
+		}
+
+		// SaaS rejects empty/missing `users` with `users must be
+		// specified`; non-canonical user strings (autogroup:*, group:,
+		// tag:, malformed localpart:) are accepted and flow through to
+		// compileSSHPolicy as literals — matching SaaS compile output.
+		if len(ssh.Users) == 0 {
+			errs = append(errs, ErrSSHUsersMustBeSpecified)
+		}
+
 		for _, user := range ssh.Users {
-			if strings.HasPrefix(string(user), "autogroup:") {
-				maybeAuto := AutoGroup(user)
-
-				err := validateAutogroupForSSHUser(&maybeAuto)
-				if err != nil {
-					errs = append(errs, err)
-					continue
-				}
+			// SaaS rejects `""` and `"*"` as user logins; everything
+			// else (including autogroup:*, group:, tag:, malformed
+			// localpart:) is accepted and treated as a literal.
+			switch user {
+			case "", "*":
+				errs = append(errs, fmt.Errorf("user %q %w", user, ErrSSHUserInvalid))
 			}
+		}
 
-			if user.IsLocalpart() {
-				_, err := user.ParseLocalpart()
-				if err != nil {
-					errs = append(errs, err)
-					continue
-				}
+		// SaaS rejects empty entries in `acceptEnv` with
+		// `acceptEnv values cannot be empty`. The wildcard `*` and
+		// double-glob `**` are accepted (only empty string is invalid).
+		for _, env := range ssh.AcceptEnv {
+			if env == "" {
+				errs = append(errs, ErrSSHAcceptEnvEmpty)
 			}
 		}
 
@@ -2555,6 +2608,13 @@ func (p *Policy) validate() error {
 				if err != nil {
 					errs = append(errs, err)
 				}
+			case *Host:
+				// SaaS rejects every hosts-table alias on an SSH
+				// dst with `invalid dst "alias"`, whether the
+				// alias resolves to a single IP or a CIDR. The
+				// equivalent ACL rule accepts the same aliases,
+				// so reject here rather than at parse time.
+				errs = append(errs, fmt.Errorf("%w %q", ErrSSHDestinationHostAlias, string(*dst)))
 			}
 		}
 
@@ -2877,12 +2937,16 @@ func (p *SSHCheckPeriod) UnmarshalJSON(b []byte) error {
 		return nil
 	}
 
-	d, err := model.ParseDuration(str)
+	// time.ParseDuration produces error strings like
+	// `time: invalid duration "abc"` which match SaaS body wording
+	// exactly; model.ParseDuration wraps the same parse with custom
+	// phrasing and would diverge.
+	d, err := time.ParseDuration(str)
 	if err != nil {
-		return fmt.Errorf("parsing checkPeriod %q: %w", str, err)
+		return err
 	}
 
-	p.Duration = time.Duration(d)
+	p.Duration = d
 
 	return nil
 }
@@ -2897,25 +2961,22 @@ func (p SSHCheckPeriod) MarshalJSON() ([]byte, error) {
 }
 
 // Validate checks that the SSHCheckPeriod is within allowed bounds.
+// SaaS rejects negative durations with `must be a positive duration`
+// and anything above 168h with `is above the max (168h)`; the 168h
+// upper bound is inclusive.
 func (p *SSHCheckPeriod) Validate() error {
 	if p.Always {
 		return nil
 	}
 
-	if p.Duration < SSHCheckPeriodMin {
-		return fmt.Errorf(
-			"%w: got %s",
-			ErrSSHCheckPeriodBelowMin,
-			p.Duration,
-		)
+	if p.Duration < 0 {
+		// SaaS body: `checkPeriod -1m0s must be a positive duration`.
+		return fmt.Errorf("checkPeriod %s %w", p.Duration, ErrSSHCheckPeriodNegative)
 	}
 
 	if p.Duration > SSHCheckPeriodMax {
-		return fmt.Errorf(
-			"%w: got %s",
-			ErrSSHCheckPeriodAboveMax,
-			p.Duration,
-		)
+		// SaaS body: `checkPeriod 200h0m0s is above the max (168h)`.
+		return fmt.Errorf("checkPeriod %s %w", p.Duration, ErrSSHCheckPeriodAboveMax)
 	}
 
 	return nil
@@ -3093,25 +3154,33 @@ func (u SSHUsers) ContainsNonRoot() bool {
 	return slices.Contains(u, SSHUser(AutoGroupNonRoot))
 }
 
-// ContainsLocalpart returns true if any entry has the localpart: prefix.
+// ContainsLocalpart returns true if any entry is a canonical
+// `localpart:*@<domain>` form. Non-canonical strings that merely start
+// with `localpart:` (e.g. `localpart:`, `localpart:foo`) are treated as
+// literal user names per SaaS behaviour.
 func (u SSHUsers) ContainsLocalpart() bool {
 	return slices.ContainsFunc(u, func(user SSHUser) bool {
-		return user.IsLocalpart()
+		return user.IsCanonicalLocalpart()
 	})
 }
 
-// NormalUsers returns all SSH users that are not root, autogroup:nonroot,
-// or localpart: entries.
+// NormalUsers returns SSH users handled by the literal user map: every
+// entry except root, autogroup:nonroot, and canonical
+// `localpart:*@<domain>`. Malformed `localpart:` strings flow through
+// here so they end up in the compiled SSHUsers map literally — matching
+// SaaS, which also keeps them verbatim.
 func (u SSHUsers) NormalUsers() []SSHUser {
 	return slicesx.Filter(nil, u, func(user SSHUser) bool {
-		return user != "root" && user != SSHUser(AutoGroupNonRoot) && !user.IsLocalpart()
+		return user != "root" && user != SSHUser(AutoGroupNonRoot) && !user.IsCanonicalLocalpart()
 	})
 }
 
-// LocalpartEntries returns only the localpart: prefixed entries.
+// LocalpartEntries returns only canonical `localpart:*@<domain>` entries.
+// Non-canonical localpart strings are excluded so they do not trigger
+// the resolution path; they are emitted literally by NormalUsers.
 func (u SSHUsers) LocalpartEntries() []SSHUser {
 	return slicesx.Filter(nil, u, func(user SSHUser) bool {
-		return user.IsLocalpart()
+		return user.IsCanonicalLocalpart()
 	})
 }
 
@@ -3121,9 +3190,23 @@ func (u SSHUser) String() string {
 	return string(u)
 }
 
-// IsLocalpart returns true if the SSHUser has the localpart: prefix.
+// IsLocalpart returns true if the SSHUser has the literal `localpart:`
+// prefix. It is a syntactic check only — non-canonical shapes still
+// pass.
 func (u SSHUser) IsLocalpart() bool {
 	return strings.HasPrefix(string(u), SSHUserLocalpartPrefix)
+}
+
+// IsCanonicalLocalpart reports whether the SSHUser parses as the
+// canonical `localpart:*@<domain>` form that resolution acts on.
+func (u SSHUser) IsCanonicalLocalpart() bool {
+	if !u.IsLocalpart() {
+		return false
+	}
+
+	_, err := u.ParseLocalpart()
+
+	return err == nil
 }
 
 // ParseLocalpart validates and extracts the domain from a localpart: entry.
@@ -3161,6 +3244,23 @@ func (u SSHUser) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(u))
 }
 
+// UnmarshalJSON trims surrounding whitespace per element so a policy
+// like `"users": [" root"]` stores `"root"` and compiles to the same
+// `sshUsers: {"root": "root"}` map SaaS produces. A whitespace-only
+// entry like `[" "]` collapses to `""` and falls through to the
+// per-rule validate() pass, which surfaces the SaaS-aligned
+// `user "" is not valid`.
+func (u *SSHUser) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil { //nolint:noinlineerr
+		return err
+	}
+
+	*u = SSHUser(strings.TrimSpace(s))
+
+	return nil
+}
+
 // unmarshalPolicy takes a byte slice and unmarshals it into a Policy struct.
 // In addition to unmarshalling, it will also validate the policy.
 // This is the only entrypoint of reading a policy from a file or other source.
@@ -3191,6 +3291,16 @@ func unmarshalPolicy(b []byte) (*Policy, error) {
 			// []Tag; match SaaS wording instead of Go's JSON diagnostic.
 			if strings.Contains(string(serr.JSONPointer), "/via/") {
 				return nil, ErrGrantViaNotATag
+			}
+
+			// Non-ASCII tag-name failures surface from Tag.Validate
+			// at unmarshal time. Reshape the error to mirror SaaS
+			// (`tagOwners["tag:X"]: …`).
+			if errors.Is(serr.Err, ErrTagNameMustStartWithLetter) {
+				ptr := serr.JSONPointer
+				name := ptr.LastToken()
+
+				return nil, fmt.Errorf("tagOwners[%q]: %w", name, ErrTagNameMustStartWithLetter)
 			}
 		}
 

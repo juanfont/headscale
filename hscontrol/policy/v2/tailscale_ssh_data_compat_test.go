@@ -1,18 +1,9 @@
-// This file implements a data-driven test runner for SSH compatibility tests.
-// It loads HuJSON golden files from testdata/ssh_results/ssh-*.hujson, captured
-// from a Tailscale-hosted control plane, and compares headscale's SSH policy
-// compilation against the captured SSH rules.
-//
-// Each file is a testcapture.Capture containing:
-//   - The full policy that was POSTed to Tailscale SaaS (we use tf.Input.FullPolicy
-//     directly instead of reconstructing it from a sub-section)
-//   - The expected SSH rules for each of the 8 test nodes (in tf.Captures[name].SSHRules)
-//
-// Tests known to fail due to unimplemented features or known differences are
-// skipped with a TODO comment explaining the root cause.
-//
-// Test data source: testdata/ssh_results/ssh-*.hujson
-// Source format:    github.com/juanfont/headscale/hscontrol/types/testcapture
+// Replay golden HuJSON captures under testdata/ssh_results/ssh-*.hujson:
+// the 200 path compares headscale's compileSSHPolicy output node-by-node
+// against the captured SSHRules; the non-200 path requires headscale to
+// reject the same input with the captured error body as a substring.
+// Divergences are listed in sshSkipReasons (200) and sshRejectSkipReasons
+// (non-200) with the engine gap each represents.
 
 package v2
 
@@ -31,16 +22,10 @@ import (
 	"tailscale.com/tailcfg"
 )
 
-// setupSSHDataCompatUsers returns the 3 test users for SSH data-driven
-// compatibility tests. Users get norse-god names; nodes get original-151
-// pokémon names — matching the anonymized identifiers the capture
-// tool writes into the capture files.
-//
-// odin and freya live on @example.com; thor lives on @example.org so
-// that "localpart:*@example.com" resolves to exactly two users
-// (matching SaaS output) and the "user on a different email domain"
-// case stays covered by scenarios like ssh-d1 that use
-// "localpart:*@example.org".
+// setupSSHDataCompatUsers returns three users straddling two email
+// domains so that "localpart:*@example.com" resolves to exactly two
+// users (odin, freya) and the cross-domain case stays covered through
+// thor on @example.org.
 func setupSSHDataCompatUsers() types.Users {
 	return types.Users{
 		{
@@ -126,39 +111,29 @@ func loadSSHTestFile(t *testing.T, path string) *testcapture.Capture {
 	return c
 }
 
-// sshSkipReasons documents why each skipped test fails and what needs to be
-// fixed. Tests are grouped by root cause to identify high-impact changes.
+// sshSkipReasons documents captures the upstream control plane accepts
+// but headscale cannot yet represent. Each entry names the feature gap.
 var sshSkipReasons = map[string]string{
-	// USER_PASSKEY_WILDCARD (2 tests)
-	//
-	// headscale does not support passkey authentication and has no
-	// equivalent for the user:*@passkey wildcard pattern.
-	"ssh-b5":  "user:*@passkey wildcard not supported in headscale",
-	"ssh-d10": "user:*@passkey wildcard not supported in headscale",
-
-	// DOMAIN_NOT_ASSOCIATED (4 tests)
-	//
-	// SaaS validates that email domains in user:*@domain and
-	// localpart:*@domain expressions are configured tailnet domains.
-	// headscale has no concept of "associated tailnet domains" — it
-	// only has users with email addresses. These policies are
-	// legitimately rejected by SaaS but not by headscale.
-	"ssh-b4": "domain validation: headscale has no 'associated tailnet domains' concept",
-	"ssh-d1": "domain validation: headscale has no 'associated tailnet domains' concept",
-	"ssh-e1": "domain validation: headscale has no 'associated tailnet domains' concept",
-	"ssh-e2": "domain validation: headscale has no 'associated tailnet domains' concept",
+	"ssh-b5":  "headscale has no passkey authentication; user:*@passkey wildcard unsupported",
+	"ssh-d10": "headscale has no passkey authentication; user:*@passkey wildcard unsupported",
 }
 
-// TestSSHDataCompat is a data-driven test that loads all ssh-*.hujson test
-// files captured from Tailscale SaaS and compares headscale's SSH policy
-// compilation against the real Tailscale behavior.
-//
-// Each capture file contains:
-//   - The full policy that was POSTed to the SaaS API (Input.FullPolicy)
-//   - Expected SSH rules per node (Captures[name].SSHRules)
-//
-// The test converts Tailscale user email formats to headscale format and runs
-// the captured policy through unmarshalPolicy and compileSSHPolicy.
+// sshRejectSkipReasons documents captures the upstream control plane
+// rejects for reasons headscale cannot apply. Each entry names the
+// feature gap.
+var sshRejectSkipReasons = map[string]string{
+	"ssh-b4": "headscale has no associated-tailnet-domains config; user:*@domain / localpart:*@domain are not domain-validated",
+	"ssh-d1": "headscale has no associated-tailnet-domains config; user:*@domain / localpart:*@domain are not domain-validated",
+	"ssh-e1": "headscale has no associated-tailnet-domains config; user:*@domain / localpart:*@domain are not domain-validated",
+	"ssh-e2": "headscale has no associated-tailnet-domains config; user:*@domain / localpart:*@domain are not domain-validated",
+	"ssh-malformed-user-localpart-multi-glob": "headscale has no associated-tailnet-domains config; user:*@domain / localpart:*@domain are not domain-validated",
+}
+
+// TestSSHDataCompat loads every ssh-*.hujson capture, parses the policy
+// it pinned, and compiles the same per-node SSH rules to compare against
+// the captured shape. Non-200 captures replay the rejection path: the
+// recorded error body must appear as a substring of headscale's
+// rejection.
 func TestSSHDataCompat(t *testing.T) {
 	t.Parallel()
 
@@ -192,39 +167,61 @@ func TestSSHDataCompat(t *testing.T) {
 		t.Run(tf.TestID, func(t *testing.T) {
 			t.Parallel()
 
-			// Check if this test is in the skip list
-			if reason, ok := sshSkipReasons[tf.TestID]; ok {
-				t.Skipf(
-					"TODO: %s — see sshSkipReasons comments for details",
-					reason,
-				)
-
-				return
-			}
-
-			// SaaS rejected this policy — verify headscale also rejects it.
-			if tf.Error {
-				testSSHError(t, tf)
-
-				return
-			}
-
-			// Build nodes per-scenario from this file's topology.
-			// the capture tool uses clean-slate mode, so each scenario has
-			// different node IPs.
+			// Each capture pins its own topology IPs, so nodes are
+			// rebuilt from the capture rather than a shared fixture.
 			nodes := buildGrantsNodesFromCapture(users, tf)
 
-			// Use the captured full policy as is. Anonymization in
-			// captures already rewrite SaaS emails to @example.com.
-			policyJSON := tf.Input.FullPolicy
+			policyJSON := []byte(tf.Input.FullPolicy)
 
-			pol, err := unmarshalPolicy([]byte(policyJSON))
+			if tf.Input.APIResponseCode != 200 {
+				if reason, ok := sshRejectSkipReasons[tf.TestID]; ok {
+					t.Skipf("skipping: %s", reason)
+					return
+				}
+
+				pm, parseErr := NewPolicyManager(policyJSON, users, nodes.ViewSlice())
+
+				var got error
+
+				switch {
+				case parseErr != nil:
+					got = parseErr
+				default:
+					_, setErr := pm.SetPolicy(policyJSON)
+					got = setErr
+				}
+
+				require.Error(t, got, "tailscale rejected; headscale must reject too")
+
+				if tf.Input.APIResponseBody == nil ||
+					tf.Input.APIResponseBody.Message == "" {
+					return
+				}
+
+				want := tf.Input.APIResponseBody.Message
+				if !strings.Contains(got.Error(), want) {
+					t.Errorf(
+						"error body mismatch\n  tailscale wants: %q\n  headscale got:   %q",
+						want,
+						got.Error(),
+					)
+				}
+
+				return
+			}
+
+			if reason, ok := sshSkipReasons[tf.TestID]; ok {
+				t.Skipf("skipping: %s", reason)
+				return
+			}
+
+			pol, err := unmarshalPolicy(policyJSON)
 			require.NoError(
 				t,
 				err,
 				"%s: policy should parse successfully\nPolicy:\n%s",
 				tf.TestID,
-				policyJSON,
+				tf.Input.FullPolicy,
 			)
 
 			for nodeName, capture := range tf.Captures {
@@ -308,98 +305,4 @@ func TestSSHDataCompat(t *testing.T) {
 			}
 		})
 	}
-}
-
-// sshErrorMessageMap maps Tailscale SaaS error substrings to headscale
-// equivalents where the wording differs but the meaning is the same.
-var sshErrorMessageMap = map[string]string{}
-
-// testSSHError verifies that an invalid policy produces the expected error.
-func testSSHError(t *testing.T, tf *testcapture.Capture) {
-	t.Helper()
-
-	policyJSON := []byte(tf.Input.FullPolicy)
-
-	pol, err := unmarshalPolicy(policyJSON)
-	if err != nil {
-		// Parse-time error.
-		if tf.Input.APIResponseBody != nil {
-			wantMsg := tf.Input.APIResponseBody.Message
-			if wantMsg != "" {
-				assertSSHErrorContains(t, err, wantMsg, tf.TestID)
-			}
-		}
-
-		return
-	}
-
-	err = pol.validate()
-	if err != nil {
-		if tf.Input.APIResponseBody != nil {
-			wantMsg := tf.Input.APIResponseBody.Message
-			if wantMsg != "" {
-				assertSSHErrorContains(t, err, wantMsg, tf.TestID)
-			}
-		}
-
-		return
-	}
-
-	t.Errorf(
-		"%s: expected error but policy parsed and validated successfully",
-		tf.TestID,
-	)
-}
-
-// assertSSHErrorContains checks that an error message matches the
-// expected Tailscale SaaS message, using progressive fallbacks:
-//  1. Direct substring match
-//  2. Mapped equivalent from sshErrorMessageMap
-//  3. Key-part extraction (tags, autogroups)
-//  4. t.Errorf on no match (strict)
-func assertSSHErrorContains(
-	t *testing.T,
-	err error,
-	wantMsg string,
-	testID string,
-) {
-	t.Helper()
-
-	errStr := err.Error()
-
-	// 1. Direct substring match.
-	if strings.Contains(errStr, wantMsg) {
-		return
-	}
-
-	// 2. Mapped equivalent.
-	for tsKey, hsKey := range sshErrorMessageMap {
-		if strings.Contains(wantMsg, tsKey) &&
-			strings.Contains(errStr, hsKey) {
-			return
-		}
-	}
-
-	// 3. Key-part extraction.
-	for _, part := range []string{
-		"autogroup:",
-		"tag:",
-		"undefined",
-		"not valid",
-	} {
-		if strings.Contains(wantMsg, part) &&
-			strings.Contains(errStr, part) {
-			return
-		}
-	}
-
-	// 4. No match — strict failure.
-	t.Errorf(
-		"%s: error message mismatch\n"+
-			"  want (tailscale): %q\n"+
-			"  got  (headscale): %q",
-		testID,
-		wantMsg,
-		errStr,
-	)
 }
