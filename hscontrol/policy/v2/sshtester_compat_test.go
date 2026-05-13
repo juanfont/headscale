@@ -31,14 +31,7 @@ import (
 // knownSSHTesterDivergences tracks scenarios where headscale and SaaS
 // disagree on whether a policy is accepted. Each entry should describe
 // the engine area a follow-up PR needs to touch.
-var knownSSHTesterDivergences = map[string]string{
-	// SaaS rejects `users: ["*"]` on an `ssh` rule at policy-parse
-	// time with `user "*" is not valid`; headscale accepts the
-	// wildcard and proceeds to evaluate sshTests against it. Fix in
-	// hscontrol/policy/v2/types.go — reject `*` as an SSH login user
-	// during SSH-rule validation.
-	"sshtest-user-wildcard": "headscale accepts `users: [\"*\"]` on ssh rules; SaaS rejects with `user \"*\" is not valid`",
-}
+var knownSSHTesterDivergences = map[string]string{}
 
 func TestSSHTesterCompat(t *testing.T) {
 	t.Parallel()

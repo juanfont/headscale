@@ -660,7 +660,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 			},
 		},
 		{
-			name: "ssh-with-tag-and-user",
+			name: "ssh-with-tag-and-wildcard-user",
 			input: `
 {
   "tagOwners": {
@@ -681,26 +681,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   ]
 }
 `,
-			want: &Policy{
-				TagOwners: TagOwners{
-					Tag("tag:web"):    Owners{new(Username("admin@example.com"))},
-					Tag("tag:server"): Owners{new(Username("admin@example.com"))},
-				},
-				SSHs: []SSH{
-					{
-						Action: "accept",
-						Sources: SSHSrcAliases{
-							tp("tag:web"),
-						},
-						Destinations: SSHDstAliases{
-							tp("tag:server"),
-						},
-						Users: []SSHUser{
-							SSHUser("*"),
-						},
-					},
-				},
-			},
+			wantErr: `user "*" is not valid`,
 		},
 		{
 			name: "ssh-with-check-period",
@@ -2006,8 +1987,11 @@ func TestUnmarshalPolicy(t *testing.T) {
 `,
 			wantErr: "square brackets are only valid around IPv6 addresses",
 		},
+		// Non-canonical `localpart:` strings flow through as literal
+		// user names per SaaS behaviour — captured in
+		// ssh-malformed-user-localpart-{no-at,no-glob,no-domain}.
 		{
-			name: "ssh-localpart-invalid-no-at-sign",
+			name: "ssh-localpart-non-canonical-no-at-sign",
 			input: `
 {
   "tagOwners": {"tag:prod": ["admin@"]},
@@ -2019,10 +2003,22 @@ func TestUnmarshalPolicy(t *testing.T) {
   }]
 }
 `,
-			wantErr: "invalid localpart format",
+			want: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:prod"): Owners{new(Username("admin@"))},
+				},
+				SSHs: []SSH{
+					{
+						Action:       "accept",
+						Sources:      SSHSrcAliases{agp("autogroup:member")},
+						Destinations: SSHDstAliases{tp("tag:prod")},
+						Users:        []SSHUser{SSHUser("localpart:foo")},
+					},
+				},
+			},
 		},
 		{
-			name: "ssh-localpart-invalid-non-wildcard",
+			name: "ssh-localpart-non-canonical-non-wildcard",
 			input: `
 {
   "tagOwners": {"tag:prod": ["admin@"]},
@@ -2034,10 +2030,22 @@ func TestUnmarshalPolicy(t *testing.T) {
   }]
 }
 `,
-			wantErr: "invalid localpart format",
+			want: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:prod"): Owners{new(Username("admin@"))},
+				},
+				SSHs: []SSH{
+					{
+						Action:       "accept",
+						Sources:      SSHSrcAliases{agp("autogroup:member")},
+						Destinations: SSHDstAliases{tp("tag:prod")},
+						Users:        []SSHUser{SSHUser("localpart:alice@example.com")},
+					},
+				},
+			},
 		},
 		{
-			name: "ssh-localpart-invalid-empty-domain",
+			name: "ssh-localpart-non-canonical-empty-domain",
 			input: `
 {
   "tagOwners": {"tag:prod": ["admin@"]},
@@ -2049,7 +2057,19 @@ func TestUnmarshalPolicy(t *testing.T) {
   }]
 }
 `,
-			wantErr: "invalid localpart format",
+			want: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:prod"): Owners{new(Username("admin@"))},
+				},
+				SSHs: []SSH{
+					{
+						Action:       "accept",
+						Sources:      SSHSrcAliases{agp("autogroup:member")},
+						Destinations: SSHDstAliases{tp("tag:prod")},
+						Users:        []SSHUser{SSHUser("localpart:*@")},
+					},
+				},
+			},
 		},
 		// A test entry with neither accept nor deny asserts nothing
 		// and is silently accepted today. Tailscale rejects the policy.
@@ -4364,17 +4384,20 @@ func TestSSHCheckPeriodValidate(t *testing.T) {
 			period: SSHCheckPeriod{Always: true},
 		},
 		{
-			name:   "1m minimum valid",
+			name:   "zero duration is valid",
+			period: SSHCheckPeriod{Duration: 0},
+		},
+		{
+			name:   "30s below previous minimum is valid (matches SaaS)",
+			period: SSHCheckPeriod{Duration: 30 * time.Second},
+		},
+		{
+			name:   "1m valid",
 			period: SSHCheckPeriod{Duration: time.Minute},
 		},
 		{
 			name:   "168h maximum valid",
 			period: SSHCheckPeriod{Duration: 168 * time.Hour},
-		},
-		{
-			name:    "30s below minimum",
-			period:  SSHCheckPeriod{Duration: 30 * time.Second},
-			wantErr: ErrSSHCheckPeriodBelowMin,
 		},
 		{
 			name:    "169h above maximum",
@@ -4444,7 +4467,7 @@ func TestSSHCheckPeriodPolicyValidation(t *testing.T) {
 			wantErr: ErrSSHCheckPeriodOnNonCheck,
 		},
 		{
-			name: "check with 30s is invalid",
+			name: "check with 30s is valid (matches SaaS, no minimum)",
 			ssh: SSH{
 				Action:       SSHActionCheck,
 				Sources:      SSHSrcAliases{up("user@")},
@@ -4452,7 +4475,17 @@ func TestSSHCheckPeriodPolicyValidation(t *testing.T) {
 				Users:        SSHUsers{"root"},
 				CheckPeriod:  &SSHCheckPeriod{Duration: 30 * time.Second},
 			},
-			wantErr: ErrSSHCheckPeriodBelowMin,
+		},
+		{
+			name: "check with 200h above max is invalid",
+			ssh: SSH{
+				Action:       SSHActionCheck,
+				Sources:      SSHSrcAliases{up("user@")},
+				Destinations: SSHDstAliases{agp("autogroup:member")},
+				Users:        SSHUsers{"root"},
+				CheckPeriod:  &SSHCheckPeriod{Duration: 200 * time.Hour},
+			},
+			wantErr: ErrSSHCheckPeriodAboveMax,
 		},
 	}
 
@@ -4470,6 +4503,115 @@ func TestSSHCheckPeriodPolicyValidation(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+// TestSSHRuleSaaSValidation exercises the SaaS-aligned rejections
+// added to match the API body strings exactly.
+func TestSSHRuleSaaSValidation(t *testing.T) {
+	baseSSH := func(modify func(*SSH)) SSH {
+		ssh := SSH{
+			Action:       SSHActionAccept,
+			Sources:      SSHSrcAliases{up("user@")},
+			Destinations: SSHDstAliases{agp("autogroup:member")},
+			Users:        SSHUsers{"root"},
+		}
+		if modify != nil {
+			modify(&ssh)
+		}
+
+		return ssh
+	}
+
+	tests := []struct {
+		name    string
+		ssh     SSH
+		wantErr error
+	}{
+		{
+			name:    "users empty rejected",
+			ssh:     baseSSH(func(s *SSH) { s.Users = nil }),
+			wantErr: ErrSSHUsersMustBeSpecified,
+		},
+		{
+			name:    "users empty array rejected",
+			ssh:     baseSSH(func(s *SSH) { s.Users = SSHUsers{} }),
+			wantErr: ErrSSHUsersMustBeSpecified,
+		},
+		{
+			name:    "user empty string rejected",
+			ssh:     baseSSH(func(s *SSH) { s.Users = SSHUsers{""} }),
+			wantErr: ErrSSHUserInvalid,
+		},
+		{
+			name:    "user wildcard rejected",
+			ssh:     baseSSH(func(s *SSH) { s.Users = SSHUsers{"*"} }),
+			wantErr: ErrSSHUserInvalid,
+		},
+		{
+			name:    "acceptEnv empty entry rejected",
+			ssh:     baseSSH(func(s *SSH) { s.AcceptEnv = []string{"FOO", ""} }),
+			wantErr: ErrSSHAcceptEnvEmpty,
+		},
+		{
+			name:    "action empty rejected",
+			ssh:     baseSSH(func(s *SSH) { s.Action = "" }),
+			wantErr: ErrSSHActionMustBeSpecified,
+		},
+		{
+			name: "user autogroup non-nonroot accepted (literal)",
+			ssh: baseSSH(func(s *SSH) {
+				s.Users = SSHUsers{"autogroup:internet"}
+			}),
+		},
+		{
+			name: "user malformed localpart accepted (literal)",
+			ssh: baseSSH(func(s *SSH) {
+				s.Users = SSHUsers{"localpart:foo"}
+			}),
+		},
+		{
+			name: "acceptEnv double-glob accepted",
+			ssh: baseSSH(func(s *SSH) {
+				s.AcceptEnv = []string{"**"}
+			}),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pol := &Policy{SSHs: []SSH{tt.ssh}}
+			err := pol.validate()
+
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+		})
+	}
+}
+
+// TestSSHActionInvalidUnmarshal verifies the SaaS-aligned wording for
+// non-empty unknown actions surfaces at JSON parse time.
+func TestSSHActionInvalidUnmarshal(t *testing.T) {
+	var a SSHAction
+
+	err := json.Unmarshal([]byte(`"deny"`), &a)
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrSSHActionInvalid)
+	require.Contains(t, err.Error(), `"deny" is not a valid action`)
+}
+
+// TestSSHCheckPeriodInvalidDuration verifies the SaaS body for the
+// malformed-duration case (`time: invalid duration "abc"`).
+func TestSSHCheckPeriodInvalidDuration(t *testing.T) {
+	var p SSHCheckPeriod
+
+	err := json.Unmarshal([]byte(`"abc"`), &p)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `time: invalid duration "abc"`)
 }
 
 func TestUnmarshalGrants(t *testing.T) {

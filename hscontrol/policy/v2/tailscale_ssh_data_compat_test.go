@@ -87,75 +87,12 @@ var sshSkipReasons = map[string]string{
 	// equivalent for the user:*@passkey wildcard pattern.
 	"ssh-b5":  "user:*@passkey wildcard not supported in headscale",
 	"ssh-d10": "user:*@passkey wildcard not supported in headscale",
-
-	// AUTOGROUP_AS_SSH_USER (4 tests)
-	//
-	// SaaS accepts `users: ["autogroup:X"]` on an `ssh` rule for
-	// every autogroup name (member, self, tagged, internet); the
-	// resolution then produces zero principals at compile time for
-	// the ones that don't map to actual logins. headscale's
-	// validate() restricts users-side autogroups to just
-	// `autogroup:nonroot` via autogroupForSSHUser, so the policy
-	// fails to parse. Either widen autogroupForSSHUser to mirror
-	// SaaS (and let compilation drop unsupported entries) or
-	// document that headscale is intentionally stricter.
-	"ssh-malformed-user-autogroup-internet": "headscale rejects `users: [autogroup:internet]`; SaaS accepts and compiles to zero principals",
-	"ssh-malformed-user-autogroup-member":   "headscale rejects `users: [autogroup:member]`; SaaS accepts and compiles to zero principals",
-	"ssh-malformed-user-autogroup-self":     "headscale rejects `users: [autogroup:self]`; SaaS accepts and compiles to zero principals",
-	"ssh-malformed-user-autogroup-tagged":   "headscale rejects `users: [autogroup:tagged]`; SaaS accepts and compiles to zero principals",
-
-	// LOCALPART_SHAPE (4 tests)
-	//
-	// SaaS accepts every shape under the `localpart:` prefix
-	// (`localpart:`, `localpart:foo`, `localpart:*@`, and
-	// `localpart:foo@example.com`) and compiles each to zero
-	// principals. headscale's SSHUser.ParseLocalpart enforces the
-	// strict `localpart:*@<domain>` shape and returns errors for
-	// every other form — see hscontrol/policy/v2/types.go
-	// ParseLocalpart and the call site in validate(). The strict
-	// path is arguably correct (these strings can never produce a
-	// useful principal) but it surfaces as a parse error rather
-	// than the SaaS behaviour of silently producing zero
-	// principals.
-	"ssh-malformed-user-localpart-empty":     "headscale rejects `localpart:` (missing @); SaaS accepts and compiles to zero principals",
-	"ssh-malformed-user-localpart-no-at":     "headscale rejects `localpart:foo` (missing @); SaaS accepts and compiles to zero principals",
-	"ssh-malformed-user-localpart-no-domain": "headscale rejects `localpart:*@` (empty domain); SaaS accepts and compiles to zero principals",
-	"ssh-malformed-user-localpart-no-glob":   "headscale rejects `localpart:foo@example.com` (local part not *); SaaS accepts and compiles to zero principals",
-
-	// CHECK_PERIOD_MIN (2 tests)
-	//
-	// SaaS allows `checkPeriod: "0s"` and any sub-minute value;
-	// headscale's SSHCheckPeriodMin = 1 minute rejects both. The
-	// minimum may be a deliberate hardening, but it diverges from
-	// SaaS — needs an explicit decision.
-	"ssh-malformed-checkperiod-zero":      "headscale rejects checkPeriod `0s`; SaaS accepts",
-	"ssh-malformed-checkperiod-too-short": "headscale rejects checkPeriod `30s`; SaaS accepts (no minimum)",
 }
 
 // sshRejectSkipReasons documents APIResponseCode != 200 captures where
 // headscale and SaaS legitimately disagree on whether the policy should
 // be rejected (or where headscale rejects with different wording).
 var sshRejectSkipReasons = map[string]string{
-	// WORDING_DIFFERS (4 tests)
-	//
-	// headscale rejects these inputs but with different error
-	// text, so the SaaS message is not a substring of headscale's.
-	"ssh-malformed-action-deny":           `headscale rejects "deny" with 'invalid SSH action: "deny", must be one of: accept, check' vs SaaS '"deny" is not a valid action'`,
-	"ssh-malformed-action-empty":          `headscale rejects empty action with 'invalid SSH action: "", must be one of: accept, check' vs SaaS 'action must be specified'`,
-	"ssh-malformed-checkperiod-malformed": `headscale rejects malformed duration with 'not a valid duration string: "abc"' vs SaaS 'time: invalid duration "abc"'`,
-	"ssh-malformed-checkperiod-too-long":  "headscale rejects 200h with 'checkPeriod above maximum of 168 hours (1 week)' vs SaaS 'checkPeriod 200h0m0s is above the max (168h)'",
-
-	// MISSING_VALIDATIONS (5 tests)
-	//
-	// SaaS rejects these inputs; headscale accepts them today.
-	// Fixes belong in hscontrol/policy/v2/types.go validate().
-	"ssh-malformed-action-missing":    "headscale accepts missing `action`; SaaS rejects with `action must be specified`",
-	"ssh-malformed-acceptenv-empty":   "headscale accepts `acceptEnv: [\"\"]`; SaaS rejects with `acceptEnv values cannot be empty`",
-	"ssh-malformed-users-empty-array": "headscale accepts empty `users: []`; SaaS rejects with `users must be specified`",
-	"ssh-malformed-users-missing":     "headscale accepts missing `users`; SaaS rejects with `users must be specified`",
-	"ssh-malformed-user-empty":        `headscale accepts empty username ""; SaaS rejects with 'user "" is not valid'`,
-	"ssh-malformed-user-wildcard":     `headscale accepts wildcard "*"; SaaS rejects with 'user "*" is not valid' (same gap as sshtester_compat_test.go's sshtest-user-wildcard)`,
-
 	// DOMAIN_NOT_ASSOCIATED (5 tests)
 	//
 	// SaaS validates that email domains in user:*@domain and

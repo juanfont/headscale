@@ -14,7 +14,6 @@ import (
 	"github.com/go-json-experiment/json"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/prometheus/common/model"
 	"github.com/tailscale/hujson"
 	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
@@ -46,17 +45,21 @@ var (
 	ErrSSHAutogroupSelfRequiresUserSource = errors.New("autogroup:self destination requires source to contain only users or groups, not tags or autogroup:tagged")
 	ErrSSHTagSourceToAutogroupMember      = errors.New("tags in SSH source cannot access autogroup:member (user-owned devices)")
 	ErrSSHWildcardDestination             = errors.New("wildcard (*) is not supported as SSH destination")
-	ErrSSHCheckPeriodBelowMin             = errors.New("checkPeriod below minimum of 1 minute")
-	ErrSSHCheckPeriodAboveMax             = errors.New("checkPeriod above maximum of 168 hours (1 week)")
+	ErrSSHCheckPeriodAboveMax             = errors.New("is above the max (168h)")
 	ErrSSHCheckPeriodOnNonCheck           = errors.New("checkPeriod is only valid with action \"check\"")
 	ErrInvalidLocalpart                   = errors.New("invalid localpart format, must be localpart:*@<domain>")
+	ErrSSHUsersMustBeSpecified            = errors.New("users must be specified")
+	ErrSSHUserInvalid                     = errors.New("is not valid")
+	ErrSSHAcceptEnvEmpty                  = errors.New("acceptEnv values cannot be empty")
+	ErrSSHActionMustBeSpecified           = errors.New("action must be specified")
+	ErrSSHActionInvalid                   = errors.New("is not a valid action")
 )
 
 // SSH check period constants per Tailscale docs:
 // https://tailscale.com/docs/features/tailscale-ssh#checkperiod
+// SaaS imposes no minimum (0s is accepted) so headscale matches.
 const (
 	SSHCheckPeriodDefault = 12 * time.Hour
-	SSHCheckPeriodMin     = time.Minute
 	SSHCheckPeriodMax     = 168 * time.Hour
 )
 
@@ -117,7 +120,6 @@ var (
 	ErrAutogroupDangerAllDst       = errors.New("cannot use autogroup:danger-all as a dst")
 	ErrAutogroupNotSupportedSSHSrc = errors.New("autogroup not supported for SSH sources")
 	ErrAutogroupNotSupportedSSHDst = errors.New("autogroup not supported for SSH destinations")
-	ErrAutogroupNotSupportedSSHUsr = errors.New("autogroup not supported for SSH user")
 	ErrHostNotDefined              = errors.New("host not defined in policy")
 	ErrSSHSourceAliasNotSupported  = errors.New("alias not supported for SSH source")
 	ErrSSHDestAliasNotSupported    = errors.New("alias not supported for SSH destination")
@@ -1631,15 +1633,21 @@ func (a *SSHAction) String() string {
 }
 
 // UnmarshalJSON implements JSON unmarshaling for SSHAction.
+//
+// Empty strings are accepted at parse time; the per-rule validate()
+// pass surfaces them with `action must be specified` to match SaaS.
+// Non-empty unknown values fail here with `"foo" is not a valid action`.
 func (a *SSHAction) UnmarshalJSON(b []byte) error {
 	str := strings.Trim(string(b), `"`)
 	switch str {
+	case "":
+		*a = SSHAction("")
 	case "accept":
 		*a = SSHActionAccept
 	case "check":
 		*a = SSHActionCheck
 	default:
-		return fmt.Errorf("%w: %q, must be one of: accept, check", ErrInvalidSSHAction, str)
+		return fmt.Errorf("%q %w", str, ErrSSHActionInvalid)
 	}
 
 	return nil
@@ -2022,7 +2030,6 @@ var (
 	autogroupForDst       = []AutoGroup{AutoGroupInternet, AutoGroupMember, AutoGroupTagged, AutoGroupSelf}
 	autogroupForSSHSrc    = []AutoGroup{AutoGroupMember, AutoGroupTagged}
 	autogroupForSSHDst    = []AutoGroup{AutoGroupMember, AutoGroupTagged, AutoGroupSelf}
-	autogroupForSSHUser   = []AutoGroup{AutoGroupNonRoot}
 	autogroupNotSupported = []AutoGroup{}
 
 	errUnknownProtocolWildcard = errors.New("proto name \"*\" not known; use protocol number 0-255 or protocol name (icmp, tcp, udp, etc.)")
@@ -2103,18 +2110,6 @@ func validateAutogroupForSSHDst(dst *AutoGroup) error {
 
 	if !slices.Contains(autogroupForSSHDst, *dst) {
 		return fmt.Errorf("%w: %q, can be %v", ErrAutogroupNotSupportedSSHDst, *dst, autogroupForSSHDst)
-	}
-
-	return nil
-}
-
-func validateAutogroupForSSHUser(user *AutoGroup) error {
-	if user == nil {
-		return nil
-	}
-
-	if !slices.Contains(autogroupForSSHUser, *user) {
-		return fmt.Errorf("%w: %q, can be %v", ErrAutogroupNotSupportedSSHUsr, *user, autogroupForSSHUser)
 	}
 
 	return nil
@@ -2395,23 +2390,37 @@ func (p *Policy) validate() error {
 	}
 
 	for _, ssh := range p.SSHs {
+		// SaaS rejects empty/missing `action` with `action must be
+		// specified`; an empty SSHAction survives parse intentionally
+		// so this validate pass surfaces the SaaS-aligned wording.
+		if ssh.Action == "" {
+			errs = append(errs, ErrSSHActionMustBeSpecified)
+		}
+
+		// SaaS rejects empty/missing `users` with `users must be
+		// specified`; non-canonical user strings (autogroup:*, group:,
+		// tag:, malformed localpart:) are accepted and flow through to
+		// compileSSHPolicy as literals — matching SaaS compile output.
+		if len(ssh.Users) == 0 {
+			errs = append(errs, ErrSSHUsersMustBeSpecified)
+		}
+
 		for _, user := range ssh.Users {
-			if strings.HasPrefix(string(user), "autogroup:") {
-				maybeAuto := AutoGroup(user)
-
-				err := validateAutogroupForSSHUser(&maybeAuto)
-				if err != nil {
-					errs = append(errs, err)
-					continue
-				}
+			// SaaS rejects `""` and `"*"` as user logins; everything
+			// else (including autogroup:*, group:, tag:, malformed
+			// localpart:) is accepted and treated as a literal.
+			switch user {
+			case "", "*":
+				errs = append(errs, fmt.Errorf("user %q %w", user, ErrSSHUserInvalid))
 			}
+		}
 
-			if user.IsLocalpart() {
-				_, err := user.ParseLocalpart()
-				if err != nil {
-					errs = append(errs, err)
-					continue
-				}
+		// SaaS rejects empty entries in `acceptEnv` with
+		// `acceptEnv values cannot be empty`. The wildcard `*` and
+		// double-glob `**` are accepted (only empty string is invalid).
+		for _, env := range ssh.AcceptEnv {
+			if env == "" {
+				errs = append(errs, ErrSSHAcceptEnvEmpty)
 			}
 		}
 
@@ -2735,12 +2744,16 @@ func (p *SSHCheckPeriod) UnmarshalJSON(b []byte) error {
 		return nil
 	}
 
-	d, err := model.ParseDuration(str)
+	// time.ParseDuration produces error strings like
+	// `time: invalid duration "abc"` which match SaaS body wording
+	// exactly; model.ParseDuration wraps the same parse with custom
+	// phrasing and would diverge.
+	d, err := time.ParseDuration(str)
 	if err != nil {
-		return fmt.Errorf("parsing checkPeriod %q: %w", str, err)
+		return err
 	}
 
-	p.Duration = time.Duration(d)
+	p.Duration = d
 
 	return nil
 }
@@ -2755,25 +2768,15 @@ func (p SSHCheckPeriod) MarshalJSON() ([]byte, error) {
 }
 
 // Validate checks that the SSHCheckPeriod is within allowed bounds.
+// SaaS imposes no minimum; the only ceiling is 168h.
 func (p *SSHCheckPeriod) Validate() error {
 	if p.Always {
 		return nil
 	}
 
-	if p.Duration < SSHCheckPeriodMin {
-		return fmt.Errorf(
-			"%w: got %s",
-			ErrSSHCheckPeriodBelowMin,
-			p.Duration,
-		)
-	}
-
 	if p.Duration > SSHCheckPeriodMax {
-		return fmt.Errorf(
-			"%w: got %s",
-			ErrSSHCheckPeriodAboveMax,
-			p.Duration,
-		)
+		// SaaS body: `checkPeriod 200h0m0s is above the max (168h)`.
+		return fmt.Errorf("checkPeriod %s %w", p.Duration, ErrSSHCheckPeriodAboveMax)
 	}
 
 	return nil
@@ -2951,25 +2954,33 @@ func (u SSHUsers) ContainsNonRoot() bool {
 	return slices.Contains(u, SSHUser(AutoGroupNonRoot))
 }
 
-// ContainsLocalpart returns true if any entry has the localpart: prefix.
+// ContainsLocalpart returns true if any entry is a canonical
+// `localpart:*@<domain>` form. Non-canonical strings that merely start
+// with `localpart:` (e.g. `localpart:`, `localpart:foo`) are treated as
+// literal user names per SaaS behaviour.
 func (u SSHUsers) ContainsLocalpart() bool {
 	return slices.ContainsFunc(u, func(user SSHUser) bool {
-		return user.IsLocalpart()
+		return user.IsCanonicalLocalpart()
 	})
 }
 
-// NormalUsers returns all SSH users that are not root, autogroup:nonroot,
-// or localpart: entries.
+// NormalUsers returns SSH users handled by the literal user map: every
+// entry except root, autogroup:nonroot, and canonical
+// `localpart:*@<domain>`. Malformed `localpart:` strings flow through
+// here so they end up in the compiled SSHUsers map literally — matching
+// SaaS, which also keeps them verbatim.
 func (u SSHUsers) NormalUsers() []SSHUser {
 	return slicesx.Filter(nil, u, func(user SSHUser) bool {
-		return user != "root" && user != SSHUser(AutoGroupNonRoot) && !user.IsLocalpart()
+		return user != "root" && user != SSHUser(AutoGroupNonRoot) && !user.IsCanonicalLocalpart()
 	})
 }
 
-// LocalpartEntries returns only the localpart: prefixed entries.
+// LocalpartEntries returns only canonical `localpart:*@<domain>` entries.
+// Non-canonical localpart strings are excluded so they do not trigger
+// the resolution path; they are emitted literally by NormalUsers.
 func (u SSHUsers) LocalpartEntries() []SSHUser {
 	return slicesx.Filter(nil, u, func(user SSHUser) bool {
-		return user.IsLocalpart()
+		return user.IsCanonicalLocalpart()
 	})
 }
 
@@ -2979,9 +2990,23 @@ func (u SSHUser) String() string {
 	return string(u)
 }
 
-// IsLocalpart returns true if the SSHUser has the localpart: prefix.
+// IsLocalpart returns true if the SSHUser has the literal `localpart:`
+// prefix. It is a syntactic check only — non-canonical shapes still
+// pass.
 func (u SSHUser) IsLocalpart() bool {
 	return strings.HasPrefix(string(u), SSHUserLocalpartPrefix)
+}
+
+// IsCanonicalLocalpart reports whether the SSHUser parses as the
+// canonical `localpart:*@<domain>` form that resolution acts on.
+func (u SSHUser) IsCanonicalLocalpart() bool {
+	if !u.IsLocalpart() {
+		return false
+	}
+
+	_, err := u.ParseLocalpart()
+
+	return err == nil
 }
 
 // ParseLocalpart validates and extracts the domain from a localpart: entry.
