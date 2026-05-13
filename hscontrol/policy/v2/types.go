@@ -1063,10 +1063,17 @@ func parseAlias(vs string) (Alias, error) {
 // AliasEnc is used to deserialize a Alias.
 type AliasEnc struct{ Alias }
 
+// UnmarshalJSON trims surrounding whitespace from each alias string
+// before dispatching so that `"tag:server "` or `" odin@example.com"`
+// resolves to the same tag or user SaaS would resolve. SaaS trims
+// before lookup; a literal-match policy here would drop the affected
+// node from every rule referencing it.
 func (ve *AliasEnc) UnmarshalJSON(b []byte) error {
 	ptr, err := unmarshalPointer(
 		b,
-		parseAlias,
+		func(s string) (Alias, error) {
+			return parseAlias(strings.TrimSpace(s))
+		},
 	)
 	if err != nil {
 		return err

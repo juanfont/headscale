@@ -88,19 +88,6 @@ var sshSkipReasons = map[string]string{
 	"ssh-b5":  "user:*@passkey wildcard not supported in headscale",
 	"ssh-d10": "user:*@passkey wildcard not supported in headscale",
 
-	// WHITESPACE_TRIM_IN_SRC_DST (2 tests)
-	//
-	// SaaS strips surrounding whitespace from SSH rule src/dst entries
-	// before lookup ("tag:server " resolves to "tag:server",
-	// " user@host" resolves to "user@host"). headscale treats the
-	// untrimmed string as a literal identifier and either fails the
-	// tag/user lookup or produces no rule for the affected node. The
-	// fix lives in policy/v2 alias resolution — strings.TrimSpace at
-	// the same point where SaaS does, before dispatching to the alias
-	// type registry.
-	"ssh-dst-trailing-whitespace": "src/dst whitespace trim mismatch: SaaS trims, headscale doesn't",
-	"ssh-src-leading-whitespace":  "src/dst whitespace trim mismatch: SaaS trims, headscale doesn't",
-
 	// TAG_OWNER_CYCLE_TOLERATED (2 tests)
 	//
 	// SaaS accepts tagOwners with circular references (tag:a -> tag:b,

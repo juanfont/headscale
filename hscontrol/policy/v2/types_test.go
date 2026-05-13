@@ -4787,6 +4787,55 @@ func TestSSHUserTrimEndToEnd(t *testing.T) {
 	})
 }
 
+// TestAliasEncUnmarshalTrim verifies that src/dst entries get
+// trimmed before alias dispatch so `"tag:server "` resolves to the
+// same Tag alias SaaS uses and `" odin@example.com"` resolves to the
+// same Username alias. Covers tag, group, user, and autogroup entries
+// on both the leading- and trailing-whitespace edges.
+func TestAliasEncUnmarshalTrim(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  Alias
+	}{
+		{
+			name:  "tag trailing whitespace",
+			input: `"tag:server "`,
+			want:  new(Tag("tag:server")),
+		},
+		{
+			name:  "tag leading whitespace",
+			input: `" tag:server"`,
+			want:  new(Tag("tag:server")),
+		},
+		{
+			name:  "group leading whitespace",
+			input: `" group:admins"`,
+			want:  new(Group("group:admins")),
+		},
+		{
+			name:  "user trailing whitespace",
+			input: `"odin@example.com "`,
+			want:  new(Username("odin@example.com")),
+		},
+		{
+			name:  "autogroup trailing whitespace",
+			input: `"autogroup:member "`,
+			want:  new(AutoGroup("autogroup:member")),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var a AliasEnc
+
+			err := json.Unmarshal([]byte(tt.input), &a)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, a.Alias)
+		})
+	}
+}
+
 // TestSSHCheckPeriodInvalidDuration verifies the SaaS body for the
 // malformed-duration case (`time: invalid duration "abc"`).
 func TestSSHCheckPeriodInvalidDuration(t *testing.T) {
