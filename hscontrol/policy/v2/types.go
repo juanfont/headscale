@@ -46,6 +46,7 @@ var (
 	ErrSSHTagSourceToAutogroupMember      = errors.New("tags in SSH source cannot access autogroup:member (user-owned devices)")
 	ErrSSHWildcardDestination             = errors.New("wildcard (*) is not supported as SSH destination")
 	ErrSSHCheckPeriodAboveMax             = errors.New("is above the max (168h)")
+	ErrSSHCheckPeriodNegative             = errors.New("must be a positive duration")
 	ErrSSHCheckPeriodOnNonCheck           = errors.New("checkPeriod is only valid with action \"check\"")
 	ErrInvalidLocalpart                   = errors.New("invalid localpart format, must be localpart:*@<domain>")
 	ErrSSHUsersMustBeSpecified            = errors.New("users must be specified")
@@ -1657,8 +1658,12 @@ func (a *SSHAction) String() string {
 // Empty strings are accepted at parse time; the per-rule validate()
 // pass surfaces them with `action must be specified` to match SaaS.
 // Non-empty unknown values fail here with `"foo" is not a valid action`.
+//
+// SaaS trims surrounding whitespace before comparing, then complains
+// about the trimmed content; the resulting error quotes the trimmed
+// value (e.g. `" Accept "` → `"Accept" is not a valid action`).
 func (a *SSHAction) UnmarshalJSON(b []byte) error {
-	str := strings.Trim(string(b), `"`)
+	str := strings.TrimSpace(strings.Trim(string(b), `"`))
 	switch str {
 	case "":
 		*a = SSHAction("")
@@ -2919,10 +2924,17 @@ func (p SSHCheckPeriod) MarshalJSON() ([]byte, error) {
 }
 
 // Validate checks that the SSHCheckPeriod is within allowed bounds.
-// SaaS imposes no minimum; the only ceiling is 168h.
+// SaaS rejects negative durations with `must be a positive duration`
+// and anything above 168h with `is above the max (168h)`; the 168h
+// upper bound is inclusive.
 func (p *SSHCheckPeriod) Validate() error {
 	if p.Always {
 		return nil
+	}
+
+	if p.Duration < 0 {
+		// SaaS body: `checkPeriod -1m0s must be a positive duration`.
+		return fmt.Errorf("checkPeriod %s %w", p.Duration, ErrSSHCheckPeriodNegative)
 	}
 
 	if p.Duration > SSHCheckPeriodMax {
@@ -3193,6 +3205,23 @@ func (u SSHUser) ParseLocalpart() (string, error) {
 // MarshalJSON marshals the SSHUser to JSON.
 func (u SSHUser) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(u))
+}
+
+// UnmarshalJSON trims surrounding whitespace per element so a policy
+// like `"users": [" root"]` stores `"root"` and compiles to the same
+// `sshUsers: {"root": "root"}` map SaaS produces. A whitespace-only
+// entry like `[" "]` collapses to `""` and falls through to the
+// per-rule validate() pass, which surfaces the SaaS-aligned
+// `user "" is not valid`.
+func (u *SSHUser) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil { //nolint:noinlineerr
+		return err
+	}
+
+	*u = SSHUser(strings.TrimSpace(s))
+
+	return nil
 }
 
 // unmarshalPolicy takes a byte slice and unmarshals it into a Policy struct.
