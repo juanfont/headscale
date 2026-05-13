@@ -36,6 +36,27 @@ var (
 // netip.Prefixes representing the routes for that node.
 type RouteFunc func(id NodeID) []netip.Prefix
 
+// nodeAttrDisableIPv4 is the policy nodeAttr key that suppresses the
+// node's own IPv4 CGNAT prefix in [tailcfg.Node.Addresses] and
+// [tailcfg.Node.AllowedIPs]. Subnet routes the node advertises remain.
+// See https://tailscale.com/docs/reference/troubleshooting/network-configuration/cgnat-conflicts.
+const nodeAttrDisableIPv4 tailcfg.NodeCapability = "disable-ipv4"
+
+// filterIPv4 returns ps with every IPv4 prefix dropped. Used by
+// [NodeView.TailNode] when the node carries the disable-ipv4 nodeAttr.
+func filterIPv4(ps []netip.Prefix) []netip.Prefix {
+	out := ps[:0:0]
+	for _, p := range ps {
+		if p.Addr().Is4() {
+			continue
+		}
+
+		out = append(out, p)
+	}
+
+	return out
+}
+
 // ViaRouteResult describes via grant effects for a viewer-peer pair.
 // UsePrimary is always a subset of Include: it marks which included
 // prefixes must additionally defer to HA primary election.
@@ -1177,9 +1198,22 @@ func (nv NodeView) TailNode(
 		keyExpiry = nv.Expiry().Get()
 	}
 
+	// disable-ipv4 (https://tailscale.com/docs/reference/troubleshooting/network-configuration/cgnat-conflicts)
+	// drops the node's own IPv4 CGNAT prefix from Addresses and from
+	// the AllowedIPs slot the node's own /32 occupies. Advertised
+	// subnet routes -- even IPv4 ones -- survive: routes belong to
+	// the routing layer, not the node's identity. Mirrors the SaaS
+	// captures in testdata/nodeattrs_results/nodeattrs-attr-c1{5,6}-disable-ipv4*.
+	_, ipv4Disabled := selfPolicyCaps[nodeAttrDisableIPv4]
+
+	addresses := nv.Prefixes()
+	if ipv4Disabled {
+		addresses = filterIPv4(addresses)
+	}
+
 	// routeFunc returns ALL routes (subnet + exit) for this node.
 	allRoutes := primaryRouteFunc(nv.ID())
-	allowedIPs := slices.Concat(nv.Prefixes(), allRoutes)
+	allowedIPs := slices.Concat(addresses, allRoutes)
 	slices.SortFunc(allowedIPs, netip.Prefix.Compare)
 
 	// PrimaryRoutes only includes non-exit subnet routes for HA tracking.
@@ -1234,7 +1268,7 @@ func (nv NodeView) TailNode(
 
 		Machine:          nv.MachineKey(),
 		DiscoKey:         nv.DiscoKey(),
-		Addresses:        nv.Prefixes(),
+		Addresses:        addresses,
 		PrimaryRoutes:    primaryRoutes,
 		AllowedIPs:       allowedIPs,
 		Endpoints:        nv.Endpoints().AsSlice(),
