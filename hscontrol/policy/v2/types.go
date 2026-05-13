@@ -562,7 +562,7 @@ func (t *Tag) Validate() error {
 	}
 
 	first := rest[0]
-	if !((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z')) {
+	if (first < 'a' || first > 'z') && (first < 'A' || first > 'Z') {
 		return ErrTagNameMustStartWithLetter
 	}
 
