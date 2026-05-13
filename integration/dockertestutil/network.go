@@ -1,11 +1,13 @@
 package dockertestutil
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"log"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/cenkalti/backoff/v5"
@@ -123,30 +125,29 @@ func DisconnectContainerFromNetwork(
 	network *dockertest.Network,
 	testContainer string,
 ) error {
-	containers, err := pool.Client.ListContainers(docker.ListContainersOptions{
-		All: true,
-		Filters: map[string][]string{
-			"name": {testContainer},
-		},
-	})
+	containerID, err := lookupContainerID(pool, testContainer)
 	if err != nil {
 		return err
 	}
 
-	if len(containers) == 0 {
-		return fmt.Errorf("%w: %s", ErrContainerNotFound, testContainer)
-	}
-
 	err = retryDockerOp(context.Background(), func() error {
 		return pool.Client.DisconnectNetwork(network.Network.ID, docker.NetworkConnectionOptions{
-			Container: containers[0].ID,
+			Container: containerID,
 		})
 	})
 	if err != nil {
 		return err
 	}
 
-	return waitNetworkContainerAbsent(pool, network, testContainer, DockerOpMaxElapsedTime)
+	err = waitNetworkContainerAbsent(pool, network, testContainer, DockerOpMaxElapsedTime)
+	if err != nil {
+		return err
+	}
+
+	// libnetwork drops the endpoint from its model before the kernel
+	// netns has flushed the matching route. Re-attach with the sticky
+	// IP otherwise fails with "conflicts with existing route".
+	return waitContainerRouteAbsent(pool, containerID, network, DockerOpMaxElapsedTime)
 }
 
 // ReconnectContainerToNetwork inverts DisconnectContainerFromNetwork
@@ -156,12 +157,48 @@ func ReconnectContainerToNetwork(
 	network *dockertest.Network,
 	testContainer string,
 ) error {
-	err := AddContainerToNetwork(pool, network, testContainer)
+	containerID, err := lookupContainerID(pool, testContainer)
+	if err != nil {
+		return err
+	}
+
+	err = retryDockerOp(context.Background(), func() error {
+		connectErr := pool.Client.ConnectNetwork(network.Network.ID, docker.NetworkConnectionOptions{
+			Container: containerID,
+		})
+		if connectErr != nil && isStaleRouteConflict(connectErr) {
+			// Defensive cleanup: a route survived the netns flush
+			// despite the wait above. Drop subnet routes that point
+			// at the disconnected interface so libnetwork can
+			// reprogram the sticky IP, then let the retry budget
+			// try the ConnectNetwork call again.
+			removeContainerSubnetRoutes(pool, containerID, network)
+		}
+
+		return connectErr
+	})
 	if err != nil {
 		return err
 	}
 
 	return waitNetworkContainerPresent(pool, network, testContainer, DockerOpMaxElapsedTime)
+}
+
+// lookupContainerID resolves a container name to its docker ID.
+func lookupContainerID(pool *dockertest.Pool, testContainer string) (string, error) {
+	containers, err := pool.Client.ListContainers(docker.ListContainersOptions{
+		All:     true,
+		Filters: map[string][]string{"name": {testContainer}},
+	})
+	if err != nil {
+		return "", err
+	}
+
+	if len(containers) == 0 {
+		return "", fmt.Errorf("%w: %s", ErrContainerNotFound, testContainer)
+	}
+
+	return containers[0].ID, nil
 }
 
 // DisconnectAndReconnect calls Disconnect followed by Reconnect; both
@@ -226,6 +263,93 @@ func waitNetworkContainerPresent(
 
 		return false, nil
 	})
+}
+
+// waitContainerRouteAbsent polls the container's routing table until no
+// route remains for the network's IPAM subnet. libnetwork's docker-side
+// endpoint teardown is asynchronous from the kernel netns flush, and a
+// surviving route blocks a subsequent reconnect at sticky-IP assignment
+// with "conflicts with existing route".
+func waitContainerRouteAbsent(pool *dockertest.Pool, containerID string, network *dockertest.Network, timeout time.Duration) error {
+	subnets := networkSubnets(network)
+	if len(subnets) == 0 {
+		return nil
+	}
+
+	return pollUntil(timeout, func() (bool, error) {
+		stdout, err := execCapture(pool, containerID, []string{"ip", "-4", "route", "show"})
+		if err != nil {
+			return false, fmt.Errorf("inspecting routes in %s: %w", containerID, err)
+		}
+
+		for _, subnet := range subnets {
+			if strings.Contains(stdout, subnet+" ") || strings.HasSuffix(strings.TrimSpace(stdout), subnet) {
+				return false, nil
+			}
+		}
+
+		return true, nil
+	})
+}
+
+// removeContainerSubnetRoutes drops residue subnet routes in the
+// container's netns — the leftover that libnetwork's async endpoint
+// teardown can leave behind.
+func removeContainerSubnetRoutes(pool *dockertest.Pool, containerID string, network *dockertest.Network) {
+	for _, subnet := range networkSubnets(network) {
+		_, err := execCapture(pool, containerID, []string{"ip", "-4", "route", "del", subnet})
+		if err != nil {
+			log.Printf("removing stale route %s in %s: %v", subnet, containerID, err)
+		}
+	}
+}
+
+// isStaleRouteConflict matches the libnetwork 500 raised when a
+// surviving subnet route blocks sticky-IP reprogramming on reconnect.
+func isStaleRouteConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	return strings.Contains(err.Error(), "conflicts with existing route")
+}
+
+// networkSubnets returns the IPAM-configured subnets for a docker
+// network. Empty when IPAM is left to docker defaults.
+func networkSubnets(network *dockertest.Network) []string {
+	out := make([]string, 0, len(network.Network.IPAM.Config))
+	for _, cfg := range network.Network.IPAM.Config {
+		if cfg.Subnet != "" {
+			out = append(out, cfg.Subnet)
+		}
+	}
+
+	return out
+}
+
+// execCapture runs a one-shot command in containerID and returns stdout.
+func execCapture(pool *dockertest.Pool, containerID string, cmd []string) (string, error) {
+	exec, err := pool.Client.CreateExec(docker.CreateExecOptions{
+		Container:    containerID,
+		Cmd:          cmd,
+		AttachStdout: true,
+		AttachStderr: true,
+	})
+	if err != nil {
+		return "", fmt.Errorf("create exec: %w", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+
+	err = pool.Client.StartExec(exec.ID, docker.StartExecOptions{
+		OutputStream: &stdout,
+		ErrorStream:  &stderr,
+	})
+	if err != nil {
+		return stdout.String(), fmt.Errorf("start exec: %w", err)
+	}
+
+	return stdout.String(), nil
 }
 
 // pollUntil ticks every DockerOpInitialInterval until check returns
