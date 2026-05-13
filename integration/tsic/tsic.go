@@ -523,6 +523,12 @@ func New(
 		tailscaleOptions.Repository = "tailscale/tailscale"
 		tailscaleOptions.Tag = version
 
+		err = dockertestutil.PullWithAuth(pool, tailscaleOptions.Repository+":"+tailscaleOptions.Tag)
+		if err != nil {
+			//nolint:gosec // G706: tag value is from MustTestVersions, not external input
+			log.Printf("Pull failed for %s:%s, error: %v", tailscaleOptions.Repository, tailscaleOptions.Tag, err)
+		}
+
 		container, err = pool.RunWithOptions(
 			tailscaleOptions,
 			dockertestutil.DockerRestartPolicy,
@@ -536,6 +542,12 @@ func New(
 	default:
 		tailscaleOptions.Repository = "tailscale/tailscale"
 		tailscaleOptions.Tag = "v" + version
+
+		err = dockertestutil.PullWithAuth(pool, tailscaleOptions.Repository+":"+tailscaleOptions.Tag)
+		if err != nil {
+			//nolint:gosec // G706: tag value is from MustTestVersions, not external input
+			log.Printf("Pull failed for %s:%s, error: %v", tailscaleOptions.Repository, tailscaleOptions.Tag, err)
+		}
 
 		container, err = pool.RunWithOptions(
 			tailscaleOptions,
