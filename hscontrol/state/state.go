@@ -1222,35 +1222,64 @@ func (s *State) IsNodeHealthy(id types.NodeID) bool {
 	return s.nodeStore.IsNodeHealthy(id)
 }
 
-// SetNodeUnhealthy flips the runtime Unhealthy bit and reports whether
-// the resulting primary route assignment changed, so the HA prober can
-// decide whether to fan out a PolicyChange.
-//
-// A request to mark a node Unhealthy is dropped if the node is no
-// longer an HA candidate (offline or no approved routes). The prober
-// reads HANodes() at the start of a probe cycle and writes back after
-// the timeout fires; in that window the node may have left the
-// candidate set, and the bit would just be stale. The check happens
+// SetNodeHealth flips the runtime health bit for one node and reports
+// whether the resulting primary-route assignment changed, so the HA
+// prober can decide whether to fan out a PolicyChange. true means
+// healthy; false means unhealthy. An unhealthy mark is dropped when
+// the node is no longer an HA candidate (offline or no approved
+// routes) — between probe dispatch and result the node may have left
+// candidacy, and the bit would just be stale. The check happens
 // inside the writer goroutine so it serialises against the
-// SetApprovedRoutes / Disconnect that removed candidacy.
-func (s *State) SetNodeUnhealthy(id types.NodeID, unhealthy bool) bool {
+// SetApprovedRoutes / Disconnect that removed candidacy. Single-node
+// convenience wrapper around [State.BatchSetNodeHealth].
+func (s *State) SetNodeHealth(id types.NodeID, healthy bool) bool {
+	return s.BatchSetNodeHealth(map[types.NodeID]bool{id: healthy})
+}
+
+// BatchSetNodeHealth applies a set of health updates atomically: the
+// election runs once after every flag has been flipped, so observers
+// never see an intermediate snapshot. Returns true when the
+// primary-route assignment differs from before the batch so callers
+// can gate a single PolicyChange dispatch. Map value true = healthy;
+// false = unhealthy (gated as in [State.SetNodeHealth]).
+//
+// Per-call publication would let a writer applying two flips
+// back-to-back elect a node that the next snapshot demotes,
+// momentarily pointing peers at the wrong primary; the batched form
+// closes that window.
+func (s *State) BatchSetNodeHealth(updates map[types.NodeID]bool) bool {
+	if len(updates) == 0 {
+		return false
+	}
+
 	prevRoutes := s.nodeStore.PrimaryRoutes()
 
-	_, ok := s.nodeStore.UpdateNode(id, func(n *types.Node) {
-		if unhealthy {
+	fns := make(map[types.NodeID]UpdateNodeFunc, len(updates))
+	for id, healthy := range updates {
+		fns[id] = healthSetter(healthy)
+	}
+
+	s.nodeStore.UpdateNodes(fns)
+
+	return !maps.Equal(prevRoutes, s.nodeStore.PrimaryRoutes())
+}
+
+// healthSetter returns an UpdateNodeFunc that flips n.Unhealthy to
+// the inverse of healthy, with the same gate as [State.SetNodeHealth]:
+// an unhealthy mark only sticks when the node is still online and
+// still advertises approved routes, so a node that left HA candidacy
+// between probe dispatch and result does not carry a stale bit.
+func healthSetter(healthy bool) UpdateNodeFunc {
+	return func(n *types.Node) {
+		if !healthy {
 			online := n.IsOnline != nil && *n.IsOnline
 			if !online || len(n.AllApprovedRoutes()) == 0 {
 				return
 			}
 		}
 
-		n.Unhealthy = unhealthy
-	})
-	if !ok {
-		return false
+		n.Unhealthy = !healthy
 	}
-
-	return !maps.Equal(prevRoutes, s.nodeStore.PrimaryRoutes())
 }
 
 // ValidateAPIKey checks if an API key is valid and active.

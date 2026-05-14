@@ -72,7 +72,7 @@ func TestHAFailover_ViewerSeesPrimaryFlip(t *testing.T) {
 			return hasPeerPrimaryRoute(nm, "dyn-flip-r1", route)
 		})
 
-	changed := srv.State().SetNodeUnhealthy(id1, true)
+	changed := srv.State().SetNodeHealth(id1, false)
 	require.True(t, changed, "marking primary unhealthy should change primaries")
 
 	srv.App.Change(change.PolicyChange())

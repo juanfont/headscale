@@ -111,7 +111,7 @@ func TestHAHealthProbe_UnhealthyFailover(t *testing.T) {
 	require.Contains(t, primaries, route, "node 1 should be primary initially")
 
 	// Mark node 1 unhealthy — should failover to node 2.
-	changed := srv.State().SetNodeUnhealthy(nodeID1, true)
+	changed := srv.State().SetNodeHealth(nodeID1, false)
 	assert.True(t, changed, "marking primary unhealthy should change primaries")
 
 	primaries2 := srv.State().GetNodePrimaryRoutes(nodeID2)
@@ -141,12 +141,12 @@ func TestHAHealthProbe_RecoveryNoFlap(t *testing.T) {
 	nodeID2 := advertiseAndApproveRoute(t, srv, c2, route)
 
 	// Failover: node 1 → node 2.
-	srv.State().SetNodeUnhealthy(nodeID1, true)
+	srv.State().SetNodeHealth(nodeID1, false)
 	primaries := srv.State().GetNodePrimaryRoutes(nodeID2)
 	require.Contains(t, primaries, route, "node 2 should be primary")
 
 	// Recovery: node 1 healthy again. Node 2 should STAY primary.
-	changed := srv.State().SetNodeUnhealthy(nodeID1, false)
+	changed := srv.State().SetNodeHealth(nodeID1, true)
 	assert.False(t, changed, "recovery should not change primaries (no flap)")
 
 	primaries = srv.State().GetNodePrimaryRoutes(nodeID2)
@@ -173,7 +173,7 @@ func TestHAHealthProbe_ConnectClearsUnhealthy(t *testing.T) {
 	advertiseAndApproveRoute(t, srv, c2, route)
 
 	// Mark unhealthy.
-	srv.State().SetNodeUnhealthy(nodeID1, true)
+	srv.State().SetNodeHealth(nodeID1, false)
 	assert.False(t, srv.State().IsNodeHealthy(nodeID1))
 
 	// Reconnect clears unhealthy via State.Connect → ClearUnhealthy.
@@ -208,7 +208,7 @@ func TestHAHealthProbe_SetApprovedRoutesEmptyClearsUnhealthy(t *testing.T) {
 	nodeID1 := advertiseAndApproveRoute(t, srv, c1, route)
 	advertiseAndApproveRoute(t, srv, c2, route)
 
-	srv.State().SetNodeUnhealthy(nodeID1, true)
+	srv.State().SetNodeHealth(nodeID1, false)
 	require.False(t, srv.State().IsNodeHealthy(nodeID1))
 
 	_, _, err := srv.State().SetApprovedRoutes(nodeID1, nil)
@@ -242,7 +242,7 @@ func TestHAHealthProbe_DisconnectClearsUnhealthy(t *testing.T) {
 	nodeID1 := advertiseAndApproveRoute(t, srv, c1, route)
 	advertiseAndApproveRoute(t, srv, c2, route)
 
-	srv.State().SetNodeUnhealthy(nodeID1, true)
+	srv.State().SetNodeHealth(nodeID1, false)
 	require.False(t, srv.State().IsNodeHealthy(nodeID1))
 
 	c1.Disconnect(t)
@@ -277,10 +277,10 @@ func TestHAHealthProbe_SetUnhealthyNoRoutesIsNoOp(t *testing.T) {
 	_, _, err := srv.State().SetApprovedRoutes(nodeID1, nil)
 	require.NoError(t, err)
 
-	srv.State().SetNodeUnhealthy(nodeID1, true)
+	srv.State().SetNodeHealth(nodeID1, false)
 
 	assert.True(t, srv.State().IsNodeHealthy(nodeID1),
-		"SetNodeUnhealthy on node with no approved routes should be a no-op")
+		"SetNodeHealth(false) on node with no approved routes should be a no-op")
 }
 
 // TestHAHealthProbe_ReconnectDuringProbeKeepsHealthy reproduces the
