@@ -72,7 +72,7 @@ func (f *primariesFixture) disconnect(id types.NodeID) {
 	})
 }
 
-// unhealthy mirrors State.SetNodeUnhealthy(id, true).
+// unhealthy mirrors State.SetNodeHealth(id, false).
 func (f *primariesFixture) unhealthy(id types.NodeID) {
 	f.t.Helper()
 	f.ns.UpdateNode(id, func(n *types.Node) {
@@ -80,7 +80,7 @@ func (f *primariesFixture) unhealthy(id types.NodeID) {
 	})
 }
 
-// healthy mirrors State.SetNodeUnhealthy(id, false).
+// healthy mirrors State.SetNodeHealth(id, true).
 func (f *primariesFixture) healthy(id types.NodeID) {
 	f.t.Helper()
 	f.ns.UpdateNode(id, func(n *types.Node) {

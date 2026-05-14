@@ -35,9 +35,9 @@ var (
 const (
 	put             = 1
 	del             = 2
-	update          = 3
 	rebuildPeerMaps = 4
 	setName         = 5
+	updateMulti     = 6
 )
 
 const prometheusNamespace = "headscale"
@@ -166,14 +166,18 @@ type work struct {
 	op         int
 	nodeID     types.NodeID
 	node       types.Node
-	updateFn   UpdateNodeFunc
 	result     chan struct{}
-	nodeResult chan types.NodeView // Channel to return the resulting node after batch application
+	nodeResult chan types.NodeView
 	// For rebuildPeerMaps operation
 	rebuildResult chan struct{}
 	// For setName operation (admin rename, reject-on-collision path).
 	name      string
 	errResult chan error
+	// For updateMulti: per-node update functions applied as a single
+	// batch entry so callers that need an atomic election (e.g. the HA
+	// prober applying multiple probe results at once) cannot have a
+	// partial snapshot published between the updates.
+	multiUpdates map[types.NodeID]UpdateNodeFunc
 }
 
 // PutNode adds or updates a node in the store.
@@ -210,45 +214,55 @@ func (s *NodeStore) PutNode(n types.Node) types.NodeView {
 // UpdateNodeFunc is a function type that takes a pointer to a Node and modifies it.
 type UpdateNodeFunc func(n *types.Node)
 
-// UpdateNode applies a function to modify a specific node in the store.
-// This is a blocking operation that waits for the write to complete.
-// This is analogous to a database "transaction", or, the caller should
-// rather collect all data they want to change, and then call this function.
-// Fewer calls are better.
-// Returns the resulting node after all modifications in the batch have been applied.
+// UpdateNode applies a function to modify a specific node in the
+// store. Single-node convenience wrapper around [NodeStore.UpdateNodes]
+// — the writer goroutine signals completion only after the post-batch
+// snapshot has been stored, so the follow-up GetNode read sees the
+// applied update. Returns the resulting node and whether it exists.
 //
-// TODO(kradalby): Technically we could have a version of this that modifies the node
-// in the current snapshot if _we know_ that the change will not affect the peer relationships.
-// This is because the main nodesByID map contains the struct, and every other map is using a
-// pointer to the underlying struct. The gotcha with this is that we will need to introduce
-// a lock around the nodesByID map to ensure that no other writes are happening
-// while we are modifying the node. Which mean we would need to implement read-write locks
-// on all read operations.
-func (s *NodeStore) UpdateNode(nodeID types.NodeID, updateFn func(n *types.Node)) (types.NodeView, bool) {
+// Callers that need to change several nodes atomically should call
+// UpdateNodes directly; collecting changes into one batch keeps the
+// election from running on a half-applied snapshot.
+func (s *NodeStore) UpdateNode(nodeID types.NodeID, updateFn UpdateNodeFunc) (types.NodeView, bool) {
 	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("update"))
 	defer timer.ObserveDuration()
 
-	work := work{
-		op:         update,
-		nodeID:     nodeID,
-		updateFn:   updateFn,
-		result:     make(chan struct{}),
-		nodeResult: make(chan types.NodeView, 1),
+	s.UpdateNodes(map[types.NodeID]UpdateNodeFunc{nodeID: updateFn})
+
+	nodeStoreOperations.WithLabelValues("update").Inc()
+
+	return s.GetNode(nodeID)
+}
+
+// UpdateNodes applies per-node update functions in a single atomic
+// batch. The election that recomputes primary routes runs once, after
+// every update has landed, so callers cannot observe an intermediate
+// snapshot where only some of the updates are visible. Use this when
+// the order in which two writers' updates are individually published
+// would change the election outcome — e.g. the HA prober applying
+// concurrent probe-timeout results.
+func (s *NodeStore) UpdateNodes(updates map[types.NodeID]UpdateNodeFunc) {
+	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("update_multi"))
+	defer timer.ObserveDuration()
+
+	if len(updates) == 0 {
+		return
+	}
+
+	w := work{
+		op:           updateMulti,
+		multiUpdates: updates,
+		result:       make(chan struct{}),
 	}
 
 	nodeStoreQueueDepth.Inc()
 
-	s.writeQueue <- work
+	s.writeQueue <- w
 
-	<-work.result
+	<-w.result
 	nodeStoreQueueDepth.Dec()
 
-	resultNode := <-work.nodeResult
-
-	nodeStoreOperations.WithLabelValues("update").Inc()
-
-	// Return the node and whether it exists (is valid)
-	return resultNode, resultNode.Valid()
+	nodeStoreOperations.WithLabelValues("update_multi").Inc()
 }
 
 // DeleteNode removes a node from the store by its ID.
@@ -405,20 +419,21 @@ func (s *NodeStore) applyBatch(batch []work) {
 			if w.nodeResult != nil {
 				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
 			}
-		case update:
-			// Update the specific node identified by nodeID
-			if n, exists := nodes[w.nodeID]; exists {
+		case updateMulti:
+			for id, fn := range w.multiUpdates {
+				n, exists := nodes[id]
+				if !exists {
+					continue
+				}
+
 				oldGivenName := n.GivenName
-				w.updateFn(&n)
+				fn(&n)
 
 				if n.GivenName != oldGivenName {
 					n.GivenName = resolveGivenName(nodes, n.ID, n.GivenName)
 				}
-				nodes[w.nodeID] = n
-			}
 
-			if w.nodeResult != nil {
-				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
+				nodes[id] = n
 			}
 		case del:
 			delete(nodes, w.nodeID)
