@@ -31,10 +31,10 @@ distributions are Ubuntu 22.04 or newer, Debian 12 or newer.
     sudo nano /etc/headscale/config.yaml
     ```
 
-1. Enable and start the headscale service:
+1. Restart headscale to pick up configuration changes:
 
     ```shell
-    sudo systemctl enable --now headscale
+    sudo systemctl restart headscale
     ```
 
 1. Verify that headscale is running as intended:
