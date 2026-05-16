@@ -80,8 +80,7 @@ prefixes:
 # connection cannot be established.
 # https://tailscale.com/blog/how-tailscale-works/#encrypted-tcp-relays-derp
 #
-# headscale needs a list of DERP servers that can be presented
-# to the clients.
+# Headscale needs a list of DERP servers that can be presented to the clients.
 derp:
   server:
     # If enabled, runs the embedded DERP server and merges it into the rest of the DERP config
@@ -126,9 +125,9 @@ derp:
 
   # Locally available DERP map files encoded in YAML
   #
-  # This option is mostly interesting for people hosting
-  # their own DERP servers:
+  # This option is mostly interesting for people hosting their own DERP servers:
   # https://tailscale.com/docs/reference/derp-servers/custom-derp-servers
+  # https://headscale.net/stable/ref/derp/
   #
   # paths:
   #   - /etc/headscale/derp-example.yaml
@@ -262,7 +261,7 @@ tls_letsencrypt_cache_dir: /var/lib/headscale/cache
 
 # Type of ACME challenge to use, currently supported types:
 # HTTP-01 or TLS-ALPN-01
-# See: docs/ref/tls.md for more information
+# See: https://headscale.net/stable/ref/tls/
 tls_letsencrypt_challenge_type: HTTP-01
 # When HTTP-01 challenge is chosen, letsencrypt must set up a
 # verification endpoint, and it will be listening on:
@@ -297,7 +296,6 @@ policy:
 # headscale supports Tailscale's DNS configuration and MagicDNS.
 # Please have a look to their docs to better understand the concepts:
 #
-# - https://tailscale.com/docs/features/access-control/acls
 # - https://tailscale.com/docs/features/magicdns
 # - https://tailscale.com/blog/2021-09-private-dns-with-magicdns
 #
@@ -314,7 +312,7 @@ policy:
 # If you want stop Headscale from managing the DNS configuration
 # all the fields under `dns` should be set to empty values.
 dns:
-  # Whether to use [MagicDNS](https://tailscale.com/docs/features/magicdns).
+  # Whether to use MagicDNS
   magic_dns: true
 
   # Defines the base domain to create the hostnames for MagicDNS.
@@ -355,7 +353,7 @@ dns:
 
   # Extra DNS records
   # so far only A and AAAA records are supported (on the tailscale side)
-  # See: docs/ref/dns.md
+  # See: https://headscale.net/stable/ref/dns/
   extra_records: []
   #   - name: "grafana.myvpn.example.com"
   #     type: "A"
@@ -374,6 +372,7 @@ unix_socket: /var/run/headscale/headscale.sock
 unix_socket_permission: "0770"
 
 # OpenID Connect
+# https://headscale.net/stable/ref/oidc/
 # oidc:
 #   # Block startup until the identity provider is available and healthy.
 #   only_start_if_oidc_is_available: true
