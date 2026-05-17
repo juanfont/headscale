@@ -4066,9 +4066,9 @@ func TestHASubnetRouterFailoverBothOffline(t *testing.T) {
 //     connection until kernel keepalives time out (often >60 s). When
 //     the cable returns, two server-side longpoll sessions can overlap.
 //
-// Issue #3203 reports the bug after cable pulls; this variant blocks all
-// traffic between the router container and headscale via iptables and then
-// removes the block to mimic that behaviour.
+// This variant blocks all traffic between the router container and
+// headscale via iptables and then removes the block to mimic the
+// cable-pull behaviour.
 func TestHASubnetRouterFailoverBothOfflineCablePull(t *testing.T) {
 	IntegrationSkip(t)
 

@@ -218,12 +218,12 @@ func TestPrimaries_AllUnhealthyKeepsAPrimary(t *testing.T) {
 }
 
 func TestPrimaries_AllUnhealthyPreservesPrevious(t *testing.T) {
-	// Issue #3203: once a failover has moved primary to a higher-ID
-	// node, a subsequent all-unhealthy state must NOT churn primary
-	// back to the lowest-ID candidate. Under cable-pull semantics
-	// both nodes can linger as IsOnline=true (half-open TCP) and
-	// both go Unhealthy — naive `candidates[0]` would flap the
-	// primary to a node that is itself unreachable.
+	// Once a failover has moved primary to a higher-ID node, a
+	// subsequent all-unhealthy state must NOT churn primary back to
+	// the lowest-ID candidate. Under cable-pull semantics both nodes
+	// can linger as IsOnline=true (half-open TCP) and both go
+	// Unhealthy — naive `candidates[0]` would flap the primary to a
+	// node that is itself unreachable.
 	prefix := mp("10.0.0.0/24")
 	f := newPrimariesFixture(t, 1, 2)
 	f.advertise(1, prefix)
@@ -247,12 +247,11 @@ func TestPrimaries_ExitRouteNotElected(t *testing.T) {
 	f.requireNoPrimary(exitV4)
 }
 
-func TestPrimaries_RegressionIssue3203_BothOfflineThenOneReturns(t *testing.T) {
-	// Issue #3203: with two HA advertisers, dropping both then
-	// bringing one back used to leave the prefix without any
-	// primary. After the refactor the snapshot recomputes primaries
-	// on every NodeStore write, so the returning advertiser must
-	// be elected.
+func TestPrimaries_BothOfflineThenOneReturns(t *testing.T) {
+	// With two HA advertisers, dropping both then bringing one back
+	// used to leave the prefix without any primary. The snapshot
+	// recomputes primaries on every NodeStore write, so the
+	// returning advertiser must be elected.
 	prefix := mp("10.0.0.0/24")
 	f := newPrimariesFixture(t, 1, 2)
 	f.advertise(1, prefix)

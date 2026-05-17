@@ -633,14 +633,14 @@ func snapshotFromNodes(
 }
 
 // electPrimaryRoutes picks the primary advertiser for each non-exit
+// prefix. Inputs are restricted to online nodes that advertise the
 // prefix. The previous primary is preserved when it is still online
 // and healthy (anti-flap); otherwise the lowest-NodeID healthy
 // advertiser wins. When every advertiser is unhealthy the previous
-// primary is preserved if still a candidate, falling back to the
-// lowest-NodeID candidate so peers see *some* primary instead of
-// none. Anti-flap in the all-unhealthy case matters under cable-pull
-// where IsOnline lags reality and a naive lowest-ID fallback churns
-// primaries to a node that is itself unreachable (issue #3203).
+// primary is preserved only if still a candidate — falling back to
+// any other candidate would point peers at a node the prober has
+// already declared unreachable, so leaving the prefix unmapped is
+// preferred until a probe cycle finds one that responds.
 func electPrimaryRoutes(
 	nodes map[types.NodeID]types.Node,
 	prev map[netip.Prefix]types.NodeID,
