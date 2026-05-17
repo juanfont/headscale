@@ -692,14 +692,16 @@ func electPrimaryRoutes(
 			}
 		}
 
+		// All-unhealthy fallback: preserve the previous primary only
+		// when it is still a candidate. Falling back to any candidate
+		// would point peers at a node the prober has already declared
+		// unreachable; leaving the prefix unmapped is honest until a
+		// probe cycle picks one that responds.
 		if !found && len(candidates) >= 1 {
 			if cur, ok := prev[prefix]; ok && slices.Contains(candidates, cur) {
 				selected = cur
-			} else {
-				selected = candidates[0]
+				found = true
 			}
-
-			found = true
 		}
 
 		if found {

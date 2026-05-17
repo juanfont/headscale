@@ -97,18 +97,23 @@ func (m *primariesModel) updatePrimaries() {
 			}
 		}
 
+		// All-unhealthy fallback: preserve the previous primary if it
+		// is still a candidate, otherwise leave the prefix unmapped.
+		// electPrimaryRoutes was changed to drop the candidates[0]
+		// fallback so the Phase-5 (simultaneous dual-disconnect)
+		// regression cannot pick an already-unhealthy node as
+		// primary; the model has to track the same behaviour.
 		if !found && len(nodes) >= 1 {
 			if cur, ok := m.primary[p]; ok && slices.Contains(nodes, cur) {
 				selected = cur
-			} else {
-				selected = nodes[0]
+				found = true
 			}
-
-			found = true
 		}
 
 		if found {
 			m.primary[p] = selected
+		} else {
+			delete(m.primary, p)
 		}
 	}
 }
