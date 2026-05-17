@@ -197,8 +197,8 @@ Examples that previously regressed and now work:
   - Policies that need to match all IP addresses including non-Tailscale IPs should use `autogroup:danger-all` as a source, or explicit CIDR ranges as destinations [#2180](https://github.com/juanfont/headscale/pull/2180)
   - `autogroup:danger-all` can only be used as a source; it cannot be used as a destination
   - **Note**: Users with non-standard IP ranges configured in `prefixes.ipv4` or `prefixes.ipv6` (which is unsupported and produces a warning) will need to explicitly specify their CIDR ranges in ACL rules instead of using `*`
-- Validate autogroup:self source restrictions matching Tailscale behavior - tags, hosts, and IPs are rejected as sources for autogroup:self destinations [#3036](https://github.com/juanfont/headscale/pull/3036)
-  - Policies using tags, hosts, or IP addresses as sources for autogroup:self destinations will now fail validation
+- Validate `autogroup:self` source restrictions matching Tailscale behavior - tags, hosts, and IPs are rejected as sources for `autogroup:self` destinations [#3036](https://github.com/juanfont/headscale/pull/3036)
+  - Policies using tags, hosts, or IP addresses as sources for `autogroup:self` destinations will now fail validation
 - The `proto:icmp` protocol name now only includes ICMPv4 (protocol 1), matching Tailscale behavior [#3036](https://github.com/juanfont/headscale/pull/3036)
   - Previously, `proto:icmp` included both ICMPv4 and ICMPv6
   - Use `proto:ipv6-icmp` or protocol number `58` explicitly for ICMPv6
@@ -216,8 +216,7 @@ Examples that previously regressed and now work:
   toggle now lives in the policy file as a top-level
   `randomizeClientPort` field, matching the Tailscale-hosted schema.
   Headscale refuses to start when the old key is set. Move it to the
-  policy file referenced by `policy.path` (defaults to
-  `/etc/headscale/policy.hujson`):
+  policy file referenced by `policy.path`:
 
   ```jsonc
   {
