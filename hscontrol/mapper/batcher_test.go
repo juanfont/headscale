@@ -158,14 +158,14 @@ type node struct {
 //
 // Returns TestData struct containing all created entities and a cleanup function.
 func setupBatcherWithTestData(
-	t testing.TB,
+	tb testing.TB,
 	bf batcherFunc,
 	userCount, nodesPerUser, bufferSize int,
 ) (*TestData, func()) {
-	t.Helper()
+	tb.Helper()
 
 	// Create database and populate with test data first
-	tmpDir := t.TempDir()
+	tmpDir := tb.TempDir()
 	dbPath := tmpDir + "/headscale_test.db"
 
 	prefixV4 := netip.MustParsePrefix("100.64.0.0/10")
@@ -206,7 +206,7 @@ func setupBatcherWithTestData(
 	// Create database and populate it with test data
 	database, err := db.NewHeadscaleDatabase(cfg)
 	if err != nil {
-		t.Fatalf("setting up database: %s", err)
+		tb.Fatalf("setting up database: %s", err)
 	}
 
 	// Create test users and nodes in the database
@@ -226,12 +226,12 @@ func setupBatcherWithTestData(
 	// Now create state using the same database
 	state, err := state.NewState(cfg)
 	if err != nil {
-		t.Fatalf("Failed to create state: %v", err)
+		tb.Fatalf("Failed to create state: %v", err)
 	}
 
 	derpMap, err := derp.GetDERPMap(cfg.DERP)
-	require.NoError(t, err)
-	require.NotNil(t, derpMap)
+	require.NoError(tb, err)
+	require.NotNil(tb, derpMap)
 
 	state.SetDERPMap(derpMap)
 
@@ -248,7 +248,7 @@ func setupBatcherWithTestData(
 
 	_, err = state.SetPolicy([]byte(allowAllPolicy))
 	if err != nil {
-		t.Fatalf("Failed to set allow-all policy: %v", err)
+		tb.Fatalf("Failed to set allow-all policy: %v", err)
 	}
 
 	// Create batcher with the state and wrap it for testing
