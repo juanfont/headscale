@@ -772,6 +772,123 @@ func TestGrantViaSubnetFilterRules(t *testing.T) {
 			"without per-node filter compilation for via grants, these rules are missing")
 }
 
+// TestGrantViaSubnetBroaderDstFilterRules verifies that a via grant
+// whose destination is broader than the router's advertised subnet
+// still produces a filter rule on the router and surfaces the route in
+// the client's AllowedIPs. Reproduces juanfont/headscale#3267 at the
+// server level. Pre-fix the policy compiler required exact prefix
+// equality, so the router's PacketFilter had no rule for the steered
+// destination and traffic was silently dropped.
+func TestGrantViaSubnetBroaderDstFilterRules(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t)
+	routerUser := srv.CreateUser(t, "rt-user")
+	clientUser := srv.CreateUser(t, "cl-user")
+
+	advertised := netip.MustParsePrefix("10.33.0.0/16")
+	broaderDst := netip.MustParsePrefix("10.0.0.0/8")
+
+	changed, err := srv.State().SetPolicy([]byte(`{
+		"tagOwners": {
+			"tag:router-a": ["rt-user@"],
+			"tag:group-a":  ["cl-user@"]
+		},
+		"grants": [
+			{
+				"src": ["tag:router-a", "tag:group-a"],
+				"dst": ["tag:router-a", "tag:group-a"],
+				"ip": ["*"]
+			},
+			{
+				"src": ["tag:group-a"],
+				"dst": ["10.0.0.0/8"],
+				"ip": ["*"],
+				"via": ["tag:router-a"]
+			}
+		],
+		"autoApprovers": {
+			"routes": {
+				"10.33.0.0/16": ["tag:router-a"]
+			}
+		}
+	}`))
+	require.NoError(t, err)
+
+	if changed {
+		changes, err := srv.State().ReloadPolicy()
+		require.NoError(t, err)
+		srv.App.Change(changes...)
+	}
+
+	routerA := servertest.NewClient(t, srv, "router-a",
+		servertest.WithUser(routerUser),
+		servertest.WithTags("tag:router-a"))
+	clientA := servertest.NewClient(t, srv, "client-a",
+		servertest.WithUser(clientUser),
+		servertest.WithTags("tag:group-a"))
+
+	routerA.WaitForPeers(t, 1, 15*time.Second)
+	clientA.WaitForPeers(t, 1, 15*time.Second)
+
+	routerA.Direct().SetHostinfo(&tailcfg.Hostinfo{
+		BackendLogID: "servertest-router-a",
+		Hostname:     "router-a",
+		RoutableIPs:  []netip.Prefix{advertised},
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_ = routerA.Direct().SendUpdate(ctx)
+
+	routerAID := findNodeID(t, srv, "router-a")
+	_, routeChange, err := srv.State().SetApprovedRoutes(
+		routerAID, []netip.Prefix{advertised})
+	require.NoError(t, err)
+	srv.App.Change(routeChange)
+
+	// Client should see the advertised route in router's AllowedIPs.
+	clientA.WaitForCondition(t, "clientA sees advertised route via router-a",
+		15*time.Second,
+		func(nm *netmap.NetworkMap) bool {
+			for _, p := range nm.Peers {
+				hi := p.Hostinfo()
+				if hi.Valid() && hi.Hostname() == "router-a" {
+					for i := range p.AllowedIPs().Len() {
+						if p.AllowedIPs().At(i) == advertised {
+							return true
+						}
+					}
+				}
+			}
+
+			return false
+		})
+
+	// Router's PacketFilter must contain the broader grant dst as a
+	// destination — that is what Tailscale SaaS emits for via grants.
+	routerNM := routerA.Netmap()
+	require.NotNil(t, routerNM)
+	require.NotNil(t, routerNM.PacketFilter,
+		"router PacketFilter should not be nil")
+
+	var foundBroaderDst bool
+
+	for _, m := range routerNM.PacketFilter {
+		for _, dst := range m.Dsts {
+			dstPrefix := netip.PrefixFrom(dst.Net.Addr(), dst.Net.Bits())
+			if dstPrefix == broaderDst {
+				foundBroaderDst = true
+			}
+		}
+	}
+
+	assert.True(t, foundBroaderDst,
+		"router PacketFilter should contain destination rules for the broader grant dst 10.0.0.0/8; "+
+			"the via gate requires advertised-route overlap, and the emitted prefix is the dst")
+}
+
 // TestGrantViaExitNodeNoFilterRules verifies wire-format SaaS compat:
 // the exit node's PacketFilter must not contain literal 0.0.0.0/0 or
 // ::/0 destinations. Internally, autogroup:internet via grants emit a
