@@ -27,15 +27,15 @@ const (
 	defaultOAuthOptionsCount = 3
 	authCacheExpiration      = time.Minute * 15
 
-	// authCacheMaxEntries bounds the OIDC state→AuthInfo cache to prevent
+	// authCacheMaxEntries bounds the OIDC state→[AuthInfo] cache to prevent
 	// unauthenticated cache-fill DoS via repeated /register/{auth_id} or
 	// /auth/{auth_id} GETs that mint OIDC state cookies.
 	authCacheMaxEntries = 1024
 
 	// cookieNamePrefixLen is the number of leading characters from a
-	// state/nonce value that getCookieName splices into the cookie name.
+	// state/nonce value that [getCookieName] splices into the cookie name.
 	// State and nonce values that are shorter than this are rejected at
-	// the callback boundary so getCookieName cannot panic on a slice
+	// the callback boundary so [getCookieName] cannot panic on a slice
 	// out-of-range.
 	cookieNamePrefixLen = 6
 )
@@ -69,7 +69,7 @@ type AuthProviderOIDC struct {
 	cfg       *types.OIDCConfig
 
 	// authCache holds auth information between the auth and the callback
-	// steps. It is a bounded LRU keyed by OIDC state, evicting oldest
+	// steps. It is a bounded [expirable.LRU] keyed by OIDC state, evicting oldest
 	// entries to keep the cache footprint constant under attack.
 	authCache *expirable.LRU[string, AuthInfo]
 
@@ -286,9 +286,9 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		util.LogErr(err, "could not get userinfo; only using claims from id token")
 	}
 
-	// The oidc.UserInfo type only decodes some fields (Subject, Profile, Email, EmailVerified).
+	// The [oidc.UserInfo] type only decodes some fields (Subject, Profile, Email, EmailVerified).
 	// We are interested in other fields too (e.g. groups are required for allowedGroups) so we
-	// decode into our own OIDCUserInfo type using the underlying claims struct.
+	// decode into our own [types.OIDCUserInfo] type using the underlying claims struct.
 	var userinfo2 types.OIDCUserInfo
 	if userinfo != nil && userinfo.Claims(&userinfo2) == nil && userinfo2.Sub == claims.Sub {
 		// Update the user with the userinfo claims (with id token claims as fallback).
@@ -444,10 +444,10 @@ func extractCodeAndStateParamFromRequest(
 		return "", "", NewHTTPError(http.StatusBadRequest, "missing code or state parameter", errEmptyOIDCCallbackParams)
 	}
 
-	// Reject states that are too short for getCookieName to splice
+	// Reject states that are too short for [getCookieName] to splice
 	// into a cookie name. Without this guard a request with
 	// ?state=abc panics on the slice out-of-range and is recovered by
-	// chi's middleware.Recoverer, amplifying small-DoS log noise.
+	// chi's [middleware.Recoverer], amplifying small-DoS log noise.
 	if len(state) < cookieNamePrefixLen {
 		return "", "", NewHTTPError(http.StatusBadRequest, "invalid state parameter", errOIDCStateTooShort)
 	}
@@ -552,15 +552,15 @@ func validateOIDCAllowedUsers(
 //
 // The following tests are always applied:
 //
-// - validateOIDCAllowedGroups
+// - [validateOIDCAllowedGroups]
 //
 // The following tests are applied if cfg.EmailVerifiedRequired=false
 // or claims.email_verified=true:
 //
-// - validateOIDCAllowedDomains
-// - validateOIDCAllowedUsers
+// - [validateOIDCAllowedDomains]
+// - [validateOIDCAllowedUsers]
 //
-// NOTE that, contrary to the function name, validateOIDCAllowedUsers
+// NOTE that, contrary to the function name, [validateOIDCAllowedUsers]
 // only checks the email address -- not the username.
 func doOIDCAuthorization(
 	cfg *types.OIDCConfig,
@@ -658,7 +658,7 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 const registerConfirmCSRFCookie = "headscale_register_confirm"
 
 // renderRegistrationConfirmInterstitial captures the resolved OIDC
-// identity and node expiry into the cached AuthRequest, sets the CSRF
+// identity and node expiry into the cached [types.AuthRequest], sets the CSRF
 // cookie, and renders the confirmation page that the user must
 // explicitly submit before the registration is finalised.
 func (a *AuthProviderOIDC) renderRegistrationConfirmInterstitial(
@@ -698,6 +698,7 @@ func (a *AuthProviderOIDC) renderRegistrationConfirmInterstitial(
 		CSRF:       csrf,
 	})
 
+	//nolint:gosec // G124: Secure set conditionally via req.TLS; HttpOnly + SameSite already set
 	http.SetCookie(writer, &http.Cookie{
 		Name:     registerConfirmCSRFCookie,
 		Value:    csrf,
@@ -733,7 +734,7 @@ func (a *AuthProviderOIDC) renderRegistrationConfirmInterstitial(
 // RegisterConfirmHandler is the POST endpoint behind the OIDC
 // registration confirmation interstitial. It validates the CSRF cookie
 // against the form-submitted token, finalises the registration via
-// handleRegistration, and renders the success page.
+// [AuthProviderOIDC.handleRegistration], and renders the success page.
 func (a *AuthProviderOIDC) RegisterConfirmHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
@@ -823,6 +824,7 @@ func (a *AuthProviderOIDC) RegisterConfirmHandler(
 	}
 
 	// Clear the CSRF cookie now that the registration is final.
+	//nolint:gosec // G124: Secure set conditionally via req.TLS; HttpOnly + SameSite already set
 	http.SetCookie(writer, &http.Cookie{
 		Name:     registerConfirmCSRFCookie,
 		Value:    "",
@@ -838,7 +840,7 @@ func (a *AuthProviderOIDC) RegisterConfirmHandler(
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
 
-	// renderRegistrationSuccessTemplate's output only embeds
+	// [renderRegistrationSuccessTemplate]'s output only embeds
 	// HTML-escaped values from a server-side template, so the gosec
 	// XSS warning is a false positive here.
 	if _, err := writer.Write(content.Bytes()); err != nil { //nolint:noinlineerr,gosec
@@ -918,9 +920,9 @@ func renderAuthSuccessTemplate(
 }
 
 // getCookieName generates a unique cookie name based on a cookie value.
-// Callers must ensure value has at least cookieNamePrefixLen bytes;
-// extractCodeAndStateParamFromRequest enforces this for the state
-// parameter, and setCSRFCookie always supplies a 64-byte random value.
+// Callers must ensure value has at least [cookieNamePrefixLen] bytes;
+// [extractCodeAndStateParamFromRequest] enforces this for the state
+// parameter, and [setCSRFCookie] always supplies a 64-byte random value.
 func getCookieName(baseName, value string) string {
 	return fmt.Sprintf("%s_%s", baseName, value[:cookieNamePrefixLen])
 }
@@ -931,6 +933,7 @@ func setCSRFCookie(w http.ResponseWriter, r *http.Request, name string) (string,
 		return val, err
 	}
 
+	//nolint:gosec // G124: Secure set conditionally via r.TLS; HttpOnly + SameSite already set
 	c := &http.Cookie{
 		Path:     "/oidc/callback",
 		Name:     getCookieName(name, val),
