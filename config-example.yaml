@@ -39,6 +39,13 @@ grpc_listen_addr: 127.0.0.1:50443
 # are doing.
 grpc_allow_insecure: false
 
+# CIDR(s) of reverse proxies (e.g. 127.0.0.1/32) whose
+# True-Client-IP, X-Real-IP and X-Forwarded-For headers should
+# be honoured. Empty (default) ignores those headers; setting
+# this without a proxy in front lets clients spoof their logged
+# source IP.
+trusted_proxies: []
+
 # The Noise section includes specific configuration for the
 # TS2021 Noise protocol
 noise:
