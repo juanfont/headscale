@@ -48,6 +48,9 @@ const (
 	headscaleDefaultPort          = 8080
 	IntegrationTestDockerFileName = "Dockerfile.integration"
 	defaultDirPerm                = 0o755
+	binHeadscale                  = "headscale"
+	flagOutput                    = "--output"
+	acceptJSON                    = "Accept: application/json"
 )
 
 var (
@@ -94,8 +97,8 @@ type HeadscaleInContainer struct {
 // Headscale instance.
 type Option = func(c *HeadscaleInContainer)
 
-// WithACLPolicy adds a hscontrol.ACLPolicy policy to the
-// HeadscaleInContainer instance.
+// WithACLPolicy adds a [policyv2.Policy] to the
+// [HeadscaleInContainer] instance.
 func WithACLPolicy(acl *policyv2.Policy) Option {
 	return func(hsic *HeadscaleInContainer) {
 		if acl == nil {
@@ -127,7 +130,7 @@ func WithoutTLS() Option {
 
 // WithCustomTLS uses the given certificates for the Headscale instance.
 // The caCert is installed into the container's trust store and returned
-// by GetCert() so that clients can trust this server.
+// by [HeadscaleInContainer.GetCert] so that clients can trust this server.
 func WithCustomTLS(caCert, cert, key []byte) Option {
 	return func(hsic *HeadscaleInContainer) {
 		hsic.tlsCACert = caCert
@@ -320,7 +323,7 @@ func (hsic *HeadscaleInContainer) buildEntrypoint() []string {
 	return []string{"/bin/bash", "-c", strings.Join(commands, " ; ")}
 }
 
-// New returns a new HeadscaleInContainer instance.
+// New returns a new [HeadscaleInContainer] instance.
 //
 //nolint:gocyclo // complex container setup with many options
 func New(
@@ -364,8 +367,8 @@ func New(
 
 	// TLS is enabled by default for all integration tests.
 	// Generate a self-signed certificate if TLS was not explicitly
-	// disabled via WithoutTLS() and no custom cert was provided
-	// via WithCustomTLS().
+	// disabled via [WithoutTLS] and no custom cert was provided
+	// via [WithCustomTLS].
 	if !hsic.noTLS && len(hsic.tlsCert) == 0 {
 		caCert, cert, key, err := integrationutil.CreateCertificate(hsic.hostname)
 		if err != nil {
@@ -394,9 +397,9 @@ func New(
 	if hsic.postgres {
 		hsic.env["HEADSCALE_DATABASE_TYPE"] = "postgres"
 		hsic.env["HEADSCALE_DATABASE_POSTGRES_HOST"] = "postgres-" + hash
-		hsic.env["HEADSCALE_DATABASE_POSTGRES_USER"] = "headscale"
-		hsic.env["HEADSCALE_DATABASE_POSTGRES_PASS"] = "headscale"
-		hsic.env["HEADSCALE_DATABASE_POSTGRES_NAME"] = "headscale"
+		hsic.env["HEADSCALE_DATABASE_POSTGRES_USER"] = binHeadscale
+		hsic.env["HEADSCALE_DATABASE_POSTGRES_PASS"] = binHeadscale
+		hsic.env["HEADSCALE_DATABASE_POSTGRES_NAME"] = binHeadscale
 		delete(hsic.env, "HEADSCALE_DATABASE_SQLITE_PATH")
 
 		// Determine postgres image - use prebuilt if available, otherwise pull from registry
@@ -501,7 +504,7 @@ func New(
 	}
 
 	// Add integration test labels if running under hi tool
-	dockertestutil.DockerAddIntegrationLabels(runOptions, "headscale")
+	dockertestutil.DockerAddIntegrationLabels(runOptions, binHeadscale)
 
 	var container *dockertest.Resource
 
@@ -509,7 +512,7 @@ func New(
 	prebuiltImage := os.Getenv("HEADSCALE_INTEGRATION_HEADSCALE_IMAGE")
 
 	if prebuiltImage != "" {
-		log.Printf("Using pre-built headscale image: %s", prebuiltImage)
+		log.Printf("Using pre-built headscale image: %s", prebuiltImage) //nolint:gosec // G706: integration-only log of trusted env value
 		// Parse image into repository and tag
 		repo, tag, ok := strings.Cut(prebuiltImage, ":")
 		if !ok {
@@ -709,7 +712,7 @@ func (t *HeadscaleInContainer) Shutdown() (string, string, error) {
 }
 
 // WriteLogs writes the current stdout/stderr log of the container to
-// the given io.Writers.
+// the given [io.Writer]s.
 func (t *HeadscaleInContainer) WriteLogs(stdout, stderr io.Writer) error {
 	return dockertestutil.WriteLog(t.pool, t.container, stdout, stderr)
 }
@@ -1010,13 +1013,13 @@ func (t *HeadscaleInContainer) GetHostMetricsPort() string {
 	return t.hostMetricsPort
 }
 
-// GetHealthEndpoint returns a health endpoint for the HeadscaleInContainer
+// GetHealthEndpoint returns a health endpoint for the [HeadscaleInContainer]
 // instance.
 func (t *HeadscaleInContainer) GetHealthEndpoint() string {
 	return t.GetEndpoint() + "/health"
 }
 
-// GetEndpoint returns the Headscale endpoint for the HeadscaleInContainer.
+// GetEndpoint returns the Headscale endpoint for the [HeadscaleInContainer].
 func (t *HeadscaleInContainer) GetEndpoint() string {
 	return t.getEndpoint(false)
 }
@@ -1051,12 +1054,12 @@ func (t *HeadscaleInContainer) GetCert() []byte {
 	return t.tlsCACert
 }
 
-// GetHostname returns the hostname of the HeadscaleInContainer.
+// GetHostname returns the hostname of the [HeadscaleInContainer].
 func (t *HeadscaleInContainer) GetHostname() string {
 	return t.hostname
 }
 
-// GetIPInNetwork returns the IP address of the HeadscaleInContainer in the given network.
+// GetIPInNetwork returns the IP address of the [HeadscaleInContainer] in the given network.
 func (t *HeadscaleInContainer) GetIPInNetwork(network *dockertest.Network) string {
 	return t.container.GetIPInNetwork(network)
 }
@@ -1095,12 +1098,12 @@ func (t *HeadscaleInContainer) CreateUser(
 	user string,
 ) (*v1.User, error) {
 	command := []string{
-		"headscale",
+		binHeadscale,
 		"users",
 		"create",
 		user,
 		fmt.Sprintf("--email=%s@test.no", user),
-		"--output",
+		flagOutput,
 		"json",
 	}
 
@@ -1140,7 +1143,7 @@ type AuthKeyOptions struct {
 // This supports both user-owned and tags-only auth keys.
 func (t *HeadscaleInContainer) CreateAuthKeyWithOptions(opts AuthKeyOptions) (*v1.PreAuthKey, error) {
 	command := []string{
-		"headscale",
+		binHeadscale,
 	}
 
 	// Only add --user flag if User is specified
@@ -1153,7 +1156,7 @@ func (t *HeadscaleInContainer) CreateAuthKeyWithOptions(opts AuthKeyOptions) (*v
 		"create",
 		"--expiration",
 		"24h",
-		"--output",
+		flagOutput,
 		"json",
 	)
 
@@ -1189,7 +1192,7 @@ func (t *HeadscaleInContainer) CreateAuthKeyWithOptions(opts AuthKeyOptions) (*v
 }
 
 // CreateAuthKey creates a new "authorisation key" for a User that can be used
-// to authorise a TailscaleClient with the Headscale instance.
+// to authorise a TailscaleClient with the [HeadscaleInContainer] instance.
 func (t *HeadscaleInContainer) CreateAuthKey(
 	user uint64,
 	reusable bool,
@@ -1223,12 +1226,12 @@ func (t *HeadscaleInContainer) DeleteAuthKey(
 	id uint64,
 ) error {
 	command := []string{
-		"headscale",
+		binHeadscale,
 		"preauthkeys",
 		"delete",
 		"--id",
 		strconv.FormatUint(id, 10),
-		"--output",
+		flagOutput,
 		"json",
 	}
 
@@ -1275,13 +1278,13 @@ func (t *HeadscaleInContainer) ListNodes(
 	}
 
 	if len(users) == 0 {
-		err := execUnmarshal([]string{"headscale", "nodes", "list", "--output", "json"})
+		err := execUnmarshal([]string{binHeadscale, "nodes", "list", flagOutput, "json"})
 		if err != nil {
 			return nil, err
 		}
 	} else {
 		for _, user := range users {
-			command := []string{"headscale", "--user", user, "nodes", "list", "--output", "json"}
+			command := []string{binHeadscale, "--user", user, "nodes", "list", flagOutput, "json"}
 
 			err := execUnmarshal(command)
 			if err != nil {
@@ -1299,12 +1302,12 @@ func (t *HeadscaleInContainer) ListNodes(
 
 func (t *HeadscaleInContainer) DeleteNode(nodeID uint64) error {
 	command := []string{
-		"headscale",
+		binHeadscale,
 		"nodes",
 		"delete",
 		"--identifier",
 		strconv.FormatUint(nodeID, 10),
-		"--output",
+		flagOutput,
 		"json",
 		"--force",
 	}
@@ -1355,7 +1358,7 @@ func (t *HeadscaleInContainer) NodesByName() (map[string]*v1.Node, error) {
 
 // ListUsers returns a list of users from Headscale.
 func (t *HeadscaleInContainer) ListUsers() ([]*v1.User, error) {
-	command := []string{"headscale", "users", "list", "--output", "json"}
+	command := []string{binHeadscale, "users", "list", flagOutput, "json"}
 
 	result, _, err := dockertestutil.ExecuteCommand(
 		t.container,
@@ -1395,13 +1398,13 @@ func (t *HeadscaleInContainer) MapUsers() (map[string]*v1.User, error) {
 // DeleteUser deletes a user from the Headscale instance.
 func (t *HeadscaleInContainer) DeleteUser(userID uint64) error {
 	command := []string{
-		"headscale",
+		binHeadscale,
 		"users",
 		"delete",
 		"--identifier",
 		strconv.FormatUint(userID, 10),
 		"--force",
-		"--output",
+		flagOutput,
 		"json",
 	}
 
@@ -1444,7 +1447,7 @@ func (h *HeadscaleInContainer) SetPolicy(pol *policyv2.Policy) error {
 func (h *HeadscaleInContainer) reloadDatabasePolicy() error {
 	_, err := h.Execute(
 		[]string{
-			"headscale",
+			binHeadscale,
 			"policy",
 			"set",
 			"-f",
@@ -1476,7 +1479,7 @@ func (h *HeadscaleInContainer) PID() (int, error) {
 	// Use pidof to find the headscale process, which is more reliable than grep
 	// as it only looks for the actual binary name, not processes that contain
 	// "headscale" in their command line (like the dlv debugger).
-	output, err := h.Execute([]string{"pidof", "headscale"})
+	output, err := h.Execute([]string{"pidof", binHeadscale})
 	if err != nil {
 		// pidof returns exit code 1 when no process is found
 		return 0, os.ErrNotExist
@@ -1533,8 +1536,8 @@ func (h *HeadscaleInContainer) Reload() error {
 // ApproveRoutes approves routes for a node.
 func (t *HeadscaleInContainer) ApproveRoutes(id uint64, routes []netip.Prefix) (*v1.Node, error) {
 	command := []string{
-		"headscale", "nodes", "approve-routes",
-		"--output", "json",
+		binHeadscale, "nodes", "approve-routes",
+		flagOutput, "json",
 		"--identifier", strconv.FormatUint(id, 10),
 		"--routes=" + strings.Join(util.PrefixesToString(routes), ","),
 	}
@@ -1568,9 +1571,9 @@ func (t *HeadscaleInContainer) ApproveRoutes(id uint64, routes []netip.Prefix) (
 // SetTags API which is exposed via the CLI command: headscale nodes tag -i <id> -t <tags>.
 func (t *HeadscaleInContainer) SetNodeTags(nodeID uint64, tags []string) error {
 	command := []string{
-		"headscale", "nodes", "tag",
+		binHeadscale, "nodes", "tag",
 		"--identifier", strconv.FormatUint(nodeID, 10),
-		"--output", "json",
+		flagOutput, "json",
 	}
 
 	// Add tags - the CLI expects -t flag for each tag or comma-separated
@@ -1605,7 +1608,7 @@ func (t *HeadscaleInContainer) FetchPath(path string) ([]byte, error) {
 }
 
 func (t *HeadscaleInContainer) SendInterrupt() error {
-	pid, err := t.Execute([]string{"pidof", "headscale"})
+	pid, err := t.Execute([]string{"pidof", binHeadscale})
 	if err != nil {
 		return err
 	}
@@ -1621,7 +1624,7 @@ func (t *HeadscaleInContainer) SendInterrupt() error {
 func (t *HeadscaleInContainer) GetAllMapReponses() (map[types.NodeID][]tailcfg.MapResponse, error) {
 	// Execute curl inside the container to access the debug endpoint locally
 	command := []string{
-		"curl", "-s", "-H", "Accept: application/json", "http://localhost:9090/debug/mapresponses",
+		"curl", "-s", "-H", acceptJSON, "http://localhost:9090/debug/mapresponses",
 	}
 
 	result, err := t.Execute(command)
@@ -1641,7 +1644,7 @@ func (t *HeadscaleInContainer) GetAllMapReponses() (map[types.NodeID][]tailcfg.M
 func (t *HeadscaleInContainer) PrimaryRoutes() (*types.DebugRoutes, error) {
 	// Execute curl inside the container to access the debug endpoint locally
 	command := []string{
-		"curl", "-s", "-H", "Accept: application/json", "http://localhost:9090/debug/routes",
+		"curl", "-s", "-H", acceptJSON, "http://localhost:9090/debug/routes",
 	}
 
 	result, err := t.Execute(command)
@@ -1661,7 +1664,7 @@ func (t *HeadscaleInContainer) PrimaryRoutes() (*types.DebugRoutes, error) {
 func (t *HeadscaleInContainer) DebugBatcher() (*hscontrol.DebugBatcherInfo, error) {
 	// Execute curl inside the container to access the debug endpoint locally
 	command := []string{
-		"curl", "-s", "-H", "Accept: application/json", "http://localhost:9090/debug/batcher",
+		"curl", "-s", "-H", acceptJSON, "http://localhost:9090/debug/batcher",
 	}
 
 	result, err := t.Execute(command)
@@ -1677,11 +1680,11 @@ func (t *HeadscaleInContainer) DebugBatcher() (*hscontrol.DebugBatcherInfo, erro
 	return &debugInfo, nil
 }
 
-// DebugNodeStore fetches the NodeStore data from the debug endpoint.
+// DebugNodeStore fetches the [state.NodeStore] data from the debug endpoint.
 func (t *HeadscaleInContainer) DebugNodeStore() (map[types.NodeID]types.Node, error) {
 	// Execute curl inside the container to access the debug endpoint locally
 	command := []string{
-		"curl", "-s", "-H", "Accept: application/json", "http://localhost:9090/debug/nodestore",
+		"curl", "-s", "-H", acceptJSON, "http://localhost:9090/debug/nodestore",
 	}
 
 	result, err := t.Execute(command)
@@ -1701,7 +1704,7 @@ func (t *HeadscaleInContainer) DebugNodeStore() (map[types.NodeID]types.Node, er
 func (t *HeadscaleInContainer) DebugFilter() ([]tailcfg.FilterRule, error) {
 	// Execute curl inside the container to access the debug endpoint locally
 	command := []string{
-		"curl", "-s", "-H", "Accept: application/json", "http://localhost:9090/debug/filter",
+		"curl", "-s", "-H", acceptJSON, "http://localhost:9090/debug/filter",
 	}
 
 	result, err := t.Execute(command)

@@ -70,7 +70,7 @@ var userCmd = &cobra.Command{
 var createUserCmd = &cobra.Command{
 	Use:     "create NAME",
 	Short:   "Creates a new user",
-	Aliases: []string{"c", "new"},
+	Aliases: []string{"c", cmdNew},
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
 			return errMissingParameter
@@ -115,7 +115,7 @@ var createUserCmd = &cobra.Command{
 var destroyUserCmd = &cobra.Command{
 	Use:     "destroy --identifier ID or --name NAME",
 	Short:   "Destroys a user",
-	Aliases: []string{"delete"},
+	Aliases: []string{cmdDelete},
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		id, username, err := usernameAndIDFromFlag(cmd)
 		if err != nil {
@@ -142,7 +142,7 @@ var destroyUserCmd = &cobra.Command{
 			"Do you want to remove the user %q (%d) and any associated preauthkeys?",
 			user.GetName(), user.GetId(),
 		)) {
-			return printOutput(cmd, map[string]string{"Result": "User not destroyed"}, "User not destroyed")
+			return printOutput(cmd, map[string]string{colResult: "User not destroyed"}, "User not destroyed")
 		}
 
 		deleteRequest := &v1.DeleteUserRequest{Id: user.GetId()}
@@ -157,9 +157,9 @@ var destroyUserCmd = &cobra.Command{
 }
 
 var listUsersCmd = &cobra.Command{
-	Use:     "list",
+	Use:     cmdList,
 	Short:   "List all the users",
-	Aliases: []string{"ls", "show"},
+	Aliases: []string{"ls", cmdShow},
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		request := &v1.ListUsersRequest{}
 
@@ -183,7 +183,9 @@ var listUsersCmd = &cobra.Command{
 		}
 
 		return printListOutput(cmd, response.GetUsers(), func() error {
-			tableData := pterm.TableData{{"ID", "Name", "Username", "Email", "Created"}}
+			tableData := make(pterm.TableData, 1, 1+len(response.GetUsers()))
+
+			tableData[0] = []string{"ID", "Name", "Username", "Email", colCreated}
 			for _, user := range response.GetUsers() {
 				tableData = append(
 					tableData,

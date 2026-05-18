@@ -42,9 +42,9 @@ var preauthkeysCmd = &cobra.Command{
 }
 
 var listPreAuthKeys = &cobra.Command{
-	Use:     "list",
+	Use:     cmdList,
 	Short:   "List all preauthkeys",
-	Aliases: []string{"ls", "show"},
+	Aliases: []string{"ls", cmdShow},
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		response, err := client.ListPreAuthKeys(ctx, &v1.ListPreAuthKeysRequest{})
 		if err != nil {
@@ -52,17 +52,16 @@ var listPreAuthKeys = &cobra.Command{
 		}
 
 		return printListOutput(cmd, response.GetPreAuthKeys(), func() error {
-			tableData := pterm.TableData{
-				{
-					"ID",
-					"Key/Prefix",
-					"Reusable",
-					"Ephemeral",
-					"Used",
-					"Expiration",
-					"Created",
-					"Owner",
-				},
+			tableData := make(pterm.TableData, 1, 1+len(response.GetPreAuthKeys()))
+			tableData[0] = []string{
+				"ID",
+				"Key/Prefix",
+				"Reusable",
+				"Ephemeral",
+				"Used",
+				colExpiration,
+				colCreated,
+				"Owner",
 			}
 
 			for _, key := range response.GetPreAuthKeys() {
@@ -100,7 +99,7 @@ var listPreAuthKeys = &cobra.Command{
 var createPreAuthKeyCmd = &cobra.Command{
 	Use:     "create",
 	Short:   "Creates a new preauthkey",
-	Aliases: []string{"c", "new"},
+	Aliases: []string{"c", cmdNew},
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		user, _ := cmd.Flags().GetUint64("user")
 		reusable, _ := cmd.Flags().GetBool("reusable")
@@ -130,9 +129,9 @@ var createPreAuthKeyCmd = &cobra.Command{
 }
 
 var expirePreAuthKeyCmd = &cobra.Command{
-	Use:     "expire",
+	Use:     cmdExpire,
 	Short:   "Expire a preauthkey",
-	Aliases: []string{"revoke", "exp", "e"},
+	Aliases: []string{"revoke", aliasExp, "e"},
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		id, _ := cmd.Flags().GetUint64("id")
 
@@ -154,9 +153,9 @@ var expirePreAuthKeyCmd = &cobra.Command{
 }
 
 var deletePreAuthKeyCmd = &cobra.Command{
-	Use:     "delete",
+	Use:     cmdDelete,
 	Short:   "Delete a preauthkey",
-	Aliases: []string{"del", "rm", "d"},
+	Aliases: []string{aliasDel, "rm", "d"},
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		id, _ := cmd.Flags().GetUint64("id")
 

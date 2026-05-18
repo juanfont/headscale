@@ -67,9 +67,9 @@ func newHeadscaleServerWithConfig() (*hscontrol.Headscale, error) {
 	return app, nil
 }
 
-// grpcRunE wraps a cobra RunE func, injecting a ready gRPC client and
-// context. Connection lifecycle is managed by the wrapper — callers
-// never see the underlying conn or cancel func.
+// grpcRunE wraps a cobra [cobra.Command.RunE] func, injecting a ready
+// gRPC client and context. Connection lifecycle is managed by the
+// wrapper — callers never see the underlying conn or cancel func.
 func grpcRunE(
 	fn func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error,
 ) func(*cobra.Command, []string) error {
@@ -103,7 +103,7 @@ func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *g
 
 	address := cfg.CLI.Address
 
-	// If the address is not set, we assume that we are on the server hosting hscontrol.
+	// If the address is not set, we assume that we are on the server hosting [hscontrol].
 	if address == "" {
 		log.Debug().
 			Str("socket", cfg.UnixSocket).
@@ -112,9 +112,9 @@ func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *g
 		address = cfg.UnixSocket
 
 		// Try to give the user better feedback if we cannot write to the headscale
-		// socket.  Note: os.OpenFile on a Unix domain socket returns ENXIO on
+		// socket.  Note: [os.OpenFile] on a Unix domain socket returns ENXIO on
 		// Linux which is expected — only permission errors are actionable here.
-		// The actual gRPC connection uses net.Dial which handles sockets properly.
+		// The actual gRPC connection uses [net.Dial] which handles sockets properly.
 		socket, err := os.OpenFile(cfg.UnixSocket, os.O_WRONLY, SocketWritePermissions) //nolint
 		if err != nil {
 			if os.IsPermission(err) {
@@ -269,7 +269,7 @@ func printListOutput(
 
 // printError writes err to stderr, formatting it as JSON/YAML when the
 // --output flag requests machine-readable output.  Used exclusively by
-// Execute() so that every error surfaces in the format the caller asked for.
+// [Execute] so that every error surfaces in the format the caller asked for.
 func printError(err error, outputFormat string) {
 	type errOutput struct {
 		Error string `json:"error"`

@@ -58,6 +58,14 @@ const (
 	space3XL = "4rem"    //nolint:unused // 64px - 3x extra large spacing
 )
 
+// Shared CSS value constants used across templates.
+const (
+	cssBorderHS     = "1px solid var(--hs-border)" //nolint:unused // Shared HS border
+	cssBreakWord    = "break-word"                 //nolint:unused // Word wrapping
+	cssCenter       = "center"                     //nolint:unused // Center alignment
+	cssOverflowWrap = "overflow-wrap"              //nolint:unused // CSS property key
+)
+
 // Typography System
 // EXTRACTED FROM: https://headscale.net/stable/assets/stylesheets/main.342714a4.min.css
 // Material for MkDocs typography - exact values from .md-typeset CSS.
@@ -121,8 +129,8 @@ func card(title string, children ...elem.Node) *elem.Element {
 	return elem.Div(attrs.Props{
 		attrs.Style: styles.Props{
 			styles.Background:   "var(--hs-bg)",
-			styles.Border:       "1px solid var(--hs-border)",
-			styles.BorderRadius: "0.5rem",
+			styles.Border:       cssBorderHS,
+			styles.BorderRadius: spaceS,
 			styles.Padding:      "clamp(1rem, 3vw, 1.5rem)",
 			styles.MarginBottom: spaceL,
 			styles.BoxShadow:    "0 1px 3px rgba(0,0,0,0.1)",
@@ -147,8 +155,8 @@ func codeBlock(code string) *elem.Element {
 			styles.FontSize:        fontSizeCode,    // 0.85em
 			styles.LineHeight:      lineHeightCode,  // 1.4
 			styles.OverflowX:       "auto",          // Horizontal scroll
-			"overflow-wrap":        "break-word",    // Word wrapping
-			"word-wrap":            "break-word",    // Legacy support
+			cssOverflowWrap:        cssBreakWord,    // Word wrapping
+			"word-wrap":            cssBreakWord,    // Legacy support
 			styles.WhiteSpace:      "pre-wrap",      // Preserve whitespace
 			styles.MarginTop:       spaceM,          // 1em
 			styles.MarginBottom:    spaceM,          // 1em
@@ -171,7 +179,7 @@ func baseTypesetStyles() styles.Props {
 		styles.LineHeight: lineHeightBase, // 1.6
 		styles.Color:      colorTextPrimary,
 		styles.FontFamily: fontFamilySystem,
-		"overflow-wrap":   "break-word",
+		cssOverflowWrap:   cssBreakWord,
 		styles.TextAlign:  "left",
 	}
 }
@@ -190,7 +198,7 @@ func h1Styles() styles.Props {
 		styles.FontWeight: "300",
 		"letter-spacing":  "-0.01em",
 		styles.FontFamily: fontFamilySystem, // Roboto
-		"overflow-wrap":   "break-word",
+		cssOverflowWrap:   cssBreakWord,
 	}
 }
 
@@ -208,7 +216,7 @@ func h2Styles() styles.Props {
 		"letter-spacing":  "-0.01em",
 		styles.Color:      colorTextSecondary, // rgba(0, 0, 0, 0.54)
 		styles.FontFamily: fontFamilySystem,   // Roboto
-		"overflow-wrap":   "break-word",
+		cssOverflowWrap:   cssBreakWord,
 	}
 }
 
@@ -226,7 +234,7 @@ func h3Styles() styles.Props {
 		"letter-spacing":  "-0.01em",
 		styles.Color:      colorTextSecondary, // rgba(0, 0, 0, 0.54)
 		styles.FontFamily: fontFamilySystem,   // Roboto
-		"overflow-wrap":   "break-word",
+		cssOverflowWrap:   cssBreakWord,
 	}
 }
 
@@ -242,7 +250,7 @@ func paragraphStyles() styles.Props {
 		styles.FontSize:   fontSizeBase,     // 0.8rem - inherited from .md-typeset
 		styles.LineHeight: lineHeightBase,   // 1.6 - inherited from .md-typeset
 		styles.Color:      colorTextPrimary, // rgba(0, 0, 0, 0.87)
-		"overflow-wrap":   "break-word",
+		cssOverflowWrap:   cssBreakWord,
 	}
 }
 
@@ -260,7 +268,7 @@ func orderedListStyles() styles.Props {
 		styles.FontSize:     fontSizeBase,     // 0.8rem - inherited from .md-typeset
 		styles.LineHeight:   lineHeightBase,   // 1.6 - inherited from .md-typeset
 		styles.Color:        colorTextPrimary, // rgba(0, 0, 0, 0.87) - inherited from .md-typeset
-		"overflow-wrap":     "break-word",
+		cssOverflowWrap:     cssBreakWord,
 	}
 }
 
@@ -278,7 +286,7 @@ func unorderedListStyles() styles.Props {
 		styles.FontSize:     fontSizeBase,     // 0.8rem - inherited from .md-typeset
 		styles.LineHeight:   lineHeightBase,   // 1.6 - inherited from .md-typeset
 		styles.Color:        colorTextPrimary, // rgba(0, 0, 0, 0.87) - inherited from .md-typeset
-		"overflow-wrap":     "break-word",
+		cssOverflowWrap:     cssBreakWord,
 	}
 }
 
@@ -292,7 +300,7 @@ func linkStyles() styles.Props {
 	return styles.Props{
 		styles.Color:          colorPrimaryAccent, // #4051b5 - var(--md-primary-fg-color)
 		styles.TextDecoration: "none",
-		"word-break":          "break-word",
+		"word-break":          cssBreakWord,
 		styles.FontFamily:     fontFamilySystem, // Roboto - inherited from .md-typeset
 	}
 }
@@ -310,7 +318,7 @@ func inlineCodeStyles() styles.Props {
 		styles.FontSize:        fontSizeCode,   // 0.85em
 		styles.FontFamily:      fontFamilyCode, // Roboto Mono
 		styles.Padding:         "0 0.2941176471em",
-		"word-break":           "break-word",
+		"word-break":           cssBreakWord,
 	}
 }
 
@@ -338,7 +346,7 @@ func orDivider() *elem.Element {
 	return elem.Div(attrs.Props{
 		attrs.Style: styles.Props{
 			styles.Display:      "flex",
-			styles.AlignItems:   "center",
+			styles.AlignItems:   cssCenter,
 			styles.Gap:          spaceM,
 			styles.MarginTop:    space2XL,
 			styles.MarginBottom: space2XL,
@@ -369,12 +377,12 @@ func successBox(heading string, children ...elem.Node) *elem.Element {
 		attrs.Props{
 			attrs.Style: styles.Props{
 				styles.Display:         "flex",
-				styles.AlignItems:      "center",
+				styles.AlignItems:      cssCenter,
 				styles.Gap:             spaceM,
 				styles.Padding:         spaceL,
 				styles.BackgroundColor: "var(--hs-success-bg)",
 				styles.Border:          "1px solid var(--hs-success)",
-				styles.BorderRadius:    "0.5rem",
+				styles.BorderRadius:    spaceS,
 				styles.MarginBottom:    spaceXL,
 			}.ToInline(),
 			attrs.Role:  "status",
@@ -414,12 +422,12 @@ func errorBox(heading string, children ...elem.Node) *elem.Element {
 		attrs.Props{
 			attrs.Style: styles.Props{
 				styles.Display:         "flex",
-				styles.AlignItems:      "center",
+				styles.AlignItems:      cssCenter,
 				styles.Gap:             spaceM,
 				styles.Padding:         spaceL,
 				styles.BackgroundColor: "var(--hs-error-bg)",
 				styles.Border:          "1px solid var(--hs-error)",
-				styles.BorderRadius:    "0.5rem",
+				styles.BorderRadius:    spaceS,
 				styles.MarginBottom:    spaceXL,
 			}.ToInline(),
 			attrs.Role:  "alert",
@@ -462,7 +470,7 @@ func warningBox(title, message string) *elem.Element {
 			styles.Padding:         spaceL,
 			styles.BackgroundColor: "var(--hs-warning-bg)",
 			styles.Border:          "1px solid var(--hs-warning-border)",
-			styles.BorderRadius:    "0.5rem",
+			styles.BorderRadius:    spaceS,
 			styles.MarginTop:       spaceL,
 			styles.MarginBottom:    spaceL,
 		}.ToInline(),
@@ -492,7 +500,7 @@ func downloadButton(href, text string) *elem.Element {
 		attrs.Download: "headscale_macos.mobileconfig",
 		attrs.Style: styles.Props{
 			styles.Display:         "inline-flex",
-			styles.AlignItems:      "center",
+			styles.AlignItems:      cssCenter,
 			styles.Padding:         "0.75rem 1.5rem",
 			styles.BackgroundColor: "var(--md-primary-fg-color)",
 			styles.Color:           "#ffffff",
@@ -542,8 +550,8 @@ func detailsBox(summary string, children ...elem.Node) *elem.Element {
 	return elem.Details(attrs.Props{
 		attrs.Style: styles.Props{
 			styles.Background:   "var(--hs-bg)",
-			styles.Border:       "1px solid var(--hs-border)",
-			styles.BorderRadius: "0.5rem",
+			styles.Border:       cssBorderHS,
+			styles.BorderRadius: spaceS,
 			styles.Padding:      spaceS + " " + spaceM,
 			styles.MarginTop:    spaceL,
 			styles.MarginBottom: spaceL,
@@ -584,7 +592,7 @@ func statusMessage(message string, isSuccess bool) *elem.Element {
 			styles.Padding:         spaceM,
 			styles.BackgroundColor: bgColor,
 			styles.Color:           textColor,
-			styles.BorderRadius:    "0.5rem",
+			styles.BorderRadius:    spaceS,
 			styles.Border:          "1px solid " + textColor,
 			styles.MarginBottom:    spaceL,
 			styles.FontSize:        fontSizeBase,
