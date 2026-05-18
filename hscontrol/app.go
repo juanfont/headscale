@@ -99,6 +99,10 @@ type Headscale struct {
 
 	DERPServer *derpServer.DERPServer
 
+	// realIPMiddleware is nil when cfg.TrustedProxies is empty; the
+	// router skips the mount and r.RemoteAddr stays as the TCP peer.
+	realIPMiddleware func(http.Handler) http.Handler
+
 	// Things that generate changes
 	extraRecordMan *dns.ExtraRecordsMan
 	authProvider   AuthProvider
@@ -138,6 +142,13 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		noisePrivateKey:   noisePrivateKey,
 		clientStreamsOpen: sync.WaitGroup{},
 		state:             s,
+	}
+
+	if len(cfg.TrustedProxies) > 0 {
+		app.realIPMiddleware, err = trustedProxyRealIP(cfg.TrustedProxies)
+		if err != nil {
+			return nil, fmt.Errorf("building trusted_proxies middleware: %w", err)
+		}
 	}
 
 	// Initialize ephemeral garbage collector
@@ -512,7 +523,11 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *chi.Mux {
 		},
 	}))
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
+
+	if h.realIPMiddleware != nil {
+		r.Use(h.realIPMiddleware)
+	}
+
 	r.Use(middleware.RequestLogger(&zerologRequestLogger{}))
 	r.Use(middleware.Recoverer)
 	r.Use(securityHeaders)

@@ -158,7 +158,11 @@ func (h *Headscale) NoiseUpgradeHandler(
 		},
 	}))
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
+
+	if h.realIPMiddleware != nil {
+		r.Use(h.realIPMiddleware)
+	}
+
 	r.Use(middleware.RequestLogger(&zerologRequestLogger{}))
 	r.Use(middleware.Recoverer)
 

@@ -35,6 +35,7 @@ var (
 	errServerURLSuffix           = errors.New("server_url cannot be part of base_domain in a way that could make the DERP and headscale server unreachable")
 	errServerURLSame             = errors.New("server_url cannot use the same domain as base_domain in a way that could make the DERP and headscale server unreachable")
 	errInvalidPKCEMethod         = errors.New("pkce.method must be either 'plain' or 'S256'")
+	errTrustedProxyZeroRange     = errors.New("0.0.0.0/0 and ::/0 are not allowed")
 	ErrNoPrefixConfigured        = errors.New("no IPv4 or IPv6 prefix configured, minimum one prefix is required")
 	ErrInvalidAllocationStrategy = errors.New("invalid prefix allocation strategy")
 )
@@ -98,6 +99,7 @@ type Config struct {
 	MetricsAddr         string
 	GRPCAddr            string
 	GRPCAllowInsecure   bool
+	TrustedProxies      []netip.Prefix
 	Node                NodeConfig
 	PrefixV4            *netip.Prefix
 	PrefixV6            *netip.Prefix
@@ -1049,6 +1051,31 @@ func prefixV6() (*netip.Prefix, bool, error) {
 	return &prefixV6, !ipSet.ContainsPrefix(prefixV6), nil
 }
 
+// trustedProxies rejects 0.0.0.0/0 and ::/0 because they defeat the
+// peer-trust gate and almost always indicate misconfiguration.
+func trustedProxies() ([]netip.Prefix, error) {
+	raw := viper.GetStringSlice("trusted_proxies")
+	if len(raw) == 0 {
+		return nil, nil
+	}
+
+	out := make([]netip.Prefix, 0, len(raw))
+	for i, s := range raw {
+		p, err := netip.ParsePrefix(s)
+		if err != nil {
+			return nil, fmt.Errorf("trusted_proxies[%d] %q: %w", i, s, err)
+		}
+
+		if p.Bits() == 0 {
+			return nil, fmt.Errorf("trusted_proxies[%d] %q: %w", i, s, errTrustedProxyZeroRange)
+		}
+
+		out = append(out, p.Masked())
+	}
+
+	return out, nil
+}
+
 // LoadCLIConfig returns the needed configuration for the CLI client
 // of Headscale to connect to a Headscale server.
 func LoadCLIConfig() (*Config, error) {
@@ -1084,6 +1111,11 @@ func LoadServerConfig() (*Config, error) {
 	}
 
 	prefix6, v6NonStandard, err := prefixV6()
+	if err != nil {
+		return nil, err
+	}
+
+	trusted, err := trustedProxies()
 	if err != nil {
 		return nil, err
 	}
@@ -1178,6 +1210,7 @@ func LoadServerConfig() (*Config, error) {
 		MetricsAddr:        viper.GetString("metrics_listen_addr"),
 		GRPCAddr:           viper.GetString("grpc_listen_addr"),
 		GRPCAllowInsecure:  viper.GetBool("grpc_allow_insecure"),
+		TrustedProxies:     trusted,
 		DisableUpdateCheck: false,
 
 		PrefixV4:     prefix4,
