@@ -26,23 +26,23 @@ var (
 // companionCaps maps certain well-known Tailscale capabilities to
 // their companion capability. When a grant includes one of these
 // capabilities, Tailscale automatically generates an additional
-// FilterRule with the companion capability and a nil CapMap value.
+// [tailcfg.FilterRule] with the companion capability and a nil CapMap value.
 var companionCaps = map[tailcfg.PeerCapability]tailcfg.PeerCapability{
 	tailcfg.PeerCapabilityTaildrive: tailcfg.PeerCapabilityTaildriveSharer,
 	tailcfg.PeerCapabilityRelay:     tailcfg.PeerCapabilityRelayTarget,
 }
 
-// companionCapGrantRules returns additional FilterRules for any
+// companionCapGrantRules returns additional [tailcfg.FilterRule]s for any
 // well-known capabilities that have companion caps. Companion rules
 // are **reversed**: SrcIPs come from the original destinations and
 // CapGrant Dsts come from the original sources. This allows
-// ReduceFilterRules to distribute companion rules to source nodes
-// (e.g. drive-sharer goes to the member nodes, not the destination).
+// [policyutil.ReduceFilterRules] to distribute companion rules to source
+// nodes (e.g. drive-sharer goes to the member nodes, not the destination).
 // Rules are ordered by the original capability name.
 //
 // dstIPStrings are the resolved destination IPs as strings (used as
 // companion SrcIPs). srcPrefixes are the resolved source IPs as
-// netip.Prefix (used as companion CapGrant Dsts).
+// [netip.Prefix] (used as companion CapGrant Dsts).
 func companionCapGrantRules(
 	dstIPStrings []string,
 	srcPrefixes []netip.Prefix,
@@ -87,7 +87,7 @@ func companionCapGrantRules(
 
 // sourcesHaveWildcard returns true if any of the source aliases is
 // a wildcard (*). Used to determine whether approved subnet routes
-// should be appended to SrcIPs.
+// should be appended to [tailcfg.FilterRule.SrcIPs].
 func sourcesHaveWildcard(srcs Aliases) bool {
 	for _, src := range srcs {
 		if _, ok := src.(Asterix); ok {
@@ -99,8 +99,8 @@ func sourcesHaveWildcard(srcs Aliases) bool {
 }
 
 // sourcesHaveDangerAll returns true if any of the source aliases is
-// autogroup:danger-all. When present, SrcIPs should be ["*"] to
-// represent all IP addresses including non-Tailscale addresses.
+// autogroup:danger-all. When present, [tailcfg.FilterRule.SrcIPs] should
+// be ["*"] to represent all IP addresses including non-Tailscale addresses.
 func sourcesHaveDangerAll(srcs Aliases) bool {
 	for _, src := range srcs {
 		if ag, ok := src.(*AutoGroup); ok && ag.Is(AutoGroupDangerAll) {
@@ -111,8 +111,8 @@ func sourcesHaveDangerAll(srcs Aliases) bool {
 	return false
 }
 
-// srcIPsWithRoutes returns the SrcIPs string slice, appending
-// approved subnet routes when the sources include a wildcard.
+// srcIPsWithRoutes returns the [tailcfg.FilterRule.SrcIPs] string slice,
+// appending approved subnet routes when the sources include a wildcard.
 // When hasDangerAll is true, returns ["*"] to represent all IPs.
 func srcIPsWithRoutes(
 	resolved ResolvedAddresses,
@@ -132,17 +132,18 @@ func srcIPsWithRoutes(
 	return ips
 }
 
-// compileFilterRules takes a set of nodes and an ACLPolicy and generates a
-// set of Tailscale compatible FilterRules used to allow traffic on clients.
+// compileFilterRules takes a set of nodes and a [Policy] and generates a
+// set of Tailscale compatible [tailcfg.FilterRule]s used to allow traffic
+// on clients.
 func (pol *Policy) compileFilterRules(
 	users types.Users,
 	nodes views.Slice[types.NodeView],
-) ([]tailcfg.FilterRule, error) {
+) []tailcfg.FilterRule {
 	if pol == nil || (pol.ACLs == nil && pol.Grants == nil) {
-		return tailcfg.FilterAllowAll, nil
+		return tailcfg.FilterAllowAll
 	}
 
-	return globalFilterRules(pol.compileGrants(users, nodes)), nil
+	return globalFilterRules(pol.compileGrants(users, nodes))
 }
 
 func (pol *Policy) destinationsToNetPortRange(
@@ -202,15 +203,15 @@ func (pol *Policy) compileFilterRulesForNode(
 	users types.Users,
 	node types.NodeView,
 	nodes views.Slice[types.NodeView],
-) ([]tailcfg.FilterRule, error) {
+) []tailcfg.FilterRule {
 	if pol == nil {
-		return tailcfg.FilterAllowAll, nil
+		return tailcfg.FilterAllowAll
 	}
 
 	grants := pol.compileGrants(users, nodes)
 	userIdx := buildUserNodeIndex(nodes)
 
-	return filterRulesForNode(grants, node, userIdx), nil
+	return filterRulesForNode(grants, node, userIdx)
 }
 
 var sshAccept = tailcfg.SSHAction{
@@ -221,11 +222,11 @@ var sshAccept = tailcfg.SSHAction{
 	AllowRemotePortForwarding: true,
 }
 
-// checkPeriodFromRule extracts the check period duration from an SSH rule.
-// Returns SSHCheckPeriodDefault if no checkPeriod is configured,
+// checkPeriodFromRule extracts the check period duration from an [SSH] rule.
+// Returns [SSHCheckPeriodDefault] if no checkPeriod is configured,
 // 0 if checkPeriod is "always", or the configured duration otherwise.
-// This is used server-side by SSHCheckParams to resolve the real period
-// when the client calls back; the wire format always sends 0.
+// This is used server-side by [PolicyManager.SSHCheckParams] to resolve the
+// real period when the client calls back; the wire format always sends 0.
 func checkPeriodFromRule(rule SSH) time.Duration {
 	switch {
 	case rule.CheckPeriod == nil:
@@ -258,6 +259,7 @@ func sshCheck(baseURL string, _ time.Duration) tailcfg.SSHAction {
 	}
 }
 
+//nolint:gocyclo // SSH compilation walks per-rule branches with intertwined autogroup:self handling
 func (pol *Policy) compileSSHPolicy(
 	baseURL string,
 	users types.Users,
@@ -477,24 +479,7 @@ func (pol *Policy) compileSSHPolicy(
 	}, nil
 }
 
-// resolvedAddrsToPrincipals converts ResolvedAddresses into SSH principals, one per address.
-func resolvedAddrsToPrincipals(addrs ResolvedAddresses) []*tailcfg.SSHPrincipal {
-	if addrs == nil {
-		return nil
-	}
-
-	var principals []*tailcfg.SSHPrincipal
-
-	for addr := range addrs.Iter() {
-		principals = append(principals, &tailcfg.SSHPrincipal{
-			NodeIP: addr.String(),
-		})
-	}
-
-	return principals
-}
-
-// ipSetToPrincipals converts an IPSet into SSH principals, one per address.
+// ipSetToPrincipals converts an [netipx.IPSet] into SSH principals, one per address.
 func ipSetToPrincipals(ipSet *netipx.IPSet) []*tailcfg.SSHPrincipal {
 	if ipSet == nil {
 		return nil
@@ -622,21 +607,8 @@ func groupSourcesByUser(
 	return userIDs, principalsByUser, taggedPrincipals
 }
 
-func ipSetToPrefixStringList(ips *netipx.IPSet) []string {
-	var out []string
-
-	if ips == nil {
-		return out
-	}
-
-	for _, pref := range ips.Prefixes() {
-		out = append(out, pref.String())
-	}
-
-	return out
-}
-
-// filterRuleKey generates a unique key for merging based on SrcIPs and IPProto.
+// filterRuleKey generates a unique key for merging based on [tailcfg.FilterRule.SrcIPs]
+// and [tailcfg.FilterRule.IPProto].
 func filterRuleKey(rule tailcfg.FilterRule) string {
 	srcKey := strings.Join(rule.SrcIPs, ",")
 
@@ -648,10 +620,13 @@ func filterRuleKey(rule tailcfg.FilterRule) string {
 	return srcKey + "|" + strings.Join(protoStrs, ",")
 }
 
-// mergeFilterRules merges rules with identical SrcIPs and IPProto by combining
-// their DstPorts. DstPorts are NOT deduplicated to match Tailscale behavior.
-// CapGrant rules (which have no DstPorts) are passed through without merging
-// since CapGrant and DstPorts are mutually exclusive in a FilterRule.
+// mergeFilterRules merges rules with identical [tailcfg.FilterRule.SrcIPs] and
+// [tailcfg.FilterRule.IPProto] by combining their [tailcfg.FilterRule.DstPorts].
+// DstPorts are NOT deduplicated to match Tailscale behavior.
+// [tailcfg.CapGrant] rules (which have no [tailcfg.FilterRule.DstPorts]) are
+// passed through without merging since [tailcfg.CapGrant] and
+// [tailcfg.FilterRule.DstPorts] are mutually exclusive in a
+// [tailcfg.FilterRule].
 func mergeFilterRules(rules []tailcfg.FilterRule) []tailcfg.FilterRule {
 	if len(rules) <= 1 {
 		return rules

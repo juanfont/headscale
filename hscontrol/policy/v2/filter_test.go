@@ -368,7 +368,7 @@ func TestParsing(t *testing.T) {
 				return
 			}
 
-			rules, err := pol.compileFilterRules(
+			rules := pol.compileFilterRules(
 				users,
 				types.Nodes{
 					&types.Node{
@@ -380,12 +380,6 @@ func TestParsing(t *testing.T) {
 						Hostinfo: &tailcfg.Hostinfo{},
 					},
 				}.ViewSlice())
-
-			if (err != nil) != tt.wantErr {
-				t.Errorf("parsing() error = %v, wantErr %v", err, tt.wantErr)
-
-				return
-			}
 
 			if diff := cmp.Diff(tt.want, rules); diff != "" {
 				t.Errorf("parsing() unexpected result (-want +got):\n%s", diff)
@@ -1340,10 +1334,7 @@ func TestCompileFilterRulesForNodeWithAutogroupSelf(t *testing.T) {
 	// Test compilation for user1's first node
 	node1 := nodes[0].View()
 
-	rules, err := policy2.compileFilterRulesForNode(users, node1, nodes.ViewSlice())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	rules := policy2.compileFilterRulesForNode(users, node1, nodes.ViewSlice())
 
 	if len(rules) != 1 {
 		t.Fatalf("expected 1 rule, got %d", len(rules))
@@ -1501,8 +1492,7 @@ func TestTagUserMutualExclusivity(t *testing.T) {
 	// matching the production pipeline in filterForNodeLocked.
 	userNode := nodes[0].View()
 
-	compiled, err := pol.compileFilterRulesForNode(users, userNode, nodes.ViewSlice())
-	require.NoError(t, err)
+	compiled := pol.compileFilterRulesForNode(users, userNode, nodes.ViewSlice())
 
 	userRules := policyutil.ReduceFilterRules(userNode, compiled)
 
@@ -1524,8 +1514,7 @@ func TestTagUserMutualExclusivity(t *testing.T) {
 	// Tag:database should receive the tag:server → tag:database rule after reduction.
 	dbNode := nodes[3].View()
 
-	compiled, err = pol.compileFilterRulesForNode(users, dbNode, nodes.ViewSlice())
-	require.NoError(t, err)
+	compiled = pol.compileFilterRulesForNode(users, dbNode, nodes.ViewSlice())
 
 	dbRules := policyutil.ReduceFilterRules(dbNode, compiled)
 
@@ -1596,8 +1585,7 @@ func TestUserToTagCrossIdentityGrant(t *testing.T) {
 	// user1's IP as source.
 	taggedNode := nodes[2].View()
 
-	compiled, err := pol.compileFilterRulesForNode(users, taggedNode, nodes.ViewSlice())
-	require.NoError(t, err)
+	compiled := pol.compileFilterRulesForNode(users, taggedNode, nodes.ViewSlice())
 
 	rules := policyutil.ReduceFilterRules(taggedNode, compiled)
 
@@ -1735,8 +1723,7 @@ func TestAutogroupTagged(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			rules, err := policy.compileFilterRulesForNode(users, tt.sourceNode, nodes.ViewSlice())
-			require.NoError(t, err)
+			rules := policy.compileFilterRulesForNode(users, tt.sourceNode, nodes.ViewSlice())
 
 			// Verify all expected destinations are reachable
 			for _, expectedDest := range tt.shouldReach {
@@ -1819,8 +1806,7 @@ func TestAutogroupSelfWithSpecificUserSource(t *testing.T) {
 
 	// For user1's node: sources should be user1's devices
 	node1 := nodes[0].View()
-	rules, err := policy.compileFilterRulesForNode(users, node1, nodes.ViewSlice())
-	require.NoError(t, err)
+	rules := policy.compileFilterRulesForNode(users, node1, nodes.ViewSlice())
 	require.Len(t, rules, 1)
 
 	expectedSourceIPs := []string{"100.64.0.1", "100.64.0.2"}
@@ -1850,8 +1836,7 @@ func TestAutogroupSelfWithSpecificUserSource(t *testing.T) {
 	assert.ElementsMatch(t, expectedDestIPs, actualDestIPs)
 
 	node2 := nodes[2].View()
-	rules2, err := policy.compileFilterRulesForNode(users, node2, nodes.ViewSlice())
-	require.NoError(t, err)
+	rules2 := policy.compileFilterRulesForNode(users, node2, nodes.ViewSlice())
 	assert.Empty(t, rules2, "user2's node should have no rules (user1@ devices can't match user2's self)")
 }
 
@@ -1893,8 +1878,7 @@ func TestAutogroupSelfWithGroupSource(t *testing.T) {
 
 	// (group:admins has user1+user2, but autogroup:self filters to same user)
 	node1 := nodes[0].View()
-	rules, err := policy.compileFilterRulesForNode(users, node1, nodes.ViewSlice())
-	require.NoError(t, err)
+	rules := policy.compileFilterRulesForNode(users, node1, nodes.ViewSlice())
 	require.Len(t, rules, 1)
 
 	expectedSrcIPs := []string{"100.64.0.1", "100.64.0.2"}
@@ -1916,8 +1900,7 @@ func TestAutogroupSelfWithGroupSource(t *testing.T) {
 	}
 
 	node3 := nodes[4].View()
-	rules3, err := policy.compileFilterRulesForNode(users, node3, nodes.ViewSlice())
-	require.NoError(t, err)
+	rules3 := policy.compileFilterRulesForNode(users, node3, nodes.ViewSlice())
 	assert.Empty(t, rules3, "user3 should have no rules")
 }
 
@@ -2366,8 +2349,7 @@ func TestAutogroupSelfWithNonExistentUserInGroup(t *testing.T) {
 	// Test superadmin's device: should have rules with tag:common, tag:tech, tag:privileged destinations
 	// and superadmin's IP should appear in sources (partial resolution of group:superadmin works)
 	superadminNode := nodes[0].View()
-	superadminRules, err := policy.compileFilterRulesForNode(users, superadminNode, nodes.ViewSlice())
-	require.NoError(t, err)
+	superadminRules := policy.compileFilterRulesForNode(users, superadminNode, nodes.ViewSlice())
 	assert.True(t, containsIP(superadminRules, "100.64.0.10"), "rules should include tag:common server")
 	assert.True(t, containsIP(superadminRules, "100.64.0.11"), "rules should include tag:tech server")
 	assert.True(t, containsIP(superadminRules, "100.64.0.12"), "rules should include tag:privileged server")
@@ -2383,8 +2365,7 @@ func TestAutogroupSelfWithNonExistentUserInGroup(t *testing.T) {
 	// partial result to be discarded via `continue`. With the fix, superadmin's IPs
 	// from group:superadmin are retained alongside admin's IPs from group:admin.
 	adminNode := nodes[1].View()
-	adminRules, err := policy.compileFilterRulesForNode(users, adminNode, nodes.ViewSlice())
-	require.NoError(t, err)
+	adminRules := policy.compileFilterRulesForNode(users, adminNode, nodes.ViewSlice())
 
 	// Rule 1 sources: [group:superadmin, group:admin, group:direction]
 	// Without fix: group:superadmin discarded -> only admin + direction IPs in sources
@@ -2398,8 +2379,7 @@ func TestAutogroupSelfWithNonExistentUserInGroup(t *testing.T) {
 
 	// Test direction's device: similar to admin, verifies group:direction sources work
 	directionNode := nodes[2].View()
-	directionRules, err := policy.compileFilterRulesForNode(users, directionNode, nodes.ViewSlice())
-	require.NoError(t, err)
+	directionRules := policy.compileFilterRulesForNode(users, directionNode, nodes.ViewSlice())
 	assert.True(t, containsIP(directionRules, "100.64.0.10"),
 		"direction rules should include tag:common server")
 	assert.True(t, containsSrcIP(directionRules, "100.64.0.3"),
@@ -3593,8 +3573,7 @@ func TestFilterAllowAllFix(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			rules, err := tt.pol.compileFilterRules(users, nodes)
-			require.NoError(t, err)
+			rules := tt.pol.compileFilterRules(users, nodes)
 
 			isFilterAllowAll := cmp.Diff(tailcfg.FilterAllowAll, rules) == ""
 			assert.Equal(t, tt.wantFilterAllow, isFilterAllowAll,
