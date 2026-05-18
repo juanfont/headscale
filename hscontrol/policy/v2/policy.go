@@ -1009,11 +1009,13 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 		grants = append(grants, aclToGrants(acl)...)
 	}
 
-	// Resolve each grant's sources against the viewer once. The three
-	// passes below reuse this result instead of calling src.Resolve
-	// per grant per pass.
+	// Resolve each grant's sources against the viewer once, and each
+	// grant's destinations into a flat prefix list. The three passes
+	// below reuse both results instead of re-resolving per pass.
 	viewerIPs := viewer.IPs()
 	viewerMatchesGrant := make([]bool, len(grants))
+	resolvedDstPrefixes := make([][]netip.Prefix, len(grants))
+	grantHasAutoGroupInternet := make([]bool, len(grants))
 
 	for i, grant := range grants {
 		for _, src := range grant.Sources {
@@ -1028,6 +1030,10 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 				break
 			}
 		}
+
+		resolvedDstPrefixes[i], grantHasAutoGroupInternet[i] = resolveViaDestinations(
+			pm.pol, pm.users, pm.nodes, grant.Destinations,
+		)
 	}
 
 	for i, grant := range grants {
@@ -1039,30 +1045,30 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 			continue
 		}
 
-		// Collect destination prefixes that the peer actually advertises.
+		// Filter rules and AllowedIPs are different layers. The filter
+		// rule carries the dst (the authorisation surface). AllowedIPs
+		// carries the advertised route (the routing fact the viewer
+		// needs to pick this peer). This loop builds the AllowedIPs
+		// side, so it emits routes — not dst prefixes.
 		peerSubnetRoutes := peer.SubnetRoutes()
 
 		var matchedPrefixes []netip.Prefix
 
-		for _, dst := range grant.Destinations {
-			switch d := dst.(type) {
-			case *Prefix:
-				dstPrefix := netip.Prefix(*d)
-				if slices.Contains(peerSubnetRoutes, dstPrefix) {
-					matchedPrefixes = append(matchedPrefixes, dstPrefix)
-				}
-			case *AutoGroup:
-				// Per-viewer steering for autogroup:internet: a peer
-				// advertising approved exit routes is the via-tagged
-				// node's analogue of "advertises the destination".
-				// The downstream Include/Exclude split below restricts
-				// alice to exit nodes carrying the via tag.
-				if d.Is(AutoGroupInternet) && peer.IsExitNode() {
-					matchedPrefixes = append(
-						matchedPrefixes, peer.ExitRoutes()...,
-					)
+		for _, dstPrefix := range resolvedDstPrefixes[i] {
+			for _, route := range peerSubnetRoutes {
+				if dstPrefix.Overlaps(route) {
+					matchedPrefixes = append(matchedPrefixes, route)
 				}
 			}
+		}
+
+		// Per-viewer steering for autogroup:internet: a peer advertising
+		// approved exit routes is the via-tagged node's analogue of
+		// "advertises the destination". The downstream Include/Exclude
+		// split below restricts the viewer to exit nodes carrying the
+		// via tag.
+		if grantHasAutoGroupInternet[i] && peer.IsExitNode() {
+			matchedPrefixes = append(matchedPrefixes, peer.ExitRoutes()...)
 		}
 
 		if len(matchedPrefixes) == 0 {
@@ -1121,40 +1127,35 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 				continue
 			}
 
-			for _, dst := range grant.Destinations {
-				d, ok := dst.(*Prefix)
-				if !ok {
-					continue
-				}
+			// Elect per matched route, not per dst — a peer can only
+			// be primary for a prefix it actually advertises, and one
+			// dst may cover multiple distinct routes.
+			for _, dstPrefix := range resolvedDstPrefixes[i] {
+				for _, included := range slices.Clone(result.Include) {
+					if !dstPrefix.Overlaps(included) {
+						continue
+					}
 
-				dstPrefix := netip.Prefix(*d)
-				if !slices.Contains(result.Include, dstPrefix) {
-					continue
-				}
+					var viaPrimaryID types.NodeID
 
-				// Find the lowest-ID peer with this via tag that
-				// advertises this prefix — the via-group primary.
-				var viaPrimaryID types.NodeID
-
-				for _, viaTag := range grant.Via {
-					for _, node := range pm.nodes.All() {
-						if node.HasTag(string(viaTag)) &&
-							slices.Contains(node.SubnetRoutes(), dstPrefix) {
-							if viaPrimaryID == 0 || node.ID() < viaPrimaryID {
-								viaPrimaryID = node.ID()
+					for _, viaTag := range grant.Via {
+						for _, node := range pm.nodes.All() {
+							if node.HasTag(string(viaTag)) &&
+								slices.Contains(node.SubnetRoutes(), included) {
+								if viaPrimaryID == 0 || node.ID() < viaPrimaryID {
+									viaPrimaryID = node.ID()
+								}
 							}
 						}
 					}
-				}
 
-				// If the current peer is not the via-group primary,
-				// demote the prefix from Include to Exclude.
-				if viaPrimaryID != 0 && peer.ID() != viaPrimaryID {
-					result.Include = slices.DeleteFunc(result.Include, func(p netip.Prefix) bool {
-						return p == dstPrefix
-					})
-					if !slices.Contains(result.Exclude, dstPrefix) {
-						result.Exclude = append(result.Exclude, dstPrefix)
+					if viaPrimaryID != 0 && peer.ID() != viaPrimaryID {
+						result.Include = slices.DeleteFunc(result.Include, func(p netip.Prefix) bool {
+							return p == included
+						})
+						if !slices.Contains(result.Exclude, included) {
+							result.Exclude = append(result.Exclude, included)
+						}
 					}
 				}
 			}
@@ -1175,21 +1176,19 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 				continue
 			}
 
-			for _, dst := range grant.Destinations {
-				if d, ok := dst.(*Prefix); ok {
-					dstPrefix := netip.Prefix(*d)
-					if slices.Contains(result.Include, dstPrefix) &&
-						!slices.Contains(result.UsePrimary, dstPrefix) {
-						result.UsePrimary = append(result.UsePrimary, dstPrefix)
+			// A non-via grant covering routes that a via grant included
+			// defers to global HA primary election. Match by overlap so
+			// a broader or narrower regular dst still catches the
+			// routes the via grant added to Include.
+			for _, dstPrefix := range resolvedDstPrefixes[i] {
+				for _, p := range result.Include {
+					if dstPrefix.Overlaps(p) &&
+						!slices.Contains(result.UsePrimary, p) {
+						result.UsePrimary = append(result.UsePrimary, p)
 					}
-
-					// A regular grant overrides a via exclusion: the
-					// peer doesn't need the via tag if the viewer has
-					// direct (non-via) access to the prefix.
-					result.Exclude = slices.DeleteFunc(result.Exclude, func(p netip.Prefix) bool {
-						return p == dstPrefix
-					})
 				}
+
+				result.Exclude = slices.DeleteFunc(result.Exclude, dstPrefix.Overlaps)
 			}
 		}
 	}
