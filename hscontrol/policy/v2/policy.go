@@ -24,7 +24,7 @@ import (
 	"tailscale.com/util/multierr"
 )
 
-// ErrInvalidTagOwner is returned when a tag owner is not an Alias type.
+// ErrInvalidTagOwner is returned when a tag owner is not an [Alias] type.
 var ErrInvalidTagOwner = errors.New("tag owner is not an Alias")
 
 type PolicyManager struct {
@@ -86,8 +86,8 @@ type filterAndPolicy struct {
 }
 
 // validateUserReferences surfaces ambiguous user@ tokens at policy load so
-// duplicate DB rows fail loudly instead of silently dropping rules (#3160).
-// Missing-user tokens stay tolerant (#2863). Empty users → no-op for
+// duplicate DB rows fail loudly instead of silently dropping rules.
+// Missing-user tokens stay tolerant. Empty users → no-op for
 // syntax-only checks.
 func validateUserReferences(pol *Policy, users types.Users) error {
 	if pol == nil || len(users) == 0 {
@@ -170,7 +170,7 @@ func validateUserReferences(pol *Policy, users types.Users) error {
 	return multierr.New(errs...)
 }
 
-// NewPolicyManager creates a new PolicyManager from a policy file and a list of users and nodes.
+// NewPolicyManager creates a new [PolicyManager] from a policy file and a list of users and nodes.
 // It returns an error if the policy file is invalid.
 // The policy manager will update the filter rules based on the users and nodes.
 func NewPolicyManager(b []byte, users []types.User, nodes views.Slice[types.NodeView]) (*PolicyManager, error) {
@@ -360,7 +360,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	return true, nil
 }
 
-// SSHPolicy returns the tailcfg.SSHPolicy for node, compiling and
+// SSHPolicy returns the [tailcfg.SSHPolicy] for node, compiling and
 // caching on first access. Rules use SessionDuration = 0 (no
 // auto-approval) and emit check URLs of the form
 // /machine/ssh/action/{src}/to/{dst}?local_user={local_user} per the
@@ -531,6 +531,11 @@ func (pm *PolicyManager) Filter() ([]tailcfg.FilterRule, []matcher.Match) {
 // For global filters, it uses the global filter matchers for all nodes.
 // For autogroup:self policies (empty global filter), it builds per-node
 // peer maps using each node's specific filter rules.
+//
+// Compared to [policy.ReduceNodes], which builds the list per node, we end
+// up with doing the full work for every node O(n^2), while this will reduce
+// the list as we see relationships while building the map, making it
+// O(n^2/2) in the end, but with less work per node.
 func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[types.NodeID][]types.NodeView {
 	if pm == nil {
 		return nil
@@ -546,9 +551,6 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 		ret := make(map[types.NodeID][]types.NodeView, nodes.Len())
 
 		// Build the map of all peers according to the matchers.
-		// Compared to ReduceNodes, which builds the list per node, we end up with doing
-		// the full work for every node O(n^2), while this will reduce the list as we see
-		// relationships while building the map, making it O(n^2/2) in the end, but with less work per node.
 		for i := range nodes.Len() {
 			for j := i + 1; j < nodes.Len(); j++ {
 				if nodes.At(i).ID() == nodes.At(j).ID() {
@@ -667,8 +669,8 @@ func (pm *PolicyManager) filterForNodeLocked(
 // If the policy uses autogroup:self, this returns node-specific compiled rules.
 // Otherwise, it returns the global filter reduced for this node.
 //
-// Cache is invalidated by updateLocked on policy reload, node-set
-// change, or tag-state change.
+// Cache is invalidated by [PolicyManager.updateLocked] on policy reload,
+// node-set change, or tag-state change.
 func (pm *PolicyManager) FilterForNode(node types.NodeView) ([]tailcfg.FilterRule, error) {
 	if pm == nil {
 		return nil, nil
@@ -682,14 +684,14 @@ func (pm *PolicyManager) FilterForNode(node types.NodeView) ([]tailcfg.FilterRul
 
 // MatchersForNode returns the matchers for peer relationship determination for a specific node.
 // These are UNREDUCED matchers - they include all rules where the node could be either source or destination.
-// This is different from FilterForNode which returns REDUCED rules for packet filtering.
+// This is different from [PolicyManager.FilterForNode] which returns REDUCED rules for packet filtering.
 //
 // For global policies: returns the global matchers (same for all nodes)
 // For autogroup:self: returns node-specific matchers from unreduced compiled rules.
 //
 // Per-node results are cached and invalidated on policy/node updates
-// so BuildPeerMap's O(N²) slow path avoids recomputing matchers for
-// every pair.
+// so [PolicyManager.BuildPeerMap]'s O(N²) slow path avoids recomputing
+// matchers for every pair.
 func (pm *PolicyManager) MatchersForNode(node types.NodeView) ([]matcher.Match, error) {
 	if pm == nil {
 		return nil, nil
@@ -832,9 +834,9 @@ func (pm *PolicyManager) nodesHavePolicyAffectingChanges(newNodes views.Slice[ty
 // NodeCanHaveTag checks if a node can have the specified tag during client-initiated
 // registration or reauth flows (e.g., tailscale up --advertise-tags).
 //
-// This function is NOT used by the admin API's SetNodeTags - admins can set any
-// existing tag on any node by calling State.SetNodeTags directly, which bypasses
-// this authorization check.
+// This function is NOT used by the admin API's [state.State.SetNodeTags] - admins can
+// set any existing tag on any node by calling [state.State.SetNodeTags] directly,
+// which bypasses this authorization check.
 func (pm *PolicyManager) NodeCanHaveTag(node types.NodeView, tag string) bool {
 	if pm == nil || pm.pol == nil {
 		return false
@@ -874,7 +876,7 @@ func (pm *PolicyManager) NodeCanHaveTag(node types.NodeView, tag string) bool {
 }
 
 // userMatchesOwner checks if a user matches a tag owner entry.
-// This is used as a fallback when the node's IP is not in the tagOwnerMap.
+// This is used as a fallback when the node's IP is not in the [PolicyManager.tagOwnerMap].
 func (pm *PolicyManager) userMatchesOwner(user types.UserView, owner Owner) bool {
 	switch o := owner.(type) {
 	case *Username:
@@ -984,11 +986,14 @@ func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Pr
 // ViaRoutesForPeer computes via grant effects for a viewer-peer pair.
 // For each via grant where the viewer matches the source, it checks whether the
 // peer advertises any of the grant's destination prefixes. If the peer has the
-// via tag, those prefixes go into Include; otherwise into Exclude.
+// via tag, those prefixes go into [types.ViaRouteResult.Include]; otherwise
+// into [types.ViaRouteResult.Exclude].
 //
-// Performance note: this holds pm.mu for its full duration. Hot
-// callers should memoise by (policy-hash, viewer-id) rather than
-// invoking this per-pair.
+// Performance note: this holds [PolicyManager.mu] for its full duration. Hot
+// callers should memoise by (policy-hash, viewer-id) rather than invoking
+// this per-pair.
+//
+//nolint:gocyclo // three-pass via-grant resolution (match, primary election, regular-overlap)
 func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.ViaRouteResult {
 	var result types.ViaRouteResult
 
@@ -1045,11 +1050,12 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 			continue
 		}
 
-		// Filter rules and AllowedIPs are different layers. The filter
-		// rule carries the dst (the authorisation surface). AllowedIPs
-		// carries the advertised route (the routing fact the viewer
-		// needs to pick this peer). This loop builds the AllowedIPs
-		// side, so it emits routes — not dst prefixes.
+		// Filter rules and [tailcfg.Node.AllowedIPs] are different layers.
+		// The filter rule carries the dst (the authorisation surface).
+		// [tailcfg.Node.AllowedIPs] carries the advertised route (the
+		// routing fact the viewer needs to pick this peer). This loop
+		// builds the AllowedIPs side, so it emits routes — not dst
+		// prefixes.
 		peerSubnetRoutes := peer.SubnetRoutes()
 
 		var matchedPrefixes []netip.Prefix
@@ -1109,11 +1115,11 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 		// Include. The others move to Exclude. This mirrors HA
 		// primary election scoped to the via tag group.
 		//
-		// Unlike the global PrimaryRoutes election (routes/primary.go),
-		// which picks one primary across ALL advertisers of a prefix,
-		// this election is scoped to the via tag. Two via grants with
-		// different tags (e.g., tag:ha-a vs tag:ha-b) each elect their
-		// own winner independently.
+		// Unlike the global [tailcfg.Node.PrimaryRoutes] election
+		// (routes/primary.go), which picks one primary across ALL
+		// advertisers of a prefix, this election is scoped to the via tag.
+		// Two via grants with different tags (e.g., tag:ha-a vs tag:ha-b)
+		// each elect their own winner independently.
 		//
 		// Only process via grants where the viewer matches the source,
 		// otherwise grants for other viewer groups would incorrectly
@@ -1165,8 +1171,9 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 		// When a regular grant also covers a prefix that a via grant
 		// included, defer to global HA primary election (UsePrimary).
 		// When a regular grant covers a prefix that a via grant excluded
-		// (peer lacks via tag), remove the exclusion so RoutesForPeer
-		// can apply normal ReduceRoutes + primary logic.
+		// (peer lacks via tag), remove the exclusion so
+		// [state.State.RoutesForPeer] can apply normal
+		// [policy.ReduceRoutes] + primary logic.
 		for i, grant := range grants {
 			if len(grant.Via) > 0 {
 				continue
@@ -1437,7 +1444,7 @@ func (pm *PolicyManager) invalidateNodeCache(newNodes views.Slice[types.NodeView
 }
 
 // invalidateGlobalPolicyCache invalidates only nodes whose properties affecting
-// ReduceFilterRules changed. For global policies, each node's filter is independent.
+// [policyutil.ReduceFilterRules] changed. For global policies, each node's filter is independent.
 func (pm *PolicyManager) invalidateGlobalPolicyCache(newNodes views.Slice[types.NodeView]) {
 	oldNodeMap := make(map[types.NodeID]types.NodeView)
 	for _, node := range pm.nodes.All() {
@@ -1514,8 +1521,8 @@ func flattenTags(tagOwners TagOwners, tag Tag, visiting map[Tag]bool, chain []Ta
 	return result, nil
 }
 
-// flattenTagOwners flattens all TagOwners by resolving nested tags and detecting cycles.
-// It will return a new TagOwners map where all the Tag types have been resolved to their underlying Owners.
+// flattenTagOwners flattens all [TagOwners] by resolving nested tags and detecting cycles.
+// It will return a new [TagOwners] map where all the [Tag] types have been resolved to their underlying [Owners].
 func flattenTagOwners(tagOwners TagOwners) (TagOwners, error) {
 	ret := make(TagOwners)
 
@@ -1536,9 +1543,9 @@ func flattenTagOwners(tagOwners TagOwners) (TagOwners, error) {
 	return ret, nil
 }
 
-// resolveTagOwners resolves the TagOwners to a map of Tag to netipx.IPSet.
-// The resulting map can be used to quickly look up the IPSet for a given Tag.
-// It is intended for internal use in a PolicyManager.
+// resolveTagOwners resolves the [TagOwners] to a map of [Tag] to [netipx.IPSet].
+// The resulting map can be used to quickly look up the IPSet for a given [Tag].
+// It is intended for internal use in a [PolicyManager].
 func resolveTagOwners(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (map[Tag]*netipx.IPSet, error) {
 	if p == nil {
 		return make(map[Tag]*netipx.IPSet), nil
@@ -1690,14 +1697,16 @@ func (pm *PolicyManager) NodeCapMaps() map[types.NodeID]tailcfg.NodeCapMap {
 }
 
 // NodesWithChangedCapMap returns the IDs of nodes whose nodeAttrs
-// CapMap shifted across one or more updateLocked calls since the
-// last drain. The buffer drains on return. The mapper calls this
-// once per ReloadPolicy to decide which nodes need a SelfUpdate.
+// CapMap shifted across one or more [PolicyManager.updateLocked] calls
+// since the last drain. The buffer drains on return. The mapper calls
+// this once per [state.State.ReloadPolicy] to decide which nodes need
+// a [change.SelfUpdate].
 //
-// refreshNodeAttrsLocked APPENDS to the buffer; the drain returns
-// the union of every change since the previous read. A concurrent
-// SetUsers/SetNodes between SetPolicy and a drain cannot silently
-// lose the policy-reload diff.
+// [PolicyManager.refreshNodeAttrsLocked] APPENDS to the buffer; the drain
+// returns the union of every change since the previous read. A concurrent
+// [PolicyManager.SetUsers]/[PolicyManager.SetNodes] between
+// [PolicyManager.SetPolicy] and a drain cannot silently lose the
+// policy-reload diff.
 func (pm *PolicyManager) NodesWithChangedCapMap() []types.NodeID {
 	if pm == nil {
 		return nil

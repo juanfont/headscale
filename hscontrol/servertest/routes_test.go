@@ -17,6 +17,8 @@ import (
 
 // TestRoutes verifies that route advertisements and approvals
 // propagate correctly through the control plane to all peers.
+//
+//nolint:gocyclo // table-driven test driver with many independent subtests
 func TestRoutes(t *testing.T) {
 	t.Parallel()
 
@@ -71,14 +73,14 @@ func TestRoutes(t *testing.T) {
 			RoutableIPs:  []netip.Prefix{routePrefix},
 		})
 
-		// Send a non-streaming update to push the new hostinfo.
+		// Send a non-streaming update to push the new [tailcfg.Hostinfo].
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
 		_ = c1.Direct().SendUpdate(ctx)
 
 		// The observer should eventually see the advertised routes
-		// in the peer's hostinfo.
+		// in the peer's [tailcfg.Hostinfo].
 		c2.WaitForCondition(t, "advertised route in hostinfo",
 			15*time.Second,
 			func(nm *netmap.NetworkMap) bool {
@@ -113,7 +115,7 @@ func TestRoutes(t *testing.T) {
 		c1.WaitForPeers(t, 1, 10*time.Second)
 		c2.WaitForPeers(t, 1, 10*time.Second)
 
-		// Step 1: Advertise the route by updating hostinfo.
+		// Step 1: Advertise the route by updating [tailcfg.Hostinfo].
 		c1.Direct().SetHostinfo(&tailcfg.Hostinfo{
 			BackendLogID: "servertest-fullrt-advertiser",
 			Hostname:     "fullrt-advertiser",
@@ -125,7 +127,7 @@ func TestRoutes(t *testing.T) {
 
 		_ = c1.Direct().SendUpdate(ctx)
 
-		// Wait for the server to process the hostinfo update
+		// Wait for the server to process the [tailcfg.Hostinfo] update
 		// by waiting for observer to see the advertised route.
 		c2.WaitForCondition(t, "hostinfo update propagated",
 			10*time.Second,
@@ -214,18 +216,18 @@ func TestRoutes(t *testing.T) {
 		}
 	})
 
-	// Reproduces https://github.com/juanfont/headscale/issues/3203:
+	// Reproduces the HA secondary recovery race:
 	// HA tracking loses the secondary subnet router after all routers serving
 	// the route have been offline simultaneously and one of them returns.
 	//
 	// Two assertions split the failure surface:
 	//   R1 — server-side primary route state restores after reconnect.
-	//   R2 — observer's netmap shows the reconnected router online with
+	//   R2 — observer's [netmap.NetworkMap] shows the reconnected router online with
 	//        the route in its primary set.
-	// If R1 fails the bug is in state.Connect / primaryRoutes; if R1 passes
-	// and R2 fails the bug is in change broadcast / mapBatcher.
+	// If R1 fails the bug is in [state.State.Connect] / primaryRoutes; if R1 passes
+	// and R2 fails the bug is in change broadcast / [mapper.Batcher].
 	//
-	// Caveat: servertest's Reconnect re-registers via TryLogin in addition
+	// Caveat: [TestClient.Reconnect] re-registers via [controlclient.Direct.TryLogin] in addition
 	// to starting a new poll session. Production reconnects after a brief
 	// network outage may bypass re-registration. If this test passes on
 	// main, fall back to the integration variant noted in the plan
@@ -247,7 +249,7 @@ func TestRoutes(t *testing.T) {
 
 		obs.WaitForPeers(t, 2, 10*time.Second)
 
-		// Both routers advertise the same route via their hostinfo.
+		// Both routers advertise the same route via their [tailcfg.Hostinfo].
 		advertise := func(c *servertest.TestClient, name string) {
 			t.Helper()
 			c.Direct().SetHostinfo(&tailcfg.Hostinfo{
@@ -305,8 +307,8 @@ func TestRoutes(t *testing.T) {
 		// 3. Reconnect r2 (cable plugged back in).
 		r2.Reconnect(t)
 
-		// Hostinfo is part of the controlclient.Direct state; the Reconnect
-		// helper re-registers via TryLogin which carries the same Hostinfo
+		// [tailcfg.Hostinfo] is part of the [controlclient.Direct] state; the [TestClient.Reconnect]
+		// helper re-registers via [controlclient.Direct.TryLogin] which carries the same [tailcfg.Hostinfo]
 		// that was set above. Push it again to be sure the announced route
 		// is registered in the new session.
 		advertise(r2, "ha3203-router2")
@@ -343,4 +345,4 @@ func TestRoutes(t *testing.T) {
 	})
 }
 
-// findNodeID is defined in issues_test.go.
+// [findNodeID] is defined in issues_test.go.
