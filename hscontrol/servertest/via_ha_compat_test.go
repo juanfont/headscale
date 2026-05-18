@@ -46,7 +46,7 @@ var viaHACompatTests = []struct {
 // TestViaGrantHACompat loads golden captures from Tailscale SaaS that
 // test via grant steering combined with HA primary route election.
 // Each capture uses an inline topology with 4-6 nodes (instead of the
-// shared 15-node grant topology used by TestViaGrantMapCompat).
+// shared 15-node grant topology used by [TestViaGrantMapCompat]).
 func TestViaGrantHACompat(t *testing.T) {
 	t.Parallel()
 
@@ -175,7 +175,7 @@ func runViaHACompat(t *testing.T, c *testcapture.Capture) {
 		}
 	}
 
-	// Ensure all nodes have an initial netmap.
+	// Ensure all nodes have an initial [netmap.NetworkMap].
 	for name, cl := range clients {
 		cl.WaitForCondition(t, name+" initial netmap", 15*time.Second,
 			func(nm *netmap.NetworkMap) bool {
@@ -183,7 +183,7 @@ func runViaHACompat(t *testing.T, c *testcapture.Capture) {
 			})
 	}
 
-	// Compare each viewer's MapResponse against golden netmap.
+	// Compare each viewer's [tailcfg.MapResponse] against golden [netmap.NetworkMap].
 	for viewerName, cl := range clients {
 		capture := c.Captures[viewerName]
 		if capture.Netmap == nil {
@@ -196,9 +196,9 @@ func runViaHACompat(t *testing.T, c *testcapture.Capture) {
 	}
 }
 
-// compareCaptureNetmap compares headscale's MapResponse against a
-// testcapture.Node's netmap data. Same logic as compareNetmap but
-// reads from typed testcapture fields instead of goldenFile strings.
+// compareCaptureNetmap compares headscale's [tailcfg.MapResponse] against a
+// [testcapture.Node]'s [netmap.NetworkMap] data. Same logic as [compareNetmap] but
+// reads from typed [testcapture] fields instead of goldenFile strings.
 func compareCaptureNetmap(
 	t *testing.T,
 	viewer *servertest.TestClient,
@@ -250,7 +250,7 @@ func compareCaptureNetmap(
 		}
 	}
 
-	// Build peer summaries from headscale MapResponse.
+	// Build peer summaries from headscale [tailcfg.MapResponse].
 	gotPeers := map[string]capturePeerSummary{}
 
 	for _, peer := range nm.Peers {
@@ -335,7 +335,7 @@ type capturePeerSummary struct {
 	PrimaryRoutes []string
 }
 
-// captureNodeOrder returns node names from a testcapture.Capture
+// captureNodeOrder returns node names from a [testcapture.Capture]
 // sorted by SaaS node creation time, for deterministic DB ID assignment.
 // SaaS elects HA primaries by registration order (first registered wins),
 // which correlates with Created timestamp, not with the random snowflake
@@ -377,7 +377,7 @@ func captureNodeOrder(t *testing.T, c *testcapture.Capture) []string {
 	return names
 }
 
-// convertCapturePolicy converts a testcapture's policy for headscale,
+// convertCapturePolicy converts a [testcapture.Capture]'s policy for headscale,
 // replacing SaaS emails with headscale user format. Fails the test if
 // none of the known SaaS emails are present: that would mean the
 // capture was regenerated with a new tag-owner identity and this

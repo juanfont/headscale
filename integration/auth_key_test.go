@@ -57,7 +57,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			expectedNodes := collectExpectedNodeIDs(t, allClients)
 			requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected", integrationutil.ScaledTimeout(120*time.Second))
 
-			// Validate that all nodes have NetInfo and DERP servers before logout
+			// Validate that all nodes have [tailcfg.NetInfo] and DERP servers before logout
 			requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP before logout", 3*time.Minute)
 
 			// assertClientsState(t, allClients)
@@ -161,11 +161,11 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 
 			requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected to batcher", integrationutil.ScaledTimeout(120*time.Second))
 
-			// Wait for Tailscale sync before validating NetInfo to ensure proper state propagation
+			// Wait for Tailscale sync before validating [tailcfg.NetInfo] to ensure proper state propagation
 			err = scenario.WaitForTailscaleSync()
 			requireNoErrSync(t, err)
 
-			// Validate that all nodes have NetInfo and DERP servers after reconnection
+			// Validate that all nodes have [tailcfg.NetInfo] and DERP servers after reconnection
 			requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after reconnection", 3*time.Minute)
 
 			err = scenario.WaitForTailscaleSync()
@@ -475,7 +475,7 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 // Steps:
 // 1. Create node with auth key
 // 2. DELETE the auth key from database (completely remove it)
-// 3. Restart node - should successfully reconnect using MachineKey identity.
+// 3. Restart node - should successfully reconnect using [tailcfg.Node.MachineKey] identity.
 func TestAuthKeyDeleteKey(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -561,7 +561,7 @@ func TestAuthKeyDeleteKey(t *testing.T) {
 
 	// Verify node comes back online
 	// This will FAIL without the fix because auth key validation will reject deleted key
-	// With the fix, MachineKey identity allows reconnection even with deleted key
+	// With the fix, [tailcfg.Node.MachineKey] identity allows reconnection even with deleted key
 	requireAllClientsOnline(t, headscale, []types.NodeID{types.NodeID(nodeID)}, true, "node should reconnect after restart despite deleted key", integrationutil.ScaledTimeout(120*time.Second))
 
 	t.Logf("✓ Node successfully reconnected after its auth key was deleted")
@@ -725,9 +725,9 @@ func TestAuthKeyLogoutAndReloginRoutesPreserved(t *testing.T) {
 				node.GetAvailableRoutes(), node.GetApprovedRoutes(), node.GetSubnetRoutes())
 
 			// This is where issue #2896 manifests:
-			// - Available shows the route (from Hostinfo.RoutableIPs)
-			// - Approved shows the route (from ApprovedRoutes)
-			// - BUT Serving (SubnetRoutes/PrimaryRoutes) is EMPTY!
+			// - Available shows the route (from [tailcfg.Hostinfo.RoutableIPs])
+			// - Approved shows the route (from [tailcfg.Node.ApprovedRoutes])
+			// - BUT Serving ([tailcfg.Node.SubnetRoutes]/[ipnstate.PeerStatus.PrimaryRoutes]) is EMPTY!
 			assert.Lenf(c, node.GetAvailableRoutes(), 1,
 				"Node should have 1 available route after relogin, got %v", node.GetAvailableRoutes())
 			assert.Lenf(c, node.GetApprovedRoutes(), 1,

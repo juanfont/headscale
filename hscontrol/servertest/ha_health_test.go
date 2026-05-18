@@ -15,7 +15,7 @@ import (
 	"tailscale.com/tailcfg"
 )
 
-// advertiseAndApproveRoute sets RoutableIPs on a client and approves
+// advertiseAndApproveRoute sets [tailcfg.Hostinfo.RoutableIPs] on a client and approves
 // the route on the server. Returns the node ID.
 func advertiseAndApproveRoute(
 	t *testing.T,
@@ -87,7 +87,7 @@ func TestHAHealthProbe_HealthyNodes(t *testing.T) {
 }
 
 // TestHAHealthProbe_UnhealthyFailover verifies that marking a primary
-// node unhealthy via the PrimaryRoutes API triggers failover to the
+// node unhealthy via the [state.State.SetNodeUnhealthy] API triggers failover to the
 // standby.
 func TestHAHealthProbe_UnhealthyFailover(t *testing.T) {
 	t.Parallel()
@@ -176,7 +176,7 @@ func TestHAHealthProbe_ConnectClearsUnhealthy(t *testing.T) {
 	srv.State().SetNodeHealth(nodeID1, false)
 	assert.False(t, srv.State().IsNodeHealthy(nodeID1))
 
-	// Reconnect clears unhealthy via State.Connect → ClearUnhealthy.
+	// Reconnect clears unhealthy via [state.State.Connect] → [state.State.ClearUnhealthy].
 	c1.Disconnect(t)
 	c1.Reconnect(t)
 
@@ -190,7 +190,7 @@ func TestHAHealthProbe_ConnectClearsUnhealthy(t *testing.T) {
 // that clearing a node's approved routes also clears any stale
 // Unhealthy bit, mirroring the legacy routes.SetRoutes(empty)
 // auto-clear. Without this, a probe timeout that lands just before
-// SetApprovedRoutes would surface as a stale unhealthy node forever.
+// [state.State.SetApprovedRoutes] would surface as a stale unhealthy node forever.
 func TestHAHealthProbe_SetApprovedRoutesEmptyClearsUnhealthy(t *testing.T) {
 	t.Parallel()
 
@@ -223,7 +223,7 @@ func TestHAHealthProbe_SetApprovedRoutesEmptyClearsUnhealthy(t *testing.T) {
 // HA candidate; carrying the bit forward leaks into DebugRoutes.
 //
 // The poll handler waits a 10s grace period before calling
-// state.Disconnect, so the assertion is wrapped in Eventually with a
+// [state.State.Disconnect], so the assertion is wrapped in Eventually with a
 // generous timeout.
 func TestHAHealthProbe_DisconnectClearsUnhealthy(t *testing.T) {
 	t.Parallel()
@@ -255,7 +255,7 @@ func TestHAHealthProbe_DisconnectClearsUnhealthy(t *testing.T) {
 
 // TestHAHealthProbe_SetUnhealthyNoRoutesIsNoOp verifies the
 // defensive guard for the still-online-but-no-routes case: a probe
-// that fires after SetApprovedRoutes(empty) should not be allowed
+// that fires after [state.State.SetApprovedRoutes](empty) should not be allowed
 // to install a stale Unhealthy bit either.
 func TestHAHealthProbe_SetUnhealthyNoRoutesIsNoOp(t *testing.T) {
 	t.Parallel()

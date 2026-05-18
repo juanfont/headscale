@@ -10,10 +10,10 @@ import (
 
 const pingIDLength = 16
 
-// pingTracker correlates outgoing PingRequests with incoming HEAD
+// pingTracker correlates outgoing [tailcfg.PingRequest]s with incoming HEAD
 // callbacks. Entries have no server-side TTL: callers are responsible
-// for cleaning up via CancelPing or by reading from the response channel
-// within their own timeout.
+// for cleaning up via [pingTracker.cancel] or by reading from the response
+// channel within their own timeout.
 type pingTracker struct {
 	mu      sync.Mutex
 	pending map[string]*pendingPing
@@ -80,7 +80,7 @@ func (pt *pingTracker) cancel(pingID string) {
 }
 
 // drain closes every outstanding response channel and clears the map.
-// Called from State.Close to unblock any caller still waiting on a
+// Called from [State.Close] to unblock any caller still waiting on a
 // channel that will never receive.
 func (pt *pingTracker) drain() {
 	pt.mu.Lock()
@@ -93,7 +93,7 @@ func (pt *pingTracker) drain() {
 }
 
 // RegisterPing tracks a pending ping and returns its ID and a channel
-// for the latency. Callers must defer CancelPing or read the channel
+// for the latency. Callers must defer [State.CancelPing] or read the channel
 // within their own timeout; there is no server-side TTL.
 func (s *State) RegisterPing(nodeID types.NodeID) (string, <-chan time.Duration) {
 	return s.pings.register(nodeID)

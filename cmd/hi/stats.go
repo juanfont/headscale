@@ -160,7 +160,7 @@ func (sc *StatsCollector) monitorDockerEvents(ctx context.Context, runID string,
 					continue
 				}
 
-				// Convert to types.Container format for consistency
+				// Convert to [types.Container] format for consistency
 				cont := types.Container{ //nolint:staticcheck // SA1019: use container.Summary
 					ID:     containerInfo.ID,
 					Names:  []string{containerInfo.Name},
@@ -256,7 +256,7 @@ func (sc *StatsCollector) collectStatsForContainer(ctx context.Context, containe
 
 			err := decoder.Decode(&stats)
 			if err != nil {
-				// EOF is expected when container stops or stream ends
+				// [io.EOF] is expected when container stops or stream ends
 				if err.Error() != "EOF" && verbose {
 					log.Printf("Failed to decode stats for container %s: %v", containerID[:12], err)
 				}
@@ -312,7 +312,7 @@ func calculateCPUPercent(prevStats, stats *container.Stats) float64 { //nolint:s
 		// Calculate CPU percentage: (container CPU delta / system CPU delta) * number of CPUs * 100
 		numCPUs := float64(len(stats.CPUStats.CPUUsage.PercpuUsage))
 		if numCPUs == 0 {
-			// Fallback: if PercpuUsage is not available, assume 1 CPU
+			// Fallback: if [PercpuUsage] is not available, assume 1 CPU
 			numCPUs = 1.0
 		}
 

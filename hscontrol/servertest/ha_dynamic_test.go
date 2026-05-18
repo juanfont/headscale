@@ -13,13 +13,13 @@ import (
 )
 
 // Dynamic HA failover scenarios, observed from a viewer client's
-// perspective. Unlike the static TestViaGrantHACompat golden tests,
+// perspective. Unlike the static [TestViaGrantHACompat] golden tests,
 // these exercise runtime transitions: a primary going unhealthy,
 // revoking its approved route, or losing its tag, and verify that
-// the viewer's netmap converges to the new primary. These are the
+// the viewer's [netmap.NetworkMap] converges to the new primary. These are the
 // end-to-end signals that static captures cannot cover.
 
-// hasPeerPrimaryRoute reports whether the viewer's current netmap
+// hasPeerPrimaryRoute reports whether the viewer's current [netmap.NetworkMap]
 // lists route as a PrimaryRoute on the peer with the given hostname.
 func hasPeerPrimaryRoute(nm *netmap.NetworkMap, peerHost string, route netip.Prefix) bool {
 	if nm == nil {
@@ -43,7 +43,7 @@ func hasPeerPrimaryRoute(nm *netmap.NetworkMap, peerHost string, route netip.Pre
 }
 
 // TestHAFailover_ViewerSeesPrimaryFlip verifies that when an HA
-// primary is marked unhealthy, the viewer's netmap flips the route's
+// primary is marked unhealthy, the viewer's [netmap.NetworkMap] flips the route's
 // primary assignment from the old primary to the standby.
 func TestHAFailover_ViewerSeesPrimaryFlip(t *testing.T) {
 	t.Parallel()
@@ -90,7 +90,7 @@ func TestHAFailover_ViewerSeesPrimaryFlip(t *testing.T) {
 }
 
 // TestHAFailover_ViewerSeesRouteRevoke verifies that when the primary
-// revokes its approved route, the viewer's netmap re-elects the
+// revokes its approved route, the viewer's [netmap.NetworkMap] re-elects the
 // standby and the old primary no longer advertises the route.
 func TestHAFailover_ViewerSeesRouteRevoke(t *testing.T) {
 	t.Parallel()

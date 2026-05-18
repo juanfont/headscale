@@ -1,6 +1,6 @@
-// Package change declares the Change type: a compact description of
-// what must land in a MapResponse. The mapper reads Change values to
-// build responses without inspecting state, and Merge combines
+// Package change declares the [Change] type: a compact description of
+// what must land in a [tailcfg.MapResponse]. The mapper reads [Change] values to
+// build responses without inspecting state, and [Change.Merge] combines
 // multiple pending changes for a single tick.
 package change
 
@@ -13,7 +13,7 @@ import (
 	"tailscale.com/tailcfg"
 )
 
-// Change declares what should be included in a MapResponse.
+// Change declares what should be included in a [tailcfg.MapResponse].
 // The mapper uses this to build the response without guessing.
 type Change struct {
 	// Reason is a human-readable description for logging/debugging.
@@ -26,12 +26,12 @@ type Change struct {
 	// Used for self-update detection and filtering.
 	OriginNode types.NodeID
 
-	// Content flags - what to include in the MapResponse.
+	// Content flags - what to include in the [tailcfg.MapResponse].
 	IncludeSelf    bool
 	IncludeDERPMap bool
 	IncludeDNS     bool
 	IncludeDomain  bool
-	IncludePolicy  bool // PacketFilters and SSHPolicy - always sent together
+	IncludePolicy  bool // [tailcfg.MapResponse.PacketFilters] and [tailcfg.MapResponse.SSHPolicy] - always sent together
 
 	// Peer changes.
 	PeersChanged []types.NodeID
@@ -46,12 +46,12 @@ type Change struct {
 
 	// PingRequest, if non-nil, is a ping request to send to the node.
 	// Used by the debug ping endpoint to verify node connectivity.
-	// PingRequest is always targeted to a specific node via TargetNode.
+	// [Change.PingRequest] is always targeted to a specific node via [Change.TargetNode].
 	PingRequest *tailcfg.PingRequest
 }
 
 // boolFieldNames returns all boolean field names for exhaustive testing.
-// When adding a new boolean field to Change, add it here.
+// When adding a new boolean field to [Change], add it here.
 // Tests use reflection to verify this matches the struct.
 func (r Change) boolFieldNames() []string {
 	return []string{
@@ -80,16 +80,16 @@ func (r Change) Merge(other Change) Change {
 	merged.PeersRemoved = uniqueNodeIDs(slices.Concat(r.PeersRemoved, other.PeersRemoved))
 	merged.PeerPatches = slices.Concat(r.PeerPatches, other.PeerPatches)
 
-	// Preserve OriginNode for self-update detection.
-	// If either change has OriginNode set, keep it so the mapper
+	// Preserve [Change.OriginNode] for self-update detection.
+	// If either change has [Change.OriginNode] set, keep it so the mapper
 	// can detect self-updates and send the node its own changes.
 	if merged.OriginNode == 0 {
 		merged.OriginNode = other.OriginNode
 	}
 
-	// Preserve TargetNode for targeted responses.
+	// Preserve [Change.TargetNode] for targeted responses.
 	// Merging two changes targeted at different nodes is not supported
-	// because the merged result can only have one TargetNode, which
+	// because the merged result can only have one [Change.TargetNode], which
 	// would cause the other target's content to be misrouted.
 	if merged.TargetNode != 0 && other.TargetNode != 0 && merged.TargetNode != other.TargetNode {
 		panic(fmt.Sprintf(
@@ -102,9 +102,9 @@ func (r Change) Merge(other Change) Change {
 		merged.TargetNode = other.TargetNode
 	}
 
-	// Preserve PingRequest (first wins).
+	// Preserve [Change.PingRequest] (first wins).
 	//
-	// Foot-gun: if two PingRequests to the same target merge in the
+	// Foot-gun: if two [tailcfg.PingRequest] values to the same target merge in the
 	// same tick, only the first is emitted. The client-side
 	// isUniquePingRequest check then suppresses the second when it
 	// eventually arrives, and the caller waits out the full
@@ -154,7 +154,7 @@ func (r Change) IsSelfOnly() bool {
 	return true
 }
 
-// IsTargetedToNode returns true if this response should only be sent to TargetNode.
+// IsTargetedToNode returns true if this response should only be sent to [Change.TargetNode].
 func (r Change) IsTargetedToNode() bool {
 	return r.TargetNode != 0
 }
@@ -167,7 +167,7 @@ func (r Change) IsFull() bool {
 
 // Type returns a categorized type string for metrics.
 // This provides a bounded set of values suitable for Prometheus labels,
-// unlike Reason which is free-form text for logging.
+// unlike [Change.Reason] which is free-form text for logging.
 func (r Change) Type() string {
 	if r.IsFull() {
 		return "full"
@@ -211,7 +211,7 @@ func (r Change) ShouldSendToNode(nodeID types.NodeID) bool {
 	return true
 }
 
-// HasFull returns true if any response in the slice is a full update.
+// HasFull returns true if any response in the slice is a full update ([Change.IsFull]).
 func HasFull(rs []Change) bool {
 	for _, r := range rs {
 		if r.IsFull() {
@@ -349,7 +349,7 @@ func DERPMap() Change {
 }
 
 // PolicyChange creates a response for policy changes.
-// Policy changes require runtime peer visibility computation.
+// Policy changes require runtime peer visibility computation ([Change.RequiresRuntimePeerComputation]).
 func PolicyChange() Change {
 	return Change{
 		Reason:                         "policy change",
@@ -407,8 +407,8 @@ func KeyExpiry(nodeID types.NodeID, expiry *time.Time) Change {
 
 // High-level change constructors
 
-// NodeAdded returns a Change for when a node is added or updated.
-// The OriginNode field enables self-update detection by the mapper.
+// NodeAdded returns a [Change] for when a node is added or updated.
+// The [Change.OriginNode] field enables self-update detection by the mapper.
 func NodeAdded(id types.NodeID) Change {
 	c := PeersChanged("node added", id)
 	c.OriginNode = id
@@ -416,12 +416,12 @@ func NodeAdded(id types.NodeID) Change {
 	return c
 }
 
-// NodeRemoved returns a Change for when a node is removed.
+// NodeRemoved returns a [Change] for when a node is removed.
 func NodeRemoved(id types.NodeID) Change {
 	return PeersRemoved(id)
 }
 
-// NodeOnlineFor returns a Change for when a node comes online.
+// NodeOnlineFor returns a [Change] for when a node comes online.
 // If the node is a subnet router, a full update is sent instead of a patch.
 func NodeOnlineFor(node types.NodeView) Change {
 	if node.IsSubnetRouter() {
@@ -434,7 +434,7 @@ func NodeOnlineFor(node types.NodeView) Change {
 	return NodeOnline(node.ID())
 }
 
-// NodeOfflineFor returns a Change for when a node goes offline.
+// NodeOfflineFor returns a [Change] for when a node goes offline.
 // If the node is a subnet router, a full update is sent instead of a patch.
 func NodeOfflineFor(node types.NodeView) Change {
 	if node.IsSubnetRouter() {
@@ -447,8 +447,8 @@ func NodeOfflineFor(node types.NodeView) Change {
 	return NodeOffline(node.ID())
 }
 
-// KeyExpiryFor returns a Change for when a node's key expiry changes.
-// The OriginNode field enables self-update detection by the mapper.
+// KeyExpiryFor returns a [Change] for when a node's key expiry changes.
+// The [Change.OriginNode] field enables self-update detection by the mapper.
 func KeyExpiryFor(id types.NodeID, expiry time.Time) Change {
 	c := KeyExpiry(id, &expiry)
 	c.OriginNode = id
@@ -456,8 +456,8 @@ func KeyExpiryFor(id types.NodeID, expiry time.Time) Change {
 	return c
 }
 
-// EndpointOrDERPUpdate returns a Change for when a node's endpoints or DERP region changes.
-// The OriginNode field enables self-update detection by the mapper.
+// EndpointOrDERPUpdate returns a [Change] for when a node's endpoints or DERP region changes.
+// The [Change.OriginNode] field enables self-update detection by the mapper.
 func EndpointOrDERPUpdate(id types.NodeID, patch *tailcfg.PeerChange) Change {
 	c := PeerPatched("endpoint/DERP update", patch)
 	c.OriginNode = id
@@ -465,7 +465,7 @@ func EndpointOrDERPUpdate(id types.NodeID, patch *tailcfg.PeerChange) Change {
 	return c
 }
 
-// UserAdded returns a Change for when a user is added or updated.
+// UserAdded returns a [Change] for when a user is added or updated.
 // A full update is sent to refresh user profiles on all nodes.
 func UserAdded() Change {
 	c := FullUpdate()
@@ -474,7 +474,7 @@ func UserAdded() Change {
 	return c
 }
 
-// UserRemoved returns a Change for when a user is removed.
+// UserRemoved returns a [Change] for when a user is removed.
 // A full update is sent to refresh user profiles on all nodes.
 func UserRemoved() Change {
 	c := FullUpdate()
@@ -483,9 +483,9 @@ func UserRemoved() Change {
 	return c
 }
 
-// PingNode creates a Change that sends a PingRequest to a specific
+// PingNode creates a [Change] that sends a [tailcfg.PingRequest] to a specific
 // node. pr must be non-nil and nodeID must be non-zero; the node
-// responds to the PingRequest URL to prove connectivity.
+// responds to the [tailcfg.PingRequest] URL to prove connectivity.
 func PingNode(nodeID types.NodeID, pr *tailcfg.PingRequest) Change {
 	return Change{
 		Reason:      "ping node",
@@ -494,7 +494,7 @@ func PingNode(nodeID types.NodeID, pr *tailcfg.PingRequest) Change {
 	}
 }
 
-// ExtraRecords returns a Change for when DNS extra records change.
+// ExtraRecords returns a [Change] for when DNS extra records change.
 func ExtraRecords() Change {
 	c := DNSConfig()
 	c.Reason = "extra records update"

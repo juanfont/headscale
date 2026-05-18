@@ -1587,7 +1587,7 @@ func TestTagsUserLoginAddTagViaCLIReauth(t *testing.T) {
 	_, stderr, err := client.Execute(command)
 	t.Logf("CLI result: err=%v, stderr=%s", err, stderr)
 
-	// Check final state - EventuallyWithT handles waiting for propagation
+	// Check final state - [assert.EventuallyWithT] handles waiting for propagation
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
@@ -1678,7 +1678,7 @@ func TestTagsUserLoginRemoveTagViaCLIReauth(t *testing.T) {
 	_, stderr, err := client.Execute(command)
 	t.Logf("CLI result: err=%v, stderr=%s", err, stderr)
 
-	// Check final state - EventuallyWithT handles waiting for propagation
+	// Check final state - [assert.EventuallyWithT] handles waiting for propagation
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
@@ -3093,8 +3093,8 @@ func TestTagsAuthKeyWithoutUserRejectsAdvertisedTags(t *testing.T) {
 // TestTagsAuthKeyConvertToUserViaCLIRegister reproduces the panic from
 // issue #3038: register a node with a tags-only preauthkey (no user), then
 // convert it to a user-owned node via "headscale auth register --auth-id <id> --user <user>".
-// The crash happens in the mapper's generateUserProfiles when node.User is nil
-// after the tag→user conversion in processReauthTags.
+// The crash happens in the mapper's generateUserProfiles when [types.Node.User] is nil
+// after the tag→user conversion in [State.processReauthTags].
 //
 // The key detail is using a tags-only PreAuthKey (User: nil). When created under
 // a user, the node inherits User from the PreAuthKey and the bug is masked.
@@ -3124,8 +3124,8 @@ func TestTagsAuthKeyConvertToUserViaCLIRegister(t *testing.T) {
 	requireNoErrGetHeadscale(t, err)
 
 	// Step 1: Create a tags-only preauthkey WITHOUT a user.
-	// This is the critical detail: when PreAuthKey.UserID is nil, the node
-	// enters the NodeStore with node.User == nil. The processReauthTags
+	// This is the critical detail: when [types.PreAuthKey.UserID] is nil, the node
+	// enters the [state.NodeStore] with [types.Node.User] == nil. The [state.State.processReauthTags]
 	// conversion then sets UserID but not User, leaving it nil for the mapper.
 	authKey, err := scenario.CreatePreAuthKeyWithOptions(hsic.AuthKeyOptions{
 		User:      nil,
@@ -3186,8 +3186,8 @@ func TestTagsAuthKeyConvertToUserViaCLIRegister(t *testing.T) {
 	require.NoError(t, err)
 
 	// Step 4: Verify node is now user-owned and the mapper didn't panic.
-	// The panic would occur when the mapper builds the MapResponse and calls
-	// node.Owner().Model().ID with a nil User pointer.
+	// The panic would occur when the mapper builds the [tailcfg.MapResponse] and calls
+	// [types.Node.Owner].Model().ID with a nil User pointer.
 	// ShutdownAssertNoPanics in the defer catches any panics in headscale logs.
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		nodes, err := headscale.ListNodes()

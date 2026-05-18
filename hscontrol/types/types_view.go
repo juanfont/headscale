@@ -92,22 +92,22 @@ func (v *UserView) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 func (v UserView) Model() gorm.Model { return v.ж.Model }
 
 // Name (username) for the user, is used if email is empty
-// Should not be used, please use Username().
-// It is unique if ProviderIdentifier is not set.
+// Should not be used, please use [User.Username].
+// It is unique if [User.ProviderIdentifier] is not set.
 func (v UserView) Name() string { return v.ж.Name }
 
 // Typically the full name of the user
 func (v UserView) DisplayName() string { return v.ж.DisplayName }
 
 // Email of the user
-// Should not be used, please use Username().
+// Should not be used, please use [User.Username].
 func (v UserView) Email() string { return v.ж.Email }
 
 // ProviderIdentifier is a unique or not set identifier of the
 // user from OIDC. It is the combination of `iss`
 // and `sub` claim in the OIDC token.
 // It is unique if set.
-// It is unique together with Name.
+// It is unique together with [User.Name].
 func (v UserView) ProviderIdentifier() sql.NullString { return v.ж.ProviderIdentifier }
 
 // Provider is the origin of the user account,
@@ -208,8 +208,8 @@ func (v NodeView) IPv6() views.ValuePointer[netip.Addr] { return views.ValuePoin
 func (v NodeView) Hostname() string { return v.ж.Hostname }
 
 // Givenname represents either:
-// a DNS normalized version of Hostname
-// a valid name set by the User
+// a DNS normalized version of [Node.Hostname]
+// a valid name set by the [User]
 //
 // GivenName is the name used in all DNS related
 // parts of headscale.
@@ -228,7 +228,7 @@ func (v NodeView) RegisterMethod() string { return v.ж.RegisterMethod }
 // Tags cannot be removed once set (one-way transition).
 func (v NodeView) Tags() views.Slice[string] { return views.SliceOf(v.ж.Tags) }
 
-// When a node has been created with a PreAuthKey, we need to
+// When a node has been created with a [PreAuthKey], we need to
 // prevent the preauthkey from being deleted before the node.
 // The preauthkey can define "tags" of the node so we need it
 // around.
@@ -376,8 +376,8 @@ func (v PreAuthKeyView) Prefix() string { return v.ж.Prefix }
 // bcrypt
 func (v PreAuthKeyView) Hash() views.ByteSlice[[]byte] { return views.ByteSliceOf(v.ж.Hash) }
 
-// For tagged keys: UserID tracks who created the key (informational)
-// For user-owned keys: UserID tracks the node owner
+// For tagged keys: [PreAuthKey.UserID] tracks who created the key (informational)
+// For user-owned keys: [PreAuthKey.UserID] tracks the node owner
 // Can be nil for system-created tagged keys
 func (v PreAuthKeyView) UserID() views.ValuePointer[uint] { return views.ValuePointerOf(v.ж.UserID) }
 

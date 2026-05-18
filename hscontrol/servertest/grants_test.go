@@ -16,7 +16,7 @@ import (
 
 // TestGrantPolicies verifies that grant-based policies propagate
 // correctly through the full control plane (policy -> state -> mapper)
-// and produce the expected packet filter rules in client netmaps.
+// and produce the expected packet filter rules in client [netmap.NetworkMap]s.
 func TestGrantPolicies(t *testing.T) { //nolint:gocyclo
 	t.Parallel()
 
@@ -66,7 +66,7 @@ func TestGrantPolicies(t *testing.T) { //nolint:gocyclo
 				return c2.UpdateCount() > countC2
 			})
 
-		// Verify PacketFilter is populated with real rules from the grant.
+		// Verify [netmap.NetworkMap.PacketFilter] is populated with real rules from the grant.
 		nm1 := c1.Netmap()
 		require.NotNil(t, nm1)
 		assert.NotNil(t, nm1.PacketFilter,
@@ -132,7 +132,7 @@ func TestGrantPolicies(t *testing.T) { //nolint:gocyclo
 			srv.App.Change(changes...)
 		}
 
-		// Wait for PacketFilter with cap match rules to arrive.
+		// Wait for [netmap.NetworkMap.PacketFilter] with cap match rules to arrive.
 		c1.WaitForCondition(t, "packet filter with cap grants",
 			10*time.Second,
 			func(nm *netmap.NetworkMap) bool {
@@ -143,7 +143,7 @@ func TestGrantPolicies(t *testing.T) { //nolint:gocyclo
 		nm1 := c1.Netmap()
 		require.NotNil(t, nm1)
 
-		// Check that the packet filter has CapMatch entries.
+		// Check that the packet filter has [filtertype.CapMatch] entries.
 		// The main grant produces cap/drive and cap/relay.
 		// Companion caps (drive-sharer and relay-target) are
 		// generated with reversed direction.
@@ -657,9 +657,9 @@ func TestGrantPolicies(t *testing.T) { //nolint:gocyclo
 }
 
 // TestGrantViaSubnetFilterRules verifies that routers with via grants
-// receive PacketFilter rules that allow the steered subnet traffic.
+// receive [netmap.NetworkMap.PacketFilter] rules that allow the steered subnet traffic.
 // This is a regression test: without per-node filter compilation for
-// via grants, the router's PacketFilter would lack rules for the
+// via grants, the router's [netmap.NetworkMap.PacketFilter] would lack rules for the
 // via-steered subnet destinations, causing traffic to be dropped.
 func TestGrantViaSubnetFilterRules(t *testing.T) {
 	t.Parallel()
@@ -748,7 +748,7 @@ func TestGrantViaSubnetFilterRules(t *testing.T) {
 			return false
 		})
 
-	// Critical: the router's PacketFilter MUST contain rules with
+	// Critical: the router's [netmap.NetworkMap.PacketFilter] MUST contain rules with
 	// the via-steered subnet (10.0.0.0/24) as a destination.
 	// Without this, the router drops traffic forwarded through it.
 	routerNM := routerA.Netmap()
@@ -1101,7 +1101,7 @@ func hasCapMatches(matches []filtertype.Match) bool {
 	return false
 }
 
-// hasDstRules returns true if any Match in the slice contains a
+// hasDstRules returns true if any [filtertype.Match] in the slice contains a
 // non-empty Dsts list.
 func hasDstRules(matches []filtertype.Match) bool {
 	for _, m := range matches {

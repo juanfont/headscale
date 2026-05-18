@@ -44,13 +44,13 @@ func MatchesFromFilterRules(rules []tailcfg.FilterRule) []Match {
 	return matches
 }
 
-// MatchFromFilterRule derives a Match from a tailcfg.FilterRule. The
-// destination IP set is the union of DstPorts[].IP and CapGrant[].Dsts:
-// cap-grant-only rules (e.g. tailscale.com/cap/relay) carry their
-// destinations in CapGrant.Dsts and would otherwise contribute nothing
-// to peer-visibility derivation in BuildPeerMap / ReduceNodes, hiding
-// the cap target from the source unless a companion IP-level rule
-// also exists.
+// MatchFromFilterRule derives a [Match] from a [tailcfg.FilterRule]. The
+// destination IP set is the union of [tailcfg.FilterRule.DstPorts][].IP
+// and [tailcfg.FilterRule.CapGrant][].Dsts: cap-grant-only rules (e.g.
+// tailscale.com/cap/relay) carry their destinations in CapGrant.Dsts and
+// would otherwise contribute nothing to peer-visibility derivation in
+// [policy.BuildPeerMap] / [policy.ReduceNodes], hiding the cap target
+// from the source unless a companion IP-level rule also exists.
 func MatchFromFilterRule(rule tailcfg.FilterRule) Match {
 	srcs := new(netipx.IPSetBuilder)
 	dests := new(netipx.IPSetBuilder)
@@ -80,11 +80,11 @@ func MatchFromFilterRule(rule tailcfg.FilterRule) Match {
 	}
 }
 
-// MatchFromStrings builds a Match from raw source and destination
+// MatchFromStrings builds a [Match] from raw source and destination
 // strings. Unparseable entries are silently dropped (fail-open): the
-// resulting Match is narrower than the input described, but never
+// resulting [Match] is narrower than the input described, but never
 // wider. Callers that need strict validation should pre-validate
-// their inputs via util.ParseIPSet.
+// their inputs via [util.ParseIPSet].
 func MatchFromStrings(sources, destinations []string) Match {
 	srcs := new(netipx.IPSetBuilder)
 	dests := new(netipx.IPSetBuilder)
@@ -131,7 +131,7 @@ func (m *Match) DestsOverlapsPrefixes(prefixes ...netip.Prefix) bool {
 // DestsIsTheInternet reports whether the destination covers "the
 // internet" — the set represented by autogroup:internet, special-cased
 // for exit nodes. Returns true if either family's /0 is contained
-// (0.0.0.0/0 or ::/0), or if dests is a superset of TheInternet(). A
+// (0.0.0.0/0 or ::/0), or if dests is a superset of [util.TheInternet]. A
 // single-family /0 counts because operators may write it directly and
 // it still denotes the whole internet for that family.
 func (m *Match) DestsIsTheInternet() bool {
@@ -140,7 +140,7 @@ func (m *Match) DestsIsTheInternet() bool {
 		return true
 	}
 
-	// Superset-of-TheInternet check handles merged filter rules
+	// Superset-of-[util.TheInternet] check handles merged filter rules
 	// where the internet prefixes are combined with other dests.
 	theInternet := util.TheInternet()
 	for _, prefix := range theInternet.Prefixes() {

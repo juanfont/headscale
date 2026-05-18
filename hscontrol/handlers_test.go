@@ -15,8 +15,8 @@ import (
 var errTestUnexpected = errors.New("unexpected failure")
 
 // TestHandleVerifyRequest_OversizedBodyRejected verifies that the
-// /verify handler refuses POST bodies larger than verifyBodyLimit.
-// The MaxBytesReader is applied in VerifyHandler, so we simulate
+// /verify handler refuses POST bodies larger than [verifyBodyLimit].
+// The [http.MaxBytesReader] is applied in [Headscale.VerifyHandler], so we simulate
 // the same wrapping here.
 func TestHandleVerifyRequest_OversizedBodyRejected(t *testing.T) {
 	t.Parallel()
@@ -47,7 +47,7 @@ func TestHandleVerifyRequest_OversizedBodyRejected(t *testing.T) {
 		"oversized body must surface 413")
 }
 
-// errorAsHTTPError is a small local helper that unwraps an HTTPError
+// errorAsHTTPError is a small local helper that unwraps an [HTTPError]
 // from an error chain.
 func errorAsHTTPError(err error) (HTTPError, bool) {
 	var h HTTPError

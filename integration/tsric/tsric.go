@@ -65,7 +65,7 @@ func WithCACert(cert []byte) Option {
 	}
 }
 
-// WithNetwork sets the Docker container network.
+// WithNetwork sets the Docker [dockertest.Network].
 func WithNetwork(network *dockertest.Network) Option {
 	return func(t *TailscaleRustInContainer) {
 		t.network = network
@@ -146,7 +146,7 @@ func (t *TailscaleRustInContainer) buildEntrypoint() []string {
 	return []string{"/bin/sh", "-c", strings.Join(commands, " ; ")}
 }
 
-// New creates and starts a new TailscaleRustInContainer instance.
+// New creates and starts a new [TailscaleRustInContainer] instance.
 func New(
 	pool *dockertest.Pool,
 	opts ...Option,
@@ -280,7 +280,7 @@ func New(
 	return t, nil
 }
 
-// Hostname returns the hostname of the TailscaleRustInContainer instance.
+// Hostname returns the hostname of the [TailscaleRustInContainer] instance.
 func (t *TailscaleRustInContainer) Hostname() string {
 	return t.hostname
 }
@@ -310,7 +310,7 @@ func (t *TailscaleRustInContainer) SaveLog(path string) (string, string, error) 
 }
 
 // WriteLogs writes the current stdout/stderr log of the container to
-// the given io.Writers.
+// the given [io.Writer]s.
 func (t *TailscaleRustInContainer) WriteLogs(stdout, stderr io.Writer) error {
 	return dockertestutil.WriteLog(t.pool, t.container, stdout, stderr)
 }

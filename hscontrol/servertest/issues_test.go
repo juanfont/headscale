@@ -19,14 +19,14 @@ import (
 // These tests are intentionally strict about expected behavior.
 // Failures surface real issues in the control plane.
 
-// TestIssuesMapContent tests issues with MapResponse content correctness.
+// TestIssuesMapContent tests issues with [tailcfg.MapResponse] content correctness.
 func TestIssuesMapContent(t *testing.T) {
 	t.Parallel()
 
 	// After mesh formation, all peers should have a known Online status.
-	// The Online field is set when Connect() sends a NodeOnline PeerChange
-	// patch. The initial MapResponse (from auth handler) may have Online=nil
-	// because Connect() hasn't run yet, so we wait for the status to propagate.
+	// The Online field is set when [state.State.Connect] sends a NodeOnline [tailcfg.PeerChange]
+	// patch. The initial [tailcfg.MapResponse] (from auth handler) may have Online=nil
+	// because [state.State.Connect] hasn't run yet, so we wait for the status to propagate.
 	t.Run("initial_map_should_include_peer_online_status", func(t *testing.T) {
 		t.Parallel()
 		h := servertest.NewHarness(t, 3)
@@ -55,7 +55,7 @@ func TestIssuesMapContent(t *testing.T) {
 		t.Parallel()
 		h := servertest.NewHarness(t, 2)
 
-		// The DiscoKey is sent in the first MapRequest (not the RegisterRequest),
+		// The DiscoKey is sent in the first [tailcfg.MapRequest] (not the [tailcfg.RegisterRequest]),
 		// so it may take an extra map update to propagate to peers. Wait for
 		// the condition rather than checking the initial netmap.
 		h.Client(0).WaitForCondition(t, "peer has non-zero DiscoKey",
@@ -92,7 +92,7 @@ func TestIssuesMapContent(t *testing.T) {
 		}
 	})
 
-	// Each peer should have a valid user profile in the netmap.
+	// Each peer should have a valid user profile in the [netmap.NetworkMap].
 	t.Run("all_peers_have_user_profiles", func(t *testing.T) {
 		t.Parallel()
 
@@ -174,7 +174,7 @@ func TestIssuesRoutes(t *testing.T) {
 	// Approving a route via API without the node announcing it must NOT
 	// make the route visible in AllowedIPs. Tailscale uses a strict
 	// advertise-then-approve model: routes are only distributed when the
-	// node advertises them (Hostinfo.RoutableIPs) AND they are approved.
+	// node advertises them ([tailcfg.Hostinfo.RoutableIPs]) AND they are approved.
 	// An approval without advertisement is a dormant pre-approval that
 	// activates once the node starts advertising.
 	t.Run("approved_route_without_announcement_not_distributed", func(t *testing.T) {
@@ -253,7 +253,7 @@ func TestIssuesRoutes(t *testing.T) {
 			})
 	})
 
-	// Hostinfo route advertisement should be stored on server.
+	// [tailcfg.Hostinfo] route advertisement should be stored on server.
 	t.Run("hostinfo_route_advertisement_stored_on_server", func(t *testing.T) {
 		t.Parallel()
 
@@ -491,7 +491,7 @@ func TestIssuesServerMutations(t *testing.T) {
 		assert.Len(t, c3.Peers(), 1)
 	})
 
-	// Hostinfo changes should propagate to peers.
+	// [tailcfg.Hostinfo] changes should propagate to peers.
 	t.Run("hostinfo_changes_propagate_to_peers", func(t *testing.T) {
 		t.Parallel()
 
@@ -530,11 +530,11 @@ func TestIssuesServerMutations(t *testing.T) {
 	})
 }
 
-// TestIssuesNodeStoreConsistency tests NodeStore + DB consistency.
+// TestIssuesNodeStoreConsistency tests [state.NodeStore] + DB consistency.
 func TestIssuesNodeStoreConsistency(t *testing.T) {
 	t.Parallel()
 
-	// NodeStore and DB should agree after mutations.
+	// [state.NodeStore] and DB should agree after mutations.
 	t.Run("nodestore_db_consistency_after_operations", func(t *testing.T) {
 		t.Parallel()
 
@@ -569,7 +569,7 @@ func TestIssuesNodeStoreConsistency(t *testing.T) {
 			"NodeStore and DB should agree on approved routes")
 	})
 
-	// After rapid reconnect, NodeStore should reflect correct state.
+	// After rapid reconnect, [state.NodeStore] should reflect correct state.
 	t.Run("nodestore_correct_after_rapid_reconnect", func(t *testing.T) {
 		t.Parallel()
 
@@ -673,7 +673,7 @@ func TestIssuesGracePeriod(t *testing.T) {
 
 		// Ensure the ephemeral node's long-poll session is fully
 		// established on the server before disconnecting. Without
-		// this, the Disconnect may cancel a PollNetMap that hasn't
+		// this, the [TestClient.Disconnect] may cancel a [controlclient.Direct.PollNetMap] that hasn't
 		// yet reached serveLongPoll, so no grace period or ephemeral
 		// GC would ever be scheduled.
 		ephemeral.WaitForPeers(t, 1, 10*time.Second)

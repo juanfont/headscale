@@ -18,7 +18,7 @@ type grantCategory int
 
 const (
 	// grantCategoryRegular requires no per-node work. The pre-compiled
-	// rules are complete and only need ReduceFilterRules.
+	// rules are complete and only need [policyutil.ReduceFilterRules].
 	grantCategoryRegular grantCategory = iota
 
 	// grantCategorySelf has autogroup:self destinations that must be
@@ -80,7 +80,7 @@ type viaGrantData struct {
 
 // resolveViaDestinations splits a via grant's destinations into the
 // flat list of IP prefixes they resolve to plus a flag for
-// autogroup:internet. Every alias kind goes through Alias.Resolve so
+// autogroup:internet. Every alias kind goes through [Alias.Resolve] so
 // adding a new alias type to the policy parser does not silently
 // disappear from the via path. Non-IP alias kinds (tag, user, group,
 // wildcard) resolve to /32 host IPs that never overlap with subnet
@@ -116,7 +116,7 @@ func resolveViaDestinations(
 
 // userNodeIndex maps user IDs to their untagged nodes. Built once per
 // policy or node-set change and read from many goroutines under
-// PolicyManager.mu; readers must hold the lock (or the snapshot
+// [PolicyManager.mu]; readers must hold the lock (or the snapshot
 // returned to them).
 type userNodeIndex map[uint][]types.NodeView
 
@@ -136,7 +136,7 @@ func buildUserNodeIndex(
 }
 
 // compileNodeAttrs returns the per-node CapMap derived from policy
-// nodeAttrs plus the tailnet-wide RandomizeClientPort flag.
+// nodeAttrs plus the tailnet-wide [Policy.RandomizeClientPort] flag.
 //
 // Returns an error when a target alias fails to resolve so the caller
 // surfaces a corrupt policy instead of silently granting a partial set
@@ -163,18 +163,18 @@ func (pol *Policy) compileNodeAttrs(
 			result[id] = capMap
 		}
 
-		// nil RawMessage matches the wire format from a Tailscale-hosted
-		// control plane: capabilities without companion data marshal as
-		// `null` rather than `[]`. Storing nil keeps the merge stable
-		// and lets the compat test diff cleanly against captured
-		// netmaps.
+		// nil [tailcfg.RawMessage] matches the wire format from a
+		// Tailscale-hosted control plane: capabilities without companion
+		// data marshal as null rather than []. Storing nil keeps the
+		// merge stable and lets the compat test diff cleanly against
+		// captured netmaps.
 		if _, exists := capMap[attr]; !exists {
 			capMap[attr] = nil
 		}
 	}
 
 	// Cache each node's IPs once per call. Without the cache, the
-	// node-attr inner loop would call NodeView.IPs() once per attr
+	// node-attr inner loop would call [types.NodeView.IPs] once per attr
 	// per node — O(grants × nodes) allocations of a 2-element slice
 	// for what is invariant per node within a single policy compile.
 	type nodeIPs struct {
@@ -221,10 +221,11 @@ func (pol *Policy) compileNodeAttrs(
 	return result, nil
 }
 
-// compileGrants resolves all policy grants into compiledGrant structs.
+// compileGrants resolves all policy grants into [compiledGrant] structs.
 // Source resolution and non-self destination resolution happens once
 // here. This is the single resolution path that replaces the
-// duplicated work in compileFilterRules and compileGrantWithAutogroupSelf.
+// duplicated work in [Policy.compileFilterRules] and the autogroup:self
+// expansion.
 func (pol *Policy) compileGrants(
 	users types.Users,
 	nodes views.Slice[types.NodeView],
@@ -256,7 +257,7 @@ func (pol *Policy) compileGrants(
 	return compiled
 }
 
-// compileOneGrant resolves a single grant into a compiledGrant.
+// compileOneGrant resolves a single grant into a [compiledGrant].
 // All source resolution happens here. Non-self, non-via destination
 // resolution also happens here. Per-node data (self dests, via
 // matching) is stored for deferred compilation.
@@ -341,7 +342,7 @@ func (pol *Policy) compileOneGrant(
 
 // compileOneViaGrant resolves sources for a via grant and stores the
 // deferred per-node data. The actual via-node matching and route
-// intersection happens in compileViaForNode.
+// intersection happens in [compileViaForNode].
 func (pol *Policy) compileOneViaGrant(
 	grant Grant,
 	users types.Users,
@@ -404,8 +405,8 @@ func (pol *Policy) compileOneViaGrant(
 // resolveSources resolves grant sources per-alias, returning the
 // resolved addresses and a separate slice of non-wildcard sources.
 // This is the canonical source-resolution path. Its output lands in
-// compiledGrant.srcIPStrings (among other places) and callers on the
-// hot path should prefer reading that over calling Resolve again.
+// [compiledGrant.srcIPStrings] (among other places) and callers on the
+// hot path should prefer reading that over calling [Alias.Resolve] again.
 func resolveSources(
 	pol *Policy,
 	sources Aliases,
@@ -490,8 +491,9 @@ func buildSrcIPStrings(
 }
 
 // compileOtherDests compiles filter rules for non-self, non-via
-// destinations. This produces both DstPorts rules (from
-// InternetProtocols) and CapGrant rules (from App).
+// destinations. This produces both [tailcfg.FilterRule.DstPorts] rules
+// (from [Grant.InternetProtocols]) and [tailcfg.CapGrant] rules (from
+// [Grant.App]).
 func (pol *Policy) compileOtherDests(
 	users types.Users,
 	nodes views.Slice[types.NodeView],
@@ -580,7 +582,7 @@ func (pol *Policy) compileOtherDests(
 	return rules
 }
 
-// hasPerNodeGrants reports whether any compiled grant requires
+// hasPerNodeGrants reports whether any [compiledGrant] requires
 // per-node filter compilation (via grants or autogroup:self).
 func hasPerNodeGrants(grants []compiledGrant) bool {
 	for i := range grants {
@@ -592,10 +594,10 @@ func hasPerNodeGrants(grants []compiledGrant) bool {
 	return false
 }
 
-// globalFilterRules extracts global filter rules from compiled
-// grants. Via grants produce no global rules (they are per-node
-// only); regular grants contribute their full pre-compiled ruleset;
-// self grants contribute their non-self portion.
+// globalFilterRules extracts global filter rules from [compiledGrant]s.
+// Via grants produce no global rules (they are per-node only); regular
+// grants contribute their full pre-compiled ruleset; self grants
+// contribute their non-self portion.
 func globalFilterRules(grants []compiledGrant) []tailcfg.FilterRule {
 	var rules []tailcfg.FilterRule
 
@@ -804,10 +806,11 @@ func compileViaForNode(
 		return nil
 	}
 
-	// SubnetRoutes excludes exit routes, so the overlap gate below sees
-	// only subnet advertisements. autogroup:internet on a via-tagged
-	// exit advertiser is handled separately because its eligibility is
-	// per-node (IsExitNode) rather than per-prefix overlap.
+	// [types.NodeView.SubnetRoutes] excludes exit routes, so the overlap
+	// gate below sees only subnet advertisements. autogroup:internet on
+	// a via-tagged exit advertiser is handled separately because its
+	// eligibility is per-node ([types.NodeView.IsExitNode]) rather than
+	// per-prefix overlap.
 	nodeSubnetRoutes := node.SubnetRoutes()
 
 	var viaDstPrefixes []netip.Prefix
@@ -826,11 +829,11 @@ func compileViaForNode(
 	}
 
 	// autogroup:internet on a via-tagged exit advertiser becomes a rule
-	// whose DstPorts enumerate util.TheInternet(). The matchers derived
-	// from this rule let Node.CanAccess surface the exit node to the
-	// grant source via DestsIsTheInternet. ReduceFilterRules strips the
-	// rule from the wire format on non-exit advertisers, preserving
-	// SaaS PacketFilter encoding.
+	// whose DstPorts enumerate [util.TheInternet]. The matchers derived
+	// from this rule let [types.NodeView.CanAccess] surface the exit node
+	// to the grant source via [matcher.Match.DestsIsTheInternet].
+	// [policyutil.ReduceFilterRules] strips the rule from the wire format
+	// on non-exit advertisers, preserving SaaS PacketFilter encoding.
 	if cg.via.hasAutoGroupInternet && node.IsExitNode() {
 		viaDstPrefixes = append(
 			viaDstPrefixes,

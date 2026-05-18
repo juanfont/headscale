@@ -1,5 +1,5 @@
-// Package state provides pure functions for processing MapRequest data.
-// These functions are extracted from UpdateNodeFromMapRequest to improve
+// Package state provides pure functions for processing [tailcfg.MapRequest] data.
+// These functions are extracted from [State.UpdateNodeFromMapRequest] to improve
 // testability and maintainability.
 
 package state
@@ -10,19 +10,19 @@ import (
 	"tailscale.com/tailcfg"
 )
 
-// netInfoFromMapRequest determines the correct NetInfo to use.
-// Returns the NetInfo that should be used for this request.
+// netInfoFromMapRequest determines the correct [tailcfg.NetInfo] to use.
+// Returns the [tailcfg.NetInfo] that should be used for this request.
 func netInfoFromMapRequest(
 	nodeID types.NodeID,
 	currentHostinfo *tailcfg.Hostinfo,
 	reqHostinfo *tailcfg.Hostinfo,
 ) *tailcfg.NetInfo {
-	// If request has NetInfo, use it
+	// If request has [tailcfg.NetInfo], use it
 	if reqHostinfo != nil && reqHostinfo.NetInfo != nil {
 		return reqHostinfo.NetInfo
 	}
 
-	// Otherwise, use current NetInfo if available
+	// Otherwise, use current [tailcfg.NetInfo] if available
 	if currentHostinfo != nil && currentHostinfo.NetInfo != nil {
 		log.Debug().
 			Caller().
@@ -33,7 +33,7 @@ func netInfoFromMapRequest(
 		return currentHostinfo.NetInfo
 	}
 
-	// No NetInfo available anywhere - log for debugging
+	// No [tailcfg.NetInfo] available anywhere - log for debugging
 	var hostname string
 	if reqHostinfo != nil {
 		hostname = reqHostinfo.Hostname

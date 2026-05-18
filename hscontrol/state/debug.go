@@ -150,7 +150,7 @@ func (s *State) DebugOverview() string {
 	return sb.String()
 }
 
-// DebugNodeStore returns debug information about the NodeStore.
+// DebugNodeStore returns debug information about the [NodeStore].
 func (s *State) DebugNodeStore() string {
 	return s.nodeStore.DebugString()
 }
@@ -257,7 +257,7 @@ func (s *State) DebugFilter() ([]tailcfg.FilterRule, error) {
 }
 
 // DebugRoutes returns the current primary routes information as a
-// structured object built from the NodeStore snapshot.
+// structured object built from the [NodeStore] snapshot.
 func (s *State) DebugRoutes() types.DebugRoutes {
 	debug := types.DebugRoutes{
 		AvailableRoutes: make(map[types.NodeID][]netip.Prefix),
@@ -421,7 +421,7 @@ func (s *State) DebugDERPJSON() DebugDERPInfo {
 	return info
 }
 
-// DebugNodeStoreJSON returns the actual nodes map from the current NodeStore snapshot.
+// DebugNodeStoreJSON returns the actual nodes map from the current [NodeStore] snapshot.
 func (s *State) DebugNodeStoreJSON() map[types.NodeID]types.Node {
 	snapshot := s.nodeStore.data.Load()
 	return snapshot.nodesByID

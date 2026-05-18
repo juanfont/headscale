@@ -767,8 +767,8 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 	// Pre-rewrite these were rejected by ApplyHostnameFromHostInfo with
 	// "invalid characters" and the node was stuck on an invalid-<rand>
 	// GivenName with the HostName update dropped. The assertions below
-	// verify both raw preservation (node.Name) and SaaS-matching sanitisation
-	// (node.GivenName) for each awkward input.
+	// verify both raw preservation ([v1.Node.Name]) and SaaS-matching sanitisation
+	// ([v1.Node.GivenName]) for each awkward input.
 	hostnames := map[string]string{
 		"1": "Joe's Mac mini",
 		"2": "Test@Host",
@@ -813,7 +813,7 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 	requireNoErrSync(t, err)
 
 	// Wait for nodestore batch processing to complete
-	// NodeStore batching timeout is 500ms, so we wait up to 1 second
+	// [state.NodeStore] batching timeout is 500ms, so we wait up to 1 second
 	var nodes []*v1.Node
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		err := executeAndUnmarshal(
@@ -834,7 +834,7 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 			hostname := hostnames[strconv.FormatUint(node.GetId(), 10)]
 			assert.Equal(ct, hostname, node.GetName(), "Node name should match hostname")
 
-			// GivenName is sanitised via dnsname.SanitizeHostname (SaaS algorithm).
+			// GivenName is sanitised via [dnsname.SanitizeHostname] (SaaS algorithm).
 			assert.Equal(ct, dnsname.SanitizeHostname(hostname), node.GetGivenName(),
 				"Given name should match SaaS hostname-sanitisation rules")
 		}
@@ -912,7 +912,7 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 	requireNoErrSync(t, err)
 
 	// Wait for nodestore batch processing to complete
-	// NodeStore batching timeout is 500ms, so we wait up to 1 second
+	// [state.NodeStore] batching timeout is 500ms, so we wait up to 1 second
 	assert.Eventually(t, func() bool {
 		err = executeAndUnmarshal(
 			headscale,
@@ -987,7 +987,7 @@ func TestExpireNode(t *testing.T) {
 	require.NoError(t, err)
 
 	// TODO(kradalby): This is Headscale specific and would not play nicely
-	// with other implementations of the ControlServer interface
+	// with other implementations of the [ControlServer] interface
 	result, err := headscale.Execute([]string{
 		"headscale", "nodes", "expire", "--identifier", "1", "--output", "json",
 	})

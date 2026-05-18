@@ -69,35 +69,35 @@ const (
 
 // StateUpdate is an internal message containing information about
 // a state change that has happened to the network.
-// If type is StateFullUpdate, all fields are ignored.
+// If type is [StateFullUpdate], all fields are ignored.
 type StateUpdate struct {
 	// The type of update
 	Type StateUpdateType
 
 	// ChangeNodes must be set when Type is StatePeerAdded
-	// and StatePeerChanged and contains the full node
+	// and [StatePeerChanged] and contains the full node
 	// object for added nodes.
 	ChangeNodes []NodeID
 
-	// ChangePatches must be set when Type is StatePeerChangedPatch
-	// and contains a populated PeerChange object.
+	// ChangePatches must be set when Type is [StatePeerChangedPatch]
+	// and contains a populated [tailcfg.PeerChange] object.
 	ChangePatches []*tailcfg.PeerChange
 
-	// Removed must be set when Type is StatePeerRemoved and
+	// Removed must be set when Type is [StatePeerRemoved] and
 	// contain a list of the nodes that has been removed from
 	// the network.
 	Removed []NodeID
 
-	// DERPMap must be set when Type is StateDERPUpdated and
+	// DERPMap must be set when Type is [StateDERPUpdated] and
 	// contain the new DERP Map.
 	DERPMap *tailcfg.DERPMap
 
 	// Additional message for tracking origin or what being
-	// updated, useful for ambiguous updates like StatePeerChanged.
+	// updated, useful for ambiguous updates like [StatePeerChanged].
 	Message string
 }
 
-// Empty reports if there are any updates in the StateUpdate.
+// Empty reports if there are any updates in the [StateUpdate].
 func (su *StateUpdate) Empty() bool {
 	switch su.Type {
 	case StatePeerChanged:
@@ -233,7 +233,7 @@ type SSHCheckBinding struct {
 // PendingRegistrationConfirmation captures the server-side state needed
 // to finalise a node registration after the user has confirmed it on
 // the OIDC interstitial. The OIDC callback resolves the user identity
-// and node expiry, stores them on the cached AuthRequest, and renders
+// and node expiry, stores them on the cached [AuthRequest], and renders
 // a confirmation page; only when the user POSTs the confirmation form
 // does the actual node registration run.
 //
@@ -250,9 +250,9 @@ type PendingRegistrationConfirmation struct {
 // node. It carries the minimum data needed to either complete a node
 // registration (regData populated) or an SSH check-mode auth (sshBinding
 // populated), and signals the verdict via the finished channel. The closed
-// flag guards FinishAuth against double-close.
+// flag guards [AuthRequest.FinishAuth] against double-close.
 //
-// AuthRequest is always handled by pointer so the channel and atomic flag
+// [AuthRequest] is always handled by pointer so the channel and atomic flag
 // have a single canonical instance even when stored in caches that
 // internally copy values.
 type AuthRequest struct {
@@ -260,7 +260,7 @@ type AuthRequest struct {
 	// or OIDC). It carries the cached registration payload that the
 	// auth callback uses to promote this request into a real node.
 	//
-	// nil for non-registration flows. Use RegistrationData() to read it
+	// nil for non-registration flows. Use [AuthRequest.RegistrationData] to read it
 	// safely.
 	regData *RegistrationData
 
@@ -269,7 +269,7 @@ type AuthRequest struct {
 	// and OIDC callback can refuse to record a verdict for any other
 	// pair.
 	//
-	// nil for non-SSH-check flows. Use SSHCheckBinding() to read it
+	// nil for non-SSH-check flows. Use [AuthRequest.SSHCheckBinding] to read it
 	// safely.
 	sshBinding *SSHCheckBinding
 
@@ -294,7 +294,7 @@ func NewAuthRequest() *AuthRequest {
 }
 
 // NewRegisterAuthRequest creates a pending auth request carrying the
-// minimal RegistrationData for a node-registration flow. The data is
+// minimal [RegistrationData] for a node-registration flow. The data is
 // stored by pointer; callers must not mutate it after handing it off.
 func NewRegisterAuthRequest(data *RegistrationData) *AuthRequest {
 	return &AuthRequest{
@@ -320,8 +320,8 @@ func NewSSHCheckAuthRequest(src, dst NodeID) *AuthRequest {
 }
 
 // RegistrationData returns the cached registration payload. It panics if
-// called on an AuthRequest that was not created via
-// NewRegisterAuthRequest.
+// called on an [AuthRequest] that was not created via
+// [NewRegisterAuthRequest].
 func (rn *AuthRequest) RegistrationData() *RegistrationData {
 	if rn.regData == nil {
 		panic("RegistrationData can only be used in registration requests")
@@ -331,8 +331,8 @@ func (rn *AuthRequest) RegistrationData() *RegistrationData {
 }
 
 // SSHCheckBinding returns the (src, dst) node pair an SSH check-mode
-// auth request is bound to. It panics if called on an AuthRequest that
-// was not created via NewSSHCheckAuthRequest.
+// auth request is bound to. It panics if called on an [AuthRequest] that
+// was not created via [NewSSHCheckAuthRequest].
 func (rn *AuthRequest) SSHCheckBinding() *SSHCheckBinding {
 	if rn.sshBinding == nil {
 		panic("SSHCheckBinding can only be used in SSH check-mode requests")
@@ -342,19 +342,19 @@ func (rn *AuthRequest) SSHCheckBinding() *SSHCheckBinding {
 }
 
 // IsRegistration reports whether this auth request carries registration
-// data (i.e. it was created via NewRegisterAuthRequest).
+// data (i.e. it was created via [NewRegisterAuthRequest]).
 func (rn *AuthRequest) IsRegistration() bool {
 	return rn.regData != nil
 }
 
 // IsSSHCheck reports whether this auth request is bound to an SSH
 // check-mode (src, dst) pair (i.e. it was created via
-// NewSSHCheckAuthRequest).
+// [NewSSHCheckAuthRequest]).
 func (rn *AuthRequest) IsSSHCheck() bool {
 	return rn.sshBinding != nil
 }
 
-// SetPendingConfirmation marks this AuthRequest as having an
+// SetPendingConfirmation marks this [AuthRequest] as having an
 // OIDC-resolved user that is waiting to confirm the registration on
 // the interstitial. The OIDC callback should call this and then render
 // the confirmation page; the /register/confirm POST handler reads the
@@ -364,8 +364,8 @@ func (rn *AuthRequest) SetPendingConfirmation(p *PendingRegistrationConfirmation
 }
 
 // PendingConfirmation returns the pending OIDC-resolved registration
-// state captured by SetPendingConfirmation, or nil if no OIDC callback
-// has yet resolved an identity for this AuthRequest.
+// state captured by [AuthRequest.SetPendingConfirmation], or nil if no OIDC callback
+// has yet resolved an identity for this [AuthRequest].
 func (rn *AuthRequest) PendingConfirmation() *PendingRegistrationConfirmation {
 	return rn.pendingConfirmation
 }

@@ -339,7 +339,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 		assert.NoError(c, err)
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for preauth keys list")
 
-	// There is one key created by "scenario.CreateHeadscaleEnv"
+	// There is one key created by [Scenario.CreateHeadscaleEnv]
 	assert.Len(t, listedPreAuthKeys, 4)
 
 	assert.Equal(
@@ -476,7 +476,7 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 		assert.NoError(c, err)
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for preauth keys list")
 
-	// There is one key created by "scenario.CreateHeadscaleEnv"
+	// There is one key created by [Scenario.CreateHeadscaleEnv]
 	assert.Len(t, listedPreAuthKeys, 2)
 
 	assert.True(t, listedPreAuthKeys[1].GetExpiration().AsTime().After(time.Now()))
@@ -565,7 +565,7 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 		assert.NoError(c, err)
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for preauth keys list after reusable/ephemeral creation")
 
-	// There is one key created by "scenario.CreateHeadscaleEnv"
+	// There is one key created by [Scenario.CreateHeadscaleEnv]
 	assert.Len(t, listedPreAuthKeys, 3)
 }
 
@@ -662,7 +662,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		status, err := client.Status()
 		assert.NoError(ct, err)
 		assert.Equal(ct, "Running", status.BackendState, "Expected node to be logged in, backend state: %s", status.BackendState)
-		// With tags-as-identity model, tagged nodes show as TaggedDevices user (2147455555)
+		// With tags-as-identity model, tagged nodes show as [types.TaggedDevices] user (2147455555)
 		// The PreAuthKey was created with tags, so the node is tagged
 		assert.Equal(ct, "userid:2147455555", status.Self.UserID.String(), "Expected node to be logged in as tagged-devices user")
 	}, integrationutil.StatusReadyTimeout, 2*time.Second)
@@ -761,7 +761,7 @@ func TestTaggedNodesCLIOutput(t *testing.T) {
 		status, err := client.Status()
 		assert.NoError(ct, err)
 		assert.Equal(ct, "Running", status.BackendState, "Expected node to be logged in, backend state: %s", status.BackendState)
-		// With tags-as-identity model, tagged nodes show as TaggedDevices user (2147455555)
+		// With tags-as-identity model, tagged nodes show as [types.TaggedDevices] user (2147455555)
 		assert.Equal(ct, "userid:2147455555", status.Self.UserID.String(), "Expected node to be logged in as tagged-devices user")
 	}, integrationutil.StatusReadyTimeout, 2*time.Second)
 

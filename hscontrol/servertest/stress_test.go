@@ -20,7 +20,7 @@ import (
 // consistency bugs.
 
 // TestStressConnectDisconnect exercises rapid connect/disconnect
-// patterns that stress the grace period, batcher, and NodeStore.
+// patterns that stress the grace period, batcher, and [state.NodeStore].
 func TestStressConnectDisconnect(t *testing.T) {
 	t.Parallel()
 
@@ -536,7 +536,7 @@ func TestStressDataIntegrity(t *testing.T) {
 		}
 	})
 
-	// MachineKey should be consistent: the server should track
+	// [netmap.NetworkMap.MachineKey] should be consistent: the server should track
 	// the same machine key the client registered with.
 	t.Run("machine_key_consistent", func(t *testing.T) {
 		t.Parallel()
@@ -551,7 +551,7 @@ func TestStressDataIntegrity(t *testing.T) {
 		nm := c1.Netmap()
 		require.NotNil(t, nm)
 
-		// The client's MachineKey in the netmap should be non-zero.
+		// The client's [netmap.NetworkMap.MachineKey] should be non-zero.
 		assert.False(t, nm.MachineKey.IsZero(),
 			"client's MachineKey should be non-zero")
 
@@ -564,7 +564,7 @@ func TestStressDataIntegrity(t *testing.T) {
 			"client and server should agree on MachineKey")
 	})
 
-	// NodeKey should be consistent between client and server.
+	// [netmap.NetworkMap.NodeKey] should be consistent between client and server.
 	t.Run("node_key_consistent", func(t *testing.T) {
 		t.Parallel()
 

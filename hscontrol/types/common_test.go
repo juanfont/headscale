@@ -7,9 +7,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestNewSSHCheckAuthRequestBinding verifies that an SSH-check AuthRequest
+// TestNewSSHCheckAuthRequestBinding verifies that an SSH-check [AuthRequest]
 // captures the (src, dst) node pair at construction time and rejects
-// callers that try to read RegistrationData from it.
+// callers that try to read [AuthRequest.RegistrationData] from it.
 func TestNewSSHCheckAuthRequestBinding(t *testing.T) {
 	const src, dst NodeID = 7, 11
 
@@ -28,7 +28,7 @@ func TestNewSSHCheckAuthRequestBinding(t *testing.T) {
 }
 
 // TestNewRegisterAuthRequestPayload verifies that a registration
-// AuthRequest carries the supplied RegistrationData and rejects callers
+// [AuthRequest] carries the supplied [RegistrationData] and rejects callers
 // that try to read SSH-check binding from it.
 func TestNewRegisterAuthRequestPayload(t *testing.T) {
 	data := &RegistrationData{Hostname: "node-a"}
@@ -45,7 +45,7 @@ func TestNewRegisterAuthRequestPayload(t *testing.T) {
 }
 
 // TestNewAuthRequestEmptyPayload verifies that a payload-less
-// AuthRequest reports both Is* helpers as false and panics on either
+// [AuthRequest] reports both Is* helpers as false and panics on either
 // payload accessor.
 func TestNewAuthRequestEmptyPayload(t *testing.T) {
 	req := NewAuthRequest()
@@ -58,7 +58,7 @@ func TestNewAuthRequestEmptyPayload(t *testing.T) {
 }
 
 // TestPendingRegistrationConfirmation verifies that the OIDC callback
-// can stash a pending confirmation onto an AuthRequest and that the
+// can stash a pending confirmation onto an [AuthRequest] and that the
 // /register/confirm POST handler can read it back unchanged.
 func TestPendingRegistrationConfirmation(t *testing.T) {
 	req := NewRegisterAuthRequest(&RegistrationData{Hostname: "phish-test"})

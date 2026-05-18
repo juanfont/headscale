@@ -31,7 +31,7 @@ type interactiveStep struct {
 	stepType         string // stepTypeInitialRequest, stepTypeAuthCompletion, or stepTypeFollowupRequest
 	expectAuthURL    bool
 	expectCacheEntry bool
-	callAuthPath     bool // Real call to HandleNodeFromAuthPath, not mocked
+	callAuthPath     bool // Real call to [state.State.HandleNodeFromAuthPath], not mocked
 }
 
 //nolint:gocyclo // comprehensive test function with many scenarios
@@ -140,7 +140,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					return "", err
 				}
 
-				// Wait for node to be available in NodeStore
+				// Wait for node to be available in [state.NodeStore]
 				require.EventuallyWithT(t, func(c *assert.CollectT) {
 					_, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
 					assert.True(c, found, "node should be available in NodeStore")
@@ -209,7 +209,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					return "", err
 				}
 
-				// Wait for node to be available in NodeStore
+				// Wait for node to be available in [state.NodeStore]
 				require.EventuallyWithT(t, func(c *assert.CollectT) {
 					_, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
 					assert.True(c, found, "node should be available in NodeStore")
@@ -409,7 +409,7 @@ func TestAuthenticationFlows(t *testing.T) {
 
 				t.Logf("Setup registered node: %+v", resp)
 
-				// Wait for node to be available in NodeStore with debug info
+				// Wait for node to be available in [state.NodeStore] with debug info
 				var attemptCount int
 
 				require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -470,7 +470,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					return "", err
 				}
 
-				// Wait for node to be available in NodeStore
+				// Wait for node to be available in [state.NodeStore]
 				require.EventuallyWithT(t, func(c *assert.CollectT) {
 					_, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
 					assert.True(c, found, "node should be available in NodeStore")
@@ -520,7 +520,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					return "", err
 				}
 
-				// Wait for node to be available in NodeStore
+				// Wait for node to be available in [state.NodeStore]
 				require.EventuallyWithT(t, func(c *assert.CollectT) {
 					_, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
 					assert.True(c, found, "node should be available in NodeStore")
@@ -637,7 +637,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					return "", err
 				}
 
-				// Wait for node to be available in NodeStore
+				// Wait for node to be available in [state.NodeStore]
 				require.EventuallyWithT(t, func(c *assert.CollectT) {
 					_, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
 					assert.True(c, found, "node should be available in NodeStore")
@@ -687,7 +687,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				app.state.SetAuthCacheEntry(regID, nodeToRegister)
 
 				// Simulate successful registration
-				// handleRegister will receive the value when it starts waiting
+				// [Headscale.handleRegister] will receive the value when it starts waiting
 				go func() {
 					user := app.state.CreateUserForTest("followup-user")
 
@@ -826,7 +826,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		},
 		// TEST: Nil hostinfo is handled with defensive code
 		// WHAT: Tests that nil hostinfo in register request is handled gracefully
-		// INPUT: Register request with Hostinfo field set to nil
+		// INPUT: Register request with [tailcfg.Hostinfo] field set to nil
 		// EXPECTED: Node registers successfully with generated hostname starting with "node-"
 		// WHY: Defensive code prevents nil pointer panics; creates valid default hostinfo
 		{
@@ -856,7 +856,7 @@ func TestAuthenticationFlows(t *testing.T) {
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper //nolint:thelper
 				assert.True(t, resp.MachineAuthorized)
 
-				// With nil Hostinfo the raw hostname stays empty and GivenName
+				// With nil [tailcfg.Hostinfo] the raw hostname stays empty and GivenName
 				// falls back to the literal "node" per the SaaS spec.
 				node, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
 				assert.True(t, found)
@@ -954,7 +954,7 @@ func TestAuthenticationFlows(t *testing.T) {
 
 		// TEST: PreAuthKey registration rejects client-provided RequestTags
 		// WHAT: Tests that PreAuthKey registrations cannot use client-provided tags
-		// INPUT: PreAuthKey registration with RequestTags in Hostinfo
+		// INPUT: PreAuthKey registration with [tailcfg.Hostinfo.RequestTags] set
 		// EXPECTED: Registration fails with "requested tags [...] are invalid or not permitted" error
 		// WHY: PreAuthKey nodes get their tags from the key itself, not from client requests
 		{
@@ -1240,7 +1240,7 @@ func TestAuthenticationFlows(t *testing.T) {
 
 		// TEST: Zero-time expiry is handled correctly
 		// WHAT: Tests registration with expiry set to zero time value
-		// INPUT: Register request with Expiry set to time.Time{} (zero value)
+		// INPUT: Register request with Expiry set to [time.Time]{} (zero value)
 		// EXPECTED: Node registers successfully; zero time treated as no expiry
 		// WHY: Zero time is valid Go default; should be handled gracefully
 		{
@@ -1280,7 +1280,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		},
 		// TEST: Malformed hostinfo with very long hostname is truncated
 		// WHAT: Tests that excessively long hostname is truncated to DNS label limit
-		// INPUT: Hostinfo with 110-character hostname (exceeds 63-char DNS limit)
+		// INPUT: [tailcfg.Hostinfo] with 110-character hostname (exceeds 63-char DNS limit)
 		// EXPECTED: Node registers successfully; hostname truncated to 63 characters
 		// WHY: Defensive code enforces DNS label limit (RFC 1123); prevents errors
 		{
@@ -1845,7 +1845,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		},
 		// TEST: Logout with expiry exactly at current time
 		// WHAT: Tests logout when expiry is set to exact current time (boundary case)
-		// INPUT: Existing node sends request with expiry=time.Now() (not past, not future)
+		// INPUT: Existing node sends request with expiry=[time.Now]() (not past, not future)
 		// EXPECTED: Node is logged out (treated as expired)
 		// WHY: Edge case: current time should be treated as expired
 		{
@@ -2225,7 +2225,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		},
 		// TEST: Interactive workflow with nil hostinfo
 		// WHAT: Tests interactive registration when request has nil hostinfo
-		// INPUT: Interactive registration request with Hostinfo=nil
+		// INPUT: Interactive registration request with [tailcfg.Hostinfo]=nil
 		// EXPECTED: Node registers successfully with generated default hostname
 		// WHY: Defensive code handles nil hostinfo in interactive flow
 		{
@@ -2761,7 +2761,7 @@ func TestNodeStoreLookup(t *testing.T) {
 
 	t.Logf("Registered node successfully: %+v", resp)
 
-	// Wait for node to be available in NodeStore
+	// Wait for node to be available in [state.NodeStore]
 	var node types.NodeView
 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -3072,7 +3072,7 @@ func TestWebFlowReauthDifferentUser(t *testing.T) {
 	})
 
 	t.Run("returned_node_is_user2_new_node", func(t *testing.T) {
-		// The node returned from HandleNodeFromAuthPath should be user2's NEW node
+		// The node returned from [state.State.HandleNodeFromAuthPath] should be user2's NEW node
 		assert.Equal(t, user2.ID, node.UserID().Get(), "Returned node should belong to user2")
 		assert.NotEqual(t, user1NodeID, node.ID(), "Returned node should be NEW, not transferred from user1")
 		t.Logf("✓ HandleNodeFromAuthPath returned user2's new node (ID: %d)", node.ID())
@@ -3166,7 +3166,7 @@ func createTestApp(t *testing.T) *Headscale {
 // 1. Node registers successfully with a single-use pre-auth key
 // 2. Node is running fine
 // 3. Node restarts (e.g., after headscale upgrade or tailscale container restart)
-// 4. Node sends RegisterRequest with the same pre-auth key
+// 4. Node sends [tailcfg.RegisterRequest] with the same pre-auth key
 // 5. BUG: Headscale rejects the request with "authkey expired" or "authkey already used"
 //
 // Expected behavior:
@@ -3223,7 +3223,7 @@ func TestGitHubIssue2830_NodeRestartWithUsedPreAuthKey(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, usedPak.Used, "pre-auth key should be marked as used after initial registration")
 
-	// STEP 2: Simulate node restart - node sends RegisterRequest again with same pre-auth key
+	// STEP 2: Simulate node restart - node sends [tailcfg.RegisterRequest] again with same pre-auth key
 	// This happens when:
 	// - Tailscale container restarts
 	// - Tailscaled service restarts
@@ -3508,7 +3508,7 @@ func TestGitHubIssue2830_ExistingNodeCanReregisterWithUsedPreAuthKey(t *testing.
 	// WITHOUT THE FIX: This would fail with "authkey already used" error
 	// WITH THE FIX: This succeeds because it's the same node re-registering with its own key
 
-	// Simulate sending the same RegisterRequest again (same MachineKey, same AuthKey)
+	// Simulate sending the same [tailcfg.RegisterRequest] again (same MachineKey, same AuthKey)
 	// This is exactly what happens when a container restarts
 	reregisterReq := tailcfg.RegisterRequest{
 		Auth: &tailcfg.RegisterResponseAuth{
@@ -3787,15 +3787,15 @@ func TestAuthKeyTaggedToUserOwnedViaReauth(t *testing.T) {
 		nodeAfterReauth.IsTagged(), nodeAfterReauth.UserID().Get())
 }
 
-// TestDeletedPreAuthKeyNotRecreatedOnNodeUpdate tests that when a PreAuthKey is deleted,
-// subsequent node updates (like those triggered by MapRequests) do not recreate the key.
+// TestDeletedPreAuthKeyNotRecreatedOnNodeUpdate tests that when a [types.PreAuthKey] is deleted,
+// subsequent node updates (like those triggered by [tailcfg.MapRequest]s) do not recreate the key.
 //
 // This reproduces the bug where:
 //  1. Create a tagged preauthkey and register a node
 //  2. Delete the preauthkey (confirmed gone from pre_auth_keys DB table)
-//  3. Node sends MapRequest (e.g., after tailscaled restart)
+//  3. Node sends [tailcfg.MapRequest] (e.g., after tailscaled restart)
 //  4. BUG: The preauthkey reappears because GORM's Updates() upserts the stale AuthKey
-//     data that still exists in the NodeStore's in-memory cache.
+//     data that still exists in the [state.NodeStore]'s in-memory cache.
 //
 // The fix is to use Omit("AuthKey") on all node Updates() calls to prevent GORM
 // from touching the AuthKey association.
@@ -3864,11 +3864,11 @@ func TestDeletedPreAuthKeyNotRecreatedOnNodeUpdate(t *testing.T) {
 	require.Nil(t, dbNode.AuthKeyID, "node's AuthKeyID should be NULL after PreAuthKey deletion")
 	t.Log("Node's AuthKeyID is NULL in database")
 
-	// The NodeStore may still have stale AuthKey data in memory.
-	// Now simulate what happens when the node sends a MapRequest after a tailscaled restart.
-	// This triggers persistNodeToDB which calls GORM's Updates().
+	// The [state.NodeStore] may still have stale AuthKey data in memory.
+	// Now simulate what happens when the node sends a [tailcfg.MapRequest] after a tailscaled restart.
+	// This triggers [state.State.persistNodeToDB] which calls GORM's Updates().
 
-	// Simulate a MapRequest by updating the node through the state layer
+	// Simulate a [tailcfg.MapRequest] by updating the node through the state layer
 	// This mimics what poll.go does when processing MapRequests
 	mapReq := tailcfg.MapRequest{
 		NodeKey:  nodeKey.Public(),
@@ -3879,8 +3879,8 @@ func TestDeletedPreAuthKeyNotRecreatedOnNodeUpdate(t *testing.T) {
 		},
 	}
 
-	// Process the MapRequest-like update
-	// This calls UpdateNodeFromMapRequest which eventually calls persistNodeToDB
+	// Process the [tailcfg.MapRequest]-like update
+	// This calls [state.State.UpdateNodeFromMapRequest] which eventually calls [state.State.persistNodeToDB]
 	_, err = app.state.UpdateNodeFromMapRequest(node.ID(), mapReq)
 	require.NoError(t, err, "UpdateNodeFromMapRequest should succeed")
 	t.Log("Simulated MapRequest update completed")
@@ -3943,7 +3943,7 @@ func TestTaggedNodeWithoutUserToDifferentUser(t *testing.T) {
 	alice := app.state.CreateUserForTest("alice")
 	require.NotNil(t, alice, "Alice user should be created")
 
-	// Step 4: Re-register the node to alice via HandleNodeFromAuthPath
+	// Step 4: Re-register the node to alice via [state.State.HandleNodeFromAuthPath]
 	// This is what happens when running: headscale auth register --auth-id <id> --user alice
 	nodeKey2 := key.NewNode()
 	registrationID := types.MustAuthID()
@@ -3960,7 +3960,7 @@ func TestTaggedNodeWithoutUserToDifferentUser(t *testing.T) {
 
 	// This should NOT panic - before the fix, this would panic with:
 	// panic: runtime error: invalid memory address or nil pointer dereference
-	// at UserView.Name() because the existing node has no User
+	// at [types.UserView.Name] because the existing node has no User
 	nodeAfterReauth, _, err := app.state.HandleNodeFromAuthPath(
 		registrationID,
 		types.UserID(alice.ID),
@@ -3977,8 +3977,8 @@ func TestTaggedNodeWithoutUserToDifferentUser(t *testing.T) {
 	require.False(t, nodeAfterReauth.IsTagged(), "Node should no longer be tagged")
 	require.Empty(t, nodeAfterReauth.Tags().AsSlice(), "Node should have no tags")
 
-	// Verify Owner() works without panicking - this is what the mapper's
-	// generateUserProfiles calls, and it would panic with a nil pointer
+	// Verify [types.NodeView.Owner] works without panicking - this is what the mapper's
+	// [generateUserProfiles] calls, and it would panic with a nil pointer
 	// dereference if node.User was not set during the tag→user conversion.
 	owner := nodeAfterReauth.Owner()
 	require.True(t, owner.Valid(), "Owner should be valid after conversion (mapper would panic if nil)")

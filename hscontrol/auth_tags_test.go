@@ -60,7 +60,7 @@ func createTestAppWithNodeExpiry(t *testing.T, nodeExpiry time.Duration) *Headsc
 // a tagged node with:
 // - Tags from the PreAuthKey
 // - Nil UserID (tagged nodes are owned by tags, not a user)
-// - IsTagged() returns true.
+// - [types.Node.IsTagged] returns true.
 func TestTaggedPreAuthKeyCreatesTaggedNode(t *testing.T) {
 	app := createTestApp(t)
 
@@ -113,7 +113,7 @@ func TestTaggedPreAuthKeyCreatesTaggedNode(t *testing.T) {
 // authentication. This is critical for the container restart scenario (#2830).
 //
 // NOTE: This test verifies that re-authentication preserves the node's current tags
-// without testing tag modification via SetNodeTags (which requires ACL policy setup).
+// without testing tag modification via [state.State.SetNodeTags] (which requires ACL policy setup).
 func TestReAuthDoesNotReapplyTags(t *testing.T) {
 	app := createTestApp(t)
 
@@ -180,7 +180,7 @@ func TestReAuthDoesNotReapplyTags(t *testing.T) {
 }
 
 // NOTE: TestSetTagsOnUserOwnedNode functionality is covered by gRPC tests in grpcv1_test.go
-// which properly handle ACL policy setup. The test verifies that SetTags can convert
+// which properly handle ACL policy setup. The test verifies that [headscaleV1APIServer.SetTags] can convert
 // user-owned nodes to tagged nodes while preserving UserID.
 
 // TestCannotRemoveAllTags tests that attempting to remove all tags from a
@@ -813,8 +813,8 @@ func TestUntaggedNodeRestartPreservesNilExpiry(t *testing.T) {
 
 // TestExpiryDuringPersonalToTaggedConversion tests that when a personal node
 // is converted to tagged via reauth with RequestTags, the expiry is cleared to nil.
-// BUG #3048: Previously expiry was NOT cleared because expiry handling ran
-// BEFORE processReauthTags.
+// Previously expiry was NOT cleared because expiry handling ran
+// BEFORE [state.State.processReauthTags].
 func TestExpiryDuringPersonalToTaggedConversion(t *testing.T) {
 	app := createTestApp(t)
 	user := app.state.CreateUserForTest("expiry-test-user")
@@ -886,8 +886,8 @@ func TestExpiryDuringPersonalToTaggedConversion(t *testing.T) {
 // TestExpiryDuringTaggedToPersonalConversion tests that when a tagged node
 // is converted to personal via reauth with empty RequestTags, expiry is set
 // from the client request.
-// BUG #3048: Previously expiry was NOT set because expiry handling ran
-// BEFORE processReauthTags (node was still tagged at check time).
+// Previously expiry was NOT set because expiry handling ran
+// BEFORE [state.State.processReauthTags] (node was still tagged at check time).
 func TestExpiryDuringTaggedToPersonalConversion(t *testing.T) {
 	app := createTestApp(t)
 	user := app.state.CreateUserForTest("expiry-test-user2")
@@ -1145,7 +1145,7 @@ func TestNodeExpiryZeroDisablesDefault(t *testing.T) {
 	assert.False(t, node.IsExpired(), "node should not be expired")
 
 	// With node.expiry=0 and zero client expiry, the node gets a zero expiry
-	// which IsExpired() treats as "never expires" — backwards compatible.
+	// which [types.Node.IsExpired] treats as "never expires" — backwards compatible.
 	if node.Expiry().Valid() {
 		assert.True(t, node.Expiry().Get().IsZero(),
 			"with node.expiry=0 and zero client expiry, expiry should be zero time")
@@ -1266,11 +1266,11 @@ func TestReregistrationAppliesDefaultExpiry(t *testing.T) {
 // re-registers with zero client expiry and node.expiry is disabled (0),
 // the node's expiry stays nil rather than being set to a pointer to zero
 // time. Regression test for the else branch introduced in commit 6337a3db
-// which assigned `&regReq.Expiry` (pointer to time.Time{}) instead of nil,
+// which assigned `&regReq.Expiry` (pointer to [time.Time]{}) instead of nil,
 // causing the database row to hold `0001-01-01 00:00:00` instead of NULL.
 //
 // The same !regReq.Expiry.IsZero() gate at state.go:2221-2228 is shared by
-// the tags-only PreAuthKey path (createAndSaveNewNode also receives nil
+// the tags-only PreAuthKey path ([state.State.createAndSaveNewNode] also receives nil
 // when the client sends zero expiry), so this regression is covered for
 // tagged nodes by inspection.
 func TestReregistrationZeroExpiryStaysNil(t *testing.T) {

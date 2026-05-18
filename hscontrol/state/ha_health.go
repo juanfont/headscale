@@ -29,7 +29,7 @@ type HAHealthProber struct {
 	lastStableSession *xsync.Map[types.NodeID, uint64]
 }
 
-// NewHAHealthProber creates a prober that uses the given State for
+// NewHAHealthProber creates a prober that uses the given [State] for
 // ping tracking and primary route management.
 // isConnected should return true if a node has an active map session.
 func NewHAHealthProber(

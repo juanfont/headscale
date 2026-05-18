@@ -9,7 +9,7 @@ import (
 
 // mdTypesetBody creates a body element with md-typeset styling
 // that matches the official Headscale documentation design.
-// Uses CSS classes with styles defined in assets.CSS.
+// Uses CSS classes with styles defined in [assets.CSS].
 func mdTypesetBody(children ...elem.Node) *elem.Element {
 	return elem.Body(attrs.Props{
 		attrs.Style: styles.Props{
@@ -34,7 +34,7 @@ func mdTypesetBody(children ...elem.Node) *elem.Element {
 
 // Styled Element Wrappers
 // These functions wrap elem-go elements using CSS classes.
-// Styling is handled by the CSS in assets.CSS.
+// Styling is handled by the CSS in [assets.CSS].
 
 // H1 creates a H1 element styled by .md-typeset h1
 func H1(children ...elem.Node) *elem.Element {
@@ -86,17 +86,17 @@ func PreCode(code string) *elem.Element {
 	return elem.Code(nil, elem.Text(code))
 }
 
-// Deprecated: use H1, H2, H3 instead
+// Deprecated: use [H1], [H2], [H3] instead
 func headerOne(text string) *elem.Element {
 	return H1(elem.Text(text))
 }
 
-// Deprecated: use H1, H2, H3 instead
+// Deprecated: use [H1], [H2], [H3] instead
 func headerTwo(text string) *elem.Element {
 	return H2(elem.Text(text))
 }
 
-// Deprecated: use H1, H2, H3 instead
+// Deprecated: use [H1], [H2], [H3] instead
 func headerThree(text string) *elem.Element {
 	return H3(elem.Text(text))
 }

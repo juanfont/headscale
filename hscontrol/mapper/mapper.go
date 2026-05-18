@@ -69,7 +69,7 @@ func newMapper(
 	}
 }
 
-// generateUserProfiles creates user profiles for MapResponse.
+// generateUserProfiles creates user profiles for [tailcfg.MapResponse].
 func generateUserProfiles(
 	node types.NodeView,
 	peers views.Slice[types.NodeView],
@@ -267,7 +267,7 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, node types.NodeView) {
 	}
 }
 
-// fullMapResponse returns a MapResponse for the given node.
+// fullMapResponse returns a [tailcfg.MapResponse] for the given node.
 //
 //nolint:unused
 func (m *mapper) fullMapResponse(
@@ -312,7 +312,7 @@ func (m *mapper) selfMapResponse(
 	return ma, err
 }
 
-// policyChangeResponse creates a MapResponse for policy changes.
+// policyChangeResponse creates a [tailcfg.MapResponse] for policy changes.
 // It sends:
 //   - PeersRemoved for peers that are no longer visible after the policy change
 //   - PeersChanged for remaining peers (their AllowedIPs may have changed due to policy)
@@ -350,7 +350,7 @@ func (m *mapper) policyChangeResponse(
 	}
 
 	if len(removedPeers) > 0 {
-		// Convert tailcfg.NodeID to types.NodeID for WithPeersRemoved
+		// Convert [tailcfg.NodeID] to [types.NodeID] for [MapResponseBuilder.WithPeersRemoved]
 		removedIDs := make([]types.NodeID, len(removedPeers))
 		for i, id := range removedPeers {
 			removedIDs[i] = types.NodeID(id) //nolint:gosec // NodeID types are equivalent
@@ -371,7 +371,7 @@ func (m *mapper) policyChangeResponse(
 	return builder.Build()
 }
 
-// buildFromChange builds a MapResponse from a change.Change specification.
+// buildFromChange builds a [tailcfg.MapResponse] from a [change.Change] specification.
 // This provides fine-grained control over what gets included in the response.
 func (m *mapper) buildFromChange(
 	nodeID types.NodeID,

@@ -6,7 +6,7 @@ import (
 	"tailscale.com/tailcfg"
 )
 
-// SafeHostinfo wraps tailcfg.Hostinfo for safe logging.
+// SafeHostinfo wraps [tailcfg.Hostinfo] for safe logging.
 //
 // SECURITY: This wrapper intentionally redacts device fingerprinting data
 // that could be used to identify or track specific devices:
@@ -24,12 +24,12 @@ type SafeHostinfo struct {
 	hi *tailcfg.Hostinfo
 }
 
-// Hostinfo creates a SafeHostinfo wrapper for safe logging.
+// Hostinfo creates a [SafeHostinfo] wrapper for safe logging.
 func Hostinfo(hi *tailcfg.Hostinfo) SafeHostinfo {
 	return SafeHostinfo{hi: hi}
 }
 
-// MarshalZerologObject implements zerolog.LogObjectMarshaler.
+// MarshalZerologObject implements [zerolog.LogObjectMarshaler].
 func (s SafeHostinfo) MarshalZerologObject(e *zerolog.Event) {
 	if s.hi == nil {
 		return

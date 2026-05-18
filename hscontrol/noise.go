@@ -65,14 +65,14 @@ const (
 
 	// The first 9 bytes from the server to client over Noise are either an HTTP/2
 	// settings frame (a normal HTTP/2 setup) or, as Tailscale added later, an "early payload"
-	// header that's also 9 bytes long: 5 bytes (earlyPayloadMagic) followed by 4 bytes
-	// of length. Then that many bytes of JSON-encoded tailcfg.EarlyNoise.
+	// header that's also 9 bytes long: 5 bytes ([earlyPayloadMagic]) followed by 4 bytes
+	// of length. Then that many bytes of JSON-encoded [tailcfg.EarlyNoise].
 	// The early payload is optional. Some servers may not send it... But we do!
 	earlyPayloadMagic = "\xff\xff\xffTS"
 
 	// noiseBodyLimit is the maximum allowed request body size for Noise protocol
-	// handlers. This prevents unauthenticated OOM attacks via unbounded io.ReadAll.
-	// No legitimate Noise request (MapRequest, RegisterRequest, etc.) comes close
+	// handlers. This prevents unauthenticated OOM attacks via unbounded [io.ReadAll].
+	// No legitimate Noise request ([tailcfg.MapRequest], [tailcfg.RegisterRequest], etc.) comes close
 	// to this limit; typical payloads are a few KB.
 	noiseBodyLimit int64 = 1048576 // 1 MiB
 )
@@ -86,12 +86,12 @@ type noiseServer struct {
 	machineKey     key.MachinePublic
 	nodeKey        key.NodePublic
 
-	// EarlyNoise-related stuff
+	// [tailcfg.EarlyNoise]-related stuff
 	challenge       key.ChallengePrivate
 	protocolVersion int
 }
 
-// NoiseUpgradeHandler is to upgrade the connection and hijack the net.Conn
+// NoiseUpgradeHandler is to upgrade the connection and hijack the [net.Conn]
 // in order to use the Noise-based TS2021 protocol. Listens in /ts2021.
 func (h *Headscale) NoiseUpgradeHandler(
 	writer http.ResponseWriter,
@@ -136,7 +136,7 @@ func (h *Headscale) NoiseUpgradeHandler(
 	// This router is served only over the Noise connection, and exposes only the new API.
 	//
 	// The HTTP2 server that exposes this router is created for
-	// a single hijacked connection from /ts2021, using netutil.NewOneConnListener
+	// a single hijacked connection from /ts2021, using [netutil.NewOneConnListener]
 
 	r := chi.NewRouter()
 
@@ -300,7 +300,7 @@ func (ns *noiseServer) NotImplementedHandler(writer http.ResponseWriter, req *ht
 }
 
 // PingResponseHandler handles HEAD requests from clients responding to a
-// PingRequest. The client calls this endpoint to prove connectivity.
+// [tailcfg.PingRequest]. The client calls this endpoint to prove connectivity.
 // The unguessable ping ID serves as authentication.
 func (h *Headscale) PingResponseHandler(
 	writer http.ResponseWriter,
@@ -457,12 +457,12 @@ func (ns *noiseServer) SSHActionHandler(
 }
 
 // sshAction resolves the SSH action for the given request parameters.
-// It returns the action to send to the client, or an HTTPError on failure.
+// It returns the action to send to the client, or an [HTTPError] on failure.
 //
 // Three cases:
 //  1. Initial request, auto-approved — source recently authenticated
 //     within the check period, accept immediately.
-//  2. Initial request, needs auth — build a HoldAndDelegate URL and
+//  2. Initial request, needs auth — build a [tailcfg.SSHAction.HoldAndDelegate] URL and
 //     wait for the user to authenticate.
 //  3. Follow-up request — an auth_id is present, wait for the auth
 //     verdict and accept or reject.
@@ -514,7 +514,7 @@ func (ns *noiseServer) sshAction(
 }
 
 // sshActionHoldAndDelegate creates a new auth session bound to the
-// (src, dst) pair and returns a HoldAndDelegate action that directs the
+// (src, dst) pair and returns a [tailcfg.SSHAction.HoldAndDelegate] action that directs the
 // client to authenticate.
 func (ns *noiseServer) sshActionHoldAndDelegate(
 	reqLog zerolog.Logger,
@@ -636,8 +636,8 @@ func (ns *noiseServer) sshActionFollowUp(
 	case <-ctx.Done():
 		// The client disconnected (or its request timed out) before the
 		// auth session resolved. Return an error so the parked goroutine
-		// is freed; without this select sshActionFollowUp would block
-		// until the cache eviction callback signalled FinishAuth, which
+		// is freed; without this select [noiseServer.sshActionFollowUp] would block
+		// until the cache eviction callback signalled [types.AuthRequest.FinishAuth], which
 		// could be up to register_cache_expiration (15 minutes).
 		return nil, NewHTTPError(
 			http.StatusUnauthorized,
@@ -674,8 +674,8 @@ func (ns *noiseServer) sshActionFollowUp(
 // This is the busiest endpoint, as it keeps the HTTP long poll that updates
 // the clients when something in the network changes.
 //
-// The clients POST stuff like HostInfo and their Endpoints here, but
-// only after their first request (marked with the ReadOnly field).
+// The clients POST stuff like [tailcfg.Hostinfo] and their Endpoints here, but
+// only after their first request (marked with the [tailcfg.MapRequest.ReadOnly] field).
 //
 // At this moment the updates are sent in a quite horrendous way, but they kinda work.
 func (ns *noiseServer) PollNetMapHandler(

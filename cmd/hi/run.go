@@ -94,7 +94,7 @@ func detectGoVersion() string {
 	return "1.26.1"
 }
 
-// splitLines splits a string into lines without using strings.Split.
+// splitLines splits a string into lines without using [strings.Split].
 func splitLines(s string) []string {
 	var (
 		lines   []string

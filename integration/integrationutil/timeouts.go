@@ -26,7 +26,7 @@ var (
 	StatusReadyTimeout = ScaledTimeout(30 * time.Second)
 )
 
-// Polling intervals for EventuallyWithT.
+// Polling intervals for [assert.EventuallyWithT].
 const (
 	// FastPoll: in-process reads (HA state, route table snapshots).
 	FastPoll = 200 * time.Millisecond

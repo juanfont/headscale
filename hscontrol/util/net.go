@@ -35,7 +35,7 @@ func MustStringsToPrefixes(strings []string) []netip.Prefix {
 	return ret
 }
 
-// TheInternet returns the IPSet for the Internet.
+// TheInternet returns the [netipx.IPSet] for the Internet.
 // https://www.youtube.com/watch?v=iDbyYGrswtg
 var TheInternet = sync.OnceValue(func() *netipx.IPSet {
 	var internetBuilder netipx.IPSetBuilder

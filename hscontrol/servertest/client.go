@@ -19,8 +19,8 @@ import (
 	"tailscale.com/util/eventbus"
 )
 
-// TestClient wraps a Tailscale controlclient.Direct connected to a
-// TestServer. It tracks all received NetworkMap updates, providing
+// TestClient wraps a Tailscale [controlclient.Direct] connected to a
+// [TestServer]. It tracks all received [netmap.NetworkMap] updates, providing
 // helpers to wait for convergence and inspect the client's view of
 // the network.
 type TestClient struct {
@@ -37,13 +37,13 @@ type TestClient struct {
 	pollCancel context.CancelFunc
 	pollDone   chan struct{}
 
-	// Accumulated state from MapResponse callbacks.
+	// Accumulated state from [tailcfg.MapResponse] callbacks.
 	mu      sync.RWMutex
 	netmap  *netmap.NetworkMap
 	history []*netmap.NetworkMap
 
 	// updates is a buffered channel that receives a signal
-	// each time a new NetworkMap arrives.
+	// each time a new [netmap.NetworkMap] arrives.
 	updates chan *netmap.NetworkMap
 
 	bus     *eventbus.Bus
@@ -51,7 +51,7 @@ type TestClient struct {
 	tracker *health.Tracker
 }
 
-// ClientOption configures a TestClient.
+// ClientOption configures a [TestClient].
 type ClientOption func(*clientConfig)
 
 type clientConfig struct {
@@ -66,7 +66,7 @@ func WithEphemeral() ClientOption {
 	return func(c *clientConfig) { c.ephemeral = true }
 }
 
-// WithHostname sets the client's hostname in Hostinfo.
+// WithHostname sets the client's hostname in [tailcfg.Hostinfo].
 func WithHostname(name string) ClientOption {
 	return func(c *clientConfig) { c.hostname = name }
 }
@@ -82,7 +82,7 @@ func WithUser(user *types.User) ClientOption {
 	return func(c *clientConfig) { c.user = user }
 }
 
-// NewClient creates a TestClient, registers it with the TestServer
+// NewClient creates a [TestClient], registers it with the [TestServer]
 // using a pre-auth key, and starts long-polling for map updates.
 func NewClient(tb testing.TB, server *TestServer, name string, opts ...ClientOption) *TestClient {
 	tb.Helper()
@@ -171,7 +171,7 @@ func NewClient(tb testing.TB, server *TestServer, name string, opts ...ClientOpt
 	return tc
 }
 
-// register performs the initial TryLogin to register the client.
+// register performs the initial [controlclient.Direct.TryLogin] to register the client.
 func (c *TestClient) register(tb testing.TB) {
 	tb.Helper()
 
@@ -188,7 +188,7 @@ func (c *TestClient) register(tb testing.TB) {
 	}
 }
 
-// startPoll begins the long-poll MapRequest loop.
+// startPoll begins the long-poll [tailcfg.MapRequest] loop.
 func (c *TestClient) startPoll(tb testing.TB) {
 	tb.Helper()
 
@@ -197,14 +197,14 @@ func (c *TestClient) startPoll(tb testing.TB) {
 
 	go func() {
 		defer close(c.pollDone)
-		// PollNetMap blocks until ctx is cancelled or the server closes
+		// [controlclient.Direct.PollNetMap] blocks until ctx is cancelled or the server closes
 		// the connection.
 		_ = c.direct.PollNetMap(c.pollCtx, c)
 	}()
 }
 
-// UpdateFullNetmap implements controlclient.NetmapUpdater.
-// Called by controlclient.Direct when a new NetworkMap is received.
+// UpdateFullNetmap implements [controlclient.NetmapUpdater].
+// Called by [controlclient.Direct] when a new [netmap.NetworkMap] is received.
 func (c *TestClient) UpdateFullNetmap(nm *netmap.NetworkMap) {
 	c.mu.Lock()
 	c.netmap = nm
@@ -259,7 +259,7 @@ func (c *TestClient) Disconnect(tb testing.TB) {
 }
 
 // Reconnect registers and starts a new long-poll session.
-// Call Disconnect first, or this will disconnect automatically.
+// Call [TestClient.Disconnect] first, or this will disconnect automatically.
 func (c *TestClient) Reconnect(tb testing.TB) {
 	tb.Helper()
 
@@ -274,7 +274,7 @@ func (c *TestClient) Reconnect(tb testing.TB) {
 		}
 	}
 
-	// Clear stale netmap data so that callers like WaitForPeers
+	// Clear stale netmap data so that callers like [TestClient.WaitForPeers]
 	// actually wait for the new session's map instead of returning
 	// immediately based on the old session's cached state.
 	c.mu.Lock()
@@ -282,7 +282,7 @@ func (c *TestClient) Reconnect(tb testing.TB) {
 	c.mu.Unlock()
 
 	// Drain any pending updates from the old session so they
-	// don't satisfy a subsequent WaitForPeers/WaitForUpdate.
+	// don't satisfy a subsequent [TestClient.WaitForPeers]/[TestClient.WaitForUpdate].
 	for {
 		select {
 		case <-c.updates:
@@ -315,7 +315,7 @@ func (c *TestClient) ReconnectAfter(tb testing.TB, d time.Duration) {
 
 // --- State accessors ---
 
-// Netmap returns the latest NetworkMap, or nil if none received yet.
+// Netmap returns the latest [netmap.NetworkMap], or nil if none received yet.
 func (c *TestClient) Netmap() *netmap.NetworkMap {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -425,7 +425,7 @@ func (c *TestClient) UpdateCount() int {
 	return len(c.history)
 }
 
-// History returns a copy of all NetworkMap snapshots in order.
+// History returns a copy of all [netmap.NetworkMap] snapshots in order.
 func (c *TestClient) History() []*netmap.NetworkMap {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -495,13 +495,13 @@ func (c *TestClient) WaitForCondition(tb testing.TB, desc string, timeout time.D
 	}
 }
 
-// Direct returns the underlying controlclient.Direct for
-// advanced operations like SetHostinfo or SendUpdate.
+// Direct returns the underlying [controlclient.Direct] for
+// advanced operations like [controlclient.Direct.SetHostinfo] or SendUpdate.
 func (c *TestClient) Direct() *controlclient.Direct {
 	return c.direct
 }
 
-// String implements fmt.Stringer for debug output.
+// String implements [fmt.Stringer] for debug output.
 func (c *TestClient) String() string {
 	nm := c.Netmap()
 	if nm == nil {

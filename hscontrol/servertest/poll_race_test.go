@@ -13,7 +13,7 @@ import (
 )
 
 // TestPollRace targets logical race conditions specifically in the
-// poll.go session lifecycle and the batcher's handling of concurrent
+// poll.go session lifecycle and the [mapper.Batcher]'s handling of concurrent
 // sessions for the same node.
 
 func TestPollRace(t *testing.T) {
@@ -22,9 +22,9 @@ func TestPollRace(t *testing.T) {
 	// The core race: when a node disconnects, poll.go starts a
 	// grace period goroutine (10s ticker loop). If the node
 	// reconnects during this period, the new session calls
-	// Connect() to mark the node online. But the old grace period
-	// goroutine is still running and may call Disconnect() AFTER
-	// the new Connect(), setting IsOnline=false incorrectly.
+	// [state.State.Connect] to mark the node online. But the old grace period
+	// goroutine is still running and may call [state.State.Disconnect] AFTER
+	// the new [state.State.Connect], setting IsOnline=false incorrectly.
 	//
 	// This test verifies the exact symptom: after reconnect within
 	// the grace period, the server-side node state should be online.
@@ -99,7 +99,7 @@ func TestPollRace(t *testing.T) {
 	// Wait the full grace period (10s) after reconnect. The old
 	// grace period goroutine should have checked IsConnected
 	// and found the node connected, so should NOT have called
-	// Disconnect().
+	// [state.State.Disconnect].
 	t.Run("server_state_online_12s_after_reconnect", func(t *testing.T) {
 		t.Parallel()
 
@@ -195,8 +195,8 @@ func TestPollRace(t *testing.T) {
 		}
 	})
 
-	// The batcher's IsConnected check: when the grace period
-	// goroutine calls IsConnected(), it should return true if
+	// The [mapper.Batcher]'s IsConnected check: when the grace period
+	// goroutine calls IsConnected, it should return true if
 	// a new session has been added for the same node.
 	t.Run("batcher_knows_reconnected_during_grace", func(t *testing.T) {
 		t.Parallel()

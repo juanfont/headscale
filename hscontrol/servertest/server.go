@@ -1,6 +1,6 @@
 // Package servertest provides an in-process test harness for Headscale's
 // control plane. It wires a real Headscale server to real Tailscale
-// controlclient.Direct instances, enabling fast, deterministic tests
+// [controlclient.Direct] instances, enabling fast, deterministic tests
 // of the full control protocol without Docker or separate processes.
 package servertest
 
@@ -19,7 +19,7 @@ import (
 )
 
 // TestServer is an in-process Headscale control server suitable for
-// use with Tailscale's controlclient.Direct.
+// use with Tailscale's [controlclient.Direct].
 //
 // Networking uses tailscale.com/net/memnet so that all TCP
 // connections stay in-process — no real sockets are opened.
@@ -33,7 +33,7 @@ type TestServer struct {
 	st         *state.State
 }
 
-// ServerOption configures a TestServer.
+// ServerOption configures a [TestServer].
 type ServerOption func(*serverConfig)
 
 type serverConfig struct {
@@ -201,15 +201,15 @@ func (s *TestServer) State() *state.State {
 
 // Close shuts down the in-memory HTTP server and listener.
 // Subsystem cleanup (batcher, ephemeral GC) is handled by
-// tb.Cleanup callbacks registered in StartBatcherForTest and
-// StartEphemeralGCForTest.
+// [testing.TB.Cleanup] callbacks registered in [hscontrol.Headscale.StartBatcherForTest] and
+// [hscontrol.Headscale.StartEphemeralGCForTest].
 func (s *TestServer) Close() {
 	s.httpServer.Close()
 	s.ln.Close()
 }
 
 // MemNet returns the in-memory network used by this server,
-// so that TestClient dialers can be wired to it.
+// so that [TestClient] dialers can be wired to it.
 func (s *TestServer) MemNet() *memnet.Network {
 	return s.memNet
 }

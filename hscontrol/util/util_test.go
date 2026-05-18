@@ -796,7 +796,6 @@ over a maximum of 30 hops:
 	}
 }
 
-
 func TestGenerateRegistrationKey(t *testing.T) {
 	t.Parallel()
 

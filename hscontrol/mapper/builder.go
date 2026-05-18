@@ -14,7 +14,7 @@ import (
 	"tailscale.com/util/multierr"
 )
 
-// MapResponseBuilder provides a fluent interface for building tailcfg.MapResponse.
+// MapResponseBuilder provides a fluent interface for building [tailcfg.MapResponse].
 type MapResponseBuilder struct {
 	resp   *tailcfg.MapResponse
 	mapper *mapper
@@ -180,6 +180,10 @@ func (b *MapResponseBuilder) WithUserProfiles(peers views.Slice[types.NodeView])
 }
 
 // WithPacketFilters adds packet filter rules based on policy.
+//
+// [State.FilterForNode] returns rules already reduced to only those relevant for this node.
+// For autogroup:self policies, it returns per-node compiled rules.
+// For global policies, it returns the global filter reduced for this node.
 func (b *MapResponseBuilder) WithPacketFilters() *MapResponseBuilder {
 	node, ok := b.mapper.state.GetNodeByID(b.nodeID)
 	if !ok {
@@ -187,9 +191,6 @@ func (b *MapResponseBuilder) WithPacketFilters() *MapResponseBuilder {
 		return b
 	}
 
-	// FilterForNode returns rules already reduced to only those relevant for this node.
-	// For autogroup:self policies, it returns per-node compiled rules.
-	// For global policies, it returns the global filter reduced for this node.
 	filter, err := b.mapper.state.FilterForNode(node)
 	if err != nil {
 		b.addError(err)
@@ -233,7 +234,8 @@ func (b *MapResponseBuilder) WithPeerChanges(peers views.Slice[types.NodeView]) 
 	return b
 }
 
-// buildTailPeers converts views.Slice[types.NodeView] to []tailcfg.Node with policy filtering and sorting.
+// buildTailPeers converts [views.Slice] of [types.NodeView] to a slice of [tailcfg.Node]
+// with policy filtering and sorting.
 func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) ([]*tailcfg.Node, error) {
 	node, ok := b.mapper.state.GetNodeByID(b.nodeID)
 	if !ok {
@@ -241,9 +243,10 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 	}
 
 	// Get unreduced matchers for peer relationship determination.
-	// MatchersForNode returns unreduced matchers that include all rules where the node
-	// could be either source or destination. This is different from FilterForNode which
-	// returns reduced rules for packet filtering (only rules where node is destination).
+	// [State.MatchersForNode] returns unreduced matchers that include all rules where the
+	// node could be either source or destination. This is different from
+	// [State.FilterForNode] which returns reduced rules for packet filtering (only rules
+	// where node is destination).
 	matchers, err := b.mapper.state.MatchersForNode(node)
 	if err != nil {
 		return nil, err

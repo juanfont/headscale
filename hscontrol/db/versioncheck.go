@@ -84,7 +84,7 @@ func parseVersion(s string) (semver, error) {
 }
 
 // ensureDatabaseVersionTable creates the database_versions table if it
-// does not already exist. Uses GORM AutoMigrate to handle dialect
+// does not already exist. Uses [gorm.DB.AutoMigrate] to handle dialect
 // differences between SQLite (datetime) and PostgreSQL (timestamp).
 // This runs before gormigrate migrations.
 func ensureDatabaseVersionTable(db *gorm.DB) error {

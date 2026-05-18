@@ -21,8 +21,8 @@ import (
 
 // newNoiseRouterWithBodyLimit builds a chi router with the same body-limit
 // middleware used in the real Noise router but wired to a test handler that
-// captures the io.ReadAll result. This lets us verify the limit without
-// needing a full Headscale instance.
+// captures the [io.ReadAll] result. This lets us verify the limit without
+// needing a full [Headscale] instance.
 func newNoiseRouterWithBodyLimit(readBody *[]byte, readErr *error) http.Handler {
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
@@ -159,7 +159,7 @@ func TestNoiseBodyLimit_AtExactLimit(t *testing.T) {
 }
 
 // TestPollNetMapHandler_OversizedBody calls the real handler with a
-// MaxBytesReader-wrapped body to verify it fails gracefully (json decode
+// [http.MaxBytesReader]-wrapped body to verify it fails gracefully (json decode
 // error on truncated data) rather than consuming unbounded memory.
 func TestPollNetMapHandler_OversizedBody(t *testing.T) {
 	t.Parallel()
@@ -173,12 +173,12 @@ func TestPollNetMapHandler_OversizedBody(t *testing.T) {
 
 	ns.PollNetMapHandler(rec, req)
 
-	// Body is truncated → json.Decode fails → httpError returns 500.
+	// Body is truncated → [json.Decoder.Decode] fails → [httpError] returns 500.
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
 }
 
 // TestRegistrationHandler_OversizedBody calls the real handler with a
-// MaxBytesReader-wrapped body to verify it returns an error response
+// [http.MaxBytesReader]-wrapped body to verify it returns an error response
 // rather than consuming unbounded memory.
 func TestRegistrationHandler_OversizedBody(t *testing.T) {
 	t.Parallel()
@@ -192,8 +192,8 @@ func TestRegistrationHandler_OversizedBody(t *testing.T) {
 
 	ns.RegistrationHandler(rec, req)
 
-	// json.Decode returns MaxBytesError → regErr wraps it → handler writes
-	// a RegisterResponse with the error and then rejectUnsupported kicks in
+	// [json.Decoder.Decode] returns [http.MaxBytesError] → [regErr] wraps it → handler writes
+	// a [tailcfg.RegisterResponse] with the error and then [rejectUnsupported] kicks in
 	// for version 0 → returns 400.
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
@@ -236,7 +236,7 @@ func TestSSHActionRoute_OldPathReturns404(t *testing.T) {
 }
 
 // newSSHActionRequest builds an httptest request with the chi URL params
-// SSHActionHandler reads (src_node_id and dst_node_id), so the handler
+// [noiseServer.SSHActionHandler] reads (src_node_id and dst_node_id), so the handler
 // can be exercised directly without going through the chi router.
 func newSSHActionRequest(t *testing.T, src, dst types.NodeID) *http.Request {
 	t.Helper()
@@ -253,8 +253,8 @@ func newSSHActionRequest(t *testing.T, src, dst types.NodeID) *http.Request {
 }
 
 // putTestNodeInStore creates a node via the database test helper and
-// also stages it into the in-memory NodeStore so handlers that read
-// NodeStore-backed APIs (e.g. State.GetNodeByID) can see it.
+// also stages it into the in-memory [state.NodeStore] so handlers that read
+// [state.NodeStore]-backed APIs (e.g. [state.State.GetNodeByID]) can see it.
 func putTestNodeInStore(t *testing.T, app *Headscale, user *types.User, hostname string) *types.Node {
 	t.Helper()
 
@@ -276,7 +276,7 @@ func TestSSHActionHandler_RejectsRogueMachineKey(t *testing.T) {
 	src := putTestNodeInStore(t, app, user, "src-node")
 	dst := putTestNodeInStore(t, app, user, "dst-node")
 
-	// noiseServer carries the wrong machine key — a fresh throwaway key,
+	// [noiseServer] carries the wrong machine key — a fresh throwaway key,
 	// not dst.MachineKey.
 	rogue := key.NewMachine().Public()
 	require.NotEqual(t, dst.MachineKey, rogue, "test sanity: rogue key must differ from dst")
