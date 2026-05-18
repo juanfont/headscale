@@ -61,7 +61,7 @@ var policyCmd = &cobra.Command{
 var getPolicy = &cobra.Command{
 	Use:     "get",
 	Short:   "Print the current ACL Policy",
-	Aliases: []string{"show", "view", "fetch"},
+	Aliases: []string{cmdShow, "view", "fetch"},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var policyData string
 
@@ -205,9 +205,9 @@ var checkPolicy = &cobra.Command{
 				return fmt.Errorf("loading nodes: %w", err)
 			}
 
-			// NewPolicyManager validates structure and user references
+			// [policy.NewPolicyManager] validates structure and user references
 			// but intentionally skips test evaluation (boot path).
-			// SetPolicy is the user-write boundary and is what runs the
+			// [policy.PolicyManager.SetPolicy] is the user-write boundary and is what runs the
 			// tests and sshTests blocks.
 			pm, err := policy.NewPolicyManager(policyBytes, users, nodes.ViewSlice())
 			if err != nil {

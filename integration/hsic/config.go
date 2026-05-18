@@ -32,14 +32,14 @@ func DefaultConfigEnv() map[string]string {
 
 		// Embedded DERP is the default for test isolation.
 		// Tests should not depend on external DERP infrastructure.
-		// Use WithPublicDERP() to opt out for tests that explicitly
+		// Use [WithPublicDERP] to opt out for tests that explicitly
 		// need public DERP relays.
 		"HEADSCALE_DERP_URLS":                    "",
 		"HEADSCALE_DERP_AUTO_UPDATE_ENABLED":     "false",
 		"HEADSCALE_DERP_UPDATE_FREQUENCY":        "1m",
 		"HEADSCALE_DERP_SERVER_ENABLED":          "true",
 		"HEADSCALE_DERP_SERVER_REGION_ID":        "999",
-		"HEADSCALE_DERP_SERVER_REGION_CODE":      "headscale",
+		"HEADSCALE_DERP_SERVER_REGION_CODE":      binHeadscale,
 		"HEADSCALE_DERP_SERVER_REGION_NAME":      "Headscale Embedded DERP",
 		"HEADSCALE_DERP_SERVER_STUN_LISTEN_ADDR": "0.0.0.0:3478",
 		"HEADSCALE_DERP_SERVER_PRIVATE_KEY_PATH": "/tmp/derp.key",

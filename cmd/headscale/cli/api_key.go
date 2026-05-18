@@ -41,9 +41,9 @@ var apiKeysCmd = &cobra.Command{
 }
 
 var listAPIKeys = &cobra.Command{
-	Use:     "list",
+	Use:     cmdList,
 	Short:   "List the Api keys for headscale",
-	Aliases: []string{"ls", "show"},
+	Aliases: []string{"ls", cmdShow},
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		response, err := client.ListApiKeys(ctx, &v1.ListApiKeysRequest{})
 		if err != nil {
@@ -51,9 +51,8 @@ var listAPIKeys = &cobra.Command{
 		}
 
 		return printListOutput(cmd, response.GetApiKeys(), func() error {
-			tableData := pterm.TableData{
-				{"ID", "Prefix", "Expiration", "Created"},
-			}
+			tableData := make(pterm.TableData, 1, 1+len(response.GetApiKeys()))
+			tableData[0] = []string{"ID", "Prefix", colExpiration, colCreated}
 
 			for _, key := range response.GetApiKeys() {
 				expiration := "-"
@@ -82,7 +81,7 @@ var createAPIKeyCmd = &cobra.Command{
 Creates a new Api key, the Api key is only visible on creation
 and cannot be retrieved again.
 If you lose a key, create a new one and revoke (expire) the old one.`,
-	Aliases: []string{"c", "new"},
+	Aliases: []string{"c", cmdNew},
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		expiration, err := expirationFromFlag(cmd)
 		if err != nil {
@@ -117,9 +116,9 @@ func apiKeyIDOrPrefix(cmd *cobra.Command) (uint64, string, error) {
 }
 
 var expireAPIKeyCmd = &cobra.Command{
-	Use:     "expire",
+	Use:     cmdExpire,
 	Short:   "Expire an ApiKey",
-	Aliases: []string{"revoke", "exp", "e"},
+	Aliases: []string{"revoke", aliasExp, "e"},
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		id, prefix, err := apiKeyIDOrPrefix(cmd)
 		if err != nil {
@@ -139,9 +138,9 @@ var expireAPIKeyCmd = &cobra.Command{
 }
 
 var deleteAPIKeyCmd = &cobra.Command{
-	Use:     "delete",
+	Use:     cmdDelete,
 	Short:   "Delete an ApiKey",
-	Aliases: []string{"remove", "del"},
+	Aliases: []string{"remove", aliasDel},
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		id, prefix, err := apiKeyIDOrPrefix(cmd)
 		if err != nil {

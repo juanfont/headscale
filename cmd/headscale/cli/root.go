@@ -30,7 +30,7 @@ func init() {
 		Bool("force", false, "Disable prompts and forces the execution")
 
 	// Re-enable usage output only for flag-parsing errors; runtime errors
-	// from RunE should never dump usage text.
+	// from [cobra.Command.RunE] should never dump usage text.
 	rootCmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
 		cmd.SilenceUsage = false
 

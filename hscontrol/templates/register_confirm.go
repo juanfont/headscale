@@ -31,11 +31,11 @@ type RegisterConfirmInfo struct {
 	User string
 
 	// Hostname is the hostname the registering tailscaled instance
-	// reported in its RegisterRequest.
+	// reported in its [tailcfg.RegisterRequest].
 	Hostname string
 
 	// OS is the operating system the registering tailscaled reported.
-	// May be the empty string when the client did not send Hostinfo.
+	// May be the empty string when the client did not send [tailcfg.Hostinfo].
 	OS string
 
 	// MachineKey is the short fingerprint of the registering machine
@@ -110,13 +110,13 @@ func deviceTable(rows [4][2]string) *elem.Element {
 					styles.FontWeight:   "600",
 					styles.WhiteSpace:   "nowrap",
 					styles.Color:        "var(--md-default-fg-color--light)",
-					styles.BorderBottom: "1px solid var(--hs-border)",
+					styles.BorderBottom: cssBorderHS,
 				}.ToInline(),
 			}, elem.Text(row[0])),
 			elem.Td(attrs.Props{
 				attrs.Style: styles.Props{
 					styles.Padding:      "0.5rem 0",
-					styles.BorderBottom: "1px solid var(--hs-border)",
+					styles.BorderBottom: cssBorderHS,
 				}.ToInline(),
 			}, val),
 		))
