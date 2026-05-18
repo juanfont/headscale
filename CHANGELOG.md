@@ -307,6 +307,7 @@ connected" routers that maintain their control session but cannot route packets.
   - Tagged nodes (registered with tagged pre-auth keys) are exempt from default expiry
   - `oidc.expiry` has been removed; use `node.expiry` instead (applies to all registration methods including OIDC)
   - `ephemeral_node_inactivity_timeout` is deprecated in favour of `node.ephemeral.inactivity_timeout`
+- Add `trusted_proxies` to gate `True-Client-IP` / `X-Real-IP` / `X-Forwarded-For` (previously honoured from any client)
 
 #### Debug
 
