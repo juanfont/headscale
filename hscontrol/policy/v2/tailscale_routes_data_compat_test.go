@@ -236,17 +236,10 @@ func TestRoutesCompat(t *testing.T) {
 					require.NotNilf(t, node,
 						"golden node %s not found in topology", nodeName)
 
-					compiledRules, err := pol.compileFilterRulesForNode(
+					compiledRules := pol.compileFilterRulesForNode(
 						users,
 						node.View(),
 						nodes.ViewSlice(),
-					)
-					require.NoError(
-						t,
-						err,
-						"%s/%s: failed to compile filter rules",
-						tf.TestID,
-						nodeName,
 					)
 
 					gotRules := policyutil.ReduceFilterRules(

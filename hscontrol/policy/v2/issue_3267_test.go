@@ -93,8 +93,7 @@ func TestIssue3267ViaGrantBroaderDestination(t *testing.T) {
 			t.Run("compileFilterRulesForNode_emits_rule_with_grant_dst", func(t *testing.T) {
 				t.Parallel()
 
-				rules, err := pol.compileFilterRulesForNode(users, router.View(), nodes.ViewSlice())
-				require.NoError(t, err)
+				rules := pol.compileFilterRulesForNode(users, router.View(), nodes.ViewSlice())
 
 				found := slices.ContainsFunc(rules, func(r tailcfg.FilterRule) bool {
 					return slices.ContainsFunc(r.DstPorts, func(d tailcfg.NetPortRange) bool {

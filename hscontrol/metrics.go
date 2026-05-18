@@ -1,10 +1,6 @@
 package hscontrol
 
 import (
-	"net/http"
-	"strconv"
-
-	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"tailscale.com/envknob"
@@ -42,63 +38,4 @@ var (
 		Name:      "mapresponse_ended_total",
 		Help:      "total count of new mapsessions ended",
 	}, []string{"reason"})
-	httpDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: prometheusNamespace,
-		Name:      "http_duration_seconds",
-		Help:      "Duration of HTTP requests.",
-	}, []string{"path"})
-	httpCounter = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: prometheusNamespace,
-		Name:      "http_requests_total",
-		Help:      "Total number of http requests processed",
-	}, []string{"code", "method", "path"},
-	)
 )
-
-// prometheusMiddleware implements mux.MiddlewareFunc.
-func prometheusMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		route := mux.CurrentRoute(r)
-		path, _ := route.GetPathTemplate()
-
-		// Ignore streaming and noise sessions
-		// it has its own router further down.
-		if path == "/ts2021" || path == "/machine/map" || path == "/derp" || path == "/derp/probe" || path == "/derp/latency-check" || path == "/bootstrap-dns" {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		rw := &respWriterProm{ResponseWriter: w}
-
-		timer := prometheus.NewTimer(httpDuration.WithLabelValues(path))
-
-		next.ServeHTTP(rw, r)
-		timer.ObserveDuration()
-		httpCounter.WithLabelValues(strconv.Itoa(rw.status), r.Method, path).Inc()
-	})
-}
-
-type respWriterProm struct {
-	http.ResponseWriter
-
-	status      int
-	written     int64
-	wroteHeader bool
-}
-
-func (r *respWriterProm) WriteHeader(code int) {
-	r.status = code
-	r.wroteHeader = true
-	r.ResponseWriter.WriteHeader(code)
-}
-
-func (r *respWriterProm) Write(b []byte) (int, error) {
-	if !r.wroteHeader {
-		r.WriteHeader(http.StatusOK)
-	}
-
-	n, err := r.ResponseWriter.Write(b)
-	r.written += int64(n)
-
-	return n, err
-}
