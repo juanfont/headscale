@@ -66,12 +66,52 @@ type selfGrantData struct {
 }
 
 // viaGrantData holds data needed for per-node via-grant compilation.
-// Sources are already resolved into srcIPStrings.
+// Sources are already resolved into srcIPStrings; destinations are
+// pre-resolved into prefixes plus a flag for autogroup:internet, which
+// the consumers handle separately because its gate is per-node
+// (IsExitNode()) rather than per-prefix overlap.
 type viaGrantData struct {
-	viaTags           []Tag
-	destinations      Aliases
-	internetProtocols []ProtocolPort
-	srcIPStrings      []string
+	viaTags              []Tag
+	resolvedDsts         []netip.Prefix
+	hasAutoGroupInternet bool
+	internetProtocols    []ProtocolPort
+	srcIPStrings         []string
+}
+
+// resolveViaDestinations splits a via grant's destinations into the
+// flat list of IP prefixes they resolve to plus a flag for
+// autogroup:internet. Every alias kind goes through Alias.Resolve so
+// adding a new alias type to the policy parser does not silently
+// disappear from the via path. Non-IP alias kinds (tag, user, group,
+// wildcard) resolve to /32 host IPs that never overlap with subnet
+// route advertisements and therefore contribute nothing here.
+func resolveViaDestinations(
+	pol *Policy,
+	users types.Users,
+	nodes views.Slice[types.NodeView],
+	dsts Aliases,
+) ([]netip.Prefix, bool) {
+	var (
+		prefixes             []netip.Prefix
+		hasAutoGroupInternet bool
+	)
+
+	for _, d := range dsts {
+		if ag, ok := d.(*AutoGroup); ok && ag.Is(AutoGroupInternet) {
+			hasAutoGroupInternet = true
+
+			continue
+		}
+
+		ips, err := d.Resolve(pol, users, nodes)
+		if err != nil || ips == nil {
+			continue
+		}
+
+		prefixes = append(prefixes, ips.Prefixes()...)
+	}
+
+	return prefixes, hasAutoGroupInternet
 }
 
 // userNodeIndex maps user IDs to their untagged nodes. Built once per
@@ -343,12 +383,17 @@ func (pol *Policy) compileOneViaGrant(
 	hasWildcard := sourcesHaveWildcard(grant.Sources)
 	hasDangerAll := sourcesHaveDangerAll(grant.Sources)
 
+	resolvedDsts, hasAutoGroupInternet := resolveViaDestinations(
+		pol, users, nodes, grant.Destinations,
+	)
+
 	return &compiledGrant{
 		category: grantCategoryVia,
 		via: &viaGrantData{
-			viaTags:           grant.Via,
-			destinations:      grant.Destinations,
-			internetProtocols: grant.InternetProtocols,
+			viaTags:              grant.Via,
+			resolvedDsts:         resolvedDsts,
+			hasAutoGroupInternet: hasAutoGroupInternet,
+			internetProtocols:    grant.InternetProtocols,
 			srcIPStrings: srcIPsWithRoutes(
 				srcResolved, hasWildcard, hasDangerAll, nodes,
 			),
@@ -759,37 +804,38 @@ func compileViaForNode(
 		return nil
 	}
 
-	// Find matching destination prefixes. SubnetRoutes() excludes exit
-	// routes, so the *Prefix check below sees only subnet advertisements;
-	// the *AutoGroup AutoGroupInternet branch checks IsExitNode() instead.
+	// SubnetRoutes excludes exit routes, so the overlap gate below sees
+	// only subnet advertisements. autogroup:internet on a via-tagged
+	// exit advertiser is handled separately because its eligibility is
+	// per-node (IsExitNode) rather than per-prefix overlap.
 	nodeSubnetRoutes := node.SubnetRoutes()
 
 	var viaDstPrefixes []netip.Prefix
 
-	for _, dst := range cg.via.destinations {
-		switch d := dst.(type) {
-		case *Prefix:
-			dstPrefix := netip.Prefix(*d)
-			if slices.Contains(nodeSubnetRoutes, dstPrefix) {
-				viaDstPrefixes = append(
-					viaDstPrefixes, dstPrefix,
-				)
-			}
-		case *AutoGroup:
-			// autogroup:internet on a via-tagged exit advertiser
-			// becomes a rule whose DstPorts enumerate
-			// util.TheInternet(). The matchers derived from this
-			// rule let Node.CanAccess surface the exit node to the
-			// grant source via DestsIsTheInternet. ReduceFilterRules
-			// strips the rule from the wire format on non-exit
-			// advertisers, preserving SaaS PacketFilter encoding.
-			if d.Is(AutoGroupInternet) && node.IsExitNode() {
-				viaDstPrefixes = append(
-					viaDstPrefixes,
-					util.TheInternet().Prefixes()...,
-				)
-			}
+	for _, dstPrefix := range cg.via.resolvedDsts {
+		// Equality would reject any broader or narrower dst relative
+		// to the advertised route. Containment in either direction
+		// matches the operator's authorisation: a broader dst restricts
+		// traffic to the subset the router serves; a narrower dst rides
+		// on a router covering more than the operator asked for. The
+		// rule emits the literal dst either way because that is what
+		// the policy authorised.
+		if slices.ContainsFunc(nodeSubnetRoutes, dstPrefix.Overlaps) {
+			viaDstPrefixes = append(viaDstPrefixes, dstPrefix)
 		}
+	}
+
+	// autogroup:internet on a via-tagged exit advertiser becomes a rule
+	// whose DstPorts enumerate util.TheInternet(). The matchers derived
+	// from this rule let Node.CanAccess surface the exit node to the
+	// grant source via DestsIsTheInternet. ReduceFilterRules strips the
+	// rule from the wire format on non-exit advertisers, preserving
+	// SaaS PacketFilter encoding.
+	if cg.via.hasAutoGroupInternet && node.IsExitNode() {
+		viaDstPrefixes = append(
+			viaDstPrefixes,
+			util.TheInternet().Prefixes()...,
+		)
 	}
 
 	if len(viaDstPrefixes) == 0 {
