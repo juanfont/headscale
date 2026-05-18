@@ -274,7 +274,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 // Redirect to our TLS url.
 func (h *Headscale) redirect(w http.ResponseWriter, req *http.Request) {
 	target := h.cfg.ServerURL + req.URL.RequestURI()
-	http.Redirect(w, req, target, http.StatusFound)
+	http.Redirect(w, req, target, http.StatusFound) //nolint:gosec // G710: target prefixed by trusted ServerURL
 }
 
 func (h *Headscale) scheduledTasks(ctx context.Context) {
@@ -580,7 +580,7 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *chi.Mux {
 		r.HandleFunc("/v1/*", grpcMux.ServeHTTP)
 	})
 	// Ping response endpoint: receives HEAD from clients responding
-	// to a PingRequest. The unguessable ping ID serves as authentication.
+	// to a [tailcfg.PingRequest]. The unguessable ping ID serves as authentication.
 	r.Head("/machine/ping-response", h.PingResponseHandler)
 
 	r.Get("/favicon.ico", FaviconHandler)
@@ -1144,7 +1144,7 @@ func (h *Headscale) Change(cs ...change.Change) {
 	h.mapBatcher.AddWork(cs...)
 }
 
-// HTTPHandler returns an http.Handler for the Headscale control server.
+// HTTPHandler returns an [http.Handler] for the [Headscale] control server.
 // The handler serves the Tailscale control protocol including the /key
 // endpoint and /ts2021 Noise upgrade path.
 func (h *Headscale) HTTPHandler() http.Handler {
@@ -1224,7 +1224,7 @@ func (l *acmeLogger) RoundTrip(req *http.Request) (*http.Response, error) {
 	return resp, nil
 }
 
-// zerologRequestLogger implements chi's middleware.LogFormatter
+// [zerologRequestLogger] implements chi's [middleware.LogFormatter]
 // to route HTTP request logs through zerolog.
 type zerologRequestLogger struct{}
 

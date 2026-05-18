@@ -24,6 +24,7 @@ func newConfirmRequest(t *testing.T, authID types.AuthID, formCSRF, cookieCSRF s
 		form,
 	)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	//nolint:gosec // G124: test fixture
 	req.AddCookie(&http.Cookie{
 		Name:  registerConfirmCSRFCookie,
 		Value: cookieCSRF,
@@ -67,7 +68,7 @@ func TestRegisterConfirmHandler_RejectsCSRFMismatch(t *testing.T) {
 		"CSRF cookie/form mismatch must be rejected with 403")
 
 	// And the registration must still be pending — the rejected POST
-	// must not have called handleRegistration.
+	// must not have called [AuthProviderOIDC.handleRegistration].
 	cached, ok := app.state.GetAuthCacheEntry(authID)
 	require.True(t, ok, "rejected POST must not evict the cached registration")
 	require.NotNil(t, cached.PendingConfirmation(),
