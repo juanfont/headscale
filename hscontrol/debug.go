@@ -19,9 +19,9 @@ import (
 	"tailscale.com/tsweb"
 )
 
-// protectedDebugHandler wraps an http.Handler with an access check that
+// protectedDebugHandler wraps an [http.Handler] with an access check that
 // allows requests from loopback, Tailscale CGNAT IPs, and private
-// (RFC 1918 / RFC 4193) addresses. This extends tsweb.Protected which
+// (RFC 1918 / RFC 4193) addresses. This extends [tsweb.Protected] which
 // only allows loopback and Tailscale IPs.
 func protectedDebugHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -31,7 +31,7 @@ func protectedDebugHandler(h http.Handler) http.Handler {
 			return
 		}
 
-		// tsweb.AllowDebugAccess rejects X-Forwarded-For and non-TS IPs.
+		// [tsweb.AllowDebugAccess] rejects X-Forwarded-For and non-TS IPs.
 		// Additionally allow private/LAN addresses so operators can reach
 		// debug endpoints from their local network without tailscaled.
 		ipStr, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -177,7 +177,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		}
 	}))
 
-	// NodeStore endpoint
+	// [state.NodeStore] endpoint
 	debug.Handle("nodestore", "NodeStore information", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check Accept header to determine response format
 		acceptHeader := r.Header.Get("Accept")
@@ -301,7 +301,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		_, _ = w.Write(resJSON)
 	}))
 
-	// Batcher endpoint
+	// [mapper.Batcher] endpoint
 	debug.Handle("batcher", "Batcher connected nodes", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check Accept header to determine response format
 		acceptHeader := r.Header.Get("Accept")
@@ -329,7 +329,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		}
 	}))
 
-	// Ping endpoint: sends a PingRequest to a node and waits for it to respond.
+	// Ping endpoint: sends a [tailcfg.PingRequest] to a node and waits for it to respond.
 	// Supports POST (form submit) and GET with ?node= (clickable quick-ping links).
 	debug.Handle("ping", "Ping a node to check connectivity", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var (
@@ -361,12 +361,12 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(templates.PingPage(query, result, nodes).Render()))
+		_, _ = w.Write([]byte(templates.PingPage(query, result, nodes).Render())) //nolint:gosec // G705: templ component auto-escapes
 	}))
 
-	// statsviz.Register would mount handlers directly on the raw mux,
+	// [statsviz.Register] would mount handlers directly on the raw mux,
 	// bypassing the access gate. Build the server by hand and wrap
-	// each handler with protectedDebugHandler.
+	// each handler with [protectedDebugHandler].
 	statsvizSrv, err := statsviz.NewServer()
 	if err == nil {
 		debugMux.Handle("/debug/statsviz/", protectedDebugHandler(statsvizSrv.Index()))
@@ -402,9 +402,9 @@ func (h *Headscale) debugBatcher() string {
 		activeConnections int
 	}
 
-	var nodes []nodeStatus
-
 	debugInfo := h.mapBatcher.Debug()
+	nodes := make([]nodeStatus, 0, len(debugInfo))
+
 	for nodeID, info := range debugInfo {
 		nodes = append(nodes, nodeStatus{
 			id:                nodeID,
@@ -510,7 +510,7 @@ func (h *Headscale) connectedNodesList() []templates.ConnectedNode {
 
 const pingTimeout = 30 * time.Second
 
-// doPing sends a PingRequest to the node identified by query and waits for a response.
+// doPing sends a [tailcfg.PingRequest] to the node identified by query and waits for a response.
 func (h *Headscale) doPing(ctx context.Context, query string) *templates.PingResult {
 	if query == "" {
 		return &templates.PingResult{
