@@ -94,7 +94,7 @@ type Traceroute struct {
 	Err error
 }
 
-// ParseTraceroute parses the output of the traceroute command and returns a Traceroute struct.
+// ParseTraceroute parses the output of the traceroute command and returns a [Traceroute] struct.
 func ParseTraceroute(output string) (Traceroute, error) {
 	lines := strings.Split(strings.TrimSpace(output), "\n")
 	if len(lines) < 1 {

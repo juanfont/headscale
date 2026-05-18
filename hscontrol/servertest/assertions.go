@@ -96,7 +96,7 @@ func AssertPeerGone(tb testing.TB, observer *TestClient, peerName string) {
 }
 
 // AssertPeerHasAllowedIPs checks that a peer has the expected
-// AllowedIPs prefixes.
+// [tailcfg.Node.AllowedIPs] prefixes.
 func AssertPeerHasAllowedIPs(tb testing.TB, observer *TestClient, peerName string, want []netip.Prefix) {
 	tb.Helper()
 
@@ -211,7 +211,7 @@ func AssertSelfHasAddresses(tb testing.TB, client *TestClient) {
 	}
 }
 
-// EventuallyAssertMeshComplete retries AssertMeshComplete up to
+// EventuallyAssertMeshComplete retries [AssertMeshComplete] up to
 // timeout, useful when waiting for state to propagate.
 func EventuallyAssertMeshComplete(tb testing.TB, clients []*TestClient, timeout time.Duration) {
 	tb.Helper()

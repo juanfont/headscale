@@ -10,7 +10,7 @@ import (
 	"tailscale.com/types/netmap"
 )
 
-// TestContentVerification exercises the correctness of MapResponse
+// TestContentVerification exercises the correctness of [tailcfg.MapResponse]
 // content: that the self node, peers, DERP map, and other fields
 // are populated correctly.
 func TestContentVerification(t *testing.T) {

@@ -830,7 +830,7 @@ func extractContainerLogs(ctx context.Context, cli *client.Client, containerID, 
 
 // extractContainerFiles extracts database file and directories from headscale containers.
 // Note: The actual file extraction is now handled by the integration tests themselves
-// via SaveProfile, SaveMapResponses, and SaveDatabase functions in hsic.go.
+// via [SaveProfile], [SaveMapResponses], and [SaveDatabase] functions in hsic.go.
 func extractContainerFiles(ctx context.Context, cli *client.Client, containerID, containerName, logsDir string, verbose bool) error {
 	// Files are now extracted directly by the integration tests
 	// This function is kept for potential future use or other file types

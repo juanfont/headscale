@@ -38,7 +38,7 @@ var viaCompatTests = []struct {
 }
 
 // TestViaGrantMapCompat loads golden captures from Tailscale SaaS and
-// compares headscale's MapResponse structure against the captured netmap.
+// compares headscale's [tailcfg.MapResponse] structure against the captured [netmap.NetworkMap].
 //
 // The comparison is IP-independent: it validates peer visibility, route
 // prefixes in AllowedIPs, and PrimaryRoutes — not literal Tailscale IP
@@ -128,7 +128,7 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 
 	// Determine which routes each node should advertise. If the golden
 	// topology has explicit routable_ips, use those. Otherwise infer
-	// from the netmap peer AllowedIPs and packet filter dst prefixes.
+	// from the [netmap.NetworkMap] peer AllowedIPs and packet filter dst prefixes.
 	nodeRoutes := inferNodeRoutes(t, c)
 
 	// Build approved routes from topology. The topology's approved_routes
@@ -181,7 +181,7 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 		srv.App.Change(routeChange)
 	}
 
-	// Wait for peers based on golden netmap expected counts.
+	// Wait for peers based on golden [netmap.NetworkMap] expected counts.
 	for viewerName, cl := range clients {
 		capture := c.Captures[viewerName]
 		if capture.Netmap == nil {
@@ -202,8 +202,8 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 		}
 	}
 
-	// Ensure all nodes have received at least one MapResponse,
-	// including nodes with 0 expected peers that skipped WaitForPeers.
+	// Ensure all nodes have received at least one [tailcfg.MapResponse],
+	// including nodes with 0 expected peers that skipped [TestClient.WaitForPeers].
 	for name, cl := range clients {
 		cl.WaitForCondition(t, name+" initial netmap", 15*time.Second,
 			func(nm *netmap.NetworkMap) bool {
@@ -211,7 +211,7 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 			})
 	}
 
-	// Compare each viewer's MapResponse against the golden netmap.
+	// Compare each viewer's [tailcfg.MapResponse] against the golden [netmap.NetworkMap].
 	for viewerName, cl := range clients {
 		capture := c.Captures[viewerName]
 		if capture.Netmap == nil {
@@ -227,8 +227,8 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 	}
 }
 
-// compareNetmap compares the headscale MapResponse against the
-// captured netmap data in an IP-independent way. It validates:
+// compareNetmap compares the headscale [tailcfg.MapResponse] against the
+// captured [netmap.NetworkMap] data in an IP-independent way. It validates:
 //   - Peer visibility (which peers are present, by hostname)
 //   - Route prefixes in AllowedIPs (non-Tailscale-IP entries like 10.44.0.0/16)
 //   - Number of Tailscale IPs per peer (should be 2: one v4 + one v6)
@@ -430,7 +430,7 @@ func compareNetmap(
 }
 
 // saasAddrsByPeer builds a map from SaaS Tailscale address to peer
-// hostname using each capture's SelfNode.Addresses. Peers not in
+// hostname using each capture's [tailcfg.NodeView.Addresses]. Peers not in
 // clients are skipped.
 func saasAddrsByPeer(
 	want testcapture.Node,
@@ -442,7 +442,7 @@ func saasAddrsByPeer(
 		return out
 	}
 
-	// Walk peers listed in this netmap.
+	// Walk peers listed in this [netmap.NetworkMap].
 	for _, peer := range want.Netmap.Peers {
 		name := extractHostname(peer.Name())
 		if _, isOurs := clients[name]; !isOurs {
@@ -457,7 +457,7 @@ func saasAddrsByPeer(
 		}
 	}
 
-	// The viewer's own SelfNode addresses also appear as possible src.
+	// The viewer's own [tailcfg.NodeView] addresses also appear as possible src.
 	if want.Netmap.SelfNode.Valid() {
 		name := extractHostname(want.Netmap.SelfNode.Name())
 
@@ -533,8 +533,8 @@ func canonicaliseSrcStrings(
 }
 
 // canonicaliseSrcPrefixes is the headscale-side counterpart of
-// canonicaliseSrcStrings, reading already-parsed netip.Prefix values
-// from tailcfg.Match.Srcs.
+// [canonicaliseSrcStrings], reading already-parsed [netip.Prefix] values
+// from [tailcfg.Match.Srcs].
 func canonicaliseSrcPrefixes(
 	t *testing.T,
 	srcs []netip.Prefix,
@@ -627,7 +627,7 @@ type peerSummary struct {
 	PrimaryRoutes []string       // sorted
 }
 
-// parsePrefixOrAddr parses a string as a netip.Prefix. If the string
+// parsePrefixOrAddr parses a string as a [netip.Prefix]. If the string
 // is a bare IP address (no slash), it is converted to a single-host
 // prefix (/32 for IPv4, /128 for IPv6). Golden data DstPorts.IP can
 // contain either form.
@@ -704,7 +704,7 @@ func countTailscaleIPsView(allowedIPs interface {
 
 // inferNodeRoutes determines which routes each node should advertise.
 // If the topology has explicit routable_ips, those are used. Otherwise
-// routes are inferred from the netmap peer AllowedIPs and packet
+// routes are inferred from the [netmap.NetworkMap] peer AllowedIPs and packet
 // filter destination prefixes.
 func inferNodeRoutes(t *testing.T, c *testcapture.Capture) map[string][]netip.Prefix {
 	t.Helper()
@@ -725,7 +725,7 @@ func inferNodeRoutes(t *testing.T, c *testcapture.Capture) map[string][]netip.Pr
 		}
 	}
 
-	// Tier 2: infer from each capture's netmap — scan peers with
+	// Tier 2: infer from each capture's [netmap.NetworkMap] — scan peers with
 	// route prefixes in AllowedIPs. If node X appears as a peer with
 	// route prefix 10.44.0.0/16, then X should advertise that route.
 	for _, node := range c.Captures {

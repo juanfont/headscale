@@ -37,7 +37,7 @@ const (
 	TaggedDevicesUserID = 2147455555
 )
 
-// TaggedDevices is a special user used in MapResponse for tagged nodes.
+// TaggedDevices is a special user used in [tailcfg.MapResponse] for tagged nodes.
 // Tagged nodes don't belong to a real user - the tag is their identity.
 // This special user ID is used when rendering tagged nodes in the Tailscale protocol.
 var TaggedDevices = User{
@@ -72,22 +72,22 @@ type User struct {
 	// but not if you only run with CLI users.
 
 	// Name (username) for the user, is used if email is empty
-	// Should not be used, please use Username().
-	// It is unique if ProviderIdentifier is not set.
+	// Should not be used, please use [User.Username].
+	// It is unique if [User.ProviderIdentifier] is not set.
 	Name string
 
 	// Typically the full name of the user
 	DisplayName string
 
 	// Email of the user
-	// Should not be used, please use Username().
+	// Should not be used, please use [User.Username].
 	Email string
 
 	// ProviderIdentifier is a unique or not set identifier of the
 	// user from OIDC. It is the combination of `iss`
 	// and `sub` claim in the OIDC token.
 	// It is unique if set.
-	// It is unique together with Name.
+	// It is unique together with [User.Name].
 	ProviderIdentifier sql.NullString
 
 	// Provider is the origin of the user account,
@@ -105,7 +105,7 @@ func (u *User) StringID() string {
 	return strconv.FormatUint(uint64(u.ID), 10)
 }
 
-// TypedID returns a pointer to the user's ID as a UserID type.
+// TypedID returns a pointer to the user's ID as a [UserID] type.
 // This is a convenience method to avoid ugly casting like ptr.To(types.UserID(user.ID)).
 func (u *User) TypedID() *UserID {
 	uid := UserID(u.ID)
@@ -128,8 +128,8 @@ func (u *User) Username() string {
 	)
 }
 
-// Display returns the DisplayName if it exists, otherwise
-// it will return the Username.
+// Display returns the [User.DisplayName] if it exists, otherwise
+// it will return the [User.Username].
 func (u *User) Display() string {
 	return cmp.Or(u.DisplayName, u.Username())
 }
@@ -153,7 +153,7 @@ func (u UserView) TailscaleUser() tailcfg.User {
 }
 
 // ID returns the user's ID.
-// This is a custom accessor because gorm.Model.ID is embedded
+// This is a custom accessor because [gorm.Model].ID is embedded
 // and the viewer generator doesn't always produce it.
 func (u UserView) ID() uint {
 	return u.ж.ID
@@ -208,7 +208,7 @@ func (u *User) Proto() *v1.User {
 	}
 }
 
-// MarshalZerologObject implements zerolog.LogObjectMarshaler for safe logging.
+// MarshalZerologObject implements [zerolog.LogObjectMarshaler] for safe logging.
 func (u *User) MarshalZerologObject(e *zerolog.Event) {
 	if u == nil {
 		return
@@ -223,7 +223,7 @@ func (u *User) MarshalZerologObject(e *zerolog.Event) {
 	}
 }
 
-// MarshalZerologObject implements zerolog.LogObjectMarshaler for UserView.
+// MarshalZerologObject implements [zerolog.LogObjectMarshaler] for [UserView].
 func (u UserView) MarshalZerologObject(e *zerolog.Event) {
 	if !u.Valid() {
 		return
@@ -239,6 +239,7 @@ type FlexibleStringSlice []string
 
 func (f *FlexibleStringSlice) UnmarshalJSON(data []byte) error {
 	var arr []string
+
 	err := json.Unmarshal(data, &arr)
 	if err == nil {
 		*f = arr
@@ -246,6 +247,7 @@ func (f *FlexibleStringSlice) UnmarshalJSON(data []byte) error {
 	}
 
 	var single string
+
 	err = json.Unmarshal(data, &single)
 	if err == nil {
 		*f = []string{single}
@@ -259,7 +261,6 @@ func (f *FlexibleStringSlice) UnmarshalJSON(data []byte) error {
 // string "true" or "false" instead of a boolean.
 // This maps bool to a specific type with a custom unmarshaler to
 // ensure we can decode it from a string.
-// https://github.com/juanfont/headscale/issues/2293
 type FlexibleBoolean bool
 
 func (bit *FlexibleBoolean) UnmarshalJSON(data []byte) error {
@@ -294,23 +295,23 @@ type OIDCClaims struct {
 	Iss string `json:"iss"`
 
 	// Name is the user's full name.
-	Name              string          `json:"name,omitempty"`
+	Name              string              `json:"name,omitempty"`
 	Groups            FlexibleStringSlice `json:"groups,omitempty"`
 	Email             string              `json:"email,omitempty"`
 	EmailVerified     FlexibleBoolean     `json:"email_verified,omitempty"`
-	ProfilePictureURL string          `json:"picture,omitempty"`
-	Username          string          `json:"preferred_username,omitempty"`
+	ProfilePictureURL string              `json:"picture,omitempty"`
+	Username          string              `json:"preferred_username,omitempty"`
 }
 
-// Identifier returns a unique identifier string combining the Iss and Sub claims.
-// The format depends on whether Iss is a URL or not:
+// Identifier returns a unique identifier string combining the [OIDCClaims.Iss] and [OIDCClaims.Sub] claims.
+// The format depends on whether [OIDCClaims.Iss] is a URL or not:
 // - For URLs: Joins the URL and sub path (e.g., "https://example.com/sub")
 // - For non-URLs: Joins with a slash (e.g., "oidc/sub")
-// - For empty Iss: Returns just "sub"
-// - For empty Sub: Returns just the Issuer
+// - For empty [OIDCClaims.Iss]: Returns just "sub"
+// - For empty [OIDCClaims.Sub]: Returns just the Issuer
 // - For both empty: Returns empty string
 //
-// The result is cleaned using CleanIdentifier() to ensure consistent formatting.
+// The result is cleaned using [CleanIdentifier] to ensure consistent formatting.
 func (c *OIDCClaims) Identifier() string {
 	// Handle empty components special cases
 	if c.Iss == "" && c.Sub == "" {
@@ -407,18 +408,18 @@ func CleanIdentifier(identifier string) string {
 }
 
 type OIDCUserInfo struct {
-	Sub               string          `json:"sub"`
-	Name              string          `json:"name"`
-	GivenName         string          `json:"given_name"`
-	FamilyName        string          `json:"family_name"`
-	PreferredUsername string          `json:"preferred_username"`
-	Email             string          `json:"email"`
+	Sub               string              `json:"sub"`
+	Name              string              `json:"name"`
+	GivenName         string              `json:"given_name"`
+	FamilyName        string              `json:"family_name"`
+	PreferredUsername string              `json:"preferred_username"`
+	Email             string              `json:"email"`
 	EmailVerified     FlexibleBoolean     `json:"email_verified,omitempty"`
 	Groups            FlexibleStringSlice `json:"groups"`
 	Picture           string              `json:"picture"`
 }
 
-// FromClaim overrides a User from OIDC claims.
+// FromClaim overrides a [User] from OIDC claims.
 // All fields will be updated, except for the ID.
 func (u *User) FromClaim(claims *OIDCClaims, emailVerifiedRequired bool) {
 	err := util.ValidateUsername(claims.Username)

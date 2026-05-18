@@ -21,12 +21,12 @@ import (
 )
 
 // fallbackGivenName is the DNS label used when a node is written with
-// an empty GivenName. Matches Tailscale SaaS behaviour for empty
-// sanitised labels.
+// an empty [types.Node.GivenName]. Matches Tailscale SaaS behaviour
+// for empty sanitised labels.
 const fallbackGivenName = "node"
 
-// Errors returned by SetGivenName. ErrNodeNotFound is defined in
-// state.go and reused here.
+// Errors returned by [NodeStore.SetGivenName]. [ErrNodeNotFound] is defined
+// in state.go and reused here.
 var (
 	ErrGivenNameTaken   = errors.New("given name already in use by another node")
 	ErrGivenNameInvalid = errors.New("given name is not a valid DNS label")
@@ -132,10 +132,10 @@ func NewNodeStore(allNodes types.Nodes, peersFunc PeersFunc, batchSize int, batc
 	return store
 }
 
-// Snapshot is the representation of the current state of the NodeStore.
+// Snapshot is the representation of the current state of the [NodeStore].
 // It contains all nodes and their relationships.
 // It is a copy-on-write structure, meaning that when a write occurs,
-// a new Snapshot is created with the updated state,
+// a new [Snapshot] is created with the updated state,
 // and replaces the old one atomically.
 type Snapshot struct {
 	// nodesByID is the main source of truth for nodes.
@@ -161,7 +161,7 @@ type Snapshot struct {
 // based on the current policy.
 type PeersFunc func(nodes []types.NodeView) map[types.NodeID][]types.NodeView
 
-// work represents a single operation to be performed on the NodeStore.
+// work represents a single operation to be performed on the [NodeStore].
 type work struct {
 	op         int
 	nodeID     types.NodeID
@@ -211,18 +211,19 @@ func (s *NodeStore) PutNode(n types.Node) types.NodeView {
 	return resultNode
 }
 
-// UpdateNodeFunc is a function type that takes a pointer to a Node and modifies it.
+// UpdateNodeFunc is a function type that takes a pointer to a [types.Node] and modifies it.
 type UpdateNodeFunc func(n *types.Node)
 
 // UpdateNode applies a function to modify a specific node in the
 // store. Single-node convenience wrapper around [NodeStore.UpdateNodes]
 // — the writer goroutine signals completion only after the post-batch
-// snapshot has been stored, so the follow-up GetNode read sees the
-// applied update. Returns the resulting node and whether it exists.
+// snapshot has been stored, so the follow-up [NodeStore.GetNode] read
+// sees the applied update. Returns the resulting node and whether it
+// exists.
 //
 // Callers that need to change several nodes atomically should call
-// UpdateNodes directly; collecting changes into one batch keeps the
-// election from running on a half-applied snapshot.
+// [NodeStore.UpdateNodes] directly; collecting changes into one batch
+// keeps the election from running on a half-applied snapshot.
 func (s *NodeStore) UpdateNode(nodeID types.NodeID, updateFn UpdateNodeFunc) (types.NodeView, bool) {
 	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("update"))
 	defer timer.ObserveDuration()
@@ -287,19 +288,20 @@ func (s *NodeStore) DeleteNode(id types.NodeID) {
 	nodeStoreOperations.WithLabelValues("delete").Inc()
 }
 
-// SetGivenName sets node.GivenName on the node identified by id,
+// SetGivenName sets [types.Node.GivenName] on the node identified by id,
 // rejecting the write if the name is already held by another node.
 // Intended for the admin rename path, where auto-bumping a
 // user-supplied name would be surprising.
 //
 // Returns:
-//   - the stored NodeView and nil on success
-//   - ErrGivenNameInvalid   if name is not a valid DNS label
-//   - ErrGivenNameTaken     if another node already holds name
-//   - ErrNodeNotFound       if no node with id exists
+//   - the stored [types.NodeView] and nil on success
+//   - [ErrGivenNameInvalid]   if name is not a valid DNS label
+//   - [ErrGivenNameTaken]     if another node already holds name
+//   - [ErrNodeNotFound]       if no node with id exists
 //
-// Runs as a single writer-goroutine op, so the uniqueness check and
-// the write are atomic with respect to concurrent PutNode/UpdateNode.
+// Runs as a single writer-goroutine op, so the uniqueness check and the
+// write are atomic with respect to concurrent
+// [NodeStore.PutNode]/[NodeStore.UpdateNode].
 func (s *NodeStore) SetGivenName(id types.NodeID, name string) (types.NodeView, error) {
 	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("set_name"))
 	defer timer.ObserveDuration()
@@ -330,13 +332,13 @@ func (s *NodeStore) SetGivenName(id types.NodeID, name string) (types.NodeView, 
 	return <-w.nodeResult, nil
 }
 
-// Start initializes the NodeStore and starts processing the write queue.
+// Start initializes the [NodeStore] and starts processing the write queue.
 func (s *NodeStore) Start() {
 	s.writeQueue = make(chan work)
 	go s.processWrite()
 }
 
-// Stop stops the NodeStore.
+// Stop stops the [NodeStore].
 func (s *NodeStore) Stop() {
 	close(s.writeQueue)
 }
@@ -536,14 +538,14 @@ func (s *NodeStore) applyBatch(batch []work) {
 
 // resolveGivenName returns a unique DNS label for the node identified
 // by self, based on the caller-supplied base label. If base is empty
-// it falls back to fallbackGivenName ("node"). The label's own holder
+// it falls back to [fallbackGivenName] ("node"). The label's own holder
 // (self) is excluded from the collision scan so an idempotent write
 // keeps the current label.
 //
 // On collision the label is bumped as base, base-1, base-2, …, first
-// unused wins. Must be called from the NodeStore writer goroutine
-// (inside applyBatch) so the nodes map reflects all earlier ops in
-// the batch and no other writer can interleave.
+// unused wins. Must be called from the [NodeStore] writer goroutine
+// (inside [NodeStore.applyBatch]) so the nodes map reflects all earlier
+// ops in the batch and no other writer can interleave.
 func resolveGivenName(nodes map[types.NodeID]types.Node, self types.NodeID, base string) string {
 	if base == "" {
 		base = fallbackGivenName
@@ -569,7 +571,7 @@ func resolveGivenName(nodes map[types.NodeID]types.Node, self types.NodeID, base
 }
 
 // snapshotFromNodes builds the index maps and primary-route table for
-// a new Snapshot. prevRoutes carries forward the previous primary
+// a new [Snapshot]. prevRoutes carries forward the previous primary
 // assignment so a still-valid choice survives unrelated batches.
 func snapshotFromNodes(
 	nodes map[types.NodeID]types.Node,
@@ -719,8 +721,8 @@ func electPrimaryRoutes(
 
 // GetNode retrieves a node by its ID.
 // The bool indicates if the node exists or is available (like "err not found").
-// The NodeView might be invalid, so it must be checked with .Valid(), which must be used to ensure
-// it isn't an invalid node (this is more of a node error or node is broken).
+// The [types.NodeView] might be invalid, so it must be checked with .Valid(), which must
+// be used to ensure it isn't an invalid node (this is more of a node error or node is broken).
 func (s *NodeStore) GetNode(id types.NodeID) (types.NodeView, bool) {
 	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("get"))
 	defer timer.ObserveDuration()
@@ -735,10 +737,10 @@ func (s *NodeStore) GetNode(id types.NodeID) (types.NodeView, bool) {
 	return n.View(), true
 }
 
-// GetNodeByNodeKey retrieves a node by its NodeKey.
+// GetNodeByNodeKey retrieves a node by its [key.NodePublic].
 // The bool indicates if the node exists or is available (like "err not found").
-// The NodeView might be invalid, so it must be checked with .Valid(), which must be used to ensure
-// it isn't an invalid node (this is more of a node error or node is broken).
+// The [types.NodeView] might be invalid, so it must be checked with .Valid(), which must
+// be used to ensure it isn't an invalid node (this is more of a node error or node is broken).
 func (s *NodeStore) GetNodeByNodeKey(nodeKey key.NodePublic) (types.NodeView, bool) {
 	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("get_by_key"))
 	defer timer.ObserveDuration()
@@ -790,7 +792,7 @@ func (s *NodeStore) GetNodeByMachineKeyAnyUser(machineKey key.MachinePublic) (ty
 	return types.NodeView{}, false
 }
 
-// DebugString returns debug information about the NodeStore.
+// DebugString returns debug information about the [NodeStore].
 func (s *NodeStore) DebugString() string {
 	snapshot := s.data.Load()
 
@@ -971,8 +973,8 @@ func (s *NodeStore) PrimaryRoutesString() string {
 	return b.String()
 }
 
-// RebuildPeerMaps rebuilds the peer relationship map using the current peersFunc.
-// This must be called after policy changes because peersFunc uses PolicyManager's
+// RebuildPeerMaps rebuilds the peer relationship map using the current [PeersFunc].
+// This must be called after policy changes because [PeersFunc] uses [policy.PolicyManager]'s
 // filters to determine which nodes can see each other. Without rebuilding, the
 // peer map would use stale filter data until the next node add/delete.
 func (s *NodeStore) RebuildPeerMaps() {

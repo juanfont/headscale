@@ -9,7 +9,7 @@ import (
 )
 
 // RegistrationData is the payload cached for a pending node registration.
-// It replaces the previous practice of caching a full *Node and carries
+// It replaces the previous practice of caching a full *[Node] and carries
 // only the fields the registration callback path actually consumes when
 // promoting a pending registration to a real node.
 //
@@ -34,18 +34,18 @@ type RegistrationData struct {
 	// Already validated/normalised by EnsureHostname at producer time.
 	Hostname string
 
-	// Hostinfo is the original Hostinfo from the RegisterRequest,
+	// Hostinfo is the original [tailcfg.Hostinfo] from the [tailcfg.RegisterRequest],
 	// stored so that the auth callback can populate the new node's
-	// initial Hostinfo (and so that observability/CLI consumers see
+	// initial [tailcfg.Hostinfo] (and so that observability/CLI consumers see
 	// fields like OS, OSVersion, and IPNVersion before the first
-	// MapRequest restores the live set).
+	// [tailcfg.MapRequest] restores the live set).
 	//
-	// May be nil if the client did not send Hostinfo in the original
-	// RegisterRequest.
+	// May be nil if the client did not send [tailcfg.Hostinfo] in the original
+	// [tailcfg.RegisterRequest].
 	Hostinfo *tailcfg.Hostinfo
 
 	// Endpoints is the initial set of WireGuard endpoints the node
-	// reported. The first MapRequest after registration overwrites
+	// reported. The first [tailcfg.MapRequest] after registration overwrites
 	// this with the live set.
 	Endpoints []netip.AddrPort
 

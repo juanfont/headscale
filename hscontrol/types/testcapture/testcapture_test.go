@@ -138,9 +138,9 @@ func sampleSSHCapture() *testcapture.Capture {
 }
 
 // equalViaJSON compares two captures by JSON-marshaling them and
-// comparing the bytes. The Capture struct embeds tailcfg view types
+// comparing the bytes. The [testcapture.Capture] struct embeds tailcfg view types
 // with unexported pointer fields that go-cmp can't traverse, so a
-// JSON round-trip is the simplest way to verify Write+Read produced
+// JSON round-trip is the simplest way to verify [testcapture.Write]+[testcapture.Read] produced
 // equivalent values.
 func equalViaJSON(t *testing.T, want, got *testcapture.Capture) {
 	t.Helper()
@@ -416,7 +416,7 @@ func TestCommentHeader_EmptyFilterRulesCountAsEmpty(t *testing.T) {
 
 // TestInputUnmarshal_LegacyObjectForm asserts that a legacy capture
 // file written with full_policy as a raw JSON object (not a
-// JSON-encoded string) still deserialises into a valid Input, with
+// JSON-encoded string) still deserialises into a valid [testcapture.Input], with
 // the policy re-marshaled to a compact string so downstream consumers
 // see a uniform typed field.
 func TestInputUnmarshal_LegacyObjectForm(t *testing.T) {
@@ -444,8 +444,8 @@ func TestInputUnmarshal_LegacyObjectForm(t *testing.T) {
 		t.Errorf("FullPolicy:\n got %q\nwant %q", got.FullPolicy, want)
 	}
 
-	// Round-trip: the new MarshalJSON must emit the object form so
-	// UnmarshalJSON re-reads it identically.
+	// Round-trip: the new [testcapture.Input.MarshalJSON] must emit the object form so
+	// [testcapture.Input.UnmarshalJSON] re-reads it identically.
 	out, err := json.Marshal(got)
 	if err != nil {
 		t.Fatalf("re-marshal: %v", err)

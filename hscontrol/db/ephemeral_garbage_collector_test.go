@@ -17,8 +17,8 @@ const (
 	fifty       = 50 * time.Millisecond
 )
 
-// TestEphemeralGarbageCollectorGoRoutineLeak is a test for a goroutine leak in EphemeralGarbageCollector().
-// It creates a new EphemeralGarbageCollector, schedules several nodes for deletion with a short expiry,
+// TestEphemeralGarbageCollectorGoRoutineLeak is a test for a goroutine leak in [EphemeralGarbageCollector].
+// It creates a new [EphemeralGarbageCollector], schedules several nodes for deletion with a short expiry,
 // and verifies that the nodes are deleted when the expiry time passes, and then
 // for any leaked goroutines after the garbage collector is closed.
 func TestEphemeralGarbageCollectorGoRoutineLeak(t *testing.T) {
@@ -89,8 +89,8 @@ func TestEphemeralGarbageCollectorGoRoutineLeak(t *testing.T) {
 	t.Logf("Final number of goroutines: %d", runtime.NumGoroutine())
 }
 
-// TestEphemeralGarbageCollectorReschedule is a test for the rescheduling of nodes in EphemeralGarbageCollector().
-// It creates a new EphemeralGarbageCollector, schedules a node for deletion with a longer expiry,
+// TestEphemeralGarbageCollectorReschedule is a test for the rescheduling of nodes in [EphemeralGarbageCollector].
+// It creates a new [EphemeralGarbageCollector], schedules a node for deletion with a longer expiry,
 // and then reschedules it with a shorter expiry, and verifies that the node is deleted only once.
 func TestEphemeralGarbageCollectorReschedule(t *testing.T) {
 	// Deletion tracking mechanism
@@ -145,8 +145,8 @@ func TestEphemeralGarbageCollectorReschedule(t *testing.T) {
 	deleteMutex.Unlock()
 }
 
-// TestEphemeralGarbageCollectorCancelAndReschedule is a test for the cancellation and rescheduling of nodes in EphemeralGarbageCollector().
-// It creates a new EphemeralGarbageCollector, schedules a node for deletion, cancels it, and then reschedules it,
+// TestEphemeralGarbageCollectorCancelAndReschedule is a test for the cancellation and rescheduling of nodes in [EphemeralGarbageCollector].
+// It creates a new [EphemeralGarbageCollector], schedules a node for deletion, cancels it, and then reschedules it,
 // and verifies that the node is deleted only once.
 func TestEphemeralGarbageCollectorCancelAndReschedule(t *testing.T) {
 	// Deletion tracking mechanism
@@ -214,8 +214,8 @@ func TestEphemeralGarbageCollectorCancelAndReschedule(t *testing.T) {
 	deleteMutex.Unlock()
 }
 
-// TestEphemeralGarbageCollectorCloseBeforeTimerFires is a test for the closing of the EphemeralGarbageCollector before the timer fires.
-// It creates a new EphemeralGarbageCollector, schedules a node for deletion, closes the GC, and verifies that the node is not deleted.
+// TestEphemeralGarbageCollectorCloseBeforeTimerFires is a test for the closing of the [EphemeralGarbageCollector] before the timer fires.
+// It creates a new [EphemeralGarbageCollector], schedules a node for deletion, closes the GC, and verifies that the node is not deleted.
 func TestEphemeralGarbageCollectorCloseBeforeTimerFires(t *testing.T) {
 	// Deletion tracking
 	var (
@@ -264,7 +264,7 @@ func TestEphemeralGarbageCollectorCloseBeforeTimerFires(t *testing.T) {
 	deleteMutex.Unlock()
 }
 
-// TestEphemeralGarbageCollectorScheduleAfterClose verifies that calling Schedule after Close
+// TestEphemeralGarbageCollectorScheduleAfterClose verifies that calling [EphemeralGarbageCollector.Schedule] after [EphemeralGarbageCollector.Close]
 // is a no-op and doesn't cause any panics, goroutine leaks, or other issues.
 func TestEphemeralGarbageCollectorScheduleAfterClose(t *testing.T) {
 	// Count initial goroutines to check for leaks
@@ -339,7 +339,7 @@ func TestEphemeralGarbageCollectorScheduleAfterClose(t *testing.T) {
 }
 
 // TestEphemeralGarbageCollectorConcurrentScheduleAndClose tests the behavior of the garbage collector
-// when Schedule and Close are called concurrently from multiple goroutines.
+// when [EphemeralGarbageCollector.Schedule] and [EphemeralGarbageCollector.Close] are called concurrently from multiple goroutines.
 func TestEphemeralGarbageCollectorConcurrentScheduleAndClose(t *testing.T) {
 	// Count initial goroutines
 	initialGoroutines := runtime.NumGoroutine()

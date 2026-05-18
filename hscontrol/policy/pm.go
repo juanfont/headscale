@@ -68,7 +68,7 @@ type PolicyManager interface {
 	DebugString() string
 }
 
-// NewPolicyManager returns a new policy manager.
+// NewPolicyManager returns a new [PolicyManager].
 func NewPolicyManager(pol []byte, users []types.User, nodes views.Slice[types.NodeView]) (PolicyManager, error) {
 	var (
 		polMan PolicyManager
@@ -83,8 +83,8 @@ func NewPolicyManager(pol []byte, users []types.User, nodes views.Slice[types.No
 	return polMan, err
 }
 
-// PolicyManagersForTest returns all available PostureManagers to be used
-// in tests to validate them in tests that try to determine that they
+// PolicyManagersForTest returns all available [PolicyManager] implementations to
+// be used in tests to validate them in tests that try to determine that they
 // behave the same.
 func PolicyManagersForTest(pol []byte, users []types.User, nodes views.Slice[types.NodeView]) ([]PolicyManager, error) {
 	var polMans []PolicyManager

@@ -22,7 +22,7 @@ const (
 
 // CanOldCodeBeCleanedUp is intended to be called on startup to see if
 // there are old code that can ble cleaned up, entries should contain
-// a CapVer where something can be cleaned up and a panic if it can.
+// a [tailcfg.CapabilityVersion] where something can be cleaned up and a panic if it can.
 // This is only intended to catch things in tests.
 //
 // All uses of Capability version checks should be listed here.
@@ -46,12 +46,12 @@ func capVersSorted() []tailcfg.CapabilityVersion {
 	return capVers
 }
 
-// TailscaleVersion returns the Tailscale version for the given CapabilityVersion.
+// TailscaleVersion returns the Tailscale version for the given [tailcfg.CapabilityVersion].
 func TailscaleVersion(ver tailcfg.CapabilityVersion) string {
 	return capVerToTailscaleVer[ver]
 }
 
-// CapabilityVersion returns the CapabilityVersion for the given Tailscale version.
+// CapabilityVersion returns the [tailcfg.CapabilityVersion] for the given Tailscale version.
 // It accepts both full versions (v1.90.1) and minor versions (v1.90).
 func CapabilityVersion(ver string) tailcfg.CapabilityVersion {
 	if !strings.HasPrefix(ver, "v") {
@@ -115,7 +115,7 @@ func TailscaleLatestMajorMinor(n int, stripV bool) []string {
 	return majorSl[len(majorSl)-n:]
 }
 
-// CapVerLatest returns the n latest CapabilityVersions.
+// CapVerLatest returns the n latest [tailcfg.CapabilityVersion] values.
 func CapVerLatest(n int) []tailcfg.CapabilityVersion {
 	if n <= 0 {
 		return nil

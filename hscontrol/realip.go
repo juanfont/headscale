@@ -20,7 +20,7 @@ var proxyHeaders = [...]string{headerTrueClientIP, headerXRealIP, headerXForward
 // trustedProxyRealIP rewrites r.RemoteAddr from proxy headers when the
 // peer is in trusted; for any other peer the headers are stripped so a
 // downstream handler cannot read a spoofed value. X-Forwarded-For uses
-// RightmostTrustedRangeStrategy so prepending a value cannot win in a
+// [realclientip.RightmostTrustedRangeStrategy] so prepending a value cannot win in a
 // proxy chain.
 func trustedProxyRealIP(trusted []netip.Prefix) (func(http.Handler) http.Handler, error) {
 	ranges := make([]net.IPNet, 0, len(trusted))

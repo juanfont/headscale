@@ -1268,9 +1268,9 @@ func TestACLAutogroupTagged(t *testing.T) {
 			}
 
 			// Create the tailscale node with appropriate options.
-			// CACert and HeadscaleName are passed explicitly because
-			// nodes created via CreateTailscaleNode are not part of
-			// the standard CreateHeadscaleEnv flow.
+			// [tsic.WithCACert] and [tsic.WithHeadscaleName] are passed explicitly because
+			// nodes created via [Scenario.CreateTailscaleNode] are not part of
+			// the standard [Scenario.CreateHeadscaleEnv] flow.
 			opts := []tsic.Option{
 				tsic.WithCACert(headscale.GetCert()),
 				tsic.WithHeadscaleName(headscale.GetHostname()),
@@ -1558,9 +1558,9 @@ func TestACLAutogroupSelf(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create router node (tags come from the PreAuthKey).
-	// CACert and HeadscaleName are passed explicitly because
-	// nodes created via tsic.New are not part of the standard
-	// CreateHeadscaleEnv flow.
+	// [tsic.WithCACert] and [tsic.WithHeadscaleName] are passed explicitly because
+	// nodes created via [tsic.New] are not part of the standard
+	// [Scenario.CreateHeadscaleEnv] flow.
 	routerClient, err := tsic.New(
 		scenario.Pool(),
 		"unstable",
@@ -2084,9 +2084,9 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		err = headscale.SetPolicy(user1ToUser2Policy)
 		require.NoError(t, err)
 
-		// Note: Cannot use WaitForTailscaleSync() here because directional policy means
+		// Note: Cannot use [Scenario.WaitForTailscaleSync] here because directional policy means
 		// user2 nodes don't see user1 nodes in their peer list (asymmetric visibility).
-		// The EventuallyWithT block below will handle waiting for policy propagation.
+		// The [assert.EventuallyWithT] block below will handle waiting for policy propagation.
 
 		// Test ALL connectivity (positive and negative) in one block after policy settles
 		t.Logf("Iteration %d: Phase 3 - Testing all connectivity with directional policy", iteration)
@@ -2625,9 +2625,9 @@ func TestACLTagPropagation(t *testing.T) {
 			}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "verifying tag change applied")
 
 			// Step 3: Verify final NetMap visibility first (fast signal that
-			// the MapResponse propagated to the client).
+			// the [tailcfg.MapResponse] propagated to the client).
 			// The full propagation chain (docker exec → gRPC → state update →
-			// batcher delay → MapResponse → noise transport → client processing)
+			// batcher delay → [tailcfg.MapResponse] → noise transport → client processing)
 			// can take over 120s on congested CI runners, so use a generous
 			// base timeout.
 			t.Logf("Step 3: Verifying final NetMap visibility (expect visible=%v)", tt.finalAccess)
@@ -2653,7 +2653,7 @@ func TestACLTagPropagation(t *testing.T) {
 			}, integrationutil.HASlowConvergeTimeout, integrationutil.SlowPoll, "verifying NetMap visibility propagated after tag change")
 
 			// Step 4: Verify final access state (this is the key test for #2389).
-			// Even though Step 3 confirmed the MapResponse arrived, the full
+			// Even though Step 3 confirmed the [tailcfg.MapResponse] arrived, the full
 			// WireGuard handshake and tunnel establishment can take significant
 			// time on congested CI runners, so use the same generous base
 			// timeout as Step 3.
@@ -2858,7 +2858,7 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 	// Step 4: Verify HTTP on port 80 now fails (tag:sshonly only allows port 22).
 	// Port-specific filter changes are harder than peer removal because
 	// the WireGuard tunnel stays up and both endpoints must process
-	// the new PacketFilter from the MapResponse.
+	// the new [tailcfg.PacketFilter] from the [tailcfg.MapResponse].
 	t.Log("Step 4: Verifying HTTP access is now blocked (tag:sshonly only allows port 22)")
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertCurlFailWithCollect(c, user2Node, targetURL, "HTTP should fail with tag:sshonly (only port 22 allowed)")
@@ -3099,7 +3099,7 @@ func TestACLGroupAfterUserDeletion(t *testing.T) {
 		assertCurlDockerHostname(c, user1, url, "user1 should still be able to reach user2 after user3 deletion (stale cache)")
 	}, integrationutil.HAConvergeTimeout, integrationutil.SlowPoll, "user1 -> user2 after user3 deletion")
 
-	// Step 4: Create a NEW user - this triggers updatePolicyManagerUsers() which
+	// Step 4: Create a NEW user - this triggers [State.updatePolicyManagerUsers] which
 	// re-evaluates the policy. According to issue #2967, this is when the bug manifests:
 	// the deleted user3@ in the group causes the entire group to fail resolution.
 	t.Log("Step 4: Creating a new user (user4) to trigger policy re-evaluation")
@@ -3275,7 +3275,7 @@ func TestACLGroupDeletionExactReproduction(t *testing.T) {
 
 	t.Log("Step 3: PASSED - connectivity works after user2 deletion")
 
-	// Step 4: Create a NEW user - this triggers updatePolicyManagerUsers()
+	// Step 4: Create a NEW user - this triggers [State.updatePolicyManagerUsers]
 	// According to the reporter, this is when the bug manifests
 	t.Log("Step 4: Creating new user (user4) - this triggers policy re-evaluation")
 
@@ -3283,8 +3283,8 @@ func TestACLGroupDeletionExactReproduction(t *testing.T) {
 	require.NoError(t, err)
 
 	// Step 5: THE CRITICAL TEST - verify connectivity STILL works
-	// Without the fix: DeleteUser didn't update policy, so when CreateUser
-	// triggers updatePolicyManagerUsers(), the stale user2@ is now unknown,
+	// Without the fix: [state.State.DeleteUser] didn't update policy, so when [state.State.CreateUser]
+	// triggers [State.updatePolicyManagerUsers], the stale user2@ is now unknown,
 	// potentially breaking the group.
 	t.Log("Step 5: Verifying connectivity AFTER creating new user (BUG trigger point)")
 

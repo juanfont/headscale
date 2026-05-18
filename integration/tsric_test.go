@@ -241,7 +241,7 @@ func TestTailscaleRustAxum(t *testing.T) {
 
 	// Fire several more POSTs and verify the counter advances.
 	// The axum handler returns {"count": N} where N is the pre-increment value.
-	// After the initial EventuallyWithT loop we don't know the exact counter,
+	// After the initial [assert.EventuallyWithT] loop we don't know the exact counter,
 	// but two back-to-back POSTs should return consecutive values.
 	t.Log("Verifying counter increments across multiple requests...")
 

@@ -136,7 +136,7 @@ func (dsic *DERPServerInContainer) buildEntrypoint(derperArgs string) []string {
 	return []string{"/bin/sh", "-c", strings.Join(commands, " ; ")}
 }
 
-// New returns a new TailscaleInContainer instance.
+// New returns a new [tsic.TailscaleInContainer] instance.
 func New(
 	pool *dockertest.Pool,
 	version string,
@@ -179,7 +179,7 @@ func New(
 	}
 
 	// Install the CA cert so the DERP server trusts its own certificate
-	// and any headscale CA certs passed via WithCACert.
+	// and any headscale CA certs passed via [WithCACert].
 	dsic.caCerts = append(dsic.caCerts, tlsCACert)
 
 	for _, opt := range opts {
@@ -319,7 +319,7 @@ func (t *DERPServerInContainer) Version() string {
 	return t.version
 }
 
-// ID returns the Docker container ID of the DERPServerInContainer
+// ID returns the Docker container ID of the [DERPServerInContainer]
 // instance.
 func (t *DERPServerInContainer) ID() string {
 	return t.container.Container.ID

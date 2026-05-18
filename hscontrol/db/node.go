@@ -109,7 +109,7 @@ func (hsdb *HSDatabase) getNode(uid types.UserID, name string) (*types.Node, err
 	})
 }
 
-// getNode finds a Node by name and user and returns the Node struct.
+// getNode finds a [types.Node] by name and user and returns the [types.Node] struct.
 func getNode(tx *gorm.DB, uid types.UserID, name string) (*types.Node, error) {
 	nodes, err := ListNodesByUser(tx, uid)
 	if err != nil {
@@ -129,7 +129,7 @@ func (hsdb *HSDatabase) GetNodeByID(id types.NodeID) (*types.Node, error) {
 	return GetNodeByID(hsdb.DB, id)
 }
 
-// GetNodeByID finds a Node by ID and returns the Node struct.
+// GetNodeByID finds a [types.Node] by ID and returns the [types.Node] struct.
 func GetNodeByID(tx *gorm.DB, id types.NodeID) (*types.Node, error) {
 	mach := types.Node{}
 	if result := tx.
@@ -147,7 +147,7 @@ func (hsdb *HSDatabase) GetNodeByMachineKey(machineKey key.MachinePublic) (*type
 	return GetNodeByMachineKey(hsdb.DB, machineKey)
 }
 
-// GetNodeByMachineKey finds a Node by its MachineKey and returns the Node struct.
+// GetNodeByMachineKey finds a [types.Node] by its [key.MachinePublic] and returns the [types.Node] struct.
 func GetNodeByMachineKey(
 	tx *gorm.DB,
 	machineKey key.MachinePublic,
@@ -168,7 +168,7 @@ func (hsdb *HSDatabase) GetNodeByNodeKey(nodeKey key.NodePublic) (*types.Node, e
 	return GetNodeByNodeKey(hsdb.DB, nodeKey)
 }
 
-// GetNodeByNodeKey finds a Node by its NodeKey and returns the Node struct.
+// GetNodeByNodeKey finds a [types.Node] by its [key.NodePublic] and returns the [types.Node] struct.
 func GetNodeByNodeKey(
 	tx *gorm.DB,
 	nodeKey key.NodePublic,
@@ -199,7 +199,7 @@ func SetLastSeen(tx *gorm.DB, nodeID types.NodeID, lastSeen time.Time) error {
 	return tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("last_seen", lastSeen).Error
 }
 
-// RenameNode takes a Node struct and a new GivenName for the nodes
+// RenameNode takes a [types.Node] struct and a new [types.Node.GivenName] for the nodes
 // and renames it. Validation should be done in the state layer before calling this function.
 func RenameNode(tx *gorm.DB,
 	nodeID types.NodeID, newName string,
@@ -245,7 +245,7 @@ func (hsdb *HSDatabase) DeleteNode(node *types.Node) error {
 	})
 }
 
-// DeleteNode deletes a Node from the database.
+// DeleteNode deletes a [types.Node] from the database.
 // Caller is responsible for notifying all of change.
 func DeleteNode(tx *gorm.DB,
 	node *types.Node,
@@ -259,7 +259,7 @@ func DeleteNode(tx *gorm.DB,
 	return nil
 }
 
-// DeleteEphemeralNode deletes a Node from the database, note that this method
+// DeleteEphemeralNode deletes a [types.Node] from the database, note that this method
 // will remove it straight, and not notify any changes or consider any routes.
 // It is intended for Ephemeral nodes.
 func (hsdb *HSDatabase) DeleteEphemeralNode(
@@ -276,7 +276,7 @@ func (hsdb *HSDatabase) DeleteEphemeralNode(
 }
 
 // RegisterNodeForTest is used only for testing purposes to register a node directly in the database.
-// Production code should use state.HandleNodeFromAuthPath or state.HandleNodeFromPreAuthKey.
+// Production code should use [state.State.HandleNodeFromAuthPath] or [state.State.HandleNodeFromPreAuthKey].
 func RegisterNodeForTest(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Addr) (*types.Node, error) {
 	if !testing.Testing() {
 		panic("RegisterNodeForTest can only be called during tests")
@@ -387,7 +387,7 @@ func NodeSetMachineKey(
 
 // EphemeralGarbageCollector is a garbage collector that will delete nodes after
 // a certain amount of time.
-// It is used to delete ephemeral nodes that have disconnected and should be
+// It is used to delete ephemeral nodes ([types.Node.IsEphemeral]) that have disconnected and should be
 // cleaned up.
 type EphemeralGarbageCollector struct {
 	mu sync.Mutex
@@ -399,7 +399,7 @@ type EphemeralGarbageCollector struct {
 	cancelCh chan struct{}
 }
 
-// NewEphemeralGarbageCollector creates a new EphemeralGarbageCollector, it takes
+// NewEphemeralGarbageCollector creates a new [EphemeralGarbageCollector], it takes
 // a deleteFunc that will be called when a node is scheduled for deletion.
 func NewEphemeralGarbageCollector(deleteFunc func(types.NodeID)) *EphemeralGarbageCollector {
 	return &EphemeralGarbageCollector{

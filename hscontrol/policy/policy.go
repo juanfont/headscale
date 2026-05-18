@@ -51,6 +51,11 @@ func ReduceRoutes(
 }
 
 // BuildPeerMap builds a map of all peers that can be accessed by each node.
+//
+// Compared to [ReduceNodes], which builds the list per node, we end up with
+// doing the full work for every node (O(n^2)), while this will reduce the
+// list as we see relationships while building the map, making it O(n^2/2)
+// in the end, but with less work per node.
 func BuildPeerMap(
 	nodes views.Slice[types.NodeView],
 	matchers []matcher.Match,
@@ -58,9 +63,6 @@ func BuildPeerMap(
 	ret := make(map[types.NodeID][]types.NodeView, nodes.Len())
 
 	// Build the map of all peers according to the matchers.
-	// Compared to ReduceNodes, which builds the list per node, we end up with doing
-	// the full work for every node (On^2), while this will reduce the list as we see
-	// relationships while building the map, making it O(n^2/2) in the end, but with less work per node.
 	for i := range nodes.Len() {
 		for j := i + 1; j < nodes.Len(); j++ {
 			if nodes.At(i).ID() == nodes.At(j).ID() {
@@ -78,7 +80,8 @@ func BuildPeerMap(
 }
 
 // ApproveRoutesWithPolicy checks if the node can approve the announced routes
-// and returns the new list of approved routes.
+// and returns the new list of approved routes. The [PolicyManager] is consulted
+// via [PolicyManager.NodeCanApproveRoute].
 // The approved routes will include:
 // 1. ALL previously approved routes (regardless of whether they're still advertised)
 // 2. New routes from announcedRoutes that can be auto-approved by policy

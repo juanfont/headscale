@@ -33,7 +33,7 @@ var (
 )
 
 // RouteFunc is a function that takes a node ID and returns a list of
-// netip.Prefixes representing the routes for that node.
+// [netip.Prefix] values representing the routes for that node.
 type RouteFunc func(id NodeID) []netip.Prefix
 
 // nodeAttrDisableIPv4 is the policy nodeAttr key that suppresses the
@@ -58,17 +58,17 @@ func filterIPv4(ps []netip.Prefix) []netip.Prefix {
 }
 
 // ViaRouteResult describes via grant effects for a viewer-peer pair.
-// UsePrimary is always a subset of Include: it marks which included
+// [ViaRouteResult.UsePrimary] is always a subset of [ViaRouteResult.Include]: it marks which included
 // prefixes must additionally defer to HA primary election.
 type ViaRouteResult struct {
 	// Include contains prefixes this peer should serve to this viewer (via-designated).
 	Include []netip.Prefix
 	// Exclude contains prefixes steered to OTHER peers (suppress from global primary).
 	Exclude []netip.Prefix
-	// UsePrimary contains prefixes from Include where a regular
+	// UsePrimary contains prefixes from [ViaRouteResult.Include] where a regular
 	// (non-via) grant also covers the prefix. In these cases HA
 	// primary election wins — only the primary router should get
-	// the route in AllowedIPs. When a prefix is NOT in UsePrimary,
+	// the route in [tailcfg.Node.AllowedIPs]. When a prefix is NOT in [ViaRouteResult.UsePrimary],
 	// per-viewer via steering applies.
 	UsePrimary []netip.Prefix
 }
@@ -132,8 +132,8 @@ type Node struct {
 	Hostname string
 
 	// Givenname represents either:
-	// a DNS normalized version of Hostname
-	// a valid name set by the User
+	// a DNS normalized version of [Node.Hostname]
+	// a valid name set by the [User]
 	//
 	// GivenName is the name used in all DNS related
 	// parts of headscale.
@@ -152,7 +152,7 @@ type Node struct {
 	// Tags cannot be removed once set (one-way transition).
 	Tags Strings `gorm:"column:tags;serializer:json"`
 
-	// When a node has been created with a PreAuthKey, we need to
+	// When a node has been created with a [PreAuthKey], we need to
 	// prevent the preauthkey from being deleted before the node.
 	// The preauthkey can define "tags" of the node so we need it
 	// around.
@@ -263,8 +263,8 @@ func (node *Node) HasTag(tag string) bool {
 	return slices.Contains(node.Tags, tag)
 }
 
-// TypedUserID returns the UserID as a typed UserID type.
-// Returns 0 if UserID is nil.
+// TypedUserID returns the [Node.UserID] as a typed [UserID] type.
+// Returns 0 if [Node.UserID] is nil.
 func (node *Node) TypedUserID() UserID {
 	if node.UserID == nil {
 		return 0
@@ -299,7 +299,7 @@ func (node *Node) Prefixes() []netip.Prefix {
 
 // ExitRoutes returns the node's approved exit routes (0.0.0.0/0
 // and/or ::/0). Consumed unconditionally by RoutesForPeer when the
-// viewer uses an exit node; excluded from CanAccessRoute which only
+// viewer uses an exit node; excluded from [Node.CanAccessRoute] which only
 // handles non-exit routing.
 func (node *Node) ExitRoutes() []netip.Prefix {
 	var routes []netip.Prefix
@@ -315,7 +315,7 @@ func (node *Node) ExitRoutes() []netip.Prefix {
 
 // IsExitNode reports whether the node has any approved exit routes.
 // Approval is required: an advertised-but-unapproved exit route does
-// not make the node an exit node (fix for #3169).
+// not make the node an exit node.
 func (node *Node) IsExitNode() bool {
 	return len(node.ExitRoutes()) > 0
 }
@@ -340,9 +340,9 @@ func (node *Node) InIPSet(set *netipx.IPSet) bool {
 }
 
 // AppendToIPSet adds all IP addresses of the node to the given
-// netipx.IPSetBuilder. For identity-based aliases (tags, users,
+// [netipx.IPSetBuilder]. For identity-based aliases (tags, users,
 // groups, autogroups), both IPv4 and IPv6 must be included to
-// match Tailscale's behavior in the FilterRule wire format.
+// match Tailscale's behavior in the [tailcfg.FilterRule] wire format.
 func (node *Node) AppendToIPSet(build *netipx.IPSetBuilder) {
 	if node.IPv4 != nil {
 		build.Add(*node.IPv4)
@@ -357,7 +357,7 @@ func (node *Node) AppendToIPSet(build *netipx.IPSetBuilder) {
 // matchers. A node owns two source identities for ACL purposes:
 //   - its own IPs (regular peer membership)
 //   - any approved subnet routes it advertises (subnet-router-as-src,
-//     used for subnet-to-subnet ACLs — issue #3157)
+//     used for subnet-to-subnet ACLs)
 //
 // Either identity matching a rule's src — combined with the dst
 // matching node2's IPs, node2's approved subnet routes, or "the
@@ -396,18 +396,18 @@ func (node *Node) CanAccess(matchers []matcher.Match, node2 *Node) bool {
 // CanAccessRoute determines whether a specific route prefix should be
 // visible to this node based on the given matchers.
 //
-// Unlike CanAccess, this function intentionally does NOT check
-// DestsIsTheInternet(). Exit routes (0.0.0.0/0, ::/0) are handled by
+// Unlike [Node.CanAccess], this function intentionally does NOT check
+// [matcher.Match.DestsIsTheInternet]. Exit routes (0.0.0.0/0, ::/0) are handled by
 // RoutesForPeer (state.go) which adds them unconditionally from
-// ExitRoutes(), not through ACL-based route filtering. The
-// DestsIsTheInternet check in CanAccess exists solely for peer
+// [Node.ExitRoutes], not through ACL-based route filtering. The
+// [matcher.Match.DestsIsTheInternet] check in [Node.CanAccess] exists solely for peer
 // visibility determination (should two nodes see each other), which
 // is a separate concern from route prefix authorization.
 //
 // Additionally, autogroup:internet is explicitly skipped during filter
 // rule compilation (filter.go), so no matchers ever contain "the
 // internet" from internet-targeted ACLs. Wildcard "*" dests produce
-// matchers where DestsOverlapsPrefixes(0.0.0.0/0) already returns
+// matchers where [matcher.Match.DestsOverlapsPrefixes](0.0.0.0/0) already returns
 // true, so the check would be redundant for that case.
 func (node *Node) CanAccessRoute(matchers []matcher.Match, route netip.Prefix) bool {
 	src := node.IPs()
@@ -500,8 +500,8 @@ func (node *Node) Proto() *v1.Node {
 	}
 
 	// Set User field based on node ownership
-	// Note: User will be set to TaggedDevices in the gRPC layer (grpcv1.go)
-	// for proper MapResponse formatting
+	// Note: User will be set to [TaggedDevices] in the gRPC layer (grpcv1.go)
+	// for proper [tailcfg.MapResponse] formatting
 	if node.User != nil {
 		nodeProto.User = node.User.Proto()
 	}
@@ -548,8 +548,8 @@ func (node *Node) GetFQDN(baseDomain string) (string, error) {
 }
 
 // AnnouncedRoutes returns the list of routes the node announces, as
-// reported by the client in Hostinfo.RoutableIPs. Announcement alone
-// does not grant visibility — see SubnetRoutes for approval-gated
+// reported by the client in [tailcfg.Hostinfo.RoutableIPs]. Announcement alone
+// does not grant visibility — see [Node.SubnetRoutes] for approval-gated
 // access.
 func (node *Node) AnnouncedRoutes() []netip.Prefix {
 	if node.Hostinfo == nil {
@@ -560,13 +560,13 @@ func (node *Node) AnnouncedRoutes() []netip.Prefix {
 }
 
 // SubnetRoutes returns the list of routes (excluding exit routes) that the node
-// announces and are approved. Also used by CanAccess and CanAccessRoute as part
-// of the subnet-router-as-source identity (issue #3157).
+// announces and are approved. Also used by [Node.CanAccess] and [Node.CanAccessRoute] as part
+// of the subnet-router-as-source identity.
 //
 // IMPORTANT: This method is used for internal data structures and should NOT be
 // used for the gRPC Proto conversion. For Proto, SubnetRoutes must be populated
 // manually with PrimaryRoutes to ensure it includes only routes actively served
-// by the node. See the comment in Proto() method and the implementation in
+// by the node. See the comment in [Node.Proto] method and the implementation in
 // grpcv1.go/nodesToProto.
 func (node *Node) SubnetRoutes() []netip.Prefix {
 	var routes []netip.Prefix
@@ -589,7 +589,7 @@ func (node *Node) IsSubnetRouter() bool {
 	return len(node.SubnetRoutes()) > 0
 }
 
-// AllApprovedRoutes returns the combination of SubnetRoutes and ExitRoutes.
+// AllApprovedRoutes returns the combination of [Node.SubnetRoutes] and [Node.ExitRoutes].
 func (node *Node) AllApprovedRoutes() []netip.Prefix {
 	return append(node.SubnetRoutes(), node.ExitRoutes()...)
 }
@@ -598,9 +598,9 @@ func (node *Node) String() string {
 	return node.Hostname
 }
 
-// MarshalZerologObject implements zerolog.LogObjectMarshaler for safe logging.
-// This method is used with zerolog's EmbedObject() for flat field embedding
-// or Object() for nested logging when multiple nodes are logged.
+// MarshalZerologObject implements [zerolog.LogObjectMarshaler] for safe logging.
+// This method is used with [zerolog.Event.EmbedObject] for flat field embedding
+// or [zerolog.Event.Object] for nested logging when multiple nodes are logged.
 func (node *Node) MarshalZerologObject(e *zerolog.Event) {
 	if node == nil {
 		return
@@ -628,11 +628,11 @@ func (node *Node) MarshalZerologObject(e *zerolog.Event) {
 	}
 }
 
-// PeerChangeFromMapRequest takes a MapRequest and compares it to the node
-// to produce a PeerChange struct that can be used to updated the node and
+// PeerChangeFromMapRequest takes a [tailcfg.MapRequest] and compares it to the node
+// to produce a [tailcfg.PeerChange] struct that can be used to updated the node and
 // inform peers about smaller changes to the node.
 // When a field is added to this function, remember to also add it to:
-// - node.ApplyPeerChange
+// - [Node.ApplyPeerChange]
 // - logTracePeerChange in poll.go.
 func (node *Node) PeerChangeFromMapRequest(req tailcfg.MapRequest) tailcfg.PeerChange {
 	ret := tailcfg.PeerChange{
@@ -714,7 +714,7 @@ func (node *Node) RegisterMethodToV1Enum() v1.RegisterMethod {
 	}
 }
 
-// ApplyPeerChange takes a PeerChange struct and updates the node.
+// ApplyPeerChange takes a [tailcfg.PeerChange] struct and updates the node.
 func (node *Node) ApplyPeerChange(change *tailcfg.PeerChange) {
 	if change.Key != nil {
 		node.NodeKey = *change.Key
@@ -812,8 +812,8 @@ func (node *Node) DebugString() string {
 	return sb.String()
 }
 
-// MarshalZerologObject implements zerolog.LogObjectMarshaler for NodeView.
-// This delegates to the underlying Node's implementation.
+// MarshalZerologObject implements [zerolog.LogObjectMarshaler] for [NodeView].
+// This delegates to the underlying [Node]'s implementation.
 func (nv NodeView) MarshalZerologObject(e *zerolog.Event) {
 	if !nv.Valid() {
 		return
@@ -823,8 +823,8 @@ func (nv NodeView) MarshalZerologObject(e *zerolog.Event) {
 }
 
 // Owner returns the owner for display purposes.
-// For tagged nodes, returns TaggedDevices. For user-owned nodes, returns the user.
-// Returns an invalid UserView if the node is in an orphaned state (no tags, no user).
+// For tagged nodes, returns [TaggedDevices]. For user-owned nodes, returns the user.
+// Returns an invalid [UserView] if the node is in an orphaned state (no tags, no user).
 // Callers should check .Valid() on the result before accessing fields.
 func (nv NodeView) Owner() UserView {
 	if nv.IsTagged() {
@@ -950,8 +950,8 @@ func (nv NodeView) IsEphemeral() bool {
 	return nv.ж.IsEphemeral()
 }
 
-// PeerChangeFromMapRequest takes a MapRequest and compares it to the node
-// to produce a PeerChange struct that can be used to updated the node and
+// PeerChangeFromMapRequest takes a [tailcfg.MapRequest] and compares it to the node
+// to produce a [tailcfg.PeerChange] struct that can be used to updated the node and
 // inform peers about smaller changes to the node.
 func (nv NodeView) PeerChangeFromMapRequest(req tailcfg.MapRequest) tailcfg.PeerChange {
 	if !nv.Valid() {
@@ -998,7 +998,7 @@ func (nv NodeView) RequestTags() []string {
 	return nv.Hostinfo().RequestTags().AsSlice()
 }
 
-// Proto converts the NodeView to a protobuf representation.
+// Proto converts the [NodeView] to a protobuf representation.
 func (nv NodeView) Proto() *v1.Node {
 	if !nv.Valid() {
 		return nil
@@ -1025,8 +1025,8 @@ func (nv NodeView) HasTag(tag string) bool {
 	return nv.ж.HasTag(tag)
 }
 
-// TypedUserID returns the UserID as a typed UserID type.
-// Returns 0 if UserID is nil or node is invalid.
+// TypedUserID returns the [Node.UserID] as a typed [UserID] type.
+// Returns 0 if [Node.UserID] is nil or node is invalid.
 func (nv NodeView) TypedUserID() UserID {
 	if !nv.Valid() {
 		return 0
@@ -1036,8 +1036,8 @@ func (nv NodeView) TypedUserID() UserID {
 }
 
 // TailscaleUserID returns the user ID to use in Tailscale protocol.
-// Tagged nodes always return TaggedDevices.ID, user-owned nodes return their actual UserID.
-// Returns 0 for nodes in an orphaned state (no tags, no UserID).
+// Tagged nodes always return [TaggedDevices].ID, user-owned nodes return their actual [Node.UserID].
+// Returns 0 for nodes in an orphaned state (no tags, no [Node.UserID]).
 func (nv NodeView) TailscaleUserID() tailcfg.UserID {
 	if !nv.Valid() {
 		return 0
@@ -1056,7 +1056,7 @@ func (nv NodeView) TailscaleUserID() tailcfg.UserID {
 	return tailcfg.UserID(int64(nv.UserID().Get()))
 }
 
-// Prefixes returns the node IPs as netip.Prefix.
+// Prefixes returns the node IPs as [netip.Prefix].
 func (nv NodeView) Prefixes() []netip.Prefix {
 	if !nv.Valid() {
 		return nil
@@ -1118,7 +1118,7 @@ func equalPrefixesUnordered(a, b []netip.Prefix) bool {
 
 // HasPolicyChange reports whether the node has changes that affect
 // policy evaluation. Includes approved subnet routes because they act
-// as source identity in CanAccess for subnet-to-subnet ACLs (#3157).
+// as source identity in [Node.CanAccess] for subnet-to-subnet ACLs.
 func (nv NodeView) HasPolicyChange(other NodeView) bool {
 	if nv.UserID() != other.UserID() {
 		return true
@@ -1139,7 +1139,7 @@ func (nv NodeView) HasPolicyChange(other NodeView) bool {
 	return false
 }
 
-// TailNodes converts a slice of NodeViews into Tailscale tailcfg.Nodes.
+// TailNodes converts a slice of [NodeView] values into Tailscale [tailcfg.Node] values.
 func TailNodes(
 	nodes views.Slice[NodeView],
 	capVer tailcfg.CapabilityVersion,
@@ -1162,7 +1162,7 @@ func TailNodes(
 	return tNodes, nil
 }
 
-// TailNode converts a NodeView into a Tailscale tailcfg.Node.
+// TailNode converts a [NodeView] into a Tailscale [tailcfg.Node].
 //
 // selfPolicyCaps is the per-node CapMap from [policy.PolicyManager.NodeCapMap]
 // and is merged into the baseline. Pass it when building the self view of the

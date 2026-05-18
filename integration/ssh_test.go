@@ -459,7 +459,7 @@ func doSSHWithRetryAsUser(
 	)
 
 	if retry {
-		// Use assert.EventuallyWithT to retry SSH connections for success cases
+		// Use [assert.EventuallyWithT] to retry SSH connections for success cases
 		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 			result, stderr, err = client.Execute(command)
 
@@ -706,7 +706,7 @@ func findSSHCheckAuthID(t *testing.T, headscale ControlServer) string {
 	return authID
 }
 
-// sshCheckPolicy returns a policy with SSH "check" mode for group:integration-test
+// sshCheckPolicy returns a [policyv2.Policy] with SSH "check" mode for group:integration-test
 // targeting autogroup:member and autogroup:tagged destinations.
 func sshCheckPolicy() *policyv2.Policy {
 	return &policyv2.Policy{
@@ -739,7 +739,7 @@ func sshCheckPolicy() *policyv2.Policy {
 	}
 }
 
-// sshCheckPolicyWithPeriod returns a policy with SSH "check" mode and a
+// sshCheckPolicyWithPeriod returns a [policyv2.Policy] with SSH "check" mode and a
 // specified checkPeriod for session duration.
 func sshCheckPolicyWithPeriod(period time.Duration) *policyv2.Policy {
 	return &policyv2.Policy{

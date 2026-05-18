@@ -30,7 +30,7 @@ type ExtraRecordsMan struct {
 	hashes   map[string][32]byte
 }
 
-// NewExtraRecordsManager creates a new ExtraRecordsMan and starts watching the file at the given path.
+// NewExtraRecordsManager creates a new [ExtraRecordsMan] and starts watching the file at the given path.
 func NewExtraRecordsManager(path string) (*ExtraRecordsMan, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -177,7 +177,7 @@ func (e *ExtraRecordsMan) updateRecords() {
 	e.updateCh <- e.records.Slice()
 }
 
-// readExtraRecordsFromPath reads a JSON file of tailcfg.DNSRecord
+// readExtraRecordsFromPath reads a JSON file of [tailcfg.DNSRecord]
 // and returns the records and the hash of the file.
 func readExtraRecordsFromPath(path string) ([]tailcfg.DNSRecord, [32]byte, error) {
 	b, err := os.ReadFile(path)

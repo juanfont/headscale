@@ -27,7 +27,7 @@ import (
 
 // errPolicyTestsFailed and errSSHPolicyTestsFailed share the
 // "test(s) failed" prefix but stay distinct so callers can use
-// errors.Is to tell ACL-test and SSH-test failures apart.
+// [errors.Is] to tell ACL-test and SSH-test failures apart.
 var (
 	errPolicyTestsFailed    = errors.New("test(s) failed")
 	errSSHPolicyTestsFailed = errors.New("test(s) failed")
@@ -55,7 +55,7 @@ type PolicyTest struct {
 
 // SSHPolicyTest is one entry in the policy's `sshTests` block. The
 // accept/deny/check arrays carry usernames, not destinations — every
-// listed user is asserted against every entry in Dst.
+// listed user is asserted against every entry in [SSHPolicyTest.Dst].
 type SSHPolicyTest struct {
 	// Src is a single source alias (user, group, tag, host, or IP).
 	Src Alias `json:"src"`
@@ -78,7 +78,7 @@ type SSHPolicyTest struct {
 }
 
 // SSHTestDestinations is the typed list of destination aliases an
-// sshTests entry targets. validateSSHTestDestination enforces the
+// sshTests entry targets. [validateSSHTestDestination] enforces the
 // SSH-specific shape rules (no :port, no CIDR, no autogroup:internet,
 // known tag).
 type SSHTestDestinations []Alias
@@ -100,7 +100,7 @@ func (d *SSHTestDestinations) UnmarshalJSON(b []byte) error {
 }
 
 // UnmarshalJSON parses each typed field. An empty src lands as a nil
-// Alias so validation surfaces ErrSSHTestEmptySrc rather than a parser
+// [Alias] so validation surfaces [ErrSSHTestEmptySrc] rather than a parser
 // failure.
 func (t *SSHPolicyTest) UnmarshalJSON(b []byte) error {
 	var raw struct {
@@ -134,7 +134,7 @@ func (t *SSHPolicyTest) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// PolicyTestResult is the outcome of a single PolicyTest.
+// PolicyTestResult is the outcome of a single [PolicyTest].
 type PolicyTestResult struct {
 	Src    string   `json:"src"`
 	Proto  Protocol `json:"proto,omitempty"`
@@ -216,7 +216,7 @@ func (pm *PolicyManager) RunTests() error {
 }
 
 // evaluateTests runs the `tests` block against a fresh compilation of pol.
-// It is the user-write sandbox: the live PolicyManager state is left
+// It is the user-write sandbox: the live [PolicyManager] state is left
 // untouched, so a failing test rejects the write without side effects.
 func evaluateTests(pol *Policy, users []types.User, nodes views.Slice[types.NodeView]) error {
 	if pol == nil || len(pol.Tests) == 0 {
@@ -262,7 +262,7 @@ func runPolicyTests(pol *Policy, filter []tailcfg.FilterRule, users []types.User
 	return results
 }
 
-// runPolicyTest evaluates one PolicyTest.
+// runPolicyTest evaluates one [PolicyTest].
 func runPolicyTest(test PolicyTest, pol *Policy, filter []tailcfg.FilterRule, users []types.User, nodes views.Slice[types.NodeView]) PolicyTestResult {
 	res := PolicyTestResult{
 		Src:    test.Src,
@@ -322,8 +322,8 @@ func runPolicyTest(test PolicyTest, pol *Policy, filter []tailcfg.FilterRule, us
 	return res
 }
 
-// resolveTestSource resolves the Src alias of a PolicyTest into a slice of
-// netip.Prefix. parseAlias + Alias.Resolve cover every alias type the rest
+// resolveTestSource resolves the Src alias of a [PolicyTest] into a slice of
+// [netip.Prefix]. [parseAlias] + [Alias.Resolve] cover every alias type the rest
 // of the policy engine supports, so tests inherit alias semantics for free.
 func resolveTestSource(src string, pol *Policy, users []types.User, nodes views.Slice[types.NodeView]) ([]netip.Prefix, error) {
 	alias, err := parseAlias(src)
@@ -377,13 +377,13 @@ func evalReachability(srcPrefixes []netip.Prefix, dst string, proto Protocol, po
 	return true, nil
 }
 
-// parseDestinationAlias is a thin wrapper over AliasWithPorts.UnmarshalJSON
+// parseDestinationAlias is a thin wrapper over [AliasWithPorts.UnmarshalJSON]
 // so callers can hand it a bare `"host:port"` string without re-implementing
 // the parse logic.
 func parseDestinationAlias(dst string) (*AliasWithPorts, error) {
 	var awp AliasWithPorts
 
-	// AliasWithPorts.UnmarshalJSON expects a quoted JSON string, so wrap.
+	// [AliasWithPorts.UnmarshalJSON] expects a quoted JSON string, so wrap.
 	err := awp.UnmarshalJSON([]byte(`"` + dst + `"`))
 	if err != nil {
 		return nil, err
@@ -425,9 +425,9 @@ func srcReachesDst(src netip.Prefix, dstPrefixes []netip.Prefix, ports []tailcfg
 }
 
 // ruleMatchesSource reports whether the rule's source list contains src.
-// SrcIPs may be CIDR, single addresses, IP ranges (`a-b`), or `*`; we use
-// util.ParseIPSet to cover all of those uniformly. Unparseable entries
-// are skipped (the rule compiler emits well-formed strings, so this is
+// [tailcfg.FilterRule.SrcIPs] may be CIDR, single addresses, IP ranges (`a-b`),
+// or `*`; we use [util.ParseIPSet] to cover all of those uniformly. Unparseable
+// entries are skipped (the rule compiler emits well-formed strings, so this is
 // defence-in-depth, not error handling).
 func ruleMatchesSource(rule tailcfg.FilterRule, src netip.Prefix) bool {
 	for _, raw := range rule.SrcIPs {
@@ -445,9 +445,10 @@ func ruleMatchesSource(rule tailcfg.FilterRule, src netip.Prefix) bool {
 }
 
 // ruleMatchesProto reports whether the rule permits any of requestedProtos.
-// An unset rule.IPProto means "any protocol" and matches everything.
-// requestedProtos is the per-test protocol set: a single proto for an
-// explicit test.Proto, or the default set when test.Proto is empty.
+// An unset [tailcfg.FilterRule.IPProto] means "any protocol" and matches
+// everything. requestedProtos is the per-test protocol set: a single proto
+// for an explicit [PolicyTest.Proto], or the default set when
+// [PolicyTest.Proto] is empty.
 func ruleMatchesProto(rule tailcfg.FilterRule, requestedProtos []int) bool {
 	if len(rule.IPProto) == 0 {
 		return true
@@ -479,7 +480,7 @@ func ruleAllowsAnyDest(rule tailcfg.FilterRule, dstPrefixes []netip.Prefix, port
 	return false
 }
 
-// destEntryMatchesPrefixes reports whether the rule's NetPortRange.IP
+// destEntryMatchesPrefixes reports whether the rule's [tailcfg.NetPortRange.IP]
 // (CIDR, single IP, IP range, or "*") covers any prefix in dstPrefixes.
 func destEntryMatchesPrefixes(dp tailcfg.NetPortRange, dstPrefixes []netip.Prefix) bool {
 	set, err := util.ParseIPSet(dp.IP, nil)

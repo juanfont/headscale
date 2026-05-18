@@ -197,7 +197,7 @@ func getCapabilityVersions(ctx context.Context) (map[string]tailcfg.CapabilityVe
 	minorVersions := getMinorVersionsFromTags(tags)
 	log.Printf("Found %d minor versions", len(minorVersions))
 
-	// Regular expression to find the CurrentCapabilityVersion line
+	// Regular expression to find the [tailcfg.CurrentCapabilityVersion] line
 	re := regexp.MustCompile(`const CurrentCapabilityVersion CapabilityVersion = (\d+)`)
 
 	versions := make(map[string]tailcfg.CapabilityVersion)
@@ -231,7 +231,7 @@ func getCapabilityVersions(ctx context.Context) (map[string]tailcfg.CapabilityVe
 			continue
 		}
 
-		// Find the CurrentCapabilityVersion
+		// Find the [tailcfg.CurrentCapabilityVersion]
 		matches := re.FindStringSubmatch(string(body))
 		if len(matches) > 1 {
 			capabilityVersionStr := matches[1]
@@ -306,11 +306,11 @@ func writeCapabilityVersionsToFile(versions map[string]tailcfg.CapabilityVersion
 
 	content.WriteString("}\n\n")
 
-	// Add the SupportedMajorMinorVersions constant
+	// Add the [capver.SupportedMajorMinorVersions] constant
 	content.WriteString("// SupportedMajorMinorVersions is the number of major.minor Tailscale versions supported.\n")
 	fmt.Fprintf(&content, "const SupportedMajorMinorVersions = %d\n\n", supportedMajorMinorVersions)
 
-	// Add the MinSupportedCapabilityVersion constant
+	// Add the [capver.MinSupportedCapabilityVersion] constant
 	content.WriteString("// MinSupportedCapabilityVersion represents the minimum capability version\n")
 	content.WriteString("// supported by this Headscale instance (latest 10 minor versions)\n")
 	fmt.Fprintf(&content, "const MinSupportedCapabilityVersion tailcfg.CapabilityVersion = %d\n", minSupportedCapVer)
@@ -348,7 +348,7 @@ func writeTestDataFile(versions map[string]tailcfg.CapabilityVersion, minSupport
 	content.WriteString("// Generated DO NOT EDIT\n\n")
 	content.WriteString("import \"tailscale.com/tailcfg\"\n\n")
 
-	// Generate complete test struct for TailscaleLatestMajorMinor
+	// Generate complete test struct for [capver.TailscaleLatestMajorMinor]
 	content.WriteString("var tailscaleLatestMajorMinorTests = []struct {\n")
 	content.WriteString("\tn        int\n")
 	content.WriteString("\tstripV   bool\n")
@@ -409,7 +409,7 @@ func writeTestDataFile(versions map[string]tailcfg.CapabilityVersion, minSupport
 		}
 	}
 
-	// Generate complete test struct for CapVerMinimumTailscaleVersion
+	// Generate complete test struct for [capver.CapVerMinimumTailscaleVersion]
 	content.WriteString("var capVerMinimumTailscaleVersionTests = []struct {\n")
 	content.WriteString("\tinput    tailcfg.CapabilityVersion\n")
 	content.WriteString("\texpected string\n")

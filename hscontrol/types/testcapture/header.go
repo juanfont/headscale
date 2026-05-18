@@ -6,7 +6,7 @@ import (
 )
 
 // CommentHeader returns the // comment header that gets prepended to
-// a Capture file when it is written. The header is purely
+// a [Capture] file when it is written. The header is purely
 // informational; consumers ignore it. Format:
 //
 //	<TestID>
@@ -20,7 +20,7 @@ import (
 //	schema version: <SchemaVersion>
 //
 // Both `tool_version` and `schema_version` are also stored as
-// first-class JSON fields on the Capture struct; the comment lines
+// first-class JSON fields on the [Capture] struct; the comment lines
 // exist purely so the values are visible at a glance without
 // parsing the file.
 //
@@ -68,8 +68,8 @@ func CommentHeader(c *Capture) string {
 // captures at all.
 //
 // The phrasing depends on which fields the capture uses:
-//   - SSH captures populate SSHRules
-//   - other captures populate PacketFilterRules
+//   - SSH captures populate [NodeCapture.SSHRules]
+//   - other captures populate [NodeCapture.PacketFilterRules]
 //
 // If both fields appear (mixed/unusual), filter rules wins.
 func captureStats(c *Capture) string {

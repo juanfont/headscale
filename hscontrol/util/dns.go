@@ -23,7 +23,7 @@ const (
 )
 
 // DNS validation errors. Hostname-side validation lives on
-// `tailscale.com/util/dnsname` and NodeStore collision handling; only
+// `tailscale.com/util/dnsname` and [state.NodeStore] collision handling; only
 // the username-side errors stay in this package.
 var (
 	ErrUsernameTooShort        = errors.New("username must be at least 2 characters long")
@@ -71,12 +71,12 @@ func ValidateUsername(username string) error {
 	return nil
 }
 
-// generateMagicDNSRootDomains generates a list of DNS entries to be included in `Routes` in `MapResponse`.
+// generateMagicDNSRootDomains generates a list of DNS entries to be included in [tailcfg.DNSConfig.Routes] in [tailcfg.MapResponse].
 // This list of reverse DNS entries instructs the OS on what subnets and domains the Tailscale embedded DNS
 // server (listening in 100.100.100.100 udp/53) should be used for.
 //
 // Tailscale.com includes in the list:
-// - the `BaseDomain` of the user
+// - the [types.DNSConfig.BaseDomain] of the user
 // - the reverse DNS entry for IPv6 (0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa., see below more on IPv6)
 // - the reverse DNS entries for the IPv4 subnets covered by the user's `IPPrefix`.
 //   In the public SaaS this is [64-127].100.in-addr.arpa.
@@ -93,7 +93,7 @@ func ValidateUsername(username string) error {
 // From the netmask we can find out the wildcard bits (the bits that are not set in the netmask).
 // This allows us to then calculate the subnets included in the subsequent class block and generate the entries.
 func GenerateIPv4DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
-	// Conversion to the std lib net.IPnet, a bit easier to operate
+	// Conversion to the std lib [net.IPNet], a bit easier to operate
 	netRange := netipx.PrefixIPNet(ipPrefix)
 	maskBits, _ := netRange.Mask.Size()
 
@@ -130,12 +130,12 @@ func GenerateIPv4DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	return fqdns
 }
 
-// generateMagicDNSRootDomains generates a list of DNS entries to be included in `Routes` in `MapResponse`.
+// generateMagicDNSRootDomains generates a list of DNS entries to be included in [tailcfg.DNSConfig.Routes] in [tailcfg.MapResponse].
 // This list of reverse DNS entries instructs the OS on what subnets and domains the Tailscale embedded DNS
 // server (listening in 100.100.100.100 udp/53) should be used for.
 //
 // Tailscale.com includes in the list:
-// - the `BaseDomain` of the user
+// - the [types.DNSConfig.BaseDomain] of the user
 // - the reverse DNS entry for IPv6 (0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa., see below more on IPv6)
 // - the reverse DNS entries for the IPv4 subnets covered by the user's `IPPrefix`.
 //   In the public SaaS this is [64-127].100.in-addr.arpa.

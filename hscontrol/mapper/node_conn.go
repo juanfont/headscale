@@ -17,10 +17,10 @@ import (
 	"tailscale.com/tailcfg"
 )
 
-// errNoActiveConnections is returned by send when a node has no active
-// connections (disconnected but kept in the batcher for rapid reconnection).
-// Callers must not update peer tracking state (lastSentPeers) after this
-// error because the data was never delivered to any client.
+// errNoActiveConnections is returned by [multiChannelNodeConn.send] when a node
+// has no active connections (disconnected but kept in the batcher for rapid
+// reconnection). Callers must not update peer tracking state (lastSentPeers)
+// after this error because the data was never delivered to any client.
 var errNoActiveConnections = errors.New("no active connections")
 
 // connectionEntry represents a single connection to a node.
@@ -51,9 +51,9 @@ type multiChannelNodeConn struct {
 
 	// workMu serializes change processing for this node across batch ticks.
 	// Without this, two workers could process consecutive ticks' bundles
-	// concurrently, causing out-of-order MapResponse delivery and races
-	// on lastSentPeers (Clear+Store in updateSentPeers vs Range in
-	// computePeerDiff).
+	// concurrently, causing out-of-order [tailcfg.MapResponse] delivery and races
+	// on lastSentPeers (Clear+Store in [multiChannelNodeConn.updateSentPeers] vs
+	// Range in [multiChannelNodeConn.computePeerDiff]).
 	workMu sync.Mutex
 
 	closeOnce   sync.Once
@@ -62,7 +62,7 @@ type multiChannelNodeConn struct {
 	// disconnectedAt records when the last connection was removed.
 	// nil means the node is considered connected (or newly created);
 	// non-nil means the node disconnected at the stored timestamp.
-	// Used by cleanupOfflineNodes to evict stale entries.
+	// Used by [Batcher.cleanupOfflineNodes] to evict stale entries.
 	disconnectedAt atomic.Pointer[time.Time]
 
 	// lastSentPeers tracks which peers were last sent to this node.
@@ -182,8 +182,8 @@ func (mc *multiChannelNodeConn) markConnected() {
 }
 
 // markDisconnected records the current time as the moment the node
-// lost its last connection. Used by cleanupOfflineNodes to determine
-// how long the node has been offline.
+// lost its last connection. Used by [Batcher.cleanupOfflineNodes] to
+// determine how long the node has been offline.
 func (mc *multiChannelNodeConn) markDisconnected() {
 	now := time.Now()
 	mc.disconnectedAt.Store(&now)
@@ -235,8 +235,8 @@ func (mc *multiChannelNodeConn) drainPending() []change.Change {
 // connection can block for up to 50ms), the method snapshots connections under
 // a read lock, sends without any lock held, then write-locks only to remove
 // failures. New connections added between the snapshot and cleanup are safe:
-// they receive a full initial map via AddNode, so missing this update causes
-// no data loss.
+// they receive a full initial map via [Batcher.AddNode], so missing this update
+// causes no data loss.
 func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 	if data == nil {
 		return nil
@@ -389,7 +389,7 @@ func (mc *multiChannelNodeConn) version() tailcfg.CapabilityVersion {
 	return mc.connections[0].version
 }
 
-// updateSentPeers updates the tracked peer state based on a sent MapResponse.
+// updateSentPeers updates the tracked peer state based on a sent [tailcfg.MapResponse].
 // This must be called after successfully sending a response to keep track of
 // what the client knows about, enabling accurate diffs for future updates.
 func (mc *multiChannelNodeConn) updateSentPeers(resp *tailcfg.MapResponse) {

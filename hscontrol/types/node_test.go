@@ -113,7 +113,7 @@ func Test_NodeCanAccess(t *testing.T) {
 			},
 			want: true,
 		},
-		// Subnet-to-subnet tests for issue #3157.
+		// Subnet-to-subnet tests.
 		// When ACL src and dst are both subnet CIDRs, subnet
 		// routers advertising those subnets must see each other.
 		{
@@ -153,7 +153,7 @@ func Test_NodeCanAccess(t *testing.T) {
 		{
 			// With a unidirectional ACL (src=A→dst=B), the dst
 			// router cannot access the src router. Bidirectional
-			// peer visibility comes from ReduceNodes checking
+			// peer visibility comes from [policy.ReduceNodes] checking
 			// both A.CanAccess(B) || B.CanAccess(A).
 			name: "subnet-to-subnet-unidirectional-dst-cannot-access-src-3157",
 			node1: Node{
@@ -550,7 +550,6 @@ func TestPeerChangeFromMapRequest(t *testing.T) {
 	}
 }
 
-
 func TestApplyPeerChange(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -708,7 +707,7 @@ func TestNodeRegisterMethodToV1Enum(t *testing.T) {
 	}
 }
 
-// TestHasNetworkChanges tests the NodeView method for detecting
+// TestHasNetworkChanges tests the [NodeView] method for detecting
 // when a node's network properties have changed.
 func TestHasNetworkChanges(t *testing.T) {
 	mustIPPtr := func(s string) *netip.Addr {

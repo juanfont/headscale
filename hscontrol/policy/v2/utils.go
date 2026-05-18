@@ -31,8 +31,8 @@ var (
 //
 // Brackets are only accepted around IPv6 addresses, not IPv4, hostnames, or other alias types.
 // Bracket stripping reduces both forms to bare "addr:port" or "addr/prefix:port",
-// which the normal LastIndex(":") split handles correctly because port strings
-// never contain colons.
+// which the normal [strings.LastIndex] of ":" split handles correctly because
+// port strings never contain colons.
 func splitDestinationAndPort(input string) (string, string, error) {
 	// Handle RFC 3986 bracketed IPv6 (e.g. "[::1]:80" or "[fd7a::1]/128:80,443").
 	// Strip brackets after validation and fall through to normal parsing.
@@ -82,7 +82,7 @@ func splitDestinationAndPort(input string) (string, string, error) {
 	return destination, port, nil
 }
 
-// parsePortRange parses a port definition string and returns a slice of PortRange structs.
+// parsePortRange parses a port definition string and returns a slice of [tailcfg.PortRange] structs.
 func parsePortRange(portDef string) ([]tailcfg.PortRange, error) {
 	if portDef == "*" {
 		return []tailcfg.PortRange{tailcfg.PortRangeAny}, nil

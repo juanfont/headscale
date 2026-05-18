@@ -735,10 +735,11 @@ func TestTagPropagationToPeerMap(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, matchersForUser2, "MatchersForNode should return non-empty matchers (at least self-access rule)")
 
-	// Test ReduceNodes logic with the updated nodes and matchers
-	// This is what buildTailPeers does - it takes peers from ListPeers (which might include user1)
-	// and filters them using ReduceNodes with the updated matchers
-	// Inline the ReduceNodes logic to avoid import cycle
+	// Test [policy.ReduceNodes] logic with the updated nodes and matchers
+	// This is what [mapper.MapResponseBuilder.buildTailPeers] does - it takes peers from
+	// [state.State.ListPeers] (which might include user1) and filters them using
+	// [policy.ReduceNodes] with the updated matchers
+	// Inline the [policy.ReduceNodes] logic to avoid import cycle
 	user2View := user2Node.View()
 	user1UpdatedView := user1NodeUpdated.View()
 

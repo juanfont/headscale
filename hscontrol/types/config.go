@@ -68,7 +68,7 @@ type HARouteConfig struct {
 	ProbeInterval time.Duration
 
 	// ProbeTimeout is the maximum time to wait for a probe response
-	// before declaring a node unhealthy. Must be less than ProbeInterval.
+	// before declaring a node unhealthy. Must be less than [HARouteConfig.ProbeInterval].
 	ProbeTimeout time.Duration
 }
 
@@ -120,7 +120,7 @@ type Config struct {
 
 	// DNSConfig is the headscale representation of the DNS configuration.
 	// It is kept in the config update for some settings that are
-	// not directly converted into a tailcfg.DNSConfig.
+	// not directly converted into a [tailcfg.DNSConfig].
 	DNSConfig DNSConfig
 
 	// TailcfgDNSConfig is the tailcfg representation of the DNS configuration,
@@ -337,7 +337,7 @@ type Tuning struct {
 	// NodeStoreBatchTimeout is the maximum time to wait before processing a
 	// partial batch of node operations.
 	//
-	// When NodeStoreBatchSize operations haven't accumulated, this timeout ensures
+	// When [Tuning.NodeStoreBatchSize] operations haven't accumulated, this timeout ensures
 	// writes don't wait indefinitely. The batch processes when either the size
 	// threshold is reached OR this timeout expires, whichever comes first.
 	//
@@ -355,8 +355,8 @@ func validatePKCEMethod(method string) error {
 	return nil
 }
 
-// Domain returns the hostname/domain part of the ServerURL.
-// If the ServerURL is not a valid URL, it returns the BaseDomain.
+// Domain returns the hostname/domain part of the [Config.ServerURL].
+// If the [Config.ServerURL] is not a valid URL, it returns the [Config.BaseDomain].
 func (c *Config) Domain() string {
 	u, err := url.Parse(c.ServerURL)
 	if err != nil {
@@ -369,7 +369,7 @@ func (c *Config) Domain() string {
 // LoadConfig prepares and loads the Headscale configuration into Viper.
 // This means it sets the default values, reads the configuration file and
 // environment variables, and handles deprecated configuration options.
-// It has to be called before LoadServerConfig and LoadCLIConfig.
+// It has to be called before [LoadServerConfig] and [LoadCLIConfig].
 // The configuration is not validated and the caller should check for errors
 // using a validation function.
 func LoadConfig(path string, isFile bool) error {

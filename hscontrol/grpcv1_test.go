@@ -155,7 +155,7 @@ func TestSetTags_Conversion(t *testing.T) {
 	}
 }
 
-// TestSetTags_TaggedNode tests that SetTags correctly identifies tagged nodes
+// TestSetTags_TaggedNode tests that [headscaleV1APIServer.SetTags] correctly identifies tagged nodes
 // and doesn't reject them with the "user-owned nodes" error.
 // Note: This test doesn't validate ACL tag authorization - that's tested elsewhere.
 func TestSetTags_TaggedNode(t *testing.T) {
@@ -193,7 +193,7 @@ func TestSetTags_TaggedNode(t *testing.T) {
 	// Create API server instance
 	apiServer := newHeadscaleV1APIServer(app)
 
-	// Test: SetTags should work on tagged nodes.
+	// Test: [headscaleV1APIServer.SetTags] should work on tagged nodes.
 	resp, err := apiServer.SetTags(context.Background(), &v1.SetTagsRequest{
 		NodeId: uint64(taggedNode.ID()),
 		Tags:   []string{"tag:initial"}, // Keep existing tag to avoid ACL validation issues
@@ -212,7 +212,7 @@ func TestSetTags_TaggedNode(t *testing.T) {
 	}
 }
 
-// TestSetTags_CannotRemoveAllTags tests that SetTags rejects attempts to remove
+// TestSetTags_CannotRemoveAllTags tests that [headscaleV1APIServer.SetTags] rejects attempts to remove
 // all tags from a tagged node, enforcing Tailscale's requirement that tagged
 // nodes must have at least one tag.
 func TestSetTags_CannotRemoveAllTags(t *testing.T) {
@@ -265,9 +265,8 @@ func TestSetTags_CannotRemoveAllTags(t *testing.T) {
 }
 
 // TestSetTags_ClearsUserIDInDatabase tests that converting a user-owned node
-// to a tagged node via SetTags correctly persists user_id = NULL in the
+// to a tagged node via [headscaleV1APIServer.SetTags] correctly persists user_id = NULL in the
 // database, not just in-memory.
-// https://github.com/juanfont/headscale/issues/3161
 func TestSetTags_ClearsUserIDInDatabase(t *testing.T) {
 	t.Parallel()
 
@@ -309,7 +308,7 @@ func TestSetTags_ClearsUserIDInDatabase(t *testing.T) {
 
 	nodeID := node.ID()
 
-	// Convert to tagged via SetTags API.
+	// Convert to tagged via [headscaleV1APIServer.SetTags] API.
 	apiServer := newHeadscaleV1APIServer(app)
 	_, err = apiServer.SetTags(context.Background(), &v1.SetTagsRequest{
 		NodeId: uint64(nodeID),
@@ -404,9 +403,8 @@ func TestSetTags_NodeDisappearsFromUserListing(t *testing.T) {
 	assert.Contains(t, allResp.GetNodes()[0].GetTags(), "tag:web")
 }
 
-// TestSetTags_NodeStoreAndDBConsistency verifies that after SetTags, the
-// in-memory NodeStore and the database agree on the node's ownership state.
-// https://github.com/juanfont/headscale/issues/3161
+// TestSetTags_NodeStoreAndDBConsistency verifies that after [headscaleV1APIServer.SetTags], the
+// in-memory [state.NodeStore] and the database agree on the node's ownership state.
 func TestSetTags_NodeStoreAndDBConsistency(t *testing.T) {
 	t.Parallel()
 
@@ -478,9 +476,8 @@ func TestSetTags_NodeStoreAndDBConsistency(t *testing.T) {
 
 // TestSetTags_UserDeletionDoesNotCascadeToTaggedNode tests that deleting the
 // original user does not cascade-delete a node that was converted to tagged
-// via SetTags. This catches the real-world consequence of stale user_id:
+// via [headscaleV1APIServer.SetTags]. This catches the real-world consequence of stale user_id:
 // ON DELETE CASCADE would destroy the tagged node.
-// https://github.com/juanfont/headscale/issues/3161
 func TestSetTags_UserDeletionDoesNotCascadeToTaggedNode(t *testing.T) {
 	t.Parallel()
 
@@ -531,7 +528,7 @@ func TestSetTags_UserDeletionDoesNotCascadeToTaggedNode(t *testing.T) {
 	_, err = app.state.DeleteUser(*user.TypedID())
 	require.NoError(t, err)
 
-	// The tagged node must survive in both NodeStore and database.
+	// The tagged node must survive in both [state.NodeStore] and database.
 	nsNode, found := app.state.GetNodeByID(nodeID)
 	require.True(t, found, "tagged node must survive user deletion in NodeStore")
 	assert.True(t, nsNode.IsTagged())
@@ -555,7 +552,7 @@ func TestDeleteUser_ReturnsProperChangeSignal(t *testing.T) {
 	require.NotNil(t, user)
 
 	// Delete the user and verify a non-empty change is returned
-	// Issue #2967: Without the fix, DeleteUser returned an empty change,
+	// Without the fix, [state.State.DeleteUser] returned an empty change,
 	// causing stale policy state until another user operation triggered an update.
 	changeSignal, err := app.state.DeleteUser(*user.TypedID())
 	require.NoError(t, err, "DeleteUser should succeed")
@@ -564,8 +561,7 @@ func TestDeleteUser_ReturnsProperChangeSignal(t *testing.T) {
 
 // TestDeleteUser_TaggedNodeSurvives tests that deleting a user succeeds when
 // the user's only nodes are tagged, and that those nodes remain in the
-// NodeStore with nil UserID.
-// https://github.com/juanfont/headscale/issues/3077
+// [state.NodeStore] with nil UserID.
 func TestDeleteUser_TaggedNodeSurvives(t *testing.T) {
 	t.Parallel()
 
@@ -605,7 +601,7 @@ func TestDeleteUser_TaggedNodeSurvives(t *testing.T) {
 
 	nodeID := node.ID()
 
-	// NodeStore should not list the tagged node under any user.
+	// [state.NodeStore] should not list the tagged node under any user.
 	nodesForUser := app.state.ListNodesByUser(types.UserID(user.ID))
 	assert.Equal(t, 0, nodesForUser.Len(),
 		"tagged nodes should not appear in nodesByUser index")
@@ -615,7 +611,7 @@ func TestDeleteUser_TaggedNodeSurvives(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, changeSignal.IsEmpty())
 
-	// Tagged node survives in the NodeStore.
+	// Tagged node survives in the [state.NodeStore].
 	nodeAfter, found := app.state.GetNodeByID(nodeID)
 	require.True(t, found, "tagged node should survive user deletion")
 	assert.True(t, nodeAfter.IsTagged())

@@ -88,7 +88,7 @@ func TestEnablingRoutes(t *testing.T) {
 	requireNoErrSync(t, err)
 
 	var nodes []*v1.Node
-	// Wait for route advertisements to propagate to NodeStore
+	// Wait for route advertisements to propagate to [state.NodeStore]
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
 
@@ -125,7 +125,7 @@ func TestEnablingRoutes(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Wait for route approvals to propagate to NodeStore
+	// Wait for route approvals to propagate to [state.NodeStore]
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
 
@@ -361,7 +361,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		}, propagationTime, 200*time.Millisecond, "Verifying no routes are active before approval")
 	}
 
-	// Declare variables that will be used across multiple EventuallyWithT blocks
+	// Declare variables that will be used across multiple [assert.EventuallyWithT] blocks
 	var (
 		srs1, srs2, srs3 *ipnstate.Status
 		clientStatus     *ipnstate.Status
@@ -956,7 +956,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for nodestore batch processing to complete and online status to be updated
-	// NodeStore batching timeout is 500ms, so we wait up to 10 seconds for all routers to be online
+	// [state.NodeStore] batching timeout is 500ms, so we wait up to 10 seconds for all routers to be online
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		clientStatus, err = client.Status()
 		assert.NoError(c, err)
@@ -1033,7 +1033,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	_, err = headscale.ApproveRoutes(MustFindNode(subRouter3.Hostname(), nodes).GetId(), []netip.Prefix{})
 
 	// Wait for nodestore batch processing and route state changes to complete
-	// NodeStore batching timeout is 500ms, so we wait up to 10 seconds for route failover
+	// [state.NodeStore] batching timeout is 500ms, so we wait up to 10 seconds for route failover
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		nodes, err = headscale.ListNodes()
 		assert.NoError(c, err)
@@ -1119,7 +1119,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	_, err = headscale.ApproveRoutes(MustFindNode(subRouter1.Hostname(), nodes).GetId(), []netip.Prefix{})
 
 	// Wait for nodestore batch processing and route state changes to complete
-	// NodeStore batching timeout is 500ms, so we wait up to 10 seconds for route failover
+	// [state.NodeStore] batching timeout is 500ms, so we wait up to 10 seconds for route failover
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		nodes, err = headscale.ListNodes()
 		assert.NoError(c, err)
@@ -1453,7 +1453,7 @@ func TestSubnetRouteACL(t *testing.T) {
 		assert.NotNil(c, routeNode, "could not find node that should have route")
 		assert.NotNil(c, otherNode, "could not find node that should not have route")
 
-		// After NodeStore fix: routes are properly tracked in route manager
+		// After [state.NodeStore] fix: routes are properly tracked in route manager
 		// This test uses a policy with NO auto-approvers, so routes should be:
 		// announced=1, approved=0, subnet=0 (routes announced but not approved)
 		requireNodeRouteCountWithCollect(c, routeNode, 1, 0, 0)
@@ -1705,7 +1705,7 @@ func TestEnablingExitRoutes(t *testing.T) {
 // (verified against a live tailnet on 2026-04-28; see captures
 // routes-b17/b18 in tscap). The bug was that headscale stripped
 // autogroup:internet rules from both the client packet filter AND the
-// matcher source used by Node.CanAccess, breaking exit-node visibility.
+// matcher source used by [types.Node.CanAccess], breaking exit-node visibility.
 func TestExitRoutesWithAutogroupInternetACL(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -1750,9 +1750,9 @@ func TestExitRoutesWithAutogroupInternetACL(t *testing.T) {
 	requireNoErrGetHeadscale(t, err)
 
 	// The autogroup:internet ACL grants no peer visibility until the
-	// exit routes are approved (Node.IsExitNode() flips on approval),
+	// exit routes are approved ([types.Node.IsExitNode] flips on approval),
 	// so the standard WaitForTailscaleSync wait would deadlock here —
-	// the post-approval EventuallyWithT block below covers the peer
+	// the post-approval [assert.EventuallyWithT] block below covers the peer
 	// state we actually care about.
 	var nodes []*v1.Node
 
@@ -1792,7 +1792,7 @@ func TestExitRoutesWithAutogroupInternetACL(t *testing.T) {
 
 	// The end-to-end UX assertion: every client must see the OTHER
 	// node as a peer carrying both default-route prefixes in
-	// AllowedIPs. Tailscale derives PeerStatus.ExitNodeOption from
+	// AllowedIPs. Tailscale derives [ipnstate.PeerStatus.ExitNodeOption] from
 	// those AllowedIPs, which is what `tailscale exit-node list`
 	// reads (see tailscale.com/ipn/ipnlocal/local.go).
 	for _, client := range allClients {
@@ -1903,7 +1903,7 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 	require.NoErrorf(t, err, "failed to advertise route: %s", err)
 
 	var nodes []*v1.Node
-	// Wait for route advertisements to propagate to NodeStore
+	// Wait for route advertisements to propagate to [state.NodeStore]
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
 
@@ -2182,7 +2182,7 @@ func MustFindNode(hostname string, nodes []*v1.Node) *v1.Node {
 func TestAutoApproveMultiNetwork(t *testing.T) {
 	IntegrationSkip(t)
 
-	// Timeout for EventuallyWithT assertions.
+	// Timeout for [assert.EventuallyWithT] assertions.
 	// Set generously to account for CI infrastructure variability.
 	assertTimeout := integrationutil.ScaledTimeout(60 * time.Second)
 
@@ -2430,7 +2430,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 				name := fmt.Sprintf("%s-advertiseduringup-%t-pol-%s", tt.name, advertiseDuringUp, polMode)
 				t.Run(name, func(t *testing.T) {
 					// Create a deep copy of the policy to avoid mutating the shared test case.
-					// Each subtest modifies AutoApprovers.Routes (add then delete), so we need
+					// Each subtest modifies [policyv2.AutoApproverPolicy.Routes] (add then delete), so we need
 					// an isolated copy to prevent state leakage between sequential test runs.
 					pol := &policyv2.Policy{
 						ACLs:      slices.Clone(tt.pol.ACLs),
@@ -3017,14 +3017,14 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 	}
 }
 
-// assertTracerouteViaIPWithCollect is a version of assertTracerouteViaIP that works with assert.CollectT.
+// assertTracerouteViaIPWithCollect is a version of [assertTracerouteViaIP] that works with [assert.CollectT].
 func assertTracerouteViaIPWithCollect(c *assert.CollectT, tr util.Traceroute, ip netip.Addr) {
 	assert.NotNil(c, tr)
 	assert.True(c, tr.Success)
 	assert.NoError(c, tr.Err) //nolint:testifylint // using assert.CollectT
 	assert.NotEmpty(c, tr.Route)
-	// Since we're inside EventuallyWithT, we can't use require.Greater with t
-	// but assert.NotEmpty above ensures len(tr.Route) > 0
+	// Since we're inside [assert.EventuallyWithT], we can't use [require.Greater] with t
+	// but [assert.NotEmpty] above ensures len(tr.Route) > 0
 	if len(tr.Route) > 0 {
 		assert.Equal(c, tr.Route[0].IP.String(), ip.String())
 	}
@@ -3219,7 +3219,7 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 	requireNoErrSync(t, err)
 
 	var routerNode, nodeNode *v1.Node
-	// Wait for route advertisements to propagate to NodeStore
+	// Wait for route advertisements to propagate to [state.NodeStore]
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		// List nodes and verify the router has 3 available routes
 		nodes, err := headscale.NodesByUser()
@@ -3858,7 +3858,7 @@ func TestHASubnetRouterPingFailover(t *testing.T) {
 //
 // Two assertion sets split the failure surface:
 //   - R1: server-side primary route table restores after reconnect.
-//     If R1 fails, the bug is in state.Connect / primaryRoutes.
+//     If R1 fails, the bug is in [state.State.Connect] / primaryRoutes.
 //   - R2: client's view shows r2 online with the route in PrimaryRoutes.
 //     If R1 passes and R2 fails, the bug is in change broadcast /
 //     mapBatcher / multiChannelNodeConn.

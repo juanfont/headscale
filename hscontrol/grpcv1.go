@@ -59,7 +59,7 @@ func (api headscaleV1APIServer) CreateUser(
 		return nil, status.Errorf(codes.Internal, "creating user: %s", err)
 	}
 
-	// CreateUser returns a policy change response if the user creation affected policy.
+	// [state.State.CreateUser] returns a policy change response if the user creation affected policy.
 	// This triggers a full policy re-evaluation for all connected nodes.
 	api.h.Change(policyChanged)
 
@@ -105,7 +105,7 @@ func (api headscaleV1APIServer) DeleteUser(
 		return nil, err
 	}
 
-	// Use the change returned from DeleteUser which includes proper policy updates
+	// Use the change returned from [state.State.DeleteUser] which includes proper policy updates
 	api.h.Change(policyChanged)
 
 	return &v1.DeleteUserResponse{}, nil
@@ -293,7 +293,7 @@ func (api headscaleV1APIServer) RegisterNode(
 		return nil, fmt.Errorf("auto approving routes: %w", err)
 	}
 
-	// Send both changes. Empty changes are ignored by Change().
+	// Send both changes. Empty changes are ignored by [Headscale.Change].
 	api.h.Change(nodeChange, routeChange)
 
 	return &v1.RegisterNodeResponse{Node: node.Proto()}, nil
@@ -396,11 +396,11 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	// Always propagate node changes from SetApprovedRoutes
+	// Always propagate node changes from [state.State.SetApprovedRoutes]
 	api.h.Change(nodeChange)
 
 	proto := node.Proto()
-	// Populate SubnetRoutes with PrimaryRoutes to ensure it includes only the
+	// Populate [types.Node.SubnetRoutes] with [tailcfg.Node.PrimaryRoutes] to ensure it includes only the
 	// routes that are actively served from the node (per architectural requirement in types/node.go)
 	primaryRoutes := api.h.state.GetNodePrimaryRoutes(node.ID())
 	proto.SubnetRoutes = util.PrefixesToString(primaryRoutes)
@@ -554,7 +554,7 @@ func nodesToProto(state *state.State, nodes views.Slice[types.NodeView]) []*v1.N
 	for index, node := range nodes.All() {
 		resp := node.Proto()
 
-		// Tags-as-identity: tagged nodes show as TaggedDevices user in API responses
+		// Tags-as-identity: tagged nodes show as [types.TaggedDevices] user in API responses
 		// (UserID may be set internally for "created by" tracking)
 		if node.IsTagged() {
 			resp.User = types.TaggedDevices.Proto()
@@ -852,9 +852,9 @@ func (api headscaleV1APIServer) DebugCreateNode(
 	authRegReq := types.NewRegisterAuthRequest(regData)
 	api.h.state.SetAuthCacheEntry(registrationId, authRegReq)
 
-	// Echo back a synthetic Node so the debug response surface stays
-	// stable. The actual node is created later by AuthApprove via
-	// HandleNodeFromAuthPath using the cached RegistrationData.
+	// Echo back a synthetic [types.Node] so the debug response surface stays
+	// stable. The actual node is created later by [headscaleV1APIServer.AuthApprove] via
+	// [state.State.HandleNodeFromAuthPath] using the cached [types.RegistrationData].
 	echoNode := types.Node{
 		NodeKey:    regData.NodeKey,
 		MachineKey: regData.MachineKey,

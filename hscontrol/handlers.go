@@ -129,7 +129,7 @@ func parseCapabilityVersion(req *http.Request) (tailcfg.CapabilityVersion, error
 }
 
 // verifyBodyLimit caps the request body for /verify. The DERP verify
-// protocol payload (tailcfg.DERPAdmitClientRequest) is a few hundred
+// protocol payload ([tailcfg.DERPAdmitClientRequest]) is a few hundred
 // bytes; 4 KiB is generous and prevents an unauthenticated client from
 // OOMing the public router with arbitrarily large POSTs.
 const verifyBodyLimit int64 = 4 * 1024
@@ -358,7 +358,7 @@ func authIDFromRequest(req *http.Request) (types.AuthID, error) {
 // Listens in /register/:registration_id.
 //
 // This is not part of the Tailscale control API, as we could send whatever URL
-// in the RegisterResponse.AuthURL field.
+// in the [tailcfg.RegisterResponse.AuthURL] field.
 func (a *AuthProviderWeb) RegisterHandler(
 	writer http.ResponseWriter,
 	req *http.Request,

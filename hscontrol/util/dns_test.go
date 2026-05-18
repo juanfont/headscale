@@ -9,7 +9,6 @@ import (
 	"tailscale.com/util/must"
 )
 
-
 func TestMagicDNSRootDomains100(t *testing.T) {
 	domains := GenerateIPv4DNSRootDomain(netip.MustParsePrefix("100.64.0.0/10"))
 

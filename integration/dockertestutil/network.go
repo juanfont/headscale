@@ -150,8 +150,9 @@ func DisconnectContainerFromNetwork(
 	return waitContainerRouteAbsent(pool, containerID, network, DockerOpMaxElapsedTime)
 }
 
-// ReconnectContainerToNetwork inverts DisconnectContainerFromNetwork
-// and waits until libnetwork has wired up a fresh IPv4 address.
+// ReconnectContainerToNetwork is the inverse of
+// [DisconnectContainerFromNetwork] — re-attaches the container to the
+// network so traffic can flow again.
 func ReconnectContainerToNetwork(
 	pool *dockertest.Pool,
 	network *dockertest.Network,

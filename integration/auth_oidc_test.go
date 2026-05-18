@@ -28,7 +28,7 @@ import (
 func TestOIDCAuthenticationPingAll(t *testing.T) {
 	IntegrationSkip(t)
 
-	// Logins to MockOIDC is served by a queue with a strict order,
+	// Logins to [mockoidc.MockOIDC] is served by a queue with a strict order,
 	// if we use more than one node per user, the order of the logins
 	// will not be deterministic and the test will fail.
 	spec := ScenarioSpec{
@@ -202,10 +202,10 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 	t.Logf("Waiting %v for OIDC tokens to expire (TTL: %v, spread: %v, buffer: %v)",
 		totalWaitTime, shortAccessTTL, loginTimeSpread, safetyBuffer)
 
-	// EventuallyWithT retries the test function until it passes or times out.
-	// IMPORTANT: Use 'ct' (CollectT) for all assertions inside the function, not 't'.
+	// [assert.EventuallyWithT] retries the test function until it passes or times out.
+	// IMPORTANT: Use 'ct' ([assert.CollectT]) for all assertions inside the function, not 't'.
 	// Using 't' would cause immediate test failure without retries, defeating the purpose
-	// of EventuallyWithT which is designed to handle timing-dependent conditions.
+	// of [assert.EventuallyWithT] which is designed to handle timing-dependent conditions.
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		// Check each client's status individually to provide better diagnostics
 		expiredCount := 0
@@ -718,7 +718,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	}, integrationutil.StatusReadyTimeout, 1*time.Second, "waiting for user2 logout to complete before user1 relogin")
 
 	// Before logging back in, ensure we still have exactly 2 nodes
-	// Note: We skip validateLogoutComplete here since it expects all nodes to be offline,
+	// Note: We skip [validateLogoutComplete] here since it expects all nodes to be offline,
 	// but in OIDC scenario we maintain both nodes in DB with only active user online
 
 	// Additional validation that nodes are properly maintained during logout
@@ -1468,8 +1468,8 @@ func TestOIDCExpiryAfterRestart(t *testing.T) {
 // 4. Verifies that the OIDC user's node IMMEDIATELY sees the advertised route
 //
 // Expected behavior:
-// - Without fix: OIDC node cannot see the route (PrimaryRoutes is nil/empty)
-// - With fix: OIDC node immediately sees the route in PrimaryRoutes
+// - Without fix: OIDC node cannot see the route ([ipnstate.PeerStatus.PrimaryRoutes] is nil/empty)
+// - With fix: OIDC node immediately sees the route in [ipnstate.PeerStatus.PrimaryRoutes]
 //
 // Root cause: The buggy code called a.h.Change(c) immediately after user
 // creation but BEFORE node registration completed, creating a race condition
@@ -1618,8 +1618,8 @@ func TestOIDCACLPolicyOnJoin(t *testing.T) {
 	// see the gateway's advertised route WITHOUT needing a client restart.
 	//
 	// This is where the bug manifests:
-	// - Without fix: PrimaryRoutes will be nil/empty
-	// - With fix: PrimaryRoutes immediately contains the advertised route
+	// - Without fix: [ipnstate.PeerStatus.PrimaryRoutes] will be nil/empty
+	// - With fix: [ipnstate.PeerStatus.PrimaryRoutes] immediately contains the advertised route
 	t.Logf("Verifying OIDC user can immediately see advertised routes at %s", time.Now().Format(TimestampFormat))
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -1641,7 +1641,7 @@ func TestOIDCACLPolicyOnJoin(t *testing.T) {
 		assert.NotNil(ct, gatewayPeer, "OIDC user should see gateway as peer")
 
 		if gatewayPeer != nil {
-			// This is the critical assertion - PrimaryRoutes should NOT be nil
+			// This is the critical assertion - [ipnstate.PeerStatus.PrimaryRoutes] should NOT be nil
 			assert.NotNil(ct, gatewayPeer.PrimaryRoutes,
 				"BUG #2888: Gateway peer PrimaryRoutes is nil - ACL policy not applied to new OIDC node!")
 
@@ -1652,7 +1652,7 @@ func TestOIDCACLPolicyOnJoin(t *testing.T) {
 				t.Logf("SUCCESS: OIDC user can see advertised route %s in gateway's PrimaryRoutes", advertiseRoute)
 			}
 
-			// Also verify AllowedIPs includes the route
+			// Also verify [ipnstate.PeerStatus.AllowedIPs] includes the route
 			if gatewayPeer.AllowedIPs != nil && gatewayPeer.AllowedIPs.Len() > 0 {
 				allowedIPs := gatewayPeer.AllowedIPs.AsSlice()
 				t.Logf("Gateway peer AllowedIPs: %v", allowedIPs)
@@ -1914,9 +1914,9 @@ func TestOIDCReloginSameUserRoutesPreserved(t *testing.T) {
 				node.GetAvailableRoutes(), node.GetApprovedRoutes(), node.GetSubnetRoutes())
 
 			// This is where issue #2896 manifests:
-			// - Available shows the route (from Hostinfo.RoutableIPs)
-			// - Approved shows the route (from ApprovedRoutes)
-			// - BUT Serving (SubnetRoutes/PrimaryRoutes) is EMPTY!
+			// - Available shows the route (from [tailcfg.Hostinfo.RoutableIPs])
+			// - Approved shows the route (from [tailcfg.Node.ApprovedRoutes])
+			// - BUT Serving ([tailcfg.Node.SubnetRoutes]/[ipnstate.PeerStatus.PrimaryRoutes]) is EMPTY!
 			assert.Lenf(c, node.GetAvailableRoutes(), 1,
 				"Node should have 1 available route after relogin, got %v", node.GetAvailableRoutes())
 			assert.Lenf(c, node.GetApprovedRoutes(), 1,

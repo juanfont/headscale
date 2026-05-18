@@ -9,17 +9,17 @@ import (
 	"github.com/tailscale/hujson"
 )
 
-// ErrUnsupportedSchemaVersion is returned by Read when a capture
-// advertises a SchemaVersion newer than the current binary supports.
+// ErrUnsupportedSchemaVersion is returned by [Read] when a capture
+// advertises a [Capture.SchemaVersion] newer than the current binary supports.
 var ErrUnsupportedSchemaVersion = errors.New("testcapture: unsupported schema version")
 
-// Read parses a HuJSON capture file from disk into a Capture.
+// Read parses a HuJSON capture file from disk into a [Capture].
 //
 // Comments and trailing commas in the file are stripped before
-// unmarshaling. Files advertising a SchemaVersion newer than the
-// current binary's are rejected with ErrUnsupportedSchemaVersion;
-// SchemaVersion == 0 (pre-versioning) is accepted for backwards compat.
-// The returned Capture's CapturedAt is the value recorded in the file
+// unmarshaling. Files advertising a [Capture.SchemaVersion] newer than the
+// current binary's are rejected with [ErrUnsupportedSchemaVersion];
+// [Capture.SchemaVersion] == 0 (pre-versioning) is accepted for backwards compat.
+// The returned [Capture]'s [Capture.CapturedAt] is the value recorded in the file
 // (not "now").
 func Read(path string) (*Capture, error) {
 	data, err := os.ReadFile(path)
@@ -43,8 +43,8 @@ func Read(path string) (*Capture, error) {
 }
 
 // unmarshalHuJSON parses HuJSON bytes (JSON with comments / trailing
-// commas) into v. Comments are stripped via hujson.Standardize before
-// json.Unmarshal is called.
+// commas) into v. Comments are stripped via [hujson.Value.Standardize] before
+// [json.Unmarshal] is called.
 func unmarshalHuJSON(data []byte, v any) error {
 	ast, err := hujson.Parse(data)
 	if err != nil {

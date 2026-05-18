@@ -22,7 +22,7 @@ import (
 //   - check: every listed user reaches every dst via a check-action
 //     rule specifically (accept-only matches fail the assertion).
 
-// SSHPolicyTestResult is the outcome of a single SSHPolicyTest.
+// SSHPolicyTestResult is the outcome of a single [SSHPolicyTest].
 type SSHPolicyTestResult struct {
 	Src    string   `json:"src"`
 	Passed bool     `json:"passed"`
@@ -122,7 +122,7 @@ func checkFailReason(res SSHPolicyTestResult, user, dst string) string {
 }
 
 // RunSSHTests evaluates the live policy's sshTests block and wraps any
-// failure in errSSHPolicyTestsFailed.
+// failure in [errSSHPolicyTestsFailed].
 func (pm *PolicyManager) RunSSHTests() error {
 	if pm == nil || pm.pol == nil || len(pm.pol.SSHTests) == 0 {
 		return nil
@@ -162,7 +162,7 @@ func evaluateSSHTests(
 }
 
 // runSSHPolicyTests evaluates every sshTests entry. The cache is keyed
-// by dst NodeID so repeat destinations only compile once per pass.
+// by dst [types.NodeID] so repeat destinations only compile once per pass.
 func runSSHPolicyTests(
 	pol *Policy,
 	users []types.User,
@@ -389,7 +389,7 @@ func appendUserDst(m map[string][]string, user, dst string) map[string][]string 
 
 // resolveSSHTestSource returns the src's principal addresses and, for
 // user-shaped sources, the user ID (so autogroup:self can scope to it).
-// Tag, host, and IP sources return userID 0.
+// [Tag], [Host], and IP sources return userID 0.
 func resolveSSHTestSource(
 	src Alias,
 	pol *Policy,
@@ -428,9 +428,10 @@ func resolveSSHTestSource(
 }
 
 // resolveSSHTestDestNodes maps each dst alias to its destination
-// NodeViews. autogroup:self needs special handling: it cannot resolve
-// without per-node context, so it walks the node set keyed on src's
-// owning user. Other aliases resolve to an IPSet and match via InIPSet.
+// [types.NodeView]s. autogroup:self needs special handling: it cannot
+// resolve without per-node context, so it walks the node set keyed on
+// src's owning user. Other aliases resolve to an [netipx.IPSet] and match
+// via [types.NodeView.InIPSet].
 func resolveSSHTestDestNodes(
 	dsts SSHTestDestinations,
 	pol *Policy,
@@ -527,8 +528,8 @@ func resolveSSHTestDestNodes(
 	return out, emptyDsts, nil
 }
 
-// prefixesToIPSet builds the IPSet that InIPSet expects on the node
-// side.
+// prefixesToIPSet builds the [netipx.IPSet] that [types.NodeView.InIPSet]
+// expects on the node side.
 func prefixesToIPSet(prefixes []netip.Prefix) (*netipx.IPSet, error) {
 	var b netipx.IPSetBuilder
 
@@ -539,9 +540,9 @@ func prefixesToIPSet(prefixes []netip.Prefix) (*netipx.IPSet, error) {
 	return b.IPSet()
 }
 
-// compiledSSHPolicy returns the per-node compiled SSH policy, caching
+// compiledSSHPolicy returns the per-node compiled [tailcfg.SSHPolicy], caching
 // on miss. baseURL is empty because reachability only checks for the
-// presence of HoldAndDelegate, not its value.
+// presence of [tailcfg.SSHAction.HoldAndDelegate], not its value.
 func compiledSSHPolicy(
 	pol *Policy,
 	users []types.User,
@@ -607,8 +608,8 @@ func reachability(
 	return acceptHit, checkHit
 }
 
-// principalContainsAddr reports whether any principal's NodeIP matches
-// srcAddr exactly (the SSH compiler emits one principal per source IP).
+// principalContainsAddr reports whether any principal's [tailcfg.SSHPrincipal.NodeIP]
+// matches srcAddr exactly (the SSH compiler emits one principal per source IP).
 func principalContainsAddr(
 	principals []*tailcfg.SSHPrincipal,
 	srcAddr netip.Addr,
@@ -635,7 +636,7 @@ func principalContainsAddr(
 	return false
 }
 
-// sshUserMapAllows reports whether SSHUsers permits user. The SSHUsers
+// sshUserMapAllows reports whether [SSHUsers] permits user. The [SSHUsers]
 // wire shape (see filter.go compileSSHPolicy):
 //
 //   - SSHUsers["root"] == "root" allows root; == "" disallows it.

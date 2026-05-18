@@ -40,7 +40,7 @@ func ExecuteCommandTimeout(timeout time.Duration) ExecuteCommandOption {
 	})
 }
 
-// buffer is a goroutine safe bytes.buffer.
+// buffer is a goroutine safe [bytes.Buffer].
 type buffer struct {
 	store bytes.Buffer
 	mutex sync.Mutex

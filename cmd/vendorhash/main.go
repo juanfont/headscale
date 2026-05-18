@@ -12,7 +12,7 @@
 //	vendorhash check   exit non-zero if flakehashes.json is stale
 //	vendorhash update  recompute and rewrite flakehashes.json
 //
-// The JSON schema and goModFingerprint algorithm mirror upstream
+// The JSON schema and [goModFingerprint] algorithm mirror upstream
 // tailscale's tool/updateflakes so a future shared library extraction
 // is straightforward.
 package main
@@ -82,8 +82,8 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "usage: vendorhash <check|update>")
 }
 
-// errStale signals to main that the check found a mismatch; it has
-// already printed a remediation message, so main should exit 1
+// errStale signals to [main] that the check found a mismatch; it has
+// already printed a remediation message, so [main] should exit 1
 // silently.
 var errStale = errors.New("vendor hash stale")
 

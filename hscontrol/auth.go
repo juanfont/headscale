@@ -73,8 +73,8 @@ func (h *Headscale) handleRegister(
 			// the Noise session's machine key matches the cached node.
 			// Without this check anyone holding a target's NodeKey could
 			// open a Noise session with a throwaway machine key and read
-			// the owner's User/Login back through nodeToRegisterResponse.
-			// handleLogout enforces the same check on its own path.
+			// the owner's User/Login back through [nodeToRegisterResponse].
+			// [Headscale.handleLogout] enforces the same check on its own path.
 			if node.MachineKey() != machineKey {
 				return nil, NewHTTPError(
 					http.StatusUnauthorized,
@@ -83,9 +83,8 @@ func (h *Headscale) handleRegister(
 				)
 			}
 
-			// When tailscaled restarts, it sends RegisterRequest with Auth=nil and Expiry=zero.
+			// When tailscaled restarts, it sends [tailcfg.RegisterRequest] with Auth=nil and Expiry=zero.
 			// Return the current node state without modification.
-			// See: https://github.com/juanfont/headscale/issues/2862
 			if req.Expiry.IsZero() && !node.IsExpired() {
 				return nodeToRegisterResponse(node), nil
 			}
@@ -192,7 +191,7 @@ func (h *Headscale) handleLogout(
 	}
 
 	// If the request expiry is in the past, we consider it a logout.
-	// Zero expiry is handled in handleRegister() before calling this function.
+	// Zero expiry is handled in [Headscale.handleRegister] before calling this function.
 	if req.Expiry.Before(time.Now()) {
 		log.Debug().
 			EmbedObject(node).
@@ -254,7 +253,7 @@ func nodeToRegisterResponse(node types.NodeView) *tailcfg.RegisterResponse {
 		MachineAuthorized: true,
 	}
 
-	// For tagged nodes, use the TaggedDevices special user
+	// For tagged nodes, use the [types.TaggedDevices] special user
 	// For user-owned nodes, include User and Login information from the actual user
 	if node.IsTagged() {
 		resp.User = types.TaggedDevices.View().TailscaleUser()
@@ -303,8 +302,8 @@ func (h *Headscale) waitForFollowup(
 }
 
 // reqToNewRegisterResponse refreshes the registration flow by creating a new
-// registration ID and returning the corresponding AuthURL so the client can
-// restart the authentication process.
+// registration ID and returning the corresponding [tailcfg.RegisterResponse.AuthURL]
+// so the client can restart the authentication process.
 func (h *Headscale) reqToNewRegisterResponse(
 	req tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
@@ -326,8 +325,8 @@ func (h *Headscale) reqToNewRegisterResponse(
 	}, nil
 }
 
-// registrationDataFromRequest builds the RegistrationData payload stored
-// in the auth cache for a pending registration. The original Hostinfo is
+// registrationDataFromRequest builds the [types.RegistrationData] payload stored
+// in the auth cache for a pending registration. The original [tailcfg.Hostinfo] is
 // retained so that consumers (auth callback, observability) see the
 // fields the client originally announced; the bounded-LRU cap on the
 // cache is what bounds the unauthenticated cache-fill DoS surface.

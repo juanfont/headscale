@@ -475,8 +475,8 @@ func TestSafeServerURL(t *testing.T) {
 	}
 }
 
-// TestConfigJSONOmitsSecrets verifies that marshalling a Config to JSON
-// (as /debug/config does via state.DebugConfig) does not leak the
+// TestConfigJSONOmitsSecrets verifies that marshalling a [Config] to JSON
+// (as /debug/config does via [state.State.DebugConfig]) does not leak the
 // Postgres password, the OIDC client secret, or the headscale admin
 // API key. Operators who widen metrics_listen_addr to 0.0.0.0 should
 // not be able to read these back via debug endpoints reachable over

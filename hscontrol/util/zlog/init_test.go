@@ -2,9 +2,9 @@ package zlog
 
 import "github.com/rs/zerolog"
 
-// init pins zerolog to TraceLevel for the zlog test binary.
+// init pins zerolog to [zerolog.TraceLevel] for the zlog test binary.
 //
-// zlog's tests use zerolog.New(&buf) and assert on Info-level output. zerolog's
+// zlog's tests use [zerolog.New] with a buffer and assert on Info-level output. zerolog's
 // (*Logger).should() gates emission on the global level, so any global level
 // above Info would silently break the assertions.
 //

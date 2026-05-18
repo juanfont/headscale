@@ -69,8 +69,8 @@ func (c *checkTB) runCleanups() {
 	c.cleanups = nil
 	c.mu.Unlock()
 
-	for i := len(cs) - 1; i >= 0; i-- {
-		cs[i]()
+	for _, v := range slices.Backward(cs) {
+		v()
 	}
 }
 

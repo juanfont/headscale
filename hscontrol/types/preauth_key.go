@@ -25,8 +25,8 @@ type PreAuthKey struct {
 	Prefix string
 	Hash   []byte // bcrypt
 
-	// For tagged keys: UserID tracks who created the key (informational)
-	// For user-owned keys: UserID tracks the node owner
+	// For tagged keys: [PreAuthKey.UserID] tracks who created the key (informational)
+	// For user-owned keys: [PreAuthKey.UserID] tracks the node owner
 	// Can be nil for system-created tagged keys
 	UserID *uint
 	User   *User `gorm:"constraint:OnDelete:SET NULL;"`
@@ -122,7 +122,7 @@ func (pak *PreAuthKey) Validate() error {
 		return PAKError("invalid authkey")
 	}
 
-	// Use EmbedObject for safe logging - never log full key
+	// Use [zerolog.Event.EmbedObject] for safe logging - never log full key
 	log.Debug().
 		Caller().
 		EmbedObject(pak).
@@ -144,8 +144,8 @@ func (pak *PreAuthKey) Validate() error {
 	return nil
 }
 
-// IsTagged returns true if this PreAuthKey creates tagged nodes.
-// When a PreAuthKey has tags, nodes registered with it will be tagged nodes.
+// IsTagged returns true if this [PreAuthKey] creates tagged nodes.
+// When a [PreAuthKey] has tags, nodes registered with it will be tagged nodes.
 func (pak *PreAuthKey) IsTagged() bool {
 	return len(pak.Tags) > 0
 }
@@ -160,7 +160,7 @@ func (pak *PreAuthKey) maskedPrefix() string {
 	return ""
 }
 
-// MarshalZerologObject implements zerolog.LogObjectMarshaler for safe logging.
+// MarshalZerologObject implements [zerolog.LogObjectMarshaler] for safe logging.
 // SECURITY: This method intentionally does NOT log the full key or hash.
 // Only the masked prefix is logged for identification purposes.
 func (pak *PreAuthKey) MarshalZerologObject(e *zerolog.Event) {

@@ -11,7 +11,7 @@ import (
 	"github.com/tailscale/hujson"
 )
 
-// ErrNilCapture is returned by Write when called with a nil Capture.
+// ErrNilCapture is returned by [Write] when called with a nil [Capture].
 var ErrNilCapture = errors.New("testcapture: nil capture")
 
 // Write serializes c as a HuJSON file with a comment header. The
@@ -19,9 +19,9 @@ var ErrNilCapture = errors.New("testcapture: nil capture")
 // and is then renamed into place, so concurrent regeneration cannot
 // leave a half-written file behind.
 //
-// The comment header is built by CommentHeader from c's TestID,
-// Description, and Captures. The file's parent directory must
-// already exist; callers should MkdirAll first.
+// The comment header is built by [CommentHeader] from c's [Capture.TestID],
+// [Capture.Description], and [Capture.Captures]. The file's parent directory must
+// already exist; callers should [os.MkdirAll] first.
 func Write(path string, c *Capture) error {
 	if c == nil {
 		return fmt.Errorf("testcapture: Write %s: %w", path, ErrNilCapture)
@@ -86,7 +86,7 @@ func Write(path string, c *Capture) error {
 }
 
 // marshalHuJSON serializes v as HuJSON-formatted bytes. It is
-// standard JSON encoding followed by hujson.Format which produces
+// standard JSON encoding followed by [hujson.Format] which produces
 // consistent indentation/whitespace.
 func marshalHuJSON(v any) ([]byte, error) {
 	raw, err := json.Marshal(v)

@@ -4,7 +4,7 @@ package v2
 // Tailscale-hosted control plane emits where headscale has no
 // equivalent concept yet. The compat test in
 // tailscale_nodeattrs_compat_test.go builds the self-view CapMap via
-// [types.NodeView.TailNode] -- the same call the mapper makes -- and
+// [types.Node.TailNode] -- the same call the mapper makes -- and
 // strips these from BOTH sides before [cmp.Diff]; every other cap is
 // compared in full as it lands on the wire.
 //
@@ -30,8 +30,9 @@ import (
 // (suggest-exit-node, dns-subdomain-resolve — see
 // ipn/ipnlocal/local.go:7534 and node_backend.go:745) are emitted only
 // when the peer satisfies the cap's emission condition. This function
-// encodes those conditions; the mapper calls it from buildTailPeers and
-// the compat test calls it to compute the expected per-peer wire shape.
+// encodes those conditions; the mapper calls it from
+// [mapper.MapResponseBuilder.buildTailPeers] and the compat test calls
+// it to compute the expected per-peer wire shape.
 func PeerCapMap(peer types.NodeView, peerSelfCaps tailcfg.NodeCapMap) tailcfg.NodeCapMap {
 	if len(peerSelfCaps) == 0 {
 		return nil

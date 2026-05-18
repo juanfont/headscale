@@ -15,7 +15,7 @@ import (
 )
 
 // TestPingNode verifies the full ping round-trip: the server sends a
-// PingRequest via MapResponse, the real controlclient.Direct handles it
+// [tailcfg.PingRequest] via [tailcfg.MapResponse], the real [controlclient.Direct] handles it
 // by making a HEAD request back over Noise, and the ping tracker records
 // the latency.
 func TestPingNode(t *testing.T) {
@@ -105,7 +105,7 @@ func TestPingTwoSameNode(t *testing.T) {
 
 	require.NotEqual(t, pingID1, pingID2)
 
-	// Send both PingRequests.
+	// Send both [tailcfg.PingRequest]s.
 	url1 := h.Server.URL + "/machine/ping-response?id=" + pingID1
 	url2 := h.Server.URL + "/machine/ping-response?id=" + pingID2
 
@@ -136,7 +136,7 @@ func TestPingTwoSameNode(t *testing.T) {
 	}
 }
 
-// TestPingResolveByHostname verifies that ResolveNode can find a node
+// TestPingResolveByHostname verifies that [state.State.ResolveNode] can find a node
 // by hostname and that the resolved node can be pinged.
 func TestPingResolveByHostname(t *testing.T) {
 	t.Parallel()
