@@ -1,4 +1,4 @@
-FROM rust:1.94-bookworm AS builder
+FROM rust:1.95-trixie AS builder
 
 ARG TAILSCALE_RS_REPO=https://github.com/tailscale/tailscale-rs.git
 ARG TAILSCALE_RS_REF=main
@@ -15,7 +15,7 @@ RUN sed -i '/^axum = \["dep:axum"\]/a insecure-keyfetch = ["ts_control/insecure-
 
 RUN cargo build --release --features axum,insecure-keyfetch --example axum
 
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
