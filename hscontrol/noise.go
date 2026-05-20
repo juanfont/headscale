@@ -159,9 +159,10 @@ func (h *Headscale) NoiseUpgradeHandler(
 	}))
 	r.Use(middleware.RequestID)
 
-	if h.realIPMiddleware != nil {
-		r.Use(h.realIPMiddleware)
-	}
+	// The outer router resolved trusted_proxies on req before the
+	// upgrade; pin that value across the hijack so /machine/* logs the
+	// client IP instead of the reverse proxy's loopback peer.
+	r.Use(overrideRemoteAddr(req.RemoteAddr))
 
 	r.Use(middleware.RequestLogger(&zerologRequestLogger{}))
 	r.Use(middleware.Recoverer)
@@ -292,6 +293,20 @@ func rejectUnsupported(
 	}
 
 	return false
+}
+
+// overrideRemoteAddr returns middleware that pins r.RemoteAddr to addr.
+// Used inside the Noise tunnel: the HTTP/2 server derives r.RemoteAddr
+// from the hijacked TCP socket (the reverse proxy's loopback peer), so
+// the outer request's resolved client IP must be carried across the
+// hijack boundary by hand.
+func overrideRemoteAddr(addr string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.RemoteAddr = addr
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func (ns *noiseServer) NotImplementedHandler(writer http.ResponseWriter, req *http.Request) {

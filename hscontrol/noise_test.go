@@ -368,3 +368,31 @@ func TestSSHActionFollowUp_RejectsBindingMismatch(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, rec.Code,
 		"binding mismatch must be rejected with 401")
 }
+
+// TestOverrideRemoteAddr asserts the middleware used inside the Noise
+// tunnel pins r.RemoteAddr to the value captured from the outer
+// (pre-hijack) request, so /machine/* requests log the trusted-proxy
+// resolved client IP instead of the hijacked TCP socket's loopback peer.
+func TestOverrideRemoteAddr(t *testing.T) {
+	t.Parallel()
+
+	const clientAddr = "192.168.91.240"
+
+	r := chi.NewRouter()
+	r.Use(overrideRemoteAddr(clientAddr))
+
+	var observed string
+
+	r.Get("/x", func(w http.ResponseWriter, r *http.Request) {
+		observed = r.RemoteAddr
+
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/x", nil)
+	req.RemoteAddr = "127.0.0.1:44388"
+
+	r.ServeHTTP(httptest.NewRecorder(), req)
+
+	assert.Equal(t, clientAddr, observed)
+}
