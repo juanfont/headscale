@@ -522,7 +522,7 @@ func New(
 			}
 		}
 	case "unstable":
-		tailscaleOptions.Repository = "tailscale/tailscale"
+		tailscaleOptions.Repository = "ghcr.io/tailscale/tailscale"
 		tailscaleOptions.Tag = version
 
 		err = dockertestutil.PullWithAuth(pool, tailscaleOptions.Repository+":"+tailscaleOptions.Tag)
@@ -542,7 +542,7 @@ func New(
 			log.Printf("Docker run failed for %s (unstable), error: %v", hostname, err)
 		}
 	default:
-		tailscaleOptions.Repository = "tailscale/tailscale"
+		tailscaleOptions.Repository = "ghcr.io/tailscale/tailscale"
 		tailscaleOptions.Tag = "v" + version
 
 		err = dockertestutil.PullWithAuth(pool, tailscaleOptions.Repository+":"+tailscaleOptions.Tag)
