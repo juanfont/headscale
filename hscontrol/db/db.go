@@ -722,6 +722,28 @@ WHERE tags IS NOT NULL AND tags != '[]' AND tags != '';
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			{
+				// Clear zero-time node expiry values to NULL.
+				// Versions before 0.28 persisted a pointer to a zero
+				// time.Time as '0001-01-01 00:00:00+00:00' rather than
+				// NULL, which 0.29 reports as an expired node. This
+				// normalises the existing rows so the column once
+				// again means "no expiry" when unset.
+				ID: "202605221435-clear-zero-time-node-expiry",
+				Migrate: func(tx *gorm.DB) error {
+					err := tx.Exec(`
+UPDATE nodes
+SET expiry = NULL
+WHERE expiry IS NOT NULL AND expiry < '1900-01-01';
+						`).Error
+					if err != nil {
+						return fmt.Errorf("clearing zero-time node expiry: %w", err)
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 

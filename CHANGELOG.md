@@ -306,8 +306,8 @@ connected" routers that maintain their control session but cannot route packets.
 - Remove old migrations for the debian package [#3185](https://github.com/juanfont/headscale/pull/3185)
 - Install `config-example.yaml` as example for the debian package [#3186](https://github.com/juanfont/headscale/pull/3186)
 - Fix user-owned re-registration with zero client expiry and no default storing `0001-01-01 00:00:00` in the database instead of `NULL` [#3199](https://github.com/juanfont/headscale/pull/3199)
-  - Pre-existing rows with `0001-01-01 00:00:00` are not backfilled; they clear themselves the next time the node re-registers
 - Fix `tailscaled` restart on a node with no expiry resetting `NULL` to `0001-01-01 00:00:00` in the database, affecting both tagged and untagged nodes [#3197](https://github.com/juanfont/headscale/pull/3197)
+- Backfill `nodes.expiry` rows persisted by older versions as `0001-01-01 00:00:00` to `NULL`, so nodes upgraded from <0.28 stop reporting as expired [#3284](https://github.com/juanfont/headscale/issues/3284)
 
 ## 0.28.0 (2026-02-04)
 
