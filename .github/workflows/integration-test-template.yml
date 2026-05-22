@@ -51,6 +51,11 @@ jobs:
         with:
           name: tailscale-head-image
           path: /tmp/artifacts
+      - name: Download tailscale released images
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: tailscale-released-images
+          path: /tmp/artifacts
       - name: Download hi binary
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
         with:
@@ -86,6 +91,7 @@ jobs:
         run: |
           gunzip -c /tmp/artifacts/headscale-image.tar.gz | docker load
           gunzip -c /tmp/artifacts/tailscale-head-image.tar.gz | docker load
+          gunzip -c /tmp/artifacts/tailscale-released-images.tar.gz | docker load
           if [ -f /tmp/artifacts/postgres-image.tar.gz ]; then
             gunzip -c /tmp/artifacts/postgres-image.tar.gz | docker load
           fi
