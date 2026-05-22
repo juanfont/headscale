@@ -9,6 +9,9 @@ concurrency:
 jobs:
   # build: Builds binaries and Docker images once, uploads as artifacts for reuse.
   # build-postgres: Pulls postgres image separately to avoid Docker Hub rate limits.
+  # build-tailscale-released: Pre-pulls released Tailscale images from ghcr.io
+  # so fork PRs (no DOCKERHUB_USERNAME secret) don't hit Docker Hub rate
+  # limits at test time.
   # sqlite: Runs all integration tests with SQLite backend.
   # postgres: Runs a subset of tests with PostgreSQL to verify database compatibility.
   build:
@@ -150,8 +153,56 @@ jobs:
           name: postgres-image
           path: postgres-image.tar.gz
           retention-days: 10
-  sqlite:
+  build-tailscale-released:
+    runs-on: ubuntu-24.04-arm
     needs: build
+    if: needs.build.outputs.files-changed == 'true'
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: nixbuild/nix-quick-install-action@2c9db80fb984ceb1bcaa77cdda3fdf8cfba92035 # v34
+      - uses: nix-community/cache-nix-action@135667ec418502fa5a3598af6fb9eb733888ce6a # v6.1.3
+        with:
+          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
+      - name: Force overlay2 storage driver
+        run: |
+          sudo mkdir -p /etc/docker
+          echo '{"storage-driver":"overlay2"}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
+          docker version
+      - name: List Tailscale versions to pre-pull
+        id: versions
+        run: |
+          versions=$(nix develop --command go run ./cmd/hi list-versions --set=must --exclude=head)
+          echo "versions=${versions}" >> "$GITHUB_OUTPUT"
+          echo "Pre-pulling: ${versions}"
+      - name: Pull released Tailscale images
+        run: |
+          # ghcr.io public reads are anonymous and unmetered, so no docker
+          # login is needed even on fork PRs without DOCKERHUB_USERNAME.
+          # Pull in parallel; xargs -P 0 fans out one process per tag and
+          # returns non-zero if any pull fails.
+          echo "${{ steps.versions.outputs.versions }}" \
+            | tr ' ' '\n' \
+            | xargs -P 0 -I{} docker pull "ghcr.io/tailscale/tailscale:{}"
+      - name: Save Tailscale images to tarball
+        run: |
+          # Single docker save with all refs: one consistent snapshot, no
+          # parallel-daemon race.
+          refs=""
+          for v in ${{ steps.versions.outputs.versions }}; do
+            refs="${refs} ghcr.io/tailscale/tailscale:${v}"
+          done
+          docker save ${refs} | gzip > tailscale-released-images.tar.gz
+          ls -lh tailscale-released-images.tar.gz
+      - name: Upload Tailscale released images
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: tailscale-released-images
+          path: tailscale-released-images.tar.gz
+          retention-days: 10
+  sqlite:
+    needs: [build, build-tailscale-released]
     if: needs.build.outputs.files-changed == 'true'
     strategy:
       fail-fast: false
@@ -309,7 +360,7 @@ jobs:
       postgres_flag: "--postgres=0"
       database_name: "sqlite"
   postgres:
-    needs: [build, build-postgres]
+    needs: [build, build-postgres, build-tailscale-released]
     if: needs.build.outputs.files-changed == 'true'
     strategy:
       fail-fast: false
