@@ -1185,11 +1185,7 @@ func (nv NodeView) TailNode(
 	}
 
 	var derp int
-	// TODO(kradalby): legacyDERP was removed in tailscale/tailscale@2fc4455e6dd9ab7f879d4e2f7cffc2be81f14077
-	// and should be removed after 111 is the minimum capver.
-	legacyDERP := "127.3.3.40:0" // Zero means disconnected or unknown.
 	if nv.Hostinfo().Valid() && nv.Hostinfo().NetInfo().Valid() {
-		legacyDERP = fmt.Sprintf("127.3.3.40:%d", nv.Hostinfo().NetInfo().PreferredDERP())
 		derp = nv.Hostinfo().NetInfo().PreferredDERP()
 	}
 
@@ -1266,16 +1262,15 @@ func (nv NodeView) TailNode(
 		Key:       nv.NodeKey(),
 		KeyExpiry: keyExpiry.UTC(),
 
-		Machine:          nv.MachineKey(),
-		DiscoKey:         nv.DiscoKey(),
-		Addresses:        addresses,
-		PrimaryRoutes:    primaryRoutes,
-		AllowedIPs:       allowedIPs,
-		Endpoints:        nv.Endpoints().AsSlice(),
-		HomeDERP:         derp,
-		LegacyDERPString: legacyDERP,
-		Hostinfo:         nv.Hostinfo(),
-		Created:          nv.CreatedAt().UTC(),
+		Machine:       nv.MachineKey(),
+		DiscoKey:      nv.DiscoKey(),
+		Addresses:     addresses,
+		PrimaryRoutes: primaryRoutes,
+		AllowedIPs:    allowedIPs,
+		Endpoints:     nv.Endpoints().AsSlice(),
+		HomeDERP:      derp,
+		Hostinfo:      nv.Hostinfo(),
+		Created:       nv.CreatedAt().UTC(),
 
 		Online: nv.IsOnline().Clone(),
 
