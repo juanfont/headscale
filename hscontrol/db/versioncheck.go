@@ -3,6 +3,7 @@ package db
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -139,10 +140,49 @@ func setDatabaseVersion(db *gorm.DB, version string) error {
 	return nil
 }
 
+// pseudoVersionTimeLayout is Go's pseudo-version timestamp layout
+// (golang.org/ref/mod#pseudo-versions): UTC yyyymmddhhmmss.
+const pseudoVersionTimeLayout = "20060102150405"
+
+// pseudoVersionSuffix matches the trailing "<sep><14 digits>-<12
+// lowercase hex>" of a Go module pseudo-version. The base form
+// (vX.0.0-<date>-<hash>) uses "-" before the timestamp; the
+// pre-release-ancestor and release-ancestor forms
+// (vX.Y.Z-pre.0.<date>-<hash> and vX.Y.(Z+1)-0.<date>-<hash>) use "."
+// because the digit-only "0" marker precedes the timestamp.
+var pseudoVersionSuffix = regexp.MustCompile(`[-.](\d{14})-[0-9a-f]{12}$`)
+
+// pseudoVersionTime returns the embedded commit time when v is a
+// syntactically and semantically valid Go module pseudo-version. The
+// timestamp must parse as a real UTC time; lookalikes with malformed
+// dates (e.g. month 13, day 30 in February) are rejected.
+func pseudoVersionTime(v string) (time.Time, bool) {
+	m := pseudoVersionSuffix.FindStringSubmatch(v)
+	if m == nil {
+		return time.Time{}, false
+	}
+
+	t, err := time.Parse(pseudoVersionTimeLayout, m[1])
+	if err != nil {
+		return time.Time{}, false
+	}
+
+	return t, true
+}
+
 // isDev reports whether a version string represents a development build
-// that should skip version checking.
+// that should skip version checking. Go module pseudo-versions (used by
+// untagged main-sha builds, where runtime/debug.BuildInfo falls back to
+// vX.Y.Z-<timestamp>-<commit>) are treated as dev to avoid poisoning
+// database_versions with synthetic baselines.
 func isDev(version string) bool {
-	return version == "" || version == "dev" || version == "(devel)"
+	if version == "" || version == "dev" || version == "(devel)" {
+		return true
+	}
+
+	_, ok := pseudoVersionTime(version)
+
+	return ok
 }
 
 // checkVersionUpgradePath verifies that the running headscale version
