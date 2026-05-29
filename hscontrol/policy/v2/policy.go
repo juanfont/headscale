@@ -1299,13 +1299,18 @@ func (pm *PolicyManager) invalidateAutogroupSelfCache(oldNodes, newNodes views.S
 	// Tagged nodes don't participate in autogroup:self (identity is tag-based),
 	// so we skip them when collecting affected users, except when tag status changes
 	// (which affects the user's device set).
-	affectedUsers := make(map[uint]struct{})
+	//
+	// Ownership is keyed on TypedUserID (the UserID field), not the User
+	// association view: the NodeStore holds nodes by value with User as a
+	// *User pointer, and not every write path hydrates that association. A
+	// non-tagged node always has UserID set, so it is the reliable owner key.
+	affectedUsers := make(map[types.UserID]struct{})
 
 	// Check for removed nodes (only non-tagged nodes affect autogroup:self)
 	for nodeID, oldNode := range oldNodeMap {
 		if _, exists := newNodeMap[nodeID]; !exists {
 			if !oldNode.IsTagged() {
-				affectedUsers[oldNode.User().ID()] = struct{}{}
+				affectedUsers[oldNode.TypedUserID()] = struct{}{}
 			}
 		}
 	}
@@ -1314,7 +1319,7 @@ func (pm *PolicyManager) invalidateAutogroupSelfCache(oldNodes, newNodes views.S
 	for nodeID, newNode := range newNodeMap {
 		if _, exists := oldNodeMap[nodeID]; !exists {
 			if !newNode.IsTagged() {
-				affectedUsers[newNode.User().ID()] = struct{}{}
+				affectedUsers[newNode.TypedUserID()] = struct{}{}
 			}
 		}
 	}
@@ -1327,10 +1332,10 @@ func (pm *PolicyManager) invalidateAutogroupSelfCache(oldNodes, newNodes views.S
 			if oldNode.IsTagged() != newNode.IsTagged() {
 				if !oldNode.IsTagged() {
 					// Was untagged, now tagged: user lost a device
-					affectedUsers[oldNode.User().ID()] = struct{}{}
+					affectedUsers[oldNode.TypedUserID()] = struct{}{}
 				} else {
 					// Was tagged, now untagged: user gained a device
-					affectedUsers[newNode.User().ID()] = struct{}{}
+					affectedUsers[newNode.TypedUserID()] = struct{}{}
 				}
 
 				continue
@@ -1342,9 +1347,9 @@ func (pm *PolicyManager) invalidateAutogroupSelfCache(oldNodes, newNodes views.S
 			}
 
 			// Check if user changed (both versions are non-tagged here)
-			if oldNode.User().ID() != newNode.User().ID() {
-				affectedUsers[oldNode.User().ID()] = struct{}{}
-				affectedUsers[newNode.User().ID()] = struct{}{}
+			if oldNode.TypedUserID() != newNode.TypedUserID() {
+				affectedUsers[oldNode.TypedUserID()] = struct{}{}
+				affectedUsers[newNode.TypedUserID()] = struct{}{}
 			}
 
 			// Check if IPs changed (simple check - could be more sophisticated)
@@ -1352,12 +1357,12 @@ func (pm *PolicyManager) invalidateAutogroupSelfCache(oldNodes, newNodes views.S
 
 			newIPs := newNode.IPs()
 			if len(oldIPs) != len(newIPs) {
-				affectedUsers[newNode.User().ID()] = struct{}{}
+				affectedUsers[newNode.TypedUserID()] = struct{}{}
 			} else {
 				// Check if any IPs are different
 				for i, oldIP := range oldIPs {
 					if i >= len(newIPs) || oldIP != newIPs[i] {
-						affectedUsers[newNode.User().ID()] = struct{}{}
+						affectedUsers[newNode.TypedUserID()] = struct{}{}
 						break
 					}
 				}
@@ -1370,7 +1375,7 @@ func (pm *PolicyManager) invalidateAutogroupSelfCache(oldNodes, newNodes views.S
 	// because autogroup:self rules depend on the entire user's device set.
 	for nodeID := range pm.filterRulesMap {
 		// Find the user for this cached node
-		var nodeUserID uint
+		var nodeUserID types.UserID
 
 		found := false
 
@@ -1384,7 +1389,7 @@ func (pm *PolicyManager) invalidateAutogroupSelfCache(oldNodes, newNodes views.S
 					break
 				}
 
-				nodeUserID = node.User().ID()
+				nodeUserID = node.TypedUserID()
 				found = true
 
 				break
@@ -1400,7 +1405,7 @@ func (pm *PolicyManager) invalidateAutogroupSelfCache(oldNodes, newNodes views.S
 						break
 					}
 
-					nodeUserID = node.User().ID()
+					nodeUserID = node.TypedUserID()
 					found = true
 
 					break

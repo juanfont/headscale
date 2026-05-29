@@ -226,6 +226,72 @@ func TestInvalidateAutogroupSelfCache(t *testing.T) {
 	}
 }
 
+// TestSetNodesAutogroupSelfUnhydratedUser reproduces the panic seen on
+// /machine/map when an autogroup:self policy is active and a non-tagged
+// node reaches the policy manager with its UserID set but the User
+// association left unhydrated (User pointer nil). The NodeStore stores
+// nodes by value with User as a *User; not every write path hydrates the
+// association, so the autogroup:self cache invalidation must derive the
+// owning user from UserID, not from the User view.
+func TestSetNodesAutogroupSelfUnhydratedUser(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@headscale.net"},
+		{Model: gorm.Model{ID: 2}, Name: "user2", Email: "user2@headscale.net"},
+	}
+
+	policy := `{
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["autogroup:member"],
+				"dst": ["autogroup:self:*"]
+			}
+		]
+	}`
+
+	// unhydratedNode mirrors a NodeStore snapshot entry whose UserID is
+	// set (so it is unambiguously user-owned, not tagged) but whose User
+	// association was never loaded.
+	unhydratedNode := func(name, ipv4, ipv6 string, userID uint) *types.Node {
+		return &types.Node{
+			Hostname: name,
+			IPv4:     ap(ipv4),
+			IPv6:     ap(ipv6),
+			UserID:   new(userID),
+			User:     nil,
+		}
+	}
+
+	initialNodes := types.Nodes{
+		node("user1-node1", "100.64.0.1", "fd7a:115c:a1e0::1", users[0]),
+		node("user2-node1", "100.64.0.2", "fd7a:115c:a1e0::2", users[1]),
+	}
+	for i, n := range initialNodes {
+		n.ID = types.NodeID(i + 1) //nolint:gosec // safe conversion in test
+	}
+
+	pm, err := NewPolicyManager([]byte(policy), users, initialNodes.ViewSlice())
+	require.NoError(t, err)
+
+	require.False(t, initialNodes[0].IsTagged(), "node must be user-owned for autogroup:self")
+
+	// Simulate a node restarting tailscaled: the same node is pushed back
+	// into the policy manager, but the snapshot version has no hydrated
+	// User association. This is the exact shape that crashed beta.1.
+	updatedNodes := types.Nodes{
+		unhydratedNode("user1-node1", "100.64.0.1", "fd7a:115c:a1e0::1", users[0].ID),
+		node("user2-node1", "100.64.0.2", "fd7a:115c:a1e0::2", users[1]),
+	}
+	for i, n := range updatedNodes {
+		n.ID = types.NodeID(i + 1) //nolint:gosec // safe conversion in test
+	}
+
+	require.NotPanics(t, func() {
+		_, err = pm.SetNodes(updatedNodes.ViewSlice())
+	}, "SetNodes must not panic when a non-tagged node has an unhydrated User")
+	require.NoError(t, err)
+}
+
 // TestInvalidateGlobalPolicyCache tests the cache invalidation logic for global policies.
 func TestInvalidateGlobalPolicyCache(t *testing.T) {
 	mustIPPtr := func(s string) *netip.Addr {
