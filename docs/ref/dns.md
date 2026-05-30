@@ -3,6 +3,10 @@
 Headscale supports [most DNS features](../about/features.md) from Tailscale. DNS related settings can be configured
 within the `dns` section of the [configuration file](configuration.md).
 
+For **per-identity DNS overrides** (different resolvers, override flags,
+or split-DNS routes for specific groups, users, or tagged nodes), see
+[DNS profiles in the policy file](policy.md#dns-profiles).
+
 ## Setting extra DNS records
 
 Headscale allows to set extra DNS records which are made available via

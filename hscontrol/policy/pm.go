@@ -24,6 +24,11 @@ type PolicyManager interface {
 	// SSHCheckParams resolves the SSH check period for a (src, dst) pair
 	// from the current policy, avoiding trust of client-provided URL params.
 	SSHCheckParams(srcNodeID, dstNodeID types.NodeID) (time.Duration, bool)
+	// NodeDNSConfig returns the DNSConfig for the given node by applying
+	// the matched DNS profile from the policy's dns block on top of base.
+	// Returns base unchanged if no profile matches. baseDomain is the
+	// tailnet base_domain, preserved when a profile replaces SearchDomains.
+	NodeDNSConfig(node types.NodeView, base *tailcfg.DNSConfig, baseDomain string) *tailcfg.DNSConfig
 	SetPolicy(pol []byte) (bool, error)
 	SetUsers(users []types.User) (bool, error)
 	SetNodes(nodes views.Slice[types.NodeView]) (bool, error)

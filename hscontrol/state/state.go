@@ -1052,6 +1052,12 @@ func (s *State) SSHPolicy(node types.NodeView) (*tailcfg.SSHPolicy, error) {
 	return s.polMan.SSHPolicy(s.cfg.ServerURL, node)
 }
 
+// NodeDNSConfig returns the DNSConfig for a node, applying the matched
+// DNS profile from the policy on top of base.
+func (s *State) NodeDNSConfig(node types.NodeView, base *tailcfg.DNSConfig) *tailcfg.DNSConfig {
+	return s.polMan.NodeDNSConfig(node, base, s.cfg.BaseDomain)
+}
+
 // SSHCheckParams resolves the SSH check period for a source-destination
 // node pair from the current policy.
 func (s *State) SSHCheckParams(

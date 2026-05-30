@@ -36,6 +36,12 @@ var ErrAutogroupSelfRequiresPerNodeResolution = errors.New("autogroup:self requi
 
 var ErrUndefinedTagReference = errors.New("references undefined tag")
 
+// DNS validation errors.
+var (
+	ErrDNSProfileHasNoAssignmentList = errors.New("DNS profile has no assignment list")
+	ErrDNSPrincipalAssignedTwice     = errors.New("DNS principal assigned to two profiles")
+)
+
 // SSH validation errors.
 var (
 	ErrSSHTagSourceToUserDest             = errors.New("tags in SSH source cannot access user-owned devices")
@@ -2097,6 +2103,27 @@ type Policy struct {
 	Tests               []PolicyTest       `json:"tests,omitempty"`
 	SSHTests            []SSHPolicyTest    `json:"sshTests,omitempty"`
 	RandomizeClientPort bool               `json:"randomizeClientPort,omitempty"`
+	DNS                 PolicyDNS          `json:"dns,omitempty"`
+}
+
+// PolicyDNS is an ordered list of DNS profile overrides applied on top
+// of the tailnet-wide DNS config in headscale.yaml. See docs/ref/policy.md.
+type PolicyDNS []DNSProfile
+
+// DNSProfile is one DNS override assignable by tag, user, or group. Body
+// fields are pointer-typed: a present field (even empty) replaces the
+// inherited value; absent fields inherit. Every profile must set at
+// least one of Groups, Users, or Tags; a principal may appear in at
+// most one profile.
+type DNSProfile struct {
+	Nameservers      *[]string            `json:"nameservers,omitempty"`
+	OverrideLocalDNS *bool                `json:"overrideLocalDNS,omitempty"`
+	Split            *map[string][]string `json:"split,omitempty"`
+	SearchDomains    *[]string            `json:"searchDomains,omitempty"`
+
+	Groups []Group    `json:"groups,omitempty"`
+	Users  []Username `json:"users,omitempty"`
+	Tags   []Tag      `json:"tags,omitempty"`
 }
 
 // MarshalJSON is deliberately not implemented for [Policy].
@@ -2905,6 +2932,62 @@ func (p *Policy) validate() error {
 
 	if err := validateSSHTests(p, p.SSHTests); err != nil { //nolint:noinlineerr
 		errs = append(errs, err)
+	}
+
+	for i, profile := range p.DNS {
+		if len(profile.Groups) == 0 && len(profile.Users) == 0 && len(profile.Tags) == 0 {
+			errs = append(errs, fmt.Errorf("dns[%d]: %w", i, ErrDNSProfileHasNoAssignmentList))
+		}
+		for _, u := range profile.Users {
+			uCopy := u
+			if err := uCopy.Validate(); err != nil {
+				errs = append(errs, fmt.Errorf("dns[%d].users: %w", i, err))
+			}
+		}
+		for _, g := range profile.Groups {
+			gCopy := g
+			if err := p.Groups.Contains(&gCopy); err != nil {
+				errs = append(errs, fmt.Errorf("dns[%d].groups: %w", i, err))
+			}
+		}
+		for _, t := range profile.Tags {
+			tCopy := t
+			if err := p.TagOwners.Contains(&tCopy); err != nil {
+				errs = append(errs, fmt.Errorf("dns[%d].tags: %w", i, err))
+			}
+		}
+	}
+	seenGroup := make(map[Group]int)
+	seenUser := make(map[Username]int)
+	seenTag := make(map[Tag]int)
+	for i, profile := range p.DNS {
+		for _, g := range profile.Groups {
+			if prev, ok := seenGroup[g]; ok {
+				errs = append(errs, fmt.Errorf(
+					"group %q in dns[%d] and dns[%d]: %w",
+					g, prev, i, ErrDNSPrincipalAssignedTwice))
+			} else {
+				seenGroup[g] = i
+			}
+		}
+		for _, u := range profile.Users {
+			if prev, ok := seenUser[u]; ok {
+				errs = append(errs, fmt.Errorf(
+					"user %q in dns[%d] and dns[%d]: %w",
+					u, prev, i, ErrDNSPrincipalAssignedTwice))
+			} else {
+				seenUser[u] = i
+			}
+		}
+		for _, t := range profile.Tags {
+			if prev, ok := seenTag[t]; ok {
+				errs = append(errs, fmt.Errorf(
+					"tag %q in dns[%d] and dns[%d]: %w",
+					t, prev, i, ErrDNSPrincipalAssignedTwice))
+			} else {
+				seenTag[t] = i
+			}
+		}
 	}
 
 	if len(errs) > 0 {

@@ -130,16 +130,18 @@ const (
 // or `..` into the resolver URL via a crafted cap name.
 var nextDNSProfileRE = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 
+// generateDNSConfig takes the per-node DNS config (already resolved
+// against the policy by the caller) and applies the NextDNS profile
+// rewriting and metadata, returning the final wire-ready DNSConfig.
+// Returns nil if the input is nil.
 func generateDNSConfig(
-	cfg *types.Config,
+	dnsConfig *tailcfg.DNSConfig,
 	node types.NodeView,
 	capMap tailcfg.NodeCapMap,
 ) *tailcfg.DNSConfig {
-	if cfg.TailcfgDNSConfig == nil {
+	if dnsConfig == nil {
 		return nil
 	}
-
-	dnsConfig := cfg.TailcfgDNSConfig.Clone()
 
 	profile := nextDNSProfileFromCapMap(capMap)
 	if profile != "" {

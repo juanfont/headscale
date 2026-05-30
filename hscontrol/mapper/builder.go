@@ -161,7 +161,14 @@ func (b *MapResponseBuilder) WithDNSConfig() *MapResponseBuilder {
 		return b
 	}
 
-	b.resp.DNSConfig = generateDNSConfig(b.mapper.cfg, node, b.mapper.state.NodeCapMap(node.ID()))
+	if b.mapper.cfg.TailcfgDNSConfig == nil {
+		return b
+	}
+
+	// Resolve the per-node DNS config against the policy here; mapper's
+	// generateDNSConfig then just applies the NextDNS rewrite layer.
+	dnsConfig := b.mapper.state.NodeDNSConfig(node, b.mapper.cfg.TailcfgDNSConfig)
+	b.resp.DNSConfig = generateDNSConfig(dnsConfig, node, b.mapper.state.NodeCapMap(node.ID()))
 
 	return b
 }

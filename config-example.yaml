@@ -318,6 +318,12 @@ policy:
 #
 # If you want stop Headscale from managing the DNS configuration
 # all the fields under `dns` should be set to empty values.
+#
+# For per-identity DNS overrides (different resolvers / split DNS /
+# search domains for specific groups, users, or tagged nodes), use the
+# policy file's top-level `dns:` block — see
+# https://headscale.net/stable/ref/policy/#dns-profiles
+
 dns:
   # Whether to use MagicDNS
   magic_dns: true

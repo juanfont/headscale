@@ -11,6 +11,16 @@ to understand how the packet filter should be generated. We discovered a few dif
 overall our implementation was very close.
 [#3036](https://github.com/juanfont/headscale/pull/3036)
 
+### DNS profiles (per-tag / per-user / per-group) [#3012](https://github.com/juanfont/headscale/issues/3012)
+
+The policy file gains a top-level `dns:` block: an ordered list of DNS
+profiles that override fields of the tailnet-wide `dns:` config in
+`headscale.yaml` for matched nodes. Each profile carries an assignment
+list (`groups`, `users`, or `tags`); fields set on the profile replace
+the base, unset fields inherit. Nodes matching no profile receive the
+base unchanged. Matching is by tier (tag > user > group) and by
+profile list order within each tier. Hot-reloaded with the policy file.
+
 ### SSH check action
 
 SSH rules with `"action": "check"` are now supported. When a client initiates a SSH connection to a node
