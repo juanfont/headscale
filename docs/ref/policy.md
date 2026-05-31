@@ -226,6 +226,11 @@ configuration and attributes. At least the following node attributes are current
 }
 ```
 
+The `attr` field above carries key-only capabilities. A `nodeAttrs` entry may instead (or additionally) carry an `app`
+field for *valued* capabilities — a capability name mapped to a list of JSON payloads, matching Tailscale's `app` field.
+Headscale passes these payloads through unmodified. [App Connectors](#app-connectors) are delivered this way via the
+`tailscale.com/app-connectors` capability.
+
 ## Network-wide policy options
 
 The following options are applied for the entire tailnet. Consider [node attributes](#node-attributes) for a more
@@ -244,43 +249,57 @@ fine-grained configuration instead.
 
 ## App Connectors
 
-Headscale supports [App Connectors](https://tailscale.com/kb/1281/app-connectors), which allow you to route traffic to specific domains through designated connector nodes. This is useful for accessing internal applications or services that are only reachable from certain nodes in your tailnet.
+Headscale supports [App Connectors](https://tailscale.com/kb/1281/app-connectors), which route traffic for specific
+domains through designated connector nodes. This is useful for reaching internal applications or services that are only
+reachable from certain nodes in your tailnet.
 
-App connectors are configured in the `appConnectors` field of your ACL policy:
+App connectors are configured exactly as they are in Tailscale: through the [`app`](#node-attributes) field of a
+`nodeAttrs` entry, using the `tailscale.com/app-connectors` capability. The `target` selects which nodes receive the
+configuration; a connector node must also be started with `tailscale set --advertise-connector`.
 
-```json
+```json title="policy.json"
 {
   "tagOwners": {
     "tag:connector": ["admin@"]
   },
-  "appConnectors": [
+  "nodeAttrs": [
     {
-      "name": "Internal Apps",
-      "connectors": ["tag:connector"],
-      "domains": ["internal.example.com", "*.corp.example.com"],
-      "routes": ["10.0.0.0/8"]
+      "target": ["tag:connector"],
+      "app": {
+        "tailscale.com/app-connectors": [
+          {
+            "name": "Internal Apps",
+            "connectors": ["tag:connector"],
+            "domains": ["internal.example.com", "*.corp.example.com"],
+            "routes": ["10.0.0.0/8"]
+          }
+        ]
+      }
     }
   ]
 }
 ```
 
-### Configuration Fields
+### Configuration fields
+
+The objects under `tailscale.com/app-connectors` use Tailscale's [app connector
+attribute](https://tailscale.com/kb/1281/app-connectors) format. Headscale passes them through unmodified; the connector
+client interprets them.
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `name` | No | A human-readable name for this app connector configuration |
-| `connectors` | Yes | A list of tags (e.g., `tag:connector`) or `*` (all nodes) that identifies which nodes can serve as connectors |
-| `domains` | Yes | A list of domain names to route through the connector. Supports wildcards like `*.example.com` |
-| `routes` | No | Optional list of IP prefixes to pre-configure as routes (in addition to dynamically discovered routes from DNS) |
+| `name` | No | A human-readable name for this collection of domains. |
+| `connectors` | Yes | A list of tags (e.g. `tag:connector`) or `*` that identifies which nodes serve as connectors for these domains. Evaluated by the client. |
+| `domains` | Yes | Domain names to route through the connector. Supports wildcards like `*.example.com`. |
+| `routes` | No | Optional IP prefixes to advertise as routes, in addition to routes discovered dynamically from DNS. |
 
-### Auto-approving Routes
+### Auto-approving routes
 
-App connectors work as dynamic subnet routers under the hood. When a connector
-resolves DNS for a configured domain, it advertises the resulting IP addresses
-as subnet routes. For these routes to take effect automatically, you must
-configure `autoApprovers` to approve routes from the connector nodes:
+App connectors work as dynamic subnet routers under the hood. When a connector resolves DNS for a configured domain, it
+advertises the resulting IP addresses as subnet routes. For these routes to take effect automatically, configure
+`autoApprovers` to approve routes from the connector nodes:
 
-```json
+```json title="policy.json"
 {
   "autoApprovers": {
     "routes": {
@@ -291,36 +310,50 @@ configure `autoApprovers` to approve routes from the connector nodes:
 }
 ```
 
-Without `autoApprovers`, each dynamically discovered route would require manual
-approval.
+Without `autoApprovers`, each dynamically discovered route requires manual approval.
 
-### How It Works
+### How it works
 
-1. Configure tagged nodes as app connectors in your ACL policy
-2. Configure `autoApprovers` to auto-approve routes from your connector tags
-3. Nodes with the specified tags that advertise themselves as app connectors will receive the domain configuration
-4. When clients query DNS for the configured domains, traffic is automatically routed through the connector nodes
-5. The connector nodes resolve the DNS and forward traffic to the destination
+1. Declare the app connector configuration in a `nodeAttrs` entry whose `target` selects the connector nodes.
+2. Configure `autoApprovers` to auto-approve routes from your connector tags.
+3. Start the connector node with `tailscale set --advertise-connector`. It receives the domain configuration via the
+   `tailscale.com/app-connectors` capability.
+4. When clients query DNS for a configured domain, traffic is routed through the connector node, which resolves the DNS
+   and forwards traffic to the destination.
 
-### Example: Multiple Connectors
+### Example: multiple connectors
 
-```json
+```json title="policy.json"
 {
   "tagOwners": {
     "tag:web-connector": ["admin@"],
     "tag:db-connector": ["admin@"]
   },
-  "appConnectors": [
+  "nodeAttrs": [
     {
-      "name": "Web Applications",
-      "connectors": ["tag:web-connector"],
-      "domains": ["*.internal.example.com", "dashboard.corp.example.com"]
+      "target": ["tag:web-connector"],
+      "app": {
+        "tailscale.com/app-connectors": [
+          {
+            "name": "Web Applications",
+            "connectors": ["tag:web-connector"],
+            "domains": ["*.internal.example.com", "dashboard.corp.example.com"]
+          }
+        ]
+      }
     },
     {
-      "name": "Database Access",
-      "connectors": ["tag:db-connector"],
-      "domains": ["db.internal.example.com"],
-      "routes": ["10.20.30.0/24"]
+      "target": ["tag:db-connector"],
+      "app": {
+        "tailscale.com/app-connectors": [
+          {
+            "name": "Database Access",
+            "connectors": ["tag:db-connector"],
+            "domains": ["db.internal.example.com"],
+            "routes": ["10.20.30.0/24"]
+          }
+        ]
+      }
     }
   ]
 }

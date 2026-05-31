@@ -13,14 +13,40 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/appctype"
 )
 
-// TestAppConnectorBasic tests that app connector configuration is properly
-// propagated to nodes that advertise as app connectors and match the policy.
+// appConnectorsCap is the Tailscale capability under which app connector
+// configuration is delivered to a node. App connectors ride the generic
+// nodeAttrs "app" path rather than a bespoke Headscale policy block.
+const appConnectorsCap = tailcfg.NodeCapability("tailscale.com/app-connectors")
+
+// appConnectorAttrs builds a nodeAttrs "app" CapMap carrying the given app
+// connector configs, marshalled through the upstream [appctype.AppConnectorAttr]
+// type so the test exercises the same wire shape a Tailscale-hosted control
+// plane would emit.
+func appConnectorAttrs(t *testing.T, attrs ...appctype.AppConnectorAttr) tailcfg.NodeCapMap {
+	t.Helper()
+
+	raws := make([]tailcfg.RawMessage, 0, len(attrs))
+
+	for _, a := range attrs {
+		b, err := json.Marshal(a)
+		require.NoError(t, err)
+
+		raws = append(raws, tailcfg.RawMessage(b))
+	}
+
+	return tailcfg.NodeCapMap{appConnectorsCap: raws}
+}
+
+// TestAppConnectorBasic tests that app connector configuration declared in
+// nodeAttrs "app" is propagated to a node selected by the target.
 func TestAppConnectorBasic(t *testing.T) {
 	IntegrationSkip(t)
 
-	// Policy with app connector configuration
+	// Policy with app connector configuration delivered via nodeAttrs.app
+	// targeting tag:connector.
 	policy := &policyv2.Policy{
 		TagOwners: policyv2.TagOwners{
 			"tag:connector": policyv2.Owners{usernameOwner("user1@")},
@@ -34,17 +60,22 @@ func TestAppConnectorBasic(t *testing.T) {
 				},
 			},
 		},
-		AppConnectors: []policyv2.AppConnector{
+		NodeAttrs: []policyv2.NodeAttrGrant{
 			{
-				Name:       "Internal Apps",
-				Connectors: []string{"tag:connector"},
-				Domains:    []string{"internal.example.com", "*.corp.example.com"},
-			},
-			{
-				Name:       "VPN Apps",
-				Connectors: []string{"tag:connector"},
-				Domains:    []string{"vpn.example.com"},
-				Routes:     []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")},
+				Targets: policyv2.Aliases{tagp("tag:connector")},
+				App: appConnectorAttrs(t,
+					appctype.AppConnectorAttr{
+						Name:       "Internal Apps",
+						Connectors: []string{"tag:connector"},
+						Domains:    []string{"internal.example.com", "*.corp.example.com"},
+					},
+					appctype.AppConnectorAttr{
+						Name:       "VPN Apps",
+						Connectors: []string{"tag:connector"},
+						Domains:    []string{"vpn.example.com"},
+						Routes:     []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")},
+					},
+				),
 			},
 		},
 	}
@@ -102,7 +133,9 @@ func TestAppConnectorBasic(t *testing.T) {
 		}
 	}, 30*time.Second, 500*time.Millisecond, "Waiting for node to have correct tags")
 
-	// Advertise as an app connector using tailscale set --advertise-connector
+	// Advertise as an app connector. Delivery of the capability is driven by
+	// the nodeAttrs target, not by advertising, but a real connector advertises
+	// so we mirror that here.
 	t.Log("Advertising node as app connector")
 
 	_, _, err = connectorNode.Execute([]string{
@@ -127,8 +160,7 @@ func TestAppConnectorBasic(t *testing.T) {
 			return
 		}
 
-		appConnectorCap := tailcfg.NodeCapability("tailscale.com/app-connectors")
-		attrs, hasCapability := capMap.GetOk(appConnectorCap)
+		attrs, hasCapability := capMap.GetOk(appConnectorsCap)
 		assert.True(c, hasCapability, "Node should have app-connectors capability")
 
 		if hasCapability {
@@ -139,7 +171,7 @@ func TestAppConnectorBasic(t *testing.T) {
 			var allDomains []string
 
 			for i := range attrs.Len() {
-				var cfg policyv2.AppConnectorAttr
+				var cfg appctype.AppConnectorAttr
 
 				err := json.Unmarshal([]byte(attrs.At(i)), &cfg)
 				assert.NoError(c, err)
@@ -154,12 +186,12 @@ func TestAppConnectorBasic(t *testing.T) {
 	}, 60*time.Second, 1*time.Second, "App connector capability should be propagated")
 }
 
-// TestAppConnectorNonMatchingTag tests that nodes without matching tags
-// do not receive app connector configuration.
+// TestAppConnectorNonMatchingTag tests that nodes not selected by the nodeAttrs
+// target do not receive app connector configuration.
 func TestAppConnectorNonMatchingTag(t *testing.T) {
 	IntegrationSkip(t)
 
-	// Policy with app connector configuration for tag:connector only
+	// App connector configuration targets tag:connector only.
 	policy := &policyv2.Policy{
 		TagOwners: policyv2.TagOwners{
 			"tag:connector": policyv2.Owners{usernameOwner("user1@")},
@@ -174,11 +206,16 @@ func TestAppConnectorNonMatchingTag(t *testing.T) {
 				},
 			},
 		},
-		AppConnectors: []policyv2.AppConnector{
+		NodeAttrs: []policyv2.NodeAttrGrant{
 			{
-				Name:       "Internal Apps",
-				Connectors: []string{"tag:connector"},
-				Domains:    []string{"internal.example.com"},
+				Targets: policyv2.Aliases{tagp("tag:connector")},
+				App: appConnectorAttrs(t,
+					appctype.AppConnectorAttr{
+						Name:       "Internal Apps",
+						Connectors: []string{"tag:connector"},
+						Domains:    []string{"internal.example.com"},
+					},
+				),
 			},
 		},
 	}
@@ -258,18 +295,17 @@ func TestAppConnectorNonMatchingTag(t *testing.T) {
 			return
 		}
 
-		appConnectorCap := tailcfg.NodeCapability("tailscale.com/app-connectors")
-		_, hasCapability := capMap.GetOk(appConnectorCap)
+		_, hasCapability := capMap.GetOk(appConnectorsCap)
 		assert.False(c, hasCapability, "Node with non-matching tag should NOT have app-connectors capability")
 	}, 10*time.Second, 1*time.Second, "Verifying node does not receive app connector capability")
 }
 
-// TestAppConnectorWildcardConnector tests that a wildcard (*) connector
-// matches all nodes that advertise as app connectors.
+// TestAppConnectorWildcardConnector tests that a wildcard (*) target delivers
+// app connector configuration to every node.
 func TestAppConnectorWildcardConnector(t *testing.T) {
 	IntegrationSkip(t)
 
-	// Policy with wildcard connector
+	// Policy with a wildcard target.
 	policy := &policyv2.Policy{
 		ACLs: []policyv2.ACL{
 			{
@@ -280,11 +316,16 @@ func TestAppConnectorWildcardConnector(t *testing.T) {
 				},
 			},
 		},
-		AppConnectors: []policyv2.AppConnector{
+		NodeAttrs: []policyv2.NodeAttrGrant{
 			{
-				Name:       "All Connectors",
-				Connectors: []string{"*"},
-				Domains:    []string{"*.internal.example.com"},
+				Targets: policyv2.Aliases{policyv2.Wildcard},
+				App: appConnectorAttrs(t,
+					appctype.AppConnectorAttr{
+						Name:       "All Connectors",
+						Connectors: []string{"*"},
+						Domains:    []string{"*.internal.example.com"},
+					},
+				),
 			},
 		},
 	}
@@ -314,7 +355,8 @@ func TestAppConnectorWildcardConnector(t *testing.T) {
 
 	regularNode := user1Clients[0]
 
-	// Advertise as an app connector - with wildcard, any node should work
+	// Advertise as an app connector - with a wildcard target, any node receives
+	// the configuration.
 	t.Log("Advertising regular node as app connector with wildcard policy")
 
 	_, _, err = regularNode.Execute([]string{
@@ -338,15 +380,14 @@ func TestAppConnectorWildcardConnector(t *testing.T) {
 			return
 		}
 
-		appConnectorCap := tailcfg.NodeCapability("tailscale.com/app-connectors")
-		attrs, hasCapability := capMap.GetOk(appConnectorCap)
-		assert.True(c, hasCapability, "Node should have app-connectors capability with wildcard connector")
+		attrs, hasCapability := capMap.GetOk(appConnectorsCap)
+		assert.True(c, hasCapability, "Node should have app-connectors capability with wildcard target")
 
 		if hasCapability {
 			assert.Equal(c, 1, attrs.Len(), "Should have 1 app connector config")
 
 			// Verify the domain
-			var cfg policyv2.AppConnectorAttr
+			var cfg appctype.AppConnectorAttr
 
 			err := json.Unmarshal([]byte(attrs.At(0)), &cfg)
 			assert.NoError(c, err)

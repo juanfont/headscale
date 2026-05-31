@@ -1,355 +1,192 @@
 package v2
 
 import (
+	"encoding/json"
 	"net/netip"
+	"slices"
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/opt"
+	"tailscale.com/types/appctype"
 )
 
-func TestAppConnectorPolicyParsing(t *testing.T) {
-	tests := []struct {
-		name          string
-		policyJSON    string
-		wantConnector []AppConnector
-		wantErr       bool
-	}{
-		{
-			name: "basic app connector",
-			policyJSON: `{
-				"tagOwners": {
-					"tag:connector": ["user@example.com"]
-				},
-				"appConnectors": [
+// appConnectorsCap is the Tailscale capability key under which app connector
+// configuration is delivered to a node via the nodeAttrs "app" field. App
+// connectors are not a bespoke Headscale policy block: they ride the generic
+// valued-capability path, exactly as a Tailscale-hosted control plane delivers
+// them.
+const appConnectorsCap = tailcfg.NodeCapability("tailscale.com/app-connectors")
+
+// decodeAppConnectorAttrs decodes the app-connectors payloads on a node's
+// CapMap into the real Tailscale [appctype.AppConnectorAttr]. Decoding through
+// the upstream type (rather than a Headscale duplicate) asserts that the
+// values Headscale passes through are wire-compatible with what a Tailscale
+// client reads.
+func decodeAppConnectorAttrs(t *testing.T, capMap tailcfg.NodeCapMap) []appctype.AppConnectorAttr {
+	t.Helper()
+
+	raws, ok := capMap[appConnectorsCap]
+	if !ok {
+		return nil
+	}
+
+	attrs := make([]appctype.AppConnectorAttr, 0, len(raws))
+
+	for _, raw := range raws {
+		var attr appctype.AppConnectorAttr
+
+		require.NoError(t, json.Unmarshal([]byte(raw), &attr))
+		attrs = append(attrs, attr)
+	}
+
+	return attrs
+}
+
+// TestAppConnectorViaNodeAttrs verifies that app connector configuration
+// declared in nodeAttrs "app" lands in the CapMap of every node the target
+// selects, and only those nodes. It reuses the shared nodeAttrs fixtures
+// (node 3 = tag:server, node 4 = tag:client, nodes 1-2 = untagged).
+func TestAppConnectorViaNodeAttrs(t *testing.T) {
+	t.Parallel()
+
+	users := nodeAttrsTestUsers()
+	nodes := nodeAttrsTestNodes(users)
+
+	policy := `{
+		"tagOwners": {` + nodeAttrsTagOwners + `},
+		"nodeAttrs": [{
+			"target": ["tag:server"],
+			"app": {
+				"tailscale.com/app-connectors": [
 					{
 						"name": "Internal Apps",
-						"connectors": ["tag:connector"],
+						"connectors": ["tag:server"],
 						"domains": ["internal.example.com", "*.corp.example.com"]
-					}
-				]
-			}`,
-			wantConnector: []AppConnector{
-				{
-					Name:       "Internal Apps",
-					Connectors: []string{"tag:connector"},
-					Domains:    []string{"internal.example.com", "*.corp.example.com"},
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name: "app connector with routes",
-			policyJSON: `{
-				"tagOwners": {
-					"tag:connector": ["user@example.com"]
-				},
-				"appConnectors": [
+					},
 					{
-						"name": "VPN Connector",
-						"connectors": ["tag:connector"],
+						"name": "VPN Apps",
+						"connectors": ["tag:server"],
 						"domains": ["vpn.example.com"],
-						"routes": ["10.0.0.0/8", "192.168.0.0/16"]
+						"routes": ["10.0.0.0/8"]
 					}
 				]
-			}`,
-			wantConnector: []AppConnector{
-				{
-					Name:       "VPN Connector",
-					Connectors: []string{"tag:connector"},
-					Domains:    []string{"vpn.example.com"},
-					Routes:     []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8"), netip.MustParsePrefix("192.168.0.0/16")},
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name: "wildcard connector",
-			policyJSON: `{
-				"appConnectors": [
-					{
-						"name": "Any Connector",
-						"connectors": ["*"],
-						"domains": ["app.example.com"]
-					}
-				]
-			}`,
-			wantConnector: []AppConnector{
-				{
-					Name:       "Any Connector",
-					Connectors: []string{"*"},
-					Domains:    []string{"app.example.com"},
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name: "app connector with undefined tag",
-			policyJSON: `{
-				"appConnectors": [
-					{
-						"name": "Bad Connector",
-						"connectors": ["tag:undefined"],
-						"domains": ["app.example.com"]
-					}
-				]
-			}`,
-			wantErr: true,
-		},
-		{
-			name: "app connector without domains",
-			policyJSON: `{
-				"tagOwners": {
-					"tag:connector": ["user@example.com"]
-				},
-				"appConnectors": [
-					{
-						"name": "No Domains",
-						"connectors": ["tag:connector"],
-						"domains": []
-					}
-				]
-			}`,
-			wantErr: true,
-		},
-		{
-			name: "app connector without connectors",
-			policyJSON: `{
-				"appConnectors": [
-					{
-						"name": "No Connectors",
-						"connectors": [],
-						"domains": ["app.example.com"]
-					}
-				]
-			}`,
-			wantErr: true,
-		},
-		{
-			name: "app connector with invalid domain",
-			policyJSON: `{
-				"tagOwners": {
-					"tag:connector": ["user@example.com"]
-				},
-				"appConnectors": [
-					{
-						"name": "Invalid Domain",
-						"connectors": ["tag:connector"],
-						"domains": [""]
-					}
-				]
-			}`,
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			policy, err := unmarshalPolicy([]byte(tt.policyJSON))
-			if tt.wantErr {
-				require.Error(t, err)
-				return
 			}
-
-			require.NoError(t, err)
-			require.NotNil(t, policy)
-			assert.Equal(t, tt.wantConnector, policy.AppConnectors)
-		})
-	}
-}
-
-func TestAppConnectorConfigForNode(t *testing.T) {
-	policyJSON := `{
-		"tagOwners": {
-			"tag:connector": ["user@example.com"],
-			"tag:other": ["user@example.com"]
-		},
-		"appConnectors": [
-			{
-				"name": "Internal Apps",
-				"connectors": ["tag:connector"],
-				"domains": ["internal.example.com", "*.corp.example.com"]
-			},
-			{
-				"name": "VPN Apps",
-				"connectors": ["tag:connector"],
-				"domains": ["vpn.example.com"],
-				"routes": ["10.0.0.0/8"]
-			},
-			{
-				"name": "Other Apps",
-				"connectors": ["tag:other"],
-				"domains": ["other.example.com"]
-			}
-		]
+		}]
 	}`
 
-	users := []types.User{
-		{Model: gorm.Model{ID: 1}, Email: "user@example.com"},
-	}
-
-	uid := uint(1)
-	ipv4 := netip.MustParseAddr("100.64.0.1")
-
-	// Node with tag:connector that IS advertising as app connector
-	connectorNode := &types.Node{
-		ID:     1,
-		UserID: &uid,
-		IPv4:   &ipv4,
-		Tags:   []string{"tag:connector"},
-		Hostinfo: &tailcfg.Hostinfo{
-			AppConnector: opt.NewBool(true),
-		},
-	}
-
-	// Node with tag:connector that is NOT advertising as app connector
-	notAdvertisingNode := &types.Node{
-		ID:     2,
-		UserID: &uid,
-		IPv4:   &ipv4,
-		Tags:   []string{"tag:connector"},
-		Hostinfo: &tailcfg.Hostinfo{
-			AppConnector: opt.NewBool(false),
-		},
-	}
-
-	// Node with different tag that IS advertising
-	otherTagNode := &types.Node{
-		ID:     3,
-		UserID: &uid,
-		IPv4:   &ipv4,
-		Tags:   []string{"tag:other"},
-		Hostinfo: &tailcfg.Hostinfo{
-			AppConnector: opt.NewBool(true),
-		},
-	}
-
-	// Node without any matching tag
-	noTagNode := &types.Node{
-		ID:     4,
-		UserID: &uid,
-		IPv4:   &ipv4,
-		Tags:   []string{"tag:unrelated"},
-		Hostinfo: &tailcfg.Hostinfo{
-			AppConnector: opt.NewBool(true),
-		},
-	}
-
-	nodes := types.Nodes{connectorNode, notAdvertisingNode, otherTagNode, noTagNode}
-
-	pm, err := NewPolicyManager([]byte(policyJSON), users, nodes.ViewSlice())
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
 	require.NoError(t, err)
 
-	tests := []struct {
-		name     string
-		node     *types.Node
-		wantLen  int
-		wantName string
-	}{
-		{
-			name:     "connector node gets matching configs",
-			node:     connectorNode,
-			wantLen:  2, // Internal Apps and VPN Apps
-			wantName: "Internal Apps",
-		},
-		{
-			name:    "non-advertising node gets no config",
-			node:    notAdvertisingNode,
-			wantLen: 0,
-		},
-		{
-			name:     "other tag node gets other config",
-			node:     otherTagNode,
-			wantLen:  1, // Other Apps
-			wantName: "Other Apps",
-		},
-		{
-			name:    "unrelated tag gets no config",
-			node:    noTagNode,
-			wantLen: 0,
-		},
+	// The targeted node (tag:server, ID 3) receives both configs.
+	attrs := decodeAppConnectorAttrs(t, pm.NodeCapMap(3))
+	require.Len(t, attrs, 2)
+
+	domains := make([]string, 0, len(attrs))
+	for _, a := range attrs {
+		domains = append(domains, a.Domains...)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			configs := pm.AppConnectorConfigForNode(tt.node.View())
-			assert.Len(t, configs, tt.wantLen)
+	assert.ElementsMatch(t,
+		[]string{"internal.example.com", "*.corp.example.com", "vpn.example.com"},
+		domains,
+	)
 
-			if tt.wantLen > 0 && tt.wantName != "" {
-				assert.Equal(t, tt.wantName, configs[0].Name)
-			}
-		})
+	// The "routes" field round-trips through the upstream type.
+	var withRoutes *appctype.AppConnectorAttr
+
+	for i := range attrs {
+		if attrs[i].Name == "VPN Apps" {
+			withRoutes = &attrs[i]
+		}
 	}
+
+	require.NotNil(t, withRoutes)
+	assert.Equal(t,
+		[]netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")},
+		withRoutes.Routes,
+	)
+
+	// Nodes the target does not select get no app-connectors capability.
+	assert.Nil(t, decodeAppConnectorAttrs(t, pm.NodeCapMap(1)), "untagged node")
+	assert.Nil(t, decodeAppConnectorAttrs(t, pm.NodeCapMap(4)), "tag:client node")
 }
 
-func TestAppConnectorWildcardConnector(t *testing.T) {
-	policyJSON := `{
-		"appConnectors": [
-			{
-				"name": "All Connectors",
-				"connectors": ["*"],
-				"domains": ["*.example.com"]
+// TestAppConnectorWildcardTarget verifies that a wildcard target delivers the
+// app-connectors capability to every node, mirroring Tailscale's "*" target.
+func TestAppConnectorWildcardTarget(t *testing.T) {
+	t.Parallel()
+
+	users := nodeAttrsTestUsers()
+	nodes := nodeAttrsTestNodes(users)
+
+	policy := `{
+		"tagOwners": {` + nodeAttrsTagOwners + `},
+		"nodeAttrs": [{
+			"target": ["*"],
+			"app": {
+				"tailscale.com/app-connectors": [
+					{"name": "All", "connectors": ["*"], "domains": ["*.example.com"]}
+				]
 			}
-		]
+		}]
 	}`
 
-	users := []types.User{
-		{Model: gorm.Model{ID: 1}, Email: "user@example.com"},
-	}
-
-	uid := uint(1)
-	ipv4 := netip.MustParseAddr("100.64.0.1")
-
-	// Any node advertising as connector should match wildcard
-	node := &types.Node{
-		ID:     1,
-		UserID: &uid,
-		IPv4:   &ipv4,
-		Tags:   []string{"tag:anyvalue"},
-		Hostinfo: &tailcfg.Hostinfo{
-			AppConnector: opt.NewBool(true),
-		},
-	}
-
-	nodes := types.Nodes{node}
-
-	pm, err := NewPolicyManager([]byte(policyJSON), users, nodes.ViewSlice())
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
 	require.NoError(t, err)
 
-	configs := pm.AppConnectorConfigForNode(node.View())
-	require.Len(t, configs, 1)
-	assert.Equal(t, "All Connectors", configs[0].Name)
-	assert.Equal(t, []string{"*.example.com"}, configs[0].Domains)
+	for _, id := range []types.NodeID{1, 2, 3, 4, 5} {
+		attrs := decodeAppConnectorAttrs(t, pm.NodeCapMap(id))
+		require.Lenf(t, attrs, 1, "node %d", id)
+		assert.Equal(t, []string{"*.example.com"}, attrs[0].Domains)
+	}
 }
 
-func TestValidateAppConnectorDomain(t *testing.T) {
-	tests := []struct {
-		domain  string
-		wantErr bool
-	}{
-		{"example.com", false},
-		{"sub.example.com", false},
-		{"*.example.com", false},
-		{"a.b.c.example.com", false},
-		{"", true},
-		{".example.com", true},
-		{"example.com.", true},
-		{"example..com", true},
-		{"*.", true},
-	}
+// TestAppConnectorChangeTracking proves that app connector caps delivered via
+// nodeAttrs.app participate in NodesWithChangedCapMap — the drain that drives
+// per-node change.SelfUpdate on policy reload (hscontrol/state/state.go). This
+// is why app connectors no longer need a PolicyChange{IncludeSelf:true}
+// broadcast: a node whose app config changes is reported here and gets a
+// targeted self-update through the same path as every other nodeAttrs cap.
+func TestAppConnectorChangeTracking(t *testing.T) {
+	t.Parallel()
 
-	for _, tt := range tests {
-		t.Run(tt.domain, func(t *testing.T) {
-			err := validateAppConnectorDomain(tt.domain)
-			if tt.wantErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
+	users := nodeAttrsTestUsers()
+	nodes := nodeAttrsTestNodes(users)
+
+	// Start with no nodeAttrs at all.
+	base := `{"tagOwners": {` + nodeAttrsTagOwners + `}}`
+
+	pm, err := NewPolicyManager([]byte(base), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	require.Empty(t, pm.NodesWithChangedCapMap(),
+		"no nodeAttrs means no node has a CapMap")
+
+	// Add an app connector targeting tag:server (node 3 only).
+	withConnector := `{
+		"tagOwners": {` + nodeAttrsTagOwners + `},
+		"nodeAttrs": [{
+			"target": ["tag:server"],
+			"app": {
+				"tailscale.com/app-connectors": [
+					{"name": "Internal", "connectors": ["tag:server"], "domains": ["internal.example.com"]}
+				]
 			}
-		})
-	}
+		}]
+	}`
+
+	changed, err := pm.SetPolicy([]byte(withConnector))
+	require.NoError(t, err)
+	require.True(t, changed)
+
+	delta := pm.NodesWithChangedCapMap()
+	slices.Sort(delta)
+	assert.Equal(t, []types.NodeID{3}, delta,
+		"only the targeted node's app-connectors cap appeared")
+
+	assert.Empty(t, pm.NodesWithChangedCapMap(),
+		"NodesWithChangedCapMap drains on read")
 }
