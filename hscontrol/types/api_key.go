@@ -67,7 +67,7 @@ func (k *APIKey) maskedPrefix() string {
 	return k.Prefix + "***"
 }
 
-// MarshalZerologObject implements zerolog.LogObjectMarshaler for safe logging.
+// MarshalZerologObject implements [zerolog.LogObjectMarshaler] for safe logging.
 // SECURITY: This method intentionally does NOT log the full key or hash.
 // Only the masked prefix is logged for identification purposes.
 func (k *APIKey) MarshalZerologObject(e *zerolog.Event) {

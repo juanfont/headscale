@@ -75,7 +75,7 @@ func TestNetInfoPreservationInRegistrationFlow(t *testing.T) {
 	nodeID := types.NodeID(1)
 
 	// This test reproduces the bug in registration flows where NetInfo was lost
-	// because we used the wrong hostinfo reference when calling NetInfoFromMapRequest
+	// because we used the wrong hostinfo reference when calling [netInfoFromMapRequest]
 	t.Run("registration_flow_bug_reproduction", func(t *testing.T) {
 		// Simulate existing node with NetInfo (before re-registration)
 		existingNodeHostinfo := &tailcfg.Hostinfo{

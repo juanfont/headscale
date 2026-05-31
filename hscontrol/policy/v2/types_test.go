@@ -407,8 +407,50 @@ func TestUnmarshalPolicy(t *testing.T) {
 	},
 }
 `,
-			// wantErr: `username must contain @, got: "group:inner"`,
-			wantErr: `nested groups are not allowed: found "group:inner" inside "group:example"`,
+			wantErr: `groups["group:example"]: "group:inner": group members cannot be recursive`,
+		},
+		{
+			// SaaS reports the deepest non-leaf parent first: for
+			// the three-deep chain `a -> b -> c -> user`, the
+			// reported pair is `b -> c` rather than `a -> b`.
+			name: "group-nested-three-deep",
+			input: `
+{
+	"groups": {
+		"group:a": ["group:b"],
+		"group:b": ["group:c"],
+		"group:c": ["thor@example.org"],
+	},
+}
+`,
+			wantErr: `groups["group:b"]: "group:c": group members cannot be recursive`,
+		},
+		{
+			// Cycle `a <-> b`: reported as `b -> a` so the body
+			// matches SaaS exactly.
+			name: "group-nested-cycle",
+			input: `
+{
+	"groups": {
+		"group:a": ["group:b"],
+		"group:b": ["group:a"],
+	},
+}
+`,
+			wantErr: `groups["group:b"]: "group:a": group members cannot be recursive`,
+		},
+		{
+			// Self-cycle: the same group appears as its own
+			// member. Same wording.
+			name: "group-nested-self-cycle",
+			input: `
+{
+	"groups": {
+		"group:a": ["group:a"],
+	},
+}
+`,
+			wantErr: `groups["group:a"]: "group:a": group members cannot be recursive`,
 		},
 		{
 			name: "invalid-addr",
@@ -660,7 +702,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 			},
 		},
 		{
-			name: "ssh-with-tag-and-user",
+			name: "ssh-with-tag-and-wildcard-user",
 			input: `
 {
   "tagOwners": {
@@ -681,26 +723,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   ]
 }
 `,
-			want: &Policy{
-				TagOwners: TagOwners{
-					Tag("tag:web"):    Owners{new(Username("admin@example.com"))},
-					Tag("tag:server"): Owners{new(Username("admin@example.com"))},
-				},
-				SSHs: []SSH{
-					{
-						Action: "accept",
-						Sources: SSHSrcAliases{
-							tp("tag:web"),
-						},
-						Destinations: SSHDstAliases{
-							tp("tag:server"),
-						},
-						Users: []SSHUser{
-							SSHUser("*"),
-						},
-					},
-				},
-			},
+			wantErr: `user "*" is not valid`,
 		},
 		{
 			name: "ssh-with-check-period",
@@ -2006,8 +2029,11 @@ func TestUnmarshalPolicy(t *testing.T) {
 `,
 			wantErr: "square brackets are only valid around IPv6 addresses",
 		},
+		// Non-canonical `localpart:` strings flow through as literal
+		// user names per SaaS behaviour — captured in
+		// ssh-malformed-user-localpart-{no-at,no-glob,no-domain}.
 		{
-			name: "ssh-localpart-invalid-no-at-sign",
+			name: "ssh-localpart-non-canonical-no-at-sign",
 			input: `
 {
   "tagOwners": {"tag:prod": ["admin@"]},
@@ -2019,10 +2045,22 @@ func TestUnmarshalPolicy(t *testing.T) {
   }]
 }
 `,
-			wantErr: "invalid localpart format",
+			want: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:prod"): Owners{new(Username("admin@"))},
+				},
+				SSHs: []SSH{
+					{
+						Action:       "accept",
+						Sources:      SSHSrcAliases{agp("autogroup:member")},
+						Destinations: SSHDstAliases{tp("tag:prod")},
+						Users:        []SSHUser{SSHUser("localpart:foo")},
+					},
+				},
+			},
 		},
 		{
-			name: "ssh-localpart-invalid-non-wildcard",
+			name: "ssh-localpart-non-canonical-non-wildcard",
 			input: `
 {
   "tagOwners": {"tag:prod": ["admin@"]},
@@ -2034,10 +2072,22 @@ func TestUnmarshalPolicy(t *testing.T) {
   }]
 }
 `,
-			wantErr: "invalid localpart format",
+			want: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:prod"): Owners{new(Username("admin@"))},
+				},
+				SSHs: []SSH{
+					{
+						Action:       "accept",
+						Sources:      SSHSrcAliases{agp("autogroup:member")},
+						Destinations: SSHDstAliases{tp("tag:prod")},
+						Users:        []SSHUser{SSHUser("localpart:alice@example.com")},
+					},
+				},
+			},
 		},
 		{
-			name: "ssh-localpart-invalid-empty-domain",
+			name: "ssh-localpart-non-canonical-empty-domain",
 			input: `
 {
   "tagOwners": {"tag:prod": ["admin@"]},
@@ -2049,7 +2099,191 @@ func TestUnmarshalPolicy(t *testing.T) {
   }]
 }
 `,
-			wantErr: "invalid localpart format",
+			want: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:prod"): Owners{new(Username("admin@"))},
+				},
+				SSHs: []SSH{
+					{
+						Action:       "accept",
+						Sources:      SSHSrcAliases{agp("autogroup:member")},
+						Destinations: SSHDstAliases{tp("tag:prod")},
+						Users:        []SSHUser{SSHUser("localpart:*@")},
+					},
+				},
+			},
+		},
+		// A test entry with neither accept nor deny asserts nothing
+		// and is silently accepted today. Tailscale rejects the policy.
+		{
+			name: "tests-empty-assertions",
+			input: `
+{
+	"acls": [
+		{"action": "accept", "src": ["*"], "dst": ["*:22"]}
+	],
+	"tests": [
+		{"src": "*"}
+	]
+}
+`,
+			wantErr: `test entry must have at least one of "accept" or "deny"`,
+		},
+		// Tests can only describe connection-oriented reachability, so
+		// proto must be tcp, udp, sctp, or empty. Tailscale rejects
+		// proto=icmp on a test entry even though icmp is valid in rules.
+		{
+			name: "tests-proto-icmp-not-allowed",
+			input: `
+{
+	"acls": [
+		{"action": "accept", "proto": "icmp", "src": ["*"], "dst": ["*:*"]}
+	],
+	"tests": [
+		{"src": "*", "proto": "icmp", "accept": ["*:*"]}
+	]
+}
+`,
+			wantErr: `test protocol must be tcp, udp, sctp, or empty`,
+		},
+		// A test asserts one connection attempt to one specific port.
+		// Port ranges, lists, and wildcards conflate multiple attempts
+		// and have no single answer; Tailscale rejects them in tests.
+		{
+			name: "tests-dst-port-range-not-allowed",
+			input: `
+{
+	"acls": [
+		{"action": "accept", "src": ["*"], "dst": ["*:8000-8100"]}
+	],
+	"tests": [
+		{"src": "*", "accept": ["*:8000-8100"]}
+	]
+}
+`,
+			wantErr: `test destination port must be a single port`,
+		},
+		// autogroup:internet is delivered via exit-node AllowedIPs, not
+		// packet-filter rules, so reachability to it has no meaning in
+		// the filter model used by tests. Tailscale rejects it in
+		// test destinations even though it is valid in rule destinations.
+		{
+			name: "tests-dst-autogroup-internet-not-allowed",
+			input: `
+{
+	"tagOwners": {
+		"tag:client": ["admin@example.com"]
+	},
+	"acls": [
+		{"action": "accept", "src": ["tag:client"], "dst": ["autogroup:internet:*"]}
+	],
+	"tests": [
+		{"src": "tag:client", "deny": ["autogroup:internet:*"]}
+	]
+}
+`,
+			wantErr: `autogroup:internet not valid as a test destination`,
+		},
+		// A test asserts one connection attempt to one specific host.
+		// Tailscale rejects raw `/N` notation in test dsts even when
+		// the prefix is `/32` — the alias parser distinguishes a bare
+		// IP literal from an explicit single-host CIDR even though
+		// they cover the same address.
+		{
+			name: "tests-dst-cidr-prefix32-not-allowed",
+			input: `
+{
+	"tagOwners": {
+		"tag:client": ["admin@example.com"]
+	},
+	"acls": [
+		{"action": "accept", "src": ["tag:client"], "dst": ["100.64.0.16/32:22"]}
+	],
+	"tests": [
+		{"src": "tag:client", "accept": ["100.64.0.16/32:22"]}
+	]
+}
+`,
+			wantErr: `test destination must be a single host, not a CIDR range`,
+		},
+		// Multi-host prefixes in test dsts are rejected for the same
+		// reason port ranges are: the assertion has no single answer
+		// once the prefix covers more than one host.
+		{
+			name: "tests-dst-cidr-multi-host-not-allowed",
+			input: `
+{
+	"tagOwners": {
+		"tag:client": ["admin@example.com"]
+	},
+	"acls": [
+		{"action": "accept", "src": ["tag:client"], "dst": ["10.0.0.0/8:22"]}
+	],
+	"tests": [
+		{"src": "tag:client", "accept": ["10.0.0.0/8:22"]}
+	]
+}
+`,
+			wantErr: `test destination must be a single host, not a CIDR range`,
+		},
+		// hosts: aliases with a multi-host RHS are rejected after
+		// resolution. The alias text has no slash but the alias still
+		// resolves to a range, which is the rule SaaS enforces.
+		{
+			name: "tests-dst-host-alias-cidr-not-allowed",
+			input: `
+{
+	"tagOwners": {
+		"tag:client": ["admin@example.com"]
+	},
+	"hosts": {
+		"internal": "10.0.0.0/8"
+	},
+	"acls": [
+		{"action": "accept", "src": ["tag:client"], "dst": ["internal:22"]}
+	],
+	"tests": [
+		{"src": "tag:client", "accept": ["internal:22"]}
+	]
+}
+`,
+			wantErr: `test destination must be a single host, not a CIDR range`,
+		},
+		// Tailscale accepts numeric IANA protocol form ("6", "17",
+		// "132") wherever the named form is allowed, including with
+		// specific ports. validateProtocolPortCompatibility today only
+		// recognises the named constants and rejects the numeric form.
+		{
+			name: "protocol-numeric-tcp-with-specific-port-allowed",
+			input: `
+{
+	"acls": [
+		{
+			"action": "accept",
+			"proto": "6",
+			"src": ["*"],
+			"dst": ["*:443"]
+		}
+	]
+}
+`,
+			want: &Policy{
+				ACLs: []ACL{
+					{
+						Action:   "accept",
+						Protocol: "tcp",
+						Sources: Aliases{
+							Wildcard,
+						},
+						Destinations: []AliasWithPorts{
+							{
+								Alias: Wildcard,
+								Ports: []tailcfg.PortRange{{First: 443, Last: 443}},
+							},
+						},
+					},
+				},
+			},
 		},
 	}
 
@@ -3961,13 +4195,45 @@ func TestFlattenTagOwners(t *testing.T) {
 			wantErr: "",
 		},
 		{
-			name: "circular-reference",
+			// SaaS tolerates tag:a <-> tag:b cycles by dropping the
+			// cycle edge; both tags resolve to an empty owner set
+			// because neither chain reaches a non-tag owner.
+			name: "circular-reference-resolves-to-empty",
 			input: TagOwners{
 				Tag("tag:a"): Owners{new(Tag("tag:b"))},
 				Tag("tag:b"): Owners{new(Tag("tag:a"))},
 			},
-			want:    nil,
-			wantErr: "circular reference detected: tag:a -> tag:b",
+			want: TagOwners{
+				Tag("tag:a"): nil,
+				Tag("tag:b"): nil,
+			},
+			wantErr: "",
+		},
+		{
+			// tag:a -> tag:a self-reference: the only owner is the
+			// cycle edge itself; result is empty.
+			name: "self-reference-resolves-to-empty",
+			input: TagOwners{
+				Tag("tag:a"): Owners{new(Tag("tag:a"))},
+			},
+			want: TagOwners{
+				Tag("tag:a"): nil,
+			},
+			wantErr: "",
+		},
+		{
+			// Cycle plus a sibling non-tag owner: the cycle edge
+			// drops out, the sibling owner survives.
+			name: "cycle-plus-sibling-keeps-sibling",
+			input: TagOwners{
+				Tag("tag:a"): Owners{new(Tag("tag:b")), new(Username("alice@example.com"))},
+				Tag("tag:b"): Owners{new(Tag("tag:a"))},
+			},
+			want: TagOwners{
+				Tag("tag:a"): Owners{new(Username("alice@example.com"))},
+				Tag("tag:b"): Owners{new(Username("alice@example.com"))},
+			},
+			wantErr: "",
 		},
 		{
 			name: "mixed-owners",
@@ -4026,7 +4292,9 @@ func TestFlattenTagOwners(t *testing.T) {
 			wantErr: "",
 		},
 		{
-			name: "tag-long-circular-chain",
+			// Long cycle: every tag eventually points back to itself.
+			// Each tag resolves to the empty owner set.
+			name: "tag-long-circular-chain-resolves-to-empty",
 			input: TagOwners{
 				Tag("tag:a"): Owners{new(Tag("tag:g"))},
 				Tag("tag:b"): Owners{new(Tag("tag:a"))},
@@ -4036,7 +4304,16 @@ func TestFlattenTagOwners(t *testing.T) {
 				Tag("tag:f"): Owners{new(Tag("tag:e"))},
 				Tag("tag:g"): Owners{new(Tag("tag:f"))},
 			},
-			wantErr: "circular reference detected: tag:a -> tag:b -> tag:c -> tag:d -> tag:e -> tag:f -> tag:g",
+			want: TagOwners{
+				Tag("tag:a"): nil,
+				Tag("tag:b"): nil,
+				Tag("tag:c"): nil,
+				Tag("tag:d"): nil,
+				Tag("tag:e"): nil,
+				Tag("tag:f"): nil,
+				Tag("tag:g"): nil,
+			},
+			wantErr: "",
 		},
 		{
 			name: "undefined-tag-reference",
@@ -4192,7 +4469,15 @@ func TestSSHCheckPeriodValidate(t *testing.T) {
 			period: SSHCheckPeriod{Always: true},
 		},
 		{
-			name:   "1m minimum valid",
+			name:   "zero duration is valid",
+			period: SSHCheckPeriod{Duration: 0},
+		},
+		{
+			name:   "30s below previous minimum is valid (matches SaaS)",
+			period: SSHCheckPeriod{Duration: 30 * time.Second},
+		},
+		{
+			name:   "1m valid",
 			period: SSHCheckPeriod{Duration: time.Minute},
 		},
 		{
@@ -4200,14 +4485,19 @@ func TestSSHCheckPeriodValidate(t *testing.T) {
 			period: SSHCheckPeriod{Duration: 168 * time.Hour},
 		},
 		{
-			name:    "30s below minimum",
-			period:  SSHCheckPeriod{Duration: 30 * time.Second},
-			wantErr: ErrSSHCheckPeriodBelowMin,
+			name:    "168h0m1s above maximum",
+			period:  SSHCheckPeriod{Duration: 168*time.Hour + time.Second},
+			wantErr: ErrSSHCheckPeriodAboveMax,
 		},
 		{
 			name:    "169h above maximum",
 			period:  SSHCheckPeriod{Duration: 169 * time.Hour},
 			wantErr: ErrSSHCheckPeriodAboveMax,
+		},
+		{
+			name:    "negative duration rejected",
+			period:  SSHCheckPeriod{Duration: -time.Minute},
+			wantErr: ErrSSHCheckPeriodNegative,
 		},
 	}
 
@@ -4272,7 +4562,7 @@ func TestSSHCheckPeriodPolicyValidation(t *testing.T) {
 			wantErr: ErrSSHCheckPeriodOnNonCheck,
 		},
 		{
-			name: "check with 30s is invalid",
+			name: "check with 30s is valid (matches SaaS, no minimum)",
 			ssh: SSH{
 				Action:       SSHActionCheck,
 				Sources:      SSHSrcAliases{up("user@")},
@@ -4280,7 +4570,49 @@ func TestSSHCheckPeriodPolicyValidation(t *testing.T) {
 				Users:        SSHUsers{"root"},
 				CheckPeriod:  &SSHCheckPeriod{Duration: 30 * time.Second},
 			},
-			wantErr: ErrSSHCheckPeriodBelowMin,
+		},
+		{
+			name: "check with 168h exactly is valid",
+			ssh: SSH{
+				Action:       SSHActionCheck,
+				Sources:      SSHSrcAliases{up("user@")},
+				Destinations: SSHDstAliases{agp("autogroup:member")},
+				Users:        SSHUsers{"root"},
+				CheckPeriod:  &SSHCheckPeriod{Duration: 168 * time.Hour},
+			},
+		},
+		{
+			name: "check with 168h0m1s just above max is invalid",
+			ssh: SSH{
+				Action:       SSHActionCheck,
+				Sources:      SSHSrcAliases{up("user@")},
+				Destinations: SSHDstAliases{agp("autogroup:member")},
+				Users:        SSHUsers{"root"},
+				CheckPeriod:  &SSHCheckPeriod{Duration: 168*time.Hour + time.Second},
+			},
+			wantErr: ErrSSHCheckPeriodAboveMax,
+		},
+		{
+			name: "check with 200h above max is invalid",
+			ssh: SSH{
+				Action:       SSHActionCheck,
+				Sources:      SSHSrcAliases{up("user@")},
+				Destinations: SSHDstAliases{agp("autogroup:member")},
+				Users:        SSHUsers{"root"},
+				CheckPeriod:  &SSHCheckPeriod{Duration: 200 * time.Hour},
+			},
+			wantErr: ErrSSHCheckPeriodAboveMax,
+		},
+		{
+			name: "check with negative duration is invalid",
+			ssh: SSH{
+				Action:       SSHActionCheck,
+				Sources:      SSHSrcAliases{up("user@")},
+				Destinations: SSHDstAliases{agp("autogroup:member")},
+				Users:        SSHUsers{"root"},
+				CheckPeriod:  &SSHCheckPeriod{Duration: -time.Minute},
+			},
+			wantErr: ErrSSHCheckPeriodNegative,
 		},
 	}
 
@@ -4298,6 +4630,406 @@ func TestSSHCheckPeriodPolicyValidation(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+// TestSSHRuleSaaSValidation exercises the SaaS-aligned rejections
+// added to match the API body strings exactly.
+func TestSSHRuleSaaSValidation(t *testing.T) {
+	baseSSH := func(modify func(*SSH)) SSH {
+		ssh := SSH{
+			Action:       SSHActionAccept,
+			Sources:      SSHSrcAliases{up("user@")},
+			Destinations: SSHDstAliases{agp("autogroup:member")},
+			Users:        SSHUsers{"root"},
+		}
+		if modify != nil {
+			modify(&ssh)
+		}
+
+		return ssh
+	}
+
+	tests := []struct {
+		name    string
+		ssh     SSH
+		wantErr error
+	}{
+		{
+			name:    "users empty rejected",
+			ssh:     baseSSH(func(s *SSH) { s.Users = nil }),
+			wantErr: ErrSSHUsersMustBeSpecified,
+		},
+		{
+			name:    "users empty array rejected",
+			ssh:     baseSSH(func(s *SSH) { s.Users = SSHUsers{} }),
+			wantErr: ErrSSHUsersMustBeSpecified,
+		},
+		{
+			name:    "user empty string rejected",
+			ssh:     baseSSH(func(s *SSH) { s.Users = SSHUsers{""} }),
+			wantErr: ErrSSHUserInvalid,
+		},
+		{
+			name:    "user wildcard rejected",
+			ssh:     baseSSH(func(s *SSH) { s.Users = SSHUsers{"*"} }),
+			wantErr: ErrSSHUserInvalid,
+		},
+		{
+			name:    "acceptEnv empty entry rejected",
+			ssh:     baseSSH(func(s *SSH) { s.AcceptEnv = []string{"FOO", ""} }),
+			wantErr: ErrSSHAcceptEnvEmpty,
+		},
+		{
+			name:    "action empty rejected",
+			ssh:     baseSSH(func(s *SSH) { s.Action = "" }),
+			wantErr: ErrSSHActionMustBeSpecified,
+		},
+		{
+			name: "user autogroup non-nonroot accepted (literal)",
+			ssh: baseSSH(func(s *SSH) {
+				s.Users = SSHUsers{"autogroup:internet"}
+			}),
+		},
+		{
+			name: "user malformed localpart accepted (literal)",
+			ssh: baseSSH(func(s *SSH) {
+				s.Users = SSHUsers{"localpart:foo"}
+			}),
+		},
+		{
+			name: "acceptEnv double-glob accepted",
+			ssh: baseSSH(func(s *SSH) {
+				s.AcceptEnv = []string{"**"}
+			}),
+		},
+		{
+			// SaaS rejects hosts-table aliases on SSH dst with
+			// `invalid dst "srv"`. headscale validates the same
+			// regardless of whether the alias resolves to a
+			// single IP or a CIDR.
+			name: "host alias as SSH dst rejected",
+			ssh: baseSSH(func(s *SSH) {
+				s.Destinations = SSHDstAliases{hp("srv")}
+			}),
+			wantErr: ErrSSHDestinationHostAlias,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pol := &Policy{
+				Hosts: Hosts{Host("srv"): Prefix(mp("100.64.0.16/32"))},
+				SSHs:  []SSH{tt.ssh},
+			}
+			err := pol.validate()
+
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+		})
+	}
+}
+
+// TestSSHActionInvalidUnmarshal verifies the SaaS-aligned wording for
+// non-empty unknown actions surfaces at JSON parse time.
+func TestSSHActionInvalidUnmarshal(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantValue SSHAction
+		wantErr   error
+		wantMsg   string
+	}{
+		{
+			name:      "exact match accept",
+			input:     `"accept"`,
+			wantValue: SSHActionAccept,
+		},
+		{
+			name:      "exact match check",
+			input:     `"check"`,
+			wantValue: SSHActionCheck,
+		},
+		{
+			name:      "whitespace trimmed to accept",
+			input:     `" accept "`,
+			wantValue: SSHActionAccept,
+		},
+		{
+			name:    "uppercase rejected",
+			input:   `"ACCEPT"`,
+			wantErr: ErrSSHActionInvalid,
+			wantMsg: `"ACCEPT" is not a valid action`,
+		},
+		{
+			name:    "mixedcase rejected",
+			input:   `"Accept"`,
+			wantErr: ErrSSHActionInvalid,
+			wantMsg: `"Accept" is not a valid action`,
+		},
+		{
+			name:    "whitespace trimmed then mixedcase rejected",
+			input:   `" Accept"`,
+			wantErr: ErrSSHActionInvalid,
+			wantMsg: `"Accept" is not a valid action`,
+		},
+		{
+			name:    "unknown action rejected",
+			input:   `"deny"`,
+			wantErr: ErrSSHActionInvalid,
+			wantMsg: `"deny" is not a valid action`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var a SSHAction
+
+			err := json.Unmarshal([]byte(tt.input), &a)
+			if tt.wantErr != nil {
+				require.Error(t, err)
+				require.ErrorIs(t, err, tt.wantErr)
+				require.Contains(t, err.Error(), tt.wantMsg)
+
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, tt.wantValue, a)
+		})
+	}
+}
+
+// TestSSHUserUnmarshalTrim verifies per-element whitespace trimming so
+// that the compiled `sshUsers` map matches SaaS exactly. A
+// whitespace-only entry collapses to "" and is left for the per-rule
+// validate() pass to reject via ErrSSHUserInvalid.
+func TestSSHUserUnmarshalTrim(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  SSHUser
+	}{
+		{
+			name:  "leading whitespace trimmed",
+			input: `" root"`,
+			want:  SSHUser("root"),
+		},
+		{
+			name:  "trailing whitespace trimmed",
+			input: `"root "`,
+			want:  SSHUser("root"),
+		},
+		{
+			name:  "whitespace-only collapses to empty",
+			input: `"  "`,
+			want:  SSHUser(""),
+		},
+		{
+			name:  "no trim needed",
+			input: `"root"`,
+			want:  SSHUser("root"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var u SSHUser
+
+			err := json.Unmarshal([]byte(tt.input), &u)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, u)
+		})
+	}
+}
+
+// TestSSHUserTrimEndToEnd verifies that a policy with `[" root"]`
+// parses cleanly and that the policy validate() pass treats `[" "]`
+// as the empty-user case (per-element trim happens at unmarshal time).
+func TestSSHUserTrimEndToEnd(t *testing.T) {
+	t.Run("leading whitespace user accepted and trimmed", func(t *testing.T) {
+		policy := `
+{
+	"tagOwners": {"tag:server": ["odin@example.com"]},
+	"ssh": [{
+		"action": "accept",
+		"src":    ["autogroup:member"],
+		"dst":    ["tag:server"],
+		"users":  [" root"]
+	}]
+}`
+		pol, err := unmarshalPolicy([]byte(policy))
+		require.NoError(t, err)
+		require.Len(t, pol.SSHs, 1)
+		require.Equal(t, SSHUsers{SSHUser("root")}, pol.SSHs[0].Users)
+	})
+
+	t.Run("whitespace-only user rejected as empty", func(t *testing.T) {
+		policy := `
+{
+	"tagOwners": {"tag:server": ["odin@example.com"]},
+	"ssh": [{
+		"action": "accept",
+		"src":    ["autogroup:member"],
+		"dst":    ["tag:server"],
+		"users":  [" "]
+	}]
+}`
+		_, err := unmarshalPolicy([]byte(policy))
+		require.Error(t, err)
+		require.ErrorIs(t, err, ErrSSHUserInvalid)
+		require.Contains(t, err.Error(), `user "" is not valid`)
+	})
+}
+
+// TestAliasEncUnmarshalTrim verifies that src/dst entries get
+// trimmed before alias dispatch so `"tag:server "` resolves to the
+// same Tag alias SaaS uses and `" odin@example.com"` resolves to the
+// same Username alias. Covers tag, group, user, and autogroup entries
+// on both the leading- and trailing-whitespace edges.
+func TestAliasEncUnmarshalTrim(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  Alias
+	}{
+		{
+			name:  "tag trailing whitespace",
+			input: `"tag:server "`,
+			want:  new(Tag("tag:server")),
+		},
+		{
+			name:  "tag leading whitespace",
+			input: `" tag:server"`,
+			want:  new(Tag("tag:server")),
+		},
+		{
+			name:  "group leading whitespace",
+			input: `" group:admins"`,
+			want:  new(Group("group:admins")),
+		},
+		{
+			name:  "user trailing whitespace",
+			input: `"odin@example.com "`,
+			want:  new(Username("odin@example.com")),
+		},
+		{
+			name:  "autogroup trailing whitespace",
+			input: `"autogroup:member "`,
+			want:  new(AutoGroup("autogroup:member")),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var a AliasEnc
+
+			err := json.Unmarshal([]byte(tt.input), &a)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, a.Alias)
+		})
+	}
+}
+
+// TestTagValidateFirstCharLetter exercises the SaaS rule that the
+// first character after `tag:` must be an ASCII letter. Digits,
+// punctuation, and non-ASCII Unicode letters are rejected with the
+// same body SaaS produces. Subsequent characters are unconstrained.
+func TestTagValidateFirstCharLetter(t *testing.T) {
+	tests := []struct {
+		name    string
+		tag     Tag
+		wantErr error
+	}{
+		{
+			name: "ascii lowercase letter",
+			tag:  Tag("tag:server"),
+		},
+		{
+			name: "ascii uppercase letter",
+			tag:  Tag("tag:Server"),
+		},
+		{
+			name: "ascii letter then digit",
+			tag:  Tag("tag:a1"),
+		},
+		{
+			name:    "leading digit rejected",
+			tag:     Tag("tag:1server"),
+			wantErr: ErrTagNameMustStartWithLetter,
+		},
+		{
+			name:    "leading hyphen rejected",
+			tag:     Tag("tag:-server"),
+			wantErr: ErrTagNameMustStartWithLetter,
+		},
+		{
+			name:    "cyrillic letter rejected",
+			tag:     Tag("tag:сервер"),
+			wantErr: ErrTagNameMustStartWithLetter,
+		},
+		{
+			name:    "empty name rejected",
+			tag:     Tag("tag:"),
+			wantErr: ErrTagNameMustStartWithLetter,
+		},
+		{
+			name:    "missing prefix rejected",
+			tag:     Tag("server"),
+			wantErr: ErrInvalidTagFormat,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.tag.Validate()
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+		})
+	}
+}
+
+// TestUnmarshalPolicyCyrillicTagOwner verifies the full SaaS body
+// (`tagOwners["tag:сервер"]: …`) surfaces when a non-ASCII tag
+// appears as a tagOwners key.
+func TestUnmarshalPolicyCyrillicTagOwner(t *testing.T) {
+	policy := []byte(`{"tagOwners": {"tag:сервер": ["odin@example.com"]}}`)
+
+	_, err := unmarshalPolicy(policy)
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrTagNameMustStartWithLetter)
+	require.Contains(t, err.Error(),
+		`tagOwners["tag:сервер"]: tag names must start with a letter, after 'tag:'`)
+}
+
+// TestSSHCheckPeriodInvalidDuration verifies the SaaS body for the
+// malformed-duration case (`time: invalid duration "abc"`).
+func TestSSHCheckPeriodInvalidDuration(t *testing.T) {
+	var p SSHCheckPeriod
+
+	err := json.Unmarshal([]byte(`"abc"`), &p)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `time: invalid duration "abc"`)
+}
+
+// TestSSHCheckPeriodNegativeMessage verifies the SaaS body for the
+// negative-duration case (`checkPeriod -1m0s must be a positive duration`).
+func TestSSHCheckPeriodNegativeMessage(t *testing.T) {
+	p := SSHCheckPeriod{Duration: -time.Minute}
+
+	err := p.Validate()
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrSSHCheckPeriodNegative)
+	require.Contains(t, err.Error(), "checkPeriod -1m0s must be a positive duration")
 }
 
 func TestUnmarshalGrants(t *testing.T) {
@@ -4629,7 +5361,7 @@ func TestUnmarshalGrants(t *testing.T) {
 	]
 }
 `,
-			wantErr: "grants must specify either 'ip' or 'app' field",
+			wantErr: "ip and app can not both be empty",
 		},
 		{
 			name: "valid-grant-empty-sources",
@@ -4698,7 +5430,7 @@ func TestUnmarshalGrants(t *testing.T) {
 	]
 }
 `,
-			wantErr: "grant 'via' tag is not defined in policy",
+			wantErr: `tag "tag:undefined-router" not found`,
 		},
 		{
 			name: "invalid-grant-undefined-source-group",
@@ -5208,6 +5940,306 @@ func TestGrantMarshalJSON(t *testing.T) {
 
 			if diff := cmp.Diff(tt.grant, unmarshaled); diff != "" {
 				t.Errorf("Grant round-trip mismatch (-original +unmarshaled):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestUnmarshalPolicyEmptyArrays locks in the JSON unmarshal contract
+// the FilterAllowAll guards depend on: an absent "acls" or "grants"
+// field produces a nil slice, while an explicit empty array produces
+// a non-nil empty slice. The compileFilterRules guard distinguishes
+// these to differentiate "no policy → allow all" from "explicit
+// empty rule set → deny all" (matching Tailscale SaaS).
+func TestUnmarshalPolicyEmptyArrays(t *testing.T) {
+	cases := []struct {
+		name        string
+		input       string
+		aclsIsNil   bool
+		grantsIsNil bool
+	}{
+		{name: "empty-object", input: "{}", aclsIsNil: true, grantsIsNil: true},
+		{name: "empty-acls", input: `{"acls": []}`, aclsIsNil: false, grantsIsNil: true},
+		{name: "empty-grants", input: `{"grants": []}`, aclsIsNil: true, grantsIsNil: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pol, err := unmarshalPolicy([]byte(tc.input))
+			require.NoError(t, err)
+			require.NotNil(t, pol)
+			require.Equal(t, tc.aclsIsNil, pol.ACLs == nil, "ACLs nil-ness")
+			require.Equal(t, tc.grantsIsNil, pol.Grants == nil, "Grants nil-ness")
+		})
+	}
+}
+
+// TestUnmarshalPolicySSHTests covers the parse-time shape rules for the
+// sshTests block. Positive rows confirm the SSHPolicyTest struct fields
+// round-trip through JSON. Rejection rows pin each parse-time sentinel
+// against a representative malformed input. SaaS evaluation-time failures
+// (empty assertions, empty user strings) are deliberately accepted at
+// parse — they share the "test(s) failed" body with true failures and
+// land with the engine.
+func TestUnmarshalPolicySSHTests(t *testing.T) {
+	cases := []struct {
+		name           string
+		input          string
+		wantErr        error   // sentinel for errors.Is; nil means parse must succeed
+		extraSentinels []error // additional sentinels reachable via errors.Is
+		check          func(t *testing.T, pol *Policy)
+	}{
+		{
+			name: "valid-minimal-shape",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "thor@example.org", "dst": ["tag:server"], "accept": ["root"]}
+  ]
+}
+`,
+			check: func(t *testing.T, pol *Policy) {
+				t.Helper()
+				require.Len(t, pol.SSHTests, 1)
+				got := pol.SSHTests[0]
+				require.IsType(t, (*Username)(nil), got.Src)
+				require.Equal(t, "thor@example.org", got.Src.String())
+				require.Len(t, got.Dst, 1)
+				require.IsType(t, (*Tag)(nil), got.Dst[0])
+				require.Equal(t, "tag:server", got.Dst[0].String())
+				require.Equal(t, []SSHUser{"root"}, got.Accept)
+				require.Empty(t, got.Deny)
+				require.Empty(t, got.Check)
+			},
+		},
+		{
+			name: "valid-all-three-action-arrays",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {
+      "src": "thor@example.org",
+      "dst": ["tag:server"],
+      "accept": ["root"],
+      "deny":   ["nobody"],
+      "check":  ["alice"]
+    }
+  ]
+}
+`,
+			check: func(t *testing.T, pol *Policy) {
+				t.Helper()
+				require.Len(t, pol.SSHTests, 1)
+				got := pol.SSHTests[0]
+				require.Equal(t, []SSHUser{"root"}, got.Accept)
+				require.Equal(t, []SSHUser{"nobody"}, got.Deny)
+				require.Equal(t, []SSHUser{"alice"}, got.Check) //nolint:goconst
+			},
+		},
+		{
+			// Empty accept+deny+check is rejected by SaaS at evaluation,
+			// not at parse — the captured body is the same "test(s) failed"
+			// that true evaluation failures emit. The parse layer must let
+			// this through so the engine reports it consistently.
+			name: "valid-empty-arrays-engine-deferred",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "thor@example.org", "dst": ["tag:server"]}
+  ]
+}
+`,
+			check: func(t *testing.T, pol *Policy) {
+				t.Helper()
+				require.Len(t, pol.SSHTests, 1)
+				got := pol.SSHTests[0]
+				require.Empty(t, got.Accept)
+				require.Empty(t, got.Deny)
+				require.Empty(t, got.Check)
+			},
+		},
+		{
+			// `tag:server:22` parses as a Tag because isTag only checks
+			// the `tag:` prefix; the colon-port suffix is retained in the
+			// tag string and the tagOwners lookup misses. SaaS reports
+			// this as an unknown tag with the bad value quoted.
+			name: "dst-with-port",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "thor@example.org", "dst": ["tag:server:22"], "accept": ["root"]}
+  ]
+}
+`,
+			wantErr: ErrSSHTestDstUnknownTag,
+		},
+		{
+			name: "dst-cidr",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "thor@example.org", "dst": ["10.0.0.0/8"], "accept": ["root"]}
+  ]
+}
+`,
+			wantErr: ErrSSHTestDstDisallowedElement,
+		},
+		{
+			// SaaS accepts a bare IPv4 literal as a host address. The
+			// Prefix parser turns it into a /32 so validateSSHTestDestination
+			// must match Bits() against Addr().BitLen() rather than reject
+			// the whole *Prefix branch.
+			name: "dst-bare-ipv4-accepted",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "thor@example.org", "dst": ["100.64.0.16"], "accept": ["root"]}
+  ]
+}
+`,
+			check: func(t *testing.T, pol *Policy) {
+				t.Helper()
+				require.Len(t, pol.SSHTests, 1)
+				got := pol.SSHTests[0]
+				require.Len(t, got.Dst, 1)
+				pref, ok := got.Dst[0].(*Prefix)
+				require.True(t, ok, "want *Prefix, got %T", got.Dst[0])
+				require.Equal(t, "100.64.0.16/32", pref.String())
+			},
+		},
+		{
+			// IPv6 mirror of the IPv4 case: bare `fd7a::10` parses to
+			// /128 and must pass the parse-time shape check.
+			name: "dst-bare-ipv6-accepted",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "thor@example.org", "dst": ["fd7a:115c:a1e0::10"], "accept": ["root"]}
+  ]
+}
+`,
+			check: func(t *testing.T, pol *Policy) {
+				t.Helper()
+				require.Len(t, pol.SSHTests, 1)
+				got := pol.SSHTests[0]
+				require.Len(t, got.Dst, 1)
+				pref, ok := got.Dst[0].(*Prefix)
+				require.True(t, ok, "want *Prefix, got %T", got.Dst[0])
+				require.Equal(t, "fd7a:115c:a1e0::10/128", pref.String())
+			},
+		},
+		{
+			name: "dst-autogroup-internet",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "thor@example.org", "dst": ["autogroup:internet"], "accept": ["root"]}
+  ]
+}
+`,
+			wantErr: ErrSSHTestDstDisallowedElement,
+		},
+		{
+			name: "dst-unknown-tag",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "thor@example.org", "dst": ["tag:not-in-tagOwners"], "accept": ["root"]}
+  ]
+}
+`,
+			wantErr: ErrSSHTestDstUnknownTag,
+		},
+		{
+			name: "empty-src",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "", "dst": ["tag:server"], "accept": ["root"]}
+  ]
+}
+`,
+			wantErr: ErrSSHTestEmptySrc,
+		},
+		{
+			name: "empty-dst",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "thor@example.org", "dst": [], "accept": ["root"]}
+  ]
+}
+`,
+			wantErr: ErrSSHTestEmptyDst,
+		},
+		{
+			// Multiple shape failures in one entry must aggregate through
+			// multierr.New under errSSHPolicyTestsFailed so the surfaced
+			// body matches the SaaS body byte-for-byte and every
+			// individual sentinel remains reachable via errors.Is.
+			name: "multierr-wrap",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "", "dst": ["10.0.0.0/8", "autogroup:internet"], "accept": ["root"]}
+  ]
+}
+`,
+			wantErr:        ErrSSHTestEmptySrc,
+			extraSentinels: []error{ErrSSHTestDstDisallowedElement},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pol, err := unmarshalPolicy([]byte(tc.input))
+
+			if tc.wantErr == nil {
+				require.NoError(t, err)
+				require.NotNil(t, pol)
+
+				if tc.check != nil {
+					tc.check(t, pol)
+				}
+
+				return
+			}
+
+			require.Error(t, err)
+			require.ErrorIs(
+				t,
+				err, tc.wantErr,
+				"want errors.Is(err, %v); got %v",
+				tc.wantErr,
+				err,
+			)
+			require.Contains(
+				t,
+				err.Error(), "test(s) failed",
+				`want err to contain "test(s) failed"; got %q`,
+				err.Error(),
+			)
+
+			for _, sentinel := range tc.extraSentinels {
+				require.ErrorIs(
+					t,
+					err, sentinel,
+					"want errors.Is(err, %v); got %v",
+					sentinel,
+					err,
+				)
 			}
 		})
 	}

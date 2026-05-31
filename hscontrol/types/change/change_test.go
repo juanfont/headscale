@@ -89,6 +89,11 @@ func TestChange_IsEmpty(t *testing.T) {
 			response: Change{PeerPatches: []*tailcfg.PeerChange{{}}},
 			want:     false,
 		},
+		{
+			name:     "PingRequest not empty",
+			response: Change{PingRequest: &tailcfg.PingRequest{URL: "https://example.com"}},
+			want:     false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -263,6 +268,24 @@ func TestChange_Merge(t *testing.T) {
 			r2:   Change{TargetNode: 42},
 			want: Change{TargetNode: 42, IncludeSelf: true},
 		},
+		{
+			name: "PingRequest preserved from first",
+			r1:   Change{PingRequest: &tailcfg.PingRequest{URL: "first"}},
+			r2:   Change{IncludeSelf: true},
+			want: Change{PingRequest: &tailcfg.PingRequest{URL: "first"}, IncludeSelf: true},
+		},
+		{
+			name: "PingRequest preserved from second when first is nil",
+			r1:   Change{IncludeSelf: true},
+			r2:   Change{PingRequest: &tailcfg.PingRequest{URL: "second"}},
+			want: Change{PingRequest: &tailcfg.PingRequest{URL: "second"}, IncludeSelf: true},
+		},
+		{
+			name: "PingRequest first wins when both set",
+			r1:   Change{PingRequest: &tailcfg.PingRequest{URL: "first"}},
+			r2:   Change{PingRequest: &tailcfg.PingRequest{URL: "second"}},
+			want: Change{PingRequest: &tailcfg.PingRequest{URL: "first"}},
+		},
 	}
 
 	for _, tt := range tests {
@@ -418,6 +441,14 @@ func TestChange_Type(t *testing.T) {
 			want:     "config",
 		},
 		{
+			name: "ping request",
+			response: Change{
+				PingRequest: &tailcfg.PingRequest{URL: "https://example.com"},
+				TargetNode:  1,
+			},
+			want: "ping",
+		},
+		{
 			name:     "empty is unknown",
 			response: Change{},
 			want:     "unknown",
@@ -430,6 +461,17 @@ func TestChange_Type(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestPingNode(t *testing.T) {
+	pr := &tailcfg.PingRequest{URL: "https://example.com/ping", URLIsNoise: true, Log: true}
+	r := PingNode(42, pr)
+	assert.Equal(t, "ping node", r.Reason)
+	assert.Equal(t, types.NodeID(42), r.TargetNode)
+	assert.Equal(t, pr, r.PingRequest)
+	assert.True(t, r.IsTargetedToNode())
+	assert.False(t, r.IsEmpty())
+	assert.Equal(t, "ping", r.Type())
 }
 
 func TestUniqueNodeIDs(t *testing.T) {

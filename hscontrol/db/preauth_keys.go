@@ -40,7 +40,7 @@ const (
 	authKeyLength       = 64
 )
 
-// CreatePreAuthKey creates a new PreAuthKey in a user, and returns it.
+// CreatePreAuthKey creates a new [types.PreAuthKey] in a user, and returns it.
 // The uid parameter can be nil for system-created tagged keys.
 // For tagged keys, uid tracks "created by" (who created the key).
 // For user-owned keys, uid tracks the node owner.
@@ -158,11 +158,23 @@ func (hsdb *HSDatabase) ListPreAuthKeys() ([]types.PreAuthKey, error) {
 	return Read(hsdb.DB, ListPreAuthKeys)
 }
 
-// ListPreAuthKeys returns all PreAuthKeys in the database.
+// ListPreAuthKeys returns all [types.PreAuthKey] values in the database.
 func ListPreAuthKeys(tx *gorm.DB) ([]types.PreAuthKey, error) {
 	var keys []types.PreAuthKey
 
 	err := tx.Preload("User").Find(&keys).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return keys, nil
+}
+
+// ListPreAuthKeysByUser returns all [types.PreAuthKey] values belonging to a specific user.
+func ListPreAuthKeysByUser(tx *gorm.DB, uid types.UserID) ([]types.PreAuthKey, error) {
+	var keys []types.PreAuthKey
+
+	err := tx.Preload("User").Where("user_id = ?", uint(uid)).Find(&keys).Error
 	if err != nil {
 		return nil, err
 	}
@@ -278,13 +290,13 @@ func (hsdb *HSDatabase) GetPreAuthKey(key string) (*types.PreAuthKey, error) {
 	return GetPreAuthKey(hsdb.DB, key)
 }
 
-// GetPreAuthKey returns a PreAuthKey for a given key. The caller is responsible
+// GetPreAuthKey returns a [types.PreAuthKey] for a given key. The caller is responsible
 // for checking if the key is usable (expired or used).
 func GetPreAuthKey(tx *gorm.DB, key string) (*types.PreAuthKey, error) {
 	return findAuthKey(tx, key)
 }
 
-// DestroyPreAuthKey destroys a preauthkey. Returns error if the PreAuthKey
+// DestroyPreAuthKey destroys a preauthkey. Returns error if the [types.PreAuthKey]
 // does not exist. This also clears the auth_key_id on any nodes that reference
 // this key.
 func DestroyPreAuthKey(tx *gorm.DB, id uint64) error {
@@ -319,11 +331,22 @@ func (hsdb *HSDatabase) DeletePreAuthKey(id uint64) error {
 	})
 }
 
-// UsePreAuthKey marks a PreAuthKey as used.
+// UsePreAuthKey atomically marks a [types.PreAuthKey] as used. The UPDATE is
+// guarded by `used = false` so two concurrent registrations racing for
+// the same single-use key cannot both succeed: the first commits and
+// the second returns [types.PAKError]("authkey already used"). Without the
+// guard the previous code (Update("used", true) with no WHERE) would
+// silently let both transactions claim the key.
 func UsePreAuthKey(tx *gorm.DB, k *types.PreAuthKey) error {
-	err := tx.Model(k).Update("used", true).Error
-	if err != nil {
-		return fmt.Errorf("updating key used status in database: %w", err)
+	res := tx.Model(&types.PreAuthKey{}).
+		Where("id = ? AND used = ?", k.ID, false).
+		Update("used", true)
+	if res.Error != nil {
+		return fmt.Errorf("updating key used status in database: %w", res.Error)
+	}
+
+	if res.RowsAffected == 0 {
+		return types.PAKError("authkey already used")
 	}
 
 	k.Used = true
@@ -331,7 +354,7 @@ func UsePreAuthKey(tx *gorm.DB, k *types.PreAuthKey) error {
 	return nil
 }
 
-// ExpirePreAuthKey marks a PreAuthKey as expired.
+// ExpirePreAuthKey marks a [types.PreAuthKey] as expired.
 func ExpirePreAuthKey(tx *gorm.DB, id uint64) error {
 	now := time.Now()
 	return tx.Model(&types.PreAuthKey{}).Where("id = ?", id).Update("expiration", now).Error

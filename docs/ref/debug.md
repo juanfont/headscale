@@ -3,16 +3,16 @@
 Headscale and Tailscale provide debug and introspection capabilities that can be helpful when things don't work as
 expected. This page explains some debugging techniques to help pinpoint problems.
 
-Please also have a look at [Tailscale's Troubleshooting guide](https://tailscale.com/kb/1023/troubleshooting). It offers
-a many tips and suggestions to troubleshoot common issues.
+Please also have a look at [Tailscale's Troubleshooting guide](https://tailscale.com/docs/reference/troubleshooting). It
+offers a many tips and suggestions to troubleshoot common issues.
 
 ## Tailscale
 
 The Tailscale client itself offers many commands to introspect its state as well as the state of the network:
 
-- [Check local network conditions](https://tailscale.com/kb/1080/cli#netcheck): `tailscale netcheck`
-- [Get the client status](https://tailscale.com/kb/1080/cli#status): `tailscale status --json`
-- [Get DNS status](https://tailscale.com/kb/1080/cli#dns): `tailscale dns status --all`
+- [Check local network conditions](https://tailscale.com/docs/reference/tailscale-cli#netcheck): `tailscale netcheck`
+- [Get the client status](https://tailscale.com/docs/reference/tailscale-cli#status): `tailscale status --json`
+- [Get DNS status](https://tailscale.com/docs/reference/tailscale-cli#dns): `tailscale dns status --all`
 - Client logs: `tailscale debug daemon-logs`
 - Client netmap: `tailscale debug netmap`
 - Test DERP connection: `tailscale debug derp headscale`
@@ -53,19 +53,19 @@ Headscale provides a metrics and debug endpoint. It allows to introspect differe
 
 - Information about the Go runtime, memory usage and statistics
 - Connected nodes and pending registrations
-- Active ACLs, filters and SSH policy
+- Active policy, filters and SSH policy
 - Current DERPMap
 - Prometheus metrics
 
 !!! warning "Keep the metrics and debug endpoint private"
 
     The listen address and port can be configured with the `metrics_listen_addr` variable in the [configuration
-    file](./configuration.md). By default it listens on localhost, port 9090.
+    file](configuration.md). By default it listens on localhost, port 9090.
 
     Keep the metrics and debug endpoint private to your internal network and don't expose it to the Internet.
 
     The metrics and debug interface can be disabled completely by setting `metrics_listen_addr: null` in the
-    [configuration file](./configuration.md).
+    [configuration file](configuration.md).
 
 Query metrics via <http://localhost:9090/metrics> and get an overview of available debug information via
 <http://localhost:9090/debug/>. Metrics may be queried from outside localhost but the debug interface is subject to

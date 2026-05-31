@@ -1,15 +1,11 @@
 package db
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
-	"regexp"
-	"slices"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -19,8 +15,8 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
-	"tailscale.com/net/tsaddr"
 	"tailscale.com/types/key"
+	"tailscale.com/util/dnsname"
 )
 
 const (
@@ -33,8 +29,6 @@ const (
 
 // ErrNodeNameNotUnique is returned when a node name is not unique.
 var ErrNodeNameNotUnique = errors.New("node name is not unique")
-
-var invalidDNSRegex = regexp.MustCompile("[^a-z0-9-.]+")
 
 var (
 	ErrNodeNotFound                  = errors.New("node not found")
@@ -115,7 +109,7 @@ func (hsdb *HSDatabase) getNode(uid types.UserID, name string) (*types.Node, err
 	})
 }
 
-// getNode finds a Node by name and user and returns the Node struct.
+// getNode finds a [types.Node] by name and user and returns the [types.Node] struct.
 func getNode(tx *gorm.DB, uid types.UserID, name string) (*types.Node, error) {
 	nodes, err := ListNodesByUser(tx, uid)
 	if err != nil {
@@ -135,7 +129,7 @@ func (hsdb *HSDatabase) GetNodeByID(id types.NodeID) (*types.Node, error) {
 	return GetNodeByID(hsdb.DB, id)
 }
 
-// GetNodeByID finds a Node by ID and returns the Node struct.
+// GetNodeByID finds a [types.Node] by ID and returns the [types.Node] struct.
 func GetNodeByID(tx *gorm.DB, id types.NodeID) (*types.Node, error) {
 	mach := types.Node{}
 	if result := tx.
@@ -153,7 +147,7 @@ func (hsdb *HSDatabase) GetNodeByMachineKey(machineKey key.MachinePublic) (*type
 	return GetNodeByMachineKey(hsdb.DB, machineKey)
 }
 
-// GetNodeByMachineKey finds a Node by its MachineKey and returns the Node struct.
+// GetNodeByMachineKey finds a [types.Node] by its [key.MachinePublic] and returns the [types.Node] struct.
 func GetNodeByMachineKey(
 	tx *gorm.DB,
 	machineKey key.MachinePublic,
@@ -174,7 +168,7 @@ func (hsdb *HSDatabase) GetNodeByNodeKey(nodeKey key.NodePublic) (*types.Node, e
 	return GetNodeByNodeKey(hsdb.DB, nodeKey)
 }
 
-// GetNodeByNodeKey finds a Node by its NodeKey and returns the Node struct.
+// GetNodeByNodeKey finds a [types.Node] by its [key.NodePublic] and returns the [types.Node] struct.
 func GetNodeByNodeKey(
 	tx *gorm.DB,
 	nodeKey key.NodePublic,
@@ -191,87 +185,6 @@ func GetNodeByNodeKey(
 	return &mach, nil
 }
 
-func (hsdb *HSDatabase) SetTags(
-	nodeID types.NodeID,
-	tags []string,
-) error {
-	return hsdb.Write(func(tx *gorm.DB) error {
-		return SetTags(tx, nodeID, tags)
-	})
-}
-
-// SetTags takes a NodeID and update the forced tags.
-// It will overwrite any tags with the new list.
-func SetTags(
-	tx *gorm.DB,
-	nodeID types.NodeID,
-	tags []string,
-) error {
-	if len(tags) == 0 {
-		// if no tags are provided, we remove all tags
-		err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("tags", "[]").Error
-		if err != nil {
-			return fmt.Errorf("removing tags: %w", err)
-		}
-
-		return nil
-	}
-
-	slices.Sort(tags)
-	tags = slices.Compact(tags)
-
-	b, err := json.Marshal(tags)
-	if err != nil {
-		return err
-	}
-
-	err = tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("tags", string(b)).Error
-	if err != nil {
-		return fmt.Errorf("updating tags: %w", err)
-	}
-
-	return nil
-}
-
-// SetApprovedRoutes takes a Node struct pointer and updates the approved routes.
-func SetApprovedRoutes(
-	tx *gorm.DB,
-	nodeID types.NodeID,
-	routes []netip.Prefix,
-) error {
-	if len(routes) == 0 {
-		// if no routes are provided, we remove all
-		err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("approved_routes", "[]").Error
-		if err != nil {
-			return fmt.Errorf("removing approved routes: %w", err)
-		}
-
-		return nil
-	}
-
-	// When approving exit routes, ensure both IPv4 and IPv6 are included
-	// If either 0.0.0.0/0 or ::/0 is being approved, both should be approved
-	hasIPv4Exit := slices.Contains(routes, tsaddr.AllIPv4())
-	hasIPv6Exit := slices.Contains(routes, tsaddr.AllIPv6())
-
-	if hasIPv4Exit && !hasIPv6Exit {
-		routes = append(routes, tsaddr.AllIPv6())
-	} else if hasIPv6Exit && !hasIPv4Exit {
-		routes = append(routes, tsaddr.AllIPv4())
-	}
-
-	b, err := json.Marshal(routes)
-	if err != nil {
-		return err
-	}
-
-	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("approved_routes", string(b)).Error; err != nil { //nolint:noinlineerr
-		return fmt.Errorf("updating approved routes: %w", err)
-	}
-
-	return nil
-}
-
 // SetLastSeen sets a node's last seen field indicating that we
 // have recently communicating with this node.
 func (hsdb *HSDatabase) SetLastSeen(nodeID types.NodeID, lastSeen time.Time) error {
@@ -286,12 +199,12 @@ func SetLastSeen(tx *gorm.DB, nodeID types.NodeID, lastSeen time.Time) error {
 	return tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("last_seen", lastSeen).Error
 }
 
-// RenameNode takes a Node struct and a new GivenName for the nodes
+// RenameNode takes a [types.Node] struct and a new [types.Node.GivenName] for the nodes
 // and renames it. Validation should be done in the state layer before calling this function.
 func RenameNode(tx *gorm.DB,
 	nodeID types.NodeID, newName string,
 ) error {
-	err := util.ValidateHostname(newName)
+	err := dnsname.ValidLabel(newName)
 	if err != nil {
 		return fmt.Errorf("renaming node: %w", err)
 	}
@@ -299,8 +212,7 @@ func RenameNode(tx *gorm.DB,
 	// Check if the new name is unique
 	var count int64
 
-	err = tx.Model(&types.Node{}).Where("given_name = ? AND id != ?", newName, nodeID).Count(&count).Error
-	if err != nil {
+	if err := tx.Model(&types.Node{}).Where("given_name = ? AND id != ?", newName, nodeID).Count(&count).Error; err != nil { //nolint:noinlineerr
 		return fmt.Errorf("checking name uniqueness: %w", err)
 	}
 
@@ -333,7 +245,7 @@ func (hsdb *HSDatabase) DeleteNode(node *types.Node) error {
 	})
 }
 
-// DeleteNode deletes a Node from the database.
+// DeleteNode deletes a [types.Node] from the database.
 // Caller is responsible for notifying all of change.
 func DeleteNode(tx *gorm.DB,
 	node *types.Node,
@@ -347,7 +259,7 @@ func DeleteNode(tx *gorm.DB,
 	return nil
 }
 
-// DeleteEphemeralNode deletes a Node from the database, note that this method
+// DeleteEphemeralNode deletes a [types.Node] from the database, note that this method
 // will remove it straight, and not notify any changes or consider any routes.
 // It is intended for Ephemeral nodes.
 func (hsdb *HSDatabase) DeleteEphemeralNode(
@@ -364,7 +276,7 @@ func (hsdb *HSDatabase) DeleteEphemeralNode(
 }
 
 // RegisterNodeForTest is used only for testing purposes to register a node directly in the database.
-// Production code should use state.HandleNodeFromAuthPath or state.HandleNodeFromPreAuthKey.
+// Production code should use [state.State.HandleNodeFromAuthPath] or [state.State.HandleNodeFromPreAuthKey].
 func RegisterNodeForTest(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Addr) (*types.Node, error) {
 	if !testing.Testing() {
 		panic("RegisterNodeForTest can only be called during tests")
@@ -427,22 +339,11 @@ func RegisterNodeForTest(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *n
 	node.IPv4 = ipv4
 	node.IPv6 = ipv6
 
-	var err error
-
-	node.Hostname, err = util.NormaliseHostname(node.Hostname)
-	if err != nil {
-		newHostname := util.InvalidString()
-		log.Info().Err(err).Str(zf.InvalidHostname, node.Hostname).Str(zf.NewHostname, newHostname).Msgf("invalid hostname, replacing")
-		node.Hostname = newHostname
-	}
-
 	if node.GivenName == "" {
-		givenName, err := EnsureUniqueGivenName(tx, node.Hostname)
-		if err != nil {
-			return nil, fmt.Errorf("ensuring unique given name: %w", err)
+		node.GivenName = dnsname.SanitizeHostname(node.Hostname)
+		if node.GivenName == "" {
+			node.GivenName = "node"
 		}
-
-		node.GivenName = givenName
 	}
 
 	if err := tx.Save(&node).Error; err != nil { //nolint:noinlineerr
@@ -484,75 +385,9 @@ func NodeSetMachineKey(
 	}).Error
 }
 
-func generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
-	// Strip invalid DNS characters for givenName
-	suppliedName = strings.ToLower(suppliedName)
-	suppliedName = invalidDNSRegex.ReplaceAllString(suppliedName, "")
-
-	if len(suppliedName) > util.LabelHostnameLength {
-		return "", types.ErrHostnameTooLong
-	}
-
-	if randomSuffix {
-		// Trim if a hostname will be longer than 63 chars after adding the hash.
-		trimmedHostnameLength := util.LabelHostnameLength - NodeGivenNameHashLength - NodeGivenNameTrimSize
-		if len(suppliedName) > trimmedHostnameLength {
-			suppliedName = suppliedName[:trimmedHostnameLength]
-		}
-
-		suffix, err := util.GenerateRandomStringDNSSafe(NodeGivenNameHashLength)
-		if err != nil {
-			return "", err
-		}
-
-		suppliedName += "-" + suffix
-	}
-
-	return suppliedName, nil
-}
-
-func isUniqueName(tx *gorm.DB, name string) (bool, error) {
-	nodes := types.Nodes{}
-
-	err := tx.
-		Where("given_name = ?", name).Find(&nodes).Error
-	if err != nil {
-		return false, err
-	}
-
-	return len(nodes) == 0, nil
-}
-
-// EnsureUniqueGivenName generates a unique given name for a node based on its hostname.
-func EnsureUniqueGivenName(
-	tx *gorm.DB,
-	name string,
-) (string, error) {
-	givenName, err := generateGivenName(name, false)
-	if err != nil {
-		return "", err
-	}
-
-	unique, err := isUniqueName(tx, givenName)
-	if err != nil {
-		return "", err
-	}
-
-	if !unique {
-		postfixedName, err := generateGivenName(name, true)
-		if err != nil {
-			return "", err
-		}
-
-		givenName = postfixedName
-	}
-
-	return givenName, nil
-}
-
 // EphemeralGarbageCollector is a garbage collector that will delete nodes after
 // a certain amount of time.
-// It is used to delete ephemeral nodes that have disconnected and should be
+// It is used to delete ephemeral nodes ([types.Node.IsEphemeral]) that have disconnected and should be
 // cleaned up.
 type EphemeralGarbageCollector struct {
 	mu sync.Mutex
@@ -564,7 +399,7 @@ type EphemeralGarbageCollector struct {
 	cancelCh chan struct{}
 }
 
-// NewEphemeralGarbageCollector creates a new EphemeralGarbageCollector, it takes
+// NewEphemeralGarbageCollector creates a new [EphemeralGarbageCollector], it takes
 // a deleteFunc that will be called when a node is scheduled for deletion.
 func NewEphemeralGarbageCollector(deleteFunc func(types.NodeID)) *EphemeralGarbageCollector {
 	return &EphemeralGarbageCollector{

@@ -19,7 +19,7 @@ import (
 // TestRace contains tests designed to trigger race conditions in
 // the control plane. Run with -race to detect data races.
 // These tests stress concurrent access patterns in poll.go,
-// the batcher, the NodeStore, and the mapper.
+// the [mapper.Batcher], the [state.NodeStore], and the [mapper] subsystem.
 
 // TestRacePollSessionReplacement tests the race between an old
 // poll session's deferred cleanup and a new session starting.
@@ -28,8 +28,8 @@ func TestRacePollSessionReplacement(t *testing.T) {
 
 	// Rapidly replace the poll session by doing immediate
 	// disconnect+reconnect. This races the old session's
-	// deferred cleanup (RemoveNode, Disconnect, grace period
-	// goroutine) with the new session's setup (AddNode, Connect,
+	// deferred cleanup ([state.NodeStore.RemoveNode], [state.State.Disconnect], grace period
+	// goroutine) with the new session's setup ([state.NodeStore.AddNode], [state.State.Connect],
 	// initial map send).
 	t.Run("immediate_session_replace_10x", func(t *testing.T) {
 		t.Parallel()
@@ -393,13 +393,13 @@ func TestRaceConnectDuringGracePeriod(t *testing.T) {
 	})
 }
 
-// TestRaceBatcherContention tests race conditions in the batcher
+// TestRaceBatcherContention tests race conditions in the [mapper.Batcher]
 // when many changes arrive simultaneously.
 func TestRaceBatcherContention(t *testing.T) {
 	t.Parallel()
 
 	// Many nodes connecting at the same time generates many
-	// concurrent Change() calls. The batcher must handle this
+	// concurrent [hscontrol.Headscale.Change] calls. The [mapper.Batcher] must handle this
 	// without dropping updates or panicking.
 	t.Run("many_simultaneous_connects", func(t *testing.T) {
 		t.Parallel()
@@ -427,8 +427,8 @@ func TestRaceBatcherContention(t *testing.T) {
 	})
 
 	// Rapid connect + disconnect + connect of different nodes
-	// generates interleaved AddNode/RemoveNode/AddNode in the
-	// batcher.
+	// generates interleaved [state.NodeStore.AddNode]/[state.NodeStore.RemoveNode]/[state.NodeStore.AddNode] in the
+	// [mapper.Batcher].
 	t.Run("interleaved_add_remove_add", func(t *testing.T) {
 		t.Parallel()
 
@@ -514,7 +514,7 @@ func TestRaceBatcherContention(t *testing.T) {
 }
 
 // TestRaceMapResponseDuringDisconnect tests what happens when a
-// map response is being written while the session is being torn down.
+// [tailcfg.MapResponse] is being written while the session is being torn down.
 func TestRaceMapResponseDuringDisconnect(t *testing.T) {
 	t.Parallel()
 
@@ -587,12 +587,12 @@ func TestRaceMapResponseDuringDisconnect(t *testing.T) {
 	})
 }
 
-// TestRaceNodeStoreContention tests concurrent access to the NodeStore.
+// TestRaceNodeStoreContention tests concurrent access to the [state.NodeStore].
 func TestRaceNodeStoreContention(t *testing.T) {
 	t.Parallel()
 
-	// Many GetNodeByID calls while nodes are connecting and
-	// disconnecting. This tests the NodeStore's read/write locking.
+	// Many [state.State.GetNodeByID] calls while nodes are connecting and
+	// disconnecting. This tests the [state.NodeStore]'s read/write locking.
 	t.Run("concurrent_reads_during_mutations", func(t *testing.T) {
 		t.Parallel()
 
@@ -655,7 +655,7 @@ func TestRaceNodeStoreContention(t *testing.T) {
 		}
 	})
 
-	// ListNodes while nodes are being added and removed.
+	// [state.State.ListNodes] while nodes are being added and removed.
 	t.Run("list_nodes_during_churn", func(t *testing.T) {
 		t.Parallel()
 

@@ -522,8 +522,8 @@ func TestGRPCAuthenticationBypass(t *testing.T) {
 		require.NoError(t, err,
 			"gRPC connection with valid API key should succeed, output: %s", output)
 
-		// CLI outputs the users array directly, not wrapped in ListUsersResponse
-		// Parse as JSON array (CLI uses json.Marshal, not protojson)
+		// CLI outputs the users array directly, not wrapped in [v1.ListUsersResponse]
+		// Parse as JSON array (CLI uses [json.Marshal], not protojson)
 		var users []*v1.User
 
 		err = json.Unmarshal([]byte(output), &users)
@@ -681,8 +681,8 @@ cli:
 		require.NoError(t, err,
 			"CLI with valid API key should succeed")
 
-		// CLI outputs the users array directly, not wrapped in ListUsersResponse
-		// Parse as JSON array (CLI uses json.Marshal, not protojson)
+		// CLI outputs the users array directly, not wrapped in [v1.ListUsersResponse]
+		// Parse as JSON array (CLI uses [json.Marshal], not protojson)
 		var users []*v1.User
 
 		err = json.Unmarshal([]byte(output), &users)

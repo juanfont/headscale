@@ -84,7 +84,7 @@ func runTailSQLService(ctx context.Context, logf logger.Logf, stateDir, dbPath s
 		go func() {
 			_ = http.Serve(lst, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { //nolint:gosec
 				target := base + r.RequestURI
-				http.Redirect(w, r, target, http.StatusPermanentRedirect)
+				http.Redirect(w, r, target, http.StatusPermanentRedirect) //nolint:gosec // G710: target prefixed by trusted base URL
 			}))
 		}()
 		// log.Printf("Redirecting HTTP to HTTPS at %q", base)

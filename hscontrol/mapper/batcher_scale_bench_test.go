@@ -21,7 +21,6 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
-	"github.com/rs/zerolog"
 	"tailscale.com/tailcfg"
 )
 
@@ -40,9 +39,6 @@ var (
 
 // BenchmarkScale_IsConnected tests single-node lookup at increasing map sizes.
 func BenchmarkScale_IsConnected(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, n := range scaleCountsO1 {
 		b.Run(strconv.Itoa(n), func(b *testing.B) {
 			batcher, _ := benchBatcher(n, 1)
@@ -65,9 +61,6 @@ func BenchmarkScale_IsConnected(b *testing.B) {
 // BenchmarkScale_AddToBatch_Targeted tests single-node targeted change at
 // increasing map sizes. The map size should not affect per-operation cost.
 func BenchmarkScale_AddToBatch_Targeted(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, n := range scaleCountsO1 {
 		b.Run(strconv.Itoa(n), func(b *testing.B) {
 			batcher, _ := benchBatcher(n, 10)
@@ -104,9 +97,6 @@ func BenchmarkScale_AddToBatch_Targeted(b *testing.B) {
 // BenchmarkScale_ConnectionChurn tests add/remove connection cycle.
 // The map size should not affect per-operation cost for a single node.
 func BenchmarkScale_ConnectionChurn(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, n := range scaleCountsO1 {
 		b.Run(strconv.Itoa(n), func(b *testing.B) {
 			batcher, channels := benchBatcher(n, 10)
@@ -152,9 +142,6 @@ func BenchmarkScale_ConnectionChurn(b *testing.B) {
 // BenchmarkScale_AddToBatch_Broadcast tests broadcasting a change to ALL nodes.
 // Cost should scale linearly with node count.
 func BenchmarkScale_AddToBatch_Broadcast(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, n := range scaleCountsLinear {
 		b.Run(strconv.Itoa(n), func(b *testing.B) {
 			batcher, _ := benchBatcher(n, 10)
@@ -182,9 +169,6 @@ func BenchmarkScale_AddToBatch_Broadcast(b *testing.B) {
 
 // BenchmarkScale_AddToBatch_FullUpdate tests FullUpdate broadcast cost.
 func BenchmarkScale_AddToBatch_FullUpdate(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, n := range scaleCountsLinear {
 		b.Run(strconv.Itoa(n), func(b *testing.B) {
 			batcher, _ := benchBatcher(n, 10)
@@ -205,9 +189,6 @@ func BenchmarkScale_AddToBatch_FullUpdate(b *testing.B) {
 
 // BenchmarkScale_ProcessBatchedChanges tests draining pending changes into work queue.
 func BenchmarkScale_ProcessBatchedChanges(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, n := range scaleCountsLinear {
 		b.Run(strconv.Itoa(n), func(b *testing.B) {
 			batcher, _ := benchBatcher(n, 10)
@@ -238,9 +219,6 @@ func BenchmarkScale_ProcessBatchedChanges(b *testing.B) {
 
 // BenchmarkScale_BroadcastToN tests end-to-end: addToBatch + processBatchedChanges.
 func BenchmarkScale_BroadcastToN(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, n := range scaleCountsLinear {
 		b.Run(strconv.Itoa(n), func(b *testing.B) {
 			batcher, _ := benchBatcher(n, 10)
@@ -267,9 +245,6 @@ func BenchmarkScale_BroadcastToN(b *testing.B) {
 // This isolates the multiChannelNodeConn.send() cost.
 // Uses large buffered channels to avoid goroutine drain overhead.
 func BenchmarkScale_SendToAll(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, n := range scaleCountsLinear {
 		b.Run(strconv.Itoa(n), func(b *testing.B) {
 			// b.N+1 buffer so sends never block
@@ -300,9 +275,6 @@ func BenchmarkScale_SendToAll(b *testing.B) {
 
 // BenchmarkScale_ConnectedMap tests building the full connected/disconnected map.
 func BenchmarkScale_ConnectedMap(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, n := range scaleCountsHeavy {
 		b.Run(strconv.Itoa(n), func(b *testing.B) {
 			batcher, channels := benchBatcher(n, 1)
@@ -335,9 +307,6 @@ func BenchmarkScale_ConnectedMap(b *testing.B) {
 // BenchmarkScale_ComputePeerDiff tests peer diff computation at scale.
 // Each node tracks N-1 peers, with 10% removed.
 func BenchmarkScale_ComputePeerDiff(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, n := range scaleCountsHeavy {
 		b.Run(strconv.Itoa(n), func(b *testing.B) {
 			mc := newMultiChannelNodeConn(1, nil)
@@ -366,9 +335,6 @@ func BenchmarkScale_ComputePeerDiff(b *testing.B) {
 
 // BenchmarkScale_UpdateSentPeers_Full tests full peer list update.
 func BenchmarkScale_UpdateSentPeers_Full(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, n := range scaleCountsHeavy {
 		b.Run(strconv.Itoa(n), func(b *testing.B) {
 			mc := newMultiChannelNodeConn(1, nil)
@@ -391,9 +357,6 @@ func BenchmarkScale_UpdateSentPeers_Full(b *testing.B) {
 
 // BenchmarkScale_UpdateSentPeers_Incremental tests incremental peer updates (10% new).
 func BenchmarkScale_UpdateSentPeers_Incremental(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, n := range scaleCountsHeavy {
 		b.Run(strconv.Itoa(n), func(b *testing.B) {
 			mc := newMultiChannelNodeConn(1, nil)
@@ -428,9 +391,6 @@ func BenchmarkScale_UpdateSentPeers_Incremental(b *testing.B) {
 // ~1.6 connections on average (every 3rd node has 3 connections).
 // Uses large buffered channels to avoid goroutine drain overhead.
 func BenchmarkScale_MultiChannelBroadcast(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, n := range scaleCountsHeavy {
 		b.Run(strconv.Itoa(n), func(b *testing.B) {
 			// Use b.N+1 buffer so sends never block
@@ -480,9 +440,6 @@ func BenchmarkScale_MultiChannelBroadcast(b *testing.B) {
 
 // BenchmarkScale_ConcurrentAddToBatch tests parallel addToBatch throughput.
 func BenchmarkScale_ConcurrentAddToBatch(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, n := range scaleCountsConc {
 		b.Run(strconv.Itoa(n), func(b *testing.B) {
 			batcher, _ := benchBatcher(n, 10)
@@ -529,9 +486,6 @@ func BenchmarkScale_ConcurrentAddToBatch(b *testing.B) {
 // sending to all nodes while 10% of connections are churning concurrently.
 // Uses large buffered channels to avoid goroutine drain overhead.
 func BenchmarkScale_ConcurrentSendAndChurn(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, n := range scaleCountsConc {
 		b.Run(strconv.Itoa(n), func(b *testing.B) {
 			batcher, channels := benchBatcher(n, b.N+1)
@@ -602,9 +556,6 @@ func BenchmarkScale_ConcurrentSendAndChurn(b *testing.B) {
 // - 10% full updates (broadcast with full map)
 // All while 10% of connections are churning.
 func BenchmarkScale_MixedWorkload(b *testing.B) {
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, n := range scaleCountsConc {
 		b.Run(strconv.Itoa(n), func(b *testing.B) {
 			batcher, channels := benchBatcher(n, 10)
@@ -722,9 +673,6 @@ func BenchmarkScale_AddAllNodes(b *testing.B) {
 		b.Skip("skipping full pipeline benchmark in short mode")
 	}
 
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, nodeCount := range []int{10, 50, 100, 200, 500} {
 		b.Run(strconv.Itoa(nodeCount), func(b *testing.B) {
 			testData, cleanup := setupBatcherWithTestData(b, NewBatcherAndMapper, 1, nodeCount, largeBufferSize)
@@ -784,9 +732,6 @@ func BenchmarkScale_SingleAddNode(b *testing.B) {
 	if testing.Short() {
 		b.Skip("skipping full pipeline benchmark in short mode")
 	}
-
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
 
 	for _, nodeCount := range []int{10, 50, 100, 200, 500, 1000} {
 		b.Run(strconv.Itoa(nodeCount), func(b *testing.B) {
@@ -851,9 +796,6 @@ func BenchmarkScale_MapResponse_DERPMap(b *testing.B) {
 		b.Skip("skipping full pipeline benchmark in short mode")
 	}
 
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
-
 	for _, nodeCount := range []int{10, 50, 100, 200, 500} {
 		b.Run(strconv.Itoa(nodeCount), func(b *testing.B) {
 			testData, cleanup := setupBatcherWithTestData(b, NewBatcherAndMapper, 1, nodeCount, largeBufferSize)
@@ -902,9 +844,6 @@ func BenchmarkScale_MapResponse_FullUpdate(b *testing.B) {
 	if testing.Short() {
 		b.Skip("skipping full pipeline benchmark in short mode")
 	}
-
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
 
 	for _, nodeCount := range []int{10, 50, 100, 200, 500} {
 		b.Run(strconv.Itoa(nodeCount), func(b *testing.B) {

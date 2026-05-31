@@ -51,6 +51,11 @@ jobs:
         with:
           name: tailscale-head-image
           path: /tmp/artifacts
+      - name: Download tailscale released images
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: tailscale-released-images
+          path: /tmp/artifacts
       - name: Download hi binary
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
         with:
@@ -67,28 +72,26 @@ jobs:
         with:
           name: postgres-image
           path: /tmp/artifacts
-      - name: Pin Docker to v28 (avoid v29 breaking changes)
+      - name: Force overlay2 storage driver
         run: |
-          # Docker 29 breaks docker build via Go client libraries and
-          # docker load/save with certain tarball formats.
-          # Pin to Docker 28.x until our tooling is updated.
-          # https://github.com/actions/runner-images/issues/13474
-          sudo install -m 0755 -d /etc/apt/keyrings
-          curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-            | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-            https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
-            | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-          sudo apt-get update -qq
-          VERSION=$(apt-cache madison docker-ce | grep '28\.5' | head -1 | awk '{print $3}')
-          sudo apt-get install -y --allow-downgrades \
-            "docker-ce=${VERSION}" "docker-ce-cli=${VERSION}"
+          sudo mkdir -p /etc/docker
+          echo '{"storage-driver":"overlay2"}' | sudo tee /etc/docker/daemon.json
           sudo systemctl restart docker
           docker version
+      - name: Login to Docker Hub
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_CI_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_CI_TOKEN }}
+        if: env.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
       - name: Load Docker images, Go cache, and prepare binary
         run: |
           gunzip -c /tmp/artifacts/headscale-image.tar.gz | docker load
           gunzip -c /tmp/artifacts/tailscale-head-image.tar.gz | docker load
+          gunzip -c /tmp/artifacts/tailscale-released-images.tar.gz | docker load
           if [ -f /tmp/artifacts/postgres-image.tar.gz ]; then
             gunzip -c /tmp/artifacts/postgres-image.tar.gz | docker load
           fi
@@ -105,6 +108,12 @@ jobs:
           HEADSCALE_INTEGRATION_POSTGRES_IMAGE: ${{ inputs.postgres_flag == '--postgres=1' && format('postgres:{0}', github.sha) || '' }}
           HEADSCALE_INTEGRATION_GO_CACHE: /tmp/go-cache/go
           HEADSCALE_INTEGRATION_GO_BUILD_CACHE: /tmp/go-cache/.cache/go-build
+          # Mirror the docker/login-action secrets into env so the
+          # dockertestutil.Credentials resolver picks them up directly
+          # (otherwise it falls back to parsing ~/.docker/config.json,
+          # which works but is one step further from the source).
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_CI_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_CI_TOKEN }}
         run: /tmp/artifacts/hi run --stats --ts-memory-limit=300 --hs-memory-limit=1500 "^${{ inputs.test }}$" \
           --timeout=120m \
           ${{ inputs.postgres_flag }}

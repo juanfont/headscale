@@ -156,9 +156,9 @@ func TestPolicyChanges(t *testing.T) {
 // (Prefix, Host) resolve to exactly the literal prefix and do NOT expand
 // to include the matching node's other IP addresses.
 //
-// PacketFilter rules are INBOUND: they tell the destination node what
+// [netmap.NetworkMap.PacketFilter] rules are INBOUND: they tell the destination node what
 // traffic to accept. So the IPv6 destination rule appears in test2's
-// PacketFilter (the destination), not test1's (the source).
+// [netmap.NetworkMap.PacketFilter] (the destination), not test1's (the source).
 func TestIPv6OnlyPrefixACL(t *testing.T) {
 	t.Parallel()
 
@@ -193,7 +193,7 @@ func TestIPv6OnlyPrefixACL(t *testing.T) {
 	c1.WaitForPeers(t, 1, 10*time.Second)
 	c2.WaitForPeers(t, 1, 10*time.Second)
 
-	// PacketFilter is an INBOUND filter: test2 (the destination) should
+	// [netmap.NetworkMap.PacketFilter] is an INBOUND filter: test2 (the destination) should
 	// have the rule allowing traffic FROM test1's IPv6.
 	nm2 := c2.Netmap()
 	require.NotNil(t, nm2)

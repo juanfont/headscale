@@ -59,7 +59,7 @@ jobs:
           nix develop --command -- ko build \
             --bare \
             --platform=linux/amd64,linux/arm64 \
-            --tags=main-${GITHUB_SHA::7} \
+            --tags=main-${GITHUB_SHA::7},development \
             ./cmd/headscale
 
       - name: Push to Docker Hub
@@ -71,7 +71,7 @@ jobs:
           nix develop --command -- ko build \
             --bare \
             --platform=linux/amd64,linux/arm64 \
-            --tags=main-${GITHUB_SHA::7} \
+            --tags=main-${GITHUB_SHA::7},development \
             ./cmd/headscale
 
   binaries:

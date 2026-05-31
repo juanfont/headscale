@@ -73,11 +73,11 @@ func loadDERPMapFromURL(addr url.URL) (*tailcfg.DERPMap, error) {
 	return &derpMap, err
 }
 
-// mergeDERPMaps naively merges a list of DERPMaps into a single
-// DERPMap, it will _only_ look at the Regions, an integer.
-// If a region exists in two of the given DERPMaps, the region
-// form the _last_ DERPMap will be preserved.
-// An empty DERPMap list will result in a DERPMap with no regions.
+// mergeDERPMaps naively merges a list of [tailcfg.DERPMap] values into a single
+// [tailcfg.DERPMap], it will _only_ look at the Regions, an integer.
+// If a region exists in two of the given [tailcfg.DERPMap] values, the region
+// form the _last_ [tailcfg.DERPMap] will be preserved.
+// An empty [tailcfg.DERPMap] list will result in a [tailcfg.DERPMap] with no regions.
 func mergeDERPMaps(derpMaps []*tailcfg.DERPMap) *tailcfg.DERPMap {
 	result := tailcfg.DERPMap{
 		OmitDefaultRegions: false,

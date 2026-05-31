@@ -1,16 +1,52 @@
 package hscontrol
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"net/netip"
 	"strings"
+	"time"
 
 	"github.com/arl/statsviz"
+	"github.com/juanfont/headscale/hscontrol/templates"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"tailscale.com/tailcfg"
 	"tailscale.com/tsweb"
 )
+
+// protectedDebugHandler wraps an [http.Handler] with an access check that
+// allows requests from loopback, Tailscale CGNAT IPs, and private
+// (RFC 1918 / RFC 4193) addresses. This extends [tsweb.Protected] which
+// only allows loopback and Tailscale IPs.
+func protectedDebugHandler(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if tsweb.AllowDebugAccess(r) {
+			h.ServeHTTP(w, r)
+
+			return
+		}
+
+		// [tsweb.AllowDebugAccess] rejects X-Forwarded-For and non-TS IPs.
+		// Additionally allow private/LAN addresses so operators can reach
+		// debug endpoints from their local network without tailscaled.
+		ipStr, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err == nil {
+			ip, parseErr := netip.ParseAddr(ipStr)
+			if parseErr == nil && ip.IsPrivate() {
+				h.ServeHTTP(w, r)
+
+				return
+			}
+		}
+
+		http.Error(w, "debug access denied", http.StatusForbidden)
+	})
+}
 
 func (h *Headscale) debugHTTPServer() *http.Server {
 	debugMux := http.NewServeMux()
@@ -141,7 +177,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		}
 	}))
 
-	// NodeStore endpoint
+	// [state.NodeStore] endpoint
 	debug.Handle("nodestore", "NodeStore information", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check Accept header to determine response format
 		acceptHeader := r.Header.Get("Accept")
@@ -265,7 +301,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		_, _ = w.Write(resJSON)
 	}))
 
-	// Batcher endpoint
+	// [mapper.Batcher] endpoint
 	debug.Handle("batcher", "Batcher connected nodes", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check Accept header to determine response format
 		acceptHeader := r.Header.Get("Accept")
@@ -293,8 +329,48 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		}
 	}))
 
-	err := statsviz.Register(debugMux)
+	// Ping endpoint: sends a [tailcfg.PingRequest] to a node and waits for it to respond.
+	// Supports POST (form submit) and GET with ?node= (clickable quick-ping links).
+	debug.Handle("ping", "Ping a node to check connectivity", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var (
+			query  string
+			result *templates.PingResult
+		)
+
+		switch r.Method {
+		case http.MethodPost:
+			r.Body = http.MaxBytesReader(w, r.Body, 4096) //nolint:mnd
+
+			err := r.ParseForm()
+			if err != nil {
+				http.Error(w, "bad form data", http.StatusBadRequest)
+				return
+			}
+
+			query = r.FormValue("node")
+			result = h.doPing(r.Context(), query)
+		case http.MethodGet:
+			// Support ?node= for auto-ping links from other debug pages.
+			if q := r.URL.Query().Get("node"); q != "" {
+				query = q
+				result = h.doPing(r.Context(), query)
+			}
+		}
+
+		nodes := h.connectedNodesList()
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(templates.PingPage(query, result, nodes).Render())) //nolint:gosec // G705: templ component auto-escapes
+	}))
+
+	// [statsviz.Register] would mount handlers directly on the raw mux,
+	// bypassing the access gate. Build the server by hand and wrap
+	// each handler with [protectedDebugHandler].
+	statsvizSrv, err := statsviz.NewServer()
 	if err == nil {
+		debugMux.Handle("/debug/statsviz/", protectedDebugHandler(statsvizSrv.Index()))
+		debugMux.Handle("/debug/statsviz/ws", protectedDebugHandler(statsvizSrv.Ws()))
 		debug.URL("/debug/statsviz", "Statsviz (visualise go metrics)")
 	}
 
@@ -303,7 +379,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 	debugHTTPServer := &http.Server{
 		Addr:         h.cfg.MetricsAddr,
-		Handler:      debugMux,
+		Handler:      securityHeaders(debugMux),
 		ReadTimeout:  types.HTTPTimeout,
 		WriteTimeout: 0,
 	}
@@ -326,9 +402,9 @@ func (h *Headscale) debugBatcher() string {
 		activeConnections int
 	}
 
-	var nodes []nodeStatus
-
 	debugInfo := h.mapBatcher.Debug()
+	nodes := make([]nodeStatus, 0, len(debugInfo))
+
 	for nodeID, info := range debugInfo {
 		nodes = append(nodes, nodeStatus{
 			id:                nodeID,
@@ -359,13 +435,13 @@ func (h *Headscale) debugBatcher() string {
 		}
 
 		if node.activeConnections > 0 {
-			sb.WriteString(fmt.Sprintf("Node %d:\t%s (%d connections)\n", node.id, status, node.activeConnections))
+			fmt.Fprintf(&sb, "Node %d:\t%s (%d connections)\n", node.id, status, node.activeConnections)
 		} else {
-			sb.WriteString(fmt.Sprintf("Node %d:\t%s\n", node.id, status))
+			fmt.Fprintf(&sb, "Node %d:\t%s\n", node.id, status)
 		}
 	}
 
-	sb.WriteString(fmt.Sprintf("\nSummary: %d connected, %d total\n", connectedCount, totalNodes))
+	fmt.Fprintf(&sb, "\nSummary: %d connected, %d total\n", connectedCount, totalNodes)
 
 	return sb.String()
 }
@@ -399,4 +475,98 @@ func (h *Headscale) debugBatcherJSON() DebugBatcherInfo {
 	}
 
 	return info
+}
+
+// connectedNodesList returns a list of connected nodes for the ping page.
+func (h *Headscale) connectedNodesList() []templates.ConnectedNode {
+	debugInfo := h.mapBatcher.Debug()
+
+	var nodes []templates.ConnectedNode
+
+	for nodeID, info := range debugInfo {
+		if !info.Connected {
+			continue
+		}
+
+		nv, ok := h.state.GetNodeByID(nodeID)
+		if !ok {
+			continue
+		}
+
+		cn := templates.ConnectedNode{
+			ID:       nodeID,
+			Hostname: nv.Hostname(),
+		}
+
+		for _, ip := range nv.IPs() {
+			cn.IPs = append(cn.IPs, ip.String())
+		}
+
+		nodes = append(nodes, cn)
+	}
+
+	return nodes
+}
+
+const pingTimeout = 30 * time.Second
+
+// doPing sends a [tailcfg.PingRequest] to the node identified by query and waits for a response.
+func (h *Headscale) doPing(ctx context.Context, query string) *templates.PingResult {
+	if query == "" {
+		return &templates.PingResult{
+			Status:  "error",
+			Message: "No node specified.",
+		}
+	}
+
+	node, ok := h.state.ResolveNode(query)
+	if !ok {
+		return &templates.PingResult{
+			Status:  "error",
+			Message: fmt.Sprintf("Node %q not found.", query),
+		}
+	}
+
+	nodeID := node.ID()
+
+	if !h.mapBatcher.IsConnected(nodeID) {
+		return &templates.PingResult{
+			Status:  "error",
+			NodeID:  nodeID,
+			Message: fmt.Sprintf("Node %d is not connected.", nodeID),
+		}
+	}
+
+	pingID, responseCh := h.state.RegisterPing(nodeID)
+	defer h.state.CancelPing(pingID)
+
+	// The callback hits /machine/ping-response on the main TLS router,
+	// not the noise chain, so URLIsNoise stays false. Operators running
+	// server_url over plain HTTP are on their own — don't do that.
+	callbackURL := h.cfg.ServerURL + "/machine/ping-response?id=" + pingID
+	h.Change(change.PingNode(nodeID, &tailcfg.PingRequest{
+		URL: callbackURL,
+		Log: true,
+	}))
+
+	select {
+	case latency := <-responseCh:
+		return &templates.PingResult{
+			Status:  "ok",
+			Latency: latency,
+			NodeID:  nodeID,
+		}
+	case <-time.After(pingTimeout):
+		return &templates.PingResult{
+			Status:  "timeout",
+			NodeID:  nodeID,
+			Message: fmt.Sprintf("No response after %s.", pingTimeout),
+		}
+	case <-ctx.Done():
+		return &templates.PingResult{
+			Status:  "error",
+			NodeID:  nodeID,
+			Message: "Request cancelled.",
+		}
+	}
 }

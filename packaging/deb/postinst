@@ -30,35 +30,6 @@ case "$1" in
           --comment "headscale default user" "$HEADSCALE_USER"
       fi
 
-      if dpkg --compare-versions "$2" lt-nl "0.27"; then
-        # < 0.24.0-beta.1 used /home/headscale as home and /bin/sh as shell.
-        # The directory /home/headscale was not created by the package or
-        # useradd but the service always used /var/lib/headscale which was
-        # always shipped by the package as empty directory. Previous versions
-        # of the package did not update the user account properties.
-        usermod --home "$HEADSCALE_HOME_DIR" --shell "$HEADSCALE_SHELL" \
-          "$HEADSCALE_USER" >/dev/null
-      fi
-
-      if dpkg --compare-versions "$2" lt-nl "0.27" \
-        && [ $(id --user "$HEADSCALE_USER") -ge 1000 ] \
-        && [ $(id --group "$HEADSCALE_GROUP") -ge 1000 ]; then
-        # < 0.26.0-beta.1 created a regular user/group to run headscale.
-        # Previous versions of the package did not migrate to system uid/gid.
-        # Assume that the *default* uid/gid range is in use and only run this
-        # migration when the current uid/gid is allocated in the user range.
-        # Create a temporary system user/group to guarantee the allocation of a
-        # uid/gid in the system range. Assign this new uid/gid to the existing
-        # user and group and remove the temporary user/group afterwards.
-        tmp_name="headscaletmp"
-        useradd --system --no-log-init --no-create-home --shell "$HEADSCALE_SHELL" "$tmp_name"
-        tmp_uid="$(id --user "$tmp_name")"
-        tmp_gid="$(id --group "$tmp_name")"
-        usermod --non-unique --uid "$tmp_uid" --gid "$tmp_gid" "$HEADSCALE_USER"
-        groupmod --non-unique --gid "$tmp_gid" "$HEADSCALE_USER"
-        userdel --force "$tmp_name"
-      fi
-
       # Enable service and keep track of its state
       if deb-systemd-helper --quiet was-enabled "$HEADSCALE_SERVICE"; then
         deb-systemd-helper enable "$HEADSCALE_SERVICE" >/dev/null || true

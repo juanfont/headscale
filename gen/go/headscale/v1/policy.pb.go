@@ -206,6 +206,86 @@ func (x *GetPolicyResponse) GetUpdatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+type CheckPolicyRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Policy        string                 `protobuf:"bytes,1,opt,name=policy,proto3" json:"policy,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CheckPolicyRequest) Reset() {
+	*x = CheckPolicyRequest{}
+	mi := &file_headscale_v1_policy_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckPolicyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckPolicyRequest) ProtoMessage() {}
+
+func (x *CheckPolicyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_headscale_v1_policy_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckPolicyRequest.ProtoReflect.Descriptor instead.
+func (*CheckPolicyRequest) Descriptor() ([]byte, []int) {
+	return file_headscale_v1_policy_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *CheckPolicyRequest) GetPolicy() string {
+	if x != nil {
+		return x.Policy
+	}
+	return ""
+}
+
+type CheckPolicyResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CheckPolicyResponse) Reset() {
+	*x = CheckPolicyResponse{}
+	mi := &file_headscale_v1_policy_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckPolicyResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckPolicyResponse) ProtoMessage() {}
+
+func (x *CheckPolicyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_headscale_v1_policy_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckPolicyResponse.ProtoReflect.Descriptor instead.
+func (*CheckPolicyResponse) Descriptor() ([]byte, []int) {
+	return file_headscale_v1_policy_proto_rawDescGZIP(), []int{5}
+}
+
 var File_headscale_v1_policy_proto protoreflect.FileDescriptor
 
 const file_headscale_v1_policy_proto_rawDesc = "" +
@@ -221,7 +301,10 @@ const file_headscale_v1_policy_proto_rawDesc = "" +
 	"\x11GetPolicyResponse\x12\x16\n" +
 	"\x06policy\x18\x01 \x01(\tR\x06policy\x129\n" +
 	"\n" +
-	"updated_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAtB)Z'github.com/juanfont/headscale/gen/go/v1b\x06proto3"
+	"updated_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\",\n" +
+	"\x12CheckPolicyRequest\x12\x16\n" +
+	"\x06policy\x18\x01 \x01(\tR\x06policy\"\x15\n" +
+	"\x13CheckPolicyResponseB)Z'github.com/juanfont/headscale/gen/go/v1b\x06proto3"
 
 var (
 	file_headscale_v1_policy_proto_rawDescOnce sync.Once
@@ -235,17 +318,19 @@ func file_headscale_v1_policy_proto_rawDescGZIP() []byte {
 	return file_headscale_v1_policy_proto_rawDescData
 }
 
-var file_headscale_v1_policy_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_headscale_v1_policy_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_headscale_v1_policy_proto_goTypes = []any{
 	(*SetPolicyRequest)(nil),      // 0: headscale.v1.SetPolicyRequest
 	(*SetPolicyResponse)(nil),     // 1: headscale.v1.SetPolicyResponse
 	(*GetPolicyRequest)(nil),      // 2: headscale.v1.GetPolicyRequest
 	(*GetPolicyResponse)(nil),     // 3: headscale.v1.GetPolicyResponse
-	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
+	(*CheckPolicyRequest)(nil),    // 4: headscale.v1.CheckPolicyRequest
+	(*CheckPolicyResponse)(nil),   // 5: headscale.v1.CheckPolicyResponse
+	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
 }
 var file_headscale_v1_policy_proto_depIdxs = []int32{
-	4, // 0: headscale.v1.SetPolicyResponse.updated_at:type_name -> google.protobuf.Timestamp
-	4, // 1: headscale.v1.GetPolicyResponse.updated_at:type_name -> google.protobuf.Timestamp
+	6, // 0: headscale.v1.SetPolicyResponse.updated_at:type_name -> google.protobuf.Timestamp
+	6, // 1: headscale.v1.GetPolicyResponse.updated_at:type_name -> google.protobuf.Timestamp
 	2, // [2:2] is the sub-list for method output_type
 	2, // [2:2] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
@@ -264,7 +349,7 @@ func file_headscale_v1_policy_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_headscale_v1_policy_proto_rawDesc), len(file_headscale_v1_policy_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

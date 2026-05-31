@@ -150,7 +150,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			nodes, peersFunc := tt.setupFunc()
-			snapshot := snapshotFromNodes(nodes, peersFunc)
+			snapshot := snapshotFromNodes(nodes, peersFunc, nil)
 			tt.validate(t, nodes, snapshot)
 		})
 	}
@@ -684,7 +684,7 @@ func TestNodeStoreOperations(t *testing.T) {
 						finalNode := snapshot.nodesByID[1]
 						assert.Equal(t, "multi-update-hostname", finalNode.Hostname)
 						assert.Equal(t, "multi-update-givenname", finalNode.GivenName)
-						assert.Equal(t, []string{"tag1", "tag2"}, finalNode.Tags)
+						assert.Equal(t, []string{"tag1", "tag2"}, finalNode.Tags.List())
 					},
 				},
 			},
@@ -722,14 +722,14 @@ func TestNodeStoreOperations(t *testing.T) {
 						assert.NotNil(t, nodePtr)
 						assert.Equal(t, "db-save-hostname", nodePtr.Hostname)
 						assert.Equal(t, "db-save-given", nodePtr.GivenName)
-						assert.Equal(t, []string{"db-tag1", "db-tag2"}, nodePtr.Tags)
+						assert.Equal(t, []string{"db-tag1", "db-tag2"}, nodePtr.Tags.List())
 
 						// Verify the snapshot also reflects the same state
 						snapshot := store.data.Load()
 						storedNode := snapshot.nodesByID[1]
 						assert.Equal(t, "db-save-hostname", storedNode.Hostname)
 						assert.Equal(t, "db-save-given", storedNode.GivenName)
-						assert.Equal(t, []string{"db-tag1", "db-tag2"}, storedNode.Tags)
+						assert.Equal(t, []string{"db-tag1", "db-tag2"}, storedNode.Tags.List())
 					},
 				},
 				{
@@ -792,15 +792,15 @@ func TestNodeStoreOperations(t *testing.T) {
 						// All should have the complete final state
 						assert.Equal(t, "concurrent-db-hostname", nodePtr1.Hostname)
 						assert.Equal(t, "concurrent-db-given", nodePtr1.GivenName)
-						assert.Equal(t, []string{"concurrent-tag"}, nodePtr1.Tags)
+						assert.Equal(t, []string{"concurrent-tag"}, nodePtr1.Tags.List())
 
 						assert.Equal(t, "concurrent-db-hostname", nodePtr2.Hostname)
 						assert.Equal(t, "concurrent-db-given", nodePtr2.GivenName)
-						assert.Equal(t, []string{"concurrent-tag"}, nodePtr2.Tags)
+						assert.Equal(t, []string{"concurrent-tag"}, nodePtr2.Tags.List())
 
 						assert.Equal(t, "concurrent-db-hostname", nodePtr3.Hostname)
 						assert.Equal(t, "concurrent-db-given", nodePtr3.GivenName)
-						assert.Equal(t, []string{"concurrent-tag"}, nodePtr3.Tags)
+						assert.Equal(t, []string{"concurrent-tag"}, nodePtr3.Tags.List())
 
 						// Verify consistency with stored state
 						snapshot := store.data.Load()

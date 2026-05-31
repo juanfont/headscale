@@ -31,6 +31,30 @@ tls_cert_path: ""
 tls_key_path: ""
 ```
 
+### Trusted proxies
+
+Headscale ignores `True-Client-IP`, `X-Real-IP` and `X-Forwarded-For`
+unless the request's TCP peer matches `trusted_proxies`. Set this to
+the CIDR(s) your reverse proxy connects from so the real client IP
+appears in access logs:
+
+```yaml title="config.yaml"
+trusted_proxies:
+  - 127.0.0.1/32
+  - ::1/128
+```
+
+The reverse proxy must also strip any client-supplied
+`True-Client-IP` / `X-Real-IP` / `X-Forwarded-For` on inbound requests
+and set its own values. nginx's `$proxy_add_x_forwarded_for` only
+appends to whatever the client sent — pair it with
+`proxy_set_header X-Real-IP $remote_addr;` and clear the inbound XFF
+yourself if your nginx version does not do so.
+
+Leaving `trusted_proxies` empty when there is no proxy in front is
+safe: the headers are dropped from every request and the access log
+shows the directly-connecting TCP peer.
+
 ## nginx
 
 The following example configuration can be used in your nginx setup, substituting values as necessary. `<IP:PORT>` should be the IP address and port where headscale is running. In most cases, this will be `http://localhost:8080`.

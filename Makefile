@@ -105,6 +105,11 @@ clean:
 .PHONY: dev
 dev: fmt lint test build
 
+# Start a local headscale dev server (use mts to add nodes)
+.PHONY: dev-server
+dev-server:
+	go run ./cmd/dev
+
 # Help target
 .PHONY: help
 help:

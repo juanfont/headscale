@@ -67,7 +67,7 @@ func TestResolveMagicDNS(t *testing.T) {
 				for _, ip := range ips {
 					assert.Contains(ct, result, ip.String(), "IP %s should be found in DNS resolution result from %s to %s", ip.String(), client.Hostname(), peer.Hostname())
 				}
-			}, integrationutil.ScaledTimeout(30*time.Second), 2*time.Second)
+			}, integrationutil.StatusReadyTimeout, 2*time.Second)
 		}
 	}
 }

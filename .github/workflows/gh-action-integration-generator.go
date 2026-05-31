@@ -14,7 +14,7 @@ import (
 // Key is the test function name, value is a list of subtest prefixes.
 // Each prefix becomes a separate CI job as "TestName/prefix".
 //
-// Example: TestAutoApproveMultiNetwork has subtests like:
+// Example: [TestAutoApproveMultiNetwork] has subtests like:
 //   - TestAutoApproveMultiNetwork/authkey-tag-advertiseduringup-false-pol-database
 //   - TestAutoApproveMultiNetwork/webauth-user-advertiseduringup-true-pol-file
 //
@@ -66,7 +66,9 @@ func findTests() []string {
 	}
 
 	args := []string{
+		"--type", "go",
 		"--regexp", "func (Test.+)\\(.*",
+		"--max-depth", "1",
 		"../../integration/",
 		"--replace", "$1",
 		"--sort", "path",

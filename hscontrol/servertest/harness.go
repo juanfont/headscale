@@ -8,7 +8,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 )
 
-// TestHarness orchestrates a TestServer with multiple TestClients,
+// TestHarness orchestrates a [TestServer] with multiple [TestClient] instances,
 // providing a convenient setup for multi-node control plane tests.
 type TestHarness struct {
 	Server  *TestServer
@@ -18,7 +18,7 @@ type TestHarness struct {
 	defaultUser *types.User
 }
 
-// HarnessOption configures a TestHarness.
+// HarnessOption configures a [TestHarness].
 type HarnessOption func(*harnessConfig)
 
 type harnessConfig struct {
@@ -33,24 +33,24 @@ func defaultHarnessConfig() *harnessConfig {
 	}
 }
 
-// WithServerOptions passes ServerOptions through to the underlying
-// TestServer.
+// WithServerOptions passes [ServerOption] values through to the underlying
+// [TestServer].
 func WithServerOptions(opts ...ServerOption) HarnessOption {
 	return func(c *harnessConfig) { c.serverOpts = append(c.serverOpts, opts...) }
 }
 
-// WithDefaultClientOptions applies ClientOptions to every client
-// created by NewHarness.
+// WithDefaultClientOptions applies [ClientOption] values to every client
+// created by [NewHarness].
 func WithDefaultClientOptions(opts ...ClientOption) HarnessOption {
 	return func(c *harnessConfig) { c.clientOpts = append(c.clientOpts, opts...) }
 }
 
-// WithConvergenceTimeout sets how long WaitForMeshComplete waits.
+// WithConvergenceTimeout sets how long [TestHarness.WaitForMeshComplete] waits.
 func WithConvergenceTimeout(d time.Duration) HarnessOption {
 	return func(c *harnessConfig) { c.convergenceMax = d }
 }
 
-// NewHarness creates a TestServer and numClients connected clients.
+// NewHarness creates a [TestServer] and numClients connected clients.
 // All clients share a default user and are registered with reusable
 // pre-auth keys. The harness waits for all clients to form a
 // complete mesh before returning.
@@ -146,7 +146,7 @@ func (h *TestHarness) WaitForMeshComplete(tb testing.TB, timeout time.Duration) 
 }
 
 // WaitForConvergence waits until all connected clients have a
-// non-nil NetworkMap and their peer counts have stabilised.
+// non-nil [netmap.NetworkMap] and their peer counts have stabilised.
 func (h *TestHarness) WaitForConvergence(tb testing.TB, timeout time.Duration) {
 	tb.Helper()
 	h.WaitForMeshComplete(tb, timeout)

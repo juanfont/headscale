@@ -11,11 +11,46 @@
   --md-typeset-a-color: var(--md-primary-fg-color);
   --md-text-font: "Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --md-code-font: "Roboto Mono", "SF Mono", Monaco, "Cascadia Code", Consolas, "Courier New", monospace;
+  --hs-success: #059669;
+  --hs-success-bg: #d1fae5;
+  --hs-error: #dc2626;
+  --hs-error-bg: #fee2e2;
+  --hs-warning-text: #92400e;
+  --hs-warning-bg: #fef3c7;
+  --hs-warning-border: #f59e0b;
+  --hs-border: #e5e7eb;
+  --hs-bg: #ffffff;
+  --hs-focus-ring: #4051b5;
 }
 
-/* Base Typography */
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --md-default-fg-color: rgba(255, 255, 255, 0.87);
+    --md-default-fg-color--light: rgba(255, 255, 255, 0.6);
+    --md-default-fg-color--lighter: rgba(255, 255, 255, 0.38);
+    --md-default-fg-color--lightest: rgba(255, 255, 255, 0.07);
+    --md-code-fg-color: #c9d1d9;
+    --md-code-bg-color: #1e1e1e;
+    --md-primary-fg-color: #7b8fdb;
+    --md-accent-fg-color: #8fa4ff;
+    --md-typeset-a-color: var(--md-primary-fg-color);
+    --hs-success: #34d399;
+    --hs-success-bg: #064e3b;
+    --hs-error: #f87171;
+    --hs-error-bg: #450a0a;
+    --hs-warning-text: #fbbf24;
+    --hs-warning-bg: #451a03;
+    --hs-warning-border: #d97706;
+    --hs-border: #374151;
+    --hs-bg: #111827;
+    --hs-focus-ring: #7b8fdb;
+  }
+}
+
+/* Base Typography - 1rem (16px) avoids iOS auto-zoom on inputs */
 .md-typeset {
-  font-size: 0.8rem;
+  font-size: 1rem;
   line-height: 1.6;
   color: var(--md-default-fg-color);
   font-family: var(--md-text-font);
@@ -76,16 +111,33 @@
   padding-left: 2em;
 }
 
-/* Links */
+.md-typeset li {
+  margin-bottom: 0.25em;
+}
+
+/* Links - underline for accessibility (don't rely on color alone) */
 .md-typeset a {
   color: var(--md-typeset-a-color);
-  text-decoration: none;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
   word-break: break-word;
+  cursor: pointer;
 }
 
 .md-typeset a:hover,
 .md-typeset a:focus {
   color: var(--md-accent-fg-color);
+  text-decoration-thickness: 2px;
+}
+
+/* Focus styles - visible ring for keyboard navigation */
+.md-typeset a:focus-visible,
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--hs-focus-ring);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 /* Code (inline) */
@@ -118,11 +170,42 @@
   overflow-wrap: break-word;
   word-wrap: break-word;
   white-space: pre-wrap;
+  border-radius: 0.25rem;
 }
 
 /* Links in code */
 .md-typeset a code {
   color: currentcolor;
+}
+
+/* Buttons - styled via CSS for hover/active/focus pseudo-classes */
+.md-typeset button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 500;
+  font-family: var(--md-text-font);
+  line-height: 1;
+  color: #ffffff;
+  background-color: var(--md-primary-fg-color);
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  min-height: 44px;
+  transition:
+    background-color 150ms ease-out,
+    box-shadow 150ms ease-out;
+}
+
+.md-typeset button:hover {
+  background-color: var(--md-accent-fg-color);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.md-typeset button:active {
+  transform: translateY(1px);
 }
 
 /* Logo */
@@ -138,6 +221,17 @@
 @media (max-width: 768px) {
   .headscale-logo {
     width: 200px;
-    margin-left: 0;
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

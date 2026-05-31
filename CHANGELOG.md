@@ -2,7 +2,7 @@
 
 ## 0.29.0 (202x-xx-xx)
 
-**Minimum supported Tailscale client version: v1.76.0**
+**Minimum supported Tailscale client version: v1.80.0**
 
 ### Tailscale ACL compatibility improvements
 
@@ -15,7 +15,8 @@ overall our implementation was very close.
 
 SSH rules with `"action": "check"` are now supported. When a client initiates a SSH connection to a node
 with a `check` action policy, the user is prompted to authenticate via OIDC or CLI approval before access
-is granted.
+is granted. OIDC approval requires the authenticated user to own the source node; tagged source nodes
+cannot use SSH check-mode.
 
 A new `headscale auth` CLI command group supports the approval flow:
 
@@ -24,67 +25,289 @@ A new `headscale auth` CLI command group supports the approval flow:
 - `headscale auth register --auth-id <id> --user <user>` registers a node (replaces deprecated `headscale nodes register`)
 
 [#1850](https://github.com/juanfont/headscale/pull/1850)
+[#3180](https://github.com/juanfont/headscale/pull/3180)
+
+### Policy tests (beta)
+
+Headscale now evaluates the `tests` block in a policy file. Tests assert reachability between
+named sources and destinations and cover the whole policy — both `acls` and `grants` rules
+contribute. They run on user-initiated writes via `headscale policy set`, on SIGHUP reload
+(`systemctl reload headscale` / `kill -HUP $(pidof headscale)`), and on `headscale policy check`.
+A failing test rejects the write before it is applied, with the same error message Tailscale SaaS
+would return for the same policy.
+
+At boot a stored policy whose tests no longer pass — for example because a referenced user was
+deleted while the server was offline — logs a warning and the server keeps running. Fix the
+policy and reload.
+
+This feature is **beta** while behavioural coverage against Tailscale SaaS broadens.
+
+[#3229](https://github.com/juanfont/headscale/pull/3229)
+
+### SSH policy tests (beta)
+
+Headscale now evaluates the `sshTests` block in a policy file. Each entry names a source, one or
+more destination hosts, and three optional user lists: `accept` asserts the listed login users
+reach every destination via an accept- or check-action SSH rule, `deny` asserts none of them
+reach any destination, and `check` requires reachability specifically through a check-action
+rule. Tests run on `headscale policy set`, on SIGHUP reload (`systemctl reload headscale` /
+`kill -HUP $(pidof headscale)`), and on `headscale policy check`. A failing test rejects the
+write before it is applied, with the same error message Tailscale SaaS would return for the same
+policy.
+
+At boot a stored policy whose sshTests no longer pass — for example because a referenced user was
+deleted while the server was offline — logs a warning and the server keeps running. Fix the
+policy and reload.
+
+This feature is **beta** while behavioural coverage against Tailscale SaaS broadens.
+
+[#3263](https://github.com/juanfont/headscale/pull/3263)
+
+### SSH rule validation
+
+SSH rule parsing now trims surrounding whitespace on `action`, `users`, `src`, and `dst`,
+rejects empty or wildcard entries in `users`, rejects empty `acceptEnv`, and rejects negative
+`checkPeriod`. `hosts:` aliases are rejected as SSH destinations, non-ASCII tag names are
+rejected at parse time, and the wording for group-nesting cycles matches Tailscale SaaS.
+[#3263](https://github.com/juanfont/headscale/pull/3263)
 
 ### Grants
 
-We now support [Tailscale grants](https://tailscale.com/kb/1324/grants) alongside ACLs. Grants
-extend what you can express in a policy beyond packet filtering: the `app` field controls
-application-level features like Taildrive file sharing and peer relay, and the `via` field steers
-traffic through specific tagged subnet routers or exit nodes. The `ip` field works like an ACL rule.
-Grants can be mixed with ACLs in the same policy file.
+We now support [Tailscale grants](https://tailscale.com/docs/features/access-control/grants)
+alongside ACLs. Grants extend what you can express in a policy beyond packet filtering: the `app`
+field controls application-level features like Taildrive file sharing and peer relay, and the `via`
+field steers traffic through specific tagged subnet routers or exit nodes. The `ip` field works like
+an ACL rule. Grants can be mixed with ACLs in the same policy file.
 [#2180](https://github.com/juanfont/headscale/pull/2180)
 
-As part of this, we added `autogroup:danger-all`. It resolves to `0.0.0.0/0` and `::/0` — all IP
+As part of this, we added `autogroup:danger-all`. It resolves to `0.0.0.0/0` and `::/0`, all IP
 addresses, including those outside the tailnet. This replaces the old behaviour where `*` matched
-all IPs (see BREAKING below). The name is intentionally scary: accepting traffic from the entire
+all IPs (see BREAKING below). The name is intentional: accepting traffic from the entire
 internet is a security-sensitive choice. `autogroup:danger-all` can only be used as a source.
+
+### Node attributes (`nodeAttrs`)
+
+ACL policies now accept a `nodeAttrs` block. Each entry hands a list of
+Tailscale node capabilities to every node matching `target`. The accepted
+target forms are the same as `acls.src` and `grants.src`: users, groups,
+tags, hosts, prefixes, `autogroup:member`, `autogroup:tagged`, and `*`.
+
+```jsonc
+{
+  "randomizeClientPort": true,
+  "nodeAttrs": [
+    { "target": ["autogroup:tagged"], "attr": ["disable-captive-portal-detection"] },
+    { "target": ["alice@example.com"], "attr": ["nextdns:abc123"] },
+  ],
+}
+```
+
+Frequently requested capabilities this unlocks include `magicdns-aaaa`,
+`disable-relay-server`, `disable-captive-portal-detection`,
+`nextdns:<profile>` / `nextdns:no-device-info`, `randomize-client-port`,
+and the Taildrive `drive:share` / `drive:access` pair. The set is not
+limited to these, any string-only cap an operator places in policy
+reaches clients unchanged.
+
+`randomizeClientPort` also lands as a top-level policy field that toggles
+the default for every node, replacing the old server-config knob.
+
+A new `auto_update.enabled` config option controls the tailnet-wide
+default for client auto-update. When true, every node's CapMap carries
+`default-auto-update: [true]` so fresh clients pick up the default
+unless they make a local opt-in / opt-out choice.
+
+Policies that use the `funnel` cap, `ipPool` blocks, or
+`autogroup:admin` / `autogroup:owner` targets are rejected at load —
+those features depend on machinery headscale does not yet ship.
+
+[#3251](https://github.com/juanfont/headscale/pull/3251)
+
+### Taildrive
+
+Taildrive ([file-sync between
+nodes](https://tailscale.com/docs/features/taildrive)) is now
+configurable through policy. Grant `drive:share` to the node that
+hosts files and `drive:access` to nodes that read or write them; pair
+with a `tailscale.com/cap/drive` grant to set the per-share access
+mode:
+
+```jsonc
+{
+  "nodeAttrs": [
+    { "target": ["tag:fileserver"], "attr": ["drive:share"] },
+    { "target": ["autogroup:member"], "attr": ["drive:access"] },
+  ],
+  "grants": [
+    {
+      "src": ["autogroup:member"],
+      "dst": ["tag:fileserver"],
+      "app": {
+        "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+      },
+    },
+  ],
+}
+```
+
+A wildcard `nodeAttrs` (`"target": ["*"]`) hands the caps to every
+node when fine-grained control is not needed.
+
+### Hostname sanitisation
+
+Hostnames are now santised using Tailscales `magicdns` sanitisation rules, matching Tailscale SaaS behavior. This means that hostnames with non-ASCII characters, special characters, or reserved DNS label characters are now transformed into valid DNS labels for MagicDNS. This improves our previously too strict sanitisation that rejected hostnames based on our guesswork and not based on the Tailscale upstream behaviour.
+
+Examples that previously regressed and now work:
+
+| Input                | Raw (Hostname)       | DNS label (GivenName) |
+| -------------------- | -------------------- | --------------------- |
+| `Joe's Mac mini`     | `Joe's Mac mini`     | `joes-mac-mini`       |
+| `Yuri's MacBook Pro` | `Yuri's MacBook Pro` | `yuris-macbook-pro`   |
+| `Test@Host`          | `Test@Host`          | `test-host`           |
+| `mail.server`        | `mail.server`        | `mail-server`         |
+| `My-PC!`             | `My-PC!`             | `my-pc`               |
+| `我的电脑`           | `我的电脑`           | `node`                |
+
+[#3202](https://github.com/juanfont/headscale/pull/3202)
+
+### HA subnet router health probing
+
+Headscale now actively probes HA subnet routers to detect nodes that are connected but not
+forwarding traffic. The control plane periodically pings HA subnet routers via the Noise
+control channel and fails over to a healthy standby if the primary stops responding. This is
+enabled by default (`node.routes.ha.probe_interval: 10s`, `probe_timeout: 5s`) and only
+active when HA routes exist (2+ nodes advertising the same prefix). Set `probe_interval` to
+`0` to disable. This complements the existing disconnect-based failover, catching "zombie
+connected" routers that maintain their control session but cannot route packets.
+[#3194](https://github.com/juanfont/headscale/pull/3194)
 
 ### BREAKING
 
-- **ACL Policy**: Wildcard (`*`) in ACL sources and destinations now resolves to Tailscale's CGNAT range (`100.64.0.0/10`) and ULA range (`fd7a:115c:a1e0::/48`) instead of all IPs (`0.0.0.0/0` and `::/0`) [#3036](https://github.com/juanfont/headscale/pull/3036)
+#### Hostname handling
+
+- The `GivenName` collision policy changed from an 8-char random hash suffix (`laptop-abc12xyz`) to a monotonic numeric suffix (`laptop`, `laptop-1`, `laptop-2`, …), matching Tailscale SaaS. Empty / all-non-ASCII hostnames now fall back to the literal `node` instead of `invalid-<rand>`. MagicDNS names change on upgrade for any node whose previous label was a random-suffix form; the raw `Hostname` column is unchanged. [#3202](https://github.com/juanfont/headscale/pull/3202)
+
+#### ACL Policy
+
+- Wildcard (`*`) in ACL sources and destinations now resolves to Tailscale's CGNAT range (`100.64.0.0/10`) and ULA range (`fd7a:115c:a1e0::/48`) instead of all IPs (`0.0.0.0/0` and `::/0`) [#3036](https://github.com/juanfont/headscale/pull/3036)
   - This better matches Tailscale's security model where `*` means "any node in the tailnet" rather than "any IP address"
   - Policies that need to match all IP addresses including non-Tailscale IPs should use `autogroup:danger-all` as a source, or explicit CIDR ranges as destinations [#2180](https://github.com/juanfont/headscale/pull/2180)
   - `autogroup:danger-all` can only be used as a source; it cannot be used as a destination
   - **Note**: Users with non-standard IP ranges configured in `prefixes.ipv4` or `prefixes.ipv6` (which is unsupported and produces a warning) will need to explicitly specify their CIDR ranges in ACL rules instead of using `*`
-- **ACL Policy**: Validate autogroup:self source restrictions matching Tailscale behavior - tags, hosts, and IPs are rejected as sources for autogroup:self destinations [#3036](https://github.com/juanfont/headscale/pull/3036)
-  - Policies using tags, hosts, or IP addresses as sources for autogroup:self destinations will now fail validation
-- **Upgrade path**: Headscale now enforces a strict version upgrade path [#3083](https://github.com/juanfont/headscale/pull/3083)
+- Validate `autogroup:self` source restrictions matching Tailscale behavior - tags, hosts, and IPs are rejected as sources for `autogroup:self` destinations [#3036](https://github.com/juanfont/headscale/pull/3036)
+  - Policies using tags, hosts, or IP addresses as sources for `autogroup:self` destinations will now fail validation
+- The `proto:icmp` protocol name now only includes ICMPv4 (protocol 1), matching Tailscale behavior [#3036](https://github.com/juanfont/headscale/pull/3036)
+  - Previously, `proto:icmp` included both ICMPv4 and ICMPv6
+  - Use `proto:ipv6-icmp` or protocol number `58` explicitly for ICMPv6
+
+#### Upgrade Path
+
+- Headscale now enforces a strict version upgrade path [#3083](https://github.com/juanfont/headscale/pull/3083)
   - Skipping minor versions (e.g. 0.27 → 0.29) is blocked; upgrade one minor version at a time
   - Downgrading to a previous minor version is blocked
   - Patch version changes within the same minor are always allowed
-- **ACL Policy**: The `proto:icmp` protocol name now only includes ICMPv4 (protocol 1), matching Tailscale behavior [#3036](https://github.com/juanfont/headscale/pull/3036)
-  - Previously, `proto:icmp` included both ICMPv4 and ICMPv6
-  - Use `proto:ipv6-icmp` or protocol number `58` explicitly for ICMPv6
-- **CLI**: `headscale nodes register` is deprecated in favour of `headscale auth register --auth-id <id> --user <user>` [#1850](https://github.com/juanfont/headscale/pull/1850)
+
+#### Configuration
+
+- The `randomize_client_port` server-config key was removed; the
+  toggle now lives in the policy file as a top-level
+  `randomizeClientPort` field, matching the Tailscale-hosted schema. [#3251](https://github.com/juanfont/headscale/pull/3251)
+  Headscale refuses to start when the old key is set. Move it to the
+  policy file referenced by `policy.path`:
+
+  ```jsonc
+  {
+    "randomizeClientPort": true,
+  }
+  ```
+
+  If you do not have a policy file yet, create one with that minimal
+  content and point `policy.path` at it. The default carries over —
+  empty / absent policy means `randomizeClientPort: false`, matching
+  the previous behaviour for operators who never set the key. Per-node
+  opt-in via `nodeAttrs` is also supported and stacks on top of the
+  global default.
+
+#### CLI
+
+- `headscale nodes register` is deprecated in favour of `headscale auth register --auth-id <id> --user <user>` [#1850](https://github.com/juanfont/headscale/pull/1850)
   - The old command continues to work but will be removed in a future release
 
 ### Changes
 
-- **SSH Policy**: Add support for `localpart:*@<domain>` in SSH rule `users` field, mapping each matching user's email local-part as their OS username [#3091](https://github.com/juanfont/headscale/pull/3091)
-- **ACL Policy**: Add ICMP and IPv6-ICMP protocols to default filter rules when no protocol is specified [#3036](https://github.com/juanfont/headscale/pull/3036)
-- **ACL Policy**: Fix autogroup:self handling for tagged nodes - tagged nodes no longer incorrectly receive autogroup:self filter rules [#3036](https://github.com/juanfont/headscale/pull/3036)
-- **ACL Policy**: Use CIDR format for autogroup:self destination IPs matching Tailscale behavior [#3036](https://github.com/juanfont/headscale/pull/3036)
-- **ACL Policy**: Merge filter rules with identical SrcIPs and IPProto matching Tailscale behavior - multiple ACL rules with the same source now produce a single FilterRule with combined DstPorts [#3036](https://github.com/juanfont/headscale/pull/3036)
-- Remove deprecated `--namespace` flag from `nodes list`, `nodes register`, and `debug create-node` commands (use `--user` instead) [#3093](https://github.com/juanfont/headscale/pull/3093)
-- Remove deprecated `namespace`/`ns` command aliases for `users` and `machine`/`machines` aliases for `nodes` [#3093](https://github.com/juanfont/headscale/pull/3093)
-- Add SSH `check` action support with OIDC and CLI-based approval flows [#1850](https://github.com/juanfont/headscale/pull/1850)
-- Add `headscale auth register`, `headscale auth approve`, and `headscale auth reject` CLI commands [#1850](https://github.com/juanfont/headscale/pull/1850)
-- Add `auth` related routes to the API. The `auth/register` endpoint now expects data as JSON [#1850](https://github.com/juanfont/headscale/pull/1850)
-- Deprecate `headscale nodes register --key` in favour of `headscale auth register --auth-id` [#1850](https://github.com/juanfont/headscale/pull/1850)
-- Generalise auth templates into reusable `AuthSuccess` and `AuthWeb` components [#1850](https://github.com/juanfont/headscale/pull/1850)
-- Unify auth pipeline with `AuthVerdict` type, supporting registration, reauthentication, and SSH checks [#1850](https://github.com/juanfont/headscale/pull/1850)
-- Add support for policy grants with `ip`, `app`, and `via` fields [#2180](https://github.com/juanfont/headscale/pull/2180)
-- Add `autogroup:danger-all` as a source-only autogroup resolving to all IP addresses [#2180](https://github.com/juanfont/headscale/pull/2180)
-- Add capability grants for Taildrive (`cap/drive`) and peer relay (`cap/relay`) with automatic companion capabilities [#2180](https://github.com/juanfont/headscale/pull/2180)
-- Add per-viewer via route steering — grants with `via` tags control which subnet router or exit node handles traffic for each group of viewers [#2180](https://github.com/juanfont/headscale/pull/2180)
-- Enable Taildrive node attributes on all nodes; actual access is controlled by `cap/drive` grants [#2180](https://github.com/juanfont/headscale/pull/2180)
-- Fix exit nodes incorrectly receiving filter rules for destinations that only overlap via exit routes [#2180](https://github.com/juanfont/headscale/pull/2180)
+#### ACL Policy
+
+- Fix subnet-to-subnet peer visibility — subnet routers now correctly become peers when ACL rules reference only subnet CIDRs as sources, without requiring node IP rules [#3175](https://github.com/juanfont/headscale/pull/3175)
+- Fix filter rule reduction to use only approved subnet routes instead of all advertised routes, matching Tailscale SaaS behavior [#3175](https://github.com/juanfont/headscale/pull/3175)
+- Add ICMP and IPv6-ICMP protocols to default filter rules when no protocol is specified [#3036](https://github.com/juanfont/headscale/pull/3036)
+- Fix autogroup:self handling for tagged nodes - tagged nodes no longer incorrectly receive autogroup:self filter rules [#3036](https://github.com/juanfont/headscale/pull/3036)
+- Use CIDR format for autogroup:self destination IPs matching Tailscale behavior [#3036](https://github.com/juanfont/headscale/pull/3036)
+- Merge filter rules with identical SrcIPs and IPProto matching Tailscale behavior - multiple ACL rules with the same source now produce a single FilterRule with combined DstPorts [#3036](https://github.com/juanfont/headscale/pull/3036)
+- Fix exit nodes incorrectly receiving filter rules for destinations that only overlap via exit routes [#3169](https://github.com/juanfont/headscale/issues/3169) [#3175](https://github.com/juanfont/headscale/pull/3175)
 - Fix address-based aliases (hosts, raw IPs) incorrectly expanding to include the matching node's other address family [#2180](https://github.com/juanfont/headscale/pull/2180)
 - Fix identity-based aliases (tags, users, groups) resolving to IPv4 only; they now include both IPv4 and IPv6 matching Tailscale behavior [#2180](https://github.com/juanfont/headscale/pull/2180)
 - Fix wildcard (`*`) source in ACLs now using actually-approved subnet routes instead of autoApprover policy prefixes [#2180](https://github.com/juanfont/headscale/pull/2180)
 - Fix non-wildcard source IPs being dropped when combined with wildcard `*` in the same ACL rule [#2180](https://github.com/juanfont/headscale/pull/2180)
 - Fix exit node approval not triggering filter rule recalculation for peers [#2180](https://github.com/juanfont/headscale/pull/2180)
 - Policy validation error messages now include field context (e.g., `src=`, `dst=`) and are more descriptive [#2180](https://github.com/juanfont/headscale/pull/2180)
+- Reject policies whose `user@` tokens match multiple DB users; rename the duplicate via `headscale users rename` to load [#3160](https://github.com/juanfont/headscale/issues/3160)
+- Evaluate the policy `tests` block on user-initiated writes across both `acls` and `grants`; reject policies whose tests fail (beta) [#1803](https://github.com/juanfont/headscale/issues/1803)
+
+#### Grants
+
+- Add support for policy grants with `ip`, `app`, and `via` fields [#2180](https://github.com/juanfont/headscale/pull/2180)
+- Add `autogroup:danger-all` as a source-only autogroup resolving to all IP addresses [#2180](https://github.com/juanfont/headscale/pull/2180)
+- Add capability grants for Taildrive (`cap/drive`) and peer relay (`cap/relay`) with automatic companion capabilities [#2180](https://github.com/juanfont/headscale/pull/2180)
+- Add per-viewer via route steering — grants with `via` tags control which subnet router or exit node handles traffic for each group of viewers [#2180](https://github.com/juanfont/headscale/pull/2180)
+- Enable Taildrive node attributes on all nodes; actual access is controlled by `cap/drive` grants [#2180](https://github.com/juanfont/headscale/pull/2180)
+
+#### SSH Policy
+
+- Add support for `localpart:*@<domain>` in SSH rule `users` field, mapping each matching user's email local-part as their OS username [#3091](https://github.com/juanfont/headscale/pull/3091)
+- Add SSH `check` action support with OIDC and CLI-based approval flows [#1850](https://github.com/juanfont/headscale/pull/1850)
+
+#### CLI
+
+- Add `headscale auth register`, `headscale auth approve`, and `headscale auth reject` CLI commands [#1850](https://github.com/juanfont/headscale/pull/1850)
+- Deprecate `headscale nodes register --key` in favour of `headscale auth register --auth-id` [#1850](https://github.com/juanfont/headscale/pull/1850)
+- `headscale policy check --bypass-grpc-and-access-database-directly` validates `user@` tokens against the live user database [#3160](https://github.com/juanfont/headscale/issues/3160)
+- Remove deprecated `--namespace` flag from `nodes list`, `nodes register`, and `debug create-node` commands (use `--user` instead) [#3093](https://github.com/juanfont/headscale/pull/3093)
+- Remove deprecated `namespace`/`ns` command aliases for `users` and `machine`/`machines` aliases for `nodes` [#3093](https://github.com/juanfont/headscale/pull/3093)
+- Fix `DestroyUser` deleting all pre-auth keys in the database instead of only the target user's keys [#3155](https://github.com/juanfont/headscale/pull/3155)
+- `headscale policy check` evaluates the `tests` block when invoked with `--bypass-grpc-and-access-database-directly`; without the flag it warns instead of running the tests against empty data [#1803](https://github.com/juanfont/headscale/issues/1803)
+
+#### API
+
+- Add `auth` related routes. The `auth/register` endpoint now expects data as JSON [#1850](https://github.com/juanfont/headscale/pull/1850)
+- Remove gRPC reflection from the remote (TCP) server [#3180](https://github.com/juanfont/headscale/pull/3180)
+
+#### OIDC
+
+- Add a confirmation page before completing node registration, showing the device hostname and machine key fingerprint [#3180](https://github.com/juanfont/headscale/pull/3180)
+- Generalise auth templates into reusable `AuthSuccess` and `AuthWeb` components [#1850](https://github.com/juanfont/headscale/pull/1850)
+- Unify auth pipeline with `AuthVerdict` type, supporting registration, reauthentication, and SSH checks [#1850](https://github.com/juanfont/headscale/pull/1850)
+
+#### Configuration
+
+- Add `node.expiry` configuration option to set a default node key expiry for nodes registered via auth key [#3122](https://github.com/juanfont/headscale/pull/3122)
+  - Tagged nodes (registered with tagged pre-auth keys) are exempt from default expiry
+  - `oidc.expiry` has been removed; use `node.expiry` instead (applies to all registration methods including OIDC)
+  - `ephemeral_node_inactivity_timeout` is deprecated in favour of `node.ephemeral.inactivity_timeout`
+- Add `trusted_proxies` to gate `True-Client-IP` / `X-Real-IP` / `X-Forwarded-For` (previously honoured from any client) [#3268](https://github.com/juanfont/headscale/pull/3268)
+
+#### Debug
+
+- Add node connectivity ping page for verifying control-plane reachability [#3183](https://github.com/juanfont/headscale/pull/3183)
+- Omit secret fields (`Pass`, `ClientSecret`, `APIKey`) from `/debug/config` JSON output [#3180](https://github.com/juanfont/headscale/pull/3180)
+- Route `statsviz` through `tsweb.Protected` [#3180](https://github.com/juanfont/headscale/pull/3180)
+
+#### Other
+
+- Remove old migrations for the debian package [#3185](https://github.com/juanfont/headscale/pull/3185)
+- Install `config-example.yaml` as example for the debian package [#3186](https://github.com/juanfont/headscale/pull/3186)
+- Fix user-owned re-registration with zero client expiry and no default storing `0001-01-01 00:00:00` in the database instead of `NULL` [#3199](https://github.com/juanfont/headscale/pull/3199)
+- Fix `tailscaled` restart on a node with no expiry resetting `NULL` to `0001-01-01 00:00:00` in the database, affecting both tagged and untagged nodes [#3197](https://github.com/juanfont/headscale/pull/3197)
+- Backfill `nodes.expiry` rows persisted by older versions as `0001-01-01 00:00:00` to `NULL`, so nodes upgraded from <0.28 stop reporting as expired [#3284](https://github.com/juanfont/headscale/issues/3284)
 
 ## 0.28.0 (2026-02-04)
 
@@ -95,7 +318,7 @@ internet is a security-sensitive choice. `autogroup:danger-all` can only be used
 Tags are now implemented following the Tailscale model where tags and user ownership are mutually exclusive. Devices can be either
 user-owned (authenticated via web/OIDC) or tagged (authenticated via tagged PreAuthKeys). Tagged devices receive their identity from
 tags rather than users, making them suitable for servers and infrastructure. Applying a tag to a device removes user-based
-ownership. See the [Tailscale tags documentation](https://tailscale.com/kb/1068/tags) for details on how tags work.
+ownership. See the [Tailscale tags documentation](https://tailscale.com/docs/features/tags) for details on how tags work.
 
 User-owned nodes can now request tags during registration using `--advertise-tags`. Tags are validated against the `tagOwners` policy
 and applied at registration time. Tags can be managed via the CLI or API after registration. Tagged nodes can return to user-owned
@@ -194,7 +417,7 @@ sequentially through each stable release, selecting the latest patch version ava
 
 - **SSH Policy**: SSH source/destination validation now enforces Tailscale's security model [#3010](https://github.com/juanfont/headscale/issues/3010)
 
-  Per [Tailscale SSH documentation](https://tailscale.com/kb/1193/tailscale-ssh), the following rules are now enforced:
+  Per [Tailscale SSH documentation](https://tailscale.com/docs/features/tailscale-ssh), the following rules are now enforced:
   1. **Tags cannot SSH to user-owned devices**: SSH rules with `tag:*` or `autogroup:tagged` as source cannot have username destinations (e.g., `alice@`) or `autogroup:member`/`autogroup:self` as destination
   2. **Username destinations require same-user source**: If destination is a specific username (e.g., `alice@`), the source must be that exact same user only. Use `autogroup:self` for same-user SSH access instead
 
@@ -324,8 +547,8 @@ DERPMap updates when upstream is changed.
 
 This release adds support for the three missing autogroups: `self`
 (experimental), `member`, and `tagged`. Please refer to the
-[documentation](https://tailscale.com/kb/1018/autogroups/) for a detailed
-explanation.
+[documentation](https://tailscale.com/docs/reference/targets-and-selectors#autogroups)
+for a detailed explanation.
 
 `autogroup:self` is marked as experimental and should be used with caution, but
 we need help testing it. Experimental here means two things; first, generating
@@ -488,7 +711,7 @@ The SSH policy has been reworked to be more consistent with the rest of the
 policy. In addition, several inconsistencies between our implementation and
 Tailscale's upstream has been closed and this might be a breaking change for
 some users. Please refer to the
-[upstream documentation](https://tailscale.com/kb/1337/acl-syntax#tailscale-ssh)
+[upstream documentation](https://tailscale.com/docs/reference/syntax/policy-file#tailscale-ssh)
 for more information on which types are allowed in `src`, `dst` and `users`.
 
 There is one large inconsistency left, we allow `*` as a destination as we
@@ -1002,7 +1225,7 @@ part of adopting [#1460](https://github.com/juanfont/headscale/pull/1460).
 
 - Added support for Tailscale TS2021 protocol [#738](https://github.com/juanfont/headscale/pull/738)
 - Add experimental support for
-  [SSH ACL](https://tailscale.com/kb/1018/acls/#tailscale-ssh) (see docs for
+  [SSH ACL](https://tailscale.com/docs/reference/syntax/policy-file#tailscale-ssh) (see docs for
   limitations) [#847](https://github.com/juanfont/headscale/pull/847)
   - Please note that this support should be considered _partially_ implemented
   - SSH ACLs status:
@@ -1079,7 +1302,7 @@ part of adopting [#1460](https://github.com/juanfont/headscale/pull/1460).
 ### BREAKING
 
 - Old ACL syntax is no longer supported ("users" & "ports" -> "src" & "dst").
-  Please check [the new syntax](https://tailscale.com/kb/1018/acls/).
+  Please check [the new syntax](https://tailscale.com/docs/features/access-control/acls).
 
 ### Changes
 
@@ -1109,7 +1332,7 @@ part of adopting [#1460](https://github.com/juanfont/headscale/pull/1460).
 - Add -c option to specify config file from command line [#285](https://github.com/juanfont/headscale/issues/285)
   [#612](https://github.com/juanfont/headscale/pull/601)
 - Add configuration option to allow Tailscale clients to use a random WireGuard
-  port. [kb/1181/firewalls](https://tailscale.com/kb/1181/firewalls)
+  port. [Tailscale docs](https://tailscale.com/docs/reference/syntax/policy-file#randomizeclientport)
   [#624](https://github.com/juanfont/headscale/pull/624)
 - Improve obtuse UX regarding missing configuration
   (`ephemeral_node_inactivity_timeout` not set)

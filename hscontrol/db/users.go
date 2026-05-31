@@ -25,10 +25,10 @@ func (hsdb *HSDatabase) CreateUser(user types.User) (*types.User, error) {
 	})
 }
 
-// CreateUser creates a new User. Returns error if could not be created
+// CreateUser creates a new [types.User]. Returns error if could not be created
 // or another user already exists.
 func CreateUser(tx *gorm.DB, user types.User) (*types.User, error) {
-	err := util.ValidateHostname(user.Name)
+	err := util.ValidateUsername(user.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func (hsdb *HSDatabase) DestroyUser(uid types.UserID) error {
 	})
 }
 
-// DestroyUser destroys a User. Returns error if the User does
+// DestroyUser destroys a [types.User]. Returns error if the [types.User] does
 // not exist or if there are user-owned nodes associated with it.
 // Tagged nodes have user_id = NULL so they do not block deletion.
 func DestroyUser(tx *gorm.DB, uid types.UserID) error {
@@ -65,7 +65,7 @@ func DestroyUser(tx *gorm.DB, uid types.UserID) error {
 		return ErrUserStillHasNodes
 	}
 
-	keys, err := ListPreAuthKeys(tx)
+	keys, err := ListPreAuthKeysByUser(tx, uid)
 	if err != nil {
 		return err
 	}
@@ -92,8 +92,8 @@ func (hsdb *HSDatabase) RenameUser(uid types.UserID, newName string) error {
 
 var ErrCannotChangeOIDCUser = errors.New("cannot edit OIDC user")
 
-// RenameUser renames a User. Returns error if the User does
-// not exist or if another User exists with the new name.
+// RenameUser renames a [types.User]. Returns error if the [types.User] does
+// not exist or if another [types.User] exists with the new name.
 func RenameUser(tx *gorm.DB, uid types.UserID, newName string) error {
 	var err error
 
@@ -102,7 +102,7 @@ func RenameUser(tx *gorm.DB, uid types.UserID, newName string) error {
 		return err
 	}
 
-	if err = util.ValidateHostname(newName); err != nil { //nolint:noinlineerr
+	if err = util.ValidateUsername(newName); err != nil { //nolint:noinlineerr
 		return err
 	}
 

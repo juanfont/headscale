@@ -100,7 +100,7 @@ func (w *delayedSuccessResponseWriter) WriteCount() int {
 //  3. While that write is blocked, queue enough updates to fill the buffered
 //     channel and make the next batcher send hit the stale-send timeout.
 //  4. That stale-send path removes the session from the batcher, so without an
-//     explicit teardown hook the old serveLongPoll goroutine would stay alive
+//     explicit teardown hook the old [mapSession.serveLongPoll] goroutine would stay alive
 //     but stop receiving future updates.
 //  5. Release the blocked write and verify the batcher-side stop signal makes
 //     that stale session exit instead of lingering as an orphaned goroutine.

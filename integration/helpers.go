@@ -8,6 +8,7 @@ import (
 	"io"
 	"maps"
 	"net/netip"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -27,6 +28,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
+	"tailscale.com/wgengine/filter"
 )
 
 const (
@@ -112,7 +114,7 @@ func requireNoErrLogout(t *testing.T, err error) {
 	require.NoError(t, err, "failed to log out tailscale nodes")
 }
 
-// collectExpectedNodeIDs extracts node IDs from a list of TailscaleClients for validation purposes.
+// collectExpectedNodeIDs extracts node IDs from a list of [TailscaleClient]s for validation purposes.
 func collectExpectedNodeIDs(t *testing.T, clients []TailscaleClient) []types.NodeID {
 	t.Helper()
 
@@ -129,7 +131,7 @@ func collectExpectedNodeIDs(t *testing.T, clients []TailscaleClient) []types.Nod
 }
 
 // validateInitialConnection performs comprehensive validation after initial client login.
-// Validates that all nodes are online and have proper NetInfo/DERP configuration,
+// Validates that all nodes are online and have proper [tailcfg.NetInfo]/DERP configuration,
 // essential for ensuring successful initial connection state in relogin tests.
 func validateInitialConnection(t *testing.T, headscale ControlServer, expectedNodes []types.NodeID) {
 	t.Helper()
@@ -148,7 +150,7 @@ func validateLogoutComplete(t *testing.T, headscale ControlServer, expectedNodes
 }
 
 // validateReloginComplete performs comprehensive validation after client relogin.
-// Validates that all nodes are back online with proper NetInfo/DERP configuration,
+// Validates that all nodes are back online with proper [tailcfg.NetInfo]/DERP configuration,
 // ensuring successful relogin state restoration in integration tests.
 func validateReloginComplete(t *testing.T, headscale ControlServer, expectedNodes []types.NodeID) {
 	t.Helper()
@@ -254,7 +256,7 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 			}
 		}
 
-		// Check map responses using buildExpectedOnlineMap
+		// Check map responses using [integrationutil.BuildExpectedOnlineMap]
 		onlineFromMaps := make(map[types.NodeID]bool)
 		onlineMap := integrationutil.BuildExpectedOnlineMap(mapResponses)
 
@@ -341,11 +343,11 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 					stateStr = stateOnline
 				}
 
-				failureReport.WriteString(fmt.Sprintf("node:%d is not fully %s (timestamp: %s):\n", nodeID, stateStr, time.Now().Format(TimestampFormat)))
-				failureReport.WriteString(fmt.Sprintf("  - batcher: %t (expected: %t)\n", status.Batcher, expectedOnline))
-				failureReport.WriteString(fmt.Sprintf("    - conn count: %d\n", status.BatcherConnCount))
-				failureReport.WriteString(fmt.Sprintf("  - mapresponses: %t (expected: %t, down with at least one peer)\n", status.MapResponses, expectedOnline))
-				failureReport.WriteString(fmt.Sprintf("  - nodestore: %t (expected: %t)\n", status.NodeStore, expectedOnline))
+				fmt.Fprintf(&failureReport, "node:%d is not fully %s (timestamp: %s):\n", nodeID, stateStr, time.Now().Format(TimestampFormat))
+				fmt.Fprintf(&failureReport, "  - batcher: %t (expected: %t)\n", status.Batcher, expectedOnline)
+				fmt.Fprintf(&failureReport, "    - conn count: %d\n", status.BatcherConnCount)
+				fmt.Fprintf(&failureReport, "  - mapresponses: %t (expected: %t, down with at least one peer)\n", status.MapResponses, expectedOnline)
+				fmt.Fprintf(&failureReport, "  - nodestore: %t (expected: %t)\n", status.NodeStore, expectedOnline)
 			}
 		}
 
@@ -359,7 +361,7 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 				prevReport = failureReport.String()
 			}
 
-			failureReport.WriteString(fmt.Sprintf("validation_timestamp: %s\n", time.Now().Format(TimestampFormat)))
+			fmt.Fprintf(&failureReport, "validation_timestamp: %s\n", time.Now().Format(TimestampFormat))
 			// Note: timeout_remaining not available in this context
 
 			assert.Fail(c, failureReport.String())
@@ -473,9 +475,9 @@ func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expec
 	t.Logf("All stages completed: nodes are fully offline across all systems")
 }
 
-// requireAllClientsNetInfoAndDERP validates that all nodes have NetInfo in the database
-// and a valid DERP server based on the NetInfo. This function follows the pattern of
-// requireAllClientsOnline by using hsic.DebugNodeStore to get the database state.
+// requireAllClientsNetInfoAndDERP validates that all nodes have [tailcfg.NetInfo] in the database
+// and a valid DERP server based on the [tailcfg.NetInfo]. This function follows the pattern of
+// [requireAllClientsOnline] by using [hsic.HeadscaleInContainer.DebugNodeStore] to get the database state.
 //
 //nolint:unparam // timeout is configurable for flexibility even though callers currently use same value
 func requireAllClientsNetInfoAndDERP(t *testing.T, headscale ControlServer, expectedNodes []types.NodeID, message string, timeout time.Duration) {
@@ -508,7 +510,7 @@ func requireAllClientsNetInfoAndDERP(t *testing.T, headscale ControlServer, expe
 				continue
 			}
 
-			// Validate that the node has Hostinfo
+			// Validate that the node has [tailcfg.Hostinfo]
 			assert.NotNil(c, node.Hostinfo, "Node %d (%s) should have Hostinfo for NetInfo validation", nodeID, node.Hostname)
 
 			if node.Hostinfo == nil {
@@ -516,7 +518,7 @@ func requireAllClientsNetInfoAndDERP(t *testing.T, headscale ControlServer, expe
 				continue
 			}
 
-			// Validate that the node has NetInfo
+			// Validate that the node has [tailcfg.NetInfo]
 			assert.NotNil(c, node.Hostinfo.NetInfo, "Node %d (%s) should have NetInfo in Hostinfo for DERP connectivity", nodeID, node.Hostname)
 
 			if node.Hostinfo.NetInfo == nil {
@@ -551,17 +553,67 @@ func assertLastSeenSetWithCollect(c *assert.CollectT, node *v1.Node) {
 }
 
 // assertCurlSuccessWithCollect asserts that a curl request succeeds with
-// non-empty content. For use inside EventuallyWithT blocks.
+// non-empty content. For use inside [assert.EventuallyWithT] blocks.
 func assertCurlSuccessWithCollect(c *assert.CollectT, client TailscaleClient, url, msg string) {
 	result, err := client.Curl(url)
 	assert.NoError(c, err, msg) //nolint:testifylint // CollectT requires assert, not require
 	assert.NotEmpty(c, result, msg)
 }
 
+// assertCurlDockerHostname curls url and asserts the body is the
+// 13-byte Docker auto-generated container hostname (12 hex chars +
+// trailing newline from /etc/hostname). For use inside [assert.EventuallyWithT].
+func assertCurlDockerHostname(c *assert.CollectT, client TailscaleClient, url, msg string) {
+	const dockerHostnameLen = 13
+
+	result, err := client.Curl(url)
+	assert.NoError(c, err, msg) //nolint:testifylint // CollectT requires assert, not require
+	assert.Len(c, result, dockerHostnameLen, msg)
+}
+
+// snapshotClientFilters snapshots each client's current netmap
+// PacketFilter keyed by hostname. Pair with [waitForClientFilterChange].
+func snapshotClientFilters(t *testing.T, clients []TailscaleClient) map[string][]filter.Match {
+	t.Helper()
+
+	out := make(map[string][]filter.Match, len(clients))
+
+	for _, c := range clients {
+		nm, err := c.Netmap()
+		require.NoError(t, err, "snapshot netmap for %s", c.Hostname())
+
+		out[c.Hostname()] = nm.PacketFilter
+	}
+
+	return out
+}
+
+// waitForClientFilterChange polls each client until its netmap
+// PacketFilter differs from baselines[Hostname]. Use after SetPolicy
+// to gate on client-side filter application before asserting
+// reachability.
+func waitForClientFilterChange(t *testing.T, clients []TailscaleClient, baselines map[string][]filter.Match, timeout time.Duration) {
+	t.Helper()
+
+	for _, client := range clients {
+		c := client
+		baseline := baselines[c.Hostname()]
+
+		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+			nm, err := c.Netmap()
+			if !assert.NoError(ct, err, "fetch netmap for %s", c.Hostname()) {
+				return
+			}
+
+			assert.False(ct, reflect.DeepEqual(baseline, nm.PacketFilter), "client %s PacketFilter unchanged since baseline", c.Hostname())
+		}, timeout, integrationutil.SlowPoll, "client %s PacketFilter should change after SetPolicy", c.Hostname())
+	}
+}
+
 // assertCurlFailWithCollect asserts that a curl request fails. Uses
-// CurlFailFast internally for aggressive timeouts, avoiding wasted
+// [tsic.TailscaleInContainer.CurlFailFast] internally for aggressive timeouts, avoiding wasted
 // time on retries when we expect the connection to be blocked.
-// For use inside EventuallyWithT blocks.
+// For use inside [assert.EventuallyWithT] blocks.
 func assertCurlFailWithCollect(c *assert.CollectT, client TailscaleClient, url, msg string) {
 	_, err := client.CurlFailFast(url)
 	assert.Error(c, err, msg)
@@ -583,7 +635,7 @@ func assertTailscaleNodesLogout(t assert.TestingT, clients []TailscaleClient) {
 }
 
 // assertPingAll verifies that every client can ping every address.
-// The entire ping matrix is retried via EventuallyWithT to handle
+// The entire ping matrix is retried via [assert.EventuallyWithT] to handle
 // transient failures on slow CI runners. The timeout scales with
 // the number of pings since they run serially and each can take
 // up to ~2s on CI (docker exec overhead + ping timeout).
@@ -608,9 +660,9 @@ func assertPingAll(t *testing.T, clients []TailscaleClient, addrs []string, opts
 }
 
 // assertPingAllWithCollect pings every address from every client and
-// collects failures on the provided CollectT. Pings run serially to
+// collects failures on the provided [assert.CollectT]. Pings run serially to
 // avoid overloading the Docker daemon on resource-constrained CI
-// runners. For use inside EventuallyWithT blocks when the caller
+// runners. For use inside [assert.EventuallyWithT] blocks when the caller
 // needs custom timeout or retry control.
 func assertPingAllWithCollect(c *assert.CollectT, clients []TailscaleClient, addrs []string, opts ...tsic.PingOption) {
 	for _, client := range clients {
@@ -739,7 +791,6 @@ func assertValidNetmap(t *testing.T, client TailscaleClient) {
 		assert.Falsef(c, netmap.SelfNode.DiscoKey().IsZero(), "%q does not have a valid DiscoKey", client.Hostname())
 
 		for _, peer := range netmap.Peers {
-			assert.NotEqualf(c, "127.3.3.40:0", peer.LegacyDERPString(), "peer (%s) has no home DERP in %q's netmap, got: %s", peer.ComputedName(), client.Hostname(), peer.LegacyDERPString()) //nolint:staticcheck // SA1019: testing legacy field
 			assert.NotEqualf(c, 0, peer.HomeDERP(), "peer (%s) has no home DERP in %q's netmap, got: %d", peer.ComputedName(), client.Hostname(), peer.HomeDERP())
 
 			assert.Truef(c, peer.Hostinfo().Valid(), "peer (%s) of %q does not have Hostinfo", peer.ComputedName(), client.Hostname())
@@ -845,7 +896,7 @@ func assertValidNetcheck(t *testing.T, client TailscaleClient) {
 
 // assertCommandOutputContains executes a command with exponential backoff retry until the output
 // contains the expected string or timeout is reached (10 seconds).
-// This implements eventual consistency patterns and should be used instead of time.Sleep
+// This implements eventual consistency patterns and should be used instead of [time.Sleep]
 // before executing commands that depend on network state propagation.
 //
 // Timeout: 10 seconds with exponential backoff
@@ -930,42 +981,43 @@ func countMatchingLines(in io.Reader, predicate func(string) bool) (int, error) 
 
 // wildcard returns a wildcard alias (*) for use in policy v2 configurations.
 // Provides a convenient helper for creating permissive policy rules.
+// Returns [policyv2.Wildcard].
 func wildcard() policyv2.Alias {
 	return policyv2.Wildcard
 }
 
-// usernamep returns a pointer to a Username as an Alias for policy v2 configurations.
+// usernamep returns a pointer to a [policyv2.Username] as an [policyv2.Alias] for policy v2 configurations.
 // Used in ACL rules to reference specific users in network access policies.
 func usernamep(name string) policyv2.Alias {
 	return new(policyv2.Username(name))
 }
 
-// hostp returns a pointer to a Host as an Alias for policy v2 configurations.
+// hostp returns a pointer to a [policyv2.Host] as an [policyv2.Alias] for policy v2 configurations.
 // Used in ACL rules to reference specific hosts in network access policies.
 func hostp(name string) policyv2.Alias {
 	return new(policyv2.Host(name))
 }
 
-// groupp returns a pointer to a Group as an Alias for policy v2 configurations.
+// groupp returns a pointer to a [policyv2.Group] as an [policyv2.Alias] for policy v2 configurations.
 // Used in ACL rules to reference user groups in network access policies.
 func groupp(name string) policyv2.Alias {
 	return new(policyv2.Group(name))
 }
 
-// tagp returns a pointer to a Tag as an Alias for policy v2 configurations.
+// tagp returns a pointer to a [policyv2.Tag] as an [policyv2.Alias] for policy v2 configurations.
 // Used in ACL rules to reference node tags in network access policies.
 func tagp(name string) policyv2.Alias {
 	return new(policyv2.Tag(name))
 }
 
-// prefixp returns a pointer to a Prefix from a CIDR string for policy v2 configurations.
+// prefixp returns a pointer to a [policyv2.Prefix] from a CIDR string for policy v2 configurations.
 // Converts CIDR notation to policy prefix format for network range specifications.
 func prefixp(cidr string) policyv2.Alias {
 	p := policyv2.Prefix(netip.MustParsePrefix(cidr))
 	return &p
 }
 
-// aliasWithPorts creates an AliasWithPorts structure from an alias and port ranges.
+// aliasWithPorts creates an [policyv2.AliasWithPorts] structure from an alias and port ranges.
 // Combines network targets with specific port restrictions for fine-grained
 // access control in policy v2 configurations.
 func aliasWithPorts(alias policyv2.Alias, ports ...tailcfg.PortRange) policyv2.AliasWithPorts {
@@ -975,13 +1027,13 @@ func aliasWithPorts(alias policyv2.Alias, ports ...tailcfg.PortRange) policyv2.A
 	}
 }
 
-// usernameOwner returns a Username as an Owner for use in TagOwners policies.
+// usernameOwner returns a [policyv2.Username] as an [policyv2.Owner] for use in [policyv2.TagOwners] policies.
 // Specifies which users can assign and manage specific tags in ACL configurations.
 func usernameOwner(name string) policyv2.Owner {
 	return new(policyv2.Username(name))
 }
 
-// groupOwner returns a Group as an Owner for use in TagOwners policies.
+// groupOwner returns a [policyv2.Group] as an [policyv2.Owner] for use in [policyv2.TagOwners] policies.
 // Specifies which groups can assign and manage specific tags in ACL configurations.
 //
 //nolint:unused
@@ -989,25 +1041,25 @@ func groupOwner(name string) policyv2.Owner {
 	return new(policyv2.Group(name))
 }
 
-// usernameApprover returns a Username as an AutoApprover for subnet route policies.
+// usernameApprover returns a [policyv2.Username] as an [policyv2.AutoApprover] for subnet route policies.
 // Specifies which users can automatically approve subnet route advertisements.
 func usernameApprover(name string) policyv2.AutoApprover {
 	return new(policyv2.Username(name))
 }
 
-// groupApprover returns a Group as an AutoApprover for subnet route policies.
+// groupApprover returns a [policyv2.Group] as an [policyv2.AutoApprover] for subnet route policies.
 // Specifies which groups can automatically approve subnet route advertisements.
 func groupApprover(name string) policyv2.AutoApprover {
 	return new(policyv2.Group(name))
 }
 
-// tagApprover returns a Tag as an AutoApprover for subnet route policies.
+// tagApprover returns a [policyv2.Tag] as an [policyv2.AutoApprover] for subnet route policies.
 // Specifies which tagged nodes can automatically approve subnet route advertisements.
 func tagApprover(name string) policyv2.AutoApprover {
 	return new(policyv2.Tag(name))
 }
 
-// oidcMockUser creates a MockUser for OIDC authentication testing.
+// oidcMockUser creates a [mockoidc.MockUser] for OIDC authentication testing.
 // Generates consistent test user data with configurable email verification status
 // for validating OIDC integration flows in headscale authentication tests.
 func oidcMockUser(username string, emailVerified bool) mockoidc.MockUser {
@@ -1141,7 +1193,7 @@ func (s *Scenario) AddAndLoginClient(
 	return newClient, nil
 }
 
-// MustAddAndLoginClient is like AddAndLoginClient but fails the test on error.
+// MustAddAndLoginClient is like [Scenario.AddAndLoginClient] but fails the test on error.
 func (s *Scenario) MustAddAndLoginClient(
 	t *testing.T,
 	username string,

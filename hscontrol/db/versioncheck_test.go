@@ -3,6 +3,7 @@ package db
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -56,12 +57,206 @@ func TestSemverString(t *testing.T) {
 	assert.Equal(t, "v0.28.3", s.String())
 }
 
+func TestPseudoVersionTime(t *testing.T) {
+	parseTS := func(s string) time.Time {
+		t.Helper()
+
+		ts, err := time.Parse(pseudoVersionTimeLayout, s)
+		require.NoError(t, err)
+
+		return ts
+	}
+
+	tests := []struct {
+		name     string
+		input    string
+		wantOK   bool
+		wantTime time.Time
+	}{
+		// Accept: all three Go pseudo-version shapes.
+		{
+			name:     "no ancestor tag (v0.0.0 base)",
+			input:    "v0.0.0-20260522092201-58a85b68b3d9",
+			wantOK:   true,
+			wantTime: parseTS("20260522092201"),
+		},
+		{
+			name:     "ancestor is pre-release tag",
+			input:    "v0.29.0-beta.1.0.20260522092201-58a85b68b3d9",
+			wantOK:   true,
+			wantTime: parseTS("20260522092201"),
+		},
+		{
+			name:     "ancestor is release tag",
+			input:    "v0.29.1-0.20260522092201-58a85b68b3d9",
+			wantOK:   true,
+			wantTime: parseTS("20260522092201"),
+		},
+		{
+			name:     "earliest realistic Go module date",
+			input:    "v0.0.0-20180101000000-000000000000",
+			wantOK:   true,
+			wantTime: parseTS("20180101000000"),
+		},
+
+		// Reject: real release tags must not look like pseudo-versions.
+		{name: "release tag", input: "v0.29.0"},
+		{name: "pre-release tag", input: "v0.29.0-beta.1"},
+		{name: "rc tag", input: "v0.29.0-rc1"},
+		{name: "tag with build metadata", input: "v0.29.0+build123"},
+
+		// Reject: literals handled elsewhere.
+		{name: "empty", input: ""},
+		{name: "dev literal", input: "dev"},
+		{name: "devel literal", input: "(devel)"},
+
+		// Reject: malformed hash.
+		{name: "hash too short", input: "v0.0.0-20260522092201-58a85b6"},
+		{name: "hash too long", input: "v0.0.0-20260522092201-58a85b68b3d9aa"},
+		{name: "hash uppercase hex", input: "v0.0.0-20260522092201-58A85B68B3D9"},
+		{name: "hash non-hex", input: "v0.0.0-20260522092201-zzzzzzzzzzzz"},
+
+		// Reject: malformed timestamp.
+		{name: "timestamp too short", input: "v0.0.0-2026052209220-58a85b68b3d9"},
+		{name: "timestamp too long", input: "v0.0.0-202605220922010-58a85b68b3d9"},
+		{name: "invalid month", input: "v0.0.0-20261322092201-58a85b68b3d9"},
+		{name: "invalid day", input: "v0.0.0-20260230092201-58a85b68b3d9"},
+		{name: "invalid hour", input: "v0.0.0-20260522252201-58a85b68b3d9"},
+		{name: "invalid minute", input: "v0.0.0-20260522096001-58a85b68b3d9"},
+		{name: "invalid second", input: "v0.0.0-20260522092260-58a85b68b3d9"},
+		{name: "leap day on non-leap year", input: "v0.0.0-20230229000000-58a85b68b3d9"},
+
+		// Reject: missing components.
+		{name: "missing date and hash", input: "v0.0.0-"},
+		{name: "missing hash", input: "v0.0.0-20260522092201-"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := pseudoVersionTime(tt.input)
+			assert.Equal(t, tt.wantOK, ok)
+
+			if tt.wantOK {
+				assert.True(t, got.Equal(tt.wantTime),
+					"want %s, got %s", tt.wantTime, got)
+			}
+		})
+	}
+}
+
 func TestIsDev(t *testing.T) {
-	assert.True(t, isDev(""))
-	assert.True(t, isDev("dev"))
-	assert.True(t, isDev("(devel)"))
-	assert.False(t, isDev("v0.28.0"))
-	assert.False(t, isDev("0.28.0"))
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		// Existing literals.
+		{name: "empty", input: "", want: true},
+		{name: "dev", input: "dev", want: true},
+		{name: "devel", input: "(devel)", want: true},
+		{name: "release tag", input: "v0.28.0", want: false},
+		{name: "release tag no v", input: "0.28.0", want: false},
+		{name: "pre-release tag", input: "v0.29.0-beta.1", want: false},
+
+		// Go module pseudo-versions — all three shapes Go emits per
+		// golang.org/ref/mod#pseudo-versions. Untagged commits
+		// (such as main-sha docker builds) must be treated as dev
+		// so they neither poison database_versions nor trip the
+		// upgrade-path guard.
+		{
+			name:  "pseudo v0.0.0 base",
+			input: "v0.0.0-20260522092201-58a85b68b3d9",
+			want:  true,
+		},
+		{
+			name:  "pseudo from pre-release ancestor",
+			input: "v0.29.0-beta.1.0.20260522092201-58a85b68b3d9",
+			want:  true,
+		},
+		{
+			name:  "pseudo from release ancestor",
+			input: "v0.29.1-0.20260522092201-58a85b68b3d9",
+			want:  true,
+		},
+
+		// Malformed pseudo-version lookalikes must NOT be treated
+		// as dev — they fall through to the semver parser.
+		{
+			name:  "malformed timestamp not dev",
+			input: "v0.0.0-20261322092201-58a85b68b3d9",
+			want:  false,
+		},
+		{
+			name:  "hash wrong length not dev",
+			input: "v0.0.0-20260522092201-58a85b6",
+			want:  false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, isDev(tt.input))
+		})
+	}
+}
+
+// TestCheckVersionUpgradePath_StoredPseudoVersion exercises the
+// upgrade path when database_versions holds a Go module pseudo-version
+// written by an untagged main-sha build. Without dev handling, the
+// stored pseudo-version parses as v0.0.0 and the next real release
+// trips the multi-minor guard.
+func TestCheckVersionUpgradePath_StoredPseudoVersion(t *testing.T) {
+	tests := []struct {
+		name           string
+		stored         string
+		currentVersion string
+	}{
+		{
+			name:           "v0.0.0 base pseudo to real release",
+			stored:         "v0.0.0-20260520093041-e4e742c776ee",
+			currentVersion: "v0.29.0-beta.1",
+		},
+		{
+			name:           "pseudo from pre-release ancestor",
+			stored:         "v0.29.0-beta.1.0.20260520093041-e4e742c776ee",
+			currentVersion: "v0.29.0",
+		},
+		{
+			name:           "pseudo from release ancestor",
+			stored:         "v0.28.1-0.20260520093041-e4e742c776ee",
+			currentVersion: "v0.29.0",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := versionTestDB(t)
+			require.NoError(t, setDatabaseVersion(db, tt.stored))
+			err := checkVersionUpgradePathFromVersions(db, tt.currentVersion)
+			assert.NoError(t, err)
+		})
+	}
+}
+
+// TestCheckVersionUpgradePath_CurrentPseudoDoesNotPoison locks the
+// contract that a main-sha (pseudo-version) binary must preserve the
+// stored real release so the next real release can upgrade cleanly.
+// Mirrors the gating in db.go around setDatabaseVersion.
+func TestCheckVersionUpgradePath_CurrentPseudoDoesNotPoison(t *testing.T) {
+	db := versionTestDB(t)
+	require.NoError(t, setDatabaseVersion(db, "v0.28.0"))
+
+	current := "v0.0.0-20260522092201-58a85b68b3d9"
+	err := checkVersionUpgradePathFromVersions(db, current)
+	require.NoError(t, err)
+
+	// Mirror db.go: only write the current version when !isDev.
+	if !isDev(current) {
+		require.NoError(t, setDatabaseVersion(db, current))
+	}
+
+	stored, err := getDatabaseVersion(db)
+	require.NoError(t, err)
+	assert.Equal(t, "v0.28.0", stored,
+		"pseudo-version run must not overwrite stored release")
 }
 
 // versionTestDB creates an in-memory SQLite database with the

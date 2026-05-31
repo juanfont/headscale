@@ -12,6 +12,24 @@ import (
 
 // TestEphemeralNodes tests the lifecycle of ephemeral nodes,
 // which should be automatically cleaned up when they disconnect.
+//
+// TODO(kradalby): These tests wait for real-time grace periods and
+// GC intervals (up to 60s). testing/synctest would allow instant
+// fake-clock advancement, but three blockers prevent adoption
+// as of Go 1.26:
+//
+//  1. golang-lru/v2/expirable janitor goroutine: No Close() method;
+//     the deleteExpired ticker goroutine never exits because the done
+//     channel is never closed (documented as a v3 TODO upstream).
+//     - https://github.com/hashicorp/golang-lru/blob/v2.0.7/expirable/expirable_lru.go#L78-L81
+//
+//  2. database/sql internal goroutines: Uses [sync.RWMutex] which is not
+//     durably blocking in synctest, causing hangs.
+//     - https://github.com/golang/go/issues/77687 (mutex as durably blocking)
+//
+//  3. net/http server goroutines: I/O-blocked goroutines are not durably
+//     blocking, preventing bubble termination.
+//     - https://github.com/golang/go/issues/76608 (httptest synctest support)
 func TestEphemeralNodes(t *testing.T) {
 	t.Parallel()
 
@@ -59,7 +77,7 @@ func TestEphemeralNodes(t *testing.T) {
 
 		// Ensure the ephemeral node's long-poll session is fully
 		// established on the server before disconnecting. Without
-		// this, the Disconnect may cancel a PollNetMap that hasn't
+		// this, the [TestClient.Disconnect] may cancel a [controlclient.Direct.PollNetMap] that hasn't
 		// yet reached serveLongPoll, so no grace period or ephemeral
 		// GC would ever be scheduled.
 		ephemeral.WaitForPeers(t, 1, 10*time.Second)

@@ -22,9 +22,9 @@ func GetIntegrationRunID() string {
 	return os.Getenv("HEADSCALE_INTEGRATION_RUN_ID")
 }
 
-// DockerAddIntegrationLabels adds integration test labels to Docker RunOptions.
+// DockerAddIntegrationLabels adds integration test labels to Docker [dockertest.RunOptions].
 // This allows the hi tool to identify containers belonging to specific test runs.
-// This function should be called before passing RunOptions to dockertest functions.
+// This function should be called before passing [dockertest.RunOptions] to dockertest functions.
 func DockerAddIntegrationLabels(opts *dockertest.RunOptions, testType string) {
 	runID := GetIntegrationRunID()
 	if runID == "" {

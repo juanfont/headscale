@@ -20,12 +20,13 @@ var (
 	ErrRequestedTagsInvalidOrNotPermitted = errors.New("requested tags")
 )
 
-// ErrTaggedNodeHasUser is returned when a tagged node has a UserID set.
+// ErrTaggedNodeHasUser is returned when a tagged node has a [types.Node.UserID] set.
 var ErrTaggedNodeHasUser = errors.New("tagged node must not have user_id set")
 
 // validateNodeOwnership ensures proper node ownership model.
 // A node must be either user-owned or tagged, and these are mutually exclusive:
-// tagged nodes must not have a UserID, and user-owned nodes must not have tags.
+// tagged nodes must not have a [types.Node.UserID], and user-owned nodes must
+// not have tags.
 func validateNodeOwnership(node *types.Node) error {
 	if node.IsTagged() {
 		if len(node.Tags) == 0 {

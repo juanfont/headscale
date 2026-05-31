@@ -17,8 +17,8 @@ import (
 	"tailscale.com/wgengine/filter"
 )
 
-// hasCapMatchInPacketFilter checks if any Match entry in the packet
-// filter contains a CapMatch with the given capability name.
+// hasCapMatchInPacketFilter checks if any [filter.Match] entry in the packet
+// filter contains a [filter.CapMatch] with the given capability name.
 func hasCapMatchInPacketFilter(pf []filter.Match, peerCap tailcfg.PeerCapability) bool {
 	for _, m := range pf {
 		for _, cm := range m.Caps {
@@ -31,7 +31,7 @@ func hasCapMatchInPacketFilter(pf []filter.Match, peerCap tailcfg.PeerCapability
 	return false
 }
 
-// hasCapMatchForIP checks if any CapMatch with the given capability
+// hasCapMatchForIP checks if any [filter.CapMatch] with the given capability
 // has a Dst prefix that contains the given IP. This validates that
 // the cap is directed at the correct node, not just present.
 func hasCapMatchForIP(pf []filter.Match, peerCap tailcfg.PeerCapability, ip netip.Addr) bool {
@@ -47,7 +47,7 @@ func hasCapMatchForIP(pf []filter.Match, peerCap tailcfg.PeerCapability, ip neti
 }
 
 // parsePeerRelay parses a PeerRelay string of the form "ip:port:vni:N"
-// and returns the address and VNI. Returns zero values on parse failure.
+// and returns the [netip.AddrPort] and VNI. Returns zero values on parse failure.
 func parsePeerRelay(pr string) (netip.AddrPort, string, bool) {
 	// Format: "172.18.0.4:58738:vni:1"
 	// Split into: host part "172.18.0.4:58738" and vni part "vni:1"
@@ -552,6 +552,19 @@ func TestGrantCapDrive(t *testing.T) {
 			policyv2.Tag("tag:rw-client"): policyv2.Owners{usernameOwner("rwclient@")},
 			policyv2.Tag("tag:ro-client"): policyv2.Owners{usernameOwner("roclient@")},
 			policyv2.Tag("tag:no-access"): policyv2.Owners{usernameOwner("noaccess@")},
+		},
+		// Taildrive caps (drive:share / drive:access) are policy-driven
+		// per https://tailscale.com/docs/features/taildrive; no longer
+		// emitted as TailNode baseline. Stamp on every node so the
+		// SelfNode.CapMap assertions below remain meaningful.
+		NodeAttrs: []policyv2.NodeAttrGrant{
+			{
+				Targets: policyv2.Aliases{policyv2.Wildcard},
+				Attrs: []tailcfg.NodeCapability{
+					tailcfg.NodeAttrsTaildriveShare,
+					tailcfg.NodeAttrsTaildriveAccess,
+				},
+			},
 		},
 		Grants: []policyv2.Grant{
 			// Grant 1: IP connectivity between ALL nodes.

@@ -145,16 +145,12 @@ oidc:
 ### Customize node expiration
 
 The node expiration is the amount of time a node is authenticated with OpenID Connect until it expires and needs to
-reauthenticate. The default node expiration is 180 days. This can either be customized or set to the expiration from the
-Access Token.
+reauthenticate. The default node expiration can be configured via the top-level `node.expiry` setting.
 
 === "Customize node expiration"
 
-    ```yaml hl_lines="5"
-    oidc:
-      issuer: "https://sso.example.com"
-      client_id: "headscale"
-      client_secret: "generated-secret"
+    ```yaml hl_lines="2"
+    node:
       expiry: 30d   # Use 0 to disable node expiration
     ```
 
@@ -218,14 +214,14 @@ You may refer to users in the Headscale policy via:
     {
       "groups": {
         "group:alice": [
-          "https://soo.example.com/oauth2/openid/59ac9125-c31b-46c5-814e-06242908cf57@"
+          "https://sso.example.com/oauth2/openid/59ac9125-c31b-46c5-814e-06242908cf57@"
         ]
       },
-      "acls": [
+      "grants": [
         {
-          "action": "accept",
           "src": ["group:alice"],
-          "dst": ["*:*"]
+          "dst": ["*"],
+          "ip": ["*"]
         }
       ]
     }
@@ -250,7 +246,7 @@ endpoint.
 
 - Support for OpenID Connect aims to be generic and vendor independent. It offers only limited support for quirks of
   specific identity providers.
-- OIDC groups cannot be used in ACLs.
+- OIDC groups cannot be used in policy rules.
 - The username provided by the identity provider needs to adhere to this pattern:
     - The username must be at least two characters long.
     - It must only contain letters, digits, hyphens, dots, underscores, and up to a single `@`.
@@ -287,9 +283,9 @@ Authelia is fully supported by Headscale.
 
 ### Google OAuth
 
-!!! warning "No username due to missing preferred_username"
+!!! warning "No username due to missing preferred_username claim"
 
-    Google OAuth does not send the `preferred_username` claim when the scope `profile` is requested. The username in
+    Google OAuth does not send the `preferred_username` claim when the `profile` scope is requested. The username in
     Headscale will be blank/not set.
 
 In order to integrate Headscale with Google, you'll need to have a [Google Cloud

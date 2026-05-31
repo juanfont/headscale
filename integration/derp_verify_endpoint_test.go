@@ -72,12 +72,12 @@ func TestDERPVerifyEndpoint(t *testing.T) {
 		},
 	}
 
-	// WithHostname is used instead of WithTestName because the hostname
+	// [hsic.WithHostname] is used instead of [hsic.WithTestName] because the hostname
 	// must match the pre-generated TLS certificate created above.
 	// The test name "derpverify" is embedded in the hostname variable.
 	//
-	// WithCACert passes the external DERP server's certificate so
-	// tailscale clients trust it. WithCustomTLS and WithDERPConfig
+	// [tsic.WithCACert] passes the external DERP server's certificate so
+	// tailscale clients trust it. [hsic.WithCustomTLS] and [hsic.WithDERPConfig]
 	// configure headscale to use the external DERP server created
 	// above instead of the default embedded one.
 	err = scenario.CreateHeadscaleEnv([]tsic.Option{tsic.WithCACert(derper.GetCert())},

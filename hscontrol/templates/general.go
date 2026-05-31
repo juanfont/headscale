@@ -9,7 +9,7 @@ import (
 
 // mdTypesetBody creates a body element with md-typeset styling
 // that matches the official Headscale documentation design.
-// Uses CSS classes with styles defined in assets.CSS.
+// Uses CSS classes with styles defined in [assets.CSS].
 func mdTypesetBody(children ...elem.Node) *elem.Element {
 	return elem.Body(attrs.Props{
 		attrs.Style: styles.Props{
@@ -17,12 +17,12 @@ func mdTypesetBody(children ...elem.Node) *elem.Element {
 			styles.Display:         "flex",
 			styles.FlexDirection:   "column",
 			styles.AlignItems:      "center",
-			styles.BackgroundColor: "#ffffff",
+			styles.BackgroundColor: "var(--hs-bg)",
 			styles.Padding:         "3rem 1.5rem",
 		}.ToInline(),
 		"translate": "no",
 	},
-		elem.Div(attrs.Props{
+		elem.Main(attrs.Props{
 			attrs.Class: "md-typeset",
 			attrs.Style: styles.Props{
 				styles.MaxWidth: "min(800px, 90vw)",
@@ -34,7 +34,7 @@ func mdTypesetBody(children ...elem.Node) *elem.Element {
 
 // Styled Element Wrappers
 // These functions wrap elem-go elements using CSS classes.
-// Styling is handled by the CSS in assets.CSS.
+// Styling is handled by the CSS in [assets.CSS].
 
 // H1 creates a H1 element styled by .md-typeset h1
 func H1(children ...elem.Node) *elem.Element {
@@ -86,17 +86,17 @@ func PreCode(code string) *elem.Element {
 	return elem.Code(nil, elem.Text(code))
 }
 
-// Deprecated: use H1, H2, H3 instead
+// Deprecated: use [H1], [H2], [H3] instead
 func headerOne(text string) *elem.Element {
 	return H1(elem.Text(text))
 }
 
-// Deprecated: use H1, H2, H3 instead
+// Deprecated: use [H1], [H2], [H3] instead
 func headerTwo(text string) *elem.Element {
 	return H2(elem.Text(text))
 }
 
-// Deprecated: use H1, H2, H3 instead
+// Deprecated: use [H1], [H2], [H3] instead
 func headerThree(text string) *elem.Element {
 	return H3(elem.Text(text))
 }
@@ -124,26 +124,20 @@ func headscaleLogo() elem.Node {
 
 // pageFooter creates a consistent footer for all pages.
 func pageFooter() *elem.Element {
-	footerStyle := styles.Props{
-		styles.MarginTop:  space3XL,
-		styles.TextAlign:  "center",
-		styles.FontSize:   fontSizeSmall,
-		styles.Color:      colorTextSecondary,
-		styles.LineHeight: lineHeightBase,
-	}
-
-	linkStyle := styles.Props{
-		styles.Color:          colorTextSecondary,
-		styles.TextDecoration: "underline",
-	}
-
-	return elem.Div(attrs.Props{attrs.Style: footerStyle.ToInline()},
+	return elem.Footer(attrs.Props{
+		attrs.Style: styles.Props{
+			styles.MarginTop:  space3XL,
+			styles.TextAlign:  "center",
+			styles.FontSize:   fontSizeSmall,
+			styles.Color:      "var(--md-default-fg-color--light)",
+			styles.LineHeight: lineHeightBase,
+		}.ToInline(),
+	},
 		elem.Text("Powered by "),
 		elem.A(attrs.Props{
 			attrs.Href:   "https://github.com/juanfont/headscale",
 			attrs.Rel:    "noreferrer noopener",
 			attrs.Target: "_blank",
-			attrs.Style:  linkStyle.ToInline(),
 		}, elem.Text("Headscale")),
 	)
 }

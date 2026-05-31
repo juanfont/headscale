@@ -13,6 +13,7 @@ repos:
     rev: v6.0.0
     hooks:
       - id: check-added-large-files
+        args: [--maxkb=1024]
       - id: check-case-conflict
       - id: check-executables-have-shebangs
       - id: check-json
@@ -59,4 +60,12 @@ repos:
         entry: nix develop --command -- golangci-lint run --new-from-rev=HEAD~1 --timeout=5m --fix
         language: system
         types: [go]
+        pass_filenames: false
+
+      # vendor-hash keeps flakehashes.json in sync with go.mod/go.sum.
+      - id: vendor-hash
+        name: vendor-hash
+        entry: nix develop --command -- go run ./cmd/vendorhash check
+        language: system
+        files: ^(go\.mod|go\.sum|flakehashes\.json)$
         pass_filenames: false

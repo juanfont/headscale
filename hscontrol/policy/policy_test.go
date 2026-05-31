@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/netip"
 	"testing"
-	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
@@ -768,6 +767,65 @@ func TestReduceNodes(t *testing.T) {
 				},
 			},
 		},
+		// Subnet-to-subnet: routers must see each other when ACL
+		// uses only subnet CIDRs. Issue #3157.
+		{
+			name: "subnet-to-subnet-routers-see-each-other-3157",
+			args: args{
+				nodes: []*types.Node{
+					{
+						ID:       1,
+						IPv4:     ap("100.64.0.1"),
+						Hostname: "router-a",
+						User:     &types.User{Name: "router-a"},
+						Hostinfo: &tailcfg.Hostinfo{
+							RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.88.8.0/24")},
+						},
+						ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("10.88.8.0/24")},
+					},
+					{
+						ID:       2,
+						IPv4:     ap("100.64.0.2"),
+						Hostname: "router-b",
+						User:     &types.User{Name: "router-b"},
+						Hostinfo: &tailcfg.Hostinfo{
+							RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.99.9.0/24")},
+						},
+						ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("10.99.9.0/24")},
+					},
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{"10.88.8.0/24"},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "10.99.9.0/24", Ports: tailcfg.PortRangeAny},
+						},
+					},
+				},
+				node: &types.Node{
+					ID:       1,
+					IPv4:     ap("100.64.0.1"),
+					Hostname: "router-a",
+					User:     &types.User{Name: "router-a"},
+					Hostinfo: &tailcfg.Hostinfo{
+						RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.88.8.0/24")},
+					},
+					ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("10.88.8.0/24")},
+				},
+			},
+			want: []*types.Node{
+				{
+					ID:       2,
+					IPv4:     ap("100.64.0.2"),
+					Hostname: "router-b",
+					User:     &types.User{Name: "router-b"},
+					Hostinfo: &tailcfg.Hostinfo{
+						RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.99.9.0/24")},
+					},
+					ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("10.99.9.0/24")},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -893,11 +951,13 @@ func TestReduceNodesFromPolicy(t *testing.T) {
   ]
 }`,
 			node: n(1, "100.64.0.1", "mobile", "mobile"),
-			// autogroup:internet does not generate packet filters - it's handled
-			// by exit node routing via AllowedIPs, not by packet filtering.
-			// Only server is visible through the mobile -> server:80 rule.
+			// autogroup:internet emits no client packet filter, but it
+			// must still produce a matcher: Node.CanAccess uses
+			// matcher.DestsIsTheInternet() + IsExitNode() to surface
+			// exit-node peers (juanfont/headscale#3212).
 			want: types.Nodes{
 				n(2, "100.64.0.2", "server", "server"),
+				n(3, "100.64.0.3", "exit", "server", "0.0.0.0/0", "::/0"),
 			},
 			wantMatchers: 1,
 		},
@@ -1205,11 +1265,11 @@ func TestSSHPolicyRules(t *testing.T) {
 					},
 					Action: &tailcfg.SSHAction{
 						Accept:                    false,
-						SessionDuration:           24 * time.Hour,
-						HoldAndDelegate:           "unused-url/machine/ssh/action/from/$SRC_NODE_ID/to/$DST_NODE_ID?ssh_user=$SSH_USER&local_user=$LOCAL_USER",
-						AllowAgentForwarding:      true,
-						AllowLocalPortForwarding:  true,
-						AllowRemotePortForwarding: true,
+						SessionDuration:           0,
+						HoldAndDelegate:           "unused-url/machine/ssh/action/$SRC_NODE_ID/to/$DST_NODE_ID?local_user=$LOCAL_USER",
+						AllowAgentForwarding:      false,
+						AllowLocalPortForwarding:  false,
+						AllowRemotePortForwarding: false,
 					},
 				},
 			}},
@@ -1257,7 +1317,7 @@ func TestSSHPolicyRules(t *testing.T) {
 				]
 			}`,
 			expectErr:    true,
-			errorMessage: `invalid SSH action: "invalid", must be one of: accept, check`,
+			errorMessage: `"invalid" is not a valid action`,
 		},
 		{
 			name:       "invalid-check-period",
@@ -1281,10 +1341,15 @@ func TestSSHPolicyRules(t *testing.T) {
 				]
 			}`,
 			expectErr:    true,
-			errorMessage: "not a valid duration string",
+			errorMessage: `time: invalid duration "invalid"`,
 		},
+		// `autogroup:invalid` as an SSH user is no longer rejected:
+		// SaaS treats every `autogroup:*` user-string as a literal
+		// label and compiles it into the SSHUsers map. The compat
+		// suite covers this via ssh-malformed-user-autogroup-* — no
+		// dedicated case is needed here.
 		{
-			name:       "unsupported-autogroup",
+			name:       "ssh-user-unknown-autogroup-as-literal",
 			targetNode: taggedClient,
 			peers:      types.Nodes{&nodeUser2},
 			policy: `{
@@ -1303,8 +1368,23 @@ func TestSSHPolicyRules(t *testing.T) {
 					}
 				]
 			}`,
-			expectErr:    true,
-			errorMessage: "autogroup not supported for SSH user",
+			wantSSH: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
+				{
+					Principals: []*tailcfg.SSHPrincipal{
+						{NodeIP: "100.64.0.2"},
+					},
+					SSHUsers: map[string]string{
+						"autogroup:invalid": "autogroup:invalid",
+						"root":              "",
+					},
+					Action: &tailcfg.SSHAction{
+						Accept:                    true,
+						AllowAgentForwarding:      true,
+						AllowLocalPortForwarding:  true,
+						AllowRemotePortForwarding: true,
+					},
+				},
+			}},
 		},
 		{
 			name:       "autogroup-nonroot-should-use-wildcard-with-root-excluded",
@@ -2229,6 +2309,127 @@ func TestReduceRoutes(t *testing.T) {
 			want: []netip.Prefix{
 				netip.MustParsePrefix("192.168.1.0/14"),
 			},
+		},
+		// Subnet-to-subnet tests for issue #3157.
+		// When an ACL references subnet CIDRs as both source and destination,
+		// the subnet routers for those subnets must receive routes to each
+		// other's subnets.
+		{
+			name: "subnet-to-subnet-src-router-gets-dst-route-3157",
+			args: args{
+				node: &types.Node{
+					ID:   1,
+					IPv4: ap("100.64.0.1"),
+					User: &types.User{Name: "router-a"},
+					Hostinfo: &tailcfg.Hostinfo{
+						RoutableIPs: []netip.Prefix{
+							netip.MustParsePrefix("10.88.8.0/24"),
+						},
+					},
+					ApprovedRoutes: []netip.Prefix{
+						netip.MustParsePrefix("10.88.8.0/24"),
+					},
+				},
+				routes: []netip.Prefix{
+					netip.MustParsePrefix("10.99.9.0/24"),
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{"10.88.8.0/24"},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "10.99.9.0/24", Ports: tailcfg.PortRangeAny},
+						},
+					},
+				},
+			},
+			want: []netip.Prefix{
+				netip.MustParsePrefix("10.99.9.0/24"),
+			},
+		},
+		{
+			name: "subnet-to-subnet-dst-router-gets-src-route-3157",
+			args: args{
+				node: &types.Node{
+					ID:   2,
+					IPv4: ap("100.64.0.2"),
+					User: &types.User{Name: "router-b"},
+					Hostinfo: &tailcfg.Hostinfo{
+						RoutableIPs: []netip.Prefix{
+							netip.MustParsePrefix("10.99.9.0/24"),
+						},
+					},
+					ApprovedRoutes: []netip.Prefix{
+						netip.MustParsePrefix("10.99.9.0/24"),
+					},
+				},
+				routes: []netip.Prefix{
+					netip.MustParsePrefix("10.88.8.0/24"),
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{"10.88.8.0/24"},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "10.99.9.0/24", Ports: tailcfg.PortRangeAny},
+						},
+					},
+				},
+			},
+			want: []netip.Prefix{
+				netip.MustParsePrefix("10.88.8.0/24"),
+			},
+		},
+		{
+			name: "subnet-to-subnet-regular-node-no-route-leak-3157",
+			args: args{
+				node: &types.Node{
+					ID:   3,
+					IPv4: ap("100.64.0.3"),
+					User: &types.User{Name: "regular-node"},
+				},
+				routes: []netip.Prefix{
+					netip.MustParsePrefix("10.88.8.0/24"),
+					netip.MustParsePrefix("10.99.9.0/24"),
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{"10.88.8.0/24"},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "10.99.9.0/24", Ports: tailcfg.PortRangeAny},
+						},
+					},
+				},
+			},
+			want: nil,
+		},
+		{
+			name: "subnet-to-subnet-unrelated-router-no-route-leak-3157",
+			args: args{
+				node: &types.Node{
+					ID:   4,
+					IPv4: ap("100.64.0.4"),
+					User: &types.User{Name: "router-c"},
+					Hostinfo: &tailcfg.Hostinfo{
+						RoutableIPs: []netip.Prefix{
+							netip.MustParsePrefix("172.16.0.0/24"),
+						},
+					},
+					ApprovedRoutes: []netip.Prefix{
+						netip.MustParsePrefix("172.16.0.0/24"),
+					},
+				},
+				routes: []netip.Prefix{
+					netip.MustParsePrefix("10.88.8.0/24"),
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{"10.88.8.0/24"},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "10.99.9.0/24", Ports: tailcfg.PortRangeAny},
+						},
+					},
+				},
+			},
+			want: nil,
 		},
 	}
 

@@ -6,11 +6,11 @@ import (
 	"tailscale.com/tailcfg"
 )
 
-// SafeMapRequest wraps tailcfg.MapRequest for safe logging.
+// SafeMapRequest wraps [tailcfg.MapRequest] for safe logging.
 //
 // SECURITY: This wrapper does not log sensitive information:
 //   - Endpoints: Client IP addresses and ports
-//   - Hostinfo: Device fingerprinting data (handled by SafeHostinfo)
+//   - Hostinfo: Device fingerprinting data (handled by [SafeHostinfo])
 //   - DERPForceWebsockets: Network configuration details
 //
 // Only safe fields are logged:
@@ -23,12 +23,12 @@ type SafeMapRequest struct {
 	req *tailcfg.MapRequest
 }
 
-// MapRequest creates a SafeMapRequest wrapper for safe logging.
+// MapRequest creates a [SafeMapRequest] wrapper for safe logging.
 func MapRequest(req *tailcfg.MapRequest) SafeMapRequest {
 	return SafeMapRequest{req: req}
 }
 
-// MarshalZerologObject implements zerolog.LogObjectMarshaler.
+// MarshalZerologObject implements [zerolog.LogObjectMarshaler].
 func (s SafeMapRequest) MarshalZerologObject(e *zerolog.Event) {
 	if s.req == nil {
 		return
@@ -46,6 +46,6 @@ func (s SafeMapRequest) MarshalZerologObject(e *zerolog.Event) {
 
 	// SECURITY: The following fields are intentionally NOT logged:
 	// - Endpoints: Client IP addresses and ports
-	// - Hostinfo: Device fingerprinting data (use SafeHostinfo separately if needed)
+	// - Hostinfo: Device fingerprinting data (use [SafeHostinfo] separately if needed)
 	// - DERPForceWebsockets: Network configuration details
 }

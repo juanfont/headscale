@@ -24,7 +24,6 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	"gorm.io/gorm/schema"
-	"zgo.at/zcache/v2"
 )
 
 //go:embed schema.sql
@@ -45,19 +44,15 @@ const (
 )
 
 type HSDatabase struct {
-	DB       *gorm.DB
-	cfg      *types.Config
-	regCache *zcache.Cache[types.AuthID, types.AuthRequest]
+	DB  *gorm.DB
+	cfg *types.Config
 }
 
 // NewHeadscaleDatabase creates a new database connection and runs migrations.
 // It accepts the full configuration to allow migrations access to policy settings.
 //
 //nolint:gocyclo // complex database initialization with many migrations
-func NewHeadscaleDatabase(
-	cfg *types.Config,
-	regCache *zcache.Cache[types.AuthID, types.AuthRequest],
-) (*HSDatabase, error) {
+func NewHeadscaleDatabase(cfg *types.Config) (*HSDatabase, error) {
 	dbConn, err := openDB(cfg.Database)
 	if err != nil {
 		return nil, err
@@ -677,7 +672,7 @@ AND auth_key_id NOT IN (
 							continue
 						}
 
-						mergedTags := append(existingTags, validatedTags...)
+						mergedTags := append(slices.Clone(existingTags), validatedTags...)
 						slices.Sort(mergedTags)
 						mergedTags = slices.Compact(mergedTags)
 
@@ -721,6 +716,28 @@ WHERE tags IS NOT NULL AND tags != '[]' AND tags != '';
 						`).Error
 					if err != nil {
 						return fmt.Errorf("clearing user_id on tagged nodes: %w", err)
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			{
+				// Clear zero-time node expiry values to NULL.
+				// Versions before 0.28 persisted a pointer to a zero
+				// time.Time as '0001-01-01 00:00:00+00:00' rather than
+				// NULL, which 0.29 reports as an expired node. This
+				// normalises the existing rows so the column once
+				// again means "no expiry" when unset.
+				ID: "202605221435-clear-zero-time-node-expiry",
+				Migrate: func(tx *gorm.DB) error {
+					err := tx.Exec(`
+UPDATE nodes
+SET expiry = NULL
+WHERE expiry IS NOT NULL AND expiry < '1900-01-01';
+						`).Error
+					if err != nil {
+						return fmt.Errorf("clearing zero-time node expiry: %w", err)
 					}
 
 					return nil
@@ -838,9 +855,8 @@ WHERE tags IS NOT NULL AND tags != '[]' AND tags != '';
 	}
 
 	db := HSDatabase{
-		DB:       dbConn,
-		cfg:      cfg,
-		regCache: regCache,
+		DB:  dbConn,
+		cfg: cfg,
 	}
 
 	return &db, err

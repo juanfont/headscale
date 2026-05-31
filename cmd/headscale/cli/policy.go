@@ -28,7 +28,7 @@ func bypassDatabase() (*db.HSDatabase, error) {
 		return nil, fmt.Errorf("loading config: %w", err)
 	}
 
-	d, err := db.NewHeadscaleDatabase(cfg, nil)
+	d, err := db.NewHeadscaleDatabase(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("opening database: %w", err)
 	}
@@ -48,6 +48,7 @@ func init() {
 	policyCmd.AddCommand(setPolicy)
 
 	checkPolicy.Flags().StringP("file", "f", "", "Path to a policy file in HuJSON format")
+	checkPolicy.Flags().BoolP(bypassFlag, "", false, "Open the database directly (no gRPC, no running server) to resolve user references and to evaluate the policy's tests and sshTests blocks. Required when those checks are needed.")
 	mustMarkRequired(checkPolicy, "file")
 	policyCmd.AddCommand(checkPolicy)
 }
@@ -60,9 +61,10 @@ var policyCmd = &cobra.Command{
 var getPolicy = &cobra.Command{
 	Use:     "get",
 	Short:   "Print the current ACL Policy",
-	Aliases: []string{"show", "view", "fetch"},
+	Aliases: []string{cmdShow, "view", "fetch"},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var policyData string
+
 		if bypass, _ := cmd.Flags().GetBool(bypassFlag); bypass {
 			if !confirmAction(cmd, "DO NOT run this command if an instance of headscale is running, are you sure headscale is not running?") {
 				return errAborted
@@ -169,6 +171,11 @@ var setPolicy = &cobra.Command{
 var checkPolicy = &cobra.Command{
 	Use:   "check",
 	Short: "Check the Policy file for errors",
+	Long: `
+	Check validates the policy against the server's live users and nodes,
+	running any "tests" or "sshTests" block. By default the command is a
+	thin frontend for a gRPC call to a running headscale; pass --` + bypassFlag + ` to
+	open the database directly when headscale is not running.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		policyPath, _ := cmd.Flags().GetString("file")
 
@@ -177,9 +184,56 @@ var checkPolicy = &cobra.Command{
 			return fmt.Errorf("reading policy file: %w", err)
 		}
 
-		_, err = policy.NewPolicyManager(policyBytes, nil, views.Slice[types.NodeView]{})
+		if bypass, _ := cmd.Flags().GetBool(bypassFlag); bypass {
+			if !confirmAction(cmd, "DO NOT run this command if an instance of headscale is running, are you sure headscale is not running?") {
+				return errAborted
+			}
+
+			d, err := bypassDatabase()
+			if err != nil {
+				return err
+			}
+			defer d.Close()
+
+			users, err := d.ListUsers()
+			if err != nil {
+				return fmt.Errorf("loading users: %w", err)
+			}
+
+			nodes, err := d.ListNodes()
+			if err != nil {
+				return fmt.Errorf("loading nodes: %w", err)
+			}
+
+			// [policy.NewPolicyManager] validates structure and user references
+			// but intentionally skips test evaluation (boot path).
+			// [policy.PolicyManager.SetPolicy] is the user-write boundary and is what runs the
+			// tests and sshTests blocks.
+			pm, err := policy.NewPolicyManager(policyBytes, users, nodes.ViewSlice())
+			if err != nil {
+				return fmt.Errorf("parsing policy file: %w", err)
+			}
+
+			_, err = pm.SetPolicy(policyBytes)
+			if err != nil {
+				return err
+			}
+
+			fmt.Println("Policy is valid")
+
+			return nil
+		}
+
+		ctx, client, conn, cancel, err := newHeadscaleCLIWithConfig()
 		if err != nil {
-			return fmt.Errorf("parsing policy file: %w", err)
+			return fmt.Errorf("connecting to headscale: %w", err)
+		}
+		defer cancel()
+		defer conn.Close()
+
+		_, err = client.CheckPolicy(ctx, &v1.CheckPolicyRequest{Policy: string(policyBytes)})
+		if err != nil {
+			return err
 		}
 
 		fmt.Println("Policy is valid")

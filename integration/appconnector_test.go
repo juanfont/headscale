@@ -63,8 +63,6 @@ func TestAppConnectorBasic(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("appconnector"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 	)
 	require.NoError(t, err)
 
@@ -199,8 +197,6 @@ func TestAppConnectorNonMatchingTag(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("appconnector-nonmatch"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 	)
 	require.NoError(t, err)
 
@@ -309,8 +305,6 @@ func TestAppConnectorWildcardConnector(t *testing.T) {
 		},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("appconnector-wildcard"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 	)
 	require.NoError(t, err)
 

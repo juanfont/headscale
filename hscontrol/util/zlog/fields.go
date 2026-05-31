@@ -1,8 +1,8 @@
 // Package zlog provides zerolog utilities for safe and consistent logging.
 //
 // This package contains:
-//   - Safe wrapper types for external types (tailcfg.Hostinfo, tailcfg.MapRequest)
-//     that implement LogObjectMarshaler with security-conscious field redaction
+//   - Safe wrapper types for external types ([tailcfg.Hostinfo], [tailcfg.MapRequest])
+//     that implement [zerolog.LogObjectMarshaler] with security-conscious field redaction
 //
 // For field name constants, use the zf subpackage:
 //

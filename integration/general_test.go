@@ -12,7 +12,6 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
@@ -23,6 +22,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"tailscale.com/client/tailscale/apitype"
 	"tailscale.com/types/key"
+	"tailscale.com/util/dnsname"
 )
 
 func TestPingAllByIP(t *testing.T) {
@@ -211,7 +211,7 @@ func testEphemeralWithOptions(t *testing.T, opts ...hsic.Option) {
 		nodes, err := headscale.ListNodes()
 		assert.NoError(ct, err)
 		assert.Len(ct, nodes, 0, "All ephemeral nodes should be cleaned up after logout")
-	}, integrationutil.ScaledTimeout(30*time.Second), 2*time.Second)
+	}, integrationutil.StatusReadyTimeout, 2*time.Second)
 }
 
 // TestEphemeral2006DeletedTooQuickly verifies that ephemeral nodes are not
@@ -298,7 +298,7 @@ func TestEphemeral2006DeletedTooQuickly(t *testing.T) {
 		assert.NoError(ct, err)
 
 		assertPingAllWithCollect(ct, allClients, allAddrs)
-	}, integrationutil.ScaledTimeout(60*time.Second), 2*time.Second)
+	}, integrationutil.HAConvergeTimeout, 2*time.Second)
 
 	// Take down all clients, this should start an expiry timer for each.
 	for _, client := range allClients {
@@ -760,10 +760,19 @@ func TestTaildrop(t *testing.T) {
 func TestUpdateHostnameFromClient(t *testing.T) {
 	IntegrationSkip(t)
 
+	// Hostnames chosen to exercise the SaaS sanitisation rules end-to-end:
+	//   - Joe's Mac mini → apostrophes dropped + spaces to dashes (#3188)
+	//   - Test@Host      → `@` replaced with dash
+	//   - mail.server    → dots replaced with dashes (MagicDNS breaker)
+	// Pre-rewrite these were rejected by ApplyHostnameFromHostInfo with
+	// "invalid characters" and the node was stuck on an invalid-<rand>
+	// GivenName with the HostName update dropped. The assertions below
+	// verify both raw preservation ([v1.Node.Name]) and SaaS-matching sanitisation
+	// ([v1.Node.GivenName]) for each awkward input.
 	hostnames := map[string]string{
-		"1": "user1-host",
-		"2": "user2-host",
-		"3": "user3-host",
+		"1": "Joe's Mac mini",
+		"2": "Test@Host",
+		"3": "mail.server",
 	}
 
 	spec := ScenarioSpec{
@@ -804,7 +813,7 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 	requireNoErrSync(t, err)
 
 	// Wait for nodestore batch processing to complete
-	// NodeStore batching timeout is 500ms, so we wait up to 1 second
+	// [state.NodeStore] batching timeout is 500ms, so we wait up to 1 second
 	var nodes []*v1.Node
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		err := executeAndUnmarshal(
@@ -825,10 +834,9 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 			hostname := hostnames[strconv.FormatUint(node.GetId(), 10)]
 			assert.Equal(ct, hostname, node.GetName(), "Node name should match hostname")
 
-			// GivenName is normalized (lowercase, invalid chars stripped)
-			normalised, err := util.NormaliseHostname(hostname)
-			assert.NoError(ct, err)
-			assert.Equal(ct, normalised, node.GetGivenName(), "Given name should match FQDN rules")
+			// GivenName is sanitised via [dnsname.SanitizeHostname] (SaaS algorithm).
+			assert.Equal(ct, dnsname.SanitizeHostname(hostname), node.GetGivenName(),
+				"Given name should match SaaS hostname-sanitisation rules")
 		}
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 
@@ -886,7 +894,7 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 				}
 			}
 		}
-	}, integrationutil.ScaledTimeout(60*time.Second), 2*time.Second)
+	}, integrationutil.HAConvergeTimeout, 2*time.Second)
 
 	for _, client := range allClients {
 		status := client.MustStatus()
@@ -904,7 +912,7 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 	requireNoErrSync(t, err)
 
 	// Wait for nodestore batch processing to complete
-	// NodeStore batching timeout is 500ms, so we wait up to 1 second
+	// [state.NodeStore] batching timeout is 500ms, so we wait up to 1 second
 	assert.Eventually(t, func() bool {
 		err = executeAndUnmarshal(
 			headscale,
@@ -925,8 +933,7 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 		for _, node := range nodes {
 			hostname := hostnames[strconv.FormatUint(node.GetId(), 10)]
 			givenName := fmt.Sprintf("%d-givenname", node.GetId())
-			// Hostnames are lowercased before being stored, so "NEW" becomes "new"
-			if node.GetName() != hostname+"new" || node.GetGivenName() != givenName {
+			if node.GetName() != hostname+"NEW" || node.GetGivenName() != givenName {
 				return false
 			}
 		}
@@ -973,14 +980,14 @@ func TestExpireNode(t *testing.T) {
 
 			// Assert that we have the original count - self
 			assert.Len(ct, status.Peers(), spec.NodesPerUser-1, "Client %s should see correct number of peers", client.Hostname())
-		}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second)
+		}, integrationutil.StatusReadyTimeout, 1*time.Second)
 	}
 
 	headscale, err := scenario.Headscale()
 	require.NoError(t, err)
 
 	// TODO(kradalby): This is Headscale specific and would not play nicely
-	// with other implementations of the ControlServer interface
+	// with other implementations of the [ControlServer] interface
 	result, err := headscale.Execute([]string{
 		"headscale", "nodes", "expire", "--identifier", "1", "--output", "json",
 	})
@@ -1062,7 +1069,7 @@ func TestExpireNode(t *testing.T) {
 					)
 				}
 			}
-		}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for expired node status to propagate")
+		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for expired node status to propagate")
 	}
 }
 
@@ -1300,7 +1307,7 @@ func TestNodeOnlineStatus(t *testing.T) {
 
 			// Assert that we have the original count - self
 			assert.Len(c, status.Peers(), len(MustTestVersions)-1)
-		}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for expected peer count")
+		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for expected peer count")
 	}
 
 	headscale, err := scenario.Headscale()
@@ -1312,6 +1319,11 @@ func TestNodeOnlineStatus(t *testing.T) {
 	end := start.Add(testDuration)
 
 	log.Printf("Starting online test from %v to %v", start, end)
+
+	// Pace the outer loop at one iteration per second so the
+	// continuous online-check does not hammer the docker daemon.
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
 
 	for {
 		// Let the test run continuously for X minutes to verify
@@ -1377,8 +1389,7 @@ func TestNodeOnlineStatus(t *testing.T) {
 			}, integrationutil.ScaledTimeout(15*time.Second), 1*time.Second)
 		}
 
-		// Check maximum once per second
-		time.Sleep(time.Second)
+		<-tick.C
 	}
 }
 

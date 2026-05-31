@@ -3,7 +3,6 @@ package cli
 import (
 	"os"
 	"runtime"
-	"slices"
 	"strings"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -22,11 +21,6 @@ func init() {
 		return
 	}
 
-	if slices.Contains(os.Args, "policy") && slices.Contains(os.Args, "check") {
-		zerolog.SetGlobalLevel(zerolog.Disabled)
-		return
-	}
-
 	cobra.OnInitialize(initConfig)
 	rootCmd.PersistentFlags().
 		StringVarP(&cfgFile, "config", "c", "", "config file (default is /etc/headscale/config.yaml)")
@@ -36,7 +30,7 @@ func init() {
 		Bool("force", false, "Disable prompts and forces the execution")
 
 	// Re-enable usage output only for flag-parsing errors; runtime errors
-	// from RunE should never dump usage text.
+	// from [cobra.Command.RunE] should never dump usage text.
 	rootCmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
 		cmd.SilenceUsage = false
 

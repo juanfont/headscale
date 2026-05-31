@@ -660,6 +660,38 @@
         ]
       }
     },
+    "/api/v1/policy/check": {
+      "post": {
+        "operationId": "HeadscaleService_CheckPolicy",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1CheckPolicyResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1CheckPolicyRequest"
+            }
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
     "/api/v1/preauthkey": {
       "get": {
         "operationId": "HeadscaleService_ListPreAuthKeys",
@@ -1043,6 +1075,17 @@
           }
         }
       }
+    },
+    "v1CheckPolicyRequest": {
+      "type": "object",
+      "properties": {
+        "policy": {
+          "type": "string"
+        }
+      }
+    },
+    "v1CheckPolicyResponse": {
+      "type": "object"
     },
     "v1CreateApiKeyRequest": {
       "type": "object",

@@ -49,7 +49,7 @@ type IPAllocator struct {
 	usedIPs netipx.IPSetBuilder
 }
 
-// NewIPAllocator returns a new IPAllocator singleton which
+// NewIPAllocator returns a new [IPAllocator] singleton which
 // can be used to hand out unique IP addresses within the
 // provided IPv4 and IPv6 prefix. It needs to be created
 // when headscale starts and needs to finish its read
@@ -272,7 +272,7 @@ func isTailscaleReservedIP(ip netip.Addr) bool {
 }
 
 // BackfillNodeIPs will take a database transaction, and
-// iterate through all of the current nodes in headscale
+// iterate through all of the current nodes ([types.Node]) in headscale
 // and ensure it has IP addresses according to the current
 // configuration.
 // This means that if both IPv4 and IPv6 is set in the
@@ -346,7 +346,6 @@ func (db *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
 				// Use Updates() with Select() to only update IP fields, avoiding overwriting
 				// other fields like Expiry. We need Select() because Updates() alone skips
 				// zero values, but we DO want to update IPv4/IPv6 to nil when removing them.
-				// See issue #2862.
 				err := tx.Model(node).Select("ipv4", "ipv6").Updates(node).Error
 				if err != nil {
 					return fmt.Errorf("saving node(%d) after adding IPs: %w", node.ID, err)

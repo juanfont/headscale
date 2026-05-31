@@ -1,7 +1,9 @@
 package types
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"testing"
@@ -469,6 +471,133 @@ func TestSafeServerURL(t *testing.T) {
 			}
 
 			assert.NoError(t, err)
+		})
+	}
+}
+
+// TestConfigJSONOmitsSecrets verifies that marshalling a [Config] to JSON
+// (as /debug/config does via [state.State.DebugConfig]) does not leak the
+// Postgres password, the OIDC client secret, or the headscale admin
+// API key. Operators who widen metrics_listen_addr to 0.0.0.0 should
+// not be able to read these back via debug endpoints reachable over
+// CGNAT/loopback.
+func TestConfigJSONOmitsSecrets(t *testing.T) {
+	const (
+		secretPostgresPass = "p0stgres-secret-marker"
+		secretClientSecret = "oidc-client-secret-marker"    //nolint:gosec // test marker, not a real credential
+		secretAPIKey       = "headscale-cli-api-key-marker" //nolint:gosec // test marker, not a real credential
+	)
+
+	cfg := &Config{
+		Database: DatabaseConfig{
+			Postgres: PostgresConfig{
+				Pass: secretPostgresPass,
+			},
+		},
+		OIDC: OIDCConfig{
+			ClientSecret: secretClientSecret,
+		},
+		CLI: CLIConfig{
+			APIKey: secretAPIKey,
+		},
+	}
+
+	out, err := json.Marshal(cfg)
+	require.NoError(t, err)
+
+	body := string(out)
+	for _, secret := range []string{secretPostgresPass, secretClientSecret, secretAPIKey} {
+		assert.NotContains(t, body, secret,
+			"marshalled Config must not contain secret %q", secret)
+	}
+}
+
+//nolint:goconst // repeated CIDR strings are test fixtures, not refactor candidates
+func TestTrustedProxies(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   any
+		want    []netip.Prefix
+		wantErr string
+	}{
+		{
+			name:  "unset",
+			input: nil,
+			want:  nil,
+		},
+		{
+			name:  "empty",
+			input: []string{},
+			want:  nil,
+		},
+		{
+			name:  "single-v4",
+			input: []string{"10.0.0.0/16"},
+			want:  []netip.Prefix{netip.MustParsePrefix("10.0.0.0/16")},
+		},
+		{
+			name:  "single-v6",
+			input: []string{"fd00::/8"},
+			want:  []netip.Prefix{netip.MustParsePrefix("fd00::/8")},
+		},
+		{
+			name:  "mixed-v4-v6",
+			input: []string{"127.0.0.1/32", "::1/128", "10.0.0.0/16"},
+			want: []netip.Prefix{
+				netip.MustParsePrefix("127.0.0.1/32"),
+				netip.MustParsePrefix("::1/128"),
+				netip.MustParsePrefix("10.0.0.0/16"),
+			},
+		},
+		{
+			name:  "non-canonical-masked",
+			input: []string{"10.0.0.5/16"},
+			want:  []netip.Prefix{netip.MustParsePrefix("10.0.0.0/16")},
+		},
+		{
+			name:    "bare-ip-rejected",
+			input:   []string{"10.0.0.1"},
+			wantErr: `trusted_proxies[0] "10.0.0.1"`,
+		},
+		{
+			name:    "garbage-reports-index",
+			input:   []string{"10.0.0.0/16", "not-an-ip"},
+			wantErr: `trusted_proxies[1] "not-an-ip"`,
+		},
+		{
+			name:    "ipv4-zero-rejected",
+			input:   []string{"0.0.0.0/0"},
+			wantErr: "0.0.0.0/0 and ::/0 are not allowed",
+		},
+		{
+			name:    "ipv6-zero-rejected",
+			input:   []string{"::/0"},
+			wantErr: "0.0.0.0/0 and ::/0 are not allowed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+
+			if tt.input != nil {
+				viper.Set("trusted_proxies", tt.input)
+			}
+
+			got, err := trustedProxies()
+
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+
+			if diff := cmp.Diff(tt.want, got, cmpopts.EquateComparable(netip.Prefix{})); diff != "" {
+				t.Errorf("trustedProxies() mismatch (-want +got):\n%s", diff)
+			}
 		})
 	}
 }

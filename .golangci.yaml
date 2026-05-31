@@ -13,6 +13,7 @@ linters:
     - gochecknoinits
     - gocognit
     - godox
+    - gomodguard
     - interfacebloat
     - ireturn
     - lll
@@ -30,6 +31,17 @@ linters:
     - wrapcheck
     - wsl
   settings:
+    goconst:
+      # Test fixtures repeat strings (IPs, tags, hostnames) by their
+      # nature; extracting them obscures the test rather than helping.
+      # Production code stays strict.
+      ignore-tests: true
+      # Default is 3. Bump so "happens thrice" cases that are not part
+      # of a shared vocabulary do not get extracted.
+      min-occurrences: 5
+      # Default is 3. Short literals ("set", "get", "new") read better
+      # at call sites than behind a named constant.
+      min-len: 6
     forbidigo:
       forbid:
         # Forbid time.Sleep everywhere with context-appropriate alternatives

@@ -134,7 +134,7 @@ help to the community.
 
 Running headscale on a machine that is also in the tailnet can cause problems with subnet routers, traffic relay nodes, and MagicDNS. It might work, but it is not supported.
 
-## Why do two nodes see each other in their status, even if an ACL allows traffic only in one direction?
+## Why do two nodes see each other in their status, even if a policy rule allows traffic only in one direction?
 
 A frequent use case is to allow traffic only from one node to another, but not the other way around. For example, the
 workstation of an administrator should be able to connect to all nodes but the nodes themselves shouldn't be able to
@@ -142,10 +142,10 @@ connect back to the administrator's node. Why do all nodes see the administrator
 `tailscale status`?
 
 This is essentially how Tailscale works. If traffic is allowed to flow in one direction, then both nodes see each other
-in their output of `tailscale status`. Traffic is still filtered according to the ACL, with the exception of
+in their output of `tailscale status`. Traffic is still filtered according to the policy, with the exception of
 `tailscale ping` which is always allowed in either direction.
 
-See also <https://tailscale.com/kb/1087/device-visibility>.
+See also <https://tailscale.com/docs/concepts/device-visibility>.
 
 ## My policy is stored in the database and Headscale refuses to start due to an invalid policy. How can I recover?
 
@@ -191,7 +191,7 @@ following steps can be used to migrate from unsupported IP prefixes back to the 
     SET ipv4=concat('100.64.', id/256, '.', id%256),
         ipv6=concat('fd7a:115c:a1e0::', format('%x', id));
     ```
-- Update the [policy](../ref/acls.md) to reflect the IP address changes (if any)
+- Update the [policy](../ref/policy.md) to reflect the IP address changes (if any)
 - Start Headscale
 
 Nodes should reconnect within a few seconds and pickup their newly assigned IP addresses.
@@ -199,7 +199,7 @@ Nodes should reconnect within a few seconds and pickup their newly assigned IP a
 ## How can I avoid to send logs to Tailscale Inc?
 
 A Tailscale client [collects logs about its operation and connection attempts with other
-clients](https://tailscale.com/kb/1011/log-mesh-traffic#client-logs) and sends them to a central log service operated by
+clients](https://tailscale.com/docs/features/logging#client-logs) and sends them to a central log service operated by
 Tailscale Inc.
 
 Headscale, by default, instructs clients to disable log submission to the central log service. This configuration is
@@ -209,5 +209,5 @@ applied by a client once it successfully connected with Headscale. See the confi
 Alternatively, logging can also be disabled on the client side. This is independent of Headscale and opting out of
 client logging disables log submission early during client startup. The configuration is operating system specific and
 is usually achieved by setting the environment variable `TS_NO_LOGS_NO_SUPPORT=true` or by passing the flag
-`--no-logs-no-support` to `tailscaled`. See
-<https://tailscale.com/kb/1011/log-mesh-traffic#opting-out-of-client-logging> for details.
+`--no-logs-no-support` to `tailscaled`. See <https://tailscale.com/docs/features/logging#opt-out-of-client-logging> for
+details.

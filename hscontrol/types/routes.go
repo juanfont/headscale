@@ -19,7 +19,7 @@ type Route struct {
 	// Advertised is now only stored as part of [Node.Hostinfo].
 	Advertised bool
 
-	// Enabled is stored directly on the node as ApprovedRoutes.
+	// Enabled is stored directly on the node as [Node.ApprovedRoutes].
 	Enabled bool
 
 	// IsPrimary is only determined in memory as it is only relevant

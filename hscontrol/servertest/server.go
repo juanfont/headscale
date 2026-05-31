@@ -1,11 +1,12 @@
 // Package servertest provides an in-process test harness for Headscale's
 // control plane. It wires a real Headscale server to real Tailscale
-// controlclient.Direct instances, enabling fast, deterministic tests
+// [controlclient.Direct] instances, enabling fast, deterministic tests
 // of the full control protocol without Docker or separate processes.
 package servertest
 
 import (
-	"net/http/httptest"
+	"net"
+	"net/http"
 	"net/netip"
 	"testing"
 	"time"
@@ -13,26 +14,35 @@ import (
 	hscontrol "github.com/juanfont/headscale/hscontrol"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"tailscale.com/net/memnet"
 	"tailscale.com/tailcfg"
 )
 
 // TestServer is an in-process Headscale control server suitable for
-// use with Tailscale's controlclient.Direct.
+// use with Tailscale's [controlclient.Direct].
+//
+// Networking uses tailscale.com/net/memnet so that all TCP
+// connections stay in-process — no real sockets are opened.
 type TestServer struct {
-	App        *hscontrol.Headscale
-	HTTPServer *httptest.Server
-	URL        string
+	App *hscontrol.Headscale
+	URL string
+
+	memNet     *memnet.Network
+	ln         net.Listener
+	httpServer *http.Server
 	st         *state.State
 }
 
-// ServerOption configures a TestServer.
+// ServerOption configures a [TestServer].
 type ServerOption func(*serverConfig)
 
 type serverConfig struct {
 	batchDelay       time.Duration
 	bufferedChanSize int
 	ephemeralTimeout time.Duration
+	nodeExpiry       time.Duration
 	batcherWorkers   int
+	taildropEnabled  bool
 }
 
 func defaultServerConfig() *serverConfig {
@@ -41,6 +51,7 @@ func defaultServerConfig() *serverConfig {
 		bufferedChanSize: 30,
 		batcherWorkers:   1,
 		ephemeralTimeout: 30 * time.Second,
+		taildropEnabled:  true,
 	}
 }
 
@@ -57,6 +68,20 @@ func WithBufferedChanSize(n int) ServerOption {
 // WithEphemeralTimeout sets the ephemeral node inactivity timeout.
 func WithEphemeralTimeout(d time.Duration) ServerOption {
 	return func(c *serverConfig) { c.ephemeralTimeout = d }
+}
+
+// WithNodeExpiry sets the default node key expiry duration.
+func WithNodeExpiry(d time.Duration) ServerOption {
+	return func(c *serverConfig) { c.nodeExpiry = d }
+}
+
+// WithTaildropEnabled toggles the Taildrop file-sharing feature.
+// Defaults to true to match production. Pass false to verify
+// behaviour when an operator has switched the toggle off — e.g.
+// that [tailcfg.CapabilityFileSharing] is withheld from the
+// always-on baseline.
+func WithTaildropEnabled(enabled bool) ServerOption {
+	return func(c *serverConfig) { c.taildropEnabled = enabled }
 }
 
 // NewServer creates and starts a Headscale test server.
@@ -76,13 +101,18 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 	prefixV6 := netip.MustParsePrefix("fd7a:115c:a1e0::/48")
 
 	cfg := types.Config{
-		// Placeholder; updated below once httptest server starts.
-		ServerURL:                      "http://localhost:0",
-		NoisePrivateKeyPath:            tmpDir + "/noise_private.key",
-		EphemeralNodeInactivityTimeout: sc.ephemeralTimeout,
-		PrefixV4:                       &prefixV4,
-		PrefixV6:                       &prefixV6,
-		IPAllocation:                   types.IPAllocationStrategySequential,
+		// Placeholder; updated below once the in-memory server starts.
+		ServerURL:           "http://localhost:0",
+		NoisePrivateKeyPath: tmpDir + "/noise_private.key",
+		Node: types.NodeConfig{
+			Expiry: sc.nodeExpiry,
+			Ephemeral: types.EphemeralConfig{
+				InactivityTimeout: sc.ephemeralTimeout,
+			},
+		},
+		PrefixV4:     &prefixV4,
+		PrefixV6:     &prefixV6,
+		IPAllocation: types.IPAllocationStrategySequential,
 		Database: types.DatabaseConfig{
 			Type: "sqlite3",
 			Sqlite: types.SqliteConfig{
@@ -92,6 +122,7 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 		Policy: types.PolicyConfig{
 			Mode: types.PolicyModeDB,
 		},
+		Taildrop: types.TaildropConfig{Enabled: sc.taildropEnabled},
 		Tuning: types.Tuning{
 			BatchChangeDelay:               sc.batchDelay,
 			BatcherWorkers:                 sc.batcherWorkers,
@@ -126,27 +157,61 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 	app.StartBatcherForTest(tb)
 	app.StartEphemeralGCForTest(tb)
 
-	// Start the HTTP server with Headscale's full handler (including
-	// /key and /ts2021 Noise upgrade).
-	ts := httptest.NewServer(app.HTTPHandler())
+	// Start the HTTP server over an in-memory network so that all
+	// TCP connections stay in-process.
+	var memNetwork memnet.Network
+
+	ln, err := memNetwork.Listen("tcp", "127.0.0.1:443")
+	if err != nil {
+		tb.Fatalf("servertest: memnet Listen: %v", err)
+	}
+
+	httpServer := &http.Server{
+		Handler:           app.HTTPHandler(),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	go httpServer.Serve(ln) //nolint:errcheck // will return on Close
+
+	serverURL := "http://" + ln.Addr().String()
+
+	ts := &TestServer{
+		App:        app,
+		URL:        serverURL,
+		memNet:     &memNetwork,
+		ln:         ln,
+		httpServer: httpServer,
+		st:         app.GetState(),
+	}
+
 	tb.Cleanup(ts.Close)
 
 	// Now update the config to point at the real URL so that
 	// MapResponse.ControlURL etc. are correct.
-	app.SetServerURLForTest(tb, ts.URL)
+	app.SetServerURLForTest(tb, serverURL)
 
-	return &TestServer{
-		App:        app,
-		HTTPServer: ts,
-		URL:        ts.URL,
-		st:         app.GetState(),
-	}
+	return ts
 }
 
 // State returns the server's state manager for creating users,
 // nodes, and pre-auth keys.
 func (s *TestServer) State() *state.State {
 	return s.st
+}
+
+// Close shuts down the in-memory HTTP server and listener.
+// Subsystem cleanup (batcher, ephemeral GC) is handled by
+// [testing.TB.Cleanup] callbacks registered in [hscontrol.Headscale.StartBatcherForTest] and
+// [hscontrol.Headscale.StartEphemeralGCForTest].
+func (s *TestServer) Close() {
+	s.httpServer.Close()
+	s.ln.Close()
+}
+
+// MemNet returns the in-memory network used by this server,
+// so that [TestClient] dialers can be wired to it.
+func (s *TestServer) MemNet() *memnet.Network {
+	return s.memNet
 }
 
 // CreateUser creates a test user and returns it.

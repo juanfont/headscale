@@ -7,9 +7,8 @@
 
     **It might be outdated and it might miss necessary steps**.
 
-This documentation has the goal of showing a user how-to set up and run headscale in a container. A container runtime
-such as [Docker](https://www.docker.com) or [Podman](https://podman.io) is required. The container image can be found on
-[Docker Hub](https://hub.docker.com/r/headscale/headscale) and [GitHub Container
+A container runtime such as [Docker](https://www.docker.com) or [Podman](https://podman.io) is required. The container
+image can be found on [Docker Hub](https://hub.docker.com/r/headscale/headscale) and [GitHub Container
 Registry](https://github.com/juanfont/headscale/pkgs/container/headscale). The container image URLs are:
 
 - [Docker Hub](https://hub.docker.com/r/headscale/headscale): `docker.io/headscale/headscale:<VERSION>`
@@ -18,7 +17,7 @@ Registry](https://github.com/juanfont/headscale/pkgs/container/headscale). The c
 
 ## Configure and run headscale
 
-1. Create a directory on the container host to store headscale's [configuration](../../ref/configuration.md) and the [SQLite](https://www.sqlite.org/) database:
+1. Create a directory on the container host to store headscale's [configuration](../../ref/configuration.md) and the SQLite database:
 
     ```shell
     mkdir -p ./headscale/{config,lib}
@@ -98,7 +97,7 @@ Continue on the [getting started page](../../usage/getting-started.md) to regist
 
 ## Debugging headscale running in Docker
 
-The Headscale container image is based on a "distroless" image that does not contain a shell or any other debug tools. If you need to debug headscale running in the Docker container, you can use the `-debug` variant, for example `docker.io/headscale/headscale:x.x.x-debug`.
+The Headscale container image is based on a distroless image that does not contain a shell or any other debug tools. If you need to debug headscale running in the Docker container, you can use the `-debug` variant, for example `docker.io/headscale/headscale:x.x.x-debug`.
 
 ### Running the debug Docker container
 
