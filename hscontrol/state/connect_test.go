@@ -166,3 +166,51 @@ func TestConnectDisconnectSubnetRouterForcesRecompute(t *testing.T) {
 			"subnet router disconnect must force a peer recompute")
 	})
 }
+
+// TestConnectDisconnectSubnetRouterEmitsPolicyChangeNotFull pins how a subnet
+// router forces that recompute: through the gated change.PolicyChange() (a
+// runtime peer recompute) and the lightweight online/offline peer patch, not a
+// full update. policyChangeResponse is a strict subset of a full update yet
+// still carries primary-route failover, so the heavier FullUpdate that the
+// online/offline change once emitted for subnet routers is unnecessary.
+func TestConnectDisconnectSubnetRouterEmitsPolicyChangeNotFull(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	route := netip.MustParsePrefix("10.0.0.0/24")
+	_, ok := s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
+		n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{route}}
+		n.ApprovedRoutes = []netip.Prefix{route}
+	})
+	require.True(t, ok)
+
+	assertRecomputeNotFull := func(t *testing.T, cs []change.Change) {
+		t.Helper()
+
+		assert.NotEmpty(t, runtimePeerComputationReasons(cs),
+			"subnet router must still drive a runtime peer recompute")
+		assert.True(t, hasPeerPatch(cs),
+			"subnet router should still emit the lightweight online/offline patch")
+
+		for _, c := range cs {
+			assert.Falsef(t, c.IsFull(),
+				"subnet router recompute must be a PolicyChange, not a full update: %q", c.Reason)
+		}
+	}
+
+	t.Run("connect", func(t *testing.T) {
+		cs, epoch := s.Connect(nodeID)
+		require.NotZero(t, epoch)
+
+		assertRecomputeNotFull(t, cs)
+	})
+
+	t.Run("disconnect", func(t *testing.T) {
+		_, epoch := s.Connect(nodeID)
+
+		cs, err := s.Disconnect(nodeID, epoch)
+		require.NoError(t, err)
+
+		assertRecomputeNotFull(t, cs)
+	})
+}
