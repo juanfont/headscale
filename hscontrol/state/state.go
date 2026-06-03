@@ -594,9 +594,14 @@ func (s *State) Connect(id types.NodeID) ([]change.Change, uint64) {
 		c = append(c, change.NodeAdded(id))
 	}
 
-	// Coming online may re-enable cap/relay grants and identity-based
-	// aliases targeting this node, so peers need a fresh netmap.
-	c = append(c, change.PolicyChange())
+	// Only a node whose online state changes what peers compute (a subnet
+	// router, relay target, or via target) needs a full peer recompute.
+	// An ordinary node coming online just sends the lightweight online
+	// patch above; emitting a PolicyChange for it would force every peer
+	// to rebuild its netmap on every reconnect.
+	if s.polMan.NodeNeedsPeerRecompute(node) {
+		c = append(c, change.PolicyChange())
+	}
 
 	return c, epoch
 }
@@ -648,13 +653,15 @@ func (s *State) Disconnect(id types.NodeID, epoch uint64) ([]change.Change, erro
 		c = change.Change{}
 	}
 
-	// Going offline can affect policy compilation beyond subnet routes
-	// (cap/relay grants, tag/group aliases, via routes), so peers need
-	// a fresh netmap regardless of whether the primary moved.
-	//
-	// TODO(kradalby): fires one full netmap recompute per peer on
-	// every connect/disconnect. Coalesce in mapper/batcher.go:addToBatch.
-	cs := []change.Change{change.NodeOfflineFor(node), c, change.PolicyChange()}
+	// Only a node whose online state changes what peers compute (a subnet
+	// router, relay target, or via target) needs a full peer recompute.
+	// An ordinary node going offline just sends the lightweight offline
+	// patch; emitting a PolicyChange for it would force every peer to
+	// rebuild its netmap on every disconnect.
+	cs := []change.Change{change.NodeOfflineFor(node), c}
+	if s.polMan.NodeNeedsPeerRecompute(node) {
+		cs = append(cs, change.PolicyChange())
+	}
 
 	return cs, nil
 }
