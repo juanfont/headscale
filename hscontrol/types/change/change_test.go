@@ -1,11 +1,13 @@
 package change
 
 import (
+	"net/netip"
 	"reflect"
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
 )
 
@@ -609,6 +611,45 @@ func TestUniqueNodeIDs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := uniqueNodeIDs(tt.input)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestNodeOnlineOfflineForSubnetRouter(t *testing.T) {
+	route := netip.MustParsePrefix("10.0.0.0/24")
+	router := types.Node{
+		ID:             1,
+		Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{route}},
+		ApprovedRoutes: []netip.Prefix{route},
+	}
+	view := router.View()
+	require.True(t, view.IsSubnetRouter(), "test node must be a subnet router")
+
+	tests := []struct {
+		name       string
+		got        Change
+		wantOnline bool
+	}{
+		{name: "online", got: NodeOnlineFor(view), wantOnline: true},
+		{name: "offline", got: NodeOfflineFor(view), wantOnline: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// A subnet router's online/offline transition rides the lightweight
+			// peer patch, not a full update: the gated PolicyChange that
+			// State.Connect/Disconnect emit owns the netmap recompute.
+			assert.False(t, tt.got.IsFull(),
+				"subnet router online/offline must be a peer patch, not a full update")
+
+			require.NotEmpty(t, tt.got.PeerPatches,
+				"expected an online/offline peer patch")
+
+			patch := tt.got.PeerPatches[0]
+			assert.Equal(t, view.ID().NodeID(), patch.NodeID)
+
+			require.NotNil(t, patch.Online)
+			assert.Equal(t, tt.wantOnline, *patch.Online)
 		})
 	}
 }
