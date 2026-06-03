@@ -1104,6 +1104,72 @@ func TestBatcherWorkQueueBatching(t *testing.T) {
 	}
 }
 
+// TestBatcherCoalescesPolicyRecomputesPerTick proves that many identical
+// broadcast policy changes arriving in a single batcher tick collapse to one
+// runtime peer recompute per node. Without coalescing, each PolicyChange drives
+// a separate full netmap rebuild for every connected node (the reconnect-storm
+// fan-out); with it, a node sees at most one recompute per tick.
+func TestBatcherCoalescesPolicyRecomputesPerTick(t *testing.T) {
+	for _, bf := range allBatcherFunctions {
+		t.Run(bf.name, func(t *testing.T) {
+			const (
+				nodesPerUser         = 4
+				policyChangesPerTick = 8
+			)
+
+			testData, cleanup := setupBatcherWithTestData(t, bf.fn, 1, nodesPerUser, 100)
+			defer cleanup()
+
+			batcher := testData.Batcher
+			for i := range testData.Nodes {
+				n := &testData.Nodes[i]
+				require.NoError(t, batcher.AddNode(n.n.ID, n.ch, tailcfg.CapabilityVersion(100), nil))
+			}
+
+			// Many identical broadcast policy changes, then a DERP-map change as
+			// a sentinel. All land in one tick; the sentinel rides the same work
+			// item after the recompute(s), so its arrival marks the end of this
+			// tick's policy responses for a node.
+			for range policyChangesPerTick {
+				batcher.AddWork(change.PolicyChange())
+			}
+
+			batcher.AddWork(change.DERPMap())
+
+			for i := range testData.Nodes {
+				id := testData.Nodes[i].n.ID
+				ch := testData.Nodes[i].ch
+
+				policyResponses := 0
+				deadline := time.After(2 * time.Second)
+
+			drain:
+				for {
+					select {
+					case resp := <-ch:
+						switch {
+						case resp.DERPMap != nil && len(resp.Peers) == 0:
+							// Sentinel: every policy recompute for this tick has
+							// already been delivered to this node.
+							break drain
+						case len(resp.PacketFilters) > 0 && len(resp.Peers) == 0:
+							// A runtime peer recompute (policyChangeResponse):
+							// packet filters and incremental peers, no full list.
+							policyResponses++
+						}
+					case <-deadline:
+						t.Fatalf("node %d never received the DERP sentinel", id)
+					}
+				}
+
+				assert.LessOrEqualf(t, policyResponses, 1,
+					"node %d received %d policy recomputes in one tick; identical recomputes must coalesce to one",
+					id, policyResponses)
+			}
+		})
+	}
+}
+
 // TestBatcherWorkerChannelSafety tests that worker goroutines handle closed
 // channels safely without panicking when processing work items.
 //

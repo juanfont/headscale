@@ -250,6 +250,41 @@ func FilterForNode(nodeID types.NodeID, rs []Change) []Change {
 	return result
 }
 
+// IsBroadcastPolicyChange reports whether r is a tailnet-wide policy recompute
+// with no per-node payload. A recompute reads the current snapshot, so every
+// such change is interchangeable and same-tick duplicates are redundant. A
+// targeted or self-update ([Change.OriginNode]) recompute is per-node, so it is
+// not one of these.
+func (r Change) IsBroadcastPolicyChange() bool {
+	return r.RequiresRuntimePeerComputation && !r.IsTargetedToNode() && r.OriginNode == 0
+}
+
+// DedupePolicyChanges keeps the first broadcast policy change in a tick and
+// drops the rest: each rebuilds a node's whole netmap from the same snapshot, so
+// the repeats are wasted work. Order and all other changes are preserved.
+func DedupePolicyChanges(changes []Change) []Change {
+	if len(changes) < 2 {
+		return changes
+	}
+
+	out := make([]Change, 0, len(changes))
+	seen := false
+
+	for _, r := range changes {
+		if r.IsBroadcastPolicyChange() {
+			if seen {
+				continue
+			}
+
+			seen = true
+		}
+
+		out = append(out, r)
+	}
+
+	return out
+}
+
 func uniqueNodeIDs(ids []types.NodeID) []types.NodeID {
 	if len(ids) == 0 {
 		return nil

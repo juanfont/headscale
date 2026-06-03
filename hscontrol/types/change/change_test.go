@@ -296,6 +296,99 @@ func TestChange_Merge(t *testing.T) {
 	}
 }
 
+func TestChange_IsBroadcastPolicyChange(t *testing.T) {
+	originUpdate := PolicyChange()
+	originUpdate.OriginNode = 7
+
+	targeted := PolicyChange()
+	targeted.TargetNode = 7
+
+	tests := []struct {
+		name string
+		c    Change
+		want bool
+	}{
+		{name: "policy change", c: PolicyChange(), want: true},
+		{name: "self-update recompute", c: originUpdate, want: false},
+		{name: "targeted recompute", c: targeted, want: false},
+		{name: "online patch", c: NodeOnline(1), want: false},
+		{name: "full update", c: FullUpdate(), want: false},
+		{name: "derp map", c: DERPMap(), want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.c.IsBroadcastPolicyChange())
+		})
+	}
+}
+
+func TestDedupePolicyChanges(t *testing.T) {
+	// originRecompute is a runtime recompute carrying node-specific payload
+	// (OriginNode), so it is not the canonical broadcast PolicyChange and must
+	// never be coalesced away.
+	originRecompute := PolicyChange()
+	originRecompute.OriginNode = 7
+
+	tests := []struct {
+		name    string
+		changes []Change
+		want    []Change
+	}{
+		{
+			name:    "nil is a no-op",
+			changes: nil,
+			want:    nil,
+		},
+		{
+			name:    "single policy change is unchanged",
+			changes: []Change{PolicyChange()},
+			want:    []Change{PolicyChange()},
+		},
+		{
+			name:    "identical policy changes collapse to one",
+			changes: []Change{PolicyChange(), PolicyChange(), PolicyChange()},
+			want:    []Change{PolicyChange()},
+		},
+		{
+			name: "peer patches survive between collapsed policy changes",
+			changes: []Change{
+				NodeOnline(1), PolicyChange(), NodeOnline(2), PolicyChange(), NodeOffline(3),
+			},
+			want: []Change{
+				NodeOnline(1), PolicyChange(), NodeOnline(2), NodeOffline(3),
+			},
+		},
+		{
+			name:    "NodeAdded is preserved, not treated as a recompute",
+			changes: []Change{PolicyChange(), NodeAdded(5), PolicyChange()},
+			want:    []Change{PolicyChange(), NodeAdded(5)},
+		},
+		{
+			name:    "recompute carrying OriginNode is kept alongside the canonical one",
+			changes: []Change{PolicyChange(), originRecompute, PolicyChange()},
+			want:    []Change{PolicyChange(), originRecompute},
+		},
+		{
+			name:    "non-canonical recomputes are not collapsed",
+			changes: []Change{originRecompute, originRecompute},
+			want:    []Change{originRecompute, originRecompute},
+		},
+		{
+			name:    "changes without any recompute are unchanged",
+			changes: []Change{NodeOnline(1), DERPMap()},
+			want:    []Change{NodeOnline(1), DERPMap()},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := DedupePolicyChanges(tt.changes)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestChange_Constructors(t *testing.T) {
 	tests := []struct {
 		name        string

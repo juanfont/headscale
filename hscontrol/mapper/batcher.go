@@ -630,6 +630,9 @@ func (b *Batcher) processBatchedChanges() {
 			return true
 		}
 
+		// One policy recompute rebuilds the whole netmap; drop same-tick repeats.
+		pending = change.DedupePolicyChanges(pending)
+
 		// Queue a single work item containing all pending changes.
 		// One item per node ensures a single worker processes them
 		// sequentially, preventing out-of-order delivery.
