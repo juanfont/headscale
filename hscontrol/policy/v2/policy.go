@@ -45,6 +45,15 @@ type PolicyManager struct {
 	autoApproveMapHash deephash.Sum
 	autoApproveMap     map[netip.Prefix]*netipx.IPSet
 
+	// relayTargetIPs holds the IPs of nodes that are destinations of a
+	// tailscale.com/cap/relay grant; viaTargetTags holds the tags used as
+	// via targets. A node matching either, or that is a subnet router,
+	// forces peers to recompute their netmap when its online state changes
+	// (see [PolicyManager.NodeNeedsPeerRecompute]). Recomputed from the
+	// compiled grants on every policy/user/node change.
+	relayTargetIPs *netipx.IPSet
+	viaTargetTags  map[Tag]struct{}
+
 	// Lazy map of SSH policies
 	sshPolicyMap map[types.NodeID]*tailcfg.SSHPolicy
 
@@ -223,6 +232,14 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	pm.compiledGrants = pm.pol.compileGrants(pm.users, pm.nodes)
 	pm.userNodeIdx = buildUserNodeIndex(pm.nodes)
 	pm.needsPerNodeFilter = hasPerNodeGrants(pm.compiledGrants)
+	pm.viaTargetTags = collectViaTargetTags(pm.compiledGrants)
+
+	relayTargetIPs, err := collectRelayTargetIPs(pm.compiledGrants)
+	if err != nil {
+		return false, fmt.Errorf("collecting relay target IPs: %w", err)
+	}
+
+	pm.relayTargetIPs = relayTargetIPs
 
 	var filter []tailcfg.FilterRule
 	if pm.pol == nil || (pm.pol.ACLs == nil && pm.pol.Grants == nil) {
@@ -358,6 +375,45 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 		Msg("Policy changes require node updates")
 
 	return true, nil
+}
+
+// NodeNeedsPeerRecompute reports whether peers must recompute their netmap
+// when node's online state changes. A plain node only needs the lightweight
+// online/offline peer patch; these roles change what peers compute when the
+// node goes up or down, so they require a full recompute:
+//   - subnet router: primary-route failover changes peers' AllowedIPs
+//   - relay target (tailscale.com/cap/relay): peers must drop a stale
+//     PeerRelay allocation
+//   - via target: peers steer traffic through this node
+//
+// The check is keyed on the node itself, so an ordinary node in a tailnet
+// that uses relay or via for other nodes is correctly classified as not
+// needing a recompute.
+func (pm *PolicyManager) NodeNeedsPeerRecompute(node types.NodeView) bool {
+	if !node.Valid() {
+		return false
+	}
+
+	// Subnet-router status is intrinsic to the node, so it needs no policy
+	// state and is checked without the lock.
+	if node.IsSubnetRouter() {
+		return true
+	}
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	if pm.relayTargetIPs != nil && node.InIPSet(pm.relayTargetIPs) {
+		return true
+	}
+
+	for tag := range pm.viaTargetTags {
+		if node.HasTag(string(tag)) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // SSHPolicy returns the [tailcfg.SSHPolicy] for node, compiling and
