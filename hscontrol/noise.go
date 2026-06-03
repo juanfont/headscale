@@ -830,7 +830,7 @@ func (ns *noiseServer) SetDNSHandler(writer http.ResponseWriter, req *http.Reque
 
 	var dnsReq tailcfg.SetDNSRequest
 	if err := json.NewDecoder(req.Body).Decode(&dnsReq); err != nil {
-		httpError(writer, err)
+		httpError(writer, NewHTTPError(http.StatusBadRequest, "invalid SetDNSRequest body", err))
 		return
 	}
 
@@ -858,8 +858,16 @@ func (ns *noiseServer) SetDNSHandler(writer http.ResponseWriter, req *http.Reque
 		return
 	}
 
-	ns.headscale.acmeDNS.SetTXT(dnsReq.Name, dnsReq.Value)
+	if dnsReq.Value == "" || len(dnsReq.Value) > 255 {
+		httpError(writer, NewHTTPError(
+			http.StatusBadRequest,
+			"invalid TXT record value",
+			fmt.Errorf("TXT value length must be 1..255, got %d", len(dnsReq.Value)),
+		))
+		return
+	}
 
+	ns.headscale.acmeDNS.SetTXT(dnsReq.Name, dnsReq.Value)
 	log.Debug().
 		Caller().
 		Uint64("node.id", nv.ID().Uint64()).

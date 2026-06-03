@@ -92,18 +92,44 @@ func NewACMEChallengeServer(zone, nameserver, listenAddr string) *ACMEChallengeS
 // values so concurrent challenges for the same name coexist; each value is
 // retained for acmeRecordTTL after it was last set.
 func (s *ACMEChallengeServer) SetTXT(name, value string) {
+	const maxTXTValuesPerName = 8
+
 	name = dns.CanonicalName(name)
 	expires := time.Now().Add(acmeRecordTTL)
+	now := time.Now()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Drop expired values eagerly so a stale set doesn't count against the cap.
 	recs := s.records[name]
+	kept := recs[:0]
+	for _, r := range recs {
+		if now.Before(r.expires) {
+			kept = append(kept, r)
+		}
+	}
+	recs = kept
+
 	for i := range recs {
 		if recs[i].value == value {
 			recs[i].expires = expires
+			s.records[name] = recs
 			return
 		}
+	}
+
+	if len(recs) >= maxTXTValuesPerName {
+		// Replace the record that expires soonest to keep memory bounded.
+		repl := 0
+		for i := 1; i < len(recs); i++ {
+			if recs[i].expires.Before(recs[repl].expires) {
+				repl = i
+			}
+		}
+		recs[repl] = txtRecord{value: value, expires: expires}
+		s.records[name] = recs
+		return
 	}
 
 	s.records[name] = append(recs, txtRecord{value: value, expires: expires})
@@ -140,26 +166,32 @@ func (s *ACMEChallengeServer) Start() error {
 			Handler: dns.HandlerFunc(s.serveDNS),
 		}
 
-		// NotifyStartedFunc fires only after the listener is bound. If
-		// binding fails, ListenAndServe returns the error before it fires,
-		// so the goroutine reports that error to startErr instead.
+		// NotifyStartedFunc fires only after the listener is bound. If binding fails,
+		// ListenAndServe returns the error before it fires.
 		startErr := make(chan error, 1)
-		srv.NotifyStartedFunc = func() { startErr <- nil }
+		started := make(chan struct{})
+		srv.NotifyStartedFunc = func() {
+			close(started)
+			startErr <- nil
+		}
 
-		go func() {
+		go func(network string) {
 			err := srv.ListenAndServe()
+
 			select {
-			case startErr <- err:
-			default:
-				if err != nil {
-					log.Error().
-						Caller().
-						Err(err).
-						Str("net", network).
-						Msg("ACME challenge DNS server stopped")
+			case <-started:
+				select {
+				case <-s.closeCh:
+					return // expected shutdown
+				default:
 				}
+				if err != nil {
+					log.Error().Caller().Err(err).Str("net", network).Msg("ACME challenge DNS server stopped")
+				}
+			default:
+				startErr <- err
 			}
-		}()
+		}(network)
 
 		if err := <-startErr; err != nil {
 			s.Close()

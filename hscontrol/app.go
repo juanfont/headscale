@@ -683,10 +683,15 @@ func (h *Headscale) Serve() error {
 	// tailscale cert). base_domain must be publicly delegated to this
 	// server for the challenges to validate.
 	if h.cfg.DNSConfig.HTTPSCerts.Enabled {
+		listenAddr := h.cfg.DNSConfig.HTTPSCerts.ListenAddr
+		if listenAddr == "" {
+			listenAddr = ":53"
+		}
+
 		h.acmeDNS = dns.NewACMEChallengeServer(
 			h.cfg.BaseDomain,
 			h.cfg.DNSConfig.HTTPSCerts.Nameserver,
-			h.cfg.DNSConfig.HTTPSCerts.ListenAddr,
+			listenAddr,
 		)
 		if err := h.acmeDNS.Start(); err != nil {
 			return fmt.Errorf("starting ACME challenge DNS server: %w", err)
@@ -694,9 +699,10 @@ func (h *Headscale) Serve() error {
 		defer h.acmeDNS.Close()
 
 		log.Info().
-			Str("listen_addr", h.cfg.DNSConfig.HTTPSCerts.ListenAddr).
+			Str("listen_addr", listenAddr).
 			Str("zone", h.cfg.BaseDomain).
 			Msg("authoritative DNS server for per-node HTTPS certificates started")
+	}
 	}
 
 	// Start all scheduled tasks, e.g. expiring nodes, derp updates and
