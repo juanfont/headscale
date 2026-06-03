@@ -321,6 +321,7 @@ jobs:
           - TestHASubnetRouterFailoverDockerDisconnect
           - TestHeadscale
           - TestTailscaleNodesJoiningHeadcale
+          - TestServeHTTPSCertDomains
           - TestSSHOneUserToAll
           - TestSSHMultipleUsersAllToAll
           - TestSSHNoSSHConfigured
