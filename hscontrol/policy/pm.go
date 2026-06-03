@@ -36,6 +36,14 @@ type PolicyManager interface {
 	// NodeCanApproveRoute reports whether the given node can approve the given route.
 	NodeCanApproveRoute(node types.NodeView, route netip.Prefix) bool
 
+	// NodeNeedsPeerRecompute reports whether peers must recompute their
+	// netmap when the node's online state changes. True for subnet
+	// routers, relay targets (tailscale.com/cap/relay), and via targets;
+	// false for ordinary nodes, which only need a lightweight online or
+	// offline peer patch. [State.Connect] and [State.Disconnect] use it to
+	// avoid a tailnet-wide recompute on every ordinary reconnect.
+	NodeNeedsPeerRecompute(node types.NodeView) bool
+
 	// ViaRoutesForPeer computes via grant effects for a viewer-peer pair.
 	// It returns which routes should be included (peer is via-designated for viewer)
 	// and excluded (steered to a different peer). When no via grants apply,
