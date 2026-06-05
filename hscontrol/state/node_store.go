@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -107,6 +108,12 @@ type NodeStore struct {
 	peersFunc  PeersFunc
 	writeQueue chan work
 
+	// stopped is closed once by Stop to signal the writer goroutine to exit
+	// and to let in-flight writes return cleanly instead of panicking with
+	// "send on closed channel" during shutdown.
+	stopped  chan struct{}
+	stopOnce sync.Once
+
 	batchSize    int
 	batchTimeout time.Duration
 }
@@ -123,6 +130,7 @@ func NewNodeStore(allNodes types.Nodes, peersFunc PeersFunc, batchSize int, batc
 		peersFunc:    peersFunc,
 		batchSize:    batchSize,
 		batchTimeout: batchTimeout,
+		stopped:      make(chan struct{}),
 	}
 	store.data.Store(&snap)
 
@@ -199,7 +207,13 @@ func (s *NodeStore) PutNode(n types.Node) types.NodeView {
 
 	nodeStoreQueueDepth.Inc()
 
-	s.writeQueue <- work
+	select {
+	case s.writeQueue <- work:
+	case <-s.stopped:
+		nodeStoreQueueDepth.Dec()
+
+		return types.NodeView{}
+	}
 
 	<-work.result
 	nodeStoreQueueDepth.Dec()
@@ -258,7 +272,13 @@ func (s *NodeStore) UpdateNodes(updates map[types.NodeID]UpdateNodeFunc) {
 
 	nodeStoreQueueDepth.Inc()
 
-	s.writeQueue <- w
+	select {
+	case s.writeQueue <- w:
+	case <-s.stopped:
+		nodeStoreQueueDepth.Dec()
+
+		return
+	}
 
 	<-w.result
 	nodeStoreQueueDepth.Dec()
@@ -280,7 +300,13 @@ func (s *NodeStore) DeleteNode(id types.NodeID) {
 
 	nodeStoreQueueDepth.Inc()
 
-	s.writeQueue <- work
+	select {
+	case s.writeQueue <- work:
+	case <-s.stopped:
+		nodeStoreQueueDepth.Dec()
+
+		return
+	}
 
 	<-work.result
 	nodeStoreQueueDepth.Dec()
@@ -317,7 +343,13 @@ func (s *NodeStore) SetGivenName(id types.NodeID, name string) (types.NodeView, 
 
 	nodeStoreQueueDepth.Inc()
 
-	s.writeQueue <- w
+	select {
+	case s.writeQueue <- w:
+	case <-s.stopped:
+		nodeStoreQueueDepth.Dec()
+
+		return types.NodeView{}, nil
+	}
 
 	<-w.result
 	nodeStoreQueueDepth.Dec()
@@ -338,9 +370,13 @@ func (s *NodeStore) Start() {
 	go s.processWrite()
 }
 
-// Stop stops the [NodeStore].
+// Stop stops the [NodeStore]. It signals the writer goroutine via stopped
+// rather than closing writeQueue, so writes racing shutdown drop cleanly
+// instead of panicking on a closed channel.
 func (s *NodeStore) Stop() {
-	close(s.writeQueue)
+	s.stopOnce.Do(func() {
+		close(s.stopped)
+	})
 }
 
 // processWrite processes the write queue in batches.
@@ -352,16 +388,7 @@ func (s *NodeStore) processWrite() {
 
 	for {
 		select {
-		case w, ok := <-s.writeQueue:
-			if !ok {
-				// Channel closed, apply any remaining batch and exit
-				if len(batch) != 0 {
-					s.applyBatch(batch)
-				}
-
-				return
-			}
-
+		case w := <-s.writeQueue:
 			batch = append(batch, w)
 			if len(batch) >= s.batchSize {
 				s.applyBatch(batch)
@@ -376,6 +403,14 @@ func (s *NodeStore) processWrite() {
 			}
 
 			c.Reset(s.batchTimeout)
+		case <-s.stopped:
+			// Apply any remaining batch so in-flight writers receive their
+			// results, then exit.
+			if len(batch) != 0 {
+				s.applyBatch(batch)
+			}
+
+			return
 		}
 	}
 }
