@@ -377,7 +377,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 				continue
 			}
 
-			h.cfg.TailcfgDNSConfig.ExtraRecords = records
+			h.cfg.SetExtraRecords(records)
 
 			h.Change(change.ExtraRecords())
 
@@ -667,7 +667,7 @@ func (h *Headscale) Serve() error {
 			return fmt.Errorf("setting up extrarecord manager: %w", err)
 		}
 
-		h.cfg.TailcfgDNSConfig.ExtraRecords = h.extraRecordMan.Records()
+		h.cfg.SetExtraRecords(h.extraRecordMan.Records())
 
 		go h.extraRecordMan.Run()
 		defer h.extraRecordMan.Close()
