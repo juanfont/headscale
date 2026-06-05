@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -102,6 +103,25 @@ func GenerateIPv4DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 
 	// wildcardBits is the number of bits not under the mask in the lastOctet
 	wildcardBits := ByteSize - maskBits%ByteSize
+
+	// A mask covering the full address width (an IPv4 /32) leaves no wildcard
+	// octet, so lastOctet would index past the address. Emit the single
+	// reverse-DNS name for that exact address instead of panicking.
+	if lastOctet >= len(netRange.IP) {
+		rdnsSlice := make([]string, 0, len(netRange.IP)+1)
+		for _, v := range slices.Backward(netRange.IP) {
+			rdnsSlice = append(rdnsSlice, strconv.FormatUint(uint64(v), 10))
+		}
+
+		rdnsSlice = append(rdnsSlice, "in-addr.arpa.")
+
+		fqdn, err := dnsname.ToFQDN(strings.Join(rdnsSlice, "."))
+		if err != nil {
+			return nil
+		}
+
+		return []dnsname.FQDN{fqdn}
+	}
 
 	// minVal is the value in the lastOctet byte of the IP
 	// maxVal is basically 2^wildcardBits - i.e., the value when all the wildcardBits are set to 1
