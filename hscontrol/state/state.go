@@ -2559,6 +2559,7 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		autoApprovedRoutes []netip.Prefix
 		endpointChanged    bool
 		derpChanged        bool
+		persistWorthy      bool
 	)
 	// Snapshot the primary assignment so we can tell whether the
 	// Hostinfo + auto-approval that follows shifted any prefix.
@@ -2584,6 +2585,13 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 
 		// Re-check hostinfoChanged after potential NetInfo preservation
 		hostinfoChanged = !hostinfoEqual(currentNode.View(), req.Hostinfo)
+
+		// A change carrying only an updated LastSeen is not worth a full-row
+		// database UPDATE plus the O(n) policy rescan persistNodeToDB triggers:
+		// LastSeen is best-effort and rides along the next substantive write.
+		// PeerChangeFromMapRequest always stamps LastSeen, so test the other
+		// fields explicitly.
+		persistWorthy = peerChangePersistWorthy(peerChange) || hostinfoChanged
 
 		// If there is no changes and nothing to save,
 		// return early.
@@ -2720,9 +2728,18 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		nodeRouteChange = change.PolicyChange()
 	}
 
-	_, policyChange, err := s.persistNodeToDB(updatedNode)
-	if err != nil {
-		return change.Change{}, fmt.Errorf("saving to database: %w", err)
+	// A no-op MapRequest (identical re-send / reconnect with matching state)
+	// leaves the node untouched, so skip the full-row UPDATE and the O(n)
+	// policy SetNodes scan that persistNodeToDB performs.
+	policyChange := change.Change{}
+
+	if persistWorthy {
+		var err error
+
+		_, policyChange, err = s.persistNodeToDB(updatedNode)
+		if err != nil {
+			return change.Change{}, fmt.Errorf("saving to database: %w", err)
+		}
 	}
 
 	if !policyChange.IsEmpty() {
@@ -2811,4 +2828,17 @@ func peerChangeEmpty(peerChange tailcfg.PeerChange) bool {
 		peerChange.DERPRegion == 0 &&
 		peerChange.LastSeen == nil &&
 		peerChange.KeyExpiry == nil
+}
+
+// peerChangePersistWorthy reports whether a peer change carries anything that
+// warrants a database write. It deliberately ignores LastSeen, which
+// [Node.PeerChangeFromMapRequest] always stamps: a keepalive that only bumps
+// LastSeen should not trigger a full-row UPDATE and policy rescan.
+func peerChangePersistWorthy(peerChange tailcfg.PeerChange) bool {
+	return peerChange.Key != nil ||
+		peerChange.DiscoKey != nil ||
+		peerChange.Online != nil ||
+		peerChange.Endpoints != nil ||
+		peerChange.DERPRegion != 0 ||
+		peerChange.KeyExpiry != nil
 }
