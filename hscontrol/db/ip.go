@@ -251,6 +251,12 @@ func randomNext(pfx netip.Prefix) (netip.Addr, error) {
 	// after.
 	tempMax := big.NewInt(0).Sub(&to, &from)
 
+	// A single-address prefix (/32 or /128) has from == to, so tempMax is 0 and
+	// rand.Int would panic on a non-positive bound. Return the sole address.
+	if tempMax.Sign() <= 0 {
+		return fromIP, nil
+	}
+
 	out, err := rand.Int(rand.Reader, tempMax)
 	if err != nil {
 		return netip.Addr{}, fmt.Errorf("generating random IP: %w", err)
@@ -258,7 +264,10 @@ func randomNext(pfx netip.Prefix) (netip.Addr, error) {
 
 	valInRange := big.NewInt(0).Add(&from, out)
 
-	ip, ok := netip.AddrFromSlice(valInRange.Bytes())
+	// big.Int.Bytes() strips leading zero bytes, so a value with a zero high
+	// byte yields a too-short slice that AddrFromSlice rejects. Pad to the
+	// prefix's address width.
+	ip, ok := netip.AddrFromSlice(valInRange.FillBytes(make([]byte, len(fromIP.AsSlice()))))
 	if !ok {
 		return netip.Addr{}, errGeneratedIPBytesInvalid
 	}
