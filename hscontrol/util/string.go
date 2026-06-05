@@ -32,9 +32,18 @@ func GenerateRandomBytes(n int) ([]byte, error) {
 func GenerateRandomStringURLSafe(n int) (string, error) {
 	b, err := GenerateRandomBytes(n)
 
-	uenc := base64.RawURLEncoding.EncodeToString(b)
+	return encodeRandomURLSafe(b, n, err)
+}
 
-	return uenc[:n], err
+// encodeRandomURLSafe URL-safe base64-encodes b and truncates to n. It checks
+// err first: on an RNG failure b is nil, so slicing the empty encoding would
+// panic instead of returning the ("", err) the caller is promised.
+func encodeRandomURLSafe(b []byte, n int, err error) (string, error) {
+	if err != nil {
+		return "", err
+	}
+
+	return base64.RawURLEncoding.EncodeToString(b)[:n], nil
 }
 
 // GenerateRandomStringDNSSafe returns a DNS-safe
