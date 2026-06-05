@@ -1606,7 +1606,7 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 		case !wasTagged && isTagged:
 			// Personal → Tagged: clear expiry (tagged nodes don't expire)
 			node.Expiry = nil
-		case params.IsConvertFromTag:
+		case params.IsConvertFromTag && !isTagged:
 			// Explicit conversion from tagged to user-owned: set expiry from client request
 			if params.Expiry != nil {
 				node.Expiry = params.Expiry
