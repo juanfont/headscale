@@ -89,6 +89,36 @@ func TestEphemeralGarbageCollectorGoRoutineLeak(t *testing.T) {
 	t.Logf("Final number of goroutines: %d", runtime.NumGoroutine())
 }
 
+// TestEphemeralGarbageCollectorCancelReapsGoroutine verifies that Cancel (and
+// reschedule) reaps the per-node watcher goroutine while the collector is still
+// running, rather than leaking it until Close. The production churn path is an
+// ephemeral node disconnecting (Schedule) then reconnecting (Cancel) before the
+// long expiry timer fires; a stopped timer never fires, so a watcher parked
+// only on <-timer.C would otherwise leak on every cycle.
+func TestEphemeralGarbageCollectorCancelReapsGoroutine(t *testing.T) {
+	gc := NewEphemeralGarbageCollector(func(types.NodeID) {})
+
+	go gc.Start()
+	defer gc.Close()
+
+	baseline := runtime.NumGoroutine()
+
+	const (
+		iterations = 1000
+		nodeID     = types.NodeID(42)
+	)
+
+	for range iterations {
+		gc.Schedule(nodeID, time.Hour) // disconnect: long timer, will not fire
+		gc.Cancel(nodeID)              // reconnect: must reap the watcher
+	}
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.LessOrEqual(c, runtime.NumGoroutine(), baseline+10,
+			"per-node goroutines leaked on Cancel/reschedule")
+	}, 2*time.Second, 20*time.Millisecond, "watcher goroutines should be reaped")
+}
+
 // TestEphemeralGarbageCollectorReschedule is a test for the rescheduling of nodes in [EphemeralGarbageCollector].
 // It creates a new [EphemeralGarbageCollector], schedules a node for deletion with a longer expiry,
 // and then reschedules it with a shorter expiry, and verifies that the node is deleted only once.
