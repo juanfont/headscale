@@ -735,19 +735,21 @@ func (node *Node) ApplyPeerChange(change *tailcfg.PeerChange) {
 	// This might technically not be useful as we replace
 	// the whole hostinfo blob when it has changed.
 	if change.DERPRegion != 0 {
-		if node.Hostinfo == nil {
-			node.Hostinfo = &tailcfg.Hostinfo{
-				NetInfo: &tailcfg.NetInfo{
-					PreferredDERP: change.DERPRegion,
-				},
-			}
-		} else if node.Hostinfo.NetInfo == nil {
-			node.Hostinfo.NetInfo = &tailcfg.NetInfo{
-				PreferredDERP: change.DERPRegion,
-			}
-		} else {
-			node.Hostinfo.NetInfo.PreferredDERP = change.DERPRegion
+		// [NodeStore] publishes snapshots that share the *Hostinfo /
+		// *NetInfo pointers, so writing PreferredDERP in place would race
+		// readers of an already-published snapshot. Clone to fresh pointers
+		// and assign, leaving the previous snapshot untouched.
+		hi := node.Hostinfo.Clone()
+		if hi == nil {
+			hi = &tailcfg.Hostinfo{}
 		}
+
+		if hi.NetInfo == nil {
+			hi.NetInfo = &tailcfg.NetInfo{}
+		}
+
+		hi.NetInfo.PreferredDERP = change.DERPRegion
+		node.Hostinfo = hi
 	}
 
 	node.LastSeen = change.LastSeen
