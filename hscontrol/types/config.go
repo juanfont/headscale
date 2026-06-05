@@ -712,8 +712,8 @@ func derpConfig() DERPConfig {
 
 	urlStrs := viper.GetStringSlice("derp.urls")
 
-	urls := make([]url.URL, len(urlStrs))
-	for index, urlStr := range urlStrs {
+	urls := make([]url.URL, 0, len(urlStrs))
+	for _, urlStr := range urlStrs {
 		urlAddr, err := url.Parse(urlStr)
 		if err != nil {
 			log.Error().
@@ -721,9 +721,11 @@ func derpConfig() DERPConfig {
 				Str("url", urlStr).
 				Err(err).
 				Msg("Failed to parse url, ignoring...")
+
+			continue
 		}
 
-		urls[index] = *urlAddr
+		urls = append(urls, *urlAddr)
 	}
 
 	paths := viper.GetStringSlice("derp.paths")
