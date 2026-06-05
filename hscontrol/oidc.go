@@ -919,12 +919,14 @@ func renderAuthSuccessTemplate(
 	return bytes.NewBufferString(templates.AuthSuccess(result).Render())
 }
 
-// getCookieName generates a unique cookie name based on a cookie value.
-// Callers must ensure value has at least [cookieNamePrefixLen] bytes;
-// [extractCodeAndStateParamFromRequest] enforces this for the state
-// parameter, and [setCSRFCookie] always supplies a 64-byte random value.
+// getCookieName generates a unique cookie name based on a cookie value. It
+// uses at most [cookieNamePrefixLen] bytes of value, and fewer if value is
+// shorter, so a short value (e.g. a malformed nonce from a misbehaving IdP)
+// yields a non-matching name rather than panicking with slice-out-of-range.
 func getCookieName(baseName, value string) string {
-	return fmt.Sprintf("%s_%s", baseName, value[:cookieNamePrefixLen])
+	n := min(len(value), cookieNamePrefixLen)
+
+	return fmt.Sprintf("%s_%s", baseName, value[:n])
 }
 
 func setCSRFCookie(w http.ResponseWriter, r *http.Request, name string) (string, error) {
