@@ -170,6 +170,11 @@ type State struct {
 	// Ref: https://github.com/tailscale/tailscale/issues/7125
 	sshCheckAuth map[sshCheckPair]time.Time
 	sshCheckMu   sync.RWMutex
+
+	// persistMu serialises the re-read-and-write critical section in
+	// persistNodeToDB so the database row always converges on [NodeStore]
+	// rather than being clobbered by a stale caller snapshot.
+	persistMu sync.Mutex
 }
 
 // NewState creates and initializes a new [State] instance, setting up the database,
@@ -487,13 +492,23 @@ func (s *State) persistNodeToDB(node types.NodeView) (types.NodeView, change.Cha
 		return types.NodeView{}, change.Change{}, ErrInvalidNodeView
 	}
 
-	// Verify the node still exists in [NodeStore] before persisting to database.
-	// Without this check, we could hit a race condition where [NodeStore.UpdateNode]
-	// returns a valid node from a batch update, then the node gets deleted (e.g.,
-	// ephemeral node logout), and persistNodeToDB would incorrectly re-insert the
-	// deleted node into the database.
-	_, exists := s.nodeStore.GetNode(node.ID())
+	// [NodeStore] is the source of truth and every caller updates it before
+	// persisting. Re-read the authoritative node under persistMu and write
+	// that, rather than the caller's `node` view which may have been captured
+	// earlier (e.g. at the top of UpdateNodeFromMapRequest) and gone stale
+	// behind a concurrent admin write such as SetNodeTags. Serialising the
+	// read+write keeps the database row converging on [NodeStore] instead of
+	// reverting it to an out-of-date column set.
+	//
+	// The same re-read also guards against the node having been deleted (e.g.
+	// ephemeral logout) between the caller's update and this persist: a missing
+	// node means we must not re-insert it.
+	s.persistMu.Lock()
+
+	fresh, exists := s.nodeStore.GetNode(node.ID())
 	if !exists {
+		s.persistMu.Unlock()
+
 		log.Warn().
 			EmbedObject(node).
 			Bool("is_ephemeral", node.IsEphemeral()).
@@ -502,13 +517,14 @@ func (s *State) persistNodeToDB(node types.NodeView) (types.NodeView, change.Cha
 		return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, node.ID())
 	}
 
-	nodePtr := node.AsStruct()
+	nodePtr := fresh.AsStruct()
 
 	// Explicitly select all node columns so GORM includes nil/zero-value
 	// fields (e.g. UserID=nil when converting a user-owned node to tagged).
 	// Omit "Expiry" here: expiry is only updated through explicit
 	// SetNodeExpiry calls or re-registration, not during MapRequest updates.
 	err := s.db.DB.Select(nodeUpdateColumns).Omit("Expiry").Updates(nodePtr).Error
+	s.persistMu.Unlock()
 	if err != nil {
 		return types.NodeView{}, change.Change{}, fmt.Errorf("saving node: %w", err)
 	}
@@ -516,14 +532,14 @@ func (s *State) persistNodeToDB(node types.NodeView) (types.NodeView, change.Cha
 	// Check if policy manager needs updating
 	c, err := s.updatePolicyManagerNodes()
 	if err != nil {
-		return nodePtr.View(), change.Change{}, fmt.Errorf("updating policy manager after node save: %w", err)
+		return fresh, change.Change{}, fmt.Errorf("updating policy manager after node save: %w", err)
 	}
 
 	if c.IsEmpty() {
 		c = change.NodeAdded(node.ID())
 	}
 
-	return node, c, nil
+	return fresh, c, nil
 }
 
 func (s *State) SaveNode(node types.NodeView) (types.NodeView, change.Change, error) {
