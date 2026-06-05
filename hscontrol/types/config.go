@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -1480,5 +1481,35 @@ func (d *deprecator) Log() {
 		log.Fatal().Msg("\n" + d.String())
 	} else if len(d.warns) > 0 {
 		log.Warn().Msg("\n" + d.String())
+	}
+}
+
+// tailcfgDNSMu guards concurrent access to the mutable ExtraRecords of
+// [Config.TailcfgDNSConfig] between the extra-records file watcher (writer)
+// and the per-client map builds that clone it (readers). It is a package-level
+// lock so [Config] stays freely copyable during construction.
+var tailcfgDNSMu sync.RWMutex
+
+// CloneTailcfgDNSConfig returns a deep copy of [Config.TailcfgDNSConfig], or
+// nil if none is set. Safe for concurrent use with [Config.SetExtraRecords].
+func (c *Config) CloneTailcfgDNSConfig() *tailcfg.DNSConfig {
+	tailcfgDNSMu.RLock()
+	defer tailcfgDNSMu.RUnlock()
+
+	if c.TailcfgDNSConfig == nil {
+		return nil
+	}
+
+	return c.TailcfgDNSConfig.Clone()
+}
+
+// SetExtraRecords replaces the ExtraRecords of [Config.TailcfgDNSConfig]. Safe
+// for concurrent use with [Config.CloneTailcfgDNSConfig].
+func (c *Config) SetExtraRecords(records []tailcfg.DNSRecord) {
+	tailcfgDNSMu.Lock()
+	defer tailcfgDNSMu.Unlock()
+
+	if c.TailcfgDNSConfig != nil {
+		c.TailcfgDNSConfig.ExtraRecords = records
 	}
 }
