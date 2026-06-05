@@ -7,8 +7,8 @@ import (
 	"net/http"
 	textTemplate "text/template"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/gofrs/uuid/v5"
-	"github.com/gorilla/mux"
 	"github.com/juanfont/headscale/hscontrol/templates"
 )
 
@@ -36,10 +36,8 @@ func (h *Headscale) ApplePlatformConfig(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
-	vars := mux.Vars(req)
-
-	platform, ok := vars["platform"]
-	if !ok {
+	platform := chi.URLParam(req, "platform")
+	if platform == "" {
 		httpError(writer, NewHTTPError(http.StatusBadRequest, "no platform specified", nil))
 		return
 	}
