@@ -200,30 +200,40 @@ func (i *IPAllocator) next(prev netip.Addr, prefix *netip.Prefix) (*netip.Addr, 
 		return nil, err
 	}
 
+	// Walk forward from the starting address until a free, non-reserved
+	// address inside the prefix is found. The random strategy only picks the
+	// starting point at random and then scans deterministically: this keeps
+	// the loop finite, so an exhausted prefix returns ErrCouldNotAllocateIP
+	// instead of re-drawing in-prefix addresses forever under i.mu.
+	start := ip
 	for {
-		if !prefix.Contains(ip) {
-			return nil, ErrCouldNotAllocateIP
+		if prefix.Contains(ip) && !set.Contains(ip) && !isTailscaleReservedIP(ip) {
+			i.usedIPs.Add(ip)
+
+			return &ip, nil
 		}
 
-		// Check if the IP has already been allocated
-		// or if it is a IP reserved by Tailscale.
-		if set.Contains(ip) || isTailscaleReservedIP(ip) {
-			switch i.strategy {
-			case types.IPAllocationStrategySequential:
-				ip = ip.Next()
-			case types.IPAllocationStrategyRandom:
-				ip, err = randomNext(*prefix)
-				if err != nil {
-					return nil, fmt.Errorf("getting random IP: %w", err)
-				}
+		ip = ip.Next()
+
+		switch i.strategy {
+		case types.IPAllocationStrategySequential:
+			// Sequential allocation never wraps: walking past the end of
+			// the prefix means the pool is exhausted.
+			if !prefix.Contains(ip) {
+				return nil, ErrCouldNotAllocateIP
+			}
+		case types.IPAllocationStrategyRandom:
+			// Random allocation wraps within the prefix so every address is
+			// examined exactly once; returning to the start means the prefix
+			// is exhausted.
+			if !prefix.Contains(ip) {
+				ip = prefix.Masked().Addr()
 			}
 
-			continue
+			if ip == start {
+				return nil, ErrCouldNotAllocateIP
+			}
 		}
-
-		i.usedIPs.Add(ip)
-
-		return &ip, nil
 	}
 }
 
