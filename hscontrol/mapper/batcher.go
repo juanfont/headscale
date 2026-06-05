@@ -310,7 +310,12 @@ func (b *Batcher) AddNode(
 	// and we want to avoid the race condition where the receiver isn't ready yet
 	select {
 	case c <- initialMap:
-		// Success
+		// Record sent peers only after confirmed delivery, mirroring the async
+		// path, and under workMu so a concurrent async bundle for this node
+		// cannot interleave its own lastSentPeers update.
+		nodeConn.workMu.Lock()
+		nodeConn.updateSentPeers(initialMap)
+		nodeConn.workMu.Unlock()
 	case <-time.After(5 * time.Second): //nolint:mnd
 		nlog.Error().Err(ErrInitialMapSendTimeout).Msg("initial map send timeout")
 		nlog.Debug().Caller().Dur("timeout.duration", 5*time.Second). //nolint:mnd
@@ -483,9 +488,11 @@ func (b *Batcher) worker(workerID int) {
 							Uint64(zf.NodeID, w.nodeID.Uint64()).
 							Str(zf.Reason, w.changes[0].Reason).
 							Msg("failed to generate map response for synchronous work")
-					} else if result.mapResponse != nil {
-						nc.updateSentPeers(result.mapResponse)
 					}
+					// Peer tracking is recorded by the caller (AddNode) only
+					// after the initial map is actually delivered; recording it
+					// here, before delivery, would leave phantom lastSentPeers
+					// if the send times out.
 
 					nc.workMu.Unlock()
 				} else {
