@@ -109,7 +109,10 @@ func (hsdb *HSDatabase) GetAPIKey(prefix string) (*types.APIKey, error) {
 // GetAPIKeyByID returns a [types.APIKey] for a given id.
 func (hsdb *HSDatabase) GetAPIKeyByID(id uint64) (*types.APIKey, error) {
 	key := types.APIKey{}
-	if result := hsdb.DB.Find(&types.APIKey{ID: id}).First(&key); result.Error != nil {
+	// Query on an explicit primary-key clause: a struct condition would drop a
+	// zero-valued ID, making the lookup unconditional and returning the first
+	// row instead of not-found.
+	if result := hsdb.DB.First(&key, "id = ?", id); result.Error != nil {
 		return nil, result.Error
 	}
 
