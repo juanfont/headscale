@@ -56,6 +56,13 @@ type multiChannelNodeConn struct {
 	// Range in [multiChannelNodeConn.computePeerDiff]).
 	workMu sync.Mutex
 
+	// inFlight is true while a batched work bundle for this node is queued or
+	// being processed. processBatchedChanges refuses to queue a second bundle
+	// while one is in flight (the new changes wait in pending), so a saturated
+	// worker pool cannot deliver tick N+1 before tick N: a non-FIFO workMu
+	// cannot reorder bundles that never coexist.
+	inFlight atomic.Bool
+
 	closeOnce   sync.Once
 	updateCount atomic.Int64
 

@@ -544,6 +544,9 @@ func (b *Batcher) worker(workerID int) {
 					}
 				}
 				nc.workMu.Unlock()
+
+				// Bundle delivered; allow the next tick's bundle to queue.
+				nc.inFlight.Store(false)
 			}
 		case <-b.done:
 			wlog.Debug().Msg("batcher shutting down, exiting worker")
@@ -645,6 +648,14 @@ func (b *Batcher) processBatchedChanges() {
 			return true
 		}
 
+		// Only one batched bundle per node may be in flight at a time. If the
+		// previous tick's bundle is still queued or processing, leave this
+		// tick's changes in pending; they are picked up once it completes. This
+		// keeps delivery ordered even when the worker pool is saturated.
+		if nc.inFlight.Load() {
+			return true
+		}
+
 		pending := nc.drainPending()
 		if len(pending) == 0 {
 			return true
@@ -654,8 +665,7 @@ func (b *Batcher) processBatchedChanges() {
 		pending = change.DedupePolicyChanges(pending)
 
 		// Queue a single work item containing all pending changes.
-		// One item per node ensures a single worker processes them
-		// sequentially, preventing out-of-order delivery.
+		nc.inFlight.Store(true)
 		b.queueWork(work{changes: pending, nodeID: nodeID, resultCh: nil})
 
 		return true
