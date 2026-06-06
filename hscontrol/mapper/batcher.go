@@ -283,15 +283,28 @@ func (b *Batcher) AddNode(
 	// Initialize last used timestamp
 	newEntry.lastUsed.Store(now.Unix())
 
-	// Get or create multiChannelNodeConn - this reuses existing offline nodes for rapid reconnection
-	nodeConn, loaded := b.nodes.LoadOrStore(id, newMultiChannelNodeConn(id, b.mapper))
+	// Get or create the multiChannelNodeConn and register this connection in a
+	// single Compute so the new connection is visible atomically. Doing the
+	// LoadOrStore and addConnection as separate steps let cleanupOfflineNodes
+	// (which deletes via Compute when hasActiveConnections() is false) observe a
+	// reused offline conn with zero connections mid-reconnect and delete it,
+	// orphaning the live connection.
+	var nodeConn *multiChannelNodeConn
 
-	if !loaded {
-		b.totalNodes.Add(1)
-	}
+	b.nodes.Compute(
+		id,
+		func(existing *multiChannelNodeConn, loaded bool) (*multiChannelNodeConn, xsync.ComputeOp) {
+			if !loaded || existing == nil {
+				existing = newMultiChannelNodeConn(id, b.mapper)
+				b.totalNodes.Add(1)
+			}
 
-	// Add connection to the list (lock-free)
-	nodeConn.addConnection(newEntry)
+			existing.addConnection(newEntry)
+			nodeConn = existing
+
+			return existing, xsync.UpdateOp
+		},
+	)
 
 	// Use the worker pool for controlled concurrency instead of direct generation
 	initialMap, err := b.MapResponseFromChange(id, change.FullSelf(id))
