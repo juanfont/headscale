@@ -1,9 +1,13 @@
 package hscontrol
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDoOIDCAuthorization(t *testing.T) {
@@ -170,4 +174,23 @@ func TestDoOIDCAuthorization(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestSetCSRFCookieSameSite verifies the OIDC state/nonce CSRF cookies carry an
+// explicit SameSite=Lax attribute. Lax (not Strict) is required because the
+// OIDC callback is a cross-site top-level GET navigation from the IdP that must
+// still carry the cookie — Strict would drop it and break login. The cookie
+// previously set no SameSite (despite a comment claiming it did), leaving
+// browsers that do not default to Lax sending it on cross-site requests.
+func TestSetCSRFCookieSameSite(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/auth/abcdef0123456789", nil)
+
+	_, err := setCSRFCookie(w, r, "state")
+	require.NoError(t, err)
+
+	cookies := w.Result().Cookies()
+	require.Len(t, cookies, 1)
+	assert.Equal(t, http.SameSiteLaxMode, cookies[0].SameSite,
+		"OIDC CSRF cookie must explicitly set SameSite=Lax")
 }
