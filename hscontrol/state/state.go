@@ -1690,6 +1690,22 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 		)
 	}
 
+	// Enforce NodeKey uniqueness across machines. NodeKeys are public
+	// (peers learn them from the netmap), so an authenticated party could
+	// otherwise register a node carrying a victim's NodeKey, poisoning the
+	// NodeStore NodeKey index so the victim's MapRequest resolves to the
+	// wrong node and is rejected by getAndValidateNode's MachineKey check
+	// (a DoS). createAndSaveNewNode only runs for a machine that has no
+	// existing node, so any current holder of this NodeKey is a different
+	// machine; mirror the 1:1 binding getAndValidateNode enforces at poll
+	// time and reject before allocating any resources.
+	if existing, ok := s.nodeStore.GetNodeByNodeKey(params.NodeKey); ok &&
+		existing.MachineKey() != params.MachineKey {
+		return types.NodeView{}, fmt.Errorf(
+			"node key already in use by another machine",
+		)
+	}
+
 	// Prepare the node for registration
 	nodeToRegister := types.Node{
 		Hostname:       params.Hostname,
