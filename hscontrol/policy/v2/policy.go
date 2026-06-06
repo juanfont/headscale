@@ -600,6 +600,18 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
+	// Precompute each node's subnet routes and exit-node status once; the
+	// O(n^2) pair scans below would otherwise recompute them for every pair.
+	type nodeRoutes struct {
+		subnet []netip.Prefix
+		isExit bool
+	}
+
+	routeInfo := make(map[types.NodeID]nodeRoutes, nodes.Len())
+	for _, n := range nodes.All() {
+		routeInfo[n.ID()] = nodeRoutes{subnet: n.SubnetRoutes(), isExit: n.IsExitNode()}
+	}
+
 	// If we have a global filter, use it for all nodes (normal case).
 	// Via grants require the per-node path because the global filter
 	// skips via grants (compileFilterRules: if len(grant.Via) > 0 { continue }).
@@ -613,7 +625,9 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 					continue
 				}
 
-				if nodes.At(i).CanAccess(pm.matchers, nodes.At(j)) || nodes.At(j).CanAccess(pm.matchers, nodes.At(i)) {
+				ri, rj := routeInfo[nodes.At(i).ID()], routeInfo[nodes.At(j).ID()]
+				if nodes.At(i).CanAccessWithRoutes(pm.matchers, nodes.At(j), ri.subnet, rj.subnet, rj.isExit) ||
+					nodes.At(j).CanAccessWithRoutes(pm.matchers, nodes.At(i), rj.subnet, ri.subnet, ri.isExit) {
 					ret[nodes.At(i).ID()] = append(ret[nodes.At(i).ID()], nodes.At(j))
 					ret[nodes.At(j).ID()] = append(ret[nodes.At(j).ID()], nodes.At(i))
 				}
@@ -645,10 +659,12 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 	for i := range nodes.Len() {
 		nodeI := nodes.At(i)
 		matchersI, hasFilterI := nodeMatchers[nodeI.ID()]
+		riI := routeInfo[nodeI.ID()]
 
 		for j := i + 1; j < nodes.Len(); j++ {
 			nodeJ := nodes.At(j)
 			matchersJ, hasFilterJ := nodeMatchers[nodeJ.ID()]
+			riJ := routeInfo[nodeJ.ID()]
 
 			// Check all access directions for symmetric peer visibility.
 			// For via grants, filter rules exist on the via-designated node
@@ -659,10 +675,10 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 			//      using nodeI's matchers? (reverse direction: the matchers
 			//      on the via node accept traffic FROM the source)
 			// Same for matchersJ in both directions.
-			canIAccessJ := hasFilterI && nodeI.CanAccess(matchersI, nodeJ)
-			canJAccessI := hasFilterJ && nodeJ.CanAccess(matchersJ, nodeI)
-			canJReachI := hasFilterI && nodeJ.CanAccess(matchersI, nodeI)
-			canIReachJ := hasFilterJ && nodeI.CanAccess(matchersJ, nodeJ)
+			canIAccessJ := hasFilterI && nodeI.CanAccessWithRoutes(matchersI, nodeJ, riI.subnet, riJ.subnet, riJ.isExit)
+			canJAccessI := hasFilterJ && nodeJ.CanAccessWithRoutes(matchersJ, nodeI, riJ.subnet, riI.subnet, riI.isExit)
+			canJReachI := hasFilterI && nodeJ.CanAccessWithRoutes(matchersI, nodeI, riJ.subnet, riI.subnet, riI.isExit)
+			canIReachJ := hasFilterJ && nodeI.CanAccessWithRoutes(matchersJ, nodeJ, riI.subnet, riJ.subnet, riJ.isExit)
 
 			if canIAccessJ || canJAccessI || canJReachI || canIReachJ {
 				ret[nodeI.ID()] = append(ret[nodeI.ID()], nodeJ)
