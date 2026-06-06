@@ -6,8 +6,10 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/types/key"
 )
 
 // persistTestSetup pre-creates a sqlite database on disk with a single
@@ -208,4 +210,52 @@ func TestPersistEmptyEndpoints(t *testing.T) {
 	require.True(t, ok)
 	assert.Empty(t, nv.AsStruct().Endpoints,
 		"after restart, NodeStore should reflect the cleared endpoints")
+}
+
+// TestRegistrationRejectsNodeKeyClaimedByAnotherMachine proves a new
+// registration cannot claim a NodeKey already bound to a different machine.
+// NodeKeys are public (peers learn them from the netmap), so without this
+// check an authenticated party can register a node carrying a victim's
+// NodeKey. That poisons the NodeStore NodeKey index (a map keyed on NodeKey,
+// last writer wins), so the victim's MapRequest resolves to the attacker's
+// node and is rejected by getAndValidateNode's MachineKey check (noise.go) —
+// a denial of service against the victim. getAndValidateNode already enforces
+// a 1:1 NodeKey<->MachineKey binding at poll time; this enforces the same
+// invariant at registration time.
+func TestRegistrationRejectsNodeKeyClaimedByAnotherMachine(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+
+	database, err := db.NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+	user := database.CreateUserForTest("nk-user")
+	require.NoError(t, database.Close())
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	sharedNodeKey := key.NewNode()
+
+	_, err = s.createAndSaveNewNode(newNodeParams{
+		User:           *user,
+		MachineKey:     key.NewMachine().Public(),
+		NodeKey:        sharedNodeKey.Public(),
+		DiscoKey:       key.NewDisco().Public(),
+		Hostname:       "victim",
+		RegisterMethod: util.RegisterMethodCLI,
+	})
+	require.NoError(t, err)
+
+	// A different machine tries to register carrying the victim's NodeKey.
+	_, err = s.createAndSaveNewNode(newNodeParams{
+		User:           *user,
+		MachineKey:     key.NewMachine().Public(),
+		NodeKey:        sharedNodeKey.Public(),
+		DiscoKey:       key.NewDisco().Public(),
+		Hostname:       "attacker",
+		RegisterMethod: util.RegisterMethodCLI,
+	})
+	require.Error(t, err,
+		"registering a NodeKey already bound to another machine must be rejected")
 }
