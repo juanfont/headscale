@@ -498,7 +498,14 @@ func (pm *PolicyManager) SSHCheckParams(
 		// Check if dst node matches any destination.
 		for _, dst := range rule.Destinations {
 			if ag, isAG := dst.(*AutoGroup); isAG && ag.Is(AutoGroupSelf) {
+				// User().Valid() guards the User().ID() dereference: the
+				// NodeStore can hold a non-tagged node with UserID set but
+				// the User association unhydrated (nil), and IsTagged()
+				// alone does not cover that. Mirrors filter.go's
+				// autogroup:self guard. Without it, a tailnet client on the
+				// Noise SSH-check path crashes the server (nil deref).
 				if !srcNode.IsTagged() && !dstNode.IsTagged() &&
+					srcNode.User().Valid() && dstNode.User().Valid() &&
 					srcNode.User().ID() == dstNode.User().ID() {
 					return checkPeriodFromRule(rule), true
 				}
