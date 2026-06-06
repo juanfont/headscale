@@ -34,7 +34,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -482,14 +481,13 @@ func (s *State) ListAllUsers() ([]types.User, error) {
 	return s.db.ListUsers()
 }
 
-// persistNodeToDB saves the given node state to the database.
-// This function must receive the exact node state to save to ensure consistency between
-// [NodeStore] and the database. It verifies the node still exists in [NodeStore] to
-// prevent race conditions where a node might be deleted between [NodeStore.UpdateNode]
-// returning and persistNodeToDB being called.
-func (s *State) persistNodeToDB(node types.NodeView) (types.NodeView, change.Change, error) {
+// persistNodeRowToDB writes the node's database row, re-reading the
+// authoritative copy from [NodeStore], without touching the policy manager.
+// Batch callers (e.g. autoApproveNodes) use it to write many rows and then
+// trigger a single policy rebuild instead of one per node.
+func (s *State) persistNodeRowToDB(node types.NodeView) (types.NodeView, error) {
 	if !node.Valid() {
-		return types.NodeView{}, change.Change{}, ErrInvalidNodeView
+		return types.NodeView{}, ErrInvalidNodeView
 	}
 
 	// [NodeStore] is the source of truth and every caller updates it before
@@ -514,7 +512,7 @@ func (s *State) persistNodeToDB(node types.NodeView) (types.NodeView, change.Cha
 			Bool("is_ephemeral", node.IsEphemeral()).
 			Msg("Node no longer exists in NodeStore, skipping database persist to prevent race condition")
 
-		return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, node.ID())
+		return types.NodeView{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, node.ID())
 	}
 
 	nodePtr := fresh.AsStruct()
@@ -526,7 +524,19 @@ func (s *State) persistNodeToDB(node types.NodeView) (types.NodeView, change.Cha
 	err := s.db.DB.Select(nodeUpdateColumns).Omit("Expiry").Updates(nodePtr).Error
 	s.persistMu.Unlock()
 	if err != nil {
-		return types.NodeView{}, change.Change{}, fmt.Errorf("saving node: %w", err)
+		return types.NodeView{}, fmt.Errorf("saving node: %w", err)
+	}
+
+	return fresh, nil
+}
+
+// persistNodeToDB saves the given node state to the database and refreshes the
+// policy manager. The exact row written comes from [NodeStore]; see
+// [State.persistNodeRowToDB].
+func (s *State) persistNodeToDB(node types.NodeView) (types.NodeView, change.Change, error) {
+	fresh, err := s.persistNodeRowToDB(node)
+	if err != nil {
+		return types.NodeView{}, change.Change{}, err
 	}
 
 	// Check if policy manager needs updating
@@ -2470,46 +2480,70 @@ func (s *State) PingDB(ctx context.Context) error {
 func (s *State) autoApproveNodes() ([]change.Change, error) {
 	nodes := s.ListNodes()
 
-	// Approve routes concurrently, this should make it likely
-	// that the writes end in the same batch in the nodestore write.
-	var (
-		errg errgroup.Group
-		cs   []change.Change
-		mu   sync.Mutex
-	)
+	// Compute every node's approval first, then apply them all in a single
+	// NodeStore batch and a single policy/peer-map rebuild. One
+	// SetApprovedRoutes per node would otherwise drive an O(n) policy SetNodes
+	// and O(n^2) peer-map rebuild for each changed node, i.e. O(m*n^2) per
+	// policy reload.
+	approvedByID := make(map[types.NodeID][]netip.Prefix)
+
 	for _, nv := range nodes.All() {
-		errg.Go(func() error {
-			approved, changed := policy.ApproveRoutesWithPolicy(s.polMan, nv, nv.ApprovedRoutes().AsSlice(), nv.AnnouncedRoutes())
-			if changed {
-				log.Debug().
-					Uint64(zf.NodeID, nv.ID().Uint64()).
-					Str(zf.NodeName, nv.Hostname()).
-					Strs(zf.RoutesApprovedOld, util.PrefixesToString(nv.ApprovedRoutes().AsSlice())).
-					Strs(zf.RoutesApprovedNew, util.PrefixesToString(approved)).
-					Msg("Routes auto-approved by policy")
+		approved, changed := policy.ApproveRoutesWithPolicy(s.polMan, nv, nv.ApprovedRoutes().AsSlice(), nv.AnnouncedRoutes())
+		if !changed {
+			continue
+		}
 
-				_, c, err := s.SetApprovedRoutes(nv.ID(), approved)
-				if err != nil {
-					return err
-				}
+		log.Debug().
+			Uint64(zf.NodeID, nv.ID().Uint64()).
+			Str(zf.NodeName, nv.Hostname()).
+			Strs(zf.RoutesApprovedOld, util.PrefixesToString(nv.ApprovedRoutes().AsSlice())).
+			Strs(zf.RoutesApprovedNew, util.PrefixesToString(approved)).
+			Msg("Routes auto-approved by policy")
 
-				mu.Lock()
-
-				cs = append(cs, c)
-
-				mu.Unlock()
-			}
-
-			return nil
-		})
+		approvedByID[nv.ID()] = approved
 	}
 
-	err := errg.Wait()
+	if len(approvedByID) == 0 {
+		return nil, nil
+	}
+
+	updates := make(map[types.NodeID]UpdateNodeFunc, len(approvedByID))
+	for id, approved := range approvedByID {
+		updates[id] = func(n *types.Node) {
+			n.ApprovedRoutes = approved
+
+			// A node with no approved routes is no longer an HA candidate;
+			// drop any stale Unhealthy bit (mirrors SetApprovedRoutes).
+			if len(n.AllApprovedRoutes()) == 0 {
+				n.Unhealthy = false
+			}
+		}
+	}
+
+	s.nodeStore.UpdateNodes(updates)
+
+	for id := range approvedByID {
+		fresh, ok := s.nodeStore.GetNode(id)
+		if !ok {
+			continue
+		}
+
+		_, err := s.persistNodeRowToDB(fresh)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	c, err := s.updatePolicyManagerNodes()
 	if err != nil {
 		return nil, err
 	}
 
-	return cs, nil
+	if c.IsEmpty() {
+		c = change.PolicyChange()
+	}
+
+	return []change.Change{c}, nil
 }
 
 // isAutoDerivedGivenName reports whether given matches what
