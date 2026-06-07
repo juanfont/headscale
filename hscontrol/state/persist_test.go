@@ -9,6 +9,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
 
@@ -258,4 +259,67 @@ func TestRegistrationRejectsNodeKeyClaimedByAnotherMachine(t *testing.T) {
 	})
 	require.Error(t, err,
 		"registering a NodeKey already bound to another machine must be rejected")
+}
+
+// TestReauthRejectsNodeKeyClaimedByAnotherMachine proves the re-auth/update
+// path enforces the same 1:1 NodeKey<->MachineKey binding as the create path
+// (TestRegistrationRejectsNodeKeyClaimedByAnotherMachine) and the poll path
+// (getAndValidateNode). Without it, a node re-authenticating could rotate its
+// NodeKey to a victim's, poisoning the NodeStore NodeKey index so the victim's
+// MapRequest resolves to the attacker's node and is rejected — a DoS.
+func TestReauthRejectsNodeKeyClaimedByAnotherMachine(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+
+	database, err := db.NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+	attacker := database.CreateUserForTest("attacker")
+	victim := database.CreateUserForTest("victim")
+	require.NoError(t, database.Close())
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	victimNodeKey := key.NewNode()
+	attackerMachine := key.NewMachine()
+
+	// Victim's node holds victimNodeKey.
+	_, err = s.createAndSaveNewNode(newNodeParams{
+		User:           *victim,
+		MachineKey:     key.NewMachine().Public(),
+		NodeKey:        victimNodeKey.Public(),
+		DiscoKey:       key.NewDisco().Public(),
+		Hostname:       "victim",
+		RegisterMethod: util.RegisterMethodCLI,
+	})
+	require.NoError(t, err)
+
+	// Attacker registers its own node.
+	attackerNode, err := s.createAndSaveNewNode(newNodeParams{
+		User:           *attacker,
+		MachineKey:     attackerMachine.Public(),
+		NodeKey:        key.NewNode().Public(),
+		DiscoKey:       key.NewDisco().Public(),
+		Hostname:       "attacker",
+		RegisterMethod: util.RegisterMethodCLI,
+	})
+	require.NoError(t, err)
+
+	// Attacker re-authenticates its own node but supplies the victim's NodeKey.
+	_, err = s.applyAuthNodeUpdate(authNodeUpdateParams{
+		ExistingNode: attackerNode,
+		RegData: &types.RegistrationData{
+			MachineKey: attackerMachine.Public(),
+			NodeKey:    victimNodeKey.Public(),
+			Hostname:   "attacker",
+			Hostinfo:   &tailcfg.Hostinfo{},
+		},
+		ValidHostinfo:  &tailcfg.Hostinfo{},
+		Hostname:       "attacker",
+		User:           attacker,
+		RegisterMethod: util.RegisterMethodCLI,
+	})
+	require.Error(t, err,
+		"re-auth claiming a NodeKey bound to another machine must be rejected")
 }

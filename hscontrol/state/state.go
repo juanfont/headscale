@@ -1563,6 +1563,19 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 		)
 	}
 
+	// Re-auth rotates the NodeKey to the client-supplied value. Enforce the
+	// same 1:1 NodeKey<->MachineKey binding createAndSaveNewNode applies at
+	// registration and getAndValidateNode enforces at poll time: a NodeKey
+	// already bound to a different machine must not be claimed here, or a
+	// re-authenticating node could rotate its key to a victim's and poison
+	// the NodeStore NodeKey index (denying the victim service).
+	if existing, ok := s.nodeStore.GetNodeByNodeKey(regData.NodeKey); ok &&
+		existing.MachineKey() != regData.MachineKey {
+		return types.NodeView{}, fmt.Errorf(
+			"node key already in use by another machine",
+		)
+	}
+
 	// Update existing node in [NodeStore] - validation passed, safe to mutate
 	updatedNodeView, ok := s.nodeStore.UpdateNode(params.ExistingNode.ID(), func(node *types.Node) {
 		node.NodeKey = regData.NodeKey
