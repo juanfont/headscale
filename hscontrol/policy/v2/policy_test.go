@@ -2220,6 +2220,12 @@ func TestValidateUserReferences_AllSites(t *testing.T) {
   "ssh": [{"action":"accept","src":["dup@"],"dst":["dup@"],"users":["root"]}]
 }`,
 		},
+		{
+			name: "dns",
+			pol: `{
+  "dns": [{"users":["dup@"]}]
+}`,
+		},
 	}
 
 	for _, tt := range tests {

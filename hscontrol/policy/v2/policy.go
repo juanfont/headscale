@@ -19,6 +19,7 @@ import (
 	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/dnstype"
 	"tailscale.com/types/views"
 	"tailscale.com/util/deephash"
 	"tailscale.com/util/multierr"
@@ -32,6 +33,10 @@ type PolicyManager struct {
 	pol   *Policy
 	users []types.User
 	nodes views.Slice[types.NodeView]
+
+	dnsProfileByTag   map[Tag]int
+	dnsProfileByUser  map[types.UserID]int
+	dnsProfileByGroup map[types.UserID]int
 
 	filterHash deephash.Sum
 	filter     []tailcfg.FilterRule
@@ -176,6 +181,12 @@ func validateUserReferences(pol *Policy, users types.Users) error {
 		}
 	}
 
+	for _, profile := range pol.DNS {
+		for i := range profile.Users {
+			check(&profile.Users[i])
+		}
+	}
+
 	return multierr.New(errs...)
 }
 
@@ -240,6 +251,8 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	}
 
 	pm.relayTargetIPs = relayTargetIPs
+
+	pm.buildDNSProfileIndexesLocked()
 
 	var filter []tailcfg.FilterRule
 	if pm.pol == nil || (pm.pol.ACLs == nil && pm.pol.Grants == nil) {
@@ -518,6 +531,185 @@ func (pm *PolicyManager) SSHCheckParams(
 	}
 
 	return 0, false
+}
+
+// NodeDNSConfig returns the DNSConfig for the given node by applying
+// the matched DNS profile from the policy's dns block on top of base.
+// Returns base unchanged if no profile matches; returns nil if base is
+// nil. baseDomain is the tailnet base_domain, preserved when a profile
+// replaces SearchDomains.
+func (pm *PolicyManager) NodeDNSConfig(node types.NodeView, base *tailcfg.DNSConfig, baseDomain string) *tailcfg.DNSConfig {
+	if base == nil {
+		return nil
+	}
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	if pm.pol == nil || len(pm.pol.DNS) == 0 {
+		return base.Clone()
+	}
+
+	matchIdx := pm.matchProfile(node)
+	if matchIdx < 0 {
+		return base.Clone()
+	}
+	return applyDNSProfile(base, baseDomain, pm.pol.DNS[matchIdx])
+}
+
+// matchProfile returns the index of the DNS profile chosen for the
+// given node, or -1 if no profile matches. Caller must hold pm.mu.
+func (pm *PolicyManager) matchProfile(node types.NodeView) int {
+	if node.IsTagged() {
+		// Tag tier (tagged nodes only); min over tags = list-order winner.
+		best := -1
+		for _, tagStr := range node.Tags().AsSlice() {
+			if idx, ok := pm.dnsProfileByTag[Tag(tagStr)]; ok {
+				if best < 0 || idx < best {
+					best = idx
+				}
+			}
+		}
+		return best
+	}
+
+	nodeUserID := node.TypedUserID()
+	if nodeUserID == 0 {
+		return -1
+	}
+
+	// User tier.
+	if idx, ok := pm.dnsProfileByUser[nodeUserID]; ok {
+		return idx
+	}
+
+	// Group tier.
+	if idx, ok := pm.dnsProfileByGroup[nodeUserID]; ok {
+		return idx
+	}
+
+	return -1
+}
+
+// buildDNSProfileIndexesLocked rebuilds the DNS profile lookup maps
+// from the current policy + users. Caller must hold pm.mu.
+func (pm *PolicyManager) buildDNSProfileIndexesLocked() {
+	pm.dnsProfileByTag = nil
+	pm.dnsProfileByUser = nil
+	pm.dnsProfileByGroup = nil
+
+	if pm.pol == nil || len(pm.pol.DNS) == 0 {
+		return
+	}
+
+	pm.dnsProfileByTag = make(map[Tag]int)
+	pm.dnsProfileByUser = make(map[types.UserID]int)
+	pm.dnsProfileByGroup = make(map[types.UserID]int)
+
+	setIfLower := func(m map[types.UserID]int, uid types.UserID, idx int) {
+		if prev, ok := m[uid]; !ok || idx < prev {
+			m[uid] = idx
+		}
+	}
+
+	for i, profile := range pm.pol.DNS {
+		for _, t := range profile.Tags {
+			if _, ok := pm.dnsProfileByTag[t]; !ok {
+				pm.dnsProfileByTag[t] = i
+			}
+		}
+		for _, username := range profile.Users {
+			user, err := username.resolveUser(pm.users)
+			if err != nil {
+				continue
+			}
+			setIfLower(pm.dnsProfileByUser, types.UserID(user.ID), i)
+		}
+		for _, groupName := range profile.Groups {
+			members, ok := pm.pol.Groups[groupName]
+			if !ok {
+				continue
+			}
+			for _, member := range members {
+				user, err := member.resolveUser(pm.users)
+				if err != nil {
+					continue
+				}
+				setIfLower(pm.dnsProfileByGroup, types.UserID(user.ID), i)
+			}
+		}
+	}
+}
+
+// applyDNSProfile returns a clone of base with the profile's set fields
+// substituted in. Pointer-typed body fields use present-vs-absent
+// semantics: a present field (even if empty) replaces the inherited
+// value; an absent field inherits. baseDomain is preserved at
+// Domains[0] when SearchDomains is replaced.
+func applyDNSProfile(base *tailcfg.DNSConfig, baseDomain string, profile DNSProfile) *tailcfg.DNSConfig {
+	cfg := base.Clone()
+
+	// Inherit override state from base (Resolvers populated => override;
+	// neither populated => default false), unless the profile says otherwise.
+	override := cfg.Resolvers != nil
+	if profile.OverrideLocalDNS != nil {
+		override = *profile.OverrideLocalDNS
+	}
+
+	var nameservers []*dnstype.Resolver
+	switch {
+	case profile.Nameservers != nil:
+		nameservers = stringsToResolvers(*profile.Nameservers)
+	case cfg.Resolvers != nil:
+		nameservers = cfg.Resolvers
+	default:
+		nameservers = cfg.FallbackResolvers
+	}
+
+	// Only re-emit wire fields if the profile said something about resolvers.
+	if profile.Nameservers != nil || profile.OverrideLocalDNS != nil {
+		cfg.Resolvers = nil
+		cfg.FallbackResolvers = nil
+		if override {
+			cfg.Resolvers = nameservers
+		} else {
+			cfg.FallbackResolvers = nameservers
+		}
+	}
+
+	if profile.Split != nil {
+		cfg.Routes = make(map[string][]*dnstype.Resolver, len(*profile.Split))
+		for domain, addrs := range *profile.Split {
+			cfg.Routes[domain] = stringsToResolvers(addrs)
+		}
+	}
+	if profile.SearchDomains != nil {
+		// Preserve baseDomain at Domains[0]; when empty, omit so we
+		// don't promote a stale Domains[0] as a search domain.
+		var head []string
+		if baseDomain != "" {
+			head = []string{baseDomain}
+		}
+		cfg.Domains = append(head, (*profile.SearchDomains)...)
+	}
+	return cfg
+}
+
+// stringsToResolvers converts a list of address strings (IPs or DoH URLs)
+// into the wire-protocol resolver slice. Mirrors the leniency of
+// (*types.DNSConfig).globalResolvers: invalid entries are not rejected
+// here but simply will not resolve at runtime.
+func stringsToResolvers(addrs []string) []*dnstype.Resolver {
+	if len(addrs) == 0 {
+		return nil
+	}
+
+	resolvers := make([]*dnstype.Resolver, 0, len(addrs))
+	for _, a := range addrs {
+		resolvers = append(resolvers, &dnstype.Resolver{Addr: a})
+	}
+
+	return resolvers
 }
 
 func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
@@ -800,6 +992,12 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, error) {
 	// If SSH policies exist, force a policy change when users are updated
 	// This ensures nodes get updated SSH policies even if other policy hashes didn't change
 	if pm.pol != nil && pm.pol.SSHs != nil && len(pm.pol.SSHs) > 0 {
+		return true, nil
+	}
+
+	// Same for DNS profiles: a user change can shift profile resolution
+	// without moving the filter / tag-owner / auto-approver hashes.
+	if pm.pol != nil && len(pm.pol.DNS) > 0 {
 		return true, nil
 	}
 

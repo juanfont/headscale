@@ -64,9 +64,7 @@ func TestDNSConfigMapResponse(t *testing.T) {
 			nodeInShared1 := mach("test_get_shared_nodes_1", "shared1", 1)
 
 			got := generateDNSConfig(
-				&types.Config{
-					TailcfgDNSConfig: &dnsConfigOrig,
-				},
+				dnsConfigOrig.Clone(),
 				nodeInShared1.View(),
 				nil,
 			)
@@ -81,16 +79,14 @@ func TestDNSConfigMapResponse(t *testing.T) {
 func TestNextDNSCapMapRendering(t *testing.T) {
 	t.Parallel()
 
-	mkConfig := func(addrs ...string) *types.Config {
+	mkDNS := func(addrs ...string) *tailcfg.DNSConfig {
 		resolvers := make([]*dnstype.Resolver, len(addrs))
 		for i, a := range addrs {
 			resolvers[i] = &dnstype.Resolver{Addr: a}
 		}
 
-		return &types.Config{
-			TailcfgDNSConfig: &tailcfg.DNSConfig{
-				Resolvers: resolvers,
-			},
+		return &tailcfg.DNSConfig{
+			Resolvers: resolvers,
 		}
 	}
 
@@ -124,7 +120,7 @@ func TestNextDNSCapMapRendering(t *testing.T) {
 		t.Parallel()
 
 		got := generateDNSConfig(
-			mkConfig("https://dns.nextdns.io/abc"),
+			mkDNS("https://dns.nextdns.io/abc"),
 			mkNode(),
 			nil,
 		)
@@ -143,7 +139,7 @@ func TestNextDNSCapMapRendering(t *testing.T) {
 		}
 
 		got := generateDNSConfig(
-			mkConfig("https://dns.nextdns.io/global"),
+			mkDNS("https://dns.nextdns.io/global"),
 			mkNode(),
 			capMap,
 		)
@@ -163,7 +159,7 @@ func TestNextDNSCapMapRendering(t *testing.T) {
 		}
 
 		got := generateDNSConfig(
-			mkConfig("https://dns.nextdns.io/global"),
+			mkDNS("https://dns.nextdns.io/global"),
 			mkNode(),
 			capMap,
 		)
@@ -182,7 +178,7 @@ func TestNextDNSCapMapRendering(t *testing.T) {
 		}
 
 		got := generateDNSConfig(
-			mkConfig("https://dns.example.org/dns-query"),
+			mkDNS("https://dns.example.org/dns-query"),
 			mkNode(),
 			capMap,
 		)

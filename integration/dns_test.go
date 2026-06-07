@@ -7,12 +7,14 @@ import (
 	"testing"
 	"time"
 
+	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/dnstype"
 )
 
 func TestResolveMagicDNS(t *testing.T) {
@@ -220,5 +222,160 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 
 	for _, client := range allClients {
 		assertCommandOutputContains(t, client, []string{"dig", "copy.myvpn.example.com"}, "8.8.8.8")
+	}
+}
+
+// hasResolverAddr returns true if any entry in resolvers has the given
+// Addr. Used by the integration test to assert presence / absence of
+// an override resolver across either Resolvers or FallbackResolvers.
+func hasResolverAddr(resolvers []*dnstype.Resolver, addr string) bool {
+	for _, r := range resolvers {
+		if r != nil && r.Addr == addr {
+			return true
+		}
+	}
+	return false
+}
+
+// TestPolicyDNSProfiles exercises the policy DNS profiles feature
+// end-to-end across two configurations and a hot-reload between them:
+//
+//	Phase 1 (no policy DNS overrides): both admin and guest clients
+//	get the base DNS config from headscale.yaml's `dns:` block.
+//
+//	Phase 2 (hot reload → add group:admin override): the policy is
+//	updated via SetPolicy to add a profile that overrides Resolvers
+//	for group:admin. SetPolicy is the same downstream entry point
+//	that the file-mode reload path (systemctl reload / SIGHUP) hits,
+//	so this exercises the hot-reload propagation mechanism even
+//	though the trigger is the API rather than a signal.
+//
+//	Phase 3 (post-reload): admin's netmap carries the override
+//	Resolvers; guest's netmap is unchanged (no override resolver in
+//	either Resolvers or FallbackResolvers).
+func TestPolicyDNSProfiles(t *testing.T) {
+	IntegrationSkip(t)
+
+	const (
+		adminUser     = "admin-user"
+		guestUser     = "guest-user"
+		overrideNS    = "10.99.0.42"
+		adminGroup    = "group:admin"
+		splitDomain   = "internal.example"
+		splitResolver = "10.99.0.99"
+	)
+
+	// Initial policy: no dns block. Everyone gets the yaml base.
+	initialPolicy := &policyv2.Policy{
+		Groups: policyv2.Groups{
+			policyv2.Group(adminGroup): []policyv2.Username{
+				policyv2.Username(adminUser + "@"),
+			},
+		},
+	}
+
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{adminUser, guestUser},
+		Versions:     []string{"head"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{tsic.WithNetfilter("off")},
+		hsic.WithACLPolicy(initialPolicy),
+		hsic.WithTestName("dnsreload"),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	adminClients, err := scenario.ListTailscaleClients(adminUser)
+	requireNoErrListClients(t, err)
+	require.NotEmpty(t, adminClients)
+	guestClients, err := scenario.ListTailscaleClients(guestUser)
+	requireNoErrListClients(t, err)
+	require.NotEmpty(t, guestClients)
+
+	// Phase 1: no policy.dns overrides — neither client should have
+	// the override resolver set in Resolvers OR FallbackResolvers.
+	for _, client := range append(adminClients, guestClients...) {
+		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+			nm, err := client.Netmap()
+			if !assert.NoError(ct, err) || !assert.NotNil(ct, nm) || !assert.NotNil(ct, nm.DNS) {
+				return
+			}
+			assert.False(ct, hasResolverAddr(nm.DNS.Resolvers, overrideNS),
+				"initial: %s should not have the override in Resolvers yet", client.Hostname())
+			assert.False(ct, hasResolverAddr(nm.DNS.FallbackResolvers, overrideNS),
+				"initial: %s should not have the override in FallbackResolvers yet", client.Hostname())
+		}, integrationutil.StatusReadyTimeout, 1*time.Second)
+	}
+
+	// Phase 2: hot-reload the policy to add a group:admin override.
+	// The override profile exercises three body fields at once:
+	//   Nameservers + OverrideLocalDNS → Resolvers populated on the wire
+	//   Split → Routes populated on the wire (split-DNS coverage)
+	overrideNSList := []string{overrideNS}
+	overrideTrue := true
+	splitMap := map[string][]string{splitDomain: {splitResolver}}
+	updatedPolicy := &policyv2.Policy{
+		Groups: initialPolicy.Groups,
+		DNS: policyv2.PolicyDNS{
+			{
+				Nameservers:      &overrideNSList,
+				OverrideLocalDNS: &overrideTrue,
+				Split:            &splitMap,
+				Groups:           []policyv2.Group{policyv2.Group(adminGroup)},
+			},
+		},
+	}
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+	require.NoError(t, headscale.SetPolicy(updatedPolicy),
+		"hot-reloading the policy should succeed")
+
+	// Phase 3: admin now receives the override Resolver; guest is
+	// unchanged. EventuallyWithT bounds the wait so the netmap update
+	// can propagate to the clients.
+	for _, client := range adminClients {
+		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+			nm, err := client.Netmap()
+			if !assert.NoError(ct, err) || !assert.NotNil(ct, nm) || !assert.NotNil(ct, nm.DNS) {
+				return
+			}
+			if assert.Len(ct, nm.DNS.Resolvers, 1, "admin should have one Resolver after reload") {
+				assert.Equal(ct, overrideNS, nm.DNS.Resolvers[0].Addr,
+					"admin's Resolvers should be the override after reload")
+			}
+			if assert.Contains(ct, nm.DNS.Routes, splitDomain,
+				"admin's Routes should carry the profile's Split entry") {
+				if assert.Len(ct, nm.DNS.Routes[splitDomain], 1) {
+					assert.Equal(ct, splitResolver, nm.DNS.Routes[splitDomain][0].Addr,
+						"split resolver should be the profile's value")
+				}
+			}
+		}, integrationutil.PolicyPropagationTimeout, 2*time.Second,
+			"admin %s should receive override + split DNS after hot-reload", client.Hostname())
+	}
+	for _, client := range guestClients {
+		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+			nm, err := client.Netmap()
+			if !assert.NoError(ct, err) || !assert.NotNil(ct, nm) || !assert.NotNil(ct, nm.DNS) {
+				return
+			}
+			assert.False(ct, hasResolverAddr(nm.DNS.Resolvers, overrideNS),
+				"guest should not have the override in Resolvers")
+			assert.False(ct, hasResolverAddr(nm.DNS.FallbackResolvers, overrideNS),
+				"guest should not have the override in FallbackResolvers")
+			assert.NotContains(ct, nm.DNS.Routes, splitDomain,
+				"guest should not have the admin profile's Split entry")
+		}, integrationutil.PolicyPropagationTimeout, 2*time.Second,
+			"guest %s should stay on base after hot-reload", client.Hostname())
 	}
 }

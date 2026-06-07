@@ -226,6 +226,71 @@ configuration and attributes. At least the following node attributes are current
 }
 ```
 
+## DNS profiles
+
+The top-level `dns:` block in the policy file is an ordered list of
+DNS profiles that override fields of the tailnet-wide `dns:` config in
+`headscale.yaml`. Each profile carries an assignment list (`groups`,
+`users`, or `tags`) and an optional set of DNS fields; a matched node
+gets the profile's set fields, with unset fields inheriting from the
+base. A node matching no profile receives the base unchanged.
+
+### Profile shape
+
+| Field | Type | Effect |
+|---|---|---|
+| `nameservers` | `[]string` | Replaces the base nameservers (routed by `overrideLocalDNS` to either `Resolvers` or `FallbackResolvers`). |
+| `overrideLocalDNS` | `bool` | Sends nameservers to `Resolvers` (`true`) or `FallbackResolvers` (`false`). Set without `nameservers` to re-route the inherited nameservers between the two wire fields. |
+| `split` | `map[string][]string` | Per-domain restricted resolvers (`Routes`); replaces base `Routes`. |
+| `searchDomains` | `[]string` | DNS search suffixes; appended after the `base_domain` in `Domains`. |
+| `groups` | `[]Group` | Assignment list — matches nodes whose user is a member of any listed group (group tier). |
+| `users` | `[]Username` | Assignment list — matches nodes whose user is listed (user tier). |
+| `tags` | `[]Tag` | Assignment list — matches tagged nodes (tag tier). |
+
+Every profile must have at least one of `groups` / `users` / `tags`.
+
+### Resolution model
+
+For each node, the lookup walks tiers in this order and returns the
+first profile whose assignment list matches, with profile list order
+breaking ties within a tier:
+
+1. **Tag tier** — any of the node's tags appears in the profile's
+   `tags`. Tagged nodes consult ONLY the tag tier.
+2. **User tier** — the node's user appears in the profile's `users`.
+3. **Group tier** — the node's user is in a group that appears in the
+   profile's `groups`.
+
+A user in two assigned groups gets the profile listed first.
+
+A group, user, or tag may appear in at most one profile's assignment
+list — the validator rejects duplicates.
+
+### Example
+
+```hujson
+{
+  "groups": {
+    "group:admin": ["alice@"]
+  },
+  "dns": [
+    {
+      // Admins override their primary resolver.
+      "nameservers": ["192.168.4.2"],
+      "overrideLocalDNS": true,
+      "groups": ["group:admin"]
+    }
+  ]
+}
+```
+
+### Exempting principals from a group assignment
+
+A profile with an assignment list but **no body fields** matches without
+changing anything. Because the user tier always beats the group tier,
+listing a user on a body-less `users` profile exempts them from any
+group-level override.
+
 ## Network-wide policy options
 
 The following options are applied for the entire tailnet. Consider [node attributes](#node-attributes) for a more
