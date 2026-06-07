@@ -350,3 +350,27 @@ func TestBuildFromChangeFiltersUserProfilesByVisibility(t *testing.T) {
 			"n1 must not receive user2's profile; n2 is not ACL-visible to n1")
 	}
 }
+
+// TestGenerateDNSConfigNilHostinfoNoPanic proves generateDNSConfig does not
+// panic when a node's Hostinfo is nil (e.g. a legacy DB row with a NULL
+// host_info column). addNextDNSMetadata dereferenced node.Hostinfo().OS()
+// without the .Valid() guard its siblings (RequestTags, TailNode) apply, so
+// building such a node's map crashed the server whenever a NextDNS resolver
+// was configured.
+func TestGenerateDNSConfigNilHostinfoNoPanic(t *testing.T) {
+	node := (&types.Node{
+		Hostname: "legacy-node",
+		IPv4:     iap("100.64.0.1"),
+		// Hostinfo intentionally nil, as a legacy NULL host_info row loads.
+	}).View()
+
+	cfg := &types.Config{
+		TailcfgDNSConfig: &tailcfg.DNSConfig{
+			Resolvers: []*dnstype.Resolver{{Addr: "https://dns.nextdns.io/abc"}},
+		},
+	}
+
+	require.NotPanics(t, func() {
+		generateDNSConfig(cfg, node, nil)
+	}, "generateDNSConfig must not panic when a node has nil Hostinfo")
+}
