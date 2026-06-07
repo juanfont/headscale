@@ -84,7 +84,6 @@ type noiseServer struct {
 	http2Server    *http2.Server
 	conn           *controlbase.Conn
 	machineKey     key.MachinePublic
-	nodeKey        key.NodePublic
 
 	// [tailcfg.EarlyNoise]-related stuff
 	challenge       key.ChallengePrivate
@@ -716,8 +715,6 @@ func (ns *noiseServer) PollNetMapHandler(
 		return
 	}
 
-	ns.nodeKey = nv.NodeKey()
-
 	sess := ns.headscale.newMapSession(req.Context(), mapRequest, writer, nv.AsStruct())
 	sess.log.Trace().Caller().Msg("a node sending a MapRequest with Noise protocol")
 
@@ -752,8 +749,6 @@ func (ns *noiseServer) RegistrationHandler(
 		if err != nil {
 			return &regReq, regErr(err)
 		}
-
-		ns.nodeKey = regReq.NodeKey
 
 		resp, err = ns.headscale.handleRegister(req.Context(), regReq, ns.conn.Peer())
 		if err != nil {
