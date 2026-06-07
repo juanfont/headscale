@@ -373,6 +373,25 @@ dns:
   # Headscale processes this file on each change.
   # extra_records_path: /var/lib/headscale/extra-records.json
 
+  # Per-node HTTPS certificates for `tailscale serve` / `tailscale cert`.
+  #
+  # When enabled, Headscale advertises each node's FQDN in CertDomains and
+  # runs an embedded authoritative DNS server for `base_domain` to answer the
+  # ACME DNS-01 challenges that nodes use to obtain Let's Encrypt certificates.
+  #
+  # This requires `magic_dns` to be enabled and `base_domain` to be a real,
+  # publicly delegated domain whose NS records point at this server.
+  # See: https://headscale.net/stable/ref/serve/
+  https_certs:
+    enabled: false
+    # Address the authoritative DNS server listens on (UDP and TCP) for ACME
+    # challenge queries from public resolvers. Binding a privileged port such
+    # as ":53" requires CAP_NET_BIND_SERVICE or running as root.
+    listen_addr: ":53"
+    # FQDN of this authoritative DNS server, used in SOA and NS answers.
+    # Defaults to "ns." + base_domain when empty.
+    nameserver: ""
+
 # Unix socket used for the CLI to connect without authentication
 # Note: for production you will want to set this to something like:
 unix_socket: /var/run/headscale/headscale.sock

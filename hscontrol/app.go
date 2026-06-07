@@ -108,6 +108,11 @@ type Headscale struct {
 	authProvider   AuthProvider
 	mapBatcher     *mapper.Batcher
 
+	// acmeDNS is the authoritative DNS server answering ACME DNS-01
+	// challenges for per-node HTTPS certificates. It is nil unless
+	// dns.https_certs is enabled.
+	acmeDNS *dns.ACMEChallengeServer
+
 	clientStreamsOpen sync.WaitGroup
 }
 
@@ -671,6 +676,33 @@ func (h *Headscale) Serve() error {
 
 		go h.extraRecordMan.Run()
 		defer h.extraRecordMan.Close()
+	}
+
+	// Start the authoritative DNS server that answers ACME DNS-01
+	// challenges for per-node HTTPS certificates (tailscale serve /
+	// tailscale cert). base_domain must be publicly delegated to this
+	// server for the challenges to validate.
+	if h.cfg.DNSConfig.HTTPSCerts.Enabled {
+		listenAddr := h.cfg.DNSConfig.HTTPSCerts.ListenAddr
+		if listenAddr == "" {
+			listenAddr = ":53"
+		}
+
+		h.acmeDNS = dns.NewACMEChallengeServer(
+			h.cfg.BaseDomain,
+			h.cfg.DNSConfig.HTTPSCerts.Nameserver,
+			listenAddr,
+		)
+		if err := h.acmeDNS.Start(); err != nil {
+			return fmt.Errorf("starting ACME challenge DNS server: %w", err)
+		}
+		defer h.acmeDNS.Close()
+
+		log.Info().
+			Str("listen_addr", listenAddr).
+			Str("zone", h.cfg.BaseDomain).
+			Msg("authoritative DNS server for per-node HTTPS certificates started")
+	}
 	}
 
 	// Start all scheduled tasks, e.g. expiring nodes, derp updates and
