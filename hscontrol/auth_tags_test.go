@@ -1008,16 +1008,24 @@ func TestReAuthWithDifferentMachineKey(t *testing.T) {
 		Expiry: time.Now().Add(24 * time.Hour),
 	}
 
-	resp2, err := app.handleRegisterWithAuthKey(regReq2, machineKey2.Public())
-	require.NoError(t, err)
-	require.True(t, resp2.MachineAuthorized)
+	// A NodeKey is bound 1:1 to a MachineKey (getAndValidateNode enforces
+	// this at poll time). A different machine claiming an existing NodeKey is
+	// a hijack: it would poison the NodeStore NodeKey index so the original
+	// node fails the poll-time MachineKey check and is denied service.
+	// Registration now rejects it (see f8f08cf7). Real Tailscale clients
+	// never reuse a NodeKey across machine keys, so no legitimate flow is
+	// affected.
+	_, err = app.handleRegisterWithAuthKey(regReq2, machineKey2.Public())
+	require.Error(t, err,
+		"a different machine claiming an existing NodeKey must be rejected")
 
-	// Verify the node still exists and has tags
-	// Note: Depending on implementation, this might be the same node or a new node
+	// The original node is unaffected: still present, tagged, same identity.
 	node2, found := app.state.GetNodeByNodeKey(nodeKey.Public())
 	require.True(t, found)
 	assert.True(t, node2.IsTagged())
 	assert.ElementsMatch(t, tags, node2.Tags().AsSlice())
+	assert.Equal(t, node1.ID(), node2.ID(),
+		"original node must survive; the hijacking registration was rejected")
 }
 
 // TestUntaggedAuthKeyZeroExpiryGetsDefault tests that when node.expiry is configured
