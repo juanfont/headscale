@@ -281,3 +281,72 @@ func TestBuildFromChangeFiltersPeerPatchesByVisibility(t *testing.T) {
 	assert.True(t, gotVisible,
 		"n1 must receive the online patch for visible same-user peer n1b")
 }
+
+// TestBuildFromChangeFiltersUserProfilesByVisibility proves the incremental
+// PeersChanged path restricts UserProfiles to the recipient's ACL-visible
+// peers, like the full-map path (whose ListPeers returns the
+// BuildPeerMap-filtered set). Without it, a changed node broadcast to all
+// nodes leaks its owner's identity (login name, display name, avatar) to
+// recipients whose policy forbids accessing that node.
+func TestBuildFromChangeFiltersUserProfilesByVisibility(t *testing.T) {
+	tmp := t.TempDir()
+
+	p4 := netip.MustParsePrefix("100.64.0.0/10")
+	p6 := netip.MustParsePrefix("fd7a:115c:a1e0::/48")
+
+	cfg := &types.Config{
+		Database: types.DatabaseConfig{
+			Type:   types.DatabaseSqlite,
+			Sqlite: types.SqliteConfig{Path: tmp + "/h.db"},
+		},
+		PrefixV4:     &p4,
+		PrefixV6:     &p6,
+		IPAllocation: types.IPAllocationStrategySequential,
+		BaseDomain:   "headscale.test",
+		Policy:       types.PolicyConfig{Mode: types.PolicyModeDB},
+		DERP: types.DERPConfig{
+			DERPMap: &tailcfg.DERPMap{
+				Regions: map[int]*tailcfg.DERPRegion{999: {RegionID: 999}},
+			},
+		},
+		Tuning: types.Tuning{
+			NodeStoreBatchSize:    state.TestBatchSize,
+			NodeStoreBatchTimeout: state.TestBatchTimeout,
+		},
+	}
+
+	database, err := db.NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	user1 := database.CreateUserForTest("u1")
+	user2 := database.CreateUserForTest("u2")
+	n1 := database.CreateRegisteredNodeForTest(user1, "n1")
+	n2 := database.CreateRegisteredNodeForTest(user2, "n2")
+	require.NoError(t, database.Close())
+
+	s, err := state.NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	// Each user may reach only its own devices, so n1 cannot access n2.
+	policy := `{"acls":[
+		{"action":"accept","src":["u1@"],"dst":["u1@:*"]},
+		{"action":"accept","src":["u2@"],"dst":["u2@:*"]}
+	]}`
+	_, err = s.SetPolicy([]byte(policy))
+	require.NoError(t, err)
+
+	m := &mapper{state: s, cfg: cfg}
+
+	// n2 (user2) is added and broadcast. n1 (user1) cannot access it, so n1
+	// must NOT receive user2's profile.
+	c := change.NodeAdded(n2.ID)
+	resp, err := m.buildFromChange(n1.ID, tailcfg.CurrentCapabilityVersion, &c)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	for _, up := range resp.UserProfiles {
+		assert.NotEqual(t, tailcfg.UserID(user2.ID), up.ID,
+			"n1 must not receive user2's profile; n2 is not ACL-visible to n1")
+	}
+}

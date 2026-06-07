@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
@@ -419,7 +420,7 @@ func (m *mapper) buildFromChange(
 	} else {
 		if len(resp.PeersChanged) > 0 {
 			peers := m.state.ListPeers(nodeID, resp.PeersChanged...)
-			builder.WithUserProfiles(peers)
+			builder.WithUserProfiles(m.filterVisibleNodes(nodeID, peers))
 			builder.WithPeerChanges(peers)
 		}
 
@@ -481,6 +482,37 @@ func (m *mapper) filterVisiblePeerPatches(
 	}
 
 	return filtered
+}
+
+// filterVisibleNodes restricts a peer slice to the nodes the recipient can see
+// under the ACL policy, mirroring the policy.ReduceNodes filter that
+// buildTailPeers applies to full peer objects. It guards UserProfiles on the
+// incremental PeersChanged path: unlike the full-map path (whose ListPeers
+// returns the BuildPeerMap-filtered set), that path receives an unfiltered
+// node slice and would otherwise leak the identities of users whose nodes the
+// recipient cannot access.
+func (m *mapper) filterVisibleNodes(
+	nodeID types.NodeID,
+	peers views.Slice[types.NodeView],
+) views.Slice[types.NodeView] {
+	node, ok := m.state.GetNodeByID(nodeID)
+	if !ok {
+		return views.SliceOf([]types.NodeView{})
+	}
+
+	matchers, err := m.state.MatchersForNode(node)
+	if err != nil {
+		// Fail closed: emit no peer user profiles rather than risk a leak.
+		return views.SliceOf([]types.NodeView{})
+	}
+
+	// No matchers means no policy restrictions, so every peer is visible —
+	// the same default buildTailPeers applies.
+	if len(matchers) == 0 {
+		return peers
+	}
+
+	return policy.ReduceNodes(node, peers, matchers)
 }
 
 func writeDebugMapResponse(
