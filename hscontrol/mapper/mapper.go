@@ -256,7 +256,13 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, node types.NodeView) {
 
 		q := u.Query()
 		q.Set("device_name", node.Hostname())
-		q.Set("device_model", node.Hostinfo().OS())
+
+		// Guard Hostinfo().Valid() before dereferencing OS(): a node loaded
+		// from a legacy NULL host_info row has a nil Hostinfo, and OS() would
+		// panic. Mirrors the .Valid() guard in RequestTags/TailNode.
+		if node.Hostinfo().Valid() {
+			q.Set("device_model", node.Hostinfo().OS())
+		}
 
 		if ips := node.IPs(); len(ips) > 0 {
 			q.Set("device_ip", ips[0].String())
