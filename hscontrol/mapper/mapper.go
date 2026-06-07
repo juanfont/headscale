@@ -428,8 +428,9 @@ func (m *mapper) buildFromChange(
 		}
 	}
 
-	if len(resp.PeerPatches) > 0 {
-		builder.WithPeerChangedPatch(resp.PeerPatches)
+	patches := m.filterVisiblePeerPatches(nodeID, resp.PeerPatches)
+	if len(patches) > 0 {
+		builder.WithPeerChangedPatch(patches)
 	}
 
 	if resp.PingRequest != nil {
@@ -437,6 +438,49 @@ func (m *mapper) buildFromChange(
 	}
 
 	return builder.Build()
+}
+
+// filterVisiblePeerPatches drops peer-change patches whose target peer the
+// recipient cannot see under the ACL policy, mirroring the [policy.ReduceNodes]
+// visibility filter [MapResponseBuilder.buildTailPeers] applies to full peer
+// objects. Without it, online/offline, endpoint, and key-expiry patches
+// disclose the existence, presence, and addresses of peers the recipient's
+// policy forbids it from accessing.
+func (m *mapper) filterVisiblePeerPatches(
+	nodeID types.NodeID,
+	patches []*tailcfg.PeerChange,
+) []*tailcfg.PeerChange {
+	node, ok := m.state.GetNodeByID(nodeID)
+	if !ok {
+		return nil
+	}
+
+	matchers, err := m.state.MatchersForNode(node)
+	if err != nil {
+		// Fail closed: if visibility cannot be resolved, send no patches
+		// rather than risk leaking peers the node may not access.
+		return nil
+	}
+
+	// No matchers means no policy restrictions, so every peer is visible —
+	// the same default buildTailPeers applies.
+	if len(matchers) == 0 {
+		return patches
+	}
+
+	var filtered []*tailcfg.PeerChange
+	for _, patch := range patches {
+		peer, ok := m.state.GetNodeByID(types.NodeID(patch.NodeID))
+		if !ok {
+			continue
+		}
+
+		if node.CanAccess(matchers, peer) || peer.CanAccess(matchers, node) {
+			filtered = append(filtered, patch)
+		}
+	}
+
+	return filtered
 }
 
 func writeDebugMapResponse(
