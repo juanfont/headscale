@@ -50,35 +50,6 @@ func ReduceRoutes(
 	return result
 }
 
-// BuildPeerMap builds a map of all peers that can be accessed by each node.
-//
-// Compared to [ReduceNodes], which builds the list per node, we end up with
-// doing the full work for every node (O(n^2)), while this will reduce the
-// list as we see relationships while building the map, making it O(n^2/2)
-// in the end, but with less work per node.
-func BuildPeerMap(
-	nodes views.Slice[types.NodeView],
-	matchers []matcher.Match,
-) map[types.NodeID][]types.NodeView {
-	ret := make(map[types.NodeID][]types.NodeView, nodes.Len())
-
-	// Build the map of all peers according to the matchers.
-	for i := range nodes.Len() {
-		for j := i + 1; j < nodes.Len(); j++ {
-			if nodes.At(i).ID() == nodes.At(j).ID() {
-				continue
-			}
-
-			if nodes.At(i).CanAccess(matchers, nodes.At(j)) || nodes.At(j).CanAccess(matchers, nodes.At(i)) {
-				ret[nodes.At(i).ID()] = append(ret[nodes.At(i).ID()], nodes.At(j))
-				ret[nodes.At(j).ID()] = append(ret[nodes.At(j).ID()], nodes.At(i))
-			}
-		}
-	}
-
-	return ret
-}
-
 // ApproveRoutesWithPolicy checks if the node can approve the announced routes
 // and returns the new list of approved routes. The [PolicyManager] is consulted
 // via [PolicyManager.NodeCanApproveRoute].
