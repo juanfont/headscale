@@ -447,42 +447,65 @@ func (m *mapper) buildFromChange(
 	return builder.Build()
 }
 
-// filterVisiblePeerPatches drops peer-change patches whose target peer the
-// recipient cannot see under the ACL policy, mirroring the [policy.ReduceNodes]
-// visibility filter [MapResponseBuilder.buildTailPeers] applies to full peer
-// objects. Without it, online/offline, endpoint, and key-expiry patches
-// disclose the existence, presence, and addresses of peers the recipient's
-// policy forbids it from accessing.
-func (m *mapper) filterVisiblePeerPatches(
-	nodeID types.NodeID,
-	patches []*tailcfg.PeerChange,
-) []*tailcfg.PeerChange {
+// visiblePeerIDs returns the set of peer node IDs the recipient may see under
+// the current policy. It is the single visibility decision shared by the
+// incremental peer-change and user-profile paths, computed from the same live
+// per-node matchers and [policy.ReduceNodes] filter that
+// [MapResponseBuilder.buildTailPeers] applies to full peer objects, so the
+// paths cannot drift. The snapshot peer map ([NodeStore.ListPeers]) is used
+// only as the candidate set, matching buildTailPeers; the live policy decides
+// visibility because the snapshot is not rebuilt on policy changes.
+//
+// ok is false when the node or its matchers cannot be resolved; callers must
+// then fail closed (emit nothing) rather than risk leaking forbidden peers.
+func (m *mapper) visiblePeerIDs(nodeID types.NodeID) (map[types.NodeID]struct{}, bool) {
 	node, ok := m.state.GetNodeByID(nodeID)
 	if !ok {
-		return nil
+		return nil, false
 	}
 
 	matchers, err := m.state.MatchersForNode(node)
 	if err != nil {
-		// Fail closed: if visibility cannot be resolved, send no patches
-		// rather than risk leaking peers the node may not access.
-		return nil
+		return nil, false
 	}
+
+	peers := m.state.ListPeers(nodeID)
 
 	// No matchers means no policy restrictions, so every peer is visible —
 	// the same default buildTailPeers applies.
-	if len(matchers) == 0 {
+	if len(matchers) > 0 {
+		peers = policy.ReduceNodes(node, peers, matchers)
+	}
+
+	visible := make(map[types.NodeID]struct{}, peers.Len())
+	for _, peer := range peers.All() {
+		visible[peer.ID()] = struct{}{}
+	}
+
+	return visible, true
+}
+
+// filterVisiblePeerPatches drops peer-change patches whose target peer the
+// recipient cannot see under the ACL policy. Without it, online/offline,
+// endpoint, and key-expiry patches disclose the existence, presence, and
+// addresses of peers the recipient's policy forbids it from accessing.
+func (m *mapper) filterVisiblePeerPatches(
+	nodeID types.NodeID,
+	patches []*tailcfg.PeerChange,
+) []*tailcfg.PeerChange {
+	if len(patches) == 0 {
 		return patches
+	}
+
+	visible, ok := m.visiblePeerIDs(nodeID)
+	if !ok {
+		// Fail closed: if visibility cannot be resolved, send no patches.
+		return nil
 	}
 
 	var filtered []*tailcfg.PeerChange
 	for _, patch := range patches {
-		peer, ok := m.state.GetNodeByID(types.NodeID(patch.NodeID))
-		if !ok {
-			continue
-		}
-
-		if node.CanAccess(matchers, peer) || peer.CanAccess(matchers, node) {
+		if _, vis := visible[types.NodeID(patch.NodeID)]; vis {
 			filtered = append(filtered, patch)
 		}
 	}
@@ -491,34 +514,27 @@ func (m *mapper) filterVisiblePeerPatches(
 }
 
 // filterVisibleNodes restricts a peer slice to the nodes the recipient can see
-// under the ACL policy, mirroring the policy.ReduceNodes filter that
-// buildTailPeers applies to full peer objects. It guards UserProfiles on the
-// incremental PeersChanged path: unlike the full-map path (whose ListPeers
-// returns the BuildPeerMap-filtered set), that path receives an unfiltered
-// node slice and would otherwise leak the identities of users whose nodes the
-// recipient cannot access.
+// under the ACL policy. It guards UserProfiles on the incremental PeersChanged
+// path, which receives an unfiltered node slice and would otherwise leak the
+// identities of users whose nodes the recipient cannot access.
 func (m *mapper) filterVisibleNodes(
 	nodeID types.NodeID,
 	peers views.Slice[types.NodeView],
 ) views.Slice[types.NodeView] {
-	node, ok := m.state.GetNodeByID(nodeID)
+	visible, ok := m.visiblePeerIDs(nodeID)
 	if !ok {
-		return views.SliceOf([]types.NodeView{})
-	}
-
-	matchers, err := m.state.MatchersForNode(node)
-	if err != nil {
 		// Fail closed: emit no peer user profiles rather than risk a leak.
 		return views.SliceOf([]types.NodeView{})
 	}
 
-	// No matchers means no policy restrictions, so every peer is visible —
-	// the same default buildTailPeers applies.
-	if len(matchers) == 0 {
-		return peers
+	var filtered []types.NodeView
+	for _, peer := range peers.All() {
+		if _, vis := visible[peer.ID()]; vis {
+			filtered = append(filtered, peer)
+		}
 	}
 
-	return policy.ReduceNodes(node, peers, matchers)
+	return views.SliceOf(filtered)
 }
 
 func writeDebugMapResponse(
