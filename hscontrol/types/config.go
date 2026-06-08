@@ -152,6 +152,33 @@ type DNSConfig struct {
 	SearchDomains    []string            `mapstructure:"search_domains"`
 	ExtraRecords     []tailcfg.DNSRecord `mapstructure:"extra_records"`
 	ExtraRecordsPath string              `mapstructure:"extra_records_path"`
+
+	// HTTPSCerts enables provisioning of per-node HTTPS/TLS certificates
+	// (used by `tailscale serve` and `tailscale cert`) via ACME DNS-01
+	// challenges. When enabled, headscale advertises CertDomains to nodes
+	// and runs an embedded authoritative DNS server for base_domain to
+	// answer the `_acme-challenge` TXT lookups.
+	HTTPSCerts HTTPSCertsConfig
+}
+
+// HTTPSCertsConfig configures per-node HTTPS certificate provisioning via
+// ACME DNS-01. It requires base_domain to be a real, publicly delegated
+// zone whose NS records point at headscale's embedded authoritative DNS
+// server.
+type HTTPSCertsConfig struct {
+	// Enabled turns on per-node HTTPS certificate provisioning.
+	Enabled bool
+
+	// ListenAddr is the UDP/TCP address the embedded authoritative DNS
+	// server listens on for ACME DNS-01 challenge queries from public
+	// resolvers (default ":53"). Binding a low port may require
+	// CAP_NET_BIND_SERVICE.
+	ListenAddr string
+
+	// Nameserver is the FQDN of this authoritative DNS server, reported in
+	// SOA and NS answers (e.g. "ns1.example.com"). When empty it defaults
+	// to "ns." + base_domain.
+	Nameserver string
 }
 
 type Nameservers struct {
@@ -408,6 +435,10 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("dns.nameservers.global", []string{})
 	viper.SetDefault("dns.nameservers.split", map[string]string{})
 	viper.SetDefault("dns.search_domains", []string{})
+	viper.SetDefault("dns.https_certs.enabled", false)
+	// listen_addr intentionally has no viper default; an empty value is
+	// resolved to ":53" by dns.NewACMEChallengeServer so there is a single
+	// source of truth for the default.
 
 	viper.SetDefault("derp.server.enabled", false)
 	viper.SetDefault("derp.server.verify_clients", true)
@@ -877,6 +908,10 @@ func dns() (DNSConfig, error) {
 	dns.SearchDomains = viper.GetStringSlice("dns.search_domains")
 	dns.ExtraRecordsPath = viper.GetString("dns.extra_records_path")
 
+	dns.HTTPSCerts.Enabled = viper.GetBool("dns.https_certs.enabled")
+	dns.HTTPSCerts.ListenAddr = viper.GetString("dns.https_certs.listen_addr")
+	dns.HTTPSCerts.Nameserver = viper.GetString("dns.https_certs.nameserver")
+
 	if viper.IsSet("dns.extra_records") {
 		var extraRecords []tailcfg.DNSRecord
 
@@ -1204,6 +1239,20 @@ func LoadServerConfig() (*Config, error) {
 		err := isSafeServerURL(serverURL, dnsConfig.BaseDomain)
 		if err != nil {
 			return nil, err
+		}
+	}
+
+	// Per-node HTTPS certificate provisioning (tailscale serve / tailscale
+	// cert) advertises CertDomains derived from base_domain and answers
+	// ACME DNS-01 challenges for that zone, so both MagicDNS and a base
+	// domain are required.
+	if dnsConfig.HTTPSCerts.Enabled {
+		if !dnsConfig.MagicDNS {
+			return nil, errors.New("dns.https_certs.enabled requires dns.magic_dns to be enabled")
+		}
+
+		if dnsConfig.BaseDomain == "" {
+			return nil, errors.New("dns.https_certs.enabled requires dns.base_domain to be set")
 		}
 	}
 
