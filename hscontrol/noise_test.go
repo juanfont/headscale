@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"testing"
 
@@ -395,4 +396,79 @@ func TestOverrideRemoteAddr(t *testing.T) {
 	r.ServeHTTP(httptest.NewRecorder(), req)
 
 	assert.Equal(t, clientAddr, observed)
+}
+
+// TestSSHActionHoldAndDelegate_PersistsAuthSession guards the happy path: the
+// initial SSH-check poll returns a HoldAndDelegate URL carrying an auth_id, and
+// that auth session must remain in the cache for the follow-up poll to find.
+func TestSSHActionHoldAndDelegate_PersistsAuthSession(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("ssh-persist-user")
+	src := putTestNodeInStore(t, app, user, "src-node")
+	dst := putTestNodeInStore(t, app, user, "dst-node")
+
+	ns := &noiseServer{headscale: app, machineKey: dst.MachineKey}
+
+	rec := httptest.NewRecorder()
+	ns.SSHActionHandler(rec, newSSHActionRequest(t, src.ID, dst.ID))
+	require.Equal(t, http.StatusOK, rec.Code, "initial poll body=%s", rec.Body.String())
+
+	var action tailcfg.SSHAction
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &action))
+	require.NotEmpty(t, action.HoldAndDelegate, "expected HoldAndDelegate, got %+v", action)
+
+	u, err := url.Parse(action.HoldAndDelegate)
+	require.NoError(t, err)
+
+	authIDStr := u.Query().Get("auth_id")
+	require.NotEmpty(t, authIDStr, "HoldAndDelegate URL missing auth_id: %s", action.HoldAndDelegate)
+
+	authID, err := types.AuthIDFromString(authIDStr)
+	require.NoError(t, err)
+
+	_, ok := app.state.GetAuthCacheEntry(authID)
+	require.True(t, ok, "auth session %s must persist after HoldAndDelegate", authID)
+}
+
+// TestSSHActionHandler_RejectsMissingSessionWithoutCheck verifies that without
+// an SSH check covering the pair, a follow-up poll for an unknown auth_id is a
+// genuinely bogus request and is rejected. The re-delegation behaviour for a
+// missing session (issue #3305, exercised end to end with a real client in the
+// servertest package) applies only when the pair is still subject to a check.
+func TestSSHActionHandler_RejectsMissingSessionWithoutCheck(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("ssh-nocheck-user")
+	src := putTestNodeInStore(t, app, user, "src-node")
+	dst := putTestNodeInStore(t, app, user, "dst-node")
+
+	// No SSH-check policy is set, so the pair is not subject to a check.
+	_, checkFound := app.state.SSHCheckParams(src.ID, dst.ID)
+	require.False(t, checkFound, "test setup: pair must not be subject to a check")
+
+	ns := &noiseServer{headscale: app, machineKey: dst.MachineKey}
+
+	missing := types.MustAuthID()
+
+	rec := httptest.NewRecorder()
+	ns.SSHActionHandler(rec, newSSHActionFollowUpRequest(t, src.ID, dst.ID, missing))
+	require.Equal(t, http.StatusBadRequest, rec.Code,
+		"a bogus auth_id with no active check must be rejected, body=%s", rec.Body.String())
+}
+
+// newSSHActionFollowUpRequest is like newSSHActionRequest but carries the
+// auth_id query parameter that marks a follow-up poll.
+func newSSHActionFollowUpRequest(t *testing.T, src, dst types.NodeID, authID types.AuthID) *http.Request {
+	t.Helper()
+
+	req := newSSHActionRequest(t, src, dst)
+
+	q := req.URL.Query()
+	q.Set("auth_id", authID.String())
+	req.URL.RawQuery = q.Encode()
+
+	return req
 }

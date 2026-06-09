@@ -610,6 +610,19 @@ func (ns *noiseServer) sshActionFollowUp(
 
 	auth, ok := ns.headscale.state.GetAuthCacheEntry(authID)
 	if !ok {
+		// The session is gone (expired, evicted, or lost on a control-plane
+		// restart). A bare error dead-ends the client: it keeps polling this
+		// now-defunct auth_id until the SSH connection times out. Re-delegate
+		// so a still-required check can complete instead.
+		if checkFound {
+			reqLog.Info().Caller().
+				Msg("SSH check auth session missing; re-delegating")
+
+			return ns.sshActionHoldAndDelegate(
+				reqLog, action, srcNodeID, dstNodeID,
+			)
+		}
+
 		return nil, NewHTTPError(
 			http.StatusBadRequest,
 			"Invalid auth_id",

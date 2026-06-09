@@ -23,6 +23,7 @@ type ControlServer interface {
 	GetHealthEndpoint() string
 	GetEndpoint() string
 	WaitForRunning() error
+	Restart() error
 	CreateUser(user string) (*v1.User, error)
 	CreateAuthKey(user uint64, reusable bool, ephemeral bool) (*v1.PreAuthKey, error)
 	CreateAuthKeyWithTags(user uint64, reusable bool, ephemeral bool, tags []string) (*v1.PreAuthKey, error)
