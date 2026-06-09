@@ -112,6 +112,11 @@ var nodeUpdateColumns = []string{
 // ErrRegistrationExpired is returned when a registration has expired.
 var ErrRegistrationExpired = errors.New("registration expired")
 
+// ErrNodeKeyInUse is returned when a registration or re-auth claims a NodeKey
+// already bound to a different machine, enforcing the 1:1 NodeKey<->MachineKey
+// binding.
+var ErrNodeKeyInUse = errors.New("node key already in use by another machine")
+
 // sshCheckPair identifies a (source, destination) node pair for
 // SSH check auth tracking.
 type sshCheckPair struct {
@@ -523,6 +528,7 @@ func (s *State) persistNodeRowToDB(node types.NodeView) (types.NodeView, error) 
 	// SetNodeExpiry calls or re-registration, not during MapRequest updates.
 	err := s.db.DB.Select(nodeUpdateColumns).Omit("Expiry").Updates(nodePtr).Error
 	s.persistMu.Unlock()
+
 	if err != nil {
 		return types.NodeView{}, fmt.Errorf("saving node: %w", err)
 	}
@@ -1572,9 +1578,7 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 	// the NodeStore NodeKey index (denying the victim service).
 	if existing, ok := s.nodeStore.GetNodeByNodeKey(regData.NodeKey); ok &&
 		existing.MachineKey() != regData.MachineKey {
-		return types.NodeView{}, fmt.Errorf(
-			"node key already in use by another machine",
-		)
+		return types.NodeView{}, ErrNodeKeyInUse
 	}
 
 	// Update existing node in [NodeStore] - validation passed, safe to mutate
@@ -1715,9 +1719,7 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 	// time and reject before allocating any resources.
 	if existing, ok := s.nodeStore.GetNodeByNodeKey(params.NodeKey); ok &&
 		existing.MachineKey() != params.MachineKey {
-		return types.NodeView{}, fmt.Errorf(
-			"node key already in use by another machine",
-		)
+		return types.NodeView{}, ErrNodeKeyInUse
 	}
 
 	// Prepare the node for registration

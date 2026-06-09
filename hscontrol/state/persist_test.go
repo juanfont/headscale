@@ -229,6 +229,7 @@ func TestRegistrationRejectsNodeKeyClaimedByAnotherMachine(t *testing.T) {
 
 	database, err := db.NewHeadscaleDatabase(cfg)
 	require.NoError(t, err)
+
 	user := database.CreateUserForTest("nk-user")
 	require.NoError(t, database.Close())
 
@@ -273,6 +274,7 @@ func TestReauthRejectsNodeKeyClaimedByAnotherMachine(t *testing.T) {
 
 	database, err := db.NewHeadscaleDatabase(cfg)
 	require.NoError(t, err)
+
 	attacker := database.CreateUserForTest("attacker")
 	victim := database.CreateUserForTest("victim")
 	require.NoError(t, database.Close())
