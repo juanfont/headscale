@@ -2,7 +2,12 @@
   description = "headscale - Open Source Tailscale Control server";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    # Pinned to staging-next-26.05 for Go 1.26.4 (security fix GO-2026-5037/5039):
+    # nixpkgs-unstable still ships 1.26.3 — the bump is merged to nixpkgs staging
+    # but the large-rebuild staging->unstable pipeline lags. The 26.05 line is
+    # otherwise current (dev tools match unstable). Switch back to nixpkgs-unstable
+    # once it ships go_1_26 >= 1.26.4.
+    nixpkgs.url = "github:NixOS/nixpkgs/staging-next-26.05";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
@@ -26,6 +31,7 @@
       overlays.default = _: prev:
         let
           pkgs = nixpkgs.legacyPackages.${prev.stdenv.hostPlatform.system};
+          # Go 1.26 builder; resolves to Go 1.26.4 from the pinned nixpkgs.
           buildGo = pkgs.buildGo126Module;
           vendorHash = (builtins.fromJSON (builtins.readFile ./flakehashes.json)).vendor.sri;
         in
@@ -94,7 +100,8 @@
             subPackages = [ "." ];
           };
 
-          # Build golangci-lint with Go 1.26 (upstream uses hardcoded Go version)
+          # Build golangci-lint with stock Go 1.26 (upstream uses hardcoded Go
+          # version); it does not build against the pinned 1.26.4.
           golangci-lint = buildGo rec {
             pname = "golangci-lint";
             version = "2.12.2";
@@ -198,7 +205,7 @@
             clang-tools # clang-format
             protobuf-language-server
           ]
-          ++ lib.optional pkgs.stdenv.isLinux [ traceroute ];
+          ++ lib.optionals pkgs.stdenv.isLinux [ traceroute ];
 
         # Add entry to build a docker image with headscale
         # caveat: only works on Linux
@@ -229,7 +236,7 @@
               (pkgs.writeShellScriptBin
                 "go-mod-update-all"
                 ''
-                  cat go.mod | ${pkgs.silver-searcher}/bin/ag "\t" | ${pkgs.silver-searcher}/bin/ag -v indirect | ${pkgs.gawk}/bin/awk '{print $1}' | ${pkgs.findutils}/bin/xargs go get -u
+                  cat go.mod | ${pkgs.ripgrep}/bin/rg "\t" | ${pkgs.ripgrep}/bin/rg -v indirect | ${pkgs.gawk}/bin/awk '{print $1}' | ${pkgs.findutils}/bin/xargs go get -u
                   go mod tidy
                 '')
             ];
