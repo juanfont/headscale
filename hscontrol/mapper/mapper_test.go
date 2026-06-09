@@ -273,11 +273,13 @@ func TestBuildFromChangeFiltersPeerPatchesByVisibility(t *testing.T) {
 	require.NotNil(t, resp2)
 
 	var gotVisible bool
+
 	for _, p := range resp2.PeersChangedPatch {
 		if p.NodeID == n1b.ID.NodeID() {
 			gotVisible = true
 		}
 	}
+
 	assert.True(t, gotVisible,
 		"n1 must receive the online patch for visible same-user peer n1b")
 }
@@ -346,7 +348,7 @@ func TestBuildFromChangeFiltersUserProfilesByVisibility(t *testing.T) {
 	require.NotNil(t, resp)
 
 	for _, up := range resp.UserProfiles {
-		assert.NotEqual(t, tailcfg.UserID(user2.ID), up.ID,
+		assert.NotEqual(t, user2.TailscaleUserProfile().ID, up.ID,
 			"n1 must not receive user2's profile; n2 is not ACL-visible to n1")
 	}
 }
@@ -389,6 +391,7 @@ func TestBuildFromChangeVisibilityMatchesFullMap(t *testing.T) {
 
 	database, err := db.NewHeadscaleDatabase(cfg)
 	require.NoError(t, err)
+
 	user1 := database.CreateUserForTest("u1")
 	user2 := database.CreateUserForTest("u2")
 	n1 := database.CreateRegisteredNodeForTest(user1, "n1")
@@ -406,62 +409,77 @@ func TestBuildFromChangeVisibilityMatchesFullMap(t *testing.T) {
 	// fullVisible returns the peer IDs n1 sees in the full map.
 	fullVisible := func(t *testing.T) map[tailcfg.NodeID]bool {
 		t.Helper()
+
 		resp, err := m.fullMapResponse(n1.ID, capVer)
 		require.NoError(t, err)
+
 		got := map[tailcfg.NodeID]bool{}
 		for _, p := range resp.Peers {
 			got[p.ID] = true
 		}
+
 		return got
 	}
 	// patchReaches reports whether a NodeOnline patch for id is delivered to n1.
 	patchReaches := func(t *testing.T, id types.NodeID) bool {
 		t.Helper()
+
 		c := change.NodeOnline(id)
 		resp, err := m.buildFromChange(n1.ID, capVer, &c)
 		require.NoError(t, err)
+
 		if resp == nil {
 			return false
 		}
+
 		for _, p := range resp.PeersChangedPatch {
 			if p.NodeID == id.NodeID() {
 				return true
 			}
 		}
+
 		return false
 	}
 	// changedReaches reports whether a NodeAdded changed-peer for id reaches n1.
 	changedReaches := func(t *testing.T, id types.NodeID) bool {
 		t.Helper()
+
 		c := change.NodeAdded(id)
 		resp, err := m.buildFromChange(n1.ID, capVer, &c)
 		require.NoError(t, err)
+
 		if resp == nil {
 			return false
 		}
+
 		for _, p := range resp.PeersChanged {
 			if p.ID == id.NodeID() {
 				return true
 			}
 		}
+
 		return false
 	}
-	// profileReaches reports whether userID's profile is delivered to n1 when n
+	// profileReaches reports whether want's profile is delivered to n1 when n
 	// is added. Use a cross-user node so the result is not masked by n1's own
 	// always-present user profile.
-	profileReaches := func(t *testing.T, n *types.Node, userID uint) bool {
+	profileReaches := func(t *testing.T, n *types.Node, want tailcfg.UserID) bool {
 		t.Helper()
+
 		c := change.NodeAdded(n.ID)
 		resp, err := m.buildFromChange(n1.ID, capVer, &c)
 		require.NoError(t, err)
+
 		if resp == nil {
 			return false
 		}
+
 		for _, up := range resp.UserProfiles {
-			if up.ID == tailcfg.UserID(userID) {
+			if up.ID == want {
 				return true
 			}
 		}
+
 		return false
 	}
 
@@ -501,6 +519,7 @@ func TestBuildFromChangeVisibilityMatchesFullMap(t *testing.T) {
 			full := fullVisible(t)
 			require.Lenf(t, full, tt.wantFull,
 				"%s: unexpected full-map visible peer count", tt.name)
+
 			for _, peer := range []*types.Node{n1b, n2} {
 				want := full[peer.ID.NodeID()]
 				assert.Equalf(t, want, patchReaches(t, peer.ID),
@@ -511,7 +530,7 @@ func TestBuildFromChangeVisibilityMatchesFullMap(t *testing.T) {
 					tt.name, peer.Hostname)
 			}
 			// Cross-user profile (user2) must appear iff n2 is visible to n1.
-			assert.Equalf(t, full[n2.ID.NodeID()], profileReaches(t, n2, user2.ID),
+			assert.Equalf(t, full[n2.ID.NodeID()], profileReaches(t, n2, user2.TailscaleUserProfile().ID),
 				"%s: user2 profile must be sent iff n2 is visible to n1", tt.name)
 		})
 	}

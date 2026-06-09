@@ -458,7 +458,7 @@ func (m *mapper) buildFromChange(
 //
 // ok is false when the node or its matchers cannot be resolved; callers must
 // then fail closed (emit nothing) rather than risk leaking forbidden peers.
-func (m *mapper) visiblePeerIDs(nodeID types.NodeID) (map[types.NodeID]struct{}, bool) {
+func (m *mapper) visiblePeerIDs(nodeID types.NodeID) (map[tailcfg.NodeID]struct{}, bool) {
 	node, ok := m.state.GetNodeByID(nodeID)
 	if !ok {
 		return nil, false
@@ -477,9 +477,11 @@ func (m *mapper) visiblePeerIDs(nodeID types.NodeID) (map[types.NodeID]struct{},
 		peers = policy.ReduceNodes(node, peers, matchers)
 	}
 
-	visible := make(map[types.NodeID]struct{}, peers.Len())
+	// Key by tailcfg.NodeID so the peer-patch path can look up by patch.NodeID
+	// directly, avoiding an unchecked int64->uint64 conversion.
+	visible := make(map[tailcfg.NodeID]struct{}, peers.Len())
 	for _, peer := range peers.All() {
-		visible[peer.ID()] = struct{}{}
+		visible[peer.ID().NodeID()] = struct{}{}
 	}
 
 	return visible, true
@@ -504,8 +506,9 @@ func (m *mapper) filterVisiblePeerPatches(
 	}
 
 	var filtered []*tailcfg.PeerChange
+
 	for _, patch := range patches {
-		if _, vis := visible[types.NodeID(patch.NodeID)]; vis {
+		if _, vis := visible[patch.NodeID]; vis {
 			filtered = append(filtered, patch)
 		}
 	}
@@ -528,8 +531,9 @@ func (m *mapper) filterVisibleNodes(
 	}
 
 	var filtered []types.NodeView
+
 	for _, peer := range peers.All() {
-		if _, vis := visible[peer.ID()]; vis {
+		if _, vis := visible[peer.ID().NodeID()]; vis {
 			filtered = append(filtered, peer)
 		}
 	}

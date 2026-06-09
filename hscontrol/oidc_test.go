@@ -184,7 +184,7 @@ func TestDoOIDCAuthorization(t *testing.T) {
 // browsers that do not default to Lax sending it on cross-site requests.
 func TestSetCSRFCookieSameSite(t *testing.T) {
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/auth/abcdef0123456789", nil)
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/auth/abcdef0123456789", nil)
 
 	_, err := setCSRFCookie(w, r, "state")
 	require.NoError(t, err)
