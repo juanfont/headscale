@@ -644,6 +644,20 @@ func doSSHCheck(
 ) chan sshCheckResult {
 	t.Helper()
 
+	return doSSHCheckWithTimeout(t, client, peer, 60*time.Second)
+}
+
+// doSSHCheckWithTimeout is like doSSHCheck but lets the caller extend how long
+// the blocking SSH command may run, for flows that hold the check open longer
+// (e.g. while the control plane restarts).
+func doSSHCheckWithTimeout(
+	t *testing.T,
+	client TailscaleClient,
+	peer TailscaleClient,
+	timeout time.Duration,
+) chan sshCheckResult {
+	t.Helper()
+
 	peerFQDN, _ := peer.FQDN()
 
 	command := []string{
@@ -663,7 +677,7 @@ func doSSHCheck(
 	go func() {
 		stdout, stderr, err := client.Execute(
 			command,
-			dockertestutil.ExecuteCommandTimeout(60*time.Second),
+			dockertestutil.ExecuteCommandTimeout(timeout),
 		)
 		ch <- sshCheckResult{stdout, stderr, err}
 	}()
@@ -1244,6 +1258,90 @@ func TestSSHCheckModeAutoApprove(t *testing.T) {
 				peer.ContainerID(),
 				strings.ReplaceAll(result, "\n", ""),
 			)
+		}
+	}
+}
+
+// TestSSHCheckModeSessionLossReDelegates reproduces the failure in
+// https://github.com/juanfont/headscale/issues/3305 with a real client: an SSH
+// connection in check mode is pending a verdict when the control plane
+// restarts, which drops the in-memory auth cache so the session the client is
+// still polling for is gone. The client must recover — the server re-delegates
+// a fresh check rather than dead-ending the now-defunct auth_id — and once that
+// fresh check is approved the SSH connection completes.
+func TestSSHCheckModeSessionLossReDelegates(t *testing.T) {
+	IntegrationSkip(t)
+
+	scenario := sshScenario(t, sshCheckPolicy(), "ssh-sessionloss", 1)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	allClients, err := scenario.ListTailscaleClients()
+	requireNoErrListClients(t, err)
+
+	user1Clients, err := scenario.ListTailscaleClients("user1")
+	requireNoErrListClients(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	_, err = scenario.ListTailscaleClientsFQDNs()
+	requireNoErrListFQDN(t, err)
+
+	for _, client := range user1Clients {
+		for _, peer := range allClients {
+			if client.Hostname() == peer.Hostname() {
+				continue
+			}
+
+			// Start SSH — blocks waiting for the check verdict while the
+			// pending auth session sits in the control plane's cache. Allow a
+			// generous window: the flow spans a full control-plane restart.
+			sshResult := doSSHCheckWithTimeout(t, client, peer, 120*time.Second)
+
+			firstAuthID := findSSHCheckAuthID(t, headscale)
+
+			// Restart the control plane: the in-memory auth cache is dropped
+			// (the on-disk database and keys persist), so the auth_id the
+			// client is still polling for no longer exists.
+			err := headscale.Restart()
+			require.NoError(t, err, "restarting headscale should succeed")
+
+			err = scenario.WaitForTailscaleSync()
+			requireNoErrSync(t, err)
+
+			// The client keeps polling the now-missing auth_id; with the fix the
+			// server re-delegates a fresh session instead of returning an error
+			// the client cannot recover from. A new auth_id only appears if the
+			// re-delegation happened.
+			secondAuthID := findNewSSHCheckAuthID(t, headscale, firstAuthID)
+			require.NotEqual(t, firstAuthID, secondAuthID,
+				"a lost session under an active check must re-delegate with a new auth_id")
+
+			// Approve the re-delegated session; the SSH connection must now
+			// complete instead of hanging until it times out.
+			_, err = headscale.Execute(
+				[]string{
+					"headscale", "auth", "approve",
+					"--auth-id", secondAuthID,
+				},
+			)
+			require.NoError(t, err)
+
+			select {
+			case result := <-sshResult:
+				require.NoError(t, result.err,
+					"SSH should succeed after re-delegation recovers the lost session")
+				require.Contains(
+					t,
+					peer.ContainerID(),
+					strings.ReplaceAll(result.stdout, "\n", ""),
+				)
+			case <-time.After(90 * time.Second):
+				t.Fatal("SSH did not complete after session-loss re-delegation")
+			}
 		}
 	}
 }

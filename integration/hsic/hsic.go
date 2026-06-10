@@ -1533,6 +1533,20 @@ func (h *HeadscaleInContainer) Reload() error {
 	return nil
 }
 
+// Restart restarts the headscale container. The on-disk database and keys
+// persist across the restart, but all in-memory state is dropped — including
+// the bounded cache of pending authentication sessions. This reproduces a
+// control-plane restart, one of the real-world cases where a pending SSH-check
+// auth session is lost.
+func (h *HeadscaleInContainer) Restart() error {
+	err := h.pool.Client.RestartContainer(h.container.Container.ID, 30)
+	if err != nil {
+		return fmt.Errorf("restarting headscale container %s: %w", h.hostname, err)
+	}
+
+	return h.WaitForRunning()
+}
+
 // ApproveRoutes approves routes for a node.
 func (t *HeadscaleInContainer) ApproveRoutes(id uint64, routes []netip.Prefix) (*v1.Node, error) {
 	command := []string{

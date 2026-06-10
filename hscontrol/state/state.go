@@ -1450,6 +1450,14 @@ func (s *State) SetAuthCacheEntry(id types.AuthID, entry *types.AuthRequest) {
 	s.authCache.Add(id, entry)
 }
 
+// DeleteAuthCacheEntryForTest drops a pending auth request from the cache,
+// exposed for testing so a test can reproduce a session that was lost
+// (expired, evicted, or dropped on a control-plane restart) without faking an
+// auth_id.
+func (s *State) DeleteAuthCacheEntryForTest(id types.AuthID) {
+	s.authCache.Remove(id)
+}
+
 // SetLastSSHAuth records a successful SSH check authentication
 // for the given (src, dst) node pair.
 func (s *State) SetLastSSHAuth(src, dst types.NodeID) {
