@@ -84,11 +84,10 @@ func TestConnectDisconnectOrdinaryNodeNoRuntimeRecompute(t *testing.T) {
 	})
 
 	t.Run("disconnect", func(t *testing.T) {
-		// Connect first so Disconnect's epoch check passes.
+		// Connect acquired a session in the connect subtest too; drain to the
+		// last release, which is the one that marks the node offline.
 		_, epoch := s.Connect(nodeID)
-
-		cs, err := s.Disconnect(nodeID, epoch)
-		require.NoError(t, err)
+		cs := drainSessions(t, s, nodeID, epoch)
 
 		assert.True(t, hasPeerPatch(cs),
 			"Disconnect should still emit a lightweight offline peer patch")
@@ -125,9 +124,7 @@ func TestConnectDisconnectRelayTargetTriggersRecompute(t *testing.T) {
 
 	t.Run("disconnect", func(t *testing.T) {
 		_, epoch := s.Connect(nodeID)
-
-		cs, err := s.Disconnect(nodeID, epoch)
-		require.NoError(t, err)
+		cs := drainSessions(t, s, nodeID, epoch)
 
 		assert.NotEmpty(t, runtimePeerComputationReasons(cs),
 			"relay-target node disconnect must trigger a runtime peer recompute")
@@ -158,9 +155,7 @@ func TestConnectDisconnectSubnetRouterForcesRecompute(t *testing.T) {
 
 	t.Run("disconnect", func(t *testing.T) {
 		_, epoch := s.Connect(nodeID)
-
-		cs, err := s.Disconnect(nodeID, epoch)
-		require.NoError(t, err)
+		cs := drainSessions(t, s, nodeID, epoch)
 
 		assert.True(t, forcesPeerRecompute(cs),
 			"subnet router disconnect must force a peer recompute")
@@ -207,10 +202,78 @@ func TestConnectDisconnectSubnetRouterEmitsPolicyChangeNotFull(t *testing.T) {
 
 	t.Run("disconnect", func(t *testing.T) {
 		_, epoch := s.Connect(nodeID)
-
-		cs, err := s.Disconnect(nodeID, epoch)
-		require.NoError(t, err)
+		cs := drainSessions(t, s, nodeID, epoch)
 
 		assertRecomputeNotFull(t, cs)
 	})
+}
+
+// drainSessions releases poll sessions on nodeID until the node goes
+// offline, returning the changes from the final release (the one that
+// emits the offline notifications). Fails the test if the node is
+// still online after releasing as many sessions as Connect calls could
+// plausibly have acquired.
+func drainSessions(t *testing.T, s *State, nodeID types.NodeID, epoch uint64) []change.Change {
+	t.Helper()
+
+	// Arbitrary upper bound: comfortably above the number of Connect
+	// calls any test here makes. It only guards against looping
+	// forever when the node never goes offline.
+	const maxSessions = 16
+
+	for range maxSessions {
+		cs, err := s.Disconnect(nodeID, epoch)
+		require.NoError(t, err)
+
+		if len(cs) > 0 {
+			return cs
+		}
+	}
+
+	t.Fatalf("node %d still online after releasing %d sessions", nodeID, maxSessions)
+
+	return nil
+}
+
+// TestDisconnectOutOfOrderSessionsCannotStrandNodeOnline reproduces the
+// server side of the relogin flake at the state level: a cancelled map
+// request whose handler runs late acquires a session (and the newest
+// epoch) after the real session's Connect, then releases without taking
+// the node offline because the real session is still live. The real
+// session's release — carrying the older epoch — must still take the
+// node offline. Under the old epoch-equality gate it was rejected as
+// stale and the node stayed online forever.
+func TestDisconnectOutOfOrderSessionsCannotStrandNodeOnline(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, liveGen := s.Connect(nodeID)
+	_, zombieGen := s.Connect(nodeID)
+	require.Greater(t, zombieGen, liveGen, "late session must hold the newer epoch")
+
+	// The zombie session dies first; another session is live, so the node
+	// must stay online and no offline changes may be emitted.
+	cs, err := s.Disconnect(nodeID, zombieGen)
+	require.NoError(t, err)
+	assert.Empty(t, cs, "release with another live session must not emit changes")
+
+	nv, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+
+	online, known := nv.IsOnline().GetOk()
+	require.True(t, known)
+	assert.True(t, online, "node must stay online while the real session lives")
+
+	// The real session releases last, with the older epoch. This must take
+	// the node offline.
+	cs, err = s.Disconnect(nodeID, liveGen)
+	require.NoError(t, err)
+	assert.True(t, hasPeerPatch(cs), "final release must emit the offline peer patch")
+
+	nv, ok = s.GetNodeByID(nodeID)
+	require.True(t, ok)
+
+	online, known = nv.IsOnline().GetOk()
+	require.True(t, known)
+	assert.False(t, online, "node must be offline after its last session is released")
 }

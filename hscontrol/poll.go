@@ -149,9 +149,9 @@ func (m *mapSession) serveLongPoll() {
 	m.log.Trace().Caller().Msg("long poll session started")
 
 	// connectGen is set by [state.State.Connect] below and captured by the deferred cleanup closure.
-	// It allows [state.State.Disconnect] to reject stale calls from old sessions — if a newer session
-	// has called [state.State.Connect] (incrementing the generation), the old session's [state.State.Disconnect]
-	// sees a mismatched generation and becomes a no-op.
+	// Each Connect acquires one live session in state; the cleanup must release
+	// it with exactly one [state.State.Disconnect] call, in every exit path, or
+	// the node's session count leaks and it stays online forever.
 	var connectGen uint64
 
 	// Clean up the session when the client disconnects
@@ -160,49 +160,55 @@ func (m *mapSession) serveLongPoll() {
 
 		stillConnected := m.h.mapBatcher.RemoveNode(m.node.ID, m.ch)
 
-		// If another session already exists for this node (reconnect
-		// happened before this cleanup ran), skip the grace period
-		// entirely — the node is not actually disconnecting.
-		if stillConnected {
+		// This session never reached [state.State.Connect]; there is no
+		// session to release.
+		if connectGen == 0 {
 			return
 		}
 
 		// When a node disconnects, it might rapidly reconnect (e.g. mobile clients, network weather).
 		// Instead of immediately marking the node as offline, we wait a few seconds to see if it reconnects.
-		// If it does reconnect, the existing [mapSession] will be replaced and the node remains online.
-		// If it doesn't reconnect within the timeout, we mark it as offline.
+		// If it reconnects during the wait, the new session's Connect raises the
+		// session count, so the release below keeps the node online.
 		//
 		// This avoids flapping nodes in the UI and unnecessary churn in the network.
 		// This is not my favourite solution, but it kind of works in our eventually consistent world.
-		ticker := time.NewTicker(time.Second)
-		defer ticker.Stop()
+		//
+		// When another session already replaced this one (stillConnected), skip
+		// the wait — but never the release itself. A cancelled map request whose
+		// handler ran late is exactly such a session: if it kept its session
+		// acquired on this path, the surviving session's release could never
+		// take the node offline (the relogin flake).
+		if !stillConnected {
+			// Wait up to 10 seconds for the node to reconnect.
+			// 10 seconds was arbitrary chosen as a reasonable time to reconnect.
+			ticker := time.NewTicker(time.Second)
+			defer ticker.Stop()
 
-		disconnected := true
-		// Wait up to 10 seconds for the node to reconnect.
-		// 10 seconds was arbitrary chosen as a reasonable time to reconnect.
-		for range 10 {
-			if m.h.mapBatcher.IsConnected(m.node.ID) {
-				disconnected = false
-				break
+			for range 10 {
+				if m.h.mapBatcher.IsConnected(m.node.ID) {
+					break
+				}
+
+				<-ticker.C
 			}
-
-			<-ticker.C
 		}
 
-		if disconnected {
-			// Pass the generation from our [state.State.Connect] call. If a newer session has
-			// connected since (bumping the generation), [state.State.Disconnect] will detect
-			// the mismatch and skip the state update, preventing the race where
-			// an old grace period goroutine overwrites a newer session's online status.
-			disconnectChanges, err := m.h.state.Disconnect(m.node.ID, connectGen)
-			if err != nil {
-				m.log.Error().Caller().Err(err).Msg("failed to disconnect node")
-			}
-
-			m.h.Change(disconnectChanges...)
-			m.afterServeLongPoll()
-			m.log.Info().Caller().Str(zf.Chan, fmt.Sprintf("%p", m.ch)).Msg("node has disconnected")
+		// Release this session. The node goes offline exactly when the last
+		// live session is released, so releases from replaced or stale
+		// sessions are harmless regardless of the order they run in.
+		disconnectChanges, err := m.h.state.Disconnect(m.node.ID, connectGen)
+		if err != nil {
+			m.log.Error().Caller().Err(err).Msg("failed to disconnect node")
 		}
+
+		if len(disconnectChanges) == 0 {
+			return
+		}
+
+		m.h.Change(disconnectChanges...)
+		m.afterServeLongPoll()
+		m.log.Info().Caller().Str(zf.Chan, fmt.Sprintf("%p", m.ch)).Msg("node has disconnected")
 	}()
 
 	// Set up the client stream
