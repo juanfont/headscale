@@ -917,12 +917,18 @@ func (pm *PolicyManager) nodesHavePolicyAffectingChanges(newNodes views.Slice[ty
 // set any existing tag on any node by calling [state.State.SetNodeTags] directly,
 // which bypasses this authorization check.
 func (pm *PolicyManager) NodeCanHaveTag(node types.NodeView, tag string) bool {
-	if pm == nil || pm.pol == nil {
+	if pm == nil {
 		return false
 	}
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
+
+	// pm.pol is written by SetPolicy under pm.mu; reading it before the
+	// lock races with concurrent policy reloads.
+	if pm.pol == nil {
+		return false
+	}
 
 	// Check if tag exists in policy
 	owners, exists := pm.pol.TagOwners[Tag(tag)]
@@ -1000,12 +1006,18 @@ func (pm *PolicyManager) userMatchesOwner(user types.UserView, owner Owner) bool
 
 // TagExists reports whether the given tag is defined in the policy.
 func (pm *PolicyManager) TagExists(tag string) bool {
-	if pm == nil || pm.pol == nil {
+	if pm == nil {
 		return false
 	}
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
+
+	// pm.pol is written by SetPolicy under pm.mu; reading it before the
+	// lock races with concurrent policy reloads.
+	if pm.pol == nil {
+		return false
+	}
 
 	_, exists := pm.pol.TagOwners[Tag(tag)]
 
@@ -1076,12 +1088,18 @@ func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Pr
 func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.ViaRouteResult {
 	var result types.ViaRouteResult
 
-	if pm == nil || pm.pol == nil {
+	if pm == nil {
 		return result
 	}
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
+
+	// pm.pol is written by SetPolicy under pm.mu; reading it before the
+	// lock races with concurrent policy reloads.
+	if pm.pol == nil {
+		return result
+	}
 
 	// Self-steering doesn't apply.
 	if viewer.ID() == peer.ID() {
@@ -1290,6 +1308,11 @@ func (pm *PolicyManager) DebugString() string {
 	if pm == nil {
 		return "PolicyManager is not setup"
 	}
+
+	// pm.pol, filter, matchers, and the derived maps are all written
+	// under pm.mu by SetPolicy/SetUsers/SetNodes.
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
 
 	var sb strings.Builder
 
