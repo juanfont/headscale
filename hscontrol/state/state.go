@@ -598,9 +598,9 @@ func (s *State) DeleteNode(node types.NodeView) (change.Change, error) {
 }
 
 // Connect marks a node connected and returns the resulting changes
-// plus a session epoch. The caller must pass the epoch back to
-// [State.Disconnect] so deferred grace-period disconnects from a
-// previous poll session are dropped (see poll.go).
+// plus a session epoch identifying this poll session. Every Connect
+// acquires one live session; the caller must release it with exactly
+// one [State.Disconnect] call once the session ends (see poll.go).
 func (s *State) Connect(id types.NodeID) ([]change.Change, uint64) {
 	prevRoutes := s.nodeStore.PrimaryRoutes()
 
@@ -611,6 +611,7 @@ func (s *State) Connect(id types.NodeID) ([]change.Change, uint64) {
 	node, ok := s.nodeStore.UpdateNode(id, func(n *types.Node) {
 		n.SessionEpoch++
 		epoch = n.SessionEpoch
+		n.ActiveSessions++
 		n.IsOnline = new(true)
 		n.Unhealthy = false
 	})
@@ -638,20 +639,31 @@ func (s *State) Connect(id types.NodeID) ([]change.Change, uint64) {
 	return c, epoch
 }
 
-// Disconnect marks the node offline. epoch must match the value
-// [State.Connect] returned for this session; otherwise the call no-ops
-// so a deferred disconnect from an older session cannot overwrite state
-// set by a newer [State.Connect]. The check and the IsOnline write share
-// an [NodeStore.UpdateNode] closure, making them atomic against
-// concurrent connects.
+// Disconnect releases one poll session previously acquired by
+// [State.Connect] and marks the node offline only when that was its
+// last live session. Sessions are counted rather than compared by
+// epoch: overlapping sessions for one node — a rapid reconnect, or a
+// cancelled map request whose handler ran late — release in any order
+// without stranding the node. An epoch-equality gate here loses when a
+// dead-on-arrival session's Connect steals the latest epoch and its
+// cleanup skips the release: the surviving session's Disconnect was
+// then rejected as stale and the node stayed online forever.
+// The count check and the IsOnline write share a
+// [NodeStore.UpdateNode] closure, making them atomic against
+// concurrent connects. epoch identifies the session for logging only.
 func (s *State) Disconnect(id types.NodeID, epoch uint64) ([]change.Change, error) {
-	var stale bool
+	var wentOffline bool
 
 	node, ok := s.nodeStore.UpdateNode(id, func(n *types.Node) {
-		if n.SessionEpoch != epoch {
-			stale = true
+		if n.ActiveSessions > 0 {
+			n.ActiveSessions--
+		}
+
+		if n.ActiveSessions > 0 {
 			return
 		}
+
+		wentOffline = true
 
 		now := time.Now()
 		n.LastSeen = &now
@@ -665,11 +677,11 @@ func (s *State) Disconnect(id types.NodeID, epoch uint64) ([]change.Change, erro
 		return nil, fmt.Errorf("%w: %d", ErrNodeNotFound, id)
 	}
 
-	if stale {
+	if !wentOffline {
 		log.Debug().
 			Uint64("disconnect_epoch", epoch).
-			Uint64("current_epoch", node.SessionEpoch()).
-			Msg("stale disconnect rejected, newer session active")
+			Int("active_sessions", node.ActiveSessions()).
+			Msg("session released, other sessions keep node online")
 
 		return nil, nil
 	}
