@@ -280,6 +280,11 @@ func (b *Batcher) AddNode(
 		created: now,
 		stop:    stop,
 	}
+	// Block broadcast sends to this connection until its initial map
+	// is delivered below, so a delta cannot become the stream's first
+	// frame — clients reject streams whose first frame lacks the self
+	// node.
+	newEntry.pendingInitial.Store(true)
 	// Initialize last used timestamp
 	newEntry.lastUsed.Store(now.Unix())
 
@@ -329,6 +334,11 @@ func (b *Batcher) AddNode(
 		nodeConn.workMu.Lock()
 		nodeConn.updateSentPeers(initialMap)
 		nodeConn.workMu.Unlock()
+
+		// Open the connection for broadcast sends now that the initial
+		// map is the stream's first frame; send() requeued any changes
+		// that arrived in the meantime.
+		newEntry.pendingInitial.Store(false)
 	case <-time.After(5 * time.Second): //nolint:mnd
 		nlog.Error().Err(ErrInitialMapSendTimeout).Msg("initial map send timeout")
 		nlog.Debug().Caller().Dur("timeout.duration", 5*time.Second). //nolint:mnd
@@ -532,9 +542,24 @@ func (b *Batcher) worker(workerID int) {
 			// finish — preventing out-of-order delivery and races
 			// on lastSentPeers (Clear+Store vs Range).
 			if nc, exists := b.nodes.Load(w.nodeID); exists && nc != nil {
+				// Changes that found only connections still awaiting
+				// their initial map are retried next tick: the
+				// in-flight initial map may have been generated from
+				// a snapshot older than the change, so dropping them
+				// would lose updates. Collected and prepended as a
+				// group to keep their order ahead of newer pending
+				// changes — order matters for stateful patches like
+				// online/offline.
+				var retry []change.Change
+
 				nc.workMu.Lock()
 				for _, ch := range w.changes {
 					err := nc.change(ch)
+					if errors.Is(err, errNoReadyConnections) {
+						retry = append(retry, ch)
+						continue
+					}
+
 					if err != nil {
 						b.workErrors.Add(1)
 						wlog.Error().Err(err).
@@ -544,6 +569,10 @@ func (b *Batcher) worker(workerID int) {
 					}
 				}
 				nc.workMu.Unlock()
+
+				if len(retry) > 0 {
+					nc.prependPending(retry...)
+				}
 
 				// Bundle delivered; allow the next tick's bundle to queue.
 				nc.inFlight.Store(false)
