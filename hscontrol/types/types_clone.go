@@ -106,6 +106,7 @@ var _NodeCloneNeedsRegeneration = Node(struct {
 	DeletedAt      *time.Time
 	IsOnline       *bool
 	Unhealthy      bool
+	ActiveSessions int
 	SessionEpoch   uint64
 }{})
 

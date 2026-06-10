@@ -181,10 +181,21 @@ type Node struct {
 	// online. Written by the HA prober. Runtime-only.
 	Unhealthy bool `gorm:"-"`
 
-	// SessionEpoch identifies a poll session. Connect bumps it; a
-	// Disconnect carrying a stale value is dropped, so a deferred
-	// disconnect from a previous session cannot overwrite a newer
-	// Connect. Runtime-only.
+	// ActiveSessions counts live poll sessions for this node.
+	// [State.Connect] increments it and every session release
+	// ([State.Disconnect]) decrements it, so the node goes offline
+	// exactly when its last session ends — regardless of the order in
+	// which overlapping sessions' cleanups run. Never persisted, like
+	// SessionEpoch.
+	ActiveSessions int `gorm:"-"`
+
+	// SessionEpoch identifies a poll session generation; Connect bumps
+	// it. It complements ActiveSessions rather than duplicating it:
+	// the epoch is monotonic, which the HA prober needs to detect that
+	// a probe target reconnected mid-cycle — a refcount can return to
+	// its old value, a generation cannot. poll.go also uses the epoch
+	// returned by Connect as a "Connect ran" sentinel for its cleanup,
+	// and Disconnect logs it. Runtime-only.
 	SessionEpoch uint64 `gorm:"-"`
 }
 
