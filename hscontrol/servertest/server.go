@@ -65,6 +65,13 @@ func WithBufferedChanSize(n int) ServerOption {
 	return func(c *serverConfig) { c.bufferedChanSize = n }
 }
 
+// WithBatcherWorkers sets the number of batcher worker goroutines.
+// Defaults to 1 for deterministic tests; pass
+// [types.DefaultBatcherWorkers] to match production concurrency.
+func WithBatcherWorkers(n int) ServerOption {
+	return func(c *serverConfig) { c.batcherWorkers = n }
+}
+
 // WithEphemeralTimeout sets the ephemeral node inactivity timeout.
 func WithEphemeralTimeout(d time.Duration) ServerOption {
 	return func(c *serverConfig) { c.ephemeralTimeout = d }

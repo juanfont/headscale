@@ -299,6 +299,108 @@ drained:
 	c.startPoll(tb)
 }
 
+// LogoutAndDisconnect sends a logout [tailcfg.RegisterRequest] (expiry in
+// the past) and tears down the long-poll session, mirroring what
+// tailscaled does on `tailscale logout`. The server marks the node
+// expired; the poll teardown then triggers the server's disconnect
+// grace period, after which the node goes offline.
+//
+// Safe to call from non-test goroutines: errors are returned, not
+// fataled, so many clients can log out concurrently.
+func (c *TestClient) LogoutAndDisconnect(ctx context.Context) error {
+	err := c.direct.TryLogout(ctx)
+	if err != nil {
+		return fmt.Errorf("servertest: TryLogout(%s): %w", c.Name, err)
+	}
+
+	if c.pollCancel != nil {
+		c.pollCancel()
+
+		select {
+		case <-c.pollDone:
+		case <-ctx.Done():
+			return fmt.Errorf("servertest: LogoutAndDisconnect(%s): poll did not exit: %w", c.Name, ctx.Err())
+		}
+	}
+
+	return nil
+}
+
+// ReloginAndPoll logs the client back in after [TestClient.LogoutAndDisconnect]
+// and starts a fresh long-poll session. [controlclient.Direct.TryLogout] cleared
+// the persisted node key, so this generates a new NodeKey and re-registers with
+// the same pre-auth key and machine key — the same shape as a real client
+// running `tailscale up --authkey=...` after a logout.
+//
+// Safe to call from non-test goroutines.
+func (c *TestClient) ReloginAndPoll(ctx context.Context) error {
+	url, err := c.direct.TryLogin(ctx, controlclient.LoginDefault)
+	if err != nil {
+		return fmt.Errorf("servertest: TryLogin(%s): %w", c.Name, err)
+	}
+
+	if url != "" {
+		return fmt.Errorf("servertest: TryLogin(%s): unexpected auth URL %q (expected auto-auth with preauth key)", c.Name, url) //nolint:err113
+	}
+
+	// Clear stale netmap state from the previous session so that
+	// convergence waits observe only the new session's maps.
+	c.mu.Lock()
+	c.netmap = nil
+	c.mu.Unlock()
+
+	for {
+		select {
+		case <-c.updates:
+			continue
+		default:
+		}
+
+		break
+	}
+
+	c.pollCtx, c.pollCancel = context.WithCancel(context.Background())
+	c.pollDone = make(chan struct{})
+
+	go func() {
+		defer close(c.pollDone)
+
+		_ = c.direct.PollNetMap(c.pollCtx, c)
+	}()
+
+	return nil
+}
+
+// RestartPoll tears down the current long-poll session and immediately
+// starts a new one without re-registering, the way tailscaled restarts
+// its map poll on state-machine transitions (pause/unpause around
+// login). The node key is unchanged; the server sees a rapid
+// disconnect/reconnect.
+//
+// Safe to call from non-test goroutines.
+func (c *TestClient) RestartPoll(ctx context.Context) error {
+	if c.pollCancel != nil {
+		c.pollCancel()
+
+		select {
+		case <-c.pollDone:
+		case <-ctx.Done():
+			return fmt.Errorf("servertest: RestartPoll(%s): old poll did not exit: %w", c.Name, ctx.Err())
+		}
+	}
+
+	c.pollCtx, c.pollCancel = context.WithCancel(context.Background())
+	c.pollDone = make(chan struct{})
+
+	go func() {
+		defer close(c.pollDone)
+
+		_ = c.direct.PollNetMap(c.pollCtx, c)
+	}()
+
+	return nil
+}
+
 // ReconnectAfter disconnects, waits for d, then reconnects.
 // The timer works correctly with testing/synctest for
 // time-controlled tests.

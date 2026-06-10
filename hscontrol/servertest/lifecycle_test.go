@@ -1,12 +1,17 @@
 package servertest_test
 
 import (
+	"context"
 	"fmt"
+	"math/rand/v2"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/servertest"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"tailscale.com/types/netmap"
 )
 
@@ -115,4 +120,242 @@ func TestConnectionLifecycle(t *testing.T) {
 			})
 		}
 	})
+}
+
+// TestLogoutReloginAllClientsConverge is an in-process reproduction of the
+// flaky integration tests TestAuthKeyLogoutAndReloginSameUser,
+// TestAuthWebFlowLogoutAndReloginSameUser and
+// TestAuthWebFlowLogoutAndReloginNewUser: a full mesh of clients logs out,
+// the server marks every node expired and offline, then all clients log
+// back in near-simultaneously with fresh NodeKeys. In the flake, a subset
+// of clients never converges — their netmaps stay empty through the whole
+// retry window even though the server believes everything is connected.
+//
+// Each client here is a real [controlclient.Direct], so the client-side
+// netmap assembly semantics (full peer list vs. delta, patch handling for
+// unknown peers) match the real Tailscale client.
+func TestLogoutReloginAllClientsConverge(t *testing.T) {
+	if testing.Short() {
+		t.Skip("relogin convergence test includes 10s+ disconnect grace per iteration")
+	}
+
+	const (
+		numClients = 12
+		iterations = 4
+		// Maximum random delay between the relogins of different
+		// clients, so registrations and fresh map streams interleave
+		// the way concurrent `tailscale up` invocations do.
+		reloginStagger = 500 * time.Millisecond
+	)
+
+	// Production tuning: the integration flake happens with the default
+	// 800ms batch delay (large coalescing windows) and a multi-worker
+	// batcher, so reproduce with the same knobs.
+	h := servertest.NewHarness(t, numClients,
+		servertest.WithServerOptions(
+			servertest.WithBatchDelay(800*time.Millisecond),
+			servertest.WithBatcherWorkers(types.DefaultBatcherWorkers()),
+		),
+		servertest.WithConvergenceTimeout(60*time.Second),
+	)
+
+	for iteration := range iterations {
+		t.Logf("iteration %d: logging out all clients", iteration)
+		logoutAllAndWaitOffline(t, h)
+
+		t.Logf("iteration %d: relogging in all clients", iteration)
+
+		clients := h.Clients()
+		errs := make(chan error, len(clients))
+
+		for _, c := range clients {
+			go func() {
+				time.Sleep(rand.N(reloginStagger)) //nolint:forbidigo,gosec // intentional jitter so relogins interleave; weak random is fine
+
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+
+				errs <- c.ReloginAndPoll(ctx)
+			}()
+		}
+
+		for range clients {
+			require.NoError(t, <-errs)
+		}
+
+		// Every client must converge to the full mesh. A stuck client —
+		// the flake — sits at zero peers and fails here.
+		deadline := time.Now().Add(30 * time.Second)
+		for _, c := range clients {
+			waitForMeshOrDump(t, clients, c, numClients-1, time.Until(deadline))
+		}
+	}
+}
+
+// TestLogoutReloginWithPollChurn is the same logout/relogin storm as
+// [TestLogoutReloginAllClientsConverge], but each client also restarts its
+// map poll once or twice shortly after logging back in — without
+// re-registering — the way newer tailscaled versions cycle their map
+// session around login state transitions. The integration flake hits the
+// head and unstable clients, which churn their sessions far more than
+// older releases, so the rapid session replacement is the prime suspect.
+func TestLogoutReloginWithPollChurn(t *testing.T) {
+	if testing.Short() {
+		t.Skip("relogin convergence test includes 10s+ disconnect grace per iteration")
+	}
+
+	const (
+		numClients     = 12
+		iterations     = 4
+		reloginStagger = 500 * time.Millisecond
+	)
+
+	h := servertest.NewHarness(t, numClients,
+		servertest.WithServerOptions(
+			servertest.WithBatchDelay(800*time.Millisecond),
+			servertest.WithBatcherWorkers(types.DefaultBatcherWorkers()),
+		),
+		servertest.WithConvergenceTimeout(60*time.Second),
+	)
+
+	for iteration := range iterations {
+		t.Logf("iteration %d: logging out all clients", iteration)
+		logoutAllAndWaitOffline(t, h)
+
+		t.Logf("iteration %d: relogging in all clients with poll churn", iteration)
+
+		clients := h.Clients()
+		errs := make(chan error, len(clients))
+
+		for _, c := range clients {
+			go func() {
+				time.Sleep(rand.N(reloginStagger)) //nolint:forbidigo,gosec // intentional jitter so relogins interleave; weak random is fine
+
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+
+				err := c.ReloginAndPoll(ctx)
+				if err != nil {
+					errs <- err
+					return
+				}
+
+				// Churn the map session like a freshly logged-in
+				// tailscaled: restart the poll once or twice with
+				// small random gaps.
+				for range 1 + rand.IntN(2) { //nolint:gosec // weak random is fine for test jitter
+					time.Sleep(rand.N(400 * time.Millisecond)) //nolint:forbidigo,gosec // intentional jitter between poll restarts; weak random is fine
+
+					err = c.RestartPoll(ctx)
+					if err != nil {
+						errs <- err
+						return
+					}
+				}
+
+				errs <- nil
+			}()
+		}
+
+		for range clients {
+			require.NoError(t, <-errs)
+		}
+
+		deadline := time.Now().Add(30 * time.Second)
+		for _, c := range clients {
+			waitForMeshOrDump(t, clients, c, numClients-1, time.Until(deadline))
+		}
+	}
+}
+
+// logoutAllAndWaitOffline logs every client out concurrently, then blocks
+// until the server reports each node expired and offline — the integration
+// tests' logout barrier, including the ~10s disconnect grace period.
+func logoutAllAndWaitOffline(t *testing.T, h *servertest.TestHarness) {
+	t.Helper()
+
+	clients := h.Clients()
+	errs := make(chan error, len(clients))
+
+	for _, c := range clients {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			errs <- c.LogoutAndDisconnect(ctx)
+		}()
+	}
+
+	for range clients {
+		require.NoError(t, <-errs)
+	}
+
+	st := h.Server.State()
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		for _, node := range st.ListNodes().All() {
+			assert.True(c, node.IsExpired(), "node %d should be expired after logout", node.ID())
+			online := node.IsOnline()
+			assert.True(c, online.Valid() && !online.Get(), "node %d should be offline after logout", node.ID())
+		}
+	}, 30*time.Second, 100*time.Millisecond, "all nodes expired and offline after logout")
+}
+
+// waitForMeshOrDump waits until client c reports at least wantPeers peers.
+// On timeout it dumps every client's view of the mesh before failing, so a
+// reproduced flake shows exactly which clients are stuck and what they see.
+func waitForMeshOrDump(t *testing.T, all []*servertest.TestClient, c *servertest.TestClient, wantPeers int, timeout time.Duration) {
+	t.Helper()
+
+	deadline := time.After(timeout)
+	ticker := time.NewTicker(100 * time.Millisecond)
+
+	defer ticker.Stop()
+
+	for {
+		if nm := c.Netmap(); nm != nil && len(nm.Peers) >= wantPeers {
+			return
+		}
+
+		select {
+		case <-ticker.C:
+		case <-deadline:
+			for _, other := range all {
+				t.Logf("client %s netmap: %s", other.Name, describeNetmap(other))
+			}
+
+			nm := c.Netmap()
+
+			got := 0
+			if nm != nil {
+				got = len(nm.Peers)
+			}
+
+			t.Fatalf("client %s did not converge: want %d peers, got %d", c.Name, wantPeers, got)
+		}
+	}
+}
+
+// describeNetmap renders a client's current netmap as a compact string for
+// failure dumps: peer names with their expiry/online flags.
+func describeNetmap(c *servertest.TestClient) string {
+	nm := c.Netmap()
+	if nm == nil {
+		return "<nil>"
+	}
+
+	var out strings.Builder
+
+	fmt.Fprintf(&out, "%d peers:", len(nm.Peers))
+
+	for _, p := range nm.Peers {
+		hostname := "<no hostinfo>"
+		if hi := p.Hostinfo(); hi.Valid() {
+			hostname = hi.Hostname()
+		}
+
+		fmt.Fprintf(&out, " %s(id=%d expired=%t online=%v)", hostname, p.ID(), p.KeyExpiry().Before(time.Now()), p.Online())
+	}
+
+	return out.String()
 }
