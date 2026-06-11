@@ -225,7 +225,16 @@ func (h *Headscale) handleLogout(
 
 	// Update the internal state with the nodes new expiry, meaning it is
 	// logged out.
+	//
+	// Clamp the client-supplied value to now: Tailscale sends the
+	// sentinel time.Unix(123, 0) on logout (controlclient/direct.go),
+	// and storing it verbatim propagates a 1970 KeyExpiry to every
+	// peer's netmap. Semantically identical (expired as of now), but
+	// sane in logs, debug dumps, and peer netmaps.
 	expiry := req.Expiry
+	if now := time.Now(); expiry.Before(now) {
+		expiry = now
+	}
 
 	updatedNode, c, err := h.state.SetNodeExpiry(node.ID(), &expiry)
 	if err != nil {
