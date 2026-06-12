@@ -319,6 +319,7 @@ func nodesToPtables(nodes []*v1.Node) (pterm.TableData, error) {
 		colExpiration,
 		"Connected",
 		"Expired",
+		"Client Version",
 	}
 	tableData := make(pterm.TableData, 1, 1+len(nodes))
 	tableData[0] = tableHeader
@@ -425,6 +426,7 @@ func nodesToPtables(nodes []*v1.Node) (pterm.TableData, error) {
 			expiryTime,
 			online,
 			expired,
+			node.GetClientVersion(),
 		}
 		tableData = append(
 			tableData,
