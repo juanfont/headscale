@@ -7,6 +7,10 @@ on:
       - "*" # triggers only if push new tag version
   workflow_dispatch:
 
+defaults:
+  run:
+    shell: nix develop --command bash -e {0}
+
 jobs:
   goreleaser:
     if: github.repository == 'juanfont/headscale'
@@ -18,6 +22,7 @@ jobs:
           fetch-depth: 0
 
       - name: Pin Docker to v28 (avoid v29 breaking changes)
+        shell: bash
         run: |
           # Docker 29 breaks docker build via Go client libraries and
           # docker load/save with certain tarball formats.
@@ -49,10 +54,10 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: NixOS/nix-installer-action@main
-      - uses: Mic92/hestia/action@main
+      - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
+      - uses: Mic92/hestia/action@ff07bb902a9968ac0c3d0e51d90a606662a375d8 # main
 
       - name: Run goreleaser
-        run: nix develop --command -- goreleaser release --clean
+        run: goreleaser release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

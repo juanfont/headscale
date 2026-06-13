@@ -6,6 +6,9 @@ on: [pull_request]
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
+defaults:
+  run:
+    shell: nix develop --command bash -e {0}
 jobs:
   # build: Builds binaries and Docker images once, uploads as artifacts for reuse.
   # build-postgres: Pulls postgres image separately to avoid Docker Hub rate limits.
@@ -36,20 +39,18 @@ jobs:
               - '.github/workflows/test-integration.yaml'
               - '.github/workflows/integration-test-template.yml'
               - 'Dockerfile.*'
-      - uses: NixOS/nix-installer-action@main
+      - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
         if: steps.changed-files.outputs.files == 'true'
-      - uses: Mic92/hestia/action@main
+      - uses: Mic92/hestia/action@ff07bb902a9968ac0c3d0e51d90a606662a375d8 # main
         if: steps.changed-files.outputs.files == 'true'
       - name: Build binaries and warm Go cache
         if: steps.changed-files.outputs.files == 'true'
         run: |
           # Build all Go binaries in one nix shell to maximize cache reuse
-          nix develop --command -- bash -c '
-            go build -o hi ./cmd/hi
-            CGO_ENABLED=0 GOOS=linux go build -o headscale ./cmd/headscale
-            # Build integration test binary to warm the cache with all dependencies
-            go test -c ./integration -o /dev/null 2>/dev/null || true
-          '
+          go build -o hi ./cmd/hi
+          CGO_ENABLED=0 GOOS=linux go build -o headscale ./cmd/headscale
+          # Build integration test binary to warm the cache with all dependencies
+          go test -c ./integration -o /dev/null 2>/dev/null || true
       - name: Upload hi binary
         if: steps.changed-files.outputs.files == 'true'
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
@@ -125,6 +126,7 @@ jobs:
     if: needs.build.outputs.files-changed == 'true'
     steps:
       - name: Force overlay2 storage driver
+        shell: bash
         run: |
           sudo mkdir -p /etc/docker
           echo '{"storage-driver":"overlay2"}' | sudo tee /etc/docker/daemon.json
@@ -140,6 +142,7 @@ jobs:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ env.DOCKERHUB_TOKEN }}
       - name: Pull and save postgres image
+        shell: bash
         run: |
           docker pull postgres:latest
           docker tag postgres:latest postgres:${{ github.sha }}
@@ -156,8 +159,8 @@ jobs:
     if: needs.build.outputs.files-changed == 'true'
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
-      - uses: NixOS/nix-installer-action@main
-      - uses: Mic92/hestia/action@main
+      - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
+      - uses: Mic92/hestia/action@ff07bb902a9968ac0c3d0e51d90a606662a375d8 # main
       - name: Force overlay2 storage driver
         run: |
           sudo mkdir -p /etc/docker
@@ -176,7 +179,7 @@ jobs:
       - name: List Tailscale versions to pre-pull
         id: versions
         run: |
-          versions=$(nix develop --command go run ./cmd/hi list-versions --set=must --exclude=head)
+          versions=$(go run ./cmd/hi list-versions --set=must --exclude=head)
           echo "versions=${versions}" >> "$GITHUB_OUTPUT"
           echo "Pre-pulling: ${versions}"
       - name: Pull Tailscale images

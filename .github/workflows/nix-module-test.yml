@@ -38,10 +38,10 @@ jobs:
               - 'cmd/**'
               - 'hscontrol/**'
 
-      - uses: NixOS/nix-installer-action@main
+      - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
         if: steps.changed-files.outputs.nix == 'true' || steps.changed-files.outputs.go == 'true'
 
-      - uses: Mic92/hestia/action@main
+      - uses: Mic92/hestia/action@ff07bb902a9968ac0c3d0e51d90a606662a375d8 # main
         if: steps.changed-files.outputs.nix == 'true' || steps.changed-files.outputs.go == 'true'
 
       - name: Run NixOS module tests

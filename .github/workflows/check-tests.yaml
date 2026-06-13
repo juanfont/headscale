@@ -6,6 +6,10 @@ concurrency:
   group: ${{ github.workflow }}-$${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
+defaults:
+  run:
+    shell: nix develop --command bash -e {0}
+
 jobs:
   check-tests:
     runs-on: ubuntu-latest
@@ -24,15 +28,15 @@ jobs:
               - '**/*.go'
               - 'integration_test/'
               - 'config-example.yaml'
-      - uses: NixOS/nix-installer-action@main
+      - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
         if: steps.changed-files.outputs.files == 'true'
-      - uses: Mic92/hestia/action@main
+      - uses: Mic92/hestia/action@ff07bb902a9968ac0c3d0e51d90a606662a375d8 # main
         if: steps.changed-files.outputs.files == 'true'
 
       - name: Generate and check integration tests
         if: steps.changed-files.outputs.files == 'true'
         run: |
-          nix develop --command bash -c "cd .github/workflows && go generate"
+          (cd .github/workflows && go generate)
           git diff --exit-code .github/workflows/test-integration.yaml
 
       - name: Show missing tests

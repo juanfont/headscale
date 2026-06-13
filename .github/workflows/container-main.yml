@@ -16,6 +16,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.sha }}
   cancel-in-progress: true
 
+defaults:
+  run:
+    shell: nix develop --command bash -e {0}
+
 jobs:
   container:
     if: github.repository == 'juanfont/headscale'
@@ -40,8 +44,8 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: NixOS/nix-installer-action@main
-      - uses: Mic92/hestia/action@main
+      - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
+      - uses: Mic92/hestia/action@ff07bb902a9968ac0c3d0e51d90a606662a375d8 # main
 
       - name: Set commit timestamp
         run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> $GITHUB_ENV
@@ -52,7 +56,7 @@ jobs:
           KO_DEFAULTBASEIMAGE: gcr.io/distroless/base-debian13
           CGO_ENABLED: "0"
         run: |
-          nix develop --command -- ko build \
+          ko build \
             --bare \
             --platform=linux/amd64,linux/arm64 \
             --tags=main-${GITHUB_SHA::7},development \
@@ -64,7 +68,7 @@ jobs:
           KO_DEFAULTBASEIMAGE: gcr.io/distroless/base-debian13
           CGO_ENABLED: "0"
         run: |
-          nix develop --command -- ko build \
+          ko build \
             --bare \
             --platform=linux/amd64,linux/arm64 \
             --tags=main-${GITHUB_SHA::7},development \
@@ -88,15 +92,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
 
-      - uses: NixOS/nix-installer-action@main
-      - uses: Mic92/hestia/action@main
+      - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
+      - uses: Mic92/hestia/action@ff07bb902a9968ac0c3d0e51d90a606662a375d8 # main
 
       - name: Build binary
         env:
           CGO_ENABLED: "0"
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-        run: nix develop --command -- go build -o headscale ./cmd/headscale
+        run: go build -o headscale ./cmd/headscale
 
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
