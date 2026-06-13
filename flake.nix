@@ -219,6 +219,87 @@
           contents = [ pkgs.headscale ];
           config.Entrypoint = [ (pkgs.headscale + "/bin/headscale") ];
         };
+
+        # Inline Go flake checks: `build` compiles the full module, `gotest`
+        # runs the pure unit-test subset. Both share a minimal, vendor-free
+        # source set so they only rebuild when Go sources change. Linux-only
+        # because parts of the tree are Linux-specific; CI validates them.
+        goChecks =
+          let
+            lib = pkgs.lib;
+            fs = lib.fileset;
+            go = pkgs.go_1_26;
+            vendorHash = (builtins.fromJSON (builtins.readFile ./flakehashes.json)).vendor.sri;
+
+            # Source for the Go checks: module metadata, all Go files, embedded
+            # assets/templates/schema and testdata, minus the vendor tree.
+            goSrc = fs.toSource {
+              root = ./.;
+              fileset = fs.difference
+                (fs.unions [
+                  ./go.mod
+                  (fs.maybeMissing ./go.sum)
+                  (fs.fileFilter (f: f.hasExt "go") ./.)
+                  # //go:embed targets needed to compile and test
+                  ./gen/openapiv2
+                  ./hscontrol/assets
+                  ./hscontrol/db/schema.sql
+                  # read by cmd/headscale config-loading tests
+                  ./config-example.yaml
+                  # testdata consumed by unit tests
+                  (fs.maybeMissing ./hscontrol/types/testdata)
+                  (fs.maybeMissing ./hscontrol/db/testdata)
+                  (fs.maybeMissing ./hscontrol/policy/v2/testdata)
+                ])
+                (fs.maybeMissing ./vendor);
+            };
+
+            pkg = (pkgs.buildGo126Module.override { inherit go; }) {
+              pname = "headscale";
+              version = headscaleVersion;
+              inherit vendorHash;
+              src = goSrc;
+              subPackages = [ "cmd/headscale" ];
+              doCheck = false;
+            };
+
+            goEnv = ''
+              export HOME=$TMPDIR
+              export GOCACHE=$TMPDIR/go-build
+              export GOFLAGS=-mod=vendor
+              export CGO_ENABLED=0
+              ln -s ${pkg.goModules} vendor
+            '';
+          in
+          {
+            build = pkg;
+
+            gotest = pkgs.stdenv.mkDerivation {
+              name = "headscale-gotest";
+              src = goSrc;
+              nativeBuildInputs = [ go ];
+              buildPhase = ''
+                ${goEnv}
+                # Run the pure unit-test subset. Two package trees are excluded
+                # wholesale because they need a runtime not present in the nix
+                # sandbox: ./integration (Docker, self-skips outside a container)
+                # and ./hscontrol/servertest (binds loopback sockets, race/stress
+                # harness). The -skip patterns drop the remaining impure tests,
+                # e.g. ones needing a postgres server.
+                pkgs=$(go list ./... \
+                  | grep -v '/integration' \
+                  | grep -v '/hscontrol/servertest')
+                go test -skip '${gotestSkip}' $pkgs
+              '';
+              installPhase = "touch $out";
+            };
+          };
+
+        # Regex of test-name patterns excluded from the pure `gotest` check:
+        # tests that need a postgres server (the SQLite equivalents still run).
+        gotestSkip = builtins.concatStringsSep "|" [
+          "TestPostgres"
+        ];
       in
       {
         # `nix develop`
@@ -264,6 +345,9 @@
 
         checks = {
           headscale = pkgs.testers.nixosTest (import ./nix/tests/headscale.nix);
-        };
+        }
+        # The Go build/test checks are gated to Linux: parts of the tree are
+        # Linux-specific and the pure unit subset is validated by CI.
+        // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux goChecks;
       });
 }
