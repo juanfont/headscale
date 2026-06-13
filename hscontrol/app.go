@@ -703,7 +703,6 @@ func (h *Headscale) Serve() error {
 			Str("zone", h.cfg.BaseDomain).
 			Msg("authoritative DNS server for per-node HTTPS certificates started")
 	}
-	}
 
 	// Start all scheduled tasks, e.g. expiring nodes, derp updates and
 	// records updates
