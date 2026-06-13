@@ -1,0 +1,39 @@
+name: Cache GC
+
+# Garbage collection for the hestia binary cache. Must run on the default
+# branch: a PR job's cache scope is read-only towards the default branch and
+# dies with the PR, but the default-branch scope grows forever without GC.
+
+concurrency:
+  group: hestia-gc
+  cancel-in-progress: false
+
+on:
+  schedule:
+    # Daily, off-peak (UTC).
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Plan only; do not repack, touch, or delete anything.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  gc:
+    runs-on: ubuntu-latest
+    permissions:
+      # REST cache deletes need actions:write.
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: NixOS/nix-installer-action@main
+      - uses: Mic92/hestia/action@main
+      - name: Run garbage collection
+        run: '"${HESTIA_BIN}" gc ${{ inputs.dry-run && ''--dry-run'' || '''' }}'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
