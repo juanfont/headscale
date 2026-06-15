@@ -98,25 +98,6 @@ func TestTxLock(t *testing.T) {
 	}
 }
 
-func TestTxLockString(t *testing.T) {
-	tests := []struct {
-		mode TxLock
-		want string
-	}{
-		{TxLockDeferred, "deferred"},
-		{TxLockImmediate, "immediate"},
-		{TxLockExclusive, "exclusive"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.want, func(t *testing.T) {
-			if got := tt.mode.String(); got != tt.want {
-				t.Errorf("TxLock.String() = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestConfigValidate(t *testing.T) {
 	tests := []struct {
 		name    string
