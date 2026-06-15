@@ -10,6 +10,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/key"
 )
 
 // TestTaggedReauthKeepsNilExpiry ensures that when an existing tagged node
@@ -91,4 +92,69 @@ func TestTaggedReauthKeepsNilExpiry(t *testing.T) {
 
 	require.Nil(t, finalNode.AsStruct().Expiry,
 		"tagged node must keep nil key expiry (tagged nodes never expire)")
+}
+
+// TestTaggedReauthWithReusedUserPAK reproduces issue #3312: a containerized
+// node registered with a user-owned one-shot pre-auth key, then converted to a
+// tagged node (UserID cleared to NULL), is logged out when the container
+// restarts and re-registers with the SAME, now-used TS_AUTHKEY.
+//
+// Root cause: findExistingNodeForPAK (state.go) looks the node up by the PAK's
+// owning user (alice). After tagging, the node is indexed under UserID(0), so
+// the same-user machine-key lookup misses, the re-registration fast-path is
+// skipped, and the already-used one-shot PAK is re-validated and rejected with
+// "authkey already used" — logging the node out.
+//
+// https://github.com/juanfont/headscale/issues/3312
+func TestTaggedReauthWithReusedUserPAK(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	user := s.CreateUserForTest("authkey-user")
+
+	policy := fmt.Sprintf(`{"tagOwners":{"tag:foo":["%s@"]}}`, user.Name)
+	_, err = s.SetPolicy([]byte(policy))
+	require.NoError(t, err)
+
+	// One-shot, user-owned PAK: `headscale preauthkeys create -u 1`.
+	pak, err := s.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	regReq := tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey:  nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "authkey-node"},
+		Expiry:   time.Now().Add(24 * time.Hour),
+	}
+
+	// First registration: node joins as alice, the one-shot PAK is consumed.
+	first, _, err := s.HandleNodeFromPreAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+	require.True(t, first.Valid())
+	nodeID := first.ID()
+
+	// `headscale nodes tag -t tag:foo`: convert to a tagged node. This clears
+	// both UserID and User (state.SetNodeTags), diverging the node's ownership
+	// from the still-user-owned PAK.
+	tagged, _, err := s.SetNodeTags(nodeID, []string{"tag:foo"})
+	require.NoError(t, err)
+	require.True(t, tagged.IsTagged(), "precondition: node must be tagged")
+
+	// Container restart: the same node re-registers with the SAME, now-used
+	// one-shot TS_AUTHKEY. The machine key proves identity, so this must
+	// succeed. It currently fails with "authkey already used".
+	second, _, err := s.HandleNodeFromPreAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err,
+		"re-registration with a reused user PAK on a tagged node must not be rejected")
+	require.True(t, second.Valid())
+	require.True(t, second.IsTagged(), "node must remain tagged after re-registration")
+	require.Equal(t, nodeID, second.ID(),
+		"must update the existing node, not create a new one")
 }

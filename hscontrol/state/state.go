@@ -2175,6 +2175,16 @@ func (s *State) findExistingNodeForPAK(
 		if exists {
 			return node, true
 		}
+
+		// The node may have been converted to a tagged node since it first
+		// registered (SetNodeTags clears UserID, re-indexing it under UserID(0)).
+		// It is still the same machine, proven by the machine key, so recognise
+		// it for re-registration instead of re-validating the spent key or
+		// creating a duplicate node. Re-registration preserves the node's tagged
+		// ownership. See https://github.com/juanfont/headscale/issues/3312.
+		if node, exists := s.nodeStore.GetNodeByMachineKey(machineKey, 0); exists && node.IsTagged() {
+			return node, true
+		}
 	}
 
 	// Tagged nodes have nil UserID, so they are indexed under UserID(0)
