@@ -32,6 +32,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
+	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
@@ -179,6 +180,22 @@ type State struct {
 	// persistNodeToDB so the database row always converges on [NodeStore]
 	// rather than being clobbered by a stale caller snapshot.
 	persistMu sync.Mutex
+
+	// registerLocks serialises registration per machine key so concurrent
+	// registrations of the same machine resolve to a single node instead of
+	// racing the find-then-create section and each creating their own.
+	// ponytail: entries are never pruned; bounded by distinct machine keys
+	// seen, add cleanup on node delete only if it ever matters.
+	registerLocks *xsync.Map[key.MachinePublic, *sync.Mutex]
+}
+
+// lockRegistration serialises registration for a single machine key and
+// returns the unlock function.
+func (s *State) lockRegistration(machineKey key.MachinePublic) func() {
+	mu, _ := s.registerLocks.LoadOrStore(machineKey, &sync.Mutex{})
+	mu.Lock()
+
+	return mu.Unlock
 }
 
 // NewState creates and initializes a new [State] instance, setting up the database,
@@ -272,7 +289,8 @@ func NewState(cfg *types.Config) (*State, error) {
 		nodeStore: nodeStore,
 		pings:     newPingTracker(),
 
-		sshCheckAuth: make(map[sshCheckPair]time.Time),
+		sshCheckAuth:  make(map[sshCheckPair]time.Time),
+		registerLocks: xsync.NewMap[key.MachinePublic, *sync.Mutex](),
 	}, nil
 }
 
@@ -2028,6 +2046,11 @@ func (s *State) HandleNodeFromAuthPath(
 
 	// Lookup existing nodes
 	machineKey := regData.MachineKey
+
+	// Serialise registration for this machine so concurrent auth callbacks
+	// resolve to a single node rather than racing the find-then-create section.
+	defer s.lockRegistration(machineKey)()
+
 	existingNodeSameUser, _ := s.nodeStore.GetNodeByMachineKey(machineKey, types.UserID(user.ID))
 	existingNodeAnyUser, _ := s.nodeStore.GetNodeByMachineKeyAnyUser(machineKey)
 
@@ -2204,6 +2227,10 @@ func (s *State) HandleNodeFromPreAuthKey(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) (types.NodeView, change.Change, error) {
+	// Serialise registration for this machine so concurrent restarts resolve
+	// to a single node rather than racing the find-then-create section.
+	defer s.lockRegistration(machineKey)()
+
 	pak, err := s.GetPreAuthKey(regReq.Auth.AuthKey)
 	if err != nil {
 		return types.NodeView{}, change.Change{}, err
