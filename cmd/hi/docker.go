@@ -769,17 +769,6 @@ func extractContainerArtifacts(ctx context.Context, cli *client.Client, containe
 		return fmt.Errorf("extracting logs: %w", err)
 	}
 
-	// Extract tar files for headscale containers only
-	if strings.HasPrefix(containerName, "hs-") {
-		err := extractContainerFiles(ctx, cli, containerID, containerName, logsDir, verbose)
-		if err != nil {
-			if verbose {
-				log.Printf("Warning: failed to extract files from %s: %v", containerName, err)
-			}
-			// Don't fail the whole extraction if files are missing
-		}
-	}
-
 	return nil
 }
 
@@ -825,14 +814,5 @@ func extractContainerLogs(ctx context.Context, cli *client.Client, containerID, 
 		log.Printf("Saved logs for %s: %s, %s", containerName, stdoutPath, stderrPath)
 	}
 
-	return nil
-}
-
-// extractContainerFiles extracts database file and directories from headscale containers.
-// Note: The actual file extraction is now handled by the integration tests themselves
-// via [SaveProfile], [SaveMapResponses], and [SaveDatabase] functions in hsic.go.
-func extractContainerFiles(ctx context.Context, cli *client.Client, containerID, containerName, logsDir string, verbose bool) error {
-	// Files are now extracted directly by the integration tests
-	// This function is kept for potential future use or other file types
 	return nil
 }

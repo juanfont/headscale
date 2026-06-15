@@ -145,13 +145,6 @@ func (h *TestHarness) WaitForMeshComplete(tb testing.TB, timeout time.Duration) 
 	}
 }
 
-// WaitForConvergence waits until all connected clients have a
-// non-nil [netmap.NetworkMap] and their peer counts have stabilised.
-func (h *TestHarness) WaitForConvergence(tb testing.TB, timeout time.Duration) {
-	tb.Helper()
-	h.WaitForMeshComplete(tb, timeout)
-}
-
 // ChangePolicy sets an ACL policy on the server and propagates changes
 // to all connected nodes. The policy should be a valid HuJSON policy document.
 func (h *TestHarness) ChangePolicy(tb testing.TB, policy []byte) {

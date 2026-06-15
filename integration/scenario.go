@@ -406,8 +406,6 @@ func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
 	}
 
 	if s.mockOIDC.r != nil {
-		s.mockOIDC.r.Close()
-
 		err := s.mockOIDC.r.Close()
 		if err != nil {
 			log.Printf("tearing down oidc server: %s", err)
