@@ -1,6 +1,7 @@
 package state
 
 import (
+	"errors"
 	"net/netip"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
@@ -471,4 +473,56 @@ func TestPreAuthKeyReauthRejectsNodeKeyClaimedByAnotherMachine(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, victimMachine.Public(), owner.MachineKey(),
 		"victim's NodeKey index entry must be untouched")
+}
+
+var errInjectedNodeUpdate = errors.New("injected node update failure")
+
+// TestPreAuthKeyReauthRevertsNodeStoreOnDBFailure ensures a failed database
+// write during pre-auth-key re-registration does not leave the NodeStore
+// holding a node key that was never persisted: a restart would reload the old
+// row and the client's current key would no longer resolve, locking it out.
+func TestPreAuthKeyReauthRevertsNodeStoreOnDBFailure(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	user := s.CreateUserForTest("reauth-user")
+
+	pak, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	regReq := tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey:  key.NewNode().Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "reauth-node"},
+		Expiry:   time.Now().Add(24 * time.Hour),
+	}
+	node, _, err := s.HandleNodeFromPreAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+
+	origNodeKey := node.NodeKey()
+
+	// Fail the node row update so the re-registration's database write errors
+	// after the NodeStore has already been mutated.
+	require.NoError(t, s.db.DB.Callback().Update().Before("gorm:update").
+		Register("fail_node_update", func(tx *gorm.DB) {
+			if tx.Statement.Table == "nodes" {
+				_ = tx.AddError(errInjectedNodeUpdate)
+			}
+		}))
+
+	reReg := regReq
+	reReg.NodeKey = key.NewNode().Public() // rotate -> NodeStore mutation, then DB write fails
+	_, _, err = s.HandleNodeFromPreAuthKey(reReg, machineKey.Public())
+	require.NoError(t, s.db.DB.Callback().Update().Remove("fail_node_update"))
+	require.Error(t, err, "re-registration must fail when the database write fails")
+
+	got, ok := s.nodeStore.GetNode(node.ID())
+	require.True(t, ok)
+	require.Equal(t, origNodeKey, got.NodeKey(),
+		"NodeStore must revert to the persisted node key when the write fails")
 }
