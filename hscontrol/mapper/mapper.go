@@ -51,12 +51,6 @@ type mapper struct {
 	created time.Time
 }
 
-//nolint:unused
-type patch struct {
-	timestamp time.Time
-	change    *tailcfg.PeerChange
-}
-
 func newMapper(
 	cfg *types.Config,
 	state *state.State,

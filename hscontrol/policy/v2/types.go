@@ -1747,44 +1747,6 @@ func (p *Protocol) String() string {
 	return string(*p)
 }
 
-// Description returns the human-readable description of the [Protocol].
-func (p *Protocol) Description() string {
-	switch *p {
-	case ProtocolNameICMP:
-		return "Internet Control Message Protocol"
-	case ProtocolNameIGMP:
-		return "Internet Group Management Protocol"
-	case ProtocolNameIPv4:
-		return "IPv4 encapsulation"
-	case ProtocolNameTCP:
-		return "Transmission Control Protocol"
-	case ProtocolNameEGP:
-		return "Exterior Gateway Protocol"
-	case ProtocolNameIGP:
-		return "Interior Gateway Protocol"
-	case ProtocolNameUDP:
-		return "User Datagram Protocol"
-	case ProtocolNameGRE:
-		return "Generic Routing Encapsulation"
-	case ProtocolNameESP:
-		return "Encapsulating Security Payload"
-	case ProtocolNameAH:
-		return "Authentication Header"
-	case ProtocolNameIPv6ICMP:
-		return "Internet Control Message Protocol for IPv6"
-	case ProtocolNameSCTP:
-		return "Stream Control Transmission Protocol"
-	case ProtocolNameFC:
-		return "Fibre Channel"
-	case ProtocolNameIPInIP:
-		return "IP-in-IP Encapsulation"
-	case ProtocolNameWildcard:
-		return "Wildcard (not supported - use specific protocol)"
-	default:
-		return "Unknown Protocol"
-	}
-}
-
 // toIANAProtocolNumbers converts a [Protocol] to its IANA protocol numbers.
 // Since validation happens during [Protocol.UnmarshalJSON], this method should not fail for valid [Protocol] values.
 func (p *Protocol) toIANAProtocolNumbers() []int {

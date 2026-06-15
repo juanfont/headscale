@@ -38,9 +38,6 @@ func runTailSQLService(ctx context.Context, logf logger.Logf, stateDir, dbPath s
 		Hostname: opts.Hostname,
 		Logf:     logger.Discard,
 	}
-	// if *doDebugLog {
-	// 	tsNode.Logf = logf
-	// }
 	defer tsNode.Close()
 
 	logf("Starting tailscale (hostname=%q)", opts.Hostname)
@@ -87,7 +84,6 @@ func runTailSQLService(ctx context.Context, logf logger.Logf, stateDir, dbPath s
 				http.Redirect(w, r, target, http.StatusPermanentRedirect) //nolint:gosec // G710: target prefixed by trusted base URL
 			}))
 		}()
-		// log.Printf("Redirecting HTTP to HTTPS at %q", base)
 
 		// For the real service, start a separate listener.
 		// Note: Replaces the port 80 listener.
