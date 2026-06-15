@@ -2234,10 +2234,18 @@ func (s *State) HandleNodeFromPreAuthKey(
 	isNodeKeyRotation := existsSameUser && existingNodeSameUser.Valid() &&
 		existingNodeSameUser.NodeKey() != regReq.NodeKey
 
-	if isExistingNodeReregistering && !isNodeKeyRotation {
-		// Existing node re-registering with same NodeKey: skip validation.
-		// Pre-auth keys are only needed for initial authentication. Critical for
-		// containers that run "tailscale up --authkey=KEY" on every restart.
+	// An expired node is genuinely re-authenticating, not just waking up, so it
+	// must present a valid key. Without this a node that re-uses its NodeKey
+	// after expiry would skip validation and be re-authorised with a spent or
+	// expired key; the boundary must not depend on the client rotating its key.
+	isExpired := existsSameUser && existingNodeSameUser.Valid() &&
+		existingNodeSameUser.IsExpired()
+
+	if isExistingNodeReregistering && !isNodeKeyRotation && !isExpired {
+		// Existing, still-valid node re-registering with same NodeKey: skip
+		// validation. Pre-auth keys are only needed for initial authentication.
+		// Critical for containers that run "tailscale up --authkey=KEY" on every
+		// restart.
 		log.Debug().
 			Caller().
 			Uint64(zf.NodeID, existingNodeSameUser.ID().Uint64()).
