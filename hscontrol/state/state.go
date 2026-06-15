@@ -2187,10 +2187,13 @@ func (s *State) findExistingNodeForPAK(
 		}
 	}
 
-	// Tagged nodes have nil UserID, so they are indexed under UserID(0)
-	// in nodesByMachineKey. Check there for tagged PAK re-registration.
+	// A tagged key re-registers the same machine regardless of how that machine
+	// is currently owned: a tagged node (indexed under UserID(0)) is a plain
+	// re-registration, while a user-owned node is converted to tagged in place
+	// (handled by the caller). Match on the machine key alone so neither case
+	// creates a duplicate node.
 	if pak.IsTagged() {
-		return s.nodeStore.GetNodeByMachineKey(machineKey, 0)
+		return s.nodeStore.GetNodeByMachineKeyAnyUser(machineKey)
 	}
 
 	return types.NodeView{}, false
@@ -2241,7 +2244,13 @@ func (s *State) HandleNodeFromPreAuthKey(
 	isExpired := existsSameUser && existingNodeSameUser.Valid() &&
 		existingNodeSameUser.IsExpired()
 
-	if isExistingNodeReregistering && !isNodeKeyRotation && !isExpired {
+	// A tagged key presented for a currently user-owned node converts that node
+	// to tagged. That is an ownership change, not a plain refresh, so it must
+	// present a valid key rather than ride the skip-validation fast-path.
+	isOwnershipConversion := existsSameUser && existingNodeSameUser.Valid() &&
+		pak.IsTagged() && !existingNodeSameUser.IsTagged()
+
+	if isExistingNodeReregistering && !isNodeKeyRotation && !isExpired && !isOwnershipConversion {
 		// Existing, still-valid node re-registering with same NodeKey: skip
 		// validation. Pre-auth keys are only needed for initial authentication.
 		// Critical for containers that run "tailscale up --authkey=KEY" on every
@@ -2327,8 +2336,17 @@ func (s *State) HandleNodeFromPreAuthKey(
 			node.RegisterMethod = util.RegisterMethodAuthKey
 
 			// Tags from PreAuthKey are only applied during initial registration.
-			// On re-registration the node keeps its existing tags and ownership.
-			// Only update AuthKey reference.
+			// On re-registration the node keeps its existing tags and ownership,
+			// except when a tagged key converts a user-owned node: that adopts
+			// the key's tags and drops user ownership (tagged nodes are
+			// user-less and never expire). Only update AuthKey reference
+			// otherwise.
+			if pak.IsTagged() && !node.IsTagged() {
+				node.Tags = pak.Proto().GetAclTags()
+				node.UserID = nil
+				node.User = nil
+				node.Expiry = nil
+			}
 			node.AuthKey = pak
 			node.AuthKeyID = &pak.ID
 			// Do NOT reset IsOnline here. Online status is managed exclusively by
