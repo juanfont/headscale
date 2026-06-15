@@ -118,6 +118,13 @@ var ErrRegistrationExpired = errors.New("registration expired")
 // binding.
 var ErrNodeKeyInUse = errors.New("node key already in use by another machine")
 
+// ErrAmbiguousNodeOwnership is returned when a machine key maps to a set of
+// nodes from which the correct one to update or convert cannot be determined:
+// multiple user-owned candidates for a tagged conversion, or a tagged node and
+// a user-owned node coexisting (impossible per validateNodeOwnership). The
+// registration is rejected rather than mutating an arbitrarily-picked node.
+var ErrAmbiguousNodeOwnership = errors.New("machine key maps to ambiguous node ownership")
+
 // sshCheckPair identifies a (source, destination) node pair for
 // SSH check auth tracking.
 type sshCheckPair struct {
@@ -745,12 +752,11 @@ func (s *State) GetNodeByNodeKey(nodeKey key.NodePublic) (types.NodeView, bool) 
 	return s.nodeStore.GetNodeByNodeKey(nodeKey)
 }
 
-// GetNodeByMachineKey retrieves a node by its machine key and user ID.
-// The bool indicates if the node exists or is available (like "err not found").
-// The NodeView might be invalid, so it must be checked with .Valid(), which must be used to ensure
-// it isn't an invalid node (this is more of a node error or node is broken).
-func (s *State) GetNodeByMachineKey(machineKey key.MachinePublic, userID types.UserID) (types.NodeView, bool) {
-	return s.nodeStore.GetNodeByMachineKey(machineKey, userID)
+// GetNodesByMachineKeyAllUsers returns every node sharing the machine key,
+// keyed by owning UserID (tagged nodes under UserID(0)). See
+// [NodeStore.GetNodesByMachineKeyAllUsers].
+func (s *State) GetNodesByMachineKeyAllUsers(machineKey key.MachinePublic) map[types.UserID]types.NodeView {
+	return s.nodeStore.GetNodesByMachineKeyAllUsers(machineKey)
 }
 
 // ResolveNode looks up a node by numeric ID, IPv4/IPv6 address, given
@@ -2051,16 +2057,32 @@ func (s *State) HandleNodeFromAuthPath(
 	// resolve to a single node rather than racing the find-then-create section.
 	defer s.lockRegistration(machineKey)()
 
-	existingNodeSameUser, _ := s.nodeStore.GetNodeByMachineKey(machineKey, types.UserID(user.ID))
-	existingNodeAnyUser, _ := s.nodeStore.GetNodeByMachineKeyAnyUser(machineKey)
+	all := s.nodeStore.GetNodesByMachineKeyAllUsers(machineKey)
 
-	// Named conditions - describe WHAT we found, not HOW we check it
-	nodeExistsForSameUser := existingNodeSameUser.Valid()
-	nodeExistsForAnyUser := existingNodeAnyUser.Valid()
-	existingNodeIsTagged := nodeExistsForAnyUser && existingNodeAnyUser.IsTagged()
-	existingNodeOwnedByOtherUser := nodeExistsForAnyUser &&
-		!existingNodeIsTagged &&
-		existingNodeAnyUser.UserID().Get() != user.ID
+	// Named conditions - describe WHAT we found, not HOW we check it.
+	existingNodeSameUser, nodeExistsForSameUser := all[types.UserID(user.ID)]
+
+	taggedNode, hasTagged := all[0]
+	existingNodeIsTagged := hasTagged && taggedNode.IsTagged()
+
+	var existingNodeOtherUser types.NodeView
+
+	existingNodeOwnedByOtherUser := false
+
+	for uid, n := range all {
+		if uid != 0 && uid != types.UserID(user.ID) && !n.IsTagged() {
+			existingNodeOtherUser = n
+			existingNodeOwnedByOtherUser = true
+		}
+	}
+
+	// A tagged node and a user-owned node cannot legitimately share a machine
+	// key (validateNodeOwnership enforces tags XOR user ownership). If both are
+	// present the machine key is in a corrupt/ambiguous state; reject rather
+	// than converting an arbitrary node and orphaning the other.
+	if existingNodeIsTagged && (nodeExistsForSameUser || existingNodeOwnedByOtherUser) {
+		return types.NodeView{}, change.Change{}, ErrAmbiguousNodeOwnership
+	}
 
 	// Create logger with common fields for all auth operations
 	logger := log.With().
@@ -2090,7 +2112,7 @@ func (s *State) HandleNodeFromAuthPath(
 			return types.NodeView{}, change.Change{}, err
 		}
 	} else if existingNodeIsTagged {
-		updateParams.ExistingNode = existingNodeAnyUser
+		updateParams.ExistingNode = taggedNode
 		updateParams.IsConvertFromTag = true
 
 		finalNode, err = s.applyAuthNodeUpdate(updateParams)
@@ -2098,7 +2120,7 @@ func (s *State) HandleNodeFromAuthPath(
 			return types.NodeView{}, change.Change{}, err
 		}
 	} else if existingNodeOwnedByOtherUser {
-		oldUser := existingNodeAnyUser.User()
+		oldUser := existingNodeOtherUser.User()
 
 		oldUserName := ""
 		if oldUser.Valid() {
@@ -2106,14 +2128,14 @@ func (s *State) HandleNodeFromAuthPath(
 		}
 
 		logger.Info().
-			Str(zf.ExistingNodeName, existingNodeAnyUser.Hostname()).
-			Uint64(zf.ExistingNodeID, existingNodeAnyUser.ID().Uint64()).
+			Str(zf.ExistingNodeName, existingNodeOtherUser.Hostname()).
+			Uint64(zf.ExistingNodeID, existingNodeOtherUser.ID().Uint64()).
 			Str(zf.OldUser, oldUserName).
 			Msg("Creating new node for different user (same machine key exists for another user)")
 
 		finalNode, err = s.createNewNodeFromAuth(
 			logger, user, regData, hostname, hostinfo,
-			expiry, registrationMethod, existingNodeAnyUser,
+			expiry, registrationMethod, existingNodeOtherUser,
 		)
 		if err != nil {
 			return types.NodeView{}, change.Change{}, err
@@ -2192,11 +2214,12 @@ func (s *State) createNewNodeFromAuth(
 func (s *State) findExistingNodeForPAK(
 	machineKey key.MachinePublic,
 	pak *types.PreAuthKey,
-) (types.NodeView, bool) {
+) (types.NodeView, bool, error) {
+	all := s.nodeStore.GetNodesByMachineKeyAllUsers(machineKey)
+
 	if pak.User != nil {
-		node, exists := s.nodeStore.GetNodeByMachineKey(machineKey, types.UserID(pak.User.ID))
-		if exists {
-			return node, true
+		if node, ok := all[types.UserID(pak.User.ID)]; ok {
+			return node, true, nil
 		}
 
 		// The node may have been converted to a tagged node since it first
@@ -2205,21 +2228,46 @@ func (s *State) findExistingNodeForPAK(
 		// it for re-registration instead of re-validating the spent key or
 		// creating a duplicate node. Re-registration preserves the node's tagged
 		// ownership. See https://github.com/juanfont/headscale/issues/3312.
-		if node, exists := s.nodeStore.GetNodeByMachineKey(machineKey, 0); exists && node.IsTagged() {
-			return node, true
+		if node, ok := all[0]; ok && node.IsTagged() {
+			return node, true, nil
+		}
+
+		return types.NodeView{}, false, nil
+	}
+
+	// A tagged key re-registers the same machine regardless of how it is
+	// currently owned. An existing tagged node is a plain re-registration. A
+	// single user-owned node is converted to tagged in place (handled by the
+	// caller). More than one user-owned node is ambiguous - we cannot know
+	// which to convert - so reject rather than convert an arbitrary one and
+	// orphan the rest.
+	if pak.IsTagged() {
+		if node, ok := all[0]; ok && node.IsTagged() {
+			return node, true, nil
+		}
+
+		var userOwned types.NodeView
+
+		count := 0
+
+		for uid, node := range all {
+			if uid != 0 && !node.IsTagged() {
+				userOwned = node
+				count++
+			}
+		}
+
+		switch count {
+		case 0:
+			return types.NodeView{}, false, nil
+		case 1:
+			return userOwned, true, nil
+		default:
+			return types.NodeView{}, false, ErrAmbiguousNodeOwnership
 		}
 	}
 
-	// A tagged key re-registers the same machine regardless of how that machine
-	// is currently owned: a tagged node (indexed under UserID(0)) is a plain
-	// re-registration, while a user-owned node is converted to tagged in place
-	// (handled by the caller). Match on the machine key alone so neither case
-	// creates a duplicate node.
-	if pak.IsTagged() {
-		return s.nodeStore.GetNodeByMachineKeyAnyUser(machineKey)
-	}
-
-	return types.NodeView{}, false
+	return types.NodeView{}, false, nil
 }
 
 //nolint:gocyclo // sequential validation/update/create paths with security-sensitive ordering
@@ -2245,7 +2293,10 @@ func (s *State) HandleNodeFromPreAuthKey(
 		return types.TaggedDevices.Name
 	}
 
-	existingNodeSameUser, existsSameUser := s.findExistingNodeForPAK(machineKey, pak)
+	existingNodeSameUser, existsSameUser, err := s.findExistingNodeForPAK(machineKey, pak)
+	if err != nil {
+		return types.NodeView{}, change.Change{}, err
+	}
 
 	// For existing nodes, skip validation if:
 	// 1. MachineKey matches (cryptographic proof of machine identity)
@@ -2455,24 +2506,29 @@ func (s *State) HandleNodeFromPreAuthKey(
 
 		finalNode = updatedNodeView
 	} else {
-		// Node does not exist for this user with this machine key
-		// Check if node exists with this machine key for a different user
-		existingNodeAnyUser, existsAnyUser := s.nodeStore.GetNodeByMachineKeyAnyUser(machineKey)
+		// Node does not exist for this user with this machine key.
+		// For a user-owned key, check whether the machine key is already held
+		// by a node belonging to a different user (tags-only keys skip this;
+		// tagged nodes have no owning user). Any such node yields the same
+		// outcome - create a new node for the new user, do not transfer - so a
+		// single representative is enough.
+		var differentUserNode types.NodeView
 
-		// For user-owned keys, check if node exists for a different user.
-		// Tags-only keys (pak.User == nil) skip this check.
-		// Tagged nodes are also skipped since they have no owning user.
-		existingIsUserOwned := existsAnyUser &&
-			existingNodeAnyUser.Valid() &&
-			!existingNodeAnyUser.IsTagged()
-		belongsToDifferentUser := pak.User != nil &&
-			existingIsUserOwned &&
-			existingNodeAnyUser.UserID().Get() != pak.User.ID
+		belongsToDifferentUser := false
+
+		if pak.User != nil {
+			for uid, node := range s.nodeStore.GetNodesByMachineKeyAllUsers(machineKey) {
+				if uid != 0 && !node.IsTagged() && uid != types.UserID(pak.User.ID) {
+					differentUserNode = node
+					belongsToDifferentUser = true
+				}
+			}
+		}
 
 		if belongsToDifferentUser {
 			// Node exists but belongs to a different user.
 			// Create a new node for the new user (do not transfer).
-			oldUser := existingNodeAnyUser.User()
+			oldUser := differentUserNode.User()
 
 			oldUserName := ""
 			if oldUser.Valid() {
@@ -2481,8 +2537,8 @@ func (s *State) HandleNodeFromPreAuthKey(
 
 			log.Info().
 				Caller().
-				Str(zf.ExistingNodeName, existingNodeAnyUser.Hostname()).
-				Uint64(zf.ExistingNodeID, existingNodeAnyUser.ID().Uint64()).
+				Str(zf.ExistingNodeName, differentUserNode.Hostname()).
+				Uint64(zf.ExistingNodeID, differentUserNode.ID().Uint64()).
 				Str(zf.MachineKey, machineKey.ShortString()).
 				Str(zf.OldUser, oldUserName).
 				Str(zf.NewUser, pakUsername()).
@@ -2522,7 +2578,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 			Expiry:                 reqExpiry,
 			RegisterMethod:         util.RegisterMethodAuthKey,
 			PreAuthKey:             pak,
-			ExistingNodeForNetinfo: cmp.Or(existingNodeAnyUser, types.NodeView{}),
+			ExistingNodeForNetinfo: cmp.Or(differentUserNode, types.NodeView{}),
 		})
 		if err != nil {
 			return types.NodeView{}, change.Change{}, fmt.Errorf("creating new node: %w", err)

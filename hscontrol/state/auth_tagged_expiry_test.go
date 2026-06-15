@@ -319,6 +319,95 @@ func TestTaggedPAKReauthConvertsUserOwnedNode(t *testing.T) {
 	require.Equal(t, 1, s.ListNodes().Len(), "machine must map to exactly one node")
 }
 
+// registerTwoUsersOnOneMachine registers two user-owned nodes that share a
+// machine key (the "create new, do not transfer" multi-user device state) and
+// returns the State and the shared machine key.
+func registerTwoUsersOnOneMachine(t *testing.T) (*State, key.MachinePublic, types.NodeID) {
+	t.Helper()
+
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	u1 := s.CreateUserForTest("u1")
+	u2 := s.CreateUserForTest("u2")
+	mk := key.NewMachine()
+
+	reg := func(pakUser *types.User) types.NodeView {
+		pak, err := s.CreatePreAuthKey(pakUser.TypedID(), true, false, nil, nil)
+		require.NoError(t, err)
+		n, _, err := s.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+			Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+			NodeKey:  key.NewNode().Public(),
+			Hostinfo: &tailcfg.Hostinfo{Hostname: "multi"},
+			Expiry:   time.Now().Add(24 * time.Hour),
+		}, mk.Public())
+		require.NoError(t, err)
+
+		return n
+	}
+
+	n1 := reg(u1)
+	n2 := reg(u2)
+	require.NotEqual(t, n1.ID(), n2.ID(), "precondition: two distinct nodes share the machine key")
+	require.Equal(t, 2, s.ListNodes().Len())
+
+	return s, mk.Public(), n1.ID()
+}
+
+// TestTaggedPAKReauthRejectsAmbiguousMultiUserNode: a tagged pre-auth key on a
+// machine that has more than one user-owned node cannot know which to convert,
+// so the registration is rejected rather than converting an arbitrary one and
+// orphaning the rest.
+func TestTaggedPAKReauthRejectsAmbiguousMultiUserNode(t *testing.T) {
+	s, mk, _ := registerTwoUsersOnOneMachine(t)
+
+	taggedPak, err := s.CreatePreAuthKey(nil, true, false, nil, []string{"tag:foo"})
+	require.NoError(t, err)
+
+	_, _, err = s.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: taggedPak.Key},
+		NodeKey:  key.NewNode().Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "multi"},
+		Expiry:   time.Now().Add(24 * time.Hour),
+	}, mk)
+	require.ErrorIs(t, err, ErrAmbiguousNodeOwnership)
+	require.Equal(t, 2, s.ListNodes().Len(), "no node created or converted on rejection")
+}
+
+// TestAuthPathRejectsTaggedAndUserCoexistence: if a machine key ends up with
+// both a tagged node and a user-owned node (impossible per validateNodeOwnership,
+// but reachable by tagging one node of a multi-user device via the admin path),
+// an OIDC re-auth must reject rather than silently converting the tagged node
+// and orphaning the user-owned one.
+func TestAuthPathRejectsTaggedAndUserCoexistence(t *testing.T) {
+	s, mk, n1 := registerTwoUsersOnOneMachine(t)
+
+	// Tag one of the two user-owned nodes -> {0: tagged, u2: user-owned} coexist.
+	_, err := s.SetPolicy([]byte(`{"tagOwners":{"tag:foo":["u1@"]}}`))
+	require.NoError(t, err)
+	tagged, _, err := s.SetNodeTags(n1, []string{"tag:foo"})
+	require.NoError(t, err)
+	require.True(t, tagged.IsTagged())
+
+	// A third user authenticates the same machine via OIDC.
+	u3 := s.CreateUserForTest("u3")
+	regData := &types.RegistrationData{
+		MachineKey: mk,
+		NodeKey:    key.NewNode().Public(),
+		Hostname:   "multi",
+		Hostinfo:   &tailcfg.Hostinfo{Hostname: "multi"},
+	}
+	authID := types.MustAuthID()
+	s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(regData))
+
+	_, _, err = s.HandleNodeFromAuthPath(authID, types.UserID(u3.ID), nil, util.RegisterMethodOIDC)
+	require.ErrorIs(t, err, ErrAmbiguousNodeOwnership)
+}
+
 // TestTaggedNodeCanHaveKeyExpiry matches Tailscale: a tagged node has key
 // expiry disabled by default, but it can still be set explicitly (e.g. via
 // `headscale nodes expire`).
