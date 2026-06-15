@@ -50,7 +50,6 @@ var GetVersionInfo = sync.OnceValue(func() *VersionInfo {
 			OS:      runtime.GOOS,
 			Arch:    runtime.GOARCH,
 		},
-		Dirty: false,
 	}
 
 	buildInfo, ok := buildInfo()

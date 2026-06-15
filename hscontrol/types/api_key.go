@@ -9,12 +9,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-const (
-	// NewAPIKeyPrefixLength is the length of the prefix for new API keys.
-	NewAPIKeyPrefixLength = 12
-	// LegacyAPIKeyPrefixLength is the length of the prefix for legacy API keys.
-	LegacyAPIKeyPrefixLength = 7
-)
+// NewAPIKeyPrefixLength is the length of the prefix for new API keys.
+const NewAPIKeyPrefixLength = 12
 
 // APIKey describes the datamodel for API keys used to remotely authenticate with
 // headscale.

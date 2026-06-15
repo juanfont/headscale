@@ -1354,26 +1354,6 @@ type deprecator struct {
 	fatals set.Set[string]
 }
 
-// warnWithAlias will register an alias between the newKey and the oldKey,
-// and log a deprecation warning if the oldKey is set.
-//
-//nolint:unused
-func (d *deprecator) warnWithAlias(newKey, oldKey string) {
-	// NOTE: RegisterAlias is called with NEW KEY -> OLD KEY
-	viper.RegisterAlias(newKey, oldKey)
-
-	if viper.IsSet(oldKey) {
-		d.warns.Add(
-			fmt.Sprintf(
-				"The %q configuration key is deprecated. Please use %q instead. %q will be removed in the future.",
-				oldKey,
-				newKey,
-				oldKey,
-			),
-		)
-	}
-}
-
 // fatal deprecates and adds an entry to the fatal list of options if the oldKey is set.
 func (d *deprecator) fatal(oldKey string) {
 	if viper.IsSet(oldKey) {
@@ -1444,20 +1424,6 @@ func (d *deprecator) warnNoAlias(newKey, oldKey string) {
 				"The %q configuration key is deprecated. Please use %q instead. %q has been removed.",
 				oldKey,
 				newKey,
-				oldKey,
-			),
-		)
-	}
-}
-
-// warn deprecates and adds an entry to the warn list of options if the oldKey is set.
-//
-//nolint:unused
-func (d *deprecator) warn(oldKey string) {
-	if viper.IsSet(oldKey) {
-		d.warns.Add(
-			fmt.Sprintf(
-				"The %q configuration key is deprecated and has been removed. Please see the changelog for more details.",
 				oldKey,
 			),
 		)

@@ -78,10 +78,6 @@ type (
 	NodeIDs []NodeID
 )
 
-func (n NodeIDs) Len() int           { return len(n) }
-func (n NodeIDs) Less(i, j int) bool { return n[i] < n[j] }
-func (n NodeIDs) Swap(i, j int)      { n[i], n[j] = n[j], n[i] }
-
 func (id NodeID) StableID() tailcfg.StableNodeID {
 	return tailcfg.StableNodeID(strconv.FormatUint(uint64(id), util.Base10))
 }
