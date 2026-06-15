@@ -233,3 +233,88 @@ func TestExpiredUserNodeReusedOneShotKey_SameNodeKey(t *testing.T) {
 		"expired node re-registering with the same node key must re-validate its key")
 	require.Contains(t, err.Error(), "authkey already used")
 }
+
+// TestReusableUserPAKReauthOnTaggedNodeNoDuplicate guards against a reusable
+// user pre-auth key creating a second node when it is re-presented for a node
+// that has since been converted to tagged. The node must be updated in place.
+func TestReusableUserPAKReauthOnTaggedNodeNoDuplicate(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	user := s.CreateUserForTest("reusable-user")
+
+	policy := fmt.Sprintf(`{"tagOwners":{"tag:foo":["%s@"]}}`, user.Name)
+	_, err = s.SetPolicy([]byte(policy))
+	require.NoError(t, err)
+
+	pak, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	regReq := tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey:  key.NewNode().Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "reusable-node"},
+		Expiry:   time.Now().Add(24 * time.Hour),
+	}
+
+	first, _, err := s.HandleNodeFromPreAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+
+	_, _, err = s.SetNodeTags(first.ID(), []string{"tag:foo"})
+	require.NoError(t, err)
+
+	second, _, err := s.HandleNodeFromPreAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+	require.True(t, second.IsTagged())
+	require.Equal(t, first.ID(), second.ID(), "must update in place, not duplicate")
+	require.Equal(t, 1, s.ListNodes().Len(), "machine must map to exactly one node")
+}
+
+// TestTaggedPAKReauthConvertsUserOwnedNode ensures presenting a tagged pre-auth
+// key for a machine that already has a user-owned node converts that node in
+// place (same machine, new ownership) rather than creating a duplicate.
+func TestTaggedPAKReauthConvertsUserOwnedNode(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	user := s.CreateUserForTest("owner")
+
+	userPak, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+	regReq := tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: userPak.Key},
+		NodeKey:  nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "owned-node"},
+		Expiry:   time.Now().Add(24 * time.Hour),
+	}
+
+	owned, _, err := s.HandleNodeFromPreAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+	require.False(t, owned.IsTagged(), "precondition: node is user-owned")
+
+	// A tags-only key re-registers the same machine (same node key).
+	taggedPak, err := s.CreatePreAuthKey(nil, true, false, nil, []string{"tag:foo"})
+	require.NoError(t, err)
+
+	convReq := regReq
+	convReq.Auth = &tailcfg.RegisterResponseAuth{AuthKey: taggedPak.Key}
+
+	converted, _, err := s.HandleNodeFromPreAuthKey(convReq, machineKey.Public())
+	require.NoError(t, err)
+	require.Equal(t, owned.ID(), converted.ID(), "must convert in place, not duplicate")
+	require.True(t, converted.IsTagged(), "node must become tagged")
+	require.Equal(t, []string{"tag:foo"}, converted.Tags().AsSlice())
+	require.Equal(t, 1, s.ListNodes().Len(), "machine must map to exactly one node")
+}
