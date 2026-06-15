@@ -1615,7 +1615,14 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 			params.ValidHostinfo,
 		)
 
-		node.Endpoints = regData.Endpoints
+		// Preserve the node's live endpoints when the register request carried
+		// none. Web/OIDC relogins report endpoints via MapRequest, not register,
+		// so RegData.Endpoints is empty; clearing the stored set would advertise
+		// the re-keyed node with no way for peers to reach it. The first
+		// MapRequest restores the live set.
+		if len(regData.Endpoints) > 0 {
+			node.Endpoints = regData.Endpoints
+		}
 		// Do NOT reset IsOnline here. Online status is managed exclusively by
 		// [State.Connect]/[State.Disconnect] in the poll session lifecycle.
 		// Resetting it during re-registration causes a false offline blip: the
@@ -2115,14 +2122,12 @@ func (s *State) HandleNodeFromAuthPath(
 		return finalNode, change.NodeAdded(finalNode.ID()), fmt.Errorf("updating policy manager nodes: %w", err)
 	}
 
-	var c change.Change
-	if !usersChange.IsEmpty() || !nodesChange.IsEmpty() {
-		c = change.PolicyChange()
-	} else {
-		c = change.NodeAdded(finalNode.ID())
-	}
+	policyChanged := !usersChange.IsEmpty() || !nodesChange.IsEmpty()
 
-	return finalNode, c, nil
+	// nodeExistsForSameUser is true only for a same-user relogin; a tag->user
+	// conversion is excluded, as it changes the peer's User — a structural
+	// change peers must see in full, not a key-rotation patch.
+	return finalNode, reauthChange(finalNode, nodeExistsForSameUser, policyChanged), nil
 }
 
 // createNewNodeFromAuth creates a new node during auth callback.
@@ -2448,14 +2453,27 @@ func (s *State) HandleNodeFromPreAuthKey(
 		return finalNode, change.NodeAdded(finalNode.ID()), fmt.Errorf("updating policy manager nodes: %w", err)
 	}
 
-	var c change.Change
-	if !usersChange.IsEmpty() || !nodesChange.IsEmpty() {
-		c = change.PolicyChange()
-	} else {
-		c = change.NodeAdded(finalNode.ID())
-	}
+	policyChanged := !usersChange.IsEmpty() || !nodesChange.IsEmpty()
 
-	return finalNode, c, nil
+	return finalNode, reauthChange(finalNode, existsSameUser, policyChanged), nil
+}
+
+// reauthChange returns the [change.Change] to broadcast after an authentication
+// that updated or created a node.
+//
+// A pure relogin (isRelogin: an existing node, same user, with only its NodeKey
+// rotated) is sent as a minimal incremental peer patch via [change.NodeKeyRotated]
+// rather than re-advertising the whole node. A policy change forces a full
+// recompute; any other (new) node is a whole-node add.
+func reauthChange(node types.NodeView, isRelogin, policyChanged bool) change.Change {
+	switch {
+	case policyChanged:
+		return change.PolicyChange()
+	case isRelogin:
+		return change.NodeKeyRotated(node)
+	default:
+		return change.NodeAdded(node.ID())
+	}
 }
 
 // updatePolicyManagerUsers updates the policy manager with current users.
@@ -2656,8 +2674,13 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 	updatedNode, ok := s.nodeStore.UpdateNode(id, func(currentNode *types.Node) {
 		peerChange := currentNode.PeerChangeFromMapRequest(req)
 
-		// Track what specifically changed
-		endpointChanged = peerChange.Endpoints != nil
+		// Track what specifically changed. An endpoint delta is only
+		// broadcast-worthy when it adds a useful (non-STUN) endpoint;
+		// STUN-only churn and pure shrinks are suppressed to reduce peer
+		// churn (see endpointBroadcastWorthy). The new set is still stored
+		// via ApplyPeerChange below regardless of this decision.
+		endpointChanged = peerChange.Endpoints != nil &&
+			endpointBroadcastWorthy(currentNode.Endpoints, req.Endpoints, req.EndpointTypes)
 		derpChanged = peerChange.DERPRegion != 0
 		hostinfoChanged = !hostinfoEqual(currentNode.View(), req.Hostinfo)
 
@@ -2839,6 +2862,63 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 	// Determine the most specific change type based on what actually changed.
 	// This allows us to send lightweight patch updates instead of full map responses.
 	return buildMapRequestChangeResponse(id, updatedNode, hostinfoChanged, endpointChanged, derpChanged)
+}
+
+// endpointBroadcastWorthy reports whether an endpoint-only delta is worth
+// fanning out to peers as an incremental PeersChangedPatch. A delta that only
+// adds STUN-derived endpoints — or only removes endpoints — is suppressed:
+// bare STUN endpoints are unlikely to be open and churn a lot (the client
+// re-derives those paths over disco anyway), and a pure shrink is not worth
+// telling peers about. Suppressing this churn keeps peers' views stable.
+//
+// The decision is intentionally conservative: it gates the broadcast only,
+// not storage. The node's full endpoint set (STUN included) is still stored
+// and rides along the next substantive change or full MapResponse, so no
+// reachable path is permanently hidden from peers.
+//
+// Limitation: headscale stores bare []netip.AddrPort with no per-endpoint
+// type, so we can only classify the *new* request's endpoints (via the
+// parallel newTypes slice). We therefore gate on whether any newly-added
+// endpoint (present in new, absent from stored) is useful (non-STUN). When
+// newTypes is absent or shorter than newEPs (older clients), the unknown
+// endpoints are treated as useful, preserving the pre-existing always-broadcast
+// behaviour and never hiding a genuinely new endpoint.
+func endpointBroadcastWorthy(
+	stored, newEPs []netip.AddrPort,
+	newTypes []tailcfg.EndpointType,
+) bool {
+	storedSet := make(map[netip.AddrPort]struct{}, len(stored))
+	for _, ep := range stored {
+		storedSet[ep] = struct{}{}
+	}
+
+	for i, ep := range newEPs {
+		if _, ok := storedSet[ep]; ok {
+			// Already known to peers; not a newly-added endpoint.
+			continue
+		}
+
+		// A newly-added endpoint with no type information (older client)
+		// is treated as useful so we never hide a genuinely new endpoint.
+		t := tailcfg.EndpointUnknownType
+		if i < len(newTypes) {
+			t = newTypes[i]
+		}
+
+		if isUsefulEndpointType(t) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isUsefulEndpointType reports whether an endpoint type is worth eagerly
+// broadcasting to peers. STUN-derived endpoints are excluded because they are
+// churny and unlikely to be directly reachable; magicsock's disco handles
+// establishing those paths.
+func isUsefulEndpointType(t tailcfg.EndpointType) bool {
+	return t != tailcfg.EndpointSTUN && t != tailcfg.EndpointSTUN4LocalPort
 }
 
 // buildMapRequestChangeResponse determines the appropriate response type for a [tailcfg.MapRequest] update.

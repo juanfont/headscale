@@ -325,3 +325,93 @@ func TestReauthRejectsNodeKeyClaimedByAnotherMachine(t *testing.T) {
 	require.Error(t, err,
 		"re-auth claiming a NodeKey bound to another machine must be rejected")
 }
+
+// TestReauthPreservesEndpointsWhenClientOmitsThem proves the re-auth/update
+// path keeps a node's live WireGuard endpoints when the originating
+// RegisterRequest carried none. Web/OIDC relogins report endpoints via
+// MapRequest, not register, so RegData.Endpoints is empty; wiping the stored
+// endpoints would advertise the re-keyed node to peers endpoint-less, which
+// drives head/unstable tailscale clients into one-way disco-deafness.
+func TestReauthPreservesEndpointsWhenClientOmitsThem(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+
+	database, err := db.NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	user := database.CreateUserForTest("user")
+	require.NoError(t, database.Close())
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	machine := key.NewMachine()
+	endpoints := []netip.AddrPort{
+		netip.MustParseAddrPort("192.168.1.5:41641"),
+		netip.MustParseAddrPort("10.0.0.5:41641"),
+	}
+
+	// Node is registered and has reported live endpoints (as after its first
+	// MapRequest).
+	node, err := s.createAndSaveNewNode(newNodeParams{
+		User:           *user,
+		MachineKey:     machine.Public(),
+		NodeKey:        key.NewNode().Public(),
+		DiscoKey:       key.NewDisco().Public(),
+		Hostname:       "node",
+		Endpoints:      endpoints,
+		RegisterMethod: util.RegisterMethodCLI,
+	})
+	require.NoError(t, err)
+	require.Equal(t, endpoints, node.Endpoints().AsSlice(),
+		"precondition: node has live endpoints")
+
+	// Node re-authenticates, rotating its NodeKey. The RegisterRequest carries
+	// no endpoints.
+	updated, err := s.applyAuthNodeUpdate(authNodeUpdateParams{
+		ExistingNode: node,
+		RegData: &types.RegistrationData{
+			MachineKey: machine.Public(),
+			NodeKey:    key.NewNode().Public(),
+			Hostname:   "node",
+			Hostinfo:   &tailcfg.Hostinfo{},
+			Endpoints:  nil,
+		},
+		ValidHostinfo:  &tailcfg.Hostinfo{},
+		Hostname:       "node",
+		User:           user,
+		RegisterMethod: util.RegisterMethodCLI,
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, endpoints, updated.Endpoints().AsSlice(),
+		"re-auth without reported endpoints must preserve the node's live endpoints")
+}
+
+// TestReauthChange covers the decision both re-auth paths share: a same-user
+// relogin must be an incremental peer patch (so the tailscale client takes its
+// fast patch path), never a whole-node add (which strands a re-keyed,
+// momentarily-endpoint-less peer disco-deaf); a policy change forces a full
+// recompute; a new node is a whole-node add.
+func TestReauthChange(t *testing.T) {
+	n := types.Node{
+		ID:       7,
+		NodeKey:  key.NewNode().Public(),
+		DiscoKey: key.NewDisco().Public(),
+	}
+	node := n.View()
+
+	relogin := reauthChange(node, true, false)
+	assert.Len(t, relogin.PeerPatches, 1, "relogin must be a peer patch")
+	assert.Empty(t, relogin.PeersChanged, "relogin must not be a whole-node add")
+
+	added := reauthChange(node, false, false)
+	assert.Empty(t, added.PeerPatches)
+	assert.Len(t, added.PeersChanged, 1, "a new node must be a whole-node add")
+
+	pol := reauthChange(node, true, true)
+	assert.Empty(t, pol.PeerPatches, "a policy change must not be a peer patch")
+	assert.Empty(t, pol.PeersChanged)
+	assert.False(t, pol.IsEmpty(), "a policy change must be non-empty")
+}
