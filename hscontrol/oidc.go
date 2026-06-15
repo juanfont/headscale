@@ -54,6 +54,7 @@ var (
 		"authenticated principal does not match any allowed user",
 	)
 	errOIDCUnverifiedEmail = errors.New("authenticated principal has an unverified email")
+	errInvalidPKCEMethod   = errors.New("invalid pkce.method")
 )
 
 // AuthInfo contains both auth ID and verifier information for OIDC validation.
@@ -186,6 +187,12 @@ func (a *AuthProviderOIDC) authHandler(
 		case types.PKCEMethodPlain:
 			// oauth2 does not have a plain challenge option, so we add it manually
 			extras = append(extras, oauth2.SetAuthURLParam("code_challenge_method", "plain"), oauth2.SetAuthURLParam("code_challenge", verifier))
+		default:
+			// An unknown method must not silently emit no challenge: a
+			// verifier was generated and is sent at token exchange, so a
+			// missing challenge degrades to no-PKCE without anyone noticing.
+			httpError(writer, NewHTTPError(http.StatusInternalServerError, "internal server error", fmt.Errorf("%w: %q", errInvalidPKCEMethod, a.cfg.PKCE.Method)))
+			return
 		}
 	}
 
