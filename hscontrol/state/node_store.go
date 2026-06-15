@@ -787,53 +787,27 @@ func (s *NodeStore) GetNodeByNodeKey(nodeKey key.NodePublic) (types.NodeView, bo
 	return nodeView, exists
 }
 
-// GetNodeByMachineKey returns a node by its machine key and user ID. The bool indicates if the node exists.
-func (s *NodeStore) GetNodeByMachineKey(machineKey key.MachinePublic, userID types.UserID) (types.NodeView, bool) {
-	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("get_by_machine_key"))
-	defer timer.ObserveDuration()
-
-	nodeStoreOperations.WithLabelValues("get_by_machine_key").Inc()
-
-	snapshot := s.data.Load()
-	if userMap, exists := snapshot.nodesByMachineKey[machineKey]; exists {
-		if node, exists := userMap[userID]; exists {
-			return node, true
-		}
-	}
-
-	return types.NodeView{}, false
-}
-
-// GetNodeByMachineKeyAnyUser returns a node with the given machine key,
-// regardless of which user it belongs to. This is useful for scenarios like
-// transferring a node to a different user when re-authenticating with a
-// different user's auth key.
+// GetNodesByMachineKeyAllUsers returns every node sharing machineKey, keyed by
+// owning UserID. Tagged nodes are indexed under UserID(0) (the tagged sentinel);
+// user-owned nodes under their owning UserID. Returns an empty map if none.
 //
-// When more than one node shares the machine key (e.g. a tagged node and a
-// user-owned node), the choice is deterministic: the tagged node is preferred,
-// otherwise the node with the lowest ID. A stable pick keeps re-auth branch
-// selection (convert vs create) from depending on map iteration order.
-func (s *NodeStore) GetNodeByMachineKeyAnyUser(machineKey key.MachinePublic) (types.NodeView, bool) {
-	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("get_by_machine_key_any_user"))
+// One machine key can map to several nodes (the same device registered by
+// different users via the "create new, do not transfer" path). Exposing the
+// whole set lets callers decide with full context — index [userID] for an exact
+// match, [0] for a tagged node, or reject when the set is ambiguous — rather
+// than guessing from a single arbitrary pick.
+func (s *NodeStore) GetNodesByMachineKeyAllUsers(machineKey key.MachinePublic) map[types.UserID]types.NodeView {
+	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("get_nodes_by_machine_key_all_users"))
 	defer timer.ObserveDuration()
 
-	nodeStoreOperations.WithLabelValues("get_by_machine_key_any_user").Inc()
+	nodeStoreOperations.WithLabelValues("get_nodes_by_machine_key_all_users").Inc()
 
-	snapshot := s.data.Load()
+	userMap := s.data.Load().nodesByMachineKey[machineKey]
 
-	var best types.NodeView
+	out := make(map[types.UserID]types.NodeView, len(userMap))
+	maps.Copy(out, userMap)
 
-	if userMap, exists := snapshot.nodesByMachineKey[machineKey]; exists {
-		for _, node := range userMap {
-			if !best.Valid() ||
-				(node.IsTagged() && !best.IsTagged()) ||
-				(node.IsTagged() == best.IsTagged() && node.ID() < best.ID()) {
-				best = node
-			}
-		}
-	}
-
-	return best, best.Valid()
+	return out
 }
 
 // DebugString returns debug information about the [NodeStore].

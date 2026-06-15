@@ -1322,42 +1322,42 @@ func TestRebuildPeerMapsWithChangedPeersFunc(t *testing.T) {
 	assert.Equal(t, 1, peers2.Len(), "ListPeers for node2 should return 1")
 }
 
-// TestGetNodeByMachineKeyAnyUserDeterministic ensures the any-user machine-key
-// lookup returns a stable, well-defined node when more than one node shares a
-// machine key: the tagged node if present, otherwise the lowest node ID. A
-// nondeterministic pick makes re-auth branch choice (convert vs create) depend
-// on map iteration order.
-func TestGetNodeByMachineKeyAnyUserDeterministic(t *testing.T) {
+// TestGetNodesByMachineKeyAllUsers ensures the lookup returns every node sharing
+// a machine key keyed by owning UserID (tagged nodes under UserID(0)), so callers
+// see the full set instead of a single arbitrary pick.
+func TestGetNodesByMachineKeyAllUsers(t *testing.T) {
 	mk := key.NewMachine().Public()
 
-	assertStablePick := func(t *testing.T, store *NodeStore, want types.NodeID) {
-		t.Helper()
-
-		for range 50 {
-			got, ok := store.GetNodeByMachineKeyAnyUser(mk)
-			require.True(t, ok)
-			require.Equal(t, want, got.ID(), "pick must be stable and well-defined")
-		}
-	}
-
-	t.Run("prefers lowest node ID", func(t *testing.T) {
+	t.Run("empty when absent", func(t *testing.T) {
 		store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 
 		store.Start()
 		defer store.Stop()
 
-		n2 := createTestNode(2, 2, "user2", "node2")
-		n2.MachineKey = mk
-		n1 := createTestNode(1, 1, "user1", "node1")
-		n1.MachineKey = mk
-
-		store.PutNode(n2)
-		store.PutNode(n1)
-
-		assertStablePick(t, store, 1)
+		require.Empty(t, store.GetNodesByMachineKeyAllUsers(mk))
 	})
 
-	t.Run("prefers tagged node", func(t *testing.T) {
+	t.Run("returns all user-owned nodes keyed by user", func(t *testing.T) {
+		store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+
+		store.Start()
+		defer store.Stop()
+
+		n1 := createTestNode(1, 1, "user1", "node1")
+		n1.MachineKey = mk
+		n2 := createTestNode(2, 2, "user2", "node2")
+		n2.MachineKey = mk
+
+		store.PutNode(n1)
+		store.PutNode(n2)
+
+		all := store.GetNodesByMachineKeyAllUsers(mk)
+		require.Len(t, all, 2)
+		require.Equal(t, types.NodeID(1), all[types.UserID(1)].ID())
+		require.Equal(t, types.NodeID(2), all[types.UserID(2)].ID())
+	})
+
+	t.Run("tagged node indexed under UserID(0)", func(t *testing.T) {
 		store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 
 		store.Start()
@@ -1374,6 +1374,10 @@ func TestGetNodeByMachineKeyAnyUserDeterministic(t *testing.T) {
 		store.PutNode(owned)
 		store.PutNode(tagged)
 
-		assertStablePick(t, store, 3)
+		all := store.GetNodesByMachineKeyAllUsers(mk)
+		require.Len(t, all, 2)
+		require.Equal(t, types.NodeID(1), all[types.UserID(1)].ID())
+		require.True(t, all[types.UserID(0)].IsTagged())
+		require.Equal(t, types.NodeID(3), all[types.UserID(0)].ID())
 	})
 }

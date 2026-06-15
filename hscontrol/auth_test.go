@@ -1699,7 +1699,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				assert.False(t, resp.NodeKeyExpired)
 
 				// Verify NEW node was created for user2
-				node2, found := app.state.GetNodeByMachineKey(machineKey1.Public(), types.UserID(2))
+				node2, found := app.state.GetNodesByMachineKeyAllUsers(machineKey1.Public())[types.UserID(2)]
 				require.True(t, found, "new node should exist for user2")
 				assert.Equal(t, uint(2), node2.UserID().Get(), "new node should belong to user2")
 
@@ -1707,7 +1707,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				assert.Equal(t, "user2-context", user.Name(), "new node should show user2 username")
 
 				// Verify original node still exists for user1
-				node1, found := app.state.GetNodeByMachineKey(machineKey1.Public(), types.UserID(1))
+				node1, found := app.state.GetNodesByMachineKeyAllUsers(machineKey1.Public())[types.UserID(1)]
 				require.True(t, found, "original node should still exist for user1")
 				assert.Equal(t, uint(1), node1.UserID().Get(), "original node should still belong to user1")
 
@@ -1775,13 +1775,13 @@ func TestAuthenticationFlows(t *testing.T) {
 			validateCompleteResponse: true,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
 				// User1's original node should STILL exist (not transferred)
-				node1, found1 := app.state.GetNodeByMachineKey(machineKey1.Public(), types.UserID(1))
+				node1, found1 := app.state.GetNodesByMachineKeyAllUsers(machineKey1.Public())[types.UserID(1)]
 				require.True(t, found1, "user1's original node should still exist")
 				assert.Equal(t, uint(1), node1.UserID().Get(), "user1's node should still belong to user1")
 				assert.Equal(t, nodeKey1.Public(), node1.NodeKey(), "user1's node should have original node key")
 
 				// User2 should have a NEW node created
-				node2, found2 := app.state.GetNodeByMachineKey(machineKey1.Public(), types.UserID(2))
+				node2, found2 := app.state.GetNodesByMachineKeyAllUsers(machineKey1.Public())[types.UserID(2)]
 				require.True(t, found2, "user2 should have new node created")
 				assert.Equal(t, uint(2), node2.UserID().Get(), "user2's node should belong to user2")
 
@@ -2914,7 +2914,7 @@ func TestPreAuthKeyLogoutAndReloginDifferentUser(t *testing.T) {
 	for i := range 2 {
 		node := nodes[i]
 		// User1's original nodes should still be owned by user1
-		registeredNode, found := app.state.GetNodeByMachineKey(node.machineKey.Public(), types.UserID(user1.ID))
+		registeredNode, found := app.state.GetNodesByMachineKeyAllUsers(node.machineKey.Public())[types.UserID(user1.ID)]
 		require.True(t, found, "User1's original node %s should still exist", node.hostname)
 		require.Equal(t, user1.ID, registeredNode.UserID().Get(), "Node %s should still belong to user1", node.hostname)
 		t.Logf("✓ User1's original node %s (ID=%d) still owned by user1", node.hostname, registeredNode.ID().Uint64())
@@ -2923,7 +2923,7 @@ func TestPreAuthKeyLogoutAndReloginDifferentUser(t *testing.T) {
 	for i := 2; i < 4; i++ {
 		node := nodes[i]
 		// User2's original nodes should still be owned by user2
-		registeredNode, found := app.state.GetNodeByMachineKey(node.machineKey.Public(), types.UserID(user2.ID))
+		registeredNode, found := app.state.GetNodesByMachineKeyAllUsers(node.machineKey.Public())[types.UserID(user2.ID)]
 		require.True(t, found, "User2's original node %s should still exist", node.hostname)
 		require.Equal(t, user2.ID, registeredNode.UserID().Get(), "Node %s should still belong to user2", node.hostname)
 		t.Logf("✓ User2's original node %s (ID=%d) still owned by user2", node.hostname, registeredNode.ID().Uint64())
@@ -2935,7 +2935,7 @@ func TestPreAuthKeyLogoutAndReloginDifferentUser(t *testing.T) {
 	for i := 2; i < 4; i++ {
 		node := nodes[i]
 		// Should be able to find a node with user1 and this machine key (the new one)
-		newNode, found := app.state.GetNodeByMachineKey(node.machineKey.Public(), types.UserID(user1.ID))
+		newNode, found := app.state.GetNodesByMachineKeyAllUsers(node.machineKey.Public())[types.UserID(user1.ID)]
 		require.True(t, found, "Should have created new node for user1 with machine key from %s", node.hostname)
 		require.Equal(t, user1.ID, newNode.UserID().Get(), "New node should belong to user1")
 		t.Logf("✓ New node created for user1 with machine key from %s (ID=%d)", node.hostname, newNode.ID().Uint64())
@@ -2984,7 +2984,7 @@ func TestWebFlowReauthDifferentUser(t *testing.T) {
 	require.True(t, resp1.MachineAuthorized, "Should be authorized via pre-auth key")
 
 	// Verify node exists for user1
-	user1Node, found := app.state.GetNodeByMachineKey(machineKey.Public(), types.UserID(user1.ID))
+	user1Node, found := app.state.GetNodesByMachineKeyAllUsers(machineKey.Public())[types.UserID(user1.ID)]
 	require.True(t, found, "Node should exist for user1")
 	require.Equal(t, user1.ID, user1Node.UserID().Get(), "Node should belong to user1")
 	user1NodeID := user1Node.ID()
@@ -3000,7 +3000,7 @@ func TestWebFlowReauthDifferentUser(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify node is expired
-	user1Node, found = app.state.GetNodeByMachineKey(machineKey.Public(), types.UserID(user1.ID))
+	user1Node, found = app.state.GetNodesByMachineKeyAllUsers(machineKey.Public())[types.UserID(user1.ID)]
 	require.True(t, found, "Node should still exist after logout")
 	require.True(t, user1Node.IsExpired(), "Node should be expired after logout")
 	t.Logf("✓ User1 node expired (logged out)")
@@ -3041,7 +3041,7 @@ func TestWebFlowReauthDifferentUser(t *testing.T) {
 
 	t.Run("user1_original_node_still_exists", func(t *testing.T) {
 		// User1's original node should STILL exist (not transferred to user2)
-		user1NodeAfter, found1 := app.state.GetNodeByMachineKey(machineKey.Public(), types.UserID(user1.ID))
+		user1NodeAfter, found1 := app.state.GetNodesByMachineKeyAllUsers(machineKey.Public())[types.UserID(user1.ID)]
 		assert.True(t, found1, "User1's original node should still exist (not transferred)")
 
 		if !found1 {
@@ -3056,7 +3056,7 @@ func TestWebFlowReauthDifferentUser(t *testing.T) {
 
 	t.Run("user2_has_new_node_created", func(t *testing.T) {
 		// User2 should have a NEW node created (not transfer from user1)
-		user2Node, found2 := app.state.GetNodeByMachineKey(machineKey.Public(), types.UserID(user2.ID))
+		user2Node, found2 := app.state.GetNodesByMachineKeyAllUsers(machineKey.Public())[types.UserID(user2.ID)]
 		assert.True(t, found2, "User2 should have a new node created")
 
 		if !found2 {
@@ -3080,8 +3080,8 @@ func TestWebFlowReauthDifferentUser(t *testing.T) {
 
 	t.Run("both_nodes_share_machine_key", func(t *testing.T) {
 		// Both nodes should have the same machine key (same physical device)
-		user1NodeFinal, found1 := app.state.GetNodeByMachineKey(machineKey.Public(), types.UserID(user1.ID))
-		user2NodeFinal, found2 := app.state.GetNodeByMachineKey(machineKey.Public(), types.UserID(user2.ID))
+		user1NodeFinal, found1 := app.state.GetNodesByMachineKeyAllUsers(machineKey.Public())[types.UserID(user1.ID)]
+		user2NodeFinal, found2 := app.state.GetNodesByMachineKeyAllUsers(machineKey.Public())[types.UserID(user2.ID)]
 
 		require.True(t, found1, "User1 node should exist")
 		require.True(t, found2, "User2 node should exist")
