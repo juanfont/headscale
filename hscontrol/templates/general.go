@@ -86,35 +86,6 @@ func PreCode(code string) *elem.Element {
 	return elem.Code(nil, elem.Text(code))
 }
 
-// Deprecated: use [H1], [H2], [H3] instead
-func headerOne(text string) *elem.Element {
-	return H1(elem.Text(text))
-}
-
-// Deprecated: use [H1], [H2], [H3] instead
-func headerTwo(text string) *elem.Element {
-	return H2(elem.Text(text))
-}
-
-// Deprecated: use [H1], [H2], [H3] instead
-func headerThree(text string) *elem.Element {
-	return H3(elem.Text(text))
-}
-
-// contentContainer wraps page content with proper width.
-// Content inside is left-aligned by default.
-func contentContainer(children ...elem.Node) *elem.Element {
-	containerStyle := styles.Props{
-		styles.MaxWidth:      "720px",
-		styles.Width:         "100%",
-		styles.Display:       "flex",
-		styles.FlexDirection: "column",
-		styles.AlignItems:    "flex-start", // Left-align all children
-	}
-
-	return elem.Div(attrs.Props{attrs.Style: containerStyle.ToInline()}, children...)
-}
-
 // headscaleLogo returns the Headscale SVG logo for consistent branding across all pages.
 // The logo is styled by the .headscale-logo CSS class.
 func headscaleLogo() elem.Node {
@@ -140,15 +111,6 @@ func pageFooter() *elem.Element {
 			attrs.Target: "_blank",
 		}, elem.Text("Headscale")),
 	)
-}
-
-// listStyle provides consistent styling for ordered and unordered lists
-// EXTRACTED FROM: .md-typeset ol, .md-typeset ul CSS rules
-var listStyle = styles.Props{
-	styles.LineHeight:   lineHeightBase,               // 1.6 - From .md-typeset
-	styles.MarginTop:    "1em",                        // From CSS: margin-top: 1em
-	styles.MarginBottom: "1em",                        // From CSS: margin-bottom: 1em
-	styles.PaddingLeft:  "clamp(1.5rem, 5vw, 2.5rem)", // Responsive indentation
 }
 
 // HtmlStructure creates a complete HTML document structure with proper meta tags
