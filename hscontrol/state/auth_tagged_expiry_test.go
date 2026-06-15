@@ -158,3 +158,78 @@ func TestTaggedReauthWithReusedUserPAK(t *testing.T) {
 	require.Equal(t, nodeID, second.ID(),
 		"must update the existing node, not create a new one")
 }
+
+// reregisterExpiredUserNodeWithSpentKey registers a user-owned node with a
+// one-shot key, forces it into the expired state, and re-registers with the
+// same spent key. sameNodeKey distinguishes the two re-auth shapes:
+//   - false: the node rotates its node key (normal tailscale client on re-auth)
+//   - true:  the node reuses its node key
+//
+// In both cases an expired node is genuinely re-authenticating and must present
+// a valid key; a spent one-shot key must be rejected.
+func reregisterExpiredUserNodeWithSpentKey(t *testing.T, sameNodeKey bool) (types.NodeView, error) {
+	t.Helper()
+
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	user := s.CreateUserForTest("expired-user")
+
+	pak, err := s.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	regReq := tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey:  nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "expired-node"},
+		Expiry:   time.Now().Add(24 * time.Hour),
+	}
+
+	first, _, err := s.HandleNodeFromPreAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+	require.True(t, first.Valid())
+	require.False(t, first.IsTagged(), "precondition: node must be user-owned")
+
+	// Force the node into the expired state.
+	past := time.Now().Add(-1 * time.Hour)
+	_, ok := s.nodeStore.UpdateNode(first.ID(), func(n *types.Node) {
+		n.Expiry = &past
+	})
+	require.True(t, ok)
+
+	reReg := regReq
+	if !sameNodeKey {
+		reReg.NodeKey = key.NewNode().Public()
+	}
+
+	node, _, err := s.HandleNodeFromPreAuthKey(reReg, machineKey.Public())
+
+	return node, err
+}
+
+// TestExpiredUserNodeReusedOneShotKey_RotatedNodeKey: a node rotating its node
+// key on re-auth is already a key rotation, so the key is re-validated.
+func TestExpiredUserNodeReusedOneShotKey_RotatedNodeKey(t *testing.T) {
+	_, err := reregisterExpiredUserNodeWithSpentKey(t, false)
+	require.Error(t, err,
+		"expired node re-authenticating with a rotated node key must present a valid key")
+	require.Contains(t, err.Error(), "authkey already used")
+}
+
+// TestExpiredUserNodeReusedOneShotKey_SameNodeKey: the security boundary must
+// not depend on the client rotating its node key. An expired node re-using its
+// node key must still re-validate the key, otherwise a spent one-shot key
+// silently re-authorises it.
+func TestExpiredUserNodeReusedOneShotKey_SameNodeKey(t *testing.T) {
+	_, err := reregisterExpiredUserNodeWithSpentKey(t, true)
+	require.Error(t, err,
+		"expired node re-registering with the same node key must re-validate its key")
+	require.Contains(t, err.Error(), "authkey already used")
+}
