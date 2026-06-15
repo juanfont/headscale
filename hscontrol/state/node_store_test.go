@@ -1321,3 +1321,59 @@ func TestRebuildPeerMapsWithChangedPeersFunc(t *testing.T) {
 	assert.Equal(t, 1, peers1.Len(), "ListPeers for node1 should return 1")
 	assert.Equal(t, 1, peers2.Len(), "ListPeers for node2 should return 1")
 }
+
+// TestGetNodeByMachineKeyAnyUserDeterministic ensures the any-user machine-key
+// lookup returns a stable, well-defined node when more than one node shares a
+// machine key: the tagged node if present, otherwise the lowest node ID. A
+// nondeterministic pick makes re-auth branch choice (convert vs create) depend
+// on map iteration order.
+func TestGetNodeByMachineKeyAnyUserDeterministic(t *testing.T) {
+	mk := key.NewMachine().Public()
+
+	assertStablePick := func(t *testing.T, store *NodeStore, want types.NodeID) {
+		t.Helper()
+
+		for range 50 {
+			got, ok := store.GetNodeByMachineKeyAnyUser(mk)
+			require.True(t, ok)
+			require.Equal(t, want, got.ID(), "pick must be stable and well-defined")
+		}
+	}
+
+	t.Run("prefers lowest node ID", func(t *testing.T) {
+		store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+
+		store.Start()
+		defer store.Stop()
+
+		n2 := createTestNode(2, 2, "user2", "node2")
+		n2.MachineKey = mk
+		n1 := createTestNode(1, 1, "user1", "node1")
+		n1.MachineKey = mk
+
+		store.PutNode(n2)
+		store.PutNode(n1)
+
+		assertStablePick(t, store, 1)
+	})
+
+	t.Run("prefers tagged node", func(t *testing.T) {
+		store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+
+		store.Start()
+		defer store.Stop()
+
+		owned := createTestNode(1, 1, "user1", "node1")
+		owned.MachineKey = mk
+		tagged := createTestNode(3, 3, "user3", "node3")
+		tagged.MachineKey = mk
+		tagged.UserID = nil
+		tagged.User = nil
+		tagged.Tags = []string{"tag:foo"}
+
+		store.PutNode(owned)
+		store.PutNode(tagged)
+
+		assertStablePick(t, store, 3)
+	})
+}

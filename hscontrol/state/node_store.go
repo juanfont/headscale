@@ -804,12 +804,15 @@ func (s *NodeStore) GetNodeByMachineKey(machineKey key.MachinePublic, userID typ
 	return types.NodeView{}, false
 }
 
-// GetNodeByMachineKeyAnyUser returns the first node with the given machine key,
+// GetNodeByMachineKeyAnyUser returns a node with the given machine key,
 // regardless of which user it belongs to. This is useful for scenarios like
 // transferring a node to a different user when re-authenticating with a
 // different user's auth key.
-// If multiple nodes exist with the same machine key (different users), the
-// first one found is returned (order is not guaranteed).
+//
+// When more than one node shares the machine key (e.g. a tagged node and a
+// user-owned node), the choice is deterministic: the tagged node is preferred,
+// otherwise the node with the lowest ID. A stable pick keeps re-auth branch
+// selection (convert vs create) from depending on map iteration order.
 func (s *NodeStore) GetNodeByMachineKeyAnyUser(machineKey key.MachinePublic) (types.NodeView, bool) {
 	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("get_by_machine_key_any_user"))
 	defer timer.ObserveDuration()
@@ -817,14 +820,20 @@ func (s *NodeStore) GetNodeByMachineKeyAnyUser(machineKey key.MachinePublic) (ty
 	nodeStoreOperations.WithLabelValues("get_by_machine_key_any_user").Inc()
 
 	snapshot := s.data.Load()
+
+	var best types.NodeView
+
 	if userMap, exists := snapshot.nodesByMachineKey[machineKey]; exists {
-		// Return the first node found (order not guaranteed due to map iteration)
 		for _, node := range userMap {
-			return node, true
+			if !best.Valid() ||
+				(node.IsTagged() && !best.IsTagged()) ||
+				(node.IsTagged() == best.IsTagged() && node.ID() < best.ID()) {
+				best = node
+			}
 		}
 	}
 
-	return types.NodeView{}, false
+	return best, best.Valid()
 }
 
 // DebugString returns debug information about the [NodeStore].
