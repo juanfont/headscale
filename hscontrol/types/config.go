@@ -558,7 +558,11 @@ func validateServerConfig() error {
 	// Removed: oidc.expiry -> node.expiry
 	depr.fatalIfSet("oidc.expiry", "node.expiry")
 
-	if viper.GetBool("oidc.enabled") {
+	// OIDC is activated by setting oidc.issuer (see app.go), not by a
+	// dedicated oidc.enabled key. Gate PKCE method validation on the real
+	// activation condition so an invalid method fails at startup instead of
+	// silently disabling PKCE at runtime.
+	if viper.GetString("oidc.issuer") != "" {
 		err := validatePKCEMethod(viper.GetString("oidc.pkce.method"))
 		if err != nil {
 			return err
