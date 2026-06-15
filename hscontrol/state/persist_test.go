@@ -3,6 +3,7 @@ package state
 import (
 	"errors"
 	"net/netip"
+	"sync"
 	"testing"
 	"time"
 
@@ -525,4 +526,59 @@ func TestPreAuthKeyReauthRevertsNodeStoreOnDBFailure(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, origNodeKey, got.NodeKey(),
 		"NodeStore must revert to the persisted node key when the write fails")
+}
+
+// TestConcurrentPreAuthKeyRegistrationSameMachineKey ensures concurrent
+// registrations of the same machine key resolve to a single node. Without
+// serialising the find-then-create section, each request sees "no existing
+// node" and creates its own, leaving duplicate nodes and IP allocations for
+// one machine.
+func TestConcurrentPreAuthKeyRegistrationSameMachineKey(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	user := s.CreateUserForTest("concurrent-user")
+
+	pak, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+
+	const n = 12
+
+	var wg sync.WaitGroup
+
+	start := make(chan struct{})
+	errs := make(chan error, n)
+
+	for range n {
+		wg.Go(func() {
+			regReq := tailcfg.RegisterRequest{
+				Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+				NodeKey:  key.NewNode().Public(),
+				Hostinfo: &tailcfg.Hostinfo{Hostname: "concurrent-node"},
+				Expiry:   time.Now().Add(24 * time.Hour),
+			}
+
+			<-start
+
+			_, _, err := s.HandleNodeFromPreAuthKey(regReq, machineKey.Public())
+			errs <- err
+		})
+	}
+
+	close(start)
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		require.NoError(t, err)
+	}
+
+	require.Equal(t, 1, s.ListNodes().Len(),
+		"concurrent registrations of one machine key must yield a single node")
 }
