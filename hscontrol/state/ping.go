@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
+	"tailscale.com/util/rands"
 )
 
 const pingIDLength = 16
@@ -35,7 +35,7 @@ func newPingTracker() *pingTracker {
 // channel that receives the round-trip latency once the response
 // arrives.
 func (pt *pingTracker) register(nodeID types.NodeID) (string, <-chan time.Duration) {
-	pingID, _ := util.GenerateRandomStringDNSSafe(pingIDLength)
+	pingID := rands.HexString(pingIDLength)
 	ch := make(chan time.Duration, 1)
 
 	pt.mu.Lock()

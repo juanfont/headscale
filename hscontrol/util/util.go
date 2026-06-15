@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"tailscale.com/util/cmpver"
+	"tailscale.com/util/rands"
 )
 
 // URL parsing errors.
@@ -282,10 +283,5 @@ func GenerateRegistrationKey() (string, error) {
 		registerKeyLength = 64
 	)
 
-	randomPart, err := GenerateRandomStringURLSafe(registerKeyLength)
-	if err != nil {
-		return "", fmt.Errorf("generating registration key: %w", err)
-	}
-
-	return registerKeyPrefix + randomPart, nil
+	return registerKeyPrefix + rands.HexString(registerKeyLength), nil
 }

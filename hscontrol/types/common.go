@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/util"
+	"tailscale.com/util/rands"
 )
 
 const (
@@ -37,12 +37,7 @@ const (
 type AuthID string
 
 func NewAuthID() (AuthID, error) {
-	rid, err := util.GenerateRandomStringURLSafe(authIDRandomLength)
-	if err != nil {
-		return "", err
-	}
-
-	return AuthID(authIDPrefix + rid), nil
+	return AuthID(authIDPrefix + rands.HexString(authIDRandomLength)), nil
 }
 
 func MustAuthID() AuthID {

@@ -36,6 +36,7 @@ import (
 	"gopkg.in/yaml.v3"
 	"tailscale.com/tailcfg"
 	"tailscale.com/util/mak"
+	"tailscale.com/util/rands"
 )
 
 const (
@@ -172,7 +173,7 @@ func WithHostPortBindings(bindings map[string][]string) Option {
 // in the Docker container name.
 func WithTestName(testName string) Option {
 	return func(hsic *HeadscaleInContainer) {
-		hash, _ := util.GenerateRandomStringDNSSafe(hsicHashLength)
+		hash := rands.HexString(hsicHashLength)
 
 		hostname := fmt.Sprintf("hs-%s-%s", testName, hash)
 		hsic.hostname = hostname
@@ -331,10 +332,7 @@ func New(
 	networks []*dockertest.Network,
 	opts ...Option,
 ) (*HeadscaleInContainer, error) {
-	hash, err := util.GenerateRandomStringDNSSafe(hsicHashLength)
-	if err != nil {
-		return nil, err
-	}
+	hash := rands.HexString(hsicHashLength)
 
 	// Include run ID in hostname for easier identification of which test run owns this container
 	runID := dockertestutil.GetIntegrationRunID()
@@ -499,7 +497,7 @@ func New(
 	// dockertest isn't very good at handling containers that has already
 	// been created, this is an attempt to make sure this container isn't
 	// present.
-	err = pool.RemoveContainerByName(hsic.hostname)
+	err := pool.RemoveContainerByName(hsic.hostname)
 	if err != nil {
 		return nil, err
 	}

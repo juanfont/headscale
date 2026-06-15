@@ -15,11 +15,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
+	"tailscale.com/util/rands"
 )
 
 const (
@@ -129,7 +129,8 @@ func (t *TailscaleRustInContainer) buildEntrypoint() []string {
 
 	commands = append(commands, "update-ca-certificates 2>/dev/null || true")
 
-	commands = append(commands,
+	commands = append(
+		commands,
 		fmt.Sprintf(`export TS_CONTROL_URL=%q`, t.headscaleURL),
 		// The tailscale crate refuses to run without this env gate;
 		// see lib.rs in tailscale-rs.
@@ -151,10 +152,9 @@ func New(
 	pool *dockertest.Pool,
 	opts ...Option,
 ) (*TailscaleRustInContainer, error) {
-	hash, err := util.GenerateRandomStringDNSSafe(tsricHashLength)
-	if err != nil {
-		return nil, err
-	}
+	hash := rands.HexString(tsricHashLength)
+
+	var err error
 
 	runID := dockertestutil.GetIntegrationRunID()
 

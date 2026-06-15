@@ -20,6 +20,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/oauth2"
+	"tailscale.com/util/rands"
 )
 
 const (
@@ -706,12 +707,7 @@ func (a *AuthProviderOIDC) renderRegistrationConfirmInterstitial(
 		return
 	}
 
-	csrf, err := util.GenerateRandomStringURLSafe(32)
-	if err != nil {
-		httpUserError(writer, fmt.Errorf("generating csrf token: %w", err))
-
-		return
-	}
+	csrf := rands.HexString(32)
 
 	authReq.SetPendingConfirmation(&types.PendingRegistrationConfirmation{
 		UserID:     user.ID,
@@ -933,10 +929,7 @@ func getCookieName(baseName, value string) string {
 }
 
 func setCSRFCookie(w http.ResponseWriter, r *http.Request, name string) (string, error) {
-	val, err := util.GenerateRandomStringURLSafe(64)
-	if err != nil {
-		return val, err
-	}
+	val := rands.HexString(64)
 
 	//nolint:gosec // G124: Secure set conditionally via r.TLS; HttpOnly + SameSite set below
 	c := &http.Cookie{

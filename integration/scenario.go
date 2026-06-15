@@ -24,7 +24,6 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/capver"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/dsic"
 	"github.com/juanfont/headscale/integration/hsic"
@@ -42,6 +41,7 @@ import (
 	"tailscale.com/envknob"
 	"tailscale.com/util/mak"
 	"tailscale.com/util/multierr"
+	"tailscale.com/util/rands"
 )
 
 const (
@@ -197,7 +197,7 @@ func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 		pool.MaxWait = spec.MaxWait
 	}
 
-	testHashPrefix := "hs-" + util.MustGenerateRandomStringDNSSafe(scenarioHashLength)
+	testHashPrefix := "hs-" + rands.HexString(scenarioHashLength)
 	s := &Scenario{
 		controlServers: xsync.NewMap[string, ControlServer](),
 		users:          make(map[string]*User),
@@ -1571,7 +1571,7 @@ func (s *Scenario) runMockOIDC(accessTTL time.Duration, users []mockoidc.MockUse
 
 	portNotation := fmt.Sprintf("%d/tcp", port)
 
-	hash, _ := util.GenerateRandomStringDNSSafe(hsicOIDCMockHashLength)
+	hash := rands.HexString(hsicOIDCMockHashLength)
 
 	hostname := "hs-oidcmock-" + hash
 
@@ -1679,7 +1679,7 @@ func Webservice(s *Scenario, networkName string) (*dockertest.Resource, error) {
 	// 	log.Fatalf("finding open port: %s", err)
 	// }
 	// portNotation := fmt.Sprintf("%d/tcp", port)
-	hash := util.MustGenerateRandomStringDNSSafe(hsicOIDCMockHashLength)
+	hash := rands.HexString(hsicOIDCMockHashLength)
 
 	hostname := "hs-webservice-" + hash
 
