@@ -143,27 +143,6 @@ func GetNodeByID(tx *gorm.DB, id types.NodeID) (*types.Node, error) {
 	return &mach, nil
 }
 
-func (hsdb *HSDatabase) GetNodeByMachineKey(machineKey key.MachinePublic) (*types.Node, error) {
-	return GetNodeByMachineKey(hsdb.DB, machineKey)
-}
-
-// GetNodeByMachineKey finds a [types.Node] by its [key.MachinePublic] and returns the [types.Node] struct.
-func GetNodeByMachineKey(
-	tx *gorm.DB,
-	machineKey key.MachinePublic,
-) (*types.Node, error) {
-	mach := types.Node{}
-	if result := tx.
-		Preload("AuthKey").
-		Preload("AuthKey.User").
-		Preload("User").
-		First(&mach, "machine_key = ?", machineKey.String()); result.Error != nil {
-		return nil, result.Error
-	}
-
-	return &mach, nil
-}
-
 func (hsdb *HSDatabase) GetNodeByNodeKey(nodeKey key.NodePublic) (*types.Node, error) {
 	return GetNodeByNodeKey(hsdb.DB, nodeKey)
 }
@@ -297,12 +276,16 @@ func RegisterNodeForTest(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *n
 
 	logEvent.Msg("registering test node")
 
-	// If the a new node is registered with the same machine key, to the same user,
-	// update the existing node.
-	// If the same node is registered again, but to a new user, then that is considered
-	// a new node.
-	oldNode, _ := GetNodeByMachineKey(tx, node.MachineKey)
-	if oldNode != nil && oldNode.UserID == node.UserID {
+	// Reuse the existing node's identity only when the same machine
+	// re-registers for the same user; a different user is a new node. Match on
+	// (machine_key, user_id) precisely - a machine key can map to several nodes
+	// (one per user), so a machine-key-only lookup would be ambiguous.
+	var oldNode types.Node
+
+	err := tx.
+		Where("machine_key = ? AND user_id = ?", node.MachineKey.String(), node.UserID).
+		First(&oldNode).Error
+	if err == nil {
 		node.ID = oldNode.ID
 		node.GivenName = oldNode.GivenName
 		node.ApprovedRoutes = oldNode.ApprovedRoutes
