@@ -2301,6 +2301,17 @@ func (s *State) HandleNodeFromPreAuthKey(
 			Str(zf.UserName, pakUsername()).
 			Msg("Node re-registering with existing machine key and user, updating in place")
 
+		// Re-registration rotates the NodeKey to the client-supplied value.
+		// Enforce the same 1:1 NodeKey<->MachineKey binding the auth path
+		// (applyAuthNodeUpdate) and poll-time validation enforce: a NodeKey
+		// already bound to a different machine must not be claimed here, or a
+		// re-registering node could rotate its key to a victim's and poison the
+		// NodeStore NodeKey index, denying the victim service.
+		if existing, ok := s.nodeStore.GetNodeByNodeKey(regReq.NodeKey); ok &&
+			existing.MachineKey() != machineKey {
+			return types.NodeView{}, change.Change{}, ErrNodeKeyInUse
+		}
+
 		// Update existing node - NodeStore first, then database
 		updatedNodeView, ok := s.nodeStore.UpdateNode(existingNodeSameUser.ID(), func(node *types.Node) {
 			node.NodeKey = regReq.NodeKey

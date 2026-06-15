@@ -3,6 +3,7 @@ package state
 import (
 	"net/netip"
 	"testing"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -414,4 +415,60 @@ func TestReauthChange(t *testing.T) {
 	assert.Empty(t, pol.PeerPatches, "a policy change must not be a peer patch")
 	assert.Empty(t, pol.PeersChanged)
 	assert.False(t, pol.IsEmpty(), "a policy change must be non-empty")
+}
+
+// TestPreAuthKeyReauthRejectsNodeKeyClaimedByAnotherMachine is the pre-auth-key
+// analogue of TestReauthRejectsNodeKeyClaimedByAnotherMachine: re-registering
+// via a pre-auth key must enforce the same 1:1 NodeKey<->MachineKey binding the
+// auth path and poll-time validation enforce, so a node cannot rotate its key
+// to a victim's and poison the NodeStore NodeKey index.
+func TestPreAuthKeyReauthRejectsNodeKeyClaimedByAnotherMachine(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	attacker := s.CreateUserForTest("attacker")
+	victim := s.CreateUserForTest("victim")
+
+	victimMachine := key.NewMachine()
+	victimNodeKey := key.NewNode()
+	_, err = s.createAndSaveNewNode(newNodeParams{
+		User:           *victim,
+		MachineKey:     victimMachine.Public(),
+		NodeKey:        victimNodeKey.Public(),
+		DiscoKey:       key.NewDisco().Public(),
+		Hostname:       "victim",
+		RegisterMethod: util.RegisterMethodCLI,
+	})
+	require.NoError(t, err)
+
+	// Attacker registers its own node with a reusable pre-auth key.
+	pak, err := s.CreatePreAuthKey(attacker.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+
+	attackerMachine := key.NewMachine()
+	regReq := tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey:  key.NewNode().Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "attacker"},
+		Expiry:   time.Now().Add(24 * time.Hour),
+	}
+	_, _, err = s.HandleNodeFromPreAuthKey(regReq, attackerMachine.Public())
+	require.NoError(t, err)
+
+	// Attacker re-registers its own node but supplies the victim's NodeKey.
+	attack := regReq
+	attack.NodeKey = victimNodeKey.Public()
+	_, _, err = s.HandleNodeFromPreAuthKey(attack, attackerMachine.Public())
+	require.ErrorIs(t, err, ErrNodeKeyInUse,
+		"pre-auth-key re-registration claiming another machine's NodeKey must be rejected")
+
+	// The victim still owns its NodeKey.
+	owner, ok := s.GetNodeByNodeKey(victimNodeKey.Public())
+	require.True(t, ok)
+	require.Equal(t, victimMachine.Public(), owner.MachineKey(),
+		"victim's NodeKey index entry must be untouched")
 }
