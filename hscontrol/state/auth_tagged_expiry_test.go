@@ -318,3 +318,74 @@ func TestTaggedPAKReauthConvertsUserOwnedNode(t *testing.T) {
 	require.Equal(t, []string{"tag:foo"}, converted.Tags().AsSlice())
 	require.Equal(t, 1, s.ListNodes().Len(), "machine must map to exactly one node")
 }
+
+// TestTaggedNodeCanHaveKeyExpiry matches Tailscale: a tagged node has key
+// expiry disabled by default, but it can still be set explicitly (e.g. via
+// `headscale nodes expire`).
+func TestTaggedNodeCanHaveKeyExpiry(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, err = s.SetPolicy([]byte(`{"tagOwners":{"tag:foo":["tagger@"]}}`))
+	require.NoError(t, err)
+
+	pak, err := s.CreatePreAuthKey(nil, true, false, nil, []string{"tag:foo"})
+	require.NoError(t, err)
+
+	regReq := tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey:  key.NewNode().Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "tagged-node"},
+	}
+	node, _, err := s.HandleNodeFromPreAuthKey(regReq, key.NewMachine().Public())
+	require.NoError(t, err)
+	require.True(t, node.IsTagged())
+	require.Nil(t, node.AsStruct().Expiry, "key expiry is disabled by default for tagged nodes")
+
+	expiry := time.Now().Add(24 * time.Hour)
+	after, _, err := s.SetNodeExpiry(node.ID(), &expiry)
+	require.NoError(t, err)
+	require.True(t, after.IsTagged(), "node stays tagged")
+	require.NotNil(t, after.AsStruct().Expiry, "expiry can be set on a tagged node")
+	require.Equal(t, expiry.Unix(), after.AsStruct().Expiry.Unix())
+}
+
+// TestTaggingPreservesNodeExpiry matches Tailscale: changing a node's tags does
+// not alter its key expiry (expiry only changes on re-authentication).
+func TestTaggingPreservesNodeExpiry(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	user := s.CreateUserForTest("owner")
+
+	_, err = s.SetPolicy(fmt.Appendf(nil, `{"tagOwners":{"tag:foo":["%s@"]}}`, user.Name))
+	require.NoError(t, err)
+
+	pak, err := s.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+	require.NoError(t, err)
+
+	expiry := time.Now().Add(24 * time.Hour)
+	regReq := tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey:  key.NewNode().Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "owned-node"},
+		Expiry:   expiry,
+	}
+	node, _, err := s.HandleNodeFromPreAuthKey(regReq, key.NewMachine().Public())
+	require.NoError(t, err)
+	require.NotNil(t, node.AsStruct().Expiry, "precondition: user node has an expiry")
+
+	tagged, _, err := s.SetNodeTags(node.ID(), []string{"tag:foo"})
+	require.NoError(t, err)
+	require.True(t, tagged.IsTagged())
+	require.NotNil(t, tagged.AsStruct().Expiry, "tag change must not clear expiry")
+	require.Equal(t, expiry.Unix(), tagged.AsStruct().Expiry.Unix())
+}
