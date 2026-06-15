@@ -26,6 +26,3 @@ type Route struct {
 	// when the server is up.
 	IsPrimary bool
 }
-
-// Deprecated: Approval of routes is denormalised onto the relevant node.
-type Routes []Route

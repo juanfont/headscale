@@ -11,6 +11,5 @@ const (
 	JSONLogFormat = "json"
 	TextLogFormat = "text"
 
-	KeepAliveInterval = 60 * time.Second
 	MaxHostnameLength = 255
 )
