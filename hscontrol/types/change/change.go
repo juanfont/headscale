@@ -490,6 +490,35 @@ func EndpointOrDERPUpdate(id types.NodeID, patch *tailcfg.PeerChange) Change {
 	return c
 }
 
+// NodeKeyRotated returns a [Change] for a node re-logging in: its NodeKey (and
+// possibly DiscoKey, key expiry, or endpoints) changed, but nothing structural
+// did. Peers only need those changed fields, so it is sent as the minimal
+// incremental [tailcfg.PeerChange] patch rather than re-advertising the whole
+// node — the smallest update that conveys the rotation, and the least
+// disruptive for peers reconciling it.
+func NodeKeyRotated(node types.NodeView) Change {
+	nk := node.NodeKey()
+	dk := node.DiscoKey()
+
+	// KeyExpiry is always set: the zero value clears any prior expiry on the
+	// peer (un-expire), and a non-zero value carries the new expiry.
+	var expiry time.Time
+	if e, ok := node.Expiry().GetOk(); ok {
+		expiry = e
+	}
+
+	c := PeerPatched("node key rotated (relogin)", &tailcfg.PeerChange{
+		NodeID:    tailcfg.NodeID(node.ID()), //nolint:gosec // NodeID is bounded
+		Key:       &nk,
+		DiscoKey:  &dk,
+		KeyExpiry: &expiry,
+		Endpoints: node.Endpoints().AsSlice(),
+	})
+	c.OriginNode = node.ID()
+
+	return c
+}
+
 // UserAdded returns a [Change] for when a user is added or updated.
 // A full update is sent to refresh user profiles on all nodes.
 func UserAdded() Change {

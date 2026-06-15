@@ -4,11 +4,13 @@ import (
 	"net/netip"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/key"
 )
 
 func TestChange_FieldSync(t *testing.T) {
@@ -652,4 +654,35 @@ func TestNodeOnlineOfflineForSubnetRouter(t *testing.T) {
 			assert.Equal(t, tt.wantOnline, *patch.Online)
 		})
 	}
+}
+
+// TestNodeKeyRotatedEmitsPatchNotWholeNode proves a relogin is delivered to
+// peers as an incremental peer patch, not a whole-node add. A whole-node add is
+// non-patchifiable on the tailscale client whenever Hostinfo changed (which it
+// does on relogin), forcing the broken NodeMutationAdd path that strands a
+// re-keyed, momentarily-endpoint-less peer.
+func TestNodeKeyRotatedEmitsPatchNotWholeNode(t *testing.T) {
+	expiry := time.Now().Add(24 * time.Hour).UTC()
+	node := types.Node{
+		ID:        7,
+		NodeKey:   key.NewNode().Public(),
+		DiscoKey:  key.NewDisco().Public(),
+		Endpoints: []netip.AddrPort{netip.MustParseAddrPort("192.168.1.9:41641")},
+		Expiry:    &expiry,
+	}
+	view := node.View()
+
+	c := NodeKeyRotated(view)
+
+	assert.False(t, c.IsFull(), "relogin must be a peer patch, not a full update")
+	assert.Empty(t, c.PeersChanged, "relogin must not emit a whole-node PeersChanged")
+	require.Len(t, c.PeerPatches, 1, "relogin must emit exactly one peer patch")
+
+	patch := c.PeerPatches[0]
+	assert.Equal(t, view.ID().NodeID(), patch.NodeID)
+	require.NotNil(t, patch.Key, "patch must carry the rotated NodeKey")
+	assert.Equal(t, node.NodeKey, *patch.Key)
+	require.NotNil(t, patch.KeyExpiry, "patch must carry KeyExpiry to (un)expire the peer")
+	assert.Equal(t, expiry, *patch.KeyExpiry)
+	assert.Equal(t, []netip.AddrPort(node.Endpoints), patch.Endpoints, "patch must carry endpoints")
 }
