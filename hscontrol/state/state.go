@@ -2321,6 +2321,12 @@ func (s *State) HandleNodeFromPreAuthKey(
 			return types.NodeView{}, change.Change{}, ErrNodeKeyInUse
 		}
 
+		// Snapshot the pre-update node so the NodeStore can be rolled back if
+		// the database write below fails. The view points at the immutable
+		// pre-update snapshot (UpdateNode swaps in a new one), so this stays
+		// valid after the mutation.
+		priorNode := existingNodeSameUser.AsStruct()
+
 		// Update existing node - NodeStore first, then database
 		updatedNodeView, ok := s.nodeStore.UpdateNode(existingNodeSameUser.ID(), func(node *types.Node) {
 			node.NodeKey = regReq.NodeKey
@@ -2401,6 +2407,13 @@ func (s *State) HandleNodeFromPreAuthKey(
 			return nil, nil //nolint:nilnil // intentional: transaction success
 		})
 		if err != nil {
+			// The NodeStore was updated before the database write. Roll it back
+			// so it does not advertise a registration the database rejected
+			// (e.g. a node key that a restart would not reload).
+			if priorNode != nil {
+				s.nodeStore.PutNode(*priorNode)
+			}
+
 			return types.NodeView{}, change.Change{}, fmt.Errorf("writing node to database: %w", err)
 		}
 
