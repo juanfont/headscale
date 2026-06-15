@@ -98,6 +98,7 @@ type Node struct {
 	AvailableRoutes []string `protobuf:"bytes,24,rep,name=available_routes,json=availableRoutes,proto3" json:"available_routes,omitempty"`
 	SubnetRoutes    []string `protobuf:"bytes,25,rep,name=subnet_routes,json=subnetRoutes,proto3" json:"subnet_routes,omitempty"`
 	Tags            []string `protobuf:"bytes,26,rep,name=tags,proto3" json:"tags,omitempty"`
+	Endpoints       []string `protobuf:"bytes,27,rep,name=endpoints,proto3" json:"endpoints,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -254,6 +255,13 @@ func (x *Node) GetSubnetRoutes() []string {
 func (x *Node) GetTags() []string {
 	if x != nil {
 		return x.Tags
+	}
+	return nil
+}
+
+func (x *Node) GetEndpoints() []string {
+	if x != nil {
+		return x.Endpoints
 	}
 	return nil
 }
@@ -1207,7 +1215,7 @@ var File_headscale_v1_node_proto protoreflect.FileDescriptor
 
 const file_headscale_v1_node_proto_rawDesc = "" +
 	"\n" +
-	"\x17headscale/v1/node.proto\x12\fheadscale.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1dheadscale/v1/preauthkey.proto\x1a\x17headscale/v1/user.proto\"\xc9\x05\n" +
+	"\x17headscale/v1/node.proto\x12\fheadscale.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1dheadscale/v1/preauthkey.proto\x1a\x17headscale/v1/user.proto\"\xe7\x05\n" +
 	"\x04Node\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x1f\n" +
 	"\vmachine_key\x18\x02 \x01(\tR\n" +
@@ -1231,7 +1239,8 @@ const file_headscale_v1_node_proto_rawDesc = "" +
 	"\x0fapproved_routes\x18\x17 \x03(\tR\x0eapprovedRoutes\x12)\n" +
 	"\x10available_routes\x18\x18 \x03(\tR\x0favailableRoutes\x12#\n" +
 	"\rsubnet_routes\x18\x19 \x03(\tR\fsubnetRoutes\x12\x12\n" +
-	"\x04tags\x18\x1a \x03(\tR\x04tagsJ\x04\b\t\x10\n" +
+	"\x04tags\x18\x1a \x03(\tR\x04tags\x12\x1c\n" +
+	"\tendpoints\x18\x1b \x03(\tR\tendpointsJ\x04\b\t\x10\n" +
 	"J\x04\b\x0e\x10\x15\";\n" +
 	"\x13RegisterNodeRequest\x12\x12\n" +
 	"\x04user\x18\x01 \x01(\tR\x04user\x12\x10\n" +
