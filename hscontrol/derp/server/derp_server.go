@@ -321,23 +321,35 @@ func DERPBootstrapDNSHandler(
 
 		resolvCtx, cancel := context.WithTimeout(req.Context(), time.Minute)
 		defer cancel()
-
 		var resolver net.Resolver
+		lookupNames := make([]string, 0)
+
+		if q := strings.TrimSpace(req.URL.Query().Get("q")); q != "" {
+			lookupNames = append(lookupNames, q)
+		}
 
 		for _, region := range derpMap.Regions().All() { //nolint:unqueryvet // not SQLBoiler, tailcfg iterator
 			for _, node := range region.Nodes().All() { //nolint:unqueryvet // not SQLBoiler, tailcfg iterator
-				addrs, err := resolver.LookupIP(resolvCtx, "ip", node.HostName())
-				if err != nil {
-					log.Trace().
-						Caller().
-						Err(err).
-						Msgf("bootstrap DNS lookup failed %q", node.HostName())
-
-					continue
-				}
-
-				dnsEntries[node.HostName()] = addrs
+				lookupNames = append(lookupNames, node.HostName())
 			}
+		}
+
+		for _, name := range lookupNames {
+			if _, ok := dnsEntries[name]; ok {
+				continue
+			}
+
+			addrs, err := resolver.LookupIP(resolvCtx, "ip", name)
+			if err != nil {
+				log.Trace().
+					Caller().
+					Err(err).
+					Msgf("bootstrap DNS lookup failed %q", name)
+
+				continue
+			}
+
+			dnsEntries[name] = addrs
 		}
 
 		writer.Header().Set("Content-Type", "application/json")
