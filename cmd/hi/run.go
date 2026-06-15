@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/creachadair/command"
@@ -66,64 +67,21 @@ func runIntegrationTest(env *command.Env) error {
 
 // detectGoVersion reads the Go version from go.mod file.
 func detectGoVersion() string {
-	goModPath := filepath.Join("..", "..", "go.mod")
-
-	if _, err := os.Stat("go.mod"); err == nil { //nolint:noinlineerr
-		goModPath = "go.mod"
-	} else if _, err := os.Stat("../../go.mod"); err == nil { //nolint:noinlineerr
-		goModPath = "../../go.mod"
-	}
-
-	content, err := os.ReadFile(goModPath)
+	content, err := os.ReadFile("go.mod")
 	if err != nil {
-		return "1.26.1"
+		content, err = os.ReadFile(filepath.Join("..", "..", "go.mod"))
+		if err != nil {
+			return "1.26.1"
+		}
 	}
 
-	lines := splitLines(string(content))
-	for _, line := range lines {
-		if len(line) > 3 && line[:3] == "go " {
-			version := line[3:]
-			if idx := indexOf(version, " "); idx != -1 {
-				version = version[:idx]
+	for line := range strings.Lines(string(content)) {
+		if rest, ok := strings.CutPrefix(line, "go "); ok {
+			if f := strings.Fields(rest); len(f) > 0 {
+				return f[0]
 			}
-
-			return version
 		}
 	}
 
 	return "1.26.1"
-}
-
-// splitLines splits a string into lines without using [strings.Split].
-func splitLines(s string) []string {
-	var (
-		lines   []string
-		current string
-	)
-
-	for _, char := range s {
-		if char == '\n' {
-			lines = append(lines, current)
-			current = ""
-		} else {
-			current += string(char)
-		}
-	}
-
-	if current != "" {
-		lines = append(lines, current)
-	}
-
-	return lines
-}
-
-// indexOf finds the first occurrence of substr in s.
-func indexOf(s, substr string) int {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return i
-		}
-	}
-
-	return -1
 }

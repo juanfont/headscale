@@ -86,20 +86,17 @@ func main() {
 }
 
 func cleanAll(ctx context.Context) error {
-	err := killTestContainers(ctx)
-	if err != nil {
-		return err
+	for _, step := range []func(context.Context) error{
+		killTestContainers,
+		pruneDockerNetworks,
+		cleanOldImages,
+		cleanCacheVolume,
+	} {
+		err := step(ctx)
+		if err != nil {
+			return err
+		}
 	}
 
-	err = pruneDockerNetworks(ctx)
-	if err != nil {
-		return err
-	}
-
-	err = cleanOldImages(ctx)
-	if err != nil {
-		return err
-	}
-
-	return cleanCacheVolume(ctx)
+	return nil
 }

@@ -374,17 +374,17 @@ func (sc *StatsCollector) GetSummary() []ContainerStatsSummary {
 			SampleCount:   len(stats),
 		}
 
-		// Calculate CPU stats
-		cpuValues := make([]float64, len(stats))
-		memoryValues := make([]float64, len(stats))
+		extract := func(get func(StatsSample) float64) []float64 {
+			values := make([]float64, len(stats))
+			for i, sample := range stats {
+				values[i] = get(sample)
+			}
 
-		for i, sample := range stats {
-			cpuValues[i] = sample.CPUUsage
-			memoryValues[i] = sample.MemoryMB
+			return values
 		}
 
-		summary.CPU = calculateStatsSummary(cpuValues)
-		summary.Memory = calculateStatsSummary(memoryValues)
+		summary.CPU = calculateStatsSummary(extract(func(s StatsSample) float64 { return s.CPUUsage }))
+		summary.Memory = calculateStatsSummary(extract(func(s StatsSample) float64 { return s.MemoryMB }))
 
 		summaries = append(summaries, summary)
 	}
