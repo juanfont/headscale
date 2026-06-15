@@ -32,18 +32,14 @@ type DBLogWrapper struct {
 }
 
 func NewDBLogWrapper(origin *zerolog.Logger, slowThreshold time.Duration, skipErrRecordNotFound bool, parameterizedQueries bool) *DBLogWrapper {
-	l := &DBLogWrapper{
+	return &DBLogWrapper{
 		Logger:                origin,
 		Level:                 origin.GetLevel(),
 		SlowThreshold:         slowThreshold,
 		SkipErrRecordNotFound: skipErrRecordNotFound,
 		ParameterizedQueries:  parameterizedQueries,
 	}
-
-	return l
 }
-
-type DBLogWrapperOption func(*DBLogWrapper)
 
 func (l *DBLogWrapper) LogMode(gormLogger.LogLevel) gormLogger.Interface {
 	return l
@@ -71,16 +67,16 @@ func (l *DBLogWrapper) Trace(ctx context.Context, begin time.Time, fc func() (sq
 	}
 
 	if err != nil && (!errors.Is(err, gorm.ErrRecordNotFound) || !l.SkipErrRecordNotFound) {
-		l.Logger.Error().Err(err).Fields(fields).Msgf("")
+		l.Logger.Error().Err(err).Fields(fields).Msg("")
 		return
 	}
 
 	if l.SlowThreshold != 0 && elapsed > l.SlowThreshold {
-		l.Logger.Warn().Fields(fields).Msgf("")
+		l.Logger.Warn().Fields(fields).Msg("")
 		return
 	}
 
-	l.Logger.Debug().Fields(fields).Msgf("")
+	l.Logger.Debug().Fields(fields).Msg("")
 }
 
 func (l *DBLogWrapper) ParamsFilter(ctx context.Context, sql string, params ...any) (string, []any) {

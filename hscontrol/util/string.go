@@ -3,10 +3,7 @@ package util
 import (
 	"crypto/rand"
 	"encoding/base64"
-	"fmt"
 	"strings"
-
-	"tailscale.com/tailcfg"
 )
 
 // GenerateRandomBytes returns securely generated random bytes.
@@ -78,41 +75,4 @@ func MustGenerateRandomStringDNSSafe(size int) string {
 	}
 
 	return hash
-}
-
-func TailNodesToString(nodes []*tailcfg.Node) string {
-	temp := make([]string, len(nodes))
-
-	for index, node := range nodes {
-		temp[index] = node.Name
-	}
-
-	return fmt.Sprintf("[ %s ](%d)", strings.Join(temp, ", "), len(temp))
-}
-
-func TailMapResponseToString(resp tailcfg.MapResponse) string {
-	return fmt.Sprintf(
-		"{ Node: %s, Peers: %s }",
-		resp.Node.Name,
-		TailNodesToString(resp.Peers),
-	)
-}
-
-func TailcfgFilterRulesToString(rules []tailcfg.FilterRule) string {
-	var sb strings.Builder
-
-	for index, rule := range rules {
-		fmt.Fprintf(&sb, `
-{
-  SrcIPs: %v
-  DstIPs: %v
-}
-`, rule.SrcIPs, rule.DstPorts)
-
-		if index < len(rules)-1 {
-			sb.WriteString(", ")
-		}
-	}
-
-	return fmt.Sprintf("[ %s ](%d)", sb.String(), len(rules))
 }
