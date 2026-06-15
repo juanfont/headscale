@@ -487,3 +487,16 @@ func TestUsePreAuthKeyAtomicCAS(t *testing.T) {
 		"second UsePreAuthKey error must be a PAKError, got: %v", err)
 	assert.Equal(t, "authkey already used", pakErr.Error())
 }
+
+// TestGetPreAuthKeyUnknownMapsToRecordNotFound ensures an unknown (or deleted)
+// pre-auth key resolves to a record-not-found error, which the registration
+// handler maps to a 401 rather than a raw server error.
+func TestGetPreAuthKeyUnknownMapsToRecordNotFound(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
+	_, err = db.GetPreAuthKey("nonexistent-key")
+	require.Error(t, err)
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound,
+		"unknown pre-auth key must map to record-not-found (handled as 401)")
+}
