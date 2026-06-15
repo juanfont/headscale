@@ -95,8 +95,6 @@ var ErrCannotChangeOIDCUser = errors.New("cannot edit OIDC user")
 // RenameUser renames a [types.User]. Returns error if the [types.User] does
 // not exist or if another [types.User] exists with the new name.
 func RenameUser(tx *gorm.DB, uid types.UserID, newName string) error {
-	var err error
-
 	oldUser, err := GetUserByID(tx, uid)
 	if err != nil {
 		return err

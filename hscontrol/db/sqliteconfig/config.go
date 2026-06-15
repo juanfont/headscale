@@ -101,11 +101,6 @@ func (j JournalMode) IsValid() bool {
 	}
 }
 
-// String returns the string representation.
-func (j JournalMode) String() string {
-	return string(j)
-}
-
 // AutoVacuum represents SQLite auto_vacuum pragma values.
 // Auto-vacuum controls how SQLite reclaims space from deleted data.
 //
@@ -155,11 +150,6 @@ func (a AutoVacuum) IsValid() bool {
 	default:
 		return false
 	}
-}
-
-// String returns the string representation.
-func (a AutoVacuum) String() string {
-	return string(a)
 }
 
 // Synchronous represents SQLite synchronous pragma values.
@@ -221,11 +211,6 @@ func (s Synchronous) IsValid() bool {
 	}
 }
 
-// String returns the string representation.
-func (s Synchronous) String() string {
-	return string(s)
-}
-
 // TxLock represents SQLite transaction lock mode.
 // Transaction lock mode determines when write locks are acquired during transactions.
 //
@@ -275,11 +260,6 @@ func (t TxLock) IsValid() bool {
 	default:
 		return false
 	}
-}
-
-// String returns the string representation.
-func (t TxLock) String() string {
-	return string(t)
 }
 
 // Config holds SQLite database configuration with type-safe enums.

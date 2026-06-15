@@ -981,12 +981,6 @@ func runMigrations(cfg types.DatabaseConfig, dbConn *gorm.DB, migrations *gormig
 			// Add other migration IDs here as they are identified to need FK disabled
 		}
 
-		// Get the current foreign key status
-		var fkOriginallyEnabled int
-		if err := dbConn.Raw("PRAGMA foreign_keys").Scan(&fkOriginallyEnabled).Error; err != nil { //nolint:noinlineerr
-			return fmt.Errorf("checking foreign key status: %w", err)
-		}
-
 		// Get all migration IDs in order from the actual migration definitions
 		// Only IDs that are in the migrationsRequiringFKDisabled map will be processed with FK disabled
 		// any other new migrations are ran after.
