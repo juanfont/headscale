@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
+	"tailscale.com/util/rands"
 	"tailscale.com/util/set"
 )
 
@@ -94,33 +94,9 @@ func CreatePreAuthKey(
 
 	now := time.Now().UTC()
 
-	prefix, err := util.GenerateRandomStringURLSafe(authKeyPrefixLength)
-	if err != nil {
-		return nil, err
-	}
+	prefix := rands.HexString(authKeyPrefixLength)
 
-	// Validate generated prefix (should always be valid, but be defensive)
-	if len(prefix) != authKeyPrefixLength {
-		return nil, fmt.Errorf("%w: generated prefix has invalid length: expected %d, got %d", ErrPreAuthKeyFailedToParse, authKeyPrefixLength, len(prefix))
-	}
-
-	if !isValidBase64URLSafe(prefix) {
-		return nil, fmt.Errorf("%w: generated prefix contains invalid characters", ErrPreAuthKeyFailedToParse)
-	}
-
-	toBeHashed, err := util.GenerateRandomStringURLSafe(authKeyLength)
-	if err != nil {
-		return nil, err
-	}
-
-	// Validate generated hash (should always be valid, but be defensive)
-	if len(toBeHashed) != authKeyLength {
-		return nil, fmt.Errorf("%w: generated hash has invalid length: expected %d, got %d", ErrPreAuthKeyFailedToParse, authKeyLength, len(toBeHashed))
-	}
-
-	if !isValidBase64URLSafe(toBeHashed) {
-		return nil, fmt.Errorf("%w: generated hash contains invalid characters", ErrPreAuthKeyFailedToParse)
-	}
+	toBeHashed := rands.HexString(authKeyLength)
 
 	keyStr := authKeyPrefix + prefix + "-" + toBeHashed
 
@@ -299,15 +275,14 @@ func parsePrefixedKey(
 	return prefix, secret, nil
 }
 
-// isValidBase64URLSafe checks if a string contains only base64 URL-safe characters.
+// isValidBase64URLSafe reports whether s contains only base64 URL-safe
+// characters (A-Za-z0-9-_). Key material is now generated as hex, a subset of
+// this alphabet, so this accepts both current hex keys and any legacy keys
+// still stored in the database.
 func isValidBase64URLSafe(s string) bool {
-	for _, c := range s {
-		if (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' && c != '_' {
-			return false
-		}
-	}
-
-	return true
+	return !strings.ContainsFunc(s, func(c rune) bool {
+		return (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' && c != '_'
+	})
 }
 
 func (hsdb *HSDatabase) GetPreAuthKey(key string) (*types.PreAuthKey, error) {

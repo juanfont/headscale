@@ -34,6 +34,7 @@ import (
 	"tailscale.com/types/key"
 	"tailscale.com/types/netmap"
 	"tailscale.com/util/multierr"
+	"tailscale.com/util/rands"
 	"tailscale.com/wgengine/filter"
 )
 
@@ -314,10 +315,9 @@ func New(
 	version string,
 	opts ...Option,
 ) (*TailscaleInContainer, error) {
-	hash, err := util.GenerateRandomStringDNSSafe(tsicHashLength)
-	if err != nil {
-		return nil, err
-	}
+	hash := rands.HexString(tsicHashLength)
+
+	var err error
 
 	// Include run ID in hostname for easier identification of which test run owns this container
 	runID := dockertestutil.GetIntegrationRunID()

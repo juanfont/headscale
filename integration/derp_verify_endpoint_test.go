@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dsic"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/integrationutil"
@@ -17,14 +16,14 @@ import (
 	"tailscale.com/net/netmon"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
+	"tailscale.com/util/rands"
 )
 
 func TestDERPVerifyEndpoint(t *testing.T) {
 	IntegrationSkip(t)
 
 	// Generate random hostname for the headscale instance
-	hash, err := util.GenerateRandomStringDNSSafe(6)
-	require.NoError(t, err)
+	hash := rands.HexString(6)
 
 	testName := "derpverify"
 	hostname := fmt.Sprintf("hs-%s-%s", testName, hash)
@@ -45,7 +44,8 @@ func TestDERPVerifyEndpoint(t *testing.T) {
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	derper, err := scenario.CreateDERPServer("head",
+	derper, err := scenario.CreateDERPServer(
+		"head",
 		dsic.WithCACert(caHeadscale),
 		dsic.WithVerifyClientURL(fmt.Sprintf("https://%s/verify", net.JoinHostPort(hostname, strconv.Itoa(headscalePort)))),
 	)

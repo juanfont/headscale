@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
+	"tailscale.com/util/rands"
 )
 
 const (
@@ -143,10 +143,7 @@ func New(
 	networks []*dockertest.Network,
 	opts ...Option,
 ) (*DERPServerInContainer, error) {
-	hash, err := util.GenerateRandomStringDNSSafe(dsicHashLength)
-	if err != nil {
-		return nil, err
-	}
+	hash := rands.HexString(dsicHashLength)
 
 	// Include run ID in hostname for easier identification of which test run owns this container
 	runID := dockertestutil.GetIntegrationRunID()

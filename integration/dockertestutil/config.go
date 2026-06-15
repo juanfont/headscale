@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/ory/dockertest/v3"
+	"tailscale.com/util/rands"
 )
 
 const (
@@ -46,7 +46,7 @@ func GenerateRunID() string {
 	timestamp := now.Format(TimestampFormatRunID)
 
 	// Add a short random hash to ensure uniqueness
-	randomHash := util.MustGenerateRandomStringDNSSafe(6)
+	randomHash := rands.HexString(6)
 
 	return fmt.Sprintf("%s-%s", timestamp, randomHash)
 }
