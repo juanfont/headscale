@@ -15,7 +15,10 @@ import (
 )
 
 var (
-	ErrPreAuthKeyNotFound          = errors.New("auth-key not found")
+	// ErrPreAuthKeyNotFound wraps gorm.ErrRecordNotFound so an unknown or
+	// deleted key is treated as a missing record by callers, which the
+	// registration handler maps to a 401 rather than a raw server error.
+	ErrPreAuthKeyNotFound          = fmt.Errorf("auth-key not found: %w", gorm.ErrRecordNotFound)
 	ErrPreAuthKeyExpired           = errors.New("auth-key expired")
 	ErrSingleUseAuthKeyHasBeenUsed = errors.New("auth-key has already been used")
 	ErrUserMismatch                = errors.New("user mismatch")
