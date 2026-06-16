@@ -116,10 +116,7 @@ func NewAuthProviderOIDC(
 }
 
 func (a *AuthProviderOIDC) AuthURL(authID types.AuthID) string {
-	return fmt.Sprintf(
-		"%s/auth/%s",
-		strings.TrimSuffix(a.serverURL, "/"),
-		authID.String())
+	return authPathURL(a.serverURL, "auth", authID)
 }
 
 func (a *AuthProviderOIDC) AuthHandler(
@@ -130,10 +127,7 @@ func (a *AuthProviderOIDC) AuthHandler(
 }
 
 func (a *AuthProviderOIDC) RegisterURL(authID types.AuthID) string {
-	return fmt.Sprintf(
-		"%s/register/%s",
-		strings.TrimSuffix(a.serverURL, "/"),
-		authID.String())
+	return authPathURL(a.serverURL, "register", authID)
 }
 
 // RegisterHandler registers the OIDC callback handler with the given router.
