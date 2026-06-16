@@ -148,20 +148,12 @@ func (h *Headscale) handleVerifyRequest(
 		return NewHTTPError(http.StatusBadRequest, "Bad Request: invalid JSON", fmt.Errorf("parsing DERP client request: %w", err))
 	}
 
-	nodes := h.state.ListNodes()
-
-	// Check if any node has the requested NodeKey
-	var nodeKeyFound bool
-
-	for _, node := range nodes.All() {
-		if node.NodeKey() == derpAdmitClientRequest.NodePublic {
-			nodeKeyFound = true
-			break
-		}
-	}
+	allow := h.state.ListNodes().ContainsFunc(func(n types.NodeView) bool {
+		return n.NodeKey() == derpAdmitClientRequest.NodePublic
+	})
 
 	resp := &tailcfg.DERPAdmitClientResponse{
-		Allow: nodeKeyFound,
+		Allow: allow,
 	}
 
 	return json.NewEncoder(writer).Encode(resp)

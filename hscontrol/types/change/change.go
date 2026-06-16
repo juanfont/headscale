@@ -213,13 +213,7 @@ func (r Change) ShouldSendToNode(nodeID types.NodeID) bool {
 
 // HasFull returns true if any response in the slice is a full update ([Change.IsFull]).
 func HasFull(rs []Change) bool {
-	for _, r := range rs {
-		if r.IsFull() {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(rs, Change.IsFull)
 }
 
 // SplitTargetedAndBroadcast separates responses into targeted (to specific node) and broadcast.

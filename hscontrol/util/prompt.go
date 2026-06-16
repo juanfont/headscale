@@ -3,6 +3,7 @@ package util
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 )
 
@@ -18,10 +19,6 @@ func YesNo(msg string) bool {
 	_, _ = fmt.Scanln(&resp)
 
 	resp = strings.ToLower(resp)
-	switch resp {
-	case "y", "yes", "sure":
-		return true
-	}
 
-	return false
+	return slices.Contains([]string{"y", "yes", "sure"}, resp)
 }

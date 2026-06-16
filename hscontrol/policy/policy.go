@@ -8,7 +8,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
-	"github.com/samber/lo"
 	"tailscale.com/types/views"
 )
 
@@ -66,8 +65,7 @@ func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView, currentApprove
 	}
 
 	// Start with ALL currently approved routes - we never remove approved routes
-	newApproved := make([]netip.Prefix, len(currentApproved))
-	copy(newApproved, currentApproved)
+	newApproved := slices.Clone(currentApproved)
 
 	// Then, check for new routes that can be auto-approved
 	for _, route := range announcedRoutes {
@@ -86,13 +84,12 @@ func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView, currentApprove
 	// Sort and deduplicate
 	slices.SortFunc(newApproved, netip.Prefix.Compare)
 	newApproved = slices.Compact(newApproved)
-	newApproved = lo.Filter(newApproved, func(route netip.Prefix, index int) bool {
-		return route.IsValid()
+	newApproved = slices.DeleteFunc(newApproved, func(route netip.Prefix) bool {
+		return !route.IsValid()
 	})
 
 	// Sort the current approved for comparison
-	sortedCurrent := make([]netip.Prefix, len(currentApproved))
-	copy(sortedCurrent, currentApproved)
+	sortedCurrent := slices.Clone(currentApproved)
 	slices.SortFunc(sortedCurrent, netip.Prefix.Compare)
 
 	// Only update if the routes actually changed

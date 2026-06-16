@@ -5,6 +5,7 @@ package sqliteconfig
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -90,15 +91,15 @@ const (
 	JournalModeOff JournalMode = "OFF"
 )
 
+// validJournalModes lists the accepted JournalMode values.
+var validJournalModes = []JournalMode{
+	JournalModeWAL, JournalModeDelete, JournalModeTruncate,
+	JournalModePersist, JournalModeMemory, JournalModeOff,
+}
+
 // IsValid returns true if the JournalMode is valid.
 func (j JournalMode) IsValid() bool {
-	switch j {
-	case JournalModeWAL, JournalModeDelete, JournalModeTruncate,
-		JournalModePersist, JournalModeMemory, JournalModeOff:
-		return true
-	default:
-		return false
-	}
+	return slices.Contains(validJournalModes, j)
 }
 
 // AutoVacuum represents SQLite auto_vacuum pragma values.
@@ -142,14 +143,14 @@ const (
 	AutoVacuumIncremental AutoVacuum = "INCREMENTAL"
 )
 
+// validAutoVacuums lists the accepted AutoVacuum values.
+var validAutoVacuums = []AutoVacuum{
+	AutoVacuumNone, AutoVacuumFull, AutoVacuumIncremental,
+}
+
 // IsValid returns true if the AutoVacuum is valid.
 func (a AutoVacuum) IsValid() bool {
-	switch a {
-	case AutoVacuumNone, AutoVacuumFull, AutoVacuumIncremental:
-		return true
-	default:
-		return false
-	}
+	return slices.Contains(validAutoVacuums, a)
 }
 
 // Synchronous represents SQLite synchronous pragma values.
@@ -201,14 +202,14 @@ const (
 	SynchronousExtra Synchronous = "EXTRA"
 )
 
+// validSynchronous lists the accepted Synchronous values.
+var validSynchronous = []Synchronous{
+	SynchronousOff, SynchronousNormal, SynchronousFull, SynchronousExtra,
+}
+
 // IsValid returns true if the Synchronous is valid.
 func (s Synchronous) IsValid() bool {
-	switch s {
-	case SynchronousOff, SynchronousNormal, SynchronousFull, SynchronousExtra:
-		return true
-	default:
-		return false
-	}
+	return slices.Contains(validSynchronous, s)
 }
 
 // TxLock represents SQLite transaction lock mode.
@@ -252,14 +253,15 @@ const (
 	TxLockExclusive TxLock = "exclusive"
 )
 
+// validTxLocks lists the accepted TxLock values; the empty string is valid
+// and selects the driver default.
+var validTxLocks = []TxLock{
+	TxLockDeferred, TxLockImmediate, TxLockExclusive, "",
+}
+
 // IsValid returns true if the TxLock is valid.
 func (t TxLock) IsValid() bool {
-	switch t {
-	case TxLockDeferred, TxLockImmediate, TxLockExclusive, "":
-		return true
-	default:
-		return false
-	}
+	return slices.Contains(validTxLocks, t)
 }
 
 // Config holds SQLite database configuration with type-safe enums.

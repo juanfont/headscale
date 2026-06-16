@@ -1,10 +1,11 @@
 package db
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"net/netip"
-	"sort"
+	"slices"
 	"strconv"
 	"sync"
 	"testing"
@@ -68,7 +69,7 @@ func ListPeers(tx *gorm.DB, nodeID types.NodeID, peerIDs ...types.NodeID) (types
 		return types.Nodes{}, err
 	}
 
-	sort.Slice(nodes, func(i, j int) bool { return nodes[i].ID < nodes[j].ID })
+	slices.SortFunc(nodes, func(a, b *types.Node) int { return cmp.Compare(a.ID, b.ID) })
 
 	return nodes, nil
 }
