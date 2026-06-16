@@ -644,7 +644,10 @@ func (s *State) Connect(id types.NodeID) ([]change.Change, uint64) {
 		return nil, 0
 	}
 
-	c := []change.Change{change.NodeOnlineFor(node)}
+	// A node coming online sends a lightweight online peer patch. Subnet
+	// routers, relay targets, and via targets get their full peer recompute
+	// from the gated PolicyChange below, so no full update is needed here.
+	c := []change.Change{change.NodeOnline(node.ID())}
 
 	log.Info().EmbedObject(node).Msg("node connected")
 
@@ -727,7 +730,10 @@ func (s *State) Disconnect(id types.NodeID, epoch uint64) ([]change.Change, erro
 	// An ordinary node going offline just sends the lightweight offline
 	// patch; emitting a PolicyChange for it would force every peer to
 	// rebuild its netmap on every disconnect.
-	cs := []change.Change{change.NodeOfflineFor(node), c}
+	// A node going offline sends a lightweight offline peer patch. Subnet
+	// routers and other recompute-forcing nodes rely on the gated
+	// PolicyChange below for the peer recompute, so no full update here.
+	cs := []change.Change{change.NodeOffline(node.ID()), c}
 	if s.polMan.NodeNeedsPeerRecompute(node) {
 		cs = append(cs, change.PolicyChange())
 	}

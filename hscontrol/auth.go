@@ -23,6 +23,18 @@ type AuthProvider interface {
 	AuthURL(authID types.AuthID) string
 }
 
+// machineKeyMismatch fails closed when a node looked up by NodeKey was started
+// in a Noise session with a different machine key. Without this anyone holding a
+// target's NodeKey could open a session with a throwaway machine key and act on
+// the owner's node. Returns a 401 [HTTPError] on mismatch, nil otherwise.
+func machineKeyMismatch(node types.NodeView, machineKey key.MachinePublic) error {
+	if node.MachineKey() != machineKey {
+		return NewHTTPError(http.StatusUnauthorized, "node exists with a different machine key", nil)
+	}
+
+	return nil
+}
+
 func (h *Headscale) handleRegister(
 	ctx context.Context,
 	req tailcfg.RegisterRequest,
@@ -75,12 +87,9 @@ func (h *Headscale) handleRegister(
 			// open a Noise session with a throwaway machine key and read
 			// the owner's User/Login back through [nodeToRegisterResponse].
 			// [Headscale.handleLogout] enforces the same check on its own path.
-			if node.MachineKey() != machineKey {
-				return nil, NewHTTPError(
-					http.StatusUnauthorized,
-					"node exists with a different machine key",
-					nil,
-				)
+			err := machineKeyMismatch(node, machineKey)
+			if err != nil {
+				return nil, err
 			}
 
 			// When tailscaled restarts, it sends [tailcfg.RegisterRequest] with Auth=nil and Expiry=zero.
@@ -153,8 +162,9 @@ func (h *Headscale) handleLogout(
 	// Fail closed if it looks like this is an attempt to modify a node where
 	// the node key and the machine key the noise session was started with does
 	// not align.
-	if node.MachineKey() != machineKey {
-		return nil, NewHTTPError(http.StatusUnauthorized, "node exist with different machine key", nil)
+	err := machineKeyMismatch(node, machineKey)
+	if err != nil {
+		return nil, err
 	}
 
 	// Note: We do NOT return early if req.Auth is set, because Tailscale clients

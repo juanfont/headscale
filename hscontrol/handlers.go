@@ -343,7 +343,7 @@ func (a *AuthProviderWeb) AuthHandler(
 }
 
 func authIDFromRequest(req *http.Request) (types.AuthID, error) {
-	raw, err := urlParam[string](req, "auth_id")
+	raw, err := stringParam(req, "auth_id")
 	if err != nil {
 		return "", NewHTTPError(http.StatusBadRequest, "invalid auth id", fmt.Errorf("parsing auth_id from URL: %w", err))
 	}

@@ -11,21 +11,7 @@ import (
 )
 
 func main() {
-	var colors bool
-
-	switch l := termcolor.SupportLevel(os.Stderr); l {
-	case termcolor.Level16M:
-		colors = true
-	case termcolor.Level256:
-		colors = true
-	case termcolor.LevelBasic:
-		colors = true
-	case termcolor.LevelNone:
-		colors = false
-	default:
-		// no color, return text as is.
-		colors = false
-	}
+	colors := termcolor.SupportLevel(os.Stderr) != termcolor.LevelNone
 
 	// Adhere to no-color.org manifesto of allowing users to
 	// turn off color in cli/services

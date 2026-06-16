@@ -632,8 +632,8 @@ func TestNodeOnlineOfflineForSubnetRouter(t *testing.T) {
 		got        Change
 		wantOnline bool
 	}{
-		{name: "online", got: NodeOnlineFor(view), wantOnline: true},
-		{name: "offline", got: NodeOfflineFor(view), wantOnline: false},
+		{name: "online", got: NodeOnline(view.ID()), wantOnline: true},
+		{name: "offline", got: NodeOffline(view.ID()), wantOnline: false},
 	}
 
 	for _, tt := range tests {
