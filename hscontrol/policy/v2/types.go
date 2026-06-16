@@ -1300,10 +1300,8 @@ func (g *Groups) Contains(group *Group) error {
 		return nil
 	}
 
-	for defined := range map[Group]Usernames(*g) {
-		if defined == *group {
-			return nil
-		}
+	if _, ok := (*g)[*group]; ok {
+		return nil
 	}
 
 	return fmt.Errorf("%w: %q", ErrGroupNotDefined, group)
@@ -1483,10 +1481,8 @@ func (to TagOwners) Contains(tagOwner *Tag) error {
 		return nil
 	}
 
-	for defined := range map[Tag]Owners(to) {
-		if defined == *tagOwner {
-			return nil
-		}
+	if _, ok := to[*tagOwner]; ok {
+		return nil
 	}
 
 	return fmt.Errorf("%w: %q", ErrTagNotDefined, tagOwner)

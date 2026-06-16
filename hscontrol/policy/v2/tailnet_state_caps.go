@@ -13,6 +13,7 @@ package v2
 // one exists.
 
 import (
+	"maps"
 	"slices"
 	"strings"
 
@@ -170,15 +171,10 @@ func stripUnmodelledTailnetStateCaps(cm tailcfg.NodeCapMap) tailcfg.NodeCapMap {
 		return nil
 	}
 
-	out := make(tailcfg.NodeCapMap, len(cm))
-
-	for k, v := range cm {
-		if isUnmodelledTailnetStateCap(k) {
-			continue
-		}
-
-		out[k] = v
-	}
+	out := maps.Clone(cm)
+	maps.DeleteFunc(out, func(k tailcfg.NodeCapability, _ []tailcfg.RawMessage) bool {
+		return isUnmodelledTailnetStateCap(k)
+	})
 
 	if len(out) == 0 {
 		return nil

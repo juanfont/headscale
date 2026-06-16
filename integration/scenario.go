@@ -1399,17 +1399,11 @@ func (s *Scenario) GetIPs(user string) ([]netip.Addr, error) {
 
 // GetClients returns all [TailscaleClient]s associated with a [User] in a [Scenario].
 func (s *Scenario) GetClients(user string) ([]TailscaleClient, error) {
-	var clients []TailscaleClient
-
 	if ns, ok := s.users[user]; ok {
-		for _, client := range ns.Clients {
-			clients = append(clients, client)
-		}
-
-		return clients, nil
+		return xmaps.Values(ns.Clients), nil
 	}
 
-	return clients, fmt.Errorf("getting clients: %w", errNoUserAvailable)
+	return nil, fmt.Errorf("getting clients: %w", errNoUserAvailable)
 }
 
 // ListTailscaleClients returns a list of [TailscaleClient]s given the [User]s

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"maps"
 	"net/url"
 	"os"
 	"path"
@@ -70,7 +71,6 @@ func generateUserProfiles(
 	peers views.Slice[types.NodeView],
 ) []tailcfg.UserProfile {
 	userMap := make(map[uint]*types.UserView)
-	ids := make([]uint, 0, len(userMap))
 
 	user := node.Owner()
 	if !user.Valid() {
@@ -81,9 +81,7 @@ func generateUserProfiles(
 		return nil
 	}
 
-	userID := user.Model().ID
-	userMap[userID] = &user
-	ids = append(ids, userID)
+	userMap[user.Model().ID] = &user
 
 	for _, peer := range peers.All() {
 		peerUser := peer.Owner()
@@ -91,20 +89,13 @@ func generateUserProfiles(
 			continue
 		}
 
-		peerUserID := peerUser.Model().ID
-		userMap[peerUserID] = &peerUser
-		ids = append(ids, peerUserID)
+		userMap[peerUser.Model().ID] = &peerUser
 	}
-
-	slices.Sort(ids)
-	ids = slices.Compact(ids)
 
 	var profiles []tailcfg.UserProfile
 
-	for _, id := range ids {
-		if userMap[id] != nil {
-			profiles = append(profiles, userMap[id].TailscaleUserProfile())
-		}
+	for _, id := range slices.Sorted(maps.Keys(userMap)) {
+		profiles = append(profiles, userMap[id].TailscaleUserProfile())
 	}
 
 	return profiles
