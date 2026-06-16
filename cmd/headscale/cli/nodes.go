@@ -384,13 +384,7 @@ func nodesToPtables(nodes []*v1.Node) (pterm.TableData, error) {
 			expired = pterm.LightGreen("no")
 		}
 
-		var tagsBuilder strings.Builder
-
-		for _, tag := range node.GetTags() {
-			tagsBuilder.WriteString("\n" + tag)
-		}
-
-		tags := strings.TrimLeft(tagsBuilder.String(), "\n")
+		tags := strings.Join(node.GetTags(), "\n")
 
 		var user string
 		if node.GetUser() != nil {

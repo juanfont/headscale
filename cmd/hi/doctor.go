@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -283,7 +284,7 @@ func checkGitRepository(ctx context.Context) DoctorResult {
 }
 
 // checkRequiredFiles verifies required files exist.
-func checkRequiredFiles(ctx context.Context) DoctorResult {
+func checkRequiredFiles(_ context.Context) DoctorResult {
 	requiredFiles := []string{
 		"go.mod",
 		"integration/",
@@ -293,9 +294,7 @@ func checkRequiredFiles(ctx context.Context) DoctorResult {
 	var missingFiles []string
 
 	for _, file := range requiredFiles {
-		cmd := exec.CommandContext(ctx, "test", "-e", file)
-
-		err := cmd.Run()
+		_, err := os.Stat(file)
 		if err != nil {
 			missingFiles = append(missingFiles, file)
 		}
