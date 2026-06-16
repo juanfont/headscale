@@ -315,11 +315,7 @@ func (b *Batcher) AddNode(
 	initialMap, err := b.MapResponseFromChange(id, change.FullSelf(id))
 	if err != nil {
 		nlog.Error().Err(err).Msg("initial map generation failed")
-		nodeConn.removeConnectionByChannel(c)
-
-		if !nodeConn.hasActiveConnections() {
-			nodeConn.markDisconnected()
-		}
+		nodeConn.detach(c)
 
 		return fmt.Errorf("generating initial map for node %d: %w", id, err)
 	}
@@ -343,11 +339,7 @@ func (b *Batcher) AddNode(
 		nlog.Error().Err(ErrInitialMapSendTimeout).Msg("initial map send timeout")
 		nlog.Debug().Caller().Dur("timeout.duration", 5*time.Second). //nolint:mnd
 										Msg("initial map send timed out because channel was blocked or receiver not ready")
-		nodeConn.removeConnectionByChannel(c)
-
-		if !nodeConn.hasActiveConnections() {
-			nodeConn.markDisconnected()
-		}
+		nodeConn.detach(c)
 
 		return fmt.Errorf("%w for node %d", ErrInitialMapSendTimeout, id)
 	}
