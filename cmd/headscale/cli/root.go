@@ -120,13 +120,7 @@ func filterPreReleasesIfStable(versionFunc func() string) func(string) bool {
 		}
 
 		// If we are on a stable release, filter out pre-releases.
-		for _, ignore := range prereleases {
-			if strings.Contains(tag, ignore) {
-				return true
-			}
-		}
-
-		return false
+		return isPreReleaseVersion(tag)
 	}
 }
 

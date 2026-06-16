@@ -10,7 +10,6 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
-	"github.com/pterm/pterm"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
@@ -194,12 +193,10 @@ var listUsersCmd = &cobra.Command{
 		}
 
 		return printListOutput(cmd, response.GetUsers(), func() error {
-			tableData := make(pterm.TableData, 1, 1+len(response.GetUsers()))
-
-			tableData[0] = []string{"ID", "Name", "Username", "Email", colCreated}
+			rows := make([][]string, 0, len(response.GetUsers()))
 			for _, user := range response.GetUsers() {
-				tableData = append(
-					tableData,
+				rows = append(
+					rows,
 					[]string{
 						strconv.FormatUint(user.GetId(), util.Base10),
 						user.GetDisplayName(),
@@ -210,7 +207,7 @@ var listUsersCmd = &cobra.Command{
 				)
 			}
 
-			return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+			return renderTable([]string{"ID", "Name", "Username", "Email", colCreated}, rows)
 		})
 	}),
 }
