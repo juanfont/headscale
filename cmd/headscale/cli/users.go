@@ -44,6 +44,33 @@ func usernameAndIDFromFlag(cmd *cobra.Command) (uint64, string, error) {
 	return uint64(identifier), username, nil //nolint:gosec // identifier is clamped to >= 0 above
 }
 
+// resolveSingleUser resolves exactly one user from the --name/--id flags,
+// returning the raw flag id and the matched user.
+func resolveSingleUser(
+	ctx context.Context,
+	client v1.HeadscaleServiceClient,
+	cmd *cobra.Command,
+) (uint64, *v1.User, error) {
+	id, username, err := usernameAndIDFromFlag(cmd)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	users, err := client.ListUsers(ctx, &v1.ListUsersRequest{
+		Name: username,
+		Id:   id,
+	})
+	if err != nil {
+		return 0, nil, fmt.Errorf("listing users: %w", err)
+	}
+
+	if len(users.GetUsers()) != 1 {
+		return 0, nil, errMultipleUsersMatch
+	}
+
+	return id, users.GetUsers()[0], nil
+}
+
 func init() {
 	rootCmd.AddCommand(userCmd)
 	userCmd.AddCommand(createUserCmd)
@@ -117,26 +144,10 @@ var destroyUserCmd = &cobra.Command{
 	Short:   "Destroys a user",
 	Aliases: []string{cmdDelete},
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		id, username, err := usernameAndIDFromFlag(cmd)
+		_, user, err := resolveSingleUser(ctx, client, cmd)
 		if err != nil {
 			return err
 		}
-
-		request := &v1.ListUsersRequest{
-			Name: username,
-			Id:   id,
-		}
-
-		users, err := client.ListUsers(ctx, request)
-		if err != nil {
-			return fmt.Errorf("listing users: %w", err)
-		}
-
-		if len(users.GetUsers()) != 1 {
-			return errMultipleUsersMatch
-		}
-
-		user := users.GetUsers()[0]
 
 		if !confirmAction(cmd, fmt.Sprintf(
 			"Do you want to remove the user %q (%d) and any associated preauthkeys?",
@@ -209,23 +220,9 @@ var renameUserCmd = &cobra.Command{
 	Short:   "Renames a user",
 	Aliases: []string{"mv"},
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		id, username, err := usernameAndIDFromFlag(cmd)
+		id, _, err := resolveSingleUser(ctx, client, cmd)
 		if err != nil {
 			return err
-		}
-
-		listReq := &v1.ListUsersRequest{
-			Name: username,
-			Id:   id,
-		}
-
-		users, err := client.ListUsers(ctx, listReq)
-		if err != nil {
-			return fmt.Errorf("listing users: %w", err)
-		}
-
-		if len(users.GetUsers()) != 1 {
-			return errMultipleUsersMatch
 		}
 
 		newName, _ := cmd.Flags().GetString("new-name")

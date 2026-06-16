@@ -128,15 +128,24 @@ var createPreAuthKeyCmd = &cobra.Command{
 	}),
 }
 
+// preAuthKeyID reads the required --id flag for preauthkey commands.
+func preAuthKeyID(cmd *cobra.Command) (uint64, error) {
+	id, _ := cmd.Flags().GetUint64("id")
+	if id == 0 {
+		return 0, fmt.Errorf("missing --id parameter: %w", errMissingParameter)
+	}
+
+	return id, nil
+}
+
 var expirePreAuthKeyCmd = &cobra.Command{
 	Use:     cmdExpire,
 	Short:   "Expire a preauthkey",
 	Aliases: []string{"revoke", aliasExp, "e"},
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		id, _ := cmd.Flags().GetUint64("id")
-
-		if id == 0 {
-			return fmt.Errorf("missing --id parameter: %w", errMissingParameter)
+		id, err := preAuthKeyID(cmd)
+		if err != nil {
+			return err
 		}
 
 		request := &v1.ExpirePreAuthKeyRequest{
@@ -157,10 +166,9 @@ var deletePreAuthKeyCmd = &cobra.Command{
 	Short:   "Delete a preauthkey",
 	Aliases: []string{aliasDel, "rm", "d"},
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		id, _ := cmd.Flags().GetUint64("id")
-
-		if id == 0 {
-			return fmt.Errorf("missing --id parameter: %w", errMissingParameter)
+		id, err := preAuthKeyID(cmd)
+		if err != nil {
+			return err
 		}
 
 		request := &v1.DeletePreAuthKeyRequest{

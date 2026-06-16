@@ -85,6 +85,23 @@ func grpcRunE(
 	}
 }
 
+// withGRPC opens a gRPC client, runs fn with it, and tears the
+// connection down afterwards. It is the building block for commands
+// that branch on a flag before deciding to talk to the server, where
+// grpcRunE's whole-RunE wrapping does not fit.
+func withGRPC(
+	fn func(ctx context.Context, client v1.HeadscaleServiceClient) error,
+) error {
+	ctx, client, conn, cancel, err := newHeadscaleCLIWithConfig()
+	if err != nil {
+		return fmt.Errorf("connecting to headscale: %w", err)
+	}
+	defer cancel()
+	defer conn.Close()
+
+	return fn(ctx, client)
+}
+
 func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *grpc.ClientConn, context.CancelFunc, error) {
 	cfg, err := types.LoadCLIConfig()
 	if err != nil {
