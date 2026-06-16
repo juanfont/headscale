@@ -208,10 +208,7 @@ func (s *State) lockRegistration(machineKey key.MachinePublic) func() {
 // NewState creates and initializes a new [State] instance, setting up the database,
 // IP allocator, DERP map, policy manager, and loading existing users and nodes.
 func NewState(cfg *types.Config) (*State, error) {
-	cacheExpiration := registerCacheExpiration
-	if cfg.Tuning.RegisterCacheExpiration != 0 {
-		cacheExpiration = cfg.Tuning.RegisterCacheExpiration
-	}
+	cacheExpiration := cmp.Or(cfg.Tuning.RegisterCacheExpiration, registerCacheExpiration)
 
 	cacheMaxEntries := defaultRegisterCacheMaxEntries
 	if cfg.Tuning.RegisterCacheMaxEntries > 0 {
@@ -264,15 +261,9 @@ func NewState(cfg *types.Config) (*State, error) {
 
 	// Apply defaults for [NodeStore] batch configuration if not set.
 	// This ensures tests that create Config directly (without viper) still work.
-	batchSize := cfg.Tuning.NodeStoreBatchSize
-	if batchSize == 0 {
-		batchSize = defaultNodeStoreBatchSize
-	}
+	batchSize := cmp.Or(cfg.Tuning.NodeStoreBatchSize, defaultNodeStoreBatchSize)
 
-	batchTimeout := cfg.Tuning.NodeStoreBatchTimeout
-	if batchTimeout == 0 {
-		batchTimeout = defaultNodeStoreBatchTimeout
-	}
+	batchTimeout := cmp.Or(cfg.Tuning.NodeStoreBatchTimeout, defaultNodeStoreBatchTimeout)
 
 	// [policy.PolicyManager.BuildPeerMap] handles both global and per-node filter complexity.
 	// This moves the complex peer relationship logic into the policy package where it belongs.
@@ -2588,7 +2579,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 			Expiry:                 reqExpiry,
 			RegisterMethod:         util.RegisterMethodAuthKey,
 			PreAuthKey:             pak,
-			ExistingNodeForNetinfo: cmp.Or(differentUserNode, types.NodeView{}),
+			ExistingNodeForNetinfo: differentUserNode,
 		})
 		if err != nil {
 			return types.NodeView{}, change.Change{}, fmt.Errorf("creating new node: %w", err)
