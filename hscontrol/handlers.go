@@ -172,13 +172,18 @@ func (h *Headscale) VerifyHandler(
 
 	req.Body = http.MaxBytesReader(writer, req.Body, verifyBodyLimit)
 
+	// Set the Content-Type before any body byte is written. The first
+	// Write in handleVerifyRequest triggers an implicit WriteHeader that
+	// snapshots the header map, so setting it afterwards is a no-op. The
+	// error path resets the Content-Type via http.Error, so error
+	// responses remain text/plain.
+	writer.Header().Set("Content-Type", "application/json")
+
 	err := h.handleVerifyRequest(req, writer)
 	if err != nil {
 		httpError(writer, err)
 		return
 	}
-
-	writer.Header().Set("Content-Type", "application/json")
 }
 
 // KeyHandler provides the Headscale pub key

@@ -3,13 +3,19 @@ package hscontrol
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"testing"
 
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"tailscale.com/tailcfg"
+	"tailscale.com/types/key"
 )
 
 var errTestUnexpected = errors.New("unexpected failure")
@@ -45,6 +51,69 @@ func TestHandleVerifyRequest_OversizedBodyRejected(t *testing.T) {
 
 	assert.Equal(t, http.StatusRequestEntityTooLarge, httpErr.Code,
 		"oversized body must surface 413")
+}
+
+// TestVerifyHandler_SuccessSetsJSONContentType verifies that a successful
+// POST to /verify advertises Content-Type: application/json. The header
+// must be set before the JSON body is written, otherwise the implicit
+// WriteHeader on first Write locks in a sniffed content type and the
+// later Header().Set becomes a no-op.
+func TestVerifyHandler_SuccessSetsJSONContentType(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	prefixV4 := netip.MustParsePrefix("100.64.0.0/10")
+	prefixV6 := netip.MustParsePrefix("fd7a:115c:a1e0::/48")
+
+	cfg := &types.Config{
+		ServerURL:           "http://localhost:0",
+		NoisePrivateKeyPath: tmpDir + "/noise_private.key",
+		PrefixV4:            &prefixV4,
+		PrefixV6:            &prefixV6,
+		IPAllocation:        types.IPAllocationStrategySequential,
+		Database: types.DatabaseConfig{
+			Type: "sqlite3",
+			Sqlite: types.SqliteConfig{
+				Path: tmpDir + "/headscale_test.db",
+			},
+		},
+		Policy: types.PolicyConfig{
+			Mode: types.PolicyModeDB,
+		},
+	}
+
+	h, err := NewHeadscale(cfg)
+	require.NoError(t, err)
+
+	reqBody, err := json.Marshal(tailcfg.DERPAdmitClientRequest{
+		NodePublic: key.NewNode().Public(),
+	})
+	require.NoError(t, err)
+
+	// A real HTTP server is required to observe the bug: the first body
+	// Write triggers an implicit WriteHeader that snapshots the header
+	// map, so a Content-Type set afterwards never reaches the wire.
+	// An httptest.ResponseRecorder does not snapshot, so it would hide
+	// the defect.
+	srv := httptest.NewServer(http.HandlerFunc(h.VerifyHandler))
+	defer srv.Close()
+
+	httpReq, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		srv.URL+"/verify",
+		bytes.NewReader(reqBody),
+	)
+	require.NoError(t, err)
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(httpReq)
+	require.NoError(t, err)
+
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"),
+		"successful /verify response must advertise application/json")
 }
 
 // errorAsHTTPError is a small local helper that unwraps an [HTTPError]
