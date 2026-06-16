@@ -66,7 +66,7 @@ func (t *testBatcherWrapper) AddNode(id types.NodeID, c chan<- *tailcfg.MapRespo
 		return fmt.Errorf("%w: %d", errNodeNotFoundAfterAdd, id)
 	}
 
-	t.AddWork(change.NodeOnlineFor(node))
+	t.AddWork(change.NodeOnline(node.ID()))
 
 	return nil
 }
@@ -90,7 +90,7 @@ func (t *testBatcherWrapper) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapRe
 	// Do this BEFORE removing from batcher so the change can be processed
 	node, ok := t.state.GetNodeByID(id)
 	if ok {
-		t.AddWork(change.NodeOfflineFor(node))
+		t.AddWork(change.NodeOffline(node.ID()))
 	}
 
 	// Finally remove from the real batcher

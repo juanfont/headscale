@@ -456,22 +456,6 @@ func NodeRemoved(id types.NodeID) Change {
 	return PeersRemoved(id)
 }
 
-// NodeOnlineFor returns the [Change] for a node coming online: a lightweight
-// [NodeOnline] peer patch. Subnet routers, relay targets, and via targets get
-// their full peer recompute from the gated [PolicyChange] that State.Connect
-// emits, so no full update is needed here.
-func NodeOnlineFor(node types.NodeView) Change {
-	return NodeOnline(node.ID())
-}
-
-// NodeOfflineFor returns the [Change] for a node going offline: a lightweight
-// [NodeOffline] peer patch. As with [NodeOnlineFor], subnet routers and other
-// recompute-forcing nodes rely on the gated [PolicyChange] from State.Disconnect
-// for the peer recompute, so no full update is needed here.
-func NodeOfflineFor(node types.NodeView) Change {
-	return NodeOffline(node.ID())
-}
-
 // KeyExpiryFor returns a [Change] for when a node's key expiry changes.
 // The [Change.OriginNode] field enables self-update detection by the mapper.
 func KeyExpiryFor(id types.NodeID, expiry time.Time) Change {

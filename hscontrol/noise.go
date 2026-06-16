@@ -31,9 +31,6 @@ var ErrUnsupportedClientVersion = errors.New("unsupported client version")
 // ErrMissingURLParameter is returned when a required URL parameter is not provided.
 var ErrMissingURLParameter = errors.New("missing URL parameter")
 
-// ErrUnsupportedURLParameterType is returned when a URL parameter has an unsupported type.
-var ErrUnsupportedURLParameterType = errors.New("unsupported URL parameter type")
-
 // ErrNoAuthSession is returned when an auth_id does not match any active auth session.
 var ErrNoAuthSession = errors.New("no auth session found")
 
@@ -338,40 +335,27 @@ func (h *Headscale) PingResponseHandler(
 	}
 }
 
-func urlParam[T any](req *http.Request, key string) (T, error) {
-	var zero T
-
+func stringParam(req *http.Request, key string) (string, error) {
 	param := chi.URLParam(req, key)
 	if param == "" {
-		return zero, fmt.Errorf("%w: %s", ErrMissingURLParameter, key)
+		return "", fmt.Errorf("%w: %s", ErrMissingURLParameter, key)
 	}
 
-	var value T
-	switch any(value).(type) {
-	case string:
-		v, ok := any(param).(T)
-		if !ok {
-			return zero, fmt.Errorf("%w: %T", ErrUnsupportedURLParameterType, value)
-		}
+	return param, nil
+}
 
-		value = v
-	case types.NodeID:
-		id, err := types.ParseNodeID(param)
-		if err != nil {
-			return zero, fmt.Errorf("parsing %s: %w", key, err)
-		}
-
-		v, ok := any(id).(T)
-		if !ok {
-			return zero, fmt.Errorf("%w: %T", ErrUnsupportedURLParameterType, value)
-		}
-
-		value = v
-	default:
-		return zero, fmt.Errorf("%w: %T", ErrUnsupportedURLParameterType, value)
+func nodeIDParam(req *http.Request, key string) (types.NodeID, error) {
+	param := chi.URLParam(req, key)
+	if param == "" {
+		return 0, fmt.Errorf("%w: %s", ErrMissingURLParameter, key)
 	}
 
-	return value, nil
+	id, err := types.ParseNodeID(param)
+	if err != nil {
+		return 0, fmt.Errorf("parsing %s: %w", key, err)
+	}
+
+	return id, nil
 }
 
 // SSHActionHandler handles the /ssh-action endpoint, returning a
@@ -381,7 +365,7 @@ func (ns *noiseServer) SSHActionHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
-	srcNodeID, err := urlParam[types.NodeID](req, "src_node_id")
+	srcNodeID, err := nodeIDParam(req, "src_node_id")
 	if err != nil {
 		httpError(writer, NewHTTPError(
 			http.StatusBadRequest,
@@ -392,7 +376,7 @@ func (ns *noiseServer) SSHActionHandler(
 		return
 	}
 
-	dstNodeID, err := urlParam[types.NodeID](req, "dst_node_id")
+	dstNodeID, err := nodeIDParam(req, "dst_node_id")
 	if err != nil {
 		httpError(writer, NewHTTPError(
 			http.StatusBadRequest,
