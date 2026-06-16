@@ -7,7 +7,6 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
 
@@ -51,9 +50,7 @@ var listAPIKeys = &cobra.Command{
 		}
 
 		return printListOutput(cmd, response.GetApiKeys(), func() error {
-			tableData := make(pterm.TableData, 1, 1+len(response.GetApiKeys()))
-			tableData[0] = []string{"ID", "Prefix", colExpiration, colCreated}
-
+			rows := make([][]string, 0, len(response.GetApiKeys()))
 			for _, key := range response.GetApiKeys() {
 				expiration := "-"
 
@@ -61,7 +58,7 @@ var listAPIKeys = &cobra.Command{
 					expiration = ColourTime(key.GetExpiration().AsTime())
 				}
 
-				tableData = append(tableData, []string{
+				rows = append(rows, []string{
 					strconv.FormatUint(key.GetId(), util.Base10),
 					key.GetPrefix(),
 					expiration,
@@ -69,7 +66,7 @@ var listAPIKeys = &cobra.Command{
 				})
 			}
 
-			return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+			return renderTable([]string{"ID", "Prefix", colExpiration, colCreated}, rows)
 		})
 	}),
 }

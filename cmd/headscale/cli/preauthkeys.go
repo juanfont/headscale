@@ -8,7 +8,6 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
 
@@ -52,18 +51,7 @@ var listPreAuthKeys = &cobra.Command{
 		}
 
 		return printListOutput(cmd, response.GetPreAuthKeys(), func() error {
-			tableData := make(pterm.TableData, 1, 1+len(response.GetPreAuthKeys()))
-			tableData[0] = []string{
-				"ID",
-				"Key/Prefix",
-				"Reusable",
-				"Ephemeral",
-				"Used",
-				colExpiration,
-				colCreated,
-				"Owner",
-			}
-
+			rows := make([][]string, 0, len(response.GetPreAuthKeys()))
 			for _, key := range response.GetPreAuthKeys() {
 				expiration := "-"
 				if key.GetExpiration() != nil {
@@ -79,7 +67,7 @@ var listPreAuthKeys = &cobra.Command{
 					owner = "-"
 				}
 
-				tableData = append(tableData, []string{
+				rows = append(rows, []string{
 					strconv.FormatUint(key.GetId(), util.Base10),
 					key.GetKey(),
 					strconv.FormatBool(key.GetReusable()),
@@ -91,7 +79,16 @@ var listPreAuthKeys = &cobra.Command{
 				})
 			}
 
-			return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+			return renderTable([]string{
+				"ID",
+				"Key/Prefix",
+				"Reusable",
+				"Ephemeral",
+				"Used",
+				colExpiration,
+				colCreated,
+				"Owner",
+			}, rows)
 		})
 	}),
 }
