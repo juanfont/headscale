@@ -1334,7 +1334,7 @@ func isSafeServerURL(serverURL, baseDomain string) error {
 		return errServerURLSame
 	}
 
-	serverDomainParts := strings.Split(server.Host, ".")
+	serverDomainParts := strings.Split(server.Hostname(), ".")
 	baseDomainParts := strings.Split(baseDomain, ".")
 
 	if len(serverDomainParts) <= len(baseDomainParts) {
