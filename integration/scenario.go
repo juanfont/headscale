@@ -211,7 +211,7 @@ func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 
 	var userToNetwork map[string]*dockertest.Network
 
-	if spec.Networks != nil || len(spec.Networks) != 0 {
+	if spec.Networks != nil {
 		for name, netSpec := range s.spec.Networks {
 			networkName := testHashPrefix + "-" + name
 
@@ -588,7 +588,8 @@ func (s *Scenario) CreateTailscaleNode(
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	opts = append(opts,
+	opts = append(
+		opts,
 		tsic.WithCACert(cert),
 		tsic.WithHeadscaleName(hostname),
 	)
@@ -662,7 +663,8 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 
 			s.mu.Lock()
 
-			opts = append(opts,
+			opts = append(
+				opts,
 				tsic.WithCACert(cert),
 				tsic.WithHeadscaleName(hostname),
 				tsic.WithExtraHosts(extraHosts),
@@ -818,45 +820,29 @@ func (s *Scenario) WaitForTailscaleSyncPerUser(timeout, retryInterval time.Durat
 		}
 	}
 
-	var allErrors []error
-
-	for _, user := range s.users {
-		// Calculate expected peer count: number of nodes in this user minus 1 (self)
-		expectedPeers := len(user.Clients) - 1
-
-		for _, client := range user.Clients {
-			c := client
-			expectedCount := expectedPeers
-
-			user.syncWaitGroup.Go(func() error {
-				return c.WaitForPeers(expectedCount, timeout, retryInterval)
-			})
-		}
-
-		err := user.syncWaitGroup.Wait()
-		if err != nil {
-			allErrors = append(allErrors, err)
-		}
-	}
-
-	if len(allErrors) > 0 {
-		return multierr.New(allErrors...)
-	}
-
-	return nil
+	// Calculate expected peer count: number of nodes in this user minus 1 (self)
+	return s.waitPeers(func(u *User) int { return len(u.Clients) - 1 }, timeout, retryInterval)
 }
 
 // WaitForTailscaleSyncWithPeerCount blocks execution until all the [TailscaleClient] reports
 // to have all other [TailscaleClient]s present in their [netmap.NetworkMap].
 func (s *Scenario) WaitForTailscaleSyncWithPeerCount(peerCount int, timeout, retryInterval time.Duration) error {
+	return s.waitPeers(func(*User) int { return peerCount }, timeout, retryInterval)
+}
+
+// waitPeers blocks until every [TailscaleClient] reports the expected peer
+// count returned by perUser for its owning user, fanning out per user.
+func (s *Scenario) waitPeers(perUser func(*User) int, timeout, retryInterval time.Duration) error {
 	var allErrors []error
 
 	for _, user := range s.users {
+		expectedCount := perUser(user)
+
 		for _, client := range user.Clients {
 			c := client
 
 			user.syncWaitGroup.Go(func() error {
-				return c.WaitForPeers(peerCount, timeout, retryInterval)
+				return c.WaitForPeers(expectedCount, timeout, retryInterval)
 			})
 		}
 
@@ -1636,7 +1622,8 @@ func (s *Scenario) runMockOIDC(accessTTL time.Duration, users []mockoidc.MockUse
 	if pmockoidc, err := s.pool.BuildAndRunWithBuildOptions( //nolint:noinlineerr
 		headscaleBuildOptions,
 		mockOidcOptions,
-		dockertestutil.DockerRestartPolicy); err == nil {
+		dockertestutil.DockerRestartPolicy,
+	); err == nil {
 		s.mockOIDC.r = pmockoidc
 	} else {
 		return err
@@ -1729,7 +1716,8 @@ func Webservice(s *Scenario, networkName string) (*dockertest.Resource, error) {
 	web, err := s.pool.BuildAndRunWithBuildOptions(
 		webBOpts,
 		webOpts,
-		dockertestutil.DockerRestartPolicy)
+		dockertestutil.DockerRestartPolicy,
+	)
 	if err != nil {
 		return nil, err
 	}

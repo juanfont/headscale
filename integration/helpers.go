@@ -55,6 +55,15 @@ const (
 	stateOffline = "offline"
 )
 
+// onlineLabel returns the log string for the given online state.
+func onlineLabel(online bool) string {
+	if online {
+		return stateOnline
+	}
+
+	return stateOffline
+}
+
 var errNoNewClientFound = errors.New("no new client found")
 
 // NodeSystemStatus represents the status of a node across different systems.
@@ -166,10 +175,7 @@ func requireAllClientsOnline(t *testing.T, headscale ControlServer, expectedNode
 
 	startTime := time.Now()
 
-	stateStr := stateOffline
-	if expectedOnline {
-		stateStr = stateOnline
-	}
+	stateStr := onlineLabel(expectedOnline)
 
 	t.Logf("requireAllSystemsOnline: Starting %s validation for %d nodes at %s - %s", stateStr, len(expectedNodes), startTime.Format(TimestampFormat), message)
 
@@ -192,6 +198,8 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 	t.Helper()
 
 	var prevReport string
+
+	stateStr := onlineLabel(expectedOnline)
 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		// Get batcher state
@@ -239,7 +247,7 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 
 		// Check batcher state for expected nodes
 		for _, nodeID := range expectedNodes {
-			nodeIDStr := fmt.Sprintf("%d", nodeID)
+			nodeIDStr := nodeID.String()
 			if nodeInfo, exists := debugInfo.ConnectedNodes[nodeIDStr]; exists {
 				if status, exists := nodeStatus[nodeID]; exists {
 					status.Batcher = nodeInfo.Connected
@@ -326,8 +334,7 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 
 		var failureReport strings.Builder
 
-		ids := types.NodeIDs(slices.AppendSeq(make([]types.NodeID, 0, len(nodeStatus)), maps.Keys(nodeStatus)))
-		slices.Sort(ids)
+		ids := types.NodeIDs(slices.Sorted(maps.Keys(nodeStatus)))
 
 		for _, nodeID := range ids {
 			status := nodeStatus[nodeID]
@@ -337,11 +344,6 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 
 			if !systemsMatch {
 				allMatch = false
-
-				stateStr := stateOffline
-				if expectedOnline {
-					stateStr = stateOnline
-				}
 
 				fmt.Fprintf(&failureReport, "node:%d is not fully %s (timestamp: %s):\n", nodeID, stateStr, time.Now().Format(TimestampFormat))
 				fmt.Fprintf(&failureReport, "  - batcher: %t (expected: %t)\n", status.Batcher, expectedOnline)
@@ -367,11 +369,6 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 			assert.Fail(c, failureReport.String())
 		}
 
-		stateStr := stateOffline
-		if expectedOnline {
-			stateStr = stateOnline
-		}
-
 		assert.True(c, allMatch, "Not all %d nodes are %s across all systems (batcher, mapresponses, nodestore)", len(expectedNodes), stateStr)
 	}, timeout, 2*time.Second, message)
 }
@@ -393,7 +390,7 @@ func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expec
 		allBatcherOffline := true
 
 		for _, nodeID := range expectedNodes {
-			nodeIDStr := fmt.Sprintf("%d", nodeID)
+			nodeIDStr := nodeID.String()
 			if nodeInfo, exists := debugInfo.ConnectedNodes[nodeIDStr]; exists && nodeInfo.Connected {
 				allBatcherOffline = false
 
@@ -650,7 +647,8 @@ func assertPingAll(t *testing.T, clients []TailscaleClient, addrs []string, opts
 	perPingBudget := 2 * time.Second
 	timeout := max(
 		// Floor at 30s for small matrices.
-		integrationutil.ScaledTimeout(time.Duration(pingCount)*perPingBudget*2), integrationutil.ScaledTimeout(30*time.Second))
+		integrationutil.ScaledTimeout(time.Duration(pingCount)*perPingBudget*2), integrationutil.ScaledTimeout(30*time.Second),
+	)
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertPingAllWithCollect(c, clients, addrs, opts...)

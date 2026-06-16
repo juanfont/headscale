@@ -241,23 +241,23 @@ func BuildExpectedOnlineMap(all map[types.NodeID][]tailcfg.MapResponse) map[type
 	for nid, mrs := range all {
 		res[nid] = make(map[types.NodeID]bool)
 
+		set := func(id tailcfg.NodeID, online *bool) {
+			if online != nil {
+				res[nid][types.NodeID(id)] = *online //nolint:gosec // safe conversion for peer ID
+			}
+		}
+
 		for _, mr := range mrs {
 			for _, peer := range mr.Peers {
-				if peer.Online != nil {
-					res[nid][types.NodeID(peer.ID)] = *peer.Online //nolint:gosec // safe conversion for peer ID
-				}
+				set(peer.ID, peer.Online)
 			}
 
 			for _, peer := range mr.PeersChanged {
-				if peer.Online != nil {
-					res[nid][types.NodeID(peer.ID)] = *peer.Online //nolint:gosec // safe conversion for peer ID
-				}
+				set(peer.ID, peer.Online)
 			}
 
 			for _, peer := range mr.PeersChangedPatch {
-				if peer.Online != nil {
-					res[nid][types.NodeID(peer.NodeID)] = *peer.Online //nolint:gosec // safe conversion for peer ID
-				}
+				set(peer.NodeID, peer.Online)
 			}
 		}
 	}
