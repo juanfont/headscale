@@ -74,16 +74,24 @@ func (p *HAHealthProber) ProbeOnce(
 ) {
 	haNodes := p.state.nodeStore.HANodes()
 
-	// Drop stable-session entries for nodes that are no longer HA
-	// candidates so a future reappearance starts fresh.
+	// Build the deduplicated node-ID set and slice in one pass.
+	var nodeIDs []types.NodeID
+
 	seen := make(set.Set[types.NodeID])
 
 	for _, nodes := range haNodes {
 		for _, id := range nodes {
+			if seen.Contains(id) {
+				continue
+			}
+
 			seen.Add(id)
+			nodeIDs = append(nodeIDs, id)
 		}
 	}
 
+	// Drop stable-session entries for nodes that are no longer HA
+	// candidates so a future reappearance starts fresh.
 	p.lastStableSession.Range(func(id types.NodeID, _ uint64) bool {
 		if !seen.Contains(id) {
 			p.lastStableSession.Delete(id)
@@ -94,20 +102,6 @@ func (p *HAHealthProber) ProbeOnce(
 
 	if len(haNodes) == 0 {
 		return
-	}
-
-	// Deduplicate node IDs across prefixes.
-	var nodeIDs []types.NodeID
-
-	dedup := make(set.Set[types.NodeID])
-
-	for _, nodes := range haNodes {
-		for _, id := range nodes {
-			if !dedup.Contains(id) {
-				dedup.Add(id)
-				nodeIDs = append(nodeIDs, id)
-			}
-		}
 	}
 
 	log.Debug().
