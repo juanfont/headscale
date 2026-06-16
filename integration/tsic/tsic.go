@@ -685,7 +685,8 @@ func (t *TailscaleInContainer) buildLoginCommand(
 	}
 
 	if len(t.withTags) > 0 {
-		command = append(command,
+		command = append(
+			command,
 			"--advertise-tags="+strings.Join(t.withTags, ","),
 		)
 	}
@@ -930,6 +931,31 @@ func (t *TailscaleInContainer) MustIPv6() netip.Addr {
 	panic("no ipv6 found")
 }
 
+// execJSON runs command on the Tailscale instance, unmarshals the stdout into a
+// fresh T, and returns the value alongside the raw JSON for callers that persist
+// it. stderr is printed when the command fails. execErr and unmarshalErr provide
+// the error context used in test diagnostics.
+func execJSON[T any](
+	t *TailscaleInContainer,
+	command []string,
+	execErr, unmarshalErr string,
+) (*T, string, error) {
+	result, stderr, err := t.Execute(command)
+	if err != nil {
+		fmt.Printf("stderr: %s\n", stderr)
+		return nil, "", fmt.Errorf("%s: %w", execErr, err)
+	}
+
+	var v T
+
+	err = json.Unmarshal([]byte(result), &v)
+	if err != nil {
+		return nil, "", fmt.Errorf("%s: %w", unmarshalErr, err)
+	}
+
+	return &v, result, nil
+}
+
 // Status returns the [ipnstate.Status] of the Tailscale instance.
 func (t *TailscaleInContainer) Status(save ...bool) (*ipnstate.Status, error) {
 	command := []string{
@@ -938,24 +964,22 @@ func (t *TailscaleInContainer) Status(save ...bool) (*ipnstate.Status, error) {
 		"--json",
 	}
 
-	result, _, err := t.Execute(command)
+	status, raw, err := execJSON[ipnstate.Status](
+		t,
+		command,
+		"executing tailscale status command",
+		"unmarshalling tailscale status",
+	)
 	if err != nil {
-		return nil, fmt.Errorf("executing tailscale status command: %w", err)
+		return nil, err
 	}
 
-	var status ipnstate.Status
-
-	err = json.Unmarshal([]byte(result), &status)
-	if err != nil {
-		return nil, fmt.Errorf("unmarshalling tailscale status: %w", err)
-	}
-
-	err = os.WriteFile(fmt.Sprintf("/tmp/control/%s_status.json", t.hostname), []byte(result), 0o755) //nolint:gosec // test infrastructure log files
+	err = os.WriteFile(fmt.Sprintf("/tmp/control/%s_status.json", t.hostname), []byte(raw), 0o755) //nolint:gosec // test infrastructure log files
 	if err != nil {
 		return nil, fmt.Errorf("status netmap to /tmp/control: %w", err)
 	}
 
-	return &status, err
+	return status, nil
 }
 
 // MustStatus returns the [ipnstate.Status] of the Tailscale instance.
@@ -997,25 +1021,22 @@ func (t *TailscaleInContainer) Netmap() (*netmap.NetworkMap, error) {
 		"netmap",
 	}
 
-	result, stderr, err := t.Execute(command)
+	nm, raw, err := execJSON[netmap.NetworkMap](
+		t,
+		command,
+		"executing tailscale debug netmap command",
+		"unmarshalling tailscale netmap",
+	)
 	if err != nil {
-		fmt.Printf("stderr: %s\n", stderr)
-		return nil, fmt.Errorf("executing tailscale debug netmap command: %w", err)
+		return nil, err
 	}
 
-	var nm netmap.NetworkMap
-
-	err = json.Unmarshal([]byte(result), &nm)
-	if err != nil {
-		return nil, fmt.Errorf("unmarshalling tailscale netmap: %w", err)
-	}
-
-	err = os.WriteFile(fmt.Sprintf("/tmp/control/%s_netmap.json", t.hostname), []byte(result), 0o755) //nolint:gosec // test infrastructure log files
+	err = os.WriteFile(fmt.Sprintf("/tmp/control/%s_netmap.json", t.hostname), []byte(raw), 0o755) //nolint:gosec // test infrastructure log files
 	if err != nil {
 		return nil, fmt.Errorf("saving netmap to /tmp/control: %w", err)
 	}
 
-	return &nm, err
+	return nm, nil
 }
 
 // Netmap returns the current Netmap ([netmap.NetworkMap]) of the Tailscale instance.
@@ -1125,21 +1146,17 @@ func (t *TailscaleInContainer) DebugDERPRegion(region string) (*ipnstate.DebugDE
 		region,
 	}
 
-	result, stderr, err := t.Execute(command)
+	report, _, err := execJSON[ipnstate.DebugDERPRegionReport](
+		t,
+		command,
+		"executing tailscale debug derp command",
+		"unmarshalling tailscale derp region report",
+	)
 	if err != nil {
-		fmt.Printf("stderr: %s\n", stderr) // nolint
-
-		return nil, fmt.Errorf("executing tailscale debug derp command: %w", err)
+		return nil, err
 	}
 
-	var report ipnstate.DebugDERPRegionReport
-
-	err = json.Unmarshal([]byte(result), &report)
-	if err != nil {
-		return nil, fmt.Errorf("unmarshalling tailscale derp region report: %w", err)
-	}
-
-	return &report, err
+	return report, nil
 }
 
 // Netcheck returns the current Netcheck Report ([netcheck.Report]) of the Tailscale instance.
@@ -1150,20 +1167,17 @@ func (t *TailscaleInContainer) Netcheck() (*netcheck.Report, error) {
 		"--format=json",
 	}
 
-	result, stderr, err := t.Execute(command)
+	nm, _, err := execJSON[netcheck.Report](
+		t,
+		command,
+		"executing tailscale debug netcheck command",
+		"unmarshalling tailscale netcheck",
+	)
 	if err != nil {
-		fmt.Printf("stderr: %s\n", stderr)
-		return nil, fmt.Errorf("executing tailscale debug netcheck command: %w", err)
+		return nil, err
 	}
 
-	var nm netcheck.Report
-
-	err = json.Unmarshal([]byte(result), &nm)
-	if err != nil {
-		return nil, fmt.Errorf("unmarshalling tailscale netcheck: %w", err)
-	}
-
-	return &nm, err
+	return nm, nil
 }
 
 // FQDN returns the FQDN as a string of the Tailscale instance.
@@ -1400,7 +1414,8 @@ func (t *TailscaleInContainer) Ping(hostnameOrIP string, opts ...PingOption) err
 	}
 
 	command := make([]string, 0, 6)
-	command = append(command,
+	command = append(
+		command,
 		tailscaleBin, "ping",
 		fmt.Sprintf("--timeout=%s", args.timeout),
 		fmt.Sprintf("--c=%d", args.count),

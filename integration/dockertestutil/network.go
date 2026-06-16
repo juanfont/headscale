@@ -30,12 +30,7 @@ func retryDockerOp(ctx context.Context, op func() error) error {
 	bo.MaxInterval = DockerOpMaxInterval
 
 	_, err := backoff.Retry(ctx, func() (struct{}, error) {
-		err := op()
-		if err != nil {
-			return struct{}{}, err
-		}
-
-		return struct{}{}, nil
+		return struct{}{}, op()
 	}, backoff.WithBackOff(bo), backoff.WithMaxElapsedTime(DockerOpMaxElapsedTime))
 
 	return err
@@ -68,17 +63,16 @@ func GetFirstOrCreateNetworkWithSubnet(pool *dockertest.Pool, name, subnet strin
 			})
 		}
 
-		if _, err := pool.CreateNetwork(name, opts...); err == nil { //nolint:noinlineerr // intentional inline check
-			// Create does not give us an updated version of the resource, so we need to
-			// get it again.
-			networks, err := pool.NetworksByName(name)
-			if err != nil {
-				return nil, err
-			}
-
-			return &networks[0], nil
-		} else {
+		_, err = pool.CreateNetwork(name, opts...)
+		if err != nil {
 			return nil, fmt.Errorf("creating network: %w", err)
+		}
+
+		// Create does not give us an updated version of the resource, so we need to
+		// get it again.
+		networks, err = pool.NetworksByName(name)
+		if err != nil {
+			return nil, fmt.Errorf("looking up network names: %w", err)
 		}
 	}
 
@@ -222,11 +216,13 @@ func DisconnectAndReconnect(
 	return nil
 }
 
-func waitNetworkContainerAbsent(
+func waitNetworkContainer(
 	pool *dockertest.Pool,
 	network *dockertest.Network,
 	testContainer string,
 	timeout time.Duration,
+	want bool,
+	match func(docker.Endpoint) bool,
 ) error {
 	return pollUntil(timeout, func() (bool, error) {
 		net, err := pool.Client.NetworkInfo(network.Network.ID)
@@ -234,14 +230,25 @@ func waitNetworkContainerAbsent(
 			return false, fmt.Errorf("inspecting network %s: %w", network.Network.Name, err)
 		}
 
+		found := false
 		for _, c := range net.Containers {
-			if c.Name == testContainer || c.Name == "/"+testContainer {
-				return false, nil
+			if (c.Name == testContainer || c.Name == "/"+testContainer) && match(c) {
+				found = true
+				break
 			}
 		}
 
-		return true, nil
+		return found == want, nil
 	})
+}
+
+func waitNetworkContainerAbsent(
+	pool *dockertest.Pool,
+	network *dockertest.Network,
+	testContainer string,
+	timeout time.Duration,
+) error {
+	return waitNetworkContainer(pool, network, testContainer, timeout, false, func(docker.Endpoint) bool { return true })
 }
 
 func waitNetworkContainerPresent(
@@ -250,20 +257,7 @@ func waitNetworkContainerPresent(
 	testContainer string,
 	timeout time.Duration,
 ) error {
-	return pollUntil(timeout, func() (bool, error) {
-		net, err := pool.Client.NetworkInfo(network.Network.ID)
-		if err != nil {
-			return false, fmt.Errorf("inspecting network %s: %w", network.Network.Name, err)
-		}
-
-		for _, c := range net.Containers {
-			if (c.Name == testContainer || c.Name == "/"+testContainer) && c.IPv4Address != "" {
-				return true, nil
-			}
-		}
-
-		return false, nil
-	})
+	return waitNetworkContainer(pool, network, testContainer, timeout, true, func(c docker.Endpoint) bool { return c.IPv4Address != "" })
 }
 
 // waitContainerRouteAbsent polls the container's routing table until no

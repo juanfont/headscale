@@ -490,7 +490,8 @@ func New(
 			for _, hostPort := range hostPorts {
 				runOptions.PortBindings[docker.Port(port)] = append(
 					runOptions.PortBindings[docker.Port(port)],
-					docker.PortBinding{HostPort: hostPort})
+					docker.PortBinding{HostPort: hostPort},
+				)
 			}
 		}
 	}
@@ -1151,7 +1152,8 @@ func (t *HeadscaleInContainer) CreateAuthKeyWithOptions(opts AuthKeyOptions) (*v
 		command = append(command, "--user", strconv.FormatUint(*opts.User, 10))
 	}
 
-	command = append(command,
+	command = append(
+		command,
 		"preauthkeys",
 		"create",
 		"--expiration",
@@ -1330,13 +1332,10 @@ func (t *HeadscaleInContainer) NodesByUser() (map[string][]*v1.Node, error) {
 		return nil, err
 	}
 
-	var userMap map[string][]*v1.Node
+	userMap := make(map[string][]*v1.Node)
 	for _, node := range nodes {
-		if _, ok := userMap[node.GetUser().GetName()]; !ok {
-			mak.Set(&userMap, node.GetUser().GetName(), []*v1.Node{node})
-		} else {
-			userMap[node.GetUser().GetName()] = append(userMap[node.GetUser().GetName()], node)
-		}
+		name := node.GetUser().GetName()
+		userMap[name] = append(userMap[name], node)
 	}
 
 	return userMap, nil
@@ -1636,102 +1635,48 @@ func (t *HeadscaleInContainer) SendInterrupt() error {
 }
 
 func (t *HeadscaleInContainer) GetAllMapReponses() (map[types.NodeID][]tailcfg.MapResponse, error) {
-	// Execute curl inside the container to access the debug endpoint locally
-	command := []string{
-		"curl", "-s", "-H", acceptJSON, "http://localhost:9090/debug/mapresponses",
-	}
-
-	result, err := t.Execute(command)
-	if err != nil {
-		return nil, fmt.Errorf("fetching mapresponses from debug endpoint: %w", err)
-	}
-
-	var res map[types.NodeID][]tailcfg.MapResponse
-	if err := json.Unmarshal([]byte(result), &res); err != nil { //nolint:noinlineerr
-		return nil, fmt.Errorf("decoding routes response: %w", err)
-	}
-
-	return res, nil
+	return debugJSON[map[types.NodeID][]tailcfg.MapResponse](t, "mapresponses")
 }
 
 // PrimaryRoutes fetches the primary routes from the debug endpoint.
 func (t *HeadscaleInContainer) PrimaryRoutes() (*types.DebugRoutes, error) {
-	// Execute curl inside the container to access the debug endpoint locally
-	command := []string{
-		"curl", "-s", "-H", acceptJSON, "http://localhost:9090/debug/routes",
-	}
-
-	result, err := t.Execute(command)
-	if err != nil {
-		return nil, fmt.Errorf("fetching routes from debug endpoint: %w", err)
-	}
-
-	var debugRoutes types.DebugRoutes
-	if err := json.Unmarshal([]byte(result), &debugRoutes); err != nil { //nolint:noinlineerr
-		return nil, fmt.Errorf("decoding routes response: %w", err)
-	}
-
-	return &debugRoutes, nil
+	return debugJSON[*types.DebugRoutes](t, "routes")
 }
 
 // DebugBatcher fetches the batcher debug information from the debug endpoint.
 func (t *HeadscaleInContainer) DebugBatcher() (*hscontrol.DebugBatcherInfo, error) {
-	// Execute curl inside the container to access the debug endpoint locally
-	command := []string{
-		"curl", "-s", "-H", acceptJSON, "http://localhost:9090/debug/batcher",
-	}
-
-	result, err := t.Execute(command)
-	if err != nil {
-		return nil, fmt.Errorf("fetching batcher debug info: %w", err)
-	}
-
-	var debugInfo hscontrol.DebugBatcherInfo
-	if err := json.Unmarshal([]byte(result), &debugInfo); err != nil { //nolint:noinlineerr
-		return nil, fmt.Errorf("decoding batcher debug response: %w", err)
-	}
-
-	return &debugInfo, nil
+	return debugJSON[*hscontrol.DebugBatcherInfo](t, "batcher")
 }
 
 // DebugNodeStore fetches the [state.NodeStore] data from the debug endpoint.
 func (t *HeadscaleInContainer) DebugNodeStore() (map[types.NodeID]types.Node, error) {
-	// Execute curl inside the container to access the debug endpoint locally
-	command := []string{
-		"curl", "-s", "-H", acceptJSON, "http://localhost:9090/debug/nodestore",
-	}
-
-	result, err := t.Execute(command)
-	if err != nil {
-		return nil, fmt.Errorf("fetching nodestore debug info: %w", err)
-	}
-
-	var nodeStore map[types.NodeID]types.Node
-	if err := json.Unmarshal([]byte(result), &nodeStore); err != nil { //nolint:noinlineerr
-		return nil, fmt.Errorf("decoding nodestore debug response: %w", err)
-	}
-
-	return nodeStore, nil
+	return debugJSON[map[types.NodeID]types.Node](t, "nodestore")
 }
 
 // DebugFilter fetches the current filter rules from the debug endpoint.
 func (t *HeadscaleInContainer) DebugFilter() ([]tailcfg.FilterRule, error) {
+	return debugJSON[[]tailcfg.FilterRule](t, "filter")
+}
+
+// debugJSON fetches and decodes a JSON-returning debug endpoint by name.
+func debugJSON[T any](t *HeadscaleInContainer, endpoint string) (T, error) {
+	var res T
+
 	// Execute curl inside the container to access the debug endpoint locally
 	command := []string{
-		"curl", "-s", "-H", acceptJSON, "http://localhost:9090/debug/filter",
+		"curl", "-s", "-H", acceptJSON, "http://localhost:9090/debug/" + endpoint,
 	}
 
 	result, err := t.Execute(command)
 	if err != nil {
-		return nil, fmt.Errorf("fetching filter from debug endpoint: %w", err)
+		return res, fmt.Errorf("fetching %s from debug endpoint: %w", endpoint, err)
 	}
 
-	var filterRules []tailcfg.FilterRule
-	if err := json.Unmarshal([]byte(result), &filterRules); err != nil { //nolint:noinlineerr
-		return nil, fmt.Errorf("decoding filter response: %w", err)
+	if err := json.Unmarshal([]byte(result), &res); err != nil { //nolint:noinlineerr
+		return res, fmt.Errorf("decoding %s response: %w", endpoint, err)
 	}
 
-	return filterRules, nil
+	return res, nil
 }
 
 // DebugPolicy fetches the current policy from the debug endpoint.
