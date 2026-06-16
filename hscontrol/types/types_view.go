@@ -112,7 +112,9 @@ func (v UserView) ProviderIdentifier() sql.NullString { return v.ж.ProviderIden
 
 // Provider is the origin of the user account,
 // same as RegistrationMethod, without authkey.
-func (v UserView) Provider() string      { return v.ж.Provider }
+func (v UserView) Provider() string { return v.ж.Provider }
+
+// TODO(kradalby): See if we can fill in Gravatar here.
 func (v UserView) ProfilePicURL() string { return v.ж.ProfilePicURL }
 
 // A compilation failure here means this code must be regenerated, with the command at the top of this file.

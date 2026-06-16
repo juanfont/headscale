@@ -602,7 +602,7 @@ func validateServerConfig() error {
 
 	// Minimum inactivity time out is keepalive timeout (60s) plus a few seconds
 	// to avoid races
-	minInactivityTimeout, _ := time.ParseDuration("65s")
+	minInactivityTimeout := 65 * time.Second
 
 	ephemeralTimeout := resolveEphemeralInactivityTimeout()
 	if ephemeralTimeout <= minInactivityTimeout {
@@ -891,15 +891,15 @@ func dns() (DNSConfig, error) {
 	return dns, nil
 }
 
-// globalResolvers returns the global DNS resolvers
-// defined in the config file.
+// parseResolvers converts nameserver strings into DNS resolvers.
 // If a nameserver is a valid IP, it will be used as a regular resolver.
 // If a nameserver is a valid URL, it will be used as a DoH resolver.
 // If a nameserver is neither a valid URL nor a valid IP, it will be ignored.
-func (d *DNSConfig) globalResolvers() []*dnstype.Resolver {
+// When domain is non-empty, it is included in the warning for invalid entries.
+func parseResolvers(nameservers []string, domain string) []*dnstype.Resolver {
 	var resolvers []*dnstype.Resolver
 
-	for _, nsStr := range d.Nameservers.Global {
+	for _, nsStr := range nameservers {
 		if _, err := netip.ParseAddr(nsStr); err == nil { //nolint:noinlineerr
 			resolvers = append(resolvers, &dnstype.Resolver{
 				Addr: nsStr,
@@ -916,43 +916,29 @@ func (d *DNSConfig) globalResolvers() []*dnstype.Resolver {
 			continue
 		}
 
-		log.Warn().Str("nameserver", nsStr).Msg("invalid global nameserver, ignoring")
+		e := log.Warn().Str("nameserver", nsStr)
+		if domain != "" {
+			e = e.Str("domain", domain)
+		}
+
+		e.Msg("invalid nameserver, ignoring")
 	}
 
 	return resolvers
 }
 
+// globalResolvers returns the global DNS resolvers
+// defined in the config file.
+func (d *DNSConfig) globalResolvers() []*dnstype.Resolver {
+	return parseResolvers(d.Nameservers.Global, "")
+}
+
 // splitResolvers returns a map of domain to DNS resolvers.
-// If a nameserver is a valid IP, it will be used as a regular resolver.
-// If a nameserver is a valid URL, it will be used as a DoH resolver.
-// If a nameserver is neither a valid URL nor a valid IP, it will be ignored.
 func (d *DNSConfig) splitResolvers() map[string][]*dnstype.Resolver {
 	routes := make(map[string][]*dnstype.Resolver)
 
 	for domain, nameservers := range d.Nameservers.Split {
-		var resolvers []*dnstype.Resolver
-
-		for _, nsStr := range nameservers {
-			if _, err := netip.ParseAddr(nsStr); err == nil { //nolint:noinlineerr
-				resolvers = append(resolvers, &dnstype.Resolver{
-					Addr: nsStr,
-				})
-
-				continue
-			}
-
-			if _, err := url.Parse(nsStr); err == nil { //nolint:noinlineerr
-				resolvers = append(resolvers, &dnstype.Resolver{
-					Addr: nsStr,
-				})
-
-				continue
-			}
-
-			log.Warn().Str("nameserver", nsStr).Str("domain", domain).Msg("invalid split dns nameserver, ignoring")
-		}
-
-		routes[domain] = resolvers
+		routes[domain] = parseResolvers(nameservers, domain)
 	}
 
 	return routes
@@ -1015,43 +1001,24 @@ func warnBanner(lines []string) {
 	log.Warn().Msg(b.String())
 }
 
-func prefixV4() (*netip.Prefix, bool, error) {
-	prefixV4Str := viper.GetString("prefixes.v4")
+func parsePrefixConfig(key string, standardRange netip.Prefix, family string) (*netip.Prefix, bool, error) {
+	s := viper.GetString(key)
 
-	if prefixV4Str == "" {
+	if s == "" {
 		return nil, false, nil
 	}
 
-	prefixV4, err := netip.ParsePrefix(prefixV4Str)
+	prefix, err := netip.ParsePrefix(s)
 	if err != nil {
-		return nil, false, fmt.Errorf("parsing IPv4 prefix from config: %w", err)
+		return nil, false, fmt.Errorf("parsing %s prefix from config: %w", family, err)
 	}
 
 	builder := netipx.IPSetBuilder{}
-	builder.AddPrefix(tsaddr.CGNATRange())
+	builder.AddPrefix(standardRange)
 
 	ipSet, _ := builder.IPSet()
 
-	return &prefixV4, !ipSet.ContainsPrefix(prefixV4), nil
-}
-
-func prefixV6() (*netip.Prefix, bool, error) {
-	prefixV6Str := viper.GetString("prefixes.v6")
-
-	if prefixV6Str == "" {
-		return nil, false, nil
-	}
-
-	prefixV6, err := netip.ParsePrefix(prefixV6Str)
-	if err != nil {
-		return nil, false, fmt.Errorf("parsing IPv6 prefix from config: %w", err)
-	}
-
-	builder := netipx.IPSetBuilder{}
-	builder.AddPrefix(tsaddr.TailscaleULARange())
-	ipSet, _ := builder.IPSet()
-
-	return &prefixV6, !ipSet.ContainsPrefix(prefixV6), nil
+	return &prefix, !ipSet.ContainsPrefix(prefix), nil
 }
 
 // trustedProxies rejects 0.0.0.0/0 and ::/0 because they defeat the
@@ -1108,12 +1075,12 @@ func LoadServerConfig() (*Config, error) {
 	logConfig := logConfig()
 	zerolog.SetGlobalLevel(logConfig.Level)
 
-	prefix4, v4NonStandard, err := prefixV4()
+	prefix4, v4NonStandard, err := parsePrefixConfig("prefixes.v4", tsaddr.CGNATRange(), "IPv4")
 	if err != nil {
 		return nil, err
 	}
 
-	prefix6, v6NonStandard, err := prefixV6()
+	prefix6, v6NonStandard, err := parsePrefixConfig("prefixes.v6", tsaddr.TailscaleULARange(), "IPv6")
 	if err != nil {
 		return nil, err
 	}

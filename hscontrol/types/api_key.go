@@ -29,14 +29,7 @@ func (key *APIKey) Proto() *v1.ApiKey {
 		Id: key.ID,
 	}
 
-	// Show prefix format: distinguish between new (12-char) and legacy (7-char) keys
-	if len(key.Prefix) == NewAPIKeyPrefixLength {
-		// New format key (12-char prefix)
-		protoKey.Prefix = "hskey-api-" + key.Prefix + "-***"
-	} else {
-		// Legacy format key (7-char prefix) or fallback
-		protoKey.Prefix = key.Prefix + "***"
-	}
+	protoKey.Prefix = key.maskedPrefix()
 
 	if key.Expiration != nil {
 		protoKey.Expiration = timestamppb.New(*key.Expiration)
