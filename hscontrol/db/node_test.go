@@ -346,7 +346,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 				err = adb.DB.Save(&nodeTagged).Error
 				require.NoError(t, err)
 
-				users, err := adb.ListUsers()
+				users, err := adb.ListUsers(nil)
 				require.NoError(t, err)
 
 				nodes, err := adb.ListNodes()

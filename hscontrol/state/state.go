@@ -247,7 +247,7 @@ func NewState(cfg *types.Config) (*State, error) {
 		node.IsOnline = new(false)
 	}
 
-	users, err := db.ListUsers()
+	users, err := db.ListUsers(nil)
 	if err != nil {
 		return nil, fmt.Errorf("loading users: %w", err)
 	}
@@ -508,7 +508,7 @@ func (s *State) ListUsersWithFilter(filter *types.User) ([]types.User, error) {
 
 // ListAllUsers retrieves all users in the system.
 func (s *State) ListAllUsers() ([]types.User, error) {
-	return s.db.ListUsers()
+	return s.db.ListUsers(nil)
 }
 
 // persistNodeRowToDB writes the node's database row, re-reading the

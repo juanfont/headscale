@@ -47,45 +47,45 @@ func (TextSerialiser) Scan(ctx context.Context, field *schema.Field, dst reflect
 		fieldValue = fieldValue.Elem()
 	}
 
-	if dbValue != nil {
-		var bytes []byte
+	if dbValue == nil {
+		return nil
+	}
 
-		switch v := dbValue.(type) {
-		case []byte:
-			bytes = v
-		case string:
-			bytes = []byte(v)
-		default:
-			return fmt.Errorf("%w: %#v", errUnmarshalTextValue, dbValue)
+	var bytes []byte
+
+	switch v := dbValue.(type) {
+	case []byte:
+		bytes = v
+	case string:
+		bytes = []byte(v)
+	default:
+		return fmt.Errorf("%w: %#v", errUnmarshalTextValue, dbValue)
+	}
+
+	if !isTextUnmarshaler(fieldValue) {
+		return fmt.Errorf("%w: %T", errUnsupportedType, fieldValue.Interface())
+	}
+
+	maybeInstantiatePtr(fieldValue)
+	f := fieldValue.MethodByName("UnmarshalText")
+	args := []reflect.Value{reflect.ValueOf(bytes)}
+
+	ret := f.Call(args)
+	if !ret[0].IsNil() {
+		if err, ok := ret[0].Interface().(error); ok {
+			return decodingError(field.Name, err)
 		}
+	}
 
-		if isTextUnmarshaler(fieldValue) {
-			maybeInstantiatePtr(fieldValue)
-			f := fieldValue.MethodByName("UnmarshalText")
-			args := []reflect.Value{reflect.ValueOf(bytes)}
-
-			ret := f.Call(args)
-			if !ret[0].IsNil() {
-				if err, ok := ret[0].Interface().(error); ok {
-					return decodingError(field.Name, err)
-				}
-			}
-
-			// If the underlying field is to a pointer type, we need to
-			// assign the value as a pointer to it.
-			// If it is not a pointer, we need to assign the value to the
-			// field.
-			dstField := field.ReflectValueOf(ctx, dst)
-			if dstField.Kind() == reflect.Pointer {
-				dstField.Set(fieldValue)
-			} else {
-				dstField.Set(fieldValue.Elem())
-			}
-
-			return nil
-		} else {
-			return fmt.Errorf("%w: %T", errUnsupportedType, fieldValue.Interface())
-		}
+	// If the underlying field is to a pointer type, we need to
+	// assign the value as a pointer to it.
+	// If it is not a pointer, we need to assign the value to the
+	// field.
+	dstField := field.ReflectValueOf(ctx, dst)
+	if dstField.Kind() == reflect.Pointer {
+		dstField.Set(fieldValue)
+	} else {
+		dstField.Set(fieldValue.Elem())
 	}
 
 	return nil

@@ -205,61 +205,20 @@ func validateAPIKey(db *gorm.DB, keyStr string) (*types.APIKey, error) {
 	}
 
 	// New format: parse and verify
-	const expectedMinLength = apiKeyPrefixLength + 1 + apiKeyHashLength
-	if len(prefixAndSecret) < expectedMinLength {
-		return nil, fmt.Errorf(
-			"%w: key too short, expected at least %d chars after prefix, got %d",
-			ErrAPIKeyFailedToParse,
-			expectedMinLength,
-			len(prefixAndSecret),
-		)
-	}
-
-	// Use fixed-length parsing
-	prefix := prefixAndSecret[:apiKeyPrefixLength]
-
-	// Validate separator at expected position
-	if prefixAndSecret[apiKeyPrefixLength] != '-' {
-		return nil, fmt.Errorf(
-			"%w: expected separator '-' at position %d, got '%c'",
-			ErrAPIKeyFailedToParse,
-			apiKeyPrefixLength,
-			prefixAndSecret[apiKeyPrefixLength],
-		)
-	}
-
-	secret := prefixAndSecret[apiKeyPrefixLength+1:]
-
-	// Validate secret length
-	if len(secret) != apiKeyHashLength {
-		return nil, fmt.Errorf(
-			"%w: secret length mismatch, expected %d chars, got %d",
-			ErrAPIKeyFailedToParse,
-			apiKeyHashLength,
-			len(secret),
-		)
-	}
-
-	// Validate prefix contains only base64 URL-safe characters
-	if !isValidBase64URLSafe(prefix) {
-		return nil, fmt.Errorf(
-			"%w: prefix contains invalid characters (expected base64 URL-safe: A-Za-z0-9_-)",
-			ErrAPIKeyFailedToParse,
-		)
-	}
-
-	// Validate secret contains only base64 URL-safe characters
-	if !isValidBase64URLSafe(secret) {
-		return nil, fmt.Errorf(
-			"%w: secret contains invalid characters (expected base64 URL-safe: A-Za-z0-9_-)",
-			ErrAPIKeyFailedToParse,
-		)
+	prefix, secret, err := parsePrefixedKey(
+		prefixAndSecret,
+		apiKeyPrefixLength,
+		apiKeyHashLength,
+		ErrAPIKeyFailedToParse,
+	)
+	if err != nil {
+		return nil, err
 	}
 
 	// Look up by prefix (indexed)
 	var key types.APIKey
 
-	err := db.First(&key, "prefix = ?", prefix).Error
+	err = db.First(&key, "prefix = ?", prefix).Error
 	if err != nil {
 		return nil, fmt.Errorf("API key not found: %w", err)
 	}

@@ -347,33 +347,6 @@ func (c *Config) ToURL() (string, error) {
 		return "", fmt.Errorf("invalid config: %w", err)
 	}
 
-	var pragmas []string
-
-	// Add pragma parameters only if they're set (non-zero/non-empty)
-	if c.BusyTimeout > 0 {
-		pragmas = append(pragmas, fmt.Sprintf("busy_timeout=%d", c.BusyTimeout))
-	}
-
-	if c.JournalMode != "" {
-		pragmas = append(pragmas, fmt.Sprintf("journal_mode=%s", c.JournalMode))
-	}
-
-	if c.AutoVacuum != "" {
-		pragmas = append(pragmas, fmt.Sprintf("auto_vacuum=%s", c.AutoVacuum))
-	}
-
-	if c.WALAutocheckpoint >= 0 {
-		pragmas = append(pragmas, fmt.Sprintf("wal_autocheckpoint=%d", c.WALAutocheckpoint))
-	}
-
-	if c.Synchronous != "" {
-		pragmas = append(pragmas, fmt.Sprintf("synchronous=%s", c.Synchronous))
-	}
-
-	if c.ForeignKeys {
-		pragmas = append(pragmas, "foreign_keys=ON")
-	}
-
 	// Handle different database types
 	var baseURL string
 	if c.Path == ":memory:" {
@@ -383,16 +356,36 @@ func (c *Config) ToURL() (string, error) {
 	}
 
 	// Build query parameters
-	queryParts := make([]string, 0, 1+len(pragmas))
+	var queryParts []string
 
 	// Add _txlock first (it's a connection parameter, not a pragma)
 	if c.TxLock != "" {
 		queryParts = append(queryParts, "_txlock="+string(c.TxLock))
 	}
 
-	// Add pragma parameters
-	for _, pragma := range pragmas {
-		queryParts = append(queryParts, "_pragma="+pragma)
+	// Add pragma parameters only if they're set (non-zero/non-empty)
+	if c.BusyTimeout > 0 {
+		queryParts = append(queryParts, fmt.Sprintf("_pragma=busy_timeout=%d", c.BusyTimeout))
+	}
+
+	if c.JournalMode != "" {
+		queryParts = append(queryParts, fmt.Sprintf("_pragma=journal_mode=%s", c.JournalMode))
+	}
+
+	if c.AutoVacuum != "" {
+		queryParts = append(queryParts, fmt.Sprintf("_pragma=auto_vacuum=%s", c.AutoVacuum))
+	}
+
+	if c.WALAutocheckpoint >= 0 {
+		queryParts = append(queryParts, fmt.Sprintf("_pragma=wal_autocheckpoint=%d", c.WALAutocheckpoint))
+	}
+
+	if c.Synchronous != "" {
+		queryParts = append(queryParts, fmt.Sprintf("_pragma=synchronous=%s", c.Synchronous))
+	}
+
+	if c.ForeignKeys {
+		queryParts = append(queryParts, "_pragma=foreign_keys=ON")
 	}
 
 	if len(queryParts) > 0 {
