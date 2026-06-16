@@ -1,7 +1,6 @@
 package v2
 
 import (
-	"cmp"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -23,13 +22,22 @@ var (
 	errSelfInSources = errors.New("autogroup:self cannot be used in sources")
 )
 
-// companionCaps maps certain well-known Tailscale capabilities to
+// companionCap pairs a well-known Tailscale capability with its
+// companion capability.
+type companionCap struct {
+	original  tailcfg.PeerCapability
+	companion tailcfg.PeerCapability
+}
+
+// companionCaps lists certain well-known Tailscale capabilities and
 // their companion capability. When a grant includes one of these
 // capabilities, Tailscale automatically generates an additional
 // [tailcfg.FilterRule] with the companion capability and a nil CapMap value.
-var companionCaps = map[tailcfg.PeerCapability]tailcfg.PeerCapability{
-	tailcfg.PeerCapabilityTaildrive: tailcfg.PeerCapabilityTaildriveSharer,
-	tailcfg.PeerCapabilityRelay:     tailcfg.PeerCapabilityRelayTarget,
+// The slice is ordered by the original capability name so that
+// generated companion rules are emitted deterministically.
+var companionCaps = []companionCap{
+	{tailcfg.PeerCapabilityTaildrive, tailcfg.PeerCapabilityTaildriveSharer},
+	{tailcfg.PeerCapabilityRelay, tailcfg.PeerCapabilityRelayTarget},
 }
 
 // companionCapGrantRules returns additional [tailcfg.FilterRule]s for any
@@ -48,38 +56,22 @@ func companionCapGrantRules(
 	srcPrefixes []netip.Prefix,
 	capMap tailcfg.PeerCapMap,
 ) []tailcfg.FilterRule {
-	// Process in deterministic order by original capability name.
-	type pair struct {
-		original  tailcfg.PeerCapability
-		companion tailcfg.PeerCapability
-	}
+	companions := make([]tailcfg.FilterRule, 0, len(companionCaps))
 
-	var pairs []pair
-
-	for cap, companion := range companionCaps {
-		if _, ok := capMap[cap]; ok {
-			pairs = append(pairs, pair{cap, companion})
-		}
-	}
-
-	slices.SortFunc(pairs, func(a, b pair) int {
-		return cmp.Compare(a.original, b.original)
-	})
-
-	companions := make([]tailcfg.FilterRule, 0, len(pairs))
-
-	for _, p := range pairs {
-		companions = append(companions, tailcfg.FilterRule{
-			SrcIPs: dstIPStrings,
-			CapGrant: []tailcfg.CapGrant{
-				{
-					Dsts: srcPrefixes,
-					CapMap: tailcfg.PeerCapMap{
-						p.companion: nil,
+	for _, c := range companionCaps {
+		if _, ok := capMap[c.original]; ok {
+			companions = append(companions, tailcfg.FilterRule{
+				SrcIPs: dstIPStrings,
+				CapGrant: []tailcfg.CapGrant{
+					{
+						Dsts: srcPrefixes,
+						CapMap: tailcfg.PeerCapMap{
+							c.companion: nil,
+						},
 					},
 				},
-			},
-		})
+			})
+		}
 	}
 
 	return companions
@@ -238,7 +230,7 @@ func checkPeriodFromRule(rule SSH) time.Duration {
 	}
 }
 
-func sshCheck(baseURL string, _ time.Duration) tailcfg.SSHAction {
+func sshCheck(baseURL string) tailcfg.SSHAction {
 	holdURL := baseURL + "/machine/ssh/action/$SRC_NODE_ID/to/$DST_NODE_ID?local_user=$LOCAL_USER"
 
 	return tailcfg.SSHAction{
@@ -302,7 +294,7 @@ func (pol *Policy) compileSSHPolicy(
 		case SSHActionAccept:
 			action = sshAccept
 		case SSHActionCheck:
-			action = sshCheck(baseURL, checkPeriodFromRule(rule))
+			action = sshCheck(baseURL)
 		default:
 			return nil, fmt.Errorf(
 				"parsing SSH policy, unknown action %q, index: %d: %w",
@@ -425,12 +417,7 @@ func (pol *Policy) compileSSHPolicy(
 					allPrincipals = append(allPrincipals, taggedPrincipals...)
 
 					if len(allPrincipals) > 0 {
-						rules = append(rules, &tailcfg.SSHRule{
-							Principals: allPrincipals,
-							SSHUsers:   baseUserMap,
-							Action:     &action,
-							AcceptEnv:  acceptEnv,
-						})
+						appendRules(allPrincipals, 0, false)
 					}
 				}
 			} else if hasLocalpart && slices.ContainsFunc(node.IPs(), srcIPs.Contains) {
