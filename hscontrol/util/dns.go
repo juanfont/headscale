@@ -130,8 +130,8 @@ func GenerateIPv4DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 
 	// here we generate the base domain (e.g., 100.in-addr.arpa., 16.172.in-addr.arpa., etc.)
 	rdnsSlice := []string{}
-	for i := lastOctet - 1; i >= 0; i-- {
-		rdnsSlice = append(rdnsSlice, strconv.FormatUint(uint64(netRange.IP[i]), 10))
+	for _, b := range slices.Backward(netRange.IP[:lastOctet]) {
+		rdnsSlice = append(rdnsSlice, strconv.FormatUint(uint64(b), 10))
 	}
 
 	rdnsSlice = append(rdnsSlice, "in-addr.arpa.")
@@ -158,13 +158,7 @@ func GenerateIPv6DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 
 	maskBits, _ := netipx.PrefixIPNet(ipPrefix).Mask.Size()
 	expanded := ipPrefix.Addr().StringExpanded()
-	nibbleStr := strings.Map(func(r rune) rune {
-		if r == ':' {
-			return -1
-		}
-
-		return r
-	}, expanded)
+	nibbleStr := strings.ReplaceAll(expanded, ":", "")
 
 	// TODO?: that does not look the most efficient implementation,
 	// but the inputs are not so long as to cause problems,
@@ -172,11 +166,10 @@ func GenerateIPv6DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	// function is called only once over the lifetime of a server process.
 	prefixConstantParts := []string{}
 	for i := range maskBits / nibbleLen {
-		prefixConstantParts = append(
-			[]string{string(nibbleStr[i])},
-			prefixConstantParts...,
-		)
+		prefixConstantParts = append(prefixConstantParts, string(nibbleStr[i]))
 	}
+
+	slices.Reverse(prefixConstantParts)
 
 	makeDomain := func(variablePrefix ...string) (dnsname.FQDN, error) {
 		prefix := strings.Join(append(variablePrefix, prefixConstantParts...), ".")

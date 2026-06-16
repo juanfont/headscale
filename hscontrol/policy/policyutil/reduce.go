@@ -6,7 +6,6 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
-	"go4.org/netipx"
 	"tailscale.com/tailcfg"
 )
 
@@ -66,7 +65,7 @@ func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcf
 			// Exit-route advertisers need rules targeting the
 			// public internet so the kernel filter accepts
 			// traffic forwarded by autogroup:internet sources.
-			if hasExitRoutes && ipSetSubsetOf(expanded, util.TheInternet()) {
+			if hasExitRoutes && util.IPSetSubsetOf(expanded, util.TheInternet()) {
 				dests = append(dests, dest)
 			}
 		}
@@ -81,20 +80,6 @@ func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcf
 	}
 
 	return ret
-}
-
-func ipSetSubsetOf(candidate, container *netipx.IPSet) bool {
-	if candidate == nil || container == nil {
-		return false
-	}
-
-	for _, pref := range candidate.Prefixes() {
-		if !container.ContainsPrefix(pref) {
-			return false
-		}
-	}
-
-	return true
 }
 
 // reduceCapGrantRule filters a [tailcfg.CapGrant] rule to only include

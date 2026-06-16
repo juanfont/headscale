@@ -24,13 +24,9 @@ var (
 )
 
 func TailscaleVersionNewerOrEqual(minimum, toCheck string) bool {
-	if cmpver.Compare(minimum, toCheck) <= 0 ||
+	return cmpver.Compare(minimum, toCheck) <= 0 ||
 		toCheck == "unstable" ||
-		toCheck == "head" {
-		return true
-	}
-
-	return false
+		toCheck == "head"
 }
 
 // ParseLoginURLFromCLILogin parses the output of the tailscale up command to extract the login URL.
@@ -92,6 +88,19 @@ type Traceroute struct {
 
 	// Err contains an error if  the traceroute was not successful.
 	Err error
+}
+
+// parseLatency parses a traceroute latency token such as "1.5" or "<1",
+// returning the duration rounded to the nearest microsecond. The second
+// return value reports whether the token was a valid number.
+func parseLatency(tok string) (time.Duration, bool) {
+	ms, err := strconv.ParseFloat(strings.TrimPrefix(tok, "<"), 64)
+	if err != nil {
+		return 0, false
+	}
+
+	// Round to nearest microsecond to avoid floating point precision issues.
+	return time.Duration(ms * float64(time.Millisecond)).Round(time.Microsecond), true
 }
 
 // ParseTraceroute parses the output of the traceroute command and returns a [Traceroute] struct.
@@ -185,13 +194,8 @@ func ParseTraceroute(output string) (Traceroute, error) {
 					break
 				}
 				// Extract and remove the latency from the beginning
-				latStr := strings.TrimPrefix(remainder[latMatch[2]:latMatch[3]], "<")
-
-				ms, err := strconv.ParseFloat(latStr, 64)
-				if err == nil {
-					// Round to nearest microsecond to avoid floating point precision issues
-					duration := time.Duration(ms * float64(time.Millisecond))
-					latencies = append(latencies, duration.Round(time.Microsecond))
+				if d, ok := parseLatency(remainder[latMatch[2]:latMatch[3]]); ok {
+					latencies = append(latencies, d)
 				}
 
 				remainder = strings.TrimSpace(remainder[latMatch[1]:])
@@ -232,14 +236,8 @@ func ParseTraceroute(output string) (Traceroute, error) {
 			latencyMatches := latencyRegex.FindAllStringSubmatch(remainder, -1)
 			for _, match := range latencyMatches {
 				if len(match) > 1 {
-					// Remove '<' prefix if present (e.g., "<1 ms")
-					latStr := strings.TrimPrefix(match[1], "<")
-
-					ms, err := strconv.ParseFloat(latStr, 64)
-					if err == nil {
-						// Round to nearest microsecond to avoid floating point precision issues
-						duration := time.Duration(ms * float64(time.Millisecond))
-						latencies = append(latencies, duration.Round(time.Microsecond))
+					if d, ok := parseLatency(match[1]); ok {
+						latencies = append(latencies, d)
 					}
 				}
 			}
@@ -269,15 +267,10 @@ func ParseTraceroute(output string) (Traceroute, error) {
 }
 
 func IsCI() bool {
-	if _, ok := os.LookupEnv("CI"); ok {
-		return true
-	}
+	_, ci := os.LookupEnv("CI")
+	_, gh := os.LookupEnv("GITHUB_RUN_ID")
 
-	if _, ok := os.LookupEnv("GITHUB_RUN_ID"); ok {
-		return true
-	}
-
-	return false
+	return ci || gh
 }
 
 // GenerateRegistrationKey generates a vanity key for tracking web authentication

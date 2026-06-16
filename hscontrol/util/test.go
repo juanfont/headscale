@@ -21,20 +21,20 @@ var AddrPortComparer = cmp.Comparer(func(x, y netip.AddrPort) bool {
 	return x == y
 })
 
-var MkeyComparer = cmp.Comparer(func(x, y key.MachinePublic) bool {
-	return x.String() == y.String()
-})
+func strComparer[T interface{ String() string }]() cmp.Option {
+	return cmp.Comparer(func(x, y T) bool {
+		return x.String() == y.String()
+	})
+}
 
-var NkeyComparer = cmp.Comparer(func(x, y key.NodePublic) bool {
-	return x.String() == y.String()
-})
-
-var DkeyComparer = cmp.Comparer(func(x, y key.DiscoPublic) bool {
-	return x.String() == y.String()
-})
+var (
+	MkeyComparer = strComparer[key.MachinePublic]()
+	NkeyComparer = strComparer[key.NodePublic]()
+	DkeyComparer = strComparer[key.DiscoPublic]()
+)
 
 var ViewSliceIPProtoComparer = cmp.Comparer(views.SliceEqual[ipproto.Proto])
 
-var Comparers []cmp.Option = []cmp.Option{
+var Comparers = []cmp.Option{
 	IPComparer, PrefixComparer, AddrPortComparer, MkeyComparer, NkeyComparer, DkeyComparer, ViewSliceIPProtoComparer,
 }
