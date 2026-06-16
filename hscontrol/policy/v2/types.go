@@ -20,6 +20,7 @@ import (
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/views"
 	"tailscale.com/util/multierr"
+	"tailscale.com/util/set"
 	"tailscale.com/util/slicesx"
 )
 
@@ -341,15 +342,15 @@ func (a Asterix) resolve(_ *Policy, _ types.Users, _ views.Slice[types.NodeView]
 // IPSet merges overlapping ranges (e.g. 10.0.0.0/8 absorbs
 // 10.33.0.0/16), but Tailscale preserves individual route entries.
 func approvedSubnetRoutes(nodes views.Slice[types.NodeView]) []string {
-	seen := make(map[string]bool)
+	seen := make(set.Set[string])
 
 	var routes []string
 
 	for _, node := range nodes.All() {
 		for _, route := range node.SubnetRoutes() {
 			s := route.String()
-			if !seen[s] {
-				seen[s] = true
+			if !seen.Contains(s) {
+				seen.Add(s)
 				routes = append(routes, s)
 			}
 		}

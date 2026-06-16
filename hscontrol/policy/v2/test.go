@@ -196,6 +196,17 @@ func (r PolicyTestResults) Errors() string {
 	return strings.Join(lines, "\n")
 }
 
+// wrapTestResult returns nil when every test passed, otherwise wraps the
+// rendered failure breakdown in sentinel. errs is passed uncalled so it is
+// only evaluated on the failure path.
+func wrapTestResult(sentinel error, allPassed bool, errs func() string) error {
+	if allPassed {
+		return nil
+	}
+
+	return fmt.Errorf("%w:\n%s", sentinel, errs())
+}
+
 // RunTests evaluates the policy's own `tests` block against the live compiled
 // filter and returns a wrapped error when any test fails. Callers that need
 // the per-test breakdown can call runPolicyTests directly.
@@ -208,11 +219,8 @@ func (pm *PolicyManager) RunTests() error {
 	defer pm.mu.Unlock()
 
 	results := runPolicyTests(pm.pol, pm.filter, pm.users, pm.nodes)
-	if results.AllPassed {
-		return nil
-	}
 
-	return fmt.Errorf("%w:\n%s", errPolicyTestsFailed, results.Errors())
+	return wrapTestResult(errPolicyTestsFailed, results.AllPassed, results.Errors)
 }
 
 // evaluateTests runs the `tests` block against a fresh compilation of pol.
@@ -233,11 +241,8 @@ func evaluateTests(pol *Policy, users []types.User, nodes views.Slice[types.Node
 	}
 
 	results := runPolicyTests(pol, filter, users, nodes)
-	if results.AllPassed {
-		return nil
-	}
 
-	return fmt.Errorf("%w:\n%s", errPolicyTestsFailed, results.Errors())
+	return wrapTestResult(errPolicyTestsFailed, results.AllPassed, results.Errors)
 }
 
 // runPolicyTests is the pure evaluation function: given a policy, the
@@ -285,39 +290,28 @@ func runPolicyTest(test PolicyTest, pol *Policy, filter []tailcfg.FilterRule, us
 		return res
 	}
 
-	for _, dst := range test.Accept {
-		allowed, err := evalReachability(srcPrefixes, dst, test.Proto, pol, filter, users, nodes)
-		if err != nil {
-			res.Passed = false
-			res.Errors = append(res.Errors, fmt.Sprintf("error testing %q: %v", dst, err))
+	check := func(dsts []string, wantAllowed bool, ok, fail *[]string) {
+		for _, dst := range dsts {
+			allowed, err := evalReachability(srcPrefixes, dst, test.Proto, pol, filter, users, nodes)
+			if err != nil {
+				res.Passed = false
+				res.Errors = append(res.Errors, fmt.Sprintf("error testing %q: %v", dst, err))
 
-			continue
-		}
+				continue
+			}
 
-		if allowed {
-			res.AcceptOK = append(res.AcceptOK, dst)
-		} else {
-			res.Passed = false
-			res.AcceptFail = append(res.AcceptFail, dst)
-		}
-	}
+			if allowed == wantAllowed {
+				*ok = append(*ok, dst)
+			} else {
+				res.Passed = false
 
-	for _, dst := range test.Deny {
-		allowed, err := evalReachability(srcPrefixes, dst, test.Proto, pol, filter, users, nodes)
-		if err != nil {
-			res.Passed = false
-			res.Errors = append(res.Errors, fmt.Sprintf("error testing %q: %v", dst, err))
-
-			continue
-		}
-
-		if !allowed {
-			res.DenyOK = append(res.DenyOK, dst)
-		} else {
-			res.Passed = false
-			res.DenyFail = append(res.DenyFail, dst)
+				*fail = append(*fail, dst)
+			}
 		}
 	}
+
+	check(test.Accept, true, &res.AcceptOK, &res.AcceptFail)
+	check(test.Deny, false, &res.DenyOK, &res.DenyFail)
 
 	return res
 }

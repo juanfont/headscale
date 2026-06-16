@@ -11,6 +11,7 @@ import (
 	"go4.org/netipx"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/views"
+	"tailscale.com/util/set"
 )
 
 // grantCategory classifies a grant by what per-node work it needs.
@@ -324,17 +325,15 @@ func (pol *Policy) compileOneGrant(
 		)
 	}
 
-	// Classify and store deferred self data.
-	switch {
-	case len(autogroupSelfDests) > 0:
+	// Classify and store deferred self data. The struct literal already
+	// initializes category to grantCategoryRegular (the zero value).
+	if len(autogroupSelfDests) > 0 {
 		cg.category = grantCategorySelf
 		cg.self = &selfGrantData{
 			resolvedSrcs:      resolvedSrcs,
 			internetProtocols: grant.InternetProtocols,
 			app:               grant.App,
 		}
-	default:
-		cg.category = grantCategoryRegular
 	}
 
 	return cg, nil
@@ -472,15 +471,12 @@ func buildSrcIPStrings(
 	// individual IPs from non-wildcard sources alongside the
 	// merged CGNAT ranges rather than absorbing them.
 	if hasWildcard && len(nonWildcardSrcs) > 0 {
-		seen := make(map[string]bool, len(srcIPStrs))
-		for _, s := range srcIPStrs {
-			seen[s] = true
-		}
+		seen := set.SetOf(srcIPStrs)
 
 		for _, ips := range nonWildcardSrcs {
 			for _, s := range ips.Strings() {
-				if !seen[s] {
-					seen[s] = true
+				if !seen.Contains(s) {
+					seen.Add(s)
 					srcIPStrs = append(srcIPStrs, s)
 				}
 			}
@@ -627,7 +623,7 @@ func collectRelayTargetIPs(grants []compiledGrant) (*netipx.IPSet, error) {
 // traffic through it must recompute when it goes offline. Returns nil when no
 // via grants exist.
 func collectViaTargetTags(grants []compiledGrant) map[Tag]struct{} {
-	var tags map[Tag]struct{}
+	tags := make(map[Tag]struct{})
 
 	for i := range grants {
 		if grants[i].via == nil {
@@ -635,12 +631,12 @@ func collectViaTargetTags(grants []compiledGrant) map[Tag]struct{} {
 		}
 
 		for _, t := range grants[i].via.viaTags {
-			if tags == nil {
-				tags = make(map[Tag]struct{})
-			}
-
 			tags[t] = struct{}{}
 		}
+	}
+
+	if len(tags) == 0 {
+		return nil
 	}
 
 	return tags
