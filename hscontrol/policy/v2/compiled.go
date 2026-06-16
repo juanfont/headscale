@@ -339,6 +339,20 @@ func (pol *Policy) compileOneGrant(
 	return cg, nil
 }
 
+// mergeResolvedSrcs merges every prefix from the resolved sources into a
+// single [resolved] address set.
+func mergeResolvedSrcs(resolvedSrcs []ResolvedAddresses) (resolved, error) {
+	var b netipx.IPSetBuilder
+
+	for _, ips := range resolvedSrcs {
+		for _, pref := range ips.Prefixes() {
+			b.AddPrefix(pref)
+		}
+	}
+
+	return newResolved(&b)
+}
+
 // compileOneViaGrant resolves sources for a via grant and stores the
 // deferred per-node data. The actual via-node matching and route
 // intersection happens in [compileViaForNode].
@@ -363,15 +377,7 @@ func (pol *Policy) compileOneViaGrant(
 	}
 
 	// Build merged SrcIPs.
-	var srcIPs netipx.IPSetBuilder
-
-	for _, ips := range resolvedSrcs {
-		for _, pref := range ips.Prefixes() {
-			srcIPs.AddPrefix(pref)
-		}
-	}
-
-	srcResolved, err := newResolved(&srcIPs)
+	srcResolved, err := mergeResolvedSrcs(resolvedSrcs)
 	if err != nil {
 		return nil, err
 	}
@@ -445,20 +451,8 @@ func buildSrcIPStrings(
 	hasWildcard, hasDangerAll bool,
 	nodes views.Slice[types.NodeView],
 ) []string {
-	var merged netipx.IPSetBuilder
-
-	for _, ips := range resolvedSrcs {
-		for _, pref := range ips.Prefixes() {
-			merged.AddPrefix(pref)
-		}
-	}
-
-	srcResolved, err := newResolved(&merged)
-	if err != nil {
-		return nil
-	}
-
-	if srcResolved.Empty() {
+	srcResolved, err := mergeResolvedSrcs(resolvedSrcs)
+	if err != nil || srcResolved.Empty() {
 		return nil
 	}
 

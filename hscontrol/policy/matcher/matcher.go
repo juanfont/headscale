@@ -52,13 +52,7 @@ func MatchesFromFilterRules(rules []tailcfg.FilterRule) []Match {
 // [policy.ReduceNodes], hiding the cap target
 // from the source unless a companion IP-level rule also exists.
 func MatchFromFilterRule(rule tailcfg.FilterRule) Match {
-	srcs := new(netipx.IPSetBuilder)
 	dests := new(netipx.IPSetBuilder)
-
-	for _, srcIP := range rule.SrcIPs {
-		set, _ := util.ParseIPSet(srcIP, nil)
-		srcs.AddSet(set)
-	}
 
 	for _, dp := range rule.DstPorts {
 		set, _ := util.ParseIPSet(dp.IP, nil)
@@ -71,13 +65,29 @@ func MatchFromFilterRule(rule tailcfg.FilterRule) Match {
 		}
 	}
 
-	srcsSet, _ := srcs.IPSet()
 	destsSet, _ := dests.IPSet()
 
 	return Match{
-		srcs:  srcsSet,
+		srcs:  buildIPSet(rule.SrcIPs),
 		dests: destsSet,
 	}
+}
+
+// buildIPSet parses each string via [util.ParseIPSet] and unions the
+// results into a single [netipx.IPSet]. Unparseable entries are silently
+// dropped (fail-open): the result is narrower than the input described,
+// but never wider.
+func buildIPSet(addrs []string) *netipx.IPSet {
+	builder := new(netipx.IPSetBuilder)
+
+	for _, addr := range addrs {
+		set, _ := util.ParseIPSet(addr, nil)
+		builder.AddSet(set)
+	}
+
+	set, _ := builder.IPSet()
+
+	return set
 }
 
 func (m *Match) SrcsContainsIPs(ips ...netip.Addr) bool {

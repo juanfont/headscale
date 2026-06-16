@@ -105,9 +105,6 @@ var nodeAttrUnsupportedCaps = map[tailcfg.NodeCapability]string{
 
 // Policy validation errors.
 var (
-	ErrUnknownAliasType            = errors.New("unknown alias type")
-	ErrUnknownAutoApprover         = errors.New("unknown auto approver type")
-	ErrUnknownOwnerType            = errors.New("unknown owner type")
 	ErrInvalidUsername             = errors.New("username must contain @")
 	ErrUserNotFound                = errors.New("user not found")
 	ErrMultipleUsersFound          = errors.New("multiple users found")
@@ -145,8 +142,6 @@ var (
 	ErrHostNotDefined              = errors.New("host not defined in policy")
 	ErrSSHSourceAliasNotSupported  = errors.New("alias not supported for SSH source")
 	ErrSSHDestAliasNotSupported    = errors.New("alias not supported for SSH destination")
-	ErrUnknownSSHDestAlias         = errors.New("unknown SSH destination alias type")
-	ErrUnknownSSHSrcAlias          = errors.New("unknown SSH source alias type")
 	ErrUnknownField                = errors.New("unknown field")
 	ErrProtocolNoSpecificPorts     = errors.New("protocol does not support specific ports")
 	ErrTestEmptyAssertions         = errors.New("test entry must have at least one of \"accept\" or \"deny\"")
@@ -263,26 +258,7 @@ func (a AliasWithPorts) MarshalJSON() ([]byte, error) {
 		return []byte(`""`), nil
 	}
 
-	var alias string
-
-	switch v := a.Alias.(type) {
-	case *Username:
-		alias = string(*v)
-	case *Group:
-		alias = string(*v)
-	case *Tag:
-		alias = string(*v)
-	case *Host:
-		alias = string(*v)
-	case *Prefix:
-		alias = v.String()
-	case *AutoGroup:
-		alias = string(*v)
-	case Asterix:
-		alias = "*"
-	default:
-		return nil, fmt.Errorf("%w: %T", ErrUnknownAliasType, v)
-	}
+	alias := a.String()
 
 	// If no ports are specified
 	if len(a.Ports) == 0 {
@@ -1133,24 +1109,7 @@ func (a *Aliases) MarshalJSON() ([]byte, error) {
 
 	aliases := make([]string, len(*a))
 	for i, alias := range *a {
-		switch v := alias.(type) {
-		case *Username:
-			aliases[i] = string(*v)
-		case *Group:
-			aliases[i] = string(*v)
-		case *Tag:
-			aliases[i] = string(*v)
-		case *Host:
-			aliases[i] = string(*v)
-		case *Prefix:
-			aliases[i] = v.String()
-		case *AutoGroup:
-			aliases[i] = string(*v)
-		case Asterix:
-			aliases[i] = "*"
-		default:
-			return nil, fmt.Errorf("%w: %T", ErrUnknownAliasType, v)
-		}
+		aliases[i] = alias.String()
 	}
 
 	return json.Marshal(aliases)
@@ -1227,16 +1186,7 @@ func (aa AutoApprovers) MarshalJSON() ([]byte, error) {
 
 	approvers := make([]string, len(aa))
 	for i, approver := range aa {
-		switch v := approver.(type) {
-		case *Username:
-			approvers[i] = string(*v)
-		case *Tag:
-			approvers[i] = string(*v)
-		case *Group:
-			approvers[i] = string(*v)
-		default:
-			return nil, fmt.Errorf("%w: %T", ErrUnknownAutoApprover, v)
-		}
+		approvers[i] = approver.String()
 	}
 
 	return json.Marshal(approvers)
@@ -1321,16 +1271,7 @@ func (o Owners) MarshalJSON() ([]byte, error) {
 
 	owners := make([]string, len(o))
 	for i, owner := range o {
-		switch v := owner.(type) {
-		case *Username:
-			owners[i] = string(*v)
-		case *Group:
-			owners[i] = string(*v)
-		case *Tag:
-			owners[i] = string(*v)
-		default:
-			return nil, fmt.Errorf("%w: %T", ErrUnknownOwnerType, v)
-		}
+		owners[i] = owner.String()
 	}
 
 	return json.Marshal(owners)
@@ -1525,16 +1466,7 @@ func (to TagOwners) MarshalJSON() ([]byte, error) {
 		ownerStrs := make([]string, len(owners))
 
 		for i, owner := range owners {
-			switch v := owner.(type) {
-			case *Username:
-				ownerStrs[i] = string(*v)
-			case *Group:
-				ownerStrs[i] = string(*v)
-			case *Tag:
-				ownerStrs[i] = string(*v)
-			default:
-				return nil, fmt.Errorf("%w: %T", ErrUnknownOwnerType, v)
-			}
+			ownerStrs[i] = owner.String()
 		}
 
 		rawTagOwners[tagStr] = ownerStrs
@@ -3021,22 +2953,9 @@ func (a SSHDstAliases) MarshalJSON() ([]byte, error) {
 
 	aliases := make([]string, len(a))
 	for i, alias := range a {
-		switch v := alias.(type) {
-		case *Username:
-			aliases[i] = string(*v)
-		case *Tag:
-			aliases[i] = string(*v)
-		case *AutoGroup:
-			aliases[i] = string(*v)
-		case *Host:
-			aliases[i] = string(*v)
-		case Asterix:
-			// Marshal wildcard as "*" so it gets rejected during unmarshal
-			// with a proper error message explaining alternatives
-			aliases[i] = "*"
-		default:
-			return nil, fmt.Errorf("%w: %T", ErrUnknownSSHDestAlias, v)
-		}
+		// A wildcard renders as "*" so it gets rejected during unmarshal
+		// with a proper error message explaining alternatives.
+		aliases[i] = alias.String()
 	}
 
 	return json.Marshal(aliases)
@@ -3050,20 +2969,7 @@ func (a *SSHSrcAliases) MarshalJSON() ([]byte, error) {
 
 	aliases := make([]string, len(*a))
 	for i, alias := range *a {
-		switch v := alias.(type) {
-		case *Username:
-			aliases[i] = string(*v)
-		case *Group:
-			aliases[i] = string(*v)
-		case *Tag:
-			aliases[i] = string(*v)
-		case *AutoGroup:
-			aliases[i] = string(*v)
-		case Asterix:
-			aliases[i] = "*"
-		default:
-			return nil, fmt.Errorf("%w: %T", ErrUnknownSSHSrcAlias, v)
-		}
+		aliases[i] = alias.String()
 	}
 
 	return json.Marshal(aliases)
