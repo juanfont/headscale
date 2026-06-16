@@ -507,6 +507,47 @@ func TestSafeServerURL(t *testing.T) {
 	}
 }
 
+func TestSafeServerURLWithPort(t *testing.T) {
+	tests := []struct {
+		serverURL, baseDomain,
+		wantErr string
+	}{
+		{
+			serverURL:  "https://server.headscale.com:443",
+			baseDomain: "headscale.com",
+			wantErr:    errServerURLSuffix.Error(),
+		},
+		{
+			serverURL:  "https://server.subdomain.headscale.com:8080",
+			baseDomain: "headscale.com",
+			wantErr:    errServerURLSuffix.Error(),
+		},
+		{
+			serverURL:  "https://headscale.com:443",
+			baseDomain: "headscale.com",
+			wantErr:    errServerURLSame.Error(),
+		},
+		{
+			serverURL:  "https://example.com:8080",
+			baseDomain: "example.org",
+		},
+	}
+
+	for _, tt := range tests {
+		testName := fmt.Sprintf("server=%s domain=%s", tt.serverURL, tt.baseDomain)
+		t.Run(testName, func(t *testing.T) {
+			err := isSafeServerURL(tt.serverURL, tt.baseDomain)
+			if tt.wantErr != "" {
+				assert.EqualError(t, err, tt.wantErr)
+
+				return
+			}
+
+			assert.NoError(t, err)
+		})
+	}
+}
+
 // TestConfigJSONOmitsSecrets verifies that marshalling a [Config] to JSON
 // (as /debug/config does via [state.State.DebugConfig]) does not leak the
 // Postgres password, the OIDC client secret, or the headscale admin
