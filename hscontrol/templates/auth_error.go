@@ -30,12 +30,8 @@ func AuthError(result AuthErrorResult) *elem.Element {
 		elem.Text(result.Message),
 	)
 
-	return HtmlStructure(
-		elem.Title(nil, elem.Text(result.Title)),
-		mdTypesetBody(
-			headscaleLogo(),
-			box,
-			pageFooter(),
-		),
+	return page(
+		result.Title,
+		box,
 	)
 }

@@ -78,12 +78,17 @@ func orDivider() *elem.Element {
 	)
 }
 
-// successBox creates a green success feedback box with a checkmark icon.
-// The heading is displayed as bold green text, and children are rendered below it.
-// Pairs with warningBox for consistent feedback styling.
+// feedbackBox creates a coloured feedback box with an icon and a bold heading.
+// colorVar provides both the border and heading colour, bgVar the background;
+// role and ariaLive set the accessibility attributes. Children render below the
+// heading.
 //
-//nolint:unused // Used in auth_success.go template.
-func successBox(heading string, children ...elem.Node) *elem.Element {
+//nolint:unused // Wrapped by successBox and errorBox.
+func feedbackBox(
+	icon elem.Node,
+	colorVar, bgVar, role, ariaLive, heading string,
+	children ...elem.Node,
+) *elem.Element {
 	return elem.Div(
 		attrs.Props{
 			attrs.Style: styles.Props{
@@ -91,22 +96,22 @@ func successBox(heading string, children ...elem.Node) *elem.Element {
 				styles.AlignItems:      cssCenter,
 				styles.Gap:             spaceM,
 				styles.Padding:         spaceL,
-				styles.BackgroundColor: "var(--hs-success-bg)",
-				styles.Border:          "1px solid var(--hs-success)",
+				styles.BackgroundColor: bgVar,
+				styles.Border:          "1px solid " + colorVar,
 				styles.BorderRadius:    spaceS,
 				styles.MarginBottom:    spaceXL,
 			}.ToInline(),
-			attrs.Role:  "status",
-			"aria-live": "polite",
+			attrs.Role:  role,
+			"aria-live": ariaLive,
 		},
-		checkboxIcon(),
+		icon,
 		elem.Div(
 			nil,
 			append([]elem.Node{
 				elem.Strong(attrs.Props{
 					attrs.Style: styles.Props{
 						styles.Display:      "block",
-						styles.Color:        "var(--hs-success)",
+						styles.Color:        colorVar,
 						styles.FontSize:     fontSizeH3,
 						styles.FontWeight:   "700",
 						styles.MarginBottom: spaceXS,
@@ -114,6 +119,19 @@ func successBox(heading string, children ...elem.Node) *elem.Element {
 				}, elem.Text(heading)),
 			}, children...)...,
 		),
+	)
+}
+
+// successBox creates a green success feedback box with a checkmark icon.
+// The heading is displayed as bold green text, and children are rendered below it.
+// Pairs with warningBox for consistent feedback styling.
+//
+//nolint:unused // Used in auth_success.go template.
+func successBox(heading string, children ...elem.Node) *elem.Element {
+	return feedbackBox(
+		checkboxIcon(),
+		"var(--hs-success)", "var(--hs-success-bg)", "status", "polite",
+		heading, children...,
 	)
 }
 
@@ -130,36 +148,10 @@ func checkboxIcon() elem.Node {
 //
 //nolint:unused // Used in auth_error.go template.
 func errorBox(heading string, children ...elem.Node) *elem.Element {
-	return elem.Div(
-		attrs.Props{
-			attrs.Style: styles.Props{
-				styles.Display:         "flex",
-				styles.AlignItems:      cssCenter,
-				styles.Gap:             spaceM,
-				styles.Padding:         spaceL,
-				styles.BackgroundColor: "var(--hs-error-bg)",
-				styles.Border:          "1px solid var(--hs-error)",
-				styles.BorderRadius:    spaceS,
-				styles.MarginBottom:    spaceXL,
-			}.ToInline(),
-			attrs.Role:  "alert",
-			"aria-live": "assertive",
-		},
+	return feedbackBox(
 		errorIcon(),
-		elem.Div(
-			nil,
-			append([]elem.Node{
-				elem.Strong(attrs.Props{
-					attrs.Style: styles.Props{
-						styles.Display:      "block",
-						styles.Color:        "var(--hs-error)",
-						styles.FontSize:     fontSizeH3,
-						styles.FontWeight:   "700",
-						styles.MarginBottom: spaceXS,
-					}.ToInline(),
-				}, elem.Text(heading)),
-			}, children...)...,
-		),
+		"var(--hs-error)", "var(--hs-error-bg)", "alert", "assertive",
+		heading, children...,
 	)
 }
 

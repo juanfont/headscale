@@ -41,22 +41,20 @@ func AuthSuccess(result AuthSuccessResult) *elem.Element {
 		elem.Text(". "+result.Message),
 	)
 
-	return HtmlStructure(
-		elem.Title(nil, elem.Text(result.Title)),
-		mdTypesetBody(
-			headscaleLogo(),
-			box,
-			H2(elem.Text("Getting started")),
-			P(elem.Text("Check out the documentation to learn more about headscale and Tailscale:")),
-			Ul(
-				elem.Li(nil,
-					externalLink("https://headscale.net/stable/", "Headscale documentation"),
-				),
-				elem.Li(nil,
-					externalLink("https://tailscale.com/docs", "Tailscale docs"),
-				),
+	return page(
+		result.Title,
+		box,
+		H2(elem.Text("Getting started")),
+		P(elem.Text("Check out the documentation to learn more about headscale and Tailscale:")),
+		Ul(
+			elem.Li(
+				nil,
+				externalLink("https://headscale.net/stable/", "Headscale documentation"),
 			),
-			pageFooter(),
+			elem.Li(
+				nil,
+				externalLink("https://tailscale.com/docs", "Tailscale docs"),
+			),
 		),
 	)
 }

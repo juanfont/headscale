@@ -39,7 +39,6 @@ type ConnectedNode struct {
 // and a list of connected nodes ([ConnectedNode]) as quick-ping links.
 func PingPage(query string, result *PingResult, nodes []ConnectedNode) *elem.Element {
 	children := []elem.Node{
-		headscaleLogo(),
 		H1(elem.Text("Ping Node")),
 		P(elem.Text("Check if a connected node responds to a PingRequest.")),
 		pingExplanation(),
@@ -54,16 +53,12 @@ func PingPage(query string, result *PingResult, nodes []ConnectedNode) *elem.Ele
 		children = append(children, connectedNodeList(nodes))
 	}
 
-	children = append(children, pageFooter())
-
-	return HtmlStructure(
-		elem.Title(nil, elem.Text("Ping Node - Headscale")),
-		mdTypesetBody(children...),
-	)
+	return page("Ping Node - Headscale", children...)
 }
 
 func pingExplanation() *elem.Element {
-	return detailsBox("How does this work?",
+	return detailsBox(
+		"How does this work?",
 		Ol(
 			elem.Li(nil, elem.Text(
 				"The server sends a PingRequest to the target node via its MapResponse stream.",
@@ -88,17 +83,18 @@ func pingExplanation() *elem.Element {
 }
 
 func pingForm(query string) *elem.Element {
-	return elem.Form(attrs.Props{
-		attrs.Method: "POST",
-		attrs.Action: "/debug/ping",
-		attrs.Style: styles.Props{
-			styles.Display:    "flex",
-			styles.Gap:        spaceS,
-			styles.AlignItems: cssCenter,
-			styles.FlexWrap:   "wrap",
-			styles.MarginTop:  spaceM,
-		}.ToInline(),
-	},
+	return elem.Form(
+		attrs.Props{
+			attrs.Method: "POST",
+			attrs.Action: "/debug/ping",
+			attrs.Style: styles.Props{
+				styles.Display:    "flex",
+				styles.Gap:        spaceS,
+				styles.AlignItems: cssCenter,
+				styles.FlexWrap:   "wrap",
+				styles.MarginTop:  spaceM,
+			}.ToInline(),
+		},
 		elem.Input(attrs.Props{
 			attrs.Type:        "text",
 			attrs.Name:        "node",
@@ -131,11 +127,12 @@ func connectedNodeList(nodes []ConnectedNode) *elem.Element {
 		items = append(items, elem.Li(nil, A(href, elem.Text(label))))
 	}
 
-	return elem.Div(attrs.Props{
-		attrs.Style: styles.Props{
-			styles.MarginTop: space2XL,
-		}.ToInline(),
-	},
+	return elem.Div(
+		attrs.Props{
+			attrs.Style: styles.Props{
+				styles.MarginTop: space2XL,
+			}.ToInline(),
+		},
 		H2(elem.Text("Connected Nodes")),
 		Ul(items...),
 	)
