@@ -50,44 +50,45 @@ var authRegisterCmd = &cobra.Command{
 		return printOutput(
 			cmd,
 			response.GetNode(),
-			fmt.Sprintf("Node %s registered", response.GetNode().GetGivenName()))
+			fmt.Sprintf("Node %s registered", response.GetNode().GetGivenName()),
+		)
 	}),
+}
+
+// authDecisionRunE builds a RunE for an auth decision command (approve or
+// reject) that reads the auth-id flag, invokes the given gRPC call, and prints
+// the response. errVerb is used in the error message; okMsg is printed on
+// success.
+func authDecisionRunE[Resp any](
+	errVerb, okMsg string,
+	call func(ctx context.Context, client v1.HeadscaleServiceClient, authID string) (Resp, error),
+) func(*cobra.Command, []string) error {
+	return grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+		authID, _ := cmd.Flags().GetString("auth-id")
+
+		response, err := call(ctx, client, authID)
+		if err != nil {
+			return fmt.Errorf("%s auth request: %w", errVerb, err)
+		}
+
+		return printOutput(cmd, response, okMsg)
+	})
 }
 
 var authApproveCmd = &cobra.Command{
 	Use:   "approve",
 	Short: "Approve a pending authentication request",
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		authID, _ := cmd.Flags().GetString("auth-id")
-
-		request := &v1.AuthApproveRequest{
-			AuthId: authID,
-		}
-
-		response, err := client.AuthApprove(ctx, request)
-		if err != nil {
-			return fmt.Errorf("approving auth request: %w", err)
-		}
-
-		return printOutput(cmd, response, "Auth request approved")
-	}),
+	RunE: authDecisionRunE("approving", "Auth request approved",
+		func(ctx context.Context, client v1.HeadscaleServiceClient, authID string) (*v1.AuthApproveResponse, error) {
+			return client.AuthApprove(ctx, &v1.AuthApproveRequest{AuthId: authID})
+		}),
 }
 
 var authRejectCmd = &cobra.Command{
 	Use:   "reject",
 	Short: "Reject a pending authentication request",
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		authID, _ := cmd.Flags().GetString("auth-id")
-
-		request := &v1.AuthRejectRequest{
-			AuthId: authID,
-		}
-
-		response, err := client.AuthReject(ctx, request)
-		if err != nil {
-			return fmt.Errorf("rejecting auth request: %w", err)
-		}
-
-		return printOutput(cmd, response, "Auth request rejected")
-	}),
+	RunE: authDecisionRunE("rejecting", "Auth request rejected",
+		func(ctx context.Context, client v1.HeadscaleServiceClient, authID string) (*v1.AuthRejectResponse, error) {
+			return client.AuthReject(ctx, &v1.AuthRejectRequest{AuthId: authID})
+		}),
 }

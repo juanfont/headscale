@@ -84,7 +84,8 @@ var registerNodeCmd = &cobra.Command{
 		return printOutput(
 			cmd,
 			response.GetNode(),
-			fmt.Sprintf("Node %s registered", response.GetNode().GetGivenName()))
+			fmt.Sprintf("Node %s registered", response.GetNode().GetGivenName()),
+		)
 	}),
 }
 
@@ -135,7 +136,7 @@ var listNodeRoutesCmd = &cobra.Command{
 		}
 
 		nodes = lo.Filter(nodes, func(n *v1.Node, _ int) bool {
-			return (n.GetSubnetRoutes() != nil && len(n.GetSubnetRoutes()) > 0) || (n.GetApprovedRoutes() != nil && len(n.GetApprovedRoutes()) > 0) || (n.GetAvailableRoutes() != nil && len(n.GetAvailableRoutes()) > 0)
+			return len(n.GetSubnetRoutes()) > 0 || len(n.GetApprovedRoutes()) > 0 || len(n.GetAvailableRoutes()) > 0
 		})
 
 		return printListOutput(cmd, nodes, func() error {
