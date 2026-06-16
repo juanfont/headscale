@@ -17,7 +17,7 @@ func TestCreateAndDestroyUser(t *testing.T) {
 	user := db.CreateUserForTest("test")
 	assert.Equal(t, "test", user.Name)
 
-	users, err := db.ListUsers()
+	users, err := db.ListUsers(nil)
 	require.NoError(t, err)
 	assert.Len(t, users, 1)
 
@@ -227,7 +227,7 @@ func TestRenameUser(t *testing.T) {
 				userTest := db.CreateUserForTest("test")
 				assert.Equal(t, "test", userTest.Name)
 
-				users, err := db.ListUsers()
+				users, err := db.ListUsers(nil)
 				require.NoError(t, err)
 				assert.Len(t, users, 1)
 

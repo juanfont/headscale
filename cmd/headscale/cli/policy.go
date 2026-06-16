@@ -135,7 +135,7 @@ var setPolicy = &cobra.Command{
 			}
 			defer d.Close()
 
-			users, err := d.ListUsers()
+			users, err := d.ListUsers(nil)
 			if err != nil {
 				return fmt.Errorf("loading users for policy validation: %w", err)
 			}
@@ -194,7 +194,7 @@ var checkPolicy = &cobra.Command{
 			}
 			defer d.Close()
 
-			users, err := d.ListUsers()
+			users, err := d.ListUsers(nil)
 			if err != nil {
 				return fmt.Errorf("loading users: %w", err)
 			}

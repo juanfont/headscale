@@ -11,6 +11,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var errVersionUpgrade = errors.New("version upgrade not supported")
@@ -66,22 +67,20 @@ func parseVersion(s string) (semver, error) {
 		return semver{}, fmt.Errorf("%q: %w", s, errVersionFormat)
 	}
 
-	major, err := strconv.Atoi(parts[0])
-	if err != nil {
-		return semver{}, fmt.Errorf("invalid major version in %q: %w", s, err)
+	var out [3]int
+
+	names := [...]string{"major", "minor", "patch"}
+
+	for i, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil {
+			return semver{}, fmt.Errorf("invalid %s version in %q: %w", names[i], s, err)
+		}
+
+		out[i] = n
 	}
 
-	minor, err := strconv.Atoi(parts[1])
-	if err != nil {
-		return semver{}, fmt.Errorf("invalid minor version in %q: %w", s, err)
-	}
-
-	patch, err := strconv.Atoi(parts[2])
-	if err != nil {
-		return semver{}, fmt.Errorf("invalid patch version in %q: %w", s, err)
-	}
-
-	return semver{Major: major, Minor: minor, Patch: patch}, nil
+	return semver{Major: out[0], Minor: out[1], Patch: out[2]}, nil
 }
 
 // ensureDatabaseVersionTable creates the database_versions table if it
@@ -118,23 +117,12 @@ func getDatabaseVersion(db *gorm.DB) (string, error) {
 func setDatabaseVersion(db *gorm.DB, version string) error {
 	now := time.Now().UTC()
 
-	// Try update first, then insert if no rows affected.
-	result := db.Exec(
-		"UPDATE database_versions SET version = ?, updated_at = ? WHERE id = 1",
-		version, now,
-	)
-	if result.Error != nil {
-		return fmt.Errorf("updating database version: %w", result.Error)
-	}
-
-	if result.RowsAffected == 0 {
-		err := db.Exec(
-			"INSERT INTO database_versions (id, version, updated_at) VALUES (1, ?, ?)",
-			version, now,
-		).Error
-		if err != nil {
-			return fmt.Errorf("inserting database version: %w", err)
-		}
+	err := db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"version", "updated_at"}),
+	}).Create(&DatabaseVersion{ID: 1, Version: version, UpdatedAt: now}).Error
+	if err != nil {
+		return fmt.Errorf("upserting database version: %w", err)
 	}
 
 	return nil

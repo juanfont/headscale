@@ -211,60 +211,18 @@ func findAuthKey(tx *gorm.DB, keyStr string) (*types.PreAuthKey, error) {
 	}
 
 	// New format: hskey-auth-{12-char-prefix}-{64-char-hash}
-	// Expected minimum length: 12 (prefix) + 1 (separator) + 64 (hash) = 77
-	const expectedMinLength = authKeyPrefixLength + 1 + authKeyLength
-	if len(prefixAndHash) < expectedMinLength {
-		return nil, fmt.Errorf(
-			"%w: key too short, expected at least %d chars after prefix, got %d",
-			ErrPreAuthKeyFailedToParse,
-			expectedMinLength,
-			len(prefixAndHash),
-		)
-	}
-
-	// Use fixed-length parsing instead of separator-based to handle dashes in base64 URL-safe
-	prefix := prefixAndHash[:authKeyPrefixLength]
-
-	// Validate separator at expected position
-	if prefixAndHash[authKeyPrefixLength] != '-' {
-		return nil, fmt.Errorf(
-			"%w: expected separator '-' at position %d, got '%c'",
-			ErrPreAuthKeyFailedToParse,
-			authKeyPrefixLength,
-			prefixAndHash[authKeyPrefixLength],
-		)
-	}
-
-	hash := prefixAndHash[authKeyPrefixLength+1:]
-
-	// Validate hash length
-	if len(hash) != authKeyLength {
-		return nil, fmt.Errorf(
-			"%w: hash length mismatch, expected %d chars, got %d",
-			ErrPreAuthKeyFailedToParse,
-			authKeyLength,
-			len(hash),
-		)
-	}
-
-	// Validate prefix contains only base64 URL-safe characters
-	if !isValidBase64URLSafe(prefix) {
-		return nil, fmt.Errorf(
-			"%w: prefix contains invalid characters (expected base64 URL-safe: A-Za-z0-9_-)",
-			ErrPreAuthKeyFailedToParse,
-		)
-	}
-
-	// Validate hash contains only base64 URL-safe characters
-	if !isValidBase64URLSafe(hash) {
-		return nil, fmt.Errorf(
-			"%w: hash contains invalid characters (expected base64 URL-safe: A-Za-z0-9_-)",
-			ErrPreAuthKeyFailedToParse,
-		)
+	prefix, hash, err := parsePrefixedKey(
+		prefixAndHash,
+		authKeyPrefixLength,
+		authKeyLength,
+		ErrPreAuthKeyFailedToParse,
+	)
+	if err != nil {
+		return nil, err
 	}
 
 	// Look up key by prefix
-	err := tx.Preload("User").First(&pak, "prefix = ?", prefix).Error
+	err = tx.Preload("User").First(&pak, "prefix = ?", prefix).Error
 	if err != nil {
 		return nil, ErrPreAuthKeyNotFound
 	}
@@ -276,6 +234,69 @@ func findAuthKey(tx *gorm.DB, keyStr string) (*types.PreAuthKey, error) {
 	}
 
 	return &pak, nil
+}
+
+// parsePrefixedKey splits the prefix-and-secret portion of a new-format key
+// (the part after the "hskey-*-" prefix) into its fixed-length prefix and
+// secret components, validating the length, separator position, and that both
+// components are base64 URL-safe. Fixed-length parsing is used instead of
+// separator-based to handle dashes in base64 URL-safe characters.
+func parsePrefixedKey(
+	prefixAndSecret string,
+	prefixLen, secretLen int,
+	parseErr error,
+) (string, string, error) {
+	expectedMinLength := prefixLen + 1 + secretLen
+	if len(prefixAndSecret) < expectedMinLength {
+		return "", "", fmt.Errorf(
+			"%w: key too short, expected at least %d chars after prefix, got %d",
+			parseErr,
+			expectedMinLength,
+			len(prefixAndSecret),
+		)
+	}
+
+	prefix := prefixAndSecret[:prefixLen]
+
+	// Validate separator at expected position
+	if prefixAndSecret[prefixLen] != '-' {
+		return "", "", fmt.Errorf(
+			"%w: expected separator '-' at position %d, got '%c'",
+			parseErr,
+			prefixLen,
+			prefixAndSecret[prefixLen],
+		)
+	}
+
+	secret := prefixAndSecret[prefixLen+1:]
+
+	// Validate secret length
+	if len(secret) != secretLen {
+		return "", "", fmt.Errorf(
+			"%w: secret length mismatch, expected %d chars, got %d",
+			parseErr,
+			secretLen,
+			len(secret),
+		)
+	}
+
+	// Validate prefix contains only base64 URL-safe characters
+	if !isValidBase64URLSafe(prefix) {
+		return "", "", fmt.Errorf(
+			"%w: prefix contains invalid characters (expected base64 URL-safe: A-Za-z0-9_-)",
+			parseErr,
+		)
+	}
+
+	// Validate secret contains only base64 URL-safe characters
+	if !isValidBase64URLSafe(secret) {
+		return "", "", fmt.Errorf(
+			"%w: secret contains invalid characters (expected base64 URL-safe: A-Za-z0-9_-)",
+			parseErr,
+		)
+	}
+
+	return prefix, secret, nil
 }
 
 // isValidBase64URLSafe checks if a string contains only base64 URL-safe characters.

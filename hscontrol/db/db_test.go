@@ -36,7 +36,7 @@ func TestSQLiteMigrationAndDataValidation(t *testing.T) {
 
 				// Verify users data preservation
 				users, err := Read(hsdb.DB, func(rx *gorm.DB) ([]types.User, error) {
-					return ListUsers(rx)
+					return ListUsers(rx, nil)
 				})
 				require.NoError(t, err)
 				assert.Len(t, users, 1, "should preserve all 1 user from original schema")
