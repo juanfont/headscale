@@ -76,8 +76,7 @@ func NewHarness(tb testing.TB, numClients int, opts ...HarnessOption) *TestHarne
 	for i := range numClients {
 		name := clientName(i)
 
-		copts := append([]ClientOption{WithUser(user)}, hc.clientOpts...)
-		c := NewClient(tb, server, name, copts...)
+		c := h.newClient(tb, name, hc.clientOpts...)
 		h.clients = append(h.clients, c)
 	}
 
@@ -124,11 +123,20 @@ func (h *TestHarness) AddClient(tb testing.TB, opts ...ClientOption) *TestClient
 	tb.Helper()
 
 	name := clientName(len(h.clients))
-	copts := append([]ClientOption{WithUser(h.defaultUser)}, opts...)
-	c := NewClient(tb, h.Server, name, copts...)
+	c := h.newClient(tb, name, opts...)
 	h.clients = append(h.clients, c)
 
 	return c
+}
+
+// newClient creates a [TestClient] on the harness server, prepending the
+// shared default user so caller options can override it.
+func (h *TestHarness) newClient(tb testing.TB, name string, opts ...ClientOption) *TestClient {
+	tb.Helper()
+
+	copts := append([]ClientOption{WithUser(h.defaultUser)}, opts...)
+
+	return NewClient(tb, h.Server, name, copts...)
 }
 
 // WaitForMeshComplete blocks until every connected client sees

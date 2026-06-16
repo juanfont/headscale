@@ -192,15 +192,37 @@ func (c *TestClient) register(tb testing.TB) {
 func (c *TestClient) startPoll(tb testing.TB) {
 	tb.Helper()
 
+	c.startPollLoop()
+}
+
+// startPollLoop creates a fresh poll context and launches the background
+// [controlclient.Direct.PollNetMap] goroutine, which blocks until the
+// context is cancelled or the server closes the connection.
+func (c *TestClient) startPollLoop() {
 	c.pollCtx, c.pollCancel = context.WithCancel(context.Background())
 	c.pollDone = make(chan struct{})
 
 	go func() {
 		defer close(c.pollDone)
-		// [controlclient.Direct.PollNetMap] blocks until ctx is cancelled or the server closes
-		// the connection.
 		_ = c.direct.PollNetMap(c.pollCtx, c)
 	}()
+}
+
+// resetNetmapState clears the cached netmap and drains any pending
+// updates from a previous session so that convergence waits observe
+// only the new session's maps.
+func (c *TestClient) resetNetmapState() {
+	c.mu.Lock()
+	c.netmap = nil
+	c.mu.Unlock()
+
+	for {
+		select {
+		case <-c.updates:
+		default:
+			return
+		}
+	}
 }
 
 // UpdateFullNetmap implements [controlclient.NetmapUpdater].
@@ -274,24 +296,11 @@ func (c *TestClient) Reconnect(tb testing.TB) {
 		}
 	}
 
-	// Clear stale netmap data so that callers like [TestClient.WaitForPeers]
-	// actually wait for the new session's map instead of returning
-	// immediately based on the old session's cached state.
-	c.mu.Lock()
-	c.netmap = nil
-	c.mu.Unlock()
-
-	// Drain any pending updates from the old session so they
-	// don't satisfy a subsequent [TestClient.WaitForPeers]/[TestClient.WaitForUpdate].
-	for {
-		select {
-		case <-c.updates:
-		default:
-			goto drained
-		}
-	}
-
-drained:
+	// Clear stale netmap data and drain pending updates so that callers
+	// like [TestClient.WaitForPeers] actually wait for the new session's
+	// map instead of returning immediately based on the old session's
+	// cached state.
+	c.resetNetmapState()
 
 	// Re-register and start polling again.
 	c.register(tb)
@@ -343,30 +352,8 @@ func (c *TestClient) ReloginAndPoll(ctx context.Context) error {
 		return fmt.Errorf("servertest: TryLogin(%s): unexpected auth URL %q (expected auto-auth with preauth key)", c.Name, url) //nolint:err113
 	}
 
-	// Clear stale netmap state from the previous session so that
-	// convergence waits observe only the new session's maps.
-	c.mu.Lock()
-	c.netmap = nil
-	c.mu.Unlock()
-
-	for {
-		select {
-		case <-c.updates:
-			continue
-		default:
-		}
-
-		break
-	}
-
-	c.pollCtx, c.pollCancel = context.WithCancel(context.Background())
-	c.pollDone = make(chan struct{})
-
-	go func() {
-		defer close(c.pollDone)
-
-		_ = c.direct.PollNetMap(c.pollCtx, c)
-	}()
+	c.resetNetmapState()
+	c.startPollLoop()
 
 	return nil
 }
@@ -389,14 +376,7 @@ func (c *TestClient) RestartPoll(ctx context.Context) error {
 		}
 	}
 
-	c.pollCtx, c.pollCancel = context.WithCancel(context.Background())
-	c.pollDone = make(chan struct{})
-
-	go func() {
-		defer close(c.pollDone)
-
-		_ = c.direct.PollNetMap(c.pollCtx, c)
-	}()
+	c.startPollLoop()
 
 	return nil
 }
@@ -430,10 +410,25 @@ func (c *TestClient) Netmap() *netmap.NetworkMap {
 func (c *TestClient) WaitForPeers(tb testing.TB, n int, timeout time.Duration) {
 	tb.Helper()
 
+	c.waitForPeers(tb, n, timeout, "WaitForPeers", func(got int) bool { return got >= n })
+}
+
+// waitForPeers blocks until match reports the current peer count
+// satisfies the caller's predicate, or until timeout expires. op
+// names the caller for the timeout failure message.
+func (c *TestClient) waitForPeers(
+	tb testing.TB,
+	n int,
+	timeout time.Duration,
+	op string,
+	match func(got int) bool,
+) {
+	tb.Helper()
+
 	deadline := time.After(timeout)
 
 	for {
-		if nm := c.Netmap(); nm != nil && len(nm.Peers) >= n {
+		if nm := c.Netmap(); nm != nil && match(len(nm.Peers)) {
 			return
 		}
 
@@ -448,7 +443,7 @@ func (c *TestClient) WaitForPeers(tb testing.TB, n int, timeout time.Duration) {
 				got = len(nm.Peers)
 			}
 
-			tb.Fatalf("servertest: WaitForPeers(%s, %d): timeout after %v (got %d peers)", c.Name, n, timeout, got)
+			tb.Fatalf("servertest: %s(%s, %d): timeout after %v (got %d peers)", op, c.Name, n, timeout, got)
 		}
 	}
 }
@@ -552,27 +547,7 @@ func (c *TestClient) SelfName() string {
 func (c *TestClient) WaitForPeerCount(tb testing.TB, n int, timeout time.Duration) {
 	tb.Helper()
 
-	deadline := time.After(timeout)
-
-	for {
-		if nm := c.Netmap(); nm != nil && len(nm.Peers) == n {
-			return
-		}
-
-		select {
-		case <-c.updates:
-			// Check again.
-		case <-deadline:
-			nm := c.Netmap()
-
-			got := 0
-			if nm != nil {
-				got = len(nm.Peers)
-			}
-
-			tb.Fatalf("servertest: WaitForPeerCount(%s, %d): timeout after %v (got %d peers)", c.Name, n, timeout, got)
-		}
-	}
+	c.waitForPeers(tb, n, timeout, "WaitForPeerCount", func(got int) bool { return got == n })
 }
 
 // WaitForCondition blocks until condFn returns true on the latest

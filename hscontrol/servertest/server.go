@@ -236,40 +236,32 @@ func (s *TestServer) CreateUser(tb testing.TB, name string) *types.User {
 // CreatePreAuthKey creates a reusable pre-auth key for the given user.
 func (s *TestServer) CreatePreAuthKey(tb testing.TB, userID types.UserID) string {
 	tb.Helper()
-
-	uid := userID
-
-	pak, err := s.st.CreatePreAuthKey(&uid, true, false, nil, nil)
-	if err != nil {
-		tb.Fatalf("servertest: CreatePreAuthKey: %v", err)
-	}
-
-	return pak.Key
+	return s.createPreAuthKey(tb, userID, true, false, nil)
 }
 
 // CreateTaggedPreAuthKey creates a reusable pre-auth key with ACL tags.
 func (s *TestServer) CreateTaggedPreAuthKey(tb testing.TB, userID types.UserID, tags []string) string {
 	tb.Helper()
-
-	uid := userID
-
-	pak, err := s.st.CreatePreAuthKey(&uid, true, false, nil, tags)
-	if err != nil {
-		tb.Fatalf("servertest: CreateTaggedPreAuthKey: %v", err)
-	}
-
-	return pak.Key
+	return s.createPreAuthKey(tb, userID, true, false, tags)
 }
 
 // CreateEphemeralPreAuthKey creates an ephemeral pre-auth key.
 func (s *TestServer) CreateEphemeralPreAuthKey(tb testing.TB, userID types.UserID) string {
 	tb.Helper()
+	return s.createPreAuthKey(tb, userID, false, true, nil)
+}
 
-	uid := userID
+func (s *TestServer) createPreAuthKey(
+	tb testing.TB,
+	userID types.UserID,
+	reusable, ephemeral bool,
+	tags []string,
+) string {
+	tb.Helper()
 
-	pak, err := s.st.CreatePreAuthKey(&uid, false, true, nil, nil)
+	pak, err := s.st.CreatePreAuthKey(&userID, reusable, ephemeral, nil, tags)
 	if err != nil {
-		tb.Fatalf("servertest: CreateEphemeralPreAuthKey: %v", err)
+		tb.Fatalf("servertest: createPreAuthKey: %v", err)
 	}
 
 	return pak.Key
