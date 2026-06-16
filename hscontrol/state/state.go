@@ -771,6 +771,16 @@ func (s *State) ResolveNode(query string) (types.NodeView, bool) {
 		return s.GetNodeByID(id)
 	}
 
+	// keepLowest returns whichever node has the lower ID, so repeated
+	// calls resolve deterministically across snapshot iterations.
+	keepLowest := func(cur, cand types.NodeView) types.NodeView {
+		if !cur.Valid() || cand.ID() < cur.ID() {
+			return cand
+		}
+
+		return cur
+	}
+
 	// Try IP address.
 	addr, addrErr := netip.ParseAddr(query)
 	if addrErr == nil {
@@ -781,9 +791,7 @@ func (s *State) ResolveNode(query string) (types.NodeView, bool) {
 				continue
 			}
 
-			if !match.Valid() || n.ID() < match.ID() {
-				match = n
-			}
+			match = keepLowest(match, n)
 		}
 
 		return match, match.Valid()
@@ -795,13 +803,9 @@ func (s *State) ResolveNode(query string) (types.NodeView, bool) {
 
 	for _, n := range s.ListNodes().All() {
 		if n.GivenName() == query {
-			if !givenMatch.Valid() || n.ID() < givenMatch.ID() {
-				givenMatch = n
-			}
+			givenMatch = keepLowest(givenMatch, n)
 		} else if n.Hostname() == query {
-			if !hostMatch.Valid() || n.ID() < hostMatch.ID() {
-				hostMatch = n
-			}
+			hostMatch = keepLowest(hostMatch, n)
 		}
 	}
 

@@ -62,51 +62,23 @@ type DebugStringInfo struct {
 
 // DebugOverview returns a comprehensive overview of the current state for debugging.
 func (s *State) DebugOverview() string {
-	allNodes := s.nodeStore.ListNodes()
-	users, _ := s.ListAllUsers()
+	info := s.DebugOverviewJSON()
 
 	var sb strings.Builder
 
 	sb.WriteString("=== Headscale State Overview ===\n\n")
 
 	// Node statistics
-	fmt.Fprintf(&sb, "Nodes: %d total\n", allNodes.Len())
-
-	userNodeCounts := make(map[string]int)
-	onlineCount := 0
-	expiredCount := 0
-	ephemeralCount := 0
-
-	now := time.Now()
-
-	for _, node := range allNodes.All() {
-		if node.Valid() {
-			userName := node.Owner().Name()
-			userNodeCounts[userName]++
-
-			if node.IsOnline().Valid() && node.IsOnline().Get() {
-				onlineCount++
-			}
-
-			if node.Expiry().Valid() && node.Expiry().Get().Before(now) {
-				expiredCount++
-			}
-
-			if node.AuthKey().Valid() && node.AuthKey().Ephemeral() {
-				ephemeralCount++
-			}
-		}
-	}
-
-	fmt.Fprintf(&sb, "  - Online: %d\n", onlineCount)
-	fmt.Fprintf(&sb, "  - Expired: %d\n", expiredCount)
-	fmt.Fprintf(&sb, "  - Ephemeral: %d\n", ephemeralCount)
+	fmt.Fprintf(&sb, "Nodes: %d total\n", info.Nodes.Total)
+	fmt.Fprintf(&sb, "  - Online: %d\n", info.Nodes.Online)
+	fmt.Fprintf(&sb, "  - Expired: %d\n", info.Nodes.Expired)
+	fmt.Fprintf(&sb, "  - Ephemeral: %d\n", info.Nodes.Ephemeral)
 	sb.WriteString("\n")
 
 	// User statistics
-	fmt.Fprintf(&sb, "Users: %d total\n", len(users))
+	fmt.Fprintf(&sb, "Users: %d total\n", info.TotalUsers)
 
-	for userName, nodeCount := range userNodeCounts {
+	for userName, nodeCount := range info.Users {
 		fmt.Fprintf(&sb, "  - %s: %d nodes\n", userName, nodeCount)
 	}
 
@@ -114,18 +86,17 @@ func (s *State) DebugOverview() string {
 
 	// Policy information
 	sb.WriteString("Policy:\n")
-	fmt.Fprintf(&sb, "  - Mode: %s\n", s.cfg.Policy.Mode)
+	fmt.Fprintf(&sb, "  - Mode: %s\n", info.Policy.Mode)
 
-	if s.cfg.Policy.Mode == types.PolicyModeFile {
-		fmt.Fprintf(&sb, "  - Path: %s\n", s.cfg.Policy.Path)
+	if info.Policy.Mode == string(types.PolicyModeFile) {
+		fmt.Fprintf(&sb, "  - Path: %s\n", info.Policy.Path)
 	}
 
 	sb.WriteString("\n")
 
 	// DERP information
-	derpMap := s.derpMap.Load()
-	if derpMap != nil {
-		fmt.Fprintf(&sb, "DERP: %d regions configured\n", len(derpMap.Regions))
+	if info.DERP.Configured {
+		fmt.Fprintf(&sb, "DERP: %d regions configured\n", info.DERP.Regions)
 	} else {
 		sb.WriteString("DERP: not configured\n")
 	}
@@ -133,14 +104,7 @@ func (s *State) DebugOverview() string {
 	sb.WriteString("\n")
 
 	// Route information
-	primaryStr := s.PrimaryRoutesString()
-
-	routeCount := len(strings.Split(strings.TrimSpace(primaryStr), "\n"))
-	if primaryStr == "" {
-		routeCount = 0
-	}
-
-	fmt.Fprintf(&sb, "Primary Routes: %d active\n", routeCount)
+	fmt.Fprintf(&sb, "Primary Routes: %d active\n", info.PrimaryRoutes)
 	sb.WriteString("\n")
 
 	// Registration cache
@@ -371,14 +335,7 @@ func (s *State) DebugOverviewJSON() DebugOverviewInfo {
 	}
 
 	// Route information
-	primaryStr := s.PrimaryRoutesString()
-
-	routeCount := len(strings.Split(strings.TrimSpace(primaryStr), "\n"))
-	if primaryStr == "" {
-		routeCount = 0
-	}
-
-	info.PrimaryRoutes = routeCount
+	info.PrimaryRoutes = len(s.nodeStore.PrimaryRoutes())
 
 	return info
 }
