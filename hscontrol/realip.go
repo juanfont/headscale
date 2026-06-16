@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"slices"
 
 	realclientip "github.com/realclientip/realclientip-go"
 )
@@ -77,13 +78,9 @@ func peerTrusted(remoteAddr string, trusted []netip.Prefix) bool {
 		return false
 	}
 
-	for _, p := range trusted {
-		if p.Contains(addr) {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(trusted, func(p netip.Prefix) bool {
+		return p.Contains(addr)
+	})
 }
 
 func parsePeerAddr(remoteAddr string) (netip.Addr, bool) {

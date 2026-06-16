@@ -1,12 +1,13 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -390,8 +391,8 @@ func (sc *StatsCollector) GetSummary() []ContainerStatsSummary {
 	}
 
 	// Sort by container name for consistent output
-	sort.Slice(summaries, func(i, j int) bool {
-		return summaries[i].ContainerName < summaries[j].ContainerName
+	slices.SortFunc(summaries, func(a, b ContainerStatsSummary) int {
+		return cmp.Compare(a.ContainerName, b.ContainerName)
 	})
 
 	return summaries
@@ -408,14 +409,8 @@ func calculateStatsSummary(values []float64) StatsSummary {
 	sum := 0.0
 
 	for _, value := range values {
-		if value < minVal {
-			minVal = value
-		}
-
-		if value > maxVal {
-			maxVal = value
-		}
-
+		minVal = min(minVal, value)
+		maxVal = max(maxVal, value)
 		sum += value
 	}
 

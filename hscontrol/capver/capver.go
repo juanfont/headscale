@@ -3,10 +3,11 @@ package capver
 //go:generate go run ../../tools/capver/main.go
 
 import (
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 
-	xmaps "golang.org/x/exp/maps"
 	"tailscale.com/tailcfg"
 	"tailscale.com/util/set"
 )
@@ -25,10 +26,7 @@ func CanOldCodeBeCleanedUp() {
 }
 
 func tailscaleVersSorted() []string {
-	vers := xmaps.Keys(tailscaleToCapVer)
-	sort.Strings(vers)
-
-	return vers
+	return slices.Sorted(maps.Keys(tailscaleToCapVer))
 }
 
 // TailscaleVersion returns the Tailscale version for the given [tailcfg.CapabilityVersion].

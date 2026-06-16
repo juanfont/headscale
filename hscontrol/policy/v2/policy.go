@@ -1455,20 +1455,9 @@ func (pm *PolicyManager) invalidateAutogroupSelfCache(oldNodes, newNodes views.S
 				affectedUsers[newNode.TypedUserID()] = struct{}{}
 			}
 
-			// Check if IPs changed (simple check - could be more sophisticated)
-			oldIPs := oldNode.IPs()
-
-			newIPs := newNode.IPs()
-			if len(oldIPs) != len(newIPs) {
+			// Check if IPs changed.
+			if !slices.Equal(oldNode.IPs(), newNode.IPs()) {
 				affectedUsers[newNode.TypedUserID()] = struct{}{}
-			} else {
-				// Check if any IPs are different
-				for i, oldIP := range oldIPs {
-					if i >= len(newIPs) || oldIP != newIPs[i] {
-						affectedUsers[newNode.TypedUserID()] = struct{}{}
-						break
-					}
-				}
 			}
 		}
 	}

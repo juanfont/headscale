@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -318,13 +319,9 @@ func printError(err error, outputFormat string) {
 }
 
 func hasMachineOutputFlag() bool {
-	for _, arg := range os.Args {
-		if arg == outputFormatJSON || arg == outputFormatJSONLine || arg == outputFormatYAML {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(os.Args, func(arg string) bool {
+		return arg == outputFormatJSON || arg == outputFormatJSONLine || arg == outputFormatYAML
+	})
 }
 
 type tokenAuth struct {

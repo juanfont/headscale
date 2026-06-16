@@ -2,6 +2,7 @@ package v2
 
 import (
 	"fmt"
+	"maps"
 	"net/netip"
 	"slices"
 	"strings"
@@ -92,14 +93,7 @@ func (r SSHPolicyTestResults) Errors() string {
 }
 
 func sortedUsers(m map[string][]string) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-
-	slices.Sort(keys)
-
-	return keys
+	return slices.Sorted(maps.Keys(m))
 }
 
 // displayUser shows an empty username as `""` rather than blank.
@@ -394,10 +388,7 @@ func resolveSSHTestSource(
 		return nil, 0, nil
 	}
 
-	out := make([]netip.Addr, 0)
-	for a := range addrs.Iter() {
-		out = append(out, a)
-	}
+	out := slices.Collect(addrs.Iter())
 
 	var userID uint
 

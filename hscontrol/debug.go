@@ -1,12 +1,14 @@
 package hscontrol
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
 	"net/netip"
+	"slices"
 	"strings"
 	"time"
 
@@ -262,13 +264,9 @@ func (h *Headscale) debugBatcher() string {
 	}
 
 	// Sort by node ID
-	for i := 0; i < len(nodes); i++ {
-		for j := i + 1; j < len(nodes); j++ {
-			if nodes[i].id > nodes[j].id {
-				nodes[i], nodes[j] = nodes[j], nodes[i]
-			}
-		}
-	}
+	slices.SortFunc(nodes, func(a, b nodeStatus) int {
+		return cmp.Compare(a.id, b.id)
+	})
 
 	// Output sorted nodes
 	for _, node := range nodes {
