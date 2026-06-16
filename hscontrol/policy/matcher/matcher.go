@@ -120,12 +120,5 @@ func (m *Match) DestsIsTheInternet() bool {
 
 	// Superset-of-[util.TheInternet] check handles merged filter rules
 	// where the internet prefixes are combined with other dests.
-	theInternet := util.TheInternet()
-	for _, prefix := range theInternet.Prefixes() {
-		if !m.dests.ContainsPrefix(prefix) {
-			return false
-		}
-	}
-
-	return true
+	return util.IPSetSubsetOf(util.TheInternet(), m.dests)
 }
