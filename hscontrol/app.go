@@ -204,13 +204,15 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		if cfg.PrefixV4 != nil {
 			magicDNSDomains = append(
 				magicDNSDomains,
-				util.GenerateIPv4DNSRootDomain(*cfg.PrefixV4)...)
+				util.GenerateIPv4DNSRootDomain(*cfg.PrefixV4)...,
+			)
 		}
 
 		if cfg.PrefixV6 != nil {
 			magicDNSDomains = append(
 				magicDNSDomains,
-				util.GenerateIPv6DNSRootDomain(*cfg.PrefixV6)...)
+				util.GenerateIPv6DNSRootDomain(*cfg.PrefixV6)...,
+			)
 		}
 
 		// we might have routes already from Split DNS
@@ -283,7 +285,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 
 	lastExpiryCheck := time.Unix(0, 0)
 
-	derpTickerChan := make(<-chan time.Time)
+	var derpTickerChan <-chan time.Time
 
 	if h.cfg.DERP.AutoUpdate && h.cfg.DERP.UpdateFrequency != 0 {
 		derpTicker := time.NewTicker(h.cfg.DERP.UpdateFrequency)
@@ -295,8 +297,6 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 	var extraRecordsUpdate <-chan []tailcfg.DNSRecord
 	if h.extraRecordMan != nil {
 		extraRecordsUpdate = h.extraRecordMan.UpdateCh()
-	} else {
-		extraRecordsUpdate = make(chan []tailcfg.DNSRecord)
 	}
 
 	var (
@@ -320,8 +320,6 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			Dur("interval", h.cfg.Node.Routes.HA.ProbeInterval).
 			Dur("timeout", h.cfg.Node.Routes.HA.ProbeTimeout).
 			Msg("HA subnet router health probing enabled")
-	} else {
-		haHealthChan = make(<-chan time.Time)
 	}
 
 	for {
@@ -387,6 +385,20 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 	}
 }
 
+// checkBearerToken validates an "Authorization" header value. It reports
+// whether the API key is valid, whether the header carried the "Bearer "
+// prefix, and any validation error. Callers translate these outcomes into
+// their transport-specific status.
+func (h *Headscale) checkBearerToken(authHeader string) (bool, bool, error) {
+	if !strings.HasPrefix(authHeader, AuthPrefix) {
+		return false, false, nil
+	}
+
+	valid, err := h.state.ValidateAPIKey(strings.TrimPrefix(authHeader, AuthPrefix))
+
+	return valid, true, err
+}
+
 func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 	req any,
 	info *grpc.UnaryServerInfo,
@@ -420,16 +432,14 @@ func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 		)
 	}
 
-	token := authHeader[0]
-
-	if !strings.HasPrefix(token, AuthPrefix) {
+	valid, hasPrefix, err := h.checkBearerToken(authHeader[0])
+	if !hasPrefix {
 		return ctx, status.Error(
 			codes.Unauthenticated,
 			`missing "Bearer " prefix in "Authorization" header`,
 		)
 	}
 
-	valid, err := h.state.ValidateAPIKey(strings.TrimPrefix(token, AuthPrefix))
 	if err != nil {
 		return ctx, status.Error(codes.Internal, "validating token")
 	}
@@ -465,7 +475,8 @@ func (h *Headscale) httpAuthenticationMiddleware(next http.Handler) http.Handler
 			}
 		}
 
-		if !strings.HasPrefix(authHeader, AuthPrefix) {
+		valid, hasPrefix, err := h.checkBearerToken(authHeader)
+		if !hasPrefix {
 			log.Error().
 				Caller().
 				Str("client_address", req.RemoteAddr).
@@ -475,7 +486,6 @@ func (h *Headscale) httpAuthenticationMiddleware(next http.Handler) http.Handler
 			return
 		}
 
-		valid, err := h.state.ValidateAPIKey(strings.TrimPrefix(authHeader, AuthPrefix))
 		if err != nil {
 			log.Info().
 				Caller().
@@ -792,7 +802,8 @@ func (h *Headscale) Serve() error {
 		}
 
 		if tlsConfig != nil {
-			grpcOptions = append(grpcOptions,
+			grpcOptions = append(
+				grpcOptions,
 				grpc.Creds(credentials.NewTLS(tlsConfig)),
 			)
 		} else {
@@ -1015,14 +1026,14 @@ func (h *Headscale) Serve() error {
 }
 
 func (h *Headscale) getTLSSettings() (*tls.Config, error) {
-	var err error
+	tlsEnabled := h.cfg.TLS.LetsEncrypt.Hostname != "" || h.cfg.TLS.CertPath != ""
+	if tlsEnabled && !strings.HasPrefix(h.cfg.ServerURL, "https://") {
+		log.Warn().Msg("listening with TLS but ServerURL does not start with https://")
+	} else if !tlsEnabled && !strings.HasPrefix(h.cfg.ServerURL, "http://") {
+		log.Warn().Msg("listening without TLS but ServerURL does not start with http://")
+	}
 
 	if h.cfg.TLS.LetsEncrypt.Hostname != "" {
-		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
-			log.Warn().
-				Msg("Listening with TLS but ServerURL does not start with https://")
-		}
-
 		certManager := autocert.Manager{
 			Prompt:     autocert.AcceptTOS,
 			HostPolicy: autocert.HostWhitelist(h.cfg.TLS.LetsEncrypt.Hostname),
@@ -1068,27 +1079,26 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 		default:
 			return nil, errUnsupportedLetsEncryptChallengeType
 		}
-	} else if h.cfg.TLS.CertPath == "" {
-		if !strings.HasPrefix(h.cfg.ServerURL, "http://") {
-			log.Warn().Msg("listening without TLS but ServerURL does not start with http://")
-		}
-
-		return nil, err
-	} else {
-		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
-			log.Warn().Msg("listening with TLS but ServerURL does not start with https://")
-		}
-
-		tlsConfig := &tls.Config{
-			NextProtos:   []string{"http/1.1"},
-			Certificates: make([]tls.Certificate, 1),
-			MinVersion:   tls.VersionTLS12,
-		}
-
-		tlsConfig.Certificates[0], err = tls.LoadX509KeyPair(h.cfg.TLS.CertPath, h.cfg.TLS.KeyPath)
-
-		return tlsConfig, err
 	}
+
+	if h.cfg.TLS.CertPath == "" {
+		return nil, nil //nolint:nilnil // intentional: no TLS config when neither LetsEncrypt nor a cert path is set
+	}
+
+	tlsConfig := &tls.Config{
+		NextProtos:   []string{"http/1.1"},
+		Certificates: make([]tls.Certificate, 1),
+		MinVersion:   tls.VersionTLS12,
+	}
+
+	cert, err := tls.LoadX509KeyPair(h.cfg.TLS.CertPath, h.cfg.TLS.KeyPath)
+	if err != nil {
+		return nil, err
+	}
+
+	tlsConfig.Certificates[0] = cert
+
+	return tlsConfig, nil
 }
 
 func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
