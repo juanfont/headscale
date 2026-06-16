@@ -241,11 +241,7 @@ func (rn *AuthRequest) FinishAuth(verdict AuthVerdict) {
 		return
 	}
 
-	select {
-	case rn.finished <- verdict:
-	default:
-	}
-
+	rn.finished <- verdict
 	close(rn.finished)
 }
 

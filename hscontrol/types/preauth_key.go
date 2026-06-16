@@ -97,8 +97,8 @@ func (key *PreAuthKey) Proto() *v1.PreAuthKey {
 
 	// For new keys (with prefix/hash), show the prefix so users can identify the key
 	// For legacy keys (with plaintext key), show the full key for backwards compatibility
-	if key.Prefix != "" {
-		protoKey.Key = "hskey-auth-" + key.Prefix + "-***"
+	if masked := key.maskedPrefix(); masked != "" {
+		protoKey.Key = masked
 	} else if key.Key != "" {
 		// Legacy key - show full key for backwards compatibility
 		// TODO: Consider hiding this in a future major version
