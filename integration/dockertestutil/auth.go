@@ -162,10 +162,10 @@ func credentialsFromConfig() (string, string, bool) {
 		return "", "", false
 	}
 
-	parts := strings.SplitN(string(decoded), ":", 2)
-	if len(parts) != 2 {
+	user, pass, ok := strings.Cut(string(decoded), ":")
+	if !ok {
 		return "", "", false
 	}
 
-	return parts[0], parts[1], true
+	return user, pass, true
 }

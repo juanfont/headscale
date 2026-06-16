@@ -22,19 +22,12 @@ import (
 )
 
 func loadDERPMapFromPath(path string) (*tailcfg.DERPMap, error) {
-	derpFile, err := os.Open(path)
+	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	defer derpFile.Close()
 
 	var derpMap tailcfg.DERPMap
-
-	b, err := io.ReadAll(derpFile)
-	if err != nil {
-		return nil, err
-	}
-
 	err = yaml.Unmarshal(b, &derpMap)
 
 	return &derpMap, err

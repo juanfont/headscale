@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/netip"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -597,14 +596,7 @@ func groupSourcesByUser(
 // filterRuleKey generates a unique key for merging based on [tailcfg.FilterRule.SrcIPs]
 // and [tailcfg.FilterRule.IPProto].
 func filterRuleKey(rule tailcfg.FilterRule) string {
-	srcKey := strings.Join(rule.SrcIPs, ",")
-
-	protoStrs := make([]string, len(rule.IPProto))
-	for i, p := range rule.IPProto {
-		protoStrs[i] = strconv.Itoa(p)
-	}
-
-	return srcKey + "|" + strings.Join(protoStrs, ",")
+	return fmt.Sprintf("%s|%v", strings.Join(rule.SrcIPs, ","), rule.IPProto)
 }
 
 // mergeFilterRules merges rules with identical [tailcfg.FilterRule.SrcIPs] and

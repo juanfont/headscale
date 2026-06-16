@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -16,18 +17,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Error is used to compare errors as per https://dave.cheney.net/2016/04/07/constant-errors
-type Error string
-
-func (e Error) Error() string { return string(e) }
-
-const (
-	errMockOidcClientIDNotDefined     = Error("MOCKOIDC_CLIENT_ID not defined")
-	errMockOidcClientSecretNotDefined = Error("MOCKOIDC_CLIENT_SECRET not defined")
-	errMockOidcPortNotDefined         = Error("MOCKOIDC_PORT not defined")
-	errMockOidcUsersNotDefined        = Error("MOCKOIDC_USERS not defined")
-	refreshTTL                        = 60 * time.Minute
+var (
+	errMockOidcClientIDNotDefined     = errors.New("MOCKOIDC_CLIENT_ID not defined")
+	errMockOidcClientSecretNotDefined = errors.New("MOCKOIDC_CLIENT_SECRET not defined")
+	errMockOidcPortNotDefined         = errors.New("MOCKOIDC_PORT not defined")
+	errMockOidcUsersNotDefined        = errors.New("MOCKOIDC_USERS not defined")
 )
+
+const refreshTTL = 60 * time.Minute
 
 var accessTTL = 2 * time.Minute
 
