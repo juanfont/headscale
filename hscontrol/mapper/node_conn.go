@@ -183,6 +183,16 @@ func (mc *multiChannelNodeConn) removeConnectionByChannel(c chan<- *tailcfg.MapR
 	return false
 }
 
+// detach removes the connection for the given channel and marks the node
+// disconnected if no active connections remain.
+func (mc *multiChannelNodeConn) detach(c chan<- *tailcfg.MapResponse) {
+	mc.removeConnectionByChannel(c)
+
+	if !mc.hasActiveConnections() {
+		mc.markDisconnected()
+	}
+}
+
 // hasActiveConnections checks if the node has any active connections.
 func (mc *multiChannelNodeConn) hasActiveConnections() bool {
 	mc.mutex.RLock()
