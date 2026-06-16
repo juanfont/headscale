@@ -10,7 +10,7 @@ import (
 )
 
 // TestAllocatorConcurrentNextAndBackfillNoRace exercises the registration path
-// (Next) concurrently with the backfill allocation path (allocateNext4/6) on
+// (Next) concurrently with the backfill allocation path (allocateNext) on
 // the same allocator. Backfill used to read prev4/prev6 in the caller's frame
 // without the lock, racing Next's writes; both must now take i.mu. Run with
 // -race.
@@ -36,12 +36,12 @@ func TestAllocatorConcurrentNextAndBackfillNoRace(t *testing.T) {
 
 	wg.Go(func() {
 		for range iterations {
-			_, err := alloc.allocateNext4()
+			_, err := alloc.allocateNext(&alloc.prev4, alloc.prefix4)
 			if err != nil {
 				return
 			}
 
-			_, err = alloc.allocateNext6()
+			_, err = alloc.allocateNext(&alloc.prev6, alloc.prefix6)
 			if err != nil {
 				return
 			}

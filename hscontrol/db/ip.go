@@ -138,9 +138,6 @@ func NewIPAllocator(
 }
 
 func (i *IPAllocator) Next() (*netip.Addr, *netip.Addr, error) {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-
 	var (
 		err  error
 		ret4 *netip.Addr
@@ -148,21 +145,17 @@ func (i *IPAllocator) Next() (*netip.Addr, *netip.Addr, error) {
 	)
 
 	if i.prefix4 != nil {
-		ret4, err = i.next(i.prev4, i.prefix4)
+		ret4, err = i.allocateNext(&i.prev4, i.prefix4)
 		if err != nil {
 			return nil, nil, fmt.Errorf("allocating IPv4 address: %w", err)
 		}
-
-		i.prev4 = *ret4
 	}
 
 	if i.prefix6 != nil {
-		ret6, err = i.next(i.prev6, i.prefix6)
+		ret6, err = i.allocateNext(&i.prev6, i.prefix6)
 		if err != nil {
 			return nil, nil, fmt.Errorf("allocating IPv6 address: %w", err)
 		}
-
-		i.prev6 = *ret6
 	}
 
 	return ret4, ret6, nil
@@ -170,34 +163,20 @@ func (i *IPAllocator) Next() (*netip.Addr, *netip.Addr, error) {
 
 var ErrCouldNotAllocateIP = errors.New("failed to allocate IP")
 
-// allocateNext4 allocates the next IPv4 under i.mu, advancing prev4 so a run of
-// allocations (e.g. BackfillNodeIPs) does not rescan already-issued addresses,
-// and so prev4 is read under the lock rather than in the caller's frame.
-func (i *IPAllocator) allocateNext4() (*netip.Addr, error) {
+// allocateNext allocates the next address from prefix under i.mu, advancing
+// prev so a run of allocations (e.g. BackfillNodeIPs) does not rescan
+// already-issued addresses, and so prev is read under the lock rather than in
+// the caller's frame.
+func (i *IPAllocator) allocateNext(prev *netip.Addr, prefix *netip.Prefix) (*netip.Addr, error) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	ret, err := i.next(i.prev4, i.prefix4)
+	ret, err := i.next(*prev, prefix)
 	if err != nil {
 		return nil, err
 	}
 
-	i.prev4 = *ret
-
-	return ret, nil
-}
-
-// allocateNext6 mirrors allocateNext4 for the IPv6 prefix.
-func (i *IPAllocator) allocateNext6() (*netip.Addr, error) {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-
-	ret, err := i.next(i.prev6, i.prefix6)
-	if err != nil {
-		return nil, err
-	}
-
-	i.prev6 = *ret
+	*prev = *ret
 
 	return ret, nil
 }
@@ -348,7 +327,7 @@ func (db *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
 			changed := false
 			// IPv4 prefix is set, but node ip is missing, alloc
 			if i.prefix4 != nil && node.IPv4 == nil {
-				ret4, err := i.allocateNext4()
+				ret4, err := i.allocateNext(&i.prev4, i.prefix4)
 				if err != nil {
 					return fmt.Errorf("allocating IPv4 for node(%d): %w", node.ID, err)
 				}
@@ -361,7 +340,7 @@ func (db *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
 
 			// IPv6 prefix is set, but node ip is missing, alloc
 			if i.prefix6 != nil && node.IPv6 == nil {
-				ret6, err := i.allocateNext6()
+				ret6, err := i.allocateNext(&i.prev6, i.prefix6)
 				if err != nil {
 					return fmt.Errorf("allocating IPv6 for node(%d): %w", node.ID, err)
 				}
