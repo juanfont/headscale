@@ -300,18 +300,23 @@ func NewAuthProviderWeb(serverURL string) *AuthProviderWeb {
 	}
 }
 
-func (a *AuthProviderWeb) RegisterURL(authID types.AuthID) string {
+// authPathURL builds an auth-flow URL of the form
+// "<serverURL>/<kind>/<id>", trimming a trailing slash from serverURL.
+func authPathURL(serverURL, kind string, authID types.AuthID) string {
 	return fmt.Sprintf(
-		"%s/register/%s",
-		strings.TrimSuffix(a.serverURL, "/"),
-		authID.String())
+		"%s/%s/%s",
+		strings.TrimSuffix(serverURL, "/"),
+		kind,
+		authID.String(),
+	)
+}
+
+func (a *AuthProviderWeb) RegisterURL(authID types.AuthID) string {
+	return authPathURL(a.serverURL, "register", authID)
 }
 
 func (a *AuthProviderWeb) AuthURL(authID types.AuthID) string {
-	return fmt.Sprintf(
-		"%s/auth/%s",
-		strings.TrimSuffix(a.serverURL, "/"),
-		authID.String())
+	return authPathURL(a.serverURL, "auth", authID)
 }
 
 func (a *AuthProviderWeb) AuthHandler(

@@ -3,7 +3,6 @@ package hscontrol
 import (
 	"bytes"
 	_ "embed"
-	"html/template"
 	"net/http"
 	textTemplate "text/template"
 
@@ -59,29 +58,17 @@ func (h *Headscale) ApplePlatformConfig(
 		URL:  h.cfg.ServerURL,
 	}
 
-	var payload bytes.Buffer
-
-	switch platform {
-	case "macos-standalone":
-		err := macosStandaloneTemplate.Execute(&payload, platformConfig)
-		if err != nil {
-			httpError(writer, err)
-			return
-		}
-	case "macos-app-store":
-		err := macosAppStoreTemplate.Execute(&payload, platformConfig)
-		if err != nil {
-			httpError(writer, err)
-			return
-		}
-	case "ios":
-		err := iosTemplate.Execute(&payload, platformConfig)
-		if err != nil {
-			httpError(writer, err)
-			return
-		}
-	default:
+	payloadType, ok := applePayloadType[platform]
+	if !ok {
 		httpError(writer, NewHTTPError(http.StatusBadRequest, "platform must be ios, macos-app-store or macos-standalone", nil))
+		return
+	}
+
+	platformConfig.PayloadType = payloadType
+
+	var payload bytes.Buffer
+	if err := payloadTemplate.Execute(&payload, platformConfig); err != nil { //nolint:noinlineerr
+		httpError(writer, err)
 		return
 	}
 
@@ -110,8 +97,17 @@ type AppleMobileConfig struct {
 }
 
 type AppleMobilePlatformConfig struct {
-	UUID uuid.UUID
-	URL  string
+	UUID        uuid.UUID
+	URL         string
+	PayloadType string
+}
+
+// applePayloadType maps a platform request path to the Tailscale IPN
+// PayloadType emitted in the rendered Apple profile.
+var applePayloadType = map[string]string{
+	"ios":              "io.tailscale.ipn.ios",
+	"macos-app-store":  "io.tailscale.ipn.macos",
+	"macos-standalone": "io.tailscale.ipn.macsys",
 }
 
 var commonTemplate = textTemplate.Must(
@@ -141,10 +137,10 @@ var commonTemplate = textTemplate.Must(
 </plist>`),
 )
 
-var iosTemplate = textTemplate.Must(textTemplate.New("iosTemplate").Parse(`
+var payloadTemplate = textTemplate.Must(textTemplate.New("payloadTemplate").Parse(`
     <dict>
         <key>PayloadType</key>
-        <string>io.tailscale.ipn.ios</string>
+        <string>{{.PayloadType}}</string>
         <key>PayloadUUID</key>
         <string>{{.UUID}}</string>
         <key>PayloadIdentifier</key>
@@ -154,40 +150,6 @@ var iosTemplate = textTemplate.Must(textTemplate.New("iosTemplate").Parse(`
         <key>PayloadEnabled</key>
         <true/>
 
-        <key>ControlURL</key>
-        <string>{{.URL}}</string>
-    </dict>
-`))
-
-var macosAppStoreTemplate = template.Must(template.New("macosTemplate").Parse(`
-    <dict>
-        <key>PayloadType</key>
-        <string>io.tailscale.ipn.macos</string>
-        <key>PayloadUUID</key>
-        <string>{{.UUID}}</string>
-        <key>PayloadIdentifier</key>
-        <string>com.github.juanfont.headscale</string>
-        <key>PayloadVersion</key>
-        <integer>1</integer>
-        <key>PayloadEnabled</key>
-        <true/>
-        <key>ControlURL</key>
-        <string>{{.URL}}</string>
-    </dict>
-`))
-
-var macosStandaloneTemplate = template.Must(template.New("macosStandaloneTemplate").Parse(`
-    <dict>
-        <key>PayloadType</key>
-        <string>io.tailscale.ipn.macsys</string>
-        <key>PayloadUUID</key>
-        <string>{{.UUID}}</string>
-        <key>PayloadIdentifier</key>
-        <string>com.github.juanfont.headscale</string>
-        <key>PayloadVersion</key>
-        <integer>1</integer>
-        <key>PayloadEnabled</key>
-        <true/>
         <key>ControlURL</key>
         <string>{{.URL}}</string>
     </dict>
