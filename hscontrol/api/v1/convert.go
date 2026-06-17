@@ -84,6 +84,45 @@ func oasPreAuthKey(k *v1.PreAuthKey) oas.PreAuthKey {
 	}
 }
 
+func optPreAuthKey(k *v1.PreAuthKey) oas.OptPreAuthKey {
+	if k == nil {
+		return oas.OptPreAuthKey{}
+	}
+
+	return oas.NewOptPreAuthKey(oasPreAuthKey(k))
+}
+
+func optRegisterMethod(rm v1.RegisterMethod) oas.OptRegisterMethod {
+	if rm == v1.RegisterMethod_REGISTER_METHOD_UNSPECIFIED {
+		return oas.OptRegisterMethod{}
+	}
+
+	return oas.NewOptRegisterMethod(oas.RegisterMethod(rm.String()))
+}
+
+func oasNode(n *v1.Node) oas.Node {
+	return oas.Node{
+		ID:              optUint64(n.GetId()),
+		MachineKey:      optString(n.GetMachineKey()),
+		NodeKey:         optString(n.GetNodeKey()),
+		DiscoKey:        optString(n.GetDiscoKey()),
+		IpAddresses:     strs(n.GetIpAddresses()),
+		Name:            optString(n.GetName()),
+		User:            optUser(n.GetUser()),
+		LastSeen:        optTime(n.GetLastSeen()),
+		Expiry:          optTime(n.GetExpiry()),
+		PreAuthKey:      optPreAuthKey(n.GetPreAuthKey()),
+		CreatedAt:       optTime(n.GetCreatedAt()),
+		RegisterMethod:  optRegisterMethod(n.GetRegisterMethod()),
+		GivenName:       optString(n.GetGivenName()),
+		Online:          optBool(n.GetOnline()),
+		ApprovedRoutes:  strs(n.GetApprovedRoutes()),
+		AvailableRoutes: strs(n.GetAvailableRoutes()),
+		SubnetRoutes:    strs(n.GetSubnetRoutes()),
+		Tags:            strs(n.GetTags()),
+	}
+}
+
 func oasAPIKey(k *v1.ApiKey) oas.ApiKey {
 	return oas.ApiKey{
 		ID:         optUint64(k.GetId()),

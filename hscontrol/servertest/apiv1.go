@@ -8,6 +8,7 @@ import (
 	"time"
 
 	apiv1 "github.com/juanfont/headscale/gen/api/v1"
+	"github.com/juanfont/headscale/hscontrol/types"
 )
 
 // APIClient returns an ogen-generated v1 API client wired to this server's
@@ -36,6 +37,24 @@ func (s *TestServer) APIClient(tb testing.TB, apiKey string) *apiv1.Client {
 	}
 
 	return client
+}
+
+// CreateNode creates a registered test node present in both the database and
+// the in-memory NodeStore, so it can be read and mutated through the API.
+func (s *TestServer) CreateNode(
+	tb testing.TB,
+	user *types.User,
+	hostname string,
+) *types.Node {
+	tb.Helper()
+
+	node := s.st.CreateRegisteredNodeForTest(user, hostname)
+	// Ensure the User association is present in the NodeStore snapshot; the
+	// database read path preloads it, but the test helper does not.
+	node.User = user
+	s.st.PutNodeInStoreForTest(*node)
+
+	return node
 }
 
 // CreateAPIKey mints a non-expiring API key and returns the secret token.
