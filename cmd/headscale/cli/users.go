@@ -7,10 +7,8 @@ import (
 	"net/url"
 	"strconv"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	apiv1 "github.com/juanfont/headscale/gen/api/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -45,27 +43,27 @@ func usernameAndIDFromFlag(cmd *cobra.Command) (uint64, string, error) {
 // returning the raw flag id and the matched user.
 func resolveSingleUser(
 	ctx context.Context,
-	client v1.HeadscaleServiceClient,
+	client *apiv1.Client,
 	cmd *cobra.Command,
-) (uint64, *v1.User, error) {
+) (uint64, *apiv1.User, error) {
 	id, username, err := usernameAndIDFromFlag(cmd)
 	if err != nil {
 		return 0, nil, err
 	}
 
-	users, err := client.ListUsers(ctx, &v1.ListUsersRequest{
-		Name: username,
-		Id:   id,
+	resp, err := client.ListUsers(ctx, apiv1.ListUsersParams{
+		Name: optString(username),
+		ID:   optUint64(id),
 	})
 	if err != nil {
 		return 0, nil, fmt.Errorf("listing users: %w", err)
 	}
 
-	if len(users.GetUsers()) != 1 {
+	if len(resp.Users) != 1 {
 		return 0, nil, errMultipleUsersMatch
 	}
 
-	return id, users.GetUsers()[0], nil
+	return id, &resp.Users[0], nil
 }
 
 func init() {
@@ -102,37 +100,32 @@ var createUserCmd = &cobra.Command{
 
 		return nil
 	},
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		userName := args[0]
-
-		log.Trace().Interface(zf.Client, client).Msg("obtained gRPC client")
-
-		request := &v1.CreateUserRequest{Name: userName}
+	RunE: apiRunE(func(ctx context.Context, client *apiv1.Client, cmd *cobra.Command, args []string) error {
+		req := &apiv1.CreateUserReq{Name: apiv1.NewOptString(args[0])}
 
 		if displayName, _ := cmd.Flags().GetString("display-name"); displayName != "" {
-			request.DisplayName = displayName
+			req.DisplayName = apiv1.NewOptString(displayName)
 		}
 
 		if email, _ := cmd.Flags().GetString("email"); email != "" {
-			request.Email = email
+			req.Email = apiv1.NewOptString(email)
 		}
 
 		if pictureURL, _ := cmd.Flags().GetString("picture-url"); pictureURL != "" {
-			if _, err := url.Parse(pictureURL); err != nil { //nolint:noinlineerr
+			_, err := url.Parse(pictureURL)
+			if err != nil {
 				return fmt.Errorf("invalid picture URL: %w", err)
 			}
 
-			request.PictureUrl = pictureURL
+			req.PictureUrl = apiv1.NewOptString(pictureURL)
 		}
 
-		log.Trace().Interface(zf.Request, request).Msg("sending CreateUser request")
-
-		response, err := client.CreateUser(ctx, request)
+		resp, err := client.CreateUser(ctx, req)
 		if err != nil {
 			return fmt.Errorf("creating user: %w", err)
 		}
 
-		return printOutput(cmd, response.GetUser(), "User created")
+		return printOutput(cmd, resp.User.Value, "User created")
 	}),
 }
 
@@ -140,7 +133,7 @@ var destroyUserCmd = &cobra.Command{
 	Use:     "destroy --identifier ID or --name NAME",
 	Short:   "Destroys a user",
 	Aliases: []string{cmdDelete},
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+	RunE: apiRunE(func(ctx context.Context, client *apiv1.Client, cmd *cobra.Command, args []string) error {
 		_, user, err := resolveSingleUser(ctx, client, cmd)
 		if err != nil {
 			return err
@@ -148,19 +141,17 @@ var destroyUserCmd = &cobra.Command{
 
 		if !confirmAction(cmd, fmt.Sprintf(
 			"Do you want to remove the user %q (%d) and any associated preauthkeys?",
-			user.GetName(), user.GetId(),
+			user.Name.Value, user.ID.Value,
 		)) {
 			return printOutput(cmd, map[string]string{colResult: "User not destroyed"}, "User not destroyed")
 		}
 
-		deleteRequest := &v1.DeleteUserRequest{Id: user.GetId()}
-
-		response, err := client.DeleteUser(ctx, deleteRequest)
+		err = client.DeleteUser(ctx, apiv1.DeleteUserParams{ID: user.ID.Value})
 		if err != nil {
 			return fmt.Errorf("destroying user: %w", err)
 		}
 
-		return printOutput(cmd, response, "User destroyed")
+		return printOutput(cmd, map[string]string{colResult: "User destroyed"}, "User destroyed")
 	}),
 }
 
@@ -168,8 +159,8 @@ var listUsersCmd = &cobra.Command{
 	Use:     cmdList,
 	Short:   "List all the users",
 	Aliases: []string{"ls", cmdShow},
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		request := &v1.ListUsersRequest{}
+	RunE: apiRunE(func(ctx context.Context, client *apiv1.Client, cmd *cobra.Command, args []string) error {
+		var params apiv1.ListUsersParams
 
 		id, _ := cmd.Flags().GetInt64("identifier")
 		username, _ := cmd.Flags().GetString("name")
@@ -178,29 +169,29 @@ var listUsersCmd = &cobra.Command{
 		// filter by one param at most
 		switch {
 		case id > 0:
-			request.Id = uint64(id)
+			params.ID = apiv1.NewOptUint64(uint64(id))
 		case username != "":
-			request.Name = username
+			params.Name = apiv1.NewOptString(username)
 		case email != "":
-			request.Email = email
+			params.Email = apiv1.NewOptString(email)
 		}
 
-		response, err := client.ListUsers(ctx, request)
+		resp, err := client.ListUsers(ctx, params)
 		if err != nil {
 			return fmt.Errorf("listing users: %w", err)
 		}
 
-		return printListOutput(cmd, response.GetUsers(), func() error {
-			rows := make([][]string, 0, len(response.GetUsers()))
-			for _, user := range response.GetUsers() {
+		return printListOutput(cmd, resp.Users, func() error {
+			rows := make([][]string, 0, len(resp.Users))
+			for _, user := range resp.Users {
 				rows = append(
 					rows,
 					[]string{
-						strconv.FormatUint(user.GetId(), util.Base10),
-						user.GetDisplayName(),
-						user.GetName(),
-						user.GetEmail(),
-						user.GetCreatedAt().AsTime().Format(HeadscaleDateTimeFormat),
+						strconv.FormatUint(user.ID.Value, util.Base10),
+						user.DisplayName.Value,
+						user.Name.Value,
+						user.Email.Value,
+						user.CreatedAt.Value.Format(HeadscaleDateTimeFormat),
 					},
 				)
 			}
@@ -214,7 +205,7 @@ var renameUserCmd = &cobra.Command{
 	Use:     "rename",
 	Short:   "Renames a user",
 	Aliases: []string{"mv"},
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+	RunE: apiRunE(func(ctx context.Context, client *apiv1.Client, cmd *cobra.Command, args []string) error {
 		id, _, err := resolveSingleUser(ctx, client, cmd)
 		if err != nil {
 			return err
@@ -222,16 +213,14 @@ var renameUserCmd = &cobra.Command{
 
 		newName, _ := cmd.Flags().GetString("new-name")
 
-		renameReq := &v1.RenameUserRequest{
-			OldId:   id,
+		resp, err := client.RenameUser(ctx, apiv1.RenameUserParams{
+			OldID:   id,
 			NewName: newName,
-		}
-
-		response, err := client.RenameUser(ctx, renameReq)
+		})
 		if err != nil {
 			return fmt.Errorf("renaming user: %w", err)
 		}
 
-		return printOutput(cmd, response.GetUser(), "User renamed")
+		return printOutput(cmd, resp.User.Value, "User renamed")
 	}),
 }

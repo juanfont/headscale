@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	apiv1 "github.com/juanfont/headscale/gen/api/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/spf13/cobra"
 )
@@ -44,37 +44,39 @@ var listPreAuthKeys = &cobra.Command{
 	Use:     cmdList,
 	Short:   "List all preauthkeys",
 	Aliases: []string{"ls", cmdShow},
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		response, err := client.ListPreAuthKeys(ctx, &v1.ListPreAuthKeysRequest{})
+	RunE: apiRunE(func(ctx context.Context, client *apiv1.Client, cmd *cobra.Command, args []string) error {
+		resp, err := client.ListPreAuthKeys(ctx)
 		if err != nil {
 			return fmt.Errorf("listing preauthkeys: %w", err)
 		}
 
-		return printListOutput(cmd, response.GetPreAuthKeys(), func() error {
-			rows := make([][]string, 0, len(response.GetPreAuthKeys()))
-			for _, key := range response.GetPreAuthKeys() {
+		return printListOutput(cmd, resp.PreAuthKeys, func() error {
+			rows := make([][]string, 0, len(resp.PreAuthKeys))
+			for _, key := range resp.PreAuthKeys {
 				expiration := "-"
-				if key.GetExpiration() != nil {
-					expiration = ColourTime(key.GetExpiration().AsTime())
+				if key.Expiration.Set {
+					expiration = ColourTime(key.Expiration.Value)
 				}
 
 				var owner string
-				if len(key.GetAclTags()) > 0 {
-					owner = strings.Join(key.GetAclTags(), "\n")
-				} else if key.GetUser() != nil {
-					owner = key.GetUser().GetName()
-				} else {
+
+				switch {
+				case len(key.AclTags) > 0:
+					owner = strings.Join(key.AclTags, "\n")
+				case key.User.Set:
+					owner = key.User.Value.Name.Value
+				default:
 					owner = "-"
 				}
 
 				rows = append(rows, []string{
-					strconv.FormatUint(key.GetId(), util.Base10),
-					key.GetKey(),
-					strconv.FormatBool(key.GetReusable()),
-					strconv.FormatBool(key.GetEphemeral()),
-					strconv.FormatBool(key.GetUsed()),
+					strconv.FormatUint(key.ID.Value, util.Base10),
+					key.Key.Value,
+					strconv.FormatBool(key.Reusable.Value),
+					strconv.FormatBool(key.Ephemeral.Value),
+					strconv.FormatBool(key.Used.Value),
 					expiration,
-					key.GetCreatedAt().AsTime().Format(HeadscaleDateTimeFormat),
+					key.CreatedAt.Value.Format(HeadscaleDateTimeFormat),
 					owner,
 				})
 			}
@@ -97,7 +99,7 @@ var createPreAuthKeyCmd = &cobra.Command{
 	Use:     "create",
 	Short:   "Creates a new preauthkey",
 	Aliases: []string{"c", cmdNew},
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+	RunE: apiRunE(func(ctx context.Context, client *apiv1.Client, cmd *cobra.Command, args []string) error {
 		user, _ := cmd.Flags().GetUint64("user")
 		reusable, _ := cmd.Flags().GetBool("reusable")
 		ephemeral, _ := cmd.Flags().GetBool("ephemeral")
@@ -108,20 +110,18 @@ var createPreAuthKeyCmd = &cobra.Command{
 			return err
 		}
 
-		request := &v1.CreatePreAuthKeyRequest{
-			User:       user,
-			Reusable:   reusable,
-			Ephemeral:  ephemeral,
+		resp, err := client.CreatePreAuthKey(ctx, &apiv1.CreatePreAuthKeyReq{
+			User:       optUint64(user),
+			Reusable:   apiv1.NewOptBool(reusable),
+			Ephemeral:  apiv1.NewOptBool(ephemeral),
 			AclTags:    tags,
 			Expiration: expiration,
-		}
-
-		response, err := client.CreatePreAuthKey(ctx, request)
+		})
 		if err != nil {
 			return fmt.Errorf("creating preauthkey: %w", err)
 		}
 
-		return printOutput(cmd, response.GetPreAuthKey(), response.GetPreAuthKey().GetKey())
+		return printOutput(cmd, resp.PreAuthKey.Value, resp.PreAuthKey.Value.Key.Value)
 	}),
 }
 
@@ -139,22 +139,18 @@ var expirePreAuthKeyCmd = &cobra.Command{
 	Use:     cmdExpire,
 	Short:   "Expire a preauthkey",
 	Aliases: []string{"revoke", aliasExp, "e"},
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+	RunE: apiRunE(func(ctx context.Context, client *apiv1.Client, cmd *cobra.Command, args []string) error {
 		id, err := preAuthKeyID(cmd)
 		if err != nil {
 			return err
 		}
 
-		request := &v1.ExpirePreAuthKeyRequest{
-			Id: id,
-		}
-
-		response, err := client.ExpirePreAuthKey(ctx, request)
+		err = client.ExpirePreAuthKey(ctx, &apiv1.ExpirePreAuthKeyReq{ID: apiv1.NewOptUint64(id)})
 		if err != nil {
 			return fmt.Errorf("expiring preauthkey: %w", err)
 		}
 
-		return printOutput(cmd, response, "Key expired")
+		return printOutput(cmd, map[string]string{colResult: "Key expired"}, "Key expired")
 	}),
 }
 
@@ -162,21 +158,17 @@ var deletePreAuthKeyCmd = &cobra.Command{
 	Use:     cmdDelete,
 	Short:   "Delete a preauthkey",
 	Aliases: []string{aliasDel, "rm", "d"},
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+	RunE: apiRunE(func(ctx context.Context, client *apiv1.Client, cmd *cobra.Command, args []string) error {
 		id, err := preAuthKeyID(cmd)
 		if err != nil {
 			return err
 		}
 
-		request := &v1.DeletePreAuthKeyRequest{
-			Id: id,
-		}
-
-		response, err := client.DeletePreAuthKey(ctx, request)
+		err = client.DeletePreAuthKey(ctx, apiv1.DeletePreAuthKeyParams{ID: apiv1.NewOptUint64(id)})
 		if err != nil {
 			return fmt.Errorf("deleting preauthkey: %w", err)
 		}
 
-		return printOutput(cmd, response, "Key deleted")
+		return printOutput(cmd, map[string]string{colResult: "Key deleted"}, "Key deleted")
 	}),
 }

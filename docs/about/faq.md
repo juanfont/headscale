@@ -152,9 +152,9 @@ See also <https://tailscale.com/docs/concepts/device-visibility>.
 Headscale checks if the policy is valid during startup and refuses to start if it detects an error. The error message
 indicates which part of the policy is invalid. Follow these steps to fix your policy:
 
-- Dump the policy to a file: `headscale policy get --bypass-grpc-and-access-database-directly > policy.json`
+- Dump the policy to a file: `headscale policy get --bypass-server-and-access-database-directly > policy.json`
 - Edit and fixup `policy.json`. Use the command `headscale policy check --file policy.json` to validate the policy.
-- Load the modified policy: `headscale policy set --bypass-grpc-and-access-database-directly --file policy.json`
+- Load the modified policy: `headscale policy set --bypass-server-and-access-database-directly --file policy.json`
 - Start Headscale as usual.
 
 !!! warning "Full server configuration required"

@@ -11,6 +11,21 @@ import (
 
 var errAuthRejected = errors.New("auth request rejected")
 
+type socketAuthContextKey struct{}
+
+// WithSocketAuth marks ctx as originating from the trusted local unix socket,
+// where filesystem permissions are the trust boundary. Requests carrying this
+// marker bypass bearer-token validation. The server mounts this on the
+// socket-only listener.
+func WithSocketAuth(ctx context.Context) context.Context {
+	return context.WithValue(ctx, socketAuthContextKey{}, true)
+}
+
+func isSocketAuth(ctx context.Context) bool {
+	v, _ := ctx.Value(socketAuthContextKey{}).(bool)
+	return v
+}
+
 // HandleBearerAuth validates the API key bearer token against the state layer.
 // A missing or malformed Authorization header is reported by ogen before this
 // is reached. Any validation failure — a malformed/unknown key (which
@@ -22,6 +37,11 @@ func (s *Server) HandleBearerAuth(
 	_ oas.OperationName,
 	t oas.BearerAuth,
 ) (context.Context, error) {
+	// Requests from the local unix socket are trusted via filesystem permissions.
+	if isSocketAuth(ctx) {
+		return ctx, nil
+	}
+
 	valid, err := s.state.ValidateAPIKey(t.Token)
 	if err != nil || !valid {
 		return ctx, apiError(http.StatusUnauthorized, "invalid API key")

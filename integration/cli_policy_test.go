@@ -22,7 +22,7 @@ import (
 //     `check` reads from `--file`, so the server-side mode should not
 //     change the outcome; running both proves that.
 //   - fixture: ACL only, ACL with passing tests, ACL with failing tests.
-//   - bypass: no-bypass talks to the server over gRPC; bypass opens the
+//   - bypass: no-bypass talks to the server over its API; bypass opens the
 //     database directly.
 //
 // Each row spins up its own scenario because policy_mode is fixed at boot
@@ -152,7 +152,7 @@ func TestPolicyCheckCommand(t *testing.T) {
 				// --force suppresses the "is the server running?"
 				// confirmation prompt so the command can run
 				// non-interactively under the test harness.
-				cmd = append(cmd, "--bypass-grpc-and-access-database-directly", "--force")
+				cmd = append(cmd, "--bypass-server-and-access-database-directly", "--force")
 			}
 
 			stdout, err := headscale.Execute(cmd)

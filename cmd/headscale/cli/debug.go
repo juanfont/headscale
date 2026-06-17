@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	apiv1 "github.com/juanfont/headscale/gen/api/v1"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/spf13/cobra"
 )
@@ -32,7 +32,7 @@ var debugCmd = &cobra.Command{
 var createNodeCmd = &cobra.Command{
 	Use:   "create-node",
 	Short: "Create a node that can be registered with `auth register <>` command",
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+	RunE: apiRunE(func(ctx context.Context, client *apiv1.Client, cmd *cobra.Command, args []string) error {
 		user, _ := cmd.Flags().GetString("user")
 		name, _ := cmd.Flags().GetString("name")
 		registrationID, _ := cmd.Flags().GetString("key")
@@ -44,18 +44,16 @@ var createNodeCmd = &cobra.Command{
 
 		routes, _ := cmd.Flags().GetStringSlice("route")
 
-		request := &v1.DebugCreateNodeRequest{
-			Key:    registrationID,
-			Name:   name,
-			User:   user,
+		resp, err := client.DebugCreateNode(ctx, &apiv1.DebugCreateNodeReq{
+			Key:    apiv1.NewOptString(registrationID),
+			Name:   apiv1.NewOptString(name),
+			User:   apiv1.NewOptString(user),
 			Routes: routes,
-		}
-
-		response, err := client.DebugCreateNode(ctx, request)
+		})
 		if err != nil {
 			return fmt.Errorf("creating node: %w", err)
 		}
 
-		return printOutput(cmd, response.GetNode(), "Node created")
+		return printOutput(cmd, resp.Node.Value, "Node created")
 	}),
 }

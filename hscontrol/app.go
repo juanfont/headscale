@@ -48,7 +48,6 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
-	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
@@ -532,6 +531,22 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
+// unixSocketHandler wraps the API router for the local unix socket, marking
+// every request as socket-authenticated so the v1 API bypasses bearer-token
+// validation. The socket's filesystem permissions are the trust boundary.
+func unixSocketHandler(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// ogen only invokes its security handler when an Authorization header
+		// is present; inject a placeholder so socket requests reach it (where
+		// the socket-auth marker then short-circuits validation).
+		if r.Header.Get("Authorization") == "" {
+			r.Header.Set("Authorization", "Bearer local-socket")
+		}
+
+		next.ServeHTTP(w, r.WithContext(apiv1.WithSocketAuth(r.Context())))
+	})
+}
+
 func (h *Headscale) createRouter(apiV1 http.Handler) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(metrics.Collector(metrics.CollectorOpts{
@@ -723,16 +738,23 @@ func (h *Headscale) Serve() error {
 		return fmt.Errorf("changing gRPC socket permission: %w", err)
 	}
 
-	// Start the local gRPC server without TLS and without authentication
-	grpcSocket := grpc.NewServer(
-	// Uncomment to debug grpc communication.
-	// zerolog.UnaryInterceptor(),
-	)
+	// Build the v1 API handler and HTTP router once; both the local unix
+	// socket and the public HTTP listener serve it.
+	apiV1Handler, err := apiv1.NewHandler(h.state, h.cfg, h.Change)
+	if err != nil {
+		return fmt.Errorf("building v1 API handler: %w", err)
+	}
 
-	v1.RegisterHeadscaleServiceServer(grpcSocket, newHeadscaleV1APIServer(h))
-	reflection.Register(grpcSocket)
+	router := h.createRouter(apiV1Handler)
 
-	errorGroup.Go(func() error { return grpcSocket.Serve(socketListener) })
+	// Serve the API over the local unix socket without bearer auth: the
+	// socket's filesystem permissions are the trust boundary.
+	socketHTTPServer := &http.Server{
+		Handler:     unixSocketHandler(router),
+		ReadTimeout: types.HTTPTimeout,
+	}
+
+	errorGroup.Go(func() error { return socketHTTPServer.Serve(socketListener) })
 
 	//
 	//
@@ -800,15 +822,8 @@ func (h *Headscale) Serve() error {
 	//
 	// HTTP setup
 	//
-	// This is the regular router that we expose
-	// over our main Addr
-	apiV1Handler, err := apiv1.NewHandler(h.state, h.cfg, h.Change)
-	if err != nil {
-		return fmt.Errorf("building v1 API handler: %w", err)
-	}
-
-	router := h.createRouter(apiV1Handler)
-
+	// This is the regular router that we expose over our main Addr; it is the
+	// same router served over the unix socket above.
 	httpServer := &http.Server{
 		Addr:        h.cfg.Addr,
 		Handler:     router,
@@ -948,8 +963,12 @@ func (h *Headscale) Serve() error {
 				info("waiting for netmap stream to close")
 				h.clientStreamsOpen.Wait()
 
-				info("shutting down grpc server (socket)")
-				grpcSocket.GracefulStop()
+				info("shutting down socket http server")
+
+				socketErr := socketHTTPServer.Close()
+				if socketErr != nil {
+					log.Error().Err(socketErr).Msg("failed to shutdown socket http")
+				}
 
 				if grpcServer != nil {
 					info("shutting down grpc server (external)")
