@@ -3,7 +3,7 @@ package integration
 import (
 	"net/netip"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	apiv1 "github.com/juanfont/headscale/gen/api/v1"
 	"github.com/juanfont/headscale/hscontrol"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -24,19 +24,19 @@ type ControlServer interface {
 	GetEndpoint() string
 	WaitForRunning() error
 	Restart() error
-	CreateUser(user string) (*v1.User, error)
-	CreateAuthKey(user uint64, reusable bool, ephemeral bool) (*v1.PreAuthKey, error)
-	CreateAuthKeyWithTags(user uint64, reusable bool, ephemeral bool, tags []string) (*v1.PreAuthKey, error)
-	CreateAuthKeyWithOptions(opts hsic.AuthKeyOptions) (*v1.PreAuthKey, error)
+	CreateUser(user string) (*apiv1.User, error)
+	CreateAuthKey(user uint64, reusable bool, ephemeral bool) (*apiv1.PreAuthKey, error)
+	CreateAuthKeyWithTags(user uint64, reusable bool, ephemeral bool, tags []string) (*apiv1.PreAuthKey, error)
+	CreateAuthKeyWithOptions(opts hsic.AuthKeyOptions) (*apiv1.PreAuthKey, error)
 	DeleteAuthKey(id uint64) error
-	ListNodes(users ...string) ([]*v1.Node, error)
+	ListNodes(users ...string) ([]*apiv1.Node, error)
 	DeleteNode(nodeID uint64) error
-	NodesByUser() (map[string][]*v1.Node, error)
-	NodesByName() (map[string]*v1.Node, error)
-	ListUsers() ([]*v1.User, error)
-	MapUsers() (map[string]*v1.User, error)
+	NodesByUser() (map[string][]*apiv1.Node, error)
+	NodesByName() (map[string]*apiv1.Node, error)
+	ListUsers() ([]*apiv1.User, error)
+	MapUsers() (map[string]*apiv1.User, error)
 	DeleteUser(userID uint64) error
-	ApproveRoutes(nodeID uint64, routes []netip.Prefix) (*v1.Node, error)
+	ApproveRoutes(nodeID uint64, routes []netip.Prefix) (*apiv1.Node, error)
 	SetNodeTags(nodeID uint64, tags []string) error
 	GetCert() []byte
 	GetHostname() string

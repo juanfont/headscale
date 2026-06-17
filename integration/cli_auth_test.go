@@ -8,7 +8,7 @@ import (
 )
 
 // TestAuthCommandValidation exercises the validation permutations of the auth
-// subcommands over the gRPC transport: `register` against a non-existent user
+// subcommands over the HTTP transport: `register` against a non-existent user
 // and a malformed auth-id, and `approve`/`reject` against malformed and unknown
 // auth-ids.
 //

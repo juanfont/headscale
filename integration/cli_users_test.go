@@ -9,7 +9,7 @@ import (
 
 	tcmp "github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	apiv1 "github.com/juanfont/headscale/gen/api/v1"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
@@ -36,7 +36,7 @@ func TestUserCommand(t *testing.T) {
 	require.NoError(t, err)
 
 	var (
-		listUsers []*v1.User
+		listUsers []*apiv1.User
 		result    []string
 	)
 
@@ -54,7 +54,7 @@ func TestUserCommand(t *testing.T) {
 		assert.NoError(ct, err)
 
 		slices.SortFunc(listUsers, sortWithID)
-		result = []string{listUsers[0].GetName(), listUsers[1].GetName()}
+		result = []string{listUsers[0].GetName().Or(""), listUsers[1].GetName().Or("")}
 
 		assert.Equal(
 			ct,
@@ -70,13 +70,13 @@ func TestUserCommand(t *testing.T) {
 			"users",
 			"rename",
 			"--output=json",
-			fmt.Sprintf("--identifier=%d", listUsers[1].GetId()),
+			fmt.Sprintf("--identifier=%d", listUsers[1].GetID().Or(0)),
 			"--new-name=newname",
 		},
 	)
 	require.NoError(t, err)
 
-	var listAfterRenameUsers []*v1.User
+	var listAfterRenameUsers []*apiv1.User
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		err := executeAndUnmarshal(headscale,
@@ -92,7 +92,7 @@ func TestUserCommand(t *testing.T) {
 		assert.NoError(ct, err)
 
 		slices.SortFunc(listAfterRenameUsers, sortWithID)
-		result = []string{listAfterRenameUsers[0].GetName(), listAfterRenameUsers[1].GetName()}
+		result = []string{listAfterRenameUsers[0].GetName().Or(""), listAfterRenameUsers[1].GetName().Or("")}
 
 		assert.Equal(
 			ct,
@@ -102,7 +102,7 @@ func TestUserCommand(t *testing.T) {
 		)
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 
-	var listByUsername []*v1.User
+	var listByUsername []*apiv1.User
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(headscale,
@@ -121,19 +121,19 @@ func TestUserCommand(t *testing.T) {
 
 	slices.SortFunc(listByUsername, sortWithID)
 
-	want := []*v1.User{
+	want := []*apiv1.User{
 		{
-			Id:    1,
-			Name:  "user1",
-			Email: "user1@test.no",
+			ID:    apiv1.NewOptUint64(1),
+			Name:  apiv1.NewOptString("user1"),
+			Email: apiv1.NewOptString("user1@test.no"),
 		},
 	}
 
-	if diff := tcmp.Diff(want, listByUsername, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
+	if diff := tcmp.Diff(want, listByUsername, cmpopts.IgnoreUnexported(apiv1.User{}), cmpopts.IgnoreFields(apiv1.User{}, "CreatedAt")); diff != "" {
 		t.Errorf("unexpected users (-want +got):\n%s", diff)
 	}
 
-	var listByID []*v1.User
+	var listByID []*apiv1.User
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(headscale,
@@ -152,15 +152,15 @@ func TestUserCommand(t *testing.T) {
 
 	slices.SortFunc(listByID, sortWithID)
 
-	want = []*v1.User{
+	want = []*apiv1.User{
 		{
-			Id:    1,
-			Name:  "user1",
-			Email: "user1@test.no",
+			ID:    apiv1.NewOptUint64(1),
+			Name:  apiv1.NewOptString("user1"),
+			Email: apiv1.NewOptString("user1@test.no"),
 		},
 	}
 
-	if diff := tcmp.Diff(want, listByID, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
+	if diff := tcmp.Diff(want, listByID, cmpopts.IgnoreUnexported(apiv1.User{}), cmpopts.IgnoreFields(apiv1.User{}, "CreatedAt")); diff != "" {
 		t.Errorf("unexpected users (-want +got):\n%s", diff)
 	}
 
@@ -177,7 +177,7 @@ func TestUserCommand(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, deleteResult, "User destroyed")
 
-	var listAfterIDDelete []*v1.User
+	var listAfterIDDelete []*apiv1.User
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		err := executeAndUnmarshal(headscale,
@@ -194,15 +194,15 @@ func TestUserCommand(t *testing.T) {
 
 		slices.SortFunc(listAfterIDDelete, sortWithID)
 
-		want := []*v1.User{
+		want := []*apiv1.User{
 			{
-				Id:    2,
-				Name:  "newname",
-				Email: "user2@test.no",
+				ID:    apiv1.NewOptUint64(2),
+				Name:  apiv1.NewOptString("newname"),
+				Email: apiv1.NewOptString("user2@test.no"),
 			},
 		}
 
-		if diff := tcmp.Diff(want, listAfterIDDelete, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
+		if diff := tcmp.Diff(want, listAfterIDDelete, cmpopts.IgnoreUnexported(apiv1.User{}), cmpopts.IgnoreFields(apiv1.User{}, "CreatedAt")); diff != "" {
 			assert.Fail(ct, "unexpected users", "diff (-want +got):\n%s", diff)
 		}
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
@@ -219,7 +219,7 @@ func TestUserCommand(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, deleteResult, "User destroyed")
 
-	var listAfterNameDelete []v1.User
+	var listAfterNameDelete []apiv1.User
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(headscale,
@@ -249,8 +249,8 @@ func TestUserCreateCommand(t *testing.T) {
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	// Create a user populated with every optional field. The created user is
-	// returned on stdout and round-tripped through the v1.User type.
-	created := assertJSONRoundtrip[*v1.User](t, headscale, []string{
+	// returned on stdout and round-tripped through the apiv1.User type.
+	created := assertJSONRoundtrip[*apiv1.User](t, headscale, []string{
 		"headscale",
 		"users",
 		"create",
@@ -261,14 +261,14 @@ func TestUserCreateCommand(t *testing.T) {
 		"--output", "json",
 	})
 
-	assert.Equal(t, "cli-created", created.GetName())
-	assert.Equal(t, "CLI Created", created.GetDisplayName())
-	assert.Equal(t, "cli-created@example.com", created.GetEmail())
-	assert.Equal(t, "https://example.com/avatar.png", created.GetProfilePicUrl())
+	assert.Equal(t, "cli-created", created.GetName().Or(""))
+	assert.Equal(t, "CLI Created", created.GetDisplayName().Or(""))
+	assert.Equal(t, "cli-created@example.com", created.GetEmail().Or(""))
+	assert.Equal(t, "https://example.com/avatar.png", created.GetProfilePicUrl().Or(""))
 
 	// The created fields must survive a list query (read-after-write) and be
 	// filterable by email.
-	var byEmail []*v1.User
+	var byEmail []*apiv1.User
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		err := executeAndUnmarshal(headscale,
@@ -286,8 +286,8 @@ func TestUserCreateCommand(t *testing.T) {
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for user list by email")
 
 	require.Len(t, byEmail, 1)
-	assert.Equal(t, "cli-created", byEmail[0].GetName())
-	assert.Equal(t, "CLI Created", byEmail[0].GetDisplayName())
+	assert.Equal(t, "cli-created", byEmail[0].GetName().Or(""))
+	assert.Equal(t, "CLI Created", byEmail[0].GetDisplayName().Or(""))
 }
 
 // TestUserCommandValidation exercises the validation and error permutations of
@@ -325,7 +325,7 @@ func TestUserCommandValidation(t *testing.T) {
 			case tt.wantEmptyList:
 				require.NoError(t, err)
 
-				var users []v1.User
+				var users []apiv1.User
 
 				require.NoError(t, json.Unmarshal([]byte(out), &users))
 				require.Empty(t, users)

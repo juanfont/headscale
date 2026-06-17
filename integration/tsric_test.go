@@ -73,8 +73,8 @@ func TestTailscaleRustAxum(t *testing.T) {
 	var userID uint64
 
 	for _, u := range users {
-		if u.GetName() == "user1" { //nolint:goconst
-			userID = u.GetId()
+		if u.GetName().Or("") == "user1" { //nolint:goconst
+			userID = u.GetID().Or(0)
 
 			break
 		}
@@ -101,7 +101,7 @@ func TestTailscaleRustAxum(t *testing.T) {
 	tsrsOpts := []tsric.Option{
 		tsric.WithNetwork(network),
 		tsric.WithHeadscaleURL(headscaleEndpoint),
-		tsric.WithAuthKey(pak.GetKey()),
+		tsric.WithAuthKey(pak.GetKey().Or("")),
 		tsric.WithExtraHosts([]string{headscaleHostname + ":" + headscaleIP}),
 	}
 
@@ -142,7 +142,7 @@ func TestTailscaleRustAxum(t *testing.T) {
 
 		// Find the tailscale-rs node by hostname prefix
 		for _, n := range nodes {
-			if strings.HasPrefix(n.GetGivenName(), "tsrs-") {
+			if strings.HasPrefix(n.GetGivenName().Or(""), "tsrs-") {
 				addrs := n.GetIpAddresses()
 				if len(addrs) > 0 {
 					rustNodeIPv4 = addrs[0]
@@ -152,7 +152,7 @@ func TestTailscaleRustAxum(t *testing.T) {
 					rustNodeIPv6 = addrs[1]
 				}
 
-				rustNodeName = n.GetGivenName()
+				rustNodeName = n.GetGivenName().Or("")
 			}
 		}
 

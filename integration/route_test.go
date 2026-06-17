@@ -15,7 +15,7 @@ import (
 
 	cmpdiff "github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	apiv1 "github.com/juanfont/headscale/gen/api/v1"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -54,7 +54,8 @@ func TestEnablingRoutes(t *testing.T) {
 
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{tsic.WithAcceptRoutes()},
-		hsic.WithTestName("rt-enable"))
+		hsic.WithTestName("rt-enable"),
+	)
 	requireNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -87,7 +88,7 @@ func TestEnablingRoutes(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	requireNoErrSync(t, err)
 
-	var nodes []*v1.Node
+	var nodes []*apiv1.Node
 	// Wait for route advertisements to propagate to [state.NodeStore]
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
@@ -119,7 +120,7 @@ func TestEnablingRoutes(t *testing.T) {
 
 	for _, node := range nodes {
 		_, err := headscale.ApproveRoutes(
-			node.GetId(),
+			node.GetID().Or(0),
 			util.MustStringsToPrefixes(node.GetAvailableRoutes()),
 		)
 		require.NoError(t, err)
@@ -181,11 +182,11 @@ func TestEnablingRoutes(t *testing.T) {
 		assert.NoError(c, err)
 
 		for _, node := range nodes {
-			if node.GetId() == 1 {
+			if node.GetID().Or(0) == 1 {
 				assert.Len(c, node.GetAvailableRoutes(), 1) // 10.0.0.0/24
 				assert.Len(c, node.GetApprovedRoutes(), 1)  // 10.0.1.0/24
 				assert.Empty(c, node.GetSubnetRoutes())
-			} else if node.GetId() == 2 {
+			} else if node.GetID().Or(0) == 2 {
 				assert.Len(c, node.GetAvailableRoutes(), 1) // 10.0.1.0/24
 				assert.Empty(c, node.GetApprovedRoutes())
 				assert.Empty(c, node.GetSubnetRoutes())
@@ -333,7 +334,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	requireNoErrSync(t, err)
 
 	// Wait for route configuration changes after advertising routes
-	var nodes []*v1.Node
+	var nodes []*apiv1.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		nodes, err = headscale.ListNodes()
@@ -400,7 +401,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	t.Logf("  Expected: Client can access webservice through router 1 only")
 
 	_, err = headscale.ApproveRoutes(
-		MustFindNode(subRouter1.Hostname(), nodes).GetId(),
+		MustFindNode(subRouter1.Hostname(), nodes).GetID().Or(0),
 		[]netip.Prefix{pref},
 	)
 	require.NoError(t, err)
@@ -450,7 +451,8 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 		if srs1PeerStatus.PrimaryRoutes != nil {
 			t.Logf("got list: %v, want in: %v", srs1PeerStatus.PrimaryRoutes.AsSlice(), pref)
-			assert.Contains(c,
+			assert.Contains(
+				c,
 				srs1PeerStatus.PrimaryRoutes.AsSlice(),
 				pref,
 			)
@@ -479,11 +481,11 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// Validate primary routes table state - router 1 is primary
 	validatePrimaryRoutes(t, headscale, &types.DebugRoutes{
 		AvailableRoutes: map[types.NodeID][]netip.Prefix{
-			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
+			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetID().Or(0)): {pref},
 			// Note: Router 2 and 3 are available but not approved
 		},
 		PrimaryRoutes: map[string]types.NodeID{
-			pref.String(): types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()),
+			pref.String(): types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetID().Or(0)),
 		},
 	}, "Router 1 should be primary for route "+pref.String())
 
@@ -498,7 +500,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	t.Logf("  Expected: HA is now active - if router 1 fails, router 2 can take over")
 
 	_, err = headscale.ApproveRoutes(
-		MustFindNode(subRouter2.Hostname(), nodes).GetId(),
+		MustFindNode(subRouter2.Hostname(), nodes).GetID().Or(0),
 		[]netip.Prefix{pref},
 	)
 	require.NoError(t, err)
@@ -549,7 +551,8 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 		if srs1PeerStatus.PrimaryRoutes != nil {
 			t.Logf("got list: %v, want in: %v", srs1PeerStatus.PrimaryRoutes.AsSlice(), pref)
-			assert.Contains(c,
+			assert.Contains(
+				c,
 				srs1PeerStatus.PrimaryRoutes.AsSlice(),
 				pref,
 			)
@@ -559,12 +562,12 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// Validate primary routes table state - router 1 still primary, router 2 approved but standby
 	validatePrimaryRoutes(t, headscale, &types.DebugRoutes{
 		AvailableRoutes: map[types.NodeID][]netip.Prefix{
-			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
-			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},
+			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetID().Or(0)): {pref},
+			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetID().Or(0)): {pref},
 			// Note: Router 3 is available but not approved
 		},
 		PrimaryRoutes: map[string]types.NodeID{
-			pref.String(): types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()),
+			pref.String(): types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetID().Or(0)),
 		},
 	}, "Router 1 should remain primary after router 2 approval")
 
@@ -594,12 +597,12 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// Validate primary routes table state - router 1 primary, router 2 approved (standby)
 	validatePrimaryRoutes(t, headscale, &types.DebugRoutes{
 		AvailableRoutes: map[types.NodeID][]netip.Prefix{
-			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
-			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},
+			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetID().Or(0)): {pref},
+			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetID().Or(0)): {pref},
 			// Note: Router 3 is available but not approved
 		},
 		PrimaryRoutes: map[string]types.NodeID{
-			pref.String(): types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()),
+			pref.String(): types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetID().Or(0)),
 		},
 	}, "Router 1 primary with router 2 as standby")
 
@@ -615,7 +618,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	t.Logf("  Expected: Full HA configuration with 1 PRIMARY + 2 STANDBY routers")
 
 	_, err = headscale.ApproveRoutes(
-		MustFindNode(subRouter3.Hostname(), nodes).GetId(),
+		MustFindNode(subRouter3.Hostname(), nodes).GetID().Or(0),
 		[]netip.Prefix{pref},
 	)
 	require.NoError(t, err)
@@ -664,7 +667,8 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 		if srs1PeerStatus.PrimaryRoutes != nil {
 			t.Logf("got list: %v, want in: %v", srs1PeerStatus.PrimaryRoutes.AsSlice(), pref)
-			assert.Contains(c,
+			assert.Contains(
+				c,
 				srs1PeerStatus.PrimaryRoutes.AsSlice(),
 				pref,
 			)
@@ -702,12 +706,12 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// Validate primary routes table state - all 3 routers approved, router 1 still primary
 	validatePrimaryRoutes(t, headscale, &types.DebugRoutes{
 		AvailableRoutes: map[types.NodeID][]netip.Prefix{
-			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
-			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},
-			types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetId()): {pref},
+			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetID().Or(0)): {pref},
+			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetID().Or(0)): {pref},
+			types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetID().Or(0)): {pref},
 		},
 		PrimaryRoutes: map[string]types.NodeID{
-			pref.String(): types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()),
+			pref.String(): types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetID().Or(0)),
 		},
 	}, "Router 1 primary with all 3 routers approved")
 
@@ -755,7 +759,8 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		requirePeerSubnetRoutesWithCollect(c, srs3PeerStatus, nil)
 
 		if srs2PeerStatus.PrimaryRoutes != nil {
-			assert.Contains(c,
+			assert.Contains(
+				c,
 				srs2PeerStatus.PrimaryRoutes.AsSlice(),
 				pref,
 			)
@@ -782,11 +787,11 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	validatePrimaryRoutes(t, headscale, &types.DebugRoutes{
 		AvailableRoutes: map[types.NodeID][]netip.Prefix{
 			// Router 1 is disconnected, so not in AvailableRoutes
-			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},
-			types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetId()): {pref},
+			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetID().Or(0)): {pref},
+			types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetID().Or(0)): {pref},
 		},
 		PrimaryRoutes: map[string]types.NodeID{
-			pref.String(): types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()),
+			pref.String(): types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetID().Or(0)),
 		},
 	}, "Router 2 should be primary after router 1 failure")
 
@@ -854,10 +859,10 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	validatePrimaryRoutes(t, headscale, &types.DebugRoutes{
 		AvailableRoutes: map[types.NodeID][]netip.Prefix{
 			// Routers 1 and 2 are disconnected, so not in AvailableRoutes
-			types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetId()): {pref},
+			types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetID().Or(0)): {pref},
 		},
 		PrimaryRoutes: map[string]types.NodeID{
-			pref.String(): types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetId()),
+			pref.String(): types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetID().Or(0)),
 		},
 	}, "Router 3 should be primary after router 2 failure")
 
@@ -905,7 +910,8 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		requirePeerSubnetRoutesWithCollect(c, srs3PeerStatus, []netip.Prefix{pref})
 
 		if srs3PeerStatus.PrimaryRoutes != nil {
-			assert.Contains(c,
+			assert.Contains(
+				c,
 				srs3PeerStatus.PrimaryRoutes.AsSlice(),
 				pref,
 			)
@@ -931,12 +937,12 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// Validate primary routes table state - router 3 remains primary after router 1 comes back
 	validatePrimaryRoutes(t, headscale, &types.DebugRoutes{
 		AvailableRoutes: map[types.NodeID][]netip.Prefix{
-			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
+			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetID().Or(0)): {pref},
 			// Router 2 is still disconnected
-			types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetId()): {pref},
+			types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetID().Or(0)): {pref},
 		},
 		PrimaryRoutes: map[string]types.NodeID{
-			pref.String(): types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetId()),
+			pref.String(): types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetID().Or(0)),
 		},
 	}, "Router 3 should remain primary after router 1 recovery")
 
@@ -986,7 +992,8 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		requirePeerSubnetRoutesWithCollect(c, srs3PeerStatus, []netip.Prefix{pref})
 
 		if srs3PeerStatus.PrimaryRoutes != nil {
-			assert.Contains(c,
+			assert.Contains(
+				c,
 				srs3PeerStatus.PrimaryRoutes.AsSlice(),
 				pref,
 			)
@@ -1012,12 +1019,12 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// Validate primary routes table state - router 3 remains primary after all routers back online
 	validatePrimaryRoutes(t, headscale, &types.DebugRoutes{
 		AvailableRoutes: map[types.NodeID][]netip.Prefix{
-			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
-			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},
-			types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetId()): {pref},
+			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetID().Or(0)): {pref},
+			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetID().Or(0)): {pref},
+			types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetID().Or(0)): {pref},
 		},
 		PrimaryRoutes: map[string]types.NodeID{
-			pref.String(): types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetId()),
+			pref.String(): types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetID().Or(0)),
 		},
 	}, "Router 3 should remain primary after full recovery")
 
@@ -1030,7 +1037,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	t.Logf("  Expected: Router 1 (%s) should become new PRIMARY (lowest ID with approved route)", subRouter1.Hostname())
 	t.Logf("  Expected: Router 2 (%s) remains STANDBY", subRouter2.Hostname())
 	t.Logf("  Expected: Router 3 (%s) goes to advertised-only state (no longer serving)", subRouter3.Hostname())
-	_, err = headscale.ApproveRoutes(MustFindNode(subRouter3.Hostname(), nodes).GetId(), []netip.Prefix{})
+	_, err = headscale.ApproveRoutes(MustFindNode(subRouter3.Hostname(), nodes).GetID().Or(0), []netip.Prefix{})
 
 	// Wait for nodestore batch processing and route state changes to complete
 	// [state.NodeStore] batching timeout is 500ms, so we wait up to 10 seconds for route failover
@@ -1071,7 +1078,8 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		requirePeerSubnetRoutesWithCollect(c, srs3PeerStatus, nil)
 
 		if srs1PeerStatus.PrimaryRoutes != nil {
-			assert.Contains(c,
+			assert.Contains(
+				c,
 				srs1PeerStatus.PrimaryRoutes.AsSlice(),
 				pref,
 			)
@@ -1097,12 +1105,12 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// Validate primary routes table state - router 1 is primary after router 3 route disabled
 	validatePrimaryRoutes(t, headscale, &types.DebugRoutes{
 		AvailableRoutes: map[types.NodeID][]netip.Prefix{
-			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
-			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},
+			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetID().Or(0)): {pref},
+			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetID().Or(0)): {pref},
 			// Router 3's route is no longer approved, so not in AvailableRoutes
 		},
 		PrimaryRoutes: map[string]types.NodeID{
-			pref.String(): types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()),
+			pref.String(): types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetID().Or(0)),
 		},
 	}, "Router 1 should be primary after router 3 route disabled")
 
@@ -1116,7 +1124,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	t.Logf("  Expected: Router 2 (%s) should become new PRIMARY (only remaining approved route)", subRouter2.Hostname())
 	t.Logf("  Expected: Router 1 (%s) goes to advertised-only state", subRouter1.Hostname())
 	t.Logf("  Expected: Router 3 (%s) remains advertised-only", subRouter3.Hostname())
-	_, err = headscale.ApproveRoutes(MustFindNode(subRouter1.Hostname(), nodes).GetId(), []netip.Prefix{})
+	_, err = headscale.ApproveRoutes(MustFindNode(subRouter1.Hostname(), nodes).GetID().Or(0), []netip.Prefix{})
 
 	// Wait for nodestore batch processing and route state changes to complete
 	// [state.NodeStore] batching timeout is 500ms, so we wait up to 10 seconds for route failover
@@ -1157,7 +1165,8 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		requirePeerSubnetRoutesWithCollect(c, srs3PeerStatus, nil)
 
 		if srs2PeerStatus.PrimaryRoutes != nil {
-			assert.Contains(c,
+			assert.Contains(
+				c,
 				srs2PeerStatus.PrimaryRoutes.AsSlice(),
 				pref,
 			)
@@ -1184,11 +1193,11 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	validatePrimaryRoutes(t, headscale, &types.DebugRoutes{
 		AvailableRoutes: map[types.NodeID][]netip.Prefix{
 			// Router 1's route is no longer approved, so not in AvailableRoutes
-			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},
+			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetID().Or(0)): {pref},
 			// Router 3's route is still not approved
 		},
 		PrimaryRoutes: map[string]types.NodeID{
-			pref.String(): types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()),
+			pref.String(): types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetID().Or(0)),
 		},
 	}, "Router 2 should be primary after router 1 route disabled")
 
@@ -1205,7 +1214,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	r1Node := MustFindNode(subRouter1.Hostname(), nodes)
 	_, err = headscale.ApproveRoutes(
-		r1Node.GetId(),
+		r1Node.GetID().Or(0),
 		util.MustStringsToPrefixes(r1Node.GetAvailableRoutes()),
 	)
 
@@ -1242,7 +1251,8 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		assert.Nil(c, srs3PeerStatus.PrimaryRoutes)
 
 		if srs2PeerStatus.PrimaryRoutes != nil {
-			assert.Contains(c,
+			assert.Contains(
+				c,
 				srs2PeerStatus.PrimaryRoutes.AsSlice(),
 				pref,
 			)
@@ -1268,12 +1278,12 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// Validate primary routes table state after router 1 re-approval
 	validatePrimaryRoutes(t, headscale, &types.DebugRoutes{
 		AvailableRoutes: map[types.NodeID][]netip.Prefix{
-			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
-			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},
+			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetID().Or(0)): {pref},
+			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetID().Or(0)): {pref},
 			// Router 3 route is still not approved
 		},
 		PrimaryRoutes: map[string]types.NodeID{
-			pref.String(): types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()),
+			pref.String(): types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetID().Or(0)),
 		},
 	}, "Router 2 should remain primary after router 1 re-approval")
 
@@ -1290,7 +1300,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	r3Node := MustFindNode(subRouter3.Hostname(), nodes)
 	_, err = headscale.ApproveRoutes(
-		r3Node.GetId(),
+		r3Node.GetID().Or(0),
 		util.MustStringsToPrefixes(r3Node.GetAvailableRoutes()),
 	)
 
@@ -1310,12 +1320,12 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// Validate primary routes table state after router 3 re-approval
 	validatePrimaryRoutes(t, headscale, &types.DebugRoutes{
 		AvailableRoutes: map[types.NodeID][]netip.Prefix{
-			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
-			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},
-			types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetId()): {pref},
+			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetID().Or(0)): {pref},
+			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetID().Or(0)): {pref},
+			types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetID().Or(0)): {pref},
 		},
 		PrimaryRoutes: map[string]types.NodeID{
-			pref.String(): types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()),
+			pref.String(): types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetID().Or(0)),
 		},
 	}, "Router 2 should remain primary after router 3 re-approval")
 
@@ -1426,7 +1436,7 @@ func TestSubnetRouteACL(t *testing.T) {
 	requireNoErrSync(t, err)
 
 	// Wait for route advertisements to propagate to the server
-	var nodes []*v1.Node
+	var nodes []*apiv1.Node
 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		var err error
@@ -1437,12 +1447,12 @@ func TestSubnetRouteACL(t *testing.T) {
 
 		// Find the node that should have the route by checking node IDs
 		var (
-			routeNode *v1.Node
-			otherNode *v1.Node
+			routeNode *apiv1.Node
+			otherNode *apiv1.Node
 		)
 
 		for _, node := range nodes {
-			nodeIDStr := strconv.FormatUint(node.GetId(), 10)
+			nodeIDStr := strconv.FormatUint(node.GetID().Or(0), 10)
 			if _, shouldHaveRoute := expectedRoutes[nodeIDStr]; shouldHaveRoute {
 				routeNode = node
 			} else {
@@ -1623,7 +1633,7 @@ func TestEnablingExitRoutes(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	requireNoErrSync(t, err)
 
-	var nodes []*v1.Node
+	var nodes []*apiv1.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		var err error
@@ -1654,12 +1664,12 @@ func TestEnablingExitRoutes(t *testing.T) {
 	// Enable all routes, but do v4 on one and v6 on other to ensure they
 	// are both added since they are exit routes.
 	_, err = headscale.ApproveRoutes(
-		nodes[0].GetId(),
+		nodes[0].GetID().Or(0),
 		[]netip.Prefix{tsaddr.AllIPv4()},
 	)
 	require.NoError(t, err)
 	_, err = headscale.ApproveRoutes(
-		nodes[1].GetId(),
+		nodes[1].GetID().Or(0),
 		[]netip.Prefix{tsaddr.AllIPv6()},
 	)
 	require.NoError(t, err)
@@ -1754,7 +1764,7 @@ func TestExitRoutesWithAutogroupInternetACL(t *testing.T) {
 	// so the standard WaitForTailscaleSync wait would deadlock here —
 	// the post-approval [assert.EventuallyWithT] block below covers the peer
 	// state we actually care about.
-	var nodes []*v1.Node
+	var nodes []*apiv1.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		nodes, err = headscale.ListNodes()
@@ -1770,12 +1780,12 @@ func TestExitRoutesWithAutogroupInternetACL(t *testing.T) {
 	// alice's exit. The bug fix is about visibility, not which node
 	// is chosen.
 	_, err = headscale.ApproveRoutes(
-		nodes[0].GetId(),
+		nodes[0].GetID().Or(0),
 		[]netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()},
 	)
 	require.NoError(t, err)
 	_, err = headscale.ApproveRoutes(
-		nodes[1].GetId(),
+		nodes[1].GetID().Or(0),
 		[]netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()},
 	)
 	require.NoError(t, err)
@@ -1859,7 +1869,8 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 	require.NoErrorf(t, err, "failed to create scenario: %s", err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	err = scenario.CreateHeadscaleEnv([]tsic.Option{tsic.WithAcceptRoutes()},
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{tsic.WithAcceptRoutes()},
 		hsic.WithTestName("rt-multinet"),
 	)
 	requireNoErrHeadscaleEnv(t, err)
@@ -1902,7 +1913,7 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 	_, _, err = user1c.Execute(command)
 	require.NoErrorf(t, err, "failed to advertise route: %s", err)
 
-	var nodes []*v1.Node
+	var nodes []*apiv1.Node
 	// Wait for route advertisements to propagate to [state.NodeStore]
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
@@ -1929,7 +1940,7 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 
 	// Enable route
 	_, err = headscale.ApproveRoutes(
-		nodes[0].GetId(),
+		nodes[0].GetID().Or(0),
 		[]netip.Prefix{*pref},
 	)
 	require.NoError(t, err)
@@ -2010,7 +2021,8 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 	require.NoErrorf(t, err, "failed to create scenario: %s", err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	err = scenario.CreateHeadscaleEnv([]tsic.Option{},
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{},
 		hsic.WithTestName("rt-multinetexit"),
 	)
 	requireNoErrHeadscaleEnv(t, err)
@@ -2058,7 +2070,7 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 	_, _, err = user1c.Execute(command)
 	require.NoErrorf(t, err, "failed to advertise routes: %s", err)
 
-	var nodes []*v1.Node
+	var nodes []*apiv1.Node
 	// Wait for route advertisements to propagate (3 routes: v4 exit + v6 exit + subnet).
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
@@ -2084,7 +2096,7 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 	}, integrationutil.ScaledTimeout(5*time.Second), integrationutil.FastPoll, "Verifying no routes sent to client before approval")
 
 	// Approve exit routes and subnet route.
-	_, err = headscale.ApproveRoutes(nodes[0].GetId(), []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6(), *route})
+	_, err = headscale.ApproveRoutes(nodes[0].GetID().Or(0), []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6(), *route})
 	require.NoError(t, err)
 
 	// Wait for route state changes to propagate.
@@ -2151,9 +2163,9 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 	}, 10*time.Second, 200*time.Millisecond, "user2 traceroute should go through user1 exit node")
 }
 
-func MustFindNode(hostname string, nodes []*v1.Node) *v1.Node {
+func MustFindNode(hostname string, nodes []*apiv1.Node) *apiv1.Node {
 	for _, node := range nodes {
-		if node.GetName() == hostname {
+		if node.GetName().Or("") == hostname {
 			return node
 		}
 	}
@@ -2447,7 +2459,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 					require.NoErrorf(t, err, "failed to create scenario: %s", err)
 					defer scenario.ShutdownAssertNoPanics(t)
 
-					var nodes []*v1.Node
+					var nodes []*apiv1.Node
 
 					opts := []hsic.Option{
 						hsic.WithTestName("autoapprovemulti"),
@@ -2477,7 +2489,8 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						}
 					}
 
-					err = scenario.createHeadscaleEnvWithTags(tt.withURL, tsOpts, preAuthKeyTags, webauthTagUser,
+					err = scenario.createHeadscaleEnvWithTags(
+						tt.withURL, tsOpts, preAuthKeyTags, webauthTagUser,
 						opts...,
 					)
 					requireNoErrHeadscaleEnv(t, err)
@@ -2518,7 +2531,8 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 					require.NoError(t, err)
 
 					if advertiseDuringUp {
-						tsOpts = append(tsOpts,
+						tsOpts = append(
+							tsOpts,
 							tsic.WithExtraLoginArgs([]string{"--advertise-routes=" + route.String()}),
 						)
 					}
@@ -2565,16 +2579,16 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 
 						// If the approver is a tag, create a tagged PreAuthKey
 						// (tags-as-identity model: tags come from PreAuthKey, not --advertise-tags)
-						var pak *v1.PreAuthKey
+						var pak *apiv1.PreAuthKey
 						if strings.HasPrefix(tt.approver, "tag:") {
-							pak, err = scenario.CreatePreAuthKeyWithTags(userMap["user1"].GetId(), false, false, []string{tt.approver})
+							pak, err = scenario.CreatePreAuthKeyWithTags(userMap["user1"].GetID().Or(0), false, false, []string{tt.approver})
 						} else {
-							pak, err = scenario.CreatePreAuthKey(userMap["user1"].GetId(), false, false)
+							pak, err = scenario.CreatePreAuthKey(userMap["user1"].GetID().Or(0), false, false)
 						}
 
 						require.NoError(t, err)
 
-						err = routerUsernet1.Login(headscale.GetEndpoint(), pak.GetKey())
+						err = routerUsernet1.Login(headscale.GetEndpoint(), pak.GetKey().Or(""))
 						require.NoError(t, err)
 					}
 					// extra creation end.
@@ -2646,7 +2660,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 
 						routerNode := MustFindNode(routerUsernet1.Hostname(), nodes)
 						t.Logf("Initial auto-approval check - Router node %s: announced=%v, approved=%v, subnet=%v",
-							routerNode.GetName(),
+							routerNode.GetName().Or(""),
 							routerNode.GetAvailableRoutes(),
 							routerNode.GetApprovedRoutes(),
 							routerNode.GetSubnetRoutes())
@@ -2740,7 +2754,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 
 						routerNode := MustFindNode(routerUsernet1.Hostname(), nodes)
 						t.Logf("After policy removal - Router node %s: announced=%v, approved=%v, subnet=%v",
-							routerNode.GetName(),
+							routerNode.GetName().Or(""),
 							routerNode.GetAvailableRoutes(),
 							routerNode.GetApprovedRoutes(),
 							routerNode.GetSubnetRoutes())
@@ -2791,7 +2805,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 
 					// Disable the route, making it unavailable since it is no longer auto-approved
 					_, err = headscale.ApproveRoutes(
-						MustFindNode(routerUsernet1.Hostname(), nodes).GetId(),
+						MustFindNode(routerUsernet1.Hostname(), nodes).GetID().Or(0),
 						[]netip.Prefix{},
 					)
 					require.NoError(t, err)
@@ -3078,10 +3092,10 @@ func requirePeerSubnetRoutesWithCollect(c *assert.CollectT, status *ipnstate.Pee
 	}
 }
 
-func requireNodeRouteCountWithCollect(c *assert.CollectT, node *v1.Node, announced, approved, subnet int) {
-	assert.Lenf(c, node.GetAvailableRoutes(), announced, "expected %q announced routes(%v) to have %d route, had %d", node.GetName(), node.GetAvailableRoutes(), announced, len(node.GetAvailableRoutes()))
-	assert.Lenf(c, node.GetApprovedRoutes(), approved, "expected %q approved routes(%v) to have %d route, had %d", node.GetName(), node.GetApprovedRoutes(), approved, len(node.GetApprovedRoutes()))
-	assert.Lenf(c, node.GetSubnetRoutes(), subnet, "expected %q subnet routes(%v) to have %d route, had %d", node.GetName(), node.GetSubnetRoutes(), subnet, len(node.GetSubnetRoutes()))
+func requireNodeRouteCountWithCollect(c *assert.CollectT, node *apiv1.Node, announced, approved, subnet int) {
+	assert.Lenf(c, node.GetAvailableRoutes(), announced, "expected %q announced routes(%v) to have %d route, had %d", node.GetName().Or(""), node.GetAvailableRoutes(), announced, len(node.GetAvailableRoutes()))
+	assert.Lenf(c, node.GetApprovedRoutes(), approved, "expected %q approved routes(%v) to have %d route, had %d", node.GetName().Or(""), node.GetApprovedRoutes(), approved, len(node.GetApprovedRoutes()))
+	assert.Lenf(c, node.GetSubnetRoutes(), subnet, "expected %q subnet routes(%v) to have %d route, had %d", node.GetName().Or(""), node.GetSubnetRoutes(), subnet, len(node.GetSubnetRoutes()))
 }
 
 // TestSubnetRouteACLFiltering tests that a node can only access subnet routes
@@ -3159,9 +3173,10 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 	err = json.Unmarshal([]byte(aclPolicyStr), aclPolicy)
 	require.NoError(t, err)
 
-	err = scenario.CreateHeadscaleEnv([]tsic.Option{
-		tsic.WithAcceptRoutes(),
-	}, hsic.WithTestName("routeaclfilter"),
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{
+			tsic.WithAcceptRoutes(),
+		}, hsic.WithTestName("routeaclfilter"),
 		hsic.WithACLPolicy(aclPolicy),
 		hsic.WithPolicyMode(types.PolicyModeDB), // test updates policy at runtime via CLI
 	)
@@ -3218,7 +3233,7 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	requireNoErrSync(t, err)
 
-	var routerNode, nodeNode *v1.Node
+	var routerNode, nodeNode *apiv1.Node
 	// Wait for route advertisements to propagate to [state.NodeStore]
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		// List nodes and verify the router has 3 available routes
@@ -3240,7 +3255,7 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 
 	// Approve all routes for the router
 	_, err = headscale.ApproveRoutes(
-		routerNode.GetId(),
+		routerNode.GetID().Or(0),
 		util.MustStringsToPrefixes(routerNode.GetAvailableRoutes()),
 	)
 	require.NoError(t, err)
@@ -3401,7 +3416,8 @@ func TestGrantViaSubnetSteering(t *testing.T) {
 	// co-router visibility the HA primary's subnet appears in the
 	// co-router's AllowedIPs, and --accept-routes would install a
 	// system route that conflicts with local subnet forwarding.
-	routerA, err := scenario.CreateTailscaleNode("head",
+	routerA, err := scenario.CreateTailscaleNode(
+		"head",
 		tsic.WithNetwork(usernet1),
 	)
 	require.NoError(t, err)
@@ -3409,16 +3425,17 @@ func TestGrantViaSubnetSteering(t *testing.T) {
 	defer func() { _, _, _ = routerA.Shutdown() }()
 
 	pakRouterA, err := scenario.CreatePreAuthKeyWithTags(
-		userMap["router"].GetId(), false, false, []string{"tag:router-a"},
+		userMap["router"].GetID().Or(0), false, false, []string{"tag:router-a"},
 	)
 	require.NoError(t, err)
-	err = routerA.Login(headscale.GetEndpoint(), pakRouterA.GetKey())
+	err = routerA.Login(headscale.GetEndpoint(), pakRouterA.GetKey().Or(""))
 	require.NoError(t, err)
 	err = routerA.WaitForRunning(30 * time.Second)
 	require.NoError(t, err)
 
 	// Create Router B (tag:router-b) on usernet1.
-	routerB, err := scenario.CreateTailscaleNode("head",
+	routerB, err := scenario.CreateTailscaleNode(
+		"head",
 		tsic.WithNetwork(usernet1),
 	)
 	require.NoError(t, err)
@@ -3426,16 +3443,17 @@ func TestGrantViaSubnetSteering(t *testing.T) {
 	defer func() { _, _, _ = routerB.Shutdown() }()
 
 	pakRouterB, err := scenario.CreatePreAuthKeyWithTags(
-		userMap["router"].GetId(), false, false, []string{"tag:router-b"},
+		userMap["router"].GetID().Or(0), false, false, []string{"tag:router-b"},
 	)
 	require.NoError(t, err)
-	err = routerB.Login(headscale.GetEndpoint(), pakRouterB.GetKey())
+	err = routerB.Login(headscale.GetEndpoint(), pakRouterB.GetKey().Or(""))
 	require.NoError(t, err)
 	err = routerB.WaitForRunning(30 * time.Second)
 	require.NoError(t, err)
 
 	// Create Client A (tag:group-a) on usernet2.
-	clientA, err := scenario.CreateTailscaleNode("head",
+	clientA, err := scenario.CreateTailscaleNode(
+		"head",
 		tsic.WithNetwork(usernet2),
 		tsic.WithAcceptRoutes(),
 	)
@@ -3444,16 +3462,17 @@ func TestGrantViaSubnetSteering(t *testing.T) {
 	defer func() { _, _, _ = clientA.Shutdown() }()
 
 	pakClientA, err := scenario.CreatePreAuthKeyWithTags(
-		userMap["client"].GetId(), false, false, []string{"tag:group-a"},
+		userMap["client"].GetID().Or(0), false, false, []string{"tag:group-a"},
 	)
 	require.NoError(t, err)
-	err = clientA.Login(headscale.GetEndpoint(), pakClientA.GetKey())
+	err = clientA.Login(headscale.GetEndpoint(), pakClientA.GetKey().Or(""))
 	require.NoError(t, err)
 	err = clientA.WaitForRunning(30 * time.Second)
 	require.NoError(t, err)
 
 	// Create Client B (tag:group-b) on usernet2.
-	clientB, err := scenario.CreateTailscaleNode("head",
+	clientB, err := scenario.CreateTailscaleNode(
+		"head",
 		tsic.WithNetwork(usernet2),
 		tsic.WithAcceptRoutes(),
 	)
@@ -3462,10 +3481,10 @@ func TestGrantViaSubnetSteering(t *testing.T) {
 	defer func() { _, _, _ = clientB.Shutdown() }()
 
 	pakClientB, err := scenario.CreatePreAuthKeyWithTags(
-		userMap["client"].GetId(), false, false, []string{"tag:group-b"},
+		userMap["client"].GetID().Or(0), false, false, []string{"tag:group-b"},
 	)
 	require.NoError(t, err)
-	err = clientB.Login(headscale.GetEndpoint(), pakClientB.GetKey())
+	err = clientB.Login(headscale.GetEndpoint(), pakClientB.GetKey().Or(""))
 	require.NoError(t, err)
 	err = clientB.WaitForRunning(30 * time.Second)
 	require.NoError(t, err)
@@ -3497,7 +3516,7 @@ func TestGrantViaSubnetSteering(t *testing.T) {
 
 		routerANode := MustFindNode(routerA.Hostname(), nodes)
 		t.Logf("Router A %s: announced=%v, approved=%v, subnet=%v",
-			routerANode.GetName(),
+			routerANode.GetName().Or(""),
 			routerANode.GetAvailableRoutes(),
 			routerANode.GetApprovedRoutes(),
 			routerANode.GetSubnetRoutes())
@@ -3506,7 +3525,7 @@ func TestGrantViaSubnetSteering(t *testing.T) {
 
 		routerBNode := MustFindNode(routerB.Hostname(), nodes)
 		t.Logf("Router B %s: announced=%v, approved=%v, subnet=%v",
-			routerBNode.GetName(),
+			routerBNode.GetName().Or(""),
 			routerBNode.GetAvailableRoutes(),
 			routerBNode.GetApprovedRoutes(),
 			routerBNode.GetSubnetRoutes())
@@ -3697,7 +3716,7 @@ func TestHASubnetRouterPingFailover(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	requireNoErrSync(t, err)
 
-	var nodes []*v1.Node
+	var nodes []*apiv1.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		nodes, err = headscale.ListNodes()
@@ -3707,19 +3726,19 @@ func TestHASubnetRouterPingFailover(t *testing.T) {
 
 	// Approve routes on both routers.
 	_, err = headscale.ApproveRoutes(
-		MustFindNode(subRouter1.Hostname(), nodes).GetId(),
+		MustFindNode(subRouter1.Hostname(), nodes).GetID().Or(0),
 		[]netip.Prefix{pref},
 	)
 	require.NoError(t, err)
 
 	_, err = headscale.ApproveRoutes(
-		MustFindNode(subRouter2.Hostname(), nodes).GetId(),
+		MustFindNode(subRouter2.Hostname(), nodes).GetID().Or(0),
 		[]netip.Prefix{pref},
 	)
 	require.NoError(t, err)
 
-	nodeID1 := types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId())
-	nodeID2 := types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId())
+	nodeID1 := types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetID().Or(0))
+	nodeID2 := types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetID().Or(0))
 
 	// Wait for HA to be set up: router 1 primary, router 2 standby.
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -3937,7 +3956,7 @@ func TestHASubnetRouterFailoverBothOffline(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	requireNoErrSync(t, err)
 
-	var nodes []*v1.Node
+	var nodes []*apiv1.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		nodes, err = headscale.ListNodes()
@@ -3947,19 +3966,19 @@ func TestHASubnetRouterFailoverBothOffline(t *testing.T) {
 
 	// Approve the route on both routers explicitly.
 	_, err = headscale.ApproveRoutes(
-		MustFindNode(subRouter1.Hostname(), nodes).GetId(),
+		MustFindNode(subRouter1.Hostname(), nodes).GetID().Or(0),
 		[]netip.Prefix{pref},
 	)
 	require.NoError(t, err)
 
 	_, err = headscale.ApproveRoutes(
-		MustFindNode(subRouter2.Hostname(), nodes).GetId(),
+		MustFindNode(subRouter2.Hostname(), nodes).GetID().Or(0),
 		[]netip.Prefix{pref},
 	)
 	require.NoError(t, err)
 
-	nodeID1 := types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId())
-	nodeID2 := types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId())
+	nodeID1 := types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetID().Or(0))
+	nodeID2 := types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetID().Or(0))
 
 	// Sanity: r1 starts as primary (lower NodeID).
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -4142,7 +4161,7 @@ func TestHASubnetRouterFailoverBothOfflineCablePull(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	requireNoErrSync(t, err)
 
-	var nodes []*v1.Node
+	var nodes []*apiv1.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		nodes, err = headscale.ListNodes()
@@ -4151,18 +4170,18 @@ func TestHASubnetRouterFailoverBothOfflineCablePull(t *testing.T) {
 	}, propagationTime, 200*time.Millisecond, "nodes registered")
 
 	_, err = headscale.ApproveRoutes(
-		MustFindNode(subRouter1.Hostname(), nodes).GetId(),
+		MustFindNode(subRouter1.Hostname(), nodes).GetID().Or(0),
 		[]netip.Prefix{pref},
 	)
 	require.NoError(t, err)
 
 	_, err = headscale.ApproveRoutes(
-		MustFindNode(subRouter2.Hostname(), nodes).GetId(),
+		MustFindNode(subRouter2.Hostname(), nodes).GetID().Or(0),
 		[]netip.Prefix{pref},
 	)
 	require.NoError(t, err)
 
-	nodeID2 := types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId())
+	nodeID2 := types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetID().Or(0))
 
 	// Sanity: r1 starts as primary.
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -4366,7 +4385,7 @@ func TestHASubnetRouterFailoverDockerDisconnect(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	requireNoErrSync(t, err)
 
-	var nodes []*v1.Node
+	var nodes []*apiv1.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		nodes, err = headscale.ListNodes()
@@ -4375,19 +4394,19 @@ func TestHASubnetRouterFailoverDockerDisconnect(t *testing.T) {
 	}, propagationTime, 200*time.Millisecond, "nodes registered")
 
 	_, err = headscale.ApproveRoutes(
-		MustFindNode(subRouter1.Hostname(), nodes).GetId(),
+		MustFindNode(subRouter1.Hostname(), nodes).GetID().Or(0),
 		[]netip.Prefix{pref},
 	)
 	require.NoError(t, err)
 
 	_, err = headscale.ApproveRoutes(
-		MustFindNode(subRouter2.Hostname(), nodes).GetId(),
+		MustFindNode(subRouter2.Hostname(), nodes).GetID().Or(0),
 		[]netip.Prefix{pref},
 	)
 	require.NoError(t, err)
 
-	nodeID1 := types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId())
-	nodeID2 := types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId())
+	nodeID1 := types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetID().Or(0))
+	nodeID2 := types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetID().Or(0))
 
 	// requirePrimary blocks until headscale reports want as the
 	// primary advertiser for pref.

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	apiv1 "github.com/juanfont/headscale/gen/api/v1"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
@@ -74,7 +74,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			}
 
 			var (
-				listNodes             []*v1.Node
+				listNodes             []*apiv1.Node
 				nodeCountBeforeLogout int
 			)
 
@@ -135,12 +135,12 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			require.NoError(t, err)
 
 			for _, userName := range spec.Users {
-				key, err := scenario.CreatePreAuthKey(userMap[userName].GetId(), true, false)
+				key, err := scenario.CreatePreAuthKey(userMap[userName].GetID().Or(0), true, false)
 				if err != nil {
 					t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
 				}
 
-				err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
+				err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey().Or(""))
 				if err != nil {
 					t.Fatalf("failed to run tailscale up for user %s: %s", userName, err)
 				}
@@ -232,7 +232,8 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	err = scenario.CreateHeadscaleEnv([]tsic.Option{},
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{},
 		hsic.WithTestName("keyrelognewuser"),
 	)
 	requireNoErrHeadscaleEnv(t, err)
@@ -256,7 +257,7 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after initial login", 3*time.Minute)
 
 	var (
-		listNodes             []*v1.Node
+		listNodes             []*apiv1.Node
 		nodeCountBeforeLogout int
 	)
 
@@ -290,7 +291,7 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a new authkey for user1, to be used for all clients
-	key, err := scenario.CreatePreAuthKey(userMap["user1"].GetId(), true, false)
+	key, err := scenario.CreatePreAuthKey(userMap["user1"].GetID().Or(0), true, false)
 	if err != nil {
 		t.Fatalf("failed to create pre-auth key for user1: %s", err)
 	}
@@ -298,13 +299,13 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	// Log in all clients as user1, iterating over the spec only returns the
 	// clients, not the usernames.
 	for _, userName := range spec.Users {
-		err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
+		err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey().Or(""))
 		if err != nil {
 			t.Fatalf("failed to run tailscale up for user %s: %s", userName, err)
 		}
 	}
 
-	var user1Nodes []*v1.Node
+	var user1Nodes []*apiv1.Node
 
 	t.Logf("Validating user1 node count after relogin at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -318,7 +319,7 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	// Collect expected node IDs for user1 after relogin
 	expectedUser1Nodes := make([]types.NodeID, 0, len(user1Nodes))
 	for _, node := range user1Nodes {
-		expectedUser1Nodes = append(expectedUser1Nodes, types.NodeID(node.GetId()))
+		expectedUser1Nodes = append(expectedUser1Nodes, types.NodeID(node.GetID().Or(0)))
 	}
 
 	// Validate connection state after relogin as user1
@@ -328,7 +329,7 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	// Validate that user2 still has their original nodes after user1's re-authentication
 	// When nodes re-authenticate with a different user's pre-auth key, NEW nodes are created
 	// for the new user. The original nodes remain with the original user.
-	var user2Nodes []*v1.Node
+	var user2Nodes []*apiv1.Node
 
 	t.Logf("Validating user2 node persistence after user1 relogin at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -402,7 +403,7 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 			requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after initial login", 3*time.Minute)
 
 			var (
-				listNodes             []*v1.Node
+				listNodes             []*apiv1.Node
 				nodeCountBeforeLogout int
 			)
 
@@ -446,7 +447,7 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 			require.NoError(t, err)
 
 			for _, userName := range spec.Users {
-				key, err := scenario.CreatePreAuthKey(userMap[userName].GetId(), true, false)
+				key, err := scenario.CreatePreAuthKey(userMap[userName].GetID().Or(0), true, false)
 				if err != nil {
 					t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
 				}
@@ -458,12 +459,13 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 						"preauthkeys",
 						"expire",
 						"--id",
-						strconv.FormatUint(key.GetId(), 10),
-					})
+						strconv.FormatUint(key.GetID().Or(0), 10),
+					},
+				)
 				require.NoError(t, err)
 				require.NoError(t, err)
 
-				err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
+				err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey().Or(""))
 				assert.ErrorContains(t, err, "authkey expired")
 			}
 		})
@@ -498,14 +500,14 @@ func TestAuthKeyDeleteKey(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap["user1"].GetId()
+	userID := userMap["user1"].GetID().Or(0)
 
 	// Create a pre-auth key - we keep the full key string before it gets redacted
 	authKey, err := scenario.CreatePreAuthKey(userID, false, false)
 	require.NoError(t, err)
 
-	authKeyString := authKey.GetKey()
-	authKeyID := authKey.GetId()
+	authKeyString := authKey.GetKey().Or("")
+	authKeyID := authKey.GetID().Or(0)
 	t.Logf("Created pre-auth key ID %d: %s", authKeyID, authKeyString)
 
 	// Create a tailscale client and log it in with the auth key
@@ -519,7 +521,7 @@ func TestAuthKeyDeleteKey(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for the node to be registered
-	var user1Nodes []*v1.Node
+	var user1Nodes []*apiv1.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		var err error
@@ -529,8 +531,8 @@ func TestAuthKeyDeleteKey(t *testing.T) {
 		assert.Len(c, user1Nodes, 1)
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "waiting for node to be registered")
 
-	nodeID := user1Nodes[0].GetId()
-	nodeName := user1Nodes[0].GetName()
+	nodeID := user1Nodes[0].GetID().Or(0)
+	nodeName := user1Nodes[0].GetName().Or("")
 	t.Logf("Node %d (%s) created successfully with auth_key_id=%d", nodeID, nodeName, authKeyID)
 
 	// Verify node is online
@@ -640,7 +642,7 @@ func TestAuthKeyLogoutAndReloginRoutesPreserved(t *testing.T) {
 	// Step 1: Verify initial route is advertised, approved, and SERVING
 	t.Logf("Step 1: Verifying initial route is advertised, approved, and SERVING at %s", time.Now().Format(TimestampFormat))
 
-	var initialNode *v1.Node
+	var initialNode *apiv1.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		nodes, err := headscale.ListNodes()
@@ -662,7 +664,7 @@ func TestAuthKeyLogoutAndReloginRoutesPreserved(t *testing.T) {
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "initial route should be serving")
 
 	require.NotNil(t, initialNode, "Initial node should be found")
-	initialNodeID := initialNode.GetId()
+	initialNodeID := initialNode.GetID().Or(0)
 	t.Logf("Initial node ID: %d, Available: %v, Approved: %v, Serving: %v",
 		initialNodeID, initialNode.GetAvailableRoutes(), initialNode.GetApprovedRoutes(), initialNode.GetSubnetRoutes())
 
@@ -694,12 +696,12 @@ func TestAuthKeyLogoutAndReloginRoutesPreserved(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	key, err := scenario.CreatePreAuthKey(userMap[user].GetId(), true, false)
+	key, err := scenario.CreatePreAuthKey(userMap[user].GetID().Or(0), true, false)
 	require.NoError(t, err)
 
 	// Re-login - the container already has extraLoginArgs with --advertise-routes
 	// from the initial setup, so routes will be advertised on re-login
-	err = scenario.RunTailscaleUp(user, headscale.GetEndpoint(), key.GetKey())
+	err = scenario.RunTailscaleUp(user, headscale.GetEndpoint(), key.GetKey().Or(""))
 	require.NoError(t, err)
 
 	// Wait for client to be running
@@ -738,7 +740,7 @@ func TestAuthKeyLogoutAndReloginRoutesPreserved(t *testing.T) {
 				"BUG #2896: Subnet routes should contain %s after relogin", advertiseRoute)
 
 			// Also verify node ID was preserved (same node, not new registration)
-			assert.Equal(c, initialNodeID, node.GetId(),
+			assert.Equal(c, initialNodeID, node.GetID().Or(0),
 				"Node ID should be preserved after same-user relogin")
 		}
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll,

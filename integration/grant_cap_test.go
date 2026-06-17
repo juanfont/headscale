@@ -151,7 +151,8 @@ func TestGrantCapRelay(t *testing.T) {
 	require.NoError(t, err)
 
 	// --- Create Relay R on usernet3, dual-homed to usernet1+usernet2 ---
-	relayR, err := scenario.CreateTailscaleNode("head",
+	relayR, err := scenario.CreateTailscaleNode(
+		"head",
 		tsic.WithNetwork(usernet3),
 	)
 	require.NoError(t, err)
@@ -159,10 +160,10 @@ func TestGrantCapRelay(t *testing.T) {
 	defer func() { _, _, _ = relayR.Shutdown() }()
 
 	pakRelay, err := scenario.CreatePreAuthKeyWithTags(
-		userMap["relay"].GetId(), false, false, []string{"tag:relay"},
+		userMap["relay"].GetID().Or(0), false, false, []string{"tag:relay"},
 	)
 	require.NoError(t, err)
-	err = relayR.Login(headscale.GetEndpoint(), pakRelay.GetKey())
+	err = relayR.Login(headscale.GetEndpoint(), pakRelay.GetKey().Or(""))
 	require.NoError(t, err)
 	err = relayR.WaitForRunning(30 * time.Second)
 	require.NoError(t, err)
@@ -184,7 +185,8 @@ func TestGrantCapRelay(t *testing.T) {
 	require.NoError(t, err)
 
 	// --- Create Client A on usernet1 only ---
-	clientA, err := scenario.CreateTailscaleNode("head",
+	clientA, err := scenario.CreateTailscaleNode(
+		"head",
 		tsic.WithNetwork(usernet1),
 	)
 	require.NoError(t, err)
@@ -192,16 +194,17 @@ func TestGrantCapRelay(t *testing.T) {
 	defer func() { _, _, _ = clientA.Shutdown() }()
 
 	pakClientA, err := scenario.CreatePreAuthKeyWithTags(
-		userMap["clienta"].GetId(), false, false, []string{"tag:client-a"},
+		userMap["clienta"].GetID().Or(0), false, false, []string{"tag:client-a"},
 	)
 	require.NoError(t, err)
-	err = clientA.Login(headscale.GetEndpoint(), pakClientA.GetKey())
+	err = clientA.Login(headscale.GetEndpoint(), pakClientA.GetKey().Or(""))
 	require.NoError(t, err)
 	err = clientA.WaitForRunning(30 * time.Second)
 	require.NoError(t, err)
 
 	// --- Create Client B on usernet2 only ---
-	clientB, err := scenario.CreateTailscaleNode("head",
+	clientB, err := scenario.CreateTailscaleNode(
+		"head",
 		tsic.WithNetwork(usernet2),
 	)
 	require.NoError(t, err)
@@ -209,10 +212,10 @@ func TestGrantCapRelay(t *testing.T) {
 	defer func() { _, _, _ = clientB.Shutdown() }()
 
 	pakClientB, err := scenario.CreatePreAuthKeyWithTags(
-		userMap["clientb"].GetId(), false, false, []string{"tag:client-b"},
+		userMap["clientb"].GetID().Or(0), false, false, []string{"tag:client-b"},
 	)
 	require.NoError(t, err)
-	err = clientB.Login(headscale.GetEndpoint(), pakClientB.GetKey())
+	err = clientB.Login(headscale.GetEndpoint(), pakClientB.GetKey().Or(""))
 	require.NoError(t, err)
 	err = clientB.WaitForRunning(30 * time.Second)
 	require.NoError(t, err)
@@ -629,7 +632,8 @@ func TestGrantCapDrive(t *testing.T) {
 	require.NoError(t, err)
 
 	// --- Create Sharer node ---
-	sharer, err := scenario.CreateTailscaleNode("head",
+	sharer, err := scenario.CreateTailscaleNode(
+		"head",
 		tsic.WithNetwork(usernet1),
 	)
 	require.NoError(t, err)
@@ -637,16 +641,17 @@ func TestGrantCapDrive(t *testing.T) {
 	defer func() { _, _, _ = sharer.Shutdown() }()
 
 	pakSharer, err := scenario.CreatePreAuthKeyWithTags(
-		userMap["sharer"].GetId(), false, false, []string{"tag:sharer"},
+		userMap["sharer"].GetID().Or(0), false, false, []string{"tag:sharer"},
 	)
 	require.NoError(t, err)
-	err = sharer.Login(headscale.GetEndpoint(), pakSharer.GetKey())
+	err = sharer.Login(headscale.GetEndpoint(), pakSharer.GetKey().Or(""))
 	require.NoError(t, err)
 	err = sharer.WaitForRunning(30 * time.Second)
 	require.NoError(t, err)
 
 	// --- Create RW client node ---
-	rwClient, err := scenario.CreateTailscaleNode("head",
+	rwClient, err := scenario.CreateTailscaleNode(
+		"head",
 		tsic.WithNetwork(usernet1),
 	)
 	require.NoError(t, err)
@@ -654,16 +659,17 @@ func TestGrantCapDrive(t *testing.T) {
 	defer func() { _, _, _ = rwClient.Shutdown() }()
 
 	pakRW, err := scenario.CreatePreAuthKeyWithTags(
-		userMap["rwclient"].GetId(), false, false, []string{"tag:rw-client"},
+		userMap["rwclient"].GetID().Or(0), false, false, []string{"tag:rw-client"},
 	)
 	require.NoError(t, err)
-	err = rwClient.Login(headscale.GetEndpoint(), pakRW.GetKey())
+	err = rwClient.Login(headscale.GetEndpoint(), pakRW.GetKey().Or(""))
 	require.NoError(t, err)
 	err = rwClient.WaitForRunning(30 * time.Second)
 	require.NoError(t, err)
 
 	// --- Create RO client node ---
-	roClient, err := scenario.CreateTailscaleNode("head",
+	roClient, err := scenario.CreateTailscaleNode(
+		"head",
 		tsic.WithNetwork(usernet1),
 	)
 	require.NoError(t, err)
@@ -671,16 +677,17 @@ func TestGrantCapDrive(t *testing.T) {
 	defer func() { _, _, _ = roClient.Shutdown() }()
 
 	pakRO, err := scenario.CreatePreAuthKeyWithTags(
-		userMap["roclient"].GetId(), false, false, []string{"tag:ro-client"},
+		userMap["roclient"].GetID().Or(0), false, false, []string{"tag:ro-client"},
 	)
 	require.NoError(t, err)
-	err = roClient.Login(headscale.GetEndpoint(), pakRO.GetKey())
+	err = roClient.Login(headscale.GetEndpoint(), pakRO.GetKey().Or(""))
 	require.NoError(t, err)
 	err = roClient.WaitForRunning(30 * time.Second)
 	require.NoError(t, err)
 
 	// --- Create No-access node ---
-	noAccess, err := scenario.CreateTailscaleNode("head",
+	noAccess, err := scenario.CreateTailscaleNode(
+		"head",
 		tsic.WithNetwork(usernet1),
 	)
 	require.NoError(t, err)
@@ -688,10 +695,10 @@ func TestGrantCapDrive(t *testing.T) {
 	defer func() { _, _, _ = noAccess.Shutdown() }()
 
 	pakNA, err := scenario.CreatePreAuthKeyWithTags(
-		userMap["noaccess"].GetId(), false, false, []string{"tag:no-access"},
+		userMap["noaccess"].GetID().Or(0), false, false, []string{"tag:no-access"},
 	)
 	require.NoError(t, err)
-	err = noAccess.Login(headscale.GetEndpoint(), pakNA.GetKey())
+	err = noAccess.Login(headscale.GetEndpoint(), pakNA.GetKey().Or(""))
 	require.NoError(t, err)
 	err = noAccess.WaitForRunning(30 * time.Second)
 	require.NoError(t, err)

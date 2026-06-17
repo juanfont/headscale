@@ -18,7 +18,7 @@ import (
 
 	"github.com/cenkalti/backoff/v5"
 	"github.com/google/go-cmp/cmp"
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	apiv1 "github.com/juanfont/headscale/gen/api/v1"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -538,15 +538,15 @@ func requireAllClientsNetInfoAndDERP(t *testing.T, headscale ControlServer, expe
 
 // assertLastSeenSet validates that a node has a non-nil LastSeen timestamp.
 // Critical for ensuring node activity tracking is functioning properly.
-func assertLastSeenSet(t *testing.T, node *v1.Node) {
+func assertLastSeenSet(t *testing.T, node *apiv1.Node) {
 	t.Helper()
 	assert.NotNil(t, node)
-	assert.NotNil(t, node.GetLastSeen())
+	assert.True(t, node.GetLastSeen().Set)
 }
 
-func assertLastSeenSetWithCollect(c *assert.CollectT, node *v1.Node) {
+func assertLastSeenSetWithCollect(c *assert.CollectT, node *apiv1.Node) {
 	assert.NotNil(c, node)
-	assert.NotNil(c, node.GetLastSeen())
+	assert.True(c, node.GetLastSeen().Set)
 }
 
 // assertCurlSuccessWithCollect asserts that a curl request succeeds with
@@ -1071,14 +1071,14 @@ func oidcMockUser(username string, emailVerified bool) mockoidc.MockUser {
 
 // GetUserByName retrieves a user by name from the headscale server.
 // This is a common pattern used when creating preauth keys or managing users.
-func GetUserByName(headscale ControlServer, username string) (*v1.User, error) {
+func GetUserByName(headscale ControlServer, username string) (*apiv1.User, error) {
 	users, err := headscale.ListUsers()
 	if err != nil {
 		return nil, fmt.Errorf("listing users: %w", err)
 	}
 
 	for _, u := range users {
-		if u.GetName() == username {
+		if u.GetName().Or("") == username {
 			return u, nil
 		}
 	}
@@ -1088,7 +1088,7 @@ func GetUserByName(headscale ControlServer, username string) (*v1.User, error) {
 
 // findNode returns the first node in nodes for which match returns true,
 // or nil if no node matches.
-func findNode(nodes []*v1.Node, match func(*v1.Node) bool) *v1.Node {
+func findNode(nodes []*apiv1.Node, match func(*apiv1.Node) bool) *apiv1.Node {
 	for _, n := range nodes {
 		if match(n) {
 			return n
@@ -1177,13 +1177,13 @@ func (s *Scenario) AddAndLoginClient(
 		return nil, fmt.Errorf("getting user: %w", err)
 	}
 
-	authKey, err := s.CreatePreAuthKey(user.GetId(), true, false)
+	authKey, err := s.CreatePreAuthKey(user.GetID().Or(0), true, false)
 	if err != nil {
 		return nil, fmt.Errorf("creating preauth key: %w", err)
 	}
 
 	// Login the new client
-	err = newClient.Login(headscale.GetEndpoint(), authKey.GetKey())
+	err = newClient.Login(headscale.GetEndpoint(), authKey.GetKey().Or(""))
 	if err != nil {
 		return nil, fmt.Errorf("logging in new client: %w", err)
 	}

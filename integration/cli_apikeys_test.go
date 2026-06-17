@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	apiv1 "github.com/juanfont/headscale/gen/api/v1"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
@@ -55,7 +55,7 @@ func TestApiKeyCommand(t *testing.T) {
 
 	assert.Len(t, keys, 5)
 
-	var listedAPIKeys []v1.ApiKey
+	var listedAPIKeys []apiv1.ApiKey
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(headscale,
@@ -73,43 +73,43 @@ func TestApiKeyCommand(t *testing.T) {
 
 	assert.Len(t, listedAPIKeys, 5)
 
-	assert.Equal(t, uint64(1), listedAPIKeys[0].GetId())
-	assert.Equal(t, uint64(2), listedAPIKeys[1].GetId())
-	assert.Equal(t, uint64(3), listedAPIKeys[2].GetId())
-	assert.Equal(t, uint64(4), listedAPIKeys[3].GetId())
-	assert.Equal(t, uint64(5), listedAPIKeys[4].GetId())
+	assert.Equal(t, uint64(1), listedAPIKeys[0].GetID().Or(0))
+	assert.Equal(t, uint64(2), listedAPIKeys[1].GetID().Or(0))
+	assert.Equal(t, uint64(3), listedAPIKeys[2].GetID().Or(0))
+	assert.Equal(t, uint64(4), listedAPIKeys[3].GetID().Or(0))
+	assert.Equal(t, uint64(5), listedAPIKeys[4].GetID().Or(0))
 
-	assert.NotEmpty(t, listedAPIKeys[0].GetPrefix())
-	assert.NotEmpty(t, listedAPIKeys[1].GetPrefix())
-	assert.NotEmpty(t, listedAPIKeys[2].GetPrefix())
-	assert.NotEmpty(t, listedAPIKeys[3].GetPrefix())
-	assert.NotEmpty(t, listedAPIKeys[4].GetPrefix())
+	assert.NotEmpty(t, listedAPIKeys[0].GetPrefix().Or(""))
+	assert.NotEmpty(t, listedAPIKeys[1].GetPrefix().Or(""))
+	assert.NotEmpty(t, listedAPIKeys[2].GetPrefix().Or(""))
+	assert.NotEmpty(t, listedAPIKeys[3].GetPrefix().Or(""))
+	assert.NotEmpty(t, listedAPIKeys[4].GetPrefix().Or(""))
 
-	assert.True(t, listedAPIKeys[0].GetExpiration().AsTime().After(time.Now()))
-	assert.True(t, listedAPIKeys[1].GetExpiration().AsTime().After(time.Now()))
-	assert.True(t, listedAPIKeys[2].GetExpiration().AsTime().After(time.Now()))
-	assert.True(t, listedAPIKeys[3].GetExpiration().AsTime().After(time.Now()))
-	assert.True(t, listedAPIKeys[4].GetExpiration().AsTime().After(time.Now()))
+	assert.True(t, listedAPIKeys[0].GetExpiration().Value.After(time.Now()))
+	assert.True(t, listedAPIKeys[1].GetExpiration().Value.After(time.Now()))
+	assert.True(t, listedAPIKeys[2].GetExpiration().Value.After(time.Now()))
+	assert.True(t, listedAPIKeys[3].GetExpiration().Value.After(time.Now()))
+	assert.True(t, listedAPIKeys[4].GetExpiration().Value.After(time.Now()))
 
 	assert.True(
 		t,
-		listedAPIKeys[0].GetExpiration().AsTime().Before(time.Now().Add(time.Hour*26)),
+		listedAPIKeys[0].GetExpiration().Value.Before(time.Now().Add(time.Hour*26)),
 	)
 	assert.True(
 		t,
-		listedAPIKeys[1].GetExpiration().AsTime().Before(time.Now().Add(time.Hour*26)),
+		listedAPIKeys[1].GetExpiration().Value.Before(time.Now().Add(time.Hour*26)),
 	)
 	assert.True(
 		t,
-		listedAPIKeys[2].GetExpiration().AsTime().Before(time.Now().Add(time.Hour*26)),
+		listedAPIKeys[2].GetExpiration().Value.Before(time.Now().Add(time.Hour*26)),
 	)
 	assert.True(
 		t,
-		listedAPIKeys[3].GetExpiration().AsTime().Before(time.Now().Add(time.Hour*26)),
+		listedAPIKeys[3].GetExpiration().Value.Before(time.Now().Add(time.Hour*26)),
 	)
 	assert.True(
 		t,
-		listedAPIKeys[4].GetExpiration().AsTime().Before(time.Now().Add(time.Hour*26)),
+		listedAPIKeys[4].GetExpiration().Value.Before(time.Now().Add(time.Hour*26)),
 	)
 
 	expiredPrefixes := make(map[string]bool)
@@ -122,15 +122,15 @@ func TestApiKeyCommand(t *testing.T) {
 				"apikeys",
 				"expire",
 				"--prefix",
-				listedAPIKeys[idx].GetPrefix(),
+				listedAPIKeys[idx].GetPrefix().Or(""),
 			},
 		)
 		require.NoError(t, err)
 
-		expiredPrefixes[listedAPIKeys[idx].GetPrefix()] = true
+		expiredPrefixes[listedAPIKeys[idx].GetPrefix().Or("")] = true
 	}
 
-	var listedAfterExpireAPIKeys []v1.ApiKey
+	var listedAfterExpireAPIKeys []apiv1.ApiKey
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(headscale,
@@ -147,17 +147,17 @@ func TestApiKeyCommand(t *testing.T) {
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for API keys list after expire")
 
 	for index := range listedAfterExpireAPIKeys {
-		if _, ok := expiredPrefixes[listedAfterExpireAPIKeys[index].GetPrefix()]; ok {
+		if _, ok := expiredPrefixes[listedAfterExpireAPIKeys[index].GetPrefix().Or("")]; ok {
 			// Expired
 			assert.True(
 				t,
-				listedAfterExpireAPIKeys[index].GetExpiration().AsTime().Before(time.Now()),
+				listedAfterExpireAPIKeys[index].GetExpiration().Value.Before(time.Now()),
 			)
 		} else {
 			// Not expired
 			assert.False(
 				t,
-				listedAfterExpireAPIKeys[index].GetExpiration().AsTime().Before(time.Now()),
+				listedAfterExpireAPIKeys[index].GetExpiration().Value.Before(time.Now()),
 			)
 		}
 	}
@@ -168,11 +168,11 @@ func TestApiKeyCommand(t *testing.T) {
 			"apikeys",
 			"delete",
 			"--prefix",
-			listedAPIKeys[0].GetPrefix(),
+			listedAPIKeys[0].GetPrefix().Or(""),
 		})
 	require.NoError(t, err)
 
-	var listedAPIKeysAfterDelete []v1.ApiKey
+	var listedAPIKeysAfterDelete []apiv1.ApiKey
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(headscale,
@@ -197,11 +197,11 @@ func TestApiKeyCommand(t *testing.T) {
 			"apikeys",
 			"expire",
 			"--id",
-			strconv.FormatUint(listedAPIKeysAfterDelete[0].GetId(), 10),
+			strconv.FormatUint(listedAPIKeysAfterDelete[0].GetID().Or(0), 10),
 		})
 	require.NoError(t, err)
 
-	var listedAPIKeysAfterExpireByID []v1.ApiKey
+	var listedAPIKeysAfterExpireByID []apiv1.ApiKey
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(headscale,
@@ -219,14 +219,14 @@ func TestApiKeyCommand(t *testing.T) {
 
 	// Verify the key was expired
 	for idx := range listedAPIKeysAfterExpireByID {
-		if listedAPIKeysAfterExpireByID[idx].GetId() == listedAPIKeysAfterDelete[0].GetId() {
-			assert.True(t, listedAPIKeysAfterExpireByID[idx].GetExpiration().AsTime().Before(time.Now()),
+		if listedAPIKeysAfterExpireByID[idx].GetID().Or(0) == listedAPIKeysAfterDelete[0].GetID().Or(0) {
+			assert.True(t, listedAPIKeysAfterExpireByID[idx].GetExpiration().Value.Before(time.Now()),
 				"Key expired by ID should have expiration in the past")
 		}
 	}
 
 	// Test delete by ID (using key at index 1)
-	deletedKeyID := listedAPIKeysAfterExpireByID[1].GetId()
+	deletedKeyID := listedAPIKeysAfterExpireByID[1].GetID().Or(0)
 	_, err = headscale.Execute(
 		[]string{
 			"headscale",
@@ -237,7 +237,7 @@ func TestApiKeyCommand(t *testing.T) {
 		})
 	require.NoError(t, err)
 
-	var listedAPIKeysAfterDeleteByID []v1.ApiKey
+	var listedAPIKeysAfterDeleteByID []apiv1.ApiKey
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(headscale,
@@ -257,7 +257,7 @@ func TestApiKeyCommand(t *testing.T) {
 
 	// Verify the specific key was deleted
 	for idx := range listedAPIKeysAfterDeleteByID {
-		assert.NotEqual(t, deletedKeyID, listedAPIKeysAfterDeleteByID[idx].GetId(),
+		assert.NotEqual(t, deletedKeyID, listedAPIKeysAfterDeleteByID[idx].GetID().Or(0),
 			"Deleted key should not be present in the list")
 	}
 }
@@ -277,7 +277,7 @@ func TestApiKeyCommandValidation(t *testing.T) {
 	_, err := headscale.Execute([]string{"headscale", "apikeys", "create", "--output", "json"})
 	require.NoError(t, err)
 
-	var listed []v1.ApiKey
+	var listed []apiv1.ApiKey
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err := executeAndUnmarshal(headscale,
@@ -288,8 +288,8 @@ func TestApiKeyCommandValidation(t *testing.T) {
 		assert.Len(c, listed, 1)
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for API key list")
 
-	prefix := listed[0].GetPrefix()
-	id := strconv.FormatUint(listed[0].GetId(), 10)
+	prefix := listed[0].GetPrefix().Or("")
+	id := strconv.FormatUint(listed[0].GetID().Or(0), 10)
 
 	tests := []struct {
 		name    string

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	apiv1 "github.com/juanfont/headscale/gen/api/v1"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/require"
@@ -19,8 +20,8 @@ import (
 //
 // The whole point of the CLI test suite is to guard the transport: every
 // command is invoked with `--output json` and the result is unmarshalled into
-// the matching gen/go/headscale/v1 Go type, so a change to the gRPC handlers,
-// proto definitions or output encoders that breaks a command is caught here.
+// the matching gen/api/v1 Go type, so a change to the API handlers or output
+// encoders that breaks a command is caught here.
 
 func executeAndUnmarshal[T any](headscale ControlServer, command []string, result T) error {
 	str, err := headscale.Execute(command)
@@ -62,14 +63,13 @@ func assertJSONRoundtrip[T any](t require.TestingT, headscale ControlServer, com
 	return second
 }
 
-// Interface ensuring that we can sort structs from gRPC that
-// have an ID field.
-type GRPCSortable interface {
-	GetId() uint64
+// hasID is implemented by API structs with an ID field, so they can be sorted.
+type hasID interface {
+	GetID() apiv1.OptUint64
 }
 
-func sortWithID[T GRPCSortable](a, b T) int {
-	return cmp.Compare(a.GetId(), b.GetId())
+func sortWithID[T hasID](a, b T) int {
+	return cmp.Compare(a.GetID().Or(0), b.GetID().Or(0))
 }
 
 // setupCLIScenario boots a scenario with the given users and nodes-per-user,
