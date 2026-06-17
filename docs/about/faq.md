@@ -160,7 +160,7 @@ indicates which part of the policy is invalid. Follow these steps to fix your po
 !!! warning "Full server configuration required"
 
     The above commands to get/set the policy require a complete server configuration file including database settings. A
-    minimal config to [control Headscale via remote CLI](../ref/api.md#grpc) is not sufficient. You may use
+    minimal config to [control Headscale via remote CLI](../ref/api.md#remote-control) is not sufficient. You may use
     `headscale -c /path/to/config.yaml` to specify the path to an alternative configuration file.
 
 ## How can I migrate back to the recommended IP prefixes?
