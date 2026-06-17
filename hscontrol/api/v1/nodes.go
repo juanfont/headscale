@@ -3,6 +3,7 @@ package apiv1
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"net/netip"
 	"slices"
 	"time"
@@ -29,7 +30,7 @@ func (s *Server) RegisterNode(
 
 	user, err := s.state.GetUserByName(params.User.Or(""))
 	if err != nil {
-		return nil, mapStateError(err)
+		return nil, mapStateError(fmt.Errorf("looking up user: %w", err))
 	}
 
 	node, nodeChange, err := s.state.HandleNodeFromAuthPath(
