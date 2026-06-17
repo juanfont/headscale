@@ -66,40 +66,6 @@
             subPackages = [ "cmd/hi" ];
           };
 
-          protoc-gen-grpc-gateway = buildGo rec {
-            pname = "grpc-gateway";
-            version = "2.29.0";
-
-            src = pkgs.fetchFromGitHub {
-              owner = "grpc-ecosystem";
-              repo = "grpc-gateway";
-              rev = "v${version}";
-              sha256 = "sha256-d9OIIGttyMBSNgpS6mbR5JEIm13qGu2gFHJazJAexdw=";
-            };
-
-            vendorHash = "sha256-p51yD+v8+rPs+ztlX7r0VQ4XlwUkxu+PxgknKEvH00k=";
-
-            nativeBuildInputs = [ pkgs.installShellFiles ];
-
-            subPackages = [ "protoc-gen-grpc-gateway" "protoc-gen-openapiv2" ];
-          };
-
-          protobuf-language-server = buildGo rec {
-            pname = "protobuf-language-server";
-            version = "ab4c128";
-
-            src = pkgs.fetchFromGitHub {
-              owner = "lasorda";
-              repo = "protobuf-language-server";
-              rev = "ab4c128f00774d51bd6d1f4cfa735f4b7c8619e3";
-              sha256 = "sha256-yF6kG+qTRxVO/qp2V9HgTyFBeOm5RQzeqdZFrdidwxM=";
-            };
-
-            vendorHash = "sha256-4nTpKBe7ekJsfQf+P6edT/9Vp2SBYbKz1ITawD3bhkI=";
-
-            subPackages = [ "." ];
-          };
-
           # Build golangci-lint with stock Go 1.26 (upstream uses hardcoded Go
           # version); it does not build against the pinned 1.26.4.
           golangci-lint = buildGo rec {
@@ -195,15 +161,6 @@
             # 'dot' is needed for pprof graphs
             # go tool pprof -http=: <source>
             graphviz
-
-            # Protobuf dependencies
-            protobuf
-            protoc-gen-go
-            protoc-gen-go-grpc
-            protoc-gen-grpc-gateway
-            buf
-            clang-tools # clang-format
-            protobuf-language-server
           ]
           ++ lib.optionals pkgs.stdenv.isLinux [ traceroute ];
 

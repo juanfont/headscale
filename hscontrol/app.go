@@ -25,7 +25,6 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/metrics"
 	"github.com/juanfont/headscale"
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	apiv1 "github.com/juanfont/headscale/hscontrol/api/v1"
 	"github.com/juanfont/headscale/hscontrol/capver"
 	"github.com/juanfont/headscale/hscontrol/db"
@@ -43,12 +42,6 @@ import (
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/peer"
-	"google.golang.org/grpc/status"
 	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
@@ -381,131 +374,6 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 	}
 }
 
-// checkBearerToken validates an "Authorization" header value. It reports
-// whether the API key is valid, whether the header carried the "Bearer "
-// prefix, and any validation error. Callers translate these outcomes into
-// their transport-specific status.
-func (h *Headscale) checkBearerToken(authHeader string) (bool, bool, error) {
-	if !strings.HasPrefix(authHeader, AuthPrefix) {
-		return false, false, nil
-	}
-
-	valid, err := h.state.ValidateAPIKey(strings.TrimPrefix(authHeader, AuthPrefix))
-
-	return valid, true, err
-}
-
-func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
-	req any,
-	info *grpc.UnaryServerInfo,
-	handler grpc.UnaryHandler,
-) (any, error) {
-	// Check if the request is coming from the on-server client.
-	// This is not secure, but it is to maintain maintainability
-	// with the "legacy" database-based client
-	// It is also needed for grpc-gateway to be able to connect to
-	// the server
-	client, _ := peer.FromContext(ctx)
-
-	log.Trace().
-		Caller().
-		Str("client_address", client.Addr.String()).
-		Msg("Client is trying to authenticate")
-
-	meta, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return ctx, status.Errorf(
-			codes.InvalidArgument,
-			"retrieving metadata",
-		)
-	}
-
-	authHeader, ok := meta["authorization"]
-	if !ok {
-		return ctx, status.Errorf(
-			codes.Unauthenticated,
-			"authorization token not supplied",
-		)
-	}
-
-	valid, hasPrefix, err := h.checkBearerToken(authHeader[0])
-	if !hasPrefix {
-		return ctx, status.Error(
-			codes.Unauthenticated,
-			`missing "Bearer " prefix in "Authorization" header`,
-		)
-	}
-
-	if err != nil {
-		return ctx, status.Error(codes.Internal, "validating token")
-	}
-
-	if !valid {
-		log.Info().
-			Str("client_address", client.Addr.String()).
-			Msg("invalid token")
-
-		return ctx, status.Error(codes.Unauthenticated, "invalid token")
-	}
-
-	return handler(ctx, req)
-}
-
-func (h *Headscale) httpAuthenticationMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(
-		writer http.ResponseWriter,
-		req *http.Request,
-	) {
-		log.Trace().
-			Caller().
-			Str("client_address", req.RemoteAddr).
-			Msg("HTTP authentication invoked")
-
-		authHeader := req.Header.Get("Authorization")
-
-		writeUnauthorized := func(statusCode int) {
-			writer.WriteHeader(statusCode)
-
-			if _, err := writer.Write([]byte("Unauthorized")); err != nil { //nolint:noinlineerr
-				log.Error().Err(err).Msg("writing HTTP response failed")
-			}
-		}
-
-		valid, hasPrefix, err := h.checkBearerToken(authHeader)
-		if !hasPrefix {
-			log.Error().
-				Caller().
-				Str("client_address", req.RemoteAddr).
-				Msg(`missing "Bearer " prefix in "Authorization" header`)
-			writeUnauthorized(http.StatusUnauthorized)
-
-			return
-		}
-
-		if err != nil {
-			log.Info().
-				Caller().
-				Err(err).
-				Str("client_address", req.RemoteAddr).
-				Msg("failed to validate token")
-			writeUnauthorized(http.StatusUnauthorized)
-
-			return
-		}
-
-		if !valid {
-			log.Info().
-				Str("client_address", req.RemoteAddr).
-				Msg("invalid token")
-			writeUnauthorized(http.StatusUnauthorized)
-
-			return
-		}
-
-		next.ServeHTTP(writer, req)
-	})
-}
-
 // ensureUnixSocketIsAbsent will check if the given path for headscales unix socket is clear
 // and will remove it if it is not.
 func (h *Headscale) ensureUnixSocketIsAbsent() error {
@@ -612,7 +480,7 @@ func (h *Headscale) createRouter(apiV1 http.Handler) *chi.Mux {
 	return r
 }
 
-// Serve launches the HTTP and gRPC server service Headscale and the API.
+// Serve launches the HTTP server serving Headscale and the v1 API.
 //
 //nolint:gocyclo // complex server startup function
 func (h *Headscale) Serve() error {
@@ -730,12 +598,12 @@ func (h *Headscale) Serve() error {
 
 	socketListener, err := new(net.ListenConfig).Listen(context.Background(), "unix", h.cfg.UnixSocket)
 	if err != nil {
-		return fmt.Errorf("setting up gRPC socket: %w", err)
+		return fmt.Errorf("setting up unix socket: %w", err)
 	}
 
 	// Change socket permissions
 	if err := os.Chmod(h.cfg.UnixSocket, h.cfg.UnixSocketPermission); err != nil { //nolint:noinlineerr
-		return fmt.Errorf("changing gRPC socket permission: %w", err)
+		return fmt.Errorf("changing unix socket permission: %w", err)
 	}
 
 	// Build the v1 API handler and HTTP router once; both the local unix
@@ -764,58 +632,6 @@ func (h *Headscale) Serve() error {
 	tlsConfig, err := h.getTLSSettings()
 	if err != nil {
 		return fmt.Errorf("configuring TLS settings: %w", err)
-	}
-
-	//
-	//
-	// gRPC setup
-	//
-
-	// We are sadly not able to run gRPC and HTTPS (2.0) on the same
-	// port because the connection mux does not support matching them
-	// since they are so similar. There is multiple issues open and we
-	// can revisit this if changes:
-	// https://github.com/soheilhy/cmux/issues/68
-	// https://github.com/soheilhy/cmux/issues/91
-
-	var (
-		grpcServer   *grpc.Server
-		grpcListener net.Listener
-	)
-
-	if tlsConfig != nil || h.cfg.GRPCAllowInsecure {
-		log.Info().Msgf("enabling remote gRPC at %s", h.cfg.GRPCAddr)
-
-		grpcOptions := []grpc.ServerOption{
-			grpc.ChainUnaryInterceptor(
-				h.grpcAuthenticationInterceptor,
-				// Uncomment to debug grpc communication.
-				// zerolog.NewUnaryServerInterceptor(),
-			),
-		}
-
-		if tlsConfig != nil {
-			grpcOptions = append(
-				grpcOptions,
-				grpc.Creds(credentials.NewTLS(tlsConfig)),
-			)
-		} else {
-			log.Warn().Msg("gRPC is running without security")
-		}
-
-		grpcServer = grpc.NewServer(grpcOptions...)
-
-		v1.RegisterHeadscaleServiceServer(grpcServer, newHeadscaleV1APIServer(h))
-
-		grpcListener, err = new(net.ListenConfig).Listen(context.Background(), "tcp", h.cfg.GRPCAddr)
-		if err != nil {
-			return fmt.Errorf("binding to TCP address: %w", err)
-		}
-
-		errorGroup.Go(func() error { return grpcServer.Serve(grpcListener) })
-
-		log.Info().
-			Msgf("listening and serving gRPC on: %s", h.cfg.GRPCAddr)
 	}
 
 	//
@@ -968,12 +784,6 @@ func (h *Headscale) Serve() error {
 				socketErr := socketHTTPServer.Close()
 				if socketErr != nil {
 					log.Error().Err(socketErr).Msg("failed to shutdown socket http")
-				}
-
-				if grpcServer != nil {
-					info("shutting down grpc server (external)")
-					grpcServer.GracefulStop()
-					grpcListener.Close()
 				}
 
 				if tailsqlContext != nil {

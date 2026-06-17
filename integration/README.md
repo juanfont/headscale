@@ -159,7 +159,7 @@ for _, client := range allClients {
 
 Typical blocking operations: any `tailscale set` (routes, exit node,
 accept-routes, ssh), node registration via the CLI, user creation via
-gRPC.
+the CLI.
 
 ### The four rules
 

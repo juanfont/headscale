@@ -1,20 +1,12 @@
 package util
 
 import (
-	"context"
-	"net"
 	"net/netip"
 	"sync"
 
 	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
 )
-
-func GrpcSocketDialer(ctx context.Context, addr string) (net.Conn, error) {
-	var d net.Dialer
-
-	return d.DialContext(ctx, "unix", addr)
-}
 
 func PrefixesToString(prefixes []netip.Prefix) []string {
 	ret := make([]string, 0, len(prefixes))

@@ -28,8 +28,6 @@ jobs:
               - '*.nix'
               - 'go.*'
               - '**/*.go'
-              - '**/*.proto'
-              - 'buf.gen.yaml'
               - 'openapi/**'
               - 'tools/**'
       - uses: nixbuild/nix-quick-install-action@2c9db80fb984ceb1bcaa77cdda3fdf8cfba92035 # v34

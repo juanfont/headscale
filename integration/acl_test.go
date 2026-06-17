@@ -2626,7 +2626,7 @@ func TestACLTagPropagation(t *testing.T) {
 
 			// Step 3: Verify final NetMap visibility first (fast signal that
 			// the [tailcfg.MapResponse] propagated to the client).
-			// The full propagation chain (docker exec → gRPC → state update →
+			// The full propagation chain (docker exec → API → state update →
 			// batcher delay → [tailcfg.MapResponse] → noise transport → client processing)
 			// can take over 120s on congested CI runners, so use a generous
 			// base timeout.

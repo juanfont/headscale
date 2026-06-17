@@ -20,7 +20,6 @@ endef
 
 # Source file collections using shell find for better performance
 GO_SOURCES := $(shell find . -name '*.go' -not -path './gen/*' -not -path './vendor/*')
-PROTO_SOURCES := $(shell find . -name '*.proto' -not -path './gen/*' -not -path './vendor/*')
 PRETTIER_SOURCES := $(shell find . \( -name '*.md' -o -name '*.yaml' -o -name '*.yml' -o -name '*.ts' -o -name '*.js' -o -name '*.html' -o -name '*.css' -o -name '*.scss' -o -name '*.sass' \) -not -path './gen/*' -not -path './vendor/*' -not -path './node_modules/*')
 
 # Default target
@@ -35,8 +34,6 @@ check-deps:
 	$(call check_tool,gofumpt)
 	$(call check_tool,mdformat)
 	$(call check_tool,prettier)
-	$(call check_tool,clang-format)
-	$(call check_tool,buf)
 
 # Build targets
 .PHONY: build
@@ -53,7 +50,7 @@ test: check-deps $(GO_SOURCES) go.mod go.sum
 
 # Formatting targets
 .PHONY: fmt
-fmt: fmt-go fmt-mdformat fmt-prettier fmt-proto
+fmt: fmt-go fmt-mdformat fmt-prettier
 
 .PHONY: fmt-go
 fmt-go: check-deps $(GO_SOURCES)
@@ -71,24 +68,14 @@ fmt-prettier: check-deps $(PRETTIER_SOURCES)
 	@echo "Formatting markup and config files..."
 	prettier --write '**/*.{ts,js,md,yaml,yml,sass,css,scss,html}'
 
-.PHONY: fmt-proto
-fmt-proto: check-deps $(PROTO_SOURCES)
-	@echo "Formatting Protocol Buffer files..."
-	clang-format -i $(PROTO_SOURCES)
-
 # Linting targets
 .PHONY: lint
-lint: lint-go lint-proto
+lint: lint-go
 
 .PHONY: lint-go
 lint-go: check-deps $(GO_SOURCES) go.mod go.sum
 	@echo "Linting Go code..."
 	golangci-lint run --timeout 10m
-
-.PHONY: lint-proto
-lint-proto: check-deps $(PROTO_SOURCES)
-	@echo "Linting Protocol Buffer files..."
-	cd proto/ && buf lint
 
 # Code generation
 .PHONY: generate
@@ -119,9 +106,9 @@ help:
 	@echo "  all          - Run lint, test, and build (default)"
 	@echo "  build        - Build headscale binary"
 	@echo "  test         - Run Go tests"
-	@echo "  fmt          - Format all code (Go, docs, proto)"
-	@echo "  lint         - Lint all code (Go, proto)"
-	@echo "  generate     - Generate code from Protocol Buffers"
+	@echo "  fmt          - Format all code (Go, docs)"
+	@echo "  lint         - Lint all code (Go)"
+	@echo "  generate     - Generate code from the OpenAPI spec"
 	@echo "  dev          - Full development workflow (fmt + lint + test + build)"
 	@echo "  clean        - Clean build artifacts"
 	@echo ""
@@ -129,9 +116,7 @@ help:
 	@echo "  fmt-go       - Format Go code only"
 	@echo "  fmt-mdformat - Format documentation only"
 	@echo "  fmt-prettier - Format markup and config files only"
-	@echo "  fmt-proto    - Format Protocol Buffer files only"
 	@echo "  lint-go      - Lint Go code only"
-	@echo "  lint-proto   - Lint Protocol Buffer files only"
 	@echo ""
 	@echo "Dependencies:"
 	@echo "  check-deps   - Verify required tools are available"

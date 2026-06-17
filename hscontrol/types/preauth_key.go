@@ -3,11 +3,9 @@ package types
 import (
 	"time"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type PAKError string
@@ -54,66 +52,6 @@ type PreAuthKeyNew struct {
 	Expiration *time.Time
 	CreatedAt  *time.Time
 	User       *User // Can be nil for system-created tagged keys
-}
-
-func (key *PreAuthKeyNew) Proto() *v1.PreAuthKey {
-	protoKey := v1.PreAuthKey{
-		Id:        key.ID,
-		Key:       key.Key,
-		User:      nil, // Will be set below if not nil
-		Reusable:  key.Reusable,
-		Ephemeral: key.Ephemeral,
-		AclTags:   key.Tags,
-	}
-
-	if key.User != nil {
-		protoKey.User = key.User.Proto()
-	}
-
-	if key.Expiration != nil {
-		protoKey.Expiration = timestamppb.New(*key.Expiration)
-	}
-
-	if key.CreatedAt != nil {
-		protoKey.CreatedAt = timestamppb.New(*key.CreatedAt)
-	}
-
-	return &protoKey
-}
-
-func (key *PreAuthKey) Proto() *v1.PreAuthKey {
-	protoKey := v1.PreAuthKey{
-		User:      nil, // Will be set below if not nil
-		Id:        key.ID,
-		Ephemeral: key.Ephemeral,
-		Reusable:  key.Reusable,
-		Used:      key.Used,
-		AclTags:   key.Tags,
-	}
-
-	if key.User != nil {
-		protoKey.User = key.User.Proto()
-	}
-
-	// For new keys (with prefix/hash), show the prefix so users can identify the key
-	// For legacy keys (with plaintext key), show the full key for backwards compatibility
-	if masked := key.maskedPrefix(); masked != "" {
-		protoKey.Key = masked
-	} else if key.Key != "" {
-		// Legacy key - show full key for backwards compatibility
-		// TODO: Consider hiding this in a future major version
-		protoKey.Key = key.Key
-	}
-
-	if key.Expiration != nil {
-		protoKey.Expiration = timestamppb.New(*key.Expiration)
-	}
-
-	if key.CreatedAt != nil {
-		protoKey.CreatedAt = timestamppb.New(*key.CreatedAt)
-	}
-
-	return &protoKey
 }
 
 // Validate checks if a pre auth key can be used.

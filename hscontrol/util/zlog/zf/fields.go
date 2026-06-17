@@ -155,7 +155,7 @@ const (
 	Address         = "address"
 )
 
-// gRPC fields.
+// Request fields.
 const (
 	Client  = "client"
 	Request = "request"

@@ -83,7 +83,7 @@ func persistTestConfig(dbPath string) *types.Config {
 }
 
 // TestPersistEmptyApprovedRoutes covers the State.SetApprovedRoutes
-// path. The gRPC handler builds the slice via append from a nil
+// path. The handler builds the slice via append from a nil
 // declaration, so when the operator passes `-r ""` the persist layer
 // receives a nil []netip.Prefix. GORM's struct Updates skips nil
 // slices, so the column would stay populated with the previously

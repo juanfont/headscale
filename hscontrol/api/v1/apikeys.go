@@ -77,7 +77,7 @@ func (s *Server) DeleteApiKey(_ context.Context, params oas.DeleteApiKeyParams) 
 }
 
 // apiKeyByIDOrPrefix looks up an API key by exactly one of id or prefix.
-// Providing neither or both is a 400, matching the gRPC contract.
+// Providing neither or both is a 400.
 func (s *Server) apiKeyByIDOrPrefix(
 	id uint64,
 	prefix string,

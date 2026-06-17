@@ -5,9 +5,8 @@ info:
   description: |
     HTTP API for managing a Headscale control server: users, pre-auth keys,
     nodes, API keys, and ACL policy. This is the v1 API, served under
-    `/api/v1`. It is the OpenAPI 3.0 successor to the previous
-    gRPC/grpc-gateway facade and is the single source of truth for the API
-    contract.
+    `/api/v1`. It is the OpenAPI 3.0 definition and the single source of truth
+    for the API contract.
 
     Authentication is a bearer API key (`Authorization: Bearer <key>`),
     except over the local unix socket where filesystem permissions are the

@@ -3,10 +3,8 @@ package types
 import (
 	"time"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // NewAPIKeyPrefixLength is the length of the prefix for new API keys.
@@ -22,28 +20,6 @@ type APIKey struct {
 	CreatedAt  *time.Time
 	Expiration *time.Time
 	LastSeen   *time.Time
-}
-
-func (key *APIKey) Proto() *v1.ApiKey {
-	protoKey := v1.ApiKey{
-		Id: key.ID,
-	}
-
-	protoKey.Prefix = key.maskedPrefix()
-
-	if key.Expiration != nil {
-		protoKey.Expiration = timestamppb.New(*key.Expiration)
-	}
-
-	if key.CreatedAt != nil {
-		protoKey.CreatedAt = timestamppb.New(*key.CreatedAt)
-	}
-
-	if key.LastSeen != nil {
-		protoKey.LastSeen = timestamppb.New(*key.LastSeen)
-	}
-
-	return &protoKey
 }
 
 // maskedPrefix returns the API key prefix in masked format for safe logging.

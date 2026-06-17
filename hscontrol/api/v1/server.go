@@ -19,9 +19,8 @@ import (
 
 // Server implements the generated [oas.Handler] and [oas.SecurityHandler].
 //
-// Operations that have not been migrated from the gRPC stack yet are inherited
-// from [oas.UnimplementedHandler] and return 501; each resource group replaces
-// its stubs as it is converted.
+// Any operation not implemented here is inherited from
+// [oas.UnimplementedHandler] and returns 501; every operation is implemented.
 type Server struct {
 	oas.UnimplementedHandler
 

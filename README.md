@@ -92,8 +92,7 @@ Please read the [CONTRIBUTING.md](./CONTRIBUTING.md) file.
 
 ### Requirements
 
-To contribute to headscale you would need the latest version of [Go](https://golang.org)
-and [Buf](https://buf.build) (Protobuf generator).
+To contribute to headscale you would need the latest version of [Go](https://golang.org).
 
 We recommend using [Nix](https://nixos.org/) to setup a development environment. This can
 be done with `nix develop`, which will install the tools and give you a shell.
@@ -110,9 +109,6 @@ formatted with [`golines`](https://github.com/segmentio/golines) (width 88) and
 Please configure your editor to run the tools while developing and make sure to
 run `make lint` and `make fmt` before committing any code.
 
-The **Proto** code is linted with [`buf`](https://docs.buf.build/lint/overview) and
-formatted with [`clang-format`](https://clang.llvm.org/docs/ClangFormat.html).
-
 The **docs** are formatted with [`mdformat`](https://mdformat.readthedocs.io).
 
 The **rest** (Markdown, YAML, etc) is formatted with [`prettier`](https://prettier.io).
@@ -122,8 +118,6 @@ Check out the `.golangci.yaml` and `Makefile` to see the specific configuration.
 ### Install development tools
 
 - Go
-- Buf
-- Protobuf tools
 
 Install and activate:
 
@@ -133,8 +127,8 @@ nix develop
 
 ### Testing and building
 
-Some parts of the project require the generation of Go code from Protobuf
-(if changes are made in `proto/`) and it must be (re-)generated with:
+Some parts of the project require generated Go code from the OpenAPI spec
+(if changes are made in `openapi/`) and it must be (re-)generated with:
 
 ```shell
 make generate

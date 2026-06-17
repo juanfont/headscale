@@ -72,7 +72,7 @@ func TestAPIv1_RenameUser(t *testing.T) {
 	_, err = srv.State().GetUserByName("alice2")
 	require.NoError(t, err)
 
-	// Unknown user is a 404 (the gRPC stack returned 500 here).
+	// Unknown user is a 404 (the previous implementation returned 500 here).
 	_, err = client.RenameUser(ctx, apiv1.RenameUserParams{OldID: 99999, NewName: "ghost"})
 	requireProblem(t, err, http.StatusNotFound)
 }

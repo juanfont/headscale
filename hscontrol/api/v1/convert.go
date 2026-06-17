@@ -11,12 +11,11 @@ import (
 
 // This file converts the state-layer types into the ogen API types. It reads
 // the copy-on-write view types (NodeView, UserView, PreAuthKeyView) directly so
-// no node/user is deep-copied on the read path, and reproduces exactly what the
-// previous proto builders emitted — username fallback, masked key prefixes,
-// online computation, the register-method enum.
+// no node/user is deep-copied on the read path, and reproduces the same fields
+// the previous API emitted — username fallback, masked key prefixes, online
+// computation, the register-method enum.
 //
-// Unlike grpc-gateway (which marshalled with EmitUnpopulated), these converters
-// omit zero-value and absent fields — empty strings, false booleans, zero
+// These converters omit zero-value and absent fields — empty strings, false booleans, zero
 // numbers, empty arrays, nil timestamps/objects, and the unspecified register
 // method. See docs/v1-ogen/CHANGES.md.
 

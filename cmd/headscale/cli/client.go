@@ -96,7 +96,7 @@ func localSocketClient(socketPath string) (*apiv1.Client, error) {
 // dialSocketWaiting connects to the local unix socket, retrying while it is
 // still absent. headscale removes and rebinds the socket during startup, so a
 // CLI command issued right after "systemctl start" can beat the server to it.
-// This mirrors the old blocking gRPC dial, which retried until the CLI timeout.
+// This mirrors the old blocking dial, which retried until the CLI timeout.
 func dialSocketWaiting(ctx context.Context, socketPath string) (net.Conn, error) {
 	var dialer net.Dialer
 

@@ -4052,7 +4052,7 @@ func TestHandleNodeFromPreAuthKey_OldUserNil_NoPanic(t *testing.T) {
 }
 
 // TestHandleNodeFromAuthPath_OldUserNil_NoPanic is the parallel guard
-// for the gRPC/OIDC entry point. Same orphan shape as
+// for the OIDC/auth-path entry point. Same orphan shape as
 // TestHandleNodeFromPreAuthKey_OldUserNil_NoPanic; HandleNodeFromAuthPath
 // has its own oldUser.Name() log line in the existingNodeOwnedByOtherUser
 // branch and panics independently of the noise registration path.

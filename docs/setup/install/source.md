@@ -7,9 +7,8 @@
 
     **It might be outdated and it might miss necessary steps**.
 
-Headscale can be built from source using the latest version of [Go](https://golang.org) and [Buf](https://buf.build)
-(Protobuf generator). See the [Contributing section in the GitHub
-README](https://github.com/juanfont/headscale#contributing) for more information.
+Headscale can be built from source using the latest version of [Go](https://golang.org). See the [Contributing
+section in the GitHub README](https://github.com/juanfont/headscale#contributing) for more information.
 
 ## OpenBSD
 
