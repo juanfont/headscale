@@ -329,6 +329,28 @@ dns:
   # `hostname.base_domain` (e.g., _myhost.example.com_).
   base_domain: example.com
 
+  # Per-node HTTPS certificates for `tailscale cert` and
+  # `tailscale serve --https`.
+  #
+  # When enabled, Headscale advertises each node's FQDN in DNSConfig.CertDomains
+  # and accepts ACME DNS-01 TXT updates from authenticated nodes on
+  # /machine/set-dns. The TXT records are published through a registered libdns
+  # provider; Headscale does not run an authoritative DNS server for this.
+  certificates:
+    enabled: false
+    # Name of a registered libdns provider factory.
+    provider: ""
+    # DNS zone passed to libdns. Empty defaults to dns.base_domain.
+    zone: ""
+    # TXT record TTL. Empty or 0 uses the provider default.
+    ttl: 0s
+    # Optional delay after libdns accepts the record, useful for eventually
+    # consistent DNS provider APIs.
+    propagation_wait: 0s
+    # Provider-specific settings passed unchanged to the registered provider
+    # factory. Exact keys depend on the provider package used in your build.
+    provider_config: {}
+
   # Whether to use the local DNS settings of a node or override the local DNS
   # settings (default) and force the use of Headscale's DNS configuration.
   override_local_dns: true

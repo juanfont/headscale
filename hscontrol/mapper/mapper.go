@@ -147,6 +147,12 @@ func generateDNSConfig(
 		}
 	}
 
+	if cfg.DNSConfig.Certificates.Enabled {
+		if fqdn, err := node.GetFQDN(cfg.BaseDomain); err == nil {
+			dnsConfig.CertDomains = []string{strings.TrimSuffix(fqdn, ".")}
+		}
+	}
+
 	return dnsConfig
 }
 
