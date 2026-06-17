@@ -9,8 +9,8 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-//go:embed gen/openapiv2/headscale/v1/headscale.swagger.json
-var apiV1JSON []byte
+//go:embed openapi/v1/headscale.yaml
+var apiV1Spec []byte
 
 func SwaggerUI(
 	writer http.ResponseWriter,
@@ -29,7 +29,7 @@ func SwaggerUI(
 	<script>
 		window.addEventListener('load', (event) => {
 			const ui = SwaggerUIBundle({
-			    url: "/swagger/v1/openapiv2.json",
+			    url: "/swagger/v1/openapi.yaml",
 			    dom_id: '#swagger-ui',
 			    presets: [
 			      SwaggerUIBundle.presets.apis,
@@ -85,10 +85,10 @@ func SwaggerAPIv1(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
-	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	writer.Header().Set("Content-Type", "application/yaml; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
 
-	if _, err := writer.Write(apiV1JSON); err != nil { //nolint:noinlineerr
+	if _, err := writer.Write(apiV1Spec); err != nil { //nolint:noinlineerr
 		log.Error().
 			Caller().
 			Err(err).
