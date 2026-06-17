@@ -10,10 +10,12 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/libdns/libdns"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
@@ -396,6 +398,101 @@ func TestOverrideRemoteAddr(t *testing.T) {
 	r.ServeHTTP(httptest.NewRecorder(), req)
 
 	assert.Equal(t, clientAddr, observed)
+}
+
+func TestSetDNSHandlerPublishesTXTRecord(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("cert-user")
+	node := putTestNodeInStore(t, app, user, "cert-node")
+	node.GivenName = "cert-node"
+	app.state.PutNodeInStoreForTest(*node)
+	app.cfg.BaseDomain = "example.com"
+	fqdn, err := node.GetFQDN(app.cfg.BaseDomain)
+	require.NoError(t, err)
+	challengeName := "_acme-challenge." + strings.TrimSuffix(fqdn, ".")
+
+	setter := &fakeRecordSetter{}
+	app.dnsCertManager = newDNSCertificateManagerForSetter(types.DNSCertificatesConfig{
+		Zone: "example.com",
+	}, setter)
+
+	ns := &noiseServer{
+		headscale:  app,
+		machineKey: node.MachineKey,
+	}
+
+	reqBody := tailcfg.SetDNSRequest{
+		Version: tailcfg.CurrentCapabilityVersion,
+		NodeKey: node.NodeKey,
+		Name:    challengeName,
+		Type:    "TXT",
+		Value:   "challenge-token",
+	}
+	payload, err := json.Marshal(reqBody)
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/machine/set-dns",
+		bytes.NewReader(payload),
+	)
+	rec := httptest.NewRecorder()
+
+	ns.SetDNSHandler(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, "body=%s", rec.Body.String())
+	require.Equal(t, "example.com", setter.zone)
+	require.Len(t, setter.records, 1)
+
+	txt, ok := setter.records[0].(libdns.TXT)
+	require.True(t, ok, "record = %T, want libdns.TXT", setter.records[0])
+	require.Equal(t, strings.TrimSuffix(challengeName, ".example.com"), txt.Name)
+	require.Equal(t, "challenge-token", txt.Text)
+}
+
+func TestSetDNSHandlerRejectsOtherNodeRecord(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("cert-user")
+	node := putTestNodeInStore(t, app, user, "cert-node")
+	node.GivenName = "cert-node"
+	app.state.PutNodeInStoreForTest(*node)
+	app.cfg.BaseDomain = "example.com"
+	app.dnsCertManager = newDNSCertificateManagerForSetter(
+		types.DNSCertificatesConfig{Zone: "example.com"},
+		&fakeRecordSetter{},
+	)
+
+	ns := &noiseServer{
+		headscale:  app,
+		machineKey: node.MachineKey,
+	}
+
+	reqBody := tailcfg.SetDNSRequest{
+		Version: tailcfg.CurrentCapabilityVersion,
+		NodeKey: node.NodeKey,
+		Name:    "_acme-challenge.other.example.com",
+		Type:    "TXT",
+		Value:   "challenge-token",
+	}
+	payload, err := json.Marshal(reqBody)
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/machine/set-dns",
+		bytes.NewReader(payload),
+	)
+	rec := httptest.NewRecorder()
+
+	ns.SetDNSHandler(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
 // TestSSHActionHoldAndDelegate_PersistsAuthSession guards the happy path: the

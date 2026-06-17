@@ -199,6 +199,47 @@ func TestNextDNSCapMapRendering(t *testing.T) {
 	})
 }
 
+func TestGenerateDNSConfigCertDomains(t *testing.T) {
+	t.Parallel()
+
+	node := (&types.Node{
+		ID:        1,
+		Hostname:  "node1",
+		GivenName: "node1",
+		IPv4:      iap("100.64.0.1"),
+		Hostinfo:  &tailcfg.Hostinfo{OS: "linux"},
+	}).View()
+
+	mkConfig := func(enabled bool) *types.Config {
+		return &types.Config{
+			BaseDomain: "tailnet.example.com",
+			DNSConfig: types.DNSConfig{
+				Certificates: types.DNSCertificatesConfig{
+					Enabled: enabled,
+				},
+			},
+			TailcfgDNSConfig: &tailcfg.DNSConfig{
+				Domains: []string{"tailnet.example.com"},
+				Proxied: true,
+			},
+		}
+	}
+
+	t.Run("enabled", func(t *testing.T) {
+		t.Parallel()
+
+		got := generateDNSConfig(mkConfig(true), node, nil)
+		require.Equal(t, []string{"node1.tailnet.example.com"}, got.CertDomains)
+	})
+
+	t.Run("disabled", func(t *testing.T) {
+		t.Parallel()
+
+		got := generateDNSConfig(mkConfig(false), node, nil)
+		require.Empty(t, got.CertDomains)
+	})
+}
+
 // TestBuildFromChangeFiltersPeerPatchesByVisibility proves that incremental
 // peer-change patches (online/offline, endpoint, key-expiry) are restricted to
 // the recipient's ACL-visible peer set, the same way buildTailPeers filters

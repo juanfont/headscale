@@ -152,6 +152,34 @@ type DNSConfig struct {
 	SearchDomains    []string            `mapstructure:"search_domains"`
 	ExtraRecords     []tailcfg.DNSRecord `mapstructure:"extra_records"`
 	ExtraRecordsPath string              `mapstructure:"extra_records_path"`
+
+	Certificates DNSCertificatesConfig `mapstructure:"certificates"`
+}
+
+// DNSCertificatesConfig configures per-node HTTPS/TLS certificate support for
+// `tailscale cert` and `tailscale serve --https`.
+type DNSCertificatesConfig struct {
+	Enabled bool
+
+	// Provider names a registered libdns provider factory. Headscale's core
+	// certificate path is provider-neutral; concrete providers register a
+	// factory that returns a libdns.RecordSetter.
+	Provider string
+
+	// ProviderConfig is passed unchanged to the registered provider factory.
+	ProviderConfig map[string]string `mapstructure:"provider_config" json:"-"`
+
+	// Zone is the DNS zone passed to libdns. Empty defaults to dns.base_domain.
+	Zone string
+
+	// TTL is the TXT record TTL sent to libdns. Zero uses libdns/provider
+	// defaults.
+	TTL time.Duration
+
+	// PropagationWait optionally delays the SetDNS response after libdns
+	// accepts the TXT record, giving eventually-consistent providers time to
+	// publish the record before the client asks ACME to validate it.
+	PropagationWait time.Duration `mapstructure:"propagation_wait"`
 }
 
 type Nameservers struct {
@@ -408,6 +436,7 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("dns.nameservers.global", []string{})
 	viper.SetDefault("dns.nameservers.split", map[string]string{})
 	viper.SetDefault("dns.search_domains", []string{})
+	viper.SetDefault("dns.certificates.enabled", false)
 
 	viper.SetDefault("derp.server.enabled", false)
 	viper.SetDefault("derp.server.verify_clients", true)
@@ -880,6 +909,18 @@ func dns() (DNSConfig, error) {
 	dns.Nameservers.Split = viper.GetStringMapStringSlice("dns.nameservers.split")
 	dns.SearchDomains = viper.GetStringSlice("dns.search_domains")
 	dns.ExtraRecordsPath = viper.GetString("dns.extra_records_path")
+	dns.Certificates.Enabled = viper.GetBool("dns.certificates.enabled")
+	dns.Certificates.Provider = viper.GetString("dns.certificates.provider")
+	if viper.IsSet("dns.certificates.provider_config") {
+		dns.Certificates.ProviderConfig = viper.GetStringMapString(
+			"dns.certificates.provider_config",
+		)
+	}
+	dns.Certificates.Zone = viper.GetString("dns.certificates.zone")
+	dns.Certificates.TTL = viper.GetDuration("dns.certificates.ttl")
+	dns.Certificates.PropagationWait = viper.GetDuration(
+		"dns.certificates.propagation_wait",
+	)
 
 	if viper.IsSet("dns.extra_records") {
 		var extraRecords []tailcfg.DNSRecord
@@ -1175,6 +1216,24 @@ func LoadServerConfig() (*Config, error) {
 		err := isSafeServerURL(serverURL, dnsConfig.BaseDomain)
 		if err != nil {
 			return nil, err
+		}
+	}
+
+	if dnsConfig.Certificates.Enabled {
+		if !dnsConfig.MagicDNS {
+			return nil, errors.New("dns.certificates.enabled requires dns.magic_dns to be enabled")
+		}
+
+		if dnsConfig.BaseDomain == "" {
+			return nil, errors.New("dns.certificates.enabled requires dns.base_domain to be set")
+		}
+
+		if dnsConfig.Certificates.Provider == "" {
+			return nil, errors.New("dns.certificates.enabled requires dns.certificates.provider to be set")
+		}
+
+		if dnsConfig.Certificates.Zone == "" {
+			dnsConfig.Certificates.Zone = dnsConfig.BaseDomain
 		}
 	}
 

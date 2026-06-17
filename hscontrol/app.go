@@ -107,6 +107,7 @@ type Headscale struct {
 	extraRecordMan *dns.ExtraRecordsMan
 	authProvider   AuthProvider
 	mapBatcher     *mapper.Batcher
+	dnsCertManager *dnsCertificateManager
 
 	clientStreamsOpen sync.WaitGroup
 }
@@ -234,6 +235,13 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 			// (tailscale.com/ipn/ipnlocal/node_backend.go:869 documents the
 			// empty-resolver Routes form for Issue 2706).
 			app.cfg.TailcfgDNSConfig.Routes[d.WithoutTrailingDot()] = []*dnstype.Resolver{}
+		}
+	}
+
+	if cfg.DNSConfig.Certificates.Enabled {
+		app.dnsCertManager, err = newDNSCertificateManager(cfg.DNSConfig.Certificates)
+		if err != nil {
+			return nil, fmt.Errorf("creating DNS certificate manager: %w", err)
 		}
 	}
 

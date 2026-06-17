@@ -41,5 +41,7 @@ provides on overview of Headscale's feature and compatibility with the Tailscale
     - [x] Update user profile from identity provider
     - [ ] OIDC groups cannot be used in ACLs
 - [ ] [Funnel](https://tailscale.com/docs/features/tailscale-funnel) ([#1040](https://github.com/juanfont/headscale/issues/1040))
-- [ ] [Serve](https://tailscale.com/docs/features/tailscale-serve) ([#1234](https://github.com/juanfont/headscale/issues/1921))
+- [x] [Serve](https://tailscale.com/docs/features/tailscale-serve) ([#1921](https://github.com/juanfont/headscale/issues/1921))
+    - [x] HTTP Serve with MagicDNS
+    - [x] [HTTPS Serve and `tailscale cert`](../ref/serve.md) with `dns.certificates` and a registered `libdns` provider
 - [ ] [Network flow logs](https://tailscale.com/docs/features/logging/network-flow-logs) ([#1687](https://github.com/juanfont/headscale/issues/1687))

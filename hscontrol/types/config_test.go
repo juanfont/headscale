@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -444,6 +445,111 @@ oidc:
 	assert.Contains(t, err.Error(), errInvalidPKCEMethod.Error())
 }
 
+func TestDNSCertificateConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		dnsYAML string
+		want    DNSCertificatesConfig
+		wantErr string
+	}{
+		{
+			name: "enabled-defaults-zone-to-base-domain",
+			dnsYAML: `
+  magic_dns: true
+  base_domain: example.com
+  override_local_dns: false
+  certificates:
+    enabled: true
+    provider: test-provider
+    ttl: 2m
+    propagation_wait: 3s
+    provider_config:
+      token: secret-token
+`,
+			want: DNSCertificatesConfig{
+				Enabled:         true,
+				Provider:        "test-provider",
+				ProviderConfig:  map[string]string{"token": "secret-token"},
+				Zone:            "example.com",
+				TTL:             2 * time.Minute,
+				PropagationWait: 3 * time.Second,
+			},
+		},
+		{
+			name: "requires-magic-dns",
+			dnsYAML: `
+  magic_dns: false
+  base_domain: example.com
+  override_local_dns: false
+  certificates:
+    enabled: true
+    provider: test-provider
+`,
+			wantErr: "dns.certificates.enabled requires dns.magic_dns to be enabled",
+		},
+		{
+			name: "requires-base-domain",
+			dnsYAML: `
+  magic_dns: true
+  override_local_dns: false
+  certificates:
+    enabled: true
+    provider: test-provider
+`,
+			wantErr: "dns.certificates.enabled requires dns.base_domain to be set",
+		},
+		{
+			name: "requires-provider",
+			dnsYAML: `
+  magic_dns: true
+  base_domain: example.com
+  override_local_dns: false
+  certificates:
+    enabled: true
+`,
+			wantErr: "dns.certificates.enabled requires dns.certificates.provider to be set",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			configYaml := []byte(`---
+server_url: https://headscale.example.net
+noise:
+  private_key_path: noise_private.key
+prefixes:
+  v4: 100.64.0.0/10
+  v6: fd7a:115c:a1e0::/48
+database:
+  type: sqlite3
+  sqlite:
+    path: "` + filepath.Join(tmpDir, "db.sqlite") + `"
+dns:
+` + tt.dnsYAML)
+
+			configFilePath := filepath.Join(tmpDir, "config.yaml")
+			err := os.WriteFile(configFilePath, configYaml, 0o600)
+			require.NoError(t, err)
+
+			viper.Reset()
+			err = LoadConfig(tmpDir, false)
+			require.NoError(t, err)
+
+			cfg, err := LoadServerConfig()
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Equal(t, tt.wantErr, err.Error())
+
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, cfg.DNSConfig.Certificates)
+		})
+	}
+}
+
 // OK
 // server_url: headscale.com, base: clients.headscale.com
 // server_url: headscale.com, base: headscale.net
@@ -559,6 +665,7 @@ func TestConfigJSONOmitsSecrets(t *testing.T) {
 		secretPostgresPass = "p0stgres-secret-marker"
 		secretClientSecret = "oidc-client-secret-marker"    //nolint:gosec // test marker, not a real credential
 		secretAPIKey       = "headscale-cli-api-key-marker" //nolint:gosec // test marker, not a real credential
+		secretDNSProvider  = "dns-provider-secret-marker"   //nolint:gosec // test marker, not a real credential
 	)
 
 	cfg := &Config{
@@ -573,13 +680,25 @@ func TestConfigJSONOmitsSecrets(t *testing.T) {
 		CLI: CLIConfig{
 			APIKey: secretAPIKey,
 		},
+		DNSConfig: DNSConfig{
+			Certificates: DNSCertificatesConfig{
+				ProviderConfig: map[string]string{
+					"token": secretDNSProvider,
+				},
+			},
+		},
 	}
 
 	out, err := json.Marshal(cfg)
 	require.NoError(t, err)
 
 	body := string(out)
-	for _, secret := range []string{secretPostgresPass, secretClientSecret, secretAPIKey} {
+	for _, secret := range []string{
+		secretPostgresPass,
+		secretClientSecret,
+		secretAPIKey,
+		secretDNSProvider,
+	} {
 		assert.NotContains(t, body, secret,
 			"marshalled Config must not contain secret %q", secret)
 	}

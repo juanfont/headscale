@@ -172,17 +172,15 @@ func (h *Headscale) NoiseUpgradeHandler(
 		// SSH Check mode endpoint, consulted to validate if a given SSH connection should be accepted or rejected.
 		r.Get("/ssh/action/{src_node_id}/to/{dst_node_id}", ns.SSHActionHandler)
 
-		// Not implemented yet
-		//
 		// /whoami is a debug endpoint to validate that the client can communicate over the connection,
 		// not clear if there is a specific response, it looks like it is just logged.
 		// https://github.com/tailscale/tailscale/blob/dfba01ca9bd8c4df02c3c32f400d9aeb897c5fc7/cmd/tailscale/cli/debug.go#L1138
 		r.Get("/whoami", ns.NotImplementedHandler)
 
-		// client sends a [tailcfg.SetDNSRequest] to this endpoints and expect
+		// client sends a [tailcfg.SetDNSRequest] to this endpoint and expects
 		// the server to create or update this DNS record "somewhere".
 		// It is typically a TXT record for an ACME challenge.
-		r.Post("/set-dns", ns.NotImplementedHandler)
+		r.Post("/set-dns", ns.SetDNSHandler)
 
 		// A patch of [tailcfg.SetDeviceAttributesRequest] to update device attributes.
 		// We currently do not support device attributes.
@@ -706,7 +704,7 @@ func (ns *noiseServer) PollNetMapHandler(
 		return
 	}
 
-	nv, err := ns.getAndValidateNode(mapRequest)
+	nv, err := ns.getAndValidateNode(mapRequest.NodeKey)
 	if err != nil {
 		httpError(writer, err)
 		return
@@ -785,8 +783,8 @@ func (ns *noiseServer) RegistrationHandler(
 
 // getAndValidateNode retrieves the node from the database using the NodeKey
 // and validates that it matches the MachineKey from the Noise session.
-func (ns *noiseServer) getAndValidateNode(mapRequest tailcfg.MapRequest) (types.NodeView, error) {
-	nv, ok := ns.headscale.state.GetNodeByNodeKey(mapRequest.NodeKey)
+func (ns *noiseServer) getAndValidateNode(nodeKey key.NodePublic) (types.NodeView, error) {
+	nv, ok := ns.headscale.state.GetNodeByNodeKey(nodeKey)
 	if !ok {
 		return types.NodeView{}, NewHTTPError(http.StatusNotFound, "node not found", nil)
 	}
@@ -797,4 +795,56 @@ func (ns *noiseServer) getAndValidateNode(mapRequest tailcfg.MapRequest) (types.
 	}
 
 	return nv, nil
+}
+
+// SetDNSHandler handles ACME DNS-01 TXT updates from Tailscale clients for
+// `tailscale cert` and `tailscale serve --https`.
+func (ns *noiseServer) SetDNSHandler(writer http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost {
+		httpError(writer, errMethodNotAllowed)
+
+		return
+	}
+
+	if ns.headscale.dnsCertManager == nil {
+		httpError(writer, NewHTTPError(http.StatusNotImplemented, "DNS certificates are not enabled", nil))
+
+		return
+	}
+
+	var dnsReq tailcfg.SetDNSRequest
+	if err := json.NewDecoder(req.Body).Decode(&dnsReq); err != nil {
+		httpError(writer, NewHTTPError(http.StatusBadRequest, "invalid SetDNSRequest body", err))
+
+		return
+	}
+
+	if rejectUnsupported(writer, dnsReq.Version, ns.machineKey, dnsReq.NodeKey) {
+		return
+	}
+
+	nv, err := ns.getAndValidateNode(dnsReq.NodeKey)
+	if err != nil {
+		httpError(writer, err)
+
+		return
+	}
+
+	if err := ns.headscale.dnsCertManager.setDNS(
+		req.Context(),
+		nv,
+		ns.headscale.cfg.BaseDomain,
+		dnsReq,
+	); err != nil {
+		httpError(writer, NewHTTPError(http.StatusBadRequest, "invalid DNS record update", err))
+
+		return
+	}
+
+	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	writer.WriteHeader(http.StatusOK)
+
+	if err := json.NewEncoder(writer).Encode(tailcfg.SetDNSResponse{}); err != nil {
+		log.Error().Caller().Err(err).Msg("noise set-dns handler: failed to encode SetDNSResponse")
+	}
 }
