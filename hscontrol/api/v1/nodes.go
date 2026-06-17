@@ -50,7 +50,7 @@ func (s *Server) RegisterNode(
 
 	s.change(nodeChange, routeChange)
 
-	return &oas.RegisterNodeOK{Node: oas.NewOptNode(oasNode(node.Proto()))}, nil
+	return &oas.RegisterNodeOK{Node: oas.NewOptNode(oasNode(node, node.User(), nil))}, nil
 }
 
 // GetNode returns a node by id.
@@ -60,7 +60,7 @@ func (s *Server) GetNode(_ context.Context, params oas.GetNodeParams) (*oas.GetN
 		return nil, notFound("node not found")
 	}
 
-	return &oas.GetNodeOK{Node: oas.NewOptNode(oasNode(node.Proto()))}, nil
+	return &oas.GetNodeOK{Node: oas.NewOptNode(oasNode(node, node.User(), nil))}, nil
 }
 
 // SetTags sets the ACL tags of a node, converting it to a tagged node.
@@ -94,7 +94,7 @@ func (s *Server) SetTags(
 
 	s.change(nodeChange)
 
-	return &oas.SetTagsOK{Node: oas.NewOptNode(oasNode(node.Proto()))}, nil
+	return &oas.SetTagsOK{Node: oas.NewOptNode(oasNode(node, node.User(), nil))}, nil
 }
 
 // SetApprovedRoutes sets the approved subnet routes of a node, expanding exit
@@ -130,11 +130,12 @@ func (s *Server) SetApprovedRoutes(
 
 	s.change(nodeChange)
 
-	proto := node.Proto()
 	// SubnetRoutes carries only the routes actively served from the node.
-	proto.SubnetRoutes = util.PrefixesToString(s.state.GetNodePrimaryRoutes(node.ID()))
+	subnetRoutes := util.PrefixesToString(s.state.GetNodePrimaryRoutes(node.ID()))
 
-	return &oas.SetApprovedRoutesOK{Node: oas.NewOptNode(oasNode(proto))}, nil
+	return &oas.SetApprovedRoutesOK{
+		Node: oas.NewOptNode(oasNode(node, node.User(), subnetRoutes)),
+	}, nil
 }
 
 // DeleteNode deletes a node.
@@ -182,7 +183,7 @@ func (s *Server) ExpireNode(
 
 	s.change(nodeChange)
 
-	return &oas.ExpireNodeOK{Node: oas.NewOptNode(oasNode(node.Proto()))}, nil
+	return &oas.ExpireNodeOK{Node: oas.NewOptNode(oasNode(node, node.User(), nil))}, nil
 }
 
 // RenameNode renames a node.
@@ -197,7 +198,7 @@ func (s *Server) RenameNode(
 
 	s.change(nodeChange)
 
-	return &oas.RenameNodeOK{Node: oas.NewOptNode(oasNode(node.Proto()))}, nil
+	return &oas.RenameNodeOK{Node: oas.NewOptNode(oasNode(node, node.User(), nil))}, nil
 }
 
 // ListNodes lists nodes, optionally filtered by user, sorted by id.
@@ -228,17 +229,17 @@ func (s *Server) nodesToOAS(nodes views.Slice[types.NodeView]) []oas.Node {
 	out := make([]oas.Node, nodes.Len())
 
 	for index, node := range nodes.All() {
-		proto := node.Proto()
-
+		// Tagged nodes are presented as the TaggedDevices user.
+		user := node.User()
 		if node.IsTagged() {
-			proto.User = types.TaggedDevices.Proto()
+			user = types.TaggedDevices.View()
 		}
 
-		proto.SubnetRoutes = util.PrefixesToString(
+		subnetRoutes := util.PrefixesToString(
 			append(s.state.GetNodePrimaryRoutes(node.ID()), node.ExitRoutes()...),
 		)
 
-		out[index] = oasNode(proto)
+		out[index] = oasNode(node, user, subnetRoutes)
 	}
 
 	slices.SortFunc(out, func(a, b oas.Node) int { return cmp.Compare(a.ID.Or(0), b.ID.Or(0)) })
@@ -308,5 +309,5 @@ func (s *Server) DebugCreateNode(
 		},
 	}
 
-	return &oas.DebugCreateNodeOK{Node: oas.NewOptNode(oasNode(echoNode.Proto()))}, nil
+	return &oas.DebugCreateNodeOK{Node: oas.NewOptNode(oasNode(echoNode.View(), echoNode.View().User(), nil))}, nil
 }

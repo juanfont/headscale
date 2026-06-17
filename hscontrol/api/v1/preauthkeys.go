@@ -52,7 +52,7 @@ func (s *Server) CreatePreAuthKey(
 	}
 
 	return &oas.CreatePreAuthKeyOK{
-		PreAuthKey: oas.NewOptPreAuthKey(oasPreAuthKey(preAuthKey.Proto())),
+		PreAuthKey: oas.NewOptPreAuthKey(oasPreAuthKeyNew(preAuthKey)),
 	}, nil
 }
 
@@ -67,7 +67,7 @@ func (s *Server) ListPreAuthKeys(_ context.Context) (*oas.ListPreAuthKeysOK, err
 
 	out := make([]oas.PreAuthKey, len(keys))
 	for i := range keys {
-		out[i] = oasPreAuthKey(keys[i].Proto())
+		out[i] = oasPreAuthKey(keys[i].View())
 	}
 
 	return &oas.ListPreAuthKeysOK{PreAuthKeys: out}, nil

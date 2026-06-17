@@ -40,7 +40,7 @@ func (s *Server) ListApiKeys(_ context.Context) (*oas.ListApiKeysOK, error) {
 
 	out := make([]oas.ApiKey, len(keys))
 	for i := range keys {
-		out[i] = oasAPIKey(keys[i].Proto())
+		out[i] = oasAPIKey(&keys[i])
 	}
 
 	return &oas.ListApiKeysOK{ApiKeys: out}, nil

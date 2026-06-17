@@ -29,7 +29,7 @@ func (s *Server) CreateUser(
 
 	s.change(policyChanged)
 
-	return &oas.CreateUserOK{User: oas.NewOptUser(oasUser(user.Proto()))}, nil
+	return &oas.CreateUserOK{User: oas.NewOptUser(oasUser(user.View()))}, nil
 }
 
 // ListUsers lists users, optionally filtered by id, name, or email, sorted by id.
@@ -63,7 +63,7 @@ func (s *Server) ListUsers(
 
 	out := make([]oas.User, len(users))
 	for i := range users {
-		out[i] = oasUser(users[i].Proto())
+		out[i] = oasUser(users[i].View())
 	}
 
 	return &oas.ListUsersOK{Users: out}, nil
@@ -91,7 +91,7 @@ func (s *Server) RenameUser(
 		return nil, mapStateError(err)
 	}
 
-	return &oas.RenameUserOK{User: oas.NewOptUser(oasUser(newUser.Proto()))}, nil
+	return &oas.RenameUserOK{User: oas.NewOptUser(oasUser(newUser.View()))}, nil
 }
 
 // DeleteUser deletes a user and distributes the resulting policy change.

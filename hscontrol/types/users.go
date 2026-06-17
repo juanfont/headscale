@@ -129,6 +129,16 @@ func (u *User) Username() string {
 	)
 }
 
+// Username returns the display-friendly identifier for the user view,
+// mirroring [User.Username].
+func (v UserView) Username() string {
+	if !v.Valid() {
+		return ""
+	}
+
+	return v.ж.Username()
+}
+
 // Display returns the [User.DisplayName] if it exists, otherwise
 // it will return the [User.Username].
 func (u *User) Display() string {
