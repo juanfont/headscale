@@ -44,6 +44,16 @@ func optTime(ts *timestamppb.Timestamp) oas.OptDateTime {
 	return oas.NewOptDateTime(ts.AsTime())
 }
 
+func oasAPIKey(k *v1.ApiKey) oas.ApiKey {
+	return oas.ApiKey{
+		ID:         optUint64(k.GetId()),
+		Prefix:     optString(k.GetPrefix()),
+		Expiration: optTime(k.GetExpiration()),
+		CreatedAt:  optTime(k.GetCreatedAt()),
+		LastSeen:   optTime(k.GetLastSeen()),
+	}
+}
+
 func oasUser(u *v1.User) oas.User {
 	return oas.User{
 		ID:            optUint64(u.GetId()),
