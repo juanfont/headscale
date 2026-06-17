@@ -1,0 +1,724 @@
+openapi: 3.0.3
+info:
+  title: Headscale API
+  version: "1"
+  description: |
+    HTTP API for managing a Headscale control server: users, pre-auth keys,
+    nodes, API keys, and ACL policy. This is the v1 API, served under
+    `/api/v1`. It is the OpenAPI 3.0 successor to the previous
+    gRPC/grpc-gateway facade and is the single source of truth for the API
+    contract.
+
+    Authentication is a bearer API key (`Authorization: Bearer <key>`),
+    except over the local unix socket where filesystem permissions are the
+    trust boundary.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+tags:
+  - name: Users
+  - name: PreAuthKeys
+  - name: Nodes
+  - name: Auth
+  - name: ApiKeys
+  - name: Policy
+  - name: Health
+
+paths:
+  /api/v1/user:
+    post:
+      operationId: CreateUser
+      tags: [Users]
+      summary: Create a user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                displayName: { type: string }
+                email: { type: string }
+                pictureUrl: { type: string }
+      responses:
+        "200":
+          description: The created user.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: "#/components/schemas/User" }
+        default: { $ref: "#/components/responses/Error" }
+    get:
+      operationId: ListUsers
+      tags: [Users]
+      summary: List users, optionally filtered by id, name, or email.
+      parameters:
+        - { name: id, in: query, required: false, schema: { type: integer, format: uint64 } }
+        - { name: name, in: query, required: false, schema: { type: string } }
+        - { name: email, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: Matching users, sorted by id.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items: { $ref: "#/components/schemas/User" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/user/{old_id}/rename/{new_name}:
+    post:
+      operationId: RenameUser
+      tags: [Users]
+      summary: Rename a user.
+      parameters:
+        - { name: old_id, in: path, required: true, schema: { type: integer, format: uint64 } }
+        - { name: new_name, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The renamed user.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: "#/components/schemas/User" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/user/{id}:
+    delete:
+      operationId: DeleteUser
+      tags: [Users]
+      summary: Delete a user.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, format: uint64 } }
+      responses:
+        "200":
+          description: User deleted.
+          content:
+            application/json:
+              schema: { type: object }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/preauthkey:
+    post:
+      operationId: CreatePreAuthKey
+      tags: [PreAuthKeys]
+      summary: Create a pre-auth key.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user: { type: integer, format: uint64 }
+                reusable: { type: boolean }
+                ephemeral: { type: boolean }
+                expiration: { type: string, format: date-time }
+                aclTags:
+                  type: array
+                  items: { type: string }
+      responses:
+        "200":
+          description: The created pre-auth key.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  preAuthKey: { $ref: "#/components/schemas/PreAuthKey" }
+        default: { $ref: "#/components/responses/Error" }
+    get:
+      operationId: ListPreAuthKeys
+      tags: [PreAuthKeys]
+      summary: List all pre-auth keys.
+      responses:
+        "200":
+          description: Pre-auth keys, sorted by id.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  preAuthKeys:
+                    type: array
+                    items: { $ref: "#/components/schemas/PreAuthKey" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: DeletePreAuthKey
+      tags: [PreAuthKeys]
+      summary: Delete a pre-auth key.
+      parameters:
+        - { name: id, in: query, required: false, schema: { type: integer, format: uint64 } }
+      responses:
+        "200":
+          description: Pre-auth key deleted.
+          content:
+            application/json:
+              schema: { type: object }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/preauthkey/expire:
+    post:
+      operationId: ExpirePreAuthKey
+      tags: [PreAuthKeys]
+      summary: Expire a pre-auth key.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id: { type: integer, format: uint64 }
+      responses:
+        "200":
+          description: Pre-auth key expired.
+          content:
+            application/json:
+              schema: { type: object }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/node:
+    get:
+      operationId: ListNodes
+      tags: [Nodes]
+      summary: List nodes, optionally filtered by user.
+      parameters:
+        - { name: user, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: Matching nodes, sorted by id.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nodes:
+                    type: array
+                    items: { $ref: "#/components/schemas/Node" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/node/register:
+    post:
+      operationId: RegisterNode
+      tags: [Nodes]
+      summary: Register a node to a user using a registration id.
+      parameters:
+        - { name: user, in: query, required: false, schema: { type: string } }
+        - { name: key, in: query, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: The registered node.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  node: { $ref: "#/components/schemas/Node" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/node/backfillips:
+    post:
+      operationId: BackfillNodeIPs
+      tags: [Nodes]
+      summary: Backfill missing IP addresses for all nodes.
+      parameters:
+        - { name: confirmed, in: query, required: false, schema: { type: boolean } }
+      responses:
+        "200":
+          description: List of changes made.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changes:
+                    type: array
+                    items: { type: string }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/node/{node_id}:
+    get:
+      operationId: GetNode
+      tags: [Nodes]
+      summary: Get a node by id.
+      parameters:
+        - { name: node_id, in: path, required: true, schema: { type: integer, format: uint64 } }
+      responses:
+        "200":
+          description: The node.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  node: { $ref: "#/components/schemas/Node" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: DeleteNode
+      tags: [Nodes]
+      summary: Delete a node.
+      parameters:
+        - { name: node_id, in: path, required: true, schema: { type: integer, format: uint64 } }
+      responses:
+        "200":
+          description: Node deleted.
+          content:
+            application/json:
+              schema: { type: object }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/node/{node_id}/tags:
+    post:
+      operationId: SetTags
+      tags: [Nodes]
+      summary: Set the tags of a node (converts it to a tagged node).
+      parameters:
+        - { name: node_id, in: path, required: true, schema: { type: integer, format: uint64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tags:
+                  type: array
+                  items: { type: string }
+      responses:
+        "200":
+          description: The updated node.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  node: { $ref: "#/components/schemas/Node" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/node/{node_id}/approve_routes:
+    post:
+      operationId: SetApprovedRoutes
+      tags: [Nodes]
+      summary: Set the approved subnet routes of a node.
+      parameters:
+        - { name: node_id, in: path, required: true, schema: { type: integer, format: uint64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                routes:
+                  type: array
+                  items: { type: string }
+      responses:
+        "200":
+          description: The updated node.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  node: { $ref: "#/components/schemas/Node" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/node/{node_id}/expire:
+    post:
+      operationId: ExpireNode
+      tags: [Nodes]
+      summary: Expire a node, or disable its expiry.
+      parameters:
+        - { name: node_id, in: path, required: true, schema: { type: integer, format: uint64 } }
+        - { name: expiry, in: query, required: false, schema: { type: string, format: date-time } }
+        - { name: disable_expiry, in: query, required: false, schema: { type: boolean } }
+      responses:
+        "200":
+          description: The updated node.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  node: { $ref: "#/components/schemas/Node" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/node/{node_id}/rename/{new_name}:
+    post:
+      operationId: RenameNode
+      tags: [Nodes]
+      summary: Rename a node.
+      parameters:
+        - { name: node_id, in: path, required: true, schema: { type: integer, format: uint64 } }
+        - { name: new_name, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The renamed node.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  node: { $ref: "#/components/schemas/Node" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/debug/node:
+    post:
+      operationId: DebugCreateNode
+      tags: [Nodes]
+      summary: Create a debug node and cache its registration (testing only).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user: { type: string }
+                key: { type: string }
+                name: { type: string }
+                routes:
+                  type: array
+                  items: { type: string }
+      responses:
+        "200":
+          description: A synthetic node echoing the requested registration.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  node: { $ref: "#/components/schemas/Node" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/auth/register:
+    post:
+      operationId: AuthRegister
+      tags: [Auth]
+      summary: Register a node via an auth id (alias of RegisterNode).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user: { type: string }
+                authId: { type: string }
+      responses:
+        "200":
+          description: The registered node.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  node: { $ref: "#/components/schemas/Node" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/auth/approve:
+    post:
+      operationId: AuthApprove
+      tags: [Auth]
+      summary: Approve a pending auth session.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                authId: { type: string }
+      responses:
+        "200":
+          description: Auth session approved.
+          content:
+            application/json:
+              schema: { type: object }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/auth/reject:
+    post:
+      operationId: AuthReject
+      tags: [Auth]
+      summary: Reject a pending auth session.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                authId: { type: string }
+      responses:
+        "200":
+          description: Auth session rejected.
+          content:
+            application/json:
+              schema: { type: object }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/apikey:
+    post:
+      operationId: CreateApiKey
+      tags: [ApiKeys]
+      summary: Create an API key.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expiration: { type: string, format: date-time }
+      responses:
+        "200":
+          description: The created API key (the only time the full key is returned).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apiKey: { type: string }
+        default: { $ref: "#/components/responses/Error" }
+    get:
+      operationId: ListApiKeys
+      tags: [ApiKeys]
+      summary: List all API keys.
+      responses:
+        "200":
+          description: API keys, sorted by id.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apiKeys:
+                    type: array
+                    items: { $ref: "#/components/schemas/ApiKey" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/apikey/expire:
+    post:
+      operationId: ExpireApiKey
+      tags: [ApiKeys]
+      summary: Expire an API key by id or prefix.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                prefix: { type: string }
+                id: { type: integer, format: uint64 }
+      responses:
+        "200":
+          description: API key expired.
+          content:
+            application/json:
+              schema: { type: object }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/apikey/{prefix}:
+    delete:
+      operationId: DeleteApiKey
+      tags: [ApiKeys]
+      summary: Delete an API key by prefix (or id).
+      parameters:
+        - { name: prefix, in: path, required: true, schema: { type: string } }
+        - { name: id, in: query, required: false, schema: { type: integer, format: uint64 } }
+      responses:
+        "200":
+          description: API key deleted.
+          content:
+            application/json:
+              schema: { type: object }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/policy:
+    get:
+      operationId: GetPolicy
+      tags: [Policy]
+      summary: Get the current ACL policy.
+      responses:
+        "200":
+          description: The current policy.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  policy: { type: string }
+                  updatedAt: { type: string, format: date-time }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: SetPolicy
+      tags: [Policy]
+      summary: Set the ACL policy (database policy mode only).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                policy: { type: string }
+      responses:
+        "200":
+          description: The stored policy.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  policy: { type: string }
+                  updatedAt: { type: string, format: date-time }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/policy/check:
+    post:
+      operationId: CheckPolicy
+      tags: [Policy]
+      summary: Validate a policy against live users and nodes without storing it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                policy: { type: string }
+      responses:
+        "200":
+          description: Policy is valid.
+          content:
+            application/json:
+              schema: { type: object }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/health:
+    get:
+      operationId: Health
+      tags: [Health]
+      summary: Report server health, including database connectivity.
+      responses:
+        "200":
+          description: Health status.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  databaseConnectivity: { type: boolean }
+        default: { $ref: "#/components/responses/Error" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+  responses:
+    Error:
+      description: Error, as an RFC 7807 problem document.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+
+  schemas:
+    Problem:
+      type: object
+      description: RFC 7807 problem details.
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer, format: int32 }
+        detail: { type: string }
+        instance: { type: string, format: uri }
+
+    RegisterMethod:
+      type: string
+      enum:
+        - REGISTER_METHOD_UNSPECIFIED
+        - REGISTER_METHOD_AUTH_KEY
+        - REGISTER_METHOD_CLI
+        - REGISTER_METHOD_OIDC
+
+    User:
+      type: object
+      properties:
+        id: { type: integer, format: uint64 }
+        name: { type: string }
+        createdAt: { type: string, format: date-time }
+        displayName: { type: string }
+        email: { type: string }
+        providerId: { type: string }
+        provider: { type: string }
+        profilePicUrl: { type: string }
+
+    PreAuthKey:
+      type: object
+      properties:
+        user: { $ref: "#/components/schemas/User" }
+        id: { type: integer, format: uint64 }
+        key: { type: string }
+        reusable: { type: boolean }
+        ephemeral: { type: boolean }
+        used: { type: boolean }
+        expiration: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        aclTags:
+          type: array
+          items: { type: string }
+
+    ApiKey:
+      type: object
+      properties:
+        id: { type: integer, format: uint64 }
+        prefix: { type: string }
+        expiration: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        lastSeen: { type: string, format: date-time }
+
+    Node:
+      type: object
+      properties:
+        id: { type: integer, format: uint64 }
+        machineKey: { type: string }
+        nodeKey: { type: string }
+        discoKey: { type: string }
+        ipAddresses:
+          type: array
+          items: { type: string }
+        name: { type: string }
+        user: { $ref: "#/components/schemas/User" }
+        lastSeen: { type: string, format: date-time }
+        expiry: { type: string, format: date-time }
+        preAuthKey: { $ref: "#/components/schemas/PreAuthKey" }
+        createdAt: { type: string, format: date-time }
+        registerMethod: { $ref: "#/components/schemas/RegisterMethod" }
+        givenName: { type: string }
+        online: { type: boolean }
+        approvedRoutes:
+          type: array
+          items: { type: string }
+        availableRoutes:
+          type: array
+          items: { type: string }
+        subnetRoutes:
+          type: array
+          items: { type: string }
+        tags:
+          type: array
+          items: { type: string }
