@@ -44,6 +44,46 @@ func optTime(ts *timestamppb.Timestamp) oas.OptDateTime {
 	return oas.NewOptDateTime(ts.AsTime())
 }
 
+func optBool(b bool) oas.OptBool {
+	if !b {
+		return oas.OptBool{}
+	}
+
+	return oas.NewOptBool(b)
+}
+
+// strs normalises an empty slice to nil so it is omitted from the response
+// rather than emitted as an empty array.
+func strs(s []string) []string {
+	if len(s) == 0 {
+		return nil
+	}
+
+	return s
+}
+
+func optUser(u *v1.User) oas.OptUser {
+	if u == nil {
+		return oas.OptUser{}
+	}
+
+	return oas.NewOptUser(oasUser(u))
+}
+
+func oasPreAuthKey(k *v1.PreAuthKey) oas.PreAuthKey {
+	return oas.PreAuthKey{
+		User:       optUser(k.GetUser()),
+		ID:         optUint64(k.GetId()),
+		Key:        optString(k.GetKey()),
+		Reusable:   optBool(k.GetReusable()),
+		Ephemeral:  optBool(k.GetEphemeral()),
+		Used:       optBool(k.GetUsed()),
+		Expiration: optTime(k.GetExpiration()),
+		CreatedAt:  optTime(k.GetCreatedAt()),
+		AclTags:    strs(k.GetAclTags()),
+	}
+}
+
 func oasAPIKey(k *v1.ApiKey) oas.ApiKey {
 	return oas.ApiKey{
 		ID:         optUint64(k.GetId()),
