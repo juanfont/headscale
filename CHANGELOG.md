@@ -4,6 +4,14 @@
 
 **Minimum supported Tailscale client version: v1.xx.0**
 
+## 0.29.1 (2026-06-18)
+
+**Minimum supported Tailscale client version: v1.80.0**
+
+### Changes
+
+- Fix nodes with `tags='null'` losing their assigned user on upgrade [#3325](https://github.com/juanfont/headscale/pull/3325)
+
 ## 0.29.0 (2026-06-17)
 
 **Minimum supported Tailscale client version: v1.80.0**

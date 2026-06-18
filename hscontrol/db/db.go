@@ -706,13 +706,20 @@ AND auth_key_id NOT IN (
 				// but this prevents deleting users whose nodes have been
 				// tagged, and the ON DELETE CASCADE FK would destroy the
 				// tagged nodes if the user were deleted.
+				//
+				// A nil tags slice marshals to the JSON literal 'null', so
+				// untagged nodes can carry tags='null'. That spelling must be
+				// excluded alongside '[]' and '' or untagged nodes lose their
+				// user. Nodes already detached by the earlier version of this
+				// migration are repaired by the recovery migration below.
 				// Fixes: https://github.com/juanfont/headscale/issues/3077
+				// Fixes: https://github.com/juanfont/headscale/issues/3323
 				ID: "202602201200-clear-tagged-node-user-id",
 				Migrate: func(tx *gorm.DB) error {
 					err := tx.Exec(`
 UPDATE nodes
 SET user_id = NULL
-WHERE tags IS NOT NULL AND tags != '[]' AND tags != '';
+WHERE tags IS NOT NULL AND tags != '[]' AND tags != '' AND tags != 'null';
 						`).Error
 					if err != nil {
 						return fmt.Errorf("clearing user_id on tagged nodes: %w", err)
@@ -738,6 +745,36 @@ WHERE expiry IS NOT NULL AND expiry < '1900-01-01';
 						`).Error
 					if err != nil {
 						return fmt.Errorf("clearing zero-time node expiry: %w", err)
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			{
+				// Recover user_id on untagged nodes detached by the earlier
+				// version of 202602201200-clear-tagged-node-user-id, which
+				// treated tags='null' as tagged and cleared the user. This
+				// repairs databases that already upgraded to 0.29.0; fresh
+				// upgrades are protected by the fixed migration above and find
+				// nothing to repair. Recovery is best-effort: the owner is
+				// re-derived from the node's pre-auth key, so nodes registered
+				// via CLI/OIDC (no pre-auth key) cannot be recovered and must
+				// be reassigned manually.
+				// Fixes: https://github.com/juanfont/headscale/issues/3323
+				ID: "202606181200-recover-null-tags-node-user-id",
+				Migrate: func(tx *gorm.DB) error {
+					err := tx.Exec(`
+UPDATE nodes
+SET user_id = (
+	SELECT pak.user_id FROM pre_auth_keys pak WHERE pak.id = nodes.auth_key_id
+)
+WHERE user_id IS NULL
+	AND auth_key_id IS NOT NULL
+	AND (tags IS NULL OR tags = '' OR tags = '[]' OR tags = 'null');
+						`).Error
+					if err != nil {
+						return fmt.Errorf("recovering user_id on untagged nodes: %w", err)
 					}
 
 					return nil
