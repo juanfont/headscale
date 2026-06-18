@@ -15,8 +15,7 @@ import (
 // talks to the ogen-generated server in-process and gets a healthy response
 // reporting database connectivity.
 func TestAPIv1_Health(t *testing.T) {
-	srv := servertest.NewServer(t)
-	client := srv.APIClient(t, srv.CreateAPIKey(t))
+	_, client := apiClient(t)
 
 	resp, err := client.Health(context.Background())
 	require.NoError(t, err)
@@ -29,7 +28,7 @@ func TestAPIv1_Health(t *testing.T) {
 
 // TestAPIv1_Health_Unauthorized verifies the bearer-auth SecurityHandler:
 // an invalid API key yields a 401 RFC 7807 problem, matching the previous
-// gRPC/gateway behaviour of rejecting bad tokens.
+// behaviour of rejecting bad tokens.
 func TestAPIv1_Health_Unauthorized(t *testing.T) {
 	srv := servertest.NewServer(t)
 	client := srv.APIClient(t, "tskey-invalid")
