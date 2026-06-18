@@ -198,6 +198,103 @@ func TestSQLiteMigrationAndDataValidation(t *testing.T) {
 				assert.False(t, node5.IsExpired(), "node5 should not be reported as expired")
 			},
 		},
+		// Test for the clear-tagged-node-user-id migration
+		// (202602201200-clear-tagged-node-user-id). A nil tags slice
+		// marshals to the JSON literal 'null', so untagged nodes can carry
+		// tags='null' in the database. The migration must only clear
+		// user_id on genuinely tagged nodes, not on these untagged ones.
+		// Fixes: https://github.com/juanfont/headscale/issues/3323
+		{
+			dbPath: "testdata/sqlite/null_tags_user_id_migration_test.sql",
+			wantFunc: func(t *testing.T, hsdb *HSDatabase) {
+				t.Helper()
+
+				nodes, err := Read(hsdb.DB, func(rx *gorm.DB) (types.Nodes, error) {
+					return ListNodes(rx)
+				})
+				require.NoError(t, err)
+				require.Len(t, nodes, 4, "should have all 4 nodes")
+
+				byHostname := make(map[string]*types.Node, len(nodes))
+				for _, n := range nodes {
+					byHostname[n.Hostname] = n
+				}
+
+				// Node 1 had tags='null' (untagged) and belonged to user2.
+				// The migration must NOT clear its user_id.
+				node1 := byHostname["node1"]
+				require.NotNil(t, node1, "node1 should exist")
+				assert.False(t, node1.IsTagged(), "node1 with tags='null' should be untagged")
+				require.NotNil(t, node1.UserID, "node1 should keep its user assigned")
+				assert.Equal(t, uint(2), *node1.UserID, "node1 should still belong to user2")
+
+				// Node 2 is genuinely tagged; user_id must be cleared.
+				node2 := byHostname["node2"]
+				require.NotNil(t, node2, "node2 should exist")
+				assert.True(t, node2.IsTagged(), "node2 should be tagged")
+				assert.Nil(t, node2.UserID, "node2 (tagged) should have user_id cleared")
+
+				// Node 3 had tags='[]' (untagged); user_id preserved.
+				node3 := byHostname["node3"]
+				require.NotNil(t, node3, "node3 should exist")
+				assert.False(t, node3.IsTagged(), "node3 with tags='[]' should be untagged")
+				require.NotNil(t, node3.UserID, "node3 should keep its user assigned")
+				assert.Equal(t, uint(1), *node3.UserID, "node3 should still belong to user1")
+
+				// Node 4 had tags='' (untagged); user_id preserved.
+				node4 := byHostname["node4"]
+				require.NotNil(t, node4, "node4 should exist")
+				assert.False(t, node4.IsTagged(), "node4 with tags='' should be untagged")
+				require.NotNil(t, node4.UserID, "node4 should keep its user assigned")
+				assert.Equal(t, uint(1), *node4.UserID, "node4 should still belong to user1")
+			},
+		},
+		// Test for the null-tags user_id recovery migration. Databases that
+		// already upgraded to 0.29.0 had user_id wrongly cleared on untagged
+		// nodes with tags='null'. The recovery migration re-derives user_id
+		// from the node's pre-auth key where one exists.
+		// Fixes: https://github.com/juanfont/headscale/issues/3323
+		{
+			dbPath: "testdata/sqlite/recover_null_tags_user_id_migration_test.sql",
+			wantFunc: func(t *testing.T, hsdb *HSDatabase) {
+				t.Helper()
+
+				nodes, err := Read(hsdb.DB, func(rx *gorm.DB) (types.Nodes, error) {
+					return ListNodes(rx)
+				})
+				require.NoError(t, err)
+				require.Len(t, nodes, 4, "should have all 4 nodes")
+
+				byHostname := make(map[string]*types.Node, len(nodes))
+				for _, n := range nodes {
+					byHostname[n.Hostname] = n
+				}
+
+				// Node 1: authkey-registered, orphaned by the bug. The recovery
+				// migration restores user_id from its pre-auth key (user2).
+				node1 := byHostname["node1"]
+				require.NotNil(t, node1, "node1 should exist")
+				require.NotNil(t, node1.UserID, "node1 user_id should be recovered")
+				assert.Equal(t, uint(2), *node1.UserID, "node1 should be recovered to user2")
+
+				// Node 2: genuinely tagged, correctly cleared. Must stay cleared.
+				node2 := byHostname["node2"]
+				require.NotNil(t, node2, "node2 should exist")
+				assert.True(t, node2.IsTagged(), "node2 should be tagged")
+				assert.Nil(t, node2.UserID, "node2 (tagged) must remain cleared")
+
+				// Node 3: CLI-registered, no pre-auth key. Unrecoverable.
+				node3 := byHostname["node3"]
+				require.NotNil(t, node3, "node3 should exist")
+				assert.Nil(t, node3.UserID, "node3 has no pre-auth key to recover from")
+
+				// Node 4: never orphaned; user_id must be untouched.
+				node4 := byHostname["node4"]
+				require.NotNil(t, node4, "node4 should exist")
+				require.NotNil(t, node4.UserID, "node4 user_id should be untouched")
+				assert.Equal(t, uint(1), *node4.UserID, "node4 should still belong to user1")
+			},
+		},
 	}
 
 	for _, tt := range tests {
