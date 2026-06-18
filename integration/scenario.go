@@ -185,6 +185,26 @@ func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 		return nil, fmt.Errorf("connecting to docker: %w", err)
 	}
 
+	// dockertest's bundled go-dockerclient stamps image builds with API
+	// v1.25 (the `ver` tag on BuildImageOptions.Dockerfile) whenever the
+	// client has no pinned version. Docker Engine 29 raised the minimum API
+	// version to 1.40 and rejects v1.25 with a 400, which surfaces mid-build
+	// as a "write: broken pipe". Pin the client to the daemon's reported API
+	// version so build (and every other) request uses an accepted path.
+	version, err := pool.Client.Version()
+	if err != nil {
+		return nil, fmt.Errorf("querying docker API version: %w", err)
+	}
+
+	if api := version.Get("ApiVersion"); api != "" {
+		client, err := docker.NewVersionedClientFromEnv(api)
+		if err != nil {
+			return nil, fmt.Errorf("pinning docker client to API version %s: %w", api, err)
+		}
+
+		pool.Client = client
+	}
+
 	// Opportunity to clean up unreferenced networks.
 	// This might be a no op, but it is worth a try as we sometime
 	// dont clean up nicely after ourselves.
