@@ -52,4 +52,4 @@ jobs:
         if: steps.changed-files.outputs.nix == 'true' || steps.changed-files.outputs.go == 'true'
         run: |
           echo "Running NixOS module integration test..."
-          nix build .#checks.x86_64-linux.headscale -L
+          nix build .#checks.x86_64-linux.headscale -L --fallback
