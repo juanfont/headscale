@@ -42,7 +42,7 @@ jobs:
         id: vendorhash
         if: steps.changed-files.outputs.files == 'true'
         run: |
-          nix develop --command -- go run ./cmd/vendorhash check | tee check-result
+          nix develop --fallback --command -- go run ./cmd/vendorhash check | tee check-result
           {
             grep '^expected_sri=' check-result || true
             grep '^actual_sri='   check-result || true
@@ -63,7 +63,7 @@ jobs:
 
       - name: Run nix build
         if: steps.changed-files.outputs.files == 'true'
-        run: nix build
+        run: nix build --fallback
 
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         if: steps.changed-files.outputs.files == 'true'
@@ -91,7 +91,7 @@ jobs:
       - name: Run go cross compile
         env:
           CGO_ENABLED: 0
-        run: env ${{ matrix.env }} nix develop --command -- go build -o "headscale"
+        run: env ${{ matrix.env }} nix develop --fallback --command -- go build -o "headscale"
           ./cmd/headscale
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
