@@ -265,20 +265,32 @@ jobs:
           - TestAuthWebFlowAuthenticationPingAll
           - TestAuthWebFlowLogoutAndReloginSameUser
           - TestAuthWebFlowLogoutAndReloginNewUser
-          - TestPolicyCheckCommand
-          - TestSSHTestsRejectFailingPolicy
-          - TestUserCommand
-          - TestPreAuthKeyCommand
-          - TestPreAuthKeyCommandWithoutExpiry
-          - TestPreAuthKeyCommandReusableEphemeral
-          - TestPreAuthKeyCorrectUserLoggedInCommand
-          - TestTaggedNodesCLIOutput
           - TestApiKeyCommand
+          - TestApiKeyCommandValidation
+          - TestAuthCommandValidation
           - TestNodeCommand
           - TestNodeExpireCommand
           - TestNodeRenameCommand
+          - TestPreAuthKeyCorrectUserLoggedInCommand
+          - TestTaggedNodesCLIOutput
+          - TestNodeExpireFlagsCommand
+          - TestNodeCommandValidation
+          - TestNodeTagCommand
+          - TestNodeRouteCommands
+          - TestNodeBackfillIPsCommand
+          - TestPolicyCheckCommand
+          - TestSSHTestsRejectFailingPolicy
           - TestPolicyCommand
           - TestPolicyBrokenConfigCommand
+          - TestPreAuthKeyCommand
+          - TestPreAuthKeyCommandWithoutExpiry
+          - TestPreAuthKeyCommandReusableEphemeral
+          - TestPreAuthKeyDeleteCommand
+          - TestPreAuthKeyCommandValidation
+          - TestServerInfoCommands
+          - TestUserCommand
+          - TestUserCreateCommand
+          - TestUserCommandValidation
           - TestDERPVerifyEndpoint
           - TestResolveMagicDNS
           - TestResolveMagicDNSExtraRecordsPath
