@@ -38,6 +38,6 @@ jobs:
           restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
 
       - name: Run goreleaser
-        run: nix develop --command -- goreleaser release --clean
+        run: nix develop --fallback --command -- goreleaser release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

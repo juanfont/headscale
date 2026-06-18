@@ -47,7 +47,7 @@ jobs:
         if: steps.changed-files.outputs.files == 'true'
         run: |
           # Build all Go binaries in one nix shell to maximize cache reuse
-          nix develop --command -- bash -c '
+          nix develop --fallback --command -- bash -c '
             go build -o hi ./cmd/hi
             CGO_ENABLED=0 GOOS=linux go build -o headscale ./cmd/headscale
             # Build integration test binary to warm the cache with all dependencies
@@ -182,7 +182,7 @@ jobs:
       - name: List Tailscale versions to pre-pull
         id: versions
         run: |
-          versions=$(nix develop --command go run ./cmd/hi list-versions --set=must --exclude=head)
+          versions=$(nix develop --fallback --command go run ./cmd/hi list-versions --set=must --exclude=head)
           echo "versions=${versions}" >> "$GITHUB_OUTPUT"
           echo "Pre-pulling: ${versions}"
       - name: Pull Tailscale images
