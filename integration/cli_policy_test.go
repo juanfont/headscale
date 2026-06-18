@@ -3,11 +3,14 @@ package integration
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
+	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
 )
@@ -277,4 +280,165 @@ func TestSSHTestsRejectFailingPolicy(t *testing.T) {
 	require.NoError(t, err)
 	require.JSONEq(t, string(goodBytes), stdoutAfter,
 		"stored policy must be unchanged after a rejected set")
+}
+
+func TestPolicyCommand(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		Users: []string{"user1"},
+	}
+
+	scenario, err := NewScenario(spec)
+
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{},
+		hsic.WithTestName("cli-policy"),
+		hsic.WithConfigEnv(map[string]string{
+			"HEADSCALE_POLICY_MODE": "database", // test sets/gets policy via CLI
+		}),
+	)
+	require.NoError(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	p := policyv2.Policy{
+		ACLs: []policyv2.ACL{
+			{
+				Action:   "accept",
+				Protocol: "tcp",
+				Sources:  []policyv2.Alias{wildcard()},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+				},
+			},
+		},
+		TagOwners: policyv2.TagOwners{
+			policyv2.Tag("tag:exists"): policyv2.Owners{usernameOwner("user1@")},
+		},
+	}
+
+	pBytes, _ := json.Marshal(p) //nolint:errchkjson
+
+	policyFilePath := "/etc/headscale/policy.json"
+
+	err = headscale.WriteFile(policyFilePath, pBytes)
+	require.NoError(t, err)
+
+	// No policy is present at this time.
+	// Add a new policy from a file.
+	_, err = headscale.Execute(
+		[]string{
+			"headscale",
+			"policy",
+			"set",
+			"-f",
+			policyFilePath,
+		},
+	)
+
+	require.NoError(t, err)
+
+	// Get the current policy and check
+	// if it is the same as the one we set.
+	var output *policyv2.Policy
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		err = executeAndUnmarshal(
+			headscale,
+			[]string{
+				"headscale",
+				"policy",
+				"get",
+				"--output",
+				"json",
+			},
+			&output,
+		)
+		assert.NoError(c, err)
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for policy get command")
+
+	assert.Len(t, output.TagOwners, 1)
+	assert.Len(t, output.ACLs, 1)
+}
+
+func TestPolicyBrokenConfigCommand(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{"user1"},
+	}
+
+	scenario, err := NewScenario(spec)
+
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{},
+		hsic.WithTestName("cli-policybad"),
+		hsic.WithConfigEnv(map[string]string{
+			"HEADSCALE_POLICY_MODE": "database", // test sets invalid policy via CLI
+		}),
+	)
+	require.NoError(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	p := policyv2.Policy{
+		ACLs: []policyv2.ACL{
+			{
+				// This is an unknown action, so it will return an error
+				// and the config will not be applied.
+				Action:   "unknown-action",
+				Protocol: "tcp",
+				Sources:  []policyv2.Alias{wildcard()},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+				},
+			},
+		},
+		TagOwners: policyv2.TagOwners{
+			policyv2.Tag("tag:exists"): policyv2.Owners{usernameOwner("user1@")},
+		},
+	}
+
+	pBytes, _ := json.Marshal(p) //nolint:errchkjson
+
+	policyFilePath := "/etc/headscale/policy.json"
+
+	err = headscale.WriteFile(policyFilePath, pBytes)
+	require.NoError(t, err)
+
+	// No policy is present at this time.
+	// Add a new policy from a file.
+	_, err = headscale.Execute(
+		[]string{
+			"headscale",
+			"policy",
+			"set",
+			"-f",
+			policyFilePath,
+		},
+	)
+	require.ErrorContains(t, err, `action="unknown-action" is not supported: invalid ACL action`)
+
+	// The new policy was invalid, the old one should still be in place, which
+	// is none.
+	_, err = headscale.Execute(
+		[]string{
+			"headscale",
+			"policy",
+			"get",
+			"--output",
+			"json",
+		},
+	)
+	assert.ErrorContains(t, err, "acl policy not found")
 }
