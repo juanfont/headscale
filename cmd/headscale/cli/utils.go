@@ -241,6 +241,18 @@ func dialHeadscaleSocket(ctx context.Context, socketPath string) (net.Conn, erro
 	}, backoff.WithBackOff(b))
 }
 
+// clientBaseURL turns a configured CLI address into a client base URL. A bare
+// host[:port] (the historical form) defaults to https; an address that already
+// carries a scheme is used as-is, so an explicit http:// or https:// is honoured
+// rather than doubled into https://https://...
+func clientBaseURL(address string) string {
+	if strings.Contains(address, "://") {
+		return address
+	}
+
+	return "https://" + address
+}
+
 // newRemoteClient builds an API client for a remote Headscale over HTTPS,
 // honouring insecure (skip TLS verification) and injecting the API key as a
 // bearer token on every request.
@@ -257,7 +269,7 @@ func newRemoteClient(address, apiKey string, insecure bool) (*clientv1.ClientWit
 	httpClient := &http.Client{Transport: transport}
 
 	return clientv1.NewClientWithResponses(
-		"https://"+address,
+		clientBaseURL(address),
 		clientv1.WithHTTPClient(httpClient),
 		clientv1.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
 			req.Header.Set("Authorization", "Bearer "+apiKey)
