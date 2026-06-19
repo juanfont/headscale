@@ -152,7 +152,7 @@ func TestPolicyCheckCommand(t *testing.T) {
 				// --force suppresses the "is the server running?"
 				// confirmation prompt so the command can run
 				// non-interactively under the test harness.
-				cmd = append(cmd, "--bypass-grpc-and-access-database-directly", "--force")
+				cmd = append(cmd, "--bypass-server-and-access-database-directly", "--force")
 			}
 
 			stdout, err := headscale.Execute(cmd)

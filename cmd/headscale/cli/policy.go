@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	clientv1 "github.com/juanfont/headscale/gen/client/v1"
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -15,14 +16,13 @@ import (
 )
 
 const (
-	bypassFlag = "bypass-grpc-and-access-database-directly" //nolint:gosec // not a credential
+	bypassFlag = "bypass-server-and-access-database-directly" //nolint:gosec // not a credential
 )
 
 var errAborted = errors.New("command aborted by user")
 
-// bypassDatabase loads the server config and opens the database directly,
-// bypassing the gRPC server. The caller is responsible for closing the
-// returned database handle.
+// bypassDatabase opens the database directly, bypassing the running server.
+// The caller must close the returned handle.
 func bypassDatabase() (*db.HSDatabase, error) {
 	cfg, err := types.LoadServerConfig()
 	if err != nil {
@@ -50,16 +50,16 @@ func openBypassDB(cmd *cobra.Command) (*db.HSDatabase, error) {
 func init() {
 	rootCmd.AddCommand(policyCmd)
 
-	getPolicy.Flags().BoolP(bypassFlag, "", false, "Uses the headscale config to directly access the database, bypassing gRPC and does not require the server to be running")
+	getPolicy.Flags().BoolP(bypassFlag, "", false, "Uses the headscale config to directly access the database, bypassing the API and does not require the server to be running")
 	policyCmd.AddCommand(getPolicy)
 
 	setPolicy.Flags().StringP("file", "f", "", "Path to a policy file in HuJSON format")
-	setPolicy.Flags().BoolP(bypassFlag, "", false, "Uses the headscale config to directly access the database, bypassing gRPC and does not require the server to be running")
+	setPolicy.Flags().BoolP(bypassFlag, "", false, "Uses the headscale config to directly access the database, bypassing the API and does not require the server to be running")
 	mustMarkRequired(setPolicy, "file")
 	policyCmd.AddCommand(setPolicy)
 
 	checkPolicy.Flags().StringP("file", "f", "", "Path to a policy file in HuJSON format")
-	checkPolicy.Flags().BoolP(bypassFlag, "", false, "Open the database directly (no gRPC, no running server) to resolve user references and to evaluate the policy's tests and sshTests blocks. Required when those checks are needed.")
+	checkPolicy.Flags().BoolP(bypassFlag, "", false, "Open the database directly (no running server required) to resolve user references and to evaluate the policy's tests and sshTests blocks. Required when those checks are needed.")
 	mustMarkRequired(checkPolicy, "file")
 	policyCmd.AddCommand(checkPolicy)
 }
@@ -90,13 +90,17 @@ var getPolicy = &cobra.Command{
 
 			policyData = pol.Data
 		} else {
-			err := withGRPC(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
-				response, err := client.GetPolicy(ctx, &v1.GetPolicyRequest{})
+			err := withClient(func(ctx context.Context, client *clientv1.ClientWithResponses) error {
+				resp, err := client.GetPolicyWithResponse(ctx)
 				if err != nil {
 					return fmt.Errorf("loading ACL policy: %w", err)
 				}
 
-				policyData = response.GetPolicy()
+				if resp.StatusCode() != http.StatusOK {
+					return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+				}
+
+				policyData = resp.JSON200.Policy
 
 				return nil
 			})
@@ -150,12 +154,18 @@ var setPolicy = &cobra.Command{
 				return fmt.Errorf("setting ACL policy: %w", err)
 			}
 		} else {
-			request := &v1.SetPolicyRequest{Policy: string(policyBytes)}
+			policyStr := string(policyBytes)
 
-			err := withGRPC(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
-				_, err := client.SetPolicy(ctx, request)
+			err := withClient(func(ctx context.Context, client *clientv1.ClientWithResponses) error {
+				resp, err := client.SetPolicyWithResponse(ctx, clientv1.SetPolicyJSONRequestBody{
+					Policy: &policyStr,
+				})
 				if err != nil {
 					return fmt.Errorf("setting ACL policy: %w", err)
+				}
+
+				if resp.StatusCode() != http.StatusOK {
+					return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
 				}
 
 				return nil
@@ -176,8 +186,8 @@ var checkPolicy = &cobra.Command{
 	Short: "Check the Policy file for errors",
 	Long: `
 	Check validates the policy against the server's live users and nodes,
-	running any "tests" or "sshTests" block. By default the command is a
-	thin frontend for a gRPC call to a running headscale; pass --` + bypassFlag + ` to
+	running any "tests" or "sshTests" block. By default the command calls a
+	running headscale over its API; pass --` + bypassFlag + ` to
 	open the database directly when headscale is not running.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		policyPath, _ := cmd.Flags().GetString("file")
@@ -223,10 +233,21 @@ var checkPolicy = &cobra.Command{
 			return nil
 		}
 
-		err = withGRPC(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
-			_, err := client.CheckPolicy(ctx, &v1.CheckPolicyRequest{Policy: string(policyBytes)})
+		policyStr := string(policyBytes)
 
-			return err
+		err = withClient(func(ctx context.Context, client *clientv1.ClientWithResponses) error {
+			resp, err := client.CheckPolicyWithResponse(ctx, clientv1.CheckPolicyJSONRequestBody{
+				Policy: &policyStr,
+			})
+			if err != nil {
+				return err
+			}
+
+			if resp.StatusCode() != http.StatusOK {
+				return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+			}
+
+			return nil
 		})
 		if err != nil {
 			return err

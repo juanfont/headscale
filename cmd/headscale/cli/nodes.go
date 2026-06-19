@@ -3,17 +3,17 @@ package cli
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"net/netip"
 	"strconv"
 	"strings"
 	"time"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	clientv1 "github.com/juanfont/headscale/gen/client/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/pterm/pterm"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
-	"google.golang.org/protobuf/types/known/timestamppb"
 	"tailscale.com/types/key"
 )
 
@@ -67,24 +67,30 @@ var registerNodeCmd = &cobra.Command{
 	Use:        "register",
 	Short:      "Registers a node to your network",
 	Deprecated: "use 'headscale auth register --auth-id <id> --user <user>' instead",
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
 		user, _ := cmd.Flags().GetString("user")
 		registrationID, _ := cmd.Flags().GetString("key")
 
-		request := &v1.RegisterNodeRequest{
-			Key:  registrationID,
-			User: user,
+		params := &clientv1.RegisterNodeParams{
+			User: &user,
+			Key:  &registrationID,
 		}
 
-		response, err := client.RegisterNode(ctx, request)
+		resp, err := client.RegisterNodeWithResponse(ctx, params)
 		if err != nil {
 			return fmt.Errorf("registering node: %w", err)
 		}
 
+		if resp.StatusCode() != http.StatusOK {
+			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+		}
+
+		node := resp.JSON200.Node
+
 		return printOutput(
 			cmd,
-			response.GetNode(),
-			fmt.Sprintf("Node %s registered", response.GetNode().GetGivenName()),
+			node,
+			fmt.Sprintf("Node %s registered", node.GivenName),
 		)
 	}),
 }
@@ -93,16 +99,27 @@ var listNodesCmd = &cobra.Command{
 	Use:     cmdList,
 	Short:   "List nodes",
 	Aliases: []string{"ls", cmdShow},
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
 		user, _ := cmd.Flags().GetString("user")
 
-		response, err := client.ListNodes(ctx, &v1.ListNodesRequest{User: user})
+		params := &clientv1.ListNodesParams{}
+		if user != "" {
+			params.User = &user
+		}
+
+		resp, err := client.ListNodesWithResponse(ctx, params)
 		if err != nil {
 			return fmt.Errorf("listing nodes: %w", err)
 		}
 
-		return printListOutput(cmd, response.GetNodes(), func() error {
-			tableData, err := nodesToPtables(response.GetNodes())
+		if resp.StatusCode() != http.StatusOK {
+			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+		}
+
+		nodes := resp.JSON200.Nodes
+
+		return printListOutput(cmd, nodes, func() error {
+			tableData, err := nodesToPtables(nodes)
 			if err != nil {
 				return fmt.Errorf("converting to table: %w", err)
 			}
@@ -116,27 +133,32 @@ var listNodeRoutesCmd = &cobra.Command{
 	Use:     "list-routes",
 	Short:   "List routes available on nodes",
 	Aliases: []string{"lsr", "routes"},
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
 		identifier, _ := cmd.Flags().GetUint64("identifier")
 
-		response, err := client.ListNodes(ctx, &v1.ListNodesRequest{})
+		resp, err := client.ListNodesWithResponse(ctx, &clientv1.ListNodesParams{})
 		if err != nil {
 			return fmt.Errorf("listing nodes: %w", err)
 		}
 
-		nodes := response.GetNodes()
+		if resp.StatusCode() != http.StatusOK {
+			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+		}
+
+		nodes := resp.JSON200.Nodes
 		if identifier != 0 {
-			for _, node := range response.GetNodes() {
-				if node.GetId() == identifier {
-					nodes = []*v1.Node{node}
+			idStr := strconv.FormatUint(identifier, util.Base10)
+			for _, node := range nodes {
+				if node.Id == idStr {
+					nodes = []clientv1.Node{node}
 
 					break
 				}
 			}
 		}
 
-		nodes = lo.Filter(nodes, func(n *v1.Node, _ int) bool {
-			return len(n.GetSubnetRoutes()) > 0 || len(n.GetApprovedRoutes()) > 0 || len(n.GetAvailableRoutes()) > 0
+		nodes = lo.Filter(nodes, func(n clientv1.Node, _ int) bool {
+			return len(n.SubnetRoutes) > 0 || len(n.ApprovedRoutes) > 0 || len(n.AvailableRoutes) > 0
 		})
 
 		return printListOutput(cmd, nodes, func() error {
@@ -152,23 +174,27 @@ var expireNodeCmd = &cobra.Command{
 
 Use --disable to disable key expiry (node will never expire).`,
 	Aliases: []string{"logout", aliasExp, "e"},
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
 		identifier, _ := cmd.Flags().GetUint64("identifier")
 		disableExpiry, _ := cmd.Flags().GetBool("disable")
+		nodeID := strconv.FormatUint(identifier, util.Base10)
 
 		// Handle disable expiry - node will never expire.
 		if disableExpiry {
-			request := &v1.ExpireNodeRequest{
-				NodeId:        identifier,
-				DisableExpiry: true,
-			}
+			disable := true
 
-			response, err := client.ExpireNode(ctx, request)
+			resp, err := client.ExpireNodeWithResponse(ctx, nodeID, clientv1.ExpireNodeJSONRequestBody{
+				DisableExpiry: &disable,
+			})
 			if err != nil {
 				return fmt.Errorf("disabling node expiry: %w", err)
 			}
 
-			return printOutput(cmd, response.GetNode(), "Node expiry disabled")
+			if resp.StatusCode() != http.StatusOK {
+				return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+			}
+
+			return printOutput(cmd, resp.JSON200.Node, "Node expiry disabled")
 		}
 
 		expiry, _ := cmd.Flags().GetString("expiry")
@@ -186,28 +212,31 @@ Use --disable to disable key expiry (node will never expire).`,
 			}
 		}
 
-		request := &v1.ExpireNodeRequest{
-			NodeId: identifier,
-			Expiry: timestamppb.New(expiryTime),
-		}
-
-		response, err := client.ExpireNode(ctx, request)
+		resp, err := client.ExpireNodeWithResponse(ctx, nodeID, clientv1.ExpireNodeJSONRequestBody{
+			Expiry: &expiryTime,
+		})
 		if err != nil {
 			return fmt.Errorf("expiring node: %w", err)
 		}
 
-		if now.Equal(expiryTime) || now.After(expiryTime) {
-			return printOutput(cmd, response.GetNode(), "Node expired")
+		if resp.StatusCode() != http.StatusOK {
+			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
 		}
 
-		return printOutput(cmd, response.GetNode(), "Node expiration updated")
+		node := resp.JSON200.Node
+
+		if now.Equal(expiryTime) || now.After(expiryTime) {
+			return printOutput(cmd, node, "Node expired")
+		}
+
+		return printOutput(cmd, node, "Node expiration updated")
 	}),
 }
 
 var renameNodeCmd = &cobra.Command{
 	Use:   "rename NEW_NAME",
 	Short: "Renames a node in your network",
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
 		identifier, _ := cmd.Flags().GetUint64("identifier")
 
 		newName := ""
@@ -215,17 +244,16 @@ var renameNodeCmd = &cobra.Command{
 			newName = args[0]
 		}
 
-		request := &v1.RenameNodeRequest{
-			NodeId:  identifier,
-			NewName: newName,
-		}
-
-		response, err := client.RenameNode(ctx, request)
+		resp, err := client.RenameNodeWithResponse(ctx, strconv.FormatUint(identifier, util.Base10), newName)
 		if err != nil {
 			return fmt.Errorf("renaming node: %w", err)
 		}
 
-		return printOutput(cmd, response.GetNode(), "Node renamed")
+		if resp.StatusCode() != http.StatusOK {
+			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+		}
+
+		return printOutput(cmd, resp.JSON200.Node, "Node renamed")
 	}),
 }
 
@@ -233,32 +261,33 @@ var deleteNodeCmd = &cobra.Command{
 	Use:     cmdDelete,
 	Short:   "Delete a node",
 	Aliases: []string{aliasDel},
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
 		identifier, _ := cmd.Flags().GetUint64("identifier")
+		nodeID := strconv.FormatUint(identifier, util.Base10)
 
-		getRequest := &v1.GetNodeRequest{
-			NodeId: identifier,
-		}
-
-		getResponse, err := client.GetNode(ctx, getRequest)
+		getResponse, err := client.GetNodeWithResponse(ctx, nodeID)
 		if err != nil {
 			return fmt.Errorf("getting node: %w", err)
 		}
 
-		deleteRequest := &v1.DeleteNodeRequest{
-			NodeId: identifier,
+		if getResponse.StatusCode() != http.StatusOK {
+			return apiError(getResponse.StatusCode(), getResponse.ApplicationproblemJSONDefault)
 		}
 
 		if !confirmAction(cmd, fmt.Sprintf(
 			"Do you want to remove the node %s?",
-			getResponse.GetNode().GetName(),
+			getResponse.JSON200.Node.Name,
 		)) {
 			return printOutput(cmd, map[string]string{colResult: "Node not deleted"}, "Node not deleted")
 		}
 
-		_, err = client.DeleteNode(ctx, deleteRequest)
+		deleteResponse, err := client.DeleteNodeWithResponse(ctx, nodeID)
 		if err != nil {
 			return fmt.Errorf("deleting node: %w", err)
+		}
+
+		if deleteResponse.StatusCode() != http.StatusOK {
+			return apiError(deleteResponse.StatusCode(), deleteResponse.ApplicationproblemJSONDefault)
 		}
 
 		return printOutput(
@@ -289,23 +318,26 @@ be assigned to nodes.`,
 			return nil
 		}
 
-		ctx, client, conn, cancel, err := newHeadscaleCLIWithConfig()
-		if err != nil {
-			return fmt.Errorf("connecting to headscale: %w", err)
-		}
-		defer cancel()
-		defer conn.Close()
+		return withClient(func(ctx context.Context, client *clientv1.ClientWithResponses) error {
+			confirmed := true
 
-		changes, err := client.BackfillNodeIPs(ctx, &v1.BackfillNodeIPsRequest{Confirmed: true})
-		if err != nil {
-			return fmt.Errorf("backfilling IPs: %w", err)
-		}
+			resp, err := client.BackfillNodeIPsWithResponse(ctx, &clientv1.BackfillNodeIPsParams{
+				Confirmed: &confirmed,
+			})
+			if err != nil {
+				return fmt.Errorf("backfilling IPs: %w", err)
+			}
 
-		return printOutput(cmd, changes, "Node IPs backfilled successfully")
+			if resp.StatusCode() != http.StatusOK {
+				return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+			}
+
+			return printOutput(cmd, resp.JSON200, "Node IPs backfilled successfully")
+		})
 	},
 }
 
-func nodesToPtables(nodes []*v1.Node) (pterm.TableData, error) {
+func nodesToPtables(nodes []clientv1.Node) (pterm.TableData, error) {
 	tableHeader := []string{
 		"ID",
 		"Hostname",
@@ -325,75 +357,49 @@ func nodesToPtables(nodes []*v1.Node) (pterm.TableData, error) {
 	tableData[0] = tableHeader
 
 	for _, node := range nodes {
-		var ephemeral bool
-		if node.GetPreAuthKey() != nil && node.GetPreAuthKey().GetEphemeral() {
-			ephemeral = true
+		// An absent pre-auth key decodes into a zero NodePreAuthKey, so guard
+		// on Id before reading its flags.
+		ephemeral := node.PreAuthKey.Id != "" && node.PreAuthKey.Ephemeral
+
+		var lastSeenTime string
+		if node.LastSeen != nil {
+			lastSeenTime = node.LastSeen.Format(HeadscaleDateTimeFormat)
 		}
 
-		var (
-			lastSeen     time.Time
-			lastSeenTime string
-		)
-
-		if node.GetLastSeen() != nil {
-			lastSeen = node.GetLastSeen().AsTime()
-			lastSeenTime = lastSeen.Format(HeadscaleDateTimeFormat)
-		}
-
-		var (
-			expiry     time.Time
-			expiryTime string
-		)
-
-		if node.GetExpiry() != nil {
-			expiry = node.GetExpiry().AsTime()
-			expiryTime = expiry.Format(HeadscaleDateTimeFormat)
-		} else {
-			expiryTime = "N/A"
+		expiryTime := "N/A"
+		if node.Expiry != nil {
+			expiryTime = node.Expiry.Format(HeadscaleDateTimeFormat)
 		}
 
 		var machineKey key.MachinePublic
 
-		err := machineKey.UnmarshalText(
-			[]byte(node.GetMachineKey()),
-		)
+		err := machineKey.UnmarshalText([]byte(node.MachineKey))
 		if err != nil {
 			machineKey = key.MachinePublic{}
 		}
 
 		var nodeKey key.NodePublic
 
-		err = nodeKey.UnmarshalText(
-			[]byte(node.GetNodeKey()),
-		)
+		err = nodeKey.UnmarshalText([]byte(node.NodeKey))
 		if err != nil {
 			return nil, err
 		}
 
-		var online string
-		if node.GetOnline() {
+		online := pterm.LightRed("offline")
+		if node.Online {
 			online = pterm.LightGreen("online")
-		} else {
-			online = pterm.LightRed("offline")
 		}
 
-		var expired string
-		if node.GetExpiry() != nil && node.GetExpiry().AsTime().Before(time.Now()) {
+		expired := pterm.LightGreen("no")
+		if node.Expiry != nil && node.Expiry.Before(time.Now()) {
 			expired = pterm.LightRed("yes")
-		} else {
-			expired = pterm.LightGreen("no")
 		}
 
-		tags := strings.Join(node.GetTags(), "\n")
-
-		var user string
-		if node.GetUser() != nil {
-			user = node.GetUser().GetName()
-		}
+		tags := strings.Join(node.Tags, "\n")
 
 		var ipBuilder strings.Builder
 
-		for _, addr := range node.GetIpAddresses() {
+		for _, addr := range node.IpAddresses {
 			ip, err := netip.ParseAddr(addr)
 			if err == nil {
 				if ipBuilder.Len() > 0 {
@@ -407,12 +413,12 @@ func nodesToPtables(nodes []*v1.Node) (pterm.TableData, error) {
 		ipAddresses := ipBuilder.String()
 
 		nodeData := []string{
-			strconv.FormatUint(node.GetId(), util.Base10),
-			node.GetName(),
-			node.GetGivenName(),
+			node.Id,
+			node.Name,
+			node.GivenName,
 			machineKey.ShortString(),
 			nodeKey.ShortString(),
-			user,
+			node.User.Name,
 			tags,
 			ipAddresses,
 			strconv.FormatBool(ephemeral),
@@ -431,7 +437,7 @@ func nodesToPtables(nodes []*v1.Node) (pterm.TableData, error) {
 }
 
 func nodeRoutesToPtables(
-	nodes []*v1.Node,
+	nodes []clientv1.Node,
 ) pterm.TableData {
 	tableHeader := []string{
 		"ID",
@@ -445,11 +451,11 @@ func nodeRoutesToPtables(
 
 	for _, node := range nodes {
 		nodeData := []string{
-			strconv.FormatUint(node.GetId(), util.Base10),
-			node.GetGivenName(),
-			strings.Join(node.GetApprovedRoutes(), "\n"),
-			strings.Join(node.GetAvailableRoutes(), "\n"),
-			strings.Join(node.GetSubnetRoutes(), "\n"),
+			node.Id,
+			node.GivenName,
+			strings.Join(node.ApprovedRoutes, "\n"),
+			strings.Join(node.AvailableRoutes, "\n"),
+			strings.Join(node.SubnetRoutes, "\n"),
 		}
 		tableData = append(
 			tableData,
@@ -464,43 +470,43 @@ var tagCmd = &cobra.Command{
 	Use:     "tag",
 	Short:   "Manage the tags of a node",
 	Aliases: []string{"tags", "t"},
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
 		identifier, _ := cmd.Flags().GetUint64("identifier")
 		tagsToSet, _ := cmd.Flags().GetStringSlice("tags")
 
-		// Sending tags to node
-		request := &v1.SetTagsRequest{
-			NodeId: identifier,
-			Tags:   tagsToSet,
-		}
-
-		resp, err := client.SetTags(ctx, request)
+		resp, err := client.SetTagsWithResponse(ctx, strconv.FormatUint(identifier, util.Base10), clientv1.SetTagsJSONRequestBody{
+			Tags: &tagsToSet,
+		})
 		if err != nil {
 			return fmt.Errorf("setting tags: %w", err)
 		}
 
-		return printOutput(cmd, resp.GetNode(), "Node updated")
+		if resp.StatusCode() != http.StatusOK {
+			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+		}
+
+		return printOutput(cmd, resp.JSON200.Node, "Node updated")
 	}),
 }
 
 var approveRoutesCmd = &cobra.Command{
 	Use:   "approve-routes",
 	Short: "Manage the approved routes of a node",
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
 		identifier, _ := cmd.Flags().GetUint64("identifier")
 		routes, _ := cmd.Flags().GetStringSlice("routes")
 
-		// Sending routes to node
-		request := &v1.SetApprovedRoutesRequest{
-			NodeId: identifier,
-			Routes: routes,
-		}
-
-		resp, err := client.SetApprovedRoutes(ctx, request)
+		resp, err := client.SetApprovedRoutesWithResponse(ctx, strconv.FormatUint(identifier, util.Base10), clientv1.SetApprovedRoutesJSONRequestBody{
+			Routes: &routes,
+		})
 		if err != nil {
 			return fmt.Errorf("setting approved routes: %w", err)
 		}
 
-		return printOutput(cmd, resp.GetNode(), "Node updated")
+		if resp.StatusCode() != http.StatusOK {
+			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+		}
+
+		return printOutput(cmd, resp.JSON200.Node, "Node updated")
 	}),
 }

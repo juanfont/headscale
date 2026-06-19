@@ -3,8 +3,9 @@ package cli
 import (
 	"context"
 	"fmt"
+	"net/http"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	clientv1 "github.com/juanfont/headscale/gen/client/v1"
 	"github.com/spf13/cobra"
 )
 
@@ -33,62 +34,66 @@ var authCmd = &cobra.Command{
 var authRegisterCmd = &cobra.Command{
 	Use:   "register",
 	Short: "Register a node to your network",
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
 		user, _ := cmd.Flags().GetString("user")
 		authID, _ := cmd.Flags().GetString("auth-id")
 
-		request := &v1.AuthRegisterRequest{
-			AuthId: authID,
-			User:   user,
-		}
-
-		response, err := client.AuthRegister(ctx, request)
+		resp, err := client.AuthRegisterWithResponse(ctx, clientv1.AuthRegisterJSONRequestBody{
+			AuthId: &authID,
+			User:   &user,
+		})
 		if err != nil {
 			return fmt.Errorf("registering node: %w", err)
 		}
 
-		return printOutput(
-			cmd,
-			response.GetNode(),
-			fmt.Sprintf("Node %s registered", response.GetNode().GetGivenName()),
-		)
-	}),
-}
-
-// authDecisionRunE builds a RunE for an auth decision command (approve or
-// reject) that reads the auth-id flag, invokes the given gRPC call, and prints
-// the response. errVerb is used in the error message; okMsg is printed on
-// success.
-func authDecisionRunE[Resp any](
-	errVerb, okMsg string,
-	call func(ctx context.Context, client v1.HeadscaleServiceClient, authID string) (Resp, error),
-) func(*cobra.Command, []string) error {
-	return grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		authID, _ := cmd.Flags().GetString("auth-id")
-
-		response, err := call(ctx, client, authID)
-		if err != nil {
-			return fmt.Errorf("%s auth request: %w", errVerb, err)
+		if resp.StatusCode() != http.StatusOK {
+			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
 		}
 
-		return printOutput(cmd, response, okMsg)
-	})
+		node := resp.JSON200.Node
+
+		return printOutput(
+			cmd,
+			node,
+			fmt.Sprintf("Node %s registered", node.GivenName),
+		)
+	}),
 }
 
 var authApproveCmd = &cobra.Command{
 	Use:   "approve",
 	Short: "Approve a pending authentication request",
-	RunE: authDecisionRunE("approving", "Auth request approved",
-		func(ctx context.Context, client v1.HeadscaleServiceClient, authID string) (*v1.AuthApproveResponse, error) {
-			return client.AuthApprove(ctx, &v1.AuthApproveRequest{AuthId: authID})
-		}),
+	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
+		authID, _ := cmd.Flags().GetString("auth-id")
+
+		resp, err := client.AuthApproveWithResponse(ctx, clientv1.AuthApproveJSONRequestBody{AuthId: &authID})
+		if err != nil {
+			return fmt.Errorf("approving auth request: %w", err)
+		}
+
+		if resp.StatusCode() != http.StatusOK {
+			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+		}
+
+		return printOutput(cmd, resp.JSON200, "Auth request approved")
+	}),
 }
 
 var authRejectCmd = &cobra.Command{
 	Use:   "reject",
 	Short: "Reject a pending authentication request",
-	RunE: authDecisionRunE("rejecting", "Auth request rejected",
-		func(ctx context.Context, client v1.HeadscaleServiceClient, authID string) (*v1.AuthRejectResponse, error) {
-			return client.AuthReject(ctx, &v1.AuthRejectRequest{AuthId: authID})
-		}),
+	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
+		authID, _ := cmd.Flags().GetString("auth-id")
+
+		resp, err := client.AuthRejectWithResponse(ctx, clientv1.AuthRejectJSONRequestBody{AuthId: &authID})
+		if err != nil {
+			return fmt.Errorf("rejecting auth request: %w", err)
+		}
+
+		if resp.StatusCode() != http.StatusOK {
+			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+		}
+
+		return printOutput(cmd, resp.JSON200, "Auth request rejected")
+	}),
 }

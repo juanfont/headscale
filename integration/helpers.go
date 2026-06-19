@@ -18,7 +18,7 @@ import (
 
 	"github.com/cenkalti/backoff/v5"
 	"github.com/google/go-cmp/cmp"
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	clientv1 "github.com/juanfont/headscale/gen/client/v1"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -538,15 +538,15 @@ func requireAllClientsNetInfoAndDERP(t *testing.T, headscale ControlServer, expe
 
 // assertLastSeenSet validates that a node has a non-nil LastSeen timestamp.
 // Critical for ensuring node activity tracking is functioning properly.
-func assertLastSeenSet(t *testing.T, node *v1.Node) {
+func assertLastSeenSet(t *testing.T, node *clientv1.Node) {
 	t.Helper()
 	assert.NotNil(t, node)
-	assert.NotNil(t, node.GetLastSeen())
+	assert.NotNil(t, node.LastSeen)
 }
 
-func assertLastSeenSetWithCollect(c *assert.CollectT, node *v1.Node) {
+func assertLastSeenSetWithCollect(c *assert.CollectT, node *clientv1.Node) {
 	assert.NotNil(c, node)
-	assert.NotNil(c, node.GetLastSeen())
+	assert.NotNil(c, node.LastSeen)
 }
 
 // assertCurlSuccessWithCollect asserts that a curl request succeeds with
@@ -1071,14 +1071,14 @@ func oidcMockUser(username string, emailVerified bool) mockoidc.MockUser {
 
 // GetUserByName retrieves a user by name from the headscale server.
 // This is a common pattern used when creating preauth keys or managing users.
-func GetUserByName(headscale ControlServer, username string) (*v1.User, error) {
+func GetUserByName(headscale ControlServer, username string) (*clientv1.User, error) {
 	users, err := headscale.ListUsers()
 	if err != nil {
 		return nil, fmt.Errorf("listing users: %w", err)
 	}
 
 	for _, u := range users {
-		if u.GetName() == username {
+		if u.Name == username {
 			return u, nil
 		}
 	}
@@ -1088,7 +1088,7 @@ func GetUserByName(headscale ControlServer, username string) (*v1.User, error) {
 
 // findNode returns the first node in nodes for which match returns true,
 // or nil if no node matches.
-func findNode(nodes []*v1.Node, match func(*v1.Node) bool) *v1.Node {
+func findNode(nodes []*clientv1.Node, match func(*clientv1.Node) bool) *clientv1.Node {
 	for _, n := range nodes {
 		if match(n) {
 			return n
@@ -1096,6 +1096,19 @@ func findNode(nodes []*v1.Node, match func(*v1.Node) bool) *v1.Node {
 	}
 
 	return nil
+}
+
+// mustParseID parses a string ID emitted by the HTTP client types into a
+// uint64 for the APIs that still take numeric identifiers (NodeID, user and
+// key IDs). It panics on malformed input, which only happens if the server
+// emits a non-numeric ID — a bug worth failing the test loudly.
+func mustParseID(id string) uint64 {
+	parsed, err := strconv.ParseUint(id, 10, 64)
+	if err != nil {
+		panic(fmt.Sprintf("parsing id %q: %s", id, err))
+	}
+
+	return parsed
 }
 
 // FindNewClient finds a client that is in the new list but not in the original list.
@@ -1177,13 +1190,13 @@ func (s *Scenario) AddAndLoginClient(
 		return nil, fmt.Errorf("getting user: %w", err)
 	}
 
-	authKey, err := s.CreatePreAuthKey(user.GetId(), true, false)
+	authKey, err := s.CreatePreAuthKey(mustParseID(user.Id), true, false)
 	if err != nil {
 		return nil, fmt.Errorf("creating preauth key: %w", err)
 	}
 
 	// Login the new client
-	err = newClient.Login(headscale.GetEndpoint(), authKey.GetKey())
+	err = newClient.Login(headscale.GetEndpoint(), authKey.Key)
 	if err != nil {
 		return nil, fmt.Errorf("logging in new client: %w", err)
 	}

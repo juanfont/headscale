@@ -137,7 +137,7 @@ func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 		err = scenario.RunTailscaleUp(
 			user,
 			headscale.GetEndpoint(),
-			key.GetKey(),
+			key.Key,
 		)
 		if err != nil {
 			t.Fatalf("failed to login: %s", err)

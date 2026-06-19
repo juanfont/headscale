@@ -3,10 +3,11 @@ package cli
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	clientv1 "github.com/juanfont/headscale/gen/client/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/spf13/cobra"
 )
@@ -44,37 +45,40 @@ var listPreAuthKeys = &cobra.Command{
 	Use:     cmdList,
 	Short:   "List all preauthkeys",
 	Aliases: []string{"ls", cmdShow},
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		response, err := client.ListPreAuthKeys(ctx, &v1.ListPreAuthKeysRequest{})
+	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
+		resp, err := client.ListPreAuthKeysWithResponse(ctx)
 		if err != nil {
 			return fmt.Errorf("listing preauthkeys: %w", err)
 		}
 
-		return printListOutput(cmd, response.GetPreAuthKeys(), func() error {
-			rows := make([][]string, 0, len(response.GetPreAuthKeys()))
-			for _, key := range response.GetPreAuthKeys() {
-				expiration := "-"
-				if key.GetExpiration() != nil {
-					expiration = ColourTime(key.GetExpiration().AsTime())
-				}
+		if resp.StatusCode() != http.StatusOK {
+			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+		}
 
-				var owner string
-				if len(key.GetAclTags()) > 0 {
-					owner = strings.Join(key.GetAclTags(), "\n")
-				} else if key.GetUser() != nil {
-					owner = key.GetUser().GetName()
-				} else {
-					owner = "-"
+		preAuthKeys := resp.JSON200.PreAuthKeys
+
+		return printListOutput(cmd, preAuthKeys, func() error {
+			rows := make([][]string, 0, len(preAuthKeys))
+			for _, key := range preAuthKeys {
+				expiration := ColourTime(key.Expiration)
+
+				owner := "-"
+
+				switch {
+				case len(key.AclTags) > 0:
+					owner = strings.Join(key.AclTags, "\n")
+				case key.User.Id != "":
+					owner = key.User.Name
 				}
 
 				rows = append(rows, []string{
-					strconv.FormatUint(key.GetId(), util.Base10),
-					key.GetKey(),
-					strconv.FormatBool(key.GetReusable()),
-					strconv.FormatBool(key.GetEphemeral()),
-					strconv.FormatBool(key.GetUsed()),
+					key.Id,
+					key.Key,
+					strconv.FormatBool(key.Reusable),
+					strconv.FormatBool(key.Ephemeral),
+					strconv.FormatBool(key.Used),
 					expiration,
-					key.GetCreatedAt().AsTime().Format(HeadscaleDateTimeFormat),
+					key.CreatedAt.Format(HeadscaleDateTimeFormat),
 					owner,
 				})
 			}
@@ -97,31 +101,39 @@ var createPreAuthKeyCmd = &cobra.Command{
 	Use:     "create",
 	Short:   "Creates a new preauthkey",
 	Aliases: []string{"c", cmdNew},
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
 		user, _ := cmd.Flags().GetUint64("user")
 		reusable, _ := cmd.Flags().GetBool("reusable")
 		ephemeral, _ := cmd.Flags().GetBool("ephemeral")
 		tags, _ := cmd.Flags().GetStringSlice("tags")
 
-		expiration, err := expirationFromFlag(cmd)
+		expiryTime, err := expirationFromFlag(cmd)
 		if err != nil {
 			return err
 		}
 
-		request := &v1.CreatePreAuthKeyRequest{
-			User:       user,
-			Reusable:   reusable,
-			Ephemeral:  ephemeral,
-			AclTags:    tags,
-			Expiration: expiration,
+		userStr := strconv.FormatUint(user, util.Base10)
+
+		request := clientv1.CreatePreAuthKeyJSONRequestBody{
+			User:       &userStr,
+			Reusable:   &reusable,
+			Ephemeral:  &ephemeral,
+			AclTags:    &tags,
+			Expiration: &expiryTime,
 		}
 
-		response, err := client.CreatePreAuthKey(ctx, request)
+		resp, err := client.CreatePreAuthKeyWithResponse(ctx, request)
 		if err != nil {
 			return fmt.Errorf("creating preauthkey: %w", err)
 		}
 
-		return printOutput(cmd, response.GetPreAuthKey(), response.GetPreAuthKey().GetKey())
+		if resp.StatusCode() != http.StatusOK {
+			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+		}
+
+		preAuthKey := resp.JSON200.PreAuthKey
+
+		return printOutput(cmd, preAuthKey, preAuthKey.Key)
 	}),
 }
 
@@ -139,22 +151,26 @@ var expirePreAuthKeyCmd = &cobra.Command{
 	Use:     cmdExpire,
 	Short:   "Expire a preauthkey",
 	Aliases: []string{"revoke", aliasExp, "e"},
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
 		id, err := preAuthKeyID(cmd)
 		if err != nil {
 			return err
 		}
 
-		request := &v1.ExpirePreAuthKeyRequest{
-			Id: id,
-		}
+		idStr := strconv.FormatUint(id, util.Base10)
 
-		response, err := client.ExpirePreAuthKey(ctx, request)
+		resp, err := client.ExpirePreAuthKeyWithResponse(ctx, clientv1.ExpirePreAuthKeyJSONRequestBody{
+			Id: &idStr,
+		})
 		if err != nil {
 			return fmt.Errorf("expiring preauthkey: %w", err)
 		}
 
-		return printOutput(cmd, response, "Key expired")
+		if resp.StatusCode() != http.StatusOK {
+			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+		}
+
+		return printOutput(cmd, resp.JSON200, "Key expired")
 	}),
 }
 
@@ -162,21 +178,25 @@ var deletePreAuthKeyCmd = &cobra.Command{
 	Use:     cmdDelete,
 	Short:   "Delete a preauthkey",
 	Aliases: []string{aliasDel, "rm", "d"},
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
 		id, err := preAuthKeyID(cmd)
 		if err != nil {
 			return err
 		}
 
-		request := &v1.DeletePreAuthKeyRequest{
-			Id: id,
-		}
+		idStr := strconv.FormatUint(id, util.Base10)
 
-		response, err := client.DeletePreAuthKey(ctx, request)
+		resp, err := client.DeletePreAuthKeyWithResponse(ctx, &clientv1.DeletePreAuthKeyParams{
+			Id: &idStr,
+		})
 		if err != nil {
 			return fmt.Errorf("deleting preauthkey: %w", err)
 		}
 
-		return printOutput(cmd, response, "Key deleted")
+		if resp.StatusCode() != http.StatusOK {
+			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+		}
+
+		return printOutput(cmd, resp.JSON200, "Key deleted")
 	}),
 }

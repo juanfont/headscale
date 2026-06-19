@@ -1,11 +1,10 @@
 package integration
 
 import (
-	"strconv"
 	"testing"
 	"time"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	clientv1 "github.com/juanfont/headscale/gen/client/v1"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
@@ -34,12 +33,12 @@ func TestPreAuthKeyCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	require.NoError(t, err)
 
-	keys := make([]*v1.PreAuthKey, count)
+	keys := make([]*clientv1.PreAuthKey, count)
 
 	require.NoError(t, err)
 
 	for index := range count {
-		var preAuthKey v1.PreAuthKey
+		var preAuthKey clientv1.PreAuthKey
 
 		assert.EventuallyWithT(t, func(c *assert.CollectT) {
 			err := executeAndUnmarshal(
@@ -68,7 +67,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 
 	assert.Len(t, keys, 3)
 
-	var listedPreAuthKeys []v1.PreAuthKey
+	var listedPreAuthKeys []clientv1.PreAuthKey
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(
@@ -90,34 +89,34 @@ func TestPreAuthKeyCommand(t *testing.T) {
 
 	assert.Equal(
 		t,
-		[]uint64{keys[0].GetId(), keys[1].GetId(), keys[2].GetId()},
-		[]uint64{
-			listedPreAuthKeys[1].GetId(),
-			listedPreAuthKeys[2].GetId(),
-			listedPreAuthKeys[3].GetId(),
+		[]string{keys[0].Id, keys[1].Id, keys[2].Id},
+		[]string{
+			listedPreAuthKeys[1].Id,
+			listedPreAuthKeys[2].Id,
+			listedPreAuthKeys[3].Id,
 		},
 	)
 
 	// New keys show prefix after listing, so check the created keys instead
-	assert.NotEmpty(t, keys[0].GetKey())
-	assert.NotEmpty(t, keys[1].GetKey())
-	assert.NotEmpty(t, keys[2].GetKey())
+	assert.NotEmpty(t, keys[0].Key)
+	assert.NotEmpty(t, keys[1].Key)
+	assert.NotEmpty(t, keys[2].Key)
 
-	assert.True(t, listedPreAuthKeys[1].GetExpiration().AsTime().After(time.Now()))
-	assert.True(t, listedPreAuthKeys[2].GetExpiration().AsTime().After(time.Now()))
-	assert.True(t, listedPreAuthKeys[3].GetExpiration().AsTime().After(time.Now()))
+	assert.True(t, listedPreAuthKeys[1].Expiration.After(time.Now()))
+	assert.True(t, listedPreAuthKeys[2].Expiration.After(time.Now()))
+	assert.True(t, listedPreAuthKeys[3].Expiration.After(time.Now()))
 
 	assert.True(
 		t,
-		listedPreAuthKeys[1].GetExpiration().AsTime().Before(time.Now().Add(time.Hour*26)),
+		listedPreAuthKeys[1].Expiration.Before(time.Now().Add(time.Hour*26)),
 	)
 	assert.True(
 		t,
-		listedPreAuthKeys[2].GetExpiration().AsTime().Before(time.Now().Add(time.Hour*26)),
+		listedPreAuthKeys[2].Expiration.Before(time.Now().Add(time.Hour*26)),
 	)
 	assert.True(
 		t,
-		listedPreAuthKeys[3].GetExpiration().AsTime().Before(time.Now().Add(time.Hour*26)),
+		listedPreAuthKeys[3].Expiration.Before(time.Now().Add(time.Hour*26)),
 	)
 
 	for index := range listedPreAuthKeys {
@@ -128,7 +127,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 		assert.Equal(
 			t,
 			[]string{"tag:test1", "tag:test2"},
-			listedPreAuthKeys[index].GetAclTags(),
+			listedPreAuthKeys[index].AclTags,
 		)
 	}
 
@@ -139,12 +138,12 @@ func TestPreAuthKeyCommand(t *testing.T) {
 			"preauthkeys",
 			"expire",
 			"--id",
-			strconv.FormatUint(keys[0].GetId(), 10),
+			keys[0].Id,
 		},
 	)
 	require.NoError(t, err)
 
-	var listedPreAuthKeysAfterExpire []v1.PreAuthKey
+	var listedPreAuthKeysAfterExpire []clientv1.PreAuthKey
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(
@@ -161,9 +160,9 @@ func TestPreAuthKeyCommand(t *testing.T) {
 		assert.NoError(c, err)
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for preauth keys list after expire")
 
-	assert.True(t, listedPreAuthKeysAfterExpire[1].GetExpiration().AsTime().Before(time.Now()))
-	assert.True(t, listedPreAuthKeysAfterExpire[2].GetExpiration().AsTime().After(time.Now()))
-	assert.True(t, listedPreAuthKeysAfterExpire[3].GetExpiration().AsTime().After(time.Now()))
+	assert.True(t, listedPreAuthKeysAfterExpire[1].Expiration.Before(time.Now()))
+	assert.True(t, listedPreAuthKeysAfterExpire[2].Expiration.After(time.Now()))
+	assert.True(t, listedPreAuthKeysAfterExpire[3].Expiration.After(time.Now()))
 }
 
 func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
@@ -185,7 +184,7 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	require.NoError(t, err)
 
-	var preAuthKey v1.PreAuthKey
+	var preAuthKey clientv1.PreAuthKey
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(
@@ -205,7 +204,7 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 		assert.NoError(c, err)
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for preauth key creation without expiry")
 
-	var listedPreAuthKeys []v1.PreAuthKey
+	var listedPreAuthKeys []clientv1.PreAuthKey
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(
@@ -225,10 +224,10 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 	// There is one key created by [Scenario.CreateHeadscaleEnv]
 	assert.Len(t, listedPreAuthKeys, 2)
 
-	assert.True(t, listedPreAuthKeys[1].GetExpiration().AsTime().After(time.Now()))
+	assert.True(t, listedPreAuthKeys[1].Expiration.After(time.Now()))
 	assert.True(
 		t,
-		listedPreAuthKeys[1].GetExpiration().AsTime().Before(time.Now().Add(time.Minute*70)),
+		listedPreAuthKeys[1].Expiration.Before(time.Now().Add(time.Minute*70)),
 	)
 }
 
@@ -251,7 +250,7 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	require.NoError(t, err)
 
-	var preAuthReusableKey v1.PreAuthKey
+	var preAuthReusableKey clientv1.PreAuthKey
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(
@@ -271,7 +270,7 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 		assert.NoError(c, err)
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for reusable preauth key creation")
 
-	var preAuthEphemeralKey v1.PreAuthKey
+	var preAuthEphemeralKey clientv1.PreAuthKey
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(
@@ -291,10 +290,10 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 		assert.NoError(c, err)
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for ephemeral preauth key creation")
 
-	assert.True(t, preAuthEphemeralKey.GetEphemeral())
-	assert.False(t, preAuthEphemeralKey.GetReusable())
+	assert.True(t, preAuthEphemeralKey.Ephemeral)
+	assert.False(t, preAuthEphemeralKey.Reusable)
 
-	var listedPreAuthKeys []v1.PreAuthKey
+	var listedPreAuthKeys []clientv1.PreAuthKey
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(
@@ -325,7 +324,7 @@ func TestPreAuthKeyDeleteCommand(t *testing.T) {
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	// Create a key to delete.
-	created := assertJSONRoundtrip[*v1.PreAuthKey](t, headscale, []string{
+	created := assertJSONRoundtrip[*clientv1.PreAuthKey](t, headscale, []string{
 		"headscale",
 		"preauthkeys",
 		"--user", "1",
@@ -333,7 +332,7 @@ func TestPreAuthKeyDeleteCommand(t *testing.T) {
 		"--reusable",
 		"--output", "json",
 	})
-	require.NotZero(t, created.GetId())
+	require.NotEmpty(t, created.Id)
 
 	// delete with no --id must be rejected.
 	_, err := headscale.Execute([]string{"headscale", "preauthkeys", "delete"})
@@ -342,13 +341,13 @@ func TestPreAuthKeyDeleteCommand(t *testing.T) {
 	// delete the created key by id.
 	_, err = headscale.Execute([]string{
 		"headscale", "preauthkeys", "delete",
-		"--id", strconv.FormatUint(created.GetId(), 10),
+		"--id", created.Id,
 	})
 	require.NoError(t, err)
 
 	// The deleted key must be gone from the list.
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		var listed []v1.PreAuthKey
+		var listed []clientv1.PreAuthKey
 
 		err := executeAndUnmarshal(headscale,
 			[]string{"headscale", "preauthkeys", "list", "--output", "json"},
@@ -357,7 +356,7 @@ func TestPreAuthKeyDeleteCommand(t *testing.T) {
 		assert.NoError(c, err)
 
 		for i := range listed {
-			assert.NotEqual(c, created.GetId(), listed[i].GetId(), "deleted key should not be listed")
+			assert.NotEqual(c, created.Id, listed[i].Id, "deleted key should not be listed")
 		}
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for preauth key list after delete")
 }

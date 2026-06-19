@@ -244,7 +244,7 @@ jobs:
           - TestACLDynamicUnknownUserRemoval
           - TestAPIAuthenticationBypass
           - TestAPIAuthenticationBypassCurl
-          - TestGRPCAuthenticationBypass
+          - TestRemoteCLIAuthenticationBypass
           - TestCLIWithConfigAuthenticationBypass
           - TestAuthKeyLogoutAndReloginSameUser
           - TestAuthKeyLogoutAndReloginNewUser

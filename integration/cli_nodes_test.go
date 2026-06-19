@@ -2,12 +2,11 @@ package integration
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	clientv1 "github.com/juanfont/headscale/gen/client/v1"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
@@ -43,7 +42,7 @@ func TestNodeCommand(t *testing.T) {
 		types.MustAuthID().String(),
 		types.MustAuthID().String(),
 	}
-	nodes := make([]*v1.Node, len(regIDs))
+	nodes := make([]*clientv1.Node, len(regIDs))
 
 	require.NoError(t, err)
 
@@ -65,7 +64,7 @@ func TestNodeCommand(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		var node v1.Node
+		var node clientv1.Node
 
 		assert.EventuallyWithT(t, func(c *assert.CollectT) {
 			err = executeAndUnmarshal(
@@ -94,7 +93,7 @@ func TestNodeCommand(t *testing.T) {
 	}, integrationutil.ScaledTimeout(15*time.Second), 1*time.Second)
 
 	// Test list all nodes after added seconds
-	var listAll []v1.Node
+	var listAll []clientv1.Node
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		err := executeAndUnmarshal(
@@ -112,23 +111,23 @@ func TestNodeCommand(t *testing.T) {
 		assert.Len(ct, listAll, len(regIDs), "Should list all nodes after CLI operations")
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 
-	assert.Equal(t, uint64(1), listAll[0].GetId())
-	assert.Equal(t, uint64(2), listAll[1].GetId())
-	assert.Equal(t, uint64(3), listAll[2].GetId())
-	assert.Equal(t, uint64(4), listAll[3].GetId())
-	assert.Equal(t, uint64(5), listAll[4].GetId())
+	assert.Equal(t, "1", listAll[0].Id)
+	assert.Equal(t, "2", listAll[1].Id)
+	assert.Equal(t, "3", listAll[2].Id)
+	assert.Equal(t, "4", listAll[3].Id)
+	assert.Equal(t, "5", listAll[4].Id)
 
-	assert.Equal(t, "node-1", listAll[0].GetName())
-	assert.Equal(t, "node-2", listAll[1].GetName())
-	assert.Equal(t, "node-3", listAll[2].GetName())
-	assert.Equal(t, "node-4", listAll[3].GetName())
-	assert.Equal(t, "node-5", listAll[4].GetName())
+	assert.Equal(t, "node-1", listAll[0].Name)
+	assert.Equal(t, "node-2", listAll[1].Name)
+	assert.Equal(t, "node-3", listAll[2].Name)
+	assert.Equal(t, "node-4", listAll[3].Name)
+	assert.Equal(t, "node-5", listAll[4].Name)
 
 	otherUserRegIDs := []string{
 		types.MustAuthID().String(),
 		types.MustAuthID().String(),
 	}
-	otherUserMachines := make([]*v1.Node, len(otherUserRegIDs))
+	otherUserMachines := make([]*clientv1.Node, len(otherUserRegIDs))
 
 	require.NoError(t, err)
 
@@ -150,7 +149,7 @@ func TestNodeCommand(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		var node v1.Node
+		var node clientv1.Node
 
 		assert.EventuallyWithT(t, func(c *assert.CollectT) {
 			err = executeAndUnmarshal(
@@ -179,7 +178,7 @@ func TestNodeCommand(t *testing.T) {
 	}, integrationutil.ScaledTimeout(15*time.Second), 1*time.Second)
 
 	// Test list all nodes after added otherUser
-	var listAllWithotherUser []v1.Node
+	var listAllWithotherUser []clientv1.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(
@@ -199,14 +198,14 @@ func TestNodeCommand(t *testing.T) {
 	// All nodes, nodes + otherUser
 	assert.Len(t, listAllWithotherUser, 7)
 
-	assert.Equal(t, uint64(6), listAllWithotherUser[5].GetId())
-	assert.Equal(t, uint64(7), listAllWithotherUser[6].GetId())
+	assert.Equal(t, "6", listAllWithotherUser[5].Id)
+	assert.Equal(t, "7", listAllWithotherUser[6].Id)
 
-	assert.Equal(t, "otheruser-node-1", listAllWithotherUser[5].GetName())
-	assert.Equal(t, "otheruser-node-2", listAllWithotherUser[6].GetName())
+	assert.Equal(t, "otheruser-node-1", listAllWithotherUser[5].Name)
+	assert.Equal(t, "otheruser-node-2", listAllWithotherUser[6].Name)
 
 	// Test list all nodes after added otherUser
-	var listOnlyotherUserMachineUser []v1.Node
+	var listOnlyotherUserMachineUser []clientv1.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(
@@ -227,18 +226,18 @@ func TestNodeCommand(t *testing.T) {
 
 	assert.Len(t, listOnlyotherUserMachineUser, 2)
 
-	assert.Equal(t, uint64(6), listOnlyotherUserMachineUser[0].GetId())
-	assert.Equal(t, uint64(7), listOnlyotherUserMachineUser[1].GetId())
+	assert.Equal(t, "6", listOnlyotherUserMachineUser[0].Id)
+	assert.Equal(t, "7", listOnlyotherUserMachineUser[1].Id)
 
 	assert.Equal(
 		t,
 		"otheruser-node-1",
-		listOnlyotherUserMachineUser[0].GetName(),
+		listOnlyotherUserMachineUser[0].Name,
 	)
 	assert.Equal(
 		t,
 		"otheruser-node-2",
-		listOnlyotherUserMachineUser[1].GetName(),
+		listOnlyotherUserMachineUser[1].Name,
 	)
 
 	// Delete a nodes
@@ -258,7 +257,7 @@ func TestNodeCommand(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test: list main user after node is deleted
-	var listOnlyMachineUserAfterDelete []v1.Node
+	var listOnlyMachineUserAfterDelete []clientv1.Node
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		err := executeAndUnmarshal(
@@ -304,7 +303,7 @@ func TestNodeExpireCommand(t *testing.T) {
 		types.MustAuthID().String(),
 		types.MustAuthID().String(),
 	}
-	nodes := make([]*v1.Node, len(regIDs))
+	nodes := make([]*clientv1.Node, len(regIDs))
 
 	for index, regID := range regIDs {
 		_, err := headscale.Execute(
@@ -324,7 +323,7 @@ func TestNodeExpireCommand(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		var node v1.Node
+		var node clientv1.Node
 
 		assert.EventuallyWithT(t, func(c *assert.CollectT) {
 			err = executeAndUnmarshal(
@@ -350,7 +349,7 @@ func TestNodeExpireCommand(t *testing.T) {
 
 	assert.Len(t, nodes, len(regIDs))
 
-	var listAll []v1.Node
+	var listAll []clientv1.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(
@@ -372,7 +371,7 @@ func TestNodeExpireCommand(t *testing.T) {
 	// With node.expiry defaulting to 0, non-tagged nodes have zero expiry
 	// (never expire unless explicitly expired).
 	for i := range 5 {
-		assert.True(t, listAll[i].GetExpiry().AsTime().IsZero(),
+		assert.True(t, listAll[i].Expiry == nil || listAll[i].Expiry.IsZero(),
 			"node %d should have zero expiry (no default node.expiry)", i)
 	}
 
@@ -383,13 +382,13 @@ func TestNodeExpireCommand(t *testing.T) {
 				"nodes",
 				"expire",
 				"--identifier",
-				strconv.FormatUint(listAll[idx].GetId(), 10),
+				listAll[idx].Id,
 			},
 		)
 		require.NoError(t, err)
 	}
 
-	var listAllAfterExpiry []v1.Node
+	var listAllAfterExpiry []clientv1.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(
@@ -408,11 +407,14 @@ func TestNodeExpireCommand(t *testing.T) {
 
 	assert.Len(t, listAllAfterExpiry, 5)
 
-	assert.True(t, listAllAfterExpiry[0].GetExpiry().AsTime().Before(time.Now()))
-	assert.True(t, listAllAfterExpiry[1].GetExpiry().AsTime().Before(time.Now()))
-	assert.True(t, listAllAfterExpiry[2].GetExpiry().AsTime().Before(time.Now()))
-	assert.True(t, listAllAfterExpiry[3].GetExpiry().AsTime().IsZero())
-	assert.True(t, listAllAfterExpiry[4].GetExpiry().AsTime().IsZero())
+	require.NotNil(t, listAllAfterExpiry[0].Expiry)
+	require.NotNil(t, listAllAfterExpiry[1].Expiry)
+	require.NotNil(t, listAllAfterExpiry[2].Expiry)
+	assert.True(t, listAllAfterExpiry[0].Expiry.Before(time.Now()))
+	assert.True(t, listAllAfterExpiry[1].Expiry.Before(time.Now()))
+	assert.True(t, listAllAfterExpiry[2].Expiry.Before(time.Now()))
+	assert.True(t, listAllAfterExpiry[3].Expiry == nil || listAllAfterExpiry[3].Expiry.IsZero())
+	assert.True(t, listAllAfterExpiry[4].Expiry == nil || listAllAfterExpiry[4].Expiry.IsZero())
 }
 
 func TestNodeRenameCommand(t *testing.T) {
@@ -440,7 +442,7 @@ func TestNodeRenameCommand(t *testing.T) {
 		types.MustAuthID().String(),
 		types.MustAuthID().String(),
 	}
-	nodes := make([]*v1.Node, len(regIDs))
+	nodes := make([]*clientv1.Node, len(regIDs))
 
 	require.NoError(t, err)
 
@@ -462,7 +464,7 @@ func TestNodeRenameCommand(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		var node v1.Node
+		var node clientv1.Node
 
 		assert.EventuallyWithT(t, func(c *assert.CollectT) {
 			err = executeAndUnmarshal(
@@ -488,7 +490,7 @@ func TestNodeRenameCommand(t *testing.T) {
 
 	assert.Len(t, nodes, len(regIDs))
 
-	var listAll []v1.Node
+	var listAll []clientv1.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(
@@ -507,11 +509,11 @@ func TestNodeRenameCommand(t *testing.T) {
 
 	assert.Len(t, listAll, 5)
 
-	assert.Contains(t, listAll[0].GetGivenName(), "node-1")
-	assert.Contains(t, listAll[1].GetGivenName(), "node-2")
-	assert.Contains(t, listAll[2].GetGivenName(), "node-3")
-	assert.Contains(t, listAll[3].GetGivenName(), "node-4")
-	assert.Contains(t, listAll[4].GetGivenName(), "node-5")
+	assert.Contains(t, listAll[0].GivenName, "node-1")
+	assert.Contains(t, listAll[1].GivenName, "node-2")
+	assert.Contains(t, listAll[2].GivenName, "node-3")
+	assert.Contains(t, listAll[3].GivenName, "node-4")
+	assert.Contains(t, listAll[4].GivenName, "node-5")
 
 	for idx := range 3 {
 		res, err := headscale.Execute(
@@ -520,7 +522,7 @@ func TestNodeRenameCommand(t *testing.T) {
 				"nodes",
 				"rename",
 				"--identifier",
-				strconv.FormatUint(listAll[idx].GetId(), 10),
+				listAll[idx].Id,
 				fmt.Sprintf("newnode-%d", idx+1),
 			},
 		)
@@ -529,7 +531,7 @@ func TestNodeRenameCommand(t *testing.T) {
 		assert.Contains(t, res, "Node renamed")
 	}
 
-	var listAllAfterRename []v1.Node
+	var listAllAfterRename []clientv1.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(
@@ -548,11 +550,11 @@ func TestNodeRenameCommand(t *testing.T) {
 
 	assert.Len(t, listAllAfterRename, 5)
 
-	assert.Equal(t, "newnode-1", listAllAfterRename[0].GetGivenName())
-	assert.Equal(t, "newnode-2", listAllAfterRename[1].GetGivenName())
-	assert.Equal(t, "newnode-3", listAllAfterRename[2].GetGivenName())
-	assert.Contains(t, listAllAfterRename[3].GetGivenName(), "node-4")
-	assert.Contains(t, listAllAfterRename[4].GetGivenName(), "node-5")
+	assert.Equal(t, "newnode-1", listAllAfterRename[0].GivenName)
+	assert.Equal(t, "newnode-2", listAllAfterRename[1].GivenName)
+	assert.Equal(t, "newnode-3", listAllAfterRename[2].GivenName)
+	assert.Contains(t, listAllAfterRename[3].GivenName, "node-4")
+	assert.Contains(t, listAllAfterRename[4].GivenName, "node-5")
 
 	// Test failure for too long names
 	_, err = headscale.Execute(
@@ -561,13 +563,13 @@ func TestNodeRenameCommand(t *testing.T) {
 			"nodes",
 			"rename",
 			"--identifier",
-			strconv.FormatUint(listAll[4].GetId(), 10),
+			listAll[4].Id,
 			strings.Repeat("t", 64),
 		},
 	)
 	require.ErrorContains(t, err, "is too long, max length is 63 bytes")
 
-	var listAllAfterRenameAttempt []v1.Node
+	var listAllAfterRenameAttempt []clientv1.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(
@@ -586,11 +588,11 @@ func TestNodeRenameCommand(t *testing.T) {
 
 	assert.Len(t, listAllAfterRenameAttempt, 5)
 
-	assert.Equal(t, "newnode-1", listAllAfterRenameAttempt[0].GetGivenName())
-	assert.Equal(t, "newnode-2", listAllAfterRenameAttempt[1].GetGivenName())
-	assert.Equal(t, "newnode-3", listAllAfterRenameAttempt[2].GetGivenName())
-	assert.Contains(t, listAllAfterRenameAttempt[3].GetGivenName(), "node-4")
-	assert.Contains(t, listAllAfterRenameAttempt[4].GetGivenName(), "node-5")
+	assert.Equal(t, "newnode-1", listAllAfterRenameAttempt[0].GivenName)
+	assert.Equal(t, "newnode-2", listAllAfterRenameAttempt[1].GivenName)
+	assert.Equal(t, "newnode-3", listAllAfterRenameAttempt[2].GivenName)
+	assert.Contains(t, listAllAfterRenameAttempt[3].GivenName, "node-4")
+	assert.Contains(t, listAllAfterRenameAttempt[4].GivenName, "node-5")
 }
 
 func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
@@ -623,7 +625,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 	u2, err := headscale.CreateUser(user2)
 	require.NoError(t, err)
 
-	var user2Key v1.PreAuthKey
+	var user2Key clientv1.PreAuthKey
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(
@@ -632,7 +634,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 				"headscale",
 				"preauthkeys",
 				"--user",
-				strconv.FormatUint(u2.GetId(), 10),
+				u2.Id,
 				"create",
 				"--reusable",
 				"--expiration",
@@ -647,7 +649,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		assert.NoError(c, err)
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for user2 preauth key creation")
 
-	var listNodes []*v1.Node
+	var listNodes []*clientv1.Node
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
@@ -655,7 +657,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		listNodes, err = headscale.ListNodes()
 		assert.NoError(ct, err)
 		assert.Len(ct, listNodes, 1, "Should have exactly 1 node for user1")
-		assert.Equal(ct, user1, listNodes[0].GetUser().GetName(), "Node should belong to user1")
+		assert.Equal(ct, user1, listNodes[0].User.Name, "Node should belong to user1")
 	}, integrationutil.ScaledTimeout(15*time.Second), 1*time.Second)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -679,7 +681,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 			"Expected node to be logged out, backend state: %s", status.BackendState)
 	}, integrationutil.StatusReadyTimeout, 2*time.Second)
 
-	err = client.Login(headscale.GetEndpoint(), user2Key.GetKey())
+	err = client.Login(headscale.GetEndpoint(), user2Key.Key)
 	require.NoError(t, err)
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -697,9 +699,9 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		listNodes, err = headscale.ListNodes()
 		assert.NoError(ct, err)
 		assert.Len(ct, listNodes, 2, "Should have 2 nodes after re-login")
-		assert.Equal(ct, user1, listNodes[0].GetUser().GetName(), "First node should belong to user1")
+		assert.Equal(ct, user1, listNodes[0].User.Name, "First node should belong to user1")
 		// Second node is tagged (created with tagged PreAuthKey), so it shows as "tagged-devices"
-		assert.Equal(ct, "tagged-devices", listNodes[1].GetUser().GetName(), "Second node should be tagged-devices")
+		assert.Equal(ct, "tagged-devices", listNodes[1].User.Name, "Second node should be tagged-devices")
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 }
 
@@ -731,7 +733,7 @@ func TestTaggedNodesCLIOutput(t *testing.T) {
 	u2, err := headscale.CreateUser(user2)
 	require.NoError(t, err)
 
-	var user2Key v1.PreAuthKey
+	var user2Key clientv1.PreAuthKey
 
 	// Create a tagged PreAuthKey for user2
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -741,7 +743,7 @@ func TestTaggedNodesCLIOutput(t *testing.T) {
 				"headscale",
 				"preauthkeys",
 				"--user",
-				strconv.FormatUint(u2.GetId(), 10),
+				u2.Id,
 				"create",
 				"--reusable",
 				"--expiration",
@@ -778,7 +780,7 @@ func TestTaggedNodesCLIOutput(t *testing.T) {
 	}, integrationutil.StatusReadyTimeout, 2*time.Second)
 
 	// Log in with the tagged PreAuthKey (from user2, with tags)
-	err = client.Login(headscale.GetEndpoint(), user2Key.GetKey())
+	err = client.Login(headscale.GetEndpoint(), user2Key.Key)
 	require.NoError(t, err)
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -790,7 +792,7 @@ func TestTaggedNodesCLIOutput(t *testing.T) {
 	}, integrationutil.StatusReadyTimeout, 2*time.Second)
 
 	// Wait for the second node to appear
-	var listNodes []*v1.Node
+	var listNodes []*clientv1.Node
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
@@ -798,8 +800,8 @@ func TestTaggedNodesCLIOutput(t *testing.T) {
 		listNodes, err = headscale.ListNodes()
 		assert.NoError(ct, err)
 		assert.Len(ct, listNodes, 2, "Should have 2 nodes after re-login with tagged key")
-		assert.Equal(ct, user1, listNodes[0].GetUser().GetName(), "First node should belong to user1")
-		assert.Equal(ct, "tagged-devices", listNodes[1].GetUser().GetName(), "Second node should be tagged-devices")
+		assert.Equal(ct, user1, listNodes[0].User.Name, "First node should belong to user1")
+		assert.Equal(ct, "tagged-devices", listNodes[1].User.Name, "Second node should be tagged-devices")
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 
 	// Test: tailscale status output should show "tagged-devices" not "userid:2147455555"
@@ -838,7 +840,7 @@ func TestNodeExpireFlagsCommand(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	var node v1.Node
+	var node clientv1.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err := executeAndUnmarshal(headscale,
@@ -853,14 +855,14 @@ func TestNodeExpireFlagsCommand(t *testing.T) {
 		assert.NoError(c, err)
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for node registration")
 
-	nodeID := strconv.FormatUint(node.GetId(), 10)
+	nodeID := node.Id
 
 	// listNodeByID returns the node with the given id from `nodes list`. The
 	// expire mutations are verified by reading the node back (authoritative,
 	// eventually-consistent) rather than trusting the mutation's immediate
 	// response.
-	listNodeByID := func(ct *assert.CollectT) *v1.Node {
-		var nodes []v1.Node
+	listNodeByID := func(ct *assert.CollectT) *clientv1.Node {
+		var nodes []clientv1.Node
 
 		err := executeAndUnmarshal(headscale,
 			[]string{"headscale", "nodes", "list", "--output", "json"},
@@ -869,7 +871,7 @@ func TestNodeExpireFlagsCommand(t *testing.T) {
 		require.NoError(ct, err)
 
 		for i := range nodes {
-			if nodes[i].GetId() == node.GetId() {
+			if nodes[i].Id == node.Id {
 				return &nodes[i]
 			}
 		}
@@ -896,8 +898,8 @@ func TestNodeExpireFlagsCommand(t *testing.T) {
 			return
 		}
 
-		assert.False(ct, n.GetExpiry().AsTime().IsZero(), "expiry should be set")
-		assert.True(ct, n.GetExpiry().AsTime().After(time.Now()), "expiry should be in the future")
+		assert.True(ct, n.Expiry != nil && !n.Expiry.IsZero(), "expiry should be set")
+		assert.True(ct, n.Expiry != nil && n.Expiry.After(time.Now()), "expiry should be in the future")
 	}, integrationutil.ScaledTimeout(15*time.Second), 1*time.Second, "Waiting for future expiry to apply")
 
 	// Disable expiry entirely; the node should then report no expiry.
@@ -919,7 +921,7 @@ func TestNodeExpireFlagsCommand(t *testing.T) {
 		// future — it never expires. A nil expiry deserialises to the Unix
 		// epoch rather than the zero time, so assert "not in the future"
 		// rather than IsZero.
-		assert.False(ct, n.GetExpiry().AsTime().After(time.Now()),
+		assert.False(ct, n.Expiry != nil && n.Expiry.After(time.Now()),
 			"disabled node should not have a future expiry")
 	}, integrationutil.ScaledTimeout(15*time.Second), 1*time.Second, "Waiting for --disable to clear expiry")
 }
@@ -943,7 +945,7 @@ func TestNodeCommandValidation(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	var node v1.Node
+	var node clientv1.Node
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err := executeAndUnmarshal(headscale,
@@ -953,7 +955,7 @@ func TestNodeCommandValidation(t *testing.T) {
 		assert.NoError(c, err)
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for node registration")
 
-	id := strconv.FormatUint(node.GetId(), 10)
+	id := node.Id
 
 	// wantErr is matched with ErrorContains; an empty wantErr only requires
 	// that the command fails (used where the exact message is not load-bearing).
@@ -977,6 +979,10 @@ func TestNodeCommandValidation(t *testing.T) {
 		{"approve missing identifier", []string{"nodes", "approve-routes", "--routes", "10.0.0.0/24"}, "identifier"},
 		{"approve nonexistent", []string{"nodes", "approve-routes", "--identifier", "99999", "--routes", "10.0.0.0/24"}, ""},
 		{"approve invalid cidr", []string{"nodes", "approve-routes", "--identifier", id, "--routes", "notacidr"}, "parsing route"},
+		// The deprecated `nodes register` alias drives its own RegisterNode path;
+		// cover its error cases (the happy path is covered via `auth register`).
+		{"register nonexistent user", []string{"nodes", "register", "--user", "ghost", "--key", types.MustAuthID().String()}, ""},
+		{"register invalid key", []string{"nodes", "register", "--user", "user1", "--key", "badkey"}, ""},
 	}
 
 	for _, tt := range tests {
@@ -1041,7 +1047,7 @@ func TestNodeTagCommand(t *testing.T) {
 
 	require.NoError(t, scenario.WaitForTailscaleSync())
 
-	var nodeID uint64
+	var nodeID string
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		nodes, err := headscale.ListNodes()
@@ -1049,23 +1055,23 @@ func TestNodeTagCommand(t *testing.T) {
 		assert.Len(ct, nodes, 1)
 
 		if len(nodes) == 1 {
-			nodeID = nodes[0].GetId()
-			assert.Equal(ct, "user1", nodes[0].GetUser().GetName(), "node should start user-owned")
+			nodeID = nodes[0].Id
+			assert.Equal(ct, "user1", nodes[0].User.Name, "node should start user-owned")
 		}
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 
-	idStr := strconv.FormatUint(nodeID, 10)
+	idStr := nodeID
 
 	// Set two tags. The command response is round-tripped (transport check);
 	// the resulting tag state is asserted via the authoritative list read-back
 	// below rather than the immediate mutation response.
-	tagged := assertJSONRoundtrip[*v1.Node](t, headscale, []string{
+	tagged := assertJSONRoundtrip[*clientv1.Node](t, headscale, []string{
 		"headscale", "nodes", "tag",
 		"--identifier", idStr,
 		"--tags", "tag:test1,tag:test2",
 		"--output", "json",
 	})
-	assert.Equal(t, nodeID, tagged.GetId(), "tag response should be for the same node")
+	assert.Equal(t, nodeID, tagged.Id, "tag response should be for the same node")
 
 	// The node is now a tagged node, presented as the tagged-devices user.
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -1074,8 +1080,8 @@ func TestNodeTagCommand(t *testing.T) {
 		assert.Len(ct, nodes, 1)
 
 		if len(nodes) == 1 {
-			assert.Equal(ct, "tagged-devices", nodes[0].GetUser().GetName(), "tagged node shows as tagged-devices")
-			assert.ElementsMatch(ct, []string{"tag:test1", "tag:test2"}, nodes[0].GetTags())
+			assert.Equal(ct, "tagged-devices", nodes[0].User.Name, "tagged node shows as tagged-devices")
+			assert.ElementsMatch(ct, []string{"tag:test1", "tag:test2"}, nodes[0].Tags)
 		}
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 
@@ -1135,10 +1141,10 @@ func TestNodeRouteCommands(t *testing.T) {
 	require.NoError(t, scenario.WaitForTailscaleSync())
 
 	// The advertised route should show up as available (but not approved).
-	var nodeID uint64
+	var nodeID string
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-		var nodes []v1.Node
+		var nodes []clientv1.Node
 
 		err := executeAndUnmarshal(headscale,
 			[]string{"headscale", "nodes", "list-routes", "--output", "json"},
@@ -1148,27 +1154,27 @@ func TestNodeRouteCommands(t *testing.T) {
 		assert.Len(ct, nodes, 1, "list-routes should show the route-advertising node")
 
 		if len(nodes) == 1 {
-			nodeID = nodes[0].GetId()
-			assert.Contains(ct, nodes[0].GetAvailableRoutes(), route)
-			assert.Empty(ct, nodes[0].GetApprovedRoutes())
+			nodeID = nodes[0].Id
+			assert.Contains(ct, nodes[0].AvailableRoutes, route)
+			assert.Empty(ct, nodes[0].ApprovedRoutes)
 		}
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 
-	idStr := strconv.FormatUint(nodeID, 10)
+	idStr := nodeID
 
 	// Approve the route via the CLI.
-	approved := assertJSONRoundtrip[*v1.Node](t, headscale, []string{
+	approved := assertJSONRoundtrip[*clientv1.Node](t, headscale, []string{
 		"headscale", "nodes", "approve-routes",
 		"--identifier", idStr,
 		"--routes=" + route,
 		"--output", "json",
 	})
-	assert.Contains(t, approved.GetApprovedRoutes(), route)
+	assert.Contains(t, approved.ApprovedRoutes, route)
 
 	// list-routes filtered by the identifier should report the approved route
 	// as a primary subnet route.
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-		var nodes []v1.Node
+		var nodes []clientv1.Node
 
 		err := executeAndUnmarshal(headscale,
 			[]string{"headscale", "nodes", "list-routes", "--identifier", idStr, "--output", "json"},
@@ -1178,19 +1184,19 @@ func TestNodeRouteCommands(t *testing.T) {
 		assert.Len(ct, nodes, 1)
 
 		if len(nodes) == 1 {
-			assert.Contains(ct, nodes[0].GetApprovedRoutes(), route)
-			assert.Contains(ct, nodes[0].GetSubnetRoutes(), route)
+			assert.Contains(ct, nodes[0].ApprovedRoutes, route)
+			assert.Contains(ct, nodes[0].SubnetRoutes, route)
 		}
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 
 	// Remove all approved routes by passing an empty --routes value.
-	cleared := assertJSONRoundtrip[*v1.Node](t, headscale, []string{
+	cleared := assertJSONRoundtrip[*clientv1.Node](t, headscale, []string{
 		"headscale", "nodes", "approve-routes",
 		"--identifier", idStr,
 		"--routes=",
 		"--output", "json",
 	})
-	assert.Empty(t, cleared.GetApprovedRoutes(), "approved routes should be cleared")
+	assert.Empty(t, cleared.ApprovedRoutes, "approved routes should be cleared")
 }
 
 // TestNodeBackfillIPsCommand exercises `nodes backfillips` against live nodes.
@@ -1205,7 +1211,7 @@ func TestNodeBackfillIPsCommand(t *testing.T) {
 
 	require.NoError(t, scenario.WaitForTailscaleSync())
 
-	var before []*v1.Node
+	var before []*clientv1.Node
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
@@ -1215,7 +1221,7 @@ func TestNodeBackfillIPsCommand(t *testing.T) {
 		assert.Len(ct, before, 2)
 
 		for _, n := range before {
-			assert.NotEmpty(ct, n.GetIpAddresses(), "node should have IPs before backfill")
+			assert.NotEmpty(ct, n.IpAddresses, "node should have IPs before backfill")
 		}
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 
@@ -1230,7 +1236,7 @@ func TestNodeBackfillIPsCommand(t *testing.T) {
 		assert.Len(ct, after, 2)
 
 		for _, n := range after {
-			assert.NotEmpty(ct, n.GetIpAddresses(), "node should still have IPs after backfill")
+			assert.NotEmpty(ct, n.IpAddresses, "node should still have IPs after backfill")
 		}
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 }
