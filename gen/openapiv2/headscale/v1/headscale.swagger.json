@@ -1389,6 +1389,12 @@
           "items": {
             "type": "string"
           }
+        },
+        "endpoints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
