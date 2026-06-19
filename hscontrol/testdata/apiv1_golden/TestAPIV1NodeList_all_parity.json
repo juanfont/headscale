@@ -1,0 +1,103 @@
+{
+  "status": 200,
+  "body": {
+    "nodes": [
+      {
+        "approvedRoutes": [],
+        "availableRoutes": [],
+        "createdAt": "\u003ctimestamp\u003e",
+        "discoKey": "\u003csecret\u003e",
+        "expiry": null,
+        "givenName": "node-a",
+        "id": "1",
+        "ipAddresses": [],
+        "lastSeen": "\u003ctimestamp\u003e",
+        "machineKey": "\u003csecret\u003e",
+        "name": "node-a",
+        "nodeKey": "\u003csecret\u003e",
+        "online": false,
+        "preAuthKey": {
+          "aclTags": [],
+          "createdAt": "\u003ctimestamp\u003e",
+          "ephemeral": false,
+          "expiration": null,
+          "id": "1",
+          "key": "\u003csecret\u003e",
+          "reusable": false,
+          "used": true,
+          "user": {
+            "createdAt": "\u003ctimestamp\u003e",
+            "displayName": "",
+            "email": "",
+            "id": "1",
+            "name": "alice",
+            "profilePicUrl": "",
+            "provider": "",
+            "providerId": ""
+          }
+        },
+        "registerMethod": "REGISTER_METHOD_AUTH_KEY",
+        "subnetRoutes": [],
+        "tags": [],
+        "user": {
+          "createdAt": "\u003ctimestamp\u003e",
+          "displayName": "",
+          "email": "",
+          "id": "1",
+          "name": "alice",
+          "profilePicUrl": "",
+          "provider": "",
+          "providerId": ""
+        }
+      },
+      {
+        "approvedRoutes": [],
+        "availableRoutes": [],
+        "createdAt": "\u003ctimestamp\u003e",
+        "discoKey": "\u003csecret\u003e",
+        "expiry": null,
+        "givenName": "node-b",
+        "id": "2",
+        "ipAddresses": [],
+        "lastSeen": "\u003ctimestamp\u003e",
+        "machineKey": "\u003csecret\u003e",
+        "name": "node-b",
+        "nodeKey": "\u003csecret\u003e",
+        "online": false,
+        "preAuthKey": {
+          "aclTags": [],
+          "createdAt": "\u003ctimestamp\u003e",
+          "ephemeral": false,
+          "expiration": null,
+          "id": "2",
+          "key": "\u003csecret\u003e",
+          "reusable": false,
+          "used": true,
+          "user": {
+            "createdAt": "\u003ctimestamp\u003e",
+            "displayName": "",
+            "email": "",
+            "id": "2",
+            "name": "bob",
+            "profilePicUrl": "",
+            "provider": "",
+            "providerId": ""
+          }
+        },
+        "registerMethod": "REGISTER_METHOD_AUTH_KEY",
+        "subnetRoutes": [],
+        "tags": [],
+        "user": {
+          "createdAt": "\u003ctimestamp\u003e",
+          "displayName": "",
+          "email": "",
+          "id": "2",
+          "name": "bob",
+          "profilePicUrl": "",
+          "provider": "",
+          "providerId": ""
+        }
+      }
+    ]
+  }
+}

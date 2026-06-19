@@ -1,0 +1,34 @@
+{
+  "status": 200,
+  "body": {
+    "node": {
+      "approvedRoutes": [],
+      "availableRoutes": [],
+      "createdAt": "\u003ctimestamp\u003e",
+      "discoKey": "\u003csecret\u003e",
+      "expiry": null,
+      "givenName": "registered-node",
+      "id": "1",
+      "ipAddresses": [],
+      "lastSeen": "\u003ctimestamp\u003e",
+      "machineKey": "\u003csecret\u003e",
+      "name": "registered-node",
+      "nodeKey": "\u003csecret\u003e",
+      "online": false,
+      "preAuthKey": null,
+      "registerMethod": "REGISTER_METHOD_CLI",
+      "subnetRoutes": [],
+      "tags": [],
+      "user": {
+        "createdAt": "\u003ctimestamp\u003e",
+        "displayName": "",
+        "email": "",
+        "id": "1",
+        "name": "alice",
+        "profilePicUrl": "",
+        "provider": "",
+        "providerId": ""
+      }
+    }
+  }
+}
