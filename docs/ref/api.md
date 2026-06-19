@@ -54,7 +54,7 @@ Headscale server at `/api/v1/docs` for details.
 
     ```console
     curl -H "Authorization: Bearer <API_KEY>" \
-        --json '{"user": "<USER>", "authId": "AUTH_ID>"}' \
+        --json '{"user": "<USER>", "authId": "<AUTH_ID>"}' \
         https://headscale.example.com/api/v1/auth/register
     ```
 
