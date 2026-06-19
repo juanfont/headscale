@@ -46,6 +46,9 @@ result
 
 integration_test/etc/config.dump.yaml
 
+# OpenAPI spec is served live from the code and emitted on demand, not committed
+/openapi/v1/headscale.yaml
+
 # MkDocs
 .cache
 /site
