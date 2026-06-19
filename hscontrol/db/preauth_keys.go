@@ -309,9 +309,13 @@ func DestroyPreAuthKey(tx *gorm.DB, id uint64) error {
 		}
 
 		// Then delete the pre-auth key
-		err = tx.Unscoped().Delete(&types.PreAuthKey{}, id).Error
-		if err != nil {
-			return err
+		res := tx.Unscoped().Delete(&types.PreAuthKey{}, id)
+		if res.Error != nil {
+			return res.Error
+		}
+
+		if res.RowsAffected == 0 {
+			return ErrPreAuthKeyNotFound
 		}
 
 		return nil
@@ -353,8 +357,19 @@ func UsePreAuthKey(tx *gorm.DB, k *types.PreAuthKey) error {
 	return nil
 }
 
-// ExpirePreAuthKey marks a [types.PreAuthKey] as expired.
+// ExpirePreAuthKey marks a [types.PreAuthKey] as expired, returning
+// [ErrPreAuthKeyNotFound] rather than succeeding silently when no such key exists.
 func ExpirePreAuthKey(tx *gorm.DB, id uint64) error {
 	now := time.Now()
-	return tx.Model(&types.PreAuthKey{}).Where("id = ?", id).Update("expiration", now).Error
+
+	res := tx.Model(&types.PreAuthKey{}).Where("id = ?", id).Update("expiration", now)
+	if res.Error != nil {
+		return res.Error
+	}
+
+	if res.RowsAffected == 0 {
+		return ErrPreAuthKeyNotFound
+	}
+
+	return nil
 }
