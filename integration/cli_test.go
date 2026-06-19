@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	clientv1 "github.com/juanfont/headscale/gen/client/v1"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/require"
@@ -19,8 +20,8 @@ import (
 //
 // The whole point of the CLI test suite is to guard the transport: every
 // command is invoked with `--output json` and the result is unmarshalled into
-// the matching gen/go/headscale/v1 Go type, so a change to the gRPC handlers,
-// proto definitions or output encoders that breaks a command is caught here.
+// the matching HTTP-client Go type, so a change to the API handlers,
+// schema definitions or output encoders that breaks a command is caught here.
 
 func executeAndUnmarshal[T any](headscale ControlServer, command []string, result T) error {
 	str, err := headscale.Execute(command)
@@ -39,7 +40,7 @@ func executeAndUnmarshal[T any](headscale ControlServer, command []string, resul
 // assertJSONRoundtrip executes command (which must include `--output json`),
 // decodes the stdout into T, then marshals T back to JSON and re-decodes it,
 // asserting the serialisation is stable. This is the transport contract guard:
-// if the underlying v1 type drifts in a way that loses data, the round-trip
+// if the underlying type drifts in a way that loses data, the round-trip
 // breaks. The decoded value is returned so callers can assert on real fields.
 func assertJSONRoundtrip[T any](t require.TestingT, headscale ControlServer, command []string) T {
 	var first T
@@ -62,14 +63,11 @@ func assertJSONRoundtrip[T any](t require.TestingT, headscale ControlServer, com
 	return second
 }
 
-// Interface ensuring that we can sort structs from gRPC that
-// have an ID field.
-type GRPCSortable interface {
-	GetId() uint64
-}
-
-func sortWithID[T GRPCSortable](a, b T) int {
-	return cmp.Compare(a.GetId(), b.GetId())
+// sortWithID orders users by their numeric ID. The HTTP client emits IDs as
+// decimal strings, so they are parsed back to integers to preserve numeric
+// (not lexicographic) ordering.
+func sortWithID(a, b *clientv1.User) int {
+	return cmp.Compare(mustParseID(a.Id), mustParseID(b.Id))
 }
 
 // setupCLIScenario boots a scenario with the given users and nodes-per-user,

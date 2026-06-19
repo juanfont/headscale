@@ -213,7 +213,8 @@ func TestFilterPreReleasesIfStable(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := filterPreReleasesIfStable(func() string { return tt.currentVersion })(tt.tag)
 			if result != tt.expectedFilter {
-				t.Errorf("%s: got %v, want %v\nDescription: %s\nCurrent version: %s, Tag: %s",
+				t.Errorf(
+					"%s: got %v, want %v\nDescription: %s\nCurrent version: %s, Tag: %s",
 					tt.name,
 					result,
 					tt.expectedFilter,
@@ -293,7 +294,8 @@ func TestIsPreReleaseVersion(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := isPreReleaseVersion(tt.version)
 			if result != tt.expected {
-				t.Errorf("%s: got %v, want %v\nDescription: %s\nVersion: %s",
+				t.Errorf(
+					"%s: got %v, want %v\nDescription: %s\nVersion: %s",
 					tt.name,
 					result,
 					tt.expected,

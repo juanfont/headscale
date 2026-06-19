@@ -10,7 +10,9 @@ import (
 	"tailscale.com/net/tsaddr"
 )
 
-func GrpcSocketDialer(ctx context.Context, addr string) (net.Conn, error) {
+// SocketDialer dials a local unix-domain socket, letting the HTTP CLI client
+// reach the headscale API over its unix socket.
+func SocketDialer(ctx context.Context, addr string) (net.Conn, error) {
 	var d net.Dialer
 
 	return d.DialContext(ctx, "unix", addr)

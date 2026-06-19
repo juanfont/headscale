@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	clientv1 "github.com/juanfont/headscale/gen/client/v1"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/integrationutil"
@@ -98,7 +98,7 @@ func TestAuthWebFlowLogoutAndReloginSameUser(t *testing.T) {
 	// Validate initial connection state
 	validateInitialConnection(t, headscale, expectedNodes)
 
-	var listNodes []*v1.Node
+	var listNodes []*clientv1.Node
 
 	t.Logf("Validating initial node count after web auth at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -256,7 +256,7 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 	// Validate initial connection state
 	validateInitialConnection(t, headscale, expectedNodes)
 
-	var listNodes []*v1.Node
+	var listNodes []*clientv1.Node
 
 	t.Logf("Validating initial node count after web auth at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -316,7 +316,7 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 
 	t.Logf("all clients logged back in as user1")
 
-	var user1Nodes []*v1.Node
+	var user1Nodes []*clientv1.Node
 
 	t.Logf("Validating user1 node count after relogin at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -330,7 +330,7 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 	// Collect expected node IDs for user1 after relogin
 	expectedUser1Nodes := make([]types.NodeID, 0, len(user1Nodes))
 	for _, node := range user1Nodes {
-		expectedUser1Nodes = append(expectedUser1Nodes, types.NodeID(node.GetId()))
+		expectedUser1Nodes = append(expectedUser1Nodes, types.NodeID(mustParseID(node.Id)))
 	}
 
 	// Validate connection state after relogin as user1
@@ -338,7 +338,7 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 
 	// Validate that user2's old nodes still exist in database (but are expired/offline)
 	// When CLI registration creates new nodes for user1, user2's old nodes remain
-	var user2Nodes []*v1.Node
+	var user2Nodes []*clientv1.Node
 
 	t.Logf("Validating user2 old nodes remain in database after CLI registration to user1 at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {

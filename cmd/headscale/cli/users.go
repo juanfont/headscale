@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strconv"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	clientv1 "github.com/juanfont/headscale/gen/client/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
@@ -45,27 +46,39 @@ func usernameAndIDFromFlag(cmd *cobra.Command) (uint64, string, error) {
 // returning the raw flag id and the matched user.
 func resolveSingleUser(
 	ctx context.Context,
-	client v1.HeadscaleServiceClient,
+	client *clientv1.ClientWithResponses,
 	cmd *cobra.Command,
-) (uint64, *v1.User, error) {
+) (uint64, *clientv1.User, error) {
 	id, username, err := usernameAndIDFromFlag(cmd)
 	if err != nil {
 		return 0, nil, err
 	}
 
-	users, err := client.ListUsers(ctx, &v1.ListUsersRequest{
-		Name: username,
-		Id:   id,
-	})
+	params := &clientv1.ListUsersParams{}
+	if username != "" {
+		params.Name = &username
+	}
+
+	if id != 0 {
+		idStr := strconv.FormatUint(id, util.Base10)
+		params.Id = &idStr
+	}
+
+	resp, err := client.ListUsersWithResponse(ctx, params)
 	if err != nil {
 		return 0, nil, fmt.Errorf("listing users: %w", err)
 	}
 
-	if len(users.GetUsers()) != 1 {
+	if resp.StatusCode() != http.StatusOK {
+		return 0, nil, apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+	}
+
+	users := resp.JSON200.Users
+	if len(users) != 1 {
 		return 0, nil, errMultipleUsersMatch
 	}
 
-	return id, users.GetUsers()[0], nil
+	return id, &users[0], nil
 }
 
 func init() {
@@ -102,19 +115,19 @@ var createUserCmd = &cobra.Command{
 
 		return nil
 	},
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
 		userName := args[0]
 
-		log.Trace().Interface(zf.Client, client).Msg("obtained gRPC client")
+		log.Trace().Interface(zf.Client, client).Msg("obtained API client")
 
-		request := &v1.CreateUserRequest{Name: userName}
+		request := clientv1.CreateUserJSONRequestBody{Name: &userName}
 
 		if displayName, _ := cmd.Flags().GetString("display-name"); displayName != "" {
-			request.DisplayName = displayName
+			request.DisplayName = &displayName
 		}
 
 		if email, _ := cmd.Flags().GetString("email"); email != "" {
-			request.Email = email
+			request.Email = &email
 		}
 
 		if pictureURL, _ := cmd.Flags().GetString("picture-url"); pictureURL != "" {
@@ -122,17 +135,21 @@ var createUserCmd = &cobra.Command{
 				return fmt.Errorf("invalid picture URL: %w", err)
 			}
 
-			request.PictureUrl = pictureURL
+			request.PictureUrl = &pictureURL
 		}
 
 		log.Trace().Interface(zf.Request, request).Msg("sending CreateUser request")
 
-		response, err := client.CreateUser(ctx, request)
+		resp, err := client.CreateUserWithResponse(ctx, request)
 		if err != nil {
 			return fmt.Errorf("creating user: %w", err)
 		}
 
-		return printOutput(cmd, response.GetUser(), "User created")
+		if resp.StatusCode() != http.StatusOK {
+			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+		}
+
+		return printOutput(cmd, resp.JSON200.User, "User created")
 	}),
 }
 
@@ -140,27 +157,29 @@ var destroyUserCmd = &cobra.Command{
 	Use:     "destroy --identifier ID or --name NAME",
 	Short:   "Destroys a user",
 	Aliases: []string{cmdDelete},
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
 		_, user, err := resolveSingleUser(ctx, client, cmd)
 		if err != nil {
 			return err
 		}
 
 		if !confirmAction(cmd, fmt.Sprintf(
-			"Do you want to remove the user %q (%d) and any associated preauthkeys?",
-			user.GetName(), user.GetId(),
+			"Do you want to remove the user %q (%s) and any associated preauthkeys?",
+			user.Name, user.Id,
 		)) {
 			return printOutput(cmd, map[string]string{colResult: "User not destroyed"}, "User not destroyed")
 		}
 
-		deleteRequest := &v1.DeleteUserRequest{Id: user.GetId()}
-
-		response, err := client.DeleteUser(ctx, deleteRequest)
+		resp, err := client.DeleteUserWithResponse(ctx, user.Id)
 		if err != nil {
 			return fmt.Errorf("destroying user: %w", err)
 		}
 
-		return printOutput(cmd, response, "User destroyed")
+		if resp.StatusCode() != http.StatusOK {
+			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+		}
+
+		return printOutput(cmd, resp.JSON200, "User destroyed")
 	}),
 }
 
@@ -168,8 +187,8 @@ var listUsersCmd = &cobra.Command{
 	Use:     cmdList,
 	Short:   "List all the users",
 	Aliases: []string{"ls", cmdShow},
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		request := &v1.ListUsersRequest{}
+	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
+		params := &clientv1.ListUsersParams{}
 
 		id, _ := cmd.Flags().GetInt64("identifier")
 		username, _ := cmd.Flags().GetString("name")
@@ -178,29 +197,36 @@ var listUsersCmd = &cobra.Command{
 		// filter by one param at most
 		switch {
 		case id > 0:
-			request.Id = uint64(id)
+			idStr := strconv.FormatInt(id, util.Base10)
+			params.Id = &idStr
 		case username != "":
-			request.Name = username
+			params.Name = &username
 		case email != "":
-			request.Email = email
+			params.Email = &email
 		}
 
-		response, err := client.ListUsers(ctx, request)
+		resp, err := client.ListUsersWithResponse(ctx, params)
 		if err != nil {
 			return fmt.Errorf("listing users: %w", err)
 		}
 
-		return printListOutput(cmd, response.GetUsers(), func() error {
-			rows := make([][]string, 0, len(response.GetUsers()))
-			for _, user := range response.GetUsers() {
+		if resp.StatusCode() != http.StatusOK {
+			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+		}
+
+		users := resp.JSON200.Users
+
+		return printListOutput(cmd, users, func() error {
+			rows := make([][]string, 0, len(users))
+			for _, user := range users {
 				rows = append(
 					rows,
 					[]string{
-						strconv.FormatUint(user.GetId(), util.Base10),
-						user.GetDisplayName(),
-						user.GetName(),
-						user.GetEmail(),
-						user.GetCreatedAt().AsTime().Format(HeadscaleDateTimeFormat),
+						user.Id,
+						user.DisplayName,
+						user.Name,
+						user.Email,
+						user.CreatedAt.Format(HeadscaleDateTimeFormat),
 					},
 				)
 			}
@@ -214,7 +240,7 @@ var renameUserCmd = &cobra.Command{
 	Use:     "rename",
 	Short:   "Renames a user",
 	Aliases: []string{"mv"},
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
 		id, _, err := resolveSingleUser(ctx, client, cmd)
 		if err != nil {
 			return err
@@ -222,16 +248,15 @@ var renameUserCmd = &cobra.Command{
 
 		newName, _ := cmd.Flags().GetString("new-name")
 
-		renameReq := &v1.RenameUserRequest{
-			OldId:   id,
-			NewName: newName,
-		}
-
-		response, err := client.RenameUser(ctx, renameReq)
+		resp, err := client.RenameUserWithResponse(ctx, strconv.FormatUint(id, util.Base10), newName)
 		if err != nil {
 			return fmt.Errorf("renaming user: %w", err)
 		}
 
-		return printOutput(cmd, response.GetUser(), "User renamed")
+		if resp.StatusCode() != http.StatusOK {
+			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+		}
+
+		return printOutput(cmd, resp.JSON200.User, "User renamed")
 	}),
 }

@@ -11,13 +11,12 @@ import (
 	"testing"
 	"time"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	clientv1 "github.com/juanfont/headscale/gen/client/v1"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // TestAPIAuthenticationBypass tests that the API authentication middleware
@@ -215,19 +214,19 @@ func TestAPIAuthenticationBypass(t *testing.T) {
 		assert.Equal(t, http.StatusOK, resp.StatusCode,
 			"Expected 200 status code with valid API key")
 
-		// Should be able to parse as protobuf JSON
-		var response v1.ListUsersResponse
+		// Should be able to parse as JSON
+		var response clientv1.ListUsersOutputBody
 
-		err = protojson.Unmarshal(body, &response)
-		require.NoError(t, err, "Response should be valid protobuf JSON with valid API key")
+		err = json.Unmarshal(body, &response)
+		require.NoError(t, err, "Response should be valid JSON with valid API key")
 
 		// Should contain our test users
-		users := response.GetUsers()
+		users := response.Users
 		assert.Len(t, users, 3, "Should have 3 users")
 
 		userNames := make([]string, len(users))
 		for i, u := range users {
-			userNames[i] = u.GetName()
+			userNames[i] = u.Name
 		}
 
 		assert.Contains(t, userNames, "user1")
@@ -406,12 +405,12 @@ func TestAPIAuthenticationBypassCurl(t *testing.T) {
 			"Curl with valid API key should return 200")
 
 		// Should contain user data
-		var response v1.ListUsersResponse
+		var response clientv1.ListUsersOutputBody
 
-		err = protojson.Unmarshal([]byte(responseBody), &response)
-		require.NoError(t, err, "Response should be valid protobuf JSON")
+		err = json.Unmarshal([]byte(responseBody), &response)
+		require.NoError(t, err, "Response should be valid JSON")
 
-		users := response.GetUsers()
+		users := response.Users
 		assert.Len(t, users, 2, "Should have 2 users")
 	})
 }
@@ -420,7 +419,7 @@ func TestAPIAuthenticationBypassCurl(t *testing.T) {
 // properly blocks unauthorized requests.
 // This test verifies that the gRPC API does not have the same bypass issue
 // as the HTTP API middleware.
-func TestGRPCAuthenticationBypass(t *testing.T) {
+func TestRemoteCLIAuthenticationBypass(t *testing.T) {
 	IntegrationSkip(t)
 
 	spec := ScenarioSpec{
@@ -432,14 +431,9 @@ func TestGRPCAuthenticationBypass(t *testing.T) {
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	// We need TLS for remote gRPC connections
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
-		hsic.WithTestName("grpcauthtest"),
-		hsic.WithConfigEnv(map[string]string{
-			// Enable gRPC on the standard port
-			"HEADSCALE_GRPC_LISTEN_ADDR": "0.0.0.0:50443",
-		}),
+		hsic.WithTestName("remotecliauth"),
 	)
 	require.NoError(t, err)
 
@@ -460,43 +454,44 @@ func TestGRPCAuthenticationBypass(t *testing.T) {
 
 	validAPIKey := strings.TrimSpace(apiKeyOutput)
 
-	// Get the gRPC endpoint
-	// For gRPC, we need to use the hostname and port 50443
-	grpcAddress := headscale.GetHostname() + ":50443"
+	// Get the remote HTTP API endpoint as host:port; the CLI dials it over TLS
+	// with --insecure to skip verification of the test certificate.
+	remoteAddr := strings.TrimPrefix(strings.TrimPrefix(headscale.GetEndpoint(), "https://"), "http://")
 
-	t.Run("gRPC_NoAPIKey", func(t *testing.T) {
+	t.Run("Remote_NoAPIKey", func(t *testing.T) {
 		// Test 1: Try to use CLI without API key (should fail)
 		// When HEADSCALE_CLI_ADDRESS is set but HEADSCALE_CLI_API_KEY is not set,
 		// the CLI should fail immediately
 		_, err := headscale.Execute(
 			[]string{
 				"sh", "-c",
-				fmt.Sprintf("HEADSCALE_CLI_ADDRESS=%s HEADSCALE_CLI_INSECURE=true headscale users list --output json 2>&1", grpcAddress),
+				fmt.Sprintf("HEADSCALE_CLI_ADDRESS=%s HEADSCALE_CLI_INSECURE=true headscale users list --output json 2>&1", remoteAddr),
 			},
 		)
 
 		// Should fail - CLI exits when API key is missing
 		assert.Error(t, err,
-			"gRPC connection without API key should fail")
+			"remote connection without API key should fail")
 	})
 
-	t.Run("gRPC_InvalidAPIKey", func(t *testing.T) {
+	t.Run("Remote_InvalidAPIKey", func(t *testing.T) {
 		// Test 2: Try to use CLI with invalid API key (should fail with auth error)
 		output, err := headscale.Execute(
 			[]string{
 				"sh", "-c",
-				fmt.Sprintf("HEADSCALE_CLI_ADDRESS=%s HEADSCALE_CLI_API_KEY=invalid-key-12345 HEADSCALE_CLI_INSECURE=true headscale users list --output json 2>&1", grpcAddress),
+				fmt.Sprintf("HEADSCALE_CLI_ADDRESS=%s HEADSCALE_CLI_API_KEY=invalid-key-12345 HEADSCALE_CLI_INSECURE=true headscale users list --output json 2>&1", remoteAddr),
 			},
 		)
 
 		// Should fail with authentication error
 		require.Error(t, err,
-			"gRPC connection with invalid API key should fail")
+			"remote connection with invalid API key should fail")
 
 		// Should contain authentication error message
 		outputStr := strings.ToLower(output)
 		assert.True(t,
-			strings.Contains(outputStr, "unauthenticated") ||
+			strings.Contains(outputStr, "unauthorized") ||
+				strings.Contains(outputStr, "unauthenticated") ||
 				strings.Contains(outputStr, "invalid token") ||
 				strings.Contains(outputStr, "validating token") ||
 				strings.Contains(outputStr, "authentication"),
@@ -504,27 +499,27 @@ func TestGRPCAuthenticationBypass(t *testing.T) {
 
 		// Should NOT leak user data
 		assert.NotContains(t, output, "grpcuser1",
-			"SECURITY ISSUE: gRPC should not leak user data with invalid auth")
+			"SECURITY ISSUE: remote API should not leak user data with invalid auth")
 		assert.NotContains(t, output, "grpcuser2",
-			"SECURITY ISSUE: gRPC should not leak user data with invalid auth")
+			"SECURITY ISSUE: remote API should not leak user data with invalid auth")
 	})
 
-	t.Run("gRPC_ValidAPIKey", func(t *testing.T) {
+	t.Run("Remote_ValidAPIKey", func(t *testing.T) {
 		// Test 3: Use CLI with valid API key (should succeed)
 		output, err := headscale.Execute(
 			[]string{
 				"sh", "-c",
-				fmt.Sprintf("HEADSCALE_CLI_ADDRESS=%s HEADSCALE_CLI_API_KEY=%s HEADSCALE_CLI_INSECURE=true headscale users list --output json", grpcAddress, validAPIKey),
+				fmt.Sprintf("HEADSCALE_CLI_ADDRESS=%s HEADSCALE_CLI_API_KEY=%s HEADSCALE_CLI_INSECURE=true headscale users list --output json", remoteAddr, validAPIKey),
 			},
 		)
 
 		// Should succeed
 		require.NoError(t, err,
-			"gRPC connection with valid API key should succeed, output: %s", output)
+			"remote connection with valid API key should succeed, output: %s", output)
 
-		// CLI outputs the users array directly, not wrapped in [v1.ListUsersResponse]
-		// Parse as JSON array (CLI uses [json.Marshal], not protojson)
-		var users []*v1.User
+		// CLI outputs the users array directly, not wrapped in a response object
+		// Parse as JSON array (CLI uses [json.Marshal])
+		var users []*clientv1.User
 
 		err = json.Unmarshal([]byte(output), &users)
 		require.NoError(t, err, "Response should be valid JSON array")
@@ -532,7 +527,7 @@ func TestGRPCAuthenticationBypass(t *testing.T) {
 
 		userNames := make([]string, len(users))
 		for i, u := range users {
-			userNames[i] = u.GetName()
+			userNames[i] = u.Name
 		}
 
 		assert.Contains(t, userNames, "grpcuser1")
@@ -544,7 +539,7 @@ func TestGRPCAuthenticationBypass(t *testing.T) {
 // with --config flag does not have authentication bypass issues when
 // connecting to a remote server.
 // Note: When using --config with local unix socket, no auth is needed.
-// This test focuses on remote gRPC connections which require API keys.
+// This test focuses on remote HTTP connections which require API keys.
 func TestCLIWithConfigAuthenticationBypass(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -560,9 +555,6 @@ func TestCLIWithConfigAuthenticationBypass(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
 		hsic.WithTestName("cliconfigauth"),
-		hsic.WithConfigEnv(map[string]string{
-			"HEADSCALE_GRPC_LISTEN_ADDR": "0.0.0.0:50443",
-		}),
 	)
 	require.NoError(t, err)
 
@@ -583,7 +575,9 @@ func TestCLIWithConfigAuthenticationBypass(t *testing.T) {
 
 	validAPIKey := strings.TrimSpace(apiKeyOutput)
 
-	grpcAddress := headscale.GetHostname() + ":50443"
+	// Remote HTTP API endpoint as host:port; the CLI dials it over TLS with
+	// insecure verification skipped for the test certificate.
+	remoteAddr := strings.TrimPrefix(strings.TrimPrefix(headscale.GetEndpoint(), "https://"), "http://")
 
 	// Create a config file for testing
 	configWithoutKey := fmt.Sprintf(`
@@ -591,7 +585,7 @@ cli:
   address: %s
   timeout: 5s
   insecure: true
-`, grpcAddress)
+`, remoteAddr)
 
 	configWithInvalidKey := fmt.Sprintf(`
 cli:
@@ -599,7 +593,7 @@ cli:
   api_key: invalid-key-12345
   timeout: 5s
   insecure: true
-`, grpcAddress)
+`, remoteAddr)
 
 	configWithValidKey := fmt.Sprintf(`
 cli:
@@ -607,7 +601,7 @@ cli:
   api_key: %s
   timeout: 5s
   insecure: true
-`, grpcAddress, validAPIKey)
+`, remoteAddr, validAPIKey)
 
 	t.Run("CLI_Config_NoAPIKey", func(t *testing.T) {
 		// Create config file without API key
@@ -649,7 +643,8 @@ cli:
 		// Should indicate authentication failure
 		outputStr := strings.ToLower(output)
 		assert.True(t,
-			strings.Contains(outputStr, "unauthenticated") ||
+			strings.Contains(outputStr, "unauthorized") ||
+				strings.Contains(outputStr, "unauthenticated") ||
 				strings.Contains(outputStr, "invalid token") ||
 				strings.Contains(outputStr, "validating token") ||
 				strings.Contains(outputStr, "authentication"),
@@ -681,9 +676,9 @@ cli:
 		require.NoError(t, err,
 			"CLI with valid API key should succeed")
 
-		// CLI outputs the users array directly, not wrapped in [v1.ListUsersResponse]
-		// Parse as JSON array (CLI uses [json.Marshal], not protojson)
-		var users []*v1.User
+		// CLI outputs the users array directly, not wrapped in a response object
+		// Parse as JSON array (CLI uses [json.Marshal])
+		var users []*clientv1.User
 
 		err = json.Unmarshal([]byte(output), &users)
 		require.NoError(t, err, "Response should be valid JSON array")
@@ -691,7 +686,7 @@ cli:
 
 		userNames := make([]string, len(users))
 		for i, u := range users {
-			userNames[i] = u.GetName()
+			userNames[i] = u.Name
 		}
 
 		assert.Contains(t, userNames, "cliuser1")

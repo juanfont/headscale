@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	clientv1 "github.com/juanfont/headscale/gen/client/v1"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/hsic"
@@ -67,19 +67,19 @@ func tagsEqual(actual, expected []string) bool {
 }
 
 // assertNodeHasTagsWithCollect asserts that a node has exactly the expected tags (order-independent).
-func assertNodeHasTagsWithCollect(c *assert.CollectT, node *v1.Node, expectedTags []string) {
-	actualTags := node.GetTags()
+func assertNodeHasTagsWithCollect(c *assert.CollectT, node *clientv1.Node, expectedTags []string) {
+	actualTags := node.Tags
 	sortedActual := append([]string{}, actualTags...)
 	sortedExpected := append([]string{}, expectedTags...)
 
 	sort.Strings(sortedActual)
 	sort.Strings(sortedExpected)
-	assert.Equal(c, sortedExpected, sortedActual, "Node %s tags mismatch", node.GetName())
+	assert.Equal(c, sortedExpected, sortedActual, "Node %s tags mismatch", node.Name)
 }
 
 // assertNodeHasNoTagsWithCollect asserts that a node has no tags.
-func assertNodeHasNoTagsWithCollect(c *assert.CollectT, node *v1.Node) {
-	assert.Empty(c, node.GetTags(), "Node %s should have no tags, but has: %v", node.GetName(), node.GetTags())
+func assertNodeHasNoTagsWithCollect(c *assert.CollectT, node *clientv1.Node) {
+	assert.Empty(c, node.Tags, "Node %s should have no tags, but has: %v", node.Name, node.Tags)
 }
 
 // assertNodeSelfHasTagsWithCollect asserts that a client's self view has exactly the expected tags.
@@ -148,12 +148,12 @@ func TestTagsAuthKeyWithTagRequestDifferentTag(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := mustParseID(userMap[tagTestUser].Id)
 
 	// Create a tagged PreAuthKey with tag:valid-owned
 	authKey, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})
 	require.NoError(t, err)
-	t.Logf("Created tagged PreAuthKey with tags: %v", authKey.GetAclTags())
+	t.Logf("Created tagged PreAuthKey with tags: %v", authKey.AclTags)
 
 	// Create a tailscale client that will try to use --advertise-tags with a DIFFERENT tag
 	client, err := scenario.CreateTailscaleNode(
@@ -164,7 +164,7 @@ func TestTagsAuthKeyWithTagRequestDifferentTag(t *testing.T) {
 	require.NoError(t, err)
 
 	// Login should fail because the advertised tags don't match the auth key's tags
-	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	err = client.Login(headscale.GetEndpoint(), authKey.Key)
 
 	// Document actual behavior - we expect this to fail
 	if err != nil {
@@ -180,7 +180,7 @@ func TestTagsAuthKeyWithTagRequestDifferentTag(t *testing.T) {
 			assert.NoError(c, err)
 
 			if len(nodes) == 1 {
-				t.Logf("Node registered with tags: %v (expected rejection)", nodes[0].GetTags())
+				t.Logf("Node registered with tags: %v (expected rejection)", nodes[0].Tags)
 			}
 		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "checking node state")
 
@@ -222,12 +222,12 @@ func TestTagsAuthKeyWithTagNoAdvertiseFlag(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := mustParseID(userMap[tagTestUser].Id)
 
 	// Create a tagged PreAuthKey with tag:valid-owned
 	authKey, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})
 	require.NoError(t, err)
-	t.Logf("Created tagged PreAuthKey with tags: %v", authKey.GetAclTags())
+	t.Logf("Created tagged PreAuthKey with tags: %v", authKey.AclTags)
 
 	// Create a tailscale client WITHOUT --advertise-tags
 	client, err := scenario.CreateTailscaleNode(
@@ -238,7 +238,7 @@ func TestTagsAuthKeyWithTagNoAdvertiseFlag(t *testing.T) {
 	require.NoError(t, err)
 
 	// Login with the tagged PreAuthKey
-	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	err = client.Login(headscale.GetEndpoint(), authKey.Key)
 	require.NoError(t, err)
 
 	// Wait for node to be registered and verify it has the key's tags
@@ -249,7 +249,7 @@ func TestTagsAuthKeyWithTagNoAdvertiseFlag(t *testing.T) {
 
 		if len(nodes) == 1 {
 			node := nodes[0]
-			t.Logf("Node registered with tags: %v", node.GetTags())
+			t.Logf("Node registered with tags: %v", node.Tags)
 			assertNodeHasTagsWithCollect(c, node, []string{"tag:valid-owned"})
 		}
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "verifying node inherited tags from auth key")
@@ -294,7 +294,7 @@ func TestTagsAuthKeyWithTagCannotAddViaCLI(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := mustParseID(userMap[tagTestUser].Id)
 
 	// Create a tagged PreAuthKey with tag:valid-owned
 	authKey, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})
@@ -308,7 +308,7 @@ func TestTagsAuthKeyWithTagCannotAddViaCLI(t *testing.T) {
 	require.NoError(t, err)
 
 	// Initial login
-	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	err = client.Login(headscale.GetEndpoint(), authKey.Key)
 	require.NoError(t, err)
 
 	// Wait for initial registration
@@ -328,7 +328,7 @@ func TestTagsAuthKeyWithTagCannotAddViaCLI(t *testing.T) {
 	command := []string{
 		"tailscale", "up",
 		"--login-server=" + headscale.GetEndpoint(),
-		"--authkey=" + authKey.GetKey(),
+		"--authkey=" + authKey.Key,
 		"--advertise-tags=tag:valid-owned,tag:second",
 	}
 	_, stderr, err := client.Execute(command)
@@ -346,10 +346,10 @@ func TestTagsAuthKeyWithTagCannotAddViaCLI(t *testing.T) {
 
 			if len(nodes) == 1 {
 				// If still only has original tag, that's the expected behavior
-				if tagsEqual(nodes[0].GetTags(), []string{"tag:valid-owned"}) {
-					t.Logf("Test 2.3 PASS: Tags unchanged after CLI attempt: %v", nodes[0].GetTags())
+				if tagsEqual(nodes[0].Tags, []string{"tag:valid-owned"}) {
+					t.Logf("Test 2.3 PASS: Tags unchanged after CLI attempt: %v", nodes[0].Tags)
 				} else {
-					t.Logf("Test 2.3 FAIL: Tags changed unexpectedly to: %v", nodes[0].GetTags())
+					t.Logf("Test 2.3 FAIL: Tags changed unexpectedly to: %v", nodes[0].Tags)
 					assert.Fail(c, "Tags should not have changed")
 				}
 			}
@@ -394,7 +394,7 @@ func TestTagsAuthKeyWithTagCannotChangeViaCLI(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := mustParseID(userMap[tagTestUser].Id)
 
 	// Create a tagged PreAuthKey with tag:valid-owned
 	authKey, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})
@@ -408,7 +408,7 @@ func TestTagsAuthKeyWithTagCannotChangeViaCLI(t *testing.T) {
 	require.NoError(t, err)
 
 	// Initial login
-	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	err = client.Login(headscale.GetEndpoint(), authKey.Key)
 	require.NoError(t, err)
 
 	// Wait for initial registration
@@ -424,7 +424,7 @@ func TestTagsAuthKeyWithTagCannotChangeViaCLI(t *testing.T) {
 	command := []string{
 		"tailscale", "up",
 		"--login-server=" + headscale.GetEndpoint(),
-		"--authkey=" + authKey.GetKey(),
+		"--authkey=" + authKey.Key,
 		"--advertise-tags=tag:second",
 	}
 	_, stderr, err := client.Execute(command)
@@ -441,10 +441,10 @@ func TestTagsAuthKeyWithTagCannotChangeViaCLI(t *testing.T) {
 			assert.NoError(c, err)
 
 			if len(nodes) == 1 {
-				if tagsEqual(nodes[0].GetTags(), []string{"tag:valid-owned"}) {
-					t.Logf("Test 2.4 PASS: Tags unchanged: %v", nodes[0].GetTags())
+				if tagsEqual(nodes[0].Tags, []string{"tag:valid-owned"}) {
+					t.Logf("Test 2.4 PASS: Tags unchanged: %v", nodes[0].Tags)
 				} else {
-					t.Logf("Test 2.4 FAIL: Tags changed unexpectedly to: %v", nodes[0].GetTags())
+					t.Logf("Test 2.4 FAIL: Tags changed unexpectedly to: %v", nodes[0].Tags)
 					assert.Fail(c, "Tags should not have changed")
 				}
 			}
@@ -490,7 +490,7 @@ func TestTagsAuthKeyWithTagAdminOverrideReauthPreserves(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := mustParseID(userMap[tagTestUser].Id)
 
 	// Create a tagged PreAuthKey with tag:valid-owned
 	authKey, err := scenario.CreatePreAuthKeyWithTags(userID, true, false, []string{"tag:valid-owned"})
@@ -504,7 +504,7 @@ func TestTagsAuthKeyWithTagAdminOverrideReauthPreserves(t *testing.T) {
 	require.NoError(t, err)
 
 	// Initial login
-	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	err = client.Login(headscale.GetEndpoint(), authKey.Key)
 	require.NoError(t, err)
 
 	// Wait for initial registration and get node ID
@@ -516,7 +516,7 @@ func TestTagsAuthKeyWithTagAdminOverrideReauthPreserves(t *testing.T) {
 		assert.Len(c, nodes, 1)
 
 		if len(nodes) == 1 {
-			nodeID = nodes[0].GetId()
+			nodeID = mustParseID(nodes[0].Id)
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
 		}
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "waiting for initial registration")
@@ -533,7 +533,7 @@ func TestTagsAuthKeyWithTagAdminOverrideReauthPreserves(t *testing.T) {
 		assert.NoError(c, err)
 
 		if len(nodes) == 1 {
-			t.Logf("After admin assignment, server tags are: %v", nodes[0].GetTags())
+			t.Logf("After admin assignment, server tags are: %v", nodes[0].Tags)
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:second"})
 		}
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "verifying admin tag assignment on server")
@@ -549,7 +549,7 @@ func TestTagsAuthKeyWithTagAdminOverrideReauthPreserves(t *testing.T) {
 	command := []string{
 		"tailscale", "up",
 		"--login-server=" + headscale.GetEndpoint(),
-		"--authkey=" + authKey.GetKey(),
+		"--authkey=" + authKey.Key,
 		"--force-reauth",
 	}
 	//nolint:errcheck // Intentionally ignoring error - we check results below
@@ -564,7 +564,7 @@ func TestTagsAuthKeyWithTagAdminOverrideReauthPreserves(t *testing.T) {
 		if len(nodes) >= 1 {
 			// Find the most recently updated node (in case a new one was created)
 			node := nodes[len(nodes)-1]
-			t.Logf("After reauth, server tags are: %v", node.GetTags())
+			t.Logf("After reauth, server tags are: %v", node.Tags)
 
 			// Expected: admin-assigned tags are preserved through reauth
 			assertNodeHasTagsWithCollect(c, node, []string{"tag:second"})
@@ -617,7 +617,7 @@ func TestTagsAuthKeyWithTagCLICannotModifyAdminTags(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := mustParseID(userMap[tagTestUser].Id)
 
 	// Create a tagged PreAuthKey with tag:valid-owned
 	authKey, err := scenario.CreatePreAuthKeyWithTags(userID, true, false, []string{"tag:valid-owned"})
@@ -631,7 +631,7 @@ func TestTagsAuthKeyWithTagCLICannotModifyAdminTags(t *testing.T) {
 	require.NoError(t, err)
 
 	// Initial login
-	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	err = client.Login(headscale.GetEndpoint(), authKey.Key)
 	require.NoError(t, err)
 
 	// Wait for initial registration and get node ID
@@ -643,7 +643,7 @@ func TestTagsAuthKeyWithTagCLICannotModifyAdminTags(t *testing.T) {
 		assert.Len(c, nodes, 1)
 
 		if len(nodes) == 1 {
-			nodeID = nodes[0].GetId()
+			nodeID = mustParseID(nodes[0].Id)
 		}
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "waiting for initial registration")
 
@@ -672,7 +672,7 @@ func TestTagsAuthKeyWithTagCLICannotModifyAdminTags(t *testing.T) {
 	command := []string{
 		"tailscale", "up",
 		"--login-server=" + headscale.GetEndpoint(),
-		"--authkey=" + authKey.GetKey(),
+		"--authkey=" + authKey.Key,
 		"--advertise-tags=tag:valid-owned",
 	}
 	_, stderr, err := client.Execute(command)
@@ -686,7 +686,7 @@ func TestTagsAuthKeyWithTagCLICannotModifyAdminTags(t *testing.T) {
 		assert.Len(c, nodes, 1, "Should have exactly 1 node")
 
 		if len(nodes) == 1 {
-			t.Logf("After CLI attempt, server tags are: %v", nodes[0].GetTags())
+			t.Logf("After CLI attempt, server tags are: %v", nodes[0].Tags)
 
 			// Expected: tags should remain unchanged (admin wins)
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned", "tag:second"})
@@ -739,7 +739,7 @@ func TestTagsAuthKeyWithoutTagCannotRequestTags(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := mustParseID(userMap[tagTestUser].Id)
 
 	// Create an auth key WITHOUT tags
 	authKey, err := scenario.CreatePreAuthKey(userID, false, false)
@@ -755,7 +755,7 @@ func TestTagsAuthKeyWithoutTagCannotRequestTags(t *testing.T) {
 	require.NoError(t, err)
 
 	// Login should fail because the auth key has no tags
-	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	err = client.Login(headscale.GetEndpoint(), authKey.Key)
 	if err != nil {
 		t.Logf("Test 3.1 PASS: Registration correctly rejected: %v", err)
 		assert.ErrorContains(t, err, "requested tags")
@@ -768,7 +768,7 @@ func TestTagsAuthKeyWithoutTagCannotRequestTags(t *testing.T) {
 			assert.NoError(c, err)
 
 			if len(nodes) == 1 {
-				t.Logf("Node registered with tags: %v (expected rejection)", nodes[0].GetTags())
+				t.Logf("Node registered with tags: %v (expected rejection)", nodes[0].Tags)
 			}
 		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "checking node state")
 
@@ -810,7 +810,7 @@ func TestTagsAuthKeyWithoutTagRegisterNoTags(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := mustParseID(userMap[tagTestUser].Id)
 
 	// Create an auth key WITHOUT tags
 	authKey, err := scenario.CreatePreAuthKey(userID, false, false)
@@ -824,7 +824,7 @@ func TestTagsAuthKeyWithoutTagRegisterNoTags(t *testing.T) {
 	require.NoError(t, err)
 
 	// Login should succeed
-	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	err = client.Login(headscale.GetEndpoint(), authKey.Key)
 	require.NoError(t, err)
 
 	// Verify node has no tags
@@ -834,7 +834,7 @@ func TestTagsAuthKeyWithoutTagRegisterNoTags(t *testing.T) {
 		assert.Len(c, nodes, 1)
 
 		if len(nodes) == 1 {
-			t.Logf("Node registered with tags: %v", nodes[0].GetTags())
+			t.Logf("Node registered with tags: %v", nodes[0].Tags)
 			assertNodeHasNoTagsWithCollect(c, nodes[0])
 		}
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "verifying node has no tags")
@@ -879,7 +879,7 @@ func TestTagsAuthKeyWithoutTagCannotAddViaCLI(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := mustParseID(userMap[tagTestUser].Id)
 
 	// Create an auth key WITHOUT tags
 	authKey, err := scenario.CreatePreAuthKey(userID, true, false)
@@ -893,7 +893,7 @@ func TestTagsAuthKeyWithoutTagCannotAddViaCLI(t *testing.T) {
 	require.NoError(t, err)
 
 	// Initial login
-	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	err = client.Login(headscale.GetEndpoint(), authKey.Key)
 	require.NoError(t, err)
 
 	// Wait for initial registration
@@ -913,7 +913,7 @@ func TestTagsAuthKeyWithoutTagCannotAddViaCLI(t *testing.T) {
 	command := []string{
 		"tailscale", "up",
 		"--login-server=" + headscale.GetEndpoint(),
-		"--authkey=" + authKey.GetKey(),
+		"--authkey=" + authKey.Key,
 		"--advertise-tags=tag:valid-owned",
 	}
 	_, stderr, err := client.Execute(command)
@@ -929,10 +929,10 @@ func TestTagsAuthKeyWithoutTagCannotAddViaCLI(t *testing.T) {
 			assert.NoError(c, err)
 
 			if len(nodes) == 1 {
-				if len(nodes[0].GetTags()) == 0 {
+				if len(nodes[0].Tags) == 0 {
 					t.Logf("Test 3.3 PASS: Tags still empty after CLI attempt")
 				} else {
-					t.Logf("Test 3.3 FAIL: Tags changed to: %v", nodes[0].GetTags())
+					t.Logf("Test 3.3 FAIL: Tags changed to: %v", nodes[0].Tags)
 					assert.Fail(c, "Tags should not have changed")
 				}
 			}
@@ -978,7 +978,7 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithReset(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := mustParseID(userMap[tagTestUser].Id)
 
 	// Create an auth key WITHOUT tags
 	authKey, err := scenario.CreatePreAuthKey(userID, true, false)
@@ -992,7 +992,7 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithReset(t *testing.T) {
 	require.NoError(t, err)
 
 	// Initial login
-	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	err = client.Login(headscale.GetEndpoint(), authKey.Key)
 	require.NoError(t, err)
 
 	// Wait for initial registration and get node ID
@@ -1004,7 +1004,7 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithReset(t *testing.T) {
 		assert.Len(c, nodes, 1)
 
 		if len(nodes) == 1 {
-			nodeID = nodes[0].GetId()
+			nodeID = mustParseID(nodes[0].Id)
 			assertNodeHasNoTagsWithCollect(c, nodes[0])
 		}
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "waiting for initial registration")
@@ -1034,7 +1034,7 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithReset(t *testing.T) {
 	command := []string{
 		"tailscale", "up",
 		"--login-server=" + headscale.GetEndpoint(),
-		"--authkey=" + authKey.GetKey(),
+		"--authkey=" + authKey.Key,
 		"--reset",
 	}
 	_, stderr, err := client.Execute(command)
@@ -1047,7 +1047,7 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithReset(t *testing.T) {
 		assert.Len(c, nodes, 1, "Should have exactly 1 node")
 
 		if len(nodes) == 1 {
-			t.Logf("After --reset, server tags are: %v", nodes[0].GetTags())
+			t.Logf("After --reset, server tags are: %v", nodes[0].Tags)
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
 		}
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "admin tags should be preserved after --reset on server")
@@ -1098,7 +1098,7 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithEmptyAdvertise(t *testing.T) 
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := mustParseID(userMap[tagTestUser].Id)
 
 	// Create an auth key WITHOUT tags
 	authKey, err := scenario.CreatePreAuthKey(userID, true, false)
@@ -1112,7 +1112,7 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithEmptyAdvertise(t *testing.T) 
 	require.NoError(t, err)
 
 	// Initial login
-	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	err = client.Login(headscale.GetEndpoint(), authKey.Key)
 	require.NoError(t, err)
 
 	// Wait for initial registration and get node ID
@@ -1124,7 +1124,7 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithEmptyAdvertise(t *testing.T) 
 		assert.Len(c, nodes, 1)
 
 		if len(nodes) == 1 {
-			nodeID = nodes[0].GetId()
+			nodeID = mustParseID(nodes[0].Id)
 		}
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "waiting for initial registration")
 
@@ -1153,7 +1153,7 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithEmptyAdvertise(t *testing.T) 
 	command := []string{
 		"tailscale", "up",
 		"--login-server=" + headscale.GetEndpoint(),
-		"--authkey=" + authKey.GetKey(),
+		"--authkey=" + authKey.Key,
 		"--advertise-tags=",
 	}
 	_, stderr, err := client.Execute(command)
@@ -1166,7 +1166,7 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithEmptyAdvertise(t *testing.T) 
 		assert.Len(c, nodes, 1, "Should have exactly 1 node")
 
 		if len(nodes) == 1 {
-			t.Logf("After empty --advertise-tags, server tags are: %v", nodes[0].GetTags())
+			t.Logf("After empty --advertise-tags, server tags are: %v", nodes[0].Tags)
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
 		}
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "admin tags should be preserved after empty --advertise-tags on server")
@@ -1217,7 +1217,7 @@ func TestTagsAuthKeyWithoutTagCLICannotReduceAdminMultiTag(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := mustParseID(userMap[tagTestUser].Id)
 
 	// Create an auth key WITHOUT tags
 	authKey, err := scenario.CreatePreAuthKey(userID, true, false)
@@ -1231,7 +1231,7 @@ func TestTagsAuthKeyWithoutTagCLICannotReduceAdminMultiTag(t *testing.T) {
 	require.NoError(t, err)
 
 	// Initial login
-	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	err = client.Login(headscale.GetEndpoint(), authKey.Key)
 	require.NoError(t, err)
 
 	// Wait for initial registration and get node ID
@@ -1243,7 +1243,7 @@ func TestTagsAuthKeyWithoutTagCLICannotReduceAdminMultiTag(t *testing.T) {
 		assert.Len(c, nodes, 1)
 
 		if len(nodes) == 1 {
-			nodeID = nodes[0].GetId()
+			nodeID = mustParseID(nodes[0].Id)
 		}
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "waiting for initial registration")
 
@@ -1272,7 +1272,7 @@ func TestTagsAuthKeyWithoutTagCLICannotReduceAdminMultiTag(t *testing.T) {
 	command := []string{
 		"tailscale", "up",
 		"--login-server=" + headscale.GetEndpoint(),
-		"--authkey=" + authKey.GetKey(),
+		"--authkey=" + authKey.Key,
 		"--advertise-tags=tag:valid-owned",
 	}
 	_, stderr, err := client.Execute(command)
@@ -1285,7 +1285,7 @@ func TestTagsAuthKeyWithoutTagCLICannotReduceAdminMultiTag(t *testing.T) {
 		assert.Len(c, nodes, 1, "Should have exactly 1 node")
 
 		if len(nodes) == 1 {
-			t.Logf("After CLI reduce attempt, server tags are: %v", nodes[0].GetTags())
+			t.Logf("After CLI reduce attempt, server tags are: %v", nodes[0].Tags)
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned", "tag:second"})
 		}
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "admin tags should be preserved after CLI reduce attempt on server")
@@ -1366,7 +1366,7 @@ func TestTagsUserLoginOwnedTagAtRegistration(t *testing.T) {
 		assert.Len(c, nodes, 1, "Should have exactly 1 node")
 
 		if len(nodes) == 1 {
-			t.Logf("Node registered with tags: %v", nodes[0].GetTags())
+			t.Logf("Node registered with tags: %v", nodes[0].Tags)
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
 		}
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "verifying node has advertised tag")
@@ -1438,9 +1438,9 @@ func TestTagsUserLoginNonExistentTagAtRegistration(t *testing.T) {
 				t.Logf("Test 1.2 PASS: Registration rejected - no nodes registered")
 			} else {
 				// If a node was registered, it should NOT have the non-existent tag
-				assert.NotContains(c, nodes[0].GetTags(), "tag:nonexistent",
+				assert.NotContains(c, nodes[0].Tags, "tag:nonexistent",
 					"Non-existent tag should not be applied to node")
-				t.Logf("Test 1.2: Node registered with tags: %v (non-existent tag correctly rejected)", nodes[0].GetTags())
+				t.Logf("Test 1.2: Node registered with tags: %v (non-existent tag correctly rejected)", nodes[0].Tags)
 			}
 		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "checking node registration result")
 	}
@@ -1506,9 +1506,9 @@ func TestTagsUserLoginUnownedTagAtRegistration(t *testing.T) {
 			t.Logf("Test 1.3 PASS: Registration rejected - no nodes registered")
 		} else {
 			// If a node was registered, it should NOT have the unowned tag
-			assert.NotContains(c, nodes[0].GetTags(), "tag:valid-unowned",
+			assert.NotContains(c, nodes[0].Tags, "tag:valid-unowned",
 				"Unowned tag should not be applied to node (tag:valid-unowned is owned by other-user)")
-			t.Logf("Test 1.3: Node registered with tags: %v (unowned tag correctly rejected)", nodes[0].GetTags())
+			t.Logf("Test 1.3: Node registered with tags: %v (unowned tag correctly rejected)", nodes[0].Tags)
 		}
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "checking node registration result")
 }
@@ -1572,7 +1572,7 @@ func TestTagsUserLoginAddTagViaCLIReauth(t *testing.T) {
 		assert.NoError(c, err)
 
 		if len(nodes) == 1 {
-			t.Logf("Initial tags: %v", nodes[0].GetTags())
+			t.Logf("Initial tags: %v", nodes[0].Tags)
 		}
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "checking initial tags")
 
@@ -1593,12 +1593,12 @@ func TestTagsUserLoginAddTagViaCLIReauth(t *testing.T) {
 		assert.NoError(c, err)
 
 		if len(nodes) >= 1 {
-			t.Logf("Test 1.4: After CLI, tags are: %v", nodes[0].GetTags())
+			t.Logf("Test 1.4: After CLI, tags are: %v", nodes[0].Tags)
 
-			if tagsEqual(nodes[0].GetTags(), []string{"tag:valid-owned", "tag:second"}) {
+			if tagsEqual(nodes[0].Tags, []string{"tag:valid-owned", "tag:second"}) {
 				t.Logf("Test 1.4 PASS: Both tags present after reauth")
 			} else {
-				t.Logf("Test 1.4: Tags are %v (may require manual reauth completion)", nodes[0].GetTags())
+				t.Logf("Test 1.4: Tags are %v (may require manual reauth completion)", nodes[0].Tags)
 			}
 		}
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "checking tags after CLI")
@@ -1663,7 +1663,7 @@ func TestTagsUserLoginRemoveTagViaCLIReauth(t *testing.T) {
 		assert.NoError(c, err)
 
 		if len(nodes) == 1 {
-			t.Logf("Initial tags: %v", nodes[0].GetTags())
+			t.Logf("Initial tags: %v", nodes[0].Tags)
 		}
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "checking initial tags")
 
@@ -1684,9 +1684,9 @@ func TestTagsUserLoginRemoveTagViaCLIReauth(t *testing.T) {
 		assert.NoError(c, err)
 
 		if len(nodes) >= 1 {
-			t.Logf("Test 1.5: After CLI, tags are: %v", nodes[0].GetTags())
+			t.Logf("Test 1.5: After CLI, tags are: %v", nodes[0].Tags)
 
-			if tagsEqual(nodes[0].GetTags(), []string{"tag:valid-owned"}) {
+			if tagsEqual(nodes[0].Tags, []string{"tag:valid-owned"}) {
 				t.Logf("Test 1.5 PASS: Only one tag after removal")
 			}
 		}
@@ -1757,8 +1757,8 @@ func TestTagsUserLoginCLINoOpAfterAdminAssignment(t *testing.T) {
 		assert.Len(c, nodes, 1)
 
 		if len(nodes) == 1 {
-			nodeID = nodes[0].GetId()
-			t.Logf("Step 1: Node %d registered with tags: %v", nodeID, nodes[0].GetTags())
+			nodeID = mustParseID(nodes[0].Id)
+			t.Logf("Step 1: Node %d registered with tags: %v", nodeID, nodes[0].Tags)
 		}
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "waiting for initial registration")
 
@@ -1772,7 +1772,7 @@ func TestTagsUserLoginCLINoOpAfterAdminAssignment(t *testing.T) {
 		assert.NoError(c, err)
 
 		if len(nodes) == 1 {
-			t.Logf("Step 2: After admin assignment, server tags: %v", nodes[0].GetTags())
+			t.Logf("Step 2: After admin assignment, server tags: %v", nodes[0].Tags)
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:second"})
 		}
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "verifying admin assignment on server")
@@ -1798,7 +1798,7 @@ func TestTagsUserLoginCLINoOpAfterAdminAssignment(t *testing.T) {
 		assert.Len(c, nodes, 1, "Should have exactly 1 node")
 
 		if len(nodes) == 1 {
-			t.Logf("Step 3: After CLI, server tags are: %v", nodes[0].GetTags())
+			t.Logf("Step 3: After CLI, server tags are: %v", nodes[0].Tags)
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:second"})
 		}
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "admin tags should be preserved - CLI advertise-tags should be no-op on server")
@@ -1874,7 +1874,7 @@ func TestTagsUserLoginCLICannotRemoveAdminTags(t *testing.T) {
 		assert.Len(c, nodes, 1)
 
 		if len(nodes) == 1 {
-			nodeID = nodes[0].GetId()
+			nodeID = mustParseID(nodes[0].Id)
 		}
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "waiting for initial registration")
 
@@ -1888,7 +1888,7 @@ func TestTagsUserLoginCLICannotRemoveAdminTags(t *testing.T) {
 		assert.NoError(c, err)
 
 		if len(nodes) == 1 {
-			t.Logf("After admin assignment, server tags: %v", nodes[0].GetTags())
+			t.Logf("After admin assignment, server tags: %v", nodes[0].Tags)
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned", "tag:second"})
 		}
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "verifying admin assignment on server")
@@ -1914,7 +1914,7 @@ func TestTagsUserLoginCLICannotRemoveAdminTags(t *testing.T) {
 		assert.Len(c, nodes, 1, "Should have exactly 1 node")
 
 		if len(nodes) == 1 {
-			t.Logf("Test 1.7: After CLI, server tags are: %v", nodes[0].GetTags())
+			t.Logf("Test 1.7: After CLI, server tags are: %v", nodes[0].Tags)
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned", "tag:second"})
 		}
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "admin tags should be preserved - CLI cannot remove them on server")
@@ -1965,12 +1965,12 @@ func TestTagsAuthKeyWithTagRequestNonExistentTag(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := mustParseID(userMap[tagTestUser].Id)
 
 	// Create a tagged PreAuthKey with tag:valid-owned
 	authKey, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})
 	require.NoError(t, err)
-	t.Logf("Created tagged PreAuthKey with tags: %v", authKey.GetAclTags())
+	t.Logf("Created tagged PreAuthKey with tags: %v", authKey.AclTags)
 
 	// Create a tailscale client that will try to use --advertise-tags with a NON-EXISTENT tag
 	client, err := scenario.CreateTailscaleNode(
@@ -1981,7 +1981,7 @@ func TestTagsAuthKeyWithTagRequestNonExistentTag(t *testing.T) {
 	require.NoError(t, err)
 
 	// Login should fail because ANY advertise-tags is rejected for PreAuthKey registrations
-	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	err = client.Login(headscale.GetEndpoint(), authKey.Key)
 	if err != nil {
 		t.Logf("Test 2.7 PASS: Registration correctly rejected with error: %v", err)
 		assert.ErrorContains(t, err, "requested tags")
@@ -1993,7 +1993,7 @@ func TestTagsAuthKeyWithTagRequestNonExistentTag(t *testing.T) {
 			assert.NoError(c, err)
 
 			if len(nodes) == 1 {
-				t.Logf("Node registered with tags: %v (expected rejection)", nodes[0].GetTags())
+				t.Logf("Node registered with tags: %v (expected rejection)", nodes[0].Tags)
 			}
 		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "checking node state")
 
@@ -2035,12 +2035,12 @@ func TestTagsAuthKeyWithTagRequestUnownedTag(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := mustParseID(userMap[tagTestUser].Id)
 
 	// Create a tagged PreAuthKey with tag:valid-owned
 	authKey, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})
 	require.NoError(t, err)
-	t.Logf("Created tagged PreAuthKey with tags: %v", authKey.GetAclTags())
+	t.Logf("Created tagged PreAuthKey with tags: %v", authKey.AclTags)
 
 	// Create a tailscale client that will try to use --advertise-tags with an UNOWNED tag
 	client, err := scenario.CreateTailscaleNode(
@@ -2051,7 +2051,7 @@ func TestTagsAuthKeyWithTagRequestUnownedTag(t *testing.T) {
 	require.NoError(t, err)
 
 	// Login should fail because ANY advertise-tags is rejected for PreAuthKey registrations
-	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	err = client.Login(headscale.GetEndpoint(), authKey.Key)
 	if err != nil {
 		t.Logf("Test 2.8 PASS: Registration correctly rejected with error: %v", err)
 		assert.ErrorContains(t, err, "requested tags")
@@ -2063,7 +2063,7 @@ func TestTagsAuthKeyWithTagRequestUnownedTag(t *testing.T) {
 			assert.NoError(c, err)
 
 			if len(nodes) == 1 {
-				t.Logf("Node registered with tags: %v (expected rejection)", nodes[0].GetTags())
+				t.Logf("Node registered with tags: %v (expected rejection)", nodes[0].Tags)
 			}
 		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "checking node state")
 
@@ -2109,7 +2109,7 @@ func TestTagsAuthKeyWithoutTagRequestNonExistentTag(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := mustParseID(userMap[tagTestUser].Id)
 
 	// Create an auth key WITHOUT tags
 	authKey, err := scenario.CreatePreAuthKey(userID, false, false)
@@ -2125,7 +2125,7 @@ func TestTagsAuthKeyWithoutTagRequestNonExistentTag(t *testing.T) {
 	require.NoError(t, err)
 
 	// Login should fail because ANY advertise-tags is rejected for PreAuthKey registrations
-	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	err = client.Login(headscale.GetEndpoint(), authKey.Key)
 	if err != nil {
 		t.Logf("Test 3.7 PASS: Registration correctly rejected: %v", err)
 		assert.ErrorContains(t, err, "requested tags")
@@ -2137,7 +2137,7 @@ func TestTagsAuthKeyWithoutTagRequestNonExistentTag(t *testing.T) {
 			assert.NoError(c, err)
 
 			if len(nodes) == 1 {
-				t.Logf("Node registered with tags: %v (expected rejection)", nodes[0].GetTags())
+				t.Logf("Node registered with tags: %v (expected rejection)", nodes[0].Tags)
 			}
 		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "checking node state")
 
@@ -2179,7 +2179,7 @@ func TestTagsAuthKeyWithoutTagRequestUnownedTag(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := mustParseID(userMap[tagTestUser].Id)
 
 	// Create an auth key WITHOUT tags
 	authKey, err := scenario.CreatePreAuthKey(userID, false, false)
@@ -2195,7 +2195,7 @@ func TestTagsAuthKeyWithoutTagRequestUnownedTag(t *testing.T) {
 	require.NoError(t, err)
 
 	// Login should fail because ANY advertise-tags is rejected for PreAuthKey registrations
-	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	err = client.Login(headscale.GetEndpoint(), authKey.Key)
 	if err != nil {
 		t.Logf("Test 3.8 PASS: Registration correctly rejected: %v", err)
 		assert.ErrorContains(t, err, "requested tags")
@@ -2207,7 +2207,7 @@ func TestTagsAuthKeyWithoutTagRequestUnownedTag(t *testing.T) {
 			assert.NoError(c, err)
 
 			if len(nodes) == 1 {
-				t.Logf("Node registered with tags: %v (expected rejection)", nodes[0].GetTags())
+				t.Logf("Node registered with tags: %v (expected rejection)", nodes[0].Tags)
 			}
 		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "checking node state")
 
@@ -2253,7 +2253,7 @@ func TestTagsAdminAPICannotSetNonExistentTag(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := mustParseID(userMap[tagTestUser].Id)
 
 	// Create a tagged PreAuthKey to register a node
 	authKey, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})
@@ -2266,7 +2266,7 @@ func TestTagsAdminAPICannotSetNonExistentTag(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	err = client.Login(headscale.GetEndpoint(), authKey.Key)
 	require.NoError(t, err)
 
 	// Wait for registration and get node ID
@@ -2278,8 +2278,8 @@ func TestTagsAdminAPICannotSetNonExistentTag(t *testing.T) {
 		assert.Len(c, nodes, 1)
 
 		if len(nodes) == 1 {
-			nodeID = nodes[0].GetId()
-			t.Logf("Node %d registered with tags: %v", nodeID, nodes[0].GetTags())
+			nodeID = mustParseID(nodes[0].Id)
+			t.Logf("Node %d registered with tags: %v", nodeID, nodes[0].Tags)
 		}
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "waiting for registration")
 
@@ -2325,7 +2325,7 @@ func TestTagsAdminAPICanSetUnownedTag(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := mustParseID(userMap[tagTestUser].Id)
 
 	// Create a tagged PreAuthKey to register a node
 	authKey, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})
@@ -2338,7 +2338,7 @@ func TestTagsAdminAPICanSetUnownedTag(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	err = client.Login(headscale.GetEndpoint(), authKey.Key)
 	require.NoError(t, err)
 
 	// Wait for registration and get node ID
@@ -2350,8 +2350,8 @@ func TestTagsAdminAPICanSetUnownedTag(t *testing.T) {
 		assert.Len(c, nodes, 1)
 
 		if len(nodes) == 1 {
-			nodeID = nodes[0].GetId()
-			t.Logf("Node %d registered with tags: %v", nodeID, nodes[0].GetTags())
+			nodeID = mustParseID(nodes[0].Id)
+			t.Logf("Node %d registered with tags: %v", nodeID, nodes[0].Tags)
 		}
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "waiting for registration")
 
@@ -2413,7 +2413,7 @@ func TestTagsAdminAPICannotRemoveAllTags(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := mustParseID(userMap[tagTestUser].Id)
 
 	// Create a tagged PreAuthKey to register a node
 	authKey, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})
@@ -2426,7 +2426,7 @@ func TestTagsAdminAPICannotRemoveAllTags(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	err = client.Login(headscale.GetEndpoint(), authKey.Key)
 	require.NoError(t, err)
 
 	// Wait for registration and get node ID
@@ -2438,8 +2438,8 @@ func TestTagsAdminAPICannotRemoveAllTags(t *testing.T) {
 		assert.Len(c, nodes, 1)
 
 		if len(nodes) == 1 {
-			nodeID = nodes[0].GetId()
-			t.Logf("Node %d registered with tags: %v", nodeID, nodes[0].GetTags())
+			nodeID = mustParseID(nodes[0].Id)
+			t.Logf("Node %d registered with tags: %v", nodeID, nodes[0].Tags)
 		}
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "waiting for registration")
 
@@ -2560,7 +2560,7 @@ func TestTagsIssue2978ReproTagReplacement(t *testing.T) {
 		assert.Len(c, nodes, 1)
 
 		if len(nodes) == 1 {
-			nodeID = nodes[0].GetId()
+			nodeID = mustParseID(nodes[0].Id)
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
 		}
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "waiting for initial registration")
@@ -2735,7 +2735,7 @@ func TestTagsAdminAPICannotSetInvalidFormat(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := mustParseID(userMap[tagTestUser].Id)
 
 	// Create a tagged PreAuthKey to register a node
 	authKey, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})
@@ -2748,7 +2748,7 @@ func TestTagsAdminAPICannotSetInvalidFormat(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	err = client.Login(headscale.GetEndpoint(), authKey.Key)
 	require.NoError(t, err)
 
 	// Wait for registration and get node ID
@@ -2760,8 +2760,8 @@ func TestTagsAdminAPICannotSetInvalidFormat(t *testing.T) {
 		assert.Len(c, nodes, 1)
 
 		if len(nodes) == 1 {
-			nodeID = nodes[0].GetId()
-			t.Logf("Node %d registered with tags: %v", nodeID, nodes[0].GetTags())
+			nodeID = mustParseID(nodes[0].Id)
+			t.Logf("Node %d registered with tags: %v", nodeID, nodes[0].Tags)
 		}
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "waiting for registration")
 
@@ -2855,7 +2855,7 @@ func TestTagsUserLoginReauthWithEmptyTagsRemovesAllTags(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify initial tags
-		var initialNodeID uint64
+		var initialNodeID string
 
 		assert.EventuallyWithT(t, func(c *assert.CollectT) {
 			nodes, err := headscale.ListNodes()
@@ -2864,9 +2864,9 @@ func TestTagsUserLoginReauthWithEmptyTagsRemovesAllTags(t *testing.T) {
 
 			if len(nodes) == 1 {
 				node := nodes[0]
-				initialNodeID = node.GetId()
-				t.Logf("Initial state - Node ID: %d, Tags: %v, User: %s",
-					node.GetId(), node.GetTags(), node.GetUser().GetName())
+				initialNodeID = node.Id
+				t.Logf("Initial state - Node ID: %s, Tags: %v, User: %s",
+					node.Id, node.Tags, node.User.Name)
 
 				// Verify node has the expected tags
 				assertNodeHasTagsWithCollect(c, node, []string{"tag:valid-owned", "tag:second"})
@@ -2926,25 +2926,25 @@ func TestTagsUserLoginReauthWithEmptyTagsRemovesAllTags(t *testing.T) {
 
 			if len(nodes) >= 1 {
 				node := nodes[0]
-				t.Logf("After reauth - Node ID: %d, Tags: %v, User: %s",
-					node.GetId(), node.GetTags(), node.GetUser().GetName())
+				t.Logf("After reauth - Node ID: %s, Tags: %v, User: %s",
+					node.Id, node.Tags, node.User.Name)
 
 				// Assert: Node should have NO tags
 				assertNodeHasNoTagsWithCollect(c, node)
 
 				// Assert: Node should be owned by the user (not tagged-devices)
-				assert.Equal(c, tagTestUser, node.GetUser().GetName(),
+				assert.Equal(c, tagTestUser, node.User.Name,
 					"Node ownership should return to user %s after untagging", tagTestUser)
 
 				// Verify the node ID is still the same (not a new registration)
-				assert.Equal(c, initialNodeID, node.GetId(),
+				assert.Equal(c, initialNodeID, node.Id,
 					"Node ID should remain the same after reauth")
 
-				if len(node.GetTags()) == 0 && node.GetUser().GetName() == tagTestUser {
+				if len(node.Tags) == 0 && node.User.Name == tagTestUser {
 					t.Logf("Test #2979 (%s) PASS: Node successfully untagged and ownership returned to user", tc.name)
 				} else {
 					t.Logf("Test #2979 (%s) FAIL: Expected no tags and user=%s, got tags=%v user=%s",
-						tc.name, tagTestUser, node.GetTags(), node.GetUser().GetName())
+						tc.name, tagTestUser, node.Tags, node.User.Name)
 				}
 			}
 		}, integrationutil.HAConvergeTimeout, 1*time.Second, "verifying tags removed and ownership returned")
@@ -2994,7 +2994,7 @@ func TestTagsAuthKeyWithoutUserInheritsTags(t *testing.T) {
 		Tags:      []string{"tag:valid-owned"},
 	})
 	require.NoError(t, err)
-	t.Logf("Created tags-only PreAuthKey with tags: %v", authKey.GetAclTags())
+	t.Logf("Created tags-only PreAuthKey with tags: %v", authKey.AclTags)
 
 	// Create a tailscale client WITHOUT --advertise-tags
 	client, err := scenario.CreateTailscaleNode(
@@ -3005,7 +3005,7 @@ func TestTagsAuthKeyWithoutUserInheritsTags(t *testing.T) {
 	require.NoError(t, err)
 
 	// Login with the tags-only auth key
-	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	err = client.Login(headscale.GetEndpoint(), authKey.Key)
 	require.NoError(t, err)
 
 	// Wait for node to be registered and verify it has the key's tags
@@ -3017,7 +3017,7 @@ func TestTagsAuthKeyWithoutUserInheritsTags(t *testing.T) {
 
 		if len(nodes) == 1 {
 			node := nodes[0]
-			t.Logf("Node registered with tags: %v", node.GetTags())
+			t.Logf("Node registered with tags: %v", node.Tags)
 			assertNodeHasTagsWithCollect(c, node, []string{"tag:valid-owned"})
 		}
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "verifying node inherited tags from auth key")
@@ -3065,7 +3065,7 @@ func TestTagsAuthKeyWithoutUserRejectsAdvertisedTags(t *testing.T) {
 		Tags:      []string{"tag:valid-owned"},
 	})
 	require.NoError(t, err)
-	t.Logf("Created tags-only PreAuthKey with tags: %v", authKey.GetAclTags())
+	t.Logf("Created tags-only PreAuthKey with tags: %v", authKey.AclTags)
 
 	// Create a tailscale client WITH --advertise-tags for a DIFFERENT tag
 	client, err := scenario.CreateTailscaleNode(
@@ -3076,7 +3076,7 @@ func TestTagsAuthKeyWithoutUserRejectsAdvertisedTags(t *testing.T) {
 	require.NoError(t, err)
 
 	// Login should fail because ANY advertise-tags is rejected for PreAuthKey registrations
-	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	err = client.Login(headscale.GetEndpoint(), authKey.Key)
 	if err != nil {
 		t.Logf("Test 5.2 PASS: Registration correctly rejected with error: %v", err)
 		assert.ErrorContains(t, err, "requested tags")
@@ -3134,7 +3134,7 @@ func TestTagsAuthKeyConvertToUserViaCLIRegister(t *testing.T) {
 		Tags:      []string{"tag:valid-owned"},
 	})
 	require.NoError(t, err)
-	t.Logf("Created tags-only PreAuthKey (no user) with tags: %v", authKey.GetAclTags())
+	t.Logf("Created tags-only PreAuthKey (no user) with tags: %v", authKey.AclTags)
 
 	client, err := scenario.CreateTailscaleNode(
 		"head",
@@ -3142,7 +3142,7 @@ func TestTagsAuthKeyConvertToUserViaCLIRegister(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	err = client.Login(headscale.GetEndpoint(), authKey.Key)
 	require.NoError(t, err)
 
 	err = client.WaitForRunning(integrationutil.PeerSyncTimeout())
@@ -3156,7 +3156,7 @@ func TestTagsAuthKeyConvertToUserViaCLIRegister(t *testing.T) {
 
 		if len(nodes) == 1 {
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
-			t.Logf("Initial state - Node ID: %d, Tags: %v", nodes[0].GetId(), nodes[0].GetTags())
+			t.Logf("Initial state - Node ID: %s, Tags: %v", nodes[0].Id, nodes[0].Tags)
 		}
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "node should be tagged initially")
 
@@ -3196,10 +3196,10 @@ func TestTagsAuthKeyConvertToUserViaCLIRegister(t *testing.T) {
 
 		if len(nodes) == 1 {
 			assertNodeHasNoTagsWithCollect(c, nodes[0])
-			assert.Equal(c, tagTestUser, nodes[0].GetUser().GetName(),
+			assert.Equal(c, tagTestUser, nodes[0].User.Name,
 				"Node ownership should be returned to user after untagging")
-			t.Logf("After conversion - Node ID: %d, Tags: %v, User: %s",
-				nodes[0].GetId(), nodes[0].GetTags(), nodes[0].GetUser().GetName())
+			t.Logf("After conversion - Node ID: %s, Tags: %v, User: %s",
+				nodes[0].Id, nodes[0].Tags, nodes[0].User.Name)
 		}
 	}, integrationutil.HAConvergeTimeout, 1*time.Second, "node should be user-owned after conversion via CLI register")
 }

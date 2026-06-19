@@ -3,9 +3,10 @@ package cli
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strconv"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	clientv1 "github.com/juanfont/headscale/gen/client/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/spf13/cobra"
 )
@@ -43,26 +44,36 @@ var listAPIKeys = &cobra.Command{
 	Use:     cmdList,
 	Short:   "List the Api keys for headscale",
 	Aliases: []string{"ls", cmdShow},
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		response, err := client.ListApiKeys(ctx, &v1.ListApiKeysRequest{})
+	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
+		resp, err := client.ListApiKeysWithResponse(ctx)
 		if err != nil {
 			return fmt.Errorf("listing api keys: %w", err)
 		}
 
-		return printListOutput(cmd, response.GetApiKeys(), func() error {
-			rows := make([][]string, 0, len(response.GetApiKeys()))
-			for _, key := range response.GetApiKeys() {
-				expiration := "-"
+		if resp.StatusCode() != http.StatusOK {
+			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+		}
 
-				if key.GetExpiration() != nil {
-					expiration = ColourTime(key.GetExpiration().AsTime())
+		apiKeys := resp.JSON200.ApiKeys
+
+		return printListOutput(cmd, apiKeys, func() error {
+			rows := make([][]string, 0, len(apiKeys))
+			for _, key := range apiKeys {
+				expiration := "-"
+				if key.Expiration != nil {
+					expiration = ColourTime(*key.Expiration)
+				}
+
+				var created string
+				if key.CreatedAt != nil {
+					created = key.CreatedAt.Format(HeadscaleDateTimeFormat)
 				}
 
 				rows = append(rows, []string{
-					strconv.FormatUint(key.GetId(), util.Base10),
-					key.GetPrefix(),
+					key.Id,
+					key.Prefix,
 					expiration,
-					key.GetCreatedAt().AsTime().Format(HeadscaleDateTimeFormat),
+					created,
 				})
 			}
 
@@ -79,20 +90,24 @@ Creates a new Api key, the Api key is only visible on creation
 and cannot be retrieved again.
 If you lose a key, create a new one and revoke (expire) the old one.`,
 	Aliases: []string{"c", cmdNew},
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		expiration, err := expirationFromFlag(cmd)
+	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
+		expiryTime, err := expirationFromFlag(cmd)
 		if err != nil {
 			return err
 		}
 
-		response, err := client.CreateApiKey(ctx, &v1.CreateApiKeyRequest{
-			Expiration: expiration,
+		resp, err := client.CreateApiKeyWithResponse(ctx, clientv1.CreateApiKeyJSONRequestBody{
+			Expiration: &expiryTime,
 		})
 		if err != nil {
 			return fmt.Errorf("creating api key: %w", err)
 		}
 
-		return printOutput(cmd, response.GetApiKey(), response.GetApiKey())
+		if resp.StatusCode() != http.StatusOK {
+			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+		}
+
+		return printOutput(cmd, resp.JSON200.ApiKey, resp.JSON200.ApiKey)
 	}),
 }
 
@@ -116,21 +131,33 @@ var expireAPIKeyCmd = &cobra.Command{
 	Use:     cmdExpire,
 	Short:   "Expire an ApiKey",
 	Aliases: []string{"revoke", aliasExp, "e"},
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
 		id, prefix, err := apiKeyIDOrPrefix(cmd)
 		if err != nil {
 			return err
 		}
 
-		response, err := client.ExpireApiKey(ctx, &v1.ExpireApiKeyRequest{
-			Id:     id,
-			Prefix: prefix,
-		})
+		body := clientv1.ExpireApiKeyJSONRequestBody{}
+
+		if id != 0 {
+			idStr := strconv.FormatUint(id, util.Base10)
+			body.Id = &idStr
+		}
+
+		if prefix != "" {
+			body.Prefix = &prefix
+		}
+
+		resp, err := client.ExpireApiKeyWithResponse(ctx, body)
 		if err != nil {
 			return fmt.Errorf("expiring api key: %w", err)
 		}
 
-		return printOutput(cmd, response, "Key expired")
+		if resp.StatusCode() != http.StatusOK {
+			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+		}
+
+		return printOutput(cmd, resp.JSON200, "Key expired")
 	}),
 }
 
@@ -138,20 +165,59 @@ var deleteAPIKeyCmd = &cobra.Command{
 	Use:     cmdDelete,
 	Short:   "Delete an ApiKey",
 	Aliases: []string{"remove", aliasDel},
-	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
 		id, prefix, err := apiKeyIDOrPrefix(cmd)
 		if err != nil {
 			return err
 		}
 
-		response, err := client.DeleteApiKey(ctx, &v1.DeleteApiKeyRequest{
-			Id:     id,
-			Prefix: prefix,
-		})
+		// The DELETE route addresses the key by its prefix in the path. When the
+		// user deletes by --id we resolve the id to its (masked) prefix first,
+		// since the path segment is required and a query-only id cannot be routed.
+		if prefix == "" {
+			prefix, err = apiKeyPrefixForID(ctx, client, id)
+			if err != nil {
+				return err
+			}
+		}
+
+		resp, err := client.DeleteApiKeyWithResponse(ctx, prefix, &clientv1.DeleteApiKeyParams{})
 		if err != nil {
 			return fmt.Errorf("deleting api key: %w", err)
 		}
 
-		return printOutput(cmd, response, "Key deleted")
+		if resp.StatusCode() != http.StatusOK {
+			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+		}
+
+		return printOutput(cmd, resp.JSON200, "Key deleted")
 	}),
+}
+
+// apiKeyPrefixForID resolves an API key id to its display prefix by listing the
+// keys. The DELETE endpoint addresses keys by prefix in the URL path, so a
+// delete by --id needs the prefix; the returned masked prefix is accepted by
+// the server's lookup.
+func apiKeyPrefixForID(
+	ctx context.Context,
+	client *clientv1.ClientWithResponses,
+	id uint64,
+) (string, error) {
+	resp, err := client.ListApiKeysWithResponse(ctx)
+	if err != nil {
+		return "", fmt.Errorf("listing api keys: %w", err)
+	}
+
+	if resp.StatusCode() != http.StatusOK {
+		return "", apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+	}
+
+	idStr := strconv.FormatUint(id, util.Base10)
+	for _, key := range resp.JSON200.ApiKeys {
+		if key.Id == idStr {
+			return key.Prefix, nil
+		}
+	}
+
+	return "", fmt.Errorf("%w: api key %d not found", errMissingParameter, id)
 }

@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	clientv1 "github.com/juanfont/headscale/gen/client/v1"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
@@ -1232,10 +1232,10 @@ func TestACLAutogroupTagged(t *testing.T) {
 		require.NoError(t, err)
 
 		// Create two pre-auth keys per user: one tagged, one untagged
-		taggedAuthKey, err := scenario.CreatePreAuthKeyWithTags(user.GetId(), true, false, []string{"tag:test"})
+		taggedAuthKey, err := scenario.CreatePreAuthKeyWithTags(mustParseID(user.Id), true, false, []string{"tag:test"})
 		require.NoError(t, err)
 
-		untaggedAuthKey, err := scenario.CreatePreAuthKey(user.GetId(), true, false)
+		untaggedAuthKey, err := scenario.CreatePreAuthKey(mustParseID(user.Id), true, false)
 		require.NoError(t, err)
 
 		// Create nodes with proper naming
@@ -1247,13 +1247,13 @@ func TestACLAutogroupTagged(t *testing.T) {
 
 			if i == 0 {
 				// First node is tagged - use tagged PreAuthKey
-				authKey = taggedAuthKey.GetKey()
+				authKey = taggedAuthKey.Key
 				version = "head"
 
 				t.Logf("Creating tagged node for %s", userStr)
 			} else {
 				// Second node is untagged - use untagged PreAuthKey
-				authKey = untaggedAuthKey.GetKey()
+				authKey = untaggedAuthKey.Key
 				version = "unstable"
 
 				t.Logf("Creating untagged node for %s", userStr)
@@ -1554,7 +1554,7 @@ func TestACLAutogroupSelf(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a tagged PreAuthKey for the router node (tags-as-identity model)
-	authKey, err := scenario.CreatePreAuthKeyWithTags(routerUser.GetId(), true, false, []string{"tag:router-node"})
+	authKey, err := scenario.CreatePreAuthKeyWithTags(mustParseID(routerUser.Id), true, false, []string{"tag:router-node"})
 	require.NoError(t, err)
 
 	// Create router node (tags come from the PreAuthKey).
@@ -1577,7 +1577,7 @@ func TestACLAutogroupSelf(t *testing.T) {
 	err = routerClient.WaitForNeedsLogin(integrationutil.PeerSyncTimeout())
 	require.NoError(t, err)
 
-	err = routerClient.Login(headscale.GetEndpoint(), authKey.GetKey())
+	err = routerClient.Login(headscale.GetEndpoint(), authKey.Key)
 	require.NoError(t, err)
 
 	err = routerClient.WaitForRunning(integrationutil.PeerSyncTimeout())
@@ -2008,7 +2008,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 
 		// Get the node list and find the newest node (highest ID)
 		var (
-			nodeList       []*v1.Node
+			nodeList       []*clientv1.Node
 			nodeToDeleteID uint64
 		)
 
@@ -2019,8 +2019,8 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 
 			// Find the node with the highest ID (the newest one)
 			for _, node := range nodeList {
-				if node.GetId() > nodeToDeleteID {
-					nodeToDeleteID = node.GetId()
+				if mustParseID(node.Id) > nodeToDeleteID {
+					nodeToDeleteID = mustParseID(node.Id)
 				}
 			}
 		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "iteration %d: Phase 2b - listing nodes before deletion", iteration)
@@ -2205,7 +2205,7 @@ func TestACLTagPropagation(t *testing.T) {
 				nodes, err := headscale.ListNodes("user1")
 				require.NoError(t, err)
 
-				return user2Clients[0], user1Clients[0], nodes[0].GetId()
+				return user2Clients[0], user1Clients[0], mustParseID(nodes[0].Id)
 			},
 			initialAccess: false,                  // user2 cannot access user1 (no tag)
 			tagChange:     []string{"tag:shared"}, // add tag:shared
@@ -2256,7 +2256,7 @@ func TestACLTagPropagation(t *testing.T) {
 
 				// Create user1's node WITH tag:shared via PreAuthKey
 				taggedKey, err := scenario.CreatePreAuthKeyWithTags(
-					userMap["user1"].GetId(), false, false, []string{"tag:shared"},
+					mustParseID(userMap["user1"].Id), false, false, []string{"tag:shared"},
 				)
 				require.NoError(t, err)
 
@@ -2269,11 +2269,11 @@ func TestACLTagPropagation(t *testing.T) {
 					tsic.WithNetfilter("off"),
 				)
 				require.NoError(t, err)
-				err = user1Node.Login(headscale.GetEndpoint(), taggedKey.GetKey())
+				err = user1Node.Login(headscale.GetEndpoint(), taggedKey.Key)
 				require.NoError(t, err)
 
 				// Create user2's node (untagged)
-				untaggedKey, err := scenario.CreatePreAuthKey(userMap["user2"].GetId(), false, false)
+				untaggedKey, err := scenario.CreatePreAuthKey(mustParseID(userMap["user2"].Id), false, false)
 				require.NoError(t, err)
 
 				user2Node, err := scenario.CreateTailscaleNode(
@@ -2285,7 +2285,7 @@ func TestACLTagPropagation(t *testing.T) {
 					tsic.WithNetfilter("off"),
 				)
 				require.NoError(t, err)
-				err = user2Node.Login(headscale.GetEndpoint(), untaggedKey.GetKey())
+				err = user2Node.Login(headscale.GetEndpoint(), untaggedKey.Key)
 				require.NoError(t, err)
 
 				err = scenario.WaitForTailscaleSync()
@@ -2295,10 +2295,10 @@ func TestACLTagPropagation(t *testing.T) {
 				allNodes, err := headscale.ListNodes()
 				require.NoError(t, err)
 
-				tagged := findNode(allNodes, func(n *v1.Node) bool { return len(n.GetTags()) > 0 })
+				tagged := findNode(allNodes, func(n *clientv1.Node) bool { return len(n.Tags) > 0 })
 				require.NotNil(t, tagged, "expected a tagged node")
 
-				return user2Node, user1Node, tagged.GetId()
+				return user2Node, user1Node, mustParseID(tagged.Id)
 			},
 			initialAccess: true,                  // user2 can access user1 (has tag:shared)
 			tagChange:     []string{"tag:other"}, // replace with tag:other
@@ -2349,7 +2349,7 @@ func TestACLTagPropagation(t *testing.T) {
 
 				// Create user1's node with tag:team-a (user2 has NO ACL for this)
 				taggedKey, err := scenario.CreatePreAuthKeyWithTags(
-					userMap["user1"].GetId(), false, false, []string{"tag:team-a"},
+					mustParseID(userMap["user1"].Id), false, false, []string{"tag:team-a"},
 				)
 				require.NoError(t, err)
 
@@ -2362,11 +2362,11 @@ func TestACLTagPropagation(t *testing.T) {
 					tsic.WithNetfilter("off"),
 				)
 				require.NoError(t, err)
-				err = user1Node.Login(headscale.GetEndpoint(), taggedKey.GetKey())
+				err = user1Node.Login(headscale.GetEndpoint(), taggedKey.Key)
 				require.NoError(t, err)
 
 				// Create user2's node
-				untaggedKey, err := scenario.CreatePreAuthKey(userMap["user2"].GetId(), false, false)
+				untaggedKey, err := scenario.CreatePreAuthKey(mustParseID(userMap["user2"].Id), false, false)
 				require.NoError(t, err)
 
 				user2Node, err := scenario.CreateTailscaleNode(
@@ -2378,7 +2378,7 @@ func TestACLTagPropagation(t *testing.T) {
 					tsic.WithNetfilter("off"),
 				)
 				require.NoError(t, err)
-				err = user2Node.Login(headscale.GetEndpoint(), untaggedKey.GetKey())
+				err = user2Node.Login(headscale.GetEndpoint(), untaggedKey.Key)
 				require.NoError(t, err)
 
 				err = scenario.WaitForTailscaleSync()
@@ -2388,10 +2388,10 @@ func TestACLTagPropagation(t *testing.T) {
 				allNodes, err := headscale.ListNodes()
 				require.NoError(t, err)
 
-				tagged := findNode(allNodes, func(n *v1.Node) bool { return len(n.GetTags()) > 0 })
+				tagged := findNode(allNodes, func(n *clientv1.Node) bool { return len(n.Tags) > 0 })
 				require.NotNil(t, tagged, "expected a tagged node")
 
-				return user2Node, user1Node, tagged.GetId()
+				return user2Node, user1Node, mustParseID(tagged.Id)
 			},
 			initialAccess: false,                  // user2 cannot access (tag:team-a not in ACL)
 			tagChange:     []string{"tag:team-b"}, // change to tag:team-b
@@ -2442,7 +2442,7 @@ func TestACLTagPropagation(t *testing.T) {
 
 				// Create user1's node with BOTH tags
 				taggedKey, err := scenario.CreatePreAuthKeyWithTags(
-					userMap["user1"].GetId(), false, false, []string{"tag:web", "tag:internal"},
+					mustParseID(userMap["user1"].Id), false, false, []string{"tag:web", "tag:internal"},
 				)
 				require.NoError(t, err)
 
@@ -2455,11 +2455,11 @@ func TestACLTagPropagation(t *testing.T) {
 					tsic.WithNetfilter("off"),
 				)
 				require.NoError(t, err)
-				err = user1Node.Login(headscale.GetEndpoint(), taggedKey.GetKey())
+				err = user1Node.Login(headscale.GetEndpoint(), taggedKey.Key)
 				require.NoError(t, err)
 
 				// Create user2's node
-				untaggedKey, err := scenario.CreatePreAuthKey(userMap["user2"].GetId(), false, false)
+				untaggedKey, err := scenario.CreatePreAuthKey(mustParseID(userMap["user2"].Id), false, false)
 				require.NoError(t, err)
 
 				user2Node, err := scenario.CreateTailscaleNode(
@@ -2471,7 +2471,7 @@ func TestACLTagPropagation(t *testing.T) {
 					tsic.WithNetfilter("off"),
 				)
 				require.NoError(t, err)
-				err = user2Node.Login(headscale.GetEndpoint(), untaggedKey.GetKey())
+				err = user2Node.Login(headscale.GetEndpoint(), untaggedKey.Key)
 				require.NoError(t, err)
 
 				err = scenario.WaitForTailscaleSync()
@@ -2481,10 +2481,10 @@ func TestACLTagPropagation(t *testing.T) {
 				allNodes, err := headscale.ListNodes()
 				require.NoError(t, err)
 
-				tagged := findNode(allNodes, func(n *v1.Node) bool { return len(n.GetTags()) > 0 })
+				tagged := findNode(allNodes, func(n *clientv1.Node) bool { return len(n.Tags) > 0 })
 				require.NotNil(t, tagged, "expected a tagged node")
 
-				return user2Node, user1Node, tagged.GetId()
+				return user2Node, user1Node, mustParseID(tagged.Id)
 			},
 			initialAccess: true,                     // user2 can access (has tag:web)
 			tagChange:     []string{"tag:internal"}, // remove tag:web, keep tag:internal
@@ -2535,7 +2535,7 @@ func TestACLTagPropagation(t *testing.T) {
 				nodes, err := headscale.ListNodes("user1")
 				require.NoError(t, err)
 
-				return user2Clients[0], user1Clients[0], nodes[0].GetId()
+				return user2Clients[0], user1Clients[0], mustParseID(nodes[0].Id)
 			},
 			initialAccess: false,                  // user2 cannot access user1 (no tag yet)
 			tagChange:     []string{"tag:server"}, // assign tag:server
@@ -2616,11 +2616,11 @@ func TestACLTagPropagation(t *testing.T) {
 				allNodes, err := headscale.ListNodes()
 				assert.NoError(c, err)
 
-				node := findNode(allNodes, func(n *v1.Node) bool { return n.GetId() == targetNodeID })
+				node := findNode(allNodes, func(n *clientv1.Node) bool { return mustParseID(n.Id) == targetNodeID })
 				assert.NotNil(c, node, "Node should still exist")
 
 				if node != nil {
-					assert.ElementsMatch(c, tt.tagChange, node.GetTags(), "Tags should be updated")
+					assert.ElementsMatch(c, tt.tagChange, node.Tags, "Tags should be updated")
 				}
 			}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "verifying tag change applied")
 
@@ -2759,7 +2759,7 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 
 	// Create user1's node WITH tag:webserver
 	taggedKey, err := scenario.CreatePreAuthKeyWithTags(
-		userMap["user1"].GetId(), false, false, []string{"tag:webserver"},
+		mustParseID(userMap["user1"].Id), false, false, []string{"tag:webserver"},
 	)
 	require.NoError(t, err)
 
@@ -2773,11 +2773,11 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	err = user1Node.Login(headscale.GetEndpoint(), taggedKey.GetKey())
+	err = user1Node.Login(headscale.GetEndpoint(), taggedKey.Key)
 	require.NoError(t, err)
 
 	// Create user2's node
-	untaggedKey, err := scenario.CreatePreAuthKey(userMap["user2"].GetId(), false, false)
+	untaggedKey, err := scenario.CreatePreAuthKey(mustParseID(userMap["user2"].Id), false, false)
 	require.NoError(t, err)
 
 	user2Node, err := scenario.CreateTailscaleNode(
@@ -2789,7 +2789,7 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	err = user2Node.Login(headscale.GetEndpoint(), untaggedKey.GetKey())
+	err = user2Node.Login(headscale.GetEndpoint(), untaggedKey.Key)
 	require.NoError(t, err)
 
 	err = scenario.WaitForTailscaleSync()
@@ -2799,10 +2799,10 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 	allNodes, err := headscale.ListNodes()
 	require.NoError(t, err)
 
-	tagged := findNode(allNodes, func(n *v1.Node) bool { return len(n.GetTags()) > 0 })
+	tagged := findNode(allNodes, func(n *clientv1.Node) bool { return len(n.Tags) > 0 })
 	require.NotNil(t, tagged, "expected a tagged node")
 
-	targetNodeID := tagged.GetId()
+	targetNodeID := mustParseID(tagged.Id)
 
 	targetFQDN, err := user1Node.FQDN()
 	require.NoError(t, err)
@@ -2828,11 +2828,11 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 		allNodes, err := headscale.ListNodes()
 		assert.NoError(c, err) //nolint:testifylint // CollectT requires assert
 
-		node := findNode(allNodes, func(n *v1.Node) bool { return n.GetId() == targetNodeID })
+		node := findNode(allNodes, func(n *clientv1.Node) bool { return mustParseID(n.Id) == targetNodeID })
 		assert.NotNil(c, node, "Node should still exist")
 
 		if node != nil {
-			assert.ElementsMatch(c, []string{"tag:sshonly"}, node.GetTags(), "Tags should be updated to sshonly")
+			assert.ElementsMatch(c, []string{"tag:sshonly"}, node.Tags, "Tags should be updated to sshonly")
 		}
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "verifying tag change applied")
 
@@ -3070,7 +3070,7 @@ func TestACLGroupAfterUserDeletion(t *testing.T) {
 	nodes, err := headscale.ListNodes("user3")
 	require.NoError(t, err)
 	require.Len(t, nodes, 1, "user3 should have exactly one node")
-	user3NodeID := nodes[0].GetId()
+	user3NodeID := mustParseID(nodes[0].Id)
 
 	// Delete user3's node first (required before deleting the user)
 	err = headscale.DeleteNode(user3NodeID)
@@ -3081,7 +3081,7 @@ func TestACLGroupAfterUserDeletion(t *testing.T) {
 	require.NoError(t, err, "user3 should exist")
 
 	// Now delete user3 (after their nodes are deleted)
-	err = headscale.DeleteUser(user3.GetId())
+	err = headscale.DeleteUser(mustParseID(user3.Id))
 	require.NoError(t, err)
 
 	// Verify user3 is deleted
@@ -3249,13 +3249,13 @@ func TestACLGroupDeletionExactReproduction(t *testing.T) {
 	nodes, err := headscale.ListNodes(userToDelete)
 	require.NoError(t, err)
 	require.Len(t, nodes, 1)
-	err = headscale.DeleteNode(nodes[0].GetId())
+	err = headscale.DeleteNode(mustParseID(nodes[0].Id))
 	require.NoError(t, err)
 
 	userToDeleteObj, err := GetUserByName(headscale, userToDelete)
 	require.NoError(t, err, "user to delete should exist")
 
-	err = headscale.DeleteUser(userToDeleteObj.GetId())
+	err = headscale.DeleteUser(mustParseID(userToDeleteObj.Id))
 	require.NoError(t, err)
 
 	t.Log("Step 2: DONE - user2 deleted, ACL still has user2@ reference")

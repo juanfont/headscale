@@ -6,11 +6,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"slices"
+	"strings"
 	"time"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/cenkalti/backoff/v5"
+	clientv1 "github.com/juanfont/headscale/gen/client/v1"
 	"github.com/juanfont/headscale/hscontrol"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -19,10 +23,6 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.in/yaml.v3"
 )
 
@@ -38,11 +38,45 @@ const (
 var (
 	errAPIKeyNotSet     = errors.New("HEADSCALE_CLI_API_KEY environment variable needs to be set")
 	errMissingParameter = errors.New("missing parameters")
+	errResponseStatus   = errors.New("unexpected response status")
 )
 
-// mustMarkRequired marks the named flags as required on cmd, panicking
-// if any name does not match a registered flag.  This is only called
-// from init() where a failure indicates a programming error.
+// apiError turns a non-2xx response into an error, surfacing the server's
+// RFC7807 problem detail. detail holds the operation context and errors[] the
+// wrapped cause (e.g. "name is too long"); both are joined so the server's
+// message text is not lost.
+func apiError(statusCode int, problem *clientv1.ErrorModel) error {
+	if problem == nil {
+		return fmt.Errorf("%w: %d %s", errResponseStatus, statusCode, http.StatusText(statusCode))
+	}
+
+	parts := make([]string, 0, 2)
+
+	if problem.Detail != nil && *problem.Detail != "" {
+		parts = append(parts, *problem.Detail)
+	}
+
+	if problem.Errors != nil {
+		for _, e := range *problem.Errors {
+			if e.Message != nil && *e.Message != "" {
+				parts = append(parts, *e.Message)
+			}
+		}
+	}
+
+	if len(parts) == 0 && problem.Title != nil && *problem.Title != "" {
+		parts = append(parts, *problem.Title)
+	}
+
+	if len(parts) == 0 {
+		return fmt.Errorf("%w: %d %s", errResponseStatus, statusCode, http.StatusText(statusCode))
+	}
+
+	return fmt.Errorf("%w: %s", errResponseStatus, strings.Join(parts, ": "))
+}
+
+// mustMarkRequired marks the named flags as required, panicking on an unknown
+// flag. Only called from init(), where a failure is a programming error.
 func mustMarkRequired(cmd *cobra.Command, names ...string) {
 	for _, n := range names {
 		err := cmd.MarkFlagRequired(n)
@@ -69,45 +103,47 @@ func newHeadscaleServerWithConfig() (*hscontrol.Headscale, error) {
 	return app, nil
 }
 
-// grpcRunE wraps a cobra [cobra.Command.RunE] func, injecting a ready
-// gRPC client and context. Connection lifecycle is managed by the
-// wrapper — callers never see the underlying conn or cancel func.
-func grpcRunE(
-	fn func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error,
+// clientRunE wraps a [cobra.Command.RunE] func, injecting a ready API client
+// and a context whose timeout/cancel the wrapper owns.
+func clientRunE(
+	fn func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error,
 ) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
-		ctx, client, conn, cancel, err := newHeadscaleCLIWithConfig()
+		ctx, client, cancel, err := newHeadscaleCLIWithConfig()
 		if err != nil {
 			return fmt.Errorf("connecting to headscale: %w", err)
 		}
 		defer cancel()
-		defer conn.Close()
 
 		return fn(ctx, client, cmd, args)
 	}
 }
 
-// withGRPC opens a gRPC client, runs fn with it, and tears the
-// connection down afterwards. It is the building block for commands
-// that branch on a flag before deciding to talk to the server, where
-// grpcRunE's whole-RunE wrapping does not fit.
-func withGRPC(
-	fn func(ctx context.Context, client v1.HeadscaleServiceClient) error,
+// withClient runs fn with an API client. For commands that branch on a flag
+// before talking to the server, where clientRunE's whole-RunE wrapping does
+// not fit.
+func withClient(
+	fn func(ctx context.Context, client *clientv1.ClientWithResponses) error,
 ) error {
-	ctx, client, conn, cancel, err := newHeadscaleCLIWithConfig()
+	ctx, client, cancel, err := newHeadscaleCLIWithConfig()
 	if err != nil {
 		return fmt.Errorf("connecting to headscale: %w", err)
 	}
 	defer cancel()
-	defer conn.Close()
 
 	return fn(ctx, client)
 }
 
-func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *grpc.ClientConn, context.CancelFunc, error) {
+// newHeadscaleCLIWithConfig builds an HTTP client for the Headscale v1 API.
+//
+// When cfg.CLI.Address is unset the CLI is assumed to run on the server host
+// and talks to the unix socket over HTTP without authentication (local trust).
+// Otherwise it talks to the remote TCP address over HTTPS and injects the
+// configured API key as a bearer token.
+func newHeadscaleCLIWithConfig() (context.Context, *clientv1.ClientWithResponses, context.CancelFunc, error) {
 	cfg, err := types.LoadCLIConfig()
 	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("loading configuration: %w", err)
+		return nil, nil, nil, fmt.Errorf("loading configuration: %w", err)
 	}
 
 	log.Debug().
@@ -115,10 +151,6 @@ func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *g
 		Msgf("Setting timeout")
 
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.CLI.Timeout)
-
-	grpcOptions := []grpc.DialOption{
-		grpc.WithBlock(), //nolint:staticcheck // SA1019: deprecated but supported in 1.x
-	}
 
 	address := cfg.CLI.Address
 
@@ -128,80 +160,111 @@ func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *g
 			Str("socket", cfg.UnixSocket).
 			Msgf("HEADSCALE_CLI_ADDRESS environment is not set, connecting to unix socket.")
 
-		address = cfg.UnixSocket
-
-		// Try to give the user better feedback if we cannot write to the headscale
-		// socket.  Note: [os.OpenFile] on a Unix domain socket returns ENXIO on
-		// Linux which is expected — only permission errors are actionable here.
-		// The actual gRPC connection uses [net.Dial] which handles sockets properly.
-		socket, err := os.OpenFile(cfg.UnixSocket, os.O_WRONLY, SocketWritePermissions) //nolint
+		client, err := newSocketClient(cfg.UnixSocket)
 		if err != nil {
-			if os.IsPermission(err) {
-				cancel()
-
-				return nil, nil, nil, nil, fmt.Errorf(
-					"unable to read/write to headscale socket %q, do you have the correct permissions? %w",
-					cfg.UnixSocket,
-					err,
-				)
-			}
-		} else {
-			socket.Close()
-		}
-
-		grpcOptions = append(
-			grpcOptions,
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-			grpc.WithContextDialer(util.GrpcSocketDialer),
-		)
-	} else {
-		// If we are not connecting to a local server, require an API key for authentication
-		apiKey := cfg.CLI.APIKey
-		if apiKey == "" {
 			cancel()
 
-			return nil, nil, nil, nil, errAPIKeyNotSet
+			return nil, nil, nil, err
 		}
 
-		grpcOptions = append(
-			grpcOptions,
-			grpc.WithPerRPCCredentials(tokenAuth{
-				token: apiKey,
-			}),
-		)
+		log.Trace().Caller().Str(zf.Address, cfg.UnixSocket).Msg("connecting via unix socket")
 
-		if cfg.CLI.Insecure {
-			tlsConfig := &tls.Config{
-				// turn of gosec as we are intentionally setting
-				// insecure.
-				//nolint:gosec
-				InsecureSkipVerify: true,
-			}
-
-			grpcOptions = append(
-				grpcOptions,
-				grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)),
-			)
-		} else {
-			grpcOptions = append(
-				grpcOptions,
-				grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(nil, "")),
-			)
-		}
+		return ctx, client, cancel, nil
 	}
 
-	log.Trace().Caller().Str(zf.Address, address).Msg("connecting via gRPC")
+	// Remote connections require an API key for authentication.
+	apiKey := cfg.CLI.APIKey
+	if apiKey == "" {
+		cancel()
 
-	conn, err := grpc.DialContext(ctx, address, grpcOptions...) //nolint:staticcheck // SA1019: deprecated but supported in 1.x
+		return nil, nil, nil, errAPIKeyNotSet
+	}
+
+	client, err := newRemoteClient(address, apiKey, cfg.CLI.Insecure)
 	if err != nil {
 		cancel()
 
-		return nil, nil, nil, nil, fmt.Errorf("connecting to %s: %w", address, err)
+		return nil, nil, nil, err
 	}
 
-	client := v1.NewHeadscaleServiceClient(conn)
+	log.Trace().Caller().Str(zf.Address, address).Msg("connecting via HTTPS")
 
-	return ctx, client, conn, cancel, nil
+	return ctx, client, cancel, nil
+}
+
+// newSocketClient builds an API client that dials the local unix socket. The
+// base-URL host is irrelevant; the custom dialer routes every request to the
+// socket.
+func newSocketClient(socketPath string) (*clientv1.ClientWithResponses, error) {
+	// Probe for a clearer permission error up front. [os.OpenFile] on a unix
+	// socket returns ENXIO on Linux (expected); only permission errors are
+	// actionable. The real connection goes through [net.Dial].
+	socket, err := os.OpenFile(socketPath, os.O_WRONLY, SocketWritePermissions) //nolint
+	if err != nil {
+		if os.IsPermission(err) {
+			return nil, fmt.Errorf(
+				"unable to read/write to headscale socket %q, do you have the correct permissions? %w",
+				socketPath,
+				err,
+			)
+		}
+	} else {
+		socket.Close()
+	}
+
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				return dialHeadscaleSocket(ctx, socketPath)
+			},
+		},
+	}
+
+	return clientv1.NewClientWithResponses(
+		"http://local",
+		clientv1.WithHTTPClient(httpClient),
+	)
+}
+
+// dialHeadscaleSocket connects to the unix socket, retrying until it appears or
+// ctx (the CLI timeout) expires. The socket is created late in startup (after
+// noise key, database, migrations), so a command run right after the server
+// starts can race its creation; retrying preserves the old gRPC client's
+// blocking-dial tolerance rather than failing on a not-yet-present socket.
+func dialHeadscaleSocket(ctx context.Context, socketPath string) (net.Conn, error) {
+	b := backoff.NewExponentialBackOff()
+	b.InitialInterval = 50 * time.Millisecond
+	b.MaxInterval = 1 * time.Second
+
+	return backoff.Retry(ctx, func() (net.Conn, error) {
+		return util.SocketDialer(ctx, socketPath)
+	}, backoff.WithBackOff(b))
+}
+
+// newRemoteClient builds an API client for a remote Headscale over HTTPS,
+// honouring insecure (skip TLS verification) and injecting the API key as a
+// bearer token on every request.
+func newRemoteClient(address, apiKey string, insecure bool) (*clientv1.ClientWithResponses, error) {
+	transport := &http.Transport{}
+	if insecure {
+		transport.TLSClientConfig = &tls.Config{
+			// turn off gosec as we are intentionally setting insecure.
+			//nolint:gosec
+			InsecureSkipVerify: true,
+		}
+	}
+
+	httpClient := &http.Client{Transport: transport}
+
+	return clientv1.NewClientWithResponses(
+		"https://"+address,
+		clientv1.WithHTTPClient(httpClient),
+		clientv1.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
+			req.Header.Set("Authorization", "Bearer "+apiKey)
+
+			return nil
+		}),
+	)
 }
 
 // formatOutput serialises result into the requested format. For the
@@ -250,16 +313,16 @@ func printOutput(cmd *cobra.Command, result any, override string) error {
 }
 
 // expirationFromFlag parses the --expiration flag as a Prometheus-style
-// duration (e.g. "90d", "1h") and returns an absolute timestamp.
-func expirationFromFlag(cmd *cobra.Command) (*timestamppb.Timestamp, error) {
+// duration (e.g. "90d", "1h") and returns an absolute time.
+func expirationFromFlag(cmd *cobra.Command) (time.Time, error) {
 	durationStr, _ := cmd.Flags().GetString("expiration")
 
 	duration, err := model.ParseDuration(durationStr)
 	if err != nil {
-		return nil, fmt.Errorf("parsing duration: %w", err)
+		return time.Time{}, fmt.Errorf("parsing duration: %w", err)
 	}
 
-	return timestamppb.New(time.Now().UTC().Add(time.Duration(duration))), nil
+	return time.Now().UTC().Add(time.Duration(duration)), nil
 }
 
 // confirmAction returns true when the user confirms a prompt, or when
@@ -322,22 +385,4 @@ func hasMachineOutputFlag() bool {
 	return slices.ContainsFunc(os.Args, func(arg string) bool {
 		return arg == outputFormatJSON || arg == outputFormatJSONLine || arg == outputFormatYAML
 	})
-}
-
-type tokenAuth struct {
-	token string
-}
-
-// Return value is mapped to request headers.
-func (t tokenAuth) GetRequestMetadata(
-	ctx context.Context,
-	in ...string,
-) (map[string]string, error) {
-	return map[string]string{
-		"authorization": "Bearer " + t.token,
-	}, nil
-}
-
-func (tokenAuth) RequireTransportSecurity() bool {
-	return true
 }

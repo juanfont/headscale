@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	clientv1 "github.com/juanfont/headscale/gen/client/v1"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/integrationutil"
@@ -169,12 +169,12 @@ func testEphemeralWithOptions(t *testing.T, opts ...hsic.Option) {
 			t.Fatalf("failed to create tailscale nodes in user %s: %s", userName, err)
 		}
 
-		key, err := scenario.CreatePreAuthKey(user.GetId(), true, true)
+		key, err := scenario.CreatePreAuthKey(mustParseID(user.Id), true, true)
 		if err != nil {
 			t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
 		}
 
-		err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
+		err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.Key)
 		if err != nil {
 			t.Fatalf("failed to run tailscale up for user %s: %s", userName, err)
 		}
@@ -247,12 +247,12 @@ func TestEphemeral2006DeletedTooQuickly(t *testing.T) {
 			t.Fatalf("failed to create tailscale nodes in user %s: %s", userName, err)
 		}
 
-		key, err := scenario.CreatePreAuthKey(user.GetId(), true, true)
+		key, err := scenario.CreatePreAuthKey(mustParseID(user.Id), true, true)
 		if err != nil {
 			t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
 		}
 
-		err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
+		err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.Key)
 		if err != nil {
 			t.Fatalf("failed to run tailscale up for user %s: %s", userName, err)
 		}
@@ -402,7 +402,7 @@ func TestTaildrop(t *testing.T) {
 	network := networks[0]
 
 	// Create untagged nodes for user1 using all test versions
-	user1Key, err := scenario.CreatePreAuthKey(userMap["user1"].GetId(), true, false)
+	user1Key, err := scenario.CreatePreAuthKey(mustParseID(userMap["user1"].Id), true, false)
 	require.NoError(t, err)
 
 	var user1Clients []TailscaleClient
@@ -414,7 +414,7 @@ func TestTaildrop(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		err = client.Login(headscale.GetEndpoint(), user1Key.GetKey())
+		err = client.Login(headscale.GetEndpoint(), user1Key.Key)
 		require.NoError(t, err)
 
 		err = client.WaitForRunning(integrationutil.PeerSyncTimeout())
@@ -425,7 +425,7 @@ func TestTaildrop(t *testing.T) {
 	}
 
 	// Create untagged nodes for user2 using all test versions
-	user2Key, err := scenario.CreatePreAuthKey(userMap["user2"].GetId(), true, false)
+	user2Key, err := scenario.CreatePreAuthKey(mustParseID(userMap["user2"].Id), true, false)
 	require.NoError(t, err)
 
 	var user2Clients []TailscaleClient
@@ -437,7 +437,7 @@ func TestTaildrop(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		err = client.Login(headscale.GetEndpoint(), user2Key.GetKey())
+		err = client.Login(headscale.GetEndpoint(), user2Key.Key)
 		require.NoError(t, err)
 
 		err = client.WaitForRunning(integrationutil.PeerSyncTimeout())
@@ -449,7 +449,7 @@ func TestTaildrop(t *testing.T) {
 
 	// Create a tagged device (tags-as-identity: tags come from PreAuthKey)
 	// Use "head" version to test latest behavior
-	taggedKey, err := scenario.CreatePreAuthKeyWithTags(userMap["user1"].GetId(), true, false, []string{"tag:server"})
+	taggedKey, err := scenario.CreatePreAuthKeyWithTags(mustParseID(userMap["user1"].Id), true, false, []string{"tag:server"})
 	require.NoError(t, err)
 
 	taggedClient, err := scenario.CreateTailscaleNode(
@@ -458,7 +458,7 @@ func TestTaildrop(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	err = taggedClient.Login(headscale.GetEndpoint(), taggedKey.GetKey())
+	err = taggedClient.Login(headscale.GetEndpoint(), taggedKey.Key)
 	require.NoError(t, err)
 
 	err = taggedClient.WaitForRunning(integrationutil.PeerSyncTimeout())
@@ -767,8 +767,8 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 	// Pre-rewrite these were rejected by ApplyHostnameFromHostInfo with
 	// "invalid characters" and the node was stuck on an invalid-<rand>
 	// GivenName with the HostName update dropped. The assertions below
-	// verify both raw preservation ([v1.Node.Name]) and SaaS-matching sanitisation
-	// ([v1.Node.GivenName]) for each awkward input.
+	// verify both raw preservation ([clientv1.Node.Name]) and SaaS-matching sanitisation
+	// ([clientv1.Node.GivenName]) for each awkward input.
 	hostnames := map[string]string{
 		"1": "Joe's Mac mini",
 		"2": "Test@Host",
@@ -814,7 +814,7 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 
 	// Wait for nodestore batch processing to complete
 	// [state.NodeStore] batching timeout is 500ms, so we wait up to 1 second
-	var nodes []*v1.Node
+	var nodes []*clientv1.Node
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		err := executeAndUnmarshal(
 			headscale,
@@ -831,18 +831,18 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 		assert.Len(ct, nodes, 3, "Should have 3 nodes after hostname updates")
 
 		for _, node := range nodes {
-			hostname := hostnames[strconv.FormatUint(node.GetId(), 10)]
-			assert.Equal(ct, hostname, node.GetName(), "Node name should match hostname")
+			hostname := hostnames[node.Id]
+			assert.Equal(ct, hostname, node.Name, "Node name should match hostname")
 
 			// GivenName is sanitised via [dnsname.SanitizeHostname] (SaaS algorithm).
-			assert.Equal(ct, dnsname.SanitizeHostname(hostname), node.GetGivenName(),
+			assert.Equal(ct, dnsname.SanitizeHostname(hostname), node.GivenName,
 				"Given name should match SaaS hostname-sanitisation rules")
 		}
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 
 	// Rename givenName in nodes
 	for _, node := range nodes {
-		givenName := fmt.Sprintf("%d-givenname", node.GetId())
+		givenName := fmt.Sprintf("%s-givenname", node.Id)
 		_, err = headscale.Execute(
 			[]string{
 				"headscale",
@@ -850,7 +850,7 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 				"rename",
 				givenName,
 				"--identifier",
-				strconv.FormatUint(node.GetId(), 10),
+				node.Id,
 			})
 		require.NoError(t, err)
 	}
@@ -860,8 +860,8 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 		// Build a map of expected DNSNames by node ID
 		expectedDNSNames := make(map[string]string)
 		for _, node := range nodes {
-			nodeID := strconv.FormatUint(node.GetId(), 10)
-			expectedDNSNames[nodeID] = fmt.Sprintf("%d-givenname.headscale.net.", node.GetId())
+			nodeID := node.Id
+			expectedDNSNames[nodeID] = fmt.Sprintf("%s-givenname.headscale.net.", node.Id)
 		}
 
 		// Verify from each client's perspective
@@ -931,9 +931,9 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 		}
 
 		for _, node := range nodes {
-			hostname := hostnames[strconv.FormatUint(node.GetId(), 10)]
-			givenName := fmt.Sprintf("%d-givenname", node.GetId())
-			if node.GetName() != hostname+"NEW" || node.GetGivenName() != givenName {
+			hostname := hostnames[node.Id]
+			givenName := fmt.Sprintf("%s-givenname", node.Id)
+			if node.Name != hostname+"NEW" || node.GivenName != givenName {
 				return false
 			}
 		}
@@ -993,15 +993,15 @@ func TestExpireNode(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	var node v1.Node
+	var node clientv1.Node
 	err = json.Unmarshal([]byte(result), &node)
 	require.NoError(t, err)
 
 	var expiredNodeKey key.NodePublic
-	err = expiredNodeKey.UnmarshalText([]byte(node.GetNodeKey()))
+	err = expiredNodeKey.UnmarshalText([]byte(node.NodeKey))
 	require.NoError(t, err)
 
-	t.Logf("Node %s with node_key %s has been expired", node.GetName(), expiredNodeKey.String())
+	t.Logf("Node %s with node_key %s has been expired", node.Name, expiredNodeKey.String())
 
 	// Verify that the expired node has been marked in all peers list.
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -1009,7 +1009,7 @@ func TestExpireNode(t *testing.T) {
 			status, err := client.Status()
 			assert.NoError(ct, err)
 
-			if client.Hostname() != node.GetName() {
+			if client.Hostname() != node.Name {
 				// Check if the expired node appears as expired in this client's peer list
 				for key, peer := range status.Peer {
 					if key == expiredNodeKey {
@@ -1025,7 +1025,7 @@ func TestExpireNode(t *testing.T) {
 
 	// Verify that the expired node has been marked in all peers list.
 	for _, client := range allClients {
-		if client.Hostname() == node.GetName() {
+		if client.Hostname() == node.Name {
 			continue
 		}
 
@@ -1060,11 +1060,11 @@ func TestExpireNode(t *testing.T) {
 					peerStatus.Expired,
 				)
 
-				_, stderr, _ := client.Execute([]string{"tailscale", "ping", node.GetName()})
+				_, stderr, _ := client.Execute([]string{"tailscale", "ping", node.Name})
 				if !strings.Contains(stderr, "node key has expired") {
 					c.Errorf(
 						"expected to be unable to ping expired host %q from %q",
-						node.GetName(),
+						node.Name,
 						client.Hostname(),
 					)
 				}
@@ -1111,19 +1111,19 @@ func TestSetNodeExpiryInFuture(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	var node v1.Node
+	var node clientv1.Node
 	err = json.Unmarshal([]byte(result), &node)
 	require.NoError(t, err)
 
-	require.True(t, node.GetExpiry().AsTime().After(time.Now()))
-	require.WithinDuration(t, targetExpiry, node.GetExpiry().AsTime(), 2*time.Second)
+	require.True(t, node.Expiry.After(time.Now()))
+	require.WithinDuration(t, targetExpiry, *node.Expiry, 2*time.Second)
 
 	var nodeKey key.NodePublic
-	err = nodeKey.UnmarshalText([]byte(node.GetNodeKey()))
+	err = nodeKey.UnmarshalText([]byte(node.NodeKey))
 	require.NoError(t, err)
 
 	for _, client := range allClients {
-		if client.Hostname() == node.GetName() {
+		if client.Hostname() == node.Name {
 			continue
 		}
 
@@ -1208,10 +1208,10 @@ func TestDisableNodeExpiry(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	var node v1.Node
+	var node clientv1.Node
 	err = json.Unmarshal([]byte(result), &node)
 	require.NoError(t, err)
-	require.NotNil(t, node.GetExpiry(), "node should have an expiry set")
+	require.NotNil(t, node.Expiry, "node should have an expiry set")
 
 	// Now disable the expiry.
 	result, err = headscale.Execute(
@@ -1224,23 +1224,23 @@ func TestDisableNodeExpiry(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	var nodeDisabled v1.Node
+	var nodeDisabled clientv1.Node
 	err = json.Unmarshal([]byte(result), &nodeDisabled)
 	require.NoError(t, err)
 
 	// Expiry should be nil (or zero time) when disabled.
-	if nodeDisabled.GetExpiry() != nil {
-		require.True(t, nodeDisabled.GetExpiry().AsTime().IsZero(),
+	if nodeDisabled.Expiry != nil {
+		require.True(t, nodeDisabled.Expiry.IsZero(),
 			"node expiry should be zero/nil after disabling")
 	}
 
 	var nodeKey key.NodePublic
-	err = nodeKey.UnmarshalText([]byte(nodeDisabled.GetNodeKey()))
+	err = nodeKey.UnmarshalText([]byte(nodeDisabled.NodeKey))
 	require.NoError(t, err)
 
 	// Verify peers see the node as not expired.
 	for _, client := range allClients {
-		if client.Hostname() == nodeDisabled.GetName() {
+		if client.Hostname() == nodeDisabled.Name {
 			continue
 		}
 
@@ -1332,7 +1332,7 @@ func TestNodeOnlineStatus(t *testing.T) {
 			return
 		}
 
-		var nodes []*v1.Node
+		var nodes []*clientv1.Node
 		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 			result, err := headscale.Execute([]string{
 				"headscale", "nodes", "list", "--output", "json",
@@ -1347,9 +1347,9 @@ func TestNodeOnlineStatus(t *testing.T) {
 				// All nodes should be online
 				assert.Truef(
 					ct,
-					node.GetOnline(),
+					node.Online,
 					"expected %s to have online status in Headscale, marked as offline %s after start",
-					node.GetName(),
+					node.Name,
 					time.Since(start),
 				)
 			}
@@ -1537,7 +1537,7 @@ func Test2118DeletingOnlineNodePanics(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test list all nodes after added otherUser
-	var nodeList []v1.Node
+	var nodeList []clientv1.Node
 	err = executeAndUnmarshal(
 		headscale,
 		[]string{
@@ -1551,8 +1551,8 @@ func Test2118DeletingOnlineNodePanics(t *testing.T) {
 	)
 	require.NoError(t, err)
 	assert.Len(t, nodeList, 2)
-	assert.True(t, nodeList[0].GetOnline())
-	assert.True(t, nodeList[1].GetOnline())
+	assert.True(t, nodeList[0].Online)
+	assert.True(t, nodeList[1].Online)
 
 	// Delete the first node, which is online
 	_, err = headscale.Execute(
@@ -1562,7 +1562,7 @@ func Test2118DeletingOnlineNodePanics(t *testing.T) {
 			"delete",
 			"--identifier",
 			// Delete the last added machine
-			fmt.Sprintf("%d", nodeList[0].GetId()),
+			nodeList[0].Id,
 			"--output",
 			"json",
 			"--force",
@@ -1571,7 +1571,7 @@ func Test2118DeletingOnlineNodePanics(t *testing.T) {
 	require.NoError(t, err)
 
 	// Ensure that the node has been deleted, this did not occur due to a panic.
-	var nodeListAfter []v1.Node
+	var nodeListAfter []clientv1.Node
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		err = executeAndUnmarshal(
 			headscale,
@@ -1601,6 +1601,6 @@ func Test2118DeletingOnlineNodePanics(t *testing.T) {
 	)
 	require.NoError(t, err)
 	assert.Len(t, nodeListAfter, 1)
-	assert.True(t, nodeListAfter[0].GetOnline())
-	assert.Equal(t, nodeList[1].GetId(), nodeListAfter[0].GetId())
+	assert.True(t, nodeListAfter[0].Online)
+	assert.Equal(t, nodeList[1].Id, nodeListAfter[0].Id)
 }

@@ -3,7 +3,7 @@ package integration
 import (
 	"testing"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	clientv1 "github.com/juanfont/headscale/gen/client/v1"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,10 +20,10 @@ func TestServerInfoCommands(t *testing.T) {
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	t.Run("health", func(t *testing.T) {
-		health := assertJSONRoundtrip[*v1.HealthResponse](t, headscale, []string{
+		health := assertJSONRoundtrip[*clientv1.HealthResponseBody](t, headscale, []string{
 			"headscale", "health", "--output", "json",
 		})
-		assert.True(t, health.GetDatabaseConnectivity(), "database should be reachable")
+		assert.True(t, health.DatabaseConnectivity, "database should be reachable")
 	})
 
 	t.Run("version", func(t *testing.T) {
