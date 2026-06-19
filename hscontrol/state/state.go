@@ -1793,7 +1793,7 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 		if params.PreAuthKey.IsTagged() {
 			// Tagged nodes are owned by their tags, not a user.
 			// UserID is intentionally left nil.
-			nodeToRegister.Tags = params.PreAuthKey.Proto().GetAclTags()
+			nodeToRegister.Tags = params.PreAuthKey.Tags
 
 			// Tagged nodes have key expiry disabled.
 			nodeToRegister.Expiry = nil
@@ -2427,7 +2427,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 			// user-less and never expire). Only update AuthKey reference
 			// otherwise.
 			if pak.IsTagged() && !node.IsTagged() {
-				node.Tags = pak.Proto().GetAclTags()
+				node.Tags = pak.Tags
 				node.UserID = nil
 				node.User = nil
 				node.Expiry = nil

@@ -179,9 +179,8 @@ func TestReAuthDoesNotReapplyTags(t *testing.T) {
 	assert.Equal(t, 1, allNodes.Len(), "Should have exactly one node")
 }
 
-// NOTE: TestSetTagsOnUserOwnedNode functionality is covered by gRPC tests in grpcv1_test.go
-// which properly handle ACL policy setup. The test verifies that [headscaleV1APIServer.SetTags] can convert
-// user-owned nodes to tagged nodes while preserving UserID.
+// NOTE: Converting user-owned nodes to tagged nodes while preserving UserID
+// is covered by the SetTags API tests, which properly handle ACL policy setup.
 
 // TestCannotRemoveAllTags tests that attempting to remove all tags from a
 // tagged node fails with ErrCannotRemoveAllTags. Once a node is tagged,

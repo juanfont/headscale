@@ -96,7 +96,7 @@ func TestPreAuthKeyACLTags(t *testing.T) {
 				require.NoError(t, err)
 				require.Len(t, listedPaks, 1)
 
-				gotTags := listedPaks[0].Proto().GetAclTags()
+				gotTags := slices.Clone(listedPaks[0].Tags)
 				slices.Sort(gotTags)
 				assert.Equal(t, expectedTags, gotTags)
 			},

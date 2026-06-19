@@ -98,8 +98,6 @@ type Config struct {
 	ServerURL           string
 	Addr                string
 	MetricsAddr         string
-	GRPCAddr            string
-	GRPCAllowInsecure   bool
 	TrustedProxies      []netip.Prefix
 	Node                NodeConfig
 	PrefixV4            *netip.Prefix
@@ -417,9 +415,6 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("unix_socket", "/var/run/headscale/headscale.sock")
 	viper.SetDefault("unix_socket_permission", "0o770")
-
-	viper.SetDefault("grpc_listen_addr", ":50443")
-	viper.SetDefault("grpc_allow_insecure", false)
 
 	viper.SetDefault("cli.timeout", "5s")
 	viper.SetDefault("cli.insecure", false)
@@ -1182,8 +1177,6 @@ func LoadServerConfig() (*Config, error) {
 		ServerURL:          serverURL,
 		Addr:               viper.GetString("listen_addr"),
 		MetricsAddr:        viper.GetString("metrics_listen_addr"),
-		GRPCAddr:           viper.GetString("grpc_listen_addr"),
-		GRPCAllowInsecure:  viper.GetBool("grpc_allow_insecure"),
 		TrustedProxies:     trusted,
 		DisableUpdateCheck: false,
 
