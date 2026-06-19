@@ -66,7 +66,6 @@ The `headscale` binary can control a Headscale instance from a remote machine ov
 
 - A workstation to run `headscale` (any supported platform, e.g. Linux).
 - The Headscale server reachable over HTTP(S).
-- Remote access requires an encrypted connection via TLS.
 - An [API key](#api) to authenticate with the Headscale server.
 
 ### Setup remote control
