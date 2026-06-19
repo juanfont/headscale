@@ -69,7 +69,6 @@ on inbound requests with sanitized values. Headscale picks the first valid IP ad
 - A reverse proxy adds another layer of complexity that needs to be able to handle the [Tailscale Control
   Protocol](#websocket) properly. Be sure to test your setup without a reverse proxy before raising an issue.
 - STUN (used along with the [embedded DERP server](../derp.md)) requires udp/3478 to be served publicly.
-- [gRPC](../api.md#grpc) (used to remote control Headscale) may not be proxied.
 
 ## Reverse proxy specific configuration
 
@@ -84,14 +83,12 @@ is [assumed](../../setup/requirements.md):
 - Service for Tailscale clients is served via HTTPS on port 443.
 - The reverse proxy redirects HTTP to HTTPS and is terminating TLS.
 - Both Headscale and the reverse proxy are running on the same host.
-- [Metrics](../debug.md#metrics-and-debug-endpoint) and [gRPC](../api.md#grpc) are not proxied, those are available via
-  localhost.
+- [Metrics](../debug.md#metrics-and-debug-endpoint) are not proxied, those are available via localhost.
 
 ```yaml title="config.yaml" hl_lines="1"
 server_url: https://<SERVER_NAME>
 listen_addr: 127.0.0.1:8080
 metrics_listen_addr: 127.0.0.1:9090
-grpc_listen_addr: 127.0.0.1:50443
 trusted_proxies:
   - 127.0.0.1/32
   - ::1/128
