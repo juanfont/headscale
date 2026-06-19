@@ -42,8 +42,7 @@ go tool mts node1 status
 | `--port` | 8080    | Headscale listen port        |
 | `--keep` | false   | Keep state directory on exit |
 
-The metrics/debug port is `port + 1010` (default 9090) and the gRPC
-port is `port + 42363` (default 50443).
+The metrics/debug port is `port + 1010` (default 9090).
 
 ## What it does
 

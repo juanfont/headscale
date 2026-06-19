@@ -4,6 +4,34 @@
 
 **Minimum supported Tailscale client version: v1.xx.0**
 
+### v1 REST API replaced; gRPC and Protobuf removed
+
+The v1 REST API now provides an OpenAPI 3.1 specification at
+`/api/v1/openapi.yaml`, with interactive documentation at `/api/v1/docs`. This
+replaces the Swagger 2.0 document and the `/swagger` UI. The Protobuf, gRPC and
+grpc-gateway stack behind it is gone, and the `headscale` CLI now talks to the
+HTTP API directly.
+
+[#3324](https://github.com/juanfont/headscale/pull/3324)
+
+### BREAKING
+
+#### API
+
+- The gRPC API is removed; all programmatic access now goes through the HTTP API at `/api/v1` [#3324](https://github.com/juanfont/headscale/pull/3324)
+- API errors are now RFC 7807 `application/problem+json`, including authentication failures, instead of the previous gRPC-status JSON shape [#3324](https://github.com/juanfont/headscale/pull/3324)
+- Errors that previously returned HTTP 500 — unknown users or nodes, malformed input, duplicate names — now return the correct 404, 400 or 409 [#3324](https://github.com/juanfont/headscale/pull/3324)
+- The OpenAPI document is OpenAPI 3.1 at `/api/v1/openapi.yaml` (docs at `/api/v1/docs`), replacing Swagger 2.0 at `/swagger` [#3324](https://github.com/juanfont/headscale/pull/3324)
+
+#### CLI
+
+- `--output json` / `--output yaml` now emit the API's shape — camelCase fields, string-encoded IDs, RFC3339 timestamps — instead of the old Protobuf encoding [#3324](https://github.com/juanfont/headscale/pull/3324)
+- `headscale policy` renames the database-bypass flag from `--bypass-grpc-and-access-database-directly` to `--bypass-server-and-access-database-directly` [#3324](https://github.com/juanfont/headscale/pull/3324)
+
+### Changes
+
+- Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
+
 ## 0.29.1 (2026-06-18)
 
 **Minimum supported Tailscale client version: v1.80.0**
