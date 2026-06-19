@@ -29,12 +29,12 @@ headscale apikeys expire --prefix <PREFIX>
 ## REST API
 
 - API endpoint: `/api/v1`, e.g. `https://headscale.example.com/api/v1`
-- Documentation: `/swagger`, e.g. `https://headscale.example.com/swagger`
+- Documentation: `/api/v1/docs`, e.g. `https://headscale.example.com/api/v1/docs`
 - Headscale Version: `/version`, e.g. `https://headscale.example.com/version`
 - Authenticate using HTTP Bearer authentication by sending the [API key](#api) with the HTTP `Authorization: Bearer <API_KEY>` header.
 
 Start by [creating an API key](#api) and test it with the examples below. Read the API documentation provided by your
-Headscale server at `/swagger` for details.
+Headscale server at `/api/v1/docs` for details.
 
 === "Get details for all users"
 
