@@ -23,22 +23,6 @@ listen_addr: 127.0.0.1:8080
 # Use an empty value to disable the metrics listener.
 metrics_listen_addr: 127.0.0.1:9090
 
-# Address to listen for gRPC.
-# gRPC is used for controlling a headscale server
-# remotely with the CLI
-# Note: Remote access _only_ works if you have
-# valid certificates.
-#
-# For production:
-# grpc_listen_addr: 0.0.0.0:50443
-grpc_listen_addr: 127.0.0.1:50443
-
-# Allow the gRPC admin interface to run in INSECURE
-# mode. This is not recommended as the traffic will
-# be unencrypted. Only enable if you know what you
-# are doing.
-grpc_allow_insecure: false
-
 # CIDR(s) of reverse proxies (e.g. 127.0.0.1/32) whose
 # True-Client-IP, X-Real-IP and X-Forwarded-For headers should
 # be honoured. Empty (default) ignores those headers; setting
