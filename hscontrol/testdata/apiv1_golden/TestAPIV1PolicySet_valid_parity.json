@@ -1,0 +1,7 @@
+{
+  "status": 200,
+  "body": {
+    "policy": "{\"acls\":[{\"action\":\"accept\",\"src\":[\"*\"],\"dst\":[\"*:*\"]}]}",
+    "updatedAt": "\u003ctimestamp\u003e"
+  }
+}

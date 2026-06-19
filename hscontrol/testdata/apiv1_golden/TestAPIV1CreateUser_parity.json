@@ -1,0 +1,15 @@
+{
+  "status": 200,
+  "body": {
+    "user": {
+      "createdAt": "\u003ctimestamp\u003e",
+      "displayName": "Test",
+      "email": "t@example.com",
+      "id": "1",
+      "name": "test",
+      "profilePicUrl": "",
+      "provider": "",
+      "providerId": ""
+    }
+  }
+}

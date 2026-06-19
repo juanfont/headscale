@@ -1,0 +1,37 @@
+{
+  "status": 200,
+  "body": {
+    "users": [
+      {
+        "createdAt": "\u003ctimestamp\u003e",
+        "displayName": "",
+        "email": "",
+        "id": "1",
+        "name": "alice",
+        "profilePicUrl": "",
+        "provider": "",
+        "providerId": ""
+      },
+      {
+        "createdAt": "\u003ctimestamp\u003e",
+        "displayName": "",
+        "email": "",
+        "id": "2",
+        "name": "bob",
+        "profilePicUrl": "",
+        "provider": "",
+        "providerId": ""
+      },
+      {
+        "createdAt": "\u003ctimestamp\u003e",
+        "displayName": "",
+        "email": "",
+        "id": "3",
+        "name": "carol",
+        "profilePicUrl": "",
+        "provider": "",
+        "providerId": ""
+      }
+    ]
+  }
+}
