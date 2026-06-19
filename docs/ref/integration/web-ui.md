@@ -23,5 +23,7 @@ Headscale doesn't provide a built-in web interface but users may pick one from t
 - [HeadControl](https://github.com/ahmadzip/HeadControl) - Minimal Headscale admin dashboard, built with Go and HTMX
 - [Headscale Manager](https://github.com/hkdone/headscalemanager) - Headscale UI for Android
 - [Headscale UI](https://github.com/MunMunMiao/headscale-ui) - Headscale UI online and Self-hosting
+- [Headscale Panel](https://github.com/headscale-panel/panel) - A modern Headscale management panel with a clean,
+  network-operations-focused UI
 
 You can ask for support on our [Discord server](https://discord.gg/c84AZQhmpx) in the "web-interfaces" channel.
