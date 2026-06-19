@@ -87,8 +87,8 @@ plugins:
         iOS-client.md: usage/connect/apple.md#ios
         oidc.md: ref/oidc.md
         ref/exit-node.md: ref/routes.md
-        ref/remote-cli.md: ref/api.md#grpc
-        remote-cli.md: ref/api.md#grpc
+        ref/remote-cli.md: ref/api.md#remote-control
+        remote-cli.md: ref/api.md#remote-control
         reverse-proxy.md: ref/integration/reverse-proxy.md
         tls.md: ref/tls.md
         web-ui.md: ref/integration/web-ui.md
