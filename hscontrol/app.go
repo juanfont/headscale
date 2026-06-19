@@ -24,9 +24,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/metrics"
-	grpcRuntime "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"github.com/juanfont/headscale"
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	apiv1 "github.com/juanfont/headscale/hscontrol/api/v1"
 	"github.com/juanfont/headscale/hscontrol/capver"
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/derp"
@@ -37,22 +35,12 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
-	zerolog "github.com/philip-bui/grpc-zerolog"
 	"github.com/pkg/profile"
-	zl "github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/sasha-s/go-deadlock"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/peer"
-	"google.golang.org/grpc/reflection"
-	"google.golang.org/grpc/status"
 	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
@@ -84,7 +72,6 @@ func init() {
 }
 
 const (
-	AuthPrefix         = "Bearer "
 	updateInterval     = 5 * time.Second
 	privateKeyFileMode = 0o600
 	headscaleDirPerm   = 0o700
@@ -385,131 +372,6 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 	}
 }
 
-// checkBearerToken validates an "Authorization" header value. It reports
-// whether the API key is valid, whether the header carried the "Bearer "
-// prefix, and any validation error. Callers translate these outcomes into
-// their transport-specific status.
-func (h *Headscale) checkBearerToken(authHeader string) (bool, bool, error) {
-	if !strings.HasPrefix(authHeader, AuthPrefix) {
-		return false, false, nil
-	}
-
-	valid, err := h.state.ValidateAPIKey(strings.TrimPrefix(authHeader, AuthPrefix))
-
-	return valid, true, err
-}
-
-func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
-	req any,
-	info *grpc.UnaryServerInfo,
-	handler grpc.UnaryHandler,
-) (any, error) {
-	// Check if the request is coming from the on-server client.
-	// This is not secure, but it is to maintain maintainability
-	// with the "legacy" database-based client
-	// It is also needed for grpc-gateway to be able to connect to
-	// the server
-	client, _ := peer.FromContext(ctx)
-
-	log.Trace().
-		Caller().
-		Str("client_address", client.Addr.String()).
-		Msg("Client is trying to authenticate")
-
-	meta, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return ctx, status.Errorf(
-			codes.InvalidArgument,
-			"retrieving metadata",
-		)
-	}
-
-	authHeader, ok := meta["authorization"]
-	if !ok {
-		return ctx, status.Errorf(
-			codes.Unauthenticated,
-			"authorization token not supplied",
-		)
-	}
-
-	valid, hasPrefix, err := h.checkBearerToken(authHeader[0])
-	if !hasPrefix {
-		return ctx, status.Error(
-			codes.Unauthenticated,
-			`missing "Bearer " prefix in "Authorization" header`,
-		)
-	}
-
-	if err != nil {
-		return ctx, status.Error(codes.Internal, "validating token")
-	}
-
-	if !valid {
-		log.Info().
-			Str("client_address", client.Addr.String()).
-			Msg("invalid token")
-
-		return ctx, status.Error(codes.Unauthenticated, "invalid token")
-	}
-
-	return handler(ctx, req)
-}
-
-func (h *Headscale) httpAuthenticationMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(
-		writer http.ResponseWriter,
-		req *http.Request,
-	) {
-		log.Trace().
-			Caller().
-			Str("client_address", req.RemoteAddr).
-			Msg("HTTP authentication invoked")
-
-		authHeader := req.Header.Get("Authorization")
-
-		writeUnauthorized := func(statusCode int) {
-			writer.WriteHeader(statusCode)
-
-			if _, err := writer.Write([]byte("Unauthorized")); err != nil { //nolint:noinlineerr
-				log.Error().Err(err).Msg("writing HTTP response failed")
-			}
-		}
-
-		valid, hasPrefix, err := h.checkBearerToken(authHeader)
-		if !hasPrefix {
-			log.Error().
-				Caller().
-				Str("client_address", req.RemoteAddr).
-				Msg(`missing "Bearer " prefix in "Authorization" header`)
-			writeUnauthorized(http.StatusUnauthorized)
-
-			return
-		}
-
-		if err != nil {
-			log.Info().
-				Caller().
-				Err(err).
-				Str("client_address", req.RemoteAddr).
-				Msg("failed to validate token")
-			writeUnauthorized(http.StatusUnauthorized)
-
-			return
-		}
-
-		if !valid {
-			log.Info().
-				Str("client_address", req.RemoteAddr).
-				Msg("invalid token")
-			writeUnauthorized(http.StatusUnauthorized)
-
-			return
-		}
-
-		next.ServeHTTP(writer, req)
-	})
-}
-
 // ensureUnixSocketIsAbsent will check if the given path for headscales unix socket is clear
 // and will remove it if it is not.
 func (h *Headscale) ensureUnixSocketIsAbsent() error {
@@ -535,7 +397,18 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
-func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *chi.Mux {
+// serveHumaMux dispatches to a Huma mux mounted under the outer chi router.
+// Huma registers operations at absolute paths (/api/v1/...), so chi's route
+// context must be cleared for the inner mux to re-match against the original URL.
+func serveHumaMux(mux http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		mux.ServeHTTP(w, req.WithContext(
+			context.WithValue(req.Context(), chi.RouteCtxKey, nil),
+		))
+	}
+}
+
+func (h *Headscale) createRouter(apiMux http.Handler) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(metrics.Collector(metrics.CollectorOpts{
 		Host:  false,
@@ -572,10 +445,6 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *chi.Mux {
 	r.Get("/apple/{platform}", h.ApplePlatformConfig)
 	r.Get("/windows", h.WindowsConfigMessage)
 
-	// TODO(kristoffer): move swagger into a package
-	r.Get("/swagger", headscale.SwaggerUI)
-	r.Get("/swagger/v1/openapiv2.json", headscale.SwaggerAPIv1)
-
 	r.Post("/verify", h.VerifyHandler)
 
 	if h.cfg.DERP.ServerEnabled {
@@ -585,9 +454,11 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *chi.Mux {
 		r.HandleFunc("/bootstrap-dns", derpServer.DERPBootstrapDNSHandler(h.state.DERPMap()))
 	}
 
+	// Auth is enforced inside the Huma mux per-operation (bearer security), so
+	// the whole API mounts as one handler: operations need an API key while the
+	// OpenAPI document and docs UI stay public. A v2 mux is one more r.Handle line.
 	r.Route("/api", func(r chi.Router) {
-		r.Use(h.httpAuthenticationMiddleware)
-		r.HandleFunc("/v1/*", grpcMux.ServeHTTP)
+		r.Handle("/v1/*", serveHumaMux(apiMux))
 	})
 	// Ping response endpoint: receives HEAD from clients responding
 	// to a [tailcfg.PingRequest]. The unguessable ping ID serves as authentication.
@@ -599,7 +470,7 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *chi.Mux {
 	return r
 }
 
-// Serve launches the HTTP and gRPC server service Headscale and the API.
+// Serve launches the HTTP servers that run Headscale and its API.
 //
 //nolint:gocyclo // complex server startup function
 func (h *Headscale) Serve() error {
@@ -690,12 +561,6 @@ func (h *Headscale) Serve() error {
 
 	go h.scheduledTasks(scheduleCtx)
 
-	if zl.GlobalLevel() == zl.TraceLevel {
-		zerolog.RespLog = true
-	} else {
-		zerolog.RespLog = false
-	}
-
 	// Prepare group for running listeners
 	errorGroup := new(errgroup.Group)
 
@@ -723,45 +588,32 @@ func (h *Headscale) Serve() error {
 
 	socketListener, err := new(net.ListenConfig).Listen(context.Background(), "unix", h.cfg.UnixSocket)
 	if err != nil {
-		return fmt.Errorf("setting up gRPC socket: %w", err)
+		return fmt.Errorf("setting up socket: %w", err)
 	}
 
 	// Change socket permissions
 	if err := os.Chmod(h.cfg.UnixSocket, h.cfg.UnixSocketPermission); err != nil { //nolint:noinlineerr
-		return fmt.Errorf("changing gRPC socket permission: %w", err)
+		return fmt.Errorf("changing socket permission: %w", err)
 	}
 
-	grpcGatewayMux := grpcRuntime.NewServeMux()
+	// The Huma v1 API mux matches full /api/v1/... paths and is shared by
+	// the local unix socket (served without authentication, local trust)
+	// and the remote TCP router (served behind the API-key middleware).
+	humaMux, _ := apiv1.Handler(apiv1.Backend{
+		State:  h.state,
+		Change: h.Change,
+		Cfg:    h.cfg,
+	})
 
-	// Make the grpc-gateway connect to grpc over socket
-	grpcGatewayConn, err := grpc.Dial( //nolint:staticcheck // SA1019: deprecated but supported in 1.x
-		h.cfg.UnixSocket,
-		[]grpc.DialOption{
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-			grpc.WithContextDialer(util.GrpcSocketDialer),
-		}...,
-	)
-	if err != nil {
-		return fmt.Errorf("setting up gRPC gateway via socket: %w", err)
+	// Serve the Huma API over the unix socket without TLS or auth: socket access
+	// implies trust. WithLocalTrust marks these requests so the security
+	// middleware skips the API-key check.
+	socketServer := &http.Server{
+		Handler:     apiv1.WithLocalTrust(humaMux),
+		ReadTimeout: types.HTTPTimeout,
 	}
 
-	// Connect to the gRPC server over localhost to skip
-	// the authentication.
-	err = v1.RegisterHeadscaleServiceHandler(ctx, grpcGatewayMux, grpcGatewayConn)
-	if err != nil {
-		return fmt.Errorf("registering Headscale API service to gRPC: %w", err)
-	}
-
-	// Start the local gRPC server without TLS and without authentication
-	grpcSocket := grpc.NewServer(
-	// Uncomment to debug grpc communication.
-	// zerolog.UnaryInterceptor(),
-	)
-
-	v1.RegisterHeadscaleServiceServer(grpcSocket, newHeadscaleV1APIServer(h))
-	reflection.Register(grpcSocket)
-
-	errorGroup.Go(func() error { return grpcSocket.Serve(socketListener) })
+	errorGroup.Go(func() error { return socketServer.Serve(socketListener) })
 
 	//
 	//
@@ -775,63 +627,11 @@ func (h *Headscale) Serve() error {
 
 	//
 	//
-	// gRPC setup
-	//
-
-	// We are sadly not able to run gRPC and HTTPS (2.0) on the same
-	// port because the connection mux does not support matching them
-	// since they are so similar. There is multiple issues open and we
-	// can revisit this if changes:
-	// https://github.com/soheilhy/cmux/issues/68
-	// https://github.com/soheilhy/cmux/issues/91
-
-	var (
-		grpcServer   *grpc.Server
-		grpcListener net.Listener
-	)
-
-	if tlsConfig != nil || h.cfg.GRPCAllowInsecure {
-		log.Info().Msgf("enabling remote gRPC at %s", h.cfg.GRPCAddr)
-
-		grpcOptions := []grpc.ServerOption{
-			grpc.ChainUnaryInterceptor(
-				h.grpcAuthenticationInterceptor,
-				// Uncomment to debug grpc communication.
-				// zerolog.NewUnaryServerInterceptor(),
-			),
-		}
-
-		if tlsConfig != nil {
-			grpcOptions = append(
-				grpcOptions,
-				grpc.Creds(credentials.NewTLS(tlsConfig)),
-			)
-		} else {
-			log.Warn().Msg("gRPC is running without security")
-		}
-
-		grpcServer = grpc.NewServer(grpcOptions...)
-
-		v1.RegisterHeadscaleServiceServer(grpcServer, newHeadscaleV1APIServer(h))
-
-		grpcListener, err = new(net.ListenConfig).Listen(context.Background(), "tcp", h.cfg.GRPCAddr)
-		if err != nil {
-			return fmt.Errorf("binding to TCP address: %w", err)
-		}
-
-		errorGroup.Go(func() error { return grpcServer.Serve(grpcListener) })
-
-		log.Info().
-			Msgf("listening and serving gRPC on: %s", h.cfg.GRPCAddr)
-	}
-
-	//
-	//
 	// HTTP setup
 	//
 	// This is the regular router that we expose
 	// over our main Addr
-	router := h.createRouter(grpcGatewayMux)
+	router := h.createRouter(humaMux)
 
 	httpServer := &http.Server{
 		Addr:        h.cfg.Addr,
@@ -972,13 +772,10 @@ func (h *Headscale) Serve() error {
 				info("waiting for netmap stream to close")
 				h.clientStreamsOpen.Wait()
 
-				info("shutting down grpc server (socket)")
-				grpcSocket.GracefulStop()
+				info("shutting down api server (socket)")
 
-				if grpcServer != nil {
-					info("shutting down grpc server (external)")
-					grpcServer.GracefulStop()
-					grpcListener.Close()
+				if err := socketServer.Shutdown(shutdownCtx); err != nil { //nolint:noinlineerr
+					log.Error().Err(err).Msg("failed to shutdown socket server")
 				}
 
 				if tailsqlContext != nil {
@@ -994,7 +791,6 @@ func (h *Headscale) Serve() error {
 				}
 
 				httpListener.Close()
-				grpcGatewayConn.Close()
 
 				// Stop listening (and unlink the socket if unix type):
 				info("closing socket listener")
@@ -1158,7 +954,13 @@ func (h *Headscale) Change(cs ...change.Change) {
 // The handler serves the Tailscale control protocol including the /key
 // endpoint and /ts2021 Noise upgrade path.
 func (h *Headscale) HTTPHandler() http.Handler {
-	return h.createRouter(grpcRuntime.NewServeMux())
+	humaMux, _ := apiv1.Handler(apiv1.Backend{
+		State:  h.state,
+		Change: h.Change,
+		Cfg:    h.cfg,
+	})
+
+	return h.createRouter(humaMux)
 }
 
 // NoisePublicKey returns the server's Noise protocol public key.
