@@ -152,6 +152,11 @@
             yq-go
             ripgrep
             postgresql
+
+            # External clients exercised by the Tailscale-compatible v2 API
+            # roundtrip tests (TestAPIv2). Binaries: tofu, tscli.
+            opentofu
+            tscli
             python314Packages.mdformat
             python314Packages.mdformat-footnote
             python314Packages.mdformat-frontmatter
