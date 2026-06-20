@@ -1334,6 +1334,7 @@ func (t *HeadscaleInContainer) NodesByUser() (map[string][]*clientv1.Node, error
 	}
 
 	userMap := make(map[string][]*clientv1.Node)
+
 	for _, node := range nodes {
 		name := node.User.Name
 		userMap[name] = append(userMap[name], node)

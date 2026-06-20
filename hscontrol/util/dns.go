@@ -164,7 +164,7 @@ func GenerateIPv6DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	// but the inputs are not so long as to cause problems,
 	// and from what I can see, the generateMagicDNSRootDomains
 	// function is called only once over the lifetime of a server process.
-	prefixConstantParts := []string{}
+	prefixConstantParts := make([]string, 0, maskBits/nibbleLen)
 	for i := range maskBits / nibbleLen {
 		prefixConstantParts = append(prefixConstantParts, string(nibbleStr[i]))
 	}

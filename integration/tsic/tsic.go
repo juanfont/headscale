@@ -1111,7 +1111,7 @@ func (t *TailscaleInContainer) watchIPN(ctx context.Context) (*ipn.Notify, error
 				resultChan <- result{nil, fmt.Errorf("parse notify: %w", err)}
 			}
 
-			if notify.NetMap != nil {
+			if notify.NetMap != nil { //nolint:staticcheck // SA1019: NetMap is still populated on the platforms our integration containers run; migrating to InitialStatus/PeerChanges is a separate change
 				resultChan <- result{&notify, nil}
 			}
 		}

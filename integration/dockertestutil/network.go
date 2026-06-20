@@ -231,6 +231,7 @@ func waitNetworkContainer(
 		}
 
 		found := false
+
 		for _, c := range net.Containers {
 			if (c.Name == testContainer || c.Name == "/"+testContainer) && match(c) {
 				found = true
