@@ -31,6 +31,7 @@ HTTP API directly.
 ### Changes
 
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
+- Fix API keys and pre-auth keys created without an expiration being stored as `0001-01-01` instead of NULL, which made them immediately rejected as expired [#3254](https://github.com/juanfont/headscale/pull/3254)
 
 ## 0.29.1 (2026-06-18)
 
