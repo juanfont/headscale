@@ -25,6 +25,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/metrics"
 	apiv1 "github.com/juanfont/headscale/hscontrol/api/v1"
+	apiv2 "github.com/juanfont/headscale/hscontrol/api/v2"
 	"github.com/juanfont/headscale/hscontrol/capver"
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/derp"
@@ -408,7 +409,7 @@ func serveHumaMux(mux http.Handler) http.HandlerFunc {
 	}
 }
 
-func (h *Headscale) createRouter(apiMux http.Handler) *chi.Mux {
+func (h *Headscale) createRouter(apiV1Mux, apiV2Mux http.Handler) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(metrics.Collector(metrics.CollectorOpts{
 		Host:  false,
@@ -454,11 +455,13 @@ func (h *Headscale) createRouter(apiMux http.Handler) *chi.Mux {
 		r.HandleFunc("/bootstrap-dns", derpServer.DERPBootstrapDNSHandler(h.state.DERPMap()))
 	}
 
-	// Auth is enforced inside the Huma mux per-operation (bearer security), so
-	// the whole API mounts as one handler: operations need an API key while the
-	// OpenAPI document and docs UI stay public. A v2 mux is one more r.Handle line.
+	// Auth is enforced inside each Huma mux per-operation, so the whole API
+	// mounts as one handler per version: operations need an API key while the
+	// OpenAPI document and docs UI stay public. v1 is the headscale-native admin
+	// API; v2 is Headscale's v2 API, which ports some endpoints from Tailscale.
 	r.Route("/api", func(r chi.Router) {
-		r.Handle("/v1/*", serveHumaMux(apiMux))
+		r.Handle("/v1/*", serveHumaMux(apiV1Mux))
+		r.Handle("/v2/*", serveHumaMux(apiV2Mux))
 	})
 	// Ping response endpoint: receives HEAD from clients responding
 	// to a [tailcfg.PingRequest]. The unguessable ping ID serves as authentication.
@@ -605,6 +608,15 @@ func (h *Headscale) Serve() error {
 		Cfg:    h.cfg,
 	})
 
+	// The Headscale v2 API. It is served only over the remote
+	// listener (Basic/Bearer auth); no unix-socket mount yet, as nothing local
+	// calls it — the CLI still speaks v1.
+	humaV2Mux, _ := apiv2.Handler(apiv2.Backend{
+		State:  h.state,
+		Change: h.Change,
+		Cfg:    h.cfg,
+	})
+
 	// Serve the Huma API over the unix socket without TLS or auth: socket access
 	// implies trust. WithLocalTrust marks these requests so the security
 	// middleware skips the API-key check.
@@ -631,7 +643,7 @@ func (h *Headscale) Serve() error {
 	//
 	// This is the regular router that we expose
 	// over our main Addr
-	router := h.createRouter(humaMux)
+	router := h.createRouter(humaMux, humaV2Mux)
 
 	httpServer := &http.Server{
 		Addr:        h.cfg.Addr,
@@ -960,7 +972,13 @@ func (h *Headscale) HTTPHandler() http.Handler {
 		Cfg:    h.cfg,
 	})
 
-	return h.createRouter(humaMux)
+	humaV2Mux, _ := apiv2.Handler(apiv2.Backend{
+		State:  h.state,
+		Change: h.Change,
+		Cfg:    h.cfg,
+	})
+
+	return h.createRouter(humaMux, humaV2Mux)
 }
 
 // NoisePublicKey returns the server's Noise protocol public key.
