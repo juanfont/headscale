@@ -156,18 +156,10 @@ func (a *AuthProviderOIDC) authHandler(
 	}
 
 	// Set the state and nonce cookies to protect against CSRF attacks
-	state, err := setCSRFCookie(writer, req, "state")
-	if err != nil {
-		httpUserError(writer, err)
-		return
-	}
+	state := setCSRFCookie(writer, req, "state")
 
 	// Set the state and nonce cookies to protect against CSRF attacks
-	nonce, err := setCSRFCookie(writer, req, "nonce")
-	if err != nil {
-		httpUserError(writer, err)
-		return
-	}
+	nonce := setCSRFCookie(writer, req, "nonce")
 
 	registrationInfo := AuthInfo{
 		AuthID:       authID,
@@ -928,7 +920,7 @@ func getCookieName(baseName, value string) string {
 	return fmt.Sprintf("%s_%s", baseName, value[:n])
 }
 
-func setCSRFCookie(w http.ResponseWriter, r *http.Request, name string) (string, error) {
+func setCSRFCookie(w http.ResponseWriter, r *http.Request, name string) string {
 	val := rands.HexString(64)
 
 	//nolint:gosec // G124: Secure set conditionally via r.TLS; HttpOnly + SameSite set below
@@ -948,5 +940,5 @@ func setCSRFCookie(w http.ResponseWriter, r *http.Request, name string) (string,
 	}
 	http.SetCookie(w, c)
 
-	return val, nil
+	return val
 }

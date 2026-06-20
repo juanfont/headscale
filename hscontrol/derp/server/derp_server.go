@@ -80,6 +80,7 @@ func (d *DERPServer) GenerateRegion() (tailcfg.DERPRegion, error) {
 	host, portStr, err := net.SplitHostPort(serverURL.Host)
 
 	var port int
+
 	if err != nil {
 		host = serverURL.Host
 		if serverURL.Scheme == "https" {

@@ -204,6 +204,7 @@ func (c *TestClient) startPollLoop() {
 
 	go func() {
 		defer close(c.pollDone)
+
 		_ = c.direct.PollNetMap(c.pollCtx, c)
 	}()
 }

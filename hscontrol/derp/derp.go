@@ -28,6 +28,7 @@ func loadDERPMapFromPath(path string) (*tailcfg.DERPMap, error) {
 	}
 
 	var derpMap tailcfg.DERPMap
+
 	err = yaml.Unmarshal(b, &derpMap)
 
 	return &derpMap, err

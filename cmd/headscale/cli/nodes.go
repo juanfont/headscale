@@ -146,6 +146,7 @@ var listNodeRoutesCmd = &cobra.Command{
 		}
 
 		nodes := resp.JSON200.Nodes
+
 		if identifier != 0 {
 			idStr := strconv.FormatUint(identifier, util.Base10)
 			for _, node := range nodes {

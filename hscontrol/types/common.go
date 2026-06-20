@@ -237,6 +237,7 @@ func (rn *AuthRequest) FinishAuth(verdict AuthVerdict) {
 	}
 
 	rn.finished <- verdict
+
 	close(rn.finished)
 }
 

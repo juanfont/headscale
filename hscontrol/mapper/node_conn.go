@@ -309,6 +309,7 @@ func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 			snapshot = append(snapshot, conn)
 		}
 	}
+
 	mc.mutex.RUnlock()
 
 	if len(snapshot) == 0 {

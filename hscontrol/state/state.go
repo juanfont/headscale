@@ -2432,6 +2432,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 				node.User = nil
 				node.Expiry = nil
 			}
+
 			node.AuthKey = pak
 			node.AuthKeyID = &pak.ID
 			// Do NOT reset IsOnline here. Online status is managed exclusively by
@@ -2793,7 +2794,7 @@ func isAutoDerivedGivenName(given, hostname string) bool {
 // - node.PeerChangeFromMapRequest
 // - node.ApplyPeerChange
 // - logTracePeerChange in poll.go.
-func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest) (change.Change, error) {
+func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest) (change.Change, error) { //nolint:gocyclo // central map-request reconciliation; the sequential branch flow reads clearer as one function than split across helpers
 	log.Trace().
 		Caller().
 		Uint64(zf.NodeID, id.Uint64()).

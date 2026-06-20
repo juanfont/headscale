@@ -186,8 +186,7 @@ func TestSetCSRFCookieSameSite(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/auth/abcdef0123456789", nil)
 
-	_, err := setCSRFCookie(w, r, "state")
-	require.NoError(t, err)
+	setCSRFCookie(w, r, "state")
 
 	cookies := w.Result().Cookies()
 	require.Len(t, cookies, 1)
