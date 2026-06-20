@@ -1034,7 +1034,7 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (t
 func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView, change.Change, error) {
 	err := dnsname.ValidLabel(newName)
 	if err != nil {
-		return types.NodeView{}, change.Change{}, fmt.Errorf("renaming node: %w", err)
+		return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %w", ErrGivenNameInvalid, err)
 	}
 
 	view, err := s.nodeStore.SetGivenName(nodeID, newName)
