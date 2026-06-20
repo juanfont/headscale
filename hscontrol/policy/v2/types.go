@@ -63,7 +63,7 @@ var (
 // SaaS imposes no minimum (0s is accepted) so headscale matches.
 const (
 	SSHCheckPeriodDefault = 12 * time.Hour
-	SSHCheckPeriodMax     = 168 * time.Hour
+	SSHCheckPeriodMax     = 7 * 24 * time.Hour
 )
 
 // ACL validation errors.
