@@ -38,9 +38,9 @@ var errDatabaseNotSupported = errors.New("database type not supported")
 var errForeignKeyConstraintsViolated = errors.New("foreign key constraints violated")
 
 const (
-	maxIdleConns       = 100
-	maxOpenConns       = 100
-	contextTimeoutSecs = 10
+	maxIdleConns   = 100
+	maxOpenConns   = 100
+	contextTimeout = 10 * time.Second
 )
 
 type HSDatabase struct {
@@ -781,6 +781,39 @@ WHERE user_id IS NULL
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			{
+				// Add an optional owning user to API keys so the v2 API can
+				// create user-owned (untagged) auth keys, mirroring Tailscale's
+				// "key owned by the creating identity".
+				ID: "202606191500-api-key-user-id",
+				Migrate: func(tx *gorm.DB) error {
+					if !tx.Migrator().HasColumn(&types.APIKey{}, "user_id") {
+						err := tx.Migrator().AddColumn(&types.APIKey{}, "user_id")
+						if err != nil {
+							return fmt.Errorf("adding user_id to api_keys: %w", err)
+						}
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			{
+				// Add a free-text description to pre-auth keys, set via the
+				// v2 keys API.
+				ID: "202606191501-pre-auth-key-description",
+				Migrate: func(tx *gorm.DB) error {
+					if !tx.Migrator().HasColumn(&types.PreAuthKey{}, "description") {
+						err := tx.Migrator().AddColumn(&types.PreAuthKey{}, "description")
+						if err != nil {
+							return fmt.Errorf("adding description to pre_auth_keys: %w", err)
+						}
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
@@ -873,7 +906,7 @@ WHERE user_id IS NULL
 		defer sqlConn.SetMaxIdleConns(1)
 		defer sqlConn.SetMaxOpenConns(1)
 
-		ctx, cancel := context.WithTimeout(context.Background(), contextTimeoutSecs*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), contextTimeout)
 		defer cancel()
 
 		opts := squibble.DigestOptions{

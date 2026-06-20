@@ -17,6 +17,13 @@ type APIKey struct {
 	Prefix string `gorm:"uniqueIndex"`
 	Hash   []byte
 
+	// Optional owning user id. When set, an auth key created through the v2 API
+	// with no tags is owned by this user — mirroring Tailscale, where a key is
+	// owned by the identity that created it. Nil for legacy/admin keys, which
+	// can only create tagged keys. Kept as a plain column (no foreign key) so an
+	// upgraded database matches a freshly-migrated one.
+	UserID *uint
+
 	CreatedAt  *time.Time
 	Expiration *time.Time
 	LastSeen   *time.Time

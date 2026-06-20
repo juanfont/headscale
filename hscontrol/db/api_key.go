@@ -25,6 +25,7 @@ const (
 var (
 	ErrAPIKeyFailedToParse    = errors.New("failed to parse ApiKey")
 	ErrAPIKeyGenerationFailed = errors.New("failed to generate API key")
+	ErrAPIKeyExpired          = errors.New("API key expired")
 )
 
 // CreateAPIKey creates a new [types.APIKey] in a user, and returns it.
@@ -125,6 +126,31 @@ func (hsdb *HSDatabase) ValidateAPIKey(keyStr string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+// AuthenticateAPIKey validates keyStr and returns the matching, unexpired
+// [types.APIKey] (with its owning UserID populated). Unlike ValidateAPIKey it
+// returns the key itself, so the v2 API can act as the key's owning user. A
+// non-nil error means the key is missing, malformed, or expired.
+func (hsdb *HSDatabase) AuthenticateAPIKey(keyStr string) (*types.APIKey, error) {
+	key, err := validateAPIKey(hsdb.DB, keyStr)
+	if err != nil {
+		return nil, err
+	}
+
+	if key.Expiration != nil && key.Expiration.Before(time.Now()) {
+		return nil, ErrAPIKeyExpired
+	}
+
+	return key, nil
+}
+
+// SetAPIKeyUser sets the owning user of an API key. Used when an admin mints a
+// key on behalf of a user (headscale apikeys create --user).
+func (hsdb *HSDatabase) SetAPIKeyUser(keyID uint64, userID types.UserID) error {
+	return hsdb.DB.Model(&types.APIKey{}).
+		Where("id = ?", keyID).
+		Update("user_id", uint(userID)).Error
 }
 
 // ParseAPIKeyPrefix extracts the database prefix from a display prefix.

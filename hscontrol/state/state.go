@@ -1373,6 +1373,17 @@ func (s *State) ValidateAPIKey(keyStr string) (bool, error) {
 	return s.db.ValidateAPIKey(keyStr)
 }
 
+// AuthenticateAPIKey validates an API key and returns it (with its owning
+// user), so callers like the v2 API can act as the key's owner.
+func (s *State) AuthenticateAPIKey(keyStr string) (*types.APIKey, error) {
+	return s.db.AuthenticateAPIKey(keyStr)
+}
+
+// SetAPIKeyUser sets the owning user of an API key by its database ID.
+func (s *State) SetAPIKeyUser(keyID uint64, userID types.UserID) error {
+	return s.db.SetAPIKeyUser(keyID, userID)
+}
+
 // CreateAPIKey generates a new API key with optional expiration.
 func (s *State) CreateAPIKey(expiration *time.Time) (string, *types.APIKey, error) {
 	return s.db.CreateAPIKey(expiration)
@@ -1457,14 +1468,25 @@ func (s *State) DB() *hsdb.HSDatabase {
 	return s.db
 }
 
-// GetPreAuthKey retrieves a pre-authentication key by ID.
-func (s *State) GetPreAuthKey(id string) (*types.PreAuthKey, error) {
-	return s.db.GetPreAuthKey(id)
+// GetPreAuthKey retrieves a pre-authentication key by its secret. The caller is
+// responsible for checking whether the key is usable (expired or used).
+func (s *State) GetPreAuthKey(keyStr string) (*types.PreAuthKey, error) {
+	return s.db.GetPreAuthKey(keyStr)
+}
+
+// GetPreAuthKeyByID retrieves a pre-authentication key by its database id.
+func (s *State) GetPreAuthKeyByID(id uint64) (*types.PreAuthKey, error) {
+	return s.db.GetPreAuthKeyByID(id)
 }
 
 // ListPreAuthKeys returns all pre-authentication keys for a user.
 func (s *State) ListPreAuthKeys() ([]types.PreAuthKey, error) {
 	return s.db.ListPreAuthKeys()
+}
+
+// SetPreAuthKeyDescription sets the free-text description on a pre-auth key.
+func (s *State) SetPreAuthKeyDescription(id uint64, description string) error {
+	return s.db.SetPreAuthKeyDescription(id, description)
 }
 
 // ExpirePreAuthKey marks a pre-authentication key as expired.

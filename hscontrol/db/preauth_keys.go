@@ -133,6 +133,15 @@ func CreatePreAuthKey(
 	}, nil
 }
 
+// SetPreAuthKeyDescription sets the free-text description on a pre-auth key.
+// The v2 keys API sets it after creation rather than threading it through the
+// many-armed CreatePreAuthKey signature shared by every other caller.
+func (hsdb *HSDatabase) SetPreAuthKeyDescription(id uint64, description string) error {
+	return hsdb.DB.Model(&types.PreAuthKey{}).
+		Where("id = ?", id).
+		Update("description", description).Error
+}
+
 func (hsdb *HSDatabase) ListPreAuthKeys() ([]types.PreAuthKey, error) {
 	return Read(hsdb.DB, ListPreAuthKeys)
 }
@@ -293,6 +302,20 @@ func (hsdb *HSDatabase) GetPreAuthKey(key string) (*types.PreAuthKey, error) {
 // for checking if the key is usable (expired or used).
 func GetPreAuthKey(tx *gorm.DB, key string) (*types.PreAuthKey, error) {
 	return findAuthKey(tx, key)
+}
+
+// GetPreAuthKeyByID returns a [types.PreAuthKey] by its primary key, with the
+// owning user preloaded.
+func (hsdb *HSDatabase) GetPreAuthKeyByID(id uint64) (*types.PreAuthKey, error) {
+	pak := types.PreAuthKey{}
+	// Explicit primary-key clause: a struct condition would drop a zero-valued
+	// ID, making the lookup unconditional and returning the first row instead
+	// of not-found.
+	if result := hsdb.DB.Preload("User").First(&pak, "id = ?", id); result.Error != nil {
+		return nil, result.Error
+	}
+
+	return &pak, nil
 }
 
 // DestroyPreAuthKey destroys a preauthkey. Returns error if the [types.PreAuthKey]

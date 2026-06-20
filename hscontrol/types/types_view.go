@@ -395,10 +395,14 @@ func (v PreAuthKeyView) Hash() views.ByteSlice[[]byte] { return views.ByteSliceO
 // Can be nil for system-created tagged keys
 func (v PreAuthKeyView) UserID() views.ValuePointer[uint] { return views.ValuePointerOf(v.ж.UserID) }
 
-func (v PreAuthKeyView) User() UserView  { return v.ж.User.View() }
-func (v PreAuthKeyView) Reusable() bool  { return v.ж.Reusable }
-func (v PreAuthKeyView) Ephemeral() bool { return v.ж.Ephemeral }
-func (v PreAuthKeyView) Used() bool      { return v.ж.Used }
+func (v PreAuthKeyView) User() UserView { return v.ж.User.View() }
+
+// Free-text description, set via the v2 API. Empty for keys created through
+// the v1 API or CLI.
+func (v PreAuthKeyView) Description() string { return v.ж.Description }
+func (v PreAuthKeyView) Reusable() bool      { return v.ж.Reusable }
+func (v PreAuthKeyView) Ephemeral() bool     { return v.ж.Ephemeral }
+func (v PreAuthKeyView) Used() bool          { return v.ж.Used }
 
 // Tags to assign to nodes registered with this key.
 // Tags are copied to the node during registration.
@@ -414,16 +418,17 @@ func (v PreAuthKeyView) Expiration() views.ValuePointer[time.Time] {
 
 // A compilation failure here means this code must be regenerated, with the command at the top of this file.
 var _PreAuthKeyViewNeedsRegeneration = PreAuthKey(struct {
-	ID         uint64
-	Key        string
-	Prefix     string
-	Hash       []byte
-	UserID     *uint
-	User       *User
-	Reusable   bool
-	Ephemeral  bool
-	Used       bool
-	Tags       []string
-	CreatedAt  *time.Time
-	Expiration *time.Time
+	ID          uint64
+	Key         string
+	Prefix      string
+	Hash        []byte
+	UserID      *uint
+	User        *User
+	Description string
+	Reusable    bool
+	Ephemeral   bool
+	Used        bool
+	Tags        []string
+	CreatedAt   *time.Time
+	Expiration  *time.Time
 }{})
