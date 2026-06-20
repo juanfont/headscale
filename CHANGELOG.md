@@ -196,6 +196,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - The v2 API adds `GET /device/{id}/attributes`, scoped `devices:posture_attributes:read`. It reports `ip:publicAddress`: the source IP of the node's latest control connection, stored on the node. Behind a reverse proxy, set `trusted_proxies` or it reports the proxy. [#3419](https://github.com/juanfont/headscale/pull/3419)
 - PostgreSQL connection settings are assembled into a `postgres://` URL with proper escaping, so a password (or host, user, database name) containing spaces, quotes or other reserved characters no longer truncates the DSN [#3477](https://github.com/juanfont/headscale/pull/3477)
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
+- Fix API keys and pre-auth keys created without an expiration being stored as `0001-01-01` instead of NULL, which made them immediately rejected as expired [#3254](https://github.com/juanfont/headscale/pull/3254)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
 - Fix `headscale users destroy`/`rename` reporting "multiple users match query" when no user matches; an ambiguous match now lists the matching users [#3476](https://github.com/juanfont/headscale/pull/3476)
 - Deleting a user that still owns nodes now lists the nodes (ID and hostname) that must be deleted first [#3475](https://github.com/juanfont/headscale/pull/3475)

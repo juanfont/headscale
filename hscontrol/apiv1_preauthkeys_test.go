@@ -76,6 +76,28 @@ func TestAPIV1CreatePreAuthKey(t *testing.T) {
 		assert.Equal(t, []any{"tag:test"}, got.PreAuthKey["aclTags"])
 	})
 
+	t.Run("no expiration persists as NULL not zero-time", func(t *testing.T) {
+		h := newAPIV1Harness(t)
+
+		// No expiration field in the body. The JSON response can't distinguish
+		// NULL from the zero time (both render as 0001-01-01), so inspect the
+		// stored key directly.
+		res := h.callHuma(http.MethodPost, "/api/v1/preauthkey",
+			[]byte(`{"aclTags":["tag:test"]}`))
+		require.Equal(t, http.StatusOK, res.status)
+
+		keys, err := h.app.state.ListPreAuthKeys()
+		require.NoError(t, err)
+		require.Len(t, keys, 1)
+
+		// A missing expiration must persist as NULL, not the zero time, or the
+		// key is rejected as already-expired on first use (regression for the
+		// fix that the gRPC handler received in #3254).
+		assert.Nil(t, keys[0].Expiration, "expiration must be NULL when omitted")
+		assert.NoError(t, keys[0].Validate(),
+			"key created without expiration must be valid")
+	})
+
 	t.Run("invalid tag parity", func(t *testing.T) {
 		h := newAPIV1Harness(t)
 		h.app.state.CreateUserForTest("alice")
