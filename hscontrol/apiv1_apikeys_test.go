@@ -54,6 +54,26 @@ func TestAPIV1ApiKeyCreate(t *testing.T) {
 		require.NoError(t, json.Unmarshal(hum.body, &humBody))
 		assert.NotEmpty(t, humBody.APIKey)
 	})
+
+	t.Run("no expiration is not immediately expired", func(t *testing.T) {
+		h := newAPIV1Harness(t)
+
+		res := h.callHuma(http.MethodPost, "/api/v1/apikey", []byte(`{}`))
+		require.Equal(t, http.StatusOK, res.status)
+
+		var got struct {
+			APIKey string `json:"apiKey"`
+		}
+		require.NoError(t, json.Unmarshal(res.body, &got))
+		require.NotEmpty(t, got.APIKey)
+
+		// A missing expiration must persist as NULL, not the zero time, or the
+		// key is rejected as already-expired on first use (regression for the
+		// fix that the gRPC handler received in #3254).
+		valid, err := h.app.state.ValidateAPIKey(got.APIKey)
+		require.NoError(t, err)
+		assert.True(t, valid, "api key created without expiration must not be expired")
+	})
 }
 
 func TestAPIV1ApiKeyList(t *testing.T) {

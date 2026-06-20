@@ -102,12 +102,6 @@ func registerPreAuthKeys(api huma.API, b Backend) {
 			}
 		}
 
-		// CreatePreAuthKey requires a non-nil pointer; zero-stamp when unset.
-		var expiration time.Time
-		if in.Body.Expiration != nil {
-			expiration = *in.Body.Expiration
-		}
-
 		var userID *types.UserID
 
 		if user != 0 {
@@ -119,11 +113,14 @@ func registerPreAuthKeys(api huma.API, b Backend) {
 			userID = u.TypedID()
 		}
 
+		// A missing expiration must persist as NULL, not the zero time, or the
+		// key is rejected as already-expired on first use. Body.Expiration is
+		// already *time.Time (nil when omitted), so pass it straight through.
 		preAuthKey, err := b.State.CreatePreAuthKey(
 			userID,
 			in.Body.Reusable,
 			in.Body.Ephemeral,
-			&expiration,
+			in.Body.Expiration,
 			in.Body.ACLTags,
 		)
 		if err != nil {
