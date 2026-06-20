@@ -93,7 +93,7 @@ func registerUsers(api huma.API, b Backend) {
 		b.Change(policyChanged)
 
 		out := &userOutput{}
-		out.Body.User = userFromState(user)
+		out.Body.User = userFromView(user.View())
 
 		return out, nil
 	})
@@ -129,7 +129,7 @@ func registerUsers(api huma.API, b Backend) {
 		}
 
 		out := &userOutput{}
-		out.Body.User = userFromState(newUser)
+		out.Body.User = userFromView(newUser.View())
 
 		return out, nil
 	})
@@ -192,7 +192,7 @@ func registerUsers(api huma.API, b Backend) {
 
 		out.Body.Users = make([]User, len(users))
 		for i := range users {
-			out.Body.Users[i] = userFromState(&users[i])
+			out.Body.Users[i] = userFromView(users[i].View())
 		}
 
 		return out, nil

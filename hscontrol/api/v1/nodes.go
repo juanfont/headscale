@@ -223,7 +223,7 @@ func registerNodeReadOps(api huma.API, b Backend) {
 			// Tags-as-identity: tagged nodes are presented as the special
 			// TaggedDevices user.
 			if node.IsTagged() {
-				user := userFromState(&types.TaggedDevices)
+				user := userFromView(types.TaggedDevices.View())
 				n.User = &user
 			}
 
@@ -583,74 +583,73 @@ func registerNodeAdminOps(api huma.API, b Backend) {
 	})
 }
 
-// nodeFromView builds the Node response from a NodeView. SubnetRoutes is left
-// empty; callers that serve routes set it explicitly.
+// nodeFromView builds the Node response from a NodeView, reading through the
+// view accessors. SubnetRoutes is left empty; callers that serve routes set it
+// explicitly.
 func nodeFromView(view types.NodeView) Node {
-	node := view.AsStruct()
-
 	n := Node{
-		ID:              formatID(uint64(node.ID)),
-		MachineKey:      node.MachineKey.String(),
-		NodeKey:         node.NodeKey.String(),
-		DiscoKey:        node.DiscoKey.String(),
-		IPAddresses:     nonNilStrings(node.IPsAsString()),
-		Name:            node.Hostname,
-		CreatedAt:       node.CreatedAt,
-		RegisterMethod:  registerMethodEnum(node.RegisterMethod),
-		GivenName:       node.GivenName,
-		Online:          node.IsOnline != nil && *node.IsOnline,
-		ApprovedRoutes:  nonNilStrings(util.PrefixesToString(node.ApprovedRoutes)),
-		AvailableRoutes: nonNilStrings(util.PrefixesToString(node.AnnouncedRoutes())),
+		ID:              view.StringID(),
+		MachineKey:      view.MachineKey().String(),
+		NodeKey:         view.NodeKey().String(),
+		DiscoKey:        view.DiscoKey().String(),
+		IPAddresses:     nonNilStrings(view.IPsAsString()),
+		Name:            view.Hostname(),
+		CreatedAt:       view.CreatedAt(),
+		RegisterMethod:  registerMethodEnum(view.RegisterMethod()),
+		GivenName:       view.GivenName(),
+		Online:          view.IsOnline().Valid() && view.IsOnline().Get(),
+		ApprovedRoutes:  nonNilStrings(util.PrefixesToString(view.ApprovedRoutes().AsSlice())),
+		AvailableRoutes: nonNilStrings(util.PrefixesToString(view.AnnouncedRoutes())),
 		SubnetRoutes:    []string{},
-		Tags:            nonNilStrings(node.Tags),
+		Tags:            nonNilStrings(view.Tags().AsSlice()),
 	}
 
-	if node.User != nil {
-		user := userFromState(node.User)
+	if view.User().Valid() {
+		user := userFromView(view.User())
 		n.User = &user
 	}
 
-	if node.AuthKey != nil {
-		n.PreAuthKey = nodePreAuthKeyFromState(node.AuthKey)
+	if view.AuthKey().Valid() {
+		n.PreAuthKey = nodePreAuthKeyFromView(view.AuthKey())
 	}
 
-	if node.LastSeen != nil {
-		ls := *node.LastSeen
+	if view.LastSeen().Valid() {
+		ls := view.LastSeen().Get()
 		n.LastSeen = &ls
 	}
 
-	if node.Expiry != nil {
-		exp := *node.Expiry
+	if view.Expiry().Valid() {
+		exp := view.Expiry().Get()
 		n.Expiry = &exp
 	}
 
 	return n
 }
 
-// nodePreAuthKeyFromState builds the embedded NodePreAuthKey, masking the key to
+// nodePreAuthKeyFromView builds the embedded NodePreAuthKey, masking the key to
 // its prefix (legacy plaintext keys are shown in full).
-func nodePreAuthKeyFromState(key *types.PreAuthKey) *NodePreAuthKey {
+func nodePreAuthKeyFromView(key types.PreAuthKeyView) *NodePreAuthKey {
 	pak := &NodePreAuthKey{
-		ID:        formatID(key.ID),
+		ID:        formatID(key.ID()),
 		Key:       maskedPreAuthKey(key),
-		Reusable:  key.Reusable,
-		Ephemeral: key.Ephemeral,
-		Used:      key.Used,
-		AclTags:   nonNilStrings(key.Tags),
+		Reusable:  key.Reusable(),
+		Ephemeral: key.Ephemeral(),
+		Used:      key.Used(),
+		AclTags:   nonNilStrings(key.Tags().AsSlice()),
 	}
 
-	if key.User != nil {
-		user := userFromState(key.User)
+	if key.User().Valid() {
+		user := userFromView(key.User())
 		pak.User = &user
 	}
 
-	if key.Expiration != nil {
-		exp := *key.Expiration
+	if key.Expiration().Valid() {
+		exp := key.Expiration().Get()
 		pak.Expiration = &exp
 	}
 
-	if key.CreatedAt != nil {
-		created := *key.CreatedAt
+	if key.CreatedAt().Valid() {
+		created := key.CreatedAt().Get()
 		pak.CreatedAt = &created
 	}
 

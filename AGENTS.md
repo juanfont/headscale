@@ -275,6 +275,11 @@ Key reminders:
   `e = e.Str("k", v)`. Forgetting to reassign silently drops the field.
 - **Tests**: prefer `hscontrol/servertest/` for server-level tests that
   don't need Docker — faster than full integration tests.
+- **View types in read paths**: response serializers must read through
+  `NodeView`/`UserView`/`PreAuthKeyView` accessors. `AsStruct()` clones the
+  whole record on every read — it is only for DB-write/merge clones and mutable
+  working copies, never to build an API response. `grep AsStruct hscontrol/api`
+  must come back empty.
 
 ## Gotchas
 
