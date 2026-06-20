@@ -1,8 +1,10 @@
 package types
 
 import (
+	"strconv"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -11,6 +13,26 @@ import (
 type PAKError string
 
 func (e PAKError) Error() string { return string(e) }
+
+// StringID returns the key's id as a decimal string, the form the HTTP APIs
+// render it as.
+func (pak *PreAuthKey) StringID() string {
+	if pak == nil {
+		return ""
+	}
+
+	return strconv.FormatUint(pak.ID, util.Base10)
+}
+
+// StringID returns the key's id as a decimal string, the form the HTTP APIs
+// render it as.
+func (pak *PreAuthKeyNew) StringID() string {
+	if pak == nil {
+		return ""
+	}
+
+	return strconv.FormatUint(pak.ID, util.Base10)
+}
 
 // PreAuthKey describes a pre-authorization key usable in a particular user.
 type PreAuthKey struct {
@@ -28,6 +50,10 @@ type PreAuthKey struct {
 	// Can be nil for system-created tagged keys
 	UserID *uint
 	User   *User `gorm:"constraint:OnDelete:SET NULL;"`
+
+	// Free-text description, set via the v2 API. Empty for keys created through
+	// the v1 API or CLI.
+	Description string
 
 	Reusable  bool
 	Ephemeral bool `gorm:"default:false"`

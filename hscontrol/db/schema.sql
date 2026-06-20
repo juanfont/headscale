@@ -44,6 +44,7 @@ CREATE TABLE pre_auth_keys(
   prefix text,
   hash blob,
   user_id integer,
+  description text,
   reusable numeric,
   ephemeral numeric DEFAULT false,
   used numeric DEFAULT false,
@@ -60,6 +61,7 @@ CREATE TABLE api_keys(
   id integer PRIMARY KEY AUTOINCREMENT,
   prefix text,
   hash blob,
+  user_id integer,
   expiration datetime,
   last_seen datetime,
 
