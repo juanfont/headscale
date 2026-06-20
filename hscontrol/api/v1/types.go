@@ -29,23 +29,24 @@ type User struct {
 	ProfilePicURL string    `json:"profilePicUrl"`
 }
 
-// userFromState converts a domain user into the v1 response shape: Name falls
-// back to Username() (email/provider/id) when the stored Name is empty, so OIDC
-// users display their email.
-func userFromState(u *types.User) User {
-	name := u.Name
+// userFromView converts a domain user into the v1 response shape, reading
+// through the [types.UserView] accessors: Name falls back to Username()
+// (email/provider/id) when the stored Name is empty, so OIDC users display
+// their email.
+func userFromView(u types.UserView) User {
+	name := u.Name()
 	if name == "" {
 		name = u.Username()
 	}
 
 	return User{
-		ID:            formatID(u.ID),
+		ID:            formatID(u.ID()),
 		Name:          name,
-		CreatedAt:     u.CreatedAt,
-		DisplayName:   u.DisplayName,
-		Email:         u.Email,
-		ProviderID:    u.ProviderIdentifier.String,
-		Provider:      u.Provider,
-		ProfilePicURL: u.ProfilePicURL,
+		CreatedAt:     u.CreatedAt(),
+		DisplayName:   u.DisplayName(),
+		Email:         u.Email(),
+		ProviderID:    u.ProviderIdentifier().String,
+		Provider:      u.Provider(),
+		ProfilePicURL: u.ProfilePicURL(),
 	}
 }
