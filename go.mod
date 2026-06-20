@@ -53,6 +53,7 @@ require (
 	gorm.io/gorm v1.31.1
 	pgregory.net/rapid v1.3.0
 	tailscale.com v1.101.0-pre
+	tailscale.com/client/tailscale/v2 v2.9.0
 	zombiezen.com/go/postgrestest v1.0.1
 )
 
