@@ -1479,6 +1479,18 @@ func (s *State) GetPreAuthKeyByID(id uint64) (*types.PreAuthKey, error) {
 	return s.db.GetPreAuthKeyByID(id)
 }
 
+// RevokePreAuthKey soft-revokes a pre-authentication key: it is kept and stays
+// retrievable (invalid) until the collector reaps it after the retention window.
+func (s *State) RevokePreAuthKey(id uint64) error {
+	return s.db.RevokePreAuthKey(id)
+}
+
+// DestroyRevokedPreAuthKeysBefore hard-deletes pre-auth keys revoked before
+// cutoff, returning how many were removed.
+func (s *State) DestroyRevokedPreAuthKeysBefore(cutoff time.Time) (int, error) {
+	return s.db.DestroyRevokedPreAuthKeysBefore(cutoff)
+}
+
 // ListPreAuthKeys returns all pre-authentication keys for a user.
 func (s *State) ListPreAuthKeys() ([]types.PreAuthKey, error) {
 	return s.db.ListPreAuthKeys()

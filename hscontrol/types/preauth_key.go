@@ -66,6 +66,11 @@ type PreAuthKey struct {
 
 	CreatedAt  *time.Time
 	Expiration *time.Time
+
+	// Revoked is set when the key is revoked through the v2 API (Tailscale's
+	// DELETE). A revoked key is invalid but kept retrievable until the
+	// background collector reaps it after the configured retention window.
+	Revoked *time.Time
 }
 
 // PreAuthKeyNew is returned once when the key is created.
@@ -91,6 +96,10 @@ func (pak *PreAuthKey) Validate() error {
 		Caller().
 		EmbedObject(pak).
 		Msg("PreAuthKey.Validate: checking key")
+
+	if pak.Revoked != nil {
+		return PAKError("authkey revoked")
+	}
 
 	if pak.Expiration != nil && pak.Expiration.Before(time.Now()) {
 		return PAKError("authkey expired")

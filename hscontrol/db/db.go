@@ -814,6 +814,23 @@ WHERE user_id IS NULL
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			{
+				// Add a revoked timestamp to pre-auth keys. The v2 API's DELETE
+				// soft-revokes a key (set revoked = now) rather than destroying
+				// it; the row is reaped later by the background collector.
+				ID: "202606201200-pre-auth-key-revoked",
+				Migrate: func(tx *gorm.DB) error {
+					if !tx.Migrator().HasColumn(&types.PreAuthKey{}, "revoked") {
+						err := tx.Migrator().AddColumn(&types.PreAuthKey{}, "revoked")
+						if err != nil {
+							return fmt.Errorf("adding revoked to pre_auth_keys: %w", err)
+						}
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 

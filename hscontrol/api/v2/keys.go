@@ -249,9 +249,12 @@ func registerKeys(api huma.API, b Backend) {
 			return nil, err
 		}
 
-		err = b.State.DeletePreAuthKey(id)
+		// Tailscale's DELETE revokes the key but keeps it retrievable (invalid)
+		// rather than destroying it; the collector reaps it after the retention
+		// window.
+		err = b.State.RevokePreAuthKey(id)
 		if err != nil {
-			return nil, mapError("deleting auth key", err)
+			return nil, mapError("revoking auth key", err)
 		}
 
 		return &deleteKeyOutput{}, nil
@@ -328,6 +331,10 @@ func keyFromStored(pak *types.PreAuthKey) Key {
 	if pak.Expiration != nil {
 		key.Expires = pak.Expiration
 		key.ExpirySeconds = expirySeconds(pak.CreatedAt, pak.Expiration)
+	}
+
+	if pak.Revoked != nil {
+		key.Revoked = pak.Revoked
 	}
 
 	if len(pak.Tags) == 0 && pak.User != nil {
