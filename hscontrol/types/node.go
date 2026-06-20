@@ -92,6 +92,16 @@ func (id NodeID) String() string {
 	return strconv.FormatUint(id.Uint64(), util.Base10)
 }
 
+// StringID returns the node's id as a decimal string, the form the HTTP APIs
+// render it as.
+func (node *Node) StringID() string {
+	if node == nil {
+		return ""
+	}
+
+	return node.ID.String()
+}
+
 func ParseNodeID(s string) (NodeID, error) {
 	id, err := strconv.ParseUint(s, util.Base10, 64)
 	return NodeID(id), err
@@ -850,6 +860,16 @@ func (nv NodeView) RequestTagsSlice() views.Slice[string] {
 	}
 
 	return nv.Hostinfo().RequestTags()
+}
+
+// StringID returns the node's id as a decimal string, the form the HTTP APIs
+// render it as.
+func (nv NodeView) StringID() string {
+	if !nv.Valid() {
+		return ""
+	}
+
+	return nv.ID().String()
 }
 
 // IsTagged reports if a device is tagged

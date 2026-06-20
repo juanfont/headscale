@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
@@ -131,6 +132,33 @@ func (u *User) Username() string {
 // it will return the [User.Username].
 func (u *User) Display() string {
 	return cmp.Or(u.DisplayName, u.Username())
+}
+
+// Username returns the user's login name via the view; see [User.Username].
+func (v UserView) Username() string {
+	if !v.Valid() {
+		return ""
+	}
+
+	return v.ж.Username()
+}
+
+// Display returns the user's display name via the view; see [User.Display].
+func (v UserView) Display() string {
+	if !v.Valid() {
+		return ""
+	}
+
+	return v.ж.Display()
+}
+
+// CreatedAt returns when the user was created.
+func (v UserView) CreatedAt() time.Time {
+	if !v.Valid() {
+		return time.Time{}
+	}
+
+	return v.ж.CreatedAt
 }
 
 func (u *User) TailscaleUser() tailcfg.User {
