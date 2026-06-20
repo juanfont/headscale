@@ -38,15 +38,11 @@ jobs:
               - 'cmd/**'
               - 'hscontrol/**'
 
-      - uses: nixbuild/nix-quick-install-action@2c9db80fb984ceb1bcaa77cdda3fdf8cfba92035 # v34
+      - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
         if: steps.changed-files.outputs.nix == 'true' || steps.changed-files.outputs.go == 'true'
 
-      - uses: nix-community/cache-nix-action@135667ec418502fa5a3598af6fb9eb733888ce6a # v6.1.3
+      - uses: Mic92/hestia/action@ff07bb902a9968ac0c3d0e51d90a606662a375d8 # main
         if: steps.changed-files.outputs.nix == 'true' || steps.changed-files.outputs.go == 'true'
-        with:
-          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix',
-            '**/flake.lock') }}
-          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
 
       - name: Run NixOS module tests
         if: steps.changed-files.outputs.nix == 'true' || steps.changed-files.outputs.go == 'true'

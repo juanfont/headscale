@@ -6,6 +6,10 @@ concurrency:
   group: ${{ github.workflow }}-$${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
+defaults:
+  run:
+    shell: nix develop --fallback --command bash -e {0}
+
 jobs:
   golangci-lint:
     runs-on: ubuntu-latest
@@ -24,18 +28,14 @@ jobs:
               - '**/*.go'
               - 'integration_test/'
               - 'config-example.yaml'
-      - uses: nixbuild/nix-quick-install-action@2c9db80fb984ceb1bcaa77cdda3fdf8cfba92035 # v34
+      - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
         if: steps.changed-files.outputs.files == 'true'
-      - uses: nix-community/cache-nix-action@135667ec418502fa5a3598af6fb9eb733888ce6a # v6.1.3
+      - uses: Mic92/hestia/action@ff07bb902a9968ac0c3d0e51d90a606662a375d8 # main
         if: steps.changed-files.outputs.files == 'true'
-        with:
-          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix',
-            '**/flake.lock') }}
-          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
 
       - name: golangci-lint
         if: steps.changed-files.outputs.files == 'true'
-        run: nix develop --fallback --command -- golangci-lint run
+        run: golangci-lint run
           --new-from-rev=${{github.event.pull_request.base.sha}}
           --output.text.path=stdout
           --output.text.print-linter-name
@@ -64,16 +64,12 @@ jobs:
               - '**/*.css'
               - '**/*.scss'
               - '**/*.html'
-      - uses: nixbuild/nix-quick-install-action@2c9db80fb984ceb1bcaa77cdda3fdf8cfba92035 # v34
+      - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
         if: steps.changed-files.outputs.files == 'true'
-      - uses: nix-community/cache-nix-action@135667ec418502fa5a3598af6fb9eb733888ce6a # v6.1.3
+      - uses: Mic92/hestia/action@ff07bb902a9968ac0c3d0e51d90a606662a375d8 # main
         if: steps.changed-files.outputs.files == 'true'
-        with:
-          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix',
-            '**/flake.lock') }}
-          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
 
       - name: Prettify code
         if: steps.changed-files.outputs.files == 'true'
-        run: nix develop --fallback --command -- prettier --no-error-on-unmatched-pattern
+        run: prettier --no-error-on-unmatched-pattern
           --ignore-unknown --check **/*.{ts,js,md,yaml,yml,sass,css,scss,html}
