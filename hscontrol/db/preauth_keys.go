@@ -357,6 +357,63 @@ func (hsdb *HSDatabase) DeletePreAuthKey(id uint64) error {
 	})
 }
 
+func (hsdb *HSDatabase) RevokePreAuthKey(id uint64) error {
+	return hsdb.Write(func(tx *gorm.DB) error {
+		return RevokePreAuthKey(tx, id)
+	})
+}
+
+// RevokePreAuthKey soft-revokes a key (the v2 API's DELETE): the row is kept and
+// stays retrievable with its invalid flag set, but the key can no longer
+// authorize nodes. The background collector hard-deletes it after the retention
+// window. An already-revoked or unknown id returns [ErrPreAuthKeyNotFound], so a
+// repeated DELETE is a clean 404.
+func RevokePreAuthKey(tx *gorm.DB, id uint64) error {
+	res := tx.Model(&types.PreAuthKey{}).
+		Where("id = ? AND revoked IS NULL", id).
+		Update("revoked", time.Now())
+	if res.Error != nil {
+		return res.Error
+	}
+
+	if res.RowsAffected == 0 {
+		return ErrPreAuthKeyNotFound
+	}
+
+	return nil
+}
+
+// DestroyRevokedPreAuthKeysBefore hard-deletes every key revoked before cutoff,
+// returning how many were removed. The background collector calls this to reap
+// soft-revoked keys after the retention window.
+func (hsdb *HSDatabase) DestroyRevokedPreAuthKeysBefore(cutoff time.Time) (int, error) {
+	var count int
+
+	err := hsdb.Write(func(tx *gorm.DB) error {
+		var ids []uint64
+
+		err := tx.Model(&types.PreAuthKey{}).
+			Where("revoked IS NOT NULL AND revoked < ?", cutoff).
+			Pluck("id", &ids).Error
+		if err != nil {
+			return err
+		}
+
+		for _, id := range ids {
+			err := DestroyPreAuthKey(tx, id)
+			if err != nil {
+				return err
+			}
+		}
+
+		count = len(ids)
+
+		return nil
+	})
+
+	return count, err
+}
+
 // UsePreAuthKey atomically marks a [types.PreAuthKey] as used. The UPDATE is
 // guarded by `used = false` so two concurrent registrations racing for
 // the same single-use key cannot both succeed: the first commits and

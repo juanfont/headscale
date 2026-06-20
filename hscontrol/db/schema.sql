@@ -50,6 +50,7 @@ CREATE TABLE pre_auth_keys(
   used numeric DEFAULT false,
   tags text,
   expiration datetime,
+  revoked datetime,
 
   created_at datetime,
 

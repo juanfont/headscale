@@ -416,6 +416,13 @@ func (v PreAuthKeyView) Expiration() views.ValuePointer[time.Time] {
 	return views.ValuePointerOf(v.ж.Expiration)
 }
 
+// Revoked is set when the key is revoked through the v2 API (Tailscale's
+// DELETE). A revoked key is invalid but kept retrievable until the
+// background collector reaps it after the configured retention window.
+func (v PreAuthKeyView) Revoked() views.ValuePointer[time.Time] {
+	return views.ValuePointerOf(v.ж.Revoked)
+}
+
 // A compilation failure here means this code must be regenerated, with the command at the top of this file.
 var _PreAuthKeyViewNeedsRegeneration = PreAuthKey(struct {
 	ID          uint64
@@ -431,4 +438,5 @@ var _PreAuthKeyViewNeedsRegeneration = PreAuthKey(struct {
 	Tags        []string
 	CreatedAt   *time.Time
 	Expiration  *time.Time
+	Revoked     *time.Time
 }{})

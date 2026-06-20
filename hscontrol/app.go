@@ -310,11 +310,30 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			Msg("HA subnet router health probing enabled")
 	}
 
+	var revokedKeyGCChan <-chan time.Time
+
+	if h.cfg.PreAuthKeys.RevokedRetention > 0 {
+		revokedKeyTicker := time.NewTicker(time.Hour)
+		defer revokedKeyTicker.Stop()
+
+		revokedKeyGCChan = revokedKeyTicker.C
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
 			log.Info().Caller().Msg("scheduled task worker is shutting down.")
 			return
+
+		case <-revokedKeyGCChan:
+			cutoff := time.Now().Add(-h.cfg.PreAuthKeys.RevokedRetention)
+
+			reaped, err := h.state.DestroyRevokedPreAuthKeysBefore(cutoff)
+			if err != nil {
+				log.Error().Err(err).Msg("reaping revoked pre-auth keys")
+			} else if reaped > 0 {
+				log.Info().Int("count", reaped).Msg("reaped revoked pre-auth keys")
+			}
 
 		case <-expireTicker.C:
 			var (

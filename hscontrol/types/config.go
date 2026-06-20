@@ -78,6 +78,14 @@ type RouteConfig struct {
 	HA HARouteConfig
 }
 
+// PreAuthKeysConfig contains configuration for pre-auth key lifecycle.
+type PreAuthKeysConfig struct {
+	// RevokedRetention is how long a soft-revoked pre-auth key (revoked via the
+	// v2 API's DELETE) is kept retrievable before the background collector
+	// hard-deletes it. A zero or negative duration disables the collector.
+	RevokedRetention time.Duration
+}
+
 // NodeConfig contains configuration for node lifecycle and expiry.
 type NodeConfig struct {
 	// Expiry is the default key expiry duration for non-tagged nodes.
@@ -100,6 +108,7 @@ type Config struct {
 	MetricsAddr         string
 	TrustedProxies      []netip.Prefix
 	Node                NodeConfig
+	PreAuthKeys         PreAuthKeysConfig
 	PrefixV4            *netip.Prefix
 	PrefixV6            *netip.Prefix
 	IPAllocation        IPAllocationStrategy
@@ -440,6 +449,7 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("node.expiry", "0")
 	viper.SetDefault("node.ephemeral.inactivity_timeout", "120s")
+	viper.SetDefault("preauth_keys.revoked_retention", "168h")
 	viper.SetDefault("node.routes.ha.probe_interval", "10s")
 	viper.SetDefault("node.routes.ha.probe_timeout", "5s")
 
@@ -1202,6 +1212,10 @@ func LoadServerConfig() (*Config, error) {
 					ProbeTimeout:  viper.GetDuration("node.routes.ha.probe_timeout"),
 				},
 			},
+		},
+
+		PreAuthKeys: PreAuthKeysConfig{
+			RevokedRetention: viper.GetDuration("preauth_keys.revoked_retention"),
 		},
 
 		Database: databaseConfig(),
