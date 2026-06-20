@@ -1,0 +1,56 @@
+name: Nix Flake Checks
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-$${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+# Each job only runs `nix build .#checks.<system>.<name>`; the check logic lives
+# in flake.nix via the flake-checks library. The fileset-filtered checks hit the
+# hestia cache when their inputs are unchanged, so no changed-files gating.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
+      - uses: Mic92/hestia/action@ff07bb902a9968ac0c3d0e51d90a606662a375d8 # main
+      - name: build
+        run: nix build -L .#checks.x86_64-linux.build
+
+  gotest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
+      - uses: Mic92/hestia/action@ff07bb902a9968ac0c3d0e51d90a606662a375d8 # main
+      - name: gotest
+        run: nix build -L .#checks.x86_64-linux.gotest
+
+  golangci-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
+      - uses: Mic92/hestia/action@ff07bb902a9968ac0c3d0e51d90a606662a375d8 # main
+      - name: golangci-lint
+        run: nix build -L .#checks.x86_64-linux.golangci-lint
+
+  formatting:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
+      - uses: Mic92/hestia/action@ff07bb902a9968ac0c3d0e51d90a606662a375d8 # main
+      - name: formatting
+        run: nix build -L .#checks.x86_64-linux.formatting

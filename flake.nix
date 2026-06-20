@@ -9,12 +9,17 @@
     # once it ships go_1_26 >= 1.26.4.
     nixpkgs.url = "github:NixOS/nixpkgs/staging-next-26.05";
     flake-utils.url = "github:numtide/flake-utils";
+    # Reusable Go flake checks (build/test/lint/format); CI runs them via
+    # `nix build .#checks.<system>.<name>` instead of bespoke per-tool steps.
+    flake-checks.url = "github:kradalby/flake-checks";
+    flake-checks.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs =
     { self
     , nixpkgs
     , flake-utils
+    , flake-checks
     , ...
     }:
     let
@@ -176,6 +181,59 @@
           contents = [ pkgs.headscale ];
           config.Entrypoint = [ (pkgs.headscale + "/bin/headscale") ];
         };
+
+        # Go flake checks from the flake-checks library. CI gates on
+        # `nix build .#checks.<system>.<name>`; the logic lives here, not in
+        # bespoke workflow steps. Linux-only: parts of the tree are
+        # Linux-specific and the pure unit subset is validated by CI.
+        fc = flake-checks.lib;
+        common = {
+          inherit pkgs;
+          root = ./.;
+          pname = "headscale";
+          version = headscaleVersion;
+          vendorHash = (builtins.fromJSON (builtins.readFile ./flakehashes.json)).vendor.sri;
+          goPkg = pkgs.go_1_26;
+          # //go:embed targets and test-read files outside the default whitelist.
+          embedDirs = [ ./hscontrol/assets ./hscontrol/db/schema.sql ./config-example.yaml ];
+          extraSrc = [
+            ./hscontrol/testdata
+            ./hscontrol/types/testdata
+            ./hscontrol/db/testdata
+            ./hscontrol/policy/v2/testdata
+          ];
+        };
+        goChecks = {
+          build = fc.goBuild (common // { subPackages = [ "cmd/headscale" ]; });
+
+          # The pure unit subset. ./integration (Docker) and
+          # ./hscontrol/servertest (slow: 10s+ convergence plus race/stress/HA
+          # property tests — run by the servertest workflow instead) are dropped
+          # from the test set but kept in source so cmd/hi and friends still
+          # compile; TestPostgres* needs a server (the SQLite equivalents still
+          # run). CGO off matches the build.
+          gotest = fc.goTest (common // {
+            testExclude = [ "/integration" "/hscontrol/servertest" ];
+            goSkip = [ "TestPostgres" ];
+            testEnv = "export CGO_ENABLED=0";
+          });
+
+          # Full-tree golangci-lint (golines, gofumpt, etc.); uses the overlay's
+          # golangci-lint built against the pinned Go.
+          golangci-lint = fc.goLint common;
+
+          # nixpkgs-fmt + prettier, excluding generated output. goFmt = "off":
+          # Go formatting (golines, gofumpt) is enforced by the golangci-lint
+          # check, not treefmt. prettierExts matches the old prettier-lint glob
+          # (no json: testdata fixtures are hand-formatted).
+          formatting = fc.goFormat (common // {
+            goFmt = "off";
+            prettier = true;
+            prettierExts = [ "ts" "js" "md" "yaml" "yml" "sass" "css" "scss" "html" ];
+            # Mirror .prettierignore (docs/ are mkdocs-flavoured; gen/ generated).
+            fmtExclude = [ ./gen ./docs ];
+          });
+        };
       in
       {
         # `nix develop`
@@ -221,6 +279,9 @@
 
         checks = {
           headscale = pkgs.testers.nixosTest (import ./nix/tests/headscale.nix);
-        };
+        }
+        # The Go build/test checks are gated to Linux: parts of the tree are
+        # Linux-specific and the pure unit subset is validated by CI.
+        // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux goChecks;
       });
 }
