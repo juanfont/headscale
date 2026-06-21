@@ -70,6 +70,36 @@ CREATE TABLE api_keys(
 );
 CREATE UNIQUE INDEX idx_api_keys_prefix ON api_keys(prefix);
 
+-- OAuth 2.0 client-credentials clients for the v2 API. client_id is public and
+-- embedded in the secret (hskey-client-<client_id>-<secret>); only the bcrypt
+-- hash of the secret is stored. Mirrors the api_keys security model.
+CREATE TABLE oauth_clients(
+  id integer PRIMARY KEY AUTOINCREMENT,
+  client_id text,
+  secret_hash blob,
+  scopes text,
+  tags text,
+  description text,
+  user_id integer,
+  created_at datetime,
+  revoked datetime
+);
+CREATE UNIQUE INDEX idx_oauth_clients_client_id ON oauth_clients(client_id);
+
+-- Short-lived bearer access tokens minted by an oauth_client. Stored as a bcrypt
+-- hash of the secret, looked up by prefix.
+CREATE TABLE oauth_access_tokens(
+  id integer PRIMARY KEY AUTOINCREMENT,
+  prefix text,
+  hash blob,
+  client_id text,
+  scopes text,
+  tags text,
+  expiration datetime,
+  created_at datetime
+);
+CREATE UNIQUE INDEX idx_oauth_access_tokens_prefix ON oauth_access_tokens(prefix);
+
 CREATE TABLE nodes(
   id integer PRIMARY KEY AUTOINCREMENT,
   machine_key text,
