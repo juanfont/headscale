@@ -244,6 +244,9 @@ const (
 
 	ScopeFeatureSettings     Scope = "feature_settings"
 	ScopeFeatureSettingsRead Scope = "feature_settings:read"
+
+	ScopeUsers     Scope = "users"
+	ScopeUsersRead Scope = "users:read"
 )
 
 // scopeMetaKey keys the per-operation required Scope in huma.Operation.Metadata.

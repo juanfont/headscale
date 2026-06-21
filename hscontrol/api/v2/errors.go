@@ -66,6 +66,7 @@ func mapError(msg string, err error) error {
 	switch {
 	case errors.Is(err, gorm.ErrRecordNotFound),
 		errors.Is(err, db.ErrPreAuthKeyNotFound),
+		errors.Is(err, db.ErrUserNotFound),
 		errors.Is(err, state.ErrNodeNotFound):
 		return huma.Error404NotFound(msg, err)
 
