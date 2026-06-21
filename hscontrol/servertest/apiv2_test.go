@@ -2,6 +2,7 @@ package servertest_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -40,6 +41,7 @@ func TestAPIv2(t *testing.T) {
 
 	t.Run("GoClient", func(t *testing.T) {
 		apiv2GoClient(t, srv, srv.URL, apiKey, owner)
+		apiv2UsersGoClient(t, srv, srv.URL, apiKey, owner)
 
 		node := srv.CreateRegisteredNode(t, owner, "dut-go")
 		apiv2DevicesGoClient(t, srv, srv.URL, apiKey, node.ID())
@@ -49,6 +51,7 @@ func TestAPIv2(t *testing.T) {
 
 	t.Run("TSCLI", func(t *testing.T) {
 		apiv2TSCLI(t, srv, srv.URL, apiKey)
+		apiv2UsersTSCLI(t, srv.URL, apiKey, owner)
 
 		node := srv.CreateRegisteredNode(t, owner, "dut-tscli")
 		apiv2DevicesTSCLI(t, srv, srv.URL, apiKey, node.ID())
@@ -58,6 +61,7 @@ func TestAPIv2(t *testing.T) {
 
 	t.Run("Terraform", func(t *testing.T) {
 		apiv2Terraform(t, srv, srv.URL, apiKey, owner)
+		apiv2UsersTerraform(t, srv, srv.URL, apiKey, owner)
 
 		node := srv.CreateRegisteredNode(t, owner, "dut-tf")
 		apiv2DevicesACLTerraform(t, srv, srv.URL, apiKey, node.Hostname(), node.ID())
@@ -148,6 +152,85 @@ func containsKeyID(keys []tsclient.Key, id string) bool {
 	}
 
 	return false
+}
+
+func containsUserID(users []tsclient.User, id string) bool {
+	for _, u := range users {
+		if u.ID == id {
+			return true
+		}
+	}
+
+	return false
+}
+
+// srvUserCount is the server-side ground truth for the number of users.
+func srvUserCount(t *testing.T, srv *servertest.TestServer) int {
+	t.Helper()
+
+	users, err := srv.State().ListAllUsers()
+	require.NoError(t, err)
+
+	return len(users)
+}
+
+// apiv2UsersGoClient exercises the Users data sources through the official SDK:
+// get-by-id, list, the type/role filters (member matches all, anything else
+// matches nothing), and a typed 404 — each cross-checked against server truth.
+func apiv2UsersGoClient(t *testing.T, srv *servertest.TestServer, baseURL, apiKey string, owner *types.User) {
+	t.Helper()
+
+	ctx := t.Context()
+	ur := goClient(t, baseURL, apiKey).Users()
+	ownerID := strconv.FormatUint(uint64(owner.ID), 10)
+
+	got, err := ur.Get(ctx, ownerID)
+	require.NoError(t, err)
+	assert.Equal(t, ownerID, got.ID)
+	assert.Equal(t, owner.Username(), got.LoginName)
+	assert.Equal(t, tsclient.UserTypeMember, got.Type)
+	assert.Equal(t, tsclient.UserStatusActive, got.Status)
+	assert.Equal(t, srv.State().ListNodesByUser(types.UserID(owner.ID)).Len(), got.DeviceCount,
+		"deviceCount matches the server's node count for the user")
+
+	all, err := ur.List(ctx, nil, nil)
+	require.NoError(t, err)
+	assert.True(t, containsUserID(all, ownerID), "owner present in user list")
+	assert.Len(t, all, srvUserCount(t, srv))
+
+	// member matches every Headscale user; shared/admin match nothing.
+	members, err := ur.List(ctx, new(tsclient.UserTypeMember), nil)
+	require.NoError(t, err)
+	assert.Len(t, members, len(all))
+
+	shared, err := ur.List(ctx, new(tsclient.UserTypeShared), nil)
+	require.NoError(t, err)
+	assert.Empty(t, shared, "Headscale has no shared users")
+
+	admins, err := ur.List(ctx, nil, new(tsclient.UserRoleAdmin))
+	require.NoError(t, err)
+	assert.Empty(t, admins, "Headscale has no admin-role users")
+
+	_, err = ur.Get(ctx, "999999")
+	require.Error(t, err)
+	assert.True(t, tsclient.IsNotFound(err), "unknown user id is a typed 404")
+}
+
+// apiv2UsersTSCLI exercises the user verbs through tscli, asserting the owner is
+// present in the list and retrievable by id.
+func apiv2UsersTSCLI(t *testing.T, baseURL, apiKey string, owner *types.User) {
+	t.Helper()
+
+	run, _ := tscliRunner(t, baseURL, apiKey)
+	ownerID := strconv.FormatUint(uint64(owner.ID), 10)
+
+	listOut := run("list", "users", "-o", "json")
+	assert.Contains(t, listOut, ownerID)
+	assert.Contains(t, listOut, `"member"`)
+
+	getOut := run("get", "user", "--user", ownerID, "-o", "json")
+	assert.Contains(t, getOut, ownerID)
+	assert.Contains(t, getOut, owner.Username())
 }
 
 // srvPreAuthKey is the server-side ground truth for a key id; it fails the test
@@ -295,6 +378,74 @@ func apiv2Terraform(t *testing.T, srv *servertest.TestServer, baseURL, apiKey st
 	// until the collector reaps it.
 	tf.run("destroy", "-auto-approve", "-no-color", "-input=false", "-parallelism=1")
 	require.NotNil(t, srvPreAuthKey(t, srv, keyID).Revoked, "key revoked after destroy")
+}
+
+// usersTFConfig drives the tailscale_user (by login name) and tailscale_users
+// data sources, plus tailscale_4via6 (provider-local compute, no server call) to
+// prove that data source resolves against Headscale unchanged. %s is the owner's
+// login name. Data sources create nothing, so the assertions are value
+// correctness plus no drift on re-read.
+const usersTFConfig = `
+terraform {
+  required_providers {
+    tailscale = {
+      source  = "tailscale/tailscale"
+      version = "~> 0.21"
+    }
+  }
+}
+
+provider "tailscale" {}
+
+data "tailscale_user" "owner" {
+  login_name = "%s"
+}
+
+data "tailscale_users" "all" {}
+
+data "tailscale_4via6" "site" {
+  site = 7
+  cidr = "10.1.1.0/24"
+}
+
+output "user_id"           { value = data.tailscale_user.owner.id }
+output "user_login_name"   { value = data.tailscale_user.owner.login_name }
+output "user_type"         { value = data.tailscale_user.owner.type }
+output "user_device_count" { value = data.tailscale_user.owner.device_count }
+output "users_count"       { value = length(data.tailscale_users.all.users) }
+output "via6"              { value = data.tailscale_4via6.site.ipv6 }
+`
+
+// apiv2UsersTerraform runs a tofu init/apply/(no-drift)/destroy over the
+// tailscale_user + tailscale_users data sources (and the provider-local
+// tailscale_4via6), cross-checking the data-source outputs against the server's
+// stored users.
+func apiv2UsersTerraform(t *testing.T, srv *servertest.TestServer, baseURL, apiKey string, owner *types.User) {
+	t.Helper()
+
+	tf := newTofu(t, baseURL, apiKey, fmt.Sprintf(usersTFConfig, owner.Username()))
+
+	tf.run("init", "-no-color", "-input=false")
+	tf.run("apply", "-auto-approve", "-no-color", "-input=false", "-parallelism=1")
+
+	outputs := tf.outputs()
+	assert.Equal(t, strconv.FormatUint(uint64(owner.ID), 10), outputs.str(t, "user_id"))
+	assert.Equal(t, owner.Username(), outputs.str(t, "user_login_name"))
+	assert.Equal(t, "member", outputs.str(t, "user_type"))
+	assert.Equal(t, srv.State().ListNodesByUser(types.UserID(owner.ID)).Len(),
+		int(outputs.num(t, "user_device_count")))
+	assert.Equal(t, srvUserCount(t, srv), int(outputs.num(t, "users_count")))
+
+	// tailscale_4via6 is computed by the provider with no server call; assert it
+	// resolved to a Tailscale 4via6 address.
+	assert.Contains(t, outputs.str(t, "via6"), "fd7a:115c:a1e0", "4via6 mapped address")
+
+	// A converged data-source read must produce an empty plan — drift is a read bug.
+	tf.assertNoDrift()
+
+	// destroy removes only TF state; the users persist (they are data sources).
+	tf.run("destroy", "-auto-approve", "-no-color", "-input=false", "-parallelism=1")
+	assert.GreaterOrEqual(t, srvUserCount(t, srv), 1, "users persist across data-source destroy")
 }
 
 // tofu binds a tofu binary, working dir, and env for a single workspace. cmd is
