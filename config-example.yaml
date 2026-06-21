@@ -230,12 +230,12 @@ database:
   #   ssl: false
 
 ### TLS configuration
-#
-## Let's encrypt / ACME
-#
-# headscale supports automatically requesting and setting up
+# See: https://headscale.net/stable/ref/tls/
+
+## Let's Encrypt / ACME
+# Headscale supports automatically requesting and setting up
 # TLS for a domain with Let's Encrypt.
-#
+
 # URL to ACME directory
 acme_url: https://acme-v02.api.letsencrypt.org/directory
 
@@ -245,15 +245,13 @@ acme_email: ""
 # Domain name to request a TLS certificate for:
 tls_letsencrypt_hostname: ""
 
-# Path to store certificates and metadata needed by
-# letsencrypt
-# For production:
+# Path to store certificates and metadata needed by letsencrypt
 tls_letsencrypt_cache_dir: /var/lib/headscale/cache
 
 # Type of ACME challenge to use, currently supported types:
 # HTTP-01 or TLS-ALPN-01
-# See: https://headscale.net/stable/ref/tls/
 tls_letsencrypt_challenge_type: HTTP-01
+
 # When HTTP-01 challenge is chosen, letsencrypt must set up a
 # verification endpoint, and it will be listening on:
 # :http = port 80
@@ -279,6 +277,7 @@ policy:
   # The mode can be "file" or "database" that defines
   # where the policies are stored and read from.
   mode: file
+
   # If the mode is set to "file", the path to a HuJSON file containing policies.
   path: ""
 
@@ -460,6 +459,7 @@ taildrop:
 # choice.
 auto_update:
   enabled: false
+
 # Advanced performance tuning parameters.
 # The defaults are carefully chosen and should rarely need adjustment.
 # Only modify these if you have identified a specific performance issue.
