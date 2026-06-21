@@ -33,6 +33,12 @@ type PolicyManager interface {
 	// TagExists reports whether the given tag is defined in the policy.
 	TagExists(tag string) bool
 
+	// TagOwnedByTags reports whether a credential holding ownerTags may apply
+	// tag: true if tag is one of ownerTags, or tag's tag-to-tag ownership chain
+	// transitively includes one of ownerTags. Authorises the tags an OAuth
+	// access token may set on the auth keys it mints.
+	TagOwnedByTags(tag string, ownerTags []string) bool
+
 	// NodeCanApproveRoute reports whether the given node can approve the given route.
 	NodeCanApproveRoute(node types.NodeView, route netip.Prefix) bool
 

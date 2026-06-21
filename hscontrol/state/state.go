@@ -1511,6 +1511,63 @@ func (s *State) DeletePreAuthKey(id uint64) error {
 	return s.db.DeletePreAuthKey(id)
 }
 
+// CreateOAuthClient creates a new OAuth client-credentials client, returning the
+// plaintext secret (shown once) and the stored client.
+func (s *State) CreateOAuthClient(scopes, tags []string, description string, creatorUserID *uint) (string, *types.OAuthClient, error) {
+	return s.db.CreateOAuthClient(scopes, tags, description, creatorUserID)
+}
+
+// AuthenticateOAuthClient validates a client secret and returns the client.
+func (s *State) AuthenticateOAuthClient(secret string) (*types.OAuthClient, error) {
+	return s.db.AuthenticateOAuthClient(secret)
+}
+
+// GetOAuthClientByClientID returns an OAuth client by its public client id.
+func (s *State) GetOAuthClientByClientID(clientID string) (*types.OAuthClient, error) {
+	return s.db.GetOAuthClientByClientID(clientID)
+}
+
+// ListOAuthClients returns every OAuth client.
+func (s *State) ListOAuthClients() ([]types.OAuthClient, error) {
+	return s.db.ListOAuthClients()
+}
+
+// RevokeOAuthClient deletes a client and the access tokens it issued.
+func (s *State) RevokeOAuthClient(clientID string) error {
+	return s.db.RevokeOAuthClient(clientID)
+}
+
+// MintAccessToken stores a new scoped access token for an OAuth client.
+func (s *State) MintAccessToken(clientID string, scopes, tags []string, expiration *time.Time) (string, *types.OAuthAccessToken, error) {
+	return s.db.MintAccessToken(clientID, scopes, tags, expiration)
+}
+
+// AuthenticateAccessToken validates a bearer access token and returns it with
+// its granted scopes and tags.
+func (s *State) AuthenticateAccessToken(token string) (*types.OAuthAccessToken, error) {
+	return s.db.AuthenticateAccessToken(token)
+}
+
+// TagOwnedByTags reports whether a credential holding ownerTags may apply tag,
+// per the policy's tag-to-tag ownership. Used to authorise the tags an OAuth
+// access token sets on the auth keys it mints.
+func (s *State) TagOwnedByTags(tag string, ownerTags []string) bool {
+	return s.polMan.TagOwnedByTags(tag, ownerTags)
+}
+
+// TagExists reports whether tag is defined in the policy's tagOwners. Used to
+// reject OAuth clients and auth keys carrying tags that no policy authorises,
+// matching SetNodeTags.
+func (s *State) TagExists(tag string) bool {
+	return s.polMan.TagExists(tag)
+}
+
+// DeleteExpiredAccessTokens hard-deletes OAuth access tokens that expired before
+// cutoff, returning how many were removed.
+func (s *State) DeleteExpiredAccessTokens(cutoff time.Time) (int64, error) {
+	return s.db.DeleteExpiredAccessTokens(cutoff)
+}
+
 // GetAuthCacheEntry retrieves a pending auth request from the cache.
 func (s *State) GetAuthCacheEntry(id types.AuthID) (*types.AuthRequest, bool) {
 	return s.authCache.Get(id)

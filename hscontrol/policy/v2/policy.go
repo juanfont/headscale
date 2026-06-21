@@ -968,6 +968,66 @@ func (pm *PolicyManager) NodeCanHaveTag(node types.NodeView, tag string) bool {
 	return false
 }
 
+// TagOwnedByTags reports whether a credential holding ownerTags is authorised to
+// apply tag. It is true when tag is one of ownerTags, or when tag's tagOwners
+// chain (tag-to-tag ownership) transitively includes one of ownerTags. This is
+// the tag-level check used when an OAuth access token mints an auth key: the
+// requested tags must each be owned by the token's tags, so an operator token
+// tagged tag:k8s-operator may mint tag:k8s keys when the policy declares
+// "tag:k8s": ["tag:k8s-operator"]. It is purely tag-relational and does not
+// consult node IPs.
+func (pm *PolicyManager) TagOwnedByTags(tag string, ownerTags []string) bool {
+	if pm == nil {
+		return false
+	}
+
+	owns := make(map[string]bool, len(ownerTags))
+	for _, t := range ownerTags {
+		owns[t] = true
+	}
+
+	// A credential may always apply a tag it directly holds; this needs no policy.
+	if owns[tag] {
+		return true
+	}
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	// Owned-by delegation requires the policy's tagOwners.
+	if pm.pol == nil {
+		return false
+	}
+
+	// Walk tag-to-tag ownership transitively, guarding against cycles.
+	visited := make(map[Tag]bool)
+
+	var walk func(t Tag) bool
+
+	walk = func(t Tag) bool {
+		if visited[t] {
+			return false
+		}
+
+		visited[t] = true
+
+		for _, owner := range pm.pol.TagOwners[t] {
+			ot, ok := owner.(*Tag)
+			if !ok {
+				continue
+			}
+
+			if owns[string(*ot)] || walk(*ot) {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	return walk(Tag(tag))
+}
+
 // userMatchesOwner checks if a user matches a tag owner entry.
 // This is used as a fallback when the node's IP is not in the [PolicyManager.tagOwnerMap].
 func (pm *PolicyManager) userMatchesOwner(user types.UserView, owner Owner) bool {

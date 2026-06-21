@@ -831,6 +831,75 @@ WHERE user_id IS NULL
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			{
+				// Add the OAuth client + access token tables backing the v2 API's
+				// OAuth client-credentials flow. They mirror the api_keys /
+				// pre_auth_keys security model: a public id/prefix plus an Argon2id
+				// hash of the secret.
+				//
+				// SQLite uses explicit DDL that matches schema.sql byte-for-byte
+				// (the squibble digest is the SQLite source of truth). Postgres,
+				// which has no digest and rejects SQLite-isms like AUTOINCREMENT,
+				// uses dialect-aware AutoMigrate, mirroring InitSchema's fresh-DB
+				// table creation so an existing Postgres deployment can upgrade.
+				ID: "202606211200-oauth-clients-and-tokens",
+				Migrate: func(tx *gorm.DB) error {
+					if tx.Migrator().HasTable(&types.OAuthClient{}) &&
+						tx.Migrator().HasTable(&types.OAuthAccessToken{}) {
+						return nil
+					}
+
+					if tx.Name() != "sqlite" {
+						return tx.AutoMigrate(&types.OAuthClient{}, &types.OAuthAccessToken{})
+					}
+
+					if !tx.Migrator().HasTable(&types.OAuthClient{}) {
+						err := tx.Exec(`CREATE TABLE oauth_clients(
+  id integer PRIMARY KEY AUTOINCREMENT,
+  client_id text,
+  secret_hash blob,
+  scopes text,
+  tags text,
+  description text,
+  user_id integer,
+  created_at datetime,
+  revoked datetime
+)`).Error
+						if err != nil {
+							return fmt.Errorf("creating oauth_clients table: %w", err)
+						}
+
+						err = tx.Exec(`CREATE UNIQUE INDEX idx_oauth_clients_client_id ON oauth_clients(client_id)`).Error
+						if err != nil {
+							return fmt.Errorf("creating oauth_clients index: %w", err)
+						}
+					}
+
+					if !tx.Migrator().HasTable(&types.OAuthAccessToken{}) {
+						err := tx.Exec(`CREATE TABLE oauth_access_tokens(
+  id integer PRIMARY KEY AUTOINCREMENT,
+  prefix text,
+  hash blob,
+  client_id text,
+  scopes text,
+  tags text,
+  expiration datetime,
+  created_at datetime
+)`).Error
+						if err != nil {
+							return fmt.Errorf("creating oauth_access_tokens table: %w", err)
+						}
+
+						err = tx.Exec(`CREATE UNIQUE INDEX idx_oauth_access_tokens_prefix ON oauth_access_tokens(prefix)`).Error
+						if err != nil {
+							return fmt.Errorf("creating oauth_access_tokens index: %w", err)
+						}
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
@@ -842,6 +911,8 @@ WHERE user_id IS NULL
 			&types.APIKey{},
 			&types.Node{},
 			&types.Policy{},
+			&types.OAuthClient{},
+			&types.OAuthAccessToken{},
 		)
 		if err != nil {
 			return err
@@ -857,6 +928,8 @@ WHERE user_id IS NULL
 			`DROP INDEX IF EXISTS "idx_name_provider_identifier"`,
 			`DROP INDEX IF EXISTS "idx_name_no_provider_identifier"`,
 			`DROP INDEX IF EXISTS "idx_pre_auth_keys_prefix"`,
+			`DROP INDEX IF EXISTS "idx_oauth_clients_client_id"`,
+			`DROP INDEX IF EXISTS "idx_oauth_access_tokens_prefix"`,
 		}
 
 		for _, dropSQL := range dropIndexes {
@@ -875,6 +948,8 @@ WHERE user_id IS NULL
 			`CREATE UNIQUE INDEX idx_name_provider_identifier ON users(name, provider_identifier)`,
 			`CREATE UNIQUE INDEX idx_name_no_provider_identifier ON users(name) WHERE provider_identifier IS NULL`,
 			`CREATE UNIQUE INDEX idx_pre_auth_keys_prefix ON pre_auth_keys(prefix) WHERE prefix IS NOT NULL AND prefix != ''`,
+			`CREATE UNIQUE INDEX idx_oauth_clients_client_id ON oauth_clients(client_id)`,
+			`CREATE UNIQUE INDEX idx_oauth_access_tokens_prefix ON oauth_access_tokens(prefix)`,
 		}
 
 		for _, indexSQL := range indexes {

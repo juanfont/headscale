@@ -2470,3 +2470,75 @@ func TestPeerRelayGrantMakesRelayVisible(t *testing.T) {
 		})
 	}
 }
+
+func TestTagOwnedByTags(t *testing.T) {
+	// tag:leaf is owned by tag:mid, which is owned by tag:root: a tag-to-tag
+	// delegation chain, the shape an operator token uses to mint narrower keys.
+	const policy = `{
+		"tagOwners": {
+			"tag:root": [],
+			"tag:mid":  ["tag:root"],
+			"tag:leaf": ["tag:mid"],
+			"tag:lone": []
+		},
+		"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}]
+	}`
+
+	pm, err := NewPolicyManager([]byte(policy), nil, types.Nodes{}.ViewSlice())
+	require.NoError(t, err)
+
+	tests := []struct {
+		name      string
+		tag       string
+		ownerTags []string
+		want      bool
+	}{
+		{
+			name:      "directly held tag needs no policy",
+			tag:       "tag:lone",
+			ownerTags: []string{"tag:lone"},
+			want:      true,
+		},
+		{
+			name:      "one-hop owned-by",
+			tag:       "tag:mid",
+			ownerTags: []string{"tag:root"},
+			want:      true,
+		},
+		{
+			name:      "transitive chain root owns leaf",
+			tag:       "tag:leaf",
+			ownerTags: []string{"tag:root"},
+			want:      true,
+		},
+		{
+			name:      "owning one link does not grant a sibling",
+			tag:       "tag:lone",
+			ownerTags: []string{"tag:root"},
+			want:      false,
+		},
+		{
+			name:      "unowned tag denied",
+			tag:       "tag:leaf",
+			ownerTags: []string{"tag:unrelated"},
+			want:      false,
+		},
+		{
+			name:      "empty owners deny a delegated tag",
+			tag:       "tag:leaf",
+			ownerTags: nil,
+			want:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, pm.TagOwnedByTags(tt.tag, tt.ownerTags))
+		})
+	}
+
+	t.Run("nil policy manager denies", func(t *testing.T) {
+		var nilPM *PolicyManager
+		require.False(t, nilPM.TagOwnedByTags("tag:leaf", []string{"tag:root"}))
+	})
+}

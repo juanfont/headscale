@@ -25,6 +25,26 @@ var (
 	ErrPreAuthKeyACLTagInvalid     = errors.New("auth-key tag is invalid")
 )
 
+// validateACLTags deduplicates, sorts, and checks that every tag carries the
+// "tag:" prefix. Shared by the pre-auth-key and OAuth credential paths so both
+// enforce the same tag shape.
+func validateACLTags(tags []string) ([]string, error) {
+	tags = set.SetOf(tags).Slice()
+	slices.Sort(tags)
+
+	for _, tag := range tags {
+		if !strings.HasPrefix(tag, "tag:") {
+			return nil, fmt.Errorf(
+				"%w: '%s' did not begin with 'tag:'",
+				ErrPreAuthKeyACLTagInvalid,
+				tag,
+			)
+		}
+	}
+
+	return tags, nil
+}
+
 func (hsdb *HSDatabase) CreatePreAuthKey(
 	uid *types.UserID,
 	reusable bool,
@@ -76,20 +96,9 @@ func CreatePreAuthKey(
 		userID = &user.ID
 	}
 
-	// Remove duplicates and sort for consistency
-	aclTags = set.SetOf(aclTags).Slice()
-	slices.Sort(aclTags)
-
-	// TODO(kradalby): factor out and create a reusable tag validation,
-	// check if there is one in Tailscale's lib.
-	for _, tag := range aclTags {
-		if !strings.HasPrefix(tag, "tag:") {
-			return nil, fmt.Errorf(
-				"%w: '%s' did not begin with 'tag:'",
-				ErrPreAuthKeyACLTagInvalid,
-				tag,
-			)
-		}
+	aclTags, err := validateACLTags(aclTags)
+	if err != nil {
+		return nil, err
 	}
 
 	now := time.Now().UTC()
@@ -228,6 +237,7 @@ func findAuthKey(tx *gorm.DB, keyStr string) (*types.PreAuthKey, error) {
 // separator-based to handle dashes in base64 URL-safe characters.
 func parsePrefixedKey(
 	prefixAndSecret string,
+	//nolint:unparam // kept explicit though every credential kind uses a 12-char prefix and 64-char secret today
 	prefixLen, secretLen int,
 	parseErr error,
 ) (string, string, error) {
