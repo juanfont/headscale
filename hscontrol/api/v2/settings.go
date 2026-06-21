@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/juanfont/headscale/hscontrol/scope"
 	"github.com/juanfont/headscale/hscontrol/types"
 )
 
@@ -59,7 +60,7 @@ func registerSettings(api huma.API, b Backend) {
 		Tags:        settingsTags,
 		Security:    security,
 		Errors:      []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound},
-	}, ScopeFeatureSettingsRead), func(ctx context.Context, in *getSettingsInput) (*settingsOutput, error) {
+	}, scope.FeatureSettingsRead), func(ctx context.Context, in *getSettingsInput) (*settingsOutput, error) {
 		err := requireDefaultTailnet(in.Tailnet)
 		if err != nil {
 			return nil, err
@@ -86,7 +87,7 @@ func registerSettings(api huma.API, b Backend) {
 		// The body is accepted but ignored; skip validation.
 		SkipValidateBody: true,
 		Errors:           []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusNotImplemented},
-	}, ScopeFeatureSettings), func(ctx context.Context, in *patchSettingsInput) (*settingsOutput, error) {
+	}, scope.FeatureSettings), func(ctx context.Context, in *patchSettingsInput) (*settingsOutput, error) {
 		err := requireDefaultTailnet(in.Tailnet)
 		if err != nil {
 			return nil, err

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/juanfont/headscale/hscontrol/scope"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 )
@@ -60,7 +61,7 @@ func registerACL(api huma.API, b Backend) {
 		Tags:        aclTags,
 		Security:    security,
 		Errors:      []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusInternalServerError},
-	}, ScopePolicyFileRead), func(ctx context.Context, in *getACLInput) (*huma.StreamResponse, error) {
+	}, scope.PolicyFileRead), func(ctx context.Context, in *getACLInput) (*huma.StreamResponse, error) {
 		err := requireDefaultTailnet(in.Tailnet)
 		if err != nil {
 			return nil, err
@@ -89,7 +90,7 @@ func registerACL(api huma.API, b Backend) {
 			http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden,
 			http.StatusNotFound, http.StatusPreconditionFailed, http.StatusInternalServerError,
 		},
-	}, ScopePolicyFile), func(ctx context.Context, in *setACLInput) (*huma.StreamResponse, error) {
+	}, scope.PolicyFile), func(ctx context.Context, in *setACLInput) (*huma.StreamResponse, error) {
 		err := requireDefaultTailnet(in.Tailnet)
 		if err != nil {
 			return nil, err
