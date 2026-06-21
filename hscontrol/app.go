@@ -42,6 +42,7 @@ import (
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/time/rate"
 	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
@@ -263,8 +264,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 
 // Redirect to our TLS url.
 func (h *Headscale) redirect(w http.ResponseWriter, req *http.Request) {
-	target := h.cfg.ServerURL + req.URL.RequestURI()
-	http.Redirect(w, req, target, http.StatusFound) //nolint:gosec // G710: target prefixed by trusted ServerURL
+	http.Redirect(w, req, h.cfg.ServerURL, http.StatusMovedPermanently)
 }
 
 func (h *Headscale) scheduledTasks(ctx context.Context) {
@@ -403,6 +403,23 @@ func (h *Headscale) ensureUnixSocketIsAbsent() error {
 	return os.Remove(h.cfg.UnixSocket)
 }
 
+// authRateLimiters tracks per-IP rate limiters for authentication endpoints.
+var authRateLimiters sync.Map
+
+// authRateLimit is a middleware that rate-limits auth endpoints to 10 requests/minute per client IP.
+func authRateLimit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+		limiterIface, _ := authRateLimiters.LoadOrStore(ip, rate.NewLimiter(rate.Every(time.Minute), 10))
+		limiter := limiterIface.(*rate.Limiter)
+		if !limiter.Allow() {
+			http.Error(w, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // securityHeaders sets baseline response headers on every HTTP response:
 // deny framing (clickjacking), forbid MIME-type sniffing, drop the Referer
 // header on outbound navigation. Cheap defense-in-depth for HTML surfaces.
@@ -453,8 +470,11 @@ func (h *Headscale) createRouter(apiV1Mux, apiV2Mux http.Handler) *chi.Mux {
 	r.Get("/health", h.HealthHandler)
 	r.Get("/version", h.VersionHandler)
 	r.Get("/key", h.KeyHandler)
-	r.Get("/register/{auth_id}", h.authProvider.RegisterHandler)
-	r.Get("/auth/{auth_id}", h.authProvider.AuthHandler)
+	r.Group(func(r chi.Router) {
+		r.Use(authRateLimit)
+		r.Get("/register/{auth_id}", h.authProvider.RegisterHandler)
+		r.Get("/auth/{auth_id}", h.authProvider.AuthHandler)
+	})
 
 	if provider, ok := h.authProvider.(*AuthProviderOIDC); ok {
 		r.Get("/oidc/callback", provider.OIDCCallbackHandler)
