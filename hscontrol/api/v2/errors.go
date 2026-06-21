@@ -9,12 +9,12 @@ import (
 	"gorm.io/gorm"
 )
 
-// apiError is the Tailscale API error body. The official Tailscale Go client —
-// and therefore the Terraform provider and tscli built on it — decode 4xx/5xx
+// apiError is the Tailscale API error body. The official Tailscale Go client
+// (and therefore the Terraform provider and tscli built on it) decodes 4xx/5xx
 // responses into this shape. Huma's default RFC 9457 problem+json would reach
-// them with an empty message, so every v2 error is rewritten into this shape by
-// tailscaleErrorTransformer. The HTTP status is read from the response code,
-// not from the body's status field.
+// them with an empty message, so tailscaleErrorTransformer rewrites every v2
+// error into this shape. The HTTP status is read from the response code, not
+// from the body's status field.
 type apiError struct {
 	Message string         `json:"message"`
 	Data    []apiErrorData `json:"data,omitempty"`

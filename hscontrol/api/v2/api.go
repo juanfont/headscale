@@ -1,8 +1,8 @@
 // Package apiv2 is Headscale's v2 HTTP API, served at /api/v2.
 //
 // Where the v1 API (hscontrol/api/v1) is the headscale-native admin surface, v2
-// additionally ports selected endpoints from Tailscale's API — reusing
-// Tailscale's wire shapes (paths, request/response JSON, error body) — so the
+// additionally ports selected endpoints from Tailscale's API, reusing
+// Tailscale's wire shapes (paths, request/response JSON, error body), so the
 // existing Tailscale ecosystem (the Terraform/OpenTofu provider, tscli, and
 // tailscale.com/client/tailscale/v2) can drive Headscale unchanged. Ported
 // operations carry the "Tailscale compat" tag; a headscale-native v2 operation
@@ -24,6 +24,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
+	"github.com/juanfont/headscale/hscontrol/scope"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
@@ -40,7 +41,7 @@ type Backend struct {
 }
 
 // security is the requirement applied to authenticated operations: an API key
-// presented as HTTP Basic (the key as username — what the Tailscale SDK sends)
+// presented as HTTP Basic (the key as username, what the Tailscale SDK sends)
 // or as a Bearer token.
 var security = []map[string][]string{{"basicAuth": {}}, {"bearerAuth": {}}}
 
@@ -79,7 +80,7 @@ func Config() huma.Config {
 	// Accept application/hujson request bodies (the Tailscale SDK sends the
 	// policy file that way). The bytes are captured raw by the ACL handler, so
 	// reusing the JSON format is only to satisfy huma's content-type check.
-	// Clone first — config.Formats aliases huma's shared DefaultFormats map.
+	// Clone first: config.Formats aliases huma's shared DefaultFormats map.
 	formats := maps.Clone(config.Formats)
 	formats["application/hujson"] = formats["application/json"]
 	config.Formats = formats
@@ -97,6 +98,10 @@ func NewAPI(router chi.Router, backend Backend) huma.API {
 	api.UseMiddleware(authMiddleware(api, backend))
 
 	Register(api, backend)
+
+	// The OAuth token endpoint is a plain route, not a Huma operation (see
+	// oauth.go); register it on the same router.
+	registerOAuthToken(router, backend)
 
 	return api
 }
@@ -117,11 +122,21 @@ func Spec() ([]byte, error) {
 	return api.OpenAPI().YAML()
 }
 
+// Spec30 emits the document downgraded to OpenAPI 3.0.3, needed because
+// oapi-codegen cannot yet read 3.1; the typed client is generated from this.
+func Spec30() ([]byte, error) {
+	api := NewAPI(chi.NewMux(), Backend{})
+
+	return api.OpenAPI().DowngradeYAML()
+}
+
 type contextKey int
 
 const (
 	localTrustKey contextKey = iota
 	ownerUserKey
+	principalScopesKey
+	principalTagsKey
 )
 
 // WithLocalTrust marks a request as arriving over a locally-trusted transport
@@ -136,8 +151,8 @@ func WithLocalTrust(next http.Handler) http.Handler {
 }
 
 // authMiddleware authenticates the API key (HTTP Basic with the key as the
-// username — what the Tailscale SDK sends — or Bearer), records the key's
-// owning user for handlers, and enforces the operation's required scope.
+// username, what the Tailscale SDK sends, or Bearer), records the key's owning
+// user for handlers, and enforces the operation's required scope.
 func authMiddleware(api huma.API, b Backend) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
 		if ctx.Context().Value(localTrustKey) != nil {
@@ -159,6 +174,35 @@ func authMiddleware(api huma.API, b Backend) func(huma.Context, func(huma.Contex
 			return
 		}
 
+		// An OAuth access token is scope-limited; an admin API key is all-access.
+		// They are told apart by prefix so a scoped token can never be mistaken
+		// for an all-access key.
+		if strings.HasPrefix(token, types.AccessTokenPrefix) {
+			at, err := b.State.AuthenticateAccessToken(token)
+			if err != nil {
+				_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "unauthorized")
+
+				return
+			}
+
+			if want, ok := requiredScope(ctx.Operation()); ok && !scope.Grants(scope.Parse(at.Scopes), want) {
+				_ = huma.WriteErr(api, ctx, http.StatusForbidden,
+					"token is missing the required scope "+string(want))
+
+				return
+			}
+
+			// The keys handler multiplexes on keyType, so its required scope and
+			// permitted tags depend on the body; carry the token's scopes and tags
+			// for it to finish the check the static middleware cannot.
+			ctx = huma.WithValue(ctx, principalScopesKey, at.Scopes)
+			ctx = huma.WithValue(ctx, principalTagsKey, at.Tags)
+
+			next(ctx)
+
+			return
+		}
+
 		key, err := b.State.AuthenticateAPIKey(token)
 		if err != nil {
 			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "unauthorized")
@@ -166,13 +210,9 @@ func authMiddleware(api huma.API, b Backend) func(huma.Context, func(huma.Contex
 			return
 		}
 
-		// TODO(scopes): every valid key is all-access today. Operations still
-		// declare their required scope (requireScope) so that once OAuth tokens
-		// arrive, the granted set can be derived from the token and checked
-		// against the operation's scope here. Until then, accept everything.
-
-		// Record the key's owning user (may be unset) so handlers can create
-		// user-owned keys on its behalf.
+		// An admin API key is all-access: its operations are not scope-checked.
+		// Record its owning user (may be unset) so handlers can create user-owned
+		// keys on its behalf.
 		if key.UserID != nil {
 			ctx = huma.WithValue(ctx, ownerUserKey, types.UserID(*key.UserID))
 		}
@@ -210,6 +250,24 @@ func ownerUser(ctx context.Context) (types.UserID, bool) {
 	return uid, ok
 }
 
+// principalScopes returns the scopes granted to the request's OAuth access
+// token, and whether the request authenticated with one. ok is false for an
+// admin API key, which is all-access and not scope-checked.
+func principalScopes(ctx context.Context) ([]string, bool) {
+	scopes, ok := ctx.Value(principalScopesKey).([]string)
+
+	return scopes, ok
+}
+
+// principalTags returns the tags granted to the request's OAuth access token,
+// and whether the request authenticated with one. An admin API key is not an
+// OAuth token, so ok is false and its key creation is unrestricted by tags.
+func principalTags(ctx context.Context) ([]string, bool) {
+	tags, ok := ctx.Value(principalTagsKey).([]string)
+
+	return tags, ok
+}
+
 // requireDefaultTailnet rejects any tailnet other than "-". Headscale is
 // single-tailnet; the Tailscale SDK sends "-" (its default tailnet). A non-"-"
 // value is "no such tailnet", a 404, which lets the SDK's IsNotFound behave.
@@ -221,46 +279,47 @@ func requireDefaultTailnet(tailnet string) error {
 	return nil
 }
 
-// Scope is an OAuth capability an operation requires and a token grants. The
-// names mirror Tailscale's API scopes (see the OAuth scope descriptions in the
-// Tailscale OpenAPI spec); a ...Read scope is the read-only subset of its
-// write scope. Nothing is enforced yet — every key is all-access — but every
-// operation declares the scope it would require, so OAuth tokens can later be
-// checked against it without reworking the operations.
-type Scope string
+// The scope vocabulary and the grant predicate live in the hscontrol/scope
+// package; this file only wires a required scope onto each huma operation and
+// reads it back in the middleware.
 
-const (
-	ScopeAuthKeys     Scope = "auth_keys"
-	ScopeAuthKeysRead Scope = "auth_keys:read"
-
-	ScopeDevicesCore     Scope = "devices:core"
-	ScopeDevicesCoreRead Scope = "devices:core:read"
-
-	ScopeDevicesRoutes     Scope = "devices:routes"
-	ScopeDevicesRoutesRead Scope = "devices:routes:read"
-
-	ScopePolicyFile     Scope = "policy_file"
-	ScopePolicyFileRead Scope = "policy_file:read"
-
-	ScopeFeatureSettings     Scope = "feature_settings"
-	ScopeFeatureSettingsRead Scope = "feature_settings:read"
-
-	ScopeUsers     Scope = "users"
-	ScopeUsersRead Scope = "users:read"
-)
-
-// scopeMetaKey keys the per-operation required Scope in huma.Operation.Metadata.
+// scopeMetaKey keys the per-operation required scope in huma.Operation.Metadata.
 const scopeMetaKey = "headscale.scope"
 
-// requireScope records op's required scope in its Metadata, where the auth
-// middleware can read it back. It keeps the requirement next to the operation
-// definition.
-func requireScope(op huma.Operation, s Scope) huma.Operation {
+// requireScope records op's required scope, both in its Metadata (where the auth
+// middleware reads it back) and in the generated OpenAPI document: an
+// x-required-scope extension for machine consumers and a Description line so the
+// rendered docs state what each operation needs.
+func requireScope(op huma.Operation, s scope.Scope) huma.Operation {
 	if op.Metadata == nil {
 		op.Metadata = map[string]any{}
 	}
 
 	op.Metadata[scopeMetaKey] = s
 
+	if op.Extensions == nil {
+		op.Extensions = map[string]any{}
+	}
+
+	op.Extensions["x-required-scope"] = string(s)
+
+	note := "Requires the `" + string(s) + "` OAuth scope (an admin API key is all-access)."
+	if op.Description == "" {
+		op.Description = note
+	} else {
+		op.Description += "\n\n" + note
+	}
+
 	return op
+}
+
+// requiredScope returns the scope an operation declared via requireScope, if any.
+func requiredScope(op *huma.Operation) (scope.Scope, bool) {
+	if op == nil || op.Metadata == nil {
+		return "", false
+	}
+
+	s, ok := op.Metadata[scopeMetaKey].(scope.Scope)
+
+	return s, ok
 }

@@ -40,6 +40,9 @@ const (
 
 	FeatureSettings     Scope = "feature_settings"
 	FeatureSettingsRead Scope = "feature_settings:read"
+
+	Users     Scope = "users"
+	UsersRead Scope = "users:read"
 )
 
 const readSuffix = ":read"
@@ -55,6 +58,7 @@ func Known() []Scope {
 		DevicesRoutes, DevicesRoutesRead,
 		PolicyFile, PolicyFileRead,
 		FeatureSettings, FeatureSettingsRead,
+		Users, UsersRead,
 	}
 }
 
@@ -69,7 +73,7 @@ func (s Scope) IsWrite() bool {
 }
 
 // Parse converts scope strings (as stored on a token or client) into Scope values.
-// Unknown strings are kept verbatim; they simply never satisfy any required scope.
+// Unknown strings are kept as-is; they simply never satisfy any required scope.
 func Parse(ss []string) []Scope {
 	out := make([]Scope, len(ss))
 	for i, s := range ss {

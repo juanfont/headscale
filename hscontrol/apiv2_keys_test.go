@@ -17,8 +17,8 @@ import (
 )
 
 // taggedCaps builds capabilities for a tagged auth key.
-func taggedCaps(tags ...string) apiv2.KeyCapabilities {
-	return apiv2.KeyCapabilities{
+func taggedCaps(tags ...string) *apiv2.KeyCapabilities {
+	return &apiv2.KeyCapabilities{
 		Devices: apiv2.KeyDeviceCapabilities{Create: apiv2.KeyDeviceCreateCapabilities{
 			Reusable:      true,
 			Preauthorized: true,
@@ -138,7 +138,7 @@ func TestAPIv2Key_Create_Tagged(t *testing.T) {
 		KeyType:       "auth",
 		Description:   "dev access",
 		ExpirySeconds: 86400,
-		Capabilities:  taggedCaps("tag:test"),
+		Capabilities:  *taggedCaps("tag:test"),
 		Tags:          []string{"tag:test"},
 	}
 	if diff := cmp.Diff(want, created, cmpopts.IgnoreFields(apiv2.Key{}, "ID", "Key", "Created", "Expires")); diff != "" {
@@ -172,7 +172,7 @@ func TestAPIv2Key_Create_Permutations(t *testing.T) {
 	}{
 		{
 			name: "single-use",
-			req: apiv2.CreateKeyRequest{Capabilities: apiv2.KeyCapabilities{
+			req: apiv2.CreateKeyRequest{Capabilities: &apiv2.KeyCapabilities{
 				Devices: apiv2.KeyDeviceCapabilities{Create: apiv2.KeyDeviceCreateCapabilities{Tags: []string{"tag:test"}}},
 			}},
 			wantSeconds: 7776000,
@@ -185,7 +185,7 @@ func TestAPIv2Key_Create_Permutations(t *testing.T) {
 		},
 		{
 			name: "ephemeral",
-			req: apiv2.CreateKeyRequest{Capabilities: apiv2.KeyCapabilities{
+			req: apiv2.CreateKeyRequest{Capabilities: &apiv2.KeyCapabilities{
 				Devices: apiv2.KeyDeviceCapabilities{Create: apiv2.KeyDeviceCreateCapabilities{
 					Ephemeral: true,
 					Tags:      []string{"tag:test"},
@@ -246,7 +246,7 @@ func TestAPIv2Key_Get(t *testing.T) {
 		KeyType:       "auth",
 		Description:   "dev access",
 		ExpirySeconds: 86400,
-		Capabilities:  taggedCaps("tag:test"),
+		Capabilities:  *taggedCaps("tag:test"),
 		Tags:          []string{"tag:test"},
 	}
 	if diff := cmp.Diff(want, got, cmpopts.IgnoreFields(apiv2.Key{}, "Created", "Expires")); diff != "" {
@@ -313,7 +313,7 @@ func TestAPIv2Key_Create_NoTags_NoOwner_400(t *testing.T) {
 
 	before := keyCount(t, app)
 
-	resp := api.Post("/api/v2/tailnet/-/keys", apiv2.CreateKeyRequest{Capabilities: apiv2.KeyCapabilities{}})
+	resp := api.Post("/api/v2/tailnet/-/keys", apiv2.CreateKeyRequest{Capabilities: &apiv2.KeyCapabilities{}})
 	assert.Equal(t, http.StatusBadRequest, resp.Code)
 	assert.Contains(t, resp.Body.String(), `"message"`)
 

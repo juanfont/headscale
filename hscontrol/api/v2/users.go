@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/juanfont/headscale/hscontrol/scope"
 	"github.com/juanfont/headscale/hscontrol/types"
 )
 
@@ -73,7 +74,7 @@ func registerUsers(api huma.API, b Backend) {
 		Tags:        usersTags,
 		Security:    security,
 		Errors:      []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound},
-	}, ScopeUsersRead), func(ctx context.Context, in *userByIDInput) (*userOutput, error) {
+	}, scope.UsersRead), func(ctx context.Context, in *userByIDInput) (*userOutput, error) {
 		view, err := lookupUser(b, in.UserID)
 		if err != nil {
 			return nil, err
@@ -90,7 +91,7 @@ func registerUsers(api huma.API, b Backend) {
 		Tags:        usersTags,
 		Security:    security,
 		Errors:      []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound},
-	}, ScopeUsersRead), func(ctx context.Context, in *listUsersInput) (*listUsersOutput, error) {
+	}, scope.UsersRead), func(ctx context.Context, in *listUsersInput) (*listUsersOutput, error) {
 		err := requireDefaultTailnet(in.Tailnet)
 		if err != nil {
 			return nil, err
