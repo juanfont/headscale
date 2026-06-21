@@ -91,17 +91,20 @@ openapi:
 	@echo "Emitting OpenAPI spec from code..."
 	go run ./cmd/gen-openapi
 
-# Generate the strongly-typed Go HTTP client. The served spec is OpenAPI 3.1,
-# but oapi-codegen v2 does not yet read 3.1, so the client is generated from a
-# transient 3.0.3 downgrade of the same document. Pinned so the committed client
-# is reproducible.
+# Generate the strongly-typed Go HTTP clients (v1 and v2). The served specs are
+# OpenAPI 3.1, but oapi-codegen v2 does not yet read 3.1, so each client is
+# generated from a transient 3.0.3 downgrade of its document. Pinned so the
+# committed clients are reproducible.
 .PHONY: client
 client:
-	@echo "Generating API client..."
+	@echo "Generating API clients..."
 	@tmp=$$(mktemp -t headscale-openapi-3.0.XXXXXX.yaml); \
 	go run ./cmd/gen-openapi -downgrade "$$tmp" && \
 	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.7.1 \
-		-generate types,client -package clientv1 -o gen/client/v1/client.gen.go "$$tmp"; \
+		-generate types,client -package clientv1 -o gen/client/v1/client.gen.go "$$tmp" && \
+	go run ./cmd/gen-openapi -api v2 -downgrade "$$tmp" && \
+	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.7.1 \
+		-generate types,client -package clientv2 -o gen/client/v2/client.gen.go "$$tmp"; \
 	status=$$?; rm -f "$$tmp"; exit $$status
 
 # Clean targets

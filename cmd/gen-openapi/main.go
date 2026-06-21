@@ -1,33 +1,58 @@
-// Command gen-openapi emits the Headscale v1 OpenAPI document from the
-// authoritative Huma definitions in hscontrol/api/v1. The server also serves the
-// spec live at /openapi.yaml; this tool emits it on demand, and with -downgrade
-// the 3.0.3 form used to generate the client. The output is not committed.
+// Command gen-openapi emits a Headscale OpenAPI document from the authoritative
+// Huma definitions in hscontrol/api/v1 and hscontrol/api/v2. The server also
+// serves each spec live (at /openapi.yaml and /api/v2/openapi); this tool emits
+// them on demand, and with -downgrade the 3.0.3 form used to generate the typed
+// client. The output is not committed.
 //
 // Usage:
 //
-//	go run ./cmd/gen-openapi              # write the 3.1 spec to openapi/v1/headscale.yaml
-//	go run ./cmd/gen-openapi -downgrade <path>  # write the 3.0.3 downgrade (for client gen)
+//	go run ./cmd/gen-openapi                       # write the v1 3.1 spec to its default path
+//	go run ./cmd/gen-openapi -api v2               # write the v2 3.1 spec to its default path
+//	go run ./cmd/gen-openapi -downgrade <path>     # write the v1 3.0.3 downgrade (for client gen)
+//	go run ./cmd/gen-openapi -api v2 -downgrade <path>  # the v2 3.0.3 downgrade
 package main
 
 import (
+	"flag"
 	"log"
 	"os"
 	"path/filepath"
 
 	apiv1 "github.com/juanfont/headscale/hscontrol/api/v1"
+	apiv2 "github.com/juanfont/headscale/hscontrol/api/v2"
 )
 
-// outPath is relative to the repository root.
-const outPath = "openapi/v1/headscale.yaml"
+// spec bundles a version's full (3.1) and downgraded (3.0.3) generators with the
+// committed output path. outPath is relative to the repository root.
+type spec struct {
+	full    func() ([]byte, error)
+	down    func() ([]byte, error)
+	outPath string
+}
+
+// specs maps the -api value to its generators.
+var specs = map[string]spec{
+	"v1": {apiv1.Spec, apiv1.Spec30, "openapi/v1/headscale.yaml"},
+	"v2": {apiv2.Spec, apiv2.Spec30, "openapi/v2/headscale.yaml"},
+}
 
 func main() {
-	if len(os.Args) == 3 && os.Args[1] == "-downgrade" {
-		writeSpec(os.Args[2], apiv1.Spec30)
+	api := flag.String("api", "v1", "which API spec to emit: v1 or v2")
+	downgrade := flag.String("downgrade", "", "write the OpenAPI 3.0.3 downgrade to this path instead of the committed 3.1 spec")
+	flag.Parse()
+
+	s, ok := specs[*api]
+	if !ok {
+		log.Fatalf("unknown -api %q (want v1 or v2)", *api)
+	}
+
+	if *downgrade != "" {
+		writeSpec(*downgrade, s.down)
 
 		return
 	}
 
-	writeSpec(outPath, apiv1.Spec)
+	writeSpec(s.outPath, s.full)
 }
 
 func writeSpec(path string, gen func() ([]byte, error)) {
