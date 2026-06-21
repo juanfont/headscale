@@ -1,7 +1,6 @@
 [Unit]
 After=network.target
 Description=headscale coordination server for Tailscale
-X-Restart-Triggers=/etc/headscale/config.yaml
 
 [Service]
 Type=simple
