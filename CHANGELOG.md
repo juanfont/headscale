@@ -14,6 +14,18 @@ HTTP API directly.
 
 [#3324](https://github.com/juanfont/headscale/pull/3324)
 
+### OAuth clients and scopes for the v2 API
+
+The v2 API now authenticates with OAuth 2.0 client-credentials, the way the
+Tailscale ecosystem does. An OAuth client mints short-lived access tokens whose
+scopes limit which operations they may perform and whose tags limit the devices
+they may create, so a credential can be issued with only the access it needs.
+The `headscale oauth-clients` command manages them. This lets the Tailscale
+Terraform provider and Kubernetes operator drive Headscale unchanged; admin API
+keys remain all-access.
+
+[#3334](https://github.com/juanfont/headscale/pull/3334)
+
 ### BREAKING
 
 #### API
