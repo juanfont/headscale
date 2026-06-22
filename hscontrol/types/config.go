@@ -229,6 +229,11 @@ type OIDCConfig struct {
 	EmailVerifiedRequired      bool
 	UseExpiryFromToken         bool
 	PKCE                       PKCEConfig
+	// AuthorizationEndpoint allows overriding the authorization endpoint
+	// returned by the OIDC provider discovery document. This is required
+	// for providers (such as GitHub Actions OIDC) that do not include
+	// authorization_endpoint in their discovery metadata.
+	AuthorizationEndpoint string
 }
 
 type DERPConfig struct {
@@ -1266,7 +1271,8 @@ func LoadServerConfig() (*Config, error) {
 			AllowedUsers:          viper.GetStringSlice("oidc.allowed_users"),
 			AllowedGroups:         viper.GetStringSlice("oidc.allowed_groups"),
 			EmailVerifiedRequired: viper.GetBool("oidc.email_verified_required"),
-			UseExpiryFromToken:    viper.GetBool("oidc.use_expiry_from_token"),
+			UseExpiryFromToken:   viper.GetBool("oidc.use_expiry_from_token"),
+			AuthorizationEndpoint: viper.GetString("oidc.authorization_endpoint"),
 			PKCE: PKCEConfig{
 				Enabled: viper.GetBool("oidc.pkce.enabled"),
 				Method:  viper.GetString("oidc.pkce.method"),
