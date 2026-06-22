@@ -45,6 +45,7 @@ StateDirectoryMode=0750
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged
+SystemCallFilter=~@resources
 UMask=0077
 
 [Install]
