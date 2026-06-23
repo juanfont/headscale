@@ -2271,6 +2271,10 @@ var tailscaleCapAllowlist = map[tailcfg.PeerCapability]bool{
 	tailcfg.PeerCapabilityWebUI:      true, // tailscale.com/cap/webui
 	tailcfg.PeerCapabilityKubernetes: true, // tailscale.com/cap/kubernetes
 	tailcfg.PeerCapabilityTsIDP:      true, // tailscale.com/cap/tsidp
+
+	// tailscale.com/cap/secrets is the capability used by setec
+	// (github.com/tailscale/setec); allow it so it can be granted via policy.
+	tailcfg.PeerCapability("tailscale.com/cap/secrets"): true,
 }
 
 // validateGrantSrcDstCombination validates [Grant]-specific source/destination
