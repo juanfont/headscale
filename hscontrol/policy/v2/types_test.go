@@ -723,7 +723,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   ]
 }
 `,
-			wantErr: `user "*" is not valid`,
+			wantErr: `ssh: user "*" is not valid`,
 		},
 		{
 			name: "ssh-with-check-period",
@@ -4763,25 +4763,25 @@ func TestSSHActionInvalidUnmarshal(t *testing.T) {
 			name:    "uppercase rejected",
 			input:   `"ACCEPT"`,
 			wantErr: ErrSSHActionInvalid,
-			wantMsg: `"ACCEPT" is not a valid action`,
+			wantMsg: `ssh: "ACCEPT" is not a valid action`,
 		},
 		{
 			name:    "mixedcase rejected",
 			input:   `"Accept"`,
 			wantErr: ErrSSHActionInvalid,
-			wantMsg: `"Accept" is not a valid action`,
+			wantMsg: `ssh: "Accept" is not a valid action`,
 		},
 		{
 			name:    "whitespace trimmed then mixedcase rejected",
 			input:   `" Accept"`,
 			wantErr: ErrSSHActionInvalid,
-			wantMsg: `"Accept" is not a valid action`,
+			wantMsg: `ssh: "Accept" is not a valid action`,
 		},
 		{
 			name:    "unknown action rejected",
 			input:   `"deny"`,
 			wantErr: ErrSSHActionInvalid,
-			wantMsg: `"deny" is not a valid action`,
+			wantMsg: `ssh: "deny" is not a valid action`,
 		},
 	}
 
@@ -4882,7 +4882,7 @@ func TestSSHUserTrimEndToEnd(t *testing.T) {
 		_, err := unmarshalPolicy([]byte(policy))
 		require.Error(t, err)
 		require.ErrorIs(t, err, ErrSSHUserInvalid)
-		require.Contains(t, err.Error(), `user "" is not valid`)
+		require.Contains(t, err.Error(), `ssh: user "" is not valid`)
 	})
 }
 
@@ -5022,14 +5022,14 @@ func TestSSHCheckPeriodInvalidDuration(t *testing.T) {
 }
 
 // TestSSHCheckPeriodNegativeMessage verifies the SaaS body for the
-// negative-duration case (`checkPeriod -1m0s must be a positive duration`).
+// negative-duration case (`ssh: checkPeriod -1m0s must be a positive duration`).
 func TestSSHCheckPeriodNegativeMessage(t *testing.T) {
 	p := SSHCheckPeriod{Duration: -time.Minute}
 
 	err := p.Validate()
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrSSHCheckPeriodNegative)
-	require.Contains(t, err.Error(), "checkPeriod -1m0s must be a positive duration")
+	require.Contains(t, err.Error(), "ssh: checkPeriod -1m0s must be a positive duration")
 }
 
 func TestUnmarshalGrants(t *testing.T) {
