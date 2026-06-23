@@ -483,7 +483,7 @@ func TestSSHPolicyRules(t *testing.T) {
 				]
 			}`,
 			expectErr:    true,
-			errorMessage: `"invalid" is not a valid action`,
+			errorMessage: `ssh: "invalid" is not a valid action`,
 		},
 		{
 			name:       "invalid-check-period",
