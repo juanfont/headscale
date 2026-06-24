@@ -85,8 +85,8 @@ func NewAuthProviderOIDC(
 	serverURL string,
 	cfg *types.OIDCConfig,
 ) (*AuthProviderOIDC, error) {
-	var err error
-	// grab oidc config if it hasn't been already
+	// Use the caller's context (bounded, see app.go) so a slow or unreachable
+	// issuer fails discovery within the timeout instead of hanging startup.
 	oidcProvider, err := oidc.NewProvider(ctx, cfg.Issuer)
 	if err != nil {
 		return nil, fmt.Errorf("creating OIDC provider from issuer config: %w", err)
@@ -115,6 +115,15 @@ func NewAuthProviderOIDC(
 		oidcProvider: oidcProvider,
 		oauth2Config: oauth2Config,
 	}, nil
+}
+
+// cookiesSecure reports whether the OIDC cookies should carry the Secure flag.
+// It keys off the configured server_url scheme, not req.TLS, so cookies stay
+// Secure behind a TLS-terminating reverse proxy (where the proxy→Headscale hop
+// is plain HTTP and req.TLS is nil). Deriving it from config avoids trusting a
+// spoofable X-Forwarded-Proto header.
+func (a *AuthProviderOIDC) cookiesSecure() bool {
+	return strings.HasPrefix(a.serverURL, "https://")
 }
 
 func (a *AuthProviderOIDC) AuthURL(authID types.AuthID) string {
@@ -156,10 +165,10 @@ func (a *AuthProviderOIDC) authHandler(
 	}
 
 	// Set the state and nonce cookies to protect against CSRF attacks
-	state := setCSRFCookie(writer, req, "state")
+	state := setCSRFCookie(writer, req, "state", a.cookiesSecure())
 
 	// Set the state and nonce cookies to protect against CSRF attacks
-	nonce := setCSRFCookie(writer, req, "nonce")
+	nonce := setCSRFCookie(writer, req, "nonce", a.cookiesSecure())
 
 	registrationInfo := AuthInfo{
 		AuthID:       authID,
@@ -262,6 +271,11 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		httpUserError(writer, NewHTTPError(http.StatusForbidden, "nonce did not match", nil))
 		return
 	}
+
+	// The state/nonce cookies have served their CSRF purpose; clear them so a
+	// single-use pair does not linger in the browser until MaxAge.
+	clearOIDCCallbackCookie(writer, stateCookieName)
+	clearOIDCCallbackCookie(writer, nonceCookieName)
 
 	nodeExpiry := a.determineNodeExpiry(idToken.Expiry)
 
@@ -589,12 +603,16 @@ func doOIDCAuthorization(
 	return nil
 }
 
-// getAuthInfoFromState retrieves the registration ID from the state.
+// getAuthInfoFromState retrieves and consumes the auth info for a state. The
+// entry is removed on read so a state is single-use: a replayed callback cannot
+// resolve the same auth session twice, even within the cache TTL.
 func (a *AuthProviderOIDC) getAuthInfoFromState(state string) *AuthInfo {
 	authInfo, ok := a.authCache.Get(state)
 	if !ok {
 		return nil
 	}
+
+	a.authCache.Remove(state)
 
 	return &authInfo
 }
@@ -658,14 +676,15 @@ func setRegisterConfirmCookie(
 	authID types.AuthID,
 	value string,
 	maxAge int,
+	secure bool,
 ) {
-	//nolint:gosec // G124: Secure set conditionally via req.TLS; HttpOnly + SameSite already set
+	//nolint:gosec // G124: Secure from server_url scheme or req.TLS; HttpOnly + SameSite already set
 	http.SetCookie(writer, &http.Cookie{
 		Name:     registerConfirmCSRFCookie,
 		Value:    value,
 		Path:     "/register/confirm/" + authID.String(),
 		MaxAge:   maxAge,
-		Secure:   req.TLS != nil,
+		Secure:   secure || req.TLS != nil,
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
 	})
@@ -707,7 +726,7 @@ func (a *AuthProviderOIDC) renderRegistrationConfirmInterstitial(
 		CSRF:       csrf,
 	})
 
-	setRegisterConfirmCookie(writer, req, authID, csrf, int(authCacheExpiration.Seconds()))
+	setRegisterConfirmCookie(writer, req, authID, csrf, int(authCacheExpiration.Seconds()), a.cookiesSecure())
 
 	regData := authReq.RegistrationData()
 
@@ -824,7 +843,7 @@ func (a *AuthProviderOIDC) RegisterConfirmHandler(
 	}
 
 	// Clear the CSRF cookie now that the registration is final.
-	setRegisterConfirmCookie(writer, req, authID, "", -1)
+	setRegisterConfirmCookie(writer, req, authID, "", -1, a.cookiesSecure())
 
 	content := renderRegistrationSuccessTemplate(user, newNode)
 
@@ -920,16 +939,27 @@ func getCookieName(baseName, value string) string {
 	return fmt.Sprintf("%s_%s", baseName, value[:n])
 }
 
-func setCSRFCookie(w http.ResponseWriter, r *http.Request, name string) string {
+// clearOIDCCallbackCookie expires a /oidc/callback cookie by name. Matching the
+// path the cookie was set with is required for the browser to drop it.
+func clearOIDCCallbackCookie(w http.ResponseWriter, name string) {
+	//nolint:gosec // G124: a deletion cookie (empty value, MaxAge<0); security attributes are moot
+	http.SetCookie(w, &http.Cookie{
+		Name:   name,
+		Path:   "/oidc/callback",
+		MaxAge: -1,
+	})
+}
+
+func setCSRFCookie(w http.ResponseWriter, r *http.Request, name string, secure bool) string {
 	val := rands.HexString(64)
 
-	//nolint:gosec // G124: Secure set conditionally via r.TLS; HttpOnly + SameSite set below
+	//nolint:gosec // G124: Secure from server_url scheme or req.TLS; HttpOnly + SameSite set below
 	c := &http.Cookie{
 		Path:     "/oidc/callback",
 		Name:     getCookieName(name, val),
 		Value:    val,
 		MaxAge:   int(time.Hour.Seconds()),
-		Secure:   r.TLS != nil,
+		Secure:   secure || r.TLS != nil,
 		HttpOnly: true,
 		// Lax, not Strict: the OIDC callback is a cross-site top-level GET
 		// redirect from the IdP that must still carry this cookie. Strict
