@@ -4,7 +4,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -186,11 +188,76 @@ func TestSetCSRFCookieSameSite(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/auth/abcdef0123456789", nil)
 
-	_, err := setCSRFCookie(w, r, "state")
-	require.NoError(t, err)
+	setCSRFCookie(w, r, "state", false)
 
 	cookies := w.Result().Cookies()
 	require.Len(t, cookies, 1)
 	assert.Equal(t, http.SameSiteLaxMode, cookies[0].SameSite,
 		"OIDC CSRF cookie must explicitly set SameSite=Lax")
+}
+
+// TestExtractCodeAndStateParam covers the callback's first trust-boundary
+// checks: both params required, and a too-short state is rejected before
+// getCookieName can slice out of range.
+func TestExtractCodeAndStateParam(t *testing.T) {
+	_, _, err := extractCodeAndStateParamFromRequest(
+		httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/oidc/callback", nil))
+	require.Error(t, err)
+
+	_, _, err = extractCodeAndStateParamFromRequest(
+		httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/oidc/callback?code=c&state=abc", nil))
+	require.ErrorIs(t, err, errOIDCStateTooShort)
+
+	code, state, err := extractCodeAndStateParamFromRequest(
+		httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/oidc/callback?code=c&state=abcdef0123", nil))
+	require.NoError(t, err)
+	assert.Equal(t, "c", code)
+	assert.Equal(t, "abcdef0123", state)
+}
+
+// TestGetAuthInfoFromStateSingleUse asserts a consumed OIDC state cannot be
+// resolved twice, so a replayed callback cannot re-bind the same session.
+func TestGetAuthInfoFromStateSingleUse(t *testing.T) {
+	a := &AuthProviderOIDC{
+		authCache: expirable.NewLRU[string, AuthInfo](16, nil, time.Minute),
+	}
+	a.authCache.Add("state-x", AuthInfo{Registration: true})
+
+	got := a.getAuthInfoFromState("state-x")
+	require.NotNil(t, got)
+	assert.True(t, got.Registration)
+
+	assert.Nil(t, a.getAuthInfoFromState("state-x"), "a consumed state must not resolve again")
+}
+
+// TestClearOIDCCallbackCookie asserts the cookie is expired (negative MaxAge) on
+// the same path it was set with, so the browser drops it.
+func TestClearOIDCCallbackCookie(t *testing.T) {
+	w := httptest.NewRecorder()
+	clearOIDCCallbackCookie(w, "state_abcdef")
+
+	cookies := w.Result().Cookies()
+	require.Len(t, cookies, 1)
+	assert.Equal(t, "state_abcdef", cookies[0].Name)
+	assert.Negative(t, cookies[0].MaxAge, "deletion cookie must have negative MaxAge")
+}
+
+// TestSetCSRFCookieSecure verifies the Secure flag is driven by the secure
+// argument (derived from the configured https server_url), not only req.TLS, so
+// cookies stay Secure behind a TLS-terminating reverse proxy where req.TLS is
+// nil.
+func TestSetCSRFCookieSecure(t *testing.T) {
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/auth/abcdef0123456789", nil)
+
+	secureRec := httptest.NewRecorder()
+	setCSRFCookie(secureRec, r, "state", true)
+	require.Len(t, secureRec.Result().Cookies(), 1)
+	assert.True(t, secureRec.Result().Cookies()[0].Secure,
+		"https server_url must set Secure even when req.TLS is nil (proxy case)")
+
+	plainRec := httptest.NewRecorder()
+	setCSRFCookie(plainRec, r, "state", false)
+	require.Len(t, plainRec.Result().Cookies(), 1)
+	assert.False(t, plainRec.Result().Cookies()[0].Secure,
+		"plain-http server_url without req.TLS must not set Secure")
 }
