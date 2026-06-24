@@ -33,6 +33,9 @@ const (
 
 var (
 	errOidcMutuallyExclusive     = errors.New("oidc_client_secret and oidc_client_secret_path are mutually exclusive")
+	errOIDCIssuerInvalid         = errors.New("oidc.issuer must be a valid http(s) URL")
+	errOIDCClientIDRequired      = errors.New("oidc.client_id is required when oidc.issuer is set")
+	errOIDCClientSecretRequired  = errors.New("oidc.client_secret or oidc.client_secret_path is required when oidc.issuer is set")
 	errServerURLSuffix           = errors.New("server_url cannot be part of base_domain in a way that could make the DERP and headscale server unreachable")
 	errServerURLSame             = errors.New("server_url cannot use the same domain as base_domain in a way that could make the DERP and headscale server unreachable")
 	errInvalidPKCEMethod         = errors.New("pkce.method must be either 'plain' or 'S256'")
@@ -356,6 +359,35 @@ func validatePKCEMethod(method string) error {
 	return nil
 }
 
+// validateOIDCConfig validates the OIDC settings, called when oidc.issuer is
+// set. It fails fast on a setup that cannot work: an invalid PKCE method, a
+// malformed issuer URL (which would otherwise surface as an opaque discovery
+// error or, worse, resolve to an unintended provider), or a missing client
+// id/secret.
+func validateOIDCConfig() error {
+	err := validatePKCEMethod(viper.GetString("oidc.pkce.method"))
+	if err != nil {
+		return err
+	}
+
+	issuer := viper.GetString("oidc.issuer")
+
+	u, err := url.Parse(issuer)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+		return fmt.Errorf("%w: got %q", errOIDCIssuerInvalid, issuer)
+	}
+
+	if viper.GetString("oidc.client_id") == "" {
+		return errOIDCClientIDRequired
+	}
+
+	if viper.GetString("oidc.client_secret") == "" && viper.GetString("oidc.client_secret_path") == "" {
+		return errOIDCClientSecretRequired
+	}
+
+	return nil
+}
+
 // Domain returns the hostname/domain part of the [Config.ServerURL].
 // If the [Config.ServerURL] is not a valid URL, it returns the [Config.BaseDomain].
 func (c *Config) Domain() string {
@@ -558,8 +590,11 @@ func validateServerConfig() error {
 	// Removed: oidc.expiry -> node.expiry
 	depr.fatalIfSet("oidc.expiry", "node.expiry")
 
-	if viper.GetBool("oidc.enabled") {
-		err := validatePKCEMethod(viper.GetString("oidc.pkce.method"))
+	// OIDC is activated by setting oidc.issuer (see app.go), not by a
+	// dedicated oidc.enabled key. Gate validation on the real activation
+	// condition so a misconfiguration fails at startup.
+	if viper.GetString("oidc.issuer") != "" {
+		err := validateOIDCConfig()
 		if err != nil {
 			return err
 		}
