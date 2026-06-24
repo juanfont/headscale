@@ -158,17 +158,17 @@ devices. Can only be used in policy destinations.
         {
           "src": ["boss@"],
           "dst": ["boss@"],
-          "ip": "*"
+          "ip": ["*"]
         },
         {
           "src": ["dev1@"],
           "dst": ["dev1@"],
-          "ip": "*"
+          "ip": ["*"]
         },
         {
           "src": ["intern1@"],
           "dst": ["intern1@"],
-          "ip": "*"
+          "ip": ["*"]
         }
       ]
     }
