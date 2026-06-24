@@ -2,7 +2,7 @@
 
 !!! tip "Required update path"
 
-    Its required to update from one stable version to the next (e.g. 0.26.0 → 0.27.1 → 0.28.0) without skipping minor
+    It's required to update from one stable version to the next (e.g. 0.26.0 → 0.27.1 → 0.28.0) without skipping minor
     versions in between. You should always pick the latest available patch release.
 
 Update an existing Headscale installation to a new version:
@@ -23,7 +23,7 @@ upgrading. A full backup of Headscale depends on your individual setup, but belo
 
 === "Standard installation"
 
-    A installation that follows our [official releases](install/official.md) setup guide uses the following paths:
+    An installation that follows our [official releases](install/official.md) setup guide uses the following paths:
 
     - [Configuration file](../ref/configuration.md): `/etc/headscale/config.yaml`
     - Data directory: `/var/lib/headscale`
@@ -37,7 +37,7 @@ upgrading. A full backup of Headscale depends on your individual setup, but belo
 
 === "Container"
 
-    A installation that follows our [container](install/container.md) setup guide uses a single source volume directory
+    An installation that follows our [container](install/container.md) setup guide uses a single source volume directory
     that contains the configuration file, data directory and the SQLite database.
 
     ```console
