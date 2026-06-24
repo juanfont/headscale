@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2/humatest"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	apiv2 "github.com/juanfont/headscale/hscontrol/api/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
@@ -131,17 +133,21 @@ func TestAPIv2Key_Create_Tagged(t *testing.T) {
 	})
 
 	// (a) create response — Tailscale Key shape, exact seconds (int64 wire).
-	assert.Equal(t, "auth", created.KeyType)
+	// ID/Key/Created/Expires are server-assigned; assert their presence apart.
+	want := apiv2.Key{
+		KeyType:       "auth",
+		Description:   "dev access",
+		ExpirySeconds: 86400,
+		Capabilities:  taggedCaps("tag:test"),
+		Tags:          []string{"tag:test"},
+	}
+	if diff := cmp.Diff(want, created, cmpopts.IgnoreFields(apiv2.Key{}, "ID", "Key", "Created", "Expires")); diff != "" {
+		t.Errorf("created key mismatch (-want +got):\n%s", diff)
+	}
+
 	assert.NotEmpty(t, created.ID)
 	assert.NotEmpty(t, created.Key, "secret returned on create")
-	assert.Equal(t, "dev access", created.Description)
-	assert.Equal(t, int64(86400), created.ExpirySeconds, "seconds, not nanoseconds")
-	assert.Empty(t, created.UserID, "tagged key presents no owner")
-	assert.Equal(t, []string{"tag:test"}, created.Capabilities.Devices.Create.Tags)
-	assert.True(t, created.Capabilities.Devices.Create.Reusable)
-	assert.True(t, created.Capabilities.Devices.Create.Preauthorized, "echoed on create")
 	assert.NotNil(t, created.Expires)
-	assert.False(t, created.Invalid)
 
 	// (c) server-side — the stored key.
 	pak := srvKey(t, app, created.ID)
@@ -234,14 +240,18 @@ func TestAPIv2Key_Get(t *testing.T) {
 	})
 
 	got := getKey(t, api, created.ID)
-	assert.Equal(t, created.ID, got.ID)
-	assert.Empty(t, got.Key, "secret omitted on get")
-	assert.Equal(t, "dev access", got.Description)
-	assert.Equal(t, int64(86400), got.ExpirySeconds, "stable across get")
-	assert.True(t, got.Capabilities.Devices.Create.Reusable)
-	assert.True(t, got.Capabilities.Devices.Create.Preauthorized, "Headscale always preauthorizes")
-	assert.Equal(t, []string{"tag:test"}, got.Capabilities.Devices.Create.Tags)
-	assert.False(t, got.Invalid)
+	// Get omits the secret (empty Key) and is stable across the round-trip.
+	want := apiv2.Key{
+		ID:            created.ID,
+		KeyType:       "auth",
+		Description:   "dev access",
+		ExpirySeconds: 86400,
+		Capabilities:  taggedCaps("tag:test"),
+		Tags:          []string{"tag:test"},
+	}
+	if diff := cmp.Diff(want, got, cmpopts.IgnoreFields(apiv2.Key{}, "Created", "Expires")); diff != "" {
+		t.Errorf("got key mismatch (-want +got):\n%s", diff)
+	}
 
 	// Unknown id and bad tailnet both 404 with the Tailscale error body.
 	assert.Equal(t, http.StatusNotFound, api.Get("/api/v2/tailnet/-/keys/999999").Code)
