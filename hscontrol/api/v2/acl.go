@@ -44,9 +44,8 @@ type setACLInput struct {
 	Tailnet string `path:"tailnet"`
 	IfMatch string `header:"If-Match"`
 	Accept  string `header:"Accept"`
-	// RawBody captures the HuJSON or JSON policy body verbatim; huma feeds the
-	// raw request bytes here regardless of Content-Type. The declared type only
-	// shapes the OpenAPI schema.
+	// RawBody captures the raw HuJSON or JSON policy bytes; huma feeds them here
+	// regardless of Content-Type. The declared type only shapes the OpenAPI schema.
 	RawBody []byte `contentType:"application/json"`
 }
 
@@ -183,7 +182,7 @@ func currentPolicy(b Backend) ([]byte, error) {
 	return nil, huma.Error500InternalServerError("unsupported policy mode", nil)
 }
 
-// streamPolicy writes the policy bytes verbatim with the chosen content type and
+// streamPolicy writes the policy bytes as-is with the chosen content type and
 // a content-addressed ETag, bypassing huma's JSON marshaler so HuJSON survives.
 func streamPolicy(data []byte, contentType string) *huma.StreamResponse {
 	return &huma.StreamResponse{Body: func(ctx huma.Context) {

@@ -16,7 +16,7 @@ func init() {
 
 // TailnetSettings is the Tailscale tailnet-settings response. Headscale's config
 // is file-based and mostly not runtime-mutable, so only a few fields carry a
-// real value; the rest report the honest "off"/default.
+// real value; the rest report the default "off".
 type TailnetSettings struct {
 	ACLsExternallyManagedOn bool   `json:"aclsExternallyManagedOn"`
 	ACLsExternalLink        string `json:"aclsExternalLink"`
