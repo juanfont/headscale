@@ -1,0 +1,75 @@
+name: integration-legacy
+
+on:
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# A small number of integration tests cannot run as hermetic NixOS-VM checks
+# because they need Tailscale's public DERP relays (real internet) — see
+# excludedFromNixChecks in gh-action-integration-generator.go. They run here the
+# legacy way, via cmd/hi against Dockerfile-built images, which also keeps the
+# cmd/hi path and the integration Dockerfiles exercised in CI. The matrix is the
+# generated integration/excluded-tests.json so this list has a single source.
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    outputs:
+      tests: ${{ steps.list.outputs.tests }}
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - id: list
+        run: echo "tests=$(jq -c . integration/excluded-tests.json)" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: list
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        test: ${{ fromJSON(needs.list.outputs.tests) }}
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
+      - uses: Mic92/hestia/action@ff07bb902a9968ac0c3d0e51d90a606662a375d8 # main
+
+      # Docker 29's default containerd snapshotter regresses these images; the
+      # classic overlay2 graph driver is the known-good path (mirrors the VM checks).
+      - name: Force overlay2 storage driver
+        run: |
+          sudo mkdir -p /etc/docker
+          echo '{"storage-driver":"overlay2"}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
+
+      - name: Login to Docker Hub
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_CI_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_CI_TOKEN }}
+        if: env.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
+
+      # cmd/hi requires prebuilt head images in CI (util.IsCI); released versions
+      # pull from the registry and tailscale-rs is built inline by tsric.
+      # Dockerfile.integration-ci COPYs a prebuilt headscale binary from the
+      # build context, so build it first (tailscale-HEAD builds from source).
+      - name: Build headscale + tailscale-HEAD images
+        run: |
+          nix develop --command bash -c 'CGO_ENABLED=0 GOOS=linux go build -o headscale ./cmd/headscale'
+          docker build --file Dockerfile.integration-ci --tag headscale:ci .
+          docker build --file Dockerfile.tailscale-HEAD --tag tailscale-head:ci .
+
+      - name: Run ${{ matrix.test }}
+        env:
+          HEADSCALE_INTEGRATION_HEADSCALE_IMAGE: headscale:ci
+          HEADSCALE_INTEGRATION_TAILSCALE_IMAGE: tailscale-head:ci
+        run: nix develop --command go run ./cmd/hi run "^${{ matrix.test }}$" --timeout=900s
