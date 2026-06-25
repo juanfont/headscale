@@ -84,3 +84,17 @@ func TailscaleLatestMajorMinor(n int, stripV bool) []string {
 
 	return majorSl[len(majorSl)-n:]
 }
+
+// IntegrationVersions returns the bare Tailscale version tags the integration
+// suite pins and tests — the full set and the "must" subset (head, unstable,
+// the two newest and two oldest tracked releases, for boundary coverage).
+// Releases are bare (1.80); callers that build image tags prepend "v". This is
+// the one source the suite's version list, the drift guard (`hi list-versions`),
+// and the tailscale-versions.json generator all derive from.
+func IntegrationVersions() ([]string, []string) {
+	release := TailscaleLatestMajorMinor(SupportedMajorMinorVersions, true)
+	all := append([]string{"head", "unstable"}, release...)
+	must := append(append([]string{}, all[0:4]...), all[len(all)-2:]...)
+
+	return all, must
+}
