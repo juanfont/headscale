@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"crypto/tls"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,7 +23,6 @@ import (
 	"time"
 
 	clientv1 "github.com/juanfont/headscale/gen/client/v1"
-	"github.com/juanfont/headscale/hscontrol/capver"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/dsic"
@@ -54,29 +54,37 @@ var (
 	errNoHeadscaleAvailable = errors.New("no headscale available")
 	errNoUserAvailable      = errors.New("no user available")
 	errNoClientFound        = errors.New("client not found")
-
-	// AllVersions represents a list of Tailscale versions the suite
-	// uses to test compatibility with the [ControlServer].
-	//
-	// The list contains two special cases, "head" and "unstable" which
-	// points to the current tip of Tailscale's main branch and the latest
-	// released unstable version.
-	//
-	// The rest of the version represents Tailscale versions that can be
-	// found in Tailscale's apt repository.
-	AllVersions = append([]string{"head", "unstable"}, capver.TailscaleLatestMajorMinor(capver.SupportedMajorMinorVersions, true)...)
-
-	// MustTestVersions is the minimum set of versions we should test.
-	// At the moment, this is arbitrarily chosen as:
-	//
-	// - Two unstable (HEAD and unstable)
-	// - Two latest versions
-	// - Two oldest supported version.
-	MustTestVersions = append(
-		AllVersions[0:4],
-		AllVersions[len(AllVersions)-2:]...,
-	)
 )
+
+// Regenerate tailscale-versions.json from capver + nix-prefetch-docker. Runs in
+// the same `make generate` / `go generate ./...` pass as capver (and needs the
+// nix dev shell); already-pinned tags are reused, so an unchanged set is a
+// no-op. Refresh just the pins with `go generate ./integration/...`.
+//go:generate go run ../tools/tailscale-versions
+
+//go:embed tailscale-versions.json
+var tailscaleVersionsJSON []byte
+
+// MustTestVersions is the set of Tailscale versions the suite tests for
+// compatibility with the [ControlServer]. It contains "head" (built from
+// source) and "unstable", plus the latest and oldest supported releases. It is
+// read from the generated tailscale-versions.json — the single source shared
+// with the nix image pins (regenerate with `update-integration-images`, which
+// derives the list from capver).
+var MustTestVersions = mustTailscaleVersions()
+
+func mustTailscaleVersions() []string {
+	var v struct {
+		Versions []string `json:"versions"`
+	}
+
+	err := json.Unmarshal(tailscaleVersionsJSON, &v)
+	if err != nil {
+		panic("parsing tailscale-versions.json: " + err.Error())
+	}
+
+	return v.Versions
+}
 
 // User represents a User in the [ControlServer] and a map of [TailscaleClient]'s
 // associated with the User.
@@ -1583,6 +1591,33 @@ const (
 
 var errStatusCodeNotOK = errors.New("status code not OK")
 
+// runHeadscaleImageContainer starts runOptions from the prebuilt headscale
+// image when HEADSCALE_INTEGRATION_HEADSCALE_IMAGE is set, otherwise it builds
+// Dockerfile.integration. The mock OIDC provider (headscale mockoidc) and the
+// webservice (python3 -m http.server) both run on the headscale image, so they
+// share the same prebuilt-or-build path hsic uses for headscale itself — which
+// is what lets them come up offline (e.g. in the nix VM checks).
+func (s *Scenario) runHeadscaleImageContainer(runOptions *dockertest.RunOptions) (*dockertest.Resource, error) {
+	repo, tag, prebuilt, err := integrationutil.PrebuiltImage("HEADSCALE_INTEGRATION_HEADSCALE_IMAGE")
+	if err != nil {
+		return nil, err
+	}
+
+	if prebuilt {
+		runOptions.Repository = repo
+		runOptions.Tag = tag
+
+		return s.pool.RunWithOptions(runOptions, dockertestutil.DockerRestartPolicy)
+	}
+
+	buildOptions := &dockertest.BuildOptions{
+		Dockerfile: hsic.IntegrationTestDockerFileName,
+		ContextDir: dockerContextPath,
+	}
+
+	return s.pool.BuildAndRunWithBuildOptions(buildOptions, runOptions, dockertestutil.DockerRestartPolicy)
+}
+
 func (s *Scenario) runMockOIDC(accessTTL time.Duration, users []mockoidc.MockUser) error {
 	port, err := dockertestutil.RandomFreeHostPort()
 	if err != nil {
@@ -1618,11 +1653,6 @@ func (s *Scenario) runMockOIDC(accessTTL time.Duration, users []mockoidc.MockUse
 		},
 	}
 
-	headscaleBuildOptions := &dockertest.BuildOptions{
-		Dockerfile: hsic.IntegrationTestDockerFileName,
-		ContextDir: dockerContextPath,
-	}
-
 	err = s.pool.RemoveContainerByName(hostname)
 	if err != nil {
 		return err
@@ -1633,11 +1663,7 @@ func (s *Scenario) runMockOIDC(accessTTL time.Duration, users []mockoidc.MockUse
 	// Add integration test labels if running under hi tool
 	dockertestutil.DockerAddIntegrationLabels(mockOidcOptions, "oidc")
 
-	if pmockoidc, err := s.pool.BuildAndRunWithBuildOptions( //nolint:noinlineerr
-		headscaleBuildOptions,
-		mockOidcOptions,
-		dockertestutil.DockerRestartPolicy,
-	); err == nil {
+	if pmockoidc, err := s.runHeadscaleImageContainer(mockOidcOptions); err == nil { //nolint:noinlineerr
 		s.mockOIDC.r = pmockoidc
 	} else {
 		return err
@@ -1722,16 +1748,7 @@ func Webservice(s *Scenario, networkName string) (*dockertest.Resource, error) {
 	// Add integration test labels if running under hi tool
 	dockertestutil.DockerAddIntegrationLabels(webOpts, "web")
 
-	webBOpts := &dockertest.BuildOptions{
-		Dockerfile: hsic.IntegrationTestDockerFileName,
-		ContextDir: dockerContextPath,
-	}
-
-	web, err := s.pool.BuildAndRunWithBuildOptions(
-		webBOpts,
-		webOpts,
-		dockertestutil.DockerRestartPolicy,
-	)
+	web, err := s.runHeadscaleImageContainer(webOpts)
 	if err != nil {
 		return nil, err
 	}

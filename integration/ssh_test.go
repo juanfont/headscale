@@ -47,7 +47,6 @@ func sshScenario(t *testing.T, policy *policyv2.Policy, testName string, clients
 			// to not configure DNS.
 			tsic.WithNetfilter("off"),
 			tsic.WithPackages("openssh"),
-			tsic.WithExtraCommands("adduser ssh-it-user"),
 			tsic.WithDockerWorkdir("/"),
 		},
 		hsic.WithACLPolicy(policy),
@@ -445,7 +444,7 @@ func doSSHWithRetryAsUser(
 	peerFQDN, _ := peer.FQDN()
 
 	command := []string{
-		"/usr/bin/ssh", "-o StrictHostKeyChecking=no", "-o ConnectTimeout=1",
+		"ssh", "-o StrictHostKeyChecking=no", "-o ConnectTimeout=1",
 		fmt.Sprintf("%s@%s", sshUser, peerFQDN),
 		"'hostname'",
 	}
@@ -661,7 +660,7 @@ func doSSHCheckWithTimeout(
 	peerFQDN, _ := peer.FQDN()
 
 	command := []string{
-		"/usr/bin/ssh", "-o StrictHostKeyChecking=no", "-o ConnectTimeout=30",
+		"ssh", "-o StrictHostKeyChecking=no", "-o ConnectTimeout=30",
 		fmt.Sprintf("%s@%s", "ssh-it-user", peerFQDN),
 		"'hostname'",
 	}
@@ -935,7 +934,6 @@ func TestSSHOneUserToOneCheckModeOIDC(t *testing.T) {
 			tsic.WithSSH(),
 			tsic.WithNetfilter("off"),
 			tsic.WithPackages("openssh"),
-			tsic.WithExtraCommands("adduser ssh-it-user"),
 			tsic.WithDockerWorkdir("/"),
 		},
 		hsic.WithACLPolicy(sshCheckPolicy()),
@@ -1035,7 +1033,6 @@ func TestSSHCheckModeUnapprovedTimeout(t *testing.T) {
 			tsic.WithSSH(),
 			tsic.WithNetfilter("off"),
 			tsic.WithPackages("openssh"),
-			tsic.WithExtraCommands("adduser ssh-it-user"),
 			tsic.WithDockerWorkdir("/"),
 		},
 		hsic.WithACLPolicy(sshCheckPolicy()),
@@ -1607,7 +1604,6 @@ func TestSSHLocalpart(t *testing.T) {
 					tsic.WithSSH(),
 					tsic.WithNetfilter("off"),
 					tsic.WithPackages("openssh"),
-					tsic.WithExtraCommands("adduser user1", "adduser user2"),
 					tsic.WithDockerWorkdir("/"),
 				},
 				hsic.WithTestName("sshlocalpart"),

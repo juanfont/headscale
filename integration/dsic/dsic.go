@@ -117,9 +117,14 @@ func (dsic *DERPServerInContainer) buildEntrypoint(derperArgs string) []string {
 	// Wait for network to be ready
 	commands = append(commands, "while ! ip route show default >/dev/null 2>&1; do sleep 0.1; done")
 
-	// Wait for TLS cert to be written (always written after container start)
+	// Wait for the TLS cert AND key to be written (both written after container
+	// start). Waiting only for the cert races: once it lands derper starts, and
+	// since it also needs the key — written a moment later — it exits and kills
+	// the container before the key upload (reliably, with slow nested-docker exec).
 	commands = append(commands,
 		fmt.Sprintf("while [ ! -f %s/%s.crt ]; do sleep 0.1; done", DERPerCertRoot, dsic.hostname))
+	commands = append(commands,
+		fmt.Sprintf("while [ ! -f %s/%s.key ]; do sleep 0.1; done", DERPerCertRoot, dsic.hostname))
 
 	// If CA certs are configured, wait for them to be written
 	if len(dsic.caCerts) > 0 {
@@ -221,34 +226,56 @@ func New(
 
 	var container *dockertest.Resource
 
-	buildOptions := &dockertest.BuildOptions{
-		Dockerfile: "Dockerfile.derper",
-		ContextDir: dockerContextPath,
-		BuildArgs:  []docker.BuildArg{},
-	}
-
-	switch version {
-	case "head":
-		buildOptions.BuildArgs = append(buildOptions.BuildArgs, docker.BuildArg{
-			Name:  "VERSION_BRANCH",
-			Value: "main",
-		})
-	default:
-		buildOptions.BuildArgs = append(buildOptions.BuildArgs, docker.BuildArg{
-			Name:  "VERSION_BRANCH",
-			Value: "v" + version,
-		})
-	}
 	// Add integration test labels if running under hi tool
 	dockertestutil.DockerAddIntegrationLabels(runOptions, "derp")
 
-	container, err = pool.BuildAndRunWithBuildOptions(
-		buildOptions,
-		runOptions,
-		dockertestutil.DockerRestartPolicy,
-		dockertestutil.DockerAllowLocalIPv6,
-		dockertestutil.DockerAllowNetworkAdministration,
-	)
+	// In CI / nix checks a prebuilt derper image is provided so we neither build
+	// the image nor clone tailscale at runtime, mirroring the tailscale and
+	// headscale image injection. Only the head image is prebuilt.
+	repo, tag, prebuilt, err := integrationutil.PrebuiltImage("HEADSCALE_INTEGRATION_DERPER_IMAGE")
+	if err != nil {
+		return nil, err
+	}
+
+	if prebuilt && version == "head" {
+		runOptions.Repository = repo
+		runOptions.Tag = tag
+
+		container, err = pool.RunWithOptions(
+			runOptions,
+			dockertestutil.DockerRestartPolicy,
+			dockertestutil.DockerAllowLocalIPv6,
+			dockertestutil.DockerAllowNetworkAdministration,
+		)
+	} else {
+		buildOptions := &dockertest.BuildOptions{
+			Dockerfile: "Dockerfile.derper",
+			ContextDir: dockerContextPath,
+			BuildArgs:  []docker.BuildArg{},
+		}
+
+		switch version {
+		case "head":
+			buildOptions.BuildArgs = append(buildOptions.BuildArgs, docker.BuildArg{
+				Name:  "VERSION_BRANCH",
+				Value: "main",
+			})
+		default:
+			buildOptions.BuildArgs = append(buildOptions.BuildArgs, docker.BuildArg{
+				Name:  "VERSION_BRANCH",
+				Value: "v" + version,
+			})
+		}
+
+		container, err = pool.BuildAndRunWithBuildOptions(
+			buildOptions,
+			runOptions,
+			dockertestutil.DockerRestartPolicy,
+			dockertestutil.DockerAllowLocalIPv6,
+			dockertestutil.DockerAllowNetworkAdministration,
+		)
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf(
 			"%s starting tailscale DERPer container (version: %s): %w",

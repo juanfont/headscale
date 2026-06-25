@@ -26,6 +26,7 @@ import (
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
+	"tailscale.com/envknob"
 	"tailscale.com/ipn"
 	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/ipn/store/mem"
@@ -65,7 +66,6 @@ var (
 	errTailscaleWrongPeerCount         = errors.New("wrong peer count")
 	errTailscaleCannotUpWithoutAuthkey = errors.New("cannot up without authkey")
 	errInvalidClientConfig             = errors.New("verifiably invalid client config requested")
-	errInvalidTailscaleImageFormat     = errors.New("invalid HEADSCALE_INTEGRATION_TAILSCALE_IMAGE format, expected repository:tag")
 	errTailscaleImageRequiredInCI      = errors.New("HEADSCALE_INTEGRATION_TAILSCALE_IMAGE must be set in CI for HEAD version")
 	errContainerNotInitialized         = errors.New("container not initialized")
 	errFQDNNotYetAvailable             = errors.New("FQDN not yet available")
@@ -244,17 +244,30 @@ func WithAcceptRoutes() Option {
 	}
 }
 
-// WithPackages specifies Alpine packages to install when the container starts.
-// This requires internet access and uses `apk add`. Common packages:
+// WithPackages declares the tools a test needs inside the container. The images
+// bake these in (no runtime install), so this asserts they are present at
+// startup and fails the container loudly if not. Common packages:
 // - "python3" for HTTP server
 // - "curl" for HTTP client
 // - "bind-tools" for dig command
-// - "iptables", "ip6tables" for firewall rules
-// Note: Tests using this option require internet access and cannot use
-// the built-in DERP server in offline mode.
+// - "openssh" for the ssh client.
 func WithPackages(packages ...string) Option {
 	return func(tsic *TailscaleInContainer) {
 		tsic.withPackages = append(tsic.withPackages, packages...)
+	}
+}
+
+// packageBinary maps an alpine package name to a representative binary the
+// images must provide, so [WithPackages] can assert the binary is on PATH
+// rather than installing the package at runtime.
+func packageBinary(pkg string) string {
+	switch pkg {
+	case "openssh":
+		return "ssh"
+	case "bind-tools":
+		return "dig"
+	default:
+		return pkg
 	}
 }
 
@@ -285,20 +298,31 @@ func (t *TailscaleInContainer) buildEntrypoint() []string {
 	commands = append(commands, "while ! ip route show default >/dev/null 2>&1; do sleep 0.1; done")
 
 	// If CA certs are configured, wait for them to be written by the Go code
-	// (certs are written after container start via [TailscaleInContainer.WriteFile])
-	if len(t.caCerts) > 0 {
+	// (certs are written after container start via [TailscaleInContainer.WriteFile]).
+	// Wait for the LAST cert (highest index): they are written in order, so once
+	// user-{N-1}.crt exists every earlier one does too. Waiting only for user-0
+	// races update-ca-certificates ahead of later certs (e.g. the headscale CA at
+	// user-1 when a DERP cert occupies user-0), permanently skipping their trust.
+	if n := len(t.caCerts); n > 0 {
 		commands = append(commands,
-			fmt.Sprintf("while [ ! -f %s/user-0.crt ]; do sleep 0.1; done", caCertRoot))
+			fmt.Sprintf("while [ ! -f %s/user-%d.crt ]; do sleep 0.1; done", caCertRoot, n-1))
 	}
 
-	// Install packages if requested (requires internet access)
+	// The images bake in every tool the suite needs (nix/images.nix for the head
+	// and version images, the alpine base otherwise), so assert the requested
+	// packages are present rather than installing them — a hermetic/offline run
+	// has no package mirror. Fail the container loudly if one is missing so an
+	// image regression is obvious in its log.
 	packages := t.withPackages
 	if t.withWebserverPort > 0 && !slices.Contains(packages, "python3") {
 		packages = append(packages, "python3")
 	}
 
-	if len(packages) > 0 {
-		commands = append(commands, "apk add --no-cache "+strings.Join(packages, " "))
+	for _, pkg := range packages {
+		bin := packageBinary(pkg)
+		commands = append(commands, fmt.Sprintf(
+			"command -v %s >/dev/null 2>&1 || { echo 'tsic: required tool %s (package %s) missing from image' >&2; exit 1; }",
+			bin, bin, pkg))
 	}
 
 	// Update CA certificates
@@ -427,24 +451,31 @@ func New(
 	switch version {
 	case VersionHead:
 		// Check if a pre-built image is available via environment variable
-		prebuiltImage := os.Getenv("HEADSCALE_INTEGRATION_TAILSCALE_IMAGE")
+		prebuiltImage := envknob.String("HEADSCALE_INTEGRATION_TAILSCALE_IMAGE")
 
-		// If custom build tags are required (e.g., for websocket DERP), we cannot use
-		// the pre-built image as it won't have the necessary code compiled in.
+		// If custom build tags are required (e.g., for websocket DERP), the
+		// default pre-built image won't have the necessary code compiled in. A
+		// websocket-tagged prebuilt image can be injected separately (CI / nix
+		// checks build one with ts_debug_websockets); otherwise fall back to
+		// building the image with the tags.
 		hasBuildTags := len(tsic.buildConfig.tags) > 0
 		if hasBuildTags && prebuiltImage != "" {
-			log.Printf("Ignoring pre-built image %s because custom build tags are required: %v", //nolint:gosec // G706: integration-only log of trusted env value
-				prebuiltImage, tsic.buildConfig.tags)
-			prebuiltImage = ""
+			wsImage := envknob.String("HEADSCALE_INTEGRATION_TAILSCALE_WEBSOCKET_IMAGE")
+			if tsic.withWebsocketDERP && wsImage != "" {
+				prebuiltImage = wsImage
+			} else {
+				log.Printf("Ignoring pre-built image %s because custom build tags are required: %v", //nolint:gosec // G706: integration-only log of trusted env value
+					prebuiltImage, tsic.buildConfig.tags)
+				prebuiltImage = ""
+			}
 		}
 
 		if prebuiltImage != "" {
 			log.Printf("Using pre-built tailscale image: %s", prebuiltImage) //nolint:gosec // G706: integration-only log of trusted env value
 
-			// Parse image into repository and tag
-			repo, tag, ok := strings.Cut(prebuiltImage, ":")
-			if !ok {
-				return nil, errInvalidTailscaleImageFormat
+			repo, tag, err := integrationutil.ParseImageRef(prebuiltImage)
+			if err != nil {
+				return nil, err
 			}
 
 			tailscaleOptions.Repository = repo

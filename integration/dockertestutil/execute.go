@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -11,15 +13,31 @@ import (
 	"github.com/ory/dockertest/v3"
 )
 
-// defaultExecuteTimeout returns the timeout for docker exec commands.
-// On CI runners, docker exec latency is higher due to resource
-// contention, so the timeout is doubled.
-func defaultExecuteTimeout() time.Duration {
-	if util.IsCI() {
-		return 20 * time.Second
+// ScaleTimeout scales an integration timeout for the running environment: the
+// nested-docker nix-VM checks are slower than a host docker daemon and set
+// HEADSCALE_INTEGRATION_TIMEOUT_SCALE to widen every budget; otherwise CI uses
+// 2x and local dev the base. One knob covers exec, convergence, peer sync, and
+// pool waits. Lives here (the lowest integration package) so every layer can
+// reach it.
+func ScaleTimeout(base time.Duration) time.Duration {
+	scale := os.Getenv("HEADSCALE_INTEGRATION_TIMEOUT_SCALE")
+	if scale != "" {
+		f, err := strconv.ParseFloat(scale, 64)
+		if err == nil && f > 0 {
+			return time.Duration(float64(base) * f)
+		}
 	}
 
-	return 10 * time.Second
+	if util.IsCI() {
+		return base * 2
+	}
+
+	return base
+}
+
+// defaultExecuteTimeout returns the timeout for docker exec commands.
+func defaultExecuteTimeout() time.Duration {
+	return ScaleTimeout(10 * time.Second)
 }
 
 var (

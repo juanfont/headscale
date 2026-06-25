@@ -22,6 +22,7 @@ import (
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/oauth2-proxy/mockoidc"
@@ -922,13 +923,7 @@ func assertCommandOutputContains(t *testing.T, c TailscaleClient, command []stri
 // Uses longer timeouts in CI environments to account for slower resource allocation
 // and higher system load during automated testing.
 func dockertestMaxWait() time.Duration {
-	wait := 300 * time.Second //nolint
-
-	if util.IsCI() {
-		wait = 600 * time.Second //nolint
-	}
-
-	return wait
+	return dockertestutil.ScaleTimeout(300 * time.Second)
 }
 
 // didClientUseWebsocketForDERP analyzes client logs to determine if WebSocket was used for DERP.

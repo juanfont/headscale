@@ -57,10 +57,8 @@ const (
 )
 
 var (
-	errHeadscaleStatusCodeNotOk    = errors.New("headscale status code not ok")
-	errInvalidHeadscaleImageFormat = errors.New("invalid HEADSCALE_INTEGRATION_HEADSCALE_IMAGE format, expected repository:tag")
-	errHeadscaleImageRequiredInCI  = errors.New("HEADSCALE_INTEGRATION_HEADSCALE_IMAGE must be set in CI")
-	errInvalidPostgresImageFormat  = errors.New("invalid HEADSCALE_INTEGRATION_POSTGRES_IMAGE format, expected repository:tag")
+	errHeadscaleStatusCodeNotOk   = errors.New("headscale status code not ok")
+	errHeadscaleImageRequiredInCI = errors.New("HEADSCALE_INTEGRATION_HEADSCALE_IMAGE must be set in CI")
 )
 
 type fileInContainer struct {
@@ -406,12 +404,12 @@ func New(
 		pgRepo := "postgres"
 		pgTag := "latest"
 
-		if prebuiltImage := os.Getenv("HEADSCALE_INTEGRATION_POSTGRES_IMAGE"); prebuiltImage != "" {
-			repo, tag, found := strings.Cut(prebuiltImage, ":")
-			if !found {
-				return nil, errInvalidPostgresImageFormat
-			}
+		repo, tag, prebuilt, err := integrationutil.PrebuiltImage("HEADSCALE_INTEGRATION_POSTGRES_IMAGE")
+		if err != nil {
+			return nil, err
+		}
 
+		if prebuilt {
 			pgRepo = repo
 			pgTag = tag
 		}
@@ -510,16 +508,13 @@ func New(
 	var container *dockertest.Resource
 
 	// Check if a pre-built image is available via environment variable
-	prebuiltImage := os.Getenv("HEADSCALE_INTEGRATION_HEADSCALE_IMAGE")
+	repo, tag, prebuilt, err := integrationutil.PrebuiltImage("HEADSCALE_INTEGRATION_HEADSCALE_IMAGE")
+	if err != nil {
+		return nil, err
+	}
 
-	if prebuiltImage != "" {
-		log.Printf("Using pre-built headscale image: %s", prebuiltImage) //nolint:gosec // G706: integration-only log of trusted env value
-		// Parse image into repository and tag
-		repo, tag, ok := strings.Cut(prebuiltImage, ":")
-		if !ok {
-			return nil, errInvalidHeadscaleImageFormat
-		}
-
+	if prebuilt {
+		log.Printf("Using pre-built headscale image: %s:%s", repo, tag) //nolint:gosec // G706: integration-only log of trusted env value
 		runOptions.Repository = repo
 		runOptions.Tag = tag
 
@@ -530,7 +525,7 @@ func New(
 			dockertestutil.DockerAllowNetworkAdministration,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("running pre-built headscale container %q: %w", prebuiltImage, err)
+			return nil, fmt.Errorf("running pre-built headscale container %s:%s: %w", repo, tag, err)
 		}
 	} else if util.IsCI() {
 		return nil, errHeadscaleImageRequiredInCI

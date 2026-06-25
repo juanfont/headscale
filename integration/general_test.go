@@ -483,16 +483,7 @@ func TestTaildrop(t *testing.T) {
 	_, err = scenario.ListTailscaleClientsFQDNs()
 	requireNoErrListFQDN(t, err)
 
-	// Install curl on all clients
-	for _, client := range allClients {
-		if !strings.Contains(client.Hostname(), "head") {
-			command := []string{"apk", "add", "curl"}
-			_, _, err := client.Execute(command)
-			if err != nil {
-				t.Fatalf("failed to install curl on %s, err: %s", client.Hostname(), err)
-			}
-		}
-	}
+	// curl is baked into every image (no runtime install).
 
 	// Helper to get FileTargets for a client.
 	getFileTargets := func(client TailscaleClient) ([]apitype.FileTarget, error) {
