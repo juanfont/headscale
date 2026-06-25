@@ -4,30 +4,49 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
+	"slices"
 	"strings"
 )
 
-// testsToSplit defines tests that should be split into multiple CI jobs.
-// Key is the test function name, value is a list of subtest prefixes.
-// Each prefix becomes a separate CI job as "TestName/prefix".
-//
-// Example: [TestAutoApproveMultiNetwork] has subtests like:
-//   - TestAutoApproveMultiNetwork/authkey-tag-advertiseduringup-false-pol-database
-//   - TestAutoApproveMultiNetwork/webauth-user-advertiseduringup-true-pol-file
-//
-// Splitting by approver type (tag, user, group) creates 6 CI jobs with 4 tests each:
-//   - TestAutoApproveMultiNetwork/authkey-tag.* (4 tests)
-//   - TestAutoApproveMultiNetwork/authkey-user.* (4 tests)
-//   - TestAutoApproveMultiNetwork/authkey-group.* (4 tests)
-//   - TestAutoApproveMultiNetwork/webauth-tag.* (4 tests)
-//   - TestAutoApproveMultiNetwork/webauth-user.* (4 tests)
-//   - TestAutoApproveMultiNetwork/webauth-group.* (4 tests)
-//
-// This reduces load per CI job (4 tests instead of 12) to avoid infrastructure
-// flakiness when running many sequential Docker-based integration tests.
+// excludedFromNixChecks lists tests the hermetic nix-VM checks cannot run, with
+// the reason. They still run via cmd/hi, where the missing resource exists.
+var excludedFromNixChecks = map[string]string{
+	// Verifies connectivity through Tailscale's *public* DERP relays
+	// (HEADSCALE_DERP_URLS=controlplane.tailscale.com). A hermetic offline VM
+	// has no internet and the nix sandbox forbids network.
+	"TestPingAllByIPPublicDERP": "requires public internet DERP",
+
+	// Also routes DERP through Tailscale's public relays: tailscale-rs cannot
+	// validate the embedded DERP's self-signed cert (WithPublicDERP in the
+	// test), so it needs the same internet access PublicDERP does.
+	"TestTailscaleRustAxum": "requires public internet DERP (tailscale-rs)",
+
+	// These drive `docker network disconnect`/`connect` to simulate cable pulls.
+	// In the VM's nested docker, libnetwork intermittently fails the reconnect
+	// ("failed to set gateway: network is unreachable" — a stale IPAM/endpoint
+	// reservation), which does not happen against a host docker daemon. They run
+	// reliably via cmd/hi in the legacy pipeline.
+	"TestHASubnetRouterFailoverDockerDisconnect":     "docker reconnect unreliable in nested VM docker",
+	"TestHASubnetRouterFailoverBothOfflineCablePull": "docker reconnect unreliable in nested VM docker",
+
+	// Ping-driven HA failover: after a router recovers it asserts router 2 stays
+	// primary and traffic still traceroutes through it. In the VM's nested docker
+	// that data-plane state never converges (a 4x ScaledTimeout budget did not
+	// help — behaviour, not timing); it holds against a host docker daemon.
+	"TestHASubnetRouterPingFailover": "ping-failover data plane doesn't converge in nested VM docker",
+}
+
+// testsToSplit defines tests whose subtests are run as separate checks. Key is
+// the test function, value is a list of subtest prefixes; each prefix becomes
+// its own check as "TestName/prefix.*". TestAutoApproveMultiNetwork fans out
+// over approver × policy-mode × advertise (24 subtests); running all of them in
+// one nested-docker VM check overruns the timeout, so split by approver into
+// 6 checks of 4 — fewer sequential docker scenarios per check.
 var testsToSplit = map[string][]string{
 	"TestAutoApproveMultiNetwork": {
 		"authkey-tag",
@@ -39,25 +58,31 @@ var testsToSplit = map[string][]string{
 	},
 }
 
-// expandTests takes a list of test names and expands any that need splitting
-// into multiple subtest patterns.
+// expandTests replaces any splittable test with one entry per subtest prefix.
+// The ".*" lets the check's "^...$"-wrapped -test.run match the full subtest
+// names (e.g. authkey-tag-advertiseduringup-false-pol-database).
 func expandTests(tests []string) []string {
-	var expanded []string
+	expanded := make([]string, 0, len(tests))
 	for _, test := range tests {
-		if prefixes, ok := testsToSplit[test]; ok {
-			// This test should be split into multiple jobs.
-			// We append ".*" to each prefix because the CI runner wraps patterns
-			// with ^...$ anchors. Without ".*", a pattern like "authkey$" wouldn't
-			// match "authkey-tag-advertiseduringup-false-pol-database".
-			for _, prefix := range prefixes {
-				expanded = append(expanded, fmt.Sprintf("%s/%s.*", test, prefix))
-			}
-		} else {
+		prefixes, ok := testsToSplit[test]
+		if !ok {
 			expanded = append(expanded, test)
+			continue
+		}
+
+		for _, prefix := range prefixes {
+			expanded = append(expanded, fmt.Sprintf("%s/%s.*", test, prefix))
 		}
 	}
+
 	return expanded
 }
+
+// This generator enumerates the integration test functions and writes them as
+// nix lists (integration/tests.nix and integration/postgres-tests.nix). The
+// flake maps each entry to a NixOS-VM check (sqlite for all, plus a postgres
+// variant for the subset) — see nix/tests/integration.nix. One check per test
+// function; the GitHub workflow derives its matrix from these checks.
 
 func findTests() []string {
 	rgBin, err := exec.LookPath("rg")
@@ -89,43 +114,41 @@ func findTests() []string {
 	return tests
 }
 
-func updateYAML(tests []string, jobName string, testPath string) {
-	testsForYq := fmt.Sprintf("[%s]", strings.Join(tests, ", "))
+// writeNixList writes the test function names as a nix list, consumed by
+// flake.nix to generate one integration check per test.
+func writeNixList(tests []string, nixPath string) {
+	var b strings.Builder
+	b.WriteString("# Generated by gh-action-integration-generator.go; do not edit.\n")
+	b.WriteString("[\n")
+	for _, test := range tests {
+		fmt.Fprintf(&b, "  %q\n", test)
+	}
+	b.WriteString("]\n")
 
-	yqCommand := fmt.Sprintf(
-		"yq eval '.jobs.%s.strategy.matrix.test = %s' %s -i",
-		jobName,
-		testsForYq,
-		testPath,
-	)
-	cmd := exec.Command("bash", "-c", yqCommand)
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	if err != nil {
-		log.Printf("stdout: %s", stdout.String())
-		log.Printf("stderr: %s", stderr.String())
-		log.Fatalf("failed to run yq command: %s", err)
+	if err := os.WriteFile(nixPath, []byte(b.String()), 0o644); err != nil {
+		log.Fatalf("failed to write %s: %s", nixPath, err)
 	}
 
-	fmt.Printf("YAML file (%s) job %s updated successfully\n", testPath, jobName)
+	fmt.Printf("Nix list (%s) updated successfully\n", nixPath)
 }
 
 func main() {
 	tests := findTests()
 
-	// Expand tests that should be split into multiple jobs
-	expandedTests := expandTests(tests)
+	tests = slices.DeleteFunc(tests, func(name string) bool {
+		if reason, ok := excludedFromNixChecks[name]; ok {
+			log.Printf("excluding %s from nix checks: %s", name, reason)
+			return true
+		}
+		return false
+	})
 
-	quotedTests := make([]string, len(expandedTests))
-	for i, test := range expandedTests {
-		quotedTests[i] = fmt.Sprintf("\"%s\"", test)
-	}
+	// Split heavy tests into per-subtest checks (after exclusion, so an excluded
+	// test is never expanded).
+	tests = expandTests(tests)
 
-	// Define selected tests for PostgreSQL
+	// Selected tests also run against PostgreSQL to verify database
+	// compatibility (a postgres-variant check per name).
 	postgresTestNames := []string{
 		"TestACLAllowUserDst",
 		"TestPingAllByIP",
@@ -134,12 +157,30 @@ func main() {
 		"TestSubnetRouterMultiNetwork",
 	}
 
-	quotedPostgresTests := make([]string, len(postgresTestNames))
-	for i, test := range postgresTestNames {
-		quotedPostgresTests[i] = fmt.Sprintf("\"%s\"", test)
+	// Tests excluded from the hermetic nix checks still need to run somewhere,
+	// so emit them for the legacy cmd/hi GitHub-Actions matrix (real internet).
+	excluded := make([]string, 0, len(excludedFromNixChecks))
+	for name := range excludedFromNixChecks {
+		excluded = append(excluded, name)
+	}
+	slices.Sort(excluded)
+
+	writeNixList(tests, "../../integration/tests.nix")
+	writeNixList(postgresTestNames, "../../integration/postgres-tests.nix")
+	writeJSONList(excluded, "../../integration/excluded-tests.json")
+}
+
+// writeJSONList writes the names as a JSON array, consumed as a GitHub-Actions
+// matrix by the legacy cmd/hi workflow.
+func writeJSONList(names []string, path string) {
+	data, err := json.MarshalIndent(names, "", "  ")
+	if err != nil {
+		log.Fatalf("marshalling %s: %s", path, err)
 	}
 
-	// Update both SQLite and PostgreSQL job matrices
-	updateYAML(quotedTests, "sqlite", "./test-integration.yaml")
-	updateYAML(quotedPostgresTests, "postgres", "./test-integration.yaml")
+	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
+		log.Fatalf("failed to write %s: %s", path, err)
+	}
+
+	fmt.Printf("JSON list (%s) updated successfully\n", path)
 }
