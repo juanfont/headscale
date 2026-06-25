@@ -6244,3 +6244,27 @@ func TestUnmarshalPolicySSHTests(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateCapabilityName(t *testing.T) {
+	tests := []struct {
+		name    string
+		cap     string
+		wantErr error
+	}{
+		{name: "custom domain allowed", cap: "example.com/cap/foo", wantErr: nil},
+		{name: "allowlisted tailscale cap", cap: "tailscale.com/cap/drive", wantErr: nil},
+		{name: "setec secrets cap allowed", cap: "tailscale.com/cap/secrets", wantErr: nil},
+		{name: "non-allowlisted tailscale cap rejected", cap: "tailscale.com/cap/nope", wantErr: ErrCapNameTailscaleDomain},
+		{name: "url scheme rejected", cap: "https://tailscale.com/cap/drive", wantErr: ErrCapNameInvalidForm},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateCapabilityName(tt.cap)
+			if tt.wantErr == nil {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, tt.wantErr)
+			}
+		})
+	}
+}

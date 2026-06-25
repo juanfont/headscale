@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2/humatest"
+	"github.com/google/go-cmp/cmp"
 	apiv2 "github.com/juanfont/headscale/hscontrol/api/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
@@ -102,7 +103,7 @@ func TestAPIv2SettingsComputedFields(t *testing.T) {
 	}
 }
 
-// TestAPIv2SettingsConstantOffFields pins the honestly-hardcoded-off fields:
+// TestAPIv2SettingsConstantOffFields pins the hardcoded-off fields:
 // even with every config knob set, they must not pick up signal.
 func TestAPIv2SettingsConstantOffFields(t *testing.T) {
 	cfg := types.Config{
@@ -113,13 +114,16 @@ func TestAPIv2SettingsConstantOffFields(t *testing.T) {
 
 	s := getSettings(t, settingsAPIWithConfig(t, &cfg))
 
-	assert.False(t, s.DevicesApprovalOn)
-	assert.False(t, s.DevicesAutoUpdatesOn)
-	assert.False(t, s.UsersApprovalOn)
-	assert.False(t, s.NetworkFlowLoggingOn)
-	assert.False(t, s.RegionalRoutingOn)
-	assert.False(t, s.PostureIdentityCollectionOn)
-	assert.Empty(t, s.ACLsExternalLink)
+	// Only the four computed fields reflect cfg; everything else stays off.
+	want := apiv2.TailnetSettings{
+		ACLsExternallyManagedOn:                true,
+		DevicesKeyDurationDays:                 90,
+		HTTPSEnabled:                           true,
+		UsersRoleAllowedToJoinExternalTailnets: "none",
+	}
+	if diff := cmp.Diff(want, s); diff != "" {
+		t.Errorf("settings mismatch (-want +got):\n%s", diff)
+	}
 }
 
 // TestAPIv2SettingsPatchUnsupported confirms writes are rejected and inert.
