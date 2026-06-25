@@ -11,8 +11,7 @@ Headscale doesn't provide a built-in web interface but users may pick one from t
   coordination server
 - [HeadscaleUi](https://github.com/simcu/headscale-ui) - A static headscale admin ui, no backend environment required
 - [Headplane](https://github.com/tale/headplane) - An advanced Tailscale inspired frontend for headscale
-- [Headtower](https://github.com/rnihesh/headtower) - A polished headscale dashboard with audit logging, an
-  ACL reachability tester, and device version/OS insights
+- [Headtower](https://github.com/rnihesh/headtower) - A polished headscale dashboard with SSO, audit logs, and ACL tooling
 - [headscale-admin](https://github.com/GoodiesHQ/headscale-admin) - Headscale-Admin is meant to be a simple, modern web
   interface for headscale
 - [ouroboros](https://github.com/yellowsink/ouroboros) - Ouroboros is designed for users to manage their own devices,
