@@ -98,6 +98,7 @@ type TailscaleInContainer struct {
 	caCerts           [][]byte
 	headscaleHostname string
 	withWebsocketDERP bool
+	withDERPOverHTTP  bool
 	withSSH           bool
 	withTags          []string
 	withEntrypoint    []string
@@ -157,6 +158,18 @@ func WithTags(tags []string) Option {
 func WithWebsocketDERP(enabled bool) Option {
 	return func(tsic *TailscaleInContainer) {
 		tsic.withWebsocketDERP = enabled
+	}
+}
+
+// WithDERPOverHTTP makes the client reach the DERP server over plain-HTTP
+// websockets (TS_DEBUG_DERP_WS_CLIENT + TS_DEBUG_USE_DERP_HTTP). It is the
+// counterpart to [hsic.WithoutTLS]: a Headscale serving its embedded DERP without
+// TLS is otherwise unreachable, because the client defaults to dialing DERP over
+// HTTPS.
+func WithDERPOverHTTP() Option {
+	return func(tsic *TailscaleInContainer) {
+		tsic.withWebsocketDERP = true
+		tsic.withDERPOverHTTP = true
 	}
 }
 
@@ -372,6 +385,12 @@ func New(
 			tailscaleOptions.Env,
 			fmt.Sprintf("TS_DEBUG_DERP_WS_CLIENT=%t", tsic.withWebsocketDERP),
 		)
+
+		// Plain-HTTP DERP additionally needs the client to dial http:// instead of
+		// the default https://; see [WithDERPOverHTTP].
+		if tsic.withDERPOverHTTP {
+			tailscaleOptions.Env = append(tailscaleOptions.Env, "TS_DEBUG_USE_DERP_HTTP=true")
+		}
 	}
 
 	tailscaleOptions.ExtraHosts = append(tailscaleOptions.ExtraHosts,
