@@ -9,6 +9,8 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
+	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/views"
 	"tailscale.com/util/multierr"
@@ -152,7 +154,15 @@ func (b *MapResponseBuilder) WithSSHPolicy() *MapResponseBuilder {
 
 	sshPolicy, err := b.mapper.state.SSHPolicy(node)
 	if err != nil {
-		b.addError(err)
+		// SSH policy is optional for a node to function. Rather than fail the
+		// whole map (leaving the node unable to connect), log and continue
+		// without it; the node still receives a usable netmap.
+		log.Warn().Caller().
+			Err(err).
+			Uint64(zf.NodeID, node.ID().Uint64()).
+			Str(zf.NodeHostname, node.Hostname()).
+			Msg("building map response: skipping SSH policy for node; node will receive a map without SSH rules")
+
 		return b
 	}
 
@@ -284,7 +294,19 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 			return b.mapper.state.RoutesForPeer(node, peer, matchers)
 		}, b.mapper.cfg, allCapMaps[peer.ID()])
 		if err != nil {
-			return nil, err
+			// One peer with invalid data (e.g. an empty or over-long
+			// GivenName that fails GetFQDN) must not blank out the map for
+			// every node that can see it. Drop the offending peer, log it
+			// with the identity an operator needs to fix it, and keep
+			// building from the remaining valid peers.
+			log.Warn().Caller().
+				Err(err).
+				Uint64(zf.NodeID, peer.ID().Uint64()).
+				Str(zf.NodeHostname, peer.Hostname()).
+				Uint64("map.viewer.node.id", b.nodeID.Uint64()).
+				Msgf("dropping peer %d from map response: invalid node data; fix with `headscale nodes rename %d <name>`", peer.ID(), peer.ID())
+
+			continue
 		}
 
 		// [tailcfg.Node.CapMap] on a peer carries the small set of
