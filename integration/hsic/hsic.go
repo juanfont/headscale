@@ -6,6 +6,7 @@ import (
 	"cmp"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	clientv1 "github.com/juanfont/headscale/gen/client/v1"
+	clientv2 "github.com/juanfont/headscale/gen/client/v2"
 	"github.com/juanfont/headscale/hscontrol"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -1021,6 +1023,90 @@ func (t *HeadscaleInContainer) GetHealthEndpoint() string {
 // GetEndpoint returns the Headscale endpoint for the [HeadscaleInContainer].
 func (t *HeadscaleInContainer) GetEndpoint() string {
 	return t.getEndpoint(false)
+}
+
+var errOAuthSecretMissing = errors.New(`OAuth client response missing secret in "key" field`)
+
+// CreateOAuthClient mints an admin API key and uses it to create an OAuth client
+// via the v2 keys HTTP API (POST /api/v2/tailnet/-/keys, keyType=client),
+// returning the client id and secret. The secret is only returned once, in the
+// "key" field. It is a reusable building block for tests that need OAuth client
+// credentials (such as the Kubernetes operator).
+func (t *HeadscaleInContainer) CreateOAuthClient(
+	ctx context.Context,
+	scopes, tags []string,
+) (string, string, error) {
+	apiKey, err := t.Execute([]string{"headscale", "apikeys", "create", "--expiration", "24h"})
+	if err != nil {
+		return "", "", fmt.Errorf("creating admin api key: %w", err)
+	}
+
+	apiKey = strings.TrimSpace(apiKey)
+
+	client, err := clientv2.NewClientWithResponses(
+		t.GetEndpoint(),
+		clientv2.WithHTTPClient(t.httpClient()),
+		clientv2.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
+			req.Header.Set("Authorization", "Bearer "+apiKey)
+
+			return nil
+		}),
+	)
+	if err != nil {
+		return "", "", fmt.Errorf("building v2 API client: %w", err)
+	}
+
+	keyType := "client"
+
+	resp, err := client.CreateKeyWithResponse(ctx, "-", clientv2.CreateKeyRequest{
+		KeyType: &keyType,
+		Scopes:  &scopes,
+		Tags:    &tags,
+	})
+	if err != nil {
+		return "", "", fmt.Errorf("creating OAuth client: %w", err)
+	}
+
+	if resp.JSON200 == nil {
+		return "", "", fmt.Errorf( //nolint:err113
+			"creating OAuth client: status %s: %s", resp.Status(), strings.TrimSpace(string(resp.Body)))
+	}
+
+	if resp.JSON200.Key == nil || *resp.JSON200.Key == "" {
+		return "", "", errOAuthSecretMissing
+	}
+
+	// The operator expects clientId and clientSecret as separate values. When the
+	// server returns a single opaque credential, the client-credentials grant
+	// splits it on "-" (id-secret), matching the Tailscale SaaS shape. Fall back
+	// to the whole key as the secret when no id is given.
+	clientID, clientSecret := resp.JSON200.Id, *resp.JSON200.Key
+
+	if clientID == "" {
+		if id, secret, ok := strings.Cut(*resp.JSON200.Key, "-"); ok {
+			clientID, clientSecret = id, secret
+		}
+	}
+
+	return clientID, clientSecret, nil
+}
+
+// httpClient returns an HTTP client that trusts this Headscale's TLS CA when TLS
+// is enabled, or a default client when it serves plain HTTP.
+func (t *HeadscaleInContainer) httpClient() *http.Client {
+	if !t.hasTLS() {
+		return &http.Client{Timeout: 30 * time.Second}
+	}
+
+	pool := x509.NewCertPool()
+	pool.AppendCertsFromPEM(t.tlsCACert)
+
+	return &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12},
+		},
+	}
 }
 
 // GetIPEndpoint returns the Headscale endpoint using IP address instead of hostname.
