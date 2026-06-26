@@ -12,6 +12,19 @@
 
 - Fix map generation serializing on the policy lock, so a mass reconnect on `autogroup:self`, via or relay policies no longer stalls clients into `unexpected EOF` retry loops [#3358](https://github.com/juanfont/headscale/pull/3358)
 
+A node whose stored name could not be turned into a valid FQDN — empty, or long
+enough that the full hostname exceeded 255 characters once the base domain was
+applied — broke map delivery for itself and for every peer that could see it.
+Affected clients looped on `PollNetMap: unexpected EOF` and reported being
+unable to reach the coordination server, while other clients were unaffected.
+The mapper now drops such a node from its peers' maps instead of failing the
+whole response, the long-poll handler returns an explicit error rather than an
+empty response, node renames that would exceed the hostname limit are rejected,
+and startup logs each node whose stored name needs fixing together with the
+command to fix it.
+
+[#3349](https://github.com/juanfont/headscale/pull/3349)
+
 ## 0.29.1 (2026-06-18)
 
 **Minimum supported Tailscale client version: v1.80.0**
