@@ -187,14 +187,29 @@ func removeContainerWithRetry(ctx context.Context, cli *client.Client, container
 	return err == nil
 }
 
+// testContainerNamePrefixes are the name prefixes used by containers that the
+// integration test harness creates (headscale, tailscale, DERP, and k3s).
+var testContainerNamePrefixes = []string{"hs-", "ts-", "derp-", "k3s-"}
+
+// matchesTestContainerPrefix reports whether name belongs to an integration
+// test container, ignoring any leading "/" that Docker prefixes names with.
+func matchesTestContainerPrefix(name string) bool {
+	name = strings.TrimPrefix(name, "/")
+	for _, prefix := range testContainerNamePrefixes {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // isTestContainerName reports whether any of the container names belong to an
 // integration test container.
 func isTestContainerName(names []string) bool {
 	for _, name := range names {
 		if strings.Contains(name, "headscale-test-suite") ||
-			strings.Contains(name, "hs-") ||
-			strings.Contains(name, "ts-") ||
-			strings.Contains(name, "derp-") {
+			matchesTestContainerPrefix(name) {
 			return true
 		}
 	}

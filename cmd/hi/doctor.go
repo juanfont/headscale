@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/juanfont/headscale/integration/dockertestutil"
+	"github.com/juanfont/headscale/integration/k3sic"
 )
 
 const (
@@ -21,6 +22,7 @@ const (
 	nameDockerContext = "Docker Context"
 	nameDockerSocket  = "Docker Socket"
 	nameGolangImage   = "Golang Image"
+	nameK3sImage      = "K3s Image"
 	nameGoInstall     = "Go Installation"
 )
 
@@ -66,6 +68,7 @@ func runDoctorCheck(ctx context.Context) error {
 		results = append(results, checkDockerSocket(ctx))
 		results = append(results, checkDockerHubCredentials())
 		results = append(results, checkGolangImage(ctx))
+		results = append(results, checkK3sImage(ctx))
 	}
 
 	// Check 3: Go installation
@@ -240,6 +243,44 @@ func checkGolangImage(ctx context.Context) DoctorResult {
 	}
 
 	return pass(nameGolangImage, fmt.Sprintf("Golang image %s is now available", imageName))
+}
+
+// checkK3sImage verifies the ghcr k3s image used by TestK8sOperator is available
+// locally or can be pulled. The image is pinned (see [k3sic.K3sImage]).
+func checkK3sImage(ctx context.Context) DoctorResult {
+	cli, err := createDockerClient(ctx)
+	if err != nil {
+		return fail(nameK3sImage, "Cannot create Docker client for image check")
+	}
+	defer cli.Close()
+
+	imageName := k3sic.K3sImage
+
+	available, err := checkImageAvailableLocally(ctx, cli, imageName)
+	if err != nil {
+		return fail(
+			nameK3sImage,
+			fmt.Sprintf("Cannot check k3s image %s: %v", imageName, err),
+			"Check Docker daemon status",
+			"Try: docker images | grep k3s",
+		)
+	}
+
+	if available {
+		return pass(nameK3sImage, fmt.Sprintf("K3s image %s is available locally", imageName))
+	}
+
+	err = ensureImageAvailable(ctx, cli, imageName, false)
+	if err != nil {
+		return warn(
+			nameK3sImage,
+			fmt.Sprintf("K3s image %s not available locally and could not pull: %v", imageName, err),
+			"Only TestK8sOperator needs this image; other tests are unaffected",
+			"Try: docker pull "+imageName,
+		)
+	}
+
+	return pass(nameK3sImage, fmt.Sprintf("K3s image %s is now available", imageName))
 }
 
 // checkGoInstallation verifies Go is installed and working.
