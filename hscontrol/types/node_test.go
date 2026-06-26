@@ -417,6 +417,33 @@ func TestNodeFQDN(t *testing.T) {
 	}
 }
 
+func TestValidateGivenName(t *testing.T) {
+	tests := []struct {
+		name       string
+		givenName  string
+		baseDomain string
+		wantErr    bool
+	}{
+		{"valid", "test", "example.com", false},
+		{"empty", "", "example.com", true},
+		{"invalid label chars", "not valid", "example.com", true},
+		{"label too long", strings.Repeat("a", 64), "example.com", true},
+		// A valid 63-char label whose FQDN overflows only because the base
+		// domain is long: ValidLabel passes, the FQDN-length bound rejects it.
+		{"fqdn too long under long base domain", strings.Repeat("a", 63), strings.Repeat("b", 200) + ".example.com", true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateGivenName(tc.givenName, tc.baseDomain)
+			if (err != nil) != tc.wantErr {
+				t.Errorf("ValidateGivenName(%q, %q) error = %v, wantErr %v",
+					tc.givenName, tc.baseDomain, err, tc.wantErr)
+			}
+		})
+	}
+}
+
 func TestPeerChangeFromMapRequest(t *testing.T) {
 	nKeys := []key.NodePublic{
 		key.NewNode().Public(),

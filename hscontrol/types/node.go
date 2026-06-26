@@ -19,6 +19,7 @@ import (
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 	"tailscale.com/types/views"
+	"tailscale.com/util/dnsname"
 )
 
 var (
@@ -515,6 +516,28 @@ func (node *Node) GetFQDN(baseDomain string) (string, error) {
 	}
 
 	return hostname, nil
+}
+
+// ValidateGivenName reports whether givenName is usable as a node's DNS label:
+// a valid DNS label that, combined with baseDomain, yields an FQDN within
+// MaxHostnameLength. Admin-facing write paths (e.g. node rename) reject names
+// that fail this, since the mapper cannot build a map for a node — or any of
+// its peers — whose GetFQDN fails. Derived paths sanitise/coerce instead.
+func ValidateGivenName(givenName, baseDomain string) error {
+	err := dnsname.ValidLabel(givenName)
+	if err != nil {
+		return fmt.Errorf("%q is not a valid DNS label: %w", givenName, err)
+	}
+
+	// Reuse GetFQDN so the length bound stays identical to what the mapper
+	// enforces; a valid 63-char label can still overflow under a long
+	// base_domain.
+	_, err = (&Node{GivenName: givenName}).GetFQDN(baseDomain)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // AnnouncedRoutes returns the list of routes the node announces, as
