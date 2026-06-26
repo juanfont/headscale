@@ -1031,7 +1031,10 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (t
 // auto-sanitisation) and collisions error out rather than silently
 // bumping a user-facing label. See HOSTNAME.md for the CLI contract.
 func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView, change.Change, error) {
-	err := dnsname.ValidLabel(newName)
+	// Validate the label AND that the resulting FQDN fits MaxHostnameLength:
+	// a valid 63-char label can still overflow under a long base_domain, and
+	// an unmappable name would break this node and its peers (issue #3346).
+	err := types.ValidateGivenName(newName, s.cfg.BaseDomain)
 	if err != nil {
 		return types.NodeView{}, change.Change{}, fmt.Errorf("renaming node: %w", err)
 	}
