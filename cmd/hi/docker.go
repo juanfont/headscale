@@ -735,7 +735,7 @@ func getCurrentTestContainers(containers []container.Summary, testContainerID st
 	for _, cont := range containers {
 		for _, name := range cont.Names {
 			containerName := strings.TrimPrefix(name, "/")
-			if strings.HasPrefix(containerName, "hs-") || strings.HasPrefix(containerName, "ts-") {
+			if matchesTestContainerPrefix(containerName) {
 				// Check if container has matching run ID label
 				if cont.Labels != nil && cont.Labels["hi.run-id"] == runID {
 					testRunContainers = append(testRunContainers, testContainer{
