@@ -3,6 +3,7 @@ package mapper
 import (
 	"fmt"
 	"net/netip"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -532,6 +533,94 @@ func TestBuildFromChangeVisibilityMatchesFullMap(t *testing.T) {
 			// Cross-user profile (user2) must appear iff n2 is visible to n1.
 			assert.Equalf(t, full[n2.ID.NodeID()], profileReaches(t, n2, user2.TailscaleUserProfile().ID),
 				"%s: user2 profile must be sent iff n2 is visible to n1", tt.name)
+		})
+	}
+}
+
+// TestFullMapResponseSurvivesPeerWithInvalidName proves a single node with an
+// FQDN-invalid GivenName must not break map generation for its peers.
+//
+// A node whose stored GivenName is empty (ErrNodeHasNoGivenName) or yields an
+// FQDN longer than MaxHostnameLength (ErrHostnameTooLong) makes GetFQDN, and
+// therefore TailNode, return an error. buildTailPeers used to abort the entire
+// peer list on the first such error, so MapResponseBuilder.Build() failed for
+// every node that could see the bad peer; on the initial-connection path that
+// surfaced as "PollNetMap: ... unexpected EOF" and the "Unable to connect to
+// the Tailscale coordination server" health warning. A legacy DB row loads
+// verbatim (NewNodeStore reads db.ListNodes() without re-sanitising names), so
+// the bad peer persists across restart. The build for an unaffected viewer
+// must succeed: the bad peer is dropped, valid peers and self survive.
+func TestFullMapResponseSurvivesPeerWithInvalidName(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		badName string
+	}{
+		{"empty given name", ""},
+		{"over-long fqdn", strings.Repeat("a", types.MaxHostnameLength+1)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			p4 := netip.MustParsePrefix("100.64.0.0/10")
+			p6 := netip.MustParsePrefix("fd7a:115c:a1e0::/48")
+			cfg := &types.Config{
+				Database: types.DatabaseConfig{
+					Type:   types.DatabaseSqlite,
+					Sqlite: types.SqliteConfig{Path: tmp + "/h.db"},
+				},
+				PrefixV4:     &p4,
+				PrefixV6:     &p6,
+				IPAllocation: types.IPAllocationStrategySequential,
+				BaseDomain:   "headscale.test",
+				Policy:       types.PolicyConfig{Mode: types.PolicyModeDB},
+				DERP: types.DERPConfig{
+					DERPMap: &tailcfg.DERPMap{
+						Regions: map[int]*tailcfg.DERPRegion{999: {RegionID: 999}},
+					},
+				},
+				Tuning: types.Tuning{
+					NodeStoreBatchSize:    state.TestBatchSize,
+					NodeStoreBatchTimeout: state.TestBatchTimeout,
+				},
+			}
+
+			database, err := db.NewHeadscaleDatabase(cfg)
+			require.NoError(t, err)
+
+			user := database.CreateUserForTest("u1")
+			n1 := database.CreateRegisteredNodeForTest(user, "n1")     // viewer, valid
+			bad := database.CreateRegisteredNodeForTest(user, "bad")   // peer, name corrupted below
+			good := database.CreateRegisteredNodeForTest(user, "good") // peer, valid control
+
+			// Simulate a legacy/corrupt row that v29 loads verbatim.
+			require.NoError(t, database.DB.
+				Model(&types.Node{}).
+				Where("id = ?", bad.ID).
+				Update("given_name", tt.badName).Error)
+			require.NoError(t, database.Close())
+
+			s, err := state.NewState(cfg)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = s.Close() })
+
+			// Allow-all so n1 sees both peers; the bad one must still be dropped.
+			_, err = s.SetPolicy([]byte(`{"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`))
+			require.NoError(t, err)
+
+			m := &mapper{state: s, cfg: cfg}
+			capVer := tailcfg.CurrentCapabilityVersion
+
+			resp, err := m.fullMapResponse(n1.ID, capVer)
+			require.NoError(t, err, "n1's map must build despite a peer with an invalid name")
+			require.NotNil(t, resp)
+			require.NotNil(t, resp.Node, "n1 must receive its own self node")
+
+			peers := map[tailcfg.NodeID]bool{}
+			for _, p := range resp.Peers {
+				peers[p.ID] = true
+			}
+
+			assert.False(t, peers[bad.ID.NodeID()], "the peer with an invalid name must be dropped")
+			assert.True(t, peers[good.ID.NodeID()], "valid peers must remain in the map")
 		})
 	}
 }
