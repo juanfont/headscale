@@ -5,10 +5,10 @@ package capver
 import (
 	"maps"
 	"slices"
-	"sort"
 	"strings"
 
 	"tailscale.com/tailcfg"
+	"tailscale.com/util/cmpver"
 	"tailscale.com/util/set"
 )
 
@@ -74,7 +74,9 @@ func TailscaleLatestMajorMinor(n int, stripV bool) []string {
 	}
 
 	majorSl := majors.Slice()
-	sort.Strings(majorSl)
+	// cmpver orders versions numerically, so v1.100 sorts after v1.98 rather than
+	// lexically before it.
+	slices.SortFunc(majorSl, cmpver.Compare)
 
 	if n > len(majorSl) {
 		return majorSl
