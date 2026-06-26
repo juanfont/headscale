@@ -286,7 +286,7 @@ func NewState(cfg *types.Config) (*State, error) {
 	)
 	nodeStore.Start()
 
-	return &State{
+	s := &State{
 		cfg: cfg,
 
 		db:        db,
@@ -298,7 +298,14 @@ func NewState(cfg *types.Config) (*State, error) {
 
 		sshCheckAuth:  make(map[sshCheckPair]time.Time),
 		registerLocks: xsync.NewMap[key.MachinePublic, *sync.Mutex](),
-	}, nil
+	}
+
+	// Surface nodes whose stored data would break map generation (e.g. an
+	// invalid given name from a legacy row) so an operator can fix them. This
+	// only logs; it never mutates a node's stored name at boot.
+	s.logNodeHealth()
+
+	return s, nil
 }
 
 // Close gracefully shuts down the [State] instance and releases all resources.
