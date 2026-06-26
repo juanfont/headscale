@@ -7,8 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/state"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -87,6 +89,131 @@ func (w *delayedSuccessResponseWriter) WriteCount() int {
 	defer w.mu.Unlock()
 
 	return w.writeCount
+}
+
+// recordingResponseWriter records the status code and whether anything was
+// written, so a test can tell an explicit error response apart from a handler
+// that returned without writing (which net/http turns into an empty 200 the
+// client reads as "unexpected EOF").
+type recordingResponseWriter struct {
+	mu     sync.Mutex
+	header http.Header
+	status int
+	writes int
+}
+
+func (w *recordingResponseWriter) Header() http.Header {
+	if w.header == nil {
+		w.header = make(http.Header)
+	}
+
+	return w.header
+}
+
+func (w *recordingResponseWriter) WriteHeader(code int) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if w.status == 0 {
+		w.status = code
+	}
+}
+
+func (w *recordingResponseWriter) Write(data []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+
+	w.writes++
+
+	return len(data), nil
+}
+
+func (w *recordingResponseWriter) Flush() {}
+
+func (w *recordingResponseWriter) statusCode() int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	return w.status
+}
+
+// TestServeLongPollWritesErrorWhenInitialMapFails proves that when the initial
+// map cannot be generated (here: the node's own GivenName is invalid, so
+// WithSelfNode fails and AddNode errors), serveLongPoll writes an explicit HTTP
+// error instead of returning with no body. Returning empty leaves net/http to
+// send an empty 200, which the Tailscale client reports as
+// "PollNetMap: ... unexpected EOF" and retries forever (issue #3346).
+func TestServeLongPollWritesErrorWhenInitialMapFails(t *testing.T) {
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("self-bad-name-user")
+	createdNode := app.state.CreateRegisteredNodeForTest(user, "self-bad-name-node")
+
+	// Corrupt the node's stored name to empty so GetFQDN fails for itself,
+	// then reload state so the bad row enters the NodeStore verbatim.
+	app.mapBatcher.Close()
+	require.NoError(t, app.state.Close())
+
+	database, err := db.NewHeadscaleDatabase(app.cfg)
+	require.NoError(t, err)
+	require.NoError(t, database.DB.
+		Model(&types.Node{}).
+		Where("id = ?", createdNode.ID).
+		Update("given_name", "").Error)
+	require.NoError(t, database.Close())
+
+	app.state, err = state.NewState(app.cfg)
+	require.NoError(t, err)
+
+	app.mapBatcher = mapper.NewBatcherAndMapper(app.cfg, app.state)
+	app.mapBatcher.Start()
+
+	t.Cleanup(func() {
+		app.mapBatcher.Close()
+		require.NoError(t, app.state.Close())
+	})
+
+	nodeView, ok := app.state.GetNodeByID(createdNode.ID)
+	require.True(t, ok)
+
+	node := nodeView.AsStruct()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	writer := &recordingResponseWriter{}
+	session := app.newMapSession(ctx, tailcfg.MapRequest{
+		Stream:  true,
+		Version: tailcfg.CapabilityVersion(100),
+	}, writer, node)
+
+	serveDone := make(chan struct{})
+
+	go func() {
+		session.serveLongPoll()
+		close(serveDone)
+	}()
+
+	t.Cleanup(func() {
+		// Break the post-disconnect reconnect wait so the goroutine exits.
+		dummyCh := make(chan *tailcfg.MapResponse, 1)
+		_ = app.mapBatcher.AddNode(node.ID, dummyCh, tailcfg.CapabilityVersion(100), nil)
+
+		cancel()
+
+		select {
+		case <-serveDone:
+		case <-time.After(2 * time.Second):
+		}
+
+		_ = app.mapBatcher.RemoveNode(node.ID, dummyCh)
+	})
+
+	assert.Eventually(t, func() bool {
+		return writer.statusCode() >= http.StatusInternalServerError
+	}, 2*time.Second, 10*time.Millisecond,
+		"serveLongPoll must write an HTTP error response when the initial map cannot be built, not an empty 200")
 }
 
 // TestGitHubIssue3129_TransientlyBlockedWriteDoesNotLeaveLiveStaleSession
