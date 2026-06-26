@@ -311,6 +311,7 @@ jobs:
           - Test2118DeletingOnlineNodePanics
           - TestGrantCapRelay
           - TestGrantCapDrive
+          - TestK8sOperator
           - TestEnablingRoutes
           - TestHASubnetRouterFailover
           - TestSubnetRouteACL
