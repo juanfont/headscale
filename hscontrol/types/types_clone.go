@@ -97,7 +97,7 @@ var _NodeCloneNeedsRegeneration = Node(struct {
 	RegisterMethod string
 	Tags           Strings
 	AuthKeyID      *uint64
-	AuthKey        *PreAuthKey
+	AuthKey        *Credential
 	Expiry         *time.Time
 	LastSeen       *time.Time
 	ApprovedRoutes Prefixes
@@ -151,6 +151,59 @@ var _PreAuthKeyCloneNeedsRegeneration = PreAuthKey(struct {
 	Ephemeral   bool
 	Used        bool
 	Tags        []string
+	CreatedAt   *time.Time
+	Expiration  *time.Time
+	Revoked     *time.Time
+}{})
+
+// Clone makes a deep copy of Credential.
+// The result aliases no memory with the original.
+func (src *Credential) Clone() *Credential {
+	if src == nil {
+		return nil
+	}
+	dst := new(Credential)
+	*dst = *src
+	dst.Hash = append(src.Hash[:0:0], src.Hash...)
+	if dst.UserID != nil {
+		dst.UserID = new(*src.UserID)
+	}
+	if dst.User != nil {
+		dst.User = new(*src.User)
+	}
+	dst.Scopes = append(src.Scopes[:0:0], src.Scopes...)
+	dst.Tags = append(src.Tags[:0:0], src.Tags...)
+	if dst.LastSeen != nil {
+		dst.LastSeen = new(*src.LastSeen)
+	}
+	if dst.CreatedAt != nil {
+		dst.CreatedAt = new(*src.CreatedAt)
+	}
+	if dst.Expiration != nil {
+		dst.Expiration = new(*src.Expiration)
+	}
+	if dst.Revoked != nil {
+		dst.Revoked = new(*src.Revoked)
+	}
+	return dst
+}
+
+// A compilation failure here means this code must be regenerated, with the command at the top of this file.
+var _CredentialCloneNeedsRegeneration = Credential(struct {
+	ID          uint64
+	Kind        string
+	Identifier  string
+	Hash        []byte
+	UserID      *uint
+	User        *User
+	Description string
+	Scopes      []string
+	Tags        []string
+	Reusable    bool
+	Ephemeral   bool
+	Used        bool
+	LastSeen    *time.Time
+	ClientID    string
 	CreatedAt   *time.Time
 	Expiration  *time.Time
 	Revoked     *time.Time

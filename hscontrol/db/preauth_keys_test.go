@@ -1,7 +1,6 @@
 package db
 
 import (
-	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -132,7 +131,8 @@ func TestCannotDeleteAssignedPreAuthKey(t *testing.T) {
 	}
 	db.DB.Save(&node)
 
-	err = db.DB.Delete(&types.PreAuthKey{ID: key.ID}).Error
+	err = db.DB.Where("kind = ? AND id = ?", types.CredentialPreAuthKey, key.ID).
+		Delete(&types.Credential{}).Error
 	require.ErrorContains(t, err, "constraint failed: FOREIGN KEY constraint failed")
 }
 
@@ -152,19 +152,9 @@ func TestPreAuthKeyAuthentication(t *testing.T) {
 		{
 			name: "legacy_plaintext_rejected",
 			setupKey: func() string {
-				// Plaintext pre-auth keys (pre-0.30) are no longer supported. Seed
-				// one directly, the way it would exist in an upgraded production
-				// database, and confirm it can no longer be found.
-				legacyKey := "abc123def456ghi789jkl012mno345pqr678stu901vwx234yz"
-				now := time.Now()
-
-				err := db.DB.Exec(`
-					INSERT INTO pre_auth_keys (key, user_id, reusable, ephemeral, used, created_at)
-					VALUES (?, ?, ?, ?, ?, ?)
-				`, legacyKey, user.ID, true, false, false, now).Error
-				require.NoError(t, err)
-
-				return legacyKey
+				// Plaintext pre-auth keys (pre-0.30) are no longer supported: a
+				// key string without the hskey-auth- prefix is treated as unknown.
+				return "abc123def456ghi789jkl012mno345pqr678stu901vwx234yz"
 			},
 			wantFindErr:     true,
 			wantValidateErr: false,
@@ -331,74 +321,30 @@ func TestPreAuthKeyAuthentication(t *testing.T) {
 	}
 }
 
-func TestMultipleLegacyKeysAllowed(t *testing.T) {
+// TestPreAuthKeysHaveUniqueIdentifiers verifies that freshly created pre-auth
+// keys get distinct identifiers in the unified credentials table.
+func TestPreAuthKeysHaveUniqueIdentifiers(t *testing.T) {
 	db, err := newSQLiteTestDB()
 	require.NoError(t, err)
 
-	user, err := db.CreateUser(types.User{Name: "test-legacy"})
+	user, err := db.CreateUser(types.User{Name: "test-unique"})
 	require.NoError(t, err)
 
-	// Create multiple legacy keys by directly inserting with empty prefix
-	// This simulates the migration scenario where existing databases have multiple
-	// plaintext keys without prefix/hash fields
-	now := time.Now()
-
-	for i := range 5 {
-		legacyKey := fmt.Sprintf("legacy_key_%d_%s", i, strings.Repeat("x", 40))
-
-		err := db.DB.Exec(`
-			INSERT INTO pre_auth_keys (key, prefix, hash, user_id, reusable, ephemeral, used, created_at)
-			VALUES (?, '', NULL, ?, ?, ?, ?, ?)
-		`, legacyKey, user.ID, true, false, false, now).Error
-		require.NoError(t, err, "should allow multiple legacy keys with empty prefix")
-	}
-
-	// Verify all legacy keys can be retrieved
-	var legacyKeys []types.PreAuthKey
-
-	err = db.DB.Where("prefix = '' OR prefix IS NULL").Find(&legacyKeys).Error
-	require.NoError(t, err)
-	assert.Len(t, legacyKeys, 5, "should have created 5 legacy keys")
-
-	// Now create new bcrypt-based keys - these should have unique prefixes
 	key1, err := db.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 	require.NoError(t, err)
-	assert.NotEmpty(t, key1.Key)
 
 	key2, err := db.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 	require.NoError(t, err)
-	assert.NotEmpty(t, key2.Key)
 
-	// Verify the new keys have different prefixes
 	pak1, err := db.GetPreAuthKey(key1.Key)
 	require.NoError(t, err)
-	assert.NotEmpty(t, pak1.Prefix)
 
 	pak2, err := db.GetPreAuthKey(key2.Key)
 	require.NoError(t, err)
+
+	assert.NotEmpty(t, pak1.Prefix)
 	assert.NotEmpty(t, pak2.Prefix)
-
-	assert.NotEqual(t, pak1.Prefix, pak2.Prefix, "new keys should have unique prefixes")
-
-	// Verify we cannot manually insert duplicate non-empty prefixes
-	duplicatePrefix := "test_prefix1"
-	hash1 := []byte("hash1")
-	hash2 := []byte("hash2")
-
-	// First insert should succeed
-	err = db.DB.Exec(`
-		INSERT INTO pre_auth_keys (key, prefix, hash, user_id, reusable, ephemeral, used, created_at)
-		VALUES ('', ?, ?, ?, ?, ?, ?, ?)
-	`, duplicatePrefix, hash1, user.ID, true, false, false, now).Error
-	require.NoError(t, err, "first key with prefix should succeed")
-
-	// Second insert with same prefix should fail
-	err = db.DB.Exec(`
-		INSERT INTO pre_auth_keys (key, prefix, hash, user_id, reusable, ephemeral, used, created_at)
-		VALUES ('', ?, ?, ?, ?, ?, ?, ?)
-	`, duplicatePrefix, hash2, user.ID, true, false, false, now).Error
-	require.Error(t, err, "duplicate non-empty prefix should be rejected")
-	assert.Contains(t, err.Error(), "UNIQUE constraint failed", "should fail with UNIQUE constraint error")
+	assert.NotEqual(t, pak1.Prefix, pak2.Prefix, "new keys should have unique identifiers")
 }
 
 // TestUsePreAuthKeyAtomicCAS verifies that UsePreAuthKey is an atomic
@@ -473,9 +419,9 @@ func TestPreAuthKeyLazyRehashesBcrypt(t *testing.T) {
 	require.NoError(t, err)
 
 	err = db.DB.Exec(
-		`INSERT INTO pre_auth_keys (prefix, hash, user_id, reusable, ephemeral, used, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		prefix, hash, user.ID, true, false, false, time.Now(),
+		`INSERT INTO credentials (kind, identifier, hash, user_id, reusable, ephemeral, used, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		types.CredentialPreAuthKey, prefix, hash, user.ID, true, false, false, time.Now(),
 	).Error
 	require.NoError(t, err)
 

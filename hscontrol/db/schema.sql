@@ -38,68 +38,6 @@ CREATE UNIQUE INDEX idx_provider_identifier ON users(provider_identifier) WHERE 
 CREATE UNIQUE INDEX idx_name_provider_identifier ON users(name, provider_identifier);
 CREATE UNIQUE INDEX idx_name_no_provider_identifier ON users(name) WHERE provider_identifier IS NULL;
 
-CREATE TABLE pre_auth_keys(
-  id integer PRIMARY KEY AUTOINCREMENT,
-  key text,
-  prefix text,
-  hash blob,
-  user_id integer,
-  description text,
-  reusable numeric,
-  ephemeral numeric DEFAULT false,
-  used numeric DEFAULT false,
-  tags text,
-  expiration datetime,
-  revoked datetime,
-
-  created_at datetime,
-
-  CONSTRAINT fk_pre_auth_keys_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
-);
-CREATE UNIQUE INDEX idx_pre_auth_keys_prefix ON pre_auth_keys(prefix) WHERE prefix IS NOT NULL AND prefix != '';
-
-CREATE TABLE api_keys(
-  id integer PRIMARY KEY AUTOINCREMENT,
-  prefix text,
-  hash blob,
-  user_id integer,
-  expiration datetime,
-  last_seen datetime,
-
-  created_at datetime
-);
-CREATE UNIQUE INDEX idx_api_keys_prefix ON api_keys(prefix);
-
--- OAuth 2.0 client-credentials clients for the v2 API. client_id is public and
--- embedded in the secret (hskey-client-<client_id>-<secret>); only the bcrypt
--- hash of the secret is stored. Mirrors the api_keys security model.
-CREATE TABLE oauth_clients(
-  id integer PRIMARY KEY AUTOINCREMENT,
-  client_id text,
-  secret_hash blob,
-  scopes text,
-  tags text,
-  description text,
-  user_id integer,
-  created_at datetime,
-  revoked datetime
-);
-CREATE UNIQUE INDEX idx_oauth_clients_client_id ON oauth_clients(client_id);
-
--- Short-lived bearer access tokens minted by an oauth_client. Stored as a bcrypt
--- hash of the secret, looked up by prefix.
-CREATE TABLE oauth_access_tokens(
-  id integer PRIMARY KEY AUTOINCREMENT,
-  prefix text,
-  hash blob,
-  client_id text,
-  scopes text,
-  tags text,
-  expiration datetime,
-  created_at datetime
-);
-CREATE UNIQUE INDEX idx_oauth_access_tokens_prefix ON oauth_access_tokens(prefix);
-
 -- Unified store for every authenticatable secret (API keys, pre-auth keys,
 -- OAuth clients and access tokens), discriminated by kind. The secret is stored
 -- only as an Argon2id hash; identifier is the public lookup value, unique within
@@ -153,7 +91,7 @@ CREATE TABLE nodes(
   deleted_at datetime,
 
   CONSTRAINT fk_nodes_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
-  CONSTRAINT fk_nodes_auth_key FOREIGN KEY(auth_key_id) REFERENCES pre_auth_keys(id)
+  CONSTRAINT fk_nodes_auth_key FOREIGN KEY(auth_key_id) REFERENCES credentials(id)
 );
 
 CREATE TABLE policies(

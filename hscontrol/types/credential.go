@@ -59,3 +59,35 @@ type Credential struct {
 // TableName pins the table name so GORM's naming strategy does not pluralise it
 // unexpectedly and so it matches the hand-written migration DDL and schema.sql.
 func (*Credential) TableName() string { return "credentials" }
+
+// IsTagged reports whether this credential carries tags. For a pre-auth key
+// credential, a node registered with it becomes a tagged node.
+func (c *Credential) IsTagged() bool {
+	return len(c.Tags) > 0
+}
+
+// AsCredential projects a pre-auth key back onto a [Credential] (kind
+// authkey), used to set a node's AuthKey association during registration from a
+// pre-auth key projection.
+func (pak *PreAuthKey) AsCredential() *Credential {
+	if pak == nil {
+		return nil
+	}
+
+	return &Credential{
+		ID:          pak.ID,
+		Kind:        CredentialPreAuthKey,
+		Identifier:  pak.Prefix,
+		Hash:        pak.Hash,
+		UserID:      pak.UserID,
+		User:        pak.User,
+		Description: pak.Description,
+		Reusable:    pak.Reusable,
+		Ephemeral:   pak.Ephemeral,
+		Used:        pak.Used,
+		Tags:        pak.Tags,
+		CreatedAt:   pak.CreatedAt,
+		Expiration:  pak.Expiration,
+		Revoked:     pak.Revoked,
+	}
+}

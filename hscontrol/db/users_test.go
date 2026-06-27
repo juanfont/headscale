@@ -55,10 +55,10 @@ func TestDestroyUserErrors(t *testing.T) {
 				err = db.DestroyUser(types.UserID(user.ID))
 				require.NoError(t, err)
 
-				// Verify preauth key was deleted (need to search by prefix for new keys)
-				var foundPak types.PreAuthKey
+				// Verify preauth key credential was deleted.
+				var foundPak types.Credential
 
-				result := db.DB.First(&foundPak, "id = ?", pak.ID)
+				result := db.DB.First(&foundPak, "kind = ? AND id = ?", types.CredentialPreAuthKey, pak.ID)
 				assert.ErrorIs(t, result.Error, gorm.ErrRecordNotFound)
 			},
 		},

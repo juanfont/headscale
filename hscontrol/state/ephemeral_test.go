@@ -204,9 +204,8 @@ func TestPersistNodeToDBPreventsRaceCondition(t *testing.T) {
 //     the node could be re-inserted into the database even though it was deleted
 func TestEphemeralNodeLogoutRaceCondition(t *testing.T) {
 	ephemeralNode := createTestNode(4, 1, "test-user", "ephemeral-node")
-	ephemeralNode.AuthKey = &types.PreAuthKey{
+	ephemeralNode.AuthKey = &types.Credential{
 		ID:        1,
-		Key:       "test-key",
 		Ephemeral: true,
 	}
 
@@ -284,9 +283,8 @@ func TestEphemeralNodeLogoutRaceCondition(t *testing.T) {
 // 8. Node gets re-inserted into database instead of staying deleted.
 func TestUpdateNodeFromMapRequestEphemeralLogoutSequence(t *testing.T) {
 	ephemeralNode := createTestNode(5, 1, "test-user", "ephemeral-node-5")
-	ephemeralNode.AuthKey = &types.PreAuthKey{
+	ephemeralNode.AuthKey = &types.Credential{
 		ID:        2,
-		Key:       "test-key-2",
 		Ephemeral: true,
 	}
 
@@ -418,9 +416,8 @@ func TestUpdateNodeDeletedInSameBatchReturnsInvalid(t *testing.T) {
 // 6. persistNodeToDB must detect the node is deleted and refuse to persist.
 func TestPersistNodeToDBChecksNodeStoreBeforePersist(t *testing.T) {
 	ephemeralNode := createTestNode(7, 1, "test-user", "ephemeral-node-7")
-	ephemeralNode.AuthKey = &types.PreAuthKey{
+	ephemeralNode.AuthKey = &types.Credential{
 		ID:        3,
-		Key:       "test-key-3",
 		Ephemeral: true,
 	}
 

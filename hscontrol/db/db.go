@@ -948,20 +948,37 @@ WHERE user_id IS NULL
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			{
+				// Move every credential into the unified table and drop the
+				// per-kind tables. Pre-auth keys are backfilled FIRST preserving
+				// their ids so nodes.auth_key_id stays valid; the nodes FK is then
+				// retargeted to credentials(id). Legacy plaintext pre-auth keys
+				// (empty prefix) are not migrated (breaking change) and any node
+				// referencing one has its auth_key_id cleared first.
+				ID: "202606271300-migrate-to-credentials",
+				Migrate: func(tx *gorm.DB) error {
+					// Already migrated (e.g. fresh DB via InitSchema): nothing to do.
+					if !tx.Migrator().HasTable("pre_auth_keys") &&
+						!tx.Migrator().HasTable("api_keys") {
+						return nil
+					}
+
+					return migrateToCredentials(tx)
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
 	migrations.InitSchema(func(tx *gorm.DB) error {
 		// Create all tables using AutoMigrate
+		// Credential is migrated before Node so the nodes.auth_key_id foreign key
+		// to credentials(id) can be created.
 		err := tx.AutoMigrate(
 			&types.User{},
-			&types.PreAuthKey{},
-			&types.APIKey{},
+			&types.Credential{},
 			&types.Node{},
 			&types.Policy{},
-			&types.OAuthClient{},
-			&types.OAuthAccessToken{},
-			&types.Credential{},
 		)
 		if err != nil {
 			return err
@@ -971,14 +988,10 @@ WHERE user_id IS NULL
 		// to ensure we can recreate them in the correct format
 		dropIndexes := []string{
 			`DROP INDEX IF EXISTS "idx_users_deleted_at"`,
-			`DROP INDEX IF EXISTS "idx_api_keys_prefix"`,
 			`DROP INDEX IF EXISTS "idx_policies_deleted_at"`,
 			`DROP INDEX IF EXISTS "idx_provider_identifier"`,
 			`DROP INDEX IF EXISTS "idx_name_provider_identifier"`,
 			`DROP INDEX IF EXISTS "idx_name_no_provider_identifier"`,
-			`DROP INDEX IF EXISTS "idx_pre_auth_keys_prefix"`,
-			`DROP INDEX IF EXISTS "idx_oauth_clients_client_id"`,
-			`DROP INDEX IF EXISTS "idx_oauth_access_tokens_prefix"`,
 			`DROP INDEX IF EXISTS "idx_credentials_identifier"`,
 		}
 
@@ -992,14 +1005,10 @@ WHERE user_id IS NULL
 		// Recreate indexes without backticks to match schema.sql format
 		indexes := []string{
 			`CREATE INDEX idx_users_deleted_at ON users(deleted_at)`,
-			`CREATE UNIQUE INDEX idx_api_keys_prefix ON api_keys(prefix)`,
 			`CREATE INDEX idx_policies_deleted_at ON policies(deleted_at)`,
 			`CREATE UNIQUE INDEX idx_provider_identifier ON users(provider_identifier) WHERE provider_identifier IS NOT NULL`,
 			`CREATE UNIQUE INDEX idx_name_provider_identifier ON users(name, provider_identifier)`,
 			`CREATE UNIQUE INDEX idx_name_no_provider_identifier ON users(name) WHERE provider_identifier IS NULL`,
-			`CREATE UNIQUE INDEX idx_pre_auth_keys_prefix ON pre_auth_keys(prefix) WHERE prefix IS NOT NULL AND prefix != ''`,
-			`CREATE UNIQUE INDEX idx_oauth_clients_client_id ON oauth_clients(client_id)`,
-			`CREATE UNIQUE INDEX idx_oauth_access_tokens_prefix ON oauth_access_tokens(prefix)`,
 			`CREATE UNIQUE INDEX idx_credentials_identifier ON credentials(kind, identifier)`,
 		}
 

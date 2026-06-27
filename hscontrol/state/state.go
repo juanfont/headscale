@@ -1895,7 +1895,7 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 			nodeToRegister.Tags = nil
 		}
 
-		nodeToRegister.AuthKey = params.PreAuthKey
+		nodeToRegister.AuthKey = params.PreAuthKey.AsCredential()
 		nodeToRegister.AuthKeyID = &params.PreAuthKey.ID
 	} else {
 		// Non-PreAuthKey registration (OIDC, CLI) - always user-owned
@@ -1976,7 +1976,10 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 
 	// New node - database first to get ID, then [NodeStore]
 	savedNode, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-		err := tx.Save(&nodeToRegister).Error
+		// Omit the AuthKey association: only auth_key_id is persisted here, the
+		// credential row is owned by the credential CRUD and must not be
+		// upserted from this node's (possibly stale) in-memory copy (#2862).
+		err := tx.Omit("AuthKey").Save(&nodeToRegister).Error
 		if err != nil {
 			return nil, fmt.Errorf("saving node: %w", err)
 		}
@@ -1986,6 +1989,10 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 			if err != nil {
 				return nil, fmt.Errorf("using pre auth key: %w", err)
 			}
+
+			// UsePreAuthKey marked the key used; refresh the node's in-memory
+			// AuthKey so the NodeStore copy matches the database.
+			nodeToRegister.AuthKey = params.PreAuthKey.AsCredential()
 		}
 
 		return &nodeToRegister, nil
@@ -2524,8 +2531,14 @@ func (s *State) HandleNodeFromPreAuthKey(
 				node.Expiry = nil
 			}
 
-			node.AuthKey = pak
+			node.AuthKey = pak.AsCredential()
 			node.AuthKeyID = &pak.ID
+			// If this registration will consume a single-use key (the tx below
+			// calls UsePreAuthKey under the same condition), reflect that in the
+			// cached AuthKey so the NodeStore copy matches the database.
+			if !pak.Reusable && !pak.Used {
+				node.AuthKey.Used = true
+			}
 			// Do NOT reset IsOnline here. Online status is managed exclusively by
 			// [State.Connect]/[State.Disconnect] in the poll session lifecycle.
 			// Resetting it during re-registration causes a false offline blip
