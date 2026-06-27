@@ -26,6 +26,15 @@ keys remain all-access.
 
 [#3334](https://github.com/juanfont/headscale/pull/3334)
 
+An OAuth client secret also joins nodes: `tailscale up`, the container image,
+`tsnet` and the Tailscale GitHub Action take it as an auth key
+(`tskey-client-…?baseURL=<headscale>`) and mint a tagged key per node. Pre-auth
+key registrations now accept `--advertise-tags` that are a subset of the key's
+tags; any other tag is rejected, for new and re-registering nodes alike. See
+[the API docs](https://headscale.net/stable/ref/api/).
+
+[#3351](https://github.com/juanfont/headscale/pull/3351)
+
 ### BREAKING
 
 #### API

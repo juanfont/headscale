@@ -131,7 +131,8 @@ Its best suited for automation.
 
     The above prints a pre authenticated key with the default settings (can be used once and is valid for one hour). Use
     this auth key to register a node non-interactively. You don't need to provide the `--advertise-tags` parameter as
-    the tags are automatically read from the pre authenticated key:
+    the tags are automatically read from the pre authenticated key. Advertising a subset of the key's tags is accepted;
+    any other tag is rejected:
 
     ```console
     tailscale up --login-server <YOUR_HEADSCALE_URL> --authkey <YOUR_AUTH_KEY>
