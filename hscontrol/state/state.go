@@ -1904,10 +1904,23 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 		nodeToRegister.Tags = nil
 	}
 
-	// Reject advertise-tags for PreAuthKey registrations early, before any resource allocation.
-	// PreAuthKey nodes get their tags from the key itself, not from client requests.
+	// PreAuthKey nodes get their tags from the key itself, not from client
+	// requests. The official tailscale client's OAuth authkey flow re-advertises
+	// the key's own tags via --advertise-tags, so tolerate RequestTags that are a
+	// subset of the key's tags (redundant, no escalation) and reject only tags the
+	// key does not carry. Checked early, before any resource allocation.
 	if params.PreAuthKey != nil && params.Hostinfo != nil && len(params.Hostinfo.RequestTags) > 0 {
-		return types.NodeView{}, fmt.Errorf("%w %v are invalid or not permitted", ErrRequestedTagsInvalidOrNotPermitted, params.Hostinfo.RequestTags)
+		var extraTags []string
+
+		for _, tag := range params.Hostinfo.RequestTags {
+			if !slices.Contains(params.PreAuthKey.Tags, tag) {
+				extraTags = append(extraTags, tag)
+			}
+		}
+
+		if len(extraTags) > 0 {
+			return types.NodeView{}, fmt.Errorf("%w %v are invalid or not permitted", ErrRequestedTagsInvalidOrNotPermitted, extraTags)
+		}
 	}
 
 	// Process RequestTags (from tailscale up --advertise-tags) ONLY for non-PreAuthKey registrations.
