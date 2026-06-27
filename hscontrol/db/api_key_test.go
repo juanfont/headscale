@@ -190,9 +190,9 @@ func TestAPIKeyWithPrefix(t *testing.T) {
 
 				now := time.Now()
 				err = db.DB.Exec(`
-					INSERT INTO api_keys (prefix, hash, created_at)
-					VALUES (?, ?, ?)
-				`, legacyPrefix, hash, now).Error
+					INSERT INTO credentials (kind, identifier, hash, created_at)
+					VALUES (?, ?, ?, ?)
+				`, types.CredentialAPIKey, legacyPrefix, hash, now).Error
 				require.NoError(t, err)
 
 				// Validate legacy key
@@ -289,8 +289,8 @@ func TestAPIKeyLazyRehashesBcrypt(t *testing.T) {
 	require.NoError(t, err)
 
 	err = db.DB.Exec(
-		`INSERT INTO api_keys (prefix, hash, created_at) VALUES (?, ?, ?)`,
-		prefix, hash, time.Now(),
+		`INSERT INTO credentials (kind, identifier, hash, created_at) VALUES (?, ?, ?, ?)`,
+		types.CredentialAPIKey, prefix, hash, time.Now(),
 	).Error
 	require.NoError(t, err)
 
