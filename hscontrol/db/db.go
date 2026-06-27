@@ -900,6 +900,54 @@ WHERE user_id IS NULL
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			{
+				// Create the unified credentials table. Backfill from the existing
+				// per-kind tables and their removal land in a later migration, so
+				// this step is purely additive. SQLite uses explicit DDL matching
+				// schema.sql; Postgres uses dialect-aware AutoMigrate.
+				ID: "202606271200-create-credentials",
+				Migrate: func(tx *gorm.DB) error {
+					if tx.Migrator().HasTable(&types.Credential{}) {
+						return nil
+					}
+
+					if tx.Name() != "sqlite" {
+						return tx.AutoMigrate(&types.Credential{})
+					}
+
+					err := tx.Exec(`CREATE TABLE credentials(
+  id integer PRIMARY KEY AUTOINCREMENT,
+  kind text,
+  identifier text,
+  hash blob,
+  user_id integer,
+  description text,
+  scopes text,
+  tags text,
+  reusable numeric,
+  ephemeral numeric DEFAULT false,
+  used numeric DEFAULT false,
+  last_seen datetime,
+  client_id text,
+  created_at datetime,
+  expiration datetime,
+  revoked datetime,
+
+  CONSTRAINT fk_credentials_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+)`).Error
+					if err != nil {
+						return fmt.Errorf("creating credentials table: %w", err)
+					}
+
+					err = tx.Exec(`CREATE UNIQUE INDEX idx_credentials_identifier ON credentials(kind, identifier)`).Error
+					if err != nil {
+						return fmt.Errorf("creating credentials index: %w", err)
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
@@ -913,6 +961,7 @@ WHERE user_id IS NULL
 			&types.Policy{},
 			&types.OAuthClient{},
 			&types.OAuthAccessToken{},
+			&types.Credential{},
 		)
 		if err != nil {
 			return err
@@ -930,6 +979,7 @@ WHERE user_id IS NULL
 			`DROP INDEX IF EXISTS "idx_pre_auth_keys_prefix"`,
 			`DROP INDEX IF EXISTS "idx_oauth_clients_client_id"`,
 			`DROP INDEX IF EXISTS "idx_oauth_access_tokens_prefix"`,
+			`DROP INDEX IF EXISTS "idx_credentials_identifier"`,
 		}
 
 		for _, dropSQL := range dropIndexes {
@@ -950,6 +1000,7 @@ WHERE user_id IS NULL
 			`CREATE UNIQUE INDEX idx_pre_auth_keys_prefix ON pre_auth_keys(prefix) WHERE prefix IS NOT NULL AND prefix != ''`,
 			`CREATE UNIQUE INDEX idx_oauth_clients_client_id ON oauth_clients(client_id)`,
 			`CREATE UNIQUE INDEX idx_oauth_access_tokens_prefix ON oauth_access_tokens(prefix)`,
+			`CREATE UNIQUE INDEX idx_credentials_identifier ON credentials(kind, identifier)`,
 		}
 
 		for _, indexSQL := range indexes {

@@ -100,6 +100,32 @@ CREATE TABLE oauth_access_tokens(
 );
 CREATE UNIQUE INDEX idx_oauth_access_tokens_prefix ON oauth_access_tokens(prefix);
 
+-- Unified store for every authenticatable secret (API keys, pre-auth keys,
+-- OAuth clients and access tokens), discriminated by kind. The secret is stored
+-- only as an Argon2id hash; identifier is the public lookup value, unique within
+-- a kind. Per-kind columns are sparse by design.
+CREATE TABLE credentials(
+  id integer PRIMARY KEY AUTOINCREMENT,
+  kind text,
+  identifier text,
+  hash blob,
+  user_id integer,
+  description text,
+  scopes text,
+  tags text,
+  reusable numeric,
+  ephemeral numeric DEFAULT false,
+  used numeric DEFAULT false,
+  last_seen datetime,
+  client_id text,
+  created_at datetime,
+  expiration datetime,
+  revoked datetime,
+
+  CONSTRAINT fk_credentials_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE UNIQUE INDEX idx_credentials_identifier ON credentials(kind, identifier);
+
 CREATE TABLE nodes(
   id integer PRIMARY KEY AUTOINCREMENT,
   machine_key text,
