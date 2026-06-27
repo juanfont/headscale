@@ -75,6 +75,38 @@ operator is OAuth-only. Supporting OAuth lets all of them drive Headscale.
   **Argon2id** hash of the secret (no JWT, no signing keys). `OAuthClient` and
   `OAuthAccessToken` live in `types/oauth.go` and `db/oauth.go`.
 
+## OAuth with the tailscale client and GitHub Action
+
+The upstream `tailscale` client (and the official
+[`tailscale/github-action`](https://github.com/tailscale/github-action)) can use
+an OAuth client secret directly as an auth key: it runs the client-credentials
+exchange itself (`feature/oauthkey`), mints an auth key, and registers. Two
+Tailscale-specific quirks apply when pointing it at Headscale:
+
+- It only attempts the exchange when the secret is prefixed **`tskey-client-`**.
+  Headscale issues `hskey-client-…` but `AuthenticateOAuthClient` accepts the
+  `tskey-client-` alias too, so swap the prefix: `tskey-${SECRET#hskey-}`.
+- It exchanges against a **`baseURL`** read from the secret's query string
+  (default `https://api.tailscale.com`); `--login-server` only sets the
+  registration server, not the exchange. Append your Headscale URL.
+- The exchange requires `--advertise-tags`; registration accepts advertised tags
+  that are a subset of the key's own tags.
+
+So a working auth key is
+`tskey-client-<id>-<secret>?baseURL=https://headscale.example.com&ephemeral=true&preauthorized=true`.
+In the GitHub Action, pass it as the `authkey` input (the `oauth-secret` input is
+unusable here: it appends its own query parameters, which collide with `baseURL`):
+
+```yaml
+- uses: tailscale/github-action@v4
+  with:
+    authkey: tskey-client-<id>-<secret>?baseURL=https://headscale.example.com&ephemeral=true&preauthorized=true
+    args: --login-server=https://headscale.example.com --advertise-tags=tag:ci
+```
+
+The OAuth client needs the `auth_keys` scope and the tag(s) it assigns. The
+end-to-end flow is exercised in `.github/workflows/tailscale-action-integration.yaml`.
+
 ## Adding an endpoint
 
 Worked example: the keys resource (`keys.go`) = Tailscale auth keys = Headscale
