@@ -2024,12 +2024,6 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 		nodeToRegister.Tags = nil
 	}
 
-	// Reject advertise-tags for PreAuthKey registrations early, before any resource allocation.
-	// PreAuthKey nodes get their tags from the key itself, not from client requests.
-	if params.PreAuthKey != nil && params.Hostinfo != nil && len(params.Hostinfo.RequestTags) > 0 {
-		return types.NodeView{}, fmt.Errorf("%w %v are invalid or not permitted", ErrRequestedTagsInvalidOrNotPermitted, params.Hostinfo.RequestTags)
-	}
-
 	// Process RequestTags (from tailscale up --advertise-tags) ONLY for non-PreAuthKey registrations.
 	// Validate early before IP allocation to avoid resource leaks on failure.
 	if params.PreAuthKey == nil && params.Hostinfo != nil && len(params.Hostinfo.RequestTags) > 0 {
@@ -2540,6 +2534,25 @@ func (s *State) HandleNodeFromPreAuthKey(
 	pak, err := s.GetPreAuthKey(regReq.Auth.AuthKey)
 	if err != nil {
 		return types.NodeView{}, change.Change{}, err
+	}
+
+	// A pre-auth key node's tags come from the key, never from RequestTags.
+	// Advertising a subset of the key's tags is redundant, not an escalation,
+	// and the tailscale client's OAuth authkey flow always does it; any other
+	// tag is rejected. Checked before key validation or resource allocation so
+	// new nodes and re-registrations are held to the same rule.
+	if regReq.Hostinfo != nil {
+		var extraTags []string
+
+		for _, tag := range regReq.Hostinfo.RequestTags {
+			if !slices.Contains(pak.Tags, tag) {
+				extraTags = append(extraTags, tag)
+			}
+		}
+
+		if len(extraTags) > 0 {
+			return types.NodeView{}, change.Change{}, fmt.Errorf("%w %v are invalid or not permitted", ErrRequestedTagsInvalidOrNotPermitted, extraTags)
+		}
 	}
 
 	// Helper to get username for logging (handles nil User for tags-only keys)
