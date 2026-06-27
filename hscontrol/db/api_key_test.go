@@ -273,3 +273,37 @@ func TestGetAPIKeyByIDNotFound(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, key)
 }
+
+// TestAPIKeyLazyRehashesBcrypt seeds a new-format key whose secret is stored as
+// a legacy bcrypt hash and asserts that authenticating it upgrades the stored
+// hash to argon2id, while continuing to authenticate.
+func TestAPIKeyLazyRehashesBcrypt(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
+	prefix := "abcdefghijkl"
+	secret := strings.Repeat("a", 64)
+	keyStr := "hskey-api-" + prefix + "-" + secret
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(secret), bcrypt.DefaultCost)
+	require.NoError(t, err)
+
+	err = db.DB.Exec(
+		`INSERT INTO api_keys (prefix, hash, created_at) VALUES (?, ?, ?)`,
+		prefix, hash, time.Now(),
+	).Error
+	require.NoError(t, err)
+
+	valid, err := db.ValidateAPIKey(keyStr)
+	require.NoError(t, err)
+	assert.True(t, valid)
+
+	stored, err := db.GetAPIKey(prefix)
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(string(stored.Hash), "$argon2id$"),
+		"a bcrypt-stored key must be rehashed to argon2id on first auth")
+
+	valid, err = db.ValidateAPIKey(keyStr)
+	require.NoError(t, err)
+	assert.True(t, valid, "key must still authenticate against the upgraded hash")
+}

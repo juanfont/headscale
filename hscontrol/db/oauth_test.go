@@ -31,9 +31,9 @@ func TestVerifySecretConcurrent(t *testing.T) {
 			defer wg.Done()
 
 			if i%2 == 0 {
-				errs[i] = verifySecret(hash, "s3cr3t")
+				_, errs[i] = verifySecret(hash, "s3cr3t")
 			} else {
-				errs[i] = verifySecret(hash, "wrong")
+				_, errs[i] = verifySecret(hash, "wrong")
 			}
 		}(i)
 	}
@@ -99,9 +99,14 @@ func TestHashSecretRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEqual(t, encoded, encoded2)
 
-	require.NoError(t, verifySecret(encoded, secret))
-	require.ErrorIs(t, verifySecret(encoded, "wrong-secret"), errSecretMismatch)
-	require.ErrorIs(t, verifySecret([]byte("not-a-phc-string"), secret), errSecretHashMalformed)
+	_, err = verifySecret(encoded, secret)
+	require.NoError(t, err)
+
+	_, err = verifySecret(encoded, "wrong-secret")
+	require.ErrorIs(t, err, errSecretMismatch)
+
+	_, err = verifySecret([]byte("not-a-phc-string"), secret)
+	require.ErrorIs(t, err, errSecretHashMalformed)
 }
 
 func TestOAuthClientRevoke(t *testing.T) {

@@ -8,9 +8,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
-	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
-	"tailscale.com/util/rands"
 	"tailscale.com/util/set"
 )
 
@@ -103,13 +101,7 @@ func CreatePreAuthKey(
 
 	now := time.Now().UTC()
 
-	prefix := rands.HexString(authKeyPrefixLength)
-
-	toBeHashed := rands.HexString(authKeyLength)
-
-	keyStr := authKeyPrefix + prefix + "-" + toBeHashed
-
-	hash, err := bcrypt.GenerateFromPassword([]byte(toBeHashed), bcrypt.DefaultCost)
+	keyStr, prefix, hash, err := generateSecret(authKeyPrefix)
 	if err != nil {
 		return nil, err
 	}
@@ -192,21 +184,17 @@ func findAuthKey(tx *gorm.DB, keyStr string) (*types.PreAuthKey, error) {
 		return nil, ErrPreAuthKeyFailedToParse
 	}
 
-	_, prefixAndHash, found := strings.Cut(keyStr, authKeyPrefix)
-
+	_, prefixAndSecret, found := strings.Cut(keyStr, authKeyPrefix)
 	if !found {
-		// Legacy format (plaintext) - backwards compatibility
-		err := tx.Preload("User").First(&pak, "key = ?", keyStr).Error
-		if err != nil {
-			return nil, ErrPreAuthKeyNotFound
-		}
-
-		return &pak, nil
+		// Legacy plaintext keys (pre-0.30) are no longer supported. An
+		// unprefixed string is treated as an unknown key so the registration
+		// handler maps it to a 401.
+		return nil, ErrPreAuthKeyNotFound
 	}
 
-	// New format: hskey-auth-{12-char-prefix}-{64-char-hash}
-	prefix, hash, err := parsePrefixedKey(
-		prefixAndHash,
+	// New format: hskey-auth-{12-char-prefix}-{64-char-secret}
+	prefix, secret, err := parsePrefixedKey(
+		prefixAndSecret,
 		authKeyPrefixLength,
 		authKeyLength,
 		ErrPreAuthKeyFailedToParse,
@@ -221,10 +209,13 @@ func findAuthKey(tx *gorm.DB, keyStr string) (*types.PreAuthKey, error) {
 		return nil, ErrPreAuthKeyNotFound
 	}
 
-	// Verify hash matches
-	err = bcrypt.CompareHashAndPassword(pak.Hash, []byte(hash))
+	needsRehash, err := verifySecret(pak.Hash, secret)
 	if err != nil {
 		return nil, fmt.Errorf("invalid auth key: %w", err)
+	}
+
+	if needsRehash {
+		rehashToArgon2id(tx, &pak, secret)
 	}
 
 	return &pak, nil

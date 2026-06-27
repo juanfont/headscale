@@ -1,20 +1,14 @@
 package db
 
 import (
-	"crypto/rand"
-	"crypto/subtle"
-	"encoding/base64"
 	"errors"
 	"fmt"
-	"runtime"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
-	"golang.org/x/crypto/argon2"
 	"gorm.io/gorm"
-	"tailscale.com/util/rands"
 	"tailscale.com/util/set"
 )
 
@@ -42,95 +36,7 @@ var (
 	ErrAccessTokenFailedToParse = errors.New("failed to parse oauth access token")
 	ErrAccessTokenExpired       = errors.New("oauth access token expired")
 	ErrAccessTokenClientRevoked = errors.New("oauth access token issuing client revoked or deleted")
-
-	errSecretHashMalformed = errors.New("malformed secret hash")
-	errSecretMismatch      = errors.New("secret does not match hash")
 )
-
-// Argon2id parameters, OWASP's minimum recommendation (19 MiB, 2 iterations, 1
-// lane). They are encoded into every stored hash, so raising them later still
-// verifies credentials stored under the old cost.
-const (
-	argon2Time    = 2
-	argon2Memory  = 19 * 1024
-	argon2Threads = 1
-	argon2KeyLen  = 32
-	argon2SaltLen = 16
-)
-
-// argon2Limiter bounds concurrent Argon2id computations. Each costs ~19 MiB and
-// the unauthenticated OAuth token endpoint runs one per attempt, so an unbounded
-// flood could exhaust memory. ponytail: a global semaphore sized to GOMAXPROCS;
-// revisit only if credential hashing ever becomes a throughput bottleneck.
-var argon2Limiter = make(chan struct{}, max(2, runtime.GOMAXPROCS(0)))
-
-// hashSecret hashes a credential secret with Argon2id, encoded in PHC string
-// form so the parameters travel with the hash. Argon2id is the current OWASP
-// recommendation, replacing bcrypt for new credential storage.
-func hashSecret(secret string) ([]byte, error) {
-	salt := make([]byte, argon2SaltLen)
-
-	_, err := rand.Read(salt)
-	if err != nil {
-		return nil, fmt.Errorf("generating salt: %w", err)
-	}
-
-	hash := argon2.IDKey([]byte(secret), salt, argon2Time, argon2Memory, argon2Threads, argon2KeyLen)
-
-	encoded := fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
-		argon2.Version, argon2Memory, argon2Time, argon2Threads,
-		base64.RawStdEncoding.EncodeToString(salt),
-		base64.RawStdEncoding.EncodeToString(hash),
-	)
-
-	return []byte(encoded), nil
-}
-
-// verifySecret reports whether secret matches a hashSecret-encoded hash. It
-// reads the cost parameters from the stored hash and compares in constant time
-// so a mismatch leaks no timing signal.
-func verifySecret(encoded []byte, secret string) error {
-	parts := strings.Split(string(encoded), "$")
-	if len(parts) != 6 || parts[1] != "argon2id" {
-		return errSecretHashMalformed
-	}
-
-	var version int
-	if _, err := fmt.Sscanf(parts[2], "v=%d", &version); err != nil || version != argon2.Version { //nolint:noinlineerr
-		return errSecretHashMalformed
-	}
-
-	var (
-		memory, time uint32
-		threads      uint8
-	)
-
-	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &memory, &time, &threads); err != nil { //nolint:noinlineerr
-		return errSecretHashMalformed
-	}
-
-	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
-	if err != nil {
-		return errSecretHashMalformed
-	}
-
-	want, err := base64.RawStdEncoding.DecodeString(parts[5])
-	if err != nil {
-		return errSecretHashMalformed
-	}
-
-	argon2Limiter <- struct{}{}
-	//nolint:gosec // want is a 32-byte hash read back from storage, no overflow
-	got := argon2.IDKey([]byte(secret), salt, time, memory, threads, uint32(len(want)))
-
-	<-argon2Limiter
-
-	if subtle.ConstantTimeCompare(got, want) != 1 {
-		return errSecretMismatch
-	}
-
-	return nil
-}
 
 // CreateOAuthClient creates a new [types.OAuthClient] and returns the plaintext
 // secret (shown ONCE) alongside the stored client. creatorUserID is the user who
@@ -148,11 +54,7 @@ func (hsdb *HSDatabase) CreateOAuthClient(
 	scopes = set.SetOf(scopes).Slice()
 	slices.Sort(scopes)
 
-	clientID := rands.HexString(oauthClientIDLength)
-	secret := rands.HexString(oauthClientSecretLength)
-	secretStr := types.OAuthClientPrefix + clientID + "-" + secret
-
-	hash, err := hashSecret(secret)
+	secretStr, clientID, hash, err := generateSecret(types.OAuthClientPrefix)
 	if err != nil {
 		return "", nil, err
 	}
@@ -212,7 +114,7 @@ func (hsdb *HSDatabase) AuthenticateOAuthClient(secretStr string) (*types.OAuthC
 		return nil, ErrOAuthClientNotFound
 	}
 
-	if err := verifySecret(client.SecretHash, secret); err != nil { //nolint:noinlineerr
+	if _, err := verifySecret(client.SecretHash, secret); err != nil { //nolint:noinlineerr
 		return nil, fmt.Errorf("invalid oauth client secret: %w", err)
 	}
 
@@ -278,11 +180,7 @@ func (hsdb *HSDatabase) MintAccessToken(
 	scopes, tags []string,
 	expiration *time.Time,
 ) (string, *types.OAuthAccessToken, error) {
-	prefix := rands.HexString(accessTokenPrefixLength)
-	secret := rands.HexString(accessTokenSecretLength)
-	tokenStr := types.AccessTokenPrefix + prefix + "-" + secret
-
-	hash, err := hashSecret(secret)
+	tokenStr, prefix, hash, err := generateSecret(types.AccessTokenPrefix)
 	if err != nil {
 		return "", nil, err
 	}
@@ -349,7 +247,7 @@ func (hsdb *HSDatabase) AuthenticateAccessToken(tokenStr string) (*types.OAuthAc
 		return nil, ErrAccessTokenNotFound
 	}
 
-	if err := verifySecret(token.Hash, secret); err != nil { //nolint:noinlineerr
+	if _, err := verifySecret(token.Hash, secret); err != nil { //nolint:noinlineerr
 		return nil, fmt.Errorf("invalid oauth access token: %w", err)
 	}
 

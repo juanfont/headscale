@@ -11,6 +11,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -149,15 +150,14 @@ func TestPreAuthKeyAuthentication(t *testing.T) {
 		validateResult  func(*testing.T, *types.PreAuthKey)
 	}{
 		{
-			name: "legacy_key_plaintext",
+			name: "legacy_plaintext_rejected",
 			setupKey: func() string {
-				// Insert legacy key directly using GORM (simulate existing production key)
-				// Note: We use raw SQL to bypass GORM's handling and set prefix to empty string
-				// which simulates how legacy keys exist in production databases
+				// Plaintext pre-auth keys (pre-0.30) are no longer supported. Seed
+				// one directly, the way it would exist in an upgraded production
+				// database, and confirm it can no longer be found.
 				legacyKey := "abc123def456ghi789jkl012mno345pqr678stu901vwx234yz"
 				now := time.Now()
 
-				// Use raw SQL to insert with empty prefix to avoid UNIQUE constraint
 				err := db.DB.Exec(`
 					INSERT INTO pre_auth_keys (key, user_id, reusable, ephemeral, used, created_at)
 					VALUES (?, ?, ?, ?, ?, ?)
@@ -166,16 +166,8 @@ func TestPreAuthKeyAuthentication(t *testing.T) {
 
 				return legacyKey
 			},
-			wantFindErr:     false,
+			wantFindErr:     true,
 			wantValidateErr: false,
-			validateResult: func(t *testing.T, pak *types.PreAuthKey) {
-				t.Helper()
-
-				assert.Equal(t, user.ID, *pak.UserID)
-				assert.NotEmpty(t, pak.Key) // Legacy keys have Key populated
-				assert.Empty(t, pak.Prefix) // Legacy keys have empty Prefix
-				assert.Nil(t, pak.Hash)     // Legacy keys have nil Hash
-			},
 		},
 		{
 			name: "new_key_bcrypt",
@@ -307,43 +299,6 @@ func TestPreAuthKeyAuthentication(t *testing.T) {
 			},
 			wantFindErr:     true,
 			wantValidateErr: false,
-		},
-		{
-			name: "expired_legacy_key",
-			setupKey: func() string {
-				legacyKey := "expired_legacy_key_123456789012345678901234"
-				now := time.Now()
-				expiration := time.Now().Add(-1 * time.Hour) // Expired 1 hour ago
-
-				// Use raw SQL to avoid UNIQUE constraint on empty prefix
-				err := db.DB.Exec(`
-					INSERT INTO pre_auth_keys (key, user_id, reusable, ephemeral, used, created_at, expiration)
-					VALUES (?, ?, ?, ?, ?, ?, ?)
-				`, legacyKey, user.ID, true, false, false, now, expiration).Error
-				require.NoError(t, err)
-
-				return legacyKey
-			},
-			wantFindErr:     false,
-			wantValidateErr: true,
-		},
-		{
-			name: "used_single_use_legacy_key",
-			setupKey: func() string {
-				legacyKey := "used_legacy_key_123456789012345678901234567"
-				now := time.Now()
-
-				// Use raw SQL to avoid UNIQUE constraint on empty prefix
-				err := db.DB.Exec(`
-					INSERT INTO pre_auth_keys (key, user_id, reusable, ephemeral, used, created_at)
-					VALUES (?, ?, ?, ?, ?, ?)
-				`, legacyKey, user.ID, false, false, true, now).Error
-				require.NoError(t, err)
-
-				return legacyKey
-			},
-			wantFindErr:     false,
-			wantValidateErr: true,
 		},
 	}
 
@@ -499,4 +454,41 @@ func TestGetPreAuthKeyUnknownMapsToRecordNotFound(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorIs(t, err, gorm.ErrRecordNotFound,
 		"unknown pre-auth key must map to record-not-found (handled as 401)")
+}
+
+// TestPreAuthKeyLazyRehashesBcrypt seeds a new-format key whose secret is stored
+// as a legacy bcrypt hash and asserts that authenticating it upgrades the stored
+// hash to argon2id, while continuing to authenticate.
+func TestPreAuthKeyLazyRehashesBcrypt(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
+	user := db.CreateUserForTest("rehash-user")
+
+	prefix := "abcdefghijkl"
+	secret := strings.Repeat("b", 64)
+	keyStr := "hskey-auth-" + prefix + "-" + secret
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(secret), bcrypt.DefaultCost)
+	require.NoError(t, err)
+
+	err = db.DB.Exec(
+		`INSERT INTO pre_auth_keys (prefix, hash, user_id, reusable, ephemeral, used, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		prefix, hash, user.ID, true, false, false, time.Now(),
+	).Error
+	require.NoError(t, err)
+
+	pak, err := db.GetPreAuthKey(keyStr)
+	require.NoError(t, err)
+	require.NotNil(t, pak)
+
+	reloaded, err := db.GetPreAuthKeyByID(pak.ID)
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(string(reloaded.Hash), "$argon2id$"),
+		"a bcrypt-stored key must be rehashed to argon2id on first auth")
+
+	// Still authenticates against the upgraded hash.
+	_, err = db.GetPreAuthKey(keyStr)
+	require.NoError(t, err)
 }

@@ -7,9 +7,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
-	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
-	"tailscale.com/util/rands"
 )
 
 const (
@@ -17,9 +15,8 @@ const (
 	apiKeyPrefixLength = 12
 	apiKeyHashLength   = 64
 
-	// Legacy format constants.
+	// Legacy format constant: the prefix length of pre-hskey "prefix.secret" keys.
 	legacyAPIPrefixLength = 7
-	legacyAPIKeyLength    = 32
 )
 
 var (
@@ -32,17 +29,7 @@ var (
 func (hsdb *HSDatabase) CreateAPIKey(
 	expiration *time.Time,
 ) (string, *types.APIKey, error) {
-	// Generate public prefix (12 chars)
-	prefix := rands.HexString(apiKeyPrefixLength)
-
-	// Generate secret (64 chars)
-	secret := rands.HexString(apiKeyHashLength)
-
-	// Full key string (shown ONCE to user)
-	keyStr := apiKeyPrefix + prefix + "-" + secret
-
-	// bcrypt hash of secret
-	hash, err := bcrypt.GenerateFromPassword([]byte(secret), bcrypt.DefaultCost)
+	keyStr, prefix, hash, err := generateSecret(apiKeyPrefix)
 	if err != nil {
 		return "", nil, err
 	}
@@ -224,10 +211,13 @@ func validateAPIKey(db *gorm.DB, keyStr string) (*types.APIKey, error) {
 		return nil, fmt.Errorf("API key not found: %w", err)
 	}
 
-	// Verify bcrypt hash
-	err = bcrypt.CompareHashAndPassword(key.Hash, []byte(secret))
+	needsRehash, err := verifySecret(key.Hash, secret)
 	if err != nil {
 		return nil, fmt.Errorf("invalid API key: %w", err)
+	}
+
+	if needsRehash {
+		rehashToArgon2id(db, &key, secret)
 	}
 
 	return &key, nil
@@ -253,10 +243,13 @@ func validateLegacyAPIKey(db *gorm.DB, keyStr string) (*types.APIKey, error) {
 		return nil, fmt.Errorf("API key not found: %w", err)
 	}
 
-	// Verify bcrypt (key.Hash stores bcrypt of full secret)
-	err = bcrypt.CompareHashAndPassword(key.Hash, []byte(secret))
+	needsRehash, err := verifySecret(key.Hash, secret)
 	if err != nil {
 		return nil, fmt.Errorf("invalid API key: %w", err)
+	}
+
+	if needsRehash {
+		rehashToArgon2id(db, &key, secret)
 	}
 
 	return &key, nil
