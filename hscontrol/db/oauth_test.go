@@ -86,6 +86,54 @@ func TestOAuthClientCreateAndAuthenticate(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestOAuthClientAuthenticateTailscalePrefix asserts the same stored client
+// authenticates under the tskey-client- alias, and that only a leading prefix
+// is recognised.
+func TestOAuthClientAuthenticateTailscalePrefix(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
+	secret, client, err := db.CreateOAuthClient(
+		[]string{"auth_keys"},
+		[]string{"tag:ci"},
+		"",
+		nil,
+	)
+	require.NoError(t, err)
+
+	rest := strings.TrimPrefix(secret, types.OAuthClientPrefix)
+	tsSecret := types.TailscaleOAuthClientPrefix + rest
+
+	for _, s := range []string{
+		tsSecret,
+		// Callers may pass the raw auth-key form; ?attributes are stripped.
+		tsSecret + "?baseURL=http://127.0.0.1:8080&ephemeral=true",
+	} {
+		got, err := db.AuthenticateOAuthClient(s)
+		require.NoError(t, err, s)
+		assert.Equal(t, client.ClientID, got.ClientID)
+	}
+
+	// A wrong secret under the alias parses but fails verification.
+	_, err = db.AuthenticateOAuthClient(
+		types.TailscaleOAuthClientPrefix + client.ClientID + "-" + strings.Repeat("0", 64),
+	)
+	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrOAuthClientFailedToParse)
+
+	for _, s := range []string{
+		types.TailscaleOAuthClientPrefix,
+		"tskey-auth-" + rest,
+		"tskey-" + rest,
+		"junk-" + tsSecret,
+		"junk-" + secret,
+		types.TailscaleOAuthClientPrefix + secret,
+	} {
+		_, err := db.AuthenticateOAuthClient(s)
+		require.ErrorIs(t, err, ErrOAuthClientFailedToParse, s)
+	}
+}
+
 func TestHashSecretRoundTrip(t *testing.T) {
 	const secret = "a-high-entropy-credential-secret"
 

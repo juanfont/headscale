@@ -192,7 +192,12 @@ func (hsdb *HSDatabase) AuthenticateOAuthClient(secretStr string) (*types.OAuthC
 	// used directly as an auth key; strip them before parsing.
 	secretStr, _, _ = strings.Cut(secretStr, "?")
 
-	_, rest, found := strings.Cut(secretStr, types.OAuthClientPrefix)
+	// See [types.TailscaleOAuthClientPrefix] for why the alias is accepted.
+	rest, found := strings.CutPrefix(secretStr, types.OAuthClientPrefix)
+	if !found {
+		rest, found = strings.CutPrefix(secretStr, types.TailscaleOAuthClientPrefix)
+	}
+
 	if !found {
 		return nil, ErrOAuthClientFailedToParse
 	}
