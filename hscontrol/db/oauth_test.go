@@ -188,7 +188,7 @@ func TestAccessTokenRejectedWhenClientGone(t *testing.T) {
 
 	// Delete only the client row, leaving the token orphaned (the state a
 	// mint/revoke race or manual deletion would produce).
-	require.NoError(t, db.DB.Where("client_id = ?", client.ClientID).Delete(&types.OAuthClient{}).Error)
+	require.NoError(t, db.DB.Where("kind = ? AND identifier = ?", types.CredentialOAuthClient, client.ClientID).Delete(&types.Credential{}).Error)
 
 	_, err = db.AuthenticateAccessToken(tokenStr)
 	require.ErrorIs(t, err, ErrAccessTokenClientRevoked)
@@ -201,8 +201,8 @@ func TestAccessTokenRejectedWhenClientGone(t *testing.T) {
 	require.NoError(t, err)
 
 	now := time.Now()
-	require.NoError(t, db.DB.Model(&types.OAuthClient{}).
-		Where("client_id = ?", client2.ClientID).Update("revoked", now).Error)
+	require.NoError(t, db.DB.Model(&types.Credential{}).
+		Where("kind = ? AND identifier = ?", types.CredentialOAuthClient, client2.ClientID).Update("revoked", now).Error)
 
 	_, err = db.AuthenticateAccessToken(tokenStr2)
 	require.ErrorIs(t, err, ErrAccessTokenClientRevoked)
