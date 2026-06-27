@@ -75,6 +75,18 @@ operator is OAuth-only. Supporting OAuth lets all of them drive Headscale.
   **Argon2id** hash of the secret (no JWT, no signing keys). `OAuthClient` and
   `OAuthAccessToken` live in `types/oauth.go` and `db/oauth.go`.
 
+## OAuth with the tailscale client and GitHub Action
+
+The stock `tailscale` client (`feature/oauthkey`) accepts an OAuth client secret
+as an auth key: it exchanges it at `/api/v2/oauth/token`, mints a tagged key via
+`CreateKey`, then registers re-advertising those tags. Server-side this relies on
+two things: `db.AuthenticateOAuthClient` accepting the `tskey-client-` prefix
+alias (the client only runs the exchange for it), and pre-auth key registration
+tolerating `RequestTags` that are a subset of the key's tags.
+`TestAPIv2OAuthTailscaleClientAuthKey` in `servertest/` drives the real client
+code through this; `.github/workflows/tailscale-action-integration.yaml` covers
+the GitHub Action. User-facing setup is in `docs/ref/api.md`.
+
 ## Adding an endpoint
 
 Worked example: the keys resource (`keys.go`) = Tailscale auth keys = Headscale

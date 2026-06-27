@@ -58,6 +58,98 @@ Headscale server at `/api/v1/docs` for details.
         https://headscale.example.com/api/v1/auth/register
     ```
 
+## Join nodes with an OAuth client
+
+Headscale also serves a subset of the Tailscale-compatible API at `/api/v2`, which
+accepts **OAuth 2.0 client-credentials** in addition to API keys. The Tailscale
+client can use an OAuth client secret in place of an auth key: it exchanges the
+secret for an access token, mints a single-use tagged auth key and registers with
+it. This works anywhere the client takes an auth key: `tailscale up`, the
+container image, `tsnet` and the
+[`tailscale/github-action`](https://github.com/tailscale/github-action). One
+long-lived secret joins any number of nodes.
+
+Create an OAuth client with the `auth_keys` scope and the tags its nodes get. The
+secret is shown once:
+
+```shell
+headscale oauth-clients create --scope auth_keys --tag tag:ci
+```
+
+Build the auth key from the secret:
+
+1. Swap the prefix: `hskey-client-…` becomes `tskey-client-…`. The client only
+   runs the exchange for `tskey-client-`; Headscale accepts both.
+1. Append `?baseURL=<your Headscale URL>`.
+1. Set `--advertise-tags`. Each tag must exist in the policy's `tagOwners` and be
+   one of the OAuth client's tags, or owned by one of them.
+
+```text
+tskey-client-<id>-<secret>?baseURL=https://headscale.example.com
+```
+
+!!! warning
+
+    Without `baseURL` the client sends the secret to `https://api.tailscale.com`.
+
+### Attributes
+
+These are all the attributes the client understands; any other is an error.
+Order does not matter and an empty value means the default.
+
+| Attribute       | Default                     | Effect                                                                                           |
+| --------------- | --------------------------- | ------------------------------------------------------------------------------------------------ |
+| `baseURL`       | `https://api.tailscale.com` | Where the exchange and key creation go. Your Headscale URL, no trailing slash.                   |
+| `ephemeral`     | `true`                      | Node is removed after it goes offline (`node.ephemeral.inactivity_timeout`). `false` to keep it. |
+| `preauthorized` | `false`                     | Accepted, no effect: Headscale always authorizes pre-auth-key nodes.                             |
+
+Booleans take any Go `strconv.ParseBool` value (`true`, `false`, `1`, `0`, …).
+
+### Examples
+
+`tailscale up`, either as the auth key or via `--client-secret` (which also takes
+`file:/path/to/secret`):
+
+```shell
+tailscale up --login-server https://headscale.example.com --advertise-tags tag:ci \
+  --auth-key 'tskey-client-<id>-<secret>?baseURL=https://headscale.example.com&ephemeral=false'
+```
+
+Container image:
+
+```shell
+docker run -d --name tailscale \
+  -e TS_AUTHKEY='tskey-client-<id>-<secret>?baseURL=https://headscale.example.com' \
+  -e TS_EXTRA_ARGS='--login-server=https://headscale.example.com --advertise-tags=tag:ci' \
+  tailscale/tailscale
+```
+
+`tsnet` (`TS_CLIENT_SECRET` works too); import `tailscale.com/feature/oauthkey`:
+
+```go
+srv := &tsnet.Server{
+    ControlURL:    "https://headscale.example.com",
+    AuthKey:       "tskey-client-<id>-<secret>?baseURL=https://headscale.example.com",
+    AdvertiseTags: []string{"tag:ci"},
+}
+```
+
+GitHub Action, with the whole string stored as a repository secret:
+
+{% raw %}
+
+```yaml
+- uses: tailscale/github-action@v4
+  with:
+    authkey: ${{ secrets.HEADSCALE_AUTHKEY }}
+    args: --login-server=https://headscale.example.com --advertise-tags=tag:ci
+```
+
+{% endraw %}
+
+Use `authkey` even though upstream marks it deprecated: `oauth-secret` appends its
+own `?…` to the secret, which corrupts `baseURL`.
+
 ## Remote control
 
 The `headscale` binary can control a Headscale instance from a remote machine over the HTTP API.
