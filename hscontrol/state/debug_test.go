@@ -1,9 +1,16 @@
 package state
 
 import (
+	"encoding/json"
+	"net/netip"
 	"testing"
+	"time"
 
+	"github.com/hashicorp/golang-lru/v2/expirable"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"tailscale.com/tailcfg"
 )
 
 func TestNodeStoreDebugString(t *testing.T) {
@@ -65,14 +72,63 @@ func TestNodeStoreDebugString(t *testing.T) {
 }
 
 func TestDebugRegistrationCache(t *testing.T) {
-	// Create a minimal NodeStore for testing debug methods
-	store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+	cache := expirable.NewLRU[types.AuthID, *types.AuthRequest](
+		defaultRegisterCacheMaxEntries,
+		nil,
+		time.Hour,
+	)
+	state := &State{
+		authCache: cache,
+	}
 
-	debugStr := store.DebugString()
+	expiry := time.Now().UTC().Add(time.Hour)
+	registrationID := types.MustAuthID()
+	registrationRequest := types.NewRegisterAuthRequest(&types.RegistrationData{
+		Hostname: "test-node",
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "test-node",
+		},
+		Endpoints: []netip.AddrPort{
+			netip.MustParseAddrPort("192.0.2.1:41641"),
+		},
+		Expiry: &expiry,
+	})
+	registrationRequest.SetPendingConfirmation(&types.PendingRegistrationConfirmation{
+		UserID:     1,
+		NodeExpiry: &expiry,
+		CSRF:       "secret-token",
+	})
+	cache.Add(registrationID, registrationRequest)
 
-	// Should contain basic debug information
-	assert.Contains(t, debugStr, "=== NodeStore Debug Information ===")
-	assert.Contains(t, debugStr, "Total Nodes: 0")
-	assert.Contains(t, debugStr, "Users with Nodes: 0")
-	assert.Contains(t, debugStr, "NodeKey Index: 0 entries")
+	sshCheckID := types.MustAuthID()
+	cache.Add(sshCheckID, types.NewSSHCheckAuthRequest(types.NodeID(1), types.NodeID(2)))
+
+	debugInfo := state.DebugRegistrationCache()
+	_, err := json.Marshal(debugInfo)
+	require.NoError(t, err)
+
+	assert.Equal(t, "expirable-lru", debugInfo.Type)
+	assert.Equal(t, 2, debugInfo.CurrentLen)
+	require.Len(t, debugInfo.Entries, 2)
+
+	entries := map[string]DebugRegistrationCacheEntry{}
+	for _, entry := range debugInfo.Entries {
+		entries[entry.ID] = entry
+	}
+
+	registrationEntry := entries[registrationID.String()]
+	assert.Equal(t, "registration", registrationEntry.Kind)
+	require.NotNil(t, registrationEntry.Registration)
+	assert.Equal(t, "test-node", registrationEntry.Registration.Hostname)
+	assert.True(t, registrationEntry.Registration.HasHostinfo)
+	assert.Equal(t, []string{"192.0.2.1:41641"}, registrationEntry.Registration.Endpoints)
+	require.NotNil(t, registrationEntry.PendingConfirmation)
+	assert.Equal(t, uint(1), registrationEntry.PendingConfirmation.UserID)
+	assert.True(t, registrationEntry.PendingConfirmation.HasCSRF)
+
+	sshCheckEntry := entries[sshCheckID.String()]
+	assert.Equal(t, "ssh_check", sshCheckEntry.Kind)
+	require.NotNil(t, sshCheckEntry.SSHCheck)
+	assert.Equal(t, types.NodeID(1), sshCheckEntry.SSHCheck.SrcNodeID)
+	assert.Equal(t, types.NodeID(2), sshCheckEntry.SSHCheck.DstNodeID)
 }
