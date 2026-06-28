@@ -42,6 +42,7 @@ keys remain all-access.
 
 ### Changes
 
+- Filtering nodes by user (e.g. `headscale nodes list -u <user>`) now resolves OIDC users by the email shown in `headscale users list`, not only the local name [#3354](https://github.com/juanfont/headscale/pull/3354)
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
 
