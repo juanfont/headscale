@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
-      - uses: Mic92/hestia/action@7ae4509d1c3cacd4a31b91d9ad308d74e0b5a053 # v1.0.2
+      - uses: Mic92/hestia@7ae4509d1c3cacd4a31b91d9ad308d74e0b5a053 # v1.0.2
       - name: build
         run: nix build -L .#checks.x86_64-linux.build
 
@@ -33,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
-      - uses: Mic92/hestia/action@7ae4509d1c3cacd4a31b91d9ad308d74e0b5a053 # v1.0.2
+      - uses: Mic92/hestia@7ae4509d1c3cacd4a31b91d9ad308d74e0b5a053 # v1.0.2
       - name: gotest
         run: nix build -L .#checks.x86_64-linux.gotest
 
@@ -42,7 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
-      - uses: Mic92/hestia/action@7ae4509d1c3cacd4a31b91d9ad308d74e0b5a053 # v1.0.2
+      - uses: Mic92/hestia@7ae4509d1c3cacd4a31b91d9ad308d74e0b5a053 # v1.0.2
       - name: golangci-lint
         run: nix build -L .#checks.x86_64-linux.golangci-lint
 
@@ -51,6 +51,6 @@ jobs:
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
-      - uses: Mic92/hestia/action@7ae4509d1c3cacd4a31b91d9ad308d74e0b5a053 # v1.0.2
+      - uses: Mic92/hestia@7ae4509d1c3cacd4a31b91d9ad308d74e0b5a053 # v1.0.2
       - name: formatting
         run: nix build -L .#checks.x86_64-linux.formatting

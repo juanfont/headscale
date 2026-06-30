@@ -45,7 +45,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
-      - uses: Mic92/hestia/action@7ae4509d1c3cacd4a31b91d9ad308d74e0b5a053 # v1.0.2
+      - uses: Mic92/hestia@7ae4509d1c3cacd4a31b91d9ad308d74e0b5a053 # v1.0.2
 
       - name: Set commit timestamp
         run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> $GITHUB_ENV
@@ -93,7 +93,7 @@ jobs:
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
 
       - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
-      - uses: Mic92/hestia/action@7ae4509d1c3cacd4a31b91d9ad308d74e0b5a053 # v1.0.2
+      - uses: Mic92/hestia@7ae4509d1c3cacd4a31b91d9ad308d74e0b5a053 # v1.0.2
 
       - name: Build binary
         env:
