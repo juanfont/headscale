@@ -215,8 +215,8 @@ func (pm *PolicyManager) RunTests() error {
 		return nil
 	}
 
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
 
 	results := runPolicyTests(pm.pol, pm.filter, pm.users, pm.nodes)
 

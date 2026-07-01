@@ -122,8 +122,8 @@ func (pm *PolicyManager) RunSSHTests() error {
 		return nil
 	}
 
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
 
 	cache := make(map[types.NodeID]*tailcfg.SSHPolicy)
 	results := runSSHPolicyTests(pm.pol, pm.users, pm.nodes, cache)
