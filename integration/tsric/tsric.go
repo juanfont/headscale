@@ -12,13 +12,13 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"os"
 	"strings"
 
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
+	"tailscale.com/envknob"
 	"tailscale.com/util/rands"
 )
 
@@ -35,7 +35,7 @@ const (
 
 // getPrebuiltImage returns the pre-built tailscale-rs Docker image name if set.
 func getPrebuiltImage() string {
-	return os.Getenv("HEADSCALE_INTEGRATION_TAILSCALE_RS_IMAGE")
+	return envknob.String("HEADSCALE_INTEGRATION_TAILSCALE_RS_IMAGE")
 }
 
 // TailscaleRustInContainer runs the tailscale-rs axum example as an
@@ -210,9 +210,9 @@ func New(
 	if prebuiltImage := getPrebuiltImage(); prebuiltImage != "" {
 		log.Printf("Using pre-built tailscale-rs image: %s", prebuiltImage)
 
-		repo, tag, ok := strings.Cut(prebuiltImage, ":")
-		if !ok {
-			return nil, fmt.Errorf("tsric: invalid image format %q, expected repository:tag", prebuiltImage) //nolint:err113
+		repo, tag, err := integrationutil.ParseImageRef(prebuiltImage)
+		if err != nil {
+			return nil, fmt.Errorf("tsric: %w", err)
 		}
 
 		runOptions.Repository = repo

@@ -8,28 +8,61 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
+	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
 )
 
-// PeerSyncTimeout returns the timeout for peer synchronization based on environment:
-// 60s for dev, 120s for CI.
-func PeerSyncTimeout() time.Duration {
-	if util.IsCI() {
-		return 120 * time.Second
+var errInvalidImageFormat = errors.New("integration image env must be in repository:tag format")
+
+// PrebuiltImage reads a HEADSCALE_INTEGRATION_*_IMAGE knob (the full var name,
+// e.g. "HEADSCALE_INTEGRATION_HEADSCALE_IMAGE") and splits it into repository
+// and tag. The bool is false when the knob is unset — the suite then builds the
+// image itself; it errors when the value is set but is not "repository:tag".
+// This is the one place the prebuilt-image knobs (used by the CI / nix-check
+// path) are read, via tailscale's envknob.
+func PrebuiltImage(envVar string) (string, string, bool, error) {
+	image := envknob.String(envVar)
+	if image == "" {
+		return "", "", false, nil
 	}
 
-	return 60 * time.Second
+	repo, tag, err := ParseImageRef(image)
+	if err != nil {
+		return "", "", false, fmt.Errorf("%s=%w", envVar, err)
+	}
+
+	return repo, tag, true, nil
+}
+
+// ParseImageRef splits an already-resolved "repository:tag" image string into
+// its parts. Use it where the image comes from somewhere other than a single
+// knob (e.g. a websocket-tagged override chosen at runtime); for the common
+// read-a-knob case use [PrebuiltImage].
+func ParseImageRef(image string) (string, string, error) {
+	repo, tag, found := strings.Cut(image, ":")
+	if !found {
+		return "", "", fmt.Errorf("%q: %w", image, errInvalidImageFormat)
+	}
+
+	return repo, tag, nil
+}
+
+// PeerSyncTimeout returns the timeout for peer synchronization: 60s for dev,
+// scaled for CI / the slow nix VM.
+func PeerSyncTimeout() time.Duration {
+	return dockertestutil.ScaleTimeout(60 * time.Second)
 }
 
 // PeerSyncRetryInterval returns the retry interval for peer synchronization checks.
@@ -37,16 +70,10 @@ func PeerSyncRetryInterval() time.Duration {
 	return 100 * time.Millisecond
 }
 
-// ScaledTimeout returns the given timeout, scaled for CI environments
-// where resource contention causes slower state propagation.
-// Uses a 2x multiplier, consistent with PeerSyncTimeout (60s/120s)
-// and dockertestMaxWait (300s/600s).
+// ScaledTimeout returns the given convergence budget, scaled for the running
+// environment via [dockertestutil.ScaleTimeout].
 func ScaledTimeout(d time.Duration) time.Duration {
-	if util.IsCI() {
-		return d * 2
-	}
-
-	return d
+	return dockertestutil.ScaleTimeout(d)
 }
 
 func WriteFileToContainer(

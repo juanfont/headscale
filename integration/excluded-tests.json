@@ -1,0 +1,7 @@
+[
+  "TestHASubnetRouterFailoverBothOfflineCablePull",
+  "TestHASubnetRouterFailoverDockerDisconnect",
+  "TestHASubnetRouterPingFailover",
+  "TestPingAllByIPPublicDERP",
+  "TestTailscaleRustAxum"
+]

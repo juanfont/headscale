@@ -1,0 +1,66 @@
+{
+  "versions": [
+    "head",
+    "unstable",
+    "1.80",
+    "1.82",
+    "1.96",
+    "1.98"
+  ],
+  "images": {
+    "unstable": {
+      "imageName": "tailscale/tailscale",
+      "finalImageTag": "unstable",
+      "imageDigest": "sha256:85d46a2b396edbc3c0b1cda1d4433831236aa64da32fc80af0897501b1ab9ae2",
+      "sha256": {
+        "amd64": "sha256-UYtRaPnnDgRNomEX5EGp6yf/ye1KB/5RwaU2KWNRLsU=",
+        "arm64": "sha256-OmK7uLVskXSgto+ywvGlnhG5AhXOhlRYz4hi2dvp/a4="
+      }
+    },
+    "v1.80": {
+      "imageName": "ghcr.io/tailscale/tailscale",
+      "finalImageTag": "v1.80",
+      "imageDigest": "sha256:27b6a3dc30d89e94113b0d481dae05f08934cf80bdce860041727a2a60959921",
+      "sha256": {
+        "amd64": "sha256-CGNdS2gdO7VSG1NNOBUTxF4oeIwnUO00AWxyzwhWshs=",
+        "arm64": "sha256-YgX5Yy2Ls7HKOAXhwNNOQ9fgzK9EZqiRc9Q1Vej9A38="
+      }
+    },
+    "v1.82": {
+      "imageName": "ghcr.io/tailscale/tailscale",
+      "finalImageTag": "v1.82",
+      "imageDigest": "sha256:d26fc9bb035b0559900cc6f23506f6b1ddab61a690ffab4f5d84feceb3de811e",
+      "sha256": {
+        "amd64": "sha256-46PK+HTq6WVawxXj9Pktc1zHHGce/cSNAKAWFNX5NYA=",
+        "arm64": "sha256-Ij6qPQgECR7AGti8NCoNg5VaUZq3dKjQreQTOz/dDHE="
+      }
+    },
+    "v1.96": {
+      "imageName": "ghcr.io/tailscale/tailscale",
+      "finalImageTag": "v1.96",
+      "imageDigest": "sha256:dbeff02d2337344b351afac203427218c4d0a06c43fc10a865184063498472a6",
+      "sha256": {
+        "amd64": "sha256-F2vR1IhVeBOVRILxWIQ1N8DCX6foWmp6B/BZbFRgf5Q=",
+        "arm64": "sha256-q+hCmoH7BIX1B4BPBC9HJRlB7KHxFH9fFB6RKCYeK3A="
+      }
+    },
+    "v1.98": {
+      "imageName": "ghcr.io/tailscale/tailscale",
+      "finalImageTag": "v1.98",
+      "imageDigest": "sha256:854b77123b9536adae2e97f5a5fdb1790ed03438b911ab7f07780155e0af6ce2",
+      "sha256": {
+        "amd64": "sha256-zmPhOuNhcnExtY8L1G2za28fHpltgcmcdvGSEWcPVaY=",
+        "arm64": "sha256-J37dagB9SFlhAPTWQShty6muTmU71KLFKhBwpUtnxHc="
+      }
+    }
+  },
+  "postgres": {
+    "imageName": "postgres",
+    "finalImageTag": "16",
+    "imageDigest": "sha256:287eced1f33b59ed265ed13a60d3680dd7646d70c4dc0e785f59a470ebc03eeb",
+    "sha256": {
+      "amd64": "sha256-NgSEkOyXG8tdX9qRInuTd0n0fbVDKlPkJZz7haqFNMo=",
+      "arm64": "sha256-gcIWSO7wg1HlRUafEN7X9KdqpMgnar6gRf5IT7BiOdY="
+    }
+  }
+}

@@ -37,9 +37,23 @@ jobs:
         if: steps.changed-files.outputs.files == 'true'
         run: |
           (cd .github/workflows && go generate)
-          git diff --exit-code .github/workflows/test-integration.yaml
+          git diff --exit-code integration/tests.nix integration/postgres-tests.nix integration/excluded-tests.json
 
       - name: Show missing tests
         if: failure()
         run: |
-          git diff .github/workflows/test-integration.yaml
+          git diff integration/tests.nix integration/postgres-tests.nix integration/excluded-tests.json
+
+      # The pinned tailscale images must match the versions the suite requests
+      # (MustTestVersions); a capver bump that isn't mirrored here makes the
+      # offline integration checks fail at runtime.
+      - name: Check tailscale version pins match capver
+        if: steps.changed-files.outputs.files == 'true'
+        run: |
+          want=$(nix develop --command go run ./cmd/hi list-versions --set=must --exclude=head | tr ' ' '\n' | sort)
+          have=$(jq -r '.images | keys[]' integration/tailscale-versions.json | sort)
+          if [ "$want" != "$have" ]; then
+            echo "::error::integration/tailscale-versions.json is stale vs capver; run 'update-integration-images' in the dev shell"
+            diff <(echo "$want") <(echo "$have") || true
+            exit 1
+          fi

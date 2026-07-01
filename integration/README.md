@@ -21,16 +21,19 @@ go run ./cmd/hi doctor
 go run ./cmd/hi run "TestPingAllByIP"
 ```
 
-Alternatively, [`act`](https://github.com/nektos/act) runs the GitHub
-Actions workflow locally:
+In CI each test also runs as its own hermetic NixOS-VM flake check. Run
+one locally exactly the way CI does:
 
 ```bash
-act pull_request -W .github/workflows/test-integration.yaml
+nix build .#checks.x86_64-linux.integration-TestPingAllByIP
 ```
 
-Each test runs as a separate workflow on GitHub Actions. To add a new
-test, run `go generate` inside `../cmd/gh-action-integration-generator/`
-and commit the generated workflow file.
+The check matrix is generated: after adding or renaming a test, run `go
+generate` in `.github/workflows/` to refresh `integration/tests.nix`,
+`integration/postgres-tests.nix`, and `integration/excluded-tests.json`,
+then commit the result. Tests that need the public internet (real DERP)
+cannot run hermetically; they are listed in `excluded-tests.json` and
+run via the `integration-legacy` workflow instead.
 
 ## Framework overview
 

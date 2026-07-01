@@ -30,9 +30,7 @@ var listVersionsConfig ListVersionsConfig
 // tags, releases get a "v" prefix so each entry can be appended to
 // "ghcr.io/tailscale/tailscale:" directly.
 func listVersions(env *command.Env) error {
-	release := capver.TailscaleLatestMajorMinor(capver.SupportedMajorMinorVersions, true)
-	all := append([]string{"head", "unstable"}, release...)
-	must := append(append([]string{}, all[0:4]...), all[len(all)-2:]...)
+	all, must := capver.IntegrationVersions()
 
 	var versions []string
 

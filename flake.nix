@@ -9,10 +9,18 @@
     # once it ships go_1_26 >= 1.26.4.
     nixpkgs.url = "github:NixOS/nixpkgs/staging-next-26.05";
     flake-utils.url = "github:numtide/flake-utils";
+
     # Reusable Go flake checks (build/test/lint/format); CI runs them via
     # `nix build .#checks.<system>.<name>` instead of bespoke per-tool steps.
     flake-checks.url = "github:kradalby/flake-checks";
     flake-checks.inputs.nixpkgs.follows = "nixpkgs";
+
+    # Tailscale HEAD, built from source for the integration test client image.
+    # Bump with `nix flake update tailscale-head` to track the latest main.
+    # It is a flake; we still build our own derivation (we need derper +
+    # containerboot, which its default package omits) but read its committed
+    # vendorHash from flakehashes.json so the bump carries the hash.
+    tailscale-head.url = "github:tailscale/tailscale";
   };
 
   outputs =
@@ -20,6 +28,7 @@
     , nixpkgs
     , flake-utils
     , flake-checks
+    , tailscale-head
     , ...
     }:
     let
@@ -39,8 +48,27 @@
           # Go 1.26 builder; resolves to Go 1.26.4 from the pinned nixpkgs.
           buildGo = pkgs.buildGo126Module;
           vendorHash = (builtins.fromJSON (builtins.readFile ./flakehashes.json)).vendor.sri;
+
+          # Go source with the non-Go scaffolding filtered out, so editing the
+          # nix integration harness, CI workflows, docs or packaging does not
+          # rebuild the (slow) integration test binary or container images.
+          # Only changes to actual Go source invalidate them.
+          goSrc = pkgs.lib.fileset.toSource {
+            root = ./.;
+            fileset = pkgs.lib.fileset.difference ./. (pkgs.lib.fileset.unions [
+              ./nix
+              ./.github
+              ./docs
+              ./packaging
+              ./flake.nix
+              ./flake.lock
+              ./flakehashes.json
+            ]);
+          };
         in
         {
+          headscale-go-src = goSrc;
+
           headscale = buildGo {
             pname = "headscale";
             version = headscaleVersion;
@@ -69,6 +97,34 @@
             inherit vendorHash;
 
             subPackages = [ "cmd/hi" ];
+          };
+
+          # The integration suite compiled into a single test binary, run later
+          # inside a per-test NixOS VM check (see nix/tests/integration.nix).
+          # Compiled once and shared by every integration check.
+          integration-test-bin = buildGo {
+            pname = "headscale-integration-test";
+            # Fixed (not the commit rev) so the binary is content-addressed:
+            # identical Go source → identical store path → shared-cache hit
+            # across commits. The version string is irrelevant for a test binary.
+            version = "integration";
+            src = goSrc;
+
+            inherit vendorHash;
+
+            doCheck = false;
+
+            buildPhase = ''
+              runHook preBuild
+              go test -c -o integration.test ./integration
+              runHook postBuild
+            '';
+
+            installPhase = ''
+              runHook preInstall
+              install -Dm755 integration.test $out/bin/integration.test
+              runHook postInstall
+            '';
           };
 
           # Build golangci-lint with stock Go 1.26 (upstream uses hardcoded Go
@@ -200,7 +256,12 @@
           vendorHash = (builtins.fromJSON (builtins.readFile ./flakehashes.json)).vendor.sri;
           goPkg = pkgs.go_1_26;
           # //go:embed targets and test-read files outside the default whitelist.
-          embedDirs = [ ./hscontrol/assets ./hscontrol/db/schema.sql ./config-example.yaml ];
+          embedDirs = [
+            ./hscontrol/assets
+            ./hscontrol/db/schema.sql
+            ./config-example.yaml
+            ./integration/tailscale-versions.json
+          ];
           extraSrc = [
             ./hscontrol/testdata
             ./hscontrol/types/testdata
@@ -239,6 +300,45 @@
             fmtExclude = [ ./gen ./docs ];
           });
         };
+
+        # Nix-built container images for the integration tests, plus the
+        # per-test VM check factory. Linux-only (dockerTools + nixosTest).
+        integrationImages = import ./nix/images.nix {
+          inherit pkgs;
+          buildGoModule = pkgs.buildGo126Module;
+          tailscaleSrc = tailscale-head;
+        };
+
+        mkIntegrationCheck = { name, testFilter ? name, postgres ? false }:
+          pkgs.testers.nixosTest (import ./nix/tests/integration.nix {
+            inherit name testFilter pkgs postgres;
+            inherit (integrationImages)
+              headscaleImage tailscaleImage postgresImage tailscaleVersionImages;
+            testBin = pkgs.integration-test-bin;
+            # goSrc (not the full tree) so a check's result stays cached when
+            # only nix/CI/docs change — only real Go/integration changes (which
+            # also rebuild testBin) invalidate it. Maximises shared-cache reuse.
+            src = pkgs.headscale-go-src;
+          });
+
+        # One sqlite check per test (full matrix), plus a postgres variant for
+        # the postgres subset — exactly the sqlite+postgres jobs the generator
+        # produces for the GitHub workflow.
+        integrationChecks =
+          let
+            # Split-test entries (TestAutoApproveMultiNetwork/authkey-tag.*) carry
+            # / and * in their -test.run filter; sanitise those into a valid check
+            # name while keeping the raw filter for -test.run.
+            sanitize = builtins.replaceStrings [ "/" "." "*" ] [ "-" "" "" ];
+            mkCheck = postgres: filter:
+              pkgs.lib.nameValuePair
+                "integration-${sanitize filter}${pkgs.lib.optionalString postgres "-pg"}"
+                (mkIntegrationCheck { name = sanitize filter; testFilter = filter; inherit postgres; });
+          in
+          pkgs.lib.listToAttrs (
+            map (mkCheck false) (import ./integration/tests.nix)
+            ++ map (mkCheck true) (import ./integration/postgres-tests.nix)
+          );
       in
       {
         # `nix develop`
@@ -259,6 +359,14 @@
                   cat go.mod | ${pkgs.ripgrep}/bin/rg "\t" | ${pkgs.ripgrep}/bin/rg -v indirect | ${pkgs.gawk}/bin/awk '{print $1}' | ${pkgs.findutils}/bin/xargs go get -u
                   go mod tidy
                 '')
+
+              # Regenerate integration/tailscale-versions.json after a capver bump
+              # so the offline checks pin the tailscale images the suite requests.
+              # It is a //go:generate step in the integration package (runs with
+              # capver under `make generate`); this just scopes it to the pins.
+              (pkgs.writeShellScriptBin "update-integration-images" ''
+                exec go generate ./integration/...
+              '')
             ];
 
           shellHook = ''
@@ -272,6 +380,28 @@
           inherit headscale;
           inherit headscale-docker;
           default = headscale;
+        }
+        // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+          headscale-integration-image = integrationImages.headscaleImage;
+          tailscale-integration-image = integrationImages.tailscaleImage;
+          postgres-integration-image = integrationImages.postgresImage;
+          inherit (pkgs) integration-test-bin;
+
+          # All shared inputs every integration check pulls in: the test binary
+          # and every image. CI builds this once (a "prime" job) so it lands in
+          # the shared nix cache before the per-test matrix fans out — the
+          # matrix jobs then substitute it instead of each rebuilding.
+          integration-deps = pkgs.linkFarm "integration-deps" (
+            [
+              { name = "test-bin"; path = pkgs.integration-test-bin; }
+              { name = "headscale"; path = integrationImages.headscaleImage; }
+              { name = "tailscale-head"; path = integrationImages.tailscaleImage; }
+              { name = "postgres"; path = integrationImages.postgresImage; }
+            ]
+            ++ pkgs.lib.imap0
+              (i: img: { name = "ts-version-${toString i}"; path = img; })
+              integrationImages.tailscaleVersionImages
+          );
         };
 
         # `nix run`
@@ -287,6 +417,10 @@
         }
         # The Go build/test checks are gated to Linux: parts of the tree are
         # Linux-specific and the pure unit subset is validated by CI.
-        // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux goChecks;
+        // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux goChecks
+        # Integration checks only on x86_64-linux: nixosTest needs KVM and the
+        # pinned version images are amd64 (nix/tailscale-versions.nix). aarch64
+        # would need arch-specific pins.
+        // pkgs.lib.optionalAttrs (system == "x86_64-linux") integrationChecks;
       });
 }
