@@ -4,6 +4,14 @@
 
 **Minimum supported Tailscale client version: v1.xx.0**
 
+## 0.29.2 (202x-xx-xx)
+
+**Minimum supported Tailscale client version: v1.80.0**
+
+### Changes
+
+- Fix map generation serializing on the policy lock, so a mass reconnect on `autogroup:self`, via or relay policies no longer stalls clients into `unexpected EOF` retry loops [#3358](https://github.com/juanfont/headscale/pull/3358)
+
 ## 0.29.1 (2026-06-18)
 
 **Minimum supported Tailscale client version: v1.80.0**
