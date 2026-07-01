@@ -96,14 +96,13 @@ in
     documentation.enable = false;
     services.timesyncd.enable = false;
 
-    # Each check is a separate VM and the shared garnix builder runs many at
-    # once (nix max-jobs, 16 on our box), so memorySize * max-jobs must fit the
-    # builder RAM or the whole matrix thrashes with none completing. 3.5 GB * 16
-    # = 56 GB leaves headroom on the 64 GB builder. Raise back toward 8 GB once
-    # the builder caps max-jobs (memorySize * max-jobs <= RAM); the version-matrix
-    # tests (12+ containers) and k3s (TestK8sOperator) feel a tight budget most.
-    virtualisation.memorySize = 3584;
-    virtualisation.cores = 2;
+    # Sized for the full version matrix (a test can spawn 12+ tailscale
+    # containers + headscale + the runner). Each check is its own VM and a shared
+    # builder runs several at once, so the builder must cap max-jobs to keep
+    # memorySize * max-jobs <= its RAM (8 GB * 6 fits a 64 GB box); an uncapped
+    # builder overcommits and the whole matrix thrashes with none completing.
+    virtualisation.memorySize = 8192;
+    virtualisation.cores = 4;
     virtualisation.diskSize = 12288;
   };
 
