@@ -11,6 +11,7 @@
 ### Changes
 
 - Fix map generation serializing on the policy lock, so a mass reconnect on `autogroup:self`, via or relay policies no longer stalls clients into `unexpected EOF` retry loops [#3358](https://github.com/juanfont/headscale/pull/3358)
+- Fix `/ts2021` rejecting the WebSocket `GET` upgrade with 405, which prevented Tailscale JS/WASM control clients from connecting [#3359](https://github.com/juanfont/headscale/pull/3359)
 
 A node whose stored name could not be turned into a valid FQDN — empty, or long
 enough that the full hostname exceeded 255 characters once the base domain was
