@@ -1,0 +1,30 @@
+# For integration testing only.
+#
+# Builds the Tailscale control client (integration/wasmic/wasmclient) for
+# GOOS=js/GOARCH=wasm and packages it with Go's wasm_exec Node runner. The
+# container idles; the integration test execs
+#   node /app/wasm_exec_node.js /app/client.wasm <control-url>
+# to drive a real browser-style WebSocket GET against headscale's /ts2021,
+# guarding the regression in issue #3357.
+
+FROM golang:1.26.4-alpine AS build
+
+WORKDIR /src
+
+# Only the module metadata and the wasm client package are needed to build the
+# js/wasm binary; its imports (tailscale.com/control/controlhttp, ...) resolve
+# from the module proxy.
+COPY go.mod go.sum ./
+COPY integration/wasmic/wasmclient ./integration/wasmic/wasmclient
+
+RUN GOOS=js GOARCH=wasm go build -o /out/client.wasm ./integration/wasmic/wasmclient \
+    && cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" /out/wasm_exec.js \
+    && cp "$(go env GOROOT)/lib/wasm/wasm_exec_node.js" /out/wasm_exec_node.js
+
+FROM node:24-alpine
+
+WORKDIR /app
+COPY --from=build /out/ /app/
+
+# Idle; the test execs the client on demand with the headscale control URL.
+ENTRYPOINT ["tail", "-f", "/dev/null"]
