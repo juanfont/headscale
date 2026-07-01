@@ -157,12 +157,18 @@ func (pol *Policy) compileNodeAttrs(
 	}
 
 	result := make(map[types.NodeID]tailcfg.NodeCapMap)
-	stamp := func(id types.NodeID, attr tailcfg.NodeCapability) {
+	capMapFor := func(id types.NodeID) tailcfg.NodeCapMap {
 		capMap, ok := result[id]
 		if !ok {
 			capMap = tailcfg.NodeCapMap{}
 			result[id] = capMap
 		}
+
+		return capMap
+	}
+
+	stamp := func(id types.NodeID, attr tailcfg.NodeCapability) {
+		capMap := capMapFor(id)
 
 		// nil [tailcfg.RawMessage] matches the wire format from a
 		// Tailscale-hosted control plane: capabilities without companion
@@ -172,6 +178,16 @@ func (pol *Policy) compileNodeAttrs(
 		if _, exists := capMap[attr]; !exists {
 			capMap[attr] = nil
 		}
+	}
+
+	// stampValues appends valued capabilities from a nodeAttrs "app"
+	// block (a capability name → JSON payloads, e.g.
+	// "tailscale.com/app-connectors"). The payloads are passed through
+	// opaquely; the client interprets them. Multiple nodeAttrs entries
+	// targeting the same node accumulate their values.
+	stampValues := func(id types.NodeID, capKey tailcfg.NodeCapability, vals []tailcfg.RawMessage) {
+		capMap := capMapFor(id)
+		capMap[capKey] = append(capMap[capKey], vals...)
 	}
 
 	// Cache each node's IPs once per call. Without the cache, the
@@ -195,7 +211,7 @@ func (pol *Policy) compileNodeAttrs(
 	}
 
 	for _, na := range pol.NodeAttrs {
-		if len(na.Attrs) == 0 {
+		if len(na.Attrs) == 0 && len(na.App) == 0 {
 			continue
 		}
 
@@ -215,6 +231,10 @@ func (pol *Policy) compileNodeAttrs(
 
 			for _, attr := range na.Attrs {
 				stamp(ni.id, attr)
+			}
+
+			for capKey, vals := range na.App {
+				stampValues(ni.id, capKey, vals)
 			}
 		}
 	}
