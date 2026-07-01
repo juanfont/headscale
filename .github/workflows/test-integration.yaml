@@ -367,6 +367,8 @@ jobs:
           - TestTagsAuthKeyWithoutUserInheritsTags
           - TestTagsAuthKeyWithoutUserRejectsAdvertisedTags
           - TestTagsAuthKeyConvertToUserViaCLIRegister
+          - TestTS2021WebSocketGET
+          - TestTS2021WASMClientUnderNode
           - TestTailscaleRustAxum
     uses: ./.github/workflows/integration-test-template.yml
     secrets: inherit
