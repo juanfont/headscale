@@ -460,6 +460,11 @@ func (h *Headscale) createRouter(apiV1Mux, apiV2Mux http.Handler) *chi.Mux {
 	r.Use(middleware.Recoverer)
 	r.Use(securityHeaders)
 
+	// TS2021 accepts both the native client's HTTP POST upgrade and the
+	// browser/WASM client's WebSocket GET upgrade; NoiseUpgradeHandler
+	// dispatches on the Upgrade header, not the method. Registering GET as
+	// well keeps the router from rejecting the WebSocket handshake with 405.
+	r.Get(ts2021UpgradePath, h.NoiseUpgradeHandler)
 	r.Post(ts2021UpgradePath, h.NoiseUpgradeHandler)
 
 	r.Get("/robots.txt", h.RobotsHandler)

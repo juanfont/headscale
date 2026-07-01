@@ -459,6 +459,71 @@ func TestSSHActionHandler_RejectsMissingSessionWithoutCheck(t *testing.T) {
 		"a bogus auth_id with no active check must be rejected, body=%s", rec.Body.String())
 }
 
+// TestTS2021Route_AcceptsGETAndPOST reproduces a regression where the
+// browser/WASM control client could not connect. Tailscale's JS/WASM control
+// client opens /ts2021 as a WebSocket, which is an HTTP GET upgrade; the native
+// Go client uses an HTTP POST upgrade. The gorilla->chi router migration
+// registered /ts2021 for POST only, so the GET WebSocket handshake was rejected
+// with 405 Method Not Allowed by the router before it could reach
+// NoiseUpgradeHandler. Both methods must route to the handler.
+//
+// NoiseUpgradeHandler dispatches on the Upgrade header, not the HTTP method, so
+// once the route is reachable the handler handles both upgrade styles. The
+// httptest recorder is not an http.Hijacker, so the upgrade itself fails past
+// the router (501 for the WebSocket path, 400 for the native path) — the point
+// is only that neither is 405, i.e. the router no longer rejects GET early.
+func TestTS2021Route_AcceptsGETAndPOST(t *testing.T) {
+	t.Parallel()
+
+	handler := createTestApp(t).HTTPHandler()
+
+	tests := []struct {
+		name    string
+		method  string
+		headers map[string]string
+	}{
+		{
+			name:   "websocket_get_from_wasm_client",
+			method: http.MethodGet,
+			headers: map[string]string{
+				"Connection":             "Upgrade",
+				"Upgrade":                "websocket",
+				"Sec-WebSocket-Version":  "13",
+				"Sec-WebSocket-Key":      "dGhlIHNhbXBsZSBub25jZQ==",
+				"Sec-WebSocket-Protocol": "tailscale-control-protocol",
+			},
+		},
+		{
+			name:   "native_post_upgrade",
+			method: http.MethodPost,
+			headers: map[string]string{
+				"Connection":            "upgrade",
+				"Upgrade":               "tailscale-control-protocol",
+				"X-Tailscale-Handshake": "AAAA",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequestWithContext(context.Background(), tt.method,
+				"/ts2021?X-Tailscale-Handshake=AAAA", nil)
+			for k, v := range tt.headers {
+				req.Header.Set(k, v)
+			}
+
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			assert.NotEqual(t, http.StatusMethodNotAllowed, rec.Code,
+				"%s /ts2021 must reach NoiseUpgradeHandler, not be rejected by the router with 405",
+				tt.method)
+		})
+	}
+}
+
 // newSSHActionFollowUpRequest is like newSSHActionRequest but carries the
 // auth_id query parameter that marks a follow-up poll.
 func newSSHActionFollowUpRequest(t *testing.T, src, dst types.NodeID, authID types.AuthID) *http.Request {
