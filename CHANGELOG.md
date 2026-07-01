@@ -45,7 +45,7 @@ keys remain all-access.
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
 
-## 0.29.2 (202x-xx-xx)
+## 0.29.2 (2026-07-01)
 
 **Minimum supported Tailscale client version: v1.80.0**
 
@@ -53,19 +53,7 @@ keys remain all-access.
 
 - Fix map generation serializing on the policy lock, so a mass reconnect on `autogroup:self`, via or relay policies no longer stalls clients into `unexpected EOF` retry loops [#3358](https://github.com/juanfont/headscale/pull/3358)
 - Fix `/ts2021` rejecting the WebSocket `GET` upgrade with 405, which prevented Tailscale JS/WASM control clients from connecting [#3359](https://github.com/juanfont/headscale/pull/3359)
-
-A node whose stored name could not be turned into a valid FQDN — empty, or long
-enough that the full hostname exceeded 255 characters once the base domain was
-applied — broke map delivery for itself and for every peer that could see it.
-Affected clients looped on `PollNetMap: unexpected EOF` and reported being
-unable to reach the coordination server, while other clients were unaffected.
-The mapper now drops such a node from its peers' maps instead of failing the
-whole response, the long-poll handler returns an explicit error rather than an
-empty response, node renames that would exceed the hostname limit are rejected,
-and startup logs each node whose stored name needs fixing together with the
-command to fix it.
-
-[#3349](https://github.com/juanfont/headscale/pull/3349)
+- Gracefully handle nodes with an invalid FQDN (empty or too long) instead of failing map delivery; offending names are logged at startup with the fix command [#3349](https://github.com/juanfont/headscale/pull/3349)
 
 ## 0.29.1 (2026-06-18)
 
