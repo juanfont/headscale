@@ -96,12 +96,14 @@ in
     documentation.enable = false;
     services.timesyncd.enable = false;
 
-    # Sized for the full version matrix (a test can spawn 12+ tailscale
-    # containers + headscale + the runner) while still fitting a standard
-    # 4-core/16 GB GitHub runner. Disk-backed docker (not tmpfs) keeps RAM
-    # headroom on the runner; the slim source copy below is the bigger win.
-    virtualisation.memorySize = 8192;
-    virtualisation.cores = 4;
+    # Each check is a separate VM and the shared garnix builder runs many at
+    # once (nix max-jobs, 16 on our box), so memorySize * max-jobs must fit the
+    # builder RAM or the whole matrix thrashes with none completing. 3.5 GB * 16
+    # = 56 GB leaves headroom on the 64 GB builder. Raise back toward 8 GB once
+    # the builder caps max-jobs (memorySize * max-jobs <= RAM); the version-matrix
+    # tests (12+ containers) and k3s (TestK8sOperator) feel a tight budget most.
+    virtualisation.memorySize = 3584;
+    virtualisation.cores = 2;
     virtualisation.diskSize = 12288;
   };
 
