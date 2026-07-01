@@ -326,18 +326,31 @@
         # produces for the GitHub workflow.
         integrationChecks =
           let
-            # Split-test entries (TestAutoApproveMultiNetwork/authkey-tag.*) carry
-            # / and * in their -test.run filter; sanitise those into a valid check
-            # name while keeping the raw filter for -test.run.
-            sanitize = builtins.replaceStrings [ "/" "." "*" ] [ "-" "" "" ];
-            mkCheck = postgres: filter:
+            # A single shared builder can't fit the full per-test VM fan-out in
+            # RAM, so batch the matrix into a few groups and run each group's
+            # tests sequentially (-test.parallel=1) inside one VM. Only ~7 VMs
+            # ever exist, so the builder can't be overcommitted no matter its
+            # build concurrency. Split-test entries
+            # (TestAutoApproveMultiNetwork/authkey-tag.*) collapse to their parent
+            # function; round-robin assignment spreads heavy tests across groups.
+            topLevel = f: builtins.head (pkgs.lib.splitString "/" f);
+            sqliteTests = pkgs.lib.unique (map topLevel (import ./integration/tests.nix));
+            pgTests = pkgs.lib.unique (map topLevel (import ./integration/postgres-tests.nix));
+            numGroups = 6;
+            groupOf = tests: g: builtins.filter (t: t != null)
+              (pkgs.lib.imap0 (i: t: if pkgs.lib.mod i numGroups == g then t else null) tests);
+            mkBatch = postgres: idx: tests:
               pkgs.lib.nameValuePair
-                "integration-${sanitize filter}${pkgs.lib.optionalString postgres "-pg"}"
-                (mkIntegrationCheck { name = sanitize filter; testFilter = filter; inherit postgres; });
+                "integration-batch${toString idx}${pkgs.lib.optionalString postgres "-pg"}"
+                (mkIntegrationCheck {
+                  name = "batch${toString idx}";
+                  testFilter = "(" + pkgs.lib.concatStringsSep "|" tests + ")";
+                  inherit postgres;
+                });
           in
           pkgs.lib.listToAttrs (
-            map (mkCheck false) (import ./integration/tests.nix)
-            ++ map (mkCheck true) (import ./integration/postgres-tests.nix)
+            (map (g: mkBatch false g (groupOf sqliteTests g)) (pkgs.lib.range 0 (numGroups - 1)))
+            ++ [ (mkBatch true 0 pgTests) ]
           );
       in
       {

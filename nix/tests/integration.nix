@@ -96,13 +96,13 @@ in
     documentation.enable = false;
     services.timesyncd.enable = false;
 
-    # Sized for the full version matrix (a test can spawn 12+ tailscale
-    # containers + headscale + the runner). Each check is its own VM and a shared
-    # builder runs several at once, so the builder must cap max-jobs to keep
-    # memorySize * max-jobs <= its RAM (8 GB * 6 fits a 64 GB box); an uncapped
-    # builder overcommits and the whole matrix thrashes with none completing.
-    virtualisation.memorySize = 8192;
-    virtualisation.cores = 4;
+    # Each check batches many tests, run one at a time (-test.parallel=1) inside
+    # this VM, so only a handful of VMs exist at once and a shared builder can't
+    # be overcommitted regardless of its build concurrency. 6 GB covers the
+    # heaviest single test (the version matrix's ~12 containers, or k3s); running
+    # sequentially means we don't need per-test-fanout headroom.
+    virtualisation.memorySize = 6144;
+    virtualisation.cores = 2;
     virtualisation.diskSize = 12288;
   };
 
@@ -146,8 +146,8 @@ in
         "-e HEADSCALE_INTEGRATION_TIMEOUT_SCALE=4 "
         "-e SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt "
         "headscale:nix "
-        "${testBin}/bin/integration.test -test.run '^${testFilter}$' -test.v -test.timeout=20m",
-        timeout=1800,
+        "${testBin}/bin/integration.test -test.run '^${testFilter}$' -test.v -test.parallel=1 -test.timeout=4h",
+        timeout=15000,
     )
     print(out)
 
