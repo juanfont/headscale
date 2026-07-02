@@ -41,10 +41,11 @@ func TestSQLiteMigrationAndDataValidation(t *testing.T) {
 				require.NoError(t, err)
 				assert.Len(t, users, 1, "should preserve all 1 user from original schema")
 
-				// Verify api_keys data preservation
+				// Verify api_keys data preservation (migrated into credentials).
 				var apiKeyCount int
 
-				err = hsdb.DB.Raw("SELECT COUNT(*) FROM api_keys").Scan(&apiKeyCount).Error
+				err = hsdb.DB.Raw("SELECT COUNT(*) FROM credentials WHERE kind = ?", types.CredentialAPIKey).
+					Scan(&apiKeyCount).Error
 				require.NoError(t, err)
 				assert.Equal(t, 2, apiKeyCount, "should preserve all 2 api_keys from original schema")
 

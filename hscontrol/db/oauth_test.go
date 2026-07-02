@@ -31,9 +31,9 @@ func TestVerifySecretConcurrent(t *testing.T) {
 			defer wg.Done()
 
 			if i%2 == 0 {
-				errs[i] = verifySecret(hash, "s3cr3t")
+				_, errs[i] = verifySecret(hash, "s3cr3t")
 			} else {
-				errs[i] = verifySecret(hash, "wrong")
+				_, errs[i] = verifySecret(hash, "wrong")
 			}
 		}(i)
 	}
@@ -99,9 +99,14 @@ func TestHashSecretRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEqual(t, encoded, encoded2)
 
-	require.NoError(t, verifySecret(encoded, secret))
-	require.ErrorIs(t, verifySecret(encoded, "wrong-secret"), errSecretMismatch)
-	require.ErrorIs(t, verifySecret([]byte("not-a-phc-string"), secret), errSecretHashMalformed)
+	_, err = verifySecret(encoded, secret)
+	require.NoError(t, err)
+
+	_, err = verifySecret(encoded, "wrong-secret")
+	require.ErrorIs(t, err, errSecretMismatch)
+
+	_, err = verifySecret([]byte("not-a-phc-string"), secret)
+	require.ErrorIs(t, err, errSecretHashMalformed)
 }
 
 func TestOAuthClientRevoke(t *testing.T) {
@@ -183,7 +188,7 @@ func TestAccessTokenRejectedWhenClientGone(t *testing.T) {
 
 	// Delete only the client row, leaving the token orphaned (the state a
 	// mint/revoke race or manual deletion would produce).
-	require.NoError(t, db.DB.Where("client_id = ?", client.ClientID).Delete(&types.OAuthClient{}).Error)
+	require.NoError(t, db.DB.Where("kind = ? AND identifier = ?", types.CredentialOAuthClient, client.ClientID).Delete(&types.Credential{}).Error)
 
 	_, err = db.AuthenticateAccessToken(tokenStr)
 	require.ErrorIs(t, err, ErrAccessTokenClientRevoked)
@@ -196,8 +201,8 @@ func TestAccessTokenRejectedWhenClientGone(t *testing.T) {
 	require.NoError(t, err)
 
 	now := time.Now()
-	require.NoError(t, db.DB.Model(&types.OAuthClient{}).
-		Where("client_id = ?", client2.ClientID).Update("revoked", now).Error)
+	require.NoError(t, db.DB.Model(&types.Credential{}).
+		Where("kind = ? AND identifier = ?", types.CredentialOAuthClient, client2.ClientID).Update("revoked", now).Error)
 
 	_, err = db.AuthenticateAccessToken(tokenStr2)
 	require.ErrorIs(t, err, ErrAccessTokenClientRevoked)
