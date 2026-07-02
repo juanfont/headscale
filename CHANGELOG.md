@@ -43,6 +43,7 @@ keys remain all-access.
 ### Changes
 
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
+- SSH policy validation errors now prefix their messages with `ssh:` so failures like `ssh: users must be specified` make it clear that the problem comes from an SSH rule violation [#3343](https://github.com/juanfont/headscale/pull/3343)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
 
 ## 0.29.2 (2026-07-01)

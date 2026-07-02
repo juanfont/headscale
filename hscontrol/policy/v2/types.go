@@ -41,17 +41,17 @@ var ErrUndefinedTagReference = errors.New("references undefined tag")
 var (
 	ErrSSHTagSourceToUserDest             = errors.New("tags in SSH source cannot access user-owned devices")
 	ErrSSHUserDestRequiresSameUser        = errors.New("user destination requires source to contain only that same user")
-	ErrSSHAutogroupSelfRequiresUserSource = errors.New("autogroup:self destination requires source to contain only users or groups, not tags or autogroup:tagged")
+	ErrSSHAutogroupSelfRequiresUserSource = errors.New("ssh: autogroup:self destination requires source to contain only users or groups, not tags or autogroup:tagged")
 	ErrSSHTagSourceToAutogroupMember      = errors.New("tags in SSH source cannot access autogroup:member (user-owned devices)")
 	ErrSSHWildcardDestination             = errors.New("wildcard (*) is not supported as SSH destination")
 	ErrSSHCheckPeriodAboveMax             = errors.New("is above the max (168h)")
 	ErrSSHCheckPeriodNegative             = errors.New("must be a positive duration")
-	ErrSSHCheckPeriodOnNonCheck           = errors.New("checkPeriod is only valid with action \"check\"")
+	ErrSSHCheckPeriodOnNonCheck           = errors.New("ssh: checkPeriod is only valid with action \"check\"")
 	ErrInvalidLocalpart                   = errors.New("invalid localpart format, must be localpart:*@<domain>")
-	ErrSSHUsersMustBeSpecified            = errors.New("users must be specified")
+	ErrSSHUsersMustBeSpecified            = errors.New("ssh: users must be specified")
 	ErrSSHUserInvalid                     = errors.New("is not valid")
-	ErrSSHAcceptEnvEmpty                  = errors.New("acceptEnv values cannot be empty")
-	ErrSSHActionMustBeSpecified           = errors.New("action must be specified")
+	ErrSSHAcceptEnvEmpty                  = errors.New("ssh: acceptEnv values cannot be empty")
+	ErrSSHActionMustBeSpecified           = errors.New("ssh: action must be specified")
 	ErrSSHActionInvalid                   = errors.New("is not a valid action")
 	ErrSSHDestinationHostAlias            = errors.New("invalid dst")
 	ErrTagNameMustStartWithLetter         = errors.New("tag names must start with a letter, after 'tag:'")
@@ -1639,7 +1639,7 @@ func (a *SSHAction) UnmarshalJSON(b []byte) error {
 	case "check":
 		*a = SSHActionCheck
 	default:
-		return fmt.Errorf("%q %w", str, ErrSSHActionInvalid)
+		return fmt.Errorf("ssh: %q %w", str, ErrSSHActionInvalid)
 	}
 
 	return nil
@@ -2177,7 +2177,7 @@ func validateSSHSrcDstCombination(sources SSHSrcAliases, destinations SSHDstAlia
 			}
 			// Rule: Username destination requires source to be that same single user only
 			if srcHasGroups || len(srcUsernames) != 1 || !srcUsernames[string(*v)] {
-				return fmt.Errorf("%w %q; use autogroup:self instead for same-user SSH access",
+				return fmt.Errorf("ssh: %w %q; use autogroup:self instead for same-user SSH access",
 					ErrSSHUserDestRequiresSameUser, *v)
 			}
 		case *AutoGroup:
@@ -2432,7 +2432,7 @@ func (p *Policy) validate() error {
 		for _, user := range ssh.Users {
 			switch user {
 			case "", "*":
-				errs = append(errs, fmt.Errorf("user %q %w", user, ErrSSHUserInvalid))
+				errs = append(errs, fmt.Errorf("ssh: user %q %w", user, ErrSSHUserInvalid))
 			}
 		}
 
@@ -2502,7 +2502,7 @@ func (p *Policy) validate() error {
 			case *Host:
 				// Hosts-table aliases are valid on ACL dst but
 				// rejected here for SSH dst.
-				errs = append(errs, fmt.Errorf("%w %q", ErrSSHDestinationHostAlias, string(*dst)))
+				errs = append(errs, fmt.Errorf("ssh: %w %q", ErrSSHDestinationHostAlias, string(*dst)))
 			}
 		}
 
@@ -2856,11 +2856,11 @@ func (p *SSHCheckPeriod) Validate() error {
 	}
 
 	if p.Duration < 0 {
-		return fmt.Errorf("checkPeriod %s %w", p.Duration, ErrSSHCheckPeriodNegative)
+		return fmt.Errorf("ssh: checkPeriod %s %w", p.Duration, ErrSSHCheckPeriodNegative)
 	}
 
 	if p.Duration > SSHCheckPeriodMax {
-		return fmt.Errorf("checkPeriod %s %w", p.Duration, ErrSSHCheckPeriodAboveMax)
+		return fmt.Errorf("ssh: checkPeriod %s %w", p.Duration, ErrSSHCheckPeriodAboveMax)
 	}
 
 	return nil
