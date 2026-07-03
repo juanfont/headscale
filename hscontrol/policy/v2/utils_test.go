@@ -8,7 +8,7 @@ import (
 	"tailscale.com/tailcfg"
 )
 
-// TestParseDestinationAndPort tests the splitDestinationAndPort function using table-driven tests.
+// TestSplitDestinationAndPort tests the splitDestinationAndPort function using table-driven tests.
 func TestSplitDestinationAndPort(t *testing.T) {
 	testCases := []struct {
 		input       string
