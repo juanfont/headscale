@@ -58,6 +58,14 @@ keys remain all-access.
 - Fix tailsql not shutting down with headscale, leaving the process hanging on graceful shutdown [#3400](https://github.com/juanfont/headscale/pull/3400)
 - Fix tvOS setup instructions: install the VPN configuration before setting the coordination server URL [#3431](https://github.com/juanfont/headscale/pull/3431)
 
+## 0.29.4 (202x-xx-xx)
+
+**Minimum supported Tailscale client version: v1.80.0**
+
+### Changes
+
+- Lowercase DNS extra record names so mixed-case records resolve [#3366](https://github.com/juanfont/headscale/pull/3366)
+
 ## 0.29.3 (2026-07-29)
 
 **Minimum supported Tailscale client version: v1.80.0**
