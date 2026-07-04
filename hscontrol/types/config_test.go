@@ -741,3 +741,33 @@ func TestTrustedProxies(t *testing.T) {
 		})
 	}
 }
+
+// DNS names are case-insensitive, but MagicDNS resolution in clients matches
+// extra records by exact name, so mixed-case record names never resolve.
+// See https://github.com/juanfont/headscale/issues/2782.
+func TestExtraRecordsAreLowercased(t *testing.T) {
+	mixed := []tailcfg.DNSRecord{
+		{Name: "Printer.fritz.box", Type: "A", Value: "192.168.1.2"},
+		{Name: "NAS.FRITZ.BOX", Type: "A", Value: "192.168.1.3"},
+	}
+	want := []tailcfg.DNSRecord{
+		{Name: "printer.fritz.box", Type: "A", Value: "192.168.1.2"},
+		{Name: "nas.fritz.box", Type: "A", Value: "192.168.1.3"},
+	}
+
+	tcfg := dnsToTailcfgDNS(DNSConfig{
+		MagicDNS:     true,
+		BaseDomain:   "example.com",
+		ExtraRecords: mixed,
+	})
+	if diff := cmp.Diff(want, tcfg.ExtraRecords); diff != "" {
+		t.Errorf("dnsToTailcfgDNS extra records mismatch (-want +got):\n%s", diff)
+	}
+
+	cfg := &Config{TailcfgDNSConfig: &tailcfg.DNSConfig{}}
+	cfg.SetExtraRecords(mixed)
+
+	if diff := cmp.Diff(want, cfg.TailcfgDNSConfig.ExtraRecords); diff != "" {
+		t.Errorf("SetExtraRecords mismatch (-want +got):\n%s", diff)
+	}
+}
