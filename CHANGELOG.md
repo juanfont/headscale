@@ -44,6 +44,7 @@ keys remain all-access.
 
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
+- Document that exit-node access is granted only through `autogroup:internet`; subnet-style CIDR destinations carried over from older ACLs do not select an exit node [#3368](https://github.com/juanfont/headscale/pull/3368)
 
 ## 0.29.2 (2026-07-01)
 

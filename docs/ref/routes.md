@@ -222,6 +222,10 @@ available exit nodes.
 }
 ```
 
+!!! warning "Exit nodes are selected only via `autogroup:internet`"
+
+    Exit-node access is granted through `autogroup:internet`, not through a regular CIDR destination. Broad public-internet ranges — such as the split set (`0.0.0.0/5` through `208.0.0.0/4`) that some older ACLs used to represent the internet — are treated as ordinary subnet-route destinations and do **not** authorize exit-node use. When migrating a policy from ACLs to grants, replace those destinations with `autogroup:internet`.
+
 ### Restrict access to exit nodes per user or group
 
 A user can use _any_ of the available exit nodes with `autogroup:internet`. Alternatively, the policy snippet below
