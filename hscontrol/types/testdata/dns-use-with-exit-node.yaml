@@ -21,6 +21,8 @@ dns:
     split:
       foo.bar.com:
         - 8.8.8.8
+      baz.example.com:
+        - 9.9.9.9
     use_with_exit_node:
       - 1.1.1.1
       - 8.8.8.8

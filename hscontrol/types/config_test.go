@@ -262,7 +262,8 @@ func TestReadConfig(t *testing.T) {
 					{Addr: "1.0.0.1"},
 				},
 				Routes: map[string][]*dnstype.Resolver{
-					"foo.bar.com": {{Addr: "8.8.8.8", UseWithExitNode: true}},
+					"foo.bar.com":     {{Addr: "8.8.8.8", UseWithExitNode: true}},
+					"baz.example.com": {{Addr: "9.9.9.9"}},
 				},
 			},
 		},
