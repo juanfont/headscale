@@ -3,6 +3,34 @@
 Headscale supports [most DNS features](../about/features.md) from Tailscale. DNS related settings can be configured
 within the `dns` section of the [configuration file](configuration.md).
 
+## Keeping nameservers active when using an exit node
+
+By default, when a client selects an exit node, Tailscale sends **all** of that client's DNS through the exit node and
+ignores the nameservers configured in Headscale. This is usually desirable, but it prevents reaching a self-hosted
+resolver (for example a Pi-hole running on the tailnet) directly: the query has to take the round trip through the exit
+node first.
+
+The `dns.nameservers.use_with_exit_node` option lists the nameserver addresses that should keep being used even while an
+exit node is selected. Listed addresses must also appear in `dns.nameservers.global` or `dns.nameservers.split`.
+
+```yaml title="config.yaml"
+dns:
+  nameservers:
+    global:
+      - 100.64.0.53
+    use_with_exit_node:
+      - 100.64.0.53
+```
+
+When the listed resolver is reachable within the tailnet (such as `100.64.0.53`), the client talks to it directly
+instead of routing the query through the exit node.
+
+!!! warning "Requires a recent Tailscale client"
+
+    This maps to Tailscale's [`UseWithExitNode`](https://tailscale.com/kb/1054/dns#nameservers-and-exit-nodes) resolver
+    flag, added in **capability version 125 (Tailscale v1.88)**. Older clients silently ignore the setting and continue
+    to send DNS through the exit node.
+
 ## Setting extra DNS records
 
 Headscale allows to set extra DNS records which are made available via
