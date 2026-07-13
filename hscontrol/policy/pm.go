@@ -30,6 +30,10 @@ type PolicyManager interface {
 	// NodeCanHaveTag reports whether the given node can have the given tag.
 	NodeCanHaveTag(node types.NodeView, tag string) bool
 
+	// UserCanHaveTag reports whether the given user owns the given tag and may
+	// therefore apply it, e.g. when re-authenticating a tag-owned node.
+	UserCanHaveTag(user types.UserView, tag string) bool
+
 	// TagExists reports whether the given tag is defined in the policy.
 	TagExists(tag string) bool
 

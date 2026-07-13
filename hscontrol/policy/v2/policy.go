@@ -972,6 +972,37 @@ func (pm *PolicyManager) NodeCanHaveTag(node types.NodeView, tag string) bool {
 	return false
 }
 
+// UserCanHaveTag reports whether user is authorised to apply tag, i.e. the user
+// is one of the tag's owners in the policy (directly or through a group). This
+// is the user half of [PolicyManager.NodeCanHaveTag]: it is used to authorise
+// tags supplied by an authenticating user (e.g. re-auth with --advertise-tags)
+// when the target node is tag-owned and thus carries no user of its own.
+func (pm *PolicyManager) UserCanHaveTag(user types.UserView, tag string) bool {
+	if pm == nil || !user.Valid() {
+		return false
+	}
+
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	if pm.pol == nil {
+		return false
+	}
+
+	owners, exists := pm.pol.TagOwners[Tag(tag)]
+	if !exists {
+		return false
+	}
+
+	for _, owner := range owners {
+		if pm.userMatchesOwner(user, owner) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // TagOwnedByTags reports whether a credential holding ownerTags is authorised to
 // apply tag. It is true when tag is one of ownerTags, or when tag's tagOwners
 // chain (tag-to-tag ownership) transitively includes one of ownerTags. This is

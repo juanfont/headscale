@@ -44,6 +44,7 @@ keys remain all-access.
 
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
+- Re-authenticating a tagged node with `--advertise-tags` now authorises the requested tags against the authenticating user, instead of rejecting every tag [#3374](https://github.com/juanfont/headscale/issues/3374)
 
 ## 0.29.2 (2026-07-01)
 

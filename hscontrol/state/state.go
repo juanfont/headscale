@@ -1707,7 +1707,15 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 	// Validate tags BEFORE calling [NodeStore.UpdateNode] to ensure we don't modify
 	// [NodeStore] if validation fails. This maintains consistency between [NodeStore]
 	// and database.
-	rejectedTags := s.validateRequestTags(params.ExistingNode, requestTags)
+	//
+	// #3374: a tag-owned node carries no user of its own, so authorise the
+	// requested tags against the authenticating user as well (mirroring the
+	// fresh-registration path, which validates a node already assigned that user).
+	var authUser types.UserView
+	if params.User != nil {
+		authUser = params.User.View()
+	}
+	rejectedTags := s.validateRequestTagsForReauth(params.ExistingNode, authUser, requestTags)
 	if len(rejectedTags) > 0 {
 		return types.NodeView{}, fmt.Errorf(
 			"%w %v are invalid or not permitted",
@@ -2023,6 +2031,34 @@ func (s *State) validateRequestTags(node types.NodeView, requestTags []string) [
 		if !s.polMan.NodeCanHaveTag(node, tag) {
 			rejectedTags = append(rejectedTags, tag)
 		}
+	}
+
+	return rejectedTags
+}
+
+// validateRequestTagsForReauth is like validateRequestTags but also authorises
+// tags owned by the authenticating user, not just by the node being
+// re-authenticated. A tag-owned node has no user of its own, so on re-auth the
+// node alone can never authorise a tag; the user completing the interactive
+// login is the one who owns it (#3374). A tag is permitted when the existing
+// node may hold it OR the authenticating user owns it; unowned tags are still
+// rejected.
+func (s *State) validateRequestTagsForReauth(node types.NodeView, authUser types.UserView, requestTags []string) []string {
+	// Empty tags = clear tags, always permitted
+	if len(requestTags) == 0 {
+		return nil
+	}
+
+	var rejectedTags []string
+
+	for _, tag := range requestTags {
+		if s.polMan.NodeCanHaveTag(node, tag) {
+			continue
+		}
+		if authUser.Valid() && s.polMan.UserCanHaveTag(authUser, tag) {
+			continue
+		}
+		rejectedTags = append(rejectedTags, tag)
 	}
 
 	return rejectedTags
