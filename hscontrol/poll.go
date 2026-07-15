@@ -144,8 +144,6 @@ func (m *mapSession) serve() {
 //
 //nolint:gocyclo
 func (m *mapSession) serveLongPoll() {
-	m.beforeServeLongPoll()
-
 	m.log.Trace().Caller().Msg("long poll session started")
 
 	// connectGen is set by [state.State.Connect] below and captured by the deferred cleanup closure.
@@ -247,6 +245,11 @@ func (m *mapSession) serveLongPoll() {
 	var connectChanges []change.Change
 
 	connectChanges, connectGen = m.h.state.Connect(m.node.ID)
+
+	// Cancel ephemeral GC only after Connect succeeds. Cancelling at the start
+	// of serveLongPoll left departed nodes without a deletion timer when a
+	// reconnect attempt failed before Connect (issue #3382).
+	m.beforeServeLongPoll()
 
 	m.log.Info().Caller().Str(zf.Chan, fmt.Sprintf("%p", m.ch)).Msg("node has connected")
 

@@ -1458,6 +1458,13 @@ func (s *State) PutNodeInStoreForTest(node types.Node) types.NodeView {
 	return s.nodeStore.PutNode(node)
 }
 
+// DeleteNodeFromStoreForTest removes a node from the in-memory [NodeStore]
+// without touching the database. Used to force [State.UpdateNodeFromMapRequest]
+// failures in poll-session tests while keeping the DB row intact for later restore.
+func (s *State) DeleteNodeFromStoreForTest(id types.NodeID) {
+	s.nodeStore.DeleteNode(id)
+}
+
 // CreateRegisteredNodeForTest creates a test node with allocated IPs. This is a convenience wrapper around the database layer.
 func (s *State) CreateRegisteredNodeForTest(user *types.User, hostname ...string) *types.Node {
 	return s.db.CreateRegisteredNodeForTest(user, hostname...)
