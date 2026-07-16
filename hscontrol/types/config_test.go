@@ -58,6 +58,10 @@ func TestReadConfig(t *testing.T) {
 					{Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
 				},
 				SearchDomains: []string{"test.com", "bar.com"},
+				HTTPSCerts: HTTPSCertsConfig{
+					Enabled:  false,
+					Provider: "azure",
+				},
 			},
 		},
 		{
@@ -124,6 +128,10 @@ func TestReadConfig(t *testing.T) {
 					{Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
 				},
 				SearchDomains: []string{"test.com", "bar.com"},
+				HTTPSCerts: HTTPSCertsConfig{
+					Enabled:  false,
+					Provider: "azure",
+				},
 			},
 		},
 		{
@@ -327,6 +335,10 @@ func TestReadConfigFromEnv(t *testing.T) {
 				// 	{Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
 				// },
 				SearchDomains: []string{"test.com", "bar.com"},
+				HTTPSCerts: HTTPSCertsConfig{
+					Enabled:  false,
+					Provider: "azure",
+				},
 			},
 		},
 	}
