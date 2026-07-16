@@ -3,6 +3,9 @@ package dns
 import (
 	"context"
 	"fmt"
+	"net"
+	"strings"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
@@ -44,7 +47,8 @@ func (p *AzureACMEPublisher) UpsertTXT(ctx context.Context, name, value string) 
 		return err
 	}
 
-	ttl := int64(60)
+	// Low TTL so failed/stale challenges expire quickly for Let's Encrypt retries.
+	ttl := int64(1)
 	params := armdns.RecordSet{
 		Properties: &armdns.RecordSetProperties{
 			TTL: &ttl,
@@ -67,10 +71,49 @@ func (p *AzureACMEPublisher) UpsertTXT(ctx context.Context, name, value string) 
 		return fmt.Errorf("upsert azure dns TXT %q: %w", rel, err)
 	}
 
-	log.Debug().
+	log.Info().
 		Str("relative", rel).
 		Str("zone", p.zoneName).
-		Msg("published ACME DNS-01 TXT to Azure DNS")
+		Msg("published ACME DNS-01 TXT to Azure DNS; waiting for public visibility")
+
+	// Let's Encrypt validates immediately after set-dns returns. Wait until
+	// public resolvers see the new value so we don't race NXDOMAIN / stale TXT.
+	if err := waitForPublicTXT(ctx, name, value, 45*time.Second); err != nil {
+		log.Warn().Err(err).Str("name", name).Msg("ACME TXT not yet visible on public DNS; continuing")
+	}
 
 	return nil
+}
+
+func waitForPublicTXT(ctx context.Context, name, want string, timeout time.Duration) error {
+	resolver := &net.Resolver{PreferGo: true}
+	deadline := time.Now().Add(timeout)
+	want = strings.TrimSpace(want)
+	fqdn := strings.TrimSuffix(name, ".")
+
+	var lastErr error
+	for time.Now().Before(deadline) {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		txts, err := resolver.LookupTXT(ctx, fqdn)
+		if err != nil {
+			lastErr = err
+		} else {
+			for _, t := range txts {
+				if strings.TrimSpace(t) == want {
+					log.Info().Str("name", name).Msg("ACME TXT visible on public DNS")
+					return nil
+				}
+			}
+			lastErr = fmt.Errorf("TXT present but value mismatch (got %v)", txts)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
+	}
+
+	return fmt.Errorf("timed out waiting for public TXT %s: %w", name, lastErr)
 }
