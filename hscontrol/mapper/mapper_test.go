@@ -648,3 +648,50 @@ func TestGenerateDNSConfigNilHostinfoNoPanic(t *testing.T) {
 		generateDNSConfig(cfg, node, nil)
 	}, "generateDNSConfig must not panic when a node has nil Hostinfo")
 }
+
+func TestGenerateDNSConfigCertDomains(t *testing.T) {
+	t.Parallel()
+
+	baseDomain := "tailnet.example.com"
+
+	node := (&types.Node{
+		ID:        1,
+		Hostname:  "node1",
+		GivenName: "node1",
+		IPv4:      iap("100.64.0.1"),
+		Hostinfo:  &tailcfg.Hostinfo{OS: "linux"},
+	}).View()
+
+	mkCfg := func(enabled bool) *types.Config {
+		cfg := &types.Config{
+			BaseDomain: baseDomain,
+			TailcfgDNSConfig: &tailcfg.DNSConfig{
+				Domains: []string{baseDomain},
+				Proxied: true,
+			},
+		}
+		cfg.DNSConfig.HTTPSCerts.Enabled = enabled
+
+		return cfg
+	}
+
+	t.Run("enabled_sets_node_fqdn", func(t *testing.T) {
+		t.Parallel()
+
+		got := generateDNSConfig(mkCfg(true), node, nil)
+
+		want := []string{"node1.tailnet.example.com"}
+		if diff := cmp.Diff(want, got.CertDomains); diff != "" {
+			t.Errorf("CertDomains mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("disabled_leaves_empty", func(t *testing.T) {
+		t.Parallel()
+
+		got := generateDNSConfig(mkCfg(false), node, nil)
+		if len(got.CertDomains) != 0 {
+			t.Errorf("CertDomains = %v, want empty when https_certs disabled", got.CertDomains)
+		}
+	})
+}

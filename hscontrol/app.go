@@ -96,6 +96,9 @@ type Headscale struct {
 	authProvider   AuthProvider
 	mapBatcher     *mapper.Batcher
 
+	// acmePublisher publishes ACME DNS-01 TXT records when https_certs is enabled.
+	acmePublisher dns.ACMERecordPublisher
+
 	clientStreamsOpen sync.WaitGroup
 }
 
@@ -185,6 +188,22 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 	}
 
 	app.authProvider = authProvider
+
+	if cfg.DNSConfig.HTTPSCerts.Enabled {
+		switch strings.ToLower(cfg.DNSConfig.HTTPSCerts.Provider) {
+		case "", "azure":
+			pub, err := dns.NewAzureACMEPublisher(cfg.DNSConfig.HTTPSCerts.Azure)
+			if err != nil {
+				return nil, fmt.Errorf("init azure ACME DNS publisher: %w", err)
+			}
+			app.acmePublisher = pub
+			log.Info().
+				Str("zone", cfg.DNSConfig.HTTPSCerts.Azure.ZoneName).
+				Msg("HTTPS certs enabled: ACME DNS-01 via Azure DNS")
+		default:
+			return nil, fmt.Errorf("unsupported dns.https_certs.provider %q", cfg.DNSConfig.HTTPSCerts.Provider)
+		}
+	}
 
 	if app.cfg.TailcfgDNSConfig != nil && app.cfg.TailcfgDNSConfig.Proxied { // if MagicDNS
 		// TODO(kradalby): revisit why this takes a list.

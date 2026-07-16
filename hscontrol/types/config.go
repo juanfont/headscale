@@ -162,6 +162,30 @@ type DNSConfig struct {
 	SearchDomains    []string            `mapstructure:"search_domains"`
 	ExtraRecords     []tailcfg.DNSRecord `mapstructure:"extra_records"`
 	ExtraRecordsPath string              `mapstructure:"extra_records_path"`
+
+	// HTTPSCerts enables per-node HTTPS certificates for `tailscale cert` /
+	// `tailscale serve --https` via ACME DNS-01. When enabled, headscale
+	// advertises CertDomains and publishes challenge TXT records through
+	// the configured provider (Azure DNS).
+	HTTPSCerts HTTPSCertsConfig
+}
+
+// HTTPSCertsConfig configures per-node HTTPS certificate provisioning.
+type HTTPSCertsConfig struct {
+	// Enabled turns on CertDomains advertising and /machine/set-dns handling.
+	Enabled bool
+
+	// Provider selects the ACME DNS-01 backend. Currently only "azure".
+	Provider string
+
+	Azure HTTPSCertsAzureConfig
+}
+
+// HTTPSCertsAzureConfig is used when Provider is "azure".
+type HTTPSCertsAzureConfig struct {
+	SubscriptionID string
+	ResourceGroup  string
+	ZoneName       string
 }
 
 type Nameservers struct {
@@ -447,6 +471,11 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("dns.nameservers.global", []string{})
 	viper.SetDefault("dns.nameservers.split", map[string]string{})
 	viper.SetDefault("dns.search_domains", []string{})
+	viper.SetDefault("dns.https_certs.enabled", false)
+	viper.SetDefault("dns.https_certs.provider", "azure")
+	viper.SetDefault("dns.https_certs.azure.subscription_id", "")
+	viper.SetDefault("dns.https_certs.azure.resource_group", "")
+	viper.SetDefault("dns.https_certs.azure.zone_name", "")
 
 	viper.SetDefault("derp.server.enabled", false)
 	viper.SetDefault("derp.server.verify_clients", true)
@@ -916,6 +945,11 @@ func dns() (DNSConfig, error) {
 	dns.Nameservers.Split = viper.GetStringMapStringSlice("dns.nameservers.split")
 	dns.SearchDomains = viper.GetStringSlice("dns.search_domains")
 	dns.ExtraRecordsPath = viper.GetString("dns.extra_records_path")
+	dns.HTTPSCerts.Enabled = viper.GetBool("dns.https_certs.enabled")
+	dns.HTTPSCerts.Provider = viper.GetString("dns.https_certs.provider")
+	dns.HTTPSCerts.Azure.SubscriptionID = viper.GetString("dns.https_certs.azure.subscription_id")
+	dns.HTTPSCerts.Azure.ResourceGroup = viper.GetString("dns.https_certs.azure.resource_group")
+	dns.HTTPSCerts.Azure.ZoneName = viper.GetString("dns.https_certs.azure.zone_name")
 
 	if viper.IsSet("dns.extra_records") {
 		var extraRecords []tailcfg.DNSRecord
@@ -1211,6 +1245,27 @@ func LoadServerConfig() (*Config, error) {
 		err := isSafeServerURL(serverURL, dnsConfig.BaseDomain)
 		if err != nil {
 			return nil, err
+		}
+	}
+
+	if dnsConfig.HTTPSCerts.Enabled {
+		if !dnsConfig.MagicDNS {
+			return nil, errors.New("dns.https_certs.enabled requires dns.magic_dns to be enabled")
+		}
+
+		if dnsConfig.BaseDomain == "" {
+			return nil, errors.New("dns.https_certs.enabled requires dns.base_domain to be set")
+		}
+
+		switch strings.ToLower(dnsConfig.HTTPSCerts.Provider) {
+		case "", "azure":
+			dnsConfig.HTTPSCerts.Provider = "azure"
+			az := dnsConfig.HTTPSCerts.Azure
+			if az.SubscriptionID == "" || az.ResourceGroup == "" || az.ZoneName == "" {
+				return nil, errors.New("dns.https_certs.azure.{subscription_id,resource_group,zone_name} are required when provider is azure")
+			}
+		default:
+			return nil, fmt.Errorf("dns.https_certs.provider %q is not supported (want azure)", dnsConfig.HTTPSCerts.Provider)
 		}
 	}
 

@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -179,10 +180,10 @@ func (h *Headscale) NoiseUpgradeHandler(
 		// https://github.com/tailscale/tailscale/blob/dfba01ca9bd8c4df02c3c32f400d9aeb897c5fc7/cmd/tailscale/cli/debug.go#L1138
 		r.Get("/whoami", ns.NotImplementedHandler)
 
-		// client sends a [tailcfg.SetDNSRequest] to this endpoints and expect
+		// client sends a [tailcfg.SetDNSRequest] to this endpoint and expects
 		// the server to create or update this DNS record "somewhere".
 		// It is typically a TXT record for an ACME challenge.
-		r.Post("/set-dns", ns.NotImplementedHandler)
+		r.Post("/set-dns", ns.SetDNSHandler)
 
 		// A patch of [tailcfg.SetDeviceAttributesRequest] to update device attributes.
 		// We currently do not support device attributes.
@@ -786,7 +787,11 @@ func (ns *noiseServer) RegistrationHandler(
 // getAndValidateNode retrieves the node from the database using the NodeKey
 // and validates that it matches the MachineKey from the Noise session.
 func (ns *noiseServer) getAndValidateNode(mapRequest tailcfg.MapRequest) (types.NodeView, error) {
-	nv, ok := ns.headscale.state.GetNodeByNodeKey(mapRequest.NodeKey)
+	return ns.getAndValidateNodeKey(mapRequest.NodeKey)
+}
+
+func (ns *noiseServer) getAndValidateNodeKey(nodeKey key.NodePublic) (types.NodeView, error) {
+	nv, ok := ns.headscale.state.GetNodeByNodeKey(nodeKey)
 	if !ok {
 		return types.NodeView{}, NewHTTPError(http.StatusNotFound, "node not found", nil)
 	}
@@ -797,4 +802,85 @@ func (ns *noiseServer) getAndValidateNode(mapRequest tailcfg.MapRequest) (types.
 	}
 
 	return nv, nil
+}
+
+// SetDNSHandler handles a [tailcfg.SetDNSRequest] from a node. Tailscale
+// clients call this to publish the TXT record that answers an ACME DNS-01
+// challenge when requesting an HTTPS certificate for their MagicDNS name
+// (`tailscale cert` / `tailscale serve --https`).
+func (ns *noiseServer) SetDNSHandler(writer http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost {
+		httpError(writer, errMethodNotAllowed)
+
+		return
+	}
+
+	if ns.headscale.acmePublisher == nil {
+		httpError(writer, NewHTTPError(http.StatusNotImplemented, "per-node HTTPS certificates are not enabled", nil))
+
+		return
+	}
+
+	var dnsReq tailcfg.SetDNSRequest
+	if err := json.NewDecoder(req.Body).Decode(&dnsReq); err != nil {
+		httpError(writer, NewHTTPError(http.StatusBadRequest, "invalid SetDNSRequest body", err))
+
+		return
+	}
+
+	nv, err := ns.getAndValidateNodeKey(dnsReq.NodeKey)
+	if err != nil {
+		httpError(writer, err)
+
+		return
+	}
+
+	fqdn, err := nv.GetFQDN(ns.headscale.cfg.BaseDomain)
+	if err != nil {
+		httpError(writer, NewHTTPError(http.StatusInternalServerError, "could not determine node FQDN", err))
+
+		return
+	}
+
+	wantName := "_acme-challenge." + strings.TrimSuffix(fqdn, ".")
+	if !strings.EqualFold(strings.TrimSuffix(dnsReq.Name, "."), wantName) {
+		httpError(writer, NewHTTPError(http.StatusForbidden, "node is not allowed to set this DNS record", nil))
+
+		return
+	}
+
+	if !strings.EqualFold(dnsReq.Type, "TXT") {
+		httpError(writer, NewHTTPError(http.StatusBadRequest, "only TXT records are supported", nil))
+
+		return
+	}
+
+	if dnsReq.Value == "" || len(dnsReq.Value) > 255 {
+		httpError(writer, NewHTTPError(
+			http.StatusBadRequest,
+			"invalid TXT record value",
+			fmt.Errorf("TXT value length must be 1..255, got %d", len(dnsReq.Value)),
+		))
+
+		return
+	}
+
+	if err := ns.headscale.acmePublisher.UpsertTXT(req.Context(), dnsReq.Name, dnsReq.Value); err != nil {
+		httpError(writer, NewHTTPError(http.StatusInternalServerError, "failed to publish ACME DNS record", err))
+
+		return
+	}
+
+	log.Debug().
+		Caller().
+		Uint64("node.id", nv.ID().Uint64()).
+		Str("name", dnsReq.Name).
+		Msg("published ACME DNS-01 challenge record")
+
+	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	writer.WriteHeader(http.StatusOK)
+
+	if err := json.NewEncoder(writer).Encode(tailcfg.SetDNSResponse{}); err != nil {
+		log.Error().Caller().Err(err).Msg("noise set-dns handler: failed to encode SetDNSResponse")
+	}
 }
