@@ -1,5 +1,12 @@
 # AGENTS.md
 
+## Workspace workflow inheritance
+
+This repository follows the canonical workspace development contract at
+`/Users/ryanfong/workspace/DEV_WORKFLOW.md`. Use the captain stack and repo-native
+proof described there for agent, planning, implementation, review, and release
+work.
+
 Behavioural guidance for AI agents working in this repository. Reference
 material for complex procedures lives next to the code — integration
 testing is documented in [`cmd/hi/README.md`](cmd/hi/README.md) and
