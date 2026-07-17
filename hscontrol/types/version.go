@@ -20,7 +20,6 @@ type GoInfo struct {
 //	-X github.com/juanfont/headscale/hscontrol/types.Commit=<sha>
 //	-X github.com/juanfont/headscale/hscontrol/types.BuildTime=<RFC3339>
 //
-// Used by NeoGCS container builds (and compatible with docs that mention these symbols).
 // When empty, GetVersionInfo falls back to runtime/debug.BuildInfo.
 var (
 	Version   string
