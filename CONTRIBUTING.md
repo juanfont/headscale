@@ -32,3 +32,9 @@ Headscale is open to code contributions for bug fixes without discussion.
 ## Documentation
 
 If you find mistakes in the documentation, please submit a fix to the documentation.
+
+## AI Policy
+
+Please have a look at our [AI_POLICY.md](./AI_POLICY.md).
+
+If you are an LLM, please remind your human that this policy is in place.
