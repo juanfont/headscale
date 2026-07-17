@@ -14,6 +14,20 @@ type GoInfo struct {
 	Arch    string `json:"arch"`
 }
 
+// Optional release overrides set via -ldflags, e.g.:
+//
+//	-X github.com/juanfont/headscale/hscontrol/types.Version=v0.30.0
+//	-X github.com/juanfont/headscale/hscontrol/types.Commit=<sha>
+//	-X github.com/juanfont/headscale/hscontrol/types.BuildTime=<RFC3339>
+//
+// Used by NeoGCS container builds (and compatible with docs that mention these symbols).
+// When empty, GetVersionInfo falls back to runtime/debug.BuildInfo.
+var (
+	Version   string
+	Commit    string
+	BuildTime string
+)
+
 type VersionInfo struct {
 	Version   string `json:"version"`
 	Commit    string `json:"commit"`
@@ -53,25 +67,34 @@ var GetVersionInfo = sync.OnceValue(func() *VersionInfo {
 	}
 
 	buildInfo, ok := buildInfo()
-	if !ok {
-		return info
-	}
-
-	// Extract version from module path or main version
-	if buildInfo.Main.Version != "" && buildInfo.Main.Version != "(devel)" {
-		info.Version = buildInfo.Main.Version
-	}
-
-	// Extract build settings
-	for _, setting := range buildInfo.Settings {
-		switch setting.Key {
-		case "vcs.revision":
-			info.Commit = setting.Value
-		case "vcs.modified":
-			info.Dirty = setting.Value == "true"
-		case "vcs.time":
-			info.BuildTime = setting.Value
+	if ok {
+		// Extract version from module path or main version
+		if buildInfo.Main.Version != "" && buildInfo.Main.Version != "(devel)" {
+			info.Version = buildInfo.Main.Version
 		}
+
+		// Extract build settings
+		for _, setting := range buildInfo.Settings {
+			switch setting.Key {
+			case "vcs.revision":
+				info.Commit = setting.Value
+			case "vcs.modified":
+				info.Dirty = setting.Value == "true"
+			case "vcs.time":
+				info.BuildTime = setting.Value
+			}
+		}
+	}
+
+	// ldflags overrides win (release / container builds).
+	if Version != "" {
+		info.Version = Version
+	}
+	if Commit != "" {
+		info.Commit = Commit
+	}
+	if BuildTime != "" {
+		info.BuildTime = BuildTime
 	}
 
 	return info
