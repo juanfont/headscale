@@ -1,0 +1,30 @@
+name: "Vouch - Check PR"
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        id: app-token
+        with:
+          app-id: ${{ secrets.VOUCH_APP_ID }}
+          private-key: ${{ secrets.VOUCH_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          sparse-checkout: .github/pr-unvouched-message
+
+      - uses: mitchellh/vouch/action/check-pr@c6d80ead49839655b61b422700b7a3bc9d0804a9 # v1.4.2
+        with:
+          pr-number: ${{ github.event.pull_request.number }}
+          auto-close: true
+          template-file: .github/pr-unvouched-message
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}

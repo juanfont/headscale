@@ -1,0 +1,25 @@
+Hi @{author}, thanks for your interest in headscale.
+
+Headscale gates pull requests to vouched contributors only. Your account
+isn't on the list yet, so this PR has been auto-closed. This is **not** a
+judgment of you or this change.
+
+Headscale is an "Open Source, acknowledged contribution" project: every
+contribution starts with a discussion on the issue tracker, **before** any
+code is written. See [`CONTRIBUTING.md`](https://github.com/juanfont/headscale/blob/main/CONTRIBUTING.md)
+for the full policy and the rationale.
+
+To get vouched:
+
+1. Open an issue describing the change you'd like to make (use case,
+   implementation sketch, who will maintain it). For bug fixes, a clear
+   reproduction is enough.
+2. Engage with maintainers on the issue. Once we've agreed on scope and
+   approach, a maintainer will `!vouch @{author}`.
+3. You can then reopen this PR (or open a new one) and it will pass the
+   gate.
+
+Issues remain open to everyone — no vouching needed there, and that's the
+intended starting point for any contribution.
+
+The vouched list: [`.github/VOUCHED.td`](https://github.com/juanfont/headscale/blob/main/.github/VOUCHED.td).
