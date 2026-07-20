@@ -2,11 +2,12 @@
   description = "headscale - Open Source Tailscale Control server";
 
   inputs = {
-    # Pinned to staging-next-26.05 for Go 1.26.4 (security fix GO-2026-5037/5039):
-    # nixpkgs-unstable still ships 1.26.3 — the bump is merged to nixpkgs staging
-    # but the large-rebuild staging->unstable pipeline lags. The 26.05 line is
-    # otherwise current (dev tools match unstable). Switch back to nixpkgs-unstable
-    # once it ships go_1_26 >= 1.26.4.
+    # Pinned to staging-next-26.05 for Go 1.26.5: the Tailscale HEAD build
+    # (Dockerfile.tailscale-HEAD) requires go >= 1.26.5, and nixpkgs-unstable
+    # still ships 1.26.4 — the bump is merged to nixpkgs staging but the
+    # large-rebuild staging->unstable pipeline lags. The 26.05 line is otherwise
+    # current (dev tools match unstable). Switch back to nixpkgs-unstable once it
+    # ships go_1_26 >= 1.26.5.
     nixpkgs.url = "github:NixOS/nixpkgs/staging-next-26.05";
     flake-utils.url = "github:numtide/flake-utils";
     # Reusable Go flake checks (build/test/lint/format); CI runs them via
@@ -36,7 +37,7 @@
       overlays.default = _: prev:
         let
           pkgs = nixpkgs.legacyPackages.${prev.stdenv.hostPlatform.system};
-          # Go 1.26 builder; resolves to Go 1.26.4 from the pinned nixpkgs.
+          # Go 1.26 builder; resolves to Go 1.26.5 from the pinned nixpkgs.
           buildGo = pkgs.buildGo126Module;
           vendorHash = (builtins.fromJSON (builtins.readFile ./flakehashes.json)).vendor.sri;
         in
@@ -72,7 +73,7 @@
           };
 
           # Build golangci-lint with stock Go 1.26 (upstream uses hardcoded Go
-          # version); it does not build against the pinned 1.26.4.
+          # version); it does not build against the pinned 1.26.5.
           golangci-lint = buildGo rec {
             pname = "golangci-lint";
             version = "2.12.2";
