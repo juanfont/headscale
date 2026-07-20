@@ -7,7 +7,7 @@
 # to drive a real browser-style WebSocket GET against headscale's /ts2021,
 # guarding the regression in issue #3357.
 
-FROM golang:1.26.4-alpine AS build
+FROM golang:1.26.5-alpine AS build
 
 WORKDIR /src
 
