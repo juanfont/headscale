@@ -96,7 +96,7 @@ func (m *mapSession) stopFromBatcher() {
 	}
 }
 
-func (m *mapSession) beforeServeLongPoll() {
+func (m *mapSession) cancelEphemeralNodeGC() {
 	if m.node.IsEphemeral() {
 		m.h.ephemeralGC.Cancel(m.node.ID)
 	}
@@ -249,7 +249,7 @@ func (m *mapSession) serveLongPoll() {
 	// Cancel ephemeral GC only after Connect succeeds. Cancelling at the start
 	// of serveLongPoll left departed nodes without a deletion timer when a
 	// reconnect attempt failed before Connect (issue #3382).
-	m.beforeServeLongPoll()
+	m.cancelEphemeralNodeGC()
 
 	m.log.Info().Caller().Str(zf.Chan, fmt.Sprintf("%p", m.ch)).Msg("node has connected")
 
