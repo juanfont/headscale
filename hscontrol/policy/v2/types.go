@@ -1888,11 +1888,19 @@ type Grant struct {
 // resolved exactly like ACL/grant sources, so users, groups, tags, hosts,
 // prefixes, autogroup:member, autogroup:tagged, and "*" are all valid.
 //
+// Attrs holds key-only capabilities (e.g. "magicdns-aaaa"), stamped into the
+// node's CapMap with a nil value. App holds valued capabilities — a
+// capability name mapped to a list of JSON payloads — matching Tailscale's
+// nodeAttrs "app" field. App connectors are delivered this way via the
+// "tailscale.com/app-connectors" capability; Headscale passes the payloads
+// through opaquely and the client interprets them.
+//
 // IPPool is parsed and validated for forward compatibility with the IP
 // allocator; the policy compiler does not consume it yet.
 type NodeAttrGrant struct {
 	Targets Aliases                  `json:"target"`
 	Attrs   []tailcfg.NodeCapability `json:"attr,omitempty"`
+	App     tailcfg.NodeCapMap       `json:"app,omitempty"`
 	IPPool  []netip.Prefix           `json:"ipPool,omitempty"`
 }
 
