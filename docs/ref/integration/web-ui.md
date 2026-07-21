@@ -24,6 +24,8 @@ Headscale doesn't provide a built-in web interface but users may pick one from t
 - [Headscale Manager](https://github.com/hkdone/headscalemanager) - Headscale UI for Android
 - [Headscale UI](https://github.com/MunMunMiao/headscale-ui) - Headscale UI online and Self-hosting
 - [Headscale Panel](https://github.com/headscale-panel/panel) - A modern Headscale management panel with a clean,
+- [Headtower](https://github.com/rnihesh/headtower) - A feature-rich, self-hosted operator's console for
+  headscale with built-in auth, roles, a visual ACL editor, browser SSH, and audit logging
   network-operations-focused UI
 
 You can ask for support on our [Discord server](https://discord.gg/c84AZQhmpx) in the "web-interfaces" channel.
