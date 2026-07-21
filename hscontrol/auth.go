@@ -317,30 +317,40 @@ func (h *Headscale) waitForFollowup(
 	}
 
 	if reg, ok := h.state.GetAuthCacheEntry(followupReg); ok {
+		var verdict types.AuthVerdict
 		select {
-		case <-ctx.Done():
-			return nil, NewHTTPError(http.StatusUnauthorized, "registration timed out", err)
-		case verdict := <-reg.WaitForAuth():
-			if verdict.Accept() {
-				if !verdict.Node.Valid() {
-					// registration is expired in the cache, instruct the client to try a new registration
-					return h.reqToNewRegisterResponse(req, machineKey)
-				}
-
-				// The followup poll is only authenticated by the auth ID in the
-				// URL, so fail closed unless the Noise session asking for the
-				// result was started with the same machine key that opened the
-				// registration. [State.HandleNodeFromAuthPath] resolves the node
-				// from the cached [types.RegistrationData.MachineKey], so the two
-				// match on the normal path. [Headscale.handleRegister] and
-				// [Headscale.handleLogout] apply the same check.
-				err := machineKeyMismatch(verdict.Node, machineKey)
-				if err != nil {
-					return nil, err
-				}
-
-				return nodeToRegisterResponse(verdict.Node), nil
+		// Prefer a completed registration even if the context has also
+		// expired. When both are ready, a plain select picks at random and
+		// would discard a successful registration as a spurious timeout
+		// (issue #3385).
+		case verdict = <-reg.WaitForAuth():
+		default:
+			select {
+			case <-ctx.Done():
+				return nil, NewHTTPError(http.StatusUnauthorized, "registration timed out", ctx.Err())
+			case verdict = <-reg.WaitForAuth():
 			}
+		}
+
+		if verdict.Accept() {
+			if !verdict.Node.Valid() {
+				// registration is expired in the cache, instruct the client to try a new registration
+				return h.reqToNewRegisterResponse(req, machineKey)
+			}
+
+			// The followup poll is only authenticated by the auth ID in the
+			// URL, so fail closed unless the Noise session asking for the
+			// result was started with the same machine key that opened the
+			// registration. [State.HandleNodeFromAuthPath] resolves the node
+			// from the cached [types.RegistrationData.MachineKey], so the two
+			// match on the normal path. [Headscale.handleRegister] and
+			// [Headscale.handleLogout] apply the same check.
+			err := machineKeyMismatch(verdict.Node, machineKey)
+			if err != nil {
+				return nil, err
+			}
+
+			return nodeToRegisterResponse(verdict.Node), nil
 		}
 	}
 
