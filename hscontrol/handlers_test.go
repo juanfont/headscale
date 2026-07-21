@@ -5,12 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"strings"
 	"testing"
 
+	"github.com/juanfont/headscale/hscontrol/capver"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -114,6 +116,52 @@ func TestVerifyHandler_SuccessSetsJSONContentType(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"),
 		"successful /verify response must advertise application/json")
+}
+
+// TestKeyHandler_UnsupportedCapVerDoesNotLeakKey reproduces
+// https://github.com/juanfont/headscale/issues/3380. The /key handler
+// must gate key disclosure on the same floor the Noise handshake
+// enforces (capver.MinSupportedCapabilityVersion). A capability version
+// below that floor can never complete a handshake, so it must be
+// rejected rather than handed the server's Noise public key, which would
+// otherwise serve only as a fingerprint / version-boundary oracle.
+func TestKeyHandler_UnsupportedCapVerDoesNotLeakKey(t *testing.T) {
+	t.Parallel()
+
+	noise := key.NewMachine()
+	h := &Headscale{noisePrivateKey: &noise}
+
+	unsupported := capver.MinSupportedCapabilityVersion - 1
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		fmt.Sprintf("/key?v=%d", unsupported),
+		nil,
+	)
+
+	h.KeyHandler(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code,
+		"a client below the supported floor must be rejected")
+	assert.NotContains(t, rec.Body.String(), noise.Public().String(),
+		"must not disclose Noise public key to a client below the supported floor")
+
+	// A supported client still receives the key.
+	recOK := httptest.NewRecorder()
+	reqOK := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		fmt.Sprintf("/key?v=%d", capver.MinSupportedCapabilityVersion),
+		nil,
+	)
+
+	h.KeyHandler(recOK, reqOK)
+
+	assert.Equal(t, http.StatusOK, recOK.Code)
+	assert.Contains(t, recOK.Body.String(), noise.Public().String(),
+		"a supported client must receive the Noise public key")
 }
 
 // errorAsHTTPError is a small local helper that unwraps an [HTTPError]
