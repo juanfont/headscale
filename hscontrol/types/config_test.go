@@ -52,10 +52,15 @@ func TestReadConfig(t *testing.T) {
 						"darp.headscale.net": {"1.1.1.1", "8.8.8.8"},
 						"foo.bar.com":        {"1.1.1.1"},
 					},
+					UseWithExitNode: []string{},
 				},
 				ExtraRecords: []tailcfg.DNSRecord{
 					{Name: "grafana.myvpn.example.com", Type: "A", Value: "100.64.0.3"},
-					{Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
+					{
+						Name:  "prometheus.myvpn.example.com",
+						Type:  "A",
+						Value: "100.64.0.4",
+					},
 				},
 				SearchDomains: []string{"test.com", "bar.com"},
 			},
@@ -87,7 +92,11 @@ func TestReadConfig(t *testing.T) {
 				},
 				ExtraRecords: []tailcfg.DNSRecord{
 					{Name: "grafana.myvpn.example.com", Type: "A", Value: "100.64.0.3"},
-					{Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
+					{
+						Name:  "prometheus.myvpn.example.com",
+						Type:  "A",
+						Value: "100.64.0.4",
+					},
 				},
 			},
 		},
@@ -118,10 +127,15 @@ func TestReadConfig(t *testing.T) {
 						"darp.headscale.net": {"1.1.1.1", "8.8.8.8"},
 						"foo.bar.com":        {"1.1.1.1"},
 					},
+					UseWithExitNode: []string{},
 				},
 				ExtraRecords: []tailcfg.DNSRecord{
 					{Name: "grafana.myvpn.example.com", Type: "A", Value: "100.64.0.3"},
-					{Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
+					{
+						Name:  "prometheus.myvpn.example.com",
+						Type:  "A",
+						Value: "100.64.0.4",
+					},
 				},
 				SearchDomains: []string{"test.com", "bar.com"},
 			},
@@ -153,7 +167,11 @@ func TestReadConfig(t *testing.T) {
 				},
 				ExtraRecords: []tailcfg.DNSRecord{
 					{Name: "grafana.myvpn.example.com", Type: "A", Value: "100.64.0.3"},
-					{Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
+					{
+						Name:  "prometheus.myvpn.example.com",
+						Type:  "A",
+						Value: "100.64.0.4",
+					},
 				},
 			},
 		},
@@ -217,6 +235,35 @@ func TestReadConfig(t *testing.T) {
 				Resolvers: []*dnstype.Resolver{
 					{Addr: "1.1.1.1"},
 					{Addr: "1.0.0.1"},
+				},
+			},
+		},
+		{
+			name:       "dns-use-with-exit-node",
+			configPath: "testdata/dns-use-with-exit-node.yaml",
+			setup: func(t *testing.T) (any, error) { //nolint:thelper
+				_, err := LoadServerConfig()
+				if err != nil {
+					return nil, err
+				}
+
+				dns, err := dns()
+				if err != nil {
+					return nil, err
+				}
+
+				return dnsToTailcfgDNS(dns), nil
+			},
+			want: &tailcfg.DNSConfig{
+				Proxied: true,
+				Domains: []string{"derp2.no"},
+				Resolvers: []*dnstype.Resolver{
+					{Addr: "1.1.1.1", UseWithExitNode: true},
+					{Addr: "1.0.0.1"},
+				},
+				Routes: map[string][]*dnstype.Resolver{
+					"foo.bar.com":     {{Addr: "8.8.8.8", UseWithExitNode: true}},
+					"baz.example.com": {{Addr: "9.9.9.9"}},
 				},
 			},
 		},
@@ -495,7 +542,10 @@ dns:
   override_local_dns: false
 oidc:` + tt.oidcBlock + "\n")
 
-			require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "config.yaml"), configYaml, 0o600))
+			require.NoError(
+				t,
+				os.WriteFile(filepath.Join(tmpDir, "config.yaml"), configYaml, 0o600),
+			)
 			require.NoError(t, LoadConfig(tmpDir, false))
 
 			err := validateServerConfig()
@@ -735,7 +785,11 @@ func TestTrustedProxies(t *testing.T) {
 
 			require.NoError(t, err)
 
-			if diff := cmp.Diff(tt.want, got, cmpopts.EquateComparable(netip.Prefix{})); diff != "" {
+			if diff := cmp.Diff(
+				tt.want,
+				got,
+				cmpopts.EquateComparable(netip.Prefix{}),
+			); diff != "" {
 				t.Errorf("trustedProxies() mismatch (-want +got):\n%s", diff)
 			}
 		})

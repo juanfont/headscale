@@ -27,6 +27,7 @@ import (
 	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/dnstype"
 	"tailscale.com/types/ipproto"
 	"tailscale.com/types/views"
 	"tailscale.com/util/must"
@@ -2149,6 +2150,160 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 
 		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, 10*time.Second, 200*time.Millisecond, "user2 traceroute should go through user1 exit node")
+}
+
+// TestExitNodeUseWithExitNodeDNS verifies that nameservers listed in
+// dns.nameservers.use_with_exit_node keep their UseWithExitNode flag when sent
+// to clients, so a client that selects an exit node still resolves via the
+// configured resolver instead of having all DNS delegated to the exit node.
+// Nameservers not in the list must not carry the flag. See issue #2816.
+func TestExitNodeUseWithExitNodeDNS(t *testing.T) {
+	IntegrationSkip(t)
+
+	// The UseWithExitNode resolver flag requires Tailscale capability version
+	// 125 (v1.88+); older clients ignore it. Pin to head so the netmap carries
+	// the flag.
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{"user1", "user2"},
+		Versions:     []string{"head"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	// keepResolver is reachable within the tailnet and should keep being used
+	// when an exit node is selected. dropResolver is configured but not listed,
+	// so it must not carry the flag.
+	const (
+		keepResolver = "100.64.0.53"
+		dropResolver = "1.1.1.1"
+	)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{},
+		hsic.WithTestName("rt-exitdns"),
+		hsic.WithConfigEnv(map[string]string{
+			"HEADSCALE_DNS_OVERRIDE_LOCAL_DNS":             "true",
+			"HEADSCALE_DNS_NAMESERVERS_GLOBAL":             keepResolver + " " + dropResolver,
+			"HEADSCALE_DNS_NAMESERVERS_USE_WITH_EXIT_NODE": keepResolver,
+		}),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	requireNoErrListClients(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+	assert.NotNil(t, headscale)
+
+	var user1c, user2c TailscaleClient
+
+	for _, c := range allClients {
+		s := c.MustStatus()
+		switch s.User[s.Self.UserID].LoginName {
+		case "user1@test.no":
+			user1c = c
+		case "user2@test.no":
+			user2c = c
+		}
+	}
+
+	require.NotNil(t, user1c)
+	require.NotNil(t, user2c)
+
+	// Advertise the exit node on user1c.
+	_, _, err = user1c.Execute([]string{
+		"tailscale", "set", "--advertise-exit-node",
+	})
+	require.NoErrorf(t, err, "failed to advertise exit node: %s", err)
+
+	// headscale should see the two exit routes announced.
+	var nodes []*clientv1.Node
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err = headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 2)
+		requireNodeRouteCountWithCollect(c, nodes[0], 2, 0, 0)
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "exit routes should be announced")
+
+	// Approve the exit routes.
+	_, err = headscale.ApproveRoutes(
+		mustParseID(nodes[0].Id),
+		[]netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()},
+	)
+	require.NoError(t, err)
+
+	// The exit node becomes an option for user2c.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		status, err := user2c.Status()
+		assert.NoError(c, err)
+
+		for _, peerKey := range status.Peers() {
+			assert.True(
+				c,
+				status.Peer[peerKey].ExitNodeOption,
+				"peer should be an exit node option",
+			)
+		}
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "exit node should be visible to client")
+
+	// user2c selects user1c as its exit node.
+	_, _, err = user2c.Execute([]string{
+		"tailscale", "set", "--exit-node", user1c.Hostname(),
+	})
+	require.NoErrorf(t, err, "failed to set exit node: %s", err)
+
+	// The exit node becomes active.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		status, err := user2c.Status()
+		assert.NoError(c, err)
+		assert.NotNil(c, status.ExitNodeStatus, "exit node should be active")
+	}, 30*time.Second, 500*time.Millisecond, "exit node activation")
+
+	// The netmap DNS config carries the UseWithExitNode flag per resolver. The
+	// listed resolver must keep it; the unlisted one must not, regardless of
+	// the active exit node.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nm, err := user2c.Netmap()
+		assert.NoError(c, err)
+
+		var keep, drop *dnstype.Resolver
+
+		for _, r := range nm.DNS.Resolvers {
+			switch r.Addr {
+			case keepResolver:
+				keep = r
+			case dropResolver:
+				drop = r
+			}
+		}
+
+		if assert.NotNil(c, keep, "resolver %s should be present", keepResolver) {
+			assert.True(
+				c,
+				keep.UseWithExitNode,
+				"resolver %s should keep UseWithExitNode under an exit node",
+				keepResolver,
+			)
+		}
+
+		if assert.NotNil(c, drop, "resolver %s should be present", dropResolver) {
+			assert.False(
+				c,
+				drop.UseWithExitNode,
+				"resolver %s should not have UseWithExitNode set",
+				dropResolver,
+			)
+		}
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "configured resolver should stay active under exit node")
 }
 
 func MustFindNode(hostname string, nodes []*clientv1.Node) *clientv1.Node {

@@ -167,6 +167,12 @@ type DNSConfig struct {
 type Nameservers struct {
 	Global []string
 	Split  map[string][]string
+	// UseWithExitNode lists nameserver addresses (from Global or Split)
+	// that should keep being used even when a client selects an exit node.
+	// Without this, Tailscale clients delegate all DNS to the exit node,
+	// ignoring the configured resolvers. Requires client capability version
+	// 125 (Tailscale v1.88 or newer); older clients ignore the flag.
+	UseWithExitNode []string `mapstructure:"use_with_exit_node"`
 }
 
 type SqliteConfig struct {
@@ -446,6 +452,7 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("dns.override_local_dns", true)
 	viper.SetDefault("dns.nameservers.global", []string{})
 	viper.SetDefault("dns.nameservers.split", map[string]string{})
+	viper.SetDefault("dns.nameservers.use_with_exit_node", []string{})
 	viper.SetDefault("dns.search_domains", []string{})
 
 	viper.SetDefault("derp.server.enabled", false)
@@ -914,6 +921,9 @@ func dns() (DNSConfig, error) {
 	dns.OverrideLocalDNS = viper.GetBool("dns.override_local_dns")
 	dns.Nameservers.Global = viper.GetStringSlice("dns.nameservers.global")
 	dns.Nameservers.Split = viper.GetStringMapStringSlice("dns.nameservers.split")
+	dns.Nameservers.UseWithExitNode = viper.GetStringSlice(
+		"dns.nameservers.use_with_exit_node",
+	)
 	dns.SearchDomains = viper.GetStringSlice("dns.search_domains")
 	dns.ExtraRecordsPath = viper.GetString("dns.extra_records_path")
 
@@ -936,13 +946,20 @@ func dns() (DNSConfig, error) {
 // If a nameserver is a valid URL, it will be used as a DoH resolver.
 // If a nameserver is neither a valid URL nor a valid IP, it will be ignored.
 // When domain is non-empty, it is included in the warning for invalid entries.
-func parseResolvers(nameservers []string, domain string) []*dnstype.Resolver {
+// Resolvers whose address is present in useWithExitNode are marked so Tailscale
+// clients keep using them even when an exit node is selected.
+func parseResolvers(
+	nameservers []string,
+	domain string,
+	useWithExitNode map[string]bool,
+) []*dnstype.Resolver {
 	var resolvers []*dnstype.Resolver
 
 	for _, nsStr := range nameservers {
 		if _, err := netip.ParseAddr(nsStr); err == nil { //nolint:noinlineerr
 			resolvers = append(resolvers, &dnstype.Resolver{
-				Addr: nsStr,
+				Addr:            nsStr,
+				UseWithExitNode: useWithExitNode[nsStr],
 			})
 
 			continue
@@ -950,7 +967,8 @@ func parseResolvers(nameservers []string, domain string) []*dnstype.Resolver {
 
 		if _, err := url.Parse(nsStr); err == nil { //nolint:noinlineerr
 			resolvers = append(resolvers, &dnstype.Resolver{
-				Addr: nsStr,
+				Addr:            nsStr,
+				UseWithExitNode: useWithExitNode[nsStr],
 			})
 
 			continue
@@ -967,18 +985,34 @@ func parseResolvers(nameservers []string, domain string) []*dnstype.Resolver {
 	return resolvers
 }
 
+// useWithExitNodeSet returns the set of nameserver addresses that should keep
+// being used when an exit node is selected.
+func (d *DNSConfig) useWithExitNodeSet() map[string]bool {
+	if len(d.Nameservers.UseWithExitNode) == 0 {
+		return nil
+	}
+
+	set := make(map[string]bool, len(d.Nameservers.UseWithExitNode))
+	for _, ns := range d.Nameservers.UseWithExitNode {
+		set[ns] = true
+	}
+
+	return set
+}
+
 // globalResolvers returns the global DNS resolvers
 // defined in the config file.
 func (d *DNSConfig) globalResolvers() []*dnstype.Resolver {
-	return parseResolvers(d.Nameservers.Global, "")
+	return parseResolvers(d.Nameservers.Global, "", d.useWithExitNodeSet())
 }
 
 // splitResolvers returns a map of domain to DNS resolvers.
 func (d *DNSConfig) splitResolvers() map[string][]*dnstype.Resolver {
 	routes := make(map[string][]*dnstype.Resolver)
 
+	useWithExitNode := d.useWithExitNodeSet()
 	for domain, nameservers := range d.Nameservers.Split {
-		routes[domain] = parseResolvers(nameservers, domain)
+		routes[domain] = parseResolvers(nameservers, domain, useWithExitNode)
 	}
 
 	return routes
