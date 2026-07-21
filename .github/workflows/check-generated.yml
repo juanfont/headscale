@@ -35,7 +35,7 @@ jobs:
               - 'tools/**'
       - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
         if: steps.changed-files.outputs.files == 'true'
-      - uses: Mic92/hestia/action@ff07bb902a9968ac0c3d0e51d90a606662a375d8 # main
+      - uses: Mic92/hestia@fb239a2f72d4b6e26eec5425f289dea23b27a527 # v2.0.0
         if: steps.changed-files.outputs.files == 'true'
 
       - name: Run make generate
