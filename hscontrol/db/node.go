@@ -498,6 +498,16 @@ func (e *EphemeralGarbageCollector) Cancel(nodeID types.NodeID) {
 	}
 }
 
+// IsScheduled reports whether a deletion timer is currently armed for nodeID.
+func (e *EphemeralGarbageCollector) IsScheduled(nodeID types.NodeID) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	_, ok := e.toBeDeleted[nodeID]
+
+	return ok
+}
+
 // Start starts the garbage collector.
 func (e *EphemeralGarbageCollector) Start() {
 	for {
