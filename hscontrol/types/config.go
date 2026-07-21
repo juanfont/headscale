@@ -993,7 +993,7 @@ func dnsToTailcfgDNS(dns DNSConfig) *tailcfg.DNSConfig {
 
 	cfg.Proxied = dns.MagicDNS
 
-	cfg.ExtraRecords = dns.ExtraRecords
+	cfg.ExtraRecords = lowercaseRecordNames(dns.ExtraRecords)
 	if dns.OverrideLocalDNS {
 		cfg.Resolvers = dns.globalResolvers()
 	} else {
@@ -1475,6 +1475,22 @@ func (c *Config) SetExtraRecords(records []tailcfg.DNSRecord) {
 	defer tailcfgDNSMu.Unlock()
 
 	if c.TailcfgDNSConfig != nil {
-		c.TailcfgDNSConfig.ExtraRecords = records
+		c.TailcfgDNSConfig.ExtraRecords = lowercaseRecordNames(records)
 	}
+}
+
+// lowercaseRecordNames normalizes DNS record names to lowercase, as DNS names
+// are case-insensitive and clients match extra records by exact name.
+func lowercaseRecordNames(records []tailcfg.DNSRecord) []tailcfg.DNSRecord {
+	if len(records) == 0 {
+		return records
+	}
+
+	normalized := make([]tailcfg.DNSRecord, len(records))
+	for i, record := range records {
+		record.Name = strings.ToLower(record.Name)
+		normalized[i] = record
+	}
+
+	return normalized
 }

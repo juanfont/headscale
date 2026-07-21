@@ -44,6 +44,7 @@ keys remain all-access.
 
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
+- Lowercase DNS extra record names so mixed-case records resolve [#2782](https://github.com/juanfont/headscale/issues/2782)
 
 ## 0.29.2 (2026-07-01)
 
