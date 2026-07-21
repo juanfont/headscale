@@ -311,6 +311,18 @@ func (h *Headscale) waitForFollowup(
 					return h.reqToNewRegisterResponse(req, machineKey)
 				}
 
+				// The followup poll is only authenticated by the auth ID in the
+				// URL, so fail closed unless the Noise session asking for the
+				// result was started with the same machine key that opened the
+				// registration. [State.HandleNodeFromAuthPath] resolves the node
+				// from the cached [types.RegistrationData.MachineKey], so the two
+				// match on the normal path. [Headscale.handleRegister] and
+				// [Headscale.handleLogout] apply the same check.
+				err := machineKeyMismatch(verdict.Node, machineKey)
+				if err != nil {
+					return nil, err
+				}
+
 				return nodeToRegisterResponse(verdict.Node), nil
 			}
 		}
