@@ -23,6 +23,18 @@ type AuthProvider interface {
 	AuthURL(authID types.AuthID) string
 }
 
+// machineKeyMismatch fails closed when a node looked up by NodeKey was started
+// in a Noise session with a different machine key. Without this anyone holding a
+// target's NodeKey could open a session with a throwaway machine key and act on
+// the owner's node. Returns a 401 [HTTPError] on mismatch, nil otherwise.
+func machineKeyMismatch(node types.NodeView, machineKey key.MachinePublic) error {
+	if node.MachineKey() != machineKey {
+		return NewHTTPError(http.StatusUnauthorized, "node exists with a different machine key", nil)
+	}
+
+	return nil
+}
+
 func (h *Headscale) handleRegister(
 	ctx context.Context,
 	req tailcfg.RegisterRequest,
@@ -299,6 +311,18 @@ func (h *Headscale) waitForFollowup(
 				if !verdict.Node.Valid() {
 					// registration is expired in the cache, instruct the client to try a new registration
 					return h.reqToNewRegisterResponse(req, machineKey)
+				}
+
+				// The followup poll is only authenticated by the auth ID in the
+				// URL, so fail closed unless the Noise session asking for the
+				// result was started with the same machine key that opened the
+				// registration. [State.HandleNodeFromAuthPath] resolves the node
+				// from the cached [types.RegistrationData.MachineKey], so the two
+				// match on the normal path. [Headscale.handleRegister] and
+				// [Headscale.handleLogout] apply the same check.
+				err := machineKeyMismatch(verdict.Node, machineKey)
+				if err != nil {
+					return nil, err
 				}
 
 				return nodeToRegisterResponse(verdict.Node), nil
