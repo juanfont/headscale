@@ -100,6 +100,12 @@ func NewAuthProviderOIDC(
 		Scopes:       cfg.Scope,
 	}
 
+	// Some OIDC providers (e.g. GitHub Actions) omit authorization_endpoint
+	// from their discovery document. Allow users to override it explicitly.
+	if cfg.AuthorizationEndpoint != "" {
+		oauth2Config.Endpoint.AuthURL = cfg.AuthorizationEndpoint
+	}
+
 	authCache := expirable.NewLRU[string, AuthInfo](
 		authCacheMaxEntries,
 		nil,
