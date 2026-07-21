@@ -19,17 +19,6 @@ import (
 )
 
 const (
-	// NoiseCapabilityVersion is used by Tailscale clients to indicate
-	// their codebase version. Tailscale clients can communicate over TS2021
-	// from CapabilityVersion 28, but we only have good support for it
-	// since https://github.com/tailscale/tailscale/pull/4323 (Noise in any HTTPS port).
-	//
-	// Related to this change, there is https://github.com/tailscale/tailscale/pull/5379,
-	// where CapabilityVersion 39 is introduced to indicate #4323 was merged.
-	//
-	// See also https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go
-	NoiseCapabilityVersion = 39
-
 	reservedResponseHeaderSize = 4
 )
 
@@ -199,20 +188,27 @@ func (h *Headscale) KeyHandler(
 		return
 	}
 
-	// TS2021 (Tailscale v2 protocol) requires to have a different key
-	if capVer >= NoiseCapabilityVersion {
-		resp := tailcfg.OverTLSPublicKeyResponse{
-			PublicKey: h.noisePrivateKey.Public(),
-		}
-
-		writer.Header().Set("Content-Type", "application/json")
-
-		err := json.NewEncoder(writer).Encode(resp)
-		if err != nil {
-			log.Error().Err(err).Msg("failed to encode public key response")
-		}
-
+	// Only disclose the Noise public key to clients this server can
+	// actually complete a handshake with. Gating on the same floor the
+	// Noise handshake enforces (capver.MinSupportedCapabilityVersion, see
+	// isSupportedVersion in noise.go) keeps /key consistent with /ts2021:
+	// versions the handshake would reject get a clear rejection here
+	// instead of a key that only serves as a version-boundary oracle.
+	// See https://github.com/juanfont/headscale/issues/3380.
+	if !isSupportedVersion(capVer) {
+		httpError(writer, NewHTTPError(http.StatusBadRequest, "unsupported client version", unsupportedClientError(capVer)))
 		return
+	}
+
+	resp := tailcfg.OverTLSPublicKeyResponse{
+		PublicKey: h.noisePrivateKey.Public(),
+	}
+
+	writer.Header().Set("Content-Type", "application/json")
+
+	err = json.NewEncoder(writer).Encode(resp)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to encode public key response")
 	}
 }
 
