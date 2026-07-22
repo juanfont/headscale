@@ -11,6 +11,7 @@ import (
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
+	"github.com/oauth2-proxy/mockoidc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
@@ -3608,4 +3609,251 @@ func TestTaggedNodeLogoutReloginReusableKeyOnline(t *testing.T) {
 	}, integrationutil.ScaledTimeout(60*time.Second), integrationutil.SlowPoll, "tagged node must come back online after reusable-key relogin")
 
 	t.Logf("Test #3371 PASS: tagged node logged out and re-authenticated online with a reusable key")
+}
+
+// TestTagsOIDCReauthAddOwnedTag reproduces issue #3374 through the interactive
+// OIDC path with a real client. A node is registered tag-owned (no user) via
+// --advertise-tags, then re-authenticates via OIDC advertising an ADDITIONAL
+// owned tag. Because a tag-owned node has no user and its IP is in no owner
+// set, the pre-fix authorization (which asked only "can this NODE have the
+// tag") rejected the whole set, leaving the node logged out. The fix also
+// authorises against the authenticating user, so the added owned tag is
+// accepted.
+//
+// This is the OIDC/interactive twin of the #3370 PAK-path retag tests, and it
+// hard-asserts the resulting tag SET (the pre-existing web-auth add-tag test
+// only logs), so it catches the silent-drop where the pre-check passes but the
+// apply-time re-check in processReauthTags still rejects.
+//
+// https://github.com/juanfont/headscale/issues/3374
+func TestTagsOIDCReauthAddOwnedTag(t *testing.T) {
+	IntegrationSkip(t)
+
+	oidcUser := "oidcuser"
+
+	// Each OIDC login consumes one mock user, so the same identity must be
+	// listed twice: once for the initial login and once for the reauth.
+	spec := ScenarioSpec{
+		NodesPerUser: 0,
+		OIDCUsers: []mockoidc.MockUser{
+			oidcMockUser(oidcUser, true),
+			oidcMockUser(oidcUser, true),
+		},
+	}
+
+	scenario, err := NewScenario(spec)
+
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	oidcMap := map[string]string{
+		"HEADSCALE_OIDC_ISSUER":             scenario.mockOIDC.Issuer(),
+		"HEADSCALE_OIDC_CLIENT_ID":          scenario.mockOIDC.ClientID(),
+		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
+		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
+	}
+
+	// The OIDC user owns both tags. Ownership is what authorises the reauth tag
+	// change once the node is tag-owned. Reference the user by email; it already
+	// contains an "@", so no trailing "@" is added (that suffix is only for
+	// non-email usernames).
+	owner := new(policyv2.Username(oidcUser + "@headscale.net"))
+	policy := &policyv2.Policy{
+		TagOwners: policyv2.TagOwners{
+			"tag:valid-owned": policyv2.Owners{owner},
+			"tag:second":      policyv2.Owners{owner},
+		},
+		ACLs: []policyv2.ACL{
+			{
+				Action:       "accept",
+				Sources:      []policyv2.Alias{policyv2.Wildcard},
+				Destinations: []policyv2.AliasWithPorts{{Alias: policyv2.Wildcard, Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}}},
+			},
+		},
+	}
+
+	err = scenario.CreateHeadscaleEnvWithLoginURL(
+		[]tsic.Option{
+			tsic.WithExtraLoginArgs([]string{"--advertise-tags=tag:valid-owned"}),
+		},
+		hsic.WithTestName("tags-oidc-addtag"),
+		hsic.WithConfigEnv(oidcMap),
+		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
+		hsic.WithACLPolicy(policy),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+
+	client, err := scenario.CreateTailscaleNode(
+		"unstable",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+		tsic.WithExtraLoginArgs([]string{"--advertise-tags=tag:valid-owned"}),
+	)
+	require.NoError(t, err)
+
+	// Initial OIDC login advertising tag:valid-owned.
+	u, err := client.LoginWithURL(headscale.GetEndpoint())
+	require.NoError(t, err)
+
+	_, err = doLoginURL(client.Hostname(), u)
+	require.NoError(t, err)
+
+	var initialNodeID uint64
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1)
+
+		if len(nodes) == 1 {
+			initialNodeID = nodes[0].GetId()
+			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
+		}
+	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "waiting for initial tag-owned registration")
+
+	// Re-authenticate advertising an ADDITIONAL owned tag via --force-reauth,
+	// which drives the register/auth path (HandleNodeFromAuthPath), not a poll.
+	// Parse the login URL from this command's own output; issuing a separate
+	// `tailscale up` while a reauth is pending errors server-side.
+	command := []string{
+		"tailscale", "up",
+		"--login-server=" + headscale.GetEndpoint(),
+		"--hostname=" + client.Hostname(),
+		"--advertise-tags=tag:valid-owned,tag:second",
+		"--force-reauth",
+	}
+
+	stdout, stderr, _ := client.Execute(command)
+	t.Logf("reauth command output: stdout=%s stderr=%s", stdout, stderr)
+
+	loginURL, err := util.ParseLoginURLFromCLILogin(stdout + stderr)
+	require.NoError(t, err, "failed to parse login URL from reauth command")
+
+	_, err = doLoginURL(client.Hostname(), loginURL)
+	require.NoError(t, err)
+
+	// Both tags must be present — not rejected, not silently dropped.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1, "must not duplicate the node")
+
+		if len(nodes) == 1 {
+			assert.Equal(c, initialNodeID, nodes[0].GetId(), "node ID must be unchanged")
+			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned", "tag:second"})
+		}
+	}, integrationutil.ScaledTimeout(30*time.Second), integrationutil.SlowPoll, "#3374: added owned tag must be accepted on OIDC reauth")
+
+	t.Logf("Test #3374 PASS: OIDC reauth added an owned tag to a tag-owned node")
+}
+
+// TestTagsReauthEmptyTagsReturnsToUserSurvives covers the #3374 untag path with
+// a real client: a tag-owned node created by a tagged+ephemeral key
+// re-authenticates via user login with an EMPTY tag set. It must return to the
+// user, and — crucially — survive: clearing the tags must also clear the
+// node's reference to the ephemeral auth key, or the node stays IsEphemeral()
+// and is garbage-collected on its next disconnect, silently deleting the
+// user's just-claimed device.
+//
+// https://github.com/juanfont/headscale/issues/3374
+func TestTagsReauthEmptyTagsReturnsToUserSurvives(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		NodesPerUser: 0,
+		Users:        []string{tagTestUser},
+	}
+
+	scenario, err := NewScenario(spec)
+
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnvWithLoginURL(
+		[]tsic.Option{},
+		hsic.WithACLPolicy(tagsTestPolicy()),
+		hsic.WithTestName("tags-untag-survive"),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+
+	userMap, err := headscale.MapUsers()
+	require.NoError(t, err)
+
+	userID := userMap[tagTestUser].GetId()
+
+	// A tagged + EPHEMERAL key: the node is tag-owned and ephemeral.
+	key, err := scenario.CreatePreAuthKeyWithTags(userID, false, true, []string{"tag:valid-owned"})
+	require.NoError(t, err)
+
+	client, err := scenario.CreateTailscaleNode(
+		"head",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+	)
+	require.NoError(t, err)
+
+	err = client.Login(headscale.GetEndpoint(), key.GetKey())
+	require.NoError(t, err)
+
+	err = client.WaitForRunning(integrationutil.PeerSyncTimeout())
+	require.NoError(t, err)
+
+	var initialNodeID uint64
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1)
+
+		if len(nodes) == 1 {
+			initialNodeID = nodes[0].GetId()
+			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
+		}
+	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "waiting for initial tag-owned ephemeral registration")
+
+	// Re-authenticate with an EMPTY tag set via --force-reauth. An
+	// already-authenticated node only emits a fresh login URL when forced, so
+	// parse the URL from this command's own output rather than issuing a
+	// second `tailscale up` (which would error with "no URL found").
+	command := []string{
+		"tailscale", "up",
+		"--login-server=" + headscale.GetEndpoint(),
+		"--hostname=" + client.Hostname(),
+		"--advertise-tags=",
+		"--force-reauth",
+	}
+
+	stdout, stderr, _ := client.Execute(command)
+	t.Logf("reauth command output: stdout=%s stderr=%s", stdout, stderr)
+
+	loginURL, err := util.ParseLoginURLFromCLILogin(stdout + stderr)
+	require.NoError(t, err, "failed to parse login URL from reauth command")
+
+	body, err := doLoginURL(client.Hostname(), loginURL)
+	require.NoError(t, err)
+
+	// CLI user-login registration untags the node and returns it to the user.
+	err = scenario.runHeadscaleRegister(tagTestUser, body)
+	require.NoError(t, err)
+
+	// Node returns to the user, keeps its ID, and does NOT vanish.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1, "#3374: untagged node must survive, not be GC'd as ephemeral")
+
+		if len(nodes) == 1 {
+			assert.Equal(c, initialNodeID, nodes[0].GetId(), "node ID must be unchanged")
+			assert.Empty(c, nodes[0].GetTags(), "#3374: node must have no tags after untag")
+			// A user-owned node reports its real user; a tagged node would
+			// report the special "tagged-devices" user instead.
+			assert.Equal(c, tagTestUser, nodes[0].GetUser().GetName(), "#3374: untagged node must return to the authenticating user")
+		}
+	}, integrationutil.ScaledTimeout(30*time.Second), integrationutil.SlowPoll, "#3374: empty-tags reauth returns node to user and it survives")
+
+	t.Logf("Test #3374 PASS: empty-tags reauth returned the ephemeral tag-owned node to its user and it survived")
 }

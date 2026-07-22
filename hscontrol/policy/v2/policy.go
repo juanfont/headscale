@@ -964,6 +964,37 @@ func (pm *PolicyManager) NodeCanHaveTag(node types.NodeView, tag string) bool {
 	return false
 }
 
+// UserCanHaveTag reports whether the given user is one of the tag's owners
+// (directly or via a group). It is the user half of [PolicyManager.NodeCanHaveTag]:
+// re-authentication authorises requested tags against the authenticating user,
+// because a tag-owned node carries no user and its IP is not in any owner set,
+// so only the user presenting the credential can prove ownership.
+func (pm *PolicyManager) UserCanHaveTag(user types.UserView, tag string) bool {
+	if pm == nil || !user.Valid() {
+		return false
+	}
+
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	if pm.pol == nil {
+		return false
+	}
+
+	owners, exists := pm.pol.TagOwners[Tag(tag)]
+	if !exists {
+		return false
+	}
+
+	for _, owner := range owners {
+		if pm.userMatchesOwner(user, owner) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // userMatchesOwner checks if a user matches a tag owner entry.
 // This is used as a fallback when the node's IP is not in the [PolicyManager.tagOwnerMap].
 func (pm *PolicyManager) userMatchesOwner(user types.UserView, owner Owner) bool {
