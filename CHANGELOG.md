@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 0.29.3 (202x-xx-xx)
+
+**Minimum supported Tailscale client version: v1.80.0**
+
+### Changes
+
+- Fix tagged node stuck expired after `tailscale logout`, unable to re-authenticate [#3394](https://github.com/juanfont/headscale/pull/3394)
+
 ## 0.29.2 (2026-07-01)
 
 **Minimum supported Tailscale client version: v1.80.0**
