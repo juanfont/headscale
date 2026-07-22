@@ -2421,7 +2421,15 @@ func (s *State) HandleNodeFromPreAuthKey(
 	// must present a valid key. Without this a node that re-uses its NodeKey
 	// after expiry would skip validation and be re-authorised with a spent or
 	// expired key; the boundary must not depend on the client rotating its key.
+	//
+	// Tagged nodes are excluded: they have key-expiry disabled and never
+	// expire. A tagged node can only look expired because a logout stamped a
+	// past expiry on it (handleLogout does not guard tagged nodes), which is a
+	// stale value cleared during this re-registration below, not a genuine key
+	// expiry. Treating it as expired here would re-validate and reject the
+	// already-spent one-shot key, locking the node out permanently. See #3371.
 	isExpired := existsSameUser && existingNodeSameUser.Valid() &&
+		!existingNodeSameUser.IsTagged() &&
 		existingNodeSameUser.IsExpired()
 
 	// A tagged key presented for a currently user-owned node converts that node
@@ -2557,6 +2565,14 @@ func (s *State) HandleNodeFromPreAuthKey(
 				} else {
 					node.Expiry = nil
 				}
+			} else if node.IsExpired() {
+				// A tagged node must not carry key expiry (tagged nodes never
+				// expire). Clear a stale *past* expiry left by a logout so the
+				// node is not permanently expired after re-authentication
+				// (#3371). A deliberately set future expiry
+				// (headscale nodes expire) is in the future, so IsExpired is
+				// false and it is left untouched.
+				node.Expiry = nil
 			}
 		})
 

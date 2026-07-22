@@ -44,6 +44,7 @@ keys remain all-access.
 
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
+- A tagged node can re-authenticate after `tailscale logout` again; the stale past expiry a logout leaves on it is cleared on re-registration instead of locking it out [#3371](https://github.com/juanfont/headscale/issues/3371)
 
 ## 0.29.2 (2026-07-01)
 
