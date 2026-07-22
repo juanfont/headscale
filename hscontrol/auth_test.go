@@ -1025,6 +1025,51 @@ func TestAuthenticationFlows(t *testing.T) {
 			wantError:  true, // RequestTags rejected for PreAuthKey registrations
 		},
 
+		// TEST: Tagged PreAuthKey accepts RequestTags that match the key's tags
+		// WHAT: The official tailscale client's OAuth flow re-advertises the key's
+		// own tags via --advertise-tags; a subset of the key's tags is tolerated.
+		// INPUT: Tagged PreAuthKey ([tag:authorized]) with RequestTags [tag:authorized]
+		// EXPECTED: Registration succeeds; node is tagged from the key.
+		// WHY: Redundant advertise-tags matching the key are not a tag escalation,
+		// and rejecting them breaks the tailscale client's OAuth authkey flow.
+		{
+			name: "tagged_preauth_key_accepts_matching_request_tags",
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
+				t.Helper()
+
+				user := app.state.CreateUserForTest("tagged-pak-matchtags-user")
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, []string{"tag:authorized"})
+				if err != nil {
+					return "", err
+				}
+
+				return pak.Key, nil
+			},
+			request: func(authKey string) tailcfg.RegisterRequest {
+				return tailcfg.RegisterRequest{
+					Auth: &tailcfg.RegisterResponseAuth{
+						AuthKey: authKey,
+					},
+					NodeKey: nodeKey1.Public(),
+					Hostinfo: &tailcfg.Hostinfo{
+						Hostname:    "tagged-pak-matchtags-node",
+						RequestTags: []string{"tag:authorized"},
+					},
+					Expiry: time.Now().Add(24 * time.Hour),
+				}
+			},
+			machineKey: machineKey1.Public,
+			wantAuth:   true,
+			validate: func(t *testing.T, _ *tailcfg.RegisterResponse, app *Headscale) {
+				t.Helper()
+
+				node, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
+				assert.True(t, found)
+				assert.True(t, node.IsTagged(), "node should be tagged from the key")
+			},
+		},
+
 		// === RE-AUTHENTICATION SCENARIOS ===
 		// TEST: Existing node re-authenticates with new pre-auth key
 		// WHAT: Tests that existing node can re-authenticate using new pre-auth key

@@ -1,0 +1,143 @@
+name: headscale-up
+description: >-
+  Build headscale with nix, start it over self-signed TLS with embedded DERP, and
+  join one regular node via a pre-auth key (so the tailnet has a node already in
+  the network and a ping target). Outputs the URL and bootstrap credentials.
+
+# TLS is not optional: the embedded DERP server requires it, and DERP is what
+# gives the nodes a data plane to ping over. The self-signed cert is trusted on
+# the runner so the tailscale client and OAuth exchange accept it.
+
+outputs:
+  url:
+    description: headscale server URL (https)
+    value: ${{ steps.bootstrap.outputs.url }}
+  api_key:
+    description: admin API key (hskey-api-)
+    value: ${{ steps.bootstrap.outputs.api_key }}
+  preauth:
+    description: reusable pre-auth key for user 'ci'
+    value: ${{ steps.bootstrap.outputs.preauth }}
+  pre_ip:
+    description: tailnet IPv4 of the pre-joined regular node
+    value: ${{ steps.prenode.outputs.pre_ip }}
+
+runs:
+  using: composite
+  steps:
+    - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
+    - uses: Mic92/hestia/action@ff07bb902a9968ac0c3d0e51d90a606662a375d8 # main
+
+    - name: Build headscale
+      shell: bash
+      run: nix build --fallback
+
+    - name: Start headscale (TLS + embedded DERP)
+      id: bootstrap
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p /tmp/hs
+        echo "127.0.0.1 headscale" | sudo tee -a /etc/hosts
+
+        # Self-signed cert for the control server, trusted system-wide so the
+        # tailscale client and the OAuth token exchange accept it.
+        openssl req -x509 -newkey rsa:4096 -sha256 -days 1 -nodes \
+          -keyout /tmp/hs/tls.key -out /tmp/hs/tls.crt \
+          -subj '/CN=headscale' -addext 'subjectAltName=DNS:headscale'
+        sudo cp /tmp/hs/tls.crt /usr/local/share/ca-certificates/headscale.crt
+        sudo update-ca-certificates
+
+        URL="https://headscale:8443"
+
+        cat > config.yaml <<EOF
+        server_url: ${URL}
+        listen_addr: 0.0.0.0:8443
+        metrics_listen_addr: 127.0.0.1:9090
+        grpc_listen_addr: 127.0.0.1:50443
+        unix_socket: /tmp/hs/headscale.sock
+        unix_socket_permission: "0770"
+        private_key_path: /tmp/hs/private.key
+        noise:
+          private_key_path: /tmp/hs/noise.key
+        prefixes:
+          v4: 100.64.0.0/10
+          v6: fd7a:115c:a1e0::/48
+          allocation: sequential
+        derp:
+          server:
+            enabled: true
+            region_id: 999
+            region_code: headscale
+            region_name: Headscale Embedded DERP
+            stun_listen_addr: 0.0.0.0:3478
+            private_key_path: /tmp/hs/derp.key
+            automatically_add_embedded_derp_region: true
+          urls: []
+          auto_update_enabled: false
+          update_frequency: 1m
+        database:
+          type: sqlite
+          sqlite:
+            path: /tmp/hs/db.sqlite
+        dns:
+          base_domain: headscale.net
+          magic_dns: true
+          nameservers:
+            global:
+              - 1.1.1.1
+        tls_cert_path: /tmp/hs/tls.crt
+        tls_key_path: /tmp/hs/tls.key
+        policy:
+          mode: file
+          path: /tmp/hs/policy.hujson
+        EOF
+
+        cat > /tmp/hs/policy.hujson <<'EOF'
+        {
+          "tagOwners": { "tag:ci": [] },
+          "acls": [ { "action": "accept", "src": ["*"], "dst": ["*:*"] } ]
+        }
+        EOF
+
+        ./result/bin/headscale serve > /tmp/hs/serve.log 2>&1 &
+
+        # Wait for readiness via curl's own retry (no fixed sleeps).
+        curl -fsS --retry 60 --retry-delay 1 --retry-all-errors --cacert /tmp/hs/tls.crt \
+          "${URL}/health"
+
+        # Not UID: that is a readonly bash builtin.
+        USERID=$(./result/bin/headscale users create ci -o json | jq -r .id)
+        API_KEY=$(./result/bin/headscale apikeys create)
+        PREAUTH=$(./result/bin/headscale preauthkeys create --user "$USERID" --reusable)
+
+        echo "::add-mask::$API_KEY"
+        echo "::add-mask::$PREAUTH"
+        {
+          echo "url=${URL}"
+          echo "api_key=${API_KEY}"
+          echo "preauth=${PREAUTH}"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Join a regular node (already in the network)
+      id: prenode
+      shell: bash
+      env:
+        URL: ${{ steps.bootstrap.outputs.url }}
+        PREAUTH: ${{ steps.bootstrap.outputs.preauth }}
+      run: |
+        set -euo pipefail
+        nix profile install nixpkgs#tailscale
+
+        # Userspace networking: no tun/root needed. Distinct port so it does not
+        # collide with the action's own tailscaled later in the join jobs.
+        tailscaled --tun=userspace-networking --socket=/tmp/pre.sock \
+          --state=/tmp/pre.state --port=41642 > /tmp/pre-tailscaled.log 2>&1 &
+
+        timeout 30 bash -c 'until [ -S /tmp/pre.sock ]; do sleep 0.2; done'
+        timeout 120 tailscale --socket=/tmp/pre.sock up \
+          --authkey="$PREAUTH" --login-server="$URL" --hostname=pre-node
+
+        PRE_IP=$(tailscale --socket=/tmp/pre.sock ip -4)
+        echo "pre-joined node IP: $PRE_IP"
+        echo "pre_ip=${PRE_IP}" >> "$GITHUB_OUTPUT"
