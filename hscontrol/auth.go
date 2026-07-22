@@ -233,6 +233,20 @@ func (h *Headscale) handleLogout(
 			Msg("Node is not ephemeral, setting expiry instead of deleting")
 	}
 
+	// Tagged nodes have key expiry permanently disabled (they are owned by
+	// their tags, not a user, and never expire - KB 1068). Logging one out has
+	// no expiry semantics, so do not stamp an expiry on it: doing so leaves the
+	// node IsExpired() forever and it can never re-authenticate (#3371). The
+	// admin path `headscale nodes expire` remains free to set a deliberate
+	// expiry via SetNodeExpiry; only the logout path is guarded here.
+	if node.IsTagged() {
+		log.Debug().
+			EmbedObject(node).
+			Msg("Tagged node logout: not stamping expiry (tagged nodes never expire)")
+
+		return nodeToRegisterResponse(node), nil
+	}
+
 	// Update the internal state with the nodes new expiry, meaning it is
 	// logged out.
 	//

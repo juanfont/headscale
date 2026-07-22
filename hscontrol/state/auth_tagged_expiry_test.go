@@ -408,6 +408,151 @@ func TestAuthPathRejectsTaggedAndUserCoexistence(t *testing.T) {
 	require.ErrorIs(t, err, ErrAmbiguousNodeOwnership)
 }
 
+// TestIssue3371_TaggedNodeInteractiveReloginAfterLogout reproduces the
+// interactive/OIDC arm of https://github.com/juanfont/headscale/issues/3371
+// ("With no key (interactive): the register URL is printed and the login never
+// completes").
+//
+// A logout stamps a stale PAST expiry on a tagged node. When the node
+// re-authenticates through the auth path (HandleNodeFromAuthPath ->
+// applyAuthNodeUpdate), the tagged->tagged branch keeps the existing expiry
+// ("Tagged → Tagged: keep existing expiry (nil) - no action needed",
+// state.go). That comment assumes the existing expiry is nil; after a logout it
+// is a past timestamp, so the node stays expired. The fix must clear a stale
+// past expiry on a node that remains tagged (scoped to IsExpired(), so a
+// deliberate future expiry is preserved).
+func TestIssue3371_TaggedNodeInteractiveReloginAfterLogout(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+
+	database, err := db.NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	user := database.CreateUserForTest("interactive-user")
+	node := database.CreateRegisteredNodeForTest(user, "interactive-tagged")
+	machineKey := node.MachineKey
+	nodeID := node.ID
+	discoKey := node.DiscoKey
+
+	require.NoError(t, database.Close())
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	// Make the node tagged with a stale PAST expiry (the state a `tailscale
+	// logout` leaves behind). Leaving UserID nil but retaining User routes the
+	// re-auth through the convert-from-tag branch and lets the tag
+	// re-advertisement be permitted (mirrors TestTaggedReauthKeepsNilExpiry,
+	// which seeds Expiry=nil; here the only change is a past expiry).
+	past := time.Now().Add(-1 * time.Hour)
+	seeded, ok := s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
+		n.Tags = []string{"tag:foo"}
+		n.UserID = nil
+		n.User = user
+		n.Expiry = &past
+	})
+	require.True(t, ok)
+	require.True(t, seeded.IsTagged(), "precondition: node is tagged")
+	require.True(t, seeded.IsExpired(), "precondition: logout left the tagged node expired")
+
+	policy := fmt.Sprintf(`{"tagOwners":{"tag:foo":["%s@"]}}`, user.Name)
+	_, err = s.SetPolicy([]byte(policy))
+	require.NoError(t, err)
+	require.True(t, s.NodeCanHaveTag(seeded, "tag:foo"),
+		"precondition: tagged node is permitted to re-advertise tag:foo")
+
+	// Interactive/OIDC relogin: the client re-advertises the same tag (rotating
+	// its node key, as a real client does). The node must come back not-expired.
+	regData := &types.RegistrationData{
+		MachineKey: machineKey,
+		NodeKey:    key.NewNode().Public(),
+		DiscoKey:   discoKey,
+		Hostname:   "interactive-tagged",
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname:    "interactive-tagged",
+			RequestTags: []string{"tag:foo"},
+		},
+	}
+	authID := types.MustAuthID()
+	s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(regData))
+
+	relogged, _, err := s.HandleNodeFromAuthPath(
+		authID, types.UserID(user.ID), nil, util.RegisterMethodOIDC,
+	)
+	require.NoError(t, err)
+	require.True(t, relogged.Valid())
+
+	require.True(t, relogged.IsTagged(), "node stays tagged after interactive relogin")
+	require.False(t, relogged.IsExpired(),
+		"issue #3371: interactive relogin must clear the stale logout expiry")
+	require.Nil(t, relogged.AsStruct().Expiry,
+		"issue #3371: tagged node must have key-expiry disabled after interactive relogin")
+}
+
+// TestIssue3371_TaggedNodePastExpirySelfHealsOnReregister covers the 0.29.x
+// upgrade path: a tagged node broken by an OLDER headscale carries a past
+// expiry persisted in its DB row. After a restart (State reloads the row) it
+// comes back expired, and its next auth-key re-registration must self-heal it
+// by clearing the stale past expiry. This is the "part b" defensive clear.
+func TestIssue3371_TaggedNodePastExpirySelfHealsOnReregister(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+
+	_, err = s.SetPolicy([]byte(`{"tagOwners":{"tag:foo":["tagger@"]}}`))
+	require.NoError(t, err)
+
+	pak, err := s.CreatePreAuthKey(nil, true, false, nil, []string{"tag:foo"})
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+	regReq := tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey:  nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "broken-tagged"},
+	}
+	node, _, err := s.HandleNodeFromPreAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+
+	nodeID := node.ID()
+
+	// A prior (buggy) version persisted a past expiry on this tagged node.
+	past := time.Now().Add(-1 * time.Hour)
+	err = s.DB().NodeSetExpiry(nodeID, &past)
+	require.NoError(t, err)
+
+	// Restart: reload State from the same database file.
+	require.NoError(t, s.Close())
+
+	s2, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s2.Close() })
+
+	reloaded, ok := s2.GetNodeByID(nodeID)
+	require.True(t, ok)
+	require.True(t, reloaded.IsExpired(),
+		"precondition: a persisted past expiry survives restart and re-triggers the lockout")
+
+	// Re-register (rotating the node key). The stale past expiry must be cleared.
+	reregReq := tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey:  key.NewNode().Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "broken-tagged"},
+	}
+	healed, _, err := s2.HandleNodeFromPreAuthKey(reregReq, machineKey.Public())
+	require.NoError(t, err)
+	require.True(t, healed.IsTagged(), "node stays tagged")
+	require.False(t, healed.IsExpired(),
+		"issue #3371: re-registration must self-heal a tagged node broken by an older version")
+	require.Nil(t, healed.AsStruct().Expiry,
+		"issue #3371: self-healed tagged node must have key-expiry disabled (DB NULL)")
+	require.Equal(t, nodeID, healed.ID(), "must be the same node")
+}
+
 // TestTaggedNodeCanHaveKeyExpiry matches Tailscale: a tagged node has key
 // expiry disabled by default, but it can still be set explicitly (e.g. via
 // `headscale nodes expire`).

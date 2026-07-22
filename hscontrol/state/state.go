@@ -1801,8 +1801,14 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 			} else {
 				node.Expiry = regData.Expiry
 			}
+		case isTagged && node.IsExpired():
+			// Tagged → Tagged, but carrying a stale PAST expiry from an older
+			// headscale's logout stamp (#3371). Tagged nodes never expire, so
+			// clear it; a deliberate future expiry has IsExpired() == false and
+			// falls through to the no-op below.
+			node.Expiry = nil
 		}
-		// Tagged → Tagged: keep existing expiry (nil) - no action needed
+		// Tagged → Tagged with no stale expiry: keep existing expiry - no action.
 
 		// Apply default node expiry for non-tagged nodes when the
 		// resolved expiry is still nil or zero (e.g., CLI registration
@@ -2421,7 +2427,14 @@ func (s *State) HandleNodeFromPreAuthKey(
 	// must present a valid key. Without this a node that re-uses its NodeKey
 	// after expiry would skip validation and be re-authorised with a spent or
 	// expired key; the boundary must not depend on the client rotating its key.
+	//
+	// Tagged nodes are excluded: they never expire (KB 1068), so an
+	// IsExpired() tagged node only reflects a stale logout stamp left by an
+	// older headscale (#3371). Forcing it down the re-validation path burns its
+	// fresh key and blocks re-auth forever; treat it as a plain re-registration
+	// and clear the stale expiry in the update below.
 	isExpired := existsSameUser && existingNodeSameUser.Valid() &&
+		!existingNodeSameUser.IsTagged() &&
 		existingNodeSameUser.IsExpired()
 
 	// A tagged key presented for a currently user-owned node converts that node
@@ -2557,6 +2570,13 @@ func (s *State) HandleNodeFromPreAuthKey(
 				} else {
 					node.Expiry = nil
 				}
+			} else if node.IsExpired() {
+				// #3371: a tagged node must never carry key expiry. Clear a
+				// stale PAST expiry left by a logout (older headscale) so
+				// re-auth is not permanently blocked. A deliberate future
+				// expiry (headscale nodes expire) has IsExpired() == false and
+				// is left untouched.
+				node.Expiry = nil
 			}
 		})
 

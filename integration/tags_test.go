@@ -3203,3 +3203,202 @@ func TestTagsAuthKeyConvertToUserViaCLIRegister(t *testing.T) {
 		}
 	}, integrationutil.HAConvergeTimeout, 1*time.Second, "node should be user-owned after conversion via CLI register")
 }
+
+// TestTaggedNodeLogoutReloginSingleUseKeyOnline reproduces issue #3371
+// end-to-end with a real tailscale client: a tagged node registered with a
+// single-use key logs out (`tailscale logout`) and re-authenticates with a
+// FRESH single-use tagged key. Tagged nodes never expire (KB 1068), so logout
+// must not stamp an expiry; before the fix the node was left permanently
+// expired and the fresh key was consumed on a re-registration that still
+// reported NodeKeyExpired, locking the node out forever.
+//
+// The observable proof at the integration level is that after relogin the node
+// is back online with a NULL expiry and the same node ID — not stuck expired.
+//
+// https://github.com/juanfont/headscale/issues/3371
+func TestTaggedNodeLogoutReloginSingleUseKeyOnline(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		NodesPerUser: 0,
+		Users:        []string{tagTestUser},
+	}
+
+	scenario, err := NewScenario(spec)
+
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{},
+		hsic.WithACLPolicy(tagsTestPolicy()),
+		hsic.WithTestName("tags-logout-single"),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+
+	userMap, err := headscale.MapUsers()
+	require.NoError(t, err)
+
+	userID := mustParseID(userMap[tagTestUser].Id)
+
+	// KEY1: single-use tag:valid-owned. Initial join.
+	key1, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})
+	require.NoError(t, err)
+
+	client, err := scenario.CreateTailscaleNode(
+		"head",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+	)
+	require.NoError(t, err)
+
+	err = client.Login(headscale.GetEndpoint(), key1.Key)
+	require.NoError(t, err)
+
+	var initialNodeID uint64
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1)
+
+		if len(nodes) == 1 {
+			initialNodeID = mustParseID(nodes[0].Id)
+			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
+			assert.Nil(c, nodes[0].Expiry, "tagged node must have no expiry")
+		}
+	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "waiting for initial registration")
+
+	// `tailscale logout`. A tagged node must not be expired by this.
+	err = client.Logout()
+	require.NoError(t, err)
+
+	err = client.WaitForNeedsLogin(integrationutil.ScaledTimeout(60 * time.Second))
+	require.NoError(t, err)
+
+	// The node must remain in the DB, tagged, and crucially NOT carry a
+	// stale expiry. This is the #3371 root cause (a) surface.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1, "node must persist through logout")
+
+		if len(nodes) == 1 {
+			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
+			assert.Nil(c, nodes[0].Expiry, "#3371: logout must not stamp expiry on a tagged node")
+		}
+	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "tagged node must survive logout without expiry")
+
+	// KEY2: a FRESH single-use tagged key. Relogin.
+	key2, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})
+	require.NoError(t, err)
+
+	err = client.Login(headscale.GetEndpoint(), key2.Key)
+	require.NoError(t, err,
+		"#3371: a fresh key must re-authenticate the tagged node after logout")
+
+	// Back online, same node, still tagged, still no expiry.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1, "must not duplicate the node")
+
+		if len(nodes) == 1 {
+			assert.Equal(c, initialNodeID, mustParseID(nodes[0].Id), "node ID must be unchanged")
+			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
+			assert.Nil(c, nodes[0].Expiry, "#3371: tagged node must have no expiry after relogin")
+			assert.True(c, nodes[0].Online, "#3371: tagged node must be online after relogin, not stuck expired")
+		}
+	}, integrationutil.ScaledTimeout(60*time.Second), integrationutil.SlowPoll, "tagged node must come back online after relogin")
+
+	t.Logf("Test #3371 PASS: tagged node logged out and re-authenticated online with a fresh single-use key")
+}
+
+// TestTaggedNodeLogoutReloginReusableKeyOnline is the reusable-key variant of
+// issue #3371 (the "tailscale up hangs indefinitely" report). With a reusable
+// key the relogin does not hit "authkey already used", but before the fix the
+// node still stayed expired, so the client never observed a non-expired node.
+// The observable proof is the same: online with NULL expiry after relogin.
+//
+// https://github.com/juanfont/headscale/issues/3371
+func TestTaggedNodeLogoutReloginReusableKeyOnline(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		NodesPerUser: 0,
+		Users:        []string{tagTestUser},
+	}
+
+	scenario, err := NewScenario(spec)
+
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{},
+		hsic.WithACLPolicy(tagsTestPolicy()),
+		hsic.WithTestName("tags-logout-reuse"),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+
+	userMap, err := headscale.MapUsers()
+	require.NoError(t, err)
+
+	userID := mustParseID(userMap[tagTestUser].Id)
+
+	// A single REUSABLE tag:valid-owned key used for both login and relogin.
+	key, err := scenario.CreatePreAuthKeyWithTags(userID, true, false, []string{"tag:valid-owned"})
+	require.NoError(t, err)
+
+	client, err := scenario.CreateTailscaleNode(
+		"head",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+	)
+	require.NoError(t, err)
+
+	err = client.Login(headscale.GetEndpoint(), key.Key)
+	require.NoError(t, err)
+
+	var initialNodeID uint64
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1)
+
+		if len(nodes) == 1 {
+			initialNodeID = mustParseID(nodes[0].Id)
+			assert.Nil(c, nodes[0].Expiry, "tagged node must have no expiry")
+		}
+	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "waiting for initial registration")
+
+	err = client.Logout()
+	require.NoError(t, err)
+
+	err = client.WaitForNeedsLogin(integrationutil.ScaledTimeout(60 * time.Second))
+	require.NoError(t, err)
+
+	// Relogin with the SAME reusable key.
+	err = client.Login(headscale.GetEndpoint(), key.Key)
+	require.NoError(t, err)
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1, "must not duplicate the node")
+
+		if len(nodes) == 1 {
+			assert.Equal(c, initialNodeID, mustParseID(nodes[0].Id), "node ID must be unchanged")
+			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
+			assert.Nil(c, nodes[0].Expiry, "#3371: tagged node must have no expiry after reusable-key relogin")
+			assert.True(c, nodes[0].Online, "#3371: tagged node must be online after reusable-key relogin")
+		}
+	}, integrationutil.ScaledTimeout(60*time.Second), integrationutil.SlowPoll, "tagged node must come back online after reusable-key relogin")
+
+	t.Logf("Test #3371 PASS: tagged node logged out and re-authenticated online with a reusable key")
+}

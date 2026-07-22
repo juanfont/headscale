@@ -379,6 +379,8 @@ jobs:
           - TestTagsAuthKeyWithoutUserInheritsTags
           - TestTagsAuthKeyWithoutUserRejectsAdvertisedTags
           - TestTagsAuthKeyConvertToUserViaCLIRegister
+          - TestTaggedNodeLogoutReloginSingleUseKeyOnline
+          - TestTaggedNodeLogoutReloginReusableKeyOnline
           - TestTS2021WebSocketGET
           - TestTS2021WASMClientUnderNode
           - TestTailscaleRustAxum

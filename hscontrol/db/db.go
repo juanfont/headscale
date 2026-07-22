@@ -900,6 +900,33 @@ WHERE user_id IS NULL
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			{
+				// Clear stale key expiry on tagged nodes. A tagged node is
+				// owned by its tags and never expires (KB 1068), but a buggy
+				// handleLogout stamped a past expiry on it, leaving it
+				// permanently Expired and unable to re-authenticate. The
+				// buggy writer is fixed, so this only repairs rows written
+				// before the upgrade; a fixed server cannot recreate them.
+				// Match the tagged-node predicate the earlier
+				// clear-tagged-node-user-id migration uses (a nil tags slice
+				// marshals to 'null', so exclude it).
+				// Fixes: https://github.com/juanfont/headscale/issues/3371
+				ID: "202607241200-clear-tagged-node-expiry",
+				Migrate: func(tx *gorm.DB) error {
+					err := tx.Exec(`
+UPDATE nodes
+SET expiry = NULL
+WHERE tags IS NOT NULL AND tags != '[]' AND tags != '' AND tags != 'null'
+	AND expiry IS NOT NULL;
+						`).Error
+					if err != nil {
+						return fmt.Errorf("clearing expiry on tagged nodes: %w", err)
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
