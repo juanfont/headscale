@@ -340,6 +340,8 @@ jobs:
           - TestTagsAuthKeyWithTagCannotAddViaCLI
           - TestTagsAuthKeyWithTagCannotChangeViaCLI
           - TestTagsAuthKeyWithTagAdminOverrideReauthPreserves
+          - TestTagsReauthDifferentKeyRetagsNode
+          - TestTagsReauthDifferentKeyRemovesTag
           - TestTagsAuthKeyWithTagCLICannotModifyAdminTags
           - TestTagsAuthKeyWithoutTagCannotRequestTags
           - TestTagsAuthKeyWithoutTagRegisterNoTags
