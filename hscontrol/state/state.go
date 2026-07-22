@@ -1707,7 +1707,17 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 	// Validate tags BEFORE calling [NodeStore.UpdateNode] to ensure we don't modify
 	// [NodeStore] if validation fails. This maintains consistency between [NodeStore]
 	// and database.
-	rejectedTags := s.validateRequestTags(params.ExistingNode, requestTags)
+	//
+	// A tag-owned node carries no user and its IP is not in any tag owner's set,
+	// so checking the node alone rejects every tag on re-auth (#3374). Authorise
+	// against the authenticating user too: they are the one presenting the
+	// credential and may own the requested tags.
+	var authUser types.UserView
+	if params.User != nil {
+		authUser = params.User.View()
+	}
+
+	rejectedTags := s.validateRequestTagsForReauth(params.ExistingNode, authUser, requestTags)
 	if len(rejectedTags) > 0 {
 		return types.NodeView{}, fmt.Errorf(
 			"%w %v are invalid or not permitted",
@@ -1829,8 +1839,21 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 	// Persist to database.
 	// Explicitly select all node columns so GORM includes nil/zero-value fields
 	// (see nodeUpdateColumns comment).
+	//
+	// AuthKeyID is excluded from nodeUpdateColumns (#2862: never persist a
+	// possibly-deleted key's stale reference on the shared update path). But
+	// when a re-auth untags a node it clears AuthKeyID to nil (above), and that
+	// must persist or the node reloads as tagged/ephemeral after a restart and
+	// is garbage-collected. Writing NULL can never cause an FK error, so include
+	// the column only in that clearing case; the other transitions keep the
+	// #2862-safe column set untouched.
+	updateColumns := nodeUpdateColumns
+	if !updatedNodeView.AuthKeyID().Valid() {
+		updateColumns = append(slices.Clone(nodeUpdateColumns), "AuthKeyID")
+	}
+
 	_, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-		err := tx.Select(nodeUpdateColumns).Updates(updatedNodeView.AsStruct()).Error
+		err := tx.Select(updateColumns).Updates(updatedNodeView.AsStruct()).Error
 		if err != nil {
 			return nil, fmt.Errorf("saving node: %w", err)
 		}
@@ -2034,6 +2057,34 @@ func (s *State) validateRequestTags(node types.NodeView, requestTags []string) [
 	return rejectedTags
 }
 
+// validateRequestTagsForReauth authorises re-auth request tags against the
+// existing node OR the authenticating user. A tag-owned node (#3374) has no
+// user and its IP is in no owner set, so NodeCanHaveTag alone rejects every
+// tag; the authenticating user who owns the tags must also be consulted.
+// Tags neither the node nor the user owns are still rejected, so this
+// authorises the user, it does not skip authorisation.
+func (s *State) validateRequestTagsForReauth(node types.NodeView, authUser types.UserView, requestTags []string) []string {
+	if len(requestTags) == 0 {
+		return nil
+	}
+
+	var rejectedTags []string
+
+	for _, tag := range requestTags {
+		if s.polMan.NodeCanHaveTag(node, tag) {
+			continue
+		}
+
+		if authUser.Valid() && s.polMan.UserCanHaveTag(authUser, tag) {
+			continue
+		}
+
+		rejectedTags = append(rejectedTags, tag)
+	}
+
+	return rejectedTags
+}
+
 // processReauthTags handles tag changes during node re-authentication.
 // It processes RequestTags from the client and updates node tags accordingly.
 // Returns rejected tags (if any) for post-validation error handling.
@@ -2068,16 +2119,34 @@ func (s *State) processReauthTags(
 			node.Tags = []string{}
 			node.UserID = &user.ID
 			node.User = user
+
+			// The node is no longer tagged, so it must not keep a reference to
+			// the tagged auth key. Leaving AuthKey set means a node created by a
+			// tagged+ephemeral key stays IsEphemeral() after converting to
+			// user-owned and is garbage-collected on its next disconnect,
+			// silently deleting the user's just-claimed device. Clearing the
+			// reference is persisted via the AuthKeyID column added to this
+			// path's write below.
+			node.AuthKey = nil
+			node.AuthKeyID = nil
 		}
 
 		return nil
 	}
 
-	// Non-empty RequestTags: validate and apply
+	// Non-empty RequestTags: validate and apply. Authorise each tag against the
+	// node OR the authenticating user, matching the pre-check in
+	// validateRequestTagsForReauth. Without the user half, a tag-owned node
+	// (#3374) has every tag rejected here even after the pre-check passed, so
+	// this returns the tags as rejected and the re-advertised tag is silently
+	// dropped despite a success response.
+	authUser := user.View()
+
 	var approvedTags, rejectedTags []string
 
 	for _, tag := range requestTags {
-		if s.polMan.NodeCanHaveTag(node.View(), tag) {
+		if s.polMan.NodeCanHaveTag(node.View(), tag) ||
+			(authUser.Valid() && s.polMan.UserCanHaveTag(authUser, tag)) {
 			approvedTags = append(approvedTags, tag)
 		} else {
 			rejectedTags = append(rejectedTags, tag)

@@ -408,6 +408,445 @@ func TestAuthPathRejectsTaggedAndUserCoexistence(t *testing.T) {
 	require.ErrorIs(t, err, ErrAmbiguousNodeOwnership)
 }
 
+// seededTaggedNode holds the identity of a node seeded into the genuinely
+// tag-owned state, so re-auth tests can drive HandleNodeFromAuthPath and then
+// re-read the node to assert its post-conditions.
+type seededTaggedNode struct {
+	s       *State
+	regData *types.RegistrationData
+	id      types.NodeID
+	cfg     *types.Config
+}
+
+// seedTagOwnedNode registers a node under a seed user, then rewrites it into the
+// genuinely tag-owned state that `tailscale up --advertise-tags` produces:
+// tagged, with neither UserID nor User set. This is the shape the issue #3374
+// DB dump shows (`user_id: None`), and the shape that CreateRegisteredNodeForTest
+// alone does not produce (it leaves a real user attached).
+//
+// createdByName controls the retained "created by" user: "" reproduces the pure
+// tag-owned state (issue #3374); a non-empty name reproduces a node that kept a
+// created-by User (UserID still nil) — used to prove authorisation keys off the
+// authenticating user, not the created-by user. When set, that user is created
+// in the DB so it resolves in policy.
+func seedTagOwnedNode(t *testing.T, tags []string, createdByName string) seededTaggedNode {
+	t.Helper()
+
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+
+	database, err := db.NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	seedUser := database.CreateUserForTest("seed")
+	node := database.CreateRegisteredNodeForTest(seedUser, "tagged-node")
+
+	var createdBy *types.User
+	if createdByName != "" {
+		createdBy = database.CreateUserForTest(createdByName)
+	}
+
+	regData := &types.RegistrationData{
+		MachineKey: node.MachineKey,
+		NodeKey:    node.NodeKey,
+		DiscoKey:   node.DiscoKey,
+		Hostname:   "tagged-node",
+	}
+
+	require.NoError(t, database.Close())
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	// Genuinely tag-owned: tags set, UserID nil. UserID nil indexes the node
+	// under userID 0, so HandleNodeFromAuthPath takes the convert-from-tag
+	// branch — the path the issue exercises. User mirrors createdBy.
+	seeded, ok := s.nodeStore.UpdateNode(node.ID, func(n *types.Node) {
+		n.Tags = tags
+		n.UserID = nil
+		n.User = createdBy
+		n.Expiry = nil
+	})
+	require.True(t, ok)
+	require.True(t, seeded.IsTagged(), "precondition: node must be tagged")
+
+	return seededTaggedNode{s: s, regData: regData, id: node.ID, cfg: cfg}
+}
+
+// reopen closes the current State and reloads it from the same database, so a
+// test can assert that a mutation was actually persisted (not just applied to
+// the in-memory NodeStore). Returns the reloaded node view.
+func (n seededTaggedNode) reopen(t *testing.T) types.NodeView {
+	t.Helper()
+
+	require.NoError(t, n.s.Close())
+
+	s2, err := NewState(n.cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s2.Close() })
+
+	v, ok := s2.GetNodeByID(n.id)
+	require.True(t, ok, "node must reload from DB after restart")
+
+	return v
+}
+
+// reauth replays an interactive re-auth (OIDC/CLI) of the seeded tag-owned
+// machine as authUser, advertising requestTags. clientExpiry is the expiry the
+// tailscale client requests (nil for none); it must be ignored while the node
+// stays tagged.
+func (n seededTaggedNode) reauth(t *testing.T, authUser *types.User, requestTags []string, clientExpiry *time.Time) (types.NodeView, error) {
+	t.Helper()
+
+	// Sync the policy manager's user cache. Production keeps it current because
+	// State.CreateUser refreshes it on every user creation; the CreateUserForTest
+	// DB helper does not, so tests that create the authenticating user after
+	// NewState must sync before tag authorisation can resolve them as a tag owner.
+	require.NoError(t, n.s.UpdatePolicyManagerUsersForTest())
+
+	rd := *n.regData
+	rd.Hostinfo = &tailcfg.Hostinfo{
+		Hostname:    n.regData.Hostname,
+		RequestTags: requestTags,
+	}
+	rd.Expiry = clientExpiry
+
+	authID := types.MustAuthID()
+	n.s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&rd))
+
+	node, _, err := n.s.HandleNodeFromAuthPath(
+		authID,
+		types.UserID(authUser.ID),
+		nil,
+		util.RegisterMethodOIDC,
+	)
+
+	return node, err
+}
+
+// get re-reads the seeded node from the store.
+func (n seededTaggedNode) get(t *testing.T) types.NodeView {
+	t.Helper()
+
+	v, ok := n.s.GetNodeByID(n.id)
+	require.True(t, ok, "seeded node must still exist")
+
+	return v
+}
+
+// TestTaggedReauthAddTagAsOwner reproduces issue #3374 with the issue's own
+// scenario: a tag-owned node holding tag:tag1 re-authenticates with
+// --advertise-tags=tag:tag1,tag:tag2, and the authenticating user (ci-admin,
+// via group:ci) owns BOTH tags. Today headscale rejects the whole set as
+// "invalid or not permitted", leaving the re-keyed node logged out.
+//
+// This is stronger than re-advertising the already-held set: it exercises BOTH
+// authorization checks on the reauth path, which both ask "can this NODE have
+// the tag" instead of "can the authenticating USER apply it":
+//
+//  1. the pre-check validateRequestTags (state.go, before NodeStore.UpdateNode);
+//  2. the apply-time re-check inside processReauthTags (state.go), whose
+//     rejection return is discarded (`_ =`) on the assumption that the
+//     pre-check already passed.
+//
+// A fix that only addresses (1) makes the call return success while
+// processReauthTags silently drops the newly-requested tag — so this test
+// asserts on the resulting tag SET, not merely on the absence of an error.
+//
+// https://github.com/juanfont/headscale/issues/3374
+func TestTaggedReauthAddTagAsOwner(t *testing.T) {
+	n := seedTagOwnedNode(t, []string{"tag:tag1"}, "")
+
+	admin := n.s.CreateUserForTest("ci-admin")
+
+	// Mirror the issue's acl.json: group:ci = [ci-admin], and group:ci owns
+	// both tags. Ownership through a group is part of the reported scenario.
+	policy := fmt.Sprintf(
+		`{"groups":{"group:ci":["%s@"]},"tagOwners":{"tag:tag1":["group:ci"],"tag:tag2":["group:ci"]}}`,
+		admin.Name,
+	)
+	_, err := n.s.SetPolicy([]byte(policy))
+	require.NoError(t, err)
+
+	// Client requests an expiry; a node that stays tagged must ignore it.
+	clientExpiry := time.Now().Add(180 * 24 * time.Hour)
+	finalNode, err := n.reauth(t, admin, []string{"tag:tag1", "tag:tag2"}, &clientExpiry)
+	require.NoError(t, err,
+		"tag owner re-authenticating a tagged node with owned tags must be permitted (issue #3374)")
+	require.True(t, finalNode.Valid())
+	require.True(t, finalNode.IsTagged(), "node must remain tagged")
+
+	// The whole point of the re-auth: the node must actually carry both tags.
+	// A fix that only silences the pre-check leaves tag:tag2 dropped here.
+	require.ElementsMatch(t, []string{"tag:tag1", "tag:tag2"}, finalNode.Tags().AsSlice(),
+		"node must hold the full re-advertised owned tag set, not a silently truncated one")
+
+	// Tag ownership invariants matching the issue's DB dump (user_id None,
+	// expiry None): a tagged node stays user-less and never expires.
+	require.False(t, finalNode.User().Valid(), "tagged node must carry no user (user_id None)")
+	require.Nil(t, finalNode.AsStruct().Expiry,
+		"tagged node keeps nil key expiry; the client-requested expiry must be ignored")
+}
+
+// TestTaggedReauthSameTagAsOwner covers the issue's minimal claim: "at minimum,
+// a device should be able to re-authenticate with the same tag set it already
+// holds, which is also rejected today." Node is tag-owned (no user), tagger owns
+// the tag, re-auth re-advertises exactly the held tag.
+func TestTaggedReauthSameTagAsOwner(t *testing.T) {
+	n := seedTagOwnedNode(t, []string{"tag:foo"}, "")
+
+	tagger := n.s.CreateUserForTest("tagger")
+	_, err := n.s.SetPolicy(fmt.Appendf(nil, `{"tagOwners":{"tag:foo":["%s@"]}}`, tagger.Name))
+	require.NoError(t, err)
+
+	finalNode, err := n.reauth(t, tagger, []string{"tag:foo"}, nil)
+	require.NoError(t, err,
+		"tagged node re-advertising the same owned tag must be permitted (issue #3374)")
+	require.True(t, finalNode.IsTagged(), "node must remain tagged")
+	require.ElementsMatch(t, []string{"tag:foo"}, finalNode.Tags().AsSlice())
+	require.False(t, finalNode.User().Valid(), "tagged node must carry no user")
+	require.Nil(t, finalNode.AsStruct().Expiry, "tagged node keeps nil key expiry")
+}
+
+// TestTaggedReauthRemoveTagAsOwner is a P0 silent-data-loss guard: a tag-owned
+// node holding [tag:tag1, tag:tag2] re-auths advertising only [tag:tag1]. The
+// dropped tag must actually be removed. A fix that only relaxes the pre-check
+// leaves processReauthTags rejecting every tag, so the node silently retains
+// both — a success return with the wrong tag set.
+func TestTaggedReauthRemoveTagAsOwner(t *testing.T) {
+	n := seedTagOwnedNode(t, []string{"tag:tag1", "tag:tag2"}, "")
+
+	owner := n.s.CreateUserForTest("owner")
+	policy := fmt.Sprintf(
+		`{"tagOwners":{"tag:tag1":["%s@"],"tag:tag2":["%s@"]}}`,
+		owner.Name, owner.Name,
+	)
+	_, err := n.s.SetPolicy([]byte(policy))
+	require.NoError(t, err)
+
+	finalNode, err := n.reauth(t, owner, []string{"tag:tag1"}, nil)
+	require.NoError(t, err, "owner narrowing an owned tag set must be permitted")
+	require.True(t, finalNode.IsTagged(), "node still tagged (tag:tag1 remains)")
+	require.ElementsMatch(t, []string{"tag:tag1"}, finalNode.Tags().AsSlice(),
+		"tag:tag2 must be removed, not silently retained")
+	require.Nil(t, finalNode.AsStruct().Expiry, "tagged node keeps nil key expiry")
+	require.Equal(t, 1, n.s.ListNodes().Len(), "machine must map to exactly one node")
+}
+
+// TestTaggedReauthReplaceTagSetAsOwner is a P0 silent-data-loss guard: a
+// tag-owned node holding [tag:tag1] re-auths advertising an entirely different
+// owned tag [tag:tag2]. The node must end up on tag:tag2 only, not silently keep
+// tag:tag1.
+func TestTaggedReauthReplaceTagSetAsOwner(t *testing.T) {
+	n := seedTagOwnedNode(t, []string{"tag:tag1"}, "")
+
+	owner := n.s.CreateUserForTest("owner")
+	policy := fmt.Sprintf(
+		`{"tagOwners":{"tag:tag1":["%s@"],"tag:tag2":["%s@"]}}`,
+		owner.Name, owner.Name,
+	)
+	_, err := n.s.SetPolicy([]byte(policy))
+	require.NoError(t, err)
+
+	finalNode, err := n.reauth(t, owner, []string{"tag:tag2"}, nil)
+	require.NoError(t, err, "owner replacing one owned tag with another must be permitted")
+	require.True(t, finalNode.IsTagged())
+	require.ElementsMatch(t, []string{"tag:tag2"}, finalNode.Tags().AsSlice(),
+		"node must switch to tag:tag2 only, not silently keep tag:tag1")
+}
+
+// TestTaggedReauthAuthUserOwnsNotCreatedBy is the purest statement of the bug:
+// the node retains a created-by User who does NOT own the tag, while the
+// authenticating user DOES. Authorisation must key off the authenticating user,
+// so this must be permitted. (Before the fix, NodeCanHaveTag consults the
+// created-by user and rejects.)
+func TestTaggedReauthAuthUserOwnsNotCreatedBy(t *testing.T) {
+	n := seedTagOwnedNode(t, []string{"tag:foo"}, "creator")
+
+	admin := n.s.CreateUserForTest("admin")
+
+	// Only admin owns tag:foo; the created-by "creator" does not.
+	_, err := n.s.SetPolicy(fmt.Appendf(nil, `{"tagOwners":{"tag:foo":["%s@"]}}`, admin.Name))
+	require.NoError(t, err)
+
+	finalNode, err := n.reauth(t, admin, []string{"tag:foo"}, nil)
+	require.NoError(t, err,
+		"authorisation must key off the authenticating user, not the created-by user")
+	require.True(t, finalNode.IsTagged())
+	require.ElementsMatch(t, []string{"tag:foo"}, finalNode.Tags().AsSlice())
+}
+
+// TestTaggedReauthUntagReturnsToAuthUser covers tagged->user: re-auth with empty
+// RequestTags untags the node and returns ownership to the authenticating user,
+// with the client-requested expiry now applied (tagged nodes have no expiry;
+// user-owned nodes do). The untagging user need not own the tag.
+func TestTaggedReauthUntagReturnsToAuthUser(t *testing.T) {
+	n := seedTagOwnedNode(t, []string{"tag:foo"}, "")
+
+	alice := n.s.CreateUserForTest("alice")
+	// alice does not own tag:foo; untagging (empty RequestTags) is always allowed.
+	_, err := n.s.SetPolicy([]byte(`{"tagOwners":{"tag:foo":["someone-else@"]}}`))
+	require.NoError(t, err)
+
+	clientExpiry := time.Now().Add(90 * 24 * time.Hour)
+	finalNode, err := n.reauth(t, alice, []string{}, &clientExpiry)
+	require.NoError(t, err, "untagging via empty RequestTags must always be permitted")
+	require.False(t, finalNode.IsTagged(), "node must become user-owned")
+	require.Empty(t, finalNode.Tags().AsSlice())
+	require.True(t, finalNode.User().Valid(), "ownership returns to a user")
+	require.Equal(t, alice.ID, finalNode.User().ID(),
+		"ownership returns to the authenticating user")
+	require.NotNil(t, finalNode.AsStruct().Expiry,
+		"a now-user-owned node takes the client-requested expiry")
+}
+
+// TestTaggedReauthUntagClearsEphemeralAuthKey guards the interactive-path mirror
+// of the #3370 ephemeral bug: a node created by a tagged *ephemeral* pre-auth
+// key, then untagged via an interactive re-auth, must not keep the ephemeral key
+// reference. Otherwise it stays IsEphemeral() and is garbage-collected on its
+// next disconnect, silently deleting the user's just-claimed device — and the
+// stale reference survives a control-plane restart via the reloaded AuthKeyID.
+func TestTaggedReauthUntagClearsEphemeralAuthKey(t *testing.T) {
+	n := seedTagOwnedNode(t, []string{"tag:foo"}, "")
+
+	alice := n.s.CreateUserForTest("alice")
+	_, err := n.s.SetPolicy([]byte(`{"tagOwners":{"tag:foo":["someone-else@"]}}`))
+	require.NoError(t, err)
+
+	// Attach a tagged, ephemeral auth key to the seeded node (the shape a
+	// `tailscale up --authkey <ephemeral tagged key>` node has).
+	ephKey, err := n.s.CreatePreAuthKey(nil, false, true /*ephemeral*/, nil, []string{"tag:foo"})
+	require.NoError(t, err)
+	pak, err := n.s.GetPreAuthKeyByID(ephKey.ID)
+	require.NoError(t, err)
+
+	seeded, ok := n.s.nodeStore.UpdateNode(n.id, func(nd *types.Node) {
+		nd.AuthKey = pak
+		nd.AuthKeyID = &pak.ID
+	})
+	require.True(t, ok)
+	require.True(t, seeded.IsEphemeral(), "precondition: node is ephemeral (tagged ephemeral key)")
+
+	// Untag via interactive re-auth (empty RequestTags).
+	finalNode, err := n.reauth(t, alice, []string{}, nil)
+	require.NoError(t, err)
+	require.False(t, finalNode.IsTagged(), "node must become user-owned")
+	require.False(t, finalNode.IsEphemeral(),
+		"untagged node must not keep the ephemeral auth-key reference")
+	require.False(t, finalNode.AuthKeyID().Valid(),
+		"auth key reference must be cleared when a node is untagged")
+
+	// Confirm the cleared reference is PERSISTED, not just applied in memory:
+	// reload the State from the database and assert the node is still
+	// non-ephemeral. This is what fails if AuthKeyID is not written on the
+	// untag path — the node reloads as ephemeral and gets GC-deleted.
+	reloaded := n.reopen(t)
+	require.False(t, reloaded.IsEphemeral(),
+		"untagged node must remain non-ephemeral after a control-plane restart")
+	require.False(t, reloaded.AuthKeyID().Valid(),
+		"cleared auth key reference must persist across restart")
+}
+
+// TestTaggedReauthRejectsUnownedTag pins the security boundary: the fix
+// authorises the authenticating user, it must not skip authorisation. A tag the
+// authenticating user does not own is still rejected, and the node is left
+// byte-for-byte unchanged — same tags, same node key (NOT rotated), no user,
+// nil expiry — matching the issue's post-rejection DB/nodes-list state.
+func TestTaggedReauthRejectsUnownedTag(t *testing.T) {
+	n := seedTagOwnedNode(t, []string{"tag:foo"}, "")
+
+	tagger := n.s.CreateUserForTest("tagger")
+	other := n.s.CreateUserForTest("other")
+
+	// tagger owns tag:foo; tag:bar is owned by a different user.
+	policy := fmt.Sprintf(
+		`{"tagOwners":{"tag:foo":["%s@"],"tag:bar":["%s@"]}}`,
+		tagger.Name, other.Name,
+	)
+	_, err := n.s.SetPolicy([]byte(policy))
+	require.NoError(t, err)
+
+	before := n.get(t)
+	beforeKey := before.NodeKey()
+
+	_, err = n.reauth(t, tagger, []string{"tag:foo", "tag:bar"}, nil)
+	require.Error(t, err,
+		"a tag the authenticating user does not own must still be rejected")
+	require.ErrorIs(t, err, ErrRequestedTagsInvalidOrNotPermitted)
+
+	// The rejected re-auth must not have mutated the node. Validation runs before
+	// NodeStore.UpdateNode, so tags, ownership, expiry and the node key are all
+	// preserved (issue's nodes-list-after-failed-reauth still shows the old key).
+	after := n.get(t)
+	require.ElementsMatch(t, []string{"tag:foo"}, after.Tags().AsSlice(), "tags unchanged")
+	require.True(t, after.IsTagged())
+	require.False(t, after.User().Valid(), "still no user (user_id None)")
+	require.Nil(t, after.AsStruct().Expiry, "expiry unchanged")
+	require.Equal(t, beforeKey, after.NodeKey(),
+		"node key must not be rotated on a rejected re-auth")
+	require.Equal(t, 1, n.s.ListNodes().Len())
+}
+
+// TestTaggedReauthUndefinedTagRejected covers the distinct NodeCanHaveTag branch
+// where a requested tag is not defined in the policy at all (vs. defined but
+// owned by another user). The owned tag alone would pass; the undefined tag must
+// force rejection of the whole set.
+func TestTaggedReauthUndefinedTagRejected(t *testing.T) {
+	n := seedTagOwnedNode(t, []string{"tag:foo"}, "")
+
+	owner := n.s.CreateUserForTest("owner")
+	_, err := n.s.SetPolicy(fmt.Appendf(nil, `{"tagOwners":{"tag:foo":["%s@"]}}`, owner.Name))
+	require.NoError(t, err)
+
+	_, err = n.reauth(t, owner, []string{"tag:foo", "tag:undefined"}, nil)
+	require.Error(t, err, "a tag not defined in policy must be rejected")
+	require.ErrorIs(t, err, ErrRequestedTagsInvalidOrNotPermitted)
+
+	after := n.get(t)
+	require.ElementsMatch(t, []string{"tag:foo"}, after.Tags().AsSlice(), "node unchanged on rejection")
+}
+
+// TestTaggedReauthDuplicateTagsDeduped guards the slices.Compact in
+// processReauthTags: an owner re-advertising the same tag twice must succeed and
+// the node must hold a single copy.
+func TestTaggedReauthDuplicateTagsDeduped(t *testing.T) {
+	n := seedTagOwnedNode(t, []string{"tag:foo"}, "")
+
+	owner := n.s.CreateUserForTest("owner")
+	_, err := n.s.SetPolicy(fmt.Appendf(nil, `{"tagOwners":{"tag:foo":["%s@"]}}`, owner.Name))
+	require.NoError(t, err)
+
+	finalNode, err := n.reauth(t, owner, []string{"tag:foo", "tag:foo"}, nil)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"tag:foo"}, finalNode.Tags().AsSlice(),
+		"duplicate requested tags must be deduped to a single tag")
+}
+
+// TestTaggedReauthPreservesOnlineAndLastSeen pins the reauth side-effect
+// invariants documented at applyAuthNodeUpdate: online status is owned by the
+// poll lifecycle and must not be reset here, and LastSeen is refreshed.
+func TestTaggedReauthPreservesOnlineAndLastSeen(t *testing.T) {
+	n := seedTagOwnedNode(t, []string{"tag:foo"}, "")
+
+	owner := n.s.CreateUserForTest("owner")
+	_, err := n.s.SetPolicy(fmt.Appendf(nil, `{"tagOwners":{"tag:foo":["%s@"]}}`, owner.Name))
+	require.NoError(t, err)
+
+	// Mark the node online before reauth.
+	_, ok := n.s.nodeStore.UpdateNode(n.id, func(nd *types.Node) {
+		nd.IsOnline = new(true)
+	})
+	require.True(t, ok)
+
+	finalNode, err := n.reauth(t, owner, []string{"tag:foo"}, nil)
+	require.NoError(t, err)
+	require.NotNil(t, finalNode.IsOnline().Get())
+	require.True(t, finalNode.IsOnline().Get(),
+		"re-auth must not reset online status (owned by the poll lifecycle)")
+	require.NotNil(t, finalNode.LastSeen().Get(), "LastSeen must be set on reauth")
+}
+
 // TestIssue3371_TaggedNodeInteractiveReloginAfterLogout reproduces the
 // interactive/OIDC arm of https://github.com/juanfont/headscale/issues/3371
 // ("With no key (interactive): the register URL is printed and the login never
