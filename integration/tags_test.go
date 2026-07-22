@@ -579,6 +579,213 @@ func TestTagsAuthKeyWithTagAdminOverrideReauthPreserves(t *testing.T) {
 	t.Logf("Test 2.5 PASS: Admin tags preserved through reauth (admin decisions are authoritative)")
 }
 
+// TestTagsReauthDifferentKeyRetagsNode reproduces issue #3370 end-to-end with a
+// real tailscale client: a node registered with a single-use tag:valid-owned
+// key is re-authenticated via `tailscale up --force-reauth` with a *fresh*
+// single-use tag:second key. Tailscale's documented behaviour (KB 1068) is that
+// re-keying replaces the device's tags, verified by the reporter against SaaS on
+// the same node/IP. Before the fix headscale consumes the new key but keeps the
+// old tag; after the fix the node retags in place.
+//
+// Unlike Test 2.5 (same reusable key + admin override -> tags preserved), this
+// presents a *different* key, so it exercises the opposite arm of the retag
+// discriminator. It also asserts what a state-unit test cannot: the new tag
+// propagates to the node's own Self view and netmap, and the node ID and IPs are
+// unchanged.
+//
+// https://github.com/juanfont/headscale/issues/3370
+func TestTagsReauthDifferentKeyRetagsNode(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		NodesPerUser: 0,
+		Users:        []string{tagTestUser},
+	}
+
+	scenario, err := NewScenario(spec)
+
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{},
+		hsic.WithACLPolicy(tagsTestPolicy()),
+		hsic.WithTestName("tags-rekey-retag"),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+
+	userMap, err := headscale.MapUsers()
+	require.NoError(t, err)
+
+	userID := mustParseID(userMap[tagTestUser].Id)
+
+	// KEY1: single-use tag:valid-owned.
+	key1, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})
+	require.NoError(t, err)
+
+	client, err := scenario.CreateTailscaleNode(
+		"head",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+	)
+	require.NoError(t, err)
+
+	err = client.Login(headscale.GetEndpoint(), key1.Key)
+	require.NoError(t, err)
+
+	var (
+		initialNodeID uint64
+		initialIPs    []string
+	)
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1)
+
+		if len(nodes) == 1 {
+			initialNodeID = mustParseID(nodes[0].Id)
+			initialIPs = nodes[0].IpAddresses
+			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
+		}
+	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "waiting for initial registration")
+
+	t.Logf("Step 1: node %d registered with tag:valid-owned, IPs %v", initialNodeID, initialIPs)
+
+	// KEY2: fresh single-use tag:second. Re-key via --force-reauth.
+	key2, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:second"})
+	require.NoError(t, err)
+
+	//nolint:errcheck // result is verified via EventuallyWithT below
+	client.Execute([]string{
+		"tailscale", "up",
+		"--login-server=" + headscale.GetEndpoint(),
+		"--hostname=" + client.Hostname(),
+		"--authkey=" + key2.Key,
+		"--force-reauth",
+	})
+
+	// Server-side: node retagged in place, same node ID and IPs, no duplicate.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1, "must not duplicate the node")
+
+		if len(nodes) == 1 {
+			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:second"})
+			assert.Equal(c, initialNodeID, mustParseID(nodes[0].Id), "node ID must be unchanged")
+			assert.ElementsMatch(c, initialIPs, nodes[0].IpAddresses, "IPs must be preserved")
+		}
+	}, integrationutil.ScaledTimeout(20*time.Second), integrationutil.SlowPoll, "server must reflect the retag")
+
+	// Node self view: the new tag propagates to the client (issue #2978 surface).
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assertNodeSelfHasTagsWithCollect(c, client, []string{"tag:second"})
+	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "node self view must reflect the retag")
+
+	// Netmap: independent serialization surface.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assertNetmapSelfHasTagsWithCollect(c, client, []string{"tag:second"})
+	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "netmap self must reflect the retag")
+
+	t.Logf("Test #3370 PASS: re-keying with a different tagged key retagged the node in place")
+}
+
+// TestTagsReauthDifferentKeyRemovesTag is the sharpest proof of the KB 1068
+// "replaces, not merges" rule at the integration level: a node registered with
+// a two-tag key is re-keyed with a single-tag key, and the second tag must be
+// *removed*, not retained. Tag removal is the highest-risk propagation path
+// (peers must stop seeing the removed tag), so it is worth a real-client test.
+//
+// https://github.com/juanfont/headscale/issues/3370
+func TestTagsReauthDifferentKeyRemovesTag(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		NodesPerUser: 0,
+		Users:        []string{tagTestUser},
+	}
+
+	scenario, err := NewScenario(spec)
+
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{},
+		hsic.WithACLPolicy(tagsTestPolicy()),
+		hsic.WithTestName("tags-rekey-remove"),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+
+	userMap, err := headscale.MapUsers()
+	require.NoError(t, err)
+
+	userID := mustParseID(userMap[tagTestUser].Id)
+
+	// KEY1: single-use with BOTH tags.
+	key1, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned", "tag:second"})
+	require.NoError(t, err)
+
+	client, err := scenario.CreateTailscaleNode(
+		"head",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+	)
+	require.NoError(t, err)
+
+	err = client.Login(headscale.GetEndpoint(), key1.Key)
+	require.NoError(t, err)
+
+	var initialNodeID uint64
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1)
+
+		if len(nodes) == 1 {
+			initialNodeID = mustParseID(nodes[0].Id)
+			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:second", "tag:valid-owned"})
+		}
+	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "waiting for initial registration")
+
+	// KEY2: fresh single-use with ONLY tag:valid-owned. Re-key.
+	key2, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})
+	require.NoError(t, err)
+
+	//nolint:errcheck // result is verified via EventuallyWithT below
+	client.Execute([]string{
+		"tailscale", "up",
+		"--login-server=" + headscale.GetEndpoint(),
+		"--hostname=" + client.Hostname(),
+		"--authkey=" + key2.Key,
+		"--force-reauth",
+	})
+
+	// tag:second must be gone on every surface.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1)
+
+		if len(nodes) == 1 {
+			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
+			assert.Equal(c, initialNodeID, mustParseID(nodes[0].Id))
+		}
+	}, integrationutil.ScaledTimeout(20*time.Second), integrationutil.SlowPoll, "re-keying must replace (remove tag:second), not merge")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assertNodeSelfHasTagsWithCollect(c, client, []string{"tag:valid-owned"})
+	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "removed tag must clear from node self view")
+
+	t.Logf("Test #3370 PASS: re-keying replaced the tag set (tag:second removed)")
+}
+
 // TestTagsAuthKeyWithTagCLICannotModifyAdminTags tests that the client CLI
 // cannot modify admin-assigned tags.
 //

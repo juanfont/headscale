@@ -52,6 +52,7 @@ keys remain all-access.
 ### Changes
 
 - Fix tagged node stuck expired after `tailscale logout`, unable to re-authenticate [#3394](https://github.com/juanfont/headscale/pull/3394)
+- Re-registering a tagged node with a different pre-auth key now applies the new key's tags instead of silently keeping the old ones [#3394](https://github.com/juanfont/headscale/pull/3394)
 
 ## 0.29.2 (2026-07-01)
 
