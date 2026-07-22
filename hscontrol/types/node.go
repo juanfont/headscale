@@ -157,12 +157,12 @@ type Node struct {
 	// Tags cannot be removed once set (one-way transition).
 	Tags Strings `gorm:"column:tags;serializer:json"`
 
-	// When a node has been created with a [PreAuthKey], we need to
-	// prevent the preauthkey from being deleted before the node.
-	// The preauthkey can define "tags" of the node so we need it
-	// around.
+	// When a node has been created with a pre-auth key, we keep the key
+	// credential around: it can define the node's tags and must not be deleted
+	// before the node. The association is to the unified [Credential] (kind
+	// authkey), which is what auth_key_id references.
 	AuthKeyID *uint64 `sql:"DEFAULT:NULL"`
-	AuthKey   *PreAuthKey
+	AuthKey   *Credential
 
 	Expiry *time.Time
 

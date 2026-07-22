@@ -72,11 +72,16 @@ func TestApiKeyCommand(t *testing.T) {
 
 	assert.Len(t, listedAPIKeys, 5)
 
-	assert.Equal(t, "1", listedAPIKeys[0].Id)
-	assert.Equal(t, "2", listedAPIKeys[1].Id)
-	assert.Equal(t, "3", listedAPIKeys[2].Id)
-	assert.Equal(t, "4", listedAPIKeys[3].Id)
-	assert.Equal(t, "5", listedAPIKeys[4].Id)
+	// IDs are drawn from the shared credentials table, so they are not
+	// guaranteed to start at 1 (pre-auth keys created during env setup take the
+	// first ids). Assert the five keys have distinct, non-empty ids instead.
+	seenIDs := make(map[string]bool)
+
+	for _, key := range listedAPIKeys {
+		assert.NotEmpty(t, key.Id)
+		assert.False(t, seenIDs[key.Id], "duplicate API key id %s", key.Id)
+		seenIDs[key.Id] = true
+	}
 
 	assert.NotEmpty(t, listedAPIKeys[0].Prefix)
 	assert.NotEmpty(t, listedAPIKeys[1].Prefix)

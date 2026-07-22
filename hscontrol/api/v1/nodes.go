@@ -626,12 +626,12 @@ func nodeFromView(view types.NodeView) Node {
 	return n
 }
 
-// nodePreAuthKeyFromView builds the embedded NodePreAuthKey, masking the key to
-// its prefix (legacy plaintext keys are shown in full).
-func nodePreAuthKeyFromView(key types.PreAuthKeyView) *NodePreAuthKey {
+// nodePreAuthKeyFromView builds the embedded NodePreAuthKey from a node's
+// AuthKey credential, masking the secret to its identifier prefix.
+func nodePreAuthKeyFromView(key types.CredentialView) *NodePreAuthKey {
 	pak := &NodePreAuthKey{
 		ID:        formatID(key.ID()),
-		Key:       maskedPreAuthKey(key),
+		Key:       "hskey-auth-" + key.Identifier() + "-***",
 		Reusable:  key.Reusable(),
 		Ephemeral: key.Ephemeral(),
 		Used:      key.Used(),

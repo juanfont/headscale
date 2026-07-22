@@ -2476,7 +2476,7 @@ func TestResolvePolicy(t *testing.T) {
 				},
 				// not matching pak tag
 				{
-					AuthKey: &types.PreAuthKey{
+					AuthKey: &types.Credential{
 						Tags: []string{"tag:alsotagged"},
 					},
 					IPv4: ap("100.100.101.11"),
