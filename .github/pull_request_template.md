@@ -18,5 +18,4 @@ If you find mistakes in the documentation, please submit a fix to the documentat
 - [ ] added integration tests
 - [ ] updated documentation if needed
 - [ ] updated CHANGELOG.md
-
-<!-- If applicable, please reference the issue using `Fixes #XXX` and add tests to cover your new code. -->
+- [ ] referenced an issue in every commit message (e.g. `Fixes #N` or `Updates #N`) — see [CONTRIBUTING.md](./CONTRIBUTING.md#commit-messages)
