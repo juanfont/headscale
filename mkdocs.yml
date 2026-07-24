@@ -68,7 +68,9 @@ exclude_docs: |
 # Plugins
 plugins:
   - search:
-      separator: '[\s\-,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+      provider: lunr
+      lunr:
+        separator: '[\s\-,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
   - macros:
   - include-markdown:
   - minify:
