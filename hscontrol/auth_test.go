@@ -4101,3 +4101,70 @@ func TestHandleNodeFromAuthPath_OldUserNil_NoPanic(t *testing.T) {
 	assert.NotEqual(t, types.NodeID(99002), node.ID(), "new node, not orphan")
 	assert.Equal(t, userB.ID, node.UserID().Get(), "new node belongs to userB")
 }
+
+// TestFollowupWaitPrefersCompletedAuthOverExpiredContext reproduces
+// https://github.com/juanfont/headscale/issues/3385.
+//
+// Root cause: [Headscale.waitForFollowup] selects on ctx.Done() and the auth
+// verdict channel with equal priority. When the registration has ALREADY
+// completed (verdict buffered) but the request context has ALSO expired, Go's
+// select picks a ready case at random, so roughly half the time it returns
+// "registration timed out" and discards a successful registration.
+//
+// The v0.28.0 hscontrol test suite hit this because the followup context
+// timeout was only 100ms while the setup goroutine (create user + node in
+// SQLite) frequently took longer on slower/constrained builders (ppc64le,
+// Alpine CI). Both channels ended up ready at once and the flake surfaced as
+// TestAuthenticationFlows/followup_registration_success failing with
+// "http error[401]: registration timed out".
+//
+// The fix must give the completed-auth case priority over context
+// cancellation. This test forces both cases ready on every iteration; it must
+// never report a timeout.
+func TestFollowupWaitPrefersCompletedAuthOverExpiredContext(t *testing.T) {
+	app := createTestApp(t)
+
+	machineKey := key.NewMachine().Public()
+	nodeKey := key.NewNode().Public()
+
+	const iterations = 300
+
+	timeouts, authorized := 0, 0
+
+	for i := range iterations {
+		regID, err := types.NewAuthID()
+		require.NoError(t, err)
+
+		authReq := types.NewRegisterAuthRequest(&types.RegistrationData{
+			Hostname: "followup-race-node",
+		})
+		app.state.SetAuthCacheEntry(regID, authReq)
+
+		// Registration completes BEFORE we wait: verdict is buffered.
+		user := app.state.CreateUserForTest(fmt.Sprintf("followup-race-user-%d", i))
+		node := app.state.CreateNodeForTest(user, "followup-race-node")
+		authReq.FinishAuth(types.AuthVerdict{Node: node.View()})
+
+		// Context is expired BEFORE we wait: both select cases are ready.
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		req := tailcfg.RegisterRequest{
+			Followup: fmt.Sprintf("http://localhost:8080/register/%s", regID),
+			NodeKey:  nodeKey,
+		}
+
+		resp, err := app.waitForFollowup(ctx, req, machineKey)
+		switch {
+		case err != nil:
+			timeouts++
+		case resp != nil && resp.MachineAuthorized:
+			authorized++
+		}
+	}
+
+	assert.Zero(t, timeouts,
+		"waitForFollowup must never report a timeout when auth has already completed; got %d/%d timeouts",
+		timeouts, iterations)
+	assert.Equal(t, iterations, authorized, "every completed registration must be returned as authorized")
+}
