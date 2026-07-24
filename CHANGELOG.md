@@ -45,6 +45,16 @@ keys remain all-access.
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
 
+## 0.29.3 (202x-xx-xx)
+
+**Minimum supported Tailscale client version: v1.80.0**
+
+### Changes
+
+- Fix tagged node stuck expired after `tailscale logout`, unable to re-authenticate [#3394](https://github.com/juanfont/headscale/pull/3394)
+- Re-registering a tagged node with a different pre-auth key now applies the new key's tags instead of silently keeping the old ones [#3394](https://github.com/juanfont/headscale/pull/3394)
+- Fix re-authenticating an already-tagged node with `--advertise-tags` being rejected when the authenticating user owns the tags [#3394](https://github.com/juanfont/headscale/pull/3394)
+
 ## 0.29.2 (2026-07-01)
 
 **Minimum supported Tailscale client version: v1.80.0**

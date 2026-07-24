@@ -1707,7 +1707,17 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 	// Validate tags BEFORE calling [NodeStore.UpdateNode] to ensure we don't modify
 	// [NodeStore] if validation fails. This maintains consistency between [NodeStore]
 	// and database.
-	rejectedTags := s.validateRequestTags(params.ExistingNode, requestTags)
+	//
+	// A tag-owned node carries no user and its IP is not in any tag owner's set,
+	// so checking the node alone rejects every tag on re-auth (#3374). Authorise
+	// against the authenticating user too: they are the one presenting the
+	// credential and may own the requested tags.
+	var authUser types.UserView
+	if params.User != nil {
+		authUser = params.User.View()
+	}
+
+	rejectedTags := s.validateRequestTagsForReauth(params.ExistingNode, authUser, requestTags)
 	if len(rejectedTags) > 0 {
 		return types.NodeView{}, fmt.Errorf(
 			"%w %v are invalid or not permitted",
@@ -1801,8 +1811,14 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 			} else {
 				node.Expiry = regData.Expiry
 			}
+		case isTagged && node.IsExpired():
+			// Tagged → Tagged, but carrying a stale PAST expiry from an older
+			// headscale's logout stamp (#3371). Tagged nodes never expire, so
+			// clear it; a deliberate future expiry has IsExpired() == false and
+			// falls through to the no-op below.
+			node.Expiry = nil
 		}
-		// Tagged → Tagged: keep existing expiry (nil) - no action needed
+		// Tagged → Tagged with no stale expiry: keep existing expiry - no action.
 
 		// Apply default node expiry for non-tagged nodes when the
 		// resolved expiry is still nil or zero (e.g., CLI registration
@@ -1823,8 +1839,21 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 	// Persist to database.
 	// Explicitly select all node columns so GORM includes nil/zero-value fields
 	// (see nodeUpdateColumns comment).
+	//
+	// AuthKeyID is excluded from nodeUpdateColumns (#2862: never persist a
+	// possibly-deleted key's stale reference on the shared update path). But
+	// when a re-auth untags a node it clears AuthKeyID to nil (above), and that
+	// must persist or the node reloads as tagged/ephemeral after a restart and
+	// is garbage-collected. Writing NULL can never cause an FK error, so include
+	// the column only in that clearing case; the other transitions keep the
+	// #2862-safe column set untouched.
+	updateColumns := nodeUpdateColumns
+	if !updatedNodeView.AuthKeyID().Valid() {
+		updateColumns = append(slices.Clone(nodeUpdateColumns), "AuthKeyID")
+	}
+
 	_, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-		err := tx.Select(nodeUpdateColumns).Updates(updatedNodeView.AsStruct()).Error
+		err := tx.Select(updateColumns).Updates(updatedNodeView.AsStruct()).Error
 		if err != nil {
 			return nil, fmt.Errorf("saving node: %w", err)
 		}
@@ -2028,6 +2057,34 @@ func (s *State) validateRequestTags(node types.NodeView, requestTags []string) [
 	return rejectedTags
 }
 
+// validateRequestTagsForReauth authorises re-auth request tags against the
+// existing node OR the authenticating user. A tag-owned node (#3374) has no
+// user and its IP is in no owner set, so NodeCanHaveTag alone rejects every
+// tag; the authenticating user who owns the tags must also be consulted.
+// Tags neither the node nor the user owns are still rejected, so this
+// authorises the user, it does not skip authorisation.
+func (s *State) validateRequestTagsForReauth(node types.NodeView, authUser types.UserView, requestTags []string) []string {
+	if len(requestTags) == 0 {
+		return nil
+	}
+
+	var rejectedTags []string
+
+	for _, tag := range requestTags {
+		if s.polMan.NodeCanHaveTag(node, tag) {
+			continue
+		}
+
+		if authUser.Valid() && s.polMan.UserCanHaveTag(authUser, tag) {
+			continue
+		}
+
+		rejectedTags = append(rejectedTags, tag)
+	}
+
+	return rejectedTags
+}
+
 // processReauthTags handles tag changes during node re-authentication.
 // It processes RequestTags from the client and updates node tags accordingly.
 // Returns rejected tags (if any) for post-validation error handling.
@@ -2062,16 +2119,34 @@ func (s *State) processReauthTags(
 			node.Tags = []string{}
 			node.UserID = &user.ID
 			node.User = user
+
+			// The node is no longer tagged, so it must not keep a reference to
+			// the tagged auth key. Leaving AuthKey set means a node created by a
+			// tagged+ephemeral key stays IsEphemeral() after converting to
+			// user-owned and is garbage-collected on its next disconnect,
+			// silently deleting the user's just-claimed device. Clearing the
+			// reference is persisted via the AuthKeyID column added to this
+			// path's write below.
+			node.AuthKey = nil
+			node.AuthKeyID = nil
 		}
 
 		return nil
 	}
 
-	// Non-empty RequestTags: validate and apply
+	// Non-empty RequestTags: validate and apply. Authorise each tag against the
+	// node OR the authenticating user, matching the pre-check in
+	// validateRequestTagsForReauth. Without the user half, a tag-owned node
+	// (#3374) has every tag rejected here even after the pre-check passed, so
+	// this returns the tags as rejected and the re-advertised tag is silently
+	// dropped despite a success response.
+	authUser := user.View()
+
 	var approvedTags, rejectedTags []string
 
 	for _, tag := range requestTags {
-		if s.polMan.NodeCanHaveTag(node.View(), tag) {
+		if s.polMan.NodeCanHaveTag(node.View(), tag) ||
+			(authUser.Valid() && s.polMan.UserCanHaveTag(authUser, tag)) {
 			approvedTags = append(approvedTags, tag)
 		} else {
 			rejectedTags = append(rejectedTags, tag)
@@ -2421,7 +2496,14 @@ func (s *State) HandleNodeFromPreAuthKey(
 	// must present a valid key. Without this a node that re-uses its NodeKey
 	// after expiry would skip validation and be re-authorised with a spent or
 	// expired key; the boundary must not depend on the client rotating its key.
+	//
+	// Tagged nodes are excluded: they never expire (KB 1068), so an
+	// IsExpired() tagged node only reflects a stale logout stamp left by an
+	// older headscale (#3371). Forcing it down the re-validation path burns its
+	// fresh key and blocks re-auth forever; treat it as a plain re-registration
+	// and clear the stale expiry in the update below.
 	isExpired := existsSameUser && existingNodeSameUser.Valid() &&
+		!existingNodeSameUser.IsTagged() &&
 		existingNodeSameUser.IsExpired()
 
 	// A tagged key presented for a currently user-owned node converts that node
@@ -2430,7 +2512,17 @@ func (s *State) HandleNodeFromPreAuthKey(
 	isOwnershipConversion := existsSameUser && existingNodeSameUser.Valid() &&
 		pak.IsTagged() && !existingNodeSameUser.IsTagged()
 
-	if isExistingNodeReregistering && !isNodeKeyRotation && !isExpired && !isOwnershipConversion {
+	// A tagged key that differs from the one the node last authed with retags
+	// the node (see the in-place update below). Applying a key's tags is an
+	// authorisation decision, so the key must be validated rather than ride the
+	// skip-validation fast-path; otherwise a spent, revoked or expired tagged
+	// key could still retag a node that reuses its node key. Like isExpired,
+	// this boundary must not depend on the client rotating its key.
+	isRetag := existsSameUser && existingNodeSameUser.Valid() &&
+		pak.IsTagged() && existingNodeSameUser.IsTagged() &&
+		(!existingNodeSameUser.AuthKeyID().Valid() || existingNodeSameUser.AuthKeyID().Get() != pak.ID)
+
+	if isExistingNodeReregistering && !isNodeKeyRotation && !isExpired && !isOwnershipConversion && !isRetag {
 		// Existing, still-valid node re-registering with same NodeKey: skip
 		// validation. Pre-auth keys are only needed for initial authentication.
 		// Critical for containers that run "tailscale up --authkey=KEY" on every
@@ -2478,8 +2570,10 @@ func (s *State) HandleNodeFromPreAuthKey(
 
 	var finalNode types.NodeView
 
-	// If this node exists for this user, update the node in place.
-	// Note: For tags-only keys (pak.User == nil), existsSameUser is always false.
+	// If this node exists for this user, update the node in place. For a
+	// tags-only key (pak.User == nil) this is true when the machine already has
+	// a tagged node (findExistingNodeForPAK matches it under UserID 0); for a
+	// user-owned key it is true when the same user already has the node.
 	if existsSameUser && existingNodeSameUser.Valid() {
 		log.Trace().
 			Caller().
@@ -2521,17 +2615,37 @@ func (s *State) HandleNodeFromPreAuthKey(
 
 			node.RegisterMethod = util.RegisterMethodAuthKey
 
-			// Tags from PreAuthKey are only applied during initial registration.
-			// On re-registration the node keeps its existing tags and ownership,
-			// except when a tagged key converts a user-owned node: that adopts
-			// the key's tags and drops user ownership (tagged nodes are
-			// user-less and never expire). Only update AuthKey reference
-			// otherwise.
-			if pak.IsTagged() && !node.IsTagged() {
+			// Tags from a PreAuthKey are applied on initial registration and
+			// re-applied whenever a *different* key is presented on
+			// re-registration: re-keying is Tailscale's documented way to change
+			// an auth-key device's tags (KB 1068 - "generate a new auth key with
+			// the new set of tags ... doing so replaces the device's existing
+			// tags"). Presenting the SAME key again (container restart,
+			// #2830/#3312) preserves the node's current tags and any admin
+			// override. A tagged key presented for a user-owned node also converts
+			// it, dropping user ownership.
+			//
+			// node.AuthKeyID still holds the prior key's ID here (it is reassigned
+			// below), and SetNodeTags leaves AuthKeyID intact, so an admin retag
+			// cannot masquerade as a new key.
+			keyChanged := node.AuthKeyID == nil || *node.AuthKeyID != pak.ID
+			if pak.IsTagged() && (!node.IsTagged() || keyChanged) {
+				wasUserOwned := !node.IsTagged()
+
 				node.Tags = pak.Tags
 				node.UserID = nil
 				node.User = nil
-				node.Expiry = nil
+
+				// Converting a user-owned node to tagged drops the user's key
+				// expiry (tagged nodes never expire). But retagging an
+				// already-tagged node must preserve a deliberate FUTURE expiry
+				// set via `headscale nodes expire` - that is a node property, not
+				// tied to the auth key - and only clear a stale PAST expiry. This
+				// keeps the retag path symmetric with the same-key relogin path
+				// (#3371) rather than silently overriding an admin decision.
+				if wasUserOwned || node.IsExpired() {
+					node.Expiry = nil
+				}
 			}
 
 			node.AuthKey = pak
@@ -2557,6 +2671,13 @@ func (s *State) HandleNodeFromPreAuthKey(
 				} else {
 					node.Expiry = nil
 				}
+			} else if node.IsExpired() {
+				// #3371: a tagged node must never carry key expiry. Clear a
+				// stale PAST expiry left by a logout (older headscale) so
+				// re-auth is not permanently blocked. A deliberate future
+				// expiry (headscale nodes expire) has IsExpired() == false and
+				// is left untouched.
+				node.Expiry = nil
 			}
 		})
 
@@ -2566,8 +2687,14 @@ func (s *State) HandleNodeFromPreAuthKey(
 
 		_, err = hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
 			// Explicitly select all node columns so GORM includes nil/zero-value fields
-			// (see nodeUpdateColumns comment).
-			err := tx.Select(nodeUpdateColumns).Updates(updatedNodeView.AsStruct()).Error
+			// (see nodeUpdateColumns comment). AuthKeyID is normally excluded to
+			// avoid persisting a deleted key's stale reference on MapRequest
+			// (#2862), but re-registration presents a freshly-validated key, so
+			// its ID must be persisted here — otherwise a restart reloads the old
+			// key and any key-scoped property (e.g. Ephemeral) silently reverts.
+			reregColumns := append(slices.Clone(nodeUpdateColumns), "AuthKeyID")
+
+			err := tx.Select(reregColumns).Updates(updatedNodeView.AsStruct()).Error
 			if err != nil {
 				return nil, fmt.Errorf("saving node: %w", err)
 			}

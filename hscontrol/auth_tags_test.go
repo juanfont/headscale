@@ -1337,3 +1337,392 @@ func TestReregistrationZeroExpiryStaysNil(t *testing.T) {
 	assert.False(t, node2.Expiry().Valid(),
 		"re-registration with zero client expiry and no default should leave expiry nil, not pointer to zero time")
 }
+
+// tsLogoutSentinelExpiry is the past expiry a real tailscale client sends on
+// `tailscale logout`: time.Unix(123, 0) (controlclient/direct.go). The issue
+// #3371 trace shows it verbatim as `expiry=123`. Using it here (rather than a
+// generic time.Now().Add(-1h)) keeps the reproduction faithful to the wire
+// behaviour: handleRegister must classify this as a logout, and handleLogout
+// must clamp it to now.
+func tsLogoutSentinelExpiry() time.Time {
+	return time.Unix(123, 0)
+}
+
+// TestIssue3371_TaggedNodeLogoutReloginSingleUseKey reproduces
+// https://github.com/juanfont/headscale/issues/3371 through the real
+// register/logout HTTP-handler path (handleRegister -> handleLogout ->
+// handleRegister), not by poking SetNodeExpiry directly.
+//
+// Root cause (a): `tailscale logout` sends a past expiry; handleLogout stamps
+// it on the node via SetNodeExpiry with no IsTagged guard, so a tagged node —
+// which must have key-expiry disabled — becomes Expired.
+//
+// Root cause (b): on the next `tailscale up --auth-key <fresh key>`,
+// HandleNodeFromPreAuthKey sees an expired node, takes the expired-node
+// validation path, consumes the fresh single-use key on the in-place
+// re-registration, yet leaves the node expired (the expiry-refresh block is
+// gated `!node.IsTagged()`). The response carries NodeKeyExpired=true, so the
+// client rotates its node key and retries with the now-spent key, which is
+// rejected with "authkey already used" forever.
+//
+// Faithful to the artifacts: the client rotates its NodeKey on relogin, the
+// logout carries BOTH a past expiry AND an auth key, and a BRAND NEW key is
+// presented for the relogin (the trace shows tag:tag2 keys burned while the
+// node kept tag:tag1).
+func TestIssue3371_TaggedNodeLogoutReloginSingleUseKey(t *testing.T) {
+	app := createTestApp(t)
+
+	user := app.state.CreateUserForTest("tag-logout-user")
+	tags := []string{"tag:tag1"}
+
+	// `headscale preauthkeys create --tags tag:tag1` (single-use).
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, nil, tags)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	// `tailscale up --auth-key $KEY1`: initial join.
+	regReq := tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey:  nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "headscale-debug"},
+	}
+
+	resp, err := app.handleRegister(context.Background(), regReq, machineKey.Public())
+	require.NoError(t, err)
+	require.True(t, resp.MachineAuthorized)
+	require.False(t, resp.NodeKeyExpired)
+
+	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+	require.True(t, node.IsTagged(), "precondition: node is tagged")
+	require.False(t, node.Expiry().Valid(), "precondition: tagged node has expiry disabled")
+
+	// `tailscale logout`: client sends a past-expiry register with the auth key
+	// still attached (handleRegister must treat past expiry as logout regardless
+	// of Auth). Reuse the same node key: logout does not rotate it.
+	logoutReq := tailcfg.RegisterRequest{
+		Auth:    &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey: nodeKey.Public(),
+		Expiry:  tsLogoutSentinelExpiry(),
+	}
+
+	_, err = app.handleRegister(context.Background(), logoutReq, machineKey.Public())
+	require.NoError(t, err)
+
+	// A tagged node must NOT be expired by logout — tagged nodes never expire.
+	// This is root cause (a); it fails before the fix.
+	nodeAfterLogout, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+	assert.False(t, nodeAfterLogout.IsExpired(),
+		"issue #3371 root cause (a): logout must not expire a tagged node")
+	assert.False(t, nodeAfterLogout.Expiry().Valid(),
+		"issue #3371 root cause (a): tagged node must keep key-expiry disabled after logout")
+
+	// `tailscale up --auth-key $KEY2`: a BRAND NEW single-use key, and the client
+	// rotates its node key (as the real client does on relogin).
+	pak2, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, nil, tags)
+	require.NoError(t, err)
+
+	nodeKey2 := key.NewNode()
+	reloginReq := tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak2.Key},
+		NodeKey:  nodeKey2.Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "headscale-debug"},
+	}
+
+	reloginResp, err := app.handleRegister(context.Background(), reloginReq, machineKey.Public())
+	require.NoError(t, err,
+		"issue #3371: a fresh valid key must re-authenticate the tagged node after logout")
+	require.NotNil(t, reloginResp)
+
+	// The whole point: the node comes back online, not stuck expired.
+	assert.False(t, reloginResp.NodeKeyExpired,
+		"issue #3371: relogin response must not report the node key as expired")
+	assert.True(t, reloginResp.MachineAuthorized)
+
+	relogged, found := app.state.GetNodeByNodeKey(nodeKey2.Public())
+	require.True(t, found)
+	assert.True(t, relogged.IsTagged(), "node stays tagged after relogin")
+	assert.False(t, relogged.IsExpired(),
+		"issue #3371: tagged node must be online (not expired) after relogin")
+	assert.False(t, relogged.Expiry().Valid(),
+		"issue #3371: tagged node must have key-expiry disabled after relogin")
+	assert.Equal(t, node.ID(), relogged.ID(), "must re-use the same node, not duplicate")
+	assert.Equal(t, 1, app.state.ListNodes().Len(), "machine maps to exactly one node")
+}
+
+// TestIssue3371_TaggedNodeLogoutReloginReusableKey is the reusable-key variant
+// from the issue ("tailscale up then hangs indefinitely instead of erroring").
+// With a reusable key the relogin does not hit "authkey already used", but the
+// node still stays expired without the fix — so the client never observes a
+// non-expired node and hangs. The observable failure here is the persisted
+// expired state after relogin.
+func TestIssue3371_TaggedNodeLogoutReloginReusableKey(t *testing.T) {
+	app := createTestApp(t)
+
+	user := app.state.CreateUserForTest("tag-logout-reusable")
+	tags := []string{"tag:tag1"}
+
+	// `headscale preauthkeys create --reusable --tags tag:tag1`.
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, tags)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	regReq := tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey:  nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "reusable-tagged"},
+	}
+
+	_, err = app.handleRegister(context.Background(), regReq, machineKey.Public())
+	require.NoError(t, err)
+
+	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+	require.True(t, node.IsTagged())
+	require.False(t, node.Expiry().Valid())
+
+	// Logout.
+	logoutReq := tailcfg.RegisterRequest{
+		Auth:    &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey: nodeKey.Public(),
+		Expiry:  tsLogoutSentinelExpiry(),
+	}
+	_, err = app.handleRegister(context.Background(), logoutReq, machineKey.Public())
+	require.NoError(t, err)
+
+	// Relogin with the same reusable key, rotating the node key.
+	nodeKey2 := key.NewNode()
+	reloginReq := tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey:  nodeKey2.Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "reusable-tagged"},
+	}
+	reloginResp, err := app.handleRegister(context.Background(), reloginReq, machineKey.Public())
+	require.NoError(t, err)
+	require.NotNil(t, reloginResp)
+
+	assert.False(t, reloginResp.NodeKeyExpired,
+		"issue #3371: reusable-key relogin must not report node key expired")
+
+	relogged, found := app.state.GetNodeByNodeKey(nodeKey2.Public())
+	require.True(t, found)
+	assert.True(t, relogged.IsTagged())
+	assert.False(t, relogged.IsExpired(),
+		"issue #3371: tagged node must be online (not expired) after reusable-key relogin")
+	assert.False(t, relogged.Expiry().Valid(),
+		"issue #3371: tagged node must have key-expiry disabled after reusable-key relogin")
+}
+
+// TestIssue3371_TaggedNodeLogoutDoesNotSetExpiry pins the deepest root cause
+// (a) in isolation: `tailscale logout` on a tagged node must not stamp an
+// expiry at all. This is the assertion PR #3372 does not make — it leaves
+// handleLogout expiring tagged nodes and only unwinds the damage on the next
+// registration. Keeping this separate from the relogin tests means a
+// regression that re-introduces logout-sets-expiry is caught even if the
+// re-registration cleanup masks it.
+func TestIssue3371_TaggedNodeLogoutDoesNotSetExpiry(t *testing.T) {
+	app := createTestApp(t)
+
+	user := app.state.CreateUserForTest("tag-logout-noexpiry")
+	tags := []string{"tag:tag1"}
+
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, tags)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	regReq := tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey:  nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "noexpiry-tagged"},
+	}
+	_, err = app.handleRegister(context.Background(), regReq, machineKey.Public())
+	require.NoError(t, err)
+
+	logoutReq := tailcfg.RegisterRequest{
+		Auth:    &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey: nodeKey.Public(),
+		Expiry:  tsLogoutSentinelExpiry(),
+	}
+	_, err = app.handleRegister(context.Background(), logoutReq, machineKey.Public())
+	require.NoError(t, err)
+
+	nodeAfterLogout, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+	assert.True(t, nodeAfterLogout.IsTagged(), "node stays tagged through logout")
+	assert.False(t, nodeAfterLogout.Expiry().Valid(),
+		"issue #3371 root cause (a): logout must not set an expiry on a tagged node")
+	assert.False(t, nodeAfterLogout.IsExpired(),
+		"issue #3371 root cause (a): tagged node must not be expired by logout")
+
+	// The database column must be NULL, not a clamped 'now' timestamp — a
+	// persisted expiry survives restart and re-triggers the lockout.
+	var dbNode types.Node
+	require.NoError(t,
+		app.state.DB().DB.First(&dbNode, nodeAfterLogout.ID().Uint64()).Error)
+	assert.Nil(t, dbNode.Expiry,
+		"issue #3371 root cause (a): tagged node's DB expiry must remain NULL after logout")
+}
+
+// TestIssue3371_UserOwnedNodeLogoutStillExpires is the guard rail: the fix for
+// tagged nodes must not change logout for ordinary user-owned nodes. A
+// user-owned node that logs out MUST still be expired (that is what logout
+// means for it).
+func TestIssue3371_UserOwnedNodeLogoutStillExpires(t *testing.T) {
+	app := createTestApp(t)
+
+	user := app.state.CreateUserForTest("user-logout")
+
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	regReq := tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey:  nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "user-node"},
+		Expiry:   time.Now().Add(24 * time.Hour),
+	}
+	_, err = app.handleRegister(context.Background(), regReq, machineKey.Public())
+	require.NoError(t, err)
+
+	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+	require.False(t, node.IsTagged(), "precondition: user-owned node")
+
+	logoutReq := tailcfg.RegisterRequest{
+		Auth:    &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey: nodeKey.Public(),
+		Expiry:  tsLogoutSentinelExpiry(),
+	}
+	logoutResp, err := app.handleRegister(context.Background(), logoutReq, machineKey.Public())
+	require.NoError(t, err)
+	require.NotNil(t, logoutResp)
+
+	nodeAfterLogout, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+	assert.True(t, nodeAfterLogout.IsExpired(),
+		"user-owned node must still be expired by logout (fix must not regress this)")
+	assert.True(t, logoutResp.NodeKeyExpired,
+		"logout response for a user-owned node must report the key expired")
+}
+
+// TestIssue3371_TaggedNodeFutureExpirySurvivesRelogin is the discriminator
+// guard rail for the fix. A tagged node may carry a DELIBERATE future expiry
+// set by an admin (`headscale nodes expire`); TestTaggedNodeCanHaveKeyExpiry
+// establishes that is legal. The #3371 fix clears only a STALE PAST expiry (the
+// logout stamp) on re-registration — it must NOT wipe a future expiry. This
+// test locks that boundary: without care, a "tagged => clear expiry" fix would
+// silently destroy the admin's setting.
+//
+// Passes before the fix (re-registration currently never touches a tagged
+// node's expiry) and must keep passing after.
+func TestIssue3371_TaggedNodeFutureExpirySurvivesRelogin(t *testing.T) {
+	app := createTestApp(t)
+
+	user := app.state.CreateUserForTest("tag-future-expiry")
+	tags := []string{"tag:tag1"}
+
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, tags)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	regReq := tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey:  nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "future-expiry-tagged"},
+	}
+	_, err = app.handleRegister(context.Background(), regReq, machineKey.Public())
+	require.NoError(t, err)
+
+	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+	require.True(t, node.IsTagged())
+
+	// Admin sets a deliberate future expiry (`headscale nodes expire`).
+	future := time.Now().Add(24 * time.Hour)
+	_, _, err = app.state.SetNodeExpiry(node.ID(), &future)
+	require.NoError(t, err)
+
+	withFuture, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+	require.True(t, withFuture.Expiry().Valid(), "precondition: future expiry set")
+	require.False(t, withFuture.IsExpired(), "precondition: future expiry is not expired")
+
+	// Node re-registers (rotating its node key). The future expiry must survive.
+	nodeKey2 := key.NewNode()
+	reregReq := tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey:  nodeKey2.Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "future-expiry-tagged"},
+	}
+	_, err = app.handleRegister(context.Background(), reregReq, machineKey.Public())
+	require.NoError(t, err)
+
+	after, found := app.state.GetNodeByNodeKey(nodeKey2.Public())
+	require.True(t, found)
+	require.True(t, after.IsTagged(), "node stays tagged")
+	assert.True(t, after.Expiry().Valid(),
+		"deliberate future expiry must survive re-registration (not cleared by #3371 fix)")
+	assert.WithinDuration(t, future, after.Expiry().Get(), 5*time.Second,
+		"the surviving expiry must be the admin-set future value, unchanged")
+}
+
+// TestIssue3371_EphemeralTaggedNodeLogoutDeletes is a regression guard for the
+// ephemeral+tagged combination. A tagged pre-auth key can also be ephemeral.
+// handleLogout deletes ephemeral nodes (before any expiry stamp), so the #3371
+// fix (which suppresses the expiry stamp for tagged nodes) must not divert an
+// ephemeral tagged node away from deletion.
+//
+// Passes before the fix and must keep passing after.
+func TestIssue3371_EphemeralTaggedNodeLogoutDeletes(t *testing.T) {
+	app := createTestApp(t)
+
+	user := app.state.CreateUserForTest("tag-ephemeral")
+	tags := []string{"tag:tag1"}
+
+	// Ephemeral + tagged key.
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, true, nil, tags)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	regReq := tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey:  nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "ephemeral-tagged"},
+	}
+	_, err = app.handleRegister(context.Background(), regReq, machineKey.Public())
+	require.NoError(t, err)
+
+	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+	require.True(t, node.IsTagged(), "precondition: node is tagged")
+	require.True(t, node.IsEphemeral(), "precondition: node is ephemeral")
+
+	// Logout: an ephemeral node is deleted, not expired.
+	logoutReq := tailcfg.RegisterRequest{
+		Auth:    &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey: nodeKey.Public(),
+		Expiry:  tsLogoutSentinelExpiry(),
+	}
+	_, err = app.handleRegister(context.Background(), logoutReq, machineKey.Public())
+	require.NoError(t, err)
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		_, stillThere := app.state.GetNodeByNodeKey(nodeKey.Public())
+		assert.False(c, stillThere,
+			"ephemeral tagged node must be deleted on logout, not expired")
+	}, 2*time.Second, 50*time.Millisecond, "waiting for ephemeral node deletion")
+}

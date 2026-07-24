@@ -352,6 +352,8 @@ jobs:
           - TestTagsAuthKeyWithTagCannotAddViaCLI
           - TestTagsAuthKeyWithTagCannotChangeViaCLI
           - TestTagsAuthKeyWithTagAdminOverrideReauthPreserves
+          - TestTagsReauthDifferentKeyRetagsNode
+          - TestTagsReauthDifferentKeyRemovesTag
           - TestTagsAuthKeyWithTagCLICannotModifyAdminTags
           - TestTagsAuthKeyWithoutTagCannotRequestTags
           - TestTagsAuthKeyWithoutTagRegisterNoTags
@@ -379,6 +381,10 @@ jobs:
           - TestTagsAuthKeyWithoutUserInheritsTags
           - TestTagsAuthKeyWithoutUserRejectsAdvertisedTags
           - TestTagsAuthKeyConvertToUserViaCLIRegister
+          - TestTaggedNodeLogoutReloginSingleUseKeyOnline
+          - TestTaggedNodeLogoutReloginReusableKeyOnline
+          - TestTagsOIDCReauthAddOwnedTag
+          - TestTagsReauthEmptyTagsReturnsToUserSurvives
           - TestTS2021WebSocketGET
           - TestTS2021WASMClientUnderNode
           - TestTailscaleRustAxum
