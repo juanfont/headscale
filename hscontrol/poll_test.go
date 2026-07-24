@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/key"
 )
 
 type delayedSuccessResponseWriter struct {
@@ -214,6 +215,67 @@ func TestServeLongPollWritesErrorWhenInitialMapFails(t *testing.T) {
 		return writer.statusCode() >= http.StatusInternalServerError
 	}, 2*time.Second, 10*time.Millisecond,
 		"serveLongPoll must write an HTTP error response when the initial map cannot be built, not an empty 200")
+}
+
+// TestFailedReconnectDoesNotCancelEphemeralGC proves that a
+// long-poll reconnect attempt which fails before [state.State.Connect] must
+// not cancel a previously armed ephemeral GC timer. Cancelling at the start of
+// [mapSession.serveLongPoll] left departed ephemeral nodes stuck offline with
+// no deletion scheduled (https://github.com/juanfont/headscale/issues/3382).
+func TestFailedReconnectDoesNotCancelEphemeralGC(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	app.StartEphemeralGCForTest(t)
+
+	user := app.state.CreateUserForTest("eph-gc-cancel-user")
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, true, nil, nil)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	_, err = app.handleRegister(context.Background(), tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "eph-gc-cancel-node",
+		},
+		Expiry: time.Now().Add(24 * time.Hour),
+	}, machineKey.Public())
+	require.NoError(t, err)
+
+	nodeView, ok := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, ok)
+	require.True(t, nodeView.IsEphemeral(), "node must be ephemeral so Cancel would arm on long-poll")
+
+	node := nodeView.AsStruct()
+
+	// Arm a long-lived deletion timer — the state after a normal disconnect
+	// has called afterServeLongPoll. A long expiry avoids racing the
+	// fail-before-Connect path below.
+	app.ephemeralGC.Schedule(node.ID, time.Hour)
+	require.True(t, app.ephemeralGC.IsScheduled(node.ID), "test sanity: GC timer must be armed")
+
+	// Drop the node from the NodeStore so UpdateNodeFromMapRequest fails before
+	// Connect, while the session still carries an ephemeral AuthKey (so the
+	// old Cancel-on-entry path would clear the timer).
+	app.state.DeleteNodeFromStoreForTest(node.ID)
+
+	writer := &recordingResponseWriter{}
+	session := app.newMapSession(context.Background(), tailcfg.MapRequest{
+		Stream:  true,
+		Version: tailcfg.CapabilityVersion(100),
+	}, writer, node)
+
+	session.serveLongPoll()
+
+	assert.GreaterOrEqual(t, writer.statusCode(), http.StatusInternalServerError,
+		"failed reconnect must write an HTTP error before Connect")
+	assert.True(t, app.ephemeralGC.IsScheduled(node.ID),
+		"failed reconnect must not cancel the ephemeral GC timer (issue #3382)")
 }
 
 // TestGitHubIssue3129_TransientlyBlockedWriteDoesNotLeaveLiveStaleSession
