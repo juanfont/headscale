@@ -26,6 +26,16 @@ keys remain all-access.
 
 [#3334](https://github.com/juanfont/headscale/pull/3334)
 
+### Credential hashing unified on Argon2id
+
+API keys and pre-auth keys now hash their secrets with Argon2id, the scheme
+already used for OAuth client secrets and access tokens, through one shared
+generator and verifier. Existing bcrypt-hashed keys keep working and are
+transparently upgraded to Argon2id the next time they authenticate. Bcrypt
+verification will be removed in 0.32, so any key left unused between now and
+then must be regenerated. Legacy plaintext pre-auth keys, the format that
+predates the 2025-11 bcrypt keys, are no longer accepted and must be recreated.
+
 ### BREAKING
 
 #### API

@@ -900,19 +900,85 @@ WHERE user_id IS NULL
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			{
+				// Create the unified credentials table. Backfill from the existing
+				// per-kind tables and their removal land in a later migration, so
+				// this step is purely additive. SQLite uses explicit DDL matching
+				// schema.sql; Postgres uses dialect-aware AutoMigrate.
+				ID: "202606271200-create-credentials",
+				Migrate: func(tx *gorm.DB) error {
+					if tx.Migrator().HasTable(&types.Credential{}) {
+						return nil
+					}
+
+					if tx.Name() != "sqlite" {
+						return tx.AutoMigrate(&types.Credential{})
+					}
+
+					err := tx.Exec(`CREATE TABLE credentials(
+  id integer PRIMARY KEY AUTOINCREMENT,
+  kind text,
+  identifier text,
+  hash blob,
+  user_id integer,
+  description text,
+  scopes text,
+  tags text,
+  reusable numeric,
+  ephemeral numeric DEFAULT false,
+  used numeric DEFAULT false,
+  last_seen datetime,
+  client_id text,
+  created_at datetime,
+  expiration datetime,
+  revoked datetime,
+
+  CONSTRAINT fk_credentials_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+)`).Error
+					if err != nil {
+						return fmt.Errorf("creating credentials table: %w", err)
+					}
+
+					err = tx.Exec(`CREATE UNIQUE INDEX idx_credentials_identifier ON credentials(kind, identifier)`).Error
+					if err != nil {
+						return fmt.Errorf("creating credentials index: %w", err)
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			{
+				// Move every credential into the unified table and drop the
+				// per-kind tables. Pre-auth keys are backfilled FIRST preserving
+				// their ids so nodes.auth_key_id stays valid; the nodes FK is then
+				// retargeted to credentials(id). Legacy plaintext pre-auth keys
+				// (empty prefix) are not migrated (breaking change) and any node
+				// referencing one has its auth_key_id cleared first.
+				ID: "202606271300-migrate-to-credentials",
+				Migrate: func(tx *gorm.DB) error {
+					// Already migrated (e.g. fresh DB via InitSchema): nothing to do.
+					if !tx.Migrator().HasTable("pre_auth_keys") &&
+						!tx.Migrator().HasTable("api_keys") {
+						return nil
+					}
+
+					return migrateToCredentials(tx)
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
 	migrations.InitSchema(func(tx *gorm.DB) error {
 		// Create all tables using AutoMigrate
+		// Credential is migrated before Node so the nodes.auth_key_id foreign key
+		// to credentials(id) can be created.
 		err := tx.AutoMigrate(
 			&types.User{},
-			&types.PreAuthKey{},
-			&types.APIKey{},
+			&types.Credential{},
 			&types.Node{},
 			&types.Policy{},
-			&types.OAuthClient{},
-			&types.OAuthAccessToken{},
 		)
 		if err != nil {
 			return err
@@ -922,14 +988,11 @@ WHERE user_id IS NULL
 		// to ensure we can recreate them in the correct format
 		dropIndexes := []string{
 			`DROP INDEX IF EXISTS "idx_users_deleted_at"`,
-			`DROP INDEX IF EXISTS "idx_api_keys_prefix"`,
 			`DROP INDEX IF EXISTS "idx_policies_deleted_at"`,
 			`DROP INDEX IF EXISTS "idx_provider_identifier"`,
 			`DROP INDEX IF EXISTS "idx_name_provider_identifier"`,
 			`DROP INDEX IF EXISTS "idx_name_no_provider_identifier"`,
-			`DROP INDEX IF EXISTS "idx_pre_auth_keys_prefix"`,
-			`DROP INDEX IF EXISTS "idx_oauth_clients_client_id"`,
-			`DROP INDEX IF EXISTS "idx_oauth_access_tokens_prefix"`,
+			`DROP INDEX IF EXISTS "idx_credentials_identifier"`,
 		}
 
 		for _, dropSQL := range dropIndexes {
@@ -942,14 +1005,11 @@ WHERE user_id IS NULL
 		// Recreate indexes without backticks to match schema.sql format
 		indexes := []string{
 			`CREATE INDEX idx_users_deleted_at ON users(deleted_at)`,
-			`CREATE UNIQUE INDEX idx_api_keys_prefix ON api_keys(prefix)`,
 			`CREATE INDEX idx_policies_deleted_at ON policies(deleted_at)`,
 			`CREATE UNIQUE INDEX idx_provider_identifier ON users(provider_identifier) WHERE provider_identifier IS NOT NULL`,
 			`CREATE UNIQUE INDEX idx_name_provider_identifier ON users(name, provider_identifier)`,
 			`CREATE UNIQUE INDEX idx_name_no_provider_identifier ON users(name) WHERE provider_identifier IS NULL`,
-			`CREATE UNIQUE INDEX idx_pre_auth_keys_prefix ON pre_auth_keys(prefix) WHERE prefix IS NOT NULL AND prefix != ''`,
-			`CREATE UNIQUE INDEX idx_oauth_clients_client_id ON oauth_clients(client_id)`,
-			`CREATE UNIQUE INDEX idx_oauth_access_tokens_prefix ON oauth_access_tokens(prefix)`,
+			`CREATE UNIQUE INDEX idx_credentials_identifier ON credentials(kind, identifier)`,
 		}
 
 		for _, indexSQL := range indexes {

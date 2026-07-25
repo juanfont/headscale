@@ -103,7 +103,7 @@ func TestTailNode(t *testing.T) {
 					Name: "mini",
 				},
 				Tags:     []string{},
-				AuthKey:  &types.PreAuthKey{},
+				AuthKey:  &types.Credential{},
 				LastSeen: &lastSeen,
 				Expiry:   &expire,
 				Hostinfo: &tailcfg.Hostinfo{

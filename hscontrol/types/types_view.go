@@ -20,7 +20,7 @@ import (
 	"tailscale.com/types/views"
 )
 
-//go:generate go run tailscale.com/cmd/cloner  -clonefunc=false -type=User,Node,PreAuthKey
+//go:generate go run tailscale.com/cmd/cloner  -clonefunc=false -type=User,Node,PreAuthKey,Credential
 
 // View returns a read-only view of User.
 func (p *User) View() UserView {
@@ -230,13 +230,13 @@ func (v NodeView) RegisterMethod() string { return v.ж.RegisterMethod }
 // Tags cannot be removed once set (one-way transition).
 func (v NodeView) Tags() views.Slice[string] { return views.SliceOf(v.ж.Tags) }
 
-// When a node has been created with a [PreAuthKey], we need to
-// prevent the preauthkey from being deleted before the node.
-// The preauthkey can define "tags" of the node so we need it
-// around.
+// When a node has been created with a pre-auth key, we keep the key
+// credential around: it can define the node's tags and must not be deleted
+// before the node. The association is to the unified [Credential] (kind
+// authkey), which is what auth_key_id references.
 func (v NodeView) AuthKeyID() views.ValuePointer[uint64] { return views.ValuePointerOf(v.ж.AuthKeyID) }
 
-func (v NodeView) AuthKey() PreAuthKeyView               { return v.ж.AuthKey.View() }
+func (v NodeView) AuthKey() CredentialView               { return v.ж.AuthKey.View() }
 func (v NodeView) Expiry() views.ValuePointer[time.Time] { return views.ValuePointerOf(v.ж.Expiry) }
 
 // LastSeen is when the node was last in contact with
@@ -299,7 +299,7 @@ var _NodeViewNeedsRegeneration = Node(struct {
 	RegisterMethod string
 	Tags           Strings
 	AuthKeyID      *uint64
-	AuthKey        *PreAuthKey
+	AuthKey        *Credential
 	Expiry         *time.Time
 	LastSeen       *time.Time
 	ApprovedRoutes Prefixes
@@ -436,6 +436,129 @@ var _PreAuthKeyViewNeedsRegeneration = PreAuthKey(struct {
 	Ephemeral   bool
 	Used        bool
 	Tags        []string
+	CreatedAt   *time.Time
+	Expiration  *time.Time
+	Revoked     *time.Time
+}{})
+
+// View returns a read-only view of Credential.
+func (p *Credential) View() CredentialView {
+	return CredentialView{ж: p}
+}
+
+// CredentialView provides a read-only view over Credential.
+//
+// Its methods should only be called if `Valid()` returns true.
+type CredentialView struct {
+	// ж is the underlying mutable value, named with a hard-to-type
+	// character that looks pointy like a pointer.
+	// It is named distinctively to make you think of how dangerous it is to escape
+	// to callers. You must not let callers be able to mutate it.
+	ж *Credential
+}
+
+// Valid reports whether v's underlying value is non-nil.
+func (v CredentialView) Valid() bool { return v.ж != nil }
+
+// AsStruct returns a clone of the underlying value which aliases no memory with
+// the original.
+func (v CredentialView) AsStruct() *Credential {
+	if v.ж == nil {
+		return nil
+	}
+	return v.ж.Clone()
+}
+
+// MarshalJSON implements [jsonv1.Marshaler].
+func (v CredentialView) MarshalJSON() ([]byte, error) {
+	return jsonv1.Marshal(v.ж)
+}
+
+// MarshalJSONTo implements [jsonv2.MarshalerTo].
+func (v CredentialView) MarshalJSONTo(enc *jsontext.Encoder) error {
+	return jsonv2.MarshalEncode(enc, v.ж)
+}
+
+// UnmarshalJSON implements [jsonv1.Unmarshaler].
+func (v *CredentialView) UnmarshalJSON(b []byte) error {
+	if v.ж != nil {
+		return errors.New("already initialized")
+	}
+	if len(b) == 0 {
+		return nil
+	}
+	var x Credential
+	if err := jsonv1.Unmarshal(b, &x); err != nil {
+		return err
+	}
+	v.ж = &x
+	return nil
+}
+
+// UnmarshalJSONFrom implements [jsonv2.UnmarshalerFrom].
+func (v *CredentialView) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	if v.ж != nil {
+		return errors.New("already initialized")
+	}
+	var x Credential
+	if err := jsonv2.UnmarshalDecode(dec, &x); err != nil {
+		return err
+	}
+	v.ж = &x
+	return nil
+}
+
+func (v CredentialView) ID() uint64                    { return v.ж.ID }
+func (v CredentialView) Kind() string                  { return v.ж.Kind }
+func (v CredentialView) Identifier() string            { return v.ж.Identifier }
+func (v CredentialView) Hash() views.ByteSlice[[]byte] { return views.ByteSliceOf(v.ж.Hash) }
+
+// UserID records the owning or creating user. Kept as a plain column with no
+// foreign key for API/OAuth kinds; pre-auth keys keep the user association.
+func (v CredentialView) UserID() views.ValuePointer[uint] { return views.ValuePointerOf(v.ж.UserID) }
+
+func (v CredentialView) User() UserView              { return v.ж.User.View() }
+func (v CredentialView) Description() string         { return v.ж.Description }
+func (v CredentialView) Scopes() views.Slice[string] { return views.SliceOf(v.ж.Scopes) }
+func (v CredentialView) Tags() views.Slice[string]   { return views.SliceOf(v.ж.Tags) }
+func (v CredentialView) Reusable() bool              { return v.ж.Reusable }
+func (v CredentialView) Ephemeral() bool             { return v.ж.Ephemeral }
+func (v CredentialView) Used() bool                  { return v.ж.Used }
+func (v CredentialView) LastSeen() views.ValuePointer[time.Time] {
+	return views.ValuePointerOf(v.ж.LastSeen)
+}
+
+// ClientID links an OAuth access token (Kind == CredentialOAuthToken) back to
+// the Identifier of its issuing OAuth client.
+func (v CredentialView) ClientID() string { return v.ж.ClientID }
+func (v CredentialView) CreatedAt() views.ValuePointer[time.Time] {
+	return views.ValuePointerOf(v.ж.CreatedAt)
+}
+
+func (v CredentialView) Expiration() views.ValuePointer[time.Time] {
+	return views.ValuePointerOf(v.ж.Expiration)
+}
+
+func (v CredentialView) Revoked() views.ValuePointer[time.Time] {
+	return views.ValuePointerOf(v.ж.Revoked)
+}
+
+// A compilation failure here means this code must be regenerated, with the command at the top of this file.
+var _CredentialViewNeedsRegeneration = Credential(struct {
+	ID          uint64
+	Kind        string
+	Identifier  string
+	Hash        []byte
+	UserID      *uint
+	User        *User
+	Description string
+	Scopes      []string
+	Tags        []string
+	Reusable    bool
+	Ephemeral   bool
+	Used        bool
+	LastSeen    *time.Time
+	ClientID    string
 	CreatedAt   *time.Time
 	Expiration  *time.Time
 	Revoked     *time.Time
