@@ -1715,6 +1715,7 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 	if params.User != nil {
 		authUser = params.User.View()
 	}
+
 	rejectedTags := s.validateRequestTagsForReauth(params.ExistingNode, authUser, requestTags)
 	if len(rejectedTags) > 0 {
 		return types.NodeView{}, fmt.Errorf(
@@ -2055,9 +2056,11 @@ func (s *State) validateRequestTagsForReauth(node types.NodeView, authUser types
 		if s.polMan.NodeCanHaveTag(node, tag) {
 			continue
 		}
+
 		if authUser.Valid() && s.polMan.UserCanHaveTag(authUser, tag) {
 			continue
 		}
+
 		rejectedTags = append(rejectedTags, tag)
 	}
 
