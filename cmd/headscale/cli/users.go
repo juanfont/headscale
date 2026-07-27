@@ -118,8 +118,6 @@ var createUserCmd = &cobra.Command{
 	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
 		userName := args[0]
 
-		log.Trace().Interface(zf.Client, client).Msg("obtained API client")
-
 		request := clientv1.CreateUserJSONRequestBody{Name: &userName}
 
 		if displayName, _ := cmd.Flags().GetString("display-name"); displayName != "" {
