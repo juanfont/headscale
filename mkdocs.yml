@@ -172,6 +172,7 @@ nav:
           - Official releases: setup/install/official.md
           - Community packages: setup/install/community.md
           - Container: setup/install/container.md
+          - Sealos (community): setup/install/sealos.md
           - Build from source: setup/install/source.md
           - Development builds: setup/install/main.md
       - Upgrade: setup/upgrade.md
