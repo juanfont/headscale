@@ -45,7 +45,7 @@ build: check-deps $(GO_SOURCES) go.mod go.sum
 .PHONY: test
 test: check-deps $(GO_SOURCES) go.mod go.sum
 	@echo "Running Go tests..."
-	go test -race ./...
+	CGO_ENABLED=1 go test -race ./...
 
 
 # Formatting targets
