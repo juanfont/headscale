@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## 0.29.3 (202x-xx-xx)
+## 0.29.3 (2026-07-29)
 
 **Minimum supported Tailscale client version: v1.80.0**
 
@@ -9,6 +9,10 @@
 - Fix tagged node stuck expired after `tailscale logout`, unable to re-authenticate [#3394](https://github.com/juanfont/headscale/pull/3394)
 - Re-registering a tagged node with a different pre-auth key now applies the new key's tags instead of silently keeping the old ones [#3394](https://github.com/juanfont/headscale/pull/3394)
 - Fix re-authenticating an already-tagged node with `--advertise-tags` being rejected when the authenticating user owns the tags [#3394](https://github.com/juanfont/headscale/pull/3394)
+- Fix ephemeral nodes lingering as disconnected after reconnect churn [#3383](https://github.com/juanfont/headscale/pull/3383)
+- Fix node registration falsely returning `401 registration timed out` when auth completes as the request context expires [#3392](https://github.com/juanfont/headscale/pull/3392)
+- Check the machine key on the followup registration poll so a leaked auth ID cannot return the registering user's identity [#3393](https://github.com/juanfont/headscale/pull/3393)
+- Reject `/key` requests below the supported capability version floor, matching `/ts2021` [#3391](https://github.com/juanfont/headscale/pull/3391)
 
 ## 0.29.2 (2026-07-01)
 
