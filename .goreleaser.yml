@@ -102,6 +102,10 @@ kos:
     # for tagging and naming the container.
     bare: true
     base_image: gcr.io/distroless/base-debian13
+    labels:
+      org.opencontainers.image.source: https://github.com/juanfont/headscale
+    annotations:
+      org.opencontainers.image.source: https://github.com/juanfont/headscale
     build: headscale
     main: ./cmd/headscale
     env:
@@ -131,6 +135,10 @@ kos:
 
     bare: true
     base_image: gcr.io/distroless/base-debian13:debug
+    labels:
+      org.opencontainers.image.source: https://github.com/juanfont/headscale
+    annotations:
+      org.opencontainers.image.source: https://github.com/juanfont/headscale
     build: headscale
     main: ./cmd/headscale
     env:
