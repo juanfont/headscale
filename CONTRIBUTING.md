@@ -32,3 +32,27 @@ Headscale is open to code contributions for bug fixes without discussion.
 ## Documentation
 
 If you find mistakes in the documentation, please submit a fix to the documentation.
+
+## Commit messages
+
+Every commit in a pull request must reference a GitHub issue. CI enforces this via `.github/scripts/commit-lint.nu`.
+
+Use one of the following at the start of a line in the commit body:
+
+- `Fixes #N` — closes issue N when the PR merges.
+- `Updates #N` — references issue N without closing it.
+
+Cross-repo references (`Updates juanfont/headscale#N`) and full GitHub issue URLs are accepted.
+
+The full set of accepted verbs (case-insensitive) is: `close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves`, `resolved`, `updates`, `for`.
+
+### Skip tokens
+
+Some commits do not need an issue reference:
+
+- Authors containing `[bot]` (e.g. `dependabot[bot]`, `renovate[bot]`) are skipped.
+- Subjects starting with `Revert ` are skipped (the original commit carries the reference).
+- A line equal to `#cleanup` skips trivial cleanups.
+- The token `skip-issuebot` anywhere in the body skips a commit.
+
+This rule is modelled after [tailscale/issuebot](https://github.com/tailscale/issuebot).
