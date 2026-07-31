@@ -16,13 +16,17 @@ dns:
   override_local_dns: true
   nameservers:
     global:
-      - 1.1.1.1
-      - 1.0.0.1
+      - 100.64.0.1
+      - 100.64.0.2
     split:
       foo.bar.com:
-        - 8.8.8.8
+        - 100.64.0.1
+        - 100.64.0.2
       baz.example.com:
-        - 9.9.9.9
+        - 100.64.0.1
     use_with_exit_node:
-      - 1.1.1.1
-      - 8.8.8.8
+      global:
+        - 100.64.0.2
+      split:
+        foo.bar.com:
+          - 100.64.0.1

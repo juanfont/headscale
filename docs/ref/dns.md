@@ -10,25 +10,39 @@ ignores the nameservers configured in Headscale. This is usually desirable, but 
 resolver (for example a Pi-hole running on the tailnet) directly: the query has to take the round trip through the exit
 node first.
 
-The `dns.nameservers.use_with_exit_node` option lists the nameserver addresses that should keep being used even while an
-exit node is selected. Listed addresses must also appear in `dns.nameservers.global` or `dns.nameservers.split`.
+List a global or split nameserver under `dns.nameservers.use_with_exit_node` to keep using that resolver while an exit
+node is selected. Each selected address must also appear in the corresponding `global` list or under the same domain in
+`split`.
 
 ```yaml title="config.yaml"
 dns:
+  override_local_dns: true
   nameservers:
     global:
       - 100.64.0.53
+    split:
+      homelab.example.com:
+        - 100.64.0.54
     use_with_exit_node:
-      - 100.64.0.53
+      global:
+        - 100.64.0.53
+      split:
+        homelab.example.com:
+          - 100.64.0.54
 ```
 
-When the listed resolver is reachable within the tailnet (such as `100.64.0.53`), the client talks to it directly
-instead of routing the query through the exit node.
+Global nameservers require `dns.override_local_dns: true`. Split nameservers can use this option regardless of that
+setting. Global and split selections are independent, so the same address can be enabled for one split domain without
+enabling its global entry.
+
+This option controls which resolver receives a query, not how packets are routed. A resolver at a tailnet address or
+behind an advertised subnet route is normally reached directly because that route is more specific than the exit-node
+default route. Traffic to a public resolver normally still travels through the exit node.
 
 !!! warning "Requires a recent Tailscale client"
 
     This maps to Tailscale's [`UseWithExitNode`](https://tailscale.com/kb/1054/dns#nameservers-and-exit-nodes) resolver
-    flag, added in **capability version 125 (Tailscale v1.88)**. Older clients silently ignore the setting and continue
+    flag, added in **capability version 125 (Tailscale v1.88.1)**. Older clients silently ignore the setting and continue
     to send DNS through the exit node.
 
 ## Setting extra DNS records

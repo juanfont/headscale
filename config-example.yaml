@@ -337,17 +337,15 @@ dns:
       #   - 1.1.1.1
       #   - 8.8.8.8
 
-    # By default, when a client selects an exit node, Tailscale routes all of
-    # that client's DNS through the exit node and ignores the nameservers
-    # above. List the nameserver addresses here (from `global` or `split`) that
-    # should keep being used even while an exit node is selected. This is useful
-    # to reach a self-hosted resolver (e.g. Pi-hole on the tailnet) directly,
-    # without the round trip through the exit node.
-    #
-    # Requires a Tailscale client from v1.88 or newer (capability version 125);
-    # older clients silently ignore this setting.
-    use_with_exit_node: []
-      # - 100.64.0.53
+    # Nameservers to keep using while an exit node is selected. Global entries
+    # must also be in `global` and require `override_local_dns: true`. Split
+    # entries must also be under the same domain in `split`.
+    use_with_exit_node:
+      global: []
+        # - 1.1.1.1
+      split: {}
+        # foo.bar.com:
+        #   - 1.1.1.1
 
   # Set custom DNS search domains. With MagicDNS enabled,
   # your tailnet base_domain is always the first search domain.
