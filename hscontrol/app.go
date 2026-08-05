@@ -531,7 +531,7 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *chi.Mux {
 		Host:  false,
 		Proto: true,
 		Skip: func(r *http.Request) bool {
-			return r.Method != http.MethodOptions
+			return r.Method == http.MethodOptions
 		},
 	}))
 	r.Use(middleware.RequestID)
