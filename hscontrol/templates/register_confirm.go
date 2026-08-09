@@ -2,6 +2,7 @@ package templates
 
 import (
 	"cmp"
+	"html"
 
 	"github.com/chasefleming/elem-go"
 	"github.com/chasefleming/elem-go/attrs"
@@ -64,12 +65,12 @@ func RegisterConfirm(info RegisterConfirmInfo) *elem.Element {
 	form := elem.Form(
 		attrs.Props{
 			attrs.Method: "POST",
-			attrs.Action: info.FormAction,
+			attrs.Action: html.EscapeString(info.FormAction),
 		},
 		elem.Input(attrs.Props{
 			attrs.Type:  "hidden",
-			attrs.Name:  info.CSRFTokenName,
-			attrs.Value: info.CSRFToken,
+			attrs.Name:  html.EscapeString(info.CSRFTokenName),
+			attrs.Value: html.EscapeString(info.CSRFToken),
 		}),
 		elem.Button(
 			attrs.Props{attrs.Type: "submit"},
