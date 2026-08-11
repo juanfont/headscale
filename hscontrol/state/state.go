@@ -645,7 +645,7 @@ func (s *State) Connect(id types.NodeID) ([]change.Change, uint64) {
 	// A node coming online sends a lightweight online peer patch. Subnet
 	// routers, relay targets, and via targets get their full peer recompute
 	// from the gated PolicyChange below, so no full update is needed here.
-	c := []change.Change{change.NodeOnline(node.ID())}
+	c := []change.Change{change.NodeOnline(node.ID(), time.Now())}
 
 	log.Info().EmbedObject(node).Msg("node connected")
 
@@ -680,6 +680,8 @@ func (s *State) Connect(id types.NodeID) ([]change.Change, uint64) {
 func (s *State) Disconnect(id types.NodeID, epoch uint64) ([]change.Change, error) {
 	var wentOffline bool
 
+	var lastSeen time.Time
+
 	node, ok := s.nodeStore.UpdateNode(id, func(n *types.Node) {
 		if n.ActiveSessions > 0 {
 			n.ActiveSessions--
@@ -691,8 +693,8 @@ func (s *State) Disconnect(id types.NodeID, epoch uint64) ([]change.Change, erro
 
 		wentOffline = true
 
-		now := time.Now()
-		n.LastSeen = &now
+		lastSeen = time.Now()
+		n.LastSeen = new(lastSeen)
 		n.IsOnline = new(false)
 		// Offline nodes are not HA candidates; drop any stale
 		// Unhealthy bit so it does not surface in DebugRoutes.
@@ -731,7 +733,7 @@ func (s *State) Disconnect(id types.NodeID, epoch uint64) ([]change.Change, erro
 	// A node going offline sends a lightweight offline peer patch. Subnet
 	// routers and other recompute-forcing nodes rely on the gated
 	// PolicyChange below for the peer recompute, so no full update here.
-	cs := []change.Change{change.NodeOffline(node.ID()), c}
+	cs := []change.Change{change.NodeOffline(node.ID(), lastSeen), c}
 	if s.polMan.NodeNeedsPeerRecompute(node) {
 		cs = append(cs, change.PolicyChange())
 	}

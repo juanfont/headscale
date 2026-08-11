@@ -395,27 +395,34 @@ func DNSConfig() Change {
 	}
 }
 
-// NodeOnline creates a patch response for a node coming online.
-func NodeOnline(nodeID types.NodeID) Change {
+// NodeOnline creates a patch response for a node coming online. lastSeen is
+// the time the node connected; per the tailcfg protocol, a [tailcfg.PeerChange]
+// with LastSeen non-nil signals that the node's online status changed.
+func NodeOnline(nodeID types.NodeID, lastSeen time.Time) Change {
 	return Change{
 		Reason: "node online",
 		PeerPatches: []*tailcfg.PeerChange{
 			{
-				NodeID: nodeID.NodeID(),
-				Online: new(true),
+				NodeID:   nodeID.NodeID(),
+				Online:   new(true),
+				LastSeen: &lastSeen,
 			},
 		},
 	}
 }
 
-// NodeOffline creates a patch response for a node going offline.
-func NodeOffline(nodeID types.NodeID) Change {
+// NodeOffline creates a patch response for a node going offline. lastSeen is
+// the time the node disconnected; per the tailcfg protocol, a
+// [tailcfg.PeerChange] with LastSeen non-nil signals that the node's online
+// status changed.
+func NodeOffline(nodeID types.NodeID, lastSeen time.Time) Change {
 	return Change{
 		Reason: "node offline",
 		PeerPatches: []*tailcfg.PeerChange{
 			{
-				NodeID: nodeID.NodeID(),
-				Online: new(false),
+				NodeID:   nodeID.NodeID(),
+				Online:   new(false),
+				LastSeen: &lastSeen,
 			},
 		},
 	}
