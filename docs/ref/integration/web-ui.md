@@ -25,5 +25,7 @@ Headscale doesn't provide a built-in web interface but users may pick one from t
 - [Headscale UI](https://github.com/MunMunMiao/headscale-ui) - Headscale UI online and Self-hosting
 - [Headscale Panel](https://github.com/headscale-panel/panel) - A modern Headscale management panel with a clean,
   network-operations-focused UI
+- [Head-Control](https://github.com/Panagiotis1226/Head-Control) - Self-hosted admin console for headscale with ACL
+  editing, policy history and DNS management
 
 You can ask for support on our [Discord server](https://discord.gg/c84AZQhmpx) in the "web-interfaces" channel.
