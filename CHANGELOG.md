@@ -45,6 +45,7 @@ keys remain all-access.
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
 - Headscale now requires Go 1.27 to build
+- Creating an OAuth client now rejects scopes outside the known vocabulary instead of storing them verbatim [#3406](https://github.com/juanfont/headscale/issues/3406)
 
 ## 0.29.4 (2026-09-23)
 

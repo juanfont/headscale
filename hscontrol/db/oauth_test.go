@@ -202,3 +202,44 @@ func TestAccessTokenRejectedWhenClientGone(t *testing.T) {
 	_, err = db.AuthenticateAccessToken(tokenStr2)
 	require.ErrorIs(t, err, ErrAccessTokenClientRevoked)
 }
+
+// TestOAuthClientCreateRejectsUnknownScopes asserts scopes are validated against
+// the known vocabulary the same way tags are, instead of being stored verbatim.
+func TestOAuthClientCreateRejectsUnknownScopes(t *testing.T) {
+	tests := []struct {
+		name   string
+		scopes []string
+		valid  bool
+	}{
+		{name: "known write and read scopes", scopes: []string{"auth_keys", "devices:core:read"}, valid: true},
+		{name: "super scopes", scopes: []string{"all", "all:read"}, valid: true},
+		{name: "arbitrary scope", scopes: []string{"EVIL:superuser"}},
+		{name: "path traversal", scopes: []string{"../../etc/passwd"}},
+		{name: "wildcard", scopes: []string{"*::*"}},
+		{name: "empty scope", scopes: []string{""}},
+		{name: "wrong case", scopes: []string{"AUTH_KEYS"}},
+		{name: "one unknown among known", scopes: []string{"auth_keys", "devices:everything"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, err := newSQLiteTestDB()
+			require.NoError(t, err)
+
+			_, client, err := db.CreateOAuthClient(tt.scopes, []string{"tag:ci"}, "", nil)
+			if tt.valid {
+				require.NoError(t, err)
+				assert.ElementsMatch(t, tt.scopes, client.Scopes)
+
+				return
+			}
+
+			require.ErrorIs(t, err, ErrOAuthClientScopeInvalid)
+			assert.Nil(t, client)
+
+			clients, err := db.ListOAuthClients()
+			require.NoError(t, err)
+			assert.Empty(t, clients, "rejected client must not be stored")
+		})
+	}
+}
