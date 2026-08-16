@@ -19,6 +19,11 @@ import (
 var (
 	ErrInvalidAction = errors.New("invalid action")
 	errSelfInSources = errors.New("autogroup:self cannot be used in sources")
+
+	errRecorderNotSingleIP   = errors.New("recorder must resolve to individual nodes")
+	errTooManyRecorders      = errors.New("too many recorder addresses")
+	errEnforceWithNoRecorder = errors.New(
+		"enforceRecorder is set but no recorder resolved to a node")
 )
 
 // companionCap pairs a well-known Tailscale capability with its
@@ -292,15 +297,11 @@ func resolveRecorders(
 
 	for _, prefix := range resolved.Prefixes() {
 		if !prefix.IsSingleIP() {
-			return nil, fmt.Errorf(
-				"recorder must resolve to individual nodes, got prefix %s", prefix,
-			)
+			return nil, fmt.Errorf("%w: got prefix %s", errRecorderNotSingleIP, prefix)
 		}
 
 		if len(addrs) >= maxSSHRecorders {
-			return nil, fmt.Errorf(
-				"recorder resolves to more than %d addresses", maxSSHRecorders,
-			)
+			return nil, fmt.Errorf("%w: more than %d", errTooManyRecorders, maxSSHRecorders)
 		}
 
 		addrs = append(addrs, netip.AddrPortFrom(prefix.Addr(), sshRecorderPort))
@@ -400,10 +401,7 @@ func (pol *Policy) compileSSHPolicy(
 				// Enforcement with nothing to enforce against would silently
 				// degrade to unrecorded sessions, which is the one outcome an
 				// operator who set this flag does not want.
-				return nil, fmt.Errorf(
-					"parsing SSH policy, enforceRecorder is set but no recorder resolved to a node, index: %d",
-					index,
-				)
+				return nil, fmt.Errorf("parsing SSH policy, index %d: %w", index, errEnforceWithNoRecorder)
 			}
 		}
 
