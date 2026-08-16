@@ -250,6 +250,65 @@ func sshCheck(baseURL string) tailcfg.SSHAction {
 	}
 }
 
+// sshRecorderPort is the port a session recorder listens on. Tailscale's ACL
+// syntax has no port field for recorders and the SaaS control plane hardcodes
+// 80; matching that keeps policies portable in both directions.
+const sshRecorderPort = 80
+
+// maxSSHRecorders caps how many recorder ADDRESSES one rule may resolve to.
+//
+// Addresses, not nodes: a dual-stack recorder contributes both its v4 and v6
+// address, so this is four dual-stack nodes rather than eight.
+//
+// ConnectToRecorder walks the list in order with a per-target dial timeout
+// inside an overall budget of about 30 seconds. A recorder alias that resolved
+// to a wide prefix would turn into hundreds of dial targets and burn that
+// budget before reaching a live one — a policy-authored delay on every session
+// establishment, and under enforceRecorder a policy-authored SSH outage. The
+// single-IP requirement below is the real defence; this is the backstop.
+const maxSSHRecorders = 8
+
+// resolveRecorders turns recorder aliases into concrete addresses.
+//
+// Each alias must resolve to individual node addresses. A prefix wider than a
+// single IP is rejected rather than expanded: "tag:recorder" naming two nodes
+// is two addresses, but a /24 is not a recorder, it is a mistake.
+func resolveRecorders(
+	aliases SSHSrcAliases,
+	pol *Policy,
+	users types.Users,
+	nodes views.Slice[types.NodeView],
+) ([]netip.AddrPort, error) {
+	resolved, err := aliases.Resolve(pol, users, nodes)
+	if err != nil {
+		return nil, fmt.Errorf("resolving recorder aliases: %w", err)
+	}
+
+	if resolved == nil {
+		return nil, nil
+	}
+
+	var addrs []netip.AddrPort
+
+	for _, prefix := range resolved.Prefixes() {
+		if !prefix.IsSingleIP() {
+			return nil, fmt.Errorf(
+				"recorder must resolve to individual nodes, got prefix %s", prefix,
+			)
+		}
+
+		if len(addrs) >= maxSSHRecorders {
+			return nil, fmt.Errorf(
+				"recorder resolves to more than %d addresses", maxSSHRecorders,
+			)
+		}
+
+		addrs = append(addrs, netip.AddrPortFrom(prefix.Addr(), sshRecorderPort))
+	}
+
+	return addrs, nil
+}
+
 //nolint:gocyclo // SSH compilation walks per-rule branches with intertwined autogroup:self handling
 func (pol *Policy) compileSSHPolicy(
 	baseURL string,
@@ -299,6 +358,53 @@ func (pol *Policy) compileSSHPolicy(
 				"parsing SSH policy, unknown action %q, index: %d: %w",
 				rule.Action, index, err,
 			)
+		}
+
+		// Session recording. tailscaled has understood SSHAction.Recorders
+		// since capability version 61; populating it is all that was missing.
+		//
+		// Note this is set on the action for BOTH accept and check. For check,
+		// the client fetches a fresh action from HoldAndDelegate, but
+		// tailssh.recorders() falls back to the action derived here when the
+		// delegated one carries no recorders — so check-mode inherits
+		// recording without needing the delegate endpoint to know about it.
+		if len(rule.Recorder) > 0 {
+			recorders, err := resolveRecorders(rule.Recorder, pol, users, nodes)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"parsing SSH policy, resolving recorders, index: %d: %w",
+					index, err,
+				)
+			}
+
+			if len(recorders) > 0 {
+				action.Recorders = recorders
+
+				// Tell the user their session is being recorded, before it
+				// starts. Notice of monitoring is a legal requirement in many
+				// jurisdictions, and for a feature that exists to make sessions
+				// auditable, recording someone silently is the wrong default.
+				// Carried over from the earlier attempt at this in #1820.
+				action.Message = "# This session is being recorded.\n"
+
+				if rule.EnforceRecorder {
+					action.OnRecordingFailure = &tailcfg.SSHRecorderFailureAction{
+						RejectSessionWithMessage:    "session not started: recording is required and no recorder could be reached",
+						TerminateSessionWithMessage: "session terminated: recording failed and recording is required",
+						// NotifyURL is deliberately left empty: it posts an
+						// SSHEventNotifyRequest back to control over Noise, and
+						// headscale implements no such endpoint.
+					}
+				}
+			} else if rule.EnforceRecorder {
+				// Enforcement with nothing to enforce against would silently
+				// degrade to unrecorded sessions, which is the one outcome an
+				// operator who set this flag does not want.
+				return nil, fmt.Errorf(
+					"parsing SSH policy, enforceRecorder is set but no recorder resolved to a node, index: %d",
+					index,
+				)
+			}
 		}
 
 		acceptEnv := rule.AcceptEnv
