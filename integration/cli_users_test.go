@@ -336,3 +336,120 @@ func TestUserCommandValidation(t *testing.T) {
 		})
 	}
 }
+
+// TestUserSetCommand exercises `headscale users set`: changing the display name
+// and profile picture of an existing user, clearing the picture with an empty
+// value, and the validation error paths.
+//
+// The point of the feature is that Tailscale clients render these fields, so the
+// test does not stop at the API: it asserts the new profile actually arrives in
+// the connected node's netmap as tailcfg.UserProfile.
+func TestUserSetCommand(t *testing.T) {
+	IntegrationSkip(t)
+
+	scenario, headscale := setupCLIScenario(t, "cli-userset", []string{"userset"}, 1)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	clients, err := scenario.ListTailscaleClients()
+	require.NoError(t, err)
+	require.Len(t, clients, 1)
+
+	client := clients[0]
+
+	updated := assertJSONRoundtrip[*clientv1.User](t, headscale, []string{
+		"headscale", "users", "set",
+		"--name", "userset",
+		"--display-name", "User Set",
+		"--picture-url", "https://example.com/userset.png",
+		"--output", "json",
+	})
+
+	assert.Equal(t, "userset", updated.Name)
+	assert.Equal(t, "User Set", updated.DisplayName)
+	assert.Equal(t, "https://example.com/userset.png", updated.ProfilePicUrl)
+
+	// Read-after-write: the values must survive a list query.
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		var users []*clientv1.User
+
+		err := executeAndUnmarshal(headscale,
+			[]string{"headscale", "users", "list", "--name", "userset", "--output", "json"},
+			&users,
+		)
+		assert.NoError(ct, err)
+
+		if !assert.Len(ct, users, 1) {
+			return
+		}
+
+		assert.Equal(ct, "User Set", users[0].DisplayName)
+		assert.Equal(ct, "https://example.com/userset.png", users[0].ProfilePicUrl)
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll,
+		"Waiting for the updated profile in users list")
+
+	// End-to-end: the node must receive the new profile in its netmap without
+	// reconnecting. This is what breaks if the write path only touches the
+	// database and leaves the in-memory node copies stale.
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		status, err := client.Status()
+		assert.NoError(ct, err)
+
+		if status == nil {
+			return
+		}
+
+		profile := status.User[status.Self.UserID]
+		assert.Equal(ct, "User Set", profile.DisplayName)
+		assert.Equal(ct, "https://example.com/userset.png", profile.ProfilePicURL)
+	}, integrationutil.ScaledTimeout(60*time.Second), 1*time.Second,
+		"Waiting for the updated profile to reach the client netmap")
+
+	// An empty value clears the field; the display name, not passed, stays.
+	cleared := assertJSONRoundtrip[*clientv1.User](t, headscale, []string{
+		"headscale", "users", "set",
+		"--name", "userset",
+		"--picture-url", "",
+		"--output", "json",
+	})
+
+	assert.Empty(t, cleared.ProfilePicUrl)
+	assert.Equal(t, "User Set", cleared.DisplayName)
+
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "no fields",
+			args:    []string{"users", "set", "--name", "userset"},
+			wantErr: "at least one of",
+		},
+		{
+			name:    "missing selector",
+			args:    []string{"users", "set", "--display-name", "x"},
+			wantErr: "--name or --identifier",
+		},
+		{
+			name:    "invalid picture url",
+			args:    []string{"users", "set", "--name", "userset", "--picture-url", "not-a-url"},
+			wantErr: "profile picture URL",
+		},
+		{
+			name:    "unknown user",
+			args:    []string{"users", "set", "--identifier", "99999", "--display-name", "x"},
+			wantErr: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := headscale.Execute(append([]string{"headscale"}, tt.args...))
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+			} else {
+				require.Error(t, err)
+			}
+		})
+	}
+}
