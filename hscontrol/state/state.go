@@ -416,11 +416,15 @@ func (s *State) CreateUser(user types.User) (*types.User, change.Change, error) 
 // UpdateUser modifies an existing user using the provided update function within a transaction.
 // Returns the updated user, change set, and any error.
 func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error) (*types.User, change.Change, error) {
+	var before types.User
+
 	user, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.User, error) {
 		user, err := hsdb.GetUserByID(tx, userID)
 		if err != nil {
 			return nil, err
 		}
+
+		before = *user
 
 		if err := updateFn(user); err != nil { //nolint:noinlineerr
 			return nil, err
@@ -438,15 +442,103 @@ func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error
 		return nil, change.Change{}, err
 	}
 
+	return s.publishUserUpdate(before, user)
+}
+
+// SetUserProfile applies a partial update to a user's presentational fields
+// (display name, email, profile picture URL) and propagates the result to
+// connected clients.
+//
+// Unlike [State.UpdateUser], a field explicitly set to the empty string is
+// cleared rather than ignored, so an operator can remove a display name or an
+// avatar once it has been set.
+func (s *State) SetUserProfile(
+	userID types.UserID,
+	update types.UserProfileUpdate,
+) (*types.User, change.Change, error) {
+	var before types.User
+
+	user, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.User, error) {
+		current, err := hsdb.GetUserByID(tx, userID)
+		if err != nil {
+			return nil, err
+		}
+
+		before = *current
+
+		return hsdb.SetUserProfile(tx, userID, update)
+	})
+	if err != nil {
+		return nil, change.Change{}, err
+	}
+
+	return s.publishUserUpdate(before, user)
+}
+
+// publishUserUpdate makes a written user record visible to the rest of the
+// system: it refreshes the copies cached in [NodeStore] and reports the
+// [change.Change] connected clients need.
+func (s *State) publishUserUpdate(
+	before types.User,
+	user *types.User,
+) (*types.User, change.Change, error) {
+	s.refreshNodeStoreUser(user)
+
 	// Check if policy manager needs updating
 	c, err := s.updatePolicyManagerUsers()
 	if err != nil {
 		return user, change.Change{}, fmt.Errorf("updating policy manager after user update: %w", err)
 	}
 
-	// TODO(kradalby): We might want to update nodestore with the user data
+	// [tailcfg.UserProfile] is only re-sent as part of a full update, so a
+	// change to a field the clients display has to force one. The comparison
+	// matters: OIDC re-applies the claims on every single login, and
+	// broadcasting a full update to every node each time would be a
+	// significant regression.
+	if userProfileChanged(before, *user) {
+		c = c.Merge(change.UserAdded())
+	}
 
 	return user, c, nil
+}
+
+// userProfileChanged reports whether a user update altered a field that
+// connected clients can observe, i.e. anything that feeds
+// [types.User.TailscaleUserProfile].
+func userProfileChanged(before, after types.User) bool {
+	return before.Name != after.Name ||
+		before.DisplayName != after.DisplayName ||
+		before.Email != after.Email ||
+		before.ProfilePicURL != after.ProfilePicURL
+}
+
+// refreshNodeStoreUser re-points every node owned by user at the updated
+// record. [types.Node] embeds its owning [types.User], and the mapper reads the
+// owner from the [NodeStore] snapshot rather than the database, so without this
+// a profile change would stay invisible to already-connected nodes until the
+// server restarted.
+func (s *State) refreshNodeStoreUser(user *types.User) {
+	if user == nil {
+		return
+	}
+
+	nodes := s.nodeStore.ListNodesByUser(types.UserID(user.ID))
+	if nodes.Len() == 0 {
+		return
+	}
+
+	updates := make(map[types.NodeID]UpdateNodeFunc, nodes.Len())
+
+	for _, node := range nodes.All() {
+		// One copy per node: the nodes must not end up sharing a mutable
+		// [types.User] through the snapshot.
+		updated := *user
+		updates[node.ID()] = func(n *types.Node) {
+			n.User = &updated
+		}
+	}
+
+	s.nodeStore.UpdateNodes(updates)
 }
 
 // DeleteUser permanently removes a user and all associated data (nodes, API keys, etc).

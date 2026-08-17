@@ -97,6 +97,73 @@ type User struct {
 	ProfilePicURL string
 }
 
+// ErrEmptyUserProfileUpdate is returned when a profile update requests no changes.
+var ErrEmptyUserProfileUpdate = errors.New("no profile fields to update")
+
+// ErrInvalidProfilePicURL is returned when a profile picture URL is not an
+// absolute http(s) URL.
+var ErrInvalidProfilePicURL = errors.New(
+	"profile picture URL must be an absolute http or https URL",
+)
+
+// UserProfileUpdate is a partial update of the presentational fields of a
+// [User]: the fields that end up in [tailcfg.UserProfile] and are shown by
+// clients.
+//
+// A nil field is left unchanged. A non-nil field is written as given,
+// including the empty string, which clears the value. This is why the fields
+// are pointers: "leave the avatar alone" and "remove the avatar" are different
+// requests.
+type UserProfileUpdate struct {
+	DisplayName   *string
+	Email         *string
+	ProfilePicURL *string
+}
+
+// IsEmpty reports whether the update requests no changes at all.
+func (u UserProfileUpdate) IsEmpty() bool {
+	return u.DisplayName == nil && u.Email == nil && u.ProfilePicURL == nil
+}
+
+// Validate checks that the update is well formed. An update that changes
+// nothing is an error: it is almost always a caller mistake rather than an
+// intentional no-op.
+func (u UserProfileUpdate) Validate() error {
+	if u.IsEmpty() {
+		return ErrEmptyUserProfileUpdate
+	}
+
+	if u.Email != nil && *u.Email != "" {
+		if _, err := mail.ParseAddress(*u.Email); err != nil { //nolint:noinlineerr
+			return fmt.Errorf("invalid email: %w", err)
+		}
+	}
+
+	if u.ProfilePicURL != nil && *u.ProfilePicURL != "" {
+		if err := ValidateProfilePicURL(*u.ProfilePicURL); err != nil { //nolint:noinlineerr
+			return err
+		}
+	}
+
+	return nil
+}
+
+// ValidateProfilePicURL checks that s is an absolute http or https URL.
+// Headscale hands this value to every client's user interface, so a relative
+// path or a "javascript:" scheme must not get that far.
+func ValidateProfilePicURL(s string) error {
+	parsed, err := url.Parse(s)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidProfilePicURL, err)
+	}
+
+	if parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return fmt.Errorf("%w: %q", ErrInvalidProfilePicURL, s)
+	}
+
+	return nil
+}
+
 func (u *User) StringID() string {
 	if u == nil {
 		return ""
