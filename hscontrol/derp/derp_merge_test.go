@@ -12,7 +12,7 @@ import (
 // cannot mutate a shared or previously served map.
 func TestMergeDERPMapsClonesRegions(t *testing.T) {
 	src := &tailcfg.DERPMap{
-		Regions: map[int]*tailcfg.DERPRegion{
+		Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{
 			1: {RegionID: 1, Nodes: []*tailcfg.DERPNode{{Name: "a"}, {Name: "b"}}},
 		},
 	}

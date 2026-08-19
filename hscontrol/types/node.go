@@ -1159,7 +1159,7 @@ func (nv NodeView) TailNode(
 		return nil, err
 	}
 
-	var derp int
+	var derp tailcfg.DERPRegionID
 	if nv.Hostinfo().Valid() && nv.Hostinfo().NetInfo().Valid() {
 		derp = nv.Hostinfo().NetInfo().PreferredDERP()
 	}

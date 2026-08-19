@@ -188,7 +188,7 @@ func setupBatcherWithTestData(
 		DERP: types.DERPConfig{
 			ServerEnabled: false,
 			DERPMap: &tailcfg.DERPMap{
-				Regions: map[int]*tailcfg.DERPRegion{
+				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{
 					999: {
 						RegionID: 999,
 					},

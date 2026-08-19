@@ -35,16 +35,16 @@ type DebugOverviewInfo struct {
 
 // DebugDERPInfo represents DERP map information in a structured format.
 type DebugDERPInfo struct {
-	Configured   bool                     `json:"configured"`
-	TotalRegions int                      `json:"total_regions"`
-	Regions      map[int]*DebugDERPRegion `json:"regions,omitempty"`
+	Configured   bool                                      `json:"configured"`
+	TotalRegions int                                       `json:"total_regions"`
+	Regions      map[tailcfg.DERPRegionID]*DebugDERPRegion `json:"regions,omitempty"`
 }
 
 // DebugDERPRegion represents a single DERP region.
 type DebugDERPRegion struct {
-	RegionID   int              `json:"region_id"`
-	RegionName string           `json:"region_name"`
-	Nodes      []*DebugDERPNode `json:"nodes"`
+	RegionID   tailcfg.DERPRegionID `json:"region_id"`
+	RegionName string               `json:"region_name"`
+	Nodes      []*DebugDERPNode     `json:"nodes"`
 }
 
 // DebugDERPNode represents a single DERP node.
@@ -346,7 +346,7 @@ func (s *State) DebugDERPJSON() DebugDERPInfo {
 
 	info := DebugDERPInfo{
 		Configured: derpMap != nil,
-		Regions:    make(map[int]*DebugDERPRegion),
+		Regions:    make(map[tailcfg.DERPRegionID]*DebugDERPRegion),
 	}
 
 	if derpMap == nil {

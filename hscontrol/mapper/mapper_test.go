@@ -223,7 +223,7 @@ func TestBuildFromChangeFiltersPeerPatchesByVisibility(t *testing.T) {
 		Policy:       types.PolicyConfig{Mode: types.PolicyModeDB},
 		DERP: types.DERPConfig{
 			DERPMap: &tailcfg.DERPMap{
-				Regions: map[int]*tailcfg.DERPRegion{999: {RegionID: 999}},
+				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{999: {RegionID: 999}},
 			},
 		},
 		Tuning: types.Tuning{
@@ -309,7 +309,7 @@ func TestBuildFromChangeFiltersUserProfilesByVisibility(t *testing.T) {
 		Policy:       types.PolicyConfig{Mode: types.PolicyModeDB},
 		DERP: types.DERPConfig{
 			DERPMap: &tailcfg.DERPMap{
-				Regions: map[int]*tailcfg.DERPRegion{999: {RegionID: 999}},
+				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{999: {RegionID: 999}},
 			},
 		},
 		Tuning: types.Tuning{
@@ -381,7 +381,7 @@ func TestBuildFromChangeVisibilityMatchesFullMap(t *testing.T) {
 		Policy:       types.PolicyConfig{Mode: types.PolicyModeDB},
 		DERP: types.DERPConfig{
 			DERPMap: &tailcfg.DERPMap{
-				Regions: map[int]*tailcfg.DERPRegion{999: {RegionID: 999}},
+				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{999: {RegionID: 999}},
 			},
 		},
 		Tuning: types.Tuning{
@@ -574,7 +574,7 @@ func TestFullMapResponseSurvivesPeerWithInvalidName(t *testing.T) {
 				Policy:       types.PolicyConfig{Mode: types.PolicyModeDB},
 				DERP: types.DERPConfig{
 					DERPMap: &tailcfg.DERPMap{
-						Regions: map[int]*tailcfg.DERPRegion{999: {RegionID: 999}},
+						Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{999: {RegionID: 999}},
 					},
 				},
 				Tuning: types.Tuning{
