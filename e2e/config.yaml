@@ -1,0 +1,39 @@
+server_url: http://headscale-server:8080
+listen_addr: 0.0.0.0:8080
+
+noise:
+  private_key_path: /var/lib/headscale/noise_private.key
+
+prefixes:
+  v4: 100.64.0.0/10
+  v6: fd7a:115c:a1e0::/48
+
+database:
+  type: sqlite
+  sqlite:
+    path: /var/lib/headscale/db.sqlite
+
+derp:
+  server:
+    enabled: true
+    region_id: 999
+    region_code: "e2e"
+    region_name: "E2E Test DERP"
+    private_key_path: /var/lib/headscale/derp_private.key
+    stun_listen_addr: "0.0.0.0:3478"
+  auto_update_enabled: false
+
+dns:
+  magic_dns: true
+  base_domain: headscale.local
+  nameservers:
+    global:
+      - 1.1.1.1
+      - 8.8.8.8
+
+log_level: debug
+
+node:
+  invalid routes expire: 24h
+
+disable_update_check: true

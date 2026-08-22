@@ -1,0 +1,50 @@
+services:
+  headscale:
+    build:
+      context: ..
+      dockerfile: e2e/Dockerfile.server
+    container_name: headscale-server
+    hostname: headscale-server
+    networks:
+      e2e:
+        ipv4_address: 172.30.0.10
+    volumes:
+      - headscale-data:/var/lib/headscale
+    healthcheck:
+      test: ["CMD", "test", "-f", "/var/lib/headscale/.api_key"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  client:
+    build:
+      context: ..
+      dockerfile: e2e/Dockerfile.client
+    container_name: headscale-client
+    hostname: headscale-client
+    networks:
+      e2e:
+        ipv4_address: 172.30.0.20
+    depends_on:
+      headscale:
+        condition: service_healthy
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - ./tests:/tests
+      - headscale-data:/var/lib/headscale:ro
+      - client-data:/var/lib/tailscale
+    environment:
+      - HEADSCALE_URL=http://headscale-server:8080
+      - HEADSCALE_IP=172.30.0.10
+
+networks:
+  e2e:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+volumes:
+  headscale-data:
+  client-data:
