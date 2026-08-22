@@ -1,39 +1,39 @@
 #!/bin/bash
 # Test 5: VPN Connectivity
-# Starts tailscaled, registers via preauth key, verifies connectivity
+# Starts tailscaled fresh, registers via preauth key, verifies connectivity
 
 test_vpn_full_connectivity() {
     echo "=== VPN Connectivity Test ==="
     
-    # Step 0: Start tailscaled if not running
-    if ! pgrep tailscaled > /dev/null 2>&1; then
-        log "Step 0: Starting tailscaled daemon..."
-        mkdir -p /var/run/tailscale /var/lib/tailscale
-        tailscaled \
-            --tun=userspace-networking \
-            --state=/var/lib/tailscale/tailscaled.state \
-            --socket=/var/run/tailscale/tailscaled.sock \
-            > /tmp/tailscaled.log 2>&1 &
-        
-        # Wait for daemon socket
-        for i in $(seq 1 15); do
-            if [ -S /var/run/tailscale/tailscaled.sock ]; then
-                log "Step 0: Tailscaled socket ready"
-                break
-            fi
-            sleep 1
-        done
-        
-        if [ ! -S /var/run/tailscale/tailscaled.sock ]; then
-            echo "Tailscaled socket not created"
-            cat /tmp/tailscaled.log 2>/dev/null | tail -10
-            return 1
+    # Step 0: Kill existing tailscaled and start fresh
+    log "Step 0: Starting fresh tailscaled daemon..."
+    pkill tailscaled 2>/dev/null || true
+    sleep 2
+    rm -f /var/run/tailscale/tailscaled.sock /var/lib/tailscale/tailscaled.state 2>/dev/null
+    mkdir -p /var/run/tailscale /var/lib/tailscale
+    
+    tailscaled \
+        --tun=userspace-networking \
+        --state=/var/lib/tailscale/tailscaled.state \
+        --socket=/var/run/tailscale/tailscaled.sock \
+        > /tmp/tailscaled.log 2>&1 &
+    
+    # Wait for daemon socket
+    for i in $(seq 1 15); do
+        if [ -S /var/run/tailscale/tailscaled.sock ]; then
+            log "Step 0: Tailscaled socket ready"
+            break
         fi
-        
-        sleep 2
-    else
-        log "Step 0: Tailscaled already running"
+        sleep 1
+    done
+    
+    if [ ! -S /var/run/tailscale/tailscaled.sock ]; then
+        echo "Tailscaled socket not created"
+        cat /tmp/tailscaled.log 2>/dev/null | tail -10
+        return 1
     fi
+    
+    sleep 2
     
     # Step 1: Get user ID
     local user_id
@@ -62,35 +62,26 @@ test_vpn_full_connectivity() {
         echo "Response: $response"
         return 1
     fi
-    log "Step 2: Preauth key created (expires: $expiration)"
+    log "Step 2: Preauth key created"
     
     # Step 3: Register with headscale - must set login server URL
     log "Step 3: Registering tailscale..."
-    tailscale logout 2>/dev/null || true
-    sleep 1
     
-    # Register with headscale
     local up_output
     up_output=$(tailscale up \
         --authkey="$preauth_key" \
         --hostname="${TEST_USER}-node" \
         --accept-routes \
         --login-server="http://headscale-server:8080" \
-        --timeout=30s \
+        --timeout=45s \
         2>&1)
     local up_exit=$?
     
     if [ $up_exit -ne 0 ]; then
         echo "Tailscale registration failed (exit=$up_exit)"
         echo "Output: $up_output"
-        
-        if pgrep tailscaled > /dev/null 2>&1; then
-            log "tailscaled is running, checking status..."
-            tailscale status 2>&1 || true
-        else
-            echo "tailscaled crashed"
-            cat /tmp/tailscaled.log 2>/dev/null | tail -20
-        fi
+        tailscale status 2>&1 || true
+        cat /tmp/tailscaled.log 2>/dev/null | tail -20
         return 1
     fi
     log "Step 3: Tailscale registered"

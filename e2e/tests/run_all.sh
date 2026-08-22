@@ -92,6 +92,11 @@ if [ -f "$SCRIPT_DIR/test_05_vpn_connectivity.sh" ]; then
     source "$SCRIPT_DIR/test_05_vpn_connectivity.sh"
 fi
 
+# Run inter-node ping test (both alice and bob run this)
+if [ -f "$SCRIPT_DIR/test_10_inter_node_ping.sh" ]; then
+    source "$SCRIPT_DIR/test_10_inter_node_ping.sh"
+fi
+
 # Run VPN/user separation tests (each client runs its own)
 if [ -f "$SCRIPT_DIR/test_07_user_separation.sh" ]; then
     source "$SCRIPT_DIR/test_07_user_separation.sh"
