@@ -87,8 +87,15 @@ if [ "$TEST_USER" = "alice" ]; then
     done
 fi
 
+# Run VPN connectivity test (each client registers its own node)
+if [ -f "$SCRIPT_DIR/test_05_vpn_connectivity.sh" ]; then
+    source "$SCRIPT_DIR/test_05_vpn_connectivity.sh"
+fi
+
 # Run VPN/user separation tests (each client runs its own)
-source "$SCRIPT_DIR"/test_07_user_separation.sh
+if [ -f "$SCRIPT_DIR/test_07_user_separation.sh" ]; then
+    source "$SCRIPT_DIR/test_07_user_separation.sh"
+fi
 
 # Run API-based tests (only on client-alice)
 if [ "$TEST_USER" = "alice" ]; then
