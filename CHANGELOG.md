@@ -1,5 +1,65 @@
 # CHANGELOG
 
+
+
+
+## 0.29.3 (22/08/2026)
+
+---
+### Added – OIDC Group Support in ACLs (`oidcgrp:` principal type)
+
+Headscale now supports using OIDC group memberships directly in ACL policies via the new `oidcgrp:` principal type. This allows administrators to define access control rules based on groups from any OIDC provider (Keycloak, Authentik, Zitadel, Entra ID, etc.).
+
+**Usage example:**
+
+```json
+{
+  "acls": [
+    {
+      "action": "accept",
+      "src": ["oidcgrp:engineering"],
+      "dst": ["oidcgrp:admins:443"]
+    }
+  ]
+}
+```
+
+**Implementation details:**
+
+- New `user_oidc_groups` join table stores OIDC group memberships per user
+- Groups are fetched from the OIDC provider's `groups` claim during login
+- `SetUserOIDCGroups()` replaces all group memberships for a user (uses `Unscoped()` delete to avoid soft-delete conflicts)
+- `GetUsersByOIDCGroup()` resolves `oidcgrp:` principals to nodes
+- `OIDCGroupResolver` interface allows decoupled group lookups
+- `SetOIDCGroupResolver()` on `PolicyManager` preserves resolver across policy reloads
+- Periodic group refresh clears stale memberships on a 15-minute interval
+
+**Admin API endpoints:**
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/v1/user/{id}/oidc-groups` | List all OIDC groups for a user |
+| `PUT` | `/api/v1/user/{id}/oidc-groups` | Set OIDC groups for a user |
+| `GET` | `/api/v1/user/oidc-group?group=<name>` | List all users in a specific OIDC group |
+
+**Documentation:** Added `docs/ref/oidc-groups.md` with syntax, examples, API reference, and limitations.
+
+**Testing:**
+
+- 7 unit tests in `hscontrol/policy/v2/oidcgrp_test.go`
+- 10 E2E tests in `e2e/tests/` covering:
+  - API health and connectivity
+  - OIDC group CRUD operations
+  - ACL policies with `oidcgrp:` principal type
+  - CLI commands
+  - VPN connectivity and user separation
+  - Full end-to-end flow (users → groups → policy → VPN)
+  - Inter-node ping verification
+
+**Special thanks:** This feature was contributed by [Mr-DS-ML-85](https://github.com/Mr-DS-ML-85) as part of the Headscale community contribution process. The implementation has been reviewed and tested against the official Headscale codebase.
+
+---
+
 ## 0.30.0 (202x-xx-xx)
 
 **Minimum supported Tailscale client version: v1.xx.0**
