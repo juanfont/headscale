@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euo pipefail
+set -eo pipefail
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -21,11 +21,19 @@ run_test() {
     echo "=========================================="
     log "Running: $test_name"
     echo "=========================================="
-    if $test_func; then
+    if (set +e; set +u; "$test_func"); then
         pass "$test_name"
     else
         fail "$test_name"
     fi
+}
+
+# Helper: get user ID by name from API
+get_user_id() {
+    local name="$1"
+    curl -sf "http://headscale-server:8080/api/v1/user" \
+        -H "Authorization: Bearer $API_KEY" 2>/dev/null | \
+        jq -r --arg name "$name" '.users[] | select(.name == $name) | .id' | head -1
 }
 
 # Wait for headscale to be ready
@@ -42,13 +50,13 @@ for i in $(seq 1 30); do
     sleep 1
 done
 
-# Read API key from the bootstrap file (shared via volume)
+# Read API key from the bootstrap file
 echo "Reading API key..."
 for i in $(seq 1 10); do
     if [ -f /var/lib/headscale/.api_key ]; then
         API_KEY=$(cat /var/lib/headscale/.api_key)
         if [ -n "$API_KEY" ]; then
-            log "API key loaded from bootstrap"
+            log "API key loaded"
             break
         fi
     fi
@@ -56,25 +64,44 @@ for i in $(seq 1 10); do
 done
 
 if [ -z "${API_KEY:-}" ]; then
-    echo "Failed to get API key from bootstrap"
+    echo "Failed to get API key"
     exit 1
 fi
 
 export API_KEY
 export HEADSCALE_URL="http://headscale-server:8080"
-log "API key: ${API_KEY:0:10}..."
+export TEST_USER="${TEST_USER:-alice}"
+export TEST_USER_ID="${TEST_USER_ID:-1}"
+export -f get_user_id
+log "Running as: $TEST_USER (ID: $TEST_USER_ID)"
 
 # Source test files
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-for test_file in "$SCRIPT_DIR"/test_*.sh; do
-    if [ -f "$test_file" ]; then
-        source "$test_file"
-    fi
-done
+
+# Run API and OIDC tests (only on client-alice to avoid duplicates)
+if [ "$TEST_USER" = "alice" ]; then
+    for test_file in "$SCRIPT_DIR"/test_0{1,2,3,6,8}_*.sh; do
+        if [ -f "$test_file" ]; then
+            source "$test_file"
+        fi
+    done
+fi
+
+# Run VPN/user separation tests (each client runs its own)
+source "$SCRIPT_DIR"/test_07_user_separation.sh
+
+# Run API-based tests (only on client-alice)
+if [ "$TEST_USER" = "alice" ]; then
+    for test_file in "$SCRIPT_DIR"/test_04_*.sh; do
+        if [ -f "$test_file" ]; then
+            source "$test_file"
+        fi
+    done
+fi
 
 echo ""
 echo "=========================================="
-echo "           TEST RESULTS"
+echo "           TEST RESULTS ($TEST_USER)"
 echo "=========================================="
 echo -e "Total:  $TOTAL"
 echo -e "Passed: ${GREEN}$PASSED${NC}"

@@ -245,7 +245,7 @@ func (hsdb *HSDatabase) SetUserOIDCGroups(userID types.UserID, groupNames []stri
 // SetUserOIDCGroups replaces all OIDC group memberships for a user within a transaction.
 func SetUserOIDCGroups(tx *gorm.DB, userID types.UserID, groupNames []string) error {
 	// Delete existing groups for this user.
-	if err := tx.Where("user_id = ?", userID).Delete(&types.UserOIDCGroup{}).Error; err != nil {
+	if err := tx.Unscoped().Where("user_id = ?", userID).Delete(&types.UserOIDCGroup{}).Error; err != nil {
 		return fmt.Errorf("deleting old OIDC groups: %w", err)
 	}
 

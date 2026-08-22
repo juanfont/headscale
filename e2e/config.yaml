@@ -13,6 +13,9 @@ database:
   sqlite:
     path: /var/lib/headscale/db.sqlite
 
+policy:
+  mode: database
+
 derp:
   server:
     enabled: true
@@ -30,6 +33,20 @@ dns:
     global:
       - 1.1.1.1
       - 8.8.8.8
+
+oidc:
+  issuer: http://keycloak:8080/auth/realms/headscale
+  client_id: headscale
+  client_secret: headscale-secret
+  scope:
+    - openid
+    - profile
+    - email
+    - groups
+  allowed_groups:
+    - admins
+  allowed_domains:
+    - headscale.local
 
 log_level: debug
 
