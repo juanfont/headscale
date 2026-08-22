@@ -1748,7 +1748,19 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 	updatedNodeView, ok := s.nodeStore.UpdateNode(params.ExistingNode.ID(), func(node *types.Node) {
 		node.NodeKey = regData.NodeKey
 		node.DiscoKey = regData.DiscoKey
+
+		// Resync the DNS label from the new hostname the same way
+		// UpdateNodeFromMapRequest does. This path overwrites Hostinfo
+		// below, so the hostinfoChanged comparison there can never fire
+		// after a re-register: without this, a node that re-registers
+		// under a new hostname keeps its old GivenName forever (#3432).
+		// Admin renames are preserved — only auto-derived labels follow.
+		givenNameAutoDerived := isAutoDerivedGivenName(node.GivenName, node.Hostname)
 		node.Hostname = params.Hostname
+		if givenNameAutoDerived && params.Hostname != "" {
+			node.GivenName = dnsname.SanitizeHostname(params.Hostname)
+			// [NodeStore.UpdateNode] auto-bumps GivenName on collision.
+		}
 
 		// Preserve NetInfo from existing node when re-registering
 		node.Hostinfo = params.ValidHostinfo
@@ -2611,7 +2623,20 @@ func (s *State) HandleNodeFromPreAuthKey(
 		// Update existing node - NodeStore first, then database
 		updatedNodeView, ok := s.nodeStore.UpdateNode(existingNodeSameUser.ID(), func(node *types.Node) {
 			node.NodeKey = regReq.NodeKey
+
+			// Resync the DNS label from the new hostname with the same
+			// semantics UpdateNodeFromMapRequest applies to hostinfo
+			// changes: this path overwrites Hostinfo below, so the
+			// hostinfoChanged comparison there can never fire after a
+			// re-register, and without this a node re-registering under a
+			// new hostname keeps its old GivenName forever (#3432).
+			// Admin renames are preserved — only auto-derived labels follow.
+			givenNameAutoDerived := isAutoDerivedGivenName(node.GivenName, node.Hostname)
 			node.Hostname = hostname
+			if givenNameAutoDerived && hostname != "" {
+				node.GivenName = dnsname.SanitizeHostname(hostname)
+				// [NodeStore.UpdateNode] auto-bumps GivenName on collision.
+			}
 
 			// TODO(kradalby): We should ensure we use the same hostinfo and node merge semantics
 			// when a node re-registers as we do when it sends a map request (UpdateNodeFromMapRequest).
