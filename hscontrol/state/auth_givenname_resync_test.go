@@ -85,7 +85,7 @@ func TestReauthResyncsGivenName(t *testing.T) {
 
 	// The rename survives pre-auth-key re-registration too.
 	pakRegRenamed := tailcfg.RegisterRequest{
-		Auth:    &tailcfg.RegisterResponseAuth{AuthKey: pakKeyFor(s, t, user)},
+		Auth:    &tailcfg.RegisterResponseAuth{AuthKey: pakKeyFor(t, s, user)},
 		NodeKey: key.NewNode().Public(),
 		Expiry:  clientExpiry,
 		Hostinfo: &tailcfg.Hostinfo{
@@ -100,7 +100,7 @@ func TestReauthResyncsGivenName(t *testing.T) {
 
 	// --- Pre-auth-key re-registration on a node with an auto-derived label ---
 	pakReg := tailcfg.RegisterRequest{
-		Auth:    &tailcfg.RegisterResponseAuth{AuthKey: pakKeyFor(s, t, user)},
+		Auth:    &tailcfg.RegisterResponseAuth{AuthKey: pakKeyFor(t, s, user)},
 		NodeKey: key.NewNode().Public(),
 		Expiry:  clientExpiry,
 		Hostinfo: &tailcfg.Hostinfo{
@@ -115,7 +115,7 @@ func TestReauthResyncsGivenName(t *testing.T) {
 		"#3432: GivenName must follow the new hostname when re-registering via pre-auth key")
 }
 
-func pakKeyFor(s *State, t *testing.T, user *types.User) string {
+func pakKeyFor(t *testing.T, s *State, user *types.User) string {
 	t.Helper()
 
 	userID := types.UserID(user.ID)

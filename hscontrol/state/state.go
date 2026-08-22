@@ -1749,18 +1749,7 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 		node.NodeKey = regData.NodeKey
 		node.DiscoKey = regData.DiscoKey
 
-		// Resync the DNS label from the new hostname the same way
-		// UpdateNodeFromMapRequest does. This path overwrites Hostinfo
-		// below, so the hostinfoChanged comparison there can never fire
-		// after a re-register: without this, a node that re-registers
-		// under a new hostname keeps its old GivenName forever (#3432).
-		// Admin renames are preserved — only auto-derived labels follow.
-		givenNameAutoDerived := isAutoDerivedGivenName(node.GivenName, node.Hostname)
-		node.Hostname = params.Hostname
-		if givenNameAutoDerived && params.Hostname != "" {
-			node.GivenName = dnsname.SanitizeHostname(params.Hostname)
-			// [NodeStore.UpdateNode] auto-bumps GivenName on collision.
-		}
+		resyncAutoDerivedGivenName(node, params.Hostname)
 
 		// Preserve NetInfo from existing node when re-registering
 		node.Hostinfo = params.ValidHostinfo
@@ -2624,19 +2613,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 		updatedNodeView, ok := s.nodeStore.UpdateNode(existingNodeSameUser.ID(), func(node *types.Node) {
 			node.NodeKey = regReq.NodeKey
 
-			// Resync the DNS label from the new hostname with the same
-			// semantics UpdateNodeFromMapRequest applies to hostinfo
-			// changes: this path overwrites Hostinfo below, so the
-			// hostinfoChanged comparison there can never fire after a
-			// re-register, and without this a node re-registering under a
-			// new hostname keeps its old GivenName forever (#3432).
-			// Admin renames are preserved — only auto-derived labels follow.
-			givenNameAutoDerived := isAutoDerivedGivenName(node.GivenName, node.Hostname)
-			node.Hostname = hostname
-			if givenNameAutoDerived && hostname != "" {
-				node.GivenName = dnsname.SanitizeHostname(hostname)
-				// [NodeStore.UpdateNode] auto-bumps GivenName on collision.
-			}
+			resyncAutoDerivedGivenName(node, hostname)
 
 			// TODO(kradalby): We should ensure we use the same hostinfo and node merge semantics
 			// when a node re-registers as we do when it sends a map request (UpdateNodeFromMapRequest).
@@ -3026,6 +3003,25 @@ func (s *State) autoApproveNodes() ([]change.Change, error) {
 // [NodeStore] collision-bump "-N" suffix. It is used to detect whether a
 // GivenName has been admin-renamed (in which case it must not be
 // overwritten by client-side hostname changes).
+// resyncAutoDerivedGivenName mirrors the GivenName handling of
+// UpdateNodeFromMapRequest for the register/re-auth paths, which overwrite
+// Hostname (and Hostinfo) in one step. Those paths never see a hostinfo
+// change on the next MapRequest — the stored Hostinfo is already the new
+// one — so without this the DNS label keeps the old hostname forever
+// (#3432). Admin renames are preserved: an auto-derived GivenName
+// (SanitizeHostname of the old hostname, optionally with a "-N" collision
+// bump) follows the new hostname, any other value is left alone.
+// [NodeStore.UpdateNode] auto-bumps the new label on collision.
+func resyncAutoDerivedGivenName(node *types.Node, newHostname string) {
+	givenNameAutoDerived := isAutoDerivedGivenName(node.GivenName, node.Hostname)
+
+	node.Hostname = newHostname
+
+	if givenNameAutoDerived && newHostname != "" {
+		node.GivenName = dnsname.SanitizeHostname(newHostname)
+	}
+}
+
 func isAutoDerivedGivenName(given, hostname string) bool {
 	base := dnsname.SanitizeHostname(hostname)
 	if given == base {
