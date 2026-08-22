@@ -69,6 +69,11 @@ type PolicyManager interface {
 	// capabilities, not a per-viewer view.
 	NodeCapMap(id types.NodeID) tailcfg.NodeCapMap
 
+	// SetOIDCGroupResolver injects the OIDC group resolver into the policy.
+	// This must be called after NewPolicyManager and before any policy evaluation
+	// that uses oidcgrp: principals.
+	SetOIDCGroupResolver(resolver policyv2.OIDCGroupResolver)
+
 	// NodeCapMaps returns a snapshot of the per-node policy CapMap so
 	// callers can amortise lock acquisitions over a peer loop. The
 	// outer map is a fresh container; the inner [tailcfg.NodeCapMap]

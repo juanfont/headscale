@@ -413,6 +413,21 @@ type OIDCUserInfo struct {
 	Picture           string              `json:"picture"`
 }
 
+// UserOIDCGroup represents an OIDC group membership for a user.
+// Groups are fetched from the OIDC provider during login and
+// stored for use in policy evaluation (oidcgrp: principal type).
+type UserOIDCGroup struct {
+	gorm.Model //nolint:embeddedstructfieldcheck
+
+	UserID    uint   `gorm:"uniqueIndex:idx_user_oidc_group"`
+	GroupName string `gorm:"uniqueIndex:idx_user_oidc_group;size:255"`
+}
+
+// TableName overrides the default GORM table name for [UserOIDCGroup].
+func (UserOIDCGroup) TableName() string {
+	return "user_oidc_groups"
+}
+
 // FromClaim overrides a [User] from OIDC claims.
 // All fields will be updated, except for the ID.
 func (u *User) FromClaim(claims *OIDCClaims, emailVerifiedRequired bool) {

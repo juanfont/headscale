@@ -837,6 +837,93 @@ func (ag *AutoGroup) Is(c AutoGroup) bool {
 	return *ag == c
 }
 
+// OIDCGroup is a principal type that resolves to all users belonging to
+// the named OIDC group. Groups are populated from the OIDC provider during
+// login and stored in the user_oidc_groups table. The resolver is injected
+// into the PolicyManager via [PolicyManager.SetOIDCGroupResolver].
+type OIDCGroup string
+
+// OIDCGroupResolver is the interface used by [OIDCGroup.Resolve] to look up
+// which users belong to a given OIDC group name. Implementations are expected
+// to return the [types.User] slice for the group, or nil/empty if the group
+// has no members.
+type OIDCGroupResolver interface {
+	GetUsersByOIDCGroup(groupName string) ([]types.User, error)
+}
+
+func isOIDCGroup(str string) bool {
+	return strings.HasPrefix(str, "oidcgrp:")
+}
+
+func (og *OIDCGroup) Validate() error {
+	if string(*og) == "" {
+		return fmt.Errorf("%w: empty oidcgrp", ErrInvalidAlias)
+	}
+
+	rest := strings.TrimPrefix(string(*og), "oidcgrp:")
+	if rest == "" {
+		return fmt.Errorf("%w: oidcgrp must have a group name", ErrInvalidAlias)
+	}
+
+	return nil
+}
+
+func (og *OIDCGroup) UnmarshalJSON(b []byte) error {
+	*og = OIDCGroup(strings.Trim(string(b), `"`))
+
+	return og.Validate()
+}
+
+func (og *OIDCGroup) String() string {
+	return string(*og)
+}
+
+func (og *OIDCGroup) MarshalJSON() ([]byte, error) {
+	return json.Marshal(string(*og))
+}
+
+func (og *OIDCGroup) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ResolvedAddresses, error) {
+	return newResolvedAddresses(og.resolve(p, users, nodes))
+}
+
+func (og *OIDCGroup) resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
+	if p.oidcGroupResolver == nil {
+		return nil, fmt.Errorf("%w: oidcgrp resolver not configured", ErrInvalidAlias)
+	}
+
+	groupName := strings.TrimPrefix(string(*og), "oidcgrp:")
+
+	groupUsers, err := p.oidcGroupResolver.GetUsersByOIDCGroup(groupName)
+	if err != nil {
+		return nil, fmt.Errorf("resolving oidcgrp %q: %w", groupName, err)
+	}
+
+	if len(groupUsers) == 0 {
+		return nil, nil
+	}
+
+	var build netipx.IPSetBuilder
+
+	// Build a set of user IDs from the resolved group users.
+	groupUserIDs := make(map[uint]bool, len(groupUsers))
+	for _, u := range groupUsers {
+		groupUserIDs[u.ID] = true
+	}
+
+	// Match nodes owned by users in the OIDC group.
+	for _, node := range nodes.All() {
+		if node.IsTagged() {
+			continue
+		}
+
+		if node.User().Valid() && groupUserIDs[node.User().ID()] {
+			node.AppendToIPSet(&build)
+		}
+	}
+
+	return build.IPSet()
+}
+
 type Alias interface {
 	Validate() error
 	UnmarshalJSON(b []byte) error
@@ -1050,6 +1137,8 @@ func parseAlias(vs string) (Alias, error) {
 		return new(Tag(vs)), nil
 	case isAutoGroup(vs):
 		return new(AutoGroup(vs)), nil
+	case isOIDCGroup(vs):
+		return new(OIDCGroup(vs)), nil
 	}
 
 	if isHost(vs) {
@@ -1976,6 +2065,10 @@ type Policy struct {
 	// It is not safe to use before it is validated, and
 	// callers using it should panic if not
 	validated bool `json:"-"`
+
+	// oidcGroupResolver is injected by the PolicyManager to resolve
+	// oidcgrp: principals. It is not serialized.
+	oidcGroupResolver OIDCGroupResolver `json:"-"`
 
 	Groups              Groups             `json:"groups,omitempty"`
 	Hosts               Hosts              `json:"hosts,omitempty"`

@@ -140,6 +140,18 @@ CREATE TABLE policies(
 );
 CREATE INDEX idx_policies_deleted_at ON policies(deleted_at);
 
+CREATE TABLE user_oidc_groups(
+  id integer PRIMARY KEY AUTOINCREMENT,
+  user_id integer,
+  group_name text,
+
+  created_at datetime,
+  updated_at datetime,
+  deleted_at datetime
+);
+CREATE UNIQUE INDEX idx_user_oidc_group ON user_oidc_groups(user_id, group_name);
+CREATE INDEX idx_user_oidc_groups_deleted_at ON user_oidc_groups(deleted_at);
+
 CREATE TABLE database_versions(
   id integer PRIMARY KEY,
   version text NOT NULL,
