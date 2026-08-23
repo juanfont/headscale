@@ -21,66 +21,30 @@ func (m *mockOIDCGroupResolver) GetUsersByOIDCGroup(groupName string) ([]types.U
 	return m.groups[groupName], nil
 }
 
-// TestOIDCGroupParsing tests that oidcgrp: aliases are correctly parsed.
-func TestOIDCGroupParsing(t *testing.T) {
-	tests := []struct {
-		name    string
-		input   string
-		wantErr bool
-	}{
-		{
-			name:    "valid-oidcgrp",
-			input:   "oidcgrp:engineering",
-			wantErr: false,
-		},
-		{
-			name:    "valid-oidcgrp-with-dash",
-			input:   "oidcgrp:my-group",
-			wantErr: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			alias, err := parseAlias(tt.input)
-			if tt.wantErr {
-				assert.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-			og, ok := alias.(*OIDCGroup)
-			require.True(t, ok, "expected *OIDCGroup, got %T", alias)
-			assert.Equal(t, tt.input, og.String())
-		})
-	}
-}
-
-// TestOIDCGroupResolve tests that oidcgrp: resolves to correct node IPs
-// and filter rules are properly generated.
-func TestOIDCGroupResolve(t *testing.T) {
-	// Create test users.
+// TestGroupResolveFromOIDC tests that group:<name> resolves users from
+// the OIDC resolver when the group is not defined in the policy's Groups map.
+func TestGroupResolveFromOIDC(t *testing.T) {
 	user1 := types.User{Model: gorm.Model{ID: 1}, Name: "alice"}
 	user2 := types.User{Model: gorm.Model{ID: 2}, Name: "bob"}
 
-	// Create mock resolver with group memberships.
 	resolver := &mockOIDCGroupResolver{
 		groups: map[string][]types.User{
 			"engineering": {user1, user2},
 		},
 	}
 
-	// Simple policy: engineering can reach all on any port.
+	// Policy uses group:engineering but does NOT define it in the groups section.
+	// The group is resolved from OIDC only.
 	policyJSON := []byte(`{
 		"acls": [{
 			"action": "accept",
-			"src": ["oidcgrp:engineering"],
+			"src": ["group:engineering"],
 			"dst": ["*:*"]
 		}]
 	}`)
 
 	users := types.Users{user1, user2}
 
-	// Create nodes for each user.
 	node1 := &types.Node{
 		Hostname: "node1",
 		IPv4:     createAddr("100.64.0.1"),
@@ -99,41 +63,216 @@ func TestOIDCGroupResolve(t *testing.T) {
 	pm, err := NewPolicyManager(nil, users, nodes.ViewSlice())
 	require.NoError(t, err)
 
-	// Inject the resolver.
 	pm.SetOIDCGroupResolver(resolver)
 
-	// Set the policy.
 	changed, err := pm.SetPolicy(policyJSON)
 	require.NoError(t, err)
 	assert.True(t, changed)
 
-	// Debug: dump filter rules.
-	pm.mu.RLock()
-	t.Logf("global filter: %+v", pm.filter)
-	t.Logf("compiledGrants: %d", len(pm.compiledGrants))
-	for i, cg := range pm.compiledGrants {
-		t.Logf("  grant[%d]: srcIPs=%v rules=%d", i, cg.srcIPStrings, len(cg.rules))
-	}
-	pm.mu.RUnlock()
-
-	// Verify alice's filter rules have engineering IPs as sources
-	// and wildcard as destination (can reach anyone).
+	// Verify alice's filter rules have both engineering members as sources.
 	rules, err := pm.FilterForNode(node1.View())
 	require.NoError(t, err)
-	t.Logf("node1 rules: %+v", rules)
-	assert.NotEmpty(t, rules, "alice (in engineering) should have filter rules")
+	assert.NotEmpty(t, rules, "alice (in OIDC engineering) should have filter rules")
 	assertFilterRulesContainDstIP(t, rules, netip.MustParseAddr("100.64.0.2"))
 
-	// Verify the source IPs cover both engineering members (alice + bob).
-	// IPs may be merged into a range like "100.64.0.1-100.64.0.2".
 	require.NotEmpty(t, rules[0].SrcIPs)
 	srcStr := strings.Join(rules[0].SrcIPs, ",")
 	assert.Contains(t, srcStr, "100.64.0.1")
 	assert.Contains(t, srcStr, "100.64.0.2")
 }
 
-// TestOIDCGroupResolveEmptyGroup tests that oidcgrp: with no members resolves to nothing.
-func TestOIDCGroupResolveEmptyGroup(t *testing.T) {
+// TestGroupResolveFromLocalPolicy tests that group:<name> resolves users
+// from the policy-defined Groups map (local membership).
+func TestGroupResolveFromLocalPolicy(t *testing.T) {
+	user1 := types.User{Model: gorm.Model{ID: 1}, Name: "alice", Email: "alice@headscale.local"}
+	user2 := types.User{Model: gorm.Model{ID: 2}, Name: "bob", Email: "bob@headscale.local"}
+
+	// Policy defines the group locally.
+	policyJSON := []byte(`{
+		"groups": {
+			"group:engineering": ["alice@headscale.local", "bob@headscale.local"]
+		},
+		"acls": [{
+			"action": "accept",
+			"src": ["group:engineering"],
+			"dst": ["*:*"]
+		}]
+	}`)
+
+	users := types.Users{user1, user2}
+
+	node1 := &types.Node{
+		Hostname: "node1",
+		IPv4:     createAddr("100.64.0.1"),
+		UserID:   &user1.ID,
+		User:     &user1,
+	}
+	node2 := &types.Node{
+		Hostname: "node2",
+		IPv4:     createAddr("100.64.0.2"),
+		UserID:   &user2.ID,
+		User:     &user2,
+	}
+
+	nodes := types.Nodes{node1, node2}
+
+	pm, err := NewPolicyManager(nil, users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	changed, err := pm.SetPolicy(policyJSON)
+	require.NoError(t, err)
+	assert.True(t, changed)
+
+	// Verify alice's filter rules have both engineering members as sources.
+	rules, err := pm.FilterForNode(node1.View())
+	require.NoError(t, err)
+	assert.NotEmpty(t, rules, "alice (in local engineering) should have filter rules")
+	assertFilterRulesContainDstIP(t, rules, netip.MustParseAddr("100.64.0.2"))
+
+	require.NotEmpty(t, rules[0].SrcIPs)
+	srcStr := strings.Join(rules[0].SrcIPs, ",")
+	assert.Contains(t, srcStr, "100.64.0.1")
+	assert.Contains(t, srcStr, "100.64.0.2")
+}
+
+// TestGroupResolveFromBothSources tests that group:<name> resolves users from
+// BOTH local and OIDC sources when the same group name exists in both.
+func TestGroupResolveFromBothSources(t *testing.T) {
+	// Local: bob -> engineering
+	// OIDC:  alice -> engineering
+	// group:engineering should include both.
+	userAlice := types.User{Model: gorm.Model{ID: 1}, Name: "alice", Email: "alice@headscale.local"}
+	userBob := types.User{Model: gorm.Model{ID: 2}, Name: "bob", Email: "bob@headscale.local"}
+	userCharlie := types.User{Model: gorm.Model{ID: 3}, Name: "charlie", Email: "charlie@headscale.local"}
+
+	resolver := &mockOIDCGroupResolver{
+		groups: map[string][]types.User{
+			"engineering": {userAlice},
+		},
+	}
+
+	// Policy defines bob in the local engineering group.
+	policyJSON := []byte(`{
+		"groups": {
+			"group:engineering": ["bob@headscale.local"]
+		},
+		"acls": [{
+			"action": "accept",
+			"src": ["group:engineering"],
+			"dst": ["*:*"]
+		}]
+	}`)
+
+	users := types.Users{userAlice, userBob, userCharlie}
+
+	nodeAlice := &types.Node{
+		Hostname: "node-alice",
+		IPv4:     createAddr("100.64.0.1"),
+		UserID:   &userAlice.ID,
+		User:     &userAlice,
+	}
+	nodeBob := &types.Node{
+		Hostname: "node-bob",
+		IPv4:     createAddr("100.64.0.2"),
+		UserID:   &userBob.ID,
+		User:     &userBob,
+	}
+	nodeCharlie := &types.Node{
+		Hostname: "node-charlie",
+		IPv4:     createAddr("100.64.0.3"),
+		UserID:   &userCharlie.ID,
+		User:     &userCharlie,
+	}
+
+	nodes := types.Nodes{nodeAlice, nodeBob, nodeCharlie}
+
+	pm, err := NewPolicyManager(nil, users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	pm.SetOIDCGroupResolver(resolver)
+
+	changed, err := pm.SetPolicy(policyJSON)
+	require.NoError(t, err)
+	assert.True(t, changed)
+
+	// alice (OIDC member) should have filter rules.
+	rules, err := pm.FilterForNode(nodeAlice.View())
+	require.NoError(t, err)
+	assert.NotEmpty(t, rules, "alice (OIDC engineering member) should have filter rules")
+
+	// bob (local member) should have filter rules.
+	rules, err = pm.FilterForNode(nodeBob.View())
+	require.NoError(t, err)
+	assert.NotEmpty(t, rules, "bob (local engineering member) should have filter rules")
+
+	// charlie (not a member) should NOT have the engineering source IPs.
+	rules, err = pm.FilterForNode(nodeCharlie.View())
+	require.NoError(t, err)
+	// charlie should not appear in any engineering-src rule as a source.
+	for _, rule := range rules {
+		for _, srcIP := range rule.SrcIPs {
+			assert.NotContains(t, srcIP, "100.64.0.3", "charlie should not be in engineering source IPs")
+		}
+	}
+}
+
+// TestGroupDeduplication tests that a user in both local and OIDC membership
+// is not counted twice (no duplicate nodes/rules).
+func TestGroupDeduplication(t *testing.T) {
+	// bob is in engineering via BOTH local and OIDC.
+	userBob := types.User{Model: gorm.Model{ID: 1}, Name: "bob", Email: "bob@headscale.local"}
+
+	resolver := &mockOIDCGroupResolver{
+		groups: map[string][]types.User{
+			"engineering": {userBob},
+		},
+	}
+
+	policyJSON := []byte(`{
+		"groups": {
+			"group:engineering": ["bob@headscale.local"]
+		},
+		"acls": [{
+			"action": "accept",
+			"src": ["group:engineering"],
+			"dst": ["*:*"]
+		}]
+	}`)
+
+	users := types.Users{userBob}
+
+	nodeBob := &types.Node{
+		Hostname: "node-bob",
+		IPv4:     createAddr("100.64.0.1"),
+		UserID:   &userBob.ID,
+		User:     &userBob,
+	}
+
+	nodes := types.Nodes{nodeBob}
+
+	pm, err := NewPolicyManager(nil, users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	pm.SetOIDCGroupResolver(resolver)
+
+	changed, err := pm.SetPolicy(policyJSON)
+	require.NoError(t, err)
+	assert.True(t, changed)
+
+	// Verify bob appears exactly once in the source IPs.
+	rules, err := pm.FilterForNode(nodeBob.View())
+	require.NoError(t, err)
+	require.NotEmpty(t, rules)
+
+	srcStr := strings.Join(rules[0].SrcIPs, ",")
+	// The IP 100.64.0.1 should appear exactly once.
+	count := strings.Count(srcStr, "100.64.0.1")
+	assert.Equal(t, 1, count, "bob's IP should appear exactly once (no duplicate)")
+}
+
+// TestGroupResolveEmptyOIDCGroup tests that group: with no OIDC members
+// resolves to nothing when not defined locally.
+func TestGroupResolveEmptyOIDCGroup(t *testing.T) {
 	resolver := &mockOIDCGroupResolver{
 		groups: map[string][]types.User{},
 	}
@@ -141,7 +280,7 @@ func TestOIDCGroupResolveEmptyGroup(t *testing.T) {
 	policyJSON := []byte(`{
 		"acls": [{
 			"action": "accept",
-			"src": ["oidcgrp:empty-group"],
+			"src": ["group:empty-group"],
 			"dst": ["*:*"]
 		}]
 	}`)
@@ -165,18 +304,19 @@ func TestOIDCGroupResolveEmptyGroup(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, changed)
 
-	// With no matching users in the source group, no rules should match.
+	// With no matching users in either source, no rules should match.
 	rules, err := pm.FilterForNode(node.View())
 	require.NoError(t, err)
 	assert.Empty(t, rules)
 }
 
-// TestOIDCGroupResolveNoResolver tests that oidcgrp: works when resolver is not set.
-func TestOIDCGroupResolveNoResolver(t *testing.T) {
+// TestGroupResolveNoResolver tests that group: works gracefully when
+// the OIDC resolver is not set (no OIDC configured).
+func TestGroupResolveNoResolver(t *testing.T) {
 	policyJSON := []byte(`{
 		"acls": [{
 			"action": "accept",
-			"src": ["oidcgrp:some-group"],
+			"src": ["group:some-group"],
 			"dst": ["*:*"]
 		}]
 	}`)
@@ -194,47 +334,18 @@ func TestOIDCGroupResolveNoResolver(t *testing.T) {
 	pm, err := NewPolicyManager(nil, users, nodes.ViewSlice())
 	require.NoError(t, err)
 
-	// SetPolicy should succeed (compilation skips unresolved oidcgrp).
+	// SetPolicy should succeed (no group: defined, no resolver).
 	_, err = pm.SetPolicy(policyJSON)
 	require.NoError(t, err)
 
-	// FilterForNode should return empty rules since oidcgrp: couldn't resolve.
+	// FilterForNode should return empty rules since the group has no members.
 	rules, err := pm.FilterForNode(node.View())
 	require.NoError(t, err)
 	assert.Empty(t, rules)
 }
 
-// TestOIDCGroupIsAlias tests that OIDCGroup implements the Alias interface.
-func TestOIDCGroupIsAlias(t *testing.T) {
-	og := OIDCGroup("oidcgrp:test")
-	var _ Alias = &og
-}
-
-// TestOIDCGroupValidate tests validation of oidcgrp: format.
-func TestOIDCGroupValidate(t *testing.T) {
-	tests := []struct {
-		name    string
-		group   OIDCGroup
-		wantErr bool
-	}{
-		{name: "valid", group: "oidcgrp:engineering", wantErr: false},
-		{name: "valid-with-numbers", group: "oidcgrp:group-123", wantErr: false},
-		{name: "empty", group: "oidcgrp:", wantErr: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := tt.group.Validate()
-			if tt.wantErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
-}
-
-// TestSetOIDCGroupResolver tests that SetOIDCGroupResolver properly injects the resolver.
+// TestSetOIDCGroupResolver tests that SetOIDCGroupResolver properly injects
+// the resolver and triggers recompilation.
 func TestSetOIDCGroupResolver(t *testing.T) {
 	resolver := &mockOIDCGroupResolver{
 		groups: map[string][]types.User{
@@ -257,7 +368,7 @@ func TestSetOIDCGroupResolver(t *testing.T) {
 	policyJSON := []byte(`{
 		"acls": [{
 			"action": "accept",
-			"src": ["oidcgrp:engineering"],
+			"src": ["group:engineering"],
 			"dst": ["*:*"]
 		}]
 	}`)
@@ -265,11 +376,12 @@ func TestSetOIDCGroupResolver(t *testing.T) {
 	pm, err := NewPolicyManager(nil, users, nodes.ViewSlice())
 	require.NoError(t, err)
 
-	// Set policy before resolver - should compile but oidcgrp: won't resolve.
+	// Set policy before resolver - should compile but group: won't resolve
+	// from OIDC (no resolver set).
 	_, err = pm.SetPolicy(policyJSON)
 	require.NoError(t, err)
 
-	// Before setting resolver, filter should be empty (oidcgrp: can't resolve).
+	// Before setting resolver, filter should be empty.
 	rules, err := pm.FilterForNode(node.View())
 	require.NoError(t, err)
 	assert.Empty(t, rules)
@@ -287,7 +399,7 @@ func TestSetOIDCGroupResolver(t *testing.T) {
 	assert.NotEmpty(t, rules)
 }
 
-// TestIsOIDCGroup tests the isOIDCGroup helper.
+// TestIsOIDCGroup tests the isOIDCGroup helper (internal only).
 func TestIsOIDCGroup(t *testing.T) {
 	tests := []struct {
 		input string
@@ -305,6 +417,108 @@ func TestIsOIDCGroup(t *testing.T) {
 			assert.Equal(t, tt.want, isOIDCGroup(tt.input))
 		})
 	}
+}
+
+// TestOIDCGroupNotInParseAlias verifies that oidcgrp: is NOT parsed as a
+// valid alias in the public policy syntax. Only group: is valid.
+func TestOIDCGroupNotInParseAlias(t *testing.T) {
+	// oidcgrp: should fail to parse (it's not a valid alias).
+	_, err := parseAlias("oidcgrp:engineering")
+	assert.Error(t, err, "oidcgrp: should not be a valid alias in policy syntax")
+
+	// group: should parse correctly.
+	alias, err := parseAlias("group:engineering")
+	require.NoError(t, err)
+	_, ok := alias.(*Group)
+	assert.True(t, ok, "group: should parse as *Group")
+}
+
+// TestGroupResolveOIDCOnlyVsLocalOnly tests two different groups where one
+// is defined only in OIDC and the other only locally.
+func TestGroupResolveOIDCOnlyVsLocalOnly(t *testing.T) {
+	userAlice := types.User{Model: gorm.Model{ID: 1}, Name: "alice", Email: "alice@headscale.local"}
+	userBob := types.User{Model: gorm.Model{ID: 2}, Name: "bob", Email: "bob@headscale.local"}
+
+	resolver := &mockOIDCGroupResolver{
+		groups: map[string][]types.User{
+			"oidc-team": {userAlice},
+		},
+	}
+
+	// "local-team" is defined only in the policy, "oidc-team" only via OIDC.
+	policyJSON := []byte(`{
+		"groups": {
+			"group:local-team": ["bob@headscale.local"]
+		},
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["group:local-team"],
+				"dst": ["*:22"]
+			},
+			{
+				"action": "accept",
+				"src": ["group:oidc-team"],
+				"dst": ["*:443"]
+			}
+		]
+	}`)
+
+	users := types.Users{userAlice, userBob}
+
+	nodeAlice := &types.Node{
+		Hostname: "node-alice",
+		IPv4:     createAddr("100.64.0.1"),
+		UserID:   &userAlice.ID,
+		User:     &userAlice,
+	}
+	nodeBob := &types.Node{
+		Hostname: "node-bob",
+		IPv4:     createAddr("100.64.0.2"),
+		UserID:   &userBob.ID,
+		User:     &userBob,
+	}
+
+	nodes := types.Nodes{nodeAlice, nodeBob}
+
+	pm, err := NewPolicyManager(nil, users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	pm.SetOIDCGroupResolver(resolver)
+
+	changed, err := pm.SetPolicy(policyJSON)
+	require.NoError(t, err)
+	assert.True(t, changed)
+
+	// alice (OIDC-only member of oidc-team) can access port 443.
+	rules, err := pm.FilterForNode(nodeAlice.View())
+	require.NoError(t, err)
+	require.NotEmpty(t, rules, "alice should have rules for oidc-team")
+	// Alice's rules should include port 443 destinations.
+	aliceHas443 := false
+	for _, rule := range rules {
+		for _, dst := range rule.DstPorts {
+			if strings.Contains(dst.Ports.String(), "443") {
+				aliceHas443 = true
+			}
+		}
+	}
+	assert.True(t, aliceHas443, "alice's rules should include port 443 destinations")
+
+	// bob (local-only member of local-team) can access port 22.
+	rules, err = pm.FilterForNode(nodeBob.View())
+	require.NoError(t, err)
+	require.NotEmpty(t, rules, "bob should have rules for local-team")
+	// Bob's rules should include port 22 destinations.
+	bobHas22 := false
+	for _, rule := range rules {
+		for _, dst := range rule.DstPorts {
+			if strings.Contains(dst.Ports.String(), "22") {
+				bobHas22 = true
+			}
+		}
+	}
+	assert.True(t, bobHas22, "bob's rules should include port 22 destinations")
 }
 
 // --- helpers ---
@@ -331,5 +545,3 @@ func assertFilterRulesContainDstIP(t *testing.T, rules []tailcfg.FilterRule, add
 	}
 	t.Errorf("expected filter rules to contain destination IP %s, but they don't", addr)
 }
-
-

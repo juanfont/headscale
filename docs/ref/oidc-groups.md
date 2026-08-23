@@ -1,8 +1,9 @@
 # OIDC Groups in ACL Policies
 
-Headscale supports using OIDC group memberships as a principal type in ACL policies.
-This allows you to write policies that grant access based on group memberships from your
-OIDC identity provider (e.g., Keycloak, Authentik, Okta, Azure AD, Google Workspace).
+Headscale supports using OIDC group memberships in ACL policies through the standard
+Tailscale-compatible `group:<name>` principal. OIDC groups from any provider
+(Keycloak, Authentik, Okta, Azure AD, Google Workspace, etc.) are merged with
+policy-defined local groups under the same `group:<name>` syntax.
 
 ## Prerequisites
 
@@ -12,22 +13,24 @@ OIDC identity provider (e.g., Keycloak, Authentik, Okta, Azure AD, Google Worksp
 
 ## Syntax
 
-Use `oidcgrp:<group-name>` as a source or destination in your ACL policy:
+Use `group:<group-name>` as a source or destination in your ACL policy:
 
 ```json
 {
   "acls": [
     {
       "action": "accept",
-      "src": ["oidcgrp:engineering"],
-      "dst": ["oidcgrp:admins:443"]
+      "src": ["group:engineering"],
+      "dst": ["group:admins:443"]
     }
   ]
 }
 ```
 
 This grants all users in the `engineering` group access to all users in the `admins` group
-on port 443.
+on port 443. The `engineering` group resolves through both:
+- Policy-defined local group membership (from the `groups` section)
+- OIDC provider group membership (from the `groups` claim in the OIDC token)
 
 ### Examples
 
@@ -38,7 +41,7 @@ Allow engineers to access all internal services:
   "acls": [
     {
       "action": "accept",
-      "src": ["oidcgrp:engineering"],
+      "src": ["group:engineering"],
       "dst": ["*:*"]
     }
   ]
@@ -52,7 +55,7 @@ Restrict database access to the DBA team:
   "acls": [
     {
       "action": "accept",
-      "src": ["oidcgrp:dba"],
+      "src": ["group:dba"],
       "dst": ["tag:database:5432"]
     }
   ]
@@ -66,12 +69,33 @@ Combine OIDC groups with other principal types:
   "acls": [
     {
       "action": "accept",
-      "src": ["oidcgrp:engineering", "tag:ops"],
-      "dst": ["oidcgrp:platform:80,443"]
+      "src": ["group:engineering", "tag:ops"],
+      "dst": ["group:platform:80,443"]
     }
   ]
 }
 ```
+
+Mix local and OIDC groups:
+
+```json
+{
+  "groups": {
+    "group:local-team": ["bob@headscale.local", "alice@headscale.local"]
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "src": ["group:engineering"],
+      "dst": ["*:*"]
+    }
+  ]
+}
+```
+
+In this example, `group:engineering` might be defined only via OIDC, while
+`group:local-team` is defined only in the policy. Both resolve through the
+same `group:<name>` syntax.
 
 ## How It Works
 
@@ -81,17 +105,39 @@ Combine OIDC groups with other principal types:
 2. **Storage**: Group memberships are stored in the `user_oidc_groups` database table,
    linked to the user by their user ID.
 
-3. **Policy Resolution**: When a policy uses `oidcgrp:<group-name>`, Headscale looks up
-   all users in that group and resolves them to their node IP addresses.
+3. **Policy Resolution**: When a policy uses `group:<group-name>`, Headscale resolves
+   members from BOTH sources:
+   - **Local groups**: Members defined in the policy's `groups` section
+   - **OIDC groups**: Members from the `user_oidc_groups` table
 
-4. **Refresh**: Group memberships are refreshed on each login. A background process also
-   periodically clears stale group data so that removed memberships take effect at the
-   user's next login.
+4. **Deduplication**: If a user appears in both local and OIDC membership for the same
+   group, they are counted once (no duplicate nodes or rules).
+
+5. **Refresh**: OIDC group memberships are refreshed on each login. A background process
+   also periodically clears stale OIDC group data so that removed memberships take effect
+   at the user's next login. Local group memberships are never modified by OIDC refresh.
+
+## Dual-Source Resolution
+
+The same group name may exist in both systems:
+
+- **Headscale local**: `bob -> engineering` (defined in the policy's `groups` section)
+- **OIDC**: `alice -> engineering` (from the OIDC provider's `groups` claim)
+
+Then `group:engineering` includes both `bob` and `alice`. The internal distinction
+between local and OIDC membership is preserved:
+
+- Policy-defined groups are stored in the policy's `groups` section and never modified
+  by OIDC refresh
+- OIDC memberships are stored in the `user_oidc_groups` table and never modified
+  by local group changes
+- The periodic OIDC refresh only modifies OIDC-derived memberships
+- Removing a user from an OIDC group only removes their OIDC-derived authorization
 
 ## Group Name Format
 
 Group names are case-sensitive and match exactly as provided by the OIDC provider.
-For example, `oidcgrp:Engineering` and `oidcgrp:engineering` are different groups.
+For example, `group:Engineering` and `group:engineering` are different groups.
 
 ## Admin API
 
@@ -139,7 +185,9 @@ Content-Type: application/json
 
 ## Limitations
 
-- Group memberships are only refreshed on login or by the periodic background refresh
-- The periodic refresh clears stale groups; fresh groups are populated on next login
+- OIDC group memberships are only refreshed on login or by the periodic background refresh
+- The periodic refresh clears stale OIDC groups; fresh groups are populated on next login
 - For immediate group updates, use the admin API to set groups manually
 - Group names must not contain colons (`:`) as this conflicts with the alias parser
+- Local group membership (defined in the policy's `groups` section) is managed separately
+  and is not affected by OIDC refresh

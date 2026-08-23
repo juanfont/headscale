@@ -3,36 +3,74 @@
 
 
 
-## 0.29.3 (22/08/2026)
+## 0.29.3 (23/08/2026)
 
 ---
-### Added – OIDC Group Support in ACLs (`oidcgrp:` principal type)
+### Added – OIDC Group Support via `group:<name>` (Tailscale-compatible)
 
-Headscale now supports using OIDC group memberships directly in ACL policies via the new `oidcgrp:` principal type. This allows administrators to define access control rules based on groups from any OIDC provider (Keycloak, Authentik, Zitadel, Entra ID, etc.).
+Headscale now supports using OIDC group memberships directly in ACL policies through the standard Tailscale-compatible `group:<name>` principal. OIDC groups from any provider (Keycloak, Authentik, Zitadel, Entra ID, etc.) are merged with policy-defined local groups under the same `group:<name>` syntax.
 
 **Usage example:**
 
 ```json
 {
+  "groups": {
+    "group:local-team": ["bob@headscale.local"]
+  },
   "acls": [
     {
       "action": "accept",
-      "src": ["oidcgrp:engineering"],
-      "dst": ["oidcgrp:admins:443"]
+      "src": ["group:engineering"],
+      "dst": ["group:admins:443"]
     }
   ]
 }
 ```
 
+In this example, `group:engineering` resolves through BOTH:
+- Policy-defined local group membership (from the `groups` section)
+- OIDC provider group membership (from the `groups` claim in the OIDC token)
+
+**Architecture:**
+
+```
+OIDC provider
+    |
+    v
+persistent OIDC memberships (user_oidc_groups table)
+    |
+    v
+group resolution layer
+    |
+    +---- local Headscale group membership (policy groups section)
+    +---- OIDC group membership (user_oidc_groups table)
+    |
+    v
+group:<name>
+    |
+    v
+policy resolver
+    |
+    v
+nodes
+```
+
+The internal distinction between local and OIDC membership is preserved:
+- Policy-defined groups are stored in the policy's `groups` section and never modified by OIDC refresh
+- OIDC memberships are stored in the `user_oidc_groups` table and never modified by local group changes
+- The same user can appear in both sources without duplication
+- OIDC refresh only modifies OIDC-derived memberships
+
 **Implementation details:**
 
-- New `user_oidc_groups` join table stores OIDC group memberships per user
+- `user_oidc_groups` join table stores OIDC group memberships per user
 - Groups are fetched from the OIDC provider's `groups` claim during login
-- `SetUserOIDCGroups()` replaces all group memberships for a user (uses `Unscoped()` delete to avoid soft-delete conflicts)
-- `GetUsersByOIDCGroup()` resolves `oidcgrp:` principals to nodes
+- `SetUserOIDCGroups()` replaces all OIDC group memberships for a user
+- `GetUsersByOIDCGroup()` resolves OIDC group memberships to users
 - `OIDCGroupResolver` interface allows decoupled group lookups
 - `SetOIDCGroupResolver()` on `PolicyManager` preserves resolver across policy reloads
-- Periodic group refresh clears stale memberships on a 15-minute interval
+- `Group.resolve()` checks both the policy-defined Groups map AND the OIDC resolver
+- Periodic group refresh clears stale OIDC memberships on a 15-minute interval
 
 **Admin API endpoints:**
 
@@ -46,15 +84,26 @@ Headscale now supports using OIDC group memberships directly in ACL policies via
 
 **Testing:**
 
-- 7 unit tests in `hscontrol/policy/v2/oidcgrp_test.go`
+- 10 unit tests in `hscontrol/policy/v2/oidcgrp_test.go` covering:
+  - OIDC-only group resolution via `group:`
+  - Local-only group resolution via `group:`
+  - Dual-source resolution (same name, both local and OIDC)
+  - User deduplication across sources
+  - Empty group resolution
+  - No-resolver fallback
+  - Resolver injection and recompilation
+  - `oidcgrp:` rejected from public syntax
+  - Mixed OIDC-only and local-only groups
 - 10 E2E tests in `e2e/tests/` covering:
   - API health and connectivity
   - OIDC group CRUD operations
-  - ACL policies with `oidcgrp:` principal type
+  - ACL policies with `group:` principal type
   - CLI commands
   - VPN connectivity and user separation
   - Full end-to-end flow (users → groups → policy → VPN)
   - Inter-node ping verification
+
+**Note:** The `oidcgrp:` principal syntax has been removed from the public policy API. Use `group:<name>` instead, which is Tailscale-compatible and resolves both local and OIDC group memberships.
 
 **Special thanks:** This feature was contributed by [Mr-DS-ML-85](https://github.com/Mr-DS-ML-85) as part of the Headscale community contribution process. The implementation has been reviewed and tested against the official Headscale codebase.
 

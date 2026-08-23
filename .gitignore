@@ -58,3 +58,4 @@ __debug_bin
 node_modules/
 package-lock.json
 package.json
+graphify-out/

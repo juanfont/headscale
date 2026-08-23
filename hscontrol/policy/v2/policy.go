@@ -32,10 +32,10 @@ type PolicyManager struct {
 	// RWMutex, not Mutex, so concurrent map generation does not serialise on
 	// reads. The per-node caches are xsync.Maps so a read can fill them without
 	// taking the write lock.
-	mu              sync.RWMutex
-	pol             *Policy
-	users           []types.User
-	nodes           views.Slice[types.NodeView]
+	mu                sync.RWMutex
+	pol               *Policy
+	users             []types.User
+	nodes             views.Slice[types.NodeView]
 	oidcGroupResolver OIDCGroupResolver
 
 	filterHash deephash.Sum
@@ -888,8 +888,11 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, erro
 
 // SetOIDCGroupResolver injects the OIDC group resolver into the policy.
 // This must be called after NewPolicyManager and before any policy evaluation
-// that uses oidcgrp: principals. The resolver is used to look up which users
-// belong to a named OIDC group.
+// that uses group:<name> principals backed by OIDC group memberships.
+// The resolver is used to look up which users belong to a named OIDC group.
+// group:<name> resolves through both the policy-defined Groups map AND the
+// OIDC resolver, preserving the internal distinction between local and OIDC
+// membership while exposing a unified Tailscale-compatible principal.
 func (pm *PolicyManager) SetOIDCGroupResolver(resolver OIDCGroupResolver) {
 	if pm == nil {
 		return
@@ -904,7 +907,7 @@ func (pm *PolicyManager) SetOIDCGroupResolver(resolver OIDCGroupResolver) {
 		pm.pol.oidcGroupResolver = resolver
 	}
 
-	// Invalidate caches since oidcgrp: rules may now resolve differently.
+	// Invalidate caches since group: rules backed by OIDC may now resolve differently.
 	pm.sshPolicyMap.Clear()
 	pm.filterRulesMap.Clear()
 	pm.matchersForNodeMap.Clear()

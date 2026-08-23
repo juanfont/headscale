@@ -509,6 +509,7 @@ func (g *Group) resolve(p *Policy, users types.Users, nodes views.Slice[types.No
 		errs []error
 	)
 
+	// 1. Resolve local (policy-defined) group members.
 	for _, user := range p.Groups[*g] {
 		uips, err := user.resolve(nil, users, nodes)
 		if err != nil {
@@ -516,6 +517,55 @@ func (g *Group) resolve(p *Policy, users types.Users, nodes views.Slice[types.No
 		}
 
 		ips.AddSet(uips)
+	}
+
+	// 2. Resolve OIDC-provider group members.
+	// The OIDC resolver maintains its own membership table that is
+	// separate from the policy-defined Groups map. Both sources
+	// contribute to the same group:<name> principal. The internal
+	// distinction between local and OIDC membership is preserved:
+	// the policy Groups map is never mutated by OIDC refresh, and
+	// the OIDC membership table is never mutated by local group
+	// changes.
+	if p.oidcGroupResolver != nil {
+		groupName := strings.TrimPrefix(string(*g), "group:")
+
+		oidcUsers, err := p.oidcGroupResolver.GetUsersByOIDCGroup(groupName)
+		if err != nil {
+			// OIDC resolution failure is non-fatal: the local
+			// members (if any) still apply. Log the error so
+			// operators can diagnose OIDC misconfigurations.
+			errs = append(errs, fmt.Errorf("resolving OIDC group %q: %w", groupName, err))
+		} else if len(oidcUsers) > 0 {
+			// Collect local user IDs already resolved from the policy
+			// Groups map to avoid double-counting a user who appears
+			// in both local and OIDC membership for the same group.
+			localUserIDs := make(map[uint]bool, len(oidcUsers))
+			for _, username := range p.Groups[*g] {
+				if resolvedUser, err := username.resolveUser(users); err == nil {
+					localUserIDs[resolvedUser.ID] = true
+				}
+			}
+
+			for _, oidcUser := range oidcUsers {
+				if localUserIDs[oidcUser.ID] {
+					continue
+				}
+
+				// Find nodes owned by this OIDC user.
+				for _, node := range nodes.All() {
+					if node.IsTagged() {
+						continue
+					}
+					if !node.User().Valid() {
+						continue
+					}
+					if node.User().ID() == oidcUser.ID {
+						node.AppendToIPSet(&ips)
+					}
+				}
+			}
+		}
 	}
 
 	return buildIPSetMultiErr(&ips, errs)
@@ -837,10 +887,16 @@ func (ag *AutoGroup) Is(c AutoGroup) bool {
 	return *ag == c
 }
 
-// OIDCGroup is a principal type that resolves to all users belonging to
+// OIDCGroup is an internal principal type that resolves to all users belonging to
 // the named OIDC group. Groups are populated from the OIDC provider during
 // login and stored in the user_oidc_groups table. The resolver is injected
 // into the PolicyManager via [PolicyManager.SetOIDCGroupResolver].
+//
+// NOTE: oidcgrp: is NOT a valid public policy syntax. OIDC group memberships
+// are exposed through the Tailscale-compatible group:<name> principal.
+// The Group.resolve() method checks both the policy-defined Groups map
+// and the OIDC resolver, preserving the internal distinction between
+// local and OIDC membership.
 type OIDCGroup string
 
 // OIDCGroupResolver is the interface used by [OIDCGroup.Resolve] to look up
@@ -1137,8 +1193,6 @@ func parseAlias(vs string) (Alias, error) {
 		return new(Tag(vs)), nil
 	case isAutoGroup(vs):
 		return new(AutoGroup(vs)), nil
-	case isOIDCGroup(vs):
-		return new(OIDCGroup(vs)), nil
 	}
 
 	if isHost(vs) {
@@ -1391,6 +1445,31 @@ func (g *Groups) Contains(group *Group) error {
 
 	if _, ok := (*g)[*group]; ok {
 		return nil
+	}
+
+	return fmt.Errorf("%w: %q", ErrGroupNotDefined, group)
+}
+
+// groupDefinedOrOIDC reports whether a group is defined in either
+// the policy-defined Groups map or the OIDC group resolver.
+// A group that exists in neither source is undefined.
+func (p *Policy) groupDefinedOrOIDC(group *Group) error {
+	if group == nil {
+		return nil
+	}
+
+	// Check policy-defined (local) groups first.
+	if _, ok := p.Groups[*group]; ok {
+		return nil
+	}
+
+	// Check if the OIDC resolver has this group.
+	if p.oidcGroupResolver != nil {
+		groupName := strings.TrimPrefix(string(*group), "group:")
+		users, err := p.oidcGroupResolver.GetUsersByOIDCGroup(groupName)
+		if err == nil && len(users) > 0 {
+			return nil
+		}
 	}
 
 	return fmt.Errorf("%w: %q", ErrGroupNotDefined, group)
@@ -2067,7 +2146,8 @@ type Policy struct {
 	validated bool `json:"-"`
 
 	// oidcGroupResolver is injected by the PolicyManager to resolve
-	// oidcgrp: principals. It is not serialized.
+	// group:<name> principals backed by OIDC group memberships.
+	// It is not serialized.
 	oidcGroupResolver OIDCGroupResolver `json:"-"`
 
 	Groups              Groups             `json:"groups,omitempty"`
@@ -2450,12 +2530,10 @@ func (p *Policy) validate() error {
 					continue
 				}
 			case *Group:
-				g := src
-
-				err := p.Groups.Contains(g)
-				if err != nil {
-					errs = append(errs, err)
-				}
+				// Groups may be defined in the policy's groups section
+				// (local) or provided by an OIDC provider. Both resolve
+				// through group:<name>. Undefined groups resolve to an
+				// empty set at evaluation time.
 			case *Tag:
 				tagOwner := src
 
@@ -2485,10 +2563,10 @@ func (p *Policy) validate() error {
 					continue
 				}
 			case *Group:
-				err := p.Groups.Contains(h)
-				if err != nil {
-					errs = append(errs, err)
-				}
+				// Groups may be defined in the policy's groups section
+				// (local) or provided by an OIDC provider. Both resolve
+				// through group:<name>. Undefined groups resolve to an
+				// empty set at evaluation time.
 			case *Tag:
 				err := p.TagOwners.Contains(h)
 				if err != nil {
@@ -2553,12 +2631,9 @@ func (p *Policy) validate() error {
 					continue
 				}
 			case *Group:
-				g := src
-
-				err := p.Groups.Contains(g)
-				if err != nil {
-					errs = append(errs, err)
-				}
+				// Groups may be defined in the policy's groups section
+				// (local) or provided by an OIDC provider. Both resolve
+				// through group:<name>.
 			case *Tag:
 				tagOwner := src
 
@@ -2689,12 +2764,9 @@ func (p *Policy) validate() error {
 					continue
 				}
 			case *Group:
-				g := src
-
-				err := p.Groups.Contains(g)
-				if err != nil {
-					errs = append(errs, err)
-				}
+				// Groups may be defined in the policy's groups section
+				// (local) or provided by an OIDC provider. Both resolve
+				// through group:<name>.
 			case *Tag:
 				tagOwner := src
 
@@ -2725,10 +2797,9 @@ func (p *Policy) validate() error {
 					continue
 				}
 			case *Group:
-				err := p.Groups.Contains(h)
-				if err != nil {
-					errs = append(errs, err)
-				}
+				// Groups may be defined in the policy's groups section
+				// (local) or provided by an OIDC provider. Both resolve
+				// through group:<name>.
 			case *Tag:
 				err := p.TagOwners.Contains(h)
 				if err != nil {
@@ -2781,10 +2852,9 @@ func (p *Policy) validate() error {
 					errs = append(errs, err)
 				}
 			case *Group:
-				err := p.Groups.Contains(t)
-				if err != nil {
-					errs = append(errs, err)
-				}
+				// Groups may be defined in the policy's groups section
+				// (local) or provided by an OIDC provider. Both resolve
+				// through group:<name>.
 			case *Tag:
 				err := p.TagOwners.Contains(t)
 				if err != nil {
@@ -2824,12 +2894,9 @@ func (p *Policy) validate() error {
 		for _, tagOwner := range tagOwners {
 			switch tagOwner := tagOwner.(type) {
 			case *Group:
-				g := tagOwner
-
-				err := p.Groups.Contains(g)
-				if err != nil {
-					errs = append(errs, err)
-				}
+				// Groups may be defined in the policy's groups section
+				// (local) or provided by an OIDC provider. Both resolve
+				// through group:<name>.
 			case *Tag:
 				t := tagOwner
 
@@ -2851,12 +2918,9 @@ func (p *Policy) validate() error {
 		for _, approver := range approvers {
 			switch approver := approver.(type) {
 			case *Group:
-				g := approver
-
-				err := p.Groups.Contains(g)
-				if err != nil {
-					errs = append(errs, err)
-				}
+				// Groups may be defined in the policy's groups section
+				// (local) or provided by an OIDC provider. Both resolve
+				// through group:<name>.
 			case *Tag:
 				tagOwner := approver
 
@@ -2871,12 +2935,9 @@ func (p *Policy) validate() error {
 	for _, approver := range p.AutoApprovers.ExitNode {
 		switch approver := approver.(type) {
 		case *Group:
-			g := approver
-
-			err := p.Groups.Contains(g)
-			if err != nil {
-				errs = append(errs, err)
-			}
+			// Groups may be defined in the policy's groups section
+			// (local) or provided by an OIDC provider. Both resolve
+			// through group:<name>.
 		case *Tag:
 			tagOwner := approver
 

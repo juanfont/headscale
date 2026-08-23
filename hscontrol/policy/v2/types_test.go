@@ -769,7 +769,9 @@ func TestUnmarshalPolicy(t *testing.T) {
 			},
 		},
 		{
-			name: "group-must-be-defined-acl-src",
+			// Groups not defined in policy may be provided by an OIDC provider.
+			// Undefined groups resolve to an empty set at evaluation time.
+			name: "group-may-be-oidc-acl-src",
 			input: `
 {
   "acls": [
@@ -785,10 +787,20 @@ func TestUnmarshalPolicy(t *testing.T) {
   ]
 }
 `,
-			wantErr: `group not defined in policy: "group:notdefined"`,
+			want: &Policy{
+				ACLs: []ACL{
+					{
+						Action:       ActionAccept,
+						Sources:      Aliases{new(Group("group:notdefined"))},
+						Destinations: []AliasWithPorts{{Alias: new(AutoGroup("autogroup:internet")), Ports: []tailcfg.PortRange{{First: 0, Last: 65535}}}},
+					},
+				},
+			},
 		},
 		{
-			name: "group-must-be-defined-acl-dst",
+			// Groups not defined in policy may be provided by an OIDC provider.
+			// Undefined groups resolve to an empty set at evaluation time.
+			name: "group-may-be-oidc-acl-dst",
 			input: `
 {
   "acls": [
@@ -804,7 +816,18 @@ func TestUnmarshalPolicy(t *testing.T) {
   ]
 }
 `,
-			wantErr: `group not defined in policy: "group:notdefined"`,
+			want: &Policy{
+				ACLs: []ACL{
+					{
+						Action:  ActionAccept,
+						Sources: Aliases{Wildcard},
+						Destinations: []AliasWithPorts{{
+							Alias: new(Group("group:notdefined")),
+							Ports: []tailcfg.PortRange{{First: 0, Last: 65535}},
+						}},
+					},
+				},
+			},
 		},
 		{
 			name: "group-must-be-defined-acl-ssh-src",
@@ -826,7 +849,8 @@ func TestUnmarshalPolicy(t *testing.T) {
 			wantErr: `user destination requires source to contain only that same user "user@"`,
 		},
 		{
-			name: "group-must-be-defined-acl-tagOwner",
+			// Groups not defined in policy may be provided by an OIDC provider.
+			name: "group-may-be-oidc-tagOwner",
 			input: `
 {
   "tagOwners": {
@@ -834,10 +858,15 @@ func TestUnmarshalPolicy(t *testing.T) {
   },
 }
 `,
-			wantErr: `group not defined in policy: "group:notdefined"`,
+			want: &Policy{
+				TagOwners: TagOwners{
+					"tag:test": Owners{new(Group("group:notdefined"))},
+				},
+			},
 		},
 		{
-			name: "group-must-be-defined-acl-autoapprover-route",
+			// Groups not defined in policy may be provided by an OIDC provider.
+			name: "group-may-be-oidc-autoapprover-route",
 			input: `
 {
   "autoApprovers": {
@@ -847,10 +876,17 @@ func TestUnmarshalPolicy(t *testing.T) {
   },
 }
 `,
-			wantErr: `group not defined in policy: "group:notdefined"`,
+			want: &Policy{
+				AutoApprovers: AutoApproverPolicy{
+					Routes: map[netip.Prefix]AutoApprovers{
+						netip.MustParsePrefix("10.0.0.0/16"): {new(Group("group:notdefined"))},
+					},
+				},
+			},
 		},
 		{
-			name: "group-must-be-defined-acl-autoapprover-exitnode",
+			// Groups not defined in policy may be provided by an OIDC provider.
+			name: "group-may-be-oidc-autoapprover-exitnode",
 			input: `
 {
   "autoApprovers": {
@@ -858,7 +894,11 @@ func TestUnmarshalPolicy(t *testing.T) {
    },
 }
 `,
-			wantErr: `group not defined in policy: "group:notdefined"`,
+			want: &Policy{
+				AutoApprovers: AutoApproverPolicy{
+					ExitNode: AutoApprovers{new(Group("group:notdefined"))},
+				},
+			},
 		},
 		{
 			name: "tag-must-be-defined-acl-src",
@@ -5431,11 +5471,11 @@ func TestUnmarshalGrants(t *testing.T) {
 }
 `,
 			wantErr: `tag "tag:undefined-router" not found`,
-		},
-		{
-			name: "invalid-grant-undefined-source-group",
+		}, {
+			// Groups not defined in policy may be provided by an OIDC provider.
+			name: "grant-group-may-be-oidc",
 			input: `
-{
+  {
 	"grants": [
 		{
 			"src": ["group:undefined"],
@@ -5443,9 +5483,19 @@ func TestUnmarshalGrants(t *testing.T) {
 			"ip": ["*"]
 		}
 	]
-}
-`,
-			wantErr: "group not defined in policy",
+  }
+  `,
+			want: &Policy{
+				Grants: []Grant{
+					{
+						Sources:      Aliases{new(Group("group:undefined"))},
+						Destinations: Aliases{Wildcard},
+						InternetProtocols: []ProtocolPort{
+							{Protocol: "*", Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
+						},
+					},
+				},
+			},
 		},
 		{
 			name: "invalid-grant-undefined-source-tag",
