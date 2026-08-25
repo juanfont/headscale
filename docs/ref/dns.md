@@ -3,6 +3,48 @@
 Headscale supports [most DNS features](../about/features.md) from Tailscale. DNS related settings can be configured
 within the `dns` section of the [configuration file](configuration.md).
 
+## Keeping nameservers active when using an exit node
+
+By default, when a client selects an exit node, Tailscale sends **all** of that client's DNS through the exit node and
+ignores the nameservers configured in Headscale. This is usually desirable, but it prevents reaching a self-hosted
+resolver (for example a Pi-hole running on the tailnet) directly: the query has to take the round trip through the exit
+node first.
+
+List a global or split nameserver under `dns.nameservers.use_with_exit_node` to keep using that resolver while an exit
+node is selected. Each selected address must also appear in the corresponding `global` list or under the same domain in
+`split`.
+
+```yaml title="config.yaml"
+dns:
+  override_local_dns: true
+  nameservers:
+    global:
+      - 100.64.0.53
+    split:
+      homelab.example.com:
+        - 100.64.0.54
+    use_with_exit_node:
+      global:
+        - 100.64.0.53
+      split:
+        homelab.example.com:
+          - 100.64.0.54
+```
+
+Global nameservers require `dns.override_local_dns: true`. Split nameservers can use this option regardless of that
+setting. Global and split selections are independent, so the same address can be enabled for one split domain without
+enabling its global entry.
+
+This option controls which resolver receives a query, not how packets are routed. A resolver at a tailnet address or
+behind an advertised subnet route is normally reached directly because that route is more specific than the exit-node
+default route. Traffic to a public resolver normally still travels through the exit node.
+
+!!! warning "Requires a recent Tailscale client"
+
+    This maps to Tailscale's [`UseWithExitNode`](https://tailscale.com/kb/1054/dns#nameservers-and-exit-nodes) resolver
+    flag, added in **capability version 125 (Tailscale v1.88.1)**. Older clients silently ignore the setting and continue
+    to send DNS through the exit node.
+
 ## Setting extra DNS records
 
 Headscale allows to set extra DNS records which are made available via

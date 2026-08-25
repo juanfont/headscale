@@ -44,6 +44,7 @@ keys remain all-access.
 
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
+- Add scoped `dns.nameservers.use_with_exit_node` selectors so configured resolvers remain active when a client uses an exit node (requires Tailscale v1.88.1+) [#3376](https://github.com/juanfont/headscale/pull/3376)
 
 ## 0.29.3 (2026-07-29)
 

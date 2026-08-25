@@ -337,6 +337,16 @@ dns:
       #   - 1.1.1.1
       #   - 8.8.8.8
 
+    # Nameservers to keep using while an exit node is selected. Global entries
+    # must also be in `global` and require `override_local_dns: true`. Split
+    # entries must also be under the same domain in `split`.
+    use_with_exit_node:
+      global: []
+        # - 1.1.1.1
+      split: {}
+        # foo.bar.com:
+        #   - 1.1.1.1
+
   # Set custom DNS search domains. With MagicDNS enabled,
   # your tailnet base_domain is always the first search domain.
   search_domains: []

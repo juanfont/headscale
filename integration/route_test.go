@@ -2151,6 +2151,188 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 	}, 10*time.Second, 200*time.Millisecond, "user2 traceroute should go through user1 exit node")
 }
 
+// TestExitNodeUseWithExitNodeDNS verifies that a resolver marked for use with
+// exit nodes remains the client's effective resolver after selecting one.
+func TestExitNodeUseWithExitNodeDNS(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{"user1", "user2"},
+		Versions:     []string{"1.98"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	const keepResolver = "127.0.0.11"
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{},
+		hsic.WithTestName("rt-exitdns"),
+		hsic.WithConfigEnv(map[string]string{
+			"HEADSCALE_DNS_OVERRIDE_LOCAL_DNS":                    "true",
+			"HEADSCALE_DNS_NAMESERVERS_GLOBAL":                    keepResolver,
+			"HEADSCALE_DNS_NAMESERVERS_USE_WITH_EXIT_NODE_GLOBAL": keepResolver,
+		}),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	user1Clients, err := scenario.ListTailscaleClients("user1")
+	requireNoErrListClients(t, err)
+	require.Len(t, user1Clients, 1)
+	user1c := user1Clients[0]
+
+	user2Clients, err := scenario.ListTailscaleClients("user2")
+	requireNoErrListClients(t, err)
+	require.Len(t, user2Clients, 1)
+	user2c := user2Clients[0]
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+	assert.NotNil(t, headscale)
+
+	// Advertise the exit node on user1c.
+	_, _, err = user1c.Execute([]string{
+		"tailscale", "set", "--advertise-exit-node",
+	})
+	require.NoErrorf(t, err, "failed to advertise exit node: %s", err)
+
+	// headscale should see the two exit routes announced.
+	var exitNode *clientv1.Node
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		if !assert.NoError(c, err) || !assert.Len(c, nodes, 2) {
+			return
+		}
+
+		exitNode = nil
+
+		for _, node := range nodes {
+			if node.Name == user1c.Hostname() {
+				exitNode = node
+				break
+			}
+		}
+
+		if !assert.NotNil(c, exitNode, "exit node should be registered") {
+			return
+		}
+
+		requireNodeRouteCountWithCollect(c, exitNode, 2, 0, 0)
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "exit routes should be announced")
+	require.NotNil(t, exitNode)
+
+	// Approve the exit routes.
+	_, err = headscale.ApproveRoutes(
+		mustParseID(exitNode.Id),
+		[]netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()},
+	)
+	require.NoError(t, err)
+
+	// The exit node becomes an option for user2c.
+	var exitNodeID tailcfg.StableNodeID
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		status, err := user2c.Status()
+		if !assert.NoError(c, err) {
+			return
+		}
+
+		var peer *ipnstate.PeerStatus
+
+		for _, peerKey := range status.Peers() {
+			if status.Peer[peerKey].HostName == user1c.Hostname() {
+				peer = status.Peer[peerKey]
+				break
+			}
+		}
+
+		if !assert.NotNil(c, peer, "exit node peer should be visible") {
+			return
+		}
+
+		if !assert.True(c, peer.ExitNodeOption, "peer should be an exit node option") {
+			return
+		}
+
+		exitNodeID = peer.ID
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "exit node should be visible to client")
+	require.NotEmpty(t, exitNodeID)
+
+	// user2c selects user1c as its exit node.
+	_, _, err = user2c.Execute([]string{
+		"tailscale", "set", "--exit-node", user1c.Hostname(),
+	})
+	require.NoErrorf(t, err, "failed to set exit node: %s", err)
+
+	// The exit node becomes active.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		status, err := user2c.Status()
+		if !assert.NoError(c, err) ||
+			!assert.NotNil(c, status.ExitNodeStatus, "exit node should be active") {
+			return
+		}
+
+		assert.Equal(c, exitNodeID, status.ExitNodeStatus.ID)
+		assert.True(c, status.ExitNodeStatus.Online)
+	}, integrationutil.ScaledTimeout(30*time.Second), integrationutil.SlowPoll, "exit node activation")
+
+	// Query a real name in Docker's embedded DNS. The resolver reported by the
+	// client distinguishes direct use from the exit node's DoH proxy.
+	type dnsQueryResult struct {
+		Resolvers []struct {
+			Addr string
+		}
+		ResponseCode string
+		Answers      []struct {
+			Type string
+			Body string
+		}
+	}
+
+	network := scenario.Networks()[0]
+	queryName := headscale.GetHostname()
+	wantAnswer := headscale.GetIPInNetwork(network)
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		stdout, stderr, err := user2c.Execute([]string{
+			"tailscale", "dns", "query", "--json", queryName, "A",
+		})
+		if !assert.NoError(c, err, "DNS query failed: %s", stderr) {
+			return
+		}
+
+		var result dnsQueryResult
+		if !assert.NoError(c, json.Unmarshal([]byte(stdout), &result)) {
+			return
+		}
+
+		assert.Equal(c, "RCodeSuccess", result.ResponseCode)
+
+		if assert.Len(c, result.Resolvers, 1) {
+			assert.Equal(c, keepResolver, result.Resolvers[0].Addr)
+		}
+
+		foundAnswer := false
+
+		for _, answer := range result.Answers {
+			if answer.Type == "TypeA" && answer.Body == wantAnswer {
+				foundAnswer = true
+				break
+			}
+		}
+
+		assert.True(c, foundAnswer, "expected A answer %s, got %+v", wantAnswer, result.Answers)
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "DNS should use the configured resolver directly under an exit node")
+}
+
 func MustFindNode(hostname string, nodes []*clientv1.Node) *clientv1.Node {
 	for _, node := range nodes {
 		if node.Name == hostname {

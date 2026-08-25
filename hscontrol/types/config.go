@@ -7,6 +7,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -32,16 +33,18 @@ const (
 )
 
 var (
-	errOidcMutuallyExclusive     = errors.New("oidc_client_secret and oidc_client_secret_path are mutually exclusive")
-	errOIDCIssuerInvalid         = errors.New("oidc.issuer must be a valid http(s) URL")
-	errOIDCClientIDRequired      = errors.New("oidc.client_id is required when oidc.issuer is set")
-	errOIDCClientSecretRequired  = errors.New("oidc.client_secret or oidc.client_secret_path is required when oidc.issuer is set")
-	errServerURLSuffix           = errors.New("server_url cannot be part of base_domain in a way that could make the DERP and headscale server unreachable")
-	errServerURLSame             = errors.New("server_url cannot use the same domain as base_domain in a way that could make the DERP and headscale server unreachable")
-	errInvalidPKCEMethod         = errors.New("pkce.method must be either 'plain' or 'S256'")
-	errTrustedProxyZeroRange     = errors.New("0.0.0.0/0 and ::/0 are not allowed")
-	ErrNoPrefixConfigured        = errors.New("no IPv4 or IPv6 prefix configured, minimum one prefix is required")
-	ErrInvalidAllocationStrategy = errors.New("invalid prefix allocation strategy")
+	errOidcMutuallyExclusive         = errors.New("oidc_client_secret and oidc_client_secret_path are mutually exclusive")
+	errOIDCIssuerInvalid             = errors.New("oidc.issuer must be a valid http(s) URL")
+	errOIDCClientIDRequired          = errors.New("oidc.client_id is required when oidc.issuer is set")
+	errOIDCClientSecretRequired      = errors.New("oidc.client_secret or oidc.client_secret_path is required when oidc.issuer is set")
+	errServerURLSuffix               = errors.New("server_url cannot be part of base_domain in a way that could make the DERP and headscale server unreachable")
+	errServerURLSame                 = errors.New("server_url cannot use the same domain as base_domain in a way that could make the DERP and headscale server unreachable")
+	errInvalidPKCEMethod             = errors.New("pkce.method must be either 'plain' or 'S256'")
+	errTrustedProxyZeroRange         = errors.New("0.0.0.0/0 and ::/0 are not allowed")
+	errNameserverNotConfigured       = errors.New("use_with_exit_node nameserver is not configured")
+	errNameserverGlobalNeedsOverride = errors.New("dns.nameservers.use_with_exit_node.global requires dns.override_local_dns to be true")
+	ErrNoPrefixConfigured            = errors.New("no IPv4 or IPv6 prefix configured, minimum one prefix is required")
+	ErrInvalidAllocationStrategy     = errors.New("invalid prefix allocation strategy")
 )
 
 type IPAllocationStrategy string
@@ -167,6 +170,12 @@ type DNSConfig struct {
 type Nameservers struct {
 	Global []string
 	Split  map[string][]string
+}
+
+type parsedDNSConfig struct {
+	dns                   DNSConfig
+	globalUseWithExitNode map[string]bool
+	splitUseWithExitNode  map[string]map[string]bool
 }
 
 type SqliteConfig struct {
@@ -446,6 +455,8 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("dns.override_local_dns", true)
 	viper.SetDefault("dns.nameservers.global", []string{})
 	viper.SetDefault("dns.nameservers.split", map[string]string{})
+	viper.SetDefault("dns.nameservers.use_with_exit_node.global", []string{})
+	viper.SetDefault("dns.nameservers.use_with_exit_node.split", map[string]string{})
 	viper.SetDefault("dns.search_domains", []string{})
 
 	viper.SetDefault("derp.server.enabled", false)
@@ -899,8 +910,10 @@ func databaseConfig() DatabaseConfig {
 	}
 }
 
-func dns() (DNSConfig, error) {
-	var dns DNSConfig
+func dns() (parsedDNSConfig, error) {
+	var result parsedDNSConfig
+
+	dns := &result.dns
 
 	// TODO: Use this instead of manually getting settings when
 	// UnmarshalKey is compatible with Environment Variables.
@@ -912,8 +925,62 @@ func dns() (DNSConfig, error) {
 	dns.MagicDNS = viper.GetBool("dns.magic_dns")
 	dns.BaseDomain = viper.GetString("dns.base_domain")
 	dns.OverrideLocalDNS = viper.GetBool("dns.override_local_dns")
+
 	dns.Nameservers.Global = viper.GetStringSlice("dns.nameservers.global")
 	dns.Nameservers.Split = viper.GetStringMapStringSlice("dns.nameservers.split")
+
+	globalUseWithExitNode := viper.GetStringSlice(
+		"dns.nameservers.use_with_exit_node.global",
+	)
+	if len(globalUseWithExitNode) > 0 && !dns.OverrideLocalDNS {
+		return parsedDNSConfig{}, errNameserverGlobalNeedsOverride
+	}
+
+	result.globalUseWithExitNode = make(map[string]bool, len(globalUseWithExitNode))
+	for _, address := range globalUseWithExitNode {
+		if !slices.Contains(dns.Nameservers.Global, address) {
+			return parsedDNSConfig{}, fmt.Errorf(
+				"%w in dns.nameservers.global: %q",
+				errNameserverNotConfigured,
+				address,
+			)
+		}
+
+		result.globalUseWithExitNode[address] = true
+	}
+
+	splitUseWithExitNode := viper.GetStringMapStringSlice(
+		"dns.nameservers.use_with_exit_node.split",
+	)
+
+	result.splitUseWithExitNode = make(map[string]map[string]bool, len(splitUseWithExitNode))
+	for domain, addresses := range splitUseWithExitNode {
+		configured, ok := dns.Nameservers.Split[domain]
+		if !ok {
+			return parsedDNSConfig{}, fmt.Errorf(
+				"%w for split domain %q",
+				errNameserverNotConfigured,
+				domain,
+			)
+		}
+
+		selected := make(map[string]bool, len(addresses))
+		for _, address := range addresses {
+			if !slices.Contains(configured, address) {
+				return parsedDNSConfig{}, fmt.Errorf(
+					"%w for split domain %q: %q",
+					errNameserverNotConfigured,
+					domain,
+					address,
+				)
+			}
+
+			selected[address] = true
+		}
+
+		result.splitUseWithExitNode[domain] = selected
+	}
+
 	dns.SearchDomains = viper.GetStringSlice("dns.search_domains")
 	dns.ExtraRecordsPath = viper.GetString("dns.extra_records_path")
 
@@ -922,13 +989,13 @@ func dns() (DNSConfig, error) {
 
 		err := viper.UnmarshalKey("dns.extra_records", &extraRecords)
 		if err != nil {
-			return DNSConfig{}, fmt.Errorf("unmarshalling dns extra records: %w", err)
+			return parsedDNSConfig{}, fmt.Errorf("unmarshalling dns extra records: %w", err)
 		}
 
 		dns.ExtraRecords = extraRecords
 	}
 
-	return dns, nil
+	return result, nil
 }
 
 // parseResolvers converts nameserver strings into DNS resolvers.
@@ -936,13 +1003,18 @@ func dns() (DNSConfig, error) {
 // If a nameserver is a valid URL, it will be used as a DoH resolver.
 // If a nameserver is neither a valid URL nor a valid IP, it will be ignored.
 // When domain is non-empty, it is included in the warning for invalid entries.
-func parseResolvers(nameservers []string, domain string) []*dnstype.Resolver {
+func parseResolvers(
+	nameservers []string,
+	domain string,
+	useWithExitNode map[string]bool,
+) []*dnstype.Resolver {
 	var resolvers []*dnstype.Resolver
 
 	for _, nsStr := range nameservers {
 		if _, err := netip.ParseAddr(nsStr); err == nil { //nolint:noinlineerr
 			resolvers = append(resolvers, &dnstype.Resolver{
-				Addr: nsStr,
+				Addr:            nsStr,
+				UseWithExitNode: useWithExitNode[nsStr],
 			})
 
 			continue
@@ -950,7 +1022,8 @@ func parseResolvers(nameservers []string, domain string) []*dnstype.Resolver {
 
 		if _, err := url.Parse(nsStr); err == nil { //nolint:noinlineerr
 			resolvers = append(resolvers, &dnstype.Resolver{
-				Addr: nsStr,
+				Addr:            nsStr,
+				UseWithExitNode: useWithExitNode[nsStr],
 			})
 
 			continue
@@ -969,23 +1042,32 @@ func parseResolvers(nameservers []string, domain string) []*dnstype.Resolver {
 
 // globalResolvers returns the global DNS resolvers
 // defined in the config file.
-func (d *DNSConfig) globalResolvers() []*dnstype.Resolver {
-	return parseResolvers(d.Nameservers.Global, "")
+func (d *parsedDNSConfig) globalResolvers() []*dnstype.Resolver {
+	return parseResolvers(
+		d.dns.Nameservers.Global,
+		"",
+		d.globalUseWithExitNode,
+	)
 }
 
 // splitResolvers returns a map of domain to DNS resolvers.
-func (d *DNSConfig) splitResolvers() map[string][]*dnstype.Resolver {
+func (d *parsedDNSConfig) splitResolvers() map[string][]*dnstype.Resolver {
 	routes := make(map[string][]*dnstype.Resolver)
 
-	for domain, nameservers := range d.Nameservers.Split {
-		routes[domain] = parseResolvers(nameservers, domain)
+	for domain, nameservers := range d.dns.Nameservers.Split {
+		routes[domain] = parseResolvers(
+			nameservers,
+			domain,
+			d.splitUseWithExitNode[domain],
+		)
 	}
 
 	return routes
 }
 
-func dnsToTailcfgDNS(dns DNSConfig) *tailcfg.DNSConfig {
+func dnsToTailcfgDNS(parsed parsedDNSConfig) *tailcfg.DNSConfig {
 	cfg := tailcfg.DNSConfig{}
+	dns := parsed.dns
 
 	if dns.BaseDomain == "" && dns.MagicDNS {
 		log.Fatal().Msg("dns.base_domain must be set when using MagicDNS (dns.magic_dns)")
@@ -995,12 +1077,12 @@ func dnsToTailcfgDNS(dns DNSConfig) *tailcfg.DNSConfig {
 
 	cfg.ExtraRecords = dns.ExtraRecords
 	if dns.OverrideLocalDNS {
-		cfg.Resolvers = dns.globalResolvers()
+		cfg.Resolvers = parsed.globalResolvers()
 	} else {
-		cfg.FallbackResolvers = dns.globalResolvers()
+		cfg.FallbackResolvers = parsed.globalResolvers()
 	}
 
-	routes := dns.splitResolvers()
+	routes := parsed.splitResolvers()
 
 	cfg.Routes = routes
 	if dns.BaseDomain != "" {
@@ -1207,8 +1289,8 @@ func LoadServerConfig() (*Config, error) {
 	// - DERP run on their own domains
 	// - Control plane runs on login.tailscale.com/controlplane.tailscale.com
 	// - MagicDNS (BaseDomain) for users is on a *.ts.net domain per tailnet (e.g. tail-scale.ts.net)
-	if dnsConfig.BaseDomain != "" {
-		err := isSafeServerURL(serverURL, dnsConfig.BaseDomain)
+	if dnsConfig.dns.BaseDomain != "" {
+		err := isSafeServerURL(serverURL, dnsConfig.dns.BaseDomain)
 		if err != nil {
 			return nil, err
 		}
@@ -1228,7 +1310,7 @@ func LoadServerConfig() (*Config, error) {
 		NoisePrivateKeyPath: util.AbsolutePathFromConfigPath(
 			viper.GetString("noise.private_key_path"),
 		),
-		BaseDomain: dnsConfig.BaseDomain,
+		BaseDomain: dnsConfig.dns.BaseDomain,
 
 		DERP: derpConfig,
 
@@ -1253,7 +1335,7 @@ func LoadServerConfig() (*Config, error) {
 
 		TLS: tlsConfig(),
 
-		DNSConfig:        dnsConfig,
+		DNSConfig:        dnsConfig.dns,
 		TailcfgDNSConfig: dnsToTailcfgDNS(dnsConfig),
 
 		ACMEEmail: viper.GetString("acme_email"),
