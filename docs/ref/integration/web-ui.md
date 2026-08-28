@@ -25,5 +25,7 @@ Headscale doesn't provide a built-in web interface but users may pick one from t
 - [Headscale UI](https://github.com/MunMunMiao/headscale-ui) - Headscale UI online and Self-hosting
 - [Headscale Panel](https://github.com/headscale-panel/panel) - A modern Headscale management panel with a clean,
   network-operations-focused UI
+- [LavaMesh](https://github.com/dpilat1227/lavamesh) - Dashboard for headscale with node management, ACL editing,
+  offline-node alerts, and an audit log. Self-hostable, source available
 
 You can ask for support on our [Discord server](https://discord.gg/c84AZQhmpx) in the "web-interfaces" channel.
