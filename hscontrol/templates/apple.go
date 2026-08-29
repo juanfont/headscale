@@ -149,6 +149,22 @@ func Apple(url string) *elem.Element {
 			elem.Li(
 				nil,
 				elem.Text("Open "),
+				elem.Strong(nil, elem.Text("Tailscale")),
+			),
+			elem.Li(
+				nil,
+				elem.Text("Select "),
+				elem.Strong(nil, elem.Text("Install VPN configuration")),
+			),
+			elem.Li(
+				nil,
+				elem.Text("Select "),
+				elem.Strong(nil, elem.Text("Allow")),
+				elem.Text(", but don't sign in yet"),
+			),
+			elem.Li(
+				nil,
+				elem.Text("Open "),
 				elem.Strong(nil, elem.Text("Settings")),
 				elem.Text(" (the Apple tvOS settings) > "),
 				elem.Strong(nil, elem.Text("Apps")),
@@ -166,22 +182,8 @@ func Apple(url string) *elem.Element {
 				nil,
 				elem.Text("Return to the tvOS "),
 				elem.Strong(nil, elem.Text("Home")),
-				elem.Text(" screen"),
-			),
-			elem.Li(
-				nil,
-				elem.Text("Open "),
+				elem.Text(" screen and open "),
 				elem.Strong(nil, elem.Text("Tailscale")),
-			),
-			elem.Li(
-				nil,
-				elem.Text("Select "),
-				elem.Strong(nil, elem.Text("Install VPN configuration")),
-			),
-			elem.Li(
-				nil,
-				elem.Text("Select "),
-				elem.Strong(nil, elem.Text("Allow")),
 			),
 			elem.Li(
 				nil,
