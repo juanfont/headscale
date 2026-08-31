@@ -752,6 +752,7 @@ func (h *Headscale) Serve() error {
 		}
 
 		var tailsqlCtx context.Context
+
 		tailsqlCtx, tailsqlCancel = context.WithCancel(ctx)
 
 		errorGroup.Go(func() error {
