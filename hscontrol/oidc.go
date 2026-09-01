@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -349,7 +350,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	// /register/{auth_id} could silently complete a registration when
 	// the IdP allows silent SSO.
 	if authInfo.Registration {
-		a.renderRegistrationConfirmInterstitial(writer, req, authInfo.AuthID, user, nodeExpiry)
+		a.beginRegistrationConfirmation(writer, req, authInfo.AuthID, user, nodeExpiry)
 
 		return
 	}
@@ -667,34 +668,70 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 // browser do not collide.
 const registerConfirmCSRFCookie = "headscale_register_confirm"
 
+// registrationLinkSpentMsg is logged when a user returns to a
+// registration link whose session is gone, which is usually a reload or a
+// back button after they already confirmed. The page the user sees comes
+// from [userMessageForStatusCode].
+const registrationLinkSpentMsg = "registration link already used or expired"
+
+var errRegistrationLinkSpent = NewHTTPError(http.StatusGone, registrationLinkSpentMsg, nil)
+
+// registerConfirmURL is the browser-facing URL of the confirmation page.
+// It is built from server_url, like [AuthProviderOIDC.RegisterURL] and the
+// OIDC redirect URI, so a Headscale that a reverse proxy serves under a
+// path prefix hands the browser a URL that resolves.
+func (a *AuthProviderOIDC) registerConfirmURL(authID types.AuthID) string {
+	return authPathURL(a.serverURL, "register/confirm", authID)
+}
+
 // setRegisterConfirmCookie writes the per-session register-confirm CSRF
 // cookie. Pass the CSRF token and authCacheExpiration seconds to set it;
 // pass ("", -1) to clear it after the registration is finalised.
-func setRegisterConfirmCookie(
+func (a *AuthProviderOIDC) setRegisterConfirmCookie(
 	writer http.ResponseWriter,
 	req *http.Request,
 	authID types.AuthID,
 	value string,
 	maxAge int,
-	secure bool,
 ) {
+	// Scope the cookie to the browser-facing path, which carries the
+	// reverse proxy's prefix; the routed path does not.
+	path := "/register/confirm/" + authID.String()
+	if u, err := url.Parse(a.registerConfirmURL(authID)); err == nil { //nolint:noinlineerr
+		path = u.Path
+	}
+
 	//nolint:gosec // G124: Secure from server_url scheme or req.TLS; HttpOnly + SameSite already set
 	http.SetCookie(writer, &http.Cookie{
 		Name:     registerConfirmCSRFCookie,
 		Value:    value,
-		Path:     "/register/confirm/" + authID.String(),
+		Path:     path,
 		MaxAge:   maxAge,
-		Secure:   secure || req.TLS != nil,
+		Secure:   a.cookiesSecure() || req.TLS != nil,
 		HttpOnly: true,
-		SameSite: http.SameSiteStrictMode,
+		// Lax, not Strict: the callback sets this cookie and immediately
+		// redirects to the confirmation page. That hop ends a redirect
+		// chain which began cross-site at the IdP, and Firefox evaluates
+		// the whole chain, so a Strict cookie is withheld and the
+		// confirmation page 403s. Lax still never rides a cross-site
+		// POST, so the confirm submission stays protected.
+		SameSite: http.SameSiteLaxMode,
 	})
 }
 
-// renderRegistrationConfirmInterstitial captures the resolved OIDC
-// identity and node expiry into the cached [types.AuthRequest], sets the CSRF
-// cookie, and renders the confirmation page that the user must
-// explicitly submit before the registration is finalised.
-func (a *AuthProviderOIDC) renderRegistrationConfirmInterstitial(
+// beginRegistrationConfirmation captures the resolved OIDC identity and
+// node expiry into the cached [types.AuthRequest], sets the CSRF cookie, and
+// redirects the browser to the confirmation page.
+//
+// The interstitial is served from its own URL rather than written inline
+// here, because this request carries the single-use OAuth authorization
+// code. A page rendered on this response leaves the browser parked on the
+// code-bearing URL, and anything that reloads it — an extension calling
+// window.location.reload(), the back button, pull-to-refresh, a prerender
+// — re-enters the callback with a spent code and paints an error over the
+// interstitial. Redirecting keeps the code exchange one-shot and makes the
+// page the user waits on safe to reload.
+func (a *AuthProviderOIDC) beginRegistrationConfirmation(
 	writer http.ResponseWriter,
 	req *http.Request,
 	authID types.AuthID,
@@ -726,14 +763,78 @@ func (a *AuthProviderOIDC) renderRegistrationConfirmInterstitial(
 		CSRF:       csrf,
 	})
 
-	setRegisterConfirmCookie(writer, req, authID, csrf, int(authCacheExpiration.Seconds()), a.cookiesSecure())
+	a.setRegisterConfirmCookie(writer, req, authID, csrf, int(authCacheExpiration.Seconds()))
+
+	// 303 See Other so the browser issues a fresh GET for the
+	// confirmation page and leaves the code-bearing URL behind as a
+	// transient hop rather than a history entry it can return to.
+	http.Redirect(writer, req, a.registerConfirmURL(authID), http.StatusSeeOther)
+}
+
+// RegisterConfirmGetHandler renders the OIDC registration confirmation
+// interstitial. It is reached via the redirect that
+// [AuthProviderOIDC.beginRegistrationConfirmation] issues from the OIDC
+// callback, and it is safe to reload: it only reads the pending
+// confirmation captured on the cached [types.AuthRequest] and never touches
+// the one-time code exchange.
+//
+// Listens in GET /register/confirm/:auth_id.
+func (a *AuthProviderOIDC) RegisterConfirmGetHandler(
+	writer http.ResponseWriter,
+	req *http.Request,
+) {
+	authID, err := authIDFromRequest(req)
+	if err != nil {
+		httpUserError(writer, err)
+
+		return
+	}
+
+	authReq, ok := a.h.state.GetAuthCacheEntry(authID)
+	if !ok {
+		httpUserError(writer, errRegistrationLinkSpent)
+
+		return
+	}
+
+	pending := authReq.PendingConfirmation()
+	if pending == nil {
+		httpUserError(writer, NewHTTPError(http.StatusForbidden, "registration not OIDC-authorized", nil))
+
+		return
+	}
+
+	// Only the browser that completed the OIDC flow holds this cookie, and
+	// holding it is what authorises the confirm POST. Requiring it here too
+	// keeps the device details, and the token that finalises the
+	// registration, away from anyone who merely knows the auth ID — which
+	// the node being registered does.
+	cookie, err := req.Cookie(registerConfirmCSRFCookie)
+	if err != nil {
+		httpUserError(writer, NewHTTPError(http.StatusForbidden, "missing csrf cookie", err))
+
+		return
+	}
+
+	if cookie.Value != pending.CSRF {
+		httpUserError(writer, NewHTTPError(http.StatusForbidden, "csrf token mismatch", nil))
+
+		return
+	}
+
+	user, err := a.h.state.GetUserByID(types.UserID(pending.UserID))
+	if err != nil {
+		httpUserError(writer, fmt.Errorf("looking up user: %w", err))
+
+		return
+	}
 
 	regData := authReq.RegistrationData()
 
 	info := templates.RegisterConfirmInfo{
-		FormAction:    "/register/confirm/" + authID.String(),
+		FormAction:    a.registerConfirmURL(authID),
 		CSRFTokenName: registerConfirmCSRFCookie,
-		CSRFToken:     csrf,
+		CSRFToken:     pending.CSRF,
 		User:          user.Display(),
 		Hostname:      regData.Hostname,
 		MachineKey:    regData.MachineKey.ShortString(),
@@ -742,6 +843,9 @@ func (a *AuthProviderOIDC) renderRegistrationConfirmInterstitial(
 		info.OS = regData.Hostinfo.OS
 	}
 
+	// The page carries the token that finalises the registration, so no
+	// shared cache or history restore may serve it back.
+	writer.Header().Set("Cache-Control", "no-store")
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
 
@@ -758,12 +862,6 @@ func (a *AuthProviderOIDC) RegisterConfirmHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
-	if req.Method != http.MethodPost {
-		httpUserError(writer, errMethodNotAllowed)
-
-		return
-	}
-
 	authID, err := authIDFromRequest(req)
 	if err != nil {
 		httpUserError(writer, err)
@@ -804,7 +902,7 @@ func (a *AuthProviderOIDC) RegisterConfirmHandler(
 
 	authReq, ok := a.h.state.GetAuthCacheEntry(authID)
 	if !ok {
-		httpUserError(writer, NewHTTPError(http.StatusGone, "registration session expired", nil))
+		httpUserError(writer, errRegistrationLinkSpent)
 
 		return
 	}
@@ -832,7 +930,7 @@ func (a *AuthProviderOIDC) RegisterConfirmHandler(
 	newNode, err := a.handleRegistration(user, authID, pending.NodeExpiry)
 	if err != nil {
 		if errors.Is(err, db.ErrNodeNotFoundRegistrationCache) {
-			httpUserError(writer, NewHTTPError(http.StatusGone, "registration session expired", err))
+			httpUserError(writer, NewHTTPError(http.StatusGone, registrationLinkSpentMsg, err))
 
 			return
 		}
@@ -843,7 +941,7 @@ func (a *AuthProviderOIDC) RegisterConfirmHandler(
 	}
 
 	// Clear the CSRF cookie now that the registration is final.
-	setRegisterConfirmCookie(writer, req, authID, "", -1, a.cookiesSecure())
+	a.setRegisterConfirmCookie(writer, req, authID, "", -1)
 
 	content := renderRegistrationSuccessTemplate(user, newNode)
 

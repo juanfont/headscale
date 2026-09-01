@@ -202,7 +202,7 @@ func TestHttpUserError(t *testing.T) {
 			name:           "gone_renders_session_expired",
 			err:            NewHTTPError(http.StatusGone, "login session expired, try again", nil),
 			wantCode:       http.StatusGone,
-			wantContains:   "Your session has expired. Please try again.",
+			wantContains:   "This link has already been used or has expired.",
 			wantNotContain: "login session expired",
 		},
 		{
