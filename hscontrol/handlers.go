@@ -73,7 +73,10 @@ func userMessageForStatusCode(code int) string {
 	case code == http.StatusUnauthorized || code == http.StatusForbidden:
 		return "You are not authorized. Please contact your administrator."
 	case code == http.StatusGone:
-		return "Your session has expired. Please try again."
+		// Overwhelmingly a reload or a back button on a link the user
+		// already used, not a failure, so lead with that.
+		return "This link has already been used or has expired. " +
+			"If your device is connected you are done; otherwise start the login again."
 	case code >= 400 && code < 500:
 		return "The request could not be processed. Please try again."
 	default:
