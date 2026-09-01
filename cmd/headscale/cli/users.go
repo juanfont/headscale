@@ -239,14 +239,14 @@ var renameUserCmd = &cobra.Command{
 	Short:   "Renames a user",
 	Aliases: []string{"mv"},
 	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
-		id, _, err := resolveSingleUser(ctx, client, cmd)
+		_, user, err := resolveSingleUser(ctx, client, cmd)
 		if err != nil {
 			return err
 		}
 
 		newName, _ := cmd.Flags().GetString("new-name")
 
-		resp, err := client.RenameUserWithResponse(ctx, strconv.FormatUint(id, util.Base10), newName)
+		resp, err := client.RenameUserWithResponse(ctx, user.Id, newName)
 		if err != nil {
 			return fmt.Errorf("renaming user: %w", err)
 		}
