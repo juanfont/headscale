@@ -244,7 +244,7 @@ type OIDCConfig struct {
 type DERPConfig struct {
 	ServerEnabled                      bool
 	AutomaticallyAddEmbeddedDerpRegion bool
-	ServerRegionID                     int
+	ServerRegionID                     tailcfg.DERPRegionID
 	ServerRegionCode                   string
 	ServerRegionName                   string
 	ServerPrivateKeyPath               string
@@ -731,7 +731,7 @@ func tlsConfig() TLSConfig {
 
 func derpConfig() DERPConfig {
 	serverEnabled := viper.GetBool("derp.server.enabled")
-	serverRegionID := viper.GetInt("derp.server.region_id")
+	serverRegionID := viper.GetInt64("derp.server.region_id")
 	serverRegionCode := viper.GetString("derp.server.region_code")
 	serverRegionName := viper.GetString("derp.server.region_name")
 	serverVerifyClients := viper.GetBool("derp.server.verify_clients")
@@ -780,7 +780,7 @@ func derpConfig() DERPConfig {
 
 	return DERPConfig{
 		ServerEnabled:                      serverEnabled,
-		ServerRegionID:                     serverRegionID,
+		ServerRegionID:                     tailcfg.DERPRegionID(serverRegionID),
 		ServerRegionCode:                   serverRegionCode,
 		ServerRegionName:                   serverRegionName,
 		ServerVerifyClients:                serverVerifyClients,

@@ -72,7 +72,7 @@ func (TextSerialiser) Scan(ctx context.Context, field *schema.Field, dst reflect
 
 	ret := f.Call(args)
 	if !ret[0].IsNil() {
-		if err, ok := ret[0].Interface().(error); ok {
+		if err, ok := reflect.TypeAssert[error](ret[0]); ok {
 			return decodingError(field.Name, err)
 		}
 	}

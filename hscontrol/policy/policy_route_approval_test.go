@@ -10,7 +10,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
@@ -156,8 +155,8 @@ func TestApproveRoutesWithPolicy_NeverRemovesRoutes(t *testing.T) {
 			t.Run(fmt.Sprintf("%s-policy-index%d", tt.name, i), func(t *testing.T) {
 				// Create test user
 				user := types.User{
-					Model: gorm.Model{ID: 1},
-					Name:  tt.nodeUser,
+					ID:   1,
+					Name: tt.nodeUser,
 				}
 				users := []types.User{user}
 
@@ -283,8 +282,8 @@ func TestApproveRoutesWithPolicy_EdgeCases(t *testing.T) {
 			t.Run(fmt.Sprintf("%s-policy-index%d", tt.name, i), func(t *testing.T) {
 				// Create test user
 				user := types.User{
-					Model: gorm.Model{ID: 1},
-					Name:  "test",
+					ID:   1,
+					Name: "test",
 				}
 				users := []types.User{user}
 
@@ -326,8 +325,8 @@ func TestApproveRoutesWithPolicy_EdgeCases(t *testing.T) {
 
 func TestApproveRoutesWithPolicy_NilPolicyManagerCase(t *testing.T) {
 	user := types.User{
-		Model: gorm.Model{ID: 1},
-		Name:  "test",
+		ID:   1,
+		Name: "test",
 	}
 
 	userID := user.ID

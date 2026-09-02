@@ -31,7 +31,7 @@ var (
 //
 // Brackets are only accepted around IPv6 addresses, not IPv4, hostnames, or other alias types.
 // Bracket stripping reduces both forms to bare "addr:port" or "addr/prefix:port",
-// which the normal [strings.LastIndex] of ":" split handles correctly because
+// which the normal [strings.CutLast] of ":" split handles correctly because
 // port strings never contain colons.
 func splitDestinationAndPort(input string) (string, string, error) {
 	// Handle RFC 3986 bracketed IPv6 (e.g. "[::1]:80" or "[fd7a::1]/128:80,443").
@@ -59,25 +59,20 @@ func splitDestinationAndPort(input string) (string, string, error) {
 		input = host + rest
 	}
 
-	// Find the last occurrence of the colon character
-	lastColonIndex := strings.LastIndex(input, ":")
-
-	// Check if the colon character is present and not at the beginning or end of the string
-	if lastColonIndex == -1 {
+	// CutLast returns (input, "", false) when no colon is present, so the
+	// !found check must come before the emptiness checks below.
+	destination, port, found := strings.CutLast(input, ":")
+	if !found {
 		return "", "", ErrInputMissingColon
 	}
 
-	if lastColonIndex == 0 {
+	if destination == "" {
 		return "", "", ErrInputStartsWithColon
 	}
 
-	if lastColonIndex == len(input)-1 {
+	if port == "" {
 		return "", "", ErrInputEndsWithColon
 	}
-
-	// Split the string into destination and port based on the last colon
-	destination := input[:lastColonIndex]
-	port := input[lastColonIndex+1:]
 
 	return destination, port, nil
 }

@@ -148,7 +148,7 @@ func expectedExitPeerVisibility(
 		var seen []string
 
 		for _, peer := range capture.Netmap.Peers {
-			peerName := strings.Split(peer.Name(), ".")[0]
+			peerName, _, _ := strings.Cut(peer.Name(), ".")
 
 			if !exitAdvertisers[peerName] {
 				continue

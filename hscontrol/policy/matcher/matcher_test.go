@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/peercap"
 )
 
 func TestMatchFromStrings(t *testing.T) {
@@ -194,7 +195,7 @@ func TestMatchFromFilterRule(t *testing.T) {
 							netip.MustParsePrefix("100.64.0.3/32"),
 						},
 						CapMap: tailcfg.PeerCapMap{
-							tailcfg.PeerCapabilityRelay: nil,
+							peercap.Relay: nil,
 						},
 					},
 				},
@@ -218,7 +219,7 @@ func TestMatchFromFilterRule(t *testing.T) {
 							netip.MustParsePrefix("100.64.0.2/32"),
 						},
 						CapMap: tailcfg.PeerCapMap{
-							tailcfg.PeerCapabilityRelayTarget: nil,
+							peercap.RelayTarget: nil,
 						},
 					},
 				},
@@ -242,7 +243,7 @@ func TestMatchFromFilterRule(t *testing.T) {
 							netip.MustParsePrefix("100.64.0.3/32"),
 						},
 						CapMap: tailcfg.PeerCapMap{
-							tailcfg.PeerCapabilityRelay: nil,
+							peercap.Relay: nil,
 						},
 					},
 				},

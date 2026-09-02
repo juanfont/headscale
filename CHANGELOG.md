@@ -111,7 +111,7 @@ The internal distinction between local and OIDC membership is preserved:
 
 ## 0.30.0 (202x-xx-xx)
 
-**Minimum supported Tailscale client version: v1.xx.0**
+**Minimum supported Tailscale client version: v1.82.0**
 
 ### v1 REST API replaced; gRPC and Protobuf removed
 
@@ -153,6 +153,7 @@ keys remain all-access.
 
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
+- Headscale now requires Go 1.27 to build
 
 ## 0.29.3 (2026-07-29)
 

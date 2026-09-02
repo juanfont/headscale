@@ -901,17 +901,13 @@ func TestNodeStoreConcurrentPutNode(t *testing.T) {
 	var wg sync.WaitGroup
 
 	results := make(chan bool, concurrentOps)
-	for i := range concurrentOps {
-		wg.Add(1)
-
-		go func(nodeID int) {
-			defer wg.Done()
-
+	for nodeID := 1; nodeID <= concurrentOps; nodeID++ {
+		wg.Go(func() {
 			node := createConcurrentTestNode(types.NodeID(nodeID), "concurrent-node") //nolint:gosec // safe conversion in test
 
 			resultNode := store.PutNode(node)
 			results <- resultNode.Valid()
-		}(i + 1)
+		})
 	}
 
 	wg.Wait()
@@ -940,17 +936,13 @@ func TestNodeStoreBatchingEfficiency(t *testing.T) {
 	var wg sync.WaitGroup
 
 	results := make(chan bool, ops)
-	for i := range ops {
-		wg.Add(1)
-
-		go func(nodeID int) {
-			defer wg.Done()
-
+	for nodeID := 1; nodeID <= ops; nodeID++ {
+		wg.Go(func() {
 			node := createConcurrentTestNode(types.NodeID(nodeID), "batch-node") //nolint:gosec // test code with small integers
 
 			resultNode := store.PutNode(node)
 			results <- resultNode.Valid()
-		}(i + 1)
+		})
 	}
 
 	wg.Wait()
@@ -988,12 +980,8 @@ func TestNodeStoreRaceConditions(t *testing.T) {
 
 	errors := make(chan error, numGoroutines*opsPerGoroutine)
 
-	for i := range numGoroutines {
-		wg.Add(1)
-
-		go func(gid int) {
-			defer wg.Done()
-
+	for gid := range numGoroutines {
+		wg.Go(func() {
 			for j := range opsPerGoroutine {
 				switch j % 3 {
 				case 0:
@@ -1017,7 +1005,7 @@ func TestNodeStoreRaceConditions(t *testing.T) {
 					}
 				}
 			}
-		}(i)
+		})
 	}
 
 	wg.Wait()
@@ -1097,14 +1085,10 @@ func TestNodeStoreOperationTimeout(t *testing.T) {
 	updateResults := make([]error, ops)
 
 	// Launch all PutNode operations concurrently
-	for i := 1; i <= ops; i++ {
-		nodeID := types.NodeID(i) //nolint:gosec // test code with small integers
+	for idx := 1; idx <= ops; idx++ {
+		id := types.NodeID(idx) //nolint:gosec // test code with small integers
 
-		wg.Add(1)
-
-		go func(idx int, id types.NodeID) {
-			defer wg.Done()
-
+		wg.Go(func() {
 			startPut := time.Now()
 			fmt.Printf("[TestNodeStoreOperationTimeout] %s: PutNode(%d) starting\n", startPut.Format("15:04:05.000"), id)
 			node := createConcurrentTestNode(id, "timeout-node")
@@ -1115,7 +1099,7 @@ func TestNodeStoreOperationTimeout(t *testing.T) {
 			if !resultNode.Valid() {
 				putResults[idx-1] = fmt.Errorf("PutNode failed for node %d", id) //nolint:err113
 			}
-		}(i, nodeID)
+		})
 	}
 
 	wg.Wait()
@@ -1123,14 +1107,10 @@ func TestNodeStoreOperationTimeout(t *testing.T) {
 	// Launch all UpdateNode operations concurrently
 	wg = sync.WaitGroup{}
 
-	for i := 1; i <= ops; i++ {
-		nodeID := types.NodeID(i) //nolint:gosec // test code with small integers
+	for idx := 1; idx <= ops; idx++ {
+		id := types.NodeID(idx) //nolint:gosec // test code with small integers
 
-		wg.Add(1)
-
-		go func(idx int, id types.NodeID) {
-			defer wg.Done()
-
+		wg.Go(func() {
 			startUpdate := time.Now()
 			fmt.Printf("[TestNodeStoreOperationTimeout] %s: UpdateNode(%d) starting\n", startUpdate.Format("15:04:05.000"), id)
 			resultNode, ok := store.UpdateNode(id, func(n *types.Node) {
@@ -1142,7 +1122,7 @@ func TestNodeStoreOperationTimeout(t *testing.T) {
 			if !ok || !resultNode.Valid() {
 				updateResults[idx-1] = fmt.Errorf("UpdateNode failed for node %d", id) //nolint:err113
 			}
-		}(i, nodeID)
+		})
 	}
 
 	done := make(chan struct{})

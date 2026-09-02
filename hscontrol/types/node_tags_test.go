@@ -5,7 +5,6 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
-	"gorm.io/gorm"
 )
 
 // TestNodeIsTagged tests the [Node.IsTagged] method for determining if a node is tagged.
@@ -285,7 +284,7 @@ func TestNodeOwnershipModel(t *testing.T) {
 // TestUserTypedID tests the TypedID() helper method.
 func TestUserTypedID(t *testing.T) {
 	user := User{
-		Model: gorm.Model{ID: 42},
+		ID: 42,
 	}
 
 	typedID := user.TypedID()

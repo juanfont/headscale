@@ -5,9 +5,9 @@ import (
 	_ "embed"
 	"net/http"
 	textTemplate "text/template"
+	"uuid"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/gofrs/uuid/v5"
 	"github.com/juanfont/headscale/hscontrol/templates"
 )
 
@@ -41,17 +41,8 @@ func (h *Headscale) ApplePlatformConfig(
 		return
 	}
 
-	id, err := uuid.NewV4()
-	if err != nil {
-		httpError(writer, err)
-		return
-	}
-
-	contentID, err := uuid.NewV4()
-	if err != nil {
-		httpError(writer, err)
-		return
-	}
+	id := uuid.NewV4()
+	contentID := uuid.NewV4()
 
 	platformConfig := AppleMobilePlatformConfig{
 		UUID: contentID,

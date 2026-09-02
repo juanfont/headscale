@@ -403,9 +403,7 @@ func (b *Batcher) Start() {
 		return
 	}
 
-	b.wg.Add(1)
-
-	go b.doWork()
+	b.wg.Go(b.doWork)
 }
 
 func (b *Batcher) Close() {
@@ -439,12 +437,8 @@ func (b *Batcher) Close() {
 }
 
 func (b *Batcher) doWork() {
-	defer b.wg.Done()
-
 	for i := range b.workers {
-		b.wg.Add(1)
-
-		go b.worker(i + 1)
+		b.wg.Go(func() { b.worker(i + 1) })
 	}
 
 	// Create a cleanup ticker for removing truly disconnected nodes
@@ -467,8 +461,6 @@ func (b *Batcher) doWork() {
 }
 
 func (b *Batcher) worker(workerID int) {
-	defer b.wg.Done()
-
 	wlog := log.With().Int(zf.WorkerID, workerID).Logger()
 
 	for {

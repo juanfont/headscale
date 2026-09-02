@@ -403,10 +403,8 @@ func (entry *connectionEntry) send(data *tailcfg.MapResponse) error {
 	// This is critical for detecting Docker containers that are forcefully terminated
 	// but still have channels that appear open.
 	//
-	// We use time.NewTimer + Stop instead of time.After to avoid leaking timers.
-	// time.After creates a timer that lives in the runtime's timer heap until it fires,
-	// even when the send succeeds immediately. On the hot path (1000+ nodes per tick),
-	// this leaks thousands of timers per second.
+	// Use a timer rather than time.After so the timeout is explicitly released
+	// on the fast path; both are GC-recoverable since Go 1.23.
 	timer := time.NewTimer(50 * time.Millisecond) //nolint:mnd
 	defer timer.Stop()
 

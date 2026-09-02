@@ -12,6 +12,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/nodecap"
 	"tailscale.com/types/key"
 )
 
@@ -74,10 +75,10 @@ func TestTailNode(t *testing.T) {
 				MachineAuthorized: true,
 
 				CapMap: tailcfg.NodeCapMap{
-					tailcfg.CapabilityAdmin:           []tailcfg.RawMessage{},
-					tailcfg.CapabilitySSH:             []tailcfg.RawMessage{},
-					tailcfg.CapabilityFileSharing:     []tailcfg.RawMessage{},
-					tailcfg.NodeAttrDefaultAutoUpdate: []tailcfg.RawMessage{tailcfg.RawMessage("false")},
+					nodecap.Admin:             []tailcfg.RawMessage{},
+					nodecap.SSH:               []tailcfg.RawMessage{},
+					nodecap.FileSharing:       []tailcfg.RawMessage{},
+					nodecap.DefaultAutoUpdate: []tailcfg.RawMessage{tailcfg.RawMessage("false")},
 				},
 			},
 			wantErr: false,
@@ -163,10 +164,10 @@ func TestTailNode(t *testing.T) {
 				MachineAuthorized: true,
 
 				CapMap: tailcfg.NodeCapMap{
-					tailcfg.CapabilityAdmin:           []tailcfg.RawMessage{},
-					tailcfg.CapabilitySSH:             []tailcfg.RawMessage{},
-					tailcfg.CapabilityFileSharing:     []tailcfg.RawMessage{},
-					tailcfg.NodeAttrDefaultAutoUpdate: []tailcfg.RawMessage{tailcfg.RawMessage("false")},
+					nodecap.Admin:             []tailcfg.RawMessage{},
+					nodecap.SSH:               []tailcfg.RawMessage{},
+					nodecap.FileSharing:       []tailcfg.RawMessage{},
+					nodecap.DefaultAutoUpdate: []tailcfg.RawMessage{tailcfg.RawMessage("false")},
 				},
 			},
 			wantErr: false,
@@ -188,10 +189,10 @@ func TestTailNode(t *testing.T) {
 				MachineAuthorized: true,
 
 				CapMap: tailcfg.NodeCapMap{
-					tailcfg.CapabilityAdmin:           []tailcfg.RawMessage{},
-					tailcfg.CapabilitySSH:             []tailcfg.RawMessage{},
-					tailcfg.CapabilityFileSharing:     []tailcfg.RawMessage{},
-					tailcfg.NodeAttrDefaultAutoUpdate: []tailcfg.RawMessage{tailcfg.RawMessage("false")},
+					nodecap.Admin:             []tailcfg.RawMessage{},
+					nodecap.SSH:               []tailcfg.RawMessage{},
+					nodecap.FileSharing:       []tailcfg.RawMessage{},
+					nodecap.DefaultAutoUpdate: []tailcfg.RawMessage{tailcfg.RawMessage("false")},
 				},
 			},
 			wantErr: false,
@@ -274,10 +275,10 @@ func TestTailNodeBaselineGates(t *testing.T) {
 				AutoUpdate: types.AutoUpdateConfig{Enabled: false},
 			},
 			want: tailcfg.NodeCapMap{
-				tailcfg.CapabilityAdmin:           []tailcfg.RawMessage{},
-				tailcfg.CapabilitySSH:             []tailcfg.RawMessage{},
-				tailcfg.CapabilityFileSharing:     []tailcfg.RawMessage{},
-				tailcfg.NodeAttrDefaultAutoUpdate: autoUpdate(false),
+				nodecap.Admin:             []tailcfg.RawMessage{},
+				nodecap.SSH:               []tailcfg.RawMessage{},
+				nodecap.FileSharing:       []tailcfg.RawMessage{},
+				nodecap.DefaultAutoUpdate: autoUpdate(false),
 			},
 		},
 		{
@@ -287,9 +288,9 @@ func TestTailNodeBaselineGates(t *testing.T) {
 				AutoUpdate: types.AutoUpdateConfig{Enabled: false},
 			},
 			want: tailcfg.NodeCapMap{
-				tailcfg.CapabilityAdmin:           []tailcfg.RawMessage{},
-				tailcfg.CapabilitySSH:             []tailcfg.RawMessage{},
-				tailcfg.NodeAttrDefaultAutoUpdate: autoUpdate(false),
+				nodecap.Admin:             []tailcfg.RawMessage{},
+				nodecap.SSH:               []tailcfg.RawMessage{},
+				nodecap.DefaultAutoUpdate: autoUpdate(false),
 			},
 		},
 		{
@@ -299,10 +300,10 @@ func TestTailNodeBaselineGates(t *testing.T) {
 				AutoUpdate: types.AutoUpdateConfig{Enabled: true},
 			},
 			want: tailcfg.NodeCapMap{
-				tailcfg.CapabilityAdmin:           []tailcfg.RawMessage{},
-				tailcfg.CapabilitySSH:             []tailcfg.RawMessage{},
-				tailcfg.CapabilityFileSharing:     []tailcfg.RawMessage{},
-				tailcfg.NodeAttrDefaultAutoUpdate: autoUpdate(true),
+				nodecap.Admin:             []tailcfg.RawMessage{},
+				nodecap.SSH:               []tailcfg.RawMessage{},
+				nodecap.FileSharing:       []tailcfg.RawMessage{},
+				nodecap.DefaultAutoUpdate: autoUpdate(true),
 			},
 		},
 		{
@@ -312,9 +313,9 @@ func TestTailNodeBaselineGates(t *testing.T) {
 				AutoUpdate: types.AutoUpdateConfig{Enabled: true},
 			},
 			want: tailcfg.NodeCapMap{
-				tailcfg.CapabilityAdmin:           []tailcfg.RawMessage{},
-				tailcfg.CapabilitySSH:             []tailcfg.RawMessage{},
-				tailcfg.NodeAttrDefaultAutoUpdate: autoUpdate(true),
+				nodecap.Admin:             []tailcfg.RawMessage{},
+				nodecap.SSH:               []tailcfg.RawMessage{},
+				nodecap.DefaultAutoUpdate: autoUpdate(true),
 			},
 		},
 	}
@@ -351,7 +352,7 @@ func TestTailNodeBaselineGates(t *testing.T) {
 func TestTailNodeDisableIPv4(t *testing.T) {
 	t.Parallel()
 
-	const NodeAttrDisableIPv4 tailcfg.NodeCapability = "disable-ipv4"
+	const NodeAttrDisableIPv4 nodecap.Cap = "disable-ipv4"
 
 	v4 := iap("100.64.0.1")
 	v6Addr := netip.MustParseAddr("fd7a:115c:a1e0::1")

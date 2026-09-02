@@ -324,7 +324,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 
 					user := status.User[status.Self.UserID].LoginName
 
-					assert.Len(c, status.Peer, (testCase.want[user]))
+					assert.Len(c, status.Peer, testCase.want[user])
 				}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for expected peer visibility")
 			}
 		})

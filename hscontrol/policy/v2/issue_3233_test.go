@@ -12,7 +12,6 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
@@ -25,8 +24,8 @@ func TestIssue3233ViaInternetExitVisibility(t *testing.T) {
 	t.Parallel()
 
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "alice", Email: "alice@headscale.net"},
-		{Model: gorm.Model{ID: 2}, Name: "bob", Email: "bob@headscale.net"},
+		{ID: 1, Name: "alice", Email: "alice@headscale.net"},
+		{ID: 2, Name: "bob", Email: "bob@headscale.net"},
 	}
 
 	exitRoutes := []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()}

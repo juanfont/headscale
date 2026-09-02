@@ -6,7 +6,6 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 )
 
@@ -19,7 +18,7 @@ import (
 // as not needing a recompute.
 func TestNodeNeedsPeerRecompute(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@headscale.net"},
+		{ID: 1, Name: "user1", Email: "user1@headscale.net"},
 	}
 
 	const allowAll = `{"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`

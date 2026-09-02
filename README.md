@@ -90,6 +90,8 @@ The maintainers work together on setting the direction for the project. The unde
 
 Please read the [CONTRIBUTING.md](./CONTRIBUTING.md) file.
 
+Have also a look at our [AI_POLICY.md](./AI_POLICY.md).
+
 ### Requirements
 
 To contribute to headscale you would need the latest version of [Go](https://golang.org)

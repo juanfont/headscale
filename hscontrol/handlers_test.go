@@ -167,8 +167,7 @@ func TestKeyHandler_UnsupportedCapVerDoesNotLeakKey(t *testing.T) {
 // errorAsHTTPError is a small local helper that unwraps an [HTTPError]
 // from an error chain.
 func errorAsHTTPError(err error) (HTTPError, bool) {
-	var h HTTPError
-	if errors.As(err, &h) {
+	if h, ok := errors.AsType[HTTPError](err); ok {
 		return h, true
 	}
 

@@ -415,8 +415,8 @@ func TestConstraints(t *testing.T) {
 			name: "no-oidc-duplicate-username-and-id",
 			run: func(t *testing.T, db *gorm.DB) { //nolint:thelper
 				user := types.User{
-					Model: gorm.Model{ID: 1},
-					Name:  "user1",
+					ID:   1,
+					Name: "user1",
 				}
 				user.ProviderIdentifier = sql.NullString{String: "http://test.com/user1", Valid: true}
 
@@ -424,8 +424,8 @@ func TestConstraints(t *testing.T) {
 				require.NoError(t, err)
 
 				user = types.User{
-					Model: gorm.Model{ID: 2},
-					Name:  "user1",
+					ID:   2,
+					Name: "user1",
 				}
 				user.ProviderIdentifier = sql.NullString{String: "http://test.com/user1", Valid: true}
 
@@ -437,8 +437,8 @@ func TestConstraints(t *testing.T) {
 			name: "no-oidc-duplicate-id",
 			run: func(t *testing.T, db *gorm.DB) { //nolint:thelper
 				user := types.User{
-					Model: gorm.Model{ID: 1},
-					Name:  "user1",
+					ID:   1,
+					Name: "user1",
 				}
 				user.ProviderIdentifier = sql.NullString{String: "http://test.com/user1", Valid: true}
 
@@ -446,8 +446,8 @@ func TestConstraints(t *testing.T) {
 				require.NoError(t, err)
 
 				user = types.User{
-					Model: gorm.Model{ID: 2},
-					Name:  "user1.1",
+					ID:   2,
+					Name: "user1.1",
 				}
 				user.ProviderIdentifier = sql.NullString{String: "http://test.com/user1", Valid: true}
 

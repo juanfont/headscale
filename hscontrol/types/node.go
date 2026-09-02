@@ -17,6 +17,7 @@ import (
 	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/nodecap"
 	"tailscale.com/types/key"
 	"tailscale.com/types/views"
 	"tailscale.com/util/dnsname"
@@ -39,7 +40,7 @@ type RouteFunc func(id NodeID) []netip.Prefix
 // node's own IPv4 CGNAT prefix in [tailcfg.Node.Addresses] and
 // [tailcfg.Node.AllowedIPs]. Subnet routes the node advertises remain.
 // See https://tailscale.com/docs/reference/troubleshooting/network-configuration/cgnat-conflicts.
-const nodeAttrDisableIPv4 tailcfg.NodeCapability = "disable-ipv4"
+const nodeAttrDisableIPv4 nodecap.Cap = "disable-ipv4"
 
 // filterIPv4 returns ps with every IPv4 prefix dropped. Used by
 // [NodeView.TailNode] when the node carries the disable-ipv4 nodeAttr.
@@ -1159,7 +1160,7 @@ func (nv NodeView) TailNode(
 		return nil, err
 	}
 
-	var derp int
+	var derp tailcfg.DERPRegionID
 	if nv.Hostinfo().Valid() && nv.Hostinfo().NetInfo().Valid() {
 		derp = nv.Hostinfo().NetInfo().PreferredDERP()
 	}
@@ -1200,12 +1201,12 @@ func (nv NodeView) TailNode(
 	// what Tailscale SaaS emits for a default tailnet.
 	// cfg.Taildrop.Enabled gates CapabilityFileSharing.
 	capMap := tailcfg.NodeCapMap{
-		tailcfg.CapabilityAdmin: []tailcfg.RawMessage{},
-		tailcfg.CapabilitySSH:   []tailcfg.RawMessage{},
+		nodecap.Admin: []tailcfg.RawMessage{},
+		nodecap.SSH:   []tailcfg.RawMessage{},
 	}
 
 	if cfg.Taildrop.Enabled {
-		capMap[tailcfg.CapabilityFileSharing] = []tailcfg.RawMessage{}
+		capMap[nodecap.FileSharing] = []tailcfg.RawMessage{}
 	}
 
 	// default-auto-update is always emitted; the value is a JSON bool
@@ -1218,7 +1219,7 @@ func (nv NodeView) TailNode(
 		autoUpdateVal = tailcfg.RawMessage("true")
 	}
 
-	capMap[tailcfg.NodeAttrDefaultAutoUpdate] = []tailcfg.RawMessage{autoUpdateVal}
+	capMap[nodecap.DefaultAutoUpdate] = []tailcfg.RawMessage{autoUpdateVal}
 
 	// Policy nodeAttrs overlay the baseline on the self view. Peers
 	// pass nil; their CapMap is replaced downstream by [policyv2.PeerCapMap].

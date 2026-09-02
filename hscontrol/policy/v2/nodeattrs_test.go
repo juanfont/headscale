@@ -10,8 +10,8 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/nodecap"
 )
 
 // nodeAttrsTestUsers returns a minimal user set: two passkey-style users on
@@ -19,8 +19,8 @@ import (
 // resolution is exercised across both.
 func nodeAttrsTestUsers() types.Users {
 	return types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "alice", Email: "alice@example.com"},
-		{Model: gorm.Model{ID: 2}, Name: "bob", Email: "bob@example.org"},
+		{ID: 1, Name: "alice", Email: "alice@example.com"},
+		{ID: 2, Name: "bob", Email: "bob@example.org"},
 	}
 }
 
@@ -82,7 +82,7 @@ const nodeAttrsTagOwners = `"tag:server": ["alice@example.com"],
 func TestNodeAttrsCompile(t *testing.T) {
 	t.Parallel()
 
-	capMap := func(c tailcfg.NodeCapability) tailcfg.NodeCapMap {
+	capMap := func(c nodecap.Cap) tailcfg.NodeCapMap {
 		return tailcfg.NodeCapMap{c: nil}
 	}
 
@@ -96,18 +96,18 @@ func TestNodeAttrsCompile(t *testing.T) {
 			name:  "wildcard target hits every node",
 			extra: `"nodeAttrs": [{"target": ["*"], "attr": ["randomize-client-port"]}]`,
 			want: map[types.NodeID]tailcfg.NodeCapMap{
-				1: capMap(tailcfg.NodeAttrRandomizeClientPort),
-				2: capMap(tailcfg.NodeAttrRandomizeClientPort),
-				3: capMap(tailcfg.NodeAttrRandomizeClientPort),
-				4: capMap(tailcfg.NodeAttrRandomizeClientPort),
-				5: capMap(tailcfg.NodeAttrRandomizeClientPort),
+				1: capMap(nodecap.RandomizeClientPort),
+				2: capMap(nodecap.RandomizeClientPort),
+				3: capMap(nodecap.RandomizeClientPort),
+				4: capMap(nodecap.RandomizeClientPort),
+				5: capMap(nodecap.RandomizeClientPort),
 			},
 		},
 		{
 			name:  "user target hits only that user's untagged nodes",
 			extra: `"nodeAttrs": [{"target": ["alice@example.com"], "attr": ["randomize-client-port"]}]`,
 			want: map[types.NodeID]tailcfg.NodeCapMap{
-				1: capMap(tailcfg.NodeAttrRandomizeClientPort),
+				1: capMap(nodecap.RandomizeClientPort),
 			},
 		},
 		{
@@ -115,8 +115,8 @@ func TestNodeAttrsCompile(t *testing.T) {
 			extra: `"nodeAttrs": [{"target": ["tag:server"], "attr": ["drive:share", "drive:access"]}]`,
 			want: map[types.NodeID]tailcfg.NodeCapMap{
 				3: {
-					tailcfg.NodeAttrsTaildriveShare:  nil,
-					tailcfg.NodeAttrsTaildriveAccess: nil,
+					nodecap.TaildriveShare:  nil,
+					nodecap.TaildriveAccess: nil,
 				},
 			},
 		},
@@ -124,17 +124,17 @@ func TestNodeAttrsCompile(t *testing.T) {
 			name:  "autogroup:member hits untagged nodes only",
 			extra: `"nodeAttrs": [{"target": ["autogroup:member"], "attr": ["randomize-client-port"]}]`,
 			want: map[types.NodeID]tailcfg.NodeCapMap{
-				1: capMap(tailcfg.NodeAttrRandomizeClientPort),
-				2: capMap(tailcfg.NodeAttrRandomizeClientPort),
+				1: capMap(nodecap.RandomizeClientPort),
+				2: capMap(nodecap.RandomizeClientPort),
 			},
 		},
 		{
 			name:  "autogroup:tagged hits tagged nodes only",
 			extra: `"nodeAttrs": [{"target": ["autogroup:tagged"], "attr": ["disable-captive-portal-detection"]}]`,
 			want: map[types.NodeID]tailcfg.NodeCapMap{
-				3: capMap(tailcfg.NodeAttrDisableCaptivePortalDetection),
-				4: capMap(tailcfg.NodeAttrDisableCaptivePortalDetection),
-				5: capMap(tailcfg.NodeAttrDisableCaptivePortalDetection),
+				3: capMap(nodecap.DisableCaptivePortalDetection),
+				4: capMap(nodecap.DisableCaptivePortalDetection),
+				5: capMap(nodecap.DisableCaptivePortalDetection),
 			},
 		},
 		{
@@ -144,14 +144,14 @@ func TestNodeAttrsCompile(t *testing.T) {
 				{"target": ["tag:server"], "attr": ["drive:share"]}
 			]`,
 			want: map[types.NodeID]tailcfg.NodeCapMap{
-				1: capMap(tailcfg.NodeAttrsTaildriveAccess),
-				2: capMap(tailcfg.NodeAttrsTaildriveAccess),
+				1: capMap(nodecap.TaildriveAccess),
+				2: capMap(nodecap.TaildriveAccess),
 				3: {
-					tailcfg.NodeAttrsTaildriveAccess: nil,
-					tailcfg.NodeAttrsTaildriveShare:  nil,
+					nodecap.TaildriveAccess: nil,
+					nodecap.TaildriveShare:  nil,
 				},
-				4: capMap(tailcfg.NodeAttrsTaildriveAccess),
-				5: capMap(tailcfg.NodeAttrsTaildriveAccess),
+				4: capMap(nodecap.TaildriveAccess),
+				5: capMap(nodecap.TaildriveAccess),
 			},
 		},
 		{
@@ -163,11 +163,11 @@ func TestNodeAttrsCompile(t *testing.T) {
 			name:  "top-level randomizeClientPort stamps every node",
 			extra: `"randomizeClientPort": true`,
 			want: map[types.NodeID]tailcfg.NodeCapMap{
-				1: capMap(tailcfg.NodeAttrRandomizeClientPort),
-				2: capMap(tailcfg.NodeAttrRandomizeClientPort),
-				3: capMap(tailcfg.NodeAttrRandomizeClientPort),
-				4: capMap(tailcfg.NodeAttrRandomizeClientPort),
-				5: capMap(tailcfg.NodeAttrRandomizeClientPort),
+				1: capMap(nodecap.RandomizeClientPort),
+				2: capMap(nodecap.RandomizeClientPort),
+				3: capMap(nodecap.RandomizeClientPort),
+				4: capMap(nodecap.RandomizeClientPort),
+				5: capMap(nodecap.RandomizeClientPort),
 			},
 		},
 		{
@@ -175,14 +175,14 @@ func TestNodeAttrsCompile(t *testing.T) {
 			extra: `"randomizeClientPort": true,
 				"nodeAttrs": [{"target": ["tag:server"], "attr": ["disable-captive-portal-detection"]}]`,
 			want: map[types.NodeID]tailcfg.NodeCapMap{
-				1: capMap(tailcfg.NodeAttrRandomizeClientPort),
-				2: capMap(tailcfg.NodeAttrRandomizeClientPort),
+				1: capMap(nodecap.RandomizeClientPort),
+				2: capMap(nodecap.RandomizeClientPort),
 				3: {
-					tailcfg.NodeAttrRandomizeClientPort:           nil,
-					tailcfg.NodeAttrDisableCaptivePortalDetection: nil,
+					nodecap.RandomizeClientPort:           nil,
+					nodecap.DisableCaptivePortalDetection: nil,
 				},
-				4: capMap(tailcfg.NodeAttrRandomizeClientPort),
-				5: capMap(tailcfg.NodeAttrRandomizeClientPort),
+				4: capMap(nodecap.RandomizeClientPort),
+				5: capMap(nodecap.RandomizeClientPort),
 			},
 		},
 	}

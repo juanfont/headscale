@@ -7,15 +7,14 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 )
 
 // policyTestUsers/policyTestNodes are reused across the test cases below to
 // keep each table row focussed on the policy + tests under exercise.
 func policyTestUsers() types.Users {
 	return types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "alice", Email: "alice@headscale.net"},
-		{Model: gorm.Model{ID: 2}, Name: "bob", Email: "bob@headscale.net"},
+		{ID: 1, Name: "alice", Email: "alice@headscale.net"},
+		{ID: 2, Name: "bob", Email: "bob@headscale.net"},
 	}
 }
 
@@ -351,7 +350,7 @@ func TestNewPolicyManagerSkipsTests(t *testing.T) {
 // a `ip: tcp:80` grant).
 func TestRunTestsEmptyProtoMatchesDefaultProtocols(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "odin", Email: "odin@example.com"},
+		{ID: 1, Name: "odin", Email: "odin@example.com"},
 	}
 	nodes := types.Nodes{
 		{

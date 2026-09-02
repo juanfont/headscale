@@ -18,7 +18,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 )
 
@@ -29,17 +28,17 @@ import (
 func setupSSHDataCompatUsers() types.Users {
 	return types.Users{
 		{
-			Model: gorm.Model{ID: 1},
+			ID:    1,
 			Name:  "odin",
 			Email: "odin@example.com",
 		},
 		{
-			Model: gorm.Model{ID: 2},
+			ID:    2,
 			Name:  "thor",
 			Email: "thor@example.org",
 		},
 		{
-			Model: gorm.Model{ID: 3},
+			ID:    3,
 			Name:  "freya",
 			Email: "freya@example.com",
 		},

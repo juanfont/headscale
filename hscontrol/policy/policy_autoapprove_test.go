@@ -11,19 +11,18 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 	"tailscale.com/types/key"
 	"tailscale.com/types/views"
 )
 
 func TestApproveRoutesWithPolicy_NeverRemovesApprovedRoutes(t *testing.T) {
 	user1 := types.User{
-		Model: gorm.Model{ID: 1},
-		Name:  "testuser",
+		ID:   1,
+		Name: "testuser",
 	}
 	user2 := types.User{
-		Model: gorm.Model{ID: 2},
-		Name:  "otheruser",
+		ID:   2,
+		Name: "otheruser",
 	}
 	users := []types.User{user1, user2}
 
@@ -293,8 +292,8 @@ func TestApproveRoutesWithPolicy_NilAndEmptyCases(t *testing.T) {
 			t.Run(fmt.Sprintf("%s-policy-index%d", tt.name, i), func(t *testing.T) {
 				// Create test user
 				user := types.User{
-					Model: gorm.Model{ID: 1},
-					Name:  "test",
+					ID:   1,
+					Name: "test",
 				}
 				users := []types.User{user}
 

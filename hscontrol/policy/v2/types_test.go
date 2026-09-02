@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go4.org/netipx"
 	xmaps "golang.org/x/exp/maps"
-	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
@@ -2399,12 +2398,12 @@ func p(pref string) Prefix        { return Prefix(mp(pref)) }
 
 func TestResolvePolicy(t *testing.T) {
 	users := map[string]types.User{
-		"testuser":   {Model: gorm.Model{ID: 1}, Name: "testuser"},
-		"groupuser":  {Model: gorm.Model{ID: 2}, Name: "groupuser"},
-		"groupuser1": {Model: gorm.Model{ID: 3}, Name: "groupuser1"},
-		"groupuser2": {Model: gorm.Model{ID: 4}, Name: "groupuser2"},
-		"notme":      {Model: gorm.Model{ID: 5}, Name: "notme"},
-		"testuser2":  {Model: gorm.Model{ID: 6}, Name: "testuser2"},
+		"testuser":   {ID: 1, Name: "testuser"},
+		"groupuser":  {ID: 2, Name: "groupuser"},
+		"groupuser1": {ID: 3, Name: "groupuser1"},
+		"groupuser2": {ID: 4, Name: "groupuser2"},
+		"notme":      {ID: 5, Name: "notme"},
+		"testuser2":  {ID: 6, Name: "testuser2"},
 	}
 
 	tests := []struct {
@@ -2848,9 +2847,9 @@ func TestResolvePolicy(t *testing.T) {
 
 func TestResolveAutoApprovers(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "user1"},
-		{Model: gorm.Model{ID: 2}, Name: "user2"},
-		{Model: gorm.Model{ID: 3}, Name: "user3"},
+		{ID: 1, Name: "user1"},
+		{ID: 2, Name: "user2"},
+		{ID: 3, Name: "user3"},
 	}
 
 	nodes := types.Nodes{
@@ -3314,9 +3313,9 @@ func ipSetComparer(x, y *netipx.IPSet) bool {
 
 func TestNodeCanApproveRoute(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "user1"},
-		{Model: gorm.Model{ID: 2}, Name: "user2"},
-		{Model: gorm.Model{ID: 3}, Name: "user3"},
+		{ID: 1, Name: "user1"},
+		{ID: 2, Name: "user2"},
+		{ID: 3, Name: "user3"},
 	}
 
 	nodes := types.Nodes{
@@ -3447,9 +3446,9 @@ func TestNodeCanApproveRoute(t *testing.T) {
 
 func TestResolveTagOwners(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "user1"},
-		{Model: gorm.Model{ID: 2}, Name: "user2"},
-		{Model: gorm.Model{ID: 3}, Name: "user3"},
+		{ID: 1, Name: "user1"},
+		{ID: 2, Name: "user2"},
+		{ID: 3, Name: "user3"},
 	}
 
 	nodes := types.Nodes{
@@ -3547,9 +3546,9 @@ func TestResolveTagOwners(t *testing.T) {
 
 func TestNodeCanHaveTag(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "user1"},
-		{Model: gorm.Model{ID: 2}, Name: "user2"},
-		{Model: gorm.Model{ID: 3}, Name: "user3"},
+		{ID: 1, Name: "user1"},
+		{ID: 2, Name: "user2"},
+		{ID: 3, Name: "user3"},
 	}
 
 	nodes := types.Nodes{
@@ -3826,9 +3825,9 @@ func TestNodeCanHaveTag(t *testing.T) {
 
 func TestUserMatchesOwner(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "user1"},
-		{Model: gorm.Model{ID: 2}, Name: "user2"},
-		{Model: gorm.Model{ID: 3}, Name: "user3"},
+		{ID: 1, Name: "user1"},
+		{ID: 2, Name: "user2"},
+		{ID: 3, Name: "user3"},
 	}
 
 	tests := []struct {

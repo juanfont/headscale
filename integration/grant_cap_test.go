@@ -14,12 +14,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/nodecap"
+	"tailscale.com/tailcfg/peercap"
 	"tailscale.com/wgengine/filter"
 )
 
 // hasCapMatchInPacketFilter checks if any [filter.Match] entry in the packet
 // filter contains a [filter.CapMatch] with the given capability name.
-func hasCapMatchInPacketFilter(pf []filter.Match, peerCap tailcfg.PeerCapability) bool {
+func hasCapMatchInPacketFilter(pf []filter.Match, peerCap peercap.Cap) bool {
 	for _, m := range pf {
 		for _, cm := range m.Caps {
 			if cm.Cap == peerCap {
@@ -34,7 +36,7 @@ func hasCapMatchInPacketFilter(pf []filter.Match, peerCap tailcfg.PeerCapability
 // hasCapMatchForIP checks if any [filter.CapMatch] with the given capability
 // has a Dst prefix that contains the given IP. This validates that
 // the cap is directed at the correct node, not just present.
-func hasCapMatchForIP(pf []filter.Match, peerCap tailcfg.PeerCapability, ip netip.Addr) bool {
+func hasCapMatchForIP(pf []filter.Match, peerCap peercap.Cap, ip netip.Addr) bool {
 	for _, m := range pf {
 		for _, cm := range m.Caps {
 			if cm.Cap == peerCap && cm.Dst.Contains(ip) {
@@ -119,7 +121,7 @@ func TestGrantCapRelay(t *testing.T) {
 				Sources:      policyv2.Aliases{tagp("tag:client-a"), tagp("tag:client-b")},
 				Destinations: policyv2.Aliases{tagp("tag:relay")},
 				App: tailcfg.PeerCapMap{
-					tailcfg.PeerCapabilityRelay: {tailcfg.RawMessage("{}")},
+					peercap.Relay: {tailcfg.RawMessage("{}")},
 				},
 			},
 		},
@@ -280,7 +282,7 @@ func TestGrantCapRelay(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		pf, err := relayR.PacketFilter()
 		assert.NoError(c, err)
-		assert.True(c, hasCapMatchForIP(pf, tailcfg.PeerCapabilityRelay, relayIPv4),
+		assert.True(c, hasCapMatchForIP(pf, peercap.Relay, relayIPv4),
 			"Relay R should have cap/relay with Dst matching relay's IP %s", relayIPv4)
 	}, assertTimeout, 500*time.Millisecond, "R should have cap/relay targeting its own IP")
 
@@ -288,7 +290,7 @@ func TestGrantCapRelay(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		pf, err := clientA.PacketFilter()
 		assert.NoError(c, err)
-		assert.True(c, hasCapMatchForIP(pf, tailcfg.PeerCapabilityRelayTarget, clientAIPv4),
+		assert.True(c, hasCapMatchForIP(pf, peercap.RelayTarget, clientAIPv4),
 			"Client A should have cap/relay-target with Dst matching A's IP %s", clientAIPv4)
 	}, assertTimeout, 500*time.Millisecond, "A should have cap/relay-target targeting its own IP")
 
@@ -296,7 +298,7 @@ func TestGrantCapRelay(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		pf, err := clientB.PacketFilter()
 		assert.NoError(c, err)
-		assert.True(c, hasCapMatchForIP(pf, tailcfg.PeerCapabilityRelayTarget, clientBIPv4),
+		assert.True(c, hasCapMatchForIP(pf, peercap.RelayTarget, clientBIPv4),
 			"Client B should have cap/relay-target with Dst matching B's IP %s", clientBIPv4)
 	}, assertTimeout, 500*time.Millisecond, "B should have cap/relay-target targeting its own IP")
 
@@ -306,7 +308,7 @@ func TestGrantCapRelay(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		pf, err := relayR.PacketFilter()
 		assert.NoError(c, err)
-		assert.False(c, hasCapMatchInPacketFilter(pf, tailcfg.PeerCapabilityRelayTarget),
+		assert.False(c, hasCapMatchInPacketFilter(pf, peercap.RelayTarget),
 			"Relay R should NOT have cap/relay-target")
 	}, 10*time.Second, 500*time.Millisecond, "R should not have cap/relay-target")
 
@@ -314,7 +316,7 @@ func TestGrantCapRelay(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		pf, err := clientA.PacketFilter()
 		assert.NoError(c, err)
-		assert.False(c, hasCapMatchInPacketFilter(pf, tailcfg.PeerCapabilityRelay),
+		assert.False(c, hasCapMatchInPacketFilter(pf, peercap.Relay),
 			"Client A should NOT have cap/relay")
 	}, 10*time.Second, 500*time.Millisecond, "A should not have cap/relay")
 
@@ -322,7 +324,7 @@ func TestGrantCapRelay(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		pf, err := clientB.PacketFilter()
 		assert.NoError(c, err)
-		assert.False(c, hasCapMatchInPacketFilter(pf, tailcfg.PeerCapabilityRelay),
+		assert.False(c, hasCapMatchInPacketFilter(pf, peercap.Relay),
 			"Client B should NOT have cap/relay")
 	}, 10*time.Second, 500*time.Millisecond, "B should not have cap/relay")
 
@@ -560,9 +562,9 @@ func TestGrantCapDrive(t *testing.T) {
 		NodeAttrs: []policyv2.NodeAttrGrant{
 			{
 				Targets: policyv2.Aliases{policyv2.Wildcard},
-				Attrs: []tailcfg.NodeCapability{
-					tailcfg.NodeAttrsTaildriveShare,
-					tailcfg.NodeAttrsTaildriveAccess,
+				Attrs: []nodecap.Cap{
+					nodecap.TaildriveShare,
+					nodecap.TaildriveAccess,
 				},
 			},
 		},
@@ -586,7 +588,7 @@ func TestGrantCapDrive(t *testing.T) {
 				Sources:      policyv2.Aliases{tagp("tag:rw-client")},
 				Destinations: policyv2.Aliases{tagp("tag:sharer")},
 				App: tailcfg.PeerCapMap{
-					tailcfg.PeerCapabilityTaildrive: {
+					peercap.Taildrive: {
 						tailcfg.RawMessage(`{"shares":["*"],"access":"rw"}`),
 					},
 				},
@@ -596,7 +598,7 @@ func TestGrantCapDrive(t *testing.T) {
 				Sources:      policyv2.Aliases{tagp("tag:ro-client")},
 				Destinations: policyv2.Aliases{tagp("tag:sharer")},
 				App: tailcfg.PeerCapMap{
-					tailcfg.PeerCapabilityTaildrive: {
+					peercap.Taildrive: {
 						tailcfg.RawMessage(`{"shares":["*"],"access":"ro"}`),
 					},
 				},
@@ -723,9 +725,9 @@ func TestGrantCapDrive(t *testing.T) {
 				"%s: SelfNode should be valid", node.Hostname())
 
 			if nm.SelfNode.Valid() {
-				assert.True(c, nm.SelfNode.HasCap(tailcfg.NodeAttrsTaildriveShare),
+				assert.True(c, nm.SelfNode.HasCap(nodecap.TaildriveShare),
 					"%s: should have drive:share cap", node.Hostname())
-				assert.True(c, nm.SelfNode.HasCap(tailcfg.NodeAttrsTaildriveAccess),
+				assert.True(c, nm.SelfNode.HasCap(nodecap.TaildriveAccess),
 					"%s: should have drive:access cap", node.Hostname())
 			}
 		}, assertTimeout, 500*time.Millisecond,
@@ -741,7 +743,7 @@ func TestGrantCapDrive(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		pf, err := sharer.PacketFilter()
 		assert.NoError(c, err)
-		assert.True(c, hasCapMatchForIP(pf, tailcfg.PeerCapabilityTaildrive, sharerIPv4),
+		assert.True(c, hasCapMatchForIP(pf, peercap.Taildrive, sharerIPv4),
 			"Sharer should have cap/drive with Dst matching sharer's IP %s", sharerIPv4)
 	}, assertTimeout, 500*time.Millisecond, "sharer should have cap/drive targeting its own IP")
 
@@ -751,7 +753,7 @@ func TestGrantCapDrive(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		pf, err := rwClient.PacketFilter()
 		assert.NoError(c, err)
-		assert.True(c, hasCapMatchForIP(pf, tailcfg.PeerCapabilityTaildriveSharer, rwClientIPv4),
+		assert.True(c, hasCapMatchForIP(pf, peercap.TaildriveSharer, rwClientIPv4),
 			"RW client should have cap/drive-sharer with Dst matching rw-client's IP %s", rwClientIPv4)
 	}, assertTimeout, 500*time.Millisecond, "rw-client should have cap/drive-sharer")
 
@@ -761,7 +763,7 @@ func TestGrantCapDrive(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		pf, err := roClient.PacketFilter()
 		assert.NoError(c, err)
-		assert.True(c, hasCapMatchForIP(pf, tailcfg.PeerCapabilityTaildriveSharer, roClientIPv4),
+		assert.True(c, hasCapMatchForIP(pf, peercap.TaildriveSharer, roClientIPv4),
 			"RO client should have cap/drive-sharer with Dst matching ro-client's IP %s", roClientIPv4)
 	}, assertTimeout, 500*time.Millisecond, "ro-client should have cap/drive-sharer")
 
@@ -771,9 +773,9 @@ func TestGrantCapDrive(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		pf, err := noAccess.PacketFilter()
 		assert.NoError(c, err)
-		assert.False(c, hasCapMatchInPacketFilter(pf, tailcfg.PeerCapabilityTaildrive),
+		assert.False(c, hasCapMatchInPacketFilter(pf, peercap.Taildrive),
 			"no-access should NOT have cap/drive")
-		assert.False(c, hasCapMatchInPacketFilter(pf, tailcfg.PeerCapabilityTaildriveSharer),
+		assert.False(c, hasCapMatchInPacketFilter(pf, peercap.TaildriveSharer),
 			"no-access should NOT have cap/drive-sharer")
 	}, 10*time.Second, 500*time.Millisecond, "no-access should have no drive caps")
 
@@ -781,7 +783,7 @@ func TestGrantCapDrive(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		pf, err := sharer.PacketFilter()
 		assert.NoError(c, err)
-		assert.False(c, hasCapMatchInPacketFilter(pf, tailcfg.PeerCapabilityTaildriveSharer),
+		assert.False(c, hasCapMatchInPacketFilter(pf, peercap.TaildriveSharer),
 			"sharer should NOT have cap/drive-sharer")
 	}, 10*time.Second, 500*time.Millisecond, "sharer should not have cap/drive-sharer")
 
@@ -789,7 +791,7 @@ func TestGrantCapDrive(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		pf, err := rwClient.PacketFilter()
 		assert.NoError(c, err)
-		assert.False(c, hasCapMatchInPacketFilter(pf, tailcfg.PeerCapabilityTaildrive),
+		assert.False(c, hasCapMatchInPacketFilter(pf, peercap.Taildrive),
 			"rw-client should NOT have cap/drive")
 	}, 10*time.Second, 500*time.Millisecond, "rw-client should not have cap/drive")
 
@@ -797,7 +799,7 @@ func TestGrantCapDrive(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		pf, err := roClient.PacketFilter()
 		assert.NoError(c, err)
-		assert.False(c, hasCapMatchInPacketFilter(pf, tailcfg.PeerCapabilityTaildrive),
+		assert.False(c, hasCapMatchInPacketFilter(pf, peercap.Taildrive),
 			"ro-client should NOT have cap/drive")
 	}, 10*time.Second, 500*time.Millisecond, "ro-client should not have cap/drive")
 

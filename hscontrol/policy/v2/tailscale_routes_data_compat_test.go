@@ -42,7 +42,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go4.org/netipx"
-	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 )
 
@@ -81,16 +80,16 @@ func buildRoutesUsersAndNodes(
 		users = make(types.Users, 0, len(topo.Users))
 		for _, u := range topo.Users {
 			users = append(users, types.User{
-				Model: gorm.Model{ID: u.ID},
+				ID:    u.ID,
 				Name:  u.Name,
 				Email: convertSaaSEmail(u.Email),
 			})
 		}
 	} else {
 		users = types.Users{
-			{Model: gorm.Model{ID: 1}, Name: "kratail2tid", Email: "kratail2tid@example.com"},
-			{Model: gorm.Model{ID: 2}, Name: "kristoffer", Email: "kristoffer@example.com"},
-			{Model: gorm.Model{ID: 3}, Name: "monitorpasskeykradalby", Email: "monitorpasskeykradalby@example.com"},
+			{ID: 1, Name: "kratail2tid", Email: "kratail2tid@example.com"},
+			{ID: 2, Name: "kristoffer", Email: "kristoffer@example.com"},
+			{ID: 3, Name: "monitorpasskeykradalby", Email: "monitorpasskeykradalby@example.com"},
 		}
 	}
 
@@ -1455,7 +1454,7 @@ func TestRoutesCompatPeerAllowedIPs(t *testing.T) {
 
 					for _, nmPeer := range capture.Netmap.Peers {
 						// Extract the short name from the FQDN.
-						peerName := strings.Split(nmPeer.Name(), ".")[0]
+						peerName, _, _ := strings.Cut(nmPeer.Name(), ".")
 
 						peer := findNodeByGivenName(nodes, peerName)
 						if peer == nil {

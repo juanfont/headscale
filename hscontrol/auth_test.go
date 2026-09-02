@@ -2710,14 +2710,10 @@ func runInteractiveWorkflowTest(t *testing.T, tt struct {
 // extractRegistrationIDFromAuthURL extracts the registration ID from an AuthURL.
 func extractRegistrationIDFromAuthURL(authURL string) (types.AuthID, error) {
 	// AuthURL format: "http://localhost/register/abc123"
-	const registerPrefix = "/register/"
-
-	idx := strings.LastIndex(authURL, registerPrefix)
-	if idx == -1 {
+	_, idStr, found := strings.CutLast(authURL, "/register/")
+	if !found {
 		return "", fmt.Errorf("invalid AuthURL format: %s", authURL) //nolint:err113
 	}
-
-	idStr := authURL[idx+len(registerPrefix):]
 
 	return types.AuthIDFromString(idStr)
 }

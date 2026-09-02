@@ -11,7 +11,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 )
 
@@ -1134,11 +1133,11 @@ func TestReduceNodesFromPolicy(t *testing.T) {
 
 func TestSSHPolicyRules(t *testing.T) {
 	users := []types.User{
-		{Name: "user1", Model: gorm.Model{ID: 1}},
-		{Name: "user2", Model: gorm.Model{ID: 2}},
-		{Name: "user3", Model: gorm.Model{ID: 3}},
-		{Name: "alice", Email: "alice@example.com", Model: gorm.Model{ID: 4}},
-		{Name: "bob", Email: "bob@example.com", Model: gorm.Model{ID: 5}},
+		{Name: "user1", ID: 1},
+		{Name: "user2", ID: 2},
+		{Name: "user3", ID: 3},
+		{Name: "alice", Email: "alice@example.com", ID: 4},
+		{Name: "bob", Email: "bob@example.com", ID: 5},
 	}
 
 	// Create standard node setups used across tests

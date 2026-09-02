@@ -1723,31 +1723,31 @@ func (t *HeadscaleInContainer) SendInterrupt() error {
 }
 
 func (t *HeadscaleInContainer) GetAllMapReponses() (map[types.NodeID][]tailcfg.MapResponse, error) {
-	return debugJSON[map[types.NodeID][]tailcfg.MapResponse](t, "mapresponses")
+	return t.debugJSON[map[types.NodeID][]tailcfg.MapResponse]("mapresponses")
 }
 
 // PrimaryRoutes fetches the primary routes from the debug endpoint.
 func (t *HeadscaleInContainer) PrimaryRoutes() (*types.DebugRoutes, error) {
-	return debugJSON[*types.DebugRoutes](t, "routes")
+	return t.debugJSON[*types.DebugRoutes]("routes")
 }
 
 // DebugBatcher fetches the batcher debug information from the debug endpoint.
 func (t *HeadscaleInContainer) DebugBatcher() (*hscontrol.DebugBatcherInfo, error) {
-	return debugJSON[*hscontrol.DebugBatcherInfo](t, "batcher")
+	return t.debugJSON[*hscontrol.DebugBatcherInfo]("batcher")
 }
 
 // DebugNodeStore fetches the [state.NodeStore] data from the debug endpoint.
 func (t *HeadscaleInContainer) DebugNodeStore() (map[types.NodeID]types.Node, error) {
-	return debugJSON[map[types.NodeID]types.Node](t, "nodestore")
+	return t.debugJSON[map[types.NodeID]types.Node]("nodestore")
 }
 
 // DebugFilter fetches the current filter rules from the debug endpoint.
 func (t *HeadscaleInContainer) DebugFilter() ([]tailcfg.FilterRule, error) {
-	return debugJSON[[]tailcfg.FilterRule](t, "filter")
+	return t.debugJSON[[]tailcfg.FilterRule]("filter")
 }
 
 // debugJSON fetches and decodes a JSON-returning debug endpoint by name.
-func debugJSON[T any](t *HeadscaleInContainer, endpoint string) (T, error) {
+func (t *HeadscaleInContainer) debugJSON[T any](endpoint string) (T, error) {
 	var res T
 
 	// Execute curl inside the container to access the debug endpoint locally

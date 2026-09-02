@@ -154,7 +154,7 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 
 	// Set a minimal DERP map so MapResponse generation works.
 	app.GetState().SetDERPMap(&tailcfg.DERPMap{
-		Regions: map[int]*tailcfg.DERPRegion{
+		Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{
 			900: {
 				RegionID:   900,
 				RegionCode: "test",

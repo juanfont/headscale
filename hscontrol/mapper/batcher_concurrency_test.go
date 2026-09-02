@@ -142,19 +142,16 @@ func runConcurrently(t *testing.T, n int, fn func(i int)) int {
 	)
 
 	for i := range n {
-		wg.Add(1)
-
-		go func(idx int) {
-			defer wg.Done()
+		wg.Go(func() {
 			defer func() {
 				if r := recover(); r != nil {
 					panics.Add(1)
-					t.Logf("panic in goroutine %d: %v", idx, r)
+					t.Logf("panic in goroutine %d: %v", i, r)
 				}
 			}()
 
-			fn(idx)
-		}(i)
+			fn(i)
+		})
 	}
 
 	wg.Wait()

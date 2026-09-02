@@ -96,22 +96,16 @@ func TestConnectDisconnectRace(t *testing.T) {
 
 		start := make(chan struct{})
 
-		wg.Add(2)
-
-		go func() {
-			defer wg.Done()
-
+		wg.Go(func() {
 			<-start
 
 			_, _ = srv.State().Disconnect(r2ID, gen)
-		}()
-		go func() {
-			defer wg.Done()
-
+		})
+		wg.Go(func() {
 			<-start
 
 			_, _ = srv.State().Connect(r2ID)
-		}()
+		})
 
 		close(start)
 		wg.Wait()

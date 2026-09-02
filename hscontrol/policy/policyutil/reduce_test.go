@@ -13,7 +13,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/util/must"
@@ -108,11 +107,11 @@ func TestTheInternet(t *testing.T) {
 
 func TestReduceFilterRules(t *testing.T) {
 	users := types.Users{
-		types.User{Model: gorm.Model{ID: 1}, Name: "mickael"},
-		types.User{Model: gorm.Model{ID: 2}, Name: "user1"},
-		types.User{Model: gorm.Model{ID: 3}, Name: "user2"},
-		types.User{Model: gorm.Model{ID: 4}, Name: "user100"},
-		types.User{Model: gorm.Model{ID: 5}, Name: "user3"},
+		types.User{ID: 1, Name: "mickael"},
+		types.User{ID: 2, Name: "user1"},
+		types.User{ID: 3, Name: "user2"},
+		types.User{ID: 4, Name: "user100"},
+		types.User{ID: 5, Name: "user3"},
 	}
 
 	tests := []struct {

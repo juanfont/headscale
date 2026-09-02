@@ -494,16 +494,12 @@ func TestRaceBatcherContention(t *testing.T) {
 			srv.App.Change(c)
 		})
 
-		wg.Add(1)
-
 		var c2 *servertest.TestClient
 
-		go func() {
-			defer wg.Done()
-
+		wg.Go(func() {
 			c2 = servertest.NewClient(t, srv, "rtcon-node2",
 				servertest.WithUser(user))
-		}()
+		})
 
 		wg.Wait()
 

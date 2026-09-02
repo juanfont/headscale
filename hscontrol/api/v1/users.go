@@ -9,7 +9,6 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"gorm.io/gorm"
 )
 
 func init() {
@@ -219,7 +218,7 @@ func listUsersFiltered(b Backend, in *listUsersInput) ([]types.User, error) {
 			return b.State.ListAllUsers()
 		}
 
-		return b.State.ListUsersWithFilter(&types.User{Model: gorm.Model{ID: uint(id)}})
+		return b.State.ListUsersWithFilter(&types.User{ID: uint(id)})
 	default:
 		return b.State.ListAllUsers()
 	}

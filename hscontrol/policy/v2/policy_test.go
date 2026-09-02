@@ -10,7 +10,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
@@ -28,8 +27,8 @@ func node(name, ipv4, ipv6 string, user types.User) *types.Node {
 
 func TestPolicyManager(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "testuser", Email: "testuser@headscale.net"},
-		{Model: gorm.Model{ID: 2}, Name: "otheruser", Email: "otheruser@headscale.net"},
+		{ID: 1, Name: "testuser", Email: "testuser@headscale.net"},
+		{ID: 2, Name: "otheruser", Email: "otheruser@headscale.net"},
 	}
 
 	tests := []struct {
@@ -87,9 +86,9 @@ func TestPolicyManager(t *testing.T) {
 
 func TestInvalidateAutogroupSelfCache(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@headscale.net"},
-		{Model: gorm.Model{ID: 2}, Name: "user2", Email: "user2@headscale.net"},
-		{Model: gorm.Model{ID: 3}, Name: "user3", Email: "user3@headscale.net"},
+		{ID: 1, Name: "user1", Email: "user1@headscale.net"},
+		{ID: 2, Name: "user2", Email: "user2@headscale.net"},
+		{ID: 3, Name: "user3", Email: "user3@headscale.net"},
 	}
 
 	//nolint:goconst // test-specific inline policy for clarity
@@ -237,8 +236,8 @@ func TestInvalidateAutogroupSelfCache(t *testing.T) {
 // owning user from UserID, not from the User view.
 func TestSetNodesAutogroupSelfUnhydratedUser(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@headscale.net"},
-		{Model: gorm.Model{ID: 2}, Name: "user2", Email: "user2@headscale.net"},
+		{ID: 1, Name: "user1", Email: "user1@headscale.net"},
+		{ID: 2, Name: "user2", Email: "user2@headscale.net"},
 	}
 
 	policy := `{
@@ -305,7 +304,7 @@ func TestSetNodesAutogroupSelfUnhydratedUser(t *testing.T) {
 // autogroup:self destination is active.
 func TestSSHCheckParamsUnhydratedUserNoPanic(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@headscale.net"},
+		{ID: 1, Name: "user1", Email: "user1@headscale.net"},
 	}
 
 	policy := `{
@@ -523,8 +522,8 @@ func TestInvalidateGlobalPolicyCache(t *testing.T) {
 // 1. BuildPeerMap uses unreduced compiled rules for determining peer relationships
 // 2. FilterForNode returns reduced compiled rules for packet filters.
 func TestAutogroupSelfReducedVsUnreducedRules(t *testing.T) {
-	user1 := types.User{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@headscale.net"}
-	user2 := types.User{Model: gorm.Model{ID: 2}, Name: "user2", Email: "user2@headscale.net"}
+	user1 := types.User{ID: 1, Name: "user1", Email: "user1@headscale.net"}
+	user2 := types.User{ID: 2, Name: "user2", Email: "user2@headscale.net"}
 	users := types.Users{user1, user2}
 
 	// Create two nodes
@@ -600,8 +599,8 @@ func TestAutogroupSelfReducedVsUnreducedRules(t *testing.T) {
 // This ensures that autogroup:self doesn't interfere with other ACL rules.
 func TestAutogroupSelfWithOtherRules(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "test-1", Email: "test-1@example.com"},
-		{Model: gorm.Model{ID: 2}, Name: "test-2", Email: "test-2@example.com"},
+		{ID: 1, Name: "test-1", Email: "test-1@example.com"},
+		{ID: 2, Name: "test-2", Email: "test-2@example.com"},
 	}
 
 	// test-1 has a regular device
@@ -681,8 +680,8 @@ func TestAutogroupSelfWithOtherRules(t *testing.T) {
 // leaving nodes with stale filter rules until reconnect.
 func TestAutogroupSelfPolicyUpdateTriggersMapResponse(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "test-1", Email: "test-1@example.com"},
-		{Model: gorm.Model{ID: 2}, Name: "test-2", Email: "test-2@example.com"},
+		{ID: 1, Name: "test-1", Email: "test-1@example.com"},
+		{ID: 2, Name: "test-2", Email: "test-2@example.com"},
 	}
 
 	test1Node := &types.Node{
@@ -765,8 +764,8 @@ func TestAutogroupSelfPolicyUpdateTriggersMapResponse(t *testing.T) {
 // https://github.com/juanfont/headscale/issues/2389
 func TestTagPropagationToPeerMap(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@headscale.net"},
-		{Model: gorm.Model{ID: 2}, Name: "user2", Email: "user2@headscale.net"},
+		{ID: 1, Name: "user1", Email: "user1@headscale.net"},
+		{ID: 2, Name: "user2", Email: "user2@headscale.net"},
 	}
 
 	// Policy: user2 can access tag:web nodes
@@ -893,8 +892,8 @@ func TestTagPropagationToPeerMap(t *testing.T) {
 // BOTH admin and tagged node should see each other as peers.
 func TestAutogroupSelfWithAdminOverride(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "admin", Email: "admin@example.com"},
-		{Model: gorm.Model{ID: 2}, Name: "user1", Email: "user1@example.com"},
+		{ID: 1, Name: "admin", Email: "admin@example.com"},
+		{ID: 2, Name: "user1", Email: "user1@example.com"},
 	}
 
 	// Admin has a regular device
@@ -976,8 +975,8 @@ func TestAutogroupSelfWithAdminOverride(t *testing.T) {
 // This is the same behavior as the global filter path.
 func TestAutogroupSelfSymmetricVisibility(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@example.com"},
-		{Model: gorm.Model{ID: 2}, Name: "user2", Email: "user2@example.com"},
+		{ID: 1, Name: "user1", Email: "user1@example.com"},
+		{ID: 2, Name: "user2", Email: "user2@example.com"},
 	}
 
 	// user1 has device A
@@ -1059,10 +1058,10 @@ func TestAutogroupSelfSymmetricVisibility(t *testing.T) {
 // - All tagged nodes should be visible to users who can access them.
 func TestAutogroupSelfDoesNotBreakOtherUsersAccess(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "superadmin", Email: "superadmin@example.com"},
-		{Model: gorm.Model{ID: 2}, Name: "admin", Email: "admin@example.com"},
-		{Model: gorm.Model{ID: 3}, Name: "direction", Email: "direction@example.com"},
-		{Model: gorm.Model{ID: 4}, Name: "tagowner", Email: "tagowner@example.com"},
+		{ID: 1, Name: "superadmin", Email: "superadmin@example.com"},
+		{ID: 2, Name: "admin", Email: "admin@example.com"},
+		{ID: 3, Name: "direction", Email: "direction@example.com"},
+		{ID: 4, Name: "tagowner", Email: "tagowner@example.com"},
 	}
 
 	// Create nodes:
@@ -1229,8 +1228,8 @@ func TestAutogroupSelfDoesNotBreakOtherUsersAccess(t *testing.T) {
 // visible to nodes that can access them.
 func TestEmptyFilterNodesStillVisible(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "admin", Email: "admin@example.com"},
-		{Model: gorm.Model{ID: 2}, Name: "tagowner", Email: "tagowner@example.com"},
+		{ID: 1, Name: "admin", Email: "admin@example.com"},
+		{ID: 2, Name: "tagowner", Email: "tagowner@example.com"},
 	}
 
 	adminDevice := &types.Node{
@@ -1297,8 +1296,8 @@ func TestEmptyFilterNodesStillVisible(t *testing.T) {
 // tagged nodes AND their own devices.
 func TestAutogroupSelfCombinedWithTags(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "admin", Email: "admin@example.com"},
-		{Model: gorm.Model{ID: 2}, Name: "tagowner", Email: "tagowner@example.com"},
+		{ID: 1, Name: "admin", Email: "admin@example.com"},
+		{ID: 2, Name: "tagowner", Email: "tagowner@example.com"},
 	}
 
 	// Admin has two devices
@@ -1393,7 +1392,7 @@ func TestAutogroupSelfCombinedWithTags(t *testing.T) {
 // Expected: node1 should be able to reach node2 via group:admin -> *:* rule.
 func TestIssue2990SameUserTaggedDevice(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@"},
+		{ID: 1, Name: "user1", Email: "user1@"},
 	}
 
 	// node1: user device (not tagged), belongs to user1
@@ -1493,8 +1492,8 @@ func TestViaRoutesForPeer(t *testing.T) {
 	t.Parallel()
 
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@"},
-		{Model: gorm.Model{ID: 2}, Name: "user2", Email: "user2@"},
+		{ID: 1, Name: "user1", Email: "user1@"},
+		{ID: 2, Name: "user2", Email: "user2@"},
 	}
 
 	t.Run("self_returns_empty", func(t *testing.T) {
@@ -2102,7 +2101,7 @@ func TestBuildPeerMap_AutogroupInternetMakesExitNodeVisible(t *testing.T) {
 	t.Parallel()
 
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "alice", Email: "alice@headscale.net"},
+		{ID: 1, Name: "alice", Email: "alice@headscale.net"},
 	}
 
 	aliceNode := node("alice-laptop", "100.64.0.10", "fd7a:115c:a1e0::a", users[0])
@@ -2141,8 +2140,8 @@ func TestBuildPeerMap_AutogroupInternetMakesExitNodeVisible(t *testing.T) {
 // Reproduction for #3160: ambiguous user@ used to silently drop rules.
 func TestNewPolicyManager_DuplicateUsername(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 2}, Name: "yala"},
-		{Model: gorm.Model{ID: 7}, Name: "yala", Email: "yala@yala.yala"},
+		{ID: 2, Name: "yala"},
+		{ID: 7, Name: "yala", Email: "yala@yala.yala"},
 	}
 
 	polB := []byte(`{
@@ -2164,7 +2163,7 @@ func TestNewPolicyManager_DuplicateUsername(t *testing.T) {
 // Missing-user tokens stay tolerant per #2863; only multi-match blocks load.
 func TestNewPolicyManager_UnknownUsernameTolerant(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "alice"},
+		{ID: 1, Name: "alice"},
 	}
 
 	polB := []byte(`{
@@ -2178,8 +2177,8 @@ func TestNewPolicyManager_UnknownUsernameTolerant(t *testing.T) {
 // Rejected SetPolicy must keep the previous policy intact.
 func TestSetPolicy_DuplicateUsername(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 2}, Name: "yala"},
-		{Model: gorm.Model{ID: 7}, Name: "yala", Email: "yala@yala.yala"},
+		{ID: 2, Name: "yala"},
+		{ID: 7, Name: "yala", Email: "yala@yala.yala"},
 	}
 
 	good := []byte(`{
@@ -2223,9 +2222,9 @@ func TestValidateUserReferences_EmptyUsersTolerant(t *testing.T) {
 // One case per AST site so a dropped walk fails the matching subtest.
 func TestValidateUserReferences_AllSites(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "alice"},
-		{Model: gorm.Model{ID: 2}, Name: "dup"},
-		{Model: gorm.Model{ID: 3}, Name: "dup"},
+		{ID: 1, Name: "alice"},
+		{ID: 2, Name: "dup"},
+		{ID: 3, Name: "dup"},
 	}
 
 	tests := []struct {
@@ -2317,8 +2316,8 @@ func TestValidateUserReferences_AllSites(t *testing.T) {
 // IP-level grant.
 func TestPeerRelayGrantMakesRelayVisible(t *testing.T) {
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "alice", Email: "alice@headscale.net"},
-		{Model: gorm.Model{ID: 2}, Name: "tagowner", Email: "tagowner@headscale.net"},
+		{ID: 1, Name: "alice", Email: "alice@headscale.net"},
+		{ID: 2, Name: "tagowner", Email: "tagowner@headscale.net"},
 	}
 
 	// Helper for tagged nodes belonging to the tag-owner user.

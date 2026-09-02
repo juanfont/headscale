@@ -104,17 +104,13 @@ func TestConcurrentPutNodeSameGivenNameAllUnique(t *testing.T) {
 	var wg sync.WaitGroup
 
 	results := make(chan string, N)
-	for i := range N {
-		wg.Add(1)
-
-		go func(id int) {
-			defer wg.Done()
-
+	for id := range N {
+		wg.Go(func() {
 			n := createTestNode(types.NodeID(id+1), 1, "alice", "laptop") //nolint:gosec // test ids
 
 			view := store.PutNode(n)
 			results <- view.GivenName()
-		}(i)
+		})
 	}
 
 	wg.Wait()

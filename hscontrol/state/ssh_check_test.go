@@ -85,19 +85,13 @@ func TestSSHCheckAuthConcurrent(t *testing.T) {
 	wg.Wait()
 
 	// Clear concurrently with reads
-	wg.Add(2)
-
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		s.ClearSSHCheckAuth()
-	}()
+	})
 
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		s.GetLastSSHAuth(types.NodeID(1), types.NodeID(2))
-	}()
+	})
 
 	wg.Wait()
 }

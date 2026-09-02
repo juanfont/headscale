@@ -735,17 +735,11 @@ func assertClientsState(t *testing.T, clients []TailscaleClient) {
 	var wg sync.WaitGroup
 
 	for _, client := range clients {
-		wg.Add(1)
-
-		c := client // Avoid loop pointer
-
-		go func() {
-			defer wg.Done()
-
-			assertValidStatus(t, c)
-			assertValidNetcheck(t, c)
-			assertValidNetmap(t, c)
-		}()
+		wg.Go(func() {
+			assertValidStatus(t, client)
+			assertValidNetcheck(t, client)
+			assertValidNetmap(t, client)
+		})
 	}
 
 	t.Logf("waiting for client state checks to finish")

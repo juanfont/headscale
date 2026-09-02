@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"tailscale.com/tailcfg"
+	"tailscale.com/util/cmpver"
 )
 
 const (
@@ -243,9 +244,15 @@ func getCapabilityVersions(ctx context.Context) (map[string]tailcfg.CapabilityVe
 	return versions, nil
 }
 
+// sortedMinorVersions returns the minor versions ordered numerically. cmpver
+// puts v1.98 before v1.102, a lexicographic sort does not.
+func sortedMinorVersions(versions map[string]tailcfg.CapabilityVersion) []string {
+	return slices.SortedFunc(maps.Keys(versions), cmpver.Compare)
+}
+
 func calculateMinSupportedCapabilityVersion(versions map[string]tailcfg.CapabilityVersion) tailcfg.CapabilityVersion {
 	// Since we now store minor versions directly, just sort and take the oldest of the latest N
-	minorVersions := slices.Sorted(maps.Keys(versions))
+	minorVersions := sortedMinorVersions(versions)
 
 	supportedCount := min(len(minorVersions), supportedMajorMinorVersions)
 
@@ -262,7 +269,7 @@ func calculateMinSupportedCapabilityVersion(versions map[string]tailcfg.Capabili
 // firstTailscaleVerPerCapVer inverts versions into a map from each capability
 // version to the first (lowest-sorted) Tailscale minor version reporting it.
 func firstTailscaleVerPerCapVer(versions map[string]tailcfg.CapabilityVersion) map[tailcfg.CapabilityVersion]string {
-	sortedVersions := slices.Sorted(maps.Keys(versions))
+	sortedVersions := sortedMinorVersions(versions)
 
 	capVerToTailscaleVer := make(map[tailcfg.CapabilityVersion]string)
 
@@ -285,7 +292,7 @@ func writeCapabilityVersionsToFile(versions map[string]tailcfg.CapabilityVersion
 	content.WriteString("\n\n")
 	content.WriteString("var tailscaleToCapVer = map[string]tailcfg.CapabilityVersion{\n")
 
-	sortedVersions := slices.Sorted(maps.Keys(versions))
+	sortedVersions := sortedMinorVersions(versions)
 
 	for _, version := range sortedVersions {
 		fmt.Fprintf(&content, "\t\"%s\": %d,\n", version, versions[version])
@@ -332,7 +339,7 @@ func writeCapabilityVersionsToFile(versions map[string]tailcfg.CapabilityVersion
 
 func writeTestDataFile(versions map[string]tailcfg.CapabilityVersion, minSupportedCapVer tailcfg.CapabilityVersion) error {
 	// Sort minor versions
-	minorVersions := slices.Sorted(maps.Keys(versions))
+	minorVersions := sortedMinorVersions(versions)
 
 	// Take latest N
 	supportedCount := min(len(minorVersions), supportedMajorMinorVersions)

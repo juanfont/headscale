@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/nodecap"
 	"tailscale.com/types/netmap"
 )
 
@@ -32,7 +33,7 @@ func reloadPolicy(t *testing.T, srv *servertest.TestServer, pol string) {
 }
 
 // hasCap reports whether the given netmap's self CapMap contains want.
-func hasCap(nm *netmap.NetworkMap, want tailcfg.NodeCapability) bool {
+func hasCap(nm *netmap.NetworkMap, want nodecap.Cap) bool {
 	if nm == nil || !nm.SelfNode.Valid() {
 		return false
 	}
@@ -82,11 +83,11 @@ func TestNodeAttrsDeliverToSelfAndPeer(t *testing.T) {
 
 	c1.WaitForCondition(t, "self randomize-client-port cap on c1", 10*time.Second,
 		func(nm *netmap.NetworkMap) bool {
-			return hasCap(nm, tailcfg.NodeAttrRandomizeClientPort)
+			return hasCap(nm, nodecap.RandomizeClientPort)
 		})
 	c2.WaitForCondition(t, "self randomize-client-port cap on c2", 10*time.Second,
 		func(nm *netmap.NetworkMap) bool {
-			return hasCap(nm, tailcfg.NodeAttrRandomizeClientPort)
+			return hasCap(nm, nodecap.RandomizeClientPort)
 		})
 
 	// randomize-client-port is not in the peer-consumed allowlist and
@@ -121,7 +122,7 @@ func TestNodeAttrsUserTargetIsolated(t *testing.T) {
 
 	a.WaitForCondition(t, "alice gains randomize-client-port", 10*time.Second,
 		func(nm *netmap.NetworkMap) bool {
-			return hasCap(nm, tailcfg.NodeAttrRandomizeClientPort)
+			return hasCap(nm, nodecap.RandomizeClientPort)
 		})
 
 	// bob must remain free of the cap; check after alice has converged so we
@@ -129,7 +130,7 @@ func TestNodeAttrsUserTargetIsolated(t *testing.T) {
 	b.WaitForPeers(t, 1, 10*time.Second)
 	nmB := b.Netmap()
 	require.NotNil(t, nmB)
-	assert.False(t, hasCap(nmB, tailcfg.NodeAttrRandomizeClientPort),
+	assert.False(t, hasCap(nmB, nodecap.RandomizeClientPort),
 		"bob is not in the target set; must not receive the cap")
 }
 
@@ -154,14 +155,14 @@ func TestNodeAttrsRevokesWhenRemoved(t *testing.T) {
 
 	c.WaitForCondition(t, "captive cap appears", 10*time.Second,
 		func(nm *netmap.NetworkMap) bool {
-			return hasCap(nm, tailcfg.NodeAttrDisableCaptivePortalDetection)
+			return hasCap(nm, nodecap.DisableCaptivePortalDetection)
 		})
 
 	reloadPolicy(t, srv, `{}`)
 
 	c.WaitForCondition(t, "captive cap disappears", 10*time.Second,
 		func(nm *netmap.NetworkMap) bool {
-			return !hasCap(nm, tailcfg.NodeAttrDisableCaptivePortalDetection)
+			return !hasCap(nm, nodecap.DisableCaptivePortalDetection)
 		})
 }
 
@@ -184,11 +185,11 @@ func TestNodeAttrsBaselineCapsAlwaysOn(t *testing.T) {
 				return false
 			}
 
-			for _, w := range []tailcfg.NodeCapability{
-				tailcfg.CapabilityAdmin,
-				tailcfg.CapabilitySSH,
-				tailcfg.CapabilityFileSharing,
-				tailcfg.NodeAttrDefaultAutoUpdate,
+			for _, w := range []nodecap.Cap{
+				nodecap.Admin,
+				nodecap.SSH,
+				nodecap.FileSharing,
+				nodecap.DefaultAutoUpdate,
 			} {
 				if !hasCap(nm, w) {
 					return false
@@ -217,9 +218,9 @@ func TestTaildropDisabledWithholdsFileSharingCap(t *testing.T) {
 				return false
 			}
 
-			return !hasCap(nm, tailcfg.CapabilityFileSharing) &&
-				hasCap(nm, tailcfg.CapabilityAdmin) &&
-				hasCap(nm, tailcfg.CapabilitySSH)
+			return !hasCap(nm, nodecap.FileSharing) &&
+				hasCap(nm, nodecap.Admin) &&
+				hasCap(nm, nodecap.SSH)
 		})
 }
 
@@ -247,9 +248,9 @@ func TestNodeAttrsAddsToBaseline(t *testing.T) {
 
 	c.WaitForCondition(t, "policy adds caps on top of baseline", 10*time.Second,
 		func(nm *netmap.NetworkMap) bool {
-			return hasCap(nm, tailcfg.NodeAttrRandomizeClientPort) &&
-				hasCap(nm, tailcfg.NodeAttrDisableCaptivePortalDetection) &&
-				hasCap(nm, tailcfg.CapabilitySSH)
+			return hasCap(nm, nodecap.RandomizeClientPort) &&
+				hasCap(nm, nodecap.DisableCaptivePortalDetection) &&
+				hasCap(nm, nodecap.SSH)
 		})
 }
 
@@ -276,7 +277,7 @@ func TestNodeAttrsReloadingSamePolicyDoesNotChurnSelf(t *testing.T) {
 
 	c.WaitForCondition(t, "policy cap arrives", 10*time.Second,
 		func(nm *netmap.NetworkMap) bool {
-			return hasCap(nm, tailcfg.NodeAttrRandomizeClientPort)
+			return hasCap(nm, nodecap.RandomizeClientPort)
 		})
 
 	// Reload identical bytes. Per-node CapMap diff produces an empty
@@ -288,7 +289,7 @@ func TestNodeAttrsReloadingSamePolicyDoesNotChurnSelf(t *testing.T) {
 
 	c.WaitForCondition(t, "cap persists after no-op reload", 5*time.Second,
 		func(nm *netmap.NetworkMap) bool {
-			return hasCap(nm, tailcfg.NodeAttrRandomizeClientPort)
+			return hasCap(nm, nodecap.RandomizeClientPort)
 		})
 }
 
@@ -352,7 +353,7 @@ func TestNodeAttrsSuggestExitNodeOnPeerCapMap(t *testing.T) {
 	// usual stamp; nothing special about exit nodes here).
 	exit.WaitForCondition(t, "self suggest-exit-node on exit", 10*time.Second,
 		func(nm *netmap.NetworkMap) bool {
-			return hasCap(nm, tailcfg.NodeAttrSuggestExitNode)
+			return hasCap(nm, nodecap.SuggestExitNode)
 		})
 
 	// Peer-side: the viewer sees the exit node in its Peers list with
@@ -369,7 +370,7 @@ func TestNodeAttrsSuggestExitNodeOnPeerCapMap(t *testing.T) {
 					continue
 				}
 
-				return peer.CapMap().Contains(tailcfg.NodeAttrSuggestExitNode)
+				return peer.CapMap().Contains(nodecap.SuggestExitNode)
 			}
 
 			return false
@@ -389,7 +390,7 @@ func TestNodeAttrsSuggestExitNodeOnPeerCapMap(t *testing.T) {
 					continue
 				}
 
-				return !peer.CapMap().Contains(tailcfg.NodeAttrSuggestExitNode)
+				return !peer.CapMap().Contains(nodecap.SuggestExitNode)
 			}
 
 			return false

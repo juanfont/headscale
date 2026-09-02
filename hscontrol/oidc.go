@@ -520,8 +520,8 @@ func validateOIDCAllowedDomains(
 	claims *types.OIDCClaims,
 ) error {
 	if len(allowedDomains) > 0 {
-		if at := strings.LastIndex(claims.Email, "@"); at < 0 ||
-			!slices.Contains(allowedDomains, claims.Email[at+1:]) {
+		if _, domain, found := strings.CutLast(claims.Email, "@"); !found ||
+			!slices.Contains(allowedDomains, domain) {
 			return NewHTTPError(http.StatusUnauthorized, "unauthorised domain", errOIDCAllowedDomains)
 		}
 	}

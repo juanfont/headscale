@@ -58,6 +58,8 @@ jobs:
         run: |
           ko build \
             --bare \
+            --image-annotation=org.opencontainers.image.source=https://github.com/juanfont/headscale \
+            --image-label=org.opencontainers.image.source=https://github.com/juanfont/headscale \
             --platform=linux/amd64,linux/arm64 \
             --tags=main-${GITHUB_SHA::7},development \
             ./cmd/headscale
@@ -70,6 +72,8 @@ jobs:
         run: |
           ko build \
             --bare \
+            --image-annotation=org.opencontainers.image.source=https://github.com/juanfont/headscale \
+            --image-label=org.opencontainers.image.source=https://github.com/juanfont/headscale \
             --platform=linux/amd64,linux/arm64 \
             --tags=main-${GITHUB_SHA::7},development \
             ./cmd/headscale

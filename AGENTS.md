@@ -66,7 +66,7 @@ similar lines of code is better than a premature abstraction.
 ## Quick Start
 
 ```bash
-# Enter the nix dev shell (Go 1.26.1, buf, golangci-lint, prek)
+# Enter the nix dev shell (Go 1.27.0, buf, golangci-lint, prek)
 nix develop
 
 # Full development workflow: fmt + lint + test + build
@@ -89,7 +89,7 @@ go run ./cmd/hi doctor
 go run ./cmd/hi run "TestName"
 ```
 
-Go 1.26.1 minimum (per `go.mod:3`). `nix develop` pins the exact toolchain
+Go 1.27.0 minimum (per `go.mod:3`). `nix develop` pins the exact toolchain
 used in CI.
 
 ## Pre-Commit with prek

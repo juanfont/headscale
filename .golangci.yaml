@@ -3,10 +3,15 @@ version: "2"
 linters:
   default: all
   disable:
+    # canonicalheader v1.1.2 panics (nil deref) on a generic method in a
+    # package that also calls http.Header.Set. Re-enable once golangci-lint
+    # ships a version that parses Go 1.27 generic methods.
+    - canonicalheader
     - cyclop
     - depguard
     - dupl
     - exhaustruct
+    - exhaustruct_v5
     - funcorder
     - funlen
     - gochecknoglobals

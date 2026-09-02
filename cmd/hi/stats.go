@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"slices"
 	"strings"
@@ -258,7 +259,7 @@ func (sc *StatsCollector) collectStatsForContainer(ctx context.Context, containe
 			err := decoder.Decode(&stats)
 			if err != nil {
 				// [io.EOF] is expected when container stops or stream ends
-				if err.Error() != "EOF" && verbose {
+				if !errors.Is(err, io.EOF) && verbose {
 					log.Printf("Failed to decode stats for container %s: %v", containerID[:12], err)
 				}
 

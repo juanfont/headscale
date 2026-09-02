@@ -74,7 +74,7 @@ func loadDERPMapFromURL(addr url.URL) (*tailcfg.DERPMap, error) {
 func mergeDERPMaps(derpMaps []*tailcfg.DERPMap) *tailcfg.DERPMap {
 	result := tailcfg.DERPMap{
 		OmitDefaultRegions: false,
-		Regions:            map[int]*tailcfg.DERPRegion{},
+		Regions:            map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{},
 	}
 
 	for _, derpMap := range derpMaps {
@@ -129,7 +129,7 @@ func shuffleDERPMap(dm *tailcfg.DERPMap) {
 	// Collect region IDs and sort them to ensure deterministic iteration order.
 	// Map iteration order is non-deterministic in Go, which would cause the
 	// shuffle to be non-deterministic even with a fixed seed.
-	ids := make([]int, 0, len(dm.Regions))
+	ids := make([]tailcfg.DERPRegionID, 0, len(dm.Regions))
 	for id := range dm.Regions {
 		ids = append(ids, id)
 	}

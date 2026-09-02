@@ -55,7 +55,7 @@ changing.
 | `--timeout`         | `120m`         | Total test timeout. Use the built-in flag — never wrap with bash `timeout`. |
 | `--postgres`        | `false`        | Use PostgreSQL instead of SQLite                                            |
 | `--failfast`        | `true`         | Stop on first test failure                                                  |
-| `--go-version`      | auto           | Detected from `go.mod` (currently 1.26.1)                                   |
+| `--go-version`      | auto           | Detected from `go.mod` (currently 1.27.0)                                   |
 | `--clean-before`    | `true`         | Clean stale (stopped/exited) containers before starting                     |
 | `--clean-after`     | `true`         | Clean this run's containers after completion                                |
 | `--keep-on-failure` | `false`        | Preserve containers for manual inspection on failure                        |

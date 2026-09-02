@@ -7,7 +7,6 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 )
 
@@ -27,7 +26,7 @@ func TestIssue3267ViaGrantBroaderDestination(t *testing.T) {
 	t.Parallel()
 
 	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "alice", Email: issue3267AliceEmail}, //nolint:goconst
+		{ID: 1, Name: "alice", Email: issue3267AliceEmail}, //nolint:goconst
 	}
 
 	cases := []struct {

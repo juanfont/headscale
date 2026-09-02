@@ -2,13 +2,7 @@
   description = "headscale - Open Source Tailscale Control server";
 
   inputs = {
-    # Pinned to staging-next-26.05 for Go 1.26.5: the Tailscale HEAD build
-    # (Dockerfile.tailscale-HEAD) requires go >= 1.26.5, and nixpkgs-unstable
-    # still ships 1.26.4 — the bump is merged to nixpkgs staging but the
-    # large-rebuild staging->unstable pipeline lags. The 26.05 line is otherwise
-    # current (dev tools match unstable). Switch back to nixpkgs-unstable once it
-    # ships go_1_26 >= 1.26.5.
-    nixpkgs.url = "github:NixOS/nixpkgs/staging-next-26.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     # Reusable Go flake checks (build/test/lint/format); CI runs them via
     # `nix build .#checks.<system>.<name>` instead of bespoke per-tool steps.
@@ -37,8 +31,9 @@
       overlays.default = _: prev:
         let
           pkgs = nixpkgs.legacyPackages.${prev.stdenv.hostPlatform.system};
-          # Go 1.26 builder; resolves to Go 1.26.5 from the pinned nixpkgs.
-          buildGo = pkgs.buildGo126Module;
+          # Tracks the newest Go in nixpkgs (currently 1.27) so a Go release
+          # bump is a flake.lock update, not a flake.nix edit.
+          buildGo = pkgs.buildGoLatestModule;
           vendorHash = (builtins.fromJSON (builtins.readFile ./flakehashes.json)).vendor.sri;
         in
         {
@@ -72,48 +67,6 @@
             subPackages = [ "cmd/hi" ];
           };
 
-          # Build golangci-lint with stock Go 1.26 (upstream uses hardcoded Go
-          # version); it does not build against the pinned 1.26.5.
-          golangci-lint = buildGo rec {
-            pname = "golangci-lint";
-            version = "2.12.2";
-
-            src = pkgs.fetchFromGitHub {
-              owner = "golangci";
-              repo = "golangci-lint";
-              rev = "v${version}";
-              hash = "sha256-qR7fp1x2S+EwEAcplRHTvA3jWwLr/XSiYKSZtAwkrNU=";
-            };
-
-            vendorHash = "sha256-AG5wtLwWLz55bdp1oi3cW+9O3yj1W1P7MV9zxym7Pb4=";
-
-            subPackages = [ "cmd/golangci-lint" ];
-
-            nativeBuildInputs = [ pkgs.installShellFiles ];
-
-            ldflags = [
-              "-s"
-              "-w"
-              "-X main.version=${version}"
-              "-X main.commit=v${version}"
-              "-X main.date=1970-01-01T00:00:00Z"
-            ];
-
-            postInstall = ''
-              for shell in bash zsh fish; do
-                HOME=$TMPDIR $out/bin/golangci-lint completion $shell > golangci-lint.$shell
-                installShellCompletion golangci-lint.$shell
-              done
-            '';
-
-            meta = {
-              description = "Fast linters runner for Go";
-              homepage = "https://golangci-lint.run/";
-              changelog = "https://github.com/golangci/golangci-lint/blob/v${version}/CHANGELOG.md";
-              mainProgram = "golangci-lint";
-            };
-          };
-
           gotestsum = prev.gotestsum.override {
             buildGoModule = buildGo;
           };
@@ -126,8 +79,20 @@
             buildGoModule = buildGo;
           };
 
-          gopls = prev.gopls.override {
-            buildGoLatestModule = buildGo;
+          golines = prev.golines.override {
+            buildGoModule = buildGo;
+          };
+
+          # goimports and friends: they parse Go with the parser of the Go
+          # they were built with, so an older one rejects new syntax.
+          gotools = prev.gotools.override {
+            buildGoModule = buildGo;
+            # goimports is wrapped with this go on PATH for module lookups.
+            go = pkgs.go_latest;
+          };
+
+          golangci-lint-langserver = prev.golangci-lint-langserver.override {
+            buildGoModule = buildGo;
           };
         };
     }
@@ -138,7 +103,7 @@
           overlays = [ self.overlays.default ];
           inherit system;
         };
-        buildDeps = with pkgs; [ git go_1_26 gnumake ];
+        buildDeps = with pkgs; [ git go_latest gnumake ];
         devDeps = with pkgs;
           buildDeps
           ++ [
@@ -153,6 +118,8 @@
             gotests
             gofumpt
             gopls
+            gotools
+
             ksh
             ko
             yq-go
@@ -163,17 +130,17 @@
             # roundtrip tests (TestAPIv2). Binaries: tofu, tscli.
             opentofu
             tscli
-            python314Packages.mdformat
-            python314Packages.mdformat-footnote
-            python314Packages.mdformat-frontmatter
-            python314Packages.mdformat-mkdocs
+            python3Packages.mdformat
+            python3Packages.mdformat-footnote
+            python3Packages.mdformat-frontmatter
+            python3Packages.mdformat-mkdocs
             prek
 
             # 'dot' is needed for pprof graphs
             # go tool pprof -http=: <source>
             graphviz
           ]
-          ++ lib.optionals pkgs.stdenv.isLinux [ traceroute ];
+          ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [ traceroute ];
 
         # Add entry to build a docker image with headscale
         # caveat: only works on Linux
@@ -199,7 +166,7 @@
           pname = "headscale";
           version = headscaleVersion;
           vendorHash = (builtins.fromJSON (builtins.readFile ./flakehashes.json)).vendor.sri;
-          goPkg = pkgs.go_1_26;
+          goPkg = pkgs.go_latest;
           # //go:embed targets and test-read files outside the default whitelist.
           embedDirs = [ ./hscontrol/assets ./hscontrol/db/schema.sql ./config-example.yaml ];
           extraSrc = [
@@ -257,7 +224,7 @@
               (pkgs.writeShellScriptBin
                 "go-mod-update-all"
                 ''
-                  cat go.mod | ${pkgs.ripgrep}/bin/rg "\t" | ${pkgs.ripgrep}/bin/rg -v indirect | ${pkgs.gawk}/bin/awk '{print $1}' | ${pkgs.findutils}/bin/xargs go get -u
+                  cat go.mod | ${pkgs.ripgrep}/bin/rg "\t" | ${pkgs.ripgrep}/bin/rg -v '^\s*//' | ${pkgs.ripgrep}/bin/rg -v indirect | ${pkgs.gawk}/bin/awk '{print $1}' | ${pkgs.findutils}/bin/xargs go get -u
                   go mod tidy
                 '')
             ];
@@ -288,6 +255,6 @@
         }
         # The Go build/test checks are gated to Linux: parts of the tree are
         # Linux-specific and the pure unit subset is validated by CI.
-        // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux goChecks;
+        // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux goChecks;
       });
 }

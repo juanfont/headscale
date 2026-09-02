@@ -954,8 +954,7 @@ func (t *TailscaleInContainer) MustIPv6() netip.Addr {
 // fresh T, and returns the value alongside the raw JSON for callers that persist
 // it. stderr is printed when the command fails. execErr and unmarshalErr provide
 // the error context used in test diagnostics.
-func execJSON[T any](
-	t *TailscaleInContainer,
+func (t *TailscaleInContainer) execJSON[T any](
 	command []string,
 	execErr, unmarshalErr string,
 ) (*T, string, error) {
@@ -983,8 +982,7 @@ func (t *TailscaleInContainer) Status(save ...bool) (*ipnstate.Status, error) {
 		"--json",
 	}
 
-	status, raw, err := execJSON[ipnstate.Status](
-		t,
+	status, raw, err := t.execJSON[ipnstate.Status](
 		command,
 		"executing tailscale status command",
 		"unmarshalling tailscale status",
@@ -1040,8 +1038,7 @@ func (t *TailscaleInContainer) Netmap() (*netmap.NetworkMap, error) {
 		"netmap",
 	}
 
-	nm, raw, err := execJSON[netmap.NetworkMap](
-		t,
+	nm, raw, err := t.execJSON[netmap.NetworkMap](
 		command,
 		"executing tailscale debug netmap command",
 		"unmarshalling tailscale netmap",
@@ -1165,8 +1162,7 @@ func (t *TailscaleInContainer) DebugDERPRegion(region string) (*ipnstate.DebugDE
 		region,
 	}
 
-	report, _, err := execJSON[ipnstate.DebugDERPRegionReport](
-		t,
+	report, _, err := t.execJSON[ipnstate.DebugDERPRegionReport](
 		command,
 		"executing tailscale debug derp command",
 		"unmarshalling tailscale derp region report",
@@ -1186,8 +1182,7 @@ func (t *TailscaleInContainer) Netcheck() (*netcheck.Report, error) {
 		"--format=json",
 	}
 
-	nm, _, err := execJSON[netcheck.Report](
-		t,
+	nm, _, err := t.execJSON[netcheck.Report](
 		command,
 		"executing tailscale debug netcheck command",
 		"unmarshalling tailscale netcheck",

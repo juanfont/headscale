@@ -1,6 +1,7 @@
 package state
 
 import (
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -79,14 +80,10 @@ func TestPingTracker_ConcurrentDifferentIDs(t *testing.T) {
 	// Complete in reverse order concurrently.
 	var wg sync.WaitGroup
 
-	for i := count - 1; i >= 0; i-- {
-		wg.Add(1)
-
-		go func(idx int) {
-			defer wg.Done()
-
-			assert.True(t, pt.complete(ids[idx]))
-		}(i)
+	for _, id := range slices.Backward(ids) {
+		wg.Go(func() {
+			assert.True(t, pt.complete(id))
+		})
 	}
 
 	// All channels should receive.

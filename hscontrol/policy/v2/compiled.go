@@ -10,6 +10,8 @@ import (
 	"github.com/rs/zerolog/log"
 	"go4.org/netipx"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/nodecap"
+	"tailscale.com/tailcfg/peercap"
 	"tailscale.com/types/views"
 	"tailscale.com/util/set"
 )
@@ -157,7 +159,7 @@ func (pol *Policy) compileNodeAttrs(
 	}
 
 	result := make(map[types.NodeID]tailcfg.NodeCapMap)
-	stamp := func(id types.NodeID, attr tailcfg.NodeCapability) {
+	stamp := func(id types.NodeID, attr nodecap.Cap) {
 		capMap, ok := result[id]
 		if !ok {
 			capMap = tailcfg.NodeCapMap{}
@@ -190,7 +192,7 @@ func (pol *Policy) compileNodeAttrs(
 
 	if pol.RandomizeClientPort {
 		for _, ni := range nodeList {
-			stamp(ni.id, tailcfg.NodeAttrRandomizeClientPort)
+			stamp(ni.id, nodecap.RandomizeClientPort)
 		}
 	}
 
@@ -598,7 +600,7 @@ func collectRelayTargetIPs(grants []compiledGrant) (*netipx.IPSet, error) {
 	for i := range grants {
 		for _, rule := range grants[i].rules {
 			for _, cg := range rule.CapGrant {
-				if _, ok := cg.CapMap[tailcfg.PeerCapabilityRelay]; !ok {
+				if _, ok := cg.CapMap[peercap.Relay]; !ok {
 					continue
 				}
 

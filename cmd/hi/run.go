@@ -71,7 +71,7 @@ func detectGoVersion() string {
 	if err != nil {
 		content, err = os.ReadFile(filepath.Join("..", "..", "go.mod"))
 		if err != nil {
-			return "1.26.1"
+			return "1.27.0"
 		}
 	}
 
@@ -83,5 +83,5 @@ func detectGoVersion() string {
 		}
 	}
 
-	return "1.26.1"
+	return "1.27.0"
 }

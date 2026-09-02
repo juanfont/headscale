@@ -8,7 +8,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	_ "net/http/pprof" // nolint
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -447,7 +446,7 @@ func (h *Headscale) createRouter(apiV1Mux, apiV2Mux http.Handler) *chi.Mux {
 		Host:  false,
 		Proto: true,
 		Skip: func(r *http.Request) bool {
-			return r.Method != http.MethodOptions
+			return r.Method == http.MethodOptions
 		},
 	}))
 	r.Use(middleware.RequestID)

@@ -188,7 +188,7 @@ func setupBatcherWithTestData(
 		DERP: types.DERPConfig{
 			ServerEnabled: false,
 			DERPMap: &tailcfg.DERPMap{
-				Regions: map[int]*tailcfg.DERPRegion{
+				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{
 					999: {
 						RegionID: 999,
 					},
@@ -348,7 +348,7 @@ func assertDERPMapResponse(t *testing.T, resp *tailcfg.MapResponse) {
 
 	assert.NotNil(t, resp.DERPMap, "DERPMap should not be nil in response")
 	assert.Len(t, resp.DERPMap.Regions, 1, "Expected exactly one DERP region in response")
-	assert.Equal(t, 999, resp.DERPMap.Regions[999].RegionID, "Expected DERP region ID to be 999")
+	assert.Equal(t, tailcfg.DERPRegionID(999), resp.DERPMap.Regions[999].RegionID, "Expected DERP region ID to be 999")
 }
 
 func assertOnlineMapResponse(t *testing.T, resp *tailcfg.MapResponse, expected bool) {

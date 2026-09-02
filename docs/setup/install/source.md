@@ -43,7 +43,7 @@ cp headscale /usr/local/sbin
 
 ```shell
 # Install prerequisites
-# 1. go v1.20+: headscale newer than 0.21 needs go 1.20+ to compile
+# 1. go v1.27+: see the go directive in go.mod for the exact minimum
 # 2. gmake: Makefile in the headscale repo is written in GNU make syntax
 
 git clone https://github.com/juanfont/headscale.git

@@ -21,6 +21,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/nodecap"
 	"tailscale.com/types/dnstype"
 	"tailscale.com/types/views"
 )
@@ -106,8 +107,8 @@ func generateUserProfiles(
 // path, and "nextdns:no-device-info" suppresses the metadata-appending step.
 // See https://tailscale.com/docs/integrations/nextdns.
 const (
-	nextDNSAttrPrefix                        = "nextdns:"
-	nextDNSAttrNoInfo tailcfg.NodeCapability = "nextdns:no-device-info"
+	nextDNSAttrPrefix             = "nextdns:"
+	nextDNSAttrNoInfo nodecap.Cap = "nextdns:no-device-info"
 )
 
 // nextDNSProfileRE bounds the characters accepted in a `nextdns:<profile>`

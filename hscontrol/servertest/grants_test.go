@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/peercap"
 	"tailscale.com/types/netmap"
 	"tailscale.com/wgengine/filter/filtertype"
 )
@@ -157,13 +158,13 @@ func TestGrantPolicies(t *testing.T) { //nolint:gocyclo
 		for _, m := range nm1.PacketFilter {
 			for _, cm := range m.Caps {
 				switch cm.Cap { //nolint:exhaustive // only checking grant-specific caps
-				case tailcfg.PeerCapabilityTaildrive:
+				case peercap.Taildrive:
 					foundDrive = true
-				case tailcfg.PeerCapabilityTaildriveSharer:
+				case peercap.TaildriveSharer:
 					foundDriveSharer = true
-				case tailcfg.PeerCapabilityRelay:
+				case peercap.Relay:
 					foundRelay = true
-				case tailcfg.PeerCapabilityRelayTarget:
+				case peercap.RelayTarget:
 					foundRelayTarget = true
 				}
 			}
@@ -464,8 +465,8 @@ func TestGrantPolicies(t *testing.T) { //nolint:gocyclo
 
 		for _, m := range nm1.PacketFilter {
 			for _, cm := range m.Caps {
-				if cm.Cap == tailcfg.PeerCapabilityTaildrive ||
-					cm.Cap == tailcfg.PeerCapabilityTaildriveSharer {
+				if cm.Cap == peercap.Taildrive ||
+					cm.Cap == peercap.TaildriveSharer {
 					foundDriveOrSharer = true
 				}
 			}
