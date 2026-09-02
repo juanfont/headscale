@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"net/http"
 	"sync/atomic"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -171,7 +173,12 @@ func (m *mapSession) serveLongPoll() {
 		// handler ran late is exactly such a session: if it kept its session
 		// acquired on this path, the surviving session's release could never
 		// take the node offline (the relogin flake).
-		if !stillConnected {
+		// A deleted node cannot reconnect, so waiting for it only delays the
+		// client's next map request, and with it the re-authentication signal
+		// it needs. See: https://github.com/juanfont/headscale/issues/3410
+		_, nodeExists := m.h.state.GetNodeByID(m.node.ID)
+
+		if !stillConnected && nodeExists {
 			// Wait up to 10 seconds for the node to reconnect.
 			// 10 seconds was arbitrary chosen as a reasonable time to reconnect.
 			ticker := time.NewTicker(time.Second)
@@ -191,7 +198,13 @@ func (m *mapSession) serveLongPoll() {
 		// sessions are harmless regardless of the order they run in.
 		disconnectChanges, err := m.h.state.Disconnect(m.node.ID, connectGen)
 		if err != nil {
-			m.log.Error().Caller().Err(err).Msg("failed to disconnect node")
+			// A node deleted mid-session is gone by the time its own session
+			// releases; that is the expected order, not a failure.
+			if errors.Is(err, state.ErrNodeNotFound) {
+				m.log.Debug().Caller().Err(err).Msg("node deleted before its session was released")
+			} else {
+				m.log.Error().Caller().Err(err).Msg("failed to disconnect node")
+			}
 		}
 
 		if len(disconnectChanges) == 0 {
@@ -326,33 +339,11 @@ func (m *mapSession) serveLongPoll() {
 // It also handles flushing the response if the [http.ResponseWriter]
 // implements [http.Flusher].
 func (m *mapSession) writeMap(msg *tailcfg.MapResponse) error {
-	jsonBody, err := json.Marshal(msg)
-	if err != nil {
-		return fmt.Errorf("marshalling map response: %w", err)
-	}
-
-	if m.req.Compress == util.ZstdCompression {
-		jsonBody = zstdframe.AppendEncode(nil, jsonBody, zstdframe.FastestCompression)
-	}
-
-	data := make([]byte, reservedResponseHeaderSize, reservedResponseHeaderSize+len(jsonBody))
-	//nolint:gosec // G115: JSON response size will not exceed uint32 max
-	binary.LittleEndian.PutUint32(data, uint32(len(jsonBody)))
-	data = append(data, jsonBody...)
-
 	startWrite := time.Now()
 
-	_, err = m.w.Write(data)
+	err := writeMapResponse(m.w, m.req.Compress, m.isStreaming(), msg)
 	if err != nil {
 		return err
-	}
-
-	if m.isStreaming() {
-		if f, ok := m.w.(http.Flusher); ok {
-			f.Flush()
-		} else {
-			m.log.Error().Caller().Msg("responseWriter does not implement http.Flusher, cannot flush")
-		}
 	}
 
 	m.log.Trace().
@@ -362,6 +353,44 @@ func (m *mapSession) writeMap(msg *tailcfg.MapResponse) error {
 		Str(zf.MachineKey, m.node.MachineKey.String()).
 		Bool("keepalive", msg.KeepAlive).
 		Msg("finished writing mapresp to node")
+
+	return nil
+}
+
+// writeMapResponse writes a single map response frame: the JSON body,
+// zstd-framed when the client asked for compression, behind a little-endian
+// length prefix. Tailscale clients request zstd unconditionally and decode
+// every frame with it, so the compression step is not optional.
+//
+// It is shared with the deleted-node path in [noiseServer.PollNetMapHandler],
+// which has no [mapSession] to write through.
+func writeMapResponse(w http.ResponseWriter, compress string, flush bool, msg *tailcfg.MapResponse) error {
+	jsonBody, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("marshalling map response: %w", err)
+	}
+
+	if compress == util.ZstdCompression {
+		jsonBody = zstdframe.AppendEncode(nil, jsonBody, zstdframe.FastestCompression)
+	}
+
+	data := make([]byte, reservedResponseHeaderSize, reservedResponseHeaderSize+len(jsonBody))
+	//nolint:gosec // G115: JSON response size will not exceed uint32 max
+	binary.LittleEndian.PutUint32(data, uint32(len(jsonBody)))
+	data = append(data, jsonBody...)
+
+	_, err = w.Write(data)
+	if err != nil {
+		return err
+	}
+
+	if flush {
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		} else {
+			log.Error().Caller().Msg("responseWriter does not implement http.Flusher, cannot flush")
+		}
+	}
 
 	return nil
 }
