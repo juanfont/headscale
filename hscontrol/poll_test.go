@@ -386,3 +386,92 @@ func TestGitHubIssue3129_TransientlyBlockedWriteDoesNotLeaveLiveStaleSession(t *
 		}
 	}, time.Second, 20*time.Millisecond, "after stale-send cleanup, the stale session should exit")
 }
+
+// TestDeletedNodeEndsLongPoll proves that deleting a node ends its long-poll
+// session, rather than leaving the goroutine streaming to a node that no longer
+// exists. An orphaned session blocks server shutdown on clientStreamsOpen and
+// keeps the client polling instead of re-authenticating.
+//
+// It also pins the teardown latency: a deleted node cannot reconnect, so the
+// session must not spend the reconnect grace period waiting for one.
+//
+// See: https://github.com/juanfont/headscale/issues/3410
+func TestDeletedNodeEndsLongPoll(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("poll-delete-user")
+	createdNode := app.state.CreateRegisteredNodeForTest(user, "poll-delete-node")
+	require.NoError(t, app.state.UpdatePolicyManagerUsersForTest())
+
+	app.cfg.Tuning.NodeMapSessionBufferedChanSize = 1
+
+	// Reload so the NodeStore is populated from the database; the create
+	// helpers only write to the database.
+	app.mapBatcher.Close()
+	require.NoError(t, app.state.Close())
+
+	reloadedState, err := state.NewState(app.cfg)
+	require.NoError(t, err)
+
+	app.state = reloadedState
+	app.mapBatcher = mapper.NewBatcherAndMapper(app.cfg, app.state)
+	app.mapBatcher.Start()
+
+	t.Cleanup(func() {
+		app.mapBatcher.Close()
+		require.NoError(t, app.state.Close())
+	})
+
+	nodeView, ok := app.state.GetNodeByID(createdNode.ID)
+	require.True(t, ok)
+
+	node := nodeView.AsStruct()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	writer := newDelayedSuccessResponseWriter(0)
+	session := app.newMapSession(ctx, tailcfg.MapRequest{
+		Stream:  true,
+		Version: tailcfg.CapabilityVersion(100),
+	}, writer, node)
+
+	serveDone := make(chan struct{})
+
+	go func() {
+		session.serveLongPoll()
+		close(serveDone)
+	}()
+
+	select {
+	case <-writer.FirstWriteStarted():
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected the initial map write to start")
+	}
+
+	c, err := app.state.DeleteNode(nodeView)
+	require.NoError(t, err)
+	app.Change(c)
+
+	// The reconnect grace period is 10s, so a generous bound here still fails
+	// if teardown waits for a node that can never come back.
+	select {
+	case <-serveDone:
+	case <-time.After(3 * time.Second):
+		t.Fatal("deleting a node must promptly end its long-poll session")
+	}
+
+	streamsClosed := make(chan struct{})
+
+	go func() {
+		app.clientStreamsOpen.Wait()
+		close(streamsClosed)
+	}()
+
+	select {
+	case <-streamsClosed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("an orphaned session would block server shutdown on clientStreamsOpen")
+	}
+}
