@@ -3,6 +3,7 @@ package hscontrol
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,13 +12,16 @@ import (
 	"net/url"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
+	"tailscale.com/util/zstdframe"
 )
 
 // newNoiseRouterWithBodyLimit builds a chi router with the same body-limit
@@ -536,4 +540,110 @@ func newSSHActionFollowUpRequest(t *testing.T, src, dst types.NodeID, authID typ
 	req.URL.RawQuery = q.Encode()
 
 	return req
+}
+
+// newMapRequest builds a streaming [tailcfg.MapRequest] POST for
+// /machine/map. Version is mandatory: [rejectUnsupported] runs before the
+// handler looks the node up, and a zero version is rejected with 400.
+func newMapRequest(t *testing.T, req tailcfg.MapRequest) *http.Request {
+	t.Helper()
+
+	body, err := json.Marshal(req)
+	require.NoError(t, err)
+
+	return httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/machine/map", bytes.NewReader(body))
+}
+
+// decodeMapResponse reads a map response frame the way a Tailscale client
+// does: a little-endian length prefix followed by a body that is zstd-framed
+// whenever the request asked for compression.
+func decodeMapResponse(t *testing.T, compress string, body []byte) tailcfg.MapResponse {
+	t.Helper()
+
+	require.GreaterOrEqual(t, len(body), reservedResponseHeaderSize, "response too short to carry a length prefix")
+
+	size := binary.LittleEndian.Uint32(body[:reservedResponseHeaderSize])
+	payload := body[reservedResponseHeaderSize:]
+	require.Len(t, payload, int(size), "length prefix must match the body it precedes")
+
+	if compress == util.ZstdCompression {
+		decoded, err := zstdframe.AppendDecode(nil, payload)
+		require.NoError(t, err, "client decodes every frame as zstd when it asked for zstd")
+
+		payload = decoded
+	}
+
+	var resp tailcfg.MapResponse
+	require.NoError(t, json.Unmarshal(payload, &resp))
+
+	return resp
+}
+
+// TestPollNetMapHandler_DeletedNodeGetsExpiredSelf verifies that a streaming
+// map request for a node that no longer exists is answered with an expired
+// self node instead of a bare 404. A Tailscale client treats every non-200 on
+// the map path identically and retries forever with loggedIn still set; only a
+// self node whose KeyExpiry is in the past moves it to NeedsLogin.
+//
+// See: https://github.com/juanfont/headscale/issues/3410
+func TestPollNetMapHandler_DeletedNodeGetsExpiredSelf(t *testing.T) {
+	t.Parallel()
+
+	for _, compress := range []string{"", util.ZstdCompression} {
+		t.Run("compress="+compress, func(t *testing.T) {
+			t.Parallel()
+
+			app := createTestApp(t)
+			user := app.state.CreateUserForTest("deleted-node-user")
+			node := putTestNodeInStore(t, app, user, "deleted-node")
+
+			nodeView, ok := app.state.GetNodeByID(node.ID)
+			require.True(t, ok)
+
+			_, err := app.state.DeleteNode(nodeView)
+			require.NoError(t, err)
+
+			ns := &noiseServer{headscale: app, machineKey: node.MachineKey}
+
+			rec := httptest.NewRecorder()
+			ns.PollNetMapHandler(rec, newMapRequest(t, tailcfg.MapRequest{
+				Version:  tailcfg.CurrentCapabilityVersion,
+				NodeKey:  node.NodeKey,
+				Stream:   true,
+				Compress: compress,
+			}))
+
+			require.Equal(t, http.StatusOK, rec.Code, "body=%q", rec.Body.String())
+
+			resp := decodeMapResponse(t, compress, rec.Body.Bytes())
+			require.NotNil(t, resp.Node, "clients reject an initial map response without a node")
+			assert.Equal(t, node.NodeKey, resp.Node.Key)
+			assert.True(t, resp.Node.KeyExpiry.Before(time.Now()),
+				"a past KeyExpiry is what drives the client to NeedsLogin, got %v", resp.Node.KeyExpiry)
+		})
+	}
+}
+
+// TestPollNetMapHandler_ForeignMachineKeyStillRejected pins that the
+// expired-self response is limited to a genuinely unknown node. A known
+// NodeKey presented by the wrong machine key is an impostor, and answering it
+// with "your key expired" would wipe the real client's persisted node ID.
+func TestPollNetMapHandler_ForeignMachineKeyStillRejected(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("impostor-user")
+	victim := putTestNodeInStore(t, app, user, "victim-node")
+	impostor := putTestNodeInStore(t, app, user, "impostor-node")
+
+	ns := &noiseServer{headscale: app, machineKey: impostor.MachineKey}
+
+	rec := httptest.NewRecorder()
+	ns.PollNetMapHandler(rec, newMapRequest(t, tailcfg.MapRequest{
+		Version: tailcfg.CurrentCapabilityVersion,
+		NodeKey: victim.NodeKey,
+		Stream:  true,
+	}))
+
+	assert.Equal(t, http.StatusNotFound, rec.Code, "body=%q", rec.Body.String())
 }
