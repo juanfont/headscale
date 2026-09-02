@@ -42,6 +42,8 @@ keys remain all-access.
 
 ### Changes
 
+- Add `headscale users set` and `PUT /api/v1/user/{id}` to change the display name, email and profile picture URL of an existing user [#2166](https://github.com/juanfont/headscale/issues/2166)
+- Fix user profile changes (rename, OIDC re-login) not reaching connected nodes until the server restarted [#2166](https://github.com/juanfont/headscale/issues/2166)
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
 - Headscale now requires Go 1.27 to build

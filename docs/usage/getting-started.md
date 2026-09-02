@@ -94,6 +94,39 @@ managed with the `headscale users` command. Invoke the built-in help for more in
       headscale users list
     ```
 
+### Set the profile of a headscale user
+
+A headscale user has a display name and a profile picture in addition to its username. Tailscale clients show both, for
+example in the output of `tailscale whois` and in the device lists of the graphical clients. Both may be set when the
+user is created and changed later with `headscale users set`:
+
+=== "Native"
+
+    ```shell
+    headscale users set --name <USER> \
+      --display-name "Vika" \
+      --picture-url "https://example.com/vika.png"
+    ```
+
+=== "Container"
+
+    ```shell
+    docker exec -it headscale \
+      headscale users set --name <USER> \
+      --display-name "Vika" \
+      --picture-url "https://example.com/vika.png"
+    ```
+
+Only the fields that are given are changed. Pass a flag with an empty value to remove a field, for example
+`--picture-url ""`. The profile picture must be an absolute `http` or `https` URL; headscale stores the URL and hands it
+to the clients, it does not host the image.
+
+!!! note "Users provisioned via OIDC"
+
+    Users that were created by [OIDC](../ref/oidc.md) can not be edited with this command. Their display name, email and
+    profile picture come from the identity provider, which re-applies its claims on every login and would overwrite any
+    local change.
+
 ## Register a node
 
 One has to [register a node](../ref/registration.md) first to use headscale as coordination server with Tailscale. The

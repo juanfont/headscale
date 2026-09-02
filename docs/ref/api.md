@@ -50,6 +50,16 @@ Headscale server at `/api/v1/docs` for details.
         https://headscale.example.com/api/v1/user?name=bob
     ```
 
+=== "Set the profile of user 1"
+
+    ```console
+    curl -X PUT -H "Authorization: Bearer <API_KEY>" \
+        --json '{"displayName": "Vika", "pictureUrl": "https://example.com/vika.png"}' \
+        https://headscale.example.com/api/v1/user/1
+    ```
+
+    Only the fields present in the request body are changed; a field set to an empty string is cleared.
+
 === "Register a node"
 
     ```console

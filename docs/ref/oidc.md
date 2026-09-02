@@ -242,6 +242,10 @@ endpoint.
 | provider identifier | `iss`, `sub`         | A stable and unique identifier for a user, typically a combination of `iss` and `sub` OIDC claims |
 |                     | `groups`             | [Only used to filter for allowed groups](#authorize-users-with-filters)                           |
 
+The identity provider is the source of truth for these fields: Headscale re-applies the claims on every login. Users
+provisioned via OIDC therefore can not be edited with `headscale users rename` or `headscale users set`, which return an
+error instead of accepting a change that the next login would silently overwrite.
+
 ## Limitations
 
 - Support for OpenID Connect aims to be generic and vendor independent. It offers only limited support for quirks of

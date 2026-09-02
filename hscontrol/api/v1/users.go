@@ -34,7 +34,23 @@ type (
 	}
 )
 
+// SetUserRequestBody is a partial update of a user's presentational fields.
+//
+// A field that is absent from the request body is left unchanged; a field that
+// is present is written as given, and an explicit empty string clears it. That
+// distinction is why the fields are pointers.
+type SetUserRequestBody struct {
+	DisplayName *string `doc:"Display name; empty string clears it."        json:"displayName,omitempty"`
+	Email       *string `doc:"Email; empty string clears it."               json:"email,omitempty"`
+	PictureURL  *string `doc:"Profile picture URL; empty string clears it." json:"pictureUrl,omitempty"`
+}
+
 type (
+	setUserInput struct {
+		ID   string `format:"uint64" path:"id"`
+		Body SetUserRequestBody
+	}
+
 	renameUserInput struct {
 		OldID   string `format:"uint64" path:"oldId"`
 		NewName string `path:"newName"`
@@ -90,6 +106,41 @@ func registerUsers(api huma.API, b Backend) {
 		}
 
 		b.Change(policyChanged)
+
+		out := &userOutput{}
+		out.Body.User = userFromView(user.View())
+
+		return out, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "setUser",
+		Method:      http.MethodPut,
+		Path:        "/api/v1/user/{id}",
+		Summary:     "Set user profile fields",
+		Description: "Updates the presentational fields of a user: display name, " +
+			"email and profile picture URL. Fields left out of the request body are " +
+			"unchanged; a field set to an empty string is cleared. Users provisioned " +
+			"by OIDC cannot be edited, as the provider re-applies its claims on every " +
+			"login.",
+		Tags:     []string{"Users"},
+		Security: bearerAuth,
+	}, func(ctx context.Context, in *setUserInput) (*userOutput, error) {
+		id, err := parseUserID(in.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		user, c, err := b.State.SetUserProfile(id, types.UserProfileUpdate{
+			DisplayName:   in.Body.DisplayName,
+			Email:         in.Body.Email,
+			ProfilePicURL: in.Body.PictureURL,
+		})
+		if err != nil {
+			return nil, mapError("setting user profile", err)
+		}
+
+		b.Change(c)
 
 		out := &userOutput{}
 		out.Body.User = userFromView(user.View())

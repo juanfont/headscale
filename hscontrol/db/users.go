@@ -117,6 +117,59 @@ func RenameUser(tx *gorm.DB, uid types.UserID, newName string) error {
 	return nil
 }
 
+// SetUserProfile applies a partial update to the presentational fields of a
+// [types.User] and returns the stored user.
+//
+// Only the fields set in update are written. The update is applied with a
+// column map rather than a struct because GORM's struct-based Updates skips
+// zero values, which would make it impossible to clear a display name or a
+// profile picture.
+//
+// OIDC-provisioned users are rejected: [types.User.FromClaim] overwrites all
+// three fields on every login, so a manual edit would be silently reverted.
+func SetUserProfile(
+	tx *gorm.DB,
+	uid types.UserID,
+	update types.UserProfileUpdate,
+) (*types.User, error) {
+	if err := update.Validate(); err != nil { //nolint:noinlineerr
+		return nil, err
+	}
+
+	user, err := GetUserByID(tx, uid)
+	if err != nil {
+		return nil, err
+	}
+
+	if user.Provider == util.RegisterMethodOIDC {
+		return nil, ErrCannotChangeOIDCUser
+	}
+
+	columns := make(map[string]any, 3)
+
+	if update.DisplayName != nil {
+		columns["display_name"] = *update.DisplayName
+		user.DisplayName = *update.DisplayName
+	}
+
+	if update.Email != nil {
+		columns["email"] = *update.Email
+		user.Email = *update.Email
+	}
+
+	if update.ProfilePicURL != nil {
+		columns["profile_pic_url"] = *update.ProfilePicURL
+		user.ProfilePicURL = *update.ProfilePicURL
+	}
+
+	err = tx.Model(&types.User{}).Where("id = ?", uid).Updates(columns).Error
+	if err != nil {
+		return nil, fmt.Errorf("updating user profile: %w", err)
+	}
+
+	return user, nil
+}
+
 func (hsdb *HSDatabase) GetUserByID(uid types.UserID) (*types.User, error) {
 	return GetUserByID(hsdb.DB, uid)
 }

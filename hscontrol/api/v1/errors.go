@@ -6,6 +6,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/state"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"gorm.io/gorm"
 )
 
@@ -35,6 +36,8 @@ func mapError(msg string, err error) error {
 		errors.Is(err, state.ErrRequestedTagsInvalidOrNotPermitted),
 		errors.Is(err, db.ErrUserStillHasNodes),
 		errors.Is(err, db.ErrCannotChangeOIDCUser),
+		errors.Is(err, types.ErrEmptyUserProfileUpdate),
+		errors.Is(err, types.ErrInvalidProfilePicURL),
 		errors.Is(err, db.ErrPreAuthKeyNotTaggedOrOwned),
 		errors.Is(err, db.ErrSingleUseAuthKeyHasBeenUsed):
 		return huma.Error400BadRequest(msg, err)

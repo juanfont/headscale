@@ -279,3 +279,145 @@ func TestRenameUser(t *testing.T) {
 		})
 	}
 }
+
+func TestSetUserProfile(t *testing.T) {
+	// seeded is the starting point for every case: all three presentational
+	// fields populated, so both "change" and "clear" are observable.
+	seeded := func(t *testing.T, db *HSDatabase) *types.User {
+		t.Helper()
+
+		user := db.CreateUserForTest("test")
+
+		updated, err := Write(db.DB, func(tx *gorm.DB) (*types.User, error) {
+			return SetUserProfile(tx, types.UserID(user.ID), types.UserProfileUpdate{
+				DisplayName:   new("Original"),
+				Email:         new("original@example.com"),
+				ProfilePicURL: new("https://example.com/original.png"),
+			})
+		})
+		require.NoError(t, err)
+
+		return updated
+	}
+
+	tests := []struct {
+		name    string
+		update  types.UserProfileUpdate
+		wantErr error
+		want    types.UserProfileUpdate // expected end state, all fields set
+	}{
+		{
+			name: "set_all_fields",
+			update: types.UserProfileUpdate{
+				DisplayName:   new("Vika"),
+				Email:         new("vika@example.com"),
+				ProfilePicURL: new("https://example.com/vika.png"),
+			},
+			want: types.UserProfileUpdate{
+				DisplayName:   new("Vika"),
+				Email:         new("vika@example.com"),
+				ProfilePicURL: new("https://example.com/vika.png"),
+			},
+		},
+		{
+			// The interesting case: GORM's struct-based Updates would drop
+			// these because they are zero values.
+			name: "empty_string_clears_field",
+			update: types.UserProfileUpdate{
+				DisplayName:   new(""),
+				ProfilePicURL: new(""),
+			},
+			want: types.UserProfileUpdate{
+				DisplayName:   new(""),
+				Email:         new("original@example.com"),
+				ProfilePicURL: new(""),
+			},
+		},
+		{
+			name:   "absent_field_is_untouched",
+			update: types.UserProfileUpdate{ProfilePicURL: new("https://example.com/new.png")},
+			want: types.UserProfileUpdate{
+				DisplayName:   new("Original"),
+				Email:         new("original@example.com"),
+				ProfilePicURL: new("https://example.com/new.png"),
+			},
+		},
+		{
+			name:    "empty_update_rejected",
+			update:  types.UserProfileUpdate{},
+			wantErr: types.ErrEmptyUserProfileUpdate,
+		},
+		{
+			name:    "relative_picture_url_rejected",
+			update:  types.UserProfileUpdate{ProfilePicURL: new("/avatar.png")},
+			wantErr: types.ErrInvalidProfilePicURL,
+		},
+		{
+			name:    "javascript_picture_url_rejected",
+			update:  types.UserProfileUpdate{ProfilePicURL: new("javascript:alert(1)")},
+			wantErr: types.ErrInvalidProfilePicURL,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, err := newSQLiteTestDB()
+			require.NoError(t, err)
+
+			user := seeded(t, db)
+
+			got, err := Write(db.DB, func(tx *gorm.DB) (*types.User, error) {
+				return SetUserProfile(tx, types.UserID(user.ID), tt.update)
+			})
+
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+
+			// The returned user and the persisted row must agree; a returned
+			// value that is not what was written would be the worst failure.
+			stored, err := db.GetUserByID(types.UserID(user.ID))
+			require.NoError(t, err)
+
+			for _, u := range []*types.User{got, stored} {
+				assert.Equal(t, *tt.want.DisplayName, u.DisplayName)
+				assert.Equal(t, *tt.want.Email, u.Email)
+				assert.Equal(t, *tt.want.ProfilePicURL, u.ProfilePicURL)
+			}
+		})
+	}
+
+	t.Run("error_user_not_found", func(t *testing.T) {
+		db, err := newSQLiteTestDB()
+		require.NoError(t, err)
+
+		_, err = Write(db.DB, func(tx *gorm.DB) (*types.User, error) {
+			return SetUserProfile(tx, 99988, types.UserProfileUpdate{
+				DisplayName: new("nobody"),
+			})
+		})
+		assert.ErrorIs(t, err, ErrUserNotFound)
+	})
+
+	// OIDC re-applies its claims on every login, so an edit here would be
+	// silently reverted. Refuse it, exactly as RenameUser does.
+	t.Run("error_oidc_user", func(t *testing.T) {
+		db, err := newSQLiteTestDB()
+		require.NoError(t, err)
+
+		user := db.CreateUserForTest("oidc")
+		user.Provider = util.RegisterMethodOIDC
+		require.NoError(t, db.DB.Save(user).Error)
+
+		_, err = Write(db.DB, func(tx *gorm.DB) (*types.User, error) {
+			return SetUserProfile(tx, types.UserID(user.ID), types.UserProfileUpdate{
+				DisplayName: new("Manual"),
+			})
+		})
+		assert.ErrorIs(t, err, ErrCannotChangeOIDCUser)
+	})
+}

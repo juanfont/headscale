@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -49,6 +51,123 @@ func TestAPIV1CreateUser(t *testing.T) {
 			[]byte(`{"name":"dup"}`))
 		assertStatus(t, res, http.StatusConflict)
 	})
+}
+
+// seedUserWithProfile creates a user whose presentational fields are already
+// populated, so a subsequent setUser can be seen to change and to clear them.
+func seedUserWithProfile(name string) func(t *testing.T, app *Headscale) {
+	return func(t *testing.T, app *Headscale) {
+		t.Helper()
+
+		user := app.state.CreateUserForTest(name)
+
+		_, _, err := app.state.SetUserProfile(types.UserID(user.ID), types.UserProfileUpdate{
+			DisplayName:   new("Original"),
+			Email:         new("original@example.com"),
+			ProfilePicURL: new("https://example.com/original.png"),
+		})
+		require.NoError(t, err)
+	}
+}
+
+func TestAPIV1SetUser(t *testing.T) {
+	t.Run("parity", func(t *testing.T) {
+		assertParityIsolated(t, seedUsers("vika"), http.MethodPut, "/api/v1/user/1",
+			[]byte(`{"displayName":"Vika","pictureUrl":"https://example.com/vika.png"}`))
+	})
+
+	t.Run("absent fields are untouched", func(t *testing.T) {
+		h := newAPIV1Harness(t)
+		seedUserWithProfile("vika")(t, h.app)
+
+		res := h.callHuma(http.MethodPut, "/api/v1/user/1",
+			[]byte(`{"displayName":"Vika"}`))
+		require.Equal(t, http.StatusOK, res.status)
+
+		user := decodeUser(t, res.body)
+		assert.Equal(t, "Vika", user["displayName"])
+		assert.Equal(t, "original@example.com", user["email"])
+		assert.Equal(t, "https://example.com/original.png", user["profilePicUrl"])
+	})
+
+	// The distinction the pointer fields exist for: an explicit empty string
+	// removes the avatar, while omitting the field keeps it.
+	t.Run("empty string clears field", func(t *testing.T) {
+		h := newAPIV1Harness(t)
+		seedUserWithProfile("vika")(t, h.app)
+
+		res := h.callHuma(http.MethodPut, "/api/v1/user/1", []byte(`{"pictureUrl":""}`))
+		require.Equal(t, http.StatusOK, res.status)
+
+		user := decodeUser(t, res.body)
+		assert.Empty(t, user["profilePicUrl"])
+		assert.Equal(t, "Original", user["displayName"])
+	})
+
+	t.Run("empty body rejected", func(t *testing.T) {
+		h := newAPIV1Harness(t)
+		seedUsers("vika")(t, h.app)
+
+		res := h.callHuma(http.MethodPut, "/api/v1/user/1", []byte(`{}`))
+		assertStatus(t, res, http.StatusBadRequest)
+	})
+
+	// Headscale hands this URL to every client's user interface, so a scheme
+	// that is not http(s) must not be storable.
+	t.Run("invalid picture url rejected", func(t *testing.T) {
+		for _, bad := range []string{"/avatar.png", "javascript:alert(1)", "example.com/a.png"} {
+			h := newAPIV1Harness(t)
+			seedUsers("vika")(t, h.app)
+
+			res := h.callHuma(http.MethodPut, "/api/v1/user/1",
+				[]byte(`{"pictureUrl":"`+bad+`"}`))
+			assertStatus(t, res, http.StatusBadRequest)
+		}
+	})
+
+	// OIDC re-applies its claims on every login, so a manual edit would be
+	// silently reverted; refusing is the honest answer.
+	t.Run("oidc user rejected", func(t *testing.T) {
+		h := newAPIV1Harness(t)
+
+		user := h.app.state.CreateUserForTest("oidc")
+		_, _, err := h.app.state.UpdateUser(types.UserID(user.ID), func(u *types.User) error {
+			u.Provider = util.RegisterMethodOIDC
+
+			return nil
+		})
+		require.NoError(t, err)
+
+		res := h.callHuma(http.MethodPut, "/api/v1/user/1", []byte(`{"displayName":"Manual"}`))
+		assertStatus(t, res, http.StatusBadRequest)
+	})
+
+	t.Run("nonexistent user", func(t *testing.T) {
+		h := newAPIV1Harness(t)
+
+		res := h.callHuma(http.MethodPut, "/api/v1/user/999", []byte(`{"displayName":"x"}`))
+		assertStatus(t, res, http.StatusNotFound)
+	})
+
+	t.Run("invalid id", func(t *testing.T) {
+		h := newAPIV1Harness(t)
+
+		res := h.callHuma(http.MethodPut, "/api/v1/user/abc", []byte(`{"displayName":"x"}`))
+		assertStatus(t, res, http.StatusBadRequest)
+	})
+}
+
+// decodeUser unwraps the {"user": {...}} envelope the user endpoints return.
+func decodeUser(t *testing.T, body []byte) map[string]any {
+	t.Helper()
+
+	var got struct {
+		User map[string]any `json:"user"`
+	}
+
+	require.NoError(t, json.Unmarshal(body, &got))
+
+	return got.User
 }
 
 func TestAPIV1RenameUser(t *testing.T) {

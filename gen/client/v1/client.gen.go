@@ -299,6 +299,18 @@ type SetTagsRequestBody struct {
 	Tags *[]string `json:"tags,omitempty"`
 }
 
+// SetUserRequestBody defines model for SetUserRequestBody.
+type SetUserRequestBody struct {
+	// DisplayName Display name; empty string clears it.
+	DisplayName *string `json:"displayName,omitempty"`
+
+	// Email Email; empty string clears it.
+	Email *string `json:"email,omitempty"`
+
+	// PictureUrl Profile picture URL; empty string clears it.
+	PictureUrl *string `json:"pictureUrl,omitempty"`
+}
+
 // User defines model for User.
 type User struct {
 	CreatedAt     time.Time `json:"createdAt"`
@@ -393,6 +405,9 @@ type ExpirePreAuthKeyJSONRequestBody = ExpirePreAuthKeyRequestBody
 
 // CreateUserJSONRequestBody defines body for CreateUser for application/json ContentType.
 type CreateUserJSONRequestBody = CreateUserRequestBody
+
+// SetUserJSONRequestBody defines body for SetUser for application/json ContentType.
+type SetUserJSONRequestBody = SetUserRequestBody
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -578,6 +593,11 @@ type ClientInterface interface {
 
 	// DeleteUser request
 	DeleteUser(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetUserWithBody request with any body
+	SetUserWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetUser(ctx context.Context, id string, body SetUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RenameUser request
 	RenameUser(ctx context.Context, oldId string, newName string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1077,6 +1097,30 @@ func (c *Client) CreateUser(ctx context.Context, body CreateUserJSONRequestBody,
 
 func (c *Client) DeleteUser(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteUserRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetUserWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetUserRequestWithBody(c.Server, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetUser(ctx context.Context, id string, body SetUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetUserRequest(c.Server, id, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2298,6 +2342,53 @@ func NewDeleteUserRequest(server string, id string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewSetUserRequest calls the generic SetUser builder with application/json body
+func NewSetUserRequest(server string, id string, body SetUserJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetUserRequestWithBody(server, id, "application/json", bodyReader)
+}
+
+// NewSetUserRequestWithBody generates requests for SetUser with any type of body
+func NewSetUserRequestWithBody(server string, id string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uint64"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/user/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewRenameUserRequest generates requests for RenameUser
 func NewRenameUserRequest(server string, oldId string, newName string) (*http.Request, error) {
 	var err error
@@ -2493,6 +2584,11 @@ type ClientWithResponsesInterface interface {
 
 	// DeleteUserWithResponse request
 	DeleteUserWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*DeleteUserResponse, error)
+
+	// SetUserWithBodyWithResponse request with any body
+	SetUserWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetUserResponse, error)
+
+	SetUserWithResponse(ctx context.Context, id string, body SetUserJSONRequestBody, reqEditors ...RequestEditorFn) (*SetUserResponse, error)
 
 	// RenameUserWithResponse request
 	RenameUserWithResponse(ctx context.Context, oldId string, newName string, reqEditors ...RequestEditorFn) (*RenameUserResponse, error)
@@ -3366,6 +3462,37 @@ func (r DeleteUserResponse) ContentType() string {
 	return ""
 }
 
+type SetUserResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *UserOutputBody
+	ApplicationproblemJSONDefault *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r SetUserResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetUserResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetUserResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type RenameUserResponse struct {
 	Body                          []byte
 	HTTPResponse                  *http.Response
@@ -3759,6 +3886,23 @@ func (c *ClientWithResponses) DeleteUserWithResponse(ctx context.Context, id str
 		return nil, err
 	}
 	return ParseDeleteUserResponse(rsp)
+}
+
+// SetUserWithBodyWithResponse request with arbitrary body returning *SetUserResponse
+func (c *ClientWithResponses) SetUserWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetUserResponse, error) {
+	rsp, err := c.SetUserWithBody(ctx, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetUserResponse(rsp)
+}
+
+func (c *ClientWithResponses) SetUserWithResponse(ctx context.Context, id string, body SetUserJSONRequestBody, reqEditors ...RequestEditorFn) (*SetUserResponse, error) {
+	rsp, err := c.SetUser(ctx, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetUserResponse(rsp)
 }
 
 // RenameUserWithResponse request returning *RenameUserResponse
@@ -4677,6 +4821,39 @@ func ParseDeleteUserResponse(rsp *http.Response) (*DeleteUserResponse, error) {
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest DeleteUserOutputBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetUserResponse parses an HTTP response from a SetUserWithResponse call
+func ParseSetUserResponse(rsp *http.Response) (*SetUserResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetUserResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UserOutputBody
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

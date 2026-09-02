@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strconv"
 
 	clientv1 "github.com/juanfont/headscale/gen/client/v1"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
@@ -19,6 +19,9 @@ import (
 var (
 	errFlagRequired       = errors.New("--name or --identifier flag is required")
 	errMultipleUsersMatch = errors.New("multiple users match query, specify an ID")
+	errNoUserFieldsToSet  = errors.New(
+		"at least one of --display-name, --email or --picture-url is required",
+	)
 )
 
 func usernameAndIDFlag(cmd *cobra.Command) {
@@ -96,6 +99,11 @@ func init() {
 	usernameAndIDFlag(renameUserCmd)
 	renameUserCmd.Flags().StringP("new-name", "r", "", "New username")
 	mustMarkRequired(renameUserCmd, "new-name")
+	userCmd.AddCommand(setUserCmd)
+	usernameAndIDFlag(setUserCmd)
+	setUserCmd.Flags().StringP("display-name", "d", "", "Display name, empty to clear")
+	setUserCmd.Flags().StringP("email", "e", "", "Email, empty to clear")
+	setUserCmd.Flags().StringP("picture-url", "p", "", "Profile picture URL, empty to clear")
 }
 
 var userCmd = &cobra.Command{
@@ -129,8 +137,8 @@ var createUserCmd = &cobra.Command{
 		}
 
 		if pictureURL, _ := cmd.Flags().GetString("picture-url"); pictureURL != "" {
-			if _, err := url.Parse(pictureURL); err != nil { //nolint:noinlineerr
-				return fmt.Errorf("invalid picture URL: %w", err)
+			if err := types.ValidateProfilePicURL(pictureURL); err != nil { //nolint:noinlineerr
+				return err
 			}
 
 			request.PictureUrl = &pictureURL
@@ -232,6 +240,80 @@ var listUsersCmd = &cobra.Command{
 			return renderTable([]string{"ID", "Name", "Username", "Email", colCreated}, rows)
 		})
 	}),
+}
+
+var setUserCmd = &cobra.Command{
+	Use:   "set --identifier ID or --name NAME",
+	Short: "Sets the profile fields of a user",
+	Long: `Sets the display name, email and profile picture URL of an existing user.
+
+Only the flags that are given are changed; passing a flag with an empty value
+clears that field. The display name and the profile picture are what Tailscale
+clients show for the user, for example in "tailscale whois".
+
+Users provisioned by OIDC cannot be edited here: the identity provider
+re-applies its claims on every login and would overwrite the change.`,
+	Example: `  headscale users set -i 1 --display-name "Vika" --picture-url "https://example.com/vika.png"
+  headscale users set -n vika --picture-url ""`,
+	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
+		_, user, err := resolveSingleUser(ctx, client, cmd)
+		if err != nil {
+			return err
+		}
+
+		request, err := setUserRequestFromFlags(cmd)
+		if err != nil {
+			return err
+		}
+
+		log.Trace().Interface(zf.Request, request).Msg("sending SetUser request")
+
+		resp, err := client.SetUserWithResponse(ctx, user.Id, request)
+		if err != nil {
+			return fmt.Errorf("setting user: %w", err)
+		}
+
+		if resp.StatusCode() != http.StatusOK {
+			return apiError(resp.StatusCode(), resp.ApplicationproblemJSONDefault)
+		}
+
+		return printOutput(cmd, resp.JSON200.User, "User updated")
+	}),
+}
+
+// setUserRequestFromFlags builds the update body from the flags the user
+// actually passed. Flags.Changed is what separates "leave this field alone"
+// from "clear this field", which a plain empty-string check cannot express.
+func setUserRequestFromFlags(cmd *cobra.Command) (clientv1.SetUserJSONRequestBody, error) {
+	var request clientv1.SetUserJSONRequestBody
+
+	if cmd.Flags().Changed("display-name") {
+		displayName, _ := cmd.Flags().GetString("display-name")
+		request.DisplayName = &displayName
+	}
+
+	if cmd.Flags().Changed("email") {
+		email, _ := cmd.Flags().GetString("email")
+		request.Email = &email
+	}
+
+	if cmd.Flags().Changed("picture-url") {
+		pictureURL, _ := cmd.Flags().GetString("picture-url")
+		// Validated client-side too, so a typo fails before the round trip.
+		if pictureURL != "" {
+			if err := types.ValidateProfilePicURL(pictureURL); err != nil { //nolint:noinlineerr
+				return request, err
+			}
+		}
+
+		request.PictureUrl = &pictureURL
+	}
+
+	if request.DisplayName == nil && request.Email == nil && request.PictureUrl == nil {
+		return request, errNoUserFieldsToSet
+	}
+
+	return request, nil
 }
 
 var renameUserCmd = &cobra.Command{

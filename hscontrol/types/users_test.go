@@ -8,6 +8,8 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestUnmarshallOIDCClaims(t *testing.T) {
@@ -551,4 +553,110 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidateProfilePicURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		url     string
+		wantErr bool
+	}{
+		{name: "https", url: "https://example.com/vika.png"},
+		{name: "http", url: "http://example.com/vika.png"},
+		{name: "with query and port", url: "https://example.com:8443/a.png?size=64"},
+		{name: "uppercase scheme is normalised by url.Parse", url: "HTTPS://example.com/a.png"},
+		{name: "relative path", url: "/vika.png", wantErr: true},
+		{name: "bare host", url: "example.com/vika.png", wantErr: true},
+		// The reason this validation exists at all: the value is rendered by
+		// every client's user interface.
+		{name: "javascript scheme", url: "javascript:alert(1)", wantErr: true},
+		{name: "data scheme", url: "data:image/png;base64,AAAA", wantErr: true},
+		{name: "file scheme", url: "file:///etc/passwd", wantErr: true},
+		{name: "no host", url: "https://", wantErr: true},
+		{name: "control character", url: "https://example.com/\x7f", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateProfilePicURL(tt.url)
+			if tt.wantErr {
+				assert.ErrorIs(t, err, ErrInvalidProfilePicURL)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestUserProfileUpdateValidate(t *testing.T) {
+	tests := []struct {
+		name string
+		// wantErr is the sentinel to match, or nil when any error will do
+		// (net/mail does not export one). wantAnyErr covers that case.
+		update     UserProfileUpdate
+		wantErr    error
+		wantAnyErr bool
+	}{
+		{
+			name:    "empty update",
+			update:  UserProfileUpdate{},
+			wantErr: ErrEmptyUserProfileUpdate,
+		},
+		{
+			// Clearing is a legitimate request, so an explicit empty string
+			// must not be mistaken for "nothing to do".
+			name:   "clearing everything is a valid update",
+			update: UserProfileUpdate{DisplayName: new(""), ProfilePicURL: new("")},
+		},
+		{
+			name:   "valid",
+			update: UserProfileUpdate{ProfilePicURL: new("https://example.com/a.png")},
+		},
+		{
+			name:    "bad picture url",
+			update:  UserProfileUpdate{ProfilePicURL: new("nope")},
+			wantErr: ErrInvalidProfilePicURL,
+		},
+		{
+			name:       "bad email",
+			update:     UserProfileUpdate{Email: new("not-an-email")},
+			wantAnyErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.update.Validate()
+
+			switch {
+			case tt.wantErr != nil:
+				require.ErrorIs(t, err, tt.wantErr)
+			case tt.wantAnyErr:
+				require.Error(t, err)
+			default:
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestUserProfilePicReachesTailscaleTypes(t *testing.T) {
+	user := User{
+		Model:         gorm.Model{ID: 7},
+		Name:          "vika",
+		DisplayName:   "Vika",
+		ProfilePicURL: "https://example.com/vika.png",
+	}
+
+	// All three tailcfg shapes carry the avatar; UserProfile is the one the
+	// client renders for peers and that "tailscale whois" reports.
+	assert.Equal(t, "https://example.com/vika.png", user.TailscaleUserProfile().ProfilePicURL)
+	assert.Equal(t, "https://example.com/vika.png", user.TailscaleUser().ProfilePicURL)
+	assert.Equal(t, "https://example.com/vika.png", user.TailscaleLogin().ProfilePicURL)
+
+	assert.Equal(t, "Vika", user.TailscaleUserProfile().DisplayName)
+	assert.Equal(t, "vika", user.TailscaleUserProfile().LoginName)
+
+	// The view path serialisers use must agree with the struct path.
+	assert.Equal(t, user.TailscaleUserProfile(), user.View().TailscaleUserProfile())
 }

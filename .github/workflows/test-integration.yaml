@@ -290,6 +290,7 @@ jobs:
           - TestUserCommand
           - TestUserCreateCommand
           - TestUserCommandValidation
+          - TestUserSetCommand
           - TestDERPVerifyEndpoint
           - TestResolveMagicDNS
           - TestResolveMagicDNSExtraRecordsPath
