@@ -243,3 +243,20 @@ func TestOAuthClientCreateRejectsUnknownScopes(t *testing.T) {
 		})
 	}
 }
+
+// TestOAuthClientCreateReportsEveryUnknownScope asserts validation does not stop
+// at the first bad scope, so a caller can fix them all in one pass.
+func TestOAuthClientCreateReportsEveryUnknownScope(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
+	_, _, err = db.CreateOAuthClient(
+		[]string{"auth_keys", "devices:everything", "EVIL:superuser"},
+		[]string{"tag:ci"},
+		"",
+		nil,
+	)
+	require.ErrorIs(t, err, ErrOAuthClientScopeInvalid)
+	assert.Contains(t, err.Error(), "devices:everything")
+	assert.Contains(t, err.Error(), "EVIL:superuser")
+}

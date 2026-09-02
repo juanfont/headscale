@@ -15,6 +15,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"golang.org/x/crypto/argon2"
 	"gorm.io/gorm"
+	"tailscale.com/util/multierr"
 	"tailscale.com/util/rands"
 	"tailscale.com/util/set"
 )
@@ -134,37 +135,20 @@ func verifySecret(encoded []byte, secret string) error {
 	return nil
 }
 
-// validateScopes deduplicates and sorts scopes, rejecting any value outside the
-// vocabulary in [scope.Known]. An unknown scope satisfies no requirement, so
-// storing one would silently mint a client with fewer permissions than asked
-// for.
-func validateScopes(scopes []string) ([]string, error) {
-	scopes = set.SetOf(scopes).Slice()
-	slices.Sort(scopes)
+// validateScopes rejects any value outside the vocabulary in [scope.Known]. An
+// unknown scope satisfies no requirement, so storing one would silently mint a
+// client with fewer permissions than asked for. Every offending scope is
+// reported so the caller can correct them all in one pass.
+func validateScopes(scopes []string) error {
+	var errs []error
 
 	for _, s := range scopes {
 		if !scope.Scope(s).Valid() {
-			return nil, fmt.Errorf(
-				"%w: '%s' is not one of %s",
-				ErrOAuthClientScopeInvalid,
-				s,
-				strings.Join(scopeNames(), ", "),
-			)
+			errs = append(errs, fmt.Errorf("%w: %q", ErrOAuthClientScopeInvalid, s))
 		}
 	}
 
-	return scopes, nil
-}
-
-func scopeNames() []string {
-	known := scope.Known()
-	names := make([]string, len(known))
-
-	for i, s := range known {
-		names[i] = string(s)
-	}
-
-	return names
+	return multierr.New(errs...)
 }
 
 // CreateOAuthClient creates a new [types.OAuthClient] and returns the plaintext
@@ -180,10 +164,13 @@ func (hsdb *HSDatabase) CreateOAuthClient(
 		return "", nil, err
 	}
 
-	scopes, err = validateScopes(scopes)
+	err = validateScopes(scopes)
 	if err != nil {
 		return "", nil, err
 	}
+
+	scopes = set.SetOf(scopes).Slice()
+	slices.Sort(scopes)
 
 	clientID := rands.HexString(oauthClientIDLength)
 	secret := rands.HexString(oauthClientSecretLength)
