@@ -29,8 +29,8 @@ act pull_request -W .github/workflows/test-integration.yaml
 ```
 
 Each test runs as a separate workflow on GitHub Actions. To add a new
-test, run `go generate` inside `../cmd/gh-action-integration-generator/`
-and commit the generated workflow file.
+test, run `go generate` inside `../.github/workflows/` and commit the
+regenerated `test-integration.yaml`.
 
 ## Framework overview
 
