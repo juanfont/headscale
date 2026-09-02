@@ -3,7 +3,6 @@ package integration
 import (
 	"fmt"
 	"net/netip"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -2008,8 +2007,9 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 
 		// Get the node list and find the newest node (highest ID)
 		var (
-			nodeList       []*clientv1.Node
-			nodeToDeleteID uint64
+			nodeList         []*clientv1.Node
+			nodeToDeleteID   uint64
+			nodeToDeleteName string
 		)
 
 		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -2021,6 +2021,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 			for _, node := range nodeList {
 				if mustParseID(node.Id) > nodeToDeleteID {
 					nodeToDeleteID = mustParseID(node.Id)
+					nodeToDeleteName = node.Name
 				}
 			}
 		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "iteration %d: Phase 2b - listing nodes before deletion", iteration)
@@ -2034,15 +2035,11 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		// This is necessary for WaitForTailscaleSyncPerUser to calculate correct peer counts
 		t.Logf("Iteration %d: Phase 2b - Removing deleted client from scenario", iteration)
 
+		// Match on hostname, not on Status().Self.ID: a deleted node is served
+		// an expired self node carrying no StableID, so Self.ID is empty by the
+		// time this runs.
 		for clientName, client := range scenario.users["user1"].Clients {
-			status := client.MustStatus()
-
-			nodeID, err := strconv.ParseUint(string(status.Self.ID), 10, 64)
-			if err != nil {
-				continue
-			}
-
-			if nodeID == nodeToDeleteID {
+			if client.Hostname() == nodeToDeleteName {
 				delete(scenario.users["user1"].Clients, clientName)
 				t.Logf("Iteration %d: Phase 2b - Removed client %s (node ID %d) from scenario", iteration, clientName, nodeToDeleteID)
 

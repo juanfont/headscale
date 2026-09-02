@@ -1500,6 +1500,87 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 	}
 }
 
+// TestNodeDeletionEndsLongPoll verifies that deleting a node ends its map
+// session and tells the client to re-authenticate. Before the fix the deleted
+// node's long poll was orphaned: the client stayed Running forever against a
+// node that no longer existed, and the server could not shut down while that
+// stream was open.
+//
+// See: https://github.com/juanfont/headscale/issues/3410
+func TestNodeDeletionEndsLongPoll(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	spec := ScenarioSpec{
+		NodesPerUser: len(MustTestVersions),
+		Users:        []string{"user1"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("deletelongpoll"))
+	requireNoErrHeadscaleEnv(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	requireNoErrListClients(t, err)
+	require.NotEmpty(t, allClients)
+
+	for _, client := range allClients {
+		require.NoError(t, client.WaitForRunning(integrationutil.StatusReadyTimeout),
+			"client %s must be Running before the deletion", client.Hostname())
+	}
+
+	deleted := allClients[0]
+
+	var deletedID uint64
+
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(ct, err)
+		assert.Len(ct, nodes, len(allClients))
+
+		for _, node := range nodes {
+			if node.Name == deleted.Hostname() {
+				deletedID = mustParseID(node.Id)
+			}
+		}
+
+		assert.NotZero(ct, deletedID)
+	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "node list should name every client before deletion")
+
+	require.NoError(t, headscale.DeleteNode(deletedID))
+
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		status, err := deleted.Status()
+		assert.NoError(ct, err)
+
+		if status != nil {
+			assert.Equal(ct, "NeedsLogin", status.BackendState)
+		}
+	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll,
+		"deleted node must stop polling and ask for a new login")
+
+	for _, client := range allClients[1:] {
+		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+			status, err := client.Status()
+			assert.NoError(ct, err)
+
+			if status != nil {
+				assert.Equal(ct, "Running", status.BackendState)
+			}
+		}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll,
+			"deleting a peer must not disturb the remaining clients")
+	}
+}
+
 func Test2118DeletingOnlineNodePanics(t *testing.T) {
 	IntegrationSkip(t)
 
