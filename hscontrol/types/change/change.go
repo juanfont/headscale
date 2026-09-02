@@ -340,15 +340,6 @@ func PolicyAndPeers(changedPeers ...types.NodeID) Change {
 	}
 }
 
-func VisibilityChange(reason string, added, removed []types.NodeID) Change {
-	return Change{
-		Reason:        reason,
-		IncludePolicy: true,
-		PeersChanged:  added,
-		PeersRemoved:  removed,
-	}
-}
-
 func PeersChanged(reason string, peerIDs ...types.NodeID) Change {
 	return Change{
 		Reason:       reason,

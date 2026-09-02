@@ -458,14 +458,6 @@ func TestPolicyAndPeers(t *testing.T) {
 	assert.Equal(t, []types.NodeID{1, 2, 3}, r.PeersChanged)
 }
 
-func TestVisibilityChange(t *testing.T) {
-	r := VisibilityChange("tag change", []types.NodeID{1}, []types.NodeID{2, 3})
-	assert.Equal(t, "tag change", r.Reason)
-	assert.True(t, r.IncludePolicy)
-	assert.Equal(t, []types.NodeID{1}, r.PeersChanged)
-	assert.Equal(t, []types.NodeID{2, 3}, r.PeersRemoved)
-}
-
 func TestPeersChanged(t *testing.T) {
 	r := PeersChanged("routes approved", 1, 2)
 	assert.Equal(t, "routes approved", r.Reason)
