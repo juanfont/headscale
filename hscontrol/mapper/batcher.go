@@ -596,12 +596,26 @@ func (b *Batcher) addToBatch(changes ...change.Change) {
 	// putting them in [tailcfg.MapResponse.PeersRemoved] (a different struct).
 	// Therefore, this cleanup only removes nodes that are truly being deleted,
 	// not nodes that are still connected but have lost visibility of certain peers.
+	// This loop now also terminates the node's map sessions, so a future
+	// [change.Change.PeersRemoved] producer that is not a deletion would kill a
+	// live node's long poll, not merely evict its batcher entry.
 	//
 	// See: https://github.com/juanfont/headscale/issues/2924
 	for _, ch := range changes {
 		for _, removedID := range ch.PeersRemoved {
-			if _, existed := b.nodes.LoadAndDelete(removedID); existed {
+			if nc, existed := b.nodes.LoadAndDelete(removedID); existed {
 				b.totalNodes.Add(-1)
+
+				// Tear the node's map sessions down. Dropping the entry alone
+				// leaves [mapSession.serveLongPoll] streaming to a node that no
+				// longer exists: [Batcher.Close] ranges b.nodes and can no
+				// longer reach it, so shutdown blocks on clientStreamsOpen, and
+				// the client keeps polling a node it should be re-authenticating.
+				// See: https://github.com/juanfont/headscale/issues/3410
+				if nc != nil {
+					nc.close()
+				}
+
 				log.Debug().
 					Uint64(zf.NodeID, removedID.Uint64()).
 					Msg("removed deleted node from batcher")

@@ -428,6 +428,33 @@ func TestMultiChannelClose_PreventsSendPanic(t *testing.T) {
 		"send after close should return errConnectionClosed, not panic")
 }
 
+func TestAddToBatch_NodeRemovedStopsSession(t *testing.T) {
+	lb := setupLightweightBatcher(t, 1, 1)
+	defer lb.cleanup()
+
+	mc, ok := lb.b.nodes.Load(1)
+	require.True(t, ok)
+
+	stopped := make(chan struct{})
+
+	mc.mutex.Lock()
+	mc.connections[0].stop = func() { close(stopped) }
+	mc.mutex.Unlock()
+
+	lb.b.AddWork(change.NodeRemoved(1))
+
+	// addToBatch runs synchronously, so the session must already be stopped.
+	select {
+	case <-stopped:
+	default:
+		t.Fatal("deleting a node must stop its map session, otherwise the long poll is orphaned")
+	}
+
+	_, stillTracked := lb.b.nodes.Load(1)
+	assert.False(t, stillTracked, "deleted node should no longer be tracked by the batcher")
+	assert.Equal(t, int64(0), lb.b.totalNodes.Load())
+}
+
 // ============================================================================
 // multiChannelNodeConn connection management Tests
 // ============================================================================
