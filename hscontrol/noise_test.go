@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"testing"
@@ -176,6 +177,118 @@ func TestPollNetMapHandler_OversizedBody(t *testing.T) {
 
 	// Body is truncated → [json.Decoder.Decode] fails → [httpError] returns 500.
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+}
+
+func pollMapRequest(
+	t *testing.T,
+	ns *noiseServer,
+	remoteAddr string,
+	mapRequest tailcfg.MapRequest,
+) *httptest.ResponseRecorder {
+	t.Helper()
+
+	payload, err := json.Marshal(mapRequest)
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		"/machine/map",
+		bytes.NewReader(payload),
+	)
+	req.RemoteAddr = remoteAddr
+	rec := httptest.NewRecorder()
+
+	ns.PollNetMapHandler(rec, req)
+
+	return rec
+}
+
+func TestPollNetMapHandler_LastControlAddress(t *testing.T) {
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("control-address-user")
+	node := app.state.CreateRegisteredNodeForTest(user, "control-address-node")
+	node.User = user
+	node.Endpoints = types.AddrPorts{
+		netip.MustParseAddrPort("198.51.100.77:41641"),
+	}
+	view := app.state.PutNodeInStoreForTest(*node)
+
+	ns := &noiseServer{headscale: app, machineKey: view.MachineKey()}
+	request := tailcfg.MapRequest{
+		Version:   tailcfg.CurrentCapabilityVersion,
+		NodeKey:   view.NodeKey(),
+		OmitPeers: true,
+		Endpoints: []netip.AddrPort{
+			netip.MustParseAddrPort("198.51.100.77:41641"),
+		},
+	}
+
+	for _, test := range []struct {
+		name       string
+		remoteAddr string
+		want       string
+	}{
+		{name: "direct IPv4 with port", remoteAddr: "203.0.113.10:52184", want: "203.0.113.10"},
+		{name: "direct IPv6 with port", remoteAddr: "[2001:db8::10]:52184", want: "2001:db8::10"},
+		{name: "trusted proxy IPv4 without port", remoteAddr: "192.0.2.44", want: "192.0.2.44"},
+		{name: "trusted proxy IPv6 without port", remoteAddr: "2001:db8::44", want: "2001:db8::44"},
+		{name: "IPv4-mapped IPv6", remoteAddr: "[::ffff:203.0.113.44]:52184", want: "203.0.113.44"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			resp := pollMapRequest(t, ns, test.remoteAddr, request)
+			require.Equalf(t, http.StatusOK, resp.Code, "body: %s", resp.Body)
+
+			stored, ok := app.state.GetNodeByID(view.ID())
+			require.True(t, ok)
+			require.True(t, stored.LastControlAddress().Valid())
+			assert.Equal(t, test.want, stored.LastControlAddress().Get().String())
+		})
+	}
+
+	before, ok := app.state.GetNodeByID(view.ID())
+	require.True(t, ok)
+	require.True(t, before.LastControlAddress().Valid())
+	wantUnchanged := before.LastControlAddress().Get()
+
+	t.Run("invalid address is ignored", func(t *testing.T) {
+		resp := pollMapRequest(t, ns, "not-an-address", request)
+		require.Equalf(t, http.StatusOK, resp.Code, "body: %s", resp.Body)
+
+		stored, ok := app.state.GetNodeByID(view.ID())
+		require.True(t, ok)
+		require.True(t, stored.LastControlAddress().Valid())
+		assert.Equal(t, wantUnchanged, stored.LastControlAddress().Get())
+	})
+
+	t.Run("machine key mismatch cannot overwrite", func(t *testing.T) {
+		rogue := &noiseServer{headscale: app, machineKey: key.NewMachine().Public()}
+		resp := pollMapRequest(t, rogue, "192.0.2.99:1234", request)
+		assert.Equal(t, http.StatusNotFound, resp.Code)
+
+		stored, ok := app.state.GetNodeByID(view.ID())
+		require.True(t, ok)
+		assert.Equal(t, wantUnchanged, stored.LastControlAddress().Get())
+	})
+
+	t.Run("unknown node cannot overwrite", func(t *testing.T) {
+		unknownRequest := request
+		unknownRequest.NodeKey = key.NewNode().Public()
+		resp := pollMapRequest(t, ns, "192.0.2.100:1234", unknownRequest)
+		assert.Equal(t, http.StatusNotFound, resp.Code)
+
+		stored, ok := app.state.GetNodeByID(view.ID())
+		require.True(t, ok)
+		assert.Equal(t, wantUnchanged, stored.LastControlAddress().Get())
+	})
+
+	api := registerAPIV2(t, app)
+	attrs := getDevicePostureAttributes(t, api, view.StringID())
+	assert.Equal(t, wantUnchanged.String(), attrs.Attributes["ip:publicAddress"])
+	encodedAttrs, err := json.Marshal(attrs)
+	require.NoError(t, err)
+	assert.NotContains(t, string(encodedAttrs), "198.51.100.77",
+		"reported Magicsock endpoints must not influence posture attributes")
 }
 
 // TestRegistrationHandler_OversizedBody calls the real handler with a

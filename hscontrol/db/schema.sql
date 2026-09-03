@@ -110,6 +110,7 @@ CREATE TABLE nodes(
   host_info text,
   ipv4 text,
   ipv6 text,
+  last_control_address text,
   hostname text,
   given_name varchar(63),
   -- user_id is NULL for tagged nodes (owned by tags, not a user).

@@ -39,6 +39,7 @@ const (
 	rebuildPeerMaps = 4
 	setName         = 5
 	updateMulti     = 6
+	setControlAddr  = 7
 )
 
 const prometheusNamespace = "headscale"
@@ -186,6 +187,8 @@ type work struct {
 	// prober applying multiple probe results at once) cannot have a
 	// partial snapshot published between the updates.
 	multiUpdates map[types.NodeID]UpdateNodeFunc
+	// For setControlAddr: metadata that does not affect peer relationships.
+	controlAddr *netip.Addr
 }
 
 // PutNode adds or updates a node in the store.
@@ -284,6 +287,44 @@ func (s *NodeStore) UpdateNodes(updates map[types.NodeID]UpdateNodeFunc) {
 	nodeStoreQueueDepth.Dec()
 
 	nodeStoreOperations.WithLabelValues("update_multi").Inc()
+}
+
+// SetLastControlAddress updates connection metadata without recalculating peer
+// relationships or primary routes. It returns the resulting node and whether
+// the node exists.
+func (s *NodeStore) SetLastControlAddress(
+	nodeID types.NodeID,
+	addr *netip.Addr,
+) (types.NodeView, bool) {
+	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("set_control_addr"))
+	defer timer.ObserveDuration()
+
+	w := work{
+		op:          setControlAddr,
+		nodeID:      nodeID,
+		controlAddr: addr,
+		result:      make(chan struct{}),
+		nodeResult:  make(chan types.NodeView, 1),
+	}
+
+	nodeStoreQueueDepth.Inc()
+
+	select {
+	case s.writeQueue <- w:
+	case <-s.stopped:
+		nodeStoreQueueDepth.Dec()
+
+		return types.NodeView{}, false
+	}
+
+	<-w.result
+	nodeStoreQueueDepth.Dec()
+
+	result := <-w.nodeResult
+
+	nodeStoreOperations.WithLabelValues("set_control_addr").Inc()
+
+	return result, result.Valid()
 }
 
 // DeleteNode removes a node from the store by its ID.
@@ -444,11 +485,13 @@ func (s *NodeStore) applyBatch(batch []work) {
 	// they can be delivered after the snapshot swap, together with the
 	// NodeView for that work.
 	setErrResults := make(map[*work]error)
+	metadataOnly := true
 
 	for i := range batch {
 		w := &batch[i]
 		switch w.op {
 		case put:
+			metadataOnly = false
 			n := w.node
 			n.GivenName = resolveGivenName(nodes, n.ID, n.GivenName)
 
@@ -457,6 +500,8 @@ func (s *NodeStore) applyBatch(batch []work) {
 				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
 			}
 		case updateMulti:
+			metadataOnly = false
+
 			for id, fn := range w.multiUpdates {
 				n, exists := nodes[id]
 				if !exists {
@@ -473,12 +518,16 @@ func (s *NodeStore) applyBatch(batch []work) {
 				nodes[id] = n
 			}
 		case del:
+			metadataOnly = false
+
 			delete(nodes, w.nodeID)
 			// For delete operations, send an invalid NodeView if requested
 			if w.nodeResult != nil {
 				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
 			}
 		case setName:
+			metadataOnly = false
+
 			n, exists := nodes[w.nodeID]
 			if !exists {
 				setErrResults[w] = ErrNodeNotFound
@@ -513,7 +562,22 @@ func (s *NodeStore) applyBatch(batch []work) {
 			n.GivenName = w.name
 			nodes[w.nodeID] = n
 			nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
+		case setControlAddr:
+			n, exists := nodes[w.nodeID]
+			if exists {
+				if w.controlAddr == nil {
+					n.LastControlAddress = nil
+				} else {
+					addr := *w.controlAddr
+					n.LastControlAddress = &addr
+				}
+
+				nodes[w.nodeID] = n
+			}
+
+			nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
 		case rebuildPeerMaps:
+			metadataOnly = false
 			// rebuildPeerMaps doesn't modify nodes, it just forces the snapshot rebuild
 			// below to recalculate peer relationships using the current peersFunc
 			rebuildOps = append(rebuildOps, w)
@@ -521,7 +585,14 @@ func (s *NodeStore) applyBatch(batch []work) {
 	}
 
 	prev := s.data.Load()
-	newSnap := snapshotFromNodes(nodes, s.peersFunc, prev.routes)
+
+	var newSnap Snapshot
+	if metadataOnly {
+		newSnap = snapshotFromNodesReusingTopology(nodes, *prev)
+	} else {
+		newSnap = snapshotFromNodes(nodes, s.peersFunc, prev.routes)
+	}
+
 	s.data.Store(&newSnap)
 
 	// Update node count gauge
@@ -612,25 +683,66 @@ func snapshotFromNodes(
 		allNodes = append(allNodes, n.View())
 	}
 
+	peersTimer := prometheus.NewTimer(nodeStorePeersCalculationDuration)
+	peersByNode := peersFunc(allNodes)
+
+	peersTimer.ObserveDuration()
+
 	routes, isPrimaryRoute := electPrimaryRoutes(nodes, prevRoutes)
 
+	return snapshotFromViews(nodes, allNodes, peersByNode, routes, isPrimaryRoute)
+}
+
+// snapshotFromNodesReusingTopology refreshes NodeViews after a metadata-only
+// update while preserving the existing peer membership and primary routes.
+func snapshotFromNodesReusingTopology(nodes map[types.NodeID]types.Node, prev Snapshot) Snapshot {
+	timer := prometheus.NewTimer(nodeStoreSnapshotBuildDuration)
+	defer timer.ObserveDuration()
+
+	allNodes := make([]types.NodeView, 0, len(nodes))
+
+	viewsByID := make(map[types.NodeID]types.NodeView, len(nodes))
+	for _, n := range nodes {
+		view := n.View()
+		allNodes = append(allNodes, view)
+		viewsByID[n.ID] = view
+	}
+
+	peersByNode := make(map[types.NodeID][]types.NodeView, len(prev.peersByNode))
+	for nodeID, previousPeers := range prev.peersByNode {
+		peers := make([]types.NodeView, 0, len(previousPeers))
+		for _, previousPeer := range previousPeers {
+			if peer, ok := viewsByID[previousPeer.ID()]; ok {
+				peers = append(peers, peer)
+			}
+		}
+
+		peersByNode[nodeID] = peers
+	}
+
+	return snapshotFromViews(
+		nodes,
+		allNodes,
+		peersByNode,
+		prev.routes,
+		prev.isPrimaryRoute,
+	)
+}
+
+func snapshotFromViews(
+	nodes map[types.NodeID]types.Node,
+	allNodes []types.NodeView,
+	peersByNode map[types.NodeID][]types.NodeView,
+	routes map[netip.Prefix]types.NodeID,
+	isPrimaryRoute map[types.NodeID]bool,
+) Snapshot {
 	newSnap := Snapshot{
 		nodesByID:         nodes,
 		allNodes:          allNodes,
 		nodesByNodeKey:    make(map[key.NodePublic]types.NodeView),
 		nodesByMachineKey: make(map[key.MachinePublic]map[types.UserID]types.NodeView),
-
-		// peersByNode is most likely the most expensive operation,
-		// it will use the list of all nodes, combined with the
-		// current policy to precalculate which nodes are peers and
-		// can see each other.
-		peersByNode: func() map[types.NodeID][]types.NodeView {
-			peersTimer := prometheus.NewTimer(nodeStorePeersCalculationDuration)
-			defer peersTimer.ObserveDuration()
-
-			return peersFunc(allNodes)
-		}(),
-		nodesByUser: make(map[types.UserID][]types.NodeView),
+		peersByNode:       peersByNode,
+		nodesByUser:       make(map[types.UserID][]types.NodeView),
 
 		routes:         routes,
 		isPrimaryRoute: isPrimaryRoute,

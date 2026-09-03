@@ -217,6 +217,70 @@ func TestPersistEmptyEndpoints(t *testing.T) {
 		"after restart, NodeStore should reflect the cleared endpoints")
 }
 
+func TestSetLastControlAddressPersists(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		addr netip.Addr
+	}{
+		{name: "IPv4", addr: netip.MustParseAddr("203.0.113.10")},
+		{name: "IPv6", addr: netip.MustParseAddr("2001:db8::10")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dbPath, s, nodeID := persistTestSetup(t)
+
+			require.NoError(t, s.db.DB.Exec(`
+CREATE TABLE last_control_address_writes(count integer);
+CREATE TRIGGER count_last_control_address_writes
+AFTER UPDATE OF last_control_address ON nodes
+BEGIN
+  INSERT INTO last_control_address_writes VALUES(1);
+END;
+			`).Error)
+
+			changed, err := s.SetLastControlAddress(nodeID, test.addr)
+			require.NoError(t, err)
+			require.True(t, changed)
+
+			var writes int64
+			require.NoError(t, s.db.DB.Model(&struct{ Count int }{}).
+				Table("last_control_address_writes").Count(&writes).Error)
+			require.Equal(t, int64(1), writes)
+
+			changed, err = s.SetLastControlAddress(nodeID, test.addr)
+			require.NoError(t, err)
+			assert.False(t, changed, "the same address must be a no-op")
+
+			require.NoError(t, s.db.DB.Model(&struct{ Count int }{}).
+				Table("last_control_address_writes").Count(&writes).Error)
+			assert.Equal(t, int64(1), writes,
+				"the same address must not issue another database update")
+			require.NoError(t, s.db.DB.Exec(`
+DROP TRIGGER count_last_control_address_writes;
+DROP TABLE last_control_address_writes;
+			`).Error)
+
+			_, err = s.UpdateNodeFromMapRequest(nodeID, tailcfg.MapRequest{
+				Hostinfo: &tailcfg.Hostinfo{Hostname: "updated-after-control-address"},
+			})
+			require.NoError(t, err)
+
+			stored, err := s.DB().GetNodeByID(nodeID)
+			require.NoError(t, err)
+			require.NotNil(t, stored.LastControlAddress)
+			assert.Equal(t, test.addr, *stored.LastControlAddress,
+				"an unrelated node update must preserve the address")
+
+			require.NoError(t, s.Close())
+			s2 := persistTestReopen(t, dbPath)
+
+			reloaded, ok := s2.GetNodeByID(nodeID)
+			require.True(t, ok)
+			require.True(t, reloaded.LastControlAddress().Valid())
+			assert.Equal(t, test.addr, reloaded.LastControlAddress().Get())
+		})
+	}
+}
+
 // TestRegistrationRejectsNodeKeyClaimedByAnotherMachine proves a new
 // registration cannot claim a NodeKey already bound to a different machine.
 // NodeKeys are public (peers learn them from the netmap), so without this

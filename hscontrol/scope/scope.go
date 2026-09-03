@@ -35,6 +35,9 @@ const (
 	DevicesRoutes     Scope = "devices:routes"
 	DevicesRoutesRead Scope = "devices:routes:read"
 
+	DevicesPostureAttributes     Scope = "devices:posture_attributes"
+	DevicesPostureAttributesRead Scope = "devices:posture_attributes:read"
+
 	PolicyFile     Scope = "policy_file"
 	PolicyFileRead Scope = "policy_file:read"
 
@@ -56,6 +59,7 @@ func Known() []Scope {
 		OAuthKeys, OAuthKeysRead,
 		DevicesCore, DevicesCoreRead,
 		DevicesRoutes, DevicesRoutesRead,
+		DevicesPostureAttributes, DevicesPostureAttributesRead,
 		PolicyFile, PolicyFileRead,
 		FeatureSettings, FeatureSettingsRead,
 		Users, UsersRead,

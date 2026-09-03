@@ -3,6 +3,7 @@ package hscontrol
 import (
 	"encoding/json"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"testing"
 	"time"
@@ -53,6 +54,7 @@ func newDeviceTestEnv(t *testing.T) deviceTestEnv {
 
 	node := app.state.CreateRegisteredNodeForTest(user, "contract-dut")
 	node.User = user
+
 	view := app.state.PutNodeInStoreForTest(*node)
 
 	return deviceTestEnv{
@@ -107,6 +109,22 @@ func getDeviceRoutes(t *testing.T, api humatest.TestAPI, deviceID string) apiv2.
 	return routes
 }
 
+func getDevicePostureAttributes(
+	t *testing.T,
+	api humatest.TestAPI,
+	deviceID string,
+) apiv2.DevicePostureAttributes {
+	t.Helper()
+
+	resp := api.Get("/api/v2/device/" + deviceID + "/attributes")
+	require.Equalf(t, http.StatusOK, resp.Code, "body: %s", resp.Body)
+
+	var attrs apiv2.DevicePostureAttributes
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &attrs))
+
+	return attrs
+}
+
 func approvedRouteStrings(nv types.NodeView) []string {
 	return util.PrefixesToString(nv.ApprovedRoutes().AsSlice())
 }
@@ -116,6 +134,10 @@ func TestAPIv2Device_Get(t *testing.T) {
 
 	resp := e.api.Get("/api/v2/device/" + e.deviceID + "?fields=all")
 	require.Equalf(t, http.StatusOK, resp.Code, "body: %s", resp.Body)
+
+	var raw map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &raw))
+	assert.NotContains(t, raw, "otherKnown"+"IPs")
 
 	var dev apiv2.Device
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &dev))
@@ -145,6 +167,49 @@ func TestAPIv2Device_Get_UnknownID_404(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, e.api.Get("/api/v2/device/not-a-number").Code)
 }
 
+func TestAPIv2Device_GetPostureAttributes(t *testing.T) {
+	e := newDeviceTestEnv(t)
+
+	t.Run("unknown address", func(t *testing.T) {
+		attrs := getDevicePostureAttributes(t, e.api, e.deviceID)
+		assert.NotNil(t, attrs.Attributes)
+		assert.Empty(t, attrs.Attributes)
+		assert.NotNil(t, attrs.Expiries)
+		assert.Empty(t, attrs.Expiries)
+	})
+
+	for _, test := range []struct {
+		name string
+		addr string
+	}{
+		{name: "IPv4", addr: "203.0.113.10"},
+		{name: "IPv6", addr: "2001:db8::10"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			changed, err := e.app.state.SetLastControlAddress(
+				e.nodeID,
+				netip.MustParseAddr(test.addr),
+			)
+			require.NoError(t, err)
+			assert.True(t, changed)
+
+			attrs := getDevicePostureAttributes(t, e.api, e.deviceID)
+			assert.Equal(t, test.addr, attrs.Attributes["ip:publicAddress"])
+			assert.NotNil(t, attrs.Expiries)
+			assert.Empty(t, attrs.Expiries)
+		})
+	}
+}
+
+func TestAPIv2Device_GetPostureAttributes_UnknownID_404(t *testing.T) {
+	e := newDeviceTestEnv(t)
+
+	assert.Equal(t, http.StatusNotFound,
+		e.api.Get("/api/v2/device/999999/attributes").Code)
+	assert.Equal(t, http.StatusNotFound,
+		e.api.Get("/api/v2/device/not-a-number/attributes").Code)
+}
+
 func TestAPIv2Device_List(t *testing.T) {
 	e := newDeviceTestEnv(t)
 
@@ -159,10 +224,21 @@ func TestAPIv2Device_List(t *testing.T) {
 		}
 		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &out))
 
+		var raw struct {
+			Devices []map[string]json.RawMessage `json:"devices"`
+		}
+		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &raw))
+
+		for _, device := range raw.Devices {
+			assert.NotContains(t, device, "otherKnown"+"IPs")
+		}
+
 		return out.Devices
 	}
 
-	assert.True(t, containsDeviceID(list(), e.deviceID))
+	devices := list()
+	require.Len(t, devices, 1)
+	assert.True(t, containsDeviceID(devices, e.deviceID))
 	assert.Len(t, list(), e.app.state.ListNodes().Len(), "list count == ListNodes")
 
 	// A second node appears; deleting it removes it from both the list and state.
