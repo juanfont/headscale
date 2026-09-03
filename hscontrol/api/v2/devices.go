@@ -97,6 +97,13 @@ type DeviceRoutes struct {
 	Enabled    []string `json:"enabledRoutes"    nullable:"false"`
 }
 
+// DevicePostureAttributes is the Tailscale-compatible posture attribute
+// response. Headscale currently exposes only the server-derived public address.
+type DevicePostureAttributes struct {
+	Attributes map[string]any       `json:"attributes" nullable:"false"`
+	Expiries   map[string]time.Time `json:"expiries"   nullable:"false"`
+}
+
 // Request bodies match the Tailscale SDK wire shapes and, like Tailscale's,
 // ignore properties they do not define.
 type (
@@ -135,6 +142,9 @@ type (
 		DeviceID string `doc:"Device id (the decimal node id)." path:"id"`
 		Fields   string `doc:"Set to \"all\" for route fields." query:"fields"`
 	}
+	deviceAttributesInput struct {
+		DeviceID string `doc:"Device id (the decimal node id)." path:"id"`
+	}
 	listDevicesInput struct {
 		Tailnet string `doc:"Tailnet; must be \"-\"." path:"tailnet"`
 		Fields  string `query:"fields"`
@@ -160,9 +170,10 @@ type (
 		Body     setSubnetRoutesRequest
 	}
 
-	deviceOutput       struct{ Body Device }
-	deviceRoutesOutput struct{ Body DeviceRoutes }
-	listDevicesOutput  struct {
+	deviceOutput                  struct{ Body Device }
+	deviceRoutesOutput            struct{ Body DeviceRoutes }
+	devicePostureAttributesOutput struct{ Body DevicePostureAttributes }
+	listDevicesOutput             struct {
 		Body struct {
 			Devices []Device `json:"devices" nullable:"false"`
 		}
@@ -188,6 +199,23 @@ func registerDevices(api huma.API, b Backend) {
 		}
 
 		return &deviceOutput{Body: deviceFromView(node, in.Fields == "all", b.Cfg.BaseDomain)}, nil
+	})
+
+	huma.Register(api, requireScope(huma.Operation{
+		OperationID: "getDevicePostureAttributes",
+		Method:      http.MethodGet,
+		Path:        "/api/v2/device/{id}/attributes",
+		Summary:     "Get device posture attributes",
+		Tags:        deviceTags,
+		Security:    security,
+		Errors:      []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound},
+	}, scope.DevicesPostureAttributesRead), func(ctx context.Context, in *deviceAttributesInput) (*devicePostureAttributesOutput, error) {
+		node, err := lookupNode(b, in.DeviceID)
+		if err != nil {
+			return nil, err
+		}
+
+		return &devicePostureAttributesOutput{Body: devicePostureAttributesFromView(node)}, nil
 	})
 
 	huma.Register(api, requireScope(huma.Operation{
@@ -594,6 +622,18 @@ func deviceFromView(view types.NodeView, allFields bool, baseDomain string) Devi
 	}
 
 	return d
+}
+
+func devicePostureAttributesFromView(view types.NodeView) DevicePostureAttributes {
+	attributes := make(map[string]any)
+	if addr := view.LastControlAddress(); addr.Valid() {
+		attributes["ip:publicAddress"] = addr.Get().String()
+	}
+
+	return DevicePostureAttributes{
+		Attributes: attributes,
+		Expiries:   make(map[string]time.Time),
+	}
 }
 
 func routesFromView(view types.NodeView) DeviceRoutes {

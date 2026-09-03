@@ -53,6 +53,9 @@ func (src *Node) Clone() *Node {
 	if dst.IPv6 != nil {
 		dst.IPv6 = new(*src.IPv6)
 	}
+	if dst.LastControlAddress != nil {
+		dst.LastControlAddress = new(*src.LastControlAddress)
+	}
 	if dst.UserID != nil {
 		dst.UserID = new(*src.UserID)
 	}
@@ -91,6 +94,7 @@ var _NodeCloneNeedsRegeneration = Node(struct {
 	Hostinfo           *tailcfg.Hostinfo
 	IPv4               *netip.Addr
 	IPv6               *netip.Addr
+	LastControlAddress *netip.Addr
 	Hostname           string
 	GivenName          string
 	UserID             *uint
