@@ -114,6 +114,7 @@ func TestAPIv2OAuthMatrix_Enforcement(t *testing.T) {
 
 	ops := []matrixOp{
 		{"getDevice", http.MethodGet, "/api/v2/device/1", scope.DevicesCoreRead, nil, false},
+		{"getDevicePostureAttributes", http.MethodGet, "/api/v2/device/1/attributes", scope.DevicesPostureAttributesRead, nil, false},
 		{"listDevices", http.MethodGet, "/api/v2/tailnet/-/devices", scope.DevicesCoreRead, nil, false},
 		{"deleteDevice", http.MethodDelete, "/api/v2/device/1", scope.DevicesCore, nil, false},
 		{"authorizeDevice", http.MethodPost, "/api/v2/device/1/authorized", scope.DevicesCore, map[string]any{}, false},

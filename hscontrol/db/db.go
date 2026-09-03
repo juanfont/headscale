@@ -358,6 +358,23 @@ WHERE auth_key_id IN (
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			{
+				// Persist the source IP most recently observed on an authenticated
+				// control connection from each node. Existing rows intentionally
+				// remain NULL until the node next connects.
+				ID: "202609040900-add-last-control-address",
+				Migrate: func(tx *gorm.DB) error {
+					if !tx.Migrator().HasColumn(&types.Node{}, "last_control_address") {
+						err := tx.Migrator().AddColumn(&types.Node{}, "LastControlAddress")
+						if err != nil {
+							return fmt.Errorf("adding last_control_address to nodes: %w", err)
+						}
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 

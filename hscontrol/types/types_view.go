@@ -205,6 +205,12 @@ func (v NodeView) IPv4() views.ValuePointer[netip.Addr]   { return views.ValuePo
 
 func (v NodeView) IPv6() views.ValuePointer[netip.Addr] { return views.ValuePointerOf(v.ж.IPv6) }
 
+// LastControlAddress is the source IP most recently observed on an
+// authenticated control connection from this node.
+func (v NodeView) LastControlAddress() views.ValuePointer[netip.Addr] {
+	return views.ValuePointerOf(v.ж.LastControlAddress)
+}
+
 // Hostname represents the name given by the Tailscale
 // client during registration
 func (v NodeView) Hostname() string { return v.ж.Hostname }
@@ -311,6 +317,7 @@ var _NodeViewNeedsRegeneration = Node(struct {
 	Hostinfo           *tailcfg.Hostinfo
 	IPv4               *netip.Addr
 	IPv6               *netip.Addr
+	LastControlAddress *netip.Addr
 	Hostname           string
 	GivenName          string
 	UserID             *uint
