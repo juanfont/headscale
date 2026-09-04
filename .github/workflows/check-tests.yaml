@@ -26,8 +26,9 @@ jobs:
               - '*.nix'
               - 'go.*'
               - '**/*.go'
-              - 'integration_test/'
+              - 'flake.lock'
               - 'config-example.yaml'
+              - '.github/workflows/gh-action-integration-generator.go'
       - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
         if: steps.changed-files.outputs.files == 'true'
       - uses: Mic92/hestia@fb239a2f72d4b6e26eec5425f289dea23b27a527 # v2.0.0
