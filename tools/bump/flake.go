@@ -119,9 +119,14 @@ func gateFlake(ctx context.Context, r *repo) error {
 	return err
 }
 
-// goVersion is the Go the devShell now provides, without the "go" prefix.
+// goVersion is the Go the devShell provides, without the "go" prefix.
+//
+// GOTOOLCHAIN=local is not optional here. Left to itself the go command
+// switches to whatever go.mod asks for and reports that instead, so a go.mod
+// that has outrun nixpkgs looks like a nixpkgs that has caught up, and the one
+// check that would have noticed compares a value against itself.
 func goVersion(ctx context.Context, r *repo) (string, error) {
-	out, err := r.nixRun(ctx, "go", "env", "GOVERSION")
+	out, err := r.nixRun(ctx, "env", "GOTOOLCHAIN=local", "go", "env", "GOVERSION")
 	if err != nil {
 		return "", err
 	}
