@@ -269,18 +269,54 @@ type State struct {
 	// registerLocks serialises registration per machine key so concurrent
 	// registrations of the same machine resolve to a single node instead of
 	// racing the find-then-create section and each creating their own.
-	// ponytail: entries are never pruned; bounded by distinct machine keys
-	// seen, add cleanup on node delete only if it ever matters.
-	registerLocks *xsync.Map[key.MachinePublic, *sync.Mutex]
+	registerLocks *xsync.Map[key.MachinePublic, *registrationLock]
+}
+
+type registrationLock struct {
+	mu sync.Mutex
+
+	// references counts callers holding or waiting for mu. It is updated only
+	// from registerLocks.Compute callbacks.
+	references int
 }
 
 // lockRegistration serialises registration for a single machine key and
-// returns the unlock function.
+// returns a release function. Per-machine entries exist only while callers are
+// holding or waiting for the lock.
 func (s *State) lockRegistration(machineKey key.MachinePublic) func() {
-	mu, _ := s.registerLocks.LoadOrStore(machineKey, &sync.Mutex{})
-	mu.Lock()
+	entry, _ := s.registerLocks.Compute(
+		machineKey,
+		func(current *registrationLock, loaded bool) (*registrationLock, xsync.ComputeOp) {
+			if !loaded {
+				current = &registrationLock{}
+			}
 
-	return mu.Unlock
+			current.references++
+
+			return current, xsync.UpdateOp
+		},
+	)
+	entry.mu.Lock()
+
+	return func() {
+		entry.mu.Unlock()
+
+		s.registerLocks.Compute(
+			machineKey,
+			func(current *registrationLock, loaded bool) (*registrationLock, xsync.ComputeOp) {
+				if !loaded {
+					return current, xsync.CancelOp
+				}
+
+				current.references--
+				if current.references == 0 {
+					return nil, xsync.DeleteOp
+				}
+
+				return current, xsync.UpdateOp
+			},
+		)
+	}
 }
 
 // NewState creates and initializes a new [State] instance, setting up the database,
@@ -362,7 +398,7 @@ func NewState(cfg *types.Config) (*State, error) {
 		pings:                 newPingTracker(),
 
 		sshCheckAuth:  make(map[sshCheckPair]time.Time),
-		registerLocks: xsync.NewMap[key.MachinePublic, *sync.Mutex](),
+		registerLocks: xsync.NewMap[key.MachinePublic, *registrationLock](),
 	}
 
 	// Surface nodes whose stored data would break map generation (e.g. an

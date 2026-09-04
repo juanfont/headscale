@@ -646,6 +646,27 @@ func TestConcurrentPreAuthKeyRegistrationSameMachineKey(t *testing.T) {
 
 	require.Equal(t, 1, s.ListNodes().Len(),
 		"concurrent registrations of one machine key must yield a single node")
+	require.Zero(t, s.registerLocks.Size(),
+		"registration lock entry must be released after the final caller")
+}
+
+func TestInvalidPreAuthKeyRegistrationsReleaseMachineLocks(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	for range 128 {
+		_, _, err := s.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+			Auth: &tailcfg.RegisterResponseAuth{AuthKey: "invalid-auth-key"},
+		}, key.NewMachine().Public())
+		require.Error(t, err)
+	}
+
+	require.Zero(t, s.registerLocks.Size(),
+		"failed registrations must not retain per-machine lock entries")
 }
 
 // TestUpdatePolicyManagerUsersUnchangedKeepsSnapshot ensures re-sending the
