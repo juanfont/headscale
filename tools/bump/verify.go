@@ -10,14 +10,14 @@ import (
 	"golang.org/x/mod/semver"
 )
 
-var errInvariants = errors.New("version pins are inconsistent")
+var errPinsDisagree = errors.New("version pins disagree")
 
-// finding is one violated invariant, phrased so the fix is obvious.
+// finding is one disagreement, phrased so the fix is obvious.
 type finding string
 
-// cmdVerify asserts the pins agree with each other and with their upstreams. It
-// is deliberately separate from run: the same checks catch a hand-written
-// commit that breaks a lockstep rule, not just a bad automated one.
+// cmdVerify checks that the pins agree with each other and with their
+// upstreams. It is deliberately separate from run: the same checks catch a
+// hand-written commit that breaks a lockstep rule, not just a bad automated one.
 func cmdVerify(ctx context.Context) error {
 	r, err := openRepo(ctx)
 	if err != nil {
@@ -41,7 +41,7 @@ func cmdVerify(ctx context.Context) error {
 		log.Printf("- %s", f)
 	}
 
-	return fmt.Errorf("%w: %d finding(s)", errInvariants, len(findings))
+	return fmt.Errorf("%w: %d finding(s)", errPinsDisagree, len(findings))
 }
 
 func verifyLockstep(ctx context.Context, r *repo) []finding {
