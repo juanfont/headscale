@@ -31,8 +31,8 @@
       overlays.default = _: prev:
         let
           pkgs = nixpkgs.legacyPackages.${prev.stdenv.hostPlatform.system};
-          # Tracks the newest Go in nixpkgs (currently 1.27) so a Go release
-          # bump is a flake.lock update, not a flake.nix edit.
+          # Tracks the newest Go in nixpkgs so a Go release bump is a
+          # flake.lock update, not a flake.nix edit.
           buildGo = pkgs.buildGoLatestModule;
           vendorHash = (builtins.fromJSON (builtins.readFile ./flakehashes.json)).vendor.sri;
         in
