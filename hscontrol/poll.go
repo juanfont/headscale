@@ -95,6 +95,15 @@ func (m *mapSession) resetKeepAlive() {
 func (m *mapSession) stopFromBatcher() {
 	if m.cancelChClosed.CompareAndSwap(false, true) {
 		close(m.cancelCh)
+
+		// A channel signal cannot interrupt a response write that is blocked on
+		// HTTP/2 flow control. Expire the stream's write deadline as well so a
+		// client that stopped reading cannot keep the map session, and therefore
+		// server shutdown, alive indefinitely.
+		err := http.NewResponseController(m.w).SetWriteDeadline(time.Now())
+		if err != nil && !errors.Is(err, http.ErrNotSupported) {
+			m.log.Debug().Caller().Err(err).Msg("failed to interrupt map response write")
+		}
 	}
 }
 
