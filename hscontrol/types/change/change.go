@@ -39,6 +39,11 @@ type Change struct {
 	PeerPatches  []*tailcfg.PeerChange
 	SendAllPeers bool
 
+	// DeletedNodes identifies nodes permanently removed from state. Unlike
+	// PeersRemoved, this is an internal lifecycle signal: the batcher uses it
+	// to tear down the deleted nodes' own map sessions.
+	DeletedNodes []types.NodeID
+
 	// RequiresRuntimePeerComputation indicates that peer visibility
 	// must be computed at runtime per-node. Used for policy changes
 	// where each node may have different peer visibility.
@@ -78,6 +83,7 @@ func (r Change) Merge(other Change) Change {
 
 	merged.PeersChanged = uniqueNodeIDs(slices.Concat(r.PeersChanged, other.PeersChanged))
 	merged.PeersRemoved = uniqueNodeIDs(slices.Concat(r.PeersRemoved, other.PeersRemoved))
+	merged.DeletedNodes = uniqueNodeIDs(slices.Concat(r.DeletedNodes, other.DeletedNodes))
 	merged.PeerPatches = slices.Concat(r.PeerPatches, other.PeerPatches)
 
 	// Preserve [Change.OriginNode] for self-update detection.
@@ -139,6 +145,7 @@ func (r Change) IsEmpty() bool {
 
 	return len(r.PeersChanged) == 0 &&
 		len(r.PeersRemoved) == 0 &&
+		len(r.DeletedNodes) == 0 &&
 		len(r.PeerPatches) == 0
 }
 
@@ -147,7 +154,8 @@ func (r Change) IsSelfOnly() bool {
 		return false
 	}
 
-	if r.SendAllPeers || len(r.PeersChanged) > 0 || len(r.PeersRemoved) > 0 || len(r.PeerPatches) > 0 {
+	if r.SendAllPeers || len(r.PeersChanged) > 0 || len(r.PeersRemoved) > 0 ||
+		len(r.DeletedNodes) > 0 || len(r.PeerPatches) > 0 {
 		return false
 	}
 
@@ -185,7 +193,8 @@ func (r Change) Type() string {
 		return "patch"
 	}
 
-	if len(r.PeersChanged) > 0 || len(r.PeersRemoved) > 0 || r.SendAllPeers {
+	if len(r.PeersChanged) > 0 || len(r.PeersRemoved) > 0 ||
+		len(r.DeletedNodes) > 0 || r.SendAllPeers {
 		return "peers"
 	}
 
@@ -438,7 +447,11 @@ func NodeAdded(id types.NodeID) Change {
 
 // NodeRemoved returns a [Change] for when a node is removed.
 func NodeRemoved(id types.NodeID) Change {
-	return PeersRemoved(id)
+	return Change{
+		Reason:       "node removed",
+		PeersRemoved: []types.NodeID{id},
+		DeletedNodes: []types.NodeID{id},
+	}
 }
 
 // KeyExpiryFor returns a [Change] for when a node's key expiry changes.

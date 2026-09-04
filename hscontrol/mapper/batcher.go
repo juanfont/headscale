@@ -589,20 +589,13 @@ func (b *Batcher) addToBatch(changes ...change.Change) {
 	// still has it registered. By cleaning up here, we prevent "node not found"
 	// errors when workers try to generate map responses for deleted nodes.
 	//
-	// Safety: [change.Change.PeersRemoved] is ONLY populated when nodes are actually
-	// deleted from the system (via [change.NodeRemoved] in [state.State.DeleteNode]).
-	// Policy changes that affect peer visibility do NOT use this field - they set
-	// RequiresRuntimePeerComputation=true and compute removed peers at runtime,
-	// putting them in [tailcfg.MapResponse.PeersRemoved] (a different struct).
-	// Therefore, this cleanup only removes nodes that are truly being deleted,
-	// not nodes that are still connected but have lost visibility of certain peers.
-	// This loop now also terminates the node's map sessions, so a future
-	// [change.Change.PeersRemoved] producer that is not a deletion would kill a
-	// live node's long poll, not merely evict its batcher entry.
+	// [change.Change.DeletedNodes] is an explicit internal lifecycle signal;
+	// [change.Change.PeersRemoved] remains only the protocol delta sent to clients
+	// when peers disappear from their view.
 	//
 	// See: https://github.com/juanfont/headscale/issues/2924
 	for _, ch := range changes {
-		for _, removedID := range ch.PeersRemoved {
+		for _, removedID := range ch.DeletedNodes {
 			if nc, existed := b.nodes.LoadAndDelete(removedID); existed {
 				b.totalNodes.Add(-1)
 
