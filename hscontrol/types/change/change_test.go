@@ -89,6 +89,11 @@ func TestChange_IsEmpty(t *testing.T) {
 			want:     false,
 		},
 		{
+			name:     "DeletedNodes not empty",
+			response: Change{DeletedNodes: []types.NodeID{1}},
+			want:     false,
+		},
+		{
 			name:     "PeerPatches not empty",
 			response: Change{PeerPatches: []*tailcfg.PeerChange{{}}},
 			want:     false,
@@ -147,6 +152,11 @@ func TestChange_IsSelfOnly(t *testing.T) {
 		{
 			name:     "self only with PeersRemoved is not self only",
 			response: Change{TargetNode: 1, IncludeSelf: true, PeersRemoved: []types.NodeID{2}},
+			want:     false,
+		},
+		{
+			name:     "self only with DeletedNodes is not self only",
+			response: Change{TargetNode: 1, IncludeSelf: true, DeletedNodes: []types.NodeID{2}},
 			want:     false,
 		},
 		{
@@ -217,6 +227,12 @@ func TestChange_Merge(t *testing.T) {
 			r1:   Change{PeersRemoved: []types.NodeID{1, 2}},
 			r2:   Change{PeersRemoved: []types.NodeID{2, 3}},
 			want: Change{PeersRemoved: []types.NodeID{1, 2, 3}},
+		},
+		{
+			name: "deleted nodes deduplicated",
+			r1:   Change{DeletedNodes: []types.NodeID{1, 2}},
+			r2:   Change{DeletedNodes: []types.NodeID{2, 3}},
+			want: Change{DeletedNodes: []types.NodeID{1, 2, 3}},
 		},
 		{
 			name: "peer patches concatenated",
@@ -469,6 +485,13 @@ func TestPeersRemoved(t *testing.T) {
 	r := PeersRemoved(1, 2, 3)
 	assert.Equal(t, "peers removed", r.Reason)
 	assert.Equal(t, []types.NodeID{1, 2, 3}, r.PeersRemoved)
+}
+
+func TestNodeRemoved(t *testing.T) {
+	r := NodeRemoved(42)
+	assert.Equal(t, "node removed", r.Reason)
+	assert.Equal(t, []types.NodeID{42}, r.PeersRemoved)
+	assert.Equal(t, []types.NodeID{42}, r.DeletedNodes)
 }
 
 func TestPeerPatched(t *testing.T) {

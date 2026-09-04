@@ -532,6 +532,8 @@ func TestDeleteNodeReturnsRemovalOnPolicyFailure(t *testing.T) {
 	require.ErrorIs(t, err, errInjectedPolicyNodeUpdate)
 	assert.Equal(t, []types.NodeID{nodeID}, c.PeersRemoved,
 		"a committed deletion must still notify peers and stop the node's session")
+	assert.Equal(t, []types.NodeID{nodeID}, c.DeletedNodes,
+		"a committed deletion must identify the session to stop")
 
 	_, ok = s.GetNodeByID(nodeID)
 	assert.False(t, ok, "a committed deletion must remove the in-memory node")
