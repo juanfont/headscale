@@ -326,7 +326,10 @@ func TestAPIV1NodeRegister(t *testing.T) {
 				MachineKey: mk.Public(),
 				Hostname:   "registered-node",
 			}
-			app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(regData))
+			require.NoError(t, app.state.SetAuthCacheEntry(
+				authID,
+				types.NewRegisterAuthRequest(regData),
+			))
 		}
 
 		assertParityIsolated(t, seed, http.MethodPost,
@@ -371,6 +374,43 @@ func TestAPIV1NodeBackfillIPs(t *testing.T) {
 }
 
 func TestAPIV1NodeDebugCreate(t *testing.T) {
+	t.Run("duplicate registration ID", func(t *testing.T) {
+		h := newAPIV1Harness(t)
+		h.app.state.CreateUserForTest("alice")
+
+		existingID := types.MustAuthID()
+		existing := types.NewRegisterAuthRequest(&types.RegistrationData{})
+		require.NoError(t, h.app.state.SetAuthCacheEntry(existingID, existing))
+
+		body := []byte(`{"user":"alice","key":"` + existingID.String() +
+			`","name":"dbgnode","routes":[]}`)
+		res := h.callHuma(http.MethodPost, "/api/v1/debug/node", body)
+		assertStatus(t, res, http.StatusConflict)
+
+		got, ok := h.app.state.GetAuthCacheEntry(existingID)
+		require.True(t, ok)
+		require.Same(t, existing, got)
+	})
+
+	t.Run("full registration cache", func(t *testing.T) {
+		app := createTestAppWithRegisterCacheMax(t, 1)
+		app.state.CreateUserForTest("alice")
+		h := &apiV1Harness{app: app, huma: newHumaTestHandler(app)}
+
+		existingID := types.MustAuthID()
+		existing := types.NewRegisterAuthRequest(&types.RegistrationData{})
+		require.NoError(t, app.state.SetAuthCacheEntry(existingID, existing))
+
+		body := []byte(`{"user":"alice","key":"` + types.MustAuthID().String() +
+			`","name":"dbgnode","routes":[]}`)
+		res := h.callHuma(http.MethodPost, "/api/v1/debug/node", body)
+		assertStatus(t, res, http.StatusServiceUnavailable)
+
+		got, ok := app.state.GetAuthCacheEntry(existingID)
+		require.True(t, ok)
+		require.Same(t, existing, got)
+	})
+
 	t.Run("oversized name", func(t *testing.T) {
 		h := newAPIV1Harness(t)
 

@@ -541,10 +541,17 @@ func (ns *noiseServer) sshActionHoldAndDelegate(
 		)
 	}
 
-	ns.headscale.state.SetAuthCacheEntry(
+	err = ns.headscale.state.SetAuthCacheEntry(
 		authID,
 		types.NewSSHCheckAuthRequest(srcNodeID, dstNodeID),
 	)
+	if err != nil {
+		return nil, NewHTTPError(
+			http.StatusServiceUnavailable,
+			"too many pending SSH checks; try again later",
+			err,
+		)
+	}
 
 	authURL := ns.headscale.authProvider.AuthURL(authID)
 

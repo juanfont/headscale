@@ -77,7 +77,7 @@ func TestTaggedReauthKeepsNilExpiry(t *testing.T) {
 	}
 
 	authID := types.MustAuthID()
-	s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(regData))
+	require.NoError(t, s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(regData)))
 
 	finalNode, _, err := s.HandleNodeFromAuthPath(
 		authID,
@@ -403,7 +403,7 @@ func TestAuthPathRejectsTaggedAndUserCoexistence(t *testing.T) {
 		Hostinfo:   &tailcfg.Hostinfo{Hostname: "multi"},
 	}
 	authID := types.MustAuthID()
-	s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(regData))
+	require.NoError(t, s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(regData)))
 
 	_, _, err = s.HandleNodeFromAuthPath(authID, types.UserID(u3.ID), nil, util.RegisterMethodOIDC)
 	require.ErrorIs(t, err, ErrAmbiguousNodeOwnership)
@@ -514,7 +514,7 @@ func (n seededTaggedNode) reauth(t *testing.T, authUser *types.User, requestTags
 	rd.Expiry = clientExpiry
 
 	authID := types.MustAuthID()
-	n.s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&rd))
+	require.NoError(t, n.s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&rd)))
 
 	node, _, err := n.s.HandleNodeFromAuthPath(
 		authID,
@@ -944,7 +944,7 @@ func TestIssue3371_TaggedNodeInteractiveReloginAfterLogout(t *testing.T) {
 		},
 	}
 	authID := types.MustAuthID()
-	s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(regData))
+	require.NoError(t, s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(regData)))
 
 	relogged, _, err := s.HandleNodeFromAuthPath(
 		authID, types.UserID(user.ID), nil, util.RegisterMethodOIDC,

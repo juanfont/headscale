@@ -374,11 +374,11 @@ func (b *oidcBrowser) pendingNode(t *testing.T) (types.AuthID, string) {
 	t.Helper()
 
 	authID := types.MustAuthID()
-	b.app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+	require.NoError(t, b.app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
 		MachineKey: key.NewMachine().Public(),
 		NodeKey:    key.NewNode().Public(),
 		Hostname:   "reload-victim",
-	}))
+	})))
 
 	return authID, b.publicURL + "/register/" + authID.String()
 }

@@ -847,7 +847,7 @@ func TestExpiryDuringPersonalToTaggedConversion(t *testing.T) {
 		},
 		Expiry: &clientExpiry,
 	})
-	app.state.SetAuthCacheEntry(registrationID1, regEntry1)
+	require.NoError(t, app.state.SetAuthCacheEntry(registrationID1, regEntry1))
 
 	node, _, err := app.state.HandleNodeFromAuthPath(
 		registrationID1, types.UserID(user.ID), nil, "webauth",
@@ -869,7 +869,7 @@ func TestExpiryDuringPersonalToTaggedConversion(t *testing.T) {
 		},
 		Expiry: &clientExpiry, // Client still sends expiry
 	})
-	app.state.SetAuthCacheEntry(registrationID2, regEntry2)
+	require.NoError(t, app.state.SetAuthCacheEntry(registrationID2, regEntry2))
 
 	nodeAfter, _, err := app.state.HandleNodeFromAuthPath(
 		registrationID2, types.UserID(user.ID), nil, "webauth",
@@ -918,7 +918,7 @@ func TestExpiryDuringTaggedToPersonalConversion(t *testing.T) {
 			RequestTags: []string{"tag:server"}, // Tagged node
 		},
 	})
-	app.state.SetAuthCacheEntry(registrationID1, regEntry1)
+	require.NoError(t, app.state.SetAuthCacheEntry(registrationID1, regEntry1))
 
 	node, _, err := app.state.HandleNodeFromAuthPath(
 		registrationID1, types.UserID(user.ID), nil, "webauth",
@@ -941,7 +941,7 @@ func TestExpiryDuringTaggedToPersonalConversion(t *testing.T) {
 		},
 		Expiry: &clientExpiry, // Client requests expiry
 	})
-	app.state.SetAuthCacheEntry(registrationID2, regEntry2)
+	require.NoError(t, app.state.SetAuthCacheEntry(registrationID2, regEntry2))
 
 	nodeAfter, _, err := app.state.HandleNodeFromAuthPath(
 		registrationID2, types.UserID(user.ID), nil, "webauth",

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/mapper"
+	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -686,7 +687,11 @@ func TestAuthenticationFlows(t *testing.T) {
 					MachineKey: machineKey1.Public(),
 					Hostname:   "followup-success-node",
 				})
-				app.state.SetAuthCacheEntry(regID, nodeToRegister)
+
+				err = app.state.SetAuthCacheEntry(regID, nodeToRegister)
+				if err != nil {
+					return "", err
+				}
 
 				// Simulate successful registration
 				// [Headscale.handleRegister] will receive the value when it starts waiting
@@ -733,7 +738,11 @@ func TestAuthenticationFlows(t *testing.T) {
 				nodeToRegister := types.NewRegisterAuthRequest(&types.RegistrationData{
 					Hostname: "followup-timeout-node",
 				})
-				app.state.SetAuthCacheEntry(regID, nodeToRegister)
+
+				err = app.state.SetAuthCacheEntry(regID, nodeToRegister)
+				if err != nil {
+					return "", err
+				}
 				// Don't call FinishRegistration - will timeout
 
 				return fmt.Sprintf("http://localhost:8080/register/%s", regID), nil
@@ -1354,7 +1363,11 @@ func TestAuthenticationFlows(t *testing.T) {
 					MachineKey: machineKey1.Public(),
 					Hostname:   "nil-response-node",
 				})
-				app.state.SetAuthCacheEntry(regID, nodeToRegister)
+
+				err = app.state.SetAuthCacheEntry(regID, nodeToRegister)
+				if err != nil {
+					return "", err
+				}
 
 				// Simulate registration that returns empty NodeView (cache expired during auth)
 				go func() {
@@ -3242,6 +3255,12 @@ func TestWebFlowReauthDifferentUser(t *testing.T) {
 func createTestApp(t *testing.T) *Headscale {
 	t.Helper()
 
+	return createTestAppWithRegisterCacheMax(t, 0)
+}
+
+func createTestAppWithRegisterCacheMax(t *testing.T, maxEntries int) *Headscale {
+	t.Helper()
+
 	tmpDir := t.TempDir()
 
 	cfg := types.Config{
@@ -3258,8 +3277,9 @@ func createTestApp(t *testing.T) *Headscale {
 			Mode: types.PolicyModeDB,
 		},
 		Tuning: types.Tuning{
-			BatchChangeDelay: 100 * time.Millisecond,
-			BatcherWorkers:   1,
+			BatchChangeDelay:        100 * time.Millisecond,
+			BatcherWorkers:          1,
+			RegisterCacheMaxEntries: maxEntries,
 		},
 	}
 
@@ -3278,6 +3298,36 @@ func createTestApp(t *testing.T) *Headscale {
 	})
 
 	return app
+}
+
+func TestInteractiveRegistrationPreservesExistingSessionAtCapacity(t *testing.T) {
+	app := createTestAppWithRegisterCacheMax(t, 1)
+	existingID := types.MustAuthID()
+	existing := types.NewRegisterAuthRequest(&types.RegistrationData{
+		MachineKey: key.NewMachine().Public(),
+		NodeKey:    key.NewNode().Public(),
+		Hostname:   "existing",
+	})
+	require.NoError(t, app.state.SetAuthCacheEntry(existingID, existing))
+
+	response, err := app.handleRegisterInteractive(tailcfg.RegisterRequest{
+		NodeKey: key.NewNode().Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "new-registration",
+		},
+	}, key.NewMachine().Public())
+
+	require.Error(t, err)
+	require.Nil(t, response)
+	require.ErrorIs(t, err, state.ErrPendingAuthCapacity)
+
+	var httpErr HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	require.Equal(t, http.StatusServiceUnavailable, httpErr.Code)
+
+	got, ok := app.state.GetAuthCacheEntry(existingID)
+	require.True(t, ok)
+	require.Same(t, existing, got)
 }
 
 // TestGitHubIssue2830_NodeRestartWithUsedPreAuthKey tests the scenario reported in
@@ -3702,7 +3752,7 @@ func TestWebAuthRejectsUnauthorizedRequestTags(t *testing.T) {
 			RequestTags: []string{"tag:unauthorized"}, // This tag is not in policy
 		},
 	})
-	app.state.SetAuthCacheEntry(registrationID, regEntry)
+	require.NoError(t, app.state.SetAuthCacheEntry(registrationID, regEntry))
 
 	// Complete the web auth - should fail because tag is unauthorized
 	_, _, err := app.state.HandleNodeFromAuthPath(
@@ -3765,7 +3815,7 @@ func TestWebAuthReauthWithEmptyTagsRemovesAllTags(t *testing.T) {
 			RequestTags: []string{"tag:valid-owned", "tag:second"},
 		},
 	})
-	app.state.SetAuthCacheEntry(registrationID1, regEntry1)
+	require.NoError(t, app.state.SetAuthCacheEntry(registrationID1, regEntry1))
 
 	// Complete initial registration with tags
 	node, _, err := app.state.HandleNodeFromAuthPath(
@@ -3792,7 +3842,7 @@ func TestWebAuthReauthWithEmptyTagsRemovesAllTags(t *testing.T) {
 			RequestTags: []string{}, // EMPTY - should untag
 		},
 	})
-	app.state.SetAuthCacheEntry(registrationID2, regEntry2)
+	require.NoError(t, app.state.SetAuthCacheEntry(registrationID2, regEntry2))
 
 	// Complete reauth with empty tags
 	nodeAfterReauth, _, err := app.state.HandleNodeFromAuthPath(
@@ -3878,7 +3928,7 @@ func TestAuthKeyTaggedToUserOwnedViaReauth(t *testing.T) {
 			RequestTags: []string{}, // EMPTY - should untag
 		},
 	})
-	app.state.SetAuthCacheEntry(registrationID, regEntry)
+	require.NoError(t, app.state.SetAuthCacheEntry(registrationID, regEntry))
 
 	// Complete reauth with empty tags
 	nodeAfterReauth, _, err := app.state.HandleNodeFromAuthPath(
@@ -4077,7 +4127,7 @@ func TestTaggedNodeWithoutUserToDifferentUser(t *testing.T) {
 			RequestTags: []string{}, // Empty - transition to user-owned
 		},
 	})
-	app.state.SetAuthCacheEntry(registrationID, regEntry)
+	require.NoError(t, app.state.SetAuthCacheEntry(registrationID, regEntry))
 
 	// This should NOT panic - before the fix, this would panic with:
 	// panic: runtime error: invalid memory address or nil pointer dereference
@@ -4209,7 +4259,7 @@ func TestHandleNodeFromAuthPath_OldUserNil_NoPanic(t *testing.T) {
 			Hostname: "authpath-orphan-newuser",
 		},
 	})
-	app.state.SetAuthCacheEntry(authID, regEntry)
+	require.NoError(t, app.state.SetAuthCacheEntry(authID, regEntry))
 
 	node, _, err := app.state.HandleNodeFromAuthPath(
 		authID,
@@ -4252,7 +4302,7 @@ func TestWaitForFollowupMachineKeyMismatch(t *testing.T) {
 			NodeKey:    key.NewNode().Public(),
 			Hostname:   hostname,
 		})
-		app.state.SetAuthCacheEntry(authID, regEntry)
+		require.NoError(t, app.state.SetAuthCacheEntry(authID, regEntry))
 
 		user := app.state.CreateUserForTest(hostname + "-user")
 		node := app.state.CreateNodeForTest(user, hostname)
@@ -4288,11 +4338,11 @@ func TestWaitForFollowupMachineKeyMismatch(t *testing.T) {
 
 	t.Run("pending registration rejects mismatched machine key before waiting", func(t *testing.T) {
 		authID := types.MustAuthID()
-		app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+		require.NoError(t, app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
 			MachineKey: victimMachineKey.Public(),
 			NodeKey:    key.NewNode().Public(),
 			Hostname:   "pending-mismatch",
-		}))
+		})))
 
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
@@ -4308,10 +4358,10 @@ func TestWaitForFollowupMachineKeyMismatch(t *testing.T) {
 
 	t.Run("SSH auth session is rejected before waiting", func(t *testing.T) {
 		authID := types.MustAuthID()
-		app.state.SetAuthCacheEntry(
+		require.NoError(t, app.state.SetAuthCacheEntry(
 			authID,
 			types.NewSSHCheckAuthRequest(7, 11),
-		)
+		))
 
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
@@ -4375,7 +4425,7 @@ func TestFollowupWaitPrefersCompletedAuthOverExpiredContext(t *testing.T) {
 			MachineKey: machineKey,
 			Hostname:   "followup-race-node",
 		})
-		app.state.SetAuthCacheEntry(regID, authReq)
+		require.NoError(t, app.state.SetAuthCacheEntry(regID, authReq))
 
 		// Registration completes BEFORE we wait: verdict is buffered.
 		user := app.state.CreateUserForTest(fmt.Sprintf("followup-race-user-%d", i))

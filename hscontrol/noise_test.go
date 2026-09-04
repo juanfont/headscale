@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog"
@@ -328,6 +329,45 @@ func TestSSHActionHandler_RejectsUnknownDst(t *testing.T) {
 		"unknown dst node id must be rejected with 404")
 }
 
+func TestSSHActionAdmissionPreservesExistingSessionAtCapacity(t *testing.T) {
+	app := createTestApp(t)
+	firstID := types.MustAuthID()
+	first := types.NewSSHCheckAuthRequest(1, 2)
+	require.NoError(t, app.state.SetAuthCacheEntry(firstID, first))
+
+	for idx := 1; ; idx++ {
+		err := app.state.SetAuthCacheEntry(
+			types.MustAuthID(),
+			types.NewSSHCheckAuthRequest(1, 2),
+		)
+		if errors.Is(err, state.ErrPendingAuthCapacity) {
+			break
+		}
+
+		require.NoError(t, err)
+		require.Less(t, idx, 2048, "SSH admission must have a finite default capacity")
+	}
+
+	ns := &noiseServer{headscale: app}
+	action, err := ns.sshActionHoldAndDelegate(
+		zerolog.Nop(),
+		&tailcfg.SSHAction{},
+		1,
+		2,
+	)
+	require.Error(t, err)
+	require.Nil(t, action)
+	require.ErrorIs(t, err, state.ErrPendingAuthCapacity)
+
+	var httpErr HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	require.Equal(t, http.StatusServiceUnavailable, httpErr.Code)
+
+	got, ok := app.state.GetAuthCacheEntry(firstID)
+	require.True(t, ok)
+	require.Same(t, first, got)
+}
+
 // TestSSHActionFollowUp_RejectsBindingMismatch verifies that the
 // follow-up handler refuses to honour an auth_id whose cached binding
 // does not match the (src, dst) pair on the request URL. Without this
@@ -346,10 +386,10 @@ func TestSSHActionFollowUp_RejectsBindingMismatch(t *testing.T) {
 
 	// Mint an SSH-check auth request bound to (srcCached, dstCached).
 	authID := types.MustAuthID()
-	app.state.SetAuthCacheEntry(
+	require.NoError(t, app.state.SetAuthCacheEntry(
 		authID,
 		types.NewSSHCheckAuthRequest(srcCached.ID, dstCached.ID),
-	)
+	))
 
 	// Build a follow-up that claims to be for (srcOther, dstOther) but
 	// reuses the bound auth_id. The Noise machineKey matches dstOther so
@@ -389,7 +429,7 @@ func TestSSHActionFollowUp_RejectionIsStableAcrossRetries(t *testing.T) {
 	authID := types.MustAuthID()
 	auth := types.NewSSHCheckAuthRequest(src.ID, dst.ID)
 	auth.FinishAuth(types.AuthVerdict{Err: errSSHAuthenticationRejected})
-	app.state.SetAuthCacheEntry(authID, auth)
+	require.NoError(t, app.state.SetAuthCacheEntry(authID, auth))
 
 	ns := &noiseServer{headscale: app, machineKey: dst.MachineKey}
 	for range 2 {

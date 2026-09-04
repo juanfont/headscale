@@ -401,8 +401,16 @@ func (h *Headscale) reqToNewRegisterResponse(
 
 	authRegReq := types.NewRegisterAuthRequest(regData)
 
+	err = h.state.SetAuthCacheEntry(newAuthID, authRegReq)
+	if err != nil {
+		return nil, NewHTTPError(
+			http.StatusServiceUnavailable,
+			"too many pending registrations; try again later",
+			err,
+		)
+	}
+
 	log.Info().Msgf("new followup node registration using auth id: %s", newAuthID)
-	h.state.SetAuthCacheEntry(newAuthID, authRegReq)
 
 	return &tailcfg.RegisterResponse{
 		AuthURL: h.authProvider.RegisterURL(newAuthID),
@@ -618,7 +626,14 @@ func (h *Headscale) handleRegisterInteractive(
 
 	authRegReq := types.NewRegisterAuthRequest(regData)
 
-	h.state.SetAuthCacheEntry(authID, authRegReq)
+	err = h.state.SetAuthCacheEntry(authID, authRegReq)
+	if err != nil {
+		return nil, NewHTTPError(
+			http.StatusServiceUnavailable,
+			"too many pending registrations; try again later",
+			err,
+		)
+	}
 
 	log.Info().Msgf("starting node registration using auth id: %s", authID)
 

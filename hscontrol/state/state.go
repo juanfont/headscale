@@ -50,11 +50,15 @@ const (
 	registerCacheExpiration = time.Minute * 15
 
 	// defaultRegisterCacheMaxEntries is the default upper bound on the number
-	// of pending registration entries the auth cache will hold. With a 15-minute
+	// of pending registration entries the registration cache will hold. With a 15-minute
 	// TTL and a stripped-down RegistrationData payload (~200 bytes per entry),
 	// 1024 entries cap the worst-case cache footprint at well under 1 MiB even
 	// under sustained unauthenticated cache-fill attempts.
 	defaultRegisterCacheMaxEntries = 1024
+
+	// defaultSSHCheckCacheMaxEntries bounds pending SSH check sessions
+	// independently from node registrations.
+	defaultSSHCheckCacheMaxEntries = 1024
 
 	// defaultNodeStoreBatchSize is the default number of write operations to batch
 	// before rebuilding the in-memory node snapshot.
@@ -116,7 +120,15 @@ var nodeUpdateColumns = []string{
 // ErrRegistrationExpired is returned when a registration has expired.
 var ErrRegistrationExpired = errors.New("registration expired")
 
+// ErrPendingAuthCapacity is returned when a pending authentication pool is full.
+var ErrPendingAuthCapacity = errors.New("pending authentication capacity reached")
+
 var errAuthRequestNotRegistration = errors.New("auth request is not a registration")
+
+var errAuthRequestTypeInvalid = errors.New("auth request has no supported payload")
+
+// ErrAuthRequestIDInUse is returned when an authentication request ID is active.
+var ErrAuthRequestIDInUse = errors.New("authentication request ID already in use")
 
 // ErrNodeKeyInUse is returned when a registration or re-auth claims a NodeKey
 // already bound to a different machine, enforcing the 1:1 NodeKey<->MachineKey
@@ -135,6 +147,68 @@ var ErrAmbiguousNodeOwnership = errors.New("machine key maps to ambiguous node o
 type sshCheckPair struct {
 	Src types.NodeID
 	Dst types.NodeID
+}
+
+// pendingAuthCache retains live requests until completion or expiration. The
+// underlying TTL cache is intentionally unlimited: admission rejects new keys
+// at the configured limit so live sessions are never displaced by size.
+type pendingAuthCache struct {
+	entries    *expirable.LRU[types.AuthID, *types.AuthRequest]
+	maxEntries int
+	expiration time.Duration
+	admitMu    sync.Mutex
+}
+
+func newPendingAuthCache(maxEntries int, expiration time.Duration) *pendingAuthCache {
+	return &pendingAuthCache{
+		entries: expirable.NewLRU[types.AuthID, *types.AuthRequest](
+			0,
+			func(_ types.AuthID, request *types.AuthRequest) {
+				request.FinishAuth(types.AuthVerdict{Err: ErrRegistrationExpired})
+			},
+			expiration,
+		),
+		maxEntries: maxEntries,
+		expiration: expiration,
+	}
+}
+
+func (c *pendingAuthCache) add(id types.AuthID, request *types.AuthRequest) bool {
+	c.admitMu.Lock()
+	defer c.admitMu.Unlock()
+
+	if _, ok := c.entries.Peek(id); ok {
+		return false
+	}
+
+	if c.entries.Len() >= c.maxEntries {
+		if !c.removeOldestCompleted() {
+			return false
+		}
+	}
+
+	c.entries.Add(id, request)
+
+	return true
+}
+
+func (c *pendingAuthCache) removeOldestCompleted() bool {
+	for _, id := range c.entries.Keys() {
+		request, ok := c.entries.Peek(id)
+		if !ok {
+			c.entries.Remove(id)
+
+			return c.entries.Len() < c.maxEntries
+		}
+
+		if _, complete := request.AuthResult(); complete {
+			c.entries.Remove(id)
+
+			return c.entries.Len() < c.maxEntries
+		}
+	}
+
+	return false
 }
 
 // State manages Headscale's core state, coordinating between database, policy management,
@@ -159,12 +233,11 @@ type State struct {
 	// polMan handles policy evaluation and management
 	polMan policy.PolicyManager
 
-	// authCache holds any pending authentication requests from either auth
-	// type (Web and OIDC). It is a bounded LRU keyed by AuthID; oldest
-	// entries are evicted once the size cap is reached, and entries that
-	// time out have their auth verdict resolved with ErrRegistrationExpired
-	// via the eviction callback so any waiting goroutines wake.
-	authCache *expirable.LRU[types.AuthID, *types.AuthRequest]
+	// Pending node registrations and SSH checks have independent admission
+	// pools so one request class cannot consume the other's capacity.
+	registrationAuthCache *pendingAuthCache
+	sshCheckAuthCache     *pendingAuthCache
+	authAdmissionMu       sync.Mutex
 
 	// pings tracks pending ping requests and their response channels.
 	pings *pingTracker
@@ -220,13 +293,8 @@ func NewState(cfg *types.Config) (*State, error) {
 		cacheMaxEntries = cfg.Tuning.RegisterCacheMaxEntries
 	}
 
-	authCache := expirable.NewLRU[types.AuthID, *types.AuthRequest](
-		cacheMaxEntries,
-		func(id types.AuthID, rn *types.AuthRequest) {
-			rn.FinishAuth(types.AuthVerdict{Err: ErrRegistrationExpired})
-		},
-		cacheExpiration,
-	)
+	registrationAuthCache := newPendingAuthCache(cacheMaxEntries, cacheExpiration)
+	sshCheckAuthCache := newPendingAuthCache(defaultSSHCheckCacheMaxEntries, cacheExpiration)
 
 	db, err := hsdb.NewHeadscaleDatabase(cfg)
 	if err != nil {
@@ -285,12 +353,13 @@ func NewState(cfg *types.Config) (*State, error) {
 	s := &State{
 		cfg: cfg,
 
-		db:        db,
-		ipAlloc:   ipAlloc,
-		polMan:    polMan,
-		authCache: authCache,
-		nodeStore: nodeStore,
-		pings:     newPingTracker(),
+		db:                    db,
+		ipAlloc:               ipAlloc,
+		polMan:                polMan,
+		registrationAuthCache: registrationAuthCache,
+		sshCheckAuthCache:     sshCheckAuthCache,
+		nodeStore:             nodeStore,
+		pings:                 newPingTracker(),
 
 		sshCheckAuth:  make(map[sshCheckPair]time.Time),
 		registerLocks: xsync.NewMap[key.MachinePublic, *sync.Mutex](),
@@ -1628,20 +1697,52 @@ func (s *State) DeleteExpiredAccessTokens(cutoff time.Time) (int64, error) {
 
 // GetAuthCacheEntry retrieves a pending auth request from the cache.
 func (s *State) GetAuthCacheEntry(id types.AuthID) (*types.AuthRequest, bool) {
-	return s.authCache.Get(id)
+	if request, ok := s.registrationAuthCache.entries.Get(id); ok {
+		return request, true
+	}
+
+	return s.sshCheckAuthCache.entries.Get(id)
 }
 
-// SetAuthCacheEntry stores a pending auth request in the cache.
-func (s *State) SetAuthCacheEntry(id types.AuthID, entry *types.AuthRequest) {
-	s.authCache.Add(id, entry)
+// SetAuthCacheEntry stores a pending auth request when its request-class pool
+// has capacity. Existing entries are preserved when the pool is full.
+func (s *State) SetAuthCacheEntry(id types.AuthID, entry *types.AuthRequest) error {
+	s.authAdmissionMu.Lock()
+	defer s.authAdmissionMu.Unlock()
+
+	if _, ok := s.registrationAuthCache.entries.Peek(id); ok {
+		return ErrAuthRequestIDInUse
+	}
+
+	if _, ok := s.sshCheckAuthCache.entries.Peek(id); ok {
+		return ErrAuthRequestIDInUse
+	}
+
+	var cache *pendingAuthCache
+
+	switch {
+	case entry != nil && entry.IsRegistration():
+		cache = s.registrationAuthCache
+	case entry != nil:
+		cache = s.sshCheckAuthCache
+	default:
+		return errAuthRequestTypeInvalid
+	}
+
+	if !cache.add(id, entry) {
+		return ErrPendingAuthCapacity
+	}
+
+	return nil
 }
 
 // DeleteAuthCacheEntryForTest drops a pending auth request from the cache,
 // exposed for testing so a test can reproduce a session that was lost
-// (expired, evicted, or dropped on a control-plane restart) without faking an
+// (expired or dropped on a control-plane restart) without faking an
 // auth_id.
 func (s *State) DeleteAuthCacheEntryForTest(id types.AuthID) {
-	s.authCache.Remove(id)
+	s.registrationAuthCache.entries.Remove(id)
+	s.sshCheckAuthCache.entries.Remove(id)
 }
 
 // SetLastSSHAuth records a successful SSH check authentication
@@ -1726,6 +1827,7 @@ type authNodeUpdateParams struct {
 // applyAuthNodeUpdate applies common update logic for re-authenticating or converting
 // an existing node. It updates the node in [NodeStore], processes RequestTags, and
 // persists changes to the database.
+//
 //nolint:gocyclo // validation and mutation stages must remain in a fixed order
 func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView, error) {
 	regData := params.RegData
@@ -2396,7 +2498,7 @@ func (s *State) HandleNodeFromAuthPath(
 	regEntry.FinishAuth(types.AuthVerdict{Node: finalNode})
 
 	// Remove from registration cache
-	s.authCache.Remove(authID)
+	s.registrationAuthCache.entries.Remove(authID)
 
 	// Update policy managers
 	usersChange, err := s.updatePolicyManagerUsers()

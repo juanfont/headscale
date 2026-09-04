@@ -568,7 +568,11 @@ func registerNodeAdminOps(api huma.API, b Backend) {
 		}
 
 		authRegReq := types.NewRegisterAuthRequest(regData)
-		b.State.SetAuthCacheEntry(registrationID, authRegReq)
+
+		err = b.State.SetAuthCacheEntry(registrationID, authRegReq)
+		if err != nil {
+			return nil, mapError("debug creating node", err)
+		}
 
 		// Synthetic echo; the real node is created later via the auth path
 		// from the cached registration data.
