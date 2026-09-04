@@ -80,10 +80,11 @@ func allAreas() []area {
 		},
 	)
 	areas = append(areas, imageAreas()...)
+	areas = append(areas, actionAreas()...)
 
 	return append(areas, area{
 		Name:    "generate",
-		Needs:   []string{"gomod"},
+		Needs:   []string{"gomod", "tools:oapi-codegen"},
 		Apply:   applyGenerate,
 		Gate:    gateGenerate,
 		Message: func(change) string { return "all: regenerate generated files" },

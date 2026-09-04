@@ -89,3 +89,43 @@ func latestRelease(ctx context.Context, owner, name string) (string, error) {
 
 	return release.TagName, nil
 }
+
+// commitOfRef resolves a tag or branch to the commit it points at, following
+// annotated tags the way an action pin must.
+func commitOfRef(ctx context.Context, owner, name, ref string) (string, error) {
+	var commit struct {
+		SHA string `json:"sha"`
+	}
+
+	err := githubJSON(ctx, fmt.Sprintf("/repos/%s/%s/commits/%s", owner, name, ref), &commit)
+	if err != nil {
+		return "", err
+	}
+
+	if commit.SHA == "" {
+		return "", fmt.Errorf("%w: %s/%s@%s", errNoRelease, owner, name, ref)
+	}
+
+	return commit.SHA, nil
+}
+
+// currentSlug is the repository the run is acting on. It defaults to whatever
+// the job is running in rather than a constant: a hardcoded upstream slug let a
+// fork push its branch and then try to open the pull request on someone else's
+// repository, which fails at the very last step of a long run.
+func currentSlug(ctx context.Context, r *repo, override string) (string, error) {
+	if override != "" {
+		return override, nil
+	}
+
+	if env := os.Getenv("GITHUB_REPOSITORY"); env != "" {
+		return env, nil
+	}
+
+	out, err := r.run(ctx, "gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner")
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(out), nil
+}
