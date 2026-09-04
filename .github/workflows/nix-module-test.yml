@@ -32,6 +32,7 @@ jobs:
               - 'nix/**'
               - 'flake.nix'
               - 'flake.lock'
+              - 'flakehashes.json'
             go:
               - 'go.*'
               - '**/*.go'
