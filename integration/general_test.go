@@ -1538,46 +1538,49 @@ func TestNodeDeletionEndsLongPoll(t *testing.T) {
 			"client %s must be Running before the deletion", client.Hostname())
 	}
 
-	deleted := allClients[0]
-
-	var deletedID uint64
+	var nodeIDsByName map[string]uint64
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		nodes, err := headscale.ListNodes()
-		assert.NoError(ct, err)
-		assert.Len(ct, nodes, len(allClients))
+		if !assert.NoError(ct, err) || !assert.Len(ct, nodes, len(allClients)) {
+			return
+		}
+
+		ids := make(map[string]uint64, len(nodes))
 
 		for _, node := range nodes {
-			if node.Name == deleted.Hostname() {
-				deletedID = mustParseID(node.Id)
+			ids[node.Name] = mustParseID(node.Id)
+		}
+
+		for _, client := range allClients {
+			if !assert.Contains(ct, ids, client.Hostname()) {
+				return
 			}
 		}
 
-		assert.NotZero(ct, deletedID)
+		nodeIDsByName = ids
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "node list should name every client before deletion")
+	require.Len(t, nodeIDsByName, len(allClients))
 
-	require.NoError(t, headscale.DeleteNode(deletedID))
+	for i, deleted := range allClients {
+		deletedID, ok := nodeIDsByName[deleted.Hostname()]
+		require.True(t, ok, "node list must contain client %s", deleted.Hostname())
+		require.NoError(t, headscale.DeleteNode(deletedID))
 
-	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-		status, err := deleted.Status()
-		assert.NoError(ct, err)
+		require.NoError(t, deleted.WaitForNeedsLogin(integrationutil.StatusReadyTimeout),
+			"deleted client %s must stop polling and ask for a new login", deleted.Hostname())
 
-		if status != nil {
-			assert.Equal(ct, "NeedsLogin", status.BackendState)
-		}
-	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll,
-		"deleted node must stop polling and ask for a new login")
+		for _, client := range allClients[i+1:] {
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				status, err := client.Status()
+				if !assert.NoError(ct, err) || !assert.NotNil(ct, status) {
+					return
+				}
 
-	for _, client := range allClients[1:] {
-		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-			status, err := client.Status()
-			assert.NoError(ct, err)
-
-			if status != nil {
 				assert.Equal(ct, "Running", status.BackendState)
-			}
-		}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll,
-			"deleting a peer must not disturb the remaining clients")
+			}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll,
+				"deleting a peer must not disturb client %s", client.Hostname())
+		}
 	}
 }
 
