@@ -237,13 +237,52 @@ func TestUserCommand(t *testing.T) {
 		}
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 
+	_, err = headscale.Execute(
+		[]string{
+			"headscale",
+			"users",
+			"rename",
+			"--output=json",
+			"--name=newname",
+			"--new-name=renamedbyname",
+		},
+	)
+	require.NoError(t, err)
+
+	var listAfterRenameByName []*v1.User
+
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		err := executeAndUnmarshal(headscale,
+			[]string{
+				"headscale",
+				"users",
+				"list",
+				"--output",
+				"json",
+			},
+			&listAfterRenameByName,
+		)
+		assert.NoError(ct, err)
+
+		if !assert.Len(ct, listAfterRenameByName, 1) {
+			return
+		}
+
+		assert.Equal(
+			ct,
+			"renamedbyname",
+			listAfterRenameByName[0].GetName(),
+			"Should have renamedbyname after rename resolved by name",
+		)
+	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
+
 	deleteResult, err = headscale.Execute(
 		[]string{
 			"headscale",
 			"users",
 			"destroy",
 			"--force",
-			"--name=newname",
+			"--name=renamedbyname",
 		},
 	)
 	require.NoError(t, err)

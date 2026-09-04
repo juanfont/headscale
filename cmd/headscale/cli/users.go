@@ -231,7 +231,7 @@ var renameUserCmd = &cobra.Command{
 		newName, _ := cmd.Flags().GetString("new-name")
 
 		renameReq := &v1.RenameUserRequest{
-			OldId:   id,
+			OldId:   users.GetUsers()[0].GetId(),
 			NewName: newName,
 		}
 
