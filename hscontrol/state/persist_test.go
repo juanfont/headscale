@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
@@ -15,6 +16,7 @@ import (
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
+	"tailscale.com/types/views"
 )
 
 // persistTestSetup pre-creates a sqlite database on disk with a single
@@ -476,7 +478,68 @@ func TestPreAuthKeyReauthRejectsNodeKeyClaimedByAnotherMachine(t *testing.T) {
 		"victim's NodeKey index entry must be untouched")
 }
 
-var errInjectedNodeUpdate = errors.New("injected node update failure")
+var (
+	errInjectedNodeUpdate       = errors.New("injected node update failure")
+	errInjectedNodeDelete       = errors.New("injected node delete failure")
+	errInjectedPolicyNodeUpdate = errors.New("injected policy node update failure")
+)
+
+type failingSetNodesPolicyManager struct {
+	policy.PolicyManager
+}
+
+func (failingSetNodesPolicyManager) SetNodes(views.Slice[types.NodeView]) (bool, error) {
+	return false, errInjectedPolicyNodeUpdate
+}
+
+func TestDeleteNodeKeepsStoreOnDBFailure(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	node, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+
+	require.NoError(t, s.db.DB.Callback().Delete().Before("gorm:delete").
+		Register("fail_node_delete", func(tx *gorm.DB) {
+			if tx.Statement.Table == "nodes" {
+				_ = tx.AddError(errInjectedNodeDelete)
+			}
+		}))
+	t.Cleanup(func() { _ = s.db.DB.Callback().Delete().Remove("fail_node_delete") })
+
+	c, err := s.DeleteNode(node)
+	require.NoError(t, s.db.DB.Callback().Delete().Remove("fail_node_delete"))
+	require.ErrorIs(t, err, errInjectedNodeDelete)
+	assert.True(t, c.IsEmpty(), "an uncommitted deletion must not stop the node's session")
+
+	_, ok = s.GetNodeByID(nodeID)
+	assert.True(t, ok, "a database failure must leave the in-memory node available")
+
+	_, err = s.db.GetNodeByID(nodeID)
+	assert.NoError(t, err, "a failed deletion must leave the durable node row available")
+}
+
+func TestDeleteNodeReturnsRemovalOnPolicyFailure(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	node, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+
+	s.polMan = failingSetNodesPolicyManager{PolicyManager: s.polMan}
+
+	c, err := s.DeleteNode(node)
+	require.ErrorIs(t, err, errInjectedPolicyNodeUpdate)
+	assert.Equal(t, []types.NodeID{nodeID}, c.PeersRemoved,
+		"a committed deletion must still notify peers and stop the node's session")
+
+	_, ok = s.GetNodeByID(nodeID)
+	assert.False(t, ok, "a committed deletion must remove the in-memory node")
+
+	_, err = s.db.GetNodeByID(nodeID)
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound,
+		"a committed deletion must remove the durable node row")
+}
 
 // TestPreAuthKeyReauthRevertsNodeStoreOnDBFailure ensures a failed database
 // write during pre-auth-key re-registration does not leave the NodeStore
