@@ -45,7 +45,7 @@ func oapiVersion(r *repo) (string, error) {
 	return m[1], nil
 }
 
-// generateClients mirrors the Makefile's client recipe. The bot does not shell
+// generateClients repeats the Makefile's client recipe. The bot does not shell
 // out to make, but check-generated.yml still runs the real target and diffs, so
 // any drift between the two surfaces on the bot's own pull request.
 func generateClients(ctx context.Context, r *repo) error {
