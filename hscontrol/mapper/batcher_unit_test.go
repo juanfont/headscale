@@ -455,6 +455,32 @@ func TestAddToBatch_NodeRemovedStopsSession(t *testing.T) {
 	assert.Equal(t, int64(0), lb.b.totalNodes.Load())
 }
 
+func TestAddToBatch_PeersRemovedKeepsSession(t *testing.T) {
+	lb := setupLightweightBatcher(t, 1, 1)
+	defer lb.cleanup()
+
+	mc, ok := lb.b.nodes.Load(1)
+	require.True(t, ok)
+
+	stopped := make(chan struct{})
+
+	mc.mutex.Lock()
+	mc.connections[0].stop = func() { close(stopped) }
+	mc.mutex.Unlock()
+
+	lb.b.AddWork(change.PeersRemoved(1))
+
+	select {
+	case <-stopped:
+		t.Fatal("a peer visibility delta must not stop the peer's own map session")
+	default:
+	}
+
+	_, stillTracked := lb.b.nodes.Load(1)
+	assert.True(t, stillTracked, "a visible peer removal must remain tracked by the batcher")
+	assert.Equal(t, int64(1), lb.b.totalNodes.Load())
+}
+
 // ============================================================================
 // multiChannelNodeConn connection management Tests
 // ============================================================================
