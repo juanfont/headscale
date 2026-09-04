@@ -63,7 +63,7 @@ func markerOf(results []result, tree, head string) marker {
 // renderBody writes the pull request body. It leads with what landed and what
 // did not, because the point of the bot is that the reader can decide from the
 // body plus the checks without reproducing the run.
-func renderBody(results []result, m marker) string {
+func renderBody(results []result, m marker, gate string) string {
 	var sb strings.Builder
 
 	sb.WriteString("Automated version bump.\n\n")
@@ -81,8 +81,8 @@ func renderBody(results []result, m marker) string {
 	writeDetails(&sb, results)
 	writeDropped(&sb, results)
 
-	sb.WriteString("\nThe integration matrix is left to this pull request's own CI; ")
-	sb.WriteString("the nix checks and the tailscale builder images were already run in the bump job.\n")
+	sb.WriteString("\n")
+	sb.WriteString(gateNote(gate))
 	sb.WriteString("\n")
 	sb.WriteString(m.render())
 	sb.WriteString("\n")
@@ -158,14 +158,31 @@ func writeLog(sb *strings.Builder, log string) {
 	sb.WriteString("\n  ```\n")
 }
 
+// gateNote says what the bump job did and did not already run, so the reader
+// knows how much of the green tick below is new information.
+func gateNote(gate string) string {
+	switch gate {
+	case gateFull:
+		return "The nix checks and the tailscale builder images were already run in the bump job; " +
+			"the integration matrix is left to this pull request's own CI.\n"
+	case gateQuick:
+		return "Only `nix build .#checks.<system>.build` was run in the bump job; " +
+			"everything else is left to this pull request's own CI.\n"
+	default:
+		return "No gate was run in the bump job; every check below is the first one.\n"
+	}
+}
+
 // cell keeps a markdown table cell from breaking the table.
 func cell(s string) string {
 	s = strings.ReplaceAll(s, "|", "\\|")
 	s = strings.ReplaceAll(s, "\n", " ")
 
 	const maxCell = 160
-	if len(s) > maxCell {
-		s = s[:maxCell] + "…"
+
+	runes := []rune(s)
+	if len(runes) > maxCell {
+		s = string(runes[:maxCell]) + "…"
 	}
 
 	if s == "" {
