@@ -718,8 +718,11 @@ func (ns *noiseServer) PollNetMapHandler(
 		if errors.Is(err, errNodeNotInStore) && mapRequest.Stream {
 			expired := &tailcfg.MapResponse{
 				Node: &tailcfg.Node{
-					Key:       mapRequest.NodeKey,
-					KeyExpiry: time.Now().Add(-time.Hour).UTC(),
+					Key: mapRequest.NodeKey,
+					// Zero means that the key does not expire. Use a fixed,
+					// ancient non-zero value so this remains expired even when
+					// the client's clock is substantially behind the server.
+					KeyExpiry: time.Unix(1, 0).UTC(),
 					Expired:   true,
 				},
 			}
@@ -813,8 +816,8 @@ func (ns *noiseServer) RegistrationHandler(
 // means the node is gone and its client should re-authenticate.
 var errNodeNotInStore = errors.New("node not found")
 
-// getAndValidateNode retrieves the node from the database using the NodeKey
-// and validates that it matches the MachineKey from the Noise session.
+// getAndValidateNode retrieves the node from the in-memory NodeStore using the
+// NodeKey and validates that it matches the MachineKey from the Noise session.
 func (ns *noiseServer) getAndValidateNode(mapRequest tailcfg.MapRequest) (types.NodeView, error) {
 	nv, ok := ns.headscale.state.GetNodeByNodeKey(mapRequest.NodeKey)
 	if !ok {
