@@ -1,11 +1,67 @@
 package types
 
 import (
+	"errors"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+var errAuthRequestRejected = errors.New("rejected")
+
+func TestAuthRequestBroadcastsTerminalVerdict(t *testing.T) {
+	t.Parallel()
+
+	const waiters = 32
+
+	req := NewSSHCheckAuthRequest(7, 11)
+
+	type result struct {
+		verdict AuthVerdict
+		ok      bool
+	}
+
+	results := make(chan result, waiters)
+
+	var ready sync.WaitGroup
+	ready.Add(waiters)
+
+	for range waiters {
+		go func() {
+			ready.Done()
+			<-req.WaitForAuth()
+
+			verdict, ok := req.AuthResult()
+			results <- result{verdict: verdict, ok: ok}
+		}()
+	}
+
+	ready.Wait()
+	req.FinishAuth(AuthVerdict{Err: errAuthRequestRejected})
+
+	for range waiters {
+		result := <-results
+		require.True(t, result.ok)
+		require.ErrorIs(t, result.verdict.Err, errAuthRequestRejected)
+		assert.False(t, result.verdict.Accept())
+	}
+
+	// Completion is immutable and remains readable by retries.
+	req.FinishAuth(AuthVerdict{})
+	verdict, ok := req.AuthResult()
+	require.True(t, ok)
+	require.ErrorIs(t, verdict.Err, errAuthRequestRejected)
+}
+
+func TestAuthRequestHasNoResultBeforeCompletion(t *testing.T) {
+	t.Parallel()
+
+	req := NewAuthRequest()
+	_, ok := req.AuthResult()
+	assert.False(t, ok)
+}
 
 // TestNewSSHCheckAuthRequestBinding verifies that an SSH-check [AuthRequest]
 // captures the (src, dst) node pair at construction time and rejects

@@ -683,7 +683,8 @@ func TestAuthenticationFlows(t *testing.T) {
 				}
 
 				nodeToRegister := types.NewRegisterAuthRequest(&types.RegistrationData{
-					Hostname: "followup-success-node",
+					MachineKey: machineKey1.Public(),
+					Hostname:   "followup-success-node",
 				})
 				app.state.SetAuthCacheEntry(regID, nodeToRegister)
 
@@ -1350,7 +1351,8 @@ func TestAuthenticationFlows(t *testing.T) {
 				}
 
 				nodeToRegister := types.NewRegisterAuthRequest(&types.RegistrationData{
-					Hostname: "nil-response-node",
+					MachineKey: machineKey1.Public(),
+					Hostname:   "nil-response-node",
 				})
 				app.state.SetAuthCacheEntry(regID, nodeToRegister)
 
@@ -4167,6 +4169,45 @@ func TestWaitForFollowupMachineKeyMismatch(t *testing.T) {
 		assert.Equal(t, http.StatusUnauthorized, httpErr.Code)
 	})
 
+	t.Run("pending registration rejects mismatched machine key before waiting", func(t *testing.T) {
+		authID := types.MustAuthID()
+		app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+			MachineKey: victimMachineKey.Public(),
+			NodeKey:    key.NewNode().Public(),
+			Hostname:   "pending-mismatch",
+		}))
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+
+		resp, err := app.waitForFollowup(ctx, tailcfg.RegisterRequest{
+			Followup: fmt.Sprintf("http://localhost:8080/register/%s", authID),
+		}, attackerMachineKey.Public())
+
+		require.Error(t, err)
+		assert.Nil(t, resp)
+		assert.NotErrorIs(t, err, context.DeadlineExceeded)
+	})
+
+	t.Run("SSH auth session is rejected before waiting", func(t *testing.T) {
+		authID := types.MustAuthID()
+		app.state.SetAuthCacheEntry(
+			authID,
+			types.NewSSHCheckAuthRequest(7, 11),
+		)
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+
+		resp, err := app.waitForFollowup(ctx, tailcfg.RegisterRequest{
+			Followup: fmt.Sprintf("http://localhost:8080/register/%s", authID),
+		}, victimMachineKey.Public())
+
+		require.Error(t, err)
+		assert.Nil(t, resp)
+		assert.NotErrorIs(t, err, context.DeadlineExceeded)
+	})
+
 	// Positive control. Without it a regression that stops the poll from
 	// finding the cache entry at all would still pass the case above, because
 	// waitForFollowup falls back to handing out a fresh AuthURL.
@@ -4214,7 +4255,8 @@ func TestFollowupWaitPrefersCompletedAuthOverExpiredContext(t *testing.T) {
 		require.NoError(t, err)
 
 		authReq := types.NewRegisterAuthRequest(&types.RegistrationData{
-			Hostname: "followup-race-node",
+			MachineKey: machineKey,
+			Hostname:   "followup-race-node",
 		})
 		app.state.SetAuthCacheEntry(regID, authReq)
 

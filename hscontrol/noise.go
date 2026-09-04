@@ -642,7 +642,6 @@ func (ns *noiseServer) sshActionFollowUp(
 
 	reqLog.Trace().Caller().Msg("SSH action follow-up")
 
-	var verdict types.AuthVerdict
 	select {
 	case <-ctx.Done():
 		// The client disconnected (or its request timed out) before the
@@ -655,7 +654,16 @@ func (ns *noiseServer) sshActionFollowUp(
 			"ssh action follow-up cancelled",
 			ctx.Err(),
 		)
-	case verdict = <-auth.WaitForAuth():
+	case <-auth.WaitForAuth():
+	}
+
+	verdict, ok := auth.AuthResult()
+	if !ok {
+		action.Reject = true
+
+		reqLog.Error().Caller().Msg("authentication completed without a verdict")
+
+		return action, nil
 	}
 
 	if !verdict.Accept() {

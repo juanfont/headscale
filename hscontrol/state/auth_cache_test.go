@@ -45,7 +45,9 @@ func TestAuthCacheBoundedLRU(t *testing.T) {
 
 	// The eviction callback must have woken the parked AuthRequest.
 	select {
-	case verdict := <-entries[0].WaitForAuth():
+	case <-entries[0].WaitForAuth():
+		verdict, ok := entries[0].AuthResult()
+		require.True(t, ok, "evicted entry must retain its terminal verdict")
 		require.False(t, verdict.Accept(), "evicted entry must not signal Accept")
 		require.ErrorIs(t,
 			verdict.Err, ErrRegistrationExpired,

@@ -110,11 +110,11 @@ type PendingRegistrationConfirmation struct {
 // AuthRequest represents a pending authentication request from a user or a
 // node. It carries the minimum data needed to either complete a node
 // registration (regData populated) or an SSH check-mode auth (sshBinding
-// populated), and signals the verdict via the finished channel. The closed
-// flag guards [AuthRequest.FinishAuth] against double-close.
+// populated), and signals completion by closing done. The terminal verdict is
+// stored separately so every waiter observes the same result.
 //
-// [AuthRequest] is always handled by pointer so the channel and atomic flag
-// have a single canonical instance even when stored in caches that
+// [AuthRequest] is always handled by pointer so the completion signal and
+// terminal verdict have a single canonical instance even when stored in caches that
 // internally copy values.
 type AuthRequest struct {
 	// regData is populated for node-registration flows (interactive web
@@ -141,16 +141,15 @@ type AuthRequest struct {
 	// finalise the registration without re-running the OIDC flow.
 	pendingConfirmation *PendingRegistrationConfirmation
 
-	finished chan AuthVerdict
-	closed   *atomic.Bool
+	done    chan struct{}
+	verdict atomic.Pointer[AuthVerdict]
 }
 
 // NewAuthRequest creates a pending auth request with no payload, suitable
 // for non-registration flows that only need a verdict channel.
 func NewAuthRequest() *AuthRequest {
 	return &AuthRequest{
-		finished: make(chan AuthVerdict, 1),
-		closed:   &atomic.Bool{},
+		done: make(chan struct{}),
 	}
 }
 
@@ -159,9 +158,8 @@ func NewAuthRequest() *AuthRequest {
 // stored by pointer; callers must not mutate it after handing it off.
 func NewRegisterAuthRequest(data *RegistrationData) *AuthRequest {
 	return &AuthRequest{
-		regData:  data,
-		finished: make(chan AuthVerdict, 1),
-		closed:   &atomic.Bool{},
+		regData: data,
+		done:    make(chan struct{}),
 	}
 }
 
@@ -175,8 +173,7 @@ func NewSSHCheckAuthRequest(src, dst NodeID) *AuthRequest {
 			SrcNodeID: src,
 			DstNodeID: dst,
 		},
-		finished: make(chan AuthVerdict, 1),
-		closed:   &atomic.Bool{},
+		done: make(chan struct{}),
 	}
 }
 
@@ -232,17 +229,27 @@ func (rn *AuthRequest) PendingConfirmation() *PendingRegistrationConfirmation {
 }
 
 func (rn *AuthRequest) FinishAuth(verdict AuthVerdict) {
-	if rn.closed.Swap(true) {
+	if !rn.verdict.CompareAndSwap(nil, &verdict) {
 		return
 	}
 
-	rn.finished <- verdict
-
-	close(rn.finished)
+	close(rn.done)
 }
 
-func (rn *AuthRequest) WaitForAuth() <-chan AuthVerdict {
-	return rn.finished
+func (rn *AuthRequest) WaitForAuth() <-chan struct{} {
+	return rn.done
+}
+
+// AuthResult returns the immutable terminal verdict after WaitForAuth is
+// closed. The boolean is false before completion, allowing callers to fail
+// closed if they ever observe completion without a stored result.
+func (rn *AuthRequest) AuthResult() (AuthVerdict, bool) {
+	verdict := rn.verdict.Load()
+	if verdict == nil {
+		return AuthVerdict{}, false
+	}
+
+	return *verdict, true
 }
 
 type AuthVerdict struct {

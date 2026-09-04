@@ -317,19 +317,43 @@ func (h *Headscale) waitForFollowup(
 	}
 
 	if reg, ok := h.state.GetAuthCacheEntry(followupReg); ok {
-		var verdict types.AuthVerdict
+		if !reg.IsRegistration() {
+			return nil, NewHTTPError(
+				http.StatusUnauthorized,
+				"auth session is not for registration",
+				nil,
+			)
+		}
+
+		if reg.RegistrationData().MachineKey != machineKey {
+			return nil, NewHTTPError(
+				http.StatusUnauthorized,
+				"registration belongs to a different machine key",
+				nil,
+			)
+		}
+
 		select {
 		// Prefer a completed registration even if the context has also
 		// expired. When both are ready, a plain select picks at random and
 		// would discard a successful registration as a spurious timeout
 		// (issue #3385).
-		case verdict = <-reg.WaitForAuth():
+		case <-reg.WaitForAuth():
 		default:
 			select {
 			case <-ctx.Done():
 				return nil, NewHTTPError(http.StatusUnauthorized, "registration timed out", ctx.Err())
-			case verdict = <-reg.WaitForAuth():
+			case <-reg.WaitForAuth():
 			}
+		}
+
+		verdict, ok := reg.AuthResult()
+		if !ok {
+			return nil, NewHTTPError(
+				http.StatusUnauthorized,
+				"registration completed without a verdict",
+				nil,
+			)
 		}
 
 		if verdict.Accept() {

@@ -116,6 +116,8 @@ var nodeUpdateColumns = []string{
 // ErrRegistrationExpired is returned when a registration has expired.
 var ErrRegistrationExpired = errors.New("registration expired")
 
+var errAuthRequestNotRegistration = errors.New("auth request is not a registration")
+
 // ErrNodeKeyInUse is returned when a registration or re-auth claims a NodeKey
 // already bound to a different machine, enforcing the 1:1 NodeKey<->MachineKey
 // binding.
@@ -2251,6 +2253,10 @@ func (s *State) HandleNodeFromAuthPath(
 	regEntry, ok := s.GetAuthCacheEntry(authID)
 	if !ok {
 		return types.NodeView{}, change.Change{}, hsdb.ErrNodeNotFoundRegistrationCache
+	}
+
+	if !regEntry.IsRegistration() {
+		return types.NodeView{}, change.Change{}, errAuthRequestNotRegistration
 	}
 
 	// Get the user

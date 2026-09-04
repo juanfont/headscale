@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,12 +18,15 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 	"tailscale.com/util/zstdframe"
 )
+
+var errSSHAuthenticationRejected = errors.New("authentication rejected")
 
 // newNoiseRouterWithBodyLimit builds a chi router with the same body-limit
 // middleware used in the real Noise router but wired to a test handler that
@@ -372,6 +376,40 @@ func TestSSHActionFollowUp_RejectsBindingMismatch(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code,
 		"binding mismatch must be rejected with 401")
+}
+
+func TestSSHActionFollowUp_RejectionIsStableAcrossRetries(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("ssh-retry-rejection-user")
+	src := putTestNodeInStore(t, app, user, "src-retry")
+	dst := putTestNodeInStore(t, app, user, "dst-retry")
+
+	authID := types.MustAuthID()
+	auth := types.NewSSHCheckAuthRequest(src.ID, dst.ID)
+	auth.FinishAuth(types.AuthVerdict{Err: errSSHAuthenticationRejected})
+	app.state.SetAuthCacheEntry(authID, auth)
+
+	ns := &noiseServer{headscale: app, machineKey: dst.MachineKey}
+	for range 2 {
+		action, err := ns.sshActionFollowUp(
+			t.Context(),
+			zerolog.Nop(),
+			&tailcfg.SSHAction{},
+			authID.String(),
+			src.ID,
+			dst.ID,
+			true,
+		)
+		require.NoError(t, err)
+		require.NotNil(t, action)
+		assert.True(t, action.Reject)
+		assert.False(t, action.Accept)
+	}
+
+	_, ok := app.state.GetLastSSHAuth(src.ID, dst.ID)
+	assert.False(t, ok, "rejected retries must not record reusable SSH authorization")
 }
 
 // TestOverrideRemoteAddr asserts the middleware used inside the Noise
