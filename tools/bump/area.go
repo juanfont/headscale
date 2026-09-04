@@ -62,6 +62,7 @@ func allAreas() []area {
 		},
 	}
 
+	areas = append(areas, toolAreas()...)
 	areas = append(areas,
 		area{
 			Name:    "gomod",
