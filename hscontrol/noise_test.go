@@ -618,8 +618,9 @@ func TestPollNetMapHandler_DeletedNodeGetsExpiredSelf(t *testing.T) {
 			resp := decodeMapResponse(t, compress, rec.Body.Bytes())
 			require.NotNil(t, resp.Node, "clients reject an initial map response without a node")
 			assert.Equal(t, node.NodeKey, resp.Node.Key)
-			assert.True(t, resp.Node.KeyExpiry.Before(time.Now()),
-				"a past KeyExpiry is what drives the client to NeedsLogin, got %v", resp.Node.KeyExpiry)
+			assert.Equal(t, time.Unix(1, 0).UTC(), resp.Node.KeyExpiry,
+				"a fixed ancient KeyExpiry must remain expired despite client clock skew")
+			assert.True(t, resp.Node.Expired)
 		})
 	}
 }
