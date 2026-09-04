@@ -116,7 +116,7 @@ func cmdRun(ctx context.Context) error {
 		return err
 	}
 
-	results, err := runAreas(ctx, r, coreAreas(), selector(runCfg.Areas, runCfg.Skip))
+	results, err := runAreas(ctx, r, allAreas(), selector(runCfg.Areas, runCfg.Skip))
 	if err != nil {
 		return err
 	}

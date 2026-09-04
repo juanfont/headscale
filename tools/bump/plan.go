@@ -26,6 +26,7 @@ func planLines(ctx context.Context, r *repo) []string {
 
 	lines = append(lines, planBuilders(ctx, r)...)
 	lines = append(lines, planLockstep(ctx, r)...)
+	lines = append(lines, planImages(ctx, r)...)
 
 	if version, err := oapiVersion(r); err != nil { //nolint:noinlineerr
 		lines = append(lines, "oapi-codegen: "+err.Error())
@@ -33,6 +34,31 @@ func planLines(ctx context.Context, r *repo) []string {
 		lines = append(lines, "oapi-codegen: "+err.Error())
 	} else {
 		lines = append(lines, gap("Makefile oapi-codegen", version, latest))
+	}
+
+	return lines
+}
+
+func planImages(ctx context.Context, r *repo) []string {
+	defs := imageBumps()
+	lines := make([]string, 0, len(defs))
+
+	for _, def := range defs {
+		have, err := currentImageRef(r, def)
+		if err != nil {
+			lines = append(lines, def.Name+": "+err.Error())
+
+			continue
+		}
+
+		want, err := def.Resolve(ctx, have)
+		if err != nil {
+			lines = append(lines, def.Name+": "+err.Error())
+
+			continue
+		}
+
+		lines = append(lines, gap(def.Name, have, want))
 	}
 
 	return lines
