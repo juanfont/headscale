@@ -49,36 +49,44 @@ type result struct {
 	Commit string
 }
 
-func coreAreas() []area {
-	return []area{
+// allAreas is the running order. Regeneration comes last because it consumes
+// what everything before it settled: the toolchain from the lock, the module
+// versions, and the generator pin from the Makefile.
+func allAreas() []area {
+	areas := []area{
 		{
 			Name:    "flake",
 			Apply:   applyFlake,
 			Gate:    gateFlake,
 			Message: func(c change) string { return "flake.lock: update " + c.Summary },
 		},
-		{
+	}
+
+	areas = append(areas,
+		area{
 			Name:    "gomod",
 			Needs:   []string{"flake"},
 			Apply:   applyGoMod,
 			Gate:    gateGoMod,
 			Message: func(c change) string { return "go.mod: " + c.Summary },
 		},
-		{
+		area{
 			Name:    "docker-go",
 			Needs:   []string{"flake"},
 			Apply:   applyDockerGo,
 			Gate:    gateDockerGo,
 			Message: func(c change) string { return "Dockerfile: bump " + c.Summary },
 		},
-		{
-			Name:    "generate",
-			Needs:   []string{"gomod"},
-			Apply:   applyGenerate,
-			Gate:    gateGenerate,
-			Message: func(change) string { return "all: regenerate generated files" },
-		},
-	}
+	)
+	areas = append(areas, imageAreas()...)
+
+	return append(areas, area{
+		Name:    "generate",
+		Needs:   []string{"gomod"},
+		Apply:   applyGenerate,
+		Gate:    gateGenerate,
+		Message: func(change) string { return "all: regenerate generated files" },
+	})
 }
 
 // runAreas applies each area in order, committing the ones that hold and
