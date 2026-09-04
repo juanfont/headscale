@@ -29,7 +29,7 @@ import (
 )
 
 type runFlags struct {
-	DryRun bool   `flag:"dry-run,default=false,Apply and report, but run no final gate and touch no remote"`
+	DryRun bool   `flag:"dry-run,default=false,Rebuild the branch locally and report, but run no final gate and touch no remote"`
 	NoPR   bool   `flag:"no-pr,default=false,Push nothing and open no pull request"`
 	Areas  string `flag:"areas,Comma-separated areas to run (default: all)"`
 	Skip   string `flag:"skip,Comma-separated areas to skip"`
@@ -136,7 +136,7 @@ func cmdRun(ctx context.Context) error {
 		return err
 	}
 
-	body := renderBody(results, markerOf(results, tree, head))
+	body := renderBody(results, markerOf(results, tree, head), gate)
 
 	if err := writeStepSummary(body); err != nil { //nolint:noinlineerr
 		return err
@@ -165,6 +165,7 @@ func cmdRun(ctx context.Context) error {
 		Branch: runCfg.Branch,
 		Base:   runCfg.Base,
 		Title:  "all: bump pinned versions",
+		Gate:   gate,
 		Force:  runCfg.Force,
 	}, results)
 }

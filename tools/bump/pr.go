@@ -81,6 +81,7 @@ type publishOptions struct {
 	Branch string
 	Base   string
 	Title  string
+	Gate   string
 	Force  bool
 }
 
@@ -99,7 +100,7 @@ func publish(ctx context.Context, r *repo, opt publishOptions, results []result)
 	}
 
 	now := markerOf(results, tree, head)
-	body := renderBody(results, now)
+	body := renderBody(results, now, opt.Gate)
 
 	pr, err := lookupPR(ctx, r, opt.Slug, opt.Branch)
 	if err != nil {
