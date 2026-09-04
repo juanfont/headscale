@@ -139,10 +139,11 @@ type AuthRequest struct {
 	// but before the user has explicitly confirmed the registration on
 	// the interstitial. The /register/confirm POST handler reads it to
 	// finalise the registration without re-running the OIDC flow.
-	pendingConfirmation *PendingRegistrationConfirmation
+	pendingConfirmation atomic.Pointer[PendingRegistrationConfirmation]
 
-	done    chan struct{}
-	verdict atomic.Pointer[AuthVerdict]
+	done       chan struct{}
+	verdict    atomic.Pointer[AuthVerdict]
+	processing atomic.Bool
 }
 
 // NewAuthRequest creates a pending auth request with no payload, suitable
@@ -212,28 +213,71 @@ func (rn *AuthRequest) IsSSHCheck() bool {
 	return rn.sshBinding != nil
 }
 
-// SetPendingConfirmation marks this [AuthRequest] as having an
-// OIDC-resolved user that is waiting to confirm the registration on
-// the interstitial. The OIDC callback should call this and then render
-// the confirmation page; the /register/confirm POST handler reads the
-// stored UserID/NodeExpiry to finish the registration.
-func (rn *AuthRequest) SetPendingConfirmation(p *PendingRegistrationConfirmation) {
-	rn.pendingConfirmation = p
+// SetPendingConfirmation records the first OIDC-resolved user waiting to
+// confirm the registration. It returns false if confirmation is already
+// pending, leaving the original value unchanged.
+func (rn *AuthRequest) SetPendingConfirmation(p *PendingRegistrationConfirmation) bool {
+	return rn.pendingConfirmation.CompareAndSwap(nil, p)
 }
 
 // PendingConfirmation returns the pending OIDC-resolved registration
 // state captured by [AuthRequest.SetPendingConfirmation], or nil if no OIDC callback
 // has yet resolved an identity for this [AuthRequest].
 func (rn *AuthRequest) PendingConfirmation() *PendingRegistrationConfirmation {
-	return rn.pendingConfirmation
+	return rn.pendingConfirmation.Load()
 }
 
-func (rn *AuthRequest) FinishAuth(verdict AuthVerdict) {
-	if !rn.verdict.CompareAndSwap(nil, &verdict) {
-		return
+// TryBeginAuth reserves a pending request for one completion path. The caller
+// must finish it with [AuthRequest.FinishClaimedAuth] or release it with
+// [AuthRequest.AbortAuth].
+func (rn *AuthRequest) TryBeginAuth() bool {
+	if rn.verdict.Load() != nil || !rn.processing.CompareAndSwap(false, true) {
+		return false
+	}
+
+	// A terminal verdict can race the reservation after the first check.
+	// Give it precedence and release the claim so no completion path starts
+	// after the request has finished.
+	if rn.verdict.Load() != nil {
+		rn.processing.Store(false)
+
+		return false
+	}
+
+	return true
+}
+
+// AbortAuth releases an unfinished completion reservation.
+func (rn *AuthRequest) AbortAuth() {
+	if rn.verdict.Load() == nil {
+		rn.processing.Store(false)
+	}
+}
+
+// FinishClaimedAuth publishes the terminal verdict for a request reserved by
+// [AuthRequest.TryBeginAuth].
+func (rn *AuthRequest) FinishClaimedAuth(verdict AuthVerdict) bool {
+	if !rn.processing.Load() || !rn.verdict.CompareAndSwap(nil, &verdict) {
+		return false
 	}
 
 	close(rn.done)
+
+	return true
+}
+
+func (rn *AuthRequest) FinishAuth(verdict AuthVerdict) bool {
+	// Administrative decisions and expiry remain authoritative while a
+	// completion path is doing external work. Whichever terminal verdict is
+	// published first wins; a claimed completion that loses this race fails
+	// closed in FinishClaimedAuth.
+	if !rn.verdict.CompareAndSwap(nil, &verdict) {
+		return false
+	}
+
+	close(rn.done)
+
+	return true
 }
 
 func (rn *AuthRequest) WaitForAuth() <-chan struct{} {

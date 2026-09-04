@@ -2410,6 +2410,17 @@ func (s *State) HandleNodeFromAuthPath(
 		return types.NodeView{}, change.Change{}, errAuthRequestNotRegistration
 	}
 
+	if !regEntry.TryBeginAuth() {
+		return types.NodeView{}, change.Change{}, hsdb.ErrNodeNotFoundRegistrationCache
+	}
+
+	authFinished := false
+	defer func() {
+		if !authFinished {
+			regEntry.AbortAuth()
+		}
+	}()
+
 	// Get the user
 	user, err := s.db.GetUserByID(userID)
 	if err != nil {
@@ -2531,7 +2542,11 @@ func (s *State) HandleNodeFromAuthPath(
 	}
 
 	// Signal to waiting clients
-	regEntry.FinishAuth(types.AuthVerdict{Node: finalNode})
+	if !regEntry.FinishClaimedAuth(types.AuthVerdict{Node: finalNode}) {
+		return types.NodeView{}, change.Change{}, hsdb.ErrNodeNotFoundRegistrationCache
+	}
+
+	authFinished = true
 
 	// Remove from registration cache
 	s.registrationAuthCache.entries.Remove(authID)

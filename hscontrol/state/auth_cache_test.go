@@ -180,3 +180,22 @@ func TestPendingAuthCacheExpirationFreesCapacity(t *testing.T) {
 		types.NewRegisterAuthRequest(&types.RegistrationData{}),
 	))
 }
+
+func TestPendingAuthCacheExpirationFinishesClaimedRequest(t *testing.T) {
+	const expiration = 20 * time.Millisecond
+
+	cache := newPendingAuthCache(1, expiration)
+	request := types.NewRegisterAuthRequest(&types.RegistrationData{})
+	require.True(t, cache.add(types.MustAuthID(), request))
+	require.True(t, request.TryBeginAuth())
+
+	select {
+	case <-request.WaitForAuth():
+		verdict, ok := request.AuthResult()
+		require.True(t, ok)
+		require.ErrorIs(t, verdict.Err, ErrRegistrationExpired)
+		require.False(t, request.FinishClaimedAuth(types.AuthVerdict{}))
+	case <-time.After(time.Second):
+		t.Fatal("expired claimed request was not completed")
+	}
+}

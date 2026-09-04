@@ -126,12 +126,32 @@ func TestPendingRegistrationConfirmation(t *testing.T) {
 		UserID: 42,
 		CSRF:   "csrf-marker",
 	}
-	req.SetPendingConfirmation(pending)
+	require.True(t, req.SetPendingConfirmation(pending))
+	require.False(t, req.SetPendingConfirmation(&PendingRegistrationConfirmation{
+		UserID: 7,
+		CSRF:   "replacement",
+	}))
 
 	got := req.PendingConfirmation()
 	require.NotNil(t, got, "PendingConfirmation must return the stored value")
 	assert.Equal(t, uint(42), got.UserID)
 	assert.Equal(t, "csrf-marker", got.CSRF)
+}
+
+func TestAuthRequestCompletionClaim(t *testing.T) {
+	t.Parallel()
+
+	req := NewAuthRequest()
+	require.True(t, req.TryBeginAuth())
+	require.False(t, req.TryBeginAuth())
+	require.True(t, req.FinishAuth(AuthVerdict{Err: errAuthRequestRejected}))
+	require.False(t, req.FinishClaimedAuth(AuthVerdict{}))
+	require.False(t, req.TryBeginAuth())
+
+	req.AbortAuth()
+	verdict, ok := req.AuthResult()
+	require.True(t, ok)
+	require.ErrorIs(t, verdict.Err, errAuthRequestRejected)
 }
 
 func TestDefaultBatcherWorkersFor(t *testing.T) {
