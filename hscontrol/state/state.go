@@ -183,9 +183,9 @@ type State struct {
 	sshCheckAuth map[sshCheckPair]time.Time
 	sshCheckMu   sync.RWMutex
 
-	// persistMu serialises the re-read-and-write critical section in
-	// persistNodeToDB so the database row always converges on [NodeStore]
-	// rather than being clobbered by a stale caller snapshot.
+	// persistMu serialises node-row persistence and deletion so the database
+	// always converges on [NodeStore] rather than being clobbered by a stale
+	// caller snapshot or resurrected by an update racing with deletion.
 	persistMu sync.Mutex
 
 	// registerLocks serialises registration per machine key so concurrent
@@ -592,14 +592,25 @@ func (s *State) SaveNode(node types.NodeView) (types.NodeView, change.Change, er
 }
 
 // DeleteNode permanently removes a node and cleans up associated resources.
-// Returns whether policies changed and any error. This operation is irreversible.
+// Once the database deletion commits, the returned change always contains the
+// node-removal notification, even if a later policy refresh fails. Callers must
+// publish a non-empty change before handling the error so live sessions are
+// still torn down after a committed deletion.
 func (s *State) DeleteNode(node types.NodeView) (change.Change, error) {
-	s.nodeStore.DeleteNode(node.ID())
+	s.persistMu.Lock()
 
 	err := s.db.DeleteNode(node.AsStruct())
 	if err != nil {
+		s.persistMu.Unlock()
+
 		return change.Change{}, err
 	}
+
+	// The database is the durable source of truth. Only remove the in-memory
+	// node after its row is gone so a failed database write cannot make a live
+	// node look deleted until the next restart.
+	s.nodeStore.DeleteNode(node.ID())
+	s.persistMu.Unlock()
 
 	s.ipAlloc.FreeIPs(node.IPs())
 
@@ -608,7 +619,7 @@ func (s *State) DeleteNode(node types.NodeView) (change.Change, error) {
 	// Check if policy manager needs updating after node deletion
 	policyChange, err := s.updatePolicyManagerNodes()
 	if err != nil {
-		return change.Change{}, fmt.Errorf("updating policy manager after node deletion: %w", err)
+		return c, fmt.Errorf("updating policy manager after node deletion: %w", err)
 	}
 
 	if !policyChange.IsEmpty() {
