@@ -439,11 +439,13 @@ func (api headscaleV1APIServer) DeleteNode(
 	}
 
 	nodeChange, err := api.h.state.DeleteNode(node)
+	if !nodeChange.IsEmpty() {
+		api.h.Change(nodeChange)
+	}
+
 	if err != nil {
 		return nil, err
 	}
-
-	api.h.Change(nodeChange)
 
 	return &v1.DeleteNodeResponse{}, nil
 }
