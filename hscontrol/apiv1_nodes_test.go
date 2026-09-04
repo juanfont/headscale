@@ -3,6 +3,7 @@ package hscontrol
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -370,6 +371,15 @@ func TestAPIV1NodeBackfillIPs(t *testing.T) {
 }
 
 func TestAPIV1NodeDebugCreate(t *testing.T) {
+	t.Run("oversized name", func(t *testing.T) {
+		h := newAPIV1Harness(t)
+
+		body := []byte(`{"user":"alice","key":"` + types.MustAuthID().String() +
+			`","name":"` + strings.Repeat("n", 256) + `","routes":[]}`)
+		res := h.callHuma(http.MethodPost, "/api/v1/debug/node", body)
+		assertStatus(t, res, http.StatusBadRequest)
+	})
+
 	t.Run("unknown user parity", func(t *testing.T) {
 		h := newAPIV1Harness(t)
 		body := []byte(`{"user":"nope","key":"` + types.MustAuthID().String() +

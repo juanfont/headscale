@@ -1726,6 +1726,7 @@ type authNodeUpdateParams struct {
 // applyAuthNodeUpdate applies common update logic for re-authenticating or converting
 // an existing node. It updates the node in [NodeStore], processes RequestTags, and
 // persists changes to the database.
+//nolint:gocyclo // validation and mutation stages must remain in a fixed order
 func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView, error) {
 	regData := params.RegData
 	// Log the operation type
@@ -1791,8 +1792,20 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 		node.DiscoKey = regData.DiscoKey
 		node.Hostname = params.Hostname
 
-		// Preserve NetInfo from existing node when re-registering
-		node.Hostinfo = params.ValidHostinfo
+		// Registration retains only the identity fields needed during auth.
+		// Overlay those fields on the live Hostinfo so re-authentication does
+		// not temporarily withdraw routes, services, or other map state.
+		node.Hostinfo = params.ExistingNode.Hostinfo().AsStruct()
+		if node.Hostinfo == nil {
+			node.Hostinfo = &tailcfg.Hostinfo{}
+		}
+
+		node.Hostinfo.Hostname = params.ValidHostinfo.Hostname
+		node.Hostinfo.OS = params.ValidHostinfo.OS
+		node.Hostinfo.IPNVersion = params.ValidHostinfo.IPNVersion
+		node.Hostinfo.OSVersion = params.ValidHostinfo.OSVersion
+		node.Hostinfo.DeviceModel = params.ValidHostinfo.DeviceModel
+		node.Hostinfo.RequestTags = slices.Clone(params.ValidHostinfo.RequestTags)
 		node.Hostinfo.NetInfo = preserveNetInfo(
 			params.ExistingNode,
 			params.ExistingNode.ID(),

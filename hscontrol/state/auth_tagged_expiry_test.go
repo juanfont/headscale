@@ -2,6 +2,7 @@ package state
 
 import (
 	"fmt"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -845,6 +846,35 @@ func TestTaggedReauthPreservesOnlineAndLastSeen(t *testing.T) {
 	require.True(t, finalNode.IsOnline().Get(),
 		"re-auth must not reset online status (owned by the poll lifecycle)")
 	require.NotNil(t, finalNode.LastSeen().Get(), "LastSeen must be set on reauth")
+}
+
+func TestTaggedReauthPreservesLiveHostinfo(t *testing.T) {
+	n := seedTagOwnedNode(t, []string{"tag:foo"}, "")
+
+	owner := n.s.CreateUserForTest("owner")
+	_, err := n.s.SetPolicy(fmt.Appendf(nil, `{"tagOwners":{"tag:foo":["%s@"]}}`, owner.Name))
+	require.NoError(t, err)
+
+	route := netip.MustParsePrefix("10.23.0.0/16")
+	services := []tailcfg.Service{{Proto: tailcfg.TCP, Port: 443}}
+	_, ok := n.s.nodeStore.UpdateNode(n.id, func(node *types.Node) {
+		if node.Hostinfo == nil {
+			node.Hostinfo = &tailcfg.Hostinfo{}
+		}
+
+		node.Hostinfo.RoutableIPs = []netip.Prefix{route}
+		node.Hostinfo.Services = services
+	})
+	require.True(t, ok)
+
+	finalNode, err := n.reauth(t, owner, []string{"tag:foo"}, nil)
+	require.NoError(t, err)
+	require.Equal(t, []netip.Prefix{route}, finalNode.Hostinfo().RoutableIPs().AsSlice())
+	require.Equal(t, services, finalNode.Hostinfo().Services().AsSlice())
+
+	reloaded := n.reopen(t)
+	require.Equal(t, []netip.Prefix{route}, reloaded.Hostinfo().RoutableIPs().AsSlice())
+	require.Equal(t, services, reloaded.Hostinfo().Services().AsSlice())
 }
 
 // TestIssue3371_TaggedNodeInteractiveReloginAfterLogout reproduces the

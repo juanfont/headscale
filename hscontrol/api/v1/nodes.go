@@ -24,6 +24,10 @@ func init() {
 // errBackfillNotConfirmed guards BackfillNodeIPs behind explicit confirmed=true.
 var errBackfillNotConfirmed = errors.New("not confirmed, aborting")
 
+const debugNodeNameMaxBytes = 255
+
+var errDebugNodeNameTooLong = errors.New("node name exceeds 255 bytes")
+
 // registerMethodToV1Enum maps the stored register method onto the
 // SCREAMING_SNAKE enum string the v1 contract emits.
 var registerMethodToV1Enum = map[string]string{
@@ -537,6 +541,10 @@ func registerNodeAdminOps(api huma.API, b Backend) {
 		Tags:        []string{"Nodes"},
 		Security:    bearerAuth,
 	}, func(ctx context.Context, in *debugCreateNodeInput) (*nodeOutput, error) {
+		if len(in.Body.Name) > debugNodeNameMaxBytes {
+			return nil, huma.Error400BadRequest("debug creating node", errDebugNodeNameTooLong)
+		}
+
 		user, err := b.State.GetUserByName(in.Body.User)
 		if err != nil {
 			return nil, mapError("looking up user", err)

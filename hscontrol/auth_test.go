@@ -1442,8 +1442,10 @@ func TestAuthenticationFlows(t *testing.T) {
 					Hostinfo: &tailcfg.Hostinfo{
 						Hostname:    "custom-interactive-node",
 						OS:          "linux",
+						IPNVersion:  "1.100.0",
 						OSVersion:   "20.04",
 						DeviceModel: "server",
+						Services:    []tailcfg.Service{{Proto: "tcp", Port: 443}},
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
@@ -1464,8 +1466,11 @@ func TestAuthenticationFlows(t *testing.T) {
 				if found {
 					assert.Equal(t, "custom-interactive-node", node.Hostname())
 					assert.Equal(t, "linux", node.Hostinfo().OS())
+					assert.Equal(t, "1.100.0", node.Hostinfo().IPNVersion())
 					assert.Equal(t, "20.04", node.Hostinfo().OSVersion())
 					assert.Equal(t, "server", node.Hostinfo().DeviceModel())
+					assert.Empty(t, node.Hostinfo().Services(),
+						"live services are restored by the first MapRequest")
 				}
 			},
 		},
@@ -2564,6 +2569,118 @@ func TestAuthenticationFlows(t *testing.T) {
 			if tt.validate != nil {
 				tt.validate(t, resp, app)
 			}
+		})
+	}
+}
+
+func TestRegistrationDataFromRequestBoundsRetainedHostinfo(t *testing.T) {
+	t.Parallel()
+
+	machineKey := key.NewMachine().Public()
+	nodeKey := key.NewNode().Public()
+	largeService := strings.Repeat("x", int(noiseBodyLimit/2))
+	req := tailcfg.RegisterRequest{
+		NodeKey: nodeKey,
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname:    "bounded-node",
+			OS:          "linux",
+			IPNVersion:  "1.100.0",
+			OSVersion:   "6.12",
+			DeviceModel: "server",
+			RequestTags: []string{"tag:one", "tag:two"},
+			Services: []tailcfg.Service{{
+				Description: largeService,
+			}},
+		},
+	}
+
+	data, err := registrationDataFromRequest(req, machineKey)
+	require.NoError(t, err)
+	require.NotNil(t, data.Hostinfo)
+	require.Equal(t, machineKey, data.MachineKey)
+	require.Equal(t, nodeKey, data.NodeKey)
+	require.Equal(t, req.Hostinfo.Hostname, data.Hostinfo.Hostname)
+	require.Equal(t, req.Hostinfo.OS, data.Hostinfo.OS)
+	require.Equal(t, req.Hostinfo.IPNVersion, data.Hostinfo.IPNVersion)
+	require.Equal(t, req.Hostinfo.OSVersion, data.Hostinfo.OSVersion)
+	require.Equal(t, req.Hostinfo.DeviceModel, data.Hostinfo.DeviceModel)
+	require.Equal(t, req.Hostinfo.RequestTags, data.Hostinfo.RequestTags)
+	require.Empty(t, data.Hostinfo.Services)
+
+	req.Hostinfo.RequestTags[0] = "tag:changed"
+	require.Equal(t, "tag:one", data.Hostinfo.RequestTags[0],
+		"cached tags must not alias the decoded request")
+}
+
+func TestRegistrationDataFromRequestRejectsOversizedMetadata(t *testing.T) {
+	t.Parallel()
+
+	tagsOverTotal := make([]string, 17)
+	for idx := range tagsOverTotal {
+		tagsOverTotal[idx] = strings.Repeat("t", registrationTagMaxBytes)
+	}
+
+	tests := []struct {
+		name     string
+		hostinfo *tailcfg.Hostinfo
+	}{
+		{
+			name:     "hostname",
+			hostinfo: &tailcfg.Hostinfo{Hostname: strings.Repeat("h", registrationHostnameMaxBytes+1)},
+		},
+		{
+			name:     "os",
+			hostinfo: &tailcfg.Hostinfo{OS: strings.Repeat("o", registrationOSMaxBytes+1)},
+		},
+		{
+			name: "client version",
+			hostinfo: &tailcfg.Hostinfo{
+				IPNVersion: strings.Repeat("v", registrationVersionMaxBytes+1),
+			},
+		},
+		{
+			name: "os version",
+			hostinfo: &tailcfg.Hostinfo{
+				OSVersion: strings.Repeat("v", registrationVersionMaxBytes+1),
+			},
+		},
+		{
+			name: "device model",
+			hostinfo: &tailcfg.Hostinfo{
+				DeviceModel: strings.Repeat("d", registrationDeviceMaxBytes+1),
+			},
+		},
+		{
+			name: "tag count",
+			hostinfo: &tailcfg.Hostinfo{
+				RequestTags: make([]string, registrationTagMaxCount+1),
+			},
+		},
+		{
+			name: "tag length",
+			hostinfo: &tailcfg.Hostinfo{
+				RequestTags: []string{strings.Repeat("t", registrationTagMaxBytes+1)},
+			},
+		},
+		{
+			name: "tag total",
+			hostinfo: &tailcfg.Hostinfo{
+				RequestTags: tagsOverTotal,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			data, err := registrationDataFromRequest(tailcfg.RegisterRequest{
+				NodeKey:  key.NewNode().Public(),
+				Hostinfo: test.hostinfo,
+			}, key.NewMachine().Public())
+
+			require.ErrorIs(t, err, errRegistrationMetadataTooLarge)
+			require.Nil(t, data)
 		})
 	}
 }

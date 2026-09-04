@@ -394,9 +394,12 @@ func (h *Headscale) reqToNewRegisterResponse(
 		return nil, NewHTTPError(http.StatusInternalServerError, "failed to generate registration ID", err)
 	}
 
-	authRegReq := types.NewRegisterAuthRequest(
-		registrationDataFromRequest(req, machineKey),
-	)
+	regData, err := registrationDataFromRequest(req, machineKey)
+	if err != nil {
+		return nil, NewHTTPError(http.StatusBadRequest, "registration metadata exceeds limits", err)
+	}
+
+	authRegReq := types.NewRegisterAuthRequest(regData)
 
 	log.Info().Msgf("new followup node registration using auth id: %s", newAuthID)
 	h.state.SetAuthCacheEntry(newAuthID, authRegReq)
@@ -406,25 +409,57 @@ func (h *Headscale) reqToNewRegisterResponse(
 	}, nil
 }
 
-// registrationDataFromRequest builds the [types.RegistrationData] payload stored
-// in the auth cache for a pending registration. The original [tailcfg.Hostinfo] is
-// retained so that consumers (auth callback, observability) see the
-// fields the client originally announced; the bounded-LRU cap on the
-// cache is what bounds the unauthenticated cache-fill DoS surface.
+const (
+	registrationHostnameMaxBytes  = 255
+	registrationOSMaxBytes        = 32
+	registrationVersionMaxBytes   = 256
+	registrationDeviceMaxBytes    = 256
+	registrationTagMaxCount       = 32
+	registrationTagMaxBytes       = 256
+	registrationTagsTotalMaxBytes = 4 << 10
+)
+
+var errRegistrationMetadataTooLarge = errors.New("registration metadata too large")
+
+// registrationDataFromRequest builds the bounded payload stored in the auth
+// cache for a pending registration. Network state is restored by the first
+// MapRequest, so only fields needed by authentication and its confirmation UI
+// are retained here.
 func registrationDataFromRequest(
 	req tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
-) *types.RegistrationData {
-	var hostname string
+) (*types.RegistrationData, error) {
+	var (
+		hostname string
+		hostinfo *tailcfg.Hostinfo
+	)
+
 	if req.Hostinfo != nil {
-		hostname = req.Hostinfo.Hostname
+		err := validateRegistrationHostinfo(req.Hostinfo)
+		if err != nil {
+			return nil, err
+		}
+
+		hostname = strings.Clone(req.Hostinfo.Hostname)
+
+		hostinfo = &tailcfg.Hostinfo{
+			Hostname:    hostname,
+			OS:          strings.Clone(req.Hostinfo.OS),
+			IPNVersion:  strings.Clone(req.Hostinfo.IPNVersion),
+			OSVersion:   strings.Clone(req.Hostinfo.OSVersion),
+			DeviceModel: strings.Clone(req.Hostinfo.DeviceModel),
+			RequestTags: make([]string, len(req.Hostinfo.RequestTags)),
+		}
+		for idx, tag := range req.Hostinfo.RequestTags {
+			hostinfo.RequestTags[idx] = strings.Clone(tag)
+		}
 	}
 
 	regData := &types.RegistrationData{
 		MachineKey: machineKey,
 		NodeKey:    req.NodeKey,
 		Hostname:   hostname,
-		Hostinfo:   req.Hostinfo,
+		Hostinfo:   hostinfo,
 	}
 
 	if !req.Expiry.IsZero() {
@@ -432,7 +467,63 @@ func registrationDataFromRequest(
 		regData.Expiry = &expiry
 	}
 
-	return regData
+	return regData, nil
+}
+
+func validateRegistrationHostinfo(hostinfo *tailcfg.Hostinfo) error {
+	fields := []struct {
+		name  string
+		value string
+		limit int
+	}{
+		{name: "hostname", value: hostinfo.Hostname, limit: registrationHostnameMaxBytes},
+		{name: "os", value: hostinfo.OS, limit: registrationOSMaxBytes},
+		{name: "client version", value: hostinfo.IPNVersion, limit: registrationVersionMaxBytes},
+		{name: "os version", value: hostinfo.OSVersion, limit: registrationVersionMaxBytes},
+		{name: "device model", value: hostinfo.DeviceModel, limit: registrationDeviceMaxBytes},
+	}
+	for _, field := range fields {
+		if len(field.value) > field.limit {
+			return fmt.Errorf(
+				"%w: %s exceeds %d bytes",
+				errRegistrationMetadataTooLarge,
+				field.name,
+				field.limit,
+			)
+		}
+	}
+
+	if len(hostinfo.RequestTags) > registrationTagMaxCount {
+		return fmt.Errorf(
+			"%w: requested tags exceed %d entries",
+			errRegistrationMetadataTooLarge,
+			registrationTagMaxCount,
+		)
+	}
+
+	total := 0
+
+	for _, tag := range hostinfo.RequestTags {
+		if len(tag) > registrationTagMaxBytes {
+			return fmt.Errorf(
+				"%w: requested tag exceeds %d bytes",
+				errRegistrationMetadataTooLarge,
+				registrationTagMaxBytes,
+			)
+		}
+
+		total += len(tag)
+	}
+
+	if total > registrationTagsTotalMaxBytes {
+		return fmt.Errorf(
+			"%w: requested tags exceed %d bytes",
+			errRegistrationMetadataTooLarge,
+			registrationTagsTotalMaxBytes,
+		)
+	}
+
+	return nil
 }
 
 func (h *Headscale) handleRegisterWithAuthKey(
@@ -520,9 +611,12 @@ func (h *Headscale) handleRegisterInteractive(
 			Msg("Received registration request with empty hostname, generated default")
 	}
 
-	authRegReq := types.NewRegisterAuthRequest(
-		registrationDataFromRequest(req, machineKey),
-	)
+	regData, err := registrationDataFromRequest(req, machineKey)
+	if err != nil {
+		return nil, NewHTTPError(http.StatusBadRequest, "registration metadata exceeds limits", err)
+	}
+
+	authRegReq := types.NewRegisterAuthRequest(regData)
 
 	h.state.SetAuthCacheEntry(authID, authRegReq)
 
