@@ -43,3 +43,32 @@ func TestUpdateRecordsDoesNotBlockShutdown(t *testing.T) {
 		t.Fatal("updateRecords parked on a blocking send and did not return after Close")
 	}
 }
+
+// TestWaitUntilPathExistsReturnsOnClose ensures Close unblocks the
+// Remove/Rename retry. A missing extra-records file must not pin Run
+// for the 15-minute backoff budget after shutdown.
+func TestWaitUntilPathExistsReturnsOnClose(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "extra.json")
+	require.NoError(t, os.WriteFile(path,
+		[]byte(`[{"name":"a.example.com","type":"A","value":"100.64.0.1"}]`), 0o600))
+
+	er, err := NewExtraRecordsManager(path)
+	require.NoError(t, err)
+
+	require.NoError(t, os.Remove(path))
+
+	done := make(chan error, 1)
+
+	go func() {
+		done <- er.waitUntilPathExists()
+	}()
+
+	er.Close()
+
+	select {
+	case err := <-done:
+		require.Error(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("waitUntilPathExists did not return after Close while the extra-records file was missing")
+	}
+}
