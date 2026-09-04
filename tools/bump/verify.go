@@ -116,28 +116,13 @@ func verifyBuilders(ctx context.Context, r *repo) []finding {
 	return findings
 }
 
-// verifyToolchain reports, but never edits, a go.mod directive that has fallen
-// behind the toolchain the build actually uses. Raising it is a promise to
-// downstream packagers, so it stays a human decision.
+// verifyToolchain reports, but never edits, a go directive that has outrun the
+// toolchain nixpkgs ships. Raising it is a promise to downstream packagers, so
+// the decision stays with a human; lowering it is not this tool's call either.
 func verifyToolchain(ctx context.Context, r *repo) []finding {
-	nixGo, err := goVersion(ctx, r)
+	err := checkToolchain(ctx, r)
 	if err != nil {
 		return []finding{finding(err.Error())}
-	}
-
-	ourMod, err := r.readFile("go.mod")
-	if err != nil {
-		return []finding{finding(err.Error())}
-	}
-
-	ourGo, err := goDirective(ourMod)
-	if err != nil {
-		return []finding{finding(err.Error())}
-	}
-
-	if semver.Compare("v"+ourGo, "v"+nixGo) > 0 {
-		return []finding{finding(fmt.Sprintf(
-			"go.mod requires go %s but the devShell provides %s", ourGo, nixGo))}
 	}
 
 	return nil

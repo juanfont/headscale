@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"golang.org/x/mod/modfile"
+	"golang.org/x/mod/semver"
 )
 
 // Modules whose versions are not independent. Each pair moves as one unit or
@@ -335,6 +336,39 @@ func noteAttached(f *modfile.File, module, needle string) bool {
 	return false
 }
 
+var errToolchainAhead = errors.New("dependencies require a newer Go than the devShell provides")
+
+// checkToolchain catches a dependency that dragged go.mod's go directive above
+// the toolchain nixpkgs ships.
+//
+// The go command papers over this by downloading the newer toolchain, so
+// `go build` succeeds and nothing looks wrong. The nix builders set
+// GOTOOLCHAIN=local and fail outright, which is why this has to be an explicit
+// check rather than something the build would surface on its own.
+func checkToolchain(ctx context.Context, r *repo) error {
+	goMod, err := r.readFile("go.mod")
+	if err != nil {
+		return err
+	}
+
+	want, err := goDirective(goMod)
+	if err != nil {
+		return err
+	}
+
+	have, err := goVersion(ctx, r)
+	if err != nil {
+		return err
+	}
+
+	if semver.Compare("v"+want, "v"+have) > 0 {
+		return fmt.Errorf("%w: go.mod now requires go %s, the devShell provides %s",
+			errToolchainAhead, want, have)
+	}
+
+	return nil
+}
+
 // settle runs the steps every dependency change needs before it can be judged:
 // tidy, restore the lockstep pins that the upgrade may have disturbed, tidy
 // again, then assert go.mod's hand-written rules survived.
@@ -355,6 +389,11 @@ func settle(ctx context.Context, r *repo) error {
 	}
 
 	err = checkLockstep(ctx, r)
+	if err != nil {
+		return err
+	}
+
+	err = checkToolchain(ctx, r)
 	if err != nil {
 		return err
 	}
