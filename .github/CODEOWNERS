@@ -7,4 +7,3 @@ Dockerfile* @ohdearaugustin @nblock
 .goreleaser.yaml @ohdearaugustin @nblock
 /docs/ @ohdearaugustin @nblock
 /.github/workflows/ @ohdearaugustin @nblock
-/.github/renovate.json @ohdearaugustin @nblock
