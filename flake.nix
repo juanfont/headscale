@@ -120,6 +120,7 @@
             gopls
             gotools
 
+            gh
             ksh
             ko
             yq-go
