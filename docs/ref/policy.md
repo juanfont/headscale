@@ -202,6 +202,7 @@ standard Tailscale IP ranges. This autogroup can only be used as source.
 configuration and attributes. At least the following node attributes are currently supported by Headscale[^2]:
 
 - `drive:access`, `drive:share`: [Taildrive support](https://tailscale.com/docs/features/taildrive).
+- `suggest-exit-node`, `suggest-exit-node-ui`: [Automatic exit node selection](routes.md#automatic-exit-node-selection).
 - `nextdns:<profile>`, `nextdns:no-device-info`: [NextDNS integration](https://tailscale.com/docs/integrations/nextdns).
   Be sure to set NextDNS as global resolver in the [configuration](configuration.md).
 - `magicdns-aaaa`: Respond to AAAA queries on the local [MagicDNS](https://tailscale.com/docs/features/magicdns)

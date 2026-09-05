@@ -283,6 +283,58 @@ $ sudo tailscale up --login-server <YOUR_HEADSCALE_URL> --advertise-tags tag:exi
 Please see the [official Tailscale documentation](https://tailscale.com/docs/reference/syntax/policy-file#autoapprovers)
 for more information on auto approvers.
 
+### Automatic exit node selection
+
+A Tailscale client can be configured to select one of the available exit nodes automatically. This may be useful when
+there are multiple exit nodes available and clients should use an exit node without requiring a user to manually switch
+between them.
+
+The policy snippet below defines the tag `tag:exit` for exit nodes. Exit nodes with that tag are suggested to clients
+with the [`suggest-exit-node` node attribute](policy.md#node-attributes). Additionally, GUI clients should display the
+"Recommended" exit node selector.
+
+```json title="Automatic exit node selection"
+{
+  "tagOwners": {
+    "tag:exit": ["infra@"]
+  },
+  "nodeAttrs": [
+    {
+      // Suggest exit nodes tagged with tag:exit
+      "target": ["tag:exit"],
+      "attr": ["suggest-exit-node"]
+    },
+    {
+      // Show "recommended" exit node selector in GUIs
+      "target": ["*"],
+      "attr": ["suggest-exit-node-ui"]
+    }
+  ],
+  "grants": [
+    {
+      "src": ["..."],
+      "dst": ["autogroup:internet"],
+      "ip": ["*"]
+    }
+  ]
+}
+```
+
+The Tailscale client can suggest a viable exit node with:
+
+```console
+$ sudo tailscale exit-node suggest
+```
+
+or automatically select one by using `auto:any` as exit node identifier:
+
+```console
+$ sudo tailscale set --exit-node=auto:any
+```
+
+Please see the [official Tailscale documentation](https://tailscale.com/docs/features/exit-nodes/auto-exit-nodes) for
+more information on automatic exit node selection.
+
 ## High availability
 
 Headscale supports high availability routing. Multiple subnet routers with overlapping routes or multiple exit nodes can
