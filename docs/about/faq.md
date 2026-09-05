@@ -208,6 +208,10 @@ applied by a client once it successfully connected with Headscale. See the confi
 
 Alternatively, logging can also be disabled on the client side. This is independent of Headscale and opting out of
 client logging disables log submission early during client startup. The configuration is operating system specific and
-is usually achieved by setting the environment variable `TS_NO_LOGS_NO_SUPPORT=true` or by passing the flag
-`--no-logs-no-support` to `tailscaled`. See <https://tailscale.com/docs/features/logging#opt-out-of-client-logging> for
-details.
+is usually achieved by:
+
+- setting the environment variable `TS_NO_LOGS_NO_SUPPORT=true` or
+- by passing the flag `--no-logs-no-support` to `tailscaled` or
+- by disabling "Remote client logging" in the mobile app settings
+
+See <https://tailscale.com/docs/features/logging#opt-out-of-client-logging> for details.
