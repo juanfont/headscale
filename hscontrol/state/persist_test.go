@@ -647,3 +647,24 @@ func TestConcurrentPreAuthKeyRegistrationSameMachineKey(t *testing.T) {
 	require.Equal(t, 1, s.ListNodes().Len(),
 		"concurrent registrations of one machine key must yield a single node")
 }
+
+// TestUpdatePolicyManagerUsersUnchangedKeepsSnapshot ensures re-sending the
+// same user list does not rebuild peer adjacency, while a real user change
+// does.
+func TestUpdatePolicyManagerUsersUnchangedKeepsSnapshot(t *testing.T) {
+	_, s, _ := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	require.NoError(t, s.UpdatePolicyManagerUsersForTest())
+
+	before := s.nodeStore.data.Load()
+
+	require.NoError(t, s.UpdatePolicyManagerUsersForTest())
+	require.Same(t, before, s.nodeStore.data.Load(),
+		"unchanged users must not rebuild the peer map")
+
+	_, _, err := s.CreateUser(types.User{Name: "second"})
+	require.NoError(t, err)
+	require.NotSame(t, before, s.nodeStore.data.Load(),
+		"a user change must rebuild the peer map")
+}

@@ -4,6 +4,7 @@ import (
 	"net/netip"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
@@ -353,6 +354,83 @@ func TestSSHCheckParamsUnhydratedUserNoPanic(t *testing.T) {
 	require.NotPanics(t, func() {
 		pm.SSHCheckParams(types.NodeID(1), types.NodeID(2))
 	}, "SSHCheckParams must not panic when a non-tagged node has an unhydrated User")
+}
+
+func TestSetUsers(t *testing.T) {
+	const allowAll = `{"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`
+
+	const sshCheck = `{
+		"ssh": [
+			{
+				"action": "check",
+				"src": ["user1@headscale.net"],
+				"dst": ["autogroup:self"],
+				"users": ["root"]
+			}
+		]
+	}`
+
+	tests := []struct {
+		name   string
+		policy string
+		mutate func(*types.User)
+
+		wantPolicyChanged  bool
+		wantPeerMapChanged bool
+	}{
+		{
+			name:   "identical users without ssh",
+			policy: allowAll,
+			mutate: func(*types.User) {},
+		},
+		{
+			name:   "identical users with ssh",
+			policy: sshCheck,
+			mutate: func(*types.User) {},
+		},
+		{
+			name:   "timestamp bump only",
+			policy: sshCheck,
+			mutate: func(u *types.User) { u.UpdatedAt = u.UpdatedAt.Add(time.Hour) },
+		},
+		{
+			name:   "display name change without ssh",
+			policy: allowAll,
+			mutate: func(u *types.User) { u.DisplayName = "Renamed" },
+		},
+		{
+			name:   "email change without ssh",
+			policy: allowAll,
+			mutate: func(u *types.User) { u.Email = "other@headscale.net" },
+
+			wantPeerMapChanged: true,
+		},
+		{
+			name:   "rename with ssh",
+			policy: sshCheck,
+			mutate: func(u *types.User) { u.Name = "renamed" },
+
+			wantPolicyChanged:  true,
+			wantPeerMapChanged: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			users := types.Users{{ID: 1, Name: "user1", Email: "user1@headscale.net"}}
+
+			pm, err := NewPolicyManager([]byte(tt.policy), users, types.Nodes{}.ViewSlice())
+			require.NoError(t, err)
+
+			updated := slices.Clone(users)
+			tt.mutate(&updated[0])
+
+			policyChanged, peerMapChanged, err := pm.SetUsers(updated)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantPolicyChanged, policyChanged, "policyChanged")
+			require.Equal(t, tt.wantPeerMapChanged, peerMapChanged, "peerMapChanged")
+		})
+	}
 }
 
 // TestInvalidateGlobalPolicyCache tests the cache invalidation logic for global policies.
