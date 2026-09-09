@@ -12,7 +12,7 @@ import (
 
 // TestNoOpMapRequestSkipsPersist ensures an identical, no-op MapRequest does
 // not issue a database UPDATE (nor the O(n) policy SetNodes scan that follows
-// persistNodeToDB). The node state is unchanged, so persisting is pure waste on
+// persistNodeAndRefreshPolicy). The node state is unchanged, so persisting is pure waste on
 // the hot map-request path.
 func TestNoOpMapRequestSkipsPersist(t *testing.T) {
 	_, s, nodeID := persistTestSetup(t)

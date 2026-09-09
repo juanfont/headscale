@@ -3872,7 +3872,7 @@ func TestDeletedPreAuthKeyNotRecreatedOnNodeUpdate(t *testing.T) {
 
 	// The [state.NodeStore] may still have stale AuthKey data in memory.
 	// Now simulate what happens when the node sends a [tailcfg.MapRequest] after a tailscaled restart.
-	// This triggers [state.State.persistNodeToDB] which calls GORM's Updates().
+	// This triggers [state.State.persistNodeAndRefreshPolicy] which calls GORM's Updates().
 
 	// Simulate a [tailcfg.MapRequest] by updating the node through the state layer
 	// This mimics what poll.go does when processing MapRequests
@@ -3886,7 +3886,7 @@ func TestDeletedPreAuthKeyNotRecreatedOnNodeUpdate(t *testing.T) {
 	}
 
 	// Process the [tailcfg.MapRequest]-like update
-	// This calls [state.State.UpdateNodeFromMapRequest] which eventually calls [state.State.persistNodeToDB]
+	// This calls [state.State.UpdateNodeFromMapRequest] which eventually calls [state.State.persistNodeAndRefreshPolicy]
 	_, err = app.state.UpdateNodeFromMapRequest(node.ID(), mapReq)
 	require.NoError(t, err, "UpdateNodeFromMapRequest should succeed")
 	t.Log("Simulated MapRequest update completed")

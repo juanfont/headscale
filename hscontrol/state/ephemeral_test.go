@@ -148,9 +148,9 @@ func TestUpdateNodeReturnsInvalidWhenDeletedInSameBatch(t *testing.T) {
 	}
 }
 
-// TestPersistNodeToDBPreventsRaceCondition tests that persistNodeToDB correctly handles
+// TestPersistNodeToDBPreventsRaceCondition tests that persistNodeAndRefreshPolicy correctly handles
 // the race condition where a node is deleted after UpdateNode returns but before
-// persistNodeToDB is called. This reproduces the ephemeral node deletion bug.
+// persistNodeAndRefreshPolicy is called. This reproduces the ephemeral node deletion bug.
 func TestPersistNodeToDBPreventsRaceCondition(t *testing.T) {
 	node := createTestNode(3, 1, "test-user", "test-node-3")
 
@@ -180,19 +180,19 @@ func TestPersistNodeToDBPreventsRaceCondition(t *testing.T) {
 
 	// Now try to use the updatedNode from before the deletion
 	// In the old code, this would re-insert the node into the database
-	// With our fix, GetNode check in persistNodeToDB should prevent this
+	// With our fix, GetNode check in persistNodeAndRefreshPolicy should prevent this
 
-	// Simulate what persistNodeToDB does - check if node still exists
+	// Simulate what persistNodeAndRefreshPolicy does - check if node still exists
 	_, exists := store.GetNode(updatedNode.ID())
 	if !exists {
-		t.Log("SUCCESS: persistNodeToDB check would prevent re-insertion of deleted node")
+		t.Log("SUCCESS: persistNodeAndRefreshPolicy check would prevent re-insertion of deleted node")
 	} else {
 		t.Error("BUG: Node still exists in NodeStore after deletion")
 	}
 
 	// The key assertion: after deletion, attempting to persist the old updatedNode
 	// should fail because the node no longer exists in NodeStore
-	assert.False(t, exists, "persistNodeToDB should detect node was deleted and refuse to persist")
+	assert.False(t, exists, "persistNodeAndRefreshPolicy should detect node was deleted and refuse to persist")
 }
 
 // TestEphemeralNodeLogoutRaceCondition tests the specific race condition that occurs
@@ -200,7 +200,7 @@ func TestPersistNodeToDBPreventsRaceCondition(t *testing.T) {
 //  1. UpdateNodeFromMapRequest calls UpdateNode and receives a node view
 //  2. Concurrently, handleLogout is called for the ephemeral node and calls DeleteNode
 //  3. UpdateNode and DeleteNode get batched together
-//  4. If UpdateNode's result is used to call persistNodeToDB after the deletion,
+//  4. If UpdateNode's result is used to call persistNodeAndRefreshPolicy after the deletion,
 //     the node could be re-inserted into the database even though it was deleted
 func TestEphemeralNodeLogoutRaceCondition(t *testing.T) {
 	ephemeralNode := createTestNode(4, 1, "test-user", "ephemeral-node")
@@ -263,10 +263,10 @@ func TestEphemeralNodeLogoutRaceCondition(t *testing.T) {
 	if updateOk && updatedNode.Valid() {
 		t.Log("UpdateNode returned valid node, but node is deleted - this is the race condition")
 
-		// In the real code, this would cause persistNodeToDB to be called with updatedNode
-		// The fix in persistNodeToDB checks if the node still exists:
+		// In the real code, this would cause persistNodeAndRefreshPolicy to be called with updatedNode
+		// The fix in persistNodeAndRefreshPolicy checks if the node still exists:
 		_, stillExists := store.GetNode(updatedNode.ID())
-		assert.False(t, stillExists, "persistNodeToDB should check NodeStore and find node deleted")
+		assert.False(t, stillExists, "persistNodeAndRefreshPolicy should check NodeStore and find node deleted")
 	} else if !updateOk || !updatedNode.Valid() {
 		t.Log("UpdateNode correctly returned invalid/not-ok result (delete happened in same batch)")
 	}
@@ -280,7 +280,7 @@ func TestEphemeralNodeLogoutRaceCondition(t *testing.T) {
 // 4. handleLogout calls DeleteNode for ephemeral node
 // 5. UpdateNode and DeleteNode batch together
 // 6. UpdateNode returns a valid node (from before delete in batch)
-// 7. persistNodeToDB is called with the stale valid node
+// 7. persistNodeAndRefreshPolicy is called with the stale valid node
 // 8. Node gets re-inserted into database instead of staying deleted.
 func TestUpdateNodeFromMapRequestEphemeralLogoutSequence(t *testing.T) {
 	ephemeralNode := createTestNode(5, 1, "test-user", "ephemeral-node-5")
@@ -340,12 +340,12 @@ func TestUpdateNodeFromMapRequestEphemeralLogoutSequence(t *testing.T) {
 		// but the node was deleted in the same batch
 		t.Log("UpdateNode returned valid node even though node was deleted")
 
-		// The fix: persistNodeToDB must check NodeStore before persisting
+		// The fix: persistNodeAndRefreshPolicy must check NodeStore before persisting
 		_, checkExists := store.GetNode(result.node.ID())
 		if checkExists {
 			t.Error("BUG: Node still exists in NodeStore after deletion - should be impossible")
 		} else {
-			t.Log("SUCCESS: persistNodeToDB would detect node is deleted and refuse to persist")
+			t.Log("SUCCESS: persistNodeAndRefreshPolicy would detect node is deleted and refuse to persist")
 		}
 	} else {
 		t.Log("UpdateNode correctly indicated node was deleted (returned invalid or not-ok)")
@@ -407,15 +407,15 @@ func TestUpdateNodeDeletedInSameBatchReturnsInvalid(t *testing.T) {
 	assert.False(t, result.node.Valid(), "UpdateNode should return invalid node when node deleted in same batch")
 }
 
-// TestPersistNodeToDBChecksNodeStoreBeforePersist verifies that persistNodeToDB
+// TestPersistNodeToDBChecksNodeStoreBeforePersist verifies that persistNodeAndRefreshPolicy
 // checks if the node still exists in NodeStore before persisting to database.
 // This prevents the race condition where:
 // 1. UpdateNodeFromMapRequest calls UpdateNode and gets a valid node
 // 2. Ephemeral node logout calls DeleteNode
 // 3. UpdateNode and DeleteNode batch together
 // 4. UpdateNode returns a valid node (from before delete in batch)
-// 5. UpdateNodeFromMapRequest calls persistNodeToDB with the stale node
-// 6. persistNodeToDB must detect the node is deleted and refuse to persist.
+// 5. UpdateNodeFromMapRequest calls persistNodeAndRefreshPolicy with the stale node
+// 6. persistNodeAndRefreshPolicy must detect the node is deleted and refuse to persist.
 func TestPersistNodeToDBChecksNodeStoreBeforePersist(t *testing.T) {
 	ephemeralNode := createTestNode(7, 1, "test-user", "ephemeral-node-7")
 	ephemeralNode.AuthKey = &types.PreAuthKey{
@@ -448,8 +448,8 @@ func TestPersistNodeToDBChecksNodeStoreBeforePersist(t *testing.T) {
 		assert.False(c, exists, "node should be deleted from NodeStore")
 	}, 1*time.Second, 10*time.Millisecond, "waiting for node to be deleted")
 
-	// 4. Simulate what persistNodeToDB does - check if node still exists
-	// The fix in persistNodeToDB checks NodeStore before persisting:
+	// 4. Simulate what persistNodeAndRefreshPolicy does - check if node still exists
+	// The fix in persistNodeAndRefreshPolicy checks NodeStore before persisting:
 	// if !exists { return error }
 	// This prevents re-inserting the deleted node into the database
 
@@ -458,9 +458,9 @@ func TestPersistNodeToDBChecksNodeStoreBeforePersist(t *testing.T) {
 	_, stillExists := store.GetNode(updatedNode.ID())
 	assert.False(t, stillExists, "but node should be deleted from NodeStore")
 
-	// This is the critical test: persistNodeToDB must check NodeStore
+	// This is the critical test: persistNodeAndRefreshPolicy must check NodeStore
 	// and refuse to persist if the node doesn't exist anymore
-	// The actual persistNodeToDB implementation does:
+	// The actual persistNodeAndRefreshPolicy implementation does:
 	// _, exists := s.nodeStore.GetNode(node.ID())
 	// if !exists { return error }
 }
