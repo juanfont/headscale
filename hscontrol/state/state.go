@@ -2785,12 +2785,9 @@ func reauthChange(node types.NodeView, isRelogin, policyChanged bool) change.Cha
 	}
 }
 
-// updatePolicyManagerUsers updates the policy manager with current users.
-// Returns true if the policy changed and notifications should be sent.
-// TODO(kradalby): This is a temporary stepping stone, ultimately we should
-// have the list already available so it could go much quicker. Alternatively
-// the policy manager could have a remove or add list for users.
-// updatePolicyManagerUsers refreshes the policy manager with current user data.
+// updatePolicyManagerUsers pushes the current user list into the policy
+// manager, rebuilds peer adjacency when user identity changed, and returns
+// a PolicyChange when clients need a refresh.
 func (s *State) updatePolicyManagerUsers() (change.Change, error) {
 	users, err := s.ListAllUsers()
 	if err != nil {
@@ -2799,12 +2796,19 @@ func (s *State) updatePolicyManagerUsers() (change.Change, error) {
 
 	log.Debug().Caller().Int("user.count", len(users)).Msg("policy manager user update initiated because user list modification detected")
 
-	changed, err := s.polMan.SetUsers(users)
+	changed, peerMapChanged, err := s.polMan.SetUsers(users)
 	if err != nil {
 		return change.Change{}, fmt.Errorf("updating policy manager users: %w", err)
 	}
 
 	log.Debug().Caller().Bool("policy.changed", changed).Msg("policy manager user update completed because SetUsers operation finished")
+
+	if peerMapChanged {
+		// User-driven matcher state changed: rebuild candidate adjacency
+		// so peer visibility reflects the new policy. Without this, the
+		// cached peersByNode stays stale until the next node write.
+		s.nodeStore.RebuildPeerMaps()
+	}
 
 	if changed {
 		return change.PolicyChange(), nil
