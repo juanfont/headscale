@@ -90,14 +90,13 @@ func allAreas() []area {
 		Message: func(change) string { return "all: regenerate generated files" },
 	})
 
-	// Last, so it also covers whatever the generators emitted. nixpkgs decides
-	// which prettier and gofumpt the tree is formatted with, so a lock bump can
-	// reformat files no other area went near.
+	// Last, so it also covers whatever the generators emitted, and so the
+	// pre-commit hooks judge the finished tree rather than an intermediate one.
 	return append(areas, area{
 		Name:    "fmt",
 		Needs:   []string{"flake"},
 		Apply:   applyFormat,
-		Message: func(change) string { return "all: apply the formatters from the new toolchain" },
+		Message: func(change) string { return "all: satisfy the formatters and pre-commit hooks" },
 	})
 }
 
