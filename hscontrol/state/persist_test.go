@@ -127,7 +127,7 @@ func TestPersistEmptyApprovedRoutes(t *testing.T) {
 // TestPersistEmptyTags exercises the same persist path for the tags
 // column. State.SetNodeTags rejects an empty slice at the API level
 // (tags are one-way), so the test drives the bug surface directly via
-// NodeStore + persistNodeToDB, which is the same code path the public
+// NodeStore + persistNodeAndRefreshPolicy, which is the same code path the public
 // SetApprovedRoutes call exercises.
 func TestPersistEmptyTags(t *testing.T) {
 	dbPath, s, nodeID := persistTestSetup(t)
@@ -140,7 +140,7 @@ func TestPersistEmptyTags(t *testing.T) {
 	seeded, ok := s.nodeStore.GetNode(nodeID)
 	require.True(t, ok)
 
-	_, _, err := s.persistNodeToDB(seeded)
+	_, _, err := s.persistNodeAndRefreshPolicy(seeded)
 	require.NoError(t, err)
 
 	gotAfterSeed, err := s.DB().GetNodeByID(nodeID)
@@ -153,7 +153,7 @@ func TestPersistEmptyTags(t *testing.T) {
 	})
 	require.True(t, ok)
 
-	_, _, err = s.persistNodeToDB(cleared)
+	_, _, err = s.persistNodeAndRefreshPolicy(cleared)
 	require.NoError(t, err)
 
 	gotAfterClear, err := s.DB().GetNodeByID(nodeID)
@@ -188,7 +188,7 @@ func TestPersistEmptyEndpoints(t *testing.T) {
 	seeded, ok := s.nodeStore.GetNode(nodeID)
 	require.True(t, ok)
 
-	_, _, err := s.persistNodeToDB(seeded)
+	_, _, err := s.persistNodeAndRefreshPolicy(seeded)
 	require.NoError(t, err)
 
 	gotAfterSeed, err := s.DB().GetNodeByID(nodeID)
@@ -201,7 +201,7 @@ func TestPersistEmptyEndpoints(t *testing.T) {
 	})
 	require.True(t, ok)
 
-	_, _, err = s.persistNodeToDB(cleared)
+	_, _, err = s.persistNodeAndRefreshPolicy(cleared)
 	require.NoError(t, err)
 
 	gotAfterClear, err := s.DB().GetNodeByID(nodeID)
