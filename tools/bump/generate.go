@@ -129,3 +129,27 @@ func gateGenerate(ctx context.Context, r *repo) error {
 
 	return nil
 }
+
+// applyFormat re-runs the repository formatters. A toolchain bump can change
+// what "formatted" means: a newer prettier out of nixpkgs reformats files no
+// bump touched, and the formatting check then fails on a tree the bot never
+// edited. Running last means it also tidies whatever the generators emitted.
+func applyFormat(ctx context.Context, r *repo) (change, error) {
+	if _, err := r.nixRun(ctx, "make", "fmt"); err != nil { //nolint:noinlineerr
+		return change{}, err
+	}
+
+	touched, err := changedFiles(ctx, r)
+	if err != nil {
+		return change{}, err
+	}
+
+	if len(touched) == 0 {
+		return change{Empty: true}, nil
+	}
+
+	return change{
+		Summary: fmt.Sprintf("%d file(s) reformatted", len(touched)),
+		Detail:  touched,
+	}, nil
+}

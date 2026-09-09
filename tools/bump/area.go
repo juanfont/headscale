@@ -82,12 +82,22 @@ func allAreas() []area {
 	areas = append(areas, imageAreas()...)
 	areas = append(areas, actionAreas()...)
 
-	return append(areas, area{
+	areas = append(areas, area{
 		Name:    "generate",
 		Needs:   []string{"gomod", "tools:oapi-codegen"},
 		Apply:   applyGenerate,
 		Gate:    gateGenerate,
 		Message: func(change) string { return "all: regenerate generated files" },
+	})
+
+	// Last, so it also covers whatever the generators emitted. nixpkgs decides
+	// which prettier and gofumpt the tree is formatted with, so a lock bump can
+	// reformat files no other area went near.
+	return append(areas, area{
+		Name:    "fmt",
+		Needs:   []string{"flake"},
+		Apply:   applyFormat,
+		Message: func(change) string { return "all: apply the formatters from the new toolchain" },
 	})
 }
 
