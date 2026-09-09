@@ -43,6 +43,7 @@ keys remain all-access.
 ### Changes
 
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
+- SSH policy validation errors now prefix their messages with `ssh:` so failures like `ssh: users must be specified` make it clear that the problem comes from an SSH rule violation [#3343](https://github.com/juanfont/headscale/pull/3343)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
 - Fix deleting a node leaving its long poll open, so the client stayed connected instead of asking for a new login [#3449](https://github.com/juanfont/headscale/pull/3449)
 - Fix interactive OIDC login when the confirmation page is reloaded by an ad blocker, back navigation, or pull-to-refresh; the confirmation page now has its own URL, keeping single-use authorization codes out of reloads [#3448](https://github.com/juanfont/headscale/pull/3448)
