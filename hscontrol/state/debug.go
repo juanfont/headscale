@@ -176,14 +176,46 @@ func (s *State) DebugSSHPolicies() map[string]*tailcfg.SSHPolicy {
 	return sshPolicies
 }
 
-// DebugRegistrationCache returns debug information about the registration cache.
+// DebugRegistrationCache returns debug information about the registration
+// cache, including a JSON-safe summary of each pending entry.
+//
+// [types.AuthRequest] carries unexported fields backed by a channel, which
+// previously made the entries themselves unmarshalable (#2714) if returned
+// directly. Peek is used instead of Get so inspecting the cache for
+// debugging does not itself affect LRU recency/eviction order.
 func (s *State) DebugRegistrationCache() map[string]any {
+	ids := s.authCache.Keys()
+	entries := make([]map[string]any, 0, len(ids))
+
+	for _, id := range ids {
+		req, ok := s.authCache.Peek(id)
+		if !ok {
+			// Evicted between Keys() and Peek(); skip rather than report a
+			// nonexistent entry.
+			continue
+		}
+
+		flowType := "plain"
+		switch {
+		case req.IsRegistration():
+			flowType = "registration"
+		case req.IsSSHCheck():
+			flowType = "ssh-check"
+		}
+
+		entries = append(entries, map[string]any{
+			"auth_id": string(id),
+			"type":    flowType,
+		})
+	}
+
 	return map[string]any{
 		"type":        "expirable-lru",
 		"expiration":  registerCacheExpiration.String(),
 		"max_entries": defaultRegisterCacheMaxEntries,
 		"current_len": s.authCache.Len(),
 		"status":      "active",
+		"entries":     entries,
 	}
 }
 
