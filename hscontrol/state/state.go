@@ -33,6 +33,8 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/hscontrol/util/zlog"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -1368,9 +1370,23 @@ func (s *State) BatchSetNodeHealth(updates map[types.NodeID]bool) bool {
 
 	prevRoutes := s.nodeStore.PrimaryRoutes()
 
+	// Skip writes that would not change anything so an all-unchanged
+	// probe cycle publishes no snapshot. healthSetter stays authoritative
+	// for the candidacy and race checks under the writer.
 	fns := make(map[types.NodeID]UpdateNodeFunc, len(updates))
+
 	for id, healthy := range updates {
+		if nv, ok := s.nodeStore.GetNode(id); ok && nv.Unhealthy() == !healthy {
+			haHealthUpdates.WithLabelValues("unchanged").Inc()
+
+			continue
+		}
+
 		fns[id] = healthSetter(healthy)
+	}
+
+	if len(fns) == 0 {
+		return false
 	}
 
 	s.nodeStore.UpdateNodes(fns)
@@ -1383,14 +1399,26 @@ func (s *State) BatchSetNodeHealth(updates map[types.NodeID]bool) bool {
 // an unhealthy mark only sticks when the node is still online and
 // still advertises approved routes, so a node that left HA candidacy
 // between probe dispatch and result does not carry a stale bit.
+// Bounded labels only: every requested health update lands in exactly one
+// outcome, so the series can be summed to the probe request count.
+var haHealthUpdates = promauto.NewCounterVec(prometheus.CounterOpts{
+	Namespace: prometheusNamespace,
+	Name:      "ha_health_updates_total",
+	Help:      "HA health updates by outcome: unchanged and skipped, applied, or rejected because the node left candidacy.",
+}, []string{"result"})
+
 func healthSetter(healthy bool) UpdateNodeFunc {
 	return func(n *types.Node) {
 		if !healthy {
 			online := n.IsOnline != nil && *n.IsOnline
 			if !online || len(n.AllApprovedRoutes()) == 0 {
+				haHealthUpdates.WithLabelValues("rejected").Inc()
+
 				return
 			}
 		}
+
+		haHealthUpdates.WithLabelValues("changed").Inc()
 
 		n.Unhealthy = !healthy
 	}
