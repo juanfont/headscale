@@ -284,11 +284,7 @@ func TestBuildPeerMapFromPolicy(t *testing.T) {
 					want = append(want, n.ID)
 				}
 
-				var got []types.NodeID
-				for _, n := range pm.BuildPeerMap(tt.nodes.ViewSlice())[tt.node.ID] {
-					got = append(got, n.ID())
-				}
-
+				got := pm.BuildPeerMap(tt.nodes.ViewSlice())[tt.node.ID]
 				if !assert.ElementsMatch(t, want, got) {
 					t.Log("Matchers: ")
 
