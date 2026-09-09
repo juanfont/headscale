@@ -1203,6 +1203,12 @@ func (s *State) SetPolicy(pol []byte) (bool, error) {
 	// Clear SSH check auth times when policy changes.
 	s.ClearSSHCheckAuth()
 
+	// Payload-only writes reuse the cached adjacency, so a policy swap
+	// must rebuild it here rather than wait for the next relation write.
+	if changed {
+		s.nodeStore.RebuildPeerMaps()
+	}
+
 	return changed, nil
 }
 
