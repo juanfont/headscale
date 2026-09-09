@@ -32,10 +32,11 @@ repos:
   # Local hooks for project-specific tooling
   - repo: local
     hooks:
-      # nixpkgs-fmt for Nix files
-      - id: nixpkgs-fmt
-        name: nixpkgs-fmt
-        entry: nixpkgs-fmt
+      # nixfmt for Nix files; the same formatter the flake's treefmt check
+      # runs, so the hook and the check cannot disagree.
+      - id: nixfmt
+        name: nixfmt
+        entry: nixfmt
         language: system
         files: \.nix$
 
