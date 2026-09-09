@@ -165,12 +165,12 @@ func sqliteAtom(ctx context.Context, r *repo) (string, error) {
 	return fmt.Sprintf("modernc.org/sqlite %s -> %s (libc %s)", before, latest, libc), nil
 }
 
-// restAtom upgrades every direct requirement that is not owned by a lockstep
-// atom.
-func restAtom(ctx context.Context, r *repo) (string, error) {
+// directRequirements is every direct requirement not already owned by a
+// lockstep atom.
+func directRequirements(r *repo) ([]string, error) {
 	f, err := parseGoMod(r)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	owned := map[string]bool{
@@ -191,23 +191,53 @@ func restAtom(ctx context.Context, r *repo) (string, error) {
 		paths = append(paths, req.Mod.Path)
 	}
 
-	if len(paths) == 0 {
-		return "no direct requirements", nil
-	}
-
-	if _, err := r.nixRun(ctx, append([]string{"go", "get", "-u"}, paths...)...); err != nil { //nolint:noinlineerr
-		return "", err
-	}
-
-	return fmt.Sprintf("%d direct requirements", len(paths)), nil
+	return paths, nil
 }
 
-func goModAtoms() []atom {
-	return []atom{
+// moduleAtom upgrades one direct requirement. One atom per module costs nothing
+// on a good day, because the bisect tries every atom together first and only
+// splits when that fails. It is what stops a single dependency deprecating an
+// API the tree still uses from taking every other upgrade down with it.
+func moduleAtom(path string) func(context.Context, *repo) (string, error) {
+	return func(ctx context.Context, r *repo) (string, error) {
+		before, err := moduleVersion(ctx, r, path)
+		if err != nil {
+			return "", err
+		}
+
+		if _, err := r.nixRun(ctx, "go", "get", "-u", path); err != nil { //nolint:noinlineerr
+			return "", err
+		}
+
+		after, err := moduleVersion(ctx, r, path)
+		if err != nil {
+			return "", err
+		}
+
+		if before == after {
+			return "", nil
+		}
+
+		return fmt.Sprintf("%s %s -> %s", path, before, after), nil
+	}
+}
+
+func goModAtoms(r *repo) ([]atom, error) {
+	atoms := []atom{
 		{Name: "tailscale", Apply: tailscaleAtom},
 		{Name: "sqlite", Apply: sqliteAtom},
-		{Name: "rest", Apply: restAtom},
 	}
+
+	paths, err := directRequirements(r)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, path := range paths {
+		atoms = append(atoms, atom{Name: path, Apply: moduleAtom(path)})
+	}
+
+	return atoms, nil
 }
 
 // lockstepPairs are the indirect dependencies whose version is dictated by
@@ -426,7 +456,12 @@ func atomGate(ctx context.Context, r *repo) error {
 // flake.nix reads. Skipping that refresh is the classic way to hand over a
 // pull request that cannot nix build.
 func applyGoMod(ctx context.Context, r *repo) (change, error) {
-	kept, drops, err := applyAtoms(ctx, r, goModAtoms())
+	atoms, err := goModAtoms(r)
+	if err != nil {
+		return change{}, err
+	}
+
+	kept, drops, err := applyAtoms(ctx, r, atoms)
 	if err != nil {
 		return change{}, err
 	}
