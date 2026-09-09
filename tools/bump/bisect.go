@@ -76,7 +76,11 @@ func applySet(ctx context.Context, r *repo, atoms []atom) ([]string, error) {
 			return nil, fmt.Errorf("%s: %w", a.Name, err)
 		}
 
-		summaries = append(summaries, summary)
+		// An atom that found nothing to do reports no summary; listing it
+		// would fill the report with modules that did not move.
+		if summary != "" {
+			summaries = append(summaries, summary)
+		}
 	}
 
 	err := settle(ctx, r)
