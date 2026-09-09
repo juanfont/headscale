@@ -1094,9 +1094,18 @@ func equalUnordered[E comparable](a, b []E, cmp func(E, E) int) bool {
 
 // HasPolicyChange reports whether the node has changes that affect
 // policy evaluation. Includes approved subnet routes because they act
-// as source identity in [Node.CanAccess] for subnet-to-subnet ACLs.
+// as source identity in [Node.CanAccess] for subnet-to-subnet ACLs,
+// and enabled exit routes because autogroup:internet and exit-node
+// reduction depend on which exit nodes are advertised-and-approved.
 func (nv NodeView) HasPolicyChange(other NodeView) bool {
-	if nv.UserID() != other.UserID() {
+	if nv.TypedUserID() != other.TypedUserID() {
+		return true
+	}
+
+	// The policy resolves ownership through the loaded association, so
+	// compare it as well as the raw foreign key.
+	if nv.User().Valid() != other.User().Valid() ||
+		(nv.User().Valid() && nv.User().ID() != other.User().ID()) {
 		return true
 	}
 
@@ -1109,6 +1118,10 @@ func (nv NodeView) HasPolicyChange(other NodeView) bool {
 	}
 
 	if !equalPrefixesUnordered(nv.SubnetRoutes(), other.SubnetRoutes()) {
+		return true
+	}
+
+	if !equalPrefixesUnordered(nv.ExitRoutes(), other.ExitRoutes()) {
 		return true
 	}
 
