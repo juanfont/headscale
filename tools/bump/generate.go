@@ -140,13 +140,7 @@ func gateGenerate(ctx context.Context, r *repo) error {
 // The first hook pass is expected to fail, because a hook that rewrites a file
 // reports failure. The second pass is the real verdict.
 func applyFormat(ctx context.Context, r *repo) (change, error) {
-	if _, err := r.nixRun(ctx, "make", "fmt"); err != nil { //nolint:noinlineerr
-		return change{}, err
-	}
-
-	_, _ = r.nixRun(ctx, "prek", "run", "--all-files")
-
-	if _, err := r.nixRun(ctx, "prek", "run", "--all-files"); err != nil { //nolint:noinlineerr
+	if err := runFormatters(ctx, r); err != nil { //nolint:noinlineerr
 		return change{}, err
 	}
 
@@ -163,4 +157,19 @@ func applyFormat(ctx context.Context, r *repo) (change, error) {
 		Summary: fmt.Sprintf("%d file(s) reformatted", len(touched)),
 		Detail:  touched,
 	}, nil
+}
+
+// runFormatters brings the tree up to whatever the current toolchain considers
+// formatted. The first hook pass is expected to fail, because a hook that
+// rewrites a file reports failure; the second pass is the verdict.
+func runFormatters(ctx context.Context, r *repo) error {
+	if _, err := r.nixRun(ctx, "make", "fmt"); err != nil { //nolint:noinlineerr
+		return err
+	}
+
+	_, _ = r.nixRun(ctx, "prek", "run", "--all-files")
+
+	_, err := r.nixRun(ctx, "prek", "run", "--all-files")
+
+	return err
 }
