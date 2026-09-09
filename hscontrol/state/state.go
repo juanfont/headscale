@@ -733,20 +733,18 @@ func (s *State) Disconnect(id types.NodeID, epoch uint64) ([]change.Change, erro
 	log.Info().EmbedObject(node).Msg("node disconnected")
 
 	// Persist LastSeen best-effort: [NodeStore] already reflects offline
-	// and peers still need the change notifications below.
-	_, c, err := s.persistNodeAndRefreshPolicy(node)
+	// and peers still need the change notifications below. Going offline
+	// changes nothing the policy reads, so the row write skips the policy
+	// manager refresh.
+	_, err := s.persistNode(node)
 	if err != nil {
 		log.Error().Err(err).EmbedObject(node).Msg("failed to update last seen in database")
-
-		c = change.Change{}
 	}
 
-	// Only a node whose online state changes what peers compute (a subnet
-	// router, relay target, or via target) needs a full peer recompute.
-	// An ordinary node going offline just sends the lightweight offline
-	// patch; emitting a PolicyChange for it would force every peer to
-	// rebuild its netmap on every disconnect.
-	cs := []change.Change{change.NodeOfflineFor(node), c}
+	// An ordinary node going offline only needs the lightweight offline
+	// patch. Subnet routers, relay targets, and via targets change what
+	// peers compute, so they additionally force a peer recompute.
+	cs := []change.Change{change.NodeOffline(node.ID())}
 	if s.polMan.NodeNeedsPeerRecompute(node) {
 		cs = append(cs, change.PolicyChange())
 	}
