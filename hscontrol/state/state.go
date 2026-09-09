@@ -90,7 +90,7 @@ var ErrNodeNameNotUnique = errors.New("node name is not unique")
 //   - IsOnline: runtime-only field (gorm:"-").
 //
 // Expiry is included here but may be omitted at call sites that must
-// not touch it (see persistNodeToDB).
+// not touch it (see persistNodeAndRefreshPolicy).
 var nodeUpdateColumns = []string{
 	"MachineKey",
 	"NodeKey",
@@ -509,11 +509,11 @@ func (s *State) ListAllUsers() ([]types.User, error) {
 	return s.db.ListUsers(nil)
 }
 
-// persistNodeRowToDB writes the node's database row, re-reading the
+// persistNode writes the node's database row, re-reading the
 // authoritative copy from [NodeStore], without touching the policy manager.
 // Batch callers (e.g. autoApproveNodes) use it to write many rows and then
 // trigger a single policy rebuild instead of one per node.
-func (s *State) persistNodeRowToDB(node types.NodeView) (types.NodeView, error) {
+func (s *State) persistNode(node types.NodeView) (types.NodeView, error) {
 	if !node.Valid() {
 		return types.NodeView{}, ErrInvalidNodeView
 	}
@@ -559,11 +559,11 @@ func (s *State) persistNodeRowToDB(node types.NodeView) (types.NodeView, error) 
 	return fresh, nil
 }
 
-// persistNodeToDB saves the given node state to the database and refreshes the
+// persistNodeAndRefreshPolicy saves the given node state to the database and refreshes the
 // policy manager. The exact row written comes from [NodeStore]; see
-// [State.persistNodeRowToDB].
-func (s *State) persistNodeToDB(node types.NodeView) (types.NodeView, change.Change, error) {
-	fresh, err := s.persistNodeRowToDB(node)
+// [State.persistNode].
+func (s *State) persistNodeAndRefreshPolicy(node types.NodeView) (types.NodeView, change.Change, error) {
+	fresh, err := s.persistNode(node)
 	if err != nil {
 		return types.NodeView{}, change.Change{}, err
 	}
@@ -588,7 +588,7 @@ func (s *State) SaveNode(node types.NodeView) (types.NodeView, change.Change, er
 	resultNode := s.nodeStore.PutNode(*nodePtr)
 
 	// Then save to database using the result from [NodeStore.PutNode]
-	return s.persistNodeToDB(resultNode)
+	return s.persistNodeAndRefreshPolicy(resultNode)
 }
 
 // DeleteNode permanently removes a node and cleans up associated resources.
@@ -727,7 +727,7 @@ func (s *State) Disconnect(id types.NodeID, epoch uint64) ([]change.Change, erro
 
 	// Persist LastSeen best-effort: [NodeStore] already reflects offline
 	// and peers still need the change notifications below.
-	_, c, err := s.persistNodeToDB(node)
+	_, c, err := s.persistNodeAndRefreshPolicy(node)
 	if err != nil {
 		log.Error().Err(err).EmbedObject(node).Msg("failed to update last seen in database")
 
@@ -934,7 +934,7 @@ func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry *time.Time) (types.Nod
 		return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, nodeID)
 	}
 
-	// Persist expiry change to database directly since persistNodeToDB omits expiry.
+	// Persist expiry change to database directly since persistNodeAndRefreshPolicy omits expiry.
 	err := s.db.NodeSetExpiry(nodeID, expiry)
 	if err != nil {
 		return types.NodeView{}, change.Change{}, fmt.Errorf("setting node expiry in database: %w", err)
@@ -1005,13 +1005,13 @@ func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView,
 		return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, nodeID)
 	}
 
-	nodeView, c, err := s.persistNodeToDB(n)
+	nodeView, c, err := s.persistNodeAndRefreshPolicy(n)
 	if err != nil {
 		return nodeView, c, err
 	}
 
 	// Set OriginNode so the mapper knows to include self info for this node.
-	// When tags change, persistNodeToDB returns PolicyChange which doesn't set OriginNode,
+	// When tags change, persistNodeAndRefreshPolicy returns PolicyChange which doesn't set OriginNode,
 	// so the mapper's self-update check fails and the node never sees its new tags.
 	// Setting OriginNode ensures the node gets a self-update with the new tags.
 	c.OriginNode = nodeID
@@ -1041,7 +1041,7 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (t
 	}
 
 	// Persist the node changes to the database
-	nodeView, c, err := s.persistNodeToDB(n)
+	nodeView, c, err := s.persistNodeAndRefreshPolicy(n)
 	if err != nil {
 		return types.NodeView{}, change.Change{}, err
 	}
@@ -1081,7 +1081,7 @@ func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView,
 		}
 	}
 
-	return s.persistNodeToDB(view)
+	return s.persistNodeAndRefreshPolicy(view)
 }
 
 // BackfillNodeIPs assigns IP addresses to nodes that don't have them.
@@ -3000,7 +3000,7 @@ func (s *State) autoApproveNodes() ([]change.Change, error) {
 			continue
 		}
 
-		_, err := s.persistNodeRowToDB(fresh)
+		_, err := s.persistNode(fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -3098,7 +3098,7 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		hostinfoChanged = !hostinfoEqual(currentNode.View(), req.Hostinfo)
 
 		// A change carrying only an updated LastSeen is not worth a full-row
-		// database UPDATE plus the O(n) policy rescan persistNodeToDB triggers:
+		// database UPDATE plus the O(n) policy rescan persistNodeAndRefreshPolicy triggers:
 		// LastSeen is best-effort and rides along the next substantive write.
 		// PeerChangeFromMapRequest always stamps LastSeen, so test the other
 		// fields explicitly.
@@ -3241,13 +3241,13 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 
 	// A no-op MapRequest (identical re-send / reconnect with matching state)
 	// leaves the node untouched, so skip the full-row UPDATE and the O(n)
-	// policy SetNodes scan that persistNodeToDB performs.
+	// policy SetNodes scan that persistNodeAndRefreshPolicy performs.
 	policyChange := change.Change{}
 
 	if persistWorthy {
 		var err error
 
-		_, policyChange, err = s.persistNodeToDB(updatedNode)
+		_, policyChange, err = s.persistNodeAndRefreshPolicy(updatedNode)
 		if err != nil {
 			return change.Change{}, fmt.Errorf("saving to database: %w", err)
 		}
