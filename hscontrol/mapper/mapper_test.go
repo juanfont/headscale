@@ -5,6 +5,7 @@ import (
 	"net/netip"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -647,4 +648,168 @@ func TestGenerateDNSConfigNilHostinfoNoPanic(t *testing.T) {
 	require.NotPanics(t, func() {
 		generateDNSConfig(cfg, node, nil)
 	}, "generateDNSConfig must not panic when a node has nil Hostinfo")
+}
+
+// policyShapes covers the paths that decide how the mapper filters peers: a
+// global filter with matchers, a per-node (autogroup:self) filter, a policy
+// that leaves every node with zero matchers, and no rules at all. The
+// zero-matcher shape is the interesting one, because
+// [MapResponseBuilder.buildTailPeers] skips [policy.ReduceNodes] there and
+// emits its input as given.
+var policyShapes = []struct {
+	name   string
+	policy string
+}{
+	{
+		name:   "allow all",
+		policy: `{"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`,
+	},
+	{
+		name:   "autogroup self",
+		policy: `{"acls":[{"action":"accept","src":["autogroup:member"],"dst":["autogroup:self:*"]}]}`,
+	},
+	{
+		name:   "no rules",
+		policy: `{"acls":[]}`,
+	},
+	{
+		name:   "empty policy",
+		policy: `{}`,
+	},
+}
+
+// assertSelfNotAPeer fails when a [tailcfg.MapResponse] addressed to nodeID
+// mentions nodeID in any peer-carrying field.
+//
+// The Tailscale client merges [tailcfg.MapResponse.PeersChanged] straight into
+// its peer map (controlclient updatePeersStateFromResponse) and keeps the self
+// node in a separate field, so a node present in its own peer list is rendered
+// twice by clients that concatenate peers with self.
+func assertSelfNotAPeer(t *testing.T, nodeID types.NodeID, resp *tailcfg.MapResponse, what string) {
+	t.Helper()
+
+	if resp == nil {
+		return
+	}
+
+	self := nodeID.NodeID()
+
+	for _, p := range resp.Peers {
+		assert.NotEqualf(t, self, p.ID, "%s: node %d listed in its own Peers", what, nodeID)
+	}
+
+	for _, p := range resp.PeersChanged {
+		assert.NotEqualf(t, self, p.ID, "%s: node %d listed in its own PeersChanged", what, nodeID)
+	}
+
+	for _, p := range resp.PeersChangedPatch {
+		assert.NotEqualf(t, self, p.NodeID, "%s: node %d patched in its own PeersChangedPatch", what, nodeID)
+	}
+
+	for _, id := range resp.PeersRemoved {
+		assert.NotEqualf(t, self, id, "%s: node %d listed in its own PeersRemoved", what, nodeID)
+	}
+}
+
+// TestMapResponseNeverContainsSelfAsPeer drives the [change.Change] shapes the
+// server emits through the response builder for every node, under each policy
+// shape, and asserts the recipient is never present in its own peer fields.
+func TestMapResponseNeverContainsSelfAsPeer(t *testing.T) {
+	for _, tt := range policyShapes {
+		t.Run(tt.name, func(t *testing.T) {
+			testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 2, 3, largeBufferSize)
+			defer cleanup()
+
+			_, err := testData.State.SetPolicy([]byte(tt.policy))
+			require.NoError(t, err)
+
+			batcher := unwrapBatcher(testData.Batcher)
+
+			allIDs := make([]types.NodeID, 0, len(testData.Nodes))
+
+			for i := range testData.Nodes {
+				tn := &testData.Nodes[i]
+				require.NoError(t, testData.Batcher.AddNode(tn.n.ID, tn.ch, 100, nil))
+				allIDs = append(allIDs, tn.n.ID)
+			}
+
+			for _, recipient := range allIDs {
+				changes := map[string]change.Change{
+					"full self":     change.FullSelf(recipient),
+					"full update":   change.FullUpdate(),
+					"policy change": change.PolicyChange(),
+					"self added":    change.NodeAdded(recipient),
+					"self online":   change.NodeOnline(recipient),
+					"self offline":  change.NodeOffline(recipient),
+					// A batch naming every node, the recipient included.
+					// change.PeersChanged carries no OriginNode, so the
+					// self-update short circuit in buildFromChange never fires
+					// and the peer lookup is the only thing left to drop self.
+					"all peers changed": change.PeersChanged("all peers", allIDs...),
+				}
+
+				for name, ch := range changes {
+					resp, err := batcher.MapResponseFromChange(recipient, ch)
+					require.NoError(t, err, "%s for node %d", name, recipient)
+					assertSelfNotAPeer(t, recipient, resp, name)
+				}
+			}
+		})
+	}
+}
+
+// TestNoSelfAsPeerDuringRealNodeChurn exercises the change flow poll.go drives
+// (connect, disconnect, reconnect, policy reload, key expiry) and scans every
+// delivered [tailcfg.MapResponse] for the recipient's own node.
+func TestNoSelfAsPeerDuringRealNodeChurn(t *testing.T) {
+	// How long a node's stream must stay silent before the churn counts as
+	// settled and the scan moves on to the next node.
+	const quietPeriod = 500 * time.Millisecond
+
+	for _, tt := range policyShapes {
+		t.Run(tt.name, func(t *testing.T) {
+			testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 2, 3, largeBufferSize)
+			defer cleanup()
+
+			_, err := testData.State.SetPolicy([]byte(tt.policy))
+			require.NoError(t, err)
+
+			batcher := testData.Batcher
+
+			for i := range testData.Nodes {
+				tn := &testData.Nodes[i]
+				require.NoError(t, batcher.AddNode(tn.n.ID, tn.ch, 100, nil))
+			}
+
+			// Drop and re-add every node but the first, then reload the
+			// policy and expire the one node that never reconnected.
+			for i := 1; i < len(testData.Nodes); i++ {
+				tn := &testData.Nodes[i]
+				batcher.RemoveNode(tn.n.ID, tn.ch)
+				require.NoError(t, batcher.AddNode(tn.n.ID, tn.ch, 100, nil))
+			}
+
+			_, err = testData.State.SetPolicy([]byte(tt.policy))
+			require.NoError(t, err)
+
+			expiry := time.Now().Add(time.Hour)
+
+			_, c, err := testData.State.SetNodeExpiry(testData.Nodes[0].n.ID, &expiry)
+			require.NoError(t, err)
+			batcher.AddWork(c)
+
+			for i := range testData.Nodes {
+				tn := &testData.Nodes[i]
+
+				for quiet := false; !quiet; {
+					select {
+					case resp := <-tn.ch:
+						assertSelfNotAPeer(t, tn.n.ID, resp, "churn")
+					case <-time.After(quietPeriod):
+						quiet = true
+					}
+				}
+			}
+		})
+	}
 }
