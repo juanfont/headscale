@@ -106,7 +106,7 @@ prek run --all-files    # run hooks on the full tree
 Hooks cover: file hygiene (trailing whitespace, line endings, BOM),
 syntax validation (JSON/YAML/TOML/XML), merge-conflict markers, private
 key detection, nixpkgs-fmt, prettier, and `golangci-lint` via
-`--new-from-rev=HEAD~1` (see `.pre-commit-config.yaml:59`). A manual
+`--new-from-rev=HEAD~1` (see the golangci-lint hook in .pre-commit-config.yaml). A manual
 invocation with an `upstream/main` remote is equivalent:
 
 ```bash
@@ -168,9 +168,9 @@ headscale/
   pointer load; writes rebuild a new snapshot and atomically swap. It is
   the hot path for `MapRequest` processing and peer visibility.
 - **The map-request sync point** is
-  `State.UpdateNodeFromMapRequest()` in
-  `hscontrol/state/state.go:2351`. This is where Hostinfo changes,
-  endpoint updates, and route advertisements land in the NodeStore.
+  `State.UpdateNodeFromMapRequest()` in `hscontrol/state/state.go`. This
+  is where Hostinfo changes, endpoint updates, and route advertisements
+  land in the NodeStore.
 - **Mapper subsystem** streams MapResponses via `batcher.go` and
   `node_conn.go`. Changes here affect all connected clients.
 - **Node registration flow**: noise handshake (`noise.go`) → auth
@@ -181,8 +181,8 @@ headscale/
 
 These rules are load-bearing — violating them corrupts production
 databases. The `migrationsRequiringFKDisabled` map in
-`hscontrol/db/db.go:962` is frozen as of 2025-07-02 (see the comment at
-`db.go:989`). All new migrations must:
+`hscontrol/db/db.go` is frozen (see the comment above it). All new
+migrations must:
 
 1. **Never reorder existing migrations.** Migration order is immutable
    once committed.
@@ -200,10 +200,10 @@ Headscale enforces **tags XOR user ownership**: every node is either
 tagged (owned by tags) or user-owned (owned by a user namespace), never
 both. This is a load-bearing architectural rule.
 
-- **Use `node.IsTagged()`** (`hscontrol/types/node.go:221`) to determine
+- **Use `node.IsTagged()`** (`hscontrol/types/node.go`) to determine
   ownership, not `node.UserID().Valid()`. A tagged node may still have
   `UserID` set for "created by" tracking — `IsTagged()` is authoritative.
-- `IsUserOwned()` (`node.go:227`) returns `!IsTagged()`.
+- `IsUserOwned()` returns `!IsTagged()`.
 - Tagged nodes are presented to Tailscale as the special
   `TaggedDevices` user (`hscontrol/types/users.go`, ID `2147455555`).
 - `SetTags` validation is enforced by `validateNodeOwnership()` in
