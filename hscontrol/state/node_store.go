@@ -148,13 +148,18 @@ func NewNodeStore(allNodes types.Nodes, peersFunc PeersFunc, batchSize int, batc
 type Snapshot struct {
 	// nodesByID is the main source of truth for nodes.
 	nodesByID map[types.NodeID]types.Node
+	// nodeViewsByID resolves peer adjacency IDs to immutable views from this
+	// snapshot without rebuilding every peer slice on each write.
+	nodeViewsByID map[types.NodeID]types.NodeView
 
 	// calculated from nodesByID
 	nodesByNodeKey    map[key.NodePublic]types.NodeView
 	nodesByMachineKey map[key.MachinePublic]map[types.UserID]types.NodeView
-	peersByNode       map[types.NodeID][]types.NodeView
-	nodesByUser       map[types.UserID][]types.NodeView
-	allNodes          []types.NodeView
+	// peersByNode stores immutable adjacency as IDs; ListPeers resolves the
+	// corresponding views through nodeViewsByID.
+	peersByNode map[types.NodeID][]types.NodeID
+	nodesByUser map[types.UserID][]types.NodeView
+	allNodes    []types.NodeView
 
 	// routes maps each prefix to its current primary advertiser. The
 	// previous assignment is carried over when still valid so the
@@ -167,7 +172,7 @@ type Snapshot struct {
 // with the relationships between nodes and their peers.
 // This will typically be used to calculate which nodes can see each other
 // based on the current policy.
-type PeersFunc func(nodes []types.NodeView) map[types.NodeID][]types.NodeView
+type PeersFunc func(nodes []types.NodeView) map[types.NodeID][]types.NodeID
 
 // work represents a single operation to be performed on the [NodeStore].
 type work struct {
@@ -608,14 +613,19 @@ func snapshotFromNodes(
 	defer timer.ObserveDuration()
 
 	allNodes := make([]types.NodeView, 0, len(nodes))
+	nodeViewsByID := make(map[types.NodeID]types.NodeView, len(nodes))
+
 	for _, n := range nodes {
-		allNodes = append(allNodes, n.View())
+		nv := n.View()
+		allNodes = append(allNodes, nv)
+		nodeViewsByID[n.ID] = nv
 	}
 
 	routes, isPrimaryRoute := electPrimaryRoutes(nodes, prevRoutes)
 
 	newSnap := Snapshot{
 		nodesByID:         nodes,
+		nodeViewsByID:     nodeViewsByID,
 		allNodes:          allNodes,
 		nodesByNodeKey:    make(map[key.NodePublic]types.NodeView),
 		nodesByMachineKey: make(map[key.MachinePublic]map[types.UserID]types.NodeView),
@@ -624,7 +634,7 @@ func snapshotFromNodes(
 		// it will use the list of all nodes, combined with the
 		// current policy to precalculate which nodes are peers and
 		// can see each other.
-		peersByNode: func() map[types.NodeID][]types.NodeView {
+		peersByNode: func() map[types.NodeID][]types.NodeID {
 			peersTimer := prometheus.NewTimer(nodeStorePeersCalculationDuration)
 			defer peersTimer.ObserveDuration()
 
@@ -638,7 +648,7 @@ func snapshotFromNodes(
 
 	// Build nodesByUser, nodesByNodeKey, and nodesByMachineKey maps
 	for _, n := range nodes {
-		nodeView := n.View()
+		nodeView := nodeViewsByID[n.ID]
 		userID := n.TypedUserID()
 
 		// Tagged nodes are owned by their tags, not a user,
@@ -649,7 +659,6 @@ func snapshotFromNodes(
 
 		newSnap.nodesByNodeKey[n.NodeKey] = nodeView
 
-		// Build machine key index
 		if newSnap.nodesByMachineKey[n.MachineKey] == nil {
 			newSnap.nodesByMachineKey[n.MachineKey] = make(map[types.UserID]types.NodeView)
 		}
@@ -882,7 +891,17 @@ func (s *NodeStore) ListPeers(id types.NodeID) views.Slice[types.NodeView] {
 
 	nodeStoreOperations.WithLabelValues("list_peers").Inc()
 
-	return views.SliceOf(s.data.Load().peersByNode[id])
+	snapshot := s.data.Load()
+	peerIDs := snapshot.peersByNode[id]
+	peers := make([]types.NodeView, 0, len(peerIDs))
+
+	for _, peerID := range peerIDs {
+		if peer, ok := snapshot.nodeViewsByID[peerID]; ok {
+			peers = append(peers, peer)
+		}
+	}
+
+	return views.SliceOf(peers)
 }
 
 // PrimaryRouteFor returns the current primary advertiser for prefix.

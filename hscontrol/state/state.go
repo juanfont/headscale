@@ -272,7 +272,7 @@ func NewState(cfg *types.Config) (*State, error) {
 	// This moves the complex peer relationship logic into the policy package where it belongs.
 	nodeStore := NewNodeStore(
 		nodes,
-		func(nodes []types.NodeView) map[types.NodeID][]types.NodeView {
+		func(nodes []types.NodeView) map[types.NodeID][]types.NodeID {
 			return polMan.BuildPeerMap(views.SliceOf(nodes))
 		},
 		batchSize,

@@ -603,7 +603,7 @@ func (pm *PolicyManager) Filter() ([]tailcfg.FilterRule, []matcher.Match) {
 // up with doing the full work for every node O(n^2), while this will reduce
 // the list as we see relationships while building the map, making it
 // O(n^2/2) in the end, but with less work per node.
-func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[types.NodeID][]types.NodeView {
+func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[types.NodeID][]types.NodeID {
 	if pm == nil {
 		return nil
 	}
@@ -627,7 +627,7 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 	// Via grants require the per-node path because the global filter
 	// skips via grants (compileFilterRules: if len(grant.Via) > 0 { continue }).
 	if !pm.needsPerNodeFilter {
-		ret := make(map[types.NodeID][]types.NodeView, nodes.Len())
+		ret := make(map[types.NodeID][]types.NodeID, nodes.Len())
 
 		// Build the map of all peers according to the matchers.
 		for i := range nodes.Len() {
@@ -639,8 +639,8 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 				ri, rj := routeInfo[nodes.At(i).ID()], routeInfo[nodes.At(j).ID()]
 				if nodes.At(i).CanAccessWithRoutes(pm.matchers, nodes.At(j), ri.subnet, rj.subnet, rj.isExit) ||
 					nodes.At(j).CanAccessWithRoutes(pm.matchers, nodes.At(i), rj.subnet, ri.subnet, ri.isExit) {
-					ret[nodes.At(i).ID()] = append(ret[nodes.At(i).ID()], nodes.At(j))
-					ret[nodes.At(j).ID()] = append(ret[nodes.At(j).ID()], nodes.At(i))
+					ret[nodes.At(i).ID()] = append(ret[nodes.At(i).ID()], nodes.At(j).ID())
+					ret[nodes.At(j).ID()] = append(ret[nodes.At(j).ID()], nodes.At(i).ID())
 				}
 			}
 		}
@@ -649,7 +649,7 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 	}
 
 	// For autogroup:self or via grants, build per-node peer relationships
-	ret := make(map[types.NodeID][]types.NodeView, nodes.Len())
+	ret := make(map[types.NodeID][]types.NodeID, nodes.Len())
 
 	// Pre-compute per-node matchers using unreduced compiled rules
 	// We need unreduced rules to determine peer relationships correctly.
@@ -692,8 +692,8 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 			canIReachJ := hasFilterJ && nodeI.CanAccessWithRoutes(matchersJ, nodeJ, riI.subnet, riJ.subnet, riJ.isExit)
 
 			if canIAccessJ || canJAccessI || canJReachI || canIReachJ {
-				ret[nodeI.ID()] = append(ret[nodeI.ID()], nodeJ)
-				ret[nodeJ.ID()] = append(ret[nodeJ.ID()], nodeI)
+				ret[nodeI.ID()] = append(ret[nodeI.ID()], nodeJ.ID())
+				ret[nodeJ.ID()] = append(ret[nodeJ.ID()], nodeI.ID())
 			}
 		}
 	}

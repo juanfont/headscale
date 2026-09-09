@@ -71,15 +71,11 @@ func TestIssue3233ViaInternetExitVisibility(t *testing.T) {
 		peerMap := pm.BuildPeerMap(nodes.ViewSlice())
 
 		require.True(t,
-			slices.ContainsFunc(peerMap[aliceLaptop.ID], func(n types.NodeView) bool {
-				return n.ID() == aliceExit.ID
-			}),
+			slices.Contains(peerMap[aliceLaptop.ID], aliceExit.ID),
 			"alice must see her tag:exit1 exit node as a peer")
 
 		require.False(t,
-			slices.ContainsFunc(peerMap[aliceLaptop.ID], func(n types.NodeView) bool {
-				return n.ID() == bobExit.ID
-			}),
+			slices.Contains(peerMap[aliceLaptop.ID], bobExit.ID),
 			"alice must not see bob's tag:exit2 exit node — via grant scopes to tag:exit1")
 	})
 
