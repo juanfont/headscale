@@ -1,0 +1,129 @@
+name: tailscale-action integration
+
+# Integration tests for the official Tailscale GitHub Action
+# (https://github.com/tailscale/github-action) against a self-hosted headscale.
+# A nix-built headscale runs over self-signed TLS with embedded DERP and a
+# regular node already joined; the action then connects a runner to that tailnet
+# and its built-in ping to the existing node is the success gate. SQLite only.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/tailscale-action-integration.yaml"
+      - ".github/actions/headscale-up/**"
+      - "hscontrol/api/v2/**"
+      - "hscontrol/scope/**"
+      - "hscontrol/db/oauth*.go"
+      - "hscontrol/types/oauth.go"
+      - "cmd/headscale/cli/oauth_client.go"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # The action connects a runner to headscale and pings the already-joined node.
+  # Both of the action's auth modes are exercised: an OAuth client (delivered as a
+  # tskey-client- secret the client resolves against headscale) and a plain auth
+  # key. Ping is the pass/fail gate — real connectivity, not just registration.
+  connect:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        auth: [oauth, authkey]
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - id: hs
+        uses: ./.github/actions/headscale-up
+
+      - name: Prepare ${{ matrix.auth }} credential
+        id: prep
+        env:
+          URL: ${{ steps.hs.outputs.url }}
+          PREAUTH: ${{ steps.hs.outputs.preauth }}
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.auth }}" = "oauth" ]; then
+            FULL=$(./result/bin/headscale oauth-clients create -s auth_keys -t tag:ci -o json | jq -r .key)
+            # The upstream client only runs its OAuth exchange for tskey-client-
+            # secrets, and reads the control URL from a baseURL= attribute on the
+            # secret itself (--login-server governs registration, not the exchange).
+            TS="tskey-${FULL#hskey-}?baseURL=${URL}&ephemeral=true&preauthorized=true"
+            echo "::add-mask::$TS"
+            echo "authkey=$TS" >> "$GITHUB_OUTPUT"
+            echo "args=--login-server=${URL} --advertise-tags=tag:ci" >> "$GITHUB_OUTPUT"
+          else
+            echo "authkey=${PREAUTH}" >> "$GITHUB_OUTPUT"
+            echo "args=--login-server=${URL}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Connect via the tailscale action + ping
+        uses: tailscale/github-action@v4
+        with:
+          authkey: ${{ steps.prep.outputs.authkey }}
+          args: ${{ steps.prep.outputs.args }}
+          ping: ${{ steps.hs.outputs.pre_ip }}
+
+      - name: Assert node registered
+        run: |
+          set -euo pipefail
+          ./result/bin/headscale nodes list -o json > nodes.json
+          test "$(jq length nodes.json)" -ge 2
+          if [ "${{ matrix.auth }}" = "oauth" ]; then
+            jq -e '[.[] | select((.tags // []) | index("tag:ci"))] | length >= 1' nodes.json
+          fi
+
+  # The action's remaining inputs, each connecting via an auth key with ping as
+  # the connectivity gate plus a per-input assertion. Unused inputs are empty and
+  # fall back to the action's defaults.
+  inputs:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - input: hostname
+            hostname: feature-host
+            assert: ./result/bin/headscale nodes list -o json | jq -e '[.[]|select(.givenName=="feature-host")]|length>=1'
+          - input: version
+            version: "1.98.4"
+            # Assert the action's installed binary by tool-cache path: a bare
+            # `tailscale` resolves to the nixpkgs build the pre-node step put on
+            # PATH, not the version the action pinned.
+            assert: /opt/hostedtoolcache/tailscale/1.98.4/Linux-amd64/tailscale version | grep -q 1.98.4
+          - input: tailscaled-args
+            tailscaled_args: --verbose=1
+            assert: "true"
+          - input: statedir
+            statedir: /tmp/ts-state
+            assert: sudo ls -A /tmp/ts-state | grep -q .
+          - input: args
+            extra_args: --accept-dns=false
+            assert: "true"
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - id: hs
+        uses: ./.github/actions/headscale-up
+
+      - name: Connect with ${{ matrix.input }}
+        uses: tailscale/github-action@v4
+        with:
+          authkey: ${{ steps.hs.outputs.preauth }}
+          args: --login-server=${{ steps.hs.outputs.url }} ${{ matrix.extra_args }}
+          hostname: ${{ matrix.hostname }}
+          version: ${{ matrix.version }}
+          tailscaled-args: ${{ matrix.tailscaled_args }}
+          statedir: ${{ matrix.statedir }}
+          ping: ${{ steps.hs.outputs.pre_ip }}
+
+      - name: Assert ${{ matrix.input }}
+        env:
+          ASSERT: ${{ matrix.assert }}
+        run: |
+          set -euo pipefail
+          bash -c "$ASSERT"

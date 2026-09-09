@@ -86,6 +86,44 @@ func TestOAuthClientCreateAndAuthenticate(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestOAuthClientAuthenticateTailscalePrefix asserts the same stored client
+// authenticates when its secret carries Tailscale's tskey-client- prefix instead
+// of headscale's hskey-client-. The official tailscale client only runs its
+// OAuth client-credentials exchange for secrets prefixed tskey-client-
+// (feature/oauthkey), so accepting that label lets the upstream client (and the
+// official GitHub Action) mint auth keys against headscale. The prefix is a pure
+// label sliced off before lookup; the hash is over the bare secret, so both
+// labels resolve to the same client.
+func TestOAuthClientAuthenticateTailscalePrefix(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
+	secret, client, err := db.CreateOAuthClient(
+		[]string{"auth_keys"},
+		[]string{"tag:ci"},
+		"",
+		nil,
+	)
+	require.NoError(t, err)
+
+	tsSecret := "tskey-client-" + strings.TrimPrefix(secret, "hskey-client-")
+
+	got, err := db.AuthenticateOAuthClient(tsSecret)
+	require.NoError(t, err)
+	assert.Equal(t, client.ClientID, got.ClientID)
+
+	// The tailscale client appends ?key=value attributes (e.g. baseURL,
+	// ephemeral) when the secret is used directly as an auth key; they are
+	// stripped before parsing.
+	got, err = db.AuthenticateOAuthClient(tsSecret + "?baseURL=http://127.0.0.1:8080&ephemeral=true")
+	require.NoError(t, err)
+	assert.Equal(t, client.ClientID, got.ClientID)
+
+	// A wrong secret under the tailscale prefix is still rejected.
+	_, err = db.AuthenticateOAuthClient("tskey-client-" + client.ClientID + "-" + strings.Repeat("0", 64))
+	require.Error(t, err)
+}
+
 func TestHashSecretRoundTrip(t *testing.T) {
 	const secret = "a-high-entropy-credential-secret"
 
