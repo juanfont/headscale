@@ -90,8 +90,8 @@ func TestIssue3212AutogroupInternetExitVisibility(t *testing.T) {
 					map[types.NodeID]struct{},
 					len(peerMap[srcNode.ID]),
 				)
-				for _, p := range peerMap[srcNode.ID] {
-					peerIDs[p.ID()] = struct{}{}
+				for _, id := range peerMap[srcNode.ID] {
+					peerIDs[id] = struct{}{}
 				}
 
 				for _, exitName := range exitNames {
