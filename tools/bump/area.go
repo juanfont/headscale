@@ -65,15 +65,17 @@ func allAreas() []area {
 	areas = append(areas, toolAreas()...)
 	areas = append(areas,
 		area{
-			Name:    "gomod",
-			Needs:   []string{"flake"},
+			Name: "gomod",
+			// No Needs on flake. Position in this slice is what puts it after
+			// the lock bump; making it a dependency meant an unadoptable
+			// nixpkgs also threw away the day's dependency upgrades, which
+			// have nothing to do with it.
 			Apply:   applyGoMod,
 			Gate:    gateGoMod,
 			Message: func(c change) string { return "go.mod: " + c.Summary },
 		},
 		area{
 			Name:    "docker-go",
-			Needs:   []string{"flake"},
 			Apply:   applyDockerGo,
 			Gate:    gateDockerGo,
 			Message: func(c change) string { return "Dockerfile: bump " + c.Summary },
@@ -94,7 +96,6 @@ func allAreas() []area {
 	// pre-commit hooks judge the finished tree rather than an intermediate one.
 	return append(areas, area{
 		Name:    "fmt",
-		Needs:   []string{"flake"},
 		Apply:   applyFormat,
 		Message: func(change) string { return "all: satisfy the formatters and pre-commit hooks" },
 	})
