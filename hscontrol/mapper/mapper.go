@@ -438,9 +438,9 @@ func (m *mapper) buildFromChange(
 // incremental peer-change and user-profile paths, computed from the same live
 // per-node matchers and [policy.ReduceNodes] filter that
 // [MapResponseBuilder.buildTailPeers] applies to full peer objects, so the
-// paths cannot drift. The snapshot peer map ([NodeStore.ListPeers]) is used
-// only as the candidate set, matching buildTailPeers; the live policy decides
-// visibility because the snapshot is not rebuilt on policy changes.
+// paths cannot drift. The recipient's adjacency from the NodeStore
+// ([NodeStore.ListPeers]) is the authority for which peers exist for it; the
+// live matchers only narrow that set further, matching buildTailPeers.
 //
 // ok is false when the node or its matchers cannot be resolved; callers must
 // then fail closed (emit nothing) rather than risk leaking forbidden peers.

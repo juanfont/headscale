@@ -865,14 +865,10 @@ func (s *State) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) views.Sl
 		return s.nodeStore.ListPeers(nodeID)
 	}
 
-	// For specific peerIDs, filter from all nodes.
-	// This path is used for incremental updates (NodeAdded, NodeChanged)
-	// where the caller already knows which peer IDs are involved.
-	// Peer visibility filtering happens in the mapper against the live
-	// policy (buildTailPeers and the shared visiblePeerIDs filter), because
-	// the snapshot peer map is not rebuilt on policy changes.
-	allNodes := s.nodeStore.ListNodes()
-
+	// Incremental updates (NodeAdded, NodeChanged) name the peers involved.
+	// Resolve them through the recipient's adjacency so a changed node the
+	// policy hides from this recipient is never delivered; the mapper still
+	// applies the live matchers on top.
 	nodeIDSet := make(map[types.NodeID]struct{}, len(peerIDs))
 	for _, id := range peerIDs {
 		nodeIDSet[id] = struct{}{}
@@ -880,20 +876,11 @@ func (s *State) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) views.Sl
 
 	var filteredNodes []types.NodeView
 
-	for _, node := range allNodes.All() {
-		// A node is never its own peer. [db.ListPeers] enforces this with
-		// `id <> nodeID`; the caller may name the recipient in peerIDs
-		// (a change batch that includes it), and the mapper's only other
-		// self filter is [policy.ReduceNodes], which is skipped when the
-		// node has no matchers. Self would then reach the client in
-		// [tailcfg.MapResponse.PeersChanged], where it is merged into the
-		// peer map and listed alongside the self node.
-		if node.ID() == nodeID {
-			continue
-		}
-
-		if _, exists := nodeIDSet[node.ID()]; exists {
-			filteredNodes = append(filteredNodes, node)
+	// Adjacency is built from node pairs, so it never contains the
+	// recipient: a change batch naming it cannot return it as its own peer.
+	for _, peer := range s.nodeStore.ListPeers(nodeID).All() {
+		if _, exists := nodeIDSet[peer.ID()]; exists {
+			filteredNodes = append(filteredNodes, peer)
 		}
 	}
 
