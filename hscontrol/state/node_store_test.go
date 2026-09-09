@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1360,4 +1361,53 @@ func TestGetNodesByMachineKeyAllUsers(t *testing.T) {
 		require.True(t, all[types.UserID(0)].IsTagged())
 		require.Equal(t, types.NodeID(3), all[types.UserID(0)].ID())
 	})
+}
+
+// TestListPeersExcludesSelf proves a node is never returned among its own
+// peers, on both the snapshot path and the explicit peer-ID path.
+//
+// The explicit path is reached for incremental updates, where the caller
+// passes the IDs named by a change batch — a batch that may include the
+// recipient. Without the exclusion the recipient reaches the mapper as one of
+// its own peers, is emitted in [tailcfg.MapResponse.PeersChanged], and the
+// Tailscale client merges it into its peer map next to the self node.
+func TestListPeersExcludesSelf(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+
+	database, err := db.NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	user := database.CreateUserForTest("peer-user")
+	nodes := database.CreateRegisteredNodesForTest(user, 3, "peer-node")
+	require.NoError(t, database.Close())
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	allIDs := make([]types.NodeID, 0, len(nodes))
+	for _, n := range nodes {
+		allIDs = append(allIDs, n.ID)
+	}
+
+	for _, self := range allIDs {
+		t.Run(self.String(), func(t *testing.T) {
+			snapshot := s.ListPeers(self)
+			for _, peer := range snapshot.All() {
+				require.NotEqual(t, self, peer.ID(), "node listed in its own snapshot peers")
+			}
+
+			// Every node named, the recipient included.
+			named := s.ListPeers(self, allIDs...)
+			require.Equal(t, len(allIDs)-1, named.Len(), "self must be dropped, every other named node kept")
+
+			for _, peer := range named.All() {
+				require.NotEqual(t, self, peer.ID(), "node listed in its own named peers")
+			}
+
+			// Naming only the recipient yields nothing.
+			require.Zero(t, s.ListPeers(self, self).Len(), "naming only self must yield no peers")
+		})
+	}
 }
