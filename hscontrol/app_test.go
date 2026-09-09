@@ -42,6 +42,7 @@ func TestAcmeLoggerKeepsErrorBodyReadable(t *testing.T) {
 
 	resp, err := (&acmeLogger{rt: http.DefaultTransport}).RoundTrip(req)
 	require.NoError(t, err)
+
 	defer resp.Body.Close()
 
 	// acme parses the body to classify errors such as badNonce, so it has to
