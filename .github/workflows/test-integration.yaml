@@ -297,6 +297,7 @@ jobs:
           - TestDisableNodeExpiry
           - TestNodeOnlineStatus
           - TestPingAllByIPManyUpDown
+          - TestNodeDeletionEndsLongPoll
           - Test2118DeletingOnlineNodePanics
           - TestGrantCapRelay
           - TestGrantCapDrive
