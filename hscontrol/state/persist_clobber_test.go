@@ -47,7 +47,7 @@ func TestPersistNodeDoesNotClobberConcurrentAdminWrite(t *testing.T) {
 		"precondition: admin SetNodeTags must have written the tag to the DB")
 
 	// (3) Map-request persists its stale snapshot.
-	_, _, err = s.persistNodeToDB(staleView)
+	_, _, err = s.persistNodeAndRefreshPolicy(staleView)
 	require.NoError(t, err)
 
 	// The admin write must survive.
