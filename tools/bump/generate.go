@@ -130,12 +130,23 @@ func gateGenerate(ctx context.Context, r *repo) error {
 	return nil
 }
 
-// applyFormat re-runs the repository formatters. A toolchain bump can change
-// what "formatted" means: a newer prettier out of nixpkgs reformats files no
-// bump touched, and the formatting check then fails on a tree the bot never
-// edited. Running last means it also tidies whatever the generators emitted.
+// applyFormat re-runs everything that decides whether the tree is acceptable to
+// CI, and commits whatever it rewrites. Two reasons it cannot be skipped:
+// nixpkgs picks which prettier and gofumpt the tree is formatted with, so a
+// lock bump reformats files no area touched; and the bot rewrites workflow YAML
+// and Dockerfiles, where a stray trailing space or an unformatted .nix fails a
+// hook rather than the compiler.
+//
+// The first hook pass is expected to fail, because a hook that rewrites a file
+// reports failure. The second pass is the real verdict.
 func applyFormat(ctx context.Context, r *repo) (change, error) {
 	if _, err := r.nixRun(ctx, "make", "fmt"); err != nil { //nolint:noinlineerr
+		return change{}, err
+	}
+
+	_, _ = r.nixRun(ctx, "prek", "run", "--all-files")
+
+	if _, err := r.nixRun(ctx, "prek", "run", "--all-files"); err != nil { //nolint:noinlineerr
 		return change{}, err
 	}
 
