@@ -45,7 +45,7 @@ repos:
         entry: prettier --write --list-different
         language: system
         exclude: ^docs/
-        types_or: [javascript, jsx, ts, tsx, yaml, json, toml, html, css, scss, sass, markdown]
+        types_or: [javascript, jsx, ts, tsx, yaml, json, html, css, scss, sass, markdown]
 
       # mdformat for docs
       - id: mdformat
