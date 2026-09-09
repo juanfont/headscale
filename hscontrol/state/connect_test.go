@@ -270,6 +270,11 @@ func TestDisconnectOutOfOrderSessionsCannotStrandNodeOnline(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, hasPeerPatch(cs), "final release must emit the offline peer patch")
 
+	for _, c := range cs {
+		assert.Empty(t, c.PeersChanged,
+			"disconnect must not fan out a whole-peer update, got %+v", c)
+	}
+
 	nv, ok = s.GetNodeByID(nodeID)
 	require.True(t, ok)
 
