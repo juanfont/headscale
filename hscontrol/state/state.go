@@ -871,6 +871,17 @@ func (s *State) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) views.Sl
 	var filteredNodes []types.NodeView
 
 	for _, node := range allNodes.All() {
+		// A node is never its own peer. [db.ListPeers] enforces this with
+		// `id <> nodeID`; the caller may name the recipient in peerIDs
+		// (a change batch that includes it), and the mapper's only other
+		// self filter is [policy.ReduceNodes], which is skipped when the
+		// node has no matchers. Self would then reach the client in
+		// [tailcfg.MapResponse.PeersChanged], where it is merged into the
+		// peer map and listed alongside the self node.
+		if node.ID() == nodeID {
+			continue
+		}
+
 		if _, exists := nodeIDSet[node.ID()]; exists {
 			filteredNodes = append(filteredNodes, node)
 		}
