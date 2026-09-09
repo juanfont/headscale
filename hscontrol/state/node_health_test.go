@@ -65,3 +65,27 @@ func TestScanNodeHealthReportsInvalidNameWithoutMutating(t *testing.T) {
 	require.True(t, ok)
 	require.Empty(t, nv.GivenName(), "boot scan must not mutate the stored name")
 }
+
+// TestBatchSetNodeHealthUnchangedSkipsWrite ensures asking for the health
+// value already stored publishes no snapshot — no peersFunc invocation, no
+// peer-map rebuild.
+func TestBatchSetNodeHealthUnchangedSkipsWrite(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	// Use the State's nodeStore directly to confirm the node exists.
+	_, exists := s.nodeStore.GetNode(nodeID)
+	require.True(t, exists)
+
+	initialSnapshot := s.nodeStore.data.Load()
+
+	// The node starts with Unhealthy=false. Asking for "healthy=true"
+	// means Unhealthy stays false — no change.
+	for range 20 {
+		changed := s.BatchSetNodeHealth(map[types.NodeID]bool{nodeID: true})
+		require.False(t, changed,
+			"unchanged health write must not report a route-primary change")
+		require.Same(t, initialSnapshot, s.nodeStore.data.Load(),
+			"unchanged health write must not publish a new snapshot")
+	}
+}
