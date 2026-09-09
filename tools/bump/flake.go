@@ -113,10 +113,25 @@ func shortList(names []string) string {
 
 // gateFlake proves the flake still evaluates before anything expensive runs.
 func gateFlake(ctx context.Context, r *repo) error {
-	_, err := r.run(ctx, "nix", "eval", "--raw",
-		fmt.Sprintf(".#packages.%s.headscale.name", r.System))
+	if _, err := r.run(ctx, "nix", "eval", "--raw", //nolint:noinlineerr
+		fmt.Sprintf(".#packages.%s.headscale.name", r.System)); err != nil {
+		return err
+	}
 
-	return err
+	// The lock bump is judged against the same checks the final gate runs,
+	// because it is the one change that can invalidate all of them at once: a
+	// new nixpkgs moves every formatter and linter the checks are built from.
+	// It is also the first commit, which is the worst case for a rewind that
+	// drops the newest commit first. Paying for one round of checks here is
+	// what stops the final gate paying for one round per area stacked above it.
+	for _, check := range flakeChecks {
+		err := nixCheck(ctx, r, check)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // goVersion is the Go the devShell provides, without the "go" prefix.
