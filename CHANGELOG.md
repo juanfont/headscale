@@ -53,6 +53,7 @@ keys remain all-access.
 
 ### Changes
 
+- Fix a node being listed among its own peers in an incremental map update, which crashes the Tailscale Android app on the device list [#3459](https://github.com/juanfont/headscale/pull/3459)
 - Fix HTTP metrics only counting `OPTIONS` requests, so `http_requests_total` and `http_request_duration_seconds` now cover regular traffic [#3414](https://github.com/juanfont/headscale/pull/3414)
 - Fix extra-records filewatcher hanging on shutdown after the watched file is deleted, and leaking the watcher when setup fails [#3437](https://github.com/juanfont/headscale/pull/3437)
 - Fix `headscale users rename` sending the raw `--identifier` flag value instead of the matched user's identifier, so renaming by name works again [#3442](https://github.com/juanfont/headscale/pull/3442)
