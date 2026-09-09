@@ -49,7 +49,10 @@
         override_local_dns = true;
 
         nameservers = {
-          global = [ "1.1.1.1" "8.8.8.8" ];
+          global = [
+            "1.1.1.1"
+            "8.8.8.8"
+          ];
         };
       };
 

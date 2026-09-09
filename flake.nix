@@ -11,11 +11,12 @@
   };
 
   outputs =
-    { self
-    , nixpkgs
-    , flake-utils
-    , flake-checks
-    , ...
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+      flake-checks,
+      ...
     }:
     let
       headscaleVersion = self.shortRev or self.dirtyShortRev;
@@ -28,7 +29,8 @@
         default = headscale;
       };
 
-      overlays.default = _: prev:
+      overlays.default =
+        _: prev:
         let
           pkgs = nixpkgs.legacyPackages.${prev.stdenv.hostPlatform.system};
           # Tracks the newest Go in nixpkgs so a Go release bump is a
@@ -96,22 +98,27 @@
           };
         };
     }
-    // flake-utils.lib.eachDefaultSystem
-      (system:
+    // flake-utils.lib.eachDefaultSystem (
+      system:
       let
         pkgs = import nixpkgs {
           overlays = [ self.overlays.default ];
           inherit system;
         };
-        buildDeps = with pkgs; [ git go_latest gnumake ];
-        devDeps = with pkgs;
+        buildDeps = with pkgs; [
+          git
+          go_latest
+          gnumake
+        ];
+        devDeps =
+          with pkgs;
           buildDeps
           ++ [
             golangci-lint
             golangci-lint-langserver
             golines
             prettier
-            nixpkgs-fmt
+            nixfmt
             goreleaser
             nfpm
             gotestsum
@@ -169,7 +176,11 @@
           vendorHash = (builtins.fromJSON (builtins.readFile ./flakehashes.json)).vendor.sri;
           goPkg = pkgs.go_latest;
           # //go:embed targets and test-read files outside the default whitelist.
-          embedDirs = [ ./hscontrol/assets ./hscontrol/db/schema.sql ./config-example.yaml ];
+          embedDirs = [
+            ./hscontrol/assets
+            ./hscontrol/db/schema.sql
+            ./config-example.yaml
+          ];
           extraSrc = [
             ./hscontrol/testdata
             ./hscontrol/types/testdata
@@ -186,49 +197,65 @@
           # from the test set but kept in source so cmd/hi and friends still
           # compile; TestPostgres* needs a server (the SQLite equivalents still
           # run). CGO off matches the build.
-          gotest = fc.goTest (common // {
-            testExclude = [ "/integration" "/hscontrol/servertest" ];
-            goSkip = [ "TestPostgres" ];
-            testEnv = "export CGO_ENABLED=0";
-          });
+          gotest = fc.goTest (
+            common
+            // {
+              testExclude = [
+                "/integration"
+                "/hscontrol/servertest"
+              ];
+              goSkip = [ "TestPostgres" ];
+              testEnv = "export CGO_ENABLED=0";
+            }
+          );
 
           # Full-tree golangci-lint (golines, gofumpt, etc.); uses the overlay's
           # golangci-lint built against the pinned Go.
           golangci-lint = fc.goLint common;
 
-          # nixpkgs-fmt + prettier, excluding generated output. goFmt = "off":
+          # nixfmt + prettier, excluding generated output. goFmt = "off":
           # Go formatting (golines, gofumpt) is enforced by the golangci-lint
           # check, not treefmt. prettierExts matches the old prettier-lint glob
           # (no json: testdata fixtures are hand-formatted).
-          formatting = fc.goFormat (common // {
-            goFmt = "off";
-            prettier = true;
-            prettierExts = [ "ts" "js" "md" "yaml" "yml" "sass" "css" "scss" "html" ];
-            # Mirror .prettierignore (docs/ are mkdocs-flavoured; gen/ generated).
-            fmtExclude = [ ./gen ./docs ];
-          });
+          formatting = fc.goFormat (
+            common
+            // {
+              goFmt = "off";
+              prettier = true;
+              prettierExts = [
+                "ts"
+                "js"
+                "md"
+                "yaml"
+                "yml"
+                "sass"
+                "css"
+                "scss"
+                "html"
+              ];
+              # Mirror .prettierignore (docs/ are mkdocs-flavoured; gen/ generated).
+              fmtExclude = [
+                ./gen
+                ./docs
+              ];
+            }
+          );
         };
       in
       {
         # `nix develop`
         devShells.default = pkgs.mkShell {
-          buildInputs =
-            devDeps
-            ++ [
-              (pkgs.writeShellScriptBin
-                "nix-vendor-sri"
-                ''
-                  set -eu
-                  exec go run ./cmd/vendorhash update "$@"
-                '')
+          buildInputs = devDeps ++ [
+            (pkgs.writeShellScriptBin "nix-vendor-sri" ''
+              set -eu
+              exec go run ./cmd/vendorhash update "$@"
+            '')
 
-              (pkgs.writeShellScriptBin
-                "go-mod-update-all"
-                ''
-                  cat go.mod | ${pkgs.ripgrep}/bin/rg "\t" | ${pkgs.ripgrep}/bin/rg -v '^\s*//' | ${pkgs.ripgrep}/bin/rg -v indirect | ${pkgs.gawk}/bin/awk '{print $1}' | ${pkgs.findutils}/bin/xargs go get -u
-                  go mod tidy
-                '')
-            ];
+            (pkgs.writeShellScriptBin "go-mod-update-all" ''
+              cat go.mod | ${pkgs.ripgrep}/bin/rg "\t" | ${pkgs.ripgrep}/bin/rg -v '^\s*//' | ${pkgs.ripgrep}/bin/rg -v indirect | ${pkgs.gawk}/bin/awk '{print $1}' | ${pkgs.findutils}/bin/xargs go get -u
+              go mod tidy
+            '')
+          ];
 
           shellHook = ''
             export PATH="$PWD/result/bin:$PATH"
@@ -257,5 +284,6 @@
         # The Go build/test checks are gated to Linux: parts of the tree are
         # Linux-specific and the pure unit subset is validated by CI.
         // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux goChecks;
-      });
+      }
+    );
 }
