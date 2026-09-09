@@ -292,6 +292,7 @@ jobs:
           - TestPingAllByHostname
           - TestTaildrop
           - TestUpdateHostnameFromClient
+          - TestHostinfoChangeReachesPeersOnlyWhenPeerVisible
           - TestExpireNode
           - TestSetNodeExpiryInFuture
           - TestDisableNodeExpiry
