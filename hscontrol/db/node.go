@@ -180,6 +180,26 @@ func SetLastSeen(tx *gorm.DB, nodeID types.NodeID, lastSeen time.Time) error {
 	return tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("last_seen", lastSeen).Error
 }
 
+// SetLastControlAddress persists the source IP most recently observed on an
+// authenticated control connection from a node. It updates only this metadata
+// column and deliberately leaves UpdatedAt unchanged.
+func (hsdb *HSDatabase) SetLastControlAddress(nodeID types.NodeID, addr netip.Addr) error {
+	return hsdb.Write(func(tx *gorm.DB) error {
+		result := tx.Model(&types.Node{}).
+			Where("id = ?", nodeID).
+			UpdateColumn("last_control_address", addr.String())
+		if result.Error != nil {
+			return result.Error
+		}
+
+		if result.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+
+		return nil
+	})
+}
+
 // RenameNode takes a [types.Node] struct and a new [types.Node.GivenName] for the nodes
 // and renames it. Validation should be done in the state layer before calling this function.
 func RenameNode(tx *gorm.DB,

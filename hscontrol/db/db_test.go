@@ -646,3 +646,45 @@ func TestSQLiteAllTestdataMigrations(t *testing.T) {
 		})
 	}
 }
+
+func TestLastControlAddressMigration(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := &types.Config{
+		Database: types.DatabaseConfig{
+			Type: types.DatabaseSqlite,
+			Sqlite: types.SqliteConfig{
+				Path: dbPath,
+			},
+		},
+		Policy: types.PolicyConfig{Mode: types.PolicyModeDB},
+	}
+
+	database, err := NewHeadscaleDatabase(cfg)
+	require.NoError(t, err, "a fresh database must match schema.sql")
+	require.True(t, database.DB.Migrator().HasColumn(&types.Node{}, "last_control_address"))
+
+	user := database.CreateUserForTest("migration-user")
+	node := database.CreateRegisteredNodeForTest(user, "migration-node")
+	require.Nil(t, node.LastControlAddress)
+
+	result := database.DB.Exec(
+		"DELETE FROM migrations WHERE id = ?",
+		"202609040900-add-last-control-address",
+	)
+	require.NoError(t, result.Error)
+	require.Equal(t, int64(1), result.RowsAffected)
+	require.NoError(t,
+		database.DB.Exec("ALTER TABLE nodes DROP COLUMN last_control_address").Error)
+	require.False(t, database.DB.Migrator().HasColumn(&types.Node{}, "last_control_address"))
+	require.NoError(t, database.Close())
+
+	upgraded, err := NewHeadscaleDatabase(cfg)
+	require.NoError(t, err, "a database without last_control_address must upgrade")
+	t.Cleanup(func() { _ = upgraded.Close() })
+
+	require.True(t, upgraded.DB.Migrator().HasColumn(&types.Node{}, "last_control_address"))
+	reloaded, err := upgraded.GetNodeByID(node.ID)
+	require.NoError(t, err)
+	assert.Nil(t, reloaded.LastControlAddress,
+		"existing nodes must receive NULL rather than an invented address")
+}

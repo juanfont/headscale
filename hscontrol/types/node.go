@@ -133,6 +133,10 @@ type Node struct {
 	IPv4 *netip.Addr `gorm:"column:ipv4;serializer:text"`
 	IPv6 *netip.Addr `gorm:"column:ipv6;serializer:text"`
 
+	// LastControlAddress is the source IP most recently observed on an
+	// authenticated control connection from this node.
+	LastControlAddress *netip.Addr `gorm:"column:last_control_address;serializer:text"`
+
 	// Hostname represents the name given by the Tailscale
 	// client during registration
 	Hostname string

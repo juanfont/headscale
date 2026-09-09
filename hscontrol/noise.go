@@ -740,6 +740,8 @@ func (ns *noiseServer) PollNetMapHandler(
 		return
 	}
 
+	ns.recordLastControlAddress(nv, req.RemoteAddr)
+
 	sess := ns.headscale.newMapSession(req.Context(), mapRequest, writer, nv.AsStruct())
 	sess.log.Trace().Caller().Msg("a node sending a MapRequest with Noise protocol")
 
@@ -830,4 +832,37 @@ func (ns *noiseServer) getAndValidateNode(mapRequest tailcfg.MapRequest) (types.
 	}
 
 	return nv, nil
+}
+
+// recordLastControlAddress records the outer request's already-resolved peer
+// address after node-key and Noise machine-key validation. Failure to parse or
+// persist this auxiliary metadata must not break an otherwise valid map poll.
+func (ns *noiseServer) recordLastControlAddress(node types.NodeView, remoteAddr string) {
+	addr, ok := parsePeerAddr(remoteAddr)
+	if !ok {
+		log.Warn().
+			Str("remote_addr", remoteAddr).
+			EmbedObject(node).
+			Msg("could not parse node control connection address")
+
+		return
+	}
+
+	changed, err := ns.headscale.state.SetLastControlAddress(node.ID(), addr.Unmap())
+	if err != nil {
+		log.Error().
+			Err(err).
+			Str("remote_addr", remoteAddr).
+			EmbedObject(node).
+			Msg("could not persist node control connection address")
+
+		return
+	}
+
+	if changed {
+		log.Debug().
+			Stringer("last_control_address", addr.Unmap()).
+			EmbedObject(node).
+			Msg("updated node control connection address")
+	}
 }

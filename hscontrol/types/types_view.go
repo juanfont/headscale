@@ -205,6 +205,12 @@ func (v NodeView) IPv4() views.ValuePointer[netip.Addr]   { return views.ValuePo
 
 func (v NodeView) IPv6() views.ValuePointer[netip.Addr] { return views.ValuePointerOf(v.ж.IPv6) }
 
+// LastControlAddress is the source IP most recently observed on an
+// authenticated control connection from this node.
+func (v NodeView) LastControlAddress() views.ValuePointer[netip.Addr] {
+	return views.ValuePointerOf(v.ж.LastControlAddress)
+}
+
 // Hostname represents the name given by the Tailscale
 // client during registration
 func (v NodeView) Hostname() string { return v.ж.Hostname }
@@ -284,32 +290,33 @@ func (v NodeView) String() string       { return v.ж.String() }
 
 // A compilation failure here means this code must be regenerated, with the command at the top of this file.
 var _NodeViewNeedsRegeneration = Node(struct {
-	ID             NodeID
-	MachineKey     key.MachinePublic
-	NodeKey        key.NodePublic
-	DiscoKey       key.DiscoPublic
-	Endpoints      AddrPorts
-	Hostinfo       *tailcfg.Hostinfo
-	IPv4           *netip.Addr
-	IPv6           *netip.Addr
-	Hostname       string
-	GivenName      string
-	UserID         *uint
-	User           *User
-	RegisterMethod string
-	Tags           Strings
-	AuthKeyID      *uint64
-	AuthKey        *PreAuthKey
-	Expiry         *time.Time
-	LastSeen       *time.Time
-	ApprovedRoutes Prefixes
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	DeletedAt      *time.Time
-	IsOnline       *bool
-	Unhealthy      bool
-	ActiveSessions int
-	SessionEpoch   uint64
+	ID                 NodeID
+	MachineKey         key.MachinePublic
+	NodeKey            key.NodePublic
+	DiscoKey           key.DiscoPublic
+	Endpoints          AddrPorts
+	Hostinfo           *tailcfg.Hostinfo
+	IPv4               *netip.Addr
+	IPv6               *netip.Addr
+	LastControlAddress *netip.Addr
+	Hostname           string
+	GivenName          string
+	UserID             *uint
+	User               *User
+	RegisterMethod     string
+	Tags               Strings
+	AuthKeyID          *uint64
+	AuthKey            *PreAuthKey
+	Expiry             *time.Time
+	LastSeen           *time.Time
+	ApprovedRoutes     Prefixes
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	DeletedAt          *time.Time
+	IsOnline           *bool
+	Unhealthy          bool
+	ActiveSessions     int
+	SessionEpoch       uint64
 }{})
 
 // View returns a read-only view of PreAuthKey.

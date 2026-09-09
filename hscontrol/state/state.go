@@ -71,6 +71,9 @@ var ErrNodeNotFound = errors.New("node not found")
 // ErrInvalidNodeView is returned when an invalid node view is provided.
 var ErrInvalidNodeView = errors.New("invalid node view provided")
 
+// ErrInvalidLastControlAddress is returned for a non-IP control address.
+var ErrInvalidLastControlAddress = errors.New("invalid last control address")
+
 // ErrNodeNotInNodeStore is returned when a node no longer exists in the [NodeStore].
 var ErrNodeNotInNodeStore = errors.New("node no longer exists in NodeStore")
 
@@ -99,6 +102,7 @@ var nodeUpdateColumns = []string{
 	"Hostinfo",
 	"IPv4",
 	"IPv6",
+	"LastControlAddress",
 	"Hostname",
 	"GivenName",
 	"UserID",
@@ -108,6 +112,54 @@ var nodeUpdateColumns = []string{
 	"LastSeen",
 	"ApprovedRoutes",
 	"UpdatedAt",
+}
+
+// SetLastControlAddress stores the source IP most recently observed on an
+// authenticated control connection. The update is deliberately metadata-only:
+// it does not rescan policy or emit a peer-map change. Repeated observations of
+// the same address do not touch either the NodeStore or database.
+func (s *State) SetLastControlAddress(id types.NodeID, addr netip.Addr) (bool, error) {
+	if !addr.IsValid() {
+		return false, ErrInvalidLastControlAddress
+	}
+
+	addr = addr.Unmap()
+
+	s.persistMu.Lock()
+	defer s.persistMu.Unlock()
+
+	current, ok := s.nodeStore.GetNode(id)
+	if !ok {
+		return false, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, id)
+	}
+
+	previous := current.LastControlAddress()
+	if previous.Valid() && previous.Get() == addr {
+		return false, nil
+	}
+
+	_, ok = s.nodeStore.SetLastControlAddress(id, &addr)
+	if !ok {
+		return false, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, id)
+	}
+
+	err := s.db.SetLastControlAddress(id, addr)
+	if err != nil {
+		// Keep the in-memory source of truth aligned with the failed database
+		// write so a later observation of the same address retries persistence.
+		var old *netip.Addr
+
+		if previous.Valid() {
+			addr := previous.Get()
+			old = &addr
+		}
+
+		s.nodeStore.SetLastControlAddress(id, old)
+
+		return false, fmt.Errorf("persisting last control address: %w", err)
+	}
+
+	return true, nil
 }
 
 // ErrRegistrationExpired is returned when a registration has expired.

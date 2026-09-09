@@ -71,7 +71,13 @@ func TestGrantsHandPicked(t *testing.T) {
 		{granted: []Scope{AuthKeysRead}, want: AuthKeysRead, ok: true},
 		{granted: []Scope{DevicesCore}, want: AuthKeys, ok: false},
 		{granted: []Scope{DevicesCoreRead}, want: AuthKeysRead, ok: false},
+		{granted: []Scope{DevicesPostureAttributesRead}, want: DevicesPostureAttributesRead, ok: true},
+		{granted: []Scope{DevicesPostureAttributes}, want: DevicesPostureAttributesRead, ok: true},
+		{granted: []Scope{DevicesPostureAttributesRead}, want: DevicesPostureAttributes, ok: false},
+		{granted: []Scope{DevicesCoreRead}, want: DevicesPostureAttributesRead, ok: false},
 		{granted: []Scope{All}, want: AuthKeys, ok: true},
+		{granted: []Scope{All}, want: DevicesPostureAttributesRead, ok: true},
+		{granted: []Scope{AllRead}, want: DevicesPostureAttributesRead, ok: true},
 		{granted: []Scope{All}, want: FeatureSettingsRead, ok: true},
 		{granted: []Scope{AllRead}, want: PolicyFileRead, ok: true},
 		{granted: []Scope{AllRead}, want: PolicyFile, ok: false},
@@ -201,6 +207,7 @@ func TestRequiresTags(t *testing.T) {
 		{scopes: []Scope{DevicesCore}, requires: true},
 		{scopes: []Scope{AuthKeys}, requires: true},
 		{scopes: []Scope{OAuthKeys}, requires: false},
+		{scopes: []Scope{DevicesPostureAttributes}, requires: false},
 		{scopes: []Scope{PolicyFile, AuthKeys}, requires: true},
 		{scopes: []Scope{DevicesCoreRead}, requires: false},
 		{scopes: nil, requires: false},
@@ -227,8 +234,8 @@ func TestKnownIsComplete(t *testing.T) {
 		seen[s] = true
 	}
 
-	// 7 resources × 2 (write+read) + 2 super-scopes = 16.
-	if len(known) != 16 {
-		t.Errorf("Known() has %d scopes, want 16", len(known))
+	// 8 resources × 2 (write+read) + 2 super-scopes = 18.
+	if len(known) != 18 {
+		t.Errorf("Known() has %d scopes, want 18", len(known))
 	}
 }

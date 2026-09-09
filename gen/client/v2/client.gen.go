@@ -68,6 +68,12 @@ type Device struct {
 	User              string     `json:"user"`
 }
 
+// DevicePostureAttributes defines model for DevicePostureAttributes.
+type DevicePostureAttributes struct {
+	Attributes map[string]interface{} `json:"attributes"`
+	Expiries   map[string]time.Time   `json:"expiries"`
+}
+
 // DeviceRoutes defines model for DeviceRoutes.
 type DeviceRoutes struct {
 	AdvertisedRoutes []string `json:"advertisedRoutes"`
@@ -382,6 +388,9 @@ type ClientInterface interface {
 	// GetDevice request
 	GetDevice(ctx context.Context, id string, params *GetDeviceParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetDevicePostureAttributes request
+	GetDevicePostureAttributes(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// AuthorizeDeviceWithBody request with any body
 	AuthorizeDeviceWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -464,6 +473,18 @@ func (c *Client) DeleteDevice(ctx context.Context, id string, params *DeleteDevi
 
 func (c *Client) GetDevice(ctx context.Context, id string, params *GetDeviceParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetDeviceRequest(c.Server, id, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetDevicePostureAttributes(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDevicePostureAttributesRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -886,6 +907,40 @@ func NewGetDeviceRequest(server string, id string, params *GetDeviceParams) (*ht
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
 		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetDevicePostureAttributesRequest generates requests for GetDevicePostureAttributes
+func NewGetDevicePostureAttributesRequest(server string, id string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v2/device/%s/attributes", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -1829,6 +1884,9 @@ type ClientWithResponsesInterface interface {
 	// GetDeviceWithResponse request
 	GetDeviceWithResponse(ctx context.Context, id string, params *GetDeviceParams, reqEditors ...RequestEditorFn) (*GetDeviceResponse, error)
 
+	// GetDevicePostureAttributesWithResponse request
+	GetDevicePostureAttributesWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetDevicePostureAttributesResponse, error)
+
 	// AuthorizeDeviceWithBodyWithResponse request with any body
 	AuthorizeDeviceWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AuthorizeDeviceResponse, error)
 
@@ -1961,6 +2019,41 @@ func (r GetDeviceResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetDeviceResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetDevicePostureAttributesResponse struct {
+	Body                      []byte
+	HTTPResponse              *http.Response
+	JSON200                   *DevicePostureAttributes
+	ApplicationproblemJSON401 *ErrorModel
+	ApplicationproblemJSON403 *ErrorModel
+	ApplicationproblemJSON404 *ErrorModel
+	ApplicationproblemJSON422 *ErrorModel
+	ApplicationproblemJSON500 *ErrorModel
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDevicePostureAttributesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDevicePostureAttributesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetDevicePostureAttributesResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -2587,6 +2680,15 @@ func (c *ClientWithResponses) GetDeviceWithResponse(ctx context.Context, id stri
 	return ParseGetDeviceResponse(rsp)
 }
 
+// GetDevicePostureAttributesWithResponse request returning *GetDevicePostureAttributesResponse
+func (c *ClientWithResponses) GetDevicePostureAttributesWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*GetDevicePostureAttributesResponse, error) {
+	rsp, err := c.GetDevicePostureAttributes(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDevicePostureAttributesResponse(rsp)
+}
+
 // AuthorizeDeviceWithBodyWithResponse request with arbitrary body returning *AuthorizeDeviceResponse
 func (c *ClientWithResponses) AuthorizeDeviceWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AuthorizeDeviceResponse, error) {
 	rsp, err := c.AuthorizeDeviceWithBody(ctx, id, contentType, body, reqEditors...)
@@ -2881,6 +2983,67 @@ func ParseGetDeviceResponse(rsp *http.Response) (*GetDeviceResponse, error) {
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest Device
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetDevicePostureAttributesResponse parses an HTTP response from a GetDevicePostureAttributesWithResponse call
+func ParseGetDevicePostureAttributesResponse(rsp *http.Response) (*GetDevicePostureAttributesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetDevicePostureAttributesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DevicePostureAttributes
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

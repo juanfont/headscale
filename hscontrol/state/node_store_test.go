@@ -157,6 +157,36 @@ func TestSnapshotFromNodes(t *testing.T) {
 	}
 }
 
+func TestSetLastControlAddressReusesPeerTopology(t *testing.T) {
+	peerCalculations := 0
+	nodes := types.Nodes{
+		new(createTestNode(1, 1, "user1", "node1")),
+		new(createTestNode(2, 1, "user1", "node2")),
+	}
+	store := NewNodeStore(nodes, func(nodes []types.NodeView) map[types.NodeID][]types.NodeView {
+		peerCalculations++
+
+		return allowAllPeersFunc(nodes)
+	}, 1, time.Millisecond)
+	store.Start()
+	t.Cleanup(store.Stop)
+
+	require.Equal(t, 1, peerCalculations)
+
+	addr := netip.MustParseAddr("203.0.113.10")
+	updated, ok := store.SetLastControlAddress(1, &addr)
+	require.True(t, ok)
+	require.True(t, updated.LastControlAddress().Valid())
+	assert.Equal(t, addr, updated.LastControlAddress().Get())
+	assert.Equal(t, 1, peerCalculations, "metadata must not recalculate peer membership")
+
+	peers := store.ListPeers(2)
+	require.Equal(t, 1, peers.Len())
+	require.True(t, peers.At(0).LastControlAddress().Valid())
+	assert.Equal(t, addr, peers.At(0).LastControlAddress().Get(),
+		"reused peer topology must contain refreshed node views")
+}
+
 // Helper functions
 
 func createTestNode(nodeID types.NodeID, userID uint, username, hostname string) types.Node {
