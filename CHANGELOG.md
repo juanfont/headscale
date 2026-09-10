@@ -42,6 +42,7 @@ keys remain all-access.
 
 ### Changes
 
+- PostgreSQL connection parameters are quoted, so a password (or host, user, database name) containing spaces, quotes or backslashes no longer truncates the DSN
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
 - Fix deleting a node leaving its long poll open, so the client stayed connected instead of asking for a new login [#3449](https://github.com/juanfont/headscale/pull/3449)
