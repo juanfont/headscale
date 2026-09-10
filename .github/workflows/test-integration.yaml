@@ -292,11 +292,13 @@ jobs:
           - TestPingAllByHostname
           - TestTaildrop
           - TestUpdateHostnameFromClient
+          - TestHostinfoChangeReachesPeersOnlyWhenPeerVisible
           - TestExpireNode
           - TestSetNodeExpiryInFuture
           - TestDisableNodeExpiry
           - TestNodeOnlineStatus
           - TestPingAllByIPManyUpDown
+          - TestNodeDeletionEndsLongPoll
           - Test2118DeletingOnlineNodePanics
           - TestGrantCapRelay
           - TestGrantCapDrive

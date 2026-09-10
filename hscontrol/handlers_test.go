@@ -139,6 +139,18 @@ func TestHttpUserError(t *testing.T) {
 			wantNotContain: "login session expired",
 		},
 		{
+			name: "gone_with_user_message_renders_specific_guidance",
+			err: newHTTPUserError(
+				http.StatusGone,
+				"registration link already used or expired",
+				"This link has already been used or has expired.",
+				nil,
+			),
+			wantCode:       http.StatusGone,
+			wantContains:   "This link has already been used or has expired.",
+			wantNotContain: "registration link already used or expired",
+		},
+		{
 			name:           "bad_request_renders_generic_retry",
 			err:            NewHTTPError(http.StatusBadRequest, "state not found", nil),
 			wantCode:       http.StatusBadRequest,

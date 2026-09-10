@@ -412,6 +412,105 @@ tls_letsencrypt_challenge_type: TLS-ALPN-01
 	require.NoError(t, err)
 }
 
+func TestPKCEMethodValidation(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// OIDC is active (issuer set) with PKCE enabled and an invalid method.
+	// There is no oidc.enabled key. validateServerConfig must reject the
+	// invalid method rather than silently skipping the check.
+	configYaml := []byte(`---
+noise:
+  private_key_path: noise_private.key
+server_url: http://127.0.0.1:8080
+dns:
+  override_local_dns: false
+oidc:
+  issuer: https://idp.example.com
+  client_id: headscale
+  pkce:
+    enabled: true
+    method: S256-typo
+`)
+
+	configFilePath := filepath.Join(tmpDir, "config.yaml")
+	err := os.WriteFile(configFilePath, configYaml, 0o600)
+	require.NoError(t, err)
+
+	err = LoadConfig(tmpDir, false)
+	require.NoError(t, err)
+
+	err = validateServerConfig()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), errInvalidPKCEMethod.Error())
+}
+
+// TestOIDCConfigValidation covers the issuer-URL and required-field checks that
+// fail an unworkable OIDC setup fast at config load.
+func TestOIDCConfigValidation(t *testing.T) {
+	tests := []struct {
+		name      string
+		oidcBlock string
+		wantErr   string
+	}{
+		{
+			name: "non-http issuer",
+			oidcBlock: `
+  issuer: ftp://idp.example.com
+  client_id: headscale
+  client_secret: sekret`,
+			wantErr: "valid http(s) URL",
+		},
+		{
+			name: "missing client_id",
+			oidcBlock: `
+  issuer: https://idp.example.com
+  client_secret: sekret`,
+			wantErr: "client_id is required",
+		},
+		{
+			name: "missing client_secret",
+			oidcBlock: `
+  issuer: https://idp.example.com
+  client_id: headscale`,
+			wantErr: "client_secret",
+		},
+		{
+			name: "valid",
+			oidcBlock: `
+  issuer: https://idp.example.com
+  client_id: headscale
+  client_secret: sekret`,
+			wantErr: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			configYaml := []byte(`---
+noise:
+  private_key_path: noise_private.key
+server_url: http://127.0.0.1:8080
+dns:
+  override_local_dns: false
+oidc:` + tt.oidcBlock + "\n")
+
+			require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "config.yaml"), configYaml, 0o600))
+			require.NoError(t, LoadConfig(tmpDir, false))
+
+			err := validateServerConfig()
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+
+				return
+			}
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
 // OK
 // server_url: headscale.com, base: clients.headscale.com
 // server_url: headscale.com, base: headscale.net
@@ -599,5 +698,34 @@ func TestTrustedProxies(t *testing.T) {
 				t.Errorf("trustedProxies() mismatch (-want +got):\n%s", diff)
 			}
 		})
+	}
+}
+
+// DNS names are case-insensitive, but MagicDNS resolution in clients matches
+// extra records by exact name, so mixed-case record names never resolve.
+func TestExtraRecordsAreLowercased(t *testing.T) {
+	mixed := []tailcfg.DNSRecord{
+		{Name: "Printer.fritz.box", Type: "A", Value: "192.168.1.2"},
+		{Name: "NAS.FRITZ.BOX", Type: "A", Value: "192.168.1.3"},
+	}
+	want := []tailcfg.DNSRecord{
+		{Name: "printer.fritz.box", Type: "A", Value: "192.168.1.2"},
+		{Name: "nas.fritz.box", Type: "A", Value: "192.168.1.3"},
+	}
+
+	tcfg := dnsToTailcfgDNS(DNSConfig{
+		MagicDNS:     true,
+		BaseDomain:   "example.com",
+		ExtraRecords: mixed,
+	})
+	if diff := cmp.Diff(want, tcfg.ExtraRecords); diff != "" {
+		t.Errorf("dnsToTailcfgDNS extra records mismatch (-want +got):\n%s", diff)
+	}
+
+	cfg := &Config{TailcfgDNSConfig: &tailcfg.DNSConfig{}}
+	cfg.SetExtraRecords(mixed)
+
+	if diff := cmp.Diff(want, cfg.TailcfgDNSConfig.ExtraRecords); diff != "" {
+		t.Errorf("SetExtraRecords mismatch (-want +got):\n%s", diff)
 	}
 }

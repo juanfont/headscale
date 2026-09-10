@@ -153,7 +153,7 @@ func (h *Headscale) NoiseUpgradeHandler(
 		Host:  false,
 		Proto: true,
 		Skip: func(r *http.Request) bool {
-			return r.Method != http.MethodOptions
+			return r.Method == http.MethodOptions
 		},
 	}))
 	r.Use(middleware.RequestID)
@@ -724,7 +724,35 @@ func (ns *noiseServer) PollNetMapHandler(
 
 	nv, err := ns.getAndValidateNode(mapRequest)
 	if err != nil {
+		// The node is gone, but the client does not know that. Tailscale
+		// clients treat every non-200 on the map path the same way and retry
+		// forever with loggedIn still set; only a self node whose KeyExpiry is
+		// in the past drives them to NeedsLogin. There is no MapResponse field
+		// that says "deleted", so reuse the expiry signal headscale already
+		// sends for expired nodes.
+		// See: https://github.com/juanfont/headscale/issues/3410
+		if errors.Is(err, errNodeNotInStore) && mapRequest.Stream {
+			expired := &tailcfg.MapResponse{
+				Node: &tailcfg.Node{
+					Key: mapRequest.NodeKey,
+					// Zero means that the key does not expire. Use a fixed,
+					// ancient non-zero value so this remains expired even when
+					// the client's clock is substantially behind the server.
+					KeyExpiry: time.Unix(1, 0).UTC(),
+					Expired:   true,
+				},
+			}
+
+			err = writeMapResponse(writer, mapRequest.Compress, true, expired)
+			if err != nil {
+				log.Error().Caller().Err(err).Msg("noise map handler: failed to write expired response for deleted node")
+			}
+
+			return
+		}
+
 		httpError(writer, err)
+
 		return
 	}
 
@@ -799,12 +827,17 @@ func (ns *noiseServer) RegistrationHandler(
 	}
 }
 
-// getAndValidateNode retrieves the node from the database using the NodeKey
-// and validates that it matches the MachineKey from the Noise session.
+// errNodeNotInStore distinguishes an unknown NodeKey from a NodeKey presented
+// by the wrong machine key. Both are answered with 404, but only the former
+// means the node is gone and its client should re-authenticate.
+var errNodeNotInStore = errors.New("node not found")
+
+// getAndValidateNode retrieves the node from the in-memory NodeStore using the
+// NodeKey and validates that it matches the MachineKey from the Noise session.
 func (ns *noiseServer) getAndValidateNode(mapRequest tailcfg.MapRequest) (types.NodeView, error) {
 	nv, ok := ns.headscale.state.GetNodeByNodeKey(mapRequest.NodeKey)
 	if !ok {
-		return types.NodeView{}, NewHTTPError(http.StatusNotFound, "node not found", nil)
+		return types.NodeView{}, NewHTTPError(http.StatusNotFound, "node not found", errNodeNotInStore)
 	}
 
 	// Validate that the MachineKey in the Noise session matches the one associated with the NodeKey.

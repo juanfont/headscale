@@ -40,18 +40,23 @@ func httpError(w http.ResponseWriter, err error) {
 // an actionable message derived from the HTTP status code.
 func httpUserError(w http.ResponseWriter, err error) {
 	code := http.StatusInternalServerError
+	userMsg := ""
 
 	if herr, ok := errors.AsType[HTTPError](err); ok {
 		if herr.Code != 0 {
 			code = herr.Code
 		}
 
+		userMsg = herr.UserMsg
+
 		log.Error().Err(herr.Err).Int("code", code).Msgf("user msg: %s", herr.Msg)
 	} else {
 		log.Error().Err(err).Int("code", code).Msg("http internal server error")
 	}
 
-	userMsg := userMessageForStatusCode(code)
+	if userMsg == "" {
+		userMsg = userMessageForStatusCode(code)
+	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(code)
@@ -83,9 +88,10 @@ func userMessageForStatusCode(code int) string {
 
 // HTTPError represents an error that is surfaced to the user via web.
 type HTTPError struct {
-	Code int    // HTTP response code to send to client; 0 means 500
-	Msg  string // Response body to send to client
-	Err  error  // Detailed error to log on the server
+	Code    int    // HTTP response code to send to client; 0 means 500
+	Msg     string // Response body to send to non-browser clients
+	Err     error  // Detailed error to log on the server
+	UserMsg string // Optional safe message for browser-facing error pages
 }
 
 func (e HTTPError) Error() string { return fmt.Sprintf("http error[%d]: %s, %s", e.Code, e.Msg, e.Err) }
@@ -94,6 +100,10 @@ func (e HTTPError) Unwrap() error { return e.Err }
 // NewHTTPError returns an HTTPError containing the given information.
 func NewHTTPError(code int, msg string, err error) HTTPError {
 	return HTTPError{Code: code, Msg: msg, Err: err}
+}
+
+func newHTTPUserError(code int, msg, userMsg string, err error) HTTPError {
+	return HTTPError{Code: code, Msg: msg, Err: err, UserMsg: userMsg}
 }
 
 var errMethodNotAllowed = NewHTTPError(http.StatusMethodNotAllowed, "method not allowed", nil)
@@ -294,6 +304,17 @@ func NewAuthProviderWeb(serverURL string) *AuthProviderWeb {
 	return &AuthProviderWeb{
 		serverURL: serverURL,
 	}
+}
+
+// authPathURL builds an auth-flow URL of the form
+// "<serverURL>/<kind>/<id>", trimming a trailing slash from serverURL.
+func authPathURL(serverURL, kind string, authID types.AuthID) string {
+	return fmt.Sprintf(
+		"%s/%s/%s",
+		strings.TrimSuffix(serverURL, "/"),
+		kind,
+		authID.String(),
+	)
 }
 
 func (a *AuthProviderWeb) RegisterURL(authID types.AuthID) string {

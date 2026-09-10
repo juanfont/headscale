@@ -185,6 +185,26 @@ func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 		return nil, fmt.Errorf("connecting to docker: %w", err)
 	}
 
+	// dockertest's bundled go-dockerclient stamps image builds with API
+	// v1.25 (the `ver` tag on BuildImageOptions.Dockerfile) whenever the
+	// client has no pinned version. Docker Engine 29 raised the minimum API
+	// version to 1.40 and rejects v1.25 with a 400, which surfaces mid-build
+	// as a "write: broken pipe". Pin the client to the daemon's reported API
+	// version so build (and every other) request uses an accepted path.
+	version, err := pool.Client.Version()
+	if err != nil {
+		return nil, fmt.Errorf("querying docker API version: %w", err)
+	}
+
+	if api := version.Get("ApiVersion"); api != "" {
+		client, err := docker.NewVersionedClientFromEnv(api)
+		if err != nil {
+			return nil, fmt.Errorf("pinning docker client to API version %s: %w", api, err)
+		}
+
+		pool.Client = client
+	}
+
 	// Opportunity to clean up unreferenced networks.
 	// This might be a no op, but it is worth a try as we sometime
 	// dont clean up nicely after ourselves.
@@ -1108,6 +1128,11 @@ func (j *debugJar) Dump(w io.Writer) {
 	}
 }
 
+// registerConfirmCSRFField is the name of both the hidden CSRF form field
+// and the cookie on the OIDC registration confirmation interstitial. It
+// mirrors registerConfirmCSRFCookie in hscontrol, which is unexported.
+const registerConfirmCSRFField = "headscale_register_confirm"
+
 func copyCookie(c *http.Cookie) *http.Cookie {
 	cc := *c
 	return &cc
@@ -1221,10 +1246,11 @@ func doLoginURLWithClient(hostname string, loginURL *url.URL, hc *http.Client, f
 		}
 	}
 
-	// The OIDC registration flow now renders a confirmation interstitial
-	// (POST form) instead of completing immediately. Detect the form and
+	// The OIDC registration flow renders a confirmation interstitial
+	// (POST form) instead of completing immediately. Detect the form by its
+	// CSRF field, which does not move when the form action does, and
 	// auto-submit it so integration tests behave like a real browser.
-	if followRedirects && strings.Contains(body, `action="/register/confirm/`) {
+	if followRedirects && strings.Contains(body, `name="`+registerConfirmCSRFField+`"`) {
 		confirmBody, confirmURL, confirmErr := submitConfirmForm(hostname, body, resp, hc)
 		if confirmErr != nil {
 			return body, redirectURL, confirmErr
@@ -1263,7 +1289,7 @@ func submitConfirmForm(
 
 	// Extract hidden CSRF input value. The rendered <input> has
 	// attributes in name-type-value order so we grab the whole tag.
-	before, _, ok := strings.Cut(htmlBody, `name="headscale_register_confirm"`)
+	before, _, ok := strings.Cut(htmlBody, `name="`+registerConfirmCSRFField+`"`)
 	if !ok {
 		return "", nil, fmt.Errorf("%s confirm form: no CSRF input", hostname) //nolint:err113
 	}
@@ -1289,18 +1315,17 @@ func submitConfirmForm(
 	valEnd := strings.Index(inputTag[valStart:], `"`)
 	csrfToken := inputTag[valStart : valStart+valEnd]
 
-	// Build the absolute POST URL from the response's request URL.
-	base := prevResp.Request.URL
-	confirmURL := &url.URL{
-		Scheme: base.Scheme,
-		Host:   base.Host,
-		Path:   formAction,
+	// Resolve the form action against the page it was served from, so an
+	// absolute and a relative action both work.
+	confirmURL, err := prevResp.Request.URL.Parse(formAction)
+	if err != nil {
+		return "", nil, fmt.Errorf("%s confirm form: resolving action %q: %w", hostname, formAction, err)
 	}
 
 	log.Printf("%s auto-submitting confirm form: %s", hostname, confirmURL)
 
 	formData := url.Values{
-		"headscale_register_confirm": {csrfToken},
+		registerConfirmCSRFField: {csrfToken},
 	}
 
 	ctx := context.Background()
