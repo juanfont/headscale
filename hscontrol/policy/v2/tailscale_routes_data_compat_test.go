@@ -13,8 +13,8 @@
 //   - TestRoutesCompat: validates filter rule compilation (compileFilterRulesForNode
 //     + ReduceFilterRules) against golden file captures.
 //
-//   - TestRoutesCompatPeerVisibility: validates peer visibility (CanAccess /
-//     ReduceNodes) for the subnet-to-subnet scenarios (f10–f15). These tests
+//   - TestRoutesCompatPeerVisibility: validates peer visibility (CanAccess)
+//     for the subnet-to-subnet scenarios (f10–f15). These tests
 //     derive expected peer relationships from the golden file captures: if
 //     Tailscale SaaS delivers filter rules to a node, then the subnet routers
 //     referenced in those rules must be visible as peers. This exercises the

@@ -1,9 +1,9 @@
 // This file implements data-driven via grant compatibility tests using
-// golden data captured from Tailscale SaaS (v29, v30, v31, v33, v35,
-// v36). These scenarios exercise via grant steering with peer
-// connectivity and cross-subnet forwarding.
+// golden data captured from Tailscale SaaS. These scenarios exercise via
+// grant steering with peer connectivity, cross-subnet forwarding and
+// exit nodes.
 //
-// Test data source: ../policy/v2/testdata/grant_results/via-grant-v{29,30,31,33,35,36}.hujson
+// Test data source: ../policy/v2/testdata/grant_results/, see viaCompatTests
 // Source format:    github.com/juanfont/headscale/hscontrol/types/testcapture
 package servertest_test
 
@@ -20,6 +20,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go4.org/netipx"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/netmap"
 )
@@ -35,6 +36,7 @@ var viaCompatTests = []struct {
 	{"via-grant-v33", "single via grant + HA primary election"},
 	{"via-grant-v35", "via grant with unadvertised destination"},
 	{"via-grant-v36", "full complex: peer connectivity + crossed subnet + crossed exit"},
+	{"via-grant-v52", "members reach the internet only via tag:exit, admins reach everything"},
 }
 
 // TestViaGrantMapCompat loads golden captures from Tailscale SaaS and
@@ -46,14 +48,14 @@ var viaCompatTests = []struct {
 //
 // CROSS-DEPENDENCY WARNING:
 // This test reads golden files from ../policy/v2/testdata/grant_results/
-// (specifically via-grant-v29, v30, v31, v33, v35, v36). These files are shared
+// (the ones listed in viaCompatTests). These files are shared
 // with TestGrantsCompat in the policy/v2 package. Any changes to the
 // file format, field structure, or naming must be coordinated with
 // BOTH tests.
 //
 // Fields consumed by this test (but NOT by TestGrantsCompat):
 //   - captures[name].netmap (Peers, AllowedIPs, PrimaryRoutes, PacketFilterRules)
-//   - topology.nodes[name].tags (used for servertest node creation)
+//   - topology.nodes[name].tags and .user (used for servertest node creation)
 //
 // Fields consumed by TestGrantsCompat (but NOT by this test):
 //   - captures[name].packet_filter_rules (golden filter rule comparison)
@@ -88,6 +90,7 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 
 	srv := servertest.NewServer(t)
 	tagUser := srv.CreateUser(t, "tag-user")
+	users := createCaptureUsers(t, srv)
 
 	policyJSON := convertCapturePolicy(t, c)
 
@@ -100,7 +103,8 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 		srv.App.Change(changes...)
 	}
 
-	// Create tagged clients matching the golden topology.
+	// Create clients matching the golden topology: tagged nodes under
+	// tag-user, user-owned nodes under their capture user.
 	// Nodes are created in SaaS registration order so headscale assigns
 	// sequential DB IDs in the same relative order. This matters for
 	// PrimaryRoutes election which uses lowest-node-ID-wins — the
@@ -110,7 +114,7 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 
 	for _, name := range order {
 		topoNode, exists := c.Topology.Nodes[name]
-		if !exists || len(topoNode.Tags) == 0 {
+		if !exists {
 			continue
 		}
 
@@ -118,8 +122,17 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 			continue
 		}
 
+		owner := tagUser
+
+		if len(topoNode.Tags) == 0 {
+			require.Containsf(t, users, topoNode.User,
+				"node %s: owner %q is not a capture user", name, topoNode.User)
+
+			owner = users[topoNode.User]
+		}
+
 		clients[name] = servertest.NewClient(t, srv, name,
-			servertest.WithUser(tagUser),
+			servertest.WithUser(owner),
 			servertest.WithTags(topoNode.Tags...),
 		)
 	}
@@ -403,12 +416,14 @@ func compareNetmap(
 		var wantDstPrefixes []string
 
 		for _, dp := range wantRule.DstPorts {
-			pfx, err := parsePrefixOrAddr(dp.IP)
+			pfxs, err := parseDstPrefixes(dp.IP)
 			require.NoErrorf(t, err,
-				"golden DstPorts[%d].IP %q should parse as prefix or addr", i, dp.IP)
+				"golden DstPorts[%d].IP %q should parse as prefix, addr or range", i, dp.IP)
 
-			if !isTailscaleIP(pfx) {
-				wantDstPrefixes = append(wantDstPrefixes, pfx.String())
+			for _, pfx := range pfxs {
+				if !isTailscaleIP(pfx) {
+					wantDstPrefixes = append(wantDstPrefixes, pfx.String())
+				}
 			}
 		}
 
@@ -643,6 +658,35 @@ func parsePrefixOrAddr(s string) (netip.Prefix, error) {
 	}
 
 	return netip.PrefixFrom(addr, addr.BitLen()), nil
+}
+
+// parseDstPrefixes parses a golden DstPorts.IP into the prefixes a client
+// derives from it. Besides a prefix or bare address, SaaS writes "*" for
+// every address and an address range for autogroup:internet
+// ("0.0.0.0-9.255.255.255").
+func parseDstPrefixes(s string) ([]netip.Prefix, error) {
+	if s == "*" {
+		return []netip.Prefix{
+			netip.MustParsePrefix("0.0.0.0/0"),
+			netip.MustParsePrefix("::/0"),
+		}, nil
+	}
+
+	if strings.Contains(s, "-") {
+		r, err := netipx.ParseIPRange(s)
+		if err != nil {
+			return nil, err
+		}
+
+		return r.Prefixes(), nil
+	}
+
+	pfx, err := parsePrefixOrAddr(s)
+	if err != nil {
+		return nil, err
+	}
+
+	return []netip.Prefix{pfx}, nil
 }
 
 // isTailscaleIP returns true if the prefix is a single-host Tailscale
