@@ -50,7 +50,7 @@ test: check-deps $(GO_SOURCES) go.mod go.sum
 
 # Formatting targets
 .PHONY: fmt
-fmt: fmt-go fmt-mdformat fmt-prettier
+fmt: fmt-go fmt-mdformat fmt-tree
 
 .PHONY: fmt-go
 fmt-go: check-deps $(GO_SOURCES)
@@ -63,10 +63,10 @@ fmt-mdformat: check-deps
 	@echo "Formatting documentation..."
 	mdformat docs/
 
-.PHONY: fmt-prettier
-fmt-prettier: check-deps $(PRETTIER_SOURCES)
-	@echo "Formatting markup and config files..."
-	prettier --write '**/*.{ts,js,md,yaml,yml,sass,css,scss,html}'
+.PHONY: fmt-tree
+fmt-tree: check-deps $(PRETTIER_SOURCES)
+	@echo "Formatting Nix, markup and config files..."
+	nix fmt
 
 # Linting targets
 .PHONY: lint

@@ -278,6 +278,17 @@
           drv = pkgs.headscale;
         };
 
+        # `nix fmt` is built from the same treefmt module as the formatting
+        # check, so the two cannot disagree. Every formatter the tree is judged
+        # by lives here, not in a hand-kept list of pre-commit hooks.
+        formatter = fc.formatter (
+          common
+          // {
+            goFmt = "off";
+            prettier = true;
+          }
+        );
+
         checks = {
           headscale = pkgs.testers.nixosTest (import ./nix/tests/headscale.nix);
         }
