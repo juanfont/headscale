@@ -62,6 +62,7 @@ keys remain all-access.
 - Fix `headscale users rename` sending the raw `--identifier` flag value instead of the matched user's identifier, so renaming by name works again [#3442](https://github.com/juanfont/headscale/pull/3442)
 - Fix tailsql not shutting down with headscale, leaving the process hanging on graceful shutdown [#3400](https://github.com/juanfont/headscale/pull/3400)
 - Fix tvOS setup instructions: install the VPN configuration before setting the coordination server URL [#3431](https://github.com/juanfont/headscale/pull/3431)
+- The peer patches sent when a node connects or disconnects now carry `LastSeen`, so clients learn when a peer was last seen without waiting for a full map [#3420](https://github.com/juanfont/headscale/pull/3420)
 
 ## 0.29.3 (2026-07-29)
 

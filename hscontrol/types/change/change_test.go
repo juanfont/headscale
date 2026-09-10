@@ -13,6 +13,10 @@ import (
 	"tailscale.com/types/key"
 )
 
+// testLastSeen is a fixed timestamp for online/offline patch constructors so
+// Change values built in table entries compare equal.
+var testLastSeen = time.Date(2026, 8, 11, 12, 0, 0, 0, time.UTC)
+
 func TestChange_FieldSync(t *testing.T) {
 	r := Change{}
 	fieldNames := r.boolFieldNames()
@@ -331,7 +335,7 @@ func TestChange_IsBroadcastPolicyChange(t *testing.T) {
 		{name: "policy change", c: PolicyChange(), want: true},
 		{name: "self-update recompute", c: originUpdate, want: false},
 		{name: "targeted recompute", c: targeted, want: false},
-		{name: "online patch", c: NodeOnline(1), want: false},
+		{name: "online patch", c: NodeOnline(1, testLastSeen), want: false},
 		{name: "full update", c: FullUpdate(), want: false},
 		{name: "derp map", c: DERPMap(), want: false},
 	}
@@ -373,10 +377,13 @@ func TestDedupePolicyChanges(t *testing.T) {
 		{
 			name: "peer patches survive between collapsed policy changes",
 			changes: []Change{
-				NodeOnline(1), PolicyChange(), NodeOnline(2), PolicyChange(), NodeOffline(3),
+				NodeOnline(1, testLastSeen), PolicyChange(),
+				NodeOnline(2, testLastSeen), PolicyChange(),
+				NodeOffline(3, testLastSeen),
 			},
 			want: []Change{
-				NodeOnline(1), PolicyChange(), NodeOnline(2), NodeOffline(3),
+				NodeOnline(1, testLastSeen), PolicyChange(),
+				NodeOnline(2, testLastSeen), NodeOffline(3, testLastSeen),
 			},
 		},
 		{
@@ -396,8 +403,8 @@ func TestDedupePolicyChanges(t *testing.T) {
 		},
 		{
 			name:    "changes without any recompute are unchanged",
-			changes: []Change{NodeOnline(1), DERPMap()},
-			want:    []Change{NodeOnline(1), DERPMap()},
+			changes: []Change{NodeOnline(1, testLastSeen), DERPMap()},
+			want:    []Change{NodeOnline(1, testLastSeen), DERPMap()},
 		},
 	}
 
@@ -647,8 +654,8 @@ func TestNodeOnlineOfflineForSubnetRouter(t *testing.T) {
 		got        Change
 		wantOnline bool
 	}{
-		{name: "online", got: NodeOnline(view.ID()), wantOnline: true},
-		{name: "offline", got: NodeOffline(view.ID()), wantOnline: false},
+		{name: "online", got: NodeOnline(view.ID(), testLastSeen), wantOnline: true},
+		{name: "offline", got: NodeOffline(view.ID(), testLastSeen), wantOnline: false},
 	}
 
 	for _, tt := range tests {
@@ -667,6 +674,12 @@ func TestNodeOnlineOfflineForSubnetRouter(t *testing.T) {
 
 			require.NotNil(t, patch.Online)
 			assert.Equal(t, tt.wantOnline, *patch.Online)
+
+			// Per the tailcfg protocol, an online-status transition patch
+			// must carry LastSeen (connect or disconnect time).
+			require.NotNil(t, patch.LastSeen,
+				"online/offline patch must report LastSeen")
+			assert.Equal(t, testLastSeen, *patch.LastSeen)
 		})
 	}
 }
