@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/servertest"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -77,6 +78,7 @@ func runViaHACompat(t *testing.T, c *testcapture.Capture) {
 
 	srv := servertest.NewServer(t)
 	tagUser := srv.CreateUser(t, "tag-user")
+	createCaptureUsers(t, srv)
 
 	policyJSON := convertCapturePolicy(t, c)
 
@@ -377,11 +379,32 @@ func captureNodeOrder(t *testing.T, c *testcapture.Capture) []string {
 	return names
 }
 
+// captureUserNames maps the SaaS emails in capture policies to the user
+// names capture topologies give their user-owned nodes.
+var captureUserNames = map[string]string{
+	"odin@example.com":  "odin",
+	"thor@example.org":  "thor",
+	"freya@example.com": "freya",
+}
+
+// createCaptureUsers creates a headscale user for each capture identity,
+// keyed by name.
+func createCaptureUsers(t *testing.T, srv *servertest.TestServer) map[string]*types.User {
+	t.Helper()
+
+	users := make(map[string]*types.User, len(captureUserNames))
+	for _, name := range captureUserNames {
+		users[name] = srv.CreateUser(t, name)
+	}
+
+	return users
+}
+
 // convertCapturePolicy converts a [testcapture.Capture]'s policy for headscale,
-// replacing SaaS emails with headscale user format. Fails the test if
-// none of the known SaaS emails are present: that would mean the
-// capture was regenerated with a new tag-owner identity and this
-// function needs updating.
+// replacing each SaaS email with the "<name>@" form that resolves to the
+// users [createCaptureUsers] creates. Fails the test if none of the known
+// SaaS emails are present: that would mean the capture was regenerated
+// with a new identity and captureUserNames needs updating.
 func convertCapturePolicy(t *testing.T, c *testcapture.Capture) []byte {
 	t.Helper()
 
@@ -389,21 +412,17 @@ func convertCapturePolicy(t *testing.T, c *testcapture.Capture) []byte {
 
 	substituted := false
 
-	for _, email := range []string{
-		"odin@example.com",
-		"thor@example.org",
-		"freya@example.com",
-	} {
+	for email, name := range captureUserNames {
 		if strings.Contains(s, email) {
 			substituted = true
-			s = strings.ReplaceAll(s, email, "tag-user@")
+			s = strings.ReplaceAll(s, email, name+"@")
 		}
 	}
 
 	require.True(
 		t,
 		substituted,
-		"%s: no known SaaS tag-owner email found in policy; update convertCapturePolicy",
+		"%s: no known SaaS email found in policy; update captureUserNames",
 		c.TestID,
 	)
 
