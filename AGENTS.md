@@ -109,7 +109,8 @@ prek run --all-files    # run hooks on the full tree
 
 Hooks cover: file hygiene (trailing whitespace, line endings, BOM),
 syntax validation (JSON/YAML/TOML/XML), merge-conflict markers, private
-key detection, nixpkgs-fmt, prettier, and `golangci-lint` via
+key detection, `treefmt` (the same formatter `nix fmt` and the flake's
+formatting check run), `mdformat` for `docs/`, and `golangci-lint` via
 `--new-from-rev=HEAD~1` (see the golangci-lint hook in .pre-commit-config.yaml). A manual
 invocation with an `upstream/main` remote is equivalent:
 

@@ -1,2 +1,5 @@
 .github/workflows/test-integration-v2*
 docs/
+
+# Golden fixtures are byte-compared; a formatter must not rewrite them.
+hscontrol/testdata/
