@@ -93,7 +93,23 @@ var (
 	ErrNodeAttrUnsupported          = errors.New("nodeAttrs uses a feature headscale does not yet support")
 	ErrNodeAttrIPPoolUnsupported    = errors.New("nodeAttrs ipPool requires the IP allocator (https://github.com/juanfont/headscale/issues/2912)")
 	ErrNodeAttrTargetUnsupported    = errors.New("nodeAttrs target alias type is not supported")
+	ErrNodeAttrAppCapUnsupported    = errors.New("nodeAttrs app capability in the tailscale.com domain is not supported by headscale")
 )
+
+// appConnectorsCap carries app connector configuration in a nodeAttrs "app"
+// block. Tailscale does not export the name, see
+// [tailscale.com/types/appctype].
+const appConnectorsCap = nodecap.Cap("tailscale.com/app-connectors")
+
+// nodeAttrAppCapAllowlist contains the tailscale.com valued node capabilities
+// headscale can deliver through a nodeAttrs "app" block. A tailscale.com
+// capability outside this list is rejected at policy load for the same reason
+// as [nodeAttrUnsupportedCaps]: the payload would reach the client while the
+// server-side machinery behind it does not exist. Capabilities outside the
+// tailscale.com domain are operator-defined and pass through.
+var nodeAttrAppCapAllowlist = map[nodecap.Cap]bool{
+	appConnectorsCap: true, // see docs/ref/policy.md#app-connectors
+}
 
 // nodeAttrUnsupportedCaps lists caps that headscale parses but cannot act on
 // today. Each entry maps to the tracking issue an operator can follow. The
@@ -1890,12 +1906,20 @@ type Grant struct {
 // resolved exactly like ACL/grant sources, so users, groups, tags, hosts,
 // prefixes, autogroup:member, autogroup:tagged, and "*" are all valid.
 //
+// Attrs holds key-only capabilities (e.g. "magicdns-aaaa"), stamped into the
+// node's CapMap with a nil value. App holds valued capabilities — a
+// capability name mapped to a list of JSON payloads — matching Tailscale's
+// nodeAttrs "app" field. App connectors are delivered this way via the
+// "tailscale.com/app-connectors" capability; Headscale passes the payloads
+// through opaquely and the client interprets them.
+//
 // IPPool is parsed and validated for forward compatibility with the IP
 // allocator; the policy compiler does not consume it yet.
 type NodeAttrGrant struct {
-	Targets Aliases        `json:"target"`
-	Attrs   []nodecap.Cap  `json:"attr,omitempty"`
-	IPPool  []netip.Prefix `json:"ipPool,omitempty"`
+	Targets Aliases            `json:"target"`
+	Attrs   []nodecap.Cap      `json:"attr,omitempty"`
+	App     tailcfg.NodeCapMap `json:"app,omitzero"`
+	IPPool  []netip.Prefix     `json:"ipPool,omitempty"`
 }
 
 // aclToGrants converts an [ACL] rule to one or more equivalent [Grant] rules.
@@ -2257,6 +2281,24 @@ func validateCapabilityName(name string) error {
 	if strings.HasPrefix(name, "tailscale.com/") {
 		if !tailscaleCapAllowlist[peercap.Cap(name)] {
 			return ErrCapNameTailscaleDomain
+		}
+	}
+
+	return nil
+}
+
+// validateNodeCapabilityName validates a valued capability name from a
+// nodeAttrs "app" block. The form rules match [validateCapabilityName], but
+// node capabilities carry their own allowlist: a tailscale.com name is only
+// accepted when headscale delivers something the client can act on.
+func validateNodeCapabilityName(name nodecap.Cap) error {
+	if strings.Contains(string(name), "://") {
+		return ErrCapNameInvalidForm
+	}
+
+	if strings.HasPrefix(string(name), "tailscale.com/") {
+		if !nodeAttrAppCapAllowlist[name] {
+			return fmt.Errorf("%w: %q", ErrNodeAttrAppCapUnsupported, name)
 		}
 	}
 
@@ -2714,6 +2756,13 @@ func (p *Policy) validate() error {
 			issue, ok := nodeAttrUnsupportedCaps[attr]
 			if ok {
 				errs = append(errs, fmt.Errorf("%w: %q tracked in %s", ErrNodeAttrUnsupported, attr, issue))
+			}
+		}
+
+		for capName := range na.App {
+			err := validateNodeCapabilityName(capName)
+			if err != nil {
+				errs = append(errs, err)
 			}
 		}
 
