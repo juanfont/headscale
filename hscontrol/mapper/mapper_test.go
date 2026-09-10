@@ -203,8 +203,8 @@ func TestNextDNSCapMapRendering(t *testing.T) {
 
 // TestBuildFromChangeFiltersPeerPatchesByVisibility proves that incremental
 // peer-change patches (online/offline, endpoint, key-expiry) are restricted to
-// the recipient's ACL-visible peer set, the same way buildTailPeers filters
-// full peer objects via policy.ReduceNodes. Without it, a node receives the
+// the recipient's ACL-visible peer set, the same NodeStore peer map
+// buildTailPeers is fed from. Without it, a node receives the
 // existence, presence, and addresses of peers its policy forbids accessing.
 func TestBuildFromChangeFiltersPeerPatchesByVisibility(t *testing.T) {
 	tmp := t.TempDir()
@@ -361,11 +361,10 @@ func TestBuildFromChangeFiltersUserProfilesByVisibility(t *testing.T) {
 // full-map path under every policy shape, and a cross-user UserProfile must not
 // leak. If a future refactor lets one path drift from another, this fails.
 //
-// It pins two behaviours the scattered per-path filters get wrong today and the
-// consolidation onto the snapshot peer map must fix: deny-all (empty matchers)
-// must hide every peer on the incremental path rather than fall open to "no
-// matchers => all visible", and per-node policies (autogroup:self) must agree
-// across paths.
+// It pins two behaviours of the snapshot peer map every path reads: deny-all
+// (empty matchers) must hide every peer on the incremental path rather than
+// fall open to "no matchers => all visible", and per-node policies
+// (autogroup:self) must agree across paths.
 func TestBuildFromChangeVisibilityMatchesFullMap(t *testing.T) {
 	tmp := t.TempDir()
 	p4 := netip.MustParsePrefix("100.64.0.0/10")
@@ -650,12 +649,11 @@ func TestGenerateDNSConfigNilHostinfoNoPanic(t *testing.T) {
 	}, "generateDNSConfig must not panic when a node has nil Hostinfo")
 }
 
-// policyShapes covers the paths that decide how the mapper filters peers: a
+// policyShapes covers the paths that decide which peers the mapper sends: a
 // global filter with matchers, a per-node (autogroup:self) filter, a policy
 // that leaves every node with zero matchers, and no rules at all. The
-// zero-matcher shape is the interesting one, because
-// [MapResponseBuilder.buildTailPeers] skips [policy.ReduceNodes] there and
-// emits its input as given.
+// zero-matcher shape is the interesting one: it must hide every peer, not
+// fall open to "no matchers => all visible".
 var policyShapes = []struct {
 	name   string
 	policy string
