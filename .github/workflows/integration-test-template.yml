@@ -14,33 +14,17 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-24.04-arm
-    env:
-      # Github does not allow us to access secrets in pull requests,
-      # so this env var is used to check if we have the secret or not.
-      # If we have the secrets, meaning we are running on push in a fork,
-      # there might be secrets available for more debugging.
-      # If TS_OAUTH_CLIENT_ID and TS_OAUTH_SECRET is set, then the job
-      # will join a debug tailscale network, set up SSH and a tmux session.
-      # The SSH will be configured to use the SSH key of the Github user
-      # that triggered the build.
-      HAS_TAILSCALE_SECRET: ${{ secrets.TS_OAUTH_CLIENT_ID }}
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           fetch-depth: 2
-      - name: Tailscale
-        if: ${{ env.HAS_TAILSCALE_SECRET }}
-        uses: tailscale/github-action@a392da0a182bba0e9613b6243ebd69529b1878aa # v4.1.0
-        with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:gh
-      - name: Setup SSH server for Actor
-        if: ${{ env.HAS_TAILSCALE_SECRET }}
-        uses: alexellis/setup-sshd-actor@master
+          persist-credentials: false
       - name: Download headscale image
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
         with:
@@ -85,15 +69,6 @@ jobs:
         # in-cluster DNS (kube-dns) is unreachable. The module cannot be loaded
         # from inside the unprivileged-module rancher/k3s image, so load it here.
         run: sudo modprobe br_netfilter
-      - name: Login to Docker Hub
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_CI_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_CI_TOKEN }}
-        if: env.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
-        with:
-          username: ${{ env.DOCKERHUB_USERNAME }}
-          password: ${{ env.DOCKERHUB_TOKEN }}
       - name: Load Docker images, Go cache, and prepare binary
         run: |
           gunzip -c /tmp/artifacts/headscale-image.tar.gz | docker load
@@ -115,12 +90,6 @@ jobs:
           HEADSCALE_INTEGRATION_POSTGRES_IMAGE: ${{ inputs.postgres_flag == '--postgres=1' && format('postgres:{0}', github.sha) || '' }}
           HEADSCALE_INTEGRATION_GO_CACHE: /tmp/go-cache/go
           HEADSCALE_INTEGRATION_GO_BUILD_CACHE: /tmp/go-cache/.cache/go-build
-          # Mirror the docker/login-action secrets into env so the
-          # dockertestutil.Credentials resolver picks them up directly
-          # (otherwise it falls back to parsing ~/.docker/config.json,
-          # which works but is one step further from the source).
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_CI_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_CI_TOKEN }}
         run: /tmp/artifacts/hi run --stats --ts-memory-limit=300 --hs-memory-limit=1500 "^${{ inputs.test }}$" \
           --timeout=120m \
           ${{ inputs.postgres_flag }}
@@ -128,7 +97,7 @@ jobs:
       - name: Sanitize test name for artifacts
         if: always()
         id: sanitize
-        run: echo "name=${TEST_NAME//[\":<>|*?\\\/]/-}" >> $GITHUB_OUTPUT
+        run: echo "name=${TEST_NAME//[\":<>|*?\\\/]/-}" >> "$GITHUB_OUTPUT"
         env:
           TEST_NAME: ${{ inputs.test }}
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
@@ -141,6 +110,3 @@ jobs:
         with:
           name: ${{ inputs.database_name }}-${{ steps.sanitize.outputs.name }}-artifacts
           path: control_logs/
-      - name: Setup a blocking tmux session
-        if: ${{ env.HAS_TAILSCALE_SECRET }}
-        uses: alexellis/block-with-tmux-action@master
