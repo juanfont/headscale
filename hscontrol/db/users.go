@@ -61,7 +61,10 @@ func DestroyUser(tx *gorm.DB, uid types.UserID) error {
 	}
 
 	if len(nodes) > 0 {
-		return ErrUserStillHasNodes
+		return fmt.Errorf(
+			"%w: %d node(s) must be deleted or moved to another user first",
+			ErrUserStillHasNodes, len(nodes),
+		)
 	}
 
 	keys, err := ListPreAuthKeysByUser(tx, uid)
