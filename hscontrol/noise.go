@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/metrics"
 	"github.com/juanfont/headscale/hscontrol/capver"
+	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -55,6 +56,10 @@ var ErrSSHAuthSessionNotBound = errors.New(
 var ErrSSHBindingMismatch = errors.New(
 	"ssh action: cached binding does not match request src/dst",
 )
+
+// ErrSSHAccessActionInvalid is returned when state produces an unknown SSH
+// access action.
+var ErrSSHAccessActionInvalid = errors.New("invalid SSH access action")
 
 const (
 	// ts2021UpgradePath is the path that the server listens on for the WebSockets upgrade.
@@ -418,10 +423,11 @@ func (ns *noiseServer) SSHActionHandler(
 		return
 	}
 
+	localUser := req.URL.Query().Get("local_user")
 	reqLog := log.With().
 		Uint64("src_node_id", srcNodeID.Uint64()).
 		Uint64("dst_node_id", dstNodeID.Uint64()).
-		Str("local_user", req.URL.Query().Get("local_user")).
+		Str("local_user", localUser).
 		Logger()
 
 	reqLog.Trace().Caller().Msg("SSH action request")
@@ -431,6 +437,7 @@ func (ns *noiseServer) SSHActionHandler(
 		reqLog,
 		srcNodeID, dstNodeID,
 		req.URL.Query().Get("auth_id"),
+		localUser,
 	)
 	if err != nil {
 		httpError(writer, err)
@@ -469,6 +476,7 @@ func (ns *noiseServer) sshAction(
 	reqLog zerolog.Logger,
 	srcNodeID, dstNodeID types.NodeID,
 	authIDStr string,
+	localUser string,
 ) (*tailcfg.SSHAction, error) {
 	action := tailcfg.SSHAction{
 		AllowAgentForwarding:      true,
@@ -476,39 +484,38 @@ func (ns *noiseServer) sshAction(
 		AllowRemotePortForwarding: true,
 	}
 
-	// Look up check params from the server's own policy rather than
-	// trusting URL parameters, which the client could tamper with.
-	checkPeriod, checkFound := ns.headscale.state.SSHCheckParams(
-		srcNodeID, dstNodeID,
-	)
-
 	// Follow-up request with auth_id — wait for the auth verdict.
 	if authIDStr != "" {
 		return ns.sshActionFollowUp(
 			ctx, reqLog, &action, authIDStr,
-			srcNodeID, dstNodeID,
-			checkFound,
+			srcNodeID, dstNodeID, localUser,
 		)
 	}
 
-	// Initial request — check if auto-approval applies.
-	if checkFound && checkPeriod > 0 {
-		if lastAuth, ok := ns.headscale.state.GetLastSSHAuth(
-			srcNodeID, dstNodeID,
-		); ok && time.Since(lastAuth) < checkPeriod {
-			reqLog.Trace().Caller().
-				Dur("check_period", checkPeriod).
-				Time("last_auth", lastAuth).
-				Msg("auto-approved within check period")
+	evaluation := ns.headscale.state.EvaluateSSHAccess(
+		srcNodeID, dstNodeID, localUser,
+	)
+	switch evaluation.Action {
+	case state.SSHAccessAccept:
+		action.Accept = true
 
-			action.Accept = true
+		return &action, nil
+	case state.SSHAccessReject:
+		action.Reject = true
 
-			return &action, nil
-		}
+		return &action, nil
+	case state.SSHAccessCheck:
+		return ns.sshActionHoldAndDelegate(
+			reqLog, &action, srcNodeID, dstNodeID,
+			localUser, evaluation.PolicyGeneration,
+		)
+	default:
+		return nil, NewHTTPError(
+			http.StatusInternalServerError,
+			"Internal error",
+			fmt.Errorf("%w: %d", ErrSSHAccessActionInvalid, evaluation.Action),
+		)
 	}
-
-	// No auto-approval — create an auth session and hold.
-	return ns.sshActionHoldAndDelegate(reqLog, &action, srcNodeID, dstNodeID)
 }
 
 // sshActionHoldAndDelegate creates a new auth session bound to the
@@ -518,11 +525,12 @@ func (ns *noiseServer) sshActionHoldAndDelegate(
 	reqLog zerolog.Logger,
 	action *tailcfg.SSHAction,
 	srcNodeID, dstNodeID types.NodeID,
+	localUser string,
+	policyGeneration uint64,
 ) (*tailcfg.SSHAction, error) {
 	holdURL, err := url.Parse(
 		ns.headscale.cfg.ServerURL +
-			"/machine/ssh/action/$SRC_NODE_ID/to/$DST_NODE_ID" +
-			"?local_user=$LOCAL_USER",
+			"/machine/ssh/action/$SRC_NODE_ID/to/$DST_NODE_ID",
 	)
 	if err != nil {
 		return nil, NewHTTPError(
@@ -543,7 +551,9 @@ func (ns *noiseServer) sshActionHoldAndDelegate(
 
 	err = ns.headscale.state.SetAuthCacheEntry(
 		authID,
-		types.NewSSHCheckAuthRequest(srcNodeID, dstNodeID),
+		types.NewSSHCheckAuthRequestForPolicy(
+			srcNodeID, dstNodeID, localUser, policyGeneration,
+		),
 	)
 	if err != nil {
 		return nil, NewHTTPError(
@@ -557,6 +567,7 @@ func (ns *noiseServer) sshActionHoldAndDelegate(
 
 	q := holdURL.Query()
 	q.Set("auth_id", authID.String())
+	q.Set("local_user", localUser)
 	holdURL.RawQuery = q.Encode()
 
 	action.HoldAndDelegate = holdURL.String()
@@ -586,7 +597,7 @@ func (ns *noiseServer) sshActionFollowUp(
 	action *tailcfg.SSHAction,
 	authIDStr string,
 	srcNodeID, dstNodeID types.NodeID,
-	checkFound bool,
+	localUser string,
 ) (*tailcfg.SSHAction, error) {
 	authID, err := types.AuthIDFromString(authIDStr)
 	if err != nil {
@@ -605,13 +616,25 @@ func (ns *noiseServer) sshActionFollowUp(
 		// restart). A bare error dead-ends the client: it keeps polling this
 		// now-defunct auth_id until the SSH connection times out. Re-delegate
 		// so a still-required check can complete instead.
-		if checkFound {
+		evaluation := ns.headscale.state.EvaluateSSHAccess(
+			srcNodeID, dstNodeID, localUser,
+		)
+		switch evaluation.Action {
+		case state.SSHAccessCheck:
 			reqLog.Info().Caller().
 				Msg("SSH check auth session missing; re-delegating")
 
 			return ns.sshActionHoldAndDelegate(
 				reqLog, action, srcNodeID, dstNodeID,
+				localUser, evaluation.PolicyGeneration,
 			)
+		case state.SSHAccessAccept:
+			action.Accept = true
+
+			return action, nil
+		case state.SSHAccessReject:
+			// Preserve the invalid-session response when no current rule
+			// authorizes the tuple.
 		}
 
 		return nil, NewHTTPError(
@@ -634,15 +657,16 @@ func (ns *noiseServer) sshActionFollowUp(
 	}
 
 	binding := auth.SSHCheckBinding()
-	if binding.SrcNodeID != srcNodeID || binding.DstNodeID != dstNodeID {
+	if binding.SrcNodeID != srcNodeID || binding.DstNodeID != dstNodeID ||
+		binding.LocalUser != localUser {
 		return nil, NewHTTPError(
 			http.StatusUnauthorized,
 			"src/dst pair does not match auth session",
 			fmt.Errorf(
-				"%w: cached %d->%d, request %d->%d",
+				"%w: cached %d->%d user %q, request %d->%d user %q",
 				ErrSSHBindingMismatch,
-				binding.SrcNodeID, binding.DstNodeID,
-				srcNodeID, dstNodeID,
+				binding.SrcNodeID, binding.DstNodeID, binding.LocalUser,
+				srcNodeID, dstNodeID, localUser,
 			),
 		)
 	}
@@ -682,15 +706,24 @@ func (ns *noiseServer) sshActionFollowUp(
 		return action, nil
 	}
 
-	action.Accept = true
-
-	// Record the successful auth for future auto-approval.
-	if checkFound {
-		ns.headscale.state.SetLastSSHAuth(srcNodeID, dstNodeID)
+	if ns.headscale.state.CompleteSSHCheck(
+		srcNodeID,
+		dstNodeID,
+		binding.LocalUser,
+		binding.PolicyGeneration,
+	) != state.SSHAccessAccept {
+		action.Reject = true
 
 		reqLog.Trace().Caller().
-			Msg("auth recorded for auto-approval")
+			Msg("authentication rejected after SSH policy changed")
+
+		return action, nil
 	}
+
+	action.Accept = true
+
+	reqLog.Trace().Caller().
+		Msg("authentication accepted by current SSH policy")
 
 	return action, nil
 }

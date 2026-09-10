@@ -531,6 +531,117 @@ func (pm *PolicyManager) SSHCheckParams(
 	return 0, false
 }
 
+// SSHAccessParams resolves the current policy action for a complete SSH
+// connection tuple. Check rules are evaluated before accept rules to match
+// the ordering used by compileSSHPolicy.
+func (pm *PolicyManager) SSHAccessParams(
+	srcNodeID, dstNodeID types.NodeID,
+	localUser string,
+) (time.Duration, bool, bool) {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	if pm.pol == nil || localUser == "" {
+		return 0, false, false
+	}
+
+	var srcNode, dstNode types.NodeView
+
+	for _, node := range pm.nodes.All() {
+		if node.ID() == srcNodeID {
+			srcNode = node
+		}
+
+		if node.ID() == dstNodeID {
+			dstNode = node
+		}
+
+		if srcNode.Valid() && dstNode.Valid() {
+			break
+		}
+	}
+
+	if !srcNode.Valid() || !dstNode.Valid() {
+		return 0, false, false
+	}
+
+	for _, action := range []SSHAction{SSHActionCheck, SSHActionAccept} {
+		for _, rule := range pm.pol.SSHs {
+			if rule.Action != action ||
+				!sshRuleMatchesNodes(pm.pol, pm.users, pm.nodes, rule, srcNode, dstNode) ||
+				!sshRuleAllowsLocalUser(rule, srcNode, pm.users, localUser) {
+				continue
+			}
+
+			if action == SSHActionCheck {
+				return checkPeriodFromRule(rule), true, false
+			}
+
+			return 0, false, true
+		}
+	}
+
+	return 0, false, false
+}
+
+func sshRuleMatchesNodes(
+	pol *Policy,
+	users types.Users,
+	nodes views.Slice[types.NodeView],
+	rule SSH,
+	srcNode, dstNode types.NodeView,
+) bool {
+	srcIPs, err := rule.Sources.Resolve(pol, users, nodes)
+	if err != nil || srcIPs == nil ||
+		!slices.ContainsFunc(srcNode.IPs(), srcIPs.Contains) {
+		return false
+	}
+
+	for _, dst := range rule.Destinations {
+		if ag, isAG := dst.(*AutoGroup); isAG && ag.Is(AutoGroupSelf) {
+			if !srcNode.IsTagged() && !dstNode.IsTagged() &&
+				srcNode.User().Valid() && dstNode.User().Valid() &&
+				srcNode.User().ID() == dstNode.User().ID() {
+				return true
+			}
+
+			continue
+		}
+
+		dstIPs, err := dst.Resolve(pol, users, nodes)
+		if err == nil && dstIPs != nil &&
+			slices.ContainsFunc(dstNode.IPs(), dstIPs.Contains) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func sshRuleAllowsLocalUser(
+	rule SSH,
+	srcNode types.NodeView,
+	users types.Users,
+	localUser string,
+) bool {
+	switch {
+	case localUser == "root":
+		return rule.Users.ContainsRoot()
+	case rule.Users.ContainsNonRoot():
+		return true
+	case slices.ContainsFunc(rule.Users.NormalUsers(), func(user SSHUser) bool {
+		return user.String() == localUser
+	}):
+		return true
+	case srcNode.IsTagged() || !srcNode.User().Valid():
+		return false
+	}
+
+	localparts := resolveLocalparts(rule.Users.LocalpartEntries(), users)
+
+	return localparts[srcNode.User().ID()] == localUser
+}
+
 func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 	if len(polB) == 0 {
 		return false, nil

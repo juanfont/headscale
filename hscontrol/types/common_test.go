@@ -67,9 +67,13 @@ func TestAuthRequestHasNoResultBeforeCompletion(t *testing.T) {
 // captures the (src, dst) node pair at construction time and rejects
 // callers that try to read [AuthRequest.RegistrationData] from it.
 func TestNewSSHCheckAuthRequestBinding(t *testing.T) {
-	const src, dst NodeID = 7, 11
+	const (
+		src, dst         NodeID = 7, 11
+		localUser               = "root"
+		policyGeneration        = 42
+	)
 
-	req := NewSSHCheckAuthRequest(src, dst)
+	req := NewSSHCheckAuthRequestForPolicy(src, dst, localUser, policyGeneration)
 
 	require.True(t, req.IsSSHCheck(), "SSH-check request must report IsSSHCheck=true")
 	require.False(t, req.IsRegistration(), "SSH-check request must not report IsRegistration")
@@ -77,6 +81,9 @@ func TestNewSSHCheckAuthRequestBinding(t *testing.T) {
 	binding := req.SSHCheckBinding()
 	assert.Equal(t, src, binding.SrcNodeID, "SrcNodeID must match")
 	assert.Equal(t, dst, binding.DstNodeID, "DstNodeID must match")
+	assert.Equal(t, localUser, binding.LocalUser, "LocalUser must match")
+	assert.Equal(t, uint64(policyGeneration), binding.PolicyGeneration,
+		"PolicyGeneration must match")
 
 	assert.Panics(t, func() {
 		_ = req.RegistrationData()

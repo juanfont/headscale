@@ -87,8 +87,10 @@ func (r AuthID) Validate() error {
 // time so the follow-up request and OIDC callback can verify that no
 // other (src, dst) pair has been substituted via tampered URL parameters.
 type SSHCheckBinding struct {
-	SrcNodeID NodeID
-	DstNodeID NodeID
+	SrcNodeID        NodeID
+	DstNodeID        NodeID
+	LocalUser        string
+	PolicyGeneration uint64
 }
 
 // PendingRegistrationConfirmation captures the server-side state needed
@@ -169,10 +171,22 @@ func NewRegisterAuthRequest(data *RegistrationData) *AuthRequest {
 // OIDC callback must verify their incoming request matches this binding
 // before recording any verdict.
 func NewSSHCheckAuthRequest(src, dst NodeID) *AuthRequest {
+	return NewSSHCheckAuthRequestForPolicy(src, dst, "", 0)
+}
+
+// NewSSHCheckAuthRequestForPolicy creates an SSH check request bound to the
+// complete connection identity and the policy generation that required it.
+func NewSSHCheckAuthRequestForPolicy(
+	src, dst NodeID,
+	localUser string,
+	policyGeneration uint64,
+) *AuthRequest {
 	return &AuthRequest{
 		sshBinding: &SSHCheckBinding{
-			SrcNodeID: src,
-			DstNodeID: dst,
+			SrcNodeID:        src,
+			DstNodeID:        dst,
+			LocalUser:        localUser,
+			PolicyGeneration: policyGeneration,
 		},
 		done: make(chan struct{}),
 	}

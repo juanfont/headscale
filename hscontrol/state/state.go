@@ -149,6 +149,22 @@ type sshCheckPair struct {
 	Dst types.NodeID
 }
 
+// SSHAccessAction is the current server-side decision for an SSH connection.
+type SSHAccessAction uint8
+
+const (
+	SSHAccessReject SSHAccessAction = iota
+	SSHAccessAccept
+	SSHAccessCheck
+)
+
+// SSHAccessEvaluation captures the action and policy generation observed
+// together. Generation is meaningful only for SSHAccessCheck.
+type SSHAccessEvaluation struct {
+	Action           SSHAccessAction
+	PolicyGeneration uint64
+}
+
 // pendingAuthCache retains live requests until completion or expiration. The
 // underlying TTL cache is intentionally unlimited: admission rejects new keys
 // at the configured limit so live sessions are never displaced by size.
@@ -260,6 +276,10 @@ type State struct {
 	// Ref: https://github.com/tailscale/tailscale/issues/7125
 	sshCheckAuth map[sshCheckPair]time.Time
 	sshCheckMu   sync.RWMutex
+	// sshPolicyGeneration advances whenever policy inputs affecting SSH
+	// authorization change. Policy mutation and check completion both hold
+	// sshCheckMu so an approval cannot cross the mutation boundary.
+	sshPolicyGeneration uint64
 
 	// persistMu serialises node-row persistence and deletion so the database
 	// always converges on [NodeStore] rather than being clobbered by a stale
@@ -440,14 +460,19 @@ func (s *State) ReloadPolicy() ([]change.Change, error) {
 		return nil, fmt.Errorf("loading policy: %w", err)
 	}
 
+	s.sshCheckMu.Lock()
+
 	policyChanged, err := s.polMan.SetPolicy(pol)
 	if err != nil {
+		s.sshCheckMu.Unlock()
+
 		return nil, fmt.Errorf("setting policy: %w", err)
 	}
 
 	// Clear SSH check auth times when policy changes to ensure stale
 	// approvals don't persist if checkPeriod rules are modified or removed.
-	s.ClearSSHCheckAuth()
+	s.advanceSSHPolicyGenerationLocked()
+	s.sshCheckMu.Unlock()
 
 	// Rebuild peer maps after policy changes because the peersFunc in [NodeStore]
 	// uses the [policy.PolicyManager]'s filters. Without this, nodes won't see
@@ -1289,13 +1314,16 @@ func (s *State) NodeCanHaveTag(node types.NodeView, tag string) bool {
 
 // SetPolicy updates the policy configuration.
 func (s *State) SetPolicy(pol []byte) (bool, error) {
+	s.sshCheckMu.Lock()
+	defer s.sshCheckMu.Unlock()
+
 	changed, err := s.polMan.SetPolicy(pol)
 	if err != nil {
 		return changed, err
 	}
 
 	// Clear SSH check auth times when policy changes.
-	s.ClearSSHCheckAuth()
+	s.advanceSSHPolicyGenerationLocked()
 
 	// Payload-only writes reuse the cached adjacency, so a policy swap
 	// must rebuild it here rather than wait for the next relation write.
@@ -1807,7 +1835,70 @@ func (s *State) ClearSSHCheckAuth() {
 	s.sshCheckMu.Lock()
 	defer s.sshCheckMu.Unlock()
 
+	s.clearSSHCheckAuthLocked()
+}
+
+func (s *State) clearSSHCheckAuthLocked() {
 	s.sshCheckAuth = make(map[sshCheckPair]time.Time)
+}
+
+func (s *State) advanceSSHPolicyGenerationLocked() {
+	s.sshPolicyGeneration++
+	s.clearSSHCheckAuthLocked()
+}
+
+// EvaluateSSHAccess resolves the current SSH action and applies any reusable
+// check approval while holding the same lock used by policy mutation.
+func (s *State) EvaluateSSHAccess(
+	src, dst types.NodeID,
+	localUser string,
+) SSHAccessEvaluation {
+	s.sshCheckMu.RLock()
+	defer s.sshCheckMu.RUnlock()
+
+	period, check, accept := s.polMan.SSHAccessParams(src, dst, localUser)
+	if check {
+		if period > 0 {
+			if last, ok := s.sshCheckAuth[sshCheckPair{Src: src, Dst: dst}]; ok && time.Since(last) < period {
+				return SSHAccessEvaluation{Action: SSHAccessAccept}
+			}
+		}
+
+		return SSHAccessEvaluation{
+			Action:           SSHAccessCheck,
+			PolicyGeneration: s.sshPolicyGeneration,
+		}
+	}
+
+	if accept {
+		return SSHAccessEvaluation{Action: SSHAccessAccept}
+	}
+
+	return SSHAccessEvaluation{Action: SSHAccessReject}
+}
+
+// CompleteSSHCheck revalidates a successful interactive verdict against the
+// current policy. An unchanged check records a reusable approval; a direct
+// accept needs no record; any other result is rejected.
+func (s *State) CompleteSSHCheck(
+	src, dst types.NodeID,
+	localUser string,
+	policyGeneration uint64,
+) SSHAccessAction {
+	s.sshCheckMu.Lock()
+	defer s.sshCheckMu.Unlock()
+
+	_, check, accept := s.polMan.SSHAccessParams(src, dst, localUser)
+	switch {
+	case accept:
+		return SSHAccessAccept
+	case !check || policyGeneration != s.sshPolicyGeneration:
+		return SSHAccessReject
+	default:
+		s.sshCheckAuth[sshCheckPair{Src: src, Dst: dst}] = time.Now()
+
+		return SSHAccessAccept
+	}
 }
 
 // preserveNetInfo preserves NetInfo from an existing node for faster DERP connectivity.
@@ -3077,10 +3168,19 @@ func (s *State) updatePolicyManagerUsers() (change.Change, error) {
 
 	log.Debug().Caller().Int("user.count", len(users)).Msg("policy manager user update initiated because user list modification detected")
 
+	s.sshCheckMu.Lock()
+
 	changed, peerMapChanged, err := s.polMan.SetUsers(users)
 	if err != nil {
+		s.sshCheckMu.Unlock()
+
 		return change.Change{}, fmt.Errorf("updating policy manager users: %w", err)
 	}
+
+	if changed {
+		s.advanceSSHPolicyGenerationLocked()
+	}
+	s.sshCheckMu.Unlock()
 
 	log.Debug().Caller().Bool("policy.changed", changed).Msg("policy manager user update completed because SetUsers operation finished")
 
@@ -3115,10 +3215,19 @@ func (s *State) UpdatePolicyManagerUsersForTest() error {
 func (s *State) updatePolicyManagerNodes() (change.Change, error) {
 	nodes := s.ListNodes()
 
+	s.sshCheckMu.Lock()
+
 	changed, err := s.polMan.SetNodes(nodes)
 	if err != nil {
+		s.sshCheckMu.Unlock()
+
 		return change.Change{}, fmt.Errorf("updating policy manager nodes: %w", err)
 	}
+
+	if changed {
+		s.advanceSSHPolicyGenerationLocked()
+	}
+	s.sshCheckMu.Unlock()
 
 	if changed {
 		// Rebuild peer maps because policy-affecting node changes (tags, user, IPs)

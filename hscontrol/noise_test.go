@@ -354,6 +354,8 @@ func TestSSHActionAdmissionPreservesExistingSessionAtCapacity(t *testing.T) {
 		&tailcfg.SSHAction{},
 		1,
 		2,
+		"root",
+		1,
 	)
 	require.Error(t, err)
 	require.Nil(t, action)
@@ -440,7 +442,7 @@ func TestSSHActionFollowUp_RejectionIsStableAcrossRetries(t *testing.T) {
 			authID.String(),
 			src.ID,
 			dst.ID,
-			true,
+			"",
 		)
 		require.NoError(t, err)
 		require.NotNil(t, action)
@@ -450,6 +452,41 @@ func TestSSHActionFollowUp_RejectionIsStableAcrossRetries(t *testing.T) {
 
 	_, ok := app.state.GetLastSSHAuth(src.ID, dst.ID)
 	assert.False(t, ok, "rejected retries must not record reusable SSH authorization")
+}
+
+func TestSSHActionFollowUp_RejectsWhenCheckNoLongerApplies(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("ssh-policy-change-user")
+	src := putTestNodeInStore(t, app, user, "src-policy-change")
+	dst := putTestNodeInStore(t, app, user, "dst-policy-change")
+
+	authID := types.MustAuthID()
+	auth := types.NewSSHCheckAuthRequestForPolicy(src.ID, dst.ID, "root", 0)
+	require.NoError(t, app.state.SetAuthCacheEntry(authID, auth))
+	auth.FinishAuth(types.AuthVerdict{})
+
+	_, checkFound := app.state.SSHCheckParams(src.ID, dst.ID)
+	require.False(t, checkFound, "test setup: the SSH check must no longer apply")
+
+	ns := &noiseServer{headscale: app, machineKey: dst.MachineKey}
+	action, err := ns.sshActionFollowUp(
+		t.Context(),
+		zerolog.Nop(),
+		&tailcfg.SSHAction{},
+		authID.String(),
+		src.ID,
+		dst.ID,
+		"root",
+	)
+	require.NoError(t, err)
+	require.NotNil(t, action)
+	assert.True(t, action.Reject)
+	assert.False(t, action.Accept)
+
+	_, ok := app.state.GetLastSSHAuth(src.ID, dst.ID)
+	assert.False(t, ok, "stale approval must not be recorded for reuse")
 }
 
 // TestOverrideRemoteAddr asserts the middleware used inside the Noise
@@ -493,12 +530,15 @@ func TestSSHActionHoldAndDelegate_PersistsAuthSession(t *testing.T) {
 
 	ns := &noiseServer{headscale: app, machineKey: dst.MachineKey}
 
-	rec := httptest.NewRecorder()
-	ns.SSHActionHandler(rec, newSSHActionRequest(t, src.ID, dst.ID))
-	require.Equal(t, http.StatusOK, rec.Code, "initial poll body=%s", rec.Body.String())
-
-	var action tailcfg.SSHAction
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &action))
+	action, err := ns.sshActionHoldAndDelegate(
+		zerolog.Nop(),
+		&tailcfg.SSHAction{},
+		src.ID,
+		dst.ID,
+		"root",
+		1,
+	)
+	require.NoError(t, err)
 	require.NotEmpty(t, action.HoldAndDelegate, "expected HoldAndDelegate, got %+v", action)
 
 	u, err := url.Parse(action.HoldAndDelegate)
@@ -506,6 +546,7 @@ func TestSSHActionHoldAndDelegate_PersistsAuthSession(t *testing.T) {
 
 	authIDStr := u.Query().Get("auth_id")
 	require.NotEmpty(t, authIDStr, "HoldAndDelegate URL missing auth_id: %s", action.HoldAndDelegate)
+	require.Equal(t, "root", u.Query().Get("local_user"))
 
 	authID, err := types.AuthIDFromString(authIDStr)
 	require.NoError(t, err)
