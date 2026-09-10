@@ -72,6 +72,7 @@ func mapError(msg string, err error) error {
 
 	case errors.Is(err, db.ErrPreAuthKeyNotTaggedOrOwned),
 		errors.Is(err, db.ErrPreAuthKeyACLTagInvalid),
+		errors.Is(err, db.ErrOAuthClientScopeInvalid),
 		errors.Is(err, state.ErrGivenNameInvalid),
 		errors.Is(err, state.ErrGivenNameTaken),
 		errors.Is(err, state.ErrNodeNameNotUnique),
