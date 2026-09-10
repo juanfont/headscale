@@ -818,8 +818,47 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, bool, error) {
 		return false, false, nil
 	}
 
-	prev := pm.users
+	prev := struct {
+		users              []types.User
+		filterHash         deephash.Sum
+		filter             []tailcfg.FilterRule
+		matchers           []matcher.Match
+		tagOwnerMapHash    deephash.Sum
+		tagOwnerMap        map[Tag]*netipx.IPSet
+		exitSetHash        deephash.Sum
+		exitSet            *netipx.IPSet
+		autoApproveMapHash deephash.Sum
+		autoApproveMap     map[netip.Prefix]*netipx.IPSet
+		relayTargetIPs     *netipx.IPSet
+		viaTargetTags      map[Tag]struct{}
+		compiledGrants     []compiledGrant
+		userNodeIdx        userNodeIndex
+		needsPerNodeFilter bool
+		nodeAttrsMap       map[types.NodeID]tailcfg.NodeCapMap
+		nodeAttrsHashes    map[types.NodeID]deephash.Sum
+		nodeAttrsChanged   []types.NodeID
+	}{
+		users:              pm.users,
+		filterHash:         pm.filterHash,
+		filter:             pm.filter,
+		matchers:           pm.matchers,
+		tagOwnerMapHash:    pm.tagOwnerMapHash,
+		tagOwnerMap:        pm.tagOwnerMap,
+		exitSetHash:        pm.exitSetHash,
+		exitSet:            pm.exitSet,
+		autoApproveMapHash: pm.autoApproveMapHash,
+		autoApproveMap:     pm.autoApproveMap,
+		relayTargetIPs:     pm.relayTargetIPs,
+		viaTargetTags:      pm.viaTargetTags,
+		compiledGrants:     pm.compiledGrants,
+		userNodeIdx:        pm.userNodeIdx,
+		needsPerNodeFilter: pm.needsPerNodeFilter,
+		nodeAttrsMap:       pm.nodeAttrsMap,
+		nodeAttrsHashes:    pm.nodeAttrsHashes,
+		nodeAttrsChanged:   pm.nodeAttrsChanged,
+	}
 	pm.users = users
+	hadPerNodeFilters := pm.needsPerNodeFilter
 
 	// SSH policies resolve users by name, so they are recomputed on any
 	// user change.
@@ -827,9 +866,27 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, bool, error) {
 
 	policyChanged, err := pm.updateLocked()
 	if err != nil {
-		// Keep the old list so a retry with the same input recompiles
-		// instead of being treated as unchanged.
-		pm.users = prev
+		// Keep the complete previous policy snapshot. updateLocked compiles
+		// derived state incrementally, and a late error must not expose a
+		// partially refreshed filter or peer view.
+		pm.users = prev.users
+		pm.filterHash = prev.filterHash
+		pm.filter = prev.filter
+		pm.matchers = prev.matchers
+		pm.tagOwnerMapHash = prev.tagOwnerMapHash
+		pm.tagOwnerMap = prev.tagOwnerMap
+		pm.exitSetHash = prev.exitSetHash
+		pm.exitSet = prev.exitSet
+		pm.autoApproveMapHash = prev.autoApproveMapHash
+		pm.autoApproveMap = prev.autoApproveMap
+		pm.relayTargetIPs = prev.relayTargetIPs
+		pm.viaTargetTags = prev.viaTargetTags
+		pm.compiledGrants = prev.compiledGrants
+		pm.userNodeIdx = prev.userNodeIdx
+		pm.needsPerNodeFilter = prev.needsPerNodeFilter
+		pm.nodeAttrsMap = prev.nodeAttrsMap
+		pm.nodeAttrsHashes = prev.nodeAttrsHashes
+		pm.nodeAttrsChanged = prev.nodeAttrsChanged
 
 		return false, false, err
 	}
@@ -837,6 +894,17 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, bool, error) {
 	// SSH rules embed user identity, so a user change needs a client refresh
 	// even when the filter hash did not move.
 	if pm.pol != nil && len(pm.pol.SSHs) > 0 {
+		policyChanged = true
+	}
+
+	// Per-node grants can change even when the global filter and policy text
+	// hashes do not. User identity is an input to those grants, so discard the
+	// derived caches and notify clients whenever either side of the update uses
+	// per-node filters.
+	if hadPerNodeFilters || pm.needsPerNodeFilter {
+		pm.filterRulesMap.Clear()
+		pm.matchersForNodeMap.Clear()
+
 		policyChanged = true
 	}
 
