@@ -574,6 +574,7 @@ func (h *Headscale) Serve() error {
 
 	h.state.SetDERPMap(derpMap)
 
+	// Start OIDC group refresh goroutine (periodic cleanup of stale groups).
 	// Start ephemeral node garbage collector and schedule all nodes
 	// that are already in the database and ephemeral. If they are still
 	// around between restarts, they will reconnect and the GC will
@@ -603,6 +604,9 @@ func (h *Headscale) Serve() error {
 	defer scheduleCancel()
 
 	go h.scheduledTasks(scheduleCtx)
+
+	// Start OIDC group refresh goroutine (periodic cleanup of stale groups).
+	go h.StartOIDCGroupRefresh(scheduleCtx)
 
 	// Prepare group for running listeners
 	errorGroup := new(errgroup.Group)

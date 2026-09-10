@@ -62,6 +62,8 @@ type (
 )
 
 func registerUsers(api huma.API, b Backend) {
+	registerOIDCGroupEndpoints(api, b)
+
 	huma.Register(api, huma.Operation{
 		OperationID: "createUser",
 		Method:      http.MethodPost,
@@ -229,4 +231,132 @@ func parseUserID(s string) (types.UserID, error) {
 	}
 
 	return types.UserID(id), nil
+}
+
+// --- OIDC Group endpoints ---
+
+type (
+	getUserOIDCGroupsInput struct {
+		ID string `format:"uint64" path:"id"`
+	}
+	getUserOIDCGroupsOutput struct {
+		Body struct {
+			Groups []string `json:"groups" nullable:"false"`
+		}
+	}
+)
+
+type (
+	listUsersByOIDCGroupInput struct {
+		Group string `query:"group"`
+	}
+	listUsersByOIDCGroupOutput struct {
+		Body struct {
+			Users []User `json:"users" nullable:"false"`
+		}
+	}
+)
+
+type (
+	setUserOIDCGroupsInput struct {
+		ID   string   `format:"uint64" path:"id"`
+		Body struct {
+			Groups []string `json:"groups" nullable:"false"`
+		}
+	}
+	setUserOIDCGroupsOutput struct {
+		Body struct {
+			Groups []string `json:"groups" nullable:"false"`
+		}
+	}
+)
+
+func registerOIDCGroupEndpoints(api huma.API, b Backend) {
+	huma.Register(api, huma.Operation{
+		OperationID: "getUserOIDCGroups",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/user/{id}/oidc-groups",
+		Summary:     "Get user OIDC groups",
+		Tags:        []string{"Users"},
+		Security:    bearerAuth,
+	}, func(ctx context.Context, in *getUserOIDCGroupsInput) (*getUserOIDCGroupsOutput, error) {
+		id, err := parseUserID(in.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		_, err = b.State.GetUserByID(id)
+		if err != nil {
+			return nil, mapError("getting user", err)
+		}
+
+		groups, err := b.State.GetUserOIDCGroups(id)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("listing OIDC groups", err)
+		}
+
+		out := &getUserOIDCGroupsOutput{}
+		out.Body.Groups = groups
+
+		return out, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "listUsersByOIDCGroup",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/user/oidc-group",
+		Summary:     "List users by OIDC group",
+		Tags:        []string{"Users"},
+		Security:    bearerAuth,
+	}, func(ctx context.Context, in *listUsersByOIDCGroupInput) (*listUsersByOIDCGroupOutput, error) {
+		if in.Group == "" {
+			return nil, huma.Error400BadRequest("group query parameter is required")
+		}
+
+		users, err := b.State.GetUsersByOIDCGroup(in.Group)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("listing users by OIDC group", err)
+		}
+
+		out := &listUsersByOIDCGroupOutput{}
+		out.Body.Users = make([]User, len(users))
+		for i := range users {
+			out.Body.Users[i] = userFromView(users[i].View())
+		}
+
+		return out, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "setUserOIDCGroups",
+		Method:      http.MethodPut,
+		Path:        "/api/v1/user/{id}/oidc-groups",
+		Summary:     "Set user OIDC groups",
+		Tags:        []string{"Users"},
+		Security:    bearerAuth,
+	}, func(ctx context.Context, in *setUserOIDCGroupsInput) (*setUserOIDCGroupsOutput, error) {
+		id, err := parseUserID(in.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		_, err = b.State.GetUserByID(id)
+		if err != nil {
+			return nil, mapError("getting user", err)
+		}
+
+		if err := b.State.SetUserOIDCGroups(id, in.Body.Groups); err != nil {
+			return nil, huma.Error500InternalServerError("setting OIDC groups", err)
+		}
+
+		groups, err := b.State.GetUserOIDCGroups(id)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("reading OIDC groups", err)
+		}
+
+		out := &setUserOIDCGroupsOutput{}
+		out.Body.Groups = groups
+
+		return out, nil
+	})
 }

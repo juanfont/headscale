@@ -344,6 +344,11 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
+	// Store OIDC group memberships for use in policy evaluation (oidcgrp:).
+	if err := a.h.state.SetUserOIDCGroups(types.UserID(user.ID), []string(claims.Groups)); err != nil {
+		log.Error().Err(err).Uint("user_id", user.ID).Msg("failed to store OIDC groups")
+	}
+
 	// TODO(kradalby): Is this comment right?
 	// If the node exists, then the node should be reauthenticated,
 	// if the node does not exist, and the machine key exists, then

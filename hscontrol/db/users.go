@@ -230,3 +230,77 @@ func (hsdb *HSDatabase) CreateUsersForTest(count int, namePrefix ...string) []*t
 
 	return users
 }
+
+// SetUserOIDCGroups replaces all OIDC group memberships for a user.
+// Groups are fetched from the OIDC provider during login and stored
+// for use in policy evaluation (oidcgrp: principal type).
+func (hsdb *HSDatabase) SetUserOIDCGroups(userID types.UserID, groupNames []string) error {
+	_, err := Write(hsdb.DB, func(tx *gorm.DB) (struct{}, error) {
+		return struct{}{}, SetUserOIDCGroups(tx, userID, groupNames)
+	})
+
+	return err
+}
+
+// SetUserOIDCGroups replaces all OIDC group memberships for a user within a transaction.
+func SetUserOIDCGroups(tx *gorm.DB, userID types.UserID, groupNames []string) error {
+	// Delete existing groups for this user.
+	if err := tx.Unscoped().Where("user_id = ?", userID).Delete(&types.UserOIDCGroup{}).Error; err != nil {
+		return fmt.Errorf("deleting old OIDC groups: %w", err)
+	}
+
+	// Insert new groups.
+	if len(groupNames) == 0 {
+		return nil
+	}
+
+	groups := make([]types.UserOIDCGroup, 0, len(groupNames))
+	for _, name := range groupNames {
+		if name == "" {
+			continue
+		}
+
+		groups = append(groups, types.UserOIDCGroup{
+			UserID:    uint(userID),
+			GroupName: name,
+		})
+	}
+
+	if len(groups) == 0 {
+		return nil
+	}
+
+	return tx.Create(&groups).Error
+}
+
+// GetUserOIDCGroups returns all OIDC group names for a user.
+func (hsdb *HSDatabase) GetUserOIDCGroups(userID types.UserID) ([]string, error) {
+	var groups []types.UserOIDCGroup
+
+	err := hsdb.DB.Where("user_id = ?", userID).Find(&groups).Error
+	if err != nil {
+		return nil, fmt.Errorf("listing OIDC groups: %w", err)
+	}
+
+	names := make([]string, 0, len(groups))
+	for _, g := range groups {
+		names = append(names, g.GroupName)
+	}
+
+	return names, nil
+}
+
+// GetUsersByOIDCGroup returns all users that belong to the given OIDC group.
+func (hsdb *HSDatabase) GetUsersByOIDCGroup(groupName string) ([]types.User, error) {
+	var users []types.User
+
+	err := hsdb.DB.
+		Joins("JOIN user_oidc_groups ON user_oidc_groups.user_id = users.id").
+		Where("user_oidc_groups.group_name = ?", groupName).
+		Find(&users).Error
+	if err != nil {
+		return nil, fmt.Errorf("listing users by OIDC group: %w", err)
+	}
+
+	return users, nil
+}

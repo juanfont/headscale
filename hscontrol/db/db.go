@@ -927,6 +927,37 @@ WHERE tags IS NOT NULL AND tags != '[]' AND tags != '' AND tags != 'null'
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			// Add user_oidc_groups table for oidcgrp: policy support.
+			{
+				ID: "202608221200-user-oidc-groups",
+				Migrate: func(tx *gorm.DB) error {
+					err := tx.Exec(`
+CREATE TABLE IF NOT EXISTS user_oidc_groups(
+  id integer PRIMARY KEY AUTOINCREMENT,
+  user_id integer,
+  group_name text,
+  created_at datetime,
+  updated_at datetime,
+  deleted_at datetime
+)`).Error
+					if err != nil {
+						return fmt.Errorf("creating user_oidc_groups table: %w", err)
+					}
+
+					err = tx.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_user_oidc_group ON user_oidc_groups(user_id, group_name)`).Error
+					if err != nil {
+						return fmt.Errorf("creating idx_user_oidc_group index: %w", err)
+					}
+
+					err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_user_oidc_groups_deleted_at ON user_oidc_groups(deleted_at)`).Error
+					if err != nil {
+						return fmt.Errorf("creating idx_user_oidc_groups_deleted_at index: %w", err)
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
@@ -940,6 +971,7 @@ WHERE tags IS NOT NULL AND tags != '[]' AND tags != '' AND tags != 'null'
 			&types.Policy{},
 			&types.OAuthClient{},
 			&types.OAuthAccessToken{},
+			&types.UserOIDCGroup{},
 		)
 		if err != nil {
 			return err
@@ -957,6 +989,8 @@ WHERE tags IS NOT NULL AND tags != '[]' AND tags != '' AND tags != 'null'
 			`DROP INDEX IF EXISTS "idx_pre_auth_keys_prefix"`,
 			`DROP INDEX IF EXISTS "idx_oauth_clients_client_id"`,
 			`DROP INDEX IF EXISTS "idx_oauth_access_tokens_prefix"`,
+			`DROP INDEX IF EXISTS "idx_user_oidc_group"`,
+			`DROP INDEX IF EXISTS "idx_user_oidc_groups_deleted_at"`,
 		}
 
 		for _, dropSQL := range dropIndexes {
@@ -977,6 +1011,8 @@ WHERE tags IS NOT NULL AND tags != '[]' AND tags != '' AND tags != 'null'
 			`CREATE UNIQUE INDEX idx_pre_auth_keys_prefix ON pre_auth_keys(prefix) WHERE prefix IS NOT NULL AND prefix != ''`,
 			`CREATE UNIQUE INDEX idx_oauth_clients_client_id ON oauth_clients(client_id)`,
 			`CREATE UNIQUE INDEX idx_oauth_access_tokens_prefix ON oauth_access_tokens(prefix)`,
+			`CREATE UNIQUE INDEX idx_user_oidc_group ON user_oidc_groups(user_id, group_name)`,
+			`CREATE INDEX idx_user_oidc_groups_deleted_at ON user_oidc_groups(deleted_at)`,
 		}
 
 		for _, indexSQL := range indexes {

@@ -259,6 +259,9 @@ func NewState(cfg *types.Config) (*State, error) {
 		return nil, fmt.Errorf("initializing policy manager: %w", err)
 	}
 
+	// Inject the OIDC group resolver so oidcgrp: principals resolve correctly.
+	polMan.SetOIDCGroupResolver(db)
+
 	// Apply defaults for [NodeStore] batch configuration if not set.
 	// This ensures tests that create Config directly (without viper) still work.
 	batchSize := cmp.Or(cfg.Tuning.NodeStoreBatchSize, defaultNodeStoreBatchSize)
@@ -507,6 +510,33 @@ func (s *State) ListUsersWithFilter(filter *types.User) ([]types.User, error) {
 // ListAllUsers retrieves all users in the system.
 func (s *State) ListAllUsers() ([]types.User, error) {
 	return s.db.ListUsers(nil)
+}
+
+// SetUserOIDCGroups replaces all OIDC group memberships for a user
+// and triggers a policy manager update.
+func (s *State) SetUserOIDCGroups(userID types.UserID, groupNames []string) error {
+	err := s.db.SetUserOIDCGroups(userID, groupNames)
+	if err != nil {
+		return fmt.Errorf("setting OIDC groups: %w", err)
+	}
+
+	// Update policy manager with new user data so oidcgrp: resolves correctly.
+	_, err = s.updatePolicyManagerUsers()
+	if err != nil {
+		return fmt.Errorf("updating policy manager after OIDC group change: %w", err)
+	}
+
+	return nil
+}
+
+// GetUserOIDCGroups returns all OIDC group names for a user.
+func (s *State) GetUserOIDCGroups(userID types.UserID) ([]string, error) {
+	return s.db.GetUserOIDCGroups(userID)
+}
+
+// GetUsersByOIDCGroup returns all users that belong to the given OIDC group.
+func (s *State) GetUsersByOIDCGroup(groupName string) ([]types.User, error) {
+	return s.db.GetUsersByOIDCGroup(groupName)
 }
 
 // persistNodeRowToDB writes the node's database row, re-reading the

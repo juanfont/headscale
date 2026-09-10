@@ -32,10 +32,11 @@ type PolicyManager struct {
 	// RWMutex, not Mutex, so concurrent map generation does not serialise on
 	// reads. The per-node caches are xsync.Maps so a read can fill them without
 	// taking the write lock.
-	mu    sync.RWMutex
-	pol   *Policy
-	users []types.User
-	nodes views.Slice[types.NodeView]
+	mu                sync.RWMutex
+	pol               *Policy
+	users             []types.User
+	nodes             views.Slice[types.NodeView]
+	oidcGroupResolver OIDCGroupResolver
 
 	filterHash deephash.Sum
 	filter     []tailcfg.FilterRule
@@ -577,6 +578,9 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 		Int("tests.count", len(pol.Tests)).
 		Msg("Policy parsed successfully")
 
+	// Preserve the OIDC group resolver across policy reloads.
+	pol.oidcGroupResolver = pm.oidcGroupResolver
+
 	pm.pol = pol
 
 	return pm.updateLocked()
@@ -880,6 +884,33 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, erro
 	}
 
 	return false, nil
+}
+
+// SetOIDCGroupResolver injects the OIDC group resolver into the policy.
+// This must be called after NewPolicyManager and before any policy evaluation
+// that uses group:<name> principals backed by OIDC group memberships.
+// The resolver is used to look up which users belong to a named OIDC group.
+// group:<name> resolves through both the policy-defined Groups map AND the
+// OIDC resolver, preserving the internal distinction between local and OIDC
+// membership while exposing a unified Tailscale-compatible principal.
+func (pm *PolicyManager) SetOIDCGroupResolver(resolver OIDCGroupResolver) {
+	if pm == nil {
+		return
+	}
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	pm.oidcGroupResolver = resolver
+
+	if pm.pol != nil {
+		pm.pol.oidcGroupResolver = resolver
+	}
+
+	// Invalidate caches since group: rules backed by OIDC may now resolve differently.
+	pm.sshPolicyMap.Clear()
+	pm.filterRulesMap.Clear()
+	pm.matchersForNodeMap.Clear()
 }
 
 // nodeIDViewMap indexes a slice of node views by node ID. On duplicate IDs the
