@@ -2,24 +2,96 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "*" # triggers only if push new tag version
-  workflow_dispatch:
+  repository_dispatch:
+    types: [release]
+
+permissions:
+  contents: read
 
 defaults:
   run:
     shell: nix develop --fallback --command bash -e {0}
 
 jobs:
-  goreleaser:
+  validate:
     if: github.repository == 'juanfont/headscale'
     runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.ref.outputs.sha }}
+      tag: ${{ steps.ref.outputs.tag }}
+    steps:
+      - name: Checkout trusted workflow revision
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate release ref
+        id: ref
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.client_payload.tag }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "${RELEASE_TAG}" =~ ^v([0-9]+)\.([0-9]+)\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "release tag does not match vMAJOR.MINOR.PATCH[-PRERELEASE]" >&2
+            exit 1
+          fi
+          release_line="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+
+          git fetch --force origin \
+            "+refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}" \
+            "+refs/heads/main:refs/remotes/origin/main"
+
+          target_sha=$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")
+          main_sha=$(git rev-parse refs/remotes/origin/main)
+          release_sha=""
+
+          case "${release_line}" in
+            0.29)
+              git fetch --force origin \
+                "+refs/heads/release-branch/0.29:refs/remotes/origin/release-branch/0.29"
+              release_sha=$(git rev-parse refs/remotes/origin/release-branch/0.29)
+              ;;
+          esac
+
+          if [[ "${target_sha}" != "${main_sha}" && "${target_sha}" != "${release_sha}" ]]; then
+            echo "release tag must point to an approved branch tip" >&2
+            exit 1
+          fi
+
+          echo "sha=${target_sha}" >> "$GITHUB_OUTPUT"
+          echo "tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+
+  goreleaser:
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
     steps:
       - name: Checkout
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
+          ref: ${{ needs.validate.outputs.sha }}
           fetch-depth: 0
+          persist-credentials: false
+
+      - name: Confirm release tag target
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ needs.validate.outputs.sha }}
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          tag_sha=$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")
+          if [[ "${tag_sha}" != "${RELEASE_SHA}" ]]; then
+            echo "release tag moved after validation" >&2
+            exit 1
+          fi
 
       - name: Login to DockerHub
         uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
