@@ -187,6 +187,23 @@ func TestEndpointBroadcastWorthy(t *testing.T) {
 			newType: []tailcfg.EndpointType{tailcfg.EndpointLocal, tailcfg.EndpointSTUN, tailcfg.EndpointLocal},
 			want:    true,
 		},
+		{
+			// Peers hold no endpoints for this node yet, and a
+			// suppressed delta is never resent, so the first set is
+			// the only one they would ever get.
+			name:    "first endpoints ever, STUN only - broadcast",
+			stored:  nil,
+			newEPs:  []netip.AddrPort{stun},
+			newType: []tailcfg.EndpointType{tailcfg.EndpointSTUN},
+			want:    true,
+		},
+		{
+			name:    "no stored and none announced - suppress",
+			stored:  nil,
+			newEPs:  nil,
+			newType: nil,
+			want:    false,
+		},
 	}
 
 	for _, tt := range tests {
