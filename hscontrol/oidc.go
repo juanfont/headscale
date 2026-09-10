@@ -574,7 +574,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
-	user, _, err := a.createOrUpdateUserFromClaim(&claims)
+	user, userChange, err := a.createOrUpdateUserFromClaim(&claims)
 	if err != nil {
 		httpUserError(writer, NewHTTPError(
 			http.StatusInternalServerError,
@@ -584,6 +584,11 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 
 		return
 	}
+
+	// The user write has already refreshed policy state. Notify connected
+	// nodes here, before either completion branch, so an abandoned registration
+	// confirmation or a later SSH rejection cannot leave them on the old view.
+	a.h.Change(userChange)
 
 	// If this is a registration flow, render the confirmation
 	// interstitial instead of finalising the registration immediately.
