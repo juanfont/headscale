@@ -32,21 +32,15 @@ repos:
   # Local hooks for project-specific tooling
   - repo: local
     hooks:
-      # nixfmt for Nix files; the same formatter the flake's treefmt check
-      # runs, so the hook and the check cannot disagree.
-      - id: nixfmt
-        name: nixfmt
-        entry: nixfmt
-        language: system
-        files: \.nix$
-
-      # Prettier for formatting
-      - id: prettier
-        name: prettier
-        entry: prettier --write --list-different
+      # One formatter for Nix and markup, built from the same treefmt module as
+      # the flake's formatting check, so the hook and the check cannot disagree.
+      # Go is absent on purpose: golangci-lint owns it, below.
+      - id: treefmt
+        name: treefmt
+        entry: nix fmt --
         language: system
         exclude: ^docs/
-        types_or: [javascript, jsx, ts, tsx, yaml, json, html, css, scss, sass, markdown]
+        types_or: [javascript, jsx, ts, tsx, yaml, json, html, css, scss, sass, markdown, nix]
 
       # mdformat for docs
       - id: mdformat
