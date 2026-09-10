@@ -2876,6 +2876,24 @@ type SSH struct {
 	Users        SSHUsers        `json:"users"`
 	CheckPeriod  *SSHCheckPeriod `json:"checkPeriod,omitempty"`
 	AcceptEnv    []string        `json:"acceptEnv,omitempty"`
+
+	// Recorder lists the nodes that SSH sessions matching this rule are
+	// streamed to for recording. Each alias must resolve to a single node —
+	// see [SSH.resolveRecorders].
+	//
+	// The client side of this has existed since capability version 61: given
+	// [tailcfg.SSHAction.Recorders], tailscaled connects to each recorder in
+	// order and streams the session as an asciinema cast. Headscale simply
+	// never populated the field, so the capability was unreachable.
+	// +optional
+	Recorder SSHSrcAliases `json:"recorder,omitempty"`
+
+	// EnforceRecorder rejects a session when no recording can be started,
+	// rather than allowing it to proceed unrecorded. Off by default: for a
+	// deployment where SSH is the only way in, a recorder outage becoming a
+	// total SSH outage is a self-inflicted lockout.
+	// +optional
+	EnforceRecorder bool `json:"enforceRecorder,omitempty"`
 }
 
 // SSHSrcAliases is a list of aliases that can be used as sources in an [SSH] rule.
