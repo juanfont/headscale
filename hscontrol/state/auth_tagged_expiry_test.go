@@ -2,6 +2,7 @@ package state
 
 import (
 	"fmt"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -76,7 +77,7 @@ func TestTaggedReauthKeepsNilExpiry(t *testing.T) {
 	}
 
 	authID := types.MustAuthID()
-	s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(regData))
+	require.NoError(t, s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(regData)))
 
 	finalNode, _, err := s.HandleNodeFromAuthPath(
 		authID,
@@ -402,7 +403,7 @@ func TestAuthPathRejectsTaggedAndUserCoexistence(t *testing.T) {
 		Hostinfo:   &tailcfg.Hostinfo{Hostname: "multi"},
 	}
 	authID := types.MustAuthID()
-	s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(regData))
+	require.NoError(t, s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(regData)))
 
 	_, _, err = s.HandleNodeFromAuthPath(authID, types.UserID(u3.ID), nil, util.RegisterMethodOIDC)
 	require.ErrorIs(t, err, ErrAmbiguousNodeOwnership)
@@ -513,7 +514,7 @@ func (n seededTaggedNode) reauth(t *testing.T, authUser *types.User, requestTags
 	rd.Expiry = clientExpiry
 
 	authID := types.MustAuthID()
-	n.s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&rd))
+	require.NoError(t, n.s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&rd)))
 
 	node, _, err := n.s.HandleNodeFromAuthPath(
 		authID,
@@ -847,6 +848,35 @@ func TestTaggedReauthPreservesOnlineAndLastSeen(t *testing.T) {
 	require.NotNil(t, finalNode.LastSeen().Get(), "LastSeen must be set on reauth")
 }
 
+func TestTaggedReauthPreservesLiveHostinfo(t *testing.T) {
+	n := seedTagOwnedNode(t, []string{"tag:foo"}, "")
+
+	owner := n.s.CreateUserForTest("owner")
+	_, err := n.s.SetPolicy(fmt.Appendf(nil, `{"tagOwners":{"tag:foo":["%s@"]}}`, owner.Name))
+	require.NoError(t, err)
+
+	route := netip.MustParsePrefix("10.23.0.0/16")
+	services := []tailcfg.Service{{Proto: tailcfg.TCP, Port: 443}}
+	_, ok := n.s.nodeStore.UpdateNode(n.id, func(node *types.Node) {
+		if node.Hostinfo == nil {
+			node.Hostinfo = &tailcfg.Hostinfo{}
+		}
+
+		node.Hostinfo.RoutableIPs = []netip.Prefix{route}
+		node.Hostinfo.Services = services
+	})
+	require.True(t, ok)
+
+	finalNode, err := n.reauth(t, owner, []string{"tag:foo"}, nil)
+	require.NoError(t, err)
+	require.Equal(t, []netip.Prefix{route}, finalNode.Hostinfo().RoutableIPs().AsSlice())
+	require.Equal(t, services, finalNode.Hostinfo().Services().AsSlice())
+
+	reloaded := n.reopen(t)
+	require.Equal(t, []netip.Prefix{route}, reloaded.Hostinfo().RoutableIPs().AsSlice())
+	require.Equal(t, services, reloaded.Hostinfo().Services().AsSlice())
+}
+
 // TestIssue3371_TaggedNodeInteractiveReloginAfterLogout reproduces the
 // interactive/OIDC arm of https://github.com/juanfont/headscale/issues/3371
 // ("With no key (interactive): the register URL is printed and the login never
@@ -914,7 +944,7 @@ func TestIssue3371_TaggedNodeInteractiveReloginAfterLogout(t *testing.T) {
 		},
 	}
 	authID := types.MustAuthID()
-	s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(regData))
+	require.NoError(t, s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(regData)))
 
 	relogged, _, err := s.HandleNodeFromAuthPath(
 		authID, types.UserID(user.ID), nil, util.RegisterMethodOIDC,
@@ -992,49 +1022,144 @@ func TestIssue3371_TaggedNodePastExpirySelfHealsOnReregister(t *testing.T) {
 	require.Equal(t, nodeID, healed.ID(), "must be the same node")
 }
 
-// TestIssue3371_ExpiredTaggedNodeSameSpentKeyNotRevalidated is the gating test
-// for the isExpired-gate exclusion (state.go: `&& !existingNodeSameUser.IsTagged()`).
-// A tagged node carrying a stale PAST expiry, re-registering with the SAME
-// single-use key and the SAME node key (no rotation), must take the
-// skip-validation fast path — otherwise the spent key is re-validated and
-// rejected with "authkey already used", the exact lockout #3371 fixes. Without
-// the tagged exclusion this fails; with it the node self-heals. The neighbours
-// all rotate the node key or use a reusable key, so validation runs regardless
-// and none probes this fast-path exclusion.
-func TestIssue3371_ExpiredTaggedNodeSameSpentKeyNotRevalidated(t *testing.T) {
+func TestExpiredTaggedNodeRejectsInvalidPriorKey(t *testing.T) {
+	tests := []struct {
+		name       string
+		reusable   bool
+		invalidate func(*testing.T, *State, uint64)
+		wantError  string
+	}{
+		{
+			name:      "spent",
+			wantError: "authkey already used",
+		},
+		{
+			name:     "expired",
+			reusable: true,
+			invalidate: func(t *testing.T, s *State, pakID uint64) {
+				t.Helper()
+
+				past := time.Now().Add(-time.Hour)
+				require.NoError(t, s.db.DB.Model(&types.PreAuthKey{}).
+					Where("id = ?", pakID).
+					Update("expiration", past).Error)
+			},
+			wantError: "authkey expired",
+		},
+		{
+			name:     "revoked",
+			reusable: true,
+			invalidate: func(t *testing.T, s *State, pakID uint64) {
+				t.Helper()
+				require.NoError(t, s.RevokePreAuthKey(pakID))
+			},
+			wantError: "authkey revoked",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			s := newRetagTestState(t)
+
+			pak, err := s.CreatePreAuthKey(
+				nil,
+				test.reusable,
+				false,
+				nil,
+				[]string{"tag:foo"},
+			)
+			require.NoError(t, err)
+
+			machineKey := key.NewMachine()
+			regReq := tailcfg.RegisterRequest{
+				Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+				NodeKey:  key.NewNode().Public(),
+				Hostinfo: &tailcfg.Hostinfo{Hostname: "expired-tagged"},
+			}
+			node, _, err := s.HandleNodeFromPreAuthKey(regReq, machineKey.Public())
+			require.NoError(t, err)
+
+			past := time.Now().Add(-time.Hour)
+			_, _, err = s.SetNodeExpiry(node.ID(), &past)
+			require.NoError(t, err)
+
+			if test.invalidate != nil {
+				test.invalidate(t, s, pak.ID)
+			}
+
+			_, _, err = s.HandleNodeFromPreAuthKey(regReq, machineKey.Public())
+			require.ErrorContains(t, err, test.wantError)
+
+			unchanged, ok := s.GetNodeByID(node.ID())
+			require.True(t, ok)
+			require.True(t, unchanged.IsExpired())
+			require.Equal(t, past.Unix(), unchanged.Expiry().Get().Unix())
+		})
+	}
+}
+
+func TestExpiredTaggedNodeAcceptsFreshKey(t *testing.T) {
 	s := newRetagTestState(t)
 
-	// Single-use tagged key.
-	pak, err := s.CreatePreAuthKey(nil, false, false, nil, []string{"tag:foo"})
+	priorKey, err := s.CreatePreAuthKey(nil, false, false, nil, []string{"tag:foo"})
 	require.NoError(t, err)
 
 	machineKey := key.NewMachine()
-	nodeKey := key.NewNode()
 	regReq := tailcfg.RegisterRequest{
-		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
-		NodeKey:  nodeKey.Public(),
-		Hostinfo: &tailcfg.Hostinfo{Hostname: "spent-tagged"},
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: priorKey.Key},
+		NodeKey:  key.NewNode().Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "fresh-key-tagged"},
 	}
 	node, _, err := s.HandleNodeFromPreAuthKey(regReq, machineKey.Public())
 	require.NoError(t, err)
-	require.True(t, node.IsTagged())
 
-	// Stale past (logout) expiry, and the single-use key is now spent.
-	past := time.Now().Add(-1 * time.Hour)
-	_, ok := s.nodeStore.UpdateNode(node.ID(), func(n *types.Node) {
-		n.Expiry = &past
-	})
+	past := time.Now().Add(-time.Hour)
+	_, _, err = s.SetNodeExpiry(node.ID(), &past)
+	require.NoError(t, err)
+
+	freshKey, err := s.CreatePreAuthKey(nil, false, false, nil, []string{"tag:foo"})
+	require.NoError(t, err)
+
+	regReq.Auth.AuthKey = freshKey.Key
+
+	reauthenticated, _, err := s.HandleNodeFromPreAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+	require.Equal(t, node.ID(), reauthenticated.ID())
+	require.False(t, reauthenticated.IsExpired())
+	require.False(t, reauthenticated.Expiry().Valid())
+}
+
+func TestExpiredTaggedNodeRejectsUntaggedKey(t *testing.T) {
+	s := newRetagTestState(t)
+
+	taggedKey, err := s.CreatePreAuthKey(nil, false, false, nil, []string{"tag:foo"})
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	regReq := tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: taggedKey.Key},
+		NodeKey:  key.NewNode().Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "untagged-key-rejected"},
+	}
+	node, _, err := s.HandleNodeFromPreAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+
+	past := time.Now().Add(-time.Hour)
+	_, _, err = s.SetNodeExpiry(node.ID(), &past)
+	require.NoError(t, err)
+
+	user := s.CreateUserForTest("other-user")
+	untaggedKey, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+
+	regReq.Auth.AuthKey = untaggedKey.Key
+	_, _, err = s.HandleNodeFromPreAuthKey(regReq, machineKey.Public())
+	require.ErrorContains(t, err, "tagged node reauthentication requires tagged authkey")
+
+	unchanged, ok := s.GetNodeByID(node.ID())
 	require.True(t, ok)
-
-	// Re-register with the SAME key and the SAME node key (no rotation). The
-	// tagged exclusion from the isExpired gate must let this skip validation, so
-	// the spent single-use key is not rejected.
-	healed, _, err := s.HandleNodeFromPreAuthKey(regReq, machineKey.Public())
-	require.NoError(t, err,
-		"a tagged node with a stale past expiry must skip re-validation of its spent key")
-	require.False(t, healed.IsExpired(), "stale expiry cleared")
-	require.Nil(t, healed.AsStruct().Expiry, "tagged node key-expiry disabled")
-	require.Equal(t, node.ID(), healed.ID())
+	require.True(t, unchanged.IsExpired())
+	require.Equal(t, []string{"tag:foo"}, unchanged.Tags().AsSlice())
 }
 
 // TestTaggedPAKReauthRetagsExistingTaggedNode reproduces issue #3370: an

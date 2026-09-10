@@ -433,6 +433,115 @@ func TestSetUsers(t *testing.T) {
 	}
 }
 
+func TestSetUsersRefreshesPerNodeFilters(t *testing.T) {
+	oldUser := types.User{ID: 1, Name: "alice", Email: "old@example.com"}
+	users := types.Users{oldUser}
+
+	node1 := node("node1", "100.64.0.1", "fd7a:115c:a1e0::1", oldUser)
+	node1.ID = 1
+	node2 := node("node2", "100.64.0.2", "fd7a:115c:a1e0::2", oldUser)
+	node2.ID = 2
+	nodes := types.Nodes{node1, node2}
+
+	policy := `{
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["old@example.com"],
+				"dst": ["autogroup:self:*"]
+			}
+		]
+	}`
+
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+	require.True(t, pm.needsPerNodeFilter)
+
+	rules, err := pm.FilterForNode(node1.View())
+	require.NoError(t, err)
+	require.NotEmpty(t, rules)
+
+	matchers, err := pm.MatchersForNode(node1.View())
+	require.NoError(t, err)
+	require.NotEmpty(t, matchers)
+
+	updated := slices.Clone(users)
+	updated[0].Email = "new@example.com"
+
+	policyChanged, peerMapChanged, err := pm.SetUsers(updated)
+	require.NoError(t, err)
+	require.True(t, policyChanged)
+	require.True(t, peerMapChanged)
+
+	rules, err = pm.FilterForNode(node1.View())
+	require.NoError(t, err)
+	require.Empty(t, rules)
+
+	matchers, err = pm.MatchersForNode(node1.View())
+	require.NoError(t, err)
+	require.Empty(t, matchers)
+}
+
+func TestSetUsersFailureRetainsCompiledState(t *testing.T) {
+	oldUser := types.User{ID: 1, Name: "alice", Email: "old@example.com"}
+	users := types.Users{oldUser}
+
+	node1 := node("node1", "100.64.0.1", "fd7a:115c:a1e0::1", oldUser)
+	node1.ID = 1
+	node2 := node("node2", "100.64.0.2", "fd7a:115c:a1e0::2", oldUser)
+	node2.ID = 2
+	nodes := types.Nodes{node1, node2}
+
+	policy := `{
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["new@example.com"],
+				"dst": ["autogroup:self:*"]
+			}
+		],
+		"nodeAttrs": [
+			{
+				"target": ["old@example.com"],
+				"attr": ["randomize-client-port"]
+			}
+		]
+	}`
+
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	beforeRules, err := pm.FilterForNode(node1.View())
+	require.NoError(t, err)
+	beforeMatchers, err := pm.MatchersForNode(node1.View())
+	require.NoError(t, err)
+
+	beforePeers := pm.BuildPeerMap(nodes.ViewSlice())
+	beforePerNode := pm.needsPerNodeFilter
+
+	updated := slices.Clone(users)
+	updated[0].Email = "new@example.com"
+
+	_, _, err = pm.SetUsers(updated)
+	require.Error(t, err)
+
+	afterRules, err := pm.FilterForNode(node1.View())
+	require.NoError(t, err)
+	afterMatchers, err := pm.MatchersForNode(node1.View())
+	require.NoError(t, err)
+	uncachedRules, err := pm.FilterForNode(node2.View())
+	require.NoError(t, err)
+
+	afterPeers := pm.BuildPeerMap(nodes.ViewSlice())
+
+	require.Equal(t, "old@example.com", pm.users[0].Email)
+	require.Equal(t, beforePerNode, pm.needsPerNodeFilter)
+	require.Equal(t, beforeRules, afterRules)
+	require.Equal(t, beforeMatchers, afterMatchers)
+	require.Empty(t, uncachedRules)
+	require.Equal(t, beforePeers, afterPeers)
+}
+
 // TestInvalidateGlobalPolicyCache tests the cache invalidation logic for global policies.
 func TestInvalidateGlobalPolicyCache(t *testing.T) {
 	mustIPPtr := func(s string) *netip.Addr {

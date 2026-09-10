@@ -466,7 +466,7 @@ auto_update:
 #
 # tuning:
 #   # Maximum number of pending registration entries in the auth cache.
-#   # Oldest entries are evicted when the cap is reached.
+#   # New registrations are rejected while the cap is reached.
 #   #
 #   # register_cache_max_entries: 1024
 #
