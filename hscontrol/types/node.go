@@ -675,9 +675,8 @@ func (node *Node) MarshalZerologObject(e *zerolog.Event) {
 // PeerChangeFromMapRequest takes a [tailcfg.MapRequest] and compares it to the node
 // to produce a [tailcfg.PeerChange] struct that can be used to updated the node and
 // inform peers about smaller changes to the node.
-// When a field is added to this function, remember to also add it to:
-// - [Node.ApplyPeerChange]
-// - logTracePeerChange in poll.go.
+// When a field is added to this function, also add it to
+// [Node.ApplyPeerChange].
 func (node *Node) PeerChangeFromMapRequest(req tailcfg.MapRequest) tailcfg.PeerChange {
 	ret := tailcfg.PeerChange{
 		NodeID: tailcfg.NodeID(node.ID), //nolint:gosec // NodeID is bounded

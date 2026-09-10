@@ -31,6 +31,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/rs/zerolog"
@@ -2958,25 +2959,22 @@ func isAutoDerivedGivenName(given, hostname string) bool {
 //
 // TODO(kradalby): This is essentially a patch update that could be sent directly to nodes,
 // which means we could shortcut the whole change thing if there are no other important updates.
-// When a field is added to this function, remember to also add it to:
-// - node.PeerChangeFromMapRequest
-// - node.ApplyPeerChange
-// - logTracePeerChange in poll.go.
-func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest) (change.Change, error) {
+// When a field is added to a MapRequest that is stored on the node, also add
+// it to [types.Node.PeerChangeFromMapRequest], [types.Node.ApplyPeerChange],
+// the mapRequestDelta classification, and (if the policy reads it)
+// [types.NodeView.HasPolicyChange].
+func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest) (change.Change, error) { //nolint:gocyclo // central map-request reconciliation; the sequential branch flow reads clearer as one function than split across helpers
 	log.Trace().
 		Caller().
 		Uint64(zf.NodeID, id.Uint64()).
-		Interface("request", req).
+		EmbedObject(zlog.MapRequest(&req)).
 		Msg("Processing MapRequest for node")
 
 	var (
+		delta              mapRequestDelta
 		routeChange        bool
-		hostinfoChanged    bool
 		needsRouteApproval bool
 		autoApprovedRoutes []netip.Prefix
-		endpointChanged    bool
-		derpChanged        bool
-		persistWorthy      bool
 	)
 	// Snapshot the primary assignment so we can tell whether the
 	// Hostinfo + auto-approval that follows shifted any prefix.
@@ -2985,49 +2983,84 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 	// We need to ensure we update the node as it is in the [NodeStore] at
 	// the time of the request.
 	updatedNode, ok := s.nodeStore.UpdateNode(id, func(currentNode *types.Node) {
-		peerChange := currentNode.PeerChangeFromMapRequest(req)
+		// Capture the raw wire-level peer change. LastSeen is always
+		// stamped here, so classification tests must not rely on it.
+		delta.peerChange = currentNode.PeerChangeFromMapRequest(req)
+		delta.keyChanged = delta.peerChange.Key != nil
+		delta.discoKeyChanged = delta.peerChange.DiscoKey != nil
 
-		// Track what specifically changed. An endpoint delta is only
-		// broadcast-worthy when it adds a useful (non-STUN) endpoint;
-		// STUN-only churn and pure shrinks are suppressed to reduce peer
-		// churn (see endpointBroadcastWorthy). The new set is still stored
-		// via ApplyPeerChange below regardless of this decision.
-		endpointChanged = peerChange.Endpoints != nil &&
-			endpointBroadcastWorthy(currentNode.Endpoints, req.Endpoints, req.EndpointTypes)
-		derpChanged = peerChange.DERPRegion != 0
-		hostinfoChanged = !hostinfoEqual(currentNode.View(), req.Hostinfo)
+		// Normalize before classifying. A nil req.Hostinfo means the client
+		// did not send one (e.g., endpoint-only/lite requests); we must NOT
+		// clobber the stored Hostinfo with a shell containing only NetInfo.
+		// When Hostinfo is present but NetInfo is omitted (Tailscale >= 1.66
+		// sends NetInfo only when it changed), the stored NetInfo is carried
+		// over. Every comparison below runs against this normalized value,
+		// otherwise an omitted NetInfo reads as a Hostinfo change and turns
+		// a routine map request into a whole-peer broadcast.
+		var newHostinfo *tailcfg.Hostinfo
 
-		// Get the correct NetInfo to use
-		netInfo := netInfoFromMapRequest(id, currentNode.Hostinfo, req.Hostinfo)
 		if req.Hostinfo != nil {
-			req.Hostinfo.NetInfo = netInfo
-		} else {
-			req.Hostinfo = &tailcfg.Hostinfo{NetInfo: netInfo}
+			// Copy so the classification never mutates the caller's request.
+			hi := *req.Hostinfo
+			hi.NetInfo = netInfoFromMapRequest(id, currentNode.Hostinfo, req.Hostinfo)
+			newHostinfo = &hi
 		}
 
-		// Re-check hostinfoChanged after potential NetInfo preservation
-		hostinfoChanged = !hostinfoEqual(currentNode.View(), req.Hostinfo)
+		// DERP comparison is independent of the rest of Hostinfo:
+		// PreferredDERP has its own wire patch representation, and
+		// DERP zero on the wire means "unchanged", so a clear-to-zero
+		// must be detected here and escalated to a whole-peer update
+		// during classification. A request without Hostinfo says nothing
+		// about DERP, so it compares equal.
+		storedDERP := hostinfoDERP(currentNode.Hostinfo)
+		requestedDERP := storedDERP
 
-		// A change carrying only an updated LastSeen is not worth a full-row
-		// database UPDATE plus the O(n) policy rescan persistNodeAndRefreshPolicy triggers:
-		// LastSeen is best-effort and rides along the next substantive write.
-		// PeerChangeFromMapRequest always stamps LastSeen, so test the other
-		// fields explicitly.
-		persistWorthy = peerChangePersistWorthy(peerChange) || hostinfoChanged
-
-		// If there is no changes and nothing to save,
-		// return early.
-		if peerChangeEmpty(peerChange) && !hostinfoChanged {
-			return
+		if newHostinfo != nil {
+			requestedDERP = hostinfoDERP(newHostinfo)
 		}
 
-		// Calculate route approval before [NodeStore] update to avoid calling View() inside callback
+		delta.oldDERP = storedDERP
+		delta.newDERP = requestedDERP
+		delta.derpChanged = requestedDERP != storedDERP
+
+		// Endpoint broadcast-worthiness is gated separately from storage:
+		// the new set is always stored via ApplyPeerChange below, but only
+		// newly-added useful (non-STUN) endpoints justify a peer broadcast.
+		// STUN-only churn and pure shrinks are suppressed to keep peers'
+		// views stable. See endpointBroadcastWorthy.
+		delta.endpointBroadcast = delta.peerChange.Endpoints != nil &&
+			endpointBroadcastWorthy(currentNode.Endpoints, req.Endpoints, req.EndpointTypes)
+
+		// Routes are policy and election inputs, so they are compared on
+		// their own. Any other Hostinfo change is stored, but only fields
+		// peers read are worth resending the whole node for.
+		delta.routesChanged = newHostinfo != nil &&
+			routesChanged(currentNode.View(), newHostinfo)
+		delta.hostinfoChanged = newHostinfo != nil &&
+			!hostinfoEqual(currentNode.Hostinfo, newHostinfo)
+		delta.peerHostinfoChanged = newHostinfo != nil &&
+			!peerHostinfoEqual(currentNode.Hostinfo, newHostinfo)
+
+		// A change carrying only an updated LastSeen is not worth a
+		// full-row database UPDATE plus the O(n) policy rescan
+		// persistNodeAndRefreshPolicy triggers: LastSeen is best-effort and rides
+		// along the next substantive write. DERP is called out because
+		// peerChangePersistWorthy cannot see a clear-to-zero.
+		delta.persistWorthy = peerChangePersistWorthy(delta.peerChange) ||
+			delta.hostinfoChanged ||
+			delta.derpChanged
+
+		hostinfoToStore := delta.hostinfoChanged || delta.derpChanged
+
+		// Calculate route approval before [NodeStore] update to avoid
+		// calling View() inside callback
 		var hasNewRoutes bool
 		if hi := req.Hostinfo; hi != nil {
 			hasNewRoutes = len(hi.RoutableIPs) > 0
 		}
 
-		needsRouteApproval = hostinfoChanged && (routesChanged(currentNode.View(), req.Hostinfo) || (hasNewRoutes && len(currentNode.ApprovedRoutes) == 0))
+		needsRouteApproval = delta.hostinfoChanged &&
+			(delta.routesChanged || (hasNewRoutes && len(currentNode.ApprovedRoutes) == 0))
 		if needsRouteApproval {
 			// Extract announced routes from request
 			var announcedRoutes []netip.Prefix
@@ -3047,59 +3080,52 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		}
 
 		// Log when routes change but approval doesn't
-		if hostinfoChanged && !routeChange {
+		if delta.routesChanged && !routeChange {
 			if hi := req.Hostinfo; hi != nil {
-				if routesChanged(currentNode.View(), hi) {
-					log.Debug().
-						Caller().
-						Uint64(zf.NodeID, id.Uint64()).
-						Strs(zf.OldAnnouncedRoutes, util.PrefixesToString(currentNode.AnnouncedRoutes())).
-						Strs(zf.NewAnnouncedRoutes, util.PrefixesToString(hi.RoutableIPs)).
-						Strs(zf.ApprovedRoutes, util.PrefixesToString(currentNode.ApprovedRoutes)).
-						Bool(zf.RouteChanged, routeChange).
-						Msg("announced routes changed but approved routes did not")
-				}
+				log.Debug().
+					Caller().
+					Uint64(zf.NodeID, id.Uint64()).
+					Strs(zf.OldAnnouncedRoutes, util.PrefixesToString(currentNode.AnnouncedRoutes())).
+					Strs(zf.NewAnnouncedRoutes, util.PrefixesToString(hi.RoutableIPs)).
+					Strs(zf.ApprovedRoutes, util.PrefixesToString(currentNode.ApprovedRoutes)).
+					Bool(zf.RouteChanged, routeChange).
+					Msg("announced routes changed but approved routes did not")
 			}
 		}
 
-		currentNode.ApplyPeerChange(&peerChange)
+		currentNode.ApplyPeerChange(&delta.peerChange)
 
-		if hostinfoChanged {
-			// The node might not set NetInfo if it has not changed and if
-			// the full HostInfo object is overwritten, the information is lost.
-			// If there is no NetInfo, keep the previous one.
-			// From 1.66 the client only sends it if changed:
-			// https://github.com/tailscale/tailscale/commit/e1011f138737286ecf5123ff887a7a5800d129a2
-			// TODO(kradalby): evaluate if we need better comparing of hostinfo
-			// before we take the changes.
-			// NetInfo preservation has already been handled above before early return check
-			currentNode.Hostinfo = req.Hostinfo
-			if req.Hostinfo != nil && req.Hostinfo.Hostname != "" {
-				// Preserve an admin-renamed GivenName: only auto-derive when the
-				// current GivenName is still what SanitizeHostname of the old
-				// Hostname would produce (possibly with a "-N" collision bump).
-				autoDerived := isAutoDerivedGivenName(currentNode.GivenName, currentNode.Hostname)
+		if hostinfoToStore {
+			currentNode.Hostinfo = newHostinfo
+		}
 
-				currentNode.Hostname = req.Hostinfo.Hostname
-				if autoDerived {
-					currentNode.GivenName = dnsname.SanitizeHostname(req.Hostinfo.Hostname)
-					// [NodeStore.UpdateNode] auto-bumps GivenName on collision.
-				}
+		// Only a real hostname change may re-derive GivenName: it is peer
+		// visible, so the whole node is resent and peers learn the name.
+		if newHostinfo != nil && newHostinfo.Hostname != "" &&
+			newHostinfo.Hostname != currentNode.Hostname {
+			// Preserve an admin-renamed GivenName: only auto-derive
+			// when the current GivenName is still what
+			// SanitizeHostname of the old Hostname would produce
+			// (possibly with a "-N" collision bump).
+			autoDerived := isAutoDerivedGivenName(currentNode.GivenName, currentNode.Hostname)
+
+			currentNode.Hostname = newHostinfo.Hostname
+			if autoDerived {
+				currentNode.GivenName = dnsname.SanitizeHostname(newHostinfo.Hostname)
+				// [NodeStore.UpdateNode] auto-bumps GivenName on collision.
 			}
+		}
 
-			if routeChange {
-				// Apply pre-calculated route approval
-				// Always apply the route approval result to ensure consistency,
-				// regardless of whether the policy evaluation detected changes.
-				// This fixes the bug where routes weren't properly cleared when
-				// auto-approvers were removed from the policy.
-				log.Info().
-					Uint64(zf.NodeID, id.Uint64()).
-					Strs(zf.OldApprovedRoutes, util.PrefixesToString(currentNode.ApprovedRoutes)).
-					Strs(zf.NewApprovedRoutes, util.PrefixesToString(autoApprovedRoutes)).
-					Bool(zf.RouteChanged, routeChange).
-					Msg("applying route approval results")
-			}
+		if routeChange {
+			// Always apply the route approval result so routes are
+			// cleared when auto-approvers are removed from the policy,
+			// even if the policy evaluation itself detected no change.
+			log.Info().
+				Uint64(zf.NodeID, id.Uint64()).
+				Strs(zf.OldApprovedRoutes, util.PrefixesToString(currentNode.ApprovedRoutes)).
+				Strs(zf.NewApprovedRoutes, util.PrefixesToString(autoApprovedRoutes)).
+				Bool(zf.RouteChanged, routeChange).
+				Msg("applying route approval results")
 		}
 
 		// AllApprovedRoutes is announced ∩ approved; a Hostinfo
@@ -3122,6 +3148,9 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 			Msg("Persisting auto-approved routes from MapRequest")
 
 		// [State.SetApprovedRoutes] will update both database and PrimaryRoutes table
+		// TODO(kradalby): approval should ride the map request write above.
+		// Writing it separately costs a second NodeStore write and a second
+		// peer-map rebuild for one request.
 		_, c, err := s.SetApprovedRoutes(id, autoApprovedRoutes)
 		if err != nil {
 			return change.Change{}, fmt.Errorf("persisting auto-approved routes: %w", err)
@@ -3153,14 +3182,31 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 	// A no-op MapRequest (identical re-send / reconnect with matching state)
 	// leaves the node untouched, so skip the full-row UPDATE and the O(n)
 	// policy SetNodes scan that persistNodeAndRefreshPolicy performs.
+	//
+	// On the MapRequest path we deliberately bypass persistNodeAndRefreshPolicy's
+	// synthetic NodeAdded fallback: persistence must not fabricate a wire
+	// notification. We persist the row directly and refresh the policy
+	// manager only when node inputs visible to the policy actually changed
+	// (structural Hostinfo or routes), letting updatePolicyManagerNodes
+	// decide whether matchers changed.
 	policyChange := change.Change{}
 
-	if persistWorthy {
+	if delta.persistWorthy {
 		var err error
 
-		_, policyChange, err = s.persistNodeAndRefreshPolicy(updatedNode)
+		updatedNode, err = s.persistNode(updatedNode)
 		if err != nil {
 			return change.Change{}, fmt.Errorf("saving to database: %w", err)
+		}
+
+		// Only refresh the policy manager when something it depends on
+		// might have moved. Endpoint/key/DERP/LastSeen-only updates do not
+		// affect policy evaluation and are deliberately skipped here.
+		if delta.peerHostinfoChanged || delta.routesChanged {
+			policyChange, err = s.updatePolicyManagerNodes()
+			if err != nil {
+				return change.Change{}, fmt.Errorf("updating policy manager after node save: %w", err)
+			}
 		}
 	}
 
@@ -3172,9 +3218,20 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		return nodeRouteChange, nil
 	}
 
-	// Determine the most specific change type based on what actually changed.
-	// This allows us to send lightweight patch updates instead of full map responses.
-	return buildMapRequestChangeResponse(id, updatedNode, hostinfoChanged, endpointChanged, derpChanged)
+	// Determine the most specific change type from the classified delta.
+	// This allows us to send lightweight patch updates instead of full
+	// map responses.
+	c := buildMapRequestChangeResponse(id, updatedNode, delta)
+
+	// One trace line per classified request so a "peer cannot reach me"
+	// report can be matched to the classification that narrowed it.
+	log.Trace().
+		Uint64(zf.NodeID, id.Uint64()).
+		Str(zf.Type, c.Type()).
+		EmbedObject(delta).
+		Msg("classified MapRequest")
+
+	return c, nil
 }
 
 // endpointBroadcastWorthy reports whether an endpoint-only delta is worth
@@ -3185,9 +3242,9 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 // telling peers about. Suppressing this churn keeps peers' views stable.
 //
 // The decision is intentionally conservative: it gates the broadcast only,
-// not storage. The node's full endpoint set (STUN included) is still stored
-// and rides along the next substantive change or full MapResponse, so no
-// reachable path is permanently hidden from peers.
+// not storage. A suppressed delta is never resent on its own, so suppression
+// is only safe once peers already hold an endpoint set to fall back on; the
+// first set a node announces is therefore always broadcast.
 //
 // Limitation: headscale stores bare []netip.AddrPort with no per-endpoint
 // type, so we can only classify the *new* request's endpoints (via the
@@ -3200,6 +3257,12 @@ func endpointBroadcastWorthy(
 	stored, newEPs []netip.AddrPort,
 	newTypes []tailcfg.EndpointType,
 ) bool {
+	// Peers hold no endpoints for this node yet, so the first set announced
+	// is the only one they would ever get. Type does not matter here.
+	if len(stored) == 0 {
+		return len(newEPs) > 0
+	}
+
 	storedSet := make(map[netip.AddrPort]struct{}, len(stored))
 	for _, ep := range stored {
 		storedSet[ep] = struct{}{}
@@ -3234,52 +3297,60 @@ func isUsefulEndpointType(t tailcfg.EndpointType) bool {
 	return t != tailcfg.EndpointSTUN && t != tailcfg.EndpointSTUN4LocalPort
 }
 
-// buildMapRequestChangeResponse determines the appropriate response type for a [tailcfg.MapRequest] update.
-// Hostinfo changes require a full update, while endpoint/DERP changes can use lightweight patches.
+// buildMapRequestChangeResponse picks the narrowest broadcast for a processed
+// MapRequest delta. Policy and route changes are handled by the caller.
+//
+// Two wire constraints shape the order: tailcfg.PeerChange.DERPRegion == 0
+// means "unchanged", so clearing DERP cannot ride a patch and needs a whole
+// peer; and a key patch already carries endpoints, key expiry, and DERP, so a
+// key change subsumes an endpoint or DERP patch in the same request.
+// The delta decides which fields to send; their values come from the fresh
+// node because concurrent requests may have superseded the captured values.
 func buildMapRequestChangeResponse(
 	id types.NodeID,
 	node types.NodeView,
-	hostinfoChanged, endpointChanged, derpChanged bool,
-) (change.Change, error) {
-	// Hostinfo changes require NodeAdded (full update) as they may affect many fields.
-	if hostinfoChanged {
-		return change.NodeAdded(id), nil
+	delta mapRequestDelta,
+) change.Change {
+	if delta.peerHostinfoChanged {
+		return change.NodeAdded(id)
 	}
 
-	// Return specific change types for endpoint and/or DERP updates.
-	if endpointChanged || derpChanged {
+	var currentDERP int
+
+	if delta.derpChanged {
+		if hi := node.Hostinfo(); hi.Valid() && hi.NetInfo().Valid() {
+			currentDERP = hi.NetInfo().PreferredDERP()
+		}
+
+		if currentDERP == 0 {
+			return change.NodeAdded(id)
+		}
+	}
+
+	if delta.keyChanged || delta.discoKeyChanged {
+		c := change.NodeKeyRotated(node)
+		if delta.derpChanged {
+			c.PeerPatches[0].DERPRegion = currentDERP
+		}
+
+		return c
+	}
+
+	if delta.endpointBroadcast || delta.derpChanged {
 		patch := &tailcfg.PeerChange{NodeID: id.NodeID()}
 
-		if endpointChanged {
+		if delta.endpointBroadcast {
 			patch.Endpoints = node.Endpoints().AsSlice()
 		}
 
-		if derpChanged {
-			if hi := node.Hostinfo(); hi.Valid() {
-				if ni := hi.NetInfo(); ni.Valid() {
-					patch.DERPRegion = ni.PreferredDERP()
-				}
-			}
+		if delta.derpChanged {
+			patch.DERPRegion = currentDERP
 		}
 
-		return change.EndpointOrDERPUpdate(id, patch), nil
+		return change.EndpointOrDERPUpdate(id, patch)
 	}
 
-	return change.NodeAdded(id), nil
-}
-
-func hostinfoEqual(oldNode types.NodeView, newHI *tailcfg.Hostinfo) bool {
-	if !oldNode.Valid() && newHI == nil {
-		return true
-	}
-
-	if !oldNode.Valid() || newHI == nil {
-		return false
-	}
-
-	old := oldNode.AsStruct().Hostinfo
-
-	return old.Equal(newHI)
+	return change.Change{}
 }
 
 func routesChanged(oldNode types.NodeView, newHI *tailcfg.Hostinfo) bool {
@@ -3297,16 +3368,6 @@ func routesChanged(oldNode types.NodeView, newHI *tailcfg.Hostinfo) bool {
 	slices.SortFunc(newRoutes, netip.Prefix.Compare)
 
 	return !slices.Equal(oldRoutes, newRoutes)
-}
-
-func peerChangeEmpty(peerChange tailcfg.PeerChange) bool {
-	return peerChange.Key == nil &&
-		peerChange.DiscoKey == nil &&
-		peerChange.Online == nil &&
-		peerChange.Endpoints == nil &&
-		peerChange.DERPRegion == 0 &&
-		peerChange.LastSeen == nil &&
-		peerChange.KeyExpiry == nil
 }
 
 // peerChangePersistWorthy reports whether a peer change carries anything that
