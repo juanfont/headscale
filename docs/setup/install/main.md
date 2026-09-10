@@ -29,6 +29,7 @@ docker run \
   --name headscale \
   --detach \
   --read-only \
+  --tmpfs /tmp \
   --tmpfs /var/run/headscale \
   --volume "$(pwd)/config:/etc/headscale:ro" \
   --volume "$(pwd)/lib:/var/lib/headscale" \
