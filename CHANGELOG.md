@@ -46,6 +46,7 @@ keys remain all-access.
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
 - The peer map is keyed by node ID and reused for writes that cannot change peer visibility, so a routine map request no longer rebuilds it. Adds `headscale_nodestore_snapshot_builds_total` [#3417](https://github.com/juanfont/headscale/issues/3417) [#3450](https://github.com/juanfont/headscale/pull/3450)
 - Headscale now requires Go 1.27 to build
+- Fix exit node not offered to viewers whose only matching rule is a `via` grant; peer visibility now comes from the peer map alone [#3409](https://github.com/juanfont/headscale/pull/3409)
 
 ## 0.29.4 (unreleased)
 

@@ -12,6 +12,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/netmap"
 )
@@ -299,6 +300,100 @@ func TestIssuesRoutes(t *testing.T) {
 		announced := nv.AnnouncedRoutes()
 		assert.Contains(t, announced, route,
 			"server should store the advertised route as announced")
+	})
+
+	// A grant steering autogroup:internet via a tagged exit node must
+	// offer the exit node to viewers whose only matching rule is the via
+	// grant. The via rule is compiled onto the via-tagged node, so only
+	// the exit node's matchers authorise the pair.
+	t.Run("via_exit_node_offered_to_members", func(t *testing.T) {
+		t.Parallel()
+
+		srv := servertest.NewServer(t)
+		adminUser := srv.CreateUser(t, "via3408-admin")
+		memberUser := srv.CreateUser(t, "via3408-member")
+
+		changed, err := srv.State().SetPolicy([]byte(`{
+			"tagOwners": {"tag:exit": ["via3408-admin@"]},
+			"autoApprovers": {"exitNode": ["tag:exit"]},
+			"groups": {"group:admins": ["via3408-admin@"]},
+			"grants": [
+				{
+					"src": ["group:admins"],
+					"dst": ["*"],
+					"ip": ["*"]
+				},
+				{
+					"src": ["autogroup:member"],
+					"dst": ["autogroup:internet"],
+					"via": ["tag:exit"],
+					"ip": ["*"]
+				}
+			]
+		}`))
+		require.NoError(t, err)
+
+		if changed {
+			changes, err := srv.State().ReloadPolicy()
+			require.NoError(t, err)
+			srv.App.Change(changes...)
+		}
+
+		adminNode := servertest.NewClient(t, srv, "via3408-admin-node",
+			servertest.WithUser(adminUser))
+		memberNode := servertest.NewClient(t, srv, "via3408-member-node",
+			servertest.WithUser(memberUser))
+		exitNode := servertest.NewClient(t, srv, "via3408-exit",
+			servertest.WithUser(adminUser),
+			servertest.WithTags("tag:exit"))
+
+		exitNode.Direct().SetHostinfo(&tailcfg.Hostinfo{
+			BackendLogID: "servertest-via3408-exit",
+			Hostname:     "via3408-exit",
+			RoutableIPs:  tsaddr.ExitRoutes(),
+		})
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		require.NoError(t, exitNode.Direct().SendUpdate(ctx))
+
+		exitID := findNodeID(t, srv, "via3408-exit")
+		_, routeChange, err := srv.State().SetApprovedRoutes(
+			exitID, tsaddr.ExitRoutes())
+		require.NoError(t, err)
+		srv.App.Change(routeChange)
+
+		seesExitNode := func(nm *netmap.NetworkMap) bool {
+			for _, p := range nm.Peers {
+				hi := p.Hostinfo()
+				if !hi.Valid() || hi.Hostname() != "via3408-exit" {
+					continue
+				}
+
+				var v4, v6 bool
+
+				for i := range p.AllowedIPs().Len() {
+					switch p.AllowedIPs().At(i) {
+					case netip.MustParsePrefix("0.0.0.0/0"):
+						v4 = true
+					case netip.MustParsePrefix("::/0"):
+						v6 = true
+					}
+				}
+
+				return v4 && v6
+			}
+
+			return false
+		}
+
+		memberNode.WaitForCondition(t,
+			"member sees the tag:exit exit node with exit routes in AllowedIPs",
+			15*time.Second, seesExitNode)
+		adminNode.WaitForCondition(t,
+			"admin sees the tag:exit exit node with exit routes in AllowedIPs",
+			15*time.Second, seesExitNode)
 	})
 }
 

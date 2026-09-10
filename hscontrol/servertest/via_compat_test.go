@@ -36,6 +36,7 @@ var viaCompatTests = []struct {
 	{"via-grant-v33", "single via grant + HA primary election"},
 	{"via-grant-v35", "via grant with unadvertised destination"},
 	{"via-grant-v36", "full complex: peer connectivity + crossed subnet + crossed exit"},
+	{"via-grant-v52", "members reach the internet only via tag:exit, admins reach everything"},
 }
 
 // TestViaGrantMapCompat loads golden captures from Tailscale SaaS and

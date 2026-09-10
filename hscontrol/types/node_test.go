@@ -154,7 +154,7 @@ func Test_NodeCanAccess(t *testing.T) {
 		{
 			// With a unidirectional ACL (src=A→dst=B), the dst
 			// router cannot access the src router. Bidirectional
-			// peer visibility comes from [policy.ReduceNodes] checking
+			// peer visibility comes from BuildPeerMap checking
 			// both A.CanAccess(B) || B.CanAccess(A).
 			name: "subnet-to-subnet-unidirectional-dst-cannot-access-src-3157",
 			node1: Node{
