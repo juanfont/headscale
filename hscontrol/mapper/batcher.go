@@ -724,11 +724,13 @@ func (b *Batcher) addToBatch(changes ...change.Change) {
 	}
 }
 
-// closeExpiredNode atomically removes the connection collection that consumed
-// an expiry change, then stops all sessions in that collection. Comparing the
-// pointer prevents an older worker from closing a replacement collection.
+// closeExpiredNode stops the sessions in the connection collection that
+// consumed an expiry change. The collection remains tracked so the ordinary
+// session-release path can deliver its subsequent offline change and a future
+// authenticated session can reuse it. Comparing the pointer prevents an older
+// worker from closing a replacement collection.
 func (b *Batcher) closeExpiredNode(nodeID types.NodeID, expired *multiChannelNodeConn) {
-	var toClose *multiChannelNodeConn
+	var stopped bool
 
 	b.nodes.Compute(
 		nodeID,
@@ -737,16 +739,16 @@ func (b *Batcher) closeExpiredNode(nodeID types.NodeID, expired *multiChannelNod
 				return current, xsync.CancelOp
 			}
 
-			b.totalNodes.Add(-1)
+			current.stopCurrentConnections()
+			current.inFlight.Store(false)
 
-			toClose = current
+			stopped = true
 
-			return current, xsync.DeleteOp
+			return current, xsync.CancelOp
 		},
 	)
 
-	if toClose != nil {
-		toClose.close()
+	if stopped {
 		log.Debug().Uint64(zf.NodeID, nodeID.Uint64()).
 			Msg("closed expired node sessions in batcher")
 	}

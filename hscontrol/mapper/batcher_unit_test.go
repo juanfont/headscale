@@ -455,6 +455,37 @@ func TestAddToBatch_NodeRemovedStopsSession(t *testing.T) {
 	assert.Equal(t, int64(0), lb.b.totalNodes.Load())
 }
 
+func TestCloseExpiredNodeStopsSessionButKeepsNodeTracked(t *testing.T) {
+	lb := setupLightweightBatcher(t, 1, 1)
+	defer lb.cleanup()
+
+	mc, ok := lb.b.nodes.Load(1)
+	require.True(t, ok)
+
+	stopped := make(chan struct{})
+
+	mc.mutex.Lock()
+	mc.connections[0].stop = func() { close(stopped) }
+	mc.mutex.Unlock()
+	mc.inFlight.Store(true)
+
+	lb.b.closeExpiredNode(1, mc)
+
+	select {
+	case <-stopped:
+	default:
+		t.Fatal("expiring a node must stop its active map session")
+	}
+
+	tracked, stillTracked := lb.b.nodes.Load(1)
+	require.True(t, stillTracked,
+		"expired node must remain tracked so its later offline change is processed")
+	assert.Same(t, mc, tracked)
+	assert.False(t, lb.b.IsConnected(1))
+	assert.False(t, mc.inFlight.Load(), "offline work must be allowed to queue")
+	assert.Equal(t, int64(1), lb.b.totalNodes.Load())
+}
+
 func TestAddToBatch_PeersRemovedKeepsSession(t *testing.T) {
 	lb := setupLightweightBatcher(t, 1, 1)
 	defer lb.cleanup()

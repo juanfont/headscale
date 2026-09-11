@@ -127,13 +127,26 @@ func newMultiChannelNodeConn(id types.NodeID, mapper *mapper) *multiChannelNodeC
 
 func (mc *multiChannelNodeConn) close() {
 	mc.closeOnce.Do(func() {
-		mc.mutex.Lock()
-		defer mc.mutex.Unlock()
-
-		for _, conn := range mc.connections {
-			mc.stopConnection(conn)
-		}
+		mc.stopCurrentConnections()
 	})
+}
+
+// stopCurrentConnections tears down the sessions currently attached to this
+// node while leaving the connection collection reusable. Expiry uses this path
+// because the collection must remain available for the subsequent offline
+// change and for a future authenticated session.
+func (mc *multiChannelNodeConn) stopCurrentConnections() {
+	mc.mutex.Lock()
+
+	connections := mc.connections
+	mc.connections = nil
+
+	for _, conn := range connections {
+		mc.stopConnection(conn)
+	}
+
+	mc.mutex.Unlock()
+	mc.markDisconnected()
 }
 
 // stopConnection marks a connection as closed and tears down the owning session
