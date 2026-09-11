@@ -935,6 +935,14 @@ func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry *time.Time) (types.Nod
 		c = change.NodeAdded(n.ID())
 	}
 
+	// Expiring a live node is a connection-lifecycle event. The batcher
+	// terminates the current map sessions after delivering the expiry update;
+	// their ordinary Disconnect calls then make the node offline when the last
+	// session is released. A future expiry is handled by ExpireExpiredNodes.
+	if expiry != nil && !expiry.IsZero() && !expiry.After(time.Now()) {
+		c.ExpiredNodes = []types.NodeID{n.ID()}
+	}
+
 	return n, c, nil
 }
 
@@ -1123,7 +1131,9 @@ func (s *State) ExpireExpiredNodes(lastCheck time.Time) (time.Time, []change.Cha
 		// Why check After(lastCheck): We only want to notify about nodes that
 		// expired since the last check to avoid duplicate notifications
 		if node.IsExpired() && node.Expiry().Valid() && node.Expiry().Get().After(lastCheck) {
-			updates = append(updates, change.KeyExpiryFor(node.ID(), node.Expiry().Get()))
+			c := change.KeyExpiryFor(node.ID(), node.Expiry().Get())
+			c.ExpiredNodes = []types.NodeID{node.ID()}
+			updates = append(updates, c)
 		}
 	}
 

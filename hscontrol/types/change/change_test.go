@@ -94,6 +94,11 @@ func TestChange_IsEmpty(t *testing.T) {
 			want:     false,
 		},
 		{
+			name:     "ExpiredNodes not empty",
+			response: Change{ExpiredNodes: []types.NodeID{1}},
+			want:     false,
+		},
+		{
 			name:     "PeerPatches not empty",
 			response: Change{PeerPatches: []*tailcfg.PeerChange{{}}},
 			want:     false,
@@ -157,6 +162,11 @@ func TestChange_IsSelfOnly(t *testing.T) {
 		{
 			name:     "self only with DeletedNodes is not self only",
 			response: Change{TargetNode: 1, IncludeSelf: true, DeletedNodes: []types.NodeID{2}},
+			want:     false,
+		},
+		{
+			name:     "self only with ExpiredNodes is not self only",
+			response: Change{TargetNode: 1, IncludeSelf: true, ExpiredNodes: []types.NodeID{2}},
 			want:     false,
 		},
 		{
@@ -233,6 +243,12 @@ func TestChange_Merge(t *testing.T) {
 			r1:   Change{DeletedNodes: []types.NodeID{1, 2}},
 			r2:   Change{DeletedNodes: []types.NodeID{2, 3}},
 			want: Change{DeletedNodes: []types.NodeID{1, 2, 3}},
+		},
+		{
+			name: "expired nodes deduplicated",
+			r1:   Change{ExpiredNodes: []types.NodeID{1, 2}},
+			r2:   Change{ExpiredNodes: []types.NodeID{2, 3}},
+			want: Change{ExpiredNodes: []types.NodeID{1, 2, 3}},
 		},
 		{
 			name: "peer patches concatenated",
