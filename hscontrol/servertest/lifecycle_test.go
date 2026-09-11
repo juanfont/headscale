@@ -122,6 +122,100 @@ func TestConnectionLifecycle(t *testing.T) {
 	})
 }
 
+// TestExpireConnectedNodeDisconnects verifies that expiring a node terminates
+// its active map session. Offline state must still be produced by the normal
+// poll-session release path, rather than SetNodeExpiry mutating IsOnline.
+func TestExpireConnectedNodeDisconnects(t *testing.T) {
+	h := servertest.NewHarness(t, 1,
+		servertest.WithServerOptions(servertest.WithBatchDelay(10*time.Millisecond)),
+	)
+
+	nodes := h.Server.State().ListNodes()
+	require.Equal(t, 1, nodes.Len())
+	node := nodes.At(0)
+	require.True(t, node.IsOnline().Valid())
+	require.True(t, node.IsOnline().Get(), "precondition: node is online")
+
+	expiry := time.Now()
+	_, expiryChange, err := h.Server.State().SetNodeExpiry(node.ID(), &expiry)
+	require.NoError(t, err)
+	require.Equal(t, []types.NodeID{node.ID()}, expiryChange.ExpiredNodes)
+
+	// Setting the deadline itself must not own online state. The session
+	// release triggered below is what transitions the node offline.
+	current, found := h.Server.State().GetNodeByID(node.ID())
+	require.True(t, found)
+	require.True(t, current.IsOnline().Get())
+
+	h.Server.App.Change(expiryChange)
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		current, found := h.Server.State().GetNodeByID(node.ID())
+		assert.True(c, found)
+
+		if !found {
+			return
+		}
+
+		online, known := current.IsOnline().GetOk()
+		assert.True(c, known)
+		assert.False(c, online, "expired node should be offline after session teardown")
+		assert.Empty(c, h.ConnectedClients(), "expired node's map session should be closed")
+
+		nm := h.Client(0).Netmap()
+		if assert.NotNil(c, nm) {
+			assert.True(c, nm.SelfNode.Expired(), "client should receive its expiry before teardown")
+		}
+	}, 2*time.Second, 25*time.Millisecond,
+		"expiry should terminate the map session without ordinary reconnect grace")
+}
+
+func TestScheduledExpiryDisconnectsConnectedNode(t *testing.T) {
+	h := servertest.NewHarness(t, 1,
+		servertest.WithServerOptions(servertest.WithBatchDelay(10*time.Millisecond)),
+	)
+
+	node := h.Server.State().ListNodes().At(0)
+	lastCheck := time.Now().Add(-time.Second)
+	expiry := time.Now().Add(2 * time.Second)
+
+	_, futureChange, err := h.Server.State().SetNodeExpiry(node.ID(), &expiry)
+	require.NoError(t, err)
+	require.Empty(t, futureChange.ExpiredNodes,
+		"setting a future deadline must not terminate the current session")
+	h.Server.App.Change(futureChange)
+
+	require.Eventually(t, func() bool {
+		current, found := h.Server.State().GetNodeByID(node.ID())
+		return found && current.IsExpired()
+	}, 3*time.Second, 25*time.Millisecond)
+
+	_, expiryChanges, changed := h.Server.State().ExpireExpiredNodes(lastCheck)
+	require.True(t, changed)
+	require.Len(t, expiryChanges, 1)
+	require.Equal(t, []types.NodeID{node.ID()}, expiryChanges[0].ExpiredNodes)
+	h.Server.App.Change(expiryChanges...)
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		current, found := h.Server.State().GetNodeByID(node.ID())
+		assert.True(c, found)
+
+		if !found {
+			return
+		}
+
+		online, known := current.IsOnline().GetOk()
+		assert.True(c, known)
+		assert.False(c, online)
+		assert.Empty(c, h.ConnectedClients())
+
+		nm := h.Client(0).Netmap()
+		if assert.NotNil(c, nm) {
+			assert.True(c, nm.SelfNode.Expired())
+		}
+	}, 2*time.Second, 25*time.Millisecond)
+}
+
 // TestLogoutReloginAllClientsConverge is an in-process reproduction of the
 // flaky integration tests TestAuthKeyLogoutAndReloginSameUser,
 // TestAuthWebFlowLogoutAndReloginSameUser and

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -36,9 +37,11 @@ type mapSession struct {
 	ctx    context.Context //nolint:containedctx
 	capVer tailcfg.CapabilityVersion
 
-	ch             chan *tailcfg.MapResponse
-	cancelCh       chan struct{}
-	cancelChClosed atomic.Bool
+	ch              chan *tailcfg.MapResponse
+	cancelCh        chan struct{}
+	cancelChClosed  atomic.Bool
+	expiryDelivered chan struct{}
+	expiryOnce      sync.Once
 
 	keepAlive       time.Duration
 	keepAliveTicker *time.Ticker
@@ -65,8 +68,9 @@ func (h *Headscale) newMapSession(
 		node:   node,
 		capVer: req.Version,
 
-		ch:       make(chan *tailcfg.MapResponse, h.cfg.Tuning.NodeMapSessionBufferedChanSize),
-		cancelCh: make(chan struct{}),
+		ch:              make(chan *tailcfg.MapResponse, h.cfg.Tuning.NodeMapSessionBufferedChanSize),
+		cancelCh:        make(chan struct{}),
+		expiryDelivered: make(chan struct{}),
 
 		keepAlive:       ka,
 		keepAliveTicker: nil,
@@ -182,12 +186,13 @@ func (m *mapSession) serveLongPoll() {
 		// handler ran late is exactly such a session: if it kept its session
 		// acquired on this path, the surviving session's release could never
 		// take the node offline (the relogin flake).
-		// A deleted node cannot reconnect, so waiting for it only delays the
-		// client's next map request, and with it the re-authentication signal
-		// it needs. See: https://github.com/juanfont/headscale/issues/3410
-		_, nodeExists := m.h.state.GetNodeByID(m.node.ID)
+		// A deleted node cannot reconnect, and an expired node must
+		// re-authenticate. Waiting for either only delays the client's next map
+		// request and the re-authentication flow it needs.
+		// See: https://github.com/juanfont/headscale/issues/3410
+		node, nodeExists := m.h.state.GetNodeByID(m.node.ID)
 
-		if !stillConnected && nodeExists {
+		if !stillConnected && nodeExists && !node.IsExpired() {
 			// Wait up to 10 seconds for the node to reconnect.
 			// 10 seconds was arbitrary chosen as a reasonable time to reconnect.
 			ticker := time.NewTicker(time.Second)
@@ -276,7 +281,14 @@ func (m *mapSession) serveLongPoll() {
 	// adding this before connecting it to the state ensure that
 	// it does not miss any updates that might be sent in the split
 	// time between the node connecting and the batcher being ready.
-	if err := m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.capVer, m.stopFromBatcher); err != nil { //nolint:noinlineerr
+	err = m.h.mapBatcher.AddNodeWithExpiryDelivery(
+		m.node.ID,
+		m.ch,
+		m.capVer,
+		m.stopFromBatcher,
+		m.expiryDelivered,
+	)
+	if err != nil {
 		m.log.Error().Caller().Err(err).Msg("failed to add node to batcher")
 		// Write an explicit error rather than returning silently: a bare
 		// return leaves net/http to send an empty 200, which the client
@@ -321,6 +333,10 @@ func (m *mapSession) serveLongPoll() {
 			if err != nil {
 				m.log.Error().Caller().Err(err).Msg("cannot write update to client")
 				return
+			}
+
+			if update.Node != nil && update.Node.Expired {
+				m.expiryOnce.Do(func() { close(m.expiryDelivered) })
 			}
 
 			m.log.Trace().Caller().Msg("update sent")

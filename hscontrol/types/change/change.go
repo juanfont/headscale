@@ -44,6 +44,12 @@ type Change struct {
 	// to tear down the deleted nodes' own map sessions.
 	DeletedNodes []types.NodeID
 
+	// ExpiredNodes identifies nodes whose current map sessions must end after
+	// their expiry update is delivered. Disconnecting those sessions lets the
+	// normal connection lifecycle, including its session reference counting,
+	// make the node offline.
+	ExpiredNodes []types.NodeID
+
 	// RequiresRuntimePeerComputation indicates that peer visibility
 	// must be computed at runtime per-node. Used for policy changes
 	// where each node may have different peer visibility.
@@ -84,6 +90,7 @@ func (r Change) Merge(other Change) Change {
 	merged.PeersChanged = uniqueNodeIDs(slices.Concat(r.PeersChanged, other.PeersChanged))
 	merged.PeersRemoved = uniqueNodeIDs(slices.Concat(r.PeersRemoved, other.PeersRemoved))
 	merged.DeletedNodes = uniqueNodeIDs(slices.Concat(r.DeletedNodes, other.DeletedNodes))
+	merged.ExpiredNodes = uniqueNodeIDs(slices.Concat(r.ExpiredNodes, other.ExpiredNodes))
 	merged.PeerPatches = slices.Concat(r.PeerPatches, other.PeerPatches)
 
 	// Preserve [Change.OriginNode] for self-update detection.
@@ -146,6 +153,7 @@ func (r Change) IsEmpty() bool {
 	return len(r.PeersChanged) == 0 &&
 		len(r.PeersRemoved) == 0 &&
 		len(r.DeletedNodes) == 0 &&
+		len(r.ExpiredNodes) == 0 &&
 		len(r.PeerPatches) == 0
 }
 
@@ -155,7 +163,7 @@ func (r Change) IsSelfOnly() bool {
 	}
 
 	if r.SendAllPeers || len(r.PeersChanged) > 0 || len(r.PeersRemoved) > 0 ||
-		len(r.DeletedNodes) > 0 || len(r.PeerPatches) > 0 {
+		len(r.DeletedNodes) > 0 || len(r.ExpiredNodes) > 0 || len(r.PeerPatches) > 0 {
 		return false
 	}
 
@@ -199,7 +207,7 @@ func (r Change) Type() string {
 	}
 
 	if len(r.PeersChanged) > 0 || len(r.PeersRemoved) > 0 ||
-		len(r.DeletedNodes) > 0 || r.SendAllPeers {
+		len(r.DeletedNodes) > 0 || len(r.ExpiredNodes) > 0 || r.SendAllPeers {
 		return "peers"
 	}
 

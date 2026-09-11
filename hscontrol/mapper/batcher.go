@@ -274,6 +274,30 @@ func (b *Batcher) AddNode(
 	version tailcfg.CapabilityVersion,
 	stop func(),
 ) error {
+	return b.addNode(id, c, version, stop, nil)
+}
+
+// AddNodeWithExpiryDelivery is AddNode with an acknowledgement that closes
+// after an expiry response has been written to the node's HTTP stream. Expiry
+// teardown waits for this signal so cancellation cannot discard the terminal
+// response after it was merely queued to the map-session channel.
+func (b *Batcher) AddNodeWithExpiryDelivery(
+	id types.NodeID,
+	c chan<- *tailcfg.MapResponse,
+	version tailcfg.CapabilityVersion,
+	stop func(),
+	expiryDelivered <-chan struct{},
+) error {
+	return b.addNode(id, c, version, stop, expiryDelivered)
+}
+
+func (b *Batcher) addNode(
+	id types.NodeID,
+	c chan<- *tailcfg.MapResponse,
+	version tailcfg.CapabilityVersion,
+	stop func(),
+	expiryDelivered <-chan struct{},
+) error {
 	addNodeStart := time.Now()
 	nlog := log.With().Uint64(zf.NodeID, id.Uint64()).Logger()
 
@@ -283,11 +307,12 @@ func (b *Batcher) AddNode(
 	// Create new connection entry
 	now := time.Now()
 	newEntry := &connectionEntry{
-		id:      connID,
-		c:       c,
-		version: version,
-		created: now,
-		stop:    stop,
+		id:              connID,
+		c:               c,
+		version:         version,
+		created:         now,
+		stop:            stop,
+		expiryDelivered: expiryDelivered,
 	}
 	// Block broadcast sends to this connection until its initial map
 	// is delivered below, so a delta cannot become the stream's first
@@ -556,7 +581,10 @@ func (b *Batcher) worker(workerID int) {
 				// group to keep their order ahead of newer pending
 				// changes — order matters for stateful patches like
 				// online/offline.
-				var retry []change.Change
+				var (
+					retry          []change.Change
+					expireSessions bool
+				)
 
 				nc.workMu.Lock()
 				for _, ch := range w.changes {
@@ -564,6 +592,10 @@ func (b *Batcher) worker(workerID int) {
 					if errors.Is(err, errNoReadyConnections) {
 						retry = append(retry, ch)
 						continue
+					}
+
+					if slices.Contains(ch.ExpiredNodes, w.nodeID) {
+						expireSessions = true
 					}
 
 					if err != nil {
@@ -580,8 +612,12 @@ func (b *Batcher) worker(workerID int) {
 					nc.prependPending(retry...)
 				}
 
-				// Bundle delivered; allow the next tick's bundle to queue.
-				nc.inFlight.Store(false)
+				if expireSessions {
+					b.closeExpiredNode(w.nodeID, nc)
+				} else {
+					// Bundle delivered; allow the next tick's bundle to queue.
+					nc.inFlight.Store(false)
+				}
 			}
 		case <-b.done:
 			wlog.Debug().Msg("batcher shutting down, exiting worker")
@@ -641,13 +677,18 @@ func (b *Batcher) addToBatch(changes ...change.Change) {
 	// Short circuit if any of the changes is a full update, which
 	// means we can skip sending individual changes.
 	if change.HasFull(changes) {
+		full := change.FullUpdate()
+		for _, ch := range changes {
+			full = full.Merge(change.Change{ExpiredNodes: ch.ExpiredNodes})
+		}
+
 		b.nodes.Range(func(_ types.NodeID, nc *multiChannelNodeConn) bool {
 			if nc == nil {
 				return true
 			}
 
 			nc.pendingMu.Lock()
-			nc.pending = []change.Change{change.FullUpdate()}
+			nc.pending = []change.Change{full}
 			nc.pendingMu.Unlock()
 
 			return true
@@ -680,6 +721,36 @@ func (b *Batcher) addToBatch(changes ...change.Change) {
 
 			return true
 		})
+	}
+}
+
+// closeExpiredNode stops the sessions in the connection collection that
+// consumed an expiry change. The collection remains tracked so the ordinary
+// session-release path can deliver its subsequent offline change and a future
+// authenticated session can reuse it. Comparing the pointer prevents an older
+// worker from closing a replacement collection.
+func (b *Batcher) closeExpiredNode(nodeID types.NodeID, expired *multiChannelNodeConn) {
+	var stopped bool
+
+	b.nodes.Compute(
+		nodeID,
+		func(current *multiChannelNodeConn, loaded bool) (*multiChannelNodeConn, xsync.ComputeOp) {
+			if !loaded || current == nil || current != expired {
+				return current, xsync.CancelOp
+			}
+
+			current.stopCurrentConnections()
+			current.inFlight.Store(false)
+
+			stopped = true
+
+			return current, xsync.CancelOp
+		},
+	)
+
+	if stopped {
+		log.Debug().Uint64(zf.NodeID, nodeID.Uint64()).
+			Msg("closed expired node sessions in batcher")
 	}
 }
 

@@ -34,6 +34,10 @@ var errNoActiveConnections = errors.New("no active connections")
 // the change, so dropping it would lose the update.
 var errNoReadyConnections = errors.New("no connections ready for updates")
 
+var errExpiryDeliveryTimeout = errors.New("expiry response delivery timed out")
+
+const expiryDeliveryTimeout = time.Second
+
 // connectionEntry represents a single connection to a node.
 type connectionEntry struct {
 	id       string // unique connection ID
@@ -43,6 +47,10 @@ type connectionEntry struct {
 	stop     func()
 	lastUsed atomic.Int64 // Unix timestamp of last successful send
 	closed   atomic.Bool  // Indicates if this connection has been closed
+
+	// expiryDelivered is closed by the map session after it writes a terminal
+	// expiry response to the HTTP stream. It is nil for non-HTTP/test callers.
+	expiryDelivered <-chan struct{}
 
 	// pendingInitial is set by [Batcher.AddNode] while this
 	// connection's initial map is still in flight, and cleared once it
@@ -119,13 +127,26 @@ func newMultiChannelNodeConn(id types.NodeID, mapper *mapper) *multiChannelNodeC
 
 func (mc *multiChannelNodeConn) close() {
 	mc.closeOnce.Do(func() {
-		mc.mutex.Lock()
-		defer mc.mutex.Unlock()
-
-		for _, conn := range mc.connections {
-			mc.stopConnection(conn)
-		}
+		mc.stopCurrentConnections()
 	})
+}
+
+// stopCurrentConnections tears down the sessions currently attached to this
+// node while leaving the connection collection reusable. Expiry uses this path
+// because the collection must remain available for the subsequent offline
+// change and for a future authenticated session.
+func (mc *multiChannelNodeConn) stopCurrentConnections() {
+	mc.mutex.Lock()
+
+	connections := mc.connections
+	mc.connections = nil
+
+	for _, conn := range connections {
+		mc.stopConnection(conn)
+	}
+
+	mc.mutex.Unlock()
+	mc.markDisconnected()
 }
 
 // stopConnection marks a connection as closed and tears down the owning session
@@ -412,11 +433,28 @@ func (entry *connectionEntry) send(data *tailcfg.MapResponse) error {
 	case entry.c <- data:
 		// Update last used timestamp on successful send
 		entry.lastUsed.Store(time.Now().Unix())
-		return nil
 	case <-timer.C:
 		// Connection is likely stale - client isn't reading from channel
 		// This catches the case where Docker containers are killed but channels remain open
 		return fmt.Errorf("connection %s: %w", entry.id, ErrConnectionSendTimeout)
+	}
+
+	if data.Node == nil || !data.Node.Expired || entry.expiryDelivered == nil {
+		return nil
+	}
+
+	// Queueing a terminal response is not enough: if the batcher immediately
+	// cancels the session, serveLongPoll can select cancellation before it writes
+	// the queued response. Wait for the writer to flush it, but retain a bounded
+	// fallback so a client that stopped reading cannot pin the worker forever.
+	deliveryTimer := time.NewTimer(expiryDeliveryTimeout)
+	defer deliveryTimer.Stop()
+
+	select {
+	case <-entry.expiryDelivered:
+		return nil
+	case <-deliveryTimer.C:
+		return fmt.Errorf("connection %s: %w", entry.id, errExpiryDeliveryTimeout)
 	}
 }
 
