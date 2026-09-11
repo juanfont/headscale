@@ -546,7 +546,7 @@ func (ns *noiseServer) sshActionHoldAndDelegate(
 		types.NewSSHCheckAuthRequest(srcNodeID, dstNodeID),
 	)
 
-	authURL := ns.headscale.authProvider.AuthURL(authID)
+	authURL := ns.headscale.getAuthProvider().AuthURL(authID)
 
 	q := holdURL.Query()
 	q.Set("auth_id", authID.String())

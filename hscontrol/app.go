@@ -91,9 +91,12 @@ type Headscale struct {
 	realIPMiddleware func(http.Handler) http.Handler
 
 	// Things that generate changes
-	extraRecordMan *dns.ExtraRecordsMan
-	authProvider   AuthProvider
-	mapBatcher     *mapper.Batcher
+	extraRecordMan  *dns.ExtraRecordsMan
+	authProviderMu  sync.RWMutex
+	authProvider    AuthProvider
+	oidcRetryCancel context.CancelFunc
+
+	mapBatcher *mapper.Batcher
 
 	clientStreamsOpen sync.WaitGroup
 }
@@ -180,6 +183,10 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 				return nil, err
 			} else {
 				log.Warn().Err(err).Msg("failed to set up OIDC provider, falling back to CLI based authentication")
+
+				if cfg.OIDC.RetryInterval > 0 {
+					app.startOIDCRetry(cfg.ServerURL, &cfg.OIDC)
+				}
 			}
 		} else {
 			authProvider = oidcProvider
@@ -261,6 +268,52 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 	}
 
 	return &app, nil
+}
+
+func (h *Headscale) getAuthProvider() AuthProvider {
+	h.authProviderMu.RLock()
+	defer h.authProviderMu.RUnlock()
+
+	return h.authProvider
+}
+
+func (h *Headscale) setAuthProvider(p AuthProvider) {
+	h.authProviderMu.Lock()
+	defer h.authProviderMu.Unlock()
+
+	h.authProvider = p
+}
+
+func (h *Headscale) startOIDCRetry(serverURL string, cfg *types.OIDCConfig) {
+	ctx, cancel := context.WithCancel(context.Background())
+	h.oidcRetryCancel = cancel
+
+	go func() {
+		ticker := time.NewTicker(cfg.RetryInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				discoverCtx, discoverCancel := context.WithTimeout(ctx, 30*time.Second)
+				oidcProvider, err := NewAuthProviderOIDC(discoverCtx, h, serverURL, cfg)
+				discoverCancel()
+
+				if err != nil {
+					log.Debug().Err(err).Msg("retrying OIDC provider discovery: still unavailable")
+
+					continue
+				}
+
+				log.Info().Msg("OIDC provider became available, switching from CLI based authentication")
+				h.setAuthProvider(oidcProvider)
+
+				return
+			}
+		}
+	}()
 }
 
 // Redirect to our TLS url.
@@ -443,6 +496,25 @@ func serveHumaMux(mux http.Handler) http.HandlerFunc {
 	}
 }
 
+func (h *Headscale) authHandlerDispatch(get func(AuthProvider) http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		get(h.getAuthProvider())(w, r)
+	}
+}
+
+func (h *Headscale) oidcHandlerDispatch(get func(*AuthProviderOIDC) http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		provider, ok := h.getAuthProvider().(*AuthProviderOIDC)
+		if !ok {
+			http.NotFound(w, r)
+
+			return
+		}
+
+		get(provider)(w, r)
+	}
+}
+
 func (h *Headscale) createRouter(apiV1Mux, apiV2Mux http.Handler) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(metrics.Collector(metrics.CollectorOpts{
@@ -473,14 +545,12 @@ func (h *Headscale) createRouter(apiV1Mux, apiV2Mux http.Handler) *chi.Mux {
 	r.Get("/health", h.HealthHandler)
 	r.Get("/version", h.VersionHandler)
 	r.Get("/key", h.KeyHandler)
-	r.Get("/register/{auth_id}", h.authProvider.RegisterHandler)
-	r.Get("/auth/{auth_id}", h.authProvider.AuthHandler)
+	r.Get("/register/{auth_id}", h.authHandlerDispatch(func(p AuthProvider) http.HandlerFunc { return p.RegisterHandler }))
+	r.Get("/auth/{auth_id}", h.authHandlerDispatch(func(p AuthProvider) http.HandlerFunc { return p.AuthHandler }))
 
-	if provider, ok := h.authProvider.(*AuthProviderOIDC); ok {
-		r.Get("/oidc/callback", provider.OIDCCallbackHandler)
-		r.Get("/register/confirm/{auth_id}", provider.RegisterConfirmGetHandler)
-		r.Post("/register/confirm/{auth_id}", provider.RegisterConfirmHandler)
-	}
+	r.Get("/oidc/callback", h.oidcHandlerDispatch(func(p *AuthProviderOIDC) http.HandlerFunc { return p.OIDCCallbackHandler }))
+	r.Get("/register/confirm/{auth_id}", h.oidcHandlerDispatch(func(p *AuthProviderOIDC) http.HandlerFunc { return p.RegisterConfirmGetHandler }))
+	r.Post("/register/confirm/{auth_id}", h.oidcHandlerDispatch(func(p *AuthProviderOIDC) http.HandlerFunc { return p.RegisterConfirmHandler }))
 
 	r.Get("/apple", h.AppleConfigMessage)
 	r.Get("/apple/{platform}", h.ApplePlatformConfig)
@@ -804,6 +874,10 @@ func (h *Headscale) Serve() error {
 
 				scheduleCancel()
 				h.ephemeralGC.Close()
+
+				if h.oidcRetryCancel != nil {
+					h.oidcRetryCancel()
+				}
 
 				// Gracefully shut down servers
 				shutdownCtx, cancel := context.WithTimeout(

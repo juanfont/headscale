@@ -367,6 +367,9 @@ unix_socket_permission: "0770"
 #   # Block startup until the identity provider is available and healthy.
 #   only_start_if_oidc_is_available: true
 #
+#   # Interval to retry OIDC provider discovery if unavailable on startup
+#   # retry_interval: 30s
+#
 #   # OpenID Connect Issuer URL from the identity provider
 #   issuer: "https://your-oidc.issuer.com/path"
 #

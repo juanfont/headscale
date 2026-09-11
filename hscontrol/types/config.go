@@ -239,6 +239,7 @@ type OIDCConfig struct {
 	EmailVerifiedRequired      bool
 	UseExpiryFromToken         bool
 	PKCE                       PKCEConfig
+	RetryInterval              time.Duration
 }
 
 type DERPConfig struct {
@@ -470,6 +471,7 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("oidc.scope", []string{oidc.ScopeOpenID, "profile", "email"})
 	viper.SetDefault("oidc.only_start_if_oidc_is_available", true)
+	viper.SetDefault("oidc.retry_interval", "0s")
 	viper.SetDefault("oidc.use_expiry_from_token", false)
 	viper.SetDefault("oidc.pkce.enabled", false)
 	viper.SetDefault("oidc.pkce.method", "S256")
@@ -1276,6 +1278,7 @@ func LoadServerConfig() (*Config, error) {
 			AllowedGroups:         viper.GetStringSlice("oidc.allowed_groups"),
 			EmailVerifiedRequired: viper.GetBool("oidc.email_verified_required"),
 			UseExpiryFromToken:    viper.GetBool("oidc.use_expiry_from_token"),
+			RetryInterval:         viper.GetDuration("oidc.retry_interval"),
 			PKCE: PKCEConfig{
 				Enabled: viper.GetBool("oidc.pkce.enabled"),
 				Method:  viper.GetString("oidc.pkce.method"),
