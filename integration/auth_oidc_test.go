@@ -1935,3 +1935,68 @@ func TestOIDCReloginSameUserRoutesPreserved(t *testing.T) {
 
 	t.Logf("Test completed - verifying issue #2896 fix for OIDC")
 }
+
+func TestOIDCRetryStartup(t *testing.T) {
+	IntegrationSkip(t)
+
+	scenario, err := NewScenario(ScenarioSpec{
+		OIDCUsers: []mockoidc.MockUser{
+			oidcMockUser("user1", true),
+		},
+	})
+	require.NoError(t, err)
+
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	// Stop mock OIDC container to simulate it being unavailable at Headscale startup
+	err = scenario.pool.Client.StopContainer(scenario.mockOIDC.r.Container.ID, 0)
+	require.NoError(t, err)
+
+	oidcMap := map[string]string{
+		"HEADSCALE_OIDC_ISSUER":             scenario.mockOIDC.Issuer(),
+		"HEADSCALE_OIDC_CLIENT_ID":          scenario.mockOIDC.ClientID(),
+		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
+		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
+		"HEADSCALE_OIDC_RETRY_INTERVAL":     "1s",
+	}
+
+	err = scenario.CreateHeadscaleEnvWithLoginURL(
+		nil,
+		hsic.WithTestName("oidcretry"),
+		hsic.WithConfigEnv(oidcMap),
+		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	// Start mock OIDC container back up
+	err = scenario.pool.Client.StartContainer(scenario.mockOIDC.r.Container.ID, nil)
+	require.NoError(t, err)
+
+	ts, err := scenario.CreateTailscaleNode(
+		"unstable",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+	)
+	require.NoError(t, err)
+
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		u, err := ts.LoginWithURL(headscale.GetEndpoint())
+		if !assert.NoError(ct, err) {
+			return
+		}
+
+		_, err = doLoginURL(ts.Hostname(), u)
+		assert.NoError(ct, err)
+	}, integrationutil.StatusReadyTimeout, 1*time.Second)
+
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		if !assert.NoError(ct, err) {
+			return
+		}
+
+		assert.Len(ct, nodes, 1)
+	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll)
+}

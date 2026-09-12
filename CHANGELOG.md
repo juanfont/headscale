@@ -45,6 +45,7 @@ keys remain all-access.
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
 - The peer map is keyed by node ID and reused for writes that cannot change peer visibility, so a routine map request no longer rebuilds it. Adds `headscale_nodestore_snapshot_builds_total` [#3417](https://github.com/juanfont/headscale/issues/3417) [#3450](https://github.com/juanfont/headscale/pull/3450)
+- Add `oidc.retry_interval` option to periodically retry OIDC provider discovery if unavailable on startup
 - Headscale now requires Go 1.27 to build
 
 ## 0.29.4 (unreleased)
