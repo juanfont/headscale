@@ -127,7 +127,7 @@ func TestPersistEmptyApprovedRoutes(t *testing.T) {
 // TestPersistEmptyTags exercises the same persist path for the tags
 // column. State.SetNodeTags rejects an empty slice at the API level
 // (tags are one-way), so the test drives the bug surface directly via
-// NodeStore + persistNodeToDB, which is the same code path the public
+// NodeStore + persistNodeAndRefreshPolicy, which is the same code path the public
 // SetApprovedRoutes call exercises.
 func TestPersistEmptyTags(t *testing.T) {
 	dbPath, s, nodeID := persistTestSetup(t)
@@ -140,7 +140,7 @@ func TestPersistEmptyTags(t *testing.T) {
 	seeded, ok := s.nodeStore.GetNode(nodeID)
 	require.True(t, ok)
 
-	_, _, err := s.persistNodeToDB(seeded)
+	_, _, err := s.persistNodeAndRefreshPolicy(seeded)
 	require.NoError(t, err)
 
 	gotAfterSeed, err := s.DB().GetNodeByID(nodeID)
@@ -153,7 +153,7 @@ func TestPersistEmptyTags(t *testing.T) {
 	})
 	require.True(t, ok)
 
-	_, _, err = s.persistNodeToDB(cleared)
+	_, _, err = s.persistNodeAndRefreshPolicy(cleared)
 	require.NoError(t, err)
 
 	gotAfterClear, err := s.DB().GetNodeByID(nodeID)
@@ -188,7 +188,7 @@ func TestPersistEmptyEndpoints(t *testing.T) {
 	seeded, ok := s.nodeStore.GetNode(nodeID)
 	require.True(t, ok)
 
-	_, _, err := s.persistNodeToDB(seeded)
+	_, _, err := s.persistNodeAndRefreshPolicy(seeded)
 	require.NoError(t, err)
 
 	gotAfterSeed, err := s.DB().GetNodeByID(nodeID)
@@ -201,7 +201,7 @@ func TestPersistEmptyEndpoints(t *testing.T) {
 	})
 	require.True(t, ok)
 
-	_, _, err = s.persistNodeToDB(cleared)
+	_, _, err = s.persistNodeAndRefreshPolicy(cleared)
 	require.NoError(t, err)
 
 	gotAfterClear, err := s.DB().GetNodeByID(nodeID)
@@ -646,4 +646,25 @@ func TestConcurrentPreAuthKeyRegistrationSameMachineKey(t *testing.T) {
 
 	require.Equal(t, 1, s.ListNodes().Len(),
 		"concurrent registrations of one machine key must yield a single node")
+}
+
+// TestUpdatePolicyManagerUsersUnchangedKeepsSnapshot ensures re-sending the
+// same user list does not rebuild peer adjacency, while a real user change
+// does.
+func TestUpdatePolicyManagerUsersUnchangedKeepsSnapshot(t *testing.T) {
+	_, s, _ := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	require.NoError(t, s.UpdatePolicyManagerUsersForTest())
+
+	before := s.nodeStore.data.Load()
+
+	require.NoError(t, s.UpdatePolicyManagerUsersForTest())
+	require.Same(t, before, s.nodeStore.data.Load(),
+		"unchanged users must not rebuild the peer map")
+
+	_, _, err := s.CreateUser(types.User{Name: "second"})
+	require.NoError(t, err)
+	require.NotSame(t, before, s.nodeStore.data.Load(),
+		"a user change must rebuild the peer map")
 }
