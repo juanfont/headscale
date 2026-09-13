@@ -19,13 +19,16 @@ type PolicyManager interface {
 	// MatchersForNode returns matchers for peer relationship determination (unreduced)
 	MatchersForNode(node types.NodeView) ([]matcher.Match, error)
 	// BuildPeerMap constructs peer relationship maps for the given nodes
-	BuildPeerMap(nodes views.Slice[types.NodeView]) map[types.NodeID][]types.NodeView
+	BuildPeerMap(nodes views.Slice[types.NodeView]) map[types.NodeID][]types.NodeID
 	SSHPolicy(baseURL string, node types.NodeView) (*tailcfg.SSHPolicy, error)
 	// SSHCheckParams resolves the SSH check period for a (src, dst) pair
 	// from the current policy, avoiding trust of client-provided URL params.
 	SSHCheckParams(srcNodeID, dstNodeID types.NodeID) (time.Duration, bool)
 	SetPolicy(pol []byte) (bool, error)
-	SetUsers(users []types.User) (bool, error)
+	// SetUsers replaces the user list. policyChanged reports whether clients
+	// need a policy refresh; peerMapChanged reports whether user-derived peer
+	// adjacency may have changed. Both are false when the list is unchanged.
+	SetUsers(users []types.User) (policyChanged, peerMapChanged bool, err error)
 	SetNodes(nodes views.Slice[types.NodeView]) (bool, error)
 	// NodeCanHaveTag reports whether the given node can have the given tag.
 	NodeCanHaveTag(node types.NodeView, tag string) bool

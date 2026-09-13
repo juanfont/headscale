@@ -177,6 +177,11 @@ func (r Change) IsFull() bool {
 // This provides a bounded set of values suitable for Prometheus labels,
 // unlike [Change.Reason] which is free-form text for logging.
 func (r Change) Type() string {
+	// A suppressed update is a healthy outcome, not an unclassified one.
+	if r.IsEmpty() {
+		return "empty"
+	}
+
 	if r.IsFull() {
 		return "full"
 	}
