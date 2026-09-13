@@ -105,6 +105,16 @@ func (u *User) StringID() string {
 	return strconv.FormatUint(uint64(u.ID), 10)
 }
 
+// PolicyEqual reports whether the policy would resolve both users the same
+// way: the same row, and the same name, email, and provider identity that
+// user aliases match on.
+func (u *User) PolicyEqual(o *User) bool {
+	return u.ID == o.ID &&
+		u.Name == o.Name &&
+		u.Email == o.Email &&
+		u.ProviderIdentifier == o.ProviderIdentifier
+}
+
 // TypedID returns a pointer to the user's ID as a [UserID] type.
 // This is a convenience method to avoid ugly casting like ptr.To(types.UserID(user.ID)).
 func (u *User) TypedID() *UserID {

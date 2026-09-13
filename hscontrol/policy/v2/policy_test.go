@@ -4,6 +4,7 @@ import (
 	"net/netip"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
@@ -355,6 +356,83 @@ func TestSSHCheckParamsUnhydratedUserNoPanic(t *testing.T) {
 	}, "SSHCheckParams must not panic when a non-tagged node has an unhydrated User")
 }
 
+func TestSetUsers(t *testing.T) {
+	const allowAll = `{"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`
+
+	const sshCheck = `{
+		"ssh": [
+			{
+				"action": "check",
+				"src": ["user1@headscale.net"],
+				"dst": ["autogroup:self"],
+				"users": ["root"]
+			}
+		]
+	}`
+
+	tests := []struct {
+		name   string
+		policy string
+		mutate func(*types.User)
+
+		wantPolicyChanged  bool
+		wantPeerMapChanged bool
+	}{
+		{
+			name:   "identical users without ssh",
+			policy: allowAll,
+			mutate: func(*types.User) {},
+		},
+		{
+			name:   "identical users with ssh",
+			policy: sshCheck,
+			mutate: func(*types.User) {},
+		},
+		{
+			name:   "timestamp bump only",
+			policy: sshCheck,
+			mutate: func(u *types.User) { u.UpdatedAt = u.UpdatedAt.Add(time.Hour) },
+		},
+		{
+			name:   "display name change without ssh",
+			policy: allowAll,
+			mutate: func(u *types.User) { u.DisplayName = "Renamed" },
+		},
+		{
+			name:   "email change without ssh",
+			policy: allowAll,
+			mutate: func(u *types.User) { u.Email = "other@headscale.net" },
+
+			wantPeerMapChanged: true,
+		},
+		{
+			name:   "rename with ssh",
+			policy: sshCheck,
+			mutate: func(u *types.User) { u.Name = "renamed" },
+
+			wantPolicyChanged:  true,
+			wantPeerMapChanged: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			users := types.Users{{ID: 1, Name: "user1", Email: "user1@headscale.net"}}
+
+			pm, err := NewPolicyManager([]byte(tt.policy), users, types.Nodes{}.ViewSlice())
+			require.NoError(t, err)
+
+			updated := slices.Clone(users)
+			tt.mutate(&updated[0])
+
+			policyChanged, peerMapChanged, err := pm.SetUsers(updated)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantPolicyChanged, policyChanged, "policyChanged")
+			require.Equal(t, tt.wantPeerMapChanged, peerMapChanged, "peerMapChanged")
+		})
+	}
+}
+
 // TestInvalidateGlobalPolicyCache tests the cache invalidation logic for global policies.
 func TestInvalidateGlobalPolicyCache(t *testing.T) {
 	mustIPPtr := func(s string) *netip.Addr {
@@ -663,9 +741,8 @@ func TestAutogroupSelfWithOtherRules(t *testing.T) {
 	test1Peers := peerMap[test1Node.ID]
 
 	// Verify test-1 can see the router (group:home -> tag:node-router rule)
-	require.True(t, slices.ContainsFunc(test1Peers, func(n types.NodeView) bool {
-		return n.ID() == test2RouterNode.ID
-	}), "test-1 should see test-2's router via group:home -> tag:node-router rule, even when autogroup:self rule exists (issue #2838)")
+	require.True(t, slices.Contains(test1Peers, test2RouterNode.ID),
+		"test-1 should see test-2's router via group:home -> tag:node-router rule, even when autogroup:self rule exists (issue #2838)")
 
 	// Verify that test-1 has filter rules (including autogroup:self and tag:node-router access)
 	rules, err := pm.FilterForNode(test1Node.View())
@@ -825,12 +902,12 @@ func TestTagPropagationToPeerMap(t *testing.T) {
 	// Check user2's peers - should include user1
 	user2Peers := initialPeerMap[user2Node.ID]
 	require.Len(t, user2Peers, 1, "user2 should have 1 peer initially (user1 with tag:web)")
-	require.Equal(t, user1Node.ID, user2Peers[0].ID(), "user2's peer should be user1")
+	require.Equal(t, user1Node.ID, user2Peers[0], "user2's peer should be user1")
 
 	// Check user1's peers - should include user2 (bidirectional ACL)
 	user1Peers := initialPeerMap[user1Node.ID]
 	require.Len(t, user1Peers, 1, "user1 should have 1 peer initially (user2)")
-	require.Equal(t, user2Node.ID, user1Peers[0].ID(), "user1's peer should be user2")
+	require.Equal(t, user2Node.ID, user1Peers[0], "user1's peer should be user2")
 
 	// Now change user1's tags: remove tag:web, keep only tag:internal
 	user1NodeUpdated := &types.Node{
@@ -957,17 +1034,15 @@ func TestAutogroupSelfWithAdminOverride(t *testing.T) {
 
 	// Admin should see the tagged server as a peer (via group:admin -> *:* rule)
 	adminPeers := peerMap[adminNode.ID]
-	require.True(t, slices.ContainsFunc(adminPeers, func(n types.NodeView) bool {
-		return n.ID() == user1TaggedNode.ID
-	}), "admin should see tagged server as peer via *:* rule (issue #2990)")
+	require.True(t, slices.Contains(adminPeers, user1TaggedNode.ID),
+		"admin should see tagged server as peer via *:* rule (issue #2990)")
 
 	// Tagged server should also see admin as a peer (symmetric visibility)
 	// Even though tagged server cannot ACCESS admin, it should still SEE admin
 	// because admin CAN access it. This is required for proper network operation.
 	taggedPeers := peerMap[user1TaggedNode.ID]
-	require.True(t, slices.ContainsFunc(taggedPeers, func(n types.NodeView) bool {
-		return n.ID() == adminNode.ID
-	}), "tagged server should see admin as peer (symmetric visibility)")
+	require.True(t, slices.Contains(taggedPeers, adminNode.ID),
+		"tagged server should see admin as peer (symmetric visibility)")
 }
 
 // TestAutogroupSelfSymmetricVisibility verifies that peer visibility is symmetric:
@@ -1030,16 +1105,14 @@ func TestAutogroupSelfSymmetricVisibility(t *testing.T) {
 
 	// Device A (user1) should see device B (tag:web) as peer
 	aPeers := peerMap[deviceA.ID]
-	require.True(t, slices.ContainsFunc(aPeers, func(n types.NodeView) bool {
-		return n.ID() == deviceB.ID
-	}), "device A should see device B as peer (user1 -> tag:web rule)")
+	require.True(t, slices.Contains(aPeers, deviceB.ID),
+		"device A should see device B as peer (user1 -> tag:web rule)")
 
 	// Device B (tag:web) should ALSO see device A as peer (symmetric visibility)
 	// Even though B cannot ACCESS A, B should still SEE A as a peer
 	bPeers := peerMap[deviceB.ID]
-	require.True(t, slices.ContainsFunc(bPeers, func(n types.NodeView) bool {
-		return n.ID() == deviceA.ID
-	}), "device B should see device A as peer (symmetric visibility)")
+	require.True(t, slices.Contains(bPeers, deviceA.ID),
+		"device B should see device A as peer (symmetric visibility)")
 }
 
 // TestAutogroupSelfDoesNotBreakOtherUsersAccess reproduces the Discord scenario
@@ -1175,11 +1248,7 @@ func TestAutogroupSelfDoesNotBreakOtherUsersAccess(t *testing.T) {
 
 	// Helper to check if node A sees node B
 	canSee := func(a, b types.NodeID) bool {
-		peers := peerMap[a]
-
-		return slices.ContainsFunc(peers, func(n types.NodeView) bool {
-			return n.ID() == b
-		})
+		return slices.Contains(peerMap[a], b)
 	}
 
 	// Superadmin should see all tagged servers
@@ -1279,16 +1348,14 @@ func TestEmptyFilterNodesStillVisible(t *testing.T) {
 
 	// Admin should see the tagged server
 	adminPeers := peerMap[adminDevice.ID]
-	require.True(t, slices.ContainsFunc(adminPeers, func(n types.NodeView) bool {
-		return n.ID() == taggedServer.ID
-	}), "admin should see tagged server")
+	require.True(t, slices.Contains(adminPeers, taggedServer.ID),
+		"admin should see tagged server")
 
 	// Tagged server should see admin (symmetric visibility)
 	// Even though the server has no outbound rules (empty filter)
 	serverPeers := peerMap[taggedServer.ID]
-	require.True(t, slices.ContainsFunc(serverPeers, func(n types.NodeView) bool {
-		return n.ID() == adminDevice.ID
-	}), "tagged server should see admin (symmetric visibility)")
+	require.True(t, slices.Contains(serverPeers, adminDevice.ID),
+		"tagged server should see admin (symmetric visibility)")
 }
 
 // TestAutogroupSelfCombinedWithTags verifies that autogroup:self combined with
@@ -1356,11 +1423,7 @@ func TestAutogroupSelfCombinedWithTags(t *testing.T) {
 
 	// Helper to check visibility
 	canSee := func(a, b types.NodeID) bool {
-		peers := peerMap[a]
-
-		return slices.ContainsFunc(peers, func(n types.NodeView) bool {
-			return n.ID() == b
-		})
+		return slices.Contains(peerMap[a], b)
 	}
 
 	// Admin laptop should see: admin phone (autogroup:self) AND web server (tag:web)
@@ -1449,11 +1512,7 @@ func TestIssue2990SameUserTaggedDevice(t *testing.T) {
 	peerMap := pm.BuildPeerMap(nodes.ViewSlice())
 
 	canSee := func(a, b types.NodeID) bool {
-		peers := peerMap[a]
-
-		return slices.ContainsFunc(peers, func(n types.NodeView) bool {
-			return n.ID() == b
-		})
+		return slices.Contains(peerMap[a], b)
 	}
 
 	// node1 should see node2 (via group:admin -> *:* and symmetric visibility)
@@ -2127,9 +2186,7 @@ func TestBuildPeerMap_AutogroupInternetMakesExitNodeVisible(t *testing.T) {
 	peerMap := pm.BuildPeerMap(nodes.ViewSlice())
 
 	require.True(t,
-		slices.ContainsFunc(peerMap[aliceNode.ID], func(n types.NodeView) bool {
-			return n.ID() == exitNode.ID
-		}),
+		slices.Contains(peerMap[aliceNode.ID], exitNode.ID),
 		"alice should see the exit node as a peer when an ACL grants autogroup:internet (#3212)")
 
 	_, matchers := pm.Filter()
@@ -2449,12 +2506,6 @@ func TestPeerRelayGrantMakesRelayVisible(t *testing.T) {
 		},
 	}
 
-	containsID := func(peers []types.NodeView, id types.NodeID) bool {
-		return slices.ContainsFunc(peers, func(nv types.NodeView) bool {
-			return nv.ID() == id
-		})
-	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			pm, err := NewPolicyManager(
@@ -2465,10 +2516,10 @@ func TestPeerRelayGrantMakesRelayVisible(t *testing.T) {
 			peerMap := pm.BuildPeerMap(tt.nodes.ViewSlice())
 
 			for _, srcID := range tt.srcIDs {
-				require.True(t, containsID(peerMap[srcID], tt.relayID),
+				require.True(t, slices.Contains(peerMap[srcID], tt.relayID),
 					"node %d must see relay %d via cap/relay alone",
 					srcID, tt.relayID)
-				require.True(t, containsID(peerMap[tt.relayID], srcID),
+				require.True(t, slices.Contains(peerMap[tt.relayID], srcID),
 					"relay %d must see node %d via cap/relay alone",
 					tt.relayID, srcID)
 			}

@@ -89,6 +89,13 @@ var (
 		Name:      "nodestore_queue_depth",
 		Help:      "Current depth of NodeStore write queue",
 	})
+
+	// Bounded labels only: no node IDs or free-form reasons.
+	nodeStoreSnapshotBuilds = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: prometheusNamespace,
+		Name:      "nodestore_snapshot_builds_total",
+		Help:      "Snapshot builds by how peer adjacency was obtained: recomputed through the policy or reused from the previous snapshot.",
+	}, []string{"peers"})
 )
 
 // NodeStore is a thread-safe store for nodes.
@@ -124,7 +131,7 @@ func NewNodeStore(allNodes types.Nodes, peersFunc PeersFunc, batchSize int, batc
 		nodes[n.ID] = *n
 	}
 
-	snap := snapshotFromNodes(nodes, peersFunc, nil)
+	snap := snapshotFromNodes(nodes, peersFunc, nil, false, false)
 
 	store := &NodeStore{
 		peersFunc:    peersFunc,
@@ -148,13 +155,18 @@ func NewNodeStore(allNodes types.Nodes, peersFunc PeersFunc, batchSize int, batc
 type Snapshot struct {
 	// nodesByID is the main source of truth for nodes.
 	nodesByID map[types.NodeID]types.Node
+	// nodeViewsByID resolves peer adjacency IDs to immutable views from this
+	// snapshot without rebuilding every peer slice on each write.
+	nodeViewsByID map[types.NodeID]types.NodeView
 
 	// calculated from nodesByID
 	nodesByNodeKey    map[key.NodePublic]types.NodeView
 	nodesByMachineKey map[key.MachinePublic]map[types.UserID]types.NodeView
-	peersByNode       map[types.NodeID][]types.NodeView
-	nodesByUser       map[types.UserID][]types.NodeView
-	allNodes          []types.NodeView
+	// peersByNode stores immutable adjacency as IDs; ListPeers resolves the
+	// corresponding views through nodeViewsByID.
+	peersByNode map[types.NodeID][]types.NodeID
+	nodesByUser map[types.UserID][]types.NodeView
+	allNodes    []types.NodeView
 
 	// routes maps each prefix to its current primary advertiser. The
 	// previous assignment is carried over when still valid so the
@@ -167,7 +179,7 @@ type Snapshot struct {
 // with the relationships between nodes and their peers.
 // This will typically be used to calculate which nodes can see each other
 // based on the current policy.
-type PeersFunc func(nodes []types.NodeView) map[types.NodeID][]types.NodeView
+type PeersFunc func(nodes []types.NodeView) map[types.NodeID][]types.NodeID
 
 // work represents a single operation to be performed on the [NodeStore].
 type work struct {
@@ -186,6 +198,22 @@ type work struct {
 	// prober applying multiple probe results at once) cannot have a
 	// partial snapshot published between the updates.
 	multiUpdates map[types.NodeID]UpdateNodeFunc
+}
+
+// updateChanges reports whether an in-place update moved a peer-visibility
+// input (which also re-elects routes) or only a route-election input.
+// Peer visibility depends on what the policy reads; election additionally
+// depends on online and health state, treating unknown online as offline.
+func updateChanges(pre, post *types.Node) (bool, bool) {
+	preView, postView := pre.View(), post.View()
+	if postView.HasPolicyChange(preView) || postView.HasNetworkChanges(preView) {
+		return true, true
+	}
+
+	wasOnline := pre.IsOnline != nil && *pre.IsOnline
+	isOnline := post.IsOnline != nil && *post.IsOnline
+
+	return false, wasOnline != isOnline || pre.Unhealthy != post.Unhealthy
 }
 
 // PutNode adds or updates a node in the store.
@@ -445,6 +473,12 @@ func (s *NodeStore) applyBatch(batch []work) {
 	// NodeView for that work.
 	setErrResults := make(map[*work]error)
 
+	// relationChanged forces a peersFunc run; electionChanged forces a
+	// route re-election. put/del/setName/rebuildPeerMaps are treated as
+	// relation-changing; updateMulti compares the node before and after.
+	relationChanged := false
+	electionChanged := false
+
 	for i := range batch {
 		w := &batch[i]
 		switch w.op {
@@ -456,6 +490,9 @@ func (s *NodeStore) applyBatch(batch []work) {
 			if w.nodeResult != nil {
 				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
 			}
+
+			relationChanged = true
+			electionChanged = true
 		case updateMulti:
 			for id, fn := range w.multiUpdates {
 				n, exists := nodes[id]
@@ -464,6 +501,7 @@ func (s *NodeStore) applyBatch(batch []work) {
 				}
 
 				oldGivenName := n.GivenName
+				pre := n.Clone()
 				fn(&n)
 
 				if n.GivenName != oldGivenName {
@@ -471,6 +509,10 @@ func (s *NodeStore) applyBatch(batch []work) {
 				}
 
 				nodes[id] = n
+
+				relation, election := updateChanges(pre, &n)
+				relationChanged = relationChanged || relation
+				electionChanged = electionChanged || election
 			}
 		case del:
 			delete(nodes, w.nodeID)
@@ -478,6 +520,9 @@ func (s *NodeStore) applyBatch(batch []work) {
 			if w.nodeResult != nil {
 				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
 			}
+
+			relationChanged = true
+			electionChanged = true
 		case setName:
 			n, exists := nodes[w.nodeID]
 			if !exists {
@@ -513,15 +558,28 @@ func (s *NodeStore) applyBatch(batch []work) {
 			n.GivenName = w.name
 			nodes[w.nodeID] = n
 			nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
+			relationChanged = true
+			electionChanged = true
 		case rebuildPeerMaps:
 			// rebuildPeerMaps doesn't modify nodes, it just forces the snapshot rebuild
 			// below to recalculate peer relationships using the current peersFunc
 			rebuildOps = append(rebuildOps, w)
+			relationChanged = true
+			electionChanged = true
 		}
 	}
 
 	prev := s.data.Load()
-	newSnap := snapshotFromNodes(nodes, s.peersFunc, prev.routes)
+
+	// A relation change recomputes adjacency; anything else reuses the
+	// previous peer IDs and re-elects routes only if an election input moved.
+	if relationChanged {
+		nodeStoreSnapshotBuilds.WithLabelValues("recomputed").Inc()
+	} else {
+		nodeStoreSnapshotBuilds.WithLabelValues("reused").Inc()
+	}
+
+	newSnap := snapshotFromNodes(nodes, s.peersFunc, prev, !relationChanged, !electionChanged)
 	s.data.Store(&newSnap)
 
 	// Update node count gauge
@@ -596,49 +654,73 @@ func resolveGivenName(nodes map[types.NodeID]types.Node, self types.NodeID, base
 	}
 }
 
-// snapshotFromNodes builds the index maps and primary-route table for
-// a new [Snapshot]. prevRoutes carries forward the previous primary
-// assignment so a still-valid choice survives unrelated batches.
+// snapshotFromNodes builds a Snapshot from nodes. With reusePeers the
+// previous peer-ID adjacency is carried over unchanged; with reuseRoutes
+// the previous route election is. ListPeers resolves adjacency IDs
+// through this snapshot's fresh views, so a reused adjacency never
+// serves stale node payloads. prev may be nil only when both reuse
+// flags are false.
 func snapshotFromNodes(
 	nodes map[types.NodeID]types.Node,
 	peersFunc PeersFunc,
-	prevRoutes map[netip.Prefix]types.NodeID,
+	prev *Snapshot,
+	reusePeers, reuseRoutes bool,
 ) Snapshot {
 	timer := prometheus.NewTimer(nodeStoreSnapshotBuildDuration)
 	defer timer.ObserveDuration()
 
 	allNodes := make([]types.NodeView, 0, len(nodes))
+	nodeViewsByID := make(map[types.NodeID]types.NodeView, len(nodes))
+
 	for _, n := range nodes {
-		allNodes = append(allNodes, n.View())
+		nv := n.View()
+		allNodes = append(allNodes, nv)
+		nodeViewsByID[n.ID] = nv
 	}
 
-	routes, isPrimaryRoute := electPrimaryRoutes(nodes, prevRoutes)
+	var (
+		routes         map[netip.Prefix]types.NodeID
+		isPrimaryRoute map[types.NodeID]bool
+	)
+
+	if reuseRoutes {
+		routes, isPrimaryRoute = prev.routes, prev.isPrimaryRoute
+	} else {
+		// Carrying the previous assignment forward lets a still-valid
+		// primary survive unrelated batches.
+		var prevRoutes map[netip.Prefix]types.NodeID
+		if prev != nil {
+			prevRoutes = prev.routes
+		}
+
+		routes, isPrimaryRoute = electPrimaryRoutes(nodes, prevRoutes)
+	}
+
+	var peerIDsByNode map[types.NodeID][]types.NodeID
+
+	if reusePeers {
+		peerIDsByNode = prev.peersByNode
+	} else {
+		peersTimer := prometheus.NewTimer(nodeStorePeersCalculationDuration)
+		peerIDsByNode = peersFunc(allNodes)
+
+		peersTimer.ObserveDuration()
+	}
 
 	newSnap := Snapshot{
 		nodesByID:         nodes,
+		nodeViewsByID:     nodeViewsByID,
 		allNodes:          allNodes,
 		nodesByNodeKey:    make(map[key.NodePublic]types.NodeView),
 		nodesByMachineKey: make(map[key.MachinePublic]map[types.UserID]types.NodeView),
-
-		// peersByNode is most likely the most expensive operation,
-		// it will use the list of all nodes, combined with the
-		// current policy to precalculate which nodes are peers and
-		// can see each other.
-		peersByNode: func() map[types.NodeID][]types.NodeView {
-			peersTimer := prometheus.NewTimer(nodeStorePeersCalculationDuration)
-			defer peersTimer.ObserveDuration()
-
-			return peersFunc(allNodes)
-		}(),
-		nodesByUser: make(map[types.UserID][]types.NodeView),
-
-		routes:         routes,
-		isPrimaryRoute: isPrimaryRoute,
+		peersByNode:       peerIDsByNode,
+		nodesByUser:       make(map[types.UserID][]types.NodeView),
+		routes:            routes,
+		isPrimaryRoute:    isPrimaryRoute,
 	}
 
-	// Build nodesByUser, nodesByNodeKey, and nodesByMachineKey maps
 	for _, n := range nodes {
-		nodeView := n.View()
+		nodeView := nodeViewsByID[n.ID]
 		userID := n.TypedUserID()
 
 		// Tagged nodes are owned by their tags, not a user,
@@ -649,7 +731,6 @@ func snapshotFromNodes(
 
 		newSnap.nodesByNodeKey[n.NodeKey] = nodeView
 
-		// Build machine key index
 		if newSnap.nodesByMachineKey[n.MachineKey] == nil {
 			newSnap.nodesByMachineKey[n.MachineKey] = make(map[types.UserID]types.NodeView)
 		}
@@ -882,7 +963,17 @@ func (s *NodeStore) ListPeers(id types.NodeID) views.Slice[types.NodeView] {
 
 	nodeStoreOperations.WithLabelValues("list_peers").Inc()
 
-	return views.SliceOf(s.data.Load().peersByNode[id])
+	snapshot := s.data.Load()
+	peerIDs := snapshot.peersByNode[id]
+	peers := make([]types.NodeView, 0, len(peerIDs))
+
+	for _, peerID := range peerIDs {
+		if peer, ok := snapshot.nodeViewsByID[peerID]; ok {
+			peers = append(peers, peer)
+		}
+	}
+
+	return views.SliceOf(peers)
 }
 
 // PrimaryRouteFor returns the current primary advertiser for prefix.
@@ -987,7 +1078,11 @@ func (s *NodeStore) RebuildPeerMaps() {
 		rebuildResult: result,
 	}
 
-	s.writeQueue <- w
+	select {
+	case s.writeQueue <- w:
+	case <-s.stopped:
+		return
+	}
 
 	<-result
 }

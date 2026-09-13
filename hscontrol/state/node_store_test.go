@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
 
@@ -26,8 +28,8 @@ func TestSnapshotFromNodes(t *testing.T) {
 			name: "empty nodes",
 			setupFunc: func() (map[types.NodeID]types.Node, PeersFunc) {
 				nodes := make(map[types.NodeID]types.Node)
-				peersFunc := func(nodes []types.NodeView) map[types.NodeID][]types.NodeView {
-					return make(map[types.NodeID][]types.NodeView)
+				peersFunc := func(nodes []types.NodeView) map[types.NodeID][]types.NodeID {
+					return make(map[types.NodeID][]types.NodeID)
 				}
 
 				return nodes, peersFunc
@@ -79,9 +81,9 @@ func TestSnapshotFromNodes(t *testing.T) {
 
 				// Each node sees the other as peer (but not itself)
 				assert.Len(t, snapshot.peersByNode[1], 1)
-				assert.Equal(t, types.NodeID(2), snapshot.peersByNode[1][0].ID())
+				assert.Equal(t, types.NodeID(2), snapshot.peersByNode[1][0])
 				assert.Len(t, snapshot.peersByNode[2], 1)
-				assert.Equal(t, types.NodeID(1), snapshot.peersByNode[2][0].ID())
+				assert.Equal(t, types.NodeID(1), snapshot.peersByNode[2][0])
 				assert.Len(t, snapshot.nodesByUser[1], 2)
 			},
 		},
@@ -133,17 +135,17 @@ func TestSnapshotFromNodes(t *testing.T) {
 
 				// Odd nodes should only see other odd nodes as peers
 				require.Len(t, snapshot.peersByNode[1], 1)
-				assert.Equal(t, types.NodeID(3), snapshot.peersByNode[1][0].ID())
+				assert.Equal(t, types.NodeID(3), snapshot.peersByNode[1][0])
 
 				require.Len(t, snapshot.peersByNode[3], 1)
-				assert.Equal(t, types.NodeID(1), snapshot.peersByNode[3][0].ID())
+				assert.Equal(t, types.NodeID(1), snapshot.peersByNode[3][0])
 
 				// Even nodes should only see other even nodes as peers
 				require.Len(t, snapshot.peersByNode[2], 1)
-				assert.Equal(t, types.NodeID(4), snapshot.peersByNode[2][0].ID())
+				assert.Equal(t, types.NodeID(4), snapshot.peersByNode[2][0])
 
 				require.Len(t, snapshot.peersByNode[4], 1)
-				assert.Equal(t, types.NodeID(2), snapshot.peersByNode[4][0].ID())
+				assert.Equal(t, types.NodeID(2), snapshot.peersByNode[4][0])
 			},
 		},
 	}
@@ -151,7 +153,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			nodes, peersFunc := tt.setupFunc()
-			snapshot := snapshotFromNodes(nodes, peersFunc, nil)
+			snapshot := snapshotFromNodes(nodes, peersFunc, nil, false, false)
 			tt.validate(t, nodes, snapshot)
 		})
 	}
@@ -190,14 +192,14 @@ func createTestNode(nodeID types.NodeID, userID uint, username, hostname string)
 
 // Peer functions
 
-func allowAllPeersFunc(nodes []types.NodeView) map[types.NodeID][]types.NodeView {
-	ret := make(map[types.NodeID][]types.NodeView, len(nodes))
+func allowAllPeersFunc(nodes []types.NodeView) map[types.NodeID][]types.NodeID {
+	ret := make(map[types.NodeID][]types.NodeID, len(nodes))
 	for _, node := range nodes {
-		var peers []types.NodeView
+		var peers []types.NodeID
 
 		for _, n := range nodes {
 			if n.ID() != node.ID() {
-				peers = append(peers, n)
+				peers = append(peers, n.ID())
 			}
 		}
 
@@ -207,10 +209,10 @@ func allowAllPeersFunc(nodes []types.NodeView) map[types.NodeID][]types.NodeView
 	return ret
 }
 
-func oddEvenPeersFunc(nodes []types.NodeView) map[types.NodeID][]types.NodeView {
-	ret := make(map[types.NodeID][]types.NodeView, len(nodes))
+func oddEvenPeersFunc(nodes []types.NodeView) map[types.NodeID][]types.NodeID {
+	ret := make(map[types.NodeID][]types.NodeID, len(nodes))
 	for _, node := range nodes {
-		var peers []types.NodeView
+		var peers []types.NodeID
 
 		nodeIsOdd := node.ID()%2 == 1
 
@@ -223,7 +225,7 @@ func oddEvenPeersFunc(nodes []types.NodeView) map[types.NodeID][]types.NodeView 
 
 			// Only add peer if both are odd or both are even
 			if nodeIsOdd == peerIsOdd {
-				peers = append(peers, n)
+				peers = append(peers, n.ID())
 			}
 		}
 
@@ -313,9 +315,9 @@ func TestNodeStoreOperations(t *testing.T) {
 
 						// Now both nodes should see each other as peers
 						assert.Len(t, snapshot.peersByNode[1], 1)
-						assert.Equal(t, types.NodeID(2), snapshot.peersByNode[1][0].ID())
+						assert.Equal(t, types.NodeID(2), snapshot.peersByNode[1][0])
 						assert.Len(t, snapshot.peersByNode[2], 1)
-						assert.Equal(t, types.NodeID(1), snapshot.peersByNode[2][0].ID())
+						assert.Equal(t, types.NodeID(1), snapshot.peersByNode[2][0])
 						assert.Len(t, snapshot.nodesByUser[1], 2)
 					},
 				},
@@ -382,9 +384,9 @@ func TestNodeStoreOperations(t *testing.T) {
 
 						// Remaining nodes should see each other as peers
 						assert.Len(t, snapshot.peersByNode[1], 1)
-						assert.Equal(t, types.NodeID(3), snapshot.peersByNode[1][0].ID())
+						assert.Equal(t, types.NodeID(3), snapshot.peersByNode[1][0])
 						assert.Len(t, snapshot.peersByNode[3], 1)
-						assert.Equal(t, types.NodeID(1), snapshot.peersByNode[3][0].ID())
+						assert.Equal(t, types.NodeID(1), snapshot.peersByNode[3][0])
 
 						// User groupings updated
 						assert.Len(t, snapshot.nodesByUser[1], 1) // user1 now has only node 1
@@ -475,16 +477,16 @@ func TestNodeStoreOperations(t *testing.T) {
 
 						// Verify odd-even peer relationships
 						require.Len(t, snapshot.peersByNode[1], 1)
-						assert.Equal(t, types.NodeID(3), snapshot.peersByNode[1][0].ID())
+						assert.Equal(t, types.NodeID(3), snapshot.peersByNode[1][0])
 
 						require.Len(t, snapshot.peersByNode[2], 1)
-						assert.Equal(t, types.NodeID(4), snapshot.peersByNode[2][0].ID())
+						assert.Equal(t, types.NodeID(4), snapshot.peersByNode[2][0])
 
 						require.Len(t, snapshot.peersByNode[3], 1)
-						assert.Equal(t, types.NodeID(1), snapshot.peersByNode[3][0].ID())
+						assert.Equal(t, types.NodeID(1), snapshot.peersByNode[3][0])
 
 						require.Len(t, snapshot.peersByNode[4], 1)
-						assert.Equal(t, types.NodeID(2), snapshot.peersByNode[4][0].ID())
+						assert.Equal(t, types.NodeID(2), snapshot.peersByNode[4][0])
 					},
 				},
 				{
@@ -500,9 +502,9 @@ func TestNodeStoreOperations(t *testing.T) {
 
 						// Even nodes should still see each other
 						require.Len(t, snapshot.peersByNode[2], 1)
-						assert.Equal(t, types.NodeID(4), snapshot.peersByNode[2][0].ID())
+						assert.Equal(t, types.NodeID(4), snapshot.peersByNode[2][0])
 						require.Len(t, snapshot.peersByNode[4], 1)
-						assert.Equal(t, types.NodeID(2), snapshot.peersByNode[4][0].ID())
+						assert.Equal(t, types.NodeID(2), snapshot.peersByNode[4][0])
 					},
 				},
 			},
@@ -1225,16 +1227,16 @@ func TestRebuildPeerMapsWithChangedPeersFunc(t *testing.T) {
 
 	// This simulates how PolicyManager.BuildPeerMap works - it reads state
 	// that can change between calls
-	dynamicPeersFunc := func(nodes []types.NodeView) map[types.NodeID][]types.NodeView {
-		ret := make(map[types.NodeID][]types.NodeView, len(nodes))
+	dynamicPeersFunc := func(nodes []types.NodeView) map[types.NodeID][]types.NodeID {
+		ret := make(map[types.NodeID][]types.NodeID, len(nodes))
 		if allowPeers {
 			// Allow all peers
 			for _, node := range nodes {
-				var peers []types.NodeView
+				var peers []types.NodeID
 
 				for _, n := range nodes {
 					if n.ID() != node.ID() {
-						peers = append(peers, n)
+						peers = append(peers, n.ID())
 					}
 				}
 
@@ -1243,7 +1245,7 @@ func TestRebuildPeerMapsWithChangedPeersFunc(t *testing.T) {
 		} else {
 			// Allow no peers
 			for _, node := range nodes {
-				ret[node.ID()] = []types.NodeView{}
+				ret[node.ID()] = []types.NodeID{}
 			}
 		}
 
@@ -1265,8 +1267,8 @@ func TestRebuildPeerMapsWithChangedPeersFunc(t *testing.T) {
 	snapshot := store.data.Load()
 	require.Len(t, snapshot.peersByNode[1], 1, "node1 should have 1 peer initially")
 	require.Len(t, snapshot.peersByNode[2], 1, "node2 should have 1 peer initially")
-	require.Equal(t, types.NodeID(2), snapshot.peersByNode[1][0].ID())
-	require.Equal(t, types.NodeID(1), snapshot.peersByNode[2][0].ID())
+	require.Equal(t, types.NodeID(2), snapshot.peersByNode[1][0])
+	require.Equal(t, types.NodeID(1), snapshot.peersByNode[2][0])
 
 	// Now "change the policy" by disabling peers
 	allowPeers = false
@@ -1361,6 +1363,266 @@ func TestGetNodesByMachineKeyAllUsers(t *testing.T) {
 		require.True(t, all[types.UserID(0)].IsTagged())
 		require.Equal(t, types.NodeID(3), all[types.UserID(0)].ID())
 	})
+}
+
+// TestPeerIrrelevantWriteReusesPeerMap ensures writes that cannot alter peer
+// visibility neither run peersFunc nor copy the immutable adjacency map.
+//
+// peersByNode is derived from addresses, ownership, routes, tags, and exit-node
+// status. LastSeen and node keys are payload/index data, so neither can change
+// adjacency.
+func TestPeerIrrelevantWriteReusesPeerMap(t *testing.T) {
+	var peersCalls atomic.Int64
+
+	countingPeersFunc := func(nodes []types.NodeView) map[types.NodeID][]types.NodeID {
+		peersCalls.Add(1)
+
+		return allowAllPeersFunc(nodes)
+	}
+
+	node1 := createTestNode(1, 1, "user1", "node1")
+	node2 := createTestNode(2, 2, "user2", "node2")
+
+	store := NewNodeStore(types.Nodes{&node1, &node2}, countingPeersFunc, TestBatchSize, TestBatchTimeout)
+	store.Start()
+
+	defer store.Stop()
+
+	// Ignore the initial snapshot build.
+	peersCalls.Store(0)
+
+	before := store.data.Load()
+	require.NotEmpty(t, before.peersByNode[1])
+
+	now := time.Now()
+	_, ok := store.UpdateNode(1, func(n *types.Node) {
+		n.LastSeen = &now
+	})
+	require.True(t, ok, "update should apply")
+
+	newNodeKey := key.NewNode().Public()
+	_, ok = store.UpdateNode(1, func(n *types.Node) {
+		n.NodeKey = newNodeKey
+	})
+	require.True(t, ok, "key rotation should apply")
+
+	indexed, ok := store.GetNodeByNodeKey(newNodeKey)
+	require.True(t, ok, "rotated key must be present in the rebuilt key index")
+	require.Equal(t, types.NodeID(1), indexed.ID())
+
+	peersOf2 := store.ListPeers(2)
+	require.Equal(t, 1, peersOf2.Len())
+	require.Equal(t, newNodeKey, peersOf2.At(0).NodeKey(),
+		"reused adjacency must resolve to the fresh view")
+
+	require.Equalf(t, int64(0), peersCalls.Load(),
+		"payload/index-only writes must not recompute the peer map, got %d recomputations",
+		peersCalls.Load())
+
+	_, ok = store.UpdateNode(1, func(n *types.Node) {
+		n.User = nil
+	})
+	require.True(t, ok, "user association update should apply")
+	require.Equal(t, int64(1), peersCalls.Load(),
+		"a BuildPeerMap input must recompute peer adjacency")
+}
+
+// TestHealthOnlyWriteReusesPeerMap ensures a health flip re-elects routes
+// without recomputing peer adjacency.
+func TestHealthOnlyWriteReusesPeerMap(t *testing.T) {
+	var peersCalls atomic.Int64
+
+	countingPeersFunc := func(nodes []types.NodeView) map[types.NodeID][]types.NodeID {
+		peersCalls.Add(1)
+
+		return allowAllPeersFunc(nodes)
+	}
+
+	// Set up two HA candidates for the same prefix.
+	node1 := createTestNode(1, 1, "user1", "router1")
+	node2 := createTestNode(2, 1, "user1", "router2")
+
+	pfx := netip.MustParsePrefix("10.99.0.0/24")
+	node1.Hostinfo = &tailcfg.Hostinfo{Hostname: "router1", RoutableIPs: []netip.Prefix{pfx}}
+	node2.Hostinfo = &tailcfg.Hostinfo{Hostname: "router2", RoutableIPs: []netip.Prefix{pfx}}
+	node1.ApprovedRoutes = append(node1.ApprovedRoutes, pfx)
+	node2.ApprovedRoutes = append(node2.ApprovedRoutes, pfx)
+
+	online := true
+	node1.IsOnline = &online
+	node2.IsOnline = &online
+
+	store := NewNodeStore(types.Nodes{&node1, &node2}, countingPeersFunc, TestBatchSize, TestBatchTimeout)
+	store.Start()
+
+	defer store.Stop()
+
+	primary, ok := store.PrimaryRouteFor(pfx)
+	require.True(t, ok)
+	require.Equal(t, types.NodeID(1), primary)
+
+	peersCalls.Store(0) // ignore initial snapshot build
+
+	// Healthy -> healthy (no-op): no election, no relation rebuild.
+	_, ok = store.UpdateNode(1, func(n *types.Node) {
+		// Simulate BatchSetNodeHealth setter semantics with the same
+		// stored value. healthSetter(healthy=true) sets Unhealthy=false;
+		// node already has Unhealthy=false.
+		healthSetter(true)(n)
+	})
+	require.True(t, ok)
+
+	// Healthy -> unhealthy (real transition): election must run, but
+	// relation must NOT be recomputed (Unhealthy is election-relevant,
+	// not relation-relevant).
+	_, ok = store.UpdateNode(1, healthSetter(false))
+	require.True(t, ok)
+	primary, ok = store.PrimaryRouteFor(pfx)
+	require.True(t, ok)
+	require.Equal(t, types.NodeID(2), primary)
+
+	// Unhealthy -> unhealthy (no-op): no relation rebuild.
+	_, ok = store.UpdateNode(1, healthSetter(false))
+	require.True(t, ok)
+
+	require.Equal(t, int64(0), peersCalls.Load(),
+		"no health-only write may recompute the peer map; got %d recomputations",
+		peersCalls.Load())
+}
+
+func BenchmarkSnapshotPayloadDense(b *testing.B) {
+	const nodeCount = 500
+
+	nodes := make(map[types.NodeID]types.Node, nodeCount)
+	for i := 1; i <= nodeCount; i++ {
+		id := types.NodeID(i)                                   //nolint:gosec // bounded benchmark node count
+		nodes[id] = createTestNode(id, uint(i), "user", "node") //nolint:gosec // bounded benchmark node count
+	}
+
+	initial := snapshotFromNodes(nodes, allowAllPeersFunc, nil, false, false)
+	n := nodes[1]
+	n.LastSeen = new(time.Now())
+	nodes[1] = n
+
+	b.Run("reuse-peer-adjacency", func(b *testing.B) {
+		previous := initial
+
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for b.Loop() {
+			next := snapshotFromNodes(nodes, allowAllPeersFunc, &previous, true, true)
+			previous = next
+		}
+	})
+
+	b.Run("rebuild-peer-adjacency", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for b.Loop() {
+			snapshotFromNodes(nodes, allowAllPeersFunc, nil, false, false)
+		}
+	})
+}
+
+// TestRebuildPeerMapsAfterStopReturns ensures a rebuild requested after the
+// writer has exited does not block the caller forever.
+func TestRebuildPeerMapsAfterStopReturns(t *testing.T) {
+	node := createTestNode(1, 1, "user1", "node1")
+	store := NewNodeStore(types.Nodes{&node}, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+	store.Start()
+	store.Stop()
+
+	done := make(chan struct{})
+
+	go func() {
+		store.RebuildPeerMaps()
+		close(done)
+	}()
+
+	require.Eventually(t, func() bool {
+		select {
+		case <-done:
+			return true
+		default:
+			return false
+		}
+	}, 5*time.Second, 10*time.Millisecond, "RebuildPeerMaps hung after Stop")
+}
+
+// TestUpdateNodeRecomputesPeersOnlyForRelationInputs pins which fields make a
+// write recompute peer adjacency: the inputs that force a peer-map rebuild
+// (an announced but unapproved route is included on purpose).
+func TestUpdateNodeRecomputesPeersOnlyForRelationInputs(t *testing.T) {
+	subnet := netip.MustParsePrefix("10.77.0.0/24")
+
+	tests := []struct {
+		name          string
+		mutate        func(*types.Node)
+		wantRecompute bool
+	}{
+		{name: "last seen", mutate: func(n *types.Node) { n.LastSeen = new(time.Now()) }},
+		{name: "node key", mutate: func(n *types.Node) { n.NodeKey = key.NewNode().Public() }},
+		{name: "expiry", mutate: func(n *types.Node) { n.Expiry = new(time.Now()) }},
+		{name: "online", mutate: func(n *types.Node) { n.IsOnline = new(true) }},
+		{name: "unhealthy", mutate: func(n *types.Node) { n.Unhealthy = true }},
+		{
+			name: "endpoints",
+			mutate: func(n *types.Node) {
+				n.Endpoints = []netip.AddrPort{netip.MustParseAddrPort("203.0.113.1:41641")}
+			},
+		},
+		{name: "tags", mutate: func(n *types.Node) { n.Tags = []string{"tag:x"} }, wantRecompute: true},
+		{
+			name: "ipv4",
+			mutate: func(n *types.Node) {
+				ip := netip.MustParseAddr("100.64.9.9")
+				n.IPv4 = &ip
+			},
+			wantRecompute: true,
+		},
+		{
+			name: "announced route",
+			mutate: func(n *types.Node) {
+				n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet}}
+			},
+			wantRecompute: true,
+		},
+		{name: "user association", mutate: func(n *types.Node) { n.User = nil }, wantRecompute: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var peersCalls atomic.Int64
+
+			countingPeersFunc := func(nodes []types.NodeView) map[types.NodeID][]types.NodeID {
+				peersCalls.Add(1)
+
+				return allowAllPeersFunc(nodes)
+			}
+
+			node1 := createTestNode(1, 1, "user1", "node1")
+			node2 := createTestNode(2, 2, "user2", "node2")
+
+			store := NewNodeStore(types.Nodes{&node1, &node2}, countingPeersFunc, TestBatchSize, TestBatchTimeout)
+			store.Start()
+
+			defer store.Stop()
+
+			peersCalls.Store(0)
+
+			_, ok := store.UpdateNode(1, tt.mutate)
+			require.True(t, ok)
+
+			var want int64
+			if tt.wantRecompute {
+				want = 1
+			}
+
+			require.Equal(t, want, peersCalls.Load())
+		})
+	}
 }
 
 // TestListPeersExcludesSelf proves a node is never returned among its own

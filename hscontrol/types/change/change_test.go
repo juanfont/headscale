@@ -561,9 +561,9 @@ func TestChange_Type(t *testing.T) {
 			want: "ping",
 		},
 		{
-			name:     "empty is unknown",
+			name:     "empty",
 			response: Change{},
-			want:     "unknown",
+			want:     "empty",
 		},
 	}
 
