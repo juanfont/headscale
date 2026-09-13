@@ -689,7 +689,7 @@ func TestBuildPostgresDSN(t *testing.T) {
 				Host: "db",
 				Name: "headscale",
 				User: "hs",
-				Pass: `p a'ss\w sslmode=disable`,
+				Pass: `p a'ss\w sslmode=disable`, //nolint:gosec // test fixture, not a credential
 			},
 			want: `host='db' dbname='headscale' user='hs' password='p a\'ss\\w sslmode=disable'`,
 		},
