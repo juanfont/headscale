@@ -1,6 +1,7 @@
 package hscontrol
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -1095,10 +1096,14 @@ func (l *acmeLogger) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	if resp.StatusCode >= http.StatusBadRequest {
-		defer resp.Body.Close()
-
 		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
 		log.Error().Int("status_code", resp.StatusCode).Str("url", req.URL.String()).Bytes("body", body).Msg("acme request returned error")
+
+		// The ACME client parses this body to classify errors such as badNonce,
+		// so give it back a readable copy.
+		resp.Body = io.NopCloser(bytes.NewReader(body))
 	}
 
 	return resp, nil
