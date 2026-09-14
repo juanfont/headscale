@@ -64,6 +64,7 @@ keys remain all-access.
 - Fix tailsql not shutting down with headscale, leaving the process hanging on graceful shutdown [#3400](https://github.com/juanfont/headscale/pull/3400)
 - Fix tvOS setup instructions: install the VPN configuration before setting the coordination server URL [#3431](https://github.com/juanfont/headscale/pull/3431)
 - Map requests that only bump LastSeen, endpoints or DERP region no longer resend the whole node to every peer, and health probes that change nothing no longer write. Adds `headscale_mapper_changes_dropped_total` and `headscale_ha_health_updates_total` [#3417](https://github.com/juanfont/headscale/issues/3417) [#3450](https://github.com/juanfont/headscale/pull/3450)
+- Fix `#`-prefixed metadata fields being rejected outside `acls`, so policy editors can store metadata in grants, SSH rules and `nodeAttrs` [#3481](https://github.com/juanfont/headscale/pull/3481)
 
 ## 0.29.3 (2026-07-29)
 
