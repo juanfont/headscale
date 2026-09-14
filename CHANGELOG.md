@@ -205,6 +205,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Lower CPU use on large tailnets when node tags, owners, IPs or routes change [#3501](https://github.com/juanfont/headscale/pull/3501)
 - `headscale nodes backfillips` now sends the new IPs to connected clients [#3501](https://github.com/juanfont/headscale/pull/3501)
 - A registration request from a client below the minimum supported version is now rejected before it can log a node out, use a pre-auth key or start a login [#3519](https://github.com/juanfont/headscale/pull/3519)
+- Fix the MagicDNS search domain generation for octet-aligned subnets (/8, /16, /24) to output a single covering PTR [#3482](https://github.com/juanfont/headscale/pull/3482)
 
 - A node re-registering with a spent, expired or revoked pre-auth key is now rejected if it expired or changed node key while the re-registration was in flight [#3525](https://github.com/juanfont/headscale/pull/3525)
 - DERP client verification (the embedded DERP server and the `/verify` endpoint) looks up the node key directly instead of scanning every node on each connection [#3520](https://github.com/juanfont/headscale/pull/3520)
