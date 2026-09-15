@@ -214,6 +214,58 @@ func TestDestroyUserErrors(t *testing.T) {
 	}
 }
 
+func TestGetUserErrorPropagation(t *testing.T) {
+	lookups := []struct {
+		name string
+		get  func(*HSDatabase) (*types.User, error)
+	}{
+		{
+			name: "by_id",
+			get:  func(db *HSDatabase) (*types.User, error) { return db.GetUserByID(1) },
+		},
+		{
+			name: "by_oidc_identifier",
+			get:  func(db *HSDatabase) (*types.User, error) { return db.GetUserByOIDCIdentifier("oidc-id") },
+		},
+	}
+
+	tests := []struct {
+		name    string
+		closeDB bool
+		wantErr error
+	}{
+		{name: "missing_row_is_not_found", wantErr: ErrUserNotFound},
+		{name: "query_failure_is_returned", closeDB: true},
+	}
+
+	for _, lookup := range lookups {
+		for _, tt := range tests {
+			t.Run(lookup.name+"/"+tt.name, func(t *testing.T) {
+				db, err := newSQLiteTestDB()
+				require.NoError(t, err)
+
+				if tt.closeDB {
+					sqlDB, err := db.DB.DB()
+					require.NoError(t, err)
+					require.NoError(t, sqlDB.Close())
+				}
+
+				user, err := lookup.get(db)
+
+				// A swallowed error surfaces as a zero user and a nil error.
+				require.Error(t, err)
+				assert.Nil(t, user)
+
+				if tt.wantErr != nil {
+					assert.ErrorIs(t, err, tt.wantErr)
+				} else {
+					assert.NotErrorIs(t, err, ErrUserNotFound)
+				}
+			})
+		}
+	}
+}
+
 func TestRenameUser(t *testing.T) {
 	tests := []struct {
 		name string
