@@ -210,10 +210,7 @@ func updateChanges(pre, post *types.Node) (bool, bool) {
 		return true, true
 	}
 
-	wasOnline := pre.IsOnline != nil && *pre.IsOnline
-	isOnline := post.IsOnline != nil && *post.IsOnline
-
-	return false, wasOnline != isOnline || pre.Unhealthy != post.Unhealthy
+	return false, pre.Online() != post.Online() || pre.Unhealthy != post.Unhealthy
 }
 
 // PutNode adds or updates a node in the store.
