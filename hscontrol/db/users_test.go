@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -87,6 +88,8 @@ func TestDestroyUserErrors(t *testing.T) {
 
 				err = db.DestroyUser(types.UserID(user.ID))
 				assert.ErrorIs(t, err, ErrUserStillHasNodes)
+				// The error names the blocking node so it can be found.
+				assert.ErrorContains(t, err, fmt.Sprintf("%d (testnode)", node.ID))
 			},
 		},
 		{

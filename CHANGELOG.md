@@ -42,7 +42,7 @@ keys remain all-access.
 
 ### Changes
 
-- Deleting a user that still owns nodes now says how many nodes must be deleted or moved first
+- Deleting a user that still owns nodes now lists the nodes (ID and hostname) that must be deleted or moved first
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
 - The peer map is keyed by node ID and reused for writes that cannot change peer visibility, so a routine map request no longer rebuilds it. Adds `headscale_nodestore_snapshot_builds_total` [#3417](https://github.com/juanfont/headscale/issues/3417) [#3450](https://github.com/juanfont/headscale/pull/3450)
