@@ -258,6 +258,8 @@ func (v NodeView) DeletedAt() views.ValuePointer[time.Time] {
 	return views.ValuePointerOf(v.ж.DeletedAt)
 }
 
+// IsOnline caches [Node.ShouldBeOnline]; read it through [Node.Online].
+// Every writer must derive it, so online means the same thing everywhere.
 func (v NodeView) IsOnline() views.ValuePointer[bool] { return views.ValuePointerOf(v.ж.IsOnline) }
 
 // Unhealthy excludes the node from primary route election while
@@ -266,10 +268,9 @@ func (v NodeView) Unhealthy() bool { return v.ж.Unhealthy }
 
 // ActiveSessions counts live poll sessions for this node.
 // [State.Connect] increments it and every session release
-// ([State.Disconnect]) decrements it, so the node goes offline
-// exactly when its last session ends — regardless of the order in
-// which overlapping sessions' cleanups run. Never persisted, like
-// SessionEpoch.
+// ([State.Disconnect]) decrements it. Releasing the last session
+// takes the node offline; expiry can take it offline while sessions
+// remain. Never persisted, like SessionEpoch.
 func (v NodeView) ActiveSessions() int { return v.ж.ActiveSessions }
 
 // SessionEpoch identifies a poll session generation; Connect bumps
