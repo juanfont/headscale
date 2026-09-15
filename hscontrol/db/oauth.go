@@ -192,7 +192,14 @@ func (hsdb *HSDatabase) AuthenticateOAuthClient(secretStr string) (*types.OAuthC
 	// used directly as an auth key; strip them before parsing.
 	secretStr, _, _ = strings.Cut(secretStr, "?")
 
+	// Accept headscale's prefix or the upstream tailscale client's tskey-client-
+	// alias, so the official client and GitHub Action can authenticate the same
+	// stored client. The prefix is only a label: rest is identical either way.
 	_, rest, found := strings.Cut(secretStr, types.OAuthClientPrefix)
+	if !found {
+		_, rest, found = strings.Cut(secretStr, types.TailscaleOAuthClientPrefix)
+	}
+
 	if !found {
 		return nil, ErrOAuthClientFailedToParse
 	}

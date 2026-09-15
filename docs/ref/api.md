@@ -58,6 +58,39 @@ Headscale server at `/api/v1/docs` for details.
         https://headscale.example.com/api/v1/auth/register
     ```
 
+## OAuth clients and the Tailscale GitHub Action
+
+Headscale also serves a subset of the Tailscale-compatible API at `/api/v2`, which
+accepts **OAuth 2.0 client-credentials** in addition to API keys. This lets parts
+of the Tailscale ecosystem drive Headscale, including the official
+[`tailscale/github-action`](https://github.com/tailscale/github-action).
+
+Create an OAuth client and note its secret (shown once):
+
+```shell
+headscale oauth-clients create --scope auth_keys --tag tag:ci
+```
+
+The official action can use the secret as an auth key, but the upstream Tailscale
+client has two requirements when targeting a self-hosted control server:
+
+- The secret must be prefixed `tskey-client-`. Headscale issues `hskey-client-…`
+  but accepts the `tskey-client-` alias, so swap the prefix.
+- The OAuth exchange URL is read from a `baseURL` attribute on the secret itself
+  (not from `--login-server`). Append your Headscale URL.
+
+```yaml
+- uses: tailscale/github-action@v4
+  with:
+    # hskey-client-... with the prefix swapped to tskey-client- and baseURL appended
+    authkey: tskey-client-<id>-<secret>?baseURL=https://headscale.example.com&ephemeral=true&preauthorized=true
+    args: --login-server=https://headscale.example.com --advertise-tags=tag:ci
+```
+
+Use the action's `authkey` input, not `oauth-secret`: the latter appends its own
+query parameters and would mangle `baseURL`. The client must advertise the tag(s)
+the OAuth client owns.
+
 ## Remote control
 
 The `headscale` binary can control a Headscale instance from a remote machine over the HTTP API.
