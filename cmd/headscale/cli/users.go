@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	clientv1 "github.com/juanfont/headscale/gen/client/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -90,8 +91,22 @@ func resolveSingleUser(
 	case 1:
 		return users[0].Id, &users[0], nil
 	default:
-		return "", nil, errMultipleUsersMatch
+		return "", nil, fmt.Errorf("%w: %s", errMultipleUsersMatch, describeUsers(users))
 	}
+}
+
+// describeUsers renders the users that matched an ambiguous query so the
+// operator can pick one by ID.
+func describeUsers(users []clientv1.User) string {
+	parts := make([]string, len(users))
+	for i, user := range users {
+		parts[i] = fmt.Sprintf(
+			"id=%s name=%s email=%s provider=%s",
+			user.Id, user.Name, user.Email, user.Provider,
+		)
+	}
+
+	return strings.Join(parts, "; ")
 }
 
 func init() {

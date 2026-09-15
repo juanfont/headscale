@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	clientv1 "github.com/juanfont/headscale/gen/client/v1"
@@ -83,6 +84,8 @@ func TestResolveSingleUser(t *testing.T) {
 		wantId     string
 		wantErr    bool
 		wantErrIs  error
+		// wantErrHas are substrings the error message must contain.
+		wantErrHas []string
 	}{
 		{
 			// Regression: renaming by name used to return the raw flag
@@ -109,11 +112,15 @@ func TestResolveSingleUser(t *testing.T) {
 		},
 		{
 			// OIDC users can share a name, see issue #3429.
-			name:      "multiple matches are an ambiguity error",
+			name:      "multiple matches are an ambiguity error listing the matches",
 			users:     []clientv1.User{hannes, hannesDup},
 			flagName:  "hannes@rueger.events",
 			wantErr:   true,
 			wantErrIs: errMultipleUsersMatch,
+			wantErrHas: []string{
+				"id=9 name=hannes@rueger.events email=hannes@rueger.events",
+				"id=10 name=hannes@rueger.events email=other@example.com",
+			},
 		},
 		{
 			// Regression: --identifier 0 was sent to the API as "no
@@ -152,6 +159,12 @@ func TestResolveSingleUser(t *testing.T) {
 
 				if tt.wantErrIs != nil && !errors.Is(err, tt.wantErrIs) {
 					t.Fatalf("resolveSingleUser() error = %v, want %v", err, tt.wantErrIs)
+				}
+
+				for _, want := range tt.wantErrHas {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("resolveSingleUser() error = %q, want it to contain %q", err, want)
+					}
 				}
 
 				return
