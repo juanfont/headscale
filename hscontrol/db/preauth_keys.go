@@ -341,8 +341,9 @@ func DestroyPreAuthKey(tx *gorm.DB, id uint64) error {
 			return fmt.Errorf("clearing auth_key_id on nodes: %w", err)
 		}
 
-		// Then delete the pre-auth key
-		res := tx.Unscoped().Delete(&types.PreAuthKey{}, id)
+		// Then delete the pre-auth key, on the same savepoint as the
+		// node update so both roll back together.
+		res := db.Unscoped().Delete(&types.PreAuthKey{}, id)
 		if res.Error != nil {
 			return res.Error
 		}
