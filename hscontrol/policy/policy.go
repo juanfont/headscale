@@ -8,29 +8,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
-	"tailscale.com/types/views"
 )
-
-// ReduceNodes returns the list of peers authorized to be accessed from a given node.
-func ReduceNodes(
-	node types.NodeView,
-	nodes views.Slice[types.NodeView],
-	matchers []matcher.Match,
-) views.Slice[types.NodeView] {
-	var result []types.NodeView
-
-	for _, peer := range nodes.All() {
-		if peer.ID() == node.ID() {
-			continue
-		}
-
-		if node.CanAccess(matchers, peer) || peer.CanAccess(matchers, node) {
-			result = append(result, peer)
-		}
-	}
-
-	return views.SliceOf(result)
-}
 
 // ReduceRoutes returns a reduced list of routes for a given node that it can access.
 func ReduceRoutes(

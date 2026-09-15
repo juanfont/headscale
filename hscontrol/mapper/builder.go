@@ -249,31 +249,21 @@ func (b *MapResponseBuilder) WithPeerChanges(peers views.Slice[types.NodeView]) 
 	return b
 }
 
-// buildTailPeers converts [views.Slice] of [types.NodeView] to a slice of [tailcfg.Node]
-// with policy filtering and sorting.
+// buildTailPeers converts [views.Slice] of [types.NodeView] to a sorted slice of
+// [tailcfg.Node]. The peers come from the NodeStore peer map, which already
+// decided visibility; only each peer's routes are filtered by policy here.
 func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) ([]*tailcfg.Node, error) {
 	node, ok := b.mapper.state.GetNodeByID(b.nodeID)
 	if !ok {
 		return nil, ErrNodeNotFoundMapper
 	}
 
-	// Get unreduced matchers for peer relationship determination.
-	// [State.MatchersForNode] returns unreduced matchers that include all rules where the
-	// node could be either source or destination. This is different from
-	// [State.FilterForNode] which returns reduced rules for packet filtering (only rules
-	// where node is destination).
+	// [State.RoutesForPeer] needs the unreduced matchers: every rule where the
+	// node is source or destination, not only the [State.FilterForNode] rules
+	// where it is destination.
 	matchers, err := b.mapper.state.MatchersForNode(node)
 	if err != nil {
 		return nil, err
-	}
-
-	// If there are filter rules present, see if there are any nodes that cannot
-	// access each-other at all and remove them from the peers.
-	var changedViews views.Slice[types.NodeView]
-	if len(matchers) > 0 {
-		changedViews = policy.ReduceNodes(node, peers, matchers)
-	} else {
-		changedViews = peers
 	}
 
 	// Snapshot the per-node policy CapMap once per peer-list build
@@ -282,9 +272,9 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 	allCapMaps := b.mapper.state.NodeCapMaps()
 
 	// Build tail nodes with per-peer via-aware route function.
-	tailPeers := make([]*tailcfg.Node, 0, changedViews.Len())
+	tailPeers := make([]*tailcfg.Node, 0, peers.Len())
 
-	for _, peer := range changedViews.All() {
+	for _, peer := range peers.All() {
 		// Pass the peer's policy CapMap as selfPolicyCaps so per-peer
 		// address-shape rules (today: disable-ipv4) apply consistently
 		// in the viewer's netmap. The CapMap merge into tn.CapMap is

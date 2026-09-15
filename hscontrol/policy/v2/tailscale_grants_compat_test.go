@@ -152,6 +152,12 @@ var grantSkipReasons = map[string]string{
 	// authentication and has no equivalent for this wildcard pattern.
 	"grant-k20": "USER_PASSKEY_WILDCARD: src=user:*@passkey not supported in headscale",
 	"grant-k21": "USER_PASSKEY_WILDCARD: dst=user:*@passkey not supported in headscale",
+
+	// SaaS lists contiguous source addresses one by one and writes
+	// autogroup:internet as address ranges; headscale merges sources into
+	// ranges and writes the internet as prefixes. The address sets match;
+	// TestViaGrantMapCompat compares this capture's filters by address.
+	"via-grant-v52": "FILTER_ADDRESS_FORM: same addresses, different wire form",
 }
 
 // TestGrantsCompat is a data-driven test that loads all GRANT-*.json
@@ -167,7 +173,7 @@ var grantSkipReasons = map[string]string{
 // (@example.com, @example.org) and runs the policy through unmarshalPolicy,
 // validate, compileFilterRulesForNode, and ReduceFilterRules.
 //
-// 2 tests are skipped for user:*@passkey wildcard (not supported in headscale).
+// Scenarios in grantSkipReasons are skipped.
 func TestGrantsCompat(t *testing.T) {
 	t.Parallel()
 
