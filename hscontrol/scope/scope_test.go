@@ -232,3 +232,17 @@ func TestKnownIsComplete(t *testing.T) {
 		t.Errorf("Known() has %d scopes, want 16", len(known))
 	}
 }
+
+func TestValid(t *testing.T) {
+	for _, s := range Known() {
+		if !s.Valid() {
+			t.Errorf("Known scope %q reported invalid", s)
+		}
+	}
+
+	for _, s := range []Scope{"", "EVIL:superuser", "*::*", "../../etc/passwd", "AUTH_KEYS", "devices", "all:write"} {
+		if s.Valid() {
+			t.Errorf("unknown scope %q reported valid", s)
+		}
+	}
+}
