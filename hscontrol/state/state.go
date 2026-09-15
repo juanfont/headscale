@@ -1787,7 +1787,8 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 	updatedNodeView, ok := s.nodeStore.UpdateNode(params.ExistingNode.ID(), func(node *types.Node) {
 		node.NodeKey = regData.NodeKey
 		node.DiscoKey = regData.DiscoKey
-		node.Hostname = params.Hostname
+
+		resyncAutoDerivedGivenName(node, params.Hostname)
 
 		// Preserve NetInfo from existing node when re-registering
 		node.Hostinfo = params.ValidHostinfo
@@ -2650,7 +2651,8 @@ func (s *State) HandleNodeFromPreAuthKey(
 		// Update existing node - NodeStore first, then database
 		updatedNodeView, ok := s.nodeStore.UpdateNode(existingNodeSameUser.ID(), func(node *types.Node) {
 			node.NodeKey = regReq.NodeKey
-			node.Hostname = hostname
+
+			resyncAutoDerivedGivenName(node, hostname)
 
 			// TODO(kradalby): We should ensure we use the same hostinfo and node merge semantics
 			// when a node re-registers as we do when it sends a map request (UpdateNodeFromMapRequest).
@@ -3044,6 +3046,25 @@ func (s *State) autoApproveNodes() ([]change.Change, error) {
 // [NodeStore] collision-bump "-N" suffix. It is used to detect whether a
 // GivenName has been admin-renamed (in which case it must not be
 // overwritten by client-side hostname changes).
+// resyncAutoDerivedGivenName mirrors the GivenName handling of
+// UpdateNodeFromMapRequest for the register/re-auth paths, which overwrite
+// Hostname (and Hostinfo) in one step. Those paths never see a hostinfo
+// change on the next MapRequest — the stored Hostinfo is already the new
+// one — so without this the DNS label keeps the old hostname forever
+// (#3432). Admin renames are preserved: an auto-derived GivenName
+// (SanitizeHostname of the old hostname, optionally with a "-N" collision
+// bump) follows the new hostname, any other value is left alone.
+// [NodeStore.UpdateNode] auto-bumps the new label on collision.
+func resyncAutoDerivedGivenName(node *types.Node, newHostname string) {
+	givenNameAutoDerived := isAutoDerivedGivenName(node.GivenName, node.Hostname)
+
+	node.Hostname = newHostname
+
+	if givenNameAutoDerived && newHostname != "" {
+		node.GivenName = dnsname.SanitizeHostname(newHostname)
+	}
+}
+
 func isAutoDerivedGivenName(given, hostname string) bool {
 	base := dnsname.SanitizeHostname(hostname)
 	if given == base {
