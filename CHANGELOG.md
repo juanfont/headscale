@@ -46,6 +46,7 @@ keys remain all-access.
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
 - The peer map is keyed by node ID and reused for writes that cannot change peer visibility, so a routine map request no longer rebuilds it. Adds `headscale_nodestore_snapshot_builds_total` [#3417](https://github.com/juanfont/headscale/issues/3417) [#3450](https://github.com/juanfont/headscale/pull/3450)
 - Headscale now requires Go 1.27 to build
+- Fix the MagicDNS search domain generation for octet-aligned subnets (/8, /16, /24) to output a single covering PTR [#3482](https://github.com/juanfont/headscale/pull/3482)
 
 ## 0.29.4 (unreleased)
 
