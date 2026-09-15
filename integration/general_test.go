@@ -1194,91 +1194,139 @@ func TestExpireNode(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	require.NoError(t, err)
 
-	// TODO(kradalby): This is Headscale specific and would not play nicely
-	// with other implementations of the [ControlServer] interface
-	result, err := headscale.Execute([]string{
-		"headscale", "nodes", "expire", "--identifier", "1", "--output", "json",
-	})
-	require.NoError(t, err)
+	// Exercise expiry and recovery on every supported test client version.
+	for _, target := range allClients {
+		t.Run(target.Hostname(), func(t *testing.T) {
+			var (
+				selfID  string
+				selfKey key.NodePublic
+			)
 
-	var node clientv1.Node
-	err = json.Unmarshal([]byte(result), &node)
-	require.NoError(t, err)
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				status, err := target.Status()
+				if !assert.NoError(c, err) {
+					return
+				}
+				selfID, selfKey = string(status.Self.ID), status.Self.PublicKey
+			}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "client must report its own status before expiry")
 
-	var expiredNodeKey key.NodePublic
-	err = expiredNodeKey.UnmarshalText([]byte(node.NodeKey))
-	require.NoError(t, err)
+			result, err := headscale.Execute([]string{
+				"headscale", "nodes", "expire", "--identifier", selfID, "--output", "json",
+			})
+			require.NoError(t, err)
+			var node clientv1.Node
+			require.NoError(t, json.Unmarshal([]byte(result), &node))
 
-	t.Logf("Node %s with node_key %s has been expired", node.Name, expiredNodeKey.String())
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				status, err := target.Status()
+				if !assert.NoError(c, err) {
+					return
+				}
+				assert.Equal(c, "NeedsLogin", status.BackendState)
+				assert.Equal(c, selfKey, status.Self.PublicKey)
+			}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "expired client must require authentication")
 
-	// Verify that the expired node has been marked in all peers list.
-	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-		for _, client := range allClients {
-			status, err := client.Status()
-			assert.NoError(ct, err)
-
-			if client.Hostname() != node.Name {
-				// Check if the expired node appears as expired in this client's peer list
-				for key, peer := range status.Peer {
-					if key == expiredNodeKey {
-						assert.True(ct, peer.Expired, "Node should be marked as expired for client %s", client.Hostname())
-						break
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				nodes, err := headscale.ListNodes()
+				if !assert.NoError(c, err) {
+					return
+				}
+				for _, current := range nodes {
+					if current.Id == node.Id {
+						assert.False(c, current.Online, "expired node must be offline in the admin API")
+						return
 					}
 				}
-			}
-		}
-	}, integrationutil.ScaledTimeout(3*time.Minute), 10*time.Second)
+				c.Errorf("expired node %s disappeared", node.Id)
+			}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "Headscale must report the expired node offline")
 
-	now := time.Now()
-
-	// Verify that the expired node has been marked in all peers list.
-	for _, client := range allClients {
-		if client.Hostname() == node.Name {
-			continue
-		}
-
-		assert.EventuallyWithT(t, func(c *assert.CollectT) {
-			status, err := client.Status()
-			assert.NoError(c, err)
-
-			// Ensures that the node is present, and that it is expired.
-			peerStatus, ok := status.Peer[expiredNodeKey]
-			assert.True(c, ok, "expired node key should be present in peer list")
-
-			if ok {
-				assert.NotNil(c, peerStatus.Expired)
-				assert.NotNil(c, peerStatus.KeyExpiry)
-
-				if peerStatus.KeyExpiry != nil {
-					assert.Truef(
-						c,
-						peerStatus.KeyExpiry.Before(now),
-						"node %q should have a key expire before %s, was %s",
-						peerStatus.HostName,
-						now.String(),
-						peerStatus.KeyExpiry,
-					)
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				info, err := headscale.DebugBatcher()
+				if !assert.NoError(c, err) {
+					return
 				}
-
-				assert.Truef(
-					c,
-					peerStatus.Expired,
-					"node %q should be expired, expired is %v",
-					peerStatus.HostName,
-					peerStatus.Expired,
-				)
-
-				_, stderr, _ := client.Execute([]string{"tailscale", "ping", node.Name})
-				if !strings.Contains(stderr, "node key has expired") {
-					c.Errorf(
-						"expected to be unable to ping expired host %q from %q",
-						node.Name,
-						client.Hostname(),
-					)
+				connection, found := info.ConnectedNodes[node.Id]
+				if assert.True(c, found) {
+					assert.True(c, connection.Connected)
+					assert.Positive(c, connection.ActiveConnections)
 				}
+			}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "expired client must retain its control connection")
+
+			for _, peer := range allClients {
+				if peer.Hostname() == target.Hostname() {
+					continue
+				}
+				require.EventuallyWithT(t, func(c *assert.CollectT) {
+					status, err := peer.Status()
+					if !assert.NoError(c, err) {
+						return
+					}
+					expired, found := status.Peer[selfKey]
+					if !assert.True(c, found, "expired node must remain visible") {
+						return
+					}
+					assert.True(c, expired.Expired)
+					assert.False(c, expired.Online)
+					if assert.NotNil(c, expired.KeyExpiry) {
+						assert.True(c, expired.KeyExpiry.Before(time.Now()))
+					}
+				}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "peer must see the expired node offline")
+
+				require.EventuallyWithT(t, func(c *assert.CollectT) {
+					_, stderr, _ := peer.Execute([]string{"tailscale", "ping", node.Name})
+					assert.Contains(c, stderr, "node key has expired")
+				}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "expired node must not be reachable")
 			}
-		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for expired node status to propagate")
+
+			// No tailscale up/login: restoring expiry must recover the client
+			// using its existing node key and control connection.
+			_, err = headscale.Execute([]string{
+				"headscale", "nodes", "expire", "--identifier", node.Id, "--disable",
+			})
+			require.NoError(t, err)
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				status, err := target.Status()
+				if !assert.NoError(c, err) {
+					return
+				}
+				assert.Equal(c, "Running", status.BackendState)
+				assert.Equal(c, selfKey, status.Self.PublicKey)
+			}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "restored key must recover the client without login")
+
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				nodes, err := headscale.ListNodes()
+				if !assert.NoError(c, err) {
+					return
+				}
+				for _, current := range nodes {
+					if current.Id == node.Id {
+						assert.True(c, current.Online)
+						return
+					}
+				}
+				c.Errorf("restored node %s disappeared", node.Id)
+			}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "restored node must be online in the admin API")
+
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				for _, peer := range allClients {
+					if peer.Hostname() == target.Hostname() {
+						continue
+					}
+					status, err := peer.Status()
+					if !assert.NoError(c, err) {
+						continue
+					}
+					restored, found := status.Peer[selfKey]
+					if assert.True(c, found) {
+						assert.False(c, restored.Expired)
+						assert.True(c, restored.Online)
+					}
+				}
+			}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "peers must see the restored node online")
+		})
 	}
+
+	assertPingAll(t, allClients, allAddrs)
 }
 
 // TestSetNodeExpiryInFuture tests setting arbitrary expiration date
