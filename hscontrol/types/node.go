@@ -181,6 +181,8 @@ type Node struct {
 	UpdatedAt time.Time
 	DeletedAt *time.Time
 
+	// IsOnline caches [Node.ShouldBeOnline]; read it through [Node.Online].
+	// Every writer must derive it, so online means the same thing everywhere.
 	IsOnline *bool `gorm:"-"`
 
 	// Unhealthy excludes the node from primary route election while
@@ -189,10 +191,9 @@ type Node struct {
 
 	// ActiveSessions counts live poll sessions for this node.
 	// [State.Connect] increments it and every session release
-	// ([State.Disconnect]) decrements it, so the node goes offline
-	// exactly when its last session ends — regardless of the order in
-	// which overlapping sessions' cleanups run. Never persisted, like
-	// SessionEpoch.
+	// ([State.Disconnect]) decrements it. Releasing the last session
+	// takes the node offline; expiry can take it offline while sessions
+	// remain. Never persisted, like SessionEpoch.
 	ActiveSessions int `gorm:"-"`
 
 	// SessionEpoch identifies a poll session generation; Connect bumps
@@ -226,6 +227,21 @@ func (node *Node) IsExpired() bool {
 	}
 
 	return time.Since(*node.Expiry) > 0
+}
+
+// Online reports the node's last known connectivity. Unknown counts as
+// offline. Use [Node.ShouldBeOnline] to derive the value, not to read it.
+func (node *Node) Online() bool {
+	return node.IsOnline != nil && *node.IsOnline
+}
+
+// ShouldBeOnline derives what [Node.IsOnline] must hold from its two inputs:
+// a live control session and an unexpired node key. An expired client keeps
+// polling control to receive auth updates, so a session alone is not enough.
+// Call it only from a NodeStore write closure, where ActiveSessions is
+// stable; elsewhere read [Node.Online].
+func (node *Node) ShouldBeOnline() bool {
+	return node.ActiveSessions > 0 && !node.IsExpired()
 }
 
 // IsEphemeral returns if the node is registered as an Ephemeral node.
@@ -915,6 +931,15 @@ func (nv NodeView) IsExpired() bool {
 	}
 
 	return nv.ж.IsExpired()
+}
+
+// Online reports the node's last known connectivity.
+func (nv NodeView) Online() bool {
+	if !nv.Valid() {
+		return false
+	}
+
+	return nv.ж.Online()
 }
 
 // IsEphemeral returns if the node is registered as an Ephemeral node.

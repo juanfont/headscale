@@ -182,12 +182,12 @@ func (m *mapSession) serveLongPoll() {
 		// handler ran late is exactly such a session: if it kept its session
 		// acquired on this path, the surviving session's release could never
 		// take the node offline (the relogin flake).
-		// A deleted node cannot reconnect, so waiting for it only delays the
-		// client's next map request, and with it the re-authentication signal
-		// it needs. See: https://github.com/juanfont/headscale/issues/3410
-		_, nodeExists := m.h.state.GetNodeByID(m.node.ID)
+		// A deleted or expired node cannot return online through a map
+		// reconnect, so release its session without the reconnect grace.
+		// See: https://github.com/juanfont/headscale/issues/3410
+		node, nodeExists := m.h.state.GetNodeByID(m.node.ID)
 
-		if !stillConnected && nodeExists {
+		if !stillConnected && nodeExists && !node.IsExpired() {
 			// Wait up to 10 seconds for the node to reconnect.
 			// 10 seconds was arbitrary chosen as a reasonable time to reconnect.
 			ticker := time.NewTicker(time.Second)

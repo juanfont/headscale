@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"math/rand/v2"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/servertest"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/types/netmap"
@@ -120,6 +122,214 @@ func TestConnectionLifecycle(t *testing.T) {
 			})
 		}
 	})
+}
+
+// TestNodeExpiryPreservesControlConnection exercises the same-key map repoll
+// that controlclient.Auto performs while the backend is in NeedsLogin.
+func TestNodeExpiryPreservesControlConnection(t *testing.T) {
+	t.Parallel()
+
+	for _, scheduled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("scheduled=%v", scheduled), func(t *testing.T) {
+			t.Parallel()
+			h := servertest.NewHarness(t, 2,
+				servertest.WithServerOptions(servertest.WithBatchDelay(10*time.Millisecond)),
+			)
+			client, observer := h.Client(0), h.Client(1)
+			id := findNodeID(t, h.Server, client.Name)
+			node, ok := h.Server.State().GetNodeByID(id)
+			require.True(t, ok)
+
+			epoch, nodeKey := node.SessionEpoch(), node.NodeKey()
+			require.True(t, node.IsOnline().Get())
+
+			lastCheck := time.Now()
+
+			expiry := lastCheck
+			if scheduled {
+				expiry = lastCheck.Add(time.Second)
+			}
+
+			node, c, err := h.Server.State().SetNodeExpiry(id, &expiry)
+			require.NoError(t, err)
+			require.Equal(t, scheduled, node.IsOnline().Get())
+			h.Server.App.Change(c)
+
+			if scheduled {
+				require.Eventually(t, func() bool { return time.Now().After(expiry) },
+					3*time.Second, 10*time.Millisecond)
+
+				_, changes, changed := h.Server.State().ExpireExpiredNodes(lastCheck)
+				require.True(t, changed)
+				h.Server.App.Change(changes...)
+			}
+
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				current, found := h.Server.State().GetNodeByID(id)
+				if !assert.True(c, found) {
+					return
+				}
+
+				assert.False(c, current.IsOnline().Get())
+				assert.Equal(c, 1, current.ActiveSessions())
+				assert.Equal(c, epoch, current.SessionEpoch())
+				assert.True(c, h.Server.App.MapBatcher().IsConnected(id))
+				assert.True(c, client.Netmap().SelfNode.Expired())
+				assert.False(c, client.Netmap().SelfNode.Online().Get())
+
+				peer, found := observer.PeerByName(client.Name)
+				if assert.True(c, found) {
+					assert.True(c, peer.Expired())
+					assert.False(c, peer.Online().Get())
+				}
+			}, 5*time.Second, 10*time.Millisecond, "expiry must take the node offline without ending its control session")
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			require.NoError(t, client.RestartPoll(ctx))
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				current, found := h.Server.State().GetNodeByID(id)
+				if !assert.True(c, found) {
+					return
+				}
+
+				assert.Greater(c, current.SessionEpoch(), epoch)
+				assert.Equal(c, 1, current.ActiveSessions())
+				assert.Equal(c, nodeKey, current.NodeKey())
+				assert.False(c, current.IsOnline().Get(), "an expired-key repoll cannot bring a node online")
+				assert.True(c, h.Server.App.MapBatcher().IsConnected(id))
+			}, 5*time.Second, 10*time.Millisecond, "expired-key repoll must preserve offline status")
+
+			// Restoring expiry must reach the client through that same stream.
+			current, _ := h.Server.State().GetNodeByID(id)
+			epoch = current.SessionEpoch()
+			_, c, err = h.Server.State().SetNodeExpiry(id, nil)
+			require.NoError(t, err)
+			h.Server.App.Change(c)
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				current, found := h.Server.State().GetNodeByID(id)
+				if !assert.True(c, found) {
+					return
+				}
+
+				assert.True(c, current.IsOnline().Get())
+				assert.Equal(c, epoch, current.SessionEpoch())
+				assert.Equal(c, nodeKey, current.NodeKey())
+				assert.Equal(c, 1, current.ActiveSessions())
+				assert.False(c, client.Netmap().SelfNode.Expired())
+				assert.True(c, client.Netmap().SelfNode.Online().Get())
+
+				peer, found := observer.PeerByName(client.Name)
+				if assert.True(c, found) {
+					assert.False(c, peer.Expired())
+					assert.True(c, peer.Online().Get())
+				}
+			}, 5*time.Second, 10*time.Millisecond, "restoring expiry must recover both clients without another login or poll")
+		})
+	}
+}
+
+func TestRestoredExpirySurvivesQueuedChanges(t *testing.T) {
+	t.Parallel()
+
+	for _, full := range []bool{false, true} {
+		t.Run(fmt.Sprintf("full=%v", full), func(t *testing.T) {
+			t.Parallel()
+			h := servertest.NewHarness(t, 1,
+				servertest.WithServerOptions(servertest.WithBatchDelay(10*time.Millisecond)),
+			)
+			client := h.Client(0)
+			node := h.Server.State().ListNodes().At(0)
+			past := time.Now()
+			_, expired, err := h.Server.State().SetNodeExpiry(node.ID(), &past)
+			require.NoError(t, err)
+
+			future := past.Add(time.Hour)
+			_, restored, err := h.Server.State().SetNodeExpiry(node.ID(), &future)
+			require.NoError(t, err)
+
+			changes := []change.Change{expired, restored}
+			if full {
+				changes = append(changes, change.FullUpdate())
+			}
+
+			h.Server.App.Change(changes...)
+			client.WaitForCondition(t, "restored expiry delivered", 5*time.Second,
+				func(nm *netmap.NetworkMap) bool { return nm.SelfKeyExpiry().Equal(future) })
+			// Observe beyond delivery: the old worker cancelled the stream only
+			// after sending its map, even when that map had the restored expiry.
+			require.Never(t, func() bool { return len(h.ConnectedClients()) == 0 },
+				200*time.Millisecond, 10*time.Millisecond, "a queued expiry must not close the restored stream")
+
+			current, found := h.Server.State().GetNodeByID(node.ID())
+			require.True(t, found)
+			require.True(t, current.IsOnline().Get())
+			require.Equal(t, node.SessionEpoch(), current.SessionEpoch())
+		})
+	}
+}
+
+func TestNodeExpiryRouteFailover(t *testing.T) {
+	t.Parallel()
+
+	for _, scheduled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("scheduled=%v", scheduled), func(t *testing.T) {
+			t.Parallel()
+			h := servertest.NewHarness(t, 3,
+				servertest.WithServerOptions(servertest.WithBatchDelay(10*time.Millisecond)),
+			)
+			route := netip.MustParsePrefix("10.70.0.0/24")
+			primary := advertiseAndApproveRoute(t, h.Server, h.Client(0), route)
+			standby := advertiseAndApproveRoute(t, h.Server, h.Client(1), route)
+			require.Contains(t, h.Server.State().GetNodePrimaryRoutes(primary), route)
+
+			lastCheck := time.Now()
+
+			expiry := lastCheck
+			if scheduled {
+				expiry = lastCheck.Add(time.Second)
+			}
+
+			_, c, err := h.Server.State().SetNodeExpiry(primary, &expiry)
+			require.NoError(t, err)
+			h.Server.App.Change(c)
+
+			if scheduled {
+				require.Eventually(t, func() bool { return time.Now().After(expiry) },
+					3*time.Second, 10*time.Millisecond)
+
+				_, changes, _ := h.Server.State().ExpireExpiredNodes(lastCheck)
+				h.Server.App.Change(changes...)
+			}
+
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				assert.Empty(c, h.Server.State().GetNodePrimaryRoutes(primary))
+				assert.Contains(c, h.Server.State().GetNodePrimaryRoutes(standby), route)
+				assert.True(c, h.Server.App.MapBatcher().IsConnected(primary))
+
+				peer, found := h.Client(2).PeerByName(h.Client(1).Name)
+				if assert.True(c, found) {
+					assert.Contains(c, peer.PrimaryRoutes().AsSlice(), route)
+				}
+			}, 5*time.Second, 10*time.Millisecond, "expiry must move the route to the standby while preserving control connectivity")
+
+			_, c, err = h.Server.State().SetNodeExpiry(primary, nil)
+			require.NoError(t, err)
+			h.Server.App.Change(c)
+			_, c, err = h.Server.State().SetNodeExpiry(standby, &expiry)
+			require.NoError(t, err)
+			h.Server.App.Change(c)
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				assert.Contains(c, h.Server.State().GetNodePrimaryRoutes(primary), route)
+
+				peer, found := h.Client(2).PeerByName(h.Client(0).Name)
+				if assert.True(c, found) {
+					assert.Contains(c, peer.PrimaryRoutes().AsSlice(), route)
+				}
+			}, 5*time.Second, 10*time.Millisecond, "restored router must be eligible for failover without reconnecting")
+		})
+	}
 }
 
 // TestLogoutReloginAllClientsConverge is an in-process reproduction of the
