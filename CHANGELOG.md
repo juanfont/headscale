@@ -42,6 +42,7 @@ keys remain all-access.
 
 ### Changes
 
+- `headscale users destroy`/`rename` now report "no user matches query" when the name or ID matches nobody, instead of "multiple users match query", list the matching users when several match, and reject `--identifier 0`
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
 - The peer map is keyed by node ID and reused for writes that cannot change peer visibility, so a routine map request no longer rebuilds it. Adds `headscale_nodestore_snapshot_builds_total` [#3417](https://github.com/juanfont/headscale/issues/3417) [#3450](https://github.com/juanfont/headscale/pull/3450)
