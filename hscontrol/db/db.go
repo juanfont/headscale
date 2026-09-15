@@ -9,8 +9,6 @@ import (
 	"net/netip"
 	"path/filepath"
 	"slices"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/glebarez/sqlite"
@@ -1113,10 +1111,10 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 
 		log.Info().
 			Str(zf.Database, types.DatabasePostgres).
-			Str(zf.Path, postgresDSN(redacted)).
+			Str(zf.Path, redacted.DSN()).
 			Msg("Opening database")
 
-		db, err := gorm.Open(postgres.Open(postgresDSN(cfg.Postgres)), &gorm.Config{
+		db, err := gorm.Open(postgres.Open(cfg.Postgres.DSN()), &gorm.Config{
 			Logger: dbLogger,
 		})
 		if err != nil {
@@ -1138,48 +1136,6 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 		cfg.Type,
 		errDatabaseNotSupported,
 	)
-}
-
-// postgresDSN builds a libpq keyword/value connection string. Every value is
-// quoted with [pgQuote] so a password (or host, user, database name) containing
-// spaces, quotes or backslashes is passed through intact instead of silently
-// truncating the DSN or injecting extra parameters.
-func postgresDSN(cfg types.PostgresConfig) string {
-	params := []string{
-		"host=" + pgQuote(cfg.Host),
-		"dbname=" + pgQuote(cfg.Name),
-		"user=" + pgQuote(cfg.User),
-	}
-
-	// ssl accepts a boolean ("true" → libpq default, "false" → disable) or
-	// a raw sslmode value such as verify-full.
-	if sslEnabled, err := strconv.ParseBool(cfg.Ssl); err == nil { //nolint:noinlineerr
-		if !sslEnabled {
-			params = append(params, "sslmode=disable")
-		}
-	} else if cfg.Ssl != "" {
-		params = append(params, "sslmode="+pgQuote(cfg.Ssl))
-	}
-
-	if cfg.Port != 0 {
-		params = append(params, fmt.Sprintf("port=%d", cfg.Port))
-	}
-
-	if cfg.Pass != "" {
-		params = append(params, "password="+pgQuote(cfg.Pass))
-	}
-
-	return strings.Join(params, " ")
-}
-
-// pgQuote quotes a libpq keyword/value parameter value: the value is wrapped
-// in single quotes, and backslashes and single quotes inside it are escaped
-// with a backslash, as documented in libpq's connection string syntax.
-func pgQuote(value string) string {
-	value = strings.ReplaceAll(value, `\`, `\\`)
-	value = strings.ReplaceAll(value, `'`, `\'`)
-
-	return "'" + value + "'"
 }
 
 func runMigrations(cfg types.DatabaseConfig, dbConn *gorm.DB, migrations *gormigrate.Gormigrate) error {

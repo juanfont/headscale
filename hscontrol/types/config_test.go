@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -768,5 +769,98 @@ func TestExtraRecordsAreLowercased(t *testing.T) {
 
 	if diff := cmp.Diff(want, cfg.TailcfgDNSConfig.ExtraRecords); diff != "" {
 		t.Errorf("SetExtraRecords mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestPostgresConfigDSN(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  PostgresConfig
+		host string
+		port string
+		user string
+		pass string
+		path string
+		want map[string]string // expected query parameters
+	}{
+		{
+			name: "ssl false disables sslmode",
+			cfg: PostgresConfig{
+				Host: "localhost",
+				Port: 5432,
+				Name: "headscale",
+				User: "hs",
+				Pass: "secret", //nolint:gosec // test fixture, not a credential
+				Ssl:  "false",
+			},
+			host: "localhost", port: "5432", user: "hs", pass: "secret", path: "/headscale",
+			want: map[string]string{"sslmode": "disable"},
+		},
+		{
+			name: "ssl true leaves the driver default",
+			cfg:  PostgresConfig{Host: "db", Name: "headscale", User: "hs", Ssl: "true"},
+			host: "db", user: "hs", path: "/headscale",
+			want: map[string]string{},
+		},
+		{
+			name: "raw sslmode is passed through",
+			cfg:  PostgresConfig{Host: "db", Name: "headscale", User: "hs", Ssl: "verify-full"},
+			host: "db", user: "hs", path: "/headscale",
+			want: map[string]string{"sslmode": "verify-full"},
+		},
+		{
+			// Regression: the DSN used to be concatenated, so a space, quote
+			// or backslash in the password truncated it or injected parameters.
+			name: "password with reserved characters survives a round trip",
+			cfg: PostgresConfig{
+				Host: "db",
+				Name: "head scale",
+				User: "h's",
+				//nolint:gosec // test fixture, not a credential
+				Pass: `p a'ss\w sslmode=disable #?&@`,
+			},
+			host: "db", user: "h's", pass: `p a'ss\w sslmode=disable #?&@`, path: "/head scale",
+			want: map[string]string{},
+		},
+		{
+			name: "unix socket directory goes in the host parameter",
+			cfg: PostgresConfig{
+				Host: "/var/run/postgresql",
+				Port: 5433,
+				Name: "headscale",
+				User: "hs",
+			},
+			user: "hs", path: "/headscale",
+			want: map[string]string{"host": "/var/run/postgresql", "port": "5433"},
+		},
+		{
+			name: "ipv6 host is bracketed",
+			cfg:  PostgresConfig{Host: "::1", Port: 5432, Name: "headscale", User: "hs"},
+			host: "::1", port: "5432", user: "hs", path: "/headscale",
+			want: map[string]string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u, err := url.Parse(tt.cfg.DSN())
+			require.NoError(t, err)
+
+			assert.Equal(t, "postgres", u.Scheme)
+			assert.Equal(t, tt.host, u.Hostname())
+			assert.Equal(t, tt.port, u.Port())
+			assert.Equal(t, tt.user, u.User.Username())
+			assert.Equal(t, tt.path, u.Path)
+
+			pass, _ := u.User.Password()
+			assert.Equal(t, tt.pass, pass)
+
+			query := u.Query()
+			assert.Len(t, query, len(tt.want))
+
+			for k, v := range tt.want {
+				assert.Equal(t, v, query.Get(k), k)
+			}
+		})
 	}
 }
