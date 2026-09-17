@@ -87,9 +87,9 @@ func TestDestroyUserErrors(t *testing.T) {
 				require.NoError(t, trx.Error)
 
 				err = db.DestroyUser(types.UserID(user.ID))
-				assert.ErrorIs(t, err, ErrUserStillHasNodes)
+				require.ErrorIs(t, err, ErrUserStillHasNodes)
 				// The error names the blocking node so it can be found.
-				assert.ErrorContains(t, err, fmt.Sprintf("%d (testnode)", node.ID))
+				require.ErrorContains(t, err, fmt.Sprintf("%d (testnode)", node.ID))
 			},
 		},
 		{

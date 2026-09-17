@@ -68,7 +68,7 @@ func DestroyUser(tx *gorm.DB, uid types.UserID) error {
 		}
 
 		return fmt.Errorf(
-            "%w: %d node(s) must be deleted first: %s",
+			"%w: %d node(s) must be deleted first: %s",
 			ErrUserStillHasNodes, len(nodes), strings.Join(blocking, ", "),
 		)
 	}
