@@ -50,11 +50,15 @@ const (
 	registerCacheExpiration = time.Minute * 15
 
 	// defaultRegisterCacheMaxEntries is the default upper bound on the number
-	// of pending registration entries the auth cache will hold. With a 15-minute
+	// of pending registration entries the registration cache will hold. With a 15-minute
 	// TTL and a stripped-down RegistrationData payload (~200 bytes per entry),
 	// 1024 entries cap the worst-case cache footprint at well under 1 MiB even
 	// under sustained unauthenticated cache-fill attempts.
 	defaultRegisterCacheMaxEntries = 1024
+
+	// defaultSSHCheckCacheMaxEntries bounds pending SSH check sessions
+	// independently from node registrations.
+	defaultSSHCheckCacheMaxEntries = 1024
 
 	// defaultNodeStoreBatchSize is the default number of write operations to batch
 	// before rebuilding the in-memory node snapshot.
@@ -116,6 +120,16 @@ var nodeUpdateColumns = []string{
 // ErrRegistrationExpired is returned when a registration has expired.
 var ErrRegistrationExpired = errors.New("registration expired")
 
+// ErrPendingAuthCapacity is returned when a pending authentication pool is full.
+var ErrPendingAuthCapacity = errors.New("pending authentication capacity reached")
+
+var errAuthRequestNotRegistration = errors.New("auth request is not a registration")
+
+var errAuthRequestTypeInvalid = errors.New("auth request has no supported payload")
+
+// ErrAuthRequestIDInUse is returned when an authentication request ID is active.
+var ErrAuthRequestIDInUse = errors.New("authentication request ID already in use")
+
 // ErrNodeKeyInUse is returned when a registration or re-auth claims a NodeKey
 // already bound to a different machine, enforcing the 1:1 NodeKey<->MachineKey
 // binding.
@@ -133,6 +147,84 @@ var ErrAmbiguousNodeOwnership = errors.New("machine key maps to ambiguous node o
 type sshCheckPair struct {
 	Src types.NodeID
 	Dst types.NodeID
+}
+
+// SSHAccessAction is the current server-side decision for an SSH connection.
+type SSHAccessAction uint8
+
+const (
+	SSHAccessReject SSHAccessAction = iota
+	SSHAccessAccept
+	SSHAccessCheck
+)
+
+// SSHAccessEvaluation captures the action and policy generation observed
+// together. Generation is meaningful only for SSHAccessCheck.
+type SSHAccessEvaluation struct {
+	Action           SSHAccessAction
+	PolicyGeneration uint64
+}
+
+// pendingAuthCache retains live requests until completion or expiration. The
+// underlying TTL cache is intentionally unlimited: admission rejects new keys
+// at the configured limit so live sessions are never displaced by size.
+type pendingAuthCache struct {
+	entries    *expirable.LRU[types.AuthID, *types.AuthRequest]
+	maxEntries int
+	expiration time.Duration
+	admitMu    sync.Mutex
+}
+
+func newPendingAuthCache(maxEntries int, expiration time.Duration) *pendingAuthCache {
+	return &pendingAuthCache{
+		entries: expirable.NewLRU[types.AuthID, *types.AuthRequest](
+			0,
+			func(_ types.AuthID, request *types.AuthRequest) {
+				request.FinishAuth(types.AuthVerdict{Err: ErrRegistrationExpired})
+			},
+			expiration,
+		),
+		maxEntries: maxEntries,
+		expiration: expiration,
+	}
+}
+
+func (c *pendingAuthCache) add(id types.AuthID, request *types.AuthRequest) bool {
+	c.admitMu.Lock()
+	defer c.admitMu.Unlock()
+
+	if _, ok := c.entries.Peek(id); ok {
+		return false
+	}
+
+	if c.entries.Len() >= c.maxEntries {
+		if !c.removeOldestCompleted() {
+			return false
+		}
+	}
+
+	c.entries.Add(id, request)
+
+	return true
+}
+
+func (c *pendingAuthCache) removeOldestCompleted() bool {
+	for _, id := range c.entries.Keys() {
+		request, ok := c.entries.Peek(id)
+		if !ok {
+			c.entries.Remove(id)
+
+			return c.entries.Len() < c.maxEntries
+		}
+
+		if _, complete := request.AuthResult(); complete {
+			c.entries.Remove(id)
+
+			return c.entries.Len() < c.maxEntries
+		}
+	}
+
+	return false
 }
 
 // State manages Headscale's core state, coordinating between database, policy management,
@@ -157,12 +249,11 @@ type State struct {
 	// polMan handles policy evaluation and management
 	polMan policy.PolicyManager
 
-	// authCache holds any pending authentication requests from either auth
-	// type (Web and OIDC). It is a bounded LRU keyed by AuthID; oldest
-	// entries are evicted once the size cap is reached, and entries that
-	// time out have their auth verdict resolved with ErrRegistrationExpired
-	// via the eviction callback so any waiting goroutines wake.
-	authCache *expirable.LRU[types.AuthID, *types.AuthRequest]
+	// Pending node registrations and SSH checks have independent admission
+	// pools so one request class cannot consume the other's capacity.
+	registrationAuthCache *pendingAuthCache
+	sshCheckAuthCache     *pendingAuthCache
+	authAdmissionMu       sync.Mutex
 
 	// pings tracks pending ping requests and their response channels.
 	pings *pingTracker
@@ -185,6 +276,10 @@ type State struct {
 	// Ref: https://github.com/tailscale/tailscale/issues/7125
 	sshCheckAuth map[sshCheckPair]time.Time
 	sshCheckMu   sync.RWMutex
+	// sshPolicyGeneration advances whenever policy inputs affecting SSH
+	// authorization change. Policy mutation and check completion both hold
+	// sshCheckMu so an approval cannot cross the mutation boundary.
+	sshPolicyGeneration uint64
 
 	// persistMu serialises node-row persistence and deletion so the database
 	// always converges on [NodeStore] rather than being clobbered by a stale
@@ -194,18 +289,54 @@ type State struct {
 	// registerLocks serialises registration per machine key so concurrent
 	// registrations of the same machine resolve to a single node instead of
 	// racing the find-then-create section and each creating their own.
-	// ponytail: entries are never pruned; bounded by distinct machine keys
-	// seen, add cleanup on node delete only if it ever matters.
-	registerLocks *xsync.Map[key.MachinePublic, *sync.Mutex]
+	registerLocks *xsync.Map[key.MachinePublic, *registrationLock]
+}
+
+type registrationLock struct {
+	mu sync.Mutex
+
+	// references counts callers holding or waiting for mu. It is updated only
+	// from registerLocks.Compute callbacks.
+	references int
 }
 
 // lockRegistration serialises registration for a single machine key and
-// returns the unlock function.
+// returns a release function. Per-machine entries exist only while callers are
+// holding or waiting for the lock.
 func (s *State) lockRegistration(machineKey key.MachinePublic) func() {
-	mu, _ := s.registerLocks.LoadOrStore(machineKey, &sync.Mutex{})
-	mu.Lock()
+	entry, _ := s.registerLocks.Compute(
+		machineKey,
+		func(current *registrationLock, loaded bool) (*registrationLock, xsync.ComputeOp) {
+			if !loaded {
+				current = &registrationLock{}
+			}
 
-	return mu.Unlock
+			current.references++
+
+			return current, xsync.UpdateOp
+		},
+	)
+	entry.mu.Lock()
+
+	return func() {
+		entry.mu.Unlock()
+
+		s.registerLocks.Compute(
+			machineKey,
+			func(current *registrationLock, loaded bool) (*registrationLock, xsync.ComputeOp) {
+				if !loaded {
+					return current, xsync.CancelOp
+				}
+
+				current.references--
+				if current.references == 0 {
+					return nil, xsync.DeleteOp
+				}
+
+				return current, xsync.UpdateOp
+			},
+		)
+	}
 }
 
 // NewState creates and initializes a new [State] instance, setting up the database,
@@ -218,13 +349,8 @@ func NewState(cfg *types.Config) (*State, error) {
 		cacheMaxEntries = cfg.Tuning.RegisterCacheMaxEntries
 	}
 
-	authCache := expirable.NewLRU[types.AuthID, *types.AuthRequest](
-		cacheMaxEntries,
-		func(id types.AuthID, rn *types.AuthRequest) {
-			rn.FinishAuth(types.AuthVerdict{Err: ErrRegistrationExpired})
-		},
-		cacheExpiration,
-	)
+	registrationAuthCache := newPendingAuthCache(cacheMaxEntries, cacheExpiration)
+	sshCheckAuthCache := newPendingAuthCache(defaultSSHCheckCacheMaxEntries, cacheExpiration)
 
 	db, err := hsdb.NewHeadscaleDatabase(cfg)
 	if err != nil {
@@ -283,15 +409,16 @@ func NewState(cfg *types.Config) (*State, error) {
 	s := &State{
 		cfg: cfg,
 
-		db:        db,
-		ipAlloc:   ipAlloc,
-		polMan:    polMan,
-		authCache: authCache,
-		nodeStore: nodeStore,
-		pings:     newPingTracker(),
+		db:                    db,
+		ipAlloc:               ipAlloc,
+		polMan:                polMan,
+		registrationAuthCache: registrationAuthCache,
+		sshCheckAuthCache:     sshCheckAuthCache,
+		nodeStore:             nodeStore,
+		pings:                 newPingTracker(),
 
 		sshCheckAuth:  make(map[sshCheckPair]time.Time),
-		registerLocks: xsync.NewMap[key.MachinePublic, *sync.Mutex](),
+		registerLocks: xsync.NewMap[key.MachinePublic, *registrationLock](),
 	}
 
 	// Surface nodes whose stored data would break map generation (e.g. an
@@ -333,14 +460,19 @@ func (s *State) ReloadPolicy() ([]change.Change, error) {
 		return nil, fmt.Errorf("loading policy: %w", err)
 	}
 
+	s.sshCheckMu.Lock()
+
 	policyChanged, err := s.polMan.SetPolicy(pol)
 	if err != nil {
+		s.sshCheckMu.Unlock()
+
 		return nil, fmt.Errorf("setting policy: %w", err)
 	}
 
 	// Clear SSH check auth times when policy changes to ensure stale
 	// approvals don't persist if checkPeriod rules are modified or removed.
-	s.ClearSSHCheckAuth()
+	s.advanceSSHPolicyGenerationLocked()
+	s.sshCheckMu.Unlock()
 
 	// Rebuild peer maps after policy changes because the peersFunc in [NodeStore]
 	// uses the [policy.PolicyManager]'s filters. Without this, nodes won't see
@@ -1182,13 +1314,16 @@ func (s *State) NodeCanHaveTag(node types.NodeView, tag string) bool {
 
 // SetPolicy updates the policy configuration.
 func (s *State) SetPolicy(pol []byte) (bool, error) {
+	s.sshCheckMu.Lock()
+	defer s.sshCheckMu.Unlock()
+
 	changed, err := s.polMan.SetPolicy(pol)
 	if err != nil {
 		return changed, err
 	}
 
 	// Clear SSH check auth times when policy changes.
-	s.ClearSSHCheckAuth()
+	s.advanceSSHPolicyGenerationLocked()
 
 	// Payload-only writes reuse the cached adjacency, so a policy swap
 	// must rebuild it here rather than wait for the next relation write.
@@ -1626,20 +1761,52 @@ func (s *State) DeleteExpiredAccessTokens(cutoff time.Time) (int64, error) {
 
 // GetAuthCacheEntry retrieves a pending auth request from the cache.
 func (s *State) GetAuthCacheEntry(id types.AuthID) (*types.AuthRequest, bool) {
-	return s.authCache.Get(id)
+	if request, ok := s.registrationAuthCache.entries.Get(id); ok {
+		return request, true
+	}
+
+	return s.sshCheckAuthCache.entries.Get(id)
 }
 
-// SetAuthCacheEntry stores a pending auth request in the cache.
-func (s *State) SetAuthCacheEntry(id types.AuthID, entry *types.AuthRequest) {
-	s.authCache.Add(id, entry)
+// SetAuthCacheEntry stores a pending auth request when its request-class pool
+// has capacity. Existing entries are preserved when the pool is full.
+func (s *State) SetAuthCacheEntry(id types.AuthID, entry *types.AuthRequest) error {
+	s.authAdmissionMu.Lock()
+	defer s.authAdmissionMu.Unlock()
+
+	if _, ok := s.registrationAuthCache.entries.Peek(id); ok {
+		return ErrAuthRequestIDInUse
+	}
+
+	if _, ok := s.sshCheckAuthCache.entries.Peek(id); ok {
+		return ErrAuthRequestIDInUse
+	}
+
+	var cache *pendingAuthCache
+
+	switch {
+	case entry != nil && entry.IsRegistration():
+		cache = s.registrationAuthCache
+	case entry != nil:
+		cache = s.sshCheckAuthCache
+	default:
+		return errAuthRequestTypeInvalid
+	}
+
+	if !cache.add(id, entry) {
+		return ErrPendingAuthCapacity
+	}
+
+	return nil
 }
 
 // DeleteAuthCacheEntryForTest drops a pending auth request from the cache,
 // exposed for testing so a test can reproduce a session that was lost
-// (expired, evicted, or dropped on a control-plane restart) without faking an
+// (expired or dropped on a control-plane restart) without faking an
 // auth_id.
 func (s *State) DeleteAuthCacheEntryForTest(id types.AuthID) {
-	s.authCache.Remove(id)
+	s.registrationAuthCache.entries.Remove(id)
+	s.sshCheckAuthCache.entries.Remove(id)
 }
 
 // SetLastSSHAuth records a successful SSH check authentication
@@ -1668,7 +1835,70 @@ func (s *State) ClearSSHCheckAuth() {
 	s.sshCheckMu.Lock()
 	defer s.sshCheckMu.Unlock()
 
+	s.clearSSHCheckAuthLocked()
+}
+
+func (s *State) clearSSHCheckAuthLocked() {
 	s.sshCheckAuth = make(map[sshCheckPair]time.Time)
+}
+
+func (s *State) advanceSSHPolicyGenerationLocked() {
+	s.sshPolicyGeneration++
+	s.clearSSHCheckAuthLocked()
+}
+
+// EvaluateSSHAccess resolves the current SSH action and applies any reusable
+// check approval while holding the same lock used by policy mutation.
+func (s *State) EvaluateSSHAccess(
+	src, dst types.NodeID,
+	localUser string,
+) SSHAccessEvaluation {
+	s.sshCheckMu.RLock()
+	defer s.sshCheckMu.RUnlock()
+
+	period, check, accept := s.polMan.SSHAccessParams(src, dst, localUser)
+	if check {
+		if period > 0 {
+			if last, ok := s.sshCheckAuth[sshCheckPair{Src: src, Dst: dst}]; ok && time.Since(last) < period {
+				return SSHAccessEvaluation{Action: SSHAccessAccept}
+			}
+		}
+
+		return SSHAccessEvaluation{
+			Action:           SSHAccessCheck,
+			PolicyGeneration: s.sshPolicyGeneration,
+		}
+	}
+
+	if accept {
+		return SSHAccessEvaluation{Action: SSHAccessAccept}
+	}
+
+	return SSHAccessEvaluation{Action: SSHAccessReject}
+}
+
+// CompleteSSHCheck revalidates a successful interactive verdict against the
+// current policy. An unchanged check records a reusable approval; a direct
+// accept needs no record; any other result is rejected.
+func (s *State) CompleteSSHCheck(
+	src, dst types.NodeID,
+	localUser string,
+	policyGeneration uint64,
+) SSHAccessAction {
+	s.sshCheckMu.Lock()
+	defer s.sshCheckMu.Unlock()
+
+	_, check, accept := s.polMan.SSHAccessParams(src, dst, localUser)
+	switch {
+	case accept:
+		return SSHAccessAccept
+	case !check || policyGeneration != s.sshPolicyGeneration:
+		return SSHAccessReject
+	default:
+		s.sshCheckAuth[sshCheckPair{Src: src, Dst: dst}] = time.Now()
+
+		return SSHAccessAccept
+	}
 }
 
 // preserveNetInfo preserves NetInfo from an existing node for faster DERP connectivity.
@@ -1724,6 +1954,8 @@ type authNodeUpdateParams struct {
 // applyAuthNodeUpdate applies common update logic for re-authenticating or converting
 // an existing node. It updates the node in [NodeStore], processes RequestTags, and
 // persists changes to the database.
+//
+//nolint:gocyclo // validation and mutation stages must remain in a fixed order
 func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView, error) {
 	regData := params.RegData
 	// Log the operation type
@@ -1789,8 +2021,20 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 		node.DiscoKey = regData.DiscoKey
 		node.Hostname = params.Hostname
 
-		// Preserve NetInfo from existing node when re-registering
-		node.Hostinfo = params.ValidHostinfo
+		// Registration retains only the identity fields needed during auth.
+		// Overlay those fields on the live Hostinfo so re-authentication does
+		// not temporarily withdraw routes, services, or other map state.
+		node.Hostinfo = params.ExistingNode.Hostinfo().AsStruct()
+		if node.Hostinfo == nil {
+			node.Hostinfo = &tailcfg.Hostinfo{}
+		}
+
+		node.Hostinfo.Hostname = params.ValidHostinfo.Hostname
+		node.Hostinfo.OS = params.ValidHostinfo.OS
+		node.Hostinfo.IPNVersion = params.ValidHostinfo.IPNVersion
+		node.Hostinfo.OSVersion = params.ValidHostinfo.OSVersion
+		node.Hostinfo.DeviceModel = params.ValidHostinfo.DeviceModel
+		node.Hostinfo.RequestTags = slices.Clone(params.ValidHostinfo.RequestTags)
 		node.Hostinfo.NetInfo = preserveNetInfo(
 			params.ExistingNode,
 			params.ExistingNode.ID(),
@@ -2253,6 +2497,21 @@ func (s *State) HandleNodeFromAuthPath(
 		return types.NodeView{}, change.Change{}, hsdb.ErrNodeNotFoundRegistrationCache
 	}
 
+	if !regEntry.IsRegistration() {
+		return types.NodeView{}, change.Change{}, errAuthRequestNotRegistration
+	}
+
+	if !regEntry.TryBeginAuth() {
+		return types.NodeView{}, change.Change{}, hsdb.ErrNodeNotFoundRegistrationCache
+	}
+
+	authFinished := false
+	defer func() {
+		if !authFinished {
+			regEntry.AbortAuth()
+		}
+	}()
+
 	// Get the user
 	user, err := s.db.GetUserByID(userID)
 	if err != nil {
@@ -2374,10 +2633,14 @@ func (s *State) HandleNodeFromAuthPath(
 	}
 
 	// Signal to waiting clients
-	regEntry.FinishAuth(types.AuthVerdict{Node: finalNode})
+	if !regEntry.FinishClaimedAuth(types.AuthVerdict{Node: finalNode}) {
+		return types.NodeView{}, change.Change{}, hsdb.ErrNodeNotFoundRegistrationCache
+	}
+
+	authFinished = true
 
 	// Remove from registration cache
-	s.authCache.Remove(authID)
+	s.registrationAuthCache.entries.Remove(authID)
 
 	// Update policy managers
 	usersChange, err := s.updatePolicyManagerUsers()
@@ -2543,14 +2806,17 @@ func (s *State) HandleNodeFromPreAuthKey(
 	// after expiry would skip validation and be re-authorised with a spent or
 	// expired key; the boundary must not depend on the client rotating its key.
 	//
-	// Tagged nodes are excluded: they never expire (KB 1068), so an
-	// IsExpired() tagged node only reflects a stale logout stamp left by an
-	// older headscale (#3371). Forcing it down the re-validation path burns its
-	// fresh key and blocks re-auth forever; treat it as a plain re-registration
-	// and clear the stale expiry in the update below.
+	// This includes tagged nodes. Legacy logout stamps were cleared by a
+	// migration and current versions do not create them, while administrators
+	// can deliberately expire a tagged node. Reactivating one must therefore
+	// require a currently valid credential.
 	isExpired := existsSameUser && existingNodeSameUser.Valid() &&
-		!existingNodeSameUser.IsTagged() &&
 		existingNodeSameUser.IsExpired()
+	if isExpired && existingNodeSameUser.IsTagged() && !pak.IsTagged() {
+		return types.NodeView{}, change.Change{}, types.PAKError(
+			"tagged node reauthentication requires tagged authkey",
+		)
+	}
 
 	// A tagged key presented for a currently user-owned node converts that node
 	// to tagged. That is an ownership change, not a plain refresh, so it must
@@ -2683,12 +2949,10 @@ func (s *State) HandleNodeFromPreAuthKey(
 				node.User = nil
 
 				// Converting a user-owned node to tagged drops the user's key
-				// expiry (tagged nodes never expire). But retagging an
-				// already-tagged node must preserve a deliberate FUTURE expiry
-				// set via `headscale nodes expire` - that is a node property, not
-				// tied to the auth key - and only clear a stale PAST expiry. This
-				// keeps the retag path symmetric with the same-key relogin path
-				// (#3371) rather than silently overriding an admin decision.
+				// expiry (tagged nodes never expire). Retagging an
+				// already-tagged node preserves a FUTURE expiry set via
+				// `headscale nodes expire`; a valid reauthentication clears an
+				// expiry that has already taken effect.
 				if wasUserOwned || node.IsExpired() {
 					node.Expiry = nil
 				}
@@ -2718,11 +2982,9 @@ func (s *State) HandleNodeFromPreAuthKey(
 					node.Expiry = nil
 				}
 			} else if node.IsExpired() {
-				// #3371: a tagged node must never carry key expiry. Clear a
-				// stale PAST expiry left by a logout (older headscale) so
-				// re-auth is not permanently blocked. A deliberate future
-				// expiry (headscale nodes expire) has IsExpired() == false and
-				// is left untouched.
+				// Validation above established a currently valid credential.
+				// Successful reauthentication disables expiry for the tagged
+				// node; a future administrative expiry remains untouched.
 				node.Expiry = nil
 			}
 		})
@@ -2906,10 +3168,19 @@ func (s *State) updatePolicyManagerUsers() (change.Change, error) {
 
 	log.Debug().Caller().Int("user.count", len(users)).Msg("policy manager user update initiated because user list modification detected")
 
+	s.sshCheckMu.Lock()
+
 	changed, peerMapChanged, err := s.polMan.SetUsers(users)
 	if err != nil {
+		s.sshCheckMu.Unlock()
+
 		return change.Change{}, fmt.Errorf("updating policy manager users: %w", err)
 	}
+
+	if changed {
+		s.advanceSSHPolicyGenerationLocked()
+	}
+	s.sshCheckMu.Unlock()
 
 	log.Debug().Caller().Bool("policy.changed", changed).Msg("policy manager user update completed because SetUsers operation finished")
 
@@ -2944,10 +3215,19 @@ func (s *State) UpdatePolicyManagerUsersForTest() error {
 func (s *State) updatePolicyManagerNodes() (change.Change, error) {
 	nodes := s.ListNodes()
 
+	s.sshCheckMu.Lock()
+
 	changed, err := s.polMan.SetNodes(nodes)
 	if err != nil {
+		s.sshCheckMu.Unlock()
+
 		return change.Change{}, fmt.Errorf("updating policy manager nodes: %w", err)
 	}
+
+	if changed {
+		s.advanceSSHPolicyGenerationLocked()
+	}
+	s.sshCheckMu.Unlock()
 
 	if changed {
 		// Rebuild peer maps because policy-affecting node changes (tags, user, IPs)

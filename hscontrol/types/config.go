@@ -319,13 +319,13 @@ type Tuning struct {
 	// updates for connected clients.
 	BatcherWorkers int
 
-	// RegisterCacheExpiration is how long registration cache entries remain
-	// valid before being eligible for eviction.
+	// RegisterCacheExpiration is how long pending registration and SSH check
+	// entries remain valid before expiring.
 	RegisterCacheExpiration time.Duration
 
 	// RegisterCacheMaxEntries bounds the number of pending registration
-	// entries the auth cache will hold. Older entries are evicted (LRU)
-	// when the cap is reached, preventing unauthenticated cache-fill DoS.
+	// entries the auth cache will hold. New registrations are rejected while
+	// the cap is reached so existing authentication sessions remain available.
 	// A value of 0 falls back to defaultRegisterCacheMaxEntries (1024).
 	RegisterCacheMaxEntries int
 

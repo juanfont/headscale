@@ -16,6 +16,7 @@ import (
 	"github.com/oauth2-proxy/mockoidc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
 
@@ -374,11 +375,11 @@ func (b *oidcBrowser) pendingNode(t *testing.T) (types.AuthID, string) {
 	t.Helper()
 
 	authID := types.MustAuthID()
-	b.app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+	require.NoError(t, b.app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
 		MachineKey: key.NewMachine().Public(),
 		NodeKey:    key.NewNode().Public(),
 		Hostname:   "reload-victim",
-	}))
+	})))
 
 	return authID, b.publicURL + "/register/" + authID.String()
 }
@@ -478,6 +479,48 @@ func TestOIDCLoginCompletesAfterReload(t *testing.T) {
 	assert.True(t, b.app.state.ListNodes().ContainsFunc(func(node types.NodeView) bool {
 		return node.Hostname() == "reload-victim"
 	}), "the pending node must be persisted after confirmation")
+}
+
+func TestOIDCUserChangeNotifiesConnectedNodes(t *testing.T) {
+	b := newOIDCBrowser(t)
+
+	recipient := b.app.state.CreateUserForTest("recipient")
+	node := putTestNodeInStore(t, b.app, recipient, "connected-node")
+	updates := make(chan *tailcfg.MapResponse, 4)
+	require.NoError(t, b.app.mapBatcher.AddNode(
+		node.ID,
+		updates,
+		tailcfg.CapabilityVersion(100),
+		nil,
+	))
+	t.Cleanup(func() {
+		b.app.mapBatcher.RemoveNode(node.ID, updates)
+	})
+
+	select {
+	case initial := <-updates:
+		require.NotNil(t, initial)
+	case <-time.After(time.Second):
+		t.Fatal("initial map was not delivered")
+	}
+
+	_, registerURL := b.pendingNode(t)
+	status, _, body := b.get(t, registerURL)
+	require.Equal(t, http.StatusOK, status)
+	require.Contains(t, body, "Confirm node registration")
+
+	select {
+	case update := <-updates:
+		require.NotNil(t, update)
+	case <-time.After(2 * time.Second):
+		t.Fatal("connected node was not notified after the OIDC user changed")
+	}
+
+	select {
+	case <-updates:
+		t.Fatal("OIDC user change emitted more than one map update")
+	case <-time.After(250 * time.Millisecond):
+	}
 }
 
 // TestRegisterConfirmGETIsNotADeadEnd covers the second, independent way

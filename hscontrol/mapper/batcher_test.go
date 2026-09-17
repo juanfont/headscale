@@ -1913,10 +1913,17 @@ func TestBatcherMultiConnection(t *testing.T) {
 
 			thirdChannel := make(chan *tailcfg.MapResponse, 10)
 
-			err = batcher.AddNode(node1.n.ID, thirdChannel, tailcfg.CapabilityVersion(100), nil)
-			if err != nil {
-				t.Fatalf("Failed to add third connection for node1: %v", err)
-			}
+			err = batcher.Batcher.AddNode(node1.n.ID, thirdChannel, tailcfg.CapabilityVersion(100), nil)
+			require.NoError(t, err)
+
+			fourthChannel := make(chan *tailcfg.MapResponse, 10)
+			err = batcher.Batcher.AddNode(node1.n.ID, fourthChannel, tailcfg.CapabilityVersion(100), nil)
+			require.NoError(t, err)
+
+			// The fifth connection replaces the oldest while preserving the cap.
+			fifthChannel := make(chan *tailcfg.MapResponse, 10)
+			err = batcher.Batcher.AddNode(node1.n.ID, fifthChannel, tailcfg.CapabilityVersion(100), nil)
+			require.NoError(t, err)
 
 			// Yield to allow connection to be processed
 			runtime.Gosched()
@@ -1929,14 +1936,14 @@ func TestBatcherMultiConnection(t *testing.T) {
 			if info, exists := debugInfo[node1.n.ID]; exists {
 				t.Logf("Node1 debug info: %+v", info)
 
-				if info.ActiveConnections != 3 {
-					t.Errorf("Node1 should have 3 active connections, got %d", info.ActiveConnections)
+				if info.ActiveConnections != maxConcurrentMapSessionsPerNode {
+					t.Errorf("Node1 should have %d active connections, got %d", maxConcurrentMapSessionsPerNode, info.ActiveConnections)
 				} else {
-					t.Logf("SUCCESS: Node1 correctly shows 3 active connections")
+					t.Logf("SUCCESS: Node1 correctly bounds overlapping connections")
 				}
 
 				if !info.Connected {
-					t.Errorf("Node1 should show as connected with 3 active connections")
+					t.Errorf("Node1 should show as connected with overlapping connections")
 				}
 			}
 
@@ -1964,6 +1971,8 @@ func TestBatcherMultiConnection(t *testing.T) {
 			clearChannel(node1.ch)
 			clearChannel(secondChannel)
 			clearChannel(thirdChannel)
+			clearChannel(fourthChannel)
+			clearChannel(fifthChannel)
 			clearChannel(node2.ch)
 
 			// Send a change notification from node2 (so node1 should receive it on all connections)
@@ -1976,17 +1985,17 @@ func TestBatcherMultiConnection(t *testing.T) {
 				assert.Positive(c, len(node1.ch)+len(secondChannel)+len(thirdChannel), "should have received updates")
 			}, 5*time.Second, 50*time.Millisecond, "waiting for updates to propagate")
 
-			// Verify all three connections for node1 receive the update
+			// Verify the two newest connections receive the update.
 			connection1Received := false
 			connection2Received := false
 			connection3Received := false
+			connection4Received := false
+			connection5Received := false
 
 			select {
-			case mapResp := <-node1.ch:
-				connection1Received = (mapResp != nil)
-				t.Logf("Node1 connection 1 received update: %t", connection1Received)
-			case <-time.After(500 * time.Millisecond):
-				t.Errorf("Node1 connection 1 did not receive update")
+			case <-node1.ch:
+				t.Errorf("Replaced connection received an update")
+			case <-time.After(100 * time.Millisecond):
 			}
 
 			select {
@@ -2005,11 +2014,29 @@ func TestBatcherMultiConnection(t *testing.T) {
 				t.Errorf("Node1 connection 3 did not receive update")
 			}
 
-			if connection1Received && connection2Received && connection3Received {
-				t.Logf("SUCCESS: All three connections for node1 received the update")
+			select {
+			case mapResp := <-fourthChannel:
+				connection4Received = (mapResp != nil)
+				t.Logf("Node1 connection 4 received update: %t", connection4Received)
+			case <-time.After(500 * time.Millisecond):
+				t.Errorf("Node1 connection 4 did not receive update")
+			}
+
+			select {
+			case mapResp := <-fifthChannel:
+				connection5Received = (mapResp != nil)
+				t.Logf("Node1 connection 5 received update: %t", connection5Received)
+			case <-time.After(500 * time.Millisecond):
+				t.Errorf("Node1 connection 5 did not receive update")
+			}
+
+			if !connection1Received && connection2Received && connection3Received &&
+				connection4Received && connection5Received {
+				t.Logf("SUCCESS: Only the four newest connections received the update")
 			} else {
-				t.Errorf("FAILURE: Multi-connection broadcast failed - conn1: %t, conn2: %t, conn3: %t",
-					connection1Received, connection2Received, connection3Received)
+				t.Errorf("FAILURE: Bounded multi-connection broadcast failed - conn1: %t, conn2: %t, conn3: %t, conn4: %t, conn5: %t",
+					connection1Received, connection2Received, connection3Received,
+					connection4Received, connection5Received)
 			}
 
 			// Test connection removal and verify remaining connections still work.
@@ -2024,52 +2051,44 @@ func TestBatcherMultiConnection(t *testing.T) {
 			// Yield to allow removal to be processed
 			runtime.Gosched()
 
-			// Verify debug status shows 2 connections now
+			// Verify the other three admitted connections remain.
 			debugInfo2 := batcher.Debug()
 			if info, exists := debugInfo2[node1.n.ID]; exists {
-				if info.ActiveConnections != 2 {
-					t.Errorf("Node1 should have 2 active connections after removal, got %d", info.ActiveConnections)
+				if info.ActiveConnections != maxConcurrentMapSessionsPerNode-1 {
+					t.Errorf("Node1 should have %d active connections after removal, got %d",
+						maxConcurrentMapSessionsPerNode-1, info.ActiveConnections)
 				} else {
-					t.Logf("SUCCESS: Node1 correctly shows 2 active connections after removal")
+					t.Logf("SUCCESS: Node1 correctly shows %d active connections after removal",
+						maxConcurrentMapSessionsPerNode-1)
 				}
 			}
 
 			// Send another update and verify remaining connections still work
-			clearChannel(node1.ch)
 			clearChannel(thirdChannel)
 
 			testChangeSet2 := change.NodeAdded(node2.n.ID)
 
 			batcher.AddWork(testChangeSet2)
 
-			// Wait for updates to propagate to remaining channels
+			// Wait for updates to propagate to the remaining channel.
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				assert.Positive(c, len(node1.ch)+len(thirdChannel), "should have received updates")
+				assert.NotEmpty(c, thirdChannel, "should have received updates")
 			}, 5*time.Second, 50*time.Millisecond, "waiting for updates to propagate")
 
-			// Verify remaining connections still receive updates
+			// Verify only the remaining connection receives updates.
 			remaining1Received := false
-			remaining3Received := false
-
-			select {
-			case mapResp := <-node1.ch:
-				remaining1Received = (mapResp != nil)
-			case <-time.After(500 * time.Millisecond):
-				t.Errorf("Node1 connection 1 did not receive update after removal")
-			}
 
 			select {
 			case mapResp := <-thirdChannel:
-				remaining3Received = (mapResp != nil)
+				remaining1Received = (mapResp != nil)
 			case <-time.After(500 * time.Millisecond):
 				t.Errorf("Node1 connection 3 did not receive update after removal")
 			}
 
-			if remaining1Received && remaining3Received {
-				t.Logf("SUCCESS: Remaining connections still receive updates after removal")
+			if remaining1Received {
+				t.Logf("SUCCESS: Remaining connection still receives updates after removal")
 			} else {
-				t.Errorf("FAILURE: Remaining connections failed to receive updates - conn1: %t, conn3: %t",
-					remaining1Received, remaining3Received)
+				t.Errorf("FAILURE: Remaining connection did not receive updates")
 			}
 
 			// Drain secondChannel of any messages received before removal
@@ -2085,6 +2104,25 @@ func TestBatcherMultiConnection(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMapSessionOverlapLimitConcurrent(t *testing.T) {
+	t.Parallel()
+
+	mc := newMultiChannelNodeConn(1, nil)
+
+	const attempts = 64
+
+	panics := runConcurrentlyWithTimeout(t, attempts, 5*time.Second, func(i int) {
+		entry := makeConnectionEntry(
+			fmt.Sprintf("connection-%d", i),
+			make(chan *tailcfg.MapResponse, 1),
+		)
+		mc.addConnectionWithLimit(entry, maxConcurrentMapSessionsPerNode)
+	})
+
+	require.Zero(t, panics)
+	assert.Equal(t, maxConcurrentMapSessionsPerNode, mc.getActiveConnectionCount())
 }
 
 // TestNodeDeletedWhileChangesPending reproduces issue #2924 where deleting a node
