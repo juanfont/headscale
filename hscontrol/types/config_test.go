@@ -783,6 +783,7 @@ func TestPostgresConfigDSN(t *testing.T) {
 		path string
 		want map[string]string // expected query parameters
 	}{
+		//nolint:gosec // test fixture, not a credential
 		{
 			name: "ssl false disables sslmode",
 			cfg: PostgresConfig{
@@ -790,7 +791,7 @@ func TestPostgresConfigDSN(t *testing.T) {
 				Port: 5432,
 				Name: "headscale",
 				User: "hs",
-				Pass: "secret", //nolint:gosec // test fixture, not a credential
+				Pass: "secret",
 				Ssl:  "false",
 			},
 			host: "localhost", port: "5432", user: "hs", pass: "secret", path: "/headscale",
@@ -808,15 +809,15 @@ func TestPostgresConfigDSN(t *testing.T) {
 			host: "db", user: "hs", path: "/headscale",
 			want: map[string]string{"sslmode": "verify-full"},
 		},
+		// Regression: the DSN used to be concatenated, so a space, quote
+		// or backslash in the password truncated it or injected parameters.
+		//nolint:gosec // test fixture, not a credential
 		{
-			// Regression: the DSN used to be concatenated, so a space, quote
-			// or backslash in the password truncated it or injected parameters.
 			name: "password with reserved characters survives a round trip",
 			cfg: PostgresConfig{
 				Host: "db",
 				Name: "head scale",
 				User: "h's",
-				//nolint:gosec // test fixture, not a credential
 				Pass: `p a'ss\w sslmode=disable #?&@`,
 			},
 			host: "db", user: "h's", pass: `p a'ss\w sslmode=disable #?&@`, path: "/head scale",
