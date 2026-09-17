@@ -1,0 +1,80 @@
+name: Version Bump
+
+# Deliberately not a pull_request workflow. Running on the default branch is
+# what makes the gate cheap: a default-branch job's binary-cache writes are
+# readable by every later pull request job, so the nix checks run here are the
+# same derivations nix-checks.yml then gets as cache hits. See gc.yml for the
+# scoping rule.
+#
+# The schedule is added once the manual runs have been trusted for a while.
+on:
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Apply and report, but run no final gate and touch no remote"
+        type: boolean
+        default: false
+      areas:
+        description: "Comma-separated areas to run (default: all)"
+        type: string
+        default: ""
+      gate:
+        description: "Final gate level"
+        type: choice
+        options: [full, quick, none]
+        default: full
+      force:
+        description: "Open a pull request even if an identical one was closed unmerged"
+        type: boolean
+        default: false
+
+concurrency:
+  group: version-bump
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  bump:
+    # A manual dispatch is safe anywhere: the job can do nothing without
+    # WORKFLOW_SECRET, which a fork only has if its owner deliberately added
+    # one. That is what makes the whole thing testable on a fork before it is
+    # trusted here. A schedule, when one is added, stays upstream-only.
+    if: github.event_name == 'workflow_dispatch' || github.repository == 'juanfont/headscale'
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    defaults:
+      run:
+        shell: nix develop --fallback --command bash -e {0}
+    steps:
+      # The bot's own token, not GITHUB_TOKEN: pull requests opened by
+      # GITHUB_TOKEN do not trigger pull_request workflows, which is exactly how
+      # the previous flake.lock bot ended up shipping untested changes.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.WORKFLOW_SECRET }}
+
+      - uses: NixOS/nix-installer-action@62c1943b776c509394b550f3f983adc14e9212d6 # main
+      - uses: Mic92/hestia@f1f4df2801140a36398ed423533c8460618539df # v3.0.1
+
+      - name: Configure the committer
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      # There is no separate lock-update step: the tool rebuilds the branch from
+      # the base itself, so anything done before it would be discarded. The
+      # devShell above only supplies the Go that runs the tool; the tool
+      # re-enters `nix develop` per command, which is how the steps after the
+      # lock update see the toolchain that was just locked.
+      - name: Bump
+        env:
+          GH_TOKEN: ${{ secrets.WORKFLOW_SECRET }}
+        run: |
+          go run ./tools/bump run \
+            --gate="${{ inputs.gate || 'full' }}" \
+            --areas="${{ inputs.areas }}" \
+            --dry-run="${{ inputs.dry-run || false }}" \
+            --force="${{ inputs.force || false }}"

@@ -31,7 +31,8 @@ jobs:
               - '*.nix'
               - 'go.*'
               - '**/*.go'
-              - 'integration_test/'
+              - 'flake.lock'
+              - 'flakehashes.json'
               - 'config-example.yaml'
       - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
         if: steps.changed-files.outputs.files == 'true'

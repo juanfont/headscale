@@ -87,6 +87,10 @@ go test -race ./...
 # Integration tests — read cmd/hi/README.md first
 go run ./cmd/hi doctor
 go run ./cmd/hi run "TestName"
+
+# Version pins — see "Version Bumps" below
+go run ./tools/bump plan     # what is stale, changes nothing
+go run ./tools/bump verify   # do the pins still agree
 ```
 
 Go 1.27.0 minimum (per `go.mod:3`). `nix develop` pins the exact toolchain
@@ -253,6 +257,36 @@ Key reminders:
   Prune old runs if disk is tight.
 - Flakes are almost always code, not infrastructure. Read `hs-*.stderr.log`
   before blaming Docker.
+
+## Version Bumps
+
+`tools/bump` keeps the pinned versions current and opens one pull request a
+day. `bump plan` reports what is stale without touching anything; `bump verify`
+exits non-zero when the pins no longer agree.
+
+Three rules it encodes. A hand-written bump has to follow them too:
+
+1. **`modernc.org/libc` moves only to the version `modernc.org/sqlite`
+   requires**, and **`gvisor.dev/gvisor` only to the version `tailscale.com`
+   requires**. Both are read off the owner's own `go.mod` through
+   `proxy.golang.org`, never guessed. If the partner cannot be resolved,
+   neither half moves. The reasoning lives in the NOTE blocks in `go.mod`;
+   `go mod tidy` can detach those comments from the lines they document, so
+   check they are still attached.
+2. **Any `go.mod` or `go.sum` change needs `go run ./cmd/vendorhash update`.**
+   `flake.nix` reads the vendor hash from `flakehashes.json`, so skipping this
+   leaves a tree that cannot `nix build`.
+3. **`go.mod`'s `go` directive must not exceed the Go nixpkgs ships.** `go get`
+   raises it silently when a dependency demands a newer toolchain, and the go
+   command then downloads one, so `go build` succeeds locally. The nix builders
+   set `GOTOOLCHAIN=local` and fail. `bump verify` reports the drift; the tool
+   never edits the directive itself.
+
+`Dockerfile.tailscale-HEAD` and `Dockerfile.derper` compile a tailscale tree
+cloned from an unpinned branch, so their builder image is a floor, not a
+target: it has to be at least upstream's `go` directive. They set
+`GOTOOLCHAIN=auto` so an upstream bump degrades to a slower build rather than
+a broken one.
 
 ## Code Conventions
 
