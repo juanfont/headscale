@@ -9,7 +9,6 @@ import (
 	"net/netip"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"time"
 
 	"github.com/glebarez/sqlite"
@@ -18,6 +17,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
 	"github.com/tailscale/squibble"
 	"gorm.io/driver/postgres"
@@ -1105,35 +1105,16 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 		return db, err
 
 	case types.DatabasePostgres:
-		dbString := fmt.Sprintf(
-			"host=%s dbname=%s user=%s",
-			cfg.Postgres.Host,
-			cfg.Postgres.Name,
-			cfg.Postgres.User,
-		)
+		// Log the DSN without the password.
+		redacted := cfg.Postgres
+		redacted.Pass = ""
 
 		log.Info().
-			Str("database", types.DatabasePostgres).
-			Str("path", dbString).
+			Str(zf.Database, types.DatabasePostgres).
+			Str(zf.Path, redacted.DSN()).
 			Msg("Opening database")
 
-		if sslEnabled, err := strconv.ParseBool(cfg.Postgres.Ssl); err == nil { //nolint:noinlineerr
-			if !sslEnabled {
-				dbString += " sslmode=disable"
-			}
-		} else {
-			dbString += " sslmode=" + cfg.Postgres.Ssl
-		}
-
-		if cfg.Postgres.Port != 0 {
-			dbString += fmt.Sprintf(" port=%d", cfg.Postgres.Port)
-		}
-
-		if cfg.Postgres.Pass != "" {
-			dbString += " password=" + cfg.Postgres.Pass
-		}
-
-		db, err := gorm.Open(postgres.Open(dbString), &gorm.Config{
+		db, err := gorm.Open(postgres.Open(cfg.Postgres.DSN()), &gorm.Config{
 			Logger: dbLogger,
 		})
 		if err != nil {

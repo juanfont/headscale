@@ -4,9 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"net/netip"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -185,6 +187,61 @@ type PostgresConfig struct {
 	MaxOpenConnections  int
 	MaxIdleConnections  int
 	ConnMaxIdleTimeSecs int
+}
+
+// DSN returns the connection string for this configuration as a
+// postgres:// URL, the form lib/pq and pgx both accept. Building it with
+// net/url escapes every component, so a password (or host, user or
+// database name) containing spaces, quotes or other reserved characters
+// is passed through intact instead of truncating the DSN or injecting
+// extra parameters. A Host starting with "/" is a Unix socket directory
+// and travels as the host query parameter, as the URL form requires.
+//
+// Ssl keeps its historical meaning: "true" leaves the driver default,
+// "false" sets sslmode=disable, and any other value is used as sslmode.
+func (cfg PostgresConfig) DSN() string {
+	u := url.URL{
+		Scheme: "postgres",
+		Path:   "/" + cfg.Name,
+	}
+
+	switch {
+	case cfg.Pass != "":
+		u.User = url.UserPassword(cfg.User, cfg.Pass)
+	case cfg.User != "":
+		u.User = url.User(cfg.User)
+	}
+
+	query := url.Values{}
+	port := strconv.Itoa(cfg.Port)
+
+	switch {
+	case strings.HasPrefix(cfg.Host, "/"):
+		query.Set("host", cfg.Host)
+
+		if cfg.Port != 0 {
+			query.Set("port", port)
+		}
+	case cfg.Port != 0:
+		u.Host = net.JoinHostPort(cfg.Host, port)
+	case strings.Contains(cfg.Host, ":"):
+		u.Host = "[" + cfg.Host + "]" // bare IPv6 literal
+	default:
+		u.Host = cfg.Host
+	}
+
+	sslEnabled, err := strconv.ParseBool(cfg.Ssl)
+
+	switch {
+	case err == nil && !sslEnabled:
+		query.Set("sslmode", "disable")
+	case err != nil && cfg.Ssl != "":
+		query.Set("sslmode", cfg.Ssl)
+	}
+
+	u.RawQuery = query.Encode()
+
+	return u.String()
 }
 
 type GormConfig struct {
