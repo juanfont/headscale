@@ -169,9 +169,16 @@ func ListUsers(tx *gorm.DB, filter *types.User) ([]types.User, error) {
 
 // GetUserByName returns a user if the provided username is
 // unique, and otherwise an error.
+//
+// The username is matched against both the local Name and the OIDC Email,
+// because [types.User.Username] (the identifier shown to operators, e.g. in
+// "headscale users list") returns the Email for OIDC-provisioned users. This
+// mirrors the username resolution already used by the policy engine
+// (Username.resolveUser), so filters like "headscale nodes list -u <email>"
+// resolve OIDC users the same way ACLs do.
 func (hsdb *HSDatabase) GetUserByName(name string) (*types.User, error) {
-	users, err := hsdb.ListUsers(&types.User{Name: name})
-	if err != nil {
+	var users []types.User
+	if err := hsdb.DB.Where("name = ? OR email = ?", name, name).Find(&users).Error; err != nil {
 		return nil, err
 	}
 
