@@ -10,10 +10,8 @@
 PRAGMA foreign_keys=OFF;
 BEGIN TRANSACTION;
 
--- Migrations table: entries applied up to (but not including) the fix. The
--- intervening expiry migrations (clear-zero-time) also run against this dump;
--- their predicates (expiry < 1900) do not match the post-2000 dates below, so
--- they leave these rows for the new migration to handle.
+-- Migrations table: the v0.29.0 set, so only the post-0.29.0 migrations
+-- (including the fix under test) run against this dump.
 CREATE TABLE `migrations` (`id` text,PRIMARY KEY (`id`));
 INSERT INTO migrations VALUES('202312101416');
 INSERT INTO migrations VALUES('202312101430');
@@ -38,6 +36,7 @@ INSERT INTO migrations VALUES('202511122344-remove-newline-index');
 INSERT INTO migrations VALUES('202511131445-node-forced-tags-to-tags');
 INSERT INTO migrations VALUES('202601121700-migrate-hostinfo-request-tags');
 INSERT INTO migrations VALUES('202602201200-clear-tagged-node-user-id');
+INSERT INTO migrations VALUES('202605221435-clear-zero-time-node-expiry');
 
 -- Users table
 CREATE TABLE `users` (`id` integer PRIMARY KEY AUTOINCREMENT,`created_at` datetime,`updated_at` datetime,`deleted_at` datetime,`name` text,`display_name` text,`email` text,`provider_identifier` text,`provider` text,`profile_pic_url` text);

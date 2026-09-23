@@ -185,19 +185,17 @@ headscale/
 ## Database Migration Rules
 
 These rules are load-bearing — violating them corrupts production
-databases. The `migrationsRequiringFKDisabled` map in
-`hscontrol/db/db.go` is frozen (see the comment above it). All new
+databases. Migrations start at 0.29.0; `checkMinimumMigration` in
+`hscontrol/db/versioncheck.go` refuses older databases. All new
 migrations must:
 
 1. **Never reorder existing migrations.** Migration order is immutable
    once committed.
 2. **Only add new migrations to the end** of the migrations array.
-3. **Never disable foreign keys.** No new entries in
-   `migrationsRequiringFKDisabled`.
+3. **Never disable foreign keys.**
 4. **Use the migration ID format** `YYYYMMDDHHMM-short-description`
-   (timestamp + descriptive suffix). Example: `202602201200-clear-tagged-node-user-id`.
-5. **Never rename columns** that later migrations reference. Let
-   `AutoMigrate` create a new column if needed.
+   (timestamp + descriptive suffix). Example: `202607241200-clear-tagged-node-expiry`.
+5. **Never use `AutoMigrate`** in a migration; write explicit DDL.
 
 ## Tags-as-Identity
 
