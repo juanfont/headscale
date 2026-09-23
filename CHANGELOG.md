@@ -44,11 +44,9 @@ keys remain all-access.
 
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
-- The peer map is keyed by node ID and reused for writes that cannot change peer visibility, so a routine map request no longer rebuilds it. Adds `headscale_nodestore_snapshot_builds_total` [#3417](https://github.com/juanfont/headscale/issues/3417) [#3450](https://github.com/juanfont/headscale/pull/3450)
 - Headscale now requires Go 1.27 to build
-- Fix exit node not offered to viewers whose only matching rule is a `via` grant; peer visibility now comes from the peer map alone [#3409](https://github.com/juanfont/headscale/pull/3409)
 
-## 0.29.4 (unreleased)
+## 0.29.4 (2026-09-23)
 
 **Minimum supported Tailscale client version: v1.80.0**
 
@@ -65,8 +63,12 @@ keys remain all-access.
 - Fix tailsql not shutting down with headscale, leaving the process hanging on graceful shutdown [#3400](https://github.com/juanfont/headscale/pull/3400)
 - Fix tvOS setup instructions: install the VPN configuration before setting the coordination server URL [#3431](https://github.com/juanfont/headscale/pull/3431)
 - Map requests that only bump LastSeen, endpoints or DERP region no longer resend the whole node to every peer, and health probes that change nothing no longer write. Adds `headscale_mapper_changes_dropped_total` and `headscale_ha_health_updates_total` [#3417](https://github.com/juanfont/headscale/issues/3417) [#3450](https://github.com/juanfont/headscale/pull/3450)
+- The peer map is keyed by node ID and reused for writes that cannot change peer visibility, so a routine map request no longer rebuilds it. Adds `headscale_nodestore_snapshot_builds_total` [#3417](https://github.com/juanfont/headscale/issues/3417) [#3450](https://github.com/juanfont/headscale/pull/3450)
+- Fix an expired node staying online forever, because expiring it updated the key deadline without ending its map session [#3472](https://github.com/juanfont/headscale/pull/3472)
 - Fix ACME renewal stopping permanently after a `badNonce` reply, because the error logging middleware drained the response body the acme client needs to detect it [#3461](https://github.com/juanfont/headscale/pull/3461)
 - Fix `#`-prefixed metadata fields being rejected outside `acls`, so policy editors can store metadata in grants, SSH rules and `nodeAttrs` [#3481](https://github.com/juanfont/headscale/pull/3481)
+- Fix exit nodes not offered by recent macOS and iOS clients, which read the `suggest-exit-node` peer attribute rather than the advertised `0.0.0.0/0` routes [#3487](https://github.com/juanfont/headscale/pull/3487)
+- Fix exit node not offered to viewers whose only matching rule is a `via` grant; peer visibility now comes from the peer map alone [#3409](https://github.com/juanfont/headscale/pull/3409)
 
 ## 0.29.3 (2026-07-29)
 
