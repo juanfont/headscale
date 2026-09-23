@@ -145,7 +145,9 @@ headscale/
   `NodeStore` (`node_store.go`). All cross-subsystem operations go
   through `State`.
 - `db/` — GORM layer, migrations, schema. `node.go`, `users.go`,
-  `api_key.go`, `preauth_keys.go`, `ip.go`, `policy.go`.
+  `ip.go`, `policy.go`; credentials (API keys, pre-auth keys, OAuth) share
+  one table: `secret.go` (generate/verify), `api_key.go`,
+  `preauth_keys.go`, `oauth.go`, `migrate_credentials.go`.
 - `mapper/` — streaming batcher that distributes MapResponses to
   clients: `batcher.go`, `node_conn.go`, `builder.go`, `mapper.go`.
   Performance-critical.
@@ -196,6 +198,8 @@ migrations must:
 4. **Use the migration ID format** `YYYYMMDDHHMM-short-description`
    (timestamp + descriptive suffix). Example: `202607241200-clear-tagged-node-expiry`.
 5. **Never use `AutoMigrate`** in a migration; write explicit DDL.
+6. **Run multi-statement migrations in `tx.Transaction`** so a failure
+   leaves the database retryable.
 
 ## Tags-as-Identity
 
@@ -309,7 +313,7 @@ a broken one.
 - **Tests**: prefer `hscontrol/servertest/` for server-level tests that
   don't need Docker — faster than full integration tests.
 - **View types in read paths**: response serializers must read through
-  `NodeView`/`UserView`/`PreAuthKeyView` accessors. `AsStruct()` clones the
+  `NodeView`/`UserView`/`PreAuthKeyView`/`CredentialView` accessors. `AsStruct()` clones the
   whole record on every read — it is only for DB-write/merge clones and mutable
   working copies, never to build an API response. `grep AsStruct hscontrol/api`
   must come back empty.

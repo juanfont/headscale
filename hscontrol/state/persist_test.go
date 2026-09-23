@@ -668,3 +668,48 @@ func TestUpdatePolicyManagerUsersUnchangedKeepsSnapshot(t *testing.T) {
 	require.NotSame(t, before, s.nodeStore.data.Load(),
 		"a user change must rebuild the peer map")
 }
+
+// TestSingleUsePreAuthKeyUsedInNodeStore asserts that consuming a single-use
+// key marks it used in both the database and the node's cached AuthKey, on
+// first registration and when re-registering with a fresh single-use key.
+func TestSingleUsePreAuthKeyUsedInNodeStore(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+
+	s, err := NewState(persistTestConfig(dbPath))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	user := s.CreateUserForTest("single-use")
+	machine := key.NewMachine()
+
+	register := func(t *testing.T) types.NodeView {
+		t.Helper()
+
+		pak, err := s.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+		require.NoError(t, err)
+
+		node, _, err := s.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+			Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+			NodeKey:  key.NewNode().Public(),
+			Hostinfo: &tailcfg.Hostinfo{Hostname: "single-use"},
+			Expiry:   time.Now().Add(24 * time.Hour),
+		}, machine.Public())
+		require.NoError(t, err)
+
+		cached, ok := s.GetNodeByID(node.ID())
+		require.True(t, ok)
+		require.True(t, cached.AuthKey().Valid())
+		assert.Equal(t, pak.ID, cached.AuthKey().ID())
+		assert.True(t, cached.AuthKey().Used(), "NodeStore copy must be marked used")
+
+		stored, err := s.db.GetPreAuthKeyByID(pak.ID)
+		require.NoError(t, err)
+		assert.True(t, stored.Used, "database row must be marked used")
+
+		return cached
+	}
+
+	first := register(t)
+	second := register(t)
+	assert.Equal(t, first.ID(), second.ID(), "second key re-registers the same node")
+}

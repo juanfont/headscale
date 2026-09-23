@@ -34,16 +34,17 @@ func (pak *PreAuthKeyNew) StringID() string {
 	return strconv.FormatUint(pak.ID, util.Base10)
 }
 
-// PreAuthKey describes a pre-authorization key usable in a particular user.
+// PreAuthKey is the API/state projection of a [Credential] of kind authkey.
+// Its gorm tags remain only for the post-0.29 migrations that still alter the
+// legacy pre_auth_keys table.
+//
+// TODO(kradalby): drop the gorm tags in 0.31 with the credentials migration.
 type PreAuthKey struct {
 	ID uint64 `gorm:"primary_key"`
 
-	// Legacy plaintext key (for backwards compatibility)
-	Key string
-
-	// New bcrypt-based authentication
+	// Prefix is the credential identifier; Hash is the stored secret hash.
 	Prefix string
-	Hash   []byte // bcrypt
+	Hash   []byte
 
 	// For tagged keys: [PreAuthKey.UserID] tracks who created the key (informational)
 	// For user-owned keys: [PreAuthKey.UserID] tracks the node owner

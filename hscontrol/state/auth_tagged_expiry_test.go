@@ -722,7 +722,7 @@ func TestTaggedReauthUntagClearsEphemeralAuthKey(t *testing.T) {
 	require.NoError(t, err)
 
 	seeded, ok := n.s.nodeStore.UpdateNode(n.id, func(nd *types.Node) {
-		nd.AuthKey = pak
+		nd.AuthKey = pak.AsCredential()
 		nd.AuthKeyID = &pak.ID
 	})
 	require.True(t, ok)

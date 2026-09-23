@@ -7,66 +7,56 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
-	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
-	"tailscale.com/util/rands"
 )
 
 const (
-	apiKeyPrefix       = "hskey-api-" //nolint:gosec // This is a prefix, not a credential
-	apiKeyPrefixLength = 12
-	apiKeyHashLength   = 64
+	apiKeyPrefix = "hskey-api-" //nolint:gosec // This is a prefix, not a credential
 
-	// Legacy format constants.
+	// Legacy format constant: the prefix length of pre-hskey "prefix.secret" keys.
+	// TODO(kradalby): remove in 0.32 with legacy key formats (announced).
 	legacyAPIPrefixLength = 7
-	legacyAPIKeyLength    = 32
 )
 
 var (
 	ErrAPIKeyFailedToParse    = errors.New("failed to parse ApiKey")
 	ErrAPIKeyGenerationFailed = errors.New("failed to generate API key")
 	ErrAPIKeyExpired          = errors.New("API key expired")
+	ErrAPIKeyNotFound         = fmt.Errorf("API key not found: %w", gorm.ErrRecordNotFound)
 )
 
 // CreateAPIKey creates a new [types.APIKey] in a user, and returns it.
 func (hsdb *HSDatabase) CreateAPIKey(
 	expiration *time.Time,
 ) (string, *types.APIKey, error) {
-	// Generate public prefix (12 chars)
-	prefix := rands.HexString(apiKeyPrefixLength)
+	keyStr, identifier, hash := generateSecret(apiKeyPrefix)
 
-	// Generate secret (64 chars)
-	secret := rands.HexString(apiKeyHashLength)
-
-	// Full key string (shown ONCE to user)
-	keyStr := apiKeyPrefix + prefix + "-" + secret
-
-	// bcrypt hash of secret
-	hash, err := bcrypt.GenerateFromPassword([]byte(secret), bcrypt.DefaultCost)
-	if err != nil {
-		return "", nil, err
-	}
-
-	key := types.APIKey{
-		Prefix:     prefix,
+	cred := types.Credential{
+		Kind:       types.CredentialAPIKey,
+		Identifier: identifier,
 		Hash:       hash,
 		Expiration: expiration,
 	}
 
-	if err := hsdb.DB.Save(&key).Error; err != nil { //nolint:noinlineerr
+	if err := hsdb.DB.Save(&cred).Error; err != nil { //nolint:noinlineerr
 		return "", nil, fmt.Errorf("saving API key to database: %w", err)
 	}
 
-	return keyStr, &key, nil
+	return keyStr, credentialToAPIKey(&cred), nil
 }
 
 // ListAPIKeys returns the list of [types.APIKey] values for a user.
 func (hsdb *HSDatabase) ListAPIKeys() ([]types.APIKey, error) {
-	keys := []types.APIKey{}
+	var creds []types.Credential
 
-	err := hsdb.DB.Find(&keys).Error
+	err := hsdb.DB.Where("kind = ?", types.CredentialAPIKey).Order("id").Find(&creds).Error
 	if err != nil {
 		return nil, err
+	}
+
+	keys := make([]types.APIKey, 0, len(creds))
+	for i := range creds {
+		keys = append(keys, *credentialToAPIKey(&creds[i]))
 	}
 
 	return keys, nil
@@ -74,42 +64,53 @@ func (hsdb *HSDatabase) ListAPIKeys() ([]types.APIKey, error) {
 
 // GetAPIKey returns a [types.APIKey] for a given key.
 func (hsdb *HSDatabase) GetAPIKey(prefix string) (*types.APIKey, error) {
-	key := types.APIKey{}
-	if result := hsdb.DB.First(&key, "prefix = ?", prefix); result.Error != nil {
+	var cred types.Credential
+	if result := hsdb.DB.First(&cred, "kind = ? AND identifier = ?", types.CredentialAPIKey, prefix); result.Error != nil {
 		return nil, result.Error
 	}
 
-	return &key, nil
+	return credentialToAPIKey(&cred), nil
 }
 
 // GetAPIKeyByID returns a [types.APIKey] for a given id.
 func (hsdb *HSDatabase) GetAPIKeyByID(id uint64) (*types.APIKey, error) {
-	key := types.APIKey{}
+	var cred types.Credential
 	// Query on an explicit primary-key clause: a struct condition would drop a
 	// zero-valued ID, making the lookup unconditional and returning the first
 	// row instead of not-found.
-	if result := hsdb.DB.First(&key, "id = ?", id); result.Error != nil {
+	if result := hsdb.DB.First(&cred, "kind = ? AND id = ?", types.CredentialAPIKey, id); result.Error != nil {
 		return nil, result.Error
 	}
 
-	return &key, nil
+	return credentialToAPIKey(&cred), nil
 }
 
-// DestroyAPIKey destroys a [types.APIKey]. Returns error if the [types.APIKey]
-// does not exist.
+// DestroyAPIKey destroys a [types.APIKey]. Returns [ErrAPIKeyNotFound] if the
+// [types.APIKey] does not exist.
 func (hsdb *HSDatabase) DestroyAPIKey(key types.APIKey) error {
-	if result := hsdb.DB.Unscoped().Delete(key); result.Error != nil {
-		return result.Error
-	}
+	res := hsdb.DB.Unscoped().
+		Delete(&types.Credential{}, "kind = ? AND id = ?", types.CredentialAPIKey, key.ID)
 
-	return nil
+	return apiKeyAffected(res)
 }
 
 // ExpireAPIKey marks a [types.APIKey] as expired.
 func (hsdb *HSDatabase) ExpireAPIKey(key *types.APIKey) error {
-	err := hsdb.DB.Model(&key).Update("Expiration", time.Now()).Error
-	if err != nil {
-		return err
+	res := hsdb.DB.Model(&types.Credential{}).
+		Where("kind = ? AND id = ?", types.CredentialAPIKey, key.ID).
+		Update("expiration", time.Now())
+
+	return apiKeyAffected(res)
+}
+
+// apiKeyAffected maps a write that matched no API key row to [ErrAPIKeyNotFound].
+func apiKeyAffected(res *gorm.DB) error {
+	if res.Error != nil {
+		return res.Error
+	}
+
+	if res.RowsAffected == 0 {
+		return ErrAPIKeyNotFound
 	}
 
 	return nil
@@ -148,9 +149,11 @@ func (hsdb *HSDatabase) AuthenticateAPIKey(keyStr string) (*types.APIKey, error)
 // SetAPIKeyUser sets the owning user of an API key. Used when an admin mints a
 // key on behalf of a user (headscale apikeys create --user).
 func (hsdb *HSDatabase) SetAPIKeyUser(keyID uint64, userID types.UserID) error {
-	return hsdb.DB.Model(&types.APIKey{}).
-		Where("id = ?", keyID).
-		Update("user_id", uint(userID)).Error
+	res := hsdb.DB.Model(&types.Credential{}).
+		Where("kind = ? AND id = ?", types.CredentialAPIKey, keyID).
+		Update("user_id", uint(userID))
+
+	return apiKeyAffected(res)
 }
 
 // ParseAPIKeyPrefix extracts the database prefix from a display prefix.
@@ -158,7 +161,7 @@ func (hsdb *HSDatabase) SetAPIKeyUser(keyID uint64, userID types.UserID) error {
 // Returns the 12-character prefix suitable for database lookup.
 func ParseAPIKeyPrefix(displayPrefix string) (string, error) {
 	// If it's already just the 12-character prefix, return it
-	if len(displayPrefix) == apiKeyPrefixLength && isValidBase64URLSafe(displayPrefix) {
+	if len(displayPrefix) == keyIdentifierLength && isValidBase64URLSafe(displayPrefix) {
 		return displayPrefix, nil
 	}
 
@@ -171,11 +174,11 @@ func ParseAPIKeyPrefix(displayPrefix string) (string, error) {
 		}
 
 		// Extract just the first 12 characters (the actual prefix)
-		if len(remainder) < apiKeyPrefixLength {
+		if len(remainder) < keyIdentifierLength {
 			return "", fmt.Errorf("%w: prefix too short", ErrAPIKeyFailedToParse)
 		}
 
-		prefix := remainder[:apiKeyPrefixLength]
+		prefix := remainder[:keyIdentifierLength]
 
 		// Validate it's base64 URL-safe
 		if !isValidBase64URLSafe(prefix) {
@@ -186,6 +189,7 @@ func ParseAPIKeyPrefix(displayPrefix string) (string, error) {
 	}
 
 	// For legacy 7-character prefixes or other formats, return as-is
+	// TODO(kradalby): remove in 0.32 with legacy key formats (announced).
 	return displayPrefix, nil
 }
 
@@ -202,38 +206,26 @@ func validateAPIKey(db *gorm.DB, keyStr string) (*types.APIKey, error) {
 
 	if !found {
 		// Legacy format: prefix.secret
+		// TODO(kradalby): remove in 0.32 with legacy key formats (announced).
 		return validateLegacyAPIKey(db, keyStr)
 	}
 
-	// New format: parse and verify
-	prefix, secret, err := parsePrefixedKey(
-		prefixAndSecret,
-		apiKeyPrefixLength,
-		apiKeyHashLength,
-		ErrAPIKeyFailedToParse,
-	)
+	prefix, secret, err := parsePrefixedKey(prefixAndSecret, ErrAPIKeyFailedToParse)
 	if err != nil {
 		return nil, err
 	}
 
-	// Look up by prefix (indexed)
-	var key types.APIKey
-
-	err = db.First(&key, "prefix = ?", prefix).Error
+	cred, err := authenticateCredential(db, types.CredentialAPIKey, prefix, secret, ErrAPIKeyNotFound)
 	if err != nil {
-		return nil, fmt.Errorf("API key not found: %w", err)
+		return nil, err
 	}
 
-	// Verify bcrypt hash
-	err = bcrypt.CompareHashAndPassword(key.Hash, []byte(secret))
-	if err != nil {
-		return nil, fmt.Errorf("invalid API key: %w", err)
-	}
-
-	return &key, nil
+	return credentialToAPIKey(cred), nil
 }
 
 // validateLegacyAPIKey validates a legacy format API key (prefix.secret).
+//
+// TODO(kradalby): remove in 0.32 with legacy key formats (announced).
 func validateLegacyAPIKey(db *gorm.DB, keyStr string) (*types.APIKey, error) {
 	// Legacy format uses "." as separator
 	prefix, secret, found := strings.Cut(keyStr, ".")
@@ -246,18 +238,10 @@ func validateLegacyAPIKey(db *gorm.DB, keyStr string) (*types.APIKey, error) {
 		return nil, fmt.Errorf("%w: legacy prefix length mismatch", ErrAPIKeyFailedToParse)
 	}
 
-	var key types.APIKey
-
-	err := db.First(&key, "prefix = ?", prefix).Error
+	cred, err := authenticateCredential(db, types.CredentialAPIKey, prefix, secret, ErrAPIKeyNotFound)
 	if err != nil {
-		return nil, fmt.Errorf("API key not found: %w", err)
+		return nil, err
 	}
 
-	// Verify bcrypt (key.Hash stores bcrypt of full secret)
-	err = bcrypt.CompareHashAndPassword(key.Hash, []byte(secret))
-	if err != nil {
-		return nil, fmt.Errorf("invalid API key: %w", err)
-	}
-
-	return &key, nil
+	return credentialToAPIKey(cred), nil
 }

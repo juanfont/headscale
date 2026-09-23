@@ -32,10 +32,12 @@ const (
 var ErrNodeNameNotUnique = errors.New("node name is not unique")
 
 // preloadNode returns a session that eager-loads a node's AuthKey, the
-// AuthKey's User, and the node's User.
+// AuthKey's User, and the node's User. The AuthKey is filtered to pre-auth
+// keys: auth_key_id references the shared credentials table, and only that
+// kind may back a node.
 func preloadNode(tx *gorm.DB) *gorm.DB {
 	return tx.
-		Preload("AuthKey").
+		Preload("AuthKey", "kind = ?", types.CredentialPreAuthKey).
 		Preload("AuthKey.User").
 		Preload("User")
 }
@@ -98,7 +100,9 @@ func (hsdb *HSDatabase) ListEphemeralNodes() (types.Nodes, error) {
 	return Read(hsdb.DB, func(rx *gorm.DB) (types.Nodes, error) {
 		nodes := types.Nodes{}
 
-		err := rx.Joins("AuthKey").Where(`"AuthKey"."ephemeral" = true`).Find(&nodes).Error
+		err := rx.Joins("AuthKey").
+			Where(`"AuthKey"."ephemeral" = true AND "AuthKey"."kind" = ?`, types.CredentialPreAuthKey).
+			Find(&nodes).Error
 		if err != nil {
 			return nil, err
 		}

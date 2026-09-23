@@ -35,11 +35,39 @@ tags; any other tag is rejected, for new and re-registering nodes alike. See
 
 [#3351](https://github.com/juanfont/headscale/pull/3351)
 
+### Credentials stored in one table, hashed with SHA-256
+
+API keys, pre-auth keys, OAuth clients and OAuth access tokens now live in a
+single `credentials` table and are verified by one shared code path. Their
+secrets are 256 bits of server-generated randomness, never user-chosen, so they
+are stored as a SHA-256 digest: recovering one means searching the whole secret
+space, and password stretching would only add latency to every request.
+
+Keys created by older releases keep working on 0.30. Support for them is
+removed on this schedule:
+
+- **0.31** drops the upgrade from the 0.29 tables: upgrade to 0.30 first, as
+  the one-minor-version-at-a-time rule already requires.
+- **0.32** drops bcrypt verification. A bcrypt-hashed key is rehashed to SHA-256
+  the first time it authenticates, so use every API key and pre-auth key you
+  still need at least once on 0.30 or 0.31. Keys not used by then stop working
+  and must be reissued.
+- **0.32** drops the legacy key formats: API keys of the form `prefix.secret`
+  (shown with a 7-character prefix in `headscale apikeys list`) and pre-auth
+  keys from before 0.28.0 (shown as `hskey-auth-legacy-…` in
+  `headscale preauthkeys list`). Using them does not help; reissue them before
+  upgrading to 0.32.
+
+[#3352](https://github.com/juanfont/headscale/pull/3352)
+
 ### BREAKING
 
 #### Database
 
 - Only upgrades from 0.29.x are supported; migrations for older releases are removed and headscale refuses to start on an older database. Upgrade to the latest 0.29.x first [#3352](https://github.com/juanfont/headscale/pull/3352)
+- The `pre_auth_keys`, `api_keys`, `oauth_clients` and `oauth_access_tokens` tables are merged into `credentials` and dropped. The migration cannot be reversed; take a backup before upgrading, as downgrading means restoring it [#3352](https://github.com/juanfont/headscale/pull/3352)
+- API key IDs are renumbered, as all credential kinds now share one ID sequence; scripts using `headscale apikeys expire|delete --id` should look IDs up again or use `--prefix` [#3352](https://github.com/juanfont/headscale/pull/3352)
+- Deleting a user now clears the owner of its API keys and OAuth clients instead of leaving a dangling reference [#3352](https://github.com/juanfont/headscale/pull/3352)
 
 #### API
 
