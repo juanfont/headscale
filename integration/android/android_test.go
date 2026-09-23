@@ -54,10 +54,20 @@ type env struct {
 	controlURL string
 }
 
+// caStore is where the headscale CA is installed on the device; noTLS
+// serves plain HTTP instead.
+type caStore int
+
+const (
+	noTLS caStore = iota
+	userCA
+	systemCA
+)
+
 // setup starts headscale, one Linux peer and the emulator with the app
-// installed. With tls, headscale serves HTTPS from a private CA that is
-// installed on the device the way a user would, in the user CA store.
-func setup(t *testing.T, apk string, tls bool) *env {
+// installed. Unless ca is noTLS, headscale serves HTTPS from a private CA
+// installed in the given device store.
+func setup(t *testing.T, apk string, ca caStore) *env {
 	t.Helper()
 
 	hsOpts := []hsic.Option{
@@ -66,8 +76,13 @@ func setup(t *testing.T, apk string, tls bool) *env {
 		// data plane independent of which CA the device trusts.
 		hsic.WithPublicDERP(),
 	}
-	if !tls {
+	if ca == noTLS {
 		hsOpts = append(hsOpts, hsic.WithoutTLS())
+	}
+
+	var androidOpts []androidic.Option
+	if ca == systemCA {
+		androidOpts = append(androidOpts, androidic.WithWritableSystem())
 	}
 
 	scenario, err := integration.NewScenario(integration.ScenarioSpec{
@@ -90,7 +105,7 @@ func setup(t *testing.T, apk string, tls bool) *env {
 
 	android, err := androidic.New(
 		scenario.Pool(),
-		androidic.WithNetwork(scenario.Networks()[0]),
+		append(androidOpts, androidic.WithNetwork(scenario.Networks()[0]))...,
 	)
 	if android != nil {
 		// Registered after the scenario so it runs first: the container
@@ -128,8 +143,14 @@ func setup(t *testing.T, apk string, tls bool) *env {
 		controlURL: headscale.GetIPEndpoint(),
 	}
 
-	if tls {
+	switch ca {
+	case noTLS:
+	case userCA:
 		require.NoError(t, android.InstallUserCA(headscale.GetCert()))
+
+		e.controlURL = headscale.GetEndpoint()
+	case systemCA:
+		require.NoError(t, android.InstallSystemCA(headscale.GetCert()))
 
 		e.controlURL = headscale.GetEndpoint()
 	}
@@ -245,7 +266,7 @@ func (e *env) authKey(t *testing.T) string {
 
 func TestAndroidLoginCustomControlURL(t *testing.T) {
 	apk := androidSkip(t)
-	e := setup(t, apk, false)
+	e := setup(t, apk, noTLS)
 
 	e.loginInteractive(t)
 }
@@ -290,7 +311,7 @@ func (e *env) loginInteractive(t *testing.T) *clientv1.Node {
 // the client, so both are covered.
 func TestAndroidPeerChanges(t *testing.T) {
 	apk := androidSkip(t)
-	e := setup(t, apk, false)
+	e := setup(t, apk, noTLS)
 
 	android := e.loginInteractive(t)
 
@@ -354,7 +375,7 @@ func TestAndroidPeerChanges(t *testing.T) {
 
 func TestAndroidLoginAuthKey(t *testing.T) {
 	apk := androidSkip(t)
-	e := setup(t, apk, false)
+	e := setup(t, apk, noTLS)
 	require.NoError(t, e.android.Launch())
 
 	// The auth key screen logs in to the current control server, so point
@@ -376,7 +397,7 @@ func TestAndroidLoginAuthKey(t *testing.T) {
 
 func TestAndroidLoginMDM(t *testing.T) {
 	apk := androidSkip(t)
-	e := setup(t, apk, false)
+	e := setup(t, apk, noTLS)
 
 	e.loginMDM(t)
 }
@@ -410,7 +431,7 @@ func (e *env) loginMDM(t *testing.T) *clientv1.Node {
 // connected as the same node when reopened.
 func TestAndroidRestart(t *testing.T) {
 	apk := androidSkip(t)
-	e := setup(t, apk, false)
+	e := setup(t, apk, noTLS)
 
 	before := e.loginMDM(t)
 
@@ -433,7 +454,7 @@ func TestAndroidUpgrade(t *testing.T) {
 		t.Skip("HEADSCALE_INTEGRATION_ANDROID_UPGRADE_FROM not set, skipping")
 	}
 
-	e := setup(t, from, false)
+	e := setup(t, from, noTLS)
 
 	before := e.loginMDM(t)
 
@@ -452,7 +473,7 @@ func TestAndroidUpgrade(t *testing.T) {
 
 func TestAndroidLoginHook(t *testing.T) {
 	apk := androidSkip(t)
-	e := setup(t, apk, false)
+	e := setup(t, apk, noTLS)
 
 	debug, err := e.android.Debuggable()
 	require.NoError(t, err)
@@ -466,11 +487,20 @@ func TestAndroidLoginHook(t *testing.T) {
 	e.assertReachable(t, e.androidNode(t))
 }
 
+// TestAndroidLoginTLSSystemCA logs in to headscale behind a private CA in
+// the system store, which all supported versions trust.
+func TestAndroidLoginTLSSystemCA(t *testing.T) {
+	apk := androidSkip(t)
+	e := setup(t, apk, systemCA)
+
+	e.loginInteractive(t)
+}
+
 // TestAndroidLoginTLS logs in to headscale behind a private CA the user
 // installed on the device, the usual self-hosted setup.
 func TestAndroidLoginTLS(t *testing.T) {
 	apk := androidSkip(t)
-	e := setup(t, apk, true)
+	e := setup(t, apk, userCA)
 
 	// The app only trusts user-installed CAs from 1.98.
 	ok, err := e.android.VersionAtLeast(1, 98)

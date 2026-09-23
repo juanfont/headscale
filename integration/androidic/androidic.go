@@ -55,6 +55,13 @@ const (
 	uiPollTimeout = 60 * time.Second
 )
 
+// emulatorCmd mirrors the image's CMD, for runs that add flags.
+var emulatorCmd = []string{
+	"emulator", "-avd", "test", "-no-window", "-no-audio", "-no-snapshot",
+	"-no-boot-anim", "-gpu", "swiftshader_indirect", "-memory", "3072",
+	"-netdelay", "none", "-netspeed", "full",
+}
+
 var (
 	errNoNetwork   = errors.New("androidic: no network set")
 	errBootTimeout = errors.New("androidic: timed out waiting for emulator boot")
@@ -74,10 +81,20 @@ type AndroidInContainer struct {
 	pool      *dockertest.Pool
 	container *dockertest.Resource
 	network   *dockertest.Network
+
+	writableSystem bool
 }
 
 // Option represents optional settings for an [AndroidInContainer].
 type Option = func(c *AndroidInContainer)
+
+// WithWritableSystem boots the emulator with a writable system partition,
+// needed by [AndroidInContainer.InstallSystemCA].
+func WithWritableSystem() Option {
+	return func(a *AndroidInContainer) {
+		a.writableSystem = true
+	}
+}
 
 // WithNetwork sets the Docker [dockertest.Network].
 func WithNetwork(network *dockertest.Network) Option {
@@ -115,6 +132,10 @@ func New(
 	runOptions := &dockertest.RunOptions{
 		Name:     hostname,
 		Networks: []*dockertest.Network{a.network},
+	}
+
+	if a.writableSystem {
+		runOptions.Cmd = append(slices.Clone(emulatorCmd), "-writable-system")
 	}
 
 	dockertestutil.DockerAddIntegrationLabels(runOptions, "android")
@@ -310,39 +331,13 @@ func (a *AndroidInContainer) Crashes() (string, error) {
 }
 
 // InstallUserCA adds a PEM CA certificate to the device's user CA store,
-// as installing it from Settings would. Needs a google_apis image, where
-// adbd can run as root.
+// as installing it from Settings would.
 func (a *AndroidInContainer) InstallUserCA(caPEM []byte) error {
-	block, _ := pem.Decode(caPEM)
-	if block == nil {
-		return errInvalidCA
-	}
-
-	cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		return fmt.Errorf("parsing CA: %w", err)
-	}
-
-	// Android names store entries by OpenSSL's subject_hash_old: the first
-	// four bytes of the subject's MD5, little endian.
-	sum := md5.Sum(cert.RawSubject) //nolint:gosec
-	name := fmt.Sprintf("%08x.0", binary.LittleEndian.Uint32(sum[:4]))
-
 	const dir = "/data/misc/user/0/cacerts-added"
 
-	err = a.WriteFile("/tmp/"+name, caPEM)
+	name, err := a.pushCA(caPEM)
 	if err != nil {
 		return err
-	}
-
-	_, stderr, err := a.Execute([]string{"sh", "-c", "adb root && adb wait-for-device"})
-	if err != nil {
-		return fmt.Errorf("adb root: %w: %s", err, stderr)
-	}
-
-	_, stderr, err = a.Execute([]string{"adb", "push", "/tmp/" + name, "/data/local/tmp/" + name})
-	if err != nil {
-		return fmt.Errorf("pushing CA: %w: %s", err, stderr)
 	}
 
 	_, err = a.Shell(fmt.Sprintf(
@@ -352,6 +347,95 @@ func (a *AndroidInContainer) InstallUserCA(caPEM []byte) error {
 	))
 
 	return err
+}
+
+// InstallSystemCA adds a PEM CA certificate to the device's system CA
+// store, which every app version trusts. Needs [WithWritableSystem].
+func (a *AndroidInContainer) InstallSystemCA(caPEM []byte) error {
+	const dir = "/system/etc/security/cacerts"
+
+	name, err := a.pushCA(caPEM)
+	if err != nil {
+		return err
+	}
+
+	// The first remount of a verified system image disables verity and
+	// only takes effect after a reboot.
+	out, _, err := a.Execute([]string{"adb", "remount"})
+	if err != nil || strings.Contains(out, "reboot") {
+		_, stderr, err := a.Execute([]string{"sh", "-c", "adb reboot && adb wait-for-device"})
+		if err != nil {
+			return fmt.Errorf("rebooting for remount: %w: %s", err, stderr)
+		}
+
+		err = a.waitForBoot(5 * time.Minute)
+		if err != nil {
+			return err
+		}
+
+		err = a.root()
+		if err != nil {
+			return err
+		}
+
+		out, stderr, err = a.Execute([]string{"adb", "remount"})
+		if err != nil {
+			return fmt.Errorf("adb remount: %w: %s %s", err, out, stderr)
+		}
+	}
+
+	_, err = a.Shell(fmt.Sprintf(
+		"mv /data/local/tmp/%[2]s %[1]s/%[2]s && chmod 644 %[1]s/%[2]s && chown root:root %[1]s/%[2]s",
+		dir, name,
+	))
+
+	return err
+}
+
+// pushCA copies a PEM CA to /data/local/tmp on the device under the name
+// Android's CA stores expect, leaving adbd running as root. Needs a
+// google_apis image, where adbd can run as root.
+func (a *AndroidInContainer) pushCA(caPEM []byte) (string, error) {
+	block, _ := pem.Decode(caPEM)
+	if block == nil {
+		return "", errInvalidCA
+	}
+
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return "", fmt.Errorf("parsing CA: %w", err)
+	}
+
+	// Android names store entries by OpenSSL's subject_hash_old: the first
+	// four bytes of the subject's MD5, little endian.
+	sum := md5.Sum(cert.RawSubject) //nolint:gosec
+	name := fmt.Sprintf("%08x.0", binary.LittleEndian.Uint32(sum[:4]))
+
+	err = a.WriteFile("/tmp/"+name, caPEM)
+	if err != nil {
+		return "", err
+	}
+
+	err = a.root()
+	if err != nil {
+		return "", err
+	}
+
+	_, stderr, err := a.Execute([]string{"adb", "push", "/tmp/" + name, "/data/local/tmp/" + name})
+	if err != nil {
+		return "", fmt.Errorf("pushing CA: %w: %s", err, stderr)
+	}
+
+	return name, nil
+}
+
+func (a *AndroidInContainer) root() error {
+	_, stderr, err := a.Execute([]string{"sh", "-c", "adb root && adb wait-for-device"})
+	if err != nil {
+		return fmt.Errorf("adb root: %w: %s", err, stderr)
+	}
+
+	return nil
 }
 
 // VersionAtLeast reports whether the installed app is at least major.minor.
