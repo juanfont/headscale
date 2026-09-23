@@ -90,7 +90,6 @@ func setup(t *testing.T, apk string, tls bool) *env {
 	android, err := androidic.New(
 		scenario.Pool(),
 		androidic.WithNetwork(scenario.Networks()[0]),
-		androidic.WithAPK(apk),
 	)
 	if android != nil {
 		// Registered after the scenario so it runs first: the container
@@ -112,7 +111,7 @@ func setup(t *testing.T, apk string, tls bool) *env {
 		assert.Empty(t, crashes, "Tailscale Android app crashed")
 	})
 
-	require.NoError(t, android.Install())
+	require.NoError(t, android.Install(apk))
 
 	version, err := android.Version()
 	require.NoError(t, err)
@@ -350,6 +349,14 @@ func TestAndroidLoginMDM(t *testing.T) {
 	apk := androidSkip(t)
 	e := setup(t, apk, false)
 
+	e.loginMDM(t)
+}
+
+// loginMDM logs in with a managed LoginURL and AuthKey, the way fleets
+// enrol devices, returning the registered node.
+func (e *env) loginMDM(t *testing.T) *clientv1.Node {
+	t.Helper()
+
 	key := e.authKey(t)
 
 	require.NoError(t, e.android.SetManagedConfig(map[string]string{
@@ -364,7 +371,54 @@ func TestAndroidLoginMDM(t *testing.T) {
 	e.skipOnboarding(t, "Log in")
 	require.NoError(t, e.android.Tap("Log in"))
 
-	e.assertReachable(t, e.androidNode(t))
+	node := e.androidNode(t)
+	e.assertReachable(t, node)
+
+	return node
+}
+
+// TestAndroidRestart kills a logged-in app and checks it comes back
+// connected as the same node when reopened.
+func TestAndroidRestart(t *testing.T) {
+	apk := androidSkip(t)
+	e := setup(t, apk, false)
+
+	before := e.loginMDM(t)
+
+	_, err := e.android.Shell("am", "force-stop", androidic.Package)
+	require.NoError(t, err)
+	require.NoError(t, e.android.Launch())
+
+	after := e.androidNode(t)
+	assert.Equal(t, before.Id, after.Id, "restart re-registered the node")
+	e.assertReachable(t, after)
+}
+
+// TestAndroidUpgrade upgrades a logged-in app in place from an older
+// release and checks it stays the same connected node.
+func TestAndroidUpgrade(t *testing.T) {
+	apk := androidSkip(t)
+
+	from := os.Getenv("HEADSCALE_INTEGRATION_ANDROID_UPGRADE_FROM")
+	if from == "" {
+		t.Skip("HEADSCALE_INTEGRATION_ANDROID_UPGRADE_FROM not set, skipping")
+	}
+
+	e := setup(t, from, false)
+
+	before := e.loginMDM(t)
+
+	require.NoError(t, e.android.Install(apk))
+
+	version, err := e.android.Version()
+	require.NoError(t, err)
+	t.Logf("Upgraded to Tailscale Android version: %s", version)
+
+	require.NoError(t, e.android.Launch())
+
+	after := e.androidNode(t)
+	assert.Equal(t, before.Id, after.Id, "upgrade re-registered the node")
+	e.assertReachable(t, after)
 }
 
 func TestAndroidLoginHook(t *testing.T) {

@@ -57,7 +57,6 @@ const (
 
 var (
 	errNoNetwork   = errors.New("androidic: no network set")
-	errNoAPK       = errors.New("androidic: no APK set")
 	errBootTimeout = errors.New("androidic: timed out waiting for emulator boot")
 	errNoUINode    = errors.New("androidic: no UI node matched")
 	errInvalidCA   = errors.New("androidic: CA is not PEM")
@@ -75,8 +74,6 @@ type AndroidInContainer struct {
 	pool      *dockertest.Pool
 	container *dockertest.Resource
 	network   *dockertest.Network
-
-	apk string
 }
 
 // Option represents optional settings for an [AndroidInContainer].
@@ -86,14 +83,6 @@ type Option = func(c *AndroidInContainer)
 func WithNetwork(network *dockertest.Network) Option {
 	return func(a *AndroidInContainer) {
 		a.network = network
-	}
-}
-
-// WithAPK sets the Tailscale APK to install, either an http(s) URL
-// (downloaded inside the container) or a path readable by the test process.
-func WithAPK(apk string) Option {
-	return func(a *AndroidInContainer) {
-		a.apk = apk
 	}
 }
 
@@ -121,10 +110,6 @@ func New(
 
 	if a.network == nil {
 		return nil, errNoNetwork
-	}
-
-	if a.apk == "" {
-		return nil, errNoAPK
 	}
 
 	runOptions := &dockertest.RunOptions{
@@ -222,16 +207,17 @@ func poll[T any](timeout time.Duration, fn func() (T, error)) (T, error) {
 	)
 }
 
-// Install installs the configured APK, granting runtime permissions and
-// pre-approving the VPN consent dialog.
-func (a *AndroidInContainer) Install() error {
-	if strings.HasPrefix(a.apk, "http://") || strings.HasPrefix(a.apk, "https://") {
-		_, stderr, err := a.Execute([]string{"curl", "-fsSL", "--retry", "3", "-o", apkPath, a.apk})
+// Install installs or upgrades the Tailscale app from apk, an http(s) URL
+// (downloaded inside the container) or a path readable by the test
+// process, granting runtime permissions and pre-approving VPN consent.
+func (a *AndroidInContainer) Install(apk string) error {
+	if strings.HasPrefix(apk, "http://") || strings.HasPrefix(apk, "https://") {
+		_, stderr, err := a.Execute([]string{"curl", "-fsSL", "--retry", "3", "-o", apkPath, apk})
 		if err != nil {
-			return fmt.Errorf("downloading APK %s: %w: %s", a.apk, err, stderr)
+			return fmt.Errorf("downloading APK %s: %w: %s", apk, err, stderr)
 		}
 	} else {
-		data, err := os.ReadFile(a.apk)
+		data, err := os.ReadFile(apk)
 		if err != nil {
 			return fmt.Errorf("reading APK: %w", err)
 		}

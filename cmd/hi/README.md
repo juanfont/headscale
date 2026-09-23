@@ -136,7 +136,9 @@ export HEADSCALE_INTEGRATION_ANDROID_APK=https://pkgs.tailscale.com/stable/tails
 go run ./cmd/hi run "^TestAndroid" --failfast=false
 ```
 
-The APK may also be an absolute path under the repository. The first
+The APK may also be an absolute path under the repository.
+`HEADSCALE_INTEGRATION_ANDROID_UPGRADE_FROM` names an older APK for
+`TestAndroidUpgrade` to start from; it must share the APK's signing key. The first
 run builds `Dockerfile.android-integration` (SDK + system image, ~13 GB);
 set `HEADSCALE_INTEGRATION_ANDROID_IMAGE` to reuse a pre-built one. On
 UI failures the run saves `android-*-missing-*.png`/`.xml` (screenshot
