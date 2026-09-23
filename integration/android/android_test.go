@@ -164,6 +164,13 @@ func (e *env) openAccountMenu(t *testing.T) {
 	require.NoError(t, e.android.Tap("menu"))
 }
 
+// dismissIntro taps through the intro screen, if shown, until next is.
+func (e *env) dismissIntro(t *testing.T, next string) {
+	t.Helper()
+
+	e.tapPast(t, "Get Started", next)
+}
+
 // tapPast taps label until one of next is on screen, dismissing the intro
 // whenever it shows. The intro can appear over the main screen after its
 // first frame, and taps during its entry animation can be dropped.
@@ -236,7 +243,12 @@ func (e *env) assertReachable(t *testing.T, node *clientv1.Node) {
 			_ = e.android.Tap("Connect")
 		}
 
-		assert.NoError(c, e.peer.Ping(node.IpAddresses[0], tsic.WithPingTimeout(5*time.Second)))
+		// The emulator sits behind NAT; a DERP-relayed path is enough.
+		assert.NoError(c, e.peer.Ping(
+			node.IpAddresses[0],
+			tsic.WithPingTimeout(5*time.Second),
+			tsic.WithPingUntilDirect(false),
+		))
 	}, 2*time.Minute, 5*time.Second, "peer cannot reach android node")
 }
 
@@ -444,9 +456,9 @@ func (e *env) loginMDM(t *testing.T) *clientv1.Node {
 
 	// OnboardingFlow=hide predates some supported versions, and a managed
 	// auth key still waits for the user to start the login.
-	// Some versions leave the VPN off after login; assertReachable
-	// connects it.
-	e.tapPast(t, "Log in", "Connected", "Connect")
+	// One tap: repeating it while the login is in flight starts another.
+	e.dismissIntro(t, "Log in")
+	require.NoError(t, e.android.Tap("Log in"))
 
 	node := e.androidNode(t)
 	e.assertReachable(t, node)
