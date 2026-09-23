@@ -1,0 +1,61 @@
+# Android emulator for integration tests (integration/androidic).
+# Adapted from tailscale-android docker/Dockerfile.android-integration
+# (Copyright (c) Tailscale Inc & AUTHORS, BSD-3-Clause).
+#
+# Needs a host with /dev/kvm; the container must run with --device /dev/kvm.
+
+FROM --platform=linux/amd64 eclipse-temurin:21
+
+ARG ANDROID_API=33
+ARG ANDROID_CMDLINE_TOOLS_VERSION=9477386
+
+ENV ANDROID_HOME=/opt/android-sdk
+ENV ANDROID_SDK_ROOT=/opt/android-sdk
+ENV ANDROID_AVD_HOME=/root/.android/avd
+ENV PATH=$PATH:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:/opt/android-sdk/emulator
+
+RUN apt-get update && \
+    apt-get -y install --no-install-recommends \
+        ca-certificates \
+        curl \
+        libdbus-1-3 \
+        libfontconfig1 \
+        libgl1 \
+        libglib2.0-0 \
+        libnss3 \
+        libpulse0 \
+        libstdc++6 \
+        libvulkan1 \
+        libx11-6 \
+        libxcb-cursor0 \
+        libxcb1 \
+        libxext6 \
+        libxi6 \
+        libxrender1 \
+        libxtst6 \
+        unzip && \
+    apt-get -y clean && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /opt/android-sdk/cmdline-tools /tmp/android-sdk && \
+    curl -fsSL -o /tmp/android-sdk/commandlinetools.zip \
+        "https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_CMDLINE_TOOLS_VERSION}_latest.zip" && \
+    unzip -q /tmp/android-sdk/commandlinetools.zip -d /tmp/android-sdk && \
+    mv /tmp/android-sdk/cmdline-tools /opt/android-sdk/cmdline-tools/latest && \
+    rm -rf /tmp/android-sdk
+
+RUN yes | sdkmanager --licenses >/dev/null && \
+    sdkmanager \
+        "emulator" \
+        "platform-tools" \
+        "system-images;android-${ANDROID_API};google_apis;x86_64"
+
+RUN mkdir -p /root/.android && touch /root/.android/repositories.cfg && \
+    echo "no" | avdmanager create avd -n test \
+        -k "system-images;android-${ANDROID_API};google_apis;x86_64" --device pixel
+
+# Headless boot; slirp NAT lets the guest reach the container's docker
+# network. -no-snapshot keeps every test on a cold, clean device.
+CMD ["emulator", "-avd", "test", "-no-window", "-no-audio", "-no-snapshot", \
+     "-no-boot-anim", "-gpu", "swiftshader_indirect", "-memory", "3072", \
+     "-netdelay", "none", "-netspeed", "full"]
