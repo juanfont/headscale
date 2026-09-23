@@ -243,12 +243,17 @@ func (e *env) assertReachable(t *testing.T, node *clientv1.Node) {
 			_ = e.android.Tap("Connect")
 		}
 
-		// The emulator sits behind NAT; a DERP-relayed path is enough.
-		assert.NoError(c, e.peer.Ping(
-			node.IpAddresses[0],
-			tsic.WithPingTimeout(5*time.Second),
-			tsic.WithPingUntilDirect(false),
-		))
+		// The emulator sits behind NAT, so the path may be direct or
+		// relayed; tsic's modes each reject the other, so try both.
+		ip := node.IpAddresses[0]
+		timeout := tsic.WithPingTimeout(5 * time.Second)
+
+		err := e.peer.Ping(ip, timeout, tsic.WithPingUntilDirect(false))
+		if err != nil {
+			err = e.peer.Ping(ip, timeout)
+		}
+
+		assert.NoError(c, err)
 	}, 2*time.Minute, 5*time.Second, "peer cannot reach android node")
 }
 
