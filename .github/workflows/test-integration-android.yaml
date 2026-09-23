@@ -89,6 +89,12 @@ jobs:
         with:
           name: android-build
           path: /tmp/artifacts
+      - name: Free disk space
+        shell: bash
+        # The emulator image and the head APK build each take >10 GB.
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
       - name: Enable KVM
         shell: bash
         run: |
