@@ -396,3 +396,70 @@ func TestNodeAttrsSuggestExitNodeOnPeerCapMap(t *testing.T) {
 			return false
 		})
 }
+
+// TestSuggestExitNodeDefaultOnPeerCapMap covers the SaaS default: an
+// approved exit node carries suggest-exit-node on its peer view with
+// no nodeAttrs grant, and loses it when approval is withdrawn. Apple
+// clients hide the exit-node list without it (issue #3415).
+func TestSuggestExitNodeDefaultOnPeerCapMap(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t)
+	user := srv.CreateUser(t, "sed-user")
+
+	exit := servertest.NewClient(t, srv, "sed-exit", servertest.WithUser(user))
+	viewer := servertest.NewClient(t, srv, "sed-viewer", servertest.WithUser(user))
+
+	exit.WaitForPeers(t, 1, 10*time.Second)
+	viewer.WaitForPeers(t, 1, 10*time.Second)
+
+	exitRoutes := []netip.Prefix{
+		netip.MustParsePrefix("0.0.0.0/0"),
+		netip.MustParsePrefix("::/0"),
+	}
+
+	exit.Direct().SetHostinfo(&tailcfg.Hostinfo{
+		BackendLogID: "servertest-sed-exit",
+		Hostname:     "sed-exit",
+		RoutableIPs:  exitRoutes,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	require.NoError(t, exit.Direct().SendUpdate(ctx))
+	cancel()
+
+	peerHasCap := func(want bool) func(*netmap.NetworkMap) bool {
+		return func(nm *netmap.NetworkMap) bool {
+			if nm == nil {
+				return false
+			}
+
+			for _, peer := range nm.Peers {
+				if peer.ComputedName() == "sed-exit" {
+					return peer.CapMap().Contains(nodecap.SuggestExitNode) == want
+				}
+			}
+
+			return false
+		}
+	}
+
+	exitID := findNodeID(t, srv, "sed-exit")
+	_, ch, err := srv.State().SetApprovedRoutes(exitID, exitRoutes)
+	require.NoError(t, err)
+	srv.App.Change(ch)
+
+	viewer.WaitForCondition(t, "peer suggest-exit-node without nodeAttrs",
+		10*time.Second, peerHasCap(true))
+
+	// SaaS never stamps it on the exit node's own view.
+	require.False(t, hasCap(exit.Netmap(), nodecap.SuggestExitNode),
+		"suggest-exit-node must not appear on SelfNode by default")
+
+	_, ch, err = srv.State().SetApprovedRoutes(exitID, nil)
+	require.NoError(t, err)
+	srv.App.Change(ch)
+
+	viewer.WaitForCondition(t, "peer suggest-exit-node gone after unapprove",
+		10*time.Second, peerHasCap(false))
+}

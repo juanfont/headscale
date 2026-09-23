@@ -29,35 +29,27 @@ import (
 // most peers.
 //
 // Caps the client reads from the peer view rather than the self view
-// (suggest-exit-node, dns-subdomain-resolve — see
-// ipn/ipnlocal/local.go:7534 and node_backend.go:745) are emitted only
-// when the peer satisfies the cap's emission condition. This function
-// encodes those conditions; the mapper calls it from
+// ([tailcfg.NodeAttrSuggestExitNode], read by
+// [tailscale.com/ipn/ipnlocal.LocalBackend.SuggestExitNode], and
+// [tailcfg.NodeAttrDNSSubdomainResolve]) are emitted only when the
+// peer satisfies the cap's emission condition. This function encodes
+// those conditions; the mapper calls it from
 // [mapper.MapResponseBuilder.buildTailPeers] and the compat test calls
 // it to compute the expected per-peer wire shape.
 func PeerCapMap(peer types.NodeView, peerSelfCaps tailcfg.NodeCapMap) tailcfg.NodeCapMap {
-	if len(peerSelfCaps) == 0 {
+	// suggest-exit-node — surfaced on Peer.CapMap when the peer
+	// advertises exit routes AND those routes are approved, with or
+	// without a nodeAttrs grant: SaaS stamps it by default, and Apple
+	// clients hide the exit-node list without a suggestion. A policy
+	// value, if any, wins. Approval gating prevents the suggestion from
+	// following an advertised-but-not-yet-trusted node.
+	if !peer.IsExitNode() {
 		return nil
 	}
 
-	var out tailcfg.NodeCapMap
-
-	// suggest-exit-node — surfaced on Peer.CapMap when the peer
-	// advertises exit routes AND those routes are approved. Client
-	// reads at ipn/ipnlocal/local.go:7534. Approval gating prevents
-	// the suggestion from following an advertised-but-not-yet-trusted
-	// node.
-	if peer.IsExitNode() {
-		if v, ok := peerSelfCaps[nodecap.SuggestExitNode]; ok {
-			if out == nil {
-				out = tailcfg.NodeCapMap{}
-			}
-
-			out[nodecap.SuggestExitNode] = v
-		}
+	return tailcfg.NodeCapMap{
+		nodecap.SuggestExitNode: peerSelfCaps[nodecap.SuggestExitNode],
 	}
-
-	return out
 }
 
 // unmodelledTailnetStateCaps lists [tailcfg.NodeCapability] values
