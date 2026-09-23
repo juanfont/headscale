@@ -55,13 +55,6 @@ const (
 	uiPollTimeout = 60 * time.Second
 )
 
-// emulatorCmd mirrors the image's CMD, for runs that add flags.
-var emulatorCmd = []string{
-	"emulator", "-avd", "test", "-no-window", "-no-audio", "-no-snapshot",
-	"-no-boot-anim", "-gpu", "swiftshader_indirect", "-memory", "3072",
-	"-netdelay", "none", "-netspeed", "full",
-}
-
 var (
 	errNoNetwork   = errors.New("androidic: no network set")
 	errBootTimeout = errors.New("androidic: timed out waiting for emulator boot")
@@ -81,20 +74,10 @@ type AndroidInContainer struct {
 	pool      *dockertest.Pool
 	container *dockertest.Resource
 	network   *dockertest.Network
-
-	writableSystem bool
 }
 
 // Option represents optional settings for an [AndroidInContainer].
 type Option = func(c *AndroidInContainer)
-
-// WithWritableSystem boots the emulator with a writable system partition,
-// needed by [AndroidInContainer.InstallSystemCA].
-func WithWritableSystem() Option {
-	return func(a *AndroidInContainer) {
-		a.writableSystem = true
-	}
-}
 
 // WithNetwork sets the Docker [dockertest.Network].
 func WithNetwork(network *dockertest.Network) Option {
@@ -132,10 +115,6 @@ func New(
 	runOptions := &dockertest.RunOptions{
 		Name:     hostname,
 		Networks: []*dockertest.Network{a.network},
-	}
-
-	if a.writableSystem {
-		runOptions.Cmd = append(slices.Clone(emulatorCmd), "-writable-system")
 	}
 
 	dockertestutil.DockerAddIntegrationLabels(runOptions, "android")
@@ -350,7 +329,9 @@ func (a *AndroidInContainer) InstallUserCA(caPEM []byte) error {
 }
 
 // InstallSystemCA adds a PEM CA certificate to the device's system CA
-// store, which every app version trusts. Needs [WithWritableSystem].
+// store, which every app version trusts. The store is overlaid with a
+// tmpfs holding the stock CAs plus caPEM, so the read-only system image is
+// untouched; apps started afterwards see it (Android 13 and older).
 func (a *AndroidInContainer) InstallSystemCA(caPEM []byte) error {
 	const dir = "/system/etc/security/cacerts"
 
@@ -359,33 +340,11 @@ func (a *AndroidInContainer) InstallSystemCA(caPEM []byte) error {
 		return err
 	}
 
-	// The first remount of a verified system image disables verity and
-	// only takes effect after a reboot.
-	out, _, err := a.Execute([]string{"adb", "remount"})
-	if err != nil || strings.Contains(out, "reboot") {
-		_, stderr, err := a.Execute([]string{"sh", "-c", "adb reboot && adb wait-for-device"})
-		if err != nil {
-			return fmt.Errorf("rebooting for remount: %w: %s", err, stderr)
-		}
-
-		err = a.waitForBoot(5 * time.Minute)
-		if err != nil {
-			return err
-		}
-
-		err = a.root()
-		if err != nil {
-			return err
-		}
-
-		out, stderr, err = a.Execute([]string{"adb", "remount"})
-		if err != nil {
-			return fmt.Errorf("adb remount: %w: %s %s", err, out, stderr)
-		}
-	}
-
 	_, err = a.Shell(fmt.Sprintf(
-		"mv /data/local/tmp/%[2]s %[1]s/%[2]s && chmod 644 %[1]s/%[2]s && chown root:root %[1]s/%[2]s",
+		"mkdir -p /data/local/tmp/cacerts && cp %[1]s/* /data/local/tmp/cacerts/ && "+
+			"mount -t tmpfs none %[1]s && cp /data/local/tmp/cacerts/* %[1]s/ && "+
+			"mv /data/local/tmp/%[2]s %[1]s/%[2]s && chown root:root %[1]s/* && "+
+			"chmod 644 %[1]s/* && chcon u:object_r:system_file:s0 %[1]s/*",
 		dir, name,
 	))
 
