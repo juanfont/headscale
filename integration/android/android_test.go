@@ -315,7 +315,9 @@ func TestAndroidPeerChanges(t *testing.T) {
 
 	android := e.loginInteractive(t)
 
-	require.NoError(t, e.scenario.CreateTailscaleNodesInUser(user, "unstable", 1))
+	require.NoError(t, e.scenario.CreateTailscaleNodesInUser(
+		user, "unstable", 1, tsic.WithNetwork(e.scenario.Networks()[0]),
+	))
 
 	clients, err := e.scenario.ListTailscaleClients(user)
 	require.NoError(t, err)
