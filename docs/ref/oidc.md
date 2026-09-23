@@ -175,6 +175,18 @@ reauthenticate. The default node expiration can be configured via the top-level 
     headscale node expire -i <NODE_ID>
     ```
 
+### Retry OIDC provider discovery on startup
+
+If Headscale starts before the identity provider is reachable (for example when both run on the same host or during simultaneous system startup), you can configure `retry_interval`. When set, Headscale temporarily falls back to CLI-based authentication and periodically retries OIDC discovery until the provider becomes available, then automatically switches over to OIDC.
+
+```yaml hl_lines="5"
+oidc:
+  issuer: "https://sso.example.com"
+  client_id: "headscale"
+  client_secret: "generated-secret"
+  retry_interval: 30s
+```
+
 ### Reference a user in the policy
 
 You may refer to users in the Headscale policy via:
