@@ -122,15 +122,7 @@ func (hsdb *HSDatabase) GetUserByID(uid types.UserID) (*types.User, error) {
 }
 
 func GetUserByID(tx *gorm.DB, uid types.UserID) (*types.User, error) {
-	user := types.User{}
-	if result := tx.First(&user, "id = ?", uid); errors.Is(
-		result.Error,
-		gorm.ErrRecordNotFound,
-	) {
-		return nil, ErrUserNotFound
-	}
-
-	return &user, nil
+	return firstUser(tx, "id = ?", uid)
 }
 
 func (hsdb *HSDatabase) GetUserByOIDCIdentifier(id string) (*types.User, error) {
@@ -140,15 +132,7 @@ func (hsdb *HSDatabase) GetUserByOIDCIdentifier(id string) (*types.User, error) 
 }
 
 func GetUserByOIDCIdentifier(tx *gorm.DB, id string) (*types.User, error) {
-	user := types.User{}
-	if result := tx.First(&user, "provider_identifier = ?", id); errors.Is(
-		result.Error,
-		gorm.ErrRecordNotFound,
-	) {
-		return nil, ErrUserNotFound
-	}
-
-	return &user, nil
+	return firstUser(tx, "provider_identifier = ?", id)
 }
 
 func (hsdb *HSDatabase) ListUsers(filter *types.User) ([]types.User, error) {
@@ -229,4 +213,19 @@ func (hsdb *HSDatabase) CreateUsersForTest(count int, namePrefix ...string) []*t
 	}
 
 	return users
+}
+
+func firstUser(tx *gorm.DB, query string, arg any) (*types.User, error) {
+	user := types.User{}
+
+	err := tx.First(&user, query, arg).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrUserNotFound
+		}
+
+		return nil, err
+	}
+
+	return &user, nil
 }
