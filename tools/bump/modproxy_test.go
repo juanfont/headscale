@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/mod/modfile"
 )
 
 // fakeProxy serves the three module proxy endpoints the resolver reads. The
@@ -272,5 +274,66 @@ func TestDescribeChange(t *testing.T) {
 	plain := describeChange("modernc.org/sqlite", "v1.52.0", "v1.58.0")
 	if plain != "modernc.org/sqlite v1.52.0 -> v1.58.0" {
 		t.Errorf("describeChange() without a link = %q", plain)
+	}
+}
+
+func TestCheckDowngrades(t *testing.T) {
+	parse := func(t *testing.T, requires string) *modfile.File {
+		t.Helper()
+
+		f, err := modfile.Parse("go.mod", []byte("module example.com/app\n\ngo 1.24\n\nrequire (\n"+requires+")\n"), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		return f
+	}
+
+	tests := []struct {
+		name    string
+		before  string
+		after   string
+		wantErr bool
+	}{
+		{
+			name:   "upgrade",
+			before: "\tgithub.com/a/b v1.0.0\n",
+			after:  "\tgithub.com/a/b v1.1.0\n",
+		},
+		{
+			name:    "downgrade",
+			before:  "\tgithub.com/a/b v1.2.0\n",
+			after:   "\tgithub.com/a/b v1.1.0\n",
+			wantErr: true,
+		},
+		{
+			// repin lowers these on purpose, back to what their owner requires.
+			name:   "lockstep partners may move backwards",
+			before: "\t" + modGvisor + " v0.0.0-20260301000000-aaaaaaaaaaaa\n\t" + modLibc + " v1.76.0\n",
+			after:  "\t" + modGvisor + " v0.0.0-20260101000000-bbbbbbbbbbbb\n\t" + modLibc + " v1.75.6\n",
+		},
+		{
+			name:   "a new requirement is not a downgrade",
+			before: "\tgithub.com/a/b v1.0.0\n",
+			after:  "\tgithub.com/a/b v1.0.0\n\tgithub.com/c/d v0.1.0\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkDowngrades(parse(t, tt.before), parse(t, tt.after))
+
+			if tt.wantErr {
+				if !errors.Is(err, errDowngrade) {
+					t.Fatalf("checkDowngrades() error = %v, want %v", err, errDowngrade)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Errorf("checkDowngrades() error = %v", err)
+			}
+		})
 	}
 }

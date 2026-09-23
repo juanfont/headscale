@@ -378,6 +378,44 @@ func noteAttached(f *modfile.File, module, needle string) bool {
 	return false
 }
 
+var errDowngrade = errors.New("upgrade moved a requirement backwards")
+
+// checkDowngrades refuses a set that lowered any requirement. An upgrade run
+// that moves a version backwards means selection resolved something nobody
+// asked for, and unwinding that is a human's rollback commit, not an
+// unattended bump. Diffing go.mod catches it wherever it came from; reading
+// what go get printed only catches what go get did itself.
+//
+// The lockstep partners are exempt because repin lowers them on purpose, back
+// to the version their owner requires.
+func checkDowngrades(before, after *modfile.File) error {
+	exempt := map[string]bool{modGvisor: true, modLibc: true}
+
+	was := make(map[string]string, len(before.Require))
+	for _, req := range before.Require {
+		was[req.Mod.Path] = req.Mod.Version
+	}
+
+	var lowered []string
+
+	for _, req := range after.Require {
+		old, ok := was[req.Mod.Path]
+		if !ok || exempt[req.Mod.Path] {
+			continue
+		}
+
+		if semver.Compare(req.Mod.Version, old) < 0 {
+			lowered = append(lowered, fmt.Sprintf("%s %s -> %s", req.Mod.Path, old, req.Mod.Version))
+		}
+	}
+
+	if len(lowered) > 0 {
+		return fmt.Errorf("%w: %s", errDowngrade, strings.Join(lowered, ", "))
+	}
+
+	return nil
+}
+
 var errToolchainAhead = errors.New("dependencies require a newer Go than the devShell provides")
 
 // checkToolchain catches a dependency that dragged go.mod's go directive above
