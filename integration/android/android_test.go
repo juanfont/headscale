@@ -332,8 +332,7 @@ func TestAndroidLoginAuthKey(t *testing.T) {
 	require.NoError(t, e.android.Launch())
 
 	// The auth key screen logs in to the current control server, so point
-	// the app at headscale first and abandon the interactive login, which
-	// leaves the browser in front.
+	// the app at headscale first and abandon the interactive login.
 	e.setControlURL(t)
 	require.NoError(t, e.android.Launch())
 

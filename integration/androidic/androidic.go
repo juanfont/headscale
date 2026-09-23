@@ -378,9 +378,16 @@ func (a *AndroidInContainer) VersionAtLeast(major, minor int) (bool, error) {
 	return gotMajor > major || gotMajor == major && gotMinor >= minor, nil
 }
 
-// Launch starts the app's main activity.
+// Launch brings the app's main activity to the front. The app opens login
+// URLs in a Chrome Custom Tab inside its own task, so Chrome is stopped
+// first or relaunching would show the tab again.
 func (a *AndroidInContainer) Launch() error {
-	_, err := a.Shell("monkey", "-p", Package, "-c", "android.intent.category.LAUNCHER", "1")
+	_, err := a.Shell("am", "force-stop", "com.android.chrome")
+	if err != nil {
+		return err
+	}
+
+	_, err = a.Shell("monkey", "-p", Package, "-c", "android.intent.category.LAUNCHER", "1")
 
 	return err
 }
