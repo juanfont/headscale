@@ -8,6 +8,7 @@ package android
 import (
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -80,11 +81,6 @@ func setup(t *testing.T, apk string, ca caStore) *env {
 		hsOpts = append(hsOpts, hsic.WithoutTLS())
 	}
 
-	var androidOpts []androidic.Option
-	if ca == systemCA {
-		androidOpts = append(androidOpts, androidic.WithWritableSystem())
-	}
-
 	scenario, err := integration.NewScenario(integration.ScenarioSpec{
 		NodesPerUser: 1,
 		Users:        []string{user},
@@ -105,7 +101,7 @@ func setup(t *testing.T, apk string, ca caStore) *env {
 
 	android, err := androidic.New(
 		scenario.Pool(),
-		append(androidOpts, androidic.WithNetwork(scenario.Networks()[0]))...,
+		androidic.WithNetwork(scenario.Networks()[0]),
 	)
 	if android != nil {
 		// Registered after the scenario so it runs first: the container
@@ -163,33 +159,29 @@ func setup(t *testing.T, apk string, ca caStore) *env {
 func (e *env) openAccountMenu(t *testing.T) {
 	t.Helper()
 
-	// Onboarding only exists on some versions, and only on first launch.
-	e.skipOnboarding(t, "Open settings")
-
-	require.NoError(t, e.android.Tap("Open settings"))
+	e.tapPast(t, "Open settings", "Accounts")
 	require.NoError(t, e.android.Tap("Accounts"))
 	require.NoError(t, e.android.Tap("menu"))
 }
 
-// skipOnboarding waits for the app to render and taps through the intro
-// screen if it shows instead of next.
-func (e *env) skipOnboarding(t *testing.T, next string) {
+// tapPast taps label until one of next is on screen, dismissing the intro
+// whenever it shows. The intro can appear over the main screen after its
+// first frame, and taps during its entry animation can be dropped.
+func (e *env) tapPast(t *testing.T, label string, next ...string) {
 	t.Helper()
 
-	// A tap during the intro's entry animation can be dropped, so keep
-	// tapping until the next screen shows.
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		got, err := e.android.WaitForAny("Get Started", next)
+		got, err := e.android.WaitForAny(append([]string{"Get Started", label}, next...)...)
 		if !assert.NoError(c, err) {
 			return
 		}
 
-		if got == "Get Started" {
-			assert.NoError(c, e.android.Tap("Get Started"))
+		if !slices.Contains(next, got) {
+			assert.NoError(c, e.android.Tap(got))
 		}
 
-		assert.Equal(c, next, got)
-	}, 2*time.Minute, time.Second, "app never left the intro screen")
+		assert.Contains(c, next, got)
+	}, 2*time.Minute, time.Second, "never got past %q to %v", label, next)
 }
 
 // setControlURL drives the "Use an alternate server" dialog, the path users
@@ -246,6 +238,20 @@ func (e *env) assertReachable(t *testing.T, node *clientv1.Node) {
 
 		assert.NoError(c, e.peer.Ping(node.IpAddresses[0], tsic.WithPingTimeout(5*time.Second)))
 	}, 2*time.Minute, 5*time.Second, "peer cannot reach android node")
+}
+
+func clientFor(t *testing.T, clients []integration.TailscaleClient, hostname string) integration.TailscaleClient {
+	t.Helper()
+
+	for _, c := range clients {
+		if c.Hostname() == hostname {
+			return c
+		}
+	}
+
+	require.FailNow(t, "no client for "+hostname)
+
+	return nil
 }
 
 func (e *env) authKey(t *testing.T) string {
@@ -364,6 +370,24 @@ func TestAndroidPeerChanges(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, e.headscale.DeleteNode(id))
 
+		// A Linux client on the same tailscale version as the app must
+		// drop the peer too; if it does and the app does not, headscale
+		// delivered the removal and the fault is in the app.
+		if i == 0 {
+			witness := clientFor(t, clients, peers[1].Name)
+
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				status, err := witness.Status()
+				if !assert.NoError(c, err) {
+					return
+				}
+
+				for _, k := range status.Peers() {
+					assert.NotEqual(c, p.Name, status.Peer[k].HostName)
+				}
+			}, time.Minute, 2*time.Second, "Linux witness still has deleted peer %s", names[i])
+		}
+
 		assert.EventuallyWithT(t, func(c *assert.CollectT) {
 			ok, err := e.android.HasText(names[i])
 			assert.NoError(c, err)
@@ -420,8 +444,9 @@ func (e *env) loginMDM(t *testing.T) *clientv1.Node {
 
 	// OnboardingFlow=hide predates some supported versions, and a managed
 	// auth key still waits for the user to start the login.
-	e.skipOnboarding(t, "Log in")
-	require.NoError(t, e.android.Tap("Log in"))
+	// Some versions leave the VPN off after login; assertReachable
+	// connects it.
+	e.tapPast(t, "Log in", "Connected", "Connect")
 
 	node := e.androidNode(t)
 	e.assertReachable(t, node)
