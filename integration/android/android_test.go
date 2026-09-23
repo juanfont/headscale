@@ -48,10 +48,26 @@ type env struct {
 	headscale integration.ControlServer
 	peer      integration.TailscaleClient
 	android   *androidic.AndroidInContainer
+
+	// controlURL is what a user would type into the app.
+	controlURL string
 }
 
-func setup(t *testing.T, apk string) *env {
+// setup starts headscale, one Linux peer and the emulator with the app
+// installed. With tls, headscale serves HTTPS from a private CA that is
+// installed on the device the way a user would, in the user CA store.
+func setup(t *testing.T, apk string, tls bool) *env {
 	t.Helper()
+
+	hsOpts := []hsic.Option{
+		hsic.WithTestName("android"),
+		// The app always dials DERP over TLS; public relays keep the
+		// data plane independent of which CA the device trusts.
+		hsic.WithPublicDERP(),
+	}
+	if !tls {
+		hsOpts = append(hsOpts, hsic.WithoutTLS())
+	}
 
 	scenario, err := integration.NewScenario(integration.ScenarioSpec{
 		NodesPerUser: 1,
@@ -61,15 +77,7 @@ func setup(t *testing.T, apk string) *env {
 	require.NoError(t, err)
 	t.Cleanup(func() { scenario.ShutdownAssertNoPanics(t) })
 
-	err = scenario.CreateHeadscaleEnv(
-		[]tsic.Option{},
-		hsic.WithTestName("android"),
-		// ponytail: plain HTTP control and public DERP until the TLS phase
-		// installs the headscale CA on the device; the app always dials
-		// DERP over TLS and cannot be told to skip verification.
-		hsic.WithoutTLS(),
-		hsic.WithPublicDERP(),
-	)
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsOpts...)
 	require.NoError(t, err)
 
 	headscale, err := scenario.Headscale()
@@ -110,12 +118,23 @@ func setup(t *testing.T, apk string) *env {
 	require.NoError(t, err)
 	t.Logf("Tailscale Android version: %s", version)
 
-	return &env{
+	e := &env{
 		scenario:  scenario,
 		headscale: headscale,
 		peer:      peers[0],
 		android:   android,
+		// The TLS certificate only names the hostname; plain HTTP uses the
+		// IP so it does not depend on the guest resolving container names.
+		controlURL: headscale.GetIPEndpoint(),
 	}
+
+	if tls {
+		require.NoError(t, android.InstallUserCA(headscale.GetCert()))
+
+		e.controlURL = headscale.GetEndpoint()
+	}
+
+	return e
 }
 
 // openAccountMenu navigates from a fresh install to the Accounts screen's
@@ -151,7 +170,7 @@ func (e *env) setControlURL(t *testing.T) {
 
 	e.openAccountMenu(t)
 	require.NoError(t, e.android.Tap("Use an alternate server"))
-	require.NoError(t, e.android.EnterText(e.headscale.GetIPEndpoint()))
+	require.NoError(t, e.android.EnterText(e.controlURL))
 	require.NoError(t, e.android.Tap("Add account"))
 }
 
@@ -217,7 +236,7 @@ func (e *env) authKey(t *testing.T) string {
 
 func TestAndroidLoginCustomControlURL(t *testing.T) {
 	apk := androidSkip(t)
-	e := setup(t, apk)
+	e := setup(t, apk, false)
 
 	e.loginInteractive(t)
 }
@@ -260,7 +279,7 @@ func (e *env) loginInteractive(t *testing.T) *clientv1.Node {
 // client-side parsing bugs have crashed the app before.
 func TestAndroidPeerChanges(t *testing.T) {
 	apk := androidSkip(t)
-	e := setup(t, apk)
+	e := setup(t, apk, false)
 
 	android := e.loginInteractive(t)
 
@@ -309,7 +328,7 @@ func (e *env) peerNode(t *testing.T) *clientv1.Node {
 
 func TestAndroidLoginAuthKey(t *testing.T) {
 	apk := androidSkip(t)
-	e := setup(t, apk)
+	e := setup(t, apk, false)
 	require.NoError(t, e.android.Launch())
 
 	// The auth key screen logs in to the current control server, so point
@@ -330,12 +349,12 @@ func TestAndroidLoginAuthKey(t *testing.T) {
 
 func TestAndroidLoginMDM(t *testing.T) {
 	apk := androidSkip(t)
-	e := setup(t, apk)
+	e := setup(t, apk, false)
 
 	key := e.authKey(t)
 
 	require.NoError(t, e.android.SetManagedConfig(map[string]string{
-		"LoginURL":       e.headscale.GetIPEndpoint(),
+		"LoginURL":       e.controlURL,
 		"AuthKey":        key,
 		"OnboardingFlow": "hide",
 	}))
@@ -351,7 +370,7 @@ func TestAndroidLoginMDM(t *testing.T) {
 
 func TestAndroidLoginHook(t *testing.T) {
 	apk := androidSkip(t)
-	e := setup(t, apk)
+	e := setup(t, apk, false)
 
 	debug, err := e.android.Debuggable()
 	require.NoError(t, err)
@@ -360,7 +379,24 @@ func TestAndroidLoginHook(t *testing.T) {
 		t.Skip("release build has no integration login hook")
 	}
 
-	require.NoError(t, e.android.LoginHook(e.headscale.GetIPEndpoint(), e.authKey(t)))
+	require.NoError(t, e.android.LoginHook(e.controlURL, e.authKey(t)))
 
 	e.assertReachable(t, e.androidNode(t))
+}
+
+// TestAndroidLoginTLS logs in to headscale behind a private CA the user
+// installed on the device, the usual self-hosted setup.
+func TestAndroidLoginTLS(t *testing.T) {
+	apk := androidSkip(t)
+	e := setup(t, apk, true)
+
+	// The app only trusts user-installed CAs from 1.98.
+	ok, err := e.android.VersionAtLeast(1, 98)
+	require.NoError(t, err)
+
+	if !ok {
+		t.Skip("app predates user CA support")
+	}
+
+	e.loginInteractive(t)
 }

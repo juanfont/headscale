@@ -12,6 +12,10 @@ package androidic
 
 import (
 	"context"
+	"crypto/md5" //nolint:gosec // Android names CA files by this hash.
+	"crypto/x509"
+	"encoding/binary"
+	"encoding/pem"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -56,6 +60,7 @@ var (
 	errNoAPK       = errors.New("androidic: no APK set")
 	errBootTimeout = errors.New("androidic: timed out waiting for emulator boot")
 	errNoUINode    = errors.New("androidic: no UI node matched")
+	errInvalidCA   = errors.New("androidic: CA is not PEM")
 )
 
 // getPrebuiltImage returns the pre-built emulator image name if set.
@@ -309,6 +314,68 @@ func (a *AndroidInContainer) Crashes() (string, error) {
 	}
 
 	return out, nil
+}
+
+// InstallUserCA adds a PEM CA certificate to the device's user CA store,
+// as installing it from Settings would. Needs a google_apis image, where
+// adbd can run as root.
+func (a *AndroidInContainer) InstallUserCA(caPEM []byte) error {
+	block, _ := pem.Decode(caPEM)
+	if block == nil {
+		return errInvalidCA
+	}
+
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return fmt.Errorf("parsing CA: %w", err)
+	}
+
+	// Android names store entries by OpenSSL's subject_hash_old: the first
+	// four bytes of the subject's MD5, little endian.
+	sum := md5.Sum(cert.RawSubject) //nolint:gosec
+	name := fmt.Sprintf("%08x.0", binary.LittleEndian.Uint32(sum[:4]))
+
+	const dir = "/data/misc/user/0/cacerts-added"
+
+	err = a.WriteFile("/tmp/"+name, caPEM)
+	if err != nil {
+		return err
+	}
+
+	_, stderr, err := a.Execute([]string{"sh", "-c", "adb root && adb wait-for-device"})
+	if err != nil {
+		return fmt.Errorf("adb root: %w: %s", err, stderr)
+	}
+
+	_, stderr, err = a.Execute([]string{"adb", "push", "/tmp/" + name, "/data/local/tmp/" + name})
+	if err != nil {
+		return fmt.Errorf("pushing CA: %w: %s", err, stderr)
+	}
+
+	_, err = a.Shell(fmt.Sprintf(
+		"mkdir -p %[1]s && mv /data/local/tmp/%[2]s %[1]s/%[2]s && "+
+			"chown -R system:system %[1]s && chmod 644 %[1]s/%[2]s && restorecon -R %[1]s",
+		dir, name,
+	))
+
+	return err
+}
+
+// VersionAtLeast reports whether the installed app is at least major.minor.
+func (a *AndroidInContainer) VersionAtLeast(major, minor int) (bool, error) {
+	v, err := a.Version()
+	if err != nil {
+		return false, err
+	}
+
+	var gotMajor, gotMinor int
+
+	_, err = fmt.Sscanf(v, "%d.%d", &gotMajor, &gotMinor)
+	if err != nil {
+		return false, fmt.Errorf("parsing version %q: %w", v, err)
+	}
+
+	return gotMajor > major || gotMajor == major && gotMinor >= minor, nil
 }
 
 // Launch starts the app's main activity.
