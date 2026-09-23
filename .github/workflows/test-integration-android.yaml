@@ -82,7 +82,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        version: [unstable, latest, oldest]
+        version: [head, unstable, latest, oldest]
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
@@ -109,11 +109,25 @@ jobs:
         # ponytail: rebuilt per job (SDK download); cache in a registry
         # once runtime matters more than simplicity.
         run: docker build --file Dockerfile.android-integration --tag android-emulator:${{ github.sha }} .
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        if: matrix.version == 'head'
+        with:
+          repository: tailscale/tailscale-android
+          path: tailscale-android
+      - name: Build tailscale-android main debug APK
+        if: matrix.version == 'head'
+        shell: bash
+        working-directory: tailscale-android
+        run: make docker-tailscale-debug
       - name: Resolve APK
         id: apk
         shell: bash
         run: |
           case "${{ matrix.version }}" in
+            head)
+              # Under the repo root, which hi mounts at the same path.
+              echo "url=${GITHUB_WORKSPACE}/tailscale-android/tailscale-debug.apk" >> "$GITHUB_OUTPUT"
+              exit 0 ;;
             oldest) file="tailscale-android-universal-${{ needs.build.outputs.oldest }}.apk"; track=stable ;;
             latest) track=stable ;;
             unstable) track=unstable ;;
