@@ -85,7 +85,8 @@ type RouteConfig struct {
 type PreAuthKeysConfig struct {
 	// RevokedRetention is how long a soft-revoked pre-auth key (revoked via the
 	// v2 API's DELETE) is kept retrievable before the background collector
-	// hard-deletes it. A zero or negative duration disables the collector.
+	// hard-deletes it. Keys still backing a node are kept until the node is
+	// deleted. A zero or negative duration disables the collector.
 	RevokedRetention time.Duration
 }
 

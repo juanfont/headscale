@@ -243,7 +243,7 @@ func preAuthKeyNewToResponse(key *types.PreAuthKeyNew) PreAuthKey {
 func preAuthKeyToResponse(key *types.PreAuthKey) PreAuthKey {
 	out := PreAuthKey{
 		ID:        formatID(key.ID),
-		Key:       maskedPreAuthKey(key.View()),
+		Key:       maskedPreAuthKey(key.Prefix),
 		Reusable:  key.Reusable,
 		Ephemeral: key.Ephemeral,
 		Used:      key.Used,
@@ -266,15 +266,10 @@ func preAuthKeyToResponse(key *types.PreAuthKey) PreAuthKey {
 	return out
 }
 
-// maskedPreAuthKey masks new keys (those with a stored prefix) so the secret is
-// never returned; legacy plaintext keys are returned in full for backwards
-// compatibility.
-func maskedPreAuthKey(key types.PreAuthKeyView) string {
-	if key.Prefix() != "" {
-		return "hskey-auth-" + key.Prefix() + "-***"
-	}
-
-	return key.Key()
+// maskedPreAuthKey renders a pre-auth key by its public identifier so the
+// secret is never returned.
+func maskedPreAuthKey(identifier string) string {
+	return "hskey-auth-" + identifier + "-***"
 }
 
 // nonNilTags ensures aclTags serializes as [] rather than null, matching

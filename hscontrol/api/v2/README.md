@@ -71,8 +71,9 @@ operator is OAuth-only. Supporting OAuth lets all of them drive Headscale.
   owned-by them via the policy `tagOwners` (`State.TagOwnedByTags` →
   `policy/v2`), so e.g. an operator token tagged `tag:k8s-operator` may mint
   `tag:k8s` keys.
-- Credentials/tokens are stored like API keys: a public id/prefix plus an
-  **Argon2id** hash of the secret (no JWT, no signing keys). `OAuthClient` and
+- Credentials/tokens are stored like API keys, as rows of the unified
+  `credentials` table: a public id/prefix plus a **SHA-256** hash of the
+  256-bit secret (no JWT, no signing keys). `OAuthClient` and
   `OAuthAccessToken` live in `types/oauth.go` and `db/oauth.go`.
 
 ## OAuth with the tailscale client and GitHub Action
@@ -130,7 +131,8 @@ go test ./hscontrol/servertest/ -run TestAPIv2` is green._
 7. **Update the CLI** only if the v2 operation fully replaces a v1 one. Tailscale
    has no separate key-expire verb (its `DELETE` _is_ the revoke), so v2 maps
    `DELETE` to a soft revoke: the key stays retrievable with `invalid: true`
-   until the collector reaps it (`preauth_keys.revoked_retention`), the
+   until the collector reaps it (`preauth_keys.revoked_retention`; keys still
+   backing a node are kept), the
    equivalent of v1 `preauthkeys expire`. `headscale preauthkeys` still stays on
    v1 for now (it is the cross-user admin surface), but the verb gap that
    previously blocked migration is closed.

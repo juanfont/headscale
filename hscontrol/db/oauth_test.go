@@ -1,6 +1,8 @@
 package db
 
 import (
+	"encoding/base64"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -9,13 +11,94 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/argon2"
+	"golang.org/x/crypto/bcrypt"
 )
 
-// TestVerifySecretConcurrent runs more concurrent verifications than the Argon2
-// concurrency semaphore admits, asserting the limiter releases correctly (no
-// deadlock) and stays correct under contention. Run with -race.
+// legacyArgon2idHash builds a PHC-encoded Argon2id hash in the form development
+// builds stored secrets before the switch to SHA-256.
+//
+// TODO(kradalby): remove in 0.32 with bcrypt/Argon2id support.
+func legacyArgon2idHash(secret string, memory, time uint32, threads uint8) []byte {
+	salt := []byte("0123456789abcdef")
+	sum := argon2.IDKey([]byte(secret), salt, time, memory, threads, argon2KeyLen)
+
+	return fmt.Appendf(nil, "$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
+		argon2.Version, memory, time, threads,
+		base64.RawStdEncoding.EncodeToString(salt),
+		base64.RawStdEncoding.EncodeToString(sum),
+	)
+}
+
+func TestVerifySecret(t *testing.T) {
+	const secret = "s3cr3t"
+
+	bcryptHash, err := bcrypt.GenerateFromPassword([]byte(secret), bcrypt.MinCost)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name        string
+		hash        []byte
+		wantRehash  bool
+		wantErr     error
+		wrongSecret bool
+	}{
+		{name: "sha256", hash: hashSecret(secret)},
+		{name: "sha256 wrong secret", hash: hashSecret(secret), wrongSecret: true, wantErr: errSecretMismatch},
+		// TODO(kradalby): remove in 0.32 with bcrypt/Argon2id support.
+		{name: "argon2id legacy", hash: legacyArgon2idHash(secret, 19*1024, 2, 1), wantRehash: true},
+		{name: "argon2id wrong secret", hash: legacyArgon2idHash(secret, 19*1024, 2, 1), wrongSecret: true, wantErr: errSecretMismatch},
+		{name: "bcrypt legacy", hash: bcryptHash, wantRehash: true},
+		{name: "bcrypt wrong secret", hash: bcryptHash, wrongSecret: true, wantErr: errSecretMismatch},
+		{name: "nil hash", hash: nil, wantErr: errSecretHashMalformed},
+		{name: "garbage", hash: []byte("not-a-hash"), wantErr: errSecretHashMalformed},
+		{name: "truncated bcrypt", hash: bcryptHash[:20], wantErr: errSecretHashMalformed},
+		{name: "sha256 bad hex", hash: []byte("$sha256$zz"), wantErr: errSecretHashMalformed},
+		// Parameters argon2 would panic on, or that would allocate unbounded
+		// memory, must be rejected before hashing.
+		{name: "argon2id t=0", hash: []byte("$argon2id$v=19$m=19456,t=0,p=1$MDEyMzQ1Njc4OWFiY2RlZg$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"), wantErr: errSecretHashMalformed},
+		{name: "argon2id p=0", hash: []byte("$argon2id$v=19$m=19456,t=2,p=0$MDEyMzQ1Njc4OWFiY2RlZg$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"), wantErr: errSecretHashMalformed},
+		{name: "argon2id huge memory", hash: []byte("$argon2id$v=19$m=4294967295,t=2,p=1$MDEyMzQ1Njc4OWFiY2RlZg$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"), wantErr: errSecretHashMalformed},
+		{name: "argon2id empty key", hash: []byte("$argon2id$v=19$m=19456,t=2,p=1$MDEyMzQ1Njc4OWFiY2RlZg$"), wantErr: errSecretHashMalformed},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			presented := secret
+			if tt.wrongSecret {
+				presented = "wrong"
+			}
+
+			needsRehash, err := verifySecret(tt.hash, presented)
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+				assert.False(t, needsRehash)
+
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantRehash, needsRehash)
+		})
+	}
+
+	// A malformed hash must not leak a limiter slot: after more failures than
+	// the limiter holds, a legacy verify still completes.
+	for range cap(legacyHashLimiter) + 1 {
+		_, _ = verifySecret([]byte("$argon2id$v=19$m=19456,t=0,p=1$MDEyMzQ1Njc4OWFiY2RlZg$AAAA"), secret)
+	}
+
+	_, err = verifySecret(bcryptHash, secret)
+	require.NoError(t, err)
+}
+
+// TestVerifySecretConcurrent runs more concurrent legacy verifications than the
+// limiter admits, asserting it releases correctly (no deadlock) and stays
+// correct under contention. Run with -race.
+//
+// TODO(kradalby): remove in 0.32 with bcrypt/Argon2id support.
 func TestVerifySecretConcurrent(t *testing.T) {
-	hash, err := hashSecret("s3cr3t")
+	hash, err := bcrypt.GenerateFromPassword([]byte("s3cr3t"), bcrypt.MinCost)
 	require.NoError(t, err)
 
 	const n = 64
@@ -25,17 +108,13 @@ func TestVerifySecretConcurrent(t *testing.T) {
 	errs := make([]error, n)
 
 	for i := range n {
-		wg.Add(1)
-
-		go func(i int) {
-			defer wg.Done()
-
+		wg.Go(func() {
 			if i%2 == 0 {
-				errs[i] = verifySecret(hash, "s3cr3t")
+				_, errs[i] = verifySecret(hash, "s3cr3t")
 			} else {
-				errs[i] = verifySecret(hash, "wrong")
+				_, errs[i] = verifySecret(hash, "wrong")
 			}
-		}(i)
+		})
 	}
 
 	wg.Wait()
@@ -44,9 +123,28 @@ func TestVerifySecretConcurrent(t *testing.T) {
 		if i%2 == 0 {
 			assert.NoError(t, e, "correct secret must verify")
 		} else {
-			assert.Error(t, e, "wrong secret must fail")
+			assert.ErrorIs(t, e, errSecretMismatch, "wrong secret must fail")
 		}
 	}
+}
+
+// TestGenerateSecret verifies the unified key shape
+// <prefix><identifier(12)>-<secret(64)> and that the stored hash verifies the
+// secret without needing a rehash.
+func TestGenerateSecret(t *testing.T) {
+	full, identifier, hash := generateSecret("hskey-test-")
+
+	require.Len(t, identifier, keyIdentifierLength)
+	require.True(t, strings.HasPrefix(full, "hskey-test-"+identifier+"-"))
+
+	secret := strings.TrimPrefix(full, "hskey-test-"+identifier+"-")
+	require.Len(t, secret, keySecretLength)
+	assert.True(t, strings.HasPrefix(string(hash), hashPrefixSHA256))
+	assert.NotContains(t, string(hash), secret, "secret must not be stored")
+
+	needsRehash, err := verifySecret(hash, secret)
+	require.NoError(t, err)
+	require.False(t, needsRehash)
 }
 
 func TestOAuthClientCreateAndAuthenticate(t *testing.T) {
@@ -68,9 +166,8 @@ func TestOAuthClientCreateAndAuthenticate(t *testing.T) {
 	// Scopes/tags are deduplicated and sorted for stable storage.
 	assert.Equal(t, []string{"auth_keys", "devices:core"}, client.Scopes)
 	assert.Equal(t, []string{"tag:ci"}, client.Tags)
-	// Only the Argon2id hash is stored, never the plaintext.
-	assert.NotEmpty(t, client.SecretHash)
-	assert.True(t, strings.HasPrefix(string(client.SecretHash), "$argon2id$"))
+	// Only the hash is stored, never the plaintext.
+	assert.True(t, strings.HasPrefix(string(client.SecretHash), hashPrefixSHA256))
 
 	// The secret authenticates, deriving the client id from the secret itself.
 	got, err := db.AuthenticateOAuthClient(secret)
@@ -79,11 +176,12 @@ func TestOAuthClientCreateAndAuthenticate(t *testing.T) {
 
 	// A truncated/garbage secret does not.
 	_, err = db.AuthenticateOAuthClient("hskey-client-deadbeef-nope")
-	require.Error(t, err)
+	require.ErrorIs(t, err, ErrOAuthClientFailedToParse)
 
-	// Wrong secret for a real client id is rejected by the constant-time compare.
+	// A wrong secret for a real client id reads as an unknown client.
 	_, err = db.AuthenticateOAuthClient("hskey-client-" + client.ClientID + "-" + strings.Repeat("0", 64))
-	require.Error(t, err)
+	require.ErrorIs(t, err, ErrOAuthClientNotFound)
+	require.ErrorIs(t, err, errSecretMismatch)
 }
 
 // TestOAuthClientAuthenticateTailscalePrefix asserts the same stored client
@@ -132,24 +230,6 @@ func TestOAuthClientAuthenticateTailscalePrefix(t *testing.T) {
 		_, err := db.AuthenticateOAuthClient(s)
 		require.ErrorIs(t, err, ErrOAuthClientFailedToParse, s)
 	}
-}
-
-func TestHashSecretRoundTrip(t *testing.T) {
-	const secret = "a-high-entropy-credential-secret"
-
-	encoded, err := hashSecret(secret)
-	require.NoError(t, err)
-	assert.True(t, strings.HasPrefix(string(encoded), "$argon2id$v="))
-
-	// The same secret hashes to a different value each time (random salt) yet
-	// still verifies.
-	encoded2, err := hashSecret(secret)
-	require.NoError(t, err)
-	assert.NotEqual(t, encoded, encoded2)
-
-	require.NoError(t, verifySecret(encoded, secret))
-	require.ErrorIs(t, verifySecret(encoded, "wrong-secret"), errSecretMismatch)
-	require.ErrorIs(t, verifySecret([]byte("not-a-phc-string"), secret), errSecretHashMalformed)
 }
 
 func TestOAuthClientRevoke(t *testing.T) {
@@ -201,12 +281,26 @@ func TestOAuthAccessTokenMintAuthenticateExpire(t *testing.T) {
 	_, err = db.AuthenticateAccessToken(expiredStr)
 	require.ErrorIs(t, err, ErrAccessTokenExpired)
 
-	// The reaper deletes the expired row; the live token is untouched.
+	// Expired credentials of other kinds share the table; the reaper must
+	// leave them alone.
+	apiKeyStr, _, err := db.CreateAPIKey(&past)
+	require.NoError(t, err)
+
+	pak, err := db.CreatePreAuthKey(nil, false, false, &past, []string{"tag:ci"})
+	require.NoError(t, err)
+
+	// The reaper deletes the expired token row; the live token is untouched.
 	n, err := db.DeleteExpiredAccessTokens(time.Now())
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), n)
 
 	_ = token
+
+	_, err = db.AuthenticateAPIKey(apiKeyStr)
+	require.ErrorIs(t, err, ErrAPIKeyExpired, "expired API key must survive the token reaper")
+
+	_, err = db.GetPreAuthKeyByID(pak.ID)
+	require.NoError(t, err, "expired pre-auth key must survive the token reaper")
 
 	_, err = db.AuthenticateAccessToken(tokenStr)
 	require.NoError(t, err)
@@ -231,7 +325,7 @@ func TestAccessTokenRejectedWhenClientGone(t *testing.T) {
 
 	// Delete only the client row, leaving the token orphaned (the state a
 	// mint/revoke race or manual deletion would produce).
-	require.NoError(t, db.DB.Where("client_id = ?", client.ClientID).Delete(&types.OAuthClient{}).Error)
+	require.NoError(t, db.DB.Where("kind = ? AND identifier = ?", types.CredentialOAuthClient, client.ClientID).Delete(&types.Credential{}).Error)
 
 	_, err = db.AuthenticateAccessToken(tokenStr)
 	require.ErrorIs(t, err, ErrAccessTokenClientRevoked)
@@ -244,8 +338,8 @@ func TestAccessTokenRejectedWhenClientGone(t *testing.T) {
 	require.NoError(t, err)
 
 	now := time.Now()
-	require.NoError(t, db.DB.Model(&types.OAuthClient{}).
-		Where("client_id = ?", client2.ClientID).Update("revoked", now).Error)
+	require.NoError(t, db.DB.Model(&types.Credential{}).
+		Where("kind = ? AND identifier = ?", types.CredentialOAuthClient, client2.ClientID).Update("revoked", now).Error)
 
 	_, err = db.AuthenticateAccessToken(tokenStr2)
 	require.ErrorIs(t, err, ErrAccessTokenClientRevoked)

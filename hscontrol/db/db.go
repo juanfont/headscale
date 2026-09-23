@@ -76,6 +76,8 @@ func NewHeadscaleDatabase(cfg *types.Config) (*HSDatabase, error) {
 			// - AutoMigrate depends on the struct staying exactly the same, which it won't over time.
 			// - Never write migrations that requires foreign keys to be disabled.
 			// - ALL errors in migrations must be handled properly.
+			// Shipped in 0.29.1.
+			// TODO(kradalby): remove in 0.31, which upgrades only from 0.30.
 			{
 				// Recover user_id on untagged nodes detached by the earlier
 				// version of 202602201200-clear-tagged-node-user-id, which
@@ -106,6 +108,8 @@ WHERE user_id IS NULL
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			// 0.30 development: columns and tables that 202609231300 reads.
+			// TODO(kradalby): remove in 0.31 with the credentials migration.
 			{
 				// Add an optional owning user to API keys so the v2 API can
 				// create user-owned (untagged) auth keys, mirroring Tailscale's
@@ -225,6 +229,8 @@ WHERE user_id IS NULL
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			// Shipped in 0.29.3.
+			// TODO(kradalby): remove in 0.31, which upgrades only from 0.30.
 			{
 				// Clear stale key expiry on tagged nodes. A tagged node is
 				// owned by its tags and never expires (KB 1068), but a buggy
@@ -252,20 +258,48 @@ WHERE tags IS NOT NULL AND tags != '[]' AND tags != '' AND tags != 'null'
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			// 0.30: unified credentials table (InitSchema keeps ensureCredentialsTable).
+			// TODO(kradalby): remove in 0.31 with the credentials migration.
+			{
+				// Create the unified credentials table; the next migration
+				// backfills it. Explicit DDL for both dialects (no AutoMigrate).
+				ID:       "202609231200-create-credentials",
+				Migrate:  ensureCredentialsTable,
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			{
+				// Move every credential into the unified table and drop the
+				// per-kind tables (see migrateToCredentials).
+				ID: "202609231300-migrate-to-credentials",
+				Migrate: func(tx *gorm.DB) error {
+					// Already migrated (e.g. fresh DB via InitSchema): nothing to do.
+					if !tx.Migrator().HasTable("pre_auth_keys") &&
+						!tx.Migrator().HasTable("api_keys") {
+						return nil
+					}
+
+					return tx.Transaction(migrateToCredentials)
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
 	migrations.InitSchema(func(tx *gorm.DB) error {
-		// Create all tables using AutoMigrate
-		err := tx.AutoMigrate(
-			&types.User{},
-			&types.PreAuthKey{},
-			&types.APIKey{},
-			&types.Node{},
-			&types.Policy{},
-			&types.OAuthClient{},
-			&types.OAuthAccessToken{},
-		)
+		// Credentials use the migration's explicit DDL (AutoMigrate cannot
+		// express its CHECK constraints), created before Node so the
+		// nodes.auth_key_id foreign key to credentials(id) can be created.
+		err := tx.AutoMigrate(&types.User{})
+		if err != nil {
+			return err
+		}
+
+		err = ensureCredentialsTable(tx)
+		if err != nil {
+			return err
+		}
+
+		err = tx.AutoMigrate(&types.Node{}, &types.Policy{})
 		if err != nil {
 			return err
 		}
@@ -274,14 +308,11 @@ WHERE tags IS NOT NULL AND tags != '[]' AND tags != '' AND tags != 'null'
 		// to ensure we can recreate them in the correct format
 		dropIndexes := []string{
 			`DROP INDEX IF EXISTS "idx_users_deleted_at"`,
-			`DROP INDEX IF EXISTS "idx_api_keys_prefix"`,
 			`DROP INDEX IF EXISTS "idx_policies_deleted_at"`,
 			`DROP INDEX IF EXISTS "idx_provider_identifier"`,
 			`DROP INDEX IF EXISTS "idx_name_provider_identifier"`,
 			`DROP INDEX IF EXISTS "idx_name_no_provider_identifier"`,
-			`DROP INDEX IF EXISTS "idx_pre_auth_keys_prefix"`,
-			`DROP INDEX IF EXISTS "idx_oauth_clients_client_id"`,
-			`DROP INDEX IF EXISTS "idx_oauth_access_tokens_prefix"`,
+			`DROP INDEX IF EXISTS "idx_nodes_auth_key_id"`,
 		}
 
 		for _, dropSQL := range dropIndexes {
@@ -294,14 +325,11 @@ WHERE tags IS NOT NULL AND tags != '[]' AND tags != '' AND tags != 'null'
 		// Recreate indexes without backticks to match schema.sql format
 		indexes := []string{
 			`CREATE INDEX idx_users_deleted_at ON users(deleted_at)`,
-			`CREATE UNIQUE INDEX idx_api_keys_prefix ON api_keys(prefix)`,
 			`CREATE INDEX idx_policies_deleted_at ON policies(deleted_at)`,
 			`CREATE UNIQUE INDEX idx_provider_identifier ON users(provider_identifier) WHERE provider_identifier IS NOT NULL`,
 			`CREATE UNIQUE INDEX idx_name_provider_identifier ON users(name, provider_identifier)`,
 			`CREATE UNIQUE INDEX idx_name_no_provider_identifier ON users(name) WHERE provider_identifier IS NULL`,
-			`CREATE UNIQUE INDEX idx_pre_auth_keys_prefix ON pre_auth_keys(prefix) WHERE prefix IS NOT NULL AND prefix != ''`,
-			`CREATE UNIQUE INDEX idx_oauth_clients_client_id ON oauth_clients(client_id)`,
-			`CREATE UNIQUE INDEX idx_oauth_access_tokens_prefix ON oauth_access_tokens(prefix)`,
+			`CREATE INDEX idx_nodes_auth_key_id ON nodes(auth_key_id)`,
 		}
 
 		for _, indexSQL := range indexes {

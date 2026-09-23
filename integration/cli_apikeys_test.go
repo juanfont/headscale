@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
@@ -72,11 +73,17 @@ func TestApiKeyCommand(t *testing.T) {
 
 	assert.Len(t, listedAPIKeys, 5)
 
-	assert.Equal(t, "1", listedAPIKeys[0].Id)
-	assert.Equal(t, "2", listedAPIKeys[1].Id)
-	assert.Equal(t, "3", listedAPIKeys[2].Id)
-	assert.Equal(t, "4", listedAPIKeys[3].Id)
-	assert.Equal(t, "5", listedAPIKeys[4].Id)
+	// IDs are drawn from the shared credentials table, so they are not
+	// guaranteed to start at 1 (pre-auth keys created during env setup take the
+	// first ids). They are still listed in strictly increasing creation order.
+	var prevID uint64
+
+	for _, key := range listedAPIKeys {
+		id, err := strconv.ParseUint(key.Id, 10, 64)
+		require.NoError(t, err)
+		assert.Greater(t, id, prevID, "API key ids must be strictly increasing")
+		prevID = id
+	}
 
 	assert.NotEmpty(t, listedAPIKeys[0].Prefix)
 	assert.NotEmpty(t, listedAPIKeys[1].Prefix)
