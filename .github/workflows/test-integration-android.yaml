@@ -1,0 +1,137 @@
+name: integration-android
+# Runs the official Tailscale Android app in an emulator against headscale.
+# Separate from the generated arm64 matrix because the emulator needs KVM,
+# which only the x86_64 hosted runners expose.
+on: [pull_request]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: nix develop --fallback --command bash -e {0}
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    outputs:
+      files-changed: ${{ steps.changed-files.outputs.files }}
+      oldest: ${{ steps.versions.outputs.oldest }}
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          fetch-depth: 2
+      - name: Get changed files
+        id: changed-files
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        with:
+          filters: |
+            files:
+              - '*.nix'
+              - 'go.*'
+              - '**/*.go'
+              - 'integration/**'
+              - 'config-example.yaml'
+              - '.github/workflows/test-integration-android.yaml'
+              - 'Dockerfile.*'
+      - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
+        if: steps.changed-files.outputs.files == 'true'
+      - uses: Mic92/hestia@fb239a2f72d4b6e26eec5425f289dea23b27a527 # v2.0.0
+        if: steps.changed-files.outputs.files == 'true'
+      - name: Build binaries
+        if: steps.changed-files.outputs.files == 'true'
+        run: |
+          go build -o hi ./cmd/hi
+          CGO_ENABLED=0 GOOS=linux go build -o headscale ./cmd/headscale
+      - name: Resolve oldest supported Android version
+        id: versions
+        if: steps.changed-files.outputs.files == 'true'
+        run: |
+          # Oldest tagged minor headscale supports; the newest patch of it
+          # with a published APK (not every patch ships one).
+          minor=$(./hi list-versions --set=must --exclude=head,unstable | tr ' ' '\n' | head -1 | tr -d v)
+          for p in $(seq 20 -1 0); do
+            if curl -fsI "https://pkgs.tailscale.com/stable/tailscale-android-universal-${minor}.${p}.apk" >/dev/null; then
+              echo "oldest=${minor}.${p}" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "no APK found for ${minor}" >&2
+          exit 1
+      - name: Force overlay2 storage driver
+        if: steps.changed-files.outputs.files == 'true'
+        run: |
+          sudo mkdir -p /etc/docker
+          echo '{"storage-driver":"overlay2"}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
+      - name: Build images
+        if: steps.changed-files.outputs.files == 'true'
+        run: |
+          docker build --file Dockerfile.integration-ci --tag headscale:${{ github.sha }} .
+          docker save headscale:${{ github.sha }} | gzip > images.tar.gz
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        if: steps.changed-files.outputs.files == 'true'
+        with:
+          name: android-build
+          path: |
+            hi
+            images.tar.gz
+          retention-days: 3
+  android:
+    runs-on: ubuntu-24.04
+    needs: build
+    if: needs.build.outputs.files-changed == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        version: [unstable, latest, oldest]
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: android-build
+          path: /tmp/artifacts
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+      - name: Force overlay2 storage driver and load images
+        shell: bash
+        run: |
+          sudo mkdir -p /etc/docker
+          echo '{"storage-driver":"overlay2"}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
+          gunzip -c /tmp/artifacts/images.tar.gz | docker load
+          chmod +x /tmp/artifacts/hi
+      - name: Build emulator image
+        shell: bash
+        # ponytail: rebuilt per job (SDK download); cache in a registry
+        # once runtime matters more than simplicity.
+        run: docker build --file Dockerfile.android-integration --tag android-emulator:${{ github.sha }} .
+      - name: Resolve APK
+        id: apk
+        shell: bash
+        run: |
+          case "${{ matrix.version }}" in
+            oldest) file="tailscale-android-universal-${{ needs.build.outputs.oldest }}.apk"; track=stable ;;
+            latest) track=stable ;;
+            unstable) track=unstable ;;
+          esac
+          if [ -z "${file:-}" ]; then
+            file=$(curl -fsS "https://pkgs.tailscale.com/${track}/?mode=json" | jq -r .APKs.universal)
+          fi
+          echo "url=https://pkgs.tailscale.com/${track}/${file}" >> "$GITHUB_OUTPUT"
+          echo "Testing ${file}"
+      - name: Run Android integration tests
+        shell: bash
+        env:
+          HEADSCALE_INTEGRATION_HEADSCALE_IMAGE: headscale:${{ github.sha }}
+          HEADSCALE_INTEGRATION_ANDROID_IMAGE: android-emulator:${{ github.sha }}
+          HEADSCALE_INTEGRATION_ANDROID_APK: ${{ steps.apk.outputs.url }}
+        run: /tmp/artifacts/hi run "^TestAndroid" --failfast=false --timeout=60m
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        if: always()
+        with:
+          name: android-${{ matrix.version }}-artifacts
+          path: control_logs/
