@@ -103,8 +103,6 @@ func setup(t *testing.T, apk string) *env {
 	require.NoError(t, err)
 	t.Logf("Tailscale Android version: %s", version)
 
-	require.NoError(t, android.Launch())
-
 	return &env{
 		scenario:  scenario,
 		headscale: headscale,
@@ -183,9 +181,26 @@ func (e *env) assertReachable(t *testing.T, node *clientv1.Node) {
 	}, 2*time.Minute, 5*time.Second, "peer cannot reach android node")
 }
 
+func (e *env) authKey(t *testing.T) string {
+	t.Helper()
+
+	users, err := e.headscale.ListUsers()
+	require.NoError(t, err)
+	require.Len(t, users, 1)
+
+	userID, err := strconv.ParseUint(users[0].Id, 10, 64)
+	require.NoError(t, err)
+
+	key, err := e.headscale.CreateAuthKey(userID, false, false)
+	require.NoError(t, err)
+
+	return key.Key
+}
+
 func TestAndroidLoginCustomControlURL(t *testing.T) {
 	apk := androidSkip(t)
 	e := setup(t, apk)
+	require.NoError(t, e.android.Launch())
 
 	e.setControlURL(t)
 
@@ -215,26 +230,59 @@ func TestAndroidLoginCustomControlURL(t *testing.T) {
 func TestAndroidLoginAuthKey(t *testing.T) {
 	apk := androidSkip(t)
 	e := setup(t, apk)
+	require.NoError(t, e.android.Launch())
 
 	// The auth key screen logs in to the current control server, so point
-	// the app at headscale first and abandon the interactive login.
+	// the app at headscale first and abandon the interactive login, which
+	// leaves the browser in front.
 	e.setControlURL(t)
-	require.NoError(t, e.android.Back())
+	require.NoError(t, e.android.Launch())
 
-	users, err := e.headscale.ListUsers()
-	require.NoError(t, err)
-	require.Len(t, users, 1)
-
-	userID, err := strconv.ParseUint(users[0].Id, 10, 64)
-	require.NoError(t, err)
-
-	key, err := e.headscale.CreateAuthKey(userID, false, false)
-	require.NoError(t, err)
+	key := e.authKey(t)
 
 	e.openAccountMenu(t)
 	require.NoError(t, e.android.Tap("Use an auth key"))
-	require.NoError(t, e.android.EnterText(key.Key))
+	require.NoError(t, e.android.EnterText(key))
 	require.NoError(t, e.android.Tap("Add account"))
+
+	e.assertReachable(t, e.androidNode(t))
+}
+
+func TestAndroidLoginMDM(t *testing.T) {
+	apk := androidSkip(t)
+	e := setup(t, apk)
+
+	key := e.authKey(t)
+
+	require.NoError(t, e.android.SetManagedConfig(map[string]string{
+		"LoginURL":       e.headscale.GetIPEndpoint(),
+		"AuthKey":        key,
+		"OnboardingFlow": "hide",
+	}))
+	require.NoError(t, e.android.Launch())
+
+	// A managed auth key still waits for the user to start the login.
+	if ok, _ := e.android.HasText("Get Started"); ok {
+		require.NoError(t, e.android.Tap("Get Started"))
+	}
+
+	require.NoError(t, e.android.Tap("Log in"))
+
+	e.assertReachable(t, e.androidNode(t))
+}
+
+func TestAndroidLoginHook(t *testing.T) {
+	apk := androidSkip(t)
+	e := setup(t, apk)
+
+	debug, err := e.android.Debuggable()
+	require.NoError(t, err)
+
+	if !debug {
+		t.Skip("release build has no integration login hook")
+	}
+
+	require.NoError(t, e.android.LoginHook(e.headscale.GetIPEndpoint(), e.authKey(t)))
 
 	e.assertReachable(t, e.androidNode(t))
 }
