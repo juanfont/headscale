@@ -40,6 +40,9 @@ const (
 	dockerContextPath   = "../."
 
 	apkPath       = "/tmp/tailscale.apk"
+	dpcAPKPath    = "/opt/dpc.apk"
+	dpcAdmin      = "org.headscale.dpc/.Admin"
+	dpcReceiver   = "org.headscale.dpc/.SetRestrictions"
 	uiDumpPath    = "/sdcard/window_dump.xml"
 	logBasePath   = "/tmp/control"
 	adbTimeout    = 2 * time.Minute
@@ -248,6 +251,51 @@ func (a *AndroidInContainer) Install() error {
 	return nil
 }
 
+// SetManagedConfig installs the bundled device policy controller as device
+// owner and replaces the app's managed configuration (MDM) with config,
+// as an EMM would. Keys are the app's restriction keys, e.g. LoginURL.
+func (a *AndroidInContainer) SetManagedConfig(config map[string]string) error {
+	out, stderr, err := a.Execute([]string{"adb", "install", "-r", dpcAPKPath})
+	if err != nil || !strings.Contains(out, "Success") {
+		return fmt.Errorf("installing DPC: %w: %s %s", err, out, stderr) //nolint:err113
+	}
+
+	// Fails harmlessly with "already set" on repeat calls.
+	_, _ = a.Shell("dpm", "set-device-owner", dpcAdmin)
+
+	args := []string{"am", "broadcast", "-n", dpcReceiver}
+	for k, v := range config {
+		args = append(args, "--es", k, v)
+	}
+
+	out, err = a.Shell(args...)
+	if err != nil || !strings.Contains(out, "data=\"ok") {
+		return fmt.Errorf("setting managed config: %w: %s", err, out) //nolint:err113
+	}
+
+	return nil
+}
+
+// Debuggable reports whether the installed app is a debug build, which
+// carries the integration login hook (LoginHook).
+func (a *AndroidInContainer) Debuggable() (bool, error) {
+	out, err := a.Shell("dumpsys", "package", Package)
+
+	return strings.Contains(out, "DEBUGGABLE"), err
+}
+
+// LoginHook logs in via the debug-only integration broadcast, skipping the
+// UI. It follows the same prefs/start/login sequence as the UI does.
+func (a *AndroidInContainer) LoginHook(controlURL, authKey string) error {
+	_, err := a.Shell(
+		"am", "broadcast", "-a", Package+".integration.LOGIN",
+		"-n", Package+"/.IPNReceiver", "--include-stopped-packages",
+		"--es", "control_url", controlURL, "--es", "auth_key", authKey,
+	)
+
+	return err
+}
+
 // Launch starts the app's main activity.
 func (a *AndroidInContainer) Launch() error {
 	_, err := a.Shell("monkey", "-p", Package, "-c", "android.intent.category.LAUNCHER", "1")
@@ -418,13 +466,6 @@ func (a *AndroidInContainer) EnterText(s string) error {
 
 	// `input text` treats spaces as argument separators.
 	_, err = a.Shell("input", "text", strings.ReplaceAll(s, " ", "%s"))
-
-	return err
-}
-
-// Back presses the system back button.
-func (a *AndroidInContainer) Back() error {
-	_, err := a.Shell("input", "keyevent", "4")
 
 	return err
 }

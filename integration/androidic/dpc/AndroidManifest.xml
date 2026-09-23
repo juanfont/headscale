@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Minimal device policy controller: lets tests set the Tailscale app's
+     managed configuration (MDM) the way an EMM would. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="org.headscale.dpc">
+    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="33" />
+    <application android:label="headscale-dpc">
+        <receiver
+            android:name=".Admin"
+            android:exported="true"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+        <receiver android:name=".SetRestrictions" android:exported="true" />
+    </application>
+</manifest>

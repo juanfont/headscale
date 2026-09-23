@@ -33,7 +33,8 @@ RUN apt-get update && \
         libxi6 \
         libxrender1 \
         libxtst6 \
-        unzip && \
+        unzip \
+        zip && \
     apt-get -y clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -46,13 +47,31 @@ RUN mkdir -p /opt/android-sdk/cmdline-tools /tmp/android-sdk && \
 
 RUN yes | sdkmanager --licenses >/dev/null && \
     sdkmanager \
+        "build-tools;34.0.0" \
         "emulator" \
         "platform-tools" \
+        "platforms;android-${ANDROID_API}" \
         "system-images;android-${ANDROID_API};google_apis;x86_64"
 
 RUN mkdir -p /root/.android && touch /root/.android/repositories.cfg && \
     echo "no" | avdmanager create avd -n test \
         -k "system-images;android-${ANDROID_API};google_apis;x86_64" --device pixel
+
+# Device policy controller used to set the app's managed configuration.
+COPY integration/androidic/dpc /tmp/dpc
+RUN cd /tmp/dpc && \
+    bt=/opt/android-sdk/build-tools/34.0.0 && \
+    jar=/opt/android-sdk/platforms/android-${ANDROID_API}/android.jar && \
+    $bt/aapt2 compile --dir res -o res.zip && \
+    $bt/aapt2 link -I $jar --manifest AndroidManifest.xml -o unsigned.apk res.zip && \
+    javac --release 11 -classpath $jar -d classes $(find src -name '*.java') && \
+    $bt/d8 --lib $jar --release --output . $(find classes -name '*.class') && \
+    zip -q unsigned.apk classes.dex && \
+    $bt/zipalign -f 4 unsigned.apk aligned.apk && \
+    keytool -genkeypair -keystore k.jks -storepass android -keypass android \
+        -alias k -keyalg RSA -dname CN=dpc -validity 10000 && \
+    $bt/apksigner sign --ks k.jks --ks-pass pass:android --out /opt/dpc.apk aligned.apk && \
+    rm -rf /tmp/dpc
 
 # Headless boot; slirp NAT lets the guest reach the container's docker
 # network. -no-snapshot keeps every test on a cold, clean device.
