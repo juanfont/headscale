@@ -116,14 +116,25 @@ func setup(t *testing.T, apk string) *env {
 func (e *env) openAccountMenu(t *testing.T) {
 	t.Helper()
 
-	// Onboarding only exists on some versions.
-	if ok, _ := e.android.HasText("Get Started"); ok {
-		require.NoError(t, e.android.Tap("Get Started"))
-	}
+	// Onboarding only exists on some versions, and only on first launch.
+	e.skipOnboarding(t, "Open settings")
 
 	require.NoError(t, e.android.Tap("Open settings"))
 	require.NoError(t, e.android.Tap("Accounts"))
 	require.NoError(t, e.android.Tap("menu"))
+}
+
+// skipOnboarding waits for the app to render and taps through the intro
+// screen if it shows instead of next.
+func (e *env) skipOnboarding(t *testing.T, next string) {
+	t.Helper()
+
+	got, err := e.android.WaitForAny("Get Started", next)
+	require.NoError(t, err)
+
+	if got == "Get Started" {
+		require.NoError(t, e.android.Tap("Get Started"))
+	}
 }
 
 // setControlURL drives the "Use an alternate server" dialog, the path users
@@ -261,11 +272,9 @@ func TestAndroidLoginMDM(t *testing.T) {
 	}))
 	require.NoError(t, e.android.Launch())
 
-	// A managed auth key still waits for the user to start the login.
-	if ok, _ := e.android.HasText("Get Started"); ok {
-		require.NoError(t, e.android.Tap("Get Started"))
-	}
-
+	// OnboardingFlow=hide predates some supported versions, and a managed
+	// auth key still waits for the user to start the login.
+	e.skipOnboarding(t, "Log in")
 	require.NoError(t, e.android.Tap("Log in"))
 
 	e.assertReachable(t, e.androidNode(t))

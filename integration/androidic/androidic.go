@@ -19,6 +19,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -397,12 +398,21 @@ func (a *AndroidInContainer) findNode(match func(uiNode) bool) (uiNode, bool, er
 	return found, ok, nil
 }
 
-// WaitForText waits until a node whose text or content-desc equals label
-// is on screen.
-func (a *AndroidInContainer) WaitForText(label string) error {
-	_, err := a.waitFor(label, func(n uiNode) bool { return n.Text == label || n.Desc == label })
+// WaitForAny waits until a node whose text or content-desc equals one of
+// labels is on screen and returns the label that matched.
+func (a *AndroidInContainer) WaitForAny(labels ...string) (string, error) {
+	n, err := a.waitFor(strings.Join(labels, "|"), func(n uiNode) bool {
+		return slices.Contains(labels, n.Text) || slices.Contains(labels, n.Desc)
+	})
+	if err != nil {
+		return "", err
+	}
 
-	return err
+	if slices.Contains(labels, n.Text) {
+		return n.Text, nil
+	}
+
+	return n.Desc, nil
 }
 
 // HasText reports whether a node whose text or content-desc equals label is
