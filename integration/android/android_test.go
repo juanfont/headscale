@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -154,12 +155,20 @@ func (e *env) openAccountMenu(t *testing.T) {
 func (e *env) skipOnboarding(t *testing.T, next string) {
 	t.Helper()
 
-	got, err := e.android.WaitForAny("Get Started", next)
-	require.NoError(t, err)
+	// A tap during the intro's entry animation can be dropped, so keep
+	// tapping until the next screen shows.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		got, err := e.android.WaitForAny("Get Started", next)
+		if !assert.NoError(c, err) {
+			return
+		}
 
-	if got == "Get Started" {
-		require.NoError(t, e.android.Tap("Get Started"))
-	}
+		if got == "Get Started" {
+			assert.NoError(c, e.android.Tap("Get Started"))
+		}
+
+		assert.Equal(c, next, got)
+	}, 2*time.Minute, time.Second, "app never left the intro screen")
 }
 
 // setControlURL drives the "Use an alternate server" dialog, the path users
@@ -186,7 +195,8 @@ func (e *env) androidNode(t *testing.T) *clientv1.Node {
 		node = nil
 
 		for _, n := range nodes {
-			if n.Name != e.peer.Hostname() {
+			// Linux peers are tsic containers, named ts-*.
+			if !strings.HasPrefix(n.Name, "ts-") {
 				node = n
 			}
 		}
@@ -275,54 +285,71 @@ func (e *env) loginInteractive(t *testing.T) *clientv1.Node {
 
 // TestAndroidPeerChanges pushes incremental netmap changes at a logged-in
 // app and checks it renders them and survives: peer changes are where
-// client-side parsing bugs have crashed the app before.
+// client-side parsing bugs have crashed the app before. Removing a peer
+// while others remain and removing the last one take different paths in
+// the client, so both are covered.
 func TestAndroidPeerChanges(t *testing.T) {
 	apk := androidSkip(t)
 	e := setup(t, apk, false)
 
 	android := e.loginInteractive(t)
 
-	peer := e.peerNode(t)
+	require.NoError(t, e.scenario.CreateTailscaleNodesInUser(user, "unstable", 1))
 
-	const renamed = "renamed-peer"
-
-	_, err := e.headscale.Execute([]string{
-		"headscale", "nodes", "rename", "--identifier", peer.Id, renamed,
-	})
+	clients, err := e.scenario.ListTailscaleClients(user)
 	require.NoError(t, err)
+	require.Len(t, clients, 2)
 
-	require.NoError(t, e.android.Launch())
-	_, err = e.android.WaitForAny(renamed)
-	require.NoError(t, err, "app does not show the renamed peer")
-
-	peerID, err := strconv.ParseUint(peer.Id, 10, 64)
-	require.NoError(t, err)
-	require.NoError(t, e.headscale.DeleteNode(peerID))
-
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		ok, err := e.android.HasText(renamed)
-		assert.NoError(c, err)
-		assert.False(c, ok, "app still shows the deleted peer")
-	}, time.Minute, 2*time.Second)
-
-	assert.Equal(t, android.Id, e.androidNode(t).Id)
-}
-
-func (e *env) peerNode(t *testing.T) *clientv1.Node {
-	t.Helper()
+	for _, c := range clients {
+		if c.Hostname() != e.peer.Hostname() {
+			require.NoError(t, c.Login(e.headscale.GetEndpoint(), e.authKey(t)))
+			require.NoError(t, c.WaitForRunning(time.Minute))
+		}
+	}
 
 	nodes, err := e.headscale.ListNodes()
 	require.NoError(t, err)
 
+	var peers []*clientv1.Node
+
 	for _, n := range nodes {
-		if n.Name == e.peer.Hostname() {
-			return n
+		if strings.HasPrefix(n.Name, "ts-") {
+			peers = append(peers, n)
 		}
 	}
 
-	require.FailNow(t, "peer node not found")
+	require.Len(t, peers, 2)
 
-	return nil
+	names := []string{"renamed-peer-a", "renamed-peer-b"}
+
+	for i, p := range peers {
+		_, err := e.headscale.Execute([]string{
+			"headscale", "nodes", "rename", "--identifier", p.Id, names[i],
+		})
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, e.android.Launch())
+
+	for _, name := range names {
+		_, err = e.android.WaitForAny(name)
+		require.NoError(t, err, "app does not show renamed peer %s", name)
+	}
+
+	for i, p := range peers {
+		id, err := strconv.ParseUint(p.Id, 10, 64)
+		require.NoError(t, err)
+		require.NoError(t, e.headscale.DeleteNode(id))
+
+		assert.EventuallyWithT(t, func(c *assert.CollectT) {
+			ok, err := e.android.HasText(names[i])
+			assert.NoError(c, err)
+			assert.False(c, ok)
+		}, time.Minute, 2*time.Second,
+			"app still shows deleted peer %s (%d peers left)", names[i], len(peers)-i-1)
+	}
+
+	assert.Equal(t, android.Id, e.androidNode(t).Id)
 }
 
 func TestAndroidLoginAuthKey(t *testing.T) {
