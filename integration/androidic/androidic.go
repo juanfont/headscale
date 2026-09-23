@@ -297,6 +297,20 @@ func (a *AndroidInContainer) LoginHook(controlURL, authKey string) error {
 	return err
 }
 
+// Crashes returns the crash log buffer if the app has crashed since boot.
+func (a *AndroidInContainer) Crashes() (string, error) {
+	out, _, err := a.Execute([]string{"adb", "logcat", "-d", "-b", "crash"})
+	if err != nil {
+		return "", err
+	}
+
+	if !strings.Contains(out, "Process: "+Package) {
+		return "", nil
+	}
+
+	return out, nil
+}
+
 // Launch starts the app's main activity.
 func (a *AndroidInContainer) Launch() error {
 	_, err := a.Shell("monkey", "-p", Package, "-c", "android.intent.category.LAUNCHER", "1")

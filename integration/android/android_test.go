@@ -97,6 +97,13 @@ func setup(t *testing.T, apk string) *env {
 
 	require.NoError(t, err)
 
+	// Runs before the shutdown above: any app crash fails the test.
+	t.Cleanup(func() {
+		crashes, err := android.Crashes()
+		assert.NoError(t, err)
+		assert.Empty(t, crashes, "Tailscale Android app crashed")
+	})
+
 	require.NoError(t, android.Install())
 
 	version, err := android.Version()
@@ -211,8 +218,16 @@ func (e *env) authKey(t *testing.T) string {
 func TestAndroidLoginCustomControlURL(t *testing.T) {
 	apk := androidSkip(t)
 	e := setup(t, apk)
-	require.NoError(t, e.android.Launch())
 
+	e.loginInteractive(t)
+}
+
+// loginInteractive logs in through the alternate server dialog and the
+// interactive registration it starts, returning the registered node.
+func (e *env) loginInteractive(t *testing.T) *clientv1.Node {
+	t.Helper()
+
+	require.NoError(t, e.android.Launch())
 	e.setControlURL(t)
 
 	// The app hands the register URL to a browser; stand in for the user
@@ -236,6 +251,60 @@ func TestAndroidLoginCustomControlURL(t *testing.T) {
 
 	node := e.androidNode(t)
 	e.assertReachable(t, node)
+
+	return node
+}
+
+// TestAndroidPeerChanges pushes incremental netmap changes at a logged-in
+// app and checks it renders them and survives: peer changes are where
+// client-side parsing bugs have crashed the app before.
+func TestAndroidPeerChanges(t *testing.T) {
+	apk := androidSkip(t)
+	e := setup(t, apk)
+
+	android := e.loginInteractive(t)
+
+	peer := e.peerNode(t)
+
+	const renamed = "renamed-peer"
+
+	_, err := e.headscale.Execute([]string{
+		"headscale", "nodes", "rename", "--identifier", peer.Id, renamed,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, e.android.Launch())
+	_, err = e.android.WaitForAny(renamed)
+	require.NoError(t, err, "app does not show the renamed peer")
+
+	peerID, err := strconv.ParseUint(peer.Id, 10, 64)
+	require.NoError(t, err)
+	require.NoError(t, e.headscale.DeleteNode(peerID))
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		ok, err := e.android.HasText(renamed)
+		assert.NoError(c, err)
+		assert.False(c, ok, "app still shows the deleted peer")
+	}, time.Minute, 2*time.Second)
+
+	assert.Equal(t, android.Id, e.androidNode(t).Id)
+}
+
+func (e *env) peerNode(t *testing.T) *clientv1.Node {
+	t.Helper()
+
+	nodes, err := e.headscale.ListNodes()
+	require.NoError(t, err)
+
+	for _, n := range nodes {
+		if n.Name == e.peer.Hostname() {
+			return n
+		}
+	}
+
+	require.FailNow(t, "peer node not found")
+
+	return nil
 }
 
 func TestAndroidLoginAuthKey(t *testing.T) {
