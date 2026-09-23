@@ -143,12 +143,17 @@ jobs:
           fi
           echo "url=https://pkgs.tailscale.com/${track}/${file}" >> "$GITHUB_OUTPUT"
           echo "Testing ${file}"
+          # Release APKs share a signing key, so latest can upgrade oldest.
+          if [ "${{ matrix.version }}" = latest ]; then
+            echo "upgrade_from=https://pkgs.tailscale.com/stable/tailscale-android-universal-${{ needs.build.outputs.oldest }}.apk" >> "$GITHUB_OUTPUT"
+          fi
       - name: Run Android integration tests
         shell: bash
         env:
           HEADSCALE_INTEGRATION_HEADSCALE_IMAGE: headscale:${{ github.sha }}
           HEADSCALE_INTEGRATION_ANDROID_IMAGE: android-emulator:${{ github.sha }}
           HEADSCALE_INTEGRATION_ANDROID_APK: ${{ steps.apk.outputs.url }}
+          HEADSCALE_INTEGRATION_ANDROID_UPGRADE_FROM: ${{ steps.apk.outputs.upgrade_from }}
         run: /tmp/artifacts/hi run "^TestAndroid" --failfast=false --timeout=60m
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         if: always()
