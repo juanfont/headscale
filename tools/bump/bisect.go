@@ -68,6 +68,11 @@ func applyAtoms(ctx context.Context, r *repo, atoms []atom) ([]string, []dropped
 // applySet applies every atom, settles go.mod and asks the atom gate whether
 // the result is viable.
 func applySet(ctx context.Context, r *repo, atoms []atom) ([]string, error) {
+	before, err := parseGoMod(r)
+	if err != nil {
+		return nil, err
+	}
+
 	summaries := make([]string, 0, len(atoms))
 
 	for _, a := range atoms {
@@ -83,7 +88,17 @@ func applySet(ctx context.Context, r *repo, atoms []atom) ([]string, error) {
 		}
 	}
 
-	err := settle(ctx, r)
+	err = settle(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+
+	after, err := parseGoMod(r)
+	if err != nil {
+		return nil, err
+	}
+
+	err = checkDowngrades(before, after)
 	if err != nil {
 		return nil, err
 	}
