@@ -107,3 +107,22 @@ func TestSelector(t *testing.T) {
 		})
 	}
 }
+
+// Detail lines are rendered as-is so a compare link stays a link. Wrapping
+// them in backticks, the way the table cells are, would turn every entry in
+// "What moved" back into text nobody can click.
+func TestDetailKeepsCompareLinks(t *testing.T) {
+	link := "github.com/spf13/cobra v1.8.0 -> " +
+		"[v1.9.0](https://github.com/spf13/cobra/compare/v1.8.0...v1.9.0)"
+
+	var sb strings.Builder
+
+	writeDetails(&sb, []result{{
+		Area:   "gomod",
+		Change: change{Detail: []string{link}},
+	}})
+
+	if got := sb.String(); !strings.Contains(got, "- "+link+"\n") {
+		t.Errorf("writeDetails() did not render the link unchanged:\n%s", got)
+	}
+}

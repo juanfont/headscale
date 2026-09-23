@@ -142,7 +142,7 @@ func sqliteAtom(ctx context.Context, r *repo) (string, error) {
 		return "", err
 	}
 
-	latest, err := latestVersion(ctx, modSqlite)
+	latest, err := latestVersion(ctx, modSqlite, before)
 	if err != nil {
 		return "", fmt.Errorf("%w: %w", errNoLockstepSource, err)
 	}
@@ -205,7 +205,19 @@ func moduleAtom(path string) func(context.Context, *repo) (string, error) {
 			return "", err
 		}
 
-		if _, err := r.nixRun(ctx, "go", "get", "-u", path); err != nil { //nolint:noinlineerr
+		// Resolve the target here rather than letting `go get -u` choose it.
+		// The go command takes the highest semver it is offered, which is how
+		// a stray tag on a fork ends up committed.
+		want, err := latestVersion(ctx, path, before)
+		if err != nil {
+			return "", err
+		}
+
+		if want == before {
+			return "", nil
+		}
+
+		if _, err := r.nixRun(ctx, "go", "get", "-u", path+"@"+want); err != nil { //nolint:noinlineerr
 			return "", err
 		}
 
@@ -218,7 +230,7 @@ func moduleAtom(path string) func(context.Context, *repo) (string, error) {
 			return "", nil
 		}
 
-		return fmt.Sprintf("%s %s -> %s", path, before, after), nil
+		return describeChange(path, before, after), nil
 	}
 }
 

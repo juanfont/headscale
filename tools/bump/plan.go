@@ -30,7 +30,7 @@ func planLines(ctx context.Context, r *repo) []string {
 
 	if version, err := oapiVersion(r); err != nil { //nolint:noinlineerr
 		lines = append(lines, "oapi-codegen: "+err.Error())
-	} else if latest, err := latestVersion(ctx, "github.com/oapi-codegen/oapi-codegen/v2"); err != nil { //nolint:noinlineerr
+	} else if latest, err := latestVersion(ctx, "github.com/oapi-codegen/oapi-codegen/v2", version); err != nil { //nolint:noinlineerr
 		lines = append(lines, "oapi-codegen: "+err.Error())
 	} else {
 		lines = append(lines, gap("Makefile oapi-codegen", version, latest))
@@ -135,7 +135,7 @@ func planLockstep(ctx context.Context, r *repo) []string {
 		want := have
 
 		if pair.target == "" {
-			if latest, err := latestVersion(ctx, pair.owner); err == nil { //nolint:noinlineerr
+			if latest, err := latestVersion(ctx, pair.owner, have); err == nil { //nolint:noinlineerr
 				want = latest
 			}
 		}

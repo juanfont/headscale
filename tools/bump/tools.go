@@ -29,7 +29,7 @@ func applyOapiCodegen(ctx context.Context, r *repo) (change, error) {
 		return change{}, err
 	}
 
-	want, err := latestVersion(ctx, "github.com/oapi-codegen/oapi-codegen/v2")
+	want, err := latestVersion(ctx, "github.com/oapi-codegen/oapi-codegen/v2", have)
 	if err != nil {
 		return change{}, err
 	}
