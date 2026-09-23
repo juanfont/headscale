@@ -56,6 +56,10 @@ const (
 	argon2Threads = 1
 	argon2KeyLen  = 32
 	argon2SaltLen = 16
+
+	// argon2MaxMemory caps the memory parameter accepted from a stored hash,
+	// so a corrupted row can't drive a multi-GiB allocation.
+	argon2MaxMemory = 64 * 1024
 )
 
 // argon2Limiter bounds concurrent Argon2id computations. Each costs ~19 MiB and
@@ -109,6 +113,10 @@ func verifySecret(encoded []byte, secret string) error {
 		return errSecretHashMalformed
 	}
 
+	if time == 0 || threads == 0 || memory == 0 || memory > argon2MaxMemory {
+		return errSecretHashMalformed
+	}
+
 	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
 	if err != nil {
 		return errSecretHashMalformed
@@ -120,10 +128,10 @@ func verifySecret(encoded []byte, secret string) error {
 	}
 
 	argon2Limiter <- struct{}{}
+	defer func() { <-argon2Limiter }()
+
 	//nolint:gosec // want is a 32-byte hash read back from storage, no overflow
 	got := argon2.IDKey([]byte(secret), salt, time, memory, threads, uint32(len(want)))
-
-	<-argon2Limiter
 
 	if subtle.ConstantTimeCompare(got, want) != 1 {
 		return errSecretMismatch

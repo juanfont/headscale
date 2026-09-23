@@ -49,6 +49,45 @@ func TestVerifySecretConcurrent(t *testing.T) {
 	}
 }
 
+func TestVerifySecretRejectsImplausibleParameters(t *testing.T) {
+	hash, err := hashSecret("s3cr3t")
+	require.NoError(t, err)
+
+	parts := strings.Split(string(hash), "$")
+	require.Len(t, parts, 6)
+
+	corrupt := func(params string) []byte {
+		p := append([]string(nil), parts...)
+		p[3] = params
+
+		return []byte(strings.Join(p, "$"))
+	}
+
+	tests := []struct {
+		name   string
+		params string
+	}{
+		{"zero time", "m=19456,t=0,p=1"},
+		{"zero threads", "m=19456,t=2,p=0"},
+		{"zero memory", "m=0,t=2,p=1"},
+		{"memory above ceiling", "m=100000000,t=2,p=1"},
+		{"all zero", "m=0,t=0,p=0"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var verifyErr error
+
+			assert.NotPanics(t, func() {
+				verifyErr = verifySecret(corrupt(tt.params), "s3cr3t")
+			})
+			assert.ErrorIs(t, verifyErr, errSecretHashMalformed)
+		})
+	}
+
+	assert.NoError(t, verifySecret(hash, "s3cr3t"))
+}
+
 func TestOAuthClientCreateAndAuthenticate(t *testing.T) {
 	db, err := newSQLiteTestDB()
 	require.NoError(t, err)
