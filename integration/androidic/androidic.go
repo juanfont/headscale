@@ -195,7 +195,14 @@ func (a *AndroidInContainer) waitForBoot(timeout time.Duration) error {
 	// Dismiss the lock screen so UI automation reaches the app.
 	_, _ = a.Shell("input", "keyevent", "82")
 
-	return nil
+	// A fresh Chrome opens login URLs on its first-run screen, which Back
+	// cannot leave; users have long since passed it.
+	_, err = a.Shell(
+		"echo '_ --disable-fre --no-default-browser-check --no-first-run' > /data/local/tmp/chrome-command-line && " +
+			"am set-debug-app --persistent com.android.chrome",
+	)
+
+	return err
 }
 
 func poll[T any](timeout time.Duration, fn func() (T, error)) (T, error) {
@@ -399,6 +406,7 @@ type uiNode struct {
 	Text   string   `xml:"text,attr"`
 	Desc   string   `xml:"content-desc,attr"`
 	Class  string   `xml:"class,attr"`
+	Pkg    string   `xml:"package,attr"`
 	Bounds string   `xml:"bounds,attr"`
 	Nodes  []uiNode `xml:"node"`
 }
@@ -550,6 +558,20 @@ func (a *AndroidInContainer) EnterText(s string) error {
 
 	// `input text` treats spaces as argument separators.
 	_, err = a.Shell("input", "text", strings.ReplaceAll(s, " ", "%s"))
+
+	return err
+}
+
+// WaitForBrowser waits until Chrome is in the foreground.
+func (a *AndroidInContainer) WaitForBrowser() error {
+	_, err := a.waitFor("browser", func(n uiNode) bool { return n.Pkg == "com.android.chrome" })
+
+	return err
+}
+
+// Back presses the system back button.
+func (a *AndroidInContainer) Back() error {
+	_, err := a.Shell("input", "keyevent", "4")
 
 	return err
 }
