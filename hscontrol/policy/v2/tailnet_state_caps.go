@@ -91,20 +91,21 @@ var unmodelledTailnetStateCaps = []tailcfg.NodeCapability{
 
 	// [tailcfg.CapabilityTailnetLock]: tailnet-lock signs node keys
 	// with a tailnet-wide signing key so peers can detect silent
-	// re-keying by the control plane. Client reads at
-	// ipn/ipnlocal/local.go:1752 (b.capTailnetLock). Headscale has no
-	// tailnet-lock implementation.
+	// re-keying by the control plane. Client gates
+	// [tailscale.com/ipn/ipnlocal.LocalBackend.NetworkLockStatus] on it.
+	// Headscale has no tailnet-lock implementation.
 	tailcfg.CapabilityTailnetLock,
 
 	// [tailcfg.NodeAttrServiceHost]: marks a node as approved to host
-	// VIP services (Tailscale Services). Client reads via
-	// UnmarshalNodeCapViewJSON at ipn/ipnlocal/local.go:2704.
+	// VIP services (Tailscale Services). Client decodes it via
+	// [tailcfg.UnmarshalNodeCapViewJSON] into [tailcfg.ServiceIPMappings].
 	// Headscale does not implement Tailscale Services.
 	tailcfg.NodeAttrServiceHost,
 
 	// [tailcfg.NodeAttrStoreAppCRoutes]: tells an app-connector node
 	// to persist learned routes across restarts. Client reads via
-	// controlknobs:148. Headscale does not implement app connectors.
+	// [tailscale.com/control/controlknobs.Knobs.UpdateFromNodeAttributes]. Headscale does not implement app
+	// connectors.
 	tailcfg.NodeAttrStoreAppCRoutes,
 
 	// [tailcfg.CapabilityWarnFunnelNoHTTPS]: deprecated in Tailscale
@@ -138,7 +139,8 @@ var unmodelledTailnetStateCaps = []tailcfg.NodeCapability{
 
 	// [tailcfg.NodeAttrProbeUDPLifetime]: tunes magicsock's UDP
 	// path-lifetime probe behavior. Internal performance knob; not
-	// policy-driven. Client reads via controlknobs:147.
+	// policy-driven. Client reads via
+	// [tailscale.com/control/controlknobs.Knobs.UpdateFromNodeAttributes].
 	tailcfg.NodeAttrProbeUDPLifetime,
 
 	// [tailcfg.NodeAttrSSHBehaviorV1]: configures the embedded SSH
