@@ -511,3 +511,39 @@ func checkVersionUpgradePathFromVersions(db *gorm.DB, currentVersion string) err
 		return fmt.Errorf("downgrading: %w", errVersionDowngrade)
 	}
 }
+
+func TestCheckMinimumMigration(t *testing.T) {
+	tests := []struct {
+		name    string
+		ids     []string // nil means no migrations table
+		wantErr bool
+	}{
+		{name: "no migrations table", ids: nil},
+		{name: "empty migrations table", ids: []string{}},
+		{name: "0.29 database", ids: []string{"SCHEMA_INIT", minimumMigrationID}},
+		{name: "created fresh by this release", ids: []string{"SCHEMA_INIT", "202606181200-recover-null-tags-node-user-id"}},
+		{name: "0.28 database", ids: []string{"SCHEMA_INIT", "202601121700-migrate-hostinfo-request-tags"}, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, err := gorm.Open(sqlite.Open("file::memory:"), &gorm.Config{})
+			require.NoError(t, err)
+
+			if tt.ids != nil {
+				require.NoError(t, db.Exec("CREATE TABLE migrations (id varchar(255) PRIMARY KEY)").Error)
+
+				for _, id := range tt.ids {
+					require.NoError(t, db.Exec("INSERT INTO migrations (id) VALUES (?)", id).Error)
+				}
+			}
+
+			err = checkMinimumMigration(db)
+			if tt.wantErr {
+				require.ErrorIs(t, err, errDatabaseTooOld)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}

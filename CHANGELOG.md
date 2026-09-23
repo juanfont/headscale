@@ -37,6 +37,10 @@ tags; any other tag is rejected, for new and re-registering nodes alike. See
 
 ### BREAKING
 
+#### Database
+
+- Only upgrades from 0.29.x are supported; migrations for older releases are removed and headscale refuses to start on an older database. Upgrade to the latest 0.29.x first [#3352](https://github.com/juanfont/headscale/pull/3352)
+
 #### API
 
 - The gRPC API is removed; all programmatic access now goes through the HTTP API at `/api/v1` [#3324](https://github.com/juanfont/headscale/pull/3324)
