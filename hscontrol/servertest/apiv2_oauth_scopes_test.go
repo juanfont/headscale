@@ -1,14 +1,21 @@
 package servertest_test
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/servertest"
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	_ "tailscale.com/feature/oauthkey"
+	"tailscale.com/tsnet"
+	"tailscale.com/types/logger"
 )
 
 // TestAPIv2OAuthScopes proves the v2 OAuth scope and tag enforcement through the
@@ -388,4 +395,216 @@ func (tf *tofu) runExpectError(t *testing.T, mustContain ...string) {
 	}
 
 	t.Fatalf("apply failed but output contained none of %v:\n%s", mustContain, combined)
+}
+
+// TestAPIv2OAuthTailscaleClientAuthKey drives the tailscale client's own
+// feature/oauthkey resolver (via tsnet, as `tailscale up --authkey` does) with a
+// tskey-client- secret against headscale: the client parses the ?attributes,
+// exchanges the secret at baseURL, mints a tagged key via CreateKey, and
+// registers re-advertising the key's tags. Each row pins what the client sends
+// and what headscale must do with it.
+func TestAPIv2OAuthTailscaleClientAuthKey(t *testing.T) {
+	srv := servertest.NewServer(t, servertest.WithRealListener())
+	owner := srv.CreateUser(t, "apiv2-oauth")
+	setScopeMatrixPolicy(t, srv)
+
+	newClient := func() (string, *types.OAuthClient) {
+		secret, client, err := srv.State().CreateOAuthClient(
+			[]string{"auth_keys"}, []string{"tag:ci"}, "tsnet-oauthkey", &owner.ID,
+		)
+		require.NoError(t, err)
+
+		return secret, client
+	}
+	toTS := func(secret string) string {
+		return types.TailscaleOAuthClientPrefix +
+			strings.TrimPrefix(secret, types.OAuthClientPrefix)
+	}
+
+	secret, client := newClient()
+	tsSecret := toTS(secret)
+	wrongSecret := types.TailscaleOAuthClientPrefix + client.ClientID + "-" +
+		strings.Repeat("0", 64)
+
+	revoked, revokedClient := newClient()
+	revokedSecret := toTS(revoked)
+
+	require.NoError(t, srv.State().RevokeOAuthClient(revokedClient.ClientID))
+	base := "?baseURL=" + srv.URL
+
+	tests := []struct {
+		name    string
+		authKey string
+		// clientSecret passes authKey via tsnet's ClientSecret (TS_CLIENT_SECRET,
+		// `tailscale up --client-secret`) instead of AuthKey.
+		clientSecret  bool
+		tags          []string
+		wantErr       string
+		wantEphemeral bool
+	}{
+		{
+			name:          "ephemeral_preauthorized",
+			authKey:       tsSecret + base + "&ephemeral=true&preauthorized=true",
+			tags:          []string{"tag:ci"},
+			wantEphemeral: true,
+		},
+		{
+			name:    "not_ephemeral",
+			authKey: tsSecret + base + "&ephemeral=false",
+			tags:    []string{"tag:ci"},
+		},
+		{
+			// The client defaults ephemeral to true when unset.
+			name:          "baseurl_only_defaults_ephemeral",
+			authKey:       tsSecret + base,
+			tags:          []string{"tag:ci"},
+			wantEphemeral: true,
+		},
+		{
+			// Headscale always authorizes pre-auth-key nodes; preauthorized=false
+			// does not hold the node for approval.
+			name:          "preauthorized_false",
+			authKey:       tsSecret + base + "&preauthorized=false",
+			tags:          []string{"tag:ci"},
+			wantEphemeral: true,
+		},
+		{
+			name:    "attribute_order_irrelevant",
+			authKey: tsSecret + "?ephemeral=false&baseURL=" + srv.URL,
+			tags:    []string{"tag:ci"},
+		},
+		{
+			// An empty value means the default.
+			name:          "empty_value_uses_default",
+			authKey:       tsSecret + base + "&ephemeral=",
+			tags:          []string{"tag:ci"},
+			wantEphemeral: true,
+		},
+		{
+			name:          "client_secret_entry_point",
+			authKey:       tsSecret + base,
+			clientSecret:  true,
+			tags:          []string{"tag:ci"},
+			wantEphemeral: true,
+		},
+		{
+			// The client appends "/api/v2/..." verbatim, so a trailing slash
+			// yields "//api/v2/oauth/token", which headscale does not route.
+			name:    "baseurl_trailing_slash",
+			authKey: tsSecret + base + "/",
+			tags:    []string{"tag:ci"},
+			wantErr: "404",
+		},
+		{
+			name:    "invalid_bool",
+			authKey: tsSecret + base + "&ephemeral=maybe",
+			tags:    []string{"tag:ci"},
+			wantErr: `ephemeral value "maybe"`,
+		},
+		{
+			name:    "baseurl_not_headscale",
+			authKey: tsSecret + "?baseURL=http://127.0.0.1:1",
+			tags:    []string{"tag:ci"},
+			wantErr: "connection refused",
+		},
+		{
+			// Without the tskey-client- prefix the client skips the exchange and
+			// presents the raw secret as a pre-auth key, which is not one.
+			name:    "hskey_prefix_not_exchanged",
+			authKey: secret + base,
+			tags:    []string{"tag:ci"},
+			wantErr: "invalid pre auth key",
+		},
+		{
+			// A tag outside the client's grant is refused at CreateKey.
+			name:    "tag_not_granted",
+			authKey: tsSecret + base,
+			tags:    []string{"tag:other"},
+			wantErr: "may not assign tag tag:other",
+		},
+		{
+			name:    "wrong_secret",
+			authKey: wrongSecret + base,
+			tags:    []string{"tag:ci"},
+			wantErr: `"invalid_client"`,
+		},
+		{
+			name:    "revoked_client",
+			authKey: revokedSecret + base,
+			tags:    []string{"tag:ci"},
+			wantErr: `"invalid_client"`,
+		},
+		{
+			// Only ephemeral, preauthorized and baseURL are understood; the
+			// client rejects anything else before contacting headscale.
+			name:    "unknown_attribute",
+			authKey: tsSecret + base + "&reusable=true",
+			tags:    []string{"tag:ci"},
+			wantErr: `unknown attribute "reusable"`,
+		},
+		{
+			name:    "no_advertise_tags",
+			authKey: tsSecret + base,
+			wantErr: "require --advertise-tags",
+		},
+		{
+			// The GitHub Action's oauth-secret input appends its own query to the
+			// secret, folding it into baseURL; the docs steer users to authkey.
+			name:    "action_oauth_secret_appends_query",
+			authKey: tsSecret + base + "?preauthorized=true&ephemeral=true",
+			tags:    []string{"tag:ci"},
+			wantErr: "cannot fetch token",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hostname := "oauthkey-" + strings.ReplaceAll(tt.name, "_", "-")
+
+			ts := &tsnet.Server{
+				Dir:           t.TempDir(),
+				Hostname:      hostname,
+				ControlURL:    srv.URL,
+				AdvertiseTags: tt.tags,
+				Logf:          logger.Discard,
+			}
+			if tt.clientSecret {
+				ts.ClientSecret = tt.authKey
+			} else {
+				ts.AuthKey = tt.authKey
+			}
+
+			t.Cleanup(func() { ts.Close() })
+
+			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+			defer cancel()
+
+			_, err := ts.Up(ctx)
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+
+				for _, n := range srv.State().ListNodes().All() {
+					require.NotEqual(t, hostname, n.Hostname(), "no node may register")
+				}
+
+				return
+			}
+
+			require.NoError(t, err)
+
+			var node types.NodeView
+
+			for _, n := range srv.State().ListNodes().All() {
+				if n.Hostname() == hostname {
+					node = n
+				}
+			}
+
+			require.True(t, node.Valid(), "node %q not registered", hostname)
+			assert.True(t, node.IsTagged())
+			assert.Equal(t, []string{"tag:ci"}, node.Tags().AsSlice())
+			assert.Equal(t, tt.wantEphemeral, node.IsEphemeral())
+			assert.False(t, node.AuthKey().Reusable(), "client mints single-use keys")
+		})
+	}
 }
