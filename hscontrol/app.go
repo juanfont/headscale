@@ -222,8 +222,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 			// DNS routes vanish, taking the resolver with them for ~6 min
 			// until the next route-changing netmap. Empty slice survives
 			// Clone and carries the same "resolve locally" semantics
-			// (tailscale.com/ipn/ipnlocal/node_backend.go:869 documents the
-			// empty-resolver Routes form for Issue 2706).
+			// ([tailcfg.DNSConfig.Routes] documents the empty-resolver form).
 			app.cfg.TailcfgDNSConfig.Routes[d.WithoutTrailingDot()] = []*dnstype.Resolver{}
 		}
 	}

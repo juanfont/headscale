@@ -312,7 +312,8 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 		// [tailcfg.Node.CapMap] on a peer carries the small set of
 		// caps the Tailscale client reads from the peer view rather
 		// than the self view (suggest-exit-node, dns-subdomain-resolve
-		// — see ipn/ipnlocal/local.go:7534 and node_backend.go:745).
+		// — see [tailcfg.NodeAttrSuggestExitNode] and
+		// [tailcfg.NodeAttrDNSSubdomainResolve]).
 		// The Tailscale-hosted control plane stamps these only when
 		// the peer satisfies the cap's emission condition; every other
 		// cap stays off the peer view, leaving CapMap empty for most
