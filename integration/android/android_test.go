@@ -430,7 +430,15 @@ func TestAndroidLoginAuthKey(t *testing.T) {
 	// interactive login opens, as a user would.
 	e.setControlURL(t)
 	require.NoError(t, e.android.WaitForBrowser())
-	require.NoError(t, e.android.Back())
+
+	// Back does not close the Custom Tab on every Android release; its
+	// close button does.
+	closed, err := e.android.TapAnyOf("Close tab")
+	require.NoError(t, err)
+
+	if closed == "" {
+		require.NoError(t, e.android.Back())
+	}
 
 	key := e.authKey(t)
 
@@ -456,11 +464,13 @@ func (e *env) loginMDM(t *testing.T) *clientv1.Node {
 
 	key := e.authKey(t)
 
-	require.NoError(t, e.android.SetManagedConfig(map[string]string{
-		"LoginURL":       e.controlURL,
-		"AuthKey":        key,
-		"OnboardingFlow": "hide",
-	}))
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.NoError(c, e.android.SetManagedConfig(map[string]string{
+			"LoginURL":       e.controlURL,
+			"AuthKey":        key,
+			"OnboardingFlow": "hide",
+		}))
+	}, time.Minute, 2*time.Second, "setting managed config")
 	require.NoError(t, e.android.Launch())
 
 	// OnboardingFlow=hide predates some supported versions, and a managed
@@ -689,28 +699,37 @@ func TestAndroidExitNode(t *testing.T) {
 	apk := androidSkip(t)
 	e := setup(t, apk, noTLS)
 
-	e.addRoutedTarget(t)
+	// Exit nodes drop traffic to their own addresses and connected
+	// subnets, so the target is a TEST-NET address the exit node
+	// forwards to its own web server.
+	const target = "203.0.113.10"
+
+	peerIP, err := e.peer.IPv4()
+	require.NoError(t, err)
+
+	_, _, err = e.peer.Execute([]string{
+		"iptables", "-t", "nat", "-A", "PREROUTING", "-d", target, "-p", "tcp", "--dport", "80",
+		"-j", "DNAT", "--to-destination", peerIP.String() + ":80",
+	})
+	require.NoError(t, err)
+
 	e.loginMDM(t)
 
-	_, _, err := e.peer.Execute([]string{"tailscale", "set", "--advertise-exit-node"})
+	_, _, err = e.peer.Execute([]string{"tailscale", "set", "--advertise-exit-node"})
 	require.NoError(t, err)
 	e.approveRoutes(t, "0.0.0.0/0", "::/0")
 
-	url := "http://" + routedTarget + "/"
+	url := "http://" + target + "/"
 
 	_, err = e.android.Fetch(url)
-	require.Error(t, err, "%s reachable without the exit node", routedTarget)
+	require.Error(t, err, "%s reachable without the exit node", target)
 
 	// The intent matches peers by display name, the node's given name.
+	// Sent once: each intent replaces the app's pending selection.
 	name := e.peerNode(t).GivenName
+	require.NoError(t, e.android.UseExitNode(name))
 
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.NoError(c, e.android.UseExitNode(name))
-
-		code, err := e.android.Fetch(url)
-		assert.NoError(c, err)
-		assert.Equal(c, 200, code)
-	}, 2*time.Minute, 5*time.Second, "cannot reach %s through exit node %s", routedTarget, name)
+	e.assertFetch(t, url, "cannot reach %s through exit node %s", target, name)
 }
 
 // TestAndroidTaildrop sends a file from a Linux peer and checks it lands
@@ -744,10 +763,11 @@ func TestAndroidTaildrop(t *testing.T) {
 	}()
 
 	// Newer apps ask for a folder on the first incoming file: accept the
-	// prompt and the system folder picker's defaults, as a user would.
+	// prompt and pick Download in the system folder picker, as a user
+	// would. The picker opens at the storage root, which cannot be used.
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		_, _ = e.android.TapAnyOf(
-			"Open Directory Picker", "USE THIS FOLDER", "Use this folder", "ALLOW", "Allow",
+			"Open Directory Picker", "USE THIS FOLDER", "Use this folder", "ALLOW", "Allow", "Download",
 		)
 
 		got, err := e.android.FindFile(file)
