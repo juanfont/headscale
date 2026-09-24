@@ -14,8 +14,8 @@ ENV ANDROID_SDK_ROOT=/opt/android-sdk
 ENV ANDROID_AVD_HOME=/root/.android/avd
 ENV PATH=$PATH:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:/opt/android-sdk/emulator
 
-RUN apt-get update && \
-    apt-get -y install --no-install-recommends \
+RUN apt-get -o Acquire::Retries=5 update && \
+    apt-get -o Acquire::Retries=5 -y install --no-install-recommends \
         ca-certificates \
         curl \
         libdbus-1-3 \

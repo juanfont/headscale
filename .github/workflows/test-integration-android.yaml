@@ -86,6 +86,8 @@ jobs:
     needs: build
     if: needs.build.outputs.files-changed == 'true'
     strategy:
+      # One flaky download should not cancel the other images.
+      fail-fast: false
       matrix:
         api: [29, 33, 36]
     defaults:
