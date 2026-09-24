@@ -79,25 +79,32 @@ type nodeConnection interface {
 }
 
 // generateMapResponse generates a [tailcfg.MapResponse] for the given [types.NodeID] based on the provided [change.Change].
-func generateMapResponse(nc nodeConnection, mapper *mapper, r change.Change) (*tailcfg.MapResponse, error) {
+// When the response lists the node's complete peer set, removed holds the
+// previously sent peers missing from it; the response itself never carries
+// them, see [handleNodeChange].
+func generateMapResponse(
+	nc nodeConnection,
+	mapper *mapper,
+	r change.Change,
+) (*tailcfg.MapResponse, []types.NodeID, error) {
 	nodeID := nc.nodeID()
 	version := nc.version()
 
 	if r.IsEmpty() {
-		return nil, nil //nolint:nilnil // Empty response means nothing to send
+		return nil, nil, nil
 	}
 
 	if nodeID == 0 {
-		return nil, fmt.Errorf("%w: %d", ErrInvalidNodeID, nodeID)
+		return nil, nil, fmt.Errorf("%w: %d", ErrInvalidNodeID, nodeID)
 	}
 
 	if mapper == nil {
-		return nil, fmt.Errorf("%w for nodeID %d", ErrMapperNil, nodeID)
+		return nil, nil, fmt.Errorf("%w for nodeID %d", ErrMapperNil, nodeID)
 	}
 
 	// Handle self-only responses
 	if r.IsSelfOnly() && r.TargetNode != nodeID {
-		return nil, nil //nolint:nilnil // No response needed for other nodes when self-only
+		return nil, nil, nil
 	}
 
 	// Check if this is a self-update (the changed node is the receiving node).
@@ -106,7 +113,8 @@ func generateMapResponse(nc nodeConnection, mapper *mapper, r change.Change) (*t
 	isSelfUpdate := r.OriginNode != 0 && r.OriginNode == nodeID
 
 	var (
-		mapResp *tailcfg.MapResponse
+		resp    *tailcfg.MapResponse
+		removed []types.NodeID
 		err     error
 	)
 
@@ -122,48 +130,48 @@ func generateMapResponse(nc nodeConnection, mapper *mapper, r change.Change) (*t
 			currentPeerIDs = append(currentPeerIDs, peer.ID().NodeID())
 		}
 
-		removedPeers := nc.computePeerDiff(currentPeerIDs)
+		removed = removedPeers(nc, currentPeerIDs)
 		// Include self node when this is a self-update (e.g., node's own tags changed)
 		// so the node sees its updated self info along with new packet filters.
-		mapResp, err = mapper.policyChangeResponse(nodeID, version, removedPeers, currentPeers, isSelfUpdate)
+		resp, err = mapper.policyChangeResponse(nodeID, version, currentPeers, isSelfUpdate)
 	} else if isSelfUpdate {
 		// Non-policy self-update: just send the self node info
-		mapResp, err = mapper.selfMapResponse(nodeID, version)
+		resp, err = mapper.selfMapResponse(nodeID, version)
 	} else {
-		mapResp, err = mapper.buildFromChange(nodeID, version, &r)
+		resp, err = mapper.buildFromChange(nodeID, version, &r)
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("generating map response for nodeID %d: %w", nodeID, err)
+		return nil, nil, fmt.Errorf("generating map response for nodeID %d: %w", nodeID, err)
 	}
 
-	// When a full update (SendAllPeers=true) produces zero visible peers
-	// (e.g., a restrictive policy isolates this node), the resulting
-	// [tailcfg.MapResponse] has Peers: []*tailcfg.Node{} (empty non-nil slice).
-	//
-	// The Tailscale client only treats Peers as a full authoritative
-	// replacement when len(Peers) > 0 (controlclient/map.go:462).
-	// An empty Peers slice is indistinguishable from a delta response,
-	// so the client silently preserves its existing peer state.
-	//
-	// This matters when a [change.FullUpdate] replaces a pending
-	// [change.PolicyChange] in the batcher ([Batcher.addToBatch]
-	// short-circuits on [change.HasFull]). The [change.PolicyChange]
-	// would have computed PeersRemoved via
-	// [multiChannelNodeConn.computePeerDiff], but the [change.FullUpdate]
-	// path uses [MapResponseBuilder.WithPeers] which sets Peers: [].
-	//
-	// Fix: when a full update results in zero peers, compute the diff
-	// against lastSentPeers and add explicit PeersRemoved entries so
-	// the client correctly clears its stale peer state.
-	if mapResp != nil && r.SendAllPeers && len(mapResp.Peers) == 0 {
-		removedPeers := nc.computePeerDiff(nil)
-		if len(removedPeers) > 0 {
-			mapResp.PeersRemoved = removedPeers
+	// A full peer list replaces the node's peer set, so peers missing from
+	// it are removals. Clients take Peers as authoritative only when it is
+	// non-empty, so a full update that isolates a node (e.g.
+	// [Batcher.addToBatch] replacing a pending [change.PolicyChange] with a
+	// [change.FullUpdate]) needs them sent explicitly.
+	if resp != nil && resp.Peers != nil {
+		peerIDs := make([]tailcfg.NodeID, 0, len(resp.Peers))
+		for _, peer := range resp.Peers {
+			peerIDs = append(peerIDs, peer.ID)
 		}
+
+		removed = removedPeers(nc, peerIDs)
 	}
 
-	return mapResp, nil
+	return resp, removed, nil
+}
+
+// removedPeers returns the peers last sent to nc that are missing from current.
+func removedPeers(nc nodeConnection, current []tailcfg.NodeID) []types.NodeID {
+	diff := nc.computePeerDiff(current)
+
+	removed := make([]types.NodeID, len(diff))
+	for i, id := range diff {
+		removed[i] = types.NodeID(id) //nolint:gosec // NodeID types are equivalent
+	}
+
+	return removed
 }
 
 // handleNodeChange generates and sends a [tailcfg.MapResponse] for a given node and [change.Change].
@@ -176,34 +184,50 @@ func handleNodeChange(nc nodeConnection, mapper *mapper, r change.Change) error 
 
 	log.Debug().Caller().Uint64(zf.NodeID, nodeID.Uint64()).Str(zf.Reason, r.Reason).Msg("node change processing started")
 
-	data, err := generateMapResponse(nc, mapper, r)
+	data, removed, err := generateMapResponse(nc, mapper, r)
 	if err != nil {
 		return fmt.Errorf("generating map response for node %d: %w", nodeID, err)
 	}
 
-	if data == nil {
-		// No data to send is valid for some response types
-		return nil
-	}
+	var resps []*tailcfg.MapResponse
 
-	// Send the map response
-	err = nc.send(data)
-	if err != nil {
-		// If the node has no active connections, the data was not
-		// delivered. Do not update lastSentPeers — recording phantom
-		// peer state would corrupt future computePeerDiff calculations,
-		// causing the node to miss peer additions or removals after
-		// reconnection.
-		if errors.Is(err, errNoActiveConnections) {
-			return nil
+	// Peers that left the node's view go out first, as their own change.
+	// Clients only report removed peers to IPN bus watchers that opted out
+	// of full netmaps (the Android app since 1.100) from responses they can
+	// apply as deltas; the full-set response they were derived from can
+	// carry DNSConfig, SSHPolicy, Node or Peers, which force a full rebuild.
+	if len(removed) > 0 {
+		rm, err := mapper.buildFromChange(nodeID, nc.version(), new(change.PeersRemoved(removed...)))
+		if err != nil {
+			return fmt.Errorf("generating peer removal for node %d: %w", nodeID, err)
 		}
 
-		return fmt.Errorf("sending map response to node %d: %w", nodeID, err)
+		resps = append(resps, rm)
 	}
 
-	// Update peer tracking only after confirmed delivery to at
-	// least one active connection.
-	nc.updateSentPeers(data)
+	if data != nil {
+		resps = append(resps, data)
+	}
+
+	for _, resp := range resps {
+		err = nc.send(resp)
+		if err != nil {
+			// If the node has no active connections, the data was not
+			// delivered. Do not update lastSentPeers — recording phantom
+			// peer state would corrupt future computePeerDiff calculations,
+			// causing the node to miss peer additions or removals after
+			// reconnection.
+			if errors.Is(err, errNoActiveConnections) {
+				return nil
+			}
+
+			return fmt.Errorf("sending map response to node %d: %w", nodeID, err)
+		}
+
+		// Update peer tracking only after confirmed delivery to at
+		// least one active connection.
+		nc.updateSentPeers(resp)
+	}
 
 	return nil
 }
@@ -508,7 +532,9 @@ func (b *Batcher) worker(workerID int) {
 
 					var err error
 
-					result.mapResponse, err = generateMapResponse(nc, b.mapper, w.changes[0])
+					// The initial map replaces the stream's peer set, so
+					// removals relative to an earlier stream are moot.
+					result.mapResponse, _, err = generateMapResponse(nc, b.mapper, w.changes[0])
 
 					result.err = err
 					if result.err != nil {

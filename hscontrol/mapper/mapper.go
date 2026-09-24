@@ -304,8 +304,8 @@ func (m *mapper) selfMapResponse(
 }
 
 // policyChangeResponse creates a [tailcfg.MapResponse] for policy changes.
-// It sends:
-//   - PeersRemoved for peers that are no longer visible after the policy change
+// Peers no longer visible after the change are sent separately, see
+// [handleNodeChange]. It sends:
 //   - PeersChanged for remaining peers (their AllowedIPs may have changed due to policy)
 //   - Updated PacketFilters
 //   - Updated SSHPolicy (SSH rules may reference users/groups that changed)
@@ -325,7 +325,6 @@ func (m *mapper) selfMapResponse(
 func (m *mapper) policyChangeResponse(
 	nodeID types.NodeID,
 	capVer tailcfg.CapabilityVersion,
-	removedPeers []tailcfg.NodeID,
 	currentPeers views.Slice[types.NodeView],
 	includeSelf bool,
 ) (*tailcfg.MapResponse, error) {
@@ -338,16 +337,6 @@ func (m *mapper) policyChangeResponse(
 
 	if includeSelf {
 		builder = builder.WithSelfNode()
-	}
-
-	if len(removedPeers) > 0 {
-		// Convert [tailcfg.NodeID] to [types.NodeID] for [MapResponseBuilder.WithPeersRemoved]
-		removedIDs := make([]types.NodeID, len(removedPeers))
-		for i, id := range removedPeers {
-			removedIDs[i] = types.NodeID(id) //nolint:gosec // NodeID types are equivalent
-		}
-
-		builder.WithPeersRemoved(removedIDs...)
 	}
 
 	// Send remaining peers in PeersChanged - their AllowedIPs may have

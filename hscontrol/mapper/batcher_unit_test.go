@@ -732,7 +732,7 @@ func TestUpdateSentPeers(t *testing.T) {
 func TestGenerateMapResponse_EmptyChange(t *testing.T) {
 	mc := newMockNodeConnection(1)
 
-	resp, err := generateMapResponse(mc, nil, change.Change{})
+	resp, _, err := generateMapResponse(mc, nil, change.Change{})
 
 	require.NoError(t, err)
 	assert.Nil(t, resp, "empty change should return nil response")
@@ -741,7 +741,7 @@ func TestGenerateMapResponse_EmptyChange(t *testing.T) {
 func TestGenerateMapResponse_InvalidNodeID(t *testing.T) {
 	mc := newMockNodeConnection(0) // Invalid ID
 
-	resp, err := generateMapResponse(mc, &mapper{}, change.DERPMap())
+	resp, _, err := generateMapResponse(mc, &mapper{}, change.DERPMap())
 
 	require.ErrorIs(t, err, ErrInvalidNodeID)
 	assert.Nil(t, resp)
@@ -750,7 +750,7 @@ func TestGenerateMapResponse_InvalidNodeID(t *testing.T) {
 func TestGenerateMapResponse_NilMapper(t *testing.T) {
 	mc := newMockNodeConnection(1)
 
-	resp, err := generateMapResponse(mc, nil, change.DERPMap())
+	resp, _, err := generateMapResponse(mc, nil, change.DERPMap())
 
 	require.ErrorIs(t, err, ErrMapperNil)
 	assert.Nil(t, resp)
@@ -761,7 +761,7 @@ func TestGenerateMapResponse_SelfOnlyOtherNode(t *testing.T) {
 
 	// SelfUpdate targeted at node 99 should be skipped for node 1
 	ch := change.SelfUpdate(99)
-	resp, err := generateMapResponse(mc, &mapper{}, ch)
+	resp, _, err := generateMapResponse(mc, &mapper{}, ch)
 
 	require.NoError(t, err)
 	assert.Nil(t, resp,
