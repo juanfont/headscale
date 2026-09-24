@@ -6,6 +6,9 @@
 package android
 
 import (
+	"encoding/json"
+	"fmt"
+	"net/netip"
 	"os"
 	"regexp"
 	"slices"
@@ -22,6 +25,7 @@ import (
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/tailcfg"
 )
 
 const user = "user1"
@@ -65,18 +69,18 @@ const (
 	systemCA
 )
 
-// setup starts headscale, one Linux peer and the emulator with the app
-// installed. Unless ca is noTLS, headscale serves HTTPS from a private CA
-// installed in the given device store.
-func setup(t *testing.T, apk string, ca caStore) *env {
+// setup starts headscale, one Linux peer serving HTTP on port 80 and the
+// emulator with the app installed. Unless ca is noTLS, headscale serves
+// HTTPS from a private CA installed in the given device store.
+func setup(t *testing.T, apk string, ca caStore, extra ...hsic.Option) *env {
 	t.Helper()
 
-	hsOpts := []hsic.Option{
+	hsOpts := append([]hsic.Option{
 		hsic.WithTestName("android"),
 		// The app always dials DERP over TLS; public relays keep the
 		// data plane independent of which CA the device trusts.
 		hsic.WithPublicDERP(),
-	}
+	}, extra...)
 	if ca == noTLS {
 		hsOpts = append(hsOpts, hsic.WithoutTLS())
 	}
@@ -89,7 +93,7 @@ func setup(t *testing.T, apk string, ca caStore) *env {
 	require.NoError(t, err)
 	t.Cleanup(func() { scenario.ShutdownAssertNoPanics(t) })
 
-	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsOpts...)
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{tsic.WithWebserver(80)}, hsOpts...)
 	require.NoError(t, err)
 
 	headscale, err := scenario.Headscale()
@@ -555,4 +559,228 @@ func TestAndroidLoginTLS(t *testing.T) {
 	}
 
 	e.loginInteractive(t)
+}
+
+// peerNode returns e.peer's headscale node.
+func (e *env) peerNode(t *testing.T) *clientv1.Node {
+	t.Helper()
+
+	nodes, err := e.headscale.ListNodes()
+	require.NoError(t, err)
+
+	for _, n := range nodes {
+		if n.Name == e.peer.Hostname() {
+			return n
+		}
+	}
+
+	require.FailNow(t, "peer node not found")
+
+	return nil
+}
+
+// routedTarget is an address only e.peer holds, on its loopback, so the
+// device can reach it only through the tailnet. e.peer's web server
+// answers on it.
+const routedTarget = "10.99.0.1"
+
+func (e *env) addRoutedTarget(t *testing.T) {
+	t.Helper()
+
+	_, _, err := e.peer.Execute([]string{"ip", "addr", "add", routedTarget + "/32", "dev", "lo"})
+	require.NoError(t, err)
+}
+
+func (e *env) approveRoutes(t *testing.T, routes ...string) {
+	t.Helper()
+
+	id, err := strconv.ParseUint(e.peerNode(t).Id, 10, 64)
+	require.NoError(t, err)
+
+	prefixes := make([]netip.Prefix, 0, len(routes))
+	for _, r := range routes {
+		prefixes = append(prefixes, netip.MustParsePrefix(r))
+	}
+
+	_, err = e.headscale.ApproveRoutes(id, prefixes)
+	require.NoError(t, err)
+}
+
+// assertFetch checks an ordinary app on the device gets HTTP 200 from url.
+func (e *env) assertFetch(t *testing.T, url string, msgAndArgs ...any) {
+	t.Helper()
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		code, err := e.android.Fetch(url)
+		assert.NoError(c, err)
+		assert.Equal(c, 200, code)
+	}, 2*time.Minute, 3*time.Second, msgAndArgs...)
+}
+
+// TestAndroidMagicDNS resolves tailnet names from an ordinary app on the
+// device, through the app's DNS, and fetches a peer by its MagicDNS name:
+// the Android-to-peer direction of the data plane.
+func TestAndroidMagicDNS(t *testing.T) {
+	apk := androidSkip(t)
+
+	const (
+		recordPath = "/tmp/extra_records.json"
+		record     = "android-extra.example.com"
+		recordIP   = "100.64.99.99"
+	)
+
+	records, err := json.Marshal([]tailcfg.DNSRecord{{Name: record, Type: "A", Value: recordIP}})
+	require.NoError(t, err)
+
+	e := setup(t, apk, noTLS,
+		hsic.WithConfigEnv(map[string]string{"HEADSCALE_DNS_EXTRA_RECORDS_PATH": recordPath}),
+		hsic.WithFileInContainer(recordPath, records),
+	)
+
+	e.loginMDM(t)
+
+	fqdn, err := e.peer.FQDN()
+	require.NoError(t, err)
+
+	peerIPs, err := e.peer.IPs()
+	require.NoError(t, err)
+
+	name := strings.TrimSuffix(fqdn, ".")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		addrs, err := e.android.Resolve(name)
+		assert.NoError(c, err)
+		assert.Contains(c, addrs, peerIPs[0].String())
+	}, 2*time.Minute, 3*time.Second, "MagicDNS name %s does not resolve", name)
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		addrs, err := e.android.Resolve(record)
+		assert.NoError(c, err)
+		assert.Contains(c, addrs, recordIP)
+	}, 2*time.Minute, 3*time.Second, "extra record %s does not resolve", record)
+
+	e.assertFetch(t, "http://"+name+"/", "cannot fetch peer by MagicDNS name")
+}
+
+// TestAndroidSubnetRoute reaches an address only a Linux subnet router can
+// reach, once headscale approves the route.
+func TestAndroidSubnetRoute(t *testing.T) {
+	apk := androidSkip(t)
+	e := setup(t, apk, noTLS)
+
+	e.addRoutedTarget(t)
+	e.loginMDM(t)
+
+	url := "http://" + routedTarget + "/"
+
+	_, err := e.android.Fetch(url)
+	require.Error(t, err, "%s reachable before any route exists", routedTarget)
+
+	_, _, err = e.peer.Execute([]string{"tailscale", "set", "--advertise-routes=10.99.0.0/24"})
+	require.NoError(t, err)
+	e.approveRoutes(t, "10.99.0.0/24")
+
+	e.assertFetch(t, url, "cannot reach %s through the subnet router", routedTarget)
+}
+
+// TestAndroidExitNode selects a Linux exit node through the app's
+// USE_EXIT_NODE intent and reaches an address only the exit node can.
+func TestAndroidExitNode(t *testing.T) {
+	apk := androidSkip(t)
+	e := setup(t, apk, noTLS)
+
+	e.addRoutedTarget(t)
+	e.loginMDM(t)
+
+	_, _, err := e.peer.Execute([]string{"tailscale", "set", "--advertise-exit-node"})
+	require.NoError(t, err)
+	e.approveRoutes(t, "0.0.0.0/0", "::/0")
+
+	url := "http://" + routedTarget + "/"
+
+	_, err = e.android.Fetch(url)
+	require.Error(t, err, "%s reachable without the exit node", routedTarget)
+
+	// The intent matches peers by display name, the node's given name.
+	name := e.peerNode(t).GivenName
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.NoError(c, e.android.UseExitNode(name))
+
+		code, err := e.android.Fetch(url)
+		assert.NoError(c, err)
+		assert.Equal(c, 200, code)
+	}, 2*time.Minute, 5*time.Second, "cannot reach %s through exit node %s", routedTarget, name)
+}
+
+// TestAndroidTaildrop sends a file from a Linux peer and checks it lands
+// on the device, picking a Taildrop folder if the app asks for one.
+func TestAndroidTaildrop(t *testing.T) {
+	apk := androidSkip(t)
+	e := setup(t, apk, noTLS)
+
+	node := e.loginMDM(t)
+	require.NoError(t, e.android.Launch())
+
+	const file = "taildrop-from-linux.txt"
+
+	body := "hello android " + e.peer.Hostname()
+
+	_, _, err := e.peer.Execute([]string{"sh", "-c", fmt.Sprintf("printf %%s %q > /tmp/%s", body, file)})
+	require.NoError(t, err)
+
+	sent := make(chan error, 1)
+
+	go func() {
+		_, stderr, err := e.peer.Execute(
+			[]string{"tailscale", "file", "cp", "/tmp/" + file, node.IpAddresses[0] + ":"},
+			dockertestutil.ExecuteCommandTimeout(3*time.Minute),
+		)
+		if err != nil {
+			err = fmt.Errorf("%w: %s", err, stderr)
+		}
+
+		sent <- err
+	}()
+
+	// Newer apps ask for a folder on the first incoming file: accept the
+	// prompt and the system folder picker's defaults, as a user would.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		_, _ = e.android.TapAnyOf(
+			"Open Directory Picker", "USE THIS FOLDER", "Use this folder", "ALLOW", "Allow",
+		)
+
+		got, err := e.android.FindFile(file)
+		assert.NoError(c, err)
+		assert.Equal(c, body, strings.TrimSpace(got))
+	}, 3*time.Minute, 3*time.Second, "file never arrived on the device")
+
+	require.NoError(t, <-sent, "tailscale file cp failed")
+}
+
+// TestAndroidNetworkChange drops the device's network and checks the app
+// reconnects, with working DNS, once it returns.
+func TestAndroidNetworkChange(t *testing.T) {
+	apk := androidSkip(t)
+	e := setup(t, apk, noTLS)
+
+	node := e.loginMDM(t)
+
+	require.NoError(t, e.android.SetNetwork(false))
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Error(c, e.peer.Ping(node.IpAddresses[0], tsic.WithPingTimeout(3*time.Second)))
+	}, time.Minute, 3*time.Second, "device still reachable with its network off")
+
+	require.NoError(t, e.android.SetNetwork(true))
+
+	e.assertReachable(t, node)
+
+	fqdn, err := e.peer.FQDN()
+	require.NoError(t, err)
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		_, err := e.android.Resolve(strings.TrimSuffix(fqdn, "."))
+		assert.NoError(c, err)
+	}, 2*time.Minute, 3*time.Second, "MagicDNS broken after the network returned")
 }
