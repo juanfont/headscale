@@ -780,6 +780,18 @@ func (a *AndroidInContainer) EnterText(s string) error {
 	return err
 }
 
+// InForeground reports whether pkg owns the window on screen.
+func (a *AndroidInContainer) InForeground(pkg string) (bool, error) {
+	root, err := a.dumpTree()
+	if err != nil {
+		return false, err
+	}
+
+	_, ok := root.find(func(n uiNode) bool { return n.Pkg == pkg })
+
+	return ok, nil
+}
+
 // WaitForBrowser waits until Chrome is in the foreground.
 func (a *AndroidInContainer) WaitForBrowser() error {
 	_, err := a.waitFor("browser", func(n uiNode) bool { return n.Pkg == "com.android.chrome" })

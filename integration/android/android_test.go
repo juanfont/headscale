@@ -182,7 +182,9 @@ func (e *env) tapPast(t *testing.T, label string, next ...string) {
 	t.Helper()
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		got, err := e.android.WaitForAny(append([]string{"Get Started", label}, next...)...)
+		// "Wait" answers the system's not-responding dialog, which slow
+		// emulators show over whatever is on screen.
+		got, err := e.android.WaitForAny(append([]string{"Get Started", "Wait", label}, next...)...)
 		if !assert.NoError(c, err) {
 			return
 		}
@@ -193,6 +195,28 @@ func (e *env) tapPast(t *testing.T, label string, next ...string) {
 
 		assert.Contains(c, next, got)
 	}, 2*time.Minute, time.Second, "never got past %q to %v", label, next)
+}
+
+// leaveBrowser closes the login Custom Tab as a user would, until the app
+// is back in front. Back does not close it on every Android release and a
+// tap can land before the tab is ready, so it retries.
+func (e *env) leaveBrowser(t *testing.T) {
+	t.Helper()
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		inBrowser, err := e.android.InForeground("com.android.chrome")
+		if !assert.NoError(c, err) || !inBrowser {
+			return
+		}
+
+		closed, err := e.android.TapAnyOf("Close tab")
+		if err == nil && closed == "" {
+			err = e.android.Back()
+		}
+
+		assert.NoError(c, err)
+		assert.Fail(c, "browser still in front")
+	}, time.Minute, 2*time.Second, "could not leave the login browser")
 }
 
 // setControlURL drives the "Use an alternate server" dialog, the path users
@@ -431,14 +455,7 @@ func TestAndroidLoginAuthKey(t *testing.T) {
 	e.setControlURL(t)
 	require.NoError(t, e.android.WaitForBrowser())
 
-	// Back does not close the Custom Tab on every Android release; its
-	// close button does.
-	closed, err := e.android.TapAnyOf("Close tab")
-	require.NoError(t, err)
-
-	if closed == "" {
-		require.NoError(t, e.android.Back())
-	}
+	e.leaveBrowser(t)
 
 	key := e.authKey(t)
 
