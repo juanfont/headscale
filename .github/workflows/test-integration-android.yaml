@@ -15,6 +15,7 @@ jobs:
     outputs:
       files-changed: ${{ steps.changed-files.outputs.files }}
       oldest: ${{ steps.versions.outputs.oldest }}
+      android-sha: ${{ steps.versions.outputs.android-sha }}
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
@@ -31,6 +32,7 @@ jobs:
               - 'integration/**'
               - 'config-example.yaml'
               - '.github/workflows/test-integration-android.yaml'
+              - '.github/workflows/integration-android-template.yml'
               - 'Dockerfile.*'
       - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
         if: steps.changed-files.outputs.files == 'true'
@@ -41,10 +43,12 @@ jobs:
         run: |
           go build -o hi ./cmd/hi
           CGO_ENABLED=0 GOOS=linux go build -o headscale ./cmd/headscale
-      - name: Resolve oldest supported Android version
+      - name: Resolve Android versions
         id: versions
         if: steps.changed-files.outputs.files == 'true'
         run: |
+          sha=$(git ls-remote https://github.com/tailscale/tailscale-android refs/heads/main | cut -f1)
+          echo "android-sha=${sha}" >> "$GITHUB_OUTPUT"
           # Oldest tagged minor headscale supports; the newest patch of it
           # with a published APK (not every patch ships one).
           minor=$(./hi list-versions --set=must --exclude=head,unstable | tr ' ' '\n' | head -1 | tr -d v)
@@ -75,88 +79,94 @@ jobs:
             hi
             images.tar.gz
           retention-days: 3
-  android:
+  # Built once per run and shared as artifacts, like the headscale image;
+  # one image per Android API level under test.
+  build-emulator:
     runs-on: ubuntu-24.04
     needs: build
     if: needs.build.outputs.files-changed == 'true'
     strategy:
-      fail-fast: false
       matrix:
-        version: [head, unstable, latest, oldest]
+        api: [29, 33, 36]
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
-      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
-        with:
-          name: android-build
-          path: /tmp/artifacts
       - name: Free disk space
-        shell: bash
-        # The emulator image and the head APK build each take >10 GB.
-        run: |
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
-          df -h /
-      - name: Enable KVM
-        shell: bash
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          ls -l /dev/kvm
-      - name: Force overlay2 storage driver and load images
-        shell: bash
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+      - name: Force overlay2 storage driver
         run: |
           sudo mkdir -p /etc/docker
           echo '{"storage-driver":"overlay2"}' | sudo tee /etc/docker/daemon.json
           sudo systemctl restart docker
-          gunzip -c /tmp/artifacts/images.tar.gz | docker load
-          chmod +x /tmp/artifacts/hi
       - name: Build emulator image
+        run: |
+          docker build --file Dockerfile.android-integration \
+            --build-arg ANDROID_API=${{ matrix.api }} \
+            --tag android-emulator:${{ github.sha }}-${{ matrix.api }} .
+          docker save android-emulator:${{ github.sha }}-${{ matrix.api }} | zstd -T0 -3 > android-emulator.tar.zst
+          ls -lh android-emulator.tar.zst
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: android-emulator-${{ matrix.api }}
+          path: android-emulator.tar.zst
+          compression-level: 0
+          retention-days: 3
+  # Debug build of tailscale-android main, cached by commit: rebuilding it
+  # takes ~10 minutes.
+  build-android-head:
+    runs-on: ubuntu-24.04
+    needs: build
+    if: needs.build.outputs.files-changed == 'true'
+    defaults:
+      run:
         shell: bash
-        # ponytail: rebuilt per job (SDK download); cache in a registry
-        # once runtime matters more than simplicity.
-        run: docker build --file Dockerfile.android-integration --tag android-emulator:${{ github.sha }} .
+    steps:
+      - uses: actions/cache@a7833574556fa59680c1b7cb190c1735db73ebf0 # v5.0.0
+        id: cache
+        with:
+          path: tailscale-debug.apk
+          key: tailscale-android-debug-${{ needs.build.outputs.android-sha }}
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
-        if: matrix.version == 'head'
+        if: steps.cache.outputs.cache-hit != 'true'
         with:
           repository: tailscale/tailscale-android
+          ref: ${{ needs.build.outputs.android-sha }}
           path: tailscale-android
-      - name: Build tailscale-android main debug APK
-        if: matrix.version == 'head'
-        shell: bash
-        working-directory: tailscale-android
-        run: make docker-tailscale-debug
-      - name: Resolve APK
-        id: apk
-        shell: bash
+      - name: Build debug APK
+        if: steps.cache.outputs.cache-hit != 'true'
         run: |
-          case "${{ matrix.version }}" in
-            head)
-              # Under the repo root, which hi mounts at the same path.
-              echo "url=${GITHUB_WORKSPACE}/tailscale-android/tailscale-debug.apk" >> "$GITHUB_OUTPUT"
-              exit 0 ;;
-            oldest) file="tailscale-android-universal-${{ needs.build.outputs.oldest }}.apk"; track=stable ;;
-            latest) track=stable ;;
-            unstable) track=unstable ;;
-          esac
-          if [ -z "${file:-}" ]; then
-            file=$(curl -fsS "https://pkgs.tailscale.com/${track}/?mode=json" | jq -r .APKs.universal)
-          fi
-          echo "url=https://pkgs.tailscale.com/${track}/${file}" >> "$GITHUB_OUTPUT"
-          echo "Testing ${file}"
-          # Release APKs share a signing key, so latest can upgrade oldest.
-          if [ "${{ matrix.version }}" = latest ]; then
-            echo "upgrade_from=https://pkgs.tailscale.com/stable/tailscale-android-universal-${{ needs.build.outputs.oldest }}.apk" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Run Android integration tests
-        shell: bash
-        env:
-          HEADSCALE_INTEGRATION_HEADSCALE_IMAGE: headscale:${{ github.sha }}
-          HEADSCALE_INTEGRATION_ANDROID_IMAGE: android-emulator:${{ github.sha }}
-          HEADSCALE_INTEGRATION_ANDROID_APK: ${{ steps.apk.outputs.url }}
-          HEADSCALE_INTEGRATION_ANDROID_UPGRADE_FROM: ${{ steps.apk.outputs.upgrade_from }}
-        run: /tmp/artifacts/hi run "^TestAndroid" --failfast=false --timeout=60m
+          (cd tailscale-android && make docker-tailscale-debug)
+          cp tailscale-android/tailscale-debug.apk .
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
-        if: always()
         with:
-          name: android-${{ matrix.version }}-artifacts
-          path: control_logs/
+          name: android-head-apk
+          path: tailscale-debug.apk
+          retention-days: 3
+  android:
+    needs: [build, build-emulator]
+    if: needs.build.outputs.files-changed == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { version: unstable, api: 33 }
+          - { version: latest, api: 33 }
+          - { version: oldest, api: 33 }
+          # Other Android releases, on the app most users run.
+          - { version: latest, api: 29 }
+          - { version: latest, api: 36 }
+    uses: ./.github/workflows/integration-android-template.yml
+    with:
+      version: ${{ matrix.version }}
+      api: ${{ matrix.api }}
+      oldest: ${{ needs.build.outputs.oldest }}
+  android-head:
+    needs: [build, build-emulator, build-android-head]
+    if: needs.build.outputs.files-changed == 'true'
+    uses: ./.github/workflows/integration-android-template.yml
+    with:
+      version: head
+      api: 33
+      oldest: ${{ needs.build.outputs.oldest }}
