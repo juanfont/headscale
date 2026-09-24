@@ -1,4 +1,4 @@
-package org.headscale.dpc;
+package org.headscale.helper;
 
 import android.app.admin.DevicePolicyManager;
 import android.content.BroadcastReceiver;
@@ -9,7 +9,7 @@ import android.os.Bundle;
 
 // Replaces the target package's managed configuration with the broadcast's
 // extras:
-//   am broadcast -n org.headscale.dpc/.SetRestrictions \
+//   am broadcast -n org.headscale.helper/.SetRestrictions \
 //     --es package com.tailscale.ipn --es LoginURL http://... --es AuthKey ...
 public class SetRestrictions extends BroadcastReceiver {
     @Override

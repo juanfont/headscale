@@ -1,4 +1,4 @@
-package org.headscale.dpc;
+package org.headscale.helper;
 
 import android.app.admin.DeviceAdminReceiver;
 

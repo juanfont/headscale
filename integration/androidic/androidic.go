@@ -23,6 +23,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -44,22 +45,27 @@ const (
 	dockerfileName      = "Dockerfile.android-integration"
 	dockerContextPath   = "../."
 
-	apkPath       = "/tmp/tailscale.apk"
-	dpcAPKPath    = "/opt/dpc.apk"
-	dpcAdmin      = "org.headscale.dpc/.Admin"
-	dpcReceiver   = "org.headscale.dpc/.SetRestrictions"
-	uiDumpPath    = "/sdcard/window_dump.xml"
-	logBasePath   = "/tmp/control"
-	adbTimeout    = 2 * time.Minute
-	pollInterval  = 2 * time.Second
-	uiPollTimeout = 60 * time.Second
+	apkPath        = "/tmp/tailscale.apk"
+	helperAPKPath  = "/opt/helper.apk"
+	helperAdmin    = "org.headscale.helper/.Admin"
+	helperRestrict = "org.headscale.helper/.SetRestrictions"
+	helperProbe    = "org.headscale.helper/.Probe"
+	uiDumpPath     = "/sdcard/window_dump.xml"
+	logBasePath    = "/tmp/control"
+	adbTimeout     = 2 * time.Minute
+	pollInterval   = 2 * time.Second
+	uiPollTimeout  = 60 * time.Second
 )
 
 var (
-	errNoNetwork   = errors.New("androidic: no network set")
-	errBootTimeout = errors.New("androidic: timed out waiting for emulator boot")
-	errNoUINode    = errors.New("androidic: no UI node matched")
-	errInvalidCA   = errors.New("androidic: CA is not PEM")
+	errNoNetwork    = errors.New("androidic: no network set")
+	errBootTimeout  = errors.New("androidic: timed out waiting for emulator boot")
+	errNoUINode     = errors.New("androidic: no UI node matched")
+	errInvalidCA    = errors.New("androidic: CA is not PEM")
+	errHelperFailed = errors.New("androidic: helper app failed")
+	errFileNotFound = errors.New("androidic: file not found")
+
+	resultDataRe = regexp.MustCompile(`data="([^"]*)"`)
 )
 
 // getPrebuiltImage returns the pre-built emulator image name if set.
@@ -74,6 +80,8 @@ type AndroidInContainer struct {
 	pool      *dockertest.Pool
 	container *dockertest.Resource
 	network   *dockertest.Network
+
+	helperInstalled bool
 }
 
 // Option represents optional settings for an [AndroidInContainer].
@@ -250,29 +258,158 @@ func (a *AndroidInContainer) Install(apk string) error {
 	return nil
 }
 
-// SetManagedConfig installs the bundled device policy controller as device
-// owner and replaces the app's managed configuration (MDM) with config,
-// as an EMM would. Keys are the app's restriction keys, e.g. LoginURL.
+// SetManagedConfig makes the bundled helper app device owner and replaces
+// the app's managed configuration (MDM) with config, as an EMM would. Keys
+// are the app's restriction keys, e.g. LoginURL.
 func (a *AndroidInContainer) SetManagedConfig(config map[string]string) error {
-	out, stderr, err := a.Execute([]string{"adb", "install", "-r", dpcAPKPath})
-	if err != nil || !strings.Contains(out, "Success") {
-		return fmt.Errorf("installing DPC: %w: %s %s", err, out, stderr) //nolint:err113
+	err := a.installHelper()
+	if err != nil {
+		return err
 	}
 
 	// Fails harmlessly with "already set" on repeat calls.
-	_, _ = a.Shell("dpm", "set-device-owner", dpcAdmin)
+	_, _ = a.Shell("dpm", "set-device-owner", helperAdmin)
 
-	args := []string{"am", "broadcast", "-n", dpcReceiver}
+	args := []string{"am", "broadcast", "-n", helperRestrict}
 	for k, v := range config {
 		args = append(args, "--es", k, v)
 	}
 
-	out, err = a.Shell(args...)
-	if err != nil || !strings.Contains(out, "data=\"ok") {
-		return fmt.Errorf("setting managed config: %w: %s", err, out) //nolint:err113
+	_, err = a.helperBroadcast(args...)
+	if err != nil {
+		return fmt.Errorf("setting managed config: %w", err)
 	}
 
 	return nil
+}
+
+// Resolve looks up host from an ordinary app on the device, so the
+// query goes through the VPN's DNS, and returns the addresses found.
+func (a *AndroidInContainer) Resolve(host string) ([]string, error) {
+	out, err := a.probe("--es", "resolve", host)
+
+	return strings.Fields(out), err
+}
+
+// Fetch GETs url from an ordinary app on the device, so the request goes
+// through the VPN, and returns the HTTP status code.
+func (a *AndroidInContainer) Fetch(url string) (int, error) {
+	out, err := a.probe("--es", "url", url)
+	if err != nil {
+		return 0, err
+	}
+
+	return strconv.Atoi(out)
+}
+
+func (a *AndroidInContainer) probe(extras ...string) (string, error) {
+	err := a.installHelper()
+	if err != nil {
+		return "", err
+	}
+
+	return a.helperBroadcast(append([]string{"am", "broadcast", "-n", helperProbe}, extras...)...)
+}
+
+// helperBroadcast sends an ordered broadcast to the helper app and returns
+// the text after "ok" in its result data.
+func (a *AndroidInContainer) helperBroadcast(args ...string) (string, error) {
+	out, err := a.Shell(args...)
+	if err != nil {
+		return "", err
+	}
+
+	m := resultDataRe.FindStringSubmatch(out)
+	if m == nil {
+		return "", fmt.Errorf("%w: %s", errHelperFailed, out)
+	}
+
+	res, ok := strings.CutPrefix(m[1], "ok")
+	if !ok {
+		return "", fmt.Errorf("%w: %s", errHelperFailed, m[1])
+	}
+
+	return strings.TrimSpace(res), nil
+}
+
+func (a *AndroidInContainer) installHelper() error {
+	if a.helperInstalled {
+		return nil
+	}
+
+	out, stderr, err := a.Execute([]string{"adb", "install", "-r", helperAPKPath})
+	if err != nil || !strings.Contains(out, "Success") {
+		return fmt.Errorf("installing helper: %w: %s %s", err, out, stderr) //nolint:err113
+	}
+
+	a.helperInstalled = true
+
+	return nil
+}
+
+// SetNetwork turns the device's Wi-Fi and mobile data on or off, as
+// airplane mode or losing signal would.
+func (a *AndroidInContainer) SetNetwork(on bool) error {
+	state := "disable"
+	if on {
+		state = "enable"
+	}
+
+	_, err := a.Shell("svc", "wifi", state)
+	if err != nil {
+		return err
+	}
+
+	_, err = a.Shell("svc", "data", state)
+
+	return err
+}
+
+// UseExitNode selects the peer with the given display name as exit node
+// through the app's public USE_EXIT_NODE intent, as automation apps do.
+func (a *AndroidInContainer) UseExitNode(name string) error {
+	_, err := a.Shell(
+		"am", "broadcast", "-a", Package+".USE_EXIT_NODE",
+		"-n", Package+"/.IPNReceiver", "--es", "exitNode", name,
+	)
+
+	return err
+}
+
+// FindFile returns the contents of the first file named name in shared
+// storage or the app's private storage, where Taildrop puts received files.
+func (a *AndroidInContainer) FindFile(name string) (string, error) {
+	err := a.root()
+	if err != nil {
+		return "", err
+	}
+
+	out, err := a.Shell(fmt.Sprintf(
+		"f=$(find /sdcard/ /data/media/ /data/data/%s/ -name %q 2>/dev/null | head -n1); [ -n \"$f\" ] && cat \"$f\"",
+		Package, name,
+	))
+	if err != nil {
+		return "", fmt.Errorf("%w: %s", errFileNotFound, name)
+	}
+
+	return out, nil
+}
+
+// TapAnyOf taps the first of labels on screen, if any, reporting which.
+func (a *AndroidInContainer) TapAnyOf(labels ...string) (string, error) {
+	n, ok, err := a.findNode(func(n uiNode) bool {
+		return slices.Contains(labels, n.Text) || slices.Contains(labels, n.Desc)
+	})
+	if err != nil || !ok {
+		return "", err
+	}
+
+	label := n.Text
+	if !slices.Contains(labels, label) {
+		label = n.Desc
+	}
+
+	return label, a.tapNode(n)
 }
 
 // Debuggable reports whether the installed app is a debug build, which
@@ -331,21 +468,30 @@ func (a *AndroidInContainer) InstallUserCA(caPEM []byte) error {
 // InstallSystemCA adds a PEM CA certificate to the device's system CA
 // store, which every app version trusts. The store is overlaid with a
 // tmpfs holding the stock CAs plus caPEM, so the read-only system image is
-// untouched; apps started afterwards see it (Android 13 and older).
+// untouched. Apps started afterwards see it: from Android 14 apps fork
+// from zygote's mount namespace, so the overlay is repeated there.
 func (a *AndroidInContainer) InstallSystemCA(caPEM []byte) error {
-	const dir = "/system/etc/security/cacerts"
+	const (
+		dir    = "/system/etc/security/cacerts"
+		staged = "/data/local/tmp/cacerts"
+	)
 
 	name, err := a.pushCA(caPEM)
 	if err != nil {
 		return err
 	}
 
-	_, err = a.Shell(fmt.Sprintf(
-		"mkdir -p /data/local/tmp/cacerts && cp %[1]s/* /data/local/tmp/cacerts/ && "+
-			"mount -t tmpfs none %[1]s && cp /data/local/tmp/cacerts/* %[1]s/ && "+
-			"mv /data/local/tmp/%[2]s %[1]s/%[2]s && chown root:root %[1]s/* && "+
+	overlay := fmt.Sprintf(
+		"mount -t tmpfs none %[1]s && cp %[2]s/* %[1]s/ && chown root:root %[1]s/* && "+
 			"chmod 644 %[1]s/* && chcon u:object_r:system_file:s0 %[1]s/*",
-		dir, name,
+		dir, staged,
+	)
+
+	_, err = a.Shell(fmt.Sprintf(
+		"mkdir -p %[1]s && cp %[2]s/* %[1]s/ && mv /data/local/tmp/%[3]s %[1]s/ && "+
+			"%[4]s && for p in $(pidof zygote zygote64); do "+
+			"nsenter --mount=/proc/$p/ns/mnt -- /system/bin/sh -c '%[4]s' || exit 1; done",
+		staged, dir, name, overlay,
 	))
 
 	return err

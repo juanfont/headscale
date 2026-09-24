@@ -57,9 +57,9 @@ RUN mkdir -p /root/.android && touch /root/.android/repositories.cfg && \
     echo "no" | avdmanager create avd -n test \
         -k "system-images;android-${ANDROID_API};google_apis;x86_64" --device pixel
 
-# Device policy controller used to set the app's managed configuration.
-COPY integration/androidic/dpc /tmp/dpc
-RUN cd /tmp/dpc && \
+# Test helper app: MDM device policy controller and in-VPN probe.
+COPY integration/androidic/helper /tmp/helper
+RUN cd /tmp/helper && \
     bt=/opt/android-sdk/build-tools/34.0.0 && \
     jar=/opt/android-sdk/platforms/android-${ANDROID_API}/android.jar && \
     $bt/aapt2 compile --dir res -o res.zip && \
@@ -69,9 +69,9 @@ RUN cd /tmp/dpc && \
     zip -q unsigned.apk classes.dex && \
     $bt/zipalign -f 4 unsigned.apk aligned.apk && \
     keytool -genkeypair -keystore k.jks -storepass android -keypass android \
-        -alias k -keyalg RSA -dname CN=dpc -validity 10000 && \
-    $bt/apksigner sign --ks k.jks --ks-pass pass:android --out /opt/dpc.apk aligned.apk && \
-    rm -rf /tmp/dpc
+        -alias k -keyalg RSA -dname CN=helper -validity 10000 && \
+    $bt/apksigner sign --ks k.jks --ks-pass pass:android --out /opt/helper.apk aligned.apk && \
+    rm -rf /tmp/helper
 
 # Headless boot; slirp NAT lets the guest reach the container's docker
 # network. -no-snapshot keeps every test on a cold, clean device.
