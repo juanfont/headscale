@@ -66,7 +66,7 @@ var (
 	errFileNotFound   = errors.New("androidic: file not found")
 	errNoNetworkRoute = errors.New("androidic: device has no default route")
 
-	resultDataRe = regexp.MustCompile(`data="([^"]*)"`)
+	resultDataRe = regexp.MustCompile(`(?m)data="(.*)"\s*$`)
 )
 
 // getPrebuiltImage returns the pre-built emulator image name if set.
