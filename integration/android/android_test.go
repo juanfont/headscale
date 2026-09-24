@@ -186,6 +186,9 @@ func (e *env) tapPast(t *testing.T, label string, next ...string) {
 		// emulators show over whatever is on screen.
 		got, err := e.android.WaitForAny(append([]string{"Get Started", "Wait", label}, next...)...)
 		if !assert.NoError(c, err) {
+			// Overloaded emulators can drop the app to the launcher.
+			_ = e.android.Launch()
+
 			return
 		}
 

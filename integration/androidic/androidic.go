@@ -578,13 +578,18 @@ func (a *AndroidInContainer) pushCA(caPEM []byte) (string, error) {
 	return name, nil
 }
 
+// root restarts adbd as root, retrying while adbd is still restarting.
 func (a *AndroidInContainer) root() error {
-	_, stderr, err := a.Execute([]string{"sh", "-c", "adb root && adb wait-for-device"})
-	if err != nil {
-		return fmt.Errorf("adb root: %w: %s", err, stderr)
-	}
+	_, err := poll(30*time.Second, func() (struct{}, error) {
+		_, stderr, err := a.Execute([]string{"sh", "-c", "adb root && adb wait-for-device"})
+		if err != nil {
+			return struct{}{}, fmt.Errorf("adb root: %w: %s", err, stderr)
+		}
 
-	return nil
+		return struct{}{}, nil
+	})
+
+	return err
 }
 
 // VersionAtLeast reports whether the installed app is at least major.minor.

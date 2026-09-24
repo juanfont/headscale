@@ -76,5 +76,5 @@ RUN cd /tmp/helper && \
 # Headless boot; slirp NAT lets the guest reach the container's docker
 # network. -no-snapshot keeps every test on a cold, clean device.
 CMD ["emulator", "-avd", "test", "-no-window", "-no-audio", "-no-snapshot", \
-     "-no-boot-anim", "-gpu", "swiftshader_indirect", "-memory", "3072", \
+     "-no-boot-anim", "-gpu", "swiftshader_indirect", "-memory", "4096", "-cores", "4", \
      "-netdelay", "none", "-netspeed", "full"]
