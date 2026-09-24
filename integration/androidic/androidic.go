@@ -58,12 +58,13 @@ const (
 )
 
 var (
-	errNoNetwork    = errors.New("androidic: no network set")
-	errBootTimeout  = errors.New("androidic: timed out waiting for emulator boot")
-	errNoUINode     = errors.New("androidic: no UI node matched")
-	errInvalidCA    = errors.New("androidic: CA is not PEM")
-	errHelperFailed = errors.New("androidic: helper app failed")
-	errFileNotFound = errors.New("androidic: file not found")
+	errNoNetwork      = errors.New("androidic: no network set")
+	errBootTimeout    = errors.New("androidic: timed out waiting for emulator boot")
+	errNoUINode       = errors.New("androidic: no UI node matched")
+	errInvalidCA      = errors.New("androidic: CA is not PEM")
+	errHelperFailed   = errors.New("androidic: helper app failed")
+	errFileNotFound   = errors.New("androidic: file not found")
+	errNoNetworkRoute = errors.New("androidic: device has no default route")
 
 	resultDataRe = regexp.MustCompile(`data="([^"]*)"`)
 )
@@ -184,7 +185,36 @@ func New(
 		return a, err
 	}
 
+	// Not fatal: a test that needs the network reports it more precisely.
+	err = a.waitForNetwork(2 * time.Minute)
+	if err != nil {
+		log.Printf("android %s: %s", hostname, err)
+	}
+
 	return a, nil
+}
+
+// waitForNetwork waits until the device has a default route. The emulated
+// Wi-Fi sometimes comes up without one; toggling the radios brings it back.
+func (a *AndroidInContainer) waitForNetwork(timeout time.Duration) error {
+	attempt := 0
+
+	_, err := poll(timeout, func() (struct{}, error) {
+		out, _ := a.Shell("ip", "route", "show", "table", "all")
+		if strings.Contains(out, "default via") {
+			return struct{}{}, nil
+		}
+
+		attempt++
+		if attempt%10 == 0 {
+			_ = a.SetNetwork(false)
+			_ = a.SetNetwork(true)
+		}
+
+		return struct{}{}, errNoNetworkRoute
+	})
+
+	return err
 }
 
 func (a *AndroidInContainer) waitForBoot(timeout time.Duration) error {
