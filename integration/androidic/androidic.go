@@ -267,10 +267,12 @@ func (a *AndroidInContainer) SetManagedConfig(config map[string]string) error {
 		return err
 	}
 
-	// Fails harmlessly with "already set" on repeat calls.
-	_, _ = a.Shell("dpm", "set-device-owner", helperAdmin)
+	out, _ := a.Shell("dpm", "set-device-owner", helperAdmin)
+	if !strings.Contains(out, "Success") && !a.isDeviceOwner() {
+		return fmt.Errorf("%w: dpm: %s", errHelperFailed, out)
+	}
 
-	args := []string{"am", "broadcast", "-n", helperRestrict}
+	args := []string{"am", "broadcast", "-n", helperRestrict, "--include-stopped-packages"}
 	for k, v := range config {
 		args = append(args, "--es", k, v)
 	}
@@ -281,6 +283,12 @@ func (a *AndroidInContainer) SetManagedConfig(config map[string]string) error {
 	}
 
 	return nil
+}
+
+func (a *AndroidInContainer) isDeviceOwner() bool {
+	out, _ := a.Shell("dumpsys", "device_policy")
+
+	return strings.Contains(out, "org.headscale.helper")
 }
 
 // Resolve looks up host from an ordinary app on the device, so the
@@ -308,11 +316,15 @@ func (a *AndroidInContainer) probe(extras ...string) (string, error) {
 		return "", err
 	}
 
-	return a.helperBroadcast(append([]string{"am", "broadcast", "-n", helperProbe}, extras...)...)
+	return a.helperBroadcast(append([]string{
+		"am", "broadcast", "-n", helperProbe, "--include-stopped-packages",
+	}, extras...)...)
 }
 
 // helperBroadcast sends an ordered broadcast to the helper app and returns
-// the text after "ok" in its result data.
+// the text after "ok" in its result data. Callers pass
+// --include-stopped-packages: a freshly installed app is stopped, and
+// Android 14+ does not deliver broadcasts to stopped packages otherwise.
 func (a *AndroidInContainer) helperBroadcast(args ...string) (string, error) {
 	out, err := a.Shell(args...)
 	if err != nil {
@@ -370,7 +382,7 @@ func (a *AndroidInContainer) SetNetwork(on bool) error {
 func (a *AndroidInContainer) UseExitNode(name string) error {
 	_, err := a.Shell(
 		"am", "broadcast", "-a", Package+".USE_EXIT_NODE",
-		"-n", Package+"/.IPNReceiver", "--es", "exitNode", name,
+		"-n", Package+"/.IPNReceiver", "--include-stopped-packages", "--es", "exitNode", name,
 	)
 
 	return err
@@ -395,21 +407,21 @@ func (a *AndroidInContainer) FindFile(name string) (string, error) {
 	return out, nil
 }
 
-// TapAnyOf taps the first of labels on screen, if any, reporting which.
+// TapAnyOf taps the first of labels, in order, that is on screen, and
+// reports which; "" if none is.
 func (a *AndroidInContainer) TapAnyOf(labels ...string) (string, error) {
-	n, ok, err := a.findNode(func(n uiNode) bool {
-		return slices.Contains(labels, n.Text) || slices.Contains(labels, n.Desc)
-	})
-	if err != nil || !ok {
-		return "", err
+	for _, label := range labels {
+		n, ok, err := a.findNode(func(n uiNode) bool { return n.Text == label || n.Desc == label })
+		if err != nil {
+			return "", err
+		}
+
+		if ok {
+			return label, a.tapNode(n)
+		}
 	}
 
-	label := n.Text
-	if !slices.Contains(labels, label) {
-		label = n.Desc
-	}
-
-	return label, a.tapNode(n)
+	return "", nil
 }
 
 // Debuggable reports whether the installed app is a debug build, which

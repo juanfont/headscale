@@ -19,7 +19,12 @@ public class SetRestrictions extends BroadcastReceiver {
         extras.remove("package");
 
         DevicePolicyManager dpm = context.getSystemService(DevicePolicyManager.class);
-        dpm.setApplicationRestrictions(new ComponentName(context, Admin.class), pkg, extras);
-        setResultData("ok " + extras.keySet());
+        try {
+            dpm.setApplicationRestrictions(new ComponentName(context, Admin.class), pkg, extras);
+            setResultData("ok " + extras.keySet());
+        } catch (SecurityException e) {
+            // Not (yet) device owner; the caller retries.
+            setResultData("error " + e);
+        }
     }
 }
