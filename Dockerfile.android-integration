@@ -4,7 +4,7 @@
 #
 # Needs a host with /dev/kvm; the container must run with --device /dev/kvm.
 
-FROM --platform=linux/amd64 eclipse-temurin:21
+FROM --platform=linux/amd64 eclipse-temurin:21-jdk-noble
 
 ARG ANDROID_API=33
 ARG ANDROID_CMDLINE_TOOLS_VERSION=9477386
