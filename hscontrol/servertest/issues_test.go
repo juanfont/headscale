@@ -995,6 +995,76 @@ func TestIssuesIdentity(t *testing.T) {
 	})
 }
 
+// TestPeerRemovedAsDelta checks a peer leaving a client's view reaches it
+// in a response it can apply as a delta. Bundled with DNSConfig or
+// SSHPolicy, the removal forces a full netmap rebuild, which never tells IPN
+// bus watchers opted out of full netmaps (the Android app since 1.100) that
+// the peer is gone, so they keep showing it.
+func TestPeerRemovedAsDelta(t *testing.T) {
+	t.Parallel()
+
+	// MagicDNS puts DNSConfig in policy responses, making them full rebuilds.
+	setup := func(t *testing.T) (*servertest.TestServer, *servertest.TestClient, types.NodeID) {
+		t.Helper()
+
+		srv := servertest.NewServer(t, servertest.WithMagicDNS("delta.example.com"))
+		user1 := srv.CreateUser(t, "delta-user1")
+		user2 := srv.CreateUser(t, "delta-user2")
+
+		c1 := servertest.NewClient(t, srv, "delta-node1",
+			servertest.WithUser(user1), servertest.WithDeltaUpdates())
+		servertest.NewClient(t, srv, "delta-node2", servertest.WithUser(user2))
+
+		c1.WaitForPeers(t, 1, 15*time.Second)
+
+		return srv, c1, findNodeID(t, srv, "delta-node2")
+	}
+
+	assertRemovedAsDelta := func(t *testing.T, c1 *servertest.TestClient, id types.NodeID) {
+		t.Helper()
+
+		assert.EventuallyWithT(t, func(c *assert.CollectT) {
+			assert.Contains(c, c1.DeltaRemovedPeers(), id.NodeID())
+		}, 10*time.Second, 50*time.Millisecond, "peer removal never applied as a delta")
+	}
+
+	t.Run("node_deleted", func(t *testing.T) {
+		t.Parallel()
+
+		srv, c1, nodeID2 := setup(t)
+
+		node2, ok := srv.State().GetNodeByID(nodeID2)
+		require.True(t, ok)
+
+		changes, err := srv.State().DeleteNode(node2)
+		require.NoError(t, err)
+		srv.App.Change(changes)
+
+		assertRemovedAsDelta(t, c1, nodeID2)
+	})
+
+	t.Run("hidden_by_policy", func(t *testing.T) {
+		t.Parallel()
+
+		srv, c1, nodeID2 := setup(t)
+
+		changed, err := srv.State().SetPolicy([]byte(`{
+			"acls": [
+				{"action": "accept", "src": ["delta-user1@"], "dst": ["delta-user1@:*"]},
+				{"action": "accept", "src": ["delta-user2@"], "dst": ["delta-user2@:*"]}
+			]
+		}`))
+		require.NoError(t, err)
+		require.True(t, changed)
+
+		changes, err := srv.State().ReloadPolicy()
+		require.NoError(t, err)
+		srv.App.Change(changes...)
+
+		assertRemovedAsDelta(t, c1, nodeID2)
+	})
+}
+
 func findNodeID(tb testing.TB, srv *servertest.TestServer, hostname string) types.NodeID {
 	tb.Helper()
 
