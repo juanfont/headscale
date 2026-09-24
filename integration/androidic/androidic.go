@@ -408,14 +408,16 @@ func (a *AndroidInContainer) FindFile(name string) (string, error) {
 }
 
 // TapAnyOf taps the first of labels, in order, that is on screen, and
-// reports which; "" if none is.
+// reports which; "" if none is. One dump serves all labels, so the
+// choice reflects a single screen.
 func (a *AndroidInContainer) TapAnyOf(labels ...string) (string, error) {
-	for _, label := range labels {
-		n, ok, err := a.findNode(func(n uiNode) bool { return n.Text == label || n.Desc == label })
-		if err != nil {
-			return "", err
-		}
+	root, err := a.dumpTree()
+	if err != nil {
+		return "", err
+	}
 
+	for _, label := range labels {
+		n, ok := root.find(func(n uiNode) bool { return n.Text == label || n.Desc == label })
 		if ok {
 			return label, a.tapNode(n)
 		}
@@ -649,28 +651,43 @@ func (a *AndroidInContainer) DumpUI() (string, error) {
 }
 
 func (a *AndroidInContainer) findNode(match func(uiNode) bool) (uiNode, bool, error) {
-	raw, err := a.DumpUI()
+	root, err := a.dumpTree()
 	if err != nil {
 		return uiNode{}, false, err
 	}
 
+	n, ok := root.find(match)
+
+	return n, ok, nil
+}
+
+func (a *AndroidInContainer) dumpTree() (uiNode, error) {
+	raw, err := a.DumpUI()
+	if err != nil {
+		return uiNode{}, err
+	}
+
 	start := strings.Index(raw, "<hierarchy")
 	if start < 0 {
-		return uiNode{}, false, nil
+		return uiNode{}, nil
 	}
 
 	var root uiNode
 
 	err = xml.Unmarshal([]byte(raw[start:]), &root)
 	if err != nil {
-		return uiNode{}, false, fmt.Errorf("parsing UI dump: %w", err)
+		return uiNode{}, fmt.Errorf("parsing UI dump: %w", err)
 	}
 
+	return root, nil
+}
+
+func (n uiNode) find(match func(uiNode) bool) (uiNode, bool) {
 	var found uiNode
 
-	ok := root.walk(func(n uiNode) bool {
-		if match(n) {
-			found = n
+	ok := n.walk(func(c uiNode) bool {
+		if match(c) {
+			found = c
 
 			return true
 		}
@@ -678,7 +695,7 @@ func (a *AndroidInContainer) findNode(match func(uiNode) bool) (uiNode, bool, er
 		return false
 	})
 
-	return found, ok, nil
+	return found, ok
 }
 
 // WaitForAny waits until a node whose text or content-desc equals one of

@@ -766,9 +766,10 @@ func TestAndroidTaildrop(t *testing.T) {
 	// prompt and pick Download in the system folder picker, as a user
 	// would. The picker opens at the storage root, which cannot be used.
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		_, _ = e.android.TapAnyOf(
+		tapped, err := e.android.TapAnyOf(
 			"Open Directory Picker", "USE THIS FOLDER", "Use this folder", "ALLOW", "Allow", "Download",
 		)
+		t.Logf("taildrop prompt: tapped %q, err %v", tapped, err)
 
 		got, err := e.android.FindFile(file)
 		assert.NoError(c, err)
