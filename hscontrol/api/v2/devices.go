@@ -177,10 +177,8 @@ func registerDevices(api huma.API, b Backend) {
 			return nil, err
 		}
 
-		nodeChange, err := b.State.DeleteNode(node)
-		if !nodeChange.IsEmpty() {
-			b.Change(nodeChange)
-		}
+		changes, err := b.State.DeleteNode(node)
+		b.Change(changes...)
 
 		if err != nil {
 			return nil, mapError("deleting device", err)

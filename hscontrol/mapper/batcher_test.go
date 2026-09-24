@@ -2160,9 +2160,8 @@ func TestNodeDeletedWhileChangesPending(t *testing.T) {
 
 			// Delete the node from state - this returns a NodeRemoved change
 			// In production, this change is sent to batcher via app.Change()
-			nodeChange, err := st.DeleteNode(nodeToDelete)
+			nodeChanges, err := st.DeleteNode(nodeToDelete)
 			require.NoError(t, err, "should be able to delete node from state")
-			t.Logf("Deleted node %d from state, change: %s", node3.n.ID, nodeChange.Reason)
 
 			// Verify node is deleted from state
 			_, exists := st.GetNodeByID(node3.n.ID)
@@ -2170,7 +2169,7 @@ func TestNodeDeletedWhileChangesPending(t *testing.T) {
 
 			// Send the NodeRemoved change to batcher (this is what app.Change() does)
 			// With the fix, this should clean up node3 from batcher's internal state
-			batcher.AddWork(nodeChange)
+			batcher.AddWork(nodeChanges...)
 
 			// Wait for the batcher to process the removal and clean up the node
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {

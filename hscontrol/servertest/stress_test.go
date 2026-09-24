@@ -121,7 +121,7 @@ func TestStressConnectDisconnect(t *testing.T) {
 
 		deleteChange, err := srv.State().DeleteNode(nv)
 		require.NoError(t, err)
-		srv.App.Change(deleteChange)
+		srv.App.Change(deleteChange...)
 
 		// c2 should see c1 disappear.
 		c2.WaitForCondition(t, "deleted node gone", 10*time.Second,

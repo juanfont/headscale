@@ -595,18 +595,18 @@ func (s *State) SaveNode(node types.NodeView) (types.NodeView, change.Change, er
 }
 
 // DeleteNode permanently removes a node and cleans up associated resources.
-// Once the database deletion commits, the returned change always contains the
-// node-removal notification, even if a later policy refresh fails. Callers must
-// publish a non-empty change before handling the error so live sessions are
+// Once the database deletion commits, the returned changes always start with
+// the node-removal notification, even if a later policy refresh fails. Callers
+// must publish the changes before handling the error so live sessions are
 // still torn down after a committed deletion.
-func (s *State) DeleteNode(node types.NodeView) (change.Change, error) {
+func (s *State) DeleteNode(node types.NodeView) ([]change.Change, error) {
 	s.persistMu.Lock()
 
 	err := s.db.DeleteNode(node.AsStruct())
 	if err != nil {
 		s.persistMu.Unlock()
 
-		return change.Change{}, err
+		return nil, err
 	}
 
 	// The database is the durable source of truth. Only remove the in-memory
@@ -617,21 +617,16 @@ func (s *State) DeleteNode(node types.NodeView) (change.Change, error) {
 
 	s.ipAlloc.FreeIPs(node.IPs())
 
-	c := change.NodeRemoved(node.ID())
+	// An explicit removal of its own, ahead of the policy refresh, so peers
+	// learn of the deletion without depending on their sent-peers tracking.
+	removed := change.NodeRemoved(node.ID())
 
-	// Check if policy manager needs updating after node deletion
 	policyChange, err := s.updatePolicyManagerNodes()
 	if err != nil {
-		return c, fmt.Errorf("updating policy manager after node deletion: %w", err)
+		return []change.Change{removed}, fmt.Errorf("updating policy manager after node deletion: %w", err)
 	}
 
-	if !policyChange.IsEmpty() {
-		// Merge policy change with NodeRemoved to preserve PeersRemoved info
-		// This ensures the batcher cleans up the deleted node from its state
-		c = c.Merge(policyChange)
-	}
-
-	return c, nil
+	return []change.Change{removed, policyChange}, nil
 }
 
 // Connect acquires a control session and returns the resulting changes
