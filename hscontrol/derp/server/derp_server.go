@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -40,6 +41,8 @@ const (
 // debugUseDERPIP is a debug-only flag that causes the DERP server to resolve
 // hostnames to IP addresses when generating the DERP region configuration.
 // This is useful for integration testing where DNS resolution may be unreliable.
+var errSTUNNotUDP = errors.New("STUN listener is not a UDP listener")
+
 var debugUseDERPIP = envknob.Bool("HEADSCALE_DEBUG_DERP_USE_IP")
 
 type DERPServer struct {
@@ -348,21 +351,29 @@ func DERPBootstrapDNSHandler(
 	}
 }
 
-// ServeSTUN starts a STUN server on the configured addr.
-func (d *DERPServer) ServeSTUN() {
-	packetConn, err := new(net.ListenConfig).ListenPacket(context.Background(), "udp", d.cfg.STUNAddr)
+// ServeSTUN runs a STUN server on the configured addr until ctx is
+// cancelled.
+func (d *DERPServer) ServeSTUN(ctx context.Context) error {
+	packetConn, err := new(net.ListenConfig).ListenPacket(ctx, "udp", d.cfg.STUNAddr)
 	if err != nil {
-		log.Fatal().Msgf("failed to open STUN listener: %v", err)
+		return fmt.Errorf("opening STUN listener: %w", err)
+	}
+	defer packetConn.Close()
+
+	udpConn, ok := packetConn.(*net.UDPConn)
+	if !ok {
+		return errSTUNNotUDP
 	}
 
 	log.Info().Msgf("stun server started at %s", packetConn.LocalAddr())
 
-	udpConn, ok := packetConn.(*net.UDPConn)
-	if !ok {
-		log.Fatal().Msg("stun listener is not a UDP listener")
-	}
+	// Unblocks the read loop so the socket is released on cancellation.
+	stop := context.AfterFunc(ctx, func() { udpConn.Close() })
+	defer stop()
 
-	serverSTUNListener(context.Background(), udpConn)
+	serverSTUNListener(ctx, udpConn)
+
+	return nil
 }
 
 func serverSTUNListener(ctx context.Context, packetConn *net.UDPConn) {

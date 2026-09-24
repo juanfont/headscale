@@ -4,9 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"os/signal"
 	"syscall"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/tailscale/squibble"
 )
@@ -29,7 +32,29 @@ var serveCmd = &cobra.Command{
 			return fmt.Errorf("initializing: %w", err)
 		}
 
-		err = app.Serve()
+		ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+		defer stop()
+
+		reload := make(chan os.Signal, 1)
+		signal.Notify(reload, syscall.SIGHUP)
+		defer signal.Stop(reload)
+
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-reload:
+					log.Info().Msg("Received SIGHUP, reloading ACL policy")
+
+					if err := app.ReloadPolicy(); err != nil { //nolint:noinlineerr
+						log.Error().Err(err).Msg("reloading policy")
+					}
+				}
+			}
+		}()
+
+		err = app.Serve(ctx)
 		if err == nil || errors.Is(err, http.ErrServerClosed) {
 			return nil
 		}
