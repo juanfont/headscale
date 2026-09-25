@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	clientv1 "github.com/juanfont/headscale/gen/client/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -19,6 +20,8 @@ import (
 var (
 	errFlagRequired       = errors.New("--name or --identifier flag is required")
 	errMultipleUsersMatch = errors.New("multiple users match query, specify an ID")
+	errUserNotFound       = errors.New("no user matches query")
+	errInvalidIdentifier  = errors.New("--identifier must be a positive user ID")
 )
 
 func usernameAndIDFlag(cmd *cobra.Command) {
@@ -31,6 +34,13 @@ func usernameAndIDFromFlag(cmd *cobra.Command) (uint64, string, error) {
 	username, _ := cmd.Flags().GetString("name")
 
 	identifier, _ := cmd.Flags().GetInt64("identifier")
+
+	// An explicit zero or negative identifier never matches a user; the
+	// API treats id=0 as "no filter", which would list every user.
+	if cmd.Flags().Changed("identifier") && identifier <= 0 {
+		return 0, "", errInvalidIdentifier
+	}
+
 	if username == "" && identifier < 0 {
 		return 0, "", errFlagRequired
 	}
@@ -74,11 +84,29 @@ func resolveSingleUser(
 	}
 
 	users := resp.JSON200.Users
-	if len(users) != 1 {
-		return "", nil, errMultipleUsersMatch
+
+	switch len(users) {
+	case 0:
+		return "", nil, errUserNotFound
+	case 1:
+		return users[0].Id, &users[0], nil
+	default:
+		return "", nil, fmt.Errorf("%w: %s", errMultipleUsersMatch, describeUsers(users))
+	}
+}
+
+// describeUsers renders the users that matched an ambiguous query so the
+// operator can pick one by ID.
+func describeUsers(users []clientv1.User) string {
+	parts := make([]string, len(users))
+	for i, user := range users {
+		parts[i] = fmt.Sprintf(
+			"id=%s name=%s email=%s provider=%s",
+			user.Id, user.Name, user.Email, user.Provider,
+		)
 	}
 
-	return users[0].Id, &users[0], nil
+	return strings.Join(parts, "; ")
 }
 
 func init() {
@@ -162,7 +190,7 @@ var destroyUserCmd = &cobra.Command{
 		}
 
 		if !confirmAction(cmd, fmt.Sprintf(
-			"Do you want to remove the user %q (%s) and any associated preauthkeys?",
+			"Do you want to remove the user %q (%s) and its pre-auth keys? Nodes owned by the user must be deleted or moved first.",
 			user.Name, user.Id,
 		)) {
 			return printOutput(cmd, map[string]string{colResult: "User not destroyed"}, "User not destroyed")

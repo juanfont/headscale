@@ -3,8 +3,10 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	clientv1 "github.com/juanfont/headscale/gen/client/v1"
@@ -81,6 +83,9 @@ func TestResolveSingleUser(t *testing.T) {
 		flagName   string
 		wantId     string
 		wantErr    bool
+		wantErrIs  error
+		// wantErrHas are substrings the error message must contain.
+		wantErrHas []string
 	}{
 		{
 			// Regression: renaming by name used to return the raw flag
@@ -97,17 +102,40 @@ func TestResolveSingleUser(t *testing.T) {
 			wantId:     "9",
 		},
 		{
-			name:     "no match is an error",
-			users:    []clientv1.User{lukas},
-			flagName: "nobody@example.com",
-			wantErr:  true,
+			// Regression: zero matches used to be reported as
+			// "multiple users match query".
+			name:      "no match is a not-found error",
+			users:     []clientv1.User{lukas},
+			flagName:  "nobody@example.com",
+			wantErr:   true,
+			wantErrIs: errUserNotFound,
 		},
 		{
 			// OIDC users can share a name, see issue #3429.
-			name:     "multiple matches are an error",
-			users:    []clientv1.User{hannes, hannesDup},
-			flagName: "hannes@rueger.events",
-			wantErr:  true,
+			name:      "multiple matches are an ambiguity error listing the matches",
+			users:     []clientv1.User{hannes, hannesDup},
+			flagName:  "hannes@rueger.events",
+			wantErr:   true,
+			wantErrIs: errMultipleUsersMatch,
+			wantErrHas: []string{
+				"id=9 name=hannes@rueger.events email=hannes@rueger.events",
+				"id=10 name=hannes@rueger.events email=other@example.com",
+			},
+		},
+		{
+			// Regression: --identifier 0 was sent to the API as "no
+			// filter", listing every user and failing as ambiguous.
+			name:       "identifier zero is rejected before calling the API",
+			users:      []clientv1.User{lukas, hannes},
+			identifier: "0",
+			wantErr:    true,
+			wantErrIs:  errInvalidIdentifier,
+		},
+		{
+			name:      "no flags is a usage error",
+			users:     []clientv1.User{lukas},
+			wantErr:   true,
+			wantErrIs: errFlagRequired,
 		},
 	}
 
@@ -127,6 +155,16 @@ func TestResolveSingleUser(t *testing.T) {
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("resolveSingleUser() error = nil, want error")
+				}
+
+				if tt.wantErrIs != nil && !errors.Is(err, tt.wantErrIs) {
+					t.Fatalf("resolveSingleUser() error = %v, want %v", err, tt.wantErrIs)
+				}
+
+				for _, want := range tt.wantErrHas {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("resolveSingleUser() error = %q, want it to contain %q", err, want)
+					}
 				}
 
 				return
