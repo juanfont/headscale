@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -86,7 +87,9 @@ func TestDestroyUserErrors(t *testing.T) {
 				require.NoError(t, trx.Error)
 
 				err = db.DestroyUser(types.UserID(user.ID))
-				assert.ErrorIs(t, err, ErrUserStillHasNodes)
+				require.ErrorIs(t, err, ErrUserStillHasNodes)
+				// The error names the blocking node so it can be found.
+				require.ErrorContains(t, err, fmt.Sprintf("%d (testnode)", node.ID))
 			},
 		},
 		{
@@ -204,12 +207,19 @@ func TestDestroyUserErrors(t *testing.T) {
 		},
 	}
 
+	// User deletion depends on foreign-key actions that differ between the
+	// hand-written SQLite schema and the GORM-generated Postgres schema, so
+	// run every case on both. The Postgres variant skips when no local
+	// server can be started.
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.name+"-sqlite", func(t *testing.T) {
 			db, err := newSQLiteTestDB()
 			require.NoError(t, err)
 
 			tt.test(t, db)
+		})
+		t.Run(tt.name+"-postgres", func(t *testing.T) {
+			tt.test(t, newPostgresTestDB(t))
 		})
 	}
 }
