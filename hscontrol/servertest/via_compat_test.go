@@ -40,6 +40,16 @@ var viaCompatTests = []struct {
 	{"via-grant-v35", "via grant with unadvertised destination"},
 	{"via-grant-v36", "full complex: peer connectivity + crossed subnet + crossed exit"},
 	{"via-grant-v52", "members reach the internet only via tag:exit, admins reach everything"},
+	{"via-grant-v53", "via exit steering plus a member rule to a tagged host port"},
+	{"via-grant-v54", "via exit steering plus a member rule to autogroup:self"},
+	{"via-grant-v55", "via exit steering plus a member rule to a private subnet"},
+	{"via-grant-v56", "via exit steering plus a plain member rule to autogroup:internet"},
+	{"via-grant-v57", "via exit steering plus a member rule to a non-via exit node"},
+	{"via-grant-v58", "no via grant: approved exit nodes plus a member rule to a tagged host port"},
+	{"via-grant-v59", "via exit steering for tagged clients; members have an unrelated rule"},
+	{"via-grant-v60", "user-owned exit node outside the via tag; members have an autogroup:self rule"},
+	{"via-grant-v61", "via exit steering plus a member capability grant to a tagged host"},
+	{"via-grant-v62", "via exit steering plus a member rule to autogroup:internet on one port"},
 }
 
 // TestViaGrantMapCompat loads golden captures from Tailscale SaaS and
