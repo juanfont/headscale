@@ -32,6 +32,7 @@ codethief
 cure
 dmeremyanin
 dotlambda
+dotWee
 dragetd
 e-zk
 edvardvb
@@ -42,10 +43,12 @@ eyJhb
 felixscheinost
 FlorinPeter
 fredrikekre
+Ginden
 griffer
 GrigoriyMikhalkin
 gymnae
 huskyii
+igorbernstein
 igrikus
 ImpostorKeanu
 isaac-mcfadyen
@@ -60,7 +63,9 @@ juanfont
 kazauwa
 korfuri
 kradalby
+larrasket
 linsomniac
+lukas-runge
 lyc8503
 madjam002
 majst01
@@ -68,9 +73,11 @@ maprambo
 marcelmindemann
 maxpain
 mevansam
+MichaelGooden
 mike-lloyd03
 motiejus
 mpldr
+MsfPablo
 nblock
 negbie
 Nemo157
@@ -83,6 +90,7 @@ ohdearaugustin
 oplik0
 Orhideous
 pallabpain
+PauloLuna
 philippderdiedas
 Polsaker
 PowershellScripter
@@ -98,6 +106,9 @@ restanrm
 reynico
 Riezebos
 samson4649
+SebTardif
+sfllaw
+shurshun
 SlackingVeteran
 spymobilfon
 stavros-k
@@ -118,4 +129,6 @@ victorhooi
 vsychov
 yaneony
 yaroslavkasatikov
+YpNo
+zicochaos
 Zottelchen
