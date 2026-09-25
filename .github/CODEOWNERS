@@ -1,9 +1,1 @@
-* @juanfont @kradalby
-
-*.md @ohdearaugustin @nblock
-*.yml @ohdearaugustin @nblock
-*.yaml @ohdearaugustin @nblock
-Dockerfile* @ohdearaugustin @nblock
-.goreleaser.yml @ohdearaugustin @nblock
-/docs/ @ohdearaugustin @nblock
-/.github/workflows/ @ohdearaugustin @nblock
+* @juanfont @kradalby @nblock
