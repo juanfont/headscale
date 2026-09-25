@@ -361,6 +361,13 @@ func (b *Batcher) AddNode(
 		// path, and under workMu so a concurrent async bundle for this node
 		// cannot interleave its own lastSentPeers update.
 		nodeConn.workMu.Lock()
+
+		peerIDs := make([]tailcfg.NodeID, 0, len(initialMap.Peers))
+		for _, peer := range initialMap.Peers {
+			peerIDs = append(peerIDs, peer.ID)
+		}
+
+		removed := removedPeers(nodeConn, peerIDs)
 		nodeConn.updateSentPeers(initialMap)
 		nodeConn.workMu.Unlock()
 
@@ -368,6 +375,15 @@ func (b *Batcher) AddNode(
 		// map is the stream's first frame; send() requeued any changes
 		// that arrived in the meantime.
 		newEntry.pendingInitial.Store(false)
+
+		// Peers removed while the node had no stream: the initial map is a
+		// full rebuild, which clients never report as removals to delta-only
+		// IPN bus watchers, so follow it with the removal as a delta.
+		if len(removed) > 0 {
+			rm := change.PeersRemoved(removed...)
+			rm.TargetNode = id
+			b.AddWork(rm)
+		}
 	case <-time.After(5 * time.Second): //nolint:mnd
 		nlog.Error().Err(ErrInitialMapSendTimeout).Msg("initial map send timeout")
 		nlog.Debug().Caller().Dur("timeout.duration", 5*time.Second). //nolint:mnd
@@ -532,8 +548,8 @@ func (b *Batcher) worker(workerID int) {
 
 					var err error
 
-					// The initial map replaces the stream's peer set, so
-					// removals relative to an earlier stream are moot.
+					// AddNode sends removals relative to an earlier stream
+					// once this initial map is delivered.
 					result.mapResponse, _, err = generateMapResponse(nc, b.mapper, w.changes[0])
 
 					result.err = err

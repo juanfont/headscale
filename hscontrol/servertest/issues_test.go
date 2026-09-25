@@ -1043,6 +1043,27 @@ func TestPeerRemovedAsDelta(t *testing.T) {
 		assertRemovedAsDelta(t, c1, nodeID2)
 	})
 
+	// The new stream's initial map is a full rebuild, so a removal missed
+	// while disconnected must still follow as a delta.
+	t.Run("deleted_while_disconnected", func(t *testing.T) {
+		t.Parallel()
+
+		srv, c1, nodeID2 := setup(t)
+
+		node2, ok := srv.State().GetNodeByID(nodeID2)
+		require.True(t, ok)
+
+		c1.Disconnect(t)
+
+		changes, err := srv.State().DeleteNode(node2)
+		require.NoError(t, err)
+		srv.App.Change(changes...)
+
+		c1.Reconnect(t)
+
+		assertRemovedAsDelta(t, c1, nodeID2)
+	})
+
 	t.Run("hidden_by_policy", func(t *testing.T) {
 		t.Parallel()
 
