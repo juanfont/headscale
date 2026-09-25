@@ -5,17 +5,21 @@ import (
 	"fmt"
 	"net/netip"
 	"runtime"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/db"
+	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"pgregory.net/rapid"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
+	"tailscale.com/types/views"
 )
 
 func TestSnapshotFromNodes(t *testing.T) {
@@ -1670,6 +1674,154 @@ func TestListPeersExcludesSelf(t *testing.T) {
 
 			// Naming only the recipient yields nothing.
 			require.Zero(t, s.ListPeers(self, self).Len(), "naming only self must yield no peers")
+		})
+	}
+}
+
+// fatalfer is the subset of *testing.T / *testing.B / *rapid.T that the
+// NodeStore-against-policy helpers need, so property tests and
+// benchmarks can share them.
+type fatalfer interface {
+	Fatalf(format string, args ...any)
+}
+
+// nodeStoreWithPolicy builds a [NodeStore] whose [PeersFunc] runs a real
+// [policyv2.PolicyManager], mirroring how [State] wires the two together.
+func nodeStoreWithPolicy(t fatalfer, pol string, users []types.User, nodes types.Nodes) (*NodeStore, *policyv2.PolicyManager) {
+	pm, err := policyv2.NewPolicyManager([]byte(pol), users, nodes.ViewSlice())
+	if err != nil {
+		t.Fatalf("policy: %v", err)
+	}
+
+	store := NewNodeStore(nodes, func(ns []types.NodeView) map[types.NodeID][]types.NodeID {
+		return pm.BuildPeerMap(views.SliceOf(ns))
+	}, TestBatchSize, TestBatchTimeout)
+	store.Start()
+
+	return store, pm
+}
+
+// syncPolicy does what [State.updatePolicyManagerNodes] does after a
+// NodeStore write: feed the policy manager the current nodes, and rebuild
+// the peer maps only if it reports a policy-affecting change.
+func syncPolicy(t fatalfer, store *NodeStore, pm *policyv2.PolicyManager) {
+	changed, err := pm.SetNodes(store.ListNodes())
+	if err != nil {
+		t.Fatalf("SetNodes: %v", err)
+	}
+
+	if changed {
+		store.RebuildPeerMaps()
+	}
+}
+
+// checkAdjacencyMatchesFullBuild compares the NodeStore's current
+// adjacency — however it got there, including the reused-from-previous-
+// snapshot path taken for payload-only writes — against a from-scratch
+// [policyv2.PolicyManager.BuildPeerMap] over the same nodes. Divergence
+// means the reuse path served stale adjacency.
+func checkAdjacencyMatchesFullBuild(t fatalfer, store *NodeStore, pm *policyv2.PolicyManager) {
+	snap := store.data.Load()
+	want := pm.BuildPeerMap(views.SliceOf(snap.allNodes))
+
+	for id := range snap.nodesByID {
+		got := slices.Sorted(slices.Values(snap.peersByNode[id]))
+
+		exp := slices.Sorted(slices.Values(want[id]))
+		if !slices.Equal(got, exp) {
+			t.Fatalf("node %d: adjacency %v, full build %v", id, got, exp)
+		}
+	}
+}
+
+// TestNodeStoreAdjacencyMatchesFullBuild drives random node mutations
+// through a real [NodeStore] wired to a real [policyv2.PolicyManager] and
+// checks, after every step, that the resulting adjacency — including
+// whatever [NodeStore] served from its reused-peers path — matches a
+// fresh [policyv2.PolicyManager.BuildPeerMap] over the same nodes. This is
+// the safety net for later NodeStore/policy changes: divergence here is a
+// real bug in the shipped reuse path.
+func TestNodeStoreAdjacencyMatchesFullBuild(t *testing.T) {
+	users := []types.User{
+		{ID: 1, Name: "u1"},
+		{ID: 2, Name: "u2"},
+	}
+	subnet := netip.MustParsePrefix("10.33.0.0/24")
+
+	for _, tc := range []struct {
+		name string
+		pol  string
+	}{
+		{name: "global", pol: `{
+			"groups": {"group:a": ["u1@"]},
+			"tagOwners": {"tag:srv": ["u1@"]},
+			"acls": [
+				{"action": "accept", "src": ["group:a"], "dst": ["tag:srv:*"]},
+				{"action": "accept", "src": ["u2@"], "dst": ["10.33.0.0/24:*"]}
+			]}`},
+		{name: "autogroup-self", pol: `{
+			"acls": [{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self:*"]}]}`},
+		{name: "via", pol: `{
+			"tagOwners": {"tag:router": ["u1@"]},
+			"grants": [{"src": ["u2@"], "dst": ["10.33.0.0/24"], "ip": ["*"], "via": ["tag:router"]}]}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rapid.Check(t, func(rt *rapid.T) {
+				nodes := make(types.Nodes, 0, 6)
+
+				for i := 1; i <= 6; i++ {
+					n := createTestNode(types.NodeID(i), uint(1+i%2), fmt.Sprintf("u%d", 1+i%2), fmt.Sprintf("n%d", i))
+					ip4 := netip.AddrFrom4([4]byte{100, 64, 0, byte(i)})
+					n.IPv4 = &ip4
+					n.IPv6 = nil
+					n.User = &users[i%2]
+					nodes = append(nodes, &n)
+				}
+
+				store, pm := nodeStoreWithPolicy(rt, tc.pol, users, nodes)
+				defer store.Stop()
+
+				steps := rapid.IntRange(1, 20).Draw(rt, "steps")
+				for range steps {
+					id := types.NodeID(rapid.IntRange(1, 6).Draw(rt, "id")) //nolint:gosec // safe conversion in test
+					switch rapid.IntRange(0, 5).Draw(rt, "op") {
+					case 0: // payload only
+						store.UpdateNode(id, func(n *types.Node) { n.LastSeen = new(time.Now()) })
+					case 1: // tag
+						tag := rapid.SampledFrom([]string{"tag:srv", "tag:router"}).Draw(rt, "tag")
+
+						store.UpdateNode(id, func(n *types.Node) {
+							n.Tags = []string{tag}
+							n.UserID, n.User = nil, nil
+						})
+					case 2: // announce + approve subnet
+						store.UpdateNode(id, func(n *types.Node) {
+							n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet}}
+							n.ApprovedRoutes = []netip.Prefix{subnet}
+						})
+					case 3: // drop routes
+						store.UpdateNode(id, func(n *types.Node) { n.ApprovedRoutes = nil })
+					case 4: // online flip
+						store.UpdateNode(id, func(n *types.Node) { n.IsOnline = new(!n.Online()) })
+					case 5: // endpoint
+						store.UpdateNode(id, func(n *types.Node) {
+							n.Endpoints = []netip.AddrPort{netip.MustParseAddrPort("192.0.2.1:41641")}
+						})
+					}
+
+					// Check before syncPolicy: at this point pm still has the
+					// pre-write nodes, so BuildPeerMap(new nodes) against pm's
+					// old matchers is exactly what the write's own reuse-vs-
+					// recompute decision (updateChanges) should have produced.
+					// Checking only after syncPolicy would let a wrong
+					// updateChanges classification hide behind the
+					// RebuildPeerMaps that SetNodes triggers on its own.
+					checkAdjacencyMatchesFullBuild(rt, store, pm)
+
+					syncPolicy(rt, store, pm)
+					checkAdjacencyMatchesFullBuild(rt, store, pm)
+				}
+			})
 		})
 	}
 }
