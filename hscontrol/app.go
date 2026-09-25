@@ -520,7 +520,7 @@ func (h *Headscale) createRouter(apiV1Mux, apiV2Mux http.Handler) *chi.Mux {
 // [Headscale.ReloadPolicy] for SIGHUP-style reloads.
 //
 //nolint:gocyclo // complex server startup function
-func (h *Headscale) Serve(ctx context.Context) error {
+func (h *Headscale) Serve(ctx context.Context) (retErr error) {
 	var err error
 
 	capver.CanOldCodeBeCleanedUp()
@@ -554,6 +554,16 @@ func (h *Headscale) Serve(ctx context.Context) error {
 	defer cancel()
 
 	errorGroup, ctx := errgroup.WithContext(ctx)
+
+	// Any of the goroutines could cancel the context. If that happens, we want to
+	// report back the root cause that cancelled the context.
+	defer func() {
+		if errors.Is(retErr, context.Canceled) {
+			if cause := context.Cause(ctx); cause != nil && !errors.Is(cause, context.Canceled) {
+				retErr = cause
+			}
+		}
+	}()
 
 	var (
 		socketServer      *http.Server
