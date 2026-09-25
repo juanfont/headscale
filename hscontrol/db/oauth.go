@@ -11,9 +11,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/scope"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"golang.org/x/crypto/argon2"
 	"gorm.io/gorm"
+	"tailscale.com/util/multierr"
 	"tailscale.com/util/rands"
 	"tailscale.com/util/set"
 )
@@ -37,6 +39,7 @@ var (
 	ErrOAuthClientNotFound      = fmt.Errorf("oauth client not found: %w", gorm.ErrRecordNotFound)
 	ErrOAuthClientFailedToParse = errors.New("failed to parse oauth client secret")
 	ErrOAuthClientRevoked       = errors.New("oauth client revoked")
+	ErrOAuthClientScopeInvalid  = errors.New("oauth client scope invalid")
 
 	ErrAccessTokenNotFound      = fmt.Errorf("oauth access token not found: %w", gorm.ErrRecordNotFound)
 	ErrAccessTokenFailedToParse = errors.New("failed to parse oauth access token")
@@ -132,6 +135,22 @@ func verifySecret(encoded []byte, secret string) error {
 	return nil
 }
 
+// validateScopes rejects any value outside the vocabulary in [scope.Known]. An
+// unknown scope satisfies no requirement, so storing one would silently mint a
+// client with fewer permissions than asked for. Every offending scope is
+// reported so the caller can correct them all in one pass.
+func validateScopes(scopes []string) error {
+	var errs []error
+
+	for _, s := range scopes {
+		if !scope.Scope(s).Valid() {
+			errs = append(errs, fmt.Errorf("%w: %q", ErrOAuthClientScopeInvalid, s))
+		}
+	}
+
+	return multierr.New(errs...)
+}
+
 // CreateOAuthClient creates a new [types.OAuthClient] and returns the plaintext
 // secret (shown ONCE) alongside the stored client. creatorUserID is the user who
 // created it (informational), or nil.
@@ -141,6 +160,11 @@ func (hsdb *HSDatabase) CreateOAuthClient(
 	creatorUserID *uint,
 ) (string, *types.OAuthClient, error) {
 	tags, err := validateACLTags(tags)
+	if err != nil {
+		return "", nil, err
+	}
+
+	err = validateScopes(scopes)
 	if err != nil {
 		return "", nil, err
 	}
