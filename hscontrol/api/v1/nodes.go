@@ -514,10 +514,12 @@ func registerNodeAdminOps(api huma.API, b Backend) {
 			return nil, huma.Error400BadRequest("backfilling node IPs", errBackfillNotConfirmed)
 		}
 
-		changes, err := b.State.BackfillNodeIPs()
+		changes, c, err := b.State.BackfillNodeIPs()
 		if err != nil {
 			return nil, huma.Error500InternalServerError("backfilling node IPs", err)
 		}
+
+		b.Change(c)
 
 		out := &backfillNodeIPsOutput{}
 		out.Body.Changes = changes

@@ -141,7 +141,7 @@ func TestPersistEmptyTags(t *testing.T) {
 	seeded, ok := s.nodeStore.GetNode(nodeID)
 	require.True(t, ok)
 
-	_, _, err := s.persistNodeAndRefreshPolicy(seeded)
+	_, _, err := s.persistNodeAndRefreshPolicy(seeded, s.polMan.NodesGeneration())
 	require.NoError(t, err)
 
 	gotAfterSeed, err := s.DB().GetNodeByID(nodeID)
@@ -154,7 +154,7 @@ func TestPersistEmptyTags(t *testing.T) {
 	})
 	require.True(t, ok)
 
-	_, _, err = s.persistNodeAndRefreshPolicy(cleared)
+	_, _, err = s.persistNodeAndRefreshPolicy(cleared, s.polMan.NodesGeneration())
 	require.NoError(t, err)
 
 	gotAfterClear, err := s.DB().GetNodeByID(nodeID)
@@ -189,7 +189,7 @@ func TestPersistEmptyEndpoints(t *testing.T) {
 	seeded, ok := s.nodeStore.GetNode(nodeID)
 	require.True(t, ok)
 
-	_, _, err := s.persistNodeAndRefreshPolicy(seeded)
+	_, _, err := s.persistNodeAndRefreshPolicy(seeded, s.polMan.NodesGeneration())
 	require.NoError(t, err)
 
 	gotAfterSeed, err := s.DB().GetNodeByID(nodeID)
@@ -202,7 +202,7 @@ func TestPersistEmptyEndpoints(t *testing.T) {
 	})
 	require.True(t, ok)
 
-	_, _, err = s.persistNodeAndRefreshPolicy(cleared)
+	_, _, err = s.persistNodeAndRefreshPolicy(cleared, s.polMan.NodesGeneration())
 	require.NoError(t, err)
 
 	gotAfterClear, err := s.DB().GetNodeByID(nodeID)
@@ -725,12 +725,14 @@ func TestPersistNodeAndRefreshPolicyEmptyForPayloadOnlyChange(t *testing.T) {
 	_, s, nodeID := persistTestSetup(t)
 	t.Cleanup(func() { _ = s.Close() })
 
+	genBefore := s.polMan.NodesGeneration()
+
 	view, ok := s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
 		n.Hostinfo = &tailcfg.Hostinfo{Hostname: "payload-only"}
 	})
 	require.True(t, ok)
 
-	_, c, err := s.persistNodeAndRefreshPolicy(view)
+	_, c, err := s.persistNodeAndRefreshPolicy(view, genBefore)
 	require.NoError(t, err)
 	assert.True(t, c.IsEmpty(), "a payload-only write must not fabricate a change")
 }
