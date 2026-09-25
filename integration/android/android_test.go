@@ -792,11 +792,11 @@ func TestAndroidTaildrop(t *testing.T) {
 	}()
 
 	// Newer apps ask for a folder on the first incoming file: accept the
-	// prompt and pick Download in the system folder picker, as a user
-	// would. The picker opens at the storage root, which cannot be used.
+	// prompt and pick Documents in the system folder picker, as a user
+	// would. Android 11+ refuses the storage root and Download there.
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		tapped, err := e.android.TapAnyOf(
-			"Open Directory Picker", "USE THIS FOLDER", "Use this folder", "ALLOW", "Allow", "Download",
+			"Open Directory Picker", "USE THIS FOLDER", "Use this folder", "ALLOW", "Allow", "Documents",
 		)
 		t.Logf("taildrop prompt: tapped %q, err %v", tapped, err)
 
