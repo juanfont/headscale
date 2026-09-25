@@ -143,12 +143,10 @@ func registerPolicy(api huma.API, b Backend) {
 		// Reload even when content is unchanged: routes manually disabled before
 		// may now qualify for auto-approval, so they must be re-evaluated.
 		cs, err := b.State.ReloadPolicy()
+		b.Change(cs...)
+
 		if err != nil {
 			return nil, huma.Error500InternalServerError("reloading policy", err)
-		}
-
-		if len(cs) > 0 {
-			b.Change(cs...)
 		}
 
 		out := &setPolicyOutput{}

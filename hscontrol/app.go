@@ -862,12 +862,12 @@ func (h *Headscale) Serve() error {
 				}
 
 				changes, err := h.state.ReloadPolicy()
+				h.Change(changes...)
+
 				if err != nil {
 					log.Error().Err(err).Msgf("reloading policy")
 					continue
 				}
-
-				h.Change(changes...)
 
 			default:
 				info := func(msg string) { log.Info().Msg(msg) }

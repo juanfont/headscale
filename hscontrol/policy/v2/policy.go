@@ -37,6 +37,8 @@ type PolicyManager struct {
 	pol   *Policy
 	users []types.User
 	nodes views.Slice[types.NodeView]
+	// nodesByID indexes nodes; see [PolicyManager.cacheableLocked].
+	nodesByID map[types.NodeID]types.NodeView
 
 	filterHash deephash.Sum
 	filter     []tailcfg.FilterRule
@@ -207,6 +209,7 @@ func NewPolicyManager(b []byte, users []types.User, nodes views.Slice[types.Node
 		pol:                policy,
 		users:              users,
 		nodes:              nodes,
+		nodesByID:          nodeIDViewMap(nodes),
 		sshPolicyMap:       xsync.NewMap[types.NodeID, *tailcfg.SSHPolicy](),
 		filterRulesMap:     xsync.NewMap[types.NodeID, []tailcfg.FilterRule](),
 		matchersForNodeMap: xsync.NewMap[types.NodeID, []matcher.Match](),
@@ -444,7 +447,9 @@ func (pm *PolicyManager) SSHPolicy(baseURL string, node types.NodeView) (*tailcf
 		return nil, fmt.Errorf("compiling SSH policy: %w", err)
 	}
 
-	pm.sshPolicyMap.Store(node.ID(), sshPol)
+	if pm.cacheableLocked(node) {
+		pm.sshPolicyMap.Store(node.ID(), sshPol)
+	}
 
 	return sshPol, nil
 }
@@ -766,7 +771,9 @@ func (pm *PolicyManager) filterForNodeLocked(
 	}
 
 	reduced := policyutil.ReduceFilterRules(node, unreduced)
-	pm.filterRulesMap.Store(node.ID(), reduced)
+	if pm.cacheableLocked(node) {
+		pm.filterRulesMap.Store(node.ID(), reduced)
+	}
 
 	return reduced
 }
@@ -822,7 +829,10 @@ func (pm *PolicyManager) MatchersForNode(node types.NodeView) ([]matcher.Match, 
 	// the stored compiled grants for this specific node.
 	unreduced := pm.filterRulesForNodeLocked(node)
 	matchers := matcher.MatchesFromFilterRules(unreduced)
-	pm.matchersForNodeMap.Store(node.ID(), matchers)
+
+	if pm.cacheableLocked(node) {
+		pm.matchersForNodeMap.Store(node.ID(), matchers)
+	}
 
 	return matchers, nil
 }
@@ -896,7 +906,9 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, erro
 	// For global policies: invalidate only nodes whose properties changed (IPs, routes).
 	pm.invalidateNodeCache(nodes)
 
+	prevNodes, prevByID := pm.nodes, pm.nodesByID
 	pm.nodes = nodes
+	pm.nodesByID = nodeIDViewMap(nodes)
 
 	// When policy-affecting node properties change, we must recompile filters because:
 	// 1. User/group aliases (like "user1@") resolve to node IPs
@@ -912,6 +924,12 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, erro
 		// Recompile filter with the new node list
 		needsUpdate, err := pm.updateLocked()
 		if err != nil {
+			// Keep the old list so a retry with the same input recompiles
+			// instead of being treated as unchanged, as in SetUsers. The
+			// NodeStore writer only logs this error; the writing caller's
+			// own SetNodes then retries and returns it.
+			pm.nodes, pm.nodesByID = prevNodes, prevByID
+
 			return false, err
 		}
 
@@ -922,7 +940,9 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, erro
 			pm.matchersForNodeMap.Clear()
 		}
 		// Always return true when nodes changed, even if filter hash didn't change
-		// (can happen with autogroup:self or when nodes are added but don't affect rules)
+		// (can happen with autogroup:self or when nodes are added but don't affect rules).
+		// A SetNodes that moves pm back to an older snapshot counts too; the
+		// extra PolicyChange it causes is deduplicated downstream.
 		pm.nodesGen.Add(1)
 
 		return true, nil
@@ -940,6 +960,17 @@ func (pm *PolicyManager) NodesGeneration() uint64 {
 	}
 
 	return pm.nodesGen.Load()
+}
+
+// cacheableLocked reports whether a per-node result computed from node may
+// be cached under its ID. SetNodes invalidates those caches by diffing its
+// own copies of each node, so a result computed from any other view, such
+// as a mapper's pre-write snapshot read while the NodeStore writer builds,
+// would outlive the invalidation meant to remove it.
+func (pm *PolicyManager) cacheableLocked(node types.NodeView) bool {
+	own, ok := pm.nodesByID[node.ID()]
+
+	return ok && !node.HasPolicyChange(own) && !node.HasNetworkChanges(own)
 }
 
 // nodeIDViewMap indexes a slice of node views by node ID. On duplicate IDs the

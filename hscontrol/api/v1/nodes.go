@@ -309,11 +309,11 @@ func registerNodeWriteOps(api huma.API, b Backend) {
 		switch {
 		case disableExpiry:
 			node, nodeChange, expErr := b.State.SetNodeExpiry(nodeID, nil)
+			b.Change(nodeChange)
+
 			if expErr != nil {
 				return nil, mapError("expiring node", expErr)
 			}
-
-			b.Change(nodeChange)
 
 			out := &nodeOutput{}
 			out.Body.Node = nodeFromView(node)
@@ -324,11 +324,11 @@ func registerNodeWriteOps(api huma.API, b Backend) {
 		}
 
 		node, nodeChange, err := b.State.SetNodeExpiry(nodeID, &expiry)
+		b.Change(nodeChange)
+
 		if err != nil {
 			return nil, mapError("expiring node", err)
 		}
-
-		b.Change(nodeChange)
 
 		out := &nodeOutput{}
 		out.Body.Node = nodeFromView(node)
@@ -350,11 +350,11 @@ func registerNodeWriteOps(api huma.API, b Backend) {
 		}
 
 		node, nodeChange, err := b.State.RenameNode(nodeID, in.NewName)
+		b.Change(nodeChange)
+
 		if err != nil {
 			return nil, mapError("renaming node", err)
 		}
-
-		b.Change(nodeChange)
 
 		out := &nodeOutput{}
 		out.Body.Node = nodeFromView(node)
@@ -396,11 +396,11 @@ func registerNodeWriteOps(api huma.API, b Backend) {
 		}
 
 		node, nodeChange, err := b.State.SetNodeTags(nodeID, in.Body.Tags)
+		b.Change(nodeChange)
+
 		if err != nil {
 			return nil, huma.Error400BadRequest("setting tags", err)
 		}
-
-		b.Change(nodeChange)
 
 		out := &nodeOutput{}
 		out.Body.Node = nodeFromView(node)
@@ -444,11 +444,11 @@ func registerNodeAdminOps(api huma.API, b Backend) {
 		newApproved = slices.Compact(newApproved)
 
 		node, nodeChange, err := b.State.SetApprovedRoutes(nodeID, newApproved)
+		b.Change(nodeChange)
+
 		if err != nil {
 			return nil, mapError("setting approved routes", err)
 		}
-
-		b.Change(nodeChange)
 
 		out := &nodeOutput{}
 		out.Body.Node = nodeFromView(node)
@@ -485,16 +485,19 @@ func registerNodeAdminOps(api huma.API, b Backend) {
 			util.RegisterMethodCLI,
 		)
 		if err != nil {
+			b.Change(nodeChange)
+
 			return nil, mapError("registering node", err)
 		}
 
 		routeChange, err := b.State.AutoApproveRoutes(node)
-		if err != nil {
-			return nil, huma.Error500InternalServerError("auto approving routes", err)
-		}
 
 		// Empty changes are ignored by the change sink.
 		b.Change(nodeChange, routeChange)
+
+		if err != nil {
+			return nil, huma.Error500InternalServerError("auto approving routes", err)
+		}
 
 		out := &nodeOutput{}
 		out.Body.Node = nodeFromView(node)
@@ -514,7 +517,9 @@ func registerNodeAdminOps(api huma.API, b Backend) {
 			return nil, huma.Error400BadRequest("backfilling node IPs", errBackfillNotConfirmed)
 		}
 
-		changes, err := b.State.BackfillNodeIPs()
+		changes, cs, err := b.State.BackfillNodeIPs()
+		b.Change(cs...)
+
 		if err != nil {
 			return nil, huma.Error500InternalServerError("backfilling node IPs", err)
 		}

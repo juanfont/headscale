@@ -2899,3 +2899,41 @@ func TestNodesGenerationCountsChangingSetNodes(t *testing.T) {
 	require.True(t, changed)
 	require.Equal(t, gen+1, pm.NodesGeneration(), "a changing SetNodes must advance the generation once")
 }
+
+// TestSetNodesRetriesAfterFailedRecompile pins that a SetNodes whose
+// recompile fails keeps the previous node list, like SetUsers. Keeping the
+// new list would make an identical retry look unchanged, so the recompile
+// would never be retried and the caller would never learn the policy moved.
+func TestSetNodesRetriesAfterFailedRecompile(t *testing.T) {
+	users := types.Users{{ID: 1, Name: "user1"}}
+
+	nodes := make(types.Nodes, 0, 2)
+	nodes = append(nodes, node("n1", "100.64.0.1", "fd7a:115c:a1e0::1", users[0]))
+	nodes[0].ID = 1
+
+	pm, err := NewPolicyManager([]byte(`{
+		"tagOwners": {"tag:a": ["user1@"]},
+		"acls": [{"action": "accept", "src": ["user1@"], "dst": ["user1@:*"]}]
+	}`), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	added := node("n2", "100.64.0.2", "fd7a:115c:a1e0::2", users[0])
+	added.ID = 2
+	grown := append(nodes, added)
+
+	// Break tag owner resolution so the recompile fails.
+	good := pm.pol.TagOwners
+	missing := Tag("tag:missing")
+	pm.pol.TagOwners = TagOwners{"tag:a": Owners{&missing}}
+
+	_, err = pm.SetNodes(grown.ViewSlice())
+	require.Error(t, err)
+
+	pm.pol.TagOwners = good
+	gen := pm.NodesGeneration()
+
+	changed, err := pm.SetNodes(grown.ViewSlice())
+	require.NoError(t, err)
+	require.True(t, changed, "the retry must recompile, not see the failed input as current")
+	require.Equal(t, gen+1, pm.NodesGeneration())
+}
