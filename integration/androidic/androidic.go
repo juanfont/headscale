@@ -863,8 +863,18 @@ func (a *AndroidInContainer) EnterText(s string) error {
 
 	// `input text` treats spaces as argument separators.
 	_, err = a.Shell("input", "text", strings.ReplaceAll(s, " ", "%s"))
+	if err != nil {
+		return err
+	}
 
-	return err
+	// The soft keyboard can cover the form's buttons, and taps go by
+	// screen position. Back dismisses it without leaving the screen.
+	out, _ := a.Shell("dumpsys", "input_method")
+	if strings.Contains(out, "mInputShown=true") {
+		return a.Back()
+	}
+
+	return nil
 }
 
 // InForeground reports whether pkg owns the window on screen.
