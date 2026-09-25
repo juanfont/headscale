@@ -837,9 +837,12 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, bool, error) {
 	prev := pm.users
 	pm.users = users
 
-	// SSH policies resolve users by name, so they are recomputed on any
-	// user change.
+	// SSH policies and autogroup:self sources resolve users by name, and
+	// the self sources are outside the filter hash, so updateLocked can
+	// report no change while per-node results moved.
 	pm.sshPolicyMap.Clear()
+	pm.filterRulesMap.Clear()
+	pm.matchersForNodeMap.Clear()
 
 	policyChanged, err := pm.updateLocked()
 	if err != nil {
@@ -850,9 +853,9 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, bool, error) {
 		return false, false, err
 	}
 
-	// SSH rules embed user identity, so a user change needs a client refresh
-	// even when the filter hash did not move.
-	if pm.pol != nil && len(pm.pol.SSHs) > 0 {
+	// SSH rules and per-node filters embed user identity outside the filter
+	// hash, so a user change needs a client refresh even when it did not move.
+	if pm.needsPerNodeFilter || (pm.pol != nil && len(pm.pol.SSHs) > 0) {
 		policyChanged = true
 	}
 

@@ -434,6 +434,85 @@ func TestSetUsers(t *testing.T) {
 	}
 }
 
+func matcherStrings(ms []matcher.Match) []string {
+	out := make([]string, 0, len(ms))
+	for i := range ms {
+		out = append(out, ms[i].DebugString())
+	}
+
+	return out
+}
+
+// TestSetUsersDropsStaleSelfFilters pins that a user change which moves
+// autogroup:self sources, without touching the global filter, still drops
+// the cached per-node filters and matchers built from the old sources and
+// reports a policy change so clients receive their new filter.
+func TestSetUsersDropsStaleSelfFilters(t *testing.T) {
+	pol := `{
+		"groups": {"group:a": ["u1@", "u3@"]},
+		"acls": [{"action": "accept", "src": ["group:a"], "dst": ["autogroup:self:*"]}]}`
+
+	// ID is set by assignment: promoted-field literals need go1.27 and
+	// this test is backported.
+	u1, u3, x3 := types.User{Name: "u1"}, types.User{Name: "u3"}, types.User{Name: "x3"}
+	u1.ID, u3.ID, x3.ID = 1, 3, 3
+
+	tests := []struct {
+		name   string
+		before types.Users
+		after  types.Users
+	}{
+		{name: "user-added", before: types.Users{u1}, after: types.Users{u1, u3}},
+		{name: "user-renamed", before: types.Users{u1, x3}, after: types.Users{u1, u3}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			nodes := types.Nodes{
+				node("u1-a", "100.64.0.1", "fd7a:115c:a1e0::1", u1),
+				node("u3-a", "100.64.0.3", "fd7a:115c:a1e0::3", u3),
+				node("u3-b", "100.64.0.4", "fd7a:115c:a1e0::4", u3),
+			}
+			for i, n := range nodes {
+				n.ID = types.NodeID(i + 1) //nolint:gosec // safe conversion in test
+			}
+
+			pm, err := NewPolicyManager([]byte(pol), tt.before, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			for _, n := range nodes {
+				_, err := pm.FilterForNode(n.View())
+				require.NoError(t, err)
+				_, err = pm.MatchersForNode(n.View())
+				require.NoError(t, err)
+			}
+
+			policyChanged, _, err := pm.SetUsers(tt.after)
+			require.NoError(t, err)
+			require.True(t, policyChanged, "moved self sources must reach clients")
+
+			fresh, err := NewPolicyManager([]byte(pol), tt.after, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			for _, n := range nodes {
+				got, err := pm.FilterForNode(n.View())
+				require.NoError(t, err)
+
+				want, err := fresh.FilterForNode(n.View())
+				require.NoError(t, err)
+				require.Empty(t, cmp.Diff(want, got), "node %d FilterForNode (-fresh +cached)", n.ID)
+
+				gotM, err := pm.MatchersForNode(n.View())
+				require.NoError(t, err)
+
+				wantM, err := fresh.MatchersForNode(n.View())
+				require.NoError(t, err)
+				require.Equal(t, matcherStrings(wantM), matcherStrings(gotM), "node %d MatchersForNode", n.ID)
+			}
+		})
+	}
+}
+
 // TestInvalidateGlobalPolicyCache tests the cache invalidation logic for global policies.
 func TestInvalidateGlobalPolicyCache(t *testing.T) {
 	mustIPPtr := func(s string) *netip.Addr {
