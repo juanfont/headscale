@@ -514,3 +514,61 @@ func TestIPAllocatorNextNoReservedIPs(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, na("100.115.94.0"), *nextChrome)
 }
+
+// TestIPAllocatorNextIPv6OnlyExhausted pins that an IPv6 failure with no IPv4
+// prefix has no IPv4 address to release.
+func TestIPAllocatorNextIPv6OnlyExhausted(t *testing.T) {
+	alloc, err := NewIPAllocator(nil, nil, mpp("fd7a:115c:a1e0::/127"), types.IPAllocationStrategySequential)
+	require.NoError(t, err)
+
+	_, _, err = alloc.Next()
+	require.ErrorIs(t, err, ErrCouldNotAllocateIP)
+}
+
+// TestIPAllocatorNextReleasesIPv4WhenIPv6Fails uses a /127 because both of its
+// addresses are reserved as network and broadcast, so IPv6 always fails. Both
+// /30 addresses must stay free afterwards; the prev4 restore only shows under
+// sequential, as random ignores prev4.
+func TestIPAllocatorNextReleasesIPv4WhenIPv6Fails(t *testing.T) {
+	tests := []struct {
+		name     string
+		strategy types.IPAllocationStrategy
+	}{
+		{
+			name:     "sequential",
+			strategy: types.IPAllocationStrategySequential,
+		},
+		{
+			name:     "random",
+			strategy: types.IPAllocationStrategyRandom,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			alloc, err := NewIPAllocator(
+				nil,
+				mpp("100.64.0.0/30"),
+				mpp("fd7a:115c:a1e0::/127"),
+				tt.strategy,
+			)
+			require.NoError(t, err)
+
+			got4, got6, err := alloc.Next()
+			require.ErrorIs(t, err, ErrCouldNotAllocateIP)
+			assert.Nil(t, got4)
+			assert.Nil(t, got6)
+
+			got := make([]netip.Addr, 0, 2)
+
+			for range 2 {
+				ip, err := alloc.allocateNext(&alloc.prev4, alloc.prefix4)
+				require.NoError(t, err)
+
+				got = append(got, *ip)
+			}
+
+			assert.ElementsMatch(t, []netip.Addr{na("100.64.0.1"), na("100.64.0.2")}, got)
+		})
+	}
+}
