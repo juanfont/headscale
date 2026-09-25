@@ -577,10 +577,6 @@ func (s *State) persistNodeAndRefreshPolicy(node types.NodeView) (types.NodeView
 		return fresh, change.Change{}, fmt.Errorf("updating policy manager after node save: %w", err)
 	}
 
-	if c.IsEmpty() {
-		c = change.NodeAdded(node.ID())
-	}
-
 	return fresh, c, nil
 }
 
@@ -1009,6 +1005,12 @@ func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView,
 		return nodeView, c, err
 	}
 
+	if c.IsEmpty() {
+		// Tags are peer visible (tag owner resolution, ACLs); resend the
+		// whole node even when re-applying the same tags didn't move policy.
+		c = change.NodeAdded(nodeID)
+	}
+
 	// Set OriginNode so the mapper knows to include self info for this node.
 	// When tags change, persistNodeAndRefreshPolicy returns PolicyChange which doesn't set OriginNode,
 	// so the mapper's self-update check fails and the node never sees its new tags.
@@ -1080,7 +1082,17 @@ func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView,
 		}
 	}
 
-	return s.persistNodeAndRefreshPolicy(view)
+	nodeView, c, err := s.persistNodeAndRefreshPolicy(view)
+	if err != nil {
+		return nodeView, c, err
+	}
+
+	if c.IsEmpty() {
+		// A rename is peer visible; resend the whole node.
+		c = change.NodeAdded(nodeID)
+	}
+
+	return nodeView, c, nil
 }
 
 // BackfillNodeIPs assigns IP addresses to nodes that don't have them.

@@ -10,6 +10,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -712,4 +713,164 @@ func TestSingleUsePreAuthKeyUsedInNodeStore(t *testing.T) {
 	first := register(t)
 	second := register(t)
 	assert.Equal(t, first.ID(), second.ID(), "second key re-registers the same node")
+}
+
+// TestPersistNodeAndRefreshPolicyEmptyForPayloadOnlyChange proves
+// persistNodeAndRefreshPolicy no longer fabricates a NodeAdded notification
+// when the write did not touch anything policy reads. Fabricating a change
+// here hid genuinely empty writes from every caller, so each one had to
+// guess whether a whole-peer resend was warranted; callers decide that
+// explicitly now (see TestPersistCallerChangeDecisions).
+func TestPersistNodeAndRefreshPolicyEmptyForPayloadOnlyChange(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	view, ok := s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
+		n.Hostinfo = &tailcfg.Hostinfo{Hostname: "payload-only"}
+	})
+	require.True(t, ok)
+
+	_, c, err := s.persistNodeAndRefreshPolicy(view)
+	require.NoError(t, err)
+	assert.True(t, c.IsEmpty(), "a payload-only write must not fabricate a change")
+}
+
+// TestPersistCallerChangeDecisions proves each persistNodeAndRefreshPolicy
+// caller now owns its own wire-change decision instead of relying on the
+// fallback that persistNodeAndRefreshPolicy used to fabricate. A known
+// hazard: dropping a whole-peer fallback without replacing it silently
+// stops a node's peers from learning about it, so every case here checks
+// the exact change, not just that persist succeeded.
+func TestPersistCallerChangeDecisions(t *testing.T) {
+	taggingPolicy := `{
+		"tagOwners": {"tag:ci": ["persist-user@"]},
+		"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}]
+	}`
+
+	tests := []struct {
+		name             string
+		policy           string
+		setup            func(t *testing.T, s *State, nodeID types.NodeID)
+		run              func(t *testing.T, s *State, nodeID types.NodeID) change.Change
+		wantType         string
+		wantOriginNode   bool
+		wantPeersChanged bool
+	}{
+		{
+			name: "RenameNode resends the whole node when the rename does not affect policy",
+			run: func(t *testing.T, s *State, nodeID types.NodeID) change.Change {
+				t.Helper()
+
+				_, c, err := s.RenameNode(nodeID, "renamed")
+				require.NoError(t, err)
+
+				return c
+			},
+			wantType:         "peers",
+			wantOriginNode:   true,
+			wantPeersChanged: true,
+		},
+		{
+			name:   "SetNodeTags reports a policy change for a real tag assignment",
+			policy: taggingPolicy,
+			run: func(t *testing.T, s *State, nodeID types.NodeID) change.Change {
+				t.Helper()
+
+				_, c, err := s.SetNodeTags(nodeID, []string{"tag:ci"})
+				require.NoError(t, err)
+
+				return c
+			},
+			wantType:         "policy",
+			wantOriginNode:   true,
+			wantPeersChanged: false,
+		},
+		{
+			name:   "SetNodeTags resends the whole node when re-applying identical tags",
+			policy: taggingPolicy,
+			setup: func(t *testing.T, s *State, nodeID types.NodeID) {
+				t.Helper()
+
+				_, _, err := s.SetNodeTags(nodeID, []string{"tag:ci"})
+				require.NoError(t, err)
+			},
+			run: func(t *testing.T, s *State, nodeID types.NodeID) change.Change {
+				t.Helper()
+
+				_, c, err := s.SetNodeTags(nodeID, []string{"tag:ci"})
+				require.NoError(t, err)
+
+				return c
+			},
+			wantType:         "peers",
+			wantOriginNode:   true,
+			wantPeersChanged: true,
+		},
+		{
+			name: "SetApprovedRoutes keeps reporting a policy change (Task 6 narrows this)",
+			run: func(t *testing.T, s *State, nodeID types.NodeID) change.Change {
+				t.Helper()
+
+				_, c, err := s.SetApprovedRoutes(nodeID, []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")})
+				require.NoError(t, err)
+
+				return c
+			},
+			wantType:         "policy",
+			wantOriginNode:   false,
+			wantPeersChanged: false,
+		},
+		{
+			name: "SaveNode reports no change for a payload-only save (no production caller relies on a fallback)",
+			run: func(t *testing.T, s *State, nodeID types.NodeID) change.Change {
+				t.Helper()
+
+				current, ok := s.nodeStore.GetNode(nodeID)
+				require.True(t, ok)
+
+				n := current.AsStruct()
+				n.Hostinfo = &tailcfg.Hostinfo{Hostname: "saved-payload"}
+
+				_, c, err := s.SaveNode(n.View())
+				require.NoError(t, err)
+
+				return c
+			},
+			wantType:         "empty",
+			wantOriginNode:   false,
+			wantPeersChanged: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, s, nodeID := persistTestSetup(t)
+			t.Cleanup(func() { _ = s.Close() })
+
+			if tt.policy != "" {
+				_, err := s.SetPolicy([]byte(tt.policy))
+				require.NoError(t, err)
+			}
+
+			if tt.setup != nil {
+				tt.setup(t, s, nodeID)
+			}
+
+			c := tt.run(t, s, nodeID)
+
+			assert.Equal(t, tt.wantType, c.Type())
+
+			if tt.wantOriginNode {
+				assert.Equal(t, nodeID, c.OriginNode)
+			} else {
+				assert.Zero(t, c.OriginNode)
+			}
+
+			if tt.wantPeersChanged {
+				assert.Equal(t, []types.NodeID{nodeID}, c.PeersChanged)
+			} else {
+				assert.Empty(t, c.PeersChanged)
+			}
+		})
+	}
 }
