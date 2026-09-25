@@ -138,22 +138,34 @@ func NewIPAllocator(
 }
 
 func (i *IPAllocator) Next() (*netip.Addr, *netip.Addr, error) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
 	var (
 		err  error
 		ret4 *netip.Addr
 		ret6 *netip.Addr
 	)
 
+	prev4 := i.prev4
+
 	if i.prefix4 != nil {
-		ret4, err = i.allocateNext(&i.prev4, i.prefix4)
+		ret4, err = i.allocateNextLocked(&i.prev4, i.prefix4)
 		if err != nil {
 			return nil, nil, fmt.Errorf("allocating IPv4 address: %w", err)
 		}
 	}
 
 	if i.prefix6 != nil {
-		ret6, err = i.allocateNext(&i.prev6, i.prefix6)
+		ret6, err = i.allocateNextLocked(&i.prev6, i.prefix6)
 		if err != nil {
+			// ret4 never reaches a caller, so nothing would ever free it, and
+			// sequential allocation does not wrap back to it on its own.
+			if ret4 != nil {
+				i.usedIPs.Remove(*ret4)
+				i.prev4 = prev4
+			}
+
 			return nil, nil, fmt.Errorf("allocating IPv6 address: %w", err)
 		}
 	}
@@ -171,6 +183,11 @@ func (i *IPAllocator) allocateNext(prev *netip.Addr, prefix *netip.Prefix) (*net
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
+	return i.allocateNextLocked(prev, prefix)
+}
+
+// allocateNextLocked is [IPAllocator.allocateNext] for a caller holding i.mu.
+func (i *IPAllocator) allocateNextLocked(prev *netip.Addr, prefix *netip.Prefix) (*netip.Addr, error) {
 	ret, err := i.next(*prev, prefix)
 	if err != nil {
 		return nil, err
