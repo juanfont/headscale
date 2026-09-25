@@ -1437,10 +1437,14 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 }
 
 // grantReachesInternet reports whether a grant's destinations include
-// the internet. The wildcard resolves to tailnet ranges only, but in a
-// destination it also covers the internet.
+// the internet. Neither the wildcard nor autogroup:internet resolves
+// to 0.0.0.0/0, so check the aliases themselves.
 func grantReachesInternet(grant Grant) bool {
 	return slices.ContainsFunc(grant.Destinations, func(d Alias) bool {
+		if ag, ok := d.(*AutoGroup); ok {
+			return ag.Is(AutoGroupInternet)
+		}
+
 		_, ok := d.(Asterix)
 
 		return ok
