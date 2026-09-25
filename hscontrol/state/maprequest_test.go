@@ -1097,3 +1097,158 @@ func BenchmarkUpdateNodeFromMapRequest(b *testing.B) {
 		}
 	})
 }
+
+// autoApproveTestPolicy lets aa-user's nodes see each other and
+// auto-approve subnets under 10.55.0.0/16 and exit routes; aa-other's
+// node only reaches the internet, so it sees an aa-user node only once
+// that node is an approved exit node.
+const autoApproveTestPolicy = `{
+	"acls": [
+		{"action": "accept", "src": ["aa-user@"], "dst": ["aa-user@:*", "10.55.0.0/16:*"]},
+		{"action": "accept", "src": ["aa-other@"], "dst": ["autogroup:internet:*"]}
+	],
+	"autoApprovers": {
+		"routes": {"10.55.0.0/16": ["aa-user@"]},
+		"exitNode": ["aa-user@"]
+	}}`
+
+// newAutoApproveTestState returns a State under autoApproveTestPolicy with
+// three aa-user nodes followed by one aa-other node. prepare edits the
+// database rows before the State loads them, and the returned counter
+// counts peer builds from then on.
+func newAutoApproveTestState(
+	t *testing.T,
+	prepare func(nodes []*types.Node),
+) (*State, []types.NodeID, *atomic.Int64) {
+	t.Helper()
+
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+
+	database, err := db.NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	user := database.CreateUserForTest("aa-user")
+	other := database.CreateUserForTest("aa-other")
+	nodes := database.CreateRegisteredNodesForTest(user, 3, "aa-node")
+	nodes = append(nodes, database.CreateRegisteredNodeForTest(other, "aa-other-node"))
+
+	if prepare != nil {
+		prepare(nodes)
+
+		for _, n := range nodes {
+			require.NoError(t, database.DB.Save(n).Error)
+		}
+	}
+
+	require.NoError(t, database.Close())
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, err = s.SetPolicy([]byte(autoApproveTestPolicy))
+	require.NoError(t, err)
+
+	ids := make([]types.NodeID, 0, len(nodes))
+	for _, n := range nodes {
+		ids = append(ids, n.ID)
+	}
+
+	return s, ids, countStatePeerBuilds(t, s)
+}
+
+func checkAutoApproveAdjacency(t *testing.T, s *State) {
+	t.Helper()
+
+	users, err := s.ListAllUsers()
+	require.NoError(t, err)
+
+	checkAdjacencyMatchesFullBuild(t, s.nodeStore, autoApproveTestPolicy, users)
+}
+
+func routeMapRequest(t *testing.T, s *State, id types.NodeID, routes ...netip.Prefix) tailcfg.MapRequest {
+	t.Helper()
+
+	nv, ok := s.GetNodeByID(id)
+	require.True(t, ok)
+
+	return tailcfg.MapRequest{
+		NodeKey:  nv.NodeKey(),
+		DiscoKey: nv.DiscoKey(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname:    nv.Hostname(),
+			RoutableIPs: routes,
+			NetInfo:     &tailcfg.NetInfo{PreferredDERP: 1},
+		},
+	}
+}
+
+// countNodeRowUpdates counts UPDATEs of the nodes table from now on.
+func countNodeRowUpdates(t *testing.T, s *State) *atomic.Int64 {
+	t.Helper()
+
+	var n atomic.Int64
+
+	gdb := s.DB().DB
+	name := t.Name() + "_count_node_updates"
+	err := gdb.Callback().Update().After("gorm:update").Register(name, func(tx *gorm.DB) {
+		if tx.Statement != nil && tx.Statement.Table == "nodes" {
+			n.Add(1)
+		}
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = gdb.Callback().Update().Remove(name) })
+
+	return &n
+}
+
+// TestMapRequestAutoApprovalIsOneWrite pins that a map request whose
+// announced route the policy auto-approves lands in one route-changing
+// NodeStore write (one peer build) and one row update, persists the
+// approval, and reports the policy change the new route causes.
+func TestMapRequestAutoApprovalIsOneWrite(t *testing.T) {
+	s, ids, builds := newAutoApproveTestState(t, nil)
+	route := netip.MustParsePrefix("10.55.1.0/24")
+
+	req := routeMapRequest(t, s, ids[0], route)
+	rowUpdates := countNodeRowUpdates(t, s)
+
+	c, err := s.UpdateNodeFromMapRequest(ids[0], req)
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(1), builds.Load(), "peer builds for one map request")
+	assert.Equal(t, int64(1), rowUpdates.Load(), "node row updates for one map request")
+	assert.Equal(t, "policy", c.Type())
+
+	row, err := s.DB().GetNodeByID(ids[0])
+	require.NoError(t, err)
+	assert.Contains(t, row.ApprovedRoutes, route, "the approval must be persisted")
+
+	nv, ok := s.GetNodeByID(ids[0])
+	require.True(t, ok)
+	assert.Contains(t, nv.SubnetRoutes(), route)
+
+	checkAutoApproveAdjacency(t, s)
+}
+
+// TestMapRequestWithdrawingRoutesClearsUnhealthy pins that a node whose
+// announced set shrinks to empty stops being an unhealthy HA candidate.
+func TestMapRequestWithdrawingRoutesClearsUnhealthy(t *testing.T) {
+	route := netip.MustParsePrefix("10.55.1.0/24")
+	s, ids, _ := newAutoApproveTestState(t, func(nodes []*types.Node) {
+		nodes[0].Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{route}}
+		nodes[0].ApprovedRoutes = []netip.Prefix{route}
+	})
+
+	_, ok := s.nodeStore.UpdateNode(ids[0], func(n *types.Node) { n.Unhealthy = true })
+	require.True(t, ok)
+
+	_, err := s.UpdateNodeFromMapRequest(ids[0], routeMapRequest(t, s, ids[0]))
+	require.NoError(t, err)
+
+	nv, ok := s.GetNodeByID(ids[0])
+	require.True(t, ok)
+	assert.Empty(t, nv.AllApprovedRoutes())
+	assert.False(t, nv.Unhealthy(), "a node with no approved routes is no HA candidate")
+}

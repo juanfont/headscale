@@ -3349,15 +3349,17 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		}
 
 		if routeChange {
-			// Always apply the route approval result so routes are
-			// cleared when auto-approvers are removed from the policy,
-			// even if the policy evaluation itself detected no change.
 			log.Info().
 				Uint64(zf.NodeID, id.Uint64()).
 				Strs(zf.OldApprovedRoutes, util.PrefixesToString(currentNode.ApprovedRoutes)).
 				Strs(zf.NewApprovedRoutes, util.PrefixesToString(autoApprovedRoutes)).
 				Bool(zf.RouteChanged, routeChange).
 				Msg("applying route approval results")
+
+			// Approving in this write keeps one request at one NodeStore
+			// write, one peer build and one row update. Persisting is
+			// already due: route approval only runs on a Hostinfo change.
+			currentNode.ApprovedRoutes = autoApprovedRoutes
 		}
 
 		// AllApprovedRoutes is announced ∩ approved; a Hostinfo
@@ -3372,27 +3374,6 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 	if !ok {
 		return change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, id)
 	}
-
-	if routeChange {
-		log.Debug().
-			Uint64(zf.NodeID, id.Uint64()).
-			Strs(zf.AutoApprovedRoutes, util.PrefixesToString(autoApprovedRoutes)).
-			Msg("Persisting auto-approved routes from MapRequest")
-
-		// [State.SetApprovedRoutes] will update both database and PrimaryRoutes table
-		// TODO(kradalby): approval should ride the map request write above.
-		// Writing it separately costs a second NodeStore write and a second
-		// peer-map rebuild for one request.
-		_, c, err := s.SetApprovedRoutes(id, autoApprovedRoutes)
-		if err != nil {
-			return change.Change{}, fmt.Errorf("persisting auto-approved routes: %w", err)
-		}
-
-		// If [State.SetApprovedRoutes] resulted in a policy change, return it
-		if !c.IsEmpty() {
-			return c, nil
-		}
-	} // Continue with the rest of the processing using the updated node
 
 	// SubnetRoutes = announced ∩ approved, so a Hostinfo update can
 	// move a primary without ever touching ApprovedRoutes. The pre/post
@@ -3434,7 +3415,7 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		// Only refresh the policy manager when something it depends on
 		// might have moved. Endpoint/key/DERP/LastSeen-only updates do not
 		// affect policy evaluation and are deliberately skipped here.
-		if delta.peerHostinfoChanged || delta.routesChanged {
+		if delta.peerHostinfoChanged || delta.routesChanged || routeChange {
 			policyChange, err = s.updatePolicyManagerNodes(genBefore)
 			if err != nil {
 				return change.Change{}, fmt.Errorf("updating policy manager after node save: %w", err)
@@ -3454,6 +3435,12 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 	// This allows us to send lightweight patch updates instead of full
 	// map responses.
 	c := buildMapRequestChangeResponse(id, updatedNode, delta)
+
+	// Approval moved no effective route; resend the node so peers hold
+	// its current state.
+	if routeChange {
+		c = c.Merge(change.NodeAdded(id))
+	}
 
 	// One trace line per classified request so a "peer cannot reach me"
 	// report can be matched to the classification that narrowed it.
