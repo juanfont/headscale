@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/netmap"
 )
 
 var errNodeNotFoundAfterAdd = errors.New("node not found after adding to batcher")
@@ -2159,9 +2160,8 @@ func TestNodeDeletedWhileChangesPending(t *testing.T) {
 
 			// Delete the node from state - this returns a NodeRemoved change
 			// In production, this change is sent to batcher via app.Change()
-			nodeChange, err := st.DeleteNode(nodeToDelete)
+			nodeChanges, err := st.DeleteNode(nodeToDelete)
 			require.NoError(t, err, "should be able to delete node from state")
-			t.Logf("Deleted node %d from state, change: %s", node3.n.ID, nodeChange.Reason)
 
 			// Verify node is deleted from state
 			_, exists := st.GetNodeByID(node3.n.ID)
@@ -2169,7 +2169,7 @@ func TestNodeDeletedWhileChangesPending(t *testing.T) {
 
 			// Send the NodeRemoved change to batcher (this is what app.Change() does)
 			// With the fix, this should clean up node3 from batcher's internal state
-			batcher.AddWork(nodeChange)
+			batcher.AddWork(nodeChanges...)
 
 			// Wait for the batcher to process the removal and clean up the node
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2357,4 +2357,89 @@ func TestAddWorkPeersRemovedNotTreatedAsEmpty(t *testing.T) {
 	// Surviving nodes must see the removal pending.
 	require.Equal(t, 3, countNodesPending(lb.b),
 		"surviving 3 nodes must have the removal pending")
+}
+
+// TestHandleNodeChangeSendsRemovalsAsDelta checks that peers missing from a
+// response listing the node's complete peer set go out first as a response
+// of their own that clients can apply as a delta, and that the full-set
+// response never carries them. Clients only report removals to IPN bus
+// watchers opted out of full netmaps from delta responses.
+func TestHandleNodeChangeSendsRemovalsAsDelta(t *testing.T) {
+	tests := []struct {
+		name  string
+		nodes int
+		ch    change.Change
+	}{
+		{"policy_change", 2, change.PolicyChange()},
+		{"full_update", 2, change.FullUpdate()},
+		// Clients ignore an empty Peers list, so an isolating full update
+		// relies on the removal entirely.
+		{"full_update_isolated", 1, change.FullUpdate()},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, tt.nodes, normalBufferSize)
+			defer cleanup()
+
+			gone := tailcfg.NodeID(999)
+
+			mc := newMockNodeConnection(testData.Nodes[0].n.ID)
+			mc.peers.Store(gone, struct{}{})
+
+			for i := range testData.Nodes[1:] {
+				mc.peers.Store(testData.Nodes[i+1].n.ID.NodeID(), struct{}{})
+			}
+
+			require.NoError(t, handleNodeChange(mc, testData.Batcher.mapper, tt.ch))
+
+			sent := mc.getSent()
+			require.Len(t, sent, 2)
+
+			assert.Equal(t, []tailcfg.NodeID{gone}, sent[0].PeersRemoved)
+			_, ok := netmap.MutationsFromMapResponse(sent[0], time.Time{})
+			assert.True(t, ok, "removal must be applicable as a delta: %+v", sent[0])
+
+			assert.Empty(t, sent[1].PeersRemoved, "full-set response must not carry removals")
+
+			_, tracked := mc.peers.Load(gone)
+			assert.False(t, tracked, "removed peer must leave lastSentPeers")
+		})
+	}
+}
+
+// TestHandleNodeChangeRetryAfterRemoval checks that a change retried after
+// its removal was delivered but its content was not does not repeat the
+// removal.
+func TestHandleNodeChangeRetryAfterRemoval(t *testing.T) {
+	testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 2, normalBufferSize)
+	defer cleanup()
+
+	gone := tailcfg.NodeID(999)
+
+	mc := newMockNodeConnection(testData.Nodes[0].n.ID)
+	mc.peers.Store(gone, struct{}{})
+
+	var sends int
+
+	mc.sendFn = func(resp *tailcfg.MapResponse) error {
+		sends++
+		if sends == 2 {
+			return errNoReadyConnections
+		}
+
+		mc.sent = append(mc.sent, resp)
+
+		return nil
+	}
+
+	err := handleNodeChange(mc, testData.Batcher.mapper, change.PolicyChange())
+	require.ErrorIs(t, err, errNoReadyConnections)
+	require.NoError(t, handleNodeChange(mc, testData.Batcher.mapper, change.PolicyChange()))
+
+	sent := mc.getSent()
+	require.Len(t, sent, 2, "removal once, then the retried content")
+	assert.Equal(t, []tailcfg.NodeID{gone}, sent[0].PeersRemoved)
+	assert.Empty(t, sent[1].PeersRemoved)
+	assert.NotEmpty(t, sent[1].PacketFilters)
 }

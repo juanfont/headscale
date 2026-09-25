@@ -149,10 +149,8 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 			return
 		}
 
-		policyChanged, err := app.state.DeleteNode(node)
-		if !policyChanged.IsEmpty() {
-			app.Change(policyChanged)
-		}
+		changes, err := app.state.DeleteNode(node)
+		app.Change(changes...)
 
 		if err != nil {
 			log.Error().Err(err).EmbedObject(node).Msg("ephemeral node deletion failed")

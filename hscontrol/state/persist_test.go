@@ -510,7 +510,7 @@ func TestDeleteNodeKeepsStoreOnDBFailure(t *testing.T) {
 	c, err := s.DeleteNode(node)
 	require.NoError(t, s.db.DB.Callback().Delete().Remove("fail_node_delete"))
 	require.ErrorIs(t, err, errInjectedNodeDelete)
-	assert.True(t, c.IsEmpty(), "an uncommitted deletion must not stop the node's session")
+	assert.Empty(t, c, "an uncommitted deletion must not stop the node's session")
 
 	_, ok = s.GetNodeByID(nodeID)
 	assert.True(t, ok, "a database failure must leave the in-memory node available")
@@ -528,11 +528,12 @@ func TestDeleteNodeReturnsRemovalOnPolicyFailure(t *testing.T) {
 
 	s.polMan = failingSetNodesPolicyManager{PolicyManager: s.polMan}
 
-	c, err := s.DeleteNode(node)
+	cs, err := s.DeleteNode(node)
 	require.ErrorIs(t, err, errInjectedPolicyNodeUpdate)
-	assert.Equal(t, []types.NodeID{nodeID}, c.PeersRemoved,
+	require.Len(t, cs, 1)
+	assert.Equal(t, []types.NodeID{nodeID}, cs[0].PeersRemoved,
 		"a committed deletion must still notify peers and stop the node's session")
-	assert.Equal(t, []types.NodeID{nodeID}, c.DeletedNodes,
+	assert.Equal(t, []types.NodeID{nodeID}, cs[0].DeletedNodes,
 		"a committed deletion must identify the session to stop")
 
 	_, ok = s.GetNodeByID(nodeID)
