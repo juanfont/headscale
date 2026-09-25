@@ -162,6 +162,11 @@ func TestViaInternetExitSteeringSurvivesUnrelatedRules(t *testing.T) {
 			wantExcluded: true,
 		},
 		{
+			name:         "acl-autogroup-internet",
+			extra:        `"acls": [{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:internet:*"]}],`,
+			wantExcluded: false,
+		},
+		{
 			name:         "acl-wildcard",
 			extra:        `"acls": [{"action": "accept", "src": ["autogroup:member"], "dst": ["*:*"]}],`,
 			wantExcluded: false,
