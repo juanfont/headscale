@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"fmt"
 	"net/netip"
 	"slices"
 	"testing"
@@ -2597,4 +2598,124 @@ func TestTagOwnedByTags(t *testing.T) {
 		var nilPM *PolicyManager
 		require.False(t, nilPM.TagOwnedByTags("tag:leaf", []string{"tag:root"}))
 	})
+}
+
+// benchPolicies are the ACL shapes BenchmarkBuildPeerMap and
+// BenchmarkSetNodes measure: a global ACL, autogroup:self, and a via
+// grant. hscontrol/state/node_store_test.go checks the same three
+// shapes for adjacency correctness; this is its own copy since test
+// packages can't share one. Route dsts here are 10.0.0.0/8, wider than
+// state's fixed 10.33.0.0/24: benchNodes below spreads its ~5% of
+// routed nodes across 10.0.0.0/24 .. 10.255.0.0/24, so the dst must
+// cover that whole range for the route-owning ACL/grant rule to be
+// exercised rather than silently matching nothing.
+var benchPolicies = []struct {
+	name   string
+	policy string
+}{
+	{name: "global", policy: `{
+		"groups": {"group:a": ["u1@"]},
+		"tagOwners": {"tag:srv": ["u1@"]},
+		"acls": [
+			{"action": "accept", "src": ["group:a"], "dst": ["tag:srv:*"]},
+			{"action": "accept", "src": ["u2@"], "dst": ["10.0.0.0/8:*"]}
+		]}`},
+	{name: "self", policy: `{
+		"acls": [{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self:*"]}]}`},
+	{name: "via", policy: `{
+		"tagOwners": {"tag:router": ["u1@"]},
+		"grants": [{"src": ["u2@"], "dst": ["10.0.0.0/8"], "ip": ["*"], "via": ["tag:router"]}]}`},
+}
+
+// benchSetNodesPolicies is the subset of benchPolicies BenchmarkSetNodes
+// covers: via's per-node filter cost is close enough to global's that a
+// third axis wouldn't add signal.
+var benchSetNodesPolicies = benchPolicies[:2]
+
+// benchNodes builds n nodes spread across 10 users for the peer-map
+// benchmarks below: ~10% tagged tag:srv, ~5% carrying an approved and
+// announced 10.x.0.0/24 route, each with a unique IPv4.
+func benchNodes(n int) ([]types.User, types.Nodes) {
+	users := make([]types.User, 10)
+	for i := range users {
+		users[i] = types.User{ID: uint(i + 1), Name: fmt.Sprintf("u%d", i+1)}
+	}
+
+	nodes := make(types.Nodes, 0, n)
+	for i := range n {
+		u := users[i%len(users)]
+		ip := netip.AddrFrom4([4]byte{100, 64, byte(i / 256), byte(i % 256)}) //nolint:gosec
+
+		nd := &types.Node{
+			ID:       types.NodeID(i + 1),
+			Hostname: fmt.Sprintf("n%d", i+1),
+			IPv4:     &ip,
+		}
+
+		if i%10 == 0 {
+			nd.Tags = []string{"tag:srv"}
+		} else {
+			nd.UserID, nd.User = &u.ID, &u
+		}
+
+		if i%20 == 0 {
+			subnet := netip.PrefixFrom(netip.AddrFrom4([4]byte{10, byte((i / 20) % 256), 0, 0}), 24) //nolint:gosec
+			nd.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet}}
+			nd.ApprovedRoutes = []netip.Prefix{subnet}
+		}
+
+		nodes = append(nodes, nd)
+	}
+
+	return users, nodes
+}
+
+// BenchmarkBuildPeerMap measures PolicyManager.BuildPeerMap over
+// realistic node counts and policy shapes, without any NodeStore or
+// reuse-path involvement: the number this baseline compares later
+// NodeStore write-path changes against.
+func BenchmarkBuildPeerMap(b *testing.B) {
+	for _, pol := range benchPolicies {
+		for _, n := range []int{100, 300, 617, 1000} {
+			b.Run(fmt.Sprintf("%s/n=%d", pol.name, n), func(b *testing.B) {
+				users, nodes := benchNodes(n)
+				pm, err := NewPolicyManager([]byte(pol.policy), users, nodes.ViewSlice())
+				require.NoError(b, err)
+
+				b.ReportAllocs()
+
+				for b.Loop() {
+					pm.BuildPeerMap(nodes.ViewSlice())
+				}
+			})
+		}
+	}
+}
+
+// BenchmarkSetNodes measures PolicyManager.SetNodes when one node's
+// route changes on every call, the same per-write cost
+// BenchmarkNodeStoreWrite drives through a NodeStore.
+func BenchmarkSetNodes(b *testing.B) {
+	for _, pol := range benchSetNodesPolicies {
+		b.Run(fmt.Sprintf("%s/n=%d", pol.name, 617), func(b *testing.B) {
+			users, nodes := benchNodes(617)
+			pm, err := NewPolicyManager([]byte(pol.policy), users, nodes.ViewSlice())
+			require.NoError(b, err)
+
+			b.ReportAllocs()
+
+			i := 0
+			for b.Loop() {
+				i++
+				subnet := netip.PrefixFrom(netip.AddrFrom4([4]byte{10, byte(200 + i%50), 0, 0}), 24) //nolint:gosec
+				nodes[0].Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet}}
+				nodes[0].ApprovedRoutes = []netip.Prefix{subnet}
+
+				_, err := pm.SetNodes(nodes.ViewSlice())
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
 }

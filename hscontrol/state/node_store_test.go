@@ -1735,6 +1735,27 @@ func checkAdjacencyMatchesFullBuild(t fatalfer, store *NodeStore, pm *policyv2.P
 	}
 }
 
+// Policy shapes shared by TestNodeStoreAdjacencyMatchesFullBuild and the
+// NodeStore write benchmarks below: a global ACL, autogroup:self, and a
+// via grant. hscontrol/policy/v2/policy_test.go keeps its own copy since
+// test packages can't share one.
+const (
+	policyGlobal = `{
+		"groups": {"group:a": ["u1@"]},
+		"tagOwners": {"tag:srv": ["u1@"]},
+		"acls": [
+			{"action": "accept", "src": ["group:a"], "dst": ["tag:srv:*"]},
+			{"action": "accept", "src": ["u2@"], "dst": ["10.33.0.0/24:*"]}
+		]}`
+
+	policyAutogroupSelf = `{
+		"acls": [{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self:*"]}]}`
+
+	policyVia = `{
+		"tagOwners": {"tag:router": ["u1@"]},
+		"grants": [{"src": ["u2@"], "dst": ["10.33.0.0/24"], "ip": ["*"], "via": ["tag:router"]}]}`
+)
+
 // TestNodeStoreAdjacencyMatchesFullBuild drives random node mutations
 // through a real [NodeStore] wired to a real [policyv2.PolicyManager] and
 // checks, after every step, that the resulting adjacency — including
@@ -1753,18 +1774,9 @@ func TestNodeStoreAdjacencyMatchesFullBuild(t *testing.T) {
 		name string
 		pol  string
 	}{
-		{name: "global", pol: `{
-			"groups": {"group:a": ["u1@"]},
-			"tagOwners": {"tag:srv": ["u1@"]},
-			"acls": [
-				{"action": "accept", "src": ["group:a"], "dst": ["tag:srv:*"]},
-				{"action": "accept", "src": ["u2@"], "dst": ["10.33.0.0/24:*"]}
-			]}`},
-		{name: "autogroup-self", pol: `{
-			"acls": [{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self:*"]}]}`},
-		{name: "via", pol: `{
-			"tagOwners": {"tag:router": ["u1@"]},
-			"grants": [{"src": ["u2@"], "dst": ["10.33.0.0/24"], "ip": ["*"], "via": ["tag:router"]}]}`},
+		{name: "global", pol: policyGlobal},
+		{name: "autogroup-self", pol: policyAutogroupSelf},
+		{name: "via", pol: policyVia},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rapid.Check(t, func(rt *rapid.T) {
@@ -1916,6 +1928,112 @@ func TestUpdateChangesReportsRelationFields(t *testing.T) {
 			relation, election := updateChanges(&pre, &post)
 			require.Equal(t, tt.wantRelation, relation, "relation")
 			require.Equal(t, tt.wantElection, election, "election")
+		})
+	}
+}
+
+// benchNodes builds n nodes spread across 10 users for
+// BenchmarkNodeStoreWrite: ~10% tagged tag:srv, ~5% carrying an
+// approved and announced 10.x.0.0/24 route, each with a unique IPv4.
+// hscontrol/policy/v2/policy_test.go keeps its own copy since test
+// packages can't share one.
+func benchNodes(n int) ([]types.User, types.Nodes) {
+	users := make([]types.User, 10)
+	for i := range users {
+		users[i] = types.User{ID: uint(i + 1), Name: fmt.Sprintf("u%d", i+1)}
+	}
+
+	nodes := make(types.Nodes, 0, n)
+	for i := range n {
+		u := users[i%len(users)]
+		nd := createTestNode(types.NodeID(i+1), u.ID, u.Name, fmt.Sprintf("n%d", i+1))
+
+		ip := netip.AddrFrom4([4]byte{100, 64, byte(i / 256), byte(i % 256)}) //nolint:gosec
+		nd.IPv4, nd.IPv6 = &ip, nil
+
+		if i%10 == 0 {
+			nd.Tags = []string{"tag:srv"}
+		} else {
+			nd.User = &u
+		}
+
+		if i%20 == 0 {
+			subnet := netip.PrefixFrom(netip.AddrFrom4([4]byte{10, byte((i / 20) % 256), 0, 0}), 24) //nolint:gosec
+			nd.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet}}
+			nd.ApprovedRoutes = []netip.Prefix{subnet}
+		}
+
+		nodes = append(nodes, &nd)
+	}
+
+	return users, nodes
+}
+
+// BenchmarkNodeStoreWrite drives one UpdateNode of the named kind
+// followed by syncPolicy against a started NodeStore wired to a real
+// PolicyManager, over a realistic node count. peer-builds/op counts
+// calls into the wrapped peersFunc, the baseline later NodeStore
+// write-path changes are compared against: a payload-only write
+// (lastseen) should cost far fewer builds than a relation-changing one
+// (route, tag).
+func BenchmarkNodeStoreWrite(b *testing.B) {
+	users, nodes := benchNodes(617)
+
+	for _, kind := range []struct {
+		name   string
+		mutate func(i int, n *types.Node)
+	}{
+		{name: "lastseen", mutate: func(_ int, n *types.Node) {
+			n.LastSeen = new(time.Now())
+		}},
+		{name: "route", mutate: func(i int, n *types.Node) {
+			subnet := netip.PrefixFrom(netip.AddrFrom4([4]byte{10, byte(200 + i%50), 0, 0}), 24) //nolint:gosec
+			n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet}}
+			n.ApprovedRoutes = []netip.Prefix{subnet}
+		}},
+		{name: "tag", mutate: func(i int, n *types.Node) {
+			tag := "tag:srv"
+			if i%2 == 0 {
+				tag = "tag:web"
+			}
+
+			n.Tags = []string{tag}
+			n.UserID, n.User = nil, nil
+		}},
+	} {
+		b.Run(fmt.Sprintf("%s/n=%d", kind.name, len(nodes)), func(b *testing.B) {
+			var calls atomic.Int64
+
+			pm, err := policyv2.NewPolicyManager([]byte(policyGlobal), users, nodes.ViewSlice())
+			require.NoError(b, err)
+
+			peersFunc := func(ns []types.NodeView) map[types.NodeID][]types.NodeID {
+				calls.Add(1)
+
+				return pm.BuildPeerMap(views.SliceOf(ns))
+			}
+
+			store := NewNodeStore(nodes, peersFunc, TestBatchSize, TestBatchTimeout)
+
+			store.Start()
+			defer store.Stop()
+
+			targetID := nodes[0].ID
+
+			// NewNodeStore's own initial build is setup, not a per-write cost.
+			calls.Store(0)
+
+			b.ReportAllocs()
+
+			i := 0
+			for b.Loop() {
+				i++
+
+				store.UpdateNode(targetID, func(n *types.Node) { kind.mutate(i, n) })
+				syncPolicy(b, store, pm)
+			}
+
+			b.ReportMetric(float64(calls.Load())/float64(b.N), "peer-builds/op")
 		})
 	}
 }

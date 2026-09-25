@@ -1,6 +1,7 @@
 package state
 
 import (
+	"fmt"
 	"net/netip"
 	"strings"
 	"sync"
@@ -8,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/stretchr/testify/assert"
@@ -1007,4 +1009,91 @@ func TestBuildMapRequestChangeResponse(t *testing.T) {
 			require.Equal(t, tt.wantDERP, patch.DERPRegion, "DERP on patch")
 		})
 	}
+}
+
+// benchMapRequestSetup pre-creates a sqlite database with n registered
+// nodes spread across 10 users (~10% tagged tag:srv, ~5% carrying an
+// approved and announced 10.x.0.0/24 route), then constructs a State
+// that loads them, at benchmark scale the same way persistTestSetup
+// does for a single node. Returns the State and the ID of node 0, a
+// plain node with neither tag nor route, to drive requests against.
+func benchMapRequestSetup(b *testing.B, n int) (*State, types.NodeID) {
+	b.Helper()
+
+	dbPath := b.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+
+	database, err := db.NewHeadscaleDatabase(cfg)
+	require.NoError(b, err)
+
+	users := make([]*types.User, 10)
+	for i := range users {
+		users[i] = database.CreateUserForTest(fmt.Sprintf("u%d", i+1))
+	}
+
+	var targetID types.NodeID
+
+	for i := range n {
+		node := database.CreateRegisteredNodeForTest(users[i%len(users)], fmt.Sprintf("n%d", i))
+
+		if i == 0 {
+			targetID = node.ID
+		}
+
+		switch {
+		case i%10 == 0:
+			node.Tags = []string{"tag:srv"}
+			require.NoError(b, database.DB.Save(node).Error)
+		case i%20 == 0:
+			subnet := netip.PrefixFrom(netip.AddrFrom4([4]byte{10, byte((i / 20) % 256), 0, 0}), 24) //nolint:gosec
+			node.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet}}
+			node.ApprovedRoutes = []netip.Prefix{subnet}
+			require.NoError(b, database.DB.Save(node).Error)
+		}
+	}
+
+	require.NoError(b, database.Close())
+
+	s, err := NewState(cfg)
+	require.NoError(b, err)
+	b.Cleanup(func() { _ = s.Close() })
+
+	return s, targetID
+}
+
+// BenchmarkUpdateNodeFromMapRequest measures the no-op path
+// TestNoOpMapRequestSkipsPersist and TestNoOpMapRequestEmitsNoPeerChange
+// pin the behaviour of: a MapRequest that is value-identical to the
+// node's current state, against a realistic node count. The baseline
+// later NodeStore write-path changes are compared against.
+func BenchmarkUpdateNodeFromMapRequest(b *testing.B) {
+	b.Run("identical/n=617", func(b *testing.B) {
+		s, nodeID := benchMapRequestSetup(b, 617)
+
+		nv, ok := s.GetNodeByID(nodeID)
+		require.True(b, ok, "target node should exist in NodeStore")
+
+		req := tailcfg.MapRequest{
+			NodeKey:  nv.NodeKey(),
+			DiscoKey: nv.DiscoKey(),
+			Hostinfo: &tailcfg.Hostinfo{
+				Hostname: nv.Hostname(),
+				NetInfo:  &tailcfg.NetInfo{PreferredDERP: 1},
+			},
+		}
+
+		// Establish the Hostinfo/DERP state once so every request timed
+		// below is a genuine no-op.
+		_, err := s.UpdateNodeFromMapRequest(nodeID, req)
+		require.NoError(b, err)
+
+		b.ReportAllocs()
+
+		for b.Loop() {
+			_, err := s.UpdateNodeFromMapRequest(nodeID, req)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
 }
