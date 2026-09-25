@@ -1252,3 +1252,89 @@ func TestMapRequestWithdrawingRoutesClearsUnhealthy(t *testing.T) {
 	assert.Empty(t, nv.AllApprovedRoutes())
 	assert.False(t, nv.Unhealthy(), "a node with no approved routes is no HA candidate")
 }
+
+// TestSetApprovedRoutesReportsVisibility pins which change an admin route
+// approval reports: a whole-peer update when nothing peers or the policy
+// read moved, a policy change otherwise.
+func TestSetApprovedRoutesReportsVisibility(t *testing.T) {
+	subnetA := netip.MustParsePrefix("10.55.1.0/24")
+	subnetB := netip.MustParsePrefix("10.55.2.0/24")
+	exit := []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0")}
+
+	tests := []struct {
+		name    string
+		prepare func(nodes []*types.Node)
+		approve []netip.Prefix
+		// wantType is the returned change's [change.Change.Type].
+		wantType string
+		// wantNewPeer is the index of a node that must become a peer.
+		wantNewPeer int
+	}{
+		{
+			name: "unannounced route moves nothing peers see",
+			prepare: func(nodes []*types.Node) {
+				nodes[0].Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnetA}}
+				nodes[0].ApprovedRoutes = []netip.Prefix{subnetA}
+			},
+			approve:     []netip.Prefix{subnetA, netip.MustParsePrefix("10.99.0.0/24")},
+			wantType:    "peers",
+			wantNewPeer: -1,
+		},
+		{
+			// No primary moves and no peer is gained, but the node's
+			// approved subnets are a policy input (wildcard sources, via
+			// grants and its own reduced filter read them), so the
+			// policy manager reports it.
+			name: "second subnet as HA standby is a policy input",
+			prepare: func(nodes []*types.Node) {
+				nodes[1].Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnetB}}
+				nodes[1].ApprovedRoutes = []netip.Prefix{subnetB}
+				nodes[0].Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnetA, subnetB}}
+				nodes[0].ApprovedRoutes = []netip.Prefix{subnetA}
+			},
+			approve:     []netip.Prefix{subnetA, subnetB},
+			wantType:    "policy",
+			wantNewPeer: -1,
+		},
+		{
+			name: "first exit approval makes the node visible to a new peer",
+			prepare: func(nodes []*types.Node) {
+				nodes[0].Hostinfo = &tailcfg.Hostinfo{RoutableIPs: exit}
+			},
+			approve:     exit,
+			wantType:    "policy",
+			wantNewPeer: 3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s, ids, _ := newAutoApproveTestState(t, tt.prepare)
+
+			primariesBefore := s.nodeStore.PrimaryRoutes()
+			peersBefore := s.nodeStore.ListPeerIDs(ids[0])
+
+			_, c, err := s.SetApprovedRoutes(ids[0], tt.approve)
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.wantType, c.Type())
+
+			if c.Type() == "peers" {
+				assert.Equal(t, ids[0], c.OriginNode)
+				assert.Contains(t, c.PeersChanged, ids[0])
+			}
+
+			peersAfter := s.nodeStore.ListPeerIDs(ids[0])
+
+			if tt.wantNewPeer < 0 {
+				assert.Equal(t, peersBefore, peersAfter, "scenario must keep the node's peers")
+				assert.Equal(t, primariesBefore, s.nodeStore.PrimaryRoutes(), "scenario must keep every primary")
+			} else {
+				assert.NotContains(t, peersBefore, ids[tt.wantNewPeer])
+				assert.Contains(t, peersAfter, ids[tt.wantNewPeer])
+			}
+
+			checkAutoApproveAdjacency(t, s)
+		})
+	}
+}

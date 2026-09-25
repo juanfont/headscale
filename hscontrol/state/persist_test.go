@@ -809,7 +809,7 @@ func TestPersistCallerChangeDecisions(t *testing.T) {
 			wantPeersChanged: true,
 		},
 		{
-			name: "SetApprovedRoutes keeps reporting a policy change (Task 6 narrows this)",
+			name: "SetApprovedRoutes of an unannounced route resends only the node",
 			run: func(t *testing.T, s *State, nodeID types.NodeID) change.Change {
 				t.Helper()
 
@@ -818,9 +818,9 @@ func TestPersistCallerChangeDecisions(t *testing.T) {
 
 				return c
 			},
-			wantType:         "policy",
-			wantOriginNode:   false,
-			wantPeersChanged: false,
+			wantType:         "peers",
+			wantOriginNode:   true,
+			wantPeersChanged: true,
 		},
 		{
 			name: "SaveNode reports no change for a payload-only save (no production caller relies on a fallback)",

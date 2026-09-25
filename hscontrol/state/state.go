@@ -1045,11 +1045,14 @@ func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView,
 }
 
 // SetApprovedRoutes sets the network routes that a node is approved to advertise.
+// It returns a PolicyChange when a primary moved, the policy manager saw a
+// policy input change, or the node's peers changed; otherwise NodeAdded.
 func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (types.NodeView, change.Change, error) {
 	// TODO(kradalby): In principle we should call the AutoApprove logic here
 	// because even if the CLI removes an auto-approved route, it will be added
 	// back automatically.
 	prevRoutes := s.nodeStore.PrimaryRoutes()
+	prevPeers := s.nodeStore.ListPeerIDs(nodeID)
 	genBefore := s.polMan.NodesGeneration()
 
 	n, ok := s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
@@ -1072,11 +1075,17 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (t
 		return types.NodeView{}, change.Change{}, err
 	}
 
-	// PolicyChange fans out a fresh netmap whenever the new approved
-	// set shifted a primary advertiser.
+	// The reads around the write can also see concurrent writers; that
+	// only turns a whole-peer update into a policy change, never back.
 	routeChange := !maps.Equal(prevRoutes, s.nodeStore.PrimaryRoutes())
-	if routeChange || !c.IsFull() {
+	peersChanged := !slices.Equal(prevPeers, s.nodeStore.ListPeerIDs(nodeID))
+
+	if routeChange || peersChanged || !c.IsEmpty() {
 		c = change.PolicyChange()
+	} else {
+		// No visibility or effective route moved; resend the node so
+		// peers hold its current state.
+		c = change.NodeAdded(nodeID)
 	}
 
 	return nodeView, c, nil
