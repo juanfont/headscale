@@ -446,16 +446,38 @@ func (a *AndroidInContainer) TapAnyOf(labels ...string) (string, error) {
 		return "", err
 	}
 
+	label, n, ok := firstOf(root, labels)
+	if !ok {
+		return "", nil
+	}
+
+	return label, a.tapNode(n)
+}
+
+// FirstVisible returns the first of labels, in order, that is on screen
+// and enabled; "" if none is.
+func (a *AndroidInContainer) FirstVisible(labels ...string) (string, error) {
+	root, err := a.dumpTree()
+	if err != nil {
+		return "", err
+	}
+
+	label, _, _ := firstOf(root, labels)
+
+	return label, nil
+}
+
+func firstOf(root uiNode, labels []string) (string, uiNode, bool) {
 	for _, label := range labels {
 		n, ok := root.find(func(n uiNode) bool {
 			return (n.Text == label || n.Desc == label) && n.Enabled != "false"
 		})
 		if ok {
-			return label, a.tapNode(n)
+			return label, n, true
 		}
 	}
 
-	return "", nil
+	return "", uiNode{}, false
 }
 
 // Debuggable reports whether the installed app is a debug build, which

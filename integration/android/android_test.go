@@ -11,7 +11,6 @@ import (
 	"net/netip"
 	"os"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -169,7 +168,7 @@ func (e *env) openAccountMenu(t *testing.T) {
 	t.Helper()
 
 	e.tapPast(t, "Open settings", "Accounts")
-	require.NoError(t, e.android.Tap("Accounts"))
+	e.tapPast(t, "Accounts", "menu")
 	require.NoError(t, e.android.Tap("menu"))
 }
 
@@ -180,29 +179,34 @@ func (e *env) dismissIntro(t *testing.T, next string) {
 	e.tapPast(t, "Get Started", next)
 }
 
-// tapPast taps label until one of next is on screen, dismissing the intro
-// whenever it shows. The intro can appear over the main screen after its
-// first frame, and taps during its entry animation can be dropped.
+// tapPast taps label until one of next is on screen. Each step reads one
+// screen: next wins, then the system's not-responding dialog ("Wait") and
+// the intro ("Get Started") are answered, then label is tapped. The intro
+// can appear over the main screen after its first frame, taps during its
+// entry animation can be dropped, and overloaded emulators can drop the
+// app to the launcher.
 func (e *env) tapPast(t *testing.T, label string, next ...string) {
 	t.Helper()
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		// "Wait" answers the system's not-responding dialog, which slow
-		// emulators show over whatever is on screen.
-		got, err := e.android.WaitForAny(append([]string{"Get Started", "Wait", label}, next...)...)
-		if !assert.NoError(c, err) {
-			// Overloaded emulators can drop the app to the launcher.
-			_ = e.android.Launch()
-
+		on, err := e.android.FirstVisible(next...)
+		if !assert.NoError(c, err) || on != "" {
 			return
 		}
 
-		if !slices.Contains(next, got) {
-			assert.NoError(c, e.android.Tap(got))
+		tapped, err := e.android.TapAnyOf("Wait", "Get Started", label)
+		if !assert.NoError(c, err) {
+			return
 		}
 
-		assert.Contains(c, next, got)
-	}, 2*time.Minute, time.Second, "never got past %q to %v", label, next)
+		if tapped == "" {
+			if front, _ := e.android.InForeground(androidic.Package); !front {
+				_ = e.android.Launch()
+			}
+		}
+
+		assert.Fail(c, "still before "+strings.Join(next, "|"), "tapped %q", tapped)
+	}, 2*time.Minute, 2*time.Second, "never got past %q to %v", label, next)
 }
 
 // leaveBrowser closes the login Custom Tab as a user would, until the app
