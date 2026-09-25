@@ -9,6 +9,7 @@ package servertest_test
 
 import (
 	"context"
+	"fmt"
 	"net/netip"
 	"path/filepath"
 	"slices"
@@ -224,6 +225,8 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 			})
 	}
 
+	saasAddrs := saasAddrsByNode(c, clients)
+
 	// Compare each viewer's [tailcfg.MapResponse] against the golden [netmap.NetworkMap].
 	for viewerName, cl := range clients {
 		capture := c.Captures[viewerName]
@@ -235,7 +238,7 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 			nm := cl.Netmap()
 			require.NotNil(t, nm, "netmap is nil")
 
-			compareNetmap(t, nm, capture, clients)
+			compareNetmap(t, nm, capture, clients, saasAddrs)
 		})
 	}
 }
@@ -246,12 +249,13 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 //   - Route prefixes in AllowedIPs (non-Tailscale-IP entries like 10.44.0.0/16)
 //   - Number of Tailscale IPs per peer (should be 2: one v4 + one v6)
 //   - PrimaryRoutes per peer
-//   - PacketFilter rule count and non-Tailscale dst prefixes
+//   - PacketFilter (source, destination, ports) triples
 func compareNetmap(
 	t *testing.T,
 	got *netmap.NetworkMap,
 	want testcapture.Node,
 	clients map[string]*servertest.TestClient,
+	saasAddrs map[netip.Addr]string,
 ) {
 	t.Helper()
 
@@ -383,106 +387,92 @@ func compareNetmap(
 		}
 	}
 
-	// Compare PacketFilter rules (IP-independent).
-	wantFilterRules := want.PacketFilterRules
-
-	if !assert.Lenf(t, got.PacketFilter, len(wantFilterRules),
-		"PacketFilter rule count mismatch") {
-		return
-	}
-
-	// Resolve SaaS IPs → peer name and HS IPs → peer name so we can
-	// compare rule sources structurally. Tailscale IPs in SaaS vs HS
-	// allocations never match literally, but each IP belongs to a
-	// peer with a stable hostname.
-	saasAddrs := saasAddrsByPeer(want, clients)
+	// Compare PacketFilter rules as a set of (source, destination,
+	// ports) triples. Headscale merges rules that share sources while
+	// SaaS keeps one rule per policy entry, so rule count and order
+	// differ without changing what the filter allows. Tailscale IPs
+	// differ between SaaS and headscale allocation, so both sides are
+	// re-keyed by peer identity.
 	hsAddrs := hsAddrsByPeer(clients)
 
-	// Compare destination prefixes per rule — subnet CIDRs like
-	// 10.44.0.0/16 are stable between Tailscale SaaS and headscale.
-	// Source IPs are re-keyed per peer identity before comparison.
-	for i := range wantFilterRules {
-		wantRule := wantFilterRules[i]
-		gotMatch := got.PacketFilter[i]
+	wantTriples := map[string]struct{}{}
 
-		wantSrcIdents := canonicaliseSrcStrings(t, wantRule.SrcIPs, saasAddrs, i)
-		gotSrcIdents := canonicaliseSrcPrefixes(t, gotMatch.Srcs, hsAddrs, i)
+	for i, rule := range want.PacketFilterRules {
+		srcs := strings.Join(canonicaliseSrcStrings(t, rule.SrcIPs, saasAddrs, i), ",")
 
-		assert.Equalf(t, wantSrcIdents, gotSrcIdents,
-			"PacketFilter[%d]: source peer identities mismatch", i)
-
-		// Destination prefixes: extract non-Tailscale-IP CIDRs
-		// from both golden and headscale rules and compare.
-		var wantDstPrefixes []string
-
-		for _, dp := range wantRule.DstPorts {
+		for _, dp := range rule.DstPorts {
 			pfxs, err := parseDstPrefixes(dp.IP)
 			require.NoErrorf(t, err,
 				"golden DstPorts[%d].IP %q should parse as prefix, addr or range", i, dp.IP)
 
 			for _, pfx := range pfxs {
-				if !isTailscaleIP(pfx) {
-					wantDstPrefixes = append(wantDstPrefixes, pfx.String())
+				for _, dst := range peerIdents(t, pfx, saasAddrs, i) {
+					wantTriples[filterTriple(srcs, dst, dp.Ports.First, dp.Ports.Last)] = struct{}{}
 				}
 			}
 		}
+	}
 
-		var gotDstPrefixes []string
+	gotTriples := map[string]struct{}{}
 
-		for _, dst := range gotMatch.Dsts {
-			pfx := dst.Net
-			if !isTailscaleIP(pfx) {
-				gotDstPrefixes = append(gotDstPrefixes, pfx.String())
+	for i, match := range got.PacketFilter {
+		srcs := strings.Join(canonicaliseSrcPrefixes(t, match.Srcs, hsAddrs, i), ",")
+
+		for _, dp := range match.Dsts {
+			for _, dst := range peerIdents(t, dp.Net, hsAddrs, i) {
+				gotTriples[filterTriple(srcs, dst, dp.Ports.First, dp.Ports.Last)] = struct{}{}
 			}
 		}
-
-		slices.Sort(wantDstPrefixes)
-		slices.Sort(gotDstPrefixes)
-
-		assert.Equalf(t, wantDstPrefixes, gotDstPrefixes,
-			"PacketFilter[%d]: non-Tailscale destination prefixes mismatch", i)
 	}
+
+	assert.ElementsMatchf(t, sortedKeys(wantTriples), sortedKeys(gotTriples),
+		"PacketFilter (source, destination, ports) mismatch")
 }
 
-// saasAddrsByPeer builds a map from SaaS Tailscale address to peer
-// hostname using each capture's [tailcfg.NodeView.Addresses]. Peers not in
-// clients are skipped.
-func saasAddrsByPeer(
-	want testcapture.Node,
+func filterTriple(srcs, dst string, first, last uint16) string {
+	return fmt.Sprintf("%s => %s:%d-%d", srcs, dst, first, last)
+}
+
+// peerIdents resolves a prefix into sorted canonical identity tokens,
+// see [addIdentsForSrc].
+func peerIdents(
+	t *testing.T,
+	pfx netip.Prefix,
+	addrToPeer map[netip.Addr]string,
+	ruleIndex int,
+) []string {
+	t.Helper()
+
+	seen := map[string]struct{}{}
+	addIdentsForSrc(t, pfx, addrToPeer, ruleIndex, seen)
+
+	return sortedKeys(seen)
+}
+
+// saasAddrsByNode maps each SaaS Tailscale address to its node's
+// hostname using every captured node's own addresses. A rule may name
+// sources that are not the viewer's peers, so peer lists are not
+// enough. Nodes not in clients are skipped.
+func saasAddrsByNode(
+	c *testcapture.Capture,
 	clients map[string]*servertest.TestClient,
 ) map[netip.Addr]string {
 	out := map[netip.Addr]string{}
 
-	if want.Netmap == nil {
-		return out
-	}
-
-	// Walk peers listed in this [netmap.NetworkMap].
-	for _, peer := range want.Netmap.Peers {
-		name := extractHostname(peer.Name())
+	for name, node := range c.Captures {
 		if _, isOurs := clients[name]; !isOurs {
 			continue
 		}
 
-		for i := range peer.Addresses().Len() {
-			pfx := peer.Addresses().At(i)
+		if node.Netmap == nil || !node.Netmap.SelfNode.Valid() {
+			continue
+		}
+
+		addrs := node.Netmap.SelfNode.Addresses()
+		for i := range addrs.Len() {
+			pfx := addrs.At(i)
 			if isTailscaleIP(pfx) {
 				out[pfx.Addr()] = name
-			}
-		}
-	}
-
-	// The viewer's own [tailcfg.NodeView] addresses also appear as possible src.
-	if want.Netmap.SelfNode.Valid() {
-		name := extractHostname(want.Netmap.SelfNode.Name())
-
-		if _, isOurs := clients[name]; isOurs {
-			addrs := want.Netmap.SelfNode.Addresses()
-			for i := range addrs.Len() {
-				pfx := addrs.At(i)
-				if isTailscaleIP(pfx) {
-					out[pfx.Addr()] = name
-				}
 			}
 		}
 	}
