@@ -973,6 +973,12 @@ func (s *NodeStore) ListPeers(id types.NodeID) views.Slice[types.NodeView] {
 	return views.SliceOf(peers)
 }
 
+// ListPeerIDs returns the sorted IDs of id's peers as a copy the caller
+// may keep across later writes.
+func (s *NodeStore) ListPeerIDs(id types.NodeID) []types.NodeID {
+	return slices.Sorted(slices.Values(s.data.Load().peersByNode[id]))
+}
+
 // PrimaryRouteFor returns the current primary advertiser for prefix.
 func (s *NodeStore) PrimaryRouteFor(prefix netip.Prefix) (types.NodeID, bool) {
 	id, ok := s.data.Load().routes[prefix]
