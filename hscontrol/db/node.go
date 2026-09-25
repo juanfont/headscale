@@ -383,8 +383,9 @@ type EphemeralGarbageCollector struct {
 	// was superseded by a Cancel or reschedule can be recognised and dropped.
 	gen uint64
 
-	deleteCh chan pendingDeletion
-	cancelCh chan struct{}
+	deleteCh  chan pendingDeletion
+	cancelCh  chan struct{}
+	closeOnce sync.Once
 }
 
 // ephemeralTimer pairs a node's pending-deletion timer with a done channel
@@ -418,16 +419,18 @@ func NewEphemeralGarbageCollector(deleteFunc func(types.NodeID)) *EphemeralGarba
 
 // Close stops the garbage collector.
 func (e *EphemeralGarbageCollector) Close() {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	e.closeOnce.Do(func() {
+		e.mu.Lock()
+		defer e.mu.Unlock()
 
-	// Stop all timers
-	for _, t := range e.toBeDeleted {
-		t.timer.Stop()
-	}
+		// Stop all timers
+		for _, t := range e.toBeDeleted {
+			t.timer.Stop()
+		}
 
-	// Close the cancel channel to signal all goroutines to exit
-	close(e.cancelCh)
+		// Close the cancel channel to signal all goroutines to exit
+		close(e.cancelCh)
+	})
 }
 
 // Schedule schedules a node for deletion after the expiry duration.
