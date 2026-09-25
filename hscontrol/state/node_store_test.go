@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"reflect"
 	"runtime"
 	"slices"
 	"sync"
@@ -1822,6 +1823,99 @@ func TestNodeStoreAdjacencyMatchesFullBuild(t *testing.T) {
 					checkAdjacencyMatchesFullBuild(rt, store, pm)
 				}
 			})
+		})
+	}
+}
+
+// nodeFieldImpact classifies what NodeStore work a change to each
+// exported types.Node field requires:
+//   - "relation": policy (hscontrol/policy/v2) or BuildPeerMap reads it,
+//     so a write must recompute peer adjacency.
+//   - "election": affects route election (online/health) but not who
+//     sees whom.
+//   - "payload": neither; a write can reuse the previous peer adjacency.
+//
+// A field missing here fails TestUpdateChangesCoversEveryNodeField:
+// classify it, and if it is a relation input, teach HasPolicyChange or
+// HasNetworkChanges about it before updateChanges can let NodeStore
+// reuse peer adjacency across the write.
+var nodeFieldImpact = map[string]string{
+	"ID": "relation", "IPv4": "relation", "IPv6": "relation",
+	"UserID": "relation", "User": "relation", "Tags": "relation",
+	"ApprovedRoutes": "relation", "Hostinfo": "relation",
+	"IsOnline": "election", "Unhealthy": "election",
+	"MachineKey": "payload", "NodeKey": "payload", "DiscoKey": "payload",
+	"Endpoints": "payload", "Hostname": "payload", "GivenName": "payload",
+	"RegisterMethod": "payload", "AuthKeyID": "payload", "AuthKey": "payload",
+	"Expiry": "payload", "LastSeen": "payload", "CreatedAt": "payload",
+	"UpdatedAt": "payload", "DeletedAt": "payload",
+	"ActiveSessions": "payload", "SessionEpoch": "payload",
+}
+
+// TestUpdateChangesCoversEveryNodeField guards against a new types.Node
+// field going unclassified in nodeFieldImpact. An unclassified field
+// means nobody has decided whether updateChanges needs to know about
+// it, which is exactly how a relation input goes silently unrebuilt.
+func TestUpdateChangesCoversEveryNodeField(t *testing.T) {
+	typ := reflect.TypeFor[types.Node]()
+	for f := range typ.Fields() {
+		if !f.IsExported() {
+			continue
+		}
+
+		if _, ok := nodeFieldImpact[f.Name]; !ok {
+			t.Errorf("types.Node.%s is not classified in nodeFieldImpact", f.Name)
+		}
+	}
+}
+
+// TestUpdateChangesReportsRelationFields pins what updateChanges reports
+// for a mutation to each relation/election field in nodeFieldImpact,
+// against a real pre/post pair rather than the classification map alone.
+func TestUpdateChangesReportsRelationFields(t *testing.T) {
+	pfx := netip.MustParsePrefix("10.44.0.0/24")
+	ip := netip.MustParseAddr("100.64.9.9")
+
+	tests := []struct {
+		name         string
+		mutate       func(*types.Node)
+		wantRelation bool
+		wantElection bool
+	}{
+		{name: "ipv4", mutate: func(n *types.Node) { n.IPv4 = &ip }, wantRelation: true, wantElection: true},
+		{name: "tags", mutate: func(n *types.Node) { n.Tags = []string{"tag:x"}; n.UserID, n.User = nil, nil }, wantRelation: true, wantElection: true},
+		{name: "user", mutate: func(n *types.Node) { n.UserID = new(uint(99)) }, wantRelation: true, wantElection: true},
+		{name: "approved route", mutate: func(n *types.Node) {
+			n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{pfx}}
+			n.ApprovedRoutes = []netip.Prefix{pfx}
+		}, wantRelation: true, wantElection: true},
+		{
+			// Announcing a route the policy has not approved does not
+			// change who can access it (SubnetRoutes/ExitRoutes, which
+			// gate HasPolicyChange, stay empty), but HasNetworkChanges
+			// tracks the raw announcement so a later approval sees a
+			// fresh Hostinfo rather than one NodeStore decided to reuse.
+			name: "announced but not approved route",
+			mutate: func(n *types.Node) {
+				n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{pfx}}
+			},
+			wantRelation: true, wantElection: true,
+		},
+		{name: "online", mutate: func(n *types.Node) { n.IsOnline = new(true) }, wantElection: true},
+		{name: "unhealthy", mutate: func(n *types.Node) { n.Unhealthy = true }, wantElection: true},
+		{name: "endpoint", mutate: func(n *types.Node) { n.Endpoints = []netip.AddrPort{netip.MustParseAddrPort("192.0.2.1:1")} }},
+		{name: "lastseen", mutate: func(n *types.Node) { n.LastSeen = new(time.Now()) }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pre := createTestNode(1, 1, "u", "n")
+			post := *pre.Clone()
+			tt.mutate(&post)
+
+			relation, election := updateChanges(&pre, &post)
+			require.Equal(t, tt.wantRelation, relation, "relation")
+			require.Equal(t, tt.wantElection, election, "election")
 		})
 	}
 }
