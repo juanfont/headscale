@@ -719,6 +719,12 @@ func TestAndroidSubnetRoute(t *testing.T) {
 	require.NoError(t, err)
 	e.approveRoutes(t, "10.99.0.0/24")
 
+	// The app rebuilds its VPN interface for the new route; the router's
+	// own tailnet address tells a broken tunnel from broken forwarding.
+	peerIP, err := e.peer.IPv4()
+	require.NoError(t, err)
+	e.assertFetch(t, "http://"+peerIP.String()+"/", "tunnel broken after the route was added")
+
 	e.assertFetch(t, url, "cannot reach %s through the subnet router", routedTarget)
 }
 
