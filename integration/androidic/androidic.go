@@ -65,6 +65,7 @@ var (
 	errHelperFailed   = errors.New("androidic: helper app failed")
 	errFileNotFound   = errors.New("androidic: file not found")
 	errNoNetworkRoute = errors.New("androidic: device has no default route")
+	errTextMismatch   = errors.New("androidic: text field does not hold the typed text")
 
 	resultDataRe = regexp.MustCompile(`(?m)data="(.*)"\s*$`)
 )
@@ -697,6 +698,7 @@ type uiNode struct {
 	Class   string   `xml:"class,attr"`
 	Pkg     string   `xml:"package,attr"`
 	Enabled string   `xml:"enabled,attr"`
+	Focused string   `xml:"focused,attr"`
 	Bounds  string   `xml:"bounds,attr"`
 	Nodes   []uiNode `xml:"node"`
 }
@@ -849,22 +851,48 @@ func (a *AndroidInContainer) Tap(label string) error {
 	return a.tapNode(n)
 }
 
-// EnterText taps the first editable text field and types s into it.
+// EnterText types s into the first editable text field. Keystrokes sent
+// before the field has focus are lost, so it waits for focus, reads the
+// field back and retypes until it holds exactly s.
 func (a *AndroidInContainer) EnterText(s string) error {
-	n, err := a.waitFor("EditText", func(n uiNode) bool { return n.Class == "android.widget.EditText" })
-	if err != nil {
-		return err
-	}
+	isField := func(n uiNode) bool { return n.Class == "android.widget.EditText" }
 
-	err = a.tapNode(n)
-	if err != nil {
-		return err
-	}
+	_, err := poll(uiPollTimeout, func() (struct{}, error) {
+		n, err := a.waitFor("EditText", isField)
+		if err != nil {
+			return struct{}{}, backoff.Permanent(err)
+		}
 
-	// `input text` treats spaces as argument separators.
-	_, err = a.Shell("input", "text", strings.ReplaceAll(s, " ", "%s"))
+		if n.Text == s {
+			return struct{}{}, nil
+		}
+
+		if n.Focused != "true" {
+			_ = a.tapNode(n)
+
+			return struct{}{}, errTextMismatch
+		}
+
+		// Clear what landed (or the placeholder) before typing again.
+		if n.Text != "" {
+			del := []string{"input", "keyevent", "KEYCODE_MOVE_END"}
+			for range n.Text {
+				del = append(del, "KEYCODE_DEL")
+			}
+
+			_, _ = a.Shell(del...)
+		}
+
+		// `input text` treats spaces as argument separators.
+		_, err = a.Shell("input", "text", strings.ReplaceAll(s, " ", "%s"))
+		if err != nil {
+			return struct{}{}, err
+		}
+
+		return struct{}{}, errTextMismatch
+	})
 	if err != nil {
-		return err
+		return fmt.Errorf("entering text: %w", err)
 	}
 
 	// The soft keyboard can cover the form's buttons, and taps go by
