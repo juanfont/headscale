@@ -143,6 +143,11 @@ func setup(t *testing.T, apk string, ca caStore, extra ...hsic.Option) *env {
 		controlURL: headscale.GetIPEndpoint(),
 	}
 
+	// The TLS certificate only names the hostname.
+	if ca != noTLS {
+		require.NoError(t, android.AddHost(headscale.GetHostname(), headscale.GetIPInNetwork(scenario.Networks()[0])))
+	}
+
 	switch ca {
 	case noTLS:
 	case userCA:

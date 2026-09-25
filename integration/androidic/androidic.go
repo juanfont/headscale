@@ -437,9 +437,9 @@ func (a *AndroidInContainer) FindFile(name string) (string, error) {
 	return out, nil
 }
 
-// TapAnyOf taps the first of labels, in order, that is on screen, and
-// reports which; "" if none is. One dump serves all labels, so the
-// choice reflects a single screen.
+// TapAnyOf taps the first of labels, in order, that is on screen and
+// enabled, and reports which; "" if none is. One dump serves all labels,
+// so the choice reflects a single screen.
 func (a *AndroidInContainer) TapAnyOf(labels ...string) (string, error) {
 	root, err := a.dumpTree()
 	if err != nil {
@@ -447,7 +447,9 @@ func (a *AndroidInContainer) TapAnyOf(labels ...string) (string, error) {
 	}
 
 	for _, label := range labels {
-		n, ok := root.find(func(n uiNode) bool { return n.Text == label || n.Desc == label })
+		n, ok := root.find(func(n uiNode) bool {
+			return (n.Text == label || n.Desc == label) && n.Enabled != "false"
+		})
 		if ok {
 			return label, a.tapNode(n)
 		}
@@ -536,6 +538,33 @@ func (a *AndroidInContainer) InstallSystemCA(caPEM []byte) error {
 			"%[4]s && for p in $(pidof zygote zygote64); do "+
 			"nsenter --mount=/proc/$p/ns/mnt -- /system/bin/sh -c '%[4]s' || exit 1; done",
 		staged, dir, name, overlay,
+	))
+
+	return err
+}
+
+// AddHost maps name to ip in the device's /etc/hosts, standing in for DNS:
+// the emulator only reaches Docker's resolver through its NAT, which is
+// flaky. Like [AndroidInContainer.InstallSystemCA] it overlays the file in
+// zygote's namespace too, so apps started afterwards see it.
+func (a *AndroidInContainer) AddHost(name, ip string) error {
+	const (
+		hosts  = "/system/etc/hosts"
+		staged = "/data/local/tmp/hosts"
+	)
+
+	err := a.root()
+	if err != nil {
+		return err
+	}
+
+	overlay := fmt.Sprintf("mount --bind %s %s", staged, hosts)
+
+	_, err = a.Shell(fmt.Sprintf(
+		"cat %[1]s > %[2]s && echo '%[3]s %[4]s' >> %[2]s && chmod 644 %[2]s && "+
+			"chcon u:object_r:system_file:s0 %[2]s && %[5]s && for p in $(pidof zygote zygote64); do "+
+			"nsenter --mount=/proc/$p/ns/mnt -- /system/bin/sh -c '%[5]s' || exit 1; done",
+		hosts, staged, ip, name, overlay,
 	))
 
 	return err
@@ -641,12 +670,13 @@ func (a *AndroidInContainer) Version() (string, error) {
 
 // uiNode is a node in a uiautomator hierarchy dump.
 type uiNode struct {
-	Text   string   `xml:"text,attr"`
-	Desc   string   `xml:"content-desc,attr"`
-	Class  string   `xml:"class,attr"`
-	Pkg    string   `xml:"package,attr"`
-	Bounds string   `xml:"bounds,attr"`
-	Nodes  []uiNode `xml:"node"`
+	Text    string   `xml:"text,attr"`
+	Desc    string   `xml:"content-desc,attr"`
+	Class   string   `xml:"class,attr"`
+	Pkg     string   `xml:"package,attr"`
+	Enabled string   `xml:"enabled,attr"`
+	Bounds  string   `xml:"bounds,attr"`
+	Nodes   []uiNode `xml:"node"`
 }
 
 func (n uiNode) walk(fn func(uiNode) bool) bool {
