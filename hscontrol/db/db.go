@@ -1093,16 +1093,23 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 				Logger:      dbLogger,
 			},
 		)
+		if err != nil {
+			return nil, err
+		}
 
 		// The pure Go SQLite library does not handle locking in
 		// the same way as the C based one and we can't use the gorm
 		// connection pool as of 2022/02/23.
-		sqlDB, _ := db.DB()
+		sqlDB, err := db.DB()
+		if err != nil {
+			return nil, err
+		}
+
 		sqlDB.SetMaxIdleConns(1)
 		sqlDB.SetMaxOpenConns(1)
 		sqlDB.SetConnMaxIdleTime(time.Hour)
 
-		return db, err
+		return db, nil
 
 	case types.DatabasePostgres:
 		dbString := fmt.Sprintf(
@@ -1140,7 +1147,11 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 			return nil, err
 		}
 
-		sqlDB, _ := db.DB()
+		sqlDB, err := db.DB()
+		if err != nil {
+			return nil, err
+		}
+
 		sqlDB.SetMaxIdleConns(cfg.Postgres.MaxIdleConnections)
 		sqlDB.SetMaxOpenConns(cfg.Postgres.MaxOpenConnections)
 		sqlDB.SetConnMaxIdleTime(
