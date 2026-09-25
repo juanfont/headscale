@@ -738,7 +738,10 @@ func (pm *PolicyManager) filterForNodeLocked(
 	if !pm.needsPerNodeFilter {
 		unreduced = pm.filter
 	} else {
-		unreduced = pm.filterRulesForNodeLocked(node)
+		unreduced = append(
+			pm.filterRulesForNodeLocked(node),
+			exitNodeSelfRules(pm.compiledGrants, node, pm.userNodeIdx)...,
+		)
 	}
 
 	reduced := policyutil.ReduceFilterRules(node, unreduced)
