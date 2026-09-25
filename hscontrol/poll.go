@@ -122,12 +122,12 @@ func (m *mapSession) serve() {
 	//
 	// Process the [tailcfg.MapRequest] to update node state (endpoints, hostinfo, etc.)
 	c, err := m.h.state.UpdateNodeFromMapRequest(m.node.ID, m.req)
+	m.h.Change(c)
+
 	if err != nil {
 		httpError(m.w, err)
 		return
 	}
-
-	m.h.Change(c)
 
 	// If OmitPeers is true and Stream is false
 	// then the server will let clients update their endpoints without
@@ -243,6 +243,8 @@ func (m *mapSession) serveLongPoll() {
 	// the node to be incorrectly removed from AvailableRoutes.
 	mapReqChange, err := m.h.state.UpdateNodeFromMapRequest(m.node.ID, m.req)
 	if err != nil {
+		m.h.Change(mapReqChange)
+
 		m.log.Error().Caller().Err(err).Msg("failed to update node from initial MapRequest")
 		// Write an explicit error rather than returning silently: a bare
 		// return leaves net/http to send an empty 200, which the client
@@ -278,6 +280,9 @@ func (m *mapSession) serveLongPoll() {
 	// time between the node connecting and the batcher being ready.
 	if err := m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.capVer, m.stopFromBatcher); err != nil { //nolint:noinlineerr
 		m.log.Error().Caller().Err(err).Msg("failed to add node to batcher")
+		// The map request already changed state other nodes must see.
+		m.h.Change(mapReqChange)
+
 		// Write an explicit error rather than returning silently: a bare
 		// return leaves net/http to send an empty 200, which the client
 		// reads as "unexpected EOF" and retries forever (issue #3346).

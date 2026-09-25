@@ -993,6 +993,8 @@ func (a *AuthProviderOIDC) handleRegistration(
 		util.RegisterMethodOIDC,
 	)
 	if err != nil {
+		a.h.Change(nodeChange)
+
 		return false, fmt.Errorf("registering node: %w", err)
 	}
 
@@ -1008,12 +1010,13 @@ func (a *AuthProviderOIDC) handleRegistration(
 	// This works, but might be another good candidate for doing some sort of
 	// eventbus.
 	routesChange, err := a.h.state.AutoApproveRoutes(node)
-	if err != nil {
-		return false, fmt.Errorf("auto approving routes: %w", err)
-	}
 
 	// Send both changes. Empty changes are ignored by Change().
 	a.h.Change(nodeChange, routesChange)
+
+	if err != nil {
+		return false, fmt.Errorf("auto approving routes: %w", err)
+	}
 
 	return !nodeChange.IsEmpty(), nil
 }
