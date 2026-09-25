@@ -2719,3 +2719,33 @@ func BenchmarkSetNodes(b *testing.B) {
 		})
 	}
 }
+
+// TestNodesGenerationCountsChangingSetNodes pins that NodesGeneration
+// moves exactly when SetNodes reports a change, so a caller that did not
+// run the SetNodes itself can still tell its write moved the policy.
+func TestNodesGenerationCountsChangingSetNodes(t *testing.T) {
+	users := types.Users{{ID: 1, Name: "user1"}}
+
+	nodes := types.Nodes{node("n1", "100.64.0.1", "fd7a:115c:a1e0::1", users[0])}
+	nodes[0].ID = 1
+
+	pm, err := NewPolicyManager([]byte(`{
+		"acls": [{"action": "accept", "src": ["user1@"], "dst": ["user1@:*"]}]
+	}`), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	gen := pm.NodesGeneration()
+
+	changed, err := pm.SetNodes(nodes.ViewSlice())
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, gen, pm.NodesGeneration(), "unchanged nodes must not advance the generation")
+
+	added := node("n2", "100.64.0.2", "fd7a:115c:a1e0::2", users[0])
+	added.ID = 2
+
+	changed, err = pm.SetNodes(append(nodes, added).ViewSlice())
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, gen+1, pm.NodesGeneration(), "a changing SetNodes must advance the generation once")
+}

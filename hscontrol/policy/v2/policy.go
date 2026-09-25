@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
@@ -88,6 +89,11 @@ type PolicyManager struct {
 	nodeAttrsMap     map[types.NodeID]tailcfg.NodeCapMap
 	nodeAttrsHashes  map[types.NodeID]deephash.Sum
 	nodeAttrsChanged []types.NodeID
+
+	// nodesGen counts SetNodes calls that reported a change, so a caller
+	// can tell its own write moved the policy even when another goroutine
+	// (the NodeStore writer) applied the SetNodes on its behalf.
+	nodesGen atomic.Uint64
 }
 
 // filterAndPolicy combines the compiled filter rules with policy content for hashing.
@@ -899,10 +905,23 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, erro
 		}
 		// Always return true when nodes changed, even if filter hash didn't change
 		// (can happen with autogroup:self or when nodes are added but don't affect rules)
+		pm.nodesGen.Add(1)
+
 		return true, nil
 	}
 
 	return false, nil
+}
+
+// NodesGeneration returns how many SetNodes calls have reported a change.
+// Read it before a node write and compare after: a difference means some
+// SetNodes since then, possibly run on another goroutine, moved the policy.
+func (pm *PolicyManager) NodesGeneration() uint64 {
+	if pm == nil {
+		return 0
+	}
+
+	return pm.nodesGen.Load()
 }
 
 // nodeIDViewMap indexes a slice of node views by node ID. On duplicate IDs the
