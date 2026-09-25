@@ -512,3 +512,16 @@ func TestEphemeralGarbageCollectorConcurrentScheduleAndClose(t *testing.T) {
 
 	t.Logf("Final number of goroutines: %d", runtime.NumGoroutine())
 }
+
+// TestEphemeralGarbageCollectorCloseTwice pins that a second Close does not
+// panic on the already closed cancel channel.
+func TestEphemeralGarbageCollectorCloseTwice(t *testing.T) {
+	gc := NewEphemeralGarbageCollector(func(types.NodeID) {})
+	go gc.Start()
+
+	gc.Schedule(types.NodeID(1), time.Hour)
+
+	gc.Close()
+
+	assert.NotPanics(t, gc.Close)
+}
