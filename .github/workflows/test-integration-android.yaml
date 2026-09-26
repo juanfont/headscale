@@ -1,0 +1,174 @@
+name: integration-android
+# Runs the official Tailscale Android app in an emulator against headscale.
+# Separate from the generated arm64 matrix because the emulator needs KVM,
+# which only the x86_64 hosted runners expose.
+on: [pull_request]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: nix develop --fallback --command bash -e {0}
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    outputs:
+      files-changed: ${{ steps.changed-files.outputs.files }}
+      oldest: ${{ steps.versions.outputs.oldest }}
+      android-sha: ${{ steps.versions.outputs.android-sha }}
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          fetch-depth: 2
+      - name: Get changed files
+        id: changed-files
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        with:
+          filters: |
+            files:
+              - '*.nix'
+              - 'go.*'
+              - '**/*.go'
+              - 'integration/**'
+              - 'config-example.yaml'
+              - '.github/workflows/test-integration-android.yaml'
+              - '.github/workflows/integration-android-template.yml'
+              - 'Dockerfile.*'
+      - uses: NixOS/nix-installer-action@6b8548fe06acfb0155a50ab5d561accb215764cc # main
+        if: steps.changed-files.outputs.files == 'true'
+      - uses: Mic92/hestia@fb239a2f72d4b6e26eec5425f289dea23b27a527 # v2.0.0
+        if: steps.changed-files.outputs.files == 'true'
+      - name: Build binaries
+        if: steps.changed-files.outputs.files == 'true'
+        run: |
+          go build -o hi ./cmd/hi
+          CGO_ENABLED=0 GOOS=linux go build -o headscale ./cmd/headscale
+      - name: Resolve Android versions
+        id: versions
+        if: steps.changed-files.outputs.files == 'true'
+        run: |
+          sha=$(git ls-remote https://github.com/tailscale/tailscale-android refs/heads/main | cut -f1)
+          echo "android-sha=${sha}" >> "$GITHUB_OUTPUT"
+          # Oldest tagged minor headscale supports; the newest patch of it
+          # with a published APK (not every patch ships one).
+          minor=$(./hi list-versions --set=must --exclude=head,unstable | tr ' ' '\n' | head -1 | tr -d v)
+          for p in $(seq 20 -1 0); do
+            if curl -fsI "https://pkgs.tailscale.com/stable/tailscale-android-universal-${minor}.${p}.apk" >/dev/null; then
+              echo "oldest=${minor}.${p}" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "no APK found for ${minor}" >&2
+          exit 1
+      - name: Force overlay2 storage driver
+        if: steps.changed-files.outputs.files == 'true'
+        run: |
+          sudo mkdir -p /etc/docker
+          echo '{"storage-driver":"overlay2"}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
+      - name: Build images
+        if: steps.changed-files.outputs.files == 'true'
+        run: |
+          docker build --file Dockerfile.integration-ci --tag headscale:${{ github.sha }} .
+          docker save headscale:${{ github.sha }} | gzip > images.tar.gz
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        if: steps.changed-files.outputs.files == 'true'
+        with:
+          name: android-build
+          path: |
+            hi
+            images.tar.gz
+          retention-days: 3
+  # Built once per run and shared as artifacts, like the headscale image;
+  # one image per Android API level under test.
+  build-emulator:
+    runs-on: ubuntu-24.04
+    needs: build
+    if: needs.build.outputs.files-changed == 'true'
+    strategy:
+      # One flaky download should not cancel the other images.
+      fail-fast: false
+      matrix:
+        api: [29, 33, 36]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - name: Free disk space
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+      - name: Force overlay2 storage driver
+        run: |
+          sudo mkdir -p /etc/docker
+          echo '{"storage-driver":"overlay2"}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
+      - name: Build emulator image
+        run: |
+          docker build --file Dockerfile.android-integration \
+            --build-arg ANDROID_API=${{ matrix.api }} \
+            --tag android-emulator:${{ github.sha }}-${{ matrix.api }} .
+          docker save android-emulator:${{ github.sha }}-${{ matrix.api }} | zstd -T0 -3 > android-emulator.tar.zst
+          ls -lh android-emulator.tar.zst
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: android-emulator-${{ matrix.api }}
+          path: android-emulator.tar.zst
+          compression-level: 0
+          retention-days: 3
+  # Debug build of tailscale-android main, cached by commit: rebuilding it
+  # takes ~10 minutes.
+  build-android-head:
+    runs-on: ubuntu-24.04
+    needs: build
+    if: needs.build.outputs.files-changed == 'true'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/cache@a7833574556fa59680c1b7cb190c1735db73ebf0 # v5.0.0
+        id: cache
+        with:
+          path: tailscale-debug.apk
+          key: tailscale-android-debug-${{ needs.build.outputs.android-sha }}
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        if: steps.cache.outputs.cache-hit != 'true'
+        with:
+          repository: tailscale/tailscale-android
+          ref: ${{ needs.build.outputs.android-sha }}
+          path: tailscale-android
+      - name: Build debug APK
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          (cd tailscale-android && make docker-tailscale-debug)
+          cp tailscale-android/tailscale-debug.apk .
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: android-head-apk
+          path: tailscale-debug.apk
+          retention-days: 3
+  android:
+    needs: [build, build-emulator]
+    if: needs.build.outputs.files-changed == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { version: unstable, api: 33 }
+          - { version: latest, api: 33 }
+          - { version: oldest, api: 33 }
+          # Other Android releases, on the app most users run.
+          - { version: latest, api: 29 }
+          - { version: latest, api: 36 }
+    uses: ./.github/workflows/integration-android-template.yml
+    with:
+      version: ${{ matrix.version }}
+      api: ${{ matrix.api }}
+      oldest: ${{ needs.build.outputs.oldest }}
+  android-head:
+    needs: [build, build-emulator, build-android-head]
+    if: needs.build.outputs.files-changed == 'true'
+    uses: ./.github/workflows/integration-android-template.yml
+    with:
+      version: head
+      api: 33
+      oldest: ${{ needs.build.outputs.oldest }}

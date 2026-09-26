@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Test helper: a minimal device policy controller that sets the Tailscale
+     app's managed configuration (MDM) as an EMM would, and a probe that
+     resolves names and fetches URLs from an ordinary app, through the VPN. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="org.headscale.helper">
+    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="33" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <application android:label="headscale-helper" android:usesCleartextTraffic="true">
+        <receiver
+            android:name=".Admin"
+            android:exported="true"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+        <receiver android:name=".SetRestrictions" android:exported="true" />
+        <receiver android:name=".Probe" android:exported="true" />
+    </application>
+</manifest>

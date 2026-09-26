@@ -1,0 +1,92 @@
+name: Integration Android Template
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: head, unstable, latest or oldest
+        required: true
+        type: string
+      api:
+        description: Android API level of the emulator image
+        required: true
+        type: number
+      oldest:
+        description: Oldest supported app version, e.g. 1.82.4
+        required: true
+        type: string
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - name: Free disk space
+        # The emulator image unpacks to >10 GB.
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: android-build
+          path: /tmp/artifacts
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: android-emulator-${{ inputs.api }}
+          path: /tmp/artifacts
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        if: inputs.version == 'head'
+        with:
+          name: android-head-apk
+          # Under the repo root, which hi mounts at the same path.
+          path: ${{ github.workspace }}
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+      - name: Force overlay2 storage driver and load images
+        run: |
+          sudo mkdir -p /etc/docker
+          echo '{"storage-driver":"overlay2"}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
+          gunzip -c /tmp/artifacts/images.tar.gz | docker load
+          zstd -dc /tmp/artifacts/android-emulator.tar.zst | docker load
+          rm /tmp/artifacts/*.tar.*
+          chmod +x /tmp/artifacts/hi
+      - name: Resolve APK
+        id: apk
+        run: |
+          case "${{ inputs.version }}" in
+            head)
+              echo "url=${GITHUB_WORKSPACE}/tailscale-debug.apk" >> "$GITHUB_OUTPUT"
+              exit 0 ;;
+            oldest) file="tailscale-android-universal-${{ inputs.oldest }}.apk"; track=stable ;;
+            latest) track=stable ;;
+            unstable) track=unstable ;;
+          esac
+          if [ -z "${file:-}" ]; then
+            file=$(curl -fsS "https://pkgs.tailscale.com/${track}/?mode=json" | jq -r .APKs.universal)
+          fi
+          echo "url=https://pkgs.tailscale.com/${track}/${file}" >> "$GITHUB_OUTPUT"
+          echo "Testing ${file}"
+          # Release APKs share a signing key, so latest can upgrade oldest.
+          if [ "${{ inputs.version }}" = latest ]; then
+            echo "upgrade_from=https://pkgs.tailscale.com/stable/tailscale-android-universal-${{ inputs.oldest }}.apk" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run Android integration tests
+        env:
+          HEADSCALE_INTEGRATION_HEADSCALE_IMAGE: headscale:${{ github.sha }}
+          HEADSCALE_INTEGRATION_ANDROID_IMAGE: android-emulator:${{ github.sha }}-${{ inputs.api }}
+          HEADSCALE_INTEGRATION_ANDROID_APK: ${{ steps.apk.outputs.url }}
+          HEADSCALE_INTEGRATION_ANDROID_UPGRADE_FROM: ${{ steps.apk.outputs.upgrade_from }}
+        run: /tmp/artifacts/hi run "^TestAndroid" --failfast=false --timeout=90m
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        if: always()
+        with:
+          name: android-${{ inputs.version }}-api${{ inputs.api }}-artifacts
+          path: control_logs/

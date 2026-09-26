@@ -80,6 +80,8 @@ func runDoctorCheck(ctx context.Context) error {
 	// Check 5: Required files
 	results = append(results, checkRequiredFiles(ctx))
 
+	results = append(results, checkKVM())
+
 	// Display results
 	displayDoctorResults(results)
 
@@ -201,6 +203,21 @@ func checkDockerHubCredentials() DoctorResult {
 	}
 
 	return pass("Docker Hub Credentials", fmt.Sprintf("Credentials available (source: %s)", source))
+}
+
+// checkKVM reports whether the Android emulator tests can run. Only those
+// tests need KVM, so its absence is a warning.
+func checkKVM() DoctorResult {
+	_, err := os.Stat("/dev/kvm")
+	if err != nil {
+		return warn(
+			"KVM",
+			"/dev/kvm not available — TestAndroid* cannot boot the emulator",
+			"Use an x86_64 host with hardware virtualization (bare metal or nested virtualization)",
+		)
+	}
+
+	return pass("KVM", "/dev/kvm available for Android emulator tests")
 }
 
 // checkGolangImage verifies the golang Docker image is available locally or can be pulled.
