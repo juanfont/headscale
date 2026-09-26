@@ -4475,9 +4475,27 @@ func TestHASubnetRouterFailoverDockerDisconnect(t *testing.T) {
 	// lowest NodeID regardless of who was prev primary.
 	// ============================================================
 	t.Log("=== Phase 4a: cable-pull r1, expect failover to r2. ===")
+
+	r1Key := subRouter1.MustStatus().Self.PublicKey
+
 	require.NoError(t, subRouter1.DisconnectFromNetwork(usernet1),
 		"phase 4a: docker disconnect r1")
 	requirePrimary(nodeID2, "phase 4a: r2 promoted after r1 down")
+
+	// Headscale can report the new primary before r2 has the netmap.
+	// Pulling r2's cable in that window strands r1's route for pref in
+	// r2's table 52, and docker then cannot set r2's gateway on reconnect.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		st, err := subRouter2.Status()
+		assert.NoError(c, err)
+
+		peer, ok := st.Peer[r1Key]
+		assert.True(c, ok, "r2 should list r1 as a peer")
+
+		if ok && peer.PrimaryRoutes != nil {
+			assert.NotContains(c, peer.PrimaryRoutes.AsSlice(), pref)
+		}
+	}, propagationTime, 200*time.Millisecond, "phase 4a: r2 no longer routes pref via r1")
 
 	t.Log("=== Phase 4b: cable-pull r2, primary must NOT flap to offline r1. ===")
 	require.NoError(t, subRouter2.DisconnectFromNetwork(usernet1),
