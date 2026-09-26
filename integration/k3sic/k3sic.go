@@ -24,8 +24,10 @@ package k3sic
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -60,11 +62,12 @@ const (
 
 	dockerExecuteTimeout = 300 * time.Second
 
-	// helmVersionFallback is used when the latest helm release cannot be
-	// resolved at runtime (see resolveHelmVersion). The image ships no helm and
-	// cannot fetch it itself, so we inject a binary that matches the container
-	// arch.
-	helmVersionFallback = "v3.19.1"
+	// The image ships no helm and cannot fetch it itself, so the test harness
+	// injects this pinned release for the container architecture.
+	helmVersion = "v3.19.1"
+
+	maxHelmArchiveSize = 64 << 20
+	maxHelmBinarySize  = 128 << 20
 
 	// kubeconfigPath is where k3s writes the kubeconfig (see RunOptions.Env);
 	// helm needs it pointed explicitly, kubectl finds it by default.
@@ -84,8 +87,12 @@ const (
 )
 
 var (
-	errHelmDownload     = errors.New("helm download failed")
-	errHelmNotInTarball = errors.New("helm binary not found in release tarball")
+	errHelmDownload        = errors.New("helm download failed")
+	errHelmNotInTarball    = errors.New("helm binary not found in release tarball")
+	errHelmUnsupportedArch = errors.New("unsupported architecture for Helm")
+	errHelmArchiveTooLarge = errors.New("helm archive exceeds size limit")
+	errHelmBinaryTooLarge  = errors.New("helm binary exceeds size limit")
+	errHelmChecksum        = errors.New("helm archive checksum mismatch")
 
 	errNoKubeDNSEndpoints = errors.New("kube-dns Service has no ready endpoints yet")
 )
@@ -352,7 +359,7 @@ func (k *K3sInContainer) WaitForRunning() error {
 // has network egress) and inject the binary. helm's own HTTPS client then
 // fetches the operator chart from inside the container.
 func (k *K3sInContainer) InstallHelm() error {
-	bin, err := fetchHelmBinary(resolveHelmVersion(), runtime.GOARCH)
+	bin, err := fetchHelmBinary(helmVersion, runtime.GOARCH)
 	if err != nil {
 		return fmt.Errorf("fetching helm: %w", err)
 	}
@@ -494,43 +501,14 @@ func (k *K3sInContainer) DumpDiagnostics() {
 	}
 }
 
-// resolveHelmVersion returns the latest published helm release tag (e.g.
-// "v3.19.1"), falling back to [helmVersionFallback] if it cannot be resolved.
-// get.helm.sh is not Docker Hub and has no anonymous rate limit, so a "rolling"
-// latest is cheap; the fallback keeps a broken release from breaking CI.
-func resolveHelmVersion() string {
-	req, err := http.NewRequestWithContext(
-		context.Background(), http.MethodGet, "https://get.helm.sh/helm-latest-version", nil)
-	if err != nil {
-		return helmVersionFallback
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return helmVersionFallback
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return helmVersionFallback
-	}
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 32))
-	if err != nil {
-		return helmVersionFallback
-	}
-
-	version := strings.TrimSpace(string(body))
-	if !strings.HasPrefix(version, "v") {
-		return helmVersionFallback
-	}
-
-	return version
-}
-
 // fetchHelmBinary downloads the helm release tarball for version and goarch and
-// returns the helm binary bytes.
+// returns the verified helm binary bytes.
 func fetchHelmBinary(version, goarch string) ([]byte, error) {
+	wantHash, err := helmArchiveSHA256(goarch)
+	if err != nil {
+		return nil, err
+	}
+
 	url := fmt.Sprintf("https://get.helm.sh/helm-%s-linux-%s.tar.gz", version, goarch)
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
@@ -548,7 +526,36 @@ func fetchHelmBinary(version, goarch string) ([]byte, error) {
 		return nil, fmt.Errorf("%w: %s returned status %d", errHelmDownload, url, resp.StatusCode)
 	}
 
-	gz, err := gzip.NewReader(resp.Body)
+	archive, err := io.ReadAll(io.LimitReader(resp.Body, maxHelmArchiveSize+1))
+	if err != nil {
+		return nil, err
+	}
+
+	if len(archive) > maxHelmArchiveSize {
+		return nil, fmt.Errorf("%w: %s", errHelmArchiveTooLarge, url)
+	}
+
+	return extractHelmBinary(archive, goarch, wantHash)
+}
+
+func helmArchiveSHA256(goarch string) (string, error) {
+	switch goarch {
+	case "amd64":
+		return "966bed9b1e0dda11268f59bd7268c3cd3e308b37b070546e1d78a02526ff63f2", nil
+	case "arm64":
+		return "ceed150305a1d1ef4a37923a7f66931a6807c34a38ea487fa8340e102dd2c7f7", nil
+	default:
+		return "", fmt.Errorf("%w: %s", errHelmUnsupportedArch, goarch)
+	}
+}
+
+func extractHelmBinary(archive []byte, goarch, wantHash string) ([]byte, error) {
+	gotHash := fmt.Sprintf("%x", sha256.Sum256(archive))
+	if gotHash != wantHash {
+		return nil, fmt.Errorf("%w: got %s", errHelmChecksum, gotHash)
+	}
+
+	gz, err := gzip.NewReader(bytes.NewReader(archive))
 	if err != nil {
 		return nil, err
 	}
@@ -568,7 +575,20 @@ func fetchHelmBinary(version, goarch string) ([]byte, error) {
 		}
 
 		if hdr.Name == want {
-			return io.ReadAll(tr)
+			if hdr.Size < 0 || hdr.Size > maxHelmBinarySize {
+				return nil, fmt.Errorf("%w: %d bytes", errHelmBinaryTooLarge, hdr.Size)
+			}
+
+			bin, err := io.ReadAll(io.LimitReader(tr, maxHelmBinarySize+1))
+			if err != nil {
+				return nil, err
+			}
+
+			if len(bin) > maxHelmBinarySize {
+				return nil, fmt.Errorf("%w: more than %d bytes", errHelmBinaryTooLarge, maxHelmBinarySize)
+			}
+
+			return bin, nil
 		}
 	}
 
