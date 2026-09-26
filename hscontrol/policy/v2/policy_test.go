@@ -1445,6 +1445,92 @@ func TestAutogroupSelfCombinedWithTags(t *testing.T) {
 		"web server should see admin phone (symmetric)")
 }
 
+// TestAutogroupSelfRulesReachExitNodes checks that an approved exit
+// node receives every user's autogroup:self rules: its exit routes
+// contain every destination, and Tailscale SaaS delivers them.
+func TestAutogroupSelfRulesReachExitNodes(t *testing.T) {
+	users := types.Users{
+		{ID: 1, Name: "alice", Email: "alice@example.com"},
+		{ID: 2, Name: "bob", Email: "bob@example.com"},
+	}
+
+	alice := &types.Node{
+		ID:       1,
+		Hostname: "alice",
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
+		IPv4:     ap("100.64.0.1"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	bob := &types.Node{
+		ID:       2,
+		Hostname: "bob",
+		User:     new(users[1]),
+		UserID:   new(users[1].ID),
+		IPv4:     ap("100.64.0.2"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	exit := &types.Node{
+		ID:             3,
+		Hostname:       "exit",
+		User:           new(users[0]),
+		UserID:         new(users[0].ID),
+		IPv4:           ap("100.64.0.3"),
+		Tags:           []string{"tag:exit"},
+		Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: tsaddr.ExitRoutes()},
+		ApprovedRoutes: tsaddr.ExitRoutes(),
+	}
+
+	server := &types.Node{
+		ID:       4,
+		Hostname: "server",
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
+		IPv4:     ap("100.64.0.4"),
+		Tags:     []string{"tag:server"},
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	nodes := types.Nodes{alice, bob, exit, server}
+
+	policy := `{
+		"tagOwners": {
+			"tag:exit":   ["alice@example.com"],
+			"tag:server": ["alice@example.com"]
+		},
+		"acls": [
+			{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self:*"]}
+		]
+	}`
+
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	dsts := func(n *types.Node) []string {
+		rules, err := pm.FilterForNode(n.View())
+		require.NoError(t, err)
+
+		var out []string
+
+		for _, r := range rules {
+			for _, dp := range r.DstPorts {
+				out = append(out, dp.IP)
+			}
+		}
+
+		return out
+	}
+
+	require.ElementsMatch(t, []string{"100.64.0.1", "100.64.0.2"}, dsts(exit),
+		"exit node must get every user's self rule")
+	require.Empty(t, dsts(server),
+		"tagged node without exit routes gets no self rules")
+	require.ElementsMatch(t, []string{"100.64.0.1"}, dsts(alice),
+		"user device gets only its own user's self rule")
+}
+
 // TestIssue2990SameUserTaggedDevice reproduces the exact scenario from issue #2990:
 // - One user (user1) who is in group:admin
 // - node1: user device (not tagged), belongs to user1

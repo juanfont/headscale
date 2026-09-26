@@ -1418,12 +1418,37 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 					}
 				}
 
-				result.Exclude = slices.DeleteFunc(result.Exclude, dstPrefix.Overlaps)
+				// Every address overlaps an exit route, so overlap
+				// only decides for subnet routes.
+				result.Exclude = slices.DeleteFunc(result.Exclude, func(p netip.Prefix) bool {
+					return !tsaddr.IsExitRoute(p) && dstPrefix.Overlaps(p)
+				})
+			}
+
+			// A regular grant to the internet lets the viewer use any
+			// exit node, not just the via-tagged ones.
+			if grantReachesInternet(grant) {
+				result.Exclude = slices.DeleteFunc(result.Exclude, tsaddr.IsExitRoute)
 			}
 		}
 	}
 
 	return result
+}
+
+// grantReachesInternet reports whether a grant's destinations include
+// the internet. Neither the wildcard nor autogroup:internet resolves
+// to 0.0.0.0/0, so check the aliases themselves.
+func grantReachesInternet(grant Grant) bool {
+	return slices.ContainsFunc(grant.Destinations, func(d Alias) bool {
+		if ag, ok := d.(*AutoGroup); ok {
+			return ag.Is(AutoGroupInternet)
+		}
+
+		_, ok := d.(Asterix)
+
+		return ok
+	})
 }
 
 func (pm *PolicyManager) Version() int {

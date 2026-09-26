@@ -156,8 +156,15 @@ var grantSkipReasons = map[string]string{
 	// SaaS lists contiguous source addresses one by one and writes
 	// autogroup:internet as address ranges; headscale merges sources into
 	// ranges and writes the internet as prefixes. The address sets match;
-	// TestViaGrantMapCompat compares this capture's filters by address.
+	// TestViaGrantMapCompat compares these captures' filters by address.
 	"via-grant-v52": "FILTER_ADDRESS_FORM: same addresses, different wire form",
+	"via-grant-v53": "FILTER_ADDRESS_FORM: same addresses, different wire form",
+	"via-grant-v54": "FILTER_ADDRESS_FORM: same addresses, different wire form",
+	"via-grant-v55": "FILTER_ADDRESS_FORM: same addresses, different wire form",
+	"via-grant-v56": "FILTER_ADDRESS_FORM: same addresses, different wire form",
+	"via-grant-v57": "FILTER_ADDRESS_FORM: same addresses, different wire form",
+	"via-grant-v58": "FILTER_ADDRESS_FORM: same addresses, different wire form",
+	"via-grant-v59": "FILTER_ADDRESS_FORM: same addresses, different wire form",
 }
 
 // TestGrantsCompat is a data-driven test that loads all GRANT-*.json

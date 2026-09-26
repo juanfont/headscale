@@ -2,6 +2,7 @@ package v2
 
 import (
 	"fmt"
+	"maps"
 	"net/netip"
 	"slices"
 
@@ -698,21 +699,40 @@ func filterRulesForNode(
 
 // compileAutogroupSelf produces filter rules for autogroup:self
 // destinations for a specific node. Only called for grants with
-// self destinations and only produces rules for untagged nodes.
+// self destinations. Untagged nodes get their own user's rules; exit
+// nodes get every user's, as their exit routes contain every
+// destination.
 func compileAutogroupSelf(
 	cg *compiledGrant,
 	node types.NodeView,
 	userIdx userNodeIndex,
 ) []tailcfg.FilterRule {
-	if node.IsTagged() || cg.self == nil {
+	if cg.self == nil {
 		return nil
 	}
 
-	if !node.User().Valid() {
+	if node.IsExitNode() {
+		var rules []tailcfg.FilterRule
+		for _, uid := range slices.Sorted(maps.Keys(userIdx)) {
+			rules = append(rules, compileSelfForUser(cg, userIdx[uid])...)
+		}
+
+		return rules
+	}
+
+	if node.IsTagged() || !node.User().Valid() {
 		return nil
 	}
 
-	sameUserNodes := userIdx[node.User().ID()]
+	return compileSelfForUser(cg, userIdx[node.User().ID()])
+}
+
+// compileSelfForUser produces the autogroup:self rules for one user's
+// untagged devices.
+func compileSelfForUser(
+	cg *compiledGrant,
+	sameUserNodes []types.NodeView,
+) []tailcfg.FilterRule {
 	if len(sameUserNodes) == 0 {
 		return nil
 	}
