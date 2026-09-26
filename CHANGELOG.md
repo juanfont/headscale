@@ -88,6 +88,7 @@ removed on this schedule:
 - Fix `headscale users destroy`/`rename` reporting "multiple users match query" when no user matches; an ambiguous match now lists the matching users [#3476](https://github.com/juanfont/headscale/pull/3476)
 - Deleting a user that still owns nodes now lists the nodes (ID and hostname) that must be deleted first [#3475](https://github.com/juanfont/headscale/pull/3475)
 - Headscale now requires Go 1.27 to build
+- `nodeAttrs` accepts an `app` field for valued capabilities, delivering [App Connector](./docs/ref/policy.md#app-connectors) configuration via `tailscale.com/app-connectors` [#3121](https://github.com/juanfont/headscale/pull/3121)
 
 ## 0.29.4 (2026-09-23)
 

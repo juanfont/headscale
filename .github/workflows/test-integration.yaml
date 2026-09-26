@@ -246,6 +246,9 @@ jobs:
           - TestAPIAuthenticationBypassCurl
           - TestRemoteCLIAuthenticationBypass
           - TestCLIWithConfigAuthenticationBypass
+          - TestAppConnectorBasic
+          - TestAppConnectorNonMatchingTag
+          - TestAppConnectorWildcardConnector
           - TestAuthKeyLogoutAndReloginSameUser
           - TestAuthKeyLogoutAndReloginNewUser
           - TestAuthKeyLogoutAndReloginSameUserExpiredKey
