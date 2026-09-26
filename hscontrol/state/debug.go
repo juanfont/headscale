@@ -179,11 +179,13 @@ func (s *State) DebugSSHPolicies() map[string]*tailcfg.SSHPolicy {
 // DebugRegistrationCache returns debug information about the registration cache.
 func (s *State) DebugRegistrationCache() map[string]any {
 	return map[string]any{
-		"type":        "expirable-lru",
-		"expiration":  registerCacheExpiration.String(),
-		"max_entries": defaultRegisterCacheMaxEntries,
-		"current_len": s.authCache.Len(),
-		"status":      "active",
+		"type":                     "expirable-lru",
+		"expiration":               s.registrationAuthCache.expiration.String(),
+		"registration_max_entries": s.registrationAuthCache.maxEntries,
+		"registration_current_len": s.registrationAuthCache.entries.Len(),
+		"ssh_check_max_entries":    s.sshCheckAuthCache.maxEntries,
+		"ssh_check_current_len":    s.sshCheckAuthCache.entries.Len(),
+		"status":                   "active",
 	}
 }
 

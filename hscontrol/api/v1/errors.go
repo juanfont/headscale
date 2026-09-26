@@ -40,8 +40,12 @@ func mapError(msg string, err error) error {
 		return huma.Error400BadRequest(msg, err)
 
 	case errors.Is(err, state.ErrNodeKeyInUse),
-		errors.Is(err, state.ErrAmbiguousNodeOwnership):
+		errors.Is(err, state.ErrAmbiguousNodeOwnership),
+		errors.Is(err, state.ErrAuthRequestIDInUse):
 		return huma.Error409Conflict(msg, err)
+
+	case errors.Is(err, state.ErrPendingAuthCapacity):
+		return huma.Error503ServiceUnavailable(msg, err)
 
 	default:
 		return huma.Error500InternalServerError(msg, err)

@@ -2934,6 +2934,64 @@ func TestSSHCheckParams(t *testing.T) {
 	}
 }
 
+func TestSSHAccessParamsIncludesLocalUser(t *testing.T) {
+	users := types.Users{
+		{Name: "user1", ID: 1},
+		{Name: "user2", ID: 2},
+	}
+	nodes := types.Nodes{
+		{
+			ID:       1,
+			Hostname: "source",
+			IPv4:     createAddr("100.64.0.1"),
+			UserID:   new(users[0].ID),
+			User:     new(users[0]),
+		},
+		{
+			ID:       2,
+			Hostname: "destination",
+			IPv4:     createAddr("100.64.0.2"),
+			UserID:   new(users[0].ID),
+			User:     new(users[0]),
+		},
+	}
+
+	pol := []byte(`{
+		"ssh": [
+			{
+				"action": "accept",
+				"src": ["user1@"],
+				"dst": ["autogroup:self"],
+				"users": ["ubuntu"]
+			},
+			{
+				"action": "check",
+				"checkPeriod": "2h",
+				"src": ["user1@"],
+				"dst": ["autogroup:self"],
+				"users": ["root"]
+			}
+		]
+	}`)
+	pm, err := NewPolicyManager(pol, users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	period, check, accept := pm.SSHAccessParams(1, 2, "root")
+	assert.Equal(t, 2*time.Hour, period)
+	assert.True(t, check)
+	assert.False(t, accept)
+
+	period, check, accept = pm.SSHAccessParams(1, 2, "ubuntu")
+	assert.Zero(t, period)
+	assert.False(t, check)
+	assert.True(t, accept)
+
+	period, check, accept = pm.SSHAccessParams(1, 2, "daemon")
+	assert.Zero(t, period)
+	assert.False(t, check)
+	assert.False(t, accept)
+}
+
 func TestResolveLocalparts(t *testing.T) {
 	tests := []struct {
 		name    string

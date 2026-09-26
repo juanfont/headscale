@@ -1,19 +1,79 @@
 package types
 
 import (
+	"errors"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+var errAuthRequestRejected = errors.New("rejected")
+
+func TestAuthRequestBroadcastsTerminalVerdict(t *testing.T) {
+	t.Parallel()
+
+	const waiters = 32
+
+	req := NewSSHCheckAuthRequest(7, 11)
+
+	type result struct {
+		verdict AuthVerdict
+		ok      bool
+	}
+
+	results := make(chan result, waiters)
+
+	var ready sync.WaitGroup
+	ready.Add(waiters)
+
+	for range waiters {
+		go func() {
+			ready.Done()
+			<-req.WaitForAuth()
+
+			verdict, ok := req.AuthResult()
+			results <- result{verdict: verdict, ok: ok}
+		}()
+	}
+
+	ready.Wait()
+	req.FinishAuth(AuthVerdict{Err: errAuthRequestRejected})
+
+	for range waiters {
+		result := <-results
+		require.True(t, result.ok)
+		require.ErrorIs(t, result.verdict.Err, errAuthRequestRejected)
+		assert.False(t, result.verdict.Accept())
+	}
+
+	// Completion is immutable and remains readable by retries.
+	req.FinishAuth(AuthVerdict{})
+	verdict, ok := req.AuthResult()
+	require.True(t, ok)
+	require.ErrorIs(t, verdict.Err, errAuthRequestRejected)
+}
+
+func TestAuthRequestHasNoResultBeforeCompletion(t *testing.T) {
+	t.Parallel()
+
+	req := NewAuthRequest()
+	_, ok := req.AuthResult()
+	assert.False(t, ok)
+}
+
 // TestNewSSHCheckAuthRequestBinding verifies that an SSH-check [AuthRequest]
 // captures the (src, dst) node pair at construction time and rejects
 // callers that try to read [AuthRequest.RegistrationData] from it.
 func TestNewSSHCheckAuthRequestBinding(t *testing.T) {
-	const src, dst NodeID = 7, 11
+	const (
+		src, dst         NodeID = 7, 11
+		localUser               = "root"
+		policyGeneration        = 42
+	)
 
-	req := NewSSHCheckAuthRequest(src, dst)
+	req := NewSSHCheckAuthRequestForPolicy(src, dst, localUser, policyGeneration)
 
 	require.True(t, req.IsSSHCheck(), "SSH-check request must report IsSSHCheck=true")
 	require.False(t, req.IsRegistration(), "SSH-check request must not report IsRegistration")
@@ -21,6 +81,9 @@ func TestNewSSHCheckAuthRequestBinding(t *testing.T) {
 	binding := req.SSHCheckBinding()
 	assert.Equal(t, src, binding.SrcNodeID, "SrcNodeID must match")
 	assert.Equal(t, dst, binding.DstNodeID, "DstNodeID must match")
+	assert.Equal(t, localUser, binding.LocalUser, "LocalUser must match")
+	assert.Equal(t, uint64(policyGeneration), binding.PolicyGeneration,
+		"PolicyGeneration must match")
 
 	assert.Panics(t, func() {
 		_ = req.RegistrationData()
@@ -70,12 +133,32 @@ func TestPendingRegistrationConfirmation(t *testing.T) {
 		UserID: 42,
 		CSRF:   "csrf-marker",
 	}
-	req.SetPendingConfirmation(pending)
+	require.True(t, req.SetPendingConfirmation(pending))
+	require.False(t, req.SetPendingConfirmation(&PendingRegistrationConfirmation{
+		UserID: 7,
+		CSRF:   "replacement",
+	}))
 
 	got := req.PendingConfirmation()
 	require.NotNil(t, got, "PendingConfirmation must return the stored value")
 	assert.Equal(t, uint(42), got.UserID)
 	assert.Equal(t, "csrf-marker", got.CSRF)
+}
+
+func TestAuthRequestCompletionClaim(t *testing.T) {
+	t.Parallel()
+
+	req := NewAuthRequest()
+	require.True(t, req.TryBeginAuth())
+	require.False(t, req.TryBeginAuth())
+	require.True(t, req.FinishAuth(AuthVerdict{Err: errAuthRequestRejected}))
+	require.False(t, req.FinishClaimedAuth(AuthVerdict{}))
+	require.False(t, req.TryBeginAuth())
+
+	req.AbortAuth()
+	verdict, ok := req.AuthResult()
+	require.True(t, ok)
+	require.ErrorIs(t, verdict.Err, errAuthRequestRejected)
 }
 
 func TestDefaultBatcherWorkersFor(t *testing.T) {

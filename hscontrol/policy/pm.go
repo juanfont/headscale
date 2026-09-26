@@ -24,6 +24,10 @@ type PolicyManager interface {
 	// SSHCheckParams resolves the SSH check period for a (src, dst) pair
 	// from the current policy, avoiding trust of client-provided URL params.
 	SSHCheckParams(srcNodeID, dstNodeID types.NodeID) (time.Duration, bool)
+	// SSHAccessParams resolves the current action for a complete SSH
+	// connection tuple. check and accept are mutually exclusive; check takes
+	// precedence when multiple rules match, mirroring compiled policy order.
+	SSHAccessParams(srcNodeID, dstNodeID types.NodeID, localUser string) (period time.Duration, check, accept bool)
 	SetPolicy(pol []byte) (bool, error)
 	// SetUsers replaces the user list. policyChanged reports whether clients
 	// need a policy refresh; peerMapChanged reports whether user-derived peer

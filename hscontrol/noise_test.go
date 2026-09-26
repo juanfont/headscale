@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,14 +16,18 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 	"tailscale.com/util/zstdframe"
 )
+
+var errSSHAuthenticationRejected = errors.New("authentication rejected")
 
 // newNoiseRouterWithBodyLimit builds a chi router with the same body-limit
 // middleware used in the real Noise router but wired to a test handler that
@@ -324,6 +329,47 @@ func TestSSHActionHandler_RejectsUnknownDst(t *testing.T) {
 		"unknown dst node id must be rejected with 404")
 }
 
+func TestSSHActionAdmissionPreservesExistingSessionAtCapacity(t *testing.T) {
+	app := createTestApp(t)
+	firstID := types.MustAuthID()
+	first := types.NewSSHCheckAuthRequest(1, 2)
+	require.NoError(t, app.state.SetAuthCacheEntry(firstID, first))
+
+	for idx := 1; ; idx++ {
+		err := app.state.SetAuthCacheEntry(
+			types.MustAuthID(),
+			types.NewSSHCheckAuthRequest(1, 2),
+		)
+		if errors.Is(err, state.ErrPendingAuthCapacity) {
+			break
+		}
+
+		require.NoError(t, err)
+		require.Less(t, idx, 2048, "SSH admission must have a finite default capacity")
+	}
+
+	ns := &noiseServer{headscale: app}
+	action, err := ns.sshActionHoldAndDelegate(
+		zerolog.Nop(),
+		&tailcfg.SSHAction{},
+		1,
+		2,
+		"root",
+		1,
+	)
+	require.Error(t, err)
+	require.Nil(t, action)
+	require.ErrorIs(t, err, state.ErrPendingAuthCapacity)
+
+	var httpErr HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	require.Equal(t, http.StatusServiceUnavailable, httpErr.Code)
+
+	got, ok := app.state.GetAuthCacheEntry(firstID)
+	require.True(t, ok)
+	require.Same(t, first, got)
+}
+
 // TestSSHActionFollowUp_RejectsBindingMismatch verifies that the
 // follow-up handler refuses to honour an auth_id whose cached binding
 // does not match the (src, dst) pair on the request URL. Without this
@@ -342,10 +388,10 @@ func TestSSHActionFollowUp_RejectsBindingMismatch(t *testing.T) {
 
 	// Mint an SSH-check auth request bound to (srcCached, dstCached).
 	authID := types.MustAuthID()
-	app.state.SetAuthCacheEntry(
+	require.NoError(t, app.state.SetAuthCacheEntry(
 		authID,
 		types.NewSSHCheckAuthRequest(srcCached.ID, dstCached.ID),
-	)
+	))
 
 	// Build a follow-up that claims to be for (srcOther, dstOther) but
 	// reuses the bound auth_id. The Noise machineKey matches dstOther so
@@ -372,6 +418,75 @@ func TestSSHActionFollowUp_RejectsBindingMismatch(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code,
 		"binding mismatch must be rejected with 401")
+}
+
+func TestSSHActionFollowUp_RejectionIsStableAcrossRetries(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("ssh-retry-rejection-user")
+	src := putTestNodeInStore(t, app, user, "src-retry")
+	dst := putTestNodeInStore(t, app, user, "dst-retry")
+
+	authID := types.MustAuthID()
+	auth := types.NewSSHCheckAuthRequest(src.ID, dst.ID)
+	auth.FinishAuth(types.AuthVerdict{Err: errSSHAuthenticationRejected})
+	require.NoError(t, app.state.SetAuthCacheEntry(authID, auth))
+
+	ns := &noiseServer{headscale: app, machineKey: dst.MachineKey}
+	for range 2 {
+		action, err := ns.sshActionFollowUp(
+			t.Context(),
+			zerolog.Nop(),
+			&tailcfg.SSHAction{},
+			authID.String(),
+			src.ID,
+			dst.ID,
+			"",
+		)
+		require.NoError(t, err)
+		require.NotNil(t, action)
+		assert.True(t, action.Reject)
+		assert.False(t, action.Accept)
+	}
+
+	_, ok := app.state.GetLastSSHAuth(src.ID, dst.ID)
+	assert.False(t, ok, "rejected retries must not record reusable SSH authorization")
+}
+
+func TestSSHActionFollowUp_RejectsWhenCheckNoLongerApplies(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("ssh-policy-change-user")
+	src := putTestNodeInStore(t, app, user, "src-policy-change")
+	dst := putTestNodeInStore(t, app, user, "dst-policy-change")
+
+	authID := types.MustAuthID()
+	auth := types.NewSSHCheckAuthRequestForPolicy(src.ID, dst.ID, "root", 0)
+	require.NoError(t, app.state.SetAuthCacheEntry(authID, auth))
+	auth.FinishAuth(types.AuthVerdict{})
+
+	_, checkFound := app.state.SSHCheckParams(src.ID, dst.ID)
+	require.False(t, checkFound, "test setup: the SSH check must no longer apply")
+
+	ns := &noiseServer{headscale: app, machineKey: dst.MachineKey}
+	action, err := ns.sshActionFollowUp(
+		t.Context(),
+		zerolog.Nop(),
+		&tailcfg.SSHAction{},
+		authID.String(),
+		src.ID,
+		dst.ID,
+		"root",
+	)
+	require.NoError(t, err)
+	require.NotNil(t, action)
+	assert.True(t, action.Reject)
+	assert.False(t, action.Accept)
+
+	_, ok := app.state.GetLastSSHAuth(src.ID, dst.ID)
+	assert.False(t, ok, "stale approval must not be recorded for reuse")
 }
 
 // TestOverrideRemoteAddr asserts the middleware used inside the Noise
@@ -415,12 +530,15 @@ func TestSSHActionHoldAndDelegate_PersistsAuthSession(t *testing.T) {
 
 	ns := &noiseServer{headscale: app, machineKey: dst.MachineKey}
 
-	rec := httptest.NewRecorder()
-	ns.SSHActionHandler(rec, newSSHActionRequest(t, src.ID, dst.ID))
-	require.Equal(t, http.StatusOK, rec.Code, "initial poll body=%s", rec.Body.String())
-
-	var action tailcfg.SSHAction
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &action))
+	action, err := ns.sshActionHoldAndDelegate(
+		zerolog.Nop(),
+		&tailcfg.SSHAction{},
+		src.ID,
+		dst.ID,
+		"root",
+		1,
+	)
+	require.NoError(t, err)
 	require.NotEmpty(t, action.HoldAndDelegate, "expected HoldAndDelegate, got %+v", action)
 
 	u, err := url.Parse(action.HoldAndDelegate)
@@ -428,6 +546,7 @@ func TestSSHActionHoldAndDelegate_PersistsAuthSession(t *testing.T) {
 
 	authIDStr := u.Query().Get("auth_id")
 	require.NotEmpty(t, authIDStr, "HoldAndDelegate URL missing auth_id: %s", action.HoldAndDelegate)
+	require.Equal(t, "root", u.Query().Get("local_user"))
 
 	authID, err := types.AuthIDFromString(authIDStr)
 	require.NoError(t, err)

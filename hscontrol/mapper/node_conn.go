@@ -18,6 +18,8 @@ import (
 	"tailscale.com/tailcfg"
 )
 
+const maxConcurrentMapSessionsPerNode = 4
+
 // errNoActiveConnections is returned by [multiChannelNodeConn.send] when a node
 // has no active connections (disconnected but kept in the batcher for rapid
 // reconnection). Callers must not update peer tracking state (lastSentPeers)
@@ -154,8 +156,25 @@ func (mc *multiChannelNodeConn) removeConnectionAtIndexLocked(i int, stopConnect
 
 // addConnection adds a new connection.
 func (mc *multiChannelNodeConn) addConnection(entry *connectionEntry) {
+	mc.addConnectionWithLimit(entry, 0)
+}
+
+// addConnectionWithLimit atomically adds a connection while keeping at most
+// limit overlapping sessions. The oldest session is stopped and replaced when
+// the limit is full, allowing normal client poll churn to make progress. A zero
+// limit keeps the unbounded behavior used by low-level tests and benchmarks.
+func (mc *multiChannelNodeConn) addConnectionWithLimit(
+	entry *connectionEntry,
+	limit int,
+) {
 	mc.mutex.Lock()
 	defer mc.mutex.Unlock()
+
+	for limit > 0 && len(mc.connections) >= limit {
+		replaced := mc.removeConnectionAtIndexLocked(0, true)
+		mc.log.Debug().Str(zf.ConnID, replaced.id).
+			Msg("oldest overlapping connection replaced")
+	}
 
 	mc.connections = append(mc.connections, entry)
 	mc.log.Debug().Str(zf.ConnID, entry.id).
