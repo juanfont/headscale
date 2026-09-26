@@ -4,18 +4,24 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"reflect"
 	"runtime"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/db"
+	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"pgregory.net/rapid"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
+	"tailscale.com/types/views"
 )
 
 func TestSnapshotFromNodes(t *testing.T) {
@@ -1670,6 +1676,697 @@ func TestListPeersExcludesSelf(t *testing.T) {
 
 			// Naming only the recipient yields nothing.
 			require.Zero(t, s.ListPeers(self, self).Len(), "naming only self must yield no peers")
+		})
+	}
+}
+
+// fatalfer is the subset of *testing.T / *testing.B / *rapid.T that the
+// NodeStore-against-policy helpers need, so property tests and
+// benchmarks can share them.
+type fatalfer interface {
+	Fatalf(format string, args ...any)
+}
+
+// nodeStoreWithPolicy builds a [NodeStore] whose [PeersFunc] runs a real
+// [policyv2.PolicyManager], mirroring how [State] wires the two together.
+func nodeStoreWithPolicy(t fatalfer, pol string, users []types.User, nodes types.Nodes) (*NodeStore, *policyv2.PolicyManager) {
+	pm, err := policyv2.NewPolicyManager([]byte(pol), users, nodes.ViewSlice())
+	if err != nil {
+		t.Fatalf("policy: %v", err)
+	}
+
+	store := NewNodeStore(nodes, policyPeersFunc(pm), TestBatchSize, TestBatchTimeout)
+	store.Start()
+
+	return store, pm
+}
+
+// syncPolicy does what [State.updatePolicyManagerNodes] does after a
+// NodeStore write: feed the policy manager the current nodes, and rebuild
+// the peer maps only if it reports a policy-affecting change.
+func syncPolicy(t fatalfer, store *NodeStore, pm *policyv2.PolicyManager) {
+	changed, err := pm.SetNodes(store.ListNodes())
+	if err != nil {
+		t.Fatalf("SetNodes: %v", err)
+	}
+
+	if changed {
+		store.RebuildPeerMaps()
+	}
+}
+
+// checkAdjacencyMatchesFullBuild compares the NodeStore's current
+// adjacency — however it got there, including the reused-from-previous-
+// snapshot path taken for payload-only writes — against
+// [policyv2.PolicyManager.BuildPeerMap] from a fresh policy manager over
+// the same nodes. The fresh manager keeps the oracle independent of the
+// one the NodeStore writer updates. Divergence means the store served
+// stale adjacency.
+func checkAdjacencyMatchesFullBuild(t fatalfer, store *NodeStore, pol string, users []types.User) {
+	snap := store.data.Load()
+	nodes := views.SliceOf(snap.allNodes)
+
+	fresh, err := policyv2.NewPolicyManager([]byte(pol), users, nodes)
+	if err != nil {
+		t.Fatalf("fresh policy: %v", err)
+	}
+
+	want := fresh.BuildPeerMap(nodes)
+
+	for id := range snap.nodesByID {
+		got := slices.Sorted(slices.Values(snap.peersByNode[id]))
+
+		exp := slices.Sorted(slices.Values(want[id]))
+		if !slices.Equal(got, exp) {
+			t.Fatalf("node %d: adjacency %v, full build %v", id, got, exp)
+		}
+	}
+}
+
+// Policy shapes shared by TestNodeStoreAdjacencyMatchesFullBuild and the
+// NodeStore write benchmarks below: a global ACL, autogroup:self, and a
+// via grant. hscontrol/policy/v2/policy_test.go keeps its own copy since
+// test packages can't share one.
+const (
+	policyGlobal = `{
+		"groups": {"group:a": ["u1@"]},
+		"tagOwners": {"tag:srv": ["u1@"]},
+		"acls": [
+			{"action": "accept", "src": ["group:a"], "dst": ["tag:srv:*"]},
+			{"action": "accept", "src": ["u2@"], "dst": ["10.33.0.0/24:*"]}
+		]}`
+
+	policyAutogroupSelf = `{
+		"acls": [{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self:*"]}]}`
+
+	policyVia = `{
+		"tagOwners": {"tag:router": ["u1@"]},
+		"grants": [{"src": ["u2@"], "dst": ["10.33.0.0/24"], "ip": ["*"], "via": ["tag:router"]}]}`
+)
+
+// TestNodeStoreAdjacencyMatchesFullBuild drives random node mutations
+// through a real [NodeStore] wired to a real [policyv2.PolicyManager] and
+// checks, after every step, that the resulting adjacency — including
+// whatever [NodeStore] served from its reused-peers path — matches a
+// fresh [policyv2.PolicyManager.BuildPeerMap] over the same nodes. This is
+// the safety net for later NodeStore/policy changes: divergence here is a
+// real bug in the shipped reuse path.
+func TestNodeStoreAdjacencyMatchesFullBuild(t *testing.T) {
+	users := []types.User{
+		{ID: 1, Name: "u1"},
+		{ID: 2, Name: "u2"},
+	}
+	subnet := netip.MustParsePrefix("10.33.0.0/24")
+
+	for _, tc := range []struct {
+		name string
+		pol  string
+	}{
+		{name: "global", pol: policyGlobal},
+		{name: "autogroup-self", pol: policyAutogroupSelf},
+		{name: "via", pol: policyVia},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rapid.Check(t, func(rt *rapid.T) {
+				nodes := make(types.Nodes, 0, 6)
+
+				for i := 1; i <= 6; i++ {
+					n := createTestNode(types.NodeID(i), uint(1+i%2), fmt.Sprintf("u%d", 1+i%2), fmt.Sprintf("n%d", i))
+					ip4 := netip.AddrFrom4([4]byte{100, 64, 0, byte(i)})
+					n.IPv4 = &ip4
+					n.IPv6 = nil
+					n.User = &users[i%2]
+					nodes = append(nodes, &n)
+				}
+
+				store, pm := nodeStoreWithPolicy(rt, tc.pol, users, nodes)
+				defer store.Stop()
+
+				steps := rapid.IntRange(1, 20).Draw(rt, "steps")
+				for range steps {
+					id := types.NodeID(rapid.IntRange(1, 6).Draw(rt, "id")) //nolint:gosec // safe conversion in test
+					switch rapid.IntRange(0, 5).Draw(rt, "op") {
+					case 0: // payload only
+						store.UpdateNode(id, func(n *types.Node) { n.LastSeen = new(time.Now()) })
+					case 1: // tag
+						tag := rapid.SampledFrom([]string{"tag:srv", "tag:router"}).Draw(rt, "tag")
+
+						store.UpdateNode(id, func(n *types.Node) {
+							n.Tags = []string{tag}
+							n.UserID, n.User = nil, nil
+						})
+					case 2: // announce + approve subnet
+						store.UpdateNode(id, func(n *types.Node) {
+							n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet}}
+							n.ApprovedRoutes = []netip.Prefix{subnet}
+						})
+					case 3: // drop routes
+						store.UpdateNode(id, func(n *types.Node) { n.ApprovedRoutes = nil })
+					case 4: // online flip
+						store.UpdateNode(id, func(n *types.Node) { n.IsOnline = new(!n.Online()) })
+					case 5: // endpoint
+						store.UpdateNode(id, func(n *types.Node) {
+							n.Endpoints = []netip.AddrPort{netip.MustParseAddrPort("192.0.2.1:41641")}
+						})
+					}
+
+					// Check before syncPolicy: the write's own snapshot must
+					// already be right, both on the reuse path (updateChanges
+					// said payload-only) and on the recompute path (the
+					// peersFunc refreshed pm before building). Checking only
+					// after syncPolicy would let either mistake hide behind a
+					// RebuildPeerMaps.
+					checkAdjacencyMatchesFullBuild(rt, store, tc.pol, users)
+
+					syncPolicy(rt, store, pm)
+					checkAdjacencyMatchesFullBuild(rt, store, tc.pol, users)
+				}
+			})
+		})
+	}
+}
+
+// nodeFieldImpact classifies what NodeStore work a change to each
+// exported types.Node field requires:
+//   - "relation": policy (hscontrol/policy/v2) or BuildPeerMap reads it,
+//     so a write must recompute peer adjacency.
+//   - "election": affects route election (online/health) but not who
+//     sees whom.
+//   - "payload": neither; a write can reuse the previous peer adjacency.
+//
+// A field missing here fails TestUpdateChangesCoversEveryNodeField:
+// classify it, and if it is a relation input, teach HasPolicyChange or
+// HasNetworkChanges about it before updateChanges can let NodeStore
+// reuse peer adjacency across the write.
+var nodeFieldImpact = map[string]string{
+	"ID": "relation", "IPv4": "relation", "IPv6": "relation",
+	"UserID": "relation", "User": "relation", "Tags": "relation",
+	"ApprovedRoutes": "relation", "Hostinfo": "relation",
+	"IsOnline": "election", "Unhealthy": "election",
+	"MachineKey": "payload", "NodeKey": "payload", "DiscoKey": "payload",
+	"Endpoints": "payload", "Hostname": "payload", "GivenName": "payload",
+	"RegisterMethod": "payload", "AuthKeyID": "payload", "AuthKey": "payload",
+	"Expiry": "payload", "LastSeen": "payload", "CreatedAt": "payload",
+	"UpdatedAt": "payload", "DeletedAt": "payload",
+	"ActiveSessions": "payload", "SessionEpoch": "payload",
+}
+
+// TestUpdateChangesCoversEveryNodeField guards against a new types.Node
+// field going unclassified in nodeFieldImpact. An unclassified field
+// means nobody has decided whether updateChanges needs to know about
+// it, which is exactly how a relation input goes silently unrebuilt.
+func TestUpdateChangesCoversEveryNodeField(t *testing.T) {
+	typ := reflect.TypeFor[types.Node]()
+	for f := range typ.Fields() {
+		if !f.IsExported() {
+			continue
+		}
+
+		if _, ok := nodeFieldImpact[f.Name]; !ok {
+			t.Errorf("types.Node.%s is not classified in nodeFieldImpact", f.Name)
+		}
+	}
+}
+
+// TestUpdateChangesReportsRelationFields pins what updateChanges reports
+// for a mutation to each relation/election field in nodeFieldImpact,
+// against a real pre/post pair rather than the classification map alone.
+func TestUpdateChangesReportsRelationFields(t *testing.T) {
+	pfx := netip.MustParsePrefix("10.44.0.0/24")
+	ip := netip.MustParseAddr("100.64.9.9")
+
+	tests := []struct {
+		name         string
+		mutate       func(*types.Node)
+		wantRelation bool
+		wantElection bool
+	}{
+		{name: "ipv4", mutate: func(n *types.Node) { n.IPv4 = &ip }, wantRelation: true, wantElection: true},
+		{name: "tags", mutate: func(n *types.Node) { n.Tags = []string{"tag:x"}; n.UserID, n.User = nil, nil }, wantRelation: true, wantElection: true},
+		{name: "user", mutate: func(n *types.Node) { n.UserID = new(uint(99)) }, wantRelation: true, wantElection: true},
+		{name: "approved route", mutate: func(n *types.Node) {
+			n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{pfx}}
+			n.ApprovedRoutes = []netip.Prefix{pfx}
+		}, wantRelation: true, wantElection: true},
+		{
+			// Announcing a route the policy has not approved does not
+			// change who can access it (SubnetRoutes/ExitRoutes, which
+			// gate HasPolicyChange, stay empty), but HasNetworkChanges
+			// tracks the raw announcement so a later approval sees a
+			// fresh Hostinfo rather than one NodeStore decided to reuse.
+			name: "announced but not approved route",
+			mutate: func(n *types.Node) {
+				n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{pfx}}
+			},
+			wantRelation: true, wantElection: true,
+		},
+		{name: "online", mutate: func(n *types.Node) { n.IsOnline = new(true) }, wantElection: true},
+		{name: "unhealthy", mutate: func(n *types.Node) { n.Unhealthy = true }, wantElection: true},
+		{name: "endpoint", mutate: func(n *types.Node) { n.Endpoints = []netip.AddrPort{netip.MustParseAddrPort("192.0.2.1:1")} }},
+		{name: "lastseen", mutate: func(n *types.Node) { n.LastSeen = new(time.Now()) }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pre := createTestNode(1, 1, "u", "n")
+			post := *pre.Clone()
+			tt.mutate(&post)
+
+			relation, election := updateChanges(&pre, &post)
+			require.Equal(t, tt.wantRelation, relation, "relation")
+			require.Equal(t, tt.wantElection, election, "election")
+		})
+	}
+}
+
+// benchNodes builds n nodes spread across 10 users for
+// BenchmarkNodeStoreWrite: ~10% tagged tag:srv, ~5% carrying an
+// approved and announced 10.x.0.0/24 route, each with a unique IPv4.
+// hscontrol/policy/v2/policy_test.go keeps its own copy since test
+// packages can't share one.
+func benchNodes(n int) ([]types.User, types.Nodes) {
+	users := make([]types.User, 10)
+	for i := range users {
+		users[i] = types.User{ID: uint(i + 1), Name: fmt.Sprintf("u%d", i+1)}
+	}
+
+	nodes := make(types.Nodes, 0, n)
+	for i := range n {
+		u := users[i%len(users)]
+		nd := createTestNode(types.NodeID(i+1), u.ID, u.Name, fmt.Sprintf("n%d", i+1))
+
+		ip := netip.AddrFrom4([4]byte{100, 64, byte(i / 256), byte(i % 256)}) //nolint:gosec
+		nd.IPv4, nd.IPv6 = &ip, nil
+
+		if i%10 == 0 {
+			nd.Tags = []string{"tag:srv"}
+		} else {
+			nd.User = &u
+		}
+
+		if i%20 == 0 {
+			subnet := netip.PrefixFrom(netip.AddrFrom4([4]byte{10, byte((i / 20) % 256), 0, 0}), 24) //nolint:gosec
+			nd.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet}}
+			nd.ApprovedRoutes = []netip.Prefix{subnet}
+		}
+
+		nodes = append(nodes, &nd)
+	}
+
+	return users, nodes
+}
+
+// BenchmarkNodeStoreWrite drives one UpdateNode of the named kind
+// followed by syncPolicy against a started NodeStore wired to a real
+// PolicyManager, over a realistic node count. peer-builds/op counts
+// calls into the wrapped peersFunc, the baseline later NodeStore
+// write-path changes are compared against: a payload-only write
+// (lastseen) should cost far fewer builds than a relation-changing one
+// (route, tag).
+func BenchmarkNodeStoreWrite(b *testing.B) {
+	users, nodes := benchNodes(617)
+
+	for _, kind := range []struct {
+		name   string
+		mutate func(i int, n *types.Node)
+	}{
+		{name: "lastseen", mutate: func(_ int, n *types.Node) {
+			n.LastSeen = new(time.Now())
+		}},
+		{name: "route", mutate: func(i int, n *types.Node) {
+			subnet := netip.PrefixFrom(netip.AddrFrom4([4]byte{10, byte(200 + i%50), 0, 0}), 24) //nolint:gosec
+			n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet}}
+			n.ApprovedRoutes = []netip.Prefix{subnet}
+		}},
+		{name: "tag", mutate: func(i int, n *types.Node) {
+			tag := "tag:srv"
+			if i%2 == 0 {
+				tag = "tag:web"
+			}
+
+			n.Tags = []string{tag}
+			n.UserID, n.User = nil, nil
+		}},
+	} {
+		b.Run(fmt.Sprintf("%s/n=%d", kind.name, len(nodes)), func(b *testing.B) {
+			var calls atomic.Int64
+
+			pm, err := policyv2.NewPolicyManager([]byte(policyGlobal), users, nodes.ViewSlice())
+			require.NoError(b, err)
+
+			inner := policyPeersFunc(pm)
+			peersFunc := func(ns []types.NodeView) map[types.NodeID][]types.NodeID {
+				calls.Add(1)
+
+				return inner(ns)
+			}
+
+			store := NewNodeStore(nodes, peersFunc, TestBatchSize, TestBatchTimeout)
+
+			store.Start()
+			defer store.Stop()
+
+			targetID := nodes[0].ID
+
+			// NewNodeStore's own initial build is setup, not a per-write cost.
+			calls.Store(0)
+
+			b.ReportAllocs()
+
+			i := 0
+			for b.Loop() {
+				i++
+
+				store.UpdateNode(targetID, func(n *types.Node) { kind.mutate(i, n) })
+				syncPolicy(b, store, pm)
+			}
+
+			b.ReportMetric(float64(calls.Load())/float64(b.N), "peer-builds/op")
+		})
+	}
+}
+
+// countStatePeerBuilds swaps s's NodeStore for one wired the same way
+// but counting peersFunc runs, so a test can see how many O(n^2) peer
+// builds a State write costs. Call before anything else uses s.
+func countStatePeerBuilds(t *testing.T, s *State) *atomic.Int64 {
+	t.Helper()
+
+	nodes := make(types.Nodes, 0, s.nodeStore.ListNodes().Len())
+	for _, nv := range s.nodeStore.ListNodes().All() {
+		nodes = append(nodes, nv.AsStruct())
+	}
+
+	s.nodeStore.Stop()
+
+	var calls atomic.Int64
+
+	inner := policyPeersFunc(s.polMan)
+	s.nodeStore = NewNodeStore(nodes, func(ns []types.NodeView) map[types.NodeID][]types.NodeID {
+		calls.Add(1)
+
+		return inner(ns)
+	}, TestBatchSize, TestBatchTimeout)
+	s.nodeStore.Start()
+
+	calls.Store(0)
+
+	return &calls
+}
+
+// peerBuildTestPolicy is the policy newPeerBuildTestState installs.
+const peerBuildTestPolicy = `{
+	"tagOwners": {"tag:a": ["pb-user@"], "tag:b": ["pb-user@"]},
+	"acls": [
+		{"action": "accept", "src": ["tag:a"], "dst": ["tag:b:*"]},
+		{"action": "accept", "src": ["pb-user@"], "dst": ["10.55.0.0/24:*"]}
+	]}`
+
+// checkStateAdjacencyMatchesFullBuild is checkAdjacencyMatchesFullBuild
+// for a State from newPeerBuildTestState.
+func checkStateAdjacencyMatchesFullBuild(t *testing.T, s *State) {
+	t.Helper()
+
+	users, err := s.ListAllUsers()
+	require.NoError(t, err)
+
+	checkAdjacencyMatchesFullBuild(t, s.nodeStore, peerBuildTestPolicy, users)
+}
+
+// newPeerBuildTestState returns a State over three user-owned nodes, the
+// first announcing a subnet, under a policy where both a tag and that
+// subnet decide who sees whom.
+func newPeerBuildTestState(t *testing.T) (*State, []types.NodeID, *atomic.Int64) {
+	t.Helper()
+
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+
+	database, err := db.NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	user := database.CreateUserForTest("pb-user")
+	nodes := database.CreateRegisteredNodesForTest(user, 3, "pb-node")
+	require.NoError(t, database.Close())
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, err = s.SetPolicy([]byte(peerBuildTestPolicy))
+	require.NoError(t, err)
+
+	ids := make([]types.NodeID, 0, len(nodes))
+	for _, n := range nodes {
+		ids = append(ids, n.ID)
+	}
+
+	_, ok := s.nodeStore.UpdateNode(ids[0], func(n *types.Node) {
+		n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.55.0.0/24")}}
+	})
+	require.True(t, ok)
+
+	return s, ids, countStatePeerBuilds(t, s)
+}
+
+// TestStatePolicyWriteBuildsPeersOnce pins that a policy-relevant State
+// write costs one peer build: the NodeStore writer's own build must
+// already use the matchers the written node implies, not the old ones
+// followed by a second rebuild once the policy manager catches up.
+func TestStatePolicyWriteBuildsPeersOnce(t *testing.T) {
+	tests := []struct {
+		name  string
+		write func(t *testing.T, s *State, id types.NodeID) change.Change
+	}{
+		{name: "tag", write: func(t *testing.T, s *State, id types.NodeID) change.Change {
+			t.Helper()
+
+			_, c, err := s.SetNodeTags(id, []string{"tag:a"})
+			require.NoError(t, err)
+
+			return c
+		}},
+		{name: "route", write: func(t *testing.T, s *State, id types.NodeID) change.Change {
+			t.Helper()
+
+			_, c, err := s.SetApprovedRoutes(id, []netip.Prefix{netip.MustParsePrefix("10.55.0.0/24")})
+			require.NoError(t, err)
+
+			return c
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s, ids, builds := newPeerBuildTestState(t)
+
+			c := tt.write(t, s, ids[0])
+
+			assert.Equal(t, "policy", c.Type(), "a policy-relevant write must still report a policy change")
+			assert.Equal(t, int64(1), builds.Load(), "peer builds for one policy-relevant write")
+
+			checkStateAdjacencyMatchesFullBuild(t, s)
+		})
+	}
+}
+
+// TestStateConcurrentTagWritesEachReportPolicyChange runs two SetNodeTags
+// on different nodes at once. The NodeStore may apply both in one batch,
+// so the policy manager sees both tags in a single SetNodes; each caller
+// must still report a policy change for its own write, and adjacency
+// must end up matching a full build.
+func TestStateConcurrentTagWritesEachReportPolicyChange(t *testing.T) {
+	s, ids, _ := newPeerBuildTestState(t)
+
+	tags := [2]string{"tag:a", "tag:b"}
+
+	for round := range 20 {
+		var (
+			wg      sync.WaitGroup
+			changes [2]change.Change
+			errs    [2]error
+		)
+
+		for i := range 2 {
+			wg.Go(func() {
+				tag := tags[(i+round)%2]
+				_, changes[i], errs[i] = s.SetNodeTags(ids[1+i], []string{tag})
+			})
+		}
+
+		wg.Wait()
+
+		for i := range 2 {
+			require.NoError(t, errs[i])
+			require.True(t, changes[i].RequiresRuntimePeerComputation,
+				"round %d writer %d: %s must report a policy change", round, i, changes[i].Type())
+		}
+
+		checkStateAdjacencyMatchesFullBuild(t, s)
+	}
+}
+
+// TestBackfillNodeIPsReportsPolicyChange pins that assigning a missing
+// address reports a policy change: the address is a policy input, and
+// without the change clients only learned it from whichever unrelated
+// write next refreshed the policy.
+func TestBackfillNodeIPsReportsPolicyChange(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+
+	database, err := db.NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	user := database.CreateUserForTest("bf-user")
+	nodes := database.CreateRegisteredNodesForTest(user, 2, "bf-node")
+	require.NoError(t, database.DB.Model(&types.Node{}).Where("id = ?", nodes[0].ID).Update("ipv4", nil).Error)
+	// Backfill copies the stored Hostinfo, which a registered client always has.
+	require.NoError(t, database.DB.Model(&types.Node{}).Where("1 = 1").Update("host_info", "{}").Error)
+	require.NoError(t, database.Close())
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	backfilled, c, err := s.BackfillNodeIPs()
+	require.NoError(t, err)
+	require.NotEmpty(t, backfilled)
+	assert.True(t, c.IsBroadcastPolicyChange(), "backfill change: %s", c.Type())
+}
+
+// TestPolicyCachesSurviveOldViewDuringBuild covers the window between the
+// writer's SetNodes and the snapshot swap: a mapper still holding the
+// written node's old view can ask for its filter or SSH policy then. The
+// answer for that old view must not be cached under the node's ID, or
+// the node keeps it after the swap, since nothing invalidates it again.
+func TestPolicyCachesSurviveOldViewDuringBuild(t *testing.T) {
+	users := []types.User{{ID: 1, Name: "u1"}, {ID: 2, Name: "u2"}}
+	subnet := netip.MustParsePrefix("10.33.0.0/24")
+
+	pol := `{
+		"tagOwners": {"tag:srv": ["u1@"]},
+		"acls": [{"action": "accept", "src": ["u2@"], "dst": ["10.33.0.0/24:*"]}],
+		"ssh": [{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self"], "users": ["root"]}]
+	}`
+
+	tests := []struct {
+		name   string
+		mutate func(n *types.Node)
+		// probe reports a property of node 1's cached artefact that the
+		// write flips from !want to want. It takes no *testing.T because it
+		// also runs on the NodeStore writer, where FailNow would hang.
+		probe func(pm *policyv2.PolicyManager, view types.NodeView) (bool, error)
+		want  bool
+	}{
+		{
+			name: "filter after route approval",
+			mutate: func(n *types.Node) {
+				n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet}}
+				n.ApprovedRoutes = []netip.Prefix{subnet}
+			},
+			probe: func(pm *policyv2.PolicyManager, view types.NodeView) (bool, error) {
+				rules, err := pm.FilterForNode(view)
+				if err != nil {
+					return false, err
+				}
+
+				for _, r := range rules {
+					for _, d := range r.DstPorts {
+						if d.IP == subnet.String() {
+							return true, nil
+						}
+					}
+				}
+
+				return false, nil
+			},
+			want: true,
+		},
+		{
+			// A tagged node is outside autogroup:self, so tagging it must
+			// drop its SSH rules.
+			name: "ssh after tagging",
+			mutate: func(n *types.Node) {
+				n.Tags = []string{"tag:srv"}
+				n.UserID, n.User = nil, nil
+			},
+			probe: func(pm *policyv2.PolicyManager, view types.NodeView) (bool, error) {
+				sshPol, err := pm.SSHPolicy("", view)
+				if err != nil {
+					return false, err
+				}
+
+				return sshPol != nil && len(sshPol.Rules) > 0, nil
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Node 3 shares node 1's user so autogroup:self has a source
+			// for node 1 once node 1 itself is tagged away.
+			owners := []int{0, 1, 0}
+			nodes := make(types.Nodes, 0, len(owners))
+
+			for i, o := range owners {
+				id := i + 1
+				n := createTestNode(types.NodeID(id), users[o].ID, users[o].Name, fmt.Sprintf("n%d", id)) //nolint:gosec
+				ip4 := netip.AddrFrom4([4]byte{100, 64, 0, byte(id)})                                     //nolint:gosec
+				n.IPv4, n.IPv6 = &ip4, nil
+				n.User = &users[o]
+				nodes = append(nodes, &n)
+			}
+
+			pm, err := policyv2.NewPolicyManager([]byte(pol), users, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			var (
+				oldView  atomic.Pointer[types.NodeView]
+				buildErr atomic.Pointer[error]
+			)
+
+			inner := policyPeersFunc(pm)
+			store := NewNodeStore(nodes, func(ns []types.NodeView) map[types.NodeID][]types.NodeID {
+				// Stand in for a mapper that read the snapshot just before
+				// this write and asks between SetNodes and the swap.
+				if v := oldView.Load(); v != nil {
+					_, err := pm.SetNodes(views.SliceOf(ns))
+					if err == nil {
+						_, err = tt.probe(pm, *v)
+					}
+
+					if err != nil {
+						buildErr.CompareAndSwap(nil, &err)
+					}
+				}
+
+				return inner(ns)
+			}, TestBatchSize, TestBatchTimeout)
+			store.Start()
+
+			defer store.Stop()
+
+			before, ok := store.GetNode(1)
+			require.True(t, ok)
+
+			got, err := tt.probe(pm, before)
+			require.NoError(t, err)
+			require.NotEqual(t, tt.want, got, "precondition: the write must flip the probed artefact")
+
+			oldView.Store(&before)
+
+			after, ok := store.UpdateNode(1, tt.mutate)
+			require.True(t, ok)
+			oldView.Store(nil)
+
+			if e := buildErr.Load(); e != nil {
+				require.NoError(t, *e, "probe during peer map build")
+			}
+
+			got, err = tt.probe(pm, after)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got, "cached artefact must reflect the written node")
 		})
 	}
 }

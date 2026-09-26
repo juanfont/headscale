@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"fmt"
 	"net/netip"
 	"slices"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/require"
+	"pgregory.net/rapid"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
@@ -429,6 +431,85 @@ func TestSetUsers(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tt.wantPolicyChanged, policyChanged, "policyChanged")
 			require.Equal(t, tt.wantPeerMapChanged, peerMapChanged, "peerMapChanged")
+		})
+	}
+}
+
+func matcherStrings(ms []matcher.Match) []string {
+	out := make([]string, 0, len(ms))
+	for i := range ms {
+		out = append(out, ms[i].DebugString())
+	}
+
+	return out
+}
+
+// TestSetUsersDropsStaleSelfFilters pins that a user change which moves
+// autogroup:self sources, without touching the global filter, still drops
+// the cached per-node filters and matchers built from the old sources and
+// reports a policy change so clients receive their new filter.
+func TestSetUsersDropsStaleSelfFilters(t *testing.T) {
+	pol := `{
+		"groups": {"group:a": ["u1@", "u3@"]},
+		"acls": [{"action": "accept", "src": ["group:a"], "dst": ["autogroup:self:*"]}]}`
+
+	// ID is set by assignment: promoted-field literals need go1.27 and
+	// this test is backported.
+	u1, u3, x3 := types.User{Name: "u1"}, types.User{Name: "u3"}, types.User{Name: "x3"}
+	u1.ID, u3.ID, x3.ID = 1, 3, 3
+
+	tests := []struct {
+		name   string
+		before types.Users
+		after  types.Users
+	}{
+		{name: "user-added", before: types.Users{u1}, after: types.Users{u1, u3}},
+		{name: "user-renamed", before: types.Users{u1, x3}, after: types.Users{u1, u3}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			nodes := types.Nodes{
+				node("u1-a", "100.64.0.1", "fd7a:115c:a1e0::1", u1),
+				node("u3-a", "100.64.0.3", "fd7a:115c:a1e0::3", u3),
+				node("u3-b", "100.64.0.4", "fd7a:115c:a1e0::4", u3),
+			}
+			for i, n := range nodes {
+				n.ID = types.NodeID(i + 1) //nolint:gosec // safe conversion in test
+			}
+
+			pm, err := NewPolicyManager([]byte(pol), tt.before, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			for _, n := range nodes {
+				_, err := pm.FilterForNode(n.View())
+				require.NoError(t, err)
+				_, err = pm.MatchersForNode(n.View())
+				require.NoError(t, err)
+			}
+
+			policyChanged, _, err := pm.SetUsers(tt.after)
+			require.NoError(t, err)
+			require.True(t, policyChanged, "moved self sources must reach clients")
+
+			fresh, err := NewPolicyManager([]byte(pol), tt.after, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			for _, n := range nodes {
+				got, err := pm.FilterForNode(n.View())
+				require.NoError(t, err)
+
+				want, err := fresh.FilterForNode(n.View())
+				require.NoError(t, err)
+				require.Empty(t, cmp.Diff(want, got), "node %d FilterForNode (-fresh +cached)", n.ID)
+
+				gotM, err := pm.MatchersForNode(n.View())
+				require.NoError(t, err)
+
+				wantM, err := fresh.MatchersForNode(n.View())
+				require.NoError(t, err)
+				require.Equal(t, matcherStrings(wantM), matcherStrings(gotM), "node %d MatchersForNode", n.ID)
+			}
 		})
 	}
 }
@@ -2597,4 +2678,448 @@ func TestTagOwnedByTags(t *testing.T) {
 		var nilPM *PolicyManager
 		require.False(t, nilPM.TagOwnedByTags("tag:leaf", []string{"tag:root"}))
 	})
+}
+
+// benchPolicies are the ACL shapes BenchmarkBuildPeerMap and
+// BenchmarkSetNodes measure: a global ACL, autogroup:self, and a via
+// grant. hscontrol/state/node_store_test.go checks the same three
+// shapes for adjacency correctness; this is its own copy since test
+// packages can't share one. Route dsts here are 10.0.0.0/8, wider than
+// state's fixed 10.33.0.0/24: benchNodes below spreads its ~5% of
+// routed nodes across 10.0.0.0/24 .. 10.255.0.0/24, so the dst must
+// cover that whole range for the route-owning ACL/grant rule to be
+// exercised rather than silently matching nothing.
+var benchPolicies = []struct {
+	name   string
+	policy string
+}{
+	{name: "global", policy: `{
+		"groups": {"group:a": ["u1@"]},
+		"tagOwners": {"tag:srv": ["u1@"]},
+		"acls": [
+			{"action": "accept", "src": ["group:a"], "dst": ["tag:srv:*"]},
+			{"action": "accept", "src": ["u2@"], "dst": ["10.0.0.0/8:*"]}
+		]}`},
+	{name: "self", policy: `{
+		"acls": [{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self:*"]}]}`},
+	{name: "via", policy: `{
+		"tagOwners": {"tag:router": ["u1@"]},
+		"grants": [{"src": ["u2@"], "dst": ["10.0.0.0/8"], "ip": ["*"], "via": ["tag:router"]}]}`},
+}
+
+// benchSetNodesPolicies is the subset of benchPolicies BenchmarkSetNodes
+// covers: via's per-node filter cost is close enough to global's that a
+// third axis wouldn't add signal.
+var benchSetNodesPolicies = benchPolicies[:2]
+
+// benchNodes builds n nodes spread across 10 users for the peer-map
+// benchmarks below: ~10% tagged tag:srv, ~5% carrying an approved and
+// announced 10.x.0.0/24 route, each with a unique IPv4.
+func benchNodes(n int) ([]types.User, types.Nodes) {
+	users := make([]types.User, 10)
+	for i := range users {
+		users[i] = types.User{ID: uint(i + 1), Name: fmt.Sprintf("u%d", i+1)}
+	}
+
+	nodes := make(types.Nodes, 0, n)
+	for i := range n {
+		u := users[i%len(users)]
+		ip := netip.AddrFrom4([4]byte{100, 64, byte(i / 256), byte(i % 256)}) //nolint:gosec
+
+		nd := &types.Node{
+			ID:       types.NodeID(i + 1),
+			Hostname: fmt.Sprintf("n%d", i+1),
+			IPv4:     &ip,
+		}
+
+		if i%10 == 0 {
+			nd.Tags = []string{"tag:srv"}
+		} else {
+			nd.UserID, nd.User = &u.ID, &u
+		}
+
+		if i%20 == 0 {
+			subnet := netip.PrefixFrom(netip.AddrFrom4([4]byte{10, byte((i / 20) % 256), 0, 0}), 24) //nolint:gosec
+			nd.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet}}
+			nd.ApprovedRoutes = []netip.Prefix{subnet}
+		}
+
+		nodes = append(nodes, nd)
+	}
+
+	return users, nodes
+}
+
+// BenchmarkBuildPeerMap measures PolicyManager.BuildPeerMap over
+// realistic node counts and policy shapes, without any NodeStore or
+// reuse-path involvement: the number this baseline compares later
+// NodeStore write-path changes against.
+func BenchmarkBuildPeerMap(b *testing.B) {
+	for _, pol := range benchPolicies {
+		for _, n := range []int{100, 300, 617, 1000} {
+			b.Run(fmt.Sprintf("%s/n=%d", pol.name, n), func(b *testing.B) {
+				users, nodes := benchNodes(n)
+				pm, err := NewPolicyManager([]byte(pol.policy), users, nodes.ViewSlice())
+				require.NoError(b, err)
+
+				b.ReportAllocs()
+
+				for b.Loop() {
+					pm.BuildPeerMap(nodes.ViewSlice())
+				}
+			})
+		}
+	}
+}
+
+// BenchmarkSetNodes measures PolicyManager.SetNodes when one node's
+// route changes on every call, the same per-write cost
+// BenchmarkNodeStoreWrite drives through a NodeStore.
+func BenchmarkSetNodes(b *testing.B) {
+	for _, pol := range benchSetNodesPolicies {
+		b.Run(fmt.Sprintf("%s/n=%d", pol.name, 617), func(b *testing.B) {
+			users, nodes := benchNodes(617)
+			pm, err := NewPolicyManager([]byte(pol.policy), users, nodes.ViewSlice())
+			require.NoError(b, err)
+
+			b.ReportAllocs()
+
+			i := 0
+			for b.Loop() {
+				i++
+				subnet := netip.PrefixFrom(netip.AddrFrom4([4]byte{10, byte(200 + i%50), 0, 0}), 24) //nolint:gosec
+				nodes[0].Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet}}
+				nodes[0].ApprovedRoutes = []netip.Prefix{subnet}
+
+				_, err := pm.SetNodes(nodes.ViewSlice())
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+// TestNodesGenerationCountsChangingSetNodes pins that NodesGeneration
+// moves exactly when SetNodes reports a change, so a caller that did not
+// run the SetNodes itself can still tell its write moved the policy.
+func TestNodesGenerationCountsChangingSetNodes(t *testing.T) {
+	users := types.Users{{ID: 1, Name: "user1"}}
+
+	nodes := types.Nodes{node("n1", "100.64.0.1", "fd7a:115c:a1e0::1", users[0])}
+	nodes[0].ID = 1
+
+	pm, err := NewPolicyManager([]byte(`{
+		"acls": [{"action": "accept", "src": ["user1@"], "dst": ["user1@:*"]}]
+	}`), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	gen := pm.NodesGeneration()
+
+	changed, err := pm.SetNodes(nodes.ViewSlice())
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, gen, pm.NodesGeneration(), "unchanged nodes must not advance the generation")
+
+	added := node("n2", "100.64.0.2", "fd7a:115c:a1e0::2", users[0])
+	added.ID = 2
+
+	changed, err = pm.SetNodes(append(nodes, added).ViewSlice())
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, gen+1, pm.NodesGeneration(), "a changing SetNodes must advance the generation once")
+}
+
+// TestSetNodesKeepsUntouchedFilterCaches pins that a policy-affecting
+// SetNodes which leaves the compiled policy alone drops only the per-node
+// filter and matcher entries the write could have changed.
+func TestSetNodesKeepsUntouchedFilterCaches(t *testing.T) {
+	users := types.Users{{ID: 1, Name: "u1"}, {ID: 2, Name: "u2"}}
+	subnet := netip.MustParsePrefix("10.33.0.0/24")
+
+	approveSubnet := func(n *types.Node) {
+		n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet}}
+		n.ApprovedRoutes = []netip.Prefix{subnet}
+	}
+
+	tests := []struct {
+		name     string
+		policy   string
+		tag      string
+		changeID types.NodeID
+		change   func(n *types.Node)
+		wantKept []types.NodeID
+		// Global policies answer MatchersForNode from shared matchers
+		// and never fill the per-node map.
+		wantMatchersKept []types.NodeID
+	}{
+		{
+			name:     "global-unreferenced-tag",
+			policy:   `{"acls": [{"action": "accept", "src": ["u1@"], "dst": ["u2@:*"]}]}`,
+			tag:      "tag:a",
+			changeID: 5,
+			change:   func(n *types.Node) { n.Tags = []string{"tag:b"} },
+			wantKept: []types.NodeID{1, 2, 3, 4},
+		},
+		{
+			name:             "autogroup-self-route",
+			policy:           `{"acls": [{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self:*"]}]}`,
+			tag:              "tag:a",
+			changeID:         1,
+			change:           approveSubnet,
+			wantKept:         []types.NodeID{3, 4, 5},
+			wantMatchersKept: []types.NodeID{3, 4, 5},
+		},
+		{
+			name: "via-router-route",
+			policy: `{
+				"tagOwners": {"tag:router": ["u1@"]},
+				"grants": [{"src": ["u2@"], "dst": ["10.33.0.0/24"], "ip": ["*"], "via": ["tag:router"]}]}`,
+			tag:              "tag:router",
+			changeID:         5,
+			change:           approveSubnet,
+			wantKept:         []types.NodeID{1, 2, 3, 4},
+			wantMatchersKept: []types.NodeID{1, 2, 3, 4},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			nodes := types.Nodes{
+				node("u1-a", "100.64.0.1", "fd7a:115c:a1e0::1", users[0]),
+				node("u1-b", "100.64.0.2", "fd7a:115c:a1e0::2", users[0]),
+				node("u2-a", "100.64.0.3", "fd7a:115c:a1e0::3", users[1]),
+				node("u2-b", "100.64.0.4", "fd7a:115c:a1e0::4", users[1]),
+				node("tagged", "100.64.0.5", "fd7a:115c:a1e0::5", users[0]),
+			}
+			for i, n := range nodes {
+				n.ID = types.NodeID(i + 1) //nolint:gosec // safe conversion in test
+			}
+
+			nodes[4].Tags = []string{tt.tag}
+			nodes[4].UserID, nodes[4].User = nil, nil
+
+			pm, err := NewPolicyManager([]byte(tt.policy), users, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			for _, n := range nodes {
+				_, err := pm.FilterForNode(n.View())
+				require.NoError(t, err)
+				_, err = pm.MatchersForNode(n.View())
+				require.NoError(t, err)
+			}
+
+			changed := nodes[tt.changeID-1].View().AsStruct()
+			tt.change(changed)
+
+			next := slices.Clone(nodes)
+			next[tt.changeID-1] = changed
+
+			policyChanged, err := pm.SetNodes(next.ViewSlice())
+			require.NoError(t, err)
+			require.True(t, policyChanged)
+
+			var kept []types.NodeID
+
+			pm.filterRulesMap.Range(func(id types.NodeID, _ []tailcfg.FilterRule) bool {
+				kept = append(kept, id)
+				return true
+			})
+			slices.Sort(kept)
+			require.Equal(t, tt.wantKept, kept)
+
+			var keptMatchers []types.NodeID
+
+			pm.matchersForNodeMap.Range(func(id types.NodeID, _ []matcher.Match) bool {
+				keptMatchers = append(keptMatchers, id)
+				return true
+			})
+			slices.Sort(keptMatchers)
+			require.Equal(t, tt.wantMatchersKept, keptMatchers)
+		})
+	}
+}
+
+// TestSetNodesCachedResultsMatchFresh drives random node writes through
+// one PolicyManager, reading every node between writes so its caches
+// fill, and checks each read against a PolicyManager built fresh from the
+// same nodes. A cache entry that a write should have dropped shows up as
+// a difference.
+func TestSetNodesCachedResultsMatchFresh(t *testing.T) {
+	users := types.Users{{ID: 1, Name: "u1"}, {ID: 2, Name: "u2"}, {ID: 3, Name: "u3"}}
+
+	policies := []struct {
+		name   string
+		policy string
+	}{
+		{name: "global", policy: `{
+			"groups": {"group:a": ["u1@", "u2@"]},
+			"tagOwners": {"tag:srv": ["u1@"], "tag:router": ["u1@"], "tag:other": ["u1@"]},
+			"acls": [
+				{"action": "accept", "src": ["group:a"], "dst": ["tag:srv:*"]},
+				{"action": "accept", "src": ["u3@"], "dst": ["10.33.0.0/16:*", "u1@:22"]}
+			],
+			"ssh": [{"action": "accept", "src": ["group:a"], "dst": ["tag:srv"], "users": ["root"]}]}`},
+		{name: "autogroup-self", policy: `{
+			"groups": {"group:a": ["u1@"]},
+			"tagOwners": {"tag:srv": ["u1@"], "tag:router": ["u1@"], "tag:other": ["u1@"]},
+			"acls": [
+				{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self:*"]},
+				{"action": "accept", "src": ["group:a"], "dst": ["tag:srv:*"]}
+			],
+			"ssh": [
+				{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self"], "users": ["autogroup:nonroot"]},
+				{"action": "accept", "src": ["group:a"], "dst": ["tag:srv"], "users": ["root"]}
+			]}`},
+		{name: "via", policy: `{
+			"tagOwners": {"tag:srv": ["u1@"], "tag:router": ["u1@"], "tag:other": ["u1@"]},
+			"grants": [
+				{"src": ["u2@"], "dst": ["10.33.0.0/16"], "ip": ["*"], "via": ["tag:router"]},
+				{"src": ["u3@", "tag:srv"], "dst": ["autogroup:internet"], "ip": ["*"], "via": ["tag:router"]},
+				{"src": ["u1@"], "dst": ["tag:srv"], "ip": ["*"]}
+			]}`},
+		{name: "autogroup-self-and-via", policy: `{
+			"groups": {"group:a": ["u1@", "u2@"]},
+			"tagOwners": {"tag:srv": ["u1@"], "tag:router": ["u1@"], "tag:other": ["u1@"]},
+			"grants": [
+				{"src": ["group:a"], "dst": ["autogroup:self"], "ip": ["*"]},
+				{"src": ["u2@", "tag:srv"], "dst": ["10.33.0.0/16"], "ip": ["*"], "via": ["tag:router"]},
+				{"src": ["u3@"], "dst": ["tag:srv"], "ip": ["*"]}
+			]}`},
+	}
+
+	subnets := []netip.Prefix{
+		netip.MustParsePrefix("10.33.0.0/24"),
+		netip.MustParsePrefix("10.33.1.0/24"),
+	}
+	exits := []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()}
+
+	for _, pc := range policies {
+		t.Run(pc.name, func(t *testing.T) {
+			rapid.Check(t, func(rt *rapid.T) {
+				nodes := make(types.Nodes, 0, 8)
+				nextIP := 1
+
+				newNode := func(id types.NodeID, u types.User) *types.Node {
+					n := node(fmt.Sprintf("n%d", id), fmt.Sprintf("100.64.0.%d", nextIP), fmt.Sprintf("fd7a:115c:a1e0::%d", nextIP), u)
+					n.ID = id
+					nextIP++
+
+					return n
+				}
+
+				for i := range 6 {
+					nodes = append(nodes, newNode(types.NodeID(i+1), users[i%len(users)])) //nolint:gosec // safe conversion in test
+				}
+
+				nextID := types.NodeID(len(nodes) + 1) //nolint:gosec // safe conversion in test
+
+				pm, err := NewPolicyManager([]byte(pc.policy), users, nodes.ViewSlice())
+				if err != nil {
+					rt.Fatalf("new policy manager: %v", err)
+				}
+
+				check := func() {
+					fresh, err := NewPolicyManager([]byte(pc.policy), users, nodes.ViewSlice())
+					if err != nil {
+						rt.Fatalf("fresh policy manager: %v", err)
+					}
+
+					for _, n := range nodes {
+						nv := n.View()
+
+						got, _ := pm.FilterForNode(nv)
+
+						want, _ := fresh.FilterForNode(nv)
+						if diff := cmp.Diff(want, got); diff != "" {
+							rt.Fatalf("node %d FilterForNode (-fresh +cached):\n%s", n.ID, diff)
+						}
+
+						gotM, _ := pm.MatchersForNode(nv)
+
+						wantM, _ := fresh.MatchersForNode(nv)
+						if diff := cmp.Diff(matcherStrings(wantM), matcherStrings(gotM)); diff != "" {
+							rt.Fatalf("node %d MatchersForNode (-fresh +cached):\n%s", n.ID, diff)
+						}
+
+						gotS, err := pm.SSHPolicy("", nv)
+						if err != nil {
+							rt.Fatalf("node %d SSHPolicy: %v", n.ID, err)
+						}
+
+						wantS, _ := fresh.SSHPolicy("", nv)
+						if diff := cmp.Diff(wantS, gotS); diff != "" {
+							rt.Fatalf("node %d SSHPolicy (-fresh +cached):\n%s", n.ID, diff)
+						}
+					}
+				}
+
+				check()
+
+				steps := rapid.IntRange(1, 25).Draw(rt, "steps")
+				for range steps {
+					// Several writes per SetNodes, as a NodeStore batch applies them.
+					writes := rapid.IntRange(1, 3).Draw(rt, "writes")
+					for range writes {
+						i := rapid.IntRange(0, len(nodes)-1).Draw(rt, "node")
+						// Mutate a copy: pm still holds views of the old node.
+						n := nodes[i].View().AsStruct()
+
+						switch rapid.IntRange(0, 9).Draw(rt, "op") {
+						case 0: // tag
+							n.Tags = []string{rapid.SampledFrom([]string{"tag:srv", "tag:router", "tag:other"}).Draw(rt, "tag")}
+							n.UserID, n.User = nil, nil
+						case 1: // (re)assign user, untagging
+							u := rapid.SampledFrom(users).Draw(rt, "user")
+							n.Tags = nil
+							n.UserID, n.User = new(u.ID), new(u)
+						case 2: // new IPs
+							ip4 := netip.MustParseAddr(fmt.Sprintf("100.64.1.%d", nextIP))
+							ip6 := netip.MustParseAddr(fmt.Sprintf("fd7a:115c:a1e0::1:%d", nextIP))
+							n.IPv4, n.IPv6 = &ip4, &ip6
+							nextIP++
+						case 3: // announce and approve a subnet
+							p := rapid.SampledFrom(subnets).Draw(rt, "subnet")
+							n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{p}}
+							n.ApprovedRoutes = []netip.Prefix{p}
+						case 4: // drop approvals
+							n.ApprovedRoutes = nil
+						case 5: // exit node
+							n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: exits}
+							n.ApprovedRoutes = exits
+						case 6: // add a node
+							nodes = append(nodes, newNode(nextID, rapid.SampledFrom(users).Draw(rt, "user")))
+							nextID++
+
+							n = nil
+						case 7: // remove the node
+							if len(nodes) > 1 {
+								nodes = slices.Delete(slices.Clone(nodes), i, i+1)
+							}
+
+							n = nil
+						case 8: // owner association not loaded
+							if !n.IsTagged() {
+								n.User = nil
+							}
+						case 9: // payload only
+							n.Hostname += "x"
+						}
+
+						if n != nil {
+							nodes = slices.Clone(nodes)
+							nodes[i] = n
+						}
+					}
+
+					_, err := pm.SetNodes(nodes.ViewSlice())
+					if err != nil {
+						rt.Fatalf("SetNodes: %v", err)
+					}
+
+					check()
+				}
+			})
+		})
+	}
 }

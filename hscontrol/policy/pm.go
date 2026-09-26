@@ -30,6 +30,9 @@ type PolicyManager interface {
 	// adjacency may have changed. Both are false when the list is unchanged.
 	SetUsers(users []types.User) (policyChanged, peerMapChanged bool, err error)
 	SetNodes(nodes views.Slice[types.NodeView]) (bool, error)
+	// NodesGeneration counts SetNodes calls that reported a change; see
+	// [policyv2.PolicyManager.NodesGeneration].
+	NodesGeneration() uint64
 	// NodeCanHaveTag reports whether the given node can have the given tag.
 	NodeCanHaveTag(node types.NodeView, tag string) bool
 

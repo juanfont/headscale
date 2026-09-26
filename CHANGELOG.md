@@ -88,6 +88,10 @@ removed on this schedule:
 - Fix `headscale users destroy`/`rename` reporting "multiple users match query" when no user matches; an ambiguous match now lists the matching users [#3476](https://github.com/juanfont/headscale/pull/3476)
 - Deleting a user that still owns nodes now lists the nodes (ID and hostname) that must be deleted first [#3475](https://github.com/juanfont/headscale/pull/3475)
 - Headscale now requires Go 1.27 to build
+- Node writes rebuild the peer map once instead of twice, and per-node packet filter caches survive writes that don't touch them [#3501](https://github.com/juanfont/headscale/pull/3501)
+- Route auto-approval from a map request is a single write, and approving a route no longer sends a full policy update to every peer unless it changes what peers can reach [#3501](https://github.com/juanfont/headscale/pull/3501)
+- `headscale nodes backfillips` and `POST /api/v1/node/backfillips` now notify connected clients of the new IPs [#3501](https://github.com/juanfont/headscale/pull/3501)
+- Fix per-node packet filters under `autogroup:self` going stale after a user was added or renamed [#3501](https://github.com/juanfont/headscale/pull/3501)
 
 ## 0.29.4 (2026-09-23)
 
