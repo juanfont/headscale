@@ -100,10 +100,10 @@ client:
 	@echo "Generating API clients..."
 	@tmp=$$(mktemp -t headscale-openapi-3.0.XXXXXX.yaml); \
 	go run ./cmd/gen-openapi -downgrade "$$tmp" && \
-	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.7.1 \
+	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 \
 		-generate types,client -package clientv1 -o gen/client/v1/client.gen.go "$$tmp" && \
 	go run ./cmd/gen-openapi -api v2 -downgrade "$$tmp" && \
-	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.7.1 \
+	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 \
 		-generate types,client -package clientv2 -o gen/client/v2/client.gen.go "$$tmp"; \
 	status=$$?; rm -f "$$tmp"; exit $$status
 
