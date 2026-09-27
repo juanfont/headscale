@@ -2095,6 +2095,22 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 		requireNodeRouteCountWithCollect(c, nodes[0], 3, 3, 3)
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "route state changes should propagate to nodes")
 
+	// The exit node itself must learn the approval on its live map session:
+	// Self.AllowedIPs, and ExitNodeOption which tailscale derives from it,
+	// must carry both exit routes without a restart or a re-advertise.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		status, err := user1c.Status()
+		assert.NoError(c, err)
+
+		if !assert.NotNil(c, status.Self) {
+			return
+		}
+
+		assert.True(c, status.Self.ExitNodeOption, "exit node should see itself as an approved exit node")
+		assert.Contains(c, status.Self.AllowedIPs.AsSlice(), tsaddr.AllIPv4(), "self should have 0.0.0.0/0 in AllowedIPs")
+		assert.Contains(c, status.Self.AllowedIPs.AsSlice(), tsaddr.AllIPv6(), "self should have ::/0 in AllowedIPs")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "exit node should learn its own approved routes")
+
 	// Wait for exit routes to be visible to the client.
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		status, err := user2c.Status()

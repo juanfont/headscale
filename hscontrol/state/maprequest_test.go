@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 	"tailscale.com/types/opt"
@@ -735,6 +736,54 @@ func TestMapRequestPeerVisibleHostinfoChangeIsBroadcast(t *testing.T) {
 	c, err := s.UpdateNodeFromMapRequest(nodeID, req("windows"))
 	require.NoError(t, err)
 	require.Contains(t, c.PeersChanged, nodeID, "peers read OS, got %+v", c)
+}
+
+// TestMapRequestRouteChangeIsSelfUpdate pins that a policy recompute caused
+// by an admin approval, or by the node's own request moving its announced
+// routes, carries OriginNode, so the mapper adds the node's self to the
+// response and the node learns its effective routes on its live map session.
+// Without it Self.AllowedIPs, and the "offers exit node" status derived from
+// it, only refresh on a new map session (a tailscaled restart).
+func TestMapRequestRouteChangeIsSelfUpdate(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	exit := []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()}
+
+	_, c, err := s.SetApprovedRoutes(nodeID, exit)
+	require.NoError(t, err)
+	require.True(t, c.RequiresRuntimePeerComputation, "got %+v", c)
+	require.Equal(t, nodeID, c.OriginNode,
+		"an approval must reach the approved node's own self, got %+v", c)
+
+	nv, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+
+	stored := nv.AsStruct()
+
+	req := func(routes []netip.Prefix) tailcfg.MapRequest {
+		return tailcfg.MapRequest{
+			NodeKey:  stored.NodeKey,
+			DiscoKey: stored.DiscoKey,
+			Hostinfo: &tailcfg.Hostinfo{
+				Hostname:    stored.Hostname,
+				RoutableIPs: routes,
+				NetInfo:     &tailcfg.NetInfo{PreferredDERP: 1},
+			},
+		}
+	}
+
+	// Announce, withdraw, re-announce: the effective exit routes
+	// (announced ∩ approved) flip on every step, so each one is a policy
+	// recompute for the peers and a self update for the node.
+	for _, routes := range [][]netip.Prefix{exit, nil, exit} {
+		c, err := s.UpdateNodeFromMapRequest(nodeID, req(routes))
+		require.NoError(t, err)
+		require.True(t, c.RequiresRuntimePeerComputation,
+			"exit routes are a policy input, got %+v", c)
+		require.Equal(t, nodeID, c.OriginNode,
+			"announcing %v must refresh the node's own self, got %+v", routes, c)
+	}
 }
 
 func mustLastSeen(t *testing.T, s *State, id types.NodeID) time.Time {

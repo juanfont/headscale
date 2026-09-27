@@ -88,6 +88,7 @@ removed on this schedule:
 - Fix `headscale users destroy`/`rename` reporting "multiple users match query" when no user matches; an ambiguous match now lists the matching users [#3476](https://github.com/juanfont/headscale/pull/3476)
 - Deleting a user that still owns nodes now lists the nodes (ID and hostname) that must be deleted first [#3475](https://github.com/juanfont/headscale/pull/3475)
 - Headscale now requires Go 1.27 to build
+- Fix a node never learning its own approved routes on its live map session: `headscale nodes approve-routes`, and since 0.29.4 withdrawing and re-advertising the routes, left `Self.AllowedIPs` stale and `tailscale status` without "offers exit node" until tailscaled restarted [#3502](https://github.com/juanfont/headscale/issues/3502)
 
 ## 0.29.4 (2026-09-23)
 

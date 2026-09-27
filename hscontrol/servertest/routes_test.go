@@ -11,6 +11,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/netmap"
 )
@@ -167,6 +168,96 @@ func TestRoutes(t *testing.T) {
 
 				return false
 			})
+	})
+
+	// The advertiser must learn its own approved exit routes on its live
+	// map session, and follow every withdraw and re-advertise, without a
+	// reconnect: Self.AllowedIPs is what the client derives the
+	// "offers exit node" status from.
+	t.Run("advertiser_learns_own_approved_exit_routes", func(t *testing.T) {
+		t.Parallel()
+
+		srv := servertest.NewServer(t)
+		user := srv.CreateUser(t, "selfrt-user")
+
+		exit := []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()}
+
+		c1 := servertest.NewClient(t, srv, "selfrt-exit",
+			servertest.WithUser(user))
+		c2 := servertest.NewClient(t, srv, "selfrt-observer",
+			servertest.WithUser(user))
+
+		c1.WaitForPeers(t, 1, 10*time.Second)
+		c2.WaitForPeers(t, 1, 10*time.Second)
+
+		advertise := func(routes []netip.Prefix) {
+			t.Helper()
+
+			c1.Direct().SetHostinfo(&tailcfg.Hostinfo{
+				BackendLogID: "servertest-selfrt-exit",
+				Hostname:     "selfrt-exit",
+				RoutableIPs:  routes,
+			})
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			_ = c1.Direct().SendUpdate(ctx)
+		}
+
+		selfHasExit := func(nm *netmap.NetworkMap) bool {
+			ips := nm.SelfNode.AllowedIPs().AsSlice()
+
+			return slices.Contains(ips, tsaddr.AllIPv4()) &&
+				slices.Contains(ips, tsaddr.AllIPv6())
+		}
+
+		advertise(exit)
+
+		c2.WaitForCondition(t, "exit routes announced in hostinfo",
+			10*time.Second,
+			func(nm *netmap.NetworkMap) bool {
+				for _, p := range nm.Peers {
+					hi := p.Hostinfo()
+					if hi.Valid() && hi.Hostname() == "selfrt-exit" {
+						return hi.RoutableIPs().Len() == len(exit)
+					}
+				}
+
+				return false
+			})
+
+		nodeID := findNodeID(t, srv, "selfrt-exit")
+
+		_, routeChange, err := srv.State().SetApprovedRoutes(nodeID, exit)
+		require.NoError(t, err)
+		srv.App.Change(routeChange)
+
+		c1.WaitForCondition(t, "exit routes in own AllowedIPs after approval",
+			15*time.Second, selfHasExit)
+
+		// Peers keep learning the routes as before.
+		c2.WaitForCondition(t, "exit routes in the peer's AllowedIPs",
+			15*time.Second,
+			func(nm *netmap.NetworkMap) bool {
+				for _, p := range nm.Peers {
+					hi := p.Hostinfo()
+					if hi.Valid() && hi.Hostname() == "selfrt-exit" {
+						return slices.Contains(p.AllowedIPs().AsSlice(), tsaddr.AllIPv4())
+					}
+				}
+
+				return false
+			})
+
+		advertise(nil)
+		c1.WaitForCondition(t, "exit routes gone from own AllowedIPs after withdrawal",
+			15*time.Second,
+			func(nm *netmap.NetworkMap) bool { return !selfHasExit(nm) })
+
+		advertise(exit)
+		c1.WaitForCondition(t, "exit routes back in own AllowedIPs after re-advertise",
+			15*time.Second, selfHasExit)
 	})
 
 	t.Run("allowed_ips_superset_of_addresses", func(t *testing.T) {

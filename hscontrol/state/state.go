@@ -1052,6 +1052,14 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (t
 		c = change.PolicyChange()
 	}
 
+	// The approved node only learns its own routes from a response that
+	// carries its self node: Self.AllowedIPs, and the "offers exit node"
+	// status derived from it, never move on a policy response without one.
+	// PolicyChange carries no OriginNode, so the mapper's self-update check
+	// fails and the node keeps its stale self until its next full map
+	// (a tailscaled restart). Same treatment as SetNodeTags above.
+	c.OriginNode = nodeID
+
 	return nodeView, c, nil
 }
 
@@ -3378,11 +3386,18 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		}
 	}
 
+	// Both recomputes below were caused by this node's own request moving
+	// its own row (announced routes or peer-visible Hostinfo), so its
+	// Self.AllowedIPs (addresses, primaries, announced∩approved exit
+	// routes) may have moved too. Keep the origin so the mapper adds the
+	// self node next to the new packet filters.
 	if !policyChange.IsEmpty() {
+		policyChange.OriginNode = id
 		return policyChange, nil
 	}
 
 	if !nodeRouteChange.IsEmpty() {
+		nodeRouteChange.OriginNode = id
 		return nodeRouteChange, nil
 	}
 
