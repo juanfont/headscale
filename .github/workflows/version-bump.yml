@@ -6,8 +6,15 @@ name: Version Bump
 # same derivations nix-checks.yml then gets as cache hits. See gc.yml for the
 # scoping rule.
 #
-# The schedule is added once the manual runs have been trusted for a while.
+# The schedule only ever fires upstream: the job guard below falls through to
+# the repository check for anything that is not a manual dispatch, and GitHub
+# does not run schedules in forks to begin with.
 on:
+  schedule:
+    # Early enough that a pull request opened here has its checks done by the
+    # time anyone looks, and far from the hours the integration matrix is
+    # usually busy.
+    - cron: "0 4 * * *"
   workflow_dispatch:
     inputs:
       dry-run:
