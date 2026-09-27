@@ -1,4 +1,4 @@
-FROM rust:1.95-trixie AS builder
+FROM rust:1.98-trixie AS builder
 
 ARG TAILSCALE_RS_REPO=https://github.com/tailscale/tailscale-rs.git
 ARG TAILSCALE_RS_REF=main
