@@ -21,7 +21,7 @@ RUN GOOS=js GOARCH=wasm go build -o /out/client.wasm ./integration/wasmic/wasmcl
     && cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" /out/wasm_exec.js \
     && cp "$(go env GOROOT)/lib/wasm/wasm_exec_node.js" /out/wasm_exec_node.js
 
-FROM node:24-alpine
+FROM node:26-alpine
 
 WORKDIR /app
 COPY --from=build /out/ /app/
