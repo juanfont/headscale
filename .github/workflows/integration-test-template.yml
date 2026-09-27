@@ -28,12 +28,12 @@ jobs:
       # that triggered the build.
       HAS_TAILSCALE_SECRET: ${{ secrets.TS_OAUTH_CLIENT_ID }}
     steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 2
       - name: Tailscale
         if: ${{ env.HAS_TAILSCALE_SECRET }}
-        uses: tailscale/github-action@a392da0a182bba0e9613b6243ebd69529b1878aa # v4.1.0
+        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd # v4.2.0
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
@@ -42,33 +42,33 @@ jobs:
         if: ${{ env.HAS_TAILSCALE_SECRET }}
         uses: alexellis/setup-sshd-actor@master
       - name: Download headscale image
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: headscale-image
           path: /tmp/artifacts
       - name: Download tailscale HEAD image
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: tailscale-head-image
           path: /tmp/artifacts
       - name: Download tailscale released images
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: tailscale-released-images
           path: /tmp/artifacts
       - name: Download hi binary
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: hi-binary
           path: /tmp/artifacts
       - name: Download Go cache
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: go-cache
           path: /tmp/artifacts
       - name: Download postgres image
         if: ${{ inputs.postgres_flag == '--postgres=1' }}
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: postgres-image
           path: /tmp/artifacts
@@ -90,7 +90,7 @@ jobs:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_CI_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_CI_TOKEN }}
         if: env.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ env.DOCKERHUB_TOKEN }}
@@ -131,12 +131,12 @@ jobs:
         run: echo "name=${TEST_NAME//[\":<>|*?\\\/]/-}" >> $GITHUB_OUTPUT
         env:
           TEST_NAME: ${{ inputs.test }}
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: ${{ inputs.database_name }}-${{ steps.sanitize.outputs.name }}-logs
           path: "control_logs/*/*.log"
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: ${{ inputs.database_name }}-${{ steps.sanitize.outputs.name }}-artifacts

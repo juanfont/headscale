@@ -57,7 +57,7 @@ jobs:
           token: ${{ secrets.WORKFLOW_SECRET }}
 
       - uses: NixOS/nix-installer-action@62c1943b776c509394b550f3f983adc14e9212d6 # main
-      - uses: Mic92/hestia@f1f4df2801140a36398ed423533c8460618539df # v3.0.1
+      - uses: Mic92/hestia@dfed9ced335d28978ba74e513939a10db1f71025 # v3.1.0
 
       - name: Configure the committer
         run: |
