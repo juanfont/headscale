@@ -67,6 +67,30 @@ func resolveSingleUser(
 	return lookupUser(ctx, client, id, username)
 }
 
+// userIDFromArg resolves a --user value: an ID, or a user name when it is not
+// a number, so a user whose name is all digits must be given by ID.
+func userIDFromArg(
+	ctx context.Context,
+	client *clientv1.ClientWithResponses,
+	arg string,
+) (string, error) {
+	if arg == "" {
+		return "", nil
+	}
+
+	_, err := strconv.ParseUint(arg, util.Base10, 64)
+	if err == nil {
+		return arg, nil
+	}
+
+	id, _, err := lookupUser(ctx, client, 0, arg)
+	if err != nil {
+		return "", fmt.Errorf("--user %q: %w", arg, err)
+	}
+
+	return id, nil
+}
+
 // lookupUser resolves exactly one user by ID and/or name (0 and "" are unset),
 // returning the identifier of the matched user and the user itself.
 func lookupUser(
