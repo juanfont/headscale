@@ -215,10 +215,8 @@ func (h *Headscale) handleLogout(
 				EmbedObject(node).
 				Msg("Deleting ephemeral node during logout")
 
-			c, err := h.state.DeleteNode(node)
-			if !c.IsEmpty() {
-				h.Change(c)
-			}
+			changes, err := h.state.DeleteNode(node)
+			h.Change(changes...)
 
 			if err != nil {
 				return nil, fmt.Errorf("deleting ephemeral node: %w", err)
