@@ -3,10 +3,16 @@ package hscontrol
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net"
 	"net/http"
 	"os"
@@ -377,7 +383,11 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 				}
 
 				if h.cfg.DERP.ServerEnabled && h.cfg.DERP.AutomaticallyAddEmbeddedDerpRegion {
-					region, _ := h.DERPServer.GenerateRegion()
+					region, err := h.DERPServer.GenerateRegion()
+					if err != nil {
+						return nil, fmt.Errorf("generating embedded DERP region: %w", err)
+					}
+
 					derpMap.Regions[region.RegionID] = &region
 				}
 
@@ -564,7 +574,11 @@ func (h *Headscale) Serve() error {
 	}
 
 	if h.cfg.DERP.ServerEnabled && h.cfg.DERP.AutomaticallyAddEmbeddedDerpRegion {
-		region, _ := h.DERPServer.GenerateRegion()
+		region, err := h.DERPServer.GenerateRegion()
+		if err != nil {
+			return fmt.Errorf("generating embedded DERP region: %w", err)
+		}
+
 		derpMap.Regions[region.RegionID] = &region
 	}
 
@@ -726,6 +740,40 @@ func (h *Headscale) Serve() error {
 	log.Info().
 		Msgf("listening and serving HTTP on: %s", h.cfg.Addr)
 
+	var (
+		insecureTLSServer   *http.Server
+		insecureTLSListener net.Listener
+	)
+
+	if addr := derpServer.DebugInsecureTLSListenAddr(); addr != "" {
+		insecureTLSConfig, err := selfSignedTLSConfig()
+		if err != nil {
+			return fmt.Errorf("creating self-signed TLS certificate: %w", err)
+		}
+
+		insecureTLSListener, err = tls.Listen("tcp", addr, insecureTLSConfig)
+		if err != nil {
+			return &types.ListenerBindError{
+				Listener: "insecure TLS",
+				YAMLKey:  "HEADSCALE_DEBUG_INSECURE_TLS_LISTEN_ADDR",
+				Addr:     addr,
+				Err:      err,
+			}
+		}
+
+		insecureTLSServer = &http.Server{
+			Handler:      router,
+			ReadTimeout:  types.HTTPTimeout,
+			WriteTimeout: types.HTTPTimeout,
+		}
+
+		errorGroup.Go(func() error { return insecureTLSServer.Serve(insecureTLSListener) })
+
+		log.Warn().
+			Str("addr", addr).
+			Msg("serving TLS with a self-signed certificate (HEADSCALE_DEBUG_INSECURE_TLS_LISTEN_ADDR); for tests only")
+	}
+
 	if tlsBundle.ACMEServer != nil {
 		log.Info().Msgf(
 			"listening and serving ACME HTTP-01 challenge on: %s",
@@ -854,6 +902,15 @@ func (h *Headscale) Serve() error {
 					log.Error().Err(err).Msg("failed to shutdown http")
 				}
 
+				if insecureTLSServer != nil {
+					info("shutting down insecure TLS server")
+
+					err := insecureTLSServer.Shutdown(shutdownCtx)
+					if err != nil {
+						log.Error().Err(err).Msg("failed to shutdown insecure TLS server")
+					}
+				}
+
 				if tlsBundle.ACMEServer != nil {
 					info("shutting down ACME HTTP-01 challenge server")
 
@@ -890,6 +947,10 @@ func (h *Headscale) Serve() error {
 				}
 
 				httpListener.Close()
+
+				if insecureTLSListener != nil {
+					insecureTLSListener.Close()
+				}
 
 				// Stop listening (and unlink the socket if unix type):
 				info("closing socket listener")
@@ -1009,6 +1070,36 @@ func (h *Headscale) getTLSSettings(ctx context.Context) (*tlsBundle, error) {
 	}
 
 	return &tlsBundle{Config: tlsConfig}, nil
+}
+
+// selfSignedTLSConfig returns a TLS config with a fresh in-memory certificate.
+// Its only clients skip verification (DERP InsecureForTests, and the noise
+// dialer, which authenticates the server itself), so the subject and validity
+// are arbitrary.
+func selfSignedTLSConfig() (*tls.Config, error) {
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "headscale"},
+		NotBefore:    now.Add(-time.Hour),
+		NotAfter:     now.AddDate(10, 0, 0),
+	}
+
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &priv.PublicKey, priv)
+	if err != nil {
+		return nil, err
+	}
+
+	return &tls.Config{
+		NextProtos:   []string{"http/1.1"},
+		Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: priv}},
+		MinVersion:   tls.VersionTLS12,
+	}, nil
 }
 
 func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
