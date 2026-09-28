@@ -88,6 +88,7 @@ removed on this schedule:
 - Fix `headscale users destroy`/`rename` reporting "multiple users match query" when no user matches; an ambiguous match now lists the matching users [#3476](https://github.com/juanfont/headscale/pull/3476)
 - Deleting a user that still owns nodes now lists the nodes (ID and hostname) that must be deleted first [#3475](https://github.com/juanfont/headscale/pull/3475)
 - Headscale now requires Go 1.27 to build
+- A `derp.paths` region set to `null` removes that region again, as documented
 
 ## 0.29.4 (2026-09-23)
 
