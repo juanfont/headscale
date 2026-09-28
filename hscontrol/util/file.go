@@ -1,6 +1,7 @@
 package util
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -10,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/spf13/viper"
+	"github.com/tailscale/hujson"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -23,6 +26,53 @@ const (
 
 // ErrDirectoryPermission is returned when creating a directory fails due to permission issues.
 var ErrDirectoryPermission = errors.New("creating directory failed with permission error")
+
+// ErrUnknownFileFormat is returned for a file whose extension names no format
+// [UnmarshalByExt] reads.
+var ErrUnknownFileFormat = errors.New("unknown file format, want .json, .hujson, .yaml or .yml")
+
+// UnmarshalByExt decodes data into a T in the format name's extension picks:
+// .json, .hujson (JSON with comments and trailing commas), or .yaml/.yml.
+// The extension decides, not the content: YAML parses JSON syntax, so sniffing
+// cannot tell the two apart. YAML keys are the lowercased Go field names.
+func UnmarshalByExt[T any](name string, data []byte) (T, error) {
+	var (
+		v   T
+		err error
+	)
+
+	switch ext := strings.ToLower(filepath.Ext(name)); ext {
+	case ".json":
+		err = json.Unmarshal(data, &v)
+	case ".hujson":
+		data, err = hujson.Standardize(data)
+		if err == nil {
+			err = json.Unmarshal(data, &v)
+		}
+	case ".yaml", ".yml":
+		err = yaml.Unmarshal(data, &v)
+	default:
+		return v, fmt.Errorf("%s: %w", name, ErrUnknownFileFormat)
+	}
+
+	if err != nil {
+		return v, fmt.Errorf("decoding %s: %w", name, err)
+	}
+
+	return v, nil
+}
+
+// ReadFileByExt reads the file at path and decodes it with [UnmarshalByExt].
+func ReadFileByExt[T any](path string) (T, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		var zero T
+
+		return zero, err
+	}
+
+	return UnmarshalByExt[T](path, data)
+}
 
 func AbsolutePathFromConfigPath(path string) string {
 	// If a relative path is provided, prefix it with the directory where
