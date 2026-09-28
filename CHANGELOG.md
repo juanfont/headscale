@@ -76,6 +76,11 @@ removed on this schedule:
 - Errors that previously returned HTTP 500 — unknown users or nodes, malformed input, duplicate names — now return the correct 404, 400 or 409 [#3324](https://github.com/juanfont/headscale/pull/3324)
 - The OpenAPI document is OpenAPI 3.1 at `/api/v1/openapi.yaml` (docs at `/api/v1/docs`), replacing Swagger 2.0 at `/swagger` [#3324](https://github.com/juanfont/headscale/pull/3324)
 
+#### Configuration
+
+- `derp.paths` files must end in `.yaml`, `.yml`, `.json` or `.hujson`; the extension picks the format
+- A `derp.paths` file that decodes to no regions now stops headscale from starting instead of being silently ignored
+
 #### CLI
 
 - `--output json` / `--output yaml` now emit the API's shape — camelCase fields, string-encoded IDs, RFC3339 timestamps — instead of the old Protobuf encoding [#3324](https://github.com/juanfont/headscale/pull/3324)
@@ -88,6 +93,7 @@ removed on this schedule:
 - Fix `headscale users destroy`/`rename` reporting "multiple users match query" when no user matches; an ambiguous match now lists the matching users [#3476](https://github.com/juanfont/headscale/pull/3476)
 - Deleting a user that still owns nodes now lists the nodes (ID and hostname) that must be deleted first [#3475](https://github.com/juanfont/headscale/pull/3475)
 - Headscale now requires Go 1.27 to build
+- `derp.paths` files may be Tailscale JSON or HuJSON DERP maps as well as YAML
 - A `derp.paths` region set to `null` removes that region again, as documented
 
 ## 0.29.4 (2026-09-23)

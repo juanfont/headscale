@@ -796,7 +796,7 @@ func validateDERPConfig(v *configValidator) {
 				{"derp.server.automatically_add_embedded_derp_region", false},
 				{"derp.paths", "[]"},
 			},
-			Hint: "list at least one DERP map JSON file in derp.paths, or set automatically_add_embedded_derp_region: true",
+			Hint: "list at least one DERP map file (.yaml, .yml, .json or .hujson) in derp.paths, or set automatically_add_embedded_derp_region: true",
 		})
 	}
 }
