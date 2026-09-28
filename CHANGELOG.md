@@ -90,6 +90,7 @@ removed on this schedule:
 #### NixOS module
 
 - `settings.ephemeral_node_inactivity_timeout` is removed; set `settings.node.ephemeral.inactivity_timeout`, which headscale reads instead
+- `settings.dns.split` is removed; headscale never read it, set `settings.dns.nameservers.split`
 
 ### Changes
 
