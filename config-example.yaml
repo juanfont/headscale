@@ -114,7 +114,8 @@ derp:
   urls:
     - https://controlplane.tailscale.com/derpmap/default
 
-  # Locally available DERP map files encoded in YAML
+  # Locally available DERP map files. The extension picks the format: .yaml/.yml,
+  # or Tailscale JSON as .json or .hujson.
   #
   # This option is mostly interesting for people hosting their own DERP servers:
   # https://tailscale.com/docs/reference/derp-servers/custom-derp-servers
