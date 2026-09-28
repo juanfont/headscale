@@ -79,6 +79,7 @@ removed on this schedule:
 #### Configuration
 
 - `derp.paths` files must end in `.yaml`, `.yml`, `.json` or `.hujson`; the extension picks the format
+- `dns.extra_records_path` must end in `.json`, `.hujson`, `.yaml` or `.yml`; the extension picks the format
 - A `derp.paths` file that decodes to no regions now stops headscale from starting instead of being silently ignored
 
 #### CLI
@@ -94,6 +95,7 @@ removed on this schedule:
 - Deleting a user that still owns nodes now lists the nodes (ID and hostname) that must be deleted first [#3475](https://github.com/juanfont/headscale/pull/3475)
 - Headscale now requires Go 1.27 to build
 - `derp.paths` files may be Tailscale JSON or HuJSON DERP maps as well as YAML
+- `dns.extra_records_path` files may be HuJSON or YAML as well as JSON
 - A `derp.paths` region set to `null` removes that region again, as documented
 
 ## 0.29.4 (2026-09-23)

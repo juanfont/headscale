@@ -67,7 +67,7 @@ hostname and port combination "http://hostname-in-magic-dns.myvpn.example.com:30
         !!! tip "Good to know"
 
             - The `dns.extra_records_path` option in the [configuration file](configuration.md) needs to reference the
-              JSON file containing extra DNS records.
+              file containing extra DNS records. Its extension picks the format: `.json`, `.hujson`, `.yaml` or `.yml`.
             - Be sure to "sort keys" and produce a stable output in case you generate the JSON file with a script.
               Headscale uses a checksum to detect changes to the file and a stable output avoids unnecessary processing.
 
