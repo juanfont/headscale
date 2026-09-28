@@ -34,16 +34,23 @@ var (
 	nodeRef       = regexp.MustCompile(`(?m)^(FROM\s+node:)(\S+)`)
 	rustRef       = regexp.MustCompile(`(?m)^(FROM\s+rust:)(\S+)`)
 	distrolessRef = regexp.MustCompile(`(gcr\.io/distroless/base-debian)(\d+)`)
+	temurinRef    = regexp.MustCompile(`(?m)^(FROM\s+(?:--platform=\S+\s+)?eclipse-temurin:)(\S+)`)
 
 	alpineTag = regexp.MustCompile(`^(\d+\.\d+)$`)
 	nodeTag   = regexp.MustCompile(`^(\d+)-alpine$`)
+
+	// temurinTag splits "21-jdk-noble" into the Java major and the flavour.
+	temurinTag = regexp.MustCompile(`^(\d+)(-jdk-[a-z]+)$`)
 )
+
+// dockerfilePrefix is the commit subject package for Dockerfile image bumps.
+const dockerfilePrefix = "Dockerfile"
 
 func imageBumps() []imageBump {
 	return []imageBump{
 		{
 			Name:   "alpine",
-			Prefix: "Dockerfile",
+			Prefix: dockerfilePrefix,
 			Files:  []string{"Dockerfile.derper", "Dockerfile.tailscale-HEAD"},
 			Ref:    alpineRef,
 			Resolve: func(ctx context.Context, _ string) (string, error) {
@@ -55,7 +62,7 @@ func imageBumps() []imageBump {
 		},
 		{
 			Name:   "debian",
-			Prefix: "Dockerfile",
+			Prefix: dockerfilePrefix,
 			Files:  []string{"Dockerfile.integration", "Dockerfile.integration-ci", "Dockerfile.tailscale-rs"},
 			Ref:    debianRef,
 			Resolve: func(ctx context.Context, _ string) (string, error) {
@@ -72,7 +79,7 @@ func imageBumps() []imageBump {
 		},
 		{
 			Name:   "node",
-			Prefix: "Dockerfile",
+			Prefix: dockerfilePrefix,
 			Files:  []string{"Dockerfile.wasmclient"},
 			Ref:    nodeRef,
 			Resolve: func(ctx context.Context, _ string) (string, error) {
@@ -91,7 +98,7 @@ func imageBumps() []imageBump {
 		},
 		{
 			Name:   "rust",
-			Prefix: "Dockerfile",
+			Prefix: dockerfilePrefix,
 			Files:  []string{"Dockerfile.tailscale-rs"},
 			Ref:    rustRef,
 			// The Rust tag carries the Debian codename it is built on, so it
@@ -116,6 +123,33 @@ func imageBumps() []imageBump {
 			},
 		},
 		{
+			Name:   "temurin",
+			Prefix: dockerfilePrefix,
+			Files:  []string{"Dockerfile.android-integration"},
+			Ref:    temurinRef,
+			// Follows Java LTS releases and keeps the Ubuntu flavour: the
+			// Android SDK tools only need a supported JDK, and a new Ubuntu
+			// release is a separate, riskier move.
+			Resolve: func(ctx context.Context, have string) (string, error) {
+				m := temurinTag.FindStringSubmatch(have)
+				if m == nil {
+					return "", fmt.Errorf("%w: eclipse-temurin %s", errNoMatchingTag, have)
+				}
+
+				pattern := regexp.MustCompile(`^(\d+)` + regexp.QuoteMeta(m[2]) + `$`)
+
+				major, err := highestTag(ctx, "eclipse-temurin", m[2], pattern, isJavaLTS)
+				if err != nil {
+					return "", err
+				}
+
+				return major + m[2], nil
+			},
+			Verify: func(ctx context.Context, want string) error {
+				return tagExists(ctx, "eclipse-temurin", want)
+			},
+		},
+		{
 			Name:    "distroless",
 			Prefix:  "ko",
 			Files:   []string{".goreleaser.yml", ".github/workflows/container-main.yml"},
@@ -130,6 +164,14 @@ func imageBumps() []imageBump {
 			},
 		},
 	}
+}
+
+// isJavaLTS reports whether a Java major is a long-term support release:
+// every fourth from 17, on a two-year cadence.
+func isJavaLTS(v string) bool {
+	n, err := strconv.Atoi(v)
+
+	return err == nil && n >= 17 && (n-17)%4 == 0
 }
 
 func isEvenMajor(v string) bool {
