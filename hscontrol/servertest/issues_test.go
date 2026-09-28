@@ -1000,6 +1000,9 @@ func TestIssuesIdentity(t *testing.T) {
 // SSHPolicy, the removal forces a full netmap rebuild, which never tells IPN
 // bus watchers opted out of full netmaps (the Android app since 1.100) that
 // the peer is gone, so they keep showing it.
+//
+// TODO(kradalby): with the tailscale/tailscale#15660 compat gone, removals
+// ride full rebuilds; assert they reach the netmap instead.
 func TestPeerRemovedAsDelta(t *testing.T) {
 	t.Parallel()
 

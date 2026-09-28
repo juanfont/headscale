@@ -872,11 +872,13 @@ func TestBackfillNodeIPsReachesBackfilledNode(t *testing.T) {
 	var self *tailcfg.Node
 
 	for _, ch := range change.FilterForNode(target, cs) {
-		resp, err := generateMapResponse(nc, m, ch)
+		resps, err := generateMapResponse(nc, m, ch)
 		require.NoError(t, err)
 
-		if resp != nil && resp.Node != nil {
-			self = resp.Node
+		for _, resp := range resps {
+			if resp.Node != nil {
+				self = resp.Node
+			}
 		}
 	}
 
@@ -963,16 +965,14 @@ func TestFailedExpiryOfPrimaryAnnouncesBackup(t *testing.T) {
 	var backupRoutes []netip.Prefix
 
 	for _, ch := range change.FilterForNode(client, []change.Change{c}) {
-		resp, err := generateMapResponse(nc, m, ch)
+		resps, err := generateMapResponse(nc, m, ch)
 		require.NoError(t, err)
 
-		if resp == nil {
-			continue
-		}
-
-		for _, p := range append(resp.Peers, resp.PeersChanged...) {
-			if p.ID == backup.NodeID() {
-				backupRoutes = p.PrimaryRoutes
+		for _, resp := range resps {
+			for _, p := range append(resp.Peers, resp.PeersChanged...) {
+				if p.ID == backup.NodeID() {
+					backupRoutes = p.PrimaryRoutes
+				}
 			}
 		}
 	}
