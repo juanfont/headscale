@@ -34,7 +34,7 @@ regenerated `test-integration.yaml`.
 
 ## Framework overview
 
-The integration framework has four layers:
+The integration framework has these layers:
 
 - **`scenario.go`** — `Scenario` orchestrates a test environment: a
   Headscale server, one or more users, and a collection of Tailscale
@@ -43,6 +43,9 @@ The integration framework has four layers:
   server in Docker. Options for config, DB backend, DERP, OIDC, etc.
 - **`tsic/`** — "Tailscale Integration Container": wraps a single
   Tailscale client. Options for version, hostname, auth method, etc.
+- **`androidic/`** — "Android Integration Container": the official
+  Tailscale Android app in an emulator, driven over adb/uiautomator.
+  Tests live in `android/`; see `cmd/hi/README.md` for requirements.
 - **`dockertestutil/`** — low-level Docker helpers (networks, container
   lifecycle, `IsRunningInContainer()` detection).
 
