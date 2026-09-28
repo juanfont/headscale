@@ -9,6 +9,18 @@ let
     mkdir -p $out
     cp key.pem cert.pem $out
   '';
+
+  policy = pkgs.writeText "policy.hujson" ''
+    {
+      "acls": [
+        {
+          "action": "accept",
+          "src": ["*"],
+          "dst": ["*:*"]
+        }
+      ]
+    }
+  '';
 in
 {
   name = "headscale";
@@ -57,6 +69,7 @@ in
                 ];
                 override_local_dns = false;
               };
+              policy.path = policy;
             };
           };
           nginx = {
@@ -87,6 +100,8 @@ in
     start_all()
     headscale.wait_for_unit("headscale")
     headscale.wait_for_open_port(443)
+    headscale.succeed("test -L /etc/headscale/policy.hujson")
+    headscale.succeed("headscale policy check -f /etc/headscale/policy.hujson")
 
     # Create headscale user and preauth-key
     headscale.succeed("headscale users create test")
