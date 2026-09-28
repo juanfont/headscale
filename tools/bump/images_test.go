@@ -113,3 +113,76 @@ func TestIsEvenMajor(t *testing.T) {
 		})
 	}
 }
+
+func TestTemurinRef(t *testing.T) {
+	const dockerfile = "FROM --platform=linux/amd64 eclipse-temurin:21-jdk-noble\nRUN true\n"
+
+	m := temurinRef.FindStringSubmatch(dockerfile)
+	if m == nil || m[2] != "21-jdk-noble" {
+		t.Fatalf("temurinRef captured %v", m)
+	}
+
+	want := "FROM --platform=linux/amd64 eclipse-temurin:25-jdk-noble\nRUN true\n"
+	if got := temurinRef.ReplaceAllString(dockerfile, "${1}25-jdk-noble"); got != want {
+		t.Errorf("rewrite = %q, want %q", got, want)
+	}
+}
+
+func TestIsJavaLTS(t *testing.T) {
+	for in, want := range map[string]bool{"17": true, "21": true, "25": true, "29": true, "11": false, "22": false, "26": false, "x": false} {
+		if got := isJavaLTS(in); got != want {
+			t.Errorf("isJavaLTS(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
+func TestAndroidRefs(t *testing.T) {
+	const dockerfile = "ARG ANDROID_API=33\nARG ANDROID_CMDLINE_TOOLS_VERSION=9477386\nARG ANDROID_BUILD_TOOLS=34.0.0\n"
+
+	if got := cmdlineToolsRef.FindStringSubmatch(dockerfile)[2]; got != "9477386" {
+		t.Errorf("cmdlineToolsRef captured %q", got)
+	}
+
+	if got := buildToolsRef.FindStringSubmatch(dockerfile)[2]; got != "34.0.0" {
+		t.Errorf("buildToolsRef captured %q", got)
+	}
+}
+
+// A trimmed copy of the index sdkmanager reads: a newer cmdline-tools on a
+// preview channel and build-tools release candidates must not win.
+const androidIndex = `<?xml version="1.0"?>
+<sdk:sdk-repository xmlns:sdk="http://schemas.android.com/sdk/android/repo/repository2/03">
+  <channel id="channel-0">stable</channel>
+  <channel id="channel-2">dev</channel>
+  <remotePackage path="build-tools;37.0.0-rc2"><channelRef ref="channel-0"/></remotePackage>
+  <remotePackage path="build-tools;36.1.0"><channelRef ref="channel-0"/></remotePackage>
+  <remotePackage path="build-tools;36.0.0"><channelRef ref="channel-0"/></remotePackage>
+  <remotePackage path="cmdline-tools;99.0-alpha01"><channelRef ref="channel-2"/>
+    <archives><archive><complete><url>commandlinetools-linux-99_latest.zip</url></complete><host-os>linux</host-os></archive></archives>
+  </remotePackage>
+  <remotePackage path="cmdline-tools;latest"><channelRef ref="channel-0"/>
+    <archives>
+      <archive><complete><url>commandlinetools-mac_arm64-16111833_latest.zip</url></complete><host-os>macosx</host-os></archive>
+      <archive><complete><url>commandlinetools-linux-16111833_latest.zip</url></complete><host-os>linux</host-os></archive>
+    </archives>
+  </remotePackage>
+</sdk:sdk-repository>`
+
+func TestParseAndroidRepo(t *testing.T) {
+	sdk, err := parseAndroidRepo([]byte(androidIndex))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if sdk.CmdlineTools != "16111833" {
+		t.Errorf("CmdlineTools = %q, want 16111833", sdk.CmdlineTools)
+	}
+
+	if sdk.BuildTools != "36.1.0" {
+		t.Errorf("BuildTools = %q, want 36.1.0", sdk.BuildTools)
+	}
+
+	if !sdk.Listed["36.0.0"] || sdk.Listed["37.0.0-rc2"] {
+		t.Errorf("Listed = %v", sdk.Listed)
+	}
+}

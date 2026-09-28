@@ -34,9 +34,13 @@ var (
 	nodeRef       = regexp.MustCompile(`(?m)^(FROM\s+node:)(\S+)`)
 	rustRef       = regexp.MustCompile(`(?m)^(FROM\s+rust:)(\S+)`)
 	distrolessRef = regexp.MustCompile(`(gcr\.io/distroless/base-debian)(\d+)`)
+	temurinRef    = regexp.MustCompile(`(?m)^(FROM\s+(?:--platform=\S+\s+)?eclipse-temurin:)(\S+)`)
 
 	alpineTag = regexp.MustCompile(`^(\d+\.\d+)$`)
 	nodeTag   = regexp.MustCompile(`^(\d+)-alpine$`)
+
+	// temurinTag splits "21-jdk-noble" into the Java major and the flavour.
+	temurinTag = regexp.MustCompile(`^(\d+)(-jdk-[a-z]+)$`)
 )
 
 func imageBumps() []imageBump {
@@ -116,6 +120,33 @@ func imageBumps() []imageBump {
 			},
 		},
 		{
+			Name:   "temurin",
+			Prefix: "Dockerfile",
+			Files:  []string{"Dockerfile.android-integration"},
+			Ref:    temurinRef,
+			// Follows Java LTS releases and keeps the Ubuntu flavour: the
+			// Android SDK tools only need a supported JDK, and a new Ubuntu
+			// release is a separate, riskier move.
+			Resolve: func(ctx context.Context, have string) (string, error) {
+				m := temurinTag.FindStringSubmatch(have)
+				if m == nil {
+					return "", fmt.Errorf("%w: eclipse-temurin %s", errNoMatchingTag, have)
+				}
+
+				pattern := regexp.MustCompile(`^(\d+)` + regexp.QuoteMeta(m[2]) + `$`)
+
+				major, err := highestTag(ctx, "eclipse-temurin", m[2], pattern, isJavaLTS)
+				if err != nil {
+					return "", err
+				}
+
+				return major + m[2], nil
+			},
+			Verify: func(ctx context.Context, want string) error {
+				return tagExists(ctx, "eclipse-temurin", want)
+			},
+		},
+		{
 			Name:    "distroless",
 			Prefix:  "ko",
 			Files:   []string{".goreleaser.yml", ".github/workflows/container-main.yml"},
@@ -130,6 +161,14 @@ func imageBumps() []imageBump {
 			},
 		},
 	}
+}
+
+// isJavaLTS reports whether a Java major is a long-term support release:
+// every fourth from 17, on a two-year cadence.
+func isJavaLTS(v string) bool {
+	n, err := strconv.Atoi(v)
+
+	return err == nil && n >= 17 && (n-17)%4 == 0
 }
 
 func isEvenMajor(v string) bool {

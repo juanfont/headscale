@@ -40,7 +40,7 @@ func planLines(ctx context.Context, r *repo) []string {
 }
 
 func planImages(ctx context.Context, r *repo) []string {
-	defs := imageBumps()
+	defs := append(imageBumps(), androidBumps()...)
 	lines := make([]string, 0, len(defs))
 
 	for _, def := range defs {
