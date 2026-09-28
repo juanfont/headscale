@@ -331,3 +331,9 @@ a broken one.
 - **Do not edit `gen/`** — it is regenerated from `proto/` by
   `make generate`.
 - **Proto changes + code changes should be two commits**, not one.
+- **The NixOS test kit is a public contract** consumed by other projects'
+  NixOS tests: the "Contract" in `nix/README.md`, covering
+  `nix/testkit.nix`, `nix/testkit-peer.nix`, the embedded DERP region
+  and `HEADSCALE_DEBUG_INSECURE_TLS_LISTEN_ADDR`, and the CLI commands
+  `hs-authkey` calls. Breaking it needs a "NixOS test kit" BREAKING entry
+  in `CHANGELOG.md`.
