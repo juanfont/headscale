@@ -331,11 +331,14 @@ func FullSelf(nodeID types.NodeID) Change {
 	}
 }
 
+// SelfUpdate sends a node its own entry and the DNS config derived from it
+// (NextDNS profile and device metadata).
 func SelfUpdate(nodeID types.NodeID) Change {
 	return Change{
 		Reason:      "self update",
 		TargetNode:  nodeID,
 		IncludeSelf: true,
+		IncludeDNS:  true,
 	}
 }
 
