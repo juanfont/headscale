@@ -64,6 +64,17 @@ func resolveSingleUser(
 		return "", nil, err
 	}
 
+	return lookupUser(ctx, client, id, username)
+}
+
+// lookupUser resolves exactly one user by ID and/or name (0 and "" are unset),
+// returning the identifier of the matched user and the user itself.
+func lookupUser(
+	ctx context.Context,
+	client *clientv1.ClientWithResponses,
+	id uint64,
+	username string,
+) (string, *clientv1.User, error) {
 	params := &clientv1.ListUsersParams{}
 	if username != "" {
 		params.Name = &username
