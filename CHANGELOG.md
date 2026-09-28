@@ -60,6 +60,24 @@ removed on this schedule:
 
 [#3352](https://github.com/juanfont/headscale/pull/3352)
 
+### NixOS test kit
+
+Projects built on Tailscale, such as tsnet services, tailscaled integrations or
+Tailscale client implementations, can now test against a real control server
+in their NixOS VM tests. Import `nixosModules.testkit` on a node named
+`headscale`. Clients join `http://headscale` with no certificates or other
+setup, and `hs-authkey USER` on that node mints their auth keys.
+`nixosModules.testkit-peer` adds a tailscaled peer that joins with `hs-join KEY`:
+
+```nix
+nodes.headscale.imports = [ inputs.headscale.nixosModules.testkit ];
+nodes.peer.imports = [ inputs.headscale.nixosModules.testkit-peer ];
+# testScript: peer.succeed(f"hs-join {headscale.succeed('hs-authkey alice').strip()}")
+```
+
+See `nix/README.md` for the full contract, recipes for tsnet and non-Go
+clients, and how to run the same setup without Nix.
+
 ### BREAKING
 
 #### Database

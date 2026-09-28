@@ -25,8 +25,13 @@
     {
       # NixOS module
       nixosModules = rec {
-        headscale = import ./nix/module.nix;
+        # A path, so importing it twice (directly and via testkit) dedupes.
+        headscale = ./nix/module.nix;
         default = headscale;
+        # Control node for NixOS VM tests of Tailscale clients, and a peer
+        # that joins it; nix/README.md.
+        testkit = import ./nix/testkit.nix self;
+        testkit-peer = ./nix/testkit-peer.nix;
       };
 
       overlays.default =
