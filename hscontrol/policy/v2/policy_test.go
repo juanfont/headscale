@@ -85,6 +85,44 @@ func TestPolicyManager(t *testing.T) {
 	}
 }
 
+// TestSetPolicyRejectedKeepsLiveFilter pins that a policy SetPolicy rejects
+// does not take effect. A nodeAttrs target naming no user passes validation
+// but fails to compile after the filter is already compiled; keeping that
+// filter would run the rejected policy while the stored one is unchanged.
+func TestSetPolicyRejectedKeepsLiveFilter(t *testing.T) {
+	// IDs are assigned after construction so the test also builds where
+	// types.User embeds gorm.Model.
+	users := types.Users{{Name: "user1"}, {Name: "user2"}}
+	users[0].ID, users[1].ID = 1, 2
+	nodes := types.Nodes{
+		node("n1", "100.64.0.1", "fd7a:115c:a1e0::1", users[0]),
+		node("n2", "100.64.0.2", "fd7a:115c:a1e0::2", users[1]),
+	}
+	nodes[0].ID, nodes[1].ID = 1, 2
+
+	pm, err := NewPolicyManager([]byte(`{
+		"acls": [{"action": "accept", "src": ["user1@"], "dst": ["user1@:*"]}]
+	}`), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	before, _ := pm.Filter()
+	beforeRules, err := pm.FilterForNode(nodes[1].View())
+	require.NoError(t, err)
+
+	_, err = pm.SetPolicy([]byte(`{
+		"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}],
+		"nodeAttrs": [{"target": ["ghost@"], "attr": ["randomize-client-port"]}]
+	}`))
+	require.Error(t, err)
+
+	after, _ := pm.Filter()
+	require.Equal(t, before, after, "a rejected policy must not replace the live filter")
+
+	afterRules, err := pm.FilterForNode(nodes[1].View())
+	require.NoError(t, err)
+	require.Equal(t, beforeRules, afterRules)
+}
+
 func TestInvalidateAutogroupSelfCache(t *testing.T) {
 	users := types.Users{
 		{ID: 1, Name: "user1", Email: "user1@headscale.net"},
@@ -2420,6 +2458,13 @@ func TestValidateUserReferences_AllSites(t *testing.T) {
   "tagOwners": {"tag:ssh": ["alice@"]},
   "acls":      [{"action":"accept","src":["*"],"dst":["*:*"]}],
   "ssh": [{"action":"accept","src":["dup@"],"dst":["tag:ssh"],"users":["root"]}]
+}`,
+		},
+		{
+			name: "nodeAttrs.target",
+			pol: `{
+  "acls":      [{"action":"accept","src":["*"],"dst":["*:*"]}],
+  "nodeAttrs": [{"target":["dup@"],"attr":["randomize-client-port"]}]
 }`,
 		},
 		{
