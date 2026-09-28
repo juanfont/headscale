@@ -203,16 +203,6 @@ in
               };
             };
 
-            ephemeral_node_inactivity_timeout = lib.mkOption {
-              type = lib.types.str;
-              default = "30m";
-              description = ''
-                Time before an inactive ephemeral node is deleted.
-                Deprecated: use node.ephemeral.inactivity_timeout instead.
-              '';
-              example = "5m";
-            };
-
             node = {
               expiry = lib.mkOption {
                 type = lib.types.str;
@@ -629,7 +619,7 @@ in
     )
     (mkRenamedOptionModule
       [ "services" "headscale" "ephemeralNodeInactivityTimeout" ]
-      [ "services" "headscale" "settings" "ephemeral_node_inactivity_timeout" ]
+      [ "services" "headscale" "settings" "node" "ephemeral" "inactivity_timeout" ]
     )
     (mkRenamedOptionModule
       [ "services" "headscale" "logLevel" ]
@@ -710,6 +700,10 @@ in
         "oidc"
         "strip_email_domain"
       ] "The strip_email_domain option got removed upstream")
+      (assertRemovedOption [
+        "settings"
+        "ephemeral_node_inactivity_timeout"
+      ] "Use `node.ephemeral.inactivity_timeout` instead.")
     ];
 
     services.headscale.settings = lib.mkMerge [
