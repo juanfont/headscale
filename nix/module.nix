@@ -364,17 +364,17 @@ in
                     List of nameservers to pass to Tailscale clients.
                   '';
                 };
-              };
 
-              split = lib.mkOption {
-                type = lib.types.attrsOf (lib.types.listOf lib.types.str);
-                default = { };
-                description = ''
-                  Split DNS configuration (map of domains and which DNS server to use for each).
-                  See <https://tailscale.com/docs/reference/dns-in-tailscale>.
-                '';
-                example = {
-                  "foo.bar.com" = [ "1.1.1.1" ];
+                split = lib.mkOption {
+                  type = lib.types.attrsOf (lib.types.listOf lib.types.str);
+                  default = { };
+                  description = ''
+                    Split DNS configuration (map of domains and which DNS server to use for each).
+                    See <https://tailscale.com/docs/reference/dns-in-tailscale>.
+                  '';
+                  example = {
+                    "foo.bar.com" = [ "1.1.1.1" ];
+                  };
                 };
               };
 
@@ -688,6 +688,7 @@ in
       (assertRemovedOption [ "settings" "db_port" ] "Use `database.postgres.port` instead.")
       (assertRemovedOption [ "settings" "db_type" ] "Use `database.type` instead.")
       (assertRemovedOption [ "settings" "db_user" ] "Use `database.postgres.user` instead.")
+      (assertRemovedOption [ "settings" "dns" "split" ] "Use `dns.nameservers.split` instead.")
       (assertRemovedOption [ "settings" "dns_config" ] "Use `dns` instead.")
       (assertRemovedOption [ "settings" "dns_config" "domains" ] "Use `dns.search_domains` instead.")
       (assertRemovedOption [
