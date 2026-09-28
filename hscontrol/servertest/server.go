@@ -45,6 +45,7 @@ type serverConfig struct {
 	batcherWorkers   int
 	taildropEnabled  bool
 	realListener     bool
+	magicDNSDomain   string
 }
 
 func defaultServerConfig() *serverConfig {
@@ -101,6 +102,12 @@ func WithTaildropEnabled(enabled bool) ServerOption {
 	return func(c *serverConfig) { c.taildropEnabled = enabled }
 }
 
+// WithMagicDNS enables MagicDNS under domain, so map responses carry a
+// [tailcfg.DNSConfig].
+func WithMagicDNS(domain string) ServerOption {
+	return func(c *serverConfig) { c.magicDNSDomain = domain }
+}
+
 // NewServer creates and starts a Headscale test server.
 // The server is fully functional and accepts real Tailscale control
 // protocol connections over Noise.
@@ -145,6 +152,14 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 			BatcherWorkers:                 sc.batcherWorkers,
 			NodeMapSessionBufferedChanSize: sc.bufferedChanSize,
 		},
+	}
+
+	if sc.magicDNSDomain != "" {
+		cfg.BaseDomain = sc.magicDNSDomain
+		cfg.TailcfgDNSConfig = &tailcfg.DNSConfig{
+			Proxied: true,
+			Domains: []string{sc.magicDNSDomain},
+		}
 	}
 
 	app, err := hscontrol.NewHeadscale(&cfg)
