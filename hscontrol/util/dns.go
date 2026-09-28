@@ -84,7 +84,7 @@ func ValidateUsername(username string) error {
 //
 // The main purpose of this function is then generating the list of IPv4 entries. For the 100.64.0.0/10, this
 // is clear, and could be hardcoded. But we are allowing any range as `IPPrefix`, so we need to find out the
-// subnets when we have 172.16.0.0/16 (i.e., [0-255].16.172.in-addr.arpa.), or any other subnet.
+// subnets when we have 172.16.0.0/16 (i.e., 16.172.in-addr.arpa.), or any other subnet.
 //
 // How IN-ADDR.ARPA domains work is defined in RFC1035 (section 3.5). Tailscale.com seems to adhere to this,
 // and do not make use of RFC2317 ("Classless IN-ADDR.ARPA delegation") - hence generating the entries for the next
@@ -104,23 +104,19 @@ func GenerateIPv4DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	// wildcardBits is the number of bits not under the mask in the lastOctet
 	wildcardBits := ByteSize - maskBits%ByteSize
 
-	// A mask covering the full address width (an IPv4 /32) leaves no wildcard
-	// octet, so lastOctet would index past the address. Emit the single
-	// reverse-DNS name for that exact address instead of panicking.
-	if lastOctet >= len(netRange.IP) {
-		rdnsSlice := make([]string, 0, len(netRange.IP)+1)
-		for _, v := range slices.Backward(netRange.IP) {
-			rdnsSlice = append(rdnsSlice, strconv.FormatUint(uint64(v), 10))
-		}
-
-		rdnsSlice = append(rdnsSlice, "in-addr.arpa.")
-
-		fqdn, err := dnsname.ToFQDN(strings.Join(rdnsSlice, "."))
-		if err != nil {
+	// An octet-aligned mask has no wildcard bits: the prefix boundary falls on
+	// an octet boundary, so the wildcard octet is the last one *inside* the
+	// mask and it takes a single value. Without this, ByteSize - 0 yields 8
+	// wildcard bits and all 256 children of the name that should have been
+	// emitted alone are generated instead. It also keeps lastOctet from
+	// indexing past the address on an IPv4 /32.
+	if maskBits%ByteSize == 0 {
+		if maskBits == 0 {
 			return nil
 		}
 
-		return []dnsname.FQDN{fqdn}
+		lastOctet--
+		wildcardBits = 0
 	}
 
 	// minVal is the value in the lastOctet byte of the IP

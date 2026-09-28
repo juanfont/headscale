@@ -88,6 +88,7 @@ removed on this schedule:
 - Fix `headscale users destroy`/`rename` reporting "multiple users match query" when no user matches; an ambiguous match now lists the matching users [#3476](https://github.com/juanfont/headscale/pull/3476)
 - Deleting a user that still owns nodes now lists the nodes (ID and hostname) that must be deleted first [#3475](https://github.com/juanfont/headscale/pull/3475)
 - Headscale now requires Go 1.27 to build
+- Fix the MagicDNS search domain generation for octet-aligned subnets (/8, /16, /24) to output a single covering PTR [#3482](https://github.com/juanfont/headscale/pull/3482)
 
 ## 0.29.4 (2026-09-23)
 
