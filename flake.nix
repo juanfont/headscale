@@ -98,7 +98,9 @@
           };
         };
     }
-    // flake-utils.lib.eachDefaultSystem (
+    # Explicit: nixpkgs no longer evaluates x86_64-darwin, which
+    # eachDefaultSystem still lists.
+    // flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ] (
       system:
       let
         pkgs = import nixpkgs {
