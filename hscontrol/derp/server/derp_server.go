@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -41,6 +42,16 @@ const (
 // hostnames to IP addresses when generating the DERP region configuration.
 // This is useful for integration testing where DNS resolution may be unreliable.
 var debugUseDERPIP = envknob.Bool("HEADSCALE_DEBUG_DERP_USE_IP")
+
+// DebugInsecureTLSListenAddr makes headscale also serve on this address over
+// TLS with a throwaway self-signed certificate, advertised as the embedded
+// DERP node with InsecureForTests. Test harnesses (nix/testkit.nix) need it:
+// clients that cannot be handed a CA (tailscale-rs, Android) still get TLS
+// DERP, and Go clients get the :443 noise fallback they switch to after a
+// recent dial.
+var DebugInsecureTLSListenAddr = envknob.RegisterString("HEADSCALE_DEBUG_INSECURE_TLS_LISTEN_ADDR")
+
+var errInsecureTLSPortZero = errors.New("HEADSCALE_DEBUG_INSECURE_TLS_LISTEN_ADDR needs a fixed port: DERP clients cannot follow :0")
 
 type DERPServer struct {
 	serverURL     string
@@ -95,6 +106,22 @@ func (d *DERPServer) GenerateRegion() (tailcfg.DERPRegion, error) {
 		}
 	}
 
+	insecure := false
+
+	if addr := DebugInsecureTLSListenAddr(); addr != "" {
+		port, err = types.PortFromAddr(addr)
+		if err != nil {
+			return tailcfg.DERPRegion{}, fmt.Errorf("parsing HEADSCALE_DEBUG_INSECURE_TLS_LISTEN_ADDR: %w", err)
+		}
+
+		// Clients read DERPPort 0 as 443, not as the random port :0 binds.
+		if port == 0 {
+			return tailcfg.DERPRegion{}, errInsecureTLSPortZero
+		}
+
+		insecure = true
+	}
+
 	// If debug flag is set, resolve hostname to IP address
 	if debugUseDERPIP {
 		ips, err := new(net.Resolver).LookupIPAddr(context.Background(), host)
@@ -120,6 +147,8 @@ func (d *DERPServer) GenerateRegion() (tailcfg.DERPRegion, error) {
 				DERPPort: port,
 				IPv4:     d.cfg.IPv4,
 				IPv6:     d.cfg.IPv6,
+
+				InsecureForTests: insecure,
 			},
 		},
 	}
