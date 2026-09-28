@@ -309,13 +309,11 @@ func (m *mapper) selfMapResponse(
 //   - PeersChanged for remaining peers (their AllowedIPs may have changed due to policy)
 //   - Updated PacketFilters
 //   - Updated SSHPolicy (SSH rules may reference users/groups that changed)
-//   - DNSConfig so the client's resolver state stays anchored even when a
-//     policy-triggered wgengine reconfigure races a netmon LinkChange (the
-//     LinkChange handler reapplies dns.Manager.Set with the engine's
-//     lastDNSConfig; if that snapshot is stale, the OS resolver loses the
-//     MagicDNS reverse-DNS routes and Nameservers and curl-by-FQDN stops
-//     resolving for the rest of the policy window).
 //   - Optionally, the node's own self info (when includeSelf is true)
+//
+// DNSConfig is left out: it forces clients into a full netmap rebuild, and
+// the node's DNS config inputs arrive with its own [change.SelfUpdate], see
+// [state.State.DrainSelfRefreshes].
 //
 // This avoids the issue where an empty Peers slice is interpreted by Tailscale
 // clients as "no change" rather than "no peers".
@@ -331,7 +329,6 @@ func (m *mapper) policyChangeResponse(
 	builder := m.NewMapResponseBuilder(nodeID).
 		WithDebugType(policyResponseDebug).
 		WithCapabilityVersion(capVer).
-		WithDNSConfig().
 		WithPacketFilters().
 		WithSSHPolicy()
 

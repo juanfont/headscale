@@ -2446,3 +2446,28 @@ func TestHandleNodeChangeRetryAfterRemoval(t *testing.T) {
 	assert.Empty(t, sent[1].PeersRemoved)
 	assert.NotEmpty(t, sent[1].PacketFilters)
 }
+
+// TestDNSConfigOnlyWithSelfRefresh checks policy responses leave DNSConfig
+// out, which clients read as unchanged, while self refreshes carry it: a
+// node's DNS config derives from its own CapMap and Hostinfo, and a
+// DNSConfig forces clients into a full netmap rebuild.
+func TestDNSConfigOnlyWithSelfRefresh(t *testing.T) {
+	testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 2, normalBufferSize)
+	defer cleanup()
+
+	testData.Config.TailcfgDNSConfig = &tailcfg.DNSConfig{
+		Proxied: true,
+		Domains: []string{"headscale.test"},
+	}
+
+	self := testData.Nodes[0].n.ID
+	mc := newMockNodeConnection(self)
+
+	require.NoError(t, handleNodeChange(mc, testData.Batcher.mapper, change.PolicyChange()))
+	require.NoError(t, handleNodeChange(mc, testData.Batcher.mapper, change.SelfUpdate(self)))
+
+	sent := mc.getSent()
+	require.Len(t, sent, 2)
+	assert.Nil(t, sent[0].DNSConfig, "policy response must not carry DNSConfig")
+	assert.NotNil(t, sent[1].DNSConfig, "self refresh must carry DNSConfig")
+}

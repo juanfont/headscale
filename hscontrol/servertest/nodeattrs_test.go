@@ -477,6 +477,7 @@ func firstResolver(nm *netmap.NetworkMap) string {
 // TestNodeAttrsNextDNS checks a node's DNS config follows each of its
 // inputs: the NextDNS profile from nodeAttrs, whether reached through a
 // policy reload or a tag change, and the device metadata from its Hostinfo.
+// Policy responses do not carry DNSConfig, so each must arrive on its own.
 func TestNodeAttrsNextDNS(t *testing.T) {
 	t.Parallel()
 
