@@ -296,12 +296,14 @@
           }
         );
 
-        checks = {
-          headscale = pkgs.testers.nixosTest (import ./nix/tests/headscale.nix);
-        }
-        # The Go build/test checks are gated to Linux: parts of the tree are
-        # Linux-specific and the pure unit subset is validated by CI.
-        // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux goChecks;
+        # Gated to Linux: parts of the tree are Linux-specific, and the VM
+        # test needs KVM.
+        checks = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux (
+          goChecks
+          // {
+            headscale = pkgs.testers.runNixOSTest (import ./nix/tests/headscale.nix self);
+          }
+        );
       }
     );
 }
