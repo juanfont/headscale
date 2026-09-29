@@ -1062,6 +1062,15 @@ func oidcMockUser(username string, emailVerified bool) mockoidc.MockUser {
 	}
 }
 
+// oidcMockUserWithGroups is [oidcMockUser] asserting groups in the standard
+// OIDC groups claim.
+func oidcMockUserWithGroups(username string, emailVerified bool, groups ...string) mockoidc.MockUser {
+	user := oidcMockUser(username, emailVerified)
+	user.Groups = groups
+
+	return user
+}
+
 // GetUserByName retrieves a user by name from the headscale server.
 // This is a common pattern used when creating preauth keys or managing users.
 func GetUserByName(headscale ControlServer, username string) (*clientv1.User, error) {
