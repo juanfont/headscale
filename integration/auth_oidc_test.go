@@ -117,7 +117,7 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 		return mustParseID(listUsers[i].Id) < mustParseID(listUsers[j].Id)
 	})
 
-	if diff := cmp.Diff(want, listUsers, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt")); diff != "" {
+	if diff := cmp.Diff(want, listUsers, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt"), cmpopts.EquateEmpty()); diff != "" {
 		t.Fatalf("unexpected users: %s", diff)
 	}
 }
@@ -396,7 +396,7 @@ func TestOIDC024UserCreation(t *testing.T) {
 				return mustParseID(listUsers[i].Id) < mustParseID(listUsers[j].Id)
 			})
 
-			if diff := cmp.Diff(want, listUsers, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt")); diff != "" {
+			if diff := cmp.Diff(want, listUsers, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt"), cmpopts.EquateEmpty()); diff != "" {
 				t.Errorf("unexpected users: %s", diff)
 			}
 		})
@@ -523,7 +523,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 			return mustParseID(listUsers[i].Id) < mustParseID(listUsers[j].Id)
 		})
 
-		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt")); diff != "" {
+		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt"), cmpopts.EquateEmpty()); diff != "" {
 			ct.Errorf("User validation failed after first login - unexpected users: %s", diff)
 		}
 	}, integrationutil.StatusReadyTimeout, 1*time.Second, "validating user1 creation after initial OIDC login")
@@ -614,7 +614,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 			return mustParseID(listUsers[i].Id) < mustParseID(listUsers[j].Id)
 		})
 
-		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt")); diff != "" {
+		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt"), cmpopts.EquateEmpty()); diff != "" {
 			ct.Errorf("User validation failed after user2 login - expected both user1 and user2: %s", diff)
 		}
 	}, integrationutil.StatusReadyTimeout, 1*time.Second, "validating both user1 and user2 exist after second OIDC login")
@@ -782,7 +782,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 			return mustParseID(listUsers[i].Id) < mustParseID(listUsers[j].Id)
 		})
 
-		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt")); diff != "" {
+		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt"), cmpopts.EquateEmpty()); diff != "" {
 			ct.Errorf("Final user validation failed - both users should persist after relogin cycle: %s", diff)
 		}
 	}, integrationutil.StatusReadyTimeout, 1*time.Second, "validating user persistence after complete relogin cycle (user1->user2->user1)")
@@ -962,7 +962,7 @@ func TestOIDCFollowUpUrl(t *testing.T) {
 		wantUsers,
 		listUsers,
 		cmpopts.IgnoreUnexported(clientv1.User{}),
-		cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt"),
+		cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt"), cmpopts.EquateEmpty(),
 	); diff != "" {
 		t.Fatalf("unexpected users: %s", diff)
 	}
@@ -1071,7 +1071,7 @@ func TestOIDCMultipleOpenedLoginUrls(t *testing.T) {
 		wantUsers,
 		listUsers,
 		cmpopts.IgnoreUnexported(clientv1.User{}),
-		cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt"),
+		cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt"), cmpopts.EquateEmpty(),
 	); diff != "" {
 		t.Fatalf("unexpected users: %s", diff)
 	}
@@ -1173,7 +1173,7 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 			return mustParseID(listUsers[i].Id) < mustParseID(listUsers[j].Id)
 		})
 
-		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt")); diff != "" {
+		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt"), cmpopts.EquateEmpty()); diff != "" {
 			ct.Errorf("User validation failed after first login - unexpected users: %s", diff)
 		}
 	}, integrationutil.StatusReadyTimeout, 1*time.Second, "validating user1 creation after initial OIDC login")
@@ -1276,7 +1276,7 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 			return mustParseID(listUsers[i].Id) < mustParseID(listUsers[j].Id)
 		})
 
-		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt")); diff != "" {
+		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt"), cmpopts.EquateEmpty()); diff != "" {
 			ct.Errorf("Final user validation failed - user1 should persist after same-user relogin: %s", diff)
 		}
 	}, integrationutil.StatusReadyTimeout, 1*time.Second, "validating user1 persistence after same-user OIDC relogin cycle")

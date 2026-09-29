@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -106,6 +107,26 @@ func TestAPIV1ListUsers(t *testing.T) {
 		h := newAPIV1Harness(t)
 		seedUsers("alice", "bob")(t, h.app)
 		h.assertParity(t, http.MethodGet, "/api/v1/user?name=alice", nil)
+	})
+
+	t.Run("lists identity-provider groups", func(t *testing.T) {
+		h := newAPIV1Harness(t)
+		seedUsers("alice")(t, h.app)
+
+		_, err := h.app.state.SetUserGroups(1, types.GroupSourceOIDC, []string{"ops@example.com", "eng@example.com"})
+		require.NoError(t, err)
+
+		res := h.callHuma(http.MethodGet, "/api/v1/user?name=alice", nil)
+		require.Equal(t, http.StatusOK, res.status)
+
+		var body struct {
+			Users []struct {
+				Groups []string `json:"groups"`
+			} `json:"users"`
+		}
+		require.NoError(t, json.Unmarshal(res.body, &body))
+		require.Len(t, body.Users, 1)
+		assert.Equal(t, []string{"eng@example.com", "ops@example.com"}, body.Users[0].Groups)
 	})
 
 	t.Run("filter by id parity", func(t *testing.T) {
