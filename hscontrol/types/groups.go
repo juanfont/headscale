@@ -1,0 +1,114 @@
+package types
+
+import (
+	"errors"
+	"fmt"
+	"slices"
+	"strings"
+	"time"
+)
+
+// GroupSource records which system asserted a [UserGroup] membership. Each
+// source owns its own rows: syncing one source replaces only that source's
+// memberships, so a login can never clobber memberships provisioned by
+// another system (e.g. a future SCIM endpoint).
+type GroupSource string
+
+// GroupSourceOIDC marks memberships taken from the OIDC groups claim at login.
+const GroupSourceOIDC GroupSource = "oidc"
+
+var (
+	ErrGroupNameEmpty        = errors.New("group name is empty")
+	ErrGroupNameContainsAt   = errors.New("group name must not contain '@'")
+	ErrGroupNameTooLong      = errors.New("group name is too long")
+	ErrGroupDomainMissing    = errors.New("group domain is empty")
+	ErrGroupDomainContainsAt = errors.New("group domain must not contain '@'")
+)
+
+// maxGroupNameLength bounds a group name taken from an identity provider.
+const maxGroupNameLength = 255
+
+// Group is a group of users asserted by an identity provider. Policies refer
+// to it as `group:<Name>`, where Name is the qualified, lowercased
+// `<name>@<domain>` identifier (see [QualifyGroupName]). Groups defined in the
+// policy file are not stored here.
+type Group struct {
+	ID   uint `gorm:"primaryKey"`
+	Name string
+
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// UserGroup is a user's membership of a [Group], as asserted by Source.
+type UserGroup struct {
+	UserID  uint        `gorm:"primaryKey"`
+	GroupID uint        `gorm:"primaryKey"`
+	Source  GroupSource `gorm:"primaryKey"`
+
+	// Group is preloaded for reads only; memberships are written exclusively
+	// through the db package's sync functions.
+	Group Group `gorm:"->"`
+
+	CreatedAt time.Time
+}
+
+// QualifyGroupName normalises a group name asserted by an identity provider
+// and qualifies it with domain, producing the identifier that policies
+// reference as `group:<name>@<domain>`. Names are lowercased (policy group
+// references are matched case-insensitively, as in Tailscale) and must not
+// contain '@', which separates the name from the domain.
+func QualifyGroupName(name, domain string) (string, error) {
+	name = FoldGroupName(strings.TrimSpace(name))
+	domain = FoldGroupName(strings.TrimSpace(domain))
+
+	switch {
+	case name == "":
+		return "", ErrGroupNameEmpty
+	case strings.Contains(name, "@"):
+		return "", fmt.Errorf("%w: %q", ErrGroupNameContainsAt, name)
+	case domain == "":
+		return "", ErrGroupDomainMissing
+	case strings.Contains(domain, "@"):
+		return "", fmt.Errorf("%w: %q", ErrGroupDomainContainsAt, domain)
+	}
+
+	qualified := name + "@" + domain
+	if len(qualified) > maxGroupNameLength {
+		return "", fmt.Errorf("%w: %d > %d bytes", ErrGroupNameTooLong, len(qualified), maxGroupNameLength)
+	}
+
+	return qualified, nil
+}
+
+// FoldGroupName lowercases the ASCII letters of a group name, the case folding
+// used both for names from an identity provider and for policy references to
+// them. Other characters are kept as is: full Unicode case folding would merge
+// distinct names, such as the Kelvin sign 'K' (U+212A) with 'k', letting
+// whoever can name a group at the identity provider join another group.
+func FoldGroupName(name string) string {
+	return strings.Map(func(r rune) rune {
+		if 'A' <= r && r <= 'Z' {
+			return r + ('a' - 'A')
+		}
+
+		return r
+	}, name)
+}
+
+// groupNames returns the sorted, de-duplicated names of the groups in
+// memberships. A user can hold the same group from several sources.
+func groupNames(memberships []UserGroup) []string {
+	if len(memberships) == 0 {
+		return nil
+	}
+
+	names := make([]string, 0, len(memberships))
+	for _, m := range memberships {
+		names = append(names, m.Group.Name)
+	}
+
+	slices.Sort(names)
+
+	return slices.Compact(names)
+}

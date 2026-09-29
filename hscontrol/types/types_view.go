@@ -117,6 +117,11 @@ func (v UserView) Provider() string { return v.ж.Provider }
 // TODO(kradalby): See if we can fill in Gravatar here.
 func (v UserView) ProfilePicURL() string { return v.ж.ProfilePicURL }
 
+// Memberships are the user's identity-provider group memberships. It is
+// preloaded for reads only (see [UserGroup]); use [User.GroupNames] to
+// read the groups the policy resolves.
+func (v UserView) Memberships() views.Slice[UserGroup] { return views.SliceOf(v.ж.Memberships) }
+
 // A compilation failure here means this code must be regenerated, with the command at the top of this file.
 var _UserViewNeedsRegeneration = User(struct {
 	gorm.Model
@@ -126,6 +131,7 @@ var _UserViewNeedsRegeneration = User(struct {
 	ProviderIdentifier sql.NullString
 	Provider           string
 	ProfilePicURL      string
+	Memberships        []UserGroup
 }{})
 
 // View returns a read-only view of Node.
