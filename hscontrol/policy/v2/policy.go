@@ -1106,6 +1106,19 @@ func (pm *PolicyManager) userMatchesOwner(user types.UserView, owner Owner) bool
 		if o == nil || pm.pol == nil {
 			return false
 		}
+		// Membership of an identity-provider group is read from the
+		// policy manager's users, which are current, not from the node's
+		// copy of its user.
+		if name, ok := o.idpGroup(pm.pol); ok {
+			for i := range pm.users {
+				if pm.users[i].ID == user.ID() {
+					return pm.users[i].InGroup(name)
+				}
+			}
+
+			return false
+		}
+
 		// Resolve the group to get usernames
 		usernames, ok := pm.pol.Groups[*o]
 		if !ok {
