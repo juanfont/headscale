@@ -99,6 +99,31 @@ CREATE TABLE nodes(
 );
 CREATE INDEX idx_nodes_auth_key_id ON nodes(auth_key_id);
 
+-- Groups asserted by an identity provider, referenced from the policy as
+-- group:<name>. name is the qualified, lowercased <name>@<domain>.
+CREATE TABLE groups(
+  id integer PRIMARY KEY AUTOINCREMENT,
+  name text NOT NULL,
+
+  created_at datetime,
+  updated_at datetime
+);
+CREATE UNIQUE INDEX idx_groups_name ON groups(name);
+
+-- A user's group memberships, per asserting source (e.g. 'oidc'). Each source
+-- owns its rows; syncing one source never touches another's.
+CREATE TABLE user_groups(
+  user_id integer NOT NULL,
+  group_id integer NOT NULL,
+  source text NOT NULL,
+  created_at datetime,
+
+  PRIMARY KEY(user_id, group_id, source),
+  CONSTRAINT fk_user_groups_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_user_groups_group FOREIGN KEY(group_id) REFERENCES groups(id) ON DELETE CASCADE
+);
+CREATE INDEX idx_user_groups_group_id ON user_groups(group_id);
+
 CREATE TABLE policies(
   id integer PRIMARY KEY AUTOINCREMENT,
   data text,

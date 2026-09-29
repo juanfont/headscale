@@ -36,10 +36,13 @@ var ErrNodeNameNotUnique = errors.New("node name is not unique")
 // keys: auth_key_id references the shared credentials table, and only that
 // kind may back a node.
 func preloadNode(tx *gorm.DB) *gorm.DB {
-	return tx.
+	tx = tx.
 		Preload("AuthKey", "kind = ?", types.CredentialPreAuthKey).
 		Preload("AuthKey.User").
 		Preload("User")
+	tx = preloadUserGroups(tx, "AuthKey.User")
+
+	return preloadUserGroups(tx, "User")
 }
 
 var (
