@@ -19,6 +19,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/oauth2"
 	"tailscale.com/util/rands"
@@ -311,7 +312,9 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	// We are interested in other fields too (e.g. groups are required for allowedGroups) so we
 	// decode into our own [types.OIDCUserInfo] type using the underlying claims struct.
 	var userinfo2 types.OIDCUserInfo
-	if userinfo != nil && userinfo.Claims(&userinfo2) == nil && userinfo2.Sub == claims.Sub {
+
+	userinfoValid := userinfo != nil && userinfo.Claims(&userinfo2) == nil && userinfo2.Sub == claims.Sub
+	if userinfoValid {
 		// Update the user with the userinfo claims (with id token claims as fallback).
 		// TODO(kradalby): there might be more interesting fields here that we have not found yet.
 		claims.Email = cmp.Or(userinfo2.Email, claims.Email)
@@ -329,8 +332,21 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	// against allowed emails, email domains, and groups.
 	err = doOIDCAuthorization(a.cfg, &claims)
 	if err != nil {
+		a.revokeGroupsOfDeniedUser(&claims)
 		httpUserError(writer, err)
+
 		return
+	}
+
+	var idpGroups []string
+
+	if a.cfg.Groups.Enabled {
+		var infoClaims map[string]any
+		if userinfoValid {
+			infoClaims = rawClaims(userinfo.Claims)
+		}
+
+		idpGroups = a.groupsFromClaims(rawClaims(idToken.Claims), infoClaims)
 	}
 
 	user, _, err := a.createOrUpdateUserFromClaim(&claims)
@@ -342,6 +358,30 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		))
 
 		return
+	}
+
+	groupsChange := change.Change{}
+
+	if a.cfg.Groups.Enabled {
+		groupsChange, err = a.h.state.SetUserGroups(types.UserID(user.ID), types.GroupSourceOIDC, idpGroups)
+		if err != nil {
+			httpUserError(writer, NewHTTPError(
+				http.StatusInternalServerError,
+				"could not update user groups",
+				err,
+			))
+
+			return
+		}
+	}
+
+	// Broadcast a membership change now. The registration or SSH check that
+	// follows sees the policy manager already updated and reports no policy
+	// change of its own, and a user who abandons the flow must still lose
+	// revoked groups. Only the policy delta is sent, so a new node's
+	// registration still announces the node itself (see #2888).
+	if !groupsChange.IsEmpty() {
+		a.h.Change(groupsChange)
 	}
 
 	// TODO(kradalby): Is this comment right?
@@ -614,6 +654,79 @@ func doOIDCAuthorization(
 	}
 
 	return nil
+}
+
+// revokeGroupsOfDeniedUser removes the OIDC group memberships of an existing
+// user whom the identity provider authenticated but authorization rejected,
+// such as someone no longer in allowed_groups: they must not keep the access
+// their last successful login granted to their other nodes.
+func (a *AuthProviderOIDC) revokeGroupsOfDeniedUser(claims *types.OIDCClaims) {
+	if !a.cfg.Groups.Enabled {
+		return
+	}
+
+	user, err := a.h.state.GetUserByOIDCIdentifier(claims.Identifier())
+	if err != nil {
+		if !errors.Is(err, db.ErrUserNotFound) {
+			log.Error().Err(err).Msg("looking up denied OIDC user to revoke their groups")
+		}
+
+		return
+	}
+
+	c, err := a.h.state.SetUserGroups(types.UserID(user.ID), types.GroupSourceOIDC, nil)
+	if err != nil {
+		log.Error().Err(err).EmbedObject(user).Msg("revoking groups of denied OIDC user")
+
+		return
+	}
+
+	if !c.IsEmpty() {
+		a.h.Change(c)
+	}
+}
+
+// rawClaims decodes a token's claims into a generic map, returning nil if
+// they cannot be decoded.
+func rawClaims(decode func(any) error) map[string]any {
+	var claims map[string]any
+
+	err := decode(&claims)
+	if err != nil {
+		return nil
+	}
+
+	return claims
+}
+
+// groupsFromClaims returns the qualified names of the groups asserted in the
+// configured claim. The userinfo response is preferred when it carries the
+// claim, as it does for the standard claims; otherwise the ID token is used.
+// Names that cannot be qualified are skipped and logged.
+func (a *AuthProviderOIDC) groupsFromClaims(idClaims, infoClaims map[string]any) []string {
+	names, found := types.GroupsFromClaims(infoClaims, a.cfg.Groups.Claim)
+	if !found {
+		names, _ = types.GroupsFromClaims(idClaims, a.cfg.Groups.Claim)
+	}
+
+	groups := make([]string, 0, len(names))
+
+	for _, name := range names {
+		qualified, err := types.QualifyGroupName(name, a.cfg.Groups.Domain)
+		if err != nil {
+			log.Warn().
+				Err(err).
+				Str(zf.GroupName, name).
+				Str(zf.OIDCGroupsClaim, a.cfg.Groups.Claim).
+				Msg("ignoring OIDC group that cannot be used in policies")
+
+			continue
+		}
+
+		groups = append(groups, qualified)
+	}
+
+	return groups
 }
 
 // getAuthInfoFromState retrieves and consumes the auth info for a state. The

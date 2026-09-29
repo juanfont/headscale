@@ -64,6 +64,15 @@ const (
 	NewUser      = "new.user"
 )
 
+// Identity-provider group fields.
+const (
+	GroupName         = "group.name"
+	GroupMemberships  = "group.memberships"
+	OIDCGroupsEnabled = "oidc.groups.enabled"
+	OIDCGroupsDomain  = "oidc.groups.domain"
+	OIDCGroupsClaim   = "oidc.groups.claim"
+)
+
 // PreAuthKey fields.
 const (
 	PAKID           = "pak.id"

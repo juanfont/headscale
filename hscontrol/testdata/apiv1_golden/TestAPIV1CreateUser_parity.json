@@ -5,6 +5,7 @@
       "createdAt": "\u003ctimestamp\u003e",
       "displayName": "Test",
       "email": "t@example.com",
+      "groups": [],
       "id": "1",
       "name": "test",
       "profilePicUrl": "",

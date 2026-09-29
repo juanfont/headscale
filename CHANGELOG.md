@@ -78,6 +78,26 @@ nodes.peer.imports = [ inputs.headscale.nixosModules.testkit-peer ];
 See `nix/README.md` for the full contract, recipes for tsnet and non-Go
 clients, and how to run the same setup without Nix.
 
+### Identity provider groups in the policy
+
+With `oidc.groups.enabled`, Headscale syncs each user's group memberships from
+the OIDC groups claim at login, and the policy can reference them as
+`group:<name>@<domain>`, the syntax Tailscale uses for synced groups, wherever
+a group is allowed: grants, ACLs, SSH rules, tag owners and auto approvers.
+`oidc.groups.domain` qualifies the synced names, and `oidc.groups.claim`
+selects another claim, including nested ones such as `realm_access.roles`.
+
+Synced groups are separate from the groups defined in the policy, which an
+identity provider can never add members to. Each login replaces the user's
+memberships and updates connected peers immediately, so a group removed at the
+identity provider is revoked at the next login, and a login rejected by
+authorization revokes them all. Disabling sync, or changing its domain,
+removes the affected memberships at startup. Users' groups are
+shown by `headscale users list` and returned by the v1 API. Group sync is
+disabled by default.
+
+[#3216](https://github.com/juanfont/headscale/pull/3216)
+
 ### BREAKING
 
 #### Database
@@ -121,6 +141,8 @@ clients, and how to run the same setup without Nix.
 - `derp.paths` files may be Tailscale JSON or HuJSON DERP maps as well as YAML
 - `dns.extra_records_path` files may be HuJSON or YAML as well as JSON
 - A `derp.paths` region set to `null` removes that region again, as documented
+- Policy group references whose name contains `@` now parse as groups rather than as usernames that matched no one [#3216](https://github.com/juanfont/headscale/pull/3216)
+- Changes to users that only affect per-node grants (`via`, `autogroup:self`), such as a rename, now update those nodes' filters [#3216](https://github.com/juanfont/headscale/pull/3216)
 
 ## 0.29.4 (2026-09-23)
 

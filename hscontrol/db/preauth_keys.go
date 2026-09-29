@@ -157,7 +157,7 @@ func (hsdb *HSDatabase) ListPreAuthKeys() ([]types.PreAuthKey, error) {
 func ListPreAuthKeys(tx *gorm.DB) ([]types.PreAuthKey, error) {
 	var creds []types.Credential
 
-	err := tx.Preload("User").
+	err := preloadUserGroups(tx.Preload("User"), "User").
 		Where("kind = ?", types.CredentialPreAuthKey).
 		Find(&creds).Error
 	if err != nil {
@@ -176,7 +176,7 @@ func ListPreAuthKeys(tx *gorm.DB) ([]types.PreAuthKey, error) {
 func ListPreAuthKeysByUser(tx *gorm.DB, uid types.UserID) ([]types.PreAuthKey, error) {
 	var creds []types.Credential
 
-	err := tx.Preload("User").
+	err := preloadUserGroups(tx.Preload("User"), "User").
 		Where("kind = ? AND user_id = ?", types.CredentialPreAuthKey, uint(uid)).
 		Find(&creds).Error
 	if err != nil {
@@ -330,7 +330,7 @@ func (hsdb *HSDatabase) GetPreAuthKeyByID(id uint64) (*types.PreAuthKey, error) 
 	// Explicit primary-key clause: a struct condition would drop a zero-valued
 	// ID, making the lookup unconditional and returning the first row instead
 	// of not-found.
-	if result := hsdb.DB.Preload("User").
+	if result := preloadUserGroups(hsdb.DB.Preload("User"), "User").
 		First(&cred, "kind = ? AND id = ?", types.CredentialPreAuthKey, id); result.Error != nil {
 		return nil, result.Error
 	}

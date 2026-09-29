@@ -419,6 +419,21 @@ unix_socket_permission: "0770"
 #   allowed_groups:
 #     - /headscale
 #
+#   # Sync group memberships from the OIDC groups claim at login so the policy
+#   # can reference them as group:<name>@<domain>. See
+#   # https://headscale.net/stable/ref/oidc/#use-identity-provider-groups-in-the-policy
+#   groups:
+#     # Disabled by default. When disabled, synced memberships are removed at
+#     # startup.
+#     enabled: false
+#
+#     # Claim holding the user's groups. A dotted path reaches into nested
+#     # claims, e.g. realm_access.roles.
+#     claim: groups
+#
+#     # Domain that qualifies every synced group. Required when enabled.
+#     domain: example.com
+#
 #   # Optional: PKCE (Proof Key for Code Exchange) configuration
 #   # PKCE adds an additional layer of security to the OAuth 2.0 authorization code flow
 #   # by preventing authorization code interception attacks

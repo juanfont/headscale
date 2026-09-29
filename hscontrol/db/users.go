@@ -152,7 +152,7 @@ func (hsdb *HSDatabase) ListUsers(filter *types.User) ([]types.User, error) {
 func ListUsers(tx *gorm.DB, filter *types.User) ([]types.User, error) {
 	users := []types.User{}
 
-	err := tx.Where(filter).Find(&users).Error
+	err := preloadUserGroups(tx, "").Where(filter).Find(&users).Error
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +227,7 @@ func (hsdb *HSDatabase) CreateUsersForTest(count int, namePrefix ...string) []*t
 func firstUser(tx *gorm.DB, query string, arg any) (*types.User, error) {
 	user := types.User{}
 
-	err := tx.First(&user, query, arg).Error
+	err := preloadUserGroups(tx, "").First(&user, query, arg).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrUserNotFound

@@ -36,6 +36,7 @@ var (
 	errOIDCIssuerInvalid         = errors.New("oidc.issuer must be a valid http(s) URL")
 	errOIDCClientIDRequired      = errors.New("oidc.client_id is required when oidc.issuer is set")
 	errOIDCClientSecretRequired  = errors.New("oidc.client_secret or oidc.client_secret_path is required when oidc.issuer is set")
+	errOIDCGroupsClaimRequired   = errors.New("oidc.groups.claim must not be empty when oidc.groups.enabled is set")
 	errServerURLSuffix           = errors.New("server_url cannot be part of base_domain in a way that could make the DERP and headscale server unreachable")
 	errServerURLSame             = errors.New("server_url cannot use the same domain as base_domain in a way that could make the DERP and headscale server unreachable")
 	errInvalidPKCEMethod         = errors.New("pkce.method must be either 'plain' or 'S256'")
@@ -240,6 +241,23 @@ type OIDCConfig struct {
 	EmailVerifiedRequired      bool
 	UseExpiryFromToken         bool
 	PKCE                       PKCEConfig
+	Groups                     OIDCGroupsConfig
+}
+
+// OIDCGroupsConfig controls syncing group memberships from the OIDC groups
+// claim so policies can reference them as group:<name>@<Domain>.
+type OIDCGroupsConfig struct {
+	// Enabled syncs the claim into each user's memberships at login. When
+	// disabled, stored OIDC memberships are removed at startup.
+	Enabled bool
+
+	// Claim names the claim holding the user's groups. A dotted path
+	// (realm_access.roles) reaches into nested claims when no top-level
+	// claim has the literal name.
+	Claim string
+
+	// Domain qualifies every synced group name.
+	Domain string
 }
 
 type DERPConfig struct {
@@ -396,6 +414,21 @@ func validateOIDCConfig() error {
 	return nil
 }
 
+// validateOIDCGroupsConfig validates the group sync settings, called when
+// oidc.groups.enabled is set.
+func validateOIDCGroupsConfig() error {
+	if strings.TrimSpace(viper.GetString("oidc.groups.claim")) == "" {
+		return errOIDCGroupsClaimRequired
+	}
+
+	_, err := QualifyGroupName("group", viper.GetString("oidc.groups.domain"))
+	if err != nil {
+		return fmt.Errorf("oidc.groups.domain: %w", err)
+	}
+
+	return nil
+}
+
 // Domain returns the hostname/domain part of the [Config.ServerURL].
 // If the [Config.ServerURL] is not a valid URL, it returns the [Config.BaseDomain].
 func (c *Config) Domain() string {
@@ -476,6 +509,8 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("oidc.pkce.enabled", false)
 	viper.SetDefault("oidc.pkce.method", "S256")
 	viper.SetDefault("oidc.email_verified_required", true)
+	viper.SetDefault("oidc.groups.enabled", false)
+	viper.SetDefault("oidc.groups.claim", "groups")
 
 	viper.SetDefault("logtail.enabled", false)
 	viper.SetDefault("taildrop.enabled", true)
@@ -619,6 +654,22 @@ func validateServerConfigInto(v *configValidator) {
 				Detail: err.Error(),
 				Hint:   "check oidc.issuer, oidc.client_id, oidc.client_secret, and oidc.pkce.method",
 				Cause:  err,
+			})
+		}
+	}
+
+	if viper.GetBool("oidc.groups.enabled") {
+		err := validateOIDCGroupsConfig()
+		if err != nil {
+			v.Add(&ConfigError{
+				Reason: "OIDC group sync configuration is invalid",
+				Detail: err.Error(),
+				Hint:   "set oidc.groups.domain to the domain policies use in group:<name>@<domain>",
+				Cause:  err,
+				Current: []KV{
+					{"oidc.groups.claim", viper.GetString("oidc.groups.claim")},
+					{"oidc.groups.domain", viper.GetString("oidc.groups.domain")},
+				},
 			})
 		}
 	}
@@ -1445,6 +1496,11 @@ func LoadServerConfig() (*Config, error) {
 			PKCE: PKCEConfig{
 				Enabled: viper.GetBool("oidc.pkce.enabled"),
 				Method:  viper.GetString("oidc.pkce.method"),
+			},
+			Groups: OIDCGroupsConfig{
+				Enabled: viper.GetBool("oidc.groups.enabled"),
+				Claim:   strings.TrimSpace(viper.GetString("oidc.groups.claim")),
+				Domain:  FoldGroupName(strings.TrimSpace(viper.GetString("oidc.groups.domain"))),
 			},
 		},
 

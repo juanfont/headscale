@@ -65,7 +65,10 @@ type PolicyManager struct {
 	// The single source of truth for filter compilation. Both
 	// global and per-node filter rules are derived from these.
 	compiledGrants []compiledGrant
-	userNodeIdx    userNodeIndex
+	// compiledGrantsHash detects changes to per-node grants (via,
+	// autogroup:self), which the global filter hash does not cover.
+	compiledGrantsHash deephash.Sum
+	userNodeIdx        userNodeIndex
 
 	// Lazy map of per-node filter rules (reduced, for packet filters)
 	filterRulesMap *xsync.Map[types.NodeID, []tailcfg.FilterRule]
@@ -245,6 +248,14 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 
 	pm.relayTargetIPs = relayTargetIPs
 
+	// Per-node grants (via, autogroup:self) are compiled per node from
+	// pm.compiledGrants and are absent from the global filter, so a change
+	// that only affects them, such as a user joining or leaving a group
+	// they reference, would otherwise leave the per-node caches stale.
+	grantsHash := deephash.Hash(&pm.compiledGrants)
+	grantsChanged := grantsHash != pm.compiledGrantsHash
+	pm.compiledGrantsHash = grantsHash
+
 	var filter []tailcfg.FilterRule
 	if pm.pol == nil || (pm.pol.ACLs == nil && pm.pol.Grants == nil) {
 		filter = tailcfg.FilterAllowAll
@@ -347,7 +358,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	// Determine if we need to send updates to nodes
 	// filterChanged now includes policy content changes (via combined hash),
 	// so it will detect changes even for autogroup:self where compiled filter is empty
-	needsUpdate := filterChanged || tagOwnerChanged || autoApproveChanged || exitSetChanged
+	needsUpdate := filterChanged || grantsChanged || tagOwnerChanged || autoApproveChanged || exitSetChanged
 
 	// Only clear caches if we're actually going to send updates
 	// This prevents clearing caches when nothing changed, which would leave nodes
@@ -1106,6 +1117,19 @@ func (pm *PolicyManager) userMatchesOwner(user types.UserView, owner Owner) bool
 		if o == nil || pm.pol == nil {
 			return false
 		}
+		// Membership of an identity-provider group is read from the
+		// policy manager's users, which are current, not from the node's
+		// copy of its user.
+		if name, ok := o.idpGroup(pm.pol); ok {
+			for i := range pm.users {
+				if pm.users[i].ID == user.ID() {
+					return pm.users[i].InGroup(name)
+				}
+			}
+
+			return false
+		}
+
 		// Resolve the group to get usernames
 		usernames, ok := pm.pol.Groups[*o]
 		if !ok {
