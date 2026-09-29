@@ -299,6 +299,14 @@ func newOIDCBrowser(t *testing.T) *oidcBrowser {
 func newOIDCBrowserWithPrefix(t *testing.T, prefix string) *oidcBrowser {
 	t.Helper()
 
+	return newOIDCBrowserWith(t, prefix, nil)
+}
+
+// newOIDCBrowserWith is [newOIDCBrowserWithPrefix] with a hook to adjust the
+// OIDC configuration before the provider is created.
+func newOIDCBrowserWith(t *testing.T, prefix string, configure func(*types.OIDCConfig)) *oidcBrowser {
+	t.Helper()
+
 	idp, err := mockoidc.Run()
 	require.NoError(t, err)
 
@@ -324,16 +332,21 @@ func newOIDCBrowserWithPrefix(t *testing.T, prefix string) *oidcBrowser {
 	t.Cleanup(srv.Close)
 	publicURL := srv.URL + prefix
 
+	cfg := &types.OIDCConfig{
+		Issuer:       idp.Issuer(),
+		ClientID:     idp.ClientID,
+		ClientSecret: idp.ClientSecret,
+		Scope:        []string{"openid", "profile", "email"},
+	}
+	if configure != nil {
+		configure(cfg)
+	}
+
 	provider, err := NewAuthProviderOIDC(
 		context.Background(),
 		app,
 		publicURL,
-		&types.OIDCConfig{
-			Issuer:       idp.Issuer(),
-			ClientID:     idp.ClientID,
-			ClientSecret: idp.ClientSecret,
-			Scope:        []string{"openid", "profile", "email"},
-		},
+		cfg,
 	)
 	require.NoError(t, err)
 

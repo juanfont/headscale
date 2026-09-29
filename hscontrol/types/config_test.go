@@ -940,3 +940,100 @@ func TestExtraRecordsAreLowercased(t *testing.T) {
 		t.Errorf("SetExtraRecords mismatch (-want +got):\n%s", diff)
 	}
 }
+
+func TestOIDCGroupsConfigValidation(t *testing.T) {
+	tests := []struct {
+		name        string
+		groupsBlock string
+		wantErr     string
+		wantConfig  OIDCGroupsConfig
+	}{
+		{
+			name:        "disabled needs no domain",
+			groupsBlock: "",
+			wantConfig:  OIDCGroupsConfig{Claim: "groups"},
+		},
+		{
+			name: "enabled with domain",
+			groupsBlock: `
+    enabled: true
+    domain: " Example.COM "`,
+			wantConfig: OIDCGroupsConfig{Enabled: true, Claim: "groups", Domain: "example.com"},
+		},
+		{
+			name: "custom claim",
+			groupsBlock: `
+    enabled: true
+    claim: cognito:groups
+    domain: example.com`,
+			wantConfig: OIDCGroupsConfig{Enabled: true, Claim: "cognito:groups", Domain: "example.com"},
+		},
+		{
+			name: "enabled without domain",
+			groupsBlock: `
+    enabled: true`,
+			wantErr: "oidc.groups.domain",
+		},
+		{
+			name: "domain with at",
+			groupsBlock: `
+    enabled: true
+    domain: corp@example.com`,
+			wantErr: "must not contain '@'",
+		},
+		{
+			name: "empty claim",
+			groupsBlock: `
+    enabled: true
+    claim: ""
+    domain: example.com`,
+			wantErr: "oidc.groups.claim must not be empty",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+
+			groupsBlock := tt.groupsBlock
+			if groupsBlock == "" {
+				groupsBlock = " {}"
+			}
+
+			tmpDir := t.TempDir()
+			configYaml := []byte(`---
+noise:
+  private_key_path: noise_private.key
+server_url: http://127.0.0.1:8080
+dns:
+  magic_dns: false
+  override_local_dns: false
+prefixes:
+  v4: 100.64.0.0/10
+database:
+  type: sqlite
+oidc:
+  issuer: https://idp.example.com
+  client_id: headscale
+  client_secret: sekret
+  groups:` + groupsBlock + "\n")
+
+			require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "config.yaml"), configYaml, 0o600))
+			require.NoError(t, LoadConfig(tmpDir, false))
+
+			err := validateServerConfig()
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+
+			cfg, err := LoadServerConfig()
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantConfig, cfg.OIDC.Groups)
+		})
+	}
+}
