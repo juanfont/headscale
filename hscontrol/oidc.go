@@ -20,6 +20,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/templates"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/oauth2"
 	"tailscale.com/util/rands"
@@ -349,7 +350,9 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	// We are interested in other fields too (e.g. groups are required for allowedGroups) so we
 	// decode into our own [types.OIDCUserInfo] type using the underlying claims struct.
 	var userinfo2 types.OIDCUserInfo
-	if userinfo != nil && userinfo.Claims(&userinfo2) == nil && userinfo2.Sub == claims.Sub {
+
+	userinfoValid := userinfo != nil && userinfo.Claims(&userinfo2) == nil && userinfo2.Sub == claims.Sub
+	if userinfoValid {
 		// Update the user with the userinfo claims (with id token claims as fallback).
 		// TODO(kradalby): there might be more interesting fields here that we have not found yet.
 		claims.Email, claims.EmailVerified = mergeEmailClaims(&claims, &userinfo2)
@@ -366,15 +369,30 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	// against allowed emails, email domains, and groups.
 	err = doOIDCAuthorization(a.cfg, &claims)
 	if err != nil {
+		a.revokeGroupsOfDeniedUser(&claims)
 		httpUserError(writer, err)
+
 		return
 	}
+
+	idpGroups := a.loginGroups(claims.Sub, idToken, userinfo, userinfoValid)
 
 	user, err := a.createOrUpdateUserFromClaim(&claims)
 	if err != nil {
 		httpUserError(writer, NewHTTPError(
 			http.StatusInternalServerError,
 			"could not create or update user",
+			err,
+		))
+
+		return
+	}
+
+	err = a.syncLoginGroups(user, idpGroups)
+	if err != nil {
+		httpUserError(writer, NewHTTPError(
+			http.StatusInternalServerError,
+			"could not update user groups",
 			err,
 		))
 
@@ -685,6 +703,129 @@ func (a *AuthProviderOIDC) addAuthInfoToState(state string, info AuthInfo) bool 
 	a.authCache.Add(state, info)
 
 	return true
+}
+
+// loginGroups returns the qualified groups a login asserts, or nil when group
+// sync is disabled. Userinfo is only consulted when it belongs to the same
+// subject as the ID token.
+func (a *AuthProviderOIDC) loginGroups(
+	sub string,
+	idToken *oidc.IDToken,
+	userinfo *oidc.UserInfo,
+	userinfoValid bool,
+) []string {
+	if !a.cfg.Groups.Enabled {
+		return nil
+	}
+
+	var infoClaims map[string]any
+	if userinfoValid {
+		infoClaims = rawClaims(userinfo.Claims)
+	}
+
+	return a.groupsFromClaims(sub, rawClaims(idToken.Claims), infoClaims)
+}
+
+// syncLoginGroups makes groups the user's OIDC memberships and broadcasts the
+// change now. The registration or SSH check that follows sees the policy
+// manager already updated and reports no policy change of its own, and a user
+// who abandons the flow must still lose revoked groups. Only the policy delta
+// is sent, so a new node's registration still announces the node itself (see
+// #2888).
+func (a *AuthProviderOIDC) syncLoginGroups(user *types.User, groups []string) error {
+	if !a.cfg.Groups.Enabled {
+		return nil
+	}
+
+	c, err := a.h.state.SetUserGroups(types.UserID(user.ID), types.GroupSourceOIDC, groups)
+	if !c.IsEmpty() {
+		a.h.Change(c)
+	}
+
+	return err
+}
+
+// revokeGroupsOfDeniedUser removes the OIDC group memberships of an existing
+// user whom the identity provider authenticated but authorization rejected,
+// such as someone no longer in allowed_groups: they must not keep the access
+// their last successful login granted to their other nodes.
+func (a *AuthProviderOIDC) revokeGroupsOfDeniedUser(claims *types.OIDCClaims) {
+	if !a.cfg.Groups.Enabled {
+		return
+	}
+
+	user, err := a.h.state.GetUserByOIDCIdentifier(claims.Identifier())
+	if err != nil {
+		if !errors.Is(err, db.ErrUserNotFound) {
+			log.Error().Err(err).Msg("looking up denied OIDC user to revoke their groups")
+		}
+
+		return
+	}
+
+	c, err := a.h.state.SetUserGroups(types.UserID(user.ID), types.GroupSourceOIDC, nil)
+	if err != nil {
+		log.Error().Err(err).EmbedObject(user).Msg("revoking groups of denied OIDC user")
+
+		return
+	}
+
+	if !c.IsEmpty() {
+		a.h.Change(c)
+	}
+}
+
+// rawClaims decodes a token's claims into a generic map, returning nil if
+// they cannot be decoded.
+func rawClaims(decode func(any) error) map[string]any {
+	var claims map[string]any
+
+	err := decode(&claims)
+	if err != nil {
+		return nil
+	}
+
+	return claims
+}
+
+// groupsFromClaims returns the qualified names of the groups asserted in the
+// configured claim. The userinfo response is preferred when it carries the
+// claim, as it does for the standard claims; otherwise the ID token is used.
+// Names that cannot be qualified are skipped and logged.
+func (a *AuthProviderOIDC) groupsFromClaims(sub string, idClaims, infoClaims map[string]any) []string {
+	names, found := types.GroupsFromClaims(infoClaims, a.cfg.Groups.Claim)
+	if !found {
+		names, found = types.GroupsFromClaims(idClaims, a.cfg.Groups.Claim)
+	}
+
+	// Fail closed: no claim means no memberships, but an identity provider
+	// that stopped sending it (a scope or mapper change, a userinfo outage,
+	// an Entra ID group overage) should not do so silently.
+	if !found {
+		log.Info().
+			Str(zf.OIDCSubject, sub).
+			Str(zf.OIDCGroupsClaim, a.cfg.Groups.Claim).
+			Msg("OIDC groups claim missing from the ID token and userinfo; the user's synced groups are cleared")
+	}
+
+	groups := make([]string, 0, len(names))
+
+	for _, name := range names {
+		qualified, err := types.QualifyGroupName(name, a.cfg.Groups.Domain)
+		if err != nil {
+			log.Warn().
+				Err(err).
+				Str(zf.GroupName, name).
+				Str(zf.OIDCGroupsClaim, a.cfg.Groups.Claim).
+				Msg("ignoring OIDC group that cannot be used in policies")
+
+			continue
+		}
+
+		groups = append(groups, qualified)
+	}
+
+	return groups
 }
 
 // getAuthInfoFromState retrieves and consumes the auth info for a state. The

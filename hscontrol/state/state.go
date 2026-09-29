@@ -218,6 +218,10 @@ type State struct {
 	// caller snapshot or resurrected by an update racing with deletion.
 	persistMu sync.Mutex
 
+	// usersMu serialises [State.updatePolicyManagerUsers]. Taken last: no
+	// other State lock is acquired while it is held.
+	usersMu sync.Mutex
+
 	// selfRefresh holds nodes whose own DNS config inputs changed (NextDNS
 	// device metadata, given name), drained by [State.DrainSelfRefreshes].
 	selfRefresh   []types.NodeID
@@ -288,6 +292,11 @@ func NewState(cfg *types.Config) (*State, error) {
 	db, err := hsdb.NewHeadscaleDatabase(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("initializing database: %w", err)
+	}
+
+	err = pruneOIDCGroupMemberships(db, cfg.OIDC)
+	if err != nil {
+		return nil, err
 	}
 
 	ipAlloc, err := hsdb.NewIPAllocator(db, cfg.PrefixV4, cfg.PrefixV6, cfg.IPAllocation)
@@ -3393,10 +3402,111 @@ func onlyKeysChanged(before, after types.NodeView, now time.Time) bool {
 		peerHostinfoEqual(before.Hostinfo(), after.Hostinfo())
 }
 
+// pruneOIDCGroupMemberships removes OIDC group memberships that the current
+// configuration would no longer grant: all of them when group sync or OIDC
+// itself is disabled, or those outside the configured domain. Without this,
+// turning sync off or changing its domain would leave access in place until
+// each affected user next logged in, and with OIDC off no one ever would.
+func pruneOIDCGroupMemberships(db *hsdb.HSDatabase, oidc types.OIDCConfig) error {
+	cfg := oidc.Groups
+	enabled := cfg.Enabled && oidc.Issuer != ""
+
+	keepDomain := ""
+	if enabled {
+		keepDomain = cfg.Domain
+	}
+
+	removed, err := hsdb.Write(db.DB, func(tx *gorm.DB) (int64, error) {
+		return hsdb.PruneGroupMemberships(tx, types.GroupSourceOIDC, keepDomain)
+	})
+	if err != nil {
+		return fmt.Errorf("pruning OIDC group memberships: %w", err)
+	}
+
+	if removed > 0 {
+		log.Info().
+			Int64(zf.GroupMemberships, removed).
+			Bool(zf.OIDCGroupsEnabled, enabled).
+			Str(zf.OIDCGroupsDomain, cfg.Domain).
+			Msg("removed OIDC group memberships not granted by the current configuration")
+	}
+
+	return nil
+}
+
+// SetUserGroups makes groups, a list of qualified group names, the complete
+// set of the user's memberships from source, and returns the change to
+// broadcast when it alters what the policy grants. An empty list removes the
+// source's memberships.
+func (s *State) SetUserGroups(
+	userID types.UserID,
+	source types.GroupSource,
+	groups []string,
+) (change.Change, error) {
+	// Read before the NodeStore write below; see updatePolicyManagerNodes.
+	genBefore := s.polMan.NodesGeneration()
+
+	changed, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (bool, error) {
+		return hsdb.SetUserGroups(tx, userID, source, groups)
+	})
+	if err != nil {
+		return change.Change{}, fmt.Errorf("setting groups for user %d: %w", userID, err)
+	}
+
+	if changed {
+		// Display only: authorization reads the policy manager's users, so a
+		// failure here must not keep the policy update below from running.
+		err = s.refreshNodeStoreUser(userID)
+		if err != nil {
+			log.Error().Err(err).Uint(zf.UserID, uint(userID)).
+				Msg("refreshing the user's nodes after a group change")
+		}
+	}
+
+	// Also when the stored memberships did not change: a previous update may
+	// have committed them and then failed to reach the policy manager, and
+	// nothing else would bring it back in sync. SetUsers short-circuits when
+	// the user list is unchanged.
+	c, err := s.updatePolicyManagerUsers()
+	if err != nil {
+		return s.policyChangeSince(genBefore), fmt.Errorf("updating policy manager after group change: %w", err)
+	}
+
+	return c.Merge(s.policyChangeSince(genBefore)), nil
+}
+
+// refreshNodeStoreUser replaces the copy of the user held by each of their
+// nodes in the [NodeStore] with the stored user, so node responses show the
+// user's current groups. Authorization does not read these copies.
+func (s *State) refreshNodeStoreUser(userID types.UserID) error {
+	user, err := s.db.GetUserByID(userID)
+	if err != nil {
+		return fmt.Errorf("reloading user %d: %w", userID, err)
+	}
+
+	nodes := s.nodeStore.ListNodesByUser(userID)
+	updates := make(map[types.NodeID]UpdateNodeFunc, nodes.Len())
+
+	for _, node := range nodes.All() {
+		updates[node.ID()] = func(n *types.Node) {
+			n.User = user.Clone()
+		}
+	}
+
+	s.nodeStore.UpdateNodes(updates)
+
+	return nil
+}
+
 // updatePolicyManagerUsers pushes the current user list into the policy
 // manager, rebuilds peer adjacency when user identity changed, and returns
 // a PolicyChange when clients need a refresh.
 func (s *State) updatePolicyManagerUsers() (change.Change, error) {
+	// Held from listing to SetUsers, so a caller that listed before another
+	// caller's write cannot apply its older list last.
+	s.usersMu.Lock()
+	defer s.usersMu.Unlock()
+
 	users, err := s.ListAllUsers()
 	if err != nil {
 		return change.Change{}, fmt.Errorf("listing users for policy update: %w", err)

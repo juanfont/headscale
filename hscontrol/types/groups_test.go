@@ -25,7 +25,10 @@ func TestQualifyGroupName(t *testing.T) {
 		{name: "only ascii is case folded", group: "\u212Aube-Admins", domain: "example.com", want: "\u212Aube-admins@example.com"},
 		{name: "non-ascii letters kept", group: "Équipe", domain: "example.com", want: "Équipe@example.com"},
 		{name: "empty name", group: "  ", domain: "example.com", wantErr: ErrGroupNameEmpty},
+		{name: "already qualified with domain", group: "Eng@Example.com", domain: "example.com", want: "eng@example.com"},
+		{name: "qualified with another domain", group: "eng@corp.example", domain: "example.com", wantErr: ErrGroupNameContainsAt},
 		{name: "name with at", group: "eng@corp", domain: "example.com", wantErr: ErrGroupNameContainsAt},
+		{name: "only the domain", group: "@example.com", domain: "example.com", wantErr: ErrGroupNameEmpty},
 		{name: "empty domain", group: "eng", domain: "", wantErr: ErrGroupDomainMissing},
 		{name: "domain with at", group: "eng", domain: "a@b", wantErr: ErrGroupDomainContainsAt},
 		{name: "too long", group: strings.Repeat("a", 250), domain: "example.com", wantErr: ErrGroupNameTooLong},
@@ -91,4 +94,53 @@ func TestUserCloneDeepCopiesMemberships(t *testing.T) {
 	c.Memberships[0].Group.Name = "changed"
 
 	assert.Equal(t, "eng@example.com", u.Memberships[0].Group.Name)
+}
+
+func TestGroupsFromClaims(t *testing.T) {
+	claims := map[string]any{
+		"groups":                     []any{"eng", "ops", 7, nil},
+		"single":                     "admins",
+		"https://example.com/groups": []any{"auth0-group"},
+		"cognito:groups":             []any{"cognito-group"},
+		"realm_access":               map[string]any{"roles": []any{"kc-role"}},
+		"realm_access.roles":         []any{"literal-wins"},
+		"resource_access":            map[string]any{"headscale": map[string]any{"roles": []any{"client-role"}}},
+		"empty":                      []any{},
+		"null":                       nil,
+		"number":                     42,
+	}
+
+	tests := []struct {
+		claim     string
+		want      []string
+		wantFound bool
+	}{
+		{claim: "groups", want: []string{"eng", "ops"}, wantFound: true},
+		{claim: "single", want: []string{"admins"}, wantFound: true},
+		{claim: "https://example.com/groups", want: []string{"auth0-group"}, wantFound: true},
+		{claim: "cognito:groups", want: []string{"cognito-group"}, wantFound: true},
+		{claim: "realm_access.roles", want: []string{"literal-wins"}, wantFound: true},
+		{claim: "resource_access.headscale.roles", want: []string{"client-role"}, wantFound: true},
+		{claim: "empty", want: []string{}, wantFound: true},
+		{claim: "null", want: nil, wantFound: true},
+		{claim: "number", want: nil, wantFound: true},
+		{claim: "missing", want: nil, wantFound: false},
+		{claim: "realm_access.missing", want: nil, wantFound: false},
+		{claim: "single.nested", want: nil, wantFound: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.claim, func(t *testing.T) {
+			got, found := GroupsFromClaims(claims, tt.claim)
+			assert.Equal(t, tt.want, got)
+			assert.Equal(t, tt.wantFound, found)
+		})
+	}
+
+	// Keycloak nests roles under an object; without the literal key the path
+	// is followed.
+	delete(claims, "realm_access.roles")
+	got, found := GroupsFromClaims(claims, "realm_access.roles")
+	assert.True(t, found)
+	assert.Equal(t, []string{"kc-role"}, got)
 }

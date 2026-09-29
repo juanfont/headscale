@@ -56,11 +56,17 @@ type UserGroup struct {
 // QualifyGroupName normalises a group name asserted by an identity provider
 // and qualifies it with domain, producing the identifier that policies
 // reference as `group:<name>@<domain>`. Names are lowercased (policy group
-// references are matched case-insensitively, as in Tailscale) and must not
-// contain '@', which separates the name from the domain.
+// references are matched case-insensitively, as in Tailscale). A name that is
+// already qualified with domain, as providers that name groups by email
+// address send it, is accepted as is; any other '@' is rejected, since it
+// separates the name from the domain.
 func QualifyGroupName(name, domain string) (string, error) {
 	name = FoldGroupName(strings.TrimSpace(name))
 	domain = FoldGroupName(strings.TrimSpace(domain))
+
+	if local, ok := strings.CutSuffix(name, "@"+domain); ok && domain != "" {
+		name = local
+	}
 
 	switch {
 	case name == "":
@@ -111,4 +117,61 @@ func groupNames(memberships []UserGroup) []string {
 	slices.Sort(names)
 
 	return slices.Compact(names)
+}
+
+// GroupsFromClaims returns the group names in claims under claim, and whether
+// the claim is present. claim is first looked up as a literal name, so names
+// containing dots (such as Auth0's https://example.com/groups) work; if absent,
+// a dotted path reaches into nested objects (Keycloak's realm_access.roles).
+// The value may be a single string or an array; non-string entries are
+// ignored.
+func GroupsFromClaims(claims map[string]any, claim string) ([]string, bool) {
+	val, ok := claims[claim]
+	if !ok {
+		val, ok = nestedClaim(claims, claim)
+	}
+
+	if !ok || val == nil {
+		return nil, ok
+	}
+
+	switch v := val.(type) {
+	case string:
+		return []string{v}, true
+	case []any:
+		groups := make([]string, 0, len(v))
+
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				groups = append(groups, s)
+			}
+		}
+
+		return groups, true
+	default:
+		return nil, true
+	}
+}
+
+func nestedClaim(claims map[string]any, path string) (any, bool) {
+	parts := strings.Split(path, ".")
+	if len(parts) < 2 {
+		return nil, false
+	}
+
+	var cur any = claims
+
+	for _, part := range parts {
+		obj, ok := cur.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+
+		cur, ok = obj[part]
+		if !ok {
+			return nil, false
+		}
+	}
+
+	return cur, true
 }
