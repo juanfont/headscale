@@ -207,7 +207,7 @@ configuration and attributes. At least the following node attributes are current
   Be sure to set NextDNS as global resolver in the [configuration](configuration.md).
 - `magicdns-aaaa`: Respond to AAAA queries on the local [MagicDNS](https://tailscale.com/docs/features/magicdns)
   resolver at 100.100.100.100.
-- `disable-ipv4`: Selectively disable IPv4 for specfic nodes. This is may be useful to workaround [CGNat
+- `disable-ipv4`: Selectively disable IPv4 for specific nodes. This is may be useful to workaround [CGNat
   conflicts](https://tailscale.com/docs/reference/troubleshooting/network-configuration/cgnat-conflicts).
 - `randomize-client-port`: Allocate a [random port for WireGuard
   traffic](https://tailscale.com/docs/reference/syntax/policy-file#randomizeclientport) instead of the static default
