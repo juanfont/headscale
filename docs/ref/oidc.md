@@ -227,6 +227,112 @@ You may refer to users in the Headscale policy via:
     }
     ```
 
+### Use identity provider groups in the policy
+
+Headscale can sync each user's group memberships from the identity provider at login, so the policy can grant access to
+identity provider groups directly instead of repeating their members in the `groups` section. Group sync is disabled by
+default. Enable it and choose the domain that qualifies every synced group:
+
+```yaml hl_lines="5-8"
+oidc:
+  issuer: "https://sso.example.com"
+  client_id: "headscale"
+  client_secret: "generated-secret"
+  scope: ["openid", "profile", "email", "groups"]
+  groups:
+    enabled: true
+    domain: "example.com"
+```
+
+A synced group is referenced in the policy as `group:<name>@<domain>`, the syntax Tailscale uses for groups synced from
+an identity provider. A user who is a member of the group `Engineering` at the identity provider can be granted access
+with:
+
+```json
+{
+  "grants": [
+    {
+      "src": ["group:engineering@example.com"],
+      "dst": ["tag:prod"],
+      "ip": ["*"]
+    }
+  ]
+}
+```
+
+Synced groups can be used wherever a group can: as source or destination in grants and ACLs, in SSH rules, as tag owners
+and as auto approvers.
+
+- Group names are matched ignoring the case of ASCII letters; other characters must match exactly. A group name the
+  identity provider already sends qualified with the configured domain, like `engineering@example.com`, is used as is.
+  Other names containing `@` can't be referenced and are ignored with a warning.
+- Synced groups are kept apart from the groups defined in the policy. A reference that exactly matches a group defined
+  in the `groups` section is always resolved from its listed members, even if its name contains `@`, so group
+  memberships at the identity provider can never add members to it.
+- A synced group that nobody is a member of is valid in the policy and grants nothing. Referencing a policy group that is
+  not defined in the `groups` section is still an error.
+- The groups of each user are shown by `headscale users list` and returned by the [API](api.md).
+
+!!! info "Memberships are refreshed at login"
+
+    Each login replaces the user's synced memberships with the groups the identity provider sends at that time, and
+    connected nodes receive the updated policy immediately. A group removed at the identity provider, or a login
+    without a groups claim, removes the membership. A login that is authenticated but then rejected, for example by
+    `allowed_groups`, removes all of the user's synced memberships.
+
+    Between logins, memberships are not refreshed, and they apply to all of the user's nodes, including those
+    registered with a pre-auth key. Memberships are otherwise only removed when the user is deleted, when group sync is
+    disabled, or, for groups of the previous domain, when `oidc.groups.domain` changes; the last two take effect at
+    startup. A short [`node.expiry`](#customize-node-expiration) makes users log in, and so refresh their memberships,
+    more often. To refresh them right away, have the user log in again with `tailscale up --force-reauth`.
+
+!!! warning "Only sync groups your users can't change"
+
+    Anyone who can create a group or join it at the identity provider obtains the access the policy grants to that
+    group. Only enable group sync if group membership is managed by administrators.
+
+=== "Standard groups claim"
+
+    Most identity providers send memberships in the `groups` claim, some only if the `groups` scope is requested.
+
+    ```yaml
+    oidc:
+      scope: ["openid", "profile", "email", "groups"]
+      groups:
+        enabled: true
+        domain: "example.com"
+    ```
+
+=== "Custom claim"
+
+    Set `oidc.groups.claim` if the identity provider uses another claim, for example `cognito:groups` for Amazon
+    Cognito or a namespaced claim like `https://example.com/groups` for Auth0. The claim may hold a single string or a
+    list of strings.
+
+    ```yaml
+    oidc:
+      groups:
+        enabled: true
+        claim: "cognito:groups"
+        domain: "example.com"
+    ```
+
+=== "Nested claim"
+
+    Use a dotted path to read memberships nested in another claim, for example Keycloak realm roles:
+
+    ```yaml
+    oidc:
+      groups:
+        enabled: true
+        claim: "realm_access.roles"
+        domain: "example.com"
+    ```
+
+    A claim whose name contains a dot is looked up by its literal name first.
+
+The `allowed_groups` filter is not affected by these settings: it keeps matching the groups in the `groups` claim.
+
 ## Supported OIDC claims
 
 Headscale uses [the standard OIDC claims](https://openid.net/specs/openid-connect-core-1_0.html#StandardClaims) to
@@ -240,13 +346,15 @@ endpoint.
 | username            | `preferred_username` | Depends on identity provider, eg: `ssmith`, `ssmith@idp.example.com`, `\\example.com\ssmith`      |
 | profile picture     | `picture`            | URL to a profile picture or avatar                                                                |
 | provider identifier | `iss`, `sub`         | A stable and unique identifier for a user, typically a combination of `iss` and `sub` OIDC claims |
-|                     | `groups`             | [Only used to filter for allowed groups](#authorize-users-with-filters)                           |
+| group memberships   | `groups`             | [Allowed groups][oidc-allowed-groups] and [group sync][oidc-group-sync]                           |
+
+[oidc-allowed-groups]: #authorize-users-with-filters
+[oidc-group-sync]: #use-identity-provider-groups-in-the-policy
 
 ## Limitations
 
 - Support for OpenID Connect aims to be generic and vendor independent. It offers only limited support for quirks of
   specific identity providers.
-- OIDC groups cannot be used in policy rules.
 - The username provided by the identity provider needs to adhere to this pattern:
     - The username must be at least two characters long.
     - It must only contain letters, digits, hyphens, dots, underscores, and up to a single `@`.

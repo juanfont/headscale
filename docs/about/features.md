@@ -39,7 +39,7 @@ provides on overview of Headscale's feature and compatibility with the Tailscale
 - [x] [Node registration using Single-Sign-On (OpenID Connect)](../ref/oidc.md) ([GitHub label "OIDC"](https://github.com/juanfont/headscale/labels/OIDC))
     - [x] Basic registration
     - [x] Update user profile from identity provider
-    - [ ] OIDC groups cannot be used in ACLs
+    - [x] [Use identity provider groups in the policy](../ref/oidc.md#use-identity-provider-groups-in-the-policy)
 - [ ] [Funnel](https://tailscale.com/docs/features/tailscale-funnel) ([#1040](https://github.com/juanfont/headscale/issues/1040))
 - [ ] [Serve](https://tailscale.com/docs/features/tailscale-serve) ([#1234](https://github.com/juanfont/headscale/issues/1921))
 - [ ] [Network flow logs](https://tailscale.com/docs/features/logging/network-flow-logs) ([#1687](https://github.com/juanfont/headscale/issues/1687))
