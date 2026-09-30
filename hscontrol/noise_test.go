@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -745,6 +747,331 @@ func newSSHActionFollowUpRequest(t *testing.T, src, dst types.NodeID, authID typ
 	req.URL.RawQuery = q.Encode()
 
 	return req
+}
+
+var errSSHCheckRejectedForTest = errors.New("ssh check rejected for test")
+
+// sshVerdictCases are the two verdicts a check session can resolve to.
+var sshVerdictCases = []struct {
+	name    string
+	verdict types.AuthVerdict
+	accept  bool
+}{
+	{name: "accept", verdict: types.AuthVerdict{}, accept: true},
+	{name: "reject", verdict: types.AuthVerdict{Err: errSSHCheckRejectedForTest}, accept: false},
+}
+
+// sshVerdictFixture is a same-user (src, dst) pair under an SSH check with
+// checkPeriod "always". Period 0 never auto-approves from the ledger, so any
+// Accept not backed by a verdict is a replay.
+type sshVerdictFixture struct {
+	ns       *noiseServer
+	src, dst types.NodeID
+}
+
+func newSSHVerdictFixture(t *testing.T) *sshVerdictFixture {
+	t.Helper()
+
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("ssh-verdict-user")
+	require.NoError(t, app.state.UpdatePolicyManagerUsersForTest())
+
+	var ids [2]types.NodeID
+
+	for i, name := range []string{"src-node", "dst-node"} {
+		node := app.state.CreateRegisteredNodeForTest(user, name)
+		// autogroup:self compares hydrated users.
+		node.User = user
+
+		// SaveNode refreshes the policy manager's nodes, which
+		// SSHCheckParams resolves against.
+		_, _, err := app.state.SaveNode(node.View())
+		require.NoError(t, err)
+
+		ids[i] = node.ID
+	}
+
+	_, err := app.state.SetPolicy(fmt.Appendf(nil, `{
+		"ssh": [{
+			"action": "check",
+			"checkPeriod": "always",
+			"src": [%q],
+			"dst": ["autogroup:self"],
+			"users": ["autogroup:nonroot"]
+		}]
+	}`, user.Name+"@"))
+	require.NoError(t, err)
+
+	period, checkFound := app.state.SSHCheckParams(ids[0], ids[1])
+	require.True(t, checkFound, "test setup: pair must be subject to a check")
+	require.Zero(t, period, "test setup: checkPeriod must be always")
+
+	dst, ok := app.state.GetNodeByID(ids[1])
+	require.True(t, ok)
+
+	return &sshVerdictFixture{
+		ns:  &noiseServer{headscale: app, machineKey: dst.MachineKey()},
+		src: ids[0],
+		dst: ids[1],
+	}
+}
+
+// mint runs the initial poll and returns the check session it created.
+func (f *sshVerdictFixture) mint(t *testing.T) (types.AuthID, *types.AuthRequest) {
+	t.Helper()
+
+	rec := httptest.NewRecorder()
+	f.ns.SSHActionHandler(rec, newSSHActionRequest(t, f.src, f.dst))
+
+	authID := requireSSHHold(t, sshActionFromRecorder(t, rec))
+
+	auth, ok := f.ns.headscale.state.GetAuthCacheEntry(authID)
+	require.True(t, ok, "minted session must be cached")
+
+	return authID, auth
+}
+
+// cancellableFollowUp returns a follow-up request and the cancel for its
+// context, derived from the request's own so chi's route values survive.
+func (f *sshVerdictFixture) cancellableFollowUp(
+	t *testing.T,
+	authID types.AuthID,
+) (*http.Request, context.CancelFunc) {
+	t.Helper()
+
+	req := newSSHActionFollowUpRequest(t, f.src, f.dst, authID)
+	ctx, cancel := context.WithCancel(req.Context())
+
+	return req.WithContext(ctx), cancel
+}
+
+func (f *sshVerdictFixture) serve(req *http.Request) *httptest.ResponseRecorder {
+	rec := httptest.NewRecorder()
+	f.ns.SSHActionHandler(rec, req)
+
+	return rec
+}
+
+func (f *sshVerdictFixture) followUp(t *testing.T, authID types.AuthID) *httptest.ResponseRecorder {
+	t.Helper()
+
+	return f.serve(newSSHActionFollowUpRequest(t, f.src, f.dst, authID))
+}
+
+func sshActionFromRecorder(t *testing.T, rec *httptest.ResponseRecorder) tailcfg.SSHAction {
+	t.Helper()
+
+	require.Equal(t, http.StatusOK, rec.Code, "body=%s", rec.Body.String())
+
+	var action tailcfg.SSHAction
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &action))
+
+	return action
+}
+
+// carriesSSHVerdict reports whether action is the answer to the verdict.
+func carriesSSHVerdict(action tailcfg.SSHAction, accept bool) bool {
+	if action.HoldAndDelegate != "" || action.Accept == action.Reject {
+		return false
+	}
+
+	return action.Accept == accept
+}
+
+// requireSSHHold asserts action re-delegates and returns its fresh auth_id.
+func requireSSHHold(t *testing.T, action tailcfg.SSHAction) types.AuthID {
+	t.Helper()
+
+	require.False(t, action.Accept, "expected HoldAndDelegate, got Accept: %+v", action)
+	require.False(t, action.Reject, "expected HoldAndDelegate, got Reject: %+v", action)
+	require.NotEmpty(t, action.HoldAndDelegate, "expected HoldAndDelegate: %+v", action)
+
+	u, err := url.Parse(action.HoldAndDelegate)
+	require.NoError(t, err)
+
+	authID, err := types.AuthIDFromString(u.Query().Get("auth_id"))
+	require.NoError(t, err)
+
+	return authID
+}
+
+// TestSSHActionFollowUp_ConsumedVerdictNotReplayed guards the one-shot
+// verdict channel: after a follow-up consumed the verdict, a second follow-up
+// on the same auth_id must re-decide instead of reading the closed channel's
+// zero value, which Accept() reports as success.
+func TestSSHActionFollowUp_ConsumedVerdictNotReplayed(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range sshVerdictCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := newSSHVerdictFixture(t)
+			authID, auth := f.mint(t)
+			auth.FinishAuth(tc.verdict)
+
+			first := sshActionFromRecorder(t, f.followUp(t, authID))
+			require.True(t, carriesSSHVerdict(first, tc.accept),
+				"first follow-up must carry the verdict, got %+v", first)
+
+			second := sshActionFromRecorder(t, f.followUp(t, authID))
+			replayID := requireSSHHold(t, second)
+			assert.NotEqual(t, authID, replayID, "re-delegation must mint a new session")
+		})
+	}
+}
+
+// TestSSHActionFollowUp_ConcurrentWaiters parks two follow-ups on one
+// session: exactly one may consume the verdict, the other re-decides.
+func TestSSHActionFollowUp_ConcurrentWaiters(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range sshVerdictCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := newSSHVerdictFixture(t)
+			authID, auth := f.mint(t)
+
+			var (
+				wg   sync.WaitGroup
+				recs [2]*httptest.ResponseRecorder
+			)
+
+			for i := range recs {
+				wg.Go(func() {
+					recs[i] = f.followUp(t, authID)
+				})
+			}
+
+			auth.FinishAuth(tc.verdict)
+			wg.Wait()
+
+			var carried, held int
+
+			for _, rec := range recs {
+				action := sshActionFromRecorder(t, rec)
+				if carriesSSHVerdict(action, tc.accept) {
+					carried++
+
+					continue
+				}
+
+				requireSSHHold(t, action)
+
+				held++
+			}
+
+			assert.Equal(t, 1, carried, "exactly one waiter must carry the verdict")
+			assert.Equal(t, 1, held, "the other waiter must re-delegate")
+		})
+	}
+}
+
+// TestSSHActionFollowUp_CancelledWaiterLeavesVerdict: a follow-up that
+// returns before FinishAuth must not consume the verdict, so the retry gets
+// it exactly once.
+func TestSSHActionFollowUp_CancelledWaiterLeavesVerdict(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range sshVerdictCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := newSSHVerdictFixture(t)
+			authID, auth := f.mint(t)
+
+			req1, cancel := f.cancellableFollowUp(t, authID)
+			done1 := make(chan *httptest.ResponseRecorder)
+
+			go func() {
+				done1 <- f.serve(req1)
+			}()
+
+			cancel()
+
+			rec1 := <-done1
+			require.Equal(t, http.StatusUnauthorized, rec1.Code,
+				"cancelled follow-up must return 401, body=%s", rec1.Body.String())
+
+			// The handler has returned, so its select could only take ctx.Done.
+			auth.FinishAuth(tc.verdict)
+
+			second := sshActionFromRecorder(t, f.followUp(t, authID))
+			require.True(t, carriesSSHVerdict(second, tc.accept),
+				"retry must carry the verdict, got %+v", second)
+
+			third := sshActionFromRecorder(t, f.followUp(t, authID))
+			requireSSHHold(t, third)
+		})
+	}
+}
+
+// TestSSHActionFollowUp_CancelRacingVerdictAtMostOnce makes both select cases
+// ready before the handler parks. Either outcome is allowed; the verdict
+// must reach at most one response.
+func TestSSHActionFollowUp_CancelRacingVerdictAtMostOnce(t *testing.T) {
+	t.Parallel()
+
+	const iterations = 200
+
+	for _, tc := range sshVerdictCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := newSSHVerdictFixture(t)
+
+			for range iterations {
+				authID, auth := f.mint(t)
+
+				auth.FinishAuth(tc.verdict)
+
+				req1, cancel := f.cancellableFollowUp(t, authID)
+				cancel()
+
+				rec1 := f.serve(req1)
+				retry := sshActionFromRecorder(t, f.followUp(t, authID))
+
+				if rec1.Code == http.StatusUnauthorized {
+					require.True(t, carriesSSHVerdict(retry, tc.accept),
+						"cancelled follow-up left the verdict; retry must carry it, got %+v", retry)
+
+					continue
+				}
+
+				first := sshActionFromRecorder(t, rec1)
+				require.True(t, carriesSSHVerdict(first, tc.accept),
+					"cancelled follow-up consumed the verdict, got %+v", first)
+				requireSSHHold(t, retry)
+			}
+		})
+	}
+}
+
+// TestSSHActionFollowUp_LostResponseRedecides: the client never saw the
+// Accept (dropped response) and retries. The retry must re-decide through a
+// fresh session, which then completes normally.
+func TestSSHActionFollowUp_LostResponseRedecides(t *testing.T) {
+	t.Parallel()
+
+	f := newSSHVerdictFixture(t)
+	authID, auth := f.mint(t)
+	auth.FinishAuth(types.AuthVerdict{})
+
+	// The Accept response is lost on the way to the client.
+	_ = f.followUp(t, authID)
+
+	retry := sshActionFromRecorder(t, f.followUp(t, authID))
+	freshID := requireSSHHold(t, retry)
+	require.NotEqual(t, authID, freshID)
+
+	fresh, ok := f.ns.headscale.state.GetAuthCacheEntry(freshID)
+	require.True(t, ok, "re-delegated session must be cached")
+	fresh.FinishAuth(types.AuthVerdict{})
+
+	final := sshActionFromRecorder(t, f.followUp(t, freshID))
+	assert.True(t, carriesSSHVerdict(final, true),
+		"fresh session must complete with its verdict, got %+v", final)
 }
 
 // newMapRequest builds a streaming [tailcfg.MapRequest] POST for
