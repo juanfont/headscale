@@ -187,8 +187,8 @@ func runViaHACompat(t *testing.T, c *testcapture.Capture) {
 
 	// Compare each viewer's [tailcfg.MapResponse] against golden [netmap.NetworkMap].
 	// Route approvals reach clients asynchronously, so the peer-count wait
-	// above says nothing about routes or primaries: retry the whole
-	// comparison until the viewer's netmap has caught up.
+	// above says nothing about routes, primaries or filters: retry the
+	// whole comparison until the viewer's netmap has caught up.
 	for viewerName, cl := range clients {
 		capture := c.Captures[viewerName]
 		if capture.Netmap == nil {
