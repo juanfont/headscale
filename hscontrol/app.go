@@ -501,7 +501,7 @@ func (h *Headscale) createRouter(apiV1Mux, apiV2Mux http.Handler) *chi.Mux {
 		r.HandleFunc("/derp", h.DERPServer.DERPHandler)
 		r.HandleFunc("/derp/probe", derpServer.DERPProbeHandler)
 		r.HandleFunc("/derp/latency-check", derpServer.DERPProbeHandler)
-		r.HandleFunc("/bootstrap-dns", derpServer.DERPBootstrapDNSHandler(h.state.DERPMap()))
+		r.HandleFunc("/bootstrap-dns", derpServer.DERPBootstrapDNSHandler(h.state.DERPMap))
 	}
 
 	// Auth is enforced inside each Huma mux per-operation, so the whole API

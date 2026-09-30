@@ -1,12 +1,18 @@
 package server
 
 import (
+	"encoding/json"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/envknob"
+	"tailscale.com/tailcfg"
 )
 
 // TestGenerateRegionInsecureTLS pins the contract nix/testkit.nix relies on:
@@ -57,4 +63,27 @@ func TestGenerateRegionInsecureTLS(t *testing.T) {
 			assert.Equal(t, 3478, node.STUNPort)
 		})
 	}
+}
+
+// TestDERPBootstrapDNSHandlerFollowsDERPMapUpdates guards against the handler
+// resolving a DERP map captured at startup: hostnames that a later
+// auto-update adds must be served.
+func TestDERPBootstrapDNSHandlerFollowsDERPMapUpdates(t *testing.T) {
+	var current atomic.Pointer[tailcfg.DERPMap]
+	current.Store(&tailcfg.DERPMap{})
+
+	handler := DERPBootstrapDNSHandler(func() tailcfg.DERPMapView {
+		return current.Load().View()
+	})
+
+	current.Store(&tailcfg.DERPMap{Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{
+		1: {RegionID: 1, Nodes: []*tailcfg.DERPNode{{Name: "1a", RegionID: 1, HostName: "localhost"}}},
+	}})
+
+	rec := httptest.NewRecorder()
+	handler(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/bootstrap-dns", nil))
+
+	var got map[string][]net.IP
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&got))
+	assert.Contains(t, got, "localhost")
 }
