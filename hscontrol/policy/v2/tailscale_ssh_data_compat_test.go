@@ -189,15 +189,12 @@ func TestSSHDataCompat(t *testing.T) {
 						nodeName,
 					)
 
-					// Build expected SSHPolicy from the typed rules.
-					var wantSSH *tailcfg.SSHPolicy
-					if len(capture.SSHRules) > 0 {
-						wantSSH = &tailcfg.SSHPolicy{Rules: capture.SSHRules}
-					}
-
-					// Normalize: treat empty-rules SSHPolicy as nil
-					if gotSSH != nil && len(gotSSH.Rules) == 0 {
-						gotSSH = nil
+					// Nil and empty SSHPolicy differ on the wire: nil
+					// keeps the client's previous rules, empty clears
+					// them. Take presence from the captured netmap.
+					wantSSH := &tailcfg.SSHPolicy{Rules: capture.SSHRules}
+					if capture.Netmap != nil && capture.Netmap.SSHPolicy == nil {
+						wantSSH = nil
 					}
 
 					// Compare headscale output against Tailscale expected.
@@ -217,6 +214,17 @@ func TestSSHDataCompat(t *testing.T) {
 							tf.TestID,
 							nodeName,
 							diff,
+						)
+					}
+
+					// EquateEmpty hides "rules":null vs "rules":[];
+					// pin the captured shape separately.
+					if gotSSH != nil && capture.Netmap != nil &&
+						capture.Netmap.SSHPolicy != nil {
+						assert.Equalf(t,
+							capture.Netmap.SSHPolicy.Rules == nil,
+							gotSSH.Rules == nil,
+							"%s/%s: rules null-vs-[] mismatch", tf.TestID, nodeName,
 						)
 					}
 
