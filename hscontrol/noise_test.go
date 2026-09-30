@@ -10,11 +10,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/juanfont/headscale/hscontrol/capver"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
@@ -197,10 +199,200 @@ func TestRegistrationHandler_OversizedBody(t *testing.T) {
 
 	ns.RegistrationHandler(rec, req)
 
-	// [json.Decoder.Decode] returns [http.MaxBytesError] → [regErr] wraps it → handler writes
-	// a [tailcfg.RegisterResponse] with the error and then [rejectUnsupported] kicks in
-	// for version 0 → returns 400.
+	// [json.Decoder.Decode] returns [http.MaxBytesError] before any field is
+	// decoded, so [rejectUnsupported] sees version 0 and answers 400 before
+	// the decode error would be.
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func newRegisterRequest(t *testing.T, req tailcfg.RegisterRequest) *http.Request {
+	t.Helper()
+
+	body, err := json.Marshal(req)
+	require.NoError(t, err)
+
+	return httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/machine/register", bytes.NewReader(body))
+}
+
+// serveRegister guards against panics so a handler that reaches a nil
+// dependency fails its own row instead of the whole test binary.
+func serveRegister(t *testing.T, ns *noiseServer, req tailcfg.RegisterRequest) *httptest.ResponseRecorder {
+	t.Helper()
+
+	rec := httptest.NewRecorder()
+
+	require.NotPanics(t, func() {
+		ns.RegistrationHandler(rec, newRegisterRequest(t, req))
+	})
+
+	return rec
+}
+
+func requireBelowFloorRejected(t *testing.T, rec *httptest.ResponseRecorder) {
+	t.Helper()
+
+	require.Equal(t, http.StatusBadRequest, rec.Code, "body=%q", rec.Body.String())
+	assert.Contains(t, rec.Body.String(), ErrUnsupportedClientVersion.Error())
+}
+
+// TestRegistrationHandler_BelowFloorLeavesNoStateChange pins that the
+// capability floor is checked before [Headscale.handleRegister]. A logout,
+// pre-auth key use or auth-cache write that ran first would not be undone by
+// the 400 the client then receives.
+func TestRegistrationHandler_BelowFloorLeavesNoStateChange(t *testing.T) {
+	t.Parallel()
+
+	type versionCase struct {
+		name    string
+		version tailcfg.CapabilityVersion
+	}
+
+	belowFloor := []versionCase{
+		{"v0", 0},
+		{"floor-1", capver.MinSupportedCapabilityVersion - 1},
+	}
+
+	// A nil headscale proves the rejected request never reaches it.
+	t.Run("nil_server", func(t *testing.T) {
+		t.Parallel()
+
+		authID := types.MustAuthID()
+
+		requests := []struct {
+			name string
+			req  tailcfg.RegisterRequest
+		}{
+			{"interactive", tailcfg.RegisterRequest{
+				NodeKey:  key.NewNode().Public(),
+				Hostinfo: &tailcfg.Hostinfo{Hostname: "floor-interactive"},
+			}},
+			{"authkey", tailcfg.RegisterRequest{
+				NodeKey: key.NewNode().Public(),
+				Auth:    &tailcfg.RegisterResponseAuth{AuthKey: "floor-authkey"},
+			}},
+			{"followup", tailcfg.RegisterRequest{
+				NodeKey:  key.NewNode().Public(),
+				Followup: "http://localhost:8080/register/" + authID.String(),
+			}},
+			{"logout", tailcfg.RegisterRequest{
+				NodeKey: key.NewNode().Public(),
+				Expiry:  time.Unix(123, 0),
+			}},
+		}
+
+		for _, rc := range requests {
+			t.Run(rc.name, func(t *testing.T) {
+				t.Parallel()
+
+				for _, vc := range belowFloor {
+					t.Run(vc.name, func(t *testing.T) {
+						t.Parallel()
+
+						req := rc.req
+						req.Version = vc.version
+
+						ns := &noiseServer{machineKey: key.NewMachine().Public()}
+						requireBelowFloorRejected(t, serveRegister(t, ns, req))
+					})
+				}
+			})
+		}
+	})
+
+	t.Run("authkey", func(t *testing.T) {
+		t.Parallel()
+
+		// Positive control: exactly the floor registers, pinning the >= boundary.
+		cases := append(slices.Clone(belowFloor), versionCase{"floor", capver.MinSupportedCapabilityVersion})
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				app := createTestApp(t)
+				user := app.state.CreateUserForTest("floor-authkey-user")
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+				require.NoError(t, err)
+
+				ns := &noiseServer{headscale: app, machineKey: key.NewMachine().Public()}
+				rec := serveRegister(t, ns, tailcfg.RegisterRequest{
+					Version:  tc.version,
+					NodeKey:  key.NewNode().Public(),
+					Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+					Hostinfo: &tailcfg.Hostinfo{Hostname: "floor-authkey-node"},
+				})
+
+				stored, err := app.state.GetPreAuthKey(pak.Key)
+				require.NoError(t, err)
+
+				if tc.version < capver.MinSupportedCapabilityVersion {
+					requireBelowFloorRejected(t, rec)
+					assert.Equal(t, 0, app.state.ListNodes().Len(), "rejected request must not register a node")
+					assert.False(t, stored.Used, "rejected request must not consume the key")
+
+					return
+				}
+
+				require.Equal(t, http.StatusOK, rec.Code, "body=%q", rec.Body.String())
+
+				var resp tailcfg.RegisterResponse
+				require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+				assert.True(t, resp.MachineAuthorized, "resp=%+v", resp)
+				assert.Equal(t, 1, app.state.ListNodes().Len())
+				assert.True(t, stored.Used)
+			})
+		}
+	})
+
+	t.Run("logout", func(t *testing.T) {
+		t.Parallel()
+
+		for _, tc := range []struct {
+			name      string
+			ephemeral bool
+		}{
+			{"regular", false},
+			{"ephemeral", true},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				app := createTestApp(t)
+				user := app.state.CreateUserForTest("floor-logout-user")
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, tc.ephemeral, nil, nil)
+				require.NoError(t, err)
+
+				machineKey := key.NewMachine().Public()
+				nodeKey := key.NewNode().Public()
+
+				_, err = app.handleRegisterWithAuthKey(tailcfg.RegisterRequest{
+					Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+					NodeKey:  nodeKey,
+					Hostinfo: &tailcfg.Hostinfo{Hostname: "floor-logout-node"},
+				}, machineKey)
+				require.NoError(t, err)
+
+				before, ok := app.state.GetNodeByNodeKey(nodeKey)
+				require.True(t, ok)
+				require.Equal(t, tc.ephemeral, before.IsEphemeral())
+				require.False(t, before.IsExpired())
+
+				ns := &noiseServer{headscale: app, machineKey: machineKey}
+				rec := serveRegister(t, ns, tailcfg.RegisterRequest{
+					Version: capver.MinSupportedCapabilityVersion - 1,
+					NodeKey: nodeKey,
+					Expiry:  time.Unix(123, 0),
+				})
+				requireBelowFloorRejected(t, rec)
+
+				after, ok := app.state.GetNodeByNodeKey(nodeKey)
+				require.True(t, ok, "rejected logout must not delete the node")
+				assert.False(t, after.IsExpired(), "rejected logout must not expire the node")
+			})
+		}
+	})
 }
 
 // TestSSHActionRoute_OldPathReturns404 pins the wire-format shape of the

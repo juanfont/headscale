@@ -765,36 +765,35 @@ func (ns *noiseServer) RegistrationHandler(
 		return
 	}
 
-	registerRequest, registerResponse := func() (*tailcfg.RegisterRequest, *tailcfg.RegisterResponse) { //nolint:contextcheck
-		var resp *tailcfg.RegisterResponse
+	var registerRequest tailcfg.RegisterRequest
 
-		var regReq tailcfg.RegisterRequest
+	decodeErr := json.NewDecoder(req.Body).Decode(&registerRequest)
 
-		err := json.NewDecoder(req.Body).Decode(&regReq)
-		if err != nil {
-			return &regReq, regErr(err)
-		}
-
-		resp, err = ns.headscale.handleRegister(req.Context(), regReq, ns.conn.Peer())
-		if err != nil {
-			if httpErr, ok := errors.AsType[HTTPError](err); ok {
-				resp = &tailcfg.RegisterResponse{
-					Error: httpErr.Msg,
-				}
-
-				return &regReq, resp
-			}
-
-			return &regReq, regErr(err)
-		}
-
-		return &regReq, resp
-	}()
-
-	// Reject unsupported versions
+	// The floor must be enforced before handleRegister: a logout, pre-auth
+	// key use or auth-cache write it performs is not undone by a later 400.
+	// A failed decode still gets checked against whatever Version it read.
 	if rejectUnsupported(writer, registerRequest.Version, ns.machineKey, registerRequest.NodeKey) {
 		return
 	}
+
+	registerResponse := func() *tailcfg.RegisterResponse { //nolint:contextcheck
+		if decodeErr != nil {
+			return regErr(decodeErr)
+		}
+
+		resp, err := ns.headscale.handleRegister(req.Context(), registerRequest, ns.machineKey)
+		if err != nil {
+			if httpErr, ok := errors.AsType[HTTPError](err); ok {
+				return &tailcfg.RegisterResponse{
+					Error: httpErr.Msg,
+				}
+			}
+
+			return regErr(err)
+		}
+
+		return resp
+	}()
 
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
