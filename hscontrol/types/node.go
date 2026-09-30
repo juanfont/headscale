@@ -499,16 +499,6 @@ func (nodes Nodes) FilterByIP(ip netip.Addr) Nodes {
 	return found
 }
 
-func (nodes Nodes) ContainsNodeKey(nodeKey key.NodePublic) bool {
-	for _, node := range nodes {
-		if node.NodeKey == nodeKey {
-			return true
-		}
-	}
-
-	return false
-}
-
 func (node *Node) GetFQDN(baseDomain string) (string, error) {
 	if node.GivenName == "" {
 		return "", fmt.Errorf("creating valid FQDN: %w", ErrNodeHasNoGivenName)
