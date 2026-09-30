@@ -35,9 +35,18 @@ type ConnectedNode struct {
 	IPs      []string
 }
 
+// maxQueryLen is the maximum number of bytes accepted for the node query
+// string reflected back into the HTML form. Requests with a longer value
+// are silently truncated before rendering to limit reflected-input exposure.
+const maxQueryLen = 256
+
 // PingPage renders the /debug/ping page with a form, optional result,
 // and a list of connected nodes ([ConnectedNode]) as quick-ping links.
 func PingPage(query string, result *PingResult, nodes []ConnectedNode) *elem.Element {
+	if len(query) > maxQueryLen {
+		query = query[:maxQueryLen]
+	}
+
 	children := []elem.Node{
 		H1(elem.Text("Ping Node")),
 		P(elem.Text("Check if a connected node responds to a PingRequest.")),
