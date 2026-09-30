@@ -240,6 +240,9 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 	saasAddrs := saasAddrsByNode(c, clients)
 
 	// Compare each viewer's [tailcfg.MapResponse] against the golden [netmap.NetworkMap].
+	// Route approvals reach clients asynchronously, so the peer-count wait
+	// above says nothing about routes, primaries or filters: retry the
+	// whole comparison until the viewer's netmap has caught up.
 	for viewerName, cl := range clients {
 		capture := c.Captures[viewerName]
 		if capture.Netmap == nil {
@@ -247,10 +250,12 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 		}
 
 		t.Run(viewerName, func(t *testing.T) {
-			nm := cl.Netmap()
-			require.NotNil(t, nm, "netmap is nil")
+			require.EventuallyWithT(t, func(collect *assert.CollectT) {
+				nm := cl.Netmap()
+				require.NotNil(collect, nm, "netmap is nil")
 
-			compareNetmap(t, nm, capture, clients, saasAddrs)
+				compareNetmap(collect, nm, capture, clients, saasAddrs)
+			}, 30*time.Second, 100*time.Millisecond)
 		})
 	}
 }
@@ -262,14 +267,18 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 //   - Number of Tailscale IPs per peer (should be 2: one v4 + one v6)
 //   - PrimaryRoutes per peer
 //   - PacketFilter (source, destination, ports) triples
+//
+// It takes [require.TestingT] so it can run inside [require.EventuallyWithT].
 func compareNetmap(
-	t *testing.T,
+	t require.TestingT,
 	got *netmap.NetworkMap,
 	want testcapture.Node,
 	clients map[string]*servertest.TestClient,
 	saasAddrs map[netip.Addr]string,
 ) {
-	t.Helper()
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 
 	require.NotNil(t, want.Netmap, "golden Netmap is nil")
 
@@ -409,13 +418,15 @@ func compareNetmap(
 // Tailscale IPs differ between SaaS and headscale allocation, so both
 // sides are re-keyed by peer identity.
 func comparePacketFilter(
-	t *testing.T,
+	t require.TestingT,
 	got *netmap.NetworkMap,
 	want testcapture.Node,
 	clients map[string]*servertest.TestClient,
 	saasAddrs map[netip.Addr]string,
 ) {
-	t.Helper()
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 
 	hsAddrs := hsAddrsByPeer(clients)
 
@@ -483,12 +494,14 @@ func capTriple(srcs, dst string, c peercap.Cap) string {
 // peerIdents resolves a prefix into sorted canonical identity tokens,
 // see [addIdentsForSrc].
 func peerIdents(
-	t *testing.T,
+	t require.TestingT,
 	pfx netip.Prefix,
 	addrToPeer map[netip.Addr]string,
 	ruleIndex int,
 ) []string {
-	t.Helper()
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 
 	seen := map[string]struct{}{}
 	addIdentsForSrc(t, pfx, addrToPeer, ruleIndex, seen)
@@ -558,12 +571,14 @@ func hsAddrsByPeer(clients map[string]*servertest.TestClient) map[netip.Addr]str
 // or /128 (IPv6) expands to the union of its contained peers.
 // Unresolvable Tailscale-range sources fail the test.
 func canonicaliseSrcStrings(
-	t *testing.T,
+	t require.TestingT,
 	srcs []string,
 	addrToPeer map[netip.Addr]string,
 	ruleIndex int,
 ) []string {
-	t.Helper()
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 
 	seen := map[string]struct{}{}
 
@@ -588,12 +603,14 @@ func canonicaliseSrcStrings(
 // [canonicaliseSrcStrings], reading already-parsed [netip.Prefix] values
 // from [tailcfg.Match.Srcs].
 func canonicaliseSrcPrefixes(
-	t *testing.T,
+	t require.TestingT,
 	srcs []netip.Prefix,
 	addrToPeer map[netip.Addr]string,
 	ruleIndex int,
 ) []string {
-	t.Helper()
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 
 	seen := map[string]struct{}{}
 
@@ -615,13 +632,15 @@ func canonicaliseSrcPrefixes(
 // through literally; a Tailscale-range prefix expands to the union
 // of peer names whose addresses fall within it.
 func addIdentsForSrc(
-	t *testing.T,
+	t require.TestingT,
 	pfx netip.Prefix,
 	addrToPeer map[netip.Addr]string,
 	ruleIndex int,
 	seen map[string]struct{},
 ) {
-	t.Helper()
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 
 	if !prefixInTailscaleRange(pfx) {
 		seen[pfx.String()] = struct{}{}
