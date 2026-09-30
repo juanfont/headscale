@@ -129,6 +129,34 @@ func TestPolicyChanges(t *testing.T) {
 		}
 	})
 
+	// https://github.com/juanfont/headscale/issues/3508
+	t.Run("ssh_removal_clears_client_ssh_policy", func(t *testing.T) {
+		t.Parallel()
+		h := servertest.NewHarness(t, 2)
+
+		h.ChangePolicy(t, []byte(`{
+			"acls": [],
+			"ssh": [{
+				"action": "accept",
+				"src":    ["autogroup:member"],
+				"dst":    ["autogroup:self"],
+				"users":  ["root"]
+			}]
+		}`))
+
+		h.Client(0).WaitForCondition(t, "SSH rules present", 10*time.Second,
+			func(nm *netmap.NetworkMap) bool {
+				return nm.SSHPolicy != nil && len(nm.SSHPolicy.Rules) > 0
+			})
+
+		h.ChangePolicy(t, []byte(`{"acls": []}`))
+
+		h.Client(0).WaitForCondition(t, "SSH rules cleared", 10*time.Second,
+			func(nm *netmap.NetworkMap) bool {
+				return nm.SSHPolicy != nil && len(nm.SSHPolicy.Rules) == 0
+			})
+	})
+
 	t.Run("policy_with_multiple_users", func(t *testing.T) {
 		t.Parallel()
 
