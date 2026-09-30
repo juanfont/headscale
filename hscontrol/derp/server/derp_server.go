@@ -334,8 +334,9 @@ func DERPProbeHandler(
 // They have a cache, but not clear if that is really necessary at Headscale, uh, scale.
 // An example implementation is found here https://derp.tailscale.com/bootstrap-dns
 // Coordination server is included automatically, since local DERP is using the same DNS Name in d.serverURL.
+// derpMap is called per request so DERP map updates are served.
 func DERPBootstrapDNSHandler(
-	derpMap tailcfg.DERPMapView,
+	derpMap func() tailcfg.DERPMapView,
 ) func(http.ResponseWriter, *http.Request) {
 	return func(
 		writer http.ResponseWriter,
@@ -348,7 +349,7 @@ func DERPBootstrapDNSHandler(
 
 		var resolver net.Resolver
 
-		for _, region := range derpMap.Regions().All() { //nolint:unqueryvet // not SQLBoiler, tailcfg iterator
+		for _, region := range derpMap().Regions().All() { //nolint:unqueryvet // not SQLBoiler, tailcfg iterator
 			for _, node := range region.Nodes().All() { //nolint:unqueryvet // not SQLBoiler, tailcfg iterator
 				addrs, err := resolver.LookupIP(resolvCtx, "ip", node.HostName())
 				if err != nil {
