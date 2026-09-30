@@ -712,6 +712,36 @@ func TestSSHActionFollowUp_ConsumedVerdictNotReplayed(t *testing.T) {
 			second := sshActionFromRecorder(t, f.followUp(t, authID))
 			replayID := requireSSHHold(t, second)
 			assert.NotEqual(t, authID, replayID, "re-delegation must mint a new session")
+
+			// A replay that recorded auth would feed auto-approval.
+			_, recorded := f.ns.headscale.state.GetLastSSHAuth(f.src, f.dst)
+			assert.Equal(t, tc.accept, recorded, "only an accepted verdict may record auth")
+		})
+	}
+
+	// With the check gone there is nothing to re-delegate, but the replay
+	// must still not be answered from the consumed verdict.
+	for _, tc := range sshVerdictCases {
+		t.Run(tc.name+"-check-removed", func(t *testing.T) {
+			t.Parallel()
+
+			f := newSSHVerdictFixture(t)
+			authID, auth := f.mint(t)
+			auth.FinishAuth(tc.verdict)
+
+			first := sshActionFromRecorder(t, f.followUp(t, authID))
+			require.True(t, carriesSSHVerdict(first, tc.accept),
+				"first follow-up must carry the verdict, got %+v", first)
+
+			_, err := f.ns.headscale.state.SetPolicy([]byte(`{}`))
+			require.NoError(t, err)
+
+			_, checkFound := f.ns.headscale.state.SSHCheckParams(f.src, f.dst)
+			require.False(t, checkFound, "test setup: pair must no longer be subject to a check")
+
+			rec := f.followUp(t, authID)
+			assert.Equal(t, http.StatusBadRequest, rec.Code,
+				"replay without a check must be refused, body=%s", rec.Body.String())
 		})
 	}
 }
