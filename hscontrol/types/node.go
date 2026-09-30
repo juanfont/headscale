@@ -219,6 +219,11 @@ func (ns Nodes) ViewSlice() views.Slice[NodeView] {
 
 // IsExpired returns whether the node registration has expired.
 func (node *Node) IsExpired() bool {
+	return node.IsExpiredAt(time.Now())
+}
+
+// IsExpiredAt reports whether the node registration has expired at now.
+func (node *Node) IsExpiredAt(now time.Time) bool {
 	// If Expiry is not set, the client has not indicated that
 	// it wants an expiry time, it is therefore considered
 	// to mean "not expired"
@@ -226,7 +231,7 @@ func (node *Node) IsExpired() bool {
 		return false
 	}
 
-	return time.Since(*node.Expiry) > 0
+	return now.After(*node.Expiry)
 }
 
 // Online reports the node's last known connectivity. Unknown counts as
@@ -931,6 +936,15 @@ func (nv NodeView) IsExpired() bool {
 	}
 
 	return nv.ж.IsExpired()
+}
+
+// IsExpiredAt reports whether the node registration has expired at now.
+func (nv NodeView) IsExpiredAt(now time.Time) bool {
+	if !nv.Valid() {
+		return true
+	}
+
+	return nv.ж.IsExpiredAt(now)
 }
 
 // Online reports the node's last known connectivity.
