@@ -2352,6 +2352,75 @@ func TestViaRoutesForPeer(t *testing.T) {
 			"disjoint dst must produce nothing — the via gate requires advertised-route overlap")
 		require.Empty(t, result.Exclude)
 	})
+
+	// juanfont/headscale#3513: a group member must get via-steered exit
+	// routes even when another member of the group has not registered.
+	// The group resolves to the registered members' IPs plus an error
+	// for the missing one; the error must not drop the resolved IPs.
+	t.Run("group_src_with_unregistered_member_autogroup_internet", func(t *testing.T) {
+		t.Parallel()
+
+		nodes := types.Nodes{
+			{
+				ID:       1,
+				Hostname: "viewer",
+				IPv4:     ap("100.64.0.1"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Hostinfo: &tailcfg.Hostinfo{},
+			},
+			{
+				ID:       2,
+				Hostname: "exit-node",
+				IPv4:     ap("100.64.0.2"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Tags:     []string{"tag:exit"},
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						mp("0.0.0.0/0"),
+						mp("::/0"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					mp("0.0.0.0/0"),
+					mp("::/0"),
+				},
+			},
+		}
+
+		for _, members := range []string{
+			`["user1@"]`,
+			`["user1@", "unregistered@"]`,
+		} {
+			pol := `{
+				"groups": {"group:develop": ` + members + `},
+				"tagOwners": {"tag:exit": ["user1@"]},
+				"grants": [{
+					"src": ["group:develop"],
+					"dst": ["autogroup:internet"],
+					"ip": ["*"],
+					"via": ["tag:exit"]
+				}]
+			}`
+
+			pm, err := NewPolicyManager([]byte(pol), users, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			// The exit node's filter already admits the viewer: the
+			// compile path keeps a group's partial resolution.
+			rules, err := pm.FilterForNode(nodes[1].View())
+			require.NoError(t, err)
+			require.NotEmpty(t, rules, "members=%s: exit node must accept viewer traffic", members)
+
+			result := pm.ViaRoutesForPeer(nodes[0].View(), nodes[1].View())
+			require.Containsf(t, result.Include, mp("0.0.0.0/0"),
+				"members=%s: viewer in group must get exit routes from via-tagged exit node", members)
+			require.Containsf(t, result.Include, mp("::/0"),
+				"members=%s: viewer in group must get exit routes from via-tagged exit node", members)
+			require.Empty(t, result.Exclude)
+		}
+	})
 }
 
 // TestBuildPeerMap_AutogroupInternetMakesExitNodeVisible reproduces
@@ -2709,6 +2778,31 @@ func TestPeerRelayGrantMakesRelayVisible(t *testing.T) {
 					{
 						"src": ["alice@headscale.net"],
 						"dst": ["peer-relay"],
+						"app": {"tailscale.com/cap/relay": []}
+					}
+				]
+			}`,
+			srcIDs:  []types.NodeID{1},
+			relayID: 3,
+		},
+		{
+			// One unregistered member must not drop the cap grant (#3513).
+			name: "tag src, group dst with unregistered member",
+			nodes: types.Nodes{
+				taggedNode(1, "client-a", "100.64.0.1", "fd7a:115c:a1e0::1", "tag:client"),
+				userNode(3, "peer-relay", "100.64.0.3", "fd7a:115c:a1e0::3"),
+			},
+			policy: `{
+				"groups": {
+					"group:relays": ["alice@headscale.net", "ghost@headscale.net"]
+				},
+				"tagOwners": {
+					"tag:client": ["tagowner@headscale.net"]
+				},
+				"grants": [
+					{
+						"src": ["tag:client"],
+						"dst": ["group:relays"],
 						"app": {"tailscale.com/cap/relay": []}
 					}
 				]
