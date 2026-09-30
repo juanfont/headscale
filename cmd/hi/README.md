@@ -124,6 +124,26 @@ docker ps --filter "label=hi.run-id=20260409-104215-mdjtzx"
 The run ID appears at the top of the `hi run` output — copy it from
 there rather than trying to reconstruct it.
 
+## Android tests
+
+`TestAndroid*` (in `integration/android/`) boot the official Tailscale
+Android app in an emulator. They need an x86_64 Docker host exposing
+`/dev/kvm` (`hi doctor` warns when it is missing) and skip unless an
+APK is given:
+
+```bash
+export HEADSCALE_INTEGRATION_ANDROID_APK=https://pkgs.tailscale.com/stable/tailscale-android-universal-1.102.4.apk
+go run ./cmd/hi run "^TestAndroid" --failfast=false
+```
+
+The APK may also be an absolute path under the repository.
+`HEADSCALE_INTEGRATION_ANDROID_UPGRADE_FROM` names an older APK for
+`TestAndroidUpgrade` to start from; it must share the APK's signing key. The first
+run builds `Dockerfile.android-integration` (SDK + system image, ~13 GB);
+set `HEADSCALE_INTEGRATION_ANDROID_IMAGE` to reuse a pre-built one. On
+UI failures the run saves `android-*-missing-*.png`/`.xml` (screenshot
+and uiautomator dump) and `android-*.logcat.log` to the artefacts dir.
+
 ## Artefacts
 
 Every run saves debugging artefacts under `control_logs/{runID}/`:
