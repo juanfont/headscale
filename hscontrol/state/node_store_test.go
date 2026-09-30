@@ -2449,9 +2449,14 @@ func nodeKeyIndexMismatch(snap *Snapshot) string {
 	}
 
 	for _, nv := range snap.allNodes {
+		// A missing key yields the zero view, whose ID() panics.
 		got, ok := snap.nodesByNodeKey[nv.NodeKey()]
-		if !ok || got.ID() != nv.ID() {
-			return fmt.Sprintf("node %d: key indexed=%t id=%d", nv.ID(), ok, got.ID())
+		if !ok {
+			return fmt.Sprintf("node %d: key not indexed", nv.ID())
+		}
+
+		if got.ID() != nv.ID() {
+			return fmt.Sprintf("node %d: key indexed to node %d", nv.ID(), got.ID())
 		}
 	}
 
