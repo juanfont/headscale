@@ -88,14 +88,14 @@ func TestPolicyManager(t *testing.T) {
 }
 
 // TestSetPolicyRejectedKeepsLiveFilter pins that a policy SetPolicy rejects
-// does not take effect. A nodeAttrs target naming no user passes validation
-// but fails to compile after the filter is already compiled; keeping that
+// does not take effect. A nodeAttrs target naming an ambiguous user passes
+// validation but fails to compile after the filter is already compiled; keeping that
 // filter would run the rejected policy while the stored one is unchanged.
 func TestSetPolicyRejectedKeepsLiveFilter(t *testing.T) {
 	// IDs are assigned after construction so the test also builds where
 	// types.User embeds gorm.Model.
-	users := types.Users{{Name: "user1"}, {Name: "user2"}}
-	users[0].ID, users[1].ID = 1, 2
+	users := types.Users{{Name: "user1"}, {Name: "user2"}, {Name: "dup"}, {Name: "dup"}}
+	users[0].ID, users[1].ID, users[2].ID, users[3].ID = 1, 2, 3, 4
 	nodes := types.Nodes{
 		node("n1", "100.64.0.1", "fd7a:115c:a1e0::1", users[0]),
 		node("n2", "100.64.0.2", "fd7a:115c:a1e0::2", users[1]),
@@ -113,7 +113,7 @@ func TestSetPolicyRejectedKeepsLiveFilter(t *testing.T) {
 
 	_, err = pm.SetPolicy([]byte(`{
 		"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}],
-		"nodeAttrs": [{"target": ["ghost@"], "attr": ["randomize-client-port"]}]
+		"nodeAttrs": [{"target": ["dup@"], "attr": ["randomize-client-port"]}]
 	}`))
 	require.Error(t, err)
 
@@ -3202,9 +3202,9 @@ func TestSetNodesCachedResultsMatchFresh(t *testing.T) {
 	}
 }
 
-// TestFailedSetUsersKeepsCompiledPolicy renames alice to charlie while
-// nodeAttrs still names alice, so the recompile resolves charlie's grant
-// and then fails. A failed Set* must leave every compiled result as it was:
+// TestFailedSetUsersKeepsCompiledPolicy renames alice to charlie and adds
+// a second bob, so the recompile resolves charlie's grant and then fails on
+// the ambiguous nodeAttrs target. A failed Set* must leave every compiled result as it was:
 // a partial compile would hand alice's nodes charlie's port 22, and the
 // reverse rename, which SetUsers sees as no change, would not clear it.
 func TestFailedSetUsersKeepsCompiledPolicy(t *testing.T) {
@@ -3225,7 +3225,7 @@ func TestFailedSetUsersKeepsCompiledPolicy(t *testing.T) {
 			{"action": "accept", "src": ["bob@"], "dst": ["bob@:*"]}
 		],
 		"ssh": [{"action": "accept", "src": ["charlie@"], "dst": ["autogroup:self"], "users": ["root"]}],
-		"nodeAttrs": [{"target": ["alice@"], "attr": ["randomize-client-port"]}]
+		"nodeAttrs": [{"target": ["bob@"], "attr": ["randomize-client-port"]}]
 	}`)
 
 	pm, err := NewPolicyManager(pol, users, nodes.ViewSlice())
@@ -3252,6 +3252,7 @@ func TestFailedSetUsersKeepsCompiledPolicy(t *testing.T) {
 
 	renamed := slices.Clone(users)
 	renamed[0].Name = "charlie"
+	renamed = append(renamed, types.User{ID: 3, Name: "bob"})
 
 	_, _, err = pm.SetUsers(renamed)
 	require.Error(t, err)
