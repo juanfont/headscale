@@ -130,6 +130,8 @@ clients, and how to run the same setup without Nix.
 - A registration request from a client below the minimum supported version is now rejected before it can log a node out, use a pre-auth key or start a login [#3519](https://github.com/juanfont/headscale/pull/3519)
 - Fix SSH check accepting a repeated follow-up for an already-decided session, even after a rejection [#3526](https://github.com/juanfont/headscale/pull/3526)
 
+- A node re-registering with a spent, expired or revoked pre-auth key is now rejected if it expired or changed node key while the re-registration was in flight
+
 ## 0.29.5 (202x-xx-xx)
 
 **Minimum supported Tailscale client version: v1.80.0**
