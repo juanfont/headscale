@@ -136,6 +136,61 @@ func TestPingTwoSameNode(t *testing.T) {
 	}
 }
 
+// TestPingSurvivesFullUpdate verifies that a full update queued alongside a
+// ping, in the same call or right after it, does not swallow the ping.
+func TestPingSurvivesFullUpdate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		send func(h *servertest.TestHarness, ping change.Change)
+	}{
+		{
+			name: "same call",
+			send: func(h *servertest.TestHarness, ping change.Change) {
+				h.Server.App.Change(ping, change.UserRemoved())
+			},
+		},
+		{
+			name: "full after pending ping",
+			send: func(h *servertest.TestHarness, ping change.Change) {
+				h.Server.App.Change(ping)
+				h.Server.App.Change(change.UserRemoved())
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := servertest.NewHarness(t, 1)
+
+			nm := h.Client(0).Netmap()
+			require.NotNil(t, nm)
+
+			nodeID := types.NodeID(nm.SelfNode.ID()) //nolint:gosec
+
+			st := h.Server.State()
+			pingID, responseCh := st.RegisterPing(nodeID)
+
+			defer st.CancelPing(pingID)
+
+			tt.send(h, change.PingNode(nodeID, &tailcfg.PingRequest{
+				URL: h.Server.URL + "/machine/ping-response?id=" + pingID,
+				Log: true,
+			}))
+
+			select {
+			case latency := <-responseCh:
+				assert.GreaterOrEqual(t, latency, time.Duration(0))
+			case <-time.After(15 * time.Second):
+				t.Fatal("ping lost to the full update")
+			}
+		})
+	}
+}
+
 // TestPingResolveByHostname verifies that [state.State.ResolveNode] can find a node
 // by hostname and that the resolved node can be pinged.
 func TestPingResolveByHostname(t *testing.T) {

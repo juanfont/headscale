@@ -131,6 +131,7 @@ clients, and how to run the same setup without Nix.
 - Fix SSH check accepting a repeated follow-up for an already-decided session, even after a rejection [#3526](https://github.com/juanfont/headscale/pull/3526)
 
 - A node re-registering with a spent, expired or revoked pre-auth key is now rejected if it expired or changed node key while the re-registration was in flight [#3525](https://github.com/juanfont/headscale/pull/3525)
+- Fix a node ping being lost when a full map update is queued at the same time
 
 ## 0.29.5 (202x-xx-xx)
 

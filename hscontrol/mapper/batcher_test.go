@@ -1171,6 +1171,76 @@ func TestBatcherCoalescesPolicyRecomputesPerTick(t *testing.T) {
 	}
 }
 
+// TestBatcherPingSurvivesFullUpdate queues a ping and a full in one AddWork
+// call against real connections: the target renders the full and then a
+// ping-only frame, and no other node sees the ping.
+func TestBatcherPingSurvivesFullUpdate(t *testing.T) {
+	for _, bf := range allBatcherFunctions {
+		t.Run(bf.name, func(t *testing.T) {
+			testData, cleanup := setupBatcherWithTestData(t, bf.fn, 1, 2, normalBufferSize)
+			defer cleanup()
+
+			batcher := testData.Batcher
+			target, other := &testData.Nodes[0], &testData.Nodes[1]
+
+			for _, n := range []*node{target, other} {
+				require.NoError(t, batcher.AddNode(n.n.ID, n.ch, tailcfg.CapabilityVersion(100), nil))
+			}
+
+			// Settle initial maps and online patches so only this call's
+			// frames remain.
+			drainChannelTimeout(target.ch, 300*time.Millisecond)
+			drainChannelTimeout(other.ch, 300*time.Millisecond)
+
+			pr := &tailcfg.PingRequest{URL: "https://example.com/ping", Log: true}
+			batcher.AddWork(change.PingNode(target.n.ID, pr), change.UserRemoved())
+
+			collect := func(ch <-chan *tailcfg.MapResponse) []*tailcfg.MapResponse {
+				var frames []*tailcfg.MapResponse
+
+				deadline := time.After(updateTimeout)
+				quiet := time.NewTimer(time.Hour)
+
+				defer quiet.Stop()
+
+				for {
+					select {
+					case resp := <-ch:
+						frames = append(frames, resp)
+
+						quiet.Reset(300 * time.Millisecond)
+					case <-quiet.C:
+						return frames
+					case <-deadline:
+						return frames
+					}
+				}
+			}
+
+			isFull := func(r *tailcfg.MapResponse) bool {
+				return r.Node != nil && r.DERPMap != nil && len(r.Peers) > 0
+			}
+
+			frames := collect(target.ch)
+			require.Len(t, frames, 2, "target: full then ping")
+			assert.True(t, isFull(frames[0]), "target: first frame is the full")
+			assert.Nil(t, frames[0].PingRequest, "target: the full carries no ping")
+
+			ping := frames[1]
+			assert.Equal(t, pr, ping.PingRequest)
+			assert.Nil(t, ping.Node, "ping frame is ping-only")
+			assert.Nil(t, ping.DERPMap, "ping frame is ping-only")
+			assert.Empty(t, ping.Peers, "ping frame is ping-only")
+			assert.Empty(t, ping.PeersChangedPatch, "ping frame is ping-only")
+
+			frames = collect(other.ch)
+			require.Len(t, frames, 1, "other: only the full")
+			assert.True(t, isFull(frames[0]), "other: frame is the full")
+			assert.Nil(t, frames[0].PingRequest, "other: no ping")
+		})
+	}
+}
+
 // TestBatcherWorkerChannelSafety tests that worker goroutines handle closed
 // channels safely without panicking when processing work items.
 //
