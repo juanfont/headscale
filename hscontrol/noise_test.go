@@ -201,28 +201,24 @@ func TestRegistrationHandler_OversizedBody(t *testing.T) {
 
 	// [json.Decoder.Decode] returns [http.MaxBytesError] before any field is
 	// decoded, so [rejectUnsupported] sees version 0 and answers 400 before
-	// the decode error would be.
+	// the decode error is reported.
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
-func newRegisterRequest(t *testing.T, req tailcfg.RegisterRequest) *http.Request {
+// serveRegister guards against panics so a handler that reaches a nil
+// dependency fails its own row instead of the whole test binary. body is
+// any so a [json.RawMessage] can carry a request that fails to decode.
+func serveRegister(t *testing.T, ns *noiseServer, body any) *httptest.ResponseRecorder {
 	t.Helper()
 
-	body, err := json.Marshal(req)
+	payload, err := json.Marshal(body)
 	require.NoError(t, err)
 
-	return httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/machine/register", bytes.NewReader(body))
-}
-
-// serveRegister guards against panics so a handler that reaches a nil
-// dependency fails its own row instead of the whole test binary.
-func serveRegister(t *testing.T, ns *noiseServer, req tailcfg.RegisterRequest) *httptest.ResponseRecorder {
-	t.Helper()
-
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/machine/register", bytes.NewReader(payload))
 	rec := httptest.NewRecorder()
 
 	require.NotPanics(t, func() {
-		ns.RegistrationHandler(rec, newRegisterRequest(t, req))
+		ns.RegistrationHandler(rec, req)
 	})
 
 	return rec
@@ -297,6 +293,23 @@ func TestRegistrationHandler_BelowFloorLeavesNoStateChange(t *testing.T) {
 				}
 			})
 		}
+	})
+
+	// A request that passes the floor but fails to decode must be answered
+	// with RegisterResponse.Error before anything reaches the nil headscale.
+	// NodeKey 1 is a type error, which still leaves Version decoded.
+	t.Run("decode_error_at_floor", func(t *testing.T) {
+		t.Parallel()
+
+		body := json.RawMessage(fmt.Sprintf(`{"Version":%d,"NodeKey":1}`, capver.MinSupportedCapabilityVersion))
+
+		ns := &noiseServer{machineKey: key.NewMachine().Public()}
+		rec := serveRegister(t, ns, body)
+		require.Equal(t, http.StatusOK, rec.Code, "body=%q", rec.Body.String())
+
+		var resp tailcfg.RegisterResponse
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+		assert.NotEmpty(t, resp.Error)
 	})
 
 	t.Run("authkey", func(t *testing.T) {
