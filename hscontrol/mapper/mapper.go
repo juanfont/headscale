@@ -369,6 +369,12 @@ func (m *mapper) buildFromChange(
 		WithCapabilityVersion(capVer).
 		WithDebugType(changeResponseDebug)
 
+	// Clients forget the logtail instruction when their process restarts, and
+	// every stream opens with a full map, so full maps carry it.
+	if resp.IsFull() {
+		builder.WithDebugConfig()
+	}
+
 	if resp.IncludeSelf {
 		builder.WithSelfNode()
 	}
