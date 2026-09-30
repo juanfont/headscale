@@ -232,14 +232,15 @@ func HasFull(rs []Change) bool {
 
 // CollapseToFull returns what nodeID receives when a full update supersedes
 // changes: one [FullUpdate], then a ping-only [PingNode] for every
-// [Change.PingRequest] addressed to nodeID, in order. A full renders state at
+// [Change.PingRequest] targeted at nodeID, in order. A full renders state at
 // drain time, so it covers every state change; a ping is a one-shot command
-// the full cannot carry.
+// the full cannot carry. An untargeted ping is dropped: the ID in its URL is
+// all that authenticates the answer, so any node could answer for another.
 func CollapseToFull(nodeID types.NodeID, changes []Change) []Change {
 	out := []Change{FullUpdate()}
 
 	for _, c := range changes {
-		if c.PingRequest != nil && c.ShouldSendToNode(nodeID) {
+		if c.PingRequest != nil && c.TargetNode == nodeID {
 			out = append(out, PingNode(nodeID, c.PingRequest))
 		}
 	}

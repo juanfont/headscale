@@ -67,7 +67,8 @@ func TestChange_FullUpdateSubsumesAllButPing(t *testing.T) {
 			isCarried, ok := carried[field.Name]
 			require.True(t, ok, "field %s is not classified", field.Name)
 
-			var c Change
+			// Addressed to self, so only the field under test decides.
+			c := Change{TargetNode: self}
 
 			v := reflect.ValueOf(&c).Elem().FieldByIndex(field.Index)
 			setNonZero(t, v, self)
@@ -701,9 +702,9 @@ func TestCollapseToFullKeepsPings(t *testing.T) {
 			want:    []Change{FullUpdate(), PingNode(self, prA)},
 		},
 		{
-			name:    "untargeted ping is addressed to every node",
+			name:    "untargeted ping is dropped",
 			changes: []Change{{Reason: "broadcast ping", PingRequest: prA}},
-			want:    []Change{FullUpdate(), PingNode(self, prA)},
+			want:    []Change{FullUpdate()},
 		},
 		{
 			name:    "fulls never stack",
