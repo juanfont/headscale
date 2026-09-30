@@ -4151,3 +4151,170 @@ func TestDestinationsToNetPortRange_AutogroupInternet(t *testing.T) {
 		})
 	}
 }
+
+// TestCompileSSHPolicy_Recorders covers session recording end to end at the
+// policy layer: that a recorder alias resolves to an address on the recorder
+// port, that enforcement produces an OnRecordingFailure action, and — the case
+// that matters most — that recorders land on the CHECK action too.
+//
+// Why check specifically: tailssh.recorders() reads finalAction.Recorders but
+// falls back to action0.Recorders, where action0 is the action compiled here.
+// That fallback is what lets check mode record without the HoldAndDelegate
+// endpoint knowing anything about recording. It is also load-bearing for the
+// whole compliance story, because check is the only action that disables port
+// forwarding — under accept a user can tunnel arbitrary traffic while the
+// recording shows an idle shell. If an upstream refactor ever drops that
+// fallback, this test is what catches it.
+func TestCompileSSHPolicy_Recorders(t *testing.T) {
+	users := types.Users{
+		{Name: "user1", Model: gorm.Model{ID: 1}},
+	}
+
+	uid := uint(1)
+	src := &types.Node{
+		Hostname: "workstation",
+		IPv4:     createAddr("100.64.0.1"),
+		UserID:   &uid,
+		User:     &users[0],
+	}
+	recorder := &types.Node{
+		Hostname: "castsink",
+		IPv4:     createAddr("100.64.0.9"),
+		UserID:   &uid,
+		User:     &users[0],
+		Tags:     []string{"tag:recorder"},
+	}
+
+	nodes := types.Nodes{src, recorder}
+
+	policyFor := func(action SSHAction, enforce bool) *Policy {
+		return &Policy{
+			TagOwners: TagOwners{
+				Tag("tag:recorder"): Owners{up("user1@")},
+			},
+			SSHs: []SSH{
+				{
+					Action:          action,
+					Sources:         SSHSrcAliases{up("user1@")},
+					Destinations:    SSHDstAliases{up("user1@")},
+					Users:           []SSHUser{"root"},
+					Recorder:        SSHSrcAliases{tp("tag:recorder")},
+					EnforceRecorder: enforce,
+				},
+			},
+		}
+	}
+
+	wantAddr := netip.AddrPortFrom(netip.MustParseAddr("100.64.0.9"), 80)
+
+	t.Run("accept carries recorders", func(t *testing.T) {
+		pol := policyFor("accept", false)
+		require.NoError(t, pol.validate())
+
+		got, err := pol.compileSSHPolicy("unused-server-url", users, src.View(), nodes.ViewSlice())
+		require.NoError(t, err)
+		require.Len(t, got.Rules, 1)
+
+		require.Equal(t, []netip.AddrPort{wantAddr}, got.Rules[0].Action.Recorders)
+		// Not enforcing, so a recorder outage must not reject the session.
+		require.Nil(t, got.Rules[0].Action.OnRecordingFailure)
+		// The user must be told before the session starts. Notice of
+		// monitoring is a legal requirement in many jurisdictions.
+		require.Contains(t, got.Rules[0].Action.Message, "recorded")
+	})
+
+	t.Run("check carries recorders — the action0 fallback", func(t *testing.T) {
+		pol := policyFor("check", false)
+		require.NoError(t, pol.validate())
+
+		got, err := pol.compileSSHPolicy("unused-server-url", users, src.View(), nodes.ViewSlice())
+		require.NoError(t, err)
+		require.Len(t, got.Rules, 1)
+
+		action := got.Rules[0].Action
+		require.Equal(t, []netip.AddrPort{wantAddr}, action.Recorders,
+			"check-mode inherits recorders via tailssh.recorders() falling back to action0")
+
+		// Check mode must still be check mode: this is the only action that
+		// disables forwarding, which is what makes the recording meaningful.
+		require.False(t, action.Accept)
+		require.NotEmpty(t, action.HoldAndDelegate)
+		require.False(t, action.AllowLocalPortForwarding)
+		require.False(t, action.AllowRemotePortForwarding)
+		require.False(t, action.AllowAgentForwarding)
+	})
+
+	t.Run("enforcement rejects and terminates", func(t *testing.T) {
+		pol := policyFor("accept", true)
+		require.NoError(t, pol.validate())
+
+		got, err := pol.compileSSHPolicy("unused-server-url", users, src.View(), nodes.ViewSlice())
+		require.NoError(t, err)
+		require.Len(t, got.Rules, 1)
+
+		onFail := got.Rules[0].Action.OnRecordingFailure
+		require.NotNil(t, onFail)
+		require.NotEmpty(t, onFail.RejectSessionWithMessage)
+		require.NotEmpty(t, onFail.TerminateSessionWithMessage)
+		// Deliberately empty: it posts back to control over Noise and
+		// headscale implements no such endpoint.
+		require.Empty(t, onFail.NotifyURL)
+	})
+
+	t.Run("no recorder means no recording", func(t *testing.T) {
+		pol := &Policy{
+			SSHs: []SSH{{
+				Action:       "accept",
+				Sources:      SSHSrcAliases{up("user1@")},
+				Destinations: SSHDstAliases{up("user1@")},
+				Users:        []SSHUser{"root"},
+			}},
+		}
+		require.NoError(t, pol.validate())
+
+		got, err := pol.compileSSHPolicy("unused-server-url", users, src.View(), nodes.ViewSlice())
+		require.NoError(t, err)
+		require.Len(t, got.Rules, 1)
+		require.Empty(t, got.Rules[0].Action.Recorders)
+		// And no recording notice when nothing is being recorded.
+		require.Empty(t, got.Rules[0].Action.Message)
+	})
+
+	t.Run("enforcing with an unresolvable recorder is an error, not a silent downgrade", func(t *testing.T) {
+		pol := &Policy{
+			TagOwners: TagOwners{Tag("tag:nowhere"): Owners{up("user1@")}},
+			SSHs: []SSH{{
+				Action:          "accept",
+				Sources:         SSHSrcAliases{up("user1@")},
+				Destinations:    SSHDstAliases{up("user1@")},
+				Users:           []SSHUser{"root"},
+				Recorder:        SSHSrcAliases{tp("tag:nowhere")},
+				EnforceRecorder: true,
+			}},
+		}
+		require.NoError(t, pol.validate())
+
+		_, err := pol.compileSSHPolicy("unused-server-url", users, src.View(), nodes.ViewSlice())
+		require.Error(t, err, "enforceRecorder with nothing to enforce against must fail loudly")
+	})
+
+	t.Run("a wide prefix is rejected, not expanded", func(t *testing.T) {
+		// The DoS path: ConnectToRecorder walks the recorder list in order
+		// inside a ~30s budget, so a /24 silently expanded to 256 targets is a
+		// policy-authored delay on every session — and under enforcement, a
+		// policy-authored SSH outage.
+		pol := &Policy{
+			Hosts: Hosts{"recorders": Prefix(netip.MustParsePrefix("100.64.0.0/24"))},
+			SSHs: []SSH{{
+				Action:       "accept",
+				Sources:      SSHSrcAliases{up("user1@")},
+				Destinations: SSHDstAliases{up("user1@")},
+				Users:        []SSHUser{"root"},
+				Recorder:     SSHSrcAliases{hp("recorders")},
+			}},
+		}
+
+		_, err := pol.compileSSHPolicy("unused-server-url", users, src.View(), nodes.ViewSlice())
+		require.ErrorContains(t, err, "individual nodes")
+	})
+}
