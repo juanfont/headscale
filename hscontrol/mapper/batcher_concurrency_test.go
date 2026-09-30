@@ -275,6 +275,96 @@ func TestAddToBatch_FullUpdateOverrides(t *testing.T) {
 	})
 }
 
+// TestAddToBatch_FullUpdateKeepsPingRequests verifies that a full update
+// keeps the pings it cannot carry: one pending before the full, and one in
+// the same call. A ping lost here times out its caller.
+func TestAddToBatch_FullUpdateKeepsPingRequests(t *testing.T) {
+	lb := setupLightweightBatcher(t, 3, 10)
+	defer lb.cleanup()
+
+	prPending := &tailcfg.PingRequest{URL: "https://example.com/ping/pending"}
+	prSameCall := &tailcfg.PingRequest{URL: "https://example.com/ping/same-call"}
+
+	lb.b.addToBatch(change.PingNode(1, prPending))
+	lb.b.addToBatch(change.NodeOnline(3))
+	lb.b.addToBatch(change.PingNode(2, prSameCall), change.UserRemoved())
+
+	want := map[types.NodeID][]change.Change{
+		1: {change.FullUpdate(), change.PingNode(1, prPending)},
+		2: {change.FullUpdate(), change.PingNode(2, prSameCall)},
+		3: {change.FullUpdate()},
+	}
+
+	for id, w := range want {
+		assert.Equal(t, w, getPendingForNode(lb.b, id), "node %d", id)
+	}
+
+	// A second full neither stacks nor drops the rescued ping.
+	lb.b.addToBatch(change.FullUpdate())
+
+	for id, w := range want {
+		assert.Equal(t, w, getPendingForNode(lb.b, id), "node %d after second full", id)
+	}
+}
+
+// TestAddToBatch_ConcurrentPingAndFullUpdate_NoPingLoss races pings against
+// fulls: every ping must end up pending exactly once, on its own node, behind
+// a single full.
+func TestAddToBatch_ConcurrentPingAndFullUpdate_NoPingLoss(t *testing.T) {
+	const (
+		nodes = 4
+		pings = 64
+		fulls = 16
+	)
+
+	lb := setupLightweightBatcher(t, nodes, 10)
+	defer lb.cleanup()
+
+	target := func(i int) types.NodeID {
+		return types.NodeID(i%nodes + 1) //nolint:gosec // test with small values
+	}
+
+	panics := runConcurrentlyWithTimeout(t, pings+fulls, 10*time.Second, func(i int) {
+		if i < pings {
+			lb.b.addToBatch(change.PingNode(target(i), &tailcfg.PingRequest{
+				URL: fmt.Sprintf("ping-%d", i),
+			}))
+
+			return
+		}
+
+		lb.b.addToBatch(change.FullUpdate())
+	})
+	require.Zero(t, panics)
+
+	seen := make(map[string]types.NodeID, pings)
+
+	for id := range lb.channels {
+		pending := getPendingForNode(lb.b, id)
+		require.NotEmpty(t, pending, "node %d", id)
+		assert.True(t, pending[0].IsFull(), "node %d: full must lead", id)
+
+		for _, c := range pending[1:] {
+			require.NotNil(t, c.PingRequest, "node %d: only pings follow the full", id)
+			assert.Equal(t, change.PingNode(id, c.PingRequest), c, "node %d: ping-only", id)
+
+			prev, dup := seen[c.PingRequest.URL]
+			assert.False(t, dup, "%s pending on node %d and %d", c.PingRequest.URL, prev, id)
+
+			seen[c.PingRequest.URL] = id
+		}
+	}
+
+	for i := range pings {
+		url := fmt.Sprintf("ping-%d", i)
+		got, ok := seen[url]
+
+		if assert.True(t, ok, "%s lost", url) {
+			assert.Equal(t, target(i), got, "%s on wrong node", url)
+		}
+	}
+}
+
 // TestAddToBatch_NodeRemovalCleanup verifies that a permanent node deletion
 // cleans up the node from the batcher's internal state.
 func TestAddToBatch_NodeRemovalCleanup(t *testing.T) {

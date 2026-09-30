@@ -675,17 +675,15 @@ func (b *Batcher) addToBatch(changes ...change.Change) {
 		}
 	}
 
-	// Short circuit if any of the changes is a full update, which
-	// means we can skip sending individual changes.
+	// A full update supersedes every state change pending or in this call,
+	// but not the pings addressed to a node; those follow the full.
 	if change.HasFull(changes) {
 		b.nodes.Range(func(_ types.NodeID, nc *multiChannelNodeConn) bool {
 			if nc == nil {
 				return true
 			}
 
-			nc.pendingMu.Lock()
-			nc.pending = []change.Change{change.FullUpdate()}
-			nc.pendingMu.Unlock()
+			nc.collapsePendingToFull(changes)
 
 			return true
 		})
