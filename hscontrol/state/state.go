@@ -2114,9 +2114,8 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 		// All tags are approved - apply them
 		approvedTags := params.Hostinfo.RequestTags
 		if len(approvedTags) > 0 {
-			nodeToRegister.Tags = approvedTags
-			slices.Sort(nodeToRegister.Tags)
-			nodeToRegister.Tags = slices.Compact(nodeToRegister.Tags)
+			// Sort a copy: approvedTags is the node's reported Hostinfo.
+			nodeToRegister.Tags = slices.Compact(slices.Sorted(slices.Values(approvedTags)))
 
 			// Node is now tagged, so clear user ownership.
 			// Tagged nodes are owned by their tags, not a user.
