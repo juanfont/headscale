@@ -135,12 +135,9 @@ func (b *MapResponseBuilder) WithCollectServicesDisabled() *MapResponseBuilder {
 	return b
 }
 
-// WithDebugConfig adds debug configuration
-// It disables log tailing if the mapper's LogTail is not enabled.
+// WithDebugConfig sets [tailcfg.MapResponse.Debug] from [types.Config.TailcfgDebug].
 func (b *MapResponseBuilder) WithDebugConfig() *MapResponseBuilder {
-	b.resp.Debug = &tailcfg.Debug{
-		DisableLogTail: !b.mapper.cfg.LogTail.Enabled,
-	}
+	b.resp.Debug = b.mapper.cfg.TailcfgDebug()
 
 	return b
 }
