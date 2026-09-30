@@ -1723,6 +1723,17 @@ func (c *Config) CloneTailcfgDNSConfig() *tailcfg.DNSConfig {
 	return c.TailcfgDNSConfig.Clone()
 }
 
+// TailcfgDebug returns the [tailcfg.Debug] for full map responses: nil when
+// logtail is enabled, leaving client log uploads as the client set them,
+// otherwise an instruction to stop uploading logs.
+func (c *Config) TailcfgDebug() *tailcfg.Debug {
+	if c.LogTail.Enabled {
+		return nil
+	}
+
+	return &tailcfg.Debug{DisableLogTail: true}
+}
+
 // SetExtraRecords replaces the ExtraRecords of [Config.TailcfgDNSConfig]. Safe
 // for concurrent use with [Config.CloneTailcfgDNSConfig].
 func (c *Config) SetExtraRecords(records []tailcfg.DNSRecord) {

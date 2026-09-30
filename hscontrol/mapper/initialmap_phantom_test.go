@@ -2,6 +2,7 @@ package mapper
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -128,5 +129,95 @@ func TestSyncInitialMapNoPhantomPeersOnTimeout(t *testing.T) {
 	if len(phantom) != 0 {
 		t.Errorf("lastSentPeers must be empty after a failed initial-map delivery, got %d: %v",
 			len(phantom), phantom)
+	}
+}
+
+// TestInitialMapCarriesDebugConfigOnEveryStream pins that the logtail
+// instruction reaches every client stream. A client applies
+// [tailcfg.Debug.DisableLogTail] only while the process lives, so every
+// AddNode's first frame (a fresh process or a second connection alike) has to
+// carry it; a later non-full frame must not.
+func TestInitialMapCarriesDebugConfigOnEveryStream(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		logTail bool
+		want    *tailcfg.Debug
+	}{
+		{"logtail_disabled", false, &tailcfg.Debug{DisableLogTail: true}},
+		{"logtail_enabled", true, nil},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 3, normalBufferSize)
+			defer cleanup()
+
+			// Set before any AddNode queues work, so no worker reads it concurrently.
+			testData.Config.LogTail.Enabled = tt.logTail
+
+			batcher := testData.Batcher.Batcher
+			capVer := tailcfg.CapabilityVersion(100)
+
+			firstFrame := func(t *testing.T, ch chan *tailcfg.MapResponse) *tailcfg.MapResponse {
+				t.Helper()
+
+				select {
+				case resp := <-ch:
+					return resp
+				case <-time.After(5 * time.Second):
+					t.Fatal("no initial map")
+
+					return nil
+				}
+			}
+
+			for i := range testData.Nodes {
+				n := &testData.Nodes[i]
+				testData.State.Connect(n.n.ID)
+
+				err := batcher.AddNode(n.n.ID, n.ch, capVer, nil)
+				if err != nil {
+					t.Fatalf("AddNode(%d): %v", n.n.ID, err)
+				}
+
+				resp := firstFrame(t, n.ch)
+				if resp.Node == nil {
+					t.Fatalf("node %d: first frame lacks self node", n.n.ID)
+				}
+
+				if !reflect.DeepEqual(tt.want, resp.Debug) {
+					t.Errorf("node %d initial map Debug = %+v, want %+v", n.n.ID, resp.Debug, tt.want)
+				}
+			}
+
+			// A second stream for an already-connected node gets its own full map.
+			second := make(chan *tailcfg.MapResponse, normalBufferSize)
+
+			err := batcher.AddNode(testData.Nodes[0].n.ID, second, capVer, nil)
+			if err != nil {
+				t.Fatalf("AddNode second stream: %v", err)
+			}
+
+			if resp := firstFrame(t, second); !reflect.DeepEqual(tt.want, resp.Debug) {
+				t.Errorf("second stream initial map Debug = %+v, want %+v", resp.Debug, tt.want)
+			}
+
+			batcher.AddWork(change.DERPMap())
+
+			for i := range testData.Nodes {
+				n := &testData.Nodes[i]
+
+				for {
+					resp := firstFrame(t, n.ch)
+					if resp.DERPMap == nil {
+						continue
+					}
+
+					if resp.Debug != nil {
+						t.Errorf("node %d DERP frame carries Debug %+v", n.n.ID, resp.Debug)
+					}
+
+					break
+				}
+			}
+		})
 	}
 }
