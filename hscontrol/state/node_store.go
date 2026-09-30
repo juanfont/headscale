@@ -26,11 +26,12 @@ import (
 // for empty sanitised labels.
 const fallbackGivenName = "node"
 
-// Errors returned by [NodeStore.SetGivenName]. [ErrNodeNotFound] is defined
+// Errors returned by NodeStore writes. [ErrNodeNotFound] is defined
 // in state.go and reused here.
 var (
 	ErrGivenNameTaken   = errors.New("given name already in use by another node")
 	ErrGivenNameInvalid = errors.New("given name is not a valid DNS label")
+	ErrNodeStoreStopped = errors.New("node store stopped")
 )
 
 const (
@@ -39,6 +40,7 @@ const (
 	rebuildPeerMaps = 4
 	setName         = 5
 	updateMulti     = 6
+	insert          = 7
 )
 
 const prometheusNamespace = "headscale"
@@ -198,6 +200,9 @@ type work struct {
 	// prober applying multiple probe results at once) cannot have a
 	// partial snapshot published between the updates.
 	multiUpdates map[types.NodeID]UpdateNodeFunc
+	// For insert: persist the resolved node and assign its database ID before
+	// adding it to the snapshot. The callback must not queue NodeStore work.
+	persistNewNode func(*types.Node) error
 }
 
 // updateChanges reports whether an in-place update moved a peer-visibility
@@ -248,6 +253,42 @@ func (s *NodeStore) PutNode(n types.Node) types.NodeView {
 	nodeStoreOperations.WithLabelValues("put").Inc()
 
 	return resultNode
+}
+
+// CreateNode resolves a new node's name, persists it, then publishes it.
+// persist must assign the ID and commit before returning. It runs in the
+// writer so concurrent creations and renames cannot claim the resolved name.
+// Reads remain available during persistence; other writes wait. The callback
+// must not queue NodeStore work or take a lock held by a caller waiting for it.
+func (s *NodeStore) CreateNode(n types.Node, persist func(*types.Node) error) (types.NodeView, error) {
+	w := work{
+		op: insert, node: n, persistNewNode: persist,
+		result: make(chan struct{}), nodeResult: make(chan types.NodeView, 1),
+		errResult: make(chan error, 1),
+	}
+
+	select {
+	case <-s.stopped:
+		return types.NodeView{}, ErrNodeStoreStopped
+	default:
+	}
+
+	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("create"))
+	defer timer.ObserveDuration()
+
+	nodeStoreQueueDepth.Inc()
+	defer nodeStoreQueueDepth.Dec()
+
+	select {
+	case s.writeQueue <- w:
+	case <-s.stopped:
+		return types.NodeView{}, ErrNodeStoreStopped
+	}
+
+	<-w.result
+	nodeStoreOperations.WithLabelValues("create").Inc()
+
+	return <-w.nodeResult, <-w.errResult
 }
 
 // UpdateNodeFunc is a function type that takes a pointer to a [types.Node] and modifies it.
@@ -465,7 +506,7 @@ func (s *NodeStore) applyBatch(batch []work) {
 	// Track rebuildPeerMaps operations
 	var rebuildOps []*work
 
-	// setErrResults collects per-work errors from the setName path so
+	// setErrResults collects per-work errors from setName and insert so
 	// they can be delivered after the snapshot swap, together with the
 	// NodeView for that work.
 	setErrResults := make(map[*work]error)
@@ -479,6 +520,22 @@ func (s *NodeStore) applyBatch(batch []work) {
 	for i := range batch {
 		w := &batch[i]
 		switch w.op {
+		case insert:
+			n := w.node
+
+			n.GivenName = resolveGivenName(nodes, n.ID, n.GivenName)
+
+			err := w.persistNewNode(&n)
+			if err != nil {
+				setErrResults[w] = err
+
+				continue
+			}
+
+			nodes[n.ID] = n
+			nodeResultRequests[n.ID] = append(nodeResultRequests[n.ID], w)
+			relationChanged = true
+			electionChanged = true
 		case put:
 			n := w.node
 			n.GivenName = resolveGivenName(nodes, n.ID, n.GivenName)
@@ -582,6 +639,27 @@ func (s *NodeStore) applyBatch(batch []work) {
 	// Update node count gauge
 	nodeStoreNodesCount.Set(float64(len(nodes)))
 
+	sendNodeResults(nodes, nodeResultRequests, setErrResults)
+
+	// Signal completion for rebuildPeerMaps operations
+	for _, w := range rebuildOps {
+		close(w.rebuildResult)
+	}
+
+	// Signal completion for all other work items
+	for _, w := range batch {
+		if w.op != rebuildPeerMaps {
+			close(w.result)
+		}
+	}
+}
+
+// sendNodeResults delivers views and per-work errors after the snapshot swap.
+func sendNodeResults(
+	nodes map[types.NodeID]types.Node,
+	nodeResultRequests map[types.NodeID][]*work,
+	setErrResults map[*work]error,
+) {
 	// Send the resulting nodes to all work items that requested them.
 	// A zero-value NodeView{} reports Valid()==false, matching node.View()
 	// for a node that was deleted or never existed.
@@ -604,15 +682,16 @@ func (s *NodeStore) applyBatch(batch []work) {
 		}
 	}
 
-	// Signal completion for rebuildPeerMaps operations
-	for _, w := range rebuildOps {
-		close(w.rebuildResult)
-	}
+	// Failed inserts have no node result in the snapshot.
+	for w, err := range setErrResults {
+		if w.op == insert {
+			w.nodeResult <- types.NodeView{}
 
-	// Signal completion for all other work items
-	for _, w := range batch {
-		if w.op != rebuildPeerMaps {
-			close(w.result)
+			close(w.nodeResult)
+
+			w.errResult <- err
+
+			close(w.errResult)
 		}
 	}
 }

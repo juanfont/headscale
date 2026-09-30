@@ -24,6 +24,111 @@ import (
 	"tailscale.com/types/views"
 )
 
+func TestNodeStoreCreateNodeBeforePublication(t *testing.T) {
+	store := NewNodeStore(types.Nodes{&types.Node{ID: 1, GivenName: "dup"}}, oddEvenPeersFunc, 1, time.Millisecond)
+	store.Start()
+	t.Cleanup(store.Stop)
+
+	entered := make(chan struct{})
+	resume := make(chan struct{})
+
+	var release sync.Once
+
+	t.Cleanup(func() { release.Do(func() { close(resume) }) })
+
+	type result struct {
+		node types.NodeView
+		err  error
+	}
+
+	created := make(chan result, 1)
+
+	var persisted *types.Node
+
+	go func() {
+		node, err := store.CreateNode(types.Node{GivenName: "dup"}, func(node *types.Node) error {
+			close(entered)
+			<-resume
+
+			node.ID = 2
+			persisted = node.Clone()
+
+			return nil
+		})
+		created <- result{node: node, err: err}
+	}()
+
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("creation did not reach persistence")
+	}
+
+	_, exists := store.GetNode(2)
+	require.False(t, exists, "readers must not observe an uncommitted node")
+	seed, exists := store.GetNode(1)
+	require.True(t, exists)
+	require.Equal(t, "dup", seed.GivenName(), "reads remain available during persistence")
+
+	renamed := make(chan error, 1)
+
+	go func() {
+		_, err := store.SetGivenName(1, "dup-1")
+		renamed <- err
+	}()
+
+	release.Do(func() { close(resume) })
+
+	select {
+	case got := <-created:
+		require.NoError(t, got.err)
+		require.Equal(t, "dup-1", got.node.GivenName())
+		require.Equal(t, persisted.GivenName, got.node.GivenName())
+	case <-time.After(5 * time.Second):
+		t.Fatal("creation did not publish")
+	}
+
+	select {
+	case err := <-renamed:
+		require.ErrorIs(t, err, ErrGivenNameTaken, "rename must not steal the committed name")
+	case <-time.After(5 * time.Second):
+		t.Fatal("rename did not complete")
+	}
+}
+
+func TestNodeStoreCreateNodeFailure(t *testing.T) {
+	store := NewNodeStore(nil, oddEvenPeersFunc, 1, time.Millisecond)
+	store.Start()
+	t.Cleanup(store.Stop)
+
+	errPersist := errInjectedNodeUpdate
+	node, err := store.CreateNode(types.Node{GivenName: "dup"}, func(node *types.Node) error {
+		node.ID = 1
+
+		return errPersist
+	})
+	require.ErrorIs(t, err, errPersist)
+	require.False(t, node.Valid())
+
+	_, exists := store.GetNode(1)
+	require.False(t, exists)
+
+	node, err = store.CreateNode(types.Node{GivenName: "dup"}, func(node *types.Node) error {
+		node.ID = 2
+
+		return nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, "dup", node.GivenName(), "failed creation must not claim a name")
+	store.Stop()
+	_, err = store.CreateNode(types.Node{}, func(*types.Node) error {
+		t.Fatal("stopped writer must not persist a node")
+
+		return nil
+	})
+	require.ErrorIs(t, err, ErrNodeStoreStopped)
+}
+
 func TestSnapshotFromNodes(t *testing.T) {
 	tests := []struct {
 		name      string
