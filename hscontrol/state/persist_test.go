@@ -270,6 +270,42 @@ func TestRegistrationRejectsNodeKeyClaimedByAnotherMachine(t *testing.T) {
 		"registering a NodeKey already bound to another machine must be rejected")
 }
 
+// TestRegistrationKeepsRequestTagsIntact guards the node's reported
+// Hostinfo.RequestTags against the in-place sort/compact that derives the
+// approved tag set: the two must not share a backing array.
+func TestRegistrationKeepsRequestTagsIntact(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+
+	database, err := db.NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	user := database.CreateUserForTest("tagger")
+	require.NoError(t, database.Close())
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, err = s.SetPolicy([]byte(`{"tagOwners":{"tag:a":["tagger@"],"tag:b":["tagger@"]}}`))
+	require.NoError(t, err)
+
+	node, err := s.createAndSaveNewNode(newNodeParams{
+		User:           *user,
+		MachineKey:     key.NewMachine().Public(),
+		NodeKey:        key.NewNode().Public(),
+		DiscoKey:       key.NewDisco().Public(),
+		Hostname:       "node",
+		Hostinfo:       &tailcfg.Hostinfo{RequestTags: []string{"tag:b", "tag:a", "tag:a"}},
+		RegisterMethod: util.RegisterMethodCLI,
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"tag:a", "tag:b"}, node.Tags().AsSlice())
+	assert.Equal(t, []string{"tag:b", "tag:a", "tag:a"}, node.Hostinfo().RequestTags().AsSlice(),
+		"reported RequestTags rewritten by tag approval")
+}
+
 // TestReauthRejectsNodeKeyClaimedByAnotherMachine proves the re-auth/update
 // path enforces the same 1:1 NodeKey<->MachineKey binding as the create path
 // (TestRegistrationRejectsNodeKeyClaimedByAnotherMachine) and the poll path
