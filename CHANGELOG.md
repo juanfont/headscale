@@ -128,7 +128,7 @@ clients, and how to run the same setup without Nix.
 - Fix packet filters under `autogroup:self` not updating after a user is added or renamed [#3501](https://github.com/juanfont/headscale/pull/3501)
 - Fix a rejected policy leaving its packet filter active [#3501](https://github.com/juanfont/headscale/pull/3501)
 - A registration request from a client below the minimum supported version is now rejected before it can log a node out, use a pre-auth key or start a login [#3519](https://github.com/juanfont/headscale/pull/3519)
-- Fix a repeated SSH check follow-up for an already-decided session being accepted, even after the check was rejected; a repeat now asks the user to authenticate again
+- Fix SSH check accepting a repeated follow-up for an already-decided session, even after a rejection
 
 ## 0.29.5 (202x-xx-xx)
 
