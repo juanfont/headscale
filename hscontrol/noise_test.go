@@ -953,47 +953,54 @@ func TestSSHActionFollowUp_ConsumedVerdictNotReplayed(t *testing.T) {
 
 // TestSSHActionFollowUp_ConcurrentWaiters parks two follow-ups on one
 // session: exactly one may consume the verdict, the other re-decides.
+// FinishAuth can land before either waiter parks and nothing signals the
+// park, so the body repeats to exercise the both-parked order.
 func TestSSHActionFollowUp_ConcurrentWaiters(t *testing.T) {
 	t.Parallel()
+
+	const iterations = 200
 
 	for _, tc := range sshVerdictCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			f := newSSHVerdictFixture(t)
-			authID, auth := f.mint(t)
 
-			var (
-				wg   sync.WaitGroup
-				recs [2]*httptest.ResponseRecorder
-			)
+			for range iterations {
+				authID, auth := f.mint(t)
 
-			for i := range recs {
-				wg.Go(func() {
-					recs[i] = f.followUp(t, authID)
-				})
-			}
+				var (
+					wg   sync.WaitGroup
+					recs [2]*httptest.ResponseRecorder
+				)
 
-			auth.FinishAuth(tc.verdict)
-			wg.Wait()
-
-			var carried, held int
-
-			for _, rec := range recs {
-				action := sshActionFromRecorder(t, rec)
-				if carriesSSHVerdict(action, tc.accept) {
-					carried++
-
-					continue
+				for i := range recs {
+					wg.Go(func() {
+						recs[i] = f.followUp(t, authID)
+					})
 				}
 
-				requireSSHHold(t, action)
+				auth.FinishAuth(tc.verdict)
+				wg.Wait()
 
-				held++
+				var carried, held int
+
+				for _, rec := range recs {
+					action := sshActionFromRecorder(t, rec)
+					if carriesSSHVerdict(action, tc.accept) {
+						carried++
+
+						continue
+					}
+
+					requireSSHHold(t, action)
+
+					held++
+				}
+
+				require.Equal(t, 1, carried, "exactly one waiter must carry the verdict")
+				require.Equal(t, 1, held, "the other waiter must re-delegate")
 			}
-
-			assert.Equal(t, 1, carried, "exactly one waiter must carry the verdict")
-			assert.Equal(t, 1, held, "the other waiter must re-delegate")
 		})
 	}
 }
