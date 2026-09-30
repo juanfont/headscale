@@ -1321,7 +1321,9 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 		return result
 	}
 
-	grants := pm.pol.Grants
+	// Clip so the appends below allocate: callers share pm.pol under RLock,
+	// and writing into its spare capacity races between them.
+	grants := slices.Clip(pm.pol.Grants)
 	for _, acl := range pm.pol.ACLs {
 		grants = append(grants, aclToGrants(acl)...)
 	}
