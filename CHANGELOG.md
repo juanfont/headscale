@@ -127,6 +127,7 @@ clients, and how to run the same setup without Nix.
 - `headscale nodes backfillips` now sends the new IPs to connected clients [#3501](https://github.com/juanfont/headscale/pull/3501)
 - Fix packet filters under `autogroup:self` not updating after a user is added or renamed [#3501](https://github.com/juanfont/headscale/pull/3501)
 - Fix a rejected policy leaving its packet filter active [#3501](https://github.com/juanfont/headscale/pull/3501)
+- Embedded DERP client verification (`/verify`) looks up the node key directly instead of scanning every node on each connection
 
 ## 0.29.4 (2026-09-23)
 
