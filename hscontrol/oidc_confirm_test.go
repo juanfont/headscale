@@ -57,7 +57,7 @@ func TestRegisterConfirmHandler_RejectsCSRFMismatch(t *testing.T) {
 		UserID: 1,
 		CSRF:   "expected-csrf",
 	})
-	app.state.SetAuthCacheEntry(authID, regReq)
+	require.NoError(t, app.state.SetAuthCacheEntry(authID, regReq))
 
 	rec := httptest.NewRecorder()
 	provider.RegisterConfirmHandler(rec,
@@ -89,9 +89,9 @@ func TestRegisterConfirmHandler_RejectsWithoutPending(t *testing.T) {
 	authID := types.MustAuthID()
 	// Cached registration with NO pending confirmation set — i.e. the
 	// OIDC callback has not run yet.
-	app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(
+	require.NoError(t, app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(
 		&types.RegistrationData{Hostname: "no-oidc-yet"},
-	))
+	)))
 
 	rec := httptest.NewRecorder()
 	provider.RegisterConfirmHandler(rec,

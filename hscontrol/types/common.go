@@ -87,8 +87,10 @@ func (r AuthID) Validate() error {
 // time so the follow-up request and OIDC callback can verify that no
 // other (src, dst) pair has been substituted via tampered URL parameters.
 type SSHCheckBinding struct {
-	SrcNodeID NodeID
-	DstNodeID NodeID
+	SrcNodeID        NodeID
+	DstNodeID        NodeID
+	LocalUser        string
+	PolicyGeneration uint64
 }
 
 // PendingRegistrationConfirmation captures the server-side state needed
@@ -110,11 +112,11 @@ type PendingRegistrationConfirmation struct {
 // AuthRequest represents a pending authentication request from a user or a
 // node. It carries the minimum data needed to either complete a node
 // registration (regData populated) or an SSH check-mode auth (sshBinding
-// populated), and signals the verdict via the finished channel. The closed
-// flag guards [AuthRequest.FinishAuth] against double-close.
+// populated), and signals completion by closing done. The terminal verdict is
+// stored separately so every waiter observes the same result.
 //
-// [AuthRequest] is always handled by pointer so the channel and atomic flag
-// have a single canonical instance even when stored in caches that
+// [AuthRequest] is always handled by pointer so the completion signal and
+// terminal verdict have a single canonical instance even when stored in caches that
 // internally copy values.
 type AuthRequest struct {
 	// regData is populated for node-registration flows (interactive web
@@ -139,18 +141,18 @@ type AuthRequest struct {
 	// but before the user has explicitly confirmed the registration on
 	// the interstitial. The /register/confirm POST handler reads it to
 	// finalise the registration without re-running the OIDC flow.
-	pendingConfirmation *PendingRegistrationConfirmation
+	pendingConfirmation atomic.Pointer[PendingRegistrationConfirmation]
 
-	finished chan AuthVerdict
-	closed   *atomic.Bool
+	done       chan struct{}
+	verdict    atomic.Pointer[AuthVerdict]
+	processing atomic.Bool
 }
 
 // NewAuthRequest creates a pending auth request with no payload, suitable
 // for non-registration flows that only need a verdict channel.
 func NewAuthRequest() *AuthRequest {
 	return &AuthRequest{
-		finished: make(chan AuthVerdict, 1),
-		closed:   &atomic.Bool{},
+		done: make(chan struct{}),
 	}
 }
 
@@ -159,9 +161,8 @@ func NewAuthRequest() *AuthRequest {
 // stored by pointer; callers must not mutate it after handing it off.
 func NewRegisterAuthRequest(data *RegistrationData) *AuthRequest {
 	return &AuthRequest{
-		regData:  data,
-		finished: make(chan AuthVerdict, 1),
-		closed:   &atomic.Bool{},
+		regData: data,
+		done:    make(chan struct{}),
 	}
 }
 
@@ -170,13 +171,24 @@ func NewRegisterAuthRequest(data *RegistrationData) *AuthRequest {
 // OIDC callback must verify their incoming request matches this binding
 // before recording any verdict.
 func NewSSHCheckAuthRequest(src, dst NodeID) *AuthRequest {
+	return NewSSHCheckAuthRequestForPolicy(src, dst, "", 0)
+}
+
+// NewSSHCheckAuthRequestForPolicy creates an SSH check request bound to the
+// complete connection identity and the policy generation that required it.
+func NewSSHCheckAuthRequestForPolicy(
+	src, dst NodeID,
+	localUser string,
+	policyGeneration uint64,
+) *AuthRequest {
 	return &AuthRequest{
 		sshBinding: &SSHCheckBinding{
-			SrcNodeID: src,
-			DstNodeID: dst,
+			SrcNodeID:        src,
+			DstNodeID:        dst,
+			LocalUser:        localUser,
+			PolicyGeneration: policyGeneration,
 		},
-		finished: make(chan AuthVerdict, 1),
-		closed:   &atomic.Bool{},
+		done: make(chan struct{}),
 	}
 }
 
@@ -215,34 +227,87 @@ func (rn *AuthRequest) IsSSHCheck() bool {
 	return rn.sshBinding != nil
 }
 
-// SetPendingConfirmation marks this [AuthRequest] as having an
-// OIDC-resolved user that is waiting to confirm the registration on
-// the interstitial. The OIDC callback should call this and then render
-// the confirmation page; the /register/confirm POST handler reads the
-// stored UserID/NodeExpiry to finish the registration.
-func (rn *AuthRequest) SetPendingConfirmation(p *PendingRegistrationConfirmation) {
-	rn.pendingConfirmation = p
+// SetPendingConfirmation records the first OIDC-resolved user waiting to
+// confirm the registration. It returns false if confirmation is already
+// pending, leaving the original value unchanged.
+func (rn *AuthRequest) SetPendingConfirmation(p *PendingRegistrationConfirmation) bool {
+	return rn.pendingConfirmation.CompareAndSwap(nil, p)
 }
 
 // PendingConfirmation returns the pending OIDC-resolved registration
 // state captured by [AuthRequest.SetPendingConfirmation], or nil if no OIDC callback
 // has yet resolved an identity for this [AuthRequest].
 func (rn *AuthRequest) PendingConfirmation() *PendingRegistrationConfirmation {
-	return rn.pendingConfirmation
+	return rn.pendingConfirmation.Load()
 }
 
-func (rn *AuthRequest) FinishAuth(verdict AuthVerdict) {
-	if rn.closed.Swap(true) {
-		return
+// TryBeginAuth reserves a pending request for one completion path. The caller
+// must finish it with [AuthRequest.FinishClaimedAuth] or release it with
+// [AuthRequest.AbortAuth].
+func (rn *AuthRequest) TryBeginAuth() bool {
+	if rn.verdict.Load() != nil || !rn.processing.CompareAndSwap(false, true) {
+		return false
 	}
 
-	rn.finished <- verdict
+	// A terminal verdict can race the reservation after the first check.
+	// Give it precedence and release the claim so no completion path starts
+	// after the request has finished.
+	if rn.verdict.Load() != nil {
+		rn.processing.Store(false)
 
-	close(rn.finished)
+		return false
+	}
+
+	return true
 }
 
-func (rn *AuthRequest) WaitForAuth() <-chan AuthVerdict {
-	return rn.finished
+// AbortAuth releases an unfinished completion reservation.
+func (rn *AuthRequest) AbortAuth() {
+	if rn.verdict.Load() == nil {
+		rn.processing.Store(false)
+	}
+}
+
+// FinishClaimedAuth publishes the terminal verdict for a request reserved by
+// [AuthRequest.TryBeginAuth].
+func (rn *AuthRequest) FinishClaimedAuth(verdict AuthVerdict) bool {
+	if !rn.processing.Load() || !rn.verdict.CompareAndSwap(nil, &verdict) {
+		return false
+	}
+
+	close(rn.done)
+
+	return true
+}
+
+func (rn *AuthRequest) FinishAuth(verdict AuthVerdict) bool {
+	// Administrative decisions and expiry remain authoritative while a
+	// completion path is doing external work. Whichever terminal verdict is
+	// published first wins; a claimed completion that loses this race fails
+	// closed in FinishClaimedAuth.
+	if !rn.verdict.CompareAndSwap(nil, &verdict) {
+		return false
+	}
+
+	close(rn.done)
+
+	return true
+}
+
+func (rn *AuthRequest) WaitForAuth() <-chan struct{} {
+	return rn.done
+}
+
+// AuthResult returns the immutable terminal verdict after WaitForAuth is
+// closed. The boolean is false before completion, allowing callers to fail
+// closed if they ever observe completion without a stored result.
+func (rn *AuthRequest) AuthResult() (AuthVerdict, bool) {
+	verdict := rn.verdict.Load()
+	if verdict == nil {
+		return AuthVerdict{}, false
+	}
+
+	return *verdict, true
 }
 
 type AuthVerdict struct {

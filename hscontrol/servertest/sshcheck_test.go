@@ -84,9 +84,13 @@ func pollSSHAction(
 	t.Helper()
 
 	actionURL := fmt.Sprintf("%s/machine/ssh/action/%d/to/%d", serverURL, srcID, dstID)
+
+	q := url.Values{"local_user": {"ubuntu"}}
 	if authID != "" {
-		actionURL += "?auth_id=" + authID
+		q.Set("auth_id", authID)
 	}
+
+	actionURL += "?" + q.Encode()
 
 	// Noise requests are addressed with the https scheme; the control client
 	// routes them over the established Noise connection (mirroring how

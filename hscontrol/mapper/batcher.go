@@ -313,7 +313,10 @@ func (b *Batcher) AddNode(
 				b.totalNodes.Add(1)
 			}
 
-			existing.addConnection(newEntry)
+			existing.addConnectionWithLimit(
+				newEntry,
+				maxConcurrentMapSessionsPerNode,
+			)
 			nodeConn = existing
 
 			return existing, xsync.UpdateOp

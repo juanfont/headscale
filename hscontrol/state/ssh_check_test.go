@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -14,6 +15,25 @@ func newTestStateForSSHCheck() *State {
 	return &State{
 		sshCheckAuth: make(map[sshCheckPair]time.Time),
 	}
+}
+
+func newSSHPolicyTestState(t *testing.T) (*State, types.NodeID, types.NodeID) {
+	t.Helper()
+
+	dbPath := t.TempDir() + "/headscale.db"
+	database, err := db.NewHeadscaleDatabase(persistTestConfig(dbPath))
+	require.NoError(t, err)
+
+	user := database.CreateUserForTest("ssh-source")
+	src := database.CreateRegisteredNodeForTest(user, "ssh-source-node")
+	dst := database.CreateRegisteredNodeForTest(user, "ssh-destination-node")
+	require.NoError(t, database.Close())
+
+	s, err := NewState(persistTestConfig(dbPath))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, s.Close()) })
+
+	return s, src.ID, dst.ID
 }
 
 func TestSSHCheckAuth(t *testing.T) {
@@ -94,4 +114,77 @@ func TestSSHCheckAuthConcurrent(t *testing.T) {
 	})
 
 	wg.Wait()
+}
+
+func TestCompleteSSHCheckUsesCurrentPolicy(t *testing.T) {
+	s, src, dst := newSSHPolicyTestState(t)
+
+	checkRoot := []byte(`{
+		"ssh": [{
+			"action": "check",
+			"checkPeriod": "2h",
+			"src": ["ssh-source@"],
+			"dst": ["autogroup:self"],
+			"users": ["root"]
+		}]
+	}`)
+	acceptRoot := []byte(`{
+		"ssh": [{
+			"action": "accept",
+			"src": ["ssh-source@"],
+			"dst": ["autogroup:self"],
+			"users": ["root"]
+		}]
+	}`)
+	checkUbuntu := []byte(`{
+		"ssh": [{
+			"action": "check",
+			"src": ["ssh-source@"],
+			"dst": ["autogroup:self"],
+			"users": ["ubuntu"]
+		}]
+	}`)
+
+	_, err := s.SetPolicy(checkRoot)
+	require.NoError(t, err)
+
+	evaluation := s.EvaluateSSHAccess(src, dst, "root")
+	require.Equal(t, SSHAccessCheck, evaluation.Action)
+	assert.Equal(t, SSHAccessAccept, s.CompleteSSHCheck(
+		src, dst, "root", evaluation.PolicyGeneration,
+	))
+	_, ok := s.GetLastSSHAuth(src, dst)
+	assert.True(t, ok, "unchanged check policy must record reusable approval")
+
+	evaluation = s.EvaluateSSHAccess(src, dst, "root")
+	require.Equal(t, SSHAccessAccept, evaluation.Action,
+		"recorded approval should satisfy the current check period")
+
+	_, err = s.SetPolicy(checkRoot)
+	require.NoError(t, err)
+
+	evaluation = s.EvaluateSSHAccess(src, dst, "root")
+	require.Equal(t, SSHAccessCheck, evaluation.Action)
+
+	_, err = s.SetPolicy(acceptRoot)
+	require.NoError(t, err)
+	assert.Equal(t, SSHAccessAccept, s.CompleteSSHCheck(
+		src, dst, "root", evaluation.PolicyGeneration,
+	), "a current direct-accept rule must not be rejected")
+	_, ok = s.GetLastSSHAuth(src, dst)
+	assert.False(t, ok, "direct accept must not create a reusable check approval")
+
+	_, err = s.SetPolicy(checkRoot)
+	require.NoError(t, err)
+
+	evaluation = s.EvaluateSSHAccess(src, dst, "root")
+	require.Equal(t, SSHAccessCheck, evaluation.Action)
+
+	_, err = s.SetPolicy(checkUbuntu)
+	require.NoError(t, err)
+	assert.Equal(t, SSHAccessReject, s.CompleteSSHCheck(
+		src, dst, "root", evaluation.PolicyGeneration,
+	), "approval for a removed local-user rule must be rejected")
+	_, ok = s.GetLastSSHAuth(src, dst)
+	assert.False(t, ok, "stale approval must not be recorded")
 }

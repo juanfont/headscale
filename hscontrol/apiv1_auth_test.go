@@ -37,7 +37,10 @@ func seedAuthRequest(
 			Hostinfo:   &tailcfg.Hostinfo{Hostname: hostname},
 		}
 
-		app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(regData))
+		require.NoError(t, app.state.SetAuthCacheEntry(
+			authID,
+			types.NewRegisterAuthRequest(regData),
+		))
 	}
 }
 
@@ -124,7 +127,7 @@ func TestAPIV1AuthApprove(t *testing.T) {
 
 		authID := types.MustAuthID()
 		authReq := types.NewAuthRequest()
-		h.app.state.SetAuthCacheEntry(authID, authReq)
+		require.NoError(t, h.app.state.SetAuthCacheEntry(authID, authReq))
 
 		body := fmt.Appendf(nil, `{"authId":%q}`, authID.String())
 		res := h.callHuma(http.MethodPost, "/api/v1/auth/approve", body)
@@ -132,7 +135,9 @@ func TestAPIV1AuthApprove(t *testing.T) {
 		require.Equal(t, http.StatusOK, res.status)
 		assert.JSONEq(t, `{}`, string(res.body))
 
-		verdict := <-authReq.WaitForAuth()
+		<-authReq.WaitForAuth()
+		verdict, ok := authReq.AuthResult()
+		require.True(t, ok)
 		assert.True(t, verdict.Accept(), "approve must finish the session with a passing verdict")
 	})
 
@@ -159,7 +164,7 @@ func TestAPIV1AuthReject(t *testing.T) {
 
 		authID := types.MustAuthID()
 		authReq := types.NewAuthRequest()
-		h.app.state.SetAuthCacheEntry(authID, authReq)
+		require.NoError(t, h.app.state.SetAuthCacheEntry(authID, authReq))
 
 		body := fmt.Appendf(nil, `{"authId":%q}`, authID.String())
 		res := h.callHuma(http.MethodPost, "/api/v1/auth/reject", body)
@@ -167,7 +172,9 @@ func TestAPIV1AuthReject(t *testing.T) {
 		require.Equal(t, http.StatusOK, res.status)
 		assert.JSONEq(t, `{}`, string(res.body))
 
-		verdict := <-authReq.WaitForAuth()
+		<-authReq.WaitForAuth()
+		verdict, ok := authReq.AuthResult()
+		require.True(t, ok)
 		assert.False(t, verdict.Accept(), "reject must finish the session with a failing verdict")
 	})
 
