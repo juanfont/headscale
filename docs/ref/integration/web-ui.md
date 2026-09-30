@@ -59,5 +59,9 @@ Headscale doesn't provide a built-in web interface but users may pick one from t
       ![GitHub last commit](https://img.shields.io/github/last-commit/headscale-panel/panel)
     - A modern Headscale management panel with a clean, network-operations-focused
       UI
+- [Headscale Easy](https://github.com/insanerask77/headscale-easy)
+    - ![GitHub stars](https://img.shields.io/github/stars//insanerask77/headscale-easy?style=flat)
+      ![GitHub last commit](https://img.shields.io/github/last-commit//insanerask77/headscale-easy)
+    - A simple, self-hosted way to deploy and manage Headscale — with a web UI, authentication, HTTPS, DNS, ACLs, backups, and more.
 
 You can ask for support on our [Discord server](https://discord.gg/c84AZQhmpx) in the "web-interfaces" channel.
