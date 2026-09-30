@@ -196,9 +196,9 @@ func runViaHACompat(t *testing.T, c *testcapture.Capture) {
 		}
 
 		t.Run(viewerName, func(t *testing.T) {
-			require.EventuallyWithT(t, func(collect *assert.CollectT) {
-				compareCaptureNetmap(collect, cl, capture, clients)
-			}, 30*time.Second, 100*time.Millisecond)
+			requireNetmapHolds(t, func(tt require.TestingT) {
+				compareCaptureNetmap(tt, cl, capture, clients)
+			})
 		})
 	}
 }
@@ -206,7 +206,7 @@ func runViaHACompat(t *testing.T, c *testcapture.Capture) {
 // compareCaptureNetmap compares headscale's [tailcfg.MapResponse] against a
 // [testcapture.Node]'s [netmap.NetworkMap] data. Same logic as [compareNetmap] but
 // reads from typed [testcapture] fields instead of goldenFile strings.
-// It takes [require.TestingT] so it can run inside [require.EventuallyWithT].
+// It takes [require.TestingT] so it can run inside [requireNetmapHolds].
 func compareCaptureNetmap(
 	t require.TestingT,
 	viewer *servertest.TestClient,
