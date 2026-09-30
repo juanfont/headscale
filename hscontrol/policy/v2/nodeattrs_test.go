@@ -93,6 +93,15 @@ func TestNodeAttrsCompile(t *testing.T) {
 		want  map[types.NodeID]tailcfg.NodeCapMap
 	}{
 		{
+			// One unregistered member must not reject the policy (#3513).
+			name: "group target with unregistered member hits registered members",
+			extra: `"groups": {"group:g": ["alice@example.com", "ghost@example.com"]},
+		"nodeAttrs": [{"target": ["group:g"], "attr": ["randomize-client-port"]}]`,
+			want: map[types.NodeID]tailcfg.NodeCapMap{
+				1: capMap("randomize-client-port"),
+			},
+		},
+		{
 			name:  "wildcard target hits every node",
 			extra: `"nodeAttrs": [{"target": ["*"], "attr": ["randomize-client-port"]}]`,
 			want: map[types.NodeID]tailcfg.NodeCapMap{
