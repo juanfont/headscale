@@ -270,6 +270,57 @@ func TestRestoredExpirySurvivesQueuedChanges(t *testing.T) {
 	}
 }
 
+// TestReloginOfExpiredNodeClearsPeerExpiry covers a node that logs back in
+// after its key expired. Peers hold the expired node with Expired=true, and a
+// tailcfg.PeerChange patch cannot clear that flag, so the relogin must reach
+// them as a whole node. The client's Hostinfo is identical before and after the
+// relogin, so no Hostinfo-driven whole-node update can mask a missing one.
+func TestReloginOfExpiredNodeClearsPeerExpiry(t *testing.T) {
+	t.Parallel()
+
+	h := servertest.NewHarness(t, 2,
+		servertest.WithServerOptions(servertest.WithBatchDelay(10*time.Millisecond)),
+	)
+	client, observer := h.Client(0), h.Client(1)
+	id := findNodeID(t, h.Server, client.Name)
+	node, ok := h.Server.State().GetNodeByID(id)
+	require.True(t, ok)
+
+	oldKey := node.NodeKey()
+
+	expiry := time.Now()
+	_, c, err := h.Server.State().SetNodeExpiry(id, &expiry)
+	require.NoError(t, err)
+	h.Server.App.Change(c)
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		peer, found := observer.PeerByName(client.Name)
+		if assert.True(c, found) {
+			assert.True(c, peer.Expired())
+		}
+	}, 5*time.Second, 10*time.Millisecond, "observer must see the node expired")
+
+	// Re-registering with the expired node key makes the client generate a
+	// new one, the same way tailscaled re-authenticates an expired node.
+	client.Reconnect(t)
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		current, found := h.Server.State().GetNodeByID(id)
+		if !assert.True(c, found) {
+			return
+		}
+
+		assert.NotEqual(c, oldKey, current.NodeKey())
+		assert.False(c, current.IsExpired())
+
+		peer, found := observer.PeerByName(client.Name)
+		if assert.True(c, found) {
+			assert.Equal(c, current.NodeKey(), peer.Key())
+			assert.False(c, peer.Expired(), "relogin must clear the peer's expired flag")
+		}
+	}, 5*time.Second, 10*time.Millisecond, "observer must see the relogged node with its new key and not expired")
+}
+
 func TestNodeExpiryRouteFailover(t *testing.T) {
 	t.Parallel()
 

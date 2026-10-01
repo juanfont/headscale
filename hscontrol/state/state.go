@@ -2401,6 +2401,7 @@ func (s *State) HandleNodeFromAuthPath(
 
 	// Named conditions - describe WHAT we found, not HOW we check it.
 	existingNodeSameUser, nodeExistsForSameUser := all[types.UserID(user.ID)]
+	wasExpired := nodeExistsForSameUser && existingNodeSameUser.IsExpired()
 
 	taggedNode, hasTagged := all[0]
 	existingNodeIsTagged := hasTagged && taggedNode.IsTagged()
@@ -2512,7 +2513,7 @@ func (s *State) HandleNodeFromAuthPath(
 	// nodeExistsForSameUser is true only for a same-user relogin; a tag->user
 	// conversion is excluded, as it changes the peer's User — a structural
 	// change peers must see in full, not a key-rotation patch.
-	return finalNode, reauthChange(finalNode, nodeExistsForSameUser, policyChanged), nil
+	return finalNode, reauthChange(finalNode, nodeExistsForSameUser, wasExpired, policyChanged), nil
 }
 
 // createNewNodeFromAuth creates a new node during auth callback.
@@ -2689,6 +2690,8 @@ func (s *State) HandleNodeFromPreAuthKey(
 	// and clear the stale expiry in the update below.
 	isExpired := existsSameUser && existingNodeSameUser.Valid() &&
 		!existingNodeSameUser.IsTagged() &&
+		existingNodeSameUser.IsExpired()
+	wasExpired := existsSameUser && existingNodeSameUser.Valid() &&
 		existingNodeSameUser.IsExpired()
 
 	// A tagged key presented for a currently user-owned node converts that node
@@ -3017,7 +3020,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 
 	policyChanged := !usersChange.IsEmpty() || !nodesChange.IsEmpty()
 
-	return finalNode, reauthChange(finalNode, existsSameUser, policyChanged), nil
+	return finalNode, reauthChange(finalNode, existsSameUser, wasExpired, policyChanged), nil
 }
 
 // reauthChange returns the [change.Change] to broadcast after an authentication
@@ -3027,11 +3030,15 @@ func (s *State) HandleNodeFromPreAuthKey(
 // rotated) is sent as a minimal incremental peer patch via [change.NodeKeyRotated]
 // rather than re-advertising the whole node. A policy change forces a full
 // recompute; any other (new) node is a whole-node add.
-func reauthChange(node types.NodeView, isRelogin, policyChanged bool) change.Change {
+//
+// A relogin of a node that was expired is also a whole-node add: peers hold it
+// with Expired=true, and [tailcfg.PeerChange] has no field to clear that, so a
+// patch would leave peers dropping its WireGuard handshakes.
+func reauthChange(node types.NodeView, isRelogin, wasExpired, policyChanged bool) change.Change {
 	switch {
 	case policyChanged:
 		return change.PolicyChange()
-	case isRelogin:
+	case isRelogin && !wasExpired:
 		return change.NodeKeyRotated(node)
 	default:
 		return change.NodeAdded(node.ID())

@@ -410,18 +410,22 @@ func TestReauthChange(t *testing.T) {
 	}
 	node := n.View()
 
-	relogin := reauthChange(node, true, false)
+	relogin := reauthChange(node, true, false, false)
 	assert.Len(t, relogin.PeerPatches, 1, "relogin must be a peer patch")
 	assert.Empty(t, relogin.PeersChanged, "relogin must not be a whole-node add")
 
-	added := reauthChange(node, false, false)
+	added := reauthChange(node, false, false, false)
 	assert.Empty(t, added.PeerPatches)
 	assert.Len(t, added.PeersChanged, 1, "a new node must be a whole-node add")
 
-	pol := reauthChange(node, true, true)
+	pol := reauthChange(node, true, false, true)
 	assert.Empty(t, pol.PeerPatches, "a policy change must not be a peer patch")
 	assert.Empty(t, pol.PeersChanged)
 	assert.False(t, pol.IsEmpty(), "a policy change must be non-empty")
+
+	expired := reauthChange(node, true, true, false)
+	assert.Empty(t, expired.PeerPatches, "relogin of an expired node must not be a peer patch")
+	assert.Len(t, expired.PeersChanged, 1, "relogin of an expired node must be a whole-node add")
 }
 
 // TestPreAuthKeyReauthRejectsNodeKeyClaimedByAnotherMachine is the pre-auth-key

@@ -4328,6 +4328,57 @@ func TestHandleNodeFromAuthPath_OldUserNil_NoPanic(t *testing.T) {
 	assert.Equal(t, userB.ID, node.UserID().Get(), "new node belongs to userB")
 }
 
+// TestHandleNodeFromAuthPath_ReloginOfExpiredNode covers an interactive (web
+// or OIDC) relogin that rotates the node key. Peers hold an expired node with
+// Expired=true and a tailcfg.PeerChange patch cannot clear that flag, so the
+// relogin of an expired node must be sent as a whole node. A relogin of a node
+// that is not expired keeps the key-rotation patch.
+func TestHandleNodeFromAuthPath_ReloginOfExpiredNode(t *testing.T) {
+	for _, expired := range []bool{false, true} {
+		t.Run(fmt.Sprintf("expired=%v", expired), func(t *testing.T) {
+			app := createTestApp(t)
+
+			user := app.state.CreateUserForTest("authpath-relogin")
+			node := app.state.CreateRegisteredNodeForTest(user, "authpath-relogin")
+
+			if expired {
+				node.Expiry = new(time.Now().Add(-time.Minute))
+			}
+
+			app.state.PutNodeInStoreForTest(*node)
+
+			newNodeKey := key.NewNode()
+			authID := types.MustAuthID()
+			app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+				MachineKey: node.MachineKey,
+				NodeKey:    newNodeKey.Public(),
+				Hostname:   node.Hostname,
+				Hostinfo: &tailcfg.Hostinfo{
+					Hostname: node.Hostname,
+				},
+			}))
+
+			relogged, c, err := app.state.HandleNodeFromAuthPath(
+				authID,
+				types.UserID(user.ID),
+				nil,
+				"oidc",
+			)
+			require.NoError(t, err)
+			require.Equal(t, node.ID, relogged.ID(), "relogin must update the existing node")
+			require.Equal(t, newNodeKey.Public(), relogged.NodeKey())
+
+			if expired {
+				assert.Empty(t, c.PeerPatches, "relogin of an expired node must not be a peer patch")
+				assert.Contains(t, c.PeersChanged, node.ID, "relogin of an expired node must be a whole-node add")
+			} else {
+				assert.Empty(t, c.PeersChanged, "relogin must not be a whole-node add")
+				assert.Len(t, c.PeerPatches, 1, "relogin must be a peer patch")
+			}
+		})
+	}
+}
+
 // TestWaitForFollowupMachineKeyMismatch covers the followup poll in
 // [Headscale.waitForFollowup]. That poll is authenticated only by the auth ID
 // embedded in the followup URL, so without a machine-key check anyone who

@@ -127,6 +127,7 @@ clients, and how to run the same setup without Nix.
 - `headscale nodes backfillips` now sends the new IPs to connected clients [#3501](https://github.com/juanfont/headscale/pull/3501)
 - Fix packet filters under `autogroup:self` not updating after a user is added or renamed [#3501](https://github.com/juanfont/headscale/pull/3501)
 - Fix a rejected policy leaving its packet filter active [#3501](https://github.com/juanfont/headscale/pull/3501)
+- Fix peers dropping traffic from a node that re-authenticates after its key expired, until the node or Headscale restarts; the relogin of an expired node is now sent to peers as a whole node so they clear its expired flag
 
 ## 0.29.4 (2026-09-23)
 
