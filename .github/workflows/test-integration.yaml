@@ -264,6 +264,7 @@ jobs:
           - TestOIDCReloginSameUserRoutesPreserved
           - TestAuthWebFlowAuthenticationPingAll
           - TestAuthWebFlowLogoutAndReloginSameUser
+          - TestAuthWebFlowReloginExpiredNode
           - TestAuthWebFlowLogoutAndReloginNewUser
           - TestApiKeyCommand
           - TestApiKeyCommandValidation

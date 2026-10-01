@@ -149,6 +149,7 @@ clients, and how to run the same setup without Nix.
 - Fix policy `tests` and `sshTests` failing for a group that names an unknown user [#3516](https://github.com/juanfont/headscale/pull/3516)
 - Fix an unknown user in `nodeAttrs` rejecting the policy [#3516](https://github.com/juanfont/headscale/pull/3516)
 - Fix an ephemeral node being deleted while online, when it reconnected while its previous session was being marked offline [#3539](https://github.com/juanfont/headscale/pull/3539)
+- Fix peers dropping traffic from a node that re-authenticates after its key expired [#3541](https://github.com/juanfont/headscale/pull/3541)
 
 - Fix an exit node or subnet router not seeing its own approved routes until it reconnected, so `tailscale status` did not show it offering an exit node [#3518](https://github.com/juanfont/headscale/pull/3518)
 
