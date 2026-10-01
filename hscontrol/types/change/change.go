@@ -504,12 +504,17 @@ func EndpointOrDERPUpdate(id types.NodeID, patch *tailcfg.PeerChange) Change {
 // incremental [tailcfg.PeerChange] patch rather than re-advertising the whole
 // node — the smallest update that conveys the rotation, and the least
 // disruptive for peers reconciling it.
+//
+// Use it only when nothing else peers read changed: [tailcfg.PeerChange] has
+// no field for Hostinfo or for [tailcfg.Node.Expired], which only control can
+// clear, and only by sending the whole node.
 func NodeKeyRotated(node types.NodeView) Change {
 	nk := node.NodeKey()
 	dk := node.DiscoKey()
 
-	// KeyExpiry is always set: the zero value clears any prior expiry on the
-	// peer (un-expire), and a non-zero value carries the new expiry.
+	// KeyExpiry is always set: the zero value clears any prior expiry
+	// timestamp on the peer, and a non-zero value carries the new expiry. It
+	// does not clear [tailcfg.Node.Expired].
 	var expiry time.Time
 	if e, ok := node.Expiry().GetOk(); ok {
 		expiry = e
