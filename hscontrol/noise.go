@@ -725,6 +725,8 @@ func (ns *noiseServer) PollNetMapHandler(
 					KeyExpiry: time.Unix(1, 0).UTC(),
 					Expired:   true,
 				},
+				// This frame opens the stream in place of the initial map.
+				Debug: ns.headscale.cfg.TailcfgDebug(),
 			}
 
 			err = writeMapResponse(writer, mapRequest.Compress, true, expired)

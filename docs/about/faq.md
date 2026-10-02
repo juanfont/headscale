@@ -206,6 +206,11 @@ Headscale, by default, instructs clients to disable log submission to the centra
 applied by a client once it successfully connected with Headscale. See the configuration option `logtail.enabled` in the
 [configuration file](../ref/configuration.md) for details.
 
+Do not grant the `https://tailscale.com/cap/data-plane-audit-logs` node attribute while `logtail.enabled` is `false`. A
+client with log submission disabled treats this attribute as "the tailnet requires logging" and turns itself off, as
+`tailscale down` would. It stays off until the attribute is removed and `tailscale up` is run. A client started with
+`TS_NO_LOGS_NO_SUPPORT=true` or `--no-logs-no-support` reacts the same way, whatever `logtail.enabled` says.
+
 Alternatively, logging can also be disabled on the client side. This is independent of Headscale and opting out of
 client logging disables log submission early during client startup. The configuration is operating system specific and
 is usually achieved by:
