@@ -261,13 +261,15 @@ func (pol *Policy) compileSSHPolicy(
 	node types.NodeView,
 	nodes views.Slice[types.NodeView],
 ) (*tailcfg.SSHPolicy, error) {
-	if pol == nil || pol.SSHs == nil || len(pol.SSHs) == 0 {
-		return nil, nil //nolint:nilnil // intentional: no SSH policy when none configured
+	// Never nil: clients read a nil SSHPolicy as "keep the previous
+	// rules", so revoked access would stay. SaaS sends "rules":[].
+	if pol == nil || len(pol.SSHs) == 0 {
+		return &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}}, nil
 	}
 
 	log.Trace().Caller().Msgf("compiling SSH policy for node %q", node.Hostname())
 
-	var rules []*tailcfg.SSHRule
+	rules := []*tailcfg.SSHRule{}
 
 	for index, rule := range pol.SSHs {
 		var autogroupSelfDests, otherDests []Alias
