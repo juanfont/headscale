@@ -134,6 +134,9 @@ clients, and how to run the same setup without Nix.
 - Fix a node ping being lost when a full map update is queued at the same time [#3523](https://github.com/juanfont/headscale/pull/3523)
 - Fix clients uploading logs to Tailscale Inc. while `logtail.enabled` is `false`; clients also granted the `data-plane-audit-logs` node attribute now go down until `tailscale up` [#3522](https://github.com/juanfont/headscale/pull/3522)
 - DERP client verification (the embedded DERP server and the `/verify` endpoint) looks up the node key directly instead of scanning every node on each connection [#3520](https://github.com/juanfont/headscale/pull/3520)
+- Fix SSH access surviving the removal of its policy rules; clients kept their last SSH rules, and a pending SSH check could still be approved [#3517](https://github.com/juanfont/headscale/pull/3517)
+- Fix SSH check periods coming from the first check rule for a node pair instead of the rule for the login user [#3517](https://github.com/juanfont/headscale/pull/3517)
+- Policy changes resend a node's SSH policy only when it changed, sparing clients a full netmap rebuild [#3517](https://github.com/juanfont/headscale/pull/3517)
 
 ## 0.29.5 (202x-xx-xx)
 
