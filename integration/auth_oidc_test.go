@@ -1935,3 +1935,72 @@ func TestOIDCReloginSameUserRoutesPreserved(t *testing.T) {
 
 	t.Logf("Test completed - verifying issue #2896 fix for OIDC")
 }
+
+func TestOIDCRetryStartup(t *testing.T) {
+	IntegrationSkip(t)
+
+	scenario, err := NewScenario(ScenarioSpec{
+		OIDCUsers: []mockoidc.MockUser{
+			oidcMockUser("user1", true),
+		},
+	})
+	require.NoError(t, err)
+
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	// Pause the mock OIDC container to simulate it being unavailable at Headscale
+	// startup. Stopping it would release its IP, which Docker hands to the next
+	// container, and the issuer URL embeds that IP.
+	err = scenario.pool.Client.PauseContainer(scenario.mockOIDC.r.Container.ID)
+	require.NoError(t, err)
+
+	oidcMap := map[string]string{
+		"HEADSCALE_OIDC_ISSUER":             scenario.mockOIDC.Issuer(),
+		"HEADSCALE_OIDC_CLIENT_ID":          scenario.mockOIDC.ClientID(),
+		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
+		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
+		"HEADSCALE_OIDC_RETRY_INTERVAL":     "1s",
+		// Without this, Headscale exits on the unreachable provider instead of retrying.
+		"HEADSCALE_OIDC_ONLY_START_IF_OIDC_IS_AVAILABLE": "false",
+	}
+
+	err = scenario.CreateHeadscaleEnvWithLoginURL(
+		nil,
+		hsic.WithTestName("oidcretry"),
+		hsic.WithConfigEnv(oidcMap),
+		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	// Make the mock OIDC container available again
+	err = scenario.pool.Client.UnpauseContainer(scenario.mockOIDC.r.Container.ID)
+	require.NoError(t, err)
+
+	ts, err := scenario.CreateTailscaleNode(
+		"unstable",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+	)
+	require.NoError(t, err)
+
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		u, err := ts.LoginWithURL(headscale.GetEndpoint())
+		if !assert.NoError(ct, err) {
+			return
+		}
+
+		_, err = doLoginURL(ts.Hostname(), u)
+		assert.NoError(ct, err)
+	}, integrationutil.StatusReadyTimeout, 1*time.Second)
+
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		if !assert.NoError(ct, err) {
+			return
+		}
+
+		assert.Len(ct, nodes, 1)
+	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll)
+}
