@@ -2505,6 +2505,244 @@ func TestNewPolicyManager_UnknownUsernameTolerant(t *testing.T) {
 	require.NoError(t, err, "missing-user references must not block policy load (#2863)")
 }
 
+// TestUnregisteredUsersAreNoOp pins, at every policy site that takes users,
+// that naming a user who has not registered changes nothing (#3513).
+// Tailscale accepts such policies; the user gains access once they join and
+// loses it when deleted. Swapping in a registered user proves each site has
+// an observable effect, so an equal result is not vacuous.
+func TestUnregisteredUsersAreNoOp(t *testing.T) {
+	t.Parallel()
+
+	// IDs are assigned after construction so the test also builds where
+	// types.User embeds gorm.Model.
+	all := types.Users{{Name: "alice"}, {Name: "bob"}, {Name: "ghost"}}
+	all[0].ID, all[1].ID, all[2].ID = 1, 2, 3
+	registered := all[:2:2]
+
+	exitRoutes := []netip.Prefix{mp("0.0.0.0/0"), mp("::/0")}
+	userRoutes := []netip.Prefix{mp("10.44.0.0/16"), mp("0.0.0.0/0"), mp("::/0")}
+
+	// mkNodes adds ghost's node, advertising routes for autoApprovers to
+	// act on, when users includes ghost.
+	mkNodes := func(users types.Users) types.Nodes {
+		withHostinfo := func(n *types.Node, tags []string, routes, approved []netip.Prefix) *types.Node {
+			n.Tags = tags
+			n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: routes}
+			n.ApprovedRoutes = approved
+
+			return n
+		}
+
+		nodes := types.Nodes{
+			withHostinfo(node("alice", "100.64.0.1", "fd7a:115c:a1e0::1", users[0]), nil, nil, nil),
+			withHostinfo(node("alice-router", "100.64.0.2", "fd7a:115c:a1e0::2", users[0]), nil, userRoutes, nil),
+			withHostinfo(node("bob", "100.64.0.3", "fd7a:115c:a1e0::3", users[1]), nil, nil, nil),
+			withHostinfo(node("exit", "100.64.0.4", "fd7a:115c:a1e0::4", users[1]),
+				[]string{"tag:exit"}, exitRoutes, exitRoutes),
+			withHostinfo(node("router", "100.64.0.5", "fd7a:115c:a1e0::5", users[1]),
+				[]string{"tag:router"}, []netip.Prefix{mp("10.33.0.0/16")}, []netip.Prefix{mp("10.33.0.0/16")}),
+			withHostinfo(node("server", "100.64.0.6", "fd7a:115c:a1e0::6", users[1]),
+				[]string{"tag:server"}, nil, nil),
+		}
+		if len(users) > 2 {
+			nodes = append(nodes, withHostinfo(
+				node("ghost", "100.64.0.7", "fd7a:115c:a1e0::7", users[2]), nil, userRoutes, nil))
+		}
+
+		for i, n := range nodes {
+			n.ID = types.NodeID(i + 1) //nolint:gosec
+		}
+
+		return nodes
+	}
+
+	// Each body receives the member list; group cases put it in group:g,
+	// list cases name the users directly.
+	tests := []struct {
+		name      string
+		devOwners string
+		body      func(members string) string
+	}{
+		{name: "acl src group", body: func(string) string {
+			return `"acls": [{"action": "accept", "src": ["group:g"], "dst": ["tag:server:22"]}]`
+		}},
+		{name: "acl src list", body: func(m string) string {
+			return `"acls": [{"action": "accept", "src": [` + m + `], "dst": ["tag:server:22"]}]`
+		}},
+		{name: "acl dst group", body: func(string) string {
+			return `"acls": [{"action": "accept", "src": ["tag:server"], "dst": ["group:g:*"]}]`
+		}},
+		{name: "acl autogroup:self", body: func(string) string {
+			return `"acls": [{"action": "accept", "src": ["group:g"], "dst": ["autogroup:self:*"]}]`
+		}},
+		{name: "grant ip group", body: func(string) string {
+			return `"grants": [{"src": ["group:g"], "dst": ["tag:server"], "ip": ["tcp:443"]}]`
+		}},
+		{name: "grant via exit group", body: func(string) string {
+			return `"grants": [{"src": ["group:g"], "dst": ["autogroup:internet"], "ip": ["*"], "via": ["tag:exit"]}]`
+		}},
+		{name: "grant via exit list", body: func(m string) string {
+			return `"grants": [{"src": [` + m + `], "dst": ["autogroup:internet"], "ip": ["*"], "via": ["tag:exit"]}]`
+		}},
+		{name: "grant via subnet group", body: func(string) string {
+			return `"grants": [{"src": ["group:g"], "dst": ["10.33.0.0/16"], "ip": ["*"], "via": ["tag:router"]}]`
+		}},
+		{name: "grant app dst group", body: func(string) string {
+			return `"grants": [{"src": ["tag:server"], "dst": ["group:g"], "app": {"tailscale.com/cap/relay": [{}]}}]`
+		}},
+		{name: "ssh accept group", body: func(string) string {
+			return `"ssh": [{"action": "accept", "src": ["group:g"], "dst": ["tag:server"], "users": ["root"]}]`
+		}},
+		{name: "ssh accept list", body: func(m string) string {
+			return `"ssh": [{"action": "accept", "src": [` + m + `], "dst": ["tag:server"], "users": ["root"]}]`
+		}},
+		{name: "ssh autogroup:self", body: func(string) string {
+			return `"ssh": [{"action": "accept", "src": ["group:g"], "dst": ["autogroup:self"], "users": ["root"]}]`
+		}},
+		{name: "ssh check group", body: func(string) string {
+			return `"ssh": [{"action": "check", "checkPeriod": "2h", "src": ["group:g"], "dst": ["tag:server"], "users": ["root"]}]`
+		}},
+		{name: "tagOwners group", devOwners: `"group:g"`, body: func(string) string { return "" }},
+		{name: "tagOwners list", devOwners: "LIST", body: func(string) string { return "" }},
+		{name: "autoApprovers routes group", body: func(string) string {
+			return `"autoApprovers": {"routes": {"10.44.0.0/16": ["group:g"]}}`
+		}},
+		{name: "autoApprovers exitNode group", body: func(string) string {
+			return `"autoApprovers": {"exitNode": ["group:g"]}`
+		}},
+		{name: "nodeAttrs group", body: func(string) string {
+			return `"nodeAttrs": [{"target": ["group:g"], "attr": ["randomize-client-port"]}]`
+		}},
+		{name: "nodeAttrs list", body: func(m string) string {
+			return `"nodeAttrs": [{"target": [` + m + `], "attr": ["randomize-client-port"]}]`
+		}},
+	}
+
+	type checkParams struct {
+		Period time.Duration
+		OK     bool
+	}
+
+	// snapshot gathers every per-node and per-pair result a policy drives.
+	snapshot := func(t *testing.T, pm *PolicyManager, nodes types.Nodes) map[string]any {
+		t.Helper()
+
+		got := map[string]any{}
+		got["filter"], _ = pm.Filter()
+		peers := pm.BuildPeerMap(nodes.ViewSlice())
+
+		for _, n := range nodes {
+			nv := n.View()
+
+			rules, err := pm.FilterForNode(nv)
+			require.NoError(t, err)
+
+			ssh, err := pm.SSHPolicy("", nv)
+			require.NoError(t, err)
+
+			ids := slices.Clone(peers[n.ID])
+			slices.Sort(ids)
+
+			got[n.Hostname+" filter"] = rules
+			got[n.Hostname+" ssh"] = ssh
+			got[n.Hostname+" caps"] = pm.NodeCapMap(n.ID)
+			got[n.Hostname+" peers"] = ids
+			got[n.Hostname+" tag:dev"] = pm.NodeCanHaveTag(nv, "tag:dev")
+
+			for _, r := range n.Hostinfo.RoutableIPs {
+				got[n.Hostname+" approves "+r.String()] = pm.NodeCanApproveRoute(nv, r)
+			}
+
+			for _, p := range nodes {
+				if p.ID == n.ID {
+					continue
+				}
+
+				period, ok := pm.SSHCheckParams(n.ID, p.ID)
+				got[n.Hostname+"->"+p.Hostname+" via"] = pm.ViaRoutesForPeer(nv, p.View())
+				got[n.Hostname+"->"+p.Hostname+" check"] = checkParams{period, ok}
+			}
+		}
+
+		return got
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			render := func(members string) []byte {
+				devOwners := tt.devOwners
+				switch devOwners {
+				case "":
+					devOwners = `"bob@"`
+				case "LIST":
+					devOwners = members
+				}
+
+				return []byte(`{
+					"groups": {"group:g": [` + members + `]},
+					"tagOwners": {
+						"tag:exit": ["bob@"], "tag:router": ["bob@"], "tag:server": ["bob@"],
+						"tag:dev": [` + devOwners + `],
+					},
+					` + tt.body(members) + `
+				}`)
+			}
+
+			load := func(members string, users types.Users, nodes types.Nodes) *PolicyManager {
+				t.Helper()
+
+				pm, err := NewPolicyManager(render(members), users, nodes.ViewSlice())
+				require.NoError(t, err, "a policy naming an unregistered user must load")
+
+				return pm
+			}
+
+			diff := func(want, got map[string]any) string {
+				return cmp.Diff(want, got, cmpOptions()...)
+			}
+
+			const (
+				withGhost = `"alice@", "ghost@"`
+				alice     = `"alice@"`
+			)
+
+			nodes := mkNodes(registered)
+			want := snapshot(t, load(alice, registered, nodes), nodes)
+			pm := load(withGhost, registered, nodes)
+
+			require.Empty(t, diff(want, snapshot(t, pm, nodes)),
+				"an unregistered user must change nothing")
+			require.NotEmpty(t, diff(want, snapshot(t, load(`"bob@"`, registered, nodes), nodes)),
+				"the site must react to its members")
+
+			// ghost registers, then their node joins.
+			grown := mkNodes(all)
+
+			_, _, err := pm.SetUsers(all)
+			require.NoError(t, err)
+			_, err = pm.SetNodes(grown.ViewSlice())
+			require.NoError(t, err)
+
+			joined := snapshot(t, pm, grown)
+			require.Empty(t, diff(snapshot(t, load(withGhost, all, grown), grown), joined),
+				"after joining, ghost must match a fresh load")
+			require.NotEmpty(t, diff(snapshot(t, load(alice, all, grown), grown), joined),
+				"after joining, ghost must gain access")
+
+			// ghost's node leaves, then ghost is deleted.
+			_, err = pm.SetNodes(nodes.ViewSlice())
+			require.NoError(t, err)
+			_, _, err = pm.SetUsers(registered)
+			require.NoError(t, err)
+
+			require.Empty(t, diff(want, snapshot(t, pm, nodes)),
+				"after deletion, ghost must leave no trace")
+		})
+	}
+}
+
 // Rejected SetPolicy must keep the previous policy intact.
 func TestSetPolicy_DuplicateUsername(t *testing.T) {
 	users := types.Users{
