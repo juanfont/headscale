@@ -8,7 +8,10 @@
 package v2
 
 import (
+	"encoding/json"
+	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -259,9 +262,89 @@ func TestSSHDataCompat(t *testing.T) {
 	}
 }
 
+// sshLocalUser maps sshUser to a local user the way tailssh does for one
+// rule: an exact entry wins, then "*"; "" means the rule does not apply.
+func sshLocalUser(users map[string]string, sshUser string) string {
+	local, ok := users[sshUser]
+	if !ok {
+		local = users["*"]
+	}
+
+	if local == "=" {
+		return sshUser
+	}
+
+	return local
+}
+
+// assertSSHCheckParamsMatchRules checks SSHCheckParams against check rules as
+// tailssh reads them: (src, dst, local user) must be found exactly when a
+// holdAndDelegate rule for dst lists src as a principal and maps some SSH
+// user to that local user.
+func assertSSHCheckParamsMatchRules(
+	t *testing.T,
+	pm *PolicyManager,
+	nodes types.Nodes,
+	rulesFor func(dst *types.Node) []*tailcfg.SSHRule,
+) {
+	t.Helper()
+
+	byIP := make(map[string]*types.Node)
+
+	for _, n := range nodes {
+		for _, ip := range n.IPs() {
+			byIP[ip.String()] = n
+		}
+	}
+
+	candidates := []string{"root", "nonroot-probe"}
+
+	for _, dst := range nodes {
+		for _, rule := range rulesFor(dst) {
+			for user := range rule.SSHUsers {
+				if user != "*" && !slices.Contains(candidates, user) {
+					candidates = append(candidates, user)
+				}
+			}
+		}
+	}
+
+	for _, dst := range nodes {
+		want := make(map[types.NodeID]map[string]bool)
+
+		for _, rule := range rulesFor(dst) {
+			if rule.Action == nil || rule.Action.HoldAndDelegate == "" {
+				continue
+			}
+
+			for _, p := range rule.Principals {
+				src, ok := byIP[p.NodeIP]
+				require.Truef(t, ok, "principal %q is not a node", p.NodeIP)
+
+				if want[src.ID] == nil {
+					want[src.ID] = make(map[string]bool)
+				}
+
+				for _, user := range candidates {
+					if local := sshLocalUser(rule.SSHUsers, user); local != "" {
+						want[src.ID][local] = true
+					}
+				}
+			}
+		}
+
+		for _, src := range nodes {
+			for _, user := range candidates {
+				_, got := pm.SSHCheckParams(src.ID, dst.ID, user)
+				assert.Equalf(t, want[src.ID][user], got,
+					"SSHCheckParams(%s -> %s as %s)", src.Hostname, dst.Hostname, user)
+			}
+		}
+	}
+}
+
 // TestSSHCheckParamsMatchesCaptures pins SSHCheckParams, which decides the
-// SSH check callback, to the check rules Tailscale sent: exactly the
-// captured holdAndDelegate principals must be found for each node.
+// SSH check callback, to the check rules Tailscale sent.
 func TestSSHCheckParamsMatchesCaptures(t *testing.T) {
 	t.Parallel()
 
@@ -291,36 +374,69 @@ func TestSSHCheckParamsMatchesCaptures(t *testing.T) {
 			)
 			require.NoError(t, err)
 
-			byIP := make(map[string]*types.Node)
+			assertSSHCheckParamsMatchRules(t, pm, nodes,
+				func(dst *types.Node) []*tailcfg.SSHRule {
+					return tf.Captures[dst.GivenName].SSHRules
+				})
+		})
+	}
+}
 
-			for _, n := range nodes {
-				for _, ip := range n.IPs() {
-					byIP[ip.String()] = n
-				}
-			}
+// TestSSHCheckParamsMatchesCompiledRules pins SSHCheckParams to headscale's
+// own compiled rules for shapes the captures lack, such as a user whose
+// email localpart is root.
+func TestSSHCheckParamsMatchesCompiledRules(t *testing.T) {
+	t.Parallel()
 
-			for _, dst := range nodes {
-				want := make(map[types.NodeID]bool)
+	users := types.Users{
+		{Name: "root", Email: "root@example.com"},
+		{Name: "alice", Email: "alice@example.com"},
+	}
+	users[0].ID = 1
+	users[1].ID = 2
 
-				for _, rule := range tf.Captures[dst.GivenName].SSHRules {
-					if rule.Action == nil || rule.Action.HoldAndDelegate == "" {
-						continue
-					}
+	nodes := types.Nodes{
+		node("root-1", "100.64.0.1", "fd7a:115c:a1e0::1", users[0]),
+		node("root-2", "100.64.0.2", "fd7a:115c:a1e0::2", users[0]),
+		node("alice-1", "100.64.0.3", "fd7a:115c:a1e0::3", users[1]),
+		node("server", "100.64.0.4", "fd7a:115c:a1e0::4", users[1]),
+	}
+	for i, n := range nodes {
+		n.ID = types.NodeID(i + 1) //nolint:gosec
+	}
 
-					for _, p := range rule.Principals {
-						src, ok := byIP[p.NodeIP]
-						require.Truef(t, ok, "principal %q is not a node", p.NodeIP)
+	nodes[3].Tags = []string{"tag:server"}
 
-						want[src.ID] = true
-					}
-				}
+	check := func(dst string, users ...string) string {
+		usersJSON, err := json.Marshal(users)
+		require.NoError(t, err)
 
-				for _, src := range nodes {
-					_, got := pm.SSHCheckParams(src.ID, dst.ID)
-					assert.Equalf(t, want[src.ID], got,
-						"SSHCheckParams(%s -> %s)", src.GivenName, dst.GivenName)
-				}
-			}
+		return fmt.Sprintf(`{"action": "check", "src": ["autogroup:member"], "dst": [%q], "users": %s}`,
+			dst, usersJSON)
+	}
+
+	for name, rules := range map[string][]string{
+		"localpart on tag":            {check("tag:server", "localpart:*@example.com")},
+		"localpart on self":           {check("autogroup:self", "localpart:*@example.com")},
+		"localpart then root":         {check("tag:server", "localpart:*@example.com"), check("autogroup:self", "root")},
+		"nonroot and literal on self": {check("autogroup:self", "autogroup:nonroot", "deploy")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			pol := fmt.Sprintf(`{"tagOwners": {"tag:server": ["alice@"]}, "ssh": [%s]}`,
+				strings.Join(rules, ","))
+
+			pm, err := NewPolicyManager([]byte(pol), users, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			assertSSHCheckParamsMatchRules(t, pm, nodes,
+				func(dst *types.Node) []*tailcfg.SSHRule {
+					sshPol, err := pm.SSHPolicy("", dst.View())
+					require.NoError(t, err)
+
+					return sshPol.Rules
+				})
 		})
 	}
 }
