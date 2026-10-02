@@ -986,7 +986,7 @@ func (s *NodeStore) PrimaryRouteFor(prefix netip.Prefix) (types.NodeID, bool) {
 }
 
 // PrimaryRoutesForNode returns the prefixes for which id is the current
-// primary advertiser.
+// primary advertiser, sorted so an unchanged node renders identically.
 func (s *NodeStore) PrimaryRoutesForNode(id types.NodeID) []netip.Prefix {
 	snap := s.data.Load()
 	if !snap.isPrimaryRoute[id] {
@@ -1000,6 +1000,8 @@ func (s *NodeStore) PrimaryRoutesForNode(id types.NodeID) []netip.Prefix {
 			out = append(out, prefix)
 		}
 	}
+
+	slices.SortFunc(out, netip.Prefix.Compare)
 
 	return out
 }
