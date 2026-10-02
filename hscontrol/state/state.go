@@ -1257,12 +1257,13 @@ func (s *State) SSHPolicy(node types.NodeView) (*tailcfg.SSHPolicy, error) {
 	return s.polMan.SSHPolicy(s.cfg.ServerURL, node)
 }
 
-// SSHCheckParams resolves the SSH check period for a source-destination
-// node pair from the current policy.
+// SSHCheckParams resolves the SSH check period for src logging in to dst
+// as localUser from the current policy.
 func (s *State) SSHCheckParams(
 	srcNodeID, dstNodeID types.NodeID,
+	localUser string,
 ) (time.Duration, bool) {
-	return s.polMan.SSHCheckParams(srcNodeID, dstNodeID)
+	return s.polMan.SSHCheckParams(srcNodeID, dstNodeID, localUser)
 }
 
 // Filter returns the current network filter rules and matches.
@@ -1619,6 +1620,21 @@ func (s *State) PutNodeInStoreForTest(node types.Node) types.NodeView {
 // failures in poll-session tests while keeping the DB row intact for later restore.
 func (s *State) DeleteNodeFromStoreForTest(id types.NodeID) {
 	s.nodeStore.DeleteNode(id)
+}
+
+// WrapPolicyManagerForTest replaces the policy manager with wrap(current) so
+// tests can fail a single method. The [NodeStore] keeps the original manager,
+// so wrap must delegate to its argument. Call before any map is served.
+func (s *State) WrapPolicyManagerForTest(wrap func(policy.PolicyManager) policy.PolicyManager) {
+	s.polMan = wrap(s.polMan)
+}
+
+// UpdatePolicyManagerNodesForTest syncs the policy manager with the
+// [NodeStore], for tests that stage nodes with [State.PutNodeInStoreForTest].
+func (s *State) UpdatePolicyManagerNodesForTest() error {
+	_, err := s.polMan.SetNodes(s.ListNodes())
+
+	return err
 }
 
 // CreateRegisteredNodeForTest creates a test node with allocated IPs. This is a convenience wrapper around the database layer.

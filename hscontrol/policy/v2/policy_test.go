@@ -392,7 +392,7 @@ func TestSSHCheckParamsUnhydratedUserNoPanic(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NotPanics(t, func() {
-		pm.SSHCheckParams(types.NodeID(1), types.NodeID(2))
+		pm.SSHCheckParams(types.NodeID(1), types.NodeID(2), "alice")
 	}, "SSHCheckParams must not panic when a non-tagged node has an unhydrated User")
 }
 
@@ -953,6 +953,61 @@ func TestAutogroupSelfPolicyUpdateTriggersMapResponse(t *testing.T) {
 	policyChanged2, err := pm.SetPolicy([]byte(updatedPolicy))
 	require.NoError(t, err)
 	require.False(t, policyChanged2, "SetPolicy should return false when policy content hasn't changed")
+}
+
+// TestSSHPolicyRemovalClearsRules pins that removing every SSH rule
+// yields a non-nil, empty [tailcfg.SSHPolicy]. A nil MapResponse.SSHPolicy
+// tells the client to keep its previous rules, so returning nil leaves
+// revoked SSH access in force. SaaS sends {"rules":[]} for policies
+// without SSH rules; see the netmap in any testdata capture whose
+// policy lacks an "ssh" key.
+// https://github.com/juanfont/headscale/issues/3508
+func TestSSHPolicyRemovalClearsRules(t *testing.T) {
+	users := types.Users{{Name: "user1", Email: "user1@headscale.net"}}
+	users[0].ID = 1
+
+	nodes := types.Nodes{
+		node("server", "100.64.0.1", "fd7a:115c:a1e0::1", users[0]),
+		node("client", "100.64.0.2", "fd7a:115c:a1e0::2", users[0]),
+	}
+	nodes[0].ID = 1
+	nodes[1].ID = 2
+
+	withSSH := `{
+		"acls": [],
+		"ssh": [{
+			"action": "accept",
+			"src":    ["autogroup:member"],
+			"dst":    ["autogroup:self"],
+			"users":  ["root"]
+		}]
+	}`
+
+	for name, without := range map[string]string{
+		"ssh key removed": `{"acls": []}`,
+		"ssh empty list":  `{"acls": [], "ssh": []}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			pm, err := NewPolicyManager([]byte(withSSH), users, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			before, err := pm.SSHPolicy("", nodes[0].View())
+			require.NoError(t, err)
+			require.NotNil(t, before)
+			require.NotEmpty(t, before.Rules, "precondition: server has SSH rules")
+
+			changed, err := pm.SetPolicy([]byte(without))
+			require.NoError(t, err)
+			require.True(t, changed)
+
+			after, err := pm.SSHPolicy("", nodes[0].View())
+			require.NoError(t, err)
+			require.NotNil(t, after,
+				"nil SSHPolicy means 'unchanged' on the wire; client keeps stale rules")
+			require.NotNil(t, after.Rules, `SaaS sends "rules":[], not null`)
+			require.Empty(t, after.Rules)
+		})
+	}
 }
 
 // TestTagPropagationToPeerMap tests that when a node's tags change,

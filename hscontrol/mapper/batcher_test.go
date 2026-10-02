@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/derp"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
@@ -2337,6 +2339,55 @@ func TestAddWorkFullUpdateUnaffectedByEmpty(t *testing.T) {
 	}
 }
 
+var errInjectedSSHPolicy = errors.New("injected SSH policy failure")
+
+type failingSSHPolicyManager struct {
+	policy.PolicyManager
+}
+
+func (failingSSHPolicyManager) SSHPolicy(string, types.NodeView) (*tailcfg.SSHPolicy, error) {
+	return nil, errInjectedSSHPolicy
+}
+
+// TestSSHPolicyEmptyOnWire pins that a node without SSH rules, or whose SSH
+// policy fails to compile, gets "SSHPolicy":{"rules":[]}. A nil SSHPolicy
+// leaves the client's previous rules in force.
+// https://github.com/juanfont/headscale/issues/3508
+func TestSSHPolicyEmptyOnWire(t *testing.T) {
+	for name, failCompile := range map[string]bool{
+		"no ssh rules":  false,
+		"compile error": true,
+	} {
+		t.Run(name, func(t *testing.T) {
+			testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 2, normalBufferSize)
+			defer cleanup()
+
+			if failCompile {
+				testData.State.WrapPolicyManagerForTest(
+					func(pm policy.PolicyManager) policy.PolicyManager {
+						return failingSSHPolicyManager{PolicyManager: pm}
+					},
+				)
+			}
+
+			self := testData.Nodes[0].n.ID
+			mc := newMockNodeConnection(self)
+
+			require.NoError(t, handleNodeChange(mc, testData.Batcher.mapper, change.PolicyChange()))
+			require.NoError(t, handleNodeChange(mc, testData.Batcher.mapper, change.FullSelf(self)))
+
+			sent := mc.getSent()
+			require.Len(t, sent, 2)
+
+			for _, resp := range sent {
+				wire, err := json.Marshal(resp)
+				require.NoError(t, err)
+				assert.Contains(t, string(wire), `"SSHPolicy":{"rules":[]}`)
+			}
+		})
+	}
+}
+
 // TestAddWorkPeersRemovedNotTreatedAsEmpty ensures the empty filter does
 // not swallow a PeersRemoved change — deletion cleanup must still run, and
 // surviving recipients must still see the removal.
@@ -2470,4 +2521,105 @@ func TestDNSConfigOnlyWithSelfRefresh(t *testing.T) {
 	require.Len(t, sent, 2)
 	assert.Nil(t, sent[0].DNSConfig, "policy response must not carry DNSConfig")
 	assert.NotNil(t, sent[1].DNSConfig, "self refresh must carry DNSConfig")
+}
+
+// TestSSHPolicySentOnlyWhenChanged pins that policy frames drop an SSHPolicy
+// the client already holds, since any non-nil SSHPolicy forces a full client
+// netmap rebuild, while initial maps and real changes still carry it.
+// https://github.com/juanfont/headscale/issues/3508
+func TestSSHPolicySentOnlyWhenChanged(t *testing.T) {
+	testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 2, normalBufferSize)
+	defer cleanup()
+
+	b := testData.Batcher.Batcher
+	self := &testData.Nodes[0]
+
+	policy := func(sshUser, group string) []byte {
+		ssh := ""
+		if sshUser != "" {
+			ssh = fmt.Sprintf(`, "ssh": [{
+				"action": "accept",
+				"src":    ["autogroup:member"],
+				"dst":    ["autogroup:self"],
+				"users":  [%q]
+			}]`, sshUser)
+		}
+
+		return fmt.Appendf(nil, `{
+			"groups": {%q: []},
+			"acls":   [{"action": "accept", "src": ["*"], "dst": ["*:*"]}]%s
+		}`, "group:"+group, ssh)
+	}
+
+	_, err := testData.State.SetPolicy(policy("root", "a"))
+	require.NoError(t, err)
+
+	require.NoError(t, b.AddNode(self.n.ID, self.ch, tailcfg.CapabilityVersion(100), nil))
+
+	initial := expectReceive(t, self.ch, "initial map")
+	require.NotNil(t, initial.SSHPolicy)
+	require.NotEmpty(t, initial.SSHPolicy.Rules)
+
+	nc, ok := b.nodes.Load(self.n.ID)
+	require.True(t, ok)
+
+	policyFrame := func(chs ...chan *tailcfg.MapResponse) []*tailcfg.MapResponse {
+		nc.workMu.Lock()
+		defer nc.workMu.Unlock()
+
+		require.NoError(t, handleNodeChange(nc, b.mapper, change.PolicyChange()))
+
+		frames := make([]*tailcfg.MapResponse, 0, len(chs))
+		for _, ch := range chs {
+			frames = append(frames, expectReceive(t, ch, "policy frame"))
+		}
+
+		return frames
+	}
+
+	steps := []struct {
+		name     string
+		policy   []byte // nil: no policy change
+		wantSent bool
+		wantSSH  bool
+	}{
+		{"nothing changed", nil, false, false},
+		{"acl-only change", policy("root", "b"), false, false},
+		{"ssh users changed", policy("alice", "b"), true, true},
+		{"ssh removed", policy("", "b"), true, false},
+		{"acl-only change without ssh", policy("", "c"), false, false},
+	}
+
+	for _, step := range steps {
+		if step.policy != nil {
+			_, err := testData.State.SetPolicy(step.policy)
+			require.NoError(t, err)
+		}
+
+		frame := policyFrame(self.ch)[0]
+
+		if !step.wantSent {
+			assert.Nil(t, frame.SSHPolicy, "%s: unchanged SSHPolicy must be dropped", step.name)
+
+			_, delta := netmap.MutationsFromMapResponse(frame, time.Now())
+			assert.True(t, delta, "%s: frame must apply as a delta", step.name)
+
+			continue
+		}
+
+		require.NotNil(t, frame.SSHPolicy, "%s: changed SSHPolicy must be sent", step.name)
+		assert.Equal(t, step.wantSSH, len(frame.SSHPolicy.Rules) > 0, step.name)
+	}
+
+	// A new connection gets the policy in its initial map; afterwards both
+	// connections hold it and drop it from the next policy frame.
+	ch2 := make(chan *tailcfg.MapResponse, normalBufferSize)
+	require.NoError(t, b.AddNode(self.n.ID, ch2, tailcfg.CapabilityVersion(100), nil))
+
+	initial2 := expectReceive(t, ch2, "second connection's initial map")
+	require.NotNil(t, initial2.SSHPolicy, "every initial map must carry SSHPolicy")
+
+	for i, frame := range policyFrame(self.ch, ch2) {
+		assert.Nil(t, frame.SSHPolicy, "connection %d already holds the policy", i)
+	}
 }
