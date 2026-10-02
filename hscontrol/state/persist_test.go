@@ -613,10 +613,13 @@ func TestPreAuthKeyReauthRevertsNodeStoreOnDBFailure(t *testing.T) {
 	origNodeKey := node.NodeKey()
 
 	// Fail the node row update so the re-registration's database write errors
-	// after the NodeStore has already been mutated.
+	// after the NodeStore has already been mutated. A session connects during
+	// the write; the rollback must not undo it.
 	require.NoError(t, s.db.DB.Callback().Update().Before("gorm:update").
 		Register("fail_node_update", func(tx *gorm.DB) {
 			if tx.Statement.Table == "nodes" {
+				s.Connect(node.ID())
+
 				_ = tx.AddError(errInjectedNodeUpdate)
 			}
 		}))
@@ -631,6 +634,10 @@ func TestPreAuthKeyReauthRevertsNodeStoreOnDBFailure(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, origNodeKey, got.NodeKey(),
 		"NodeStore must revert to the persisted node key when the write fails")
+
+	online, known := got.IsOnline().GetOk()
+	require.True(t, known)
+	require.True(t, online, "rollback dropped the session that connected during the write")
 }
 
 // TestConcurrentPreAuthKeyRegistrationSameMachineKey ensures concurrent

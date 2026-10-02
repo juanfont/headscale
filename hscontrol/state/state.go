@@ -2908,9 +2908,23 @@ func (s *State) HandleNodeFromPreAuthKey(
 		if err != nil {
 			// The NodeStore was updated before the database write. Roll it back
 			// so it does not advertise a registration the database rejected
-			// (e.g. a node key that a restart would not reload).
+			// (e.g. a node key that a restart would not reload). Restore only
+			// the fields the update above wrote: sessions, endpoints and health
+			// may have moved since priorNode was taken. LastSeen stays, as the
+			// node did contact us.
 			if priorNode != nil {
-				s.nodeStore.PutNode(*priorNode)
+				s.nodeStore.UpdateNode(priorNode.ID, func(n *types.Node) {
+					n.NodeKey = priorNode.NodeKey
+					n.Hostname = priorNode.Hostname
+					n.Hostinfo = priorNode.Hostinfo
+					n.RegisterMethod = priorNode.RegisterMethod
+					n.Tags = priorNode.Tags
+					n.UserID = priorNode.UserID
+					n.User = priorNode.User
+					n.Expiry = priorNode.Expiry
+					n.AuthKey = priorNode.AuthKey
+					n.AuthKeyID = priorNode.AuthKeyID
+				})
 			}
 
 			return types.NodeView{}, s.policyChangeSince(genBefore), fmt.Errorf("writing node to database: %w", err)
