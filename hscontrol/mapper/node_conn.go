@@ -3,6 +3,7 @@ package mapper
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strconv"
 	"sync"
@@ -56,6 +57,9 @@ type connectionEntry struct {
 	// established connection must go through [multiChannelNodeConn.send]
 	// to keep it current.
 	lastSelf atomic.Pointer[tailcfg.Node]
+
+	// lastSSHPolicy is the last non-nil policy delivered to this connection.
+	lastSSHPolicy atomic.Pointer[tailcfg.SSHPolicy]
 }
 
 // withSelfDelta returns data without its Node when this client already
@@ -67,6 +71,21 @@ func (entry *connectionEntry) withSelfDelta(data *tailcfg.MapResponse) *tailcfg.
 
 	stripped := *data
 	stripped.Node = nil
+
+	return &stripped
+}
+
+// withSSHPolicyDelta returns data without its SSHPolicy when this client
+// already holds an equal one: any non-nil SSHPolicy forces a full client
+// netmap rebuild. Equal content arrives in fresh pointers after every
+// policy reload, so compare deeply.
+func (entry *connectionEntry) withSSHPolicyDelta(data *tailcfg.MapResponse) *tailcfg.MapResponse {
+	if data.SSHPolicy == nil || !reflect.DeepEqual(entry.lastSSHPolicy.Load(), data.SSHPolicy) {
+		return data
+	}
+
+	stripped := *data
+	stripped.SSHPolicy = nil
 
 	return &stripped
 }
@@ -360,7 +379,7 @@ func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 	)
 
 	for _, conn := range snapshot {
-		err := conn.send(conn.withSelfDelta(data))
+		err := conn.send(conn.withSSHPolicyDelta(conn.withSelfDelta(data)))
 		if err != nil {
 			lastErr = err
 
@@ -374,6 +393,9 @@ func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 
 			if data.Node != nil {
 				conn.lastSelf.Store(data.Node)
+			}
+			if data.SSHPolicy != nil {
+				conn.lastSSHPolicy.Store(data.SSHPolicy)
 			}
 		}
 	}
