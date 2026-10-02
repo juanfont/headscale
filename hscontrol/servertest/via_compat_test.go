@@ -247,6 +247,16 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 		}
 
 		t.Run(viewerName, func(t *testing.T) {
+			// Routes were approved on live sessions, so this also checks
+			// that the approval reached the node's own SelfNode.
+			if selfOffersExit(capture.Netmap) {
+				cl.WaitForCondition(t, "self offers exit node", 10*time.Second,
+					selfOffersExit)
+			} else {
+				assert.False(t, selfOffersExit(cl.Netmap()),
+					"SelfNode offers exit node, SaaS does not")
+			}
+
 			nm := cl.Netmap()
 			require.NotNil(t, nm, "netmap is nil")
 
