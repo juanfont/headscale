@@ -1628,6 +1628,14 @@ func (s *State) WrapPolicyManagerForTest(wrap func(policy.PolicyManager) policy.
 	s.polMan = wrap(s.polMan)
 }
 
+// UpdatePolicyManagerNodesForTest syncs the policy manager with the
+// [NodeStore], for tests that stage nodes with [State.PutNodeInStoreForTest].
+func (s *State) UpdatePolicyManagerNodesForTest() error {
+	_, err := s.polMan.SetNodes(s.ListNodes())
+
+	return err
+}
+
 // CreateRegisteredNodeForTest creates a test node with allocated IPs. This is a convenience wrapper around the database layer.
 func (s *State) CreateRegisteredNodeForTest(user *types.User, hostname ...string) *types.Node {
 	return s.db.CreateRegisteredNodeForTest(user, hostname...)

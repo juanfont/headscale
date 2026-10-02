@@ -12,6 +12,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/servertest"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
 )
@@ -124,4 +125,52 @@ func authIDFromHoldURL(t *testing.T, holdURL string) types.AuthID {
 	require.NoError(t, err, "HoldAndDelegate URL missing a valid auth_id: %s", holdURL)
 
 	return authID
+}
+
+// TestSSHCheckRejectedAfterRuleRemoved verifies that once a check rule is
+// removed or turned into accept, a client still holding the check gets a
+// Reject on both the initial and the follow-up poll, not a hold it could
+// pass by authenticating.
+// https://github.com/juanfont/headscale/issues/3508
+func TestSSHCheckRejectedAfterRuleRemoved(t *testing.T) {
+	t.Parallel()
+
+	const check = `{"ssh": [{
+		"action": "check",
+		"src":    ["harness-default@"],
+		"dst":    ["autogroup:self"],
+		"users":  ["autogroup:nonroot"]
+	}]}`
+
+	for name, after := range map[string]string{
+		"rule removed":    `{}`,
+		"check to accept": strings.Replace(check, `"check"`, `"accept"`, 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			h := servertest.NewHarness(t, 2)
+
+			srcID := types.NodeID(h.Client(0).Netmap().SelfNode.ID()) //nolint:gosec
+			dstID := types.NodeID(h.Client(1).Netmap().SelfNode.ID()) //nolint:gosec
+
+			h.ChangePolicy(t, []byte(check))
+
+			initial := pollSSHAction(t, h.Server.URL, h.Client(1), srcID, dstID, "")
+			require.NotEmpty(t, initial.HoldAndDelegate, "check must hold, got %+v", initial)
+
+			authID := authIDFromHoldURL(t, initial.HoldAndDelegate)
+
+			h.ChangePolicy(t, []byte(after))
+
+			_, checkFound := h.Server.State().SSHCheckParams(srcID, dstID)
+			require.False(t, checkFound, "test setup: check must be gone")
+
+			for poll, id := range map[string]string{"initial": "", "follow-up": authID.String()} {
+				action := pollSSHAction(t, h.Server.URL, h.Client(1), srcID, dstID, id)
+				assert.True(t, action.Reject, "%s poll must reject, got %+v", poll, action)
+				assert.Empty(t, action.HoldAndDelegate, "%s poll must not delegate", poll)
+			}
+		})
+	}
 }
