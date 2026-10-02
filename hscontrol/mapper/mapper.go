@@ -308,7 +308,8 @@ func (m *mapper) selfMapResponse(
 // [handleNodeChange]. It sends:
 //   - PeersChanged for remaining peers (their AllowedIPs may have changed due to policy)
 //   - Updated PacketFilters
-//   - Updated SSHPolicy (SSH rules may reference users/groups that changed)
+//   - Updated SSHPolicy (SSH rules may reference users/groups that changed);
+//     dropped per connection when unchanged, see [connectionEntry.withSSHPolicyDelta]
 //   - The node's own self info, which renders from the same state as peers;
 //     dropped per connection when unchanged, see [connectionEntry.withSelfDelta]
 //
