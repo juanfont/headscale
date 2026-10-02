@@ -132,7 +132,7 @@ clients, and how to run the same setup without Nix.
 
 - A node re-registering with a spent, expired or revoked pre-auth key is now rejected if it expired or changed node key while the re-registration was in flight [#3525](https://github.com/juanfont/headscale/pull/3525)
 - Fix a node ping being lost when a full map update is queued at the same time [#3523](https://github.com/juanfont/headscale/pull/3523)
-- Fix clients uploading logs to Tailscale Inc. while `logtail.enabled` is `false`; clients also granted the `data-plane-audit-logs` node attribute now go down until `tailscale up`
+- Fix clients uploading logs to Tailscale Inc. while `logtail.enabled` is `false`; clients also granted the `data-plane-audit-logs` node attribute now go down until `tailscale up` [#3522](https://github.com/juanfont/headscale/pull/3522)
 
 ## 0.29.5 (202x-xx-xx)
 
