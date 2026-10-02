@@ -534,6 +534,8 @@ func (pm *PolicyManager) SSHCheckParams(
 		}
 
 		// Check if dst node matches any destination.
+		hasOtherDests := false
+
 		for _, dst := range rule.Destinations {
 			if ag, isAG := dst.(*AutoGroup); isAG && ag.Is(AutoGroupSelf) {
 				// User().Valid() guards the User().ID() dereference: the
@@ -551,12 +553,29 @@ func (pm *PolicyManager) SSHCheckParams(
 				continue
 			}
 
+			hasOtherDests = true
+
 			dstIPs, err := dst.Resolve(pm.pol, pm.users, pm.nodes)
 			if err != nil || dstIPs == nil {
 				continue
 			}
 
 			if slices.ContainsFunc(dstNode.IPs(), dstIPs.Contains) {
+				return checkPeriodFromRule(rule), true
+			}
+		}
+
+		// Localpart self-access: a source outside dst still gets the rule
+		// for its own user's nodes, or itself if tagged (compileSSHPolicy).
+		if hasOtherDests && rule.Users.ContainsLocalpart() &&
+			slices.ContainsFunc(dstNode.IPs(), srcIPs.Contains) {
+			if dstNode.IsTagged() {
+				if srcNodeID == dstNodeID {
+					return checkPeriodFromRule(rule), true
+				}
+			} else if !srcNode.IsTagged() &&
+				srcNode.User().Valid() && dstNode.User().Valid() &&
+				srcNode.User().ID() == dstNode.User().ID() {
 				return checkPeriodFromRule(rule), true
 			}
 		}
