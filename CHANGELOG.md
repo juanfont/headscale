@@ -146,6 +146,8 @@ clients, and how to run the same setup without Nix.
 - Fix policy `tests` and `sshTests` failing for a group that names an unknown user [#3516](https://github.com/juanfont/headscale/pull/3516)
 - Fix an unknown user in `nodeAttrs` rejecting the policy [#3516](https://github.com/juanfont/headscale/pull/3516)
 
+- Fix an exit node or subnet router not seeing its own approved routes until it reconnected, so `tailscale status` did not show it offering an exit node [#3518](https://github.com/juanfont/headscale/pull/3518)
+
 ## 0.29.4 (2026-09-23)
 
 **Minimum supported Tailscale client version: v1.80.0**
