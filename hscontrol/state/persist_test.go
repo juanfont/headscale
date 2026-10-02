@@ -5,6 +5,7 @@ import (
 	"net/netip"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -268,6 +269,42 @@ func TestRegistrationRejectsNodeKeyClaimedByAnotherMachine(t *testing.T) {
 	})
 	require.Error(t, err,
 		"registering a NodeKey already bound to another machine must be rejected")
+}
+
+// TestRegistrationKeepsRequestTagsIntact guards the node's reported
+// Hostinfo.RequestTags against the in-place sort/compact that derives the
+// approved tag set: the two must not share a backing array.
+func TestRegistrationKeepsRequestTagsIntact(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+
+	database, err := db.NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	user := database.CreateUserForTest("tagger")
+	require.NoError(t, database.Close())
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, err = s.SetPolicy([]byte(`{"tagOwners":{"tag:a":["tagger@"],"tag:b":["tagger@"]}}`))
+	require.NoError(t, err)
+
+	node, err := s.createAndSaveNewNode(newNodeParams{
+		User:           *user,
+		MachineKey:     key.NewMachine().Public(),
+		NodeKey:        key.NewNode().Public(),
+		DiscoKey:       key.NewDisco().Public(),
+		Hostname:       "node",
+		Hostinfo:       &tailcfg.Hostinfo{RequestTags: []string{"tag:b", "tag:a", "tag:a"}},
+		RegisterMethod: util.RegisterMethodCLI,
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"tag:a", "tag:b"}, node.Tags().AsSlice())
+	assert.Equal(t, []string{"tag:b", "tag:a", "tag:a"}, node.Hostinfo().RequestTags().AsSlice(),
+		"reported RequestTags rewritten by tag approval")
 }
 
 // TestReauthRejectsNodeKeyClaimedByAnotherMachine proves the re-auth/update
@@ -576,10 +613,13 @@ func TestPreAuthKeyReauthRevertsNodeStoreOnDBFailure(t *testing.T) {
 	origNodeKey := node.NodeKey()
 
 	// Fail the node row update so the re-registration's database write errors
-	// after the NodeStore has already been mutated.
+	// after the NodeStore has already been mutated. A session connects during
+	// the write; the rollback must not undo it.
 	require.NoError(t, s.db.DB.Callback().Update().Before("gorm:update").
 		Register("fail_node_update", func(tx *gorm.DB) {
 			if tx.Statement.Table == "nodes" {
+				s.Connect(node.ID())
+
 				_ = tx.AddError(errInjectedNodeUpdate)
 			}
 		}))
@@ -594,6 +634,10 @@ func TestPreAuthKeyReauthRevertsNodeStoreOnDBFailure(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, origNodeKey, got.NodeKey(),
 		"NodeStore must revert to the persisted node key when the write fails")
+
+	online, known := got.IsOnline().GetOk()
+	require.True(t, known)
+	require.True(t, online, "rollback dropped the session that connected during the write")
 }
 
 // TestConcurrentPreAuthKeyRegistrationSameMachineKey ensures concurrent
@@ -1053,4 +1097,62 @@ func TestNodeWriteChangeWhenPolicyRefreshFails(t *testing.T) {
 			assert.Contains(t, c.PeersChanged, nodeID, "change: %s", c.Type())
 		})
 	}
+}
+
+// TestBackfillNodeIPsSurvivesConcurrentPersist guards the backfill against a
+// node persist landing between its database write and the NodeStore reload:
+// that persist writes the old addresses back and the backfill is lost.
+func TestBackfillNodeIPsSurvivesConcurrentPersist(t *testing.T) {
+	dbPath, s, nodeID := persistTestSetup(t)
+	require.NoError(t, s.Close())
+
+	// Dropping the IPv6 prefix gives the backfill work to do.
+	cfg := persistTestConfig(dbPath)
+	cfg.PrefixV6 = nil
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	nv, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+	require.True(t, nv.IPv6().Valid(), "precondition: node has an IPv6 address")
+
+	// The backfill reads the nodes table twice: inside its write, then to
+	// reload NodeStore. Persist the node just before the reload.
+	var reads atomic.Int32
+
+	persisted := make(chan struct{})
+
+	require.NoError(t, s.db.DB.Callback().Query().Before("gorm:query").
+		Register("persist_before_reload", func(tx *gorm.DB) {
+			if tx.Statement.Table != "nodes" || reads.Add(1) != 2 {
+				return
+			}
+
+			go func() {
+				_, _ = s.persistNode(nv)
+
+				close(persisted)
+			}()
+
+			// Give an unserialised persist time to land before the reload.
+			select {
+			case <-persisted:
+			case <-time.After(200 * time.Millisecond):
+			}
+		}))
+	t.Cleanup(func() { _ = s.db.DB.Callback().Query().Remove("persist_before_reload") })
+
+	_, _, err = s.BackfillNodeIPs()
+	require.NoError(t, err)
+	<-persisted
+
+	nv, ok = s.GetNodeByID(nodeID)
+	require.True(t, ok)
+	assert.False(t, nv.IPv6().Valid(), "NodeStore kept the removed IPv6 address")
+
+	dbNode, err := s.db.GetNodeByID(nodeID)
+	require.NoError(t, err)
+	assert.Nil(t, dbNode.IPv6, "database kept the removed IPv6 address")
 }

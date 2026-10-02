@@ -2,6 +2,7 @@ package v2
 
 import (
 	"fmt"
+	"slices"
 	"sync"
 	"testing"
 
@@ -99,4 +100,50 @@ func TestPolicyManagerConcurrentReads(t *testing.T) {
 	})
 
 	wg.Wait()
+}
+
+// TestViaRoutesForPeerDoesNotWritePolicyGrants guards against
+// ViaRoutesForPeer appending ACL-derived grants into the backing array of
+// pm.pol.Grants. Readers hold only the shared RLock, so any spare capacity
+// in that slice becomes a write/write race between concurrent callers.
+func TestViaRoutesForPeerDoesNotWritePolicyGrants(t *testing.T) {
+	users := types.Users{{Name: "user1", Email: "user1@headscale.net"}}
+
+	a := node("a", "100.64.0.1", "fd7a:115c:a1e0::1", users[0])
+	a.ID = 1
+	b := node("b", "100.64.0.2", "fd7a:115c:a1e0::2", users[0])
+	b.ID = 2
+	nodes := types.Nodes{a, b}
+
+	policy := `{
+		"grants": [
+			{"src": ["*"], "dst": ["*"], "ip": ["tcp:22"]}
+		],
+		"acls": [
+			{"action": "accept", "src": ["*"], "dst": ["*:*"]}
+		]
+	}`
+
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	// Guarantee spare capacity instead of relying on the JSON decoder's
+	// growth policy.
+	pm.pol.Grants = slices.Grow(pm.pol.Grants, 4)
+	spare := pm.pol.Grants[len(pm.pol.Grants):cap(pm.pol.Grants)]
+
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			for range 50 {
+				pm.ViaRoutesForPeer(a.View(), b.View())
+			}
+		})
+	}
+
+	wg.Wait()
+
+	for i, g := range spare {
+		assert.Zero(t, g, "spare slot %d of pm.pol.Grants was written", i)
+	}
 }

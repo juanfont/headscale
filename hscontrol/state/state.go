@@ -1142,43 +1142,46 @@ func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView,
 func (s *State) BackfillNodeIPs() ([]string, []change.Change, error) {
 	genBefore := s.polMan.NodesGeneration()
 
+	// Hold persistMu until NodeStore has the new addresses, or a concurrent
+	// persist writes the old ones back from NodeStore in between.
+	s.persistMu.Lock()
+
 	changes, err := s.db.BackfillNodeIPs(s.ipAlloc)
 	if err != nil {
+		s.persistMu.Unlock()
+
 		return nil, nil, err
 	}
 
 	var readdressed []types.NodeID
 
-	// Refresh [NodeStore] after IP changes to ensure consistency
+	// Copy only the IPs into [NodeStore]: the database rows lack
+	// runtime-only state such as sessions and online status.
 	if len(changes) > 0 {
 		nodes, err := s.db.ListNodes()
 		if err != nil {
+			s.persistMu.Unlock()
+
 			return changes, nil, fmt.Errorf("refreshing NodeStore after IP backfill: %w", err)
 		}
 
+		updates := make(map[types.NodeID]UpdateNodeFunc, len(nodes))
 		for _, node := range nodes {
-			// Preserve online status and NetInfo when refreshing from database
 			existingNode, exists := s.nodeStore.GetNode(node.ID)
-			if !exists || !slices.Equal(existingNode.IPs(), node.IPs()) {
+			if exists && !slices.Equal(existingNode.IPs(), node.IPs()) {
 				readdressed = append(readdressed, node.ID)
 			}
 
-			if exists && existingNode.Valid() {
-				node.IsOnline = new(existingNode.IsOnline().Get())
-
-				// TODO(kradalby): We should ensure we use the same hostinfo and node merge semantics
-				// when a node re-registers as we do when it sends a map request (UpdateNodeFromMapRequest).
-
-				// Preserve NetInfo from existing node to prevent loss during backfill
-				netInfo := netInfoFromMapRequest(node.ID, existingNode.Hostinfo().AsStruct(), node.Hostinfo)
-				node.Hostinfo = existingNode.Hostinfo().AsStruct()
-				node.Hostinfo.NetInfo = netInfo
+			updates[node.ID] = func(n *types.Node) {
+				n.IPv4 = node.IPv4
+				n.IPv6 = node.IPv6
 			}
-			// TODO(kradalby): This should just update the IP addresses, nothing else in the node store.
-			// We should avoid [NodeStore.PutNode] here.
-			_ = s.nodeStore.PutNode(*node)
 		}
+
+		s.nodeStore.UpdateNodes(updates)
 	}
+
+	s.persistMu.Unlock()
 
 	// IPs are policy inputs: without this, clients only learned the new
 	// addresses from whichever unrelated write next refreshed the policy.
@@ -2114,9 +2117,8 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 		// All tags are approved - apply them
 		approvedTags := params.Hostinfo.RequestTags
 		if len(approvedTags) > 0 {
-			nodeToRegister.Tags = approvedTags
-			slices.Sort(nodeToRegister.Tags)
-			nodeToRegister.Tags = slices.Compact(nodeToRegister.Tags)
+			// Sort a copy: approvedTags is the node's reported Hostinfo.
+			nodeToRegister.Tags = slices.Compact(slices.Sorted(slices.Values(approvedTags)))
 
 			// Node is now tagged, so clear user ownership.
 			// Tagged nodes are owned by their tags, not a user.
@@ -2906,9 +2908,23 @@ func (s *State) HandleNodeFromPreAuthKey(
 		if err != nil {
 			// The NodeStore was updated before the database write. Roll it back
 			// so it does not advertise a registration the database rejected
-			// (e.g. a node key that a restart would not reload).
+			// (e.g. a node key that a restart would not reload). Restore only
+			// the fields the update above wrote: sessions, endpoints and health
+			// may have moved since priorNode was taken. LastSeen stays, as the
+			// node did contact us.
 			if priorNode != nil {
-				s.nodeStore.PutNode(*priorNode)
+				s.nodeStore.UpdateNode(priorNode.ID, func(n *types.Node) {
+					n.NodeKey = priorNode.NodeKey
+					n.Hostname = priorNode.Hostname
+					n.Hostinfo = priorNode.Hostinfo
+					n.RegisterMethod = priorNode.RegisterMethod
+					n.Tags = priorNode.Tags
+					n.UserID = priorNode.UserID
+					n.User = priorNode.User
+					n.Expiry = priorNode.Expiry
+					n.AuthKey = priorNode.AuthKey
+					n.AuthKeyID = priorNode.AuthKeyID
+				})
 			}
 
 			return types.NodeView{}, s.policyChangeSince(genBefore), fmt.Errorf("writing node to database: %w", err)
