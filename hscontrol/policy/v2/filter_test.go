@@ -2753,11 +2753,35 @@ func TestIPSetToPrincipals(t *testing.T) {
 	}
 }
 
+// overlappingSSHChecks has a localpart check rule whose self-access reaches
+// user1's own nodes ahead of an always-check root rule for the same pair.
+var overlappingSSHChecks = []byte(`{
+	"tagOwners": {"tag:server": ["user1@"]},
+	"ssh": [
+		{
+			"action": "check",
+			"checkPeriod": "12h",
+			"src": ["user1@"],
+			"dst": ["tag:server"],
+			"users": ["localpart:*@example.com"]
+		},
+		{
+			"action": "check",
+			"checkPeriod": "always",
+			"src": ["user1@"],
+			"dst": ["autogroup:self"],
+			"users": ["root"]
+		}
+	]
+}`)
+
 func TestSSHCheckParams(t *testing.T) {
 	users := types.Users{
 		{Name: "user1", ID: 1},
 		{Name: "user2", ID: 2},
 	}
+	users[0].Email = "user1@example.com"
+	users[1].Email = "user2@example.com"
 
 	nodeUser1 := types.Node{
 		ID:       1,
@@ -2789,6 +2813,7 @@ func TestSSHCheckParams(t *testing.T) {
 		policy     []byte
 		srcID      types.NodeID
 		dstID      types.NodeID
+		localUser  string // defaults to a non-root user
 		wantPeriod time.Duration
 		wantOK     bool
 	}{
@@ -2917,6 +2942,66 @@ func TestSSHCheckParams(t *testing.T) {
 			dstID:  types.NodeID(2),
 			wantOK: false,
 		},
+		{
+			name: "root rejected by a nonroot rule",
+			policy: []byte(`{
+				"tagOwners": {"tag:server": ["user1@"]},
+				"ssh": [{
+					"action": "check",
+					"src": ["user2@"],
+					"dst": ["tag:server"],
+					"users": ["autogroup:nonroot"]
+				}]
+			}`),
+			srcID:     types.NodeID(2),
+			dstID:     types.NodeID(3),
+			localUser: "root",
+			wantOK:    false,
+		},
+		{
+			name: "literal user must match",
+			policy: []byte(`{
+				"tagOwners": {"tag:server": ["user1@"]},
+				"ssh": [{
+					"action": "check",
+					"src": ["user2@"],
+					"dst": ["tag:server"],
+					"users": ["deploy"]
+				}]
+			}`),
+			srcID:     types.NodeID(2),
+			dstID:     types.NodeID(3),
+			localUser: "other",
+			wantOK:    false,
+		},
+		{
+			// The client skips the localpart rule for root and enforces
+			// the later always-check root rule; so must the server.
+			name:       "overlapping rules: root skips localpart self-access",
+			policy:     overlappingSSHChecks,
+			srcID:      types.NodeID(1),
+			dstID:      types.NodeID(1),
+			localUser:  "root",
+			wantPeriod: 0,
+			wantOK:     true,
+		},
+		{
+			name:       "overlapping rules: localpart user gets its period",
+			policy:     overlappingSSHChecks,
+			srcID:      types.NodeID(1),
+			dstID:      types.NodeID(1),
+			localUser:  "user1",
+			wantPeriod: 12 * time.Hour,
+			wantOK:     true,
+		},
+		{
+			name:      "overlapping rules: another user's localpart is rejected",
+			policy:    overlappingSSHChecks,
+			srcID:     types.NodeID(1),
+			dstID:     types.NodeID(1),
+			localUser: "user2",
+			wantOK:    false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -2924,7 +3009,12 @@ func TestSSHCheckParams(t *testing.T) {
 			pm, err := NewPolicyManager(tt.policy, users, nodes.ViewSlice())
 			require.NoError(t, err)
 
-			period, ok := pm.SSHCheckParams(tt.srcID, tt.dstID)
+			localUser := tt.localUser
+			if localUser == "" {
+				localUser = "alice"
+			}
+
+			period, ok := pm.SSHCheckParams(tt.srcID, tt.dstID, localUser)
 			assert.Equal(t, tt.wantOK, ok, "ok mismatch")
 
 			if tt.wantOK {

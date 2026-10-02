@@ -1257,12 +1257,13 @@ func (s *State) SSHPolicy(node types.NodeView) (*tailcfg.SSHPolicy, error) {
 	return s.polMan.SSHPolicy(s.cfg.ServerURL, node)
 }
 
-// SSHCheckParams resolves the SSH check period for a source-destination
-// node pair from the current policy.
+// SSHCheckParams resolves the SSH check period for src logging in to dst
+// as localUser from the current policy.
 func (s *State) SSHCheckParams(
 	srcNodeID, dstNodeID types.NodeID,
+	localUser string,
 ) (time.Duration, bool) {
-	return s.polMan.SSHCheckParams(srcNodeID, dstNodeID)
+	return s.polMan.SSHCheckParams(srcNodeID, dstNodeID, localUser)
 }
 
 // Filter returns the current network filter rules and matches.
