@@ -128,6 +128,14 @@ clients, and how to run the same setup without Nix.
 - Fix packet filters under `autogroup:self` not updating after a user is added or renamed [#3501](https://github.com/juanfont/headscale/pull/3501)
 - Fix a rejected policy leaving its packet filter active [#3501](https://github.com/juanfont/headscale/pull/3501)
 
+## 0.29.5 (unreleased)
+
+**Minimum supported Tailscale client version: v1.80.0**
+
+### Changes
+
+- Fix an exit node or subnet router not seeing its own approved routes until it reconnected, so `tailscale status` did not show it offering an exit node [#3518](https://github.com/juanfont/headscale/pull/3518)
+
 ## 0.29.4 (2026-09-23)
 
 **Minimum supported Tailscale client version: v1.80.0**
