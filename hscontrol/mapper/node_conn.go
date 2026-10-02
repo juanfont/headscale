@@ -3,6 +3,7 @@ package mapper
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strconv"
 	"sync"
@@ -50,6 +51,27 @@ type connectionEntry struct {
 	// can never become the stream's first frame ahead of the initial
 	// map. The zero value means the connection is ready.
 	pendingInitial atomic.Bool
+
+	// lastSSHPolicy is the last non-nil SSHPolicy delivered to this
+	// connection's client, which keeps it until sent another. Every send to
+	// an established connection must go through [multiChannelNodeConn.send]
+	// to keep it current.
+	lastSSHPolicy atomic.Pointer[tailcfg.SSHPolicy]
+}
+
+// withSSHPolicyDelta returns data without its SSHPolicy when this client
+// already holds an equal one: any non-nil SSHPolicy forces a full client
+// netmap rebuild. Equal content arrives in fresh pointers after every
+// policy reload, so compare deeply.
+func (entry *connectionEntry) withSSHPolicyDelta(data *tailcfg.MapResponse) *tailcfg.MapResponse {
+	if data.SSHPolicy == nil || !reflect.DeepEqual(entry.lastSSHPolicy.Load(), data.SSHPolicy) {
+		return data
+	}
+
+	stripped := *data
+	stripped.SSHPolicy = nil
+
+	return &stripped
 }
 
 // multiChannelNodeConn manages multiple concurrent connections for a single node.
@@ -333,7 +355,7 @@ func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 	)
 
 	for _, conn := range snapshot {
-		err := conn.send(data)
+		err := conn.send(conn.withSSHPolicyDelta(data))
 		if err != nil {
 			lastErr = err
 
@@ -343,6 +365,12 @@ func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 				Str(zf.ConnID, conn.id).
 				Msg("send: connection failed")
 		} else {
+			// Store even when stripped so the entry drops its older,
+			// equal copy.
+			if data.SSHPolicy != nil {
+				conn.lastSSHPolicy.Store(data.SSHPolicy)
+			}
+
 			successCount++
 		}
 	}

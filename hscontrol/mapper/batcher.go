@@ -344,6 +344,9 @@ func (b *Batcher) AddNode(
 	// and we want to avoid the race condition where the receiver isn't ready yet
 	select {
 	case c <- initialMap:
+		// Still pendingInitial, so no broadcast can race this.
+		newEntry.lastSSHPolicy.Store(initialMap.SSHPolicy)
+
 		// Record sent peers only after confirmed delivery, mirroring the async
 		// path, and under workMu so a concurrent async bundle for this node
 		// cannot interleave its own lastSentPeers update.

@@ -350,6 +350,8 @@ func (b *MapResponseBuilder) Build() (*tailcfg.MapResponse, error) {
 		return nil, multierr.New(b.errs...)
 	}
 
+	// Dumps show the generated response; an unchanged SSHPolicy is
+	// dropped later, per connection, before it reaches the wire.
 	if debugDumpMapResponsePath != "" {
 		writeDebugMapResponse(b.resp, b.debugType, b.nodeID)
 	}

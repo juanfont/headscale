@@ -1,6 +1,7 @@
 package servertest_test
 
 import (
+	"fmt"
 	"net/netip"
 	"testing"
 	"time"
@@ -154,6 +155,41 @@ func TestPolicyChanges(t *testing.T) {
 		h.Client(0).WaitForCondition(t, "SSH rules cleared", 10*time.Second,
 			func(nm *netmap.NetworkMap) bool {
 				return nm.SSHPolicy != nil && len(nm.SSHPolicy.Rules) == 0
+			})
+	})
+
+	// An unchanged SSHPolicy is dropped from policy frames; the client
+	// must keep the rules it holds.
+	t.Run("unrelated_policy_change_keeps_client_ssh_rules", func(t *testing.T) {
+		t.Parallel()
+		h := servertest.NewHarness(t, 2)
+
+		withSSH := func(group string) []byte {
+			return fmt.Appendf(nil, `{
+				"groups": {%q: []},
+				"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}],
+				"ssh": [{
+					"action": "accept",
+					"src":    ["autogroup:member"],
+					"dst":    ["autogroup:self"],
+					"users":  ["root"]
+				}]
+			}`, "group:"+group)
+		}
+
+		h.ChangePolicy(t, withSSH("a"))
+		h.Client(0).WaitForCondition(t, "SSH rules present", 10*time.Second,
+			func(nm *netmap.NetworkMap) bool {
+				return nm.SSHPolicy != nil && len(nm.SSHPolicy.Rules) > 0
+			})
+
+		countBefore := h.Client(0).UpdateCount()
+
+		h.ChangePolicy(t, withSSH("b"))
+		h.Client(0).WaitForCondition(t, "policy update with SSH rules kept", 10*time.Second,
+			func(nm *netmap.NetworkMap) bool {
+				return h.Client(0).UpdateCount() > countBefore &&
+					nm.SSHPolicy != nil && len(nm.SSHPolicy.Rules) > 0
 			})
 	})
 
