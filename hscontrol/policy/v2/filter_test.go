@@ -618,7 +618,7 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 					},
 				},
 			},
-			want: &tailcfg.SSHPolicy{},
+			want: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}},
 		},
 	}
 
