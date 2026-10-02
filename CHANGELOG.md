@@ -129,6 +129,17 @@ clients, and how to run the same setup without Nix.
 - Fix a rejected policy leaving its packet filter active [#3501](https://github.com/juanfont/headscale/pull/3501)
 - A registration request from a client below the minimum supported version is now rejected before it can log a node out, use a pre-auth key or start a login [#3519](https://github.com/juanfont/headscale/pull/3519)
 
+## 0.29.5 (202x-xx-xx)
+
+**Minimum supported Tailscale client version: v1.80.0**
+
+### Changes
+
+- Fix `via` grants not offering exit nodes and subnet routes to a group that names an unknown user [#3516](https://github.com/juanfont/headscale/pull/3516)
+- Fix SSH `check` periods and app grants dropping a group that names an unknown user [#3516](https://github.com/juanfont/headscale/pull/3516)
+- Fix policy `tests` and `sshTests` failing for a group that names an unknown user [#3516](https://github.com/juanfont/headscale/pull/3516)
+- Fix an unknown user in `nodeAttrs` rejecting the policy [#3516](https://github.com/juanfont/headscale/pull/3516)
+
 ## 0.29.4 (2026-09-23)
 
 **Minimum supported Tailscale client version: v1.80.0**
