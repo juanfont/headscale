@@ -2039,6 +2039,10 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 
 // createAndSaveNewNode creates a new node, allocates IPs, saves to DB, and adds to [NodeStore].
 // It preserves netinfo from an existing node if one is provided (for faster DERP connectivity).
+//
+// Name resolution, database creation and publication are serialized in the
+// NodeStore writer. The final name and single-use key consumption commit in
+// one transaction before readers can observe the new node.
 func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, error) {
 	// Preserve NetInfo from existing node if available
 	if params.Hostinfo != nil {
@@ -2159,42 +2163,49 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 	nodeToRegister.IPv4 = ipv4
 	nodeToRegister.IPv6 = ipv6
 
-	// Seed GivenName from the sanitised raw hostname. [NodeStore.PutNode]
-	// bumps on collision and falls back to "node" if the sanitised
-	// result is empty (pure non-ASCII / punctuation input).
+	// Seed GivenName from the sanitised raw hostname. The NodeStore writer
+	// resolves collisions and empty labels before the creation transaction.
 	if nodeToRegister.GivenName == "" {
 		nodeToRegister.GivenName = dnsname.SanitizeHostname(nodeToRegister.Hostname)
 	}
 
-	// New node - database first to get ID, then [NodeStore]
-	savedNode, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-		// Omit the AuthKey association: only auth_key_id is persisted here, the
-		// credential row is owned by the credential CRUD and must not be
-		// upserted from this node's (possibly stale) in-memory copy (#2862).
-		err := tx.Omit("AuthKey").Save(&nodeToRegister).Error
-		if err != nil {
-			return nil, fmt.Errorf("saving node: %w", err)
-		}
-
-		if params.PreAuthKey != nil && !params.PreAuthKey.Reusable {
-			err := hsdb.UsePreAuthKey(tx, params.PreAuthKey)
+	// Run persistence in the writer, which reserves the final name until
+	// publication. Do not take persistMu here: DeleteNode holds it while
+	// waiting for the writer. A new row cannot need deletion serialization
+	// before it has been published.
+	view, err := s.nodeStore.CreateNode(nodeToRegister, func(node *types.Node) error {
+		_, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
+			// Omit the AuthKey association: only auth_key_id is persisted here, the
+			// credential row is owned by the credential CRUD and must not be
+			// upserted from this node's (possibly stale) in-memory copy (#2862).
+			err := tx.Omit("AuthKey").Save(node).Error
 			if err != nil {
-				return nil, fmt.Errorf("using pre auth key: %w", err)
+				return nil, fmt.Errorf("saving node: %w", err)
 			}
 
-			// UsePreAuthKey marked the key used; refresh the node's in-memory
-			// AuthKey so the NodeStore copy matches the database.
-			nodeToRegister.AuthKey = params.PreAuthKey.AsCredential()
-		}
+			if params.PreAuthKey != nil && !params.PreAuthKey.Reusable {
+				err := hsdb.UsePreAuthKey(tx, params.PreAuthKey)
+				if err != nil {
+					return nil, fmt.Errorf("using pre auth key: %w", err)
+				}
 
-		return &nodeToRegister, nil
+				// UsePreAuthKey marked the key used; refresh the node's in-memory
+				// AuthKey so the NodeStore copy matches the database.
+				node.AuthKey = params.PreAuthKey.AsCredential()
+			}
+
+			return node, nil
+		})
+
+		return err
 	})
 	if err != nil {
+		s.ipAlloc.FreeIPs(nodeToRegister.IPs())
+
 		return types.NodeView{}, err
 	}
 
-	// Add to [NodeStore] after database creates the ID
-	return s.nodeStore.PutNode(*savedNode), nil
+	return view, nil
 }
 
 // validateRequestTags validates that the requested tags are permitted for the node.

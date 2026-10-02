@@ -2,9 +2,11 @@ package state
 
 import (
 	"errors"
+	"fmt"
 	"net/netip"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1051,6 +1053,305 @@ func TestNodeWriteChangeWhenPolicyRefreshFails(t *testing.T) {
 			require.ErrorIs(t, err, errInjectedPolicyNodeUpdate)
 			assert.Equal(t, nodeID, c.OriginNode, "change: %s", c.Type())
 			assert.Contains(t, c.PeersChanged, nodeID, "change: %s", c.Type())
+		})
+	}
+}
+
+// registerNewPAKNode registers a new machine under hostname with a fresh
+// reusable pre-auth key.
+func registerNewPAKNode(t *testing.T, s *State, user *types.User, hostname string) types.NodeView {
+	t.Helper()
+
+	pak, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+
+	node, _, err := s.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey:  key.NewNode().Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: hostname},
+		Expiry:   time.Now().Add(24 * time.Hour),
+	}, key.NewMachine().Public())
+	require.NoError(t, err)
+
+	return node
+}
+
+// registerNewAuthPathNode registers a new machine under hostname through
+// the interactive/OIDC completion path.
+func registerNewAuthPathNode(t *testing.T, s *State, user *types.User, hostname string) types.NodeView {
+	t.Helper()
+
+	authID := types.MustAuthID()
+	s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+		MachineKey: key.NewMachine().Public(),
+		NodeKey:    key.NewNode().Public(),
+		Hostname:   hostname,
+		Hostinfo:   &tailcfg.Hostinfo{Hostname: hostname},
+	}))
+
+	node, _, err := s.HandleNodeFromAuthPath(authID, types.UserID(user.ID), nil, util.RegisterMethodOIDC)
+	require.NoError(t, err)
+
+	return node
+}
+
+// TestRegistrationPersistsResolvedGivenName ensures the label the NodeStore
+// writer resolves on registration (collision bump, empty fallback) reaches
+// the database. Boot loads rows as stored, so a seed left in the database
+// would be served after a restart: a duplicate label, or "" which drops the
+// node from every peer map.
+func TestRegistrationPersistsResolvedGivenName(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		register func(*testing.T, *State, *types.User, string) types.NodeView
+	}{
+		{name: "pak", register: registerNewPAKNode},
+		{name: "auth_path", register: registerNewAuthPathNode},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			dbPath := t.TempDir() + "/headscale.db"
+			cfg := persistTestConfig(dbPath)
+
+			s, err := NewState(cfg)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = s.Close() })
+
+			user := s.CreateUserForTest("given-name")
+
+			// Successful UPDATE statements on the nodes table.
+			var updates atomic.Int64
+
+			require.NoError(t, s.db.DB.Callback().Update().After("gorm:update").
+				Register("count_node_updates", func(tx *gorm.DB) {
+					if tx.Statement.Table == "nodes" && tx.Error == nil {
+						updates.Add(1)
+					}
+				}))
+
+			// "" and a punctuation-only hostname both sanitise to "",
+			// which the writer replaces with the fallback label.
+			regs := []struct {
+				hostname string
+				want     string
+			}{
+				{hostname: "dup", want: "dup"},
+				{hostname: "dup", want: "dup-1"},
+				{hostname: "dup", want: "dup-2"},
+				{hostname: "", want: "node"},
+				{hostname: "!!!", want: "node-1"},
+			}
+
+			ids := make([]types.NodeID, len(regs))
+
+			for i, r := range regs {
+				before := updates.Load()
+				view := tt.register(t, s, user, r.hostname)
+				ids[i] = view.ID()
+
+				require.Equal(t, r.want, view.GivenName(), "hostname %q", r.hostname)
+				require.NoError(t, types.ValidateGivenName(view.GivenName(), cfg.BaseDomain))
+
+				inStore, ok := s.GetNodeByID(view.ID())
+				require.True(t, ok)
+				assert.Equal(t, r.want, inStore.GivenName(), "hostname %q: NodeStore", r.hostname)
+
+				stored, err := s.db.GetNodeByID(view.ID())
+				require.NoError(t, err)
+				assert.Equal(t, r.want, stored.GivenName,
+					"hostname %q: database must hold the label the NodeStore resolved", r.hostname)
+
+				assert.Equal(t, int64(0), updates.Load()-before,
+					"hostname %q: registration must not need a second write", r.hostname)
+			}
+
+			require.NoError(t, s.Close())
+
+			reopened := persistTestReopen(t, dbPath)
+			for i, r := range regs {
+				got, ok := reopened.GetNodeByID(ids[i])
+				require.True(t, ok)
+				assert.Equal(t, r.want, got.GivenName(),
+					"hostname %q: a restart must serve the resolved label", r.hostname)
+			}
+		})
+	}
+}
+
+// TestConcurrentRegistrationPersistsUniqueGivenNames ensures parallel
+// registrations (registerLocks are per machine key) each persist their own
+// resolved label, so the database ends up as unique as the NodeStore.
+func TestConcurrentRegistrationPersistsUniqueGivenNames(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+
+	s, err := NewState(persistTestConfig(dbPath))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	user := s.CreateUserForTest("concurrent-names")
+
+	pak, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+
+	const n = 12
+
+	ids := make([]types.NodeID, n)
+	errs := make([]error, n)
+	start := make(chan struct{})
+
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Go(func() {
+			<-start
+
+			node, _, err := s.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+				Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+				NodeKey:  key.NewNode().Public(),
+				Hostinfo: &tailcfg.Hostinfo{Hostname: "same"},
+				Expiry:   time.Now().Add(24 * time.Hour),
+			}, key.NewMachine().Public())
+
+			errs[i] = err
+			if err == nil {
+				ids[i] = node.ID()
+			}
+		})
+	}
+
+	close(start)
+	wg.Wait()
+
+	byName := make(map[string]types.NodeID, n)
+
+	for i, id := range ids {
+		require.NoError(t, errs[i])
+
+		inStore, ok := s.GetNodeByID(id)
+		require.True(t, ok)
+
+		stored, err := s.db.GetNodeByID(id)
+		require.NoError(t, err)
+		assert.Equal(t, inStore.GivenName(), stored.GivenName,
+			"node %d: database must hold the NodeStore label", id)
+
+		byName[inStore.GivenName()] = id
+	}
+
+	require.Len(t, byName, n, "every registration must get a unique label")
+
+	for i := range n {
+		want := "same"
+		if i > 0 {
+			want = fmt.Sprintf("same-%d", i)
+		}
+
+		assert.Contains(t, byName, want)
+	}
+
+	require.NoError(t, s.Close())
+
+	reopened := persistTestReopen(t, dbPath)
+	for name, id := range byName {
+		got, ok := reopened.GetNodeByID(id)
+		require.True(t, ok)
+		assert.Equal(t, name, got.GivenName(), "a restart must serve the resolved label")
+	}
+}
+
+// TestRegistrationNameTransactionFailure proves failed creation never publishes
+// a name or consumes a key, and a retry can claim the same collision suffix.
+func TestRegistrationNameTransactionFailure(t *testing.T) {
+	for _, path := range []string{"pak_insert", "pak_consume", "auth_path"} {
+		t.Run(path, func(t *testing.T) {
+			dbPath := t.TempDir() + "/headscale.db"
+			s, err := NewState(persistTestConfig(dbPath))
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = s.Close() })
+
+			user := s.CreateUserForTest("name-transaction")
+			registerNewPAKNode(t, s, user, "dup")
+
+			pak, err := s.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+			require.NoError(t, err)
+
+			machine := key.NewMachine().Public()
+			nodeKey := key.NewNode().Public()
+			authID := types.MustAuthID()
+
+			entry := types.NewRegisterAuthRequest(&types.RegistrationData{
+				MachineKey: machine, NodeKey: nodeKey, Hostname: "dup",
+				Hostinfo: &tailcfg.Hostinfo{Hostname: "dup"},
+			})
+			if path == "auth_path" {
+				s.SetAuthCacheEntry(authID, entry)
+			}
+
+			register := func() (types.NodeView, error) {
+				if path == "auth_path" {
+					node, _, err := s.HandleNodeFromAuthPath(authID, types.UserID(user.ID), nil, util.RegisterMethodOIDC)
+					return node, err
+				}
+
+				node, _, err := s.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+					Auth:    &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+					NodeKey: nodeKey, Hostinfo: &tailcfg.Hostinfo{Hostname: "dup"},
+				}, machine)
+
+				return node, err
+			}
+
+			const failName = "fail_name_transaction"
+
+			gdb := s.db.DB
+
+			fail := func(tx *gorm.DB) {
+				if (path == "pak_consume" && tx.Statement.Table == "credentials") ||
+					(path != "pak_consume" && tx.Statement.Table == "nodes") {
+					_ = tx.AddError(errInjectedNodeUpdate)
+				}
+			}
+			if path == "pak_consume" {
+				require.NoError(t, gdb.Callback().Update().After("gorm:update").Register(failName, fail))
+			} else {
+				require.NoError(t, gdb.Callback().Create().After("gorm:create").Register(failName, fail))
+			}
+
+			node, err := register()
+			require.ErrorIs(t, err, errInjectedNodeUpdate)
+			require.False(t, node.Valid())
+			require.Equal(t, 1, s.ListNodes().Len())
+			rows, err := s.db.ListNodes()
+			require.NoError(t, err)
+			require.Len(t, rows, 1, "the inserted row must roll back")
+
+			storedKey, err := s.GetPreAuthKeyByID(pak.ID)
+			require.NoError(t, err)
+			require.False(t, storedKey.Used, "key consumption must roll back with the node")
+
+			if path == "auth_path" {
+				select {
+				case <-entry.WaitForAuth():
+					t.Fatal("failed creation must not approve the waiting client")
+				default:
+				}
+			}
+
+			if path == "pak_consume" {
+				require.NoError(t, gdb.Callback().Update().Remove(failName))
+			} else {
+				require.NoError(t, gdb.Callback().Create().Remove(failName))
+			}
+
+			node, err = register()
+			require.NoError(t, err)
+			require.Equal(t, "dup-1", node.GivenName(), "failure must not reserve the name")
+			stored, err := s.db.GetNodeByID(node.ID())
+			require.NoError(t, err)
+			require.Equal(t, node.GivenName(), stored.GivenName)
+			require.NoError(t, s.Close())
+			reopened := persistTestReopen(t, dbPath)
+			got, ok := reopened.GetNodeByID(node.ID())
+			require.True(t, ok)
+			require.Equal(t, "dup-1", got.GivenName())
 		})
 	}
 }
