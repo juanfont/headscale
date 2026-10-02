@@ -258,3 +258,69 @@ func TestSSHDataCompat(t *testing.T) {
 		})
 	}
 }
+
+// TestSSHCheckParamsMatchesCaptures pins SSHCheckParams, which decides the
+// SSH check callback, to the check rules Tailscale sent: exactly the
+// captured holdAndDelegate principals must be found for each node.
+func TestSSHCheckParamsMatchesCaptures(t *testing.T) {
+	t.Parallel()
+
+	files, err := filepath.Glob(filepath.Join("testdata", "ssh*_results", "*.hujson"))
+	require.NoError(t, err)
+	require.NotEmpty(t, files)
+
+	users := setupSSHDataCompatUsers()
+
+	for _, file := range files {
+		tf := loadSSHTestFile(t, file)
+		if tf.Input.APIResponseCode != 200 {
+			continue
+		}
+
+		if _, skip := sshSkipReasons[tf.TestID]; skip {
+			continue
+		}
+
+		t.Run(tf.TestID, func(t *testing.T) {
+			t.Parallel()
+
+			nodes := buildGrantsNodesFromCapture(users, tf)
+
+			pm, err := NewPolicyManager(
+				[]byte(tf.Input.FullPolicy), users, nodes.ViewSlice(),
+			)
+			require.NoError(t, err)
+
+			byIP := make(map[string]*types.Node)
+
+			for _, n := range nodes {
+				for _, ip := range n.IPs() {
+					byIP[ip.String()] = n
+				}
+			}
+
+			for _, dst := range nodes {
+				want := make(map[types.NodeID]bool)
+
+				for _, rule := range tf.Captures[dst.GivenName].SSHRules {
+					if rule.Action == nil || rule.Action.HoldAndDelegate == "" {
+						continue
+					}
+
+					for _, p := range rule.Principals {
+						src, ok := byIP[p.NodeIP]
+						require.Truef(t, ok, "principal %q is not a node", p.NodeIP)
+
+						want[src.ID] = true
+					}
+				}
+
+				for _, src := range nodes {
+					_, got := pm.SSHCheckParams(src.ID, dst.ID)
+					assert.Equalf(t, want[src.ID], got,
+						"SSHCheckParams(%s -> %s)", src.GivenName, dst.GivenName)
+				}
+			}
+		})
+	}
+}
