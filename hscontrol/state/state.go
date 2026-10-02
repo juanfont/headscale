@@ -1624,6 +1624,13 @@ func (s *State) DeleteNodeFromStoreForTest(id types.NodeID) {
 	s.nodeStore.DeleteNode(id)
 }
 
+// WrapPolicyManagerForTest replaces the policy manager with wrap(current) so
+// tests can fail a single method. The [NodeStore] keeps the original manager,
+// so wrap must delegate to its argument. Call before any map is served.
+func (s *State) WrapPolicyManagerForTest(wrap func(policy.PolicyManager) policy.PolicyManager) {
+	s.polMan = wrap(s.polMan)
+}
+
 // CreateRegisteredNodeForTest creates a test node with allocated IPs. This is a convenience wrapper around the database layer.
 func (s *State) CreateRegisteredNodeForTest(user *types.User, hostname ...string) *types.Node {
 	return s.db.CreateRegisteredNodeForTest(user, hostname...)
