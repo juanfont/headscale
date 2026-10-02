@@ -2447,6 +2447,180 @@ func TestHandleNodeChangeRetryAfterRemoval(t *testing.T) {
 	assert.NotEmpty(t, sent[1].PacketFilters)
 }
 
+// TestAddNodeRemovalSurvivesPendingLoss checks that a peer removed while a
+// node had no stream reaches it as a delta after it reconnects, even when the
+// removal [Batcher.AddNode] queued is lost: superseded by a full update, or
+// dropped because the node disconnected again before delivery.
+//
+// TODO(kradalby): delete with the tailscale/tailscale#15660 compat, see
+// capver.CanOldCodeBeCleanedUp.
+func TestAddNodeRemovalSurvivesPendingLoss(t *testing.T) {
+	const gone = tailcfg.NodeID(999)
+
+	peerSets := []struct {
+		name  string
+		nodes int
+	}{
+		// Clients ignore an empty Peers list, so an isolated node relies on
+		// the removal entirely.
+		{"no_peers", 1},
+		{"with_peer", 2},
+	}
+
+	tracked := func(nc *multiChannelNodeConn, id tailcfg.NodeID) bool {
+		_, ok := nc.lastSentPeers.Load(id)
+		return ok
+	}
+
+	recv := func(t *testing.T, ch <-chan *tailcfg.MapResponse) *tailcfg.MapResponse {
+		t.Helper()
+
+		select {
+		case resp := <-ch:
+			return resp
+		case <-time.After(updateTimeout):
+			t.Fatal("timed out waiting for map response")
+
+			return nil
+		}
+	}
+
+	// setup returns a batcher whose ticker never fires, so the queued
+	// removal stays pending until the test runs a tick, and the node's conn
+	// still tracking gone from an earlier stream.
+	setup := func(t *testing.T, nodes int) (*Batcher, *multiChannelNodeConn, []tailcfg.NodeID) {
+		t.Helper()
+
+		testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, nodes, normalBufferSize)
+		t.Cleanup(cleanup)
+
+		b := NewBatcher(time.Hour, 1, testData.Batcher.mapper)
+		b.Start()
+		t.Cleanup(b.Close)
+
+		self := testData.Nodes[0].n.ID
+		nc := newMultiChannelNodeConn(self, b.mapper)
+		nc.lastSentPeers.Store(gone, struct{}{})
+		b.nodes.Store(self, nc)
+
+		current := make([]tailcfg.NodeID, 0, nodes-1)
+		for i := range testData.Nodes[1:] {
+			current = append(current, testData.Nodes[i+1].n.ID.NodeID())
+		}
+
+		return b, nc, current
+	}
+
+	// connect drives the real AddNode and checks its initial map.
+	connect := func(
+		t *testing.T,
+		b *Batcher,
+		nc *multiChannelNodeConn,
+		current []tailcfg.NodeID,
+	) chan *tailcfg.MapResponse {
+		t.Helper()
+
+		ch := make(chan *tailcfg.MapResponse, normalBufferSize)
+		require.NoError(t, b.AddNode(nc.id, ch, 100, nil))
+
+		initial := recv(t, ch)
+		require.NotNil(t, initial.Node, "initial map must carry Node")
+		require.NotNil(t, initial.Peers, "initial map must carry the full peer set")
+
+		ids := make([]tailcfg.NodeID, 0, len(initial.Peers))
+		for _, p := range initial.Peers {
+			ids = append(ids, p.ID)
+		}
+
+		assert.ElementsMatch(t, current, ids)
+		assert.Empty(t, initial.PeersRemoved, "initial map must not carry removals")
+
+		for _, id := range current {
+			assert.True(t, tracked(nc, id), "initial map peer %d must be tracked", id)
+		}
+
+		return ch
+	}
+
+	// settle waits for the tick's bundle to finish and checks tracking.
+	settle := func(
+		t *testing.T,
+		nc *multiChannelNodeConn,
+		current []tailcfg.NodeID,
+		wantGone bool,
+	) {
+		t.Helper()
+
+		require.Eventually(t, func() bool { return !nc.inFlight.Load() },
+			updateTimeout, 10*time.Millisecond)
+
+		for _, id := range current {
+			assert.True(t, tracked(nc, id), "current peer %d must stay tracked", id)
+		}
+
+		require.Equal(t, wantGone, tracked(nc, gone),
+			"peer %d must stay tracked until its removal is delivered", gone)
+	}
+
+	assertRemoval := func(t *testing.T, resp *tailcfg.MapResponse) {
+		t.Helper()
+
+		assert.Equal(t, []tailcfg.NodeID{gone}, resp.PeersRemoved)
+		_, ok := netmap.MutationsFromMapResponse(resp, time.Time{})
+		assert.True(t, ok, "removal must be applicable as a delta: %+v", resp)
+	}
+
+	t.Run("full_supersedes_queued_removal", func(t *testing.T) {
+		for _, ps := range peerSets {
+			t.Run(ps.name, func(t *testing.T) {
+				b, nc, current := setup(t, ps.nodes)
+				ch := connect(t, b, nc, current)
+
+				// A full in the same tick replaces the queued removal.
+				b.AddWork(change.FullUpdate())
+				b.processBatchedChanges()
+
+				var before []*tailcfg.MapResponse
+
+				full := recv(t, ch)
+				for full.Peers == nil {
+					before = append(before, full)
+					full = recv(t, ch)
+				}
+
+				require.Len(t, before, 1, "removal must lead the full")
+				assertRemoval(t, before[0])
+				assert.Empty(t, full.PeersRemoved, "full must not carry removals")
+
+				settle(t, nc, current, false)
+				assert.Empty(t, ch, "no frames beyond removal and full")
+			})
+		}
+	})
+
+	t.Run("disconnect_before_delivery", func(t *testing.T) {
+		for _, ps := range peerSets {
+			t.Run(ps.name, func(t *testing.T) {
+				b, nc, current := setup(t, ps.nodes)
+				ch1 := connect(t, b, nc, current)
+
+				// The node leaves before the tick, so the removal finds no
+				// connection and is dropped.
+				require.False(t, b.RemoveNode(nc.id, ch1))
+				b.processBatchedChanges()
+				settle(t, nc, current, true)
+
+				ch2 := connect(t, b, nc, current)
+				b.processBatchedChanges()
+
+				assertRemoval(t, recv(t, ch2))
+				settle(t, nc, current, false)
+				assert.Empty(t, ch2, "no frames beyond the removal")
+			})
+		}
+	})
+}
+
 // TestDNSConfigOnlyWithSelfRefresh checks policy responses leave DNSConfig
 // out, which clients read as unchanged, while self refreshes carry it: a
 // node's DNS config derives from its own CapMap and Hostinfo, and a
