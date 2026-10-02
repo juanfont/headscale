@@ -151,16 +151,15 @@ func (b *MapResponseBuilder) WithSSHPolicy() *MapResponseBuilder {
 
 	sshPolicy, err := b.mapper.state.SSHPolicy(node)
 	if err != nil {
-		// SSH policy is optional for a node to function. Rather than fail the
-		// whole map (leaving the node unable to connect), log and continue
-		// without it; the node still receives a usable netmap.
-		log.Warn().Caller().
+		// Don't fail the whole map over SSH, but fail closed: a nil
+		// SSHPolicy would leave the client's previous rules in force.
+		log.Error().Caller().
 			Err(err).
 			Uint64(zf.NodeID, node.ID().Uint64()).
 			Str(zf.NodeHostname, node.Hostname()).
-			Msg("building map response: skipping SSH policy for node; node will receive a map without SSH rules")
+			Msg("building map response: compiling SSH policy failed; sending empty SSH policy")
 
-		return b
+		sshPolicy = &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}}
 	}
 
 	b.resp.SSHPolicy = sshPolicy

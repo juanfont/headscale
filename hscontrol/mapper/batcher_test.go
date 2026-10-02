@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/derp"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
@@ -2406,6 +2408,55 @@ func TestAddWorkFullUpdateUnaffectedByEmpty(t *testing.T) {
 			"node %d pending should be the single full update", id)
 		require.True(t, pending[0].IsFull(),
 			"node %d pending entry must be the full update", id)
+	}
+}
+
+var errInjectedSSHPolicy = errors.New("injected SSH policy failure")
+
+type failingSSHPolicyManager struct {
+	policy.PolicyManager
+}
+
+func (failingSSHPolicyManager) SSHPolicy(string, types.NodeView) (*tailcfg.SSHPolicy, error) {
+	return nil, errInjectedSSHPolicy
+}
+
+// TestSSHPolicyEmptyOnWire pins that a node without SSH rules, or whose SSH
+// policy fails to compile, gets "SSHPolicy":{"rules":[]}. A nil SSHPolicy
+// leaves the client's previous rules in force.
+// https://github.com/juanfont/headscale/issues/3508
+func TestSSHPolicyEmptyOnWire(t *testing.T) {
+	for name, failCompile := range map[string]bool{
+		"no ssh rules":  false,
+		"compile error": true,
+	} {
+		t.Run(name, func(t *testing.T) {
+			testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 2, normalBufferSize)
+			defer cleanup()
+
+			if failCompile {
+				testData.State.WrapPolicyManagerForTest(
+					func(pm policy.PolicyManager) policy.PolicyManager {
+						return failingSSHPolicyManager{PolicyManager: pm}
+					},
+				)
+			}
+
+			self := testData.Nodes[0].n.ID
+			mc := newMockNodeConnection(self)
+
+			require.NoError(t, handleNodeChange(mc, testData.Batcher.mapper, change.PolicyChange()))
+			require.NoError(t, handleNodeChange(mc, testData.Batcher.mapper, change.FullSelf(self)))
+
+			sent := mc.getSent()
+			require.Len(t, sent, 2)
+
+			for _, resp := range sent {
+				wire, err := json.Marshal(resp)
+				require.NoError(t, err)
+				assert.Contains(t, string(wire), `"SSHPolicy":{"rules":[]}`)
+			}
+		})
 	}
 }
 
