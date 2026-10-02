@@ -31,9 +31,6 @@ var ErrUnsupportedClientVersion = errors.New("unsupported client version")
 // ErrMissingURLParameter is returned when a required URL parameter is not provided.
 var ErrMissingURLParameter = errors.New("missing URL parameter")
 
-// ErrNoAuthSession is returned when an auth_id does not match any active auth session.
-var ErrNoAuthSession = errors.New("no auth session found")
-
 // ErrSSHDstNodeNotFound is returned when the dst node id on a Noise SSH
 // action request does not match any registered node.
 var ErrSSHDstNodeNotFound = errors.New("ssh action: unknown dst node id")
