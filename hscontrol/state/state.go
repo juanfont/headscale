@@ -1142,8 +1142,14 @@ func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView,
 func (s *State) BackfillNodeIPs() ([]string, []change.Change, error) {
 	genBefore := s.polMan.NodesGeneration()
 
+	// Hold persistMu until NodeStore has the new addresses, or a concurrent
+	// persist writes the old ones back from NodeStore in between.
+	s.persistMu.Lock()
+
 	changes, err := s.db.BackfillNodeIPs(s.ipAlloc)
 	if err != nil {
+		s.persistMu.Unlock()
+
 		return nil, nil, err
 	}
 
@@ -1154,6 +1160,8 @@ func (s *State) BackfillNodeIPs() ([]string, []change.Change, error) {
 	if len(changes) > 0 {
 		nodes, err := s.db.ListNodes()
 		if err != nil {
+			s.persistMu.Unlock()
+
 			return changes, nil, fmt.Errorf("refreshing NodeStore after IP backfill: %w", err)
 		}
 
@@ -1172,6 +1180,8 @@ func (s *State) BackfillNodeIPs() ([]string, []change.Change, error) {
 
 		s.nodeStore.UpdateNodes(updates)
 	}
+
+	s.persistMu.Unlock()
 
 	// IPs are policy inputs: without this, clients only learned the new
 	// addresses from whichever unrelated write next refreshed the policy.
