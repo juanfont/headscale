@@ -8,7 +8,7 @@ require (
 	github.com/chasefleming/elem-go v0.36.0
 	github.com/coder/websocket v1.8.15
 	github.com/coreos/go-oidc/v3 v3.21.0
-	github.com/creachadair/command v0.2.11
+	github.com/creachadair/command v0.2.12
 	github.com/creachadair/flax v0.1.0
 	github.com/danielgtaylor/huma/v2 v2.39.1
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc

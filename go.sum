@@ -126,8 +126,8 @@ github.com/coreos/go-iptables v0.7.1-0.20240112124308-65c67c9f46e6/go.mod h1:Qe8
 github.com/coreos/go-oidc/v3 v3.21.0 h1:wZo4Q9Pum8dYEj0eMUPrqR+kvuGkeUplbLpNCkBqoWM=
 github.com/coreos/go-oidc/v3 v3.21.0/go.mod h1:DYCf24+ncYi+XkIH97GY1+dqoRlbaSI26KVTCI9SrY4=
 github.com/cpuguy83/go-md2man/v2 v2.0.6/go.mod h1:oOW0eioCTA6cOiMLiUPZOpcVxMig6NIQQ7OS05n1F4g=
-github.com/creachadair/command v0.2.11 h1:YPpsfKHDgVvOWs0kzlZz1RviLbuyb/tBT39yzbtRSAU=
-github.com/creachadair/command v0.2.11/go.mod h1:p7iYfSCIAVz+oYYIsXsya1hjKgjitd3U/0eOrzTWkBQ=
+github.com/creachadair/command v0.2.12 h1:xY+Y9G8WU1bh4D0J3oMXpQvyPX1BakFPypEW5LAcJGc=
+github.com/creachadair/command v0.2.12/go.mod h1:NngN5vztfAlswH/7YjwU3IBEgKXby/LyaLGhBJyk360=
 github.com/creachadair/flax v0.1.0 h1:smGIMMdPK21WiN2hwHE8FqdfkfSaIEZGpZyEnPa5jsU=
 github.com/creachadair/flax v0.1.0/go.mod h1:F1PML0JZLXSNDMNiRGK2yjm5f+L9QCHchyHBldFymj8=
 github.com/creachadair/mds v0.31.0 h1:h4SXXgallvZfD8CFQnQNAOtBkUGpZjPwNBRQpHpHM/g=
