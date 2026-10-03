@@ -90,7 +90,9 @@ func AbsolutePathFromConfigPath(path string) string {
 func GetFileMode(key string) fs.FileMode {
 	modeStr := viper.GetString(key)
 
-	mode, err := strconv.ParseUint(modeStr, Base8, BitSize64)
+	// Trim the Go-style "0o" prefix so both the viper default ("0o770")
+	// and plain octal strings ("770", "0770") parse.
+	mode, err := strconv.ParseUint(strings.TrimPrefix(modeStr, "0o"), Base8, BitSize64)
 	if err != nil {
 		return PermissionFallback
 	}

@@ -127,6 +127,7 @@ clients, and how to run the same setup without Nix.
 - `headscale nodes backfillips` now sends the new IPs to connected clients [#3501](https://github.com/juanfont/headscale/pull/3501)
 - Fix packet filters under `autogroup:self` not updating after a user is added or renamed [#3501](https://github.com/juanfont/headscale/pull/3501)
 - Fix a rejected policy leaving its packet filter active [#3501](https://github.com/juanfont/headscale/pull/3501)
+- Fix `unix_socket_permission` not parsing its "0o"-prefixed default, which silently fell back to `0700` and made the unix socket inaccessible to the headscale group
 
 ## 0.29.4 (2026-09-23)
 
