@@ -99,6 +99,7 @@ clients, and how to run the same setup without Nix.
 - `derp.paths` files must end in `.yaml`, `.yml`, `.json` or `.hujson`; the extension picks the format
 - `dns.extra_records_path` must end in `.json`, `.hujson`, `.yaml` or `.yml`; the extension picks the format
 - A `derp.paths` file that decodes to no regions now stops headscale from starting instead of being silently ignored
+- `unix_socket_permission` must be a quoted octal string no higher than `"0777"`, e.g. `"0770"`; an unquoted number or an invalid value now stops headscale from starting instead of silently using `0700` [#3540](https://github.com/juanfont/headscale/pull/3540)
 
 #### CLI
 
@@ -138,6 +139,7 @@ clients, and how to run the same setup without Nix.
 - Fix SSH check periods coming from the first check rule for a node pair instead of the rule for the login user [#3517](https://github.com/juanfont/headscale/pull/3517)
 - Policy changes resend a node's SSH policy only when it changed, sparing clients a full netmap rebuild [#3517](https://github.com/juanfont/headscale/pull/3517)
 - Fix every grant being fully resolved as if it had `via` when the policy has no `via` grants, slowing map generation on large tailnets [#3538](https://github.com/juanfont/headscale/pull/3538)
+- Fix the unix socket being created `0700` instead of the documented `0770` when `unix_socket_permission` is unset. The socket grants full admin access without authentication, so members of its group gain that access; check who is in it before upgrading [#3540](https://github.com/juanfont/headscale/pull/3540)
 
 ## 0.29.5 (202x-xx-xx)
 

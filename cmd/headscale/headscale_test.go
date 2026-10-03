@@ -41,7 +41,9 @@ func TestConfigFileLoading(t *testing.T) {
 	assert.Empty(t, viper.GetString("tls_letsencrypt_hostname"))
 	assert.Equal(t, ":http", viper.GetString("tls_letsencrypt_listen"))
 	assert.Equal(t, "HTTP-01", viper.GetString("tls_letsencrypt_challenge_type"))
-	assert.Equal(t, fs.FileMode(0o770), util.GetFileMode("unix_socket_permission"))
+	mode, err := util.ParseFileMode(viper.GetString("unix_socket_permission"))
+	require.NoError(t, err)
+	assert.Equal(t, fs.FileMode(0o770), mode)
 	assert.False(t, viper.GetBool("logtail.enabled"))
 }
 
@@ -71,6 +73,8 @@ func TestConfigLoading(t *testing.T) {
 	assert.Empty(t, viper.GetString("tls_letsencrypt_hostname"))
 	assert.Equal(t, ":http", viper.GetString("tls_letsencrypt_listen"))
 	assert.Equal(t, "HTTP-01", viper.GetString("tls_letsencrypt_challenge_type"))
-	assert.Equal(t, fs.FileMode(0o770), util.GetFileMode("unix_socket_permission"))
+	mode, err := util.ParseFileMode(viper.GetString("unix_socket_permission"))
+	require.NoError(t, err)
+	assert.Equal(t, fs.FileMode(0o770), mode)
 	assert.False(t, viper.GetBool("logtail.enabled"))
 }
