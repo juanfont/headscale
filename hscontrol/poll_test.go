@@ -342,6 +342,111 @@ func TestFailedReconnectDoesNotCancelEphemeralGC(t *testing.T) {
 		"failed reconnect must not cancel the ephemeral GC timer (issue #3382)")
 }
 
+// TestAfterServeLongPollDoesNotLeaveGCArmedForOnlineNode covers a reconnect
+// that runs Connect and Cancel before the old session arms the GC timer.
+func TestAfterServeLongPollDoesNotLeaveGCArmedForOnlineNode(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	app.cfg.Node.Ephemeral.InactivityTimeout = time.Hour
+
+	user := app.state.CreateUserForTest("eph-gc-arm-user")
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, true, nil, nil)
+	require.NoError(t, err)
+
+	nodeKey := key.NewNode()
+
+	_, err = app.handleRegister(context.Background(), tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "eph-gc-arm-node",
+		},
+		Expiry: time.Now().Add(24 * time.Hour),
+	}, key.NewMachine().Public())
+	require.NoError(t, err)
+
+	nodeView, ok := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, ok)
+	require.True(t, nodeView.IsEphemeral(), "test sanity: node must be ephemeral")
+
+	node := nodeView.AsStruct()
+	session := app.newMapSession(context.Background(), tailcfg.MapRequest{
+		Stream:  true,
+		Version: tailcfg.CapabilityVersion(100),
+	}, &recordingResponseWriter{}, node)
+
+	session.afterServeLongPoll()
+	require.True(t, app.ephemeralGC.IsScheduled(node.ID), "an offline ephemeral node must have its GC timer armed")
+	app.ephemeralGC.Cancel(node.ID)
+
+	app.state.Connect(node.ID)
+	app.ephemeralGC.Cancel(node.ID)
+
+	session.afterServeLongPoll()
+	assert.False(t, app.ephemeralGC.IsScheduled(node.ID),
+		"the old session must not leave a GC timer armed on a node that reconnected")
+}
+
+// TestEphemeralGCDoesNotDeleteOnlineNode covers a GC timer firing on an online node.
+func TestEphemeralGCDoesNotDeleteOnlineNode(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	app.StartEphemeralGCForTest(t)
+
+	user := app.state.CreateUserForTest("eph-gc-online-user")
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, true, nil, nil)
+	require.NoError(t, err)
+
+	nodeKey := key.NewNode()
+
+	_, err = app.handleRegister(context.Background(), tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "eph-gc-online-node",
+		},
+		Expiry: time.Now().Add(24 * time.Hour),
+	}, key.NewMachine().Public())
+	require.NoError(t, err)
+
+	nodeView, ok := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, ok)
+	require.True(t, nodeView.IsEphemeral(), "test sanity: node must be ephemeral")
+
+	nodeID := nodeView.ID()
+
+	_, gen := app.state.Connect(nodeID)
+
+	app.ephemeralGC.Schedule(nodeID, 10*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		return !app.ephemeralGC.IsScheduled(nodeID)
+	}, 2*time.Second, 10*time.Millisecond, "test sanity: GC timer must fire")
+
+	assert.Never(t, func() bool {
+		_, ok := app.state.GetNodeByID(nodeID)
+
+		return !ok
+	}, 500*time.Millisecond, 10*time.Millisecond, "an online ephemeral node must not be garbage collected")
+
+	_, err = app.state.Disconnect(nodeID, gen)
+	require.NoError(t, err)
+
+	app.ephemeralGC.Schedule(nodeID, 10*time.Millisecond)
+
+	assert.Eventually(t, func() bool {
+		_, ok := app.state.GetNodeByID(nodeID)
+
+		return !ok
+	}, 2*time.Second, 10*time.Millisecond, "an offline ephemeral node must still be garbage collected")
+}
+
 // TestGitHubIssue3129_TransientlyBlockedWriteDoesNotLeaveLiveStaleSession
 // tests the scenario reported in
 // https://github.com/juanfont/headscale/issues/3129.

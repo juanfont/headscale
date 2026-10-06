@@ -112,6 +112,11 @@ func (m *mapSession) stopFromBatcher() {
 func (m *mapSession) afterServeLongPoll() {
 	if m.node.IsEphemeral() {
 		m.h.ephemeralGC.Schedule(m.node.ID, m.h.cfg.Node.Ephemeral.InactivityTimeout)
+
+		// A reconnect may already have run Connect and its Cancel.
+		if node, ok := m.h.state.GetNodeByID(m.node.ID); ok && node.Online() {
+			m.h.ephemeralGC.Cancel(m.node.ID)
+		}
 	}
 }
 

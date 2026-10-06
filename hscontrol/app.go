@@ -156,6 +156,13 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 			return
 		}
 
+		// Never delete an online node.
+		if node.Online() {
+			log.Info().EmbedObject(node).Msg("ephemeral node is online, skipping garbage collection")
+
+			return
+		}
+
 		changes, err := app.state.DeleteNode(node)
 		app.Change(changes...)
 
