@@ -1321,6 +1321,11 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 		return result
 	}
 
+	// Only via grants can add to the result, and ACLs never carry via.
+	if !slices.ContainsFunc(pm.pol.Grants, grantHasVia) {
+		return result
+	}
+
 	grants := pm.pol.Grants
 	for _, acl := range pm.pol.ACLs {
 		grants = append(grants, aclToGrants(acl)...)
@@ -1523,6 +1528,10 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 	}
 
 	return result
+}
+
+func grantHasVia(grant Grant) bool {
+	return len(grant.Via) > 0
 }
 
 // grantReachesInternet reports whether a grant's destinations include
