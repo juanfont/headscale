@@ -1331,16 +1331,23 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 		grants = append(grants, aclToGrants(acl)...)
 	}
 
-	// Resolve each grant's sources against the viewer once, and each
-	// grant's destinations into a flat prefix list. The three passes
-	// below reuse both results instead of re-resolving per pass.
+	// matchViewer resolves a grant lazily and at most once: non-via
+	// grants are only needed once a via grant has matched, and
+	// destinations only for grants that match the viewer.
 	viewerIPs := viewer.IPs()
+	resolved := make([]bool, len(grants))
 	viewerMatchesGrant := make([]bool, len(grants))
 	resolvedDstPrefixes := make([][]netip.Prefix, len(grants))
 	grantHasAutoGroupInternet := make([]bool, len(grants))
 
-	for i, grant := range grants {
-		for _, src := range grant.Sources {
+	matchViewer := func(i int) bool {
+		if resolved[i] {
+			return viewerMatchesGrant[i]
+		}
+
+		resolved[i] = true
+
+		for _, src := range grants[i].Sources {
 			ips, err := src.Resolve(pm.pol, pm.users, pm.nodes)
 			if err != nil {
 				continue
@@ -1353,9 +1360,13 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 			}
 		}
 
-		resolvedDstPrefixes[i], grantHasAutoGroupInternet[i] = resolveViaDestinations(
-			pm.pol, pm.users, pm.nodes, grant.Destinations,
-		)
+		if viewerMatchesGrant[i] {
+			resolvedDstPrefixes[i], grantHasAutoGroupInternet[i] = resolveViaDestinations(
+				pm.pol, pm.users, pm.nodes, grants[i].Destinations,
+			)
+		}
+
+		return viewerMatchesGrant[i]
 	}
 
 	for i, grant := range grants {
@@ -1363,7 +1374,7 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 			continue
 		}
 
-		if !viewerMatchesGrant[i] {
+		if !matchViewer(i) {
 			continue
 		}
 
@@ -1446,7 +1457,7 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 				continue
 			}
 
-			if !viewerMatchesGrant[i] {
+			if !matchViewer(i) {
 				continue
 			}
 
@@ -1496,7 +1507,7 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 				continue
 			}
 
-			if !viewerMatchesGrant[i] {
+			if !matchViewer(i) {
 				continue
 			}
 
