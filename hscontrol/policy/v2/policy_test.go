@@ -2713,7 +2713,7 @@ func TestUnregisteredUsersAreNoOp(t *testing.T) {
 					continue
 				}
 
-				period, ok := pm.SSHCheckParams(n.ID, p.ID)
+				period, ok := pm.SSHCheckParams(n.ID, p.ID, "alice")
 				got[n.Hostname+"->"+p.Hostname+" via"] = pm.ViaRoutesForPeer(nv, p.View())
 				got[n.Hostname+"->"+p.Hostname+" check"] = checkParams{period, ok}
 			}
