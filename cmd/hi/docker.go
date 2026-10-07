@@ -289,6 +289,12 @@ func createTestContainer(ctx context.Context, cli *client.Client, config *RunCon
 		},
 	}
 
+	if config.TestBinary != "" {
+		// A custom server image may have its own entrypoint; run the tests directly.
+		containerConfig.Entrypoint = testCmd[:1]
+		containerConfig.Cmd = testCmd[1:]
+	}
+
 	// Get the correct Docker socket path from the current context
 	dockerSocketPath := getDockerSocketPath()
 

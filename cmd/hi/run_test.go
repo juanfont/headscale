@@ -142,8 +142,10 @@ func TestCompiledTestContainer(t *testing.T) {
 
 	request := <-requests
 	assert.Equal(t, "headscale:ci-test", request.Image)
+	// A custom server image may already have a headscale entrypoint.
+	assert.Equal(t, []string{"/integration.test"}, []string(request.Entrypoint))
 	assert.Equal(t, []string{
-		"/integration.test", "-test.run", config.TestPattern,
+		"-test.run", config.TestPattern,
 		"-test.failfast", "-test.timeout", "15m0s", "-test.v",
 	}, []string(request.Cmd))
 	assert.Contains(t, request.Env, "HEADSCALE_INTEGRATION_POSTGRES=1")
