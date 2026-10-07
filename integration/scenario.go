@@ -52,11 +52,12 @@ const (
 var usePostgresForTest = envknob.Bool("HEADSCALE_INTEGRATION_POSTGRES")
 
 var (
-	errNoHeadscaleAvailable      = errors.New("no headscale available")
-	errNoUserAvailable           = errors.New("no user available")
-	errNoClientFound             = errors.New("client not found")
-	errInvalidMockOIDCImage      = errors.New("invalid HEADSCALE_INTEGRATION_HEADSCALE_IMAGE format, expected repository:tag")
-	errMockOIDCImageRequiredInCI = errors.New("HEADSCALE_INTEGRATION_HEADSCALE_IMAGE must be set for mock OIDC in CI")
+	errNoHeadscaleAvailable        = errors.New("no headscale available")
+	errNoUserAvailable             = errors.New("no user available")
+	errNoClientFound               = errors.New("client not found")
+	errInvalidHeadscaleImageFormat = errors.New("invalid HEADSCALE_INTEGRATION_HEADSCALE_IMAGE format, expected repository:tag")
+	errInvalidMockOIDCImage        = errors.New("invalid HEADSCALE_INTEGRATION_HEADSCALE_IMAGE format, expected repository:tag")
+	errMockOIDCImageRequiredInCI   = errors.New("HEADSCALE_INTEGRATION_HEADSCALE_IMAGE must be set for mock OIDC in CI")
 
 	// AllVersions represents a list of Tailscale versions the suite
 	// uses to test compatibility with the [ControlServer].
@@ -686,8 +687,8 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 
 			s.mu.Lock()
 
-			opts = append(
-				opts,
+			clientOpts := append(
+				slices.Clone(opts),
 				tsic.WithCACert(cert),
 				tsic.WithHeadscaleName(hostname),
 				tsic.WithExtraHosts(extraHosts),
@@ -700,7 +701,7 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 				tsClient, err := tsic.New(
 					s.pool,
 					version,
-					opts...,
+					clientOpts...,
 				)
 				s.mu.Unlock()
 
@@ -1757,11 +1758,32 @@ func Webservice(s *Scenario, networkName string) (*dockertest.Resource, error) {
 		ContextDir: dockerContextPath,
 	}
 
-	web, err := s.pool.BuildAndRunWithBuildOptions(
-		webBOpts,
-		webOpts,
-		dockertestutil.DockerRestartPolicy,
+	var (
+		web *dockertest.Resource
+		err error
 	)
+
+	if prebuiltImage := os.Getenv("HEADSCALE_INTEGRATION_HEADSCALE_IMAGE"); prebuiltImage != "" {
+		repo, tag, ok := strings.Cut(prebuiltImage, ":")
+		if !ok {
+			return nil, errInvalidHeadscaleImageFormat
+		}
+
+		webOpts.Repository = repo
+		webOpts.Tag = tag
+
+		web, err = s.pool.RunWithOptions(
+			webOpts,
+			dockertestutil.DockerRestartPolicy,
+		)
+	} else {
+		web, err = s.pool.BuildAndRunWithBuildOptions(
+			webBOpts,
+			webOpts,
+			dockertestutil.DockerRestartPolicy,
+		)
+	}
+
 	if err != nil {
 		return nil, err
 	}
