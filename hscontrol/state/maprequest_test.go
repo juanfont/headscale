@@ -12,6 +12,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -542,6 +543,65 @@ func TestMapRequestDERPOnlyChangeKeepsGivenName(t *testing.T) {
 	after, ok := s.GetNodeByID(nodeID)
 	require.True(t, ok)
 	require.Equal(t, bumped, after.GivenName(), "DERP-only change must not touch GivenName")
+}
+
+// TestMapRequestHostnameCollisionPersistsBumpedGivenName pins that a hostname
+// change colliding with another node's label persists the label the NodeStore
+// writer bumped, so a restart serves the same unique name.
+func TestMapRequestHostnameCollisionPersistsBumpedGivenName(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+
+	s, err := NewState(persistTestConfig(dbPath))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	user := s.CreateUserForTest("collide")
+
+	register := func(hostname string) types.NodeView {
+		node, err := s.createAndSaveNewNode(newNodeParams{
+			User:           *user,
+			MachineKey:     key.NewMachine().Public(),
+			NodeKey:        key.NewNode().Public(),
+			DiscoKey:       key.NewDisco().Public(),
+			Hostname:       hostname,
+			Hostinfo:       &tailcfg.Hostinfo{Hostname: hostname},
+			RegisterMethod: util.RegisterMethodCLI,
+		})
+		require.NoError(t, err)
+
+		return node
+	}
+
+	holder := register("taken")
+	renamer := register("renamer")
+	require.Equal(t, "renamer", renamer.GivenName())
+
+	_, err = s.UpdateNodeFromMapRequest(renamer.ID(), tailcfg.MapRequest{
+		NodeKey:  renamer.NodeKey(),
+		DiscoKey: renamer.DiscoKey(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "taken"},
+	})
+	require.NoError(t, err)
+
+	inStore, ok := s.GetNodeByID(renamer.ID())
+	require.True(t, ok)
+	require.Equal(t, "taken-1", inStore.GivenName(), "the writer must bump the colliding label")
+
+	stored, err := s.db.GetNodeByID(renamer.ID())
+	require.NoError(t, err)
+	assert.Equal(t, "taken-1", stored.GivenName, "the database must hold the bumped label")
+
+	require.NoError(t, s.Close())
+
+	reopened := persistTestReopen(t, dbPath)
+
+	got, ok := reopened.GetNodeByID(renamer.ID())
+	require.True(t, ok)
+	assert.Equal(t, "taken-1", got.GivenName())
+
+	got, ok = reopened.GetNodeByID(holder.ID())
+	require.True(t, ok)
+	assert.Equal(t, "taken", got.GivenName(), "the holder keeps its label")
 }
 
 func TestConcurrentMapRequestDERPUsesPersistedState(t *testing.T) {

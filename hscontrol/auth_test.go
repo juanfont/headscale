@@ -14,6 +14,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
@@ -25,7 +26,10 @@ const (
 	stepTypeFollowupRequest = "followup_request"
 )
 
-var errNodeNotFoundAfterSetup = errors.New("node not found after setup")
+var (
+	errNodeNotFoundAfterSetup = errors.New("node not found after setup")
+	errInjectedNodeUpdate     = errors.New("injected node update failure")
+)
 
 // interactiveStep defines a step in the interactive authentication workflow.
 type interactiveStep struct {
@@ -4473,4 +4477,68 @@ func TestFollowupWaitPrefersCompletedAuthOverExpiredContext(t *testing.T) {
 		"waitForFollowup must never report a timeout when auth has already completed; got %d/%d timeouts",
 		timeouts, iterations)
 	assert.Equal(t, iterations, authorized, "every completed registration must be returned as authorized")
+}
+
+func storedGivenName(t *testing.T, app *Headscale, id types.NodeID) string {
+	t.Helper()
+
+	stored, err := app.state.DB().GetNodeByID(id)
+	require.NoError(t, err)
+
+	return stored.GivenName
+}
+
+// TestRegisterRetryAfterNameTransactionFailure exercises a real registration
+// retry after the node INSERT fails. The single-use key remains available,
+// even when the client generates a fresh NodeKey for its retry.
+func TestRegisterRetryAfterNameTransactionFailure(t *testing.T) {
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("retry-user")
+	seedKey, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+	resp, err := app.handleRegister(context.Background(), tailcfg.RegisterRequest{
+		Auth:    &tailcfg.RegisterResponseAuth{AuthKey: seedKey.Key},
+		NodeKey: key.NewNode().Public(), Hostinfo: &tailcfg.Hostinfo{Hostname: "dup"},
+	}, key.NewMachine().Public())
+	require.NoError(t, err)
+	require.True(t, resp.MachineAuthorized)
+
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+	require.NoError(t, err)
+
+	machine := key.NewMachine().Public()
+	req := tailcfg.RegisterRequest{
+		Auth:    &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey: key.NewNode().Public(), Hostinfo: &tailcfg.Hostinfo{Hostname: "dup"},
+	}
+
+	const failName = "fail_name_transaction"
+
+	gdb := app.state.DB().DB
+	require.NoError(t, gdb.Callback().Create().After("gorm:create").Register(failName, func(tx *gorm.DB) {
+		if tx.Statement.Table == "nodes" {
+			_ = tx.AddError(errInjectedNodeUpdate)
+		}
+	}))
+
+	_, err = app.handleRegister(context.Background(), req, machine)
+	require.Error(t, err)
+
+	_, exists := app.state.GetNodeByNodeKey(req.NodeKey)
+	require.False(t, exists)
+
+	storedKey, err := app.state.GetPreAuthKeyByID(pak.ID)
+	require.NoError(t, err)
+	require.False(t, storedKey.Used)
+	require.NoError(t, gdb.Callback().Create().Remove(failName))
+
+	req.NodeKey = key.NewNode().Public()
+	resp, err = app.handleRegister(context.Background(), req, machine)
+	require.NoError(t, err)
+	require.True(t, resp.MachineAuthorized)
+
+	node, exists := app.state.GetNodeByNodeKey(req.NodeKey)
+	require.True(t, exists)
+	require.Equal(t, "dup-1", node.GivenName())
+	require.Equal(t, "dup-1", storedGivenName(t, app, node.ID()))
 }
