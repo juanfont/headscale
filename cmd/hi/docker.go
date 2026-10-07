@@ -73,17 +73,17 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 		}
 	}
 
-	goTestCmd := buildGoTestCommand(config)
+	testCmd := buildTestCommand(config)
 	if config.Verbose {
-		log.Printf("Command: %s", strings.Join(goTestCmd, " "))
+		log.Printf("Command: %s", strings.Join(testCmd, " "))
 	}
 
-	imageName := "golang:" + config.GoVersion
+	imageName := testRunnerImage(config)
 	if err := ensureImageAvailable(ctx, cli, imageName, config.Verbose); err != nil { //nolint:noinlineerr
 		return fmt.Errorf("ensuring image availability: %w", err)
 	}
 
-	resp, err := createGoTestContainer(ctx, cli, config, containerName, absLogsDir, goTestCmd)
+	resp, err := createTestContainer(ctx, cli, config, containerName, absLogsDir, testCmd)
 	if err != nil {
 		return fmt.Errorf("creating container: %w", err)
 	}
@@ -202,26 +202,44 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 	return nil
 }
 
-// buildGoTestCommand constructs the go test command arguments.
-func buildGoTestCommand(config *RunConfig) []string {
+// testRunnerImage reuses the CI server image for the statically built test binary.
+// Source-based runs and local runs without a server image use the Go image.
+func testRunnerImage(config *RunConfig) string {
+	if config.TestBinary != "" {
+		if image := os.Getenv("HEADSCALE_INTEGRATION_HEADSCALE_IMAGE"); image != "" {
+			return image
+		}
+	}
+
+	return "golang:" + config.GoVersion
+}
+
+// buildTestCommand supports both go test and its compiled test binary flags.
+func buildTestCommand(config *RunConfig) []string {
 	cmd := []string{"go", "test", "./..."}
+	flagPrefix := "-"
+
+	if config.TestBinary != "" {
+		cmd = []string{"/integration.test"}
+		flagPrefix = "-test."
+	}
 
 	if config.TestPattern != "" {
-		cmd = append(cmd, "-run", config.TestPattern)
+		cmd = append(cmd, flagPrefix+"run", config.TestPattern)
 	}
 
 	if config.FailFast {
-		cmd = append(cmd, "-failfast")
+		cmd = append(cmd, flagPrefix+"failfast")
 	}
 
-	cmd = append(cmd, "-timeout", config.Timeout.String())
-	cmd = append(cmd, "-v")
+	cmd = append(cmd, flagPrefix+"timeout", config.Timeout.String())
+	cmd = append(cmd, flagPrefix+"v")
 
 	return cmd
 }
 
-// createGoTestContainer creates a Docker container configured for running integration tests.
-func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunConfig, containerName, logsDir string, goTestCmd []string) (container.CreateResponse, error) {
+// createTestContainer creates a Docker container configured for running integration tests.
+func createTestContainer(ctx context.Context, cli *client.Client, config *RunConfig, containerName, logsDir string, testCmd []string) (container.CreateResponse, error) {
 	pwd, err := os.Getwd()
 	if err != nil {
 		return container.CreateResponse{}, fmt.Errorf("getting working directory: %w", err)
@@ -254,12 +272,14 @@ func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunC
 		}
 	}
 
-	// Set GOCACHE to a known location (used by both bind mount and volume cases)
-	env = append(env, "GOCACHE=/cache/go-build")
+	if config.TestBinary == "" {
+		// Used by both bind mount and volume cases for source-based runs.
+		env = append(env, "GOCACHE=/cache/go-build")
+	}
 
 	containerConfig := &container.Config{
-		Image:      "golang:" + config.GoVersion,
-		Cmd:        goTestCmd,
+		Image:      testRunnerImage(config),
+		Cmd:        testCmd,
 		Env:        env,
 		WorkingDir: projectRoot + "/integration",
 		Tty:        true,
@@ -286,27 +306,36 @@ func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunC
 	// otherwise fall back to Docker volumes for local development
 	var mounts []mount.Mount
 
-	goCache := os.Getenv("HEADSCALE_INTEGRATION_GO_CACHE")
-	goBuildCache := os.Getenv("HEADSCALE_INTEGRATION_GO_BUILD_CACHE")
-
-	if goCache != "" {
-		binds = append(binds, goCache+":/go")
-	} else {
+	if config.TestBinary != "" {
 		mounts = append(mounts, mount.Mount{
-			Type:   mount.TypeVolume,
-			Source: "hs-integration-go-cache",
-			Target: "/go",
+			Type:     mount.TypeBind,
+			Source:   config.TestBinary,
+			Target:   "/integration.test",
+			ReadOnly: true,
 		})
-	}
-
-	if goBuildCache != "" {
-		binds = append(binds, goBuildCache+":/cache/go-build")
 	} else {
-		mounts = append(mounts, mount.Mount{
-			Type:   mount.TypeVolume,
-			Source: "hs-integration-go-build-cache",
-			Target: "/cache/go-build",
-		})
+		goCache := os.Getenv("HEADSCALE_INTEGRATION_GO_CACHE")
+		goBuildCache := os.Getenv("HEADSCALE_INTEGRATION_GO_BUILD_CACHE")
+
+		if goCache != "" {
+			binds = append(binds, goCache+":/go")
+		} else {
+			mounts = append(mounts, mount.Mount{
+				Type:   mount.TypeVolume,
+				Source: "hs-integration-go-cache",
+				Target: "/go",
+			})
+		}
+
+		if goBuildCache != "" {
+			binds = append(binds, goBuildCache+":/cache/go-build")
+		} else {
+			mounts = append(mounts, mount.Mount{
+				Type:   mount.TypeVolume,
+				Source: "hs-integration-go-build-cache",
+				Target: "/cache/go-build",
+			})
+		}
 	}
 
 	hostConfig := &container.HostConfig{
@@ -330,8 +359,12 @@ func streamAndWait(ctx context.Context, cli *client.Client, containerID string) 
 	}
 	defer out.Close()
 
+	logsDone := make(chan struct{})
+
 	go func() {
 		_, _ = io.Copy(os.Stdout, out)
+
+		close(logsDone)
 	}()
 
 	statusCh, errCh := cli.ContainerWait(ctx, containerID, container.WaitConditionNotRunning)
@@ -341,6 +374,14 @@ func streamAndWait(ctx context.Context, cli *client.Client, containerID string) 
 			return -1, fmt.Errorf("waiting for container: %w", err)
 		}
 	case status := <-statusCh:
+		// ContainerWait can finish before the log stream delivers its tail.
+		// Drain through EOF so fast test exits retain their final summary.
+		select {
+		case <-logsDone:
+		case <-ctx.Done():
+			return int(status.StatusCode), fmt.Errorf("waiting for container logs: %w", ctx.Err())
+		}
+
 		return int(status.StatusCode), nil
 	}
 

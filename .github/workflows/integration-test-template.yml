@@ -61,10 +61,10 @@ jobs:
         with:
           name: hi-binary
           path: /tmp/artifacts
-      - name: Download Go cache
+      - name: Download integration test binary
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: go-cache
+          name: integration-test-binary
           path: /tmp/artifacts
       - name: Download postgres image
         if: ${{ inputs.postgres_flag == '--postgres=1' }}
@@ -94,7 +94,7 @@ jobs:
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ env.DOCKERHUB_TOKEN }}
-      - name: Load Docker images, Go cache, and prepare binary
+      - name: Load Docker images and prepare binaries
         run: |
           gunzip -c /tmp/artifacts/headscale-image.tar.gz | docker load
           gunzip -c /tmp/artifacts/tailscale-head-image.tar.gz | docker load
@@ -102,33 +102,30 @@ jobs:
           if [ -f /tmp/artifacts/postgres-image.tar.gz ]; then
             gunzip -c /tmp/artifacts/postgres-image.tar.gz | docker load
           fi
-          chmod +x /tmp/artifacts/hi
+          chmod +x /tmp/artifacts/hi /tmp/artifacts/integration.test
           docker images
-          # Extract Go cache to host directories for bind mounting
-          mkdir -p /tmp/go-cache
-          tar -xzf /tmp/artifacts/go-cache.tar.gz -C /tmp/go-cache
-          ls -la /tmp/go-cache/ /tmp/go-cache/.cache/
       - name: Run Integration Test
         env:
           HEADSCALE_INTEGRATION_HEADSCALE_IMAGE: headscale:${{ github.sha }}
           HEADSCALE_INTEGRATION_TAILSCALE_IMAGE: tailscale-head:${{ github.sha }}
           HEADSCALE_INTEGRATION_POSTGRES_IMAGE: ${{ inputs.postgres_flag == '--postgres=1' && format('postgres:{0}', github.sha) || '' }}
-          HEADSCALE_INTEGRATION_GO_CACHE: /tmp/go-cache/go
-          HEADSCALE_INTEGRATION_GO_BUILD_CACHE: /tmp/go-cache/.cache/go-build
           # Mirror the docker/login-action secrets into env so the
           # dockertestutil.Credentials resolver picks them up directly
           # (otherwise it falls back to parsing ~/.docker/config.json,
           # which works but is one step further from the source).
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_CI_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_CI_TOKEN }}
-        run: /tmp/artifacts/hi run --stats --ts-memory-limit=300 --hs-memory-limit=1500 "^${{ inputs.test }}$" \
-          --timeout=120m \
-          ${{ inputs.postgres_flag }}
+        run: |
+          /tmp/artifacts/hi run --stats --ts-memory-limit=300 --hs-memory-limit=1500 \
+            --test-binary=/tmp/artifacts/integration.test \
+            --timeout=120m \
+            ${{ inputs.postgres_flag }} \
+            "^${{ inputs.test }}$"
       # Sanitize test name for artifact upload (replace invalid characters: " : < > | * ? \ / with -)
       - name: Sanitize test name for artifacts
         if: always()
         id: sanitize
-        run: echo "name=${TEST_NAME//[\":<>|*?\\\/]/-}" >> $GITHUB_OUTPUT
+        run: echo "name=${TEST_NAME//[\":<>|*?\\\/]/-}" >> "$GITHUB_OUTPUT"
         env:
           TEST_NAME: ${{ inputs.test }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
