@@ -1850,6 +1850,11 @@ type Grant struct {
 	Via []Tag `json:"via,omitzero"`
 }
 
+// HasVia reports whether the grant routes through via-tagged nodes.
+func (g Grant) HasVia() bool {
+	return len(g.Via) > 0
+}
+
 // NodeAttrGrant attaches Tailscale node capabilities (and/or an IP-pool
 // preference) to every node selected by Targets. The Targets aliases are
 // resolved exactly like ACL/grant sources, so users, groups, tags, hosts,

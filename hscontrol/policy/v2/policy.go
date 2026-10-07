@@ -1369,7 +1369,7 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 	}
 
 	// Only via grants can add to the result, and ACLs never carry via.
-	if !slices.ContainsFunc(pm.pol.Grants, grantHasVia) {
+	if !slices.ContainsFunc(pm.pol.Grants, Grant.HasVia) {
 		return result
 	}
 
@@ -1419,7 +1419,7 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 	}
 
 	for i, grant := range grants {
-		if len(grant.Via) == 0 {
+		if !grant.HasVia() {
 			continue
 		}
 
@@ -1502,7 +1502,7 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 		// otherwise grants for other viewer groups would incorrectly
 		// demote the peer.
 		for i, grant := range grants {
-			if len(grant.Via) == 0 {
+			if !grant.HasVia() {
 				continue
 			}
 
@@ -1552,7 +1552,7 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 		// [state.State.RoutesForPeer] can apply normal
 		// [policy.ReduceRoutes] + primary logic.
 		for i, grant := range grants {
-			if len(grant.Via) > 0 {
+			if grant.HasVia() {
 				continue
 			}
 
@@ -1588,10 +1588,6 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 	}
 
 	return result
-}
-
-func grantHasVia(grant Grant) bool {
-	return len(grant.Via) > 0
 }
 
 // grantReachesInternet reports whether a grant's destinations include
