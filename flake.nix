@@ -198,17 +198,18 @@
         goChecks = {
           build = fc.goBuild (common // { subPackages = [ "cmd/headscale" ]; });
 
-          # The pure unit subset. ./integration (Docker) and
+          # The pure unit subset. The root ./integration package (Docker) and
           # ./hscontrol/servertest (slow: 10s+ convergence plus race/stress/HA
           # property tests — run by the servertest workflow instead) are dropped
           # from the test set but kept in source so cmd/hi and friends still
-          # compile; TestPostgres* needs a server (the SQLite equivalents still
+          # compile. Pure integration helper tests remain included.
+          # TestPostgres* needs a server (the SQLite equivalents still
           # run). CGO off matches the build.
           gotest = fc.goTest (
             common
             // {
               testExclude = [
-                "/integration"
+                "/integration$"
                 "/hscontrol/servertest"
               ];
               goSkip = [ "TestPostgres" ];

@@ -56,6 +56,7 @@ changing.
 | `--postgres`        | `false`        | Use PostgreSQL instead of SQLite                                            |
 | `--failfast`        | `true`         | Stop on first test failure                                                  |
 | `--go-version`      | auto           | Detected from `go.mod` (currently 1.27.0)                                   |
+| `--test-binary`     | unset          | Execute a precompiled integration test binary instead of running `go test`  |
 | `--clean-before`    | `true`         | Clean stale (stopped/exited) containers before starting                     |
 | `--clean-after`     | `true`         | Clean this run's containers after completion                                |
 | `--keep-on-failure` | `false`        | Preserve containers for manual inspection on failure                        |
@@ -64,6 +65,29 @@ changing.
 | `--stats`           | `false`        | Collect container resource-usage stats                                      |
 | `--hs-memory-limit` | `0`            | Fail if any headscale container exceeds N MB (0 = disabled)                 |
 | `--ts-memory-limit` | `0`            | Fail if any tailscale container exceeds N MB                                |
+
+### Precompiled tests in CI
+
+CI builds the Headscale server, `hi`, and the integration test binary once
+for the worker architecture. Each test job loads the prebuilt images and
+runs its own fresh test container:
+
+```bash
+CGO_ENABLED=0 GOOS=linux go test -c ./integration -o integration.test
+go run ./cmd/hi run --test-binary=./integration.test "^TestHeadscale$"
+```
+
+With `--test-binary`, the runner mounts the executable read-only and uses
+`HEADSCALE_INTEGRATION_HEADSCALE_IMAGE` as its runtime image when set.
+Otherwise it uses the usual Go image. Build the binary with `CGO_ENABLED=0`
+for the runner architecture so it needs no compiler or shared Go libraries.
+The checkout, test fixtures, Docker access, per-run logs, resource checks,
+and cleanup work the same as in source-based runs. CI does not distribute
+Go caches to these workers.
+
+Automatic preflight checks Docker and the checkout. Images are prepared by
+their consumers, so ordinary tests do not pull Kubernetes images. The
+standalone `doctor` command retains the comprehensive development checks.
 
 ### Timeout guidance
 
