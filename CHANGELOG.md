@@ -137,7 +137,7 @@ clients, and how to run the same setup without Nix.
 - Fix SSH access surviving the removal of its policy rules; clients kept their last SSH rules, and a pending SSH check could still be approved [#3517](https://github.com/juanfont/headscale/pull/3517)
 - Fix SSH check periods coming from the first check rule for a node pair instead of the rule for the login user [#3517](https://github.com/juanfont/headscale/pull/3517)
 - Policy changes resend a node's SSH policy only when it changed, sparing clients a full netmap rebuild [#3517](https://github.com/juanfont/headscale/pull/3517)
-- Map generation no longer resolves every policy rule's sources and destinations for each peer when the policy has no `via` grants, which made map responses slow and CPU-bound on large tailnets [#3512](https://github.com/juanfont/headscale/issues/3512)
+- Fix every grant being fully resolved as if it had `via` when the policy has no `via` grants, slowing map generation on large tailnets [#3538](https://github.com/juanfont/headscale/pull/3538)
 
 ## 0.29.5 (202x-xx-xx)
 
