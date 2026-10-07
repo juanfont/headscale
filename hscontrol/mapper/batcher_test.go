@@ -1218,7 +1218,9 @@ func TestBatcherPingSurvivesFullUpdate(t *testing.T) {
 			}
 
 			isFull := func(r *tailcfg.MapResponse) bool {
-				return r.Node != nil && r.DERPMap != nil && len(r.Peers) > 0
+				// An unchanged self may be omitted for this connection, while
+				// the full peer list and DERP map still distinguish the full.
+				return r.DERPMap != nil && len(r.Peers) > 0
 			}
 
 			frames := collect(target.ch)
