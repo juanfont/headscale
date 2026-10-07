@@ -914,7 +914,7 @@ func newSSHVerdictFixture(t *testing.T) *sshVerdictFixture {
 	}`, user.Name+"@"))
 	require.NoError(t, err)
 
-	period, checkFound := app.state.SSHCheckParams(ids[0], ids[1])
+	period, checkFound := app.state.SSHCheckParams(ids[0], ids[1], sshTestLocalUser)
 	require.True(t, checkFound, "test setup: pair must be subject to a check")
 	require.Zero(t, period, "test setup: checkPeriod must be always")
 
@@ -1053,12 +1053,13 @@ func TestSSHActionFollowUp_ConsumedVerdictNotReplayed(t *testing.T) {
 			_, err := f.ns.headscale.state.SetPolicy([]byte(`{}`))
 			require.NoError(t, err)
 
-			_, checkFound := f.ns.headscale.state.SSHCheckParams(f.src, f.dst)
+			_, checkFound := f.ns.headscale.state.SSHCheckParams(f.src, f.dst, sshTestLocalUser)
 			require.False(t, checkFound, "test setup: pair must no longer be subject to a check")
 
 			rec := f.followUp(t, authID)
-			assert.Equal(t, http.StatusBadRequest, rec.Code,
-				"replay without a check must be refused, body=%s", rec.Body.String())
+			action := sshActionFromRecorder(t, rec)
+			assert.True(t, action.Reject, "replay without a check must be refused")
+			assert.False(t, action.Accept, "replay without a check must never approve access")
 		})
 	}
 }
