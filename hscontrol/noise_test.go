@@ -13,8 +13,8 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
-	"sync"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
