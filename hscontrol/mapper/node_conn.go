@@ -394,6 +394,7 @@ func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 			if data.Node != nil {
 				conn.lastSelf.Store(data.Node)
 			}
+
 			if data.SSHPolicy != nil {
 				conn.lastSSHPolicy.Store(data.SSHPolicy)
 			}
