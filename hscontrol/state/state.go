@@ -3402,7 +3402,7 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		delta.hostinfoChanged = newHostinfo != nil &&
 			!hostinfoEqual(currentNode.Hostinfo, newHostinfo)
 		delta.peerHostinfoChanged = newHostinfo != nil &&
-			!peerHostinfoEqual(currentNode.Hostinfo, newHostinfo)
+			!peerHostinfoEqual(currentNode.Hostinfo.View(), newHostinfo.View())
 		delta.dnsMetadataChanged = newHostinfo != nil &&
 			(currentNode.Hostinfo == nil ||
 				currentNode.Hostinfo.Hostname != newHostinfo.Hostname ||
