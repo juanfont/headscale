@@ -1653,6 +1653,28 @@ func TestUpdateNodeRecomputesPeersOnlyForRelationInputs(t *testing.T) {
 	}
 }
 
+// TestUpdateNodeDiff proves the update returns the node the writer replaced
+// alongside the result, and an invalid before for a missing node.
+func TestUpdateNodeDiff(t *testing.T) {
+	node := createTestNode(1, 1, "user1", "node1")
+	oldKey := node.NodeKey
+
+	store := NewNodeStore(types.Nodes{&node}, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+	store.Start()
+
+	defer store.Stop()
+
+	newKey := key.NewNode().Public()
+	before, after, ok := store.UpdateNodeDiff(1, func(n *types.Node) { n.NodeKey = newKey })
+	require.True(t, ok)
+	assert.Equal(t, oldKey, before.NodeKey())
+	assert.Equal(t, newKey, after.NodeKey())
+
+	before, _, ok = store.UpdateNodeDiff(99, func(*types.Node) {})
+	assert.False(t, ok)
+	assert.False(t, before.Valid())
+}
+
 // TestListPeersExcludesSelf proves a node is never returned among its own
 // peers, on both the snapshot path and the explicit peer-ID path.
 //
