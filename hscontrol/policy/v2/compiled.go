@@ -2,6 +2,7 @@ package v2
 
 import (
 	"fmt"
+	"maps"
 	"net/netip"
 	"slices"
 
@@ -712,15 +713,54 @@ func compileAutogroupSelf(
 	node types.NodeView,
 	userIdx userNodeIndex,
 ) []tailcfg.FilterRule {
-	if node.IsTagged() || cg.self == nil {
+	if node.IsTagged() || cg.self == nil || !node.User().Valid() {
 		return nil
 	}
 
-	if !node.User().Valid() {
+	return compileSelfForUser(cg, userIdx[node.User().ID()])
+}
+
+// exitNodeSelfRules returns the autogroup:self rules of every user
+// other than the node's own for an exit node, whose exit routes contain
+// every self destination. Only the packet filter needs them: they never
+// make the exit node a peer, and expanding every user for peer matching
+// would cost O(users) per exit node on each peer map build.
+func exitNodeSelfRules(
+	grants []compiledGrant,
+	node types.NodeView,
+	userIdx userNodeIndex,
+) []tailcfg.FilterRule {
+	if !node.IsExitNode() {
 		return nil
 	}
 
-	sameUserNodes := userIdx[node.User().ID()]
+	var rules []tailcfg.FilterRule
+
+	for i := range grants {
+		cg := &grants[i]
+		if cg.self == nil {
+			continue
+		}
+
+		for _, uid := range slices.Sorted(maps.Keys(userIdx)) {
+			// compileAutogroupSelf already covers an untagged node's own user.
+			if !node.IsTagged() && node.User().Valid() && node.User().ID() == uid {
+				continue
+			}
+
+			rules = append(rules, compileSelfForUser(cg, userIdx[uid])...)
+		}
+	}
+
+	return rules
+}
+
+// compileSelfForUser produces the autogroup:self rules for one user's
+// untagged devices.
+func compileSelfForUser(
+	cg *compiledGrant,
+	sameUserNodes []types.NodeView,
+) []tailcfg.FilterRule {
 	if len(sameUserNodes) == 0 {
 		return nil
 	}
