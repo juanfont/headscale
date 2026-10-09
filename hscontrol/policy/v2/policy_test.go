@@ -1846,6 +1846,58 @@ func TestViaRoutesForPeer(t *testing.T) {
 		require.Empty(t, result.Exclude)
 	})
 
+	t.Run("no_via_grant_returns_empty", func(t *testing.T) {
+		t.Parallel()
+
+		nodes := types.Nodes{
+			{
+				ID:       1,
+				Hostname: "viewer",
+				IPv4:     ap("100.64.0.1"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Hostinfo: &tailcfg.Hostinfo{},
+			},
+			{
+				ID:       2,
+				Hostname: "router",
+				IPv4:     ap("100.64.0.2"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Tags:     []string{"tag:router"},
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{mp("10.0.0.0/24")},
+				},
+				ApprovedRoutes: []netip.Prefix{mp("10.0.0.0/24")},
+			},
+		}
+
+		// An ACL and a grant both cover the route, neither with via.
+		pol := `{
+			"tagOwners": {
+				"tag:router": ["user1@"]
+			},
+			"acls": [{
+				"action": "accept",
+				"src": ["autogroup:member"],
+				"dst": ["10.0.0.0/24:*"]
+			}],
+			"grants": [{
+				"src": ["user1@"],
+				"dst": ["10.0.0.0/24"],
+				"ip": ["*"]
+			}]
+		}`
+
+		pm, err := NewPolicyManager([]byte(pol), users, nodes.ViewSlice())
+		require.NoError(t, err)
+
+		result := pm.ViaRoutesForPeer(nodes[0].View(), nodes[1].View())
+		require.Empty(t, result.Include)
+		require.Empty(t, result.Exclude)
+		require.Empty(t, result.UsePrimary)
+	})
+
 	t.Run("peer_does_not_advertise_destination", func(t *testing.T) {
 		t.Parallel()
 
