@@ -250,6 +250,9 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 			nm := cl.Netmap()
 			require.NotNil(t, nm, "netmap is nil")
 
+			require.Equal(t, selfOffersExit(capture.Netmap), selfOffersExit(nm),
+				"SelfNode exit routes should match SaaS")
+
 			compareNetmap(t, nm, capture, clients, saasAddrs)
 		})
 	}
