@@ -257,6 +257,7 @@ jobs:
           - TestOIDCReloginSameUserRoutesPreserved
           - TestAuthWebFlowAuthenticationPingAll
           - TestAuthWebFlowLogoutAndReloginSameUser
+          - TestAuthWebFlowReloginExpiredNode
           - TestAuthWebFlowLogoutAndReloginNewUser
           - TestPolicyCheckCommand
           - TestSSHTestsRejectFailingPolicy
@@ -319,6 +320,7 @@ jobs:
           - TestSSHOneUserToAll
           - TestSSHMultipleUsersAllToAll
           - TestSSHNoSSHConfigured
+          - TestSSHRulesRemovedDeniesAccess
           - TestSSHIsBlockedInACL
           - TestSSHUserOnlyIsolation
           - TestSSHAutogroupSelf
