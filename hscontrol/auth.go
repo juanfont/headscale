@@ -466,6 +466,13 @@ func (h *Headscale) handleRegisterWithAuthKey(
 		req,
 		machineKey,
 	)
+
+	// A client that leaves before its first poll ends no session to arm this.
+	// Before the error check: a failed policy refresh returns the saved node.
+	if node.IsEphemeral() {
+		h.ephemeralGC.Schedule(node.ID(), h.cfg.Node.Ephemeral.InactivityTimeout)
+	}
+
 	if err != nil {
 		h.Change(changed)
 

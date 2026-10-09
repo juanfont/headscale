@@ -2,6 +2,7 @@ package hscontrol
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/mapper"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
@@ -305,6 +307,7 @@ func TestFailedReconnectDoesNotCancelEphemeralGC(t *testing.T) {
 	t.Parallel()
 
 	app := createTestApp(t)
+	app.cfg.Node.Ephemeral.InactivityTimeout = 5 * time.Second
 	app.StartEphemeralGCForTest(t)
 
 	user := app.state.CreateUserForTest("eph-gc-cancel-user")
@@ -391,6 +394,11 @@ func TestEphemeralGCDoesNotDeleteReconnectedNode(t *testing.T) {
 	nodeView, ok := app.state.GetNodeByNodeKey(nodeKey.Public())
 	require.True(t, ok)
 	require.True(t, nodeView.IsEphemeral(), "test sanity: node must be ephemeral")
+	require.True(t, app.ephemeralGC.IsScheduled(nodeView.ID()),
+		"test sanity: registration must arm the GC timer")
+	// Stands in for the first poll's Cancel; the sessions below are replayed
+	// by hand and must not race the registration's timer.
+	app.ephemeralGC.Cancel(nodeView.ID())
 
 	node := nodeView.AsStruct()
 	session := app.newMapSession(context.Background(), tailcfg.MapRequest{
@@ -447,6 +455,7 @@ func TestDeleteNodeCancelsEphemeralGC(t *testing.T) {
 	t.Parallel()
 
 	app := createTestApp(t)
+	app.cfg.Node.Ephemeral.InactivityTimeout = 5 * time.Second
 	app.StartEphemeralGCForTest(t)
 
 	user := app.state.CreateUserForTest("eph-gc-delete-user")
@@ -476,6 +485,93 @@ func TestDeleteNodeCancelsEphemeralGC(t *testing.T) {
 
 	assert.False(t, app.ephemeralGC.IsScheduled(node.ID()),
 		"deleting a node must cancel its ephemeral GC timer")
+}
+
+func TestEphemeralGCDeletesNodeThatNeverPolled(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	app.cfg.Node.Ephemeral.InactivityTimeout = time.Second
+	app.StartEphemeralGCForTest(t)
+
+	user := app.state.CreateUserForTest("eph-gc-never-polled-user")
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, true, nil, nil)
+	require.NoError(t, err)
+
+	nodeKey := key.NewNode()
+
+	_, err = app.handleRegister(context.Background(), tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "eph-gc-never-polled-node",
+		},
+		Expiry: time.Now().Add(24 * time.Hour),
+	}, key.NewMachine().Public())
+	require.NoError(t, err)
+
+	nodeView, ok := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, ok)
+	require.True(t, nodeView.IsEphemeral(), "test sanity: node must be ephemeral")
+
+	assert.Eventually(t, func() bool {
+		_, ok := app.state.GetNodeByID(nodeView.ID())
+
+		return !ok
+	}, 5*time.Second, 10*time.Millisecond,
+		"an ephemeral node that never long-polled must be garbage collected")
+}
+
+var errInjectedSetUsers = errors.New("injected SetUsers failure")
+
+// failingSetUsersPolicyManager fails the user refresh that follows saving a
+// registered node.
+type failingSetUsersPolicyManager struct {
+	policy.PolicyManager
+}
+
+func (failingSetUsersPolicyManager) SetUsers([]types.User) (bool, bool, error) {
+	return false, false, errInjectedSetUsers
+}
+
+// TestEphemeralGCArmedWhenPolicyRefreshFails pins that a node saved by a
+// registration that then returns an error still gets its timer: the client
+// may never retry, and no session would ever arm one.
+func TestEphemeralGCArmedWhenPolicyRefreshFails(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	app.cfg.Node.Ephemeral.InactivityTimeout = time.Hour
+	app.StartEphemeralGCForTest(t)
+
+	user := app.state.CreateUserForTest("eph-gc-policy-fail-user")
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, true, nil, nil)
+	require.NoError(t, err)
+
+	app.state.WrapPolicyManagerForTest(func(pm policy.PolicyManager) policy.PolicyManager {
+		return failingSetUsersPolicyManager{PolicyManager: pm}
+	})
+
+	nodeKey := key.NewNode()
+
+	_, err = app.handleRegister(context.Background(), tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "eph-gc-policy-fail-node",
+		},
+		Expiry: time.Now().Add(24 * time.Hour),
+	}, key.NewMachine().Public())
+	require.ErrorIs(t, err, errInjectedSetUsers)
+
+	nodeView, ok := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, ok, "test sanity: the node must be saved despite the error")
+	assert.True(t, app.ephemeralGC.IsScheduled(nodeView.ID()),
+		"a saved ephemeral node must have a GC timer")
 }
 
 // TestGitHubIssue3129_BlockedWriteSessionLifecycle

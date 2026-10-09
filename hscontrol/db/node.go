@@ -366,8 +366,8 @@ func NodeSetMachineKey(
 
 // EphemeralGarbageCollector is a garbage collector that will delete nodes after
 // a certain amount of time.
-// It is used to delete ephemeral nodes ([types.Node.IsEphemeral]) that have disconnected and should be
-// cleaned up.
+// It is used to delete ephemeral nodes ([types.Node.IsEphemeral]) that have disconnected, or never
+// connected, and should be cleaned up.
 type EphemeralGarbageCollector struct {
 	mu sync.Mutex
 
