@@ -32,6 +32,7 @@ var viaCompatTests = []struct {
 	id   string
 	desc string
 }{
+	{"grant-v13", "group src steers subnet via router to members only"},
 	{"via-grant-v29", "crossed subnet steering: group-a via router-a, group-b via router-b"},
 	{"via-grant-v30", "crossed mixed: subnet via router-a/b, exit via exit-b/a"},
 	{"via-grant-v31", "peer connectivity + via exit A/B steering"},
