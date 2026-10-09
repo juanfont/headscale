@@ -1767,8 +1767,9 @@ func (c pakReregCase) reregister(
 	regReq tailcfg.RegisterRequest,
 ) (types.NodeView, error) {
 	hi := regReq.Hostinfo.Clone()
+	node, _, err := c.s.reregisterNodeWithPAK(view, pak, regReq, c.machineKey, hi.Hostname, hi)
 
-	return c.s.reregisterNodeWithPAK(view, pak, regReq, c.machineKey, hi.Hostname, hi)
+	return node, err
 }
 
 // pakNodeFields are the node fields a re-registration writes. Expiry is in
@@ -1822,7 +1823,7 @@ func waitParkedOnWriteQueue(t *testing.T, fn string) {
 		stacks := string(buf[:runtime.Stack(buf, true)])
 		for g := range strings.SplitSeq(stacks, "\n\n") {
 			if strings.Contains(g, "[select") &&
-				strings.Contains(g, "(*NodeStore).UpdateNodes(") &&
+				strings.Contains(g, "(*NodeStore).updateNodes(") &&
 				strings.Contains(g, "."+fn+"(") {
 				return true
 			}

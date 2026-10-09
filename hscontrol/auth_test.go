@@ -4108,6 +4108,76 @@ func TestHandleNodeFromAuthPath_OldUserNil_NoPanic(t *testing.T) {
 	assert.Equal(t, userB.ID, node.UserID().Get(), "new node belongs to userB")
 }
 
+// TestHandleNodeFromAuthPath_ReloginWholeNode covers an interactive (web or
+// OIDC) relogin that rotates the node key. A [tailcfg.PeerChange] patch can
+// neither clear a peer's Expired flag nor carry Hostinfo, so a relogin that
+// un-expires the node or changes Hostinfo peers read must be sent as a whole
+// node. A relogin that only rotates keys keeps the key-rotation patch.
+func TestHandleNodeFromAuthPath_ReloginWholeNode(t *testing.T) {
+	tests := []struct {
+		name      string
+		expired   bool
+		services  []tailcfg.Service
+		wantPatch bool
+	}{
+		{name: "keys only", wantPatch: true},
+		{name: "expired", expired: true},
+		{
+			name:     "peer-visible hostinfo",
+			services: []tailcfg.Service{{Proto: tailcfg.PeerAPI4, Port: 4242}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := createTestApp(t)
+
+			user := app.state.CreateUserForTest("authpath-relogin")
+			node := app.state.CreateRegisteredNodeForTest(user, "authpath-relogin")
+			node.Hostinfo = &tailcfg.Hostinfo{Hostname: node.Hostname}
+
+			if tt.expired {
+				node.Expiry = new(time.Now().Add(-time.Minute))
+			}
+
+			app.state.PutNodeInStoreForTest(*node)
+			// Direct fixture writes bypass registration's policy-cache updates.
+			require.NoError(t, app.state.UpdatePolicyManagerUsersForTest())
+			require.NoError(t, app.state.UpdatePolicyManagerNodesForTest())
+
+			newNodeKey := key.NewNode()
+			authID := types.MustAuthID()
+			app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+				MachineKey: node.MachineKey,
+				NodeKey:    newNodeKey.Public(),
+				Hostname:   node.Hostname,
+				Hostinfo: &tailcfg.Hostinfo{
+					Hostname: node.Hostname,
+					Services: tt.services,
+				},
+			}))
+
+			relogged, c, err := app.state.HandleNodeFromAuthPath(
+				authID,
+				types.UserID(user.ID),
+				nil,
+				"oidc",
+			)
+			require.NoError(t, err)
+			require.Equal(t, node.ID, relogged.ID(), "relogin must update the existing node")
+			require.Equal(t, newNodeKey.Public(), relogged.NodeKey())
+
+			if tt.wantPatch {
+				assert.Empty(t, c.PeersChanged, "relogin must not be a whole-node add")
+				assert.Len(t, c.PeerPatches, 1, "relogin must be a peer patch")
+			} else {
+				assert.Empty(t, c.PeerPatches, "relogin must not be a peer patch")
+				assert.Contains(t, c.PeersChanged, node.ID, "relogin must be a whole-node add")
+			}
+		})
+	}
+}
+
 // TestWaitForFollowupMachineKeyMismatch covers the followup poll in
 // [Headscale.waitForFollowup]. That poll is authenticated only by the auth ID
 // embedded in the followup URL, so without a machine-key check anyone who
