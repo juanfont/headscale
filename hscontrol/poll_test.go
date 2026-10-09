@@ -596,9 +596,9 @@ func TestDeletedNodeEndsLongPoll(t *testing.T) {
 		t.Fatal("expected the initial map write to start")
 	}
 
-	c, err := app.state.DeleteNode(nodeView)
+	cs, err := app.state.DeleteNode(nodeView)
 	require.NoError(t, err)
-	app.Change(c)
+	app.Change(cs...)
 
 	// The reconnect grace period is 10s, so a generous bound here still fails
 	// if teardown waits for a node that can never come back.
@@ -677,9 +677,9 @@ func TestDeletedNodeInterruptsBlockedWrite(t *testing.T) {
 		t.Fatal("expected the initial map write to block")
 	}
 
-	c, err := app.state.DeleteNode(nodeView)
+	cs, err := app.state.DeleteNode(nodeView)
 	require.NoError(t, err)
-	app.Change(c)
+	app.Change(cs...)
 
 	select {
 	case <-serveDone:
