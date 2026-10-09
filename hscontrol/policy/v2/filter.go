@@ -211,7 +211,10 @@ func (pol *Policy) compileFilterRulesForNode(
 	grants := pol.compileGrants(users, nodes)
 	userIdx := buildUserNodeIndex(nodes)
 
-	return filterRulesForNode(grants, node, userIdx)
+	return append(
+		filterRulesForNode(grants, node, userIdx),
+		exitNodeSelfRules(grants, node, userIdx)...,
+	)
 }
 
 var sshAccept = tailcfg.SSHAction{
