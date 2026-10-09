@@ -447,16 +447,18 @@ func (pm *PolicyManager) SSHPolicy(baseURL string, node types.NodeView) (*tailcf
 	return sshPol, nil
 }
 
-// SSHCheckParams resolves the SSH check period for a source-destination
-// node pair by looking up the current policy. This avoids trusting URL
+// SSHCheckParams resolves the SSH check period for src logging in to dst
+// as localUser by looking up the current policy. This avoids trusting URL
 // parameters that a client could tamper with. First-match wins across
-// the policy's SSH rules.
+// the policy's SSH rules; a rule only matches when it lets src log in as
+// localUser, as the client does when it picks the rule.
 //
 // Returns (duration, true) when a matching rule is found and
 // (0, false) when none is. A (0, true) return means the matched rule
 // uses a zero check period (re-check every session).
 func (pm *PolicyManager) SSHCheckParams(
 	srcNodeID, dstNodeID types.NodeID,
+	localUser string,
 ) (time.Duration, bool) {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
@@ -503,23 +505,23 @@ func (pm *PolicyManager) SSHCheckParams(
 			continue
 		}
 
+		if !pm.sshRuleAllowsUser(rule, srcNode, localUser) {
+			continue
+		}
+
 		// Check if dst node matches any destination.
+		hasOtherDests := false
+
 		for _, dst := range rule.Destinations {
 			if ag, isAG := dst.(*AutoGroup); isAG && ag.Is(AutoGroupSelf) {
-				// User().Valid() guards the User().ID() dereference: the
-				// NodeStore can hold a non-tagged node with UserID set but
-				// the User association unhydrated (nil), and IsTagged()
-				// alone does not cover that. Mirrors filter.go's
-				// autogroup:self guard. Without it, a tailnet client on the
-				// Noise SSH-check path crashes the server (nil deref).
-				if !srcNode.IsTagged() && !dstNode.IsTagged() &&
-					srcNode.User().Valid() && dstNode.User().Valid() &&
-					srcNode.User().ID() == dstNode.User().ID() {
+				if sshNodesShareUser(srcNode, dstNode) {
 					return checkPeriodFromRule(rule), true
 				}
 
 				continue
 			}
+
+			hasOtherDests = true
 
 			dstIPs, err := dst.Resolve(pm.pol, pm.users, pm.nodes)
 			if err != nil || dstIPs == nil {
@@ -530,9 +532,54 @@ func (pm *PolicyManager) SSHCheckParams(
 				return checkPeriodFromRule(rule), true
 			}
 		}
+
+		// Localpart self-access: a source outside dst still gets the rule
+		// for its own user's nodes, or itself if tagged (compileSSHPolicy).
+		if hasOtherDests && rule.Users.ContainsLocalpart() &&
+			slices.ContainsFunc(dstNode.IPs(), srcIPs.Contains) {
+			if dstNode.IsTagged() {
+				if srcNodeID == dstNodeID {
+					return checkPeriodFromRule(rule), true
+				}
+			} else if sshNodesShareUser(srcNode, dstNode) {
+				return checkPeriodFromRule(rule), true
+			}
+		}
 	}
 
 	return 0, false
+}
+
+// sshNodesShareUser matches user-owned nodes with hydrated user associations.
+// IsTagged alone does not guard User().ID(): the NodeStore can hold a
+// non-tagged node whose UserID is set but whose User association is nil.
+func sshNodesShareUser(srcNode, dstNode types.NodeView) bool {
+	return !srcNode.IsTagged() && !dstNode.IsTagged() &&
+		srcNode.User().Valid() && dstNode.User().Valid() &&
+		srcNode.User().ID() == dstNode.User().ID()
+}
+
+// sshRuleAllowsUser reports whether rule lets src log in as localUser,
+// mirroring the SSHUsers maps compileSSHPolicy emits: root when listed,
+// other users via autogroup:nonroot or a literal name, and anyone, root
+// included, whose name is the source user's localpart.
+func (pm *PolicyManager) sshRuleAllowsUser(rule SSH, srcNode types.NodeView, localUser string) bool {
+	isRoot := localUser == "root"
+
+	switch {
+	case localUser == "":
+		return false
+	case isRoot && rule.Users.ContainsRoot(),
+		!isRoot && rule.Users.ContainsNonRoot(),
+		!isRoot && slices.Contains(rule.Users.NormalUsers(), SSHUser(localUser)):
+		return true
+	case srcNode.IsTagged() || !srcNode.User().Valid() || !rule.Users.ContainsLocalpart():
+		return false
+	}
+
+	lp, ok := resolveLocalparts(rule.Users.LocalpartEntries(), pm.users)[srcNode.User().ID()]
+
+	return ok && lp == localUser
 }
 
 func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
