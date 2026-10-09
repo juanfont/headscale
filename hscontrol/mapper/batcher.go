@@ -123,9 +123,9 @@ func generateMapResponse(nc nodeConnection, mapper *mapper, r change.Change) (*t
 		}
 
 		removedPeers := nc.computePeerDiff(currentPeerIDs)
-		// Include self node when this is a self-update (e.g., node's own tags changed)
-		// so the node sees its updated self info along with new packet filters.
-		mapResp, err = mapper.policyChangeResponse(nodeID, version, removedPeers, currentPeers, isSelfUpdate)
+		// Routes and policy changes also affect self. Each connection drops
+		// the self node when it already holds the same value.
+		mapResp, err = mapper.policyChangeResponse(nodeID, version, removedPeers, currentPeers, true)
 	} else if isSelfUpdate {
 		// Non-policy self-update: just send the self node info
 		mapResp, err = mapper.selfMapResponse(nodeID, version)
@@ -343,6 +343,9 @@ func (b *Batcher) AddNode(
 		nodeConn.workMu.Lock()
 		nodeConn.updateSentPeers(initialMap)
 		nodeConn.workMu.Unlock()
+
+		// Still pendingInitial, so no broadcast can race this.
+		newEntry.lastSelf.Store(initialMap.Node)
 
 		// Open the connection for broadcast sends now that the initial
 		// map is the stream's first frame; send() requeued any changes

@@ -2358,3 +2358,60 @@ func TestAddWorkPeersRemovedNotTreatedAsEmpty(t *testing.T) {
 	require.Equal(t, 3, countNodesPending(lb.b),
 		"surviving 3 nodes must have the removal pending")
 }
+// TestSelfSentOnlyWhenChanged pins that a policy recompute carries the
+// node's own self to each connection that does not hold it yet: self renders
+// from the same state as peers (issue #3502), and a Node forces a full client
+// netmap rebuild.
+func TestSelfSentOnlyWhenChanged(t *testing.T) {
+	testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 2, normalBufferSize)
+	defer cleanup()
+
+	b := testData.Batcher.Batcher
+	self := &testData.Nodes[0]
+
+	rename := func(name string) {
+		_, _, err := testData.State.RenameNode(self.n.ID, name)
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, b.AddNode(self.n.ID, self.ch, tailcfg.CapabilityVersion(100), nil))
+	require.NotNil(t, expectReceive(t, self.ch, "initial map").Node)
+
+	nc, ok := b.nodes.Load(self.n.ID)
+	require.True(t, ok)
+
+	policyFrame := func(chs ...chan *tailcfg.MapResponse) []*tailcfg.MapResponse {
+		nc.workMu.Lock()
+		defer nc.workMu.Unlock()
+
+		require.NoError(t, handleNodeChange(nc, b.mapper, change.PolicyChange()))
+
+		frames := make([]*tailcfg.MapResponse, 0, len(chs))
+		for _, ch := range chs {
+			frames = append(frames, expectReceive(t, ch, "policy frame"))
+		}
+
+		return frames
+	}
+
+	assert.Nil(t, policyFrame(self.ch)[0].Node, "unchanged self must be dropped")
+
+	rename("renamed")
+
+	frame := policyFrame(self.ch)[0]
+	require.NotNil(t, frame.Node, "moved self must be sent")
+	assert.Contains(t, frame.Node.Name, "renamed")
+
+	// A connection joining after self moved gets the new self in its
+	// initial map; the next recompute must still reach the older one.
+	rename("renamed-again")
+
+	ch2 := make(chan *tailcfg.MapResponse, normalBufferSize)
+	require.NoError(t, b.AddNode(self.n.ID, ch2, tailcfg.CapabilityVersion(100), nil))
+	require.NotNil(t, expectReceive(t, ch2, "second connection's initial map").Node)
+
+	frames := policyFrame(self.ch, ch2)
+	require.NotNil(t, frames[0].Node, "first connection still holds the old self")
+	assert.Contains(t, frames[0].Node.Name, "renamed-again")
+	assert.Nil(t, frames[1].Node, "second connection already holds the new self")
+}
