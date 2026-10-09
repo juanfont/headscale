@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -139,7 +140,16 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 	// Registration cache endpoint
 	debug.Handle("registration-cache", "Registration cache information", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, h.state.DebugRegistrationCache())
+		cache := h.state.DebugRegistrationCache()
+		serializable := make(map[string]string)
+		v := reflect.ValueOf(cache)
+		if v.IsValid() && v.Kind() == reflect.Map {
+			for _, key := range v.MapKeys() {
+				val := v.MapIndex(key)
+				serializable[fmt.Sprintf("%v", key)] = fmt.Sprintf("%v", val.Interface())
+			}
+		}
+		writeJSON(w, serializable)
 	}))
 
 	// Routes endpoint
