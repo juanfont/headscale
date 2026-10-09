@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
@@ -88,6 +89,9 @@ type PolicyManager struct {
 	nodeAttrsMap     map[types.NodeID]tailcfg.NodeCapMap
 	nodeAttrsHashes  map[types.NodeID]deephash.Sum
 	nodeAttrsChanged []types.NodeID
+
+	// Skip the policy lock when no node-attribute refresh is pending.
+	nodeAttrsPending atomic.Bool
 }
 
 // filterAndPolicy combines the compiled filter rules with policy content for hashing.
@@ -1877,6 +1881,10 @@ func (pm *PolicyManager) refreshNodeAttrsLocked() error {
 	pm.nodeAttrsHashes = newHashes
 	pm.nodeAttrsChanged = append(pm.nodeAttrsChanged, changed...)
 
+	if len(pm.nodeAttrsChanged) > 0 {
+		pm.nodeAttrsPending.Store(true)
+	}
+
 	return nil
 }
 
@@ -1924,9 +1932,9 @@ func (pm *PolicyManager) NodeCapMaps() map[types.NodeID]tailcfg.NodeCapMap {
 
 // NodesWithChangedCapMap returns the IDs of nodes whose nodeAttrs
 // CapMap shifted across one or more [PolicyManager.updateLocked] calls
-// since the last drain. The buffer drains on return. The mapper calls
-// this once per [state.State.ReloadPolicy] to decide which nodes need
-// a [change.SelfUpdate].
+// since the last drain. The buffer drains on return.
+// [state.State.DrainSelfRefreshes] calls this whenever changes are
+// dispatched to decide which nodes need a [change.SelfUpdate].
 //
 // [PolicyManager.refreshNodeAttrsLocked] APPENDS to the buffer; the drain
 // returns the union of every change since the previous read. A concurrent
@@ -1934,7 +1942,7 @@ func (pm *PolicyManager) NodeCapMaps() map[types.NodeID]tailcfg.NodeCapMap {
 // [PolicyManager.SetPolicy] and a drain cannot silently lose the
 // policy-reload diff.
 func (pm *PolicyManager) NodesWithChangedCapMap() []types.NodeID {
-	if pm == nil {
+	if pm == nil || !pm.nodeAttrsPending.Load() {
 		return nil
 	}
 
@@ -1943,6 +1951,7 @@ func (pm *PolicyManager) NodesWithChangedCapMap() []types.NodeID {
 
 	out := pm.nodeAttrsChanged
 	pm.nodeAttrsChanged = nil
+	pm.nodeAttrsPending.Store(false)
 
 	return out
 }

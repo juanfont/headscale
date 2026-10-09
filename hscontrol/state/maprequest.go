@@ -36,6 +36,10 @@ type mapRequestDelta struct {
 	// changed (see [peerHostinfo]). Only that forces a whole-node resend.
 	peerHostinfoChanged bool
 
+	// dnsMetadataChanged reports whether a Hostinfo field feeding the
+	// node's NextDNS device metadata (Hostname, OS) changed.
+	dnsMetadataChanged bool
+
 	// routesChanged reports whether announced routes (RoutableIPs)
 	// changed. Routes are policy and election inputs, so they are tracked
 	// on their own.
