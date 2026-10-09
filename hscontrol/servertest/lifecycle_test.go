@@ -14,6 +14,8 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/control/controlclient"
+	"tailscale.com/tailcfg"
 	"tailscale.com/types/netmap"
 )
 
@@ -268,6 +270,95 @@ func TestRestoredExpirySurvivesQueuedChanges(t *testing.T) {
 			require.Equal(t, node.SessionEpoch(), current.SessionEpoch())
 		})
 	}
+}
+
+// TestReloginOfExpiredNodeClearsPeerExpiry covers #3531. Peers hold an expired
+// node with Expired=true, which only a whole node from control can clear:
+// [tailcfg.PeerChange] has no Expired field. Hostinfo is identical across the
+// relogin, so no Hostinfo-driven whole-node update can mask a missing one.
+func TestReloginOfExpiredNodeClearsPeerExpiry(t *testing.T) {
+	t.Parallel()
+
+	h := servertest.NewHarness(t, 2,
+		servertest.WithServerOptions(servertest.WithBatchDelay(10*time.Millisecond)),
+	)
+	client, observer := h.Client(0), h.Client(1)
+	id := findNodeID(t, h.Server, client.Name)
+	node, ok := h.Server.State().GetNodeByID(id)
+	require.True(t, ok)
+
+	oldKey := node.NodeKey()
+
+	expiry := time.Now()
+	_, c, err := h.Server.State().SetNodeExpiry(id, &expiry)
+	require.NoError(t, err)
+	h.Server.App.Change(c)
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		peer, found := observer.PeerByName(client.Name)
+		if assert.True(c, found) {
+			assert.True(c, peer.Expired())
+		}
+	}, 5*time.Second, 10*time.Millisecond, "observer must see the node expired")
+
+	// The server answers the expired key with NodeKeyExpired, so the client
+	// generates a new key, the way tailscaled re-authenticates.
+	client.Reconnect(t)
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		current, found := h.Server.State().GetNodeByID(id)
+		if !assert.True(c, found) {
+			return
+		}
+
+		assert.NotEqual(c, oldKey, current.NodeKey())
+		assert.False(c, current.IsExpired())
+
+		peer, found := observer.PeerByName(client.Name)
+		if assert.True(c, found) {
+			assert.Equal(c, current.NodeKey(), peer.Key())
+			assert.False(c, peer.Expired(), "relogin must clear the peer's expired flag")
+		}
+	}, 5*time.Second, 10*time.Millisecond, "observer must see the relogged node with its new key and not expired")
+}
+
+// TestReloginPeerVisibleHostinfoReachesPeers covers the rest of the #3531
+// class: a relogin stores the RegisterRequest's Hostinfo, so the following
+// MapRequest carries no Hostinfo delta, and a peer-visible change made at
+// relogin reaches peers only if the relogin itself sends the whole node.
+func TestReloginPeerVisibleHostinfoReachesPeers(t *testing.T) {
+	t.Parallel()
+
+	h := servertest.NewHarness(t, 2,
+		servertest.WithServerOptions(servertest.WithBatchDelay(10*time.Millisecond)),
+	)
+	client, observer := h.Client(0), h.Client(1)
+
+	svc := tailcfg.Service{Proto: tailcfg.PeerAPI4, Port: 4242}
+	// Same Hostinfo as servertest.NewClient, plus a service.
+	hi := &tailcfg.Hostinfo{
+		BackendLogID: "servertest-" + client.Name,
+		Hostname:     client.Name,
+		Services:     []tailcfg.Service{svc},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// `tailscale up --force-reauth`: an interactive login rotates the key.
+	client.Disconnect(t)
+	client.Direct().SetHostinfo(hi)
+	_, err := client.Direct().TryLogin(ctx, controlclient.LoginInteractive)
+	require.NoError(t, err)
+	require.NoError(t, client.RestartPoll(ctx))
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		peer, found := observer.PeerByName(client.Name)
+		if assert.True(c, found) {
+			assert.Equal(c, []tailcfg.Service{svc}, peer.Hostinfo().Services().AsSlice(),
+				"peer must see the Hostinfo the node relogged in with")
+		}
+	}, 5*time.Second, 10*time.Millisecond, "observer must see the relogin's peer-visible Hostinfo")
 }
 
 func TestNodeExpiryRouteFailover(t *testing.T) {

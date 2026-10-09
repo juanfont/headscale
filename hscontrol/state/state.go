@@ -1679,8 +1679,10 @@ type authNodeUpdateParams struct {
 
 // applyAuthNodeUpdate applies common update logic for re-authenticating or converting
 // an existing node. It updates the node in [NodeStore], processes RequestTags, and
-// persists changes to the database.
-func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView, error) {
+// persists changes to the database. The bool reports whether peers read the
+// node it replaced and the update the same, apart from its keys; see
+// [onlyKeysChanged].
+func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView, bool, error) {
 	regData := params.RegData
 	// Log the operation type
 	if params.IsConvertFromTag {
@@ -1721,7 +1723,7 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 
 	rejectedTags := s.validateRequestTagsForReauth(params.ExistingNode, authUser, requestTags)
 	if len(rejectedTags) > 0 {
-		return types.NodeView{}, fmt.Errorf(
+		return types.NodeView{}, false, fmt.Errorf(
 			"%w %v are invalid or not permitted",
 			ErrRequestedTagsInvalidOrNotPermitted,
 			rejectedTags,
@@ -1736,11 +1738,11 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 	// the NodeStore NodeKey index (denying the victim service).
 	if existing, ok := s.nodeStore.GetNodeByNodeKey(regData.NodeKey); ok &&
 		existing.MachineKey() != regData.MachineKey {
-		return types.NodeView{}, ErrNodeKeyInUse
+		return types.NodeView{}, false, ErrNodeKeyInUse
 	}
 
 	// Update existing node in [NodeStore] - validation passed, safe to mutate
-	updatedNodeView, ok := s.nodeStore.UpdateNode(params.ExistingNode.ID(), func(node *types.Node) {
+	before, updatedNodeView, ok := s.nodeStore.UpdateNodeDiff(params.ExistingNode.ID(), func(node *types.Node) {
 		node.NodeKey = regData.NodeKey
 		node.DiscoKey = regData.DiscoKey
 		node.Hostname = params.Hostname
@@ -1831,8 +1833,10 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 	})
 
 	if !ok {
-		return types.NodeView{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, params.ExistingNode.ID())
+		return types.NodeView{}, false, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, params.ExistingNode.ID())
 	}
+
+	keysOnly := onlyKeysChanged(before, updatedNodeView, time.Now())
 
 	// Persist to database.
 	// Explicitly select all node columns so GORM includes nil/zero-value fields
@@ -1859,7 +1863,7 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 		return nil, nil //nolint:nilnil // side-effect only write
 	})
 	if err != nil {
-		return types.NodeView{}, err
+		return types.NodeView{}, false, err
 	}
 
 	// Log completion
@@ -1873,7 +1877,7 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 			Msg("Node re-authorized")
 	}
 
-	return updatedNodeView, nil
+	return updatedNodeView, keysOnly, nil
 }
 
 // createAndSaveNewNode creates a new node, allocates IPs, saves to DB, and adds to [NodeStore].
@@ -2277,12 +2281,15 @@ func (s *State) HandleNodeFromAuthPath(
 		RegisterMethod: registrationMethod,
 	}
 
-	var finalNode types.NodeView
+	var (
+		finalNode types.NodeView
+		keysOnly  bool
+	)
 
 	if nodeExistsForSameUser {
 		updateParams.ExistingNode = existingNodeSameUser
 
-		finalNode, err = s.applyAuthNodeUpdate(updateParams)
+		finalNode, keysOnly, err = s.applyAuthNodeUpdate(updateParams)
 		if err != nil {
 			return types.NodeView{}, change.Change{}, err
 		}
@@ -2290,7 +2297,7 @@ func (s *State) HandleNodeFromAuthPath(
 		updateParams.ExistingNode = taggedNode
 		updateParams.IsConvertFromTag = true
 
-		finalNode, err = s.applyAuthNodeUpdate(updateParams)
+		finalNode, _, err = s.applyAuthNodeUpdate(updateParams)
 		if err != nil {
 			return types.NodeView{}, change.Change{}, err
 		}
@@ -2344,10 +2351,10 @@ func (s *State) HandleNodeFromAuthPath(
 
 	policyChanged := !usersChange.IsEmpty() || !nodesChange.IsEmpty()
 
-	// nodeExistsForSameUser is true only for a same-user relogin; a tag->user
-	// conversion is excluded, as it changes the peer's User — a structural
-	// change peers must see in full, not a key-rotation patch.
-	return finalNode, reauthChange(finalNode, nodeExistsForSameUser, policyChanged), nil
+	// keysOnly is set only for a same-user relogin; a tag->user conversion is
+	// excluded, as it changes the peer's User — a structural change peers must
+	// see in full, not a key-rotation patch.
+	return finalNode, reauthChange(finalNode, keysOnly, policyChanged), nil
 }
 
 // createNewNodeFromAuth creates a new node during auth callback.
@@ -2566,7 +2573,10 @@ func (s *State) HandleNodeFromPreAuthKey(
 		Str(zf.UserName, pakUsername()).
 		Msg("Registering node with pre-auth key")
 
-	var finalNode types.NodeView
+	var (
+		finalNode types.NodeView
+		keysOnly  bool
+	)
 
 	// If this node exists for this user, update the node in place. For a
 	// tags-only key (pak.User == nil) this is true when the machine already has
@@ -2600,7 +2610,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 		priorNode := existingNodeSameUser.AsStruct()
 
 		// Update existing node - NodeStore first, then database
-		updatedNodeView, ok := s.nodeStore.UpdateNode(existingNodeSameUser.ID(), func(node *types.Node) {
+		before, updatedNodeView, ok := s.nodeStore.UpdateNodeDiff(existingNodeSameUser.ID(), func(node *types.Node) {
 			node.NodeKey = regReq.NodeKey
 			node.Hostname = hostname
 
@@ -2730,6 +2740,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 			Msg("Node re-authorized")
 
 		finalNode = updatedNodeView
+		keysOnly = onlyKeysChanged(before, updatedNodeView, time.Now())
 	} else {
 		// Node does not exist for this user with this machine key.
 		// For a user-owned key, check whether the machine key is already held
@@ -2823,25 +2834,35 @@ func (s *State) HandleNodeFromPreAuthKey(
 
 	policyChanged := !usersChange.IsEmpty() || !nodesChange.IsEmpty()
 
-	return finalNode, reauthChange(finalNode, existsSameUser, policyChanged), nil
+	return finalNode, reauthChange(finalNode, keysOnly, policyChanged), nil
 }
 
 // reauthChange returns the [change.Change] to broadcast after an authentication
-// that updated or created a node.
+// that updated or created a node. keysOnly marks a same-user relogin that
+// changed nothing peers read besides its keys; see [onlyKeysChanged].
 //
-// A pure relogin (isRelogin: an existing node, same user, with only its NodeKey
-// rotated) is sent as a minimal incremental peer patch via [change.NodeKeyRotated]
-// rather than re-advertising the whole node. A policy change forces a full
-// recompute; any other (new) node is a whole-node add.
-func reauthChange(node types.NodeView, isRelogin, policyChanged bool) change.Change {
+// Such a relogin is sent as the minimal peer patch [change.NodeKeyRotated].
+// Anything else is a whole-node add, and a policy change forces a full
+// recompute.
+func reauthChange(node types.NodeView, keysOnly, policyChanged bool) change.Change {
 	switch {
 	case policyChanged:
 		return change.PolicyChange()
-	case isRelogin:
+	case keysOnly:
 		return change.NodeKeyRotated(node)
 	default:
 		return change.NodeAdded(node.ID())
 	}
+}
+
+// onlyKeysChanged reports whether peers read before and after the same, apart
+// from what [change.NodeKeyRotated] patches. [tailcfg.PeerChange] carries
+// neither [tailcfg.Node.Expired] nor Hostinfo: peers left holding an expired
+// node drop its WireGuard handshakes, and the relogin stored the Hostinfo, so
+// no later MapRequest shows the change.
+func onlyKeysChanged(before, after types.NodeView, now time.Time) bool {
+	return before.IsExpiredAt(now) == after.IsExpiredAt(now) &&
+		peerHostinfoEqual(before.Hostinfo(), after.Hostinfo())
 }
 
 // updatePolicyManagerUsers pushes the current user list into the policy
@@ -3120,7 +3141,7 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		delta.hostinfoChanged = newHostinfo != nil &&
 			!hostinfoEqual(currentNode.Hostinfo, newHostinfo)
 		delta.peerHostinfoChanged = newHostinfo != nil &&
-			!peerHostinfoEqual(currentNode.Hostinfo, newHostinfo)
+			!peerHostinfoEqual(currentNode.Hostinfo.View(), newHostinfo.View())
 		delta.dnsMetadataChanged = newHostinfo != nil &&
 			(currentNode.Hostinfo == nil ||
 				currentNode.Hostinfo.Hostname != newHostinfo.Hostname ||
