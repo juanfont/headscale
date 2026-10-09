@@ -322,7 +322,8 @@ func (m *mapper) selfMapResponse(
 // [handleNodeChange]. It sends:
 //   - PeersChanged for remaining peers (their AllowedIPs may have changed due to policy)
 //   - Updated PacketFilters
-//   - Updated SSHPolicy (SSH rules may reference users/groups that changed)
+//   - Updated SSHPolicy, dropped per connection when unchanged;
+//     see [connectionEntry.withSSHPolicyDelta]
 //   - Optionally, the node's own self info (when includeSelf is true)
 //
 // DNSConfig is left out: it forces clients into a full netmap rebuild, and

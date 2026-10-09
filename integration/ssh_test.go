@@ -9,6 +9,7 @@ import (
 	"time"
 
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/integrationutil"
@@ -28,7 +29,13 @@ func isSSHNoAccessStdError(stderr string) bool {
 		strings.Contains(stderr, "tailnet policy does not permit you to SSH")
 }
 
-func sshScenario(t *testing.T, policy *policyv2.Policy, testName string, clientsPerUser int) *Scenario {
+func sshScenario(
+	t *testing.T,
+	policy *policyv2.Policy,
+	testName string,
+	clientsPerUser int,
+	hsOpts ...hsic.Option,
+) *Scenario {
 	t.Helper()
 
 	spec := ScenarioSpec{
@@ -50,8 +57,10 @@ func sshScenario(t *testing.T, policy *policyv2.Policy, testName string, clients
 			tsic.WithExtraCommands("adduser ssh-it-user"),
 			tsic.WithDockerWorkdir("/"),
 		},
-		hsic.WithACLPolicy(policy),
-		hsic.WithTestName(testName),
+		append([]hsic.Option{
+			hsic.WithACLPolicy(policy),
+			hsic.WithTestName(testName),
+		}, hsOpts...)...,
 	)
 	require.NoError(t, err)
 
@@ -268,6 +277,87 @@ func TestSSHNoSSHConfigured(t *testing.T) {
 			assertSSHPermissionDenied(t, client, peer)
 		}
 	}
+}
+
+// TestSSHRulesRemovedDeniesAccess verifies that removing every SSH rule
+// from the policy revokes SSH that worked before, on every client version.
+// The ACL stays open so the deny can only come from the SSH policy.
+// https://github.com/juanfont/headscale/issues/3508
+func TestSSHRulesRemovedDeniesAccess(t *testing.T) {
+	IntegrationSkip(t)
+
+	pol := &policyv2.Policy{
+		Groups: policyv2.Groups{
+			policyv2.Group("group:integration-test"): []policyv2.Username{policyv2.Username("user1@")},
+		},
+		ACLs: []policyv2.ACL{
+			{
+				Action:   "accept",
+				Protocol: "tcp",
+				Sources:  []policyv2.Alias{wildcard()},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+				},
+			},
+		},
+		SSHs: []policyv2.SSH{
+			{
+				Action:  "accept",
+				Sources: policyv2.SSHSrcAliases{groupp("group:integration-test")},
+				Destinations: policyv2.SSHDstAliases{
+					new(policyv2.AutoGroupMember),
+					new(policyv2.AutoGroupTagged),
+				},
+				Users: []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
+			},
+		},
+	}
+
+	scenario := sshScenario(t, pol, "ssh-rmrules", len(MustTestVersions),
+		hsic.WithPolicyMode(types.PolicyModeDB),
+	)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	allClients, err := scenario.ListTailscaleClients()
+	requireNoErrListClients(t, err)
+
+	user1Clients, err := scenario.ListTailscaleClients("user1")
+	requireNoErrListClients(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	for _, client := range user1Clients {
+		for _, peer := range allClients {
+			if client.Hostname() == peer.Hostname() {
+				continue
+			}
+
+			assertSSHHostname(t, client, peer)
+		}
+	}
+
+	pol.SSHs = nil
+	err = headscale.SetPolicy(pol)
+	require.NoError(t, err)
+
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		for _, client := range user1Clients {
+			for _, peer := range allClients {
+				if client.Hostname() == peer.Hostname() {
+					continue
+				}
+
+				result, stderr, err := doSSHWithoutRetry(t, client, peer)
+				assert.Error(ct, err, "%s -> %s", client.Hostname(), peer.Hostname())
+				assert.Empty(ct, result, "%s -> %s", client.Hostname(), peer.Hostname())
+				assert.True(ct, isSSHNoAccessStdError(stderr),
+					"%s -> %s: want SSH policy deny, stderr: %s",
+					client.Hostname(), peer.Hostname(), stderr)
+			}
+		}
+	}, integrationutil.PolicyPropagationTimeout, integrationutil.SlowPoll,
+		"SSH must be denied once every SSH rule is removed")
 }
 
 func TestSSHIsBlockedInACL(t *testing.T) {
