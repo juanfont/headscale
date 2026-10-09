@@ -459,7 +459,7 @@ func TestSSHPolicyRules(t *testing.T) {
 					}
 				]
 			}`,
-			wantSSH: &tailcfg.SSHPolicy{Rules: nil},
+			wantSSH: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}},
 		},
 		{
 			name:       "invalid-action",
