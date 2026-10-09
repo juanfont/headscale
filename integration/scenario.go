@@ -51,9 +51,12 @@ const (
 var usePostgresForTest = envknob.Bool("HEADSCALE_INTEGRATION_POSTGRES")
 
 var (
-	errNoHeadscaleAvailable = errors.New("no headscale available")
-	errNoUserAvailable      = errors.New("no user available")
-	errNoClientFound        = errors.New("client not found")
+	errNoHeadscaleAvailable        = errors.New("no headscale available")
+	errNoUserAvailable             = errors.New("no user available")
+	errNoClientFound               = errors.New("client not found")
+	errInvalidHeadscaleImageFormat = errors.New("invalid HEADSCALE_INTEGRATION_HEADSCALE_IMAGE format, expected repository:tag")
+	errInvalidMockOIDCImage        = errors.New("invalid HEADSCALE_INTEGRATION_HEADSCALE_IMAGE format, expected repository:tag")
+	errMockOIDCImageRequiredInCI   = errors.New("HEADSCALE_INTEGRATION_HEADSCALE_IMAGE must be set for mock OIDC in CI")
 
 	// AllVersions represents a list of Tailscale versions the suite
 	// uses to test compatibility with the [ControlServer].
@@ -684,7 +687,8 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 
 			s.mu.Lock()
 
-			opts = append(opts,
+			clientOpts := append(
+				slices.Clone(opts),
 				tsic.WithCACert(cert),
 				tsic.WithHeadscaleName(hostname),
 				tsic.WithExtraHosts(extraHosts),
@@ -697,7 +701,7 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 				tsClient, err := tsic.New(
 					s.pool,
 					version,
-					opts...,
+					clientOpts...,
 				)
 				s.mu.Unlock()
 
@@ -1660,14 +1664,37 @@ func (s *Scenario) runMockOIDC(accessTTL time.Duration, users []mockoidc.MockUse
 	// Add integration test labels if running under hi tool
 	dockertestutil.DockerAddIntegrationLabels(mockOidcOptions, "oidc")
 
-	if pmockoidc, err := s.pool.BuildAndRunWithBuildOptions( //nolint:noinlineerr
-		headscaleBuildOptions,
-		mockOidcOptions,
-		dockertestutil.DockerRestartPolicy); err == nil {
-		s.mockOIDC.r = pmockoidc
+	var container *dockertest.Resource
+
+	// CI already built and loaded the Headscale image, including its mockoidc command.
+	// Reuse it instead of downloading dependencies and rebuilding for every OIDC test.
+	if prebuiltImage := os.Getenv("HEADSCALE_INTEGRATION_HEADSCALE_IMAGE"); prebuiltImage != "" {
+		repo, tag, ok := strings.Cut(prebuiltImage, ":")
+		if !ok || repo == "" || tag == "" {
+			return errInvalidMockOIDCImage
+		}
+
+		mockOidcOptions.Repository = repo
+		mockOidcOptions.Tag = tag
+		container, err = s.pool.RunWithOptions(
+			mockOidcOptions,
+			dockertestutil.DockerRestartPolicy,
+		)
+	} else if util.IsCI() {
+		return errMockOIDCImageRequiredInCI
 	} else {
-		return err
+		container, err = s.pool.BuildAndRunWithBuildOptions(
+			headscaleBuildOptions,
+			mockOidcOptions,
+			dockertestutil.DockerRestartPolicy,
+		)
 	}
+
+	if err != nil {
+		return fmt.Errorf("starting mock OIDC container: %w", err)
+	}
+
+	s.mockOIDC.r = container
 
 	// headscale needs to set up the provider with a specific
 	// IP addr to ensure we get the correct config from the well-known
@@ -1753,10 +1780,32 @@ func Webservice(s *Scenario, networkName string) (*dockertest.Resource, error) {
 		ContextDir: dockerContextPath,
 	}
 
-	web, err := s.pool.BuildAndRunWithBuildOptions(
-		webBOpts,
-		webOpts,
-		dockertestutil.DockerRestartPolicy)
+	var (
+		web *dockertest.Resource
+		err error
+	)
+
+	if prebuiltImage := os.Getenv("HEADSCALE_INTEGRATION_HEADSCALE_IMAGE"); prebuiltImage != "" {
+		repo, tag, ok := strings.Cut(prebuiltImage, ":")
+		if !ok {
+			return nil, errInvalidHeadscaleImageFormat
+		}
+
+		webOpts.Repository = repo
+		webOpts.Tag = tag
+
+		web, err = s.pool.RunWithOptions(
+			webOpts,
+			dockertestutil.DockerRestartPolicy,
+		)
+	} else {
+		web, err = s.pool.BuildAndRunWithBuildOptions(
+			webBOpts,
+			webOpts,
+			dockertestutil.DockerRestartPolicy,
+		)
+	}
+
 	if err != nil {
 		return nil, err
 	}

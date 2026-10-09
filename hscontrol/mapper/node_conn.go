@@ -3,6 +3,7 @@ package mapper
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -49,6 +50,43 @@ type connectionEntry struct {
 	// can never become the stream's first frame ahead of the initial
 	// map. The zero value means the connection is ready.
 	pendingInitial atomic.Bool
+
+	// lastSelf is the self node last delivered to this connection's
+	// client, which keeps it until sent another. Every send to an
+	// established connection must go through [multiChannelNodeConn.send]
+	// to keep it current.
+	lastSelf atomic.Pointer[tailcfg.Node]
+
+	// lastSSHPolicy is the last non-nil policy delivered to this connection.
+	lastSSHPolicy atomic.Pointer[tailcfg.SSHPolicy]
+}
+
+// withSelfDelta returns data without its Node when this client already
+// holds an equal one: a Node forces a full client netmap rebuild.
+func (entry *connectionEntry) withSelfDelta(data *tailcfg.MapResponse) *tailcfg.MapResponse {
+	if data.Node == nil || !data.Node.Equal(entry.lastSelf.Load()) {
+		return data
+	}
+
+	stripped := *data
+	stripped.Node = nil
+
+	return &stripped
+}
+
+// withSSHPolicyDelta returns data without its SSHPolicy when this client
+// already holds an equal one: any non-nil SSHPolicy forces a full client
+// netmap rebuild. Equal content arrives in fresh pointers after every
+// policy reload, so compare deeply.
+func (entry *connectionEntry) withSSHPolicyDelta(data *tailcfg.MapResponse) *tailcfg.MapResponse {
+	if data.SSHPolicy == nil || !reflect.DeepEqual(entry.lastSSHPolicy.Load(), data.SSHPolicy) {
+		return data
+	}
+
+	stripped := *data
+	stripped.SSHPolicy = nil
+
+	return &stripped
 }
 
 // multiChannelNodeConn manages multiple concurrent connections for a single node.
@@ -323,7 +361,7 @@ func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 	)
 
 	for _, conn := range snapshot {
-		err := conn.send(data)
+		err := conn.send(conn.withSSHPolicyDelta(conn.withSelfDelta(data)))
 		if err != nil {
 			lastErr = err
 
@@ -334,6 +372,14 @@ func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 				Msg("send: connection failed")
 		} else {
 			successCount++
+
+			if data.Node != nil {
+				conn.lastSelf.Store(data.Node)
+			}
+
+			if data.SSHPolicy != nil {
+				conn.lastSSHPolicy.Store(data.SSHPolicy)
+			}
 		}
 	}
 

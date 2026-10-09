@@ -1510,6 +1510,28 @@ func TestHealthOnlyWriteReusesPeerMap(t *testing.T) {
 		peersCalls.Load())
 }
 
+// TestPrimaryRoutesForNodeSorted checks a router's primaries come back in
+// a stable order: they render into its self node, which the mapper resends
+// whenever it differs from what the node holds (issue #3502).
+func TestPrimaryRoutesForNodeSorted(t *testing.T) {
+	node := createTestNode(1, 1, "user1", "router")
+
+	prefixes := make([]netip.Prefix, 0, 8)
+	for i := range 8 {
+		prefixes = append(prefixes, netip.PrefixFrom(netip.AddrFrom4([4]byte{10, byte(i), 0, 0}), 16))
+	}
+
+	node.Hostinfo = &tailcfg.Hostinfo{Hostname: "router", RoutableIPs: prefixes}
+	node.ApprovedRoutes = prefixes
+	node.IsOnline = new(true)
+
+	store := NewNodeStore(types.Nodes{&node}, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+
+	for range 20 {
+		require.Equal(t, prefixes, store.PrimaryRoutesForNode(1))
+	}
+}
+
 func BenchmarkSnapshotPayloadDense(b *testing.B) {
 	const nodeCount = 500
 
@@ -1643,6 +1665,28 @@ func TestUpdateNodeRecomputesPeersOnlyForRelationInputs(t *testing.T) {
 			require.Equal(t, want, peersCalls.Load())
 		})
 	}
+}
+
+// TestUpdateNodeDiff proves the update returns the node the writer replaced
+// alongside the result, and an invalid before for a missing node.
+func TestUpdateNodeDiff(t *testing.T) {
+	node := createTestNode(1, 1, "user1", "node1")
+	oldKey := node.NodeKey
+
+	store := NewNodeStore(types.Nodes{&node}, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+	store.Start()
+
+	defer store.Stop()
+
+	newKey := key.NewNode().Public()
+	before, after, ok := store.UpdateNodeDiff(1, func(n *types.Node) { n.NodeKey = newKey })
+	require.True(t, ok)
+	assert.Equal(t, oldKey, before.NodeKey())
+	assert.Equal(t, newKey, after.NodeKey())
+
+	before, _, ok = store.UpdateNodeDiff(99, func(*types.Node) {})
+	assert.False(t, ok)
+	assert.False(t, before.Valid())
 }
 
 // TestListPeersExcludesSelf proves a node is never returned among its own

@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"fmt"
 	"net/netip"
 	"slices"
 	"strconv"
@@ -23,196 +22,182 @@ import (
 func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 	IntegrationSkip(t)
 
-	for _, https := range []bool{true, false} {
-		t.Run(fmt.Sprintf("with-https-%t", https), func(t *testing.T) {
-			spec := ScenarioSpec{
-				NodesPerUser: len(MustTestVersions),
-				Users:        []string{"user1", "user2"},
-			}
-
-			scenario, err := NewScenario(spec)
-
-			require.NoError(t, err)
-			defer scenario.ShutdownAssertNoPanics(t)
-
-			opts := []hsic.Option{
-				hsic.WithTestName("authkey-relogsame"),
-			}
-
-			err = scenario.CreateHeadscaleEnv([]tsic.Option{}, opts...)
-			requireNoErrHeadscaleEnv(t, err)
-
-			allClients, err := scenario.ListTailscaleClients()
-			requireNoErrListClients(t, err)
-
-			allIps, err := scenario.ListTailscaleClientsIPs()
-			requireNoErrListClientIPs(t, err)
-
-			err = scenario.WaitForTailscaleSync()
-			requireNoErrSync(t, err)
-
-			headscale, err := scenario.Headscale()
-			requireNoErrGetHeadscale(t, err)
-
-			expectedNodes := collectExpectedNodeIDs(t, allClients)
-			requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected", integrationutil.ScaledTimeout(120*time.Second))
-
-			// Validate that all nodes have [tailcfg.NetInfo] and DERP servers before logout
-			requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP before logout", 3*time.Minute)
-
-			// assertClientsState(t, allClients)
-
-			clientIPs := make(map[TailscaleClient][]netip.Addr)
-
-			for _, client := range allClients {
-				ips, err := client.IPs()
-				if err != nil {
-					t.Fatalf("failed to get IPs for client %s: %s", client.Hostname(), err)
-				}
-
-				clientIPs[client] = ips
-			}
-
-			var (
-				listNodes             []*v1.Node
-				nodeCountBeforeLogout int
-			)
-
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				var err error
-
-				listNodes, err = headscale.ListNodes()
-				assert.NoError(c, err)
-				assert.Len(c, listNodes, len(allClients))
-
-				for _, node := range listNodes {
-					assertLastSeenSetWithCollect(c, node)
-				}
-			}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for expected node list before logout")
-
-			nodeCountBeforeLogout = len(listNodes)
-			t.Logf("node count before logout: %d", nodeCountBeforeLogout)
-
-			for _, client := range allClients {
-				err := client.Logout()
-				if err != nil {
-					t.Fatalf("failed to logout client %s: %s", client.Hostname(), err)
-				}
-			}
-
-			err = scenario.WaitForTailscaleLogout()
-			requireNoErrLogout(t, err)
-
-			// After taking down all nodes, verify all systems show nodes offline
-			requireAllClientsOnline(t, headscale, expectedNodes, false, "all nodes should have logged out", integrationutil.ScaledTimeout(120*time.Second))
-
-			t.Logf("all clients logged out")
-
-			t.Logf("Validating node persistence after logout at %s", time.Now().Format(TimestampFormat))
-			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-				var err error
-
-				listNodes, err = headscale.ListNodes()
-				assert.NoError(ct, err, "Failed to list nodes after logout")
-				assert.Len(ct, listNodes, nodeCountBeforeLogout, "Node count should match before logout count - expected %d nodes, got %d", nodeCountBeforeLogout, len(listNodes))
-			}, integrationutil.StatusReadyTimeout, 2*time.Second, "validating node persistence after logout (nodes should remain in database)")
-
-			for _, node := range listNodes {
-				assertLastSeenSet(t, node)
-			}
-
-			// if the server is not running with HTTPS, we have to wait a bit before
-			// reconnection as the newest Tailscale client has a measure that will only
-			// reconnect over HTTPS if they saw a noise connection previously.
-			// https://github.com/tailscale/tailscale/commit/1eaad7d3deb0815e8932e913ca1a862afa34db38
-			// https://github.com/juanfont/headscale/issues/2164
-			if !https {
-				//nolint:forbidigo // Intentional delay: Tailscale client requires 5 min wait before reconnecting over non-HTTPS
-				time.Sleep(5 * time.Minute)
-			}
-
-			userMap, err := headscale.MapUsers()
-			require.NoError(t, err)
-
-			for _, userName := range spec.Users {
-				key, err := scenario.CreatePreAuthKey(userMap[userName].GetId(), true, false)
-				if err != nil {
-					t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
-				}
-
-				err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
-				if err != nil {
-					t.Fatalf("failed to run tailscale up for user %s: %s", userName, err)
-				}
-			}
-
-			t.Logf("Validating node persistence after relogin at %s", time.Now().Format(TimestampFormat))
-			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-				var err error
-
-				listNodes, err = headscale.ListNodes()
-				assert.NoError(ct, err, "Failed to list nodes after relogin")
-				assert.Len(ct, listNodes, nodeCountBeforeLogout, "Node count should remain unchanged after relogin - expected %d nodes, got %d", nodeCountBeforeLogout, len(listNodes))
-			}, integrationutil.HAConvergeTimeout, 2*time.Second, "validating node count stability after same-user auth key relogin")
-
-			for _, node := range listNodes {
-				assertLastSeenSet(t, node)
-			}
-
-			requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected to batcher", integrationutil.ScaledTimeout(120*time.Second))
-
-			// Wait for Tailscale sync before validating [tailcfg.NetInfo] to ensure proper state propagation
-			err = scenario.WaitForTailscaleSync()
-			requireNoErrSync(t, err)
-
-			// Validate that all nodes have [tailcfg.NetInfo] and DERP servers after reconnection
-			requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after reconnection", 3*time.Minute)
-
-			err = scenario.WaitForTailscaleSync()
-			requireNoErrSync(t, err)
-
-			allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
-				return x.String()
-			})
-
-			assertPingAll(t, allClients, allAddrs)
-
-			for _, client := range allClients {
-				ips, err := client.IPs()
-				if err != nil {
-					t.Fatalf("failed to get IPs for client %s: %s", client.Hostname(), err)
-				}
-
-				// lets check if the IPs are the same
-				if len(ips) != len(clientIPs[client]) {
-					t.Fatalf("IPs changed for client %s", client.Hostname())
-				}
-
-				for _, ip := range ips {
-					if !slices.Contains(clientIPs[client], ip) {
-						t.Fatalf(
-							"IPs changed for client %s. Used to be %v now %v",
-							client.Hostname(),
-							clientIPs[client],
-							ips,
-						)
-					}
-				}
-			}
-
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				var err error
-
-				listNodes, err = headscale.ListNodes()
-				assert.NoError(c, err)
-				assert.Len(c, listNodes, nodeCountBeforeLogout)
-
-				for _, node := range listNodes {
-					assertLastSeenSetWithCollect(c, node)
-				}
-			}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for node list after relogin")
-		})
+	spec := ScenarioSpec{
+		NodesPerUser: len(MustTestVersions),
+		Users:        []string{"user1", "user2"},
 	}
+
+	scenario, err := NewScenario(spec)
+
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	opts := []hsic.Option{
+		hsic.WithTestName("authkey-relogsame"),
+	}
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, opts...)
+	requireNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	requireNoErrListClients(t, err)
+
+	allIps, err := scenario.ListTailscaleClientsIPs()
+	requireNoErrListClientIPs(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+
+	expectedNodes := collectExpectedNodeIDs(t, allClients)
+	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected", integrationutil.ScaledTimeout(120*time.Second))
+
+	// Validate that all nodes have [tailcfg.NetInfo] and DERP servers before logout
+	requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP before logout", 3*time.Minute)
+
+	// assertClientsState(t, allClients)
+
+	clientIPs := make(map[TailscaleClient][]netip.Addr)
+
+	for _, client := range allClients {
+		ips, err := client.IPs()
+		if err != nil {
+			t.Fatalf("failed to get IPs for client %s: %s", client.Hostname(), err)
+		}
+
+		clientIPs[client] = ips
+	}
+
+	var (
+		listNodes             []*v1.Node
+		nodeCountBeforeLogout int
+	)
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		var err error
+
+		listNodes, err = headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, listNodes, len(allClients))
+
+		for _, node := range listNodes {
+			assertLastSeenSetWithCollect(c, node)
+		}
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for expected node list before logout")
+
+	nodeCountBeforeLogout = len(listNodes)
+	t.Logf("node count before logout: %d", nodeCountBeforeLogout)
+
+	for _, client := range allClients {
+		err := client.Logout()
+		if err != nil {
+			t.Fatalf("failed to logout client %s: %s", client.Hostname(), err)
+		}
+	}
+
+	err = scenario.WaitForTailscaleLogout()
+	requireNoErrLogout(t, err)
+
+	// After taking down all nodes, verify all systems show nodes offline
+	requireAllClientsOnline(t, headscale, expectedNodes, false, "all nodes should have logged out", integrationutil.ScaledTimeout(120*time.Second))
+
+	t.Logf("all clients logged out")
+
+	t.Logf("Validating node persistence after logout at %s", time.Now().Format(TimestampFormat))
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		var err error
+
+		listNodes, err = headscale.ListNodes()
+		assert.NoError(ct, err, "Failed to list nodes after logout")
+		assert.Len(ct, listNodes, nodeCountBeforeLogout, "Node count should match before logout count - expected %d nodes, got %d", nodeCountBeforeLogout, len(listNodes))
+	}, integrationutil.StatusReadyTimeout, 2*time.Second, "validating node persistence after logout (nodes should remain in database)")
+
+	for _, node := range listNodes {
+		assertLastSeenSet(t, node)
+	}
+
+	userMap, err := headscale.MapUsers()
+	require.NoError(t, err)
+
+	for _, userName := range spec.Users {
+		key, err := scenario.CreatePreAuthKey(userMap[userName].GetId(), true, false)
+		if err != nil {
+			t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
+		}
+
+		err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
+		if err != nil {
+			t.Fatalf("failed to run tailscale up for user %s: %s", userName, err)
+		}
+	}
+
+	t.Logf("Validating node persistence after relogin at %s", time.Now().Format(TimestampFormat))
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		var err error
+
+		listNodes, err = headscale.ListNodes()
+		assert.NoError(ct, err, "Failed to list nodes after relogin")
+		assert.Len(ct, listNodes, nodeCountBeforeLogout, "Node count should remain unchanged after relogin - expected %d nodes, got %d", nodeCountBeforeLogout, len(listNodes))
+	}, integrationutil.HAConvergeTimeout, 2*time.Second, "validating node count stability after same-user auth key relogin")
+
+	for _, node := range listNodes {
+		assertLastSeenSet(t, node)
+	}
+
+	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected to batcher", integrationutil.ScaledTimeout(120*time.Second))
+
+	// Wait for Tailscale sync before validating [tailcfg.NetInfo] to ensure proper state propagation
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	// Validate that all nodes have [tailcfg.NetInfo] and DERP servers after reconnection
+	requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after reconnection", 3*time.Minute)
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
+		return x.String()
+	})
+
+	assertPingAll(t, allClients, allAddrs)
+
+	for _, client := range allClients {
+		ips, err := client.IPs()
+		if err != nil {
+			t.Fatalf("failed to get IPs for client %s: %s", client.Hostname(), err)
+		}
+
+		// lets check if the IPs are the same
+		if len(ips) != len(clientIPs[client]) {
+			t.Fatalf("IPs changed for client %s", client.Hostname())
+		}
+
+		for _, ip := range ips {
+			if !slices.Contains(clientIPs[client], ip) {
+				t.Fatalf(
+					"IPs changed for client %s. Used to be %v now %v",
+					client.Hostname(),
+					clientIPs[client],
+					ips,
+				)
+			}
+		}
+	}
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		var err error
+
+		listNodes, err = headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, listNodes, nodeCountBeforeLogout)
+
+		for _, node := range listNodes {
+			assertLastSeenSetWithCollect(c, node)
+		}
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for node list after relogin")
 }
 
 // This test will first log in two sets of nodes to two sets of users, then
@@ -353,120 +338,106 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 	IntegrationSkip(t)
 
-	for _, https := range []bool{true, false} {
-		t.Run(fmt.Sprintf("with-https-%t", https), func(t *testing.T) {
-			spec := ScenarioSpec{
-				NodesPerUser: len(MustTestVersions),
-				Users:        []string{"user1", "user2"},
-			}
+	spec := ScenarioSpec{
+		NodesPerUser: len(MustTestVersions),
+		Users:        []string{"user1", "user2"},
+	}
 
-			scenario, err := NewScenario(spec)
+	scenario, err := NewScenario(spec)
 
-			require.NoError(t, err)
-			defer scenario.ShutdownAssertNoPanics(t)
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
 
-			opts := []hsic.Option{
-				hsic.WithTestName("authkey-rlogexpired"),
-			}
+	opts := []hsic.Option{
+		hsic.WithTestName("authkey-rlogexpired"),
+	}
 
-			err = scenario.CreateHeadscaleEnv([]tsic.Option{}, opts...)
-			requireNoErrHeadscaleEnv(t, err)
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, opts...)
+	requireNoErrHeadscaleEnv(t, err)
 
-			allClients, err := scenario.ListTailscaleClients()
-			requireNoErrListClients(t, err)
+	allClients, err := scenario.ListTailscaleClients()
+	requireNoErrListClients(t, err)
 
-			err = scenario.WaitForTailscaleSync()
-			requireNoErrSync(t, err)
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
 
-			// assertClientsState(t, allClients)
+	// assertClientsState(t, allClients)
 
-			clientIPs := make(map[TailscaleClient][]netip.Addr)
+	clientIPs := make(map[TailscaleClient][]netip.Addr)
 
-			for _, client := range allClients {
-				ips, err := client.IPs()
-				if err != nil {
-					t.Fatalf("failed to get IPs for client %s: %s", client.Hostname(), err)
-				}
+	for _, client := range allClients {
+		ips, err := client.IPs()
+		if err != nil {
+			t.Fatalf("failed to get IPs for client %s: %s", client.Hostname(), err)
+		}
 
-				clientIPs[client] = ips
-			}
+		clientIPs[client] = ips
+	}
 
-			headscale, err := scenario.Headscale()
-			requireNoErrGetHeadscale(t, err)
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
 
-			// Collect expected node IDs for validation
-			expectedNodes := collectExpectedNodeIDs(t, allClients)
+	// Collect expected node IDs for validation
+	expectedNodes := collectExpectedNodeIDs(t, allClients)
 
-			// Validate initial connection state
-			requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected after initial login", integrationutil.ScaledTimeout(120*time.Second))
-			requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after initial login", 3*time.Minute)
+	// Validate initial connection state
+	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected after initial login", integrationutil.ScaledTimeout(120*time.Second))
+	requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after initial login", 3*time.Minute)
 
-			var (
-				listNodes             []*v1.Node
-				nodeCountBeforeLogout int
-			)
+	var (
+		listNodes             []*v1.Node
+		nodeCountBeforeLogout int
+	)
 
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				var err error
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		var err error
 
-				listNodes, err = headscale.ListNodes()
-				assert.NoError(c, err)
-				assert.Len(c, listNodes, len(allClients))
-			}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for expected node list before logout")
+		listNodes, err = headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, listNodes, len(allClients))
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for expected node list before logout")
 
-			nodeCountBeforeLogout = len(listNodes)
-			t.Logf("node count before logout: %d", nodeCountBeforeLogout)
+	nodeCountBeforeLogout = len(listNodes)
+	t.Logf("node count before logout: %d", nodeCountBeforeLogout)
 
-			for _, client := range allClients {
-				err := client.Logout()
-				if err != nil {
-					t.Fatalf("failed to logout client %s: %s", client.Hostname(), err)
-				}
-			}
+	for _, client := range allClients {
+		err := client.Logout()
+		if err != nil {
+			t.Fatalf("failed to logout client %s: %s", client.Hostname(), err)
+		}
+	}
 
-			err = scenario.WaitForTailscaleLogout()
-			requireNoErrLogout(t, err)
+	err = scenario.WaitForTailscaleLogout()
+	requireNoErrLogout(t, err)
 
-			// Validate that all nodes are offline after logout
-			requireAllClientsOnline(t, headscale, expectedNodes, false, "all nodes should be offline after logout", integrationutil.ScaledTimeout(120*time.Second))
+	// Validate that all nodes are offline after logout
+	requireAllClientsOnline(t, headscale, expectedNodes, false, "all nodes should be offline after logout", integrationutil.ScaledTimeout(120*time.Second))
 
-			t.Logf("all clients logged out")
+	t.Logf("all clients logged out")
 
-			// if the server is not running with HTTPS, we have to wait a bit before
-			// reconnection as the newest Tailscale client has a measure that will only
-			// reconnect over HTTPS if they saw a noise connection previously.
-			// https://github.com/tailscale/tailscale/commit/1eaad7d3deb0815e8932e913ca1a862afa34db38
-			// https://github.com/juanfont/headscale/issues/2164
-			if !https {
-				//nolint:forbidigo // Intentional delay: Tailscale client requires 5 min wait before reconnecting over non-HTTPS
-				time.Sleep(5 * time.Minute)
-			}
+	userMap, err := headscale.MapUsers()
+	require.NoError(t, err)
 
-			userMap, err := headscale.MapUsers()
-			require.NoError(t, err)
+	for _, userName := range spec.Users {
+		key, err := scenario.CreatePreAuthKey(userMap[userName].GetId(), true, false)
+		if err != nil {
+			t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
+		}
 
-			for _, userName := range spec.Users {
-				key, err := scenario.CreatePreAuthKey(userMap[userName].GetId(), true, false)
-				if err != nil {
-					t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
-				}
+		// Expire the key so it can't be used
+		_, err = headscale.Execute(
+			[]string{
+				"headscale",
+				"preauthkeys",
+				"expire",
+				"--id",
+				strconv.FormatUint(key.GetId(), 10),
+			})
+		require.NoError(t, err)
+		require.NoError(t, err)
 
-				// Expire the key so it can't be used
-				_, err = headscale.Execute(
-					[]string{
-						"headscale",
-						"preauthkeys",
-						"expire",
-						"--id",
-						strconv.FormatUint(key.GetId(), 10),
-					})
-				require.NoError(t, err)
-				require.NoError(t, err)
-
-				err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
-				assert.ErrorContains(t, err, "authkey expired")
-			}
-		})
+		err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
+		assert.ErrorContains(t, err, "authkey expired")
 	}
 }
 

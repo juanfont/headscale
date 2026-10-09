@@ -315,7 +315,7 @@ func TestReauthRejectsNodeKeyClaimedByAnotherMachine(t *testing.T) {
 	require.NoError(t, err)
 
 	// Attacker re-authenticates its own node but supplies the victim's NodeKey.
-	_, err = s.applyAuthNodeUpdate(authNodeUpdateParams{
+	_, _, err = s.applyAuthNodeUpdate(authNodeUpdateParams{
 		ExistingNode: attackerNode,
 		RegData: &types.RegistrationData{
 			MachineKey: attackerMachine.Public(),
@@ -375,7 +375,7 @@ func TestReauthPreservesEndpointsWhenClientOmitsThem(t *testing.T) {
 
 	// Node re-authenticates, rotating its NodeKey. The RegisterRequest carries
 	// no endpoints.
-	updated, err := s.applyAuthNodeUpdate(authNodeUpdateParams{
+	updated, _, err := s.applyAuthNodeUpdate(authNodeUpdateParams{
 		ExistingNode: node,
 		RegData: &types.RegistrationData{
 			MachineKey: machine.Public(),
@@ -395,7 +395,7 @@ func TestReauthPreservesEndpointsWhenClientOmitsThem(t *testing.T) {
 		"re-auth without reported endpoints must preserve the node's live endpoints")
 }
 
-// TestReauthChange covers the decision both re-auth paths share: a same-user
+// TestReauthChange covers the decision both re-auth paths share: a keys-only
 // relogin must be an incremental peer patch (so the tailscale client takes its
 // fast patch path), never a whole-node add (which strands a re-keyed,
 // momentarily-endpoint-less peer disco-deaf); a policy change forces a full
@@ -420,6 +420,47 @@ func TestReauthChange(t *testing.T) {
 	assert.Empty(t, pol.PeerPatches, "a policy change must not be a peer patch")
 	assert.Empty(t, pol.PeersChanged)
 	assert.False(t, pol.IsEmpty(), "a policy change must be non-empty")
+}
+
+// TestOnlyKeysChanged covers which relogins may ride the key-rotation patch:
+// one that flips Expired or changes Hostinfo peers read must not, as
+// [tailcfg.PeerChange] carries neither (#3531).
+func TestOnlyKeysChanged(t *testing.T) {
+	now := time.Now()
+	past, future := now.Add(-time.Minute), now.Add(time.Hour)
+
+	node := func(expiry time.Time, hi tailcfg.Hostinfo) types.NodeView {
+		n := types.Node{
+			NodeKey:  key.NewNode().Public(),
+			DiscoKey: key.NewDisco().Public(),
+			Expiry:   &expiry,
+			Hostinfo: &hi,
+		}
+
+		return n.View()
+	}
+
+	hi := tailcfg.Hostinfo{Hostname: "node", OS: "linux"}
+	withOSVersion, withService := hi, hi
+	withOSVersion.OSVersion = "6.1"
+	withService.Services = []tailcfg.Service{{Proto: tailcfg.PeerAPI4, Port: 4242}}
+
+	tests := []struct {
+		name          string
+		before, after types.NodeView
+		want          bool
+	}{
+		{name: "keys", before: node(future, hi), after: node(future, hi), want: true},
+		{name: "hostinfo peers do not read", before: node(future, hi), after: node(future, withOSVersion), want: true},
+		{name: "un-expired", before: node(past, hi), after: node(future, hi)},
+		{name: "hostinfo peers read", before: node(future, hi), after: node(future, withService)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, onlyKeysChanged(tt.before, tt.after, now))
+		})
+	}
 }
 
 // TestPreAuthKeyReauthRejectsNodeKeyClaimedByAnotherMachine is the pre-auth-key
@@ -510,7 +551,7 @@ func TestDeleteNodeKeepsStoreOnDBFailure(t *testing.T) {
 	c, err := s.DeleteNode(node)
 	require.NoError(t, s.db.DB.Callback().Delete().Remove("fail_node_delete"))
 	require.ErrorIs(t, err, errInjectedNodeDelete)
-	assert.True(t, c.IsEmpty(), "an uncommitted deletion must not stop the node's session")
+	assert.Empty(t, c, "an uncommitted deletion must not stop the node's session")
 
 	_, ok = s.GetNodeByID(nodeID)
 	assert.True(t, ok, "a database failure must leave the in-memory node available")
@@ -528,11 +569,12 @@ func TestDeleteNodeReturnsRemovalOnPolicyFailure(t *testing.T) {
 
 	s.polMan = failingSetNodesPolicyManager{PolicyManager: s.polMan}
 
-	c, err := s.DeleteNode(node)
+	cs, err := s.DeleteNode(node)
 	require.ErrorIs(t, err, errInjectedPolicyNodeUpdate)
-	assert.Equal(t, []types.NodeID{nodeID}, c.PeersRemoved,
+	require.NotEmpty(t, cs)
+	assert.Equal(t, []types.NodeID{nodeID}, cs[0].PeersRemoved,
 		"a committed deletion must still notify peers and stop the node's session")
-	assert.Equal(t, []types.NodeID{nodeID}, c.DeletedNodes,
+	assert.Equal(t, []types.NodeID{nodeID}, cs[0].DeletedNodes,
 		"a committed deletion must identify the session to stop")
 
 	_, ok = s.GetNodeByID(nodeID)

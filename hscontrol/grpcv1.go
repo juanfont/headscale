@@ -438,10 +438,8 @@ func (api headscaleV1APIServer) DeleteNode(
 		return nil, status.Errorf(codes.NotFound, "node not found")
 	}
 
-	nodeChange, err := api.h.state.DeleteNode(node)
-	if !nodeChange.IsEmpty() {
-		api.h.Change(nodeChange)
-	}
+	changes, err := api.h.state.DeleteNode(node)
+	api.h.Change(changes...)
 
 	if err != nil {
 		return nil, err

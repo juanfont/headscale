@@ -938,6 +938,9 @@ func TestOIDCFollowUpUrl(t *testing.T) {
 	_, err = doLoginURL(ts.Hostname(), newUrl)
 	require.NoError(t, err)
 
+	err = ts.WaitForRunning(integrationutil.PeerSyncTimeout())
+	require.NoError(t, err)
+
 	listUsers, err = headscale.ListUsers()
 	require.NoError(t, err)
 	assert.Len(t, listUsers, 1)

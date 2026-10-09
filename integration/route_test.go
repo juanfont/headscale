@@ -1692,6 +1692,11 @@ func TestEnablingExitRoutes(t *testing.T) {
 					assert.Contains(c, peerStatus.AllowedIPs.AsSlice(), tsaddr.AllIPv6())
 				}
 			}
+
+			// The approved node must learn its own routes on its live
+			// session, not only after reconnecting (issue #3502).
+			assert.True(c, status.Self.ExitNodeOption,
+				"%s should offer itself as exit node", client.Hostname())
 		}
 	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "clients should see new routes")
 }
@@ -3643,8 +3648,11 @@ func TestHASubnetRouterPingFailover(t *testing.T) {
 		[]tsic.Option{
 			tsic.WithAcceptRoutes(),
 			tsic.WithPackages("iptables"),
+			tsic.WithDERPOverHTTP(),
 		},
 		hsic.WithTestName("rt-hapingfail"),
+		// The firewall matches the callback path while Noise remains encrypted.
+		hsic.WithoutTLS(),
 		hsic.WithHAProbing(10*time.Second, 5*time.Second),
 	)
 	requireNoErrHeadscaleEnv(t, err)
@@ -3753,21 +3761,21 @@ func TestHASubnetRouterPingFailover(t *testing.T) {
 
 	t.Log("=== HA setup verified. Blocking ping callbacks on router 1 via iptables ===")
 
-	// Block NEW outbound TCP from router 1 to headscale.
-	// Preserves the existing Noise HTTP/2 long-poll (ESTABLISHED).
+	// Block plaintext ping callbacks, including requests on reused HTTP
+	// connections. The encrypted Noise long-poll remains available.
 	hsIP := headscale.GetIPInNetwork(usernet1)
 	iptablesAdd := []string{
 		"iptables", "-A", "OUTPUT",
 		"-d", hsIP,
 		"-p", "tcp", "--dport", "8080",
-		"-m", "state", "--state", "NEW",
+		"-m", "string", "--algo", "kmp", "--string", "/machine/ping-response",
 		"-j", "DROP",
 	}
 
 	_, _, err = subRouter1.Execute(iptablesAdd)
 	require.NoError(t, err, "failed to add iptables rule")
 
-	t.Logf("Blocked new TCP connections from %s to headscale at %s:8080",
+	t.Logf("Blocked ping callbacks from %s to headscale at %s:8080",
 		subRouter1.Hostname(), hsIP)
 
 	// Wait for the prober to detect the failure and trigger failover.
@@ -3812,7 +3820,7 @@ func TestHASubnetRouterPingFailover(t *testing.T) {
 		"iptables", "-D", "OUTPUT",
 		"-d", hsIP,
 		"-p", "tcp", "--dport", "8080",
-		"-m", "state", "--state", "NEW",
+		"-m", "string", "--algo", "kmp", "--string", "/machine/ping-response",
 		"-j", "DROP",
 	}
 

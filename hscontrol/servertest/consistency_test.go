@@ -6,6 +6,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/servertest"
 	"github.com/stretchr/testify/assert"
+	"tailscale.com/types/netmap"
 )
 
 // TestConsistency verifies that all nodes converge to the same
@@ -86,14 +87,27 @@ func TestConsistency(t *testing.T) {
 		c6 := h.AddClient(t)
 		c7 := h.AddClient(t)
 
-		// Wait for new nodes to see at least all other connected
-		// clients (they may also see the disconnected nodes during
-		// the grace period, so we check >= not ==).
+		// Disconnected peers can satisfy a count before the new peers arrive.
+		// Wait for each connected identity before comparing the mesh.
 		connected := h.ConnectedClients()
-		minPeers := len(connected) - 1
-
 		for _, c := range connected {
-			c.WaitForPeers(t, minPeers, 30*time.Second)
+			c.WaitForCondition(t, "all connected peers visible", 30*time.Second,
+				func(nm *netmap.NetworkMap) bool {
+					seen := make(map[string]bool, len(nm.Peers))
+					for _, peer := range nm.Peers {
+						if hi := peer.Hostinfo(); hi.Valid() {
+							seen[hi.Hostname()] = true
+						}
+					}
+
+					for _, other := range connected {
+						if other != c && !seen[other.Name] {
+							return false
+						}
+					}
+
+					return true
+				})
 		}
 
 		// Verify the new nodes can see each other.

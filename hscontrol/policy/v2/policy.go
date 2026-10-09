@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
@@ -88,6 +89,9 @@ type PolicyManager struct {
 	nodeAttrsMap     map[types.NodeID]tailcfg.NodeCapMap
 	nodeAttrsHashes  map[types.NodeID]deephash.Sum
 	nodeAttrsChanged []types.NodeID
+
+	// Skip the policy lock when no node-attribute refresh is pending.
+	nodeAttrsPending atomic.Bool
 }
 
 // filterAndPolicy combines the compiled filter rules with policy content for hashing.
@@ -443,16 +447,18 @@ func (pm *PolicyManager) SSHPolicy(baseURL string, node types.NodeView) (*tailcf
 	return sshPol, nil
 }
 
-// SSHCheckParams resolves the SSH check period for a source-destination
-// node pair by looking up the current policy. This avoids trusting URL
+// SSHCheckParams resolves the SSH check period for src logging in to dst
+// as localUser by looking up the current policy. This avoids trusting URL
 // parameters that a client could tamper with. First-match wins across
-// the policy's SSH rules.
+// the policy's SSH rules; a rule only matches when it lets src log in as
+// localUser, as the client does when it picks the rule.
 //
 // Returns (duration, true) when a matching rule is found and
 // (0, false) when none is. A (0, true) return means the matched rule
 // uses a zero check period (re-check every session).
 func (pm *PolicyManager) SSHCheckParams(
 	srcNodeID, dstNodeID types.NodeID,
+	localUser string,
 ) (time.Duration, bool) {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
@@ -499,23 +505,23 @@ func (pm *PolicyManager) SSHCheckParams(
 			continue
 		}
 
+		if !pm.sshRuleAllowsUser(rule, srcNode, localUser) {
+			continue
+		}
+
 		// Check if dst node matches any destination.
+		hasOtherDests := false
+
 		for _, dst := range rule.Destinations {
 			if ag, isAG := dst.(*AutoGroup); isAG && ag.Is(AutoGroupSelf) {
-				// User().Valid() guards the User().ID() dereference: the
-				// NodeStore can hold a non-tagged node with UserID set but
-				// the User association unhydrated (nil), and IsTagged()
-				// alone does not cover that. Mirrors filter.go's
-				// autogroup:self guard. Without it, a tailnet client on the
-				// Noise SSH-check path crashes the server (nil deref).
-				if !srcNode.IsTagged() && !dstNode.IsTagged() &&
-					srcNode.User().Valid() && dstNode.User().Valid() &&
-					srcNode.User().ID() == dstNode.User().ID() {
+				if sshNodesShareUser(srcNode, dstNode) {
 					return checkPeriodFromRule(rule), true
 				}
 
 				continue
 			}
+
+			hasOtherDests = true
 
 			dstIPs, err := dst.Resolve(pm.pol, pm.users, pm.nodes)
 			if err != nil || dstIPs == nil {
@@ -526,9 +532,54 @@ func (pm *PolicyManager) SSHCheckParams(
 				return checkPeriodFromRule(rule), true
 			}
 		}
+
+		// Localpart self-access: a source outside dst still gets the rule
+		// for its own user's nodes, or itself if tagged (compileSSHPolicy).
+		if hasOtherDests && rule.Users.ContainsLocalpart() &&
+			slices.ContainsFunc(dstNode.IPs(), srcIPs.Contains) {
+			if dstNode.IsTagged() {
+				if srcNodeID == dstNodeID {
+					return checkPeriodFromRule(rule), true
+				}
+			} else if sshNodesShareUser(srcNode, dstNode) {
+				return checkPeriodFromRule(rule), true
+			}
+		}
 	}
 
 	return 0, false
+}
+
+// sshNodesShareUser matches user-owned nodes with hydrated user associations.
+// IsTagged alone does not guard User().ID(): the NodeStore can hold a
+// non-tagged node whose UserID is set but whose User association is nil.
+func sshNodesShareUser(srcNode, dstNode types.NodeView) bool {
+	return !srcNode.IsTagged() && !dstNode.IsTagged() &&
+		srcNode.User().Valid() && dstNode.User().Valid() &&
+		srcNode.User().ID() == dstNode.User().ID()
+}
+
+// sshRuleAllowsUser reports whether rule lets src log in as localUser,
+// mirroring the SSHUsers maps compileSSHPolicy emits: root when listed,
+// other users via autogroup:nonroot or a literal name, and anyone, root
+// included, whose name is the source user's localpart.
+func (pm *PolicyManager) sshRuleAllowsUser(rule SSH, srcNode types.NodeView, localUser string) bool {
+	isRoot := localUser == "root"
+
+	switch {
+	case localUser == "":
+		return false
+	case isRoot && rule.Users.ContainsRoot(),
+		!isRoot && rule.Users.ContainsNonRoot(),
+		!isRoot && slices.Contains(rule.Users.NormalUsers(), SSHUser(localUser)):
+		return true
+	case srcNode.IsTagged() || !srcNode.User().Valid() || !rule.Users.ContainsLocalpart():
+		return false
+	}
+
+	lp, ok := resolveLocalparts(rule.Users.LocalpartEntries(), pm.users)[srcNode.User().ID()]
+
+	return ok && lp == localUser
 }
 
 func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
@@ -577,9 +628,24 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 		Int("tests.count", len(pol.Tests)).
 		Msg("Policy parsed successfully")
 
+	prev := pm.pol
 	pm.pol = pol
 
-	return pm.updateLocked()
+	changed, err := pm.updateLocked()
+	if err != nil {
+		// updateLocked stops partway, so the rejected policy's filter may
+		// already be live; recompile the previous one.
+		pm.pol = prev
+
+		_, rerr := pm.updateLocked()
+		if rerr != nil {
+			log.Error().Err(rerr).Msg("restoring previous policy after rejected SetPolicy")
+		}
+
+		return false, err
+	}
+
+	return changed, nil
 }
 
 // Filter returns the current filter rules for the entire tailnet and the associated matchers.
@@ -738,7 +804,10 @@ func (pm *PolicyManager) filterForNodeLocked(
 	if !pm.needsPerNodeFilter {
 		unreduced = pm.filter
 	} else {
-		unreduced = pm.filterRulesForNodeLocked(node)
+		unreduced = append(
+			pm.filterRulesForNodeLocked(node),
+			exitNodeSelfRules(pm.compiledGrants, node, pm.userNodeIdx)...,
+		)
 	}
 
 	reduced := policyutil.ReduceFilterRules(node, unreduced)
@@ -821,9 +890,12 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, bool, error) {
 	prev := pm.users
 	pm.users = users
 
-	// SSH policies resolve users by name, so they are recomputed on any
-	// user change.
+	// SSH policies and autogroup:self sources resolve users by name, and
+	// the self sources are outside the filter hash, so updateLocked can
+	// report no change while per-node results moved.
 	pm.sshPolicyMap.Clear()
+	pm.filterRulesMap.Clear()
+	pm.matchersForNodeMap.Clear()
 
 	policyChanged, err := pm.updateLocked()
 	if err != nil {
@@ -834,9 +906,9 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, bool, error) {
 		return false, false, err
 	}
 
-	// SSH rules embed user identity, so a user change needs a client refresh
-	// even when the filter hash did not move.
-	if pm.pol != nil && len(pm.pol.SSHs) > 0 {
+	// SSH rules and per-node filters embed user identity outside the filter
+	// hash, so a user change needs a client refresh even when it did not move.
+	if pm.needsPerNodeFilter || (pm.pol != nil && len(pm.pol.SSHs) > 0) {
 		policyChanged = true
 	}
 
@@ -1164,6 +1236,11 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 		return result
 	}
 
+	// Only via grants can add to the result, and ACLs never carry via.
+	if !slices.ContainsFunc(pm.pol.Grants, grantHasVia) {
+		return result
+	}
+
 	grants := pm.pol.Grants
 	for _, acl := range pm.pol.ACLs {
 		grants = append(grants, aclToGrants(acl)...)
@@ -1350,12 +1427,41 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 					}
 				}
 
-				result.Exclude = slices.DeleteFunc(result.Exclude, dstPrefix.Overlaps)
+				// Every address overlaps an exit route, so overlap
+				// only decides for subnet routes.
+				result.Exclude = slices.DeleteFunc(result.Exclude, func(p netip.Prefix) bool {
+					return !tsaddr.IsExitRoute(p) && dstPrefix.Overlaps(p)
+				})
+			}
+
+			// A regular grant to the internet lets the viewer use any
+			// exit node, not just the via-tagged ones.
+			if grantReachesInternet(grant) {
+				result.Exclude = slices.DeleteFunc(result.Exclude, tsaddr.IsExitRoute)
 			}
 		}
 	}
 
 	return result
+}
+
+func grantHasVia(grant Grant) bool {
+	return len(grant.Via) > 0
+}
+
+// grantReachesInternet reports whether a grant's destinations include
+// the internet. Neither the wildcard nor autogroup:internet resolves
+// to 0.0.0.0/0, so check the aliases themselves.
+func grantReachesInternet(grant Grant) bool {
+	return slices.ContainsFunc(grant.Destinations, func(d Alias) bool {
+		if ag, ok := d.(*AutoGroup); ok {
+			return ag.Is(AutoGroupInternet)
+		}
+
+		_, ok := d.(Asterix)
+
+		return ok
+	})
 }
 
 func (pm *PolicyManager) Version() int {
@@ -1822,6 +1928,10 @@ func (pm *PolicyManager) refreshNodeAttrsLocked() error {
 	pm.nodeAttrsHashes = newHashes
 	pm.nodeAttrsChanged = append(pm.nodeAttrsChanged, changed...)
 
+	if len(pm.nodeAttrsChanged) > 0 {
+		pm.nodeAttrsPending.Store(true)
+	}
+
 	return nil
 }
 
@@ -1869,9 +1979,9 @@ func (pm *PolicyManager) NodeCapMaps() map[types.NodeID]tailcfg.NodeCapMap {
 
 // NodesWithChangedCapMap returns the IDs of nodes whose nodeAttrs
 // CapMap shifted across one or more [PolicyManager.updateLocked] calls
-// since the last drain. The buffer drains on return. The mapper calls
-// this once per [state.State.ReloadPolicy] to decide which nodes need
-// a [change.SelfUpdate].
+// since the last drain. The buffer drains on return.
+// [state.State.DrainSelfRefreshes] calls this whenever changes are
+// dispatched to decide which nodes need a [change.SelfUpdate].
 //
 // [PolicyManager.refreshNodeAttrsLocked] APPENDS to the buffer; the drain
 // returns the union of every change since the previous read. A concurrent
@@ -1879,7 +1989,7 @@ func (pm *PolicyManager) NodeCapMaps() map[types.NodeID]tailcfg.NodeCapMap {
 // [PolicyManager.SetPolicy] and a drain cannot silently lose the
 // policy-reload diff.
 func (pm *PolicyManager) NodesWithChangedCapMap() []types.NodeID {
-	if pm == nil {
+	if pm == nil || !pm.nodeAttrsPending.Load() {
 		return nil
 	}
 
@@ -1888,6 +1998,7 @@ func (pm *PolicyManager) NodesWithChangedCapMap() []types.NodeID {
 
 	out := pm.nodeAttrsChanged
 	pm.nodeAttrsChanged = nil
+	pm.nodeAttrsPending.Store(false)
 
 	return out
 }

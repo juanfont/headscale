@@ -5,18 +5,22 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
@@ -240,13 +244,17 @@ func TestSSHActionRoute_OldPathReturns404(t *testing.T) {
 	}
 }
 
+// sshTestLocalUser is the non-root local user the SSH action tests log in as.
+const sshTestLocalUser = "alice"
+
 // newSSHActionRequest builds an httptest request with the chi URL params
 // [noiseServer.SSHActionHandler] reads (src_node_id and dst_node_id), so the handler
 // can be exercised directly without going through the chi router.
 func newSSHActionRequest(t *testing.T, src, dst types.NodeID) *http.Request {
 	t.Helper()
 
-	url := fmt.Sprintf("/machine/ssh/action/%d/to/%d", src.Uint64(), dst.Uint64())
+	url := fmt.Sprintf("/machine/ssh/action/%d/to/%d?local_user=%s",
+		src.Uint64(), dst.Uint64(), sshTestLocalUser)
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 
 	rctx := chi.NewRouteContext()
@@ -267,6 +275,45 @@ func putTestNodeInStore(t *testing.T, app *Headscale, user *types.User, hostname
 	app.state.PutNodeInStoreForTest(*node)
 
 	return node
+}
+
+// sshCheckPolicy subjects every same-user pair of userName's nodes to an
+// SSH check.
+func sshCheckPolicy(userName string) string {
+	return fmt.Sprintf(`{"ssh": [{
+		"action": "check",
+		"src":    [%q],
+		"dst":    ["autogroup:self"],
+		"users":  ["autogroup:nonroot"]
+	}]}`, userName+"@")
+}
+
+// putSSHCheckNodes stages one node per hostname for a new user and sets
+// [sshCheckPolicy], so the SSH action handler holds and delegates for any
+// pair of them.
+func putSSHCheckNodes(t *testing.T, app *Headscale, userName string, hostnames ...string) []*types.Node {
+	t.Helper()
+
+	user := app.state.CreateUserForTest(userName)
+	require.NoError(t, app.state.UpdatePolicyManagerUsersForTest())
+
+	nodes := make([]*types.Node, 0, len(hostnames))
+	for _, hostname := range hostnames {
+		node := app.state.CreateRegisteredNodeForTest(user, hostname)
+		node.User = user
+		app.state.PutNodeInStoreForTest(*node)
+		nodes = append(nodes, node)
+	}
+
+	require.NoError(t, app.state.UpdatePolicyManagerNodesForTest())
+
+	_, err := app.state.SetPolicy([]byte(sshCheckPolicy(userName)))
+	require.NoError(t, err)
+
+	_, checkFound := app.state.SSHCheckParams(nodes[0].ID, nodes[len(nodes)-1].ID, sshTestLocalUser)
+	require.True(t, checkFound, "test setup: nodes must be subject to an SSH check")
+
+	return nodes
 }
 
 // TestSSHActionHandler_RejectsRogueMachineKey verifies that the SSH
@@ -333,12 +380,9 @@ func TestSSHActionFollowUp_RejectsBindingMismatch(t *testing.T) {
 	t.Parallel()
 
 	app := createTestApp(t)
-	user := app.state.CreateUserForTest("ssh-binding-user")
-
-	srcCached := putTestNodeInStore(t, app, user, "src-cached")
-	dstCached := putTestNodeInStore(t, app, user, "dst-cached")
-	srcOther := putTestNodeInStore(t, app, user, "src-other")
-	dstOther := putTestNodeInStore(t, app, user, "dst-other")
+	nodes := putSSHCheckNodes(t, app, "ssh-binding-user",
+		"src-cached", "dst-cached", "src-other", "dst-other")
+	srcCached, dstCached, srcOther, dstOther := nodes[0], nodes[1], nodes[2], nodes[3]
 
 	// Mint an SSH-check auth request bound to (srcCached, dstCached).
 	authID := types.MustAuthID()
@@ -357,8 +401,8 @@ func TestSSHActionFollowUp_RejectsBindingMismatch(t *testing.T) {
 	}
 
 	url := fmt.Sprintf(
-		"/machine/ssh/action/%d/to/%d?auth_id=%s",
-		srcOther.ID.Uint64(), dstOther.ID.Uint64(), authID.String(),
+		"/machine/ssh/action/%d/to/%d?local_user=%s&auth_id=%s",
+		srcOther.ID.Uint64(), dstOther.ID.Uint64(), sshTestLocalUser, authID.String(),
 	)
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 
@@ -409,9 +453,8 @@ func TestSSHActionHoldAndDelegate_PersistsAuthSession(t *testing.T) {
 	t.Parallel()
 
 	app := createTestApp(t)
-	user := app.state.CreateUserForTest("ssh-persist-user")
-	src := putTestNodeInStore(t, app, user, "src-node")
-	dst := putTestNodeInStore(t, app, user, "dst-node")
+	nodes := putSSHCheckNodes(t, app, "ssh-persist-user", "src-node", "dst-node")
+	src, dst := nodes[0], nodes[1]
 
 	ns := &noiseServer{headscale: app, machineKey: dst.MachineKey}
 
@@ -436,12 +479,13 @@ func TestSSHActionHoldAndDelegate_PersistsAuthSession(t *testing.T) {
 	require.True(t, ok, "auth session %s must persist after HoldAndDelegate", authID)
 }
 
-// TestSSHActionHandler_RejectsMissingSessionWithoutCheck verifies that without
-// an SSH check covering the pair, a follow-up poll for an unknown auth_id is a
-// genuinely bogus request and is rejected. The re-delegation behaviour for a
-// missing session (issue #3305, exercised end to end with a real client in the
-// servertest package) applies only when the pair is still subject to a check.
-func TestSSHActionHandler_RejectsMissingSessionWithoutCheck(t *testing.T) {
+// TestSSHActionHandler_RejectsWithoutCheck verifies that a pair no check rule
+// covers is denied with a 200 Reject on both the initial and the follow-up
+// poll. Such a call comes from a client holding a stale check rule; an HTTP
+// error would make tailssh retry for up to 30 minutes. Re-delegation for a
+// missing session (issue #3305) applies only while a check is required.
+// https://github.com/juanfont/headscale/issues/3508
+func TestSSHActionHandler_RejectsWithoutCheck(t *testing.T) {
 	t.Parallel()
 
 	app := createTestApp(t)
@@ -449,18 +493,88 @@ func TestSSHActionHandler_RejectsMissingSessionWithoutCheck(t *testing.T) {
 	src := putTestNodeInStore(t, app, user, "src-node")
 	dst := putTestNodeInStore(t, app, user, "dst-node")
 
-	// No SSH-check policy is set, so the pair is not subject to a check.
-	_, checkFound := app.state.SSHCheckParams(src.ID, dst.ID)
+	_, checkFound := app.state.SSHCheckParams(src.ID, dst.ID, sshTestLocalUser)
 	require.False(t, checkFound, "test setup: pair must not be subject to a check")
 
 	ns := &noiseServer{headscale: app, machineKey: dst.MachineKey}
 
-	missing := types.MustAuthID()
+	for name, req := range map[string]*http.Request{
+		"initial":   newSSHActionRequest(t, src.ID, dst.ID),
+		"follow-up": newSSHActionFollowUpRequest(t, src.ID, dst.ID, types.MustAuthID()),
+	} {
+		rec := httptest.NewRecorder()
+		ns.SSHActionHandler(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code, "%s: body=%s", name, rec.Body.String())
 
-	rec := httptest.NewRecorder()
-	ns.SSHActionHandler(rec, newSSHActionFollowUpRequest(t, src.ID, dst.ID, missing))
-	require.Equal(t, http.StatusBadRequest, rec.Code,
-		"a bogus auth_id with no active check must be rejected, body=%s", rec.Body.String())
+		var action tailcfg.SSHAction
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &action))
+		assert.True(t, action.Reject, "%s: must reject, got %+v", name, action)
+		assert.Empty(t, action.HoldAndDelegate, "%s: must not delegate", name)
+	}
+}
+
+// TestSSHActionFollowUp_RejectsVerdictAfterCheckRemoved verifies the check is
+// re-evaluated once the user authenticates: a rule removed while the login
+// prompt was open must not grant access.
+// https://github.com/juanfont/headscale/issues/3508
+func TestSSHActionFollowUp_RejectsVerdictAfterCheckRemoved(t *testing.T) {
+	t.Parallel()
+
+	const userName = "ssh-verdict-user"
+
+	nonrootOnly := sshCheckPolicy(userName)
+	rootAndNonroot := strings.Replace(nonrootOnly,
+		`["autogroup:nonroot"]`, `["root", "autogroup:nonroot"]`, 1)
+
+	for name, tc := range map[string]struct {
+		after     string // policy once the user has authenticated; "" keeps it
+		localUser string
+	}{
+		"rule kept":    {"", sshTestLocalUser},
+		"rule removed": {`{}`, sshTestLocalUser},
+		// Another check rule still covers the pair, but not for root.
+		"root rule removed": {nonrootOnly, "root"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			app := createTestApp(t)
+			nodes := putSSHCheckNodes(t, app, userName, "src-node", "dst-node")
+			src, dst := nodes[0], nodes[1]
+
+			_, err := app.state.SetPolicy([]byte(rootAndNonroot))
+			require.NoError(t, err)
+
+			authID := types.MustAuthID()
+			app.state.SetAuthCacheEntry(authID, types.NewSSHCheckAuthRequest(src.ID, dst.ID))
+
+			auth, ok := app.state.GetAuthCacheEntry(authID)
+			require.True(t, ok)
+			auth.FinishAuth(types.AuthVerdict{})
+
+			if tc.after != "" {
+				_, err := app.state.SetPolicy([]byte(tc.after))
+				require.NoError(t, err)
+			}
+
+			ns := &noiseServer{headscale: app, machineKey: dst.MachineKey}
+
+			// Call the follow-up directly: the verdict is already in, as if
+			// the policy changed while the user was authenticating.
+			action, err := ns.sshActionFollowUp(
+				t.Context(), zerolog.Nop(), &tailcfg.SSHAction{},
+				authID.String(), src.ID, dst.ID, tc.localUser,
+			)
+			require.NoError(t, err)
+
+			kept := tc.after == ""
+			_, recorded := app.state.GetLastSSHAuth(src.ID, dst.ID)
+
+			assert.Equal(t, kept, action.Accept, "accept, got %+v", action)
+			assert.Equal(t, !kept, action.Reject, "reject, got %+v", action)
+			assert.Equal(t, kept, recorded, "auth recorded for auto-approval")
+		})
+	}
 }
 
 // TestTS2021Route_AcceptsGETAndPOST reproduces a regression where the
@@ -540,6 +654,369 @@ func newSSHActionFollowUpRequest(t *testing.T, src, dst types.NodeID, authID typ
 	req.URL.RawQuery = q.Encode()
 
 	return req
+}
+
+var errSSHCheckRejectedForTest = errors.New("ssh check rejected for test")
+
+// sshVerdictCases are the two verdicts a check session can resolve to.
+var sshVerdictCases = []struct {
+	name    string
+	verdict types.AuthVerdict
+	accept  bool
+}{
+	{name: "accept", verdict: types.AuthVerdict{}, accept: true},
+	{name: "reject", verdict: types.AuthVerdict{Err: errSSHCheckRejectedForTest}, accept: false},
+}
+
+// sshVerdictFixture is a same-user (src, dst) pair under an SSH check with
+// checkPeriod "always". Period 0 never auto-approves from the ledger, so any
+// Accept not backed by a verdict is a replay.
+type sshVerdictFixture struct {
+	ns       *noiseServer
+	src, dst types.NodeID
+}
+
+func newSSHVerdictFixture(t *testing.T) *sshVerdictFixture {
+	t.Helper()
+
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("ssh-verdict-user")
+	require.NoError(t, app.state.UpdatePolicyManagerUsersForTest())
+
+	var ids [2]types.NodeID
+
+	for i, name := range []string{"src-node", "dst-node"} {
+		node := app.state.CreateRegisteredNodeForTest(user, name)
+		// autogroup:self compares hydrated users.
+		node.User = user
+
+		// SaveNode refreshes the policy manager's nodes, which
+		// SSHCheckParams resolves against.
+		_, _, err := app.state.SaveNode(node.View())
+		require.NoError(t, err)
+
+		ids[i] = node.ID
+	}
+
+	_, err := app.state.SetPolicy(fmt.Appendf(nil, `{
+		"ssh": [{
+			"action": "check",
+			"checkPeriod": "always",
+			"src": [%q],
+			"dst": ["autogroup:self"],
+			"users": ["autogroup:nonroot"]
+		}]
+	}`, user.Name+"@"))
+	require.NoError(t, err)
+
+	period, checkFound := app.state.SSHCheckParams(ids[0], ids[1], sshTestLocalUser)
+	require.True(t, checkFound, "test setup: pair must be subject to a check")
+	require.Zero(t, period, "test setup: checkPeriod must be always")
+
+	dst, ok := app.state.GetNodeByID(ids[1])
+	require.True(t, ok)
+
+	return &sshVerdictFixture{
+		ns:  &noiseServer{headscale: app, machineKey: dst.MachineKey()},
+		src: ids[0],
+		dst: ids[1],
+	}
+}
+
+// mint runs the initial poll and returns the check session it created.
+func (f *sshVerdictFixture) mint(t *testing.T) (types.AuthID, *types.AuthRequest) {
+	t.Helper()
+
+	rec := httptest.NewRecorder()
+	f.ns.SSHActionHandler(rec, newSSHActionRequest(t, f.src, f.dst))
+
+	authID := requireSSHHold(t, sshActionFromRecorder(t, rec))
+
+	auth, ok := f.ns.headscale.state.GetAuthCacheEntry(authID)
+	require.True(t, ok, "minted session must be cached")
+
+	return authID, auth
+}
+
+// cancellableFollowUp returns a follow-up request and the cancel for its
+// context, derived from the request's own so chi's route values survive.
+func (f *sshVerdictFixture) cancellableFollowUp(
+	t *testing.T,
+	authID types.AuthID,
+) (*http.Request, context.CancelFunc) {
+	t.Helper()
+
+	req := newSSHActionFollowUpRequest(t, f.src, f.dst, authID)
+	ctx, cancel := context.WithCancel(req.Context())
+
+	return req.WithContext(ctx), cancel
+}
+
+func (f *sshVerdictFixture) serve(req *http.Request) *httptest.ResponseRecorder {
+	rec := httptest.NewRecorder()
+	f.ns.SSHActionHandler(rec, req)
+
+	return rec
+}
+
+func (f *sshVerdictFixture) followUp(t *testing.T, authID types.AuthID) *httptest.ResponseRecorder {
+	t.Helper()
+
+	return f.serve(newSSHActionFollowUpRequest(t, f.src, f.dst, authID))
+}
+
+func sshActionFromRecorder(t *testing.T, rec *httptest.ResponseRecorder) tailcfg.SSHAction {
+	t.Helper()
+
+	require.Equal(t, http.StatusOK, rec.Code, "body=%s", rec.Body.String())
+
+	var action tailcfg.SSHAction
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &action))
+
+	return action
+}
+
+// carriesSSHVerdict reports whether action is the answer to the verdict.
+func carriesSSHVerdict(action tailcfg.SSHAction, accept bool) bool {
+	if action.HoldAndDelegate != "" || action.Accept == action.Reject {
+		return false
+	}
+
+	return action.Accept == accept
+}
+
+// requireSSHHold asserts action re-delegates and returns its fresh auth_id.
+func requireSSHHold(t *testing.T, action tailcfg.SSHAction) types.AuthID {
+	t.Helper()
+
+	require.False(t, action.Accept, "expected HoldAndDelegate, got Accept: %+v", action)
+	require.False(t, action.Reject, "expected HoldAndDelegate, got Reject: %+v", action)
+	require.NotEmpty(t, action.HoldAndDelegate, "expected HoldAndDelegate: %+v", action)
+
+	u, err := url.Parse(action.HoldAndDelegate)
+	require.NoError(t, err)
+
+	authID, err := types.AuthIDFromString(u.Query().Get("auth_id"))
+	require.NoError(t, err)
+
+	return authID
+}
+
+// TestSSHActionFollowUp_ConsumedVerdictNotReplayed guards the one-shot
+// verdict channel: after a follow-up consumed the verdict, a second follow-up
+// on the same auth_id must re-decide instead of reading the closed channel's
+// zero value, which Accept() reports as success.
+func TestSSHActionFollowUp_ConsumedVerdictNotReplayed(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range sshVerdictCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := newSSHVerdictFixture(t)
+			authID, auth := f.mint(t)
+			auth.FinishAuth(tc.verdict)
+
+			first := sshActionFromRecorder(t, f.followUp(t, authID))
+			require.True(t, carriesSSHVerdict(first, tc.accept),
+				"first follow-up must carry the verdict, got %+v", first)
+
+			second := sshActionFromRecorder(t, f.followUp(t, authID))
+			replayID := requireSSHHold(t, second)
+			assert.NotEqual(t, authID, replayID, "re-delegation must mint a new session")
+
+			// A replay that recorded auth would feed auto-approval.
+			_, recorded := f.ns.headscale.state.GetLastSSHAuth(f.src, f.dst)
+			assert.Equal(t, tc.accept, recorded, "only an accepted verdict may record auth")
+		})
+	}
+
+	// With the check gone there is nothing to re-delegate, but the replay
+	// must still not be answered from the consumed verdict.
+	for _, tc := range sshVerdictCases {
+		t.Run(tc.name+"-check-removed", func(t *testing.T) {
+			t.Parallel()
+
+			f := newSSHVerdictFixture(t)
+			authID, auth := f.mint(t)
+			auth.FinishAuth(tc.verdict)
+
+			first := sshActionFromRecorder(t, f.followUp(t, authID))
+			require.True(t, carriesSSHVerdict(first, tc.accept),
+				"first follow-up must carry the verdict, got %+v", first)
+
+			_, err := f.ns.headscale.state.SetPolicy([]byte(`{}`))
+			require.NoError(t, err)
+
+			_, checkFound := f.ns.headscale.state.SSHCheckParams(f.src, f.dst, sshTestLocalUser)
+			require.False(t, checkFound, "test setup: pair must no longer be subject to a check")
+
+			rec := f.followUp(t, authID)
+			action := sshActionFromRecorder(t, rec)
+			assert.True(t, action.Reject, "replay without a check must be refused")
+			assert.False(t, action.Accept, "replay without a check must never approve access")
+		})
+	}
+}
+
+// TestSSHActionFollowUp_ConcurrentWaiters parks two follow-ups on one
+// session: exactly one may consume the verdict, the other re-decides.
+// FinishAuth can land before either waiter parks and nothing signals the
+// park, so the body repeats to exercise the both-parked order.
+func TestSSHActionFollowUp_ConcurrentWaiters(t *testing.T) {
+	t.Parallel()
+
+	const iterations = 200
+
+	for _, tc := range sshVerdictCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := newSSHVerdictFixture(t)
+
+			for range iterations {
+				authID, auth := f.mint(t)
+
+				var (
+					wg   sync.WaitGroup
+					recs [2]*httptest.ResponseRecorder
+				)
+
+				for i := range recs {
+					wg.Go(func() {
+						recs[i] = f.followUp(t, authID)
+					})
+				}
+
+				auth.FinishAuth(tc.verdict)
+				wg.Wait()
+
+				var carried, held int
+
+				for _, rec := range recs {
+					action := sshActionFromRecorder(t, rec)
+					if carriesSSHVerdict(action, tc.accept) {
+						carried++
+
+						continue
+					}
+
+					requireSSHHold(t, action)
+
+					held++
+				}
+
+				require.Equal(t, 1, carried, "exactly one waiter must carry the verdict")
+				require.Equal(t, 1, held, "the other waiter must re-delegate")
+			}
+		})
+	}
+}
+
+// TestSSHActionFollowUp_CancelledWaiterLeavesVerdict: a follow-up that
+// returns before FinishAuth must not consume the verdict, so the retry gets
+// it exactly once.
+func TestSSHActionFollowUp_CancelledWaiterLeavesVerdict(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range sshVerdictCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := newSSHVerdictFixture(t)
+			authID, auth := f.mint(t)
+
+			req1, cancel := f.cancellableFollowUp(t, authID)
+			done1 := make(chan *httptest.ResponseRecorder)
+
+			go func() {
+				done1 <- f.serve(req1)
+			}()
+
+			cancel()
+
+			rec1 := <-done1
+			require.Equal(t, http.StatusUnauthorized, rec1.Code,
+				"cancelled follow-up must return 401, body=%s", rec1.Body.String())
+
+			// The handler has returned, so its select could only take ctx.Done.
+			auth.FinishAuth(tc.verdict)
+
+			second := sshActionFromRecorder(t, f.followUp(t, authID))
+			require.True(t, carriesSSHVerdict(second, tc.accept),
+				"retry must carry the verdict, got %+v", second)
+
+			third := sshActionFromRecorder(t, f.followUp(t, authID))
+			requireSSHHold(t, third)
+		})
+	}
+}
+
+// TestSSHActionFollowUp_CancelRacingVerdictAtMostOnce makes both select cases
+// ready before the handler parks. Either outcome is allowed; the verdict
+// must reach at most one response.
+func TestSSHActionFollowUp_CancelRacingVerdictAtMostOnce(t *testing.T) {
+	t.Parallel()
+
+	const iterations = 200
+
+	for _, tc := range sshVerdictCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := newSSHVerdictFixture(t)
+
+			for range iterations {
+				authID, auth := f.mint(t)
+
+				auth.FinishAuth(tc.verdict)
+
+				req1, cancel := f.cancellableFollowUp(t, authID)
+				cancel()
+
+				rec1 := f.serve(req1)
+				retry := sshActionFromRecorder(t, f.followUp(t, authID))
+
+				if rec1.Code == http.StatusUnauthorized {
+					require.True(t, carriesSSHVerdict(retry, tc.accept),
+						"cancelled follow-up left the verdict; retry must carry it, got %+v", retry)
+
+					continue
+				}
+
+				first := sshActionFromRecorder(t, rec1)
+				require.True(t, carriesSSHVerdict(first, tc.accept),
+					"cancelled follow-up consumed the verdict, got %+v", first)
+				requireSSHHold(t, retry)
+			}
+		})
+	}
+}
+
+// TestSSHActionFollowUp_LostResponseRedecides: the client never saw the
+// Accept (dropped response) and retries. The retry must re-decide through a
+// fresh session, which then completes normally.
+func TestSSHActionFollowUp_LostResponseRedecides(t *testing.T) {
+	t.Parallel()
+
+	f := newSSHVerdictFixture(t)
+	authID, auth := f.mint(t)
+	auth.FinishAuth(types.AuthVerdict{})
+
+	// The Accept response is lost on the way to the client.
+	_ = f.followUp(t, authID)
+
+	retry := sshActionFromRecorder(t, f.followUp(t, authID))
+	freshID := requireSSHHold(t, retry)
+	require.NotEqual(t, authID, freshID)
+
+	fresh, ok := f.ns.headscale.state.GetAuthCacheEntry(freshID)
+	require.True(t, ok, "re-delegated session must be cached")
+	fresh.FinishAuth(types.AuthVerdict{})
+
+	final := sshActionFromRecorder(t, f.followUp(t, freshID))
+	assert.True(t, carriesSSHVerdict(final, true),
+		"fresh session must complete with its verdict, got %+v", final)
 }
 
 // newMapRequest builds a streaming [tailcfg.MapRequest] POST for

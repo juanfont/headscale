@@ -13,6 +13,7 @@ import (
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/types/key"
 )
 
 func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
@@ -195,6 +196,181 @@ func TestAuthWebFlowLogoutAndReloginSameUser(t *testing.T) {
 	}
 
 	t.Logf("all clients IPs are the same")
+}
+
+// peerAPISettleTimeout bounds the wait for an expired client to serve
+// peerapi again; clients that do take about a second.
+const peerAPISettleTimeout = 10 * time.Second
+
+// TestAuthWebFlowReloginExpiredNode expires one node at a time and logs it
+// back in through the web flow, which rotates its node key. Peers hold the
+// expired node with Expired=true, so the relogin must clear that flag on every
+// peer that stayed connected. Otherwise the peers keep dropping the node's
+// WireGuard handshakes while disco pings still succeed, which is why
+// reachability is checked with TSMP pings rather than disco pings.
+func TestAuthWebFlowReloginExpiredNode(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		NodesPerUser: len(MustTestVersions),
+		Users:        []string{"user1"},
+	}
+
+	scenario, err := NewScenario(spec)
+
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnvWithLoginURL(
+		nil,
+		hsic.WithTestName("webexpiredrelogin"),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	requireNoErrListClients(t, err)
+
+	allIps, err := scenario.ListTailscaleClientsIPs()
+	requireNoErrListClientIPs(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
+		return x.String()
+	})
+
+	assertPingAll(t, allClients, allAddrs)
+
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+
+	for _, target := range allClients {
+		t.Run(target.Hostname(), func(t *testing.T) {
+			var (
+				selfID string
+				oldKey key.NodePublic
+			)
+
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				status, err := target.Status()
+				if !assert.NoError(c, err) {
+					return
+				}
+
+				selfID, oldKey = string(status.Self.ID), status.Self.PublicKey
+			}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "client must report its own status before expiry")
+
+			targetIP := target.MustIPv4().String()
+
+			_, err := headscale.Execute([]string{
+				"headscale", "nodes", "expire", "--identifier", selfID,
+			})
+			require.NoError(t, err)
+
+			for _, peer := range allClients {
+				if peer.Hostname() == target.Hostname() {
+					continue
+				}
+
+				require.EventuallyWithT(t, func(c *assert.CollectT) {
+					status, err := peer.Status()
+					if !assert.NoError(c, err) {
+						return
+					}
+
+					expired, found := status.Peer[oldKey]
+					if assert.True(c, found, "expired node must remain visible") {
+						assert.True(c, expired.Expired)
+					}
+				}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "peer must see the node expired")
+			}
+
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				status, err := target.Status()
+				if !assert.NoError(c, err) {
+					return
+				}
+
+				assert.Equal(c, "NeedsLogin", status.BackendState)
+			}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "expired client must wait for login")
+
+			// Some clients serve peerapi again while they wait for login.
+			// Relogging once they do makes them register with the Hostinfo
+			// they later report as running, so no Hostinfo change can carry
+			// the whole node and the relogin itself must clear the expired
+			// flag. Which clients do is up to the client, so it is observed
+			// rather than assumed; the others relog with changed Hostinfo.
+			settled := false
+			tick := time.NewTicker(integrationutil.FastPoll)
+			timeout := time.After(peerAPISettleTimeout)
+
+		settle:
+			for {
+				status, err := target.Status()
+				if err == nil && len(status.Self.PeerAPIURL) > 0 {
+					settled = true
+
+					break
+				}
+
+				select {
+				case <-tick.C:
+				case <-timeout:
+					break settle
+				}
+			}
+
+			tick.Stop()
+
+			t.Logf("%s served peerapi while expired: %v", target.Version(), settled)
+
+			loginURL, err := target.LoginWithURL(headscale.GetEndpoint())
+			require.NoError(t, err)
+			body, err := doLoginURL(target.Hostname(), loginURL)
+			require.NoError(t, err)
+			require.NoError(t, scenario.runHeadscaleRegister("user1", body))
+			require.NoError(t, target.WaitForRunning(integrationutil.PeerSyncTimeout()))
+
+			var newKey key.NodePublic
+
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				status, err := target.Status()
+				if !assert.NoError(c, err) {
+					return
+				}
+
+				newKey = status.Self.PublicKey
+				assert.NotEqual(c, oldKey, newKey, "relogin of an expired node must rotate its node key")
+			}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "client must report its new node key")
+
+			for _, peer := range allClients {
+				if peer.Hostname() == target.Hostname() {
+					continue
+				}
+
+				require.EventuallyWithT(t, func(c *assert.CollectT) {
+					status, err := peer.Status()
+					if !assert.NoError(c, err) {
+						return
+					}
+
+					relogged, found := status.Peer[newKey]
+					if assert.True(c, found, "peer must know the new node key") {
+						assert.False(c, relogged.Expired, "peer must clear the expired flag")
+					}
+
+					stdout, _, err := peer.Execute([]string{
+						"tailscale", "ping", "--tsmp", "--c=1", "--timeout=2s", targetIP,
+					})
+					assert.NoError(c, err)
+					assert.Contains(c, stdout, "pong")
+				}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "peer must reach the relogged node over WireGuard")
+			}
+		})
+	}
+
+	assertPingAll(t, allClients, allAddrs)
 }
 
 // TestAuthWebFlowLogoutAndReloginNewUser tests the scenario where multiple Tailscale clients

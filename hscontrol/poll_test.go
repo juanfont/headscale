@@ -342,6 +342,88 @@ func TestFailedReconnectDoesNotCancelEphemeralGC(t *testing.T) {
 		"failed reconnect must not cancel the ephemeral GC timer (issue #3382)")
 }
 
+// TestEphemeralGCDoesNotDeleteReconnectedNode replays, in order, the
+// interleaving of two sessions from
+// https://github.com/juanfont/headscale/issues/3535: the old session takes the
+// node offline, a reconnect brings it back online and cancels the GC before
+// the old session arms its timer. The armed timer is stale; firing it must not
+// delete a node that has a live session.
+func TestEphemeralGCDoesNotDeleteReconnectedNode(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	app.cfg.Node.Ephemeral.InactivityTimeout = 50 * time.Millisecond
+	app.StartEphemeralGCForTest(t)
+
+	user := app.state.CreateUserForTest("eph-gc-reconnect-user")
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, true, nil, nil)
+	require.NoError(t, err)
+
+	nodeKey := key.NewNode()
+
+	_, err = app.handleRegister(context.Background(), tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "eph-gc-reconnect-node",
+		},
+		Expiry: time.Now().Add(24 * time.Hour),
+	}, key.NewMachine().Public())
+	require.NoError(t, err)
+
+	nodeView, ok := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, ok)
+	require.True(t, nodeView.IsEphemeral(), "test sanity: node must be ephemeral")
+
+	node := nodeView.AsStruct()
+	session := app.newMapSession(context.Background(), tailcfg.MapRequest{
+		Stream:  true,
+		Version: tailcfg.CapabilityVersion(100),
+	}, &recordingResponseWriter{}, node)
+
+	_, oldGen := app.state.Connect(node.ID)
+
+	// Old session's cleanup releases the last session.
+	offline, err := app.state.Disconnect(node.ID, oldGen)
+	require.NoError(t, err)
+	require.NotEmpty(t, offline, "test sanity: old session must take the node offline")
+
+	// Reconnect: what serveLongPoll does at Connect.
+	_, newGen := app.state.Connect(node.ID)
+	app.ephemeralGC.Cancel(node.ID)
+
+	// Old session's cleanup continues and arms the GC.
+	session.afterServeLongPoll()
+
+	online, ok := app.state.GetNodeByID(node.ID)
+	require.True(t, ok)
+	require.True(t, online.Online(), "test sanity: reconnected node must be online")
+
+	// The GC's delete lands only after a NodeStore batch flush, so watch
+	// well past the inactivity timeout.
+	assert.Never(t, func() bool {
+		_, ok := app.state.GetNodeByID(node.ID)
+
+		return !ok
+	}, 2*time.Second, 10*time.Millisecond,
+		"ephemeral GC must not delete a node with a live session (issue #3535)")
+
+	// Once the reconnected session ends, the node is idle and must still be
+	// collected.
+	_, err = app.state.Disconnect(node.ID, newGen)
+	require.NoError(t, err)
+	session.afterServeLongPoll()
+
+	assert.Eventually(t, func() bool {
+		_, ok := app.state.GetNodeByID(node.ID)
+
+		return !ok
+	}, 5*time.Second, 10*time.Millisecond,
+		"an idle ephemeral node must still be garbage collected")
+}
+
 // TestGitHubIssue3129_TransientlyBlockedWriteDoesNotLeaveLiveStaleSession
 // tests the scenario reported in
 // https://github.com/juanfont/headscale/issues/3129.
@@ -514,9 +596,9 @@ func TestDeletedNodeEndsLongPoll(t *testing.T) {
 		t.Fatal("expected the initial map write to start")
 	}
 
-	c, err := app.state.DeleteNode(nodeView)
+	cs, err := app.state.DeleteNode(nodeView)
 	require.NoError(t, err)
-	app.Change(c)
+	app.Change(cs...)
 
 	// The reconnect grace period is 10s, so a generous bound here still fails
 	// if teardown waits for a node that can never come back.
@@ -595,9 +677,9 @@ func TestDeletedNodeInterruptsBlockedWrite(t *testing.T) {
 		t.Fatal("expected the initial map write to block")
 	}
 
-	c, err := app.state.DeleteNode(nodeView)
+	cs, err := app.state.DeleteNode(nodeView)
 	require.NoError(t, err)
-	app.Change(c)
+	app.Change(cs...)
 
 	select {
 	case <-serveDone:

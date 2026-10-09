@@ -10,6 +10,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/views"
 )
 
 // mapRequestDelta carries the classified facts extracted from one MapRequest
@@ -35,6 +36,10 @@ type mapRequestDelta struct {
 	// peerHostinfoChanged reports whether a Hostinfo field that peers read
 	// changed (see [peerHostinfo]). Only that forces a whole-node resend.
 	peerHostinfoChanged bool
+
+	// dnsMetadataChanged reports whether a Hostinfo field feeding the
+	// node's NextDNS device metadata (Hostname, OS) changed.
+	dnsMetadataChanged bool
 
 	// routesChanged reports whether announced routes (RoutableIPs)
 	// changed. Routes are policy and election inputs, so they are tracked
@@ -150,30 +155,56 @@ func hostinfoEqual(oldHI, newHI *tailcfg.Hostinfo) bool {
 	return oldCopy.Equal(&newCopy)
 }
 
-// peerHostinfo keeps the Hostinfo fields another node's client reads from
-// a peer: what tailscale status shows, PeerAPI services, SSH known hosts,
-// exit-node location, app-connector eligibility, and the routes this server
-// feeds into policy. Everything else is stored but never fanned out, and a
-// peer's NetInfo is never read at all.
-func peerHostinfo(hi *tailcfg.Hostinfo) *tailcfg.Hostinfo {
-	if hi == nil {
-		return nil
+// peerHostinfoEqual reports whether a and b agree on the Hostinfo fields
+// another node's client reads from a peer: what tailscale status shows, PeerAPI
+// services, SSH known hosts, exit-node location, app-connector eligibility, and
+// the routes this server feeds into policy. Everything else is stored but never
+// fanned out, and a peer's NetInfo is never read at all.
+func peerHostinfoEqual(a, b tailcfg.HostinfoView) bool {
+	if !a.Valid() || !b.Valid() {
+		return a.Valid() == b.Valid()
 	}
 
-	return &tailcfg.Hostinfo{
-		Hostname:     hi.Hostname,
-		OS:           hi.OS,
-		Services:     hi.Services,
-		SSH_HostKeys: hi.SSH_HostKeys,
-		Location:     hi.Location,
-		AppConnector: hi.AppConnector,
-		RoutableIPs:  hi.RoutableIPs,
-	}
+	return a.Hostname() == b.Hostname() &&
+		a.OS() == b.OS() &&
+		servicesEqual(a.Services(), b.Services()) &&
+		views.SliceEqual(a.SSH_HostKeys(), b.SSH_HostKeys()) &&
+		locationEqual(a.Location(), b.Location()) &&
+		a.AppConnector() == b.AppConnector() &&
+		views.SliceEqual(a.RoutableIPs(), b.RoutableIPs())
 }
 
-// peerHostinfoEqual reports whether the fields peers read are unchanged.
-func peerHostinfoEqual(oldHI, newHI *tailcfg.Hostinfo) bool {
-	return peerHostinfo(oldHI).Equal(peerHostinfo(newHI))
+// servicesEqual compares field by field, as [tailcfg.Service] is
+// incomparable.
+func servicesEqual(a, b views.Slice[tailcfg.Service]) bool {
+	if a.Len() != b.Len() {
+		return false
+	}
+
+	for i := range a.Len() {
+		x, y := a.At(i), b.At(i)
+		if x.Proto != y.Proto || x.Port != y.Port || x.Description != y.Description {
+			return false
+		}
+	}
+
+	return true
+}
+
+// locationEqual compares field by field, as [tailcfg.LocationView] has no
+// Equal.
+func locationEqual(a, b tailcfg.LocationView) bool {
+	if !a.Valid() || !b.Valid() {
+		return a.Valid() == b.Valid()
+	}
+
+	return a.Country() == b.Country() &&
+		a.CountryCode() == b.CountryCode() &&
+		a.City() == b.City() &&
+		a.CityCode() == b.CityCode() &&
+		a.Latitude() == b.Latitude() &&
+		a.Longitude() == b.Longitude() &&
+		a.Priority() == b.Priority()
 }
 
 // netInfoEqualIgnoringDERP compares two NetInfo values via

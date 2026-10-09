@@ -86,6 +86,44 @@ func TestPolicyManager(t *testing.T) {
 	}
 }
 
+// TestSetPolicyRejectedKeepsLiveFilter pins that a policy SetPolicy rejects
+// does not take effect. A nodeAttrs target naming an ambiguous user passes
+// validation but fails to compile after the filter is already compiled; keeping that
+// filter would run the rejected policy while the stored one is unchanged.
+func TestSetPolicyRejectedKeepsLiveFilter(t *testing.T) {
+	// IDs are assigned after construction so the test also builds where
+	// types.User embeds gorm.Model.
+	users := types.Users{{Name: "user1"}, {Name: "user2"}, {Name: "dup"}, {Name: "dup"}}
+	users[0].ID, users[1].ID, users[2].ID, users[3].ID = 1, 2, 3, 4
+	nodes := types.Nodes{
+		node("n1", "100.64.0.1", "fd7a:115c:a1e0::1", users[0]),
+		node("n2", "100.64.0.2", "fd7a:115c:a1e0::2", users[1]),
+	}
+	nodes[0].ID, nodes[1].ID = 1, 2
+
+	pm, err := NewPolicyManager([]byte(`{
+		"acls": [{"action": "accept", "src": ["user1@"], "dst": ["user1@:*"]}]
+	}`), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	before, _ := pm.Filter()
+	beforeRules, err := pm.FilterForNode(nodes[1].View())
+	require.NoError(t, err)
+
+	_, err = pm.SetPolicy([]byte(`{
+		"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}],
+		"nodeAttrs": [{"target": ["dup@"], "attr": ["randomize-client-port"]}]
+	}`))
+	require.Error(t, err)
+
+	after, _ := pm.Filter()
+	require.Equal(t, before, after, "a rejected policy must not replace the live filter")
+
+	afterRules, err := pm.FilterForNode(nodes[1].View())
+	require.NoError(t, err)
+	require.Equal(t, beforeRules, afterRules)
+}
+
 func TestInvalidateAutogroupSelfCache(t *testing.T) {
 	users := types.Users{
 		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@headscale.net"},
@@ -353,7 +391,7 @@ func TestSSHCheckParamsUnhydratedUserNoPanic(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NotPanics(t, func() {
-		pm.SSHCheckParams(types.NodeID(1), types.NodeID(2))
+		pm.SSHCheckParams(types.NodeID(1), types.NodeID(2), "alice")
 	}, "SSHCheckParams must not panic when a non-tagged node has an unhydrated User")
 }
 
@@ -430,6 +468,85 @@ func TestSetUsers(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tt.wantPolicyChanged, policyChanged, "policyChanged")
 			require.Equal(t, tt.wantPeerMapChanged, peerMapChanged, "peerMapChanged")
+		})
+	}
+}
+
+func matcherStrings(ms []matcher.Match) []string {
+	out := make([]string, 0, len(ms))
+	for i := range ms {
+		out = append(out, ms[i].DebugString())
+	}
+
+	return out
+}
+
+// TestSetUsersDropsStaleSelfFilters pins that a user change which moves
+// autogroup:self sources, without touching the global filter, still drops
+// the cached per-node filters and matchers built from the old sources and
+// reports a policy change so clients receive their new filter.
+func TestSetUsersDropsStaleSelfFilters(t *testing.T) {
+	pol := `{
+		"groups": {"group:a": ["u1@", "u3@"]},
+		"acls": [{"action": "accept", "src": ["group:a"], "dst": ["autogroup:self:*"]}]}`
+
+	// ID is set by assignment so this builds where types.User embeds
+	// gorm.Model and promoted-field literals are not allowed.
+	u1, u3, x3 := types.User{Name: "u1"}, types.User{Name: "u3"}, types.User{Name: "x3"}
+	u1.ID, u3.ID, x3.ID = 1, 3, 3
+
+	tests := []struct {
+		name   string
+		before types.Users
+		after  types.Users
+	}{
+		{name: "user-added", before: types.Users{u1}, after: types.Users{u1, u3}},
+		{name: "user-renamed", before: types.Users{u1, x3}, after: types.Users{u1, u3}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			nodes := types.Nodes{
+				node("u1-a", "100.64.0.1", "fd7a:115c:a1e0::1", u1),
+				node("u3-a", "100.64.0.3", "fd7a:115c:a1e0::3", u3),
+				node("u3-b", "100.64.0.4", "fd7a:115c:a1e0::4", u3),
+			}
+			for i, n := range nodes {
+				n.ID = types.NodeID(i + 1) //nolint:gosec // safe conversion in test
+			}
+
+			pm, err := NewPolicyManager([]byte(pol), tt.before, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			for _, n := range nodes {
+				_, err := pm.FilterForNode(n.View())
+				require.NoError(t, err)
+				_, err = pm.MatchersForNode(n.View())
+				require.NoError(t, err)
+			}
+
+			policyChanged, _, err := pm.SetUsers(tt.after)
+			require.NoError(t, err)
+			require.True(t, policyChanged, "moved self sources must reach clients")
+
+			fresh, err := NewPolicyManager([]byte(pol), tt.after, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			for _, n := range nodes {
+				got, err := pm.FilterForNode(n.View())
+				require.NoError(t, err)
+
+				want, err := fresh.FilterForNode(n.View())
+				require.NoError(t, err)
+				require.Empty(t, cmp.Diff(want, got), "node %d FilterForNode (-fresh +cached)", n.ID)
+
+				gotM, err := pm.MatchersForNode(n.View())
+				require.NoError(t, err)
+
+				wantM, err := fresh.MatchersForNode(n.View())
+				require.NoError(t, err)
+				require.Equal(t, matcherStrings(wantM), matcherStrings(gotM), "node %d MatchersForNode", n.ID)
+			}
 		})
 	}
 }
@@ -835,6 +952,61 @@ func TestAutogroupSelfPolicyUpdateTriggersMapResponse(t *testing.T) {
 	policyChanged2, err := pm.SetPolicy([]byte(updatedPolicy))
 	require.NoError(t, err)
 	require.False(t, policyChanged2, "SetPolicy should return false when policy content hasn't changed")
+}
+
+// TestSSHPolicyRemovalClearsRules pins that removing every SSH rule
+// yields a non-nil, empty [tailcfg.SSHPolicy]. A nil MapResponse.SSHPolicy
+// tells the client to keep its previous rules, so returning nil leaves
+// revoked SSH access in force. SaaS sends {"rules":[]} for policies
+// without SSH rules; see the netmap in any testdata capture whose
+// policy lacks an "ssh" key.
+// https://github.com/juanfont/headscale/issues/3508
+func TestSSHPolicyRemovalClearsRules(t *testing.T) {
+	users := types.Users{{Name: "user1", Email: "user1@headscale.net"}}
+	users[0].ID = 1
+
+	nodes := types.Nodes{
+		node("server", "100.64.0.1", "fd7a:115c:a1e0::1", users[0]),
+		node("client", "100.64.0.2", "fd7a:115c:a1e0::2", users[0]),
+	}
+	nodes[0].ID = 1
+	nodes[1].ID = 2
+
+	withSSH := `{
+		"acls": [],
+		"ssh": [{
+			"action": "accept",
+			"src":    ["autogroup:member"],
+			"dst":    ["autogroup:self"],
+			"users":  ["root"]
+		}]
+	}`
+
+	for name, without := range map[string]string{
+		"ssh key removed": `{"acls": []}`,
+		"ssh empty list":  `{"acls": [], "ssh": []}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			pm, err := NewPolicyManager([]byte(withSSH), users, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			before, err := pm.SSHPolicy("", nodes[0].View())
+			require.NoError(t, err)
+			require.NotNil(t, before)
+			require.NotEmpty(t, before.Rules, "precondition: server has SSH rules")
+
+			changed, err := pm.SetPolicy([]byte(without))
+			require.NoError(t, err)
+			require.True(t, changed)
+
+			after, err := pm.SSHPolicy("", nodes[0].View())
+			require.NoError(t, err)
+			require.NotNil(t, after,
+				"nil SSHPolicy means 'unchanged' on the wire; client keeps stale rules")
+			require.NotNil(t, after.Rules, `SaaS sends "rules":[], not null`)
+			require.Empty(t, after.Rules)
+		})
+	}
 }
 
 // TestTagPropagationToPeerMap tests that when a node's tags change,
@@ -1446,6 +1618,92 @@ func TestAutogroupSelfCombinedWithTags(t *testing.T) {
 		"web server should see admin phone (symmetric)")
 }
 
+// TestAutogroupSelfRulesReachExitNodes checks that an approved exit
+// node receives every user's autogroup:self rules: its exit routes
+// contain every destination, and Tailscale SaaS delivers them.
+func TestAutogroupSelfRulesReachExitNodes(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "alice", Email: "alice@example.com"},
+		{Model: gorm.Model{ID: 2}, Name: "bob", Email: "bob@example.com"},
+	}
+
+	alice := &types.Node{
+		ID:       1,
+		Hostname: "alice",
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
+		IPv4:     ap("100.64.0.1"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	bob := &types.Node{
+		ID:       2,
+		Hostname: "bob",
+		User:     new(users[1]),
+		UserID:   new(users[1].ID),
+		IPv4:     ap("100.64.0.2"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	exit := &types.Node{
+		ID:             3,
+		Hostname:       "exit",
+		User:           new(users[0]),
+		UserID:         new(users[0].ID),
+		IPv4:           ap("100.64.0.3"),
+		Tags:           []string{"tag:exit"},
+		Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: tsaddr.ExitRoutes()},
+		ApprovedRoutes: tsaddr.ExitRoutes(),
+	}
+
+	server := &types.Node{
+		ID:       4,
+		Hostname: "server",
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
+		IPv4:     ap("100.64.0.4"),
+		Tags:     []string{"tag:server"},
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	nodes := types.Nodes{alice, bob, exit, server}
+
+	policy := `{
+		"tagOwners": {
+			"tag:exit":   ["alice@example.com"],
+			"tag:server": ["alice@example.com"]
+		},
+		"acls": [
+			{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self:*"]}
+		]
+	}`
+
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	dsts := func(n *types.Node) []string {
+		rules, err := pm.FilterForNode(n.View())
+		require.NoError(t, err)
+
+		var out []string
+
+		for _, r := range rules {
+			for _, dp := range r.DstPorts {
+				out = append(out, dp.IP)
+			}
+		}
+
+		return out
+	}
+
+	require.ElementsMatch(t, []string{"100.64.0.1", "100.64.0.2"}, dsts(exit),
+		"exit node must get every user's self rule")
+	require.Empty(t, dsts(server),
+		"tagged node without exit routes gets no self rules")
+	require.ElementsMatch(t, []string{"100.64.0.1"}, dsts(alice),
+		"user device gets only its own user's self rule")
+}
+
 // TestIssue2990SameUserTaggedDevice reproduces the exact scenario from issue #2990:
 // - One user (user1) who is in group:admin
 // - node1: user device (not tagged), belongs to user1
@@ -1641,6 +1899,58 @@ func TestViaRoutesForPeer(t *testing.T) {
 		result := pm.ViaRoutesForPeer(nodes[0].View(), nodes[1].View())
 		require.Empty(t, result.Include)
 		require.Empty(t, result.Exclude)
+	})
+
+	t.Run("no_via_grant_returns_empty", func(t *testing.T) {
+		t.Parallel()
+
+		nodes := types.Nodes{
+			{
+				ID:       1,
+				Hostname: "viewer",
+				IPv4:     ap("100.64.0.1"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Hostinfo: &tailcfg.Hostinfo{},
+			},
+			{
+				ID:       2,
+				Hostname: "router",
+				IPv4:     ap("100.64.0.2"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Tags:     []string{"tag:router"},
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{mp("10.0.0.0/24")},
+				},
+				ApprovedRoutes: []netip.Prefix{mp("10.0.0.0/24")},
+			},
+		}
+
+		// An ACL and a grant both cover the route, neither with via.
+		pol := `{
+			"tagOwners": {
+				"tag:router": ["user1@"]
+			},
+			"acls": [{
+				"action": "accept",
+				"src": ["autogroup:member"],
+				"dst": ["10.0.0.0/24:*"]
+			}],
+			"grants": [{
+				"src": ["user1@"],
+				"dst": ["10.0.0.0/24"],
+				"ip": ["*"]
+			}]
+		}`
+
+		pm, err := NewPolicyManager([]byte(pol), users, nodes.ViewSlice())
+		require.NoError(t, err)
+
+		result := pm.ViaRoutesForPeer(nodes[0].View(), nodes[1].View())
+		require.Empty(t, result.Include)
+		require.Empty(t, result.Exclude)
+		require.Empty(t, result.UsePrimary)
 	})
 
 	t.Run("peer_does_not_advertise_destination", func(t *testing.T) {
@@ -2148,6 +2458,75 @@ func TestViaRoutesForPeer(t *testing.T) {
 			"disjoint dst must produce nothing — the via gate requires advertised-route overlap")
 		require.Empty(t, result.Exclude)
 	})
+
+	// juanfont/headscale#3513: a group member must get via-steered exit
+	// routes even when another member of the group has not registered.
+	// The group resolves to the registered members' IPs plus an error
+	// for the missing one; the error must not drop the resolved IPs.
+	t.Run("group_src_with_unregistered_member_autogroup_internet", func(t *testing.T) {
+		t.Parallel()
+
+		nodes := types.Nodes{
+			{
+				ID:       1,
+				Hostname: "viewer",
+				IPv4:     ap("100.64.0.1"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Hostinfo: &tailcfg.Hostinfo{},
+			},
+			{
+				ID:       2,
+				Hostname: "exit-node",
+				IPv4:     ap("100.64.0.2"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Tags:     []string{"tag:exit"},
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						mp("0.0.0.0/0"),
+						mp("::/0"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					mp("0.0.0.0/0"),
+					mp("::/0"),
+				},
+			},
+		}
+
+		for _, members := range []string{
+			`["user1@"]`,
+			`["user1@", "unregistered@"]`,
+		} {
+			pol := `{
+				"groups": {"group:develop": ` + members + `},
+				"tagOwners": {"tag:exit": ["user1@"]},
+				"grants": [{
+					"src": ["group:develop"],
+					"dst": ["autogroup:internet"],
+					"ip": ["*"],
+					"via": ["tag:exit"]
+				}]
+			}`
+
+			pm, err := NewPolicyManager([]byte(pol), users, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			// The exit node's filter already admits the viewer: the
+			// compile path keeps a group's partial resolution.
+			rules, err := pm.FilterForNode(nodes[1].View())
+			require.NoError(t, err)
+			require.NotEmpty(t, rules, "members=%s: exit node must accept viewer traffic", members)
+
+			result := pm.ViaRoutesForPeer(nodes[0].View(), nodes[1].View())
+			require.Containsf(t, result.Include, mp("0.0.0.0/0"),
+				"members=%s: viewer in group must get exit routes from via-tagged exit node", members)
+			require.Containsf(t, result.Include, mp("::/0"),
+				"members=%s: viewer in group must get exit routes from via-tagged exit node", members)
+			require.Empty(t, result.Exclude)
+		}
+	})
 }
 
 // TestBuildPeerMap_AutogroupInternetMakesExitNodeVisible reproduces
@@ -2230,6 +2609,244 @@ func TestNewPolicyManager_UnknownUsernameTolerant(t *testing.T) {
 
 	_, err := NewPolicyManager(polB, users, types.Nodes{}.ViewSlice())
 	require.NoError(t, err, "missing-user references must not block policy load (#2863)")
+}
+
+// TestUnregisteredUsersAreNoOp pins, at every policy site that takes users,
+// that naming a user who has not registered changes nothing (#3513).
+// Tailscale accepts such policies; the user gains access once they join and
+// loses it when deleted. Swapping in a registered user proves each site has
+// an observable effect, so an equal result is not vacuous.
+func TestUnregisteredUsersAreNoOp(t *testing.T) {
+	t.Parallel()
+
+	// IDs are assigned after construction so the test also builds where
+	// types.User embeds gorm.Model.
+	all := types.Users{{Name: "alice"}, {Name: "bob"}, {Name: "ghost"}}
+	all[0].ID, all[1].ID, all[2].ID = 1, 2, 3
+	registered := all[:2:2]
+
+	exitRoutes := []netip.Prefix{mp("0.0.0.0/0"), mp("::/0")}
+	userRoutes := []netip.Prefix{mp("10.44.0.0/16"), mp("0.0.0.0/0"), mp("::/0")}
+
+	// mkNodes adds ghost's node, advertising routes for autoApprovers to
+	// act on, when users includes ghost.
+	mkNodes := func(users types.Users) types.Nodes {
+		withHostinfo := func(n *types.Node, tags []string, routes, approved []netip.Prefix) *types.Node {
+			n.Tags = tags
+			n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: routes}
+			n.ApprovedRoutes = approved
+
+			return n
+		}
+
+		nodes := types.Nodes{
+			withHostinfo(node("alice", "100.64.0.1", "fd7a:115c:a1e0::1", users[0]), nil, nil, nil),
+			withHostinfo(node("alice-router", "100.64.0.2", "fd7a:115c:a1e0::2", users[0]), nil, userRoutes, nil),
+			withHostinfo(node("bob", "100.64.0.3", "fd7a:115c:a1e0::3", users[1]), nil, nil, nil),
+			withHostinfo(node("exit", "100.64.0.4", "fd7a:115c:a1e0::4", users[1]),
+				[]string{"tag:exit"}, exitRoutes, exitRoutes),
+			withHostinfo(node("router", "100.64.0.5", "fd7a:115c:a1e0::5", users[1]),
+				[]string{"tag:router"}, []netip.Prefix{mp("10.33.0.0/16")}, []netip.Prefix{mp("10.33.0.0/16")}),
+			withHostinfo(node("server", "100.64.0.6", "fd7a:115c:a1e0::6", users[1]),
+				[]string{"tag:server"}, nil, nil),
+		}
+		if len(users) > 2 {
+			nodes = append(nodes, withHostinfo(
+				node("ghost", "100.64.0.7", "fd7a:115c:a1e0::7", users[2]), nil, userRoutes, nil))
+		}
+
+		for i, n := range nodes {
+			n.ID = types.NodeID(i + 1) //nolint:gosec
+		}
+
+		return nodes
+	}
+
+	// Each body receives the member list; group cases put it in group:g,
+	// list cases name the users directly.
+	tests := []struct {
+		name      string
+		devOwners string
+		body      func(members string) string
+	}{
+		{name: "acl src group", body: func(string) string {
+			return `"acls": [{"action": "accept", "src": ["group:g"], "dst": ["tag:server:22"]}]`
+		}},
+		{name: "acl src list", body: func(m string) string {
+			return `"acls": [{"action": "accept", "src": [` + m + `], "dst": ["tag:server:22"]}]`
+		}},
+		{name: "acl dst group", body: func(string) string {
+			return `"acls": [{"action": "accept", "src": ["tag:server"], "dst": ["group:g:*"]}]`
+		}},
+		{name: "acl autogroup:self", body: func(string) string {
+			return `"acls": [{"action": "accept", "src": ["group:g"], "dst": ["autogroup:self:*"]}]`
+		}},
+		{name: "grant ip group", body: func(string) string {
+			return `"grants": [{"src": ["group:g"], "dst": ["tag:server"], "ip": ["tcp:443"]}]`
+		}},
+		{name: "grant via exit group", body: func(string) string {
+			return `"grants": [{"src": ["group:g"], "dst": ["autogroup:internet"], "ip": ["*"], "via": ["tag:exit"]}]`
+		}},
+		{name: "grant via exit list", body: func(m string) string {
+			return `"grants": [{"src": [` + m + `], "dst": ["autogroup:internet"], "ip": ["*"], "via": ["tag:exit"]}]`
+		}},
+		{name: "grant via subnet group", body: func(string) string {
+			return `"grants": [{"src": ["group:g"], "dst": ["10.33.0.0/16"], "ip": ["*"], "via": ["tag:router"]}]`
+		}},
+		{name: "grant app dst group", body: func(string) string {
+			return `"grants": [{"src": ["tag:server"], "dst": ["group:g"], "app": {"tailscale.com/cap/relay": [{}]}}]`
+		}},
+		{name: "ssh accept group", body: func(string) string {
+			return `"ssh": [{"action": "accept", "src": ["group:g"], "dst": ["tag:server"], "users": ["root"]}]`
+		}},
+		{name: "ssh accept list", body: func(m string) string {
+			return `"ssh": [{"action": "accept", "src": [` + m + `], "dst": ["tag:server"], "users": ["root"]}]`
+		}},
+		{name: "ssh autogroup:self", body: func(string) string {
+			return `"ssh": [{"action": "accept", "src": ["group:g"], "dst": ["autogroup:self"], "users": ["root"]}]`
+		}},
+		{name: "ssh check group", body: func(string) string {
+			return `"ssh": [{"action": "check", "checkPeriod": "2h", "src": ["group:g"], "dst": ["tag:server"], "users": ["root"]}]`
+		}},
+		{name: "tagOwners group", devOwners: `"group:g"`, body: func(string) string { return "" }},
+		{name: "tagOwners list", devOwners: "LIST", body: func(string) string { return "" }},
+		{name: "autoApprovers routes group", body: func(string) string {
+			return `"autoApprovers": {"routes": {"10.44.0.0/16": ["group:g"]}}`
+		}},
+		{name: "autoApprovers exitNode group", body: func(string) string {
+			return `"autoApprovers": {"exitNode": ["group:g"]}`
+		}},
+		{name: "nodeAttrs group", body: func(string) string {
+			return `"nodeAttrs": [{"target": ["group:g"], "attr": ["randomize-client-port"]}]`
+		}},
+		{name: "nodeAttrs list", body: func(m string) string {
+			return `"nodeAttrs": [{"target": [` + m + `], "attr": ["randomize-client-port"]}]`
+		}},
+	}
+
+	type checkParams struct {
+		Period time.Duration
+		OK     bool
+	}
+
+	// snapshot gathers every per-node and per-pair result a policy drives.
+	snapshot := func(t *testing.T, pm *PolicyManager, nodes types.Nodes) map[string]any {
+		t.Helper()
+
+		got := map[string]any{}
+		got["filter"], _ = pm.Filter()
+		peers := pm.BuildPeerMap(nodes.ViewSlice())
+
+		for _, n := range nodes {
+			nv := n.View()
+
+			rules, err := pm.FilterForNode(nv)
+			require.NoError(t, err)
+
+			ssh, err := pm.SSHPolicy("", nv)
+			require.NoError(t, err)
+
+			ids := slices.Clone(peers[n.ID])
+			slices.Sort(ids)
+
+			got[n.Hostname+" filter"] = rules
+			got[n.Hostname+" ssh"] = ssh
+			got[n.Hostname+" caps"] = pm.NodeCapMap(n.ID)
+			got[n.Hostname+" peers"] = ids
+			got[n.Hostname+" tag:dev"] = pm.NodeCanHaveTag(nv, "tag:dev")
+
+			for _, r := range n.Hostinfo.RoutableIPs {
+				got[n.Hostname+" approves "+r.String()] = pm.NodeCanApproveRoute(nv, r)
+			}
+
+			for _, p := range nodes {
+				if p.ID == n.ID {
+					continue
+				}
+
+				period, ok := pm.SSHCheckParams(n.ID, p.ID, "alice")
+				got[n.Hostname+"->"+p.Hostname+" via"] = pm.ViaRoutesForPeer(nv, p.View())
+				got[n.Hostname+"->"+p.Hostname+" check"] = checkParams{period, ok}
+			}
+		}
+
+		return got
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			render := func(members string) []byte {
+				devOwners := tt.devOwners
+				switch devOwners {
+				case "":
+					devOwners = `"bob@"`
+				case "LIST":
+					devOwners = members
+				}
+
+				return []byte(`{
+					"groups": {"group:g": [` + members + `]},
+					"tagOwners": {
+						"tag:exit": ["bob@"], "tag:router": ["bob@"], "tag:server": ["bob@"],
+						"tag:dev": [` + devOwners + `],
+					},
+					` + tt.body(members) + `
+				}`)
+			}
+
+			load := func(members string, users types.Users, nodes types.Nodes) *PolicyManager {
+				t.Helper()
+
+				pm, err := NewPolicyManager(render(members), users, nodes.ViewSlice())
+				require.NoError(t, err, "a policy naming an unregistered user must load")
+
+				return pm
+			}
+
+			diff := func(want, got map[string]any) string {
+				return cmp.Diff(want, got, cmpOptions()...)
+			}
+
+			const (
+				withGhost = `"alice@", "ghost@"`
+				alice     = `"alice@"`
+			)
+
+			nodes := mkNodes(registered)
+			want := snapshot(t, load(alice, registered, nodes), nodes)
+			pm := load(withGhost, registered, nodes)
+
+			require.Empty(t, diff(want, snapshot(t, pm, nodes)),
+				"an unregistered user must change nothing")
+			require.NotEmpty(t, diff(want, snapshot(t, load(`"bob@"`, registered, nodes), nodes)),
+				"the site must react to its members")
+
+			// ghost registers, then their node joins.
+			grown := mkNodes(all)
+
+			_, _, err := pm.SetUsers(all)
+			require.NoError(t, err)
+			_, err = pm.SetNodes(grown.ViewSlice())
+			require.NoError(t, err)
+
+			joined := snapshot(t, pm, grown)
+			require.Empty(t, diff(snapshot(t, load(withGhost, all, grown), grown), joined),
+				"after joining, ghost must match a fresh load")
+			require.NotEmpty(t, diff(snapshot(t, load(alice, all, grown), grown), joined),
+				"after joining, ghost must gain access")
+
+			// ghost's node leaves, then ghost is deleted.
+			_, err = pm.SetNodes(nodes.ViewSlice())
+			require.NoError(t, err)
+			_, _, err = pm.SetUsers(registered)
+			require.NoError(t, err)
+
+			require.Empty(t, diff(want, snapshot(t, pm, nodes)),
+				"after deletion, ghost must leave no trace")
+		})
+	}
 }
 
 // Rejected SetPolicy must keep the previous policy intact.
@@ -2335,6 +2952,13 @@ func TestValidateUserReferences_AllSites(t *testing.T) {
   "tagOwners": {"tag:ssh": ["alice@"]},
   "acls":      [{"action":"accept","src":["*"],"dst":["*:*"]}],
   "ssh": [{"action":"accept","src":["dup@"],"dst":["tag:ssh"],"users":["root"]}]
+}`,
+		},
+		{
+			name: "nodeAttrs.target",
+			pol: `{
+  "acls":      [{"action":"accept","src":["*"],"dst":["*:*"]}],
+  "nodeAttrs": [{"target":["dup@"],"attr":["randomize-client-port"]}]
 }`,
 		},
 		{
@@ -2498,6 +3122,31 @@ func TestPeerRelayGrantMakesRelayVisible(t *testing.T) {
 					{
 						"src": ["alice@headscale.net"],
 						"dst": ["peer-relay"],
+						"app": {"tailscale.com/cap/relay": []}
+					}
+				]
+			}`,
+			srcIDs:  []types.NodeID{1},
+			relayID: 3,
+		},
+		{
+			// One unregistered member must not drop the cap grant (#3513).
+			name: "tag src, group dst with unregistered member",
+			nodes: types.Nodes{
+				taggedNode(1, "client-a", "100.64.0.1", "fd7a:115c:a1e0::1", "tag:client"),
+				userNode(3, "peer-relay", "100.64.0.3", "fd7a:115c:a1e0::3"),
+			},
+			policy: `{
+				"groups": {
+					"group:relays": ["alice@headscale.net", "ghost@headscale.net"]
+				},
+				"tagOwners": {
+					"tag:client": ["tagowner@headscale.net"]
+				},
+				"grants": [
+					{
+						"src": ["tag:client"],
+						"dst": ["group:relays"],
 						"app": {"tailscale.com/cap/relay": []}
 					}
 				]

@@ -2585,6 +2585,7 @@ func TestResolvePolicy(t *testing.T) {
 			want:      util.TheInternet().Prefixes(),
 		},
 		{
+			// Unregistered users resolve to nothing, without an error (#3513).
 			name:      "invalid-username",
 			toResolve: new(Username("invaliduser@")),
 			nodes: types.Nodes{
@@ -2593,7 +2594,23 @@ func TestResolvePolicy(t *testing.T) {
 					IPv4: ap("100.100.101.103"),
 				},
 			},
-			wantErr: `user not found: token "invaliduser@"`,
+		},
+		{
+			// One unregistered member must not void the group (#3513).
+			name:      "group-with-unregistered-member",
+			toResolve: new(Group("group:testgroup")),
+			nodes: types.Nodes{
+				{
+					User: new(users["groupuser"]),
+					IPv4: ap("100.100.101.203"),
+				},
+			},
+			pol: &Policy{
+				Groups: Groups{
+					"group:testgroup": Usernames{"groupuser@", "invaliduser@"},
+				},
+			},
+			want: []netip.Prefix{mp("100.100.101.203/32")},
 		},
 		{
 			name:      "invalid-tag",
