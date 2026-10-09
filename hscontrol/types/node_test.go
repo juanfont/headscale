@@ -1095,3 +1095,33 @@ func TestHasPolicyChangeFields(t *testing.T) {
 		})
 	}
 }
+
+func TestNodeIsExpiredAt(t *testing.T) {
+	now := time.Now()
+	zero := time.Time{}
+	justBefore := now.Add(-time.Nanosecond)
+
+	tests := []struct {
+		name   string
+		expiry *time.Time
+		want   bool
+	}{
+		{name: "nil expiry", expiry: nil, want: false},
+		{name: "zero expiry", expiry: &zero, want: false},
+		{name: "expiry equals now", expiry: &now, want: false},
+		{name: "now one nanosecond after expiry", expiry: &justBefore, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			n := &Node{Expiry: tt.expiry}
+			require.Equal(t, tt.want, n.IsExpiredAt(now))
+			require.Equal(t, tt.want, n.View().IsExpiredAt(now))
+		})
+	}
+
+	t.Run("invalid view", func(t *testing.T) {
+		require.True(t, NodeView{}.IsExpiredAt(now),
+			"an invalid view counts as expired, like IsExpired")
+	})
+}
