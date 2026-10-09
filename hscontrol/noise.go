@@ -564,7 +564,7 @@ func (ns *noiseServer) sshActionHoldAndDelegate(
 		types.NewSSHCheckAuthRequest(srcNodeID, dstNodeID),
 	)
 
-	authURL := ns.headscale.authProvider.AuthURL(authID)
+	authURL := ns.headscale.getAuthProvider().AuthURL(authID)
 
 	// The concrete user, not $LOCAL_USER: Encode escapes the placeholder
 	// and tailssh only expands it literally.
