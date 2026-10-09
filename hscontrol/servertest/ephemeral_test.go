@@ -73,8 +73,8 @@ func TestEphemeralNodes(t *testing.T) {
 		// Ensure the ephemeral node's long-poll session is fully
 		// established on the server before disconnecting. Without
 		// this, the [TestClient.Disconnect] may cancel a [controlclient.Direct.PollNetMap] that hasn't
-		// yet reached serveLongPoll, so no grace period or ephemeral
-		// GC would ever be scheduled.
+		// yet reached serveLongPoll, so no grace period would ever
+		// start.
 		ephemeral.WaitForPeers(t, 1, 10*time.Second)
 
 		// Disconnect the ephemeral node.
@@ -120,6 +120,30 @@ func TestEphemeralNodes(t *testing.T) {
 
 		servertest.AssertMeshComplete(t,
 			[]*servertest.TestClient{r1, r2, e1})
+	})
+
+	t.Run("ephemeral_outlives_timeout_while_polling", func(t *testing.T) {
+		t.Parallel()
+
+		srv := servertest.NewServer(t,
+			servertest.WithEphemeralTimeout(3*time.Second))
+		user := srv.CreateUser(t, "eph-polling-user")
+
+		regular := servertest.NewClient(t, srv, "eph-polling-regular",
+			servertest.WithUser(user))
+		ephemeral := servertest.NewClient(t, srv, "eph-polling-ephemeral",
+			servertest.WithUser(user), servertest.WithEphemeral())
+
+		regular.WaitForPeers(t, 1, 10*time.Second)
+		ephemeral.WaitForPeers(t, 1, 10*time.Second)
+
+		// Registration armed a timer; the session must outlast it.
+		assert.Never(t, func() bool {
+			_, found := regular.PeerByName("eph-polling-ephemeral")
+
+			return !found
+		}, 6*time.Second, 100*time.Millisecond,
+			"a polling ephemeral node must not be deleted")
 	})
 
 	t.Run("ephemeral_reconnect_prevents_cleanup", func(t *testing.T) {

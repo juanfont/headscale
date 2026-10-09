@@ -151,6 +151,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Add the v2 `acl/validate` endpoint, which Terraform provider 0.29.3 and newer call to check `tailscale_acl` at plan time; before it, those releases failed with `invalid character 'p' after top-level value`
 - Reject overlapping TCP listener bindings (e.g. `listen_addr` vs ACME HTTP-01 on port 80) at config load [#3236](https://github.com/juanfont/headscale/pull/3236)
 - Improve config and bind-failure errors: every violation reported in one pass, named YAML keys, actionable operator hints [#3236](https://github.com/juanfont/headscale/pull/3236)
+- Ephemeral nodes that register but never connect are removed after `node.ephemeral.inactivity_timeout` instead of staying until restart [#3545](https://github.com/juanfont/headscale/pull/3545)
 
 ## 0.29.7 (2026-10-30)
 

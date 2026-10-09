@@ -861,8 +861,8 @@ func TestIssuesGracePeriod(t *testing.T) {
 		// Ensure the ephemeral node's long-poll session is fully
 		// established on the server before disconnecting. Without
 		// this, the [TestClient.Disconnect] may cancel a [controlclient.Direct.PollNetMap] that hasn't
-		// yet reached serveLongPoll, so no grace period or ephemeral
-		// GC would ever be scheduled.
+		// yet reached serveLongPoll, so no grace period would ever
+		// start.
 		ephemeral.WaitForPeers(t, 1, 10*time.Second)
 
 		ephemeral.Disconnect(t)
