@@ -479,7 +479,8 @@ func (ns *noiseServer) SSHActionHandler(
 //  2. Initial request, needs auth — build a [tailcfg.SSHAction.HoldAndDelegate] URL and
 //     wait for the user to authenticate.
 //  3. Follow-up request — an auth_id is present, wait for the auth
-//     verdict and accept or reject.
+//     verdict and accept or reject. A session that is gone or whose
+//     verdict another follow-up consumed is re-decided.
 func (ns *noiseServer) sshAction(
 	ctx context.Context,
 	reqLog zerolog.Logger,
@@ -608,15 +609,15 @@ func (ns *noiseServer) sshActionFollowUp(
 
 	reqLog = reqLog.With().Str("auth_id", authID.String()).Logger()
 
-	auth, ok := ns.headscale.state.GetAuthCacheEntry(authID)
-	if !ok {
-		// The session is gone (expired, evicted, or lost on a control-plane
-		// restart). A bare error dead-ends the client: it keeps polling this
-		// now-defunct auth_id until the SSH connection times out. Re-delegate
-		// so a still-required check can complete instead.
+	// The session is gone (expired, evicted, or lost on a control-plane
+	// restart) or its verdict was already consumed. A bare error dead-ends
+	// the client: it keeps polling this now-defunct auth_id until the SSH
+	// connection times out. Re-delegate so a still-required check can
+	// complete instead.
+	sessionGone := func(logMsg string) (*tailcfg.SSHAction, error) {
 		if checkFound {
 			reqLog.Info().Caller().
-				Msg("SSH check auth session missing; re-delegating")
+				Msg(logMsg)
 
 			return ns.sshActionHoldAndDelegate(
 				reqLog, action, srcNodeID, dstNodeID,
@@ -628,6 +629,11 @@ func (ns *noiseServer) sshActionFollowUp(
 			"Invalid auth_id",
 			fmt.Errorf("%w: %s", ErrNoAuthSession, authID),
 		)
+	}
+
+	auth, ok := ns.headscale.state.GetAuthCacheEntry(authID)
+	if !ok {
+		return sessionGone("SSH check auth session missing; re-delegating")
 	}
 
 	// Verify the cached binding matches the (src, dst) pair the
@@ -658,7 +664,11 @@ func (ns *noiseServer) sshActionFollowUp(
 
 	reqLog.Trace().Caller().Msg("SSH action follow-up")
 
-	var verdict types.AuthVerdict
+	var (
+		verdict   types.AuthVerdict
+		verdictOK bool
+	)
+
 	select {
 	case <-ctx.Done():
 		// The client disconnected (or its request timed out) before the
@@ -671,7 +681,14 @@ func (ns *noiseServer) sshActionFollowUp(
 			"ssh action follow-up cancelled",
 			ctx.Err(),
 		)
-	case verdict = <-auth.WaitForAuth():
+	case verdict, verdictOK = <-auth.WaitForAuth():
+	}
+
+	// FinishAuth buffers one verdict, then closes the channel. A closed
+	// receive yields the zero verdict, which Accept() reports as success,
+	// so a replayed follow-up would be approved even after a Reject.
+	if !verdictOK {
+		return sessionGone("SSH check verdict already consumed; re-delegating")
 	}
 
 	if !verdict.Accept() {
