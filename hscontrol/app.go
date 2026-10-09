@@ -162,6 +162,20 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 			return
 		}
 
+		// Schedule and Cancel run outside the session transition, so a
+		// disconnecting session can arm a timer after a reconnect already
+		// cancelled it. The session count is authoritative; a stale timer
+		// is dropped and the next disconnect arms a fresh one. Not Online():
+		// an expired node keeps polling while offline.
+		// ponytail: a Connect between this check and DeleteNode still loses
+		// the node; only reachable after a full inactivity timeout. Needs a
+		// delete-if-idle in State if that edge matters.
+		if node.ActiveSessions() > 0 {
+			log.Debug().Caller().EmbedObject(node).Msg("ephemeral node has a live session, skipping garbage collection")
+
+			return
+		}
+
 		policyChanged, err := app.state.DeleteNode(node)
 		if !policyChanged.IsEmpty() {
 			app.Change(policyChanged)
