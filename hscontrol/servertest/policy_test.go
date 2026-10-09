@@ -110,20 +110,28 @@ func TestPolicyChanges(t *testing.T) {
 		t.Parallel()
 		h := servertest.NewHarness(t, 2)
 
-		// Apply policy twice and verify updates arrive both times.
-		for round := range 2 {
+		// Change the rule each time; reapplying a policy is a no-op.
+		for round, port := range []uint16{22, 23} {
 			countBefore := h.Client(0).UpdateCount()
 
-			h.ChangePolicy(t, []byte(`{
+			h.ChangePolicy(t, fmt.Appendf(nil, `{
 				"acls": [
-					{"action": "accept", "src": ["*"], "dst": ["*:*"]}
+					{"action": "accept", "src": ["*"], "dst": ["*:%d"]}
 				]
-			}`))
+			}`, port))
 
 			h.Client(0).WaitForCondition(t, "update after policy change",
 				10*time.Second,
 				func(nm *netmap.NetworkMap) bool {
-					return h.Client(0).UpdateCount() > countBefore
+					for _, rule := range nm.PacketFilter {
+						for _, dst := range rule.Dsts {
+							if dst.Ports.First == port && dst.Ports.Last == port {
+								return h.Client(0).UpdateCount() > countBefore
+							}
+						}
+					}
+
+					return false
 				})
 
 			t.Logf("round %d: update received", round)
