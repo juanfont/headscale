@@ -11,10 +11,15 @@ import (
 	"github.com/creachadair/command"
 )
 
-var ErrTestPatternRequired = errors.New("test pattern is required as first argument or use --test flag")
+var (
+	ErrTestPatternRequired     = errors.New("test pattern is required as first argument or use --test flag")
+	ErrUnexpectedTestArguments = errors.New("expected a single test pattern; check flag spelling and shell quoting")
+	ErrInvalidTestBinary       = errors.New("test binary must be an executable regular file")
+)
 
 type RunConfig struct {
 	TestPattern   string        `flag:"test,Test pattern to run"`
+	TestBinary    string        `flag:"test-binary,Path to a precompiled integration test binary"`
 	Timeout       time.Duration `flag:"timeout,default=120m,Test timeout"`
 	FailFast      bool          `flag:"failfast,default=true,Stop on first test failure"`
 	UsePostgres   bool          `flag:"postgres,default=false,Use PostgreSQL instead of SQLite"`
@@ -29,15 +34,45 @@ type RunConfig struct {
 	TSMemoryLimit float64       `flag:"ts-memory-limit,default=0,Fail test if any Tailscale container exceeds this memory limit in MB (0 = disabled)"`
 }
 
-// runIntegrationTest executes the integration test workflow.
-func runIntegrationTest(env *command.Env) error {
-	args := env.Args
-	if len(args) > 0 && runConfig.TestPattern == "" {
-		runConfig.TestPattern = args[0]
+func (c *RunConfig) validate(args []string) error {
+	if len(args) > 1 || (len(args) != 0 && c.TestPattern != "") {
+		return ErrUnexpectedTestArguments
 	}
 
-	if runConfig.TestPattern == "" {
+	if len(args) == 1 {
+		c.TestPattern = args[0]
+	}
+
+	if c.TestPattern == "" {
 		return ErrTestPatternRequired
+	}
+
+	if c.TestBinary != "" {
+		binary, err := filepath.Abs(c.TestBinary)
+		if err != nil {
+			return fmt.Errorf("resolving test binary: %w", err)
+		}
+
+		info, err := os.Stat(binary)
+		if err != nil {
+			return fmt.Errorf("reading test binary: %w", err)
+		}
+
+		if !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
+			return fmt.Errorf("%s: %w", binary, ErrInvalidTestBinary)
+		}
+
+		c.TestBinary = binary
+	}
+
+	return nil
+}
+
+// runIntegrationTest executes the integration test workflow.
+func runIntegrationTest(env *command.Env) error {
+	err := runConfig.validate(env.Args)
+	if err != nil {
+		return err
 	}
 
 	if runConfig.GoVersion == "" {
@@ -49,7 +84,7 @@ func runIntegrationTest(env *command.Env) error {
 		log.Printf("Running pre-flight system checks...")
 	}
 
-	err := runDoctorCheck(env.Context())
+	err = runPreflightChecks(env.Context(), false)
 	if err != nil {
 		return fmt.Errorf("pre-flight checks failed: %w", err)
 	}
@@ -60,6 +95,13 @@ func runIntegrationTest(env *command.Env) error {
 		log.Printf("Timeout: %s", runConfig.Timeout)
 		log.Printf("Use PostgreSQL: %t", runConfig.UsePostgres)
 	}
+
+	backend := "sqlite"
+	if runConfig.UsePostgres {
+		backend = "postgres"
+	}
+
+	log.Printf("Database backend: %s", backend)
 
 	return runTestContainer(env.Context(), &runConfig)
 }
