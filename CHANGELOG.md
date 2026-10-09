@@ -1,5 +1,24 @@
 # CHANGELOG
 
+## 0.29.5 (Unreleased)
+
+**Minimum supported Tailscale client version: v1.80.0**
+
+### Changes
+
+- Fix removed peers remaining in client netmaps after policy changes or reconnects by delivering removals separately and retaining them until delivery [#3492](https://github.com/juanfont/headscale/pull/3492) [#3527](https://github.com/juanfont/headscale/pull/3527)
+- Preserve `via` exit-node steering when unrelated ACL or grant rules overlap [#3495](https://github.com/juanfont/headscale/pull/3495)
+- Restore the live policy after a rejected policy update and invalidate per-node filters when users change [#3501](https://github.com/juanfont/headscale/pull/3501)
+- Resolve users who have not registered yet to an empty set instead of rejecting the policy [#3516](https://github.com/juanfont/headscale/pull/3516)
+- Refresh a node's own routes when approved routes change, while avoiding unchanged self updates [#3518](https://github.com/juanfont/headscale/pull/3518)
+- Clear revoked SSH policies on clients, deny stale SSH checks, recheck policy after authentication, and match checks to the requested login user [#3517](https://github.com/juanfont/headscale/pull/3517)
+- Prevent a consumed SSH authentication verdict from approving access again [#3526](https://github.com/juanfont/headscale/pull/3526)
+- Revalidate pre-auth key reuse when registration applies in the node writer, preserving unrelated updates if registration rolls back [#3525](https://github.com/juanfont/headscale/pull/3525)
+- Preserve ephemeral nodes while they have a live map session [#3539](https://github.com/juanfont/headscale/pull/3539)
+- Skip route resolution when the policy has no `via` grants [#3538](https://github.com/juanfont/headscale/pull/3538)
+- Send a whole-node update after relogin when expiry or peer-visible Hostinfo changes, so connected peers can reach the node again [#3541](https://github.com/juanfont/headscale/pull/3541)
+- Reduce integration CI overhead by reusing compiled tests and prebuilt images [#3542](https://github.com/juanfont/headscale/pull/3542)
+
 ## 0.29.4 (2026-09-23)
 
 **Minimum supported Tailscale client version: v1.80.0**
