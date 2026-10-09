@@ -186,6 +186,9 @@ func runViaHACompat(t *testing.T, c *testcapture.Capture) {
 	}
 
 	// Compare each viewer's [tailcfg.MapResponse] against golden [netmap.NetworkMap].
+	// Route approvals reach clients asynchronously, so the peer-count wait
+	// above says nothing about routes, primaries or filters: retry the
+	// whole comparison until the viewer's netmap has caught up.
 	for viewerName, cl := range clients {
 		capture := c.Captures[viewerName]
 		if capture.Netmap == nil {
@@ -193,7 +196,9 @@ func runViaHACompat(t *testing.T, c *testcapture.Capture) {
 		}
 
 		t.Run(viewerName, func(t *testing.T) {
-			compareCaptureNetmap(t, cl, capture, clients)
+			requireNetmapHolds(t, func(tt require.TestingT) {
+				compareCaptureNetmap(tt, cl, capture, clients)
+			})
 		})
 	}
 }
@@ -201,13 +206,16 @@ func runViaHACompat(t *testing.T, c *testcapture.Capture) {
 // compareCaptureNetmap compares headscale's [tailcfg.MapResponse] against a
 // [testcapture.Node]'s [netmap.NetworkMap] data. Same logic as [compareNetmap] but
 // reads from typed [testcapture] fields instead of goldenFile strings.
+// It takes [require.TestingT] so it can run inside [requireNetmapHolds].
 func compareCaptureNetmap(
-	t *testing.T,
+	t require.TestingT,
 	viewer *servertest.TestClient,
 	want testcapture.Node,
 	clients map[string]*servertest.TestClient,
 ) {
-	t.Helper()
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 
 	nm := viewer.Netmap()
 	require.NotNil(t, nm, "viewer has no netmap")
