@@ -8,15 +8,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"tailscale.com/tailcfg"
+	"tailscale.com/types/key"
+
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"tailscale.com/tailcfg"
-	"tailscale.com/types/key"
 )
 
 type delayedSuccessResponseWriter struct {
@@ -352,7 +353,8 @@ func TestEphemeralGCDoesNotDeleteReconnectedNode(t *testing.T) {
 	t.Parallel()
 
 	app := createTestApp(t)
-	app.cfg.Node.Ephemeral.InactivityTimeout = 50 * time.Millisecond
+	// InactivityTimeout should be long enough to not trigger the GC earlier than node reconnects
+	app.cfg.Node.Ephemeral.InactivityTimeout = 5 * time.Second
 	app.StartEphemeralGCForTest(t)
 
 	user := app.state.CreateUserForTest("eph-gc-reconnect-user")
@@ -422,6 +424,43 @@ func TestEphemeralGCDoesNotDeleteReconnectedNode(t *testing.T) {
 		return !ok
 	}, 5*time.Second, 10*time.Millisecond,
 		"an idle ephemeral node must still be garbage collected")
+}
+
+func TestEphemeralGCDeletesNodeThatNeverPolled(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	app.cfg.Node.Ephemeral.InactivityTimeout = 50 * time.Millisecond
+	app.StartEphemeralGCForTest(t)
+
+	user := app.state.CreateUserForTest("eph-gc-never-polled-user")
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, true, nil, nil)
+	require.NoError(t, err)
+
+	nodeKey := key.NewNode()
+
+	_, err = app.handleRegister(context.Background(), tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "eph-gc-never-polled-node",
+		},
+		Expiry: time.Now().Add(24 * time.Hour),
+	}, key.NewMachine().Public())
+	require.NoError(t, err)
+
+	nodeView, ok := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, ok)
+	require.True(t, nodeView.IsEphemeral(), "test sanity: node must be ephemeral")
+
+	assert.Eventually(t, func() bool {
+		_, ok := app.state.GetNodeByID(nodeView.ID())
+
+		return !ok
+	}, 5*time.Second, 10*time.Millisecond,
+		"an ephemeral node that never long-polled must be garbage collected")
 }
 
 // TestGitHubIssue3129_TransientlyBlockedWriteDoesNotLeaveLiveStaleSession
