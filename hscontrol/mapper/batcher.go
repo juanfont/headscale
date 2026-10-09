@@ -355,7 +355,8 @@ func (b *Batcher) AddNode(
 
 		// Peers removed while the node had no stream: the initial map is a
 		// full rebuild, so follow it with the removal as a delta, see
-		// [withRemovals].
+		// [withRemovals], and keep the removed peers tracked across the
+		// baseline reset below.
 		//
 		// TODO(kradalby): delete with the tailscale/tailscale#15660 compat, see
 		// capver.CanOldCodeBeCleanedUp.
@@ -364,8 +365,10 @@ func (b *Batcher) AddNode(
 			peerIDs = append(peerIDs, peer.ID)
 		}
 
-		removed := make([]types.NodeID, 0)
-		for _, peerID := range nodeConn.computePeerDiff(peerIDs) {
+		removedIDs := nodeConn.computePeerDiff(peerIDs)
+
+		removed := make([]types.NodeID, 0, len(removedIDs))
+		for _, peerID := range removedIDs {
 			removed = append(removed, types.NodeID(peerID)) //nolint:gosec // NodeID types are equivalent
 		}
 
@@ -376,6 +379,15 @@ func (b *Batcher) AddNode(
 		}
 
 		nodeConn.updateSentPeers(initialMap)
+
+		// The client has not had these removals as a delta yet. Pending
+		// may lose the queued one (a full supersedes it, or the node
+		// leaves before it is sent), so keep them tracked until delivery
+		// drops them: the next full or reconnect then re-derives them.
+		for _, peerID := range removedIDs {
+			nodeConn.lastSentPeers.Store(peerID, struct{}{})
+		}
+
 		nodeConn.workMu.Unlock()
 
 		// Still pendingInitial, so no broadcast can race this.
