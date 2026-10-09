@@ -2810,6 +2810,25 @@ func TestSSHCheckParams(t *testing.T) {
 			wantOK:     true,
 		},
 		{
+			// One unregistered member must not void the group (#3513).
+			name: "group src with unregistered member",
+			policy: []byte(`{
+				"groups": {"group:ops": ["user2@", "ghost@"]},
+				"tagOwners": {"tag:server": ["user1@"]},
+				"ssh": [{
+					"action": "check",
+					"checkPeriod": "2h",
+					"src": ["group:ops"],
+					"dst": ["tag:server"],
+					"users": ["autogroup:nonroot"]
+				}]
+			}`),
+			srcID:      types.NodeID(2),
+			dstID:      types.NodeID(3),
+			wantPeriod: 2 * time.Hour,
+			wantOK:     true,
+		},
+		{
 			name: "default period when checkPeriod omitted",
 			policy: []byte(`{
 				"tagOwners": {"tag:server": ["user1@"]},

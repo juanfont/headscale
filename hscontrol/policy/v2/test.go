@@ -331,6 +331,15 @@ func resolveTestSource(src string, pol *Policy, users []types.User, nodes views.
 		return nil, fmt.Errorf("invalid alias: %w", err)
 	}
 
+	// Rules tolerate unregistered users; a test naming one must still
+	// fail (SaaS: policytest-src-unknown-user-email).
+	if u, ok := alias.(*Username); ok {
+		_, err := u.resolveUser(users)
+		if err != nil {
+			return nil, fmt.Errorf("resolving: %w", err)
+		}
+	}
+
 	addrs, err := alias.Resolve(pol, users, nodes)
 	if err != nil {
 		return nil, fmt.Errorf("resolving: %w", err)
