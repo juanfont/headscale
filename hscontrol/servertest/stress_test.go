@@ -624,10 +624,20 @@ func TestStressChurn(t *testing.T) {
 				servertest.WithUser(user))
 		}
 
-		// Wait for the new set to converge.
-		for _, c := range clients {
-			c.WaitForPeers(t, n-1, 30*time.Second)
-		}
+		// Old disconnected peers can satisfy the count before replacements
+		// arrive. Wait for every replacement identity to stay visible.
+		requireNetmapHolds(t, func(tt require.TestingT) {
+			for _, client := range clients {
+				for _, peer := range clients {
+					if client == peer {
+						continue
+					}
+
+					_, found := client.PeerByName(peer.Name)
+					assert.True(tt, found, "%s must see replacement %s", client.Name, peer.Name)
+				}
+			}
+		})
 
 		servertest.AssertSymmetricVisibility(t, clients)
 	})

@@ -146,6 +146,8 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 		},
 		Taildrop: types.TaildropConfig{Enabled: sc.taildropEnabled},
 		Tuning: types.Tuning{
+			// Small fixtures rarely fill a batch; bound their write latency.
+			NodeStoreBatchTimeout:          10 * time.Millisecond,
 			BatchChangeDelay:               sc.batchDelay,
 			BatcherWorkers:                 sc.batcherWorkers,
 			NodeMapSessionBufferedChanSize: sc.bufferedChanSize,

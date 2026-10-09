@@ -385,9 +385,18 @@ func TestRaceConnectDuringGracePeriod(t *testing.T) {
 		surviving := originals[n/2:]
 		allActive := append(surviving, replacements...)
 
-		for _, c := range allActive {
-			c.WaitForPeers(t, len(allActive)-1, 30*time.Second)
-		}
+		requireNetmapHolds(t, func(tt require.TestingT) {
+			for _, client := range allActive {
+				for _, peer := range allActive {
+					if client == peer {
+						continue
+					}
+
+					_, found := client.PeerByName(peer.Name)
+					assert.True(tt, found, "%s must see active peer %s", client.Name, peer.Name)
+				}
+			}
+		})
 
 		servertest.AssertConsistentState(t, allActive)
 	})
