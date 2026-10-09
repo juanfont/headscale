@@ -224,12 +224,28 @@ func TestGrantPolicies(t *testing.T) { //nolint:gocyclo
 		c1.WaitForCondition(t, "first grant policy update",
 			10*time.Second,
 			func(nm *netmap.NetworkMap) bool {
-				return c1.UpdateCount() > countC1
+				for _, rule := range nm.PacketFilter {
+					for _, dst := range rule.Dsts {
+						if dst.Ports.First == 22 && dst.Ports.Last == 22 {
+							return c1.UpdateCount() > countC1
+						}
+					}
+				}
+
+				return false
 			})
 		c2.WaitForCondition(t, "first grant policy update",
 			10*time.Second,
 			func(nm *netmap.NetworkMap) bool {
-				return c2.UpdateCount() > countC2
+				for _, rule := range nm.PacketFilter {
+					for _, dst := range rule.Dsts {
+						if dst.Ports.First == 22 && dst.Ports.Last == 22 {
+							return c2.UpdateCount() > countC2
+						}
+					}
+				}
+
+				return false
 			})
 
 		// Capture the update count after first policy.
@@ -270,12 +286,12 @@ func TestGrantPolicies(t *testing.T) { //nolint:gocyclo
 		c1.WaitForCondition(t, "second grant policy update",
 			10*time.Second,
 			func(nm *netmap.NetworkMap) bool {
-				return c1.UpdateCount() > updateCountPhase1
+				return c1.UpdateCount() > updateCountPhase1 && hasCapMatches(nm.PacketFilter)
 			})
 		c2.WaitForCondition(t, "second grant policy update",
 			10*time.Second,
 			func(nm *netmap.NetworkMap) bool {
-				return c2.UpdateCount() > countC2
+				return c2.UpdateCount() > countC2 && hasCapMatches(nm.PacketFilter)
 			})
 
 		// Verify the second policy added cap grants that weren't
@@ -751,25 +767,27 @@ func TestGrantViaSubnetFilterRules(t *testing.T) {
 	// Critical: the router's [netmap.NetworkMap.PacketFilter] MUST contain rules with
 	// the via-steered subnet (10.0.0.0/24) as a destination.
 	// Without this, the router drops traffic forwarded through it.
-	routerNM := routerA.Netmap()
-	require.NotNil(t, routerNM)
-	require.NotNil(t, routerNM.PacketFilter,
-		"router PacketFilter should not be nil")
+	requireNetmapHolds(t, func(tt require.TestingT) {
+		routerNM := routerA.Netmap()
+		require.NotNil(tt, routerNM)
+		require.NotNil(tt, routerNM.PacketFilter,
+			"router PacketFilter should not be nil")
 
-	var foundSubnetDst bool
+		var foundSubnetDst bool
 
-	for _, m := range routerNM.PacketFilter {
-		for _, dst := range m.Dsts {
-			dstPrefix := netip.PrefixFrom(dst.Net.Addr(), dst.Net.Bits())
-			if route.Contains(dstPrefix.Addr()) && dstPrefix.Bits() >= route.Bits() {
-				foundSubnetDst = true
+		for _, m := range routerNM.PacketFilter {
+			for _, dst := range m.Dsts {
+				dstPrefix := netip.PrefixFrom(dst.Net.Addr(), dst.Net.Bits())
+				if route.Contains(dstPrefix.Addr()) && dstPrefix.Bits() >= route.Bits() {
+					foundSubnetDst = true
+				}
 			}
 		}
-	}
 
-	assert.True(t, foundSubnetDst,
-		"router PacketFilter should contain destination rules for via-steered subnet 10.0.0.0/24; "+
-			"without per-node filter compilation for via grants, these rules are missing")
+		assert.True(tt, foundSubnetDst,
+			"router PacketFilter should contain destination rules for via-steered subnet 10.0.0.0/24; "+
+				"without per-node filter compilation for via grants, these rules are missing")
+	})
 }
 
 // TestGrantViaSubnetBroaderDstFilterRules verifies that a via grant
@@ -868,25 +886,27 @@ func TestGrantViaSubnetBroaderDstFilterRules(t *testing.T) {
 
 	// Router's PacketFilter must contain the broader grant dst as a
 	// destination — that is what Tailscale SaaS emits for via grants.
-	routerNM := routerA.Netmap()
-	require.NotNil(t, routerNM)
-	require.NotNil(t, routerNM.PacketFilter,
-		"router PacketFilter should not be nil")
+	requireNetmapHolds(t, func(tt require.TestingT) {
+		routerNM := routerA.Netmap()
+		require.NotNil(tt, routerNM)
+		require.NotNil(tt, routerNM.PacketFilter,
+			"router PacketFilter should not be nil")
 
-	var foundBroaderDst bool
+		var foundBroaderDst bool
 
-	for _, m := range routerNM.PacketFilter {
-		for _, dst := range m.Dsts {
-			dstPrefix := netip.PrefixFrom(dst.Net.Addr(), dst.Net.Bits())
-			if dstPrefix == broaderDst {
-				foundBroaderDst = true
+		for _, m := range routerNM.PacketFilter {
+			for _, dst := range m.Dsts {
+				dstPrefix := netip.PrefixFrom(dst.Net.Addr(), dst.Net.Bits())
+				if dstPrefix == broaderDst {
+					foundBroaderDst = true
+				}
 			}
 		}
-	}
 
-	assert.True(t, foundBroaderDst,
-		"router PacketFilter should contain destination rules for the broader grant dst 10.0.0.0/8; "+
-			"the via gate requires advertised-route overlap, and the emitted prefix is the dst")
+		assert.True(tt, foundBroaderDst,
+			"router PacketFilter should contain destination rules for the broader grant dst 10.0.0.0/8; "+
+				"the via gate requires advertised-route overlap, and the emitted prefix is the dst")
+	})
 }
 
 // TestGrantViaExitNodeNoFilterRules verifies wire-format SaaS compat:
