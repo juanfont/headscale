@@ -577,9 +577,24 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 		Int("tests.count", len(pol.Tests)).
 		Msg("Policy parsed successfully")
 
+	prev := pm.pol
 	pm.pol = pol
 
-	return pm.updateLocked()
+	changed, err := pm.updateLocked()
+	if err != nil {
+		// updateLocked stops partway, so the rejected policy's filter may
+		// already be live; recompile the previous one.
+		pm.pol = prev
+
+		_, rerr := pm.updateLocked()
+		if rerr != nil {
+			log.Error().Err(rerr).Msg("restoring previous policy after rejected SetPolicy")
+		}
+
+		return false, err
+	}
+
+	return changed, nil
 }
 
 // Filter returns the current filter rules for the entire tailnet and the associated matchers.
