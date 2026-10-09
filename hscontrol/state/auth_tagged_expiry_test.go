@@ -2040,9 +2040,9 @@ func TestPAKReregisterRevalidatesAtMutation(t *testing.T) {
 
 		c := registerForPAKRereg(t, s, k0)
 
-		// Wide enough that setup on a slow disk still stalls the writer
-		// well before the key expires.
-		expiration := time.Now().Add(2 * time.Second)
+		// Key creation and writer setup can take seconds with race
+		// instrumentation; leave time to park before the key expires.
+		expiration := time.Now().Add(10 * time.Second)
 		k, err := s.CreatePreAuthKey(user.TypedID(), true, false, &expiration, nil)
 		require.NoError(t, err)
 
