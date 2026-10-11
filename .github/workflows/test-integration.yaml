@@ -56,14 +56,14 @@ jobs:
           CGO_ENABLED=0 GOOS=linux go test -c ./integration -o integration.test
       - name: Upload hi binary
         if: steps.changed-files.outputs.files == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: hi-binary
           path: hi
           retention-days: 10
       - name: Upload integration test binary
         if: steps.changed-files.outputs.files == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: integration-test-binary
           path: integration.test
@@ -106,14 +106,14 @@ jobs:
           docker save tailscale-head:${{ github.sha }} | gzip > tailscale-head-image.tar.gz
       - name: Upload headscale image
         if: steps.changed-files.outputs.files == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: headscale-image
           path: headscale-image.tar.gz
           retention-days: 10
       - name: Upload tailscale HEAD image
         if: steps.changed-files.outputs.files == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: tailscale-head-image
           path: tailscale-head-image.tar.gz
@@ -146,7 +146,7 @@ jobs:
           docker tag postgres:latest postgres:${{ github.sha }}
           docker save postgres:${{ github.sha }} | gzip > postgres-image.tar.gz
       - name: Upload postgres image
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: postgres-image
           path: postgres-image.tar.gz
@@ -205,7 +205,7 @@ jobs:
           docker save ${REFS} | gzip > tailscale-released-images.tar.gz
           ls -lh tailscale-released-images.tar.gz
       - name: Upload Tailscale released images
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: tailscale-released-images
           path: tailscale-released-images.tar.gz
