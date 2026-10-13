@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -288,6 +289,14 @@ func (mc *multiChannelNodeConn) appendPending(changes ...change.Change) {
 func (mc *multiChannelNodeConn) prependPending(changes ...change.Change) {
 	mc.pendingMu.Lock()
 	mc.pending = append(changes, mc.pending...)
+	mc.pendingMu.Unlock()
+}
+
+// collapsePendingToFull replaces pending, together with incoming, by a
+// single full update and the pings it cannot carry ([change.CollapseToFull]).
+func (mc *multiChannelNodeConn) collapsePendingToFull(incoming []change.Change) {
+	mc.pendingMu.Lock()
+	mc.pending = change.CollapseToFull(mc.id, slices.Concat(mc.pending, incoming))
 	mc.pendingMu.Unlock()
 }
 
