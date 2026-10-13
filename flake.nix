@@ -2,13 +2,8 @@
   description = "headscale - Open Source Tailscale Control server";
 
   inputs = {
-    # Pinned to staging-next-26.05 for Go 1.26.5: the Tailscale HEAD build
-    # (Dockerfile.tailscale-HEAD) requires go >= 1.26.5, and nixpkgs-unstable
-    # still ships 1.26.4 — the bump is merged to nixpkgs staging but the
-    # large-rebuild staging->unstable pipeline lags. The 26.05 line is otherwise
-    # current (dev tools match unstable). Switch back to nixpkgs-unstable once it
-    # ships go_1_26 >= 1.26.5.
-    nixpkgs.url = "github:NixOS/nixpkgs/staging-next-26.05";
+    # Stable 26.05 tracks Go 1.26 patch releases; unstable lags them.
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
@@ -32,7 +27,7 @@
       overlays.default = _: prev:
         let
           pkgs = nixpkgs.legacyPackages.${prev.stdenv.hostPlatform.system};
-          # Go 1.26 builder; resolves to Go 1.26.5 from the pinned nixpkgs.
+          # Go 1.26 builder.
           buildGo = pkgs.buildGo126Module;
           vendorHash = (builtins.fromJSON (builtins.readFile ./flakehashes.json)).vendor.sri;
         in
