@@ -8,13 +8,13 @@ require (
 	github.com/chasefleming/elem-go v0.31.0
 	github.com/coder/websocket v1.8.14
 	github.com/coreos/go-oidc/v3 v3.18.0
-	github.com/creachadair/command v0.2.6
+	github.com/creachadair/command v0.2.12
 	github.com/creachadair/flax v0.0.6
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/glebarez/sqlite v1.11.0
-	github.com/go-chi/chi/v5 v5.3.0
+	github.com/go-chi/chi/v5 v5.4.0
 	github.com/go-chi/metrics v0.1.1
 	github.com/go-gormigrate/gormigrate/v2 v2.1.6
 	github.com/go-json-experiment/json v0.0.0-20260601182631-00ed12fed2a6
@@ -47,7 +47,7 @@ require (
 	golang.org/x/exp v0.0.0-20260603202125-055de637280b
 	golang.org/x/net v0.56.0
 	golang.org/x/oauth2 v0.36.0
-	golang.org/x/sync v0.21.0
+	golang.org/x/sync v0.24.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20260610212136-7ab31c22f7ad
 	google.golang.org/grpc v1.81.1
 	google.golang.org/protobuf v1.36.11
@@ -129,8 +129,8 @@ require (
 	github.com/containerd/continuity v0.5.0 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
-	github.com/creachadair/mds v0.29.0 // indirect
-	github.com/creachadair/msync v0.8.2 // indirect
+	github.com/creachadair/mds v0.31.0 // indirect
+	github.com/creachadair/msync v0.10.1 // indirect
 	github.com/dblohm7/wingoes v0.0.0-20250822163801-6d8e6105c62d // indirect
 	github.com/dgryski/go-metro v0.0.0-20250106013310-edb8663e5e33 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
