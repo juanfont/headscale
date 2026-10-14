@@ -285,6 +285,12 @@ Three rules it encodes. A hand-written bump has to follow them too:
    set `GOTOOLCHAIN=local` and fail. `bump verify` reports the drift; the tool
    never edits the directive itself.
 
+The tool does not encode one more rule: the DNS providers (`github.com/libdns/*`)
+and `github.com/caddyserver/certmagic` must agree on the `github.com/libdns/libdns`
+major version. One provider instance serves both node certificates and certmagic,
+so they move together; a provider on another libdns major cannot be added until
+certmagic moves.
+
 `Dockerfile.tailscale-HEAD` and `Dockerfile.derper` compile a tailscale tree
 cloned from an unpinned branch, so their builder image is a floor, not a
 target: it has to be at least upstream's `go` directive. They set
