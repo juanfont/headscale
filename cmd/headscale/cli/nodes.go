@@ -65,6 +65,7 @@ var nodeCmd = &cobra.Command{
 
 var registerNodeCmd = &cobra.Command{
 	Use:        "register",
+	Args:       cobra.NoArgs,
 	Short:      "Registers a node to your network",
 	Deprecated: "use 'headscale auth register --auth-id <id> --user <user>' instead",
 	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
@@ -97,6 +98,7 @@ var registerNodeCmd = &cobra.Command{
 
 var listNodesCmd = &cobra.Command{
 	Use:     cmdList,
+	Args:    cobra.NoArgs,
 	Short:   "List nodes",
 	Aliases: []string{"ls", cmdShow},
 	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
@@ -131,6 +133,7 @@ var listNodesCmd = &cobra.Command{
 
 var listNodeRoutesCmd = &cobra.Command{
 	Use:     "list-routes",
+	Args:    cobra.NoArgs,
 	Short:   "List routes available on nodes",
 	Aliases: []string{"lsr", "routes"},
 	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
@@ -170,6 +173,7 @@ var listNodeRoutesCmd = &cobra.Command{
 
 var expireNodeCmd = &cobra.Command{
 	Use:   cmdExpire,
+	Args:  cobra.NoArgs,
 	Short: "Expire (log out) a node in your network",
 	Long: `Expiring a node will keep the node in the database and force it to reauthenticate.
 
@@ -260,6 +264,7 @@ var renameNodeCmd = &cobra.Command{
 
 var deleteNodeCmd = &cobra.Command{
 	Use:     cmdDelete,
+	Args:    cobra.NoArgs,
 	Short:   "Delete a node",
 	Aliases: []string{aliasDel},
 	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
@@ -301,6 +306,7 @@ var deleteNodeCmd = &cobra.Command{
 
 var backfillNodeIPsCmd = &cobra.Command{
 	Use:   "backfillips",
+	Args:  cobra.NoArgs,
 	Short: "Backfill IPs missing from nodes",
 	Long: `
 Backfill IPs can be used to add/remove IPs from nodes
@@ -469,6 +475,7 @@ func nodeRoutesToPtables(
 
 var tagCmd = &cobra.Command{
 	Use:     "tag",
+	Args:    cobra.NoArgs,
 	Short:   "Manage the tags of a node",
 	Aliases: []string{"tags", "t"},
 	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
@@ -492,6 +499,7 @@ var tagCmd = &cobra.Command{
 
 var approveRoutesCmd = &cobra.Command{
 	Use:   "approve-routes",
+	Args:  cobra.NoArgs,
 	Short: "Manage the approved routes of a node",
 	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
 		identifier, _ := cmd.Flags().GetUint64("identifier")
