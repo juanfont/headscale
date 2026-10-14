@@ -29,6 +29,7 @@ require (
 	github.com/libdns/libdns v1.1.1
 	github.com/libdns/powerdns v0.1.4
 	github.com/libdns/rfc2136 v1.0.1
+	github.com/miekg/dns v1.1.73
 	github.com/oapi-codegen/runtime v1.7.0
 	github.com/oauth2-proxy/mockoidc v0.0.0-20240214162133-caebfff84d25
 	github.com/ory/dockertest/v3 v3.12.0
@@ -178,7 +179,6 @@ require (
 	github.com/mattn/go-runewidth v0.0.31 // indirect
 	github.com/mdlayher/netlink v1.11.2 // indirect
 	github.com/mdlayher/socket v0.7.0 // indirect
-	github.com/miekg/dns v1.1.73 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/mittwald/go-powerdns v0.6.6 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
