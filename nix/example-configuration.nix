@@ -106,12 +106,14 @@
       # };
 
       # Optional: Let's Encrypt TLS certificates
-      # tls_letsencrypt_hostname = "headscale.example.com";
-      # tls_letsencrypt_challenge_type = "HTTP-01";
+      # tls.acme = {
+      #   hostname = "headscale.example.com";
+      #   challenge_type = "HTTP-01";
+      # };
 
       # Optional: Provide your own TLS certificates
-      # tls_cert_path = "/path/to/cert.pem";
-      # tls_key_path = "/path/to/key.pem";
+      # tls.cert_path = "/path/to/cert.pem";
+      # tls.key_path = "/path/to/key.pem";
 
       # ACL policy configuration
       policy = {
