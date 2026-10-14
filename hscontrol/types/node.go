@@ -802,7 +802,7 @@ func (nv NodeView) CertDomain(cfg *Config) (string, bool) {
 
 	// Names from before renames were lowercased can differ from another
 	// node's name by case only, while the challenge record cannot.
-	if domain != strings.ToLower(domain) || len(acmeChallengePrefix+domain) > 253 {
+	if domain != strings.ToLower(domain) || len(ACMEChallengePrefix+domain) > 253 {
 		return "", false
 	}
 
@@ -817,9 +817,9 @@ func (nv NodeView) CertDomain(cfg *Config) (string, bool) {
 	return domain, true
 }
 
-// acmeChallengePrefix is prepended to a certificate name to form the TXT
+// ACMEChallengePrefix is prepended to a certificate name to form the TXT
 // record name of its ACME DNS-01 challenge.
-const acmeChallengePrefix = "_acme-challenge."
+const ACMEChallengePrefix = "_acme-challenge."
 
 // Owner returns the owner for display purposes.
 // For tagged nodes, returns [TaggedDevices]. For user-owned nodes, returns the user.
