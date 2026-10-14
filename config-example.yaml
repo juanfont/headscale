@@ -358,6 +358,30 @@ dns:
   # Headscale processes this file on each change.
   # extra_records_path: /var/lib/headscale/extra-records.json
 
+  # Let nodes get TLS certificates for their MagicDNS name with
+  # `tailscale cert`. Requires dns.challenge.provider.
+  certificates:
+    enabled: false
+
+    # DNS zone the provider writes to. Defaults to base_domain.
+    # zone: example.com
+
+  # DNS provider for ACME DNS-01 challenges, used by dns.certificates.
+  challenge:
+    # How long to wait for a record to show up on every authoritative
+    # nameserver. 0 disables the check.
+    propagation_timeout: 2m
+
+    # Resolvers used to find the zone's nameservers.
+    # Defaults to 1.1.1.1 and 8.8.8.8.
+    # resolvers: []
+
+    # cloudflare, gigahost, hetzner, powerdns or rfc2136. The other keys are
+    # settings of that provider; add _path to a key to read it from a file.
+    # provider:
+    #   name: cloudflare
+    #   api_token_path: /run/credentials/headscale.service/cloudflare-token
+
 # Unix socket used for the CLI to connect without authentication
 # Note: for production you will want to set this to something like:
 unix_socket: /var/run/headscale/headscale.sock

@@ -1,17 +1,21 @@
 package types
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"net/netip"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	hsdns "github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/prometheus/common/model"
 	"github.com/rs/zerolog"
@@ -21,6 +25,7 @@ import (
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
+	"tailscale.com/util/dnsname"
 	"tailscale.com/util/set"
 )
 
@@ -29,6 +34,8 @@ const (
 	PKCEMethodS256  string = "S256"
 
 	defaultNodeStoreBatchSize = 100
+
+	dnsDocsURL = "https://headscale.net/stable/ref/dns/"
 )
 
 var (
@@ -43,6 +50,12 @@ var (
 	ErrNoPrefixConfigured        = errors.New("no IPv4 or IPv6 prefix configured, minimum one prefix is required")
 	ErrInvalidAllocationStrategy = errors.New("invalid prefix allocation strategy")
 )
+
+// defaultChallengeResolvers find a zone's nameservers when
+// dns.challenge.resolvers is empty. The system resolver is not used: on a
+// host running MagicDNS it answers for base_domain itself instead of
+// asking the public zone.
+var defaultChallengeResolvers = []string{"1.1.1.1:53", "8.8.8.8:53"}
 
 type IPAllocationStrategy string
 
@@ -139,6 +152,8 @@ type Config struct {
 	// it can be used directly when sending Netmaps to clients.
 	TailcfgDNSConfig *tailcfg.DNSConfig
 
+	DNSChallenge DNSChallengeConfig
+
 	UnixSocket           string
 	UnixSocketPermission fs.FileMode
 
@@ -163,6 +178,29 @@ type DNSConfig struct {
 	SearchDomains    []string            `mapstructure:"search_domains"`
 	ExtraRecords     []tailcfg.DNSRecord `mapstructure:"extra_records"`
 	ExtraRecordsPath string              `mapstructure:"extra_records_path"`
+	Certificates     CertificatesConfig
+}
+
+// CertificatesConfig lets nodes get TLS certificates for their MagicDNS
+// name with `tailscale cert`. The node runs ACME itself; headscale
+// publishes its DNS-01 challenge through [DNSChallengeConfig].
+type CertificatesConfig struct {
+	Enabled bool
+	// Zone is the public DNS zone challenge records are written to. It is
+	// base_domain unless base_domain sits below the zone apex.
+	Zone string
+}
+
+// DNSChallengeConfig is the DNS provider answering ACME DNS-01
+// challenges for node certificates and headscale's own certificate.
+type DNSChallengeConfig struct {
+	PropagationTimeout time.Duration
+	Resolvers          []string
+	ProviderName       string
+	// Provider is nil when no provider is configured. It is built while
+	// loading so `headscale configtest` reports bad provider settings,
+	// and never serialised because it holds credentials.
+	Provider hsdns.Provider `json:"-"`
 }
 
 type Nameservers struct {
@@ -449,6 +487,9 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("dns.nameservers.global", []string{})
 	viper.SetDefault("dns.nameservers.split", map[string]string{})
 	viper.SetDefault("dns.search_domains", []string{})
+	viper.SetDefault("dns.certificates.enabled", false)
+
+	viper.SetDefault("dns.challenge.propagation_timeout", "2m")
 
 	viper.SetDefault("derp.server.enabled", false)
 	viper.SetDefault("derp.server.verify_clients", true)
@@ -707,7 +748,7 @@ func validateServerConfigInto(v *configValidator) {
 					{"dns.nameservers.global", "[]"},
 				},
 				Hint: "list at least one upstream nameserver, or set dns.override_local_dns: false",
-				See:  "https://headscale.net/stable/ref/dns/",
+				See:  dnsDocsURL,
 			})
 		}
 	}
@@ -765,6 +806,7 @@ func validateServerConfigInto(v *configValidator) {
 	validateDERPConfig(v)
 	validateDatabaseConfig(v)
 	validateMagicDNSConfig(v)
+	validateCertificatesConfig(v)
 
 	depr.Apply(v)
 }
@@ -834,9 +876,108 @@ func validateMagicDNSConfig(v *configValidator) {
 				{"dns.base_domain", ""},
 			},
 			Hint: `set dns.base_domain to a domain you control (e.g. "ts.example.net"), or set dns.magic_dns: false`,
-			See:  "https://headscale.net/stable/ref/dns/",
+			See:  dnsDocsURL,
 		})
 	}
+}
+
+// validateCertificatesConfig records ConfigErrors when node certificates
+// are enabled without what the Tailscale client needs: a MagicDNS name
+// it can match exactly, and a provider to publish the challenge.
+func validateCertificatesConfig(v *configValidator) {
+	if timeout := viper.GetDuration("dns.challenge.propagation_timeout"); timeout < 0 {
+		v.Add(&ConfigError{
+			Reason:  "dns.challenge.propagation_timeout must not be negative",
+			Current: []KV{{"dns.challenge.propagation_timeout", timeout.String()}},
+			Hint:    "use 0 to skip waiting for the record on the zone's nameservers",
+		})
+	}
+
+	if !viper.GetBool("dns.certificates.enabled") {
+		return
+	}
+
+	if !viper.GetBool("dns.magic_dns") {
+		v.Add(&ConfigError{
+			Reason:  "dns.certificates requires dns.magic_dns",
+			Current: []KV{{"dns.certificates.enabled", true}, {"dns.magic_dns", false}},
+			Hint:    "certificates are issued for MagicDNS names; set dns.magic_dns: true",
+			See:     dnsDocsURL,
+		})
+	}
+
+	if viper.GetString("dns.challenge.provider.name") == "" {
+		v.Add(&ConfigError{
+			Reason:  "dns.certificates requires dns.challenge.provider",
+			Current: []KV{{"dns.certificates.enabled", true}},
+			Allowed: hsdns.ProviderNames(),
+			Hint:    "configure the DNS provider that hosts dns.base_domain under dns.challenge.provider",
+			See:     dnsDocsURL,
+		})
+	}
+
+	base := strings.TrimSuffix(viper.GetString("dns.base_domain"), ".")
+	if base != strings.ToLower(base) || dnsname.ValidHostname(base) != nil {
+		v.Add(&ConfigError{
+			Reason:  "dns.base_domain must be a lowercase DNS name for dns.certificates",
+			Current: []KV{{"dns.base_domain", base}},
+			Hint:    "Tailscale clients match certificate names exactly; use a lowercase public domain you control",
+			See:     dnsDocsURL,
+		})
+	}
+
+	zone := strings.TrimSuffix(viper.GetString("dns.certificates.zone"), ".")
+	if zone != "" && base != zone && !strings.HasSuffix(base, "."+zone) {
+		v.Add(&ConfigError{
+			Reason:  "dns.base_domain is not inside dns.certificates.zone",
+			Current: []KV{{"dns.base_domain", base}, {"dns.certificates.zone", zone}},
+			Hint:    "set zone to the DNS zone that contains base_domain, or leave it empty to use base_domain",
+			See:     dnsDocsURL,
+		})
+	}
+}
+
+// dnsChallengeConfig builds the DNS-01 provider. Provider keys are read
+// one by one, because environment variables never reach into a map.
+func dnsChallengeConfig() (DNSChallengeConfig, error) {
+	cfg := DNSChallengeConfig{
+		PropagationTimeout: viper.GetDuration("dns.challenge.propagation_timeout"),
+		Resolvers:          viper.GetStringSlice("dns.challenge.resolvers"),
+		ProviderName:       viper.GetString("dns.challenge.provider.name"),
+	}
+
+	if len(cfg.Resolvers) == 0 {
+		cfg.Resolvers = slices.Clone(defaultChallengeResolvers)
+	}
+
+	// Like dns.nameservers, a resolver may be a bare IP.
+	for i, r := range cfg.Resolvers {
+		_, _, err := net.SplitHostPort(r)
+		if err != nil {
+			cfg.Resolvers[i] = net.JoinHostPort(r, "53")
+		}
+	}
+
+	if cfg.ProviderName == "" {
+		return cfg, nil
+	}
+
+	provider, err := hsdns.NewProvider(
+		cfg.ProviderName,
+		viper.GetStringMap("dns.challenge.provider"),
+		func(key string) (any, bool) {
+			key = "dns.challenge.provider." + key
+
+			return viper.Get(key), viper.IsSet(key)
+		},
+	)
+	if err != nil {
+		return cfg, err
+	}
+
+	cfg.Provider = provider
+
+	return cfg, nil
 }
 
 func tlsConfig() TLSConfig {
@@ -1032,6 +1173,8 @@ func dns() (DNSConfig, error) {
 	dns.Nameservers.Split = viper.GetStringMapStringSlice("dns.nameservers.split")
 	dns.SearchDomains = viper.GetStringSlice("dns.search_domains")
 	dns.ExtraRecordsPath = viper.GetString("dns.extra_records_path")
+	dns.Certificates.Enabled = viper.GetBool("dns.certificates.enabled")
+	dns.Certificates.Zone = cmp.Or(viper.GetString("dns.certificates.zone"), dns.BaseDomain)
 
 	if viper.IsSet("dns.extra_records") {
 		var extraRecords []tailcfg.DNSRecord
@@ -1344,6 +1487,25 @@ func LoadServerConfig() (*Config, error) {
 	derpConfig := derpConfig()
 	logTailConfig := logtailConfig()
 
+	dnsChallenge, err := dnsChallengeConfig()
+	if err != nil {
+		// The provider names only help when the name is what is wrong.
+		var allowed []string
+		if errors.Is(err, hsdns.ErrUnknownProvider) {
+			allowed = hsdns.ProviderNames()
+		}
+
+		v.Add(&ConfigError{
+			Reason:  "dns.challenge.provider is invalid",
+			Current: []KV{{"dns.challenge.provider.name", dnsChallenge.ProviderName}},
+			Detail:  err.Error(),
+			Allowed: allowed,
+			Hint:    "check the provider name and its settings; any string setting can be read from a file with <setting>_path",
+			See:     dnsDocsURL,
+			Cause:   err,
+		})
+	}
+
 	oidcClientSecret := viper.GetString("oidc.client_secret")
 	oidcClientSecretPath := viper.GetString("oidc.client_secret_path")
 
@@ -1437,6 +1599,7 @@ func LoadServerConfig() (*Config, error) {
 
 		DNSConfig:        dnsConfig,
 		TailcfgDNSConfig: dnsToTailcfgDNS(dnsConfig),
+		DNSChallenge:     dnsChallenge,
 
 		ACMEEmail: viper.GetString("acme_email"),
 		ACMEURL:   viper.GetString("acme_url"),
@@ -1519,7 +1682,7 @@ func addServerURLConfigError(v *configValidator, serverURL, baseDomain string, e
 			Reason:  "server_url and dns.base_domain refer to the same hostname",
 			Current: current,
 			Hint:    "give server_url a host distinct from dns.base_domain (Tailscale takes over base_domain via MagicDNS)",
-			See:     "https://headscale.net/stable/ref/dns/",
+			See:     dnsDocsURL,
 			Cause:   errServerURLSame,
 		})
 
@@ -1528,7 +1691,7 @@ func addServerURLConfigError(v *configValidator, serverURL, baseDomain string, e
 			Reason:  "server_url is a subdomain of dns.base_domain",
 			Current: current,
 			Hint:    "host headscale on a domain outside dns.base_domain (Tailscale takes over base_domain via MagicDNS)",
-			See:     "https://headscale.net/stable/ref/dns/",
+			See:     dnsDocsURL,
 			Cause:   errServerURLSuffix,
 		})
 

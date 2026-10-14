@@ -13,6 +13,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/libdns/cloudflare"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -61,6 +62,7 @@ func TestReadConfig(t *testing.T) {
 					{Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
 				},
 				SearchDomains: []string{"test.com", "bar.com"},
+				Certificates:  CertificatesConfig{Zone: "example.com"},
 			},
 		},
 		{
@@ -127,6 +129,7 @@ func TestReadConfig(t *testing.T) {
 					{Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
 				},
 				SearchDomains: []string{"test.com", "bar.com"},
+				Certificates:  CertificatesConfig{Zone: "example.com"},
 			},
 		},
 		{
@@ -331,6 +334,7 @@ func TestReadConfigFromEnv(t *testing.T) {
 				// 	{Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
 				// },
 				SearchDomains: []string{"test.com", "bar.com"},
+				Certificates:  CertificatesConfig{Zone: "example.com"},
 			},
 		},
 	}
@@ -873,6 +877,7 @@ func TestConfigJSONOmitsSecrets(t *testing.T) {
 		secretPostgresPass = "p0stgres-secret-marker"
 		secretClientSecret = "oidc-client-secret-marker"    //nolint:gosec // test marker, not a real credential
 		secretAPIKey       = "headscale-cli-api-key-marker" //nolint:gosec // test marker, not a real credential
+		secretDNSToken     = "dns-provider-token-marker"    //nolint:gosec // test marker, not a real credential
 	)
 
 	cfg := &Config{
@@ -887,13 +892,17 @@ func TestConfigJSONOmitsSecrets(t *testing.T) {
 		CLI: CLIConfig{
 			APIKey: secretAPIKey,
 		},
+		DNSChallenge: DNSChallengeConfig{
+			ProviderName: "cloudflare",
+			Provider:     &cloudflare.Provider{APIToken: secretDNSToken},
+		},
 	}
 
 	out, err := json.Marshal(cfg)
 	require.NoError(t, err)
 
 	body := string(out)
-	for _, secret := range []string{secretPostgresPass, secretClientSecret, secretAPIKey} {
+	for _, secret := range []string{secretPostgresPass, secretClientSecret, secretAPIKey, secretDNSToken} {
 		assert.NotContains(t, body, secret,
 			"marshalled Config must not contain secret %q", secret)
 	}
@@ -1015,5 +1024,203 @@ func TestExtraRecordsAreLowercased(t *testing.T) {
 
 	if diff := cmp.Diff(want, cfg.TailcfgDNSConfig.ExtraRecords); diff != "" {
 		t.Errorf("SetExtraRecords mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestDNSChallengeConfig(t *testing.T) {
+	secret := filepath.Join(t.TempDir(), "token")
+	require.NoError(t, os.WriteFile(secret, []byte("file-token\n"), 0o600))
+
+	base := `---
+server_url: https://headscale.example.com
+noise:
+  private_key_path: noise_private.key
+prefixes:
+  v4: 100.64.0.0/10
+database:
+  type: sqlite
+dns:
+  magic_dns: true
+  override_local_dns: false
+  base_domain: ts.example.com
+`
+
+	tests := []struct {
+		name          string
+		yaml          string
+		env           map[string]string
+		wantErr       string
+		wantZone      string
+		wantToken     string
+		wantNoProv    bool
+		wantResolvers []string
+	}{
+		{
+			name: "disabled by default",
+			yaml: base,
+			// Zone follows base_domain even when unused, so it is never empty.
+			wantZone:      "ts.example.com",
+			wantNoProv:    true,
+			wantResolvers: []string{"1.1.1.1:53", "8.8.8.8:53"},
+		},
+		{
+			name: "resolvers default to port 53",
+			yaml: base + `  challenge:
+    resolvers: ["9.9.9.9", "2620:fe::fe", "127.0.0.1:5353"]
+`,
+			wantZone:      "ts.example.com",
+			wantNoProv:    true,
+			wantResolvers: []string{"9.9.9.9:53", "[2620:fe::fe]:53", "127.0.0.1:5353"},
+		},
+		{
+			name: "enabled with inline token",
+			yaml: base + `  certificates:
+    enabled: true
+  challenge:
+    provider:
+      name: cloudflare
+      api_token: yaml-token
+`,
+			wantZone:  "ts.example.com",
+			wantToken: "yaml-token",
+		},
+		{
+			name: "env only",
+			yaml: base,
+			env: map[string]string{
+				"HEADSCALE_DNS_CERTIFICATES_ENABLED":              "true",
+				"HEADSCALE_DNS_CERTIFICATES_ZONE":                 "example.com",
+				"HEADSCALE_DNS_CHALLENGE_PROVIDER_NAME":           "cloudflare",
+				"HEADSCALE_DNS_CHALLENGE_PROVIDER_API_TOKEN_PATH": secret,
+			},
+			wantZone:  "example.com",
+			wantToken: "file-token",
+		},
+		{
+			name: "env overrides yaml",
+			yaml: base + `  challenge:
+    provider:
+      name: cloudflare
+      api_token: yaml-token
+`,
+			env:       map[string]string{"HEADSCALE_DNS_CHALLENGE_PROVIDER_API_TOKEN": "env-token"},
+			wantZone:  "ts.example.com",
+			wantToken: "env-token",
+		},
+		{
+			name: "typo in provider key",
+			yaml: base + `  challenge:
+    provider:
+      name: cloudflare
+      auth_token: tok
+`,
+			wantErr: "dns.challenge.provider is invalid",
+		},
+		{
+			name: "unknown provider",
+			yaml: base + `  challenge:
+    provider:
+      name: route53
+`,
+			wantErr: "dns.challenge.provider is invalid",
+		},
+		{
+			name: "enabled without magic dns",
+			yaml: strings.Replace(base, "magic_dns: true", "magic_dns: false", 1) + `  certificates:
+    enabled: true
+  challenge:
+    provider:
+      name: cloudflare
+      api_token: tok
+`,
+			wantErr: "dns.certificates requires dns.magic_dns",
+		},
+		{
+			name: "enabled without provider",
+			yaml: base + `  certificates:
+    enabled: true
+`,
+			wantErr: "dns.certificates requires dns.challenge.provider",
+		},
+		{
+			name: "base_domain outside zone",
+			yaml: base + `  certificates:
+    enabled: true
+    zone: notexample.com
+  challenge:
+    provider:
+      name: cloudflare
+      api_token: tok
+`,
+			wantErr: "dns.base_domain is not inside dns.certificates.zone",
+		},
+		{
+			name: "zone suffix without label boundary",
+			yaml: base + `  certificates:
+    enabled: true
+    zone: ample.com
+  challenge:
+    provider:
+      name: cloudflare
+      api_token: tok
+`,
+			wantErr: "dns.base_domain is not inside dns.certificates.zone",
+		},
+		{
+			name: "uppercase base_domain",
+			yaml: strings.Replace(base, "ts.example.com", "TS.example.com", 1) + `  certificates:
+    enabled: true
+  challenge:
+    provider:
+      name: cloudflare
+      api_token: tok
+`,
+			wantErr: "dns.base_domain must be a lowercase DNS name",
+		},
+		{
+			name: "negative propagation timeout",
+			yaml: base + `  challenge:
+    propagation_timeout: -1s
+`,
+			wantErr: "dns.challenge.propagation_timeout must not be negative",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
+
+			tmpDir := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(tt.yaml), 0o600))
+			require.NoError(t, LoadConfig(tmpDir, false))
+
+			cfg, err := LoadServerConfig()
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantZone, cfg.DNSConfig.Certificates.Zone)
+
+			if tt.wantResolvers != nil {
+				assert.Equal(t, tt.wantResolvers, cfg.DNSChallenge.Resolvers)
+			}
+
+			if tt.wantNoProv {
+				assert.Nil(t, cfg.DNSChallenge.Provider)
+
+				return
+			}
+
+			provider, ok := cfg.DNSChallenge.Provider.(*cloudflare.Provider)
+			require.True(t, ok, "provider is %T", cfg.DNSChallenge.Provider)
+			assert.Equal(t, tt.wantToken, provider.APIToken)
+		})
 	}
 }
