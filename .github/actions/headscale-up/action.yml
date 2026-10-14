@@ -83,8 +83,9 @@ runs:
           nameservers:
             global:
               - 1.1.1.1
-        tls_cert_path: /tmp/hs/tls.crt
-        tls_key_path: /tmp/hs/tls.key
+        tls:
+          cert_path: /tmp/hs/tls.crt
+          key_path: /tmp/hs/tls.key
         policy:
           mode: file
           path: /tmp/hs/policy.hujson

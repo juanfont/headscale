@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"net"
 	"net/netip"
 	"net/url"
@@ -140,9 +141,6 @@ type Config struct {
 
 	TLS TLSConfig
 
-	ACMEURL   string
-	ACMEEmail string
-
 	// DNSConfig is the headscale representation of the DNS configuration.
 	// It is kept in the config update for some settings that are
 	// not directly converted into a [tailcfg.DNSConfig].
@@ -250,14 +248,60 @@ type TLSConfig struct {
 	CertPath string
 	KeyPath  string
 
-	LetsEncrypt LetsEncryptConfig
+	ACME ACMEConfig
 }
 
-type LetsEncryptConfig struct {
-	Listen        string
+// ACMEConfig gets headscale's own certificate from an ACME CA.
+type ACMEConfig struct {
 	Hostname      string
-	CacheDir      string
 	ChallengeType string
+	// HTTPListen serves HTTP-01 challenges.
+	HTTPListen string
+	URL        string
+	Email      string
+	CacheDir   string
+}
+
+// legacyTLSKeys maps each tls key to the flat key it replaced. The flat
+// keys keep working, so existing configs and NixOS modules still run.
+var legacyTLSKeys = map[string]string{
+	"tls.cert_path":           "tls_cert_path",
+	"tls.key_path":            "tls_key_path",
+	"tls.acme.hostname":       "tls_letsencrypt_hostname",
+	"tls.acme.challenge_type": "tls_letsencrypt_challenge_type",
+	"tls.acme.http_listen":    "tls_letsencrypt_listen",
+	"tls.acme.cache_dir":      "tls_letsencrypt_cache_dir",
+	"tls.acme.url":            "acme_url",
+	"tls.acme.email":          "acme_email",
+}
+
+var tlsDefaults = map[string]string{
+	"tls.acme.challenge_type": HTTP01ChallengeType,
+	"tls.acme.http_listen":    ":http",
+	"tls.acme.cache_dir":      "/var/www/.cache",
+}
+
+// warnLegacyTLSKeys points at the tls keys for flat keys in the config
+// file that turn TLS on. NixOS writes the flat keys even with TLS off, and
+// the HEADSCALE_TLS_* variables name both the flat and the tls keys.
+func warnLegacyTLSKeys(depr *deprecator) {
+	legacyTLSOn := func(key string) bool { return viper.InConfig(key) && viper.GetString(key) != "" }
+	if !legacyTLSOn("tls_letsencrypt_hostname") && !legacyTLSOn("tls_cert_path") {
+		return
+	}
+
+	for _, key := range slices.Sorted(maps.Keys(legacyTLSKeys)) {
+		if viper.InConfig(legacyTLSKeys[key]) {
+			depr.warnNoAlias(key, legacyTLSKeys[key])
+		}
+	}
+}
+
+// tlsKey reads a tls setting, falling back to the flat key it replaced and
+// then to its default. The defaults are not viper defaults: those would
+// shadow the flat key.
+func tlsKey(key string) string {
+	return cmp.Or(viper.GetString(key), viper.GetString(legacyTLSKeys[key]), tlsDefaults[key])
 }
 
 type PKCEConfig struct {
@@ -474,10 +518,6 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("policy.mode", "file")
 
-	viper.SetDefault("tls_letsencrypt_cache_dir", "/var/www/.cache")
-	viper.SetDefault("tls_letsencrypt_challenge_type", HTTP01ChallengeType)
-	viper.SetDefault("tls_letsencrypt_listen", ":http")
-
 	viper.SetDefault("log.level", "info")
 	viper.SetDefault("log.format", TextLogFormat)
 
@@ -675,14 +715,16 @@ func validateServerConfigInto(v *configValidator) {
 		})
 	}
 
-	if (viper.GetString("tls_letsencrypt_hostname") != "") &&
-		((viper.GetString("tls_cert_path") != "") || (viper.GetString("tls_key_path") != "")) {
+	warnLegacyTLSKeys(&depr)
+
+	if tlsKey("tls.acme.hostname") != "" &&
+		(tlsKey("tls.cert_path") != "" || tlsKey("tls.key_path") != "") {
 		v.Add(&ConfigError{
-			Reason:  "tls_letsencrypt_hostname and tls_cert_path/tls_key_path are mutually exclusive",
-			Current: []KV{{"tls_letsencrypt_hostname", viper.GetString("tls_letsencrypt_hostname")}},
+			Reason:  "tls.acme.hostname and tls.cert_path/tls.key_path are mutually exclusive",
+			Current: []KV{{"tls.acme.hostname", tlsKey("tls.acme.hostname")}},
 			ConflictsWith: []KV{
-				{"tls_cert_path", viper.GetString("tls_cert_path")},
-				{"tls_key_path", viper.GetString("tls_key_path")},
+				{"tls.cert_path", tlsKey("tls.cert_path")},
+				{"tls.key_path", tlsKey("tls.key_path")},
 			},
 			Hint: "choose one TLS strategy and unset the other (Let's Encrypt OR a static keypair)",
 			See:  "https://headscale.net/stable/ref/tls/",
@@ -697,20 +739,20 @@ func validateServerConfigInto(v *configValidator) {
 		})
 	}
 
-	if (viper.GetString("tls_letsencrypt_hostname") != "") &&
-		(viper.GetString("tls_letsencrypt_challenge_type") == TLSALPN01ChallengeType) &&
-		(!strings.HasSuffix(viper.GetString("listen_addr"), ":443")) {
+	if tlsKey("tls.acme.hostname") != "" &&
+		tlsKey("tls.acme.challenge_type") == TLSALPN01ChallengeType &&
+		!strings.HasSuffix(viper.GetString("listen_addr"), ":443") {
 		// this is only a warning because there could be something sitting in front of headscale that redirects the traffic (e.g. an iptables rule)
 		log.Warn().
-			Msg("Warning: when using tls_letsencrypt_hostname with TLS-ALPN-01 as challenge type, headscale must be reachable on port 443, i.e. listen_addr should probably end in :443")
+			Msg("Warning: when using tls.acme.hostname with TLS-ALPN-01 as challenge type, headscale must be reachable on port 443, i.e. listen_addr should probably end in :443")
 	}
 
 	validateListenerCollisions(v)
 
-	if ct := viper.GetString("tls_letsencrypt_challenge_type"); ct != HTTP01ChallengeType && ct != TLSALPN01ChallengeType {
+	if ct := tlsKey("tls.acme.challenge_type"); ct != HTTP01ChallengeType && ct != TLSALPN01ChallengeType {
 		v.Add(&ConfigError{
-			Reason:  "tls_letsencrypt_challenge_type has an unsupported value",
-			Current: []KV{{"tls_letsencrypt_challenge_type", ct}},
+			Reason:  "tls.acme.challenge_type has an unsupported value",
+			Current: []KV{{"tls.acme.challenge_type", ct}},
 			Allowed: []string{HTTP01ChallengeType, TLSALPN01ChallengeType},
 			Hint:    "pick one of the allowed values; HTTP-01 is the default",
 		})
@@ -989,20 +1031,16 @@ func dnsChallengeConfig() (DNSChallengeConfig, error) {
 
 func tlsConfig() TLSConfig {
 	return TLSConfig{
-		LetsEncrypt: LetsEncryptConfig{
-			Hostname: viper.GetString("tls_letsencrypt_hostname"),
-			Listen:   viper.GetString("tls_letsencrypt_listen"),
-			CacheDir: util.AbsolutePathFromConfigPath(
-				viper.GetString("tls_letsencrypt_cache_dir"),
-			),
-			ChallengeType: viper.GetString("tls_letsencrypt_challenge_type"),
+		CertPath: util.AbsolutePathFromConfigPath(tlsKey("tls.cert_path")),
+		KeyPath:  util.AbsolutePathFromConfigPath(tlsKey("tls.key_path")),
+		ACME: ACMEConfig{
+			Hostname:      tlsKey("tls.acme.hostname"),
+			ChallengeType: tlsKey("tls.acme.challenge_type"),
+			HTTPListen:    tlsKey("tls.acme.http_listen"),
+			URL:           tlsKey("tls.acme.url"),
+			Email:         tlsKey("tls.acme.email"),
+			CacheDir:      util.AbsolutePathFromConfigPath(tlsKey("tls.acme.cache_dir")),
 		},
-		CertPath: util.AbsolutePathFromConfigPath(
-			viper.GetString("tls_cert_path"),
-		),
-		KeyPath: util.AbsolutePathFromConfigPath(
-			viper.GetString("tls_key_path"),
-		),
 	}
 }
 
@@ -1607,9 +1645,6 @@ func LoadServerConfig() (*Config, error) {
 		DNSConfig:        dnsConfig,
 		TailcfgDNSConfig: dnsToTailcfgDNS(dnsConfig),
 		DNSChallenge:     dnsChallenge,
-
-		ACMEEmail: viper.GetString("acme_email"),
-		ACMEURL:   viper.GetString("acme_url"),
 
 		UnixSocket:           viper.GetString("unix_socket"),
 		UnixSocketPermission: socketPerm,

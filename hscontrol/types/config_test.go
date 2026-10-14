@@ -367,9 +367,11 @@ func TestTLSConfigValidation(t *testing.T) {
 	var err error
 
 	configYaml := []byte(`---
-tls_letsencrypt_hostname: example.com
-tls_letsencrypt_challenge_type: ""
-tls_cert_path: abc.pem
+tls:
+  cert_path: abc.pem
+  acme:
+    hostname: example.com
+    challenge_type: bogus
 noise:
   private_key_path: noise_private.key`)
 
@@ -390,12 +392,12 @@ noise:
 	assert.Contains(
 		t,
 		err.Error(),
-		"Fatal config error: tls_letsencrypt_hostname and tls_cert_path/tls_key_path are mutually exclusive",
+		"Fatal config error: tls.acme.hostname and tls.cert_path/tls.key_path are mutually exclusive",
 	)
 	assert.Contains(
 		t,
 		err.Error(),
-		"Fatal config error: tls_letsencrypt_challenge_type has an unsupported value",
+		"Fatal config error: tls.acme.challenge_type has an unsupported value",
 	)
 	assert.Contains(
 		t,
@@ -408,8 +410,10 @@ noise:
 noise:
   private_key_path: noise_private.key
 server_url: http://127.0.0.1:8080
-tls_letsencrypt_hostname: example.com
-tls_letsencrypt_challenge_type: TLS-ALPN-01
+tls:
+  acme:
+    hostname: example.com
+    challenge_type: TLS-ALPN-01
 `)
 
 	err = os.WriteFile(configFilePath, configYaml, 0o600)
@@ -523,22 +527,37 @@ oidc:` + tt.oidcBlock + "\n")
 	}
 }
 
-func TestTLSLetsEncryptListenAddrCollision(t *testing.T) {
+func TestTLSACMEListenAddrCollision(t *testing.T) {
+	const (
+		tlsKeys = `tls:
+  acme:
+    hostname: %q
+    challenge_type: %q
+    http_listen: %q
+`
+		legacyKeys = `tls_letsencrypt_hostname: %q
+tls_letsencrypt_challenge_type: %q
+tls_letsencrypt_listen: %q
+`
+	)
+
 	tests := []struct {
 		name          string
 		listenAddr    string
-		leListen      string
+		acmeListen    string
 		hostname      string
 		challengeType string
+		keys          string
 		wantErr       string // empty = expect no error
 	}{
-		{"collision-numeric", ":80", ":80", "example.com", "HTTP-01", "would bind the same TCP socket"},
-		{"collision-named-vs-numeric", "0.0.0.0:80", ":http", "example.com", "HTTP-01", "would bind the same TCP socket"},
-		{"collision-https-named", ":443", ":https", "example.com", "HTTP-01", "would bind the same TCP socket"},
-		{"canonical", "0.0.0.0:443", ":http", "example.com", "HTTP-01", ""},
-		{"no-hostname-skipped", "0.0.0.0:80", ":http", "", "HTTP-01", ""},
-		{"tls-alpn-01-skipped", "0.0.0.0:80", ":http", "example.com", "TLS-ALPN-01", ""},
-		{"different-numeric", ":8080", ":8081", "example.com", "HTTP-01", ""},
+		{"collision-numeric", ":80", ":80", "example.com", "HTTP-01", tlsKeys, "would bind the same TCP socket"},
+		{"collision-named-vs-numeric", "0.0.0.0:80", ":http", "example.com", "HTTP-01", tlsKeys, "would bind the same TCP socket"},
+		{"collision-https-named", ":443", ":https", "example.com", "HTTP-01", tlsKeys, "would bind the same TCP socket"},
+		{"collision-legacy-keys", ":80", ":80", "example.com", "HTTP-01", legacyKeys, "would bind the same TCP socket"},
+		{"canonical", "0.0.0.0:443", ":http", "example.com", "HTTP-01", tlsKeys, ""},
+		{"no-hostname-skipped", "0.0.0.0:80", ":http", "", "HTTP-01", tlsKeys, ""},
+		{"tls-alpn-01-skipped", "0.0.0.0:80", ":http", "example.com", "TLS-ALPN-01", tlsKeys, ""},
+		{"different-numeric", ":8080", ":8081", "example.com", "HTTP-01", tlsKeys, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -548,17 +567,14 @@ func TestTLSLetsEncryptListenAddrCollision(t *testing.T) {
 			cfg := fmt.Sprintf(`---
 server_url: https://example.com
 listen_addr: %q
-tls_letsencrypt_hostname: %q
-tls_letsencrypt_challenge_type: %q
-tls_letsencrypt_listen: %q
-noise:
+`+tt.keys+`noise:
   private_key_path: noise_private.key
 database:
   type: sqlite3
 dns:
   magic_dns: false
   override_local_dns: false
-`, tt.listenAddr, tt.hostname, tt.challengeType, tt.leListen)
+`, tt.listenAddr, tt.hostname, tt.challengeType, tt.acmeListen)
 			require.NoError(t, os.WriteFile(
 				filepath.Join(tmpDir, "config.yaml"), []byte(cfg), 0o600))
 			require.NoError(t, LoadConfig(tmpDir, false))
@@ -1288,6 +1304,127 @@ dns:
 			provider, ok := cfg.DNSChallenge.Provider.(*cloudflare.Provider)
 			require.True(t, ok, "provider is %T", cfg.DNSChallenge.Provider)
 			assert.Equal(t, tt.wantToken, provider.APIToken)
+		})
+	}
+}
+
+// TestTLSLegacyKeys pins that the flat TLS keys keep working under the tls
+// block, with the tls keys winning, and that the NixOS module's defaults
+// for the flat keys leave TLS off.
+func TestTLSLegacyKeys(t *testing.T) {
+	base := `---
+server_url: https://headscale.example.com
+noise:
+  private_key_path: noise_private.key
+prefixes:
+  v4: 100.64.0.0/10
+database:
+  type: sqlite
+dns:
+  magic_dns: false
+  override_local_dns: false
+`
+
+	tests := []struct {
+		name string
+		yaml string
+		env  map[string]string
+		want TLSConfig
+	}{
+		{
+			name: "defaults",
+			yaml: base,
+			want: TLSConfig{ACME: ACMEConfig{
+				ChallengeType: HTTP01ChallengeType,
+				HTTPListen:    ":http",
+				CacheDir:      "/var/www/.cache",
+			}},
+		},
+		{
+			name: "legacy keys",
+			yaml: base + `tls_letsencrypt_hostname: headscale.example.com
+tls_letsencrypt_challenge_type: TLS-ALPN-01
+tls_letsencrypt_listen: ":8080"
+tls_letsencrypt_cache_dir: /var/lib/headscale/cache
+acme_url: https://acme.example.com/directory
+acme_email: admin@example.com
+`,
+			want: TLSConfig{ACME: ACMEConfig{
+				Hostname:      "headscale.example.com",
+				ChallengeType: TLSALPN01ChallengeType,
+				HTTPListen:    ":8080",
+				URL:           "https://acme.example.com/directory",
+				Email:         "admin@example.com",
+				CacheDir:      "/var/lib/headscale/cache",
+			}},
+		},
+		{
+			name: "tls keys win over legacy keys",
+			yaml: base + `tls_cert_path: /old/cert.pem
+tls_key_path: /old/key.pem
+tls:
+  cert_path: /new/cert.pem
+  key_path: /new/key.pem
+`,
+			want: TLSConfig{
+				CertPath: "/new/cert.pem",
+				KeyPath:  "/new/key.pem",
+				ACME: ACMEConfig{
+					ChallengeType: HTTP01ChallengeType,
+					HTTPListen:    ":http",
+					CacheDir:      "/var/www/.cache",
+				},
+			},
+		},
+		{
+			// What the NixOS module writes when TLS is off.
+			name: "nixos defaults",
+			yaml: base + `tls_letsencrypt_hostname: ""
+tls_letsencrypt_challenge_type: HTTP-01
+tls_letsencrypt_listen: ":http"
+tls_letsencrypt_cache_dir: /var/lib/headscale/.cache
+`,
+			want: TLSConfig{ACME: ACMEConfig{
+				ChallengeType: HTTP01ChallengeType,
+				HTTPListen:    ":http",
+				CacheDir:      "/var/lib/headscale/.cache",
+			}},
+		},
+		{
+			// Both keys read HEADSCALE_TLS_CERT_PATH.
+			name: "env",
+			yaml: base,
+			env: map[string]string{
+				"HEADSCALE_TLS_CERT_PATH": "/env/cert.pem",
+				"HEADSCALE_TLS_KEY_PATH":  "/env/key.pem",
+			},
+			want: TLSConfig{
+				CertPath: "/env/cert.pem",
+				KeyPath:  "/env/key.pem",
+				ACME: ACMEConfig{
+					ChallengeType: HTTP01ChallengeType,
+					HTTPListen:    ":http",
+					CacheDir:      "/var/www/.cache",
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
+
+			tmpDir := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(tt.yaml), 0o600))
+			require.NoError(t, LoadConfig(tmpDir, false))
+
+			cfg, err := LoadServerConfig()
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, cfg.TLS)
 		})
 	}
 }

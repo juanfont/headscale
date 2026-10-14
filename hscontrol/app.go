@@ -1022,30 +1022,30 @@ type tlsBundle struct {
 }
 
 func (h *Headscale) getTLSSettings(ctx context.Context) (*tlsBundle, error) {
-	tlsEnabled := h.cfg.TLS.LetsEncrypt.Hostname != "" || h.cfg.TLS.CertPath != ""
+	tlsEnabled := h.cfg.TLS.ACME.Hostname != "" || h.cfg.TLS.CertPath != ""
 	if tlsEnabled && !strings.HasPrefix(h.cfg.ServerURL, "https://") {
 		log.Warn().Msg("listening with TLS but ServerURL does not start with https://")
 	} else if !tlsEnabled && !strings.HasPrefix(h.cfg.ServerURL, "http://") {
 		log.Warn().Msg("listening without TLS but ServerURL does not start with http://")
 	}
 
-	if h.cfg.TLS.LetsEncrypt.Hostname != "" {
+	if h.cfg.TLS.ACME.Hostname != "" {
 		certManager := autocert.Manager{
 			Prompt:     autocert.AcceptTOS,
-			HostPolicy: autocert.HostWhitelist(h.cfg.TLS.LetsEncrypt.Hostname),
-			Cache:      autocert.DirCache(h.cfg.TLS.LetsEncrypt.CacheDir),
+			HostPolicy: autocert.HostWhitelist(h.cfg.TLS.ACME.Hostname),
+			Cache:      autocert.DirCache(h.cfg.TLS.ACME.CacheDir),
 			Client: &acme.Client{
-				DirectoryURL: h.cfg.ACMEURL,
+				DirectoryURL: h.cfg.TLS.ACME.URL,
 				HTTPClient: &http.Client{
 					Transport: &acmeLogger{
 						rt: http.DefaultTransport,
 					},
 				},
 			},
-			Email: h.cfg.ACMEEmail,
+			Email: h.cfg.TLS.ACME.Email,
 		}
 
-		switch h.cfg.TLS.LetsEncrypt.ChallengeType {
+		switch h.cfg.TLS.ACME.ChallengeType {
 		case types.TLSALPN01ChallengeType:
 			// Configuration via autocert with TLS-ALPN-01 (https://tools.ietf.org/html/rfc8737)
 			// The RFC requires that the validation is done on port 443; in other words, headscale
@@ -1057,7 +1057,7 @@ func (h *Headscale) getTLSSettings(ctx context.Context) (*tlsBundle, error) {
 			// port 80 for the certificate validation in addition to the headscale
 			// service, which can be configured to run on any other port.
 			server := &http.Server{
-				Addr:        h.cfg.TLS.LetsEncrypt.Listen,
+				Addr:        h.cfg.TLS.ACME.HTTPListen,
 				Handler:     certManager.HTTPHandler(http.HandlerFunc(h.redirect)),
 				ReadTimeout: types.HTTPTimeout,
 			}
@@ -1066,7 +1066,7 @@ func (h *Headscale) getTLSSettings(ctx context.Context) (*tlsBundle, error) {
 			if err != nil {
 				return nil, &types.ListenerBindError{
 					Listener: "ACME HTTP-01 challenge",
-					YAMLKey:  "tls_letsencrypt_listen",
+					YAMLKey:  "tls.acme.http_listen",
 					Addr:     server.Addr,
 					Err:      err,
 				}
@@ -1089,7 +1089,7 @@ func (h *Headscale) getTLSSettings(ctx context.Context) (*tlsBundle, error) {
 
 	cert, err := tls.LoadX509KeyPair(h.cfg.TLS.CertPath, h.cfg.TLS.KeyPath)
 	if err != nil {
-		return nil, fmt.Errorf("loading TLS keypair (tls_cert_path=%q, tls_key_path=%q): %w",
+		return nil, fmt.Errorf("loading TLS keypair (tls.cert_path=%q, tls.key_path=%q): %w",
 			h.cfg.TLS.CertPath, h.cfg.TLS.KeyPath, err)
 	}
 

@@ -232,35 +232,35 @@ database:
 
 ### TLS configuration
 # See: https://headscale.net/stable/ref/tls/
+tls:
+  ## Use already defined certificates:
+  cert_path: ""
+  key_path: ""
 
-## Let's Encrypt / ACME
-# Headscale supports automatically requesting and setting up
-# TLS for a domain with Let's Encrypt.
+  ## Let's Encrypt / ACME
+  # Headscale supports automatically requesting and setting up
+  # TLS for a domain with Let's Encrypt.
+  acme:
+    # Domain name to request a TLS certificate for:
+    hostname: ""
 
-# URL to ACME directory
-acme_url: https://acme-v02.api.letsencrypt.org/directory
+    # Type of ACME challenge to use, currently supported types:
+    # HTTP-01 or TLS-ALPN-01
+    challenge_type: HTTP-01
 
-# Email to register with ACME provider
-acme_email: ""
+    # When HTTP-01 challenge is chosen, letsencrypt must set up a
+    # verification endpoint, and it will be listening on:
+    # :http = port 80
+    http_listen: ":http"
 
-# Domain name to request a TLS certificate for:
-tls_letsencrypt_hostname: ""
+    # URL to ACME directory
+    url: https://acme-v02.api.letsencrypt.org/directory
 
-# Path to store certificates and metadata needed by letsencrypt
-tls_letsencrypt_cache_dir: /var/lib/headscale/cache
+    # Email to register with ACME provider
+    email: ""
 
-# Type of ACME challenge to use, currently supported types:
-# HTTP-01 or TLS-ALPN-01
-tls_letsencrypt_challenge_type: HTTP-01
-
-# When HTTP-01 challenge is chosen, letsencrypt must set up a
-# verification endpoint, and it will be listening on:
-# :http = port 80
-tls_letsencrypt_listen: ":http"
-
-## Use already defined certificates:
-tls_cert_path: ""
-tls_key_path: ""
+    # Path to store certificates and metadata needed by letsencrypt
+    cache_dir: /var/lib/headscale/cache
 
 log:
   # Valid log levels: panic, fatal, error, warn, info, debug, trace

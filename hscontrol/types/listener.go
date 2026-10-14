@@ -109,18 +109,18 @@ func validateListenerCollisions(v *configValidator) {
 	listenAddr := viper.GetString("listen_addr")
 	grpcAddr := viper.GetString("grpc_listen_addr")
 	metricsAddr := viper.GetString("metrics_listen_addr")
-	acmeAddr := viper.GetString("tls_letsencrypt_listen")
+	acmeAddr := tlsKey("tls.acme.http_listen")
 
 	listeners := []spec{
 		{key: "listen_addr", addr: listenAddr, active: listenAddr != ""},
 		{key: "grpc_listen_addr", addr: grpcAddr, active: grpcAddr != ""},
 		{key: "metrics_listen_addr", addr: metricsAddr, active: metricsAddr != ""},
 		{
-			key:  "tls_letsencrypt_listen",
+			key:  "tls.acme.http_listen",
 			addr: acmeAddr,
 			active: acmeAddr != "" &&
-				viper.GetString("tls_letsencrypt_hostname") != "" &&
-				viper.GetString("tls_letsencrypt_challenge_type") == HTTP01ChallengeType,
+				tlsKey("tls.acme.hostname") != "" &&
+				tlsKey("tls.acme.challenge_type") == HTTP01ChallengeType,
 		},
 	}
 
