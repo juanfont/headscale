@@ -3,6 +3,8 @@ package hscontrol
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -20,6 +22,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/juanfont/headscale/hscontrol/capver"
+	"github.com/juanfont/headscale/hscontrol/dns"
+	"github.com/juanfont/headscale/hscontrol/dns/dnstest"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog"
@@ -1343,4 +1347,329 @@ func TestPollNetMapHandler_ForeignMachineKeyStillRejected(t *testing.T) {
 	}))
 
 	assert.Equal(t, http.StatusNotFound, rec.Code, "body=%q", rec.Body.String())
+}
+
+const setDNSZone = "ts.example.com"
+
+// challengeValue returns a well-formed ACME DNS-01 TXT value.
+func challengeValue(seed string) string {
+	sum := sha256.Sum256([]byte(seed))
+
+	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+// setDNSTestApp returns an app with node certificates enabled and an
+// in-memory DNS provider that records every call.
+func setDNSTestApp(t *testing.T) (*Headscale, *dnstest.Provider) {
+	t.Helper()
+
+	app := createTestApp(t)
+	app.cfg.BaseDomain = setDNSZone
+	app.cfg.DNSConfig.Certificates = types.CertificatesConfig{Enabled: true, Zone: setDNSZone}
+
+	provider := &dnstest.Provider{}
+	app.challenges = dns.NewChallenges(provider, setDNSZone, nil, 0)
+	t.Cleanup(app.challenges.Close)
+
+	return app, provider
+}
+
+func putCertNode(t *testing.T, app *Headscale, user *types.User, name string, modify ...func(*types.Node)) *types.Node {
+	t.Helper()
+
+	node := app.state.CreateNodeForTest(user, name)
+	node.GivenName = name
+
+	for _, m := range modify {
+		m(node)
+	}
+
+	app.state.PutNodeInStoreForTest(*node)
+
+	return node
+}
+
+func setDNS(t *testing.T, ns *noiseServer, req tailcfg.SetDNSRequest) *httptest.ResponseRecorder {
+	t.Helper()
+
+	return setDNSWithContext(t.Context(), t, ns, req)
+}
+
+func setDNSWithContext(
+	ctx context.Context,
+	t *testing.T,
+	ns *noiseServer,
+	req tailcfg.SetDNSRequest,
+) *httptest.ResponseRecorder {
+	t.Helper()
+
+	body, err := json.Marshal(req)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	ns.SetDNSHandler(rec, httptest.NewRequestWithContext(
+		ctx, http.MethodPost, "/machine/set-dns", bytes.NewReader(body)))
+
+	return rec
+}
+
+// TestSetDNSHandler pins who may publish which record. The Noise endpoint
+// accepts any machine key and the client's LocalAPI forwards any name and
+// value, so every rejection must leave the operator's zone untouched.
+func TestSetDNSHandler(t *testing.T) {
+	t.Parallel()
+
+	value := challengeValue("laptop")
+
+	tests := []struct {
+		name      string
+		mutate    func(req *tailcfg.SetDNSRequest, mkey *key.MachinePublic)
+		givenName string
+		expired   bool
+		wantCode  int
+		wantValue bool
+	}{
+		{
+			name:      "own challenge",
+			wantCode:  http.StatusOK,
+			wantValue: true,
+		},
+		{
+			name: "own name in another case",
+			mutate: func(req *tailcfg.SetDNSRequest, _ *key.MachinePublic) {
+				req.Name = "_acme-challenge.Laptop." + setDNSZone
+			},
+			wantCode: http.StatusForbidden,
+		},
+		{
+			name: "other node's name",
+			mutate: func(req *tailcfg.SetDNSRequest, _ *key.MachinePublic) {
+				req.Name = "_acme-challenge.desktop." + setDNSZone
+			},
+			wantCode: http.StatusForbidden,
+		},
+		{
+			name: "zone apex",
+			mutate: func(req *tailcfg.SetDNSRequest, _ *key.MachinePublic) {
+				req.Name = "_acme-challenge." + setDNSZone
+			},
+			wantCode: http.StatusForbidden,
+		},
+		{
+			name: "subdomain of own name",
+			mutate: func(req *tailcfg.SetDNSRequest, _ *key.MachinePublic) {
+				req.Name = "_acme-challenge.www.laptop." + setDNSZone
+			},
+			wantCode: http.StatusForbidden,
+		},
+		{
+			name: "own name below another zone",
+			mutate: func(req *tailcfg.SetDNSRequest, _ *key.MachinePublic) {
+				req.Name = "_acme-challenge.laptop." + setDNSZone + ".evil.com"
+			},
+			wantCode: http.StatusForbidden,
+		},
+		{
+			name: "own name without challenge label",
+			mutate: func(req *tailcfg.SetDNSRequest, _ *key.MachinePublic) {
+				req.Name = "laptop." + setDNSZone
+			},
+			wantCode: http.StatusForbidden,
+		},
+		{
+			name: "not TXT",
+			mutate: func(req *tailcfg.SetDNSRequest, _ *key.MachinePublic) {
+				req.Type = "CNAME"
+			},
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name: "value is not a challenge",
+			mutate: func(req *tailcfg.SetDNSRequest, _ *key.MachinePublic) {
+				req.Value = "v=spf1 include:evil.com ~all"
+			},
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name: "empty value",
+			mutate: func(req *tailcfg.SetDNSRequest, _ *key.MachinePublic) {
+				req.Value = ""
+			},
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name: "rogue machine key",
+			mutate: func(_ *tailcfg.SetDNSRequest, mkey *key.MachinePublic) {
+				*mkey = key.NewMachine().Public()
+			},
+			wantCode: http.StatusUnauthorized,
+		},
+		{
+			name: "unknown node key",
+			mutate: func(req *tailcfg.SetDNSRequest, _ *key.MachinePublic) {
+				req.NodeKey = key.NewNode().Public()
+			},
+			wantCode: http.StatusNotFound,
+		},
+		{
+			name: "unsupported client",
+			mutate: func(req *tailcfg.SetDNSRequest, _ *key.MachinePublic) {
+				req.Version = 1
+			},
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name:     "expired node",
+			expired:  true,
+			wantCode: http.StatusForbidden,
+		},
+		{
+			// Case folding would match U+017F against 's'.
+			name: "unicode lookalike name",
+			mutate: func(req *tailcfg.SetDNSRequest, _ *key.MachinePublic) {
+				req.Name = "_acme-challenge.laptop.t\u017f.example.com"
+			},
+			wantCode: http.StatusForbidden,
+		},
+		{
+			// Names from before renames were lowercased get no certificate.
+			name:      "node without certificate name",
+			givenName: "Laptop",
+			mutate: func(req *tailcfg.SetDNSRequest, _ *key.MachinePublic) {
+				req.Name = "_acme-challenge.Laptop." + setDNSZone
+			},
+			wantCode: http.StatusForbidden,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			app, provider := setDNSTestApp(t)
+			user := app.state.CreateUserForTest("set-dns-user")
+
+			laptop := putCertNode(t, app, user, "laptop", func(n *types.Node) {
+				if tt.expired {
+					n.Expiry = new(time.Now().Add(-time.Hour))
+				}
+
+				if tt.givenName != "" {
+					n.GivenName = tt.givenName
+				}
+			})
+			putCertNode(t, app, user, "desktop")
+
+			req := tailcfg.SetDNSRequest{
+				Version: tailcfg.CurrentCapabilityVersion,
+				NodeKey: laptop.NodeKey,
+				Name:    "_acme-challenge.laptop." + setDNSZone,
+				Type:    "TXT",
+				Value:   value,
+			}
+			mkey := laptop.MachineKey
+
+			if tt.mutate != nil {
+				tt.mutate(&req, &mkey)
+			}
+
+			rec := setDNS(t, &noiseServer{headscale: app, machineKey: mkey}, req)
+			require.Equal(t, tt.wantCode, rec.Code, rec.Body.String())
+
+			if !tt.wantValue {
+				assert.Empty(t, provider.Calls(), "rejected request must not reach the DNS provider")
+
+				return
+			}
+
+			var resp tailcfg.SetDNSResponse
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp), "client needs a JSON body")
+			assert.Equal(t, []string{value}, provider.Values("_acme-challenge.laptop."+setDNSZone+"."))
+		})
+	}
+}
+
+// TestSetDNSHandlerProviderErrors pins the status codes the client shows
+// when publishing fails after validation passed.
+func TestSetDNSHandlerProviderErrors(t *testing.T) {
+	t.Parallel()
+
+	app, provider := setDNSTestApp(t)
+	user := app.state.CreateUserForTest("set-dns-errors-user")
+	laptop := putCertNode(t, app, user, "laptop")
+	ns := &noiseServer{headscale: app, machineKey: laptop.MachineKey}
+
+	req := func(seed string) tailcfg.SetDNSRequest {
+		return tailcfg.SetDNSRequest{
+			Version: tailcfg.CurrentCapabilityVersion,
+			NodeKey: laptop.NodeKey,
+			Name:    "_acme-challenge.laptop." + setDNSZone,
+			Type:    "TXT",
+			Value:   challengeValue(seed),
+		}
+	}
+
+	provider.SetError(errSetDNSProviderDown)
+	assert.Equal(t, http.StatusBadGateway, setDNS(t, ns, req("down")).Code)
+	provider.SetError(nil)
+
+	require.Equal(t, http.StatusOK, setDNS(t, ns, req("0")).Code)
+
+	// Later values on the name wait out the CA's cache of the first; a
+	// client that gives up meanwhile still fills the node's slots.
+	gone, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	for i := 1; i < 4; i++ {
+		require.Equal(t, http.StatusGatewayTimeout, setDNSWithContext(gone, t, ns, req(strconv.Itoa(i))).Code)
+	}
+
+	assert.Equal(t, http.StatusTooManyRequests, setDNS(t, ns, req("one-too-many")).Code)
+
+	// Renaming the node does not free its slots.
+	laptop.GivenName = "renamed"
+	app.state.PutNodeInStoreForTest(*laptop)
+
+	renamed := req("renamed")
+	renamed.Name = "_acme-challenge.renamed." + setDNSZone
+	assert.Equal(t, http.StatusTooManyRequests, setDNS(t, ns, renamed).Code)
+
+	app.challenges.Close()
+	assert.Equal(t, http.StatusServiceUnavailable, setDNS(t, ns, renamed).Code)
+}
+
+var errSetDNSProviderDown = errors.New("provider down")
+
+func TestSetDNSHandlerBadBody(t *testing.T) {
+	t.Parallel()
+
+	app, provider := setDNSTestApp(t)
+	user := app.state.CreateUserForTest("set-dns-body-user")
+	laptop := putCertNode(t, app, user, "laptop")
+
+	rec := httptest.NewRecorder()
+	(&noiseServer{headscale: app, machineKey: laptop.MachineKey}).SetDNSHandler(rec, httptest.NewRequestWithContext(
+		t.Context(), http.MethodPost, "/machine/set-dns", strings.NewReader("{not json")))
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Empty(t, provider.Calls())
+}
+
+// TestSetDNSHandlerDisabled pins that the endpoint stays unimplemented
+// unless node certificates are enabled.
+func TestSetDNSHandlerDisabled(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("set-dns-off-user")
+	laptop := putCertNode(t, app, user, "laptop")
+
+	rec := setDNS(t, &noiseServer{headscale: app, machineKey: laptop.MachineKey}, tailcfg.SetDNSRequest{
+		Version: tailcfg.CurrentCapabilityVersion,
+		NodeKey: laptop.NodeKey,
+		Name:    "_acme-challenge.laptop." + setDNSZone,
+		Type:    "TXT",
+		Value:   challengeValue("laptop"),
+	})
+	assert.Equal(t, http.StatusNotImplemented, rec.Code)
 }

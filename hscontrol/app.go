@@ -98,6 +98,9 @@ type Headscale struct {
 	// router skips the mount and r.RemoteAddr stays as the TCP peer.
 	realIPMiddleware func(http.Handler) http.Handler
 
+	// challenges is nil unless dns.certificates is enabled.
+	challenges *dns.Challenges
+
 	// Things that generate changes
 	extraRecordMan *dns.ExtraRecordsMan
 	authProvider   AuthProvider
@@ -137,6 +140,15 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		noisePrivateKey:   noisePrivateKey,
 		clientStreamsOpen: sync.WaitGroup{},
 		state:             s,
+	}
+
+	if cfg.DNSConfig.Certificates.Enabled {
+		app.challenges = dns.NewChallenges(
+			cfg.DNSChallenge.Provider,
+			cfg.DNSConfig.Certificates.Zone,
+			cfg.DNSChallenge.Resolvers,
+			cfg.DNSChallenge.PropagationTimeout,
+		)
 	}
 
 	if len(cfg.TrustedProxies) > 0 {
@@ -933,6 +945,11 @@ func (h *Headscale) Serve() error {
 					}
 
 					tlsBundle.ACMEListener.Close()
+				}
+
+				if h.challenges != nil {
+					info("removing pending ACME challenge records")
+					h.challenges.Close() //nolint:contextcheck // each delete has its own bounded context
 				}
 
 				info("closing batcher")

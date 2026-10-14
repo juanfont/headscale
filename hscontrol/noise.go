@@ -9,12 +9,14 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/metrics"
 	"github.com/juanfont/headscale/hscontrol/capver"
+	"github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -174,10 +176,7 @@ func (h *Headscale) NoiseUpgradeHandler(
 		// https://github.com/tailscale/tailscale/blob/dfba01ca9bd8c4df02c3c32f400d9aeb897c5fc7/cmd/tailscale/cli/debug.go#L1138
 		r.Get("/whoami", ns.NotImplementedHandler)
 
-		// client sends a [tailcfg.SetDNSRequest] to this endpoints and expect
-		// the server to create or update this DNS record "somewhere".
-		// It is typically a TXT record for an ACME challenge.
-		r.Post("/set-dns", ns.NotImplementedHandler)
+		r.Post("/set-dns", ns.SetDNSHandler)
 
 		// A patch of [tailcfg.SetDeviceAttributesRequest] to update device attributes.
 		// We currently do not support device attributes.
@@ -776,6 +775,119 @@ func (ns *noiseServer) PollNetMapHandler(
 	} else {
 		sess.serveLongPoll()
 	}
+}
+
+// challengeValueRE matches an ACME DNS-01 TXT value: the unpadded
+// base64url SHA-256 of the key authorization (RFC 8555 section 8.4).
+var challengeValueRE = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
+
+// SetDNSHandler publishes the TXT record of an ACME DNS-01 challenge for
+// `tailscale cert`. The client runs ACME itself and asks the CA to
+// validate as soon as this returns, so it only answers 200 once the
+// record is visible. The client never asks for removal; [dns.Challenges]
+// removes the record later.
+func (ns *noiseServer) SetDNSHandler(writer http.ResponseWriter, req *http.Request) {
+	challenges := ns.headscale.challenges
+	if challenges == nil {
+		http.Error(writer, "HTTPS certificates are not enabled on this headscale server", http.StatusNotImplemented)
+
+		return
+	}
+
+	var setDNS tailcfg.SetDNSRequest
+
+	err := json.NewDecoder(req.Body).Decode(&setDNS)
+	if err != nil {
+		httpError(writer, NewHTTPError(http.StatusBadRequest, "invalid set-dns request", err))
+
+		return
+	}
+
+	if rejectUnsupported(writer, setDNS.Version, ns.machineKey, setDNS.NodeKey) {
+		return
+	}
+
+	nv, ok := ns.headscale.state.GetNodeByNodeKey(setDNS.NodeKey)
+	if !ok {
+		httpError(writer, NewHTTPError(http.StatusNotFound, "node not found", errNodeNotInStore))
+
+		return
+	}
+
+	err = machineKeyMismatch(nv, ns.machineKey)
+	if err != nil {
+		httpError(writer, err)
+
+		return
+	}
+
+	name, err := validateSetDNS(setDNS, nv, ns.headscale.cfg)
+	if err != nil {
+		httpError(writer, err)
+
+		return
+	}
+
+	err = challenges.Present(req.Context(), nv.ID().Uint64(), name, setDNS.Value)
+	if err != nil {
+		switch {
+		case errors.Is(err, dns.ErrTooManyChallenges):
+			err = NewHTTPError(http.StatusTooManyRequests, "too many pending certificate challenges, try again later", err)
+		case errors.Is(err, dns.ErrChallengesClosed):
+			err = NewHTTPError(http.StatusServiceUnavailable, "headscale is shutting down, try again later", err)
+		case errors.Is(err, dns.ErrChallengeProvider):
+			err = NewHTTPError(http.StatusBadGateway, "DNS provider could not create the record, see the headscale log", err)
+		default:
+			err = NewHTTPError(http.StatusGatewayTimeout, "DNS record not visible on all nameservers yet, try again", err)
+		}
+
+		httpError(writer, err)
+
+		return
+	}
+
+	log.Debug().EmbedObject(nv).Str("name", name).Msg("ACME challenge ready for validation")
+
+	writer.Header().Set("Content-Type", "application/json")
+
+	// The client fails on an empty body, so the empty response is encoded.
+	err = json.NewEncoder(writer).Encode(tailcfg.SetDNSResponse{})
+	if err != nil {
+		log.Error().Caller().Err(err).Msg("writing set-dns response")
+	}
+}
+
+// validateSetDNS lets a node publish only the challenge of its own
+// certificate name, and returns that name. The Noise endpoint accepts any
+// machine key and the client's LocalAPI forwards any name and value, so
+// this is what stops a node from writing arbitrary records into the
+// operator's zone.
+func validateSetDNS(req tailcfg.SetDNSRequest, nv types.NodeView, cfg *types.Config) (string, error) {
+	if nv.IsExpired() {
+		return "", NewHTTPError(http.StatusForbidden, "node is expired", nil)
+	}
+
+	domain, ok := nv.CertDomain(cfg)
+	if !ok {
+		return "", NewHTTPError(http.StatusForbidden, "node has no certificate name", nil)
+	}
+
+	if req.Type != "TXT" {
+		return "", NewHTTPError(http.StatusBadRequest, "only TXT records are supported", nil)
+	}
+
+	// The client sends the name built from CertDomains, so it matches
+	// exactly; folding case would let lookalike Unicode letters match.
+	name := types.ACMEChallengePrefix + domain
+	if req.Name != name {
+		return "", NewHTTPError(http.StatusForbidden, "name is not the ACME challenge of this node's certificate", nil)
+	}
+
+	if !challengeValueRE.MatchString(req.Value) {
+		return "", NewHTTPError(http.StatusBadRequest, "value is not an ACME DNS-01 challenge", nil)
+	}
+
+	return name, nil
 }
 
 func regErr(err error) *tailcfg.RegisterResponse {
