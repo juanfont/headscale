@@ -576,8 +576,9 @@ func (s *NodeStore) applyBatch(batch []work) {
 
 			taken := false
 
+			// DNS is case-insensitive: a legacy "Laptop" already holds "laptop".
 			for id, other := range nodes {
-				if id != w.nodeID && other.GivenName == w.name {
+				if id != w.nodeID && strings.EqualFold(other.GivenName, w.name) {
 					taken = true
 					break
 				}
@@ -676,12 +677,13 @@ func resolveGivenName(nodes map[types.NodeID]types.Node, self types.NodeID, base
 			continue
 		}
 
-		taken[n.GivenName] = struct{}{}
+		// DNS is case-insensitive: a legacy "Laptop" already holds "laptop".
+		taken[strings.ToLower(n.GivenName)] = struct{}{}
 	}
 
 	candidate := base
 	for i := 1; ; i++ {
-		if _, busy := taken[candidate]; !busy {
+		if _, busy := taken[strings.ToLower(candidate)]; !busy {
 			return candidate
 		}
 

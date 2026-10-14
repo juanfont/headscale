@@ -172,6 +172,25 @@ func TestSetGivenNameRejectsTaken(t *testing.T) {
 	require.Equal(t, "phone", view.GivenName(), "rejected rename must not mutate state")
 }
 
+// TestGivenNameCollisionIgnoresCase covers mixed-case names from before
+// renames were lowercased: "Laptop" and "laptop" are one DNS name, so a
+// certificate for one would be valid for the other.
+func TestGivenNameCollisionIgnoresCase(t *testing.T) {
+	store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+
+	store.Start()
+	defer store.Stop()
+
+	store.PutNode(createTestNode(1, 1, "alice", "Laptop"))
+	store.PutNode(createTestNode(2, 1, "alice", "phone"))
+
+	_, err := store.SetGivenName(2, "laptop")
+	require.ErrorIs(t, err, ErrGivenNameTaken)
+
+	got := store.PutNode(createTestNode(3, 1, "alice", "laptop"))
+	require.Equal(t, "laptop-1", got.GivenName())
+}
+
 // TestSetGivenNameRejectsInvalid returns ErrGivenNameInvalid for
 // labels that are not valid DNS labels.
 func TestSetGivenNameRejectsInvalid(t *testing.T) {
