@@ -1902,6 +1902,27 @@ func (c *Config) CloneTailcfgDNSConfig() *tailcfg.DNSConfig {
 	return c.TailcfgDNSConfig.Clone()
 }
 
+// extraRecordAtOrBelow reports whether an extra DNS record is name or a
+// subdomain of it. Case is ignored, as in TLS name matching; name is
+// lowercase.
+func (c *Config) extraRecordAtOrBelow(name string) bool {
+	tailcfgDNSMu.RLock()
+	defer tailcfgDNSMu.RUnlock()
+
+	if c.TailcfgDNSConfig == nil {
+		return false
+	}
+
+	for _, r := range c.TailcfgDNSConfig.ExtraRecords {
+		rn := strings.ToLower(strings.TrimSuffix(r.Name, "."))
+		if rn == name || strings.HasSuffix(rn, "."+name) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // TailcfgDebug returns the [tailcfg.Debug] for full map responses: nil when
 // logtail is enabled, leaving client log uploads as the client set them,
 // otherwise an instruction to stop uploading logs.

@@ -248,8 +248,9 @@ func TestTailNode(t *testing.T) {
 }
 
 // TestTailNodeBaselineGates focuses on the cfg-driven baseline cap
-// emission: cfg.Taildrop.Enabled gates [tailcfg.CapabilityFileSharing]
-// and cfg.AutoUpdate.Enabled controls the value of
+// emission: cfg.Taildrop.Enabled gates [tailcfg.CapabilityFileSharing],
+// cfg.DNSConfig.Certificates.Enabled gates [nodecap.HTTPS] and
+// cfg.AutoUpdate.Enabled controls the value of
 // [tailcfg.NodeAttrDefaultAutoUpdate]. Admin and SSH are unconditional
 // baseline.
 func TestTailNodeBaselineGates(t *testing.T) {
@@ -304,6 +305,20 @@ func TestTailNodeBaselineGates(t *testing.T) {
 				nodecap.SSH:               []tailcfg.RawMessage{},
 				nodecap.FileSharing:       []tailcfg.RawMessage{},
 				nodecap.DefaultAutoUpdate: autoUpdate(true),
+			},
+		},
+		{
+			name: "certificates_on",
+			cfg: &types.Config{
+				DNSConfig: types.DNSConfig{
+					Certificates: types.CertificatesConfig{Enabled: true},
+				},
+			},
+			want: tailcfg.NodeCapMap{
+				nodecap.Admin:             []tailcfg.RawMessage{},
+				nodecap.SSH:               []tailcfg.RawMessage{},
+				nodecap.HTTPS:             []tailcfg.RawMessage{},
+				nodecap.DefaultAutoUpdate: autoUpdate(false),
 			},
 		},
 		{
