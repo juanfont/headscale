@@ -979,3 +979,87 @@ func TestFailedExpiryOfPrimaryAnnouncesBackup(t *testing.T) {
 
 	assert.Contains(t, backupRoutes, route, "the client must learn the backup is primary: %s", c.Type())
 }
+
+// TestGenerateMapResponseDebugOnlyOnFullMaps pins where [tailcfg.Debug] rides:
+// on every full map (the initial map and FullUpdate renders), so a client that
+// connects or reconnects is told to stop log uploads, and on nothing else. The
+// renders run through [generateMapResponse], the path the batcher uses, so a
+// branch that bypasses buildFromChange cannot silently drop or add it.
+func TestGenerateMapResponseDebugOnlyOnFullMaps(t *testing.T) {
+	tmp := t.TempDir()
+	p4 := netip.MustParsePrefix("100.64.0.0/10")
+	p6 := netip.MustParsePrefix("fd7a:115c:a1e0::/48")
+	cfg := &types.Config{
+		Database: types.DatabaseConfig{
+			Type:   types.DatabaseSqlite,
+			Sqlite: types.SqliteConfig{Path: tmp + "/h.db"},
+		},
+		PrefixV4:     &p4,
+		PrefixV6:     &p6,
+		IPAllocation: types.IPAllocationStrategySequential,
+		BaseDomain:   "headscale.test",
+		Policy:       types.PolicyConfig{Mode: types.PolicyModeDB},
+		DERP: types.DERPConfig{
+			DERPMap: &tailcfg.DERPMap{
+				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{999: {RegionID: 999}},
+			},
+		},
+		Tuning: types.Tuning{
+			NodeStoreBatchSize:    state.TestBatchSize,
+			NodeStoreBatchTimeout: state.TestBatchTimeout,
+		},
+	}
+
+	database, err := db.NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	user := database.CreateUserForTest("u1")
+	n1 := database.CreateRegisteredNodeForTest(user, "n1")
+	n2 := database.CreateRegisteredNodeForTest(user, "n2")
+	require.NoError(t, database.Close())
+
+	s, err := state.NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, err = s.SetPolicy([]byte(`{"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`))
+	require.NoError(t, err)
+
+	m := &mapper{state: s, cfg: cfg}
+
+	kinds := []struct {
+		name string
+		c    change.Change
+		full bool
+	}{
+		{"full_update", change.FullUpdate(), true},
+		{"full_self", change.FullSelf(n1.ID), true},
+		{"user_removed", change.UserRemoved(), true},
+		{"self_update", change.SelfUpdate(n1.ID), false},
+		{"self_node_added", change.NodeAdded(n1.ID), false},
+		{"policy_change", change.PolicyChange(), false},
+		{"derp_map", change.DERPMap(), false},
+		{"dns_config", change.DNSConfig(), false},
+		{"peer_added", change.NodeAdded(n2.ID), false},
+		{"peer_online", change.NodeOnline(n2.ID), false},
+	}
+
+	for _, logTail := range []bool{false, true} {
+		for _, k := range kinds {
+			t.Run(fmt.Sprintf("logtail=%t/%s", logTail, k.name), func(t *testing.T) {
+				cfg.LogTail.Enabled = logTail
+
+				resps, err := generateMapResponse(newMockNodeConnection(n1.ID), m, k.c)
+				require.NoError(t, err)
+				require.Len(t, resps, 1)
+
+				var want *tailcfg.Debug
+				if k.full && !logTail {
+					want = &tailcfg.Debug{DisableLogTail: true}
+				}
+
+				assert.Equal(t, want, resps[0].Debug)
+			})
+		}
+	}
+}

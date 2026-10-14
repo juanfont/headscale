@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/derp"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
@@ -1167,6 +1169,78 @@ func TestBatcherCoalescesPolicyRecomputesPerTick(t *testing.T) {
 					"node %d received %d policy recomputes in one tick; identical recomputes must coalesce to one",
 					id, policyResponses)
 			}
+		})
+	}
+}
+
+// TestBatcherPingSurvivesFullUpdate queues a ping and a full in one AddWork
+// call against real connections: the target renders the full and then a
+// ping-only frame, and no other node sees the ping.
+func TestBatcherPingSurvivesFullUpdate(t *testing.T) {
+	for _, bf := range allBatcherFunctions {
+		t.Run(bf.name, func(t *testing.T) {
+			testData, cleanup := setupBatcherWithTestData(t, bf.fn, 1, 2, normalBufferSize)
+			defer cleanup()
+
+			batcher := testData.Batcher
+			target, other := &testData.Nodes[0], &testData.Nodes[1]
+
+			for _, n := range []*node{target, other} {
+				require.NoError(t, batcher.AddNode(n.n.ID, n.ch, tailcfg.CapabilityVersion(100), nil))
+			}
+
+			// Settle initial maps and online patches so only this call's
+			// frames remain.
+			drainChannelTimeout(target.ch, 300*time.Millisecond)
+			drainChannelTimeout(other.ch, 300*time.Millisecond)
+
+			pr := &tailcfg.PingRequest{URL: "https://example.com/ping", Log: true}
+			batcher.AddWork(change.PingNode(target.n.ID, pr), change.UserRemoved())
+
+			collect := func(ch <-chan *tailcfg.MapResponse) []*tailcfg.MapResponse {
+				var frames []*tailcfg.MapResponse
+
+				deadline := time.After(updateTimeout)
+				quiet := time.NewTimer(time.Hour)
+
+				defer quiet.Stop()
+
+				for {
+					select {
+					case resp := <-ch:
+						frames = append(frames, resp)
+
+						quiet.Reset(300 * time.Millisecond)
+					case <-quiet.C:
+						return frames
+					case <-deadline:
+						return frames
+					}
+				}
+			}
+
+			isFull := func(r *tailcfg.MapResponse) bool {
+				// An unchanged self may be omitted for this connection, while
+				// the full peer list and DERP map still distinguish the full.
+				return r.DERPMap != nil && len(r.Peers) > 0
+			}
+
+			frames := collect(target.ch)
+			require.Len(t, frames, 2, "target: full then ping")
+			assert.True(t, isFull(frames[0]), "target: first frame is the full")
+			assert.Nil(t, frames[0].PingRequest, "target: the full carries no ping")
+
+			ping := frames[1]
+			assert.Equal(t, pr, ping.PingRequest)
+			assert.Nil(t, ping.Node, "ping frame is ping-only")
+			assert.Nil(t, ping.DERPMap, "ping frame is ping-only")
+			assert.Empty(t, ping.Peers, "ping frame is ping-only")
+			assert.Empty(t, ping.PeersChangedPatch, "ping frame is ping-only")
+
+			frames = collect(other.ch)
+			require.Len(t, frames, 1, "other: only the full")
+			assert.True(t, isFull(frames[0]), "other: frame is the full")
+			assert.Nil(t, frames[0].PingRequest, "other: no ping")
 		})
 	}
 }
@@ -2337,6 +2411,55 @@ func TestAddWorkFullUpdateUnaffectedByEmpty(t *testing.T) {
 	}
 }
 
+var errInjectedSSHPolicy = errors.New("injected SSH policy failure")
+
+type failingSSHPolicyManager struct {
+	policy.PolicyManager
+}
+
+func (failingSSHPolicyManager) SSHPolicy(string, types.NodeView) (*tailcfg.SSHPolicy, error) {
+	return nil, errInjectedSSHPolicy
+}
+
+// TestSSHPolicyEmptyOnWire pins that a node without SSH rules, or whose SSH
+// policy fails to compile, gets "SSHPolicy":{"rules":[]}. A nil SSHPolicy
+// leaves the client's previous rules in force.
+// https://github.com/juanfont/headscale/issues/3508
+func TestSSHPolicyEmptyOnWire(t *testing.T) {
+	for name, failCompile := range map[string]bool{
+		"no ssh rules":  false,
+		"compile error": true,
+	} {
+		t.Run(name, func(t *testing.T) {
+			testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 2, normalBufferSize)
+			defer cleanup()
+
+			if failCompile {
+				testData.State.WrapPolicyManagerForTest(
+					func(pm policy.PolicyManager) policy.PolicyManager {
+						return failingSSHPolicyManager{PolicyManager: pm}
+					},
+				)
+			}
+
+			self := testData.Nodes[0].n.ID
+			mc := newMockNodeConnection(self)
+
+			require.NoError(t, handleNodeChange(mc, testData.Batcher.mapper, change.PolicyChange()))
+			require.NoError(t, handleNodeChange(mc, testData.Batcher.mapper, change.FullSelf(self)))
+
+			sent := mc.getSent()
+			require.Len(t, sent, 2)
+
+			for _, resp := range sent {
+				wire, err := json.Marshal(resp)
+				require.NoError(t, err)
+				assert.Contains(t, string(wire), `"SSHPolicy":{"rules":[]}`)
+			}
+		})
+	}
+}
+
 // TestAddWorkPeersRemovedNotTreatedAsEmpty ensures the empty filter does
 // not swallow a PeersRemoved change — deletion cleanup must still run, and
 // surviving recipients must still see the removal.
@@ -2447,6 +2570,180 @@ func TestHandleNodeChangeRetryAfterRemoval(t *testing.T) {
 	assert.NotEmpty(t, sent[1].PacketFilters)
 }
 
+// TestAddNodeRemovalSurvivesPendingLoss checks that a peer removed while a
+// node had no stream reaches it as a delta after it reconnects, even when the
+// removal [Batcher.AddNode] queued is lost: superseded by a full update, or
+// dropped because the node disconnected again before delivery.
+//
+// TODO(kradalby): delete with the tailscale/tailscale#15660 compat, see
+// capver.CanOldCodeBeCleanedUp.
+func TestAddNodeRemovalSurvivesPendingLoss(t *testing.T) {
+	const gone = tailcfg.NodeID(999)
+
+	peerSets := []struct {
+		name  string
+		nodes int
+	}{
+		// Clients ignore an empty Peers list, so an isolated node relies on
+		// the removal entirely.
+		{"no_peers", 1},
+		{"with_peer", 2},
+	}
+
+	tracked := func(nc *multiChannelNodeConn, id tailcfg.NodeID) bool {
+		_, ok := nc.lastSentPeers.Load(id)
+		return ok
+	}
+
+	recv := func(t *testing.T, ch <-chan *tailcfg.MapResponse) *tailcfg.MapResponse {
+		t.Helper()
+
+		select {
+		case resp := <-ch:
+			return resp
+		case <-time.After(updateTimeout):
+			t.Fatal("timed out waiting for map response")
+
+			return nil
+		}
+	}
+
+	// setup returns a batcher whose ticker never fires, so the queued
+	// removal stays pending until the test runs a tick, and the node's conn
+	// still tracking gone from an earlier stream.
+	setup := func(t *testing.T, nodes int) (*Batcher, *multiChannelNodeConn, []tailcfg.NodeID) {
+		t.Helper()
+
+		testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, nodes, normalBufferSize)
+		t.Cleanup(cleanup)
+
+		b := NewBatcher(time.Hour, 1, testData.Batcher.mapper)
+		b.Start()
+		t.Cleanup(b.Close)
+
+		self := testData.Nodes[0].n.ID
+		nc := newMultiChannelNodeConn(self, b.mapper)
+		nc.lastSentPeers.Store(gone, struct{}{})
+		b.nodes.Store(self, nc)
+
+		current := make([]tailcfg.NodeID, 0, nodes-1)
+		for i := range testData.Nodes[1:] {
+			current = append(current, testData.Nodes[i+1].n.ID.NodeID())
+		}
+
+		return b, nc, current
+	}
+
+	// connect drives the real AddNode and checks its initial map.
+	connect := func(
+		t *testing.T,
+		b *Batcher,
+		nc *multiChannelNodeConn,
+		current []tailcfg.NodeID,
+	) chan *tailcfg.MapResponse {
+		t.Helper()
+
+		ch := make(chan *tailcfg.MapResponse, normalBufferSize)
+		require.NoError(t, b.AddNode(nc.id, ch, 100, nil))
+
+		initial := recv(t, ch)
+		require.NotNil(t, initial.Node, "initial map must carry Node")
+		require.NotNil(t, initial.Peers, "initial map must carry the full peer set")
+
+		ids := make([]tailcfg.NodeID, 0, len(initial.Peers))
+		for _, p := range initial.Peers {
+			ids = append(ids, p.ID)
+		}
+
+		assert.ElementsMatch(t, current, ids)
+		assert.Empty(t, initial.PeersRemoved, "initial map must not carry removals")
+
+		for _, id := range current {
+			assert.True(t, tracked(nc, id), "initial map peer %d must be tracked", id)
+		}
+
+		return ch
+	}
+
+	// settle waits for the tick's bundle to finish and checks tracking.
+	settle := func(
+		t *testing.T,
+		nc *multiChannelNodeConn,
+		current []tailcfg.NodeID,
+		wantGone bool,
+	) {
+		t.Helper()
+
+		require.Eventually(t, func() bool { return !nc.inFlight.Load() },
+			updateTimeout, 10*time.Millisecond)
+
+		for _, id := range current {
+			assert.True(t, tracked(nc, id), "current peer %d must stay tracked", id)
+		}
+
+		require.Equal(t, wantGone, tracked(nc, gone),
+			"peer %d must stay tracked until its removal is delivered", gone)
+	}
+
+	assertRemoval := func(t *testing.T, resp *tailcfg.MapResponse) {
+		t.Helper()
+
+		assert.Equal(t, []tailcfg.NodeID{gone}, resp.PeersRemoved)
+		_, ok := netmap.MutationsFromMapResponse(resp, time.Time{})
+		assert.True(t, ok, "removal must be applicable as a delta: %+v", resp)
+	}
+
+	t.Run("full_supersedes_queued_removal", func(t *testing.T) {
+		for _, ps := range peerSets {
+			t.Run(ps.name, func(t *testing.T) {
+				b, nc, current := setup(t, ps.nodes)
+				ch := connect(t, b, nc, current)
+
+				// A full in the same tick replaces the queued removal.
+				b.AddWork(change.FullUpdate())
+				b.processBatchedChanges()
+
+				var before []*tailcfg.MapResponse
+
+				full := recv(t, ch)
+				for full.Peers == nil {
+					before = append(before, full)
+					full = recv(t, ch)
+				}
+
+				require.Len(t, before, 1, "removal must lead the full")
+				assertRemoval(t, before[0])
+				assert.Empty(t, full.PeersRemoved, "full must not carry removals")
+
+				settle(t, nc, current, false)
+				assert.Empty(t, ch, "no frames beyond removal and full")
+			})
+		}
+	})
+
+	t.Run("disconnect_before_delivery", func(t *testing.T) {
+		for _, ps := range peerSets {
+			t.Run(ps.name, func(t *testing.T) {
+				b, nc, current := setup(t, ps.nodes)
+				ch1 := connect(t, b, nc, current)
+
+				// The node leaves before the tick, so the removal finds no
+				// connection and is dropped.
+				require.False(t, b.RemoveNode(nc.id, ch1))
+				b.processBatchedChanges()
+				settle(t, nc, current, true)
+
+				ch2 := connect(t, b, nc, current)
+				b.processBatchedChanges()
+
+				assertRemoval(t, recv(t, ch2))
+				settle(t, nc, current, false)
+				assert.Empty(t, ch2, "no frames beyond the removal")
+			})
+		}
+	})
+}
+
 // TestDNSConfigOnlyWithSelfRefresh checks policy responses leave DNSConfig
 // out, which clients read as unchanged, while self refreshes carry it: a
 // node's DNS config derives from its own CapMap and Hostinfo, and a
@@ -2470,4 +2767,163 @@ func TestDNSConfigOnlyWithSelfRefresh(t *testing.T) {
 	require.Len(t, sent, 2)
 	assert.Nil(t, sent[0].DNSConfig, "policy response must not carry DNSConfig")
 	assert.NotNil(t, sent[1].DNSConfig, "self refresh must carry DNSConfig")
+}
+
+// TestSelfSentOnlyWhenChanged pins that a policy recompute carries the
+// node's own self to each connection that does not hold it yet: self renders
+// from the same state as peers (issue #3502), and a Node forces a full client
+// netmap rebuild.
+func TestSelfSentOnlyWhenChanged(t *testing.T) {
+	testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 2, normalBufferSize)
+	defer cleanup()
+
+	b := testData.Batcher.Batcher
+	self := &testData.Nodes[0]
+
+	rename := func(name string) {
+		_, _, err := testData.State.RenameNode(self.n.ID, name)
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, b.AddNode(self.n.ID, self.ch, tailcfg.CapabilityVersion(100), nil))
+	require.NotNil(t, expectReceive(t, self.ch, "initial map").Node)
+
+	nc, ok := b.nodes.Load(self.n.ID)
+	require.True(t, ok)
+
+	policyFrame := func(chs ...chan *tailcfg.MapResponse) []*tailcfg.MapResponse {
+		nc.workMu.Lock()
+		defer nc.workMu.Unlock()
+
+		require.NoError(t, handleNodeChange(nc, b.mapper, change.PolicyChange()))
+
+		frames := make([]*tailcfg.MapResponse, 0, len(chs))
+		for _, ch := range chs {
+			frames = append(frames, expectReceive(t, ch, "policy frame"))
+		}
+
+		return frames
+	}
+
+	assert.Nil(t, policyFrame(self.ch)[0].Node, "unchanged self must be dropped")
+
+	rename("renamed")
+
+	frame := policyFrame(self.ch)[0]
+	require.NotNil(t, frame.Node, "moved self must be sent")
+	assert.Contains(t, frame.Node.Name, "renamed")
+
+	// A connection joining after self moved gets the new self in its
+	// initial map; the next recompute must still reach the older one.
+	rename("renamed-again")
+
+	ch2 := make(chan *tailcfg.MapResponse, normalBufferSize)
+	require.NoError(t, b.AddNode(self.n.ID, ch2, tailcfg.CapabilityVersion(100), nil))
+	require.NotNil(t, expectReceive(t, ch2, "second connection's initial map").Node)
+
+	frames := policyFrame(self.ch, ch2)
+	require.NotNil(t, frames[0].Node, "first connection still holds the old self")
+	assert.Contains(t, frames[0].Node.Name, "renamed-again")
+	assert.Nil(t, frames[1].Node, "second connection already holds the new self")
+}
+
+// TestSSHPolicySentOnlyWhenChanged pins that policy frames drop an SSHPolicy
+// the client already holds, since any non-nil SSHPolicy forces a full client
+// netmap rebuild, while initial maps and real changes still carry it.
+// https://github.com/juanfont/headscale/issues/3508
+func TestSSHPolicySentOnlyWhenChanged(t *testing.T) {
+	testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 2, normalBufferSize)
+	defer cleanup()
+
+	b := testData.Batcher.Batcher
+	self := &testData.Nodes[0]
+
+	policy := func(sshUser, group string) []byte {
+		ssh := ""
+		if sshUser != "" {
+			ssh = fmt.Sprintf(`, "ssh": [{
+				"action": "accept",
+				"src":    ["autogroup:member"],
+				"dst":    ["autogroup:self"],
+				"users":  [%q]
+			}]`, sshUser)
+		}
+
+		return fmt.Appendf(nil, `{
+			"groups": {%q: []},
+			"acls":   [{"action": "accept", "src": ["*"], "dst": ["*:*"]}]%s
+		}`, "group:"+group, ssh)
+	}
+
+	_, err := testData.State.SetPolicy(policy("root", "a"))
+	require.NoError(t, err)
+
+	require.NoError(t, b.AddNode(self.n.ID, self.ch, tailcfg.CapabilityVersion(100), nil))
+
+	initial := expectReceive(t, self.ch, "initial map")
+	require.NotNil(t, initial.SSHPolicy)
+	require.NotEmpty(t, initial.SSHPolicy.Rules)
+
+	nc, ok := b.nodes.Load(self.n.ID)
+	require.True(t, ok)
+
+	policyFrame := func(chs ...chan *tailcfg.MapResponse) []*tailcfg.MapResponse {
+		nc.workMu.Lock()
+		defer nc.workMu.Unlock()
+
+		require.NoError(t, handleNodeChange(nc, b.mapper, change.PolicyChange()))
+
+		frames := make([]*tailcfg.MapResponse, 0, len(chs))
+		for _, ch := range chs {
+			frames = append(frames, expectReceive(t, ch, "policy frame"))
+		}
+
+		return frames
+	}
+
+	steps := []struct {
+		name     string
+		policy   []byte // nil: no policy change
+		wantSent bool
+		wantSSH  bool
+	}{
+		{"nothing changed", nil, false, false},
+		{"acl-only change", policy("root", "b"), false, false},
+		{"ssh users changed", policy("alice", "b"), true, true},
+		{"ssh removed", policy("", "b"), true, false},
+		{"acl-only change without ssh", policy("", "c"), false, false},
+	}
+
+	for _, step := range steps {
+		if step.policy != nil {
+			_, err := testData.State.SetPolicy(step.policy)
+			require.NoError(t, err)
+		}
+
+		frame := policyFrame(self.ch)[0]
+
+		if !step.wantSent {
+			assert.Nil(t, frame.SSHPolicy, "%s: unchanged SSHPolicy must be dropped", step.name)
+
+			_, delta := netmap.MutationsFromMapResponse(frame, time.Now())
+			assert.True(t, delta, "%s: frame must apply as a delta", step.name)
+
+			continue
+		}
+
+		require.NotNil(t, frame.SSHPolicy, "%s: changed SSHPolicy must be sent", step.name)
+		assert.Equal(t, step.wantSSH, len(frame.SSHPolicy.Rules) > 0, step.name)
+	}
+
+	// A new connection gets the policy in its initial map; afterwards both
+	// connections hold it and drop it from the next policy frame.
+	ch2 := make(chan *tailcfg.MapResponse, normalBufferSize)
+	require.NoError(t, b.AddNode(self.n.ID, ch2, tailcfg.CapabilityVersion(100), nil))
+
+	initial2 := expectReceive(t, ch2, "second connection's initial map")
+	require.NotNil(t, initial2.SSHPolicy, "every initial map must carry SSHPolicy")
+
+	for i, frame := range policyFrame(self.ch, ch2) {
+		assert.Nil(t, frame.SSHPolicy, "connection %d already holds the policy", i)
+	}
 }

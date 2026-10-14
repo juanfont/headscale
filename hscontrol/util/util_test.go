@@ -2,6 +2,8 @@ package util
 
 import (
 	"errors"
+	"fmt"
+	"io/fs"
 	"net/netip"
 	"strings"
 	"testing"
@@ -946,5 +948,94 @@ func TestUnmarshalByExt(t *testing.T) {
 				t.Errorf("UnmarshalByExt(%q) mismatch (-want +got):\n%s", tt.file, diff)
 			}
 		})
+	}
+}
+
+func TestParseFileMode(t *testing.T) {
+	tests := []struct {
+		in      string
+		want    fs.FileMode
+		wantErr bool
+	}{
+		{in: "770", want: 0o770},
+		{in: "0770", want: 0o770},
+		{in: "0o770", want: 0o770},
+		{in: "0O770", want: 0o770},
+		{in: "0o700", want: 0o700},
+		{in: "0o0770", want: 0o770},
+		{in: "00770", want: 0o770},
+		{in: "0640", want: 0o640},
+		{in: "600", want: 0o600},
+		{in: "0", want: 0},
+		{in: "000", want: 0},
+		{in: "0o0", want: 0},
+		{in: "7", want: 0o7},
+		{in: "0777", want: 0o777},
+		{in: "0o777", want: 0o777},
+		{in: "", wantErr: true},
+		{in: "0o", wantErr: true},
+		{in: "not-a-mode", wantErr: true},
+		{in: "-770", wantErr: true},
+		{in: "0x1f8", wantErr: true},
+		{in: "0b111111000", wantErr: true},
+		{in: "0o0o770", wantErr: true},
+		{in: "0o-770", wantErr: true},
+		{in: "+770", wantErr: true},
+		{in: "0_770", wantErr: true},
+		{in: "778", wantErr: true},
+		{in: "0779", wantErr: true},
+		{in: " 0770", wantErr: true},
+		{in: "0770 ", wantErr: true},
+		{in: "0770\n", wantErr: true},
+		{in: "rwxrwx---", wantErr: true},
+		{in: "u=rwx,g=rwx", wantErr: true},
+		{in: "99999999999999999999999", wantErr: true},
+		// Bits above 0777 would be dropped by os.Chmod, widening to 0777.
+		{in: "1770", wantErr: true},
+		{in: "01770", wantErr: true},
+		{in: "0o1770", wantErr: true},
+		{in: "1777", wantErr: true},
+		{in: "07777", wantErr: true},
+		{in: "17777", wantErr: true},
+		{in: "0o1000", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			got, err := ParseFileMode(tt.in)
+			if tt.wantErr {
+				if !errors.Is(err, ErrInvalidFileMode) {
+					t.Fatalf("ParseFileMode(%q) error = %v, want %v", tt.in, err, ErrInvalidFileMode)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("ParseFileMode(%q) error = %v", tt.in, err)
+			}
+
+			if got != tt.want {
+				t.Errorf("ParseFileMode(%q) = %#o, want %#o", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+// Every permission must parse back from each spelling it is commonly written in.
+func TestParseFileModeAllPermissions(t *testing.T) {
+	for m := range fs.ModePerm + 1 {
+		for _, s := range []string{
+			fmt.Sprintf("%o", m),
+			fmt.Sprintf("%03o", m),
+			fmt.Sprintf("%04o", m),
+			fmt.Sprintf("0o%o", m),
+			fmt.Sprintf("0O%03o", m),
+		} {
+			got, err := ParseFileMode(s)
+			if err != nil || got != m {
+				t.Errorf("ParseFileMode(%q) = %#o, %v; want %#o", s, got, err, m)
+			}
+		}
 	}
 }

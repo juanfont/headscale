@@ -1316,6 +1316,22 @@ func LoadServerConfig() (*Config, error) {
 		})
 	}
 
+	// YAML reads an unquoted 0770 as the integer 504, which cannot be told
+	// apart from a literal 504, so only a string is accepted.
+	socketPermRaw := viper.Get("unix_socket_permission")
+	socketPermStr, _ := socketPermRaw.(string)
+
+	socketPerm, err := util.ParseFileMode(socketPermStr)
+	if err != nil {
+		v.Add(&ConfigError{
+			Reason:  "unix_socket_permission is not a quoted octal file mode",
+			Current: []KV{{"unix_socket_permission", socketPermRaw}},
+			Maximum: `"0777"`,
+			Hint:    `quote the value, e.g. "0770"; unquoted, YAML reads 0770 as the number 504`,
+			Cause:   err,
+		})
+	}
+
 	dnsConfig, err := dns()
 	if err != nil {
 		v.Add(&ConfigError{
@@ -1428,7 +1444,7 @@ func LoadServerConfig() (*Config, error) {
 		ACMEURL:   viper.GetString("acme_url"),
 
 		UnixSocket:           viper.GetString("unix_socket"),
-		UnixSocketPermission: util.GetFileMode("unix_socket_permission"),
+		UnixSocketPermission: socketPerm,
 
 		OIDC: OIDCConfig{
 			OnlyStartIfOIDCIsAvailable: viper.GetBool(
@@ -1724,6 +1740,17 @@ func (c *Config) CloneTailcfgDNSConfig() *tailcfg.DNSConfig {
 	}
 
 	return c.TailcfgDNSConfig.Clone()
+}
+
+// TailcfgDebug returns the [tailcfg.Debug] for full map responses: nil when
+// logtail is enabled, leaving client log uploads as the client set them,
+// otherwise an instruction to stop uploading logs.
+func (c *Config) TailcfgDebug() *tailcfg.Debug {
+	if c.LogTail.Enabled {
+		return nil
+	}
+
+	return &tailcfg.Debug{DisableLogTail: true}
 }
 
 // SetExtraRecords replaces the ExtraRecords of [Config.TailcfgDNSConfig]. Safe

@@ -134,6 +134,46 @@ func TestRunSSHTests(t *testing.T) {
 			wantPass: true,
 		},
 		{
+			// Rules tolerate unregistered users; a test naming one fails.
+			name: "unknown-src-user",
+			policy: `{
+				"tagOwners": { "tag:server": ["alice@headscale.net"] },
+				"ssh": [{
+					"action": "accept",
+					"src":    ["alice@headscale.net"],
+					"dst":    ["tag:server"],
+					"users":  ["root"]
+				}],
+				"sshTests": [{
+					"src":    "ghost@headscale.net",
+					"dst":    ["tag:server"],
+					"accept": ["root"]
+				}]
+			}`,
+			wantPass:   false,
+			wantErrSub: []string{"ghost@headscale.net", "failed to resolve source"},
+		},
+		{
+			// A group tolerates unregistered members like any rule (#3513).
+			name: "group-src-with-unregistered-member",
+			policy: `{
+				"groups": {"group:eng": ["alice@headscale.net", "ghost@headscale.net"]},
+				"tagOwners": { "tag:server": ["alice@headscale.net"] },
+				"ssh": [{
+					"action": "accept",
+					"src":    ["group:eng"],
+					"dst":    ["tag:server"],
+					"users":  ["root"]
+				}],
+				"sshTests": [{
+					"src":    "group:eng",
+					"dst":    ["tag:server"],
+					"accept": ["root"]
+				}]
+			}`,
+			wantPass: true,
+		},
+		{
 			name: "accept-fail-no-rule",
 			policy: `{
 				"tagOwners": { "tag:server": ["alice@headscale.net"] },

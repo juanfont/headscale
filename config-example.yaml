@@ -361,6 +361,7 @@ dns:
 # Unix socket used for the CLI to connect without authentication
 # Note: for production you will want to set this to something like:
 unix_socket: /var/run/headscale/headscale.sock
+# Octal, quoted: YAML reads an unquoted 0770 as the number 504.
 unix_socket_permission: "0770"
 
 # OpenID Connect

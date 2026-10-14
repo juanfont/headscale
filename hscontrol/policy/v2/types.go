@@ -429,6 +429,13 @@ func (u *Username) resolve(_ *Policy, users types.Users, nodes views.Slice[types
 	)
 
 	user, err := u.resolveUser(users)
+	if errors.Is(err, ErrUserNotFound) {
+		// A policy may name users before they register (#2863). Report it
+		// as an empty set, not an error: callers that bail on error would
+		// otherwise drop a whole group for one missing member (#3513).
+		return &netipx.IPSet{}, nil
+	}
+
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -1841,6 +1848,11 @@ type Grant struct {
 	App               tailcfg.PeerCapMap `json:"app,omitzero"`
 
 	Via []Tag `json:"via,omitzero"`
+}
+
+// HasVia reports whether the grant routes through via-tagged nodes.
+func (g Grant) HasVia() bool {
+	return len(g.Via) > 0
 }
 
 // NodeAttrGrant attaches Tailscale node capabilities (and/or an IP-pool

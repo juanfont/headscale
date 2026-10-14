@@ -98,11 +98,21 @@ func (pak *PreAuthKey) Validate() error {
 		EmbedObject(pak).
 		Msg("PreAuthKey.Validate: checking key")
 
+	return pak.ValidAt(time.Now())
+}
+
+// ValidAt is [PreAuthKey.Validate] at a caller-chosen instant, without
+// logging, so a NodeStore writer can decide at its own clock.
+func (pak *PreAuthKey) ValidAt(now time.Time) error {
+	if pak == nil {
+		return PAKError("invalid authkey")
+	}
+
 	if pak.Revoked != nil {
 		return PAKError("authkey revoked")
 	}
 
-	if pak.Expiration != nil && pak.Expiration.Before(time.Now()) {
+	if pak.Expiration != nil && pak.Expiration.Before(now) {
 		return PAKError("authkey expired")
 	}
 
@@ -122,6 +132,29 @@ func (pak *PreAuthKey) Validate() error {
 // When a [PreAuthKey] has tags, nodes registered with it will be tagged nodes.
 func (pak *PreAuthKey) IsTagged() bool {
 	return len(pak.Tags) > 0
+}
+
+// Username returns the associated user's name, or TaggedDevices for a key
+// without a user. For tagged keys the associated user is the creator.
+func (pak *PreAuthKey) Username() string {
+	if pak.User != nil {
+		return pak.User.Username()
+	}
+
+	return TaggedDevices.Name
+}
+
+// ConvertsNodeToTagged reports whether this key changes a user-owned node
+// to tag ownership.
+func (pak *PreAuthKey) ConvertsNodeToTagged(node NodeView) bool {
+	return node.Valid() && pak.IsTagged() && !node.IsTagged()
+}
+
+// RetagsNode reports whether this key replaces an already-tagged node's
+// tags. Reusing the last key preserves subsequent admin tag changes.
+func (pak *PreAuthKey) RetagsNode(node NodeView) bool {
+	return node.IsTagged() && pak.IsTagged() &&
+		(!node.AuthKeyID().Valid() || node.AuthKeyID().Get() != pak.ID)
 }
 
 // maskedPrefix returns the key prefix in masked format for safe logging.

@@ -1496,6 +1496,28 @@ func TestHealthOnlyWriteReusesPeerMap(t *testing.T) {
 		peersCalls.Load())
 }
 
+// TestPrimaryRoutesForNodeSorted checks a router's primaries come back in
+// a stable order: they render into its self node, which the mapper resends
+// whenever it differs from what the node holds (issue #3502).
+func TestPrimaryRoutesForNodeSorted(t *testing.T) {
+	node := createTestNode(1, 1, "user1", "router")
+
+	prefixes := make([]netip.Prefix, 0, 8)
+	for i := range 8 {
+		prefixes = append(prefixes, netip.PrefixFrom(netip.AddrFrom4([4]byte{10, byte(i), 0, 0}), 16))
+	}
+
+	node.Hostinfo = &tailcfg.Hostinfo{Hostname: "router", RoutableIPs: prefixes}
+	node.ApprovedRoutes = prefixes
+	node.IsOnline = new(true)
+
+	store := NewNodeStore(types.Nodes{&node}, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+
+	for range 20 {
+		require.Equal(t, prefixes, store.PrimaryRoutesForNode(1))
+	}
+}
+
 func BenchmarkSnapshotPayloadDense(b *testing.B) {
 	const nodeCount = 500
 
@@ -1629,6 +1651,28 @@ func TestUpdateNodeRecomputesPeersOnlyForRelationInputs(t *testing.T) {
 			require.Equal(t, want, peersCalls.Load())
 		})
 	}
+}
+
+// TestUpdateNodeDiff proves the update returns the node the writer replaced
+// alongside the result, and an invalid before for a missing node.
+func TestUpdateNodeDiff(t *testing.T) {
+	node := createTestNode(1, 1, "user1", "node1")
+	oldKey := node.NodeKey
+
+	store := NewNodeStore(types.Nodes{&node}, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+	store.Start()
+
+	defer store.Stop()
+
+	newKey := key.NewNode().Public()
+	before, after, ok := store.UpdateNodeDiff(1, func(n *types.Node) { n.NodeKey = newKey })
+	require.True(t, ok)
+	assert.Equal(t, oldKey, before.NodeKey())
+	assert.Equal(t, newKey, after.NodeKey())
+
+	before, _, ok = store.UpdateNodeDiff(99, func(*types.Node) {})
+	assert.False(t, ok)
+	assert.False(t, before.Valid())
 }
 
 // TestListPeersExcludesSelf proves a node is never returned among its own
@@ -2438,4 +2482,139 @@ func TestPolicyCachesSurviveOldViewDuringBuild(t *testing.T) {
 			assert.Equal(t, tt.want, got, "cached artefact must reflect the written node")
 		})
 	}
+}
+
+// nodeKeyIndexMismatch describes where snap's NodeKey index disagrees with its
+// node list, or returns "" when every listed node, and nothing else, is indexed.
+func nodeKeyIndexMismatch(snap *Snapshot) string {
+	if len(snap.nodesByNodeKey) != len(snap.allNodes) {
+		return fmt.Sprintf("index holds %d keys, list holds %d nodes",
+			len(snap.nodesByNodeKey), len(snap.allNodes))
+	}
+
+	for _, nv := range snap.allNodes {
+		// A missing key yields the zero view, whose ID() panics.
+		got, ok := snap.nodesByNodeKey[nv.NodeKey()]
+		if !ok {
+			return fmt.Sprintf("node %d: key not indexed", nv.ID())
+		}
+
+		if got.ID() != nv.ID() {
+			return fmt.Sprintf("node %d: key indexed to node %d", nv.ID(), got.ID())
+		}
+	}
+
+	return ""
+}
+
+// TestNodeStoreNodeKeyIndexMatchesNodes pins the index DERP admission reads:
+// every published snapshot indexes exactly its listed nodes' keys, and a key
+// rotated away or deleted stops resolving, also on writes that reuse the
+// previous peer map.
+func TestNodeStoreNodeKeyIndexMatchesNodes(t *testing.T) {
+	var peersCalls atomic.Int64
+
+	countingPeersFunc := func(nodes []types.NodeView) map[types.NodeID][]types.NodeID {
+		peersCalls.Add(1)
+
+		return allowAllPeersFunc(nodes)
+	}
+
+	store := NewNodeStore(nil, countingPeersFunc, TestBatchSize, TestBatchTimeout)
+	store.Start()
+
+	defer store.Stop()
+
+	// Readers load snapshots while the writes below publish them, so a torn
+	// or stale index surfaces here and under -race.
+	var (
+		firstMismatch atomic.Pointer[string]
+		stop          atomic.Bool
+		readers       sync.WaitGroup
+	)
+
+	for range 4 {
+		readers.Go(func() {
+			for !stop.Load() {
+				msg := nodeKeyIndexMismatch(store.data.Load())
+				if msg != "" {
+					firstMismatch.CompareAndSwap(nil, &msg)
+				}
+			}
+		})
+	}
+
+	stopReaders := func() {
+		stop.Store(true)
+		readers.Wait()
+	}
+	t.Cleanup(stopReaders)
+
+	requireResolves := func(t *testing.T, k key.NodePublic, want types.NodeID) {
+		t.Helper()
+
+		nv, ok := store.GetNodeByNodeKey(k)
+		require.True(t, ok, "key of node %d must resolve", want)
+		require.True(t, nv.Valid())
+		require.Equal(t, want, nv.ID())
+	}
+
+	requireRefused := func(t *testing.T, k key.NodePublic) {
+		t.Helper()
+
+		_, ok := store.GetNodeByNodeKey(k)
+		require.False(t, ok, "key must not resolve")
+	}
+
+	n1 := createTestNode(1, 1, "user1", "node1")
+	n2 := createTestNode(2, 1, "user1", "node2")
+	n3 := createTestNode(3, 2, "user2", "node3")
+
+	for _, n := range []types.Node{n1, n2, n3} {
+		store.PutNode(n)
+	}
+
+	requireResolves(t, n1.NodeKey, 1)
+	requireResolves(t, n2.NodeKey, 2)
+	requireResolves(t, n3.NodeKey, 3)
+
+	peersCalls.Store(0)
+
+	// Rotation is not a peer-map input, so it takes the reuse path; repeat it
+	// so the readers overlap many publishes.
+	current := n1.NodeKey
+	for range 50 {
+		prev := current
+		current = key.NewNode().Public()
+
+		_, ok := store.UpdateNode(1, func(n *types.Node) { n.NodeKey = current })
+		require.True(t, ok)
+
+		requireRefused(t, prev)
+		requireResolves(t, current, 1)
+	}
+
+	store.UpdateNode(2, func(n *types.Node) { n.Hostname = "node2-renamed" })
+
+	nv, ok := store.GetNodeByNodeKey(n2.NodeKey)
+	require.True(t, ok)
+	require.Equal(t, "node2-renamed", nv.Hostname(),
+		"payload-only write must republish the indexed view")
+
+	require.Zero(t, peersCalls.Load(),
+		"rotation and payload writes must take the peer-map reuse path")
+
+	store.DeleteNode(3)
+	requireRefused(t, n3.NodeKey)
+	requireResolves(t, current, 1)
+	requireResolves(t, n2.NodeKey, 2)
+
+	stopReaders()
+
+	msg := firstMismatch.Load()
+	if msg != nil {
+		t.Fatalf("snapshot index disagreed with node list: %s", *msg)
+	}
+
+	require.Empty(t, nodeKeyIndexMismatch(store.data.Load()))
 }

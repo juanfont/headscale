@@ -246,5 +246,5 @@ fine-grained configuration instead.
 [^1]: Headscale also allows to store the policy in the database. This is typically only required in case a [web
     interface](integration/web-ui.md) is used.
 
-[^2]: Other key-only node attributes can be used as well. Find them in the client source code with `grep -E '^\s+NodeAttr\w+' tailcfg/tailcfg.go` or by using [GitHub code search (requires
-    login)](https://github.com/search?q=repo%3Atailscale%2Ftailscale%20language%3Ago%20path%3Atailcfg%2Ftailcfg.go%20symbol%3A%2FNodeAttr%5Cw%2B%2F&type=code).
+[^2]: Other key-only node attributes can be used as well. Find them in the client source code with `grep -E ' Cap ' tailcfg/nodecap/nodecap.go` or by using [GitHub code search (requires
+    login)](https://github.com/search?q=repo%3Atailscale%2Ftailscale+language%3Ago+path%3Atailcfg%2Fnodecap%2Fnodecap.go+%2F+Cap+%2F&type=code).

@@ -27,6 +27,9 @@ const (
 // ErrDirectoryPermission is returned when creating a directory fails due to permission issues.
 var ErrDirectoryPermission = errors.New("creating directory failed with permission error")
 
+// ErrInvalidFileMode is returned by [ParseFileMode].
+var ErrInvalidFileMode = errors.New("not an octal file mode between 0 and 0777")
+
 // ErrUnknownFileFormat is returned for a file whose extension names no format
 // [UnmarshalByExt] reads.
 var ErrUnknownFileFormat = errors.New("unknown file format, want .json, .hujson, .yaml or .yml")
@@ -87,15 +90,16 @@ func AbsolutePathFromConfigPath(path string) string {
 	return path
 }
 
-func GetFileMode(key string) fs.FileMode {
-	modeStr := viper.GetString(key)
-
-	mode, err := strconv.ParseUint(modeStr, Base8, BitSize64)
-	if err != nil {
-		return PermissionFallback
+// ParseFileMode parses an octal permission such as "0770", "770" or "0o770".
+// Bits above [fs.ModePerm] are rejected: [os.Chmod] drops them, so "17777"
+// would silently become 0777.
+func ParseFileMode(s string) (fs.FileMode, error) {
+	mode, err := strconv.ParseUint(strings.TrimPrefix(strings.ToLower(s), "0o"), Base8, BitSize64)
+	if err != nil || mode > uint64(fs.ModePerm) {
+		return 0, fmt.Errorf("%w: %q", ErrInvalidFileMode, s)
 	}
 
-	return fs.FileMode(mode) //nolint:gosec // file mode is bounded by ParseUint
+	return fs.FileMode(mode), nil
 }
 
 func EnsureDir(dir string) error {

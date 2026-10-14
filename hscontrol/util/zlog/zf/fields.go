@@ -78,7 +78,6 @@ const (
 	AuthKeyUsed     = "authkey.used"
 	AuthKeyExpired  = "authkey.expired"
 	AuthKeyReusable = "authkey.reusable"
-	NodeKeyRotation = "nodekey.rotation"
 )
 
 // APIKey fields.

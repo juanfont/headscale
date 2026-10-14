@@ -1,6 +1,6 @@
 # For testing purposes only
 
-FROM golang:1.27.1-alpine AS build-env
+FROM golang:1.27.2-alpine AS build-env
 
 # The builder pin is a floor, not a ceiling: this stage compiles a tailscale
 # tree cloned from an unpinned branch, which can raise its go directive at any

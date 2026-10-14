@@ -147,19 +147,20 @@ func (h *Headscale) handleVerifyRequest(
 		return NewHTTPError(http.StatusBadRequest, "Bad Request: invalid JSON", fmt.Errorf("parsing DERP client request: %w", err))
 	}
 
-	allow := h.state.ListNodes().ContainsFunc(func(n types.NodeView) bool {
-		return n.NodeKey() == derpAdmitClientRequest.NodePublic
-	})
+	// Every DERP connect lands here, unauthenticated, so use the NodeKey
+	// index rather than scanning every node.
+	nv, ok := h.state.GetNodeByNodeKey(derpAdmitClientRequest.NodePublic)
 
 	resp := &tailcfg.DERPAdmitClientResponse{
-		Allow: allow,
+		Allow: ok && nv.Valid(),
 	}
 
 	return json.NewEncoder(writer).Encode(resp)
 }
 
-// VerifyHandler see https://github.com/tailscale/tailscale/blob/964282d34f06ecc06ce644769c66b0b31d118340/derp/derp_server.go#L1159
-// DERP use verifyClientsURL to verify whether a client is allowed to connect to the DERP server.
+// VerifyHandler answers a DERP server's client-verification POST
+// ([tailcfg.DERPAdmitClientRequest]). A client is admitted while its NodeKey
+// belongs to a registered node; expiry, tags and ephemerality do not gate it.
 func (h *Headscale) VerifyHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
