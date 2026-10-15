@@ -455,6 +455,10 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	// Send both changes. Empty changes are ignored by Change().
 	h.Change(changed, routesChange)
 
+	if node.IsEphemeral() {
+		h.ephemeralGC.Schedule(node.ID(), h.cfg.Node.Ephemeral.InactivityTimeout)
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("auto approving routes: %w", err)
 	}
