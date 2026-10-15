@@ -426,6 +426,55 @@ in
                 '';
                 example = [ "mydomain.internal" ];
               };
+
+              certificates = {
+                enabled = lib.mkOption {
+                  type = lib.types.bool;
+                  default = false;
+                  description = ''
+                    Whether nodes can get TLS certificates for their MagicDNS name
+                    with `tailscale cert`. Needs a public {option}`base_domain` and
+                    {option}`dns.challenge.provider`.
+                  '';
+                };
+
+                zone = lib.mkOption {
+                  type = lib.types.str;
+                  default = "";
+                  description = ''
+                    DNS zone the challenge records are written to. Empty means
+                    {option}`base_domain`.
+                  '';
+                  example = "example.com";
+                };
+              };
+
+              challenge.provider = lib.mkOption {
+                type = lib.types.nullOr (
+                  lib.types.submodule {
+                    freeformType = settingsFormat.type;
+                    options.name = lib.mkOption {
+                      type = lib.types.str;
+                      description = ''
+                        DNS provider that writes ACME DNS-01 challenge records:
+                        acmedns, cloudflare, gigahost, hetzner, powerdns or rfc2136.
+                      '';
+                    };
+                  }
+                );
+                default = null;
+                description = ''
+                  DNS provider for ACME DNS-01 challenges. Every key besides
+                  `name` is a setting of the provider; a text setting can be read
+                  from a file by adding `_path` to its name.
+                '';
+                example = lib.literalExpression ''
+                  {
+                    name = "cloudflare";
+                    api_token_path = "''${CREDENTIALS_DIRECTORY}/cloudflare-token";
+                  }
+                '';
+              };
             };
 
             oidc = {
@@ -676,6 +725,13 @@ in
       {
         assertion = with cfg.settings; dns.override_local_dns -> dns.nameservers.global != [ ];
         message = "dns.nameservers.global must be set when overriding local DNS";
+      }
+      {
+        assertion =
+          with cfg.settings;
+          dns.certificates.enabled
+          -> dns.magic_dns && dns.base_domain != "" && dns.challenge.provider != null;
+        message = "dns.certificates.enabled needs dns.magic_dns, dns.base_domain and dns.challenge.provider";
       }
       (assertRemovedOption [ "settings" "acl_policy_path" ] "Use `policy.path` instead.")
       (assertRemovedOption [ "settings" "db_host" ] "Use `database.postgres.host` instead.")
