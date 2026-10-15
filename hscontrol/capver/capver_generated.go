@@ -44,6 +44,7 @@ var tailscaleToCapVer = map[string]tailcfg.CapabilityVersion{
 	"v1.96":  133,
 	"v1.98":  138,
 	"v1.102": 142,
+	"v1.104": 148,
 }
 
 var capVerToTailscaleVer = map[tailcfg.CapabilityVersion]string{
@@ -81,6 +82,7 @@ var capVerToTailscaleVer = map[tailcfg.CapabilityVersion]string{
 	133: "v1.96",
 	138: "v1.98",
 	142: "v1.102",
+	148: "v1.104",
 }
 
 // SupportedMajorMinorVersions is the number of major.minor Tailscale versions supported.
@@ -88,4 +90,4 @@ const SupportedMajorMinorVersions = 10
 
 // MinSupportedCapabilityVersion represents the minimum capability version
 // supported by this Headscale instance (latest 10 minor versions)
-const MinSupportedCapabilityVersion tailcfg.CapabilityVersion = 115
+const MinSupportedCapabilityVersion tailcfg.CapabilityVersion = 116
