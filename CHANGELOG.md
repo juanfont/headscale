@@ -117,6 +117,9 @@ clients, and how to run the same setup without Nix.
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
 - Fix `headscale users destroy`/`rename` reporting "multiple users match query" when no user matches; an ambiguous match now lists the matching users [#3476](https://github.com/juanfont/headscale/pull/3476)
 - Deleting a user that still owns nodes now lists the nodes (ID and hostname) that must be deleted first [#3475](https://github.com/juanfont/headscale/pull/3475)
+- Fix deleted nodes, and peers hidden by a policy change, staying listed in the Tailscale Android app; removed peers are now sent as their own incremental map update [#3492](https://github.com/juanfont/headscale/pull/3492)
+- Policy changes no longer resend DNS configuration to every node, sparing clients a full netmap rebuild; a node gets its DNS configuration when its own NextDNS nodeAttrs, tags or hostname change, which also fixes NextDNS device metadata going stale after a hostname change [#3492](https://github.com/juanfont/headscale/pull/3492)
+- Add `oidc.retry_interval` option to periodically retry OIDC provider discovery if unavailable on startup [#3473](https://github.com/juanfont/headscale/pull/3473)
 - Headscale now requires Go 1.27 to build
 - `headscale preauthkeys create --user` accepts a user name as well as an ID
 - `derp.paths` files may be Tailscale JSON or HuJSON DERP maps as well as YAML
