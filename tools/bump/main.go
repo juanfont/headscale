@@ -19,6 +19,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -112,7 +113,37 @@ func cmdRun(ctx context.Context) error {
 		return err
 	}
 
-	if err := startBranch(ctx, r, runCfg.Remote, runCfg.Base, runCfg.Branch); err != nil { //nolint:noinlineerr
+	// Looked up before the branch is built: an open pull request holding
+	// hand-pushed commits decides what the branch starts from.
+	var (
+		slug string
+		open *prState
+	)
+
+	if !noPR {
+		slug, err = currentSlug(ctx, r, runCfg.Repo)
+		if err != nil {
+			return err
+		}
+
+		pr, err := lookupPR(ctx, r, slug, runCfg.Branch)
+		if err != nil {
+			return err
+		}
+
+		if pr != nil && pr.State == "OPEN" && !pr.hasLabel(skipLabel) {
+			open = pr
+		}
+	}
+
+	carried, err := startBranch(ctx, r, runCfg.Remote, runCfg.Base, runCfg.Branch, open != nil)
+	if errors.Is(err, errRebaseConflict) {
+		_ = commentOnce(ctx, r, slug, open.Number,
+			"The commits pushed by hand here no longer rebase onto "+runCfg.Base+
+				", so the automation has paused. Rebase the branch, or merge or close this pull request.")
+	}
+
+	if err != nil {
 		return err
 	}
 
@@ -136,7 +167,7 @@ func cmdRun(ctx context.Context) error {
 		return err
 	}
 
-	body := renderBody(results, markerOf(results, tree, head), gate)
+	body := renderBody(results, markerOf(results, tree, head), gate, carried)
 
 	if err := writeStepSummary(body); err != nil { //nolint:noinlineerr
 		return err
@@ -154,19 +185,21 @@ func cmdRun(ctx context.Context) error {
 		return nil
 	}
 
-	slug, err := currentSlug(ctx, r, runCfg.Repo)
-	if err != nil {
-		return err
+	var lease string
+	if open != nil {
+		lease = open.HeadRefOid
 	}
 
 	return publish(ctx, r, publishOptions{
-		Slug:   slug,
-		Remote: runCfg.Remote,
-		Branch: runCfg.Branch,
-		Base:   runCfg.Base,
-		Title:  "all: bump pinned versions",
-		Gate:   gate,
-		Force:  runCfg.Force,
+		Slug:    slug,
+		Remote:  runCfg.Remote,
+		Branch:  runCfg.Branch,
+		Base:    runCfg.Base,
+		Title:   "all: bump pinned versions",
+		Gate:    gate,
+		Force:   runCfg.Force,
+		Lease:   lease,
+		Carried: carried,
 	}, results)
 }
 
