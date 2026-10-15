@@ -166,7 +166,9 @@ func sqliteAtom(ctx context.Context, r *repo) (string, error) {
 }
 
 // directRequirements is every direct requirement not already owned by a
-// lockstep atom.
+// lockstep atom, plus the modules behind go.mod's tool lines. Those are marked
+// indirect when nothing imports them, yet go generate runs them, and a stale
+// golang.org/x/tools cannot read the export data a newer Go writes.
 func directRequirements(r *repo) ([]string, error) {
 	f, err := parseGoMod(r)
 	if err != nil {
@@ -181,10 +183,15 @@ func directRequirements(r *repo) ([]string, error) {
 		modLibc:      true,
 	}
 
+	tools := map[string]bool{}
+	for _, t := range f.Tool {
+		tools[toolModule(f, t.Path)] = true
+	}
+
 	var paths []string
 
 	for _, req := range f.Require {
-		if req.Indirect || owned[req.Mod.Path] {
+		if owned[req.Mod.Path] || (req.Indirect && !tools[req.Mod.Path]) {
 			continue
 		}
 
@@ -192,6 +199,21 @@ func directRequirements(r *repo) ([]string, error) {
 	}
 
 	return paths, nil
+}
+
+// toolModule finds the required module providing pkg. The longest match wins,
+// since a nested module shadows its parent's tree.
+func toolModule(f *modfile.File, pkg string) string {
+	var best string
+
+	for _, req := range f.Require {
+		p := req.Mod.Path
+		if (pkg == p || strings.HasPrefix(pkg, p+"/")) && len(p) > len(best) {
+			best = p
+		}
+	}
+
+	return best
 }
 
 // moduleAtom upgrades one direct requirement. One atom per module costs nothing
