@@ -245,7 +245,7 @@ tls:
     hostname: ""
 
     # Type of ACME challenge to use, currently supported types:
-    # HTTP-01 or TLS-ALPN-01
+    # HTTP-01, TLS-ALPN-01 or DNS-01 (uses dns.challenge)
     challenge_type: HTTP-01
 
     # When HTTP-01 challenge is chosen, letsencrypt must set up a
@@ -366,7 +366,8 @@ dns:
     # DNS zone the provider writes to. Defaults to base_domain.
     # zone: example.com
 
-  # DNS provider for ACME DNS-01 challenges, used by dns.certificates.
+  # DNS provider for ACME DNS-01 challenges, used by dns.certificates and
+  # by tls.acme with challenge_type DNS-01.
   challenge:
     # How long to wait for a record to show up on every authoritative
     # nameserver. 0 disables the check.
@@ -386,7 +387,9 @@ dns:
     # acmedns needs a registration per certificate name under config, and
     # each _acme-challenge name CNAMEd to its registration's fulldomain. A
     # node without one gets no certificate. A registration holds two
-    # pending challenges; more are refused until one expires.
+    # pending challenges; more are refused until one expires. One account
+    # (username, password, subdomain and server_url instead of config)
+    # serves headscale's own certificate only.
     # provider:
     #   name: acmedns
     #   config:

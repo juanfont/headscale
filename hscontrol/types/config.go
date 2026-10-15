@@ -278,7 +278,7 @@ var legacyTLSKeys = map[string]string{
 var tlsDefaults = map[string]string{
 	"tls.acme.challenge_type": HTTP01ChallengeType,
 	"tls.acme.http_listen":    ":http",
-	"tls.acme.cache_dir":      "/var/www/.cache",
+	"tls.acme.cache_dir":      "/var/lib/headscale/cache",
 }
 
 // warnLegacyTLSKeys points at the tls keys for flat keys in the config
@@ -749,11 +749,12 @@ func validateServerConfigInto(v *configValidator) {
 
 	validateListenerCollisions(v)
 
-	if ct := tlsKey("tls.acme.challenge_type"); ct != HTTP01ChallengeType && ct != TLSALPN01ChallengeType {
+	if ct := tlsKey("tls.acme.challenge_type"); ct != HTTP01ChallengeType &&
+		ct != TLSALPN01ChallengeType && ct != DNS01ChallengeType {
 		v.Add(&ConfigError{
 			Reason:  "tls.acme.challenge_type has an unsupported value",
 			Current: []KV{{"tls.acme.challenge_type", ct}},
-			Allowed: []string{HTTP01ChallengeType, TLSALPN01ChallengeType},
+			Allowed: []string{HTTP01ChallengeType, TLSALPN01ChallengeType, DNS01ChallengeType},
 			Hint:    "pick one of the allowed values; HTTP-01 is the default",
 		})
 	}
@@ -935,7 +936,21 @@ func validateCertificatesConfig(v *configValidator) {
 		})
 	}
 
-	if !viper.GetBool("dns.certificates.enabled") {
+	enabled := viper.GetBool("dns.certificates.enabled")
+	challengeType := tlsKey("tls.acme.challenge_type")
+	ownDNS01 := tlsKey("tls.acme.hostname") != "" && challengeType == DNS01ChallengeType
+
+	if (enabled || ownDNS01) && viper.GetString("dns.challenge.provider.name") == "" {
+		v.Add(&ConfigError{
+			Reason:  "dns.certificates and tls.acme DNS-01 require dns.challenge.provider",
+			Current: []KV{{"dns.certificates.enabled", enabled}, {"tls.acme.challenge_type", challengeType}},
+			Allowed: hsdns.ProviderNames(),
+			Hint:    "configure the DNS provider that hosts dns.base_domain or tls.acme.hostname under dns.challenge.provider",
+			See:     dnsDocsURL,
+		})
+	}
+
+	if !enabled {
 		return
 	}
 
@@ -944,16 +959,6 @@ func validateCertificatesConfig(v *configValidator) {
 			Reason:  "dns.certificates requires dns.magic_dns",
 			Current: []KV{{"dns.certificates.enabled", true}, {"dns.magic_dns", false}},
 			Hint:    "certificates are issued for MagicDNS names; set dns.magic_dns: true",
-			See:     dnsDocsURL,
-		})
-	}
-
-	if viper.GetString("dns.challenge.provider.name") == "" {
-		v.Add(&ConfigError{
-			Reason:  "dns.certificates requires dns.challenge.provider",
-			Current: []KV{{"dns.certificates.enabled", true}},
-			Allowed: hsdns.ProviderNames(),
-			Hint:    "configure the DNS provider that hosts dns.base_domain under dns.challenge.provider",
 			See:     dnsDocsURL,
 		})
 	}
@@ -1017,6 +1022,8 @@ func dnsChallengeConfig() (DNSChallengeConfig, error) {
 		return cfg, err
 	}
 
+	// Only node certificates let a client pick what is published; a record
+	// shared by headscale's own certificate alone is harmless.
 	if iso, ok := provider.(hsdns.Isolator); ok && viper.GetBool("dns.certificates.enabled") {
 		err = iso.CheckIsolation()
 		if err != nil {
