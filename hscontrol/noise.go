@@ -18,9 +18,9 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"golang.org/x/net/http2"
 	"tailscale.com/control/controlbase"
 	"tailscale.com/control/controlhttp/controlhttpserver"
+	"tailscale.com/net/netutil"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
@@ -74,10 +74,8 @@ const (
 type noiseServer struct {
 	headscale *Headscale
 
-	httpBaseConfig *http.Server
-	http2Server    *http2.Server
-	conn           *controlbase.Conn
-	machineKey     key.MachinePublic
+	conn       *controlbase.Conn
+	machineKey key.MachinePublic
 
 	// [tailcfg.EarlyNoise]-related stuff
 	challenge       key.ChallengePrivate
@@ -204,18 +202,16 @@ func (h *Headscale) NoiseUpgradeHandler(
 		r.Post("/c2n", ns.NotImplementedHandler)
 	})
 
-	ns.httpBaseConfig = &http.Server{
+	srv := &http.Server{
 		Handler:           r,
 		ReadHeaderTimeout: types.HTTPTimeout,
+		Protocols:         new(http.Protocols),
 	}
-	ns.http2Server = &http2.Server{}
+	// Noise already encrypts, so HTTP/2 runs without TLS.
+	srv.Protocols.SetUnencryptedHTTP2(true)
 
-	ns.http2Server.ServeConn(
-		noiseConn,
-		&http2.ServeConnOpts{
-			BaseConfig: ns.httpBaseConfig,
-		},
-	)
+	// Serve returns once the listener is drained; the connection outlives it.
+	_ = srv.Serve(netutil.NewOneConnListener(noiseConn, nil))
 }
 
 func unsupportedClientError(version tailcfg.CapabilityVersion) error {
