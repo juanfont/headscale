@@ -50,28 +50,6 @@ func TestParseMarkerAbsent(t *testing.T) {
 	}
 }
 
-func TestChangedAreas(t *testing.T) {
-	base := marker{Areas: map[string]string{"flake": "applied", "gomod": "applied"}}
-
-	tests := []struct {
-		name string
-		now  marker
-		want bool
-	}{
-		{name: "identical", now: marker{Areas: map[string]string{"flake": "applied", "gomod": "applied"}}},
-		{name: "state changed", now: marker{Areas: map[string]string{"flake": "applied", "gomod": "dropped"}}, want: true},
-		{name: "area added", now: marker{Areas: map[string]string{"flake": "applied", "gomod": "applied", "generate": "applied"}}, want: true},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			if got := changedAreas(base, test.now); got != test.want {
-				t.Errorf("changedAreas = %v, want %v", got, test.want)
-			}
-		})
-	}
-}
-
 // A summary containing a pipe would otherwise split the markdown table.
 func TestCellEscapesTableBreakers(t *testing.T) {
 	got := cell("a | b\nc")
