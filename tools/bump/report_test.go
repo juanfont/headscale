@@ -26,7 +26,7 @@ func TestMarkerRoundTrip(t *testing.T) {
 	}
 
 	want := markerOf(results, "tree-sha", "head-sha")
-	body := renderBody(results, want, gateFull)
+	body := renderBody(results, want, gateFull, nil)
 
 	got, ok := parseMarker(body)
 	if !ok {
