@@ -7,6 +7,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/servertest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/envknob"
 	"tailscale.com/types/netmap"
 )
 
@@ -243,5 +244,51 @@ func TestContentVerification(t *testing.T) {
 		// any future change should also propagate.
 		assert.GreaterOrEqual(t, h.Client(1).UpdateCount(), initialCount,
 			"client 1 should have received updates")
+	})
+}
+
+// TestLogTailDisabledOnEveryStream drives the real client, whose
+// handleDebugMessage records DisableLogTail in the process-wide
+// TS_NO_LOGS_NO_SUPPORT knob. The knob is cleared before each stream and read
+// after that stream's first netmap. Not parallel: every client in the process
+// shares the knob.
+func TestLogTailDisabledOnEveryStream(t *testing.T) {
+	const knob = "TS_NO_LOGS_NO_SUPPORT"
+
+	// Restores the knob afterwards and panics if this test is made parallel.
+	envknob.SetenvForTest(t, knob, "")
+
+	t.Run("disabled", func(t *testing.T) {
+		envknob.Setenv(knob, "")
+
+		h := servertest.NewHarness(t, 1)
+		assert.True(t, envknob.NoLogsNoSupport(),
+			"initial map must disable client log uploads")
+
+		envknob.Setenv(knob, "")
+
+		c := h.Client(0)
+		c.Reconnect(t)
+		c.WaitForUpdate(t, 10*time.Second)
+		assert.True(t, envknob.NoLogsNoSupport(),
+			"a reconnect's initial map must disable client log uploads")
+
+		envknob.Setenv(knob, "")
+		h.AddClient(t).WaitForPeers(t, 1, 10*time.Second)
+		assert.True(t, envknob.NoLogsNoSupport(),
+			"a new client's initial map must disable client log uploads")
+	})
+
+	t.Run("enabled", func(t *testing.T) {
+		envknob.Setenv(knob, "")
+
+		h := servertest.NewHarness(t, 1,
+			servertest.WithServerOptions(servertest.WithLogTailEnabled()))
+
+		c := h.Client(0)
+		c.Reconnect(t)
+		c.WaitForUpdate(t, 10*time.Second)
+		assert.False(t, envknob.NoLogsNoSupport(),
+			"logtail.enabled must leave client log uploads alone")
 	})
 }

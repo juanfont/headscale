@@ -66,7 +66,7 @@ similar lines of code is better than a premature abstraction.
 ## Quick Start
 
 ```bash
-# Enter the nix dev shell (Go 1.27.0, buf, golangci-lint, prek)
+# Enter the nix dev shell (Go 1.27.2, buf, golangci-lint, prek)
 nix develop
 
 # Full development workflow: fmt + lint + test + build
@@ -87,9 +87,13 @@ go test -race ./...
 # Integration tests — read cmd/hi/README.md first
 go run ./cmd/hi doctor
 go run ./cmd/hi run "TestName"
+
+# Version pins — see "Version Bumps" below
+go run ./tools/bump plan     # what is stale, changes nothing
+go run ./tools/bump verify   # do the pins still agree
 ```
 
-Go 1.27.0 minimum (per `go.mod:3`). `nix develop` pins the exact toolchain
+Go 1.27.2 minimum (per `go.mod:3`). `nix develop` pins the exact toolchain
 used in CI.
 
 ## Pre-Commit with prek
@@ -105,7 +109,8 @@ prek run --all-files    # run hooks on the full tree
 
 Hooks cover: file hygiene (trailing whitespace, line endings, BOM),
 syntax validation (JSON/YAML/TOML/XML), merge-conflict markers, private
-key detection, nixpkgs-fmt, prettier, and `golangci-lint` via
+key detection, `treefmt` (the same formatter `nix fmt` and the flake's
+formatting check run), `mdformat` for `docs/`, and `golangci-lint` via
 `--new-from-rev=HEAD~1` (see the golangci-lint hook in .pre-commit-config.yaml). A manual
 invocation with an `upstream/main` remote is equivalent:
 
@@ -140,7 +145,9 @@ headscale/
   `NodeStore` (`node_store.go`). All cross-subsystem operations go
   through `State`.
 - `db/` — GORM layer, migrations, schema. `node.go`, `users.go`,
-  `api_key.go`, `preauth_keys.go`, `ip.go`, `policy.go`.
+  `ip.go`, `policy.go`; credentials (API keys, pre-auth keys, OAuth) share
+  one table: `secret.go` (generate/verify), `api_key.go`,
+  `preauth_keys.go`, `oauth.go`, `migrate_credentials.go`.
 - `mapper/` — streaming batcher that distributes MapResponses to
   clients: `batcher.go`, `node_conn.go`, `builder.go`, `mapper.go`.
   Performance-critical.
@@ -180,19 +187,19 @@ headscale/
 ## Database Migration Rules
 
 These rules are load-bearing — violating them corrupts production
-databases. The `migrationsRequiringFKDisabled` map in
-`hscontrol/db/db.go` is frozen (see the comment above it). All new
+databases. Migrations start at 0.29.0; `checkMinimumMigration` in
+`hscontrol/db/versioncheck.go` refuses older databases. All new
 migrations must:
 
 1. **Never reorder existing migrations.** Migration order is immutable
    once committed.
 2. **Only add new migrations to the end** of the migrations array.
-3. **Never disable foreign keys.** No new entries in
-   `migrationsRequiringFKDisabled`.
+3. **Never disable foreign keys.**
 4. **Use the migration ID format** `YYYYMMDDHHMM-short-description`
-   (timestamp + descriptive suffix). Example: `202602201200-clear-tagged-node-user-id`.
-5. **Never rename columns** that later migrations reference. Let
-   `AutoMigrate` create a new column if needed.
+   (timestamp + descriptive suffix). Example: `202607241200-clear-tagged-node-expiry`.
+5. **Never use `AutoMigrate`** in a migration; write explicit DDL.
+6. **Run multi-statement migrations in `tx.Transaction`** so a failure
+   leaves the database retryable.
 
 ## Tags-as-Identity
 
@@ -254,6 +261,36 @@ Key reminders:
 - Flakes are almost always code, not infrastructure. Read `hs-*.stderr.log`
   before blaming Docker.
 
+## Version Bumps
+
+`tools/bump` keeps the pinned versions current and opens one pull request a
+day. `bump plan` reports what is stale without touching anything; `bump verify`
+exits non-zero when the pins no longer agree.
+
+Three rules it encodes. A hand-written bump has to follow them too:
+
+1. **`modernc.org/libc` moves only to the version `modernc.org/sqlite`
+   requires**, and **`gvisor.dev/gvisor` only to the version `tailscale.com`
+   requires**. Both are read off the owner's own `go.mod` through
+   `proxy.golang.org`, never guessed. If the partner cannot be resolved,
+   neither half moves. The reasoning lives in the NOTE blocks in `go.mod`;
+   `go mod tidy` can detach those comments from the lines they document, so
+   check they are still attached.
+2. **Any `go.mod` or `go.sum` change needs `go run ./cmd/vendorhash update`.**
+   `flake.nix` reads the vendor hash from `flakehashes.json`, so skipping this
+   leaves a tree that cannot `nix build`.
+3. **`go.mod`'s `go` directive must not exceed the Go nixpkgs ships.** `go get`
+   raises it silently when a dependency demands a newer toolchain, and the go
+   command then downloads one, so `go build` succeeds locally. The nix builders
+   set `GOTOOLCHAIN=local` and fail. `bump verify` reports the drift; the tool
+   never edits the directive itself.
+
+`Dockerfile.tailscale-HEAD` and `Dockerfile.derper` compile a tailscale tree
+cloned from an unpinned branch, so their builder image is a floor, not a
+target: it has to be at least upstream's `go` directive. They set
+`GOTOOLCHAIN=auto` so an upstream bump degrades to a slower build rather than
+a broken one.
+
 ## Code Conventions
 
 - **Commit messages** follow Go-style `package: imperative description`.
@@ -276,7 +313,7 @@ Key reminders:
 - **Tests**: prefer `hscontrol/servertest/` for server-level tests that
   don't need Docker — faster than full integration tests.
 - **View types in read paths**: response serializers must read through
-  `NodeView`/`UserView`/`PreAuthKeyView` accessors. `AsStruct()` clones the
+  `NodeView`/`UserView`/`PreAuthKeyView`/`CredentialView` accessors. `AsStruct()` clones the
   whole record on every read — it is only for DB-write/merge clones and mutable
   working copies, never to build an API response. `grep AsStruct hscontrol/api`
   must come back empty.
@@ -294,3 +331,9 @@ Key reminders:
 - **Do not edit `gen/`** — it is regenerated from `proto/` by
   `make generate`.
 - **Proto changes + code changes should be two commits**, not one.
+- **The NixOS test kit is a public contract** consumed by other projects'
+  NixOS tests: the "Contract" in `nix/README.md`, covering
+  `nix/testkit.nix`, `nix/testkit-peer.nix`, the embedded DERP region
+  and `HEADSCALE_DEBUG_INSECURE_TLS_LISTEN_ADDR`, and the CLI commands
+  `hs-authkey` calls. Breaking it needs a "NixOS test kit" BREAKING entry
+  in `CHANGELOG.md`.

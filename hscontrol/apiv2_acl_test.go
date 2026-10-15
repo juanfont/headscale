@@ -113,21 +113,18 @@ func TestAPIv2ACLSetHuJSONWithComments(t *testing.T) {
 	api := registerAPIV2(t, app)
 
 	// Line comment + trailing comma: valid HuJSON, invalid strict JSON. The
-	// server accepts it (the SDK sends the policy file this way) and standardizes
-	// it on store; the ACL content survives even though comments are blanked.
+	// server accepts it (the SDK sends the policy file this way) and stores it
+	// as written, so a client re-reading it sees no diff.
 	policy := "{\n  // allow all\n  \"acls\": [{\"action\":\"accept\",\"src\":[\"*\"],\"dst\":[\"*:*\"]}],\n}"
 
 	set := setACL(t, api, policy, "application/hujson")
 	require.Equalf(t, http.StatusOK, set.Code, "body: %s", set.Body)
-
-	// Server-side: stored, parseable, ACL intact.
-	stored := storedPolicy(t, app)
-	assert.Contains(t, stored, `"action":"accept"`)
+	assert.Equal(t, policy, storedPolicy(t, app))
 
 	// GET round-trips the stored form and its content-addressed ETag.
 	raw := api.Get("/api/v2/tailnet/-/acl", "Accept: application/hujson")
-	assert.Equal(t, stored, raw.Body.String())
-	assert.Equal(t, policyETagOf(stored), raw.Header().Get("Etag"))
+	assert.Equal(t, policy, raw.Body.String())
+	assert.Equal(t, policyETagOf(policy), raw.Header().Get("Etag"))
 }
 
 func TestAPIv2ACLETagChangesOnChangeStableOnNoop(t *testing.T) {

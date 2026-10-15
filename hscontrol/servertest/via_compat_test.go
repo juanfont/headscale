@@ -1,14 +1,16 @@
 // This file implements data-driven via grant compatibility tests using
-// golden data captured from Tailscale SaaS (v29, v30, v31, v33, v35,
-// v36). These scenarios exercise via grant steering with peer
-// connectivity and cross-subnet forwarding.
+// golden data captured from Tailscale SaaS. These scenarios exercise via
+// grant steering with peer connectivity, cross-subnet forwarding and
+// exit nodes.
 //
-// Test data source: ../policy/v2/testdata/grant_results/via-grant-v{29,30,31,33,35,36}.hujson
+// Test data source: ../policy/v2/testdata/grant_results/, see viaCompatTests
 // Source format:    github.com/juanfont/headscale/hscontrol/types/testcapture
 package servertest_test
 
 import (
 	"context"
+	"fmt"
+	"maps"
 	"net/netip"
 	"path/filepath"
 	"slices"
@@ -20,7 +22,9 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go4.org/netipx"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/peercap"
 	"tailscale.com/types/netmap"
 )
 
@@ -29,12 +33,24 @@ var viaCompatTests = []struct {
 	id   string
 	desc string
 }{
+	{"grant-v13", "group src steers subnet via router to members only"},
 	{"via-grant-v29", "crossed subnet steering: group-a via router-a, group-b via router-b"},
 	{"via-grant-v30", "crossed mixed: subnet via router-a/b, exit via exit-b/a"},
 	{"via-grant-v31", "peer connectivity + via exit A/B steering"},
 	{"via-grant-v33", "single via grant + HA primary election"},
 	{"via-grant-v35", "via grant with unadvertised destination"},
 	{"via-grant-v36", "full complex: peer connectivity + crossed subnet + crossed exit"},
+	{"via-grant-v52", "members reach the internet only via tag:exit, admins reach everything"},
+	{"via-grant-v53", "via exit steering plus a member rule to a tagged host port"},
+	{"via-grant-v54", "via exit steering plus a member rule to autogroup:self"},
+	{"via-grant-v55", "via exit steering plus a member rule to a private subnet"},
+	{"via-grant-v56", "via exit steering plus a plain member rule to autogroup:internet"},
+	{"via-grant-v57", "via exit steering plus a member rule to a non-via exit node"},
+	{"via-grant-v58", "no via grant: approved exit nodes plus a member rule to a tagged host port"},
+	{"via-grant-v59", "via exit steering for tagged clients; members have an unrelated rule"},
+	{"via-grant-v60", "user-owned exit node outside the via tag; members have an autogroup:self rule"},
+	{"via-grant-v61", "via exit steering plus a member capability grant to a tagged host"},
+	{"via-grant-v62", "via exit steering plus a member rule to autogroup:internet on one port"},
 }
 
 // TestViaGrantMapCompat loads golden captures from Tailscale SaaS and
@@ -46,14 +62,14 @@ var viaCompatTests = []struct {
 //
 // CROSS-DEPENDENCY WARNING:
 // This test reads golden files from ../policy/v2/testdata/grant_results/
-// (specifically via-grant-v29, v30, v31, v33, v35, v36). These files are shared
+// (the ones listed in viaCompatTests). These files are shared
 // with TestGrantsCompat in the policy/v2 package. Any changes to the
 // file format, field structure, or naming must be coordinated with
 // BOTH tests.
 //
 // Fields consumed by this test (but NOT by TestGrantsCompat):
 //   - captures[name].netmap (Peers, AllowedIPs, PrimaryRoutes, PacketFilterRules)
-//   - topology.nodes[name].tags (used for servertest node creation)
+//   - topology.nodes[name].tags and .user (used for servertest node creation)
 //
 // Fields consumed by TestGrantsCompat (but NOT by this test):
 //   - captures[name].packet_filter_rules (golden filter rule comparison)
@@ -88,6 +104,7 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 
 	srv := servertest.NewServer(t)
 	tagUser := srv.CreateUser(t, "tag-user")
+	users := createCaptureUsers(t, srv)
 
 	policyJSON := convertCapturePolicy(t, c)
 
@@ -100,7 +117,8 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 		srv.App.Change(changes...)
 	}
 
-	// Create tagged clients matching the golden topology.
+	// Create clients matching the golden topology: tagged nodes under
+	// tag-user, user-owned nodes under their capture user.
 	// Nodes are created in SaaS registration order so headscale assigns
 	// sequential DB IDs in the same relative order. This matters for
 	// PrimaryRoutes election which uses lowest-node-ID-wins — the
@@ -110,7 +128,7 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 
 	for _, name := range order {
 		topoNode, exists := c.Topology.Nodes[name]
-		if !exists || len(topoNode.Tags) == 0 {
+		if !exists {
 			continue
 		}
 
@@ -118,8 +136,17 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 			continue
 		}
 
+		owner := tagUser
+
+		if len(topoNode.Tags) == 0 {
+			require.Containsf(t, users, topoNode.User,
+				"node %s: owner %q is not a capture user", name, topoNode.User)
+
+			owner = users[topoNode.User]
+		}
+
 		clients[name] = servertest.NewClient(t, srv, name,
-			servertest.WithUser(tagUser),
+			servertest.WithUser(owner),
 			servertest.WithTags(topoNode.Tags...),
 		)
 	}
@@ -211,7 +238,12 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 			})
 	}
 
+	saasAddrs := saasAddrsByNode(c, clients)
+
 	// Compare each viewer's [tailcfg.MapResponse] against the golden [netmap.NetworkMap].
+	// Route approvals reach clients asynchronously, so the peer-count wait
+	// above says nothing about routes, primaries or filters: retry the
+	// whole comparison until the viewer's netmap has caught up.
 	for viewerName, cl := range clients {
 		capture := c.Captures[viewerName]
 		if capture.Netmap == nil {
@@ -219,12 +251,69 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 		}
 
 		t.Run(viewerName, func(t *testing.T) {
-			nm := cl.Netmap()
-			require.NotNil(t, nm, "netmap is nil")
+			requireNetmapHolds(t, func(tt require.TestingT) {
+				nm := cl.Netmap()
+				require.NotNil(tt, nm, "netmap is nil")
 
-			compareNetmap(t, nm, capture, clients)
+				// Routes were approved on live sessions: verify that approval
+				// reached SelfNode throughout the stable comparison window.
+				require.Equal(tt, selfOffersExit(capture.Netmap), selfOffersExit(nm),
+					"SelfNode exit routes should match SaaS")
+
+				compareNetmap(tt, nm, capture, clients, saasAddrs)
+			})
 		})
 	}
+}
+
+// requireNetmapHolds retries check until it passes on several consecutive
+// ticks. One passing tick is not enough: a netmap that matches and then
+// drifts, such as a primary flipping away, is the bug these oracles guard.
+func requireNetmapHolds(t *testing.T, check func(require.TestingT)) {
+	t.Helper()
+
+	// Long enough for a batch still in flight to land.
+	const holdTicks = 5
+
+	held := 0
+
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		tick := &failRecorder{CollectT: collect}
+
+		// Deferred because FailNow exits the goroutine.
+		defer func() {
+			if tick.failed {
+				held = 0
+
+				return
+			}
+
+			held++
+			if held < holdTicks {
+				collect.Errorf("netmap held for %d of %d ticks", held, holdTicks)
+			}
+		}()
+
+		check(tick)
+	}, 30*time.Second, 100*time.Millisecond)
+}
+
+// failRecorder notes whether a tick failed, which [assert.CollectT] does
+// not expose.
+type failRecorder struct {
+	*assert.CollectT
+
+	failed bool
+}
+
+func (r *failRecorder) Errorf(format string, args ...any) {
+	r.failed = true
+	r.CollectT.Errorf(format, args...)
+}
+
+func (r *failRecorder) FailNow() {
+	r.failed = true
+	r.CollectT.FailNow()
 }
 
 // compareNetmap compares the headscale [tailcfg.MapResponse] against the
@@ -233,14 +322,19 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 //   - Route prefixes in AllowedIPs (non-Tailscale-IP entries like 10.44.0.0/16)
 //   - Number of Tailscale IPs per peer (should be 2: one v4 + one v6)
 //   - PrimaryRoutes per peer
-//   - PacketFilter rule count and non-Tailscale dst prefixes
+//   - PacketFilter (source, destination, ports) triples
+//
+// It takes [require.TestingT] so it can run inside [requireNetmapHolds].
 func compareNetmap(
-	t *testing.T,
+	t require.TestingT,
 	got *netmap.NetworkMap,
 	want testcapture.Node,
 	clients map[string]*servertest.TestClient,
+	saasAddrs map[netip.Addr]string,
 ) {
-	t.Helper()
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 
 	require.NotNil(t, want.Netmap, "golden Netmap is nil")
 
@@ -370,104 +464,131 @@ func compareNetmap(
 		}
 	}
 
-	// Compare PacketFilter rules (IP-independent).
-	wantFilterRules := want.PacketFilterRules
-
-	if !assert.Lenf(t, got.PacketFilter, len(wantFilterRules),
-		"PacketFilter rule count mismatch") {
-		return
-	}
-
-	// Resolve SaaS IPs → peer name and HS IPs → peer name so we can
-	// compare rule sources structurally. Tailscale IPs in SaaS vs HS
-	// allocations never match literally, but each IP belongs to a
-	// peer with a stable hostname.
-	saasAddrs := saasAddrsByPeer(want, clients)
-	hsAddrs := hsAddrsByPeer(clients)
-
-	// Compare destination prefixes per rule — subnet CIDRs like
-	// 10.44.0.0/16 are stable between Tailscale SaaS and headscale.
-	// Source IPs are re-keyed per peer identity before comparison.
-	for i := range wantFilterRules {
-		wantRule := wantFilterRules[i]
-		gotMatch := got.PacketFilter[i]
-
-		wantSrcIdents := canonicaliseSrcStrings(t, wantRule.SrcIPs, saasAddrs, i)
-		gotSrcIdents := canonicaliseSrcPrefixes(t, gotMatch.Srcs, hsAddrs, i)
-
-		assert.Equalf(t, wantSrcIdents, gotSrcIdents,
-			"PacketFilter[%d]: source peer identities mismatch", i)
-
-		// Destination prefixes: extract non-Tailscale-IP CIDRs
-		// from both golden and headscale rules and compare.
-		var wantDstPrefixes []string
-
-		for _, dp := range wantRule.DstPorts {
-			pfx, err := parsePrefixOrAddr(dp.IP)
-			require.NoErrorf(t, err,
-				"golden DstPorts[%d].IP %q should parse as prefix or addr", i, dp.IP)
-
-			if !isTailscaleIP(pfx) {
-				wantDstPrefixes = append(wantDstPrefixes, pfx.String())
-			}
-		}
-
-		var gotDstPrefixes []string
-
-		for _, dst := range gotMatch.Dsts {
-			pfx := dst.Net
-			if !isTailscaleIP(pfx) {
-				gotDstPrefixes = append(gotDstPrefixes, pfx.String())
-			}
-		}
-
-		slices.Sort(wantDstPrefixes)
-		slices.Sort(gotDstPrefixes)
-
-		assert.Equalf(t, wantDstPrefixes, gotDstPrefixes,
-			"PacketFilter[%d]: non-Tailscale destination prefixes mismatch", i)
-	}
+	comparePacketFilter(t, got, want, clients, saasAddrs)
 }
 
-// saasAddrsByPeer builds a map from SaaS Tailscale address to peer
-// hostname using each capture's [tailcfg.NodeView.Addresses]. Peers not in
-// clients are skipped.
-func saasAddrsByPeer(
+// comparePacketFilter compares PacketFilter rules as a set of (source,
+// destination, ports or capability) triples. Headscale merges rules
+// that share sources while SaaS keeps one rule per policy entry, so rule
+// count and order differ without changing what the filter allows.
+// Tailscale IPs differ between SaaS and headscale allocation, so both
+// sides are re-keyed by peer identity.
+func comparePacketFilter(
+	t require.TestingT,
+	got *netmap.NetworkMap,
 	want testcapture.Node,
+	clients map[string]*servertest.TestClient,
+	saasAddrs map[netip.Addr]string,
+) {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
+
+	hsAddrs := hsAddrsByPeer(clients)
+
+	wantTriples := map[string]struct{}{}
+
+	for i, rule := range want.PacketFilterRules {
+		srcs := strings.Join(canonicaliseSrcStrings(t, rule.SrcIPs, saasAddrs, i), ",")
+
+		for _, dp := range rule.DstPorts {
+			pfxs, err := parseDstPrefixes(dp.IP)
+			require.NoErrorf(t, err,
+				"golden DstPorts[%d].IP %q should parse as prefix, addr or range", i, dp.IP)
+
+			for _, pfx := range pfxs {
+				for _, dst := range peerIdents(t, pfx, saasAddrs, i) {
+					wantTriples[filterTriple(srcs, dst, dp.Ports.First, dp.Ports.Last)] = struct{}{}
+				}
+			}
+		}
+
+		for _, cg := range rule.CapGrant {
+			caps := slices.Collect(maps.Keys(cg.CapMap))
+			caps = append(caps, cg.Caps...)
+
+			for _, pfx := range cg.Dsts {
+				for _, dst := range peerIdents(t, pfx, saasAddrs, i) {
+					for _, c := range caps {
+						wantTriples[capTriple(srcs, dst, c)] = struct{}{}
+					}
+				}
+			}
+		}
+	}
+
+	gotTriples := map[string]struct{}{}
+
+	for i, match := range got.PacketFilter {
+		srcs := strings.Join(canonicaliseSrcPrefixes(t, match.Srcs, hsAddrs, i), ",")
+
+		for _, dp := range match.Dsts {
+			for _, dst := range peerIdents(t, dp.Net, hsAddrs, i) {
+				gotTriples[filterTriple(srcs, dst, dp.Ports.First, dp.Ports.Last)] = struct{}{}
+			}
+		}
+
+		for _, cm := range match.Caps {
+			for _, dst := range peerIdents(t, cm.Dst, hsAddrs, i) {
+				gotTriples[capTriple(srcs, dst, cm.Cap)] = struct{}{}
+			}
+		}
+	}
+
+	assert.ElementsMatchf(t, sortedKeys(wantTriples), sortedKeys(gotTriples),
+		"PacketFilter (source, destination, ports) mismatch")
+}
+
+func filterTriple(srcs, dst string, first, last uint16) string {
+	return fmt.Sprintf("%s => %s:%d-%d", srcs, dst, first, last)
+}
+
+func capTriple(srcs, dst string, c peercap.Cap) string {
+	return fmt.Sprintf("%s => %s cap %s", srcs, dst, c)
+}
+
+// peerIdents resolves a prefix into sorted canonical identity tokens,
+// see [addIdentsForSrc].
+func peerIdents(
+	t require.TestingT,
+	pfx netip.Prefix,
+	addrToPeer map[netip.Addr]string,
+	ruleIndex int,
+) []string {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
+
+	seen := map[string]struct{}{}
+	addIdentsForSrc(t, pfx, addrToPeer, ruleIndex, seen)
+
+	return sortedKeys(seen)
+}
+
+// saasAddrsByNode maps each SaaS Tailscale address to its node's
+// hostname using every captured node's own addresses. A rule may name
+// sources that are not the viewer's peers, so peer lists are not
+// enough. Nodes not in clients are skipped.
+func saasAddrsByNode(
+	c *testcapture.Capture,
 	clients map[string]*servertest.TestClient,
 ) map[netip.Addr]string {
 	out := map[netip.Addr]string{}
 
-	if want.Netmap == nil {
-		return out
-	}
-
-	// Walk peers listed in this [netmap.NetworkMap].
-	for _, peer := range want.Netmap.Peers {
-		name := extractHostname(peer.Name())
+	for name, node := range c.Captures {
 		if _, isOurs := clients[name]; !isOurs {
 			continue
 		}
 
-		for i := range peer.Addresses().Len() {
-			pfx := peer.Addresses().At(i)
+		if node.Netmap == nil || !node.Netmap.SelfNode.Valid() {
+			continue
+		}
+
+		addrs := node.Netmap.SelfNode.Addresses()
+		for i := range addrs.Len() {
+			pfx := addrs.At(i)
 			if isTailscaleIP(pfx) {
 				out[pfx.Addr()] = name
-			}
-		}
-	}
-
-	// The viewer's own [tailcfg.NodeView] addresses also appear as possible src.
-	if want.Netmap.SelfNode.Valid() {
-		name := extractHostname(want.Netmap.SelfNode.Name())
-
-		if _, isOurs := clients[name]; isOurs {
-			addrs := want.Netmap.SelfNode.Addresses()
-			for i := range addrs.Len() {
-				pfx := addrs.At(i)
-				if isTailscaleIP(pfx) {
-					out[pfx.Addr()] = name
-				}
 			}
 		}
 	}
@@ -506,12 +627,14 @@ func hsAddrsByPeer(clients map[string]*servertest.TestClient) map[netip.Addr]str
 // or /128 (IPv6) expands to the union of its contained peers.
 // Unresolvable Tailscale-range sources fail the test.
 func canonicaliseSrcStrings(
-	t *testing.T,
+	t require.TestingT,
 	srcs []string,
 	addrToPeer map[netip.Addr]string,
 	ruleIndex int,
 ) []string {
-	t.Helper()
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 
 	seen := map[string]struct{}{}
 
@@ -536,12 +659,14 @@ func canonicaliseSrcStrings(
 // [canonicaliseSrcStrings], reading already-parsed [netip.Prefix] values
 // from [tailcfg.Match.Srcs].
 func canonicaliseSrcPrefixes(
-	t *testing.T,
+	t require.TestingT,
 	srcs []netip.Prefix,
 	addrToPeer map[netip.Addr]string,
 	ruleIndex int,
 ) []string {
-	t.Helper()
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 
 	seen := map[string]struct{}{}
 
@@ -563,13 +688,15 @@ func canonicaliseSrcPrefixes(
 // through literally; a Tailscale-range prefix expands to the union
 // of peer names whose addresses fall within it.
 func addIdentsForSrc(
-	t *testing.T,
+	t require.TestingT,
 	pfx netip.Prefix,
 	addrToPeer map[netip.Addr]string,
 	ruleIndex int,
 	seen map[string]struct{},
 ) {
-	t.Helper()
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 
 	if !prefixInTailscaleRange(pfx) {
 		seen[pfx.String()] = struct{}{}
@@ -643,6 +770,35 @@ func parsePrefixOrAddr(s string) (netip.Prefix, error) {
 	}
 
 	return netip.PrefixFrom(addr, addr.BitLen()), nil
+}
+
+// parseDstPrefixes parses a golden DstPorts.IP into the prefixes a client
+// derives from it. Besides a prefix or bare address, SaaS writes "*" for
+// every address and an address range for autogroup:internet
+// ("0.0.0.0-9.255.255.255").
+func parseDstPrefixes(s string) ([]netip.Prefix, error) {
+	if s == "*" {
+		return []netip.Prefix{
+			netip.MustParsePrefix("0.0.0.0/0"),
+			netip.MustParsePrefix("::/0"),
+		}, nil
+	}
+
+	if strings.Contains(s, "-") {
+		r, err := netipx.ParseIPRange(s)
+		if err != nil {
+			return nil, err
+		}
+
+		return r.Prefixes(), nil
+	}
+
+	pfx, err := parsePrefixOrAddr(s)
+	if err != nil {
+		return nil, err
+	}
+
+	return []netip.Prefix{pfx}, nil
 }
 
 // isTailscaleIP returns true if the prefix is a single-host Tailscale

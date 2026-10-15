@@ -122,12 +122,12 @@ func (m *mapSession) serve() {
 	//
 	// Process the [tailcfg.MapRequest] to update node state (endpoints, hostinfo, etc.)
 	c, err := m.h.state.UpdateNodeFromMapRequest(m.node.ID, m.req)
+	m.h.Change(c)
+
 	if err != nil {
 		httpError(m.w, err)
 		return
 	}
-
-	m.h.Change(c)
 
 	// If OmitPeers is true and Stream is false
 	// then the server will let clients update their endpoints without
@@ -182,12 +182,12 @@ func (m *mapSession) serveLongPoll() {
 		// handler ran late is exactly such a session: if it kept its session
 		// acquired on this path, the surviving session's release could never
 		// take the node offline (the relogin flake).
-		// A deleted node cannot reconnect, so waiting for it only delays the
-		// client's next map request, and with it the re-authentication signal
-		// it needs. See: https://github.com/juanfont/headscale/issues/3410
-		_, nodeExists := m.h.state.GetNodeByID(m.node.ID)
+		// A deleted or expired node cannot return online through a map
+		// reconnect, so release its session without the reconnect grace.
+		// See: https://github.com/juanfont/headscale/issues/3410
+		node, nodeExists := m.h.state.GetNodeByID(m.node.ID)
 
-		if !stillConnected && nodeExists {
+		if !stillConnected && nodeExists && !node.IsExpired() {
 			// Wait up to 10 seconds for the node to reconnect.
 			// 10 seconds was arbitrary chosen as a reasonable time to reconnect.
 			ticker := time.NewTicker(time.Second)
@@ -243,6 +243,8 @@ func (m *mapSession) serveLongPoll() {
 	// the node to be incorrectly removed from AvailableRoutes.
 	mapReqChange, err := m.h.state.UpdateNodeFromMapRequest(m.node.ID, m.req)
 	if err != nil {
+		m.h.Change(mapReqChange)
+
 		m.log.Error().Caller().Err(err).Msg("failed to update node from initial MapRequest")
 		// Write an explicit error rather than returning silently: a bare
 		// return leaves net/http to send an empty 200, which the client
@@ -278,6 +280,9 @@ func (m *mapSession) serveLongPoll() {
 	// time between the node connecting and the batcher being ready.
 	if err := m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.capVer, m.stopFromBatcher); err != nil { //nolint:noinlineerr
 		m.log.Error().Caller().Err(err).Msg("failed to add node to batcher")
+		// The map request already changed state other nodes must see.
+		m.h.Change(mapReqChange)
+
 		// Write an explicit error rather than returning silently: a bare
 		// return leaves net/http to send an empty 200, which the client
 		// reads as "unexpected EOF" and retries forever (issue #3346).

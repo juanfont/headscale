@@ -26,3 +26,20 @@ func TestMergeDERPMapsClonesRegions(t *testing.T) {
 	assert.Equal(t, "a", src.Regions[1].Nodes[0].Name,
 		"source region was mutated through a shared pointer")
 }
+
+// TestMergeDERPMapsNullRemovesRegion pins docs/ref/derp.md's recipe: a later
+// map setting a region to null drops it from the result.
+func TestMergeDERPMapsNullRemovesRegion(t *testing.T) {
+	base := &tailcfg.DERPMap{
+		Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{
+			1: {RegionID: 1, RegionCode: "nyc"},
+			2: {RegionID: 2, RegionCode: "sfo"},
+		},
+	}
+	drop := &tailcfg.DERPMap{Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{1: nil}}
+
+	merged := mergeDERPMaps([]*tailcfg.DERPMap{base, drop})
+
+	assert.NotContains(t, merged.Regions, tailcfg.DERPRegionID(1))
+	assert.Contains(t, merged.Regions, tailcfg.DERPRegionID(2))
+}

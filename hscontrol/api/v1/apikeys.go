@@ -241,5 +241,6 @@ func apiKeyMaskedPrefix(prefix string) string {
 		return "hskey-api-" + prefix + "-***"
 	}
 
+	// TODO(kradalby): remove in 0.32 with legacy key formats (announced).
 	return prefix + "***"
 }

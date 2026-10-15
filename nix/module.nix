@@ -1,7 +1,8 @@
-{ config
-, lib
-, pkgs
-, ...
+{
+  config,
+  lib,
+  pkgs,
+  ...
 }:
 let
   cfg = config.services.headscale;
@@ -202,16 +203,6 @@ in
               };
             };
 
-            ephemeral_node_inactivity_timeout = lib.mkOption {
-              type = lib.types.str;
-              default = "30m";
-              description = ''
-                Time before an inactive ephemeral node is deleted.
-                Deprecated: use node.ephemeral.inactivity_timeout instead.
-              '';
-              example = "5m";
-            };
-
             node = {
               expiry = lib.mkOption {
                 type = lib.types.str;
@@ -373,17 +364,17 @@ in
                     List of nameservers to pass to Tailscale clients.
                   '';
                 };
-              };
 
-              split = lib.mkOption {
-                type = lib.types.attrsOf (lib.types.listOf lib.types.str);
-                default = { };
-                description = ''
-                  Split DNS configuration (map of domains and which DNS server to use for each).
-                  See <https://tailscale.com/docs/reference/dns-in-tailscale>.
-                '';
-                example = {
-                  "foo.bar.com" = [ "1.1.1.1" ];
+                split = lib.mkOption {
+                  type = lib.types.attrsOf (lib.types.listOf lib.types.str);
+                  default = { };
+                  description = ''
+                    Split DNS configuration (map of domains and which DNS server to use for each).
+                    See <https://tailscale.com/docs/reference/dns-in-tailscale>.
+                  '';
+                  example = {
+                    "foo.bar.com" = [ "1.1.1.1" ];
+                  };
                 };
               };
 
@@ -628,7 +619,7 @@ in
     )
     (mkRenamedOptionModule
       [ "services" "headscale" "ephemeralNodeInactivityTimeout" ]
-      [ "services" "headscale" "settings" "ephemeral_node_inactivity_timeout" ]
+      [ "services" "headscale" "settings" "node" "ephemeral" "inactivity_timeout" ]
     )
     (mkRenamedOptionModule
       [ "services" "headscale" "logLevel" ]
@@ -697,6 +688,7 @@ in
       (assertRemovedOption [ "settings" "db_port" ] "Use `database.postgres.port` instead.")
       (assertRemovedOption [ "settings" "db_type" ] "Use `database.type` instead.")
       (assertRemovedOption [ "settings" "db_user" ] "Use `database.postgres.user` instead.")
+      (assertRemovedOption [ "settings" "dns" "split" ] "Use `dns.nameservers.split` instead.")
       (assertRemovedOption [ "settings" "dns_config" ] "Use `dns` instead.")
       (assertRemovedOption [ "settings" "dns_config" "domains" ] "Use `dns.search_domains` instead.")
       (assertRemovedOption [
@@ -709,6 +701,10 @@ in
         "oidc"
         "strip_email_domain"
       ] "The strip_email_domain option got removed upstream")
+      (assertRemovedOption [
+        "settings"
+        "ephemeral_node_inactivity_timeout"
+      ] "Use `node.ephemeral.inactivity_timeout` instead.")
     ];
 
     services.headscale.settings = lib.mkMerge [

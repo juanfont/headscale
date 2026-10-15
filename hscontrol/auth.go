@@ -215,10 +215,8 @@ func (h *Headscale) handleLogout(
 				EmbedObject(node).
 				Msg("Deleting ephemeral node during logout")
 
-			c, err := h.state.DeleteNode(node)
-			if !c.IsEmpty() {
-				h.Change(c)
-			}
+			changes, err := h.state.DeleteNode(node)
+			h.Change(changes...)
 
 			if err != nil {
 				return nil, fmt.Errorf("deleting ephemeral node: %w", err)
@@ -263,11 +261,11 @@ func (h *Headscale) handleLogout(
 	}
 
 	updatedNode, c, err := h.state.SetNodeExpiry(node.ID(), &expiry)
+	h.Change(c)
+
 	if err != nil {
 		return nil, fmt.Errorf("setting node expiry: %w", err)
 	}
-
-	h.Change(c)
 
 	return nodeToRegisterResponse(updatedNode), nil
 }
@@ -420,6 +418,8 @@ func (h *Headscale) handleRegisterWithAuthKey(
 		machineKey,
 	)
 	if err != nil {
+		h.Change(changed)
+
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, NewHTTPError(http.StatusUnauthorized, "invalid pre auth key", nil)
 		}
@@ -451,12 +451,13 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	// TODO(kradalby): This needs to be ran as part of the batcher maybe?
 	// now since we dont update the node/pol here anymore
 	routesChange, err := h.state.AutoApproveRoutes(node)
-	if err != nil {
-		return nil, fmt.Errorf("auto approving routes: %w", err)
-	}
 
 	// Send both changes. Empty changes are ignored by Change().
 	h.Change(changed, routesChange)
+
+	if err != nil {
+		return nil, fmt.Errorf("auto approving routes: %w", err)
+	}
 
 	resp := &tailcfg.RegisterResponse{
 		MachineAuthorized: true,

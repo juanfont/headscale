@@ -154,7 +154,7 @@ func Test_NodeCanAccess(t *testing.T) {
 		{
 			// With a unidirectional ACL (src=A→dst=B), the dst
 			// router cannot access the src router. Bidirectional
-			// peer visibility comes from [policy.ReduceNodes] checking
+			// peer visibility comes from BuildPeerMap checking
 			// both A.CanAccess(B) || B.CanAccess(A).
 			name: "subnet-to-subnet-unidirectional-dst-cannot-access-src-3157",
 			node1: Node{
@@ -1042,4 +1042,34 @@ func TestHasPolicyChangeFields(t *testing.T) {
 			require.Equal(t, tt.want, other.View().HasPolicyChange(base.View()))
 		})
 	}
+}
+
+func TestNodeIsExpiredAt(t *testing.T) {
+	now := time.Now()
+	zero := time.Time{}
+	justBefore := now.Add(-time.Nanosecond)
+
+	tests := []struct {
+		name   string
+		expiry *time.Time
+		want   bool
+	}{
+		{name: "nil expiry", expiry: nil, want: false},
+		{name: "zero expiry", expiry: &zero, want: false},
+		{name: "expiry equals now", expiry: &now, want: false},
+		{name: "now one nanosecond after expiry", expiry: &justBefore, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			n := &Node{Expiry: tt.expiry}
+			require.Equal(t, tt.want, n.IsExpiredAt(now))
+			require.Equal(t, tt.want, n.View().IsExpiredAt(now))
+		})
+	}
+
+	t.Run("invalid view", func(t *testing.T) {
+		require.True(t, NodeView{}.IsExpiredAt(now),
+			"an invalid view counts as expired, like IsExpired")
+	})
 }

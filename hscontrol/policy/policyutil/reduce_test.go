@@ -886,6 +886,66 @@ func TestReduceFilterRulesPartialApproval(t *testing.T) {
 			},
 			wantCount: 0,
 		},
+		{
+			// Tailscale SaaS delivers every rule to an approved exit
+			// node: its exit routes contain every destination.
+			name: "approved-exit-route-includes-tailnet-host",
+			node: &types.Node{
+				IPv4:     ap("100.64.0.1"),
+				IPv6:     ap("fd7a:115c:a1e0::1"),
+				Hostinfo: &tailcfg.Hostinfo{RoutableIPs: tsaddr.ExitRoutes()},
+
+				ApprovedRoutes: tsaddr.ExitRoutes(),
+			},
+			rules: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.64.0.17"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.64.0.16", Ports: tailcfg.PortRange{First: 53, Last: 53}},
+						{IP: "fd7a:115c:a1e0::10", Ports: tailcfg.PortRange{First: 53, Last: 53}},
+					},
+				},
+			},
+			wantCount:  1,
+			wantRoutes: []string{"100.64.0.16", "fd7a:115c:a1e0::10"},
+		},
+		{
+			name: "approved-exit-route-includes-private-subnet",
+			node: &types.Node{
+				IPv4:     ap("100.64.0.1"),
+				IPv6:     ap("fd7a:115c:a1e0::1"),
+				Hostinfo: &tailcfg.Hostinfo{RoutableIPs: tsaddr.ExitRoutes()},
+
+				ApprovedRoutes: tsaddr.ExitRoutes(),
+			},
+			rules: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.64.0.17"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "10.33.0.0/16", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+			wantCount:  1,
+			wantRoutes: []string{"10.33.0.0/16"},
+		},
+		{
+			name: "unapproved-exit-route-excluded",
+			node: &types.Node{
+				IPv4:     ap("100.64.0.1"),
+				IPv6:     ap("fd7a:115c:a1e0::1"),
+				Hostinfo: &tailcfg.Hostinfo{RoutableIPs: tsaddr.ExitRoutes()},
+			},
+			rules: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.64.0.17"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.64.0.16", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+			wantCount: 0,
+		},
 	}
 
 	for _, tt := range tests {

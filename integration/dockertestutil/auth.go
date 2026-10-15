@@ -111,8 +111,8 @@ func PullWithAuth(pool *dockertest.Pool, imageRef string) error {
 }
 
 func splitImageRef(ref string) (string, string) {
-	if i := strings.LastIndex(ref, ":"); i >= 0 {
-		return ref[:i], ref[i+1:]
+	if before, after, ok := strings.CutLast(ref, ":"); ok {
+		return before, after
 	}
 
 	return ref, "latest"

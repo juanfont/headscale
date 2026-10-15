@@ -50,6 +50,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		machineKey  func() key.MachinePublic
 		wantAuth    bool
 		wantError   bool
+		wantErrMsg  string
 		wantAuthURL bool
 		wantExpired bool
 		validate    func(*testing.T, *tailcfg.RegisterResponse, *Headscale)
@@ -958,11 +959,12 @@ func TestAuthenticationFlows(t *testing.T) {
 		// === ADVERTISE-TAGS (RequestTags) SCENARIOS ===
 		// Tests for client-provided tags via --advertise-tags flag
 
-		// TEST: PreAuthKey registration rejects client-provided RequestTags
-		// WHAT: Tests that PreAuthKey registrations cannot use client-provided tags
-		// INPUT: PreAuthKey registration with [tailcfg.Hostinfo.RequestTags] set
+		// TEST: Untagged PreAuthKey registration rejects client-provided RequestTags
+		// WHAT: Tests that PreAuthKey registrations cannot claim tags the key lacks
+		// INPUT: Untagged PreAuthKey registration with [tailcfg.Hostinfo.RequestTags] set
 		// EXPECTED: Registration fails with "requested tags [...] are invalid or not permitted" error
-		// WHY: PreAuthKey nodes get their tags from the key itself, not from client requests
+		// WHY: PreAuthKey nodes get their tags from the key; only a subset of the
+		// key's own tags may be advertised
 		{
 			name: "preauth_key_rejects_request_tags",
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
@@ -1029,6 +1031,222 @@ func TestAuthenticationFlows(t *testing.T) {
 			},
 			machineKey: machineKey1.Public,
 			wantError:  true, // RequestTags rejected for PreAuthKey registrations
+		},
+
+		// TEST: Tagged PreAuthKey accepts RequestTags that are a subset of the key's tags
+		// WHAT: The tailscale client's OAuth authkey flow re-advertises the key's
+		// own tags via --advertise-tags.
+		// INPUT: Tagged PreAuthKey ([tag:authorized, tag:other]) with RequestTags [tag:authorized]
+		// EXPECTED: Registration succeeds; node carries all of the key's tags.
+		// WHY: Advertising tags the key already grants is not an escalation; tags
+		// still come from the key, not the request.
+		{
+			name: "tagged_preauth_key_accepts_subset_request_tags",
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
+				t.Helper()
+
+				user := app.state.CreateUserForTest("tagged-pak-subsettags-user")
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, []string{"tag:authorized", "tag:other"})
+				if err != nil {
+					return "", err
+				}
+
+				return pak.Key, nil
+			},
+			request: func(authKey string) tailcfg.RegisterRequest {
+				return tailcfg.RegisterRequest{
+					Auth: &tailcfg.RegisterResponseAuth{
+						AuthKey: authKey,
+					},
+					NodeKey: nodeKey1.Public(),
+					Hostinfo: &tailcfg.Hostinfo{
+						Hostname:    "tagged-pak-subsettags-node",
+						RequestTags: []string{"tag:authorized"},
+					},
+					Expiry: time.Now().Add(24 * time.Hour),
+				}
+			},
+			machineKey: machineKey1.Public,
+			wantAuth:   true,
+			validate: func(t *testing.T, _ *tailcfg.RegisterResponse, app *Headscale) {
+				t.Helper()
+
+				node, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
+				require.True(t, found)
+				assert.True(t, node.IsTagged())
+				assert.ElementsMatch(t, []string{"tag:authorized", "tag:other"}, node.Tags().AsSlice())
+				assert.False(t, node.UserID().Valid(), "tagged node must not be user-owned")
+			},
+		},
+
+		// TEST: Tagged PreAuthKey rejects RequestTags that go beyond the key's tags
+		// WHAT: A request mixing a key tag with a foreign tag
+		// INPUT: Tagged PreAuthKey ([tag:authorized]) with RequestTags [tag:authorized, tag:client-wants-this]
+		// EXPECTED: Registration fails naming only the foreign tag
+		// WHY: One matching tag must not smuggle in others
+		{
+			name: "tagged_preauth_key_rejects_partially_foreign_request_tags",
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
+				t.Helper()
+
+				user := app.state.CreateUserForTest("tagged-pak-mixedtags-user")
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, []string{"tag:authorized"})
+				if err != nil {
+					return "", err
+				}
+
+				return pak.Key, nil
+			},
+			request: func(authKey string) tailcfg.RegisterRequest {
+				return tailcfg.RegisterRequest{
+					Auth: &tailcfg.RegisterResponseAuth{
+						AuthKey: authKey,
+					},
+					NodeKey: nodeKey1.Public(),
+					Hostinfo: &tailcfg.Hostinfo{
+						Hostname:    "tagged-pak-mixedtags-node",
+						RequestTags: []string{"tag:authorized", "tag:client-wants-this"},
+					},
+					Expiry: time.Now().Add(24 * time.Hour),
+				}
+			},
+			machineKey: machineKey1.Public,
+			wantError:  true,
+			wantErrMsg: "[tag:client-wants-this] are invalid",
+		},
+
+		// TEST: Existing tagged node re-registering with foreign RequestTags is rejected
+		// WHAT: Same machine and node key re-run `tailscale up --authkey` with a tag
+		// the key does not carry, hitting the skip-validation re-registration path
+		// INPUT: Node registered with tagged PreAuthKey ([tag:authorized]), then the
+		// same key with RequestTags [tag:client-wants-this]
+		// EXPECTED: Re-registration fails
+		// WHY: New and existing nodes are held to the same advertise-tags rule
+		{
+			name: "existing_tagged_node_reregister_rejects_foreign_request_tags",
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
+				t.Helper()
+
+				user := app.state.CreateUserForTest("tagged-pak-rereg-user")
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, []string{"tag:authorized"})
+				if err != nil {
+					return "", err
+				}
+
+				_, err = app.handleRegisterWithAuthKey(tailcfg.RegisterRequest{
+					Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+					NodeKey:  nodeKey1.Public(),
+					Hostinfo: &tailcfg.Hostinfo{Hostname: "tagged-pak-rereg-node"},
+					Expiry:   time.Now().Add(24 * time.Hour),
+				}, machineKey1.Public())
+				if err != nil {
+					return "", err
+				}
+
+				require.EventuallyWithT(t, func(c *assert.CollectT) {
+					_, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
+					assert.True(c, found)
+				}, 1*time.Second, 50*time.Millisecond)
+
+				return pak.Key, nil
+			},
+			request: func(authKey string) tailcfg.RegisterRequest {
+				return tailcfg.RegisterRequest{
+					Auth: &tailcfg.RegisterResponseAuth{
+						AuthKey: authKey,
+					},
+					NodeKey: nodeKey1.Public(),
+					Hostinfo: &tailcfg.Hostinfo{
+						Hostname:    "tagged-pak-rereg-node",
+						RequestTags: []string{"tag:client-wants-this"},
+					},
+					Expiry: time.Now().Add(24 * time.Hour),
+				}
+			},
+			machineKey: machineKey1.Public,
+			wantError:  true,
+			wantErrMsg: "[tag:client-wants-this] are invalid",
+		},
+
+		// TEST: Existing tagged node re-registers with a spent single-use key advertising a subset
+		// WHAT: Container restart re-running `tailscale up --authkey` with the key's
+		// own tag after an admin retagged the node
+		// INPUT: Single-use PreAuthKey ([tag:authorized, tag:other]) registers, admin
+		// sets tags [tag:admin], same key and node key re-register with RequestTags [tag:authorized]
+		// EXPECTED: Re-registration succeeds; admin's tags preserved
+		// WHY: The subset check must not break the same-key restart path, and the
+		// same key must not undo an admin override
+		{
+			name: "existing_tagged_node_reregister_spent_key_subset_tags_keeps_admin_tags",
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
+				t.Helper()
+
+				_, err := app.state.SetPolicy([]byte(`{"tagOwners":{"tag:admin":[],"tag:authorized":[],"tag:other":[]}}`))
+				require.NoError(t, err)
+
+				user := app.state.CreateUserForTest("tagged-pak-spent-user")
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, nil, []string{"tag:authorized", "tag:other"})
+				if err != nil {
+					return "", err
+				}
+
+				_, err = app.handleRegisterWithAuthKey(tailcfg.RegisterRequest{
+					Auth:    &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+					NodeKey: nodeKey1.Public(),
+					Hostinfo: &tailcfg.Hostinfo{
+						Hostname:    "tagged-pak-spent-node",
+						RequestTags: []string{"tag:authorized"},
+					},
+					Expiry: time.Now().Add(24 * time.Hour),
+				}, machineKey1.Public())
+				if err != nil {
+					return "", err
+				}
+
+				var node types.NodeView
+
+				require.EventuallyWithT(t, func(c *assert.CollectT) {
+					var found bool
+
+					node, found = app.state.GetNodeByNodeKey(nodeKey1.Public())
+					assert.True(c, found)
+				}, 1*time.Second, 50*time.Millisecond)
+
+				_, _, err = app.state.SetNodeTags(node.ID(), []string{"tag:admin"})
+				require.NoError(t, err)
+
+				spent, err := app.state.GetPreAuthKey(pak.Key)
+				require.NoError(t, err)
+				require.True(t, spent.Used, "precondition: single-use key must be spent")
+
+				return pak.Key, nil
+			},
+			request: func(authKey string) tailcfg.RegisterRequest {
+				return tailcfg.RegisterRequest{
+					Auth: &tailcfg.RegisterResponseAuth{
+						AuthKey: authKey,
+					},
+					NodeKey: nodeKey1.Public(),
+					Hostinfo: &tailcfg.Hostinfo{
+						Hostname:    "tagged-pak-spent-node",
+						RequestTags: []string{"tag:authorized"},
+					},
+					Expiry: time.Now().Add(24 * time.Hour),
+				}
+			},
+			machineKey: machineKey1.Public,
+			wantAuth:   true,
+			validate: func(t *testing.T, _ *tailcfg.RegisterResponse, app *Headscale) {
+				t.Helper()
+
+				node, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
+				require.True(t, found)
+				assert.Equal(t, []string{"tag:admin"}, node.Tags().AsSlice())
+			},
 		},
 
 		// === RE-AUTHENTICATION SCENARIOS ===
@@ -2534,6 +2752,11 @@ func TestAuthenticationFlows(t *testing.T) {
 			// Validate error expectations
 			if tt.wantError {
 				assert.Error(t, err, "expected error but got none")
+
+				if tt.wantErrMsg != "" {
+					require.ErrorContains(t, err, tt.wantErrMsg)
+				}
+
 				return
 			}
 
@@ -2574,6 +2797,7 @@ func runInteractiveWorkflowTest(t *testing.T, tt struct {
 	machineKey                func() key.MachinePublic
 	wantAuth                  bool
 	wantError                 bool
+	wantErrMsg                string
 	wantAuthURL               bool
 	wantExpired               bool
 	validate                  func(*testing.T, *tailcfg.RegisterResponse, *Headscale)
@@ -3400,8 +3624,8 @@ func TestIssue2830_ExistingNodeReregistersWithExpiredKey(t *testing.T) {
 	// Now expire the key by updating it in the database to have an expiry in the past.
 	// This simulates the real-world scenario where a key expires after initial registration.
 	pastExpiry := time.Now().Add(-1 * time.Hour)
-	err = app.state.DB().DB.Model(&types.PreAuthKey{}).
-		Where("id = ?", pak.ID).
+	err = app.state.DB().DB.Model(&types.Credential{}).
+		Where("kind = ? AND id = ?", types.CredentialPreAuthKey, pak.ID).
 		Update("expiration", pastExpiry).Error
 	require.NoError(t, err, "should be able to update key expiration")
 
@@ -3842,7 +4066,7 @@ func TestDeletedPreAuthKeyNotRecreatedOnNodeUpdate(t *testing.T) {
 	// Verify the PreAuthKey exists in the database
 	var pakCount int64
 
-	err = app.state.DB().DB.Model(&types.PreAuthKey{}).Where("id = ?", pakID).Count(&pakCount).Error
+	err = app.state.DB().DB.Model(&types.Credential{}).Where("kind = ? AND id = ?", types.CredentialPreAuthKey, pakID).Count(&pakCount).Error
 	require.NoError(t, err)
 	require.Equal(t, int64(1), pakCount, "PreAuthKey should exist in database")
 
@@ -3853,7 +4077,7 @@ func TestDeletedPreAuthKeyNotRecreatedOnNodeUpdate(t *testing.T) {
 	require.NoError(t, err, "deleting PreAuthKey should succeed")
 
 	// Verify the PreAuthKey is gone from the database
-	err = app.state.DB().DB.Model(&types.PreAuthKey{}).Where("id = ?", pakID).Count(&pakCount).Error
+	err = app.state.DB().DB.Model(&types.Credential{}).Where("kind = ? AND id = ?", types.CredentialPreAuthKey, pakID).Count(&pakCount).Error
 	require.NoError(t, err)
 	require.Equal(t, int64(0), pakCount, "PreAuthKey should be deleted from database")
 	t.Log("PreAuthKey deleted from database")
@@ -3888,7 +4112,7 @@ func TestDeletedPreAuthKeyNotRecreatedOnNodeUpdate(t *testing.T) {
 	t.Log("Simulated MapRequest update completed")
 
 	// THE CRITICAL CHECK: Verify the PreAuthKey was NOT recreated
-	err = app.state.DB().DB.Model(&types.PreAuthKey{}).Where("id = ?", pakID).Count(&pakCount).Error
+	err = app.state.DB().DB.Model(&types.Credential{}).Where("kind = ? AND id = ?", types.CredentialPreAuthKey, pakID).Count(&pakCount).Error
 	require.NoError(t, err)
 	require.Equal(t, int64(0), pakCount,
 		"BUG: PreAuthKey was recreated! The deleted PreAuthKey should NOT reappear after node update")
@@ -4102,6 +4326,73 @@ func TestHandleNodeFromAuthPath_OldUserNil_NoPanic(t *testing.T) {
 	require.True(t, node.Valid())
 	assert.NotEqual(t, types.NodeID(99002), node.ID(), "new node, not orphan")
 	assert.Equal(t, userB.ID, node.UserID().Get(), "new node belongs to userB")
+}
+
+// TestHandleNodeFromAuthPath_ReloginWholeNode covers an interactive (web or
+// OIDC) relogin that rotates the node key. A [tailcfg.PeerChange] patch can
+// neither clear a peer's Expired flag nor carry Hostinfo, so a relogin that
+// un-expires the node or changes Hostinfo peers read must be sent as a whole
+// node. A relogin that only rotates keys keeps the key-rotation patch.
+func TestHandleNodeFromAuthPath_ReloginWholeNode(t *testing.T) {
+	tests := []struct {
+		name      string
+		expired   bool
+		services  []tailcfg.Service
+		wantPatch bool
+	}{
+		{name: "keys only", wantPatch: true},
+		{name: "expired", expired: true},
+		{
+			name:     "peer-visible hostinfo",
+			services: []tailcfg.Service{{Proto: tailcfg.PeerAPI4, Port: 4242}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := createTestApp(t)
+
+			user := app.state.CreateUserForTest("authpath-relogin")
+			node := app.state.CreateRegisteredNodeForTest(user, "authpath-relogin")
+			node.Hostinfo = &tailcfg.Hostinfo{Hostname: node.Hostname}
+
+			if tt.expired {
+				node.Expiry = new(time.Now().Add(-time.Minute))
+			}
+
+			app.state.PutNodeInStoreForTest(*node)
+
+			newNodeKey := key.NewNode()
+			authID := types.MustAuthID()
+			app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+				MachineKey: node.MachineKey,
+				NodeKey:    newNodeKey.Public(),
+				Hostname:   node.Hostname,
+				Hostinfo: &tailcfg.Hostinfo{
+					Hostname: node.Hostname,
+					Services: tt.services,
+				},
+			}))
+
+			relogged, c, err := app.state.HandleNodeFromAuthPath(
+				authID,
+				types.UserID(user.ID),
+				nil,
+				"oidc",
+			)
+			require.NoError(t, err)
+			require.Equal(t, node.ID, relogged.ID(), "relogin must update the existing node")
+			require.Equal(t, newNodeKey.Public(), relogged.NodeKey())
+
+			if tt.wantPatch {
+				assert.Empty(t, c.PeersChanged, "relogin must not be a whole-node add")
+				assert.Len(t, c.PeerPatches, 1, "relogin must be a peer patch")
+			} else {
+				assert.Empty(t, c.PeerPatches, "relogin must not be a peer patch")
+				assert.Contains(t, c.PeersChanged, node.ID, "relogin must be a whole-node add")
+			}
+		})
+	}
 }
 
 // TestWaitForFollowupMachineKeyMismatch covers the followup poll in

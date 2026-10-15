@@ -11,11 +11,12 @@
   };
 
   outputs =
-    { self
-    , nixpkgs
-    , flake-utils
-    , flake-checks
-    , ...
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+      flake-checks,
+      ...
     }:
     let
       headscaleVersion = self.shortRev or self.dirtyShortRev;
@@ -24,15 +25,21 @@
     {
       # NixOS module
       nixosModules = rec {
-        headscale = import ./nix/module.nix;
+        # A path, so importing it twice (directly and via testkit) dedupes.
+        headscale = ./nix/module.nix;
         default = headscale;
+        # Control node for NixOS VM tests of Tailscale clients, and a peer
+        # that joins it; nix/README.md.
+        testkit = import ./nix/testkit.nix self;
+        testkit-peer = ./nix/testkit-peer.nix;
       };
 
-      overlays.default = _: prev:
+      overlays.default =
+        _: prev:
         let
           pkgs = nixpkgs.legacyPackages.${prev.stdenv.hostPlatform.system};
-          # Tracks the newest Go in nixpkgs (currently 1.27) so a Go release
-          # bump is a flake.lock update, not a flake.nix edit.
+          # Tracks the newest Go in nixpkgs so a Go release bump is a
+          # flake.lock update, not a flake.nix edit.
           buildGo = pkgs.buildGoLatestModule;
           vendorHash = (builtins.fromJSON (builtins.readFile ./flakehashes.json)).vendor.sri;
         in
@@ -96,22 +103,29 @@
           };
         };
     }
-    // flake-utils.lib.eachDefaultSystem
-      (system:
+    # Explicit: nixpkgs no longer evaluates x86_64-darwin, which
+    # eachDefaultSystem still lists.
+    // flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ] (
+      system:
       let
         pkgs = import nixpkgs {
           overlays = [ self.overlays.default ];
           inherit system;
         };
-        buildDeps = with pkgs; [ git go_latest gnumake ];
-        devDeps = with pkgs;
+        buildDeps = with pkgs; [
+          git
+          go_latest
+          gnumake
+        ];
+        devDeps =
+          with pkgs;
           buildDeps
           ++ [
             golangci-lint
             golangci-lint-langserver
             golines
             prettier
-            nixpkgs-fmt
+            nixfmt
             goreleaser
             nfpm
             gotestsum
@@ -120,6 +134,7 @@
             gopls
             gotools
 
+            gh
             ksh
             ko
             yq-go
@@ -168,7 +183,11 @@
           vendorHash = (builtins.fromJSON (builtins.readFile ./flakehashes.json)).vendor.sri;
           goPkg = pkgs.go_latest;
           # //go:embed targets and test-read files outside the default whitelist.
-          embedDirs = [ ./hscontrol/assets ./hscontrol/db/schema.sql ./config-example.yaml ];
+          embedDirs = [
+            ./hscontrol/assets
+            ./hscontrol/db/schema.sql
+            ./config-example.yaml
+          ];
           extraSrc = [
             ./hscontrol/testdata
             ./hscontrol/types/testdata
@@ -179,55 +198,72 @@
         goChecks = {
           build = fc.goBuild (common // { subPackages = [ "cmd/headscale" ]; });
 
-          # The pure unit subset. ./integration (Docker) and
+          # The pure unit subset. The root ./integration package (Docker) and
           # ./hscontrol/servertest (slow: 10s+ convergence plus race/stress/HA
           # property tests — run by the servertest workflow instead) are dropped
           # from the test set but kept in source so cmd/hi and friends still
-          # compile; TestPostgres* needs a server (the SQLite equivalents still
+          # compile. Pure integration helper tests remain included.
+          # TestPostgres* needs a server (the SQLite equivalents still
           # run). CGO off matches the build.
-          gotest = fc.goTest (common // {
-            testExclude = [ "/integration" "/hscontrol/servertest" ];
-            goSkip = [ "TestPostgres" ];
-            testEnv = "export CGO_ENABLED=0";
-          });
+          gotest = fc.goTest (
+            common
+            // {
+              testExclude = [
+                "/integration$"
+                "/hscontrol/servertest"
+              ];
+              goSkip = [ "TestPostgres" ];
+              testEnv = "export CGO_ENABLED=0";
+            }
+          );
 
           # Full-tree golangci-lint (golines, gofumpt, etc.); uses the overlay's
           # golangci-lint built against the pinned Go.
           golangci-lint = fc.goLint common;
 
-          # nixpkgs-fmt + prettier, excluding generated output. goFmt = "off":
+          # nixfmt + prettier, excluding generated output. goFmt = "off":
           # Go formatting (golines, gofumpt) is enforced by the golangci-lint
           # check, not treefmt. prettierExts matches the old prettier-lint glob
           # (no json: testdata fixtures are hand-formatted).
-          formatting = fc.goFormat (common // {
-            goFmt = "off";
-            prettier = true;
-            prettierExts = [ "ts" "js" "md" "yaml" "yml" "sass" "css" "scss" "html" ];
-            # Mirror .prettierignore (docs/ are mkdocs-flavoured; gen/ generated).
-            fmtExclude = [ ./gen ./docs ];
-          });
+          formatting = fc.goFormat (
+            common
+            // {
+              goFmt = "off";
+              prettier = true;
+              prettierExts = [
+                "ts"
+                "js"
+                "md"
+                "yaml"
+                "yml"
+                "sass"
+                "css"
+                "scss"
+                "html"
+              ];
+              # Mirror .prettierignore (docs/ are mkdocs-flavoured; gen/ generated).
+              fmtExclude = [
+                ./gen
+                ./docs
+              ];
+            }
+          );
         };
       in
       {
         # `nix develop`
         devShells.default = pkgs.mkShell {
-          buildInputs =
-            devDeps
-            ++ [
-              (pkgs.writeShellScriptBin
-                "nix-vendor-sri"
-                ''
-                  set -eu
-                  exec go run ./cmd/vendorhash update "$@"
-                '')
+          buildInputs = devDeps ++ [
+            (pkgs.writeShellScriptBin "nix-vendor-sri" ''
+              set -eu
+              exec go run ./cmd/vendorhash update "$@"
+            '')
 
-              (pkgs.writeShellScriptBin
-                "go-mod-update-all"
-                ''
-                  cat go.mod | ${pkgs.ripgrep}/bin/rg "\t" | ${pkgs.ripgrep}/bin/rg -v '^\s*//' | ${pkgs.ripgrep}/bin/rg -v indirect | ${pkgs.gawk}/bin/awk '{print $1}' | ${pkgs.findutils}/bin/xargs go get -u
-                  go mod tidy
-                '')
-            ];
+            (pkgs.writeShellScriptBin "go-mod-update-all" ''
+              cat go.mod | ${pkgs.ripgrep}/bin/rg "\t" | ${pkgs.ripgrep}/bin/rg -v '^\s*//' | ${pkgs.ripgrep}/bin/rg -v indirect | ${pkgs.gawk}/bin/awk '{print $1}' | ${pkgs.findutils}/bin/xargs go get -u
+              go mod tidy
+            '')
+          ];
 
           shellHook = ''
             export PATH="$PWD/result/bin:$PATH"
@@ -250,11 +286,25 @@
           drv = pkgs.headscale;
         };
 
-        checks = {
-          headscale = pkgs.testers.nixosTest (import ./nix/tests/headscale.nix);
-        }
-        # The Go build/test checks are gated to Linux: parts of the tree are
-        # Linux-specific and the pure unit subset is validated by CI.
-        // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux goChecks;
-      });
+        # `nix fmt` is built from the same treefmt module as the formatting
+        # check, so the two cannot disagree. Every formatter the tree is judged
+        # by lives here, not in a hand-kept list of pre-commit hooks.
+        formatter = fc.formatter (
+          common
+          // {
+            goFmt = "off";
+            prettier = true;
+          }
+        );
+
+        # Gated to Linux: parts of the tree are Linux-specific, and the VM
+        # test needs KVM.
+        checks = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux (
+          goChecks
+          // {
+            headscale = pkgs.testers.runNixOSTest (import ./nix/tests/headscale.nix self);
+          }
+        );
+      }
+    );
 }
