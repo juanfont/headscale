@@ -12,7 +12,9 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	hsdns "github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/libdns/cloudflare"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -61,6 +63,7 @@ func TestReadConfig(t *testing.T) {
 					{Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
 				},
 				SearchDomains: []string{"test.com", "bar.com"},
+				Certificates:  CertificatesConfig{Zone: "example.com"},
 			},
 		},
 		{
@@ -127,6 +130,7 @@ func TestReadConfig(t *testing.T) {
 					{Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
 				},
 				SearchDomains: []string{"test.com", "bar.com"},
+				Certificates:  CertificatesConfig{Zone: "example.com"},
 			},
 		},
 		{
@@ -331,6 +335,7 @@ func TestReadConfigFromEnv(t *testing.T) {
 				// 	{Name: "prometheus.myvpn.example.com", Type: "A", Value: "100.64.0.4"},
 				// },
 				SearchDomains: []string{"test.com", "bar.com"},
+				Certificates:  CertificatesConfig{Zone: "example.com"},
 			},
 		},
 	}
@@ -362,9 +367,11 @@ func TestTLSConfigValidation(t *testing.T) {
 	var err error
 
 	configYaml := []byte(`---
-tls_letsencrypt_hostname: example.com
-tls_letsencrypt_challenge_type: ""
-tls_cert_path: abc.pem
+tls:
+  cert_path: abc.pem
+  acme:
+    hostname: example.com
+    challenge_type: bogus
 noise:
   private_key_path: noise_private.key`)
 
@@ -385,12 +392,12 @@ noise:
 	assert.Contains(
 		t,
 		err.Error(),
-		"Fatal config error: tls_letsencrypt_hostname and tls_cert_path/tls_key_path are mutually exclusive",
+		"Fatal config error: tls.acme.hostname and tls.cert_path/tls.key_path are mutually exclusive",
 	)
 	assert.Contains(
 		t,
 		err.Error(),
-		"Fatal config error: tls_letsencrypt_challenge_type has an unsupported value",
+		"Fatal config error: tls.acme.challenge_type has an unsupported value",
 	)
 	assert.Contains(
 		t,
@@ -403,8 +410,10 @@ noise:
 noise:
   private_key_path: noise_private.key
 server_url: http://127.0.0.1:8080
-tls_letsencrypt_hostname: example.com
-tls_letsencrypt_challenge_type: TLS-ALPN-01
+tls:
+  acme:
+    hostname: example.com
+    challenge_type: TLS-ALPN-01
 `)
 
 	err = os.WriteFile(configFilePath, configYaml, 0o600)
@@ -518,22 +527,37 @@ oidc:` + tt.oidcBlock + "\n")
 	}
 }
 
-func TestTLSLetsEncryptListenAddrCollision(t *testing.T) {
+func TestTLSACMEListenAddrCollision(t *testing.T) {
+	const (
+		tlsKeys = `tls:
+  acme:
+    hostname: %q
+    challenge_type: %q
+    http_listen: %q
+`
+		legacyKeys = `tls_letsencrypt_hostname: %q
+tls_letsencrypt_challenge_type: %q
+tls_letsencrypt_listen: %q
+`
+	)
+
 	tests := []struct {
 		name          string
 		listenAddr    string
-		leListen      string
+		acmeListen    string
 		hostname      string
 		challengeType string
+		keys          string
 		wantErr       string // empty = expect no error
 	}{
-		{"collision-numeric", ":80", ":80", "example.com", "HTTP-01", "would bind the same TCP socket"},
-		{"collision-named-vs-numeric", "0.0.0.0:80", ":http", "example.com", "HTTP-01", "would bind the same TCP socket"},
-		{"collision-https-named", ":443", ":https", "example.com", "HTTP-01", "would bind the same TCP socket"},
-		{"canonical", "0.0.0.0:443", ":http", "example.com", "HTTP-01", ""},
-		{"no-hostname-skipped", "0.0.0.0:80", ":http", "", "HTTP-01", ""},
-		{"tls-alpn-01-skipped", "0.0.0.0:80", ":http", "example.com", "TLS-ALPN-01", ""},
-		{"different-numeric", ":8080", ":8081", "example.com", "HTTP-01", ""},
+		{"collision-numeric", ":80", ":80", "example.com", "HTTP-01", tlsKeys, "would bind the same TCP socket"},
+		{"collision-named-vs-numeric", "0.0.0.0:80", ":http", "example.com", "HTTP-01", tlsKeys, "would bind the same TCP socket"},
+		{"collision-https-named", ":443", ":https", "example.com", "HTTP-01", tlsKeys, "would bind the same TCP socket"},
+		{"collision-legacy-keys", ":80", ":80", "example.com", "HTTP-01", legacyKeys, "would bind the same TCP socket"},
+		{"canonical", "0.0.0.0:443", ":http", "example.com", "HTTP-01", tlsKeys, ""},
+		{"no-hostname-skipped", "0.0.0.0:80", ":http", "", "HTTP-01", tlsKeys, ""},
+		{"tls-alpn-01-skipped", "0.0.0.0:80", ":http", "example.com", "TLS-ALPN-01", tlsKeys, ""},
+		{"different-numeric", ":8080", ":8081", "example.com", "HTTP-01", tlsKeys, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -543,17 +567,14 @@ func TestTLSLetsEncryptListenAddrCollision(t *testing.T) {
 			cfg := fmt.Sprintf(`---
 server_url: https://example.com
 listen_addr: %q
-tls_letsencrypt_hostname: %q
-tls_letsencrypt_challenge_type: %q
-tls_letsencrypt_listen: %q
-noise:
+`+tt.keys+`noise:
   private_key_path: noise_private.key
 database:
   type: sqlite3
 dns:
   magic_dns: false
   override_local_dns: false
-`, tt.listenAddr, tt.hostname, tt.challengeType, tt.leListen)
+`, tt.listenAddr, tt.hostname, tt.challengeType, tt.acmeListen)
 			require.NoError(t, os.WriteFile(
 				filepath.Join(tmpDir, "config.yaml"), []byte(cfg), 0o600))
 			require.NoError(t, LoadConfig(tmpDir, false))
@@ -873,6 +894,7 @@ func TestConfigJSONOmitsSecrets(t *testing.T) {
 		secretPostgresPass = "p0stgres-secret-marker"
 		secretClientSecret = "oidc-client-secret-marker"    //nolint:gosec // test marker, not a real credential
 		secretAPIKey       = "headscale-cli-api-key-marker" //nolint:gosec // test marker, not a real credential
+		secretDNSToken     = "dns-provider-token-marker"    //nolint:gosec // test marker, not a real credential
 	)
 
 	cfg := &Config{
@@ -887,13 +909,17 @@ func TestConfigJSONOmitsSecrets(t *testing.T) {
 		CLI: CLIConfig{
 			APIKey: secretAPIKey,
 		},
+		DNSChallenge: DNSChallengeConfig{
+			ProviderName: "cloudflare",
+			Provider:     &cloudflare.Provider{APIToken: secretDNSToken},
+		},
 	}
 
 	out, err := json.Marshal(cfg)
 	require.NoError(t, err)
 
 	body := string(out)
-	for _, secret := range []string{secretPostgresPass, secretClientSecret, secretAPIKey} {
+	for _, secret := range []string{secretPostgresPass, secretClientSecret, secretAPIKey, secretDNSToken} {
 		assert.NotContains(t, body, secret,
 			"marshalled Config must not contain secret %q", secret)
 	}
@@ -1015,5 +1041,440 @@ func TestExtraRecordsAreLowercased(t *testing.T) {
 
 	if diff := cmp.Diff(want, cfg.TailcfgDNSConfig.ExtraRecords); diff != "" {
 		t.Errorf("SetExtraRecords mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestDNSChallengeConfig(t *testing.T) {
+	secret := filepath.Join(t.TempDir(), "token")
+	require.NoError(t, os.WriteFile(secret, []byte("file-token\n"), 0o600))
+
+	base := `---
+server_url: https://headscale.example.com
+noise:
+  private_key_path: noise_private.key
+prefixes:
+  v4: 100.64.0.0/10
+database:
+  type: sqlite
+dns:
+  magic_dns: true
+  override_local_dns: false
+  base_domain: ts.example.com
+`
+
+	tests := []struct {
+		name          string
+		yaml          string
+		env           map[string]string
+		wantErr       string
+		wantZone      string
+		wantToken     string
+		wantNoProv    bool
+		wantResolvers []string
+		wantIsolates  string
+	}{
+		{
+			name: "disabled by default",
+			yaml: base,
+			// Zone follows base_domain even when unused, so it is never empty.
+			wantZone:      "ts.example.com",
+			wantNoProv:    true,
+			wantResolvers: []string{"1.1.1.1:53", "8.8.8.8:53"},
+		},
+		{
+			name: "resolvers default to port 53",
+			yaml: base + `  challenge:
+    resolvers: ["9.9.9.9", "2620:fe::fe", "127.0.0.1:5353"]
+`,
+			wantZone:      "ts.example.com",
+			wantNoProv:    true,
+			wantResolvers: []string{"9.9.9.9:53", "[2620:fe::fe]:53", "127.0.0.1:5353"},
+		},
+		{
+			name: "enabled with inline token",
+			yaml: base + `  certificates:
+    enabled: true
+  challenge:
+    provider:
+      name: cloudflare
+      api_token: yaml-token
+`,
+			wantZone:  "ts.example.com",
+			wantToken: "yaml-token",
+		},
+		{
+			name: "env only",
+			yaml: base,
+			env: map[string]string{
+				"HEADSCALE_DNS_CERTIFICATES_ENABLED":              "true",
+				"HEADSCALE_DNS_CERTIFICATES_ZONE":                 "example.com",
+				"HEADSCALE_DNS_CHALLENGE_PROVIDER_NAME":           "cloudflare",
+				"HEADSCALE_DNS_CHALLENGE_PROVIDER_API_TOKEN_PATH": secret,
+			},
+			wantZone:  "example.com",
+			wantToken: "file-token",
+		},
+		{
+			name: "env overrides yaml",
+			yaml: base + `  challenge:
+    provider:
+      name: cloudflare
+      api_token: yaml-token
+`,
+			env:       map[string]string{"HEADSCALE_DNS_CHALLENGE_PROVIDER_API_TOKEN": "env-token"},
+			wantZone:  "ts.example.com",
+			wantToken: "env-token",
+		},
+		{
+			name: "typo in provider key",
+			yaml: base + `  challenge:
+    provider:
+      name: cloudflare
+      auth_token: tok
+`,
+			wantErr: "dns.challenge.provider is invalid",
+		},
+		{
+			name: "unknown provider",
+			yaml: base + `  challenge:
+    provider:
+      name: route53
+`,
+			wantErr: "dns.challenge.provider is invalid",
+		},
+		{
+			name: "acmedns one account for node certificates",
+			yaml: base + `  certificates:
+    enabled: true
+  challenge:
+    provider:
+      name: acmedns
+      username: user
+      password: pass
+      subdomain: reg
+      server_url: https://auth.acme-dns.io
+`,
+			wantErr: "registration per name",
+		},
+		{
+			name: "acmedns registration per name",
+			yaml: base + `  certificates:
+    enabled: true
+  challenge:
+    provider:
+      name: acmedns
+      config:
+        laptop.ts.example.com:
+          username: user
+          password: pass
+          subdomain: reg-laptop
+          server_url: https://auth.acme-dns.io
+        desktop.ts.example.com:
+          username: user
+          password: pass
+          subdomain: reg-desktop
+          server_url: https://auth.acme-dns.io
+`,
+			wantZone:     "ts.example.com",
+			wantIsolates: "laptop.ts.example.com",
+		},
+		{
+			name: "acmedns registration shared by node names",
+			yaml: base + `  certificates:
+    enabled: true
+  challenge:
+    provider:
+      name: acmedns
+      config:
+        laptop.ts.example.com:
+          username: user
+          password: pass
+          subdomain: reg
+          server_url: https://auth.acme-dns.io
+        desktop.ts.example.com:
+          username: user
+          password: pass
+          subdomain: reg
+          server_url: https://auth.acme-dns.io
+`,
+			wantErr: "desktop.ts.example.com and laptop.ts.example.com share registration reg",
+		},
+		{
+			name: "acmedns one account for headscale's own certificate",
+			yaml: base + `  challenge:
+    provider:
+      name: acmedns
+      username: user
+      password: pass
+      subdomain: reg
+      server_url: https://auth.acme-dns.io
+tls:
+  acme:
+    hostname: headscale.example.com
+    challenge_type: DNS-01
+`,
+			wantZone: "ts.example.com",
+		},
+		{
+			name: "acmedns registration shared with headscale's own name",
+			yaml: base + `  certificates:
+    enabled: true
+  challenge:
+    provider:
+      name: acmedns
+      config:
+        laptop.ts.example.com:
+          username: user
+          password: pass
+          subdomain: reg
+          server_url: https://auth.acme-dns.io
+        headscale.example.com:
+          username: user
+          password: pass
+          subdomain: reg
+          server_url: https://auth.acme-dns.io
+tls:
+  acme:
+    hostname: headscale.example.com
+    challenge_type: DNS-01
+`,
+			wantErr: "headscale.example.com and laptop.ts.example.com share registration reg",
+		},
+		{
+			name: "enabled without magic dns",
+			yaml: strings.Replace(base, "magic_dns: true", "magic_dns: false", 1) + `  certificates:
+    enabled: true
+  challenge:
+    provider:
+      name: cloudflare
+      api_token: tok
+`,
+			wantErr: "dns.certificates requires dns.magic_dns",
+		},
+		{
+			name: "enabled without provider",
+			yaml: base + `  certificates:
+    enabled: true
+`,
+			wantErr: "dns.certificates and tls.acme DNS-01 require dns.challenge.provider",
+		},
+		{
+			name: "base_domain outside zone",
+			yaml: base + `  certificates:
+    enabled: true
+    zone: notexample.com
+  challenge:
+    provider:
+      name: cloudflare
+      api_token: tok
+`,
+			wantErr: "dns.base_domain is not inside dns.certificates.zone",
+		},
+		{
+			name: "zone suffix without label boundary",
+			yaml: base + `  certificates:
+    enabled: true
+    zone: ample.com
+  challenge:
+    provider:
+      name: cloudflare
+      api_token: tok
+`,
+			wantErr: "dns.base_domain is not inside dns.certificates.zone",
+		},
+		{
+			name: "uppercase base_domain",
+			yaml: strings.Replace(base, "ts.example.com", "TS.example.com", 1) + `  certificates:
+    enabled: true
+  challenge:
+    provider:
+      name: cloudflare
+      api_token: tok
+`,
+			wantErr: "dns.base_domain must be a lowercase DNS name",
+		},
+		{
+			name: "tls DNS-01 without provider",
+			yaml: base + `tls:
+  acme:
+    hostname: headscale.example.com
+    challenge_type: DNS-01
+`,
+			wantErr: "dns.certificates and tls.acme DNS-01 require dns.challenge.provider",
+		},
+		{
+			name: "negative propagation timeout",
+			yaml: base + `  challenge:
+    propagation_timeout: -1s
+`,
+			wantErr: "dns.challenge.propagation_timeout must not be negative",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
+
+			tmpDir := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(tt.yaml), 0o600))
+			require.NoError(t, LoadConfig(tmpDir, false))
+
+			cfg, err := LoadServerConfig()
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantZone, cfg.DNSConfig.Certificates.Zone)
+
+			if tt.wantResolvers != nil {
+				assert.Equal(t, tt.wantResolvers, cfg.DNSChallenge.Resolvers)
+			}
+
+			if tt.wantNoProv {
+				assert.Nil(t, cfg.DNSChallenge.Provider)
+
+				return
+			}
+
+			if iso, ok := cfg.DNSChallenge.Provider.(hsdns.Isolator); ok {
+				if tt.wantIsolates != "" {
+					assert.True(t, iso.Isolates(tt.wantIsolates))
+				}
+
+				return
+			}
+
+			provider, ok := cfg.DNSChallenge.Provider.(*cloudflare.Provider)
+			require.True(t, ok, "provider is %T", cfg.DNSChallenge.Provider)
+			assert.Equal(t, tt.wantToken, provider.APIToken)
+		})
+	}
+}
+
+// TestTLSLegacyKeys pins that the flat TLS keys keep working under the tls
+// block, with the tls keys winning, and that the NixOS module's defaults
+// for the flat keys leave TLS off.
+func TestTLSLegacyKeys(t *testing.T) {
+	base := `---
+server_url: https://headscale.example.com
+noise:
+  private_key_path: noise_private.key
+prefixes:
+  v4: 100.64.0.0/10
+database:
+  type: sqlite
+dns:
+  magic_dns: false
+  override_local_dns: false
+`
+
+	tests := []struct {
+		name string
+		yaml string
+		env  map[string]string
+		want TLSConfig
+	}{
+		{
+			name: "defaults",
+			yaml: base,
+			want: TLSConfig{ACME: ACMEConfig{
+				ChallengeType: HTTP01ChallengeType,
+				HTTPListen:    ":http",
+				CacheDir:      "/var/lib/headscale/cache",
+			}},
+		},
+		{
+			name: "legacy keys",
+			yaml: base + `tls_letsencrypt_hostname: headscale.example.com
+tls_letsencrypt_challenge_type: TLS-ALPN-01
+tls_letsencrypt_listen: ":8080"
+tls_letsencrypt_cache_dir: /var/lib/headscale/cache
+acme_url: https://acme.example.com/directory
+acme_email: admin@example.com
+`,
+			want: TLSConfig{ACME: ACMEConfig{
+				Hostname:      "headscale.example.com",
+				ChallengeType: TLSALPN01ChallengeType,
+				HTTPListen:    ":8080",
+				URL:           "https://acme.example.com/directory",
+				Email:         "admin@example.com",
+				CacheDir:      "/var/lib/headscale/cache",
+			}},
+		},
+		{
+			name: "tls keys win over legacy keys",
+			yaml: base + `tls_cert_path: /old/cert.pem
+tls_key_path: /old/key.pem
+tls:
+  cert_path: /new/cert.pem
+  key_path: /new/key.pem
+`,
+			want: TLSConfig{
+				CertPath: "/new/cert.pem",
+				KeyPath:  "/new/key.pem",
+				ACME: ACMEConfig{
+					ChallengeType: HTTP01ChallengeType,
+					HTTPListen:    ":http",
+					CacheDir:      "/var/lib/headscale/cache",
+				},
+			},
+		},
+		{
+			// What the NixOS module writes when TLS is off.
+			name: "nixos defaults",
+			yaml: base + `tls_letsencrypt_hostname: ""
+tls_letsencrypt_challenge_type: HTTP-01
+tls_letsencrypt_listen: ":http"
+tls_letsencrypt_cache_dir: /var/lib/headscale/.cache
+`,
+			want: TLSConfig{ACME: ACMEConfig{
+				ChallengeType: HTTP01ChallengeType,
+				HTTPListen:    ":http",
+				CacheDir:      "/var/lib/headscale/.cache",
+			}},
+		},
+		{
+			// Both keys read HEADSCALE_TLS_CERT_PATH.
+			name: "env",
+			yaml: base,
+			env: map[string]string{
+				"HEADSCALE_TLS_CERT_PATH": "/env/cert.pem",
+				"HEADSCALE_TLS_KEY_PATH":  "/env/key.pem",
+			},
+			want: TLSConfig{
+				CertPath: "/env/cert.pem",
+				KeyPath:  "/env/key.pem",
+				ACME: ACMEConfig{
+					ChallengeType: HTTP01ChallengeType,
+					HTTPListen:    ":http",
+					CacheDir:      "/var/lib/headscale/cache",
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
+
+			tmpDir := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(tt.yaml), 0o600))
+			require.NoError(t, LoadConfig(tmpDir, false))
+
+			cfg, err := LoadServerConfig()
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, cfg.TLS)
+		})
 	}
 }

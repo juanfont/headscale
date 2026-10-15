@@ -56,6 +56,7 @@ type TailscaleClient interface {
 	ContainerID() string
 	MustID() types.NodeID
 	ReadFile(path string) ([]byte, error)
+	WriteFile(path string, data []byte) error
 	PacketFilter() ([]filter.Match, error)
 	ConnectToNetwork(network *dockertest.Network) error
 	DisconnectFromNetwork(network *dockertest.Network) error

@@ -78,6 +78,12 @@ nodes.peer.imports = [ inputs.headscale.nixosModules.testkit-peer ];
 See `nix/README.md` for the full contract, recipes for tsnet and non-Go
 clients, and how to run the same setup without Nix.
 
+### TLS certificates for nodes
+
+`tailscale cert` and HTTPS with `tailscale serve` now work. Headscale publishes
+the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
+`cloudflare`, `gigahost`, `hetzner`, `powerdns` or `rfc2136`. `dns.base_domain` must be a public domain you control. [#3554](https://github.com/juanfont/headscale/pull/3554)
+
 ### BREAKING
 
 #### Database
@@ -100,6 +106,9 @@ clients, and how to run the same setup without Nix.
 - `dns.extra_records_path` must end in `.json`, `.hujson`, `.yaml` or `.yml`; the extension picks the format
 - A `derp.paths` file that decodes to no regions now stops headscale from starting instead of being silently ignored
 - `unix_socket_permission` must be a quoted octal string no higher than `"0777"`, e.g. `"0770"`; an unquoted number or an invalid value now stops headscale from starting instead of silently using `0700` [#3540](https://github.com/juanfont/headscale/pull/3540)
+- `tls_cert_path`, `tls_key_path`, `tls_letsencrypt_*`, `acme_url` and `acme_email` are deprecated in favour of `tls.cert_path`, `tls.key_path` and `tls.acme.*` [#3554](https://github.com/juanfont/headscale/pull/3554)
+  - The old keys continue to work, with a warning, but will be removed in a future release
+- Headscale's own ACME certificate is managed by CertMagic instead of autocert; the first start registers a new ACME account and obtains a new certificate in `tls.acme.cache_dir`, which now defaults to `/var/lib/headscale/cache` [#3554](https://github.com/juanfont/headscale/pull/3554)
 
 #### CLI
 
@@ -110,6 +119,7 @@ clients, and how to run the same setup without Nix.
 
 - `settings.ephemeral_node_inactivity_timeout` is removed; set `settings.node.ephemeral.inactivity_timeout`, which headscale reads instead
 - `settings.dns.split` is removed; headscale never read it, set `settings.dns.nameservers.split`
+- `settings.tls_*` options move to `settings.tls.*`; old `settings.tls_*` values still work [#3554](https://github.com/juanfont/headscale/pull/3554)
 
 ### Changes
 
@@ -128,6 +138,11 @@ clients, and how to run the same setup without Nix.
 
 - A node re-registering with a spent, expired or revoked pre-auth key is now rejected if it expired or changed node key while the re-registration was in flight [#3525](https://github.com/juanfont/headscale/pull/3525)
 - DERP client verification (the embedded DERP server and the `/verify` endpoint) looks up the node key directly instead of scanning every node on each connection [#3520](https://github.com/juanfont/headscale/pull/3520)
+- Renaming a node now stores the name in lowercase; a node renamed with uppercase letters before gets no certificate name until it is renamed again [#3554](https://github.com/juanfont/headscale/pull/3554)
+- Add `dns.certificates.enabled` and `dns.certificates.zone` to let nodes get TLS certificates [#3554](https://github.com/juanfont/headscale/pull/3554)
+- Add `dns.challenge.provider`, `dns.challenge.propagation_timeout` and `dns.challenge.resolvers` for ACME DNS-01 challenges [#3554](https://github.com/juanfont/headscale/pull/3554)
+- The v2 tailnet setting `httpsEnabled` reports `dns.certificates.enabled` [#3554](https://github.com/juanfont/headscale/pull/3554)
+- `tls.acme.challenge_type` accepts `DNS-01`, using `dns.challenge.provider` [#3554](https://github.com/juanfont/headscale/pull/3554)
 - Fix the unix socket being created `0700` instead of the documented `0770` when `unix_socket_permission` is unset. The socket grants full admin access without authentication, so members of its group gain that access; check who is in it before upgrading [#3540](https://github.com/juanfont/headscale/pull/3540)
 
 ## 0.29.5 (2026-10-13)

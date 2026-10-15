@@ -232,35 +232,35 @@ database:
 
 ### TLS configuration
 # See: https://headscale.net/stable/ref/tls/
+tls:
+  ## Use already defined certificates:
+  cert_path: ""
+  key_path: ""
 
-## Let's Encrypt / ACME
-# Headscale supports automatically requesting and setting up
-# TLS for a domain with Let's Encrypt.
+  ## Let's Encrypt / ACME
+  # Headscale supports automatically requesting and setting up
+  # TLS for a domain with Let's Encrypt.
+  acme:
+    # Domain name to request a TLS certificate for:
+    hostname: ""
 
-# URL to ACME directory
-acme_url: https://acme-v02.api.letsencrypt.org/directory
+    # Type of ACME challenge to use, currently supported types:
+    # HTTP-01, TLS-ALPN-01 or DNS-01 (uses dns.challenge)
+    challenge_type: HTTP-01
 
-# Email to register with ACME provider
-acme_email: ""
+    # When HTTP-01 challenge is chosen, letsencrypt must set up a
+    # verification endpoint, and it will be listening on:
+    # :http = port 80
+    http_listen: ":http"
 
-# Domain name to request a TLS certificate for:
-tls_letsencrypt_hostname: ""
+    # URL to ACME directory
+    url: https://acme-v02.api.letsencrypt.org/directory
 
-# Path to store certificates and metadata needed by letsencrypt
-tls_letsencrypt_cache_dir: /var/lib/headscale/cache
+    # Email to register with ACME provider
+    email: ""
 
-# Type of ACME challenge to use, currently supported types:
-# HTTP-01 or TLS-ALPN-01
-tls_letsencrypt_challenge_type: HTTP-01
-
-# When HTTP-01 challenge is chosen, letsencrypt must set up a
-# verification endpoint, and it will be listening on:
-# :http = port 80
-tls_letsencrypt_listen: ":http"
-
-## Use already defined certificates:
-tls_cert_path: ""
-tls_key_path: ""
+    # Path to store certificates and metadata needed by letsencrypt
+    cache_dir: /var/lib/headscale/cache
 
 log:
   # Valid log levels: panic, fatal, error, warn, info, debug, trace
@@ -357,6 +357,47 @@ dns:
   # picks the format: .json, .hujson, .yaml or .yml.
   # Headscale processes this file on each change.
   # extra_records_path: /var/lib/headscale/extra-records.json
+
+  # Let nodes get TLS certificates for their MagicDNS name with
+  # `tailscale cert`. Requires dns.challenge.provider.
+  certificates:
+    enabled: false
+
+    # DNS zone the provider writes to. Defaults to base_domain.
+    # zone: example.com
+
+  # DNS provider for ACME DNS-01 challenges, used by dns.certificates and
+  # by tls.acme with challenge_type DNS-01.
+  challenge:
+    # How long to wait for a record to show up on every authoritative
+    # nameserver. 0 disables the check.
+    propagation_timeout: 2m
+
+    # Resolvers used to find the zone's nameservers.
+    # Defaults to 1.1.1.1 and 8.8.8.8.
+    # resolvers: []
+
+    # acmedns, cloudflare, gigahost, hetzner, powerdns or rfc2136. The other
+    # keys are settings of that provider; add _path to a key to read it from
+    # a file.
+    # provider:
+    #   name: cloudflare
+    #   api_token_path: /run/credentials/headscale.service/cloudflare-token
+    #
+    # acmedns needs a registration per certificate name under config, and
+    # each _acme-challenge name CNAMEd to its registration's fulldomain. A
+    # node without one gets no certificate. A registration holds two
+    # pending challenges; more are refused until one expires. One account
+    # (username, password, subdomain and server_url instead of config)
+    # serves headscale's own certificate only.
+    # provider:
+    #   name: acmedns
+    #   config:
+    #     laptop.example.com:
+    #       username: <username from /register>
+    #       password: <password from /register>
+    #       subdomain: <subdomain from /register>
+    #       server_url: https://auth.acme-dns.io
 
 # Unix socket used for the CLI to connect without authentication
 # Note: for production you will want to set this to something like:
