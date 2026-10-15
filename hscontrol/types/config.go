@@ -975,6 +975,13 @@ func dnsChallengeConfig() (DNSChallengeConfig, error) {
 		return cfg, err
 	}
 
+	if iso, ok := provider.(hsdns.Isolator); ok && viper.GetBool("dns.certificates.enabled") {
+		err = iso.CheckIsolation()
+		if err != nil {
+			return cfg, fmt.Errorf("%w for %s: %w", hsdns.ErrProviderConfig, cfg.ProviderName, err)
+		}
+	}
+
 	cfg.Provider = provider
 
 	return cfg, nil

@@ -14,11 +14,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeNameserver answers authoritatively for testZone: ns1 and ns2 are
-// the zone's nameservers, and TXT answers come from txt.
+// acmeZone stands in for an acme-dns server's zone.
+const acmeZone = "acme.example.net."
+
+// fakeNameserver answers authoritatively for testZone and acmeZone: ns1
+// and ns2 are their nameservers, TXT answers come from txt and a name in
+// cname is an alias.
 type fakeNameserver struct {
-	mu  sync.Mutex
-	txt map[string][]string
+	mu    sync.Mutex
+	txt   map[string][]string
+	cname map[string]string
 	// hideFor makes the first n TXT queries miss, like a nameserver that
 	// has not caught up yet.
 	hideFor atomic.Int32
@@ -39,8 +44,24 @@ func (f *fakeNameserver) ServeDNS(w mdns.ResponseWriter, r *mdns.Msg) {
 	q := r.Question[0]
 	hdr := mdns.RR_Header{Name: q.Name, Class: mdns.ClassINET, Ttl: 60, Rrtype: q.Qtype}
 
+	f.mu.Lock()
+	target, alias := f.cname[q.Name]
+	f.mu.Unlock()
+
+	if alias {
+		hdr.Rrtype = mdns.TypeCNAME
+		m.Answer = []mdns.RR{&mdns.CNAME{Hdr: hdr, Target: target}}
+		_ = w.WriteMsg(m)
+
+		return
+	}
+
 	switch q.Qtype {
 	case mdns.TypeNS:
+		if q.Name != testZone && q.Name != acmeZone {
+			break
+		}
+
 		m.Answer = []mdns.RR{
 			&mdns.NS{Hdr: hdr, Ns: "ns1." + testZone},
 			&mdns.NS{Hdr: hdr, Ns: "ns2." + testZone},
@@ -86,8 +107,8 @@ func startNameservers(t *testing.T) (txtChecker, *fakeNameserver, *fakeNameserve
 		t.Skip("needs 127.0.0.2, which only Linux routes by default")
 	}
 
-	ns1 := &fakeNameserver{txt: map[string][]string{}}
-	ns2 := &fakeNameserver{txt: map[string][]string{}}
+	ns1 := &fakeNameserver{txt: map[string][]string{}, cname: map[string]string{}}
+	ns2 := &fakeNameserver{txt: map[string][]string{}, cname: map[string]string{}}
 
 	var lc net.ListenConfig
 
@@ -144,6 +165,43 @@ func TestTXTCheckerWaitsForLaggingNameserver(t *testing.T) {
 
 	require.NoError(t, c.wait(context.Background(), testName, "value"))
 	assert.Negative(t, ns2.hideFor.Load(), "ns2 was asked again after it missed")
+}
+
+// A challenge delegated by CNAME, as to acme-dns, is only served by the
+// zone of the chain's last name; the names before it answer with a CNAME.
+// The intermediate name sits in testZone, whose nameservers would answer
+// without ever serving the value.
+func TestTXTCheckerFollowsCNAMEChain(t *testing.T) {
+	c, ns1, ns2 := startNameservers(t)
+
+	relay := "relay." + testZone
+	target := "f0e3c7." + acmeZone
+
+	for _, ns := range []*fakeNameserver{ns1, ns2} {
+		ns.mu.Lock()
+		ns.cname[testName] = relay
+		ns.cname[relay] = target
+		ns.txt[target] = []string{"value"}
+		ns.mu.Unlock()
+	}
+
+	require.NoError(t, c.wait(context.Background(), testName, "value"))
+
+	c.timeout = 200 * time.Millisecond
+
+	err := c.wait(context.Background(), testName, "other")
+	require.ErrorIs(t, err, ErrNotPropagated)
+	require.ErrorContains(t, err, target)
+
+	// A loop fails at once instead of waiting out the timeout.
+	for _, ns := range []*fakeNameserver{ns1, ns2} {
+		ns.mu.Lock()
+		ns.cname[relay] = testName
+		ns.mu.Unlock()
+	}
+
+	err = c.wait(context.Background(), testName, "value")
+	require.ErrorIs(t, err, errCNAMEChain)
 }
 
 func TestTXTCheckerErrorNamesResolvers(t *testing.T) {

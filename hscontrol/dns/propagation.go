@@ -14,9 +14,16 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-var ErrNotPropagated = errors.New("TXT record not visible on all authoritative nameservers")
+var (
+	ErrNotPropagated = errors.New("TXT record not visible on all authoritative nameservers")
+	errCNAMEChain    = errors.New("ACME challenge CNAME chain does not end")
+)
 
-const propagationInterval = 2 * time.Second
+const (
+	propagationInterval = 2 * time.Second
+	// maxCNAMEHops is far more than delegating a challenge needs.
+	maxCNAMEHops = 8
+)
 
 // txtChecker waits until every authoritative nameserver of a zone serves
 // a TXT value. The client asks the CA to validate as soon as set-dns
@@ -40,7 +47,7 @@ func newTXTChecker(resolvers []string, timeout time.Duration) txtChecker {
 }
 
 // wait returns nil once each nameserver of the zone holding fqdn answers
-// it with value.
+// it with value; for a CNAME, the chain's last name takes fqdn's place.
 // A timeout of zero disables the check.
 func (c txtChecker) wait(ctx context.Context, fqdn, value string) error {
 	if c.timeout <= 0 {
@@ -53,6 +60,17 @@ func (c txtChecker) wait(ctx context.Context, fqdn, value string) error {
 	defer cancel()
 
 	recursive := resolverAt(c.resolvers...)
+
+	target, err := c.cnameTarget(ctx, recursive, fqdn)
+	if err != nil {
+		return err
+	}
+
+	if target != fqdn {
+		log.Debug().Str("fqdn", fqdn).Str("target", target).Msg("ACME challenge delegated by CNAME")
+
+		fqdn = target
+	}
 
 	nameservers, err := nameserversOf(ctx, recursive, fqdn)
 	if err != nil {
@@ -127,6 +145,36 @@ func (c txtChecker) wait(ctx context.Context, fqdn, value string) error {
 			return fmt.Errorf("%w: %s waiting for %s", ErrNotPropagated, fqdn, strings.Join(hosts, ", "))
 		case <-time.After(c.interval):
 		}
+	}
+}
+
+// cnameTarget follows the CNAME chain from fqdn, as the CA does, and
+// returns its last name, or fqdn without one. A CNAME delegates the
+// challenge to another zone, as for acme-dns, sometimes through more.
+func (c txtChecker) cnameTarget(ctx context.Context, r *net.Resolver, fqdn string) (string, error) {
+	chain := []string{fqdn}
+
+	for {
+		// Go reports only the first target of a chain.
+		target, err := r.LookupCNAME(ctx, fqdn)
+		if isNotFound(err) || err == nil && strings.EqualFold(target, fqdn) {
+			return fqdn, nil
+		}
+
+		if err != nil {
+			return "", fmt.Errorf("looking up CNAME of %s: %w", fqdn, c.via(err))
+		}
+
+		if slices.ContainsFunc(chain, func(n string) bool { return strings.EqualFold(n, target) }) {
+			return "", fmt.Errorf("%w: %s loops back to %s", errCNAMEChain, fqdn, target)
+		}
+
+		if len(chain) > maxCNAMEHops {
+			return "", fmt.Errorf("%w: more than %d hops from %s", errCNAMEChain, maxCNAMEHops, chain[0])
+		}
+
+		chain = append(chain, target)
+		fqdn = target
 	}
 }
 

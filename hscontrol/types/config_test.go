@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	hsdns "github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/libdns/cloudflare"
 	"github.com/spf13/viper"
@@ -1054,6 +1055,7 @@ dns:
 		wantToken     string
 		wantNoProv    bool
 		wantResolvers []string
+		wantIsolates  string
 	}{
 		{
 			name: "disabled by default",
@@ -1123,6 +1125,63 @@ dns:
       name: route53
 `,
 			wantErr: "dns.challenge.provider is invalid",
+		},
+		{
+			name: "acmedns one account for node certificates",
+			yaml: base + `  certificates:
+    enabled: true
+  challenge:
+    provider:
+      name: acmedns
+      username: user
+      password: pass
+      subdomain: reg
+      server_url: https://auth.acme-dns.io
+`,
+			wantErr: "registration per name",
+		},
+		{
+			name: "acmedns registration per name",
+			yaml: base + `  certificates:
+    enabled: true
+  challenge:
+    provider:
+      name: acmedns
+      config:
+        laptop.ts.example.com:
+          username: user
+          password: pass
+          subdomain: reg-laptop
+          server_url: https://auth.acme-dns.io
+        desktop.ts.example.com:
+          username: user
+          password: pass
+          subdomain: reg-desktop
+          server_url: https://auth.acme-dns.io
+`,
+			wantZone:     "ts.example.com",
+			wantIsolates: "laptop.ts.example.com",
+		},
+		{
+			name: "acmedns registration shared by node names",
+			yaml: base + `  certificates:
+    enabled: true
+  challenge:
+    provider:
+      name: acmedns
+      config:
+        laptop.ts.example.com:
+          username: user
+          password: pass
+          subdomain: reg
+          server_url: https://auth.acme-dns.io
+        desktop.ts.example.com:
+          username: user
+          password: pass
+          subdomain: reg
+          server_url: https://auth.acme-dns.io
+`,
+			wantErr: "desktop.ts.example.com and laptop.ts.example.com share registration reg",
 		},
 		{
 			name: "enabled without magic dns",
@@ -1214,6 +1273,14 @@ dns:
 
 			if tt.wantNoProv {
 				assert.Nil(t, cfg.DNSChallenge.Provider)
+
+				return
+			}
+
+			if iso, ok := cfg.DNSChallenge.Provider.(hsdns.Isolator); ok {
+				if tt.wantIsolates != "" {
+					assert.True(t, iso.Isolates(tt.wantIsolates))
+				}
 
 				return
 			}
