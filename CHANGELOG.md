@@ -78,6 +78,12 @@ nodes.peer.imports = [ inputs.headscale.nixosModules.testkit-peer ];
 See `nix/README.md` for the full contract, recipes for tsnet and non-Go
 clients, and how to run the same setup without Nix.
 
+### TLS certificates for nodes
+
+`tailscale cert` and HTTPS with `tailscale serve` now work. Headscale publishes
+the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
+`cloudflare`, `gigahost`, `hetzner`, `powerdns` or `rfc2136`. `dns.base_domain` must be a public domain you control. [#3554](https://github.com/juanfont/headscale/pull/3554)
+
 ### BREAKING
 
 #### Database
@@ -128,6 +134,10 @@ clients, and how to run the same setup without Nix.
 
 - A node re-registering with a spent, expired or revoked pre-auth key is now rejected if it expired or changed node key while the re-registration was in flight [#3525](https://github.com/juanfont/headscale/pull/3525)
 - DERP client verification (the embedded DERP server and the `/verify` endpoint) looks up the node key directly instead of scanning every node on each connection [#3520](https://github.com/juanfont/headscale/pull/3520)
+- Renaming a node now stores the name in lowercase; a node renamed with uppercase letters before gets no certificate name until it is renamed again [#3554](https://github.com/juanfont/headscale/pull/3554)
+- Add `dns.certificates.enabled` and `dns.certificates.zone` to let nodes get TLS certificates [#3554](https://github.com/juanfont/headscale/pull/3554)
+- Add `dns.challenge.provider`, `dns.challenge.propagation_timeout` and `dns.challenge.resolvers` for ACME DNS-01 challenges [#3554](https://github.com/juanfont/headscale/pull/3554)
+- The v2 tailnet setting `httpsEnabled` reports `dns.certificates.enabled` [#3554](https://github.com/juanfont/headscale/pull/3554)
 - Fix the unix socket being created `0700` instead of the documented `0770` when `unix_socket_permission` is unset. The socket grants full admin access without authentication, so members of its group gain that access; check who is in it before upgrading [#3540](https://github.com/juanfont/headscale/pull/3540)
 
 ## 0.29.5 (2026-10-13)
