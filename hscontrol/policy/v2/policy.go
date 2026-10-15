@@ -693,6 +693,8 @@ func (pm *PolicyManager) Filter() ([]tailcfg.FilterRule, []matcher.Match) {
 // up with doing the full work for every node O(n^2), while this will reduce
 // the list as we see relationships while building the map, making it
 // O(n^2/2) in the end, but with less work per node.
+//
+//nolint:gocyclo // global and autogroup:self paths, each with a per-node matcher index
 func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[types.NodeID][]types.NodeID {
 	if pm == nil {
 		return nil
@@ -719,18 +721,73 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 	if !pm.needsPerNodeFilter {
 		ret := make(map[types.NodeID][]types.NodeID, nodes.Len())
 
+		// A matcher lets a reach b when a satisfies its source side and b
+		// its destination side, exactly as [types.Node.CanAccess] tests
+		// them, and each side depends on one node only. So evaluate both
+		// sides once per node, as bitsets over pm.matchers, instead of
+		// once per pair: a can reach b iff a's source set and b's
+		// destination set intersect. That turns the O(n^2 * matchers)
+		// scan into O(n * matchers) set lookups plus O(n^2) word ANDs.
+		words := (len(pm.matchers) + 63) / 64 //nolint:mnd
+		ids := make([]types.NodeID, nodes.Len())
+		srcOf := make([][]uint64, nodes.Len()) // nil: source of no matcher
+		dstOf := make([][]uint64, nodes.Len()) // nil: destination of no matcher
+
+		for i, n := range nodes.All() {
+			ids[i] = n.ID()
+			if !n.Valid() {
+				continue
+			}
+
+			ips, ri := n.IPs(), routeInfo[n.ID()]
+			routed := len(ri.subnet) > 0
+
+			for k := range pm.matchers {
+				m := &pm.matchers[k]
+
+				if m.SrcsContainsIPs(ips...) || (routed && m.SrcsOverlapsPrefixes(ri.subnet...)) {
+					if srcOf[i] == nil {
+						srcOf[i] = make([]uint64, words)
+					}
+
+					srcOf[i][k/64] |= 1 << (k % 64) //nolint:mnd
+				}
+
+				if m.DestsContainsIP(ips...) || (routed && m.DestsOverlapsPrefixes(ri.subnet...)) ||
+					(ri.isExit && m.DestsIsTheInternet()) {
+					if dstOf[i] == nil {
+						dstOf[i] = make([]uint64, words)
+					}
+
+					dstOf[i][k/64] |= 1 << (k % 64) //nolint:mnd
+				}
+			}
+		}
+
+		canAccess := func(src, dst []uint64) bool {
+			if src == nil || dst == nil {
+				return false
+			}
+
+			for w := range src {
+				if src[w]&dst[w] != 0 {
+					return true
+				}
+			}
+
+			return false
+		}
+
 		// Build the map of all peers according to the matchers.
-		for i := range nodes.Len() {
-			for j := i + 1; j < nodes.Len(); j++ {
-				if nodes.At(i).ID() == nodes.At(j).ID() {
+		for i := range ids {
+			for j := i + 1; j < len(ids); j++ {
+				if ids[i] == ids[j] {
 					continue
 				}
 
-				ri, rj := routeInfo[nodes.At(i).ID()], routeInfo[nodes.At(j).ID()]
-				if nodes.At(i).CanAccessWithRoutes(pm.matchers, nodes.At(j), ri.subnet, rj.subnet, rj.isExit) ||
-					nodes.At(j).CanAccessWithRoutes(pm.matchers, nodes.At(i), rj.subnet, ri.subnet, ri.isExit) {
-					ret[nodes.At(i).ID()] = append(ret[nodes.At(i).ID()], nodes.At(j).ID())
-					ret[nodes.At(j).ID()] = append(ret[nodes.At(j).ID()], nodes.At(i).ID())
+				if canAccess(srcOf[i], dstOf[j]) || canAccess(srcOf[j], dstOf[i]) {
+					ret[ids[i]] = append(ret[ids[i]], ids[j])
+					ret[ids[j]] = append(ret[ids[j]], ids[i])
 				}
 			}
 		}
