@@ -1,13 +1,21 @@
 package dns
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
 	gigahost "github.com/kradalby/libdns-gigahost"
+	"github.com/libdns/acmedns"
 	"github.com/libdns/cloudflare"
 	"github.com/libdns/hetzner/v2"
+	"github.com/libdns/libdns"
 	"github.com/libdns/powerdns"
 	"github.com/libdns/rfc2136"
 	"github.com/stretchr/testify/assert"
@@ -103,6 +111,67 @@ func TestNewProvider(t *testing.T) {
 			want:     &powerdns.Provider{ServerURL: "https://pdns.example.com", APIToken: "tok"},
 		},
 		{
+			name:     "acmedns",
+			provider: "acmedns",
+			settings: map[string]any{
+				"username":      "user",
+				"password_path": secret,
+				"subdomain":     "reg",
+				"server_url":    "https://auth.acme-dns.io",
+			},
+			want: &acmeDNS{
+				Username:  "user",
+				Password:  "from-file",
+				Subdomain: "reg",
+				ServerURL: "https://auth.acme-dns.io",
+				served:    map[string][2]acmeDNSValue{},
+			},
+		},
+		{
+			name:     "acmedns per domain",
+			provider: "acmedns",
+			settings: map[string]any{"config": map[string]any{
+				"node.ts.example.com": map[string]any{
+					"username":   "user",
+					"password":   "pass",
+					"subdomain":  "reg",
+					"server_url": "https://auth.acme-dns.io",
+				},
+			}},
+			want: &acmeDNS{
+				Configs: map[string]acmedns.DomainConfig{
+					"node.ts.example.com": {
+						Username:  "user",
+						Password:  "pass",
+						Subdomain: "reg",
+						ServerURL: "https://auth.acme-dns.io",
+					},
+				},
+				served: map[string][2]acmeDNSValue{},
+			},
+		},
+		{
+			name:     "acmedns server_url without scheme",
+			provider: "acmedns",
+			settings: map[string]any{
+				"username":   "user",
+				"password":   "pass",
+				"subdomain":  "reg",
+				"server_url": "auth.acme-dns.io",
+			},
+			wantErr: ErrProviderConfig,
+		},
+		{
+			name:     "acmedns without subdomain",
+			provider: "acmedns",
+			settings: map[string]any{
+				"username":   "user",
+				"password":   "pass",
+				"server_url": "https://auth.acme-dns.io",
+			},
+			wantErr: ErrProviderConfig,
+		},
+		{
 			name:     "only a name",
 			provider: "gigahost",
 			settings: map[string]any{"name": "gigahost"},
@@ -123,4 +192,138 @@ func TestNewProvider(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+// fakeAcmeDNS is an acme-dns server with one registration, reg. It has two
+// rows, and an update overwrites the one stamped with the earlier second.
+// acme-dns overwrites either on a tie; the fake picks the one written
+// later, which a writer assuming first in, first out gets wrong.
+type fakeAcmeDNS struct {
+	*httptest.Server
+
+	mu     sync.Mutex
+	writes int
+	rows   [2]fakeAcmeDNSRow
+}
+
+type fakeAcmeDNSRow struct {
+	txt   string
+	stamp int64 // acme-dns's LastUpdate, in whole seconds
+	write int   // the order of writes, which acme-dns does not keep
+}
+
+func newFakeAcmeDNS(t *testing.T) *fakeAcmeDNS {
+	t.Helper()
+
+	f := &fakeAcmeDNS{}
+	f.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var update struct{ Subdomain, Txt string }
+
+		err := json.NewDecoder(r.Body).Decode(&update)
+		if r.URL.Path != "/update" || err != nil || update.Subdomain != "reg" || r.Header.Get("X-Api-User") != "user" {
+			w.WriteHeader(http.StatusUnauthorized)
+
+			return
+		}
+
+		f.mu.Lock()
+		defer f.mu.Unlock()
+
+		i := 0
+		if f.rows[1].stamp < f.rows[0].stamp ||
+			(f.rows[1].stamp == f.rows[0].stamp && f.rows[1].write > f.rows[0].write) {
+			i = 1
+		}
+
+		f.writes++
+		f.rows[i] = fakeAcmeDNSRow{txt: update.Txt, stamp: time.Now().Unix(), write: f.writes}
+	}))
+	t.Cleanup(f.Close)
+
+	return f
+}
+
+func (f *fakeAcmeDNS) registration() map[string]any {
+	return map[string]any{
+		"username":   "user",
+		"password":   "pass",
+		"subdomain":  "reg",
+		"server_url": f.URL,
+	}
+}
+
+func (f *fakeAcmeDNS) serving() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	var txts []string
+
+	for _, row := range f.rows {
+		if row.txt != "" {
+			txts = append(txts, row.txt)
+		}
+	}
+
+	return txts
+}
+
+func acmeTXT(node, value string) []libdns.Record {
+	return []libdns.Record{libdns.TXT{Name: "_acme-challenge." + node, Text: value}}
+}
+
+// A registration serves the two values written last, and deleting is a
+// no-op: an update overwrites the older value even if a CA may still be
+// validating it, however many values were deleted. Two updates within one
+// second carry the same stamp, leaving acme-dns free to overwrite either:
+// after a then b, with a freed, c could overwrite b.
+func TestAcmeDNSRefusesEviction(t *testing.T) {
+	t.Parallel()
+
+	srv := newFakeAcmeDNS(t)
+
+	p, err := NewProvider("acmedns", srv.registration(), noEnv)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	a, err := p.AppendRecords(ctx, testZone, acmeTXT("a", "value-a"))
+	require.NoError(t, err)
+	require.Len(t, a, 1, "certmagic needs the appended record back")
+
+	b, err := p.AppendRecords(ctx, testZone, acmeTXT("b", "value-b"))
+	require.NoError(t, err)
+
+	_, err = p.AppendRecords(ctx, testZone, acmeTXT("c", "value-c"))
+	require.ErrorIs(t, err, ErrTooManyChallenges)
+
+	// The newer value is free, but an update overwrites the older one.
+	_, err = p.DeleteRecords(ctx, testZone, b)
+	require.NoError(t, err)
+
+	_, err = p.AppendRecords(ctx, testZone, acmeTXT("c", "value-c"))
+	require.ErrorIs(t, err, ErrTooManyChallenges)
+	assert.ElementsMatch(t, []string{"value-a", "value-b"}, srv.serving(), "a refused value reached acme-dns")
+
+	_, err = p.DeleteRecords(ctx, testZone, a)
+	require.NoError(t, err)
+
+	c, err := p.AppendRecords(ctx, testZone, acmeTXT("c", "value-c"))
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"value-b", "value-c"}, srv.serving())
+
+	// b is free and now the older value; overwriting it leaves c alone.
+	_, err = p.AppendRecords(ctx, testZone, acmeTXT("d", "value-d"))
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"value-c", "value-d"}, srv.serving())
+
+	// Giving up while waiting to space updates writes nothing.
+	_, err = p.DeleteRecords(ctx, testZone, c)
+	require.NoError(t, err)
+
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+
+	_, err = p.AppendRecords(cancelled, testZone, acmeTXT("e", "value-e"))
+	require.ErrorIs(t, err, context.Canceled)
+	assert.ElementsMatch(t, []string{"value-c", "value-d"}, srv.serving())
 }

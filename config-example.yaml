@@ -376,11 +376,25 @@ dns:
     # Defaults to 1.1.1.1 and 8.8.8.8.
     # resolvers: []
 
-    # cloudflare, gigahost, hetzner, powerdns or rfc2136. The other keys are
-    # settings of that provider; add _path to a key to read it from a file.
+    # acmedns, cloudflare, gigahost, hetzner, powerdns or rfc2136. The other
+    # keys are settings of that provider; add _path to a key to read it from
+    # a file.
     # provider:
     #   name: cloudflare
     #   api_token_path: /run/credentials/headscale.service/cloudflare-token
+    #
+    # acmedns needs a registration per certificate name under config, and
+    # each _acme-challenge name CNAMEd to its registration's fulldomain. A
+    # node without one gets no certificate. A registration holds two
+    # pending challenges; more are refused until one expires.
+    # provider:
+    #   name: acmedns
+    #   config:
+    #     laptop.example.com:
+    #       username: <username from /register>
+    #       password: <password from /register>
+    #       subdomain: <subdomain from /register>
+    #       server_url: https://auth.acme-dns.io
 
 # Unix socket used for the CLI to connect without authentication
 # Note: for production you will want to set this to something like:

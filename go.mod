@@ -24,6 +24,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/jagottsicher/termcolor v1.0.2
 	github.com/kradalby/libdns-gigahost v0.0.0-20261014145029-4c03bc63b974
+	github.com/libdns/acmedns v0.5.0
 	github.com/libdns/cloudflare v0.2.2
 	github.com/libdns/hetzner/v2 v2.0.1
 	github.com/libdns/libdns v1.1.1

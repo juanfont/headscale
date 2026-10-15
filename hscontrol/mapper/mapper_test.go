@@ -11,6 +11,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
@@ -1070,13 +1071,39 @@ func TestGenerateMapResponseDebugOnlyOnFullMaps(t *testing.T) {
 func TestCertDomains(t *testing.T) {
 	enabled := types.DNSConfig{Certificates: types.CertificatesConfig{Enabled: true}}
 
+	acmeDNS, err := dns.NewProvider("acmedns", map[string]any{"config": map[string]any{
+		"laptop.ts.example.com": map[string]any{
+			"username":   "user",
+			"password":   "pass",
+			"subdomain":  "reg",
+			"server_url": "https://auth.acme-dns.io",
+		},
+	}}, func(string) (any, bool) { return nil, false })
+	require.NoError(t, err)
+
 	tests := []struct {
 		name       string
 		node       *types.Node
 		dns        types.DNSConfig
+		provider   dns.Provider
 		baseDomain string
 		want       []string
 	}{
+		{
+			name:     "own acme-dns registration",
+			node:     &types.Node{GivenName: "laptop"},
+			dns:      enabled,
+			provider: acmeDNS,
+			want:     []string{"laptop.ts.example.com"},
+		},
+		{
+			// Without a registration of its own, the node's challenge would
+			// be answered from a record another name's challenge shares.
+			name:     "no acme-dns registration of its own",
+			node:     &types.Node{GivenName: "desktop"},
+			dns:      enabled,
+			provider: acmeDNS,
+		},
 		{
 			name: "user owned",
 			node: &types.Node{GivenName: "laptop", UserID: new(uint(1))},
@@ -1136,8 +1163,9 @@ func TestCertDomains(t *testing.T) {
 			}
 
 			cfg := &types.Config{
-				BaseDomain: baseDomain,
-				DNSConfig:  tt.dns,
+				BaseDomain:   baseDomain,
+				DNSConfig:    tt.dns,
+				DNSChallenge: types.DNSChallengeConfig{Provider: tt.provider},
 				TailcfgDNSConfig: &tailcfg.DNSConfig{
 					Proxied: true,
 					ExtraRecords: []tailcfg.DNSRecord{

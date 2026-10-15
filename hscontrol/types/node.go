@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	hsdns "github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
@@ -811,6 +812,13 @@ func (nv NodeView) CertDomain(cfg *Config) (string, bool) {
 	// order shares its challenge record with the bare name, so names
 	// below the node's are covered too.
 	if cfg.extraRecordAtOrBelow(domain) {
+		return "", false
+	}
+
+	// A node may publish only its own name's challenge, which keeps it from
+	// other names' certificates only where the provider answers each name's
+	// challenge apart.
+	if iso, ok := cfg.DNSChallenge.Provider.(hsdns.Isolator); ok && !iso.Isolates(domain) {
 		return "", false
 	}
 
