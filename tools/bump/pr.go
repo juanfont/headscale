@@ -99,8 +99,7 @@ func publish(ctx context.Context, r *repo, opt publishOptions, results []result)
 		return err
 	}
 
-	now := markerOf(results, tree, head)
-	body := renderBody(results, now, opt.Gate)
+	body := renderBody(results, markerOf(results, tree, head), opt.Gate)
 
 	pr, err := lookupPR(ctx, r, opt.Slug, opt.Branch)
 	if err != nil {
@@ -114,7 +113,7 @@ func publish(ctx context.Context, r *repo, opt publishOptions, results []result)
 	}
 
 	if pr != nil && pr.State == "OPEN" {
-		return updateOpen(ctx, r, opt, pr, body, now)
+		return updateOpen(ctx, r, opt, pr, body)
 	}
 
 	if pr != nil && pr.State == "CLOSED" {
@@ -138,7 +137,7 @@ func publish(ctx context.Context, r *repo, opt publishOptions, results []result)
 
 // updateOpen refreshes an existing pull request in place, but refuses to
 // force-push over work the bot did not author.
-func updateOpen(ctx context.Context, r *repo, opt publishOptions, pr *prState, body string, now marker) error {
+func updateOpen(ctx context.Context, r *repo, opt publishOptions, pr *prState, body string) error {
 	prev, hadMarker := parseMarker(pr.Body)
 
 	remoteTip := remoteBranchSHA(ctx, r, opt.Remote, opt.Branch)
@@ -157,15 +156,6 @@ func updateOpen(ctx context.Context, r *repo, opt publishOptions, pr *prState, b
 
 	if _, err := r.run(ctx, "gh", "pr", "edit", strconv.Itoa(pr.Number), "--repo", opt.Slug, "--body", body); err != nil { //nolint:noinlineerr
 		return err
-	}
-
-	// Only speak up when the outcome actually changed. A daily "still the
-	// same" comment trains the reader to ignore the thread.
-	if hadMarker && changedAreas(prev, now) {
-		if _, err := r.run(ctx, "gh", "pr", "comment", strconv.Itoa(pr.Number), "--repo", opt.Slug, //nolint:noinlineerr
-			"--body", "The set of applied areas changed since the last run; see the updated description."); err != nil {
-			return err
-		}
 	}
 
 	log.Printf("updated pull request #%d", pr.Number)

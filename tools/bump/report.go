@@ -191,19 +191,3 @@ func cell(s string) string {
 
 	return s
 }
-
-// changedAreas reports whether the outcome differs from the last run, which is
-// what decides between silently updating the pull request and commenting on it.
-func changedAreas(prev marker, now marker) bool {
-	if len(prev.Areas) != len(now.Areas) {
-		return true
-	}
-
-	for name, st := range now.Areas {
-		if prev.Areas[name] != st {
-			return true
-		}
-	}
-
-	return false
-}
