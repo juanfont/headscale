@@ -46,6 +46,15 @@ func newTXTChecker(resolvers []string, timeout time.Duration) txtChecker {
 	}
 }
 
+// AwaitTXT returns a wait that returns once every authoritative
+// nameserver serves a TXT value, checked as for node certificates. It is
+// for headscale's own certificate: certmagic's check accepts the first
+// nameserver serving the value and follows only the first CNAME of a
+// delegated challenge.
+func AwaitTXT(resolvers []string, timeout time.Duration) func(ctx context.Context, fqdn, value string) error {
+	return newTXTChecker(resolvers, timeout).wait
+}
+
 // wait returns nil once each nameserver of the zone holding fqdn answers
 // it with value; for a CNAME, the chain's last name takes fqdn's place.
 // A timeout of zero disables the check.

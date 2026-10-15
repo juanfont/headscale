@@ -1200,6 +1200,47 @@ dns:
 			wantErr: "desktop.ts.example.com and laptop.ts.example.com share registration reg",
 		},
 		{
+			name: "acmedns one account for headscale's own certificate",
+			yaml: base + `  challenge:
+    provider:
+      name: acmedns
+      username: user
+      password: pass
+      subdomain: reg
+      server_url: https://auth.acme-dns.io
+tls:
+  acme:
+    hostname: headscale.example.com
+    challenge_type: DNS-01
+`,
+			wantZone: "ts.example.com",
+		},
+		{
+			name: "acmedns registration shared with headscale's own name",
+			yaml: base + `  certificates:
+    enabled: true
+  challenge:
+    provider:
+      name: acmedns
+      config:
+        laptop.ts.example.com:
+          username: user
+          password: pass
+          subdomain: reg
+          server_url: https://auth.acme-dns.io
+        headscale.example.com:
+          username: user
+          password: pass
+          subdomain: reg
+          server_url: https://auth.acme-dns.io
+tls:
+  acme:
+    hostname: headscale.example.com
+    challenge_type: DNS-01
+`,
+			wantErr: "headscale.example.com and laptop.ts.example.com share registration reg",
+		},
+		{
 			name: "enabled without magic dns",
 			yaml: strings.Replace(base, "magic_dns: true", "magic_dns: false", 1) + `  certificates:
     enabled: true
@@ -1215,7 +1256,7 @@ dns:
 			yaml: base + `  certificates:
     enabled: true
 `,
-			wantErr: "dns.certificates requires dns.challenge.provider",
+			wantErr: "dns.certificates and tls.acme DNS-01 require dns.challenge.provider",
 		},
 		{
 			name: "base_domain outside zone",
@@ -1251,6 +1292,15 @@ dns:
       api_token: tok
 `,
 			wantErr: "dns.base_domain must be a lowercase DNS name",
+		},
+		{
+			name: "tls DNS-01 without provider",
+			yaml: base + `tls:
+  acme:
+    hostname: headscale.example.com
+    challenge_type: DNS-01
+`,
+			wantErr: "dns.certificates and tls.acme DNS-01 require dns.challenge.provider",
 		},
 		{
 			name: "negative propagation timeout",
@@ -1337,7 +1387,7 @@ dns:
 			want: TLSConfig{ACME: ACMEConfig{
 				ChallengeType: HTTP01ChallengeType,
 				HTTPListen:    ":http",
-				CacheDir:      "/var/www/.cache",
+				CacheDir:      "/var/lib/headscale/cache",
 			}},
 		},
 		{
@@ -1372,7 +1422,7 @@ tls:
 				ACME: ACMEConfig{
 					ChallengeType: HTTP01ChallengeType,
 					HTTPListen:    ":http",
-					CacheDir:      "/var/www/.cache",
+					CacheDir:      "/var/lib/headscale/cache",
 				},
 			},
 		},
@@ -1404,7 +1454,7 @@ tls_letsencrypt_cache_dir: /var/lib/headscale/.cache
 				ACME: ACMEConfig{
 					ChallengeType: HTTP01ChallengeType,
 					HTTPListen:    ":http",
-					CacheDir:      "/var/www/.cache",
+					CacheDir:      "/var/lib/headscale/cache",
 				},
 			},
 		},

@@ -1,7 +1,6 @@
 package hscontrol
 
 import (
-	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -11,7 +10,6 @@ import (
 	"crypto/x509/pkix"
 	"errors"
 	"fmt"
-	"io"
 	"math/big"
 	"net"
 	"net/http"
@@ -26,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/caddyserver/certmagic"
 	"github.com/cenkalti/backoff/v5"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/go-chi/chi/v5"
@@ -43,11 +42,11 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog"
+	"github.com/mholt/acmez/v3/acme"
 	"github.com/pkg/profile"
 	"github.com/rs/zerolog/log"
 	"github.com/sasha-s/go-deadlock"
-	"golang.org/x/crypto/acme"
-	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/sync/errgroup"
 	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
@@ -813,6 +812,13 @@ func (h *Headscale) Serve() error {
 		})
 	}
 
+	if tlsBundle.Manage != nil {
+		err := tlsBundle.Manage(ctx)
+		if err != nil {
+			return fmt.Errorf("managing TLS certificate: %w", err)
+		}
+	}
+
 	// Only start debug/metrics server if address is configured
 	var debugHTTPServer *http.Server
 
@@ -947,6 +953,10 @@ func (h *Headscale) Serve() error {
 					tlsBundle.ACMEListener.Close()
 				}
 
+				if tlsBundle.Stop != nil {
+					tlsBundle.Stop()
+				}
+
 				if h.challenges != nil {
 					info("removing pending ACME challenge records")
 					h.challenges.Close() //nolint:contextcheck // each delete has its own bounded context
@@ -1019,6 +1029,138 @@ type tlsBundle struct {
 	Config       *tls.Config
 	ACMEServer   *http.Server
 	ACMEListener net.Listener
+
+	// Manage starts obtaining and renewing the certificate. It must run
+	// after the listeners are bound: the ACME library binds a challenge
+	// port itself when nothing serves it yet. Nil without ACME.
+	Manage func(context.Context) error
+	// Stop ends certificate maintenance. Nil without ACME.
+	Stop func()
+}
+
+// acmeTrustedRoots verifies the ACME directory; nil means the system roots.
+// Tests point it at their CA.
+var acmeTrustedRoots *x509.CertPool
+
+// acmeTLSSettings gets headscale's own certificate with certmagic, which
+// keeps it renewed. DNS-01 publishes the challenge through the same DNS
+// provider as node certificates.
+func (h *Headscale) acmeTLSSettings(ctx context.Context) (*tlsBundle, error) {
+	acmeCfg := h.cfg.TLS.ACME
+	logger := zlog.Zap(log.Logger).Named("acme")
+
+	// An empty CA means Let's Encrypt, and certmagic then retries failures
+	// against Let's Encrypt staging to spare the production rate limits.
+	issuer := certmagic.ACMEIssuer{
+		CA:           acmeCfg.URL,
+		Email:        acmeCfg.Email,
+		Agreed:       true,
+		TrustedRoots: acmeTrustedRoots,
+		Logger:       logger,
+	}
+
+	var err error
+
+	switch acmeCfg.ChallengeType {
+	case types.DNS01ChallengeType:
+		issuer.DNS01Solver = dns01Solver{
+			DNS01Solver: &certmagic.DNS01Solver{
+				DNSProvider: h.cfg.DNSChallenge.Provider,
+				TTL:         dns.ChallengeTTL,
+				Resolvers:   h.cfg.DNSChallenge.Resolvers,
+				Logger:      logger,
+			},
+			wait: dns.AwaitTXT(h.cfg.DNSChallenge.Resolvers, h.cfg.DNSChallenge.PropagationTimeout),
+		}
+
+	case types.TLSALPN01ChallengeType:
+		// Validated on the main listener, which must be reachable on port 443.
+		issuer.DisableHTTPChallenge = true
+		issuer.ListenHost, _, _ = net.SplitHostPort(h.cfg.Addr)
+
+		issuer.AltTLSALPNPort, err = types.PortFromAddr(h.cfg.Addr)
+		if err != nil {
+			return nil, fmt.Errorf("parsing listen_addr: %w", err)
+		}
+
+	case types.HTTP01ChallengeType:
+		// TLS-ALPN-01 stays on, as with autocert: setups that only open
+		// port 443 have always been validated that way.
+		issuer.AltTLSALPNPort, err = types.PortFromAddr(h.cfg.Addr)
+		if err != nil {
+			return nil, fmt.Errorf("parsing listen_addr: %w", err)
+		}
+
+		issuer.ListenHost, _, _ = net.SplitHostPort(acmeCfg.HTTPListen)
+
+		issuer.AltHTTPPort, err = types.PortFromAddr(acmeCfg.HTTPListen)
+		if err != nil {
+			return nil, fmt.Errorf("parsing tls.acme.http_listen: %w", err)
+		}
+
+	default:
+		return nil, errUnsupportedLetsEncryptChallengeType
+	}
+
+	var magic *certmagic.Config
+
+	cache := certmagic.NewCache(certmagic.CacheOptions{
+		GetConfigForCert: func(certmagic.Certificate) (*certmagic.Config, error) { return magic, nil },
+		Logger:           logger,
+	})
+	magic = certmagic.New(cache, certmagic.Config{
+		Storage: &certmagic.FileStorage{Path: acmeCfg.CacheDir},
+		Logger:  logger,
+	})
+
+	bundle := &tlsBundle{
+		Manage: func(ctx context.Context) error { return magic.ManageAsync(ctx, []string{acmeCfg.Hostname}) },
+		Stop:   cache.Stop,
+	}
+
+	acmeIssuer := certmagic.NewACMEIssuer(magic, issuer)
+	magic.Issuers = []certmagic.Issuer{acmeIssuer}
+
+	bundle.Config = magic.TLSConfig()
+	bundle.Config.NextProtos = append([]string{"h2", "http/1.1"}, bundle.Config.NextProtos...)
+	bundle.Config.MinVersion = tls.VersionTLS12
+
+	if acmeCfg.ChallengeType == types.HTTP01ChallengeType {
+		bundle.ACMEServer = &http.Server{
+			Addr:        acmeCfg.HTTPListen,
+			Handler:     acmeIssuer.HTTPChallengeHandler(http.HandlerFunc(h.redirect)),
+			ReadTimeout: types.HTTPTimeout,
+		}
+
+		bundle.ACMEListener, err = (&net.ListenConfig{}).Listen(ctx, "tcp", acmeCfg.HTTPListen)
+		if err != nil {
+			cache.Stop()
+
+			return nil, &types.ListenerBindError{
+				Listener: "ACME HTTP-01 challenge",
+				YAMLKey:  "tls.acme.http_listen",
+				Addr:     acmeCfg.HTTPListen,
+				Err:      err,
+			}
+		}
+	}
+
+	return bundle, nil
+}
+
+// dns01Solver checks propagation as for node certificates instead of the
+// way certmagic does: certmagic accepts the first nameserver serving the
+// value and follows only the first CNAME of a delegated challenge.
+type dns01Solver struct {
+	*certmagic.DNS01Solver
+
+	wait func(ctx context.Context, fqdn, value string) error
+}
+
+// Wait runs before the CA is asked to validate. When it fails, the ACME
+// client cleans the challenge up.
+func (s dns01Solver) Wait(ctx context.Context, ch acme.Challenge) error {
+	return s.wait(ctx, ch.DNS01TXTRecordName()+".", ch.DNS01KeyAuthorization())
 }
 
 func (h *Headscale) getTLSSettings(ctx context.Context) (*tlsBundle, error) {
@@ -1030,57 +1172,7 @@ func (h *Headscale) getTLSSettings(ctx context.Context) (*tlsBundle, error) {
 	}
 
 	if h.cfg.TLS.ACME.Hostname != "" {
-		certManager := autocert.Manager{
-			Prompt:     autocert.AcceptTOS,
-			HostPolicy: autocert.HostWhitelist(h.cfg.TLS.ACME.Hostname),
-			Cache:      autocert.DirCache(h.cfg.TLS.ACME.CacheDir),
-			Client: &acme.Client{
-				DirectoryURL: h.cfg.TLS.ACME.URL,
-				HTTPClient: &http.Client{
-					Transport: &acmeLogger{
-						rt: http.DefaultTransport,
-					},
-				},
-			},
-			Email: h.cfg.TLS.ACME.Email,
-		}
-
-		switch h.cfg.TLS.ACME.ChallengeType {
-		case types.TLSALPN01ChallengeType:
-			// Configuration via autocert with TLS-ALPN-01 (https://tools.ietf.org/html/rfc8737)
-			// The RFC requires that the validation is done on port 443; in other words, headscale
-			// must be reachable on port 443.
-			return &tlsBundle{Config: certManager.TLSConfig()}, nil
-
-		case types.HTTP01ChallengeType:
-			// Configuration via autocert with HTTP-01. This requires listening on
-			// port 80 for the certificate validation in addition to the headscale
-			// service, which can be configured to run on any other port.
-			server := &http.Server{
-				Addr:        h.cfg.TLS.ACME.HTTPListen,
-				Handler:     certManager.HTTPHandler(http.HandlerFunc(h.redirect)),
-				ReadTimeout: types.HTTPTimeout,
-			}
-
-			listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", server.Addr)
-			if err != nil {
-				return nil, &types.ListenerBindError{
-					Listener: "ACME HTTP-01 challenge",
-					YAMLKey:  "tls.acme.http_listen",
-					Addr:     server.Addr,
-					Err:      err,
-				}
-			}
-
-			return &tlsBundle{
-				Config:       certManager.TLSConfig(),
-				ACMEServer:   server,
-				ACMEListener: listener,
-			}, nil
-
-		default:
-			return nil, errUnsupportedLetsEncryptChallengeType
-		}
+		return h.acmeTLSSettings(ctx)
 	}
 
 	if h.cfg.TLS.CertPath == "" {
@@ -1250,35 +1342,6 @@ func (h *Headscale) StartEphemeralGCForTest(tb testing.TB) {
 	go h.ephemeralGC.Start()
 
 	tb.Cleanup(func() { h.ephemeralGC.Close() })
-}
-
-// Provide some middleware that can inspect the ACME/autocert https calls
-// and log when things are failing.
-type acmeLogger struct {
-	rt http.RoundTripper
-}
-
-// RoundTrip will log when ACME/autocert failures happen either when err != nil OR
-// when http status codes indicate a failure has occurred.
-func (l *acmeLogger) RoundTrip(req *http.Request) (*http.Response, error) {
-	resp, err := l.rt.RoundTrip(req)
-	if err != nil {
-		log.Error().Err(err).Str("url", req.URL.String()).Msg("acme request failed")
-		return nil, err
-	}
-
-	if resp.StatusCode >= http.StatusBadRequest {
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-
-		log.Error().Int("status_code", resp.StatusCode).Str("url", req.URL.String()).Bytes("body", body).Msg("acme request returned error")
-
-		// The ACME client parses this body to classify errors such as badNonce,
-		// so give it back a readable copy.
-		resp.Body = io.NopCloser(bytes.NewReader(body))
-	}
-
-	return resp, nil
 }
 
 // [zerologRequestLogger] implements chi's [middleware.LogFormatter]
