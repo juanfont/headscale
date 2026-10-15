@@ -2,7 +2,7 @@
 
 ## 0.30.0 (202x-xx-xx)
 
-**Minimum supported Tailscale client version: v1.82.0**
+**Minimum supported Tailscale client version: v1.84.0**
 
 ### v1 REST API replaced; gRPC and Protobuf removed
 
