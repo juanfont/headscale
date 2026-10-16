@@ -20,6 +20,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/nodecap"
 	"tailscale.com/types/key"
 	"tailscale.com/types/views"
 	"tailscale.com/util/dnsname"
@@ -1421,8 +1422,9 @@ func (nv NodeView) TailNode(
 	// what Tailscale SaaS emits for a default tailnet.
 	// cfg.Taildrop.Enabled gates CapabilityFileSharing.
 	capMap := tailcfg.NodeCapMap{
-		tailcfg.CapabilityAdmin: []tailcfg.RawMessage{},
-		tailcfg.CapabilitySSH:   []tailcfg.RawMessage{},
+		nodecap.Admin:                   []tailcfg.RawMessage{},
+		nodecap.SSH:                     []tailcfg.RawMessage{},
+		nodecap.SSHEnvironmentVariables: []tailcfg.RawMessage{},
 	}
 
 	if cfg.Taildrop.Enabled {
