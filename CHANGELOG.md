@@ -114,6 +114,7 @@ clients, and how to run the same setup without Nix.
 ### Changes
 
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
+- SSH policy validation errors now prefix their messages with `ssh:` so failures like `ssh: users must be specified` make it clear that the problem comes from an SSH rule violation [#3343](https://github.com/juanfont/headscale/pull/3343)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
 - Fix `headscale users destroy`/`rename` reporting "multiple users match query" when no user matches; an ambiguous match now lists the matching users [#3476](https://github.com/juanfont/headscale/pull/3476)
 - Deleting a user that still owns nodes now lists the nodes (ID and hostname) that must be deleted first [#3475](https://github.com/juanfont/headscale/pull/3475)
