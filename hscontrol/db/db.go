@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"slices"
-	"strconv"
 	"time"
 
 	"github.com/glebarez/sqlite"
