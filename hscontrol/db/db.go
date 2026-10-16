@@ -6,9 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"slices"
 	"time"
-
 	"github.com/glebarez/sqlite"
 	"github.com/go-gormigrate/gormigrate/v2"
 	"github.com/juanfont/headscale/hscontrol/db/sqliteconfig"
