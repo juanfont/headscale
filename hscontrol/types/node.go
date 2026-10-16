@@ -1242,8 +1242,9 @@ func (nv NodeView) TailNode(
 	// what Tailscale SaaS emits for a default tailnet.
 	// cfg.Taildrop.Enabled gates CapabilityFileSharing.
 	capMap := tailcfg.NodeCapMap{
-		nodecap.Admin: []tailcfg.RawMessage{},
-		nodecap.SSH:   []tailcfg.RawMessage{},
+		nodecap.Admin:                   []tailcfg.RawMessage{},
+		nodecap.SSH:                     []tailcfg.RawMessage{},
+		nodecap.SSHEnvironmentVariables: []tailcfg.RawMessage{},
 	}
 
 	if cfg.Taildrop.Enabled {
