@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -73,36 +74,96 @@ func commitAll(ctx context.Context, r *repo, message string) error {
 	return err
 }
 
-// startBranch rebuilds the working branch from the base every run. The branch
-// therefore never accumulates history, never conflicts, and the bot keeps no
-// state on disk between runs.
-func startBranch(ctx context.Context, r *repo, remote, base, branch string) error {
+var errRebaseConflict = errors.New("hand-pushed commits do not rebase cleanly")
+
+// startBranch rebuilds the working branch from the base every run, so it never
+// accumulates history and the bot keeps no state on disk between runs. The
+// exception is an open pull request holding commits someone pushed by hand:
+// rebuilding would erase them, so the branch is rebased onto the base and the
+// run builds on top. It returns the subjects of the commits it carried.
+func startBranch(ctx context.Context, r *repo, remote, base, branch string, carry bool) ([]string, error) {
 	if _, err := r.run(ctx, "git", "fetch", remote, base); err != nil { //nolint:noinlineerr
-		return err
+		return nil, err
 	}
 
-	_, err := r.run(ctx, "git", "checkout", "-B", branch, remote+"/"+base)
+	var hand []string
 
-	return err
+	if carry {
+		var err error
+
+		hand, err = handCommits(ctx, r, remote, base, branch)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	start := remote + "/" + base
+	if len(hand) > 0 {
+		start = remote + "/" + branch
+	}
+
+	if _, err := r.run(ctx, "git", "checkout", "-B", branch, start); err != nil { //nolint:noinlineerr
+		return nil, err
+	}
+
+	if len(hand) == 0 {
+		return nil, nil
+	}
+
+	if _, err := r.run(ctx, "git", "rebase", remote+"/"+base); err != nil { //nolint:noinlineerr
+		_, _ = r.run(ctx, "git", "rebase", "--abort")
+
+		return nil, fmt.Errorf("%w onto %s: %w", errRebaseConflict, base, err)
+	}
+
+	return hand, nil
 }
 
-// remoteBranchSHA is the tip of branch on remote, or "" when it does not exist.
-func remoteBranchSHA(ctx context.Context, r *repo, remote, branch string) string {
-	out, err := r.run(ctx, "git", "ls-remote", "--heads", remote, branch)
+// handCommits lists, oldest first, the subjects of commits on the remote branch
+// authored by anyone but the configured committer.
+func handCommits(ctx context.Context, r *repo, remote, base, branch string) ([]string, error) {
+	if _, err := r.run(ctx, "git", "fetch", remote, branch); err != nil { //nolint:noinlineerr
+		return nil, err
+	}
+
+	self, err := r.run(ctx, "git", "config", "user.email")
 	if err != nil {
-		return ""
+		return nil, err
 	}
 
-	fields := strings.Fields(out)
-	if len(fields) == 0 {
-		return ""
+	out, err := r.run(ctx, "git", "log", "--reverse", "--format=%ae%x00%s",
+		remote+"/"+base+".."+remote+"/"+branch)
+	if err != nil {
+		return nil, err
 	}
 
-	return fields[0]
+	return notAuthoredBy(out, strings.TrimSpace(self)), nil
 }
 
-func forcePush(ctx context.Context, r *repo, remote, branch string) error {
-	_, err := r.run(ctx, "git", "push", "--force", remote, "HEAD:refs/heads/"+branch)
+// notAuthoredBy filters `git log --format=%ae%x00%s` output to the subjects of
+// commits whose author is not email.
+func notAuthoredBy(log, email string) []string {
+	var subjects []string
+
+	for line := range strings.Lines(log) {
+		author, subject, _ := strings.Cut(strings.TrimRight(line, "\n"), "\x00")
+		if author != email {
+			subjects = append(subjects, subject)
+		}
+	}
+
+	return subjects
+}
+
+// forcePush replaces branch on remote. A non-empty lease is the tip the run
+// started from; the push is refused if anyone moved the branch since.
+func forcePush(ctx context.Context, r *repo, remote, branch, lease string) error {
+	force := "--force"
+	if lease != "" {
+		force = "--force-with-lease=refs/heads/" + branch + ":" + lease
+	}
+
+	_, err := r.run(ctx, "git", "push", force, remote, "HEAD:refs/heads/"+branch)
 	if err != nil {
 		return fmt.Errorf("pushing %s: %w", branch, err)
 	}

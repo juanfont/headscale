@@ -3,6 +3,7 @@ package types
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -678,6 +680,81 @@ dns:
 		}
 
 		assert.True(t, found, "expected ConfigError mentioning %q in reasons %v", want, reasons)
+	}
+}
+
+// The unset case is the regression: the default is spelled "0o770", which a
+// base-8 parse rejects, so the socket silently became 0700.
+// https://github.com/juanfont/headscale/issues/3529
+func TestUnixSocketPermission(t *testing.T) {
+	tests := []struct {
+		name    string
+		yaml    string
+		env     string
+		want    fs.FileMode
+		wantErr bool
+	}{
+		{name: "unset-uses-default", want: 0o770},
+		{name: "null-uses-default", yaml: `unix_socket_permission: null`, want: 0o770},
+		{name: "quoted-leading-zero", yaml: `unix_socket_permission: "0770"`, want: 0o770},
+		{name: "quoted-plain", yaml: `unix_socket_permission: "770"`, want: 0o770},
+		{name: "quoted-0o-prefix", yaml: `unix_socket_permission: "0o770"`, want: 0o770},
+		{name: "quoted-0o-prefix-owner-only", yaml: `unix_socket_permission: "0o700"`, want: 0o700},
+		{name: "quoted-zero", yaml: `unix_socket_permission: "0000"`, want: 0},
+		{name: "env", env: "0660", want: 0o660},
+		{name: "env-0o-prefix", env: "0o660", want: 0o660},
+		{name: "env-overrides-file", yaml: `unix_socket_permission: "0770"`, env: "0700", want: 0o700},
+		{name: "env-invalid-is-error", env: "bogus", wantErr: true},
+		{name: "empty-is-error", yaml: `unix_socket_permission: ""`, wantErr: true},
+		{name: "symbolic-is-error", yaml: `unix_socket_permission: "rwxrwx---"`, wantErr: true},
+		{name: "special-bits-are-error", yaml: `unix_socket_permission: "1770"`, wantErr: true},
+		{name: "out-of-range-is-error", yaml: `unix_socket_permission: "17777"`, wantErr: true},
+		// YAML reads unquoted 0770 as int 504, indistinguishable from a literal 504.
+		{name: "unquoted-leading-zero-is-error", yaml: `unix_socket_permission: 0770`, wantErr: true},
+		{name: "unquoted-0o-prefix-is-error", yaml: `unix_socket_permission: 0o770`, wantErr: true},
+		{name: "unquoted-plain-is-error", yaml: `unix_socket_permission: 770`, wantErr: true},
+		{name: "float-is-error", yaml: `unix_socket_permission: 770.0`, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+
+			if tt.env != "" {
+				t.Setenv("HEADSCALE_UNIX_SOCKET_PERMISSION", tt.env)
+			}
+
+			tmpDir := t.TempDir()
+			cfg := `---
+server_url: https://example.com
+listen_addr: 0.0.0.0:8080
+prefixes:
+  v4: 100.64.0.0/10
+noise:
+  private_key_path: noise_private.key
+database:
+  type: sqlite3
+dns:
+  magic_dns: false
+  override_local_dns: false
+` + tt.yaml + "\n"
+			require.NoError(t, os.WriteFile(
+				filepath.Join(tmpDir, "config.yaml"), []byte(cfg), 0o600))
+			require.NoError(t, LoadConfig(tmpDir, false))
+
+			got, err := LoadServerConfig()
+			if tt.wantErr {
+				require.ErrorIs(t, err, util.ErrInvalidFileMode,
+					"invalid unix_socket_permission must not silently fall back")
+				assert.Contains(t, err.Error(), "unix_socket_permission")
+
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got.UnixSocketPermission,
+				"got %#o, want %#o", got.UnixSocketPermission, tt.want)
+		})
 	}
 }
 

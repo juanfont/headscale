@@ -91,15 +91,17 @@ func registerAuth(api huma.API, b Backend) {
 			util.RegisterMethodCLI,
 		)
 		if err != nil {
+			b.Change(nodeChange)
+
 			return nil, mapError("registering node", err)
 		}
 
 		routeChange, err := b.State.AutoApproveRoutes(node)
+		b.Change(nodeChange, routeChange)
+
 		if err != nil {
 			return nil, huma.Error500InternalServerError("auto approving routes", err)
 		}
-
-		b.Change(nodeChange, routeChange)
 
 		out := &authRegisterOutput{}
 		out.Body.Node = nodeFromView(node)

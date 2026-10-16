@@ -4,34 +4,40 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"hash/crc64"
 	"io"
 	"math/rand"
 	"net/http"
 	"net/url"
-	"os"
 	"reflect"
 	"slices"
 	"sync"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/spf13/viper"
-	"gopkg.in/yaml.v3"
 	"tailscale.com/tailcfg"
 )
 
+var errEmptyDERPMapFile = errors.New("DERP map file has no regions (YAML keys are lowercased Go field names, e.g. regionid)")
+
+// loadDERPMapFromPath reads a DERP map file in the format its extension names
+// (see [util.UnmarshalByExt]). A map with no regions is an error: unknown keys
+// decode to nothing, e.g. YAML written with JSON's field names.
 func loadDERPMapFromPath(path string) (*tailcfg.DERPMap, error) {
-	b, err := os.ReadFile(path)
+	derpMap, err := util.ReadFileByExt[tailcfg.DERPMap](path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("reading DERP map: %w", err)
 	}
 
-	var derpMap tailcfg.DERPMap
+	if len(derpMap.Regions) == 0 {
+		return nil, fmt.Errorf("%w: %s", errEmptyDERPMapFile, path)
+	}
 
-	err = yaml.Unmarshal(b, &derpMap)
-
-	return &derpMap, err
+	return &derpMap, nil
 }
 
 func loadDERPMapFromURL(addr url.URL) (*tailcfg.DERPMap, error) {
@@ -82,9 +88,14 @@ func mergeDERPMaps(derpMaps []*tailcfg.DERPMap) *tailcfg.DERPMap {
 		// shuffle alias regions shared with the source map or a previously
 		// served map, racing concurrent readers.
 		for id, region := range derpMap.Regions {
-			if cloned := region.Clone(); cloned != nil {
-				result.Regions[id] = cloned
+			// A null region removes one an earlier map added, the documented
+			// way to drop a region from derp.urls via derp.paths.
+			if region == nil {
+				delete(result.Regions, id)
+				continue
 			}
+
+			result.Regions[id] = region.Clone()
 		}
 	}
 

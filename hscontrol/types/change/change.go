@@ -230,6 +230,24 @@ func HasFull(rs []Change) bool {
 	return slices.ContainsFunc(rs, Change.IsFull)
 }
 
+// CollapseToFull returns what nodeID receives when a full update supersedes
+// changes: one [FullUpdate], then a ping-only [PingNode] for every
+// [Change.PingRequest] targeted at nodeID, in order. A full renders state at
+// drain time, so it covers every state change; a ping is a one-shot command
+// the full cannot carry. An untargeted ping is dropped: the ID in its URL is
+// all that authenticates the answer, so any node could answer for another.
+func CollapseToFull(nodeID types.NodeID, changes []Change) []Change {
+	out := []Change{FullUpdate()}
+
+	for _, c := range changes {
+		if c.PingRequest != nil && c.TargetNode == nodeID {
+			out = append(out, PingNode(nodeID, c.PingRequest))
+		}
+	}
+
+	return out
+}
+
 // SplitTargetedAndBroadcast separates responses into targeted (to specific node) and broadcast.
 func SplitTargetedAndBroadcast(rs []Change) ([]Change, []Change) {
 	var broadcast, targeted []Change
@@ -331,11 +349,14 @@ func FullSelf(nodeID types.NodeID) Change {
 	}
 }
 
+// SelfUpdate sends a node its own entry and the DNS config derived from it
+// (NextDNS profile and device metadata).
 func SelfUpdate(nodeID types.NodeID) Change {
 	return Change{
 		Reason:      "self update",
 		TargetNode:  nodeID,
 		IncludeSelf: true,
+		IncludeDNS:  true,
 	}
 }
 
@@ -483,12 +504,17 @@ func EndpointOrDERPUpdate(id types.NodeID, patch *tailcfg.PeerChange) Change {
 // incremental [tailcfg.PeerChange] patch rather than re-advertising the whole
 // node — the smallest update that conveys the rotation, and the least
 // disruptive for peers reconciling it.
+//
+// Use it only when nothing else peers read changed: [tailcfg.PeerChange] has
+// no field for Hostinfo or for [tailcfg.Node.Expired], which only control can
+// clear, and only by sending the whole node.
 func NodeKeyRotated(node types.NodeView) Change {
 	nk := node.NodeKey()
 	dk := node.DiscoKey()
 
-	// KeyExpiry is always set: the zero value clears any prior expiry on the
-	// peer (un-expire), and a non-zero value carries the new expiry.
+	// KeyExpiry is always set: the zero value clears any prior expiry
+	// timestamp on the peer, and a non-zero value carries the new expiry. It
+	// does not clear [tailcfg.Node.Expired].
 	var expiry time.Time
 	if e, ok := node.Expiry().GetOk(); ok {
 		expiry = e

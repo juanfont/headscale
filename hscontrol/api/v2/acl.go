@@ -134,12 +134,10 @@ func registerACL(api huma.API, b Backend) {
 		}
 
 		cs, err := b.State.ReloadPolicy()
+		b.Change(cs...)
+
 		if err != nil {
 			return nil, huma.Error500InternalServerError("reloading policy", err)
-		}
-
-		if len(cs) > 0 {
-			b.Change(cs...)
 		}
 
 		return streamPolicy([]byte(updated.Data), aclContentType(in.Accept)), nil

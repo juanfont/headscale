@@ -66,7 +66,7 @@ similar lines of code is better than a premature abstraction.
 ## Quick Start
 
 ```bash
-# Enter the nix dev shell (Go 1.27.0, buf, golangci-lint, prek)
+# Enter the nix dev shell (Go 1.27.2, buf, golangci-lint, prek)
 nix develop
 
 # Full development workflow: fmt + lint + test + build
@@ -93,7 +93,7 @@ go run ./tools/bump plan     # what is stale, changes nothing
 go run ./tools/bump verify   # do the pins still agree
 ```
 
-Go 1.27.0 minimum (per `go.mod:3`). `nix develop` pins the exact toolchain
+Go 1.27.2 minimum (per `go.mod:3`). `nix develop` pins the exact toolchain
 used in CI.
 
 ## Pre-Commit with prek
@@ -145,7 +145,9 @@ headscale/
   `NodeStore` (`node_store.go`). All cross-subsystem operations go
   through `State`.
 - `db/` — GORM layer, migrations, schema. `node.go`, `users.go`,
-  `api_key.go`, `preauth_keys.go`, `ip.go`, `policy.go`.
+  `ip.go`, `policy.go`; credentials (API keys, pre-auth keys, OAuth) share
+  one table: `secret.go` (generate/verify), `api_key.go`,
+  `preauth_keys.go`, `oauth.go`, `migrate_credentials.go`.
 - `mapper/` — streaming batcher that distributes MapResponses to
   clients: `batcher.go`, `node_conn.go`, `builder.go`, `mapper.go`.
   Performance-critical.
@@ -185,19 +187,19 @@ headscale/
 ## Database Migration Rules
 
 These rules are load-bearing — violating them corrupts production
-databases. The `migrationsRequiringFKDisabled` map in
-`hscontrol/db/db.go` is frozen (see the comment above it). All new
+databases. Migrations start at 0.29.0; `checkMinimumMigration` in
+`hscontrol/db/versioncheck.go` refuses older databases. All new
 migrations must:
 
 1. **Never reorder existing migrations.** Migration order is immutable
    once committed.
 2. **Only add new migrations to the end** of the migrations array.
-3. **Never disable foreign keys.** No new entries in
-   `migrationsRequiringFKDisabled`.
+3. **Never disable foreign keys.**
 4. **Use the migration ID format** `YYYYMMDDHHMM-short-description`
-   (timestamp + descriptive suffix). Example: `202602201200-clear-tagged-node-user-id`.
-5. **Never rename columns** that later migrations reference. Let
-   `AutoMigrate` create a new column if needed.
+   (timestamp + descriptive suffix). Example: `202607241200-clear-tagged-node-expiry`.
+5. **Never use `AutoMigrate`** in a migration; write explicit DDL.
+6. **Run multi-statement migrations in `tx.Transaction`** so a failure
+   leaves the database retryable.
 
 ## Tags-as-Identity
 
@@ -311,7 +313,7 @@ a broken one.
 - **Tests**: prefer `hscontrol/servertest/` for server-level tests that
   don't need Docker — faster than full integration tests.
 - **View types in read paths**: response serializers must read through
-  `NodeView`/`UserView`/`PreAuthKeyView` accessors. `AsStruct()` clones the
+  `NodeView`/`UserView`/`PreAuthKeyView`/`CredentialView` accessors. `AsStruct()` clones the
   whole record on every read — it is only for DB-write/merge clones and mutable
   working copies, never to build an API response. `grep AsStruct hscontrol/api`
   must come back empty.
@@ -329,3 +331,9 @@ a broken one.
 - **Do not edit `gen/`** — it is regenerated from `proto/` by
   `make generate`.
 - **Proto changes + code changes should be two commits**, not one.
+- **The NixOS test kit is a public contract** consumed by other projects'
+  NixOS tests: the "Contract" in `nix/README.md`, covering
+  `nix/testkit.nix`, `nix/testkit-peer.nix`, the embedded DERP region
+  and `HEADSCALE_DEBUG_INSECURE_TLS_LISTEN_ADDR`, and the CLI commands
+  `hs-authkey` calls. Breaking it needs a "NixOS test kit" BREAKING entry
+  in `CHANGELOG.md`.

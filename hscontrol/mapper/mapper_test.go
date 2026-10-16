@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"errors"
 	"fmt"
 	"net/netip"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
 )
@@ -809,5 +811,255 @@ func TestNoSelfAsPeerDuringRealNodeChurn(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestBackfillNodeIPsReachesBackfilledNode proves the node that receives a
+// backfilled address learns it too. Peers pick it up from the policy
+// refresh, but that refresh carries no self node, so the node itself kept
+// serving its old addresses until an unrelated self update.
+func TestBackfillNodeIPsReachesBackfilledNode(t *testing.T) {
+	tmp := t.TempDir()
+	p4 := netip.MustParsePrefix("100.64.0.0/10")
+	p6 := netip.MustParsePrefix("fd7a:115c:a1e0::/48")
+	cfg := &types.Config{
+		Database: types.DatabaseConfig{
+			Type:   types.DatabaseSqlite,
+			Sqlite: types.SqliteConfig{Path: tmp + "/h.db"},
+		},
+		PrefixV4:     &p4,
+		PrefixV6:     &p6,
+		IPAllocation: types.IPAllocationStrategySequential,
+		BaseDomain:   "headscale.test",
+		Policy:       types.PolicyConfig{Mode: types.PolicyModeDB},
+		DERP: types.DERPConfig{
+			DERPMap: &tailcfg.DERPMap{
+				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{999: {RegionID: 999}},
+			},
+		},
+		Tuning: types.Tuning{
+			NodeStoreBatchSize:    state.TestBatchSize,
+			NodeStoreBatchTimeout: state.TestBatchTimeout,
+		},
+	}
+
+	database, err := db.NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	user := database.CreateUserForTest("u1")
+	nodes := database.CreateRegisteredNodesForTest(user, 2, "bf")
+	target := nodes[0].ID
+	require.NoError(t, database.DB.Model(&types.Node{}).Where("id = ?", target).Update("ipv6", nil).Error)
+	// Backfill copies the stored Hostinfo, which a registered client always has.
+	require.NoError(t, database.DB.Model(&types.Node{}).Where("1 = 1").Update("host_info", "{}").Error)
+	require.NoError(t, database.Close())
+
+	s, err := state.NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	backfilled, cs, err := s.BackfillNodeIPs()
+	require.NoError(t, err)
+	require.NotEmpty(t, backfilled)
+
+	stored, ok := s.GetNodeByID(target)
+	require.True(t, ok)
+	require.True(t, stored.IPv6().Valid(), "backfill must assign an IPv6 address")
+
+	m := &mapper{state: s, cfg: cfg}
+	nc := newMockNodeConnection(target)
+
+	var self *tailcfg.Node
+
+	for _, ch := range change.FilterForNode(target, cs) {
+		resps, err := generateMapResponse(nc, m, ch)
+		require.NoError(t, err)
+
+		for _, resp := range resps {
+			if resp.Node != nil {
+				self = resp.Node
+			}
+		}
+	}
+
+	require.NotNil(t, self, "the backfilled node must receive its own node")
+	assert.Contains(t, self.Addresses, netip.PrefixFrom(stored.IPv6().Get(), 128))
+}
+
+var errInjectedExpiry = errors.New("injected expiry failure")
+
+// TestFailedExpiryOfPrimaryAnnouncesBackup expires the primary of an HA
+// route while the database write fails. The NodeStore already moved the
+// route to the backup, so the change returned with the error must still
+// tell a client about the new primary, as the successful path does;
+// otherwise the client drops the old primary's route with no replacement.
+func TestFailedExpiryOfPrimaryAnnouncesBackup(t *testing.T) {
+	tmp := t.TempDir()
+	p4 := netip.MustParsePrefix("100.64.0.0/10")
+	p6 := netip.MustParsePrefix("fd7a:115c:a1e0::/48")
+	cfg := &types.Config{
+		Database: types.DatabaseConfig{
+			Type:   types.DatabaseSqlite,
+			Sqlite: types.SqliteConfig{Path: tmp + "/h.db"},
+		},
+		PrefixV4:     &p4,
+		PrefixV6:     &p6,
+		IPAllocation: types.IPAllocationStrategySequential,
+		BaseDomain:   "headscale.test",
+		Policy:       types.PolicyConfig{Mode: types.PolicyModeDB},
+		DERP: types.DERPConfig{
+			DERPMap: &tailcfg.DERPMap{
+				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{999: {RegionID: 999}},
+			},
+		},
+		Tuning: types.Tuning{
+			NodeStoreBatchSize:    state.TestBatchSize,
+			NodeStoreBatchTimeout: state.TestBatchTimeout,
+		},
+	}
+
+	route := netip.MustParsePrefix("10.77.0.0/24")
+
+	database, err := db.NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	user := database.CreateUserForTest("u1")
+	nodes := database.CreateRegisteredNodesForTest(user, 3, "ha")
+
+	for _, n := range nodes[:2] {
+		n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{route}}
+		n.ApprovedRoutes = []netip.Prefix{route}
+		require.NoError(t, database.DB.Save(n).Error)
+	}
+
+	require.NoError(t, database.Close())
+
+	s, err := state.NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	primary, backup, client := nodes[0].ID, nodes[1].ID, nodes[2].ID
+	for _, id := range []types.NodeID{primary, backup, client} {
+		s.Connect(id)
+	}
+
+	require.Equal(t, []netip.Prefix{route}, s.GetNodePrimaryRoutes(primary))
+
+	require.NoError(t, s.DB().DB.Callback().Update().Before("gorm:update").
+		Register("fail_node_update", func(tx *gorm.DB) {
+			if tx.Statement.Table == "nodes" {
+				_ = tx.AddError(errInjectedExpiry)
+			}
+		}))
+	t.Cleanup(func() { _ = s.DB().DB.Callback().Update().Remove("fail_node_update") })
+
+	past := time.Now().Add(-time.Hour)
+	_, c, err := s.SetNodeExpiry(primary, &past)
+	require.ErrorIs(t, err, errInjectedExpiry)
+	require.Equal(t, []netip.Prefix{route}, s.GetNodePrimaryRoutes(backup),
+		"the NodeStore moved the route to the backup")
+
+	m := &mapper{state: s, cfg: cfg}
+	nc := newMockNodeConnection(client)
+
+	var backupRoutes []netip.Prefix
+
+	for _, ch := range change.FilterForNode(client, []change.Change{c}) {
+		resps, err := generateMapResponse(nc, m, ch)
+		require.NoError(t, err)
+
+		for _, resp := range resps {
+			for _, p := range append(resp.Peers, resp.PeersChanged...) {
+				if p.ID == backup.NodeID() {
+					backupRoutes = p.PrimaryRoutes
+				}
+			}
+		}
+	}
+
+	assert.Contains(t, backupRoutes, route, "the client must learn the backup is primary: %s", c.Type())
+}
+
+// TestGenerateMapResponseDebugOnlyOnFullMaps pins where [tailcfg.Debug] rides:
+// on every full map (the initial map and FullUpdate renders), so a client that
+// connects or reconnects is told to stop log uploads, and on nothing else. The
+// renders run through [generateMapResponse], the path the batcher uses, so a
+// branch that bypasses buildFromChange cannot silently drop or add it.
+func TestGenerateMapResponseDebugOnlyOnFullMaps(t *testing.T) {
+	tmp := t.TempDir()
+	p4 := netip.MustParsePrefix("100.64.0.0/10")
+	p6 := netip.MustParsePrefix("fd7a:115c:a1e0::/48")
+	cfg := &types.Config{
+		Database: types.DatabaseConfig{
+			Type:   types.DatabaseSqlite,
+			Sqlite: types.SqliteConfig{Path: tmp + "/h.db"},
+		},
+		PrefixV4:     &p4,
+		PrefixV6:     &p6,
+		IPAllocation: types.IPAllocationStrategySequential,
+		BaseDomain:   "headscale.test",
+		Policy:       types.PolicyConfig{Mode: types.PolicyModeDB},
+		DERP: types.DERPConfig{
+			DERPMap: &tailcfg.DERPMap{
+				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{999: {RegionID: 999}},
+			},
+		},
+		Tuning: types.Tuning{
+			NodeStoreBatchSize:    state.TestBatchSize,
+			NodeStoreBatchTimeout: state.TestBatchTimeout,
+		},
+	}
+
+	database, err := db.NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	user := database.CreateUserForTest("u1")
+	n1 := database.CreateRegisteredNodeForTest(user, "n1")
+	n2 := database.CreateRegisteredNodeForTest(user, "n2")
+	require.NoError(t, database.Close())
+
+	s, err := state.NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, err = s.SetPolicy([]byte(`{"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`))
+	require.NoError(t, err)
+
+	m := &mapper{state: s, cfg: cfg}
+
+	kinds := []struct {
+		name string
+		c    change.Change
+		full bool
+	}{
+		{"full_update", change.FullUpdate(), true},
+		{"full_self", change.FullSelf(n1.ID), true},
+		{"user_removed", change.UserRemoved(), true},
+		{"self_update", change.SelfUpdate(n1.ID), false},
+		{"self_node_added", change.NodeAdded(n1.ID), false},
+		{"policy_change", change.PolicyChange(), false},
+		{"derp_map", change.DERPMap(), false},
+		{"dns_config", change.DNSConfig(), false},
+		{"peer_added", change.NodeAdded(n2.ID), false},
+		{"peer_online", change.NodeOnline(n2.ID), false},
+	}
+
+	for _, logTail := range []bool{false, true} {
+		for _, k := range kinds {
+			t.Run(fmt.Sprintf("logtail=%t/%s", logTail, k.name), func(t *testing.T) {
+				cfg.LogTail.Enabled = logTail
+
+				resps, err := generateMapResponse(newMockNodeConnection(n1.ID), m, k.c)
+				require.NoError(t, err)
+				require.Len(t, resps, 1)
+
+				var want *tailcfg.Debug
+				if k.full && !logTail {
+					want = &tailcfg.Debug{DisableLogTail: true}
+				}
+
+				assert.Equal(t, want, resps[0].Debug)
+			})
+		}
 	}
 }

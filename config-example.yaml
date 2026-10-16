@@ -114,7 +114,8 @@ derp:
   urls:
     - https://controlplane.tailscale.com/derpmap/default
 
-  # Locally available DERP map files encoded in YAML
+  # Locally available DERP map files. The extension picks the format: .yaml/.yml,
+  # or Tailscale JSON as .json or .hujson.
   #
   # This option is mostly interesting for people hosting their own DERP servers:
   # https://tailscale.com/docs/reference/derp-servers/custom-derp-servers
@@ -352,13 +353,15 @@ dns:
   #   # you can also put it in one line
   #   - { name: "prometheus.myvpn.example.com", type: "A", value: "100.64.0.3" }
   #
-  # Alternatively, extra DNS records can be loaded from a JSON file.
+  # Alternatively, extra DNS records can be loaded from a file. The extension
+  # picks the format: .json, .hujson, .yaml or .yml.
   # Headscale processes this file on each change.
   # extra_records_path: /var/lib/headscale/extra-records.json
 
 # Unix socket used for the CLI to connect without authentication
 # Note: for production you will want to set this to something like:
 unix_socket: /var/run/headscale/headscale.sock
+# Octal, quoted: YAML reads an unquoted 0770 as the number 504.
 unix_socket_permission: "0770"
 
 # OpenID Connect

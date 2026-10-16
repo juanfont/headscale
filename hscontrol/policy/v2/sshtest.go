@@ -379,6 +379,14 @@ func resolveSSHTestSource(
 		return nil, 0, nil
 	}
 
+	// Mirrors resolveTestSource: an unregistered user fails the test.
+	if u, ok := src.(*Username); ok {
+		_, err := u.resolveUser(users)
+		if err != nil {
+			return nil, 0, fmt.Errorf("resolving: %w", err)
+		}
+	}
+
 	addrs, err := src.Resolve(pol, users, nodes)
 	if err != nil {
 		return nil, 0, fmt.Errorf("resolving: %w", err)

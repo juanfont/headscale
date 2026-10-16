@@ -222,36 +222,128 @@ func TestIssuesRoutes(t *testing.T) {
 		}
 	})
 
-	// When the server approves routes for a node, that node
-	// should receive a self-update reflecting the change.
-	t.Run("self_update_after_route_approval", func(t *testing.T) {
+	// The client derives ExitNodeOption from its own SelfNode.AllowedIPs,
+	// and SelfNode only changes when a MapResponse carries Node. SaaS
+	// captures show approved exit routes on the exit node's own SelfNode
+	// (routes-ea*, routes-b17/b18). Peers are the control: they must see
+	// the routes, proving the change was dispatched.
+	// https://github.com/juanfont/headscale/issues/3502
+	t.Run("exit_route_approval_reaches_self", func(t *testing.T) {
 		t.Parallel()
 
 		srv := servertest.NewServer(t)
-		user := srv.CreateUser(t, "selfup-user")
+		user := srv.CreateUser(t, "selfexit-user")
 
-		c1 := servertest.NewClient(t, srv, "selfup-node1",
+		exit := servertest.NewClient(t, srv, "selfexit-node",
 			servertest.WithUser(user))
-		servertest.NewClient(t, srv, "selfup-node2",
+		obs := servertest.NewClient(t, srv, "selfexit-obs",
 			servertest.WithUser(user))
 
-		c1.WaitForPeers(t, 1, 10*time.Second)
+		exit.WaitForPeers(t, 1, 10*time.Second)
+		advertiseRoutes(t, exit, obs, tsaddr.ExitRoutes())
 
-		nodeID := findNodeID(t, srv, "selfup-node1")
-		route := netip.MustParsePrefix("10.77.0.0/24")
-
-		countBefore := c1.UpdateCount()
-
-		_, routeChange, err := srv.State().SetApprovedRoutes(
-			nodeID, []netip.Prefix{route})
+		_, c, err := srv.State().SetApprovedRoutes(
+			findNodeID(t, srv, "selfexit-node"), tsaddr.ExitRoutes())
 		require.NoError(t, err)
-		srv.App.Change(routeChange)
+		srv.App.Change(c)
 
-		c1.WaitForCondition(t, "self-update after route approval",
-			10*time.Second,
-			func(nm *netmap.NetworkMap) bool {
-				return c1.UpdateCount() > countBefore
-			})
+		obs.WaitForCondition(t, "peer offers exit node", 10*time.Second,
+			peerOffersExit("selfexit-node"))
+		exit.WaitForCondition(t, "self offers exit node", 10*time.Second,
+			selfOffersExit)
+	})
+
+	// Advertising an already-approved exit route goes through
+	// UpdateNodeFromMapRequest instead of SetApprovedRoutes. This is the
+	// re-advertise workaround from the issue that 0.29.4 broke.
+	t.Run("exit_route_advertised_after_approval_reaches_self", func(t *testing.T) {
+		t.Parallel()
+
+		srv := servertest.NewServer(t)
+		user := srv.CreateUser(t, "preexit-user")
+
+		exit := servertest.NewClient(t, srv, "preexit-node",
+			servertest.WithUser(user))
+		obs := servertest.NewClient(t, srv, "preexit-obs",
+			servertest.WithUser(user))
+
+		exit.WaitForPeers(t, 1, 10*time.Second)
+
+		_, c, err := srv.State().SetApprovedRoutes(
+			findNodeID(t, srv, "preexit-node"), tsaddr.ExitRoutes())
+		require.NoError(t, err)
+		srv.App.Change(c)
+
+		advertiseRoutes(t, exit, obs, tsaddr.ExitRoutes())
+
+		obs.WaitForCondition(t, "peer offers exit node", 10*time.Second,
+			peerOffersExit("preexit-node"))
+		exit.WaitForCondition(t, "self offers exit node", 10*time.Second,
+			selfOffersExit)
+	})
+
+	// A policy reload that auto-approves an advertised exit route goes
+	// through autoApproveNodes, a third producer of the same change.
+	t.Run("exit_route_auto_approved_on_reload_reaches_self", func(t *testing.T) {
+		t.Parallel()
+
+		srv := servertest.NewServer(t)
+		user := srv.CreateUser(t, "reloadexit-user")
+
+		exit := servertest.NewClient(t, srv, "reloadexit-node",
+			servertest.WithUser(user))
+		obs := servertest.NewClient(t, srv, "reloadexit-obs",
+			servertest.WithUser(user))
+
+		exit.WaitForPeers(t, 1, 10*time.Second)
+		advertiseRoutes(t, exit, obs, tsaddr.ExitRoutes())
+
+		_, err := srv.State().SetPolicyInDB(`{
+			"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}],
+			"autoApprovers": {"exitNode": ["reloadexit-user@"]}
+		}`)
+		require.NoError(t, err)
+
+		changes, err := srv.State().ReloadPolicy()
+		require.NoError(t, err)
+		srv.App.Change(changes...)
+
+		obs.WaitForCondition(t, "peer offers exit node", 10*time.Second,
+			peerOffersExit("reloadexit-node"))
+		exit.WaitForCondition(t, "self offers exit node", 10*time.Second,
+			selfOffersExit)
+	})
+
+	// An auto-approver approves the route inside the advertising map
+	// request, a fourth producer of the same change.
+	t.Run("exit_route_auto_approved_on_advertise_reaches_self", func(t *testing.T) {
+		t.Parallel()
+
+		srv := servertest.NewServer(t)
+		user := srv.CreateUser(t, "advexit-user")
+
+		_, err := srv.State().SetPolicyInDB(`{
+			"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}],
+			"autoApprovers": {"exitNode": ["advexit-user@"]}
+		}`)
+		require.NoError(t, err)
+
+		changes, err := srv.State().ReloadPolicy()
+		require.NoError(t, err)
+		srv.App.Change(changes...)
+
+		exit := servertest.NewClient(t, srv, "advexit-node",
+			servertest.WithUser(user))
+		obs := servertest.NewClient(t, srv, "advexit-obs",
+			servertest.WithUser(user))
+
+		exit.WaitForPeers(t, 1, 10*time.Second)
+		advertiseRoutes(t, exit, obs, tsaddr.ExitRoutes())
+
+		obs.WaitForCondition(t, "peer offers exit node", 10*time.Second,
+			peerOffersExit("advexit-node"))
+		exit.WaitForCondition(t, "self offers exit node", 10*time.Second,
+			selfOffersExit)
 	})
 
 	// [tailcfg.Hostinfo] route advertisement should be stored on server.
@@ -556,7 +648,7 @@ func TestIssuesServerMutations(t *testing.T) {
 
 		deleteChange, err := srv.State().DeleteNode(node2View)
 		require.NoError(t, err)
-		srv.App.Change(deleteChange)
+		srv.App.Change(deleteChange...)
 
 		c1.WaitForCondition(t, "deleted peer gone", 10*time.Second,
 			func(nm *netmap.NetworkMap) bool {
@@ -995,6 +1087,100 @@ func TestIssuesIdentity(t *testing.T) {
 	})
 }
 
+// TestPeerRemovedAsDelta checks a peer leaving a client's view reaches it
+// in a response it can apply as a delta. Bundled with DNSConfig or
+// SSHPolicy, the removal forces a full netmap rebuild, which never tells IPN
+// bus watchers opted out of full netmaps (the Android app since 1.100) that
+// the peer is gone, so they keep showing it.
+//
+// TODO(kradalby): with the tailscale/tailscale#15660 compat gone, removals
+// ride full rebuilds; assert they reach the netmap instead.
+func TestPeerRemovedAsDelta(t *testing.T) {
+	t.Parallel()
+
+	// MagicDNS puts DNSConfig in policy responses, making them full rebuilds.
+	setup := func(t *testing.T) (*servertest.TestServer, *servertest.TestClient, types.NodeID) {
+		t.Helper()
+
+		srv := servertest.NewServer(t, servertest.WithMagicDNS("delta.example.com"))
+		user1 := srv.CreateUser(t, "delta-user1")
+		user2 := srv.CreateUser(t, "delta-user2")
+
+		c1 := servertest.NewClient(t, srv, "delta-node1",
+			servertest.WithUser(user1), servertest.WithDeltaUpdates())
+		servertest.NewClient(t, srv, "delta-node2", servertest.WithUser(user2))
+
+		c1.WaitForPeers(t, 1, 15*time.Second)
+
+		return srv, c1, findNodeID(t, srv, "delta-node2")
+	}
+
+	assertRemovedAsDelta := func(t *testing.T, c1 *servertest.TestClient, id types.NodeID) {
+		t.Helper()
+
+		assert.EventuallyWithT(t, func(c *assert.CollectT) {
+			assert.Contains(c, c1.DeltaRemovedPeers(), id.NodeID())
+		}, 10*time.Second, 50*time.Millisecond, "peer removal never applied as a delta")
+	}
+
+	t.Run("node_deleted", func(t *testing.T) {
+		t.Parallel()
+
+		srv, c1, nodeID2 := setup(t)
+
+		node2, ok := srv.State().GetNodeByID(nodeID2)
+		require.True(t, ok)
+
+		changes, err := srv.State().DeleteNode(node2)
+		require.NoError(t, err)
+		srv.App.Change(changes...)
+
+		assertRemovedAsDelta(t, c1, nodeID2)
+	})
+
+	// The new stream's initial map is a full rebuild, so a removal missed
+	// while disconnected must still follow as a delta.
+	t.Run("deleted_while_disconnected", func(t *testing.T) {
+		t.Parallel()
+
+		srv, c1, nodeID2 := setup(t)
+
+		node2, ok := srv.State().GetNodeByID(nodeID2)
+		require.True(t, ok)
+
+		c1.Disconnect(t)
+
+		changes, err := srv.State().DeleteNode(node2)
+		require.NoError(t, err)
+		srv.App.Change(changes...)
+
+		c1.Reconnect(t)
+
+		assertRemovedAsDelta(t, c1, nodeID2)
+	})
+
+	t.Run("hidden_by_policy", func(t *testing.T) {
+		t.Parallel()
+
+		srv, c1, nodeID2 := setup(t)
+
+		changed, err := srv.State().SetPolicy([]byte(`{
+			"acls": [
+				{"action": "accept", "src": ["delta-user1@"], "dst": ["delta-user1@:*"]},
+				{"action": "accept", "src": ["delta-user2@"], "dst": ["delta-user2@:*"]}
+			]
+		}`))
+		require.NoError(t, err)
+		require.True(t, changed)
+
+		changes, err := srv.State().ReloadPolicy()
+		require.NoError(t, err)
+		srv.App.Change(changes...)
+
+		assertRemovedAsDelta(t, c1, nodeID2)
+	})
+}
+
 func findNodeID(tb testing.TB, srv *servertest.TestServer, hostname string) types.NodeID {
 	tb.Helper()
 
@@ -1009,4 +1195,51 @@ func findNodeID(tb testing.TB, srv *servertest.TestServer, hostname string) type
 	tb.Fatalf("node %q not found in server state", hostname)
 
 	return 0
+}
+
+// advertiseRoutes pushes routes in c's Hostinfo and waits until obs sees
+// them, so the server has stored the announcement.
+func advertiseRoutes(tb testing.TB, c, obs *servertest.TestClient, routes []netip.Prefix) {
+	tb.Helper()
+
+	c.Direct().SetHostinfo(&tailcfg.Hostinfo{
+		BackendLogID: "servertest-" + c.Name,
+		Hostname:     c.Name,
+		RoutableIPs:  routes,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_ = c.Direct().SendUpdate(ctx)
+
+	obs.WaitForCondition(tb, "routes in peer hostinfo", 10*time.Second,
+		func(nm *netmap.NetworkMap) bool {
+			p, ok := peerByHostname(nm, c.Name)
+
+			return ok && p.Hostinfo().RoutableIPs().Len() == len(routes)
+		})
+}
+
+// selfOffersExit mirrors how tailscaled computes Self.ExitNodeOption.
+func selfOffersExit(nm *netmap.NetworkMap) bool {
+	return nm.SelfNode.Valid() && tsaddr.ContainsExitRoutes(nm.SelfNode.AllowedIPs())
+}
+
+func peerOffersExit(hostname string) func(*netmap.NetworkMap) bool {
+	return func(nm *netmap.NetworkMap) bool {
+		p, ok := peerByHostname(nm, hostname)
+
+		return ok && tsaddr.ContainsExitRoutes(p.AllowedIPs())
+	}
+}
+
+func peerByHostname(nm *netmap.NetworkMap, hostname string) (tailcfg.NodeView, bool) {
+	for _, p := range nm.Peers {
+		if hi := p.Hostinfo(); hi.Valid() && hi.Hostname() == hostname {
+			return p, true
+		}
+	}
+
+	return tailcfg.NodeView{}, false
 }

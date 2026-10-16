@@ -331,3 +331,45 @@ func TestExpiredNodeSessionAccounting(t *testing.T) {
 		})
 	}
 }
+
+// TestBackfillNodeIPsKeepsLiveSessions guards the IP backfill against
+// replacing NodeStore nodes with their database rows, which drops the
+// runtime-only session count and strands a connected node offline.
+func TestBackfillNodeIPsKeepsLiveSessions(t *testing.T) {
+	dbPath, s, nodeID := persistTestSetup(t)
+	require.NoError(t, s.Close())
+
+	// Dropping the IPv6 prefix gives the backfill work to do.
+	cfg := persistTestConfig(dbPath)
+	cfg.PrefixV6 = nil
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, firstGen := s.Connect(nodeID)
+	s.Connect(nodeID)
+
+	// Connected nodes carry the Hostinfo of their first MapRequest.
+	s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
+		n.Hostinfo = &tailcfg.Hostinfo{Hostname: "persist-node"}
+	})
+
+	changes, _, err := s.BackfillNodeIPs()
+	require.NoError(t, err)
+	require.NotEmpty(t, changes, "precondition: backfill must change the node")
+
+	nv, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+	assert.Len(t, nv.IPs(), 1, "backfill must drop the IPv6 address")
+
+	_, err = s.Disconnect(nodeID, firstGen)
+	require.NoError(t, err)
+
+	nv, ok = s.GetNodeByID(nodeID)
+	require.True(t, ok)
+
+	online, known := nv.IsOnline().GetOk()
+	require.True(t, known)
+	assert.True(t, online, "node must stay online while its second session lives")
+}

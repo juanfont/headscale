@@ -3624,8 +3624,8 @@ func TestIssue2830_ExistingNodeReregistersWithExpiredKey(t *testing.T) {
 	// Now expire the key by updating it in the database to have an expiry in the past.
 	// This simulates the real-world scenario where a key expires after initial registration.
 	pastExpiry := time.Now().Add(-1 * time.Hour)
-	err = app.state.DB().DB.Model(&types.PreAuthKey{}).
-		Where("id = ?", pak.ID).
+	err = app.state.DB().DB.Model(&types.Credential{}).
+		Where("kind = ? AND id = ?", types.CredentialPreAuthKey, pak.ID).
 		Update("expiration", pastExpiry).Error
 	require.NoError(t, err, "should be able to update key expiration")
 
@@ -4066,7 +4066,7 @@ func TestDeletedPreAuthKeyNotRecreatedOnNodeUpdate(t *testing.T) {
 	// Verify the PreAuthKey exists in the database
 	var pakCount int64
 
-	err = app.state.DB().DB.Model(&types.PreAuthKey{}).Where("id = ?", pakID).Count(&pakCount).Error
+	err = app.state.DB().DB.Model(&types.Credential{}).Where("kind = ? AND id = ?", types.CredentialPreAuthKey, pakID).Count(&pakCount).Error
 	require.NoError(t, err)
 	require.Equal(t, int64(1), pakCount, "PreAuthKey should exist in database")
 
@@ -4077,7 +4077,7 @@ func TestDeletedPreAuthKeyNotRecreatedOnNodeUpdate(t *testing.T) {
 	require.NoError(t, err, "deleting PreAuthKey should succeed")
 
 	// Verify the PreAuthKey is gone from the database
-	err = app.state.DB().DB.Model(&types.PreAuthKey{}).Where("id = ?", pakID).Count(&pakCount).Error
+	err = app.state.DB().DB.Model(&types.Credential{}).Where("kind = ? AND id = ?", types.CredentialPreAuthKey, pakID).Count(&pakCount).Error
 	require.NoError(t, err)
 	require.Equal(t, int64(0), pakCount, "PreAuthKey should be deleted from database")
 	t.Log("PreAuthKey deleted from database")
@@ -4112,7 +4112,7 @@ func TestDeletedPreAuthKeyNotRecreatedOnNodeUpdate(t *testing.T) {
 	t.Log("Simulated MapRequest update completed")
 
 	// THE CRITICAL CHECK: Verify the PreAuthKey was NOT recreated
-	err = app.state.DB().DB.Model(&types.PreAuthKey{}).Where("id = ?", pakID).Count(&pakCount).Error
+	err = app.state.DB().DB.Model(&types.Credential{}).Where("kind = ? AND id = ?", types.CredentialPreAuthKey, pakID).Count(&pakCount).Error
 	require.NoError(t, err)
 	require.Equal(t, int64(0), pakCount,
 		"BUG: PreAuthKey was recreated! The deleted PreAuthKey should NOT reappear after node update")
@@ -4326,6 +4326,73 @@ func TestHandleNodeFromAuthPath_OldUserNil_NoPanic(t *testing.T) {
 	require.True(t, node.Valid())
 	assert.NotEqual(t, types.NodeID(99002), node.ID(), "new node, not orphan")
 	assert.Equal(t, userB.ID, node.UserID().Get(), "new node belongs to userB")
+}
+
+// TestHandleNodeFromAuthPath_ReloginWholeNode covers an interactive (web or
+// OIDC) relogin that rotates the node key. A [tailcfg.PeerChange] patch can
+// neither clear a peer's Expired flag nor carry Hostinfo, so a relogin that
+// un-expires the node or changes Hostinfo peers read must be sent as a whole
+// node. A relogin that only rotates keys keeps the key-rotation patch.
+func TestHandleNodeFromAuthPath_ReloginWholeNode(t *testing.T) {
+	tests := []struct {
+		name      string
+		expired   bool
+		services  []tailcfg.Service
+		wantPatch bool
+	}{
+		{name: "keys only", wantPatch: true},
+		{name: "expired", expired: true},
+		{
+			name:     "peer-visible hostinfo",
+			services: []tailcfg.Service{{Proto: tailcfg.PeerAPI4, Port: 4242}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := createTestApp(t)
+
+			user := app.state.CreateUserForTest("authpath-relogin")
+			node := app.state.CreateRegisteredNodeForTest(user, "authpath-relogin")
+			node.Hostinfo = &tailcfg.Hostinfo{Hostname: node.Hostname}
+
+			if tt.expired {
+				node.Expiry = new(time.Now().Add(-time.Minute))
+			}
+
+			app.state.PutNodeInStoreForTest(*node)
+
+			newNodeKey := key.NewNode()
+			authID := types.MustAuthID()
+			app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+				MachineKey: node.MachineKey,
+				NodeKey:    newNodeKey.Public(),
+				Hostname:   node.Hostname,
+				Hostinfo: &tailcfg.Hostinfo{
+					Hostname: node.Hostname,
+					Services: tt.services,
+				},
+			}))
+
+			relogged, c, err := app.state.HandleNodeFromAuthPath(
+				authID,
+				types.UserID(user.ID),
+				nil,
+				"oidc",
+			)
+			require.NoError(t, err)
+			require.Equal(t, node.ID, relogged.ID(), "relogin must update the existing node")
+			require.Equal(t, newNodeKey.Public(), relogged.NodeKey())
+
+			if tt.wantPatch {
+				assert.Empty(t, c.PeersChanged, "relogin must not be a whole-node add")
+				assert.Len(t, c.PeerPatches, 1, "relogin must be a peer patch")
+			} else {
+				assert.Empty(t, c.PeerPatches, "relogin must not be a peer patch")
+				assert.Contains(t, c.PeersChanged, node.ID, "relogin must be a whole-node add")
+			}
+		})
+	}
 }
 
 // TestWaitForFollowupMachineKeyMismatch covers the followup poll in

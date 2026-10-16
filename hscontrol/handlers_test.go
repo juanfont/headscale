@@ -11,6 +11,7 @@ import (
 	"net/netip"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/capver"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -116,6 +117,100 @@ func TestVerifyHandler_SuccessSetsJSONContentType(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"),
 		"successful /verify response must advertise application/json")
+}
+
+// TestHandleVerifyRequest_AdmitsByNodeKey pins DERP admission to NodeKey
+// membership. The oracle is the full-list scan the handler used to run, so
+// the indexed lookup must agree with it on every row: expiry, tags and
+// ephemerality never gate admission, and a rotated-away or deleted key is
+// refused.
+func TestHandleVerifyRequest_AdmitsByNodeKey(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("derp-admit")
+
+	owned := putTestNodeInStore(t, app, user, "owned")
+
+	tagged := app.state.CreateNodeForTest(user, "tagged")
+	tagged.Tags = []string{"tag:derp"}
+	app.state.PutNodeInStoreForTest(*tagged)
+
+	ephemeral := app.state.CreateNodeForTest(user, "ephemeral")
+	ephemeral.AuthKey = &types.Credential{Ephemeral: true}
+	app.state.PutNodeInStoreForTest(*ephemeral)
+
+	expired := app.state.CreateNodeForTest(user, "expired")
+	expired.Expiry = new(time.Now().Add(-time.Hour))
+	app.state.PutNodeInStoreForTest(*expired)
+
+	rotated := putTestNodeInStore(t, app, user, "rotated")
+	rotatedFrom := rotated.NodeKey
+	rotated.NodeKey = key.NewNode().Public()
+	app.state.PutNodeInStoreForTest(*rotated)
+
+	deleted := putTestNodeInStore(t, app, user, "deleted")
+	deletedView, ok := app.state.GetNodeByID(deleted.ID)
+	require.True(t, ok)
+
+	_, err := app.state.DeleteNode(deletedView)
+	require.NoError(t, err)
+
+	nv, ok := app.state.GetNodeByID(tagged.ID)
+	require.True(t, ok)
+	require.True(t, nv.IsTagged(), "test sanity: tagged row must be tagged")
+	nv, ok = app.state.GetNodeByID(ephemeral.ID)
+	require.True(t, ok)
+	require.True(t, nv.IsEphemeral(), "test sanity: ephemeral row must be ephemeral")
+	nv, ok = app.state.GetNodeByID(expired.ID)
+	require.True(t, ok)
+	require.True(t, nv.IsExpired(), "test sanity: expired row must be expired")
+
+	tests := []struct {
+		name string
+		key  key.NodePublic
+		want bool
+	}{
+		{name: "user", key: owned.NodeKey, want: true},
+		{name: "tagged", key: tagged.NodeKey, want: true},
+		{name: "ephemeral", key: ephemeral.NodeKey, want: true},
+		{name: "rotated/old", key: rotatedFrom, want: false},
+		{name: "rotated/new", key: rotated.NodeKey, want: true},
+		{name: "expired", key: expired.NodeKey, want: true},
+		{name: "deleted", key: deleted.NodeKey, want: false},
+		{name: "unknown", key: key.NewNode().Public(), want: false},
+		{name: "zero", key: key.NodePublic{}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			body, err := json.Marshal(tailcfg.DERPAdmitClientRequest{NodePublic: tt.key})
+			require.NoError(t, err)
+
+			req := httptest.NewRequestWithContext(
+				context.Background(),
+				http.MethodPost,
+				"/verify",
+				bytes.NewReader(body),
+			)
+
+			var out bytes.Buffer
+			require.NoError(t, app.handleVerifyRequest(req, &out))
+
+			var resp tailcfg.DERPAdmitClientResponse
+			require.NoError(t, json.Unmarshal(out.Bytes(), &resp))
+
+			oracle := app.state.ListNodes().ContainsFunc(func(n types.NodeView) bool {
+				return n.NodeKey() == tt.key
+			})
+
+			assert.Equal(t, tt.want, resp.Allow)
+			assert.Equal(t, oracle, resp.Allow,
+				"indexed admission must match the full-list membership scan")
+		})
+	}
 }
 
 // TestKeyHandler_UnsupportedCapVerDoesNotLeakKey reproduces

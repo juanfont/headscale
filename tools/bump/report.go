@@ -8,7 +8,8 @@ import (
 
 // markerPrefix tags the machine-readable footer of a bot-authored pull request
 // body. It is the bot's only persistent state: everything else is rebuilt from
-// the base branch on every run.
+// the base branch on every run, or rebased onto it when carrying hand-pushed
+// commits.
 const markerPrefix = "<!-- versionbump:v1 "
 
 // marker records what a run produced, so the next run can tell "nothing new"
@@ -63,7 +64,7 @@ func markerOf(results []result, tree, head string) marker {
 // renderBody writes the pull request body. It leads with what landed and what
 // did not, because the point of the bot is that the reader can decide from the
 // body plus the checks without reproducing the run.
-func renderBody(results []result, m marker, gate string) string {
+func renderBody(results []result, m marker, gate string, carried []string) string {
 	var sb strings.Builder
 
 	sb.WriteString("Automated version bump.\n\n")
@@ -80,6 +81,14 @@ func renderBody(results []result, m marker, gate string) string {
 
 	writeDetails(&sb, results)
 	writeDropped(&sb, results)
+
+	if len(carried) > 0 {
+		sb.WriteString("\n### Carried\n\nPushed by hand, rebased onto the base, and built on:\n\n")
+
+		for _, s := range carried {
+			fmt.Fprintf(&sb, "- %s\n", s)
+		}
+	}
 
 	sb.WriteString("\n")
 	sb.WriteString(gateNote(gate))
@@ -190,20 +199,4 @@ func cell(s string) string {
 	}
 
 	return s
-}
-
-// changedAreas reports whether the outcome differs from the last run, which is
-// what decides between silently updating the pull request and commenting on it.
-func changedAreas(prev marker, now marker) bool {
-	if len(prev.Areas) != len(now.Areas) {
-		return true
-	}
-
-	for name, st := range now.Areas {
-		if prev.Areas[name] != st {
-			return true
-		}
-	}
-
-	return false
 }

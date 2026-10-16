@@ -105,10 +105,10 @@ Its best suited for automation.
     headscale users create <USER>
     ```
 
-    Use the `headscale user list` command to learn its `<USER_ID>` and create a new pre authenticated key for your user:
+    Create a new pre authenticated key for your user, by name or by the `<USER_ID>` that `headscale user list` shows:
 
     ```console
-    headscale preauthkeys create --user <USER_ID>
+    headscale preauthkeys create --user <USER>
     ```
 
     The above prints a pre authenticated key with the default settings (can be used once and is valid for one hour). Use

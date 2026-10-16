@@ -3,16 +3,23 @@ package hscontrol
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -149,10 +156,22 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 			return
 		}
 
-		policyChanged, err := app.state.DeleteNode(node)
-		if !policyChanged.IsEmpty() {
-			app.Change(policyChanged)
+		// Schedule and Cancel run outside the session transition, so a
+		// disconnecting session can arm a timer after a reconnect already
+		// cancelled it. The session count is authoritative; a stale timer
+		// is dropped and the next disconnect arms a fresh one. Not Online():
+		// an expired node keeps polling while offline.
+		// ponytail: a Connect between this check and DeleteNode still loses
+		// the node; only reachable after a full inactivity timeout. Needs a
+		// delete-if-idle in State if that edge matters.
+		if node.ActiveSessions() > 0 {
+			log.Debug().Caller().EmbedObject(node).Msg("ephemeral node has a live session, skipping garbage collection")
+
+			return
 		}
+
+		changes, err := app.state.DeleteNode(node)
+		app.Change(changes...)
 
 		if err != nil {
 			log.Error().Err(err).EmbedObject(node).Msg("ephemeral node deletion failed")
@@ -377,7 +396,11 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 				}
 
 				if h.cfg.DERP.ServerEnabled && h.cfg.DERP.AutomaticallyAddEmbeddedDerpRegion {
-					region, _ := h.DERPServer.GenerateRegion()
+					region, err := h.DERPServer.GenerateRegion()
+					if err != nil {
+						return nil, fmt.Errorf("generating embedded DERP region: %w", err)
+					}
+
 					derpMap.Regions[region.RegionID] = &region
 				}
 
@@ -492,7 +515,7 @@ func (h *Headscale) createRouter(apiV1Mux, apiV2Mux http.Handler) *chi.Mux {
 		r.HandleFunc("/derp", h.DERPServer.DERPHandler)
 		r.HandleFunc("/derp/probe", derpServer.DERPProbeHandler)
 		r.HandleFunc("/derp/latency-check", derpServer.DERPProbeHandler)
-		r.HandleFunc("/bootstrap-dns", derpServer.DERPBootstrapDNSHandler(h.state.DERPMap()))
+		r.HandleFunc("/bootstrap-dns", derpServer.DERPBootstrapDNSHandler(h.state.DERPMap))
 	}
 
 	// Auth is enforced inside each Huma mux per-operation, so the whole API
@@ -564,7 +587,11 @@ func (h *Headscale) Serve() error {
 	}
 
 	if h.cfg.DERP.ServerEnabled && h.cfg.DERP.AutomaticallyAddEmbeddedDerpRegion {
-		region, _ := h.DERPServer.GenerateRegion()
+		region, err := h.DERPServer.GenerateRegion()
+		if err != nil {
+			return fmt.Errorf("generating embedded DERP region: %w", err)
+		}
+
 		derpMap.Regions[region.RegionID] = &region
 	}
 
@@ -726,6 +753,40 @@ func (h *Headscale) Serve() error {
 	log.Info().
 		Msgf("listening and serving HTTP on: %s", h.cfg.Addr)
 
+	var (
+		insecureTLSServer   *http.Server
+		insecureTLSListener net.Listener
+	)
+
+	if addr := derpServer.DebugInsecureTLSListenAddr(); addr != "" {
+		insecureTLSConfig, err := selfSignedTLSConfig()
+		if err != nil {
+			return fmt.Errorf("creating self-signed TLS certificate: %w", err)
+		}
+
+		insecureTLSListener, err = tls.Listen("tcp", addr, insecureTLSConfig)
+		if err != nil {
+			return &types.ListenerBindError{
+				Listener: "insecure TLS",
+				YAMLKey:  "HEADSCALE_DEBUG_INSECURE_TLS_LISTEN_ADDR",
+				Addr:     addr,
+				Err:      err,
+			}
+		}
+
+		insecureTLSServer = &http.Server{
+			Handler:      router,
+			ReadTimeout:  types.HTTPTimeout,
+			WriteTimeout: types.HTTPTimeout,
+		}
+
+		errorGroup.Go(func() error { return insecureTLSServer.Serve(insecureTLSListener) })
+
+		log.Warn().
+			Str("addr", addr).
+			Msg("serving TLS with a self-signed certificate (HEADSCALE_DEBUG_INSECURE_TLS_LISTEN_ADDR); for tests only")
+	}
+
 	if tlsBundle.ACMEServer != nil {
 		log.Info().Msgf(
 			"listening and serving ACME HTTP-01 challenge on: %s",
@@ -814,12 +875,12 @@ func (h *Headscale) Serve() error {
 				}
 
 				changes, err := h.state.ReloadPolicy()
+				h.Change(changes...)
+
 				if err != nil {
 					log.Error().Err(err).Msgf("reloading policy")
 					continue
 				}
-
-				h.Change(changes...)
 
 			default:
 				info := func(msg string) { log.Info().Msg(msg) }
@@ -852,6 +913,15 @@ func (h *Headscale) Serve() error {
 				err := httpServer.Shutdown(shutdownCtx)
 				if err != nil {
 					log.Error().Err(err).Msg("failed to shutdown http")
+				}
+
+				if insecureTLSServer != nil {
+					info("shutting down insecure TLS server")
+
+					err := insecureTLSServer.Shutdown(shutdownCtx)
+					if err != nil {
+						log.Error().Err(err).Msg("failed to shutdown insecure TLS server")
+					}
 				}
 
 				if tlsBundle.ACMEServer != nil {
@@ -890,6 +960,10 @@ func (h *Headscale) Serve() error {
 				}
 
 				httpListener.Close()
+
+				if insecureTLSListener != nil {
+					insecureTLSListener.Close()
+				}
 
 				// Stop listening (and unlink the socket if unix type):
 				info("closing socket listener")
@@ -1011,6 +1085,36 @@ func (h *Headscale) getTLSSettings(ctx context.Context) (*tlsBundle, error) {
 	return &tlsBundle{Config: tlsConfig}, nil
 }
 
+// selfSignedTLSConfig returns a TLS config with a fresh in-memory certificate.
+// Its only clients skip verification (DERP InsecureForTests, and the noise
+// dialer, which authenticates the server itself), so the subject and validity
+// are arbitrary.
+func selfSignedTLSConfig() (*tls.Config, error) {
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "headscale"},
+		NotBefore:    now.Add(-time.Hour),
+		NotAfter:     now.AddDate(10, 0, 0),
+	}
+
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &priv.PublicKey, priv)
+	if err != nil {
+		return nil, err
+	}
+
+	return &tls.Config{
+		NextProtos:   []string{"http/1.1"},
+		Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: priv}},
+		MinVersion:   tls.VersionTLS12,
+	}, nil
+}
+
 func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 	dir := filepath.Dir(path)
 
@@ -1061,7 +1165,7 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 // All change should be enqueued here and empty will be automatically
 // ignored.
 func (h *Headscale) Change(cs ...change.Change) {
-	h.mapBatcher.AddWork(cs...)
+	h.mapBatcher.AddWork(slices.Concat(cs, h.state.DrainSelfRefreshes())...)
 }
 
 // HTTPHandler returns an [http.Handler] for the [Headscale] control server.

@@ -30,7 +30,7 @@ func init() {
 		StringP("expiration", "e", DefaultPreAuthKeyExpiry, "Human-readable expiration of the key (e.g. 30m, 24h)")
 	createPreAuthKeyCmd.Flags().
 		StringSlice("tags", []string{}, "Tags to automatically assign to node")
-	createPreAuthKeyCmd.PersistentFlags().Uint64P("user", "u", 0, "User identifier (ID)")
+	createPreAuthKeyCmd.PersistentFlags().StringP("user", "u", "", "User ID, or name if not a number")
 	expirePreAuthKeyCmd.PersistentFlags().Uint64P("id", "i", 0, "Authkey ID")
 	deletePreAuthKeyCmd.PersistentFlags().Uint64P("id", "i", 0, "Authkey ID")
 }
@@ -102,7 +102,7 @@ var createPreAuthKeyCmd = &cobra.Command{
 	Short:   "Creates a new preauthkey",
 	Aliases: []string{"c", cmdNew},
 	RunE: clientRunE(func(ctx context.Context, client *clientv1.ClientWithResponses, cmd *cobra.Command, args []string) error {
-		user, _ := cmd.Flags().GetUint64("user")
+		userArg, _ := cmd.Flags().GetString("user")
 		reusable, _ := cmd.Flags().GetBool("reusable")
 		ephemeral, _ := cmd.Flags().GetBool("ephemeral")
 		tags, _ := cmd.Flags().GetStringSlice("tags")
@@ -112,7 +112,10 @@ var createPreAuthKeyCmd = &cobra.Command{
 			return err
 		}
 
-		userStr := strconv.FormatUint(user, util.Base10)
+		userStr, err := userIDFromArg(ctx, client, userArg)
+		if err != nil {
+			return err
+		}
 
 		request := clientv1.CreatePreAuthKeyJSONRequestBody{
 			User:       &userStr,

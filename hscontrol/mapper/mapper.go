@@ -304,51 +304,32 @@ func (m *mapper) selfMapResponse(
 }
 
 // policyChangeResponse creates a [tailcfg.MapResponse] for policy changes.
-// It sends:
-//   - PeersRemoved for peers that are no longer visible after the policy change
+// Peers no longer visible after the change are sent separately, see
+// [handleNodeChange]. It sends:
 //   - PeersChanged for remaining peers (their AllowedIPs may have changed due to policy)
 //   - Updated PacketFilters
-//   - Updated SSHPolicy (SSH rules may reference users/groups that changed)
-//   - DNSConfig so the client's resolver state stays anchored even when a
-//     policy-triggered wgengine reconfigure races a netmon LinkChange (the
-//     LinkChange handler reapplies dns.Manager.Set with the engine's
-//     lastDNSConfig; if that snapshot is stale, the OS resolver loses the
-//     MagicDNS reverse-DNS routes and Nameservers and curl-by-FQDN stops
-//     resolving for the rest of the policy window).
-//   - Optionally, the node's own self info (when includeSelf is true)
+//   - Updated SSHPolicy (SSH rules may reference users/groups that changed);
+//     dropped per connection when unchanged, see [connectionEntry.withSSHPolicyDelta]
+//   - The node's own self info, which renders from the same state as peers;
+//     dropped per connection when unchanged, see [connectionEntry.withSelfDelta]
+//
+// DNSConfig is left out: it forces clients into a full netmap rebuild, and
+// the node's DNS config inputs arrive with its own [change.SelfUpdate], see
+// [state.State.DrainSelfRefreshes].
 //
 // This avoids the issue where an empty Peers slice is interpreted by Tailscale
 // clients as "no change" rather than "no peers".
-// When includeSelf is true, the node's self info is included so that a node
-// whose own attributes changed (e.g., tags via admin API) sees its updated
-// self info along with the new packet filters.
 func (m *mapper) policyChangeResponse(
 	nodeID types.NodeID,
 	capVer tailcfg.CapabilityVersion,
-	removedPeers []tailcfg.NodeID,
 	currentPeers views.Slice[types.NodeView],
-	includeSelf bool,
 ) (*tailcfg.MapResponse, error) {
 	builder := m.NewMapResponseBuilder(nodeID).
 		WithDebugType(policyResponseDebug).
 		WithCapabilityVersion(capVer).
-		WithDNSConfig().
 		WithPacketFilters().
-		WithSSHPolicy()
-
-	if includeSelf {
-		builder = builder.WithSelfNode()
-	}
-
-	if len(removedPeers) > 0 {
-		// Convert [tailcfg.NodeID] to [types.NodeID] for [MapResponseBuilder.WithPeersRemoved]
-		removedIDs := make([]types.NodeID, len(removedPeers))
-		for i, id := range removedPeers {
-			removedIDs[i] = types.NodeID(id) //nolint:gosec // NodeID types are equivalent
-		}
-
-		builder.WithPeersRemoved(removedIDs...)
-	}
+		WithSSHPolicy().
+		WithSelfNode()
 
 	// Send remaining peers in PeersChanged - their AllowedIPs may have
 	// changed due to the policy update (e.g., different routes allowed).
@@ -382,6 +363,12 @@ func (m *mapper) buildFromChange(
 	builder := m.NewMapResponseBuilder(nodeID).
 		WithCapabilityVersion(capVer).
 		WithDebugType(changeResponseDebug)
+
+	// Clients forget the logtail instruction when their process restarts, and
+	// every stream opens with a full map, so full maps carry it.
+	if resp.IsFull() {
+		builder.WithDebugConfig()
+	}
 
 	if resp.IncludeSelf {
 		builder.WithSelfNode()

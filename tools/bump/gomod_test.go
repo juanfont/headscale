@@ -1,6 +1,9 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
+	"slices"
 	"testing"
 
 	"golang.org/x/mod/modfile"
@@ -115,5 +118,43 @@ func TestRepoLockstepNotesAttached(t *testing.T) {
 
 	if len(b.Tool) == 0 {
 		t.Error("go.mod: tool block is missing")
+	}
+}
+
+// A tool's module is indirect in go.mod, but it still has to move: go generate
+// runs it against whatever Go the flake ships.
+func TestDirectRequirementsIncludesTools(t *testing.T) {
+	const content = `module example.com/x
+
+go 1.27.0
+
+require (
+	github.com/go-chi/chi/v5 v5.4.0
+	golang.org/x/net v0.58.0 // indirect
+	golang.org/x/tools v0.49.0 // indirect
+	tailscale.com v1.100.0
+)
+
+tool (
+	golang.org/x/tools/cmd/stringer
+	tailscale.com/cmd/viewer
+)
+`
+
+	dir := t.TempDir()
+
+	err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(content), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := directRequirements(&repo{Root: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"github.com/go-chi/chi/v5", "golang.org/x/tools"}
+	if !slices.Equal(got, want) {
+		t.Errorf("directRequirements = %v, want %v", got, want)
 	}
 }

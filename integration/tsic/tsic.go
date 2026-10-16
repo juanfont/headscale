@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cenkalti/backoff/v5"
@@ -44,7 +45,9 @@ const (
 	dockerContextPath    = "../."
 	caCertRoot           = "/usr/local/share/ca-certificates"
 	dockerExecuteTimeout = 60 * time.Second
-	tailscaleBin         = "tailscale"
+	// Some OIDC tests deliberately delay authentication for two minutes.
+	loginTimeout = 5 * time.Minute
+	tailscaleBin = "tailscale"
 )
 
 // defaultPingTimeoutVal returns the per-attempt timeout for tailscale ping.
@@ -59,17 +62,16 @@ func defaultPingTimeoutVal() time.Duration {
 }
 
 var (
-	errTailscalePingFailed             = errors.New("ping failed")
-	errTailscalePingNotDERP            = errors.New("ping not via DERP")
-	errTailscaleNotLoggedIn            = errors.New("tailscale not logged in")
-	errTailscaleWrongPeerCount         = errors.New("wrong peer count")
-	errTailscaleCannotUpWithoutAuthkey = errors.New("cannot up without authkey")
-	errInvalidClientConfig             = errors.New("verifiably invalid client config requested")
-	errInvalidTailscaleImageFormat     = errors.New("invalid HEADSCALE_INTEGRATION_TAILSCALE_IMAGE format, expected repository:tag")
-	errTailscaleImageRequiredInCI      = errors.New("HEADSCALE_INTEGRATION_TAILSCALE_IMAGE must be set in CI for HEAD version")
-	errContainerNotInitialized         = errors.New("container not initialized")
-	errFQDNNotYetAvailable             = errors.New("FQDN not yet available")
-	errCurlEmptyResponseBody           = errors.New("curl returned empty response body")
+	errTailscalePingFailed         = errors.New("ping failed")
+	errTailscalePingNotDERP        = errors.New("ping not via DERP")
+	errTailscaleNotLoggedIn        = errors.New("tailscale not logged in")
+	errTailscaleWrongPeerCount     = errors.New("wrong peer count")
+	errInvalidClientConfig         = errors.New("verifiably invalid client config requested")
+	errInvalidTailscaleImageFormat = errors.New("invalid HEADSCALE_INTEGRATION_TAILSCALE_IMAGE format, expected repository:tag")
+	errTailscaleImageRequiredInCI  = errors.New("HEADSCALE_INTEGRATION_TAILSCALE_IMAGE must be set in CI for HEAD version")
+	errContainerNotInitialized     = errors.New("container not initialized")
+	errFQDNNotYetAvailable         = errors.New("FQDN not yet available")
+	errCurlEmptyResponseBody       = errors.New("curl returned empty response body")
 )
 
 const (
@@ -93,6 +95,10 @@ type TailscaleInContainer struct {
 	// "cache"
 	ips  []netip.Addr
 	fqdn string
+
+	// Only the current attempt is checked: earlier logins may be deliberately
+	// abandoned or rejected before the test starts another one.
+	login *loginAttempt
 
 	// optional config
 	caCerts           [][]byte
@@ -718,6 +724,7 @@ func (t *TailscaleInContainer) buildLoginCommand(
 func (t *TailscaleInContainer) Login(
 	loginServer, authKey string,
 ) error {
+	t.login = nil
 	command := t.buildLoginCommand(loginServer, authKey)
 
 	if _, _, err := t.Execute(command, dockertestutil.ExecuteCommandTimeout(dockerExecuteTimeout)); err != nil { //nolint:noinlineerr
@@ -732,34 +739,106 @@ func (t *TailscaleInContainer) Login(
 	return nil
 }
 
+// loginAttempt streams the first complete URL line while retaining all output.
+// done closes only after Docker exec returns; err can then be read repeatedly.
+type loginAttempt struct {
+	mu        sync.Mutex
+	output    bytes.Buffer
+	lineStart int
+	foundURL  bool
+	url       chan *url.URL
+	done      chan struct{}
+	err       error
+}
+
+func (l *loginAttempt) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	n, _ := l.output.Write(p)
+
+	for !l.foundURL {
+		line, _, complete := bytes.Cut(l.output.Bytes()[l.lineStart:], []byte{'\n'})
+		if !complete {
+			break
+		}
+
+		l.lineStart += len(line) + 1
+
+		u, err := util.ParseLoginURLFromCLILogin(string(line))
+		if err == nil {
+			l.foundURL = true
+			l.url <- u
+		}
+	}
+
+	return n, nil
+}
+
+func startLogin(
+	command []string,
+	exec func([]string, dockertest.ExecOptions) (int, error),
+) *loginAttempt {
+	l := &loginAttempt{url: make(chan *url.URL, 1), done: make(chan struct{})}
+
+	go func() {
+		defer close(l.done)
+
+		exitCode, err := exec(command, dockertest.ExecOptions{StdOut: l, StdErr: l})
+		log.Printf("%v finished (exit %d): %s", command, exitCode, l.output.String())
+
+		switch {
+		case err != nil:
+			l.err = fmt.Errorf("tailscale up: %s: %w", l.output.String(), err)
+		case exitCode != 0:
+			l.err = fmt.Errorf("tailscale up exited %d: %s: %w", exitCode, l.output.String(), dockertestutil.ErrDockertestCommandFailed)
+		case !l.foundURL:
+			l.err = fmt.Errorf("tailscale up: %s: %w", l.output.String(), util.ErrNoURLFound)
+		}
+	}()
+
+	return l
+}
+
+func (l *loginAttempt) waitForURL(timeout time.Duration) (*url.URL, error) {
+	select {
+	case u := <-l.url:
+		return u, nil
+	case <-l.done:
+		if l.err != nil {
+			return nil, l.err
+		}
+
+		return <-l.url, nil
+	case <-time.After(timeout):
+		return nil, dockertestutil.ErrDockertestCommandTimeout
+	}
+}
+
 // LoginWithURL runs the login routine on the given Tailscale instance.
 // This login mechanism uses web + command line flow for authentication.
 func (t *TailscaleInContainer) LoginWithURL(
 	loginServer string,
 ) (*url.URL, error) {
 	command := t.buildLoginCommand(loginServer, "")
+	command = append(command, "--timeout="+loginTimeout.String())
 
-	stdout, stderr, err := t.Execute(command)
-	if errors.Is(err, errTailscaleNotLoggedIn) {
-		return nil, errTailscaleCannotUpWithoutAuthkey
-	}
+	// Return the URL promptly, but let the CLI finish authentication normally.
+	// Its own timeout bounds abandoned logins; WaitForRunning checks its exit.
+	t.login = startLogin(command, t.container.Exec)
 
-	defer func() {
-		if err != nil {
-			log.Printf("join command: %q", strings.Join(command, " "))
-		}
-	}()
-
-	loginURL, err := util.ParseLoginURLFromCLILogin(stdout + stderr)
+	u, err := t.login.waitForURL(dockerExecuteTimeout)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s fetching login URL: %w", t.hostname, err)
 	}
 
-	return loginURL, nil
+	return u, nil
 }
 
 // Logout runs the logout routine on the given Tailscale instance.
 func (t *TailscaleInContainer) Logout() error {
+	t.login = nil
+
 	_, _, err := t.Execute([]string{tailscaleBin, "logout"})
 	if err != nil {
 		return err
@@ -1055,101 +1134,6 @@ func (t *TailscaleInContainer) Netmap() (*netmap.NetworkMap, error) {
 	return nm, nil
 }
 
-// Netmap returns the current Netmap ([netmap.NetworkMap]) of the Tailscale instance.
-// This implementation is based on getting the netmap from `tailscale debug watch-ipn`
-// as there seem to be some weirdness omitting endpoint and DERP info if we use
-// Patch updates.
-// This implementation works on all supported versions.
-// func (t *TailscaleInContainer) Netmap() (*netmap.NetworkMap, error) {
-// 	// watch-ipn will only give an update if something is happening,
-// 	// since we send keep alives, the worst case for this should be
-// 	// 1 minute, but set a slightly more conservative time.
-// 	ctx, _ := context.WithTimeout(context.Background(), 3*time.Minute)
-
-// 	notify, err := t.watchIPN(ctx)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	if notify.NetMap == nil {
-// 		return nil, fmt.Errorf("no netmap present in ipn.Notify")
-// 	}
-
-// 	return notify.NetMap, nil
-// }
-
-// watchIPN watches `tailscale debug watch-ipn` for a [ipn.Notify] object until
-// it gets one that has a [netmap.NetworkMap].
-//
-//nolint:unused
-func (t *TailscaleInContainer) watchIPN(ctx context.Context) (*ipn.Notify, error) {
-	pr, pw := io.Pipe()
-
-	type result struct {
-		notify *ipn.Notify
-		err    error
-	}
-
-	resultChan := make(chan result, 1)
-
-	// There is no good way to kill the goroutine with watch-ipn,
-	// so make a nice func to send a kill command to issue when
-	// we are done.
-	killWatcher := func() {
-		stdout, stderr, err := t.Execute([]string{
-			"/bin/sh", "-c", `kill $(ps aux | grep "tailscale debug watch-ipn" | grep -v grep | awk '{print $1}') || true`,
-		})
-		if err != nil {
-			log.Printf("killing tailscale watcher, \nstdout: %s\nstderr: %s\nerr: %s", stdout, stderr, err)
-		}
-	}
-
-	go func() {
-		_, _ = t.container.Exec(
-			// Prior to 1.56, the initial "Connected." message was printed to stdout,
-			// filter out with grep.
-			[]string{"/bin/sh", "-c", `tailscale debug watch-ipn | grep -v "Connected."`},
-			dockertest.ExecOptions{
-				// The interesting output is sent to stdout, so ignore stderr.
-				StdOut: pw,
-				// StdErr: pw,
-			},
-		)
-	}()
-
-	go func() {
-		decoder := json.NewDecoder(pr)
-		for decoder.More() {
-			var notify ipn.Notify
-
-			err := decoder.Decode(&notify)
-			if err != nil {
-				resultChan <- result{nil, fmt.Errorf("parse notify: %w", err)}
-			}
-
-			if notify.NetMap != nil { //nolint:staticcheck // SA1019: NetMap is still populated on the platforms our integration containers run; migrating to InitialStatus/PeerChanges is a separate change
-				resultChan <- result{&notify, nil}
-			}
-		}
-	}()
-
-	select {
-	case <-ctx.Done():
-		killWatcher()
-
-		return nil, ctx.Err()
-
-	case result := <-resultChan:
-		killWatcher()
-
-		if result.err != nil {
-			return nil, result.err
-		}
-
-		return result.notify, nil
-	}
-}
-
 func (t *TailscaleInContainer) DebugDERPRegion(region string) (*ipnstate.DebugDERPRegionReport, error) {
 	if !util.TailscaleVersionNewerOrEqual("1.34", t.version) {
 		panic("tsic.DebugDERPRegion() called with unsupported version: " + t.version)
@@ -1268,7 +1252,7 @@ func (t *TailscaleInContainer) WaitForNeedsLogin(timeout time.Duration) error {
 }
 
 // WaitForRunning blocks until the Tailscale (tailscaled) instance is logged in
-// and ready to be used.
+// and ready to be used, and the current web login command has exited successfully.
 func (t *TailscaleInContainer) WaitForRunning(timeout time.Duration) error {
 	return t.waitForBackendState("Running", timeout)
 }
@@ -1279,6 +1263,17 @@ func (t *TailscaleInContainer) waitForBackendState(state string, timeout time.Du
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+
+	if state == "Running" && t.login != nil {
+		select {
+		case <-t.login.done:
+			if t.login.err != nil {
+				return fmt.Errorf("%s login failed: %w", t.hostname, t.login.err)
+			}
+		case <-ctx.Done():
+			return fmt.Errorf("%s waiting for login command: %w", t.hostname, ctx.Err())
+		}
+	}
 
 	for {
 		select {

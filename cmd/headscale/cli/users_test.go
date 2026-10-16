@@ -3,8 +3,10 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	clientv1 "github.com/juanfont/headscale/gen/client/v1"
@@ -81,6 +83,9 @@ func TestResolveSingleUser(t *testing.T) {
 		flagName   string
 		wantId     string
 		wantErr    bool
+		wantErrIs  error
+		// wantErrHas are substrings the error message must contain.
+		wantErrHas []string
 	}{
 		{
 			// Regression: renaming by name used to return the raw flag
@@ -97,17 +102,40 @@ func TestResolveSingleUser(t *testing.T) {
 			wantId:     "9",
 		},
 		{
-			name:     "no match is an error",
-			users:    []clientv1.User{lukas},
-			flagName: "nobody@example.com",
-			wantErr:  true,
+			// Regression: zero matches used to be reported as
+			// "multiple users match query".
+			name:      "no match is a not-found error",
+			users:     []clientv1.User{lukas},
+			flagName:  "nobody@example.com",
+			wantErr:   true,
+			wantErrIs: errUserNotFound,
 		},
 		{
 			// OIDC users can share a name, see issue #3429.
-			name:     "multiple matches are an error",
-			users:    []clientv1.User{hannes, hannesDup},
-			flagName: "hannes@rueger.events",
-			wantErr:  true,
+			name:      "multiple matches are an ambiguity error listing the matches",
+			users:     []clientv1.User{hannes, hannesDup},
+			flagName:  "hannes@rueger.events",
+			wantErr:   true,
+			wantErrIs: errMultipleUsersMatch,
+			wantErrHas: []string{
+				"id=9 name=hannes@rueger.events email=hannes@rueger.events",
+				"id=10 name=hannes@rueger.events email=other@example.com",
+			},
+		},
+		{
+			// Regression: --identifier 0 was sent to the API as "no
+			// filter", listing every user and failing as ambiguous.
+			name:       "identifier zero is rejected before calling the API",
+			users:      []clientv1.User{lukas, hannes},
+			identifier: "0",
+			wantErr:    true,
+			wantErrIs:  errInvalidIdentifier,
+		},
+		{
+			name:      "no flags is a usage error",
+			users:     []clientv1.User{lukas},
+			wantErr:   true,
+			wantErrIs: errFlagRequired,
 		},
 	}
 
@@ -129,6 +157,16 @@ func TestResolveSingleUser(t *testing.T) {
 					t.Fatalf("resolveSingleUser() error = nil, want error")
 				}
 
+				if tt.wantErrIs != nil && !errors.Is(err, tt.wantErrIs) {
+					t.Fatalf("resolveSingleUser() error = %v, want %v", err, tt.wantErrIs)
+				}
+
+				for _, want := range tt.wantErrHas {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("resolveSingleUser() error = %q, want it to contain %q", err, want)
+					}
+				}
+
 				return
 			}
 
@@ -142,6 +180,57 @@ func TestResolveSingleUser(t *testing.T) {
 
 			if user.Id != tt.wantId {
 				t.Errorf("resolveSingleUser() user.Id = %q, want %q", user.Id, tt.wantId)
+			}
+		})
+	}
+}
+
+func TestUserIDFromArg(t *testing.T) {
+	alice := clientv1.User{Id: "3", Name: "alice"}
+	digits := clientv1.User{Id: "7", Name: "42"}
+	aliceDup := clientv1.User{Id: "8", Name: "alice"}
+
+	tests := []struct {
+		name    string
+		users   []clientv1.User
+		arg     string
+		wantID  string
+		wantErr bool
+	}{
+		{name: "unset stays unset", arg: "", wantID: ""},
+		{name: "number is an ID", users: []clientv1.User{alice}, arg: "3", wantID: "3"},
+		// Numbers never hit the name lookup, so user "42" needs its ID.
+		{name: "digit-only name is an ID", users: []clientv1.User{digits}, arg: "42", wantID: "42"},
+		{name: "name resolves to its ID", users: []clientv1.User{alice, digits}, arg: "alice", wantID: "3"},
+		{name: "unknown name is an error", users: []clientv1.User{alice}, arg: "bob", wantErr: true},
+		{name: "ambiguous name is an error", users: []clientv1.User{alice, aliceDup}, arg: "alice", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := filterUsersServer(t, tt.users)
+			defer server.Close()
+
+			client, err := clientv1.NewClientWithResponses(server.URL)
+			if err != nil {
+				t.Fatalf("creating client: %v", err)
+			}
+
+			id, err := userIDFromArg(context.Background(), client, tt.arg)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("userIDFromArg(%q) error = nil, want error", tt.arg)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("userIDFromArg(%q) error = %v", tt.arg, err)
+			}
+
+			if id != tt.wantID {
+				t.Errorf("userIDFromArg(%q) = %q, want %q", tt.arg, id, tt.wantID)
 			}
 		})
 	}

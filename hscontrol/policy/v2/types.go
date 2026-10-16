@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"iter"
@@ -429,6 +430,13 @@ func (u *Username) resolve(_ *Policy, users types.Users, nodes views.Slice[types
 	)
 
 	user, err := u.resolveUser(users)
+	if errors.Is(err, ErrUserNotFound) {
+		// A policy may name users before they register (#2863). Report it
+		// as an empty set, not an error: callers that bail on error would
+		// otherwise drop a whole group for one missing member (#3513).
+		return &netipx.IPSet{}, nil
+	}
+
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -1843,6 +1851,11 @@ type Grant struct {
 	Via []Tag `json:"via,omitzero"`
 }
 
+// HasVia reports whether the grant routes through via-tagged nodes.
+func (g Grant) HasVia() bool {
+	return len(g.Via) > 0
+}
+
 // NodeAttrGrant attaches Tailscale node capabilities (and/or an IP-pool
 // preference) to every node selected by Targets. The Targets aliases are
 // resolved exactly like ACL/grant sources, so users, groups, tags, hosts,
@@ -3117,7 +3130,9 @@ func unmarshalPolicy(b []byte) (*Policy, error) {
 
 	var policy Policy
 
-	ast, err := hujson.Parse(b)
+	// The AST aliases its input and Standardize blanks comments in place;
+	// callers store b as written.
+	ast, err := hujson.Parse(bytes.Clone(b))
 	if err != nil {
 		return nil, fmt.Errorf("parsing HuJSON: %w", err)
 	}

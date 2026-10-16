@@ -8,7 +8,10 @@
 // hscontrol/api/v2, so it can be tested exhaustively on its own.
 package scope
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // Scope is an OAuth capability an operation requires and a token grants. The names
 // mirror Tailscale's API scopes; a "...:read" scope is the read-only subset of its
@@ -60,6 +63,13 @@ func Known() []Scope {
 		FeatureSettings, FeatureSettingsRead,
 		Users, UsersRead,
 	}
+}
+
+// Valid reports whether s is part of the known scope vocabulary. Scopes outside
+// it never satisfy any requirement, so they are rejected at creation time
+// rather than stored as permanently inert grants.
+func (s Scope) Valid() bool {
+	return slices.Contains(Known(), s)
 }
 
 // IsRead reports whether s is a read-only scope (its name ends with ":read").

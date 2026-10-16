@@ -25,8 +25,13 @@
     {
       # NixOS module
       nixosModules = rec {
-        headscale = import ./nix/module.nix;
+        # A path, so importing it twice (directly and via testkit) dedupes.
+        headscale = ./nix/module.nix;
         default = headscale;
+        # Control node for NixOS VM tests of Tailscale clients, and a peer
+        # that joins it; nix/README.md.
+        testkit = import ./nix/testkit.nix self;
+        testkit-peer = ./nix/testkit-peer.nix;
       };
 
       overlays.default =
@@ -98,7 +103,9 @@
           };
         };
     }
-    // flake-utils.lib.eachDefaultSystem (
+    # Explicit: nixpkgs no longer evaluates x86_64-darwin, which
+    # eachDefaultSystem still lists.
+    // flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ] (
       system:
       let
         pkgs = import nixpkgs {
@@ -191,17 +198,18 @@
         goChecks = {
           build = fc.goBuild (common // { subPackages = [ "cmd/headscale" ]; });
 
-          # The pure unit subset. ./integration (Docker) and
+          # The pure unit subset. The root ./integration package (Docker) and
           # ./hscontrol/servertest (slow: 10s+ convergence plus race/stress/HA
           # property tests — run by the servertest workflow instead) are dropped
           # from the test set but kept in source so cmd/hi and friends still
-          # compile; TestPostgres* needs a server (the SQLite equivalents still
+          # compile. Pure integration helper tests remain included.
+          # TestPostgres* needs a server (the SQLite equivalents still
           # run). CGO off matches the build.
           gotest = fc.goTest (
             common
             // {
               testExclude = [
-                "/integration"
+                "/integration$"
                 "/hscontrol/servertest"
               ];
               goSkip = [ "TestPostgres" ];
@@ -289,12 +297,14 @@
           }
         );
 
-        checks = {
-          headscale = pkgs.testers.nixosTest (import ./nix/tests/headscale.nix);
-        }
-        # The Go build/test checks are gated to Linux: parts of the tree are
-        # Linux-specific and the pure unit subset is validated by CI.
-        // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux goChecks;
+        # Gated to Linux: parts of the tree are Linux-specific, and the VM
+        # test needs KVM.
+        checks = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux (
+          goChecks
+          // {
+            headscale = pkgs.testers.runNixOSTest (import ./nix/tests/headscale.nix self);
+          }
+        );
       }
     );
 }

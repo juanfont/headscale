@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -17,8 +16,6 @@ const skipLabel = "no-autoupdate"
 // closedCooldown is how long a rejected change is left alone. Reopening the
 // same diff the next morning is how an automation earns itself an ignore rule.
 const closedCooldown = 7 * 24 * time.Hour
-
-var errHumanCommits = errors.New("branch has commits the bot did not push")
 
 type prState struct {
 	Number     int    `json:"number"`
@@ -83,6 +80,10 @@ type publishOptions struct {
 	Title  string
 	Gate   string
 	Force  bool
+	// Lease is the branch tip the run started from, when it updates an open
+	// pull request; Carried lists hand-pushed commits it built on.
+	Lease   string
+	Carried []string
 }
 
 // publish force-pushes the rebuilt branch and puts it in front of a human:
@@ -99,8 +100,7 @@ func publish(ctx context.Context, r *repo, opt publishOptions, results []result)
 		return err
 	}
 
-	now := markerOf(results, tree, head)
-	body := renderBody(results, now, opt.Gate)
+	body := renderBody(results, markerOf(results, tree, head), opt.Gate, opt.Carried)
 
 	pr, err := lookupPR(ctx, r, opt.Slug, opt.Branch)
 	if err != nil {
@@ -114,7 +114,7 @@ func publish(ctx context.Context, r *repo, opt publishOptions, results []result)
 	}
 
 	if pr != nil && pr.State == "OPEN" {
-		return updateOpen(ctx, r, opt, pr, body, now)
+		return updateOpen(ctx, r, opt, pr, body)
 	}
 
 	if pr != nil && pr.State == "CLOSED" {
@@ -129,43 +129,24 @@ func publish(ctx context.Context, r *repo, opt publishOptions, results []result)
 		body = fmt.Sprintf("Previously closed unmerged: #%d\n\n%s", pr.Number, body)
 	}
 
-	if err := forcePush(ctx, r, opt.Remote, opt.Branch); err != nil { //nolint:noinlineerr
+	if err := forcePush(ctx, r, opt.Remote, opt.Branch, ""); err != nil { //nolint:noinlineerr
 		return err
 	}
 
 	return createPR(ctx, r, opt, body)
 }
 
-// updateOpen refreshes an existing pull request in place, but refuses to
-// force-push over work the bot did not author.
-func updateOpen(ctx context.Context, r *repo, opt publishOptions, pr *prState, body string, now marker) error {
-	prev, hadMarker := parseMarker(pr.Body)
-
-	remoteTip := remoteBranchSHA(ctx, r, opt.Remote, opt.Branch)
-	if hadMarker && prev.Head != "" && remoteTip != "" && remoteTip != prev.Head {
-		_, _ = r.run(ctx, "gh", "pr", "comment", strconv.Itoa(pr.Number), "--repo", opt.Slug,
-			"--body", "This branch has commits the automation did not push, so it has paused. "+
-				"Merge or close this pull request to resume.")
-
-		return fmt.Errorf("%w: %s is at %s, expected %s", errHumanCommits, opt.Branch, remoteTip, prev.Head)
-	}
-
-	err := forcePush(ctx, r, opt.Remote, opt.Branch)
+// updateOpen refreshes an existing pull request in place. Hand-pushed commits
+// were carried when the branch was built; the lease keeps the push from
+// overwriting any that landed during the run.
+func updateOpen(ctx context.Context, r *repo, opt publishOptions, pr *prState, body string) error {
+	err := forcePush(ctx, r, opt.Remote, opt.Branch, opt.Lease)
 	if err != nil {
 		return err
 	}
 
 	if _, err := r.run(ctx, "gh", "pr", "edit", strconv.Itoa(pr.Number), "--repo", opt.Slug, "--body", body); err != nil { //nolint:noinlineerr
 		return err
-	}
-
-	// Only speak up when the outcome actually changed. A daily "still the
-	// same" comment trains the reader to ignore the thread.
-	if hadMarker && changedAreas(prev, now) {
-		if _, err := r.run(ctx, "gh", "pr", "comment", strconv.Itoa(pr.Number), "--repo", opt.Slug, //nolint:noinlineerr
-			"--body", "The set of applied areas changed since the last run; see the updated description."); err != nil {
-			return err
-		}
 	}
 
 	log.Printf("updated pull request #%d", pr.Number)
@@ -192,4 +173,22 @@ func createPR(ctx context.Context, r *repo, opt publishOptions, body string) err
 	log.Printf("opened pull request %s", strings.TrimSpace(out))
 
 	return nil
+}
+
+// commentOnce posts body unless the pull request already has it, so a
+// condition that persists across daily runs is reported once.
+func commentOnce(ctx context.Context, r *repo, slug string, number int, body string) error {
+	out, err := r.run(ctx, "gh", "pr", "view", strconv.Itoa(number), "--repo", slug,
+		"--json", "comments", "--jq", ".comments[].body")
+	if err != nil {
+		return err
+	}
+
+	if strings.Contains(out, body) {
+		return nil
+	}
+
+	_, err = r.run(ctx, "gh", "pr", "comment", strconv.Itoa(number), "--repo", slug, "--body", body)
+
+	return err
 }

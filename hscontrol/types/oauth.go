@@ -27,8 +27,8 @@ const (
 )
 
 // OAuthClient is a long-lived OAuth 2.0 client-credentials principal. It mints
-// short-lived [OAuthAccessToken]s limited to its Scopes and Tags. The secret is
-// stored only as an Argon2id hash. ClientID is public and embedded in the secret
+// short-lived [OAuthAccessToken]s limited to its Scopes and Tags. It is the
+// API projection of a [Credential] of kind oauth_client. ClientID is public and embedded in the secret
 // string (hskey-client-<ClientID>-<secret>) so the token endpoint can derive it
 // from the secret alone, matching Tailscale, where the client id is a substring
 // of the client secret.
@@ -49,23 +49,23 @@ type OAuthClient struct {
 
 	Description string
 
-	// UserID records who created the client. Kept as a plain column with no
-	// foreign key so an upgraded database matches a freshly-migrated one.
+	// UserID records who created the client; cleared when the user is deleted.
 	UserID *uint
 
 	CreatedAt *time.Time
 	Revoked   *time.Time
 }
 
-// TableName pins the table name. GORM's naming strategy would otherwise render
-// OAuthClient as "o_auth_clients" (it breaks the OAuth initialism), diverging
-// from the hand-written migration DDL and schema.sql.
+// TableName pins the legacy table name for the post-0.29 migration that creates
+// it; GORM would otherwise render OAuthClient as "o_auth_clients".
+//
+// TODO(kradalby): remove in 0.31 with the credentials migration.
 func (*OAuthClient) TableName() string { return "oauth_clients" }
 
 // OAuthAccessToken is a short-lived bearer token minted by an [OAuthClient] via
 // the client-credentials grant. It carries the scope/tag set granted at mint
-// time (a subset of the issuing client's), is stored as an Argon2id hash of its
-// secret, and authenticates v2 API requests as Authorization: Bearer.
+// time (a subset of the issuing client's), is the API projection of a
+// [Credential] of kind oauth_token, and authenticates v2 API requests as Authorization: Bearer.
 type OAuthAccessToken struct {
 	ID     uint64 `gorm:"primary_key"`
 	Prefix string `gorm:"uniqueIndex"`
@@ -82,6 +82,8 @@ type OAuthAccessToken struct {
 }
 
 // TableName pins the table name (see [OAuthClient.TableName]).
+//
+// TODO(kradalby): remove in 0.31 with the credentials migration.
 func (*OAuthAccessToken) TableName() string { return "oauth_access_tokens" }
 
 // maskedClientID returns the client id in masked form for safe logging.

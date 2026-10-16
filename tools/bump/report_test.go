@@ -26,7 +26,7 @@ func TestMarkerRoundTrip(t *testing.T) {
 	}
 
 	want := markerOf(results, "tree-sha", "head-sha")
-	body := renderBody(results, want, gateFull)
+	body := renderBody(results, want, gateFull, nil)
 
 	got, ok := parseMarker(body)
 	if !ok {
@@ -47,28 +47,6 @@ func TestParseMarkerAbsent(t *testing.T) {
 		if _, ok := parseMarker(body); ok {
 			t.Errorf("parseMarker(%q) reported a marker", body)
 		}
-	}
-}
-
-func TestChangedAreas(t *testing.T) {
-	base := marker{Areas: map[string]string{"flake": "applied", "gomod": "applied"}}
-
-	tests := []struct {
-		name string
-		now  marker
-		want bool
-	}{
-		{name: "identical", now: marker{Areas: map[string]string{"flake": "applied", "gomod": "applied"}}},
-		{name: "state changed", now: marker{Areas: map[string]string{"flake": "applied", "gomod": "dropped"}}, want: true},
-		{name: "area added", now: marker{Areas: map[string]string{"flake": "applied", "gomod": "applied", "generate": "applied"}}, want: true},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			if got := changedAreas(base, test.now); got != test.want {
-				t.Errorf("changedAreas = %v, want %v", got, test.want)
-			}
-		})
 	}
 }
 

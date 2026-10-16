@@ -158,12 +158,12 @@ type Node struct {
 	// Tags cannot be removed once set (one-way transition).
 	Tags Strings `gorm:"column:tags;serializer:json"`
 
-	// When a node has been created with a [PreAuthKey], we need to
-	// prevent the preauthkey from being deleted before the node.
-	// The preauthkey can define "tags" of the node so we need it
-	// around.
+	// When a node has been created with a pre-auth key, we keep the key
+	// credential around: it can define the node's tags and must not be deleted
+	// before the node. The association is to the unified [Credential] (kind
+	// authkey), which is what auth_key_id references.
 	AuthKeyID *uint64 `sql:"DEFAULT:NULL"`
-	AuthKey   *PreAuthKey
+	AuthKey   *Credential
 
 	Expiry *time.Time
 
@@ -219,6 +219,11 @@ func (ns Nodes) ViewSlice() views.Slice[NodeView] {
 
 // IsExpired returns whether the node registration has expired.
 func (node *Node) IsExpired() bool {
+	return node.IsExpiredAt(time.Now())
+}
+
+// IsExpiredAt reports whether the node registration has expired at now.
+func (node *Node) IsExpiredAt(now time.Time) bool {
 	// If Expiry is not set, the client has not indicated that
 	// it wants an expiry time, it is therefore considered
 	// to mean "not expired"
@@ -226,7 +231,7 @@ func (node *Node) IsExpired() bool {
 		return false
 	}
 
-	return time.Since(*node.Expiry) > 0
+	return now.After(*node.Expiry)
 }
 
 // Online reports the node's last known connectivity. Unknown counts as
@@ -497,16 +502,6 @@ func (nodes Nodes) FilterByIP(ip netip.Addr) Nodes {
 	}
 
 	return found
-}
-
-func (nodes Nodes) ContainsNodeKey(nodeKey key.NodePublic) bool {
-	for _, node := range nodes {
-		if node.NodeKey == nodeKey {
-			return true
-		}
-	}
-
-	return false
 }
 
 func (node *Node) GetFQDN(baseDomain string) (string, error) {
@@ -931,6 +926,15 @@ func (nv NodeView) IsExpired() bool {
 	}
 
 	return nv.ж.IsExpired()
+}
+
+// IsExpiredAt reports whether the node registration has expired at now.
+func (nv NodeView) IsExpiredAt(now time.Time) bool {
+	if !nv.Valid() {
+		return true
+	}
+
+	return nv.ж.IsExpiredAt(now)
 }
 
 // Online reports the node's last known connectivity.
