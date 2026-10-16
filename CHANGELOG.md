@@ -128,6 +128,7 @@ clients, and how to run the same setup without Nix.
 
 - A node re-registering with a spent, expired or revoked pre-auth key is now rejected if it expired or changed node key while the re-registration was in flight [#3525](https://github.com/juanfont/headscale/pull/3525)
 - DERP client verification (the embedded DERP server and the `/verify` endpoint) looks up the node key directly instead of scanning every node on each connection [#3520](https://github.com/juanfont/headscale/pull/3520)
+- Fix a viewer seeing no exit nodes when it matches two `via` exit grants with different tags and also matches a non-via rule
 - Fix the unix socket being created `0700` instead of the documented `0770` when `unix_socket_permission` is unset. The socket grants full admin access without authentication, so members of its group gain that access; check who is in it before upgrading [#3540](https://github.com/juanfont/headscale/pull/3540)
 
 ## 0.29.5 (2026-10-13)
