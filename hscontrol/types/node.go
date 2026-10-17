@@ -1022,6 +1022,20 @@ func (nv NodeView) IsTagged() bool {
 	return nv.ж.IsTagged()
 }
 
+// ClaimableBy reports whether a login by userID takes this tagged node back
+// as that user's device, rather than adding a device beside it: userID owns
+// or created the key it joined with. Tagging clears a node's user, so a node
+// that joined by login records no former owner and nobody claims it.
+func (nv NodeView) ClaimableBy(userID UserID) bool {
+	if !nv.IsTagged() || nv.RegisterMethod() != util.RegisterMethodAuthKey {
+		return false
+	}
+
+	k := nv.AuthKey()
+
+	return k.Valid() && k.UserID().Valid() && UserID(k.UserID().Get()) == userID
+}
+
 // IsExpired returns whether the node registration has expired.
 func (nv NodeView) IsExpired() bool {
 	if !nv.Valid() {

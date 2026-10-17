@@ -4120,9 +4120,10 @@ func TestDeletedPreAuthKeyNotRecreatedOnNodeUpdate(t *testing.T) {
 	t.Log("SUCCESS: PreAuthKey remained deleted after node update")
 }
 
-// TestTaggedNodeWithoutUserToDifferentUser tests that a node registered with a
-// tags-only PreAuthKey (no user) can be re-registered to a different user
-// without panicking. This reproduces the issue reported in #3038.
+// TestTaggedNodeWithoutUserToDifferentUser tests that a user's login on the
+// machine of a node registered with a tags-only PreAuthKey (no user) works
+// without panicking (#3038). No user made the key, so the login gets a device
+// of its own and the tagged node stays.
 func TestTaggedNodeWithoutUserToDifferentUser(t *testing.T) {
 	t.Parallel()
 
@@ -4195,19 +4196,21 @@ func TestTaggedNodeWithoutUserToDifferentUser(t *testing.T) {
 	)
 	require.NoError(t, err, "Re-registration to alice should succeed without panic")
 
-	// Verify the existing tagged node was converted to be owned by alice (same node ID)
 	require.True(t, nodeAfterReauth.Valid(), "Node should be valid")
 	require.True(t, nodeAfterReauth.UserID().Valid(), "Node should have a UserID")
 	require.Equal(t, alice.ID, nodeAfterReauth.UserID().Get(), "Node should be owned by alice")
-	require.Equal(t, node.ID(), nodeAfterReauth.ID(), "Should be the same node (converted, not new)")
-	require.False(t, nodeAfterReauth.IsTagged(), "Node should no longer be tagged")
-	require.Empty(t, nodeAfterReauth.Tags().AsSlice(), "Node should have no tags")
+	require.NotEqual(t, node.ID(), nodeAfterReauth.ID(), "alice gets a device of her own")
+	require.False(t, nodeAfterReauth.IsTagged(), "Node should not be tagged")
+
+	tagged, ok := app.state.GetNodeByID(node.ID())
+	require.True(t, ok, "the tagged node stays")
+	require.ElementsMatch(t, tags, tagged.Tags().AsSlice())
 
 	// Verify [types.NodeView.Owner] works without panicking - this is what the mapper's
 	// [generateUserProfiles] calls, and it would panic with a nil pointer
-	// dereference if node.User was not set during the tag→user conversion.
+	// dereference if node.User was not set.
 	owner := nodeAfterReauth.Owner()
-	require.True(t, owner.Valid(), "Owner should be valid after conversion (mapper would panic if nil)")
+	require.True(t, owner.Valid(), "Owner should be valid (mapper would panic if nil)")
 	require.Equal(t, alice.ID, owner.Model().ID, "Owner should be alice")
 
 	t.Logf("Re-registration complete - Node ID: %d, Tags: %v, IsTagged: %t, UserID: %d",
