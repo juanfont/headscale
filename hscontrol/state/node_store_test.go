@@ -2729,3 +2729,27 @@ func TestNodeStoreNodeKeyIndexMatchesNodes(t *testing.T) {
 
 	require.Empty(t, nodeKeyIndexMismatch(store.data.Load()))
 }
+
+// TestDeleteNodeReturnsPeersOfReplacedSnapshot pins that a delete reports the
+// node's peers in the snapshot it replaces: every node that may have been sent
+// it, read in the same write as the delete.
+func TestDeleteNodeReturnsPeersOfReplacedSnapshot(t *testing.T) {
+	nodes := types.Nodes{}
+
+	for id := types.NodeID(1); id <= 5; id++ {
+		n := createTestNode(id, 1, "user", fmt.Sprintf("node%d", id))
+		nodes = append(nodes, &n)
+	}
+
+	store := NewNodeStore(nodes, oddEvenPeersFunc, TestBatchSize, TestBatchTimeout)
+
+	store.Start()
+	defer store.Stop()
+
+	peers := store.DeleteNode(3)
+	slices.Sort(peers)
+	assert.Equal(t, []types.NodeID{1, 5}, peers, "odd node 3 is seen only by odd nodes")
+
+	assert.Equal(t, []types.NodeID{4}, store.DeleteNode(2))
+	assert.Empty(t, store.DeleteNode(42), "an unknown node has no peers")
+}

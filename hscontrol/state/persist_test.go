@@ -792,7 +792,19 @@ func TestDeleteNodeKeepsStoreOnDBFailure(t *testing.T) {
 }
 
 func TestDeleteNodeReturnsRemovalOnPolicyFailure(t *testing.T) {
-	_, s, nodeID := persistTestSetup(t)
+	cfg := persistTestConfig(t.TempDir() + "/headscale.db")
+
+	database, err := db.NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	user := database.CreateUserForTest("persist-user")
+	nodeID := database.CreateRegisteredNodeForTest(user, "persist-node").ID
+	peerID := database.CreateRegisteredNodeForTest(user, "persist-peer").ID
+
+	require.NoError(t, database.Close())
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
 
 	node, ok := s.GetNodeByID(nodeID)
@@ -812,11 +824,13 @@ func TestDeleteNodeReturnsRemovalOnPolicyFailure(t *testing.T) {
 
 	cs, err := s.DeleteNode(node)
 	require.ErrorIs(t, err, errInjectedPolicyNodeUpdate)
-	require.NotEmpty(t, cs)
-	assert.Equal(t, []types.NodeID{nodeID}, cs[0].PeersRemoved,
-		"a committed deletion must still notify peers and stop the node's session")
+	require.GreaterOrEqual(t, len(cs), 2)
 	assert.Equal(t, []types.NodeID{nodeID}, cs[0].DeletedNodes,
 		"a committed deletion must identify the session to stop")
+	assert.Equal(t, peerID, cs[1].TargetNode,
+		"a committed deletion must still notify peers")
+	assert.Equal(t, []types.NodeID{nodeID}, cs[1].PeersRemoved,
+		"a committed deletion must still notify peers")
 
 	_, ok = s.GetNodeByID(nodeID)
 	assert.False(t, ok, "a committed deletion must remove the in-memory node")
