@@ -181,6 +181,27 @@ func TestAPIv2OAuthMatrix_ScopeNarrowing(t *testing.T) {
 	}
 }
 
+// TestAPIv2OAuthMatrix_CreateKeyScopeBeforeBody: createKey declares no static
+// scope, so a token that may create neither kind of key must be refused before
+// huma reads and validates the body.
+func TestAPIv2OAuthMatrix_CreateKeyScopeBeforeBody(t *testing.T) {
+	_, baseURL, admin := newOAuthTestServer(t)
+	invalid := map[string]any{"tags": []int{0}}
+
+	for _, s := range scope.Known() {
+		held := []scope.Scope{s}
+		mayCreate := scope.Grants(held, scope.AuthKeys) || scope.Grants(held, scope.OAuthKeys)
+
+		status, body := apiReq(t, http.MethodPost, baseURL+"/api/v2/tailnet/-/keys",
+			mintScopedToken(t, baseURL, admin, s), invalid)
+		if mayCreate {
+			assert.Equalf(t, http.StatusUnprocessableEntity, status, "%s: %s", s, body)
+		} else {
+			assert.Truef(t, scopeDenied(status, body), "%s: %d %s", s, status, body)
+		}
+	}
+}
+
 // TestAPIv2OAuthMatrix_TagNarrowing proves P1 for tags at mint time: a client may
 // only mint a token for tags within its grant (closing the /oauth/token tags-param
 // path). Only an untagged client with the "all" scope may request any tag.
