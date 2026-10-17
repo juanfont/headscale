@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -21,6 +22,74 @@ import (
 //
 // TODO(kradalby): remove in 0.31 with the credentials migration.
 const legacyPlaintextKey = "plaintextlegacykey0000000000000000000000000000"
+
+func TestSQLiteSameQueryInAndOutsideTransaction(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(`
+server_url: https://example.com
+prefixes:
+  v4: 100.64.0.0/10
+noise:
+  private_key_path: noise_private.key
+dns:
+  magic_dns: false
+  override_local_dns: false
+database:
+  type: sqlite3
+  sqlite:
+    path: headscale.db
+  gorm:
+    prepare_stmt: true
+`), 0o600))
+	require.NoError(t, types.LoadConfig(configPath, true))
+
+	cfg, err := types.LoadServerConfig()
+	require.NoError(t, err)
+	hsdb, err := NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, hsdb.Close()) })
+
+	user, err := hsdb.CreateUser(types.User{Name: "test-user"})
+	require.NoError(t, err)
+	sqlDB, err := hsdb.DB.DB()
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	hsdb.DB = hsdb.DB.WithContext(ctx)
+	poolResult := make(chan error, 1)
+
+	err = hsdb.Read(func(rx *gorm.DB) error {
+		waitCount := sqlDB.Stats().WaitCount
+
+		go func() {
+			_, err := hsdb.GetUserByID(types.UserID(user.ID))
+			poolResult <- err
+		}()
+
+		require.Eventually(t, func() bool {
+			return sqlDB.Stats().WaitCount > waitCount
+		}, time.Second, time.Millisecond)
+
+		_, err := GetUserByID(rx, types.UserID(user.ID))
+
+		return err
+	})
+	require.NoError(t, err)
+
+	select {
+	case err := <-poolResult:
+		require.NoError(t, err)
+	case <-ctx.Done():
+		t.Fatal(
+			"pool query did not finish after the transaction released its connection",
+		)
+	}
+}
 
 // TestSQLiteMigrationAndDataValidation tests specific SQLite migration scenarios
 // and validates data integrity after migration. All migrations that require data validation

@@ -439,11 +439,15 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 			return nil, fmt.Errorf("building sqlite connection URL: %w", err)
 		}
 
+		// No PrepareStmt: its cache can wait on the one connection a transaction holds.
+		// An outside query can publish a pending cached statement while waiting
+		// for that connection. If the transaction requests the same statement,
+		// it waits for preparation, deadlocking both callers. The regression
+		// test TestSQLiteSameQueryInAndOutsideTransaction covers this ordering.
 		db, err := gorm.Open(
 			sqlite.Open(connectionURL),
 			&gorm.Config{
-				PrepareStmt: cfg.Gorm.PrepareStmt,
-				Logger:      dbLogger,
+				Logger: dbLogger,
 			},
 		)
 		if err != nil {

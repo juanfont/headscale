@@ -187,9 +187,6 @@ database:
 
   # GORM configuration settings.
   gorm:
-    # Enable prepared statements.
-    prepare_stmt: true
-
     # Enable parameterized queries.
     parameterized_queries: true
 
