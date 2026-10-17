@@ -9,6 +9,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
 
@@ -181,4 +182,135 @@ func TestSSHCheckAuthFollowsSourceOwner(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSSHCheckAuthExpiresWithSource(t *testing.T) {
+	s := newTestStateForSSHCheck(t)
+	src, dst, other := types.NodeID(1), types.NodeID(2), types.NodeID(3)
+	s.SetLastSSHAuth(src, dst)
+	s.SetLastSSHAuth(src, other)
+	s.SetLastSSHAuth(dst, src)
+	s.SetLastSSHAuth(dst, other)
+	node, ok := s.GetNodeByID(src)
+	require.True(t, ok)
+
+	expiry := time.Now()
+	_, _, err := s.SetNodeExpiry(src, &expiry)
+	require.NoError(t, err)
+
+	for _, destination := range []types.NodeID{dst, other} {
+		_, ok = s.GetLastSSHAuth(src, destination)
+		assert.False(t, ok)
+	}
+
+	for _, destination := range []types.NodeID{src, other} {
+		_, ok = s.GetLastSSHAuth(dst, destination)
+		assert.True(t, ok)
+	}
+
+	userID := types.UserID(node.UserID().Get())
+	pak, err := s.CreatePreAuthKey(&userID, true, false, nil, nil)
+	require.NoError(t, err)
+	reauthenticated, _, err := s.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey:  key.NewNode().Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: node.Hostname()},
+		Expiry:   time.Now().Add(24 * time.Hour),
+	}, node.MachineKey())
+	require.NoError(t, err)
+	require.Equal(t, src, reauthenticated.ID())
+	require.False(t, reauthenticated.IsExpired())
+
+	for _, destination := range []types.NodeID{dst, other} {
+		_, ok = s.GetLastSSHAuth(src, destination)
+		assert.False(t, ok, "pre-auth key relogin must require a new SSH check")
+	}
+}
+
+func TestSSHCheckAuthKeepsApprovalOnExpiryExtension(t *testing.T) {
+	future := time.Now().Add(24 * time.Hour)
+
+	zero := time.Time{}
+	for name, expiry := range map[string]*time.Time{
+		"future": &future, "disabled": nil, "zero": &zero,
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := newTestStateForSSHCheck(t)
+			src, dst := types.NodeID(1), types.NodeID(2)
+			s.SetLastSSHAuth(src, dst)
+			before, ok := s.GetLastSSHAuth(src, dst)
+			require.True(t, ok)
+
+			_, _, err := s.SetNodeExpiry(src, expiry)
+			require.NoError(t, err)
+
+			after, ok := s.GetLastSSHAuth(src, dst)
+			require.True(t, ok)
+			assert.Equal(t, before, after)
+		})
+	}
+}
+
+// TestSSHCheckAuthExpiresWithinBatch: a relogin that shares the expiry's
+// NodeStore batch renews the node before SetNodeExpiry sees it, so the expiry
+// must forget approvals from what its own write saw.
+func TestSSHCheckAuthExpiresWithinBatch(t *testing.T) {
+	s := newTestStateForSSHCheck(t)
+	src, dst := types.NodeID(1), types.NodeID(2)
+	s.SetLastSSHAuth(src, dst)
+	node, ok := s.GetNodeByID(src)
+	require.True(t, ok)
+
+	userID := types.UserID(node.UserID().Get())
+	pak, err := s.CreatePreAuthKey(&userID, true, false, nil, nil)
+	require.NoError(t, err)
+
+	// Hold the writer so the expiry and the relogin land in one batch, in
+	// this order.
+	entered, release := make(chan struct{}), make(chan struct{})
+
+	releaseOnce := sync.OnceFunc(func() { close(release) })
+	defer releaseOnce()
+
+	go s.nodeStore.UpdateNode(dst, func(*types.Node) {
+		close(entered)
+		<-release
+	})
+
+	<-entered
+
+	expiry := time.Now()
+	expiryDone := make(chan error, 1)
+
+	go func() {
+		_, _, err := s.SetNodeExpiry(src, &expiry)
+		expiryDone <- err
+	}()
+
+	waitParkedOnWriteQueue(t, "SetNodeExpiry")
+
+	regDone := make(chan error, 1)
+
+	go func() {
+		_, _, err := s.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+			Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+			NodeKey:  key.NewNode().Public(),
+			Hostinfo: &tailcfg.Hostinfo{Hostname: node.Hostname()},
+			Expiry:   time.Now().Add(24 * time.Hour),
+		}, node.MachineKey())
+		regDone <- err
+	}()
+
+	waitParkedOnWriteQueue(t, "reregisterNodeWithPAK")
+
+	releaseOnce()
+	require.NoError(t, <-expiryDone)
+	require.NoError(t, <-regDone)
+
+	renewed, ok := s.GetNodeByID(src)
+	require.True(t, ok)
+	require.False(t, renewed.IsExpired(), "precondition: the relogin renewed the node")
+
+	_, ok = s.GetLastSSHAuth(src, dst)
+	assert.False(t, ok, "expiry must forget the approval")
 }
