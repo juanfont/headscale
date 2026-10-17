@@ -13,22 +13,51 @@ import (
 	"github.com/juanfont/headscale/hscontrol/assets"
 	"github.com/juanfont/headscale/hscontrol/templates"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
+	"tailscale.com/util/truncate"
 )
 
 const (
 	reservedResponseHeaderSize = 4
 )
 
+// logTextLimit bounds the client-chosen text copied into one log field.
+// Inside the Noise tunnel, header compression makes resending a long
+// request target nearly free for the client.
+const logTextLimit = 512
+
+// clipForLog cuts client-chosen text to [logTextLimit] for a log field.
+func clipForLog(s string) string {
+	if len(s) <= logTextLimit {
+		return s
+	}
+
+	return truncate.String(s, logTextLimit) + "..."
+}
+
+// errForLog clips an error's text for logging, as parse errors quote the
+// request. What the caller handles and the client is sent is unchanged.
+func errForLog(err error) error {
+	if err == nil || len(err.Error()) <= logTextLimit {
+		return err
+	}
+
+	return errors.New(clipForLog(err.Error())) //nolint:err113 // log-only copy
+}
+
 // httpError logs an error and sends an HTTP error response with the given.
 func httpError(w http.ResponseWriter, err error) {
 	if herr, ok := errors.AsType[HTTPError](err); ok {
 		http.Error(w, herr.Msg, herr.Code)
-		log.Error().Err(herr.Err).Int("code", herr.Code).Msgf("user msg: %s", herr.Msg)
+		log.Error().Err(errForLog(herr.Err)).Int(zf.Code, herr.Code).
+			Msgf("user msg: %s", herr.Msg)
 	} else {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
-		log.Error().Err(err).Int("code", http.StatusInternalServerError).Msg("http internal server error")
+		log.Error().Err(errForLog(err)).
+			Int(zf.Code, http.StatusInternalServerError).
+			Msg("http internal server error")
 	}
 }
 
@@ -48,9 +77,11 @@ func httpUserError(w http.ResponseWriter, err error) {
 
 		userMsg = herr.UserMsg
 
-		log.Error().Err(herr.Err).Int("code", code).Msgf("user msg: %s", herr.Msg)
+		log.Error().Err(errForLog(herr.Err)).Int(zf.Code, code).
+			Msgf("user msg: %s", herr.Msg)
 	} else {
-		log.Error().Err(err).Int("code", code).Msg("http internal server error")
+		log.Error().Err(errForLog(err)).Int(zf.Code, code).
+			Msg("http internal server error")
 	}
 
 	if userMsg == "" {
