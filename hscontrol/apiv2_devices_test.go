@@ -2,17 +2,25 @@ package hscontrol
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/netip"
+	"path"
+	"path/filepath"
+	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2/humatest"
 	apiv2 "github.com/juanfont/headscale/hscontrol/api/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/tailcfg"
 )
 
 // registerAPIV2 builds a humatest API with the v2 operations registered over the
@@ -340,4 +348,219 @@ func containsDeviceID(devs []apiv2.Device, id string) bool {
 	}
 
 	return false
+}
+
+// routesAPICompatSkipReasons lists route API answers where headscale differs
+// from SaaS, keyed <test_id>/<step>/<i>/<check>, where <i> is the call's index
+// in its step. A listed check that matches fails, so a fix must delete its
+// entry.
+var routesAPICompatSkipReasons = map[string]string{
+	// The GET after each refused probe reads back what headscale stored.
+	"routes-t4-admin/probe/0/status":     routeHostBitsAccepted,
+	"routes-t4-admin/probe/1/enabled":    routeHostBitsAccepted,
+	"routes-t4-admin/probe/2/status":     routeHostBitsAccepted,
+	"routes-t4-admin/probe/3/enabled":    routeHostBitsAccepted,
+	"routes-t4-admin/probe/0/v1-status":  routeHostBitsAccepted,
+	"routes-t4-admin/probe/1/v1-enabled": routeHostBitsAccepted,
+	"routes-t4-admin/probe/2/v1-status":  routeHostBitsAccepted,
+	"routes-t4-admin/probe/3/v1-enabled": routeHostBitsAccepted,
+
+	"routes-t5-oauth-routes-scope/probe/0/status":  routeHostBitsAccepted,
+	"routes-t5-oauth-routes-scope/probe/1/enabled": routeHostBitsAccepted,
+}
+
+const routeHostBitsAccepted = "ROUTE_HOST_BITS_ACCEPTED: SaaS refuses a route with host bits set with 400, headscale approves it as sent"
+
+// routeCall is one routes API answer, as the compat replays compare it.
+type routeCall struct {
+	status              int
+	advertised, enabled []string
+	message             string
+}
+
+// TestAPIv2Device_SetRoutesCompat replays the admin's route calls on routers
+// announcing the tailnet's own addresses and compares each answer with SaaS.
+//
+// Test data source: policy/v2/testdata/routes_results/routes-t4-admin.hujson,
+// shared with TestRoutesCompat* and TestRoutesTailnetOverlapCompat.
+func TestAPIv2Device_SetRoutesCompat(t *testing.T) {
+	c := readRoutesCapture(t, "routes-t4-admin")
+	app := createTestApp(t)
+	api := registerAPIV2(t, app)
+	devices := seedCaptureRouters(t, app, c)
+
+	replayRouteCalls(t, c, "", func(a testcapture.Action, alias string) routeCall {
+		target := "/api/v2/device/" + devices[alias] + "/routes"
+		if a.Method == http.MethodPost {
+			resp := api.Post(target, a.Body)
+
+			return v2RouteCall(t, resp.Code, resp.Body.Bytes())
+		}
+
+		resp := api.Get(target)
+
+		return v2RouteCall(t, resp.Code, resp.Body.Bytes())
+	})
+}
+
+func readRoutesCapture(t *testing.T, id string) *testcapture.Capture {
+	t.Helper()
+
+	c, err := testcapture.Read(filepath.Join("policy", "v2", "testdata", "routes_results", id+".hujson"))
+	require.NoError(t, err)
+
+	return c
+}
+
+// seedCaptureRouters puts every topology node that announces routes into the
+// NodeStore with its tags, announcing them, and returns the device IDs by
+// alias.
+func seedCaptureRouters(t *testing.T, app *Headscale, c *testcapture.Capture) map[string]string {
+	t.Helper()
+
+	user := app.state.CreateUserForTest("capture-owner")
+	devices := map[string]string{}
+
+	for alias, topo := range c.Topology.Nodes {
+		if len(topo.RoutableIPs) == 0 {
+			continue
+		}
+
+		var announced []netip.Prefix
+
+		for _, r := range topo.RoutableIPs {
+			announced = append(announced, netip.MustParsePrefix(r))
+		}
+
+		node := app.state.CreateRegisteredNodeForTest(user, alias)
+		node.User = user
+		node.Tags = topo.Tags
+		node.Hostinfo = &tailcfg.Hostinfo{Hostname: alias, RoutableIPs: announced}
+
+		// Who may set a router's routes can hang on its owner.
+		nv := app.state.PutNodeInStoreForTest(*node)
+		require.Equalf(t, len(topo.Tags) > 0, nv.IsTagged(), "%s: tagged as captured", alias)
+
+		devices[alias] = nv.StringID()
+	}
+
+	return devices
+}
+
+// replayRouteCalls sends each routes call of the capture's steps, in order,
+// through call and compares the answer with SaaS's. prefix names the API in
+// the check names, so one capture can be replayed against more than one.
+func replayRouteCalls(
+	t *testing.T,
+	c *testcapture.Capture,
+	prefix string,
+	call func(a testcapture.Action, alias string) routeCall,
+) {
+	t.Helper()
+
+	replayed := 0
+
+	for _, step := range c.Steps {
+		for i, a := range step.Actions {
+			alias, isDevice := strings.CutPrefix(a.Path, "/device/{device:")
+			alias, isRoutes := strings.CutSuffix(alias, "}/routes")
+
+			if a.Kind != "api" || !isDevice || !isRoutes {
+				continue
+			}
+
+			replayed++
+			key := fmt.Sprintf("%s/%s/%d/%s", c.TestID, step.Name, i, prefix)
+
+			t.Run(fmt.Sprintf("%s/%d", step.Name, i), func(t *testing.T) {
+				want, got := saasRouteCall(t, a), call(a, alias)
+
+				compatCheck(t, key+"status", strconv.Itoa(want.status), strconv.Itoa(got.status))
+
+				if want.status == http.StatusOK && got.status == http.StatusOK {
+					compatCheck(t, key+"advertised", sortedStrings(want.advertised), sortedStrings(got.advertised))
+					compatCheck(t, key+"enabled", sortedStrings(want.enabled), sortedStrings(got.enabled))
+				} else {
+					compatChecksNotRun(t, key+"advertised", key+"enabled")
+				}
+
+				if want.status != http.StatusOK && got.status == want.status {
+					// Headscale may wrap SaaS's text in more context.
+					msg := got.message
+					if strings.Contains(msg, want.message) {
+						msg = want.message
+					}
+
+					compatCheck(t, key+"message", want.message, msg)
+				} else {
+					compatChecksNotRun(t, key+"message")
+				}
+			})
+		}
+	}
+
+	require.Positive(t, replayed, "%s: no routes calls in the capture", c.TestID)
+}
+
+// saasRouteCall is the answer SaaS gave to a.
+func saasRouteCall(t *testing.T, a testcapture.Action) routeCall {
+	t.Helper()
+
+	var body struct {
+		Advertised []string `json:"advertisedRoutes"`
+		Enabled    []string `json:"enabledRoutes"`
+		Message    string   `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(a.Response, &body))
+
+	return routeCall{a.Status, body.Advertised, body.Enabled, body.Message}
+}
+
+// v2RouteCall reads a v2 routes answer.
+func v2RouteCall(t *testing.T, status int, raw []byte) routeCall {
+	t.Helper()
+
+	var body struct {
+		apiv2.DeviceRoutes
+
+		Message string `json:"message"`
+	}
+	require.NoErrorf(t, json.Unmarshal(raw, &body), "body: %s", raw)
+
+	return routeCall{status, body.Advertised, body.Enabled, body.Message}
+}
+
+// compatCheck compares one rendering of a check, honouring
+// routesAPICompatSkipReasons.
+func compatCheck(t *testing.T, key, want, got string) {
+	t.Helper()
+
+	t.Run(path.Base(key), func(t *testing.T) {
+		reason, listed := routesAPICompatSkipReasons[key]
+
+		switch {
+		case listed && want == got:
+			t.Errorf("matches SaaS; delete routesAPICompatSkipReasons[%q] (%s)", key, reason)
+		case listed:
+			t.Skip(reason)
+		default:
+			assert.Equal(t, want, got)
+		}
+	})
+}
+
+// compatChecksNotRun fails for a listed check that cannot run, since its
+// entry could never go stale.
+func compatChecksNotRun(t *testing.T, keys ...string) {
+	t.Helper()
+
+	for _, key := range keys {
+		if _, listed := routesAPICompatSkipReasons[key]; listed {
+			t.Errorf("check %q does not run for this answer; delete its skip entry", key)
+		}
+	}
+}
+
+func sortedStrings(s []string) string {
+	return fmt.Sprint(slices.Sorted(slices.Values(s)))
 }
