@@ -343,6 +343,11 @@ func testACLSuccess(
 		tf.TestID,
 	)
 
+	// The manager adds the global merge and its caches on top of the
+	// per-node compile; nodes get their filter from it.
+	pm, err := NewPolicyManager(policyJSON, users, nodes.ViewSlice())
+	require.NoError(t, err, "%s: policy manager should load the policy", tf.TestID)
+
 	for nodeName, capture := range tf.Captures {
 		t.Run(nodeName, func(t *testing.T) {
 			node := findNodeByGivenName(nodes, nodeName)
@@ -381,6 +386,18 @@ func testACLSuccess(
 			); diff != "" {
 				t.Errorf(
 					"%s/%s: filter rules mismatch (-want +got):\n%s",
+					tf.TestID,
+					nodeName,
+					diff,
+				)
+			}
+
+			pmRules, err := pm.FilterForNode(node.View())
+			require.NoError(t, err)
+
+			if diff := cmp.Diff(wantRules, pmRules, opts...); diff != "" {
+				t.Errorf(
+					"%s/%s: policy manager filter rules mismatch (-want +got):\n%s",
 					tf.TestID,
 					nodeName,
 					diff,
