@@ -14,6 +14,8 @@ repos:
     hooks:
       - id: check-added-large-files
         args: [--maxkb=1024]
+        # Step captures hold a netmap per node per step and stay as recorded.
+        exclude: ^hscontrol/servertest/testdata/steps/
       - id: check-case-conflict
       - id: check-executables-have-shebangs
       - id: check-json
