@@ -92,6 +92,12 @@ var routesMapCompatTests = []struct {
 	{"routes-f3-wildcard-src-specific-dst", "ACL to one port of a subnet"},
 	{"routes-h1-wildcard-srcips-format", "wildcard source to tagged routers"},
 	{"routes-pa1-partial-route-approval", "router with an unapproved route"},
+	{"routes-m1-wildcard-src-multi-range", "wildcard source to a tagged port, multi-route router"},
+	{"routes-m2-member-partial-subnet", "members to one route of a multi-route router"},
+	{"routes-m3-subnet-route-as-src", "one route of a multi-route router as source"},
+	{"routes-m4-member-self", "members to autogroup:self beside a multi-route router"},
+	{"routes-m5-wildcard-all", "allow-all with a multi-route router and an exit node"},
+	{"routes-m6-subnet-to-subnet-multi-route", "subnet of a multi-route router to a subnet of an exit node"},
 }
 
 // viaCompatSkipReasons lists checks where headscale differs from SaaS, keyed
@@ -151,6 +157,16 @@ var viaCompatSkipReasons = map[string]string{
 	"routes-h1-wildcard-srcips-format/butterfree/self-routes":                 selfRoutesReduced,
 	"routes-h1-wildcard-srcips-format/metapod/self-routes":                    selfRoutesReduced,
 	"routes-pa1-partial-route-approval/butterfree/self-routes":                selfRoutesReduced,
+	"routes-m1-wildcard-src-multi-range/r-exit/self-routes":                   selfRoutesReduced,
+	"routes-m1-wildcard-src-multi-range/r-multi/self-routes":                  selfRoutesReduced,
+	"routes-m2-member-partial-subnet/r-exit/self-routes":                      selfRoutesReduced,
+	"routes-m2-member-partial-subnet/r-multi/self-routes":                     selfRoutesReduced,
+	"routes-m3-subnet-route-as-src/r-exit/self-routes":                        selfRoutesReduced,
+	"routes-m3-subnet-route-as-src/r-multi/self-routes":                       selfRoutesReduced,
+	"routes-m4-member-self/r-exit/self-routes":                                selfRoutesReduced,
+	"routes-m4-member-self/r-multi/self-routes":                               selfRoutesReduced,
+	"routes-m6-subnet-to-subnet-multi-route/r-exit/self-routes":               selfRoutesReduced,
+	"routes-m6-subnet-to-subnet-multi-route/r-multi/self-routes":              selfRoutesReduced,
 
 	"via-grant-v14/blastoise/self-routes": selfRoutesReduced,
 	"via-grant-v14/fearow/self-routes":    selfRoutesReduced,
@@ -232,9 +248,25 @@ var viaCompatSkipReasons = map[string]string{
 	"via-grant-v66/squirtle/self-routes":  selfRoutesReduced,
 	"via-grant-v67/blastoise/self-routes": selfRoutesReduced,
 	"via-grant-v67/squirtle/self-routes":  selfRoutesReduced,
+
+	"routes-m1-wildcard-src-multi-range/srv/peers":         exitRoutesOnOverlap,
+	"routes-m6-subnet-to-subnet-multi-route/r-multi/peers": exitRoutesOnOverlap,
+
+	"routes-m1-wildcard-src-multi-range/m-odin1/peers":     sameUserPeers,
+	"routes-m1-wildcard-src-multi-range/m-odin2/peers":     sameUserPeers,
+	"routes-m2-member-partial-subnet/m-odin1/peers":        sameUserPeers,
+	"routes-m2-member-partial-subnet/m-odin2/peers":        sameUserPeers,
+	"routes-m3-subnet-route-as-src/m-odin1/peers":          sameUserPeers,
+	"routes-m3-subnet-route-as-src/m-odin2/peers":          sameUserPeers,
+	"routes-m6-subnet-to-subnet-multi-route/m-odin1/peers": sameUserPeers,
+	"routes-m6-subnet-to-subnet-multi-route/m-odin2/peers": sameUserPeers,
 }
 
 const viaSourceLossNotSent = "VIA_SOURCE_LOSS_NOT_SENT: a user change that leaves a via grant without sources does not reach open streams"
+
+const exitRoutesOnOverlap = "EXIT_ROUTES_ON_OVERLAP: headscale offers a peer's exit routes to a viewer whose rules reach only nodes or subnets; SaaS leaves them out"
+
+const sameUserPeers = "SAME_USER_PEERS: SaaS lists a user's own devices as each other's peers with no rule linking them; headscale peers only what the policy links"
 
 const selfRoutesReduced = "SELF_ROUTES_REDUCED: headscale sends a router only the primary routes its policy lets it reach"
 
@@ -407,9 +439,14 @@ func startViaMapCompat(
 	srv, clients := startCaptureClients(t, c, true)
 
 	// Wait for peers based on golden [netmap.NetworkMap] expected counts.
+	// A viewer whose peers are a listed difference never reaches them.
 	for viewerName, cl := range clients {
 		capture := c.Captures[viewerName]
 		if capture.Netmap == nil {
+			continue
+		}
+
+		if _, listed := viaCompatSkipReasons[c.TestID+"/"+viewerName+"/peers"]; listed {
 			continue
 		}
 
@@ -744,7 +781,15 @@ func compareNetmap(
 		h.Helper()
 	}
 
-	comparePeers(t, got, want, clients)
+	peers := func(tt require.TestingT) { comparePeers(tt, got, want, clients) }
+	if reason, listed := viaCompatSkipReasons[key+"/peers"]; listed {
+		if passesOnce(peers) {
+			t.Errorf("peers match SaaS; delete viaCompatSkipReasons[%q] (%s)", key+"/peers", reason)
+		}
+	} else {
+		peers(t)
+	}
+
 	comparePacketFilter(t, got, want, clients, saasAddrs, key+"/packet-filter", viaCompatSkipReasons)
 	compareUserProfiles(t, got, want.Netmap, clients)
 }
@@ -894,8 +939,9 @@ func comparePeers(
 }
 
 // compareUserProfiles compares the profile the viewer holds for itself and
-// for each peer in clients. Profile IDs differ between SaaS and headscale, so
-// a profile is its login, with SaaS emails mapped to user names, and its
+// for each peer in clients that both sides list; a peer on one side only is
+// the peers check's. Profile IDs differ between SaaS and headscale, so a
+// profile is its login, with SaaS emails mapped to user names, and its
 // display name.
 func compareUserProfiles(
 	t require.TestingT,
@@ -909,6 +955,10 @@ func compareUserProfiles(
 	gotProfiles := nodeProfiles(got, clients)
 
 	for name, wantProfile := range nodeProfiles(want, clients) {
+		if _, ok := gotProfiles[name]; !ok {
+			continue
+		}
+
 		check := "peer"
 		if name == "" {
 			check = "self"

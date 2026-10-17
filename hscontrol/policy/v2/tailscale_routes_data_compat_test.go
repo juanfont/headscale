@@ -14,7 +14,7 @@
 //     + ReduceFilterRules) against golden file captures.
 //
 //   - TestRoutesCompatPeerVisibility: validates peer visibility (CanAccess)
-//     for the subnet-to-subnet scenarios (f10–f15). These tests
+//     for the subnet-to-subnet scenarios (f10–f15, m6). These tests
 //     derive expected peer relationships from the golden file captures: if
 //     Tailscale SaaS delivers filter rules to a node, then the subnet routers
 //     referenced in those rules must be visible as peers. This exercises the
@@ -174,7 +174,27 @@ func buildRoutesUsersAndNodes(
 // routesSkipReasons lists checks where headscale differs from SaaS, keyed
 // <test_id>/<node>/<check>. A listed check that matches fails, so a fix must
 // delete its entry.
-var routesSkipReasons = map[string]string{}
+var routesSkipReasons = map[string]string{
+	// SaaS lists contiguous source addresses one by one; headscale merges
+	// them into ranges.
+	"routes-m2-member-partial-subnet/r-exit/filter":  filterAddressForm,
+	"routes-m2-member-partial-subnet/r-multi/filter": filterAddressForm,
+	"routes-m4-member-self/m-odin1/filter":           filterAddressForm,
+	"routes-m4-member-self/m-odin2/filter":           filterAddressForm,
+	"routes-m4-member-self/r-exit/filter":            "FILTER_ADDRESS_FORM: same addresses, different wire form and rule order",
+
+	"routes-m1-wildcard-src-multi-range/srv/peer-allowed-ips":         exitRoutesOnOverlap,
+	"routes-m6-subnet-to-subnet-multi-route/r-multi/peer-allowed-ips": exitRoutesOnOverlap,
+
+	"routes-m1-wildcard-src-multi-range/m-odin1/peers":     sameUserPeers,
+	"routes-m1-wildcard-src-multi-range/m-odin2/peers":     sameUserPeers,
+	"routes-m2-member-partial-subnet/m-odin1/peers":        sameUserPeers,
+	"routes-m2-member-partial-subnet/m-odin2/peers":        sameUserPeers,
+	"routes-m3-subnet-route-as-src/m-odin1/peers":          sameUserPeers,
+	"routes-m3-subnet-route-as-src/m-odin2/peers":          sameUserPeers,
+	"routes-m6-subnet-to-subnet-multi-route/m-odin1/peers": sameUserPeers,
+	"routes-m6-subnet-to-subnet-multi-route/m-odin2/peers": sameUserPeers,
+}
 
 // routesNotCompared lists, by key prefix, checks left out: SaaS's answer
 // there is in doubt, so it is no reference.
@@ -210,6 +230,37 @@ var routesNotCompared = []string{
 	"routes-t5-oauth-routes-scope/ovl-r-mapped/peer-allowed-ips",
 	"routes-t5-oauth-routes-scope/ovl-r-narrow/peer-allowed-ips",
 	"routes-t5-oauth-routes-scope/ovl-r-via/peer-allowed-ips",
+	"routes-t1-auto-v4-default/ovl-r-ctrl/peers",
+	"routes-t1-auto-v4-default/ovl-r-host4/peers",
+	"routes-t1-auto-v4-default/ovl-r-host6/peers",
+	"routes-t1-auto-v4-default/ovl-r-mapped/peers",
+	"routes-t1-auto-v4-default/ovl-r-narrow/peers",
+	"routes-t1-auto-v4-default/ovl-r-via/peers",
+	"routes-t1-auto-v4-default/ovl-r-wide-in/peers",
+	"routes-t2-auto-v6-default/ovl-r-ctrl/peers",
+	"routes-t2-auto-v6-default/ovl-r-host4/peers",
+	"routes-t2-auto-v6-default/ovl-r-host6/peers",
+	"routes-t2-auto-v6-default/ovl-r-mapped/peers",
+	"routes-t2-auto-v6-default/ovl-r-narrow/peers",
+	"routes-t2-auto-v6-default/ovl-r-via/peers",
+	"routes-t3-auto-narrow-keys/ovl-r-ctrl/peers",
+	"routes-t3-auto-narrow-keys/ovl-r-host4/peers",
+	"routes-t3-auto-narrow-keys/ovl-r-host6/peers",
+	"routes-t3-auto-narrow-keys/ovl-r-mapped/peers",
+	"routes-t3-auto-narrow-keys/ovl-r-narrow/peers",
+	"routes-t3-auto-narrow-keys/ovl-r-via/peers",
+	"routes-t4-admin/ovl-r-ctrl/peers",
+	"routes-t4-admin/ovl-r-host4/peers",
+	"routes-t4-admin/ovl-r-host6/peers",
+	"routes-t4-admin/ovl-r-mapped/peers",
+	"routes-t4-admin/ovl-r-narrow/peers",
+	"routes-t4-admin/ovl-r-via/peers",
+	"routes-t5-oauth-routes-scope/ovl-r-ctrl/peers",
+	"routes-t5-oauth-routes-scope/ovl-r-host4/peers",
+	"routes-t5-oauth-routes-scope/ovl-r-host6/peers",
+	"routes-t5-oauth-routes-scope/ovl-r-mapped/peers",
+	"routes-t5-oauth-routes-scope/ovl-r-narrow/peers",
+	"routes-t5-oauth-routes-scope/ovl-r-via/peers",
 }
 
 // notCompared reports whether key falls under one of prefixes.
@@ -218,6 +269,12 @@ func notCompared(prefixes []string, key string) bool {
 		return strings.HasPrefix(key, p)
 	})
 }
+
+const filterAddressForm = "FILTER_ADDRESS_FORM: same addresses, different wire form"
+
+const exitRoutesOnOverlap = "EXIT_ROUTES_ON_OVERLAP: headscale offers a peer's exit routes to a viewer whose rules reach only nodes or subnets; SaaS leaves them out"
+
+const sameUserPeers = "SAME_USER_PEERS: SaaS lists a user's own devices as each other's peers with no rule linking them; headscale peers only what the policy links"
 
 // routesSetByAPI reports whether the capture's routes were approved through
 // the routes API rather than by the policy.
@@ -244,6 +301,7 @@ var subnetToSubnetFiles = []string{
 	"routes-f13-subnet-to-subnet-disjoint",
 	"routes-f14-subnet-to-subnet-overlapping-one-router",
 	"routes-f15-subnet-to-subnet-cross-routers",
+	"routes-m6-subnet-to-subnet-multi-route",
 }
 
 // TestRoutesCompat is a data-driven test that loads all routes-*.hujson test
@@ -316,18 +374,10 @@ func TestRoutesCompat(t *testing.T) {
 						cmpOptions(),
 						cmpopts.EquateEmpty(),
 					)
-					if diff := cmp.Diff(
-						wantRules,
-						gotRules,
-						opts...,
-					); diff != "" {
-						t.Errorf(
-							"%s/%s: filter rules mismatch (-want +got):\n%s",
-							tf.TestID,
-							nodeName,
-							diff,
-						)
-					}
+
+					compatCheck(t, routesSkipReasons, tf.TestID+"/"+nodeName+"/filter", func() string {
+						return cmp.Diff(wantRules, gotRules, opts...)
+					})
 				})
 			}
 		})
@@ -1577,6 +1627,78 @@ func TestRoutesCompatPeerAllowedIPs(t *testing.T) {
 	require.Positive(t, testedFiles,
 		"no golden files with netmap data found — test is vacuous",
 	)
+}
+
+// TestRoutesCompatPeerMap checks that BuildPeerMap gives each captured node
+// exactly the topology nodes SaaS listed as its peers.
+func TestRoutesCompatPeerMap(t *testing.T) {
+	t.Parallel()
+
+	files, err := filepath.Glob(
+		filepath.Join("testdata", "routes_results", "routes-*.hujson"),
+	)
+	require.NoError(t, err, "failed to glob test files")
+	require.NotEmpty(t, files)
+
+	for _, file := range files {
+		tf := loadRoutesTestFile(t, file)
+		if tf.Error {
+			continue
+		}
+
+		t.Run(tf.TestID, func(t *testing.T) {
+			t.Parallel()
+
+			users, nodes := buildRoutesUsersAndNodes(t, tf.Topology)
+			policyJSON := convertPolicyUserEmails(tf.Input.FullPolicy)
+
+			pm, err := NewPolicyManager(policyJSON, users, nodes.ViewSlice())
+			require.NoError(t, err, "%s: failed to create policy manager", tf.TestID)
+
+			names := make(map[types.NodeID]string, len(nodes))
+			for _, n := range nodes {
+				names[n.ID] = n.GivenName
+			}
+
+			peerMap := pm.BuildPeerMap(nodes.ViewSlice())
+
+			for viewerName, capture := range tf.Captures {
+				if capture.Netmap == nil {
+					continue
+				}
+
+				viewer := findNodeByGivenName(nodes, viewerName)
+				require.NotNilf(t, viewer, "golden node %s not found in topology", viewerName)
+
+				key := tf.TestID + "/" + viewerName + "/peers"
+				if notCompared(routesNotCompared, key) {
+					continue
+				}
+
+				t.Run(viewerName, func(t *testing.T) {
+					want := []string{}
+
+					for _, p := range capture.Netmap.Peers {
+						name, _, _ := strings.Cut(p.Name(), ".")
+						if findNodeByGivenName(nodes, name) != nil {
+							want = append(want, name)
+						}
+					}
+
+					got := []string{}
+					for _, id := range peerMap[viewer.ID] {
+						got = append(got, names[id])
+					}
+
+					slices.Sort(want)
+					slices.Sort(got)
+
+					compatCheck(t, routesSkipReasons, key,
+						func() string { return cmp.Diff(want, got) })
+				})
+			}
+		})
+	}
 }
 
 // TestRoutesCompatPeerCapMap validates the peer-view CapMap against SaaS
