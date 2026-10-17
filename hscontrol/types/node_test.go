@@ -15,6 +15,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/require"
+	"pgregory.net/rapid"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 	"tailscale.com/util/dnsname"
@@ -1224,6 +1225,127 @@ func TestIsExitNodeSubnetRouterAllocs(t *testing.T) {
 
 	require.False(t, exit)
 	require.Zero(t, allocs)
+}
+
+func TestCanAccessRoutesMatchesReference(t *testing.T) {
+	prefixStrings := []string{
+		"100.64.0.1/32", "100.64.0.2/32", "100.64.0.0/24",
+		"10.0.0.0/24", "10.0.1.0/24", "10.0.0.0/8", "192.168.0.0/16",
+		"fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128", "fd7a:115c:a1e0::/64",
+		"2001:db8::/32", "2001:db8:1::/64",
+		"fd7a:115c:a1e0:b1a:0:7:a00:0/120",
+		"0.0.0.0/0", "::/0", "0.0.0.0/1", "::/1",
+	}
+	prefixes := util.MustStringsToPrefixes(prefixStrings)
+	routePool := append(slices.Clone(prefixes), netip.Prefix{})
+	matchPool := append([]string{"*"}, prefixStrings...)
+	prefixGen := rapid.SampledFrom(prefixes)
+	matchGen := rapid.SampledFrom(matchPool)
+
+	rapid.Check(t, func(rt *rapid.T) {
+		n := Node{
+			Hostinfo: &tailcfg.Hostinfo{
+				RoutableIPs: rapid.SliceOfN(prefixGen, 0, 8).Draw(rt, "announced"),
+			},
+			ApprovedRoutes: rapid.SliceOfN(prefixGen, 0, 8).Draw(rt, "approved"),
+		}
+		if rapid.Bool().Draw(rt, "hasIPv4") {
+			ip := rapid.SampledFrom([]string{
+				"100.64.0.1", "100.64.0.2", "10.0.0.1", "192.168.1.1",
+			}).Draw(rt, "ipv4")
+			n.IPv4 = new(netip.MustParseAddr(ip))
+		}
+
+		if rapid.Bool().Draw(rt, "hasIPv6") {
+			ip := rapid.SampledFrom([]string{
+				"fd7a:115c:a1e0::1", "fd7a:115c:a1e0::2", "2001:db8::1",
+			}).Draw(rt, "ipv6")
+			n.IPv6 = new(netip.MustParseAddr(ip))
+		}
+
+		count := rapid.IntRange(0, 5).Draw(rt, "matchers")
+		matchers := make([]matcher.Match, 0, count)
+
+		for i := range count {
+			sources := rapid.SliceOfN(matchGen, 0, 4).Draw(
+				rt, fmt.Sprintf("sources-%d", i),
+			)
+			destinations := rapid.SliceOfN(matchGen, 0, 4).Draw(
+				rt, fmt.Sprintf("destinations-%d", i),
+			)
+
+			rule := tailcfg.FilterRule{SrcIPs: sources}
+			for _, dst := range destinations {
+				rule.DstPorts = append(rule.DstPorts, tailcfg.NetPortRange{
+					IP: dst, Ports: tailcfg.PortRangeAny,
+				})
+			}
+
+			matchers = append(matchers, matcher.MatchFromFilterRule(rule))
+		}
+
+		routes := rapid.SliceOfN(rapid.SampledFrom(routePool), 0, 16).Draw(rt, "routes")
+
+		var want []netip.Prefix
+
+		for _, route := range routes {
+			allowed := canAccessRouteReference(&n, matchers, route)
+			require.Equal(rt, allowed, n.CanAccessRoute(matchers, route))
+
+			if allowed {
+				want = append(want, route)
+			}
+		}
+
+		require.Equal(rt, want, n.CanAccessRoutes(matchers, routes))
+		require.Equal(rt, want, n.View().CanAccessRoutes(matchers, routes))
+	})
+
+	var invalid NodeView
+
+	require.Nil(t, invalid.CanAccessRoutes(
+		matcher.MatchesFromFilterRules(tailcfg.FilterAllowAll), prefixes,
+	))
+}
+
+func canAccessRouteReference(
+	node *Node,
+	matchers []matcher.Match,
+	route netip.Prefix,
+) bool {
+	src := node.IPs()
+	subnetRoutes := node.SubnetRoutes()
+
+	for _, matcher := range matchers {
+		if matcher.SrcsContainsIPs(src...) && matcher.DestsOverlapsPrefixes(route) {
+			return true
+		}
+
+		if matcher.SrcsOverlapsPrefixes(route) && matcher.DestsContainsIP(src...) {
+			return true
+		}
+
+		// A subnet router acts on behalf of its advertised subnets.
+		// If the node's approved subnet routes overlap the source set
+		// and the route overlaps the destination set, the router needs
+		// this route to forward traffic from its local subnet.
+		if len(subnetRoutes) > 0 {
+			if matcher.SrcsOverlapsPrefixes(subnetRoutes...) &&
+				matcher.DestsOverlapsPrefixes(route) {
+				return true
+			}
+
+			// Reverse: traffic from the route's subnet is destined for
+			// this node's subnets; the router needs the route for return
+			// traffic.
+			if matcher.SrcsOverlapsPrefixes(route) &&
+				matcher.DestsOverlapsPrefixes(subnetRoutes...) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func TestBoundHostinfo(t *testing.T) {
