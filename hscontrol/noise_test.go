@@ -2041,3 +2041,71 @@ func TestNoiseRouter_DoesNotServeMetrics(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 }
+
+// TestSSHActionFollowUp_ParksOneRequestPerSession pins that a pending SSH
+// check keeps one waiting follow-up, the newest. Older waiters re-delegate at
+// once instead of staying parked until the session ends.
+func TestSSHActionFollowUp_ParksOneRequestPerSession(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	nodes := putSSHCheckNodes(t, app, "ssh-park-user", "src-node", "dst-node")
+	src, dst := nodes[0], nodes[1]
+
+	authID := types.MustAuthID()
+	auth := types.NewSSHCheckAuthRequest(src.ID, dst.ID)
+	app.state.SetAuthCacheEntry(authID, auth)
+
+	ns := &noiseServer{headscale: app, machineKey: dst.MachineKey}
+
+	const followups = 50
+
+	type answer struct {
+		action *tailcfg.SSHAction
+		err    error
+	}
+
+	answered := make(chan answer, followups)
+
+	for range followups {
+		go func() {
+			action, err := ns.sshActionFollowUp(
+				t.Context(), zerolog.Nop(), &tailcfg.SSHAction{},
+				authID.String(), src.ID, dst.ID, sshTestLocalUser,
+			)
+			answered <- answer{action, err}
+		}()
+	}
+
+	next := func(msg string) answer {
+		t.Helper()
+
+		select {
+		case a := <-answered:
+			return a
+		case <-time.After(5 * time.Second):
+			require.FailNow(t, msg)
+
+			return answer{}
+		}
+	}
+
+	for range followups - 1 {
+		a := next("more than one follow-up is parked on the session")
+		require.NoError(t, a.err)
+		assert.NotEqual(t, authID, requireSSHHold(t, *a.action),
+			"re-delegation must mint a new session")
+	}
+
+	select {
+	case a := <-answered:
+		require.FailNowf(t, "the newest follow-up must still be waiting", "got %+v", a)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	auth.FinishAuth(types.AuthVerdict{})
+
+	last := next("the parked follow-up did not collect the verdict")
+	require.NoError(t, last.err)
+	assert.True(t, last.action.Accept, "accept, got %+v", last.action)
+}
