@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"maps"
 	"net/netip"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -728,7 +729,6 @@ func (s *State) persistNodeWith(
 
 		return nil
 	})
-
 	if err != nil {
 		return types.NodeView{}, fmt.Errorf("saving node: %w", err)
 	}
@@ -3248,9 +3248,11 @@ func (s *State) reregisterNodeWithPAK(
 	}
 
 	// prior is the node the writer replaced: the NetInfo source and the
-	// rollback target if the database write below fails.
+	// rollback target if the database write below fails. written is what this
+	// write left; the view after the batch can hold later writes.
 	var (
 		prior   *types.Node
+		written *types.Node
 		authErr error
 		reauth  bool
 	)
@@ -3261,6 +3263,7 @@ func (s *State) reregisterNodeWithPAK(
 		now := time.Now()
 
 		prior = node.Clone()
+		defer func() { written = node.Clone() }()
 
 		reauth, authErr = pakReregister(node.View(), pak, regReq.NodeKey, now)
 		if authErr != nil {
@@ -3403,21 +3406,7 @@ func (s *State) reregisterNodeWithPAK(
 		return nil
 	})
 	if err != nil {
-		// Restore the registration fields from the node the writer replaced.
-		// Sessions, endpoints and health may have moved since that snapshot;
-		// preserve them. LastSeen stays because the node did contact us.
-		s.nodeStore.UpdateNode(prior.ID, func(n *types.Node) {
-			n.NodeKey = prior.NodeKey
-			n.Hostname = prior.Hostname
-			n.Hostinfo = prior.Hostinfo
-			n.RegisterMethod = prior.RegisterMethod
-			n.Tags = prior.Tags
-			n.UserID = prior.UserID
-			n.User = prior.User
-			n.Expiry = prior.Expiry
-			n.AuthKey = prior.AuthKey
-			n.AuthKeyID = prior.AuthKeyID
-		})
+		s.undoReregistration(prior, written)
 
 		return types.NodeView{}, false, fmt.Errorf("writing node to database: %w", err)
 	}
@@ -3432,6 +3421,56 @@ func (s *State) reregisterNodeWithPAK(
 		Msg("Node re-authorized")
 
 	return updatedNodeView, onlyKeysChanged(before, updatedNodeView, time.Now()), nil
+}
+
+// undoReregistration puts back the fields of a failed re-registration that
+// still hold what it wrote, so later admin and map writes survive, and saves
+// the result. LastSeen stays because the node did contact us; sessions,
+// endpoints and health are not rolled back.
+func (s *State) undoReregistration(prior, written *types.Node) {
+	restored, exists := s.nodeStore.UpdateNode(prior.ID, func(n *types.Node) {
+		if n.NodeKey == written.NodeKey {
+			n.NodeKey = prior.NodeKey
+		}
+
+		if n.Hostname == written.Hostname {
+			n.Hostname = prior.Hostname
+		}
+
+		if reflect.DeepEqual(n.Hostinfo, written.Hostinfo) {
+			n.Hostinfo = prior.Hostinfo
+		}
+
+		if n.RegisterMethod == written.RegisterMethod {
+			n.RegisterMethod = prior.RegisterMethod
+		}
+
+		if slices.Equal(n.Tags, written.Tags) &&
+			reflect.DeepEqual(n.UserID, written.UserID) &&
+			reflect.DeepEqual(n.User, written.User) {
+			n.Tags = prior.Tags
+			n.UserID = prior.UserID
+			n.User = prior.User
+		}
+
+		if reflect.DeepEqual(n.Expiry, written.Expiry) {
+			n.Expiry = prior.Expiry
+		}
+
+		if reflect.DeepEqual(n.AuthKeyID, written.AuthKeyID) &&
+			reflect.DeepEqual(n.AuthKey, written.AuthKey) {
+			n.AuthKey = prior.AuthKey
+			n.AuthKeyID = prior.AuthKeyID
+		}
+	})
+	if !exists {
+		return
+	}
+
+	_, err := s.persistNode(restored)
+	if err != nil {
+		log.Error().Err(err).Uint64(zf.NodeID, prior.ID.Uint64()).Msg("Persisting re-registration rollback failed")
+	}
 }
 
 // reauthChange returns the [change.Change] to broadcast after an authentication
