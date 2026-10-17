@@ -1,6 +1,7 @@
 package types
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -16,6 +17,8 @@ import (
 	hsdns "github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/libdns/cloudflare"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -360,6 +363,40 @@ func TestReadConfigFromEnv(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPreparedStatementConfigIsIgnoredWithWarning(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	var logs bytes.Buffer
+
+	previousLogger := log.Logger
+	previousLevel := zerolog.GlobalLevel()
+
+	zerolog.SetGlobalLevel(zerolog.WarnLevel)
+	t.Cleanup(func() { zerolog.SetGlobalLevel(previousLevel) })
+
+	log.Logger = zerolog.New(&logs)
+
+	t.Cleanup(func() { log.Logger = previousLogger })
+
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(`
+server_url: https://example.com
+noise:
+  private_key_path: noise_private.key
+dns:
+  magic_dns: false
+  override_local_dns: false
+database:
+  type: sqlite3
+  gorm:
+    prepare_stmt: true
+`), 0o600))
+	require.NoError(t, LoadConfig(configPath, true))
+	require.NoError(t, validateServerConfig())
+	assert.Contains(t, logs.String(), "database.gorm.prepare_stmt")
 }
 
 func TestTLSConfigValidation(t *testing.T) {
