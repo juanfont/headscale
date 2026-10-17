@@ -1078,6 +1078,54 @@ func TestNodeIsExpiredAt(t *testing.T) {
 	})
 }
 
+func TestHasPolicyChangeSharedRouteInputs(t *testing.T) {
+	subnet := netip.MustParsePrefix("10.0.0.0/24")
+	exit := netip.MustParsePrefix("::/0")
+	base := Node{
+		Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet, exit}},
+		ApprovedRoutes: []netip.Prefix{subnet, exit},
+	}
+
+	for _, tt := range []struct {
+		name   string
+		mutate func(*Node)
+		want   bool
+	}{
+		{name: "shared slices", mutate: func(*Node) {}},
+		{name: "equal slices", mutate: func(n *Node) {
+			n.Hostinfo = n.Hostinfo.Clone()
+			n.ApprovedRoutes = []netip.Prefix{subnet, exit}
+		}},
+		{name: "reordered slices", mutate: func(n *Node) {
+			n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{exit, subnet}}
+			n.ApprovedRoutes = []netip.Prefix{exit, subnet}
+		}},
+		{name: "approval removed", mutate: func(n *Node) {
+			n.ApprovedRoutes = []netip.Prefix{subnet}
+		}, want: true},
+		{name: "announcement removed", mutate: func(n *Node) {
+			n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet}}
+		}, want: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			other := base
+			tt.mutate(&other)
+			require.Equal(t, tt.want, base.View().HasPolicyChange(other.View()))
+		})
+	}
+
+	shared := base
+
+	var changed bool
+
+	allocs := testing.AllocsPerRun(10, func() {
+		changed = base.View().HasPolicyChange(shared.View())
+	})
+
+	require.False(t, changed)
+	require.Zero(t, allocs, "unchanged route inputs should not derive route lists")
+}
+
 func TestBoundHostinfo(t *testing.T) {
 	stock := func() *tailcfg.Hostinfo {
 		return &tailcfg.Hostinfo{

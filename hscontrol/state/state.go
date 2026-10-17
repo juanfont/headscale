@@ -3781,7 +3781,7 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		// update that shrinks the announced set can drop the node
 		// out of HA candidacy without touching ApprovedRoutes.
 		// Clear any stale Unhealthy bit in that case.
-		if len(currentNode.AllApprovedRoutes()) == 0 {
+		if currentNode.Unhealthy && len(currentNode.AllApprovedRoutes()) == 0 {
 			currentNode.Unhealthy = false
 		}
 	})
