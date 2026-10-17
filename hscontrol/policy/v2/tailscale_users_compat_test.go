@@ -111,16 +111,6 @@ var userTokenSkipReasons = map[string]string{
 	// The evaluation error repeats the test's source unquoted, here a user's name.
 	"users-bare-at-test-dst/name-is-owner-email/user-list": testUnknownAlias,
 
-	"users-bare-at-dst/no-email-two/boot":                  ambiguousLoad,
-	"users-bare-at-group/no-email-two/boot":                ambiguousLoad,
-	"users-bare-at-nodeattrs/no-email-two/boot":            ambiguousLoad,
-	"users-bare-at-nodeattrs/no-email-two/runtime":         ambiguousLoad,
-	"users-bare-at-src/no-email-two/boot":                  ambiguousLoad,
-	"users-bare-at-tagowner/no-email-two/boot":             ambiguousLoad,
-	"users-unknown-direct/duplicate-unknown-email/boot":    ambiguousLoad,
-	"users-unknown-member/duplicate-unknown-email/boot":    ambiguousLoad,
-	"users-unknown-member/duplicate-unknown-email/runtime": ambiguousLoad,
-
 	"users-unknown-direct/duplicate-unknown-email/verdict": ambiguousWrite,
 	"users-unknown-member/duplicate-unknown-email/verdict": ambiguousWrite,
 
@@ -170,7 +160,6 @@ var userTokenSkipReasons = map[string]string{
 	"users-bare-at-tagowner/no-email-one/overlay-1/tag-owner":                     bareAtNoEmail,
 	"users-bare-at-tagowner/no-email-two/user-list":                               bareAtNoEmail,
 	"users-bare-at-tagowner/no-email-two/verdict":                                 bareAtNoEmail,
-	"users-bare-at-test-dst/no-email-two/user-list":                               bareAtNoEmail,
 	"users-bare-at-test-src/no-email-two/user-list":                               bareAtNoEmail,
 	"users-bare-at-test-src/okta-name-only/verdict":                               bareAtNoEmail,
 
@@ -180,7 +169,6 @@ var userTokenSkipReasons = map[string]string{
 const (
 	shortUsername        = "HEADSCALE_SHORT_USERNAME: headscale lets odin@ name the user called odin; SaaS matches it to no one"
 	shortUsernameRow     = "HEADSCALE_SHORT_USERNAME: a row storing the address as its name leaves odin@ nothing to match"
-	ambiguousLoad        = "AMBIGUOUS_USER_LOAD: a user token matching two users stops the policy loading; SaaS keeps serving it"
 	ambiguousWrite       = "AMBIGUOUS_USER_WRITE: headscale refuses to store a policy whose user token matches two users (#3160)"
 	ambiguityListsUsers  = "AMBIGUITY_LISTS_USERS: headscale's refusal of a token matching two users lists both users by ID and name"
 	usernameAnswersEmail = "USERNAME_ANSWERS_EMAIL_TOKEN: a username shaped like an unclaimed address takes that address's rights"
