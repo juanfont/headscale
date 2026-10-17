@@ -211,7 +211,7 @@ type work struct {
 // before the write reads the same on both sides.
 func updateChanges(pre, post *types.Node) (bool, bool) {
 	preView, postView := pre.View(), post.View()
-	if postView.HasPolicyChange(preView) || postView.HasNetworkChanges(preView) {
+	if postView.HasPolicyChange(preView) {
 		return true, true
 	}
 
