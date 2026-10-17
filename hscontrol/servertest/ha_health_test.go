@@ -392,3 +392,46 @@ func TestHAHealthProbe_NoHARoutes(t *testing.T) {
 	})
 	assert.False(t, dispatched, "no HA routes should produce no changes")
 }
+
+func TestHAHealthProbe_LastAdvertiserRecovers(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t)
+	user := srv.CreateUser(t, "ha-last")
+	route := netip.MustParsePrefix("10.107.0.0/24")
+	c1 := servertest.NewClient(t, srv, "ha-la-r1", servertest.WithUser(user))
+	c2 := servertest.NewClient(t, srv, "ha-la-r2", servertest.WithUser(user))
+
+	c1.WaitForPeers(t, 1, 10*time.Second)
+	c2.WaitForPeers(t, 1, 10*time.Second)
+
+	nodeID1 := advertiseAndApproveRoute(t, srv, c1, route)
+	nodeID2 := advertiseAndApproveRoute(t, srv, c2, route)
+
+	srv.State().SetNodeHealth(nodeID1, false)
+	require.Contains(t, srv.State().GetNodePrimaryRoutes(nodeID2), route)
+
+	// The remaining advertiser needs a probe before its route can return.
+	_, rc, err := srv.State().SetApprovedRoutes(nodeID2, nil)
+	require.NoError(t, err)
+	srv.App.Change(rc)
+	require.Empty(t, srv.State().GetNodePrimaryRoutes(nodeID1))
+
+	prober := state.NewHAHealthProber(
+		srv.State(),
+		types.HARouteConfig{
+			ProbeInterval: 30 * time.Second,
+			ProbeTimeout:  5 * time.Second,
+		},
+		srv.URL,
+		srv.App.MapBatcher().IsConnected,
+	)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	prober.ProbeOnce(ctx, srv.App.Change)
+
+	assert.True(t, srv.State().IsNodeHealthy(nodeID1))
+	assert.Contains(t, srv.State().GetNodePrimaryRoutes(nodeID1), route)
+}

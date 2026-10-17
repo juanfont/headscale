@@ -282,6 +282,29 @@ func TestPrimaries_HANodes(t *testing.T) {
 			want: map[netip.Prefix][]types.NodeID{},
 		},
 		{
+			name: "unhealthy-node-left-alone-is-still-monitored",
+			setup: func(f *primariesFixture) {
+				f.advertise(1, mp("192.168.1.0/24"))
+				f.advertise(2, mp("192.168.1.0/24"))
+				f.unhealthy(1)
+				f.approveRoutes(2)
+			},
+			want: map[netip.Prefix][]types.NodeID{
+				mp("192.168.1.0/24"): {1},
+			},
+		},
+		{
+			name: "node-left-alone-not-ha-once-healthy",
+			setup: func(f *primariesFixture) {
+				f.advertise(1, mp("192.168.1.0/24"))
+				f.advertise(2, mp("192.168.1.0/24"))
+				f.unhealthy(1)
+				f.approveRoutes(2)
+				f.healthy(1)
+			},
+			want: map[netip.Prefix][]types.NodeID{},
+		},
+		{
 			name: "two-nodes-same-prefix-is-ha",
 			setup: func(f *primariesFixture) {
 				f.advertise(1, mp("192.168.1.0/24"))
