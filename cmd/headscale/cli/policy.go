@@ -12,7 +12,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/spf13/cobra"
-	"tailscale.com/types/views"
 )
 
 const (
@@ -35,6 +34,31 @@ func bypassDatabase() (*db.HSDatabase, error) {
 	}
 
 	return d, nil
+}
+
+// validateOfflinePolicy checks policyBytes against the database's users and
+// nodes as a server-side policy write would.
+func validateOfflinePolicy(d *db.HSDatabase, policyBytes []byte) error {
+	users, err := d.ListUsers(nil)
+	if err != nil {
+		return fmt.Errorf("loading users for policy validation: %w", err)
+	}
+
+	nodes, err := d.ListNodes()
+	if err != nil {
+		return fmt.Errorf("loading nodes for policy validation: %w", err)
+	}
+
+	// SetPolicy enforces user references, tests, and sshTests for writes;
+	// the constructor permits stored policies whose tests no longer pass.
+	pm, err := policy.NewPolicyManager(policyBytes, users, nodes.ViewSlice())
+	if err != nil {
+		return fmt.Errorf("parsing policy file: %w", err)
+	}
+
+	_, err = pm.SetPolicy(policyBytes)
+
+	return err
 }
 
 // openBypassDB confirms the destructive bypass action and opens the database
@@ -139,14 +163,9 @@ var setPolicy = &cobra.Command{
 			}
 			defer d.Close()
 
-			users, err := d.ListUsers(nil)
+			err = validateOfflinePolicy(d, policyBytes)
 			if err != nil {
-				return fmt.Errorf("loading users for policy validation: %w", err)
-			}
-
-			_, err = policy.NewPolicyManager(policyBytes, users, views.Slice[types.NodeView]{})
-			if err != nil {
-				return fmt.Errorf("parsing policy file: %w", err)
+				return err
 			}
 
 			_, err = d.SetPolicy(string(policyBytes))
@@ -204,26 +223,7 @@ var checkPolicy = &cobra.Command{
 			}
 			defer d.Close()
 
-			users, err := d.ListUsers(nil)
-			if err != nil {
-				return fmt.Errorf("loading users: %w", err)
-			}
-
-			nodes, err := d.ListNodes()
-			if err != nil {
-				return fmt.Errorf("loading nodes: %w", err)
-			}
-
-			// [policy.NewPolicyManager] validates structure and user references
-			// but intentionally skips test evaluation (boot path).
-			// [policy.PolicyManager.SetPolicy] is the user-write boundary and is what runs the
-			// tests and sshTests blocks.
-			pm, err := policy.NewPolicyManager(policyBytes, users, nodes.ViewSlice())
-			if err != nil {
-				return fmt.Errorf("parsing policy file: %w", err)
-			}
-
-			_, err = pm.SetPolicy(policyBytes)
+			err = validateOfflinePolicy(d, policyBytes)
 			if err != nil {
 				return err
 			}
