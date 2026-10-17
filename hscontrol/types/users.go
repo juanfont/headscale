@@ -440,6 +440,8 @@ func (u *User) FromClaim(claims *OIDCClaims, emailVerifiedRequired bool) {
 		log.Debug().Caller().Err(err).Msgf("username %s is not valid", claims.Username)
 	}
 
+	u.Email = ""
+
 	if claims.EmailVerified || !FlexibleBoolean(emailVerifiedRequired) {
 		_, err = mail.ParseAddress(claims.Email)
 		if err == nil {

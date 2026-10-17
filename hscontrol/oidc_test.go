@@ -712,3 +712,30 @@ func TestOIDCRefusesAlteredSubject(t *testing.T) {
 	require.Len(t, users, 1)
 	assert.Equal(t, *before, users[0], "a refused subject must not update an existing row")
 }
+
+func TestOIDCLoginClearsUnverifiedEmail(t *testing.T) {
+	app := createTestApp(t)
+	provider := &AuthProviderOIDC{
+		h: app,
+		cfg: &types.OIDCConfig{
+			EmailVerifiedRequired: true,
+		},
+	}
+	claims := &types.OIDCClaims{
+		Iss: "https://idp.example.com", Sub: "alice", Username: "alice",
+		Email: "alice@example.com", EmailVerified: true,
+	}
+	first, _, err := provider.createOrUpdateUserFromClaim(claims)
+	require.NoError(t, err)
+	require.Equal(t, "alice@example.com", first.Email)
+
+	claims.EmailVerified = false
+	second, _, err := provider.createOrUpdateUserFromClaim(claims)
+	require.NoError(t, err)
+	assert.Equal(t, first.ID, second.ID)
+	assert.Empty(t, second.Email)
+
+	stored, err := app.state.GetUserByID(types.UserID(first.ID))
+	require.NoError(t, err)
+	assert.Empty(t, stored.Email)
+}
