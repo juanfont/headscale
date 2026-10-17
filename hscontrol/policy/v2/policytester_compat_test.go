@@ -53,8 +53,6 @@ var knownPolicyTesterDivergences = map[string]string{ //nolint:gosec // strings 
 	"policytest-src-wildcard-deny/verdict":     testSrcShape,
 
 	"policytest-dst-multinode-partial-accept/verdict": "TEST_DST_EVERY_NODE: SaaS accepts only when every node of the dst alias is reached; headscale when one is",
-
-	"policytest-report-both-blocks/label": sshTestNodeLabel,
 }
 
 const (
@@ -179,8 +177,7 @@ var (
 // with the ones headscale's evaluators report, as sorted lines of
 // "src -> dst: want" (tests), "src/user: want @ dst" (sshTests) and
 // "src: error" for an entry that could not be evaluated. Repeats are kept.
-// An sshTests dst is the entry's alias in headscale's form: SaaS names the
-// alias, headscale the node, which the label check compares.
+// Both name an sshTests src and dst as written.
 func requireFailureBreakdown(
 	t *testing.T,
 	skips map[string]string,
@@ -203,14 +200,7 @@ func requireFailureBreakdown(
 			}
 
 			if m := saasSSHTestFailRE.FindStringSubmatch(line); m != nil {
-				dst := m[1]
-
-				alias, err := parseAlias(dst)
-				if err == nil {
-					dst = alias.String()
-				}
-
-				want = append(want, fmt.Sprintf("%s/%s: %s @ %s", d.User, m[2], m[3], dst))
+				want = append(want, fmt.Sprintf("%s/%s: %s @ %s", d.User, m[2], m[3], m[1]))
 
 				continue
 			}
@@ -306,13 +296,10 @@ func testerBreakdown(pm *PolicyManager) []string {
 
 	cache := make(map[types.NodeID]*tailcfg.SSHPolicy)
 
-	// One result per entry, in policy order.
-	for i, res := range runSSHPolicyTests(pm.pol, pm.users, pm.nodes, cache).Results {
+	for _, res := range runSSHPolicyTests(pm.pol, pm.users, pm.nodes, cache).Results {
 		for range res.Errors {
 			out = append(out, res.Src+": error")
 		}
-
-		aliases := sshTestDstAliases(pm, pm.pol.SSHTests[i])
 
 		for want, fails := range map[string]map[string][]string{
 			"accept": res.AcceptFail,
@@ -321,37 +308,13 @@ func testerBreakdown(pm *PolicyManager) []string {
 		} {
 			for user, dsts := range fails {
 				for _, dst := range dsts {
-					out = append(out, fmt.Sprintf("%s/%s: %s @ %s", res.Src, user, want, aliases[dst]))
+					out = append(out, fmt.Sprintf("%s/%s: %s @ %s", res.Src, user, want, dst))
 				}
 			}
 		}
 	}
 
 	slices.Sort(out)
-
-	return out
-}
-
-// sshTestDstAliases maps each node hostname an sshTests entry reaches to the
-// first of its dst aliases that selects it, the one the evaluator checks the
-// node under.
-func sshTestDstAliases(pm *PolicyManager, test SSHPolicyTest) map[string]string {
-	_, srcUserID, _ := resolveSSHTestSource(test.Src, pm.pol, pm.users, pm.nodes)
-
-	out := make(map[string]string)
-
-	for _, alias := range test.Dst {
-		nodes, _, err := resolveSSHTestDestNodes(SSHTestDestinations{alias}, pm.pol, pm.users, pm.nodes, srcUserID)
-		if err != nil {
-			continue
-		}
-
-		for _, n := range nodes {
-			if _, ok := out[n.Hostname()]; !ok {
-				out[n.Hostname()] = alias.String()
-			}
-		}
-	}
 
 	return out
 }
