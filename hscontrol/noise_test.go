@@ -10,10 +10,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"net/url"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -30,6 +32,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/net/netutil"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 	"tailscale.com/util/zstdframe"
@@ -1836,5 +1839,162 @@ func TestRegistrationHandler_BoundsClientReport(t *testing.T) {
 
 		hostnameLen := len(node.Hostname())
 		assert.Equal(t, types.MaxHostnameLength, hostnameLen)
+	})
+}
+
+// TestNoiseHTTPServerTimeouts pins the limits of the server inside a Noise
+// tunnel. Any machine key gets a tunnel, so without them a stalled request
+// body or an empty tunnel lives as long as the TCP connection.
+func TestNoiseHTTPServerTimeouts(t *testing.T) {
+	t.Parallel()
+
+	const timeout = 200 * time.Millisecond
+
+	// serve runs handler the way NoiseUpgradeHandler serves a tunnel. It
+	// returns a client for the tunnel and a channel closed once the server
+	// has closed the connection.
+	serve := func(t *testing.T, handler http.Handler) (*http.Client, <-chan struct{}) {
+		t.Helper()
+
+		serverConn, clientConn := net.Pipe()
+
+		t.Cleanup(func() {
+			serverConn.Close()
+			clientConn.Close()
+		})
+
+		closed := make(chan struct{})
+		srv := newNoiseHTTPServer(handler, timeout)
+		srv.ConnState = func(_ net.Conn, state http.ConnState) {
+			if state == http.StateClosed {
+				close(closed)
+			}
+		}
+
+		go func() { _ = srv.Serve(netutil.NewOneConnListener(serverConn, nil)) }()
+
+		protocols := new(http.Protocols)
+		protocols.SetUnencryptedHTTP2(true)
+
+		transport := &http.Transport{
+			Protocols: protocols,
+			DialContext: func(context.Context, string, string) (net.Conn, error) {
+				return clientConn, nil
+			},
+		}
+		t.Cleanup(transport.CloseIdleConnections)
+
+		return &http.Client{Transport: transport}, closed
+	}
+
+	t.Run("stalled body times out", func(t *testing.T) {
+		t.Parallel()
+
+		readErr := make(chan error, 1)
+		client, _ := serve(t, http.HandlerFunc(func(
+			_ http.ResponseWriter, r *http.Request,
+		) {
+			_, err := io.ReadAll(r.Body)
+			readErr <- err
+		}))
+
+		// One byte of body, then silence.
+		body, bodyWriter := io.Pipe()
+
+		t.Cleanup(func() { bodyWriter.Close() })
+
+		go func() { _, _ = bodyWriter.Write([]byte("{")) }()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*timeout)
+		defer cancel()
+
+		req, err := http.NewRequestWithContext(
+			ctx, http.MethodPost, "http://noise/machine/register", body,
+		)
+		require.NoError(t, err)
+
+		resp, err := client.Do(req)
+		require.NoError(t, err, "the handler must not stay blocked on a stalled body")
+		resp.Body.Close()
+
+		require.ErrorIs(t, <-readErr, os.ErrDeadlineExceeded)
+	})
+
+	// set-dns answers only once the nameservers serve the record, which can
+	// take longer than the timeout, and writes nothing until then.
+	t.Run("quiet answer past the timeout is delivered", func(t *testing.T) {
+		t.Parallel()
+
+		client, _ := serve(t, http.HandlerFunc(func(
+			w http.ResponseWriter, r *http.Request,
+		) {
+			_, _ = io.ReadAll(r.Body)
+
+			select {
+			case <-time.After(3 * timeout):
+			case <-r.Context().Done():
+				return
+			}
+
+			_, _ = io.WriteString(w, "{}")
+		}))
+
+		req, err := http.NewRequestWithContext(
+			context.Background(), http.MethodPost, "http://noise/machine/set-dns",
+			strings.NewReader("{}"),
+		)
+		require.NoError(t, err)
+
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+
+		got, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		require.NoError(t, err)
+		assert.Equal(t, "{}", string(got))
+	})
+
+	t.Run("long poll is kept, then the idle tunnel closes", func(t *testing.T) {
+		t.Parallel()
+
+		const chunks = 5
+
+		client, closed := serve(t, http.HandlerFunc(func(
+			w http.ResponseWriter, r *http.Request,
+		) {
+			_, _ = io.ReadAll(r.Body)
+
+			for range chunks {
+				_, _ = io.WriteString(w, "chunk\n")
+				w.(http.Flusher).Flush() //nolint:forcetypeassert // h2 writers flush
+
+				select {
+				case <-time.After(timeout):
+				case <-r.Context().Done():
+					return
+				}
+			}
+		}))
+
+		req, err := http.NewRequestWithContext(
+			context.Background(), http.MethodPost, "http://noise/machine/map",
+			strings.NewReader("{}"),
+		)
+		require.NoError(t, err)
+
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+
+		got, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		require.NoError(t, err)
+		assert.Equal(t, strings.Repeat("chunk\n", chunks), string(got),
+			"a stream that outlives the timeout must not be cut")
+
+		select {
+		case <-closed:
+		case <-time.After(10 * timeout):
+			t.Fatal("the server kept a tunnel with no open stream")
+		}
 	})
 }
