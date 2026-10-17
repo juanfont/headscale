@@ -99,6 +99,44 @@ func persistTestConfig(dbPath string) *types.Config {
 	}
 }
 
+func TestRegistrationPersistsResolvedGivenName(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+	s, err := NewState(persistTestConfig(dbPath))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	user := s.CreateUserForTest("registration-name-user")
+	pak, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+
+	want := []string{"db", "db-1", "node"}
+	ids := make([]types.NodeID, 0, len(want))
+
+	for i, hostname := range []string{"db", "db", "!!!"} {
+		node, _, err := s.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+			Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+			NodeKey:  key.NewNode().Public(),
+			Hostinfo: &tailcfg.Hostinfo{Hostname: hostname},
+		}, key.NewMachine().Public())
+		require.NoError(t, err)
+
+		ids = append(ids, node.ID())
+		require.Equal(t, want[i], node.GivenName())
+		row, err := s.db.GetNodeByID(node.ID())
+		require.NoError(t, err)
+		assert.Equal(t, want[i], row.GivenName)
+	}
+
+	require.NoError(t, s.Close())
+
+	reopened := persistTestReopen(t, dbPath)
+	for i, id := range ids {
+		node, ok := reopened.GetNodeByID(id)
+		require.True(t, ok)
+		assert.Equal(t, want[i], node.GivenName())
+	}
+}
+
 // TestPersistEmptyApprovedRoutes covers the State.SetApprovedRoutes
 // path. The gRPC handler builds the slice via append from a nil
 // declaration, so when the operator passes `-r ""` the persist layer
@@ -1615,32 +1653,6 @@ func TestBackfillNodeIPsSurvivesConcurrentPersist(t *testing.T) {
 // differs from SaaS, keyed <test_id>/<step>/<node or action index>/<check>.
 // A listed check that matches fails, so a fix must delete its entry.
 var nameSkipReasons = map[string]string{
-	"names/N1/db-b/reopen": labelNotSaved,
-	"names/N5/e2/reopen":   labelNotSaved,
-	"names/N5/e1/reopen":   labelNotSaved,
-	"names/N6/e2/reopen":   labelNotSaved,
-	"names/N6/e1/reopen":   labelNotSaved,
-	"names/N7/e2/reopen":   labelNotSaved,
-	"names/N7/e1/reopen":   labelNotSaved,
-	"names/N8/e2/reopen":   labelNotSaved,
-	"names/N8/e1/reopen":   labelNotSaved,
-	"names/N9a/e2/reopen":  labelNotSaved,
-	"names/N9a/e1/reopen":  labelNotSaved,
-	"names/N9b/e2/reopen":  labelNotSaved,
-	"names/N9b/e1/reopen":  labelNotSaved,
-	"names/N10/e2/reopen":  labelNotSaved,
-	"names/N10/e1/reopen":  labelNotSaved,
-	"names/N11/e2/reopen":  labelNotSaved,
-	"names/N11/e1/reopen":  labelNotSaved,
-	"names/N11b/e2/reopen": labelNotSaved,
-	"names/N11b/e1/reopen": labelNotSaved,
-	"names/N12a/e2/reopen": labelNotSaved,
-	"names/N12a/e1/reopen": labelNotSaved,
-	"names/N12b/e2/reopen": labelNotSaved,
-	"names/N12b/e1/reopen": labelNotSaved,
-	"names/N13/e2/reopen":  labelNotSaved,
-	"names/N13/e1/reopen":  labelNotSaved,
-
 	"names/N1/n63b/label":  labelSuffixOverflow,
 	"names/N2/n63b/label":  labelSuffixOverflow,
 	"names/N3/n63b/label":  labelSuffixOverflow,
@@ -1654,18 +1666,18 @@ var nameSkipReasons = map[string]string{
 	"names/N10/n63b/label": labelSuffixOverflow,
 	"names/N11/n63b/label": labelSuffixOverflow,
 
-	"names/N1/n63b/reopen":  labelNotSavedOverflow,
-	"names/N2/n63b/reopen":  labelNotSavedOverflow,
-	"names/N3/n63b/reopen":  labelNotSavedOverflow,
-	"names/N4/n63b/reopen":  labelNotSavedOverflow,
-	"names/N5/n63b/reopen":  labelNotSavedOverflow,
-	"names/N6/n63b/reopen":  labelNotSavedOverflow,
-	"names/N7/n63b/reopen":  labelNotSavedOverflow,
-	"names/N8/n63b/reopen":  labelNotSavedOverflow,
-	"names/N9a/n63b/reopen": labelNotSavedOverflow,
-	"names/N9b/n63b/reopen": labelNotSavedOverflow,
-	"names/N10/n63b/reopen": labelNotSavedOverflow,
-	"names/N11/n63b/reopen": labelNotSavedOverflow,
+	"names/N1/n63b/reopen":  labelSuffixOverflow,
+	"names/N2/n63b/reopen":  labelSuffixOverflow,
+	"names/N3/n63b/reopen":  labelSuffixOverflow,
+	"names/N4/n63b/reopen":  labelSuffixOverflow,
+	"names/N5/n63b/reopen":  labelSuffixOverflow,
+	"names/N6/n63b/reopen":  labelSuffixOverflow,
+	"names/N7/n63b/reopen":  labelSuffixOverflow,
+	"names/N8/n63b/reopen":  labelSuffixOverflow,
+	"names/N9a/n63b/reopen": labelSuffixOverflow,
+	"names/N9b/n63b/reopen": labelSuffixOverflow,
+	"names/N10/n63b/reopen": labelSuffixOverflow,
+	"names/N11/n63b/reopen": labelSuffixOverflow,
 
 	"names/N11/pdb/label":   adminNameFollowsHostname,
 	"names/N11/pdb/reopen":  adminNameFollowsHostname,
@@ -1677,24 +1689,11 @@ var nameSkipReasons = map[string]string{
 	"names/N12b/pdb/reopen": adminNameFollowsHostname,
 	"names/N13/pdb/label":   adminNameFollowsHostname,
 	"names/N13/pdb/reopen":  adminNameFollowsHostname,
-
-	"names/N7/m1/reopen":   labelNotSaved,
-	"names/N8/m1/reopen":   labelNotSaved,
-	"names/N9a/m1/reopen":  labelNotSaved,
-	"names/N9b/m1/reopen":  labelNotSaved,
-	"names/N10/m1/reopen":  labelNotSaved,
-	"names/N11/m1/reopen":  labelNotSaved,
-	"names/N11b/m1/reopen": labelNotSaved,
-	"names/N12a/m1/reopen": labelNotSaved,
-	"names/N12b/m1/reopen": labelNotSaved,
-	"names/N13/m1/reopen":  labelNotSaved,
 }
 
 const (
 	labelSuffixOverflow      = "LABEL_SUFFIX_OVERFLOW: headscale appends -N to a 63-byte label, giving a 65-byte one; SaaS cuts the label so the suffix fits in 63 bytes"
 	adminNameFollowsHostname = "ADMIN_NAME_FOLLOWS_HOSTNAME: an admin name equal to the hostname's label counts as derived from it, so a hostname change replaces it; SaaS keeps an admin name across hostname changes"
-	labelNotSaved            = "LABEL_NOT_SAVED: headscale writes a new node's row with its hostname's label before the NodeStore resolves a collision or an empty label, and saves the result only on a later change; SaaS keeps the label it gave"
-	labelNotSavedOverflow    = "LABEL_NOT_SAVED+LABEL_SUFFIX_OVERFLOW: the row keeps the unsuffixed 63-byte label, and the label the NodeStore resolves is 65 bytes; SaaS cuts the label so the suffix fits"
 )
 
 // TestNodeNameReplayCompat replays the names capture through State: joins by
