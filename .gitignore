@@ -30,6 +30,7 @@ config*.yaml
 derp.yaml
 *.hujson
 !hscontrol/policy/v2/testdata/*/*.hujson
+!hscontrol/servertest/testdata/*/*.hujson
 *.key
 /db.sqlite
 *.sqlite3
