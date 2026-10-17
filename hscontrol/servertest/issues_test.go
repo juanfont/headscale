@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"slices"
 	"testing"
 	"time"
 
@@ -1135,6 +1136,52 @@ func TestPeerRemovedAsDelta(t *testing.T) {
 
 		assertRemovedAsDelta(t, c1, nodeID2)
 	})
+}
+
+// TestDeletedNodeNotAnnouncedToHiddenPeers deletes a node another user's node
+// cannot see under the policy: only the deleted node's peers are told it is
+// gone.
+func TestDeletedNodeNotAnnouncedToHiddenPeers(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t)
+	_, err := srv.State().SetPolicy([]byte(`{
+		"acls": [
+			{"action": "accept", "src": ["alice@"], "dst": ["alice@:*"]},
+			{"action": "accept", "src": ["bob@"], "dst": ["bob@:*"]}
+		]
+	}`))
+	require.NoError(t, err)
+
+	alice := srv.CreateUser(t, "alice")
+	bob := srv.CreateUser(t, "bob")
+
+	laptop := servertest.NewClient(t, srv, "alice-laptop",
+		servertest.WithUser(alice), servertest.WithDeltaUpdates())
+	servertest.NewClient(t, srv, "alice-db", servertest.WithUser(alice))
+	other := servertest.NewClient(t, srv, "bob-node",
+		servertest.WithUser(bob), servertest.WithDeltaUpdates())
+
+	laptop.WaitForPeers(t, 1, 10*time.Second)
+	other.WaitForPeers(t, 0, 10*time.Second)
+
+	db := findNodeID(t, srv, "alice-db")
+	dbView, ok := srv.State().GetNodeByID(db)
+	require.True(t, ok)
+
+	changes, err := srv.State().DeleteNode(dbView)
+	require.NoError(t, err)
+	srv.App.Change(changes...)
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.Contains(c, laptop.DeltaRemovedPeers(), db.NodeID())
+	}, 10*time.Second, 50*time.Millisecond, "a peer of the deleted node must be told it is gone")
+
+	// bob-node's stream got the same batch; give it time to deliver.
+	assert.Never(t, func() bool {
+		return slices.Contains(other.DeltaRemovedPeers(), db.NodeID())
+	}, 2*time.Second, 50*time.Millisecond,
+		"a node the policy hid the deleted node from must not be told of it")
 }
 
 func findNodeID(tb testing.TB, srv *servertest.TestServer, hostname string) types.NodeID {

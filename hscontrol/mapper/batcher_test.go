@@ -2758,26 +2758,114 @@ func TestSSHPolicyEmptyOnWire(t *testing.T) {
 	}
 }
 
-// TestAddWorkPeersRemovedNotTreatedAsEmpty ensures the empty filter does
-// not swallow a PeersRemoved change — deletion cleanup must still run, and
-// surviving recipients must still see the removal.
-func TestAddWorkPeersRemovedNotTreatedAsEmpty(t *testing.T) {
+// TestAddWorkDeletionNotTreatedAsEmpty ensures the empty filter does not
+// swallow a deletion — its teardown must still run, and the deleted node's
+// peers must still see the removal.
+func TestAddWorkDeletionNotTreatedAsEmpty(t *testing.T) {
 	lb := setupLightweightBatcher(t, 4, 16)
 	defer lb.cleanup()
 
-	// Remove node 4.
-	removal := change.NodeRemoved(types.NodeID(4))
-	require.False(t, removal.IsEmpty(), "PeersRemoved change is not empty")
+	// Remove node 4, a peer of nodes 1 and 2 only.
+	removal := change.NodeRemoved(types.NodeID(4), 1, 2)
+	require.False(t, removal[0].IsEmpty(), "the teardown change is not empty")
 
-	lb.b.AddWork(removal)
+	lb.b.AddWork(removal...)
 
 	// Node 4 must be evicted from the batcher.
 	_, exists := lb.b.nodes.Load(types.NodeID(4))
 	require.False(t, exists, "removed node must be evicted from batcher")
 
-	// Surviving nodes must see the removal pending.
-	require.Equal(t, 3, countNodesPending(lb.b),
-		"surviving 3 nodes must have the removal pending")
+	// Only its peers have the removal pending.
+	require.Equal(t, 2, countNodesPending(lb.b),
+		"only the deleted node's 2 peers must have the removal pending")
+}
+
+// TestDeleteWhileInitialMapInFlight deletes a peer while a node's initial
+// map, which still lists it, is in flight. The node must be told the peer is
+// gone once the map is out, also when the policy refresh fails and only the
+// deletion's own removals go out.
+func TestDeleteWhileInitialMapInFlight(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		policyChange bool
+	}{
+		{"with_policy_change", true},
+		{"removal_only", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			td, cleanup := setupBatcherWithTestData(
+				t,
+				NewBatcherAndMapper,
+				1,
+				3,
+				normalBufferSize,
+			)
+			defer cleanup()
+
+			b := td.Batcher
+			n1, n2, n3 := &td.Nodes[0], &td.Nodes[1], &td.Nodes[2]
+			capVer := tailcfg.CapabilityVersion(100)
+
+			n2.start()
+			n3.start()
+
+			defer n2.cleanup()
+			defer n3.cleanup()
+
+			require.NoError(t, b.AddNode(n2.n.ID, n2.ch, capVer, nil))
+			require.NoError(t, b.AddNode(n3.n.ID, n3.ch, capVer, nil))
+
+			// Unbuffered and unread: AddNode blocks on the initial map.
+			ch1 := make(chan *tailcfg.MapResponse)
+			addErr := make(chan error, 1)
+
+			go func() { addErr <- b.AddNode(n1.n.ID, ch1, capVer, nil) }()
+
+			waitInitialMapSendParked(t)
+
+			v3, ok := td.State.GetNodeByID(n3.n.ID)
+			require.True(t, ok)
+
+			changes, err := td.State.DeleteNode(v3)
+			require.NoError(t, err)
+
+			if !tc.policyChange {
+				changes = slices.DeleteFunc(changes, func(c change.Change) bool {
+					return c.RequiresRuntimePeerComputation
+				})
+			}
+
+			b.AddWork(changes...)
+
+			// Let ticks render n1's changes while its stream waits.
+			time.Sleep(300 * time.Millisecond) //nolint:forbidigo // test coordination
+
+			initial := <-ch1
+			require.NotNil(t, initial.Node, "first frame is the initial map")
+
+			initialPeers := make([]tailcfg.NodeID, 0, len(initial.Peers))
+			for _, p := range initial.Peers {
+				initialPeers = append(initialPeers, p.ID)
+			}
+
+			require.Contains(t, initialPeers, n3.n.ID.NodeID(),
+				"the initial map predates the delete")
+
+			deadline := time.After(3 * time.Second)
+
+			for {
+				select {
+				case resp := <-ch1:
+					if slices.Contains(resp.PeersRemoved, n3.n.ID.NodeID()) {
+						require.NoError(t, <-addErr)
+						return
+					}
+				case <-deadline:
+					t.Fatal("n1 was never told that deleted n3 is gone")
+				}
+			}
+		})
+	}
 }
 
 // TestHandleNodeChangeSendsRemovalsAsDelta checks that peers missing from a
