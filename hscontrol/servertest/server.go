@@ -5,7 +5,11 @@
 package servertest
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/netip"
@@ -318,6 +322,44 @@ func (s *TestServer) CreateUser(tb testing.TB, name string) *types.User {
 	}
 
 	return u
+}
+
+// ApproveAuth registers the pending login authID to user through the v1
+// API, as `headscale auth register` does.
+func (s *TestServer) ApproveAuth(ctx context.Context, authID, user string) error {
+	apiKey, _, err := s.st.CreateAPIKey(nil)
+	if err != nil {
+		return fmt.Errorf("servertest: ApproveAuth: %w", err)
+	}
+
+	body, err := json.Marshal(map[string]string{"authId": authID, "user": user})
+	if err != nil {
+		return fmt.Errorf("servertest: ApproveAuth: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.URL+"/api/v1/auth/register", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("servertest: ApproveAuth: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Transport: &http.Transport{DialContext: s.memNet.Dial}}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("servertest: ApproveAuth: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		msg, _ := io.ReadAll(resp.Body)
+
+		return fmt.Errorf("servertest: ApproveAuth: %d: %s", resp.StatusCode, bytes.TrimSpace(msg)) //nolint:err113
+	}
+
+	return nil
 }
 
 // CreateAPIKey mints an API key string (the Bearer/Basic credential). When
