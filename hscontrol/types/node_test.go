@@ -1124,6 +1124,106 @@ func TestHasPolicyChangeSharedRouteInputs(t *testing.T) {
 	require.Zero(t, allocs, "unchanged route inputs should not derive route lists")
 }
 
+func TestNodeDerivedRoutes(t *testing.T) {
+	a := netip.MustParsePrefix("10.0.0.0/24")
+	b := netip.MustParsePrefix("10.1.0.0/24")
+	x := netip.MustParsePrefix("10.2.0.0/24")
+	exit4 := netip.MustParsePrefix("0.0.0.0/0")
+	exit6 := netip.MustParsePrefix("::/0")
+
+	for _, tt := range []struct {
+		name                                string
+		announced, approved, subnets, exits []netip.Prefix
+	}{
+		{
+			name:      "subnets follow announcement order without duplicates",
+			announced: []netip.Prefix{b, a, x, b, a, b},
+			approved:  []netip.Prefix{a, b, b},
+			subnets:   []netip.Prefix{b, a},
+		},
+		{
+			name:      "exit routes follow announcement order without duplicates",
+			announced: []netip.Prefix{exit6, exit4, exit6, exit4, a},
+			approved:  []netip.Prefix{exit4, exit6, exit4},
+			exits:     []netip.Prefix{exit6, exit4},
+		},
+		{
+			name:      "mixed routes",
+			announced: []netip.Prefix{b, exit6, x, exit6, a, b, exit4},
+			approved:  []netip.Prefix{exit4, a, exit6, b},
+			subnets:   []netip.Prefix{b, a},
+			exits:     []netip.Prefix{exit6, exit4},
+		},
+		{name: "nothing approved", announced: []netip.Prefix{b, exit6, a, exit4}},
+		{
+			name:      "empty approvals",
+			announced: []netip.Prefix{a, exit4},
+			approved:  []netip.Prefix{},
+		},
+		{name: "nothing announced", approved: []netip.Prefix{a, exit4}},
+		{
+			name:      "unannounced approvals",
+			announced: []netip.Prefix{a},
+			approved:  []netip.Prefix{b, exit4},
+		},
+		{
+			name:      "exit families differ",
+			announced: []netip.Prefix{exit4},
+			approved:  []netip.Prefix{exit6},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			announced := slices.Clone(tt.announced)
+			approved := slices.Clone(tt.approved)
+			n := Node{
+				Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: tt.announced},
+				ApprovedRoutes: tt.approved,
+			}
+
+			require.Equal(t, tt.subnets, n.SubnetRoutes())
+			require.Equal(t, tt.exits, n.ExitRoutes())
+			require.Equal(t, announced, n.AnnouncedRoutes(),
+				"announcements must remain immutable")
+			require.Equal(t, Prefixes(approved), n.ApprovedRoutes,
+				"approvals must remain immutable")
+		})
+	}
+
+	n := Node{ApprovedRoutes: []netip.Prefix{a, exit4}}
+	require.Nil(t, n.SubnetRoutes())
+	require.Nil(t, n.ExitRoutes())
+}
+
+func subnetRouter(count int) Node {
+	routes := make([]netip.Prefix, count)
+
+	ip := netip.MustParseAddr("10.0.0.0")
+	for i := range routes {
+		routes[i] = netip.PrefixFrom(ip, 32)
+		ip = ip.Next()
+	}
+
+	return Node{
+		Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: routes},
+		ApprovedRoutes: routes,
+	}
+}
+
+// IsExitNode runs per viewer and peer pair; a subnet router must answer it
+// without collecting its subnet routes.
+func TestIsExitNodeSubnetRouterAllocs(t *testing.T) {
+	n := subnetRouter(4096)
+
+	var exit bool
+
+	allocs := testing.AllocsPerRun(10, func() {
+		exit = n.IsExitNode()
+	})
+
+	require.False(t, exit)
+	require.Zero(t, allocs)
+}
+
 func TestValidateHostinfo(t *testing.T) {
 	t.Parallel()
 
