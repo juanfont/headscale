@@ -434,13 +434,13 @@ func (u *Username) CanBeAutoApprover() bool {
 }
 
 // resolveUser attempts to find a user in the provided [types.Users] slice that matches the [Username].
-// It prioritizes matching the [types.User.ProviderIdentifier], and if not found, it falls back to matching
-// the [types.User.Email] or [types.User.Name].
+// It prioritizes matching the [types.User.ProviderIdentifier], then the [types.User.Email],
+// and falls back to the [types.User.Name] only when no email matches.
 // If no matching user is found, it returns an error indicating no user matching.
 // If multiple matching users are found, it returns an error indicating multiple users matching.
 // It returns the matched [types.User] and a nil error if exactly one match is found.
 func (u *Username) resolveUser(users types.Users) (types.User, error) {
-	var potentialUsers types.Users
+	var emailMatches, nameMatches types.Users
 
 	// At parsetime, we require all usernames to contain an "@" character, if the
 	// username token does not naturally do so (like email), the user have to
@@ -454,9 +454,18 @@ func (u *Username) resolveUser(users types.Users) (types.User, error) {
 			return user, nil
 		}
 
-		if user.Email == uTrimmed || user.Name == uTrimmed {
-			potentialUsers = append(potentialUsers, user)
+		if user.Email == uTrimmed {
+			emailMatches = append(emailMatches, user)
 		}
+
+		if user.Name == uTrimmed {
+			nameMatches = append(nameMatches, user)
+		}
+	}
+
+	potentialUsers := emailMatches
+	if len(potentialUsers) == 0 {
+		potentialUsers = nameMatches
 	}
 
 	if len(potentialUsers) == 0 {
