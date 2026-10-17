@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
@@ -359,6 +360,58 @@ func TestPrimaries_HANodes(t *testing.T) {
 
 			got := f.ns.HANodes()
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestUndecidedHANodes(t *testing.T) {
+	office := mp("10.70.0.0/24")
+	lab := mp("10.80.0.0/24")
+	shared := mp("10.90.0.0/24")
+
+	tests := []struct {
+		name     string
+		haNodes  map[netip.Prefix][]types.NodeID
+		deferred []types.NodeID
+		want     []types.NodeID
+	}{
+		{
+			name: "nothing deferred",
+			haNodes: map[netip.Prefix][]types.NodeID{
+				office: {1, 2},
+				lab:    {3, 4},
+			},
+		},
+		{
+			name: "disjoint prefixes",
+			haNodes: map[netip.Prefix][]types.NodeID{
+				office: {1, 2},
+				lab:    {3, 4},
+			},
+			deferred: []types.NodeID{3},
+			want:     []types.NodeID{3, 4},
+		},
+		{
+			name: "shared router carries the deferral across",
+			haNodes: map[netip.Prefix][]types.NodeID{
+				office: {1, 2},
+				shared: {2, 5},
+				lab:    {3, 4},
+			},
+			deferred: []types.NodeID{5},
+			want:     []types.NodeID{1, 2, 5},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			deferred := xsync.NewMap[types.NodeID, struct{}]()
+			for _, id := range tt.deferred {
+				deferred.Store(id, struct{}{})
+			}
+
+			got := undecidedHANodes(tt.haNodes, deferred)
+			assert.ElementsMatch(t, tt.want, got.Slice())
 		})
 	}
 }
