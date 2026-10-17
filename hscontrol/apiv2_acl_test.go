@@ -191,15 +191,46 @@ func TestAPIv2ACLInvalidPolicyAtomicity(t *testing.T) {
 	goodETag := good.Header().Get("Etag")
 
 	// Malformed body -> 400, and the stored policy is unchanged (atomicity).
-	bad := setACL(t, api, `{ this is not valid`, "application/json")
+	const malformed = `{ this is not valid`
+
+	bad := setACL(t, api, malformed, "application/json")
 	assert.Equal(t, http.StatusBadRequest, bad.Code)
-	assert.Contains(t, bad.Body.String(), `"message"`)
+
+	var answer struct {
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(bad.Body.Bytes(), &answer))
+
+	reason := app.state.ValidatePolicy([]byte(malformed))
+	require.Error(t, reason)
+	assert.Equal(t, reason.Error(), answer.Message,
+		"the answer gives the parser's reason as it is")
+	assert.NotContains(t, answer.Message, "invalid policy")
 	assert.JSONEq(t, allowAllPolicy, storedPolicy(t, app))
 
 	// Wire-level: GET still serves the good policy + its ETag (no drift).
 	get := api.Get("/api/v2/tailnet/-/acl")
 	assert.Equal(t, goodETag, get.Header().Get("Etag"))
 	assert.JSONEq(t, allowAllPolicy, storedPolicy(t, app))
+}
+
+func TestAPIv2ACLPersistFailureKeepsLivePolicy(t *testing.T) {
+	app := createTestApp(t)
+	api := registerAPIV2(t, app)
+
+	require.Equal(t, http.StatusOK,
+		setACL(t, api, `{"acls":[]}`, "application/json").Code)
+
+	before, _ := app.state.Filter()
+
+	require.NoError(t,
+		app.state.DB().DB.Exec("ALTER TABLE policies RENAME TO policies_away").Error)
+
+	assert.Equal(t, http.StatusInternalServerError,
+		setACL(t, api, allowAllPolicy, "application/json").Code)
+
+	after, _ := app.state.Filter()
+	assert.Equal(t, before, after, "an unstored policy must not be enforced")
 }
 
 // TestAPIv2ACLValidate: validate stores nothing and answers a refused policy

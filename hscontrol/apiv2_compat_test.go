@@ -181,8 +181,6 @@ var apiv2CompatSkipReasons = map[string]string{
 
 	"policy-api/P7/0/body": hujsonFormatted,
 	"policy-api/P7/1/body": hujsonFormatted,
-
-	"policy-api/P2/0/v1-verdict": v1CheckAcceptsEmpty,
 }
 
 // apiv2CompatNotCompared lists, by key prefix, checks left out: SaaS's
@@ -220,7 +218,6 @@ const (
 	taggedAllClientAnyTag  = "TAGGED_ALL_CLIENT_ANY_TAG: SaaS lets a tagged all-scope client's token ask only for the client's tags; headscale lets it ask for any tag"
 	retagRemovesUnownedTag = "RETAG_REMOVES_UNOWNED_TAG: SaaS refuses a token's retag of a device holding a tag outside the token's grant with 400 cannot remove current tags; headscale replaces the tags"
 	sshTestHostnames       = "SSH_TEST_HOSTNAMES: headscale names the nodes behind a failing sshTests destination; SaaS names the destination as written"
-	v1CheckAcceptsEmpty    = "V1_CHECK_ACCEPTS_EMPTY: v1 policy check accepts a zero-length policy; SaaS's validate refuses it"
 )
 
 // Differences no planned change removes yet.

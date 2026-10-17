@@ -70,8 +70,8 @@ const (
 // ErrUnsupportedPolicyMode is returned for invalid policy modes. Valid modes are "file" and "db".
 var ErrUnsupportedPolicyMode = errors.New("unsupported policy mode")
 
-// ErrInvalidPolicy is returned by [State.ValidatePolicy] for a policy it
-// refuses.
+// ErrInvalidPolicy is returned by [State.UpdatePolicy] and
+// [State.ValidatePolicy] for a policy they refuse.
 var ErrInvalidPolicy = errors.New("invalid policy")
 
 // invalidPolicyError marks a refusal as [ErrInvalidPolicy] and keeps the
@@ -182,8 +182,8 @@ type State struct {
 	// polMan handles policy evaluation and management
 	polMan policy.PolicyManager
 
-	// policyMu makes loading the stored policy and installing it one step,
-	// so of two overlapping reloads the older document cannot land last.
+	// policyMu makes storing, loading and installing a policy one step, so
+	// policies land in the database in the order they are installed.
 	policyMu sync.Mutex
 
 	// authCache holds pending Web, OIDC and SSH authentication requests.
@@ -472,14 +472,23 @@ func (s *State) ReloadPolicy() ([]change.Change, error) {
 	s.policyMu.Lock()
 	defer s.policyMu.Unlock()
 
+	return s.reloadPolicyLocked()
+}
+
+// reloadPolicyLocked is [State.ReloadPolicy] for callers holding policyMu.
+func (s *State) reloadPolicyLocked() ([]change.Change, error) {
 	pol, err := hsdb.PolicyBytes(s.db.DB, s.cfg)
 	if err != nil {
 		return nil, fmt.Errorf("loading policy: %w", err)
 	}
 
-	policyChanged, err := s.polMan.SetPolicy(pol)
-	if err != nil {
-		return nil, fmt.Errorf("setting policy: %w", err)
+	// nil means no policy is configured: nothing to install.
+	var policyChanged bool
+	if pol != nil {
+		policyChanged, err = s.polMan.SetPolicy(pol)
+		if err != nil {
+			return nil, fmt.Errorf("setting policy: %w", err)
+		}
 	}
 
 	// Clear SSH check auth times when policy changes to ensure stale
@@ -1466,7 +1475,8 @@ func (s *State) NodeCanHaveTag(node types.NodeView, tag string) bool {
 	return s.polMan.NodeCanHaveTag(node, tag)
 }
 
-// SetPolicy updates the policy configuration.
+// SetPolicy installs pol without storing it. Policy writes use
+// [State.UpdatePolicy].
 func (s *State) SetPolicy(pol []byte) (bool, error) {
 	changed, err := s.polMan.SetPolicy(pol)
 	if err != nil {
@@ -1528,7 +1538,7 @@ func (s *State) SetPolicyInDB(data string) (*types.Policy, error) {
 	return s.db.SetPolicy(data)
 }
 
-// ValidatePolicy reports whether a policy write would accept pol. It
+// ValidatePolicy reports whether [State.UpdatePolicy] would accept pol. It
 // compiles pol against the current users and nodes on a throwaway policy
 // manager; the live policy is not touched.
 func (s *State) ValidatePolicy(pol []byte) error {
@@ -1559,6 +1569,33 @@ func (s *State) ValidatePolicy(pol []byte) error {
 	}
 
 	return nil
+}
+
+// UpdatePolicy validates, stores and installs pol. The live policy is only
+// ever installed from what was stored, so a refused or unstored write leaves
+// it untouched. The changes are returned alongside a reload error, as from
+// [State.ReloadPolicy].
+func (s *State) UpdatePolicy(pol []byte) (*types.Policy, []change.Change, error) {
+	err := s.ValidatePolicy(pol)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Held from store to install: on PostgreSQL a concurrent writer could
+	// otherwise commit an older row after a newer one pruned the rest.
+	s.policyMu.Lock()
+	defer s.policyMu.Unlock()
+
+	stored, err := s.db.SetPolicy(string(pol))
+	if err != nil {
+		return nil, nil, fmt.Errorf("storing policy: %w", err)
+	}
+
+	// Reload even when content is unchanged: routes manually disabled before
+	// may now qualify for auto-approval, so they must be re-evaluated.
+	cs, err := s.reloadPolicyLocked()
+
+	return stored, cs, err
 }
 
 // GetNodePrimaryRoutes returns the primary routes for a node.
