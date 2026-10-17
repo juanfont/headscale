@@ -51,7 +51,7 @@ var apiv2CompatSkipReasons = map[string]string{
 	"oauth/R3/3/status":  missingScopeNotFound,
 	"oauth/K3/0/status":  missingScopeNotFound,
 	"oauth/J2/0/status":  missingScopeNotFound,
-	"oauth/K4/0/status":  bodyBeforeScope,
+	"oauth/K4/0/status":  missingScopeNotFound,
 	"oauth/D1/0/message": missingScopeText,
 
 	"oauth/O1/0/scope":  scopeEchoAsSent,
@@ -212,7 +212,6 @@ func notCompared(prefixes []string, key string) bool {
 // Differences a planned change removes.
 const (
 	scopeEchoAsSent        = "SCOPE_ECHO_AS_SENT: SaaS echoes a token's scopes sorted and without repeats; headscale echoes the request as sent"
-	bodyBeforeScope        = "BODY_BEFORE_SCOPE: headscale validates a createKey body before the token's scope and answers 422; SaaS answers 404 for the missing scope"
 	retagRemovesUnownedTag = "RETAG_REMOVES_UNOWNED_TAG: SaaS refuses a token's retag of a device holding a tag outside the token's grant with 400 cannot remove current tags; headscale replaces the tags"
 )
 
