@@ -43,6 +43,7 @@ import (
 	"tailscale.com/types/key"
 	"tailscale.com/types/views"
 	"tailscale.com/util/dnsname"
+	"tailscale.com/util/set"
 	"tailscale.com/util/truncate"
 )
 
@@ -1671,11 +1672,15 @@ func (s *State) RoutesForPeer(
 	// that the peer is HA primary for, the viewer must see that route
 	// regardless of matcher authorization. HA secondaries need this to
 	// know which peer is primary for their shared prefix.
-	viewerSubnets := viewer.SubnetRoutes()
-	if len(viewerSubnets) > 0 {
-		for _, p := range globalPrimaries {
-			if slices.Contains(viewerSubnets, p) && !slices.Contains(reduced, p) {
-				reduced = append(reduced, p)
+	if len(globalPrimaries) > 0 {
+		viewerSubnets := set.SetOf(viewer.SubnetRoutes())
+		if len(viewerSubnets) > 0 {
+			seen := set.SetOf(reduced)
+			for _, p := range globalPrimaries {
+				if viewerSubnets.Contains(p) && !seen.Contains(p) {
+					reduced = append(reduced, p)
+					seen.Add(p)
+				}
 			}
 		}
 	}

@@ -16,15 +16,7 @@ func ReduceRoutes(
 	routes []netip.Prefix,
 	matchers []matcher.Match,
 ) []netip.Prefix {
-	var result []netip.Prefix
-
-	for _, route := range routes {
-		if node.CanAccessRoute(matchers, route) {
-			result = append(result, route)
-		}
-	}
-
-	return result
+	return node.CanAccessRoutes(matchers, routes)
 }
 
 // ApproveRoutesWithPolicy checks if the node can approve the announced routes
