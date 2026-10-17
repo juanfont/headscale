@@ -369,9 +369,11 @@ func (s *State) DERPMap() tailcfg.DERPMapView {
 	return s.derpMap.Load().View()
 }
 
-// ReloadPolicy reloads the access control policy and triggers auto-approval if changed.
-// Returns the resulting [change.Change] slice when the policy or routes changed,
-// also alongside an error once the policy is swapped.
+// ReloadPolicy reloads the access control policy.
+//
+// It approves no routes: auto-approval waits for a node's next change to
+// its announced routes or its next node key rotation, as on Tailscale SaaS,
+// so a reload cannot undo an admin's revoke.
 func (s *State) ReloadPolicy() ([]change.Change, error) {
 	s.policyMu.Lock()
 	defer s.policyMu.Unlock()
@@ -415,36 +417,13 @@ func (s *State) reloadPolicyLocked() ([]change.Change, error) {
 		s.nodeStore.RebuildPeerMaps()
 	}
 
+	if policyChanged {
+		log.Info().Msg("Policy reload completed with changes")
+	}
+
 	// Nodes whose CapMap shifted get their self refresh from
 	// [State.DrainSelfRefreshes] when these changes are dispatched.
-	//nolint:prealloc // cs starts with one element and may grow
-	cs := []change.Change{change.PolicyChange()}
-
-	// Always call autoApproveNodes during policy reload, regardless of whether
-	// the policy content has changed. This ensures that routes are re-evaluated
-	// when they might have been manually disabled but could now be auto-approved
-	// with the current policy.
-	rcs, err := s.autoApproveNodes()
-	if err != nil {
-		// The policy is already swapped and the approvals already in the
-		// NodeStore; callers publish these before handling the error.
-		return append(cs, rcs...), fmt.Errorf("auto approving nodes: %w", err)
-	}
-
-	// TODO(kradalby): These changes can probably be safely ignored.
-	// If the PolicyChange is happening, that will lead to a full update
-	// meaning that we do not need to send individual route changes.
-	cs = append(cs, rcs...)
-
-	if len(rcs) > 0 || policyChanged {
-		log.Info().
-			Bool("policy.changed", policyChanged).
-			Int("route.changes", len(rcs)).
-			Int("total.changes", len(cs)).
-			Msg("Policy reload completed with changes")
-	}
-
-	return cs, nil
+	return []change.Change{change.PolicyChange()}, nil
 }
 
 // CreateUser creates a new user and updates the policy manager.
@@ -573,8 +552,6 @@ func (s *State) ListAllUsers() ([]types.User, error) {
 
 // persistNode writes the node's database row, re-reading the
 // authoritative copy from [NodeStore], without touching the policy manager.
-// Batch callers (e.g. autoApproveNodes) use it to write many rows and then
-// trigger a single policy rebuild instead of one per node.
 func (s *State) persistNode(node types.NodeView) (types.NodeView, error) {
 	return s.persistNodeWith(node, nodeUpdateColumns, nil)
 }
@@ -1117,12 +1094,18 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (t
 	// TODO(kradalby): In principle we should call the AutoApprove logic here
 	// because even if the CLI removes an auto-approved route, it will be added
 	// back automatically.
+	return s.updateApprovedRoutes(nodeID, func(node *types.Node) {
+		node.ApprovedRoutes = routes
+	})
+}
+
+func (s *State) updateApprovedRoutes(nodeID types.NodeID, set UpdateNodeFunc) (types.NodeView, change.Change, error) {
 	prevRoutes := s.nodeStore.PrimaryRoutes()
 	prevPeers := s.nodeStore.ListPeerIDs(nodeID)
 	genBefore := s.polMan.NodesGeneration()
 
 	n, ok := s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
-		node.ApprovedRoutes = routes
+		set(node)
 		// A node with no approved routes is no longer an HA
 		// candidate; drop any stale Unhealthy bit (mirrors the
 		// legacy routes.SetRoutes(empty) auto-clear).
@@ -1418,10 +1401,8 @@ func (s *State) AutoApproveRoutes(nv types.NodeView) (change.Change, error) {
 			Strs("routes.approved.new", util.PrefixesToString(approved)).
 			Msg("Single node auto-approval detected route changes")
 
-		// Persist the auto-approved routes to database and [NodeStore] via
-		// [State.SetApprovedRoutes]. This ensures consistency between database
-		// and [NodeStore].
-		_, c, err := s.SetApprovedRoutes(nv.ID(), approved)
+		// Recompute on the current node so an older view cannot undo an admin write.
+		_, c, err := s.updateApprovedRoutes(nv.ID(), s.approveAnnouncedRoutes)
 		if err != nil {
 			log.Error().
 				EmbedObject(nv).
@@ -1435,6 +1416,10 @@ func (s *State) AutoApproveRoutes(nv types.NodeView) (change.Change, error) {
 	}
 
 	return change.Change{}, nil
+}
+
+func (s *State) approveAnnouncedRoutes(n *types.Node) {
+	n.ApprovedRoutes, _ = policy.ApproveRoutesWithPolicy(s.polMan, n.View(), n.ApprovedRoutes, n.AnnouncedRoutes())
 }
 
 // GetPolicy retrieves the current policy from the database.
@@ -3425,83 +3410,6 @@ func (s *State) PingDB(ctx context.Context) error {
 	return s.db.PingDB(ctx)
 }
 
-// autoApproveNodes mass approves routes on all nodes. It is _only_ intended for
-// use when the policy is replaced. It is not sending or reporting any changes
-// or updates as we send full updates after replacing the policy.
-// TODO(kradalby): This is kind of messy, maybe this is another +1
-// for an event bus. See example comments here.
-// autoApproveNodes automatically approves nodes based on policy rules.
-func (s *State) autoApproveNodes() ([]change.Change, error) {
-	nodes := s.ListNodes()
-
-	// Compute every node's approval first, then apply them all in a single
-	// NodeStore batch and a single policy/peer-map rebuild. One
-	// SetApprovedRoutes per node would otherwise drive an O(n) policy SetNodes
-	// and O(n^2) peer-map rebuild for each changed node, i.e. O(m*n^2) per
-	// policy reload.
-	approvedByID := make(map[types.NodeID][]netip.Prefix)
-
-	for _, nv := range nodes.All() {
-		approved, changed := policy.ApproveRoutesWithPolicy(s.polMan, nv, nv.ApprovedRoutes().AsSlice(), nv.AnnouncedRoutes())
-		if !changed {
-			continue
-		}
-
-		log.Debug().
-			Uint64(zf.NodeID, nv.ID().Uint64()).
-			Str(zf.NodeName, nv.Hostname()).
-			Strs(zf.RoutesApprovedOld, util.PrefixesToString(nv.ApprovedRoutes().AsSlice())).
-			Strs(zf.RoutesApprovedNew, util.PrefixesToString(approved)).
-			Msg("Routes auto-approved by policy")
-
-		approvedByID[nv.ID()] = approved
-	}
-
-	if len(approvedByID) == 0 {
-		return nil, nil
-	}
-
-	genBefore := s.polMan.NodesGeneration()
-
-	updates := make(map[types.NodeID]UpdateNodeFunc, len(approvedByID))
-	for id, approved := range approvedByID {
-		updates[id] = func(n *types.Node) {
-			n.ApprovedRoutes = approved
-
-			// A node with no approved routes is no longer an HA candidate;
-			// drop any stale Unhealthy bit (mirrors SetApprovedRoutes).
-			if len(n.AllApprovedRoutes()) == 0 {
-				n.Unhealthy = false
-			}
-		}
-	}
-
-	s.nodeStore.UpdateNodes(updates)
-
-	for id := range approvedByID {
-		fresh, ok := s.nodeStore.GetNode(id)
-		if !ok {
-			continue
-		}
-
-		_, err := s.persistNode(fresh)
-		if err != nil {
-			return []change.Change{s.policyChangeSince(genBefore)}, err
-		}
-	}
-
-	c, err := s.updatePolicyManagerNodes(genBefore)
-	if err != nil {
-		return []change.Change{c}, err
-	}
-
-	if c.IsEmpty() {
-		c = change.PolicyChange()
-	}
-
-	return []change.Change{c}, nil
-}
-
 // isAutoDerivedGivenName reports whether given matches what
 // dnsname.SanitizeHostname(hostname) would produce, optionally with a
 // [NodeStore] collision-bump "-N" suffix. It is used to detect whether a
@@ -3545,7 +3453,6 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 	var (
 		delta              mapRequestDelta
 		routeChange        bool
-		needsRouteApproval bool
 		autoApprovedRoutes []netip.Prefix
 		staleNodeKey       bool
 	)
@@ -3634,16 +3541,10 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 
 		hostinfoToStore := delta.hostinfoChanged || delta.derpChanged
 
-		// Calculate route approval before [NodeStore] update to avoid
-		// calling View() inside callback
-		var hasNewRoutes bool
-		if hi := req.Hostinfo; hi != nil {
-			hasNewRoutes = len(hi.RoutableIPs) > 0
-		}
-
-		needsRouteApproval = delta.hostinfoChanged &&
-			(delta.routesChanged || (hasNewRoutes && len(currentNode.ApprovedRoutes) == 0))
-		if needsRouteApproval {
+		// Approvers run over every announced route, but only when the
+		// announced set changes: any other report would re-grant a route
+		// an admin revoked.
+		if delta.routesChanged {
 			// Extract announced routes from request
 			var announcedRoutes []netip.Prefix
 			if req.Hostinfo != nil {
