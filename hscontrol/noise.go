@@ -827,7 +827,7 @@ func (ns *noiseServer) PollNetMapHandler(
 	mapRequest.Hostinfo = mapRequest.Hostinfo.Clone()
 	mapRequest.DebugFlags = nil
 
-	sess := ns.headscale.newMapSession(req.Context(), mapRequest, writer, nv.AsStruct())
+	sess := ns.headscale.newMapSession(req.Context(), mapRequest, writer, nv)
 	sess.log.Trace().Caller().Msg("a node sending a MapRequest with Noise protocol")
 
 	if !sess.isStreaming() {
