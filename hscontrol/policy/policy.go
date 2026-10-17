@@ -8,6 +8,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
+	"tailscale.com/util/set"
 )
 
 // ReduceRoutes returns a reduced list of routes for a given node that it can access.
@@ -36,11 +37,12 @@ func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView, currentApprove
 
 	// Start with ALL currently approved routes - we never remove approved routes
 	newApproved := slices.Clone(currentApproved)
+	approvedSet := set.SetOf(currentApproved)
 
 	// Then, check for new routes that can be auto-approved
 	for _, route := range announcedRoutes {
 		// Skip if already approved
-		if slices.Contains(newApproved, route) {
+		if approvedSet.Contains(route) {
 			continue
 		}
 
@@ -48,6 +50,7 @@ func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView, currentApprove
 		canApprove := pm.NodeCanApproveRoute(nv, route)
 		if canApprove {
 			newApproved = append(newApproved, route)
+			approvedSet.Add(route)
 		}
 	}
 
@@ -68,7 +71,10 @@ func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView, currentApprove
 		var added, kept []netip.Prefix
 
 		for _, route := range newApproved {
-			if !slices.Contains(sortedCurrent, route) {
+			_, exists := slices.BinarySearchFunc(
+				sortedCurrent, route, netip.Prefix.Compare,
+			)
+			if !exists {
 				added = append(added, route)
 			} else {
 				kept = append(kept, route)
