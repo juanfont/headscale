@@ -6582,3 +6582,66 @@ func TestResolveUserPrecedence(t *testing.T) {
 		}
 	}
 }
+
+func TestBareAtTokenMatchesNobody(t *testing.T) {
+	users := types.Users{
+		{ID: 1, Name: "first-private-user"},
+		{ID: 2, Name: "second-private-user"},
+	}
+
+	for count := range 3 {
+		t.Run(fmt.Sprintf("users=%d", count), func(t *testing.T) {
+			token := Username("@")
+			_, err := token.resolveUser(users[:count])
+			require.ErrorIs(t, err, ErrUserNotFound)
+
+			for _, user := range users {
+				require.NotContains(t, err.Error(), user.Name)
+			}
+
+			pm, err := NewPolicyManager([]byte(`{
+				"grants": [{"src":["@"], "dst":["*"], "ip":["*"]}]
+			}`), users[:count], types.Nodes{}.ViewSlice())
+			require.NoError(t, err, "stored policies with a bare @ must still load")
+
+			filter, _ := pm.Filter()
+			require.Empty(t, filter)
+		})
+	}
+}
+
+func TestSetPolicyBareAtToken(t *testing.T) {
+	users := types.Users{
+		{ID: 1, Name: "first-private-user"},
+		{ID: 2, Name: "second-private-user"},
+	}
+
+	nodes := types.Nodes{node("first-node", "100.64.0.1", "fd7a:115c:a1e0::1", users[0])}
+	nodes[0].ID = 1
+
+	const allowAll = `"acls": [{"action":"accept", "src":["*"], "dst":["*:*"]}]`
+
+	for _, count := range []int{1, 2} {
+		for _, tt := range []struct {
+			name string
+			src  string
+			dst  string
+		}{
+			{name: "source", src: "@", dst: "100.64.0.1:22"},
+			{name: "destination", src: "100.64.0.1", dst: "@:22"},
+		} {
+			t.Run(fmt.Sprintf("%s/users=%d", tt.name, count), func(t *testing.T) {
+				pm, err := NewPolicyManager([]byte(`{`+allowAll+`}`), users[:count], nodes.ViewSlice())
+				require.NoError(t, err)
+
+				candidate := fmt.Sprintf(`{%s, "tests":[{"src":%q, "accept":[%q]}]}`, allowAll, tt.src, tt.dst)
+				_, err = pm.SetPolicy([]byte(candidate))
+				require.ErrorIs(t, err, errPolicyTestsFailed)
+
+				for _, user := range users {
+					require.NotContains(t, err.Error(), user.Name)
+				}
+			})
+		}
+	}
+}
