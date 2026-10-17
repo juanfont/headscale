@@ -519,6 +519,13 @@ func (g *Group) resolve(p *Policy, users types.Users, nodes views.Slice[types.No
 		errs []error
 	)
 
+	// A policy compiled through [Policy.withResolvedGroups] has already
+	// resolved every group once; answer from that instead of walking
+	// users and nodes again for each rule that names the group.
+	if r, ok := p.resolvedGroups[*g]; ok {
+		return r.ips, r.err
+	}
+
 	for _, user := range p.Groups[*g] {
 		uips, err := user.resolve(nil, users, nodes)
 		if err != nil {
@@ -1958,6 +1965,11 @@ type Policy struct {
 	// callers using it should panic if not
 	validated bool `json:"-"`
 
+	// resolvedGroups is only set on the copy returned by
+	// [Policy.withResolvedGroups]; a parsed policy never carries it,
+	// as the policy is hashed for change detection.
+	resolvedGroups map[Group]resolvedGroup `json:"-"`
+
 	Groups              Groups             `json:"groups,omitempty"`
 	Hosts               Hosts              `json:"hosts,omitempty"`
 	TagOwners           TagOwners          `json:"tagOwners,omitempty"`
@@ -2000,6 +2012,41 @@ func (pol *Policy) withNodesByTag(nodes views.Slice[types.NodeView]) *Policy {
 
 // MarshalJSON is deliberately not implemented for [Policy].
 // We use the default JSON marshalling behavior provided by the Go runtime.
+
+// resolvedGroup is what [Group.resolve] returns for one group.
+type resolvedGroup struct {
+	ips *netipx.IPSet
+	err error
+}
+
+// withResolvedGroups returns a shallow copy of pol on which every group
+// is already resolved against users and nodes, so that [Group.resolve]
+// is a map lookup. Resolving a group walks users and nodes once per
+// member, and a group is typically named by many rules; resolving it per
+// mention makes compilation quadratic in the policy size. The copy is
+// only valid for the users and nodes it was built from, and must not be
+// hashed in place of pol.
+func (pol *Policy) withResolvedGroups(
+	users types.Users,
+	nodes views.Slice[types.NodeView],
+) *Policy {
+	if pol == nil || len(pol.Groups) == 0 {
+		return pol
+	}
+
+	cp := *pol
+	cp.resolvedGroups = nil
+
+	resolved := make(map[Group]resolvedGroup, len(pol.Groups))
+	for g := range pol.Groups {
+		ips, err := g.resolve(&cp, users, nodes)
+		resolved[g] = resolvedGroup{ips: ips, err: err}
+	}
+
+	cp.resolvedGroups = resolved
+
+	return &cp
+}
 
 var (
 	// TODO(kradalby): Add these checks for tagOwners and autoApprovers.

@@ -40,6 +40,12 @@ type PolicyManager struct {
 	// nodesByID indexes nodes; see [PolicyManager.cacheableLocked].
 	nodesByID map[types.NodeID]types.NodeView
 
+	// resolvedPol is pol with its tags indexed and its groups resolved
+	// against users and nodes, see [Policy.withNodesByTag] and
+	// [Policy.withResolvedGroups]. Readers that resolve aliases on demand
+	// go through it; pol itself is what is hashed.
+	resolvedPol *Policy
+
 	filterHash deephash.Sum
 	filter     []tailcfg.FilterRule
 	matchers   []matcher.Match
@@ -63,6 +69,15 @@ type PolicyManager struct {
 
 	// Lazy map of SSH policies
 	sshPolicyMap *xsync.Map[types.NodeID, *tailcfg.SSHPolicy]
+
+	// sshRules are the SSH rules with sources and destinations
+	// pre-resolved, shared by every node's policy in sshPolicyMap so
+	// the principal lists exist once rather than once per rule and
+	// node. They are reset to nil wherever sshPolicyMap is cleared
+	// and filled by the first SSHPolicy call after that; sshRulesMu
+	// serialises that fill between readers of mu.
+	sshRulesMu sync.Mutex
+	sshRules   []compiledSSHRule
 
 	// compiledGrants are the grants with sources pre-resolved.
 	// The single source of truth for filter compilation. Both
@@ -246,8 +261,10 @@ func NewPolicyManager(b []byte, users []types.User, nodes views.Slice[types.Node
 // pm is written, so a caller that restores its own input on error leaves pm
 // as it was, and a retry with the same input recompiles.
 func (pm *PolicyManager) updateLocked() (bool, error) {
-	// One tag index serves every resolution in this compile.
-	pol := pm.pol.withNodesByTag(pm.nodes)
+	// One tag index and one resolution of every group serve this whole
+	// compile; each step below would otherwise resolve them again for
+	// every rule naming them.
+	pol := pm.pol.withNodesByTag(pm.nodes).withResolvedGroups(pm.users, pm.nodes)
 
 	// Compile all grants once. Both global and per-node filter
 	// rules are derived from these compiled grants.
@@ -288,6 +305,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 		}
 	}
 
+	pm.resolvedPol = pol
 	pm.compiledGrants = grants
 	pm.userNodeIdx = buildUserNodeIndex(pm.nodes)
 	pm.needsPerNodeFilter = hasPerNodeGrants(pm.compiledGrants)
@@ -394,6 +412,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 		// policies for nodes that have changed. Particularly if the only difference is
 		// that nodes has been added or removed.
 		pm.sshPolicyMap.Clear()
+		pm.sshRules = nil
 		pm.filterRulesMap.Clear()
 		pm.matchersForNodeMap.Clear()
 	}
@@ -468,16 +487,38 @@ func (pm *PolicyManager) SSHPolicy(baseURL string, node types.NodeView) (*tailcf
 		return sshPol, nil
 	}
 
-	sshPol, err := pm.pol.compileSSHPolicy(baseURL, pm.users, node, pm.nodes)
+	rules, err := pm.sshRulesLocked(baseURL)
 	if err != nil {
 		return nil, fmt.Errorf("compiling SSH policy: %w", err)
 	}
+
+	sshPol := sshPolicyForNode(rules, node)
 
 	if pm.cacheableLocked(node) {
 		pm.sshPolicyMap.Store(node.ID(), sshPol)
 	}
 
 	return sshPol, nil
+}
+
+// sshRulesLocked returns the compiled SSH rules, compiling them on first
+// access. It must be called with pm.mu held, for reading or writing;
+// writers reset pm.sshRules directly. The rules keep the baseURL of the
+// call that compiled them; [state.State] always passes the server URL.
+func (pm *PolicyManager) sshRulesLocked(baseURL string) ([]compiledSSHRule, error) {
+	pm.sshRulesMu.Lock()
+	defer pm.sshRulesMu.Unlock()
+
+	if pm.sshRules == nil {
+		rules, err := pm.resolvedPol.compileSSHRules(baseURL, pm.users, pm.nodes)
+		if err != nil {
+			return nil, err
+		}
+
+		pm.sshRules = rules
+	}
+
+	return pm.sshRules, nil
 }
 
 // SSHCheckParams resolves the SSH check period for src logging in to dst
@@ -529,7 +570,7 @@ func (pm *PolicyManager) SSHCheckParams(
 		}
 
 		// Resolve sources and check if src node matches.
-		srcIPs, err := rule.Sources.Resolve(pm.pol, pm.users, pm.nodes)
+		srcIPs, err := rule.Sources.Resolve(pm.resolvedPol, pm.users, pm.nodes)
 		if err != nil || srcIPs == nil {
 			continue
 		}
@@ -556,7 +597,7 @@ func (pm *PolicyManager) SSHCheckParams(
 
 			hasOtherDests = true
 
-			dstIPs, err := dst.Resolve(pm.pol, pm.users, pm.nodes)
+			dstIPs, err := dst.Resolve(pm.resolvedPol, pm.users, pm.nodes)
 			if err != nil || dstIPs == nil {
 				continue
 			}
@@ -989,6 +1030,7 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, bool, error) {
 	// the self sources are outside the filter hash, so updateLocked can
 	// report no change while per-node results moved.
 	pm.sshPolicyMap.Clear()
+	pm.sshRules = nil
 	pm.filterRulesMap.Clear()
 	pm.matchersForNodeMap.Clear()
 
@@ -1071,6 +1113,7 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, erro
 		if !needsUpdate {
 			// This ensures fresh filter rules are generated for all nodes
 			pm.sshPolicyMap.Clear()
+			pm.sshRules = nil
 			pm.filterRulesMap.Clear()
 			pm.matchersForNodeMap.Clear()
 		}
@@ -1477,7 +1520,7 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 		resolved[i] = true
 
 		for _, src := range grants[i].Sources {
-			ips, err := src.Resolve(pm.pol, pm.users, pm.nodes)
+			ips, err := src.Resolve(pm.resolvedPol, pm.users, pm.nodes)
 			if err != nil {
 				continue
 			}
@@ -1491,7 +1534,7 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 
 		if viewerMatchesGrant[i] {
 			resolvedDstPrefixes[i], grantHasAutoGroupInternet[i] = resolveViaDestinations(
-				pm.pol, pm.users, pm.nodes, grants[i].Destinations,
+				pm.resolvedPol, pm.users, pm.nodes, grants[i].Destinations,
 			)
 		}
 
