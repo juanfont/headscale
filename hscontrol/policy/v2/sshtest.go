@@ -5,7 +5,6 @@ import (
 	"maps"
 	"net/netip"
 	"slices"
-	"strings"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"go4.org/netipx"
@@ -43,53 +42,63 @@ type SSHPolicyTestResults struct {
 	Results   []SSHPolicyTestResult `json:"results"`
 }
 
-// Errors renders the per-test failure breakdown joined by newlines.
+// Errors renders the per-test failure breakdown joined by newlines,
+// bounded by [testFailures].
 func (r SSHPolicyTestResults) Errors() string {
 	if r.AllPassed {
 		return ""
 	}
 
-	var lines []string
+	var failures testFailures
 
 	for _, res := range r.Results {
 		if res.Passed {
 			continue
 		}
 
+		src := clipTestLabel(res.Src)
+
 		for _, e := range res.Errors {
-			lines = append(lines, fmt.Sprintf("%s: %s", res.Src, e))
+			failures.addf("%s: %s", src, clipTestLabel(e))
 		}
 
 		for _, user := range sortedUsers(res.AcceptFail) {
 			for _, dst := range res.AcceptFail[user] {
-				lines = append(lines, fmt.Sprintf(
+				failures.addf(
 					"%s/%s -> %s: expected ALLOWED, got DENIED",
-					res.Src, displayUser(user), dst,
-				))
+					src, clipTestLabel(displayUser(user)), clipTestLabel(dst),
+				)
 			}
 		}
 
 		for _, user := range sortedUsers(res.DenyFail) {
 			for _, dst := range res.DenyFail[user] {
-				lines = append(lines, fmt.Sprintf(
+				failures.addf(
 					"%s/%s -> %s: expected DENIED, got ALLOWED",
-					res.Src, displayUser(user), dst,
-				))
+					src, clipTestLabel(displayUser(user)), clipTestLabel(dst),
+				)
 			}
 		}
 
 		for _, user := range sortedUsers(res.CheckFail) {
 			for _, dst := range res.CheckFail[user] {
-				lines = append(lines, fmt.Sprintf(
+				// The reason scans AcceptOK; skip it for lines that
+				// are only counted.
+				var reason string
+				if !failures.full() {
+					reason = checkFailReason(res, user, dst)
+				}
+
+				failures.addf(
 					"%s/%s -> %s: expected ALLOWED via check, got %s",
-					res.Src, displayUser(user), dst,
-					checkFailReason(res, user, dst),
-				))
+					src, clipTestLabel(displayUser(user)), clipTestLabel(dst),
+					reason,
+				)
 			}
 		}
 	}
 
-	return strings.Join(lines, "\n")
+	return failures.String()
 }
 
 func sortedUsers(m map[string][]string) []string {
