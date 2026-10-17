@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/assets"
@@ -305,14 +304,9 @@ func NewAuthProviderWeb(serverURL string) *AuthProviderWeb {
 }
 
 // authPathURL builds an auth-flow URL of the form
-// "<serverURL>/<kind>/<id>", trimming a trailing slash from serverURL.
+// "<serverURL>/<kind>/<id>".
 func authPathURL(serverURL, kind string, authID types.AuthID) string {
-	return fmt.Sprintf(
-		"%s/%s/%s",
-		strings.TrimSuffix(serverURL, "/"),
-		kind,
-		authID.String(),
-	)
+	return fmt.Sprintf("%s/%s/%s", serverURL, kind, authID.String())
 }
 
 func (a *AuthProviderWeb) RegisterURL(authID types.AuthID) string {
