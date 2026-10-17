@@ -22,6 +22,7 @@ import (
 	"tailscale.com/types/key"
 	"tailscale.com/types/views"
 	"tailscale.com/util/dnsname"
+	"tailscale.com/util/set"
 )
 
 var (
@@ -341,15 +342,7 @@ func (node *Node) Prefixes() []netip.Prefix {
 // viewer uses an exit node; excluded from [Node.CanAccessRoute] which only
 // handles non-exit routing.
 func (node *Node) ExitRoutes() []netip.Prefix {
-	var routes []netip.Prefix
-
-	for _, route := range node.AnnouncedRoutes() {
-		if tsaddr.IsExitRoute(route) && slices.Contains(node.ApprovedRoutes, route) {
-			routes = append(routes, route)
-		}
-	}
-
-	return routes
+	return node.approvedRoutes(true)
 }
 
 // IsExitNode reports whether the node has any approved exit routes.
@@ -579,15 +572,34 @@ func (node *Node) AnnouncedRoutes() []netip.Prefix {
 // responses that need the routes actively served by the node must
 // populate SubnetRoutes from the primary-route election instead.
 func (node *Node) SubnetRoutes() []netip.Prefix {
+	return node.approvedRoutes(false)
+}
+
+func (node *Node) approvedRoutes(exit bool) []netip.Prefix {
+	// Only the requested kind goes in the set, so finding the exit routes of
+	// a large subnet router stays cheap.
+	var approved set.Set[netip.Prefix]
+
+	for _, route := range node.ApprovedRoutes {
+		if tsaddr.IsExitRoute(route) == exit {
+			if approved == nil {
+				approved = make(set.Set[netip.Prefix])
+			}
+
+			approved.Add(route)
+		}
+	}
+
+	if len(approved) == 0 {
+		return nil
+	}
+
 	var routes []netip.Prefix
 
 	for _, route := range node.AnnouncedRoutes() {
-		if tsaddr.IsExitRoute(route) {
-			continue
-		}
-
-		if slices.Contains(node.ApprovedRoutes, route) {
+		if approved.Contains(route) {
 			routes = append(routes, route)
+			approved.Delete(route)
 		}
 	}
 
