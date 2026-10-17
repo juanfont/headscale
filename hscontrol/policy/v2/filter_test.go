@@ -4260,3 +4260,26 @@ func TestDestinationsToNetPortRange_AutogroupInternet(t *testing.T) {
 		})
 	}
 }
+
+// TestACLSourcesResolvedOnce pins that the grants an ACL is split into, one
+// per destination, share the resolved sources instead of each holding a copy.
+func TestACLSourcesResolvedOnce(t *testing.T) {
+	t.Parallel()
+
+	pol, err := unmarshalPolicy([]byte(`{"acls":[{"action":"accept",
+		"src":["10.0.0.1","10.0.1.1","10.0.2.1"],
+		"dst":["100.64.0.1:80","100.64.0.2:443","100.64.0.3:22"]}]}`))
+	require.NoError(t, err)
+
+	grants := pol.compileGrants(nil, types.Nodes{}.ViewSlice())
+	require.Len(t, grants, 3)
+
+	for _, cg := range grants {
+		require.Equal(t, []string{"10.0.0.1", "10.0.1.1", "10.0.2.1"}, cg.srcIPStrings)
+		require.Same(t, &grants[0].srcIPStrings[0], &cg.srcIPStrings[0])
+	}
+
+	rules := globalFilterRules(grants)
+	require.Len(t, rules, 1)
+	require.Len(t, rules[0].DstPorts, 3)
+}
