@@ -428,9 +428,9 @@ func convertCapturePolicy(t *testing.T, c *testcapture.Capture) []byte {
 
 // convertPolicyEmails replaces each SaaS email in policy with the "<name>@"
 // form that resolves to the users [createCaptureUsers] creates. Fails the
-// test if none of the known SaaS emails are present: that would mean the
-// capture was regenerated with a new identity and captureUserNames needs
-// updating.
+// test if the policy names a user but none of the known SaaS emails: that
+// would mean the capture was regenerated with a new identity and
+// captureUserNames needs updating.
 func convertPolicyEmails(t *testing.T, testID, policy string) []byte {
 	t.Helper()
 
@@ -447,7 +447,7 @@ func convertPolicyEmails(t *testing.T, testID, policy string) []byte {
 
 	require.True(
 		t,
-		substituted,
+		substituted || !strings.Contains(s, "@"),
 		"%s: no known SaaS email found in policy; update captureUserNames",
 		testID,
 	)
