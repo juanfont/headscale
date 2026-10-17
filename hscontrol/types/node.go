@@ -1198,31 +1198,6 @@ func (nv NodeView) IPsAsString() []string {
 	return nv.ж.IPsAsString()
 }
 
-// HasNetworkChanges checks if the node has network-related changes.
-// Returns true if IPs, announced routes, or approved routes changed.
-// This is primarily used for policy cache invalidation. Route slices
-// are compared order-insensitively since clients may re-advertise the
-// same routes in a different order.
-func (nv NodeView) HasNetworkChanges(other NodeView) bool {
-	if !slices.Equal(nv.IPs(), other.IPs()) {
-		return true
-	}
-
-	if !equalPrefixesUnordered(nv.AnnouncedRoutes(), other.AnnouncedRoutes()) {
-		return true
-	}
-
-	if !equalPrefixesUnordered(nv.SubnetRoutes(), other.SubnetRoutes()) {
-		return true
-	}
-
-	if !equalPrefixesUnordered(nv.ExitRoutes(), other.ExitRoutes()) {
-		return true
-	}
-
-	return false
-}
-
 // equalPrefixesUnordered reports whether a and b contain the same
 // prefixes, order-independent. Inputs are cloned before sorting so
 // callers' slices are not mutated.
@@ -1245,6 +1220,13 @@ func equalUnordered[E comparable](a, b []E, cmp func(E, E) int) bool {
 	slices.SortFunc(bc, cmp)
 
 	return slices.Equal(ac, bc)
+}
+
+// Unchanged snapshots share immutable slices, so pointer equality avoids a scan.
+func sameSlice[E comparable](a, b []E) bool {
+	aView, bView := views.SliceOf(a), views.SliceOf(b)
+
+	return aView.MapKey() == bView.MapKey() || views.SliceEqual(aView, bView)
 }
 
 // HasPolicyChange reports whether the node has changes that affect
@@ -1270,6 +1252,11 @@ func (nv NodeView) HasPolicyChange(other NodeView) bool {
 
 	if !slices.Equal(nv.IPs(), other.IPs()) {
 		return true
+	}
+
+	if sameSlice(nv.AnnouncedRoutes(), other.AnnouncedRoutes()) &&
+		sameSlice(nv.ж.ApprovedRoutes, other.ж.ApprovedRoutes) {
+		return false
 	}
 
 	if !equalPrefixesUnordered(nv.SubnetRoutes(), other.SubnetRoutes()) {

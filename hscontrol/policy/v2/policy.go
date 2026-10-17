@@ -1182,7 +1182,7 @@ func (pm *PolicyManager) NodesGeneration() uint64 {
 func (pm *PolicyManager) cacheableLocked(node types.NodeView) bool {
 	own, ok := pm.nodesByID[node.ID()]
 
-	return ok && !node.HasPolicyChange(own) && !node.HasNetworkChanges(own)
+	return ok && !node.HasPolicyChange(own)
 }
 
 // nodeIDViewMap indexes a slice of node views by node ID. On duplicate IDs the
@@ -1210,14 +1210,6 @@ func (pm *PolicyManager) nodesHavePolicyAffectingChanges(newNodes views.Slice[ty
 		}
 
 		if newNode.HasPolicyChange(oldNode) {
-			return true
-		}
-
-		// Via grants and autogroup:self compile filter rules per-node
-		// that depend on the node's route state (SubnetRoutes, ExitRoutes).
-		// Route changes are policy-affecting in this context because they
-		// alter which filter rules get generated for the via-designated node.
-		if pm.needsPerNodeFilter && newNode.HasNetworkChanges(oldNode) {
 			return true
 		}
 	}
@@ -2005,7 +1997,7 @@ func (pm *PolicyManager) invalidateGlobalPolicyCache(newNodes views.Slice[types.
 			continue
 		}
 
-		if newNode.HasNetworkChanges(oldNode) {
+		if newNode.HasPolicyChange(oldNode) {
 			pm.filterRulesMap.Delete(nodeID)
 			pm.matchersForNodeMap.Delete(nodeID)
 		}
