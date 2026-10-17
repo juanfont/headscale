@@ -3,6 +3,7 @@ package apiv2
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -429,6 +430,15 @@ func createOAuthClient(ctx context.Context, b Backend, body CreateKeyRequest) (*
 		}
 
 		tokenTags, _ := principalTags(ctx)
+
+		// An untagged "all" client may mint tokens for any tag (narrowTags), so a
+		// tag-limited token would escape its tags one client away.
+		if len(tokenTags) > 0 && len(body.Tags) == 0 &&
+			slices.Contains(body.Scopes, string(scope.All)) {
+			return nil, huma.Error403Forbidden(
+				"client may not be granted scope all without tags by a tagged token",
+			)
+		}
 
 		for _, tag := range body.Tags {
 			if !b.State.TagExists(tag) {
