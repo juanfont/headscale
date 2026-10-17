@@ -285,7 +285,6 @@ type GormConfig struct {
 	SlowThreshold         time.Duration
 	SkipErrRecordNotFound bool
 	ParameterizedQueries  bool
-	PrepareStmt           bool
 }
 
 type DatabaseConfig struct {
@@ -759,6 +758,10 @@ func validateServerConfigInto(v *configValidator) {
 
 	// Removed: oidc.expiry -> node.expiry
 	depr.fatalIfSet("oidc.expiry", "node.expiry")
+
+	// Ignored: database.gorm.prepare_stmt. A warning, not a fatal, so configs
+	// that shipped with it set still start.
+	depr.warn("database.gorm.prepare_stmt")
 
 	// OIDC is activated by setting oidc.issuer (see app.go), not by a
 	// dedicated oidc.enabled key. Gate validation on the real activation
@@ -1237,7 +1240,6 @@ func databaseConfig() DatabaseConfig {
 	skipErrRecordNotFound := viper.GetBool("database.gorm.skip_err_record_not_found")
 	slowThreshold := time.Duration(viper.GetInt64("database.gorm.slow_threshold")) * time.Millisecond
 	parameterizedQueries := viper.GetBool("database.gorm.parameterized_queries")
-	prepareStmt := viper.GetBool("database.gorm.prepare_stmt")
 
 	switch type_ {
 	case DatabaseSqlite, DatabasePostgres:
@@ -1254,7 +1256,6 @@ func databaseConfig() DatabaseConfig {
 			SkipErrRecordNotFound: skipErrRecordNotFound,
 			SlowThreshold:         slowThreshold,
 			ParameterizedQueries:  parameterizedQueries,
-			PrepareStmt:           prepareStmt,
 		},
 		Sqlite: SqliteConfig{
 			Path: util.AbsolutePathFromConfigPath(
@@ -1955,8 +1956,6 @@ func (d *deprecator) warnNoAlias(newKey, oldKey string) {
 
 // warn records a non-blocking warning when oldKey is set, with no
 // replacement to point at.
-//
-//nolint:unused
 func (d *deprecator) warn(oldKey string) {
 	if viper.IsSet(oldKey) {
 		d.addWarn(deprecation{OldKey: oldKey})
@@ -1977,7 +1976,7 @@ func (d *deprecator) Apply(v *configValidator) {
 			continue
 		}
 
-		log.Warn().Msgf("configuration key %q is deprecated", w.OldKey)
+		log.Warn().Msgf("configuration key %q is ignored", w.OldKey)
 	}
 
 	for _, f := range d.fatals {

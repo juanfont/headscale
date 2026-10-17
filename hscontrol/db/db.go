@@ -439,11 +439,11 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 			return nil, fmt.Errorf("building sqlite connection URL: %w", err)
 		}
 
+		// No PrepareStmt: its cache can wait on the one connection a transaction holds.
 		db, err := gorm.Open(
 			sqlite.Open(connectionURL),
 			&gorm.Config{
-				PrepareStmt: cfg.Gorm.PrepareStmt,
-				Logger:      dbLogger,
+				Logger: dbLogger,
 			},
 		)
 		if err != nil {
