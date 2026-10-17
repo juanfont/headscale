@@ -209,9 +209,13 @@ func (i *IPAllocator) next(prev netip.Addr, prefix *netip.Prefix) (*netip.Addr, 
 	// starting point at random and then scans deterministically: this keeps
 	// the loop finite, so an exhausted prefix returns ErrCouldNotAllocateIP
 	// instead of re-drawing in-prefix addresses forever under i.mu.
+	if !prefix.Contains(ip) {
+		ip = prefix.Masked().Addr()
+	}
+
 	start := ip
 	for {
-		if prefix.Contains(ip) && !set.Contains(ip) && !isTailscaleReservedIP(ip) {
+		if !set.Contains(ip) && !isTailscaleReservedIP(ip) {
 			i.usedIPs.Add(ip)
 
 			return &ip, nil
@@ -219,24 +223,13 @@ func (i *IPAllocator) next(prev netip.Addr, prefix *netip.Prefix) (*netip.Addr, 
 
 		ip = ip.Next()
 
-		switch i.strategy {
-		case types.IPAllocationStrategySequential:
-			// Sequential allocation never wraps: walking past the end of
-			// the prefix means the pool is exhausted.
-			if !prefix.Contains(ip) {
-				return nil, ErrCouldNotAllocateIP
-			}
-		case types.IPAllocationStrategyRandom:
-			// Random allocation wraps within the prefix so every address is
-			// examined exactly once; returning to the start means the prefix
-			// is exhausted.
-			if !prefix.Contains(ip) {
-				ip = prefix.Masked().Addr()
-			}
+		// Wrap so addresses freed behind the cursor can be reused.
+		if !prefix.Contains(ip) {
+			ip = prefix.Masked().Addr()
+		}
 
-			if ip == start {
-				return nil, ErrCouldNotAllocateIP
-			}
+		if ip == start {
+			return nil, ErrCouldNotAllocateIP
 		}
 	}
 }
