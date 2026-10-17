@@ -2,7 +2,9 @@ package v2
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/netip"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -4282,4 +4284,95 @@ func TestACLSourcesResolvedOnce(t *testing.T) {
 	rules := globalFilterRules(grants)
 	require.Len(t, rules, 1)
 	require.Len(t, rules[0].DstPorts, 3)
+}
+
+// TestMergeFilterRulesSharedSrcIPs pins that recognising a shared SrcIPs
+// slice merges exactly the rules that comparing its content would.
+func TestMergeFilterRulesSharedSrcIPs(t *testing.T) {
+	t.Parallel()
+
+	shared := []string{"100.64.0.1", "100.64.0.2"}
+	rule := func(srcIPs []string, proto int, port uint16) tailcfg.FilterRule {
+		return tailcfg.FilterRule{
+			SrcIPs: srcIPs,
+			DstPorts: []tailcfg.NetPortRange{
+				{IP: "100.64.0.3", Ports: tailcfg.PortRange{First: port, Last: port}},
+			},
+			IPProto: []int{proto},
+		}
+	}
+
+	got := mergeFilterRules([]tailcfg.FilterRule{
+		rule(shared, ProtocolTCP, 1),
+		rule(shared, ProtocolUDP, 2),
+		rule(shared[:1], ProtocolTCP, 3),
+		rule(shared, ProtocolTCP, 4),
+		rule(slices.Clone(shared), ProtocolTCP, 5),
+		rule(shared, ProtocolUDP, 6),
+	})
+
+	want := []tailcfg.FilterRule{
+		rule(shared, ProtocolTCP, 1),
+		rule(shared, ProtocolUDP, 2),
+		rule(shared[:1], ProtocolTCP, 3),
+	}
+	want[0].DstPorts = append(
+		want[0].DstPorts, rule(nil, 0, 4).DstPorts[0], rule(nil, 0, 5).DstPorts[0],
+	)
+	want[1].DstPorts = append(want[1].DstPorts, rule(nil, 0, 6).DstPorts[0])
+
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("mergeFilterRules() mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestMergeFilterRulesKeysSharedSrcIPsOnce bounds what merging the rules of
+// one wide ACL allocates: their shared SrcIPs are keyed once, not once per
+// rule. It reads the heap counters, so it does not run in parallel.
+func TestMergeFilterRulesKeysSharedSrcIPsOnce(t *testing.T) {
+	const numRules = 100
+
+	rulesSharing := func(numSrcs int) []tailcfg.FilterRule {
+		srcIPs := make([]string, numSrcs)
+		for i := range srcIPs {
+			srcIPs[i] = fmt.Sprintf("100.64.%d.%d", i/256, i%256)
+		}
+
+		rules := make([]tailcfg.FilterRule, numRules)
+		for i := range rules {
+			rules[i] = tailcfg.FilterRule{
+				SrcIPs: srcIPs,
+				DstPorts: []tailcfg.NetPortRange{
+					{IP: "100.100.0.1", Ports: tailcfg.PortRangeAny},
+				},
+				IPProto: []int{ProtocolTCP},
+			}
+		}
+
+		return rules
+	}
+
+	bytesPerMerge := func(rules []tailcfg.FilterRule) int64 {
+		const runs = 10
+
+		var before, after runtime.MemStats
+
+		runtime.ReadMemStats(&before)
+
+		for range runs {
+			mergeFilterRules(rules)
+		}
+
+		runtime.ReadMemStats(&after)
+
+		return int64(after.TotalAlloc-before.TotalAlloc) / runs //nolint:gosec
+	}
+
+	wide := rulesSharing(1024)
+	keyBytes := int64(len(filterRuleKey(wide[0])))
+
+	// Only the key, built once, may grow with the sources.
+	extra := bytesPerMerge(wide) - bytesPerMerge(rulesSharing(1))
+	assert.Less(t, extra, 8*keyBytes,
+		"merging %d rules that share %d sources", numRules, len(wide[0].SrcIPs))
 }
