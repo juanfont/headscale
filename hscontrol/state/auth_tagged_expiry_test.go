@@ -2714,6 +2714,154 @@ func TestPAKReregisterRollbackKeepsConcurrentWrites(t *testing.T) {
 	}
 }
 
+func TestSingleUseKeyPublishesOnlyOneRegistration(t *testing.T) {
+	s := newRetagTestState(t)
+	user := s.CreateUserForTest("single-use-user")
+	original, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+
+	const contenders = 4
+
+	nodes := make([]pakReregCase, 0, contenders)
+	for range contenders {
+		nodes = append(nodes, registerForPAKRereg(t, s, original))
+	}
+
+	shared, err := s.CreatePreAuthKey(nil, false, false, nil, []string{"tag:prod"})
+	require.NoError(t, err)
+
+	s.persistMu.Lock()
+	unblock := sync.OnceFunc(s.persistMu.Unlock)
+
+	var wg sync.WaitGroup
+
+	defer func() { unblock(); wg.Wait() }()
+
+	results := make(chan error, contenders)
+	start := make(chan struct{})
+
+	for _, c := range nodes {
+		req := c.regReq
+		req.Auth = &tailcfg.RegisterResponseAuth{AuthKey: shared.Key}
+
+		wg.Go(func() {
+			<-start
+
+			_, _, err := s.HandleNodeFromPreAuthKey(req, c.machineKey)
+			results <- err
+		})
+	}
+
+	close(start)
+
+	maxTagged := 0
+	sample := func() {
+		tagged := 0
+
+		for _, n := range s.ListNodes().All() {
+			if slices.Contains(n.Tags().AsSlice(), "tag:prod") {
+				tagged++
+			}
+		}
+
+		maxTagged = max(maxTagged, tagged)
+	}
+	// Hold persistence until every contender has either published its write
+	// or queued behind the key's first use, making transient grants observable.
+	buf := make([]byte, 1<<20)
+
+	require.Eventually(t, func() bool {
+		sample()
+
+		waiting := 0
+
+		stacks := string(buf[:runtime.Stack(buf, true)])
+		for g := range strings.SplitSeq(stacks, "\n\n") {
+			if strings.Contains(g, ".HandleNodeFromPreAuthKey(") &&
+				strings.Contains(g, "sync.(*Mutex).Lock(") {
+				waiting++
+			}
+		}
+
+		return waiting == contenders
+	}, 5*time.Second, time.Millisecond)
+	sample()
+
+	mapResults := make(chan error, contenders)
+	endpoint := netip.MustParseAddrPort("192.0.2.1:1234")
+
+	for _, c := range nodes {
+		wg.Go(func() {
+			_, err := s.UpdateNodeFromMapRequest(c.node.ID(), tailcfg.MapRequest{
+				NodeKey:   c.regReq.NodeKey,
+				Endpoints: []netip.AddrPort{endpoint},
+			})
+			mapResults <- err
+		})
+	}
+
+	require.Eventually(t, func() bool {
+		sample()
+
+		for _, c := range nodes {
+			n, ok := s.GetNodeByID(c.node.ID())
+			if !ok || n.Endpoints().Len() != 1 {
+				return false
+			}
+		}
+
+		return true
+	}, 5*time.Second, time.Millisecond)
+	unblock()
+
+	done := make(chan struct{})
+
+	go func() { wg.Wait(); close(done) }()
+
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+
+	for running := true; running; {
+		select {
+		case <-ticker.C:
+			sample()
+		case <-done:
+			sample()
+
+			running = false
+		}
+	}
+
+	accepted := 0
+	taggedRows := 0
+
+	for _, c := range nodes {
+		err := <-results
+		if err == nil {
+			accepted++
+		} else {
+			require.ErrorIs(t, err, types.PAKError("authkey already used"))
+		}
+
+		require.NoError(t, <-mapResults)
+
+		stored, err := s.db.GetNodeByID(c.node.ID())
+		require.NoError(t, err)
+
+		if stored.IsTagged() {
+			taggedRows++
+		}
+	}
+
+	assert.Equal(t, 1, accepted)
+	assert.LessOrEqual(t, maxTagged, 1, "only the accepted registration may publish tags")
+	assert.Equal(t, 1, taggedRows)
+	assert.Equal(t, contenders, s.ListNodes().Len())
+	storedKey, err := s.GetPreAuthKeyByID(shared.ID)
+	require.NoError(t, err)
+	assert.True(t, storedKey.Used)
+}
+
 // TestUserKeyOnTaggedMachine: a user key on a tagged machine re-authenticates
 // the tagged node only when it speaks for it (the user an admin tagged it
 // from); another user's key wakes it, gets a device of its own beside it with
