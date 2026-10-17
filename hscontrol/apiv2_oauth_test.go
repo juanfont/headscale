@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	apiv2 "github.com/juanfont/headscale/hscontrol/api/v2"
+	"github.com/juanfont/headscale/hscontrol/scope"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -220,6 +221,23 @@ func TestAPIv2OAuth_TokenEndpoint(t *testing.T) {
 	require.NoError(t, err)
 	resp.Body.Close()
 	assert.Equal(t, "no-store", resp.Header.Get("Cache-Control"))
+}
+
+// TestAPIv2OAuth_RequestBodiesBounded: the token form is parsed before the
+// secret is checked, and huma validates a whole body before the handler runs.
+func TestAPIv2OAuth_RequestBodiesBounded(t *testing.T) {
+	_, baseURL, admin := newOAuthTestServer(t)
+	_, secret := createClient(t, baseURL, admin, []string{"users:read"}, nil)
+
+	scopes := strings.TrimSpace(strings.Repeat("users:read ", 2000))
+	status, m := mintToken(t, baseURL, "", secret, scopes, false)
+	assert.Equalf(t, http.StatusBadRequest, status, "%v", m)
+	assert.Equal(t, "invalid_request", m["error"])
+
+	tok := mintScopedToken(t, baseURL, admin, scope.AuthKeys)
+	status, _ = apiReq(t, http.MethodPost, baseURL+"/api/v2/tailnet/-/keys", tok,
+		map[string]any{"tags": make([]int, 40000)})
+	assert.Equal(t, http.StatusRequestEntityTooLarge, status)
 }
 
 func TestAPIv2OAuth_ScopeEnforcement(t *testing.T) {
