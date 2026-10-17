@@ -2892,22 +2892,23 @@ func pakSkipsValidation(n types.NodeView, pak *types.PreAuthKey, nodeKey key.Nod
 		!isOwnershipConversion && !isRetag
 }
 
-// pakReregister is the authorisation decision for re-registering n with pak
-// at now: whether the key re-authenticates n, and nil when validation may be
-// skipped, else the key's validity. A key that does not speak for n only
-// wakes it under its own node key.
+// pakReregister distinguishes re-authentication with a valid key from a
+// wake-up that only refreshes a live node's reported metadata.
 func pakReregister(n types.NodeView, pak *types.PreAuthKey, nodeKey key.NodePublic, now time.Time) (bool, error) {
-	reauth := pak.CanReauthenticate(n)
-	if pakSkipsValidation(n, pak, nodeKey, now) {
-		return reauth, nil
-	}
-
 	err := pak.ValidAt(now)
-	if err == nil && !reauth {
+	if err == nil {
+		if pak.CanReauthenticate(n) {
+			return true, nil
+		}
+
 		err = types.PAKError("authkey cannot re-authenticate this node")
 	}
 
-	return reauth, err
+	if pakSkipsValidation(n, pak, nodeKey, now) {
+		return false, nil
+	}
+
+	return false, err
 }
 
 //nolint:gocyclo // sequential validation/update/create paths with security-sensitive ordering
@@ -2942,8 +2943,10 @@ func (s *State) HandleNodeFromPreAuthKey(
 	// A pre-auth key node's tags come from the key, never from RequestTags.
 	// Advertising a subset of the key's tags is redundant, not an escalation,
 	// and the tailscale client's OAuth authkey flow always does it; any other
-	// tag is rejected. Checked before key validation or resource allocation so
-	// new nodes and re-registrations are held to the same rule.
+	// tag is rejected, ahead of the key's own error, so new nodes and
+	// re-registrations are held to the same rule.
+	var tagsErr error
+
 	if regReq.Hostinfo != nil {
 		var extraTags []string
 
@@ -2954,7 +2957,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 		}
 
 		if len(extraTags) > 0 {
-			return types.NodeView{}, s.policyChangeSince(genBefore), fmt.Errorf("%w %v are invalid or not permitted", ErrRequestedTagsInvalidOrNotPermitted, extraTags)
+			tagsErr = fmt.Errorf("%w %v are invalid or not permitted", ErrRequestedTagsInvalidOrNotPermitted, extraTags)
 		}
 	}
 
@@ -2966,24 +2969,20 @@ func (s *State) HandleNodeFromPreAuthKey(
 	// This decision is only an early reject that keeps a key error ahead of
 	// ErrNodeKeyInUse. An in-place re-registration decides again in the
 	// NodeStore writer, on the node it replaces; see reregisterNodeWithPAK.
-	if existsSameUser && pakSkipsValidation(existingNodeSameUser, pak, regReq.NodeKey, time.Now()) {
-		log.Debug().
-			Caller().
-			Uint64(zf.NodeID, existingNodeSameUser.ID().Uint64()).
-			Str(zf.NodeName, existingNodeSameUser.Hostname()).
-			Str(zf.MachineKey, machineKey.ShortString()).
-			Str(zf.NodeKeyExisting, existingNodeSameUser.NodeKey().ShortString()).
-			Str(zf.NodeKeyRequest, regReq.NodeKey.ShortString()).
-			Uint64(zf.AuthKeyID, pak.ID).
-			Bool(zf.AuthKeyUsed, pak.Used).
-			Bool(zf.AuthKeyExpired, pak.Expiration != nil && pak.Expiration.Before(time.Now())).
-			Bool(zf.AuthKeyReusable, pak.Reusable).
-			Msg("Existing node re-registering with same NodeKey; lookup permits skipping key validation, writer re-decides")
+	reauth := true
+	if existsSameUser {
+		reauth, err = pakReregister(existingNodeSameUser, pak, regReq.NodeKey, time.Now())
 	} else {
 		err = pak.Validate()
-		if err != nil {
-			return types.NodeView{}, s.policyChangeSince(genBefore), err
-		}
+	}
+
+	// A wake-up writes no tags, so the tags it asks for are not refused.
+	if tagsErr != nil && (reauth || err != nil) {
+		return types.NodeView{}, s.policyChangeSince(genBefore), tagsErr
+	}
+
+	if err != nil {
+		return types.NodeView{}, s.policyChangeSince(genBefore), err
 	}
 
 	// Preserve the raw hostname as reported by the client. Sanitisation
@@ -3244,24 +3243,27 @@ func (s *State) reregisterNodeWithPAK(
 			node.AuthKey.Used = true
 		}
 
-		// Tagged nodes keep their existing expiry (disabled).
 		// User-owned nodes update expiry from the client request,
 		// falling back to the configured default if the client
 		// did not request a specific expiry. If neither is set,
 		// clear the expiry so the database holds NULL instead of
 		// a pointer to zero time.
-		if !node.IsTagged() {
-			if !regReq.Expiry.IsZero() {
-				node.Expiry = &regReq.Expiry
-			} else if s.cfg.Node.Expiry > 0 {
-				exp := now.Add(s.cfg.Node.Expiry)
-				node.Expiry = &exp
-			} else {
+		switch {
+		case node.IsTagged():
+			// Tagged nodes keep their expiry; a valid key lifts a past one. A
+			// future administrative expiry has not taken effect and stays.
+			if node.IsExpiredAt(now) {
 				node.Expiry = nil
 			}
-		} else if node.IsExpiredAt(now) {
-			// A valid key re-authenticated this expired tagged node. A future
-			// administrative expiry has not taken effect and stays untouched.
+		case prior.NodeKey == regReq.NodeKey && !prior.IsExpiredAt(now):
+			// A live node that keeps its node key keeps its expiry, as on
+			// Tailscale SaaS: renewal comes with a new node key.
+		case !regReq.Expiry.IsZero():
+			node.Expiry = &regReq.Expiry
+		case s.cfg.Node.Expiry > 0:
+			exp := now.Add(s.cfg.Node.Expiry)
+			node.Expiry = &exp
+		default:
 			node.Expiry = nil
 		}
 	})
@@ -3284,13 +3286,8 @@ func (s *State) reregisterNodeWithPAK(
 		return types.NodeView{}, false, authErr
 	}
 
-	// Explicitly select all node columns so GORM includes nil/zero-value fields
-	// (see nodeUpdateColumns comment). AuthKeyID is excluded on MapRequest
-	// so a deleted key's stale reference is not persisted, but
-	// re-registration presents a key just loaded from the database, so
-	// its ID must be persisted here — otherwise a restart reloads the old
-	// key and any key-scoped property (e.g. Ephemeral) silently reverts.
-	// A wake-up keeps the prior key, which may have been deleted (#2862).
+	// Only re-authentication writes a newly loaded key's reference. A wake-up
+	// keeps the prior key, which may have been deleted (#2862).
 	reregColumns := nodeUpdateColumns
 	if reauth {
 		reregColumns = append(slices.Clone(nodeUpdateColumns), "AuthKeyID")
