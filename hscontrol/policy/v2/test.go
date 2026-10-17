@@ -257,15 +257,57 @@ func clipTestLabel(s string) string {
 	return strings.ToValidUTF8(s[:maxTestLabelBytes], "") + "..."
 }
 
+// TestFailure is one failing tests or sshTests entry: its src as written and
+// its lines of the failure breakdown.
+type TestFailure struct {
+	Src    string
+	Errors []string
+}
+
+// TestsFailedError is a failed tests or sshTests run. It reads as the whole
+// breakdown; Failures holds it per entry.
+type TestsFailedError struct {
+	err      error
+	Failures []TestFailure
+}
+
+func (e *TestsFailedError) Error() string { return e.err.Error() }
+
+func (e *TestsFailedError) Unwrap() error { return e.err }
+
+// failures is the breakdown apart per failing entry, so an API answer can
+// name each entry's src.
+func (r PolicyTestResults) failures() []TestFailure {
+	var out []TestFailure
+
+	for _, res := range r.Results {
+		if !res.Passed {
+			one := PolicyTestResults{Results: []PolicyTestResult{res}}
+			out = append(out, TestFailure{Src: res.Src, Errors: strings.Split(one.Errors(), "\n")})
+		}
+	}
+
+	return out
+}
+
+// testReport is the outcome of a tests or sshTests run.
+type testReport interface {
+	Errors() string
+	failures() []TestFailure
+}
+
 // wrapTestResult returns nil when every test passed, otherwise wraps the
-// rendered failure breakdown in sentinel. errs is passed uncalled so it is
-// only evaluated on the failure path.
-func wrapTestResult(sentinel error, allPassed bool, errs func() string) error {
+// rendered failure breakdown in sentinel. The report is rendered only on the
+// failure path.
+func wrapTestResult(sentinel error, allPassed bool, r testReport) error {
 	if allPassed {
 		return nil
 	}
 
-	return fmt.Errorf("%w:\n%s", sentinel, errs())
+	return &TestsFailedError{
+		err:      fmt.Errorf("%w:\n%s", sentinel, r.Errors()),
+		Failures: r.failures(),
+	}
 }
 
 // RunTests evaluates the policy's own `tests` block against the live compiled
@@ -281,7 +323,7 @@ func (pm *PolicyManager) RunTests() error {
 
 	results := runPolicyTests(pm.resolvedPol, pm.filter, pm.users, pm.nodes)
 
-	return wrapTestResult(errPolicyTestsFailed, results.AllPassed, results.Errors)
+	return wrapTestResult(errPolicyTestsFailed, results.AllPassed, results)
 }
 
 // evaluateTests runs the `tests` block against a fresh compilation of pol.
@@ -304,7 +346,7 @@ func evaluateTests(pol *Policy, users []types.User, nodes views.Slice[types.Node
 
 	results := runPolicyTests(pol, filter, users, nodes)
 
-	return wrapTestResult(errPolicyTestsFailed, results.AllPassed, results.Errors)
+	return wrapTestResult(errPolicyTestsFailed, results.AllPassed, results)
 }
 
 // runPolicyTests is the pure evaluation function: given a policy, the

@@ -2,11 +2,16 @@ package apiv2
 
 import (
 	"errors"
+	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/juanfont/headscale/hscontrol/db"
+	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"gorm.io/gorm"
+	"tailscale.com/util/multierr"
 )
 
 // apiError is the Tailscale API error body. The official Tailscale Go client
@@ -26,6 +31,10 @@ type apiErrorData struct {
 	Errors []string `json:"errors,omitempty"`
 }
 
+// maxErrorDetails caps the errors one response lists. huma reports one per bad
+// element of the body, so the caller picks how many there are.
+const maxErrorDetails = 20
+
 // tailscaleErrorTransformer rewrites Huma's RFC 9457 error model into the
 // Tailscale error shape. It is registered on the v2 API config only, so the
 // headscale-native v1 API keeps emitting problem+json. Non-error bodies pass
@@ -43,16 +52,73 @@ func tailscaleErrorTransformer(_ huma.Context, _ string, v any) (any, error) {
 
 	out := apiError{Message: message, Status: em.Status}
 
-	if len(em.Errors) > 0 {
-		details := make([]string, 0, len(em.Errors))
-		for _, d := range em.Errors {
-			details = append(details, d.Error())
+	listed := em.Errors[:min(len(em.Errors), maxErrorDetails)]
+
+	details := make([]string, 0, len(listed)+1)
+	for _, d := range listed {
+		// huma stores a nil detail for a nil error argument.
+		if d == nil {
+			continue
 		}
 
+		// The value is not echoed: for an unexpected property it is the whole
+		// request object, once per property.
+		if d.Location == "" {
+			details = append(details, d.Message)
+		} else {
+			details = append(details, d.Message+" ("+d.Location+")")
+		}
+	}
+
+	if more := len(em.Errors) - len(listed); more > 0 {
+		details = append(details, "and "+strconv.Itoa(more)+" more")
+	}
+
+	if len(details) > 0 {
 		out.Data = []apiErrorData{{Errors: details}}
 	}
 
 	return out, nil
+}
+
+func (e *apiError) Error() string { return e.Message }
+
+func (e *apiError) GetStatus() int { return e.Status }
+
+// policyRefusal answers a refused policy as Tailscale does: the reason in
+// message and, when tests failed, one data entry per failing test naming its
+// src.
+func policyRefusal(err error) error {
+	out := &apiError{Message: err.Error(), Status: http.StatusBadRequest}
+
+	var failures []policyv2.TestFailure
+
+	// Range visits every wrapped error, so errors.As would count a failure
+	// once per wrapper above it.
+	multierr.Range(err, func(e error) bool {
+		if tf, ok := e.(*policyv2.TestsFailedError); ok { //nolint:errorlint
+			failures = append(failures, tf.Failures...)
+		}
+
+		return true
+	})
+
+	if len(failures) == 0 {
+		return out
+	}
+
+	out.Message = "test(s) failed"
+
+	for _, f := range failures[:min(len(failures), maxErrorDetails)] {
+		// A policy writes a user known only by name as name@.
+		out.Data = append(out.Data, apiErrorData{User: strings.TrimSuffix(f.Src, "@"), Errors: f.Errors})
+	}
+
+	if more := len(failures) - maxErrorDetails; more > 0 {
+		out.Data = append(out.Data, apiErrorData{Errors: []string{"and " + strconv.Itoa(more) + " more"}})
+	}
+
+	return out
 }
 
 // mapError translates a state/db-layer error into a Huma HTTP error
@@ -77,11 +143,12 @@ func mapError(msg string, err error) error {
 		errors.Is(err, state.ErrGivenNameTaken),
 		errors.Is(err, state.ErrNodeNameNotUnique),
 		errors.Is(err, state.ErrRequestedTagsInvalidOrNotPermitted):
-		return huma.Error400BadRequest(msg, err)
+		// As on Tailscale SaaS, the reason is the message.
+		return huma.Error400BadRequest(err.Error(), err)
 
 	// A refused policy is answered with its own reason as the message.
 	case errors.Is(err, state.ErrInvalidPolicy):
-		return huma.Error400BadRequest(err.Error(), err)
+		return policyRefusal(err)
 
 	default:
 		return huma.Error500InternalServerError(msg, err)
