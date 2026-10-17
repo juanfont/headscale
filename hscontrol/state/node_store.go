@@ -228,10 +228,12 @@ type PeersFunc func(nodes []types.NodeView) map[types.NodeID][]types.NodeID
 
 // work represents a single operation to be performed on the [NodeStore].
 type work struct {
-	op         int
-	nodeID     types.NodeID
-	node       types.Node
-	result     chan struct{}
+	op     int
+	nodeID types.NodeID
+	node   types.Node
+	result chan struct{}
+	// For del: receives the node's peers in the snapshot the delete replaces.
+	peers      *[]types.NodeID
 	nodeResult chan types.NodeView
 	// For rebuildPeerMaps operation
 	rebuildResult chan struct{}
@@ -397,16 +399,20 @@ func (s *NodeStore) updateNodes(
 	nodeStoreOperations.WithLabelValues("update_multi").Inc()
 }
 
-// DeleteNode removes a node from the store by its ID.
+// DeleteNode removes a node from the store by its ID and returns its peers
+// in the last snapshot that held it: every node that may have been sent it.
 // This is a blocking operation that waits for the write to complete.
-func (s *NodeStore) DeleteNode(id types.NodeID) {
+func (s *NodeStore) DeleteNode(id types.NodeID) []types.NodeID {
 	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("delete"))
 	defer timer.ObserveDuration()
+
+	var peers []types.NodeID
 
 	work := work{
 		op:     del,
 		nodeID: id,
 		result: make(chan struct{}),
+		peers:  &peers,
 	}
 
 	nodeStoreQueueDepth.Inc()
@@ -416,13 +422,15 @@ func (s *NodeStore) DeleteNode(id types.NodeID) {
 	case <-s.stopped:
 		nodeStoreQueueDepth.Dec()
 
-		return
+		return nil
 	}
 
 	<-work.result
 	nodeStoreQueueDepth.Dec()
 
 	nodeStoreOperations.WithLabelValues("delete").Inc()
+
+	return peers
 }
 
 // SetGivenName sets [types.Node.GivenName] on the node identified by id,
@@ -542,8 +550,9 @@ func (s *NodeStore) applyBatch(batch []work) {
 
 	nodeStoreBatchSize.Observe(float64(len(batch)))
 
+	prev := s.data.Load()
 	nodes := make(map[types.NodeID]types.Node)
-	maps.Copy(nodes, s.data.Load().nodesByID)
+	maps.Copy(nodes, prev.nodesByID)
 
 	// Track which work items need node results
 	nodeResultRequests := make(map[types.NodeID][]*work)
@@ -605,6 +614,10 @@ func (s *NodeStore) applyBatch(batch []work) {
 			}
 		case del:
 			delete(nodes, w.nodeID)
+
+			if w.peers != nil {
+				*w.peers = slices.Clone(prev.peersByNode[w.nodeID])
+			}
 			// For delete operations, send an invalid NodeView if requested
 			if w.nodeResult != nil {
 				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
@@ -648,8 +661,6 @@ func (s *NodeStore) applyBatch(batch []work) {
 			electionChanged = true
 		}
 	}
-
-	prev := s.data.Load()
 
 	// A relation change recomputes adjacency; anything else reuses the
 	// previous peer IDs and re-elects routes only if an election input moved.

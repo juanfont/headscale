@@ -529,7 +529,7 @@ func TestCoalescePeerDeltas(t *testing.T) {
 		{
 			name: "deletions fold into one removal ahead of the tick",
 			changes: []Change{
-				NodeAdded(2), NodeRemoved(5), NodeOnline(3), PolicyChange(), NodeRemoved(4), NodeAdded(6),
+				NodeAdded(2), NodeRemoved(5, self)[1], NodeOnline(3), PolicyChange(), NodeRemoved(4, self)[1], NodeAdded(6),
 			},
 			want: []Change{
 				{Reason: "node removed", PeersRemoved: []types.NodeID{4, 5}, DeletedNodes: []types.NodeID{4, 5}},
@@ -622,7 +622,7 @@ func TestCoalescePeerDeltasHoistsOnlyDeletions(t *testing.T) {
 			want, ok := hoists[field.Name]
 			require.True(t, ok, "field %s is not classified", field.Name)
 
-			c := NodeRemoved(2)
+			c := NodeRemoved(2, self)[1]
 			setNonZero(t, reflect.ValueOf(&c).Elem().FieldByIndex(field.Index), self)
 
 			assert.Equal(t, want, c.isDeletion())
@@ -710,10 +710,21 @@ func TestPeersRemoved(t *testing.T) {
 }
 
 func TestNodeRemoved(t *testing.T) {
-	r := NodeRemoved(42)
-	assert.Equal(t, "node removed", r.Reason)
-	assert.Equal(t, []types.NodeID{42}, r.PeersRemoved)
-	assert.Equal(t, []types.NodeID{42}, r.DeletedNodes)
+	rs := NodeRemoved(42, 7, 9)
+	require.Len(t, rs, 3)
+	assert.Equal(t, "node removed", rs[0].Reason)
+	assert.Equal(t, types.NodeID(42), rs[0].TargetNode,
+		"the teardown reaches no other node")
+	assert.Empty(t, rs[0].PeersRemoved)
+	assert.Equal(t, []types.NodeID{42}, rs[0].DeletedNodes)
+
+	for i, peer := range []types.NodeID{7, 9} {
+		assert.Equal(t, peer, rs[i+1].TargetNode)
+		assert.Equal(t, []types.NodeID{42}, rs[i+1].PeersRemoved)
+		assert.Equal(t, []types.NodeID{42}, rs[i+1].DeletedNodes,
+			"a peer's removal folds with the tick's other deletions")
+		assert.True(t, rs[i+1].isDeletion())
+	}
 }
 
 func TestPeerPatched(t *testing.T) {
