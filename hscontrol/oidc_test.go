@@ -1449,6 +1449,27 @@ func TestMergeEmailClaims(t *testing.T) {
 	}
 }
 
+func TestOIDCRefusesAlteredSubject(t *testing.T) {
+	b := newOIDCBrowser(t)
+	b.idp.QueueUser(&mockoidc.MockUser{Subject: "alice", PreferredUsername: "alice"})
+	_, registerURL := b.pendingNode(t)
+	status, _, _ := b.get(t, registerURL)
+	require.Equal(t, http.StatusOK, status)
+
+	before, err := b.app.state.GetUserByOIDCIdentifier(b.idp.Issuer() + "/alice")
+	require.NoError(t, err)
+
+	b.idp.QueueUser(&mockoidc.MockUser{Subject: "alice/", PreferredUsername: "renamed"})
+	_, registerURL = b.pendingNode(t)
+	status, _, _ = b.get(t, registerURL)
+	assert.Equal(t, http.StatusForbidden, status)
+
+	users, err := b.app.state.ListAllUsers()
+	require.NoError(t, err)
+	require.Len(t, users, 1)
+	assert.Equal(t, *before, users[0], "a refused subject must not update an existing row")
+}
+
 func TestOIDCRegistrationRejectsOversizedMergedHostinfo(t *testing.T) {
 	t.Parallel()
 
