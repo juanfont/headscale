@@ -1661,7 +1661,7 @@ func LoadServerConfig() (*Config, error) {
 		}
 	}
 
-	serverURL := viper.GetString("server_url")
+	serverURL := strings.TrimRight(viper.GetString("server_url"), "/")
 
 	// BaseDomain cannot be the same as the server URL.
 	// This is because Tailscale takes over the domain in BaseDomain,

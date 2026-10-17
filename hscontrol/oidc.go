@@ -133,7 +133,7 @@ func (a *AuthProviderOIDC) cookiesSecure() bool {
 }
 
 func oidcCallbackURL(serverURL string) string {
-	return strings.TrimSuffix(serverURL, "/") + "/oidc/callback"
+	return serverURL + "/oidc/callback"
 }
 
 func (a *AuthProviderOIDC) oidcCallbackPath() string {
