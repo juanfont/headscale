@@ -1,7 +1,16 @@
 package cli
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -302,6 +311,107 @@ func TestIsPreReleaseVersion(t *testing.T) {
 					tt.description,
 					tt.version,
 				)
+			}
+		})
+	}
+}
+
+func TestOfflineSetPolicyRunsTests(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		policy  string
+		invalid bool
+	}{
+		{
+			name: "passing packet test uses database nodes",
+			policy: `{
+  "acls": [{"action":"accept","src":["alice@"],"dst":["bob@:22"]}],
+  "tests": [{"src":"alice@","accept":["bob@:22"]}]
+}`,
+		},
+		{
+			name: "failing packet test preserves stored policy",
+			policy: `{
+  "acls": [],
+  "tests": [{"src":"alice@","accept":["bob@:22"]}]
+}`,
+			invalid: true,
+		},
+		{
+			name: "failing SSH test preserves stored policy",
+			policy: `{
+  "acls": [{"action":"accept","src":["*"],"dst":["*:*"]}],
+  "ssh": [{"action":"accept","src":["alice@"],"dst":["autogroup:member"],"users":["root"]}],
+  "sshTests": [{"src":"bob@","dst":["autogroup:member"],"accept":["root"]}]
+}`,
+			invalid: true,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+			t.Cleanup(viper.Reset)
+
+			dir := t.TempDir()
+			configPath := filepath.Join(dir, "config.yaml")
+			config := fmt.Sprintf(`server_url: https://headscale.example.com
+noise:
+  private_key_path: noise_private.key
+prefixes:
+  v4: 100.64.0.0/10
+database:
+  type: sqlite3
+  sqlite:
+    path: %q
+policy:
+  mode: database
+dns:
+  magic_dns: false
+  override_local_dns: false
+`, filepath.Join(dir, "headscale.db"))
+			require.NoError(t, os.WriteFile(configPath, []byte(config), 0o600))
+			require.NoError(t, types.LoadConfig(configPath, true))
+
+			cfg, err := types.LoadServerConfig()
+			require.NoError(t, err)
+
+			database, err := db.NewHeadscaleDatabase(cfg)
+			require.NoError(t, err)
+
+			t.Cleanup(func() { _ = database.Close() })
+
+			for _, name := range []string{"alice", "bob"} {
+				user := database.CreateUserForTest(name)
+				database.CreateRegisteredNodeForTest(user, name+"-node")
+			}
+
+			const oldPolicy = `{"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`
+
+			before, err := database.SetPolicy(oldPolicy)
+			require.NoError(t, err)
+
+			path := filepath.Join(dir, "policy.hujson")
+			require.NoError(t, os.WriteFile(path, []byte(tt.policy), 0o600))
+
+			cmd := &cobra.Command{}
+			cmd.Flags().String("file", path, "")
+			cmd.Flags().Bool(bypassFlag, true, "")
+			cmd.Flags().Bool("force", true, "")
+
+			err = setPolicy.RunE(cmd, nil)
+			if tt.invalid {
+				require.ErrorContains(t, err, "test(s) failed")
+			} else {
+				require.NoError(t, err)
+			}
+
+			after, err := database.GetPolicy()
+			require.NoError(t, err)
+
+			if tt.invalid {
+				require.Equal(t, before.ID, after.ID)
+				require.JSONEq(t, oldPolicy, after.Data)
+			} else {
+				require.JSONEq(t, tt.policy, after.Data)
 			}
 		})
 	}
