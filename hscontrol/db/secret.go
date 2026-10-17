@@ -95,6 +95,9 @@ func authenticateCredential(
 		query = query.Preload(p)
 	}
 
+	// Session lets the legacy reload below reuse the preloads.
+	query = query.Session(&gorm.Session{})
+
 	err := query.First(&cred, "kind = ? AND identifier = ?", kind, identifier).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, notFound
@@ -117,14 +120,26 @@ func authenticateCredential(
 	if needsRehash {
 		// Best effort: on failure the legacy hash stays and the next
 		// authentication retries.
-		cred.Hash = hashSecret(secret)
-
 		err := tx.Model(&types.Credential{}).Where("id = ?", cred.ID).
-			Update("hash", cred.Hash).Error
+			Update("hash", hashSecret(secret)).Error
 		if err != nil {
 			log.Warn().Err(err).Uint64("credential", cred.ID).
 				Msg("upgrading legacy credential hash")
 		}
+
+		// Validity may change while legacy verification waits for a slot.
+		var current types.Credential
+
+		err = query.First(&current, "id = ?", cred.ID).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, notFound
+		}
+
+		if err != nil {
+			return nil, fmt.Errorf("reloading %s credential %d: %w", kind, cred.ID, err)
+		}
+
+		return &current, nil
 	}
 
 	return &cred, nil
