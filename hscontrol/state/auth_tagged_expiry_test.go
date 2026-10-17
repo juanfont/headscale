@@ -2862,6 +2862,184 @@ func TestSingleUseKeyPublishesOnlyOneRegistration(t *testing.T) {
 	assert.True(t, storedKey.Used)
 }
 
+func TestPAKWakeupKeepsEphemeralKey(t *testing.T) {
+	s := newRetagTestState(t)
+	original, err := s.CreatePreAuthKey(nil, false, true, nil, []string{"tag:prod"})
+	require.NoError(t, err)
+	c := registerForPAKRereg(t, s, original)
+	_, err = s.UpdateNodeFromMapRequest(c.node.ID(), tailcfg.MapRequest{
+		NodeKey:  c.regReq.NodeKey,
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "h0", NetInfo: &tailcfg.NetInfo{PreferredDERP: 8}},
+	})
+	require.NoError(t, err)
+
+	user := s.CreateUserForTest("wake-guest")
+	spent, err := s.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+	require.NoError(t, err)
+	registerForPAKRereg(t, s, spent)
+	before, ok := s.GetNodeByID(c.node.ID())
+	require.True(t, ok)
+
+	req := c.regReq
+	req.Auth = &tailcfg.RegisterResponseAuth{AuthKey: spent.Key}
+	req.Hostinfo = &tailcfg.Hostinfo{Hostname: "h1", OS: "linux"}
+	_, _, err = s.HandleNodeFromPreAuthKey(req, c.machineKey)
+	require.NoError(t, err)
+
+	current, ok := s.GetNodeByID(c.node.ID())
+	require.True(t, ok)
+	assert.Equal(t, original.ID, current.AuthKeyID().Get())
+	assert.True(t, current.IsEphemeral())
+	assert.Equal(t, before.Tags().AsSlice(), current.Tags().AsSlice())
+	assert.Equal(t, "h1", current.Hostname())
+	assert.Equal(t, "linux", current.Hostinfo().OS())
+	assert.Equal(t, tailcfg.DERPRegionID(8), current.Hostinfo().NetInfo().PreferredDERP())
+	assert.True(t, current.LastSeen().Get().After(before.LastSeen().Get()))
+
+	stored, err := s.db.GetNodeByID(c.node.ID())
+	require.NoError(t, err)
+	require.NotNil(t, stored.AuthKeyID)
+	assert.Equal(t, original.ID, *stored.AuthKeyID)
+	assert.True(t, stored.IsEphemeral())
+	assert.Equal(t, "h1", stored.Hostname)
+	assert.Equal(t, "linux", stored.Hostinfo.OS)
+	assert.Equal(t, tailcfg.DERPRegionID(8), stored.Hostinfo.NetInfo.PreferredDERP)
+}
+
+func TestPAKWakeupKeepsScheduledExpiry(t *testing.T) {
+	for _, defaultExpiry := range []time.Duration{0, 24 * time.Hour} {
+		for _, requestExpiry := range []bool{false, true} {
+			t.Run(fmt.Sprintf("default=%s/request=%t", defaultExpiry, requestExpiry), func(t *testing.T) {
+				s := newRetagTestState(t)
+				s.cfg.Node.Expiry = defaultExpiry
+				user := s.CreateUserForTest("wake-user")
+				pak, err := s.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+				require.NoError(t, err)
+				c := registerForPAKRereg(t, s, pak)
+				scheduled := time.Now().Add(2 * time.Hour)
+				_, _, err = s.SetNodeExpiry(c.node.ID(), &scheduled)
+				require.NoError(t, err)
+
+				req := c.regReq
+
+				req.Expiry = time.Time{}
+				if requestExpiry {
+					req.Expiry = time.Now().AddDate(100, 0, 0)
+				}
+
+				_, _, err = s.HandleNodeFromPreAuthKey(req, c.machineKey)
+				require.NoError(t, err)
+				ns, row := c.fields(t)
+				assert.Equal(t, scheduled.UnixNano(), ns.Expiry)
+				assert.Equal(t, scheduled.UnixNano(), row.Expiry)
+			})
+		}
+	}
+}
+
+func TestPAKWakeupKeepsOIDCRegistration(t *testing.T) {
+	s := newRetagTestState(t)
+	user := s.CreateUserForTest("wake-oidc-user")
+	pak, err := s.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+	require.NoError(t, err)
+	registerForPAKRereg(t, s, pak)
+
+	machineKey := key.NewMachine().Public()
+	nodeKey := key.NewNode().Public()
+	authID := types.MustAuthID()
+	s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+		MachineKey: machineKey,
+		NodeKey:    nodeKey,
+		Hostname:   "oidc-node",
+		Hostinfo:   &tailcfg.Hostinfo{Hostname: "oidc-node"},
+	}))
+	node, _, err := s.HandleNodeFromAuthPath(authID, types.UserID(user.ID), nil, util.RegisterMethodOIDC)
+	require.NoError(t, err)
+	require.Equal(t, util.RegisterMethodOIDC, node.RegisterMethod())
+	require.False(t, node.AuthKeyID().Valid())
+
+	_, _, err = s.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey:  nodeKey,
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "oidc-node"},
+	}, machineKey)
+	require.NoError(t, err)
+
+	current, ok := s.GetNodeByID(node.ID())
+	require.True(t, ok)
+	assert.Equal(t, util.RegisterMethodOIDC, current.RegisterMethod())
+	assert.False(t, current.AuthKeyID().Valid())
+
+	stored, err := s.db.GetNodeByID(node.ID())
+	require.NoError(t, err)
+	assert.Equal(t, util.RegisterMethodOIDC, stored.RegisterMethod)
+	assert.Nil(t, stored.AuthKeyID)
+}
+
+// TestPAKSameNodeKeyLoginKeepsExpiry: a valid key renews a live node's expiry
+// only with a new node key.
+func TestPAKSameNodeKeyLoginKeepsExpiry(t *testing.T) {
+	s := newRetagTestState(t)
+	user := s.CreateUserForTest("same-key-user")
+	pak, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+
+	c := registerForPAKRereg(t, s, pak)
+	scheduled := time.Now().Add(2 * time.Hour)
+	_, _, err = s.SetNodeExpiry(c.node.ID(), &scheduled)
+	require.NoError(t, err)
+
+	req := c.regReq
+	req.Expiry = time.Now().AddDate(1, 0, 0)
+
+	_, _, err = s.HandleNodeFromPreAuthKey(req, c.machineKey)
+	require.NoError(t, err)
+
+	ns, row := c.fields(t)
+	assert.Equal(t, scheduled.UnixNano(), ns.Expiry, "same node key")
+	assert.Equal(t, scheduled.UnixNano(), row.Expiry, "same node key")
+
+	req.NodeKey = key.NewNode().Public()
+	_, _, err = s.HandleNodeFromPreAuthKey(req, c.machineKey)
+	require.NoError(t, err)
+
+	ns, row = c.fields(t)
+	assert.Equal(t, req.Expiry.UnixNano(), ns.Expiry, "new node key")
+	assert.Equal(t, req.Expiry.UnixNano(), row.Expiry, "new node key")
+}
+
+// TestPAKWakeAcceptsRequestedTags: a wake-up writes no tags, so tags it
+// requests beyond the key's are not refused; a key that re-authenticates the
+// node still is.
+func TestPAKWakeAcceptsRequestedTags(t *testing.T) {
+	s := newRetagTestState(t)
+	user := s.CreateUserForTest("wake-tags-user")
+	spent, err := s.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+	require.NoError(t, err)
+
+	_, err = s.SetPolicy([]byte(`{"tagOwners": {"tag:prod": ["wake-tags-user@"]}}`))
+	require.NoError(t, err)
+
+	c := registerForPAKRereg(t, s, spent)
+	_, _, err = s.SetNodeTags(c.node.ID(), []string{"tag:prod"})
+	require.NoError(t, err)
+
+	req := c.regReq
+	req.Hostinfo = &tailcfg.Hostinfo{Hostname: "h1", RequestTags: []string{"tag:prod"}}
+
+	_, _, err = s.HandleNodeFromPreAuthKey(req, c.machineKey)
+	require.NoError(t, err)
+
+	ns, row := c.fields(t)
+	assert.Equal(t, []string{"tag:prod"}, ns.Tags)
+	assert.Equal(t, []string{"tag:prod"}, row.Tags)
+	assert.Equal(t, "h1", ns.Hostname)
+
+	req.NodeKey = key.NewNode().Public()
+	_, _, err = s.HandleNodeFromPreAuthKey(req, c.machineKey)
+	require.ErrorIs(t, err, ErrRequestedTagsInvalidOrNotPermitted)
+}
+
 // TestUserKeyOnTaggedMachine: a user key on a tagged machine re-authenticates
 // the tagged node only when it speaks for it (the user an admin tagged it
 // from); another user's key wakes it, gets a device of its own beside it with
