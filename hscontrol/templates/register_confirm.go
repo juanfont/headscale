@@ -2,6 +2,7 @@ package templates
 
 import (
 	"cmp"
+	"strings"
 
 	"github.com/chasefleming/elem-go"
 	"github.com/chasefleming/elem-go/attrs"
@@ -46,6 +47,9 @@ type RegisterConfirmInfo struct {
 
 	// ExistingNode is the stored node name, empty for a new device.
 	ExistingNode string
+
+	// Tags are the ownership tags requested by the registering client.
+	Tags []string
 }
 
 // RegisterConfirm renders an interstitial page that asks the
@@ -55,15 +59,22 @@ type RegisterConfirmInfo struct {
 // silently complete a phishing-style registration when the victim's
 // IdP allows silent SSO.
 func RegisterConfirm(info RegisterConfirmInfo) *elem.Element {
-	deviceList := deviceTable(
-		[]deviceRow{
-			{"Hostname", elem.Text(info.Hostname)},
-			{"OS", elem.Text(cmp.Or(info.OS, "(unknown)"))},
-			{"Machine key", Code(elem.Text(info.MachineKey))},
-			{"Existing node", elem.Text(cmp.Or(info.ExistingNode, "None, this is a new device"))},
-			{"Registered to", elem.Text(info.User)},
-		},
-	)
+	rows := []deviceRow{
+		{"Hostname", elem.Text(info.Hostname)},
+		{"OS", elem.Text(cmp.Or(info.OS, "(unknown)"))},
+		{"Machine key", Code(elem.Text(info.MachineKey))},
+		{"Existing node", elem.Text(cmp.Or(info.ExistingNode, "None, this is a new device"))},
+	}
+	if len(info.Tags) > 0 {
+		rows = append(rows,
+			deviceRow{"Registered to", elem.Text(strings.Join(info.Tags, ", "))},
+			deviceRow{"Approved by", elem.Text(info.User)},
+		)
+	} else {
+		rows = append(rows, deviceRow{"Registered to", elem.Text(info.User)})
+	}
+
+	deviceList := deviceTable(rows)
 
 	return page(
 		"Headscale - Confirm node registration",
