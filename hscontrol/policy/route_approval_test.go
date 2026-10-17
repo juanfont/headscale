@@ -1,15 +1,89 @@
 package policy
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/netip"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestApproveRoutesWithPolicyLogsAddedRoutes(t *testing.T) {
+	current := make([]netip.Prefix, 1000)
+	for i := range current {
+		current[i] = netip.PrefixFrom(netip.AddrFrom4([4]byte{
+			10, byte(i >> 8), byte(i & 0xff), 0,
+		}), 24)
+	}
+
+	added := netip.MustParsePrefix("10.200.0.0/24")
+	user := types.User{ID: 1, Name: "router"}
+	node := &types.Node{
+		ID:             1,
+		IPv4:           new(netip.MustParseAddr("100.64.0.1")),
+		UserID:         new(user.ID),
+		User:           new(user),
+		ApprovedRoutes: current,
+	}
+	pm, err := NewPolicyManager([]byte(`{
+		"acls": [],
+		"autoApprovers": {"routes": {"10.0.0.0/8": ["router@"]}}
+	}`), []types.User{user}, types.Nodes{node}.ViewSlice())
+	require.NoError(t, err)
+
+	var output bytes.Buffer
+
+	originalLogger := log.Logger
+	originalLevel := zerolog.GlobalLevel()
+	log.Logger = zerolog.New(&output).Level(zerolog.InfoLevel)
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+
+	t.Cleanup(func() {
+		log.Logger = originalLogger
+
+		zerolog.SetGlobalLevel(originalLevel)
+	})
+
+	approved, changed := ApproveRoutesWithPolicy(
+		pm, node.View(), current, []netip.Prefix{added},
+	)
+	require.True(t, changed)
+	require.Len(t, approved, 1001)
+
+	_, changed = ApproveRoutesWithPolicy(
+		pm, node.View(), approved, []netip.Prefix{added})
+	require.False(t, changed)
+	require.NotEmpty(t, output.String(), "expected one info log for the new approval")
+
+	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
+	require.Len(t, lines, 1)
+
+	var entry struct {
+		Level string       `json:"level"`
+		Node  types.NodeID `json:"node.id"`
+		Added []string     `json:"routes.added"`
+		Total int          `json:"routes.total"`
+	}
+
+	require.NoError(t, json.Unmarshal([]byte(lines[0]), &entry))
+	assert.Equal(t, "info", entry.Level)
+	assert.Equal(t, node.ID, entry.Node)
+	assert.Equal(t, []string{added.String()}, entry.Added)
+	assert.Equal(t, 1001, entry.Total)
+	assert.NotContains(t, output.String(), "routes.kept")
+
+	for _, route := range current {
+		assert.NotContains(t, output.String(), route.String())
+	}
+}
 
 func TestNodeCanApproveRoute(t *testing.T) {
 	users := []types.User{
