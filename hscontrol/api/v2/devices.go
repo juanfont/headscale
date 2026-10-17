@@ -195,6 +195,7 @@ func registerDevices(api huma.API, b Backend) {
 		Tags:          deviceTags,
 		Security:      security,
 		DefaultStatus: http.StatusOK,
+		MaxBodyBytes:  maxBodyBytes,
 		Errors:        []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound},
 	}, scope.DevicesCore), func(ctx context.Context, in *setAuthorizedInput) (*emptyOutput, error) {
 		_, err := lookupNode(b, in.DeviceID)
@@ -222,6 +223,7 @@ func registerDevices(api huma.API, b Backend) {
 		Tags:          deviceTags,
 		Security:      security,
 		DefaultStatus: http.StatusOK,
+		MaxBodyBytes:  maxBodyBytes,
 		Errors:        []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound},
 	}, scope.DevicesCore), func(ctx context.Context, in *setNameInput) (*emptyOutput, error) {
 		node, err := lookupNode(b, in.DeviceID)
@@ -247,6 +249,7 @@ func registerDevices(api huma.API, b Backend) {
 		Tags:          deviceTags,
 		Security:      security,
 		DefaultStatus: http.StatusOK,
+		MaxBodyBytes:  maxBodyBytes,
 		Errors:        []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound},
 	}, scope.DevicesCore), func(ctx context.Context, in *setTagsInput) (*emptyOutput, error) {
 		node, err := lookupNode(b, in.DeviceID)
@@ -293,6 +296,7 @@ func registerDevices(api huma.API, b Backend) {
 		Tags:          deviceTags,
 		Security:      security,
 		DefaultStatus: http.StatusOK,
+		MaxBodyBytes:  maxBodyBytes,
 		Errors:        []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound},
 	}, scope.DevicesCore), func(ctx context.Context, in *setKeyInput) (*emptyOutput, error) {
 		node, err := lookupNode(b, in.DeviceID)
@@ -326,6 +330,7 @@ func registerDevices(api huma.API, b Backend) {
 		Tags:          deviceTags,
 		Security:      security,
 		DefaultStatus: http.StatusOK,
+		MaxBodyBytes:  maxBodyBytes,
 		Errors:        []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound},
 	}, scope.DevicesRoutes), func(ctx context.Context, in *setSubnetRoutesInput) (*deviceRoutesOutput, error) {
 		node, err := lookupNode(b, in.DeviceID)

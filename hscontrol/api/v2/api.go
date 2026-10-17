@@ -45,6 +45,11 @@ type Backend struct {
 // or as a Bearer token.
 var security = []map[string][]string{{"basicAuth": {}}, {"bearerAuth": {}}}
 
+// maxBodyBytes replaces huma's 1 MiB default on operations whose body huma
+// validates: validation records an error per bad element before the handler
+// runs, and a real body is a few names, tags or routes.
+const maxBodyBytes = 64 << 10
+
 // registrations is populated by each resource file's init(), so adding a
 // resource means adding a file rather than editing a shared list.
 var registrations []func(huma.API, Backend)

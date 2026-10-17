@@ -126,13 +126,14 @@ func registerKeys(api huma.API, b Backend) {
 	keysTags := []string{"Keys", "Tailscale compat"}
 
 	huma.Register(api, huma.Operation{
-		OperationID: "createKey",
-		Method:      http.MethodPost,
-		Path:        "/api/v2/tailnet/{tailnet}/keys",
-		Summary:     "Create an auth key or OAuth client",
-		Description: "Requires the `auth_keys` scope for an auth key, or `oauth_keys` for an OAuth client (an admin API key is all-access).",
-		Tags:        keysTags,
-		Security:    security,
+		OperationID:  "createKey",
+		Method:       http.MethodPost,
+		Path:         "/api/v2/tailnet/{tailnet}/keys",
+		Summary:      "Create an auth key or OAuth client",
+		Description:  "Requires the `auth_keys` scope for an auth key, or `oauth_keys` for an OAuth client (an admin API key is all-access).",
+		Tags:         keysTags,
+		Security:     security,
+		MaxBodyBytes: maxBodyBytes,
 		Errors: []int{
 			http.StatusBadRequest,
 			http.StatusUnauthorized,

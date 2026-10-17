@@ -47,6 +47,27 @@ func TestEveryAuthenticatedOperationDeclaresScope(t *testing.T) {
 	}
 }
 
+// TestEveryRequestBodyIsBounded fails an operation whose body has no size or
+// read-time limit, or a validated body above maxBodyBytes. huma sets its
+// defaults only for a Body input, never for RawBody.
+func TestEveryRequestBodyIsBounded(t *testing.T) {
+	api := NewAPI(chi.NewMux(), Backend{})
+
+	for path, item := range api.OpenAPI().Paths {
+		for method, op := range humaOperations(item) {
+			if op == nil || op.RequestBody == nil {
+				continue
+			}
+
+			if op.MaxBodyBytes <= 0 || op.BodyReadTimeout <= 0 ||
+				(!op.SkipValidateBody && op.MaxBodyBytes > maxBodyBytes) {
+				t.Errorf("%s %s: MaxBodyBytes=%d BodyReadTimeout=%s",
+					method, path, op.MaxBodyBytes, op.BodyReadTimeout)
+			}
+		}
+	}
+}
+
 func humaOperations(item *huma.PathItem) map[string]*huma.Operation {
 	return map[string]*huma.Operation{
 		"GET":    item.Get,
