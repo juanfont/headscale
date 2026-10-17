@@ -28,9 +28,6 @@ const (
 	defaultTestNodePrefix = "testnode"
 )
 
-// ErrNodeNameNotUnique is returned when a node name is not unique.
-var ErrNodeNameNotUnique = errors.New("node name is not unique")
-
 // preloadNode returns a session that eager-loads a node's AuthKey, the
 // AuthKey's User, and the node's User. The AuthKey is filtered to pre-auth
 // keys: auth_key_id references the shared credentials table, and only that
@@ -182,34 +179,6 @@ func (hsdb *HSDatabase) SetLastSeen(nodeID types.NodeID, lastSeen time.Time) err
 // have recently communicating with this node.
 func SetLastSeen(tx *gorm.DB, nodeID types.NodeID, lastSeen time.Time) error {
 	return tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("last_seen", lastSeen).Error
-}
-
-// RenameNode takes a [types.Node] struct and a new [types.Node.GivenName] for the nodes
-// and renames it. Validation should be done in the state layer before calling this function.
-func RenameNode(tx *gorm.DB,
-	nodeID types.NodeID, newName string,
-) error {
-	err := dnsname.ValidLabel(newName)
-	if err != nil {
-		return fmt.Errorf("renaming node: %w", err)
-	}
-
-	// Check if the new name is unique
-	var count int64
-
-	if err := tx.Model(&types.Node{}).Where("given_name = ? AND id != ?", newName, nodeID).Count(&count).Error; err != nil { //nolint:noinlineerr
-		return fmt.Errorf("checking name uniqueness: %w", err)
-	}
-
-	if count > 0 {
-		return ErrNodeNameNotUnique
-	}
-
-	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("given_name", newName).Error; err != nil { //nolint:noinlineerr
-		return fmt.Errorf("renaming node in database: %w", err)
-	}
-
-	return nil
 }
 
 func (hsdb *HSDatabase) NodeSetExpiry(nodeID types.NodeID, expiry *time.Time) error {
