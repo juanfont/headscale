@@ -107,13 +107,6 @@ var routesMapCompatTests = []struct {
 var viaCompatSkipReasons = map[string]string{
 	"tagged-self": "TAGGED_SELF_PROFILE: SaaS gives a tagged node a profile of its own, headscale the shared tagged-devices one",
 
-	// TestViaGrantSourceLossCompat, keyed <test_id>/rename/<node>/<check>.
-	"via-grant-v67/rename/squirtle/peers":          viaSourceLossNotSent,
-	"via-grant-v67/rename/squirtle/packet-filter":  viaSourceLossNotSent,
-	"via-grant-v67/rename/blastoise/peers":         viaSourceLossNotSent,
-	"via-grant-v67/rename/blastoise/packet-filter": viaSourceLossNotSent,
-	"via-grant-v67/rename/ivysaur/peers":           viaSourceLossNotSent,
-
 	"routes-f2-subnet-as-acl-source/ivysaur/packet-filter":  filterDstMerged,
 	"routes-f2-subnet-as-acl-source/venusaur/packet-filter": filterDstMerged,
 
@@ -262,8 +255,6 @@ var viaCompatSkipReasons = map[string]string{
 	"routes-m6-subnet-to-subnet-multi-route/m-odin1/peers": sameUserPeers,
 	"routes-m6-subnet-to-subnet-multi-route/m-odin2/peers": sameUserPeers,
 }
-
-const viaSourceLossNotSent = "VIA_SOURCE_LOSS_NOT_SENT: a user change that leaves a via grant without sources does not reach open streams"
 
 const exitRoutesOnOverlap = "EXIT_ROUTES_ON_OVERLAP: headscale offers a peer's exit routes to a viewer whose rules reach only nodes or subnets; SaaS leaves them out"
 

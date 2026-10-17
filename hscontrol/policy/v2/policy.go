@@ -981,6 +981,10 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, bool, error) {
 	prev := pm.users
 	pm.users = users
 
+	// A via grant left without sources is not compiled, so the recompile
+	// can clear the flag while clients still hold its rules.
+	hadPerNodeFilter := pm.needsPerNodeFilter
+
 	// SSH policies and autogroup:self sources resolve users by name, and
 	// the self sources are outside the filter hash, so updateLocked can
 	// report no change while per-node results moved.
@@ -1000,7 +1004,8 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, bool, error) {
 
 	// SSH rules and per-node filters embed user identity outside the filter
 	// hash, so a user change needs a client refresh even when it did not move.
-	if pm.needsPerNodeFilter || (pm.pol != nil && len(pm.pol.SSHs) > 0) {
+	if hadPerNodeFilter || pm.needsPerNodeFilter ||
+		(pm.pol != nil && len(pm.pol.SSHs) > 0) {
 		policyChanged = true
 	}
 
