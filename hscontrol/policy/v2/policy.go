@@ -64,6 +64,15 @@ type PolicyManager struct {
 	// Lazy map of SSH policies
 	sshPolicyMap *xsync.Map[types.NodeID, *tailcfg.SSHPolicy]
 
+	// sshRules are the SSH rules with sources and destinations
+	// pre-resolved, shared by every node's policy in sshPolicyMap so
+	// the principal lists exist once rather than once per rule and
+	// node. They are reset to nil wherever sshPolicyMap is cleared
+	// and filled by the first SSHPolicy call after that; sshRulesMu
+	// serialises that fill between readers of mu.
+	sshRulesMu sync.Mutex
+	sshRules   []compiledSSHRule
+
 	// compiledGrants are the grants with sources pre-resolved.
 	// The single source of truth for filter compilation. Both
 	// global and per-node filter rules are derived from these.
@@ -394,6 +403,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 		// policies for nodes that have changed. Particularly if the only difference is
 		// that nodes has been added or removed.
 		pm.sshPolicyMap.Clear()
+		pm.sshRules = nil
 		pm.filterRulesMap.Clear()
 		pm.matchersForNodeMap.Clear()
 	}
@@ -468,16 +478,38 @@ func (pm *PolicyManager) SSHPolicy(baseURL string, node types.NodeView) (*tailcf
 		return sshPol, nil
 	}
 
-	sshPol, err := pm.pol.compileSSHPolicy(baseURL, pm.users, node, pm.nodes)
+	rules, err := pm.sshRulesLocked(baseURL)
 	if err != nil {
 		return nil, fmt.Errorf("compiling SSH policy: %w", err)
 	}
+
+	sshPol := sshPolicyForNode(rules, node)
 
 	if pm.cacheableLocked(node) {
 		pm.sshPolicyMap.Store(node.ID(), sshPol)
 	}
 
 	return sshPol, nil
+}
+
+// sshRulesLocked returns the compiled SSH rules, compiling them on first
+// access. It must be called with pm.mu held, for reading or writing;
+// writers reset pm.sshRules directly. The rules keep the baseURL of the
+// call that compiled them; [state.State] always passes the server URL.
+func (pm *PolicyManager) sshRulesLocked(baseURL string) ([]compiledSSHRule, error) {
+	pm.sshRulesMu.Lock()
+	defer pm.sshRulesMu.Unlock()
+
+	if pm.sshRules == nil {
+		rules, err := pm.pol.compileSSHRules(baseURL, pm.users, pm.nodes)
+		if err != nil {
+			return nil, err
+		}
+
+		pm.sshRules = rules
+	}
+
+	return pm.sshRules, nil
 }
 
 // SSHCheckParams resolves the SSH check period for src logging in to dst
@@ -989,6 +1021,7 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, bool, error) {
 	// the self sources are outside the filter hash, so updateLocked can
 	// report no change while per-node results moved.
 	pm.sshPolicyMap.Clear()
+	pm.sshRules = nil
 	pm.filterRulesMap.Clear()
 	pm.matchersForNodeMap.Clear()
 
@@ -1071,6 +1104,7 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, erro
 		if !needsUpdate {
 			// This ensures fresh filter rules are generated for all nodes
 			pm.sshPolicyMap.Clear()
+			pm.sshRules = nil
 			pm.filterRulesMap.Clear()
 			pm.matchersForNodeMap.Clear()
 		}
