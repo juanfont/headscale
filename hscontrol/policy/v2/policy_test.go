@@ -556,6 +556,45 @@ func TestSetUsersDropsStaleSelfFilters(t *testing.T) {
 	}
 }
 
+// TestSetUsersReportsLostViaSources: a user change that leaves the only via
+// grant without sources must be reported, or clients keep its rules.
+func TestSetUsersReportsLostViaSources(t *testing.T) {
+	pol := `{
+		"tagOwners": {"tag:router": ["u1@"]},
+		"grants": [{"src": ["u3@"], "dst": ["10.0.0.0/16"], "via": ["tag:router"], "ip": ["*"]}]}`
+
+	u1, u3, x3 := types.User{Name: "u1"}, types.User{Name: "u3"}, types.User{Name: "x3"}
+	u1.ID, u3.ID, x3.ID = 1, 3, 3
+
+	router := node("router", "100.64.0.1", "fd7a:115c:a1e0::1", types.User{})
+	router.User, router.UserID = nil, nil
+	router.Tags = []string{"tag:router"}
+	router.Hostinfo = &tailcfg.Hostinfo{
+		RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/16")},
+	}
+	router.ApprovedRoutes = router.Hostinfo.RoutableIPs
+
+	nodes := types.Nodes{router, node("u3-a", "100.64.0.3", "fd7a:115c:a1e0::3", u3)}
+	for i, n := range nodes {
+		n.ID = types.NodeID(i + 1) //nolint:gosec // safe conversion in test
+	}
+
+	pm, err := NewPolicyManager([]byte(pol), types.Users{u1, u3}, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	rules, err := pm.FilterForNode(router.View())
+	require.NoError(t, err)
+	require.NotEmpty(t, rules, "the router admits u3 before the rename")
+
+	policyChanged, _, err := pm.SetUsers(types.Users{u1, x3})
+	require.NoError(t, err)
+
+	rules, err = pm.FilterForNode(router.View())
+	require.NoError(t, err)
+	require.Empty(t, rules, "nobody is named u3 any more")
+	require.True(t, policyChanged, "the withdrawn rule must reach clients")
+}
+
 // TestInvalidateGlobalPolicyCache tests the cache invalidation logic for global policies.
 func TestInvalidateGlobalPolicyCache(t *testing.T) {
 	mustIPPtr := func(s string) *netip.Addr {
