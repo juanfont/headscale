@@ -1135,8 +1135,17 @@ func TestBatcherCoalescesPolicyRecomputesPerTick(t *testing.T) {
 			// a sentinel. All land in one tick; the sentinel rides the same work
 			// item after the recompute(s), so its arrival marks the end of this
 			// tick's policy responses for a node.
-			for range policyChangesPerTick {
-				batcher.AddWork(change.PolicyChange())
+			for i := range policyChangesPerTick {
+				c := change.PolicyChange()
+
+				// Every other one carries an origin, as a tag write's
+				// recompute does (State.SetNodeTags). The mapper renders it
+				// like any other recompute, so it must coalesce like one.
+				if i%2 == 1 {
+					c.OriginNode = testData.Nodes[0].n.ID
+				}
+
+				batcher.AddWork(c)
 			}
 
 			batcher.AddWork(change.DERPMap())
