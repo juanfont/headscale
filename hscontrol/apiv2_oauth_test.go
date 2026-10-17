@@ -288,6 +288,42 @@ func TestAPIv2OAuth_ClientManagementScopes(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, statusDeny, "auth_keys (no oauth_keys) cannot create a client")
 }
 
+// TestAPIv2OAuth_TaggedAllClientStaysInTags asserts an all-scope client with
+// tags mints tokens only inside its tags, and that a tagged token cannot
+// escape them through an untagged all-scope child, whose tokens may take any
+// tag.
+func TestAPIv2OAuth_TaggedAllClientStaysInTags(t *testing.T) {
+	_, baseURL, admin := newOAuthTestServer(t)
+
+	_, secret := createClient(t, baseURL, admin, []string{"all"}, []string{"tag:a"})
+
+	st, m := mintTokenWithTags(t, baseURL, secret, "tag:b")
+	assert.Equalf(t, http.StatusBadRequest, st, "%v", m)
+	assert.Equal(t, "requested tags [tag:b] are invalid or not permitted", m["error_description"])
+
+	tok := tokenFor(t, baseURL, secret)
+	assert.Equal(t, http.StatusForbidden,
+		createTaggedKey(t, baseURL, tok, []string{"tag:b"}),
+		"the token is held to its tags")
+
+	// A tagged child stays inside its tags.
+	_, childSecret := createClient(t, baseURL, tok, []string{"all"}, []string{"tag:a"})
+	st, m = mintTokenWithTags(t, baseURL, childSecret, "tag:b")
+	assert.Equalf(t, http.StatusBadRequest, st, "tagged child: %v", m)
+
+	createClient(t, baseURL, tok, []string{"auth_keys", "oauth_keys"}, []string{"tag:a"})
+
+	st, body := apiPost(t, baseURL+"/api/v2/tailnet/-/keys", tok,
+		apiv2.CreateKeyRequest{KeyType: "client", Scopes: []string{"all"}})
+	assert.Equalf(t, http.StatusForbidden, st, "untagged all-scope child: %s", body)
+
+	// An admin API key still creates an untagged all-scope client, whose
+	// tokens may take any tag.
+	_, anySecret := createClient(t, baseURL, admin, []string{"all"}, nil)
+	st, m = mintTokenWithTags(t, baseURL, anySecret, "tag:b")
+	assert.Equalf(t, http.StatusOK, st, "%v", m)
+}
+
 func TestAPIv2OAuth_TagOwnedBy(t *testing.T) {
 	app, baseURL, admin := newOAuthTestServer(t)
 
