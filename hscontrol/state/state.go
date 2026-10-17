@@ -219,6 +219,10 @@ type State struct {
 	// ponytail: entries are never pruned; bounded by distinct machine keys
 	// seen, add cleanup on node delete only if it ever matters.
 	registerLocks *xsync.Map[key.MachinePublic, *sync.Mutex]
+
+	// singleUseKeyLocks orders first uses across machines without retaining
+	// a lock for every key.
+	singleUseKeyLocks [64]sync.Mutex
 }
 
 // lockRegistration serialises registration for a single machine key and
@@ -2830,6 +2834,18 @@ func (s *State) HandleNodeFromPreAuthKey(
 	pak, err := s.GetPreAuthKey(regReq.Auth.AuthKey)
 	if err != nil {
 		return types.NodeView{}, s.policyChangeSince(genBefore), err
+	}
+
+	if !pak.Reusable && !pak.Used {
+		mu := &s.singleUseKeyLocks[pak.ID%uint64(len(s.singleUseKeyLocks))]
+		mu.Lock()
+		defer mu.Unlock()
+
+		// A different machine may have consumed the key while we waited.
+		pak, err = s.GetPreAuthKeyByID(pak.ID)
+		if err != nil {
+			return types.NodeView{}, s.policyChangeSince(genBefore), err
+		}
 	}
 
 	// A pre-auth key node's tags come from the key, never from RequestTags.
