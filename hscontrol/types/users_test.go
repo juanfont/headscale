@@ -591,3 +591,31 @@ func TestOIDCClaimsIdentifierKeepsSubject(t *testing.T) {
 		})
 	}
 }
+
+func TestFromClaimReplacesEmail(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		email    string
+		verified FlexibleBoolean
+		required bool
+		want     string
+	}{
+		{"verified", "current@example.com", true, true, "current@example.com"},
+		{"unverified", "current@example.com", false, true, ""},
+		{"absent", "", false, true, ""},
+		{"malformed", "not-an-address", true, true, ""},
+		{"verification optional", "current@example.com", false, false, "current@example.com"},
+		{"optional but absent", "", false, false, ""},
+		{"optional but malformed", "not-an-address", false, false, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			user := User{Name: "alice", Email: "previous@example.com"}
+			user.FromClaim(&OIDCClaims{
+				Iss: "https://idp.example.com", Sub: "alice",
+				Email: tt.email, EmailVerified: tt.verified,
+			}, tt.required)
+			assert.Equal(t, tt.want, user.Email)
+			assert.Equal(t, "alice", user.Name)
+		})
+	}
+}

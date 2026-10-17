@@ -127,12 +127,13 @@ are configured, a user needs to pass all of them.
 
 ### Control email verification
 
-Headscale uses the `email` claim from the identity provider to synchronize the email address to its user profile. By
-default, a user's email address is only synchronized when the identity provider reports the email address as verified
-via the `email_verified: true` claim.
+Headscale synchronizes the `email` claim from the identity provider to its user profile on each OIDC login. By default,
+the profile uses the email only when the latest login reports `email_verified: true`. An absent, unverified, or
+malformed email clears the previously stored address.
 
 Unverified emails may be allowed in case an identity provider does not send the `email_verified` claim or email
-verification is not required. In that case, a user's email address is always synchronized to the user profile.
+verification is not required. With `email_verified_required: false`, the latest login's email is stored without
+requiring verification. An absent or malformed email still clears the previously stored address.
 
 ```yaml hl_lines="5"
 oidc:
