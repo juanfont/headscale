@@ -3,7 +3,8 @@
 // grant steering with peer connectivity, cross-subnet forwarding and
 // exit nodes.
 //
-// Test data source: ../policy/v2/testdata/grant_results/, see viaCompatTests
+// Test data source: ../policy/v2/testdata/{grant,routes}_results/, see
+// viaCompatTests and routesMapCompatTests
 // Source format:    github.com/juanfont/headscale/hscontrol/types/testcapture
 package servertest_test
 
@@ -25,6 +26,7 @@ import (
 	"go4.org/netipx"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/netmap"
+	"tailscale.com/types/views"
 )
 
 // viaCompatTests lists golden captures that exercise via grant steering.
@@ -66,11 +68,173 @@ var viaCompatTests = []struct {
 	{"via-grant-v62", "via exit steering plus a member rule to autogroup:internet on one port"},
 }
 
-// viaCompatSkipReasons lists checks where headscale differs from SaaS,
-// keyed by check alone where every capture differs the same way. A listed
-// check that matches fails, so a fix must delete its entry.
+// routesMapCompatTests lists routes captures replayed through the mapper.
+// They are shared with TestRoutesCompat* in policy/v2, which read their
+// filters and route sets; this replay reads the netmaps.
+var routesMapCompatTests = []struct {
+	id   string
+	desc string
+}{
+	{"routes-a1-wildcard-acl-includes-routes-in-srcips", "wildcard ACL, every router"},
+	{"routes-a2-tag-based-acl-excludes-routes", "router-to-router ACL"},
+	{"routes-a3-explicit-subnet-filter-to-router", "ACL to one subnet"},
+	{"routes-a4-multiple-routes-same-router", "ACL to one route of a router with an exit route too"},
+	{"routes-e1-ha-two-routers-same-subnet", "HA pair, ACL to the shared subnet"},
+	{"routes-e2-ha-primary-in-allowedips", "HA primary in AllowedIPs"},
+	{"routes-f2-subnet-as-acl-source", "subnet as ACL source"},
+	{"routes-f3-wildcard-src-specific-dst", "ACL to one port of a subnet"},
+	{"routes-h1-wildcard-srcips-format", "wildcard source to tagged routers"},
+	{"routes-pa1-partial-route-approval", "router with an unapproved route"},
+}
+
+// viaCompatSkipReasons lists checks where headscale differs from SaaS, keyed
+// <test_id>/<node>/<check>, or by check alone where every capture differs the
+// same way. A listed check that matches fails, so a fix must delete its entry.
 var viaCompatSkipReasons = map[string]string{
 	"tagged-self": "TAGGED_SELF_PROFILE: SaaS gives a tagged node a profile of its own, headscale the shared tagged-devices one",
+
+	// Adjacent member addresses merge into one prefix, and the reduced
+	// filter keeps all of it; SaaS lists only the node's own address.
+	"routes-f2-subnet-as-acl-source/ivysaur/packet-filter":  "FILTER_DST_MERGED: own filter names a neighbour's address",
+	"routes-f2-subnet-as-acl-source/venusaur/packet-filter": "FILTER_DST_MERGED: own filter names a neighbour's address",
+
+	// SaaS sends a router every approved route in its own AllowedIPs and
+	// every route it is primary for in PrimaryRoutes.
+	"grant-v11/blastoise/self-routes": selfRoutesReduced,
+	"grant-v11/squirtle/self-routes":  selfRoutesReduced,
+	"grant-v12/blastoise/self-routes": selfRoutesReduced,
+	"grant-v12/squirtle/self-routes":  selfRoutesReduced,
+	"grant-v13/blastoise/self-routes": selfRoutesReduced,
+	"grant-v13/squirtle/self-routes":  selfRoutesReduced,
+
+	"routes-a1-wildcard-acl-includes-routes-in-srcips/butterfree/self-routes": selfRoutesReduced,
+	"routes-a2-tag-based-acl-excludes-routes/butterfree/self-routes":          selfRoutesReduced,
+	"routes-a2-tag-based-acl-excludes-routes/caterpie/self-routes":            selfRoutesReduced,
+	"routes-a2-tag-based-acl-excludes-routes/metapod/self-routes":             selfRoutesReduced,
+	"routes-a2-tag-based-acl-excludes-routes/squirtle/self-routes":            selfRoutesReduced,
+	"routes-a2-tag-based-acl-excludes-routes/wartortle/self-routes":           selfRoutesReduced,
+	"routes-a3-explicit-subnet-filter-to-router/butterfree/self-routes":       selfRoutesReduced,
+	"routes-a3-explicit-subnet-filter-to-router/metapod/self-routes":          selfRoutesReduced,
+	"routes-a3-explicit-subnet-filter-to-router/wartortle/self-routes":        selfRoutesReduced,
+	"routes-a4-multiple-routes-same-router/butterfree/self-routes":            selfRoutesReduced,
+	"routes-a4-multiple-routes-same-router/caterpie/self-routes":              selfRoutesReduced,
+	"routes-a4-multiple-routes-same-router/metapod/self-routes":               selfRoutesReduced,
+	"routes-a4-multiple-routes-same-router/squirtle/self-routes":              selfRoutesReduced,
+	"routes-e1-ha-two-routers-same-subnet/butterfree/self-routes":             selfRoutesReduced,
+	"routes-e1-ha-two-routers-same-subnet/caterpie/self-routes":               selfRoutesReduced,
+	"routes-e1-ha-two-routers-same-subnet/squirtle/self-routes":               selfRoutesReduced,
+	"routes-e1-ha-two-routers-same-subnet/wartortle/self-routes":              selfRoutesReduced,
+	"routes-e2-ha-primary-in-allowedips/butterfree/self-routes":               selfRoutesReduced,
+	"routes-e2-ha-primary-in-allowedips/caterpie/self-routes":                 selfRoutesReduced,
+	"routes-e2-ha-primary-in-allowedips/squirtle/self-routes":                 selfRoutesReduced,
+	"routes-e2-ha-primary-in-allowedips/wartortle/self-routes":                selfRoutesReduced,
+	"routes-f2-subnet-as-acl-source/butterfree/self-routes":                   selfRoutesReduced,
+	"routes-f2-subnet-as-acl-source/caterpie/self-routes":                     selfRoutesReduced,
+	"routes-f2-subnet-as-acl-source/metapod/self-routes":                      selfRoutesReduced,
+	"routes-f2-subnet-as-acl-source/squirtle/self-routes":                     selfRoutesReduced,
+	"routes-f2-subnet-as-acl-source/wartortle/self-routes":                    selfRoutesReduced,
+	"routes-f3-wildcard-src-specific-dst/butterfree/self-routes":              selfRoutesReduced,
+	"routes-f3-wildcard-src-specific-dst/metapod/self-routes":                 selfRoutesReduced,
+	"routes-f3-wildcard-src-specific-dst/wartortle/self-routes":               selfRoutesReduced,
+	"routes-h1-wildcard-srcips-format/butterfree/self-routes":                 selfRoutesReduced,
+	"routes-h1-wildcard-srcips-format/metapod/self-routes":                    selfRoutesReduced,
+	"routes-pa1-partial-route-approval/butterfree/self-routes":                selfRoutesReduced,
+
+	"via-grant-v14/blastoise/self-routes": selfRoutesReduced,
+	"via-grant-v14/fearow/self-routes":    selfRoutesReduced,
+	"via-grant-v14/spearow/self-routes":   selfRoutesReduced,
+	"via-grant-v14/squirtle/self-routes":  selfRoutesReduced,
+	"via-grant-v15/blastoise/self-routes": selfRoutesReduced,
+	"via-grant-v15/fearow/self-routes":    selfRoutesReduced,
+	"via-grant-v15/spearow/self-routes":   selfRoutesReduced,
+	"via-grant-v15/squirtle/self-routes":  selfRoutesReduced,
+	"via-grant-v16/blastoise/self-routes": selfRoutesReduced,
+	"via-grant-v16/fearow/self-routes":    selfRoutesReduced,
+	"via-grant-v16/spearow/self-routes":   selfRoutesReduced,
+	"via-grant-v16/squirtle/self-routes":  selfRoutesReduced,
+	"via-grant-v26/blastoise/self-routes": selfRoutesReduced,
+	"via-grant-v26/fearow/self-routes":    selfRoutesReduced,
+	"via-grant-v26/spearow/self-routes":   selfRoutesReduced,
+	"via-grant-v26/squirtle/self-routes":  selfRoutesReduced,
+	"via-grant-v27/blastoise/self-routes": selfRoutesReduced,
+	"via-grant-v27/fearow/self-routes":    selfRoutesReduced,
+	"via-grant-v27/spearow/self-routes":   selfRoutesReduced,
+	"via-grant-v27/squirtle/self-routes":  selfRoutesReduced,
+	"via-grant-v28/blastoise/self-routes": selfRoutesReduced,
+	"via-grant-v28/fearow/self-routes":    selfRoutesReduced,
+	"via-grant-v28/spearow/self-routes":   selfRoutesReduced,
+	"via-grant-v28/squirtle/self-routes":  selfRoutesReduced,
+	"via-grant-v29/blastoise/self-routes": selfRoutesReduced,
+	"via-grant-v29/fearow/self-routes":    selfRoutesReduced,
+	"via-grant-v29/spearow/self-routes":   selfRoutesReduced,
+	"via-grant-v29/squirtle/self-routes":  selfRoutesReduced,
+	"via-grant-v30/blastoise/self-routes": selfRoutesReduced,
+	"via-grant-v30/fearow/self-routes":    selfRoutesReduced,
+	"via-grant-v30/spearow/self-routes":   selfRoutesReduced,
+	"via-grant-v30/squirtle/self-routes":  selfRoutesReduced,
+	"via-grant-v31/blastoise/self-routes": selfRoutesReduced,
+	"via-grant-v31/fearow/self-routes":    selfRoutesReduced,
+	"via-grant-v31/spearow/self-routes":   selfRoutesReduced,
+	"via-grant-v31/squirtle/self-routes":  selfRoutesReduced,
+	"via-grant-v32/blastoise/self-routes": selfRoutesReduced,
+	"via-grant-v32/fearow/self-routes":    selfRoutesReduced,
+	"via-grant-v32/spearow/self-routes":   selfRoutesReduced,
+	"via-grant-v32/squirtle/self-routes":  selfRoutesReduced,
+	"via-grant-v33/blastoise/self-routes": selfRoutesReduced,
+	"via-grant-v33/fearow/self-routes":    selfRoutesReduced,
+	"via-grant-v33/spearow/self-routes":   selfRoutesReduced,
+	"via-grant-v33/squirtle/self-routes":  selfRoutesReduced,
+	"via-grant-v34/blastoise/self-routes": selfRoutesReduced,
+	"via-grant-v34/fearow/self-routes":    selfRoutesReduced,
+	"via-grant-v34/spearow/self-routes":   selfRoutesReduced,
+	"via-grant-v34/squirtle/self-routes":  selfRoutesReduced,
+	"via-grant-v35/blastoise/self-routes": selfRoutesReduced,
+	"via-grant-v35/fearow/self-routes":    selfRoutesReduced,
+	"via-grant-v35/spearow/self-routes":   selfRoutesReduced,
+	"via-grant-v35/squirtle/self-routes":  selfRoutesReduced,
+	"via-grant-v36/blastoise/self-routes": selfRoutesReduced,
+	"via-grant-v36/fearow/self-routes":    selfRoutesReduced,
+	"via-grant-v36/spearow/self-routes":   selfRoutesReduced,
+	"via-grant-v36/squirtle/self-routes":  selfRoutesReduced,
+	"via-grant-v47/blastoise/self-routes": selfRoutesReduced,
+	"via-grant-v47/fearow/self-routes":    selfRoutesReduced,
+	"via-grant-v47/spearow/self-routes":   selfRoutesReduced,
+	"via-grant-v47/squirtle/self-routes":  selfRoutesReduced,
+	"via-grant-v48/blastoise/self-routes": selfRoutesReduced,
+	"via-grant-v48/fearow/self-routes":    selfRoutesReduced,
+	"via-grant-v48/spearow/self-routes":   selfRoutesReduced,
+	"via-grant-v48/squirtle/self-routes":  selfRoutesReduced,
+	"via-grant-v49/blastoise/self-routes": selfRoutesReduced,
+	"via-grant-v49/fearow/self-routes":    selfRoutesReduced,
+	"via-grant-v49/spearow/self-routes":   selfRoutesReduced,
+	"via-grant-v49/squirtle/self-routes":  selfRoutesReduced,
+	"via-grant-v50/blastoise/self-routes": selfRoutesReduced,
+	"via-grant-v50/fearow/self-routes":    selfRoutesReduced,
+	"via-grant-v50/spearow/self-routes":   selfRoutesReduced,
+	"via-grant-v50/squirtle/self-routes":  selfRoutesReduced,
+}
+
+const selfRoutesReduced = "SELF_ROUTES_REDUCED: headscale sends a router only the primary routes its policy lets it reach"
+
+// TestRoutesMapCompat replays routesMapCompatTests through
+// [runViaMapCompat].
+func TestRoutesMapCompat(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range routesMapCompatTests {
+		t.Run(tc.id, func(t *testing.T) {
+			t.Parallel()
+
+			path := filepath.Join(
+				"..", "policy", "v2", "testdata", "routes_results", tc.id+".hujson",
+			)
+
+			c, err := testcapture.Read(path)
+			require.NoError(t, err, "failed to read %s", path)
+
+			runViaMapCompat(t, c)
+		})
+	}
 }
 
 // TestViaGrantMapCompat loads golden captures from Tailscale SaaS and
@@ -278,10 +442,77 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 				require.Equal(tt, selfOffersExit(capture.Netmap), selfOffersExit(nm),
 					"SelfNode exit routes should match SaaS")
 
-				compareNetmap(tt, nm, capture, clients, saasAddrs)
+				compareNetmap(tt, nm, capture, clients, saasAddrs, c.TestID+"/"+viewerName)
+			})
+
+			t.Run("self-routes", func(t *testing.T) {
+				key := c.TestID + "/" + viewerName + "/self-routes"
+				reason, listed := viaCompatSkipReasons[key]
+
+				requireNetmapHolds(t, func(tt require.TestingT) {
+					want, got := selfRoutes(capture.Netmap), selfRoutes(cl.Netmap())
+					if !listed {
+						assert.Equal(tt, want, got, "own routes in AllowedIPs and PrimaryRoutes")
+
+						return
+					}
+
+					if got == want {
+						tt.Errorf("own routes match SaaS; delete viaCompatSkipReasons[%q]", key)
+					}
+				})
+
+				if listed {
+					t.Skip(reason)
+				}
 			})
 		})
 	}
+}
+
+// selfRoutes is the node's AllowedIPs minus its own addresses, and its
+// PrimaryRoutes, each sorted. Host routes inside the Tailscale range stay
+// in, so serving one SaaS withholds is caught.
+func selfRoutes(nm *netmap.NetworkMap) string {
+	self := nm.SelfNode
+
+	var allowed, primary []string
+
+	for _, pfx := range self.AllowedIPs().All() {
+		if !views.SliceContains(self.Addresses(), pfx) {
+			allowed = append(allowed, pfx.String())
+		}
+	}
+
+	for _, pfx := range self.PrimaryRoutes().All() {
+		primary = append(primary, pfx.String())
+	}
+
+	slices.Sort(allowed)
+	slices.Sort(primary)
+
+	return fmt.Sprintf("allowed %v primary %v", allowed, primary)
+}
+
+func TestSelfRoutesKeepsHostRoutes(t *testing.T) {
+	t.Parallel()
+
+	self := netip.MustParsePrefix("100.64.0.1/32")
+	subnet := netip.MustParsePrefix("10.9.0.0/24")
+	host := netip.MustParsePrefix("100.64.0.11/32")
+
+	nm := func(routes ...netip.Prefix) *netmap.NetworkMap {
+		return &netmap.NetworkMap{SelfNode: (&tailcfg.Node{
+			Addresses:     []netip.Prefix{self},
+			AllowedIPs:    append([]netip.Prefix{self}, routes...),
+			PrimaryRoutes: routes,
+		}).View()}
+	}
+
+	assert.Equal(t, "allowed [10.9.0.0/24] primary [10.9.0.0/24]", selfRoutes(nm(subnet)))
+	assert.Equal(t,
+		"allowed [10.9.0.0/24 100.64.0.11/32] primary [10.9.0.0/24 100.64.0.11/32]",
+		selfRoutes(nm(subnet, host)))
 }
 
 // requireNetmapHolds retries check until it passes on several consecutive
@@ -342,13 +573,16 @@ func (r *failRecorder) FailNow() {
 //   - PrimaryRoutes per peer
 //   - PacketFilter (source, destination, ports) triples
 //
-// It takes [require.TestingT] so it can run inside [requireNetmapHolds].
+// key is <test_id>/<node>, the prefix of the viewer's viaCompatSkipReasons
+// entries. It takes [require.TestingT] so it can run inside
+// [requireNetmapHolds].
 func compareNetmap(
 	t require.TestingT,
 	got *netmap.NetworkMap,
 	want testcapture.Node,
 	clients map[string]*servertest.TestClient,
 	saasAddrs map[netip.Addr]string,
+	key string,
 ) {
 	if h, ok := t.(interface{ Helper() }); ok {
 		h.Helper()
@@ -482,7 +716,7 @@ func compareNetmap(
 		}
 	}
 
-	comparePacketFilter(t, got, want, clients, saasAddrs)
+	comparePacketFilter(t, got, want, clients, saasAddrs, key+"/packet-filter")
 	compareUserProfiles(t, got, want.Netmap, clients)
 }
 
@@ -566,6 +800,7 @@ func comparePacketFilter(
 	want testcapture.Node,
 	clients map[string]*servertest.TestClient,
 	saasAddrs map[netip.Addr]string,
+	key string,
 ) {
 	if h, ok := t.(interface{ Helper() }); ok {
 		h.Helper()
@@ -622,7 +857,17 @@ func comparePacketFilter(
 		}
 	}
 
-	assert.ElementsMatchf(t, sortedKeys(wantTriples), sortedKeys(gotTriples),
+	wantList, gotList := sortedKeys(wantTriples), sortedKeys(gotTriples)
+
+	if reason, listed := viaCompatSkipReasons[key]; listed {
+		if slices.Equal(wantList, gotList) {
+			t.Errorf("PacketFilter matches SaaS; delete viaCompatSkipReasons[%q] (%s)", key, reason)
+		}
+
+		return
+	}
+
+	assert.ElementsMatchf(t, wantList, gotList,
 		"PacketFilter (source, destination, ports) mismatch")
 }
 
@@ -710,9 +955,8 @@ func hsAddrsByPeer(clients map[string]*servertest.TestClient) map[netip.Addr]str
 // SaaS wire format) into a sorted list of canonical identifiers: "*"
 // for wildcard, "peer:<name>" for each Tailscale address or prefix
 // that resolves to a known peer, or the raw CIDR string for
-// non-Tailscale prefixes. A Tailscale prefix wider than /32 (IPv4)
-// or /128 (IPv6) expands to the union of its contained peers.
-// Unresolvable Tailscale-range sources fail the test.
+// non-Tailscale prefixes. A Tailscale prefix or address range expands
+// to the union of its contained peers.
 func canonicaliseSrcStrings(
 	t require.TestingT,
 	srcs []string,
@@ -732,11 +976,13 @@ func canonicaliseSrcStrings(
 			continue
 		}
 
-		pfx, err := parsePrefixOrAddr(src)
+		pfxs, err := parseDstPrefixes(src)
 		require.NoErrorf(t, err,
 			"PacketFilter[%d]: unparseable SrcIP %q", ruleIndex, src)
 
-		addIdentsForSrc(t, pfx, addrToPeer, ruleIndex, seen)
+		for _, pfx := range pfxs {
+			addIdentsForSrc(t, pfx, addrToPeer, ruleIndex, seen)
+		}
 	}
 
 	return sortedKeys(seen)
@@ -773,7 +1019,9 @@ func canonicaliseSrcPrefixes(
 // addIdentsForSrc resolves one source prefix into canonical identity
 // tokens and inserts them into seen. A non-Tailscale prefix passes
 // through literally; a Tailscale-range prefix expands to the union
-// of peer names whose addresses fall within it.
+// of peer names whose addresses fall within it. A single address must
+// be a known peer; a wider prefix may cover none, since SaaS writes
+// "*" as ranges over the whole Tailscale space.
 func addIdentsForSrc(
 	t require.TestingT,
 	pfx netip.Prefix,
@@ -800,7 +1048,7 @@ func addIdentsForSrc(
 		}
 	}
 
-	require.Truef(t, matched,
+	require.Truef(t, matched || !pfx.IsSingleIP(),
 		"PacketFilter[%d]: Tailscale-range SrcIP %s does not cover any known peer; addrToPeer=%v",
 		ruleIndex, pfx, addrToPeer)
 }
