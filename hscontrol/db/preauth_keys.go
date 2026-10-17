@@ -339,10 +339,23 @@ func (hsdb *HSDatabase) GetPreAuthKeyByID(id uint64) (*types.PreAuthKey, error) 
 }
 
 // DestroyPreAuthKey destroys a preauthkey. Returns error if the [types.PreAuthKey]
-// does not exist. This also clears the auth_key_id on any nodes that reference
-// this key.
+// does not exist. Referenced ephemeral keys are revoked instead, because their
+// nodes need the key row to retain ephemerality. Other keys are removed along
+// with their nodes' auth_key_id references.
 func DestroyPreAuthKey(tx *gorm.DB, id uint64) error {
 	return tx.Transaction(func(db *gorm.DB) error {
+		res := db.Model(&types.Credential{}).
+			Where("kind = ? AND id = ? AND ephemeral = ?", types.CredentialPreAuthKey, id, true).
+			Where("id IN (SELECT auth_key_id FROM nodes WHERE auth_key_id IS NOT NULL)").
+			Update("revoked", gorm.Expr("COALESCE(revoked, ?)", time.Now()))
+		if res.Error != nil {
+			return res.Error
+		}
+
+		if res.RowsAffected > 0 {
+			return nil
+		}
+
 		// First, clear the foreign key reference on any nodes using this key
 		err := db.Model(&types.Node{}).
 			Where("auth_key_id = ?", id).
@@ -353,7 +366,7 @@ func DestroyPreAuthKey(tx *gorm.DB, id uint64) error {
 
 		// Then delete the pre-auth key, on the same savepoint as the
 		// node update so both roll back together.
-		res := db.Unscoped().
+		res = db.Unscoped().
 			Delete(&types.Credential{}, "kind = ? AND id = ?", types.CredentialPreAuthKey, id)
 		if res.Error != nil {
 			return res.Error
