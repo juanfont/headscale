@@ -26,6 +26,7 @@ var (
 	ErrCannotParsePrefix           = errors.New("cannot parse prefix")
 	ErrInvalidAuthIDLength         = errors.New("auth ID has invalid length")
 	ErrInvalidAuthIDPrefix         = errors.New("auth ID has invalid prefix")
+	ErrInvalidAuthIDChars          = errors.New("auth ID has invalid characters")
 	ErrRegistrationPayloadTooLarge = errors.New("registration payload exceeds size limit")
 )
 
@@ -79,6 +80,13 @@ func (r AuthID) Validate() error {
 			"%w: expected %d, got %d",
 			ErrInvalidAuthIDLength, AuthIDLength, len(r),
 		)
+	}
+
+	for i := len(authIDPrefix); i < len(r); i++ {
+		c := r[i]
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return ErrInvalidAuthIDChars
+		}
 	}
 
 	return nil

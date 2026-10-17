@@ -305,3 +305,48 @@ func TestDefaultBatcherWorkers(t *testing.T) {
 		t.Errorf("DefaultBatcherWorkers() = %d, expected value >= 1", result)
 	}
 }
+
+func TestAuthIDFromStringRejectsNonHex(t *testing.T) {
+	generated := MustAuthID()
+	parsed, err := AuthIDFromString(generated.String())
+	require.NoError(t, err)
+	require.Equal(t, generated, parsed)
+
+	_, err = AuthIDFromString(authIDPrefix + "0123456789abcdef01234567")
+	require.NoError(t, err)
+
+	_, err = AuthIDFromString("wrong-prefix" + strings.Repeat(";", authIDRandomLength))
+	require.ErrorIs(t, err, ErrInvalidAuthIDPrefix)
+
+	_, err = AuthIDFromString(authIDPrefix + ";")
+	require.ErrorIs(t, err, ErrInvalidAuthIDLength)
+
+	for _, tt := range []struct {
+		name string
+		bad  string
+	}{
+		{name: "semicolon", bad: ";"},
+		{name: "substitution", bad: "$()"},
+		{name: "space", bad: " "},
+		{name: "newline", bad: "\n"},
+		{name: "uppercase", bad: "A"},
+		{name: "beyond f", bad: "g"},
+		{name: "underscore", bad: "_"},
+		{name: "non-ASCII", bad: "é"},
+	} {
+		for _, position := range []string{"start", "end"} {
+			t.Run(tt.name+"/"+position, func(t *testing.T) {
+				padding := strings.Repeat("a", authIDRandomLength-len(tt.bad))
+				suffix := tt.bad + padding
+
+				if position == "end" {
+					suffix = padding + tt.bad
+				}
+
+				parsed, err := AuthIDFromString(authIDPrefix + suffix)
+				require.ErrorIs(t, err, ErrInvalidAuthIDChars)
+				require.Empty(t, parsed)
+			})
+		}
+	}
+}

@@ -377,9 +377,6 @@ func authIDFromRequest(req *http.Request) (types.AuthID, error) {
 		return "", NewHTTPError(http.StatusBadRequest, "invalid auth id", fmt.Errorf("parsing auth_id from URL: %w", err))
 	}
 
-	// We need to make sure we dont open for XSS style injections, if the parameter that
-	// is passed as a key is not parsable/validated as a NodePublic key, then fail to render
-	// the template and log an error.
 	authId, err := types.AuthIDFromString(raw)
 	if err != nil {
 		return "", NewHTTPError(http.StatusBadRequest, "invalid auth id", fmt.Errorf("parsing auth_id from URL: %w", err))
