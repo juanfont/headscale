@@ -94,7 +94,21 @@ func runTesterCompat(t *testing.T, c *testcapture.Capture, skips map[string]stri
 
 	// Each capture pins its own topology IPs; range and address tests mean
 	// nothing against other nodes.
-	nodes := buildGrantsNodesFromCapture(users, c)
+	_ = runTesterCompatFor(t, c, skips, c.TestID+"/", users, buildGrantsNodesFromCapture(users, c))
+}
+
+// runTesterCompatFor is [runTesterCompat] against the given users and nodes,
+// with its checks keyed under key. It returns headscale's refusal, if any.
+func runTesterCompatFor(
+	t *testing.T,
+	c *testcapture.Capture,
+	skips map[string]string,
+	key string,
+	users types.Users,
+	nodes types.Nodes,
+) error {
+	t.Helper()
+
 	policyJSON := []byte(c.Input.FullPolicy)
 
 	pm, err := NewPolicyManager(policyJSON, users, nodes.ViewSlice())
@@ -110,7 +124,6 @@ func runTesterCompat(t *testing.T, c *testcapture.Capture, skips map[string]stri
 	}
 
 	saasRefused := c.Input.APIResponseCode != http.StatusOK
-	key := c.TestID + "/"
 
 	compatCheck(t, skips, key+"verdict", func() string {
 		switch {
@@ -126,7 +139,7 @@ func runTesterCompat(t *testing.T, c *testcapture.Capture, skips map[string]stri
 	if !saasRefused || err == nil {
 		compatChecksNotRun(t, skips, key+"message", key+"breakdown", key+"label")
 
-		return
+		return err
 	}
 
 	compatCheck(t, skips, key+"message", func() string {
@@ -140,7 +153,7 @@ func runTesterCompat(t *testing.T, c *testcapture.Capture, skips map[string]stri
 	if len(body.Data) == 0 {
 		compatChecksNotRun(t, skips, key+"breakdown", key+"label")
 
-		return
+		return err
 	}
 
 	requireFailureBreakdown(t, skips, key+"breakdown", body.Data, c.Input.FullPolicy, pm, err)
@@ -148,6 +161,8 @@ func runTesterCompat(t *testing.T, c *testcapture.Capture, skips map[string]stri
 	compatCheck(t, skips, key+"label", func() string {
 		return cmp.Diff(nodeLabels(c, fmt.Sprint(body.Data)), nodeLabels(c, err.Error()))
 	})
+
+	return err
 }
 
 var (
