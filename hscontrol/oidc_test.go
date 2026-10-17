@@ -926,7 +926,7 @@ func TestOIDCPendingCallbackPreservesSSHVerdict(t *testing.T) {
 	require.True(t, ok)
 
 	principal := mockoidc.DefaultUser()
-	user, err := a.createOrUpdateUserFromClaim(&types.OIDCClaims{
+	user, _, err := a.createOrUpdateUserFromClaim(&types.OIDCClaims{
 		Iss:           b.idp.Issuer(),
 		Sub:           principal.Subject,
 		Username:      principal.PreferredUsername,
@@ -1482,12 +1482,12 @@ func TestOIDCLoginClearsUnverifiedEmail(t *testing.T) {
 		Iss: "https://idp.example.com", Sub: "alice", Username: "alice",
 		Email: "alice@example.com", EmailVerified: true,
 	}
-	first, err := provider.createOrUpdateUserFromClaim(claims)
+	first, _, err := provider.createOrUpdateUserFromClaim(claims)
 	require.NoError(t, err)
 	require.Equal(t, "alice@example.com", first.Email)
 
 	claims.EmailVerified = false
-	second, err := provider.createOrUpdateUserFromClaim(claims)
+	second, _, err := provider.createOrUpdateUserFromClaim(claims)
 	require.NoError(t, err)
 	assert.Equal(t, first.ID, second.ID)
 	assert.Empty(t, second.Email)
@@ -1495,6 +1495,57 @@ func TestOIDCLoginClearsUnverifiedEmail(t *testing.T) {
 	stored, err := app.state.GetUserByID(types.UserID(first.ID))
 	require.NoError(t, err)
 	assert.Empty(t, stored.Email)
+}
+
+func TestOIDCCallbackDispatchesUserIdentityChange(t *testing.T) {
+	b := newOIDCBrowser(t)
+	provider, ok := b.app.authProvider.(*AuthProviderOIDC)
+	require.True(t, ok)
+
+	provider.cfg.EmailVerifiedRequired = true
+	user, _, err := provider.createOrUpdateUserFromClaim(&types.OIDCClaims{
+		Iss: b.idp.Issuer(), Sub: "identity-change", Username: "alice",
+		Email: "alice@old.example", EmailVerified: true,
+	})
+	require.NoError(t, err)
+
+	node := b.app.state.CreateRegisteredNodeForTest(user, "identity-node")
+	node.User = user.Clone()
+	b.app.state.PutNodeInStoreForTest(*node)
+	require.NoError(t, b.app.state.UpdatePolicyManagerNodesForTest())
+	_, err = b.app.state.SetPolicy([]byte(`{
+		"acls": [{"action": "accept", "src": ["alice@old.example"], "dst": ["*:*"]}]
+	}`))
+	require.NoError(t, err)
+
+	responses := make(chan *tailcfg.MapResponse, 8)
+	require.NoError(t, b.app.mapBatcher.AddNode(node.ID, responses, tailcfg.CurrentCapabilityVersion, nil))
+	t.Cleanup(func() { b.app.mapBatcher.RemoveNode(node.ID, responses) })
+
+	initial := <-responses
+	require.NotEmpty(t, initial.PacketFilters["base"])
+
+	b.idp.QueueUser(&mockoidc.MockUser{
+		Subject: "identity-change", PreferredUsername: "alice",
+		Email: "alice@new.example", EmailVerified: true,
+	})
+	_, registerURL := b.pendingNode(t)
+	status, _, _ := b.get(t, registerURL)
+	require.Equal(t, http.StatusOK, status)
+
+	stored, err := b.app.state.GetUserByID(types.UserID(user.ID))
+	require.NoError(t, err)
+	require.Equal(t, "alice@new.example", stored.Email)
+
+	assert.Eventually(t, func() bool {
+		select {
+		case response := <-responses:
+			filters, present := response.PacketFilters["base"]
+			return present && len(filters) == 0
+		default:
+			return false
+		}
+	}, 3*time.Second, 20*time.Millisecond, "the connected node must receive the updated filter before registration confirmation")
 }
 
 func TestOIDCRegistrationRejectsOversizedMergedHostinfo(t *testing.T) {

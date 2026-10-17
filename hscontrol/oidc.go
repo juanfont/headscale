@@ -19,6 +19,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/templates"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/oauth2"
@@ -377,7 +378,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
-	user, err := a.createOrUpdateUserFromClaim(&claims)
+	user, userChange, err := a.createOrUpdateUserFromClaim(&claims)
 	if err != nil {
 		httpUserError(writer, NewHTTPError(
 			http.StatusInternalServerError,
@@ -387,6 +388,8 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 
 		return
 	}
+
+	a.h.Change(userChange)
 
 	// If this is a registration flow, render the confirmation
 	// interstitial instead of finalising the registration immediately.
@@ -713,16 +716,17 @@ func (a *AuthProviderOIDC) getAuthInfoFromState(state string) *AuthInfo {
 
 func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 	claims *types.OIDCClaims,
-) (*types.User, error) {
+) (*types.User, change.Change, error) {
 	var (
 		user    *types.User
 		err     error
 		newUser bool
+		c       change.Change
 	)
 
 	user, err = a.h.state.GetUserByOIDCIdentifier(claims.Identifier())
 	if err != nil && !errors.Is(err, db.ErrUserNotFound) {
-		return nil, fmt.Errorf("creating or updating user: %w", err)
+		return nil, change.Change{}, fmt.Errorf("creating or updating user: %w", err)
 	}
 
 	// if the user is still not found, create a new empty user.
@@ -736,21 +740,21 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 	user.FromClaim(claims, a.cfg.EmailVerifiedRequired)
 
 	if newUser {
-		user, _, err = a.h.state.CreateUser(*user)
+		user, c, err = a.h.state.CreateUser(*user)
 		if err != nil {
-			return nil, fmt.Errorf("creating user: %w", err)
+			return nil, change.Change{}, fmt.Errorf("creating user: %w", err)
 		}
 	} else {
-		_, _, err = a.h.state.UpdateUser(types.UserID(user.ID), func(u *types.User) error {
+		_, c, err = a.h.state.UpdateUser(types.UserID(user.ID), func(u *types.User) error {
 			*u = *user
 			return nil
 		})
 		if err != nil {
-			return nil, fmt.Errorf("updating user: %w", err)
+			return nil, change.Change{}, fmt.Errorf("updating user: %w", err)
 		}
 	}
 
-	return user, nil
+	return user, c, nil
 }
 
 // registerConfirmCSRFCookie is the cookie name used to bind the
