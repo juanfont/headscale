@@ -673,10 +673,11 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 		return false, fmt.Errorf("parsing policy: %w", err)
 	}
 
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
+	pm.mu.RLock()
+	users, nodes := pm.users, pm.nodes
+	pm.mu.RUnlock()
 
-	err = validateUserReferences(pol, pm.users)
+	err = validateUserReferences(pol, users)
 	if err != nil {
 		return false, fmt.Errorf("validating policy user references: %w", err)
 	}
@@ -686,16 +687,24 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 	// they fail, return without mutating the live PolicyManager so the
 	// failed write does not knock the running config offline.
 	//
+	// They run before the write lock is taken: how long they take is up
+	// to the policy author, and every map response and node write needs
+	// the lock. A user or node that changes meanwhile counts as changed
+	// right after the write.
+	//
 	// Aggregate ACL and SSH test failures via multierr so operators
 	// see both classes in a single response instead of having to
 	// fix-and-retry to discover the second one.
 	testErr := multierr.New(
-		evaluateTests(pol, pm.users, pm.nodes),
-		evaluateSSHTests(pol, pm.users, pm.nodes),
+		evaluateTests(pol, users, nodes),
+		evaluateSSHTests(pol, users, nodes),
 	)
 	if testErr != nil {
 		return false, testErr
 	}
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
 
 	// Log policy metadata for debugging
 	log.Debug().
