@@ -1682,6 +1682,53 @@ func TestUpdateNodeDiff(t *testing.T) {
 	assert.False(t, before.Valid())
 }
 
+func TestUpdateNodeDiffSharesUnchangedRoutes(t *testing.T) {
+	node := createTestNode(1, 1, "user1", "node1")
+	peer := createTestNode(2, 2, "user2", "node2")
+	announced := make([]netip.Prefix, 2048)
+
+	ip := netip.MustParseAddr("10.0.0.0")
+	for i := range announced {
+		announced[i] = netip.PrefixFrom(ip, 32)
+		ip = ip.Next()
+	}
+
+	node.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: announced}
+	node.ApprovedRoutes = []netip.Prefix{announced[0]}
+	lastSeen := time.Now().Add(-time.Minute)
+	node.LastSeen = &lastSeen
+
+	var peerBuilds atomic.Int64
+
+	store := NewNodeStore(types.Nodes{&node, &peer},
+		func(nodes []types.NodeView) map[types.NodeID][]types.NodeID {
+			peerBuilds.Add(1)
+
+			return allowAllPeersFunc(nodes)
+		}, TestBatchSize, TestBatchTimeout)
+	store.Start()
+
+	defer store.Stop()
+
+	peerBuilds.Store(0)
+
+	published := store.data.Load()
+	now := time.Now()
+	before, after, ok := store.UpdateNodeDiff(1, func(n *types.Node) {
+		n.LastSeen = &now
+	})
+	require.True(t, ok)
+	assert.Same(t, &before.AnnouncedRoutes()[0], &after.AnnouncedRoutes()[0])
+	assert.Same(t, &published.nodesByID[1].Hostinfo.RoutableIPs[0],
+		&after.AnnouncedRoutes()[0])
+	assert.Equal(t, lastSeen, before.LastSeen().Get())
+	assert.Equal(t, lastSeen, *published.nodesByID[1].LastSeen)
+	assert.Equal(t, now, after.LastSeen().Get())
+	assert.Zero(t, peerBuilds.Load())
+	assert.Same(t, &published.peersByNode[1][0], &store.data.Load().peersByNode[1][0])
+	assert.Equal(t, now, store.ListPeers(2).At(0).LastSeen().Get())
+}
+
 // TestListPeersExcludesSelf proves a node is never returned among its own
 // peers, on both the snapshot path and the explicit peer-ID path.
 //
@@ -2032,15 +2079,20 @@ func benchNodes(n int) ([]types.User, types.Nodes) {
 // (lastseen) should cost far fewer builds than a relation-changing one
 // (route, tag).
 func BenchmarkNodeStoreWrite(b *testing.B) {
-	users, nodes := benchNodes(617)
-
 	for _, kind := range []struct {
-		name   string
-		mutate func(i int, n *types.Node)
+		name      string
+		announced int
+		mutate    func(i int, n *types.Node)
 	}{
 		{name: "lastseen", mutate: func(_ int, n *types.Node) {
 			n.LastSeen = new(time.Now())
 		}},
+		{
+			name: "lastseen-many-routes", announced: 4096,
+			mutate: func(_ int, n *types.Node) {
+				n.LastSeen = new(time.Now())
+			},
+		},
 		{name: "route", mutate: func(i int, n *types.Node) {
 			subnet := netip.PrefixFrom(netip.AddrFrom4([4]byte{10, byte(200 + i%50), 0, 0}), 24) //nolint:gosec
 			n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet}}
@@ -2056,6 +2108,17 @@ func BenchmarkNodeStoreWrite(b *testing.B) {
 			n.UserID, n.User = nil, nil
 		}},
 	} {
+		users, nodes := benchNodes(617)
+		if kind.announced > 0 {
+			nodes[0].Hostinfo.RoutableIPs = make([]netip.Prefix, kind.announced)
+
+			ip := netip.MustParseAddr("10.0.0.0")
+			for i := range kind.announced {
+				nodes[0].Hostinfo.RoutableIPs[i] = netip.PrefixFrom(ip, 32)
+				ip = ip.Next()
+			}
+		}
+
 		b.Run(fmt.Sprintf("%s/n=%d", kind.name, len(nodes)), func(b *testing.B) {
 			var calls atomic.Int64
 
