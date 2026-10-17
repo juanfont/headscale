@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -438,4 +439,67 @@ func TestPolicyTestResultsErrorsRendering(t *testing.T) {
 
 	// Lines should be newline-separated, not space-joined.
 	assert.Equal(t, 2, strings.Count(rendered, "\n")+1, "expected one line per failing assertion")
+}
+
+// TestFailureBreakdownIsBounded pins that the rendered breakdown of
+// failing tests and sshTests does not grow with label length times
+// failures: the policy author sizes both, and the breakdown is also
+// rendered at boot.
+func TestFailureBreakdownIsBounded(t *testing.T) {
+	users := sshTestUsers()
+	nodes := sshTestNodes(users)
+
+	const failures = 2000
+
+	name := strings.Repeat("a", 64<<10)
+	hosts := `"hosts": {"` + name + `": "100.64.0.1", "gone": "100.64.0.99"},`
+
+	quoted := make([]string, failures)
+	for i := range failures {
+		quoted[i] = fmt.Sprintf(`"x%d"`, i)
+	}
+
+	names := strings.Join(quoted, ",")
+
+	for _, tt := range []struct {
+		name, block string
+		sentinel    error
+	}{
+		{
+			name: "sshTests dst without node",
+			block: `"sshTests": [{"src": "` + name + `", "dst": [` +
+				strings.Repeat(`"gone",`, failures) + `], "deny": ["root"]}]`,
+			sentinel: errSSHPolicyTestsFailed,
+		},
+		{
+			name: "sshTests accept",
+			block: `"sshTests": [{"src": "` + name +
+				`", "dst": ["100.64.0.2"], "accept": [` + names + `]}]`,
+			sentinel: errSSHPolicyTestsFailed,
+		},
+		{
+			name: "sshTests check",
+			block: `"sshTests": [{"src": "` + name +
+				`", "dst": ["100.64.0.2"], "check": [` + names + `]}]`,
+			sentinel: errSSHPolicyTestsFailed,
+		},
+		{
+			name: "tests accept",
+			block: `"tests": [{"src": "` + name + `", "accept": [` +
+				strings.Repeat(`"gone:22",`, failures) + `]}]`,
+			sentinel: errPolicyTestsFailed,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			pm, err := NewPolicyManager([]byte(`{}`), users, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			_, err = pm.SetPolicy([]byte(`{"acls": [], ` + hosts + tt.block + `}`))
+			require.ErrorIs(t, err, tt.sentinel)
+			require.Less(t, len(err.Error()), 100<<10)
+			require.True(t, strings.HasSuffix(err.Error(), fmt.Sprintf(
+				"... and %d more", failures-maxTestFailureLines,
+			)), "error ends with the count")
+		})
+	}
 }
