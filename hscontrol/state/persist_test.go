@@ -6,6 +6,7 @@ import (
 	"maps"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -30,6 +31,7 @@ import (
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 	"tailscale.com/types/views"
+	"zombiezen.com/go/postgrestest"
 )
 
 // persistTestSetup pre-creates a sqlite database on disk with a single
@@ -1337,6 +1339,99 @@ func TestUpdatePolicyStoreFailure(t *testing.T) {
 
 	after, _ := s.Filter()
 	assert.Equal(t, before, after, "an unstored policy must not be installed")
+}
+
+// TestPostgresUpdatePolicyConcurrentWrites runs a second write while the
+// first one's insert is not yet committed. Pruning cannot see that row, so
+// unless writers are serialised up to the install, it outlives the newer one.
+func TestPostgresUpdatePolicyConcurrentWrites(t *testing.T) {
+	srv, err := postgrestest.Start(t.Context())
+	if err != nil {
+		t.Skipf("start postgres: %s", err)
+	}
+
+	t.Cleanup(srv.Cleanup)
+
+	dsn, err := srv.CreateDatabase(t.Context())
+	require.NoError(t, err)
+
+	u, err := url.Parse(dsn)
+	require.NoError(t, err)
+
+	pass, _ := u.User.Password()
+	port, err := strconv.Atoi(u.Port())
+	require.NoError(t, err)
+
+	cfg := persistTestConfig("")
+	cfg.Database = types.DatabaseConfig{
+		Type: types.DatabasePostgres,
+		Postgres: types.PostgresConfig{
+			Host: u.Hostname(),
+			Port: port,
+			Name: strings.TrimLeft(u.Path, "/"),
+			User: u.User.Username(),
+			Pass: pass,
+			Ssl:  "disable",
+		},
+	}
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	const (
+		first  = `{"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}]}`
+		second = `{"acls": [{"action": "accept", "src": ["*"], "dst": ["*:22"]}]}`
+	)
+
+	_, _, err = s.UpdatePolicy([]byte(second))
+	require.NoError(t, err)
+
+	want, _ := s.Filter()
+
+	var creates atomic.Int32
+
+	written := make(chan struct{})
+
+	require.NoError(t, s.db.DB.Callback().Create().After("gorm:create").
+		Register("write_while_storing", func(tx *gorm.DB) {
+			if tx.Statement.Table != "policies" || creates.Add(1) != 1 {
+				return
+			}
+
+			go func() {
+				defer close(written)
+
+				_, _, err := s.UpdatePolicy([]byte(second))
+				assert.NoError(t, err)
+			}()
+
+			// Give the second write time to finish, unless the first
+			// write blocks it.
+			select {
+			case <-written:
+			case <-time.After(200 * time.Millisecond):
+			}
+		}))
+	t.Cleanup(func() {
+		_ = s.db.DB.Callback().Create().Remove("write_while_storing")
+	})
+
+	_, _, err = s.UpdatePolicy([]byte(first))
+	require.NoError(t, err)
+	<-written
+
+	var rows int64
+	require.NoError(t,
+		s.db.DB.Unscoped().Model(&types.Policy{}).Count(&rows).Error)
+	assert.Equal(t, int64(1), rows, "only the current policy may be stored")
+
+	stored, err := s.GetPolicy()
+	require.NoError(t, err)
+	assert.JSONEq(t, second, stored.Data, "the write that ran last is stored")
+
+	got, _ := s.Filter()
+	assert.Equal(t, want, got, "the policy in force must be the one stored")
 }
 
 // TestReloadPolicyEmpty: with no policy configured a reload has nothing to

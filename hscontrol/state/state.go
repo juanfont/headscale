@@ -182,8 +182,8 @@ type State struct {
 	// polMan handles policy evaluation and management
 	polMan policy.PolicyManager
 
-	// policyMu makes loading the stored policy and installing it one step,
-	// so of two overlapping reloads the older document cannot land last.
+	// policyMu makes storing, loading and installing a policy one step, so
+	// policies land in the database in the order they are installed.
 	policyMu sync.Mutex
 
 	// authCache holds pending Web, OIDC and SSH authentication requests.
@@ -472,6 +472,11 @@ func (s *State) ReloadPolicy() ([]change.Change, error) {
 	s.policyMu.Lock()
 	defer s.policyMu.Unlock()
 
+	return s.reloadPolicyLocked()
+}
+
+// reloadPolicyLocked is [State.ReloadPolicy] for callers holding policyMu.
+func (s *State) reloadPolicyLocked() ([]change.Change, error) {
 	pol, err := hsdb.PolicyBytes(s.db.DB, s.cfg)
 	if err != nil {
 		return nil, fmt.Errorf("loading policy: %w", err)
@@ -1576,6 +1581,11 @@ func (s *State) UpdatePolicy(pol []byte) (*types.Policy, []change.Change, error)
 		return nil, nil, err
 	}
 
+	// Held from store to install: on PostgreSQL a concurrent writer could
+	// otherwise commit an older row after a newer one pruned the rest.
+	s.policyMu.Lock()
+	defer s.policyMu.Unlock()
+
 	stored, err := s.db.SetPolicy(string(pol))
 	if err != nil {
 		return nil, nil, fmt.Errorf("storing policy: %w", err)
@@ -1583,7 +1593,7 @@ func (s *State) UpdatePolicy(pol []byte) (*types.Policy, []change.Change, error)
 
 	// Reload even when content is unchanged: routes manually disabled before
 	// may now qualify for auto-approval, so they must be re-evaluated.
-	cs, err := s.ReloadPolicy()
+	cs, err := s.reloadPolicyLocked()
 
 	return stored, cs, err
 }
