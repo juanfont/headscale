@@ -393,6 +393,61 @@ func TestHAHealthProbe_NoHARoutes(t *testing.T) {
 	assert.False(t, dispatched, "no HA routes should produce no changes")
 }
 
+func TestHAHealthProbe_DeferralScopedToPrefix(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t)
+	user := srv.CreateUser(t, "ha-scoped")
+	officeRoute := netip.MustParsePrefix("10.103.0.0/24")
+	labRoute := netip.MustParsePrefix("10.104.0.0/24")
+
+	c1 := servertest.NewClient(t, srv, "ha-sc-office1", servertest.WithUser(user))
+	c2 := servertest.NewClient(t, srv, "ha-sc-office2", servertest.WithUser(user))
+	c3 := servertest.NewClient(t, srv, "ha-sc-lab1", servertest.WithUser(user))
+	c4 := servertest.NewClient(t, srv, "ha-sc-lab2", servertest.WithUser(user))
+
+	for _, c := range []*servertest.TestClient{c1, c2, c3, c4} {
+		c.WaitForPeers(t, 3, 10*time.Second)
+	}
+
+	officeID1 := advertiseAndApproveRoute(t, srv, c1, officeRoute)
+	advertiseAndApproveRoute(t, srv, c2, officeRoute)
+	labID1 := advertiseAndApproveRoute(t, srv, c3, labRoute)
+	labID2 := advertiseAndApproveRoute(t, srv, c4, labRoute)
+
+	require.True(t, srv.State().SetNodeHealth(labID1, false))
+	require.Contains(t, srv.State().GetNodePrimaryRoutes(labID2), labRoute)
+
+	prober := state.NewHAHealthProber(
+		srv.State(),
+		types.HARouteConfig{
+			ProbeInterval: 30 * time.Second,
+			ProbeTimeout:  2 * time.Second,
+		},
+		srv.URL,
+		srv.App.MapBatcher().IsConnected,
+	)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+
+	// Only the fresh office session misses its probe; lab recovery can proceed.
+	prober.ProbeOnce(ctx, func(changes ...change.Change) {
+		for _, c := range changes {
+			if c.PingRequest != nil && c.TargetNode == officeID1 {
+				continue
+			}
+
+			srv.App.Change(c)
+		}
+	})
+
+	assert.True(t, srv.State().IsNodeHealthy(officeID1))
+	assert.True(t, srv.State().IsNodeHealthy(labID1),
+		"a deferral on another prefix must not withhold the lab node's recovery")
+	assert.Contains(t, srv.State().GetNodePrimaryRoutes(labID2), labRoute)
+}
+
 func TestHAHealthProbe_LastAdvertiserRecovers(t *testing.T) {
 	t.Parallel()
 
