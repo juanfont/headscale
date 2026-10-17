@@ -71,6 +71,11 @@ Query metrics via <http://localhost:9090/metrics> and get an overview of availab
 <http://localhost:9090/debug/>. Metrics may be queried from outside localhost but the debug interface is subject to
 additional protection despite listening on all interfaces.
 
+The debug interface accepts requests addressed to an IP literal, `localhost`, the host in `server_url`, or the hostname
+in `metrics_listen_addr`. Hostnames are case-insensitive and may end in a dot. Other hostnames receive HTTP 403; use an
+IP address or one of the accepted names. `dns.base_domain` does not add accepted hosts. This check covers all debug
+paths, including statsviz. `/metrics` accepts any Host.
+
 === "Direct access"
 
     Access the debug interface directly on the server where Headscale is installed.
