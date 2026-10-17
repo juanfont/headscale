@@ -1254,6 +1254,64 @@ func TestReloadPolicyReturnsChangesOnAutoApproveFailure(t *testing.T) {
 		"the reload must return its policy change with the error: %v", cs)
 }
 
+// TestReloadPolicyOverlappingWrites has a second policy write complete after
+// the reload of the first one loaded its document and before it installs it.
+// The first reload must not put the older document back over the newer one.
+func TestReloadPolicyOverlappingWrites(t *testing.T) {
+	_, s, _ := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	const (
+		first  = `{"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}]}`
+		second = `{"acls": [{"action": "accept", "src": ["persist-user@"], "dst": ["persist-user@:22"]}]}`
+	)
+
+	_, err := s.SetPolicyInDB(second)
+	require.NoError(t, err)
+	_, err = s.ReloadPolicy()
+	require.NoError(t, err)
+
+	want, _ := s.Filter()
+
+	_, err = s.SetPolicyInDB(first)
+	require.NoError(t, err)
+
+	var reads atomic.Int32
+
+	written := make(chan struct{})
+
+	require.NoError(t, s.db.DB.Callback().Query().After("gorm:query").
+		Register("write_after_load", func(tx *gorm.DB) {
+			if tx.Statement.Table != "policies" || reads.Add(1) != 1 {
+				return
+			}
+
+			go func() {
+				defer close(written)
+
+				_, err := s.SetPolicyInDB(second)
+				assert.NoError(t, err)
+				_, err = s.ReloadPolicy()
+				assert.NoError(t, err)
+			}()
+
+			// Give the second write time to finish, unless the reload
+			// blocks it.
+			select {
+			case <-written:
+			case <-time.After(200 * time.Millisecond):
+			}
+		}))
+	t.Cleanup(func() { _ = s.db.DB.Callback().Query().Remove("write_after_load") })
+
+	_, err = s.ReloadPolicy()
+	require.NoError(t, err)
+	<-written
+
+	got, _ := s.Filter()
+	assert.Equal(t, want, got, "the policy in force must be the one stored last")
+}
+
 // TestNodeWriteChangeWhenPolicyRefreshFails fails both the NodeStore
 // writer's SetNodes and the caller's. The write still reached the
 // NodeStore, so the change returned with the error must resend the node to
