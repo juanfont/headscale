@@ -174,6 +174,21 @@ var grantSkipReasons = map[string]string{
 	// fails, so a fix must delete its entry.
 	"via-grant-v63/blastoise/filter": viaDstAddressForm,
 	"via-grant-v63/squirtle/filter":  viaDstAddressForm,
+
+	// Contiguous pinned addresses; TestViaGrantHACompat compares these
+	// filters by address.
+	"via-grant-v64/client-a/filter":  srcAddressForm,
+	"via-grant-v64/client-b/filter":  srcAddressForm,
+	"via-grant-v64/plain/filter":     srcAddressForm,
+	"via-grant-v64/srv/filter":       srcAddressForm,
+	"via-grant-v64/via-empty/filter": srcAddressForm,
+	"via-grant-v64/via-r/filter":     srcAddressForm,
+	"via-grant-v65/client-a/filter":  srcAddressForm,
+	"via-grant-v65/client-b/filter":  srcAddressForm,
+	"via-grant-v65/plain/filter":     srcAddressForm,
+	"via-grant-v65/srv/filter":       srcAddressForm,
+	"via-grant-v65/via-empty/filter": srcAddressForm,
+	"via-grant-v65/via-r/filter":     srcAddressForm,
 }
 
 const viaDstAddressForm = "FILTER_ADDRESS_FORM: SaaS writes a single-address via destination as a bare address, headscale as a /32 prefix"
