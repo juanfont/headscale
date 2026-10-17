@@ -468,6 +468,11 @@ func (h *Headscale) handleRegisterWithAuthKey(
 		req,
 		machineKey,
 	)
+	// A committed node can come back with an error, so arm before checking it.
+	if node.Valid() && node.IsEphemeral() {
+		h.ephemeralGC.Schedule(node.ID(), h.cfg.Node.Ephemeral.InactivityTimeout)
+	}
+
 	if err != nil {
 		h.Change(changed)
 
