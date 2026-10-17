@@ -114,6 +114,53 @@ func TestPreAuthKeyACLTags(t *testing.T) {
 	}
 }
 
+func TestDestroyPreAuthKeyKeepsReferencedEphemeralKey(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
+	user := db.CreateUserForTest("ephemeral-key-user")
+	pak, err := db.CreatePreAuthKey(user.TypedID(), true, true, nil, nil)
+	require.NoError(t, err)
+
+	node := &types.Node{
+		Hostname: "ephemeral-key-node", UserID: &user.ID, AuthKeyID: &pak.ID,
+	}
+	require.NoError(t, db.DB.Create(node).Error)
+	require.NoError(t, db.DeletePreAuthKey(pak.ID))
+
+	nodes, err := db.ListNodes()
+	require.NoError(t, err)
+	require.Len(t, nodes, 1)
+	require.True(t, nodes[0].IsEphemeral(), "reload must preserve ephemerality")
+
+	retained, err := db.GetPreAuthKeyByID(pak.ID)
+	require.NoError(t, err)
+	require.NotNil(t, retained.Revoked)
+	require.Error(t, retained.Validate())
+	require.NoError(t, db.DeletePreAuthKey(pak.ID))
+	again, err := db.GetPreAuthKeyByID(pak.ID)
+	require.NoError(t, err)
+	require.Equal(t, retained.Revoked, again.Revoked)
+
+	cutoff := time.Now().Add(time.Hour)
+	count, err := db.DestroyRevokedPreAuthKeysBefore(cutoff)
+	require.NoError(t, err)
+	require.Zero(t, count)
+	require.NoError(t, db.DeleteNode(node))
+	count, err = db.DestroyRevokedPreAuthKeysBefore(cutoff)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+
+	_, err = db.GetPreAuthKeyByID(pak.ID)
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+
+	unused, err := db.CreatePreAuthKey(user.TypedID(), true, true, nil, nil)
+	require.NoError(t, err)
+	require.NoError(t, db.DeletePreAuthKey(unused.ID))
+	_, err = db.GetPreAuthKeyByID(unused.ID)
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+}
+
 func TestCannotDeleteAssignedPreAuthKey(t *testing.T) {
 	db, err := newSQLiteTestDB()
 	require.NoError(t, err)

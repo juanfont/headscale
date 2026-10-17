@@ -11,6 +11,39 @@ import (
 	"gorm.io/gorm"
 )
 
+func TestDestroyUserKeepsTaggedNodeEphemeral(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
+	user := db.CreateUserForTest("tagged-ephemeral-user")
+	pak, err := db.CreatePreAuthKey(
+		user.TypedID(),
+		true,
+		true,
+		nil,
+		[]string{"tag:server"},
+	)
+	require.NoError(t, err)
+
+	node := &types.Node{
+		Hostname:  "tagged-ephemeral-node",
+		Tags:      []string{"tag:server"},
+		AuthKeyID: &pak.ID,
+	}
+	require.NoError(t, db.DB.Create(node).Error)
+	require.NoError(t, db.DestroyUser(types.UserID(user.ID)))
+	nodes, err := db.ListNodes()
+	require.NoError(t, err)
+	require.Len(t, nodes, 1)
+	require.True(t, nodes[0].IsTagged())
+	require.True(t, nodes[0].IsEphemeral())
+
+	retained, err := db.GetPreAuthKeyByID(pak.ID)
+	require.NoError(t, err)
+	require.NotNil(t, retained.Revoked)
+	require.Nil(t, retained.UserID)
+}
+
 func TestCreateAndDestroyUser(t *testing.T) {
 	db, err := newSQLiteTestDB()
 	require.NoError(t, err)
