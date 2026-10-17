@@ -18,6 +18,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/capver"
 	"github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/control/controlbase"
@@ -413,7 +414,7 @@ func (ns *noiseServer) SSHActionHandler(
 	reqLog := log.With().
 		Uint64("src_node_id", srcNodeID.Uint64()).
 		Uint64("dst_node_id", dstNodeID.Uint64()).
-		Str("local_user", req.URL.Query().Get("local_user")).
+		Str(zf.LocalUser, clipForLog(req.URL.Query().Get("local_user"))).
 		Logger()
 
 	reqLog.Trace().Caller().Msg("SSH action request")
