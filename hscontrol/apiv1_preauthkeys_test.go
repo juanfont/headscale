@@ -142,6 +142,17 @@ func TestAPIV1DeletePreAuthKey(t *testing.T) {
 }
 
 func TestAPIV1ListPreAuthKeys(t *testing.T) {
+	t.Run("revoked keys are hidden", func(t *testing.T) {
+		h := newAPIV1Harness(t)
+		user := h.app.state.CreateUserForTest("revoked-key-user")
+		pak, err := h.app.state.CreatePreAuthKey(user.TypedID(), true, true, nil, nil)
+		require.NoError(t, err)
+		require.NoError(t, h.app.state.DB().RevokePreAuthKey(pak.ID))
+		res := h.callHuma(http.MethodGet, "/api/v1/preauthkey", nil)
+		require.Equal(t, http.StatusOK, res.status)
+		assert.JSONEq(t, `{"preAuthKeys":[]}`, string(res.body))
+	})
+
 	t.Run("empty returns empty array", func(t *testing.T) {
 		h := newAPIV1Harness(t)
 
