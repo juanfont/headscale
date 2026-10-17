@@ -1,10 +1,10 @@
 // This file implements data-driven via+HA compatibility tests using
-// golden data captured from Tailscale SaaS (v37-v46). These scenarios
+// golden data captured from Tailscale SaaS (v37-v46, v64, v65). These scenarios
 // exercise the interaction between via grant steering and HA primary
 // route election with varying combinations of shared/unique via tags,
 // regular grants, and multiple HA pairs.
 //
-// Test data source: ../policy/v2/testdata/grant_results/via-grant-v{37..46}.hujson
+// Test data source: ../policy/v2/testdata/grant_results/via-grant-v{37..46,64,65}.hujson
 // Source format:    github.com/juanfont/headscale/hscontrol/types/testcapture
 
 package servertest_test
@@ -42,6 +42,8 @@ var viaHACompatTests = []struct {
 	{"via-grant-v44", "four-way HA, mixed via steering"},
 	{"via-grant-v45", "via+regular overlap, 4-way HA"},
 	{"via-grant-v46", "kitchen sink: mixed via+regular+HA"},
+	{"via-grant-v64", "port-limited ACL to a via prefix, non-via global primary"},
+	{"via-grant-v65", "via tag whose only node advertises nothing"},
 }
 
 // TestViaGrantHACompat loads golden captures from Tailscale SaaS that
@@ -185,6 +187,8 @@ func runViaHACompat(t *testing.T, c *testcapture.Capture) {
 			})
 	}
 
+	saasAddrs := saasAddrsByNode(c, clients)
+
 	// Compare each viewer's [tailcfg.MapResponse] against golden [netmap.NetworkMap].
 	// Route approvals reach clients asynchronously, so the peer-count wait
 	// above says nothing about routes, primaries or filters: retry the
@@ -197,7 +201,7 @@ func runViaHACompat(t *testing.T, c *testcapture.Capture) {
 
 		t.Run(viewerName, func(t *testing.T) {
 			requireNetmapHolds(t, func(tt require.TestingT) {
-				compareCaptureNetmap(tt, cl, capture, clients)
+				compareCaptureNetmap(tt, cl, capture, clients, saasAddrs, c.TestID+"/"+viewerName)
 			})
 		})
 	}
@@ -212,6 +216,8 @@ func compareCaptureNetmap(
 	viewer *servertest.TestClient,
 	want testcapture.Node,
 	clients map[string]*servertest.TestClient,
+	saasAddrs map[netip.Addr]string,
+	key string,
 ) {
 	if h, ok := t.(interface{ Helper() }); ok {
 		h.Helper()
@@ -327,9 +333,7 @@ func compareCaptureNetmap(
 		}
 	}
 
-	// Baseline PacketFilter sanity: count rules. Full per-rule dst-prefix
-	// comparison is done by the tailscale_routes_data compat test; here
-	// we only catch gross drift.
+	// The triples below drop multiplicity; the count keeps it.
 	if len(want.PacketFilterRules) > 0 {
 		gotLen := nm.PacketFilterRules.Len()
 		assert.Equalf(t, len(want.PacketFilterRules), gotLen,
@@ -337,6 +341,10 @@ func compareCaptureNetmap(
 			len(want.PacketFilterRules), gotLen,
 		)
 	}
+
+	// By address: the policy layer compares wire form, which differs when
+	// SaaS lists contiguous addresses one by one.
+	comparePacketFilter(t, nm, want, clients, saasAddrs, key+"/packet-filter", viaCompatSkipReasons)
 
 	compareUserProfiles(t, nm, want.Netmap, clients)
 }
