@@ -14,6 +14,18 @@ import (
 type Match struct {
 	srcs  *netipx.IPSet
 	dests *netipx.IPSet
+
+	srcRanges  []netipx.IPRange
+	destRanges []netipx.IPRange
+}
+
+func newMatch(srcs, dests *netipx.IPSet) Match {
+	return Match{
+		srcs:       srcs,
+		dests:      dests,
+		srcRanges:  srcs.Ranges(),
+		destRanges: dests.Ranges(),
+	}
 }
 
 func (m *Match) DebugString() string {
@@ -67,10 +79,7 @@ func MatchFromFilterRule(rule tailcfg.FilterRule) Match {
 
 	destsSet, _ := dests.IPSet()
 
-	return Match{
-		srcs:  buildIPSet(rule.SrcIPs),
-		dests: destsSet,
-	}
+	return newMatch(buildIPSet(rule.SrcIPs), destsSet)
 }
 
 // buildIPSet parses each string via [util.ParseIPSet] and unions the
@@ -99,11 +108,28 @@ func (m *Match) DestsContainsIP(ips ...netip.Addr) bool {
 }
 
 func (m *Match) SrcsOverlapsPrefixes(prefixes ...netip.Prefix) bool {
-	return slices.ContainsFunc(prefixes, m.srcs.OverlapsPrefix)
+	return slices.ContainsFunc(prefixes, func(prefix netip.Prefix) bool {
+		return overlaps(m.srcRanges, netipx.RangeOfPrefix(prefix))
+	})
 }
 
 func (m *Match) DestsOverlapsPrefixes(prefixes ...netip.Prefix) bool {
-	return slices.ContainsFunc(prefixes, m.dests.OverlapsPrefix)
+	return slices.ContainsFunc(prefixes, func(prefix netip.Prefix) bool {
+		return overlaps(m.destRanges, netipx.RangeOfPrefix(prefix))
+	})
+}
+
+func overlaps(ranges []netipx.IPRange, r netipx.IPRange) bool {
+	if !r.IsValid() {
+		return false
+	}
+
+	i, _ := slices.BinarySearchFunc(ranges, r.From(),
+		func(x netipx.IPRange, a netip.Addr) int {
+			return x.To().Compare(a)
+		})
+
+	return i < len(ranges) && ranges[i].Overlaps(r)
 }
 
 // DestsIsTheInternet reports whether the destination covers "the

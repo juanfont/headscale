@@ -2,14 +2,86 @@ package matcher
 
 import (
 	"net/netip"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"pgregory.net/rapid"
 	"tailscale.com/tailcfg"
 	"tailscale.com/tailcfg/peercap"
 )
+
+func TestOverlapsPrefixesMatchesIPSet(t *testing.T) {
+	t.Parallel()
+
+	prefixGen := rapid.Custom(func(rt *rapid.T) netip.Prefix {
+		if rapid.Bool().Draw(rt, "invalid") {
+			return netip.Prefix{}
+		}
+
+		n := rapid.Uint16().Draw(rt, "address")
+		if rapid.Bool().Draw(rt, "ipv6") {
+			addr := netip.AddrFrom16([16]byte{
+				0x20, 0x01, 0x0d, 0xb8, byte(n >> 8), byte(n & 0xff),
+			})
+
+			return netip.PrefixFrom(addr, rapid.IntRange(0, 128).Draw(rt, "bits"))
+		}
+
+		addr := netip.AddrFrom4([4]byte{10, byte(n >> 8), byte(n & 0xff), 0})
+
+		return netip.PrefixFrom(addr, rapid.IntRange(0, 32).Draw(rt, "bits"))
+	})
+	stringsGen := rapid.Map(prefixGen, netip.Prefix.String)
+
+	rapid.Check(t, func(rt *rapid.T) {
+		sources := rapid.SliceOfN(stringsGen, 0, 32).Draw(rt, "sources")
+		destinations := rapid.SliceOfN(stringsGen, 0, 32).Draw(rt, "destinations")
+		prefixes := rapid.SliceOfN(prefixGen, 0, 16).Draw(rt, "prefixes")
+		m := MatchFromStrings(sources, destinations)
+		wantSrc := slices.ContainsFunc(prefixes, m.srcs.OverlapsPrefix)
+		wantDst := slices.ContainsFunc(prefixes, m.dests.OverlapsPrefix)
+
+		require.Equal(rt, wantSrc, m.SrcsOverlapsPrefixes(prefixes...))
+		require.Equal(rt, wantDst, m.DestsOverlapsPrefixes(prefixes...))
+
+		for _, prefix := range prefixes {
+			require.Equal(rt, m.srcs.OverlapsPrefix(prefix),
+				m.SrcsOverlapsPrefixes(prefix))
+			require.Equal(rt, m.dests.OverlapsPrefix(prefix),
+				m.DestsOverlapsPrefixes(prefix))
+		}
+	})
+}
+
+func BenchmarkOverlapsPrefixesManyRanges(b *testing.B) {
+	addresses := make([]string, 16384)
+	for i := range addresses {
+		addresses[i] = netip.AddrFrom4([4]byte{
+			10, byte(i >> 7), byte(i << 1), 0,
+		}).String()
+	}
+
+	m := MatchFromStrings(addresses, addresses)
+	queries := []netip.Prefix{
+		netip.MustParsePrefix("10.255.255.255/32"),
+		netip.MustParsePrefix("10.127.254.0/32"),
+	}
+
+	for _, query := range queries {
+		b.Run(query.String(), func(b *testing.B) {
+			b.ReportAllocs()
+
+			for b.Loop() {
+				if m.SrcsOverlapsPrefixes(query) != m.DestsOverlapsPrefixes(query) {
+					b.Fatal("identical sets must give identical overlap results")
+				}
+			}
+		})
+	}
+}
 
 func TestMatchFromStrings(t *testing.T) {
 	t.Parallel()
