@@ -163,17 +163,21 @@ type PolicyTestResults struct {
 // keep the per-test detail because it is significantly more useful in
 // CLI / config-reload paths where the user does not have a separate
 // audit endpoint to consult.
+//
+// The breakdown is bounded by [testFailures].
 func (r PolicyTestResults) Errors() string {
 	if r.AllPassed {
 		return ""
 	}
 
-	var lines []string
+	var failures testFailures
 
 	for _, res := range r.Results {
 		if res.Passed {
 			continue
 		}
+
+		src := clipTestLabel(res.Src)
 
 		protoSuffix := ""
 		if res.Proto != "" {
@@ -181,19 +185,74 @@ func (r PolicyTestResults) Errors() string {
 		}
 
 		for _, e := range res.Errors {
-			lines = append(lines, fmt.Sprintf("%s%s: %s", res.Src, protoSuffix, e))
+			failures.addf("%s%s: %s", src, protoSuffix, clipTestLabel(e))
 		}
 
 		for _, dst := range res.AcceptFail {
-			lines = append(lines, fmt.Sprintf("%s -> %s%s: expected ALLOWED, got DENIED", res.Src, dst, protoSuffix))
+			failures.addf(
+				"%s -> %s%s: expected ALLOWED, got DENIED",
+				src, clipTestLabel(dst), protoSuffix,
+			)
 		}
 
 		for _, dst := range res.DenyFail {
-			lines = append(lines, fmt.Sprintf("%s -> %s%s: expected DENIED, got ALLOWED", res.Src, dst, protoSuffix))
+			failures.addf(
+				"%s -> %s%s: expected DENIED, got ALLOWED",
+				src, clipTestLabel(dst), protoSuffix,
+			)
 		}
 	}
 
+	return failures.String()
+}
+
+// The policy author sizes both the labels on a failure line and the
+// number of failures, so a breakdown rendered in full grows with their
+// product. It is rendered on the write path and, for a stored policy
+// whose tests stopped passing, at every boot, so both factors are capped.
+const (
+	maxTestFailureLines = 100
+	maxTestLabelBytes   = 256
+)
+
+// testFailures collects the lines of a `tests` or `sshTests` failure
+// breakdown. Failures past [maxTestFailureLines] are counted, not
+// rendered.
+type testFailures struct {
+	lines   []string
+	omitted int
+}
+
+func (f *testFailures) full() bool {
+	return len(f.lines) >= maxTestFailureLines
+}
+
+func (f *testFailures) addf(format string, args ...any) {
+	if f.full() {
+		f.omitted++
+
+		return
+	}
+
+	f.lines = append(f.lines, fmt.Sprintf(format, args...))
+}
+
+func (f *testFailures) String() string {
+	lines := f.lines
+	if f.omitted > 0 {
+		lines = append(lines, fmt.Sprintf("... and %d more", f.omitted))
+	}
+
 	return strings.Join(lines, "\n")
+}
+
+// clipTestLabel shortens s to [maxTestLabelBytes] for a failure line.
+func clipTestLabel(s string) string {
+	if len(s) <= maxTestLabelBytes {
+		return s
+	}
+
+	return strings.ToValidUTF8(s[:maxTestLabelBytes], "") + "..."
 }
 
 // wrapTestResult returns nil when every test passed, otherwise wraps the
