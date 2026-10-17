@@ -16,6 +16,10 @@ import (
 // Tailscale's non-configurable one hour.
 const accessTokenTTL = time.Hour
 
+// maxTokenRequestBytes caps the token request form, which is read before the
+// secret is checked and whose scope and tag lists are stored on the token.
+const maxTokenRequestBytes = 16 << 10
+
 // registerOAuthToken mounts POST /api/v2/oauth/token on the router. It is a plain
 // handler, not a Huma operation: it consumes application/x-www-form-urlencoded
 // and emits RFC 6749 OAuth2 error bodies ({"error","error_description"}), neither
@@ -38,6 +42,8 @@ type tokenResponse struct {
 // short-lived bearer token.
 func oauthTokenHandler(b Backend) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, maxTokenRequestBytes)
+
 		err := r.ParseForm()
 		if err != nil {
 			writeOAuthError(w, http.StatusBadRequest, "invalid_request", "could not parse request body")

@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	apiv2 "github.com/juanfont/headscale/hscontrol/api/v2"
+	"github.com/juanfont/headscale/hscontrol/scope"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -220,6 +221,48 @@ func TestAPIv2OAuth_TokenEndpoint(t *testing.T) {
 	require.NoError(t, err)
 	resp.Body.Close()
 	assert.Equal(t, "no-store", resp.Header.Get("Cache-Control"))
+}
+
+// TestAPIv2OAuth_RequestBodiesBounded: the token form is parsed before the
+// secret is checked, and huma validates a whole body before the handler runs.
+func TestAPIv2OAuth_RequestBodiesBounded(t *testing.T) {
+	_, baseURL, admin := newOAuthTestServer(t)
+	_, secret := createClient(t, baseURL, admin, []string{"users:read"}, nil)
+
+	scopes := strings.TrimSpace(strings.Repeat("users:read ", 2000))
+	status, m := mintToken(t, baseURL, "", secret, scopes, false)
+	assert.Equalf(t, http.StatusBadRequest, status, "%v", m)
+	assert.Equal(t, "invalid_request", m["error"])
+
+	tok := mintScopedToken(t, baseURL, admin, scope.AuthKeys)
+	status, _ = apiReq(t, http.MethodPost, baseURL+"/api/v2/tailnet/-/keys", tok,
+		map[string]any{"tags": make([]int, 40000)})
+	assert.Equal(t, http.StatusRequestEntityTooLarge, status)
+}
+
+// TestAPIv2OAuth_ValidationErrorsBounded: huma reports one error per unexpected
+// property, and each carries the whole request object as its value.
+func TestAPIv2OAuth_ValidationErrorsBounded(t *testing.T) {
+	_, baseURL, admin := newOAuthTestServer(t)
+	tok := mintScopedToken(t, baseURL, admin, scope.AuthKeys)
+
+	props := map[string]int{}
+	for i := range 1000 {
+		props[fmt.Sprintf("%040d", i)] = 0
+	}
+
+	status, body := apiReq(t, http.MethodPost, baseURL+"/api/v2/tailnet/-/keys", tok, props)
+	require.Equal(t, http.StatusUnprocessableEntity, status)
+	require.Less(t, len(body), 16<<10, "the error answer grows with the request")
+	assert.NotContains(t, string(body), "map[")
+
+	var resp struct {
+		Data []struct{ Errors []string }
+	}
+	require.NoError(t, json.Unmarshal(body, &resp))
+	require.Len(t, resp.Data, 1)
+	require.Len(t, resp.Data[0].Errors, 21)
+	assert.Equal(t, "and 980 more", resp.Data[0].Errors[20])
 }
 
 func TestAPIv2OAuth_ScopeEnforcement(t *testing.T) {
