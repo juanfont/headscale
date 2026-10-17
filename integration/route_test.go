@@ -2857,8 +2857,9 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						}
 					}, assertTimeout, 200*time.Millisecond, "Verifying routes disabled after route removal")
 
-					// Add the route back to the auto approver in the policy, the route should
-					// now become available again.
+					// Add the route back to the auto approver in the policy. The
+					// policy alone approves nothing; the route comes back once the
+					// router announces it again.
 					var newApprovers policyv2.AutoApprovers
 
 					switch {
@@ -2874,6 +2875,25 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 					pol.AutoApprovers.Routes[prefix] = newApprovers
 					err = headscale.SetPolicy(pol)
 					require.NoError(t, err)
+
+					assert.EventuallyWithT(t, func(c *assert.CollectT) {
+						nodes, err = headscale.ListNodes()
+						assert.NoError(c, err)
+						requireNodeRouteCountWithCollect(c, MustFindNode(routerUsernet1.Hostname(), nodes), 1, 0, 0)
+					}, assertTimeout, 500*time.Millisecond, "a policy change alone approves no route")
+
+					// Withdraw and wait, so the new announcement is a change.
+					_, _, err = routerUsernet1.Execute([]string{"tailscale", "set", "--advertise-routes="})
+					require.NoErrorf(t, err, "failed to withdraw route: %s", err)
+
+					assert.EventuallyWithT(t, func(c *assert.CollectT) {
+						nodes, err = headscale.ListNodes()
+						assert.NoError(c, err)
+						requireNodeRouteCountWithCollect(c, MustFindNode(routerUsernet1.Hostname(), nodes), 0, 0, 0)
+					}, assertTimeout, 500*time.Millisecond, "route withdrawn")
+
+					_, _, err = routerUsernet1.Execute([]string{"tailscale", "set", "--advertise-routes=" + route.String()})
+					require.NoErrorf(t, err, "failed to advertise route: %s", err)
 
 					// Wait for route state changes to propagate
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {

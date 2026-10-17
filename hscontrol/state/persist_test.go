@@ -1217,47 +1217,6 @@ func TestFailedPersistPolicyChangeSurvivesDroppedChange(t *testing.T) {
 		failedC.Type(), retryC.Type())
 }
 
-// TestReloadPolicyReturnsChangesOnAutoApproveFailure covers a policy reload
-// whose route auto-approval fails to persist. The NodeStore write already
-// fed the approved routes to the policy manager, so no later write sees the
-// policy move again; the reload must return its changes with the error for
-// the caller to publish.
-func TestReloadPolicyReturnsChangesOnAutoApproveFailure(t *testing.T) {
-	_, s, nodeID := persistTestSetup(t)
-	t.Cleanup(func() { _ = s.Close() })
-
-	route := netip.MustParsePrefix("10.9.0.0/24")
-	_, ok := s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
-		n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{route}}
-	})
-	require.True(t, ok)
-
-	_, err := s.db.SetPolicy(`{
-		"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}],
-		"autoApprovers": {"routes": {"10.9.0.0/24": ["persist-user@"]}}
-	}`)
-	require.NoError(t, err)
-
-	require.NoError(t, s.db.DB.Callback().Update().Before("gorm:update").
-		Register("fail_node_update", func(tx *gorm.DB) {
-			if tx.Statement.Table == "nodes" {
-				_ = tx.AddError(errInjectedNodeUpdate)
-			}
-		}))
-	t.Cleanup(func() { _ = s.db.DB.Callback().Update().Remove("fail_node_update") })
-
-	cs, err := s.ReloadPolicy()
-	require.ErrorIs(t, err, errInjectedNodeUpdate)
-
-	approved, ok := s.GetNodeByID(nodeID)
-	require.True(t, ok)
-	require.Contains(t, approved.ApprovedRoutes().AsSlice(), route,
-		"the NodeStore holds the approval the database write lost")
-
-	assert.True(t, slices.ContainsFunc(cs, func(c change.Change) bool { return c.IncludePolicy }),
-		"the reload must return its policy change with the error: %v", cs)
-}
-
 // TestReloadPolicyOverlappingWrites has a second policy write complete after
 // the reload of the first one loaded its document and before it installs it.
 // The first reload must not put the older document back over the newer one.

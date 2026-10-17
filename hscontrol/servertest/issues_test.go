@@ -282,40 +282,8 @@ func TestIssuesRoutes(t *testing.T) {
 			selfOffersExit)
 	})
 
-	// A policy reload that auto-approves an advertised exit route goes
-	// through autoApproveNodes, a third producer of the same change.
-	t.Run("exit_route_auto_approved_on_reload_reaches_self", func(t *testing.T) {
-		t.Parallel()
-
-		srv := servertest.NewServer(t)
-		user := srv.CreateUser(t, "reloadexit-user")
-
-		exit := servertest.NewClient(t, srv, "reloadexit-node",
-			servertest.WithUser(user))
-		obs := servertest.NewClient(t, srv, "reloadexit-obs",
-			servertest.WithUser(user))
-
-		exit.WaitForPeers(t, 1, 10*time.Second)
-		advertiseRoutes(t, exit, obs, tsaddr.ExitRoutes())
-
-		_, err := srv.State().SetPolicyInDB(`{
-			"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}],
-			"autoApprovers": {"exitNode": ["reloadexit-user@"]}
-		}`)
-		require.NoError(t, err)
-
-		changes, err := srv.State().ReloadPolicy()
-		require.NoError(t, err)
-		srv.App.Change(changes...)
-
-		obs.WaitForCondition(t, "peer offers exit node", 10*time.Second,
-			peerOffersExit("reloadexit-node"))
-		exit.WaitForCondition(t, "self offers exit node", 10*time.Second,
-			selfOffersExit)
-	})
-
 	// An auto-approver approves the route inside the advertising map
-	// request, a fourth producer of the same change.
+	// request, a third producer of the same change.
 	t.Run("exit_route_auto_approved_on_advertise_reaches_self", func(t *testing.T) {
 		t.Parallel()
 
