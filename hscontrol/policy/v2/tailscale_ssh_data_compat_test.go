@@ -233,6 +233,10 @@ func TestSSHDataCompat(t *testing.T) {
 				tf.Input.FullPolicy,
 			)
 
+			// Nodes get their SSH policy through the manager's cache.
+			pm, err := NewPolicyManager(policyJSON, users, nodes.ViewSlice())
+			require.NoError(t, err, "%s: policy manager should load the policy", tf.TestID)
+
 			for nodeName, capture := range tf.Captures {
 				t.Run(nodeName, func(t *testing.T) {
 					node := findNodeByGivenName(nodes, nodeName)
@@ -282,15 +286,30 @@ func TestSSHDataCompat(t *testing.T) {
 						)
 					}
 
+					pmSSH, err := pm.SSHPolicy("https://unused", node.View())
+					require.NoError(t, err)
+
+					if diff := cmp.Diff(wantSSH, pmSSH, opts...); diff != "" {
+						t.Errorf(
+							"%s/%s: policy manager SSH policy mismatch (-tailscale +headscale):\n%s",
+							tf.TestID,
+							nodeName,
+							diff,
+						)
+					}
+
 					// EquateEmpty hides "rules":null vs "rules":[];
 					// pin the captured shape separately.
-					if gotSSH != nil && capture.Netmap != nil &&
-						capture.Netmap.SSHPolicy != nil {
-						assert.Equalf(t,
-							capture.Netmap.SSHPolicy.Rules == nil,
-							gotSSH.Rules == nil,
-							"%s/%s: rules null-vs-[] mismatch", tf.TestID, nodeName,
-						)
+					if capture.Netmap != nil && capture.Netmap.SSHPolicy != nil {
+						for _, got := range []*tailcfg.SSHPolicy{gotSSH, pmSSH} {
+							if got != nil {
+								assert.Equalf(t,
+									capture.Netmap.SSHPolicy.Rules == nil,
+									got.Rules == nil,
+									"%s/%s: rules null-vs-[] mismatch", tf.TestID, nodeName,
+								)
+							}
+						}
 					}
 
 					// Separate presence check: the fields ignored by
