@@ -2514,3 +2514,264 @@ func TestUpdateUserClearsColumns(t *testing.T) {
 	assert.Empty(t, user.ProfilePicURL)
 	assert.Equal(t, "renamed", user.Name)
 }
+
+func TestUpdateUserRefreshesNodeCopies(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	original, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+
+	userID := types.UserID(original.UserID().Get())
+	user, err := s.GetUserByID(userID)
+	require.NoError(t, err)
+
+	_, ok = s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
+		n.AuthKey = &types.Credential{ID: 1, UserID: new(user.ID), User: user.Clone()}
+	})
+	require.True(t, ok)
+
+	tagged := s.nodeStore.PutNode(types.Node{
+		ID: nodeID + 1, Hostname: "tagged", Tags: []string{"tag:server"},
+		MachineKey: key.NewMachine().Public(), NodeKey: key.NewNode().Public(),
+		AuthKey: &types.Credential{ID: 2, UserID: new(user.ID), User: user.Clone()},
+	})
+	other, _, err := s.CreateUser(types.User{Name: "other"})
+	require.NoError(t, err)
+
+	otherNode := s.nodeStore.PutNode(types.Node{
+		ID: nodeID + 2, Hostname: "other", UserID: new(other.ID), User: other.Clone(),
+		MachineKey: key.NewMachine().Public(), NodeKey: key.NewNode().Public(),
+		AuthKey: &types.Credential{ID: 3, UserID: new(other.ID), User: other.Clone()},
+	})
+	before, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+
+	_, c, err := s.RenameUser(userID, "renamed-user")
+	require.NoError(t, err)
+	assert.True(t, c.IncludeSelf)
+	assert.True(t, c.SendAllPeers)
+
+	updated, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+	assert.Equal(t, "renamed-user", updated.User().Name())
+	assert.Equal(t, "renamed-user", updated.AuthKey().User().Name())
+	assert.Equal(t, "persist-user", before.User().Name())
+	assert.Equal(t, "persist-user", before.AuthKey().User().Name())
+
+	updatedTagged, ok := s.GetNodeByID(tagged.ID())
+	require.True(t, ok)
+	assert.True(t, updatedTagged.IsTagged())
+	assert.Equal(t, "renamed-user", updatedTagged.AuthKey().User().Name())
+	assert.Equal(t, "persist-user", tagged.AuthKey().User().Name())
+
+	unchanged, ok := s.GetNodeByID(otherNode.ID())
+	require.True(t, ok)
+	assert.Equal(t, "other", unchanged.User().Name())
+	assert.Equal(t, "other", unchanged.AuthKey().User().Name())
+
+	snapshot := s.nodeStore.data.Load()
+	_, c, err = s.RenameUser(userID, "renamed-user")
+	require.NoError(t, err)
+	assert.True(t, c.IsEmpty())
+	assert.Same(t, snapshot, s.nodeStore.data.Load(), "an unchanged user must not rebuild the snapshot")
+
+	_, c, err = s.UpdateUser(userID, func(user *types.User) error {
+		user.Provider = "updated-provider"
+		return nil
+	})
+	require.NoError(t, err)
+	assert.True(t, c.IsEmpty(), "a non-profile column does not need a full map update")
+
+	updated, ok = s.GetNodeByID(nodeID)
+	require.True(t, ok)
+	assert.Equal(t, "updated-provider", updated.User().Provider())
+	assert.Equal(t, "updated-provider", updated.AuthKey().User().Provider())
+}
+
+type blockingSetUsersPolicyManager struct {
+	policy.PolicyManager
+
+	blocked atomic.Bool
+	reached chan struct{}
+	resume  <-chan struct{}
+	last    []types.User
+}
+
+func (pm *blockingSetUsersPolicyManager) SetUsers(users []types.User) (bool, bool, error) {
+	if !pm.blocked.Swap(true) {
+		close(pm.reached)
+		<-pm.resume
+	}
+
+	pm.last = users
+
+	return pm.PolicyManager.SetUsers(users)
+}
+
+func TestUpdateUserPublishesInOrder(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	node, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+
+	user := node.User().AsStruct()
+	userID := types.UserID(user.ID)
+	_, ok = s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
+		n.AuthKey = &types.Credential{ID: 1, UserID: new(user.ID), User: user.Clone()}
+	})
+	require.True(t, ok)
+
+	resume := make(chan struct{})
+
+	releaseFirst := sync.OnceFunc(func() { close(resume) })
+	defer releaseFirst()
+
+	pm := &blockingSetUsersPolicyManager{
+		PolicyManager: s.polMan,
+		reached:       make(chan struct{}),
+		resume:        resume,
+	}
+	s.polMan = pm
+
+	update := func(name string) error {
+		_, _, err := s.UpdateUser(userID, func(u *types.User) error {
+			u.Name = name
+			u.Email = name + "@example.com"
+			u.DisplayName = name + " display"
+			u.ProfilePicURL = "https://example.com/" + name
+
+			return nil
+		})
+
+		return err
+	}
+
+	firstDone := make(chan error, 1)
+	go func() { firstDone <- update("first-user") }()
+
+	// The first update pauses after its commit, inside the policy user update.
+	<-pm.reached
+
+	var secondErr error
+
+	secondDone := make(chan struct{})
+
+	go func() {
+		secondErr = update("latest-user")
+
+		close(secondDone)
+	}()
+
+	// Give the second update time to overtake the paused first one.
+	select {
+	case <-secondDone:
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	releaseFirst()
+	require.NoError(t, <-firstDone)
+	<-secondDone
+	require.NoError(t, secondErr)
+
+	stored, err := s.GetUserByID(userID)
+	require.NoError(t, err)
+	assert.Equal(t, "latest-user", stored.Name)
+
+	require.Len(t, pm.last, 1)
+	assert.Equal(t, stored.Name, pm.last[0].Name, "policy users must follow the database")
+
+	updated, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+	assert.Equal(t, stored.Name, updated.User().Name())
+	assert.Equal(t, stored.Name, updated.AuthKey().User().Name())
+	assert.Equal(t, stored.TailscaleUserProfile(), updated.User().TailscaleUserProfile())
+	assert.Equal(t, stored.TailscaleUserProfile(), updated.AuthKey().User().TailscaleUserProfile())
+}
+
+func TestUserListPublishesInOrder(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	node, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+
+	resume := make(chan struct{})
+
+	releaseFirst := sync.OnceFunc(func() { close(resume) })
+	defer releaseFirst()
+
+	pm := &blockingSetUsersPolicyManager{
+		PolicyManager: s.polMan,
+		reached:       make(chan struct{}),
+		resume:        resume,
+	}
+	s.polMan = pm
+
+	createDone := make(chan error, 1)
+
+	go func() {
+		_, _, err := s.CreateUser(types.User{Name: "created-user"})
+		createDone <- err
+	}()
+
+	// The creation pauses holding a user list read before the rename commits.
+	<-pm.reached
+
+	var renameErr error
+
+	renameDone := make(chan struct{})
+
+	go func() {
+		_, _, renameErr = s.RenameUser(types.UserID(node.User().ID()), "renamed-user")
+
+		close(renameDone)
+	}()
+
+	select {
+	case <-renameDone:
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	releaseFirst()
+	require.NoError(t, <-createDone)
+	<-renameDone
+	require.NoError(t, renameErr)
+
+	names := make([]string, 0, len(pm.last))
+	for _, user := range pm.last {
+		names = append(names, user.Name)
+	}
+
+	assert.ElementsMatch(t, []string{"renamed-user", "created-user"}, names,
+		"policy users must follow the database")
+}
+
+var errSetUsersTest = errors.New("set users failed")
+
+type failingSetUsersPolicyManager struct {
+	policy.PolicyManager
+}
+
+func (failingSetUsersPolicyManager) SetUsers([]types.User) (bool, bool, error) {
+	return false, false, errSetUsersTest
+}
+
+func TestUpdateUserRefreshesNodeCopiesWhenPolicyUpdateFails(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	node, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+
+	s.polMan = failingSetUsersPolicyManager{PolicyManager: s.polMan}
+
+	_, _, err := s.RenameUser(types.UserID(node.User().ID()), "renamed-user")
+	require.ErrorIs(t, err, errSetUsersTest)
+
+	updated, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+	assert.Equal(t, "renamed-user", updated.User().Name(),
+		"the committed row and its cached copy must agree")
+}
