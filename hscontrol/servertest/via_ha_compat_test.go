@@ -19,6 +19,7 @@ import (
 	"net/netip"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -28,8 +29,10 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/control/controlclient"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/netmap"
+	"tailscale.com/types/persist"
 )
 
 // viaHACompatTests lists golden captures that exercise via+HA interactions.
@@ -466,24 +469,38 @@ func readStepCapture(t *testing.T, id string) *testcapture.Capture {
 }
 
 // stepReplay drives a step capture's actions against headscale: policy
-// pushes, key mints, joins, relogins, route announcements, logouts and
-// admin calls, the last through the v2 API with the bodies SaaS received.
-// Nothing is seeded from the capture's end state.
+// pushes, key mints and revokes, joins, relogins, profile switches,
+// restarts, route announcements, logouts, retires and admin calls, the
+// last through the v2 API with the bodies SaaS received. Nothing is seeded
+// from the capture's end state.
 type stepReplay struct {
 	c        *testcapture.Capture
 	srv      *servertest.TestServer
 	admin    *types.User
+	users    map[string]*types.User
 	apiKey   string
 	http     *http.Client
 	keys     map[string]string
 	clients  map[string]*servertest.TestClient
 	hostinfo map[string]*tailcfg.Hostinfo
+
+	// keyIDs, keyTags and keyUsers describe each minted key by label.
+	keyIDs   map[string]uint64
+	keyTags  map[string][]string
+	keyUsers map[string]*types.User
+
+	// profiles holds the login a node switched away from.
+	profiles map[string]persist.Persist
+
+	// interactive, when set, picks the joins and logins replayed as a login
+	// approved by the key's user instead of with the key.
+	interactive func(step testcapture.Step, a testcapture.Action) bool
 }
 
-func newStepReplay(t *testing.T, c *testcapture.Capture) *stepReplay {
+func newStepReplay(t *testing.T, c *testcapture.Capture, opts ...servertest.ServerOption) *stepReplay {
 	t.Helper()
 
-	srv := servertest.NewServer(t)
+	srv := servertest.NewServer(t, opts...)
 	users := createCaptureUsers(t, srv)
 
 	// SaaS keys and admin calls act as the tailnet's admin.
@@ -494,21 +511,28 @@ func newStepReplay(t *testing.T, c *testcapture.Capture) *stepReplay {
 		c:        c,
 		srv:      srv,
 		admin:    admin,
+		users:    users,
 		apiKey:   srv.CreateAPIKey(t, admin),
 		http:     &http.Client{Transport: &http.Transport{DialContext: srv.MemNet().Dial}},
 		keys:     map[string]string{},
 		clients:  map[string]*servertest.TestClient{},
 		hostinfo: map[string]*tailcfg.Hostinfo{},
+		keyIDs:   map[string]uint64{},
+		keyTags:  map[string][]string{},
+		keyUsers: map[string]*types.User{},
+		profiles: map[string]persist.Persist{},
 	}
 }
 
-// apply runs the step's actions in order. Reads are skipped: they are what
-// consumers compare.
-func (r *stepReplay) apply(t *testing.T, step testcapture.Step) {
+// apply runs the step's actions in order and returns the logins headscale
+// refused, by node. Reads are skipped: they are what consumers compare.
+func (r *stepReplay) apply(t *testing.T, step testcapture.Step) map[string]error {
 	t.Helper()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	refused := map[string]error{}
 
 	for _, a := range step.Actions {
 		switch a.Kind {
@@ -521,49 +545,112 @@ func (r *stepReplay) apply(t *testing.T, step testcapture.Step) {
 				require.NoError(t, json.Unmarshal(a.Body, &policy))
 			}
 
-			changed, err := r.srv.State().SetPolicy(convertPolicyEmails(t, r.c.TestID, policy))
-			require.NoError(t, err, "%s: policy", step.Name)
-
-			if changed {
-				changes, err := r.srv.State().ReloadPolicy()
-				require.NoError(t, err)
-				r.srv.App.Change(changes...)
-			}
+			r.setPolicy(t, step.Name, policy)
 
 		case "api":
 			r.api(t, step.Name, a)
 
 		case "join":
-			require.Contains(t, r.keys, a.Key, "%s: join with unknown key", step.Name)
+			hi := &tailcfg.Hostinfo{
+				BackendLogID: "servertest-" + a.Node,
+				Hostname:     a.Hostname,
+				RequestTags:  requestTags(a, nil),
+			}
+			r.hostinfo[a.Node] = hi
 
-			r.hostinfo[a.Node] = &tailcfg.Hostinfo{BackendLogID: "servertest-" + a.Node, Hostname: a.Hostname}
-			r.clients[a.Node] = servertest.NewClient(t, r.srv, a.Node,
-				servertest.WithUser(r.admin),
-				servertest.WithAuthKey(r.keys[a.Key]),
-				servertest.WithHostname(a.Hostname),
-			)
+			opts := []servertest.ClientOption{servertest.WithUser(r.admin), servertest.WithHostinfo(hi.Clone())}
+			if r.interactive != nil && r.interactive(step, a) {
+				opts = append(opts, servertest.WithInteractiveLogin(r.approver(ctx, t, a.Key)))
+			} else {
+				require.Contains(t, r.keys, a.Key, "%s: join with unknown key", step.Name)
+				opts = append(opts, servertest.WithAuthKey(r.keys[a.Key]))
+			}
+
+			cl, err := servertest.TryNewClient(t, r.srv, a.Node, opts...)
+			r.clients[a.Node] = cl
+
+			if err != nil {
+				refused[a.Node] = err
+
+				continue
+			}
 
 			if len(a.Routes) > 0 {
 				r.announce(ctx, t, a.Node, a.Routes)
 			}
 
 		case "relogin":
-			require.Contains(t, r.keys, a.Key, "%s: relogin with unknown key", step.Name)
-
 			// The probe restates hostname and routes on every login.
 			hi := r.hostinfo[a.Node].Clone()
 			hi.Hostname = a.Hostname
 			hi.RoutableIPs = prefixes(t, a.Routes)
+			hi.RequestTags = requestTags(a, hi.RequestTags)
 			r.hostinfo[a.Node] = hi
 
-			require.NoError(t, r.clients[a.Node].Relogin(ctx, r.keys[a.Key], a.Force, hi.Clone()),
-				"%s: relogin", step.Name)
+			cl := r.clients[a.Node]
+
+			var err error
+			if r.interactive != nil && r.interactive(step, a) {
+				err = cl.Login(ctx, cl.Persist(), "", controlclient.LoginInteractive, hi.Clone(), r.approver(ctx, t, a.Key))
+			} else {
+				require.Contains(t, r.keys, a.Key, "%s: relogin with unknown key", step.Name)
+				err = cl.Relogin(ctx, r.keys[a.Key], a.Force, hi.Clone())
+			}
+
+			if err != nil {
+				refused[a.Node] = err
+			}
+
+		case "switch_profile":
+			cl := r.clients[a.Node]
+
+			switch strings.Join(a.Args, " ") {
+			case "new":
+				r.profiles[a.Node] = cl.Persist()
+			case "back":
+				err := cl.Login(ctx, r.profiles[a.Node], "", controlclient.LoginDefault, r.hostinfo[a.Node].Clone(), nil)
+				if err != nil {
+					refused[a.Node] = err
+				}
+			default:
+				t.Fatalf("%s: no replay for switch_profile %q", step.Name, a.Args)
+			}
+
+		case "login":
+			// A login on a new profile: the machine key stays, the login
+			// starts empty.
+			hi := r.hostinfo[a.Node].Clone()
+			hi.Hostname = a.Hostname
+
+			cl := r.clients[a.Node]
+
+			var err error
+			if r.interactive != nil && r.interactive(step, a) {
+				err = cl.Login(ctx, persist.Persist{}, "", controlclient.LoginInteractive, hi, r.approver(ctx, t, a.Key))
+			} else {
+				require.Contains(t, r.keys, a.Key, "%s: login with unknown key", step.Name)
+				err = cl.Login(ctx, persist.Persist{}, r.keys[a.Key], controlclient.LoginDefault, hi, nil)
+			}
+
+			if err != nil {
+				refused[a.Node] = err
+			}
+
+		case "restart":
+			require.NoError(t, r.clients[a.Node].Restart(ctx, r.hostinfo[a.Node].Clone()), "%s: restart", step.Name)
 
 		case "advertise":
 			r.announce(ctx, t, a.Node, a.Routes)
 
 		case "cli":
-			hostname, ok := strings.CutPrefix(strings.Join(a.Args, " "), "set --hostname=")
+			args := strings.Join(a.Args, " ")
+			if args == "logout" {
+				require.NoError(t, r.clients[a.Node].LogoutAndDisconnect(ctx), "%s: logout", step.Name)
+
+				continue
+			}
+
+			hostname, ok := strings.CutPrefix(args, "set --hostname=")
 			require.True(t, ok, "%s: no replay for cli %q", step.Name, a.Args)
 
 			r.hostinfo[a.Node].Hostname = hostname
@@ -572,18 +659,66 @@ func (r *stepReplay) apply(t *testing.T, step testcapture.Step) {
 		case "logout":
 			require.NoError(t, r.clients[a.Node].LogoutAndDisconnect(ctx), "%s: logout", step.Name)
 
-		case "wait", "retire":
-			// Waits are SaaS settle time; retire only frees SaaS devices.
+		case "retire":
+			// SaaS stops the daemon and deletes its devices.
+			r.clients[a.Node].Disconnect(t)
+
+			for _, nv := range r.machineNodes(a.Node) {
+				changes, err := r.srv.State().DeleteNode(nv)
+				require.NoError(t, err, "%s: retire %s", step.Name, a.Node)
+				r.srv.App.Change(changes...)
+			}
+
+		case "wait":
+			// SaaS settle time.
 
 		default:
 			t.Fatalf("%s: no replay for action %q", step.Name, a.Kind)
 		}
 	}
+
+	return refused
 }
 
-// api replays one admin exchange. Device paths go to the v2 API; key
-// mints and expiry, which the v2 API lacks or would answer with secrets,
-// go to State.
+// requestTags is the Hostinfo.RequestTags a login sends: the action's when
+// it set them, else the ones the node sent last.
+func requestTags(a testcapture.Action, last []string) []string {
+	if a.RequestTags == nil {
+		return last
+	}
+
+	return *a.RequestTags
+}
+
+// approver completes an interactive login as the user who owns key.
+func (r *stepReplay) approver(ctx context.Context, t *testing.T, key string) func(string) error {
+	t.Helper()
+
+	user, ok := r.keyUsers[key]
+	require.True(t, ok, "interactive login for unknown key %s", key)
+	require.Empty(t, r.keyTags[key], "interactive login for tagged key %s", key)
+
+	return func(authID string) error {
+		return r.srv.ApproveAuth(ctx, authID, user.Name)
+	}
+}
+
+func (r *stepReplay) setPolicy(t *testing.T, stepName, policy string) {
+	t.Helper()
+
+	changed, err := r.srv.State().SetPolicy(convertPolicyEmails(t, r.c.TestID, policy))
+	require.NoError(t, err, "%s: policy", stepName)
+
+	if changed {
+		changes, err := r.srv.State().ReloadPolicy()
+		require.NoError(t, err)
+		r.srv.App.Change(changes...)
+	}
+}
+
+// api replays one admin exchange. Device and key deletes go to the v2 API;
+// key mints and expiry, which the v2 API lacks or would answer with
+// secrets, go to State.
 func (r *stepReplay) api(t *testing.T, stepName string, a testcapture.Action) {
 	t.Helper()
 
@@ -591,7 +726,13 @@ func (r *stepReplay) api(t *testing.T, stepName string, a testcapture.Action) {
 	case a.Method == http.MethodGet:
 		return
 
+	case a.Method == http.MethodPost && a.Path == "/tailnet/-/acl":
+		require.Equal(t, http.StatusOK, a.Status, "%s: replay of a refused policy", stepName)
+		r.setPolicy(t, stepName, string(a.Body))
+
 	case a.Method == http.MethodPost && a.Path == "/tailnet/-/keys":
+		require.Equal(t, http.StatusOK, a.Status, "%s: replay of a refused mint %s", stepName, a.Key)
+
 		var body struct {
 			Capabilities struct {
 				Devices struct {
@@ -606,19 +747,33 @@ func (r *stepReplay) api(t *testing.T, stepName string, a testcapture.Action) {
 		}
 		require.NoError(t, json.Unmarshal(a.Body, &body), "%s: key body", stepName)
 
+		// The admin mints as the tailnet owner; a user's own key mints as
+		// that user.
+		user := r.admin
+		if name, ok := strings.CutPrefix(a.Principal, "user:"); ok {
+			user, ok = r.users[name]
+			require.True(t, ok, "%s: mint as unknown %s", stepName, a.Principal)
+		}
+
 		create := body.Capabilities.Devices.Create
 		expiry := time.Now().Add(time.Duration(body.ExpirySeconds) * time.Second)
-		uid := types.UserID(r.admin.ID)
+		uid := types.UserID(user.ID)
 
 		pak, err := r.srv.State().CreatePreAuthKey(&uid, create.Reusable, create.Ephemeral, &expiry, create.Tags)
 		require.NoError(t, err, "%s: mint %s", stepName, a.Key)
 
 		r.keys[a.Key] = pak.Key
+		r.keyIDs[a.Key] = pak.ID
+		r.keyTags[a.Key] = create.Tags
+		r.keyUsers[a.Key] = user
 
-	case a.Method == http.MethodDelete && strings.HasPrefix(a.Path, "/tailnet/-/keys/"):
-		pak, err := r.srv.State().GetPreAuthKey(r.keys[a.Key])
-		require.NoError(t, err, "%s: key %s", stepName, a.Key)
-		require.NoError(t, r.srv.State().DeletePreAuthKey(pak.ID), "%s: delete %s", stepName, a.Key)
+	case a.Method == http.MethodDelete && strings.HasPrefix(a.Path, "/tailnet/-/keys/{key:"):
+		label := strings.TrimSuffix(strings.TrimPrefix(a.Path, "/tailnet/-/keys/{key:"), "}")
+		id, ok := r.keyIDs[label]
+		require.True(t, ok, "%s: delete of unknown key %q", stepName, label)
+
+		status, resp := r.call(t, a.Method, "/api/v2/tailnet/-/keys/"+strconv.FormatUint(id, 10), nil)
+		require.Equal(t, a.Status, status, "%s: %s %s: %s", stepName, a.Method, a.Path, resp)
 
 	case a.Method == http.MethodPost && strings.HasSuffix(a.Path, "/expire"):
 		now := time.Now()

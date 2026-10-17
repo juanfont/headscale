@@ -125,7 +125,7 @@ func runRouteLifecycleCompat(t *testing.T, id, observer string, skips map[string
 			historyStart = max(len(obs.History())-1, 0)
 		}
 
-		r.apply(t, step)
+		require.Empty(t, r.apply(t, step), "%s: every login succeeds", step.Name)
 
 		prevSaaS := prevObserved
 		prevObserved = step.Captures[observer].Netmap
@@ -350,12 +350,15 @@ type deviceRoutes struct {
 // saasDevice is the part of a SaaS device-list entry the checks read.
 // Keys and IDs are the capture's labels.
 type saasDevice struct {
-	ID         string   `json:"id"`
-	NodeKey    string   `json:"nodeKey"`
-	MachineKey string   `json:"machineKey"`
-	Addresses  []string `json:"addresses"`
-	Tags       []string `json:"tags"`
-	User       string   `json:"user"`
+	ID                string   `json:"id"`
+	NodeKey           string   `json:"nodeKey"`
+	MachineKey        string   `json:"machineKey"`
+	Addresses         []string `json:"addresses"`
+	Tags              []string `json:"tags"`
+	User              string   `json:"user"`
+	Expires           string   `json:"expires"`
+	KeyExpiryDisabled bool     `json:"keyExpiryDisabled"`
+	IsEphemeral       bool     `json:"isEphemeral"`
 }
 
 // lastRoutesRead returns the step's last routes read: the device it named
