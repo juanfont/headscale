@@ -96,44 +96,6 @@ func TestPolicyManager(t *testing.T) {
 	}
 }
 
-// TestSetPolicyRejectedKeepsLiveFilter pins that a policy SetPolicy rejects
-// does not take effect. A nodeAttrs target naming an ambiguous user passes
-// validation but fails to compile after the filter is already compiled; keeping that
-// filter would run the rejected policy while the stored one is unchanged.
-func TestSetPolicyRejectedKeepsLiveFilter(t *testing.T) {
-	// IDs are assigned after construction so the test also builds where
-	// types.User embeds gorm.Model.
-	users := types.Users{{Name: "user1"}, {Name: "user2"}, {Name: "dup"}, {Name: "dup"}}
-	users[0].ID, users[1].ID, users[2].ID, users[3].ID = 1, 2, 3, 4
-	nodes := types.Nodes{
-		node("n1", "100.64.0.1", "fd7a:115c:a1e0::1", users[0]),
-		node("n2", "100.64.0.2", "fd7a:115c:a1e0::2", users[1]),
-	}
-	nodes[0].ID, nodes[1].ID = 1, 2
-
-	pm, err := NewPolicyManager([]byte(`{
-		"acls": [{"action": "accept", "src": ["user1@"], "dst": ["user1@:*"]}]
-	}`), users, nodes.ViewSlice())
-	require.NoError(t, err)
-
-	before, _ := pm.Filter()
-	beforeRules, err := pm.FilterForNode(nodes[1].View())
-	require.NoError(t, err)
-
-	_, err = pm.SetPolicy([]byte(`{
-		"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}],
-		"nodeAttrs": [{"target": ["dup@"], "attr": ["randomize-client-port"]}]
-	}`))
-	require.Error(t, err)
-
-	after, _ := pm.Filter()
-	require.Equal(t, before, after, "a rejected policy must not replace the live filter")
-
-	afterRules, err := pm.FilterForNode(nodes[1].View())
-	require.NoError(t, err)
-	require.Equal(t, beforeRules, afterRules)
-}
-
 func TestInvalidateAutogroupSelfCache(t *testing.T) {
 	users := types.Users{
 		{ID: 1, Name: "user1", Email: "user1@headscale.net"},
@@ -2900,14 +2862,16 @@ func TestNewPolicyManager_DuplicateUsername(t *testing.T) {
   ]
 }`)
 
-	_, err := NewPolicyManager(polB, users, types.Nodes{}.ViewSlice())
-	require.Error(t, err, "NewPolicyManager must reject policy with ambiguous username")
+	pm, err := NewPolicyManager(polB, users, types.Nodes{}.ViewSlice())
+	require.NoError(t, err, "ambiguous usernames must not block loading a stored policy")
+
+	_, err = pm.SetPolicy(polB)
 	require.ErrorIs(t, err, ErrMultipleUsersFound)
 	require.Contains(t, err.Error(), "yala@",
 		"error must name the offending token")
 }
 
-// Missing-user tokens stay tolerant per #2863; only multi-match blocks load.
+// Missing-user tokens stay tolerant per #2863.
 func TestNewPolicyManager_UnknownUsernameTolerant(t *testing.T) {
 	users := types.Users{
 		{ID: 1, Name: "alice"},
@@ -3211,6 +3175,8 @@ func TestValidateUserReferences_AllSites(t *testing.T) {
 		{ID: 2, Name: "dup"},
 		{ID: 3, Name: "dup"},
 	}
+	nodes := types.Nodes{node("alice", "100.64.0.1", "fd7a:115c:a1e0::1", users[0])}
+	nodes[0].ID = 1
 
 	tests := []struct {
 		name string
@@ -3257,6 +3223,18 @@ func TestValidateUserReferences_AllSites(t *testing.T) {
 }`,
 		},
 		{
+			name: "grants.src",
+			pol: `{
+  "grants": [{"src":["dup@"],"dst":["*"],"ip":["*"]}]
+}`,
+		},
+		{
+			name: "grants.dst",
+			pol: `{
+  "grants": [{"src":["alice@"],"dst":["dup@"],"ip":["*"]}]
+}`,
+		},
+		{
 			name: "ssh.src",
 			pol: `{
   "tagOwners": {"tag:ssh": ["alice@"]},
@@ -3283,9 +3261,25 @@ func TestValidateUserReferences_AllSites(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewPolicyManager([]byte(tt.pol), users, types.Nodes{}.ViewSlice())
+			pol, err := unmarshalPolicy([]byte(tt.pol))
+			require.NoError(t, err)
+
+			err = validateUserReferences(pol, users)
 			require.Error(t, err, "site %q must surface duplicate-user errors", tt.name)
 			require.ErrorIs(t, err, ErrMultipleUsersFound)
+
+			pm, err := NewPolicyManager([]byte(`{
+  "acls": [{"action":"accept","src":["alice@"],"dst":["alice@:*"]}]
+}`), users, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			before, _ := pm.Filter()
+
+			_, err = pm.SetPolicy([]byte(tt.pol))
+			require.ErrorIs(t, err, ErrMultipleUsersFound)
+
+			after, _ := pm.Filter()
+			require.Equal(t, before, after, "a rejected policy must not replace the live filter")
 		})
 	}
 }
@@ -4021,9 +4015,9 @@ func TestSetNodesCachedResultsMatchFresh(t *testing.T) {
 	}
 }
 
-// TestFailedSetUsersKeepsCompiledPolicy renames alice to charlie and adds
-// a second bob, so the recompile resolves charlie's grant and then fails on
-// the ambiguous nodeAttrs target. A failed Set* must leave every compiled result as it was:
+// TestFailedSetUsersKeepsCompiledPolicy renames alice to charlie while
+// an unresolvable tag owner prevents the recompile from succeeding.
+// A failed Set* must leave every compiled result as it was:
 // a partial compile would hand alice's nodes charlie's port 22, and the
 // reverse rename, which SetUsers sees as no change, would not clear it.
 func TestFailedSetUsersKeepsCompiledPolicy(t *testing.T) {
@@ -4071,9 +4065,13 @@ func TestFailedSetUsersKeepsCompiledPolicy(t *testing.T) {
 
 	renamed := slices.Clone(users)
 	renamed[0].Name = "charlie"
-	renamed = append(renamed, types.User{ID: 3, Name: "bob"})
+	good := pm.pol.TagOwners
+	missing := Tag("tag:missing")
+	pm.pol.TagOwners = TagOwners{"tag:srv": Owners{&missing}}
 
 	_, _, err = pm.SetUsers(renamed)
+	pm.pol.TagOwners = good
+
 	require.Error(t, err)
 	require.Equal(t, before, read(pm, nodes[0]), "a failed SetUsers must not change compiled results")
 
@@ -4642,8 +4640,8 @@ func TestWithResolvedGroups(t *testing.T) {
 		}
 	}
 
-	require.ErrorIs(t,
-		resolved.resolvedGroups["group:ambiguous"].err, ErrMultipleUsersFound)
+	// An ambiguous member matches no one, as outside a policy write.
+	require.NoError(t, resolved.resolvedGroups["group:ambiguous"].err)
 
 	unknown := Group("group:unknown")
 	got, err := unknown.resolve(resolved, users, nodes)
@@ -4810,4 +4808,53 @@ func TestSetNodesUnapprovedRoutesKeepGeneration(t *testing.T) {
 			require.Equal(t, gen+1, pm.NodesGeneration())
 		})
 	}
+}
+
+func TestAmbiguousUserKeepsOtherGroupMembers(t *testing.T) {
+	users := types.Users{
+		{ID: 1, Name: "alice"},
+		{ID: 2, Name: "dup"},
+		{ID: 3, Name: "dup"},
+	}
+
+	nodes := types.Nodes{
+		node("alice", "100.64.0.1", "fd7a:115c:a1e0::1", users[0]),
+		node("first-dup", "100.64.0.2", "fd7a:115c:a1e0::2", users[1]),
+		node("second-dup", "100.64.0.3", "fd7a:115c:a1e0::3", users[2]),
+	}
+	for i, n := range nodes {
+		n.ID = types.NodeID(i + 1) //nolint:gosec
+	}
+
+	pol := []byte(`{
+		"groups": {"group:members": ["alice@", "dup@"]},
+		"acls": [{"action":"accept", "src":["group:members"], "dst":["*:*"]}],
+		"nodeAttrs": [{"target":["group:members"], "attr":["randomize-client-port"]}]
+	}`)
+	pm, err := NewPolicyManager(pol, users[:2], nodes.ViewSlice())
+	require.NoError(t, err)
+	require.NotEmpty(t, pm.NodeCapMap(nodes[0].ID))
+	require.NotEmpty(t, pm.NodeCapMap(nodes[1].ID))
+	require.Empty(t, pm.NodeCapMap(nodes[2].ID))
+
+	_, usersChanged, err := pm.SetUsers(users)
+	require.NoError(t, err)
+	require.True(t, usersChanged)
+
+	filter, _ := pm.Filter()
+	require.Len(t, filter, 1)
+	require.ElementsMatch(t, []string{"100.64.0.1", "fd7a:115c:a1e0::1"}, filter[0].SrcIPs)
+	require.Equal(t, tailcfg.NodeCapMap{"randomize-client-port": nil}, pm.NodeCapMap(nodes[0].ID))
+	require.Empty(t, pm.NodeCapMap(nodes[1].ID))
+	require.Empty(t, pm.NodeCapMap(nodes[2].ID))
+
+	fresh, err := NewPolicyManager(pol, users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	freshFilter, _ := fresh.Filter()
+	require.Equal(t, filter, freshFilter)
+	require.Equal(t, pm.NodeCapMaps(), fresh.NodeCapMaps())
+
+	_, err = pm.SetPolicy(pol)
+	require.ErrorIs(t, err, ErrMultipleUsersFound)
 }

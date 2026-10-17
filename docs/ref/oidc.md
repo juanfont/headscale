@@ -185,6 +185,11 @@ You may refer to users in the Headscale policy via:
 - Provider identifier (this value is currently only available from the [API](api.md), database or directly from your
   identity provider)
 
+References match a provider identifier first, then a stored email address, then a username. A token shaped like an
+email address also matches a username with that value when no user has that email. If one user has the email and
+another has the username, the email owner wins. Multiple matching emails, or multiple matching usernames when no email
+matches, remain ambiguous.
+
 !!! note "A user identifier in the policy must contain a single `@`"
 
     The Headscale policy requires a single `@` to reference a user. If the username or provider identifier doesn't
@@ -199,6 +204,8 @@ You may refer to users in the Headscale policy via:
     configuration, the values for username or email address might change over time. This might have unexpected
     consequences for Headscale where a policy might no longer work or a user might obtain more access by hijacking an
     existing username or email address.
+
+    Use provider identifiers in policies when your identity provider lets users change their own usernames.
 
 !!! tip "Howto use the provider identifier in the policy"
 
