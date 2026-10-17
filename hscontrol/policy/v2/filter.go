@@ -254,29 +254,105 @@ func sshCheck(baseURL string) tailcfg.SSHAction {
 	}
 }
 
-//nolint:gocyclo // SSH compilation walks per-rule branches with intertwined autogroup:self handling
-func (pol *Policy) compileSSHPolicy(
-	baseURL string,
-	users types.Users,
-	node types.NodeView,
-	nodes views.Slice[types.NodeView],
-) (*tailcfg.SSHPolicy, error) {
-	// Never nil: clients read a nil SSHPolicy as "keep the previous
-	// rules", so revoked access would stay. SaaS sends "rules":[].
-	if pol == nil || len(pol.SSHs) == 0 {
-		return &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}}, nil
+// compiledSSHRule is an [SSH] rule with everything that does not depend on
+// the node it is delivered to already resolved, as [compiledGrant] is for
+// grants. It is read-only once built: the SSH policies of all nodes point
+// into it, so what a rule expands to is kept once and not once per node.
+type compiledSSHRule struct {
+	srcs *sshSources
+
+	sshUsers        map[string]string
+	localpartByUser map[uint]string
+	action          *tailcfg.SSHAction
+	acceptEnv       []string
+
+	hasLocalpart bool
+	hasSelfDest  bool
+
+	// userRules holds the rules scoped to one source user's own nodes,
+	// for autogroup:self destinations and localpart self-access.
+	userRules map[uint][]*tailcfg.SSHRule
+
+	// dests holds the destinations other than autogroup:self, nil if
+	// there are none. Every node in it gets destRules.
+	dests     *netipx.IPSet
+	destRules []*tailcfg.SSHRule
+}
+
+// sshSources is what the sources of an [SSH] rule resolve to. It is
+// read-only once built: rules with the same source addresses share it.
+type sshSources struct {
+	ips              ResolvedAddresses
+	userIDs          []uint
+	principalsByUser map[uint][]*tailcfg.SSHPrincipal
+	taggedPrincipals []*tailcfg.SSHPrincipal
+
+	// allPrincipals merges user and tagged principals into a single
+	// list. Tagged principals preserve per-tag duplication (a node with
+	// N tags appears N times, matching SaaS behavior).
+	allPrincipals []*tailcfg.SSHPrincipal
+}
+
+// rules emits a common rule and, if the user has a localpart match, a
+// per-user localpart rule.
+func (r *compiledSSHRule) rules(
+	principals []*tailcfg.SSHPrincipal,
+	uid uint,
+	hasUID bool,
+) []*tailcfg.SSHRule {
+	rules := []*tailcfg.SSHRule{{
+		Principals: principals,
+		SSHUsers:   r.sshUsers,
+		Action:     r.action,
+		AcceptEnv:  r.acceptEnv,
+	}}
+
+	if hasUID {
+		if lp, ok := r.localpartByUser[uid]; ok {
+			rules = append(rules, &tailcfg.SSHRule{
+				Principals: principals,
+				SSHUsers:   map[string]string{lp: lp},
+				Action:     r.action,
+				AcceptEnv:  r.acceptEnv,
+			})
+		}
 	}
 
-	log.Trace().Caller().Msgf("compiling SSH policy for node %q", node.Hostname())
+	return rules
+}
 
-	rules := []*tailcfg.SSHRule{}
+// compileSSHRules resolves all SSH rules of the policy into
+// [compiledSSHRule] structs. Rules whose sources resolve to nothing are
+// left out.
+//
+//nolint:gocyclo // SSH compilation walks per-rule branches with intertwined autogroup:self handling
+func (pol *Policy) compileSSHRules(
+	baseURL string,
+	users types.Users,
+	nodes views.Slice[types.NodeView],
+) ([]compiledSSHRule, error) {
+	if pol == nil {
+		return nil, nil
+	}
+
+	compiled := make([]compiledSSHRule, 0, len(pol.SSHs))
+
+	// There is one principal per source address and the policy author
+	// decides how many rules there are, so rules whose sources resolve to
+	// the same addresses share their principals.
+	sources := make(map[string]*sshSources)
 
 	for index, rule := range pol.SSHs {
-		var autogroupSelfDests, otherDests []Alias
+		var otherDests []Alias
+
+		cr := compiledSSHRule{
+			hasLocalpart: rule.Users.ContainsLocalpart(),
+			acceptEnv:    rule.AcceptEnv,
+		}
 
 		for _, dst := range rule.Destinations {
 			if ag, ok := dst.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
-				autogroupSelfDests = append(autogroupSelfDests, dst)
+				cr.hasSelfDest = true
 			} else {
 				otherDests = append(otherDests, dst)
 			}
@@ -307,73 +383,64 @@ func (pol *Policy) compileSSHPolicy(
 			)
 		}
 
-		acceptEnv := rule.AcceptEnv
+		cr.action = &action
 
 		// Build the common userMap (always has at least a root entry).
 		const rootUser = "root"
 
-		baseUserMap := make(map[string]string, len(rule.Users))
+		cr.sshUsers = make(map[string]string, len(rule.Users))
 		if rule.Users.ContainsNonRoot() {
-			baseUserMap["*"] = "="
+			cr.sshUsers["*"] = "="
 		}
 
 		if rule.Users.ContainsRoot() {
-			baseUserMap[rootUser] = rootUser
+			cr.sshUsers[rootUser] = rootUser
 		} else {
-			baseUserMap[rootUser] = ""
+			cr.sshUsers[rootUser] = ""
 		}
 
 		for _, u := range rule.Users.NormalUsers() {
-			baseUserMap[u.String()] = u.String()
+			cr.sshUsers[u.String()] = u.String()
 		}
 
-		hasLocalpart := rule.Users.ContainsLocalpart()
-
-		var localpartByUser map[uint]string
-		if hasLocalpart {
-			localpartByUser = resolveLocalparts(
+		if cr.hasLocalpart {
+			cr.localpartByUser = resolveLocalparts(
 				rule.Users.LocalpartEntries(), users,
 			)
 		}
 
-		userIDs, principalsByUser, taggedPrincipals := groupSourcesByUser(
-			nodes, srcIPs,
-		)
+		srcKey := strings.Join(srcIPs.Strings(), ",")
 
-		// appendRules emits a common rule and, if the user has a
-		// localpart match, a per-user localpart rule.
-		appendRules := func(principals []*tailcfg.SSHPrincipal, uid uint, hasUID bool) {
-			rules = append(rules, &tailcfg.SSHRule{
-				Principals: principals,
-				SSHUsers:   baseUserMap,
-				Action:     &action,
-				AcceptEnv:  acceptEnv,
-			})
+		srcs, ok := sources[srcKey]
+		if !ok {
+			userIDs, byUser, tagged := groupSourcesByUser(nodes, srcIPs)
+			srcs = &sshSources{
+				ips:              srcIPs,
+				userIDs:          userIDs,
+				principalsByUser: byUser,
+				taggedPrincipals: tagged,
+			}
 
-			if hasUID {
-				if lp, ok := localpartByUser[uid]; ok {
-					rules = append(rules, &tailcfg.SSHRule{
-						Principals: principals,
-						SSHUsers:   map[string]string{lp: lp},
-						Action:     &action,
-						AcceptEnv:  acceptEnv,
-					})
-				}
+			for _, uid := range srcs.userIDs {
+				srcs.allPrincipals = append(
+					srcs.allPrincipals, srcs.principalsByUser[uid]...,
+				)
+			}
+
+			srcs.allPrincipals = append(srcs.allPrincipals, srcs.taggedPrincipals...)
+
+			sources[srcKey] = srcs
+		}
+
+		cr.srcs = srcs
+
+		if cr.hasSelfDest || cr.hasLocalpart {
+			cr.userRules = make(map[uint][]*tailcfg.SSHRule, len(srcs.userIDs))
+			for _, uid := range srcs.userIDs {
+				cr.userRules[uid] = cr.rules(srcs.principalsByUser[uid], uid, true)
 			}
 		}
 
-		// Handle autogroup:self destinations.
-		// Tagged nodes can't match autogroup:self.
-		if len(autogroupSelfDests) > 0 &&
-			!node.IsTagged() && node.User().Valid() {
-			uid := node.User().ID()
-
-			if principals := principalsByUser[uid]; len(principals) > 0 {
-				appendRules(principals, uid, true)
-			}
-		}
-
-		// Handle other destinations.
 		if len(otherDests) > 0 {
 			var dest netipx.IPSetBuilder
 
@@ -391,60 +458,78 @@ func (pol *Policy) compileSSHPolicy(
 				}
 			}
 
-			destSet, err := dest.IPSet()
+			cr.dests, err = dest.IPSet()
 			if err != nil {
 				return nil, err
 			}
 
-			if node.InIPSet(destSet) {
-				// Node is a destination — emit rules.
-				// When localpart entries exist, interleave common
-				// and localpart rules per source user to match
-				// Tailscale SaaS first-match-wins ordering.
-				if hasLocalpart {
-					for _, uid := range userIDs {
-						appendRules(principalsByUser[uid], uid, true)
-					}
+			// When localpart entries exist, interleave common
+			// and localpart rules per source user to match
+			// Tailscale SaaS first-match-wins ordering.
+			if cr.hasLocalpart {
+				for _, uid := range srcs.userIDs {
+					cr.destRules = append(cr.destRules, cr.userRules[uid]...)
+				}
 
-					if len(taggedPrincipals) > 0 {
-						appendRules(taggedPrincipals, 0, false)
-					}
-				} else {
-					// Merge user and tagged principals into a
-					// single list. Tagged principals preserve
-					// per-tag duplication (a node with N tags
-					// appears N times, matching SaaS behavior).
-					var allPrincipals []*tailcfg.SSHPrincipal
-					for _, uid := range userIDs {
-						allPrincipals = append(allPrincipals, principalsByUser[uid]...)
-					}
+				if len(srcs.taggedPrincipals) > 0 {
+					cr.destRules = append(
+						cr.destRules, cr.rules(srcs.taggedPrincipals, 0, false)...,
+					)
+				}
+			} else if len(srcs.allPrincipals) > 0 {
+				cr.destRules = cr.rules(srcs.allPrincipals, 0, false)
+			}
+		}
 
-					allPrincipals = append(allPrincipals, taggedPrincipals...)
+		compiled = append(compiled, cr)
+	}
 
-					if len(allPrincipals) > 0 {
-						appendRules(allPrincipals, 0, false)
+	return compiled, nil
+}
+
+// sshPolicyForNode picks the rules that apply to node out of compiled.
+func sshPolicyForNode(
+	compiled []compiledSSHRule,
+	node types.NodeView,
+) *tailcfg.SSHPolicy {
+	// Never nil: clients read a nil SSHPolicy as "keep the previous
+	// rules", so revoked access would stay. SaaS sends "rules":[].
+	rules := []*tailcfg.SSHRule{}
+
+	for i := range compiled {
+		cr := &compiled[i]
+
+		// Handle autogroup:self destinations.
+		// Tagged nodes can't match autogroup:self.
+		if cr.hasSelfDest && !node.IsTagged() && node.User().Valid() {
+			rules = append(rules, cr.userRules[node.User().ID()]...)
+		}
+
+		// Handle other destinations.
+		if cr.dests == nil {
+			continue
+		}
+
+		if node.InIPSet(cr.dests) {
+			// Node is a destination — emit rules.
+			rules = append(rules, cr.destRules...)
+		} else if cr.hasLocalpart &&
+			slices.ContainsFunc(node.IPs(), cr.srcs.ips.Contains) {
+			// Self-access: source node not in destination set
+			// receives rules scoped to its own user.
+			if node.IsTagged() {
+				var builder netipx.IPSetBuilder
+
+				node.AppendToIPSet(&builder)
+
+				ipSet, err := builder.IPSet()
+				if err == nil && ipSet != nil {
+					if principals := ipSetToPrincipals(ipSet); len(principals) > 0 {
+						rules = append(rules, cr.rules(principals, 0, false)...)
 					}
 				}
-			} else if hasLocalpart && slices.ContainsFunc(node.IPs(), srcIPs.Contains) {
-				// Self-access: source node not in destination set
-				// receives rules scoped to its own user.
-				if node.IsTagged() {
-					var builder netipx.IPSetBuilder
-
-					node.AppendToIPSet(&builder)
-
-					ipSet, err := builder.IPSet()
-					if err == nil && ipSet != nil {
-						if principals := ipSetToPrincipals(ipSet); len(principals) > 0 {
-							appendRules(principals, 0, false)
-						}
-					}
-				} else if node.User().Valid() {
-					uid := node.User().ID()
-					if principals := principalsByUser[uid]; len(principals) > 0 {
-						appendRules(principals, uid, true)
-					}
-				}
+			} else if node.User().Valid() {
+				rules = append(rules, cr.userRules[node.User().ID()]...)
 			}
 		}
 	}
@@ -468,7 +553,26 @@ func (pol *Policy) compileSSHPolicy(
 
 	return &tailcfg.SSHPolicy{
 		Rules: rules,
-	}, nil
+	}
+}
+
+// compileSSHPolicy compiles the SSH policy of a single node.
+// [PolicyManager.SSHPolicy], which is asked for every node, keeps the
+// result of [Policy.compileSSHRules] instead.
+func (pol *Policy) compileSSHPolicy(
+	baseURL string,
+	users types.Users,
+	node types.NodeView,
+	nodes views.Slice[types.NodeView],
+) (*tailcfg.SSHPolicy, error) {
+	log.Trace().Caller().Msgf("compiling SSH policy for node %q", node.Hostname())
+
+	compiled, err := pol.compileSSHRules(baseURL, users, nodes)
+	if err != nil {
+		return nil, err
+	}
+
+	return sshPolicyForNode(compiled, node), nil
 }
 
 // ipSetToPrincipals converts an [netipx.IPSet] into SSH principals, one per address.
