@@ -447,6 +447,9 @@ func (u *Username) resolveUser(users types.Users) (types.User, error) {
 	// add it to the end of the username. We strip it here as we do not expect the
 	// usernames to be stored with the "@".
 	uTrimmed := strings.TrimSuffix(u.String(), "@")
+	if uTrimmed == "" {
+		return types.User{}, fmt.Errorf("%w: token %q", ErrUserNotFound, u.String())
+	}
 
 	for _, user := range users {
 		if user.ProviderIdentifier.Valid && user.ProviderIdentifier.String == uTrimmed {
