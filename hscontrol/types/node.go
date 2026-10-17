@@ -440,8 +440,13 @@ func (node *Node) canAccess(
 	return false
 }
 
-// CanAccessRoute determines whether a specific route prefix should be
-// visible to this node based on the given matchers.
+// CanAccessRoute reports whether [Node.CanAccessRoutes] keeps route.
+func (node *Node) CanAccessRoute(matchers []matcher.Match, route netip.Prefix) bool {
+	return len(node.CanAccessRoutes(matchers, []netip.Prefix{route})) > 0
+}
+
+// CanAccessRoutes returns the authorized routes in input order, evaluating the
+// node's matcher membership once for the whole list.
 //
 // Unlike [Node.CanAccess], this function intentionally does NOT check
 // [matcher.Match.DestsIsTheInternet]. Exit routes (0.0.0.0/0, ::/0) are handled by
@@ -456,40 +461,47 @@ func (node *Node) canAccess(
 // internet" from internet-targeted ACLs. Wildcard "*" dests produce
 // matchers where [matcher.Match.DestsOverlapsPrefixes](0.0.0.0/0) already returns
 // true, so the check would be redundant for that case.
-func (node *Node) CanAccessRoute(matchers []matcher.Match, route netip.Prefix) bool {
-	src := node.IPs()
+func (node *Node) CanAccessRoutes(
+	matchers []matcher.Match,
+	routes []netip.Prefix,
+) []netip.Prefix {
+	if len(routes) == 0 || len(matchers) == 0 {
+		return nil
+	}
+
+	ips := node.IPs()
 	subnetRoutes := node.SubnetRoutes()
+	sides := make([]struct{ isSrc, isDst bool }, len(matchers))
 
-	for _, matcher := range matchers {
-		if matcher.SrcsContainsIPs(src...) && matcher.DestsOverlapsPrefixes(route) {
-			return true
-		}
-
-		if matcher.SrcsOverlapsPrefixes(route) && matcher.DestsContainsIP(src...) {
-			return true
-		}
-
+	for i, m := range matchers {
 		// A subnet router acts on behalf of its advertised subnets.
 		// If the node's approved subnet routes overlap the source set
 		// and the route overlaps the destination set, the router needs
 		// this route to forward traffic from its local subnet.
-		if len(subnetRoutes) > 0 {
-			if matcher.SrcsOverlapsPrefixes(subnetRoutes...) &&
-				matcher.DestsOverlapsPrefixes(route) {
-				return true
-			}
+		sides[i].isSrc = m.SrcsContainsIPs(ips...) ||
+			m.SrcsOverlapsPrefixes(subnetRoutes...)
 
-			// Reverse: traffic from the route's subnet is destined for
-			// this node's subnets; the router needs the route for return
-			// traffic.
-			if matcher.SrcsOverlapsPrefixes(route) &&
-				matcher.DestsOverlapsPrefixes(subnetRoutes...) {
-				return true
+		// Reverse: traffic from the route's subnet is destined for
+		// this node's subnets; the router needs the route for return
+		// traffic.
+		sides[i].isDst = m.DestsContainsIP(ips...) ||
+			m.DestsOverlapsPrefixes(subnetRoutes...)
+	}
+
+	var result []netip.Prefix
+
+	for _, route := range routes {
+		for i, m := range matchers {
+			if (sides[i].isSrc && m.DestsOverlapsPrefixes(route)) ||
+				(sides[i].isDst && m.SrcsOverlapsPrefixes(route)) {
+				result = append(result, route)
+
+				break
 			}
 		}
 	}
 
-	return false
+	return result
 }
 
 func (nodes Nodes) FilterByIP(ip netip.Addr) Nodes {
@@ -971,6 +983,18 @@ func (nv NodeView) CanAccessRoute(matchers []matcher.Match, route netip.Prefix) 
 	}
 
 	return nv.ж.CanAccessRoute(matchers, route)
+}
+
+// CanAccessRoutes is [Node.CanAccessRoutes] for a node view.
+func (nv NodeView) CanAccessRoutes(
+	matchers []matcher.Match,
+	routes []netip.Prefix,
+) []netip.Prefix {
+	if !nv.Valid() {
+		return nil
+	}
+
+	return nv.ж.CanAccessRoutes(matchers, routes)
 }
 
 func (nv NodeView) AnnouncedRoutes() []netip.Prefix {
