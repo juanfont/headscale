@@ -1,14 +1,22 @@
 package servertest_test
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"net/netip"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/servertest"
+	"github.com/juanfont/headscale/hscontrol/state"
+	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/tailcfg"
 	"tailscale.com/types/netmap"
 )
 
@@ -297,4 +305,151 @@ func TestIPv6OnlyPrefixACL(t *testing.T) {
 
 	assert.False(t, foundIPv4Dst,
 		"test2 PacketFilter should NOT contain IPv4 destination 100.64.0.2 when policy only specifies IPv6 hosts")
+}
+
+// rejectedPolicySkipReasons lists refused captures where headscale differs,
+// keyed <test_id>/<check>. A listed check that passes fails, so a fix must
+// delete its entry.
+var rejectedPolicySkipReasons = map[string]string{
+	"ssh-b4/refused": noTailnetDomains,
+	"ssh-d1/refused": noTailnetDomains,
+	"ssh-e1/refused": noTailnetDomains,
+	"ssh-e2/refused": noTailnetDomains,
+	"ssh-malformed-user-localpart-multi-glob/refused": noTailnetDomains,
+}
+
+const noTailnetDomains = "NO_TAILNET_DOMAINS: headscale does not check user:*@domain or localpart:*@domain against the tailnet's domains"
+
+// TestRejectedPolicyLeavesLivePolicyCompat posts every policy SaaS refused to
+// the v2 API over the baseline tscap's reset leaves: tagOwners only.
+// Headscale must refuse it too and keep enforcing and serving the baseline,
+// as SaaS did.
+//
+// Test data source: ../policy/v2/testdata/*_results/, the error captures.
+func TestRejectedPolicyLeavesLivePolicyCompat(t *testing.T) {
+	t.Parallel()
+
+	files, err := filepath.Glob(filepath.Join("..", "policy", "v2", "testdata", "*_results", "*.hujson"))
+	require.NoError(t, err)
+	require.NotEmpty(t, files)
+
+	for _, file := range files {
+		c, err := testcapture.Read(file)
+		require.NoError(t, err, "reading %s", file)
+
+		if !c.Error {
+			continue
+		}
+
+		t.Run(c.TestID, func(t *testing.T) {
+			t.Parallel()
+
+			srv, apiKey := rejectedPolicyServer(t, c)
+			handler := srv.App.HTTPHandler()
+
+			before := livePolicy(t, srv, handler, apiKey)
+
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v2/tailnet/-/acl",
+				bytes.NewReader(convertCapturePolicy(t, c)))
+			req.Header.Set("Authorization", "Bearer "+apiKey)
+			req.Header.Set("Content-Type", "application/json")
+			handler.ServeHTTP(rec, req)
+
+			key := c.TestID + "/refused"
+			if reason, listed := rejectedPolicySkipReasons[key]; listed {
+				require.NotEqualf(t, http.StatusBadRequest, rec.Code,
+					"headscale refuses this policy; delete rejectedPolicySkipReasons[%q]", key)
+				require.Equalf(t, http.StatusOK, rec.Code,
+					"listed as accepted; headscale answered %d: %s", rec.Code, rec.Body)
+				t.Skip(reason)
+			}
+
+			require.Equalf(t, http.StatusBadRequest, rec.Code,
+				"SaaS refused this policy; headscale answered %d: %s", rec.Code, rec.Body)
+
+			assert.Equal(t, before, livePolicy(t, srv, handler, apiKey),
+				"a refused policy must leave the live policy as it was")
+		})
+	}
+}
+
+// rejectedPolicyServer starts a server holding the capture's topology and
+// a baseline where odin, the reset policy's owner, owns every topology tag.
+func rejectedPolicyServer(t *testing.T, c *testcapture.Capture) (*servertest.TestServer, string) {
+	t.Helper()
+
+	// Every staged node waits out a NodeStore batch; with no streams to
+	// coalesce, the default wait only adds time.
+	srv := servertest.NewServer(t, servertest.WithNodeStoreBatchTimeout(state.TestBatchTimeout))
+	users := createCaptureUsers(t, srv)
+
+	owners := map[string][]string{}
+
+	for _, n := range c.Topology.Nodes {
+		for _, tag := range n.Tags {
+			owners[tag] = []string{"odin@"}
+		}
+	}
+
+	baselineJSON, err := json.Marshal(map[string]any{"tagOwners": owners})
+	require.NoError(t, err)
+
+	st := srv.State()
+
+	_, err = st.SetPolicy(baselineJSON)
+	require.NoError(t, err, "baseline tagOwners should install")
+
+	_, err = st.SetPolicyInDB(string(baselineJSON))
+	require.NoError(t, err)
+
+	for name, topo := range c.Topology.Nodes {
+		owner := users["odin"]
+		if u, ok := users[topo.User]; ok {
+			owner = u
+		}
+
+		node := st.CreateRegisteredNodeForTest(owner, name)
+		node.User = owner
+		node.Tags = topo.Tags
+		v4, v6 := netip.MustParseAddr(topo.IPv4), netip.MustParseAddr(topo.IPv6)
+		node.IPv4, node.IPv6 = &v4, &v6
+		st.PutNodeInStoreForTest(*node)
+	}
+
+	require.NoError(t, st.UpdatePolicyManagerNodesForTest())
+
+	return srv, srv.CreateAPIKey(t, nil)
+}
+
+// livePolicyState is what the server enforces and serves.
+type livePolicyState struct {
+	Filter []tailcfg.FilterRule
+	SSH    map[string]*tailcfg.SSHPolicy
+	Body   string
+	ETag   string
+}
+
+func livePolicy(t *testing.T, srv *servertest.TestServer, handler http.Handler, apiKey string) livePolicyState {
+	t.Helper()
+
+	filter, _ := srv.State().Filter()
+	out := livePolicyState{Filter: filter, SSH: map[string]*tailcfg.SSHPolicy{}}
+
+	for _, n := range srv.State().ListNodes().All() {
+		ssh, err := srv.State().SSHPolicy(n)
+		require.NoError(t, err)
+
+		out.SSH[n.Hostname()] = ssh
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v2/tailnet/-/acl", nil)
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	handler.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	out.Body, out.ETag = rec.Body.String(), rec.Header().Get("ETag")
+
+	return out
 }
