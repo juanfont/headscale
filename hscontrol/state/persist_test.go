@@ -99,6 +99,49 @@ func persistTestConfig(dbPath string) *types.Config {
 	}
 }
 
+func TestLoadedDuplicateNamesAreResolvedInMemory(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+	cfg.TailcfgDNSConfig = &tailcfg.DNSConfig{ExtraRecords: []tailcfg.DNSRecord{
+		{Name: "grafana." + cfg.BaseDomain, Type: "A", Value: "100.64.0.100"},
+	}}
+	database, err := db.NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	user := database.CreateUserForTest("loaded-name-user")
+	long := strings.Repeat("a", 63)
+	stored := []string{"db", "db", "DB", "", "grafana", "db-1", "x", "x", "x-1", long, strings.ToUpper(long)}
+	want := []string{"db", "db-2", "DB-3", "", "grafana", "db-1", "x", "x-2", "x-1", long, strings.ToUpper(long[:61]) + "-1"}
+
+	ids := make([]types.NodeID, 0, len(stored))
+	for _, name := range stored {
+		node := database.CreateNodeForTest(user)
+		require.NoError(t, database.DB.Model(&types.Node{}).Where("id = ?", node.ID).
+			Update("given_name", name).Error)
+		ids = append(ids, node.ID)
+	}
+
+	require.NoError(t, database.Close())
+
+	for range 2 {
+		s, err := NewState(cfg)
+		require.NoError(t, err)
+
+		for i, id := range ids {
+			node, ok := s.GetNodeByID(id)
+			require.True(t, ok)
+			assert.Equal(t, want[i], node.GivenName())
+
+			row, err := s.db.GetNodeByID(id)
+			require.NoError(t, err)
+			assert.Equal(t, stored[i], row.GivenName,
+				"startup must not write the repair")
+		}
+
+		require.NoError(t, s.Close())
+	}
+}
+
 func TestRegistrationPersistsResolvedGivenName(t *testing.T) {
 	dbPath := t.TempDir() + "/headscale.db"
 	s, err := NewState(persistTestConfig(dbPath))
