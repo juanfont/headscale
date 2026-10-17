@@ -1,0 +1,188 @@
+// policytest-ports-split-across-rules
+//
+// tests ports split across rules
+//
+// Steps: 1
+// Captured at:    2026-10-17T15:33:56Z
+// tool version:   tscap/e3511f1
+// schema version: 1
+{
+	"schema_version": 1,
+	"test_id":        "policytest-ports-split-across-rules",
+	"description":    "tests ports split across rules",
+	"category":       "policytest",
+	"captured_at":    "2026-10-17T15:33:56.075952561Z",
+	"tool_version":   "tscap/e3511f1",
+	"tailnet":        "odin@example.com",
+	"error":          true,
+	"input": {
+		"api_response_code": 400,
+		"api_response_body": {"message": "test(s) failed", "data": [{
+			"user":   "thor@example.org",
+			"errors": ["[acl test error]: address tag:server:22,80: invalid port \"22,80\""]
+		}]},
+		"tailnet": {
+			"dns":      {"magic_dns": false, "nameservers": [], "search_paths": [], "split_dns": {}},
+			"settings": {}
+		},
+		"scenario_hujson": "                                      \n  \n                                                           \n{\n\t\"id\":          \"policytest-ports-split-across-rules\",\n\t\"category\":    \"policytest\",\n\t\"description\": \"tests ports split across rules\",\n\t\"topology\":    \"../../_topologies/grant.hujson\",\n\t\"tailnet\": {\n\t\t\"dns\":      {\"magic_dns\": false, \"nameservers\": [], \"search_paths\": [], \"split_dns\": {}},\n\t\t\"settings\": {}\n\t},\n\t\"options\": {\"capture\": \"none\"},\n\t\"policy\": {\n\t\t\"tagOwners\": {\"tag:server\": [\"odin@example.com\"]},\n\t\t\"acls\": [{\n\t\t\t\"action\": \"accept\",\n\t\t\t\"src\":    [\"thor@example.org\"],\n\t\t\t\"dst\":    [\"tag:server:22\"]\n\t\t}, {\n\t\t\t\"action\": \"accept\",\n\t\t\t\"src\":    [\"thor@example.org\"],\n\t\t\t\"dst\":    [\"tag:server:80\"]\n\t\t}],\n\t\t\"tests\": [{\"src\": \"thor@example.org\", \"accept\": [\"tag:server:22,80\"]}]\n\t}\n}\n",
+		"scenario_path":   "scenarios/grant-matrix/grant/policytest-ports-split-across-rules.hujson",
+		"full_policy": {
+			"acls": [{
+				"action": "accept",
+				"dst":    ["tag:server:22"],
+				"src":    ["thor@example.org"]
+			}, {
+				"action": "accept",
+				"dst":    ["tag:server:80"],
+				"src":    ["thor@example.org"]
+			}],
+			"tagOwners": {"tag:server": ["odin@example.com"]},
+			"tests":     [{"accept": ["tag:server:22,80"], "src": "thor@example.org"}]
+		}
+	},
+	"topology": {"users": [
+		{"id": 1, "name": "odin", "email": "odin@example.com"},
+		{"id": 2, "name": "thor", "email": "thor@example.org"},
+		{"id": 3, "name": "freya", "email": "freya@example.com"}
+	], "nodes": {"beedrill": {
+		"hostname":        "beedrill",
+		"tags":            ["tag:server"],
+		"ipv4":            "100.64.0.16",
+		"ipv6":            "fd7a:115c:a1e0::10",
+		"routable_ips":    [],
+		"approved_routes": []
+	}, "blastoise": {
+		"hostname":        "blastoise",
+		"tags":            ["tag:exit", "tag:router"],
+		"ipv4":            "100.64.0.9",
+		"ipv6":            "fd7a:115c:a1e0::9",
+		"routable_ips":    ["10.33.0.0/16", "0.0.0.0/0", "::/0"],
+		"approved_routes": []
+	}, "bulbasaur": {
+		"hostname":        "bulbasaur",
+		"tags":            [],
+		"ipv4":            "100.64.0.19",
+		"ipv6":            "fd7a:115c:a1e0::13",
+		"user":            "odin",
+		"routable_ips":    [],
+		"approved_routes": []
+	}, "charmander": {
+		"hostname":        "charmander",
+		"tags":            ["tag:exit"],
+		"ipv4":            "100.64.0.4",
+		"ipv6":            "fd7a:115c:a1e0::4",
+		"routable_ips":    ["0.0.0.0/0", "::/0"],
+		"approved_routes": []
+	}, "fearow": {
+		"hostname":        "fearow",
+		"tags":            ["tag:fearow"],
+		"ipv4":            "100.64.0.12",
+		"ipv6":            "fd7a:115c:a1e0::c",
+		"routable_ips":    ["10.55.0.0/16"],
+		"approved_routes": []
+	}, "ivysaur": {
+		"hostname":        "ivysaur",
+		"tags":            [],
+		"ipv4":            "100.64.0.17",
+		"ipv6":            "fd7a:115c:a1e0::11",
+		"user":            "thor",
+		"routable_ips":    [],
+		"approved_routes": []
+	}, "kakuna": {
+		"hostname":        "kakuna",
+		"tags":            ["tag:prod"],
+		"ipv4":            "100.64.0.15",
+		"ipv6":            "fd7a:115c:a1e0::f",
+		"routable_ips":    [],
+		"approved_routes": []
+	}, "pidgeotto": {
+		"hostname":        "pidgeotto",
+		"tags":            ["tag:pidgeotto"],
+		"ipv4":            "100.64.0.3",
+		"ipv6":            "fd7a:115c:a1e0::3",
+		"routable_ips":    ["0.0.0.0/0", "::/0"],
+		"approved_routes": []
+	}, "pidgey": {
+		"hostname":        "pidgey",
+		"tags":            ["tag:pidgey"],
+		"ipv4":            "100.64.0.2",
+		"ipv6":            "fd7a:115c:a1e0::2",
+		"routable_ips":    ["0.0.0.0/0", "::/0"],
+		"approved_routes": []
+	}, "raticate": {
+		"hostname":        "raticate",
+		"tags":            ["tag:group-b"],
+		"ipv4":            "100.64.0.6",
+		"ipv6":            "fd7a:115c:a1e0::6",
+		"routable_ips":    [],
+		"approved_routes": []
+	}, "rattata": {
+		"hostname":        "rattata",
+		"tags":            ["tag:group-a"],
+		"ipv4":            "100.64.0.5",
+		"ipv6":            "fd7a:115c:a1e0::5",
+		"routable_ips":    [],
+		"approved_routes": []
+	}, "spearow": {
+		"hostname":        "spearow",
+		"tags":            ["tag:spearow"],
+		"ipv4":            "100.64.0.11",
+		"ipv6":            "fd7a:115c:a1e0::b",
+		"routable_ips":    ["10.44.0.0/16"],
+		"approved_routes": []
+	}, "squirtle": {
+		"hostname":        "squirtle",
+		"tags":            ["tag:router"],
+		"ipv4":            "100.64.0.13",
+		"ipv6":            "fd7a:115c:a1e0::d",
+		"routable_ips":    ["10.33.0.0/16"],
+		"approved_routes": []
+	}, "venusaur": {
+		"hostname":        "venusaur",
+		"tags":            [],
+		"ipv4":            "100.64.0.18",
+		"ipv6":            "fd7a:115c:a1e0::12",
+		"user":            "freya",
+		"routable_ips":    [],
+		"approved_routes": []
+	}, "weedle": {
+		"hostname":        "weedle",
+		"tags":            ["tag:client"],
+		"ipv4":            "100.64.0.14",
+		"ipv6":            "fd7a:115c:a1e0::e",
+		"routable_ips":    [],
+		"approved_routes": []
+	}}},
+	"captures": {},
+	"steps": [{
+		"name":   "validate",
+		"at":     "2026-10-17T15:33:59.535729954Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "api",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/acl/validate",
+			"header":    {"Content-Type": "application/hujson"},
+			"body": {
+				"acls": [{
+					"action": "accept",
+					"dst":    ["tag:server:22"],
+					"src":    ["thor@example.org"]
+				}, {
+					"action": "accept",
+					"dst":    ["tag:server:80"],
+					"src":    ["thor@example.org"]
+				}],
+				"tagOwners": {"tag:server": ["odin@example.com"]},
+				"tests":     [{"accept": ["tag:server:22,80"], "src": "thor@example.org"}]
+			},
+			"status": 200,
+			"response": {"data": [{
+				"errors": ["[acl test error]: address tag:server:22,80: invalid port \"22,80\""],
+				"user":   "thor@example.org"
+			}], "message": "test(s) failed"}
+		}]
+	}]
+}
