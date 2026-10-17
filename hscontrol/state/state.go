@@ -974,7 +974,7 @@ func (s *State) ListEphemeralNodes() views.Slice[types.NodeView] {
 // SetNodeExpiry updates the expiration time for a node.
 // If expiry is nil, the node's expiry is disabled (node will never expire).
 func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry *time.Time) (types.NodeView, change.Change, error) {
-	var onlineChanged bool
+	var onlineChanged, expired bool
 
 	genBefore := s.polMan.NodesGeneration()
 
@@ -989,10 +989,23 @@ func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry *time.Time) (types.Nod
 		// recover the client, but an expired key is not online.
 		node.IsOnline = new(node.ShouldBeOnline())
 		onlineChanged = wasOnline != node.Online()
+		// A relogin later in the batch can renew the node before n is read.
+		expired = node.IsExpired()
 	})
 
 	if !ok {
 		return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, nodeID)
+	}
+
+	if expired {
+		// Expiry revokes the human check even if a pre-auth key renews the node.
+		s.sshCheckMu.Lock()
+		for pair := range s.sshCheckAuth {
+			if pair.Src == nodeID {
+				delete(s.sshCheckAuth, pair)
+			}
+		}
+		s.sshCheckMu.Unlock()
 	}
 
 	// The online flip already re-elected primaries in the NodeStore, so
