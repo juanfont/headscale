@@ -91,14 +91,11 @@ const (
 // Route fields.
 const (
 	RoutesAnnounced    = "routes.announced"
-	RoutesApproved     = "routes.approved"
 	RoutesApprovedOld  = "routes.approved.old"
 	RoutesApprovedNew  = "routes.approved.new"
 	OldAnnouncedRoutes = "oldAnnouncedRoutes"
 	NewAnnouncedRoutes = "newAnnouncedRoutes"
 	ApprovedRoutes     = "approvedRoutes"
-	OldApprovedRoutes  = "oldApprovedRoutes"
-	NewApprovedRoutes  = "newApprovedRoutes"
 	AutoApprovedRoutes = "autoApprovedRoutes"
 	AllApprovedRoutes  = "allApprovedRoutes"
 	RouteChanged       = "routeChanged"
