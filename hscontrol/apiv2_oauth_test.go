@@ -205,6 +205,11 @@ func TestAPIv2OAuth_TokenEndpoint(t *testing.T) {
 	require.Equalf(t, http.StatusOK, statusBasic, "%v", mBasic)
 	assert.NotEmpty(t, mBasic["access_token"])
 
+	// The answer names the scopes stored on the token, each once.
+	statusDup, mDup := mintToken(t, baseURL, clientID, secret, strings.Repeat("auth_keys ", 2), false)
+	require.Equalf(t, http.StatusOK, statusDup, "%v", mDup)
+	assert.Equal(t, "auth_keys", mDup["scope"])
+
 	// Bad credentials → RFC 6749 invalid_client.
 	statusBad, mBad := mintToken(t, baseURL, clientID, "hskey-client-deadbeefdead-"+stringOf("0", 64), "", false)
 	assert.Equal(t, http.StatusUnauthorized, statusBad)
