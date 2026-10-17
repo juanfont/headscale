@@ -68,7 +68,7 @@ func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView, currentApprove
 	// Only update if the routes actually changed
 	if !slices.Equal(sortedCurrent, newApproved) {
 		// Log what changed
-		var added, kept []netip.Prefix
+		var added []netip.Prefix
 
 		for _, route := range newApproved {
 			_, exists := slices.BinarySearchFunc(
@@ -76,16 +76,13 @@ func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView, currentApprove
 			)
 			if !exists {
 				added = append(added, route)
-			} else {
-				kept = append(kept, route)
 			}
 		}
 
 		if len(added) > 0 {
-			log.Debug().
+			log.Info().
 				EmbedObject(nv).
 				Strs("routes.added", util.PrefixesToString(added)).
-				Strs("routes.kept", util.PrefixesToString(kept)).
 				Int("routes.total", len(newApproved)).
 				Msg("Routes auto-approved by policy")
 		}
