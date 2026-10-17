@@ -484,21 +484,14 @@ func (u *Username) Resolve(_ *Policy, users types.Users, nodes views.Slice[types
 }
 
 func (u *Username) resolve(_ *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
-	var (
-		ips  netipx.IPSetBuilder
-		errs []error
-	)
+	var ips netipx.IPSetBuilder
 
 	user, err := u.resolveUser(users)
-	if errors.Is(err, ErrUserNotFound) {
-		// A policy may name users before they register (#2863). Report it
-		// as an empty set, not an error: callers that bail on error would
-		// otherwise drop a whole group for one missing member (#3513).
-		return &netipx.IPSet{}, nil
-	}
-
 	if err != nil {
-		errs = append(errs, err)
+		// Users may be missing before registration (#2863), or become
+		// ambiguous after a login. An empty set preserves other group
+		// members (#3513); the policy write boundary rejects ambiguity.
+		return &netipx.IPSet{}, nil //nolint:nilerr // Unresolved users intentionally match no nodes.
 	}
 
 	for _, node := range nodes.All() {
@@ -517,7 +510,7 @@ func (u *Username) resolve(_ *Policy, users types.Users, nodes views.Slice[types
 		}
 	}
 
-	return buildIPSetMultiErr(&ips, errs)
+	return ips.IPSet()
 }
 
 // Group is a special string which is always prefixed with `group:`.
