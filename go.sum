@@ -682,5 +682,7 @@ software.sslmate.com/src/go-pkcs12 v0.7.3 h1:JBQD3FDqYjTeyDAeZQklj2ar88ykBLtALlo
 software.sslmate.com/src/go-pkcs12 v0.7.3/go.mod h1:Qiz0EyvDRJjjxGyUQa2cCNZn/wMyzrRJ/qcDXOQazLI=
 tailscale.com v1.104.4 h1:3UXjZjDdD3o3FTYcdFARD1ZLyHOHdhQYqdYOjvbHSpk=
 tailscale.com v1.104.4/go.mod h1:Hq4zB8UpaxMW1fvqO30CLVQo3A7Ith0t9MnvEyiuoSA=
+tailscale.com/client/tailscale/v2 v2.12.0 h1:v7oMM/u0/vuchgLTwCdT0nJ6PyD0Mlpm2mWnoUKVyBo=
+tailscale.com/client/tailscale/v2 v2.12.0/go.mod h1:FGjvGT3ThHelqo0gfdK3IN3k1dwNbRzYbQh2XO3C47U=
 zombiezen.com/go/postgrestest v1.0.1 h1:aXoADQAJmZDU3+xilYVut0pHhgc0sF8ZspPW9gFNwP4=
 zombiezen.com/go/postgrestest v1.0.1/go.mod h1:marlZezr+k2oSJrvXHnZUs1olHqpE9czlz8ZYkVxliQ=
