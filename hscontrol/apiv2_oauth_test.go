@@ -3,14 +3,17 @@ package hscontrol
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
 	apiv2 "github.com/juanfont/headscale/hscontrol/api/v2"
+	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -508,4 +511,69 @@ func TestAPIv2OAuth_KeysMultiplexIsolation(t *testing.T) {
 
 func stringOf(s string, n int) string {
 	return strings.Repeat(s, n)
+}
+
+// TestAPIv2OAuth_SetDeviceRoutesCompat creates the devices:routes client SaaS
+// created, replays the route calls its token made on routers announcing the
+// tailnet's own addresses, and compares each answer with SaaS.
+//
+// Test data source:
+// policy/v2/testdata/routes_results/routes-t5-oauth-routes-scope.hujson,
+// shared with TestRoutesCompat* and TestRoutesTailnetOverlapCompat.
+func TestAPIv2OAuth_SetDeviceRoutesCompat(t *testing.T) {
+	c := readRoutesCapture(t, "routes-t5-oauth-routes-scope")
+	app, baseURL, admin := newOAuthTestServer(t)
+	devices := seedCaptureRouters(t, app, c)
+
+	setup := c.Steps[0]
+	require.Equal(t, "oauth-client", setup.Name)
+
+	create, mint := setup.Actions[0], setup.Actions[1]
+	key := c.TestID + "/" + setup.Name + "/"
+
+	status, body := apiPost(t, baseURL+"/api/v2/tailnet/-/keys", admin, create.Body)
+	compatCheck(t, key+"0/status", strconv.Itoa(create.Status), strconv.Itoa(status))
+
+	var client apiv2.Key
+	require.NoErrorf(t, json.Unmarshal(body, &client), "body: %s", body)
+	require.NotEmpty(t, client.Key, "client secret")
+
+	tokenFields := func(m map[string]any) string {
+		return fmt.Sprintf("scope %v type %v expires_in %v", m["scope"], m["token_type"], m["expires_in"])
+	}
+
+	var wantToken map[string]any
+	require.NoError(t, json.Unmarshal(mint.Response, &wantToken))
+
+	status, token := mintToken(t, baseURL, client.ID, client.Key, *mint.Scope, false)
+	compatCheck(t, key+"1/status", strconv.Itoa(mint.Status), strconv.Itoa(status))
+	compatCheck(t, key+"1/token", tokenFields(wantToken), tokenFields(token))
+
+	bearer, _ := token["access_token"].(string)
+	require.NotEmpty(t, bearer, "access token")
+
+	replayRouteCalls(t, c, "", func(a testcapture.Action, alias string) routeCall {
+		require.Equal(t, "token:"+create.Client, a.Principal)
+
+		target := baseURL + "/api/v2/device/" + devices[alias] + "/routes"
+		if a.Method == http.MethodPost {
+			status, body := apiPost(t, target, bearer, a.Body)
+
+			return v2RouteCall(t, status, body)
+		}
+
+		req, err := http.NewRequestWithContext(t.Context(), a.Method, target, nil)
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+bearer)
+
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+
+		defer resp.Body.Close()
+
+		raw, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		return v2RouteCall(t, resp.StatusCode, raw)
+	})
 }

@@ -21,6 +21,7 @@
 package v2
 
 import (
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -166,4 +167,26 @@ func TestPolicyTesterCompat(t *testing.T) {
 			}
 		})
 	}
+}
+
+// compatCheck runs one check of a capture as a subtest named after the last
+// element of key; mismatch returns "" when headscale matches SaaS. A key in
+// skips is a known difference that must still differ, so the fix that makes
+// it match has to delete the entry.
+func compatCheck(t *testing.T, skips map[string]string, key string, mismatch func() string) {
+	t.Helper()
+
+	t.Run(path.Base(key), func(t *testing.T) {
+		diff := mismatch()
+		reason, listed := skips[key]
+
+		switch {
+		case listed && diff == "":
+			t.Errorf("matches SaaS; delete the skip entry %q (%s)", key, reason)
+		case listed:
+			t.Skip(reason)
+		case diff != "":
+			t.Error(diff)
+		}
+	})
 }
