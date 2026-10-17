@@ -1,10 +1,13 @@
 package state
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -2234,8 +2237,6 @@ func TestPAKReregisterRollbackKeepsPriorWrite(t *testing.T) {
 
 // TestPAKReregisterConcurrentAdminExpire races a same-key restart with a spent
 // key against an admin expiry. Either serial order leaves the node expired.
-// Only the NodeStore is checked: the order of the two database writes is not
-// serialised with it.
 func TestPAKReregisterConcurrentAdminExpire(t *testing.T) {
 	s := newRetagTestState(t)
 	user := s.CreateUserForTest("pakuser")
@@ -2276,6 +2277,16 @@ func TestPAKReregisterConcurrentAdminExpire(t *testing.T) {
 		n, ok := s.GetNodeByID(c.node.ID())
 		require.True(t, ok)
 		require.True(t, n.IsExpired(), "iteration %d: the spent key revived an expired node", i)
+
+		stored, err := s.db.GetNodeByID(c.node.ID())
+		require.NoError(t, err)
+		require.True(
+			t,
+			stored.IsExpired(),
+			"iteration %d: the row lost the admin expiry",
+			i,
+		)
+		require.True(t, n.Expiry().Get().Equal(*stored.Expiry))
 	}
 }
 
@@ -2326,6 +2337,147 @@ func TestPreAuthKeyRegistrationOwnsHostinfo(t *testing.T) {
 			require.Equal(t, tailcfg.DERPRegionID(1), stored.Hostinfo().NetInfo().PreferredDERP())
 		})
 	}
+}
+
+// beforeNodeTransaction runs once before opening the database transaction so
+// another writer can publish its NodeStore update without sharing a SQL lock.
+type beforeNodeTransaction struct {
+	gorm.ConnPool
+
+	fired  atomic.Bool
+	before func()
+}
+
+func (p *beforeNodeTransaction) BeginTx(
+	ctx context.Context,
+	opts *sql.TxOptions,
+) (gorm.ConnPool, error) {
+	if p.fired.CompareAndSwap(false, true) {
+		p.before()
+	}
+
+	beginner, ok := p.ConnPool.(gorm.TxBeginner)
+	if !ok {
+		return nil, gorm.ErrInvalidTransaction
+	}
+
+	return beginner.BeginTx(ctx, opts)
+}
+
+func TestReauthPersistenceKeepsConcurrentExpiry(t *testing.T) {
+	for _, interactive := range []bool{false, true} {
+		t.Run(fmt.Sprintf("interactive=%t", interactive), func(t *testing.T) {
+			dbPath, s, _ := persistTestSetup(t)
+			t.Cleanup(func() { _ = s.Close() })
+
+			user := s.CreateUserForTest("reauth-persist-user")
+			k, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+			require.NoError(t, err)
+			c := registerForPAKRereg(t, s, k)
+			expiry := time.Now().Add(-time.Minute)
+			expireDone := make(chan struct{})
+
+			var expireErr error
+
+			pool := s.db.DB.ConnPool
+			barrier := &beforeNodeTransaction{ConnPool: pool, before: func() {
+				go func() {
+					defer close(expireDone)
+
+					_, _, expireErr = s.SetNodeExpiry(c.node.ID(), &expiry)
+				}()
+				// Expiry either finishes, or waits for the registration's persist lock.
+				// In both cases its NodeStore update must precede the registration's SQL.
+				buf := make([]byte, 1<<20)
+
+				require.Eventually(t, func() bool {
+					select {
+					case <-expireDone:
+						return true
+					default:
+					}
+
+					stacks := string(buf[:runtime.Stack(buf, true)])
+					for g := range strings.SplitSeq(stacks, "\n\n") {
+						if strings.Contains(g, ".SetNodeExpiry(") &&
+							strings.Contains(g, ".persistNodeWith(") {
+							return true
+						}
+					}
+
+					return false
+				}, 5*time.Second, time.Millisecond)
+			}}
+			s.db.DB.ConnPool = barrier
+			s.db.DB.Statement.ConnPool = barrier
+
+			restore := func() {
+				s.db.DB.ConnPool = pool
+				s.db.DB.Statement.ConnPool = pool
+			}
+			defer restore()
+
+			if interactive {
+				authID := types.MustAuthID()
+				s.SetAuthCacheEntry(
+					authID,
+					types.NewRegisterAuthRequest(&types.RegistrationData{
+						MachineKey: c.machineKey,
+						NodeKey:    c.regReq.NodeKey,
+						Hostname:   "h1",
+						Hostinfo:   c.regReq.Hostinfo,
+						Expiry:     &c.regReq.Expiry,
+					}),
+				)
+				_, _, err = s.HandleNodeFromAuthPath(
+					authID,
+					types.UserID(user.ID),
+					nil,
+					util.RegisterMethodOIDC,
+				)
+			} else {
+				_, _, err = s.HandleNodeFromPreAuthKey(c.regReq, c.machineKey)
+			}
+
+			require.NoError(t, err)
+			<-expireDone
+			require.NoError(t, expireErr)
+			restore()
+
+			ns, row := c.fields(t)
+			require.Equal(t, expiry.UnixNano(), ns.Expiry)
+			assert.Equal(
+				t,
+				ns.Expiry,
+				row.Expiry,
+				"the row must retain the concurrent admin expiry",
+			)
+			require.NoError(t, s.Close())
+			reopened := persistTestReopen(t, dbPath)
+			reloaded, ok := reopened.GetNodeByID(c.node.ID())
+			require.True(t, ok)
+			assert.True(t, reloaded.IsExpired(), "a restart must keep the node expired")
+		})
+	}
+}
+
+func TestPersistNodeIncludesCurrentExpiry(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	stale, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+
+	expiry := time.Now().Add(-time.Minute)
+	_, ok = s.nodeStore.UpdateNode(nodeID, func(n *types.Node) { n.Expiry = &expiry })
+	require.True(t, ok)
+
+	_, err := s.persistNode(stale)
+	require.NoError(t, err)
+	stored, err := s.db.GetNodeByID(nodeID)
+	require.NoError(t, err)
+	require.NotNil(t, stored.Expiry)
+	require.True(t, expiry.Equal(*stored.Expiry))
 }
 
 // TestUserKeyOnTaggedMachine: a user key on a tagged machine re-authenticates
