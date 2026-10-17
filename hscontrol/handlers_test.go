@@ -9,12 +9,17 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/juanfont/headscale/hscontrol/capver"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
@@ -349,4 +354,210 @@ func TestHttpUserError(t *testing.T) {
 			}
 		})
 	}
+}
+
+// logBuffer collects log lines; the global logger may be written from more
+// than one goroutine.
+type logBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *logBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.buf.Write(p)
+}
+
+// entries returns the logged lines whose message is msg.
+func (b *logBuffer) entries(t *testing.T, msg string) []map[string]any {
+	t.Helper()
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	var out []map[string]any
+
+	for line := range strings.Lines(b.buf.String()) {
+		var entry map[string]any
+		require.NoError(t, json.Unmarshal([]byte(line), &entry), "line=%q", line)
+
+		if entry[zerolog.MessageFieldName] == msg {
+			entry["line.len"] = len(line)
+			out = append(out, entry)
+		}
+	}
+
+	return out
+}
+
+// captureLog sends the global logger to a buffer at level until the test
+// ends. It changes process-wide state, so callers must not run in parallel,
+// and must call it before starting anything that logs.
+func captureLog(t *testing.T, level zerolog.Level) *logBuffer {
+	t.Helper()
+
+	buf := &logBuffer{}
+	prevLogger, prevLevel := log.Logger, zerolog.GlobalLevel()
+
+	log.Logger = zerolog.New(buf)
+
+	zerolog.SetGlobalLevel(level)
+
+	t.Cleanup(func() {
+		log.Logger = prevLogger
+
+		zerolog.SetGlobalLevel(prevLevel)
+	})
+
+	return buf
+}
+
+// requireClipped checks that logged is original cut to the log text limit.
+func requireClipped(t *testing.T, original, logged string) {
+	t.Helper()
+
+	require.LessOrEqual(t, len(logged), logTextLimit+len("..."))
+	require.True(t, strings.HasSuffix(logged, "..."), "clipped text must say so")
+	require.True(t, strings.HasPrefix(original, strings.TrimSuffix(logged, "...")),
+		"clipped text must be a prefix of the original")
+}
+
+// TestClientTextIsClippedInLogs pins that text a client chooses is cut before
+// it reaches a log line, while the response it is sent stays as it was.
+//
+//nolint:paralleltest // captureLog swaps the global logger.
+func TestClientTextIsClippedInLogs(t *testing.T) {
+	t.Run("error detail", func(t *testing.T) {
+		buf := captureLog(t, zerolog.ErrorLevel)
+
+		version := strings.Repeat("x", 4000)
+		req := httptest.NewRequestWithContext(
+			context.Background(), http.MethodGet, "/key?v="+version, nil,
+		)
+		rec := httptest.NewRecorder()
+
+		(&Headscale{}).KeyHandler(rec, req)
+		require.Equal(t, http.StatusBadRequest, rec.Code)
+
+		_, err := parseCapabilityVersion(req)
+		herr, ok := errors.AsType[HTTPError](err)
+		require.True(t, ok)
+
+		entries := buf.entries(t, "user msg: invalid capability version")
+		require.Len(t, entries, 1)
+
+		logged, _ := entries[0][zerolog.ErrorFieldName].(string)
+		requireClipped(t, herr.Err.Error(), logged)
+	})
+
+	t.Run("unparsable node id", func(t *testing.T) {
+		buf := captureLog(t, zerolog.ErrorLevel)
+
+		nodeID := strings.Repeat("x", 4000)
+		req := httptest.NewRequestWithContext(
+			context.Background(), http.MethodGet, "/machine/ssh/action/x/to/1", nil,
+		)
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("src_node_id", nodeID)
+		rctx.URLParams.Add("dst_node_id", "1")
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+		rec := httptest.NewRecorder()
+
+		// A nil headscale proves the request is refused before any lookup.
+		(&noiseServer{}).SSHActionHandler(rec, req)
+		require.Equal(t, http.StatusBadRequest, rec.Code)
+
+		entries := buf.entries(t, "user msg: Invalid src_node_id")
+		require.Len(t, entries, 1)
+		assert.Less(t, entries[0]["line.len"], 1024)
+	})
+
+	t.Run("ssh local user", func(t *testing.T) {
+		buf := captureLog(t, zerolog.InfoLevel)
+
+		app := createTestApp(t)
+		user := app.state.CreateUserForTest("clip-ssh-user")
+		src := putTestNodeInStore(t, app, user, "clip-src")
+		dst := putTestNodeInStore(t, app, user, "clip-dst")
+
+		localUser := strings.Repeat("u", 4000)
+		req := newSSHActionRequest(t, src.ID, dst.ID)
+		req.URL.RawQuery = url.Values{"local_user": {localUser}}.Encode()
+		rec := httptest.NewRecorder()
+
+		(&noiseServer{headscale: app, machineKey: dst.MachineKey}).
+			SSHActionHandler(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code, "body=%q", rec.Body.String())
+
+		entries := buf.entries(t, "SSH check denied: no matching check rule")
+		require.Len(t, entries, 1)
+
+		logged, _ := entries[0]["local_user"].(string)
+		requireClipped(t, localUser, logged)
+	})
+}
+
+func TestRequestLoggerClipsClientText(t *testing.T) {
+	t.Parallel()
+
+	path := "/" + strings.Repeat("p", 4096)
+	req := httptest.NewRequestWithContext(
+		context.Background(), http.MethodGet, path, nil,
+	)
+	req.Method = strings.Repeat("M", 4096)
+
+	entry, ok := (&zerologRequestLogger{}).NewLogEntry(req).(*zerologLogEntry)
+	require.True(t, ok)
+
+	requireClipped(t, req.Method, entry.method)
+	requireClipped(t, path, entry.path)
+}
+
+func TestClipForLog(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "short", in: "short", want: "short"},
+		{
+			name: "at limit",
+			in:   strings.Repeat("a", logTextLimit),
+			want: strings.Repeat("a", logTextLimit),
+		},
+		{
+			name: "over limit",
+			in:   strings.Repeat("a", logTextLimit+1),
+			want: strings.Repeat("a", logTextLimit) + "...",
+		},
+		{
+			name: "multi-byte rune across the limit",
+			in:   strings.Repeat("a", logTextLimit-1) + "é" + "z",
+			want: strings.Repeat("a", logTextLimit-1) + "...",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.want, clipForLog(tt.in))
+		})
+	}
+}
+
+func TestErrForLog(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, errForLog(nil))
+
+	short := errTestUnexpected
+	assert.Equal(t, short, errForLog(short), "a short error is logged as is")
+
+	long := fmt.Errorf("parsing %q: %w", strings.Repeat("x", 4000), errTestUnexpected)
+	requireClipped(t, long.Error(), errForLog(long).Error())
 }
