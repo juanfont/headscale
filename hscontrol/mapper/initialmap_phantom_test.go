@@ -2,11 +2,16 @@ package mapper
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
+	"slices"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
+	"github.com/stretchr/testify/assert"
 	"tailscale.com/tailcfg"
 )
 
@@ -70,6 +75,237 @@ func TestUnreadyConnectionDefersBroadcastsUntilInitialMap(t *testing.T) {
 		}
 	default:
 		t.Fatal("ready connection did not receive the retried change")
+	}
+}
+
+// TestUnreadyConnectionBesideReadyOneHoldsBroadcasts pins that a node's change
+// reaches none of its streams while one of them still awaits its initial map,
+// which may predate the change. Sent to the ready stream alone, the change
+// would count as delivered and never reach the new one.
+func TestUnreadyConnectionBesideReadyOneHoldsBroadcasts(t *testing.T) {
+	testData, cleanup := setupBatcherWithTestData(
+		t,
+		NewBatcherAndMapper,
+		1,
+		2,
+		normalBufferSize,
+	)
+	defer cleanup()
+
+	batcher := testData.Batcher.Batcher
+	peerNode := &testData.Nodes[0]
+	targetNode := &testData.Nodes[1]
+
+	nc := newMultiChannelNodeConn(targetNode.n.ID, batcher.mapper)
+	nc.addConnection(makeConnectionEntry("test-ready", targetNode.ch))
+
+	pendingCh := make(chan *tailcfg.MapResponse, normalBufferSize)
+	pending := makeConnectionEntry("test-unready", pendingCh)
+	pending.pendingInitial.Store(true)
+	nc.addConnection(pending)
+	batcher.nodes.Store(targetNode.n.ID, nc)
+
+	retryChange := change.NodeAdded(peerNode.n.ID)
+
+	err := nc.change(retryChange)
+	if !errors.Is(err, errNoReadyConnections) {
+		t.Fatalf(
+			"change with a connection awaiting its initial map: want errNoReadyConnections, got %v",
+			err,
+		)
+	}
+
+	for name, ch := range map[string]chan *tailcfg.MapResponse{"ready": targetNode.ch, "unready": pendingCh} {
+		select {
+		case resp := <-ch:
+			t.Fatalf(
+				"%s connection received a frame while a stream awaits its initial map: %+v",
+				name,
+				resp,
+			)
+		default:
+		}
+	}
+
+	pending.pendingInitial.Store(false)
+
+	err = nc.change(retryChange)
+	if err != nil {
+		t.Fatalf("change on ready connections: %v", err)
+	}
+
+	for name, ch := range map[string]chan *tailcfg.MapResponse{"ready": targetNode.ch, "new": pendingCh} {
+		select {
+		case resp := <-ch:
+			if len(resp.PeersChanged) == 0 {
+				t.Fatalf("%s connection: expected PeersChanged delta, got %+v",
+					name, resp)
+			}
+		default:
+			t.Fatalf("%s connection did not receive the retried change", name)
+		}
+	}
+}
+
+// onlineRecorder keeps the peer online states a stream receives, in order.
+type onlineRecorder struct {
+	mu  sync.Mutex
+	got []string
+}
+
+func (r *onlineRecorder) record(resp *tailcfg.MapResponse) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, p := range resp.PeersChangedPatch {
+		if p.Online != nil {
+			r.got = append(r.got, fmt.Sprintf("%d:%t", p.NodeID, *p.Online))
+		}
+	}
+}
+
+func (r *onlineRecorder) states() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return slices.Clone(r.got)
+}
+
+// TestHeldChangesKeepOrderWhenStreamTurnsReady reconnects a node mid-bundle:
+// its new stream turns ready while the bundle's first change is being sent to
+// the node's older streams. Every stream must get every change once, in order,
+// and end on the newest state. A change of another kind sits between the two
+// peer changes, so the bundle keeps them as separate changes.
+func TestHeldChangesKeepOrderWhenStreamTurnsReady(t *testing.T) {
+	tests := []struct {
+		name   string
+		bundle func(p, q types.NodeID) []change.Change
+		want   func(p, q types.NodeID) []string
+	}{
+		{
+			name: "online_then_offline",
+			bundle: func(p, _ types.NodeID) []change.Change {
+				return []change.Change{
+					change.NodeOnline(p), change.DERPMap(), change.NodeOffline(p),
+				}
+			},
+			want: func(p, _ types.NodeID) []string {
+				return []string{fmt.Sprintf("%d:true", p), fmt.Sprintf("%d:false", p)}
+			},
+		},
+		{
+			name: "two_peers_online",
+			bundle: func(p, q types.NodeID) []change.Change {
+				return []change.Change{
+					change.NodeOnline(p), change.DERPMap(), change.NodeOnline(q),
+				}
+			},
+			want: func(p, q types.NodeID) []string {
+				return []string{fmt.Sprintf("%d:true", p), fmt.Sprintf("%d:true", q)}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testData, cleanup := setupBatcherWithTestData(
+				t,
+				NewBatcherAndMapper,
+				1,
+				3,
+				normalBufferSize,
+			)
+			defer cleanup()
+
+			batcher := testData.Batcher.Batcher
+			p, q, target := testData.Nodes[0].n.ID, testData.Nodes[1].n.ID, testData.Nodes[2].n.ID
+
+			// Two older streams, unbuffered so a send blocks until it is read,
+			// and the new one, still awaiting its initial map.
+			firstCh := make(chan *tailcfg.MapResponse)
+			secondCh := make(chan *tailcfg.MapResponse)
+			newCh := make(chan *tailcfg.MapResponse, normalBufferSize)
+			fresh := makeConnectionEntry("new", newCh)
+			fresh.pendingInitial.Store(true)
+
+			nc := newMultiChannelNodeConn(target, batcher.mapper)
+			nc.addConnection(makeConnectionEntry("first", firstCh))
+			nc.addConnection(makeConnectionEntry("second", secondCh))
+			nc.addConnection(fresh)
+			batcher.nodes.Store(target, nc)
+
+			// The new stream's initial map goes out once the first stream
+			// takes a frame, so while the second one waits for its own; or a
+			// little later if no frame is sent first.
+			var once sync.Once
+
+			ready := make(chan struct{})
+			markReady := func() {
+				once.Do(func() {
+					fresh.pendingInitial.Store(false)
+					close(ready)
+				})
+			}
+
+			timer := time.AfterFunc(200*time.Millisecond, markReady)
+			defer timer.Stop()
+
+			var firstGot, secondGot, newGot onlineRecorder
+
+			stop := make(chan struct{})
+			defer close(stop)
+
+			read := func(ch <-chan *tailcfg.MapResponse, r *onlineRecorder, onFrame func()) {
+				for {
+					select {
+					case resp := <-ch:
+						onFrame()
+						r.record(resp)
+					case <-stop:
+						return
+					}
+				}
+			}
+
+			go read(firstCh, &firstGot, markReady)
+			go read(newCh, &newGot, func() {})
+			go func() {
+				select {
+				case <-ready:
+					read(secondCh, &secondGot, func() {})
+				case <-stop:
+				}
+			}()
+
+			batcher.AddWork(tt.bundle(p, q)...)
+
+			want := tt.want(p, q)
+			streams := map[string]*onlineRecorder{
+				"first":  &firstGot,
+				"second": &secondGot,
+				"new":    &newGot,
+			}
+
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				for name, r := range streams {
+					assert.Len(c, r.states(), len(want), name)
+				}
+			}, 5*time.Second, 10*time.Millisecond)
+
+			assert.Never(t, func() bool {
+				for _, r := range streams {
+					if len(r.states()) > len(want) {
+						return true
+					}
+				}
+
+				return false
+			}, 100*time.Millisecond, 10*time.Millisecond, "no duplicate or late frame follows")
+
+			for name, r := range streams {
+				assert.Equal(t, want, r.states(), "%s stream", name)
+			}
+		})
 	}
 }
 

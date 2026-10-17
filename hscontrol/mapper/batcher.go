@@ -350,7 +350,10 @@ func (b *Batcher) AddNode(
 				b.totalNodes.Add(1)
 			}
 
-			existing.addConnection(newEntry)
+			existing.addConnectionWithLimit(
+				newEntry,
+				maxConcurrentMapSessionsPerNode,
+			)
 			nodeConn = existing
 
 			return existing, xsync.UpdateOp
@@ -377,6 +380,15 @@ func (b *Batcher) AddNode(
 		// path, and under workMu so a concurrent async bundle for this node
 		// cannot interleave its own lastSentPeers update.
 		nodeConn.workMu.Lock()
+
+		// Evicted by a newer stream: that stream owns the node's peer
+		// tracking and connected state, and this map may predate its own.
+		if newEntry.closed.Load() {
+			nodeConn.workMu.Unlock()
+			nlog.Debug().Caller().Msg("evicted while its initial map was in flight")
+
+			return nil
+		}
 
 		// Peers removed while the node had no stream: the initial map is a
 		// full rebuild, so follow it with the removal as a delta, see
@@ -413,6 +425,10 @@ func (b *Batcher) AddNode(
 			nodeConn.lastSentPeers.Store(peerID, struct{}{})
 		}
 
+		// Under workMu, so it lands before any newer stream's AddNode
+		// finishes and that stream can leave.
+		nodeConn.markConnected()
+
 		nodeConn.workMu.Unlock()
 
 		// Still pendingInitial, so no broadcast can race this.
@@ -430,9 +446,6 @@ func (b *Batcher) AddNode(
 
 		return fmt.Errorf("%w for node %d", ErrInitialMapSendTimeout, id)
 	}
-
-	// Mark the node as connected now that the initial map was sent.
-	nodeConn.markConnected()
 
 	// Node will automatically receive updates through the normal flow
 	// The initial full map already contains all current state
