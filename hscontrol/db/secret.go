@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
@@ -57,7 +58,11 @@ var (
 // only run until every stored hash has been upgraded to SHA-256.
 //
 // TODO(kradalby): remove in 0.32 with bcrypt/Argon2id support.
-var legacyHashLimiter = make(chan struct{}, max(2, runtime.GOMAXPROCS(0)))
+var (
+	legacyHashLimiter = make(chan struct{}, max(2, runtime.GOMAXPROCS(0)))
+	legacyHashWait    = 5 * time.Second
+	errLegacyHashBusy = errors.New("legacy hash verification is busy")
+)
 
 // generateSecret builds a new credential string prefix+identifier+"-"+secret,
 // returning the full string (shown ONCE to the user), the public identifier
@@ -166,7 +171,11 @@ func verifySecret(encoded []byte, secret string) (bool, error) {
 		return false, nil
 	}
 
-	legacyHashLimiter <- struct{}{}
+	select {
+	case legacyHashLimiter <- struct{}{}:
+	case <-time.After(legacyHashWait):
+		return false, errLegacyHashBusy
+	}
 	defer func() { <-legacyHashLimiter }()
 
 	if bytes.HasPrefix(encoded, []byte("$argon2id$")) {
