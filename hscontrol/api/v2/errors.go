@@ -86,6 +86,10 @@ func mapError(msg string, err error) error {
 		errors.Is(err, state.ErrRequestedTagsInvalidOrNotPermitted):
 		return huma.Error400BadRequest(msg, err)
 
+	// A refused policy is answered with its own reason as the message.
+	case errors.Is(err, state.ErrInvalidPolicy):
+		return huma.Error400BadRequest(err.Error(), err)
+
 	default:
 		return huma.Error500InternalServerError(msg, err)
 	}

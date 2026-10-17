@@ -1312,6 +1312,33 @@ func TestReloadPolicyOverlappingWrites(t *testing.T) {
 	assert.Equal(t, want, got, "the policy in force must be the one stored last")
 }
 
+// TestUpdatePolicyStoreFailure refuses the write at the database and checks
+// the live policy was not changed by it.
+func TestUpdatePolicyStoreFailure(t *testing.T) {
+	_, s, _ := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	const (
+		open = `{"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}]}`
+		ssh  = `{"acls": [{"action": "accept", "src": ["persist-user@"], "dst": ["persist-user@:22"]}]}`
+	)
+
+	_, _, err := s.UpdatePolicy([]byte(ssh))
+	require.NoError(t, err)
+
+	before, _ := s.Filter()
+
+	require.NoError(t,
+		s.db.DB.Exec("ALTER TABLE policies RENAME TO policies_away").Error)
+
+	_, _, err = s.UpdatePolicy([]byte(open))
+	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrInvalidPolicy)
+
+	after, _ := s.Filter()
+	assert.Equal(t, before, after, "an unstored policy must not be installed")
+}
+
 // TestReloadPolicyEmpty: with no policy configured a reload has nothing to
 // install; an emptied policy file is refused. Both keep the live policy.
 func TestReloadPolicyEmpty(t *testing.T) {
