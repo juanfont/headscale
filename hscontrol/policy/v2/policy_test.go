@@ -9,11 +9,13 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
+	"go4.org/netipx"
 	"pgregory.net/rapid"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
@@ -82,6 +84,7 @@ func TestPolicyManager(t *testing.T) {
 				tt.wantMatchers,
 				matchers,
 				cmp.AllowUnexported(matcher.Match{}),
+				cmpopts.EquateComparable(netipx.IPRange{}),
 			); diff != "" {
 				t.Errorf("Filter() matchers mismatch (-want +got):\n%s", diff)
 			}
