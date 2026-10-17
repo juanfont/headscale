@@ -126,7 +126,7 @@ func (pm *PolicyManager) RunSSHTests() error {
 	defer pm.mu.RUnlock()
 
 	cache := make(map[types.NodeID]*tailcfg.SSHPolicy)
-	results := runSSHPolicyTests(pm.pol, pm.users, pm.nodes, cache)
+	results := runSSHPolicyTests(pm.resolvedPol, pm.users, pm.nodes, cache)
 
 	return wrapTestResult(errSSHPolicyTestsFailed, results.AllPassed, results.Errors)
 }
@@ -141,6 +141,7 @@ func evaluateSSHTests(
 		return nil
 	}
 
+	pol = pol.withResolvedGroups(users, nodes)
 	cache := make(map[types.NodeID]*tailcfg.SSHPolicy)
 	results := runSSHPolicyTests(pol, users, nodes, cache)
 
