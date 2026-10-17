@@ -232,32 +232,22 @@ func (hsdb *HSDatabase) DeleteNode(node *types.Node) error {
 
 // DeleteNode deletes a [types.Node] from the database.
 // Caller is responsible for notifying all of change.
+// Returns [ErrNodeNotFound] when the row is already gone, so only the call
+// that removed it acts on the deletion.
 func DeleteNode(tx *gorm.DB,
 	node *types.Node,
 ) error {
 	// Unscoped causes the node to be fully removed from the database.
-	err := tx.Unscoped().Delete(&types.Node{}, node.ID).Error
-	if err != nil {
-		return err
+	result := tx.Unscoped().Delete(&types.Node{}, node.ID)
+	if result.Error != nil {
+		return result.Error
+	}
+
+	if result.RowsAffected == 0 {
+		return ErrNodeNotFound
 	}
 
 	return nil
-}
-
-// DeleteEphemeralNode deletes a [types.Node] from the database, note that this method
-// will remove it straight, and not notify any changes or consider any routes.
-// It is intended for Ephemeral nodes.
-func (hsdb *HSDatabase) DeleteEphemeralNode(
-	nodeID types.NodeID,
-) error {
-	return hsdb.Write(func(tx *gorm.DB) error {
-		err := tx.Unscoped().Delete(&types.Node{}, nodeID).Error
-		if err != nil {
-			return err
-		}
-
-		return nil
-	})
 }
 
 // RegisterNodeForTest is used only for testing purposes to register a node directly in the database.
