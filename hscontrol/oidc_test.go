@@ -791,3 +791,163 @@ func TestOIDCCallbackDispatchesUserIdentityChange(t *testing.T) {
 		}
 	}, 3*time.Second, 20*time.Millisecond, "the connected node must receive the updated filter before registration confirmation")
 }
+
+func (b *oidcBrowser) pendingSSHCheck(t *testing.T) (types.AuthID, types.Nodes) {
+	t.Helper()
+
+	provider, ok := b.app.authProvider.(*AuthProviderOIDC)
+	require.True(t, ok)
+
+	owner, _, err := provider.createOrUpdateUserFromClaim(&types.OIDCClaims{
+		Iss: b.idp.Issuer(), Sub: "ssh-owner", Username: "ssh-owner",
+	})
+	require.NoError(t, err)
+
+	nodes := make(types.Nodes, 0, 2)
+
+	for _, name := range []string{"ssh-source", "ssh-destination"} {
+		node := b.app.state.CreateRegisteredNodeForTest(owner, name)
+		node.User = owner.Clone()
+		b.app.state.PutNodeInStoreForTest(*node)
+		nodes = append(nodes, node)
+	}
+
+	authID := types.MustAuthID()
+	b.app.state.SetAuthCacheEntry(authID, types.NewSSHCheckAuthRequest(nodes[0].ID, nodes[1].ID))
+
+	return authID, nodes
+}
+
+func TestSSHCheckNeedsConfirmation(t *testing.T) {
+	for _, change := range []string{"approve", "reowned", "tagged"} {
+		t.Run(change, func(t *testing.T) {
+			b := newOIDCBrowser(t)
+			authID, nodes := b.pendingSSHCheck(t)
+			src, dst := nodes[0], nodes[1]
+			auth, ok := b.app.state.GetAuthCacheEntry(authID)
+			require.True(t, ok)
+			b.idp.QueueUser(&mockoidc.MockUser{
+				Subject: src.User.Name, PreferredUsername: src.User.Name,
+			})
+
+			status, landed, body := b.get(t, b.publicURL+"/auth/"+authID.String())
+			require.Equal(t, http.StatusOK, status)
+
+			select {
+			case <-auth.WaitForAuth():
+				t.Fatal("opening the check link must not approve the session")
+			default:
+			}
+
+			require.Equal(t, "/register/confirm/"+authID.String(), landed.Path)
+			require.Contains(t, body, "Confirm SSH session")
+			require.Contains(t, body, src.GivenName)
+			require.Contains(t, body, dst.GivenName)
+			require.Contains(t, body, "Approved by")
+			require.Contains(t, body, src.User.Display())
+			require.Contains(t, body, "check period")
+
+			csrf := csrfInputRe.FindStringSubmatch(body)
+			require.Len(t, csrf, 2)
+
+			form := url.Values{registerConfirmCSRFCookie: {csrf[1]}}
+			withoutCookie := &http.Client{}
+			//nolint:noctx,bodyclose // test response closed below
+			refused, err := withoutCookie.PostForm(landed.String(), form)
+			require.NoError(t, err)
+			refused.Body.Close()
+			require.Equal(t, http.StatusForbidden, refused.StatusCode)
+
+			select {
+			case <-auth.WaitForAuth():
+				t.Fatal("a POST without the callback cookie must leave the check pending")
+			default:
+			}
+
+			switch change {
+			case "reowned":
+				other := b.app.state.CreateUserForTest("other-owner")
+				updated := src.Clone()
+				updated.UserID, updated.User = new(other.ID), other.Clone()
+				b.app.state.PutNodeInStoreForTest(*updated)
+			case "tagged":
+				updated := src.Clone()
+				updated.Tags = []string{"tag:changed"}
+				b.app.state.PutNodeInStoreForTest(*updated)
+			}
+
+			//nolint:noctx,bodyclose // test response closed below
+			confirmed, err := b.client.PostForm(landed.String(), form)
+			require.NoError(t, err)
+
+			confirmedBody, err := io.ReadAll(confirmed.Body)
+			confirmed.Body.Close()
+			require.NoError(t, err)
+
+			if change != "approve" {
+				require.Equal(t, http.StatusForbidden, confirmed.StatusCode)
+
+				select {
+				case <-auth.WaitForAuth():
+					t.Fatal("a changed source owner must leave the check pending")
+				default:
+				}
+
+				status, _, _ = b.get(t, landed.String())
+				require.Equal(t, http.StatusForbidden, status)
+
+				return
+			}
+
+			require.Equal(t, http.StatusOK, confirmed.StatusCode)
+			require.Contains(t, string(confirmedBody), "SSH session authorized")
+
+			select {
+			case verdict := <-auth.WaitForAuth():
+				require.True(t, verdict.Accept())
+			default:
+				t.Fatal("confirmation must approve the SSH check")
+			}
+		})
+	}
+}
+
+func TestSSHCheckRejectsOtherUser(t *testing.T) {
+	b := newOIDCBrowser(t)
+	authID, _ := b.pendingSSHCheck(t)
+	auth, ok := b.app.state.GetAuthCacheEntry(authID)
+	require.True(t, ok)
+	b.idp.QueueUser(&mockoidc.MockUser{Subject: "other-ssh-user", PreferredUsername: "other"})
+
+	status, _, _ := b.get(t, b.publicURL+"/auth/"+authID.String())
+	require.Equal(t, http.StatusForbidden, status)
+	require.Nil(t, auth.PendingConfirmation())
+
+	select {
+	case <-auth.WaitForAuth():
+		t.Fatal("a different user must not approve the SSH check")
+	default:
+	}
+}
+
+func TestOIDCConfirmationRejectsWrongRequestKind(t *testing.T) {
+	for _, path := range []string{"auth", "register"} {
+		t.Run(path, func(t *testing.T) {
+			b := newOIDCBrowser(t)
+
+			var authID types.AuthID
+			if path == "auth" {
+				authID, _ = b.pendingNode(t)
+			} else {
+				authID, _ = b.pendingSSHCheck(t)
+			}
+
+			status, _, _ := b.get(t, b.publicURL+"/"+path+"/"+authID.String())
+			require.Equal(t, http.StatusBadRequest, status)
+
+			auth, ok := b.app.state.GetAuthCacheEntry(authID)
+			require.True(t, ok)
+			require.Nil(t, auth.PendingConfirmation())
+		})
+	}
+}
