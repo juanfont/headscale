@@ -2311,3 +2311,42 @@ func TestReauthKeepsAnnouncedRoutes(t *testing.T) {
 	assert.Equal(t, []netip.Prefix{route}, relogged.AnnouncedRoutes())
 	assert.Equal(t, []netip.Prefix{route}, s.GetNodePrimaryRoutes(nodeID))
 }
+
+func TestUpdateUserClearsColumns(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	node, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+
+	userID := types.UserID(node.UserID().Get())
+	_, _, err := s.UpdateUser(userID, func(user *types.User) error {
+		user.DisplayName = "Display"
+		user.Email = "persist@example.com"
+		user.ProfilePicURL = "https://example.com/picture"
+
+		return nil
+	})
+	require.NoError(t, err)
+	_, _, err = s.RenameUser(userID, "renamed")
+	require.NoError(t, err)
+	user, err := s.GetUserByID(userID)
+	require.NoError(t, err)
+	assert.Equal(t, "Display", user.DisplayName)
+	assert.Equal(t, "persist@example.com", user.Email)
+	assert.Equal(t, "https://example.com/picture", user.ProfilePicURL)
+	_, _, err = s.UpdateUser(userID, func(user *types.User) error {
+		user.DisplayName = ""
+		user.Email = ""
+		user.ProfilePicURL = ""
+
+		return nil
+	})
+	require.NoError(t, err)
+	user, err = s.GetUserByID(userID)
+	require.NoError(t, err)
+	assert.Empty(t, user.DisplayName)
+	assert.Empty(t, user.Email)
+	assert.Empty(t, user.ProfilePicURL)
+	assert.Equal(t, "renamed", user.Name)
+}
