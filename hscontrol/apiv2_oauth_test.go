@@ -240,6 +240,31 @@ func TestAPIv2OAuth_RequestBodiesBounded(t *testing.T) {
 	assert.Equal(t, http.StatusRequestEntityTooLarge, status)
 }
 
+// TestAPIv2OAuth_ValidationErrorsBounded: huma reports one error per unexpected
+// property, and each carries the whole request object as its value.
+func TestAPIv2OAuth_ValidationErrorsBounded(t *testing.T) {
+	_, baseURL, admin := newOAuthTestServer(t)
+	tok := mintScopedToken(t, baseURL, admin, scope.AuthKeys)
+
+	props := map[string]int{}
+	for i := range 1000 {
+		props[fmt.Sprintf("%040d", i)] = 0
+	}
+
+	status, body := apiReq(t, http.MethodPost, baseURL+"/api/v2/tailnet/-/keys", tok, props)
+	require.Equal(t, http.StatusUnprocessableEntity, status)
+	require.Less(t, len(body), 16<<10, "the error answer grows with the request")
+	assert.NotContains(t, string(body), "map[")
+
+	var resp struct {
+		Data []struct{ Errors []string }
+	}
+	require.NoError(t, json.Unmarshal(body, &resp))
+	require.Len(t, resp.Data, 1)
+	require.Len(t, resp.Data[0].Errors, 21)
+	assert.Equal(t, "and 980 more", resp.Data[0].Errors[20])
+}
+
 func TestAPIv2OAuth_ScopeEnforcement(t *testing.T) {
 	_, baseURL, admin := newOAuthTestServer(t)
 
