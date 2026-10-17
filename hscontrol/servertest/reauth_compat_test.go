@@ -57,28 +57,23 @@ var reauthSkipReasons = map[string]string{
 	"reauth-user/a5-expired-valid-key/u-valid/outcome":  expiredKeyNotRotated,
 	"reauth-user/a5-expired-valid-key/u-valid/node-key": expiredKeyAccepted,
 
-	"reauth-owner/u-renew-relogin/u-renew/expiry": sameKeyRenewsExpiry,
-	"reauth-user/a1-spent-key/u-spent/expiry":     sameKeyRenewsExpiry,
-	"reauth-user/a2-valid-key/u-valid/expiry":     sameKeyRenewsExpiry,
-
 	"reauth-foreign/t-logout-logout/t-logout/expiry":    taggedLogoutNotExpired,
 	"reauth-foreign/t-logout-logout/t-logout/peer-obs":  taggedLogoutNotExpired,
 	"reauth-foreign/t-logout-relogin/t-logout/expiry":   taggedLogoutNotExpired,
 	"reauth-foreign/t-logout-relogin/t-logout/peer-obs": taggedLogoutNotExpired,
 
-	"reauth-foreign/t-wake-foreign-key-tags/t-wake/outcome": wakeWithTagsRefused,
-	"identity/w-tagreq-relogin-tags/w-tagreq/owner":         keyLoginTagsRefused,
-	"identity/w-tagreq-relogin-tags/w-tagreq/outcome":       keyLoginTagsRefused,
-	"identity/w-tagreq-relogin-tags/w-tagreq/node-key":      keyLoginTagsRefused,
-	"identity/w-tagreq-relogin-tags/w-tagreq/expiry":        keyLoginTagsRefused,
-	"identity/w-tagreq-relogin-tags/obs/filter":             keyLoginTagsRefused,
-	"identity/w-tagreq-new-join/w-tagreq-new/devices":       keyLoginTagsRefused,
-	"identity/w-tagreq-new-join/w-tagreq-new/owner":         keyLoginTagsRefused,
-	"identity/w-tagreq-new-join/w-tagreq-new/outcome":       keyLoginTagsRefused,
-	"identity/w-tagreq-new-join/w-tagreq-new/expiry":        keyLoginTagsRefused,
-	"identity/w-tagreq-new-join/w-tagreq-new/ephemeral":     keyLoginTagsRefused,
-	"identity/w-tagreq-new-join/w-tagreq-new/peer-obs":      keyLoginTagsRefused,
-	"identity/w-tagreq-new-join/w-tagreq-new/peer-key-obs":  keyLoginTagsRefused,
+	"identity/w-tagreq-relogin-tags/w-tagreq/owner":        keyLoginTagsRefused,
+	"identity/w-tagreq-relogin-tags/w-tagreq/outcome":      keyLoginTagsRefused,
+	"identity/w-tagreq-relogin-tags/w-tagreq/node-key":     keyLoginTagsRefused,
+	"identity/w-tagreq-relogin-tags/w-tagreq/expiry":       keyLoginTagsRefused,
+	"identity/w-tagreq-relogin-tags/obs/filter":            keyLoginTagsRefused,
+	"identity/w-tagreq-new-join/w-tagreq-new/devices":      keyLoginTagsRefused,
+	"identity/w-tagreq-new-join/w-tagreq-new/owner":        keyLoginTagsRefused,
+	"identity/w-tagreq-new-join/w-tagreq-new/outcome":      keyLoginTagsRefused,
+	"identity/w-tagreq-new-join/w-tagreq-new/expiry":       keyLoginTagsRefused,
+	"identity/w-tagreq-new-join/w-tagreq-new/ephemeral":    keyLoginTagsRefused,
+	"identity/w-tagreq-new-join/w-tagreq-new/peer-obs":     keyLoginTagsRefused,
+	"identity/w-tagreq-new-join/w-tagreq-new/peer-key-obs": keyLoginTagsRefused,
 
 	"tag-owner-chain/u-base-join/u-base/devices":      keyLoginTagsRefused,
 	"tag-owner-chain/u-base-join/u-base/owner":        keyLoginTagsRefused,
@@ -113,9 +108,7 @@ const (
 
 const (
 	expiredKeyNotRotated     = "EXPIRED_KEY_NOT_ROTATED: headscale answers an expired node's key login without asking for a new node key; SaaS answers NodeKeyExpired first, so the client rotates it"
-	sameKeyRenewsExpiry      = "SAME_KEY_LOGIN_RENEWS_EXPIRY: headscale renews a user node's expiry on a key login that keeps its node key; SaaS renews it only with a new node key"
 	taggedLogoutNotExpired   = "TAGGED_LOGOUT_NOT_EXPIRED: headscale leaves a tagged node unexpired when it logs out; SaaS expires it"
-	wakeWithTagsRefused      = "WAKE_WITH_TAGS_REFUSED: headscale refuses a key login that requests tags the key does not carry even when the node keeps its node key and tags; SaaS accepts it and changes nothing"
 	keyLoginTagsRefused      = "KEY_LOGIN_TAGS_REFUSED: headscale refuses a user's key login that requests tags the user owns; SaaS tags the device, converting it in place or creating it tagged"
 	taggedKeyOwnedTagRefused = "TAGGED_KEY_OWNED_TAG_REFUSED: headscale refuses a tagged key's login that requests a tag the key's tags own; SaaS gives the device the requested tags"
 	refusalText              = "REFUSAL_TEXT: SaaS refuses a key by naming its ID; headscale says why the key is refused"
