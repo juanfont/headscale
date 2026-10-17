@@ -260,7 +260,7 @@ func (pm *PolicyManager) RunTests() error {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
-	results := runPolicyTests(pm.pol, pm.filter, pm.users, pm.nodes)
+	results := runPolicyTests(pm.resolvedPol, pm.filter, pm.users, pm.nodes)
 
 	return wrapTestResult(errPolicyTestsFailed, results.AllPassed, results)
 }
@@ -273,6 +273,7 @@ func evaluateTests(pol *Policy, users []types.User, nodes views.Slice[types.Node
 		return nil
 	}
 
+	pol = pol.withResolvedGroups(users, nodes)
 	grants := pol.compileGrants(users, nodes)
 
 	var filter []tailcfg.FilterRule

@@ -4511,3 +4511,155 @@ func BenchmarkCompileWideACL(b *testing.B) {
 		}
 	})
 }
+
+// TestWithResolvedGroups checks that the copy answers for a group exactly
+// as resolving it member by member does, without looking at users and
+// nodes again, and that the policy it was made from is left untouched.
+func TestWithResolvedGroups(t *testing.T) {
+	users := types.Users{
+		{ID: 1, Name: "alice"},
+		{ID: 2, Name: "bob"},
+		{ID: 3, Name: "twin"},
+		{ID: 4, Name: "twin"},
+	}
+	nodes := types.Nodes{
+		node("alice1", "100.64.0.1", "fd7a:115c:a1e0::1", users[0]),
+		node("bob1", "100.64.0.2", "fd7a:115c:a1e0::2", users[1]),
+	}.ViewSlice()
+
+	pol := &Policy{
+		Groups: Groups{
+			"group:dev":       Usernames{"alice@", "bob@", "missing@"},
+			"group:ambiguous": Usernames{"alice@", "twin@"},
+			"group:empty":     Usernames{},
+		},
+	}
+
+	resolved := pol.withResolvedGroups(users, nodes)
+	require.Nil(t, pol.resolvedGroups,
+		"the parsed policy is hashed and must stay as is")
+	require.Len(t, resolved.resolvedGroups, len(pol.Groups))
+
+	for g := range pol.Groups {
+		want, wantErr := g.resolve(pol, users, nodes)
+		got, gotErr := g.resolve(resolved, nil, views.Slice[types.NodeView]{})
+
+		require.Equal(t, want.Prefixes(), got.Prefixes(), g)
+
+		if wantErr != nil {
+			require.EqualError(t, gotErr, wantErr.Error(), g)
+		} else {
+			require.NoError(t, gotErr, g)
+		}
+	}
+
+	require.ErrorIs(t,
+		resolved.resolvedGroups["group:ambiguous"].err, ErrMultipleUsersFound)
+
+	unknown := Group("group:unknown")
+	got, err := unknown.resolve(resolved, users, nodes)
+	require.NoError(t, err)
+	require.Empty(t, got.Prefixes())
+
+	require.Nil(t, (*Policy)(nil).withResolvedGroups(users, nodes))
+}
+
+// TestResolvedGroupsFollowUsersAndNodes checks that readers resolving
+// aliases on demand through the groups resolved by updateLocked see the
+// users and nodes of the latest SetUsers, SetNodes and SetPolicy.
+func TestResolvedGroupsFollowUsersAndNodes(t *testing.T) {
+	alice := types.User{ID: 1, Name: "alice"}
+	bob := types.User{ID: 2, Name: "bob"}
+
+	srv := node("srv", "100.64.0.10", "fd7a:115c:a1e0::10", alice)
+	srv.ID = 10
+	srv.Tags = []string{"tag:srv"}
+	alice1 := node("alice1", "100.64.0.1", "fd7a:115c:a1e0::1", alice)
+	alice1.ID = 1
+	bob1 := node("bob1", "100.64.0.3", "fd7a:115c:a1e0::3", bob)
+	bob1.ID = 2
+
+	pol := func(members string) []byte {
+		return []byte(`{
+			"groups": {"group:dev": [` + members + `]},
+			"tagOwners": {"tag:srv": ["group:dev"]},
+			"acls": [{"action": "accept", "src": ["group:dev"], "dst": ["tag:srv:22"]}],
+			"ssh": [{"action": "accept", "src": ["group:dev"], "dst": ["tag:srv"], "users": ["root"]}]
+		}`)
+	}
+
+	pm, err := NewPolicyManager(
+		pol(`"alice@", "bob@"`),
+		types.Users{alice},
+		types.Nodes{srv, alice1}.ViewSlice(),
+	)
+	require.NoError(t, err)
+
+	sshSources := func() []string {
+		t.Helper()
+
+		sshPol, err := pm.SSHPolicy("", srv.View())
+		require.NoError(t, err)
+
+		var ips []string
+
+		for _, rule := range sshPol.Rules {
+			for _, principal := range rule.Principals {
+				ips = append(ips, principal.NodeIP)
+			}
+		}
+
+		slices.Sort(ips)
+
+		return ips
+	}
+
+	filterSources := func() []string {
+		t.Helper()
+
+		filter, _ := pm.Filter()
+		require.Len(t, filter, 1)
+
+		ips := slices.Clone(filter[0].SrcIPs)
+		slices.Sort(ips)
+
+		return ips
+	}
+
+	aliceIPs := []string{"100.64.0.1", "fd7a:115c:a1e0::1"}
+	bothIPs := []string{
+		"100.64.0.1", "100.64.0.3", "fd7a:115c:a1e0::1", "fd7a:115c:a1e0::3",
+	}
+
+	require.Equal(t, aliceIPs, filterSources())
+	require.Equal(t, aliceIPs, sshSources())
+
+	_, _, err = pm.SetUsers(types.Users{alice, bob})
+	require.NoError(t, err)
+
+	_, err = pm.SetNodes(types.Nodes{srv, alice1, bob1}.ViewSlice())
+	require.NoError(t, err)
+	require.Equal(t, bothIPs, filterSources())
+	require.Equal(t, bothIPs, sshSources())
+
+	_, err = pm.SetPolicy(pol(`"alice@"`))
+	require.NoError(t, err)
+	require.Equal(t, aliceIPs, filterSources())
+	require.Equal(t, aliceIPs, sshSources())
+}
+
+// TestResolvedPolicyKeepsTagIndex checks that the copy readers resolve
+// through carries both the tag index and the resolved groups.
+func TestResolvedPolicyKeepsTagIndex(t *testing.T) {
+	users := types.Users{{ID: 1, Name: "alice"}}
+	nodes := types.Nodes{node("a", "100.64.0.1", "fd7a:115c:a1e0::1", users[0])}
+
+	pm, err := NewPolicyManager([]byte(`{
+		"groups": {"group:a": ["alice@"]},
+		"tagOwners": {"tag:x": ["alice@"]},
+		"acls": [{"action": "accept", "src": ["group:a"], "dst": ["tag:x:*"]}]
+	}`), users, nodes.ViewSlice())
+	require.NoError(t, err)
+	require.NotNil(t, pm.resolvedPol.nodesByTag)
+	require.NotNil(t, pm.resolvedPol.resolvedGroups)
+}
