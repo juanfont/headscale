@@ -119,6 +119,26 @@ func (m *Match) DestsOverlapsPrefixes(prefixes ...netip.Prefix) bool {
 	})
 }
 
+// SrcsOverlapsRanges reports whether the sources overlap sorted, disjoint ranges.
+func (m *Match) SrcsOverlapsRanges(ranges []netipx.IPRange) bool {
+	return rangesOverlap(m.srcRanges, ranges)
+}
+
+// DestsOverlapsRanges reports whether the destinations overlap sorted, disjoint ranges.
+func (m *Match) DestsOverlapsRanges(ranges []netipx.IPRange) bool {
+	return rangesOverlap(m.destRanges, ranges)
+}
+
+func rangesOverlap(a, b []netipx.IPRange) bool {
+	if len(a) > len(b) {
+		a, b = b, a
+	}
+
+	return slices.ContainsFunc(a, func(r netipx.IPRange) bool {
+		return overlaps(b, r)
+	})
+}
+
 func overlaps(ranges []netipx.IPRange, r netipx.IPRange) bool {
 	if !r.IsValid() {
 		return false

@@ -390,6 +390,25 @@ func (node *Node) AppendToIPSet(build *netipx.IPSetBuilder) {
 	}
 }
 
+// RouteRanges returns sorted, disjoint ranges covering valid route prefixes.
+func RouteRanges(prefixes []netip.Prefix) []netipx.IPRange {
+	if len(prefixes) == 0 {
+		return nil
+	}
+
+	var builder netipx.IPSetBuilder
+
+	for _, prefix := range prefixes {
+		if prefix.IsValid() {
+			builder.AddPrefix(prefix)
+		}
+	}
+
+	set, _ := builder.IPSet()
+
+	return set.Ranges()
+}
+
 // CanAccess reports whether node may reach node2 under the given
 // matchers. A node owns two source identities for ACL purposes:
 //   - its own IPs (regular peer membership)
@@ -400,17 +419,19 @@ func (node *Node) AppendToIPSet(build *netipx.IPSetBuilder) {
 // matching node2's IPs, node2's approved subnet routes, or "the
 // internet" when node2 is an exit node — grants access.
 func (node *Node) CanAccess(matchers []matcher.Match, node2 *Node) bool {
-	return node.canAccess(matchers, node2, node.SubnetRoutes(), node2.SubnetRoutes(), node2.IsExitNode())
+	return node.canAccess(matchers, node2,
+		RouteRanges(node.SubnetRoutes()), RouteRanges(node2.SubnetRoutes()),
+		node2.IsExitNode())
 }
 
 // canAccess is [Node.CanAccess] with the snapshot-stable route data supplied by
-// the caller. The peer-map build precomputes each node's SubnetRoutes and
+// the caller. The peer-map build precomputes each node's route ranges and
 // exit-node status once and passes them here, so the O(n^2) pair scan does not
 // recompute them for every pair.
 func (node *Node) canAccess(
 	matchers []matcher.Match,
 	node2 *Node,
-	srcRoutes, dstRoutes []netip.Prefix,
+	srcRoutes, dstRoutes []netipx.IPRange,
 	dstIsExit bool,
 ) bool {
 	src := node.IPs()
@@ -418,7 +439,7 @@ func (node *Node) canAccess(
 
 	for _, m := range matchers {
 		srcMatchesIP := m.SrcsContainsIPs(src...)
-		srcMatchesRoutes := len(srcRoutes) > 0 && m.SrcsOverlapsPrefixes(srcRoutes...)
+		srcMatchesRoutes := len(srcRoutes) > 0 && m.SrcsOverlapsRanges(srcRoutes)
 
 		if !srcMatchesIP && !srcMatchesRoutes {
 			continue
@@ -428,7 +449,7 @@ func (node *Node) canAccess(
 			return true
 		}
 
-		if len(dstRoutes) > 0 && m.DestsOverlapsPrefixes(dstRoutes...) {
+		if len(dstRoutes) > 0 && m.DestsOverlapsRanges(dstRoutes) {
 			return true
 		}
 
@@ -962,12 +983,13 @@ func (nv NodeView) CanAccess(matchers []matcher.Match, node2 NodeView) bool {
 	return nv.ж.CanAccess(matchers, node2.ж)
 }
 
-// CanAccessWithRoutes is [NodeView.CanAccess] with precomputed route data, used
+// CanAccessWithRoutes is [NodeView.CanAccess] with precomputed route ranges, used
 // by the peer-map build to avoid recomputing each node's routes per pair.
+// Callers must pass sorted, disjoint ranges, as returned by [RouteRanges].
 func (nv NodeView) CanAccessWithRoutes(
 	matchers []matcher.Match,
 	node2 NodeView,
-	srcRoutes, dstRoutes []netip.Prefix,
+	srcRoutes, dstRoutes []netipx.IPRange,
 	dstIsExit bool,
 ) bool {
 	if !nv.Valid() || !node2.Valid() {
