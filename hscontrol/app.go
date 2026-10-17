@@ -443,6 +443,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			}
 
 			h.cfg.SetExtraRecords(records)
+			h.state.WarnNodesHoldingExtraRecords()
 
 			h.Change(change.ExtraRecords())
 
@@ -645,6 +646,9 @@ func (h *Headscale) Serve() error {
 		go h.extraRecordMan.Run()
 		defer h.extraRecordMan.Close()
 	}
+
+	// Covers the records from the config too.
+	h.state.WarnNodesHoldingExtraRecords()
 
 	// Start all scheduled tasks, e.g. expiring nodes, derp updates and
 	// records updates
