@@ -817,6 +817,38 @@ dns:
 	}
 }
 
+func TestServerURLTrailingSlash(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "no slash", input: "https://h", want: "https://h"},
+		{name: "one slash", input: "https://h/", want: "https://h"},
+		{name: "two slashes", input: "https://h//", want: "https://h"},
+		{name: "port", input: "https://h:8443/", want: "https://h:8443"},
+		{name: "path prefix", input: "https://h/hs/", want: "https://h/hs"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+			t.Cleanup(viper.Reset)
+			require.NoError(t, LoadConfig("testdata/minimal.yaml", true))
+
+			viper.Set("server_url", tt.input)
+			viper.Set("prefixes.v4", "100.64.0.0/10")
+			viper.Set("database.type", "sqlite3")
+			viper.Set("dns.magic_dns", false)
+			viper.Set("dns.override_local_dns", false)
+
+			cfg, err := LoadServerConfig()
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, cfg.ServerURL)
+		})
+	}
+}
+
 // OK
 // server_url: headscale.com, base: clients.headscale.com
 // server_url: headscale.com, base: headscale.net
