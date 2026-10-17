@@ -21,9 +21,81 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
+	"tailscale.com/types/views"
 )
+
+var errRegistrationGCPolicy = errors.New("node policy update failed")
+
+type registrationGCPolicyManager struct {
+	policy.PolicyManager
+}
+
+func (registrationGCPolicyManager) SetNodes(views.Slice[types.NodeView]) (bool, error) {
+	return false, errRegistrationGCPolicy
+}
+
+// NodesGeneration stays put, as after a writer recompile that failed, so
+// the caller's own refresh runs and fails too.
+func (registrationGCPolicyManager) NodesGeneration() uint64 { return 0 }
+
+func TestEphemeralGCArmedAtRegistration(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{"new", "reregister", "policy failure"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			app := createTestApp(t)
+			app.cfg.Node.Ephemeral.InactivityTimeout = 50 * time.Millisecond
+			app.StartEphemeralGCForTest(t)
+			user := app.state.CreateUserForTest("gc-register-user")
+			pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, true, nil, nil)
+			require.NoError(t, err)
+
+			req := tailcfg.RegisterRequest{
+				Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+				NodeKey:  key.NewNode().Public(),
+				Hostinfo: &tailcfg.Hostinfo{Hostname: "gc-register-node"},
+			}
+
+			machineKey := key.NewMachine().Public()
+			if name == "reregister" {
+				_, _, err = app.state.HandleNodeFromPreAuthKey(req, machineKey)
+				require.NoError(t, err)
+			}
+
+			if name == "policy failure" {
+				app.state.WrapPolicyManagerForTest(
+					func(pm policy.PolicyManager) policy.PolicyManager {
+						return registrationGCPolicyManager{pm}
+					},
+				)
+			}
+
+			_, err = app.handleRegisterWithAuthKey(req, machineKey)
+			if name == "policy failure" {
+				require.ErrorIs(t, err, errRegistrationGCPolicy)
+			} else {
+				require.NoError(t, err)
+			}
+
+			node, ok := app.state.GetNodeByNodeKey(req.NodeKey)
+			require.True(t, ok, "registration committed the node")
+			require.True(t, node.IsEphemeral())
+			assert.True(t, app.ephemeralGC.IsScheduled(node.ID()))
+			require.Eventually(t, func() bool {
+				_, ok := app.state.GetNodeByID(node.ID())
+				return !ok
+			}, 5*time.Second, 10*time.Millisecond,
+				"a node that never polls must be collected")
+
+			_, err = app.state.DB().GetNodeByID(node.ID())
+			require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+		})
+	}
+}
 
 type delayedSuccessResponseWriter struct {
 	header http.Header
@@ -308,7 +380,8 @@ func TestFailedReconnectDoesNotCancelEphemeralGC(t *testing.T) {
 	t.Parallel()
 
 	app := createTestApp(t)
-	app.cfg.Node.Ephemeral.InactivityTimeout = 5 * time.Second
+	// Registration arms the timer too; it must not fire during the test.
+	app.cfg.Node.Ephemeral.InactivityTimeout = time.Hour
 	app.StartEphemeralGCForTest(t)
 
 	user := app.state.CreateUserForTest("eph-gc-cancel-user")
@@ -362,6 +435,63 @@ func TestFailedReconnectDoesNotCancelEphemeralGC(t *testing.T) {
 		"failed reconnect must not cancel the ephemeral GC timer (issue #3382)")
 }
 
+func TestStaleGCTimerSparesPermanentNode(t *testing.T) {
+	t.Parallel()
+	app := createTestApp(t)
+	app.cfg.Node.Ephemeral.InactivityTimeout = time.Hour
+	app.StartEphemeralGCForTest(t)
+	user := app.state.CreateUserForTest("gc-permanent-user")
+	ephemeral, err := app.state.CreatePreAuthKey(user.TypedID(), true, true, nil, nil)
+	require.NoError(t, err)
+	permanent, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine().Public()
+	req := tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: ephemeral.Key},
+		NodeKey:  key.NewNode().Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "gc-permanent-node"},
+	}
+	_, err = app.handleRegisterWithAuthKey(req, machineKey)
+	require.NoError(t, err)
+
+	node, ok := app.state.GetNodeByNodeKey(req.NodeKey)
+	require.True(t, ok)
+	require.True(t, node.IsEphemeral())
+	session := app.newMapSession(t.Context(), tailcfg.MapRequest{},
+		&recordingResponseWriter{}, node)
+	_, epoch := app.state.Connect(node.ID())
+	app.ephemeralGC.Cancel(node.ID())
+
+	req.Auth.AuthKey = permanent.Key
+	_, err = app.handleRegisterWithAuthKey(req, machineKey)
+	require.NoError(t, err)
+
+	fresh, ok := app.state.GetNodeByID(node.ID())
+	require.True(t, ok)
+	require.False(t, fresh.IsEphemeral())
+
+	_, err = app.state.Disconnect(node.ID(), epoch)
+	require.NoError(t, err)
+
+	app.cfg.Node.Ephemeral.InactivityTimeout = 25 * time.Millisecond
+
+	session.afterServeLongPoll()
+	require.True(t, app.ephemeralGC.IsScheduled(node.ID()))
+
+	require.Eventually(t, func() bool {
+		return !app.ephemeralGC.IsScheduled(node.ID())
+	}, time.Second, 5*time.Millisecond)
+	assert.Never(t, func() bool {
+		_, ok := app.state.GetNodeByID(node.ID())
+		return !ok
+	}, 2*time.Second, 5*time.Millisecond,
+		"a stale session must not collect a node that became permanent")
+
+	_, err = app.state.DB().GetNodeByID(node.ID())
+	require.NoError(t, err)
+}
+
 // TestEphemeralGCDoesNotDeleteReconnectedNode replays, in order, the
 // interleaving of two sessions from
 // https://github.com/juanfont/headscale/issues/3535: the old session takes the
@@ -372,7 +502,7 @@ func TestEphemeralGCDoesNotDeleteReconnectedNode(t *testing.T) {
 	t.Parallel()
 
 	app := createTestApp(t)
-	app.cfg.Node.Ephemeral.InactivityTimeout = 50 * time.Millisecond
+	app.cfg.Node.Ephemeral.InactivityTimeout = time.Hour
 	app.StartEphemeralGCForTest(t)
 
 	user := app.state.CreateUserForTest("eph-gc-reconnect-user")
@@ -410,6 +540,8 @@ func TestEphemeralGCDoesNotDeleteReconnectedNode(t *testing.T) {
 	}, &recordingResponseWriter{}, node.View())
 
 	_, oldGen := app.state.Connect(node.ID)
+	app.ephemeralGC.Cancel(node.ID)
+	app.cfg.Node.Ephemeral.InactivityTimeout = 50 * time.Millisecond
 
 	// Old session's cleanup releases the last session.
 	offline, err := app.state.Disconnect(node.ID, oldGen)
@@ -458,7 +590,8 @@ func TestDeleteNodeCancelsEphemeralGC(t *testing.T) {
 	t.Parallel()
 
 	app := createTestApp(t)
-	app.cfg.Node.Ephemeral.InactivityTimeout = 5 * time.Second
+	// Registration arms the timer too; it must not fire during the test.
+	app.cfg.Node.Ephemeral.InactivityTimeout = time.Hour
 	app.StartEphemeralGCForTest(t)
 
 	user := app.state.CreateUserForTest("eph-gc-delete-user")
