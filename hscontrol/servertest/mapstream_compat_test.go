@@ -114,11 +114,6 @@ var mapStreamSkipReasons = map[string]string{
 	"route-announce/RA9/srv/presence":    policyResponseToEveryNode,
 	"route-announce/RA9/wit/presence":    policyResponseToEveryNode,
 
-	"route-announce/RA7/wit/presence":  announcePolicyResend,
-	"route-announce/RA8/wit/presence":  announcePolicyResend,
-	"route-announce/RA10/wit/presence": announcePolicyResend,
-	"route-announce/RA11/wit/presence": announcePolicyResend,
-
 	"route-announce/RA0/rtr/self-routes":  selfRoutesReduced,
 	"route-announce/RA1/rtr/self-routes":  selfRoutesReduced,
 	"route-announce/RA2/rtr/self-routes":  selfRoutesReduced,
@@ -177,7 +172,6 @@ const (
 	peerHostinfoWhole         = "PEER_HOSTINFO_WHOLE: headscale sends peers a node's whole reported Hostinfo; SaaS sends only Hostname, OS, Services, the SSH host keys and AppConnector"
 	peerServicesWhole         = "PEER_SERVICES_WHOLE: headscale sends peers every service a node reports; SaaS leaves out peerapi-dns-proxy"
 	removalSentToAll          = "REMOVAL_SENT_TO_ALL: headscale tells every connected node that a deleted node is gone; SaaS tells only the nodes that had it as a peer"
-	announcePolicyResend      = "ANNOUNCE_POLICY_RESEND: under an autogroup:self or via policy, headscale sends every connected node a policy response when a router changes only routes nobody approved; SaaS sends nothing to nodes that cannot see the router"
 	withdrawnRouteEnabled     = "WITHDRAWN_ROUTE_ENABLED: headscale's routes API keeps a route the device stopped advertising in enabledRoutes; SaaS lists only advertised routes as enabled"
 	taggedDeviceUser          = "TAGGED_DEVICE_USER: SaaS shows a tagged device's user as the login that made its key; headscale shows tagged-devices"
 )

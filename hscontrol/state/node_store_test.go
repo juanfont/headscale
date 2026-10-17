@@ -1580,8 +1580,8 @@ func TestRebuildPeerMapsAfterStopReturns(t *testing.T) {
 }
 
 // TestUpdateNodeRecomputesPeersOnlyForRelationInputs pins which fields make a
-// write recompute peer adjacency: the inputs that force a peer-map rebuild
-// (an announced but unapproved route is included on purpose).
+// write recompute peer adjacency: only inputs read by the policy require
+// a peer-map rebuild.
 func TestUpdateNodeRecomputesPeersOnlyForRelationInputs(t *testing.T) {
 	subnet := netip.MustParsePrefix("10.77.0.0/24")
 
@@ -1614,6 +1614,13 @@ func TestUpdateNodeRecomputesPeersOnlyForRelationInputs(t *testing.T) {
 			name: "announced route",
 			mutate: func(n *types.Node) {
 				n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet}}
+			},
+		},
+		{
+			name: "announced and approved route",
+			mutate: func(n *types.Node) {
+				n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet}}
+				n.ApprovedRoutes = []netip.Prefix{subnet}
 			},
 			wantRecompute: true,
 		},
@@ -1673,6 +1680,53 @@ func TestUpdateNodeDiff(t *testing.T) {
 	before, _, ok = store.UpdateNodeDiff(99, func(*types.Node) {})
 	assert.False(t, ok)
 	assert.False(t, before.Valid())
+}
+
+func TestUpdateNodeDiffSharesUnchangedRoutes(t *testing.T) {
+	node := createTestNode(1, 1, "user1", "node1")
+	peer := createTestNode(2, 2, "user2", "node2")
+	announced := make([]netip.Prefix, 2048)
+
+	ip := netip.MustParseAddr("10.0.0.0")
+	for i := range announced {
+		announced[i] = netip.PrefixFrom(ip, 32)
+		ip = ip.Next()
+	}
+
+	node.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: announced}
+	node.ApprovedRoutes = []netip.Prefix{announced[0]}
+	lastSeen := time.Now().Add(-time.Minute)
+	node.LastSeen = &lastSeen
+
+	var peerBuilds atomic.Int64
+
+	store := NewNodeStore(types.Nodes{&node, &peer},
+		func(nodes []types.NodeView) map[types.NodeID][]types.NodeID {
+			peerBuilds.Add(1)
+
+			return allowAllPeersFunc(nodes)
+		}, TestBatchSize, TestBatchTimeout)
+	store.Start()
+
+	defer store.Stop()
+
+	peerBuilds.Store(0)
+
+	published := store.data.Load()
+	now := time.Now()
+	before, after, ok := store.UpdateNodeDiff(1, func(n *types.Node) {
+		n.LastSeen = &now
+	})
+	require.True(t, ok)
+	assert.Same(t, &before.AnnouncedRoutes()[0], &after.AnnouncedRoutes()[0])
+	assert.Same(t, &published.nodesByID[1].Hostinfo.RoutableIPs[0],
+		&after.AnnouncedRoutes()[0])
+	assert.Equal(t, lastSeen, before.LastSeen().Get())
+	assert.Equal(t, lastSeen, *published.nodesByID[1].LastSeen)
+	assert.Equal(t, now, after.LastSeen().Get())
+	assert.Zero(t, peerBuilds.Load())
+	assert.Same(t, &published.peersByNode[1][0], &store.data.Load().peersByNode[1][0])
+	assert.Equal(t, now, store.ListPeers(2).At(0).LastSeen().Get())
 }
 
 // TestListPeersExcludesSelf proves a node is never returned among its own
@@ -1899,9 +1953,9 @@ func TestNodeStoreAdjacencyMatchesFullBuild(t *testing.T) {
 //   - "payload": neither; a write can reuse the previous peer adjacency.
 //
 // A field missing here fails TestUpdateChangesCoversEveryNodeField:
-// classify it, and if it is a relation input, teach HasPolicyChange or
-// HasNetworkChanges about it before updateChanges can let NodeStore
-// reuse peer adjacency across the write.
+// classify it, and if it is a relation input, teach HasPolicyChange
+// about it before updateChanges can let NodeStore reuse peer adjacency
+// across the write.
 var nodeFieldImpact = map[string]string{
 	"ID": "relation", "IPv4": "relation", "IPv6": "relation",
 	"UserID": "relation", "User": "relation", "Tags": "relation",
@@ -1953,16 +2007,11 @@ func TestUpdateChangesReportsRelationFields(t *testing.T) {
 			n.ApprovedRoutes = []netip.Prefix{pfx}
 		}, wantRelation: true, wantElection: true},
 		{
-			// Announcing a route the policy has not approved does not
-			// change who can access it (SubnetRoutes/ExitRoutes, which
-			// gate HasPolicyChange, stay empty), but HasNetworkChanges
-			// tracks the raw announcement so a later approval sees a
-			// fresh Hostinfo rather than one NodeStore decided to reuse.
+			// Policy reads served routes; a later approval triggers its own rebuild.
 			name: "announced but not approved route",
 			mutate: func(n *types.Node) {
 				n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{pfx}}
 			},
-			wantRelation: true, wantElection: true,
 		},
 		{name: "online", mutate: func(n *types.Node) { n.IsOnline = new(true) }, wantElection: true},
 		{name: "unhealthy", mutate: func(n *types.Node) { n.Unhealthy = true }, wantElection: true},
@@ -2030,15 +2079,20 @@ func benchNodes(n int) ([]types.User, types.Nodes) {
 // (lastseen) should cost far fewer builds than a relation-changing one
 // (route, tag).
 func BenchmarkNodeStoreWrite(b *testing.B) {
-	users, nodes := benchNodes(617)
-
 	for _, kind := range []struct {
-		name   string
-		mutate func(i int, n *types.Node)
+		name      string
+		announced int
+		mutate    func(i int, n *types.Node)
 	}{
 		{name: "lastseen", mutate: func(_ int, n *types.Node) {
 			n.LastSeen = new(time.Now())
 		}},
+		{
+			name: "lastseen-many-routes", announced: 4096,
+			mutate: func(_ int, n *types.Node) {
+				n.LastSeen = new(time.Now())
+			},
+		},
 		{name: "route", mutate: func(i int, n *types.Node) {
 			subnet := netip.PrefixFrom(netip.AddrFrom4([4]byte{10, byte(200 + i%50), 0, 0}), 24) //nolint:gosec
 			n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet}}
@@ -2054,6 +2108,17 @@ func BenchmarkNodeStoreWrite(b *testing.B) {
 			n.UserID, n.User = nil, nil
 		}},
 	} {
+		users, nodes := benchNodes(617)
+		if kind.announced > 0 {
+			nodes[0].Hostinfo.RoutableIPs = make([]netip.Prefix, kind.announced)
+
+			ip := netip.MustParseAddr("10.0.0.0")
+			for i := range kind.announced {
+				nodes[0].Hostinfo.RoutableIPs[i] = netip.PrefixFrom(ip, 32)
+				ip = ip.Next()
+			}
+		}
+
 		b.Run(fmt.Sprintf("%s/n=%d", kind.name, len(nodes)), func(b *testing.B) {
 			var calls atomic.Int64
 
