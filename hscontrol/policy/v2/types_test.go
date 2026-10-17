@@ -2,9 +2,11 @@ package v2
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -6483,5 +6485,100 @@ func TestUnmarshalPolicyMaxDstPorts(t *testing.T) {
 
 			require.NoError(t, err)
 		})
+	}
+}
+
+func TestResolveUserPrecedence(t *testing.T) {
+	const (
+		address    = "alice@example.com"
+		providerID = "https://idp.example/alice"
+	)
+
+	owner := types.User{ID: 1, Name: "alice", Email: address}
+	oidcName := types.User{ID: 2, Name: address, Provider: "oidc"}
+	localName := types.User{ID: 3, Name: address}
+	both := types.User{ID: 4, Name: address, Email: address}
+	provider := types.User{
+		ID:                 5,
+		Name:               "provider-user",
+		ProviderIdentifier: sql.NullString{String: providerID, Valid: true},
+	}
+
+	tests := []struct {
+		name    string
+		token   Username
+		users   types.Users
+		want    types.User
+		wantErr error
+	}{
+		{
+			name:  "email owner beats OIDC username",
+			token: Username(address),
+			users: types.Users{owner, oidcName},
+			want:  owner,
+		},
+		{
+			name:  "email owner beats local username",
+			token: Username(address),
+			users: types.Users{owner, localName},
+			want:  owner,
+		},
+		{
+			name:  "address-shaped username without email owner",
+			token: Username(address),
+			users: types.Users{oidcName, {ID: 6, Name: "other", Email: "other@example.com"}},
+			want:  oidcName,
+		},
+		{
+			name:  "email and username on the same user count once",
+			token: Username(address),
+			users: types.Users{both, oidcName},
+			want:  both,
+		},
+		{
+			name:    "duplicate usernames remain ambiguous",
+			token:   Username(address),
+			users:   types.Users{oidcName, localName},
+			wantErr: ErrMultipleUsersFound,
+		},
+		{
+			name:    "duplicate emails remain ambiguous despite a unique username",
+			token:   Username(address),
+			users:   types.Users{owner, {ID: 7, Name: "second-owner", Email: address}, oidcName},
+			wantErr: ErrMultipleUsersFound,
+		},
+		{
+			name:  "provider identifier wins",
+			token: Username(providerID + "@"),
+			users: types.Users{provider, {ID: 8, Name: providerID}},
+			want:  provider,
+		},
+		{
+			name:    "unknown user",
+			token:   "missing@",
+			users:   types.Users{owner, oidcName, localName},
+			wantErr: ErrUserNotFound,
+		},
+	}
+
+	for _, tt := range tests {
+		for _, reverse := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/reverse=%t", tt.name, reverse), func(t *testing.T) {
+				users := slices.Clone(tt.users)
+				if reverse {
+					slices.Reverse(users)
+				}
+
+				got, err := tt.token.resolveUser(users)
+				if tt.wantErr != nil {
+					require.ErrorIs(t, err, tt.wantErr)
+
+					return
+				}
+
+				require.NoError(t, err)
+				require.Equal(t, tt.want, got)
+			})
+		}
 	}
 }
