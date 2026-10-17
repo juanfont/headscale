@@ -354,6 +354,13 @@ func (c *OIDCClaims) Identifier() string {
 	return CleanIdentifier(result)
 }
 
+// IdentifierKeepsSubject reports whether the stored key preserves the subject.
+// Refusing altered subjects avoids changing existing provider identifiers.
+func (c *OIDCClaims) IdentifierKeepsSubject() bool {
+	return c.Identifier() == CleanIdentifier(c.Iss)+"/"+
+		(&url.URL{Path: c.Sub, RawPath: c.Sub}).EscapedPath()
+}
+
 // CleanIdentifier cleans a potentially malformed identifier by removing double slashes
 // while preserving protocol specifications like http://. This function will:
 // - Trim all whitespace from the beginning and end of the identifier

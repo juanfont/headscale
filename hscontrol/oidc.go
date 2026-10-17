@@ -332,6 +332,13 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
+	if !claims.IdentifierKeepsSubject() {
+		log.Warn().Str("subject", claims.Sub).Msg("OIDC subject would be altered by provider identifier cleaning")
+		httpUserError(writer, NewHTTPError(http.StatusForbidden, "OIDC subject cannot be used as a provider identifier", nil))
+
+		return
+	}
+
 	user, _, err := a.createOrUpdateUserFromClaim(&claims)
 	if err != nil {
 		httpUserError(writer, NewHTTPError(
