@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
@@ -437,6 +438,48 @@ func TestRunTestsManyAssertionsAndDestinations(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, evaluateTests(pol, users, nodes.ViewSlice()))
+}
+
+// TestSetPolicyEvaluatesTestsUnlocked asserts that a policy's tests run
+// before SetPolicy takes the write lock, so map generation and node writes
+// do not wait for them: a reader holding the lock does not hold up the
+// evaluation, and a rejected policy never needs the write lock at all.
+func TestSetPolicyEvaluatesTestsUnlocked(t *testing.T) {
+	users := policyTestUsers()
+	nodes := policyTestNodes(users)
+
+	pm, err := NewPolicyManager([]byte(`{}`), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	bad := `{
+		"tagOwners": { "tag:server": ["alice@headscale.net"] },
+		"acls": [{
+			"action": "accept",
+			"src": ["alice@headscale.net"],
+			"dst": ["tag:server:22"]
+		}],
+		"tests": [{
+			"src": "bob@headscale.net",
+			"accept": ["tag:server:22"]
+		}]
+	}`
+
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	done := make(chan error, 1)
+
+	go func() {
+		_, err := pm.SetPolicy([]byte(bad))
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, errPolicyTestsFailed)
+	case <-time.After(10 * time.Second):
+		t.Fatal("SetPolicy waited for the write lock before evaluating the tests")
+	}
 }
 
 // TestSetPolicyRejectsFailingTests asserts that SetPolicy is the user-write
