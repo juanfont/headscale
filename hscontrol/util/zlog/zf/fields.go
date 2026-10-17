@@ -15,8 +15,6 @@ const (
 	NodeID             = "node.id"
 	NodeName           = "node.name"
 	NodeKey            = "node.key"
-	NodeKeyExisting    = "node.key.existing"
-	NodeKeyRequest     = "node.key.request"
 	NodeTags           = "node.tags"
 	NodeIsTagged       = "node.is_tagged"
 	NodeOnline         = "node.online"
@@ -66,18 +64,15 @@ const (
 
 // PreAuthKey fields.
 const (
-	PAKID           = "pak.id"
-	PAKPrefix       = "pak.prefix"
-	PAKTags         = "pak.tags"
-	PAKReusable     = "pak.reusable"
-	PAKEphemeral    = "pak.ephemeral"
-	PAKUsed         = "pak.used"
-	PAKIsTagged     = "pak.is_tagged"
-	PAKExpiration   = "pak.expiration"
-	AuthKeyID       = "authkey.id"
-	AuthKeyUsed     = "authkey.used"
-	AuthKeyExpired  = "authkey.expired"
-	AuthKeyReusable = "authkey.reusable"
+	PAKID         = "pak.id"
+	PAKPrefix     = "pak.prefix"
+	PAKTags       = "pak.tags"
+	PAKReusable   = "pak.reusable"
+	PAKEphemeral  = "pak.ephemeral"
+	PAKUsed       = "pak.used"
+	PAKIsTagged   = "pak.is_tagged"
+	PAKExpiration = "pak.expiration"
+	AuthKeyID     = "authkey.id"
 )
 
 // APIKey fields.
