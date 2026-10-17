@@ -477,9 +477,13 @@ func (s *State) ReloadPolicy() ([]change.Change, error) {
 		return nil, fmt.Errorf("loading policy: %w", err)
 	}
 
-	policyChanged, err := s.polMan.SetPolicy(pol)
-	if err != nil {
-		return nil, fmt.Errorf("setting policy: %w", err)
+	// nil means no policy is configured: nothing to install.
+	var policyChanged bool
+	if pol != nil {
+		policyChanged, err = s.polMan.SetPolicy(pol)
+		if err != nil {
+			return nil, fmt.Errorf("setting policy: %w", err)
+		}
 	}
 
 	// Clear SSH check auth times when policy changes to ensure stale
