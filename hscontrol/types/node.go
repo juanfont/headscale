@@ -695,10 +695,6 @@ func (node *Node) PeerChangeFromMapRequest(req tailcfg.MapRequest) tailcfg.PeerC
 		NodeID: tailcfg.NodeID(node.ID), //nolint:gosec // NodeID is bounded
 	}
 
-	if node.NodeKey.String() != req.NodeKey.String() {
-		ret.Key = &req.NodeKey
-	}
-
 	if node.DiscoKey.String() != req.DiscoKey.String() {
 		ret.DiscoKey = &req.DiscoKey
 	}
@@ -730,11 +726,8 @@ func EndpointsChanged(oldEndpoints, newEndpoints []netip.AddrPort) bool {
 }
 
 // ApplyPeerChange takes a [tailcfg.PeerChange] struct and updates the node.
+// Key is ignored: only registration rotates the node key.
 func (node *Node) ApplyPeerChange(change *tailcfg.PeerChange) {
-	if change.Key != nil {
-		node.NodeKey = *change.Key
-	}
-
 	if change.DiscoKey != nil {
 		node.DiscoKey = *change.DiscoKey
 	}
