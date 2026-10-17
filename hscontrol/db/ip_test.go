@@ -27,6 +27,53 @@ var nap = func(pref string) *netip.Addr {
 	return &n
 }
 
+func TestIPAllocatorSequentialReusesFreedIPs(t *testing.T) {
+	prefix := netip.MustParsePrefix("100.64.0.0/29")
+	alloc, err := NewIPAllocator(
+		nil, &prefix, nil, types.IPAllocationStrategySequential,
+	)
+	require.NoError(t, err)
+
+	issued := make([]netip.Addr, 0, 6)
+
+	for range 6 {
+		ip, _, err := alloc.Next()
+		require.NoError(t, err)
+
+		issued = append(issued, *ip)
+	}
+
+	_, _, err = alloc.Next()
+	require.ErrorIs(t, err, ErrCouldNotAllocateIP)
+
+	alloc.FreeIPs([]netip.Addr{issued[1]})
+	ip, _, err := alloc.Next()
+	require.NoError(t, err)
+	require.Equal(t, issued[1], *ip)
+	alloc.FreeIPs([]netip.Addr{issued[0], issued[4]})
+	ip, _, err = alloc.Next()
+	require.NoError(t, err)
+	require.Equal(t, issued[4], *ip, "advance before wrapping to an earlier hole")
+	ip, _, err = alloc.Next()
+	require.NoError(t, err)
+	require.Equal(t, issued[0], *ip)
+}
+
+func TestIPAllocatorSequentialChurn(t *testing.T) {
+	prefix4 := netip.MustParsePrefix("100.64.0.0/30")
+	prefix6 := netip.MustParsePrefix("fd7a:115c:a1e0::/126")
+	alloc, err := NewIPAllocator(
+		nil, &prefix4, &prefix6, types.IPAllocationStrategySequential,
+	)
+	require.NoError(t, err)
+
+	for range 20 {
+		ip4, ip6, err := alloc.Next()
+		require.NoError(t, err)
+		alloc.FreeIPs([]netip.Addr{*ip4, *ip6})
+	}
+}
+
 func TestIPAllocatorSequential(t *testing.T) {
 	tests := []struct {
 		name   string
