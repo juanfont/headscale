@@ -36,17 +36,6 @@ import (
 // the step of what killed nodes leave behind. A listed check that matches
 // fails, so a fix must delete its entry.
 var lifecycleSkipReasons = map[string]string{
-	"route-approval/b6/enabled":     approvalOnHostinfo,
-	"route-approval/b6/served":      approvalOnHostinfo,
-	"route-approval/b6/self-routes": approvalOnHostinfo,
-
-	"route-approval/b7/enabled":     approvalOnPolicy,
-	"route-approval/b7/served":      approvalOnPolicy,
-	"route-approval/b7/self-routes": approvalOnPolicy,
-	"route-approval/b8/enabled":     approvalOnPolicy,
-	"route-approval/b8/served":      approvalOnPolicy,
-	"route-approval/b8/self-routes": approvalOnPolicy,
-
 	"route-approval/b9/enabled":     approvalOnSameKeyReauth,
 	"route-approval/b9/served":      approvalOnSameKeyReauth,
 	"route-approval/b9/self-routes": approvalOnSameKeyReauth,
@@ -76,8 +65,6 @@ var lifecycleSkipReasons = map[string]string{
 // SaaS runs auto-approval when a router's announced routes change and on a
 // re-auth that rotates its node key, over every announced route.
 const (
-	approvalOnHostinfo      = "APPROVAL_ON_HOSTINFO: headscale auto-approves when a router with no approved routes sends a Hostinfo change that keeps its routes; SaaS does not"
-	approvalOnPolicy        = "APPROVAL_ON_POLICY: headscale auto-approves announced routes when a policy is set; SaaS waits for the router's next route change or key rotation"
 	approvalOnSameKeyReauth = "APPROVAL_ON_SAME_KEY_REAUTH: headscale auto-approves on a re-auth that keeps the node key; SaaS does not"
 )
 
