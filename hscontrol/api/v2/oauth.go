@@ -90,7 +90,7 @@ func oauthTokenHandler(b Backend) http.HandlerFunc {
 		tags, badTag, ok := narrowTags(client, strings.Fields(r.PostForm.Get("tags")))
 		if !ok {
 			writeOAuthError(w, http.StatusBadRequest, "invalid_target",
-				"tag "+badTag+" is not granted to this client")
+				"requested tags ["+badTag+"] are invalid or not permitted")
 
 			return
 		}
@@ -133,24 +133,25 @@ func narrowScopes(granted, requested []string) ([]string, string, bool) {
 
 // narrowTags returns the requested tags if each is within the client's grant (an
 // empty request means "the client's full tag set"), otherwise the offending tag
-// and false. A client with the "all" scope may assign any tag, matching Tailscale.
+// and false. Only an untagged client with the "all" scope may assign any tag;
+// a tagged one stays inside its tags, matching Tailscale.
 func narrowTags(client *types.OAuthClient, requested []string) ([]string, string, bool) {
 	if len(requested) == 0 {
 		return client.Tags, "", true
 	}
 
-	allScope := slices.Contains(client.Scopes, string(scope.All))
+	anyTag := len(client.Tags) == 0 && slices.Contains(client.Scopes, string(scope.All))
 
 	for _, req := range requested {
 		// Reject malformed tags at the trust boundary. A client's own tags are
-		// validated at creation, so this only matters for an "all"-scope client,
+		// validated at creation, so this only matters for an any-tag client,
 		// whose tags would otherwise skip the membership check below and flow
 		// unvalidated into auth-key creation.
 		if !strings.HasPrefix(req, "tag:") {
 			return nil, req, false
 		}
 
-		if !allScope && !slices.Contains(client.Tags, req) {
+		if !anyTag && !slices.Contains(client.Tags, req) {
 			return nil, req, false
 		}
 	}
