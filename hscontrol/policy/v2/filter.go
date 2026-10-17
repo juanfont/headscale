@@ -617,7 +617,15 @@ func mergeFilterRules(rules []tailcfg.FilterRule) []tailcfg.FilterRule {
 		return rules
 	}
 
+	// sharedSrcIPs identifies a SrcIPs slice by its backing array.
+	type sharedSrcIPs struct {
+		first   *string
+		n       int
+		ipProto string
+	}
+
 	keyToIdx := make(map[string]int)
+	sharedToIdx := make(map[sharedSrcIPs]int)
 	result := make([]tailcfg.FilterRule, 0, len(rules))
 
 	for _, rule := range rules {
@@ -629,14 +637,35 @@ func mergeFilterRules(rules []tailcfg.FilterRule) []tailcfg.FilterRule {
 			continue
 		}
 
-		key := filterRuleKey(rule)
+		// An ACL compiles to one rule per destination, all with the same
+		// SrcIPs slice. Build the key of a slice once, or merging them is
+		// len(src) × len(dst) work.
+		shared := sharedSrcIPs{
+			n:       len(rule.SrcIPs),
+			ipProto: fmt.Sprint(rule.IPProto),
+		}
+		if len(rule.SrcIPs) > 0 {
+			shared.first = &rule.SrcIPs[0]
+		}
 
-		if idx, exists := keyToIdx[key]; exists {
+		idx, exists := sharedToIdx[shared]
+		if !exists {
+			key := filterRuleKey(rule)
+
+			idx, exists = keyToIdx[key]
+			if !exists {
+				idx = len(result)
+				keyToIdx[key] = idx
+			}
+
+			sharedToIdx[shared] = idx
+		}
+
+		if exists {
 			// Merge: append DstPorts to existing rule
 			result[idx].DstPorts = append(result[idx].DstPorts, rule.DstPorts...)
 		} else {
 			// New unique combination
-			keyToIdx[key] = len(result)
 			result = append(result, tailcfg.FilterRule{
 				SrcIPs:   rule.SrcIPs,
 				DstPorts: slices.Clone(rule.DstPorts),
