@@ -1415,8 +1415,6 @@ func (s *State) AutoApproveRoutes(nv types.NodeView) (change.Change, error) {
 			return c, err
 		}
 
-		log.Info().EmbedObject(nv).Strs(zf.RoutesApproved, util.PrefixesToString(approved)).Msg("routes approved")
-
 		return c, nil
 	}
 
@@ -3658,13 +3656,6 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		}
 
 		if routeChange {
-			log.Info().
-				Uint64(zf.NodeID, id.Uint64()).
-				Strs(zf.OldApprovedRoutes, util.PrefixesToString(currentNode.ApprovedRoutes)).
-				Strs(zf.NewApprovedRoutes, util.PrefixesToString(autoApprovedRoutes)).
-				Bool(zf.RouteChanged, routeChange).
-				Msg("applying route approval results")
-
 			// Approving in this write keeps one request at one NodeStore
 			// write, one peer build and one row update. Persisting is
 			// already due: route approval only runs on a Hostinfo change.
