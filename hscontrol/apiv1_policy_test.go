@@ -97,6 +97,24 @@ func TestAPIV1PolicySet(t *testing.T) {
 		assert.NotEmpty(t, got.UpdatedAt)
 	})
 
+	t.Run("empty rejected", func(t *testing.T) {
+		h := newAPIV1Harness(t)
+
+		body, err := json.Marshal(map[string]string{"policy": validPolicy})
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK,
+			h.callHuma(http.MethodPut, "/api/v1/policy", body).status)
+
+		for _, body := range []string{`{"policy":""}`, `{}`} {
+			res := h.callHuma(http.MethodPut, "/api/v1/policy", []byte(body))
+			assertStatus(t, res, http.StatusBadRequest)
+		}
+
+		stored, err := h.app.state.GetPolicy()
+		require.NoError(t, err)
+		assert.JSONEq(t, validPolicy, stored.Data)
+	})
+
 	t.Run("not-db mode rejected", func(t *testing.T) {
 		// Policy updates are only valid in DB mode; file mode rejects with 400.
 		// createTestApp is DB mode, so build a file-mode app here.
@@ -129,6 +147,15 @@ func TestAPIV1PolicyCheck(t *testing.T) {
 		require.NoError(t, err)
 
 		res := h.assertParity(t, http.MethodPost, "/api/v1/policy/check", body)
+		assertStatus(t, res, http.StatusBadRequest)
+	})
+
+	t.Run("empty rejected", func(t *testing.T) {
+		h := newAPIV1Harness(t)
+
+		res := h.callHuma(
+			http.MethodPost, "/api/v1/policy/check", []byte(`{"policy":""}`),
+		)
 		assertStatus(t, res, http.StatusBadRequest)
 	})
 
