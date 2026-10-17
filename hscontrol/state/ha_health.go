@@ -2,8 +2,9 @@ package state
 
 import (
 	"context"
+	"net/netip"
+	"slices"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -60,14 +61,10 @@ func (p *HAHealthProber) forgetSession(id types.NodeID) {
 	p.lastStableSession.Delete(id)
 }
 
-// ProbeOnce pings every HA subnet router and applies the cycle's
-// results in one batch so the election sees a single transition.
-// Per-result snapshots could otherwise elect a node that the next
-// snapshot demotes again, flipping primary onto an unreachable peer.
-// A timeout that fires after the node reconnected, or against a
-// session younger than one probe cycle, is dropped so wgengine has
-// time to apply the new netmap before silence is read as
-// unreachability.
+// ProbeOnce applies HA probe results in one batch to avoid transient elections.
+// Fresh or reconnected sessions defer their whole group of routers linked
+// through shared prefixes, giving wgengine time to apply the new netmap.
+// Other groups can still apply their complete results.
 func (p *HAHealthProber) ProbeOnce(
 	ctx context.Context,
 	dispatch func(...change.Change),
@@ -111,7 +108,7 @@ func (p *HAHealthProber) ProbeOnce(
 	var (
 		wg       sync.WaitGroup
 		results  = xsync.NewMap[types.NodeID, bool]()
-		deferred atomic.Bool
+		deferred = xsync.NewMap[types.NodeID, struct{}]()
 	)
 
 	for _, id := range nodeIDs {
@@ -176,7 +173,7 @@ func (p *HAHealthProber) ProbeOnce(
 						Uint64("current_session", curr.SessionEpoch()).
 						Msg("HA probe: node reconnected during probe, skipping")
 
-					deferred.Store(true)
+					deferred.Store(id, struct{}{})
 
 					return
 				}
@@ -187,7 +184,7 @@ func (p *HAHealthProber) ProbeOnce(
 						Uint64("probe_session", probeSession).
 						Msg("HA probe: probe of fresh session timed out, deferring to next cycle")
 
-					deferred.Store(true)
+					deferred.Store(id, struct{}{})
 
 					return
 				}
@@ -207,18 +204,14 @@ func (p *HAHealthProber) ProbeOnce(
 
 	wg.Wait()
 
-	// When any probe in the cycle was deferred (fresh session or
-	// reconnected mid-probe), drop the whole cycle's results: a partial
-	// batch lets the election pick a node whose connectivity is still
-	// unknown. The next cycle will run with stable sessions for every
-	// candidate and can decide on a complete picture.
-	if deferred.Load() {
-		return
-	}
+	// Withhold incomplete HA groups; independent groups can apply their results.
+	undecided := undecidedHANodes(haNodes, deferred)
 
 	healthByNode := make(map[types.NodeID]bool, results.Size())
 	results.Range(func(id types.NodeID, healthy bool) bool {
-		healthByNode[id] = healthy
+		if !undecided.Contains(id) {
+			healthByNode[id] = healthy
+		}
 
 		return true
 	})
@@ -230,4 +223,39 @@ func (p *HAHealthProber) ProbeOnce(
 			Int("haNodes", len(healthByNode)).
 			Msg("HA probe: health changed, triggering failover/recovery")
 	}
+}
+
+// undecidedHANodes follows shared prefixes because one node's health affects
+// every prefix it advertises. Each remaining group must have a complete batch.
+func undecidedHANodes(
+	haNodes map[netip.Prefix][]types.NodeID,
+	deferred *xsync.Map[types.NodeID, struct{}],
+) set.Set[types.NodeID] {
+	undecided := make(set.Set[types.NodeID])
+
+	deferred.Range(func(id types.NodeID, _ struct{}) bool {
+		undecided.Add(id)
+
+		return true
+	})
+
+	for grown := true; grown; {
+		grown = false
+
+		for _, ids := range haNodes {
+			if !slices.ContainsFunc(ids, undecided.Contains) {
+				continue
+			}
+
+			for _, id := range ids {
+				if !undecided.Contains(id) {
+					undecided.Add(id)
+
+					grown = true
+				}
+			}
+		}
+	}
+
+	return undecided
 }

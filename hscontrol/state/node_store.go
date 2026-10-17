@@ -1046,8 +1046,8 @@ func (s *NodeStore) PrimaryRoutesForNode(id types.NodeID) []netip.Prefix {
 	return out
 }
 
-// HANodes returns the prefixes with two or more online advertisers, the
-// candidate set the HA prober needs to monitor.
+// HANodes returns prefixes with multiple online advertisers and lone unhealthy
+// advertisers that need another probe before their route can return.
 func (s *NodeStore) HANodes() map[netip.Prefix][]types.NodeID {
 	snap := s.data.Load()
 
@@ -1056,10 +1056,14 @@ func (s *NodeStore) HANodes() map[netip.Prefix][]types.NodeID {
 		slices.Sorted(maps.Keys(snap.nodesByID)),
 	)
 
+	unhealthy := func(id types.NodeID) bool {
+		return snap.nodesByID[id].Unhealthy
+	}
+
 	out := make(map[netip.Prefix][]types.NodeID)
 
 	for p, ids := range advertisers {
-		if len(ids) < 2 {
+		if len(ids) < 2 && !slices.ContainsFunc(ids, unhealthy) {
 			continue
 		}
 
