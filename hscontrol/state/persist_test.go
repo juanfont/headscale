@@ -6,6 +6,7 @@ import (
 	"maps"
 	"net/http"
 	"net/netip"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/policy"
+	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
@@ -1214,6 +1216,54 @@ func TestReloadPolicyOverlappingWrites(t *testing.T) {
 
 	got, _ := s.Filter()
 	assert.Equal(t, want, got, "the policy in force must be the one stored last")
+}
+
+// TestReloadPolicyEmpty: with no policy configured a reload has nothing to
+// install; an emptied policy file is refused. Both keep the live policy.
+func TestReloadPolicyEmpty(t *testing.T) {
+	const pol = `{"acls": [{"action": "accept", "src": ["persist-user@"], "dst": ["persist-user@:22"]}]}`
+
+	t.Run("no policy configured", func(t *testing.T) {
+		_, s, _ := persistTestSetup(t)
+		t.Cleanup(func() { _ = s.Close() })
+
+		_, err := s.SetPolicy([]byte(pol))
+		require.NoError(t, err)
+
+		before, _ := s.Filter()
+
+		_, err = s.ReloadPolicy()
+		require.NoError(t, err)
+
+		after, _ := s.Filter()
+		assert.Equal(t, before, after)
+	})
+
+	t.Run("empty policy file", func(t *testing.T) {
+		_, s, _ := persistTestSetup(t)
+		t.Cleanup(func() { _ = s.Close() })
+
+		s.cfg.Policy = types.PolicyConfig{
+			Mode: types.PolicyModeFile,
+			Path: filepath.Join(t.TempDir(), "policy.hujson"),
+		}
+
+		require.NoError(t, os.WriteFile(s.cfg.Policy.Path, []byte(pol), 0o600))
+
+		_, err := s.ReloadPolicy()
+		require.NoError(t, err)
+
+		before, _ := s.Filter()
+
+		// os.ReadFile gives an empty, non-nil slice here.
+		require.NoError(t, os.WriteFile(s.cfg.Policy.Path, nil, 0o600))
+
+		_, err = s.ReloadPolicy()
+		require.ErrorIs(t, err, policyv2.ErrPolicyEmpty)
+
+		after, _ := s.Filter()
+		assert.Equal(t, before, after)
+	})
 }
 
 // TestNodeWriteChangeWhenPolicyRefreshFails fails both the NodeStore

@@ -29,6 +29,9 @@ import (
 // ErrInvalidTagOwner is returned when a tag owner is not an [Alias] type.
 var ErrInvalidTagOwner = errors.New("tag owner is not an Alias")
 
+// ErrPolicyEmpty is returned by [PolicyManager.SetPolicy] for a zero-length policy.
+var ErrPolicyEmpty = errors.New(`policy is empty, use "{}" to allow all`)
+
 type PolicyManager struct {
 	// RWMutex, not Mutex, so concurrent map generation does not serialise on
 	// reads. The per-node caches are xsync.Maps so a read can fill them without
@@ -658,7 +661,7 @@ func (pm *PolicyManager) sshRuleAllowsUser(rule SSH, srcNode types.NodeView, loc
 
 func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 	if len(polB) == 0 {
-		return false, nil
+		return false, ErrPolicyEmpty
 	}
 
 	pol, err := unmarshalPolicy(polB)
