@@ -7,7 +7,35 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/tailcfg"
 )
+
+func TestPutNodeBumpsPastReservedLabel(t *testing.T) {
+	cfg := persistTestConfig(t.TempDir() + "/headscale.db")
+	cfg.TailcfgDNSConfig = &tailcfg.DNSConfig{ExtraRecords: []tailcfg.DNSRecord{
+		{Name: "laptop." + cfg.BaseDomain},
+		{Name: "laptop-1." + cfg.BaseDomain},
+	}}
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	node := s.nodeStore.PutNode(createTestNode(1, 1, "alice", "laptop"))
+	require.Equal(t, "laptop-2", node.GivenName())
+}
+
+func TestSetGivenNameRejectsReservedLabel(t *testing.T) {
+	cfg := persistTestConfig(t.TempDir() + "/headscale.db")
+	cfg.TailcfgDNSConfig = &tailcfg.DNSConfig{ExtraRecords: []tailcfg.DNSRecord{
+		{Name: "laptop." + cfg.BaseDomain},
+	}}
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+	s.nodeStore.PutNode(createTestNode(1, 1, "alice", "phone"))
+	_, err = s.nodeStore.SetGivenName(1, "laptop")
+	require.ErrorIs(t, err, ErrGivenNameTaken)
+}
 
 // TestPutNodeGivenNameCollisionBumps is the reproduction for #3188.
 // Before the hostname-cleanroom rewrite, two nodes could be written
