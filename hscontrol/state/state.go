@@ -227,6 +227,13 @@ type State struct {
 	// nothing.
 	persistMu sync.Mutex
 
+	// userUpdateMu keeps committed user changes and cached copies in the same order.
+	userUpdateMu sync.Mutex
+
+	// policyUsersMu orders user-list reads with SetUsers, so a list read
+	// before a commit cannot replace one read after it.
+	policyUsersMu sync.Mutex
+
 	// selfRefresh holds nodes whose own DNS config inputs changed (NextDNS
 	// device metadata, given name), drained by [State.DrainSelfRefreshes].
 	selfRefresh   []types.NodeID
@@ -528,11 +535,18 @@ func (s *State) CreateUser(user types.User) (*types.User, change.Change, error) 
 // UpdateUser modifies an existing user using the provided update function within a transaction.
 // Returns the updated user, change set, and any error.
 func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error) (*types.User, change.Change, error) {
+	s.userUpdateMu.Lock()
+	defer s.userUpdateMu.Unlock()
+
+	var previous types.User
+
 	user, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.User, error) {
 		user, err := hsdb.GetUserByID(tx, userID)
 		if err != nil {
 			return nil, err
 		}
+
+		previous = *user
 
 		if err := updateFn(user); err != nil { //nolint:noinlineerr
 			return nil, err
@@ -551,13 +565,57 @@ func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error
 		return nil, change.Change{}, err
 	}
 
+	var profileChanged bool
+
+	previous.UpdatedAt = user.UpdatedAt
+	if previous != *user {
+		updates := make(map[types.NodeID]UpdateNodeFunc)
+
+		var ownerRefreshed bool
+
+		for _, node := range s.nodeStore.ListNodes().All() {
+			owner := node.User()
+			credential := node.AuthKey()
+			owns := owner.Valid() && owner.ID() == user.ID
+			createdKey := credential.Valid() && credential.User().Valid() &&
+				credential.User().ID() == user.ID
+
+			if !owns && !createdKey {
+				continue
+			}
+
+			updates[node.ID()] = func(n *types.Node) {
+				// Recheck ownership after waiting in the writer queue, and replace
+				// shared records so earlier snapshots keep their user data.
+				if n.User != nil && n.User.ID == user.ID {
+					n.User = user.Clone()
+					ownerRefreshed = ownerRefreshed || !n.IsTagged()
+				}
+
+				if n.AuthKey != nil && n.AuthKey.User != nil && n.AuthKey.User.ID == user.ID {
+					n.AuthKey = n.AuthKey.Clone()
+					n.AuthKey.User = user.Clone()
+				}
+			}
+		}
+
+		s.nodeStore.UpdateNodes(updates)
+
+		previousProfile := previous.TailscaleUserProfile()
+		profile := user.TailscaleUserProfile()
+
+		profileChanged = ownerRefreshed && !previousProfile.Equal(&profile)
+	}
+
 	// Check if policy manager needs updating
 	c, err := s.updatePolicyManagerUsers()
 	if err != nil {
 		return user, change.Change{}, fmt.Errorf("updating policy manager after user update: %w", err)
 	}
 
-	// TODO(kradalby): We might want to update nodestore with the user data
+	if profileChanged {
+		c = change.UserAdded()
+	}
 
 	return user, c, nil
 }
@@ -3718,6 +3776,9 @@ func reloginChanged(before, after types.NodeView, now time.Time) relogin {
 // manager, rebuilds peer adjacency when user identity changed, and returns
 // a PolicyChange when clients need a refresh.
 func (s *State) updatePolicyManagerUsers() (change.Change, error) {
+	s.policyUsersMu.Lock()
+	defer s.policyUsersMu.Unlock()
+
 	users, err := s.ListAllUsers()
 	if err != nil {
 		return change.Change{}, fmt.Errorf("listing users for policy update: %w", err)
