@@ -266,6 +266,7 @@ func TestServeLongPollWritesErrorWhenInitialMapFails(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	writer := &recordingResponseWriter{}
 	session := app.newMapSession(ctx, tailcfg.MapRequest{
+		NodeKey: node.NodeKey,
 		Stream:  true,
 		Version: tailcfg.CapabilityVersion(100),
 	}, writer, node.View())
@@ -348,6 +349,7 @@ func TestFailedReconnectDoesNotCancelEphemeralGC(t *testing.T) {
 
 	writer := &recordingResponseWriter{}
 	session := app.newMapSession(context.Background(), tailcfg.MapRequest{
+		NodeKey: node.NodeKey,
 		Stream:  true,
 		Version: tailcfg.CapabilityVersion(100),
 	}, writer, node.View())
@@ -402,6 +404,7 @@ func TestEphemeralGCDoesNotDeleteReconnectedNode(t *testing.T) {
 
 	node := nodeView.AsStruct()
 	session := app.newMapSession(context.Background(), tailcfg.MapRequest{
+		NodeKey: node.NodeKey,
 		Stream:  true,
 		Version: tailcfg.CapabilityVersion(100),
 	}, &recordingResponseWriter{}, node.View())
@@ -684,6 +687,7 @@ func TestGitHubIssue3129_BlockedWriteSessionLifecycle(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			writer := newDelayedSuccessResponseWriter(tt.writeDelay)
 			session := app.newMapSession(ctx, tailcfg.MapRequest{
+				NodeKey: node.NodeKey,
 				Stream:  true,
 				Version: tailcfg.CapabilityVersion(100),
 			}, writer, node.View())
@@ -817,6 +821,7 @@ func TestDeletedNodeEndsLongPoll(t *testing.T) {
 
 	writer := newDelayedSuccessResponseWriter(0)
 	session := app.newMapSession(ctx, tailcfg.MapRequest{
+		NodeKey: node.NodeKey,
 		Stream:  true,
 		Version: tailcfg.CapabilityVersion(100),
 	}, writer, node.View())
@@ -906,6 +911,7 @@ func TestDeletedNodeEndsStreamCleanly(t *testing.T) {
 			served := make(chan struct{})
 			srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				session := app.newMapSession(r.Context(), tailcfg.MapRequest{
+					NodeKey: nodeView.NodeKey(),
 					Stream:  true,
 					Version: tailcfg.CapabilityVersion(100),
 				}, w, nodeView)
@@ -1000,6 +1006,7 @@ func TestLongPollShutdownWaitsForCleanup(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
 			writer := newDelayedSuccessResponseWriter(0)
 			session := app.newMapSession(ctx, tailcfg.MapRequest{
+				NodeKey: node.NodeKey(),
 				Stream:  true,
 				Version: tailcfg.CapabilityVersion(100),
 			}, writer, node)
@@ -1097,6 +1104,7 @@ func TestDeletedNodeInterruptsBlockedWrite(t *testing.T) {
 
 	writer := newDeadlineResponseWriter()
 	session := app.newMapSession(t.Context(), tailcfg.MapRequest{
+		NodeKey: nodeView.NodeKey(),
 		Stream:  true,
 		Version: tailcfg.CapabilityVersion(100),
 	}, writer, nodeView)

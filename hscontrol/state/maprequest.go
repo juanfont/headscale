@@ -58,10 +58,9 @@ type mapRequestDelta struct {
 	// happens regardless; this gates only broadcast.
 	endpointBroadcast bool
 
-	// keyChanged and discoKeyChanged report whether the node's wire keys
-	// changed. Key patches already carry the resulting endpoints/expiry,
+	// discoKeyChanged reports whether the node's discovery key changed.
+	// Key patches already carry the resulting endpoints/expiry,
 	// so a key change subsumes endpoint/DERP patches.
-	keyChanged      bool
 	discoKeyChanged bool
 
 	// persistWorthy reports whether the request carries data that should
@@ -78,7 +77,6 @@ func (d mapRequestDelta) MarshalZerologObject(e *zerolog.Event) {
 		Int("derp.old", int(d.oldDERP)).
 		Int("derp.new", int(d.newDERP)).
 		Bool("endpoint.broadcast", d.endpointBroadcast).
-		Bool("key.changed", d.keyChanged).
 		Bool("disco_key.changed", d.discoKeyChanged).
 		Bool("persist", d.persistWorthy)
 }
