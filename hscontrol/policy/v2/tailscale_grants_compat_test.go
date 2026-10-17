@@ -169,7 +169,14 @@ var grantSkipReasons = map[string]string{
 	"via-grant-v60": "FILTER_ADDRESS_FORM: same addresses, different wire form and rule order",
 	"via-grant-v61": "FILTER_ADDRESS_FORM: same addresses, different wire form",
 	"via-grant-v62": "FILTER_ADDRESS_FORM: same addresses, different wire form",
+
+	// Checks keyed <test_id>/<node>/filter: a listed check that matches
+	// fails, so a fix must delete its entry.
+	"via-grant-v63/blastoise/filter": viaDstAddressForm,
+	"via-grant-v63/squirtle/filter":  viaDstAddressForm,
 }
+
+const viaDstAddressForm = "FILTER_ADDRESS_FORM: SaaS writes a single-address via destination as a bare address, headscale as a /32 prefix"
 
 // TestGrantsCompat is a data-driven test that loads all GRANT-*.json
 // test files captured from Tailscale SaaS and compares headscale's grants
@@ -298,49 +305,41 @@ func testGrantSuccess(
 	pm, err := NewPolicyManager(policyJSON, users, nodes.ViewSlice())
 	require.NoError(t, err, "%s: policy manager should load the policy", tf.TestID)
 
+	// EquateEmpty treats nil and empty slices as equal since Tailscale's
+	// JSON null -> nil, headscale may return empty slice.
+	opts := append(cmpOptions(), cmpopts.EquateEmpty())
+
 	for nodeName, capture := range tf.Captures {
 		t.Run(nodeName, func(t *testing.T) {
 			node := findGrantsNode(nodes, nodeName)
 			require.NotNilf(t, node,
 				"golden node %s not found in test setup", nodeName)
 
-			// Compile headscale filter rules for this node
-			gotRules := pol.compileFilterRulesForNode(
-				users,
-				node.View(),
-				nodes.ViewSlice(),
-			)
-
-			gotRules = policyutil.ReduceFilterRules(node.View(), gotRules)
-
 			wantRules := capture.PacketFilterRules
 
-			// Compare headscale output against Tailscale expected output.
-			// The diff labels show (-tailscale +headscale) to make clear
-			// which side produced which output.
-			// EquateEmpty treats nil and empty slices as equal since
-			// Tailscale's JSON null -> nil, headscale may return empty slice.
-			opts := append(cmpOptions(), cmpopts.EquateEmpty())
-			if diff := cmp.Diff(wantRules, gotRules, opts...); diff != "" {
-				t.Errorf(
-					"%s/%s: filter rules mismatch (-tailscale +headscale):\n%s",
-					tf.TestID,
-					nodeName,
-					diff,
+			compatCheck(t, grantSkipReasons, tf.TestID+"/"+nodeName+"/filter", func() string {
+				gotRules := policyutil.ReduceFilterRules(
+					node.View(),
+					pol.compileFilterRulesForNode(users, node.View(), nodes.ViewSlice()),
 				)
-			}
 
-			pmRules, err := pm.FilterForNode(node.View())
-			require.NoError(t, err)
+				pmRules, err := pm.FilterForNode(node.View())
+				if err != nil {
+					return err.Error()
+				}
 
-			if diff := cmp.Diff(wantRules, pmRules, opts...); diff != "" {
-				t.Errorf(
-					"%s/%s: policy manager filter rules mismatch (-tailscale +headscale):\n%s",
-					tf.TestID,
-					nodeName,
-					diff,
-				)
-			}
+				var diffs []string
+
+				if diff := cmp.Diff(wantRules, gotRules, opts...); diff != "" {
+					diffs = append(diffs, "filter rules mismatch (-tailscale +headscale):\n"+diff)
+				}
+
+				if diff := cmp.Diff(wantRules, pmRules, opts...); diff != "" {
+					diffs = append(diffs, "policy manager filter rules mismatch (-tailscale +headscale):\n"+diff)
+				}
+
+				return strings.Join(diffs, "\n")
+			})
 		})
 	}
 }
