@@ -10,6 +10,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
+	"go4.org/netipx"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/views"
 )
@@ -22,13 +23,15 @@ func buildPeerMapPairScan(pm *PolicyManager, nodes views.Slice[types.NodeView]) 
 	defer pm.mu.RUnlock()
 
 	type nodeRoutes struct {
-		subnet []netip.Prefix
+		subnet []netipx.IPRange
 		isExit bool
 	}
 
 	routeInfo := make(map[types.NodeID]nodeRoutes, nodes.Len())
 	for _, n := range nodes.All() {
-		routeInfo[n.ID()] = nodeRoutes{subnet: n.SubnetRoutes(), isExit: n.IsExitNode()}
+		routeInfo[n.ID()] = nodeRoutes{
+			subnet: types.RouteRanges(n.SubnetRoutes()), isExit: n.IsExitNode(),
+		}
 	}
 
 	ret := make(map[types.NodeID][]types.NodeID, nodes.Len())
