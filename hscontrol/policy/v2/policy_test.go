@@ -94,44 +94,6 @@ func TestPolicyManager(t *testing.T) {
 	}
 }
 
-// TestSetPolicyRejectedKeepsLiveFilter pins that a policy SetPolicy rejects
-// does not take effect. A nodeAttrs target naming an ambiguous user passes
-// validation but fails to compile after the filter is already compiled; keeping that
-// filter would run the rejected policy while the stored one is unchanged.
-func TestSetPolicyRejectedKeepsLiveFilter(t *testing.T) {
-	// IDs are assigned after construction so the test also builds where
-	// types.User embeds gorm.Model.
-	users := types.Users{{Name: "user1"}, {Name: "user2"}, {Name: "dup"}, {Name: "dup"}}
-	users[0].ID, users[1].ID, users[2].ID, users[3].ID = 1, 2, 3, 4
-	nodes := types.Nodes{
-		node("n1", "100.64.0.1", "fd7a:115c:a1e0::1", users[0]),
-		node("n2", "100.64.0.2", "fd7a:115c:a1e0::2", users[1]),
-	}
-	nodes[0].ID, nodes[1].ID = 1, 2
-
-	pm, err := NewPolicyManager([]byte(`{
-		"acls": [{"action": "accept", "src": ["user1@"], "dst": ["user1@:*"]}]
-	}`), users, nodes.ViewSlice())
-	require.NoError(t, err)
-
-	before, _ := pm.Filter()
-	beforeRules, err := pm.FilterForNode(nodes[1].View())
-	require.NoError(t, err)
-
-	_, err = pm.SetPolicy([]byte(`{
-		"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}],
-		"nodeAttrs": [{"target": ["dup@"], "attr": ["randomize-client-port"]}]
-	}`))
-	require.Error(t, err)
-
-	after, _ := pm.Filter()
-	require.Equal(t, before, after, "a rejected policy must not replace the live filter")
-
-	afterRules, err := pm.FilterForNode(nodes[1].View())
-	require.NoError(t, err)
-	require.Equal(t, beforeRules, afterRules)
-}
-
 func TestInvalidateAutogroupSelfCache(t *testing.T) {
 	users := types.Users{
 		{ID: 1, Name: "user1", Email: "user1@headscale.net"},
@@ -3209,6 +3171,8 @@ func TestValidateUserReferences_AllSites(t *testing.T) {
 		{ID: 2, Name: "dup"},
 		{ID: 3, Name: "dup"},
 	}
+	nodes := types.Nodes{node("alice", "100.64.0.1", "fd7a:115c:a1e0::1", users[0])}
+	nodes[0].ID = 1
 
 	tests := []struct {
 		name string
@@ -3255,6 +3219,18 @@ func TestValidateUserReferences_AllSites(t *testing.T) {
 }`,
 		},
 		{
+			name: "grants.src",
+			pol: `{
+  "grants": [{"src":["dup@"],"dst":["*"],"ip":["*"]}]
+}`,
+		},
+		{
+			name: "grants.dst",
+			pol: `{
+  "grants": [{"src":["alice@"],"dst":["dup@"],"ip":["*"]}]
+}`,
+		},
+		{
 			name: "ssh.src",
 			pol: `{
   "tagOwners": {"tag:ssh": ["alice@"]},
@@ -3281,9 +3257,25 @@ func TestValidateUserReferences_AllSites(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewPolicyManager([]byte(tt.pol), users, types.Nodes{}.ViewSlice())
+			pol, err := unmarshalPolicy([]byte(tt.pol))
+			require.NoError(t, err)
+
+			err = validateUserReferences(pol, users)
 			require.Error(t, err, "site %q must surface duplicate-user errors", tt.name)
 			require.ErrorIs(t, err, ErrMultipleUsersFound)
+
+			pm, err := NewPolicyManager([]byte(`{
+  "acls": [{"action":"accept","src":["alice@"],"dst":["alice@:*"]}]
+}`), users, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			before, _ := pm.Filter()
+
+			_, err = pm.SetPolicy([]byte(tt.pol))
+			require.ErrorIs(t, err, ErrMultipleUsersFound)
+
+			after, _ := pm.Filter()
+			require.Equal(t, before, after, "a rejected policy must not replace the live filter")
 		})
 	}
 }

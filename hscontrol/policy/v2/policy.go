@@ -207,6 +207,22 @@ func validateUserReferences(pol *Policy, users types.Users) error {
 		}
 	}
 
+	for _, grant := range pol.Grants {
+		for _, src := range grant.Sources {
+			checkAlias(src)
+		}
+
+		for _, dst := range grant.Destinations {
+			checkAlias(dst)
+		}
+	}
+
+	for _, attr := range pol.NodeAttrs {
+		for _, target := range attr.Targets {
+			checkAlias(target)
+		}
+	}
+
 	for _, ssh := range pol.SSHs {
 		for _, src := range ssh.Sources {
 			checkAlias(src)
