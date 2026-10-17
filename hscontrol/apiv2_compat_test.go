@@ -80,9 +80,6 @@ var apiv2CompatSkipReasons = map[string]string{
 	"oauth/K2/0/outcome": unknownKeyType,
 	"oauth/K5/0/status":  unknownKeyType,
 
-	"oauth/J3/1/detail": refusalDetail,
-	"oauth/J4/0/detail": refusalDetail,
-
 	"oauth/E4/0/status": tagRefusalStatus,
 	"oauth/E5/0/status": tagRefusalStatus,
 	"oauth/T2/1/status": tagRefusalStatus,
@@ -180,10 +177,6 @@ var apiv2CompatSkipReasons = map[string]string{
 	"policy-api/P5-R2/0/message": noV2Validate,
 	"policy-api/P5-R2/0/detail":  noV2Validate,
 
-	"policy-api/P3/1/detail":    refusalDetail,
-	"policy-api/P5-R1/1/detail": refusalDetail,
-	"policy-api/P5-R2/1/detail": refusalDetail,
-
 	"policy-api/P7/0/body": hujsonFormatted,
 	"policy-api/P7/1/body": hujsonFormatted,
 }
@@ -239,7 +232,6 @@ const (
 	deviceOAuthClientID         = "DEVICE_OAUTH_CLIENT_ID: SaaS device bodies carry oauthClientId, naming the join key or the OAuth client that made it; headscale's have no such field"
 	taggedDeviceUser            = "TAGGED_DEVICE_USER: SaaS shows a tagged device's user as the login that made its key, empty for a key a token made; headscale shows tagged-devices"
 	emptyRouteListsOmitted      = "EMPTY_ROUTE_LISTS_OMITTED: SaaS sends advertisedRoutes and enabledRoutes as [] for a device without routes under fields=all; headscale leaves both out"
-	refusalDetail               = "REFUSAL_DETAIL: SaaS puts a refused policy's reason in message, with one detail per failing test naming the user; headscale answers setting policy with the reason as one detail without a user"
 	noV2Validate                = "NO_V2_VALIDATE: headscale's v2 API has no /acl/validate"
 	hujsonFormatted             = "HUJSON_FORMATTED: SaaS stores a HuJSON policy formatted, comments kept; headscale stores the bytes as sent"
 )
