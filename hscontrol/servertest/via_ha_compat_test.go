@@ -337,6 +337,8 @@ func compareCaptureNetmap(
 			len(want.PacketFilterRules), gotLen,
 		)
 	}
+
+	compareUserProfiles(t, nm, want.Netmap, clients)
 }
 
 type capturePeerSummary struct {
