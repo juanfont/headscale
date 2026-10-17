@@ -715,10 +715,55 @@ func validateServerConfig() error {
 	return v.Err()
 }
 
+var boolConfigKeys = []string{
+	"auto_update.enabled",
+	"cli.insecure",
+	"database.debug",
+	"database.gorm.parameterized_queries",
+	"database.gorm.skip_err_record_not_found",
+	"database.sqlite.write_ahead_log",
+	"derp.auto_update_enabled",
+	"derp.server.automatically_add_embedded_derp_region",
+	"derp.server.enabled",
+	"derp.server.verify_clients",
+	"disable_check_updates",
+	"dns.certificates.enabled",
+	"dns.magic_dns",
+	"dns.override_local_dns",
+	"logtail.enabled",
+	"oidc.email_verified_required",
+	"oidc.only_start_if_oidc_is_available",
+	"oidc.pkce.enabled",
+	"oidc.use_expiry_from_token",
+	"taildrop.enabled",
+}
+
+// Validate raw values before GetBool can discard conversion errors.
+func validateBoolConfig(v *configValidator, keys ...string) {
+	for _, key := range keys {
+		value := viper.Get(key)
+		if value == nil {
+			continue
+		}
+
+		_, err := strconv.ParseBool(fmt.Sprint(value))
+		if err != nil {
+			v.Add(&ConfigError{
+				Reason:  key + " is not a boolean",
+				Current: []KV{{key, value}},
+				Hint:    "use true or false",
+				Cause:   err,
+			})
+		}
+	}
+}
+
 // validateServerConfigInto runs every viper-level validation rule
 // against the provided validator. Caller owns the validator and is
 // responsible for inspecting v.Err() once all sub-builders have run.
 func validateServerConfigInto(v *configValidator) {
+	validateBoolConfig(v, boolConfigKeys...)
+
 	depr := deprecator{seen: make(set.Set[string])}
 
 	// Register aliases for backward compatibility
@@ -1468,6 +1513,14 @@ func trustedProxies() ([]netip.Prefix, error) {
 // LoadCLIConfig returns the needed configuration for the CLI client
 // of Headscale to connect to a Headscale server.
 func LoadCLIConfig() (*Config, error) {
+	v := &configValidator{}
+	validateBoolConfig(v, "cli.insecure", "disable_check_updates")
+
+	err := v.Err()
+	if err != nil {
+		return nil, err
+	}
+
 	logConfig := logConfig()
 	zerolog.SetGlobalLevel(logConfig.Level)
 
