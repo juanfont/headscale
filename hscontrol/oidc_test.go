@@ -1028,3 +1028,114 @@ func TestRegisterConfirmShowsExistingNode(t *testing.T) {
 		assert.Equal(t, tt.nodeCount, b.app.state.ListNodes().Len(), tt.name)
 	}
 }
+
+func TestRegisterConfirmShowsRequestedTags(t *testing.T) {
+	const ownerName = "tag-owner"
+
+	b := newOIDCBrowser(t)
+	_, err := b.app.state.SetPolicy([]byte(`{
+		"tagOwners": {"tag:prod": ["tag-owner@"]},
+		"acls": [{"action":"accept", "src":["*"], "dst":["*:*"]}]
+	}`))
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine().Public()
+	authID := types.MustAuthID()
+	b.app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+		MachineKey: machineKey,
+		NodeKey:    key.NewNode().Public(),
+		Hostname:   "tagged-laptop",
+		Hostinfo:   &tailcfg.Hostinfo{RequestTags: []string{"tag:prod"}},
+	}))
+	b.idp.QueueUser(&mockoidc.MockUser{Subject: ownerName, PreferredUsername: ownerName})
+
+	status, landed, body := b.get(t, b.publicURL+"/register/"+authID.String())
+	require.Equal(t, http.StatusOK, status)
+
+	registered := regexp.MustCompile(`>Registered to</td><td[^>]*>([^<]*)</td>`).FindStringSubmatch(body)
+	require.Len(t, registered, 2)
+	assert.Equal(t, "tag:prod", registered[1])
+
+	approved := regexp.MustCompile(`>Approved by</td><td[^>]*>([^<]*)</td>`).FindStringSubmatch(body)
+	if assert.Len(t, approved, 2) {
+		assert.Equal(t, ownerName, approved[1])
+	}
+
+	csrf := csrfInputRe.FindStringSubmatch(body)
+	require.Len(t, csrf, 2)
+
+	//nolint:noctx,bodyclose // test response closed below
+	confirmed, err := b.client.PostForm(landed.String(), url.Values{
+		registerConfirmCSRFCookie: {csrf[1]},
+	})
+	require.NoError(t, err)
+
+	confirmedBody, err := io.ReadAll(confirmed.Body)
+	confirmed.Body.Close()
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, confirmed.StatusCode)
+
+	success := regexp.MustCompile(`Registered as <strong>([^<]*)</strong>`).FindSubmatch(confirmedBody)
+	require.Len(t, success, 2)
+	assert.Equal(t, "tag:prod", string(success[1]))
+
+	nodes := b.app.state.ListNodes()
+	require.Equal(t, 1, nodes.Len())
+	require.True(t, nodes.At(0).IsTagged())
+	require.Equal(t, []string{"tag:prod"}, nodes.At(0).Tags().AsSlice())
+
+	reloginID := types.MustAuthID()
+	b.app.state.SetAuthCacheEntry(reloginID, types.NewRegisterAuthRequest(&types.RegistrationData{
+		MachineKey: machineKey,
+		NodeKey:    key.NewNode().Public(),
+		Hostname:   "different-client-name",
+	}))
+	b.idp.QueueUser(&mockoidc.MockUser{Subject: ownerName, PreferredUsername: ownerName})
+	status, _, body = b.get(t, b.publicURL+"/register/"+reloginID.String())
+	require.Equal(t, http.StatusOK, status)
+
+	existing := regexp.MustCompile(`>Existing node</td><td[^>]*>([^<]*)</td>`).FindStringSubmatch(body)
+	require.Len(t, existing, 2)
+	require.Equal(t, "tagged-laptop", existing[1])
+	require.True(t, b.app.state.ListNodes().At(0).IsTagged(), "viewing confirmation must not change ownership")
+}
+
+func TestRegisterConfirmEscapesAndRejectsUnownedTags(t *testing.T) {
+	for _, tt := range []struct {
+		tag     string
+		display string
+	}{
+		{tag: "tag:unowned", display: "tag:unowned"},
+		{tag: "tag:<em>prod</em>", display: "tag:&lt;em&gt;prod&lt;/em&gt;"},
+	} {
+		t.Run(tt.tag, func(t *testing.T) {
+			b := newOIDCBrowser(t)
+			authID := types.MustAuthID()
+			b.app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+				MachineKey: key.NewMachine().Public(),
+				NodeKey:    key.NewNode().Public(),
+				Hostname:   "unowned-tag-node",
+				Hostinfo:   &tailcfg.Hostinfo{RequestTags: []string{tt.tag}},
+			}))
+
+			status, landed, body := b.get(t, b.publicURL+"/register/"+authID.String())
+			require.Equal(t, http.StatusOK, status)
+
+			row := regexp.MustCompile(`>Registered to</td><td[^>]*>(.*?)</td>`).FindStringSubmatch(body)
+			require.Len(t, row, 2)
+			assert.Equal(t, tt.display, row[1])
+
+			csrf := csrfInputRe.FindStringSubmatch(body)
+			require.Len(t, csrf, 2)
+
+			//nolint:noctx,bodyclose // test response closed below
+			confirmed, err := b.client.PostForm(landed.String(), url.Values{
+				registerConfirmCSRFCookie: {csrf[1]},
+			})
+			require.NoError(t, err)
+			confirmed.Body.Close()
+			require.NotEqual(t, http.StatusOK, confirmed.StatusCode)
+			require.Zero(t, b.app.state.ListNodes().Len())
+		})
+	}
+}
