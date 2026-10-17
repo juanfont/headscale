@@ -26,10 +26,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/require"
-	"tailscale.com/tailcfg"
 )
 
 // knownPolicyTesterDivergences lists scenarios where headscale's evaluator
@@ -37,66 +35,6 @@ import (
 // Each entry is a real bug to fix in a follow-up; documenting them here
 // keeps the compat suite green and the divergence list visible.
 var knownPolicyTesterDivergences = map[string]string{} //nolint:gosec // strings here are human-readable notes, not credentials
-
-// policyTesterCompatUsers / policyTesterCompatNodes mirror the small
-// shared topology used to record the captures. When more captures land
-// we'll also exercise an autogroup-heavy second topology — for now this
-// minimal one is enough to make the runner go.
-func policyTesterCompatUsers() types.Users {
-	return types.Users{
-		{ID: 1, Name: "odin", Email: "odin@example.com"},
-		{ID: 2, Name: "thor", Email: "thor@example.org"},
-		{ID: 3, Name: "freya", Email: "freya@example.com"},
-	}
-}
-
-func policyTesterCompatNodes(users types.Users) types.Nodes {
-	return types.Nodes{
-		{
-			ID:        1,
-			GivenName: "bulbasaur",
-			User:      &users[0],
-			UserID:    &users[0].ID,
-			IPv4:      ptrAddr("100.90.199.68"),
-			IPv6:      ptrAddr("fd7a:115c:a1e0::2d01:c747"),
-			Hostinfo:  &tailcfg.Hostinfo{},
-		},
-		{
-			ID:        2,
-			GivenName: "ivysaur",
-			User:      &users[1],
-			UserID:    &users[1].ID,
-			IPv4:      ptrAddr("100.110.121.96"),
-			IPv6:      ptrAddr("fd7a:115c:a1e0::1737:7960"),
-			Hostinfo:  &tailcfg.Hostinfo{},
-		},
-		{
-			ID:        3,
-			GivenName: "venusaur",
-			User:      &users[2],
-			UserID:    &users[2].ID,
-			IPv4:      ptrAddr("100.103.90.82"),
-			IPv6:      ptrAddr("fd7a:115c:a1e0::9e37:5a52"),
-			Hostinfo:  &tailcfg.Hostinfo{},
-		},
-		{
-			ID:        4,
-			GivenName: "beedrill",
-			IPv4:      ptrAddr("100.108.74.26"),
-			IPv6:      ptrAddr("fd7a:115c:a1e0::b901:4a87"),
-			Tags:      []string{"tag:server"},
-			Hostinfo:  &tailcfg.Hostinfo{},
-		},
-		{
-			ID:        5,
-			GivenName: "kakuna",
-			IPv4:      ptrAddr("100.103.8.15"),
-			IPv6:      ptrAddr("fd7a:115c:a1e0::5b37:80f"),
-			Tags:      []string{"tag:client"},
-			Hostinfo:  &tailcfg.Hostinfo{},
-		},
-	}
-}
 
 // TestPolicyTesterCompat replays every capture under
 // testdata/policytest_results/ against the engine. With no captures the
@@ -112,8 +50,7 @@ func TestPolicyTesterCompat(t *testing.T) {
 		t.Skip("no policytest captures yet")
 	}
 
-	users := policyTesterCompatUsers()
-	nodes := policyTesterCompatNodes(users)
+	users := setupSSHDataCompatUsers()
 
 	for _, file := range files {
 		c, err := testcapture.Read(file)
@@ -125,6 +62,10 @@ func TestPolicyTesterCompat(t *testing.T) {
 			if reason, skip := knownPolicyTesterDivergences[c.TestID]; skip {
 				t.Skip(reason)
 			}
+
+			// Each capture pins its own topology IPs; range and
+			// address tests mean nothing against other nodes.
+			nodes := buildGrantsNodesFromCapture(users, c)
 
 			policyJSON := []byte(c.Input.FullPolicy)
 
