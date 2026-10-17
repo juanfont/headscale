@@ -4690,3 +4690,86 @@ func TestPendingRegistrationKeepsNoRoutes(t *testing.T) {
 	assert.Equal(t, want, entry.RegistrationData().Hostinfo)
 	assert.Len(t, hostinfo.RoutableIPs, 1, "the request itself must be left alone")
 }
+
+// TestFollowupParksOneRequestPerRegistration pins that a pending registration
+// keeps one waiting follow-up, the newest. The session hands out one verdict,
+// so older waiters are answered at once instead of staying parked until the
+// session ends and then each opening a new one.
+func TestFollowupParksOneRequestPerRegistration(t *testing.T) {
+	app := createTestApp(t)
+
+	machineKey := key.NewMachine().Public()
+	authID := types.MustAuthID()
+	reg := types.NewRegisterAuthRequest(&types.RegistrationData{
+		MachineKey: machineKey,
+		Hostname:   "followup-park-node",
+	})
+	app.state.SetAuthCacheEntry(authID, reg)
+
+	req := tailcfg.RegisterRequest{
+		NodeKey:  key.NewNode().Public(),
+		Followup: fmt.Sprintf("http://localhost:8080/register/%s", authID),
+	}
+
+	const followups = 50
+
+	type answer struct {
+		resp *tailcfg.RegisterResponse
+		err  error
+	}
+
+	answered := make(chan answer, followups)
+
+	for range followups {
+		go func() {
+			resp, err := app.waitForFollowup(t.Context(), req, machineKey)
+			answered <- answer{resp, err}
+		}()
+	}
+
+	next := func(msg string) answer {
+		t.Helper()
+
+		select {
+		case a := <-answered:
+			return a
+		case <-time.After(5 * time.Second):
+			require.FailNow(t, msg)
+
+			return answer{}
+		}
+	}
+
+	for range followups - 1 {
+		var httpErr HTTPError
+		require.ErrorAs(t,
+			next("more than one follow-up is parked on the registration").err,
+			&httpErr)
+		assert.Equal(t, http.StatusConflict, httpErr.Code)
+	}
+
+	select {
+	case a := <-answered:
+		require.FailNowf(t, "the newest follow-up must still be waiting", "got %+v", a)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	cacheLen := func() int {
+		n, _ := app.state.DebugRegistrationCache()["current_len"].(int)
+
+		return n
+	}
+	before := cacheLen()
+
+	user := app.state.CreateUserForTest("followup-park-user")
+	node := app.state.CreateNodeForTest(user, "followup-park-node")
+	node.MachineKey = machineKey
+	node.User = user
+	reg.FinishAuth(types.AuthVerdict{Node: node.View()})
+
+	last := next("the parked follow-up did not collect the verdict")
+	require.NoError(t, last.err)
+	assert.True(t, last.resp.MachineAuthorized)
+	assert.LessOrEqual(t, cacheLen(), before+1,
+		"the verdict must not open a session per waiter")
+}
