@@ -16,10 +16,12 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/servertest"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -67,6 +69,9 @@ var viaCompatTests = []struct {
 	{"via-grant-v60", "user-owned exit node outside the via tag; members have an autogroup:self rule"},
 	{"via-grant-v61", "via exit steering plus a member capability grant to a tagged host"},
 	{"via-grant-v62", "via exit steering plus a member rule to autogroup:internet on one port"},
+	{"via-grant-v63", "repeated and nested via destinations, and a second via grant on one port"},
+	{"via-grant-v66", "a user source steers a subnet via tag:router"},
+	{"via-grant-v67", "an empty group as the only via source"},
 }
 
 // routesMapCompatTests lists routes captures replayed through the mapper.
@@ -93,6 +98,11 @@ var routesMapCompatTests = []struct {
 // same way. A listed check that matches fails, so a fix must delete its entry.
 var viaCompatSkipReasons = map[string]string{
 	"tagged-self": "TAGGED_SELF_PROFILE: SaaS gives a tagged node a profile of its own, headscale the shared tagged-devices one",
+
+	// TestViaGrantSourceLossCompat, keyed <test_id>/rename/<node>/netmap.
+	"via-grant-v67/rename/squirtle/netmap":  viaSourceLossNotSent,
+	"via-grant-v67/rename/blastoise/netmap": viaSourceLossNotSent,
+	"via-grant-v67/rename/ivysaur/netmap":   viaSourceLossNotSent,
 
 	// Adjacent member addresses merge into one prefix, and the reduced
 	// filter keeps all of it; SaaS lists only the node's own address.
@@ -213,7 +223,17 @@ var viaCompatSkipReasons = map[string]string{
 	"via-grant-v50/fearow/self-routes":    selfRoutesReduced,
 	"via-grant-v50/spearow/self-routes":   selfRoutesReduced,
 	"via-grant-v50/squirtle/self-routes":  selfRoutesReduced,
+	"via-grant-v63/blastoise/self-routes": selfRoutesReduced,
+	"via-grant-v63/fearow/self-routes":    selfRoutesReduced,
+	"via-grant-v63/spearow/self-routes":   selfRoutesReduced,
+	"via-grant-v63/squirtle/self-routes":  selfRoutesReduced,
+	"via-grant-v66/blastoise/self-routes": selfRoutesReduced,
+	"via-grant-v66/squirtle/self-routes":  selfRoutesReduced,
+	"via-grant-v67/blastoise/self-routes": selfRoutesReduced,
+	"via-grant-v67/squirtle/self-routes":  selfRoutesReduced,
 }
+
+const viaSourceLossNotSent = "VIA_SOURCE_LOSS_NOT_SENT: a user change that leaves a via grant without sources does not reach open streams"
 
 const selfRoutesReduced = "SELF_ROUTES_REDUCED: headscale sends a router only the primary routes its policy lets it reach"
 
@@ -284,7 +304,103 @@ func TestViaGrantMapCompat(t *testing.T) {
 	}
 }
 
+// TestViaGrantSourceLossCompat renames the only user a via grant names, so
+// the grant's source resolves to nothing, and checks that the open streams
+// of the routers and the user's node reach what SaaS sends for the same
+// grant with an empty source, without reconnecting.
+//
+// Test data source: ../policy/v2/testdata/grant_results/via-grant-v66.hujson
+// and via-grant-v67.hujson, shared with TestGrantsCompat and
+// TestViaGrantMapCompat.
+func TestViaGrantSourceLossCompat(t *testing.T) {
+	t.Parallel()
+
+	read := func(id string) *testcapture.Capture {
+		c, err := testcapture.Read(filepath.Join(
+			"..", "policy", "v2", "testdata", "grant_results", id+".hujson",
+		))
+		require.NoError(t, err, "failed to read %s", id)
+
+		return c
+	}
+
+	before, after := read("via-grant-v66"), read("via-grant-v67")
+
+	srv, clients := startViaMapCompat(t, before)
+	compareViaMapCompat(t, before, clients)
+
+	user, err := srv.State().GetUserByName("thor")
+	require.NoError(t, err)
+
+	_, userChange, err := srv.State().RenameUser(types.UserID(user.ID), "thor-renamed")
+	require.NoError(t, err)
+	srv.App.Change(userChange)
+
+	saasAddrs := saasAddrsByNode(after, clients)
+
+	for _, name := range []string{"squirtle", "blastoise", "ivysaur"} {
+		t.Run("rename/"+name, func(t *testing.T) {
+			t.Parallel()
+
+			key := after.TestID + "/rename/" + name + "/netmap"
+			want := after.Captures[name]
+
+			// Profiles are left out: the rename changes the user's login
+			// by construction.
+			check := func(tt require.TestingT) {
+				nm := clients[name].Netmap()
+				require.NotNil(tt, nm, "netmap is nil")
+
+				comparePeers(tt, nm, want, clients)
+				comparePacketFilter(tt, nm, want, clients, saasAddrs, key+"/packet-filter")
+			}
+
+			reason, listed := viaCompatSkipReasons[key]
+			if !listed {
+				requireNetmapHolds(t, check)
+
+				return
+			}
+
+			// Long enough for a change in flight to arrive.
+			assert.Never(t, func() bool { return passesOnce(check) }, 5*time.Second, 100*time.Millisecond,
+				"netmap matches SaaS; delete viaCompatSkipReasons[%q]", key)
+			t.Skip(reason)
+		})
+	}
+}
+
+// passesOnce runs check once and reports whether it passed. It runs in its
+// own goroutine because a failing require stops the goroutine it runs in.
+func passesOnce(check func(require.TestingT)) bool {
+	rec := &failRecorder{CollectT: new(assert.CollectT)}
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		check(rec)
+	}()
+
+	<-done
+
+	return !rec.failed
+}
+
 func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
+	t.Helper()
+
+	_, clients := startViaMapCompat(t, c)
+	compareViaMapCompat(t, c, clients)
+}
+
+// startViaMapCompat starts a server holding the capture's policy and a
+// client per captured node, with the capture's routes, and waits for every
+// client's first netmap.
+func startViaMapCompat(
+	t *testing.T,
+	c *testcapture.Capture,
+) (*servertest.TestServer, map[string]*servertest.TestClient) {
 	t.Helper()
 
 	srv := servertest.NewServer(t)
@@ -423,54 +539,73 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 			})
 	}
 
+	return srv, clients
+}
+
+// compareViaMapCompat compares every viewer's netmap and own routes with
+// the capture.
+func compareViaMapCompat(
+	t *testing.T,
+	c *testcapture.Capture,
+	clients map[string]*servertest.TestClient,
+) {
+	t.Helper()
+
 	saasAddrs := saasAddrsByNode(c, clients)
 
 	// Compare each viewer's [tailcfg.MapResponse] against the golden [netmap.NetworkMap].
 	// Route approvals reach clients asynchronously, so the peer-count wait
 	// above says nothing about routes, primaries or filters: retry the
-	// whole comparison until the viewer's netmap has caught up.
+	// whole comparison until the viewer's netmap has caught up. Each viewer
+	// reads only its own netmap, so the holds run at once.
+	var wg sync.WaitGroup
+
 	for viewerName, cl := range clients {
 		capture := c.Captures[viewerName]
 		if capture.Netmap == nil {
 			continue
 		}
 
-		t.Run(viewerName, func(t *testing.T) {
-			requireNetmapHolds(t, func(tt require.TestingT) {
-				nm := cl.Netmap()
-				require.NotNil(tt, nm, "netmap is nil")
-
-				// Routes were approved on live sessions: verify that approval
-				// reached SelfNode throughout the stable comparison window.
-				require.Equal(tt, selfOffersExit(capture.Netmap), selfOffersExit(nm),
-					"SelfNode exit routes should match SaaS")
-
-				compareNetmap(tt, nm, capture, clients, saasAddrs, c.TestID+"/"+viewerName)
-			})
-
-			t.Run("self-routes", func(t *testing.T) {
-				key := c.TestID + "/" + viewerName + "/self-routes"
-				reason, listed := viaCompatSkipReasons[key]
-
+		wg.Go(func() {
+			t.Run(viewerName, func(t *testing.T) {
 				requireNetmapHolds(t, func(tt require.TestingT) {
-					want, got := selfRoutes(capture.Netmap), selfRoutes(cl.Netmap())
-					if !listed {
-						assert.Equal(tt, want, got, "own routes in AllowedIPs and PrimaryRoutes")
+					nm := cl.Netmap()
+					require.NotNil(tt, nm, "netmap is nil")
 
-						return
-					}
+					// Routes were approved on live sessions: verify that approval
+					// reached SelfNode throughout the stable comparison window.
+					require.Equal(tt, selfOffersExit(capture.Netmap), selfOffersExit(nm),
+						"SelfNode exit routes should match SaaS")
 
-					if got == want {
-						tt.Errorf("own routes match SaaS; delete viaCompatSkipReasons[%q]", key)
-					}
+					compareNetmap(tt, nm, capture, clients, saasAddrs, c.TestID+"/"+viewerName)
 				})
 
-				if listed {
-					t.Skip(reason)
-				}
+				t.Run("self-routes", func(t *testing.T) {
+					key := c.TestID + "/" + viewerName + "/self-routes"
+					reason, listed := viaCompatSkipReasons[key]
+
+					requireNetmapHolds(t, func(tt require.TestingT) {
+						want, got := selfRoutes(capture.Netmap), selfRoutes(cl.Netmap())
+						if !listed {
+							assert.Equal(tt, want, got, "own routes in AllowedIPs and PrimaryRoutes")
+
+							return
+						}
+
+						if got == want {
+							tt.Errorf("own routes match SaaS; delete viaCompatSkipReasons[%q]", key)
+						}
+					})
+
+					if listed {
+						t.Skip(reason)
+					}
+				})
 			})
 		})
 	}
+
+	wg.Wait()
 }
 
 // selfRoutes is the node's AllowedIPs minus its own addresses, and its
@@ -569,12 +704,9 @@ func (r *failRecorder) FailNow() {
 }
 
 // compareNetmap compares the headscale [tailcfg.MapResponse] against the
-// captured [netmap.NetworkMap] data in an IP-independent way. It validates:
-//   - Peer visibility (which peers are present, by hostname)
-//   - Route prefixes in AllowedIPs (non-Tailscale-IP entries like 10.44.0.0/16)
-//   - Number of Tailscale IPs per peer (should be 2: one v4 + one v6)
-//   - PrimaryRoutes per peer
-//   - PacketFilter (source, destination, ports) triples
+// captured [netmap.NetworkMap] data in an IP-independent way: the peers (see
+// [comparePeers]), the PacketFilter (source, destination, ports) triples and
+// the user profiles.
 //
 // key is <test_id>/<node>, the prefix of the viewer's viaCompatSkipReasons
 // entries. It takes [require.TestingT] so it can run inside
@@ -586,6 +718,26 @@ func compareNetmap(
 	clients map[string]*servertest.TestClient,
 	saasAddrs map[netip.Addr]string,
 	key string,
+) {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
+
+	comparePeers(t, got, want, clients)
+	comparePacketFilter(t, got, want, clients, saasAddrs, key+"/packet-filter")
+	compareUserProfiles(t, got, want.Netmap, clients)
+}
+
+// comparePeers validates, for the peers in clients:
+//   - Peer visibility (which peers are present, by hostname)
+//   - Route prefixes in AllowedIPs (non-Tailscale-IP entries like 10.44.0.0/16)
+//   - Number of Tailscale IPs per peer (should be 2: one v4 + one v6)
+//   - PrimaryRoutes per peer
+func comparePeers(
+	t require.TestingT,
+	got *netmap.NetworkMap,
+	want testcapture.Node,
+	clients map[string]*servertest.TestClient,
 ) {
 	if h, ok := t.(interface{ Helper() }); ok {
 		h.Helper()
@@ -718,9 +870,6 @@ func compareNetmap(
 			t.Errorf("peer %s: visible in headscale but NOT in Tailscale SaaS", name)
 		}
 	}
-
-	comparePacketFilter(t, got, want, clients, saasAddrs, key+"/packet-filter")
-	compareUserProfiles(t, got, want.Netmap, clients)
 }
 
 // compareUserProfiles compares the profile the viewer holds for itself and
