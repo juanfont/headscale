@@ -277,6 +277,12 @@ func NewState(cfg *types.Config) (*State, error) {
 	// This ensures we don't have stale online status from previous runs
 	for _, node := range nodes {
 		node.IsOnline = new(false)
+
+		// PostgreSQL returns the server's zone, where the latest accepted
+		// expiry is in the year 10000 and cannot be encoded.
+		if node.Expiry != nil {
+			node.Expiry = new(node.Expiry.UTC())
+		}
 	}
 
 	users, err := db.ListUsers(nil)
@@ -1008,6 +1014,15 @@ func (s *State) setNodeExpiry(
 	expiry *time.Time,
 	allow func(*types.Node) bool,
 ) (types.NodeView, change.Change, error) {
+	if expiry != nil {
+		utc, err := types.ValidateExpiry(*expiry)
+		if err != nil {
+			return types.NodeView{}, change.Change{}, err
+		}
+
+		expiry = &utc
+	}
+
 	var onlineChanged, expired, refused bool
 
 	genBefore := s.polMan.NodesGeneration()
@@ -2679,6 +2694,16 @@ func (s *State) HandleNodeFromAuthPath(
 	expiry *time.Time,
 	registrationMethod string,
 ) (types.NodeView, change.Change, error) {
+	// An OIDC token's expiry arrives here without passing handleRegister.
+	if expiry != nil {
+		utc, err := types.ValidateExpiry(*expiry)
+		if err != nil {
+			return types.NodeView{}, change.Change{}, err
+		}
+
+		expiry = &utc
+	}
+
 	// Read before any NodeStore write below; see updatePolicyManagerNodes.
 	genBefore := s.polMan.NodesGeneration()
 

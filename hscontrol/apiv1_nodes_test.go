@@ -201,6 +201,15 @@ func TestAPIV1NodeExpire(t *testing.T) {
 		assert.NotNil(t, got.Node["expiry"])
 	})
 
+	t.Run("huma refuses an unencodable expiry", func(t *testing.T) {
+		h := newAPIV1Harness(t)
+		seedNodes(newNodeSeed("alice", "node-a"))(t, h.app)
+
+		res := h.callHuma(http.MethodPost, "/api/v1/node/1/expire",
+			[]byte(`{"expiry":"9999-12-31T23:59:59-23:59"}`))
+		assertStatus(t, res, http.StatusBadRequest)
+	})
+
 	t.Run("not found parity", func(t *testing.T) {
 		h := newAPIV1Harness(t)
 		res := h.assertParity(t, http.MethodPost, "/api/v1/node/99999/expire", nil)

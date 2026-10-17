@@ -6,6 +6,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/state"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"gorm.io/gorm"
 )
 
@@ -33,6 +34,7 @@ func mapError(msg string, err error) error {
 		errors.Is(err, state.ErrNodeMarkedTaggedButHasNoTags),
 		errors.Is(err, state.ErrNodeHasNeitherUserNorTags),
 		errors.Is(err, state.ErrRequestedTagsInvalidOrNotPermitted),
+		errors.Is(err, types.ErrExpiryOutOfRange),
 		errors.Is(err, db.ErrUserStillHasNodes),
 		errors.Is(err, db.ErrCannotChangeOIDCUser),
 		errors.Is(err, db.ErrPreAuthKeyNotTaggedOrOwned),
