@@ -2580,7 +2580,18 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 	}
 
 	// Add to [NodeStore] after database creates the ID
-	return s.nodeStore.PutNode(*savedNode), nil
+	node := s.nodeStore.PutNode(*savedNode)
+	if node.Valid() && node.GivenName() != savedNode.GivenName {
+		fresh, err := s.persistNode(node)
+		if err != nil {
+			// The node is already committed; callers still need to schedule cleanup.
+			return node, err
+		}
+
+		return fresh, nil
+	}
+
+	return node, nil
 }
 
 // validateRequestTags validates that the requested tags are permitted for the node.
@@ -3280,7 +3291,12 @@ func (s *State) HandleNodeFromPreAuthKey(
 			ExistingNodeForNetinfo: differentUserNode,
 		})
 		if err != nil {
-			return types.NodeView{}, s.policyChangeSince(genBefore), fmt.Errorf("creating new node: %w", err)
+			c := s.policyChangeSince(genBefore)
+			if finalNode.Valid() {
+				c = nodeWriteFailed(finalNode.ID(), c)
+			}
+
+			return finalNode, c, fmt.Errorf("creating new node: %w", err)
 		}
 	}
 
