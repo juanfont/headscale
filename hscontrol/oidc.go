@@ -339,7 +339,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
-	user, _, err := a.createOrUpdateUserFromClaim(&claims)
+	user, userChange, err := a.createOrUpdateUserFromClaim(&claims)
 	if err != nil {
 		httpUserError(writer, NewHTTPError(
 			http.StatusInternalServerError,
@@ -349,6 +349,8 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 
 		return
 	}
+
+	a.h.Change(userChange)
 
 	// TODO(kradalby): Is this comment right?
 	// If the node exists, then the node should be reauthenticated,
