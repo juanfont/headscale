@@ -425,7 +425,7 @@ func (ns *noiseServer) SSHActionHandler(
 	reqLog := log.With().
 		Uint64("src_node_id", srcNodeID.Uint64()).
 		Uint64("dst_node_id", dstNodeID.Uint64()).
-		Str("local_user", req.URL.Query().Get("local_user")).
+		Str(zf.LocalUser, clipForLog(req.URL.Query().Get("local_user"))).
 		Logger()
 
 	reqLog.Trace().Caller().Msg("SSH action request")
