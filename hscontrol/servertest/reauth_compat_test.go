@@ -57,13 +57,6 @@ var reauthSkipReasons = map[string]string{
 	"reauth-user/a5-expired-valid-key/u-valid/outcome":  expiredKeyNotRotated,
 	"reauth-user/a5-expired-valid-key/u-valid/node-key": expiredKeyAccepted,
 
-	"reauth/t-spent-relogin/t-spent/expiry":         expiredTaggedRevived,
-	"reauth/t-spent-relogin/t-spent/peer-obs":       expiredTaggedRevived,
-	"reauth/t-spent-relogin-force/t-spent/expiry":   expiredTaggedRevived,
-	"reauth/t-spent-relogin-force/t-spent/peer-obs": expiredTaggedRevived,
-	"reauth/t-revoked-relogin/t-revoked/expiry":     expiredTaggedRevived,
-	"reauth/t-revoked-relogin/t-revoked/peer-obs":   expiredTaggedRevived,
-
 	"reauth-owner/u-renew-relogin/u-renew/expiry": sameKeyRenewsExpiry,
 	"reauth-user/a1-spent-key/u-spent/expiry":     sameKeyRenewsExpiry,
 	"reauth-user/a2-valid-key/u-valid/expiry":     sameKeyRenewsExpiry,
@@ -150,7 +143,6 @@ const (
 
 const (
 	expiredKeyNotRotated      = "EXPIRED_KEY_NOT_ROTATED: headscale answers an expired node's key login without asking for a new node key; SaaS answers NodeKeyExpired first, so the client rotates it"
-	expiredTaggedRevived      = "EXPIRED_TAGGED_REVIVED: headscale lets an expired tagged node log in again with its spent or revoked key and lifts its expiry; SaaS refuses the key and the node stays expired"
 	sameKeyRenewsExpiry       = "SAME_KEY_LOGIN_RENEWS_EXPIRY: headscale renews a user node's expiry on a key login that keeps its node key; SaaS renews it only with a new node key"
 	otherUserKeyReauthsTagged = "OTHER_USER_KEY_REAUTHS_TAGGED: headscale re-registers a tagged device in place when another user's key logs in anew on its machine; SaaS keeps the tagged device and adds one for that user"
 	loginTakesTaggedDevice    = "LOGIN_TAKES_TAGGED_DEVICE: headscale's interactive login gives another user the tagged device on the machine; SaaS's key login keeps it and adds a device for that user"
