@@ -593,8 +593,9 @@ func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error
 			return nil, err
 		}
 
-		// Use Updates() to only update modified fields, preserving unchanged values.
-		err = tx.Updates(user).Error
+		// Select every column so cleared fields are written. Save would also
+		// insert the row again if a delete removed it meanwhile.
+		err = tx.Select("*").Updates(user).Error //nolint:unqueryvet // UPDATE, not a read
 		if err != nil {
 			return nil, fmt.Errorf("updating user: %w", err)
 		}
