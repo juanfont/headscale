@@ -67,7 +67,9 @@ secret for an access token, mints a single-use tagged auth key and registers wit
 it. This works anywhere the client takes an auth key: `tailscale up`, the
 container image, `tsnet` and the
 [`tailscale/github-action`](https://github.com/tailscale/github-action). One
-long-lived secret joins any number of nodes.
+long-lived secret joins any number of nodes. A client keeps its newest 1000
+access tokens and minting more ends the oldest, so give a long-lived integration
+its own client.
 
 Create an OAuth client with the `auth_keys` scope and the tags its nodes get. The
 secret is shown once:
