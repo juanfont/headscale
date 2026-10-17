@@ -339,3 +339,90 @@ func TestApproveRoutesWithPolicy_NilAndEmptyCases(t *testing.T) {
 		}
 	}
 }
+
+func TestApproveRoutesWithPolicyLargeRouteSet(t *testing.T) {
+	routes := make([]netip.Prefix, 16*1024)
+
+	ip := netip.MustParseAddr("10.0.0.0")
+	for i := range routes {
+		routes[i] = netip.PrefixFrom(ip, 32)
+		ip = ip.Next()
+	}
+
+	unannounced := netip.MustParsePrefix("192.0.2.0/24")
+	refused := netip.MustParsePrefix("203.0.113.0/24")
+
+	current := append(slices.Clone(routes[:len(routes)/2]), unannounced)
+	announced := append(slices.Clone(routes), routes[len(routes)-1], refused)
+	currentBefore := slices.Clone(current)
+	announcedBefore := slices.Clone(announced)
+	want := append(slices.Clone(routes), unannounced)
+	user := types.User{ID: 1, Name: "router"}
+	n := &types.Node{
+		ID:             1,
+		IPv4:           new(netip.MustParseAddr("100.64.0.1")),
+		UserID:         new(user.ID),
+		User:           new(user),
+		ApprovedRoutes: current,
+	}
+	pm, err := policyv2.NewPolicyManager([]byte(`{
+		"acls": [],
+		"autoApprovers": {"routes": {"10.0.0.0/8": ["router@"]}}
+	}`), []types.User{user}, types.Nodes{n}.ViewSlice())
+	require.NoError(t, err)
+
+	approved, changed := ApproveRoutesWithPolicy(pm, n.View(), current, announced)
+	require.True(t, changed)
+	require.Equal(t, want, approved)
+	require.Equal(t, currentBefore, current, "existing approvals must remain immutable")
+	require.Equal(t, announcedBefore, announced, "announcements must remain immutable")
+
+	again, changed := ApproveRoutesWithPolicy(pm, n.View(), approved, announced)
+	require.False(t, changed)
+	require.Equal(t, want, again)
+}
+
+func BenchmarkApproveRoutesWithPolicyLargeRouteSet(b *testing.B) {
+	routes := make([]netip.Prefix, 16*1024)
+
+	ip := netip.MustParseAddr("10.0.0.0")
+	for i := range routes {
+		routes[i] = netip.PrefixFrom(ip, 32)
+		ip = ip.Next()
+	}
+
+	user := types.User{ID: 1, Name: "router"}
+	n := &types.Node{
+		ID:     1,
+		IPv4:   new(netip.MustParseAddr("100.64.0.1")),
+		UserID: new(user.ID),
+		User:   new(user),
+	}
+	pm, err := policyv2.NewPolicyManager([]byte(`{
+		"acls": [],
+		"autoApprovers": {"routes": {"10.0.0.0/8": ["router@"]}}
+	}`), []types.User{user}, types.Nodes{n}.ViewSlice())
+	require.NoError(b, err)
+
+	for _, retained := range []int{0, len(routes) / 2, len(routes)} {
+		b.Run(fmt.Sprintf("retained=%d", retained), func(b *testing.B) {
+			current := routes[:retained]
+
+			var (
+				approved []netip.Prefix
+				changed  bool
+			)
+
+			b.ReportAllocs()
+
+			for b.Loop() {
+				approved, changed = ApproveRoutesWithPolicy(
+					pm, n.View(), current, routes)
+			}
+
+			if len(approved) != len(routes) || changed != (retained < len(routes)) {
+				b.Fatal("unexpected approval result")
+			}
+		})
+	}
+}
