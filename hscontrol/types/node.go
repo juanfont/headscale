@@ -1222,6 +1222,15 @@ func equalUnordered[E comparable](a, b []E, cmp func(E, E) int) bool {
 	return slices.Equal(ac, bc)
 }
 
+// Unchanged snapshots share immutable slices, so pointer equality avoids a scan.
+func sameSlice[E comparable](a, b []E) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	return len(a) == 0 || &a[0] == &b[0] || slices.Equal(a, b)
+}
+
 // HasPolicyChange reports whether the node has changes that affect
 // policy evaluation. Includes approved subnet routes because they act
 // as source identity in [Node.CanAccess] for subnet-to-subnet ACLs,
@@ -1245,6 +1254,11 @@ func (nv NodeView) HasPolicyChange(other NodeView) bool {
 
 	if !slices.Equal(nv.IPs(), other.IPs()) {
 		return true
+	}
+
+	if sameSlice(nv.AnnouncedRoutes(), other.AnnouncedRoutes()) &&
+		sameSlice(nv.ж.ApprovedRoutes, other.ж.ApprovedRoutes) {
+		return false
 	}
 
 	if !equalPrefixesUnordered(nv.SubnetRoutes(), other.SubnetRoutes()) {
