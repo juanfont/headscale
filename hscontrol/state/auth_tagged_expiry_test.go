@@ -1002,49 +1002,42 @@ func TestIssue3371_TaggedNodePastExpirySelfHealsOnReregister(t *testing.T) {
 	require.Equal(t, nodeID, healed.ID(), "must be the same node")
 }
 
-// TestIssue3371_ExpiredTaggedNodeSameSpentKeyNotRevalidated is the gating test
-// for the isExpired-gate exclusion (state.go: `&& !existingNodeSameUser.IsTagged()`).
-// A tagged node carrying a stale PAST expiry, re-registering with the SAME
-// single-use key and the SAME node key (no rotation), must take the
-// skip-validation fast path — otherwise the spent key is re-validated and
-// rejected with "authkey already used", the exact lockout #3371 fixes. Without
-// the tagged exclusion this fails; with it the node self-heals. The neighbours
-// all rotate the node key or use a reusable key, so validation runs regardless
-// and none probes this fast-path exclusion.
-func TestIssue3371_ExpiredTaggedNodeSameSpentKeyNotRevalidated(t *testing.T) {
-	s := newRetagTestState(t)
+func TestExpiredTaggedNodeRequiresValidPreAuthKey(t *testing.T) {
+	for _, reusable := range []bool{false, true} {
+		t.Run(fmt.Sprintf("reusable=%t", reusable), func(t *testing.T) {
+			s := newRetagTestState(t)
+			pak, err := s.CreatePreAuthKey(nil, reusable, false, nil, []string{"tag:foo"})
+			require.NoError(t, err)
+			c := registerForPAKRereg(t, s, pak)
+			past := time.Now().Add(-time.Hour)
+			_, _, err = s.SetNodeExpiry(c.node.ID(), &past)
+			require.NoError(t, err)
+			nsBefore, rowBefore := c.fields(t)
+			require.Equal(t, past.UnixNano(), nsBefore.Expiry)
+			require.Equal(t, nsBefore, rowBefore)
 
-	// Single-use tagged key.
-	pak, err := s.CreatePreAuthKey(nil, false, false, nil, []string{"tag:foo"})
-	require.NoError(t, err)
+			node, _, err := s.HandleNodeFromPreAuthKey(c.regReq, c.machineKey)
+			if !reusable {
+				require.ErrorIs(t, err, types.PAKError("authkey already used"))
+				nsAfter, rowAfter := c.fields(t)
+				require.Equal(t, nsBefore, nsAfter, "a spent key must leave the node expired")
+				require.Equal(t, rowBefore, rowAfter, "a spent key must leave the row expired")
 
-	machineKey := key.NewMachine()
-	nodeKey := key.NewNode()
-	regReq := tailcfg.RegisterRequest{
-		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
-		NodeKey:  nodeKey.Public(),
-		Hostinfo: &tailcfg.Hostinfo{Hostname: "spent-tagged"},
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, c.node.ID(), node.ID())
+			require.False(t, node.Expiry().Valid(), "a valid key disables tagged node expiry")
+			current, ok := s.GetNodeByID(c.node.ID())
+			require.True(t, ok)
+			require.False(t, current.Expiry().Valid())
+
+			stored, err := s.db.GetNodeByID(c.node.ID())
+			require.NoError(t, err)
+			require.Nil(t, stored.Expiry)
+		})
 	}
-	node, _, err := s.HandleNodeFromPreAuthKey(regReq, machineKey.Public())
-	require.NoError(t, err)
-	require.True(t, node.IsTagged())
-
-	// Stale past (logout) expiry, and the single-use key is now spent.
-	past := time.Now().Add(-1 * time.Hour)
-	_, ok := s.nodeStore.UpdateNode(node.ID(), func(n *types.Node) {
-		n.Expiry = &past
-	})
-	require.True(t, ok)
-
-	// Re-register with the SAME key and the SAME node key (no rotation). The
-	// tagged exclusion from the isExpired gate must let this skip validation, so
-	// the spent single-use key is not rejected.
-	healed, _, err := s.HandleNodeFromPreAuthKey(regReq, machineKey.Public())
-	require.NoError(t, err,
-		"a tagged node with a stale past expiry must skip re-validation of its spent key")
-	require.False(t, healed.IsExpired(), "stale expiry cleared")
-	require.Nil(t, healed.AsStruct().Expiry, "tagged node key-expiry disabled")
-	require.Equal(t, node.ID(), healed.ID())
 }
 
 // TestTaggedPAKReauthRetagsExistingTaggedNode reproduces issue #3370: an
@@ -1689,14 +1682,15 @@ func TestPAKSkipsValidation(t *testing.T) {
 		{"expired user node", userNode(ownerID, &past), userKey, nodeKey, true, false},
 		{"zero expiry", userNode(ownerID, &zero), userKey, nodeKey, true, true},
 		{"nil expiry", userNode(ownerID, nil), userKey, nodeKey, true, true},
-		{"expired tagged node, same key", taggedNode(&past, &keyID), taggedKey, nodeKey, true, true},
+		{"expired tagged node, same key", taggedNode(&past, &keyID), taggedKey, nodeKey, false, false},
+		{"tagged node with future expiry, same key", taggedNode(&future, &keyID), taggedKey, nodeKey, true, true},
 		{"conversion", userNode(ownerID, &future), taggedKey, nodeKey, true, false},
 		{"retag, AuthKeyID nil", taggedNode(nil, nil), taggedKey, nodeKey, true, false},
 		{"retag, other AuthKeyID", taggedNode(nil, &otherKeyID), taggedKey, nodeKey, true, false},
 		{"retag, same AuthKeyID", taggedNode(nil, &keyID), taggedKey, nodeKey, true, true},
 		{"tagged key, rotation", taggedNode(nil, &keyID), taggedKey, otherNodeKey, true, false},
 		{"user key on a tagged node", taggedNode(nil, &otherKeyID), userKey, nodeKey, true, true},
-		{"user key on an expired tagged node", taggedNode(&past, nil), userKey, nodeKey, true, true},
+		{"user key on an expired tagged node", taggedNode(&past, nil), userKey, nodeKey, false, false},
 		{"user key on another user's node", userNode(otherUserID, &future), userKey, nodeKey, false, false},
 		{"user node expiry equals now", userNode(ownerID, &now), userKey, nodeKey, false, true},
 		{"user node expired one nanosecond before now", userNode(ownerID, &oneNanoAgo), userKey, nodeKey, false, false},
