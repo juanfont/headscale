@@ -2,9 +2,11 @@ package v2
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/netip"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
@@ -1147,5 +1149,57 @@ func TestSSHTestsReportNamesAliasNotNode(t *testing.T) {
 		if !strings.Contains(policy, node.Hostname) {
 			assert.NotContains(t, err.Error(), node.Hostname)
 		}
+	}
+}
+
+// TestRunSSHTestsManyNamesAndPrincipals: login names, destination nodes
+// and rule principals are all the policy author's to multiply, so a check
+// must look up its source's rules, not walk every principal.
+func TestRunSSHTestsManyNamesAndPrincipals(t *testing.T) {
+	users := sshTestUsers()
+
+	nodes := make(types.Nodes, 0, 1000)
+
+	for i := range cap(nodes) {
+		n := &types.Node{
+			ID:       types.NodeID(i + 1), //nolint:gosec
+			Hostname: fmt.Sprintf("node-%d", i),
+			IPv4:     ap(fmt.Sprintf("100.64.%d.%d", i/250, i%250+1)),
+			User:     &users[0],
+			UserID:   &users[0].ID,
+		}
+		if i < 100 {
+			n.Tags = []string{"tag:server"}
+		}
+
+		nodes = append(nodes, n)
+	}
+
+	names := make([]string, 5000)
+	for i := range names {
+		names[i] = fmt.Sprintf(`"user%d"`, i)
+	}
+
+	pol, err := unmarshalPolicy(fmt.Appendf(nil, `{
+		"tagOwners": {"tag:server": ["alice@headscale.net"]},
+		"ssh": [{
+			"action": "accept",
+			"src":    ["autogroup:member"],
+			"dst":    ["tag:server"],
+			"users":  ["autogroup:nonroot"]
+		}],
+		"sshTests": [{"src": "100.64.3.250", "dst": ["tag:server"], "accept": [%s]}]
+	}`, strings.Join(names, ",")))
+	require.NoError(t, err)
+
+	done := make(chan error, 1)
+
+	go func() { done <- evaluateSSHTests(pol, users, nodes.ViewSlice()) }()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("sshTests did not finish in time")
 	}
 }

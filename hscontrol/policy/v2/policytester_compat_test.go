@@ -32,7 +32,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/require"
 	tsapi "tailscale.com/client/tailscale/v2"
-	"tailscale.com/tailcfg"
 )
 
 // knownPolicyTesterDivergences lists checks where headscale's evaluator
@@ -284,9 +283,7 @@ func testerBreakdown(pm *PolicyManager) []string {
 		}
 	}
 
-	cache := make(map[types.NodeID]*tailcfg.SSHPolicy)
-
-	for _, res := range runSSHPolicyTests(pm.pol, pm.users, pm.nodes, cache).Results {
+	for _, res := range runSSHPolicyTests(pm.pol, pm.users, pm.nodes).Results {
 		for range res.Errors {
 			out = append(out, res.Src+": error")
 		}
