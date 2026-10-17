@@ -1440,6 +1440,11 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 		return result
 	}
 
+	// A peer without routes has nothing to steer.
+	if len(peer.SubnetRoutes()) == 0 && !peer.IsExitNode() {
+		return result
+	}
+
 	// Clip so the appends below allocate: callers share pm.pol under RLock,
 	// and writing into its spare capacity races between them.
 	grants := slices.Clip(pm.pol.Grants)
@@ -1504,11 +1509,13 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 
 		var matchedPrefixes []netip.Prefix
 
-		for _, dstPrefix := range resolvedDstPrefixes[i] {
-			for _, route := range peerSubnetRoutes {
-				if dstPrefix.Overlaps(route) {
-					matchedPrefixes = append(matchedPrefixes, route)
-				}
+		// Emit each route once, however many dst prefixes overlap it:
+		// the passes below walk Include and Exclude per grant, so their
+		// size must be bounded by the peer's routes, not by the grant's
+		// destinations.
+		for _, route := range peerSubnetRoutes {
+			if slices.ContainsFunc(resolvedDstPrefixes[i], route.Overlaps) {
+				matchedPrefixes = append(matchedPrefixes, route)
 			}
 		}
 
@@ -1536,10 +1543,16 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 			}
 		}
 
-		if peerHasVia {
-			result.Include = append(result.Include, matchedPrefixes...)
-		} else {
-			result.Exclude = append(result.Exclude, matchedPrefixes...)
+		// Several grants, or repeated announcements, can match the same
+		// route; keep one entry per route.
+		for _, p := range matchedPrefixes {
+			if peerHasVia {
+				if !slices.Contains(result.Include, p) {
+					result.Include = append(result.Include, p)
+				}
+			} else if !slices.Contains(result.Exclude, p) {
+				result.Exclude = append(result.Exclude, p)
+			}
 		}
 	}
 
@@ -1579,33 +1592,34 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 
 			// Elect per matched route, not per dst — a peer can only
 			// be primary for a prefix it actually advertises, and one
-			// dst may cover multiple distinct routes.
-			for _, dstPrefix := range resolvedDstPrefixes[i] {
-				for _, included := range slices.Clone(result.Include) {
-					if !dstPrefix.Overlaps(included) {
-						continue
-					}
+			// dst may cover multiple distinct routes. The election
+			// does not depend on which dst matched, so each included
+			// route is looked at once per grant.
+			for _, included := range slices.Clone(result.Include) {
+				if !slices.ContainsFunc(resolvedDstPrefixes[i], included.Overlaps) {
+					continue
+				}
 
-					var viaPrimaryID types.NodeID
+				var viaPrimaryID types.NodeID
 
-					for _, viaTag := range grant.Via {
-						for _, node := range pm.nodes.All() {
-							if node.HasTag(string(viaTag)) &&
-								slices.Contains(node.SubnetRoutes(), included) {
-								if viaPrimaryID == 0 || node.ID() < viaPrimaryID {
-									viaPrimaryID = node.ID()
-								}
+				for _, viaTag := range grant.Via {
+					for _, node := range pm.nodes.All() {
+						if node.HasTag(string(viaTag)) &&
+							slices.Contains(node.SubnetRoutes(), included) {
+							if viaPrimaryID == 0 || node.ID() < viaPrimaryID {
+								viaPrimaryID = node.ID()
 							}
 						}
 					}
+				}
 
-					if viaPrimaryID != 0 && peer.ID() != viaPrimaryID {
-						result.Include = slices.DeleteFunc(result.Include, func(p netip.Prefix) bool {
-							return p == included
-						})
-						if !slices.Contains(result.Exclude, included) {
-							result.Exclude = append(result.Exclude, included)
-						}
+				if viaPrimaryID != 0 && peer.ID() != viaPrimaryID {
+					result.Include = slices.DeleteFunc(
+						result.Include,
+						func(p netip.Prefix) bool { return p == included },
+					)
+					if !slices.Contains(result.Exclude, included) {
+						result.Exclude = append(result.Exclude, included)
 					}
 				}
 			}
