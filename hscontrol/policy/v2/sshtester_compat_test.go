@@ -17,9 +17,7 @@ import (
 
 // knownSSHTesterDivergences names the engine gap for each capture where
 // headscale and upstream disagree.
-var knownSSHTesterDivergences = map[string]string{
-	"sshtest-malformed-dst-bare-ipv6": "bare-IPv6 sshTests dst: upstream parse-accepts then engine-rejects; headscale accepts (IPv4 mirror passes both sides)",
-}
+var knownSSHTesterDivergences = map[string]string{}
 
 func TestSSHTesterCompat(t *testing.T) {
 	t.Parallel()
