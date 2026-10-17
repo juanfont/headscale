@@ -10,7 +10,12 @@
 package servertest_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
+	"maps"
+	"net/http"
 	"net/netip"
 	"path/filepath"
 	"slices"
@@ -410,15 +415,23 @@ func createCaptureUsers(t *testing.T, srv *servertest.TestServer) map[string]*ty
 	return users
 }
 
-// convertCapturePolicy converts a [testcapture.Capture]'s policy for headscale,
-// replacing each SaaS email with the "<name>@" form that resolves to the
-// users [createCaptureUsers] creates. Fails the test if none of the known
-// SaaS emails are present: that would mean the capture was regenerated
-// with a new identity and captureUserNames needs updating.
+// convertCapturePolicy converts a [testcapture.Capture]'s policy for headscale;
+// see [convertPolicyEmails].
 func convertCapturePolicy(t *testing.T, c *testcapture.Capture) []byte {
 	t.Helper()
 
-	s := c.Input.FullPolicy
+	return convertPolicyEmails(t, c.TestID, c.Input.FullPolicy)
+}
+
+// convertPolicyEmails replaces each SaaS email in policy with the "<name>@"
+// form that resolves to the users [createCaptureUsers] creates. Fails the
+// test if none of the known SaaS emails are present: that would mean the
+// capture was regenerated with a new identity and captureUserNames needs
+// updating.
+func convertPolicyEmails(t *testing.T, testID, policy string) []byte {
+	t.Helper()
+
+	s := policy
 
 	substituted := false
 
@@ -433,8 +446,275 @@ func convertCapturePolicy(t *testing.T, c *testcapture.Capture) []byte {
 		t,
 		substituted,
 		"%s: no known SaaS email found in policy; update captureUserNames",
-		c.TestID,
+		testID,
 	)
 
 	return []byte(s)
+}
+
+// readStepCapture loads a multi-step capture by name from testdata/steps.
+// Step files are read by name, never globbed, so a consumer cannot pick up
+// another family's file by accident.
+func readStepCapture(t *testing.T, id string) *testcapture.Capture {
+	t.Helper()
+
+	c, err := testcapture.Read(filepath.Join("testdata", "steps", id+".hujson"))
+	require.NoError(t, err)
+	require.NotEmpty(t, c.Steps, "%s: not a step capture", id)
+
+	return c
+}
+
+// stepReplay drives a step capture's actions against headscale: policy
+// pushes, key mints, joins, relogins, route announcements, logouts and
+// admin calls, the last through the v2 API with the bodies SaaS received.
+// Nothing is seeded from the capture's end state.
+type stepReplay struct {
+	c        *testcapture.Capture
+	srv      *servertest.TestServer
+	admin    *types.User
+	apiKey   string
+	http     *http.Client
+	keys     map[string]string
+	clients  map[string]*servertest.TestClient
+	hostinfo map[string]*tailcfg.Hostinfo
+}
+
+func newStepReplay(t *testing.T, c *testcapture.Capture) *stepReplay {
+	t.Helper()
+
+	srv := servertest.NewServer(t)
+	users := createCaptureUsers(t, srv)
+
+	// SaaS keys and admin calls act as the tailnet's admin.
+	admin, ok := users[captureUserNames[c.Tailnet]]
+	require.True(t, ok, "%s: tailnet %q is not a capture user", c.TestID, c.Tailnet)
+
+	return &stepReplay{
+		c:        c,
+		srv:      srv,
+		admin:    admin,
+		apiKey:   srv.CreateAPIKey(t, admin),
+		http:     &http.Client{Transport: &http.Transport{DialContext: srv.MemNet().Dial}},
+		keys:     map[string]string{},
+		clients:  map[string]*servertest.TestClient{},
+		hostinfo: map[string]*tailcfg.Hostinfo{},
+	}
+}
+
+// apply runs the step's actions in order. Reads are skipped: they are what
+// consumers compare.
+func (r *stepReplay) apply(t *testing.T, step testcapture.Step) {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	for _, a := range step.Actions {
+		switch a.Kind {
+		case "policy":
+			require.Equal(t, http.StatusOK, a.Status, "%s: replay of a refused policy", step.Name)
+
+			// HuJSON bodies are stored as a JSON string.
+			policy := string(a.Body)
+			if strings.HasPrefix(policy, `"`) {
+				require.NoError(t, json.Unmarshal(a.Body, &policy))
+			}
+
+			changed, err := r.srv.State().SetPolicy(convertPolicyEmails(t, r.c.TestID, policy))
+			require.NoError(t, err, "%s: policy", step.Name)
+
+			if changed {
+				changes, err := r.srv.State().ReloadPolicy()
+				require.NoError(t, err)
+				r.srv.App.Change(changes...)
+			}
+
+		case "api":
+			r.api(t, step.Name, a)
+
+		case "join":
+			require.Contains(t, r.keys, a.Key, "%s: join with unknown key", step.Name)
+
+			r.hostinfo[a.Node] = &tailcfg.Hostinfo{BackendLogID: "servertest-" + a.Node, Hostname: a.Hostname}
+			r.clients[a.Node] = servertest.NewClient(t, r.srv, a.Node,
+				servertest.WithUser(r.admin),
+				servertest.WithAuthKey(r.keys[a.Key]),
+				servertest.WithHostname(a.Hostname),
+			)
+
+			if len(a.Routes) > 0 {
+				r.announce(ctx, t, a.Node, a.Routes)
+			}
+
+		case "relogin":
+			require.Contains(t, r.keys, a.Key, "%s: relogin with unknown key", step.Name)
+
+			// The probe restates hostname and routes on every login.
+			hi := r.hostinfo[a.Node].Clone()
+			hi.Hostname = a.Hostname
+			hi.RoutableIPs = prefixes(t, a.Routes)
+			r.hostinfo[a.Node] = hi
+
+			require.NoError(t, r.clients[a.Node].Relogin(ctx, r.keys[a.Key], a.Force, hi.Clone()),
+				"%s: relogin", step.Name)
+
+		case "advertise":
+			r.announce(ctx, t, a.Node, a.Routes)
+
+		case "cli":
+			hostname, ok := strings.CutPrefix(strings.Join(a.Args, " "), "set --hostname=")
+			require.True(t, ok, "%s: no replay for cli %q", step.Name, a.Args)
+
+			r.hostinfo[a.Node].Hostname = hostname
+			r.sendHostinfo(ctx, t, a.Node)
+
+		case "logout":
+			require.NoError(t, r.clients[a.Node].LogoutAndDisconnect(ctx), "%s: logout", step.Name)
+
+		case "wait", "retire":
+			// Waits are SaaS settle time; retire only frees SaaS devices.
+
+		default:
+			t.Fatalf("%s: no replay for action %q", step.Name, a.Kind)
+		}
+	}
+}
+
+// api replays one admin exchange. Device paths go to the v2 API; key
+// mints and expiry, which the v2 API lacks or would answer with secrets,
+// go to State.
+func (r *stepReplay) api(t *testing.T, stepName string, a testcapture.Action) {
+	t.Helper()
+
+	switch {
+	case a.Method == http.MethodGet:
+		return
+
+	case a.Method == http.MethodPost && a.Path == "/tailnet/-/keys":
+		var body struct {
+			Capabilities struct {
+				Devices struct {
+					Create struct {
+						Reusable  bool     `json:"reusable"`
+						Ephemeral bool     `json:"ephemeral"`
+						Tags      []string `json:"tags"`
+					} `json:"create"`
+				} `json:"devices"`
+			} `json:"capabilities"`
+			ExpirySeconds int `json:"expirySeconds"`
+		}
+		require.NoError(t, json.Unmarshal(a.Body, &body), "%s: key body", stepName)
+
+		create := body.Capabilities.Devices.Create
+		expiry := time.Now().Add(time.Duration(body.ExpirySeconds) * time.Second)
+		uid := types.UserID(r.admin.ID)
+
+		pak, err := r.srv.State().CreatePreAuthKey(&uid, create.Reusable, create.Ephemeral, &expiry, create.Tags)
+		require.NoError(t, err, "%s: mint %s", stepName, a.Key)
+
+		r.keys[a.Key] = pak.Key
+
+	case a.Method == http.MethodDelete && strings.HasPrefix(a.Path, "/tailnet/-/keys/"):
+		pak, err := r.srv.State().GetPreAuthKey(r.keys[a.Key])
+		require.NoError(t, err, "%s: key %s", stepName, a.Key)
+		require.NoError(t, r.srv.State().DeletePreAuthKey(pak.ID), "%s: delete %s", stepName, a.Key)
+
+	case a.Method == http.MethodPost && strings.HasSuffix(a.Path, "/expire"):
+		now := time.Now()
+
+		_, c, err := r.srv.State().SetNodeExpiry(r.node(t, deviceAlias(t, a.Path)).ID(), &now)
+		require.NoError(t, err, "%s: expire", stepName)
+		r.srv.App.Change(c)
+
+	case strings.HasPrefix(a.Path, "/device/"):
+		alias := deviceAlias(t, a.Path)
+		path := "/api/v2/device/" + r.node(t, alias).StringID() +
+			strings.TrimPrefix(a.Path, "/device/{device:"+alias+"}")
+
+		status, resp := r.call(t, a.Method, path, a.Body)
+		require.Equal(t, a.Status, status, "%s: %s %s: %s", stepName, a.Method, a.Path, resp)
+
+	default:
+		t.Fatalf("%s: no replay for %s %s", stepName, a.Method, a.Path)
+	}
+}
+
+// call sends one v2 API request as the admin.
+func (r *stepReplay) call(t *testing.T, method, path string, body []byte) (int, []byte) {
+	t.Helper()
+
+	req, err := http.NewRequestWithContext(context.Background(), method, r.srv.URL+path, bytes.NewReader(body))
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer "+r.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := r.http.Do(req)
+	require.NoError(t, err)
+
+	defer resp.Body.Close()
+
+	out, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	return resp.StatusCode, out
+}
+
+// machineNodes lists the nodes alias's machine holds now.
+func (r *stepReplay) machineNodes(alias string) []types.NodeView {
+	cl, ok := r.clients[alias]
+	if !ok {
+		return nil
+	}
+
+	nodes := r.srv.State().GetNodesByMachineKeyAllUsers(cl.MachineKey())
+
+	return slices.Collect(maps.Values(nodes))
+}
+
+// node is the one node alias's machine holds now.
+func (r *stepReplay) node(t *testing.T, alias string) types.NodeView {
+	t.Helper()
+
+	nodes := r.machineNodes(alias)
+	require.Len(t, nodes, 1, "%s: nodes on its machine", alias)
+
+	return nodes[0]
+}
+
+func (r *stepReplay) announce(ctx context.Context, t *testing.T, alias string, routes []string) {
+	t.Helper()
+
+	r.hostinfo[alias].RoutableIPs = prefixes(t, routes)
+	r.sendHostinfo(ctx, t, alias)
+}
+
+func (r *stepReplay) sendHostinfo(ctx context.Context, t *testing.T, alias string) {
+	t.Helper()
+
+	cl := r.clients[alias]
+	cl.Direct().SetHostinfo(r.hostinfo[alias].Clone())
+	require.NoError(t, cl.Direct().SendUpdate(ctx), "%s: hostinfo update", alias)
+}
+
+// deviceAlias extracts x from a "/device/{device:x}/..." path.
+func deviceAlias(t *testing.T, path string) string {
+	t.Helper()
+
+	rest, ok := strings.CutPrefix(path, "/device/{device:")
+	alias, _, found := strings.Cut(rest, "}")
+	require.True(t, ok && found, "no device label in %q", path)
+
+	return alias
+}
+
+func prefixes(t *testing.T, routes []string) []netip.Prefix {
+	t.Helper()
+
+	out := make([]netip.Prefix, 0, len(routes))
+	for _, r := range routes {
+		out = append(out, netip.MustParsePrefix(r))
+	}
+
+	return out
 }
