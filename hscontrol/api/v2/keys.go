@@ -133,6 +133,7 @@ func registerKeys(api huma.API, b Backend) {
 		Description:  "Requires the `auth_keys` scope for an auth key, or `oauth_keys` for an OAuth client (an admin API key is all-access).",
 		Tags:         keysTags,
 		Security:     security,
+		Middlewares:  huma.Middlewares{requireCreateKeyScope(api)},
 		MaxBodyBytes: maxBodyBytes,
 		Errors: []int{
 			http.StatusBadRequest,
@@ -316,6 +317,22 @@ func requireKeyScope(ctx context.Context, need scope.Scope) error {
 	}
 
 	return nil
+}
+
+// requireCreateKeyScope refuses, before huma reads the body, a token that may
+// create neither kind of key; the handler then checks the kind it got.
+func requireCreateKeyScope(api huma.API) func(huma.Context, func(huma.Context)) {
+	return func(ctx huma.Context, next func(huma.Context)) {
+		if requireKeyScope(ctx.Context(), scope.AuthKeys) != nil &&
+			requireKeyScope(ctx.Context(), scope.OAuthKeys) != nil {
+			_ = huma.WriteErr(api, ctx, http.StatusForbidden,
+				"token is missing the required scope auth_keys or oauth_keys")
+
+			return
+		}
+
+		next(ctx)
+	}
 }
 
 // createAuthKey creates a machine auth key (pre-auth key). Ownership: tags -> a
