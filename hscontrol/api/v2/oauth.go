@@ -103,7 +103,7 @@ func oauthTokenHandler(b Backend) http.HandlerFunc {
 
 		expiry := time.Now().Add(accessTokenTTL)
 
-		tokenStr, _, err := b.State.MintAccessToken(client.ClientID, scopes, tags, &expiry)
+		tokenStr, token, err := b.State.MintAccessToken(client.ClientID, scopes, tags, &expiry)
 		if err != nil {
 			writeOAuthError(w, http.StatusInternalServerError, "server_error", "could not mint access token")
 
@@ -114,7 +114,7 @@ func oauthTokenHandler(b Backend) http.HandlerFunc {
 			AccessToken: tokenStr,
 			TokenType:   "Bearer",
 			ExpiresIn:   int(accessTokenTTL.Seconds()),
-			Scope:       strings.Join(scopes, " "),
+			Scope:       strings.Join(token.Scopes, " "),
 		})
 	}
 }
