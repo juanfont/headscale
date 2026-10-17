@@ -407,7 +407,7 @@ func TestChange_IsBroadcastPolicyChange(t *testing.T) {
 		want bool
 	}{
 		{name: "policy change", c: PolicyChange(), want: true},
-		{name: "self-update recompute", c: originUpdate, want: false},
+		{name: "self-update recompute", c: originUpdate, want: true},
 		{name: "targeted recompute", c: targeted, want: false},
 		{name: "online patch", c: NodeOnline(1), want: false},
 		{name: "full update", c: FullUpdate(), want: false},
@@ -422,9 +422,9 @@ func TestChange_IsBroadcastPolicyChange(t *testing.T) {
 }
 
 func TestDedupePolicyChanges(t *testing.T) {
-	// originRecompute is a runtime recompute carrying node-specific payload
-	// (OriginNode), so it is not the canonical broadcast PolicyChange and must
-	// never be coalesced away.
+	// originRecompute is a runtime recompute stamped with the node that caused
+	// it, as a tag write returns it. The mapper renders it like any other
+	// recompute, so it must coalesce like any other.
 	originRecompute := PolicyChange()
 	originRecompute.OriginNode = 7
 
@@ -463,14 +463,14 @@ func TestDedupePolicyChanges(t *testing.T) {
 			want:    []Change{PolicyChange(), NodeAdded(5)},
 		},
 		{
-			name:    "recompute carrying OriginNode is kept alongside the canonical one",
+			name:    "recompute carrying OriginNode collapses into the canonical one",
 			changes: []Change{PolicyChange(), originRecompute, PolicyChange()},
-			want:    []Change{PolicyChange(), originRecompute},
+			want:    []Change{PolicyChange()},
 		},
 		{
-			name:    "non-canonical recomputes are not collapsed",
+			name:    "recomputes carrying OriginNode collapse to one",
 			changes: []Change{originRecompute, originRecompute},
-			want:    []Change{originRecompute, originRecompute},
+			want:    []Change{originRecompute},
 		},
 		{
 			name:    "changes without any recompute are unchanged",
