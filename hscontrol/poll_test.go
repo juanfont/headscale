@@ -266,7 +266,7 @@ func TestServeLongPollWritesErrorWhenInitialMapFails(t *testing.T) {
 	session := app.newMapSession(ctx, tailcfg.MapRequest{
 		Stream:  true,
 		Version: tailcfg.CapabilityVersion(100),
-	}, writer, node)
+	}, writer, node.View())
 
 	serveDone := make(chan struct{})
 
@@ -347,7 +347,7 @@ func TestFailedReconnectDoesNotCancelEphemeralGC(t *testing.T) {
 	session := app.newMapSession(context.Background(), tailcfg.MapRequest{
 		Stream:  true,
 		Version: tailcfg.CapabilityVersion(100),
-	}, writer, node)
+	}, writer, node.View())
 
 	session.serveLongPoll()
 
@@ -396,7 +396,7 @@ func TestEphemeralGCDoesNotDeleteReconnectedNode(t *testing.T) {
 	session := app.newMapSession(context.Background(), tailcfg.MapRequest{
 		Stream:  true,
 		Version: tailcfg.CapabilityVersion(100),
-	}, &recordingResponseWriter{}, node)
+	}, &recordingResponseWriter{}, node.View())
 
 	_, oldGen := app.state.Connect(node.ID)
 
@@ -542,7 +542,7 @@ func TestGitHubIssue3129_BlockedWriteSessionLifecycle(t *testing.T) {
 			session := app.newMapSession(ctx, tailcfg.MapRequest{
 				Stream:  true,
 				Version: tailcfg.CapabilityVersion(100),
-			}, writer, node)
+			}, writer, node.View())
 
 			serveDone := make(chan struct{})
 
@@ -675,7 +675,7 @@ func TestDeletedNodeEndsLongPoll(t *testing.T) {
 	session := app.newMapSession(ctx, tailcfg.MapRequest{
 		Stream:  true,
 		Version: tailcfg.CapabilityVersion(100),
-	}, writer, node)
+	}, writer, node.View())
 
 	serveDone := make(chan struct{})
 
@@ -764,7 +764,7 @@ func TestDeletedNodeEndsStreamCleanly(t *testing.T) {
 				session := app.newMapSession(r.Context(), tailcfg.MapRequest{
 					Stream:  true,
 					Version: tailcfg.CapabilityVersion(100),
-				}, w, nodeView.AsStruct())
+				}, w, nodeView)
 				sessions <- session
 
 				session.serveLongPoll()
@@ -858,7 +858,7 @@ func TestLongPollShutdownWaitsForCleanup(t *testing.T) {
 			session := app.newMapSession(ctx, tailcfg.MapRequest{
 				Stream:  true,
 				Version: tailcfg.CapabilityVersion(100),
-			}, writer, node.AsStruct())
+			}, writer, node)
 
 			serveDone := make(chan struct{})
 
@@ -955,7 +955,7 @@ func TestDeletedNodeInterruptsBlockedWrite(t *testing.T) {
 	session := app.newMapSession(t.Context(), tailcfg.MapRequest{
 		Stream:  true,
 		Version: tailcfg.CapabilityVersion(100),
-	}, writer, nodeView.AsStruct())
+	}, writer, nodeView)
 
 	serveDone := make(chan struct{})
 
