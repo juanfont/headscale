@@ -514,8 +514,8 @@ func (b *Batcher) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapResponse) boo
 
 // AddWork queues a change to be processed by the batcher. Empty changes
 // carry no work for any recipient and are dropped here so they never create
-// pending entries or in-flight work. A PeersRemoved change is not empty, so
-// deletion cleanup in addToBatch still runs.
+// pending entries or in-flight work. A deletion's teardown change is not
+// empty, so its cleanup in addToBatch still runs.
 func (b *Batcher) AddWork(r ...change.Change) {
 	if slices.ContainsFunc(r, change.Change.IsEmpty) {
 		kept := slices.DeleteFunc(slices.Clone(r), change.Change.IsEmpty)

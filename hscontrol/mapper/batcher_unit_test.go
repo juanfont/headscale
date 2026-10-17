@@ -877,7 +877,7 @@ func TestAddToBatch_NodeRemovedStopsSession(t *testing.T) {
 	mc.connections[0].stop = func() { close(stopped) }
 	mc.mutex.Unlock()
 
-	lb.b.AddWork(change.NodeRemoved(1))
+	lb.b.AddWork(change.NodeRemoved(1)...)
 
 	// addToBatch runs synchronously, so the session must already be stopped.
 	select {
