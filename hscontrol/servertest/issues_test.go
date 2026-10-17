@@ -1239,3 +1239,34 @@ func peerByHostname(nm *netmap.NetworkMap, hostname string) (tailcfg.NodeView, b
 
 	return tailcfg.NodeView{}, false
 }
+
+func TestUserProfileFollowsRename(t *testing.T) {
+	srv := servertest.NewServer(t)
+	owner := srv.CreateUser(t, "profile-original")
+	profileID := owner.TailscaleUserProfile().ID
+	peer := srv.CreateUser(t, "profile-peer")
+	ownerClient := servertest.NewClient(t, srv, "owner", servertest.WithUser(owner))
+	peerClient := servertest.NewClient(t, srv, "peer", servertest.WithUser(peer))
+	ownerClient.WaitForPeers(t, 1, 5*time.Second)
+	peerClient.WaitForPeers(t, 1, 5*time.Second)
+
+	_, c, err := srv.State().RenameUser(types.UserID(owner.ID), "profile-renamed")
+	require.NoError(t, err)
+
+	srv.App.Change(c)
+
+	for _, client := range []*servertest.TestClient{ownerClient, peerClient} {
+		client.WaitForCondition(t, "renamed user profile", 5*time.Second,
+			func(nm *netmap.NetworkMap) bool {
+				profile, ok := nm.UserProfiles[profileID]
+				return ok && profile.LoginName() == "profile-renamed"
+			})
+	}
+
+	late := servertest.NewClient(t, srv, "late", servertest.WithUser(peer))
+	late.WaitForCondition(t, "renamed user profile on join", 5*time.Second,
+		func(nm *netmap.NetworkMap) bool {
+			profile, ok := nm.UserProfiles[profileID]
+			return ok && profile.LoginName() == "profile-renamed"
+		})
+}
