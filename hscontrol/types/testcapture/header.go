@@ -15,6 +15,7 @@ import (
 //
 //	Nodes with filter rules: <X> of <Y>           ← for non-SSH captures
 //	Nodes with SSH rules: <X> of <Y>              ← for SSH captures
+//	Steps: <N>                                    ← only when Steps is set
 //	Captured at:    <RFC3339 UTC>
 //	tool version:   <ToolVersion>
 //	schema version: <SchemaVersion>
@@ -42,6 +43,12 @@ func CommentHeader(c *Capture) string {
 	}
 
 	stats := captureStats(c)
+	// Only step files get the line, so rewriting a single-shot file keeps
+	// its header unchanged.
+	if len(c.Steps) > 0 {
+		stats = strings.TrimPrefix(fmt.Sprintf("%s\nSteps: %d", stats, len(c.Steps)), "\n")
+	}
+
 	if stats != "" {
 		b.WriteByte('\n')
 		b.WriteString(stats)

@@ -15,6 +15,9 @@
 // All four capture types (acl, routes, grant, ssh) use the same [Capture]
 // shape. SSH scenarios populate Captures[name].SSHRules; the others
 // populate Captures[name].PacketFilterRules + Captures[name].Netmap.
+// Multi-step captures add [Capture.Steps], which readers of single-shot
+// captures ignore. API bodies in steps stay raw so that absent, null and
+// empty values survive.
 package testcapture
 
 import (
@@ -23,6 +26,7 @@ import (
 	"time"
 
 	"tailscale.com/client/tailscale/apitype"
+	tsapi "tailscale.com/client/tailscale/v2"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/netmap"
 	"tailscale.com/wgengine/filter/filtertype"
@@ -62,14 +66,18 @@ type Capture struct {
 	// ToolVersion identifies the binary that produced the file.
 	ToolVersion string `json:"tool_version"`
 
+	// ClientVersion is the tailscale.com version and capability version
+	// of the clients. A refused login sends no map request to show them.
+	ClientVersion string `json:"client_version,omitempty"`
+
 	// Tailnet is the name of the SaaS tailnet the capture was taken
 	// against (e.g. "kratail2tid@passkey").
 	Tailnet string `json:"tailnet"`
 
 	// Error is true when the SaaS API rejected the policy or when
 	// capture itself failed. In the rejection case, [Capture.Captures] reflects
-	// the pre-push baseline (deny-all default) and [Input.APIResponseBody]
-	// is populated.
+	// the baseline still in force (the reset default has no acls or grants,
+	// so it allows all) and [Input.APIResponseBody] is populated.
 	Error bool `json:"error,omitempty"`
 
 	// CaptureError is set when the capture itself failed (timeout,
@@ -86,9 +94,19 @@ type Capture struct {
 	// capture time. Always populated by the capture tool.
 	Topology Topology `json:"topology"`
 
-	// Captures holds the per-node captured data, keyed by node
-	// GivenName.
+	// Captures holds the per-node captured data, keyed by alias: the
+	// GivenName in single-shot captures, the probe's label in step files.
+	// In step files it is the baseline before the first step.
 	Captures map[string]Node `json:"captures"`
+
+	// NodeIDs maps each alias to its SaaS node ID, so that removals and
+	// patches resolve. A deleted node keeps its entry; a re-created one is
+	// "<alias>#2".
+	NodeIDs map[string]tailcfg.NodeID `json:"node_ids,omitempty"`
+
+	// Steps is set by multi-step captures only. Consumers of steps require
+	// it to be non-empty.
+	Steps []Step `json:"steps,omitempty"`
 }
 
 // Input describes everything that was sent to the tailnet to produce
@@ -207,6 +225,9 @@ func (i *Input) UnmarshalJSON(data []byte) error {
 // APIResponseBody is the (subset of) the SaaS API error response we keep.
 type APIResponseBody struct {
 	Message string `json:"message,omitempty"`
+
+	// Data carries per-user detail, such as failed policy tests.
+	Data []tsapi.APIErrorData `json:"data,omitempty"`
 }
 
 // TailnetInput captures tailnet-wide settings the capture tool applied before
@@ -248,7 +269,7 @@ type Topology struct {
 	// Users in the tailnet. Always populated by the capture tool.
 	Users []TopologyUser `json:"users"`
 
-	// Nodes in the tailnet, keyed by GivenName.
+	// Nodes in the tailnet, keyed by alias (see [Capture.Captures]).
 	Nodes map[string]TopologyNode `json:"nodes"`
 }
 
@@ -280,8 +301,8 @@ type TopologyNode struct {
 	ApprovedRoutes []string `json:"approved_routes"`
 }
 
-// Node is the captured state for one node, keyed by GivenName in
-// [Capture.Captures].
+// Node is the captured state for one node, keyed by alias in
+// [Capture.Captures] and [Step.Captures].
 //
 // All four capture types populate the same struct. Different fields are
 // used by different test types:
@@ -329,4 +350,9 @@ type Node struct {
 	// SSHRules is the SSH rules slice extracted from
 	// [netmap.NetworkMap.SSHPolicy].Rules. Populated only for SSH scenarios.
 	SSHRules []*tailcfg.SSHRule `json:"ssh_rules,omitempty"`
+
+	// BackendState and ErrMessage are the client's IPN state and login
+	// error, so a refused login is recorded on a node with no netmap.
+	BackendState string `json:"backend_state,omitempty"`
+	ErrMessage   string `json:"err_message,omitempty"`
 }
