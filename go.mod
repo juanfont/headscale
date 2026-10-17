@@ -74,6 +74,7 @@ require (
 	modernc.org/sqlite v1.52.0
 	pgregory.net/rapid v1.3.0
 	tailscale.com v1.104.4
+	tailscale.com/client/tailscale/v2 v2.12.0
 	zombiezen.com/go/postgrestest v1.0.1
 )
 

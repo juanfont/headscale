@@ -1,6 +1,7 @@
 package testcapture
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,14 @@ import (
 // ErrNilCapture is returned by [Write] when called with a nil [Capture].
 var ErrNilCapture = errors.New("testcapture: nil capture")
 
+// ErrSecret is returned by [Write] when the file would hold an auth key or
+// an interactive login URL.
+var ErrSecret = errors.New("testcapture: capture holds an auth key or login URL")
+
+// secretMarkers back up the capture tool's own stripping: a capture is
+// committed, so it must never carry a credential.
+var secretMarkers = [][]byte{[]byte("tskey-"), []byte("login.tailscale.com/a/")}
+
 // Write serializes c as a HuJSON file with a comment header. The
 // write is atomic: body lands in a temp file in the target directory
 // and is then renamed into place, so concurrent regeneration cannot
@@ -21,7 +30,8 @@ var ErrNilCapture = errors.New("testcapture: nil capture")
 //
 // The comment header is built by [CommentHeader] from c's [Capture.TestID],
 // [Capture.Description], and [Capture.Captures]. The file's parent directory must
-// already exist; callers should [os.MkdirAll] first.
+// already exist; callers should [os.MkdirAll] first. A capture holding an
+// auth key or login URL is refused with [ErrSecret] and nothing is written.
 func Write(path string, c *Capture) error {
 	if c == nil {
 		return fmt.Errorf("testcapture: Write %s: %w", path, ErrNilCapture)
@@ -35,6 +45,12 @@ func Write(path string, c *Capture) error {
 	}
 
 	data := prependCommentHeader(body, header)
+
+	for _, m := range secretMarkers {
+		if bytes.Contains(data, m) {
+			return fmt.Errorf("testcapture: Write %s: %w", path, ErrSecret)
+		}
+	}
 
 	dir := filepath.Dir(path)
 	base := filepath.Base(path)
