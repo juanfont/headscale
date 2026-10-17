@@ -558,6 +558,45 @@ func TestSetUsersDropsStaleSelfFilters(t *testing.T) {
 	}
 }
 
+// TestSetUsersReportsLostViaSources: a user change that leaves the only via
+// grant without sources must be reported, or clients keep its rules.
+func TestSetUsersReportsLostViaSources(t *testing.T) {
+	pol := `{
+		"tagOwners": {"tag:router": ["u1@"]},
+		"grants": [{"src": ["u3@"], "dst": ["10.0.0.0/16"], "via": ["tag:router"], "ip": ["*"]}]}`
+
+	u1, u3, x3 := types.User{Name: "u1"}, types.User{Name: "u3"}, types.User{Name: "x3"}
+	u1.ID, u3.ID, x3.ID = 1, 3, 3
+
+	router := node("router", "100.64.0.1", "fd7a:115c:a1e0::1", types.User{})
+	router.User, router.UserID = nil, nil
+	router.Tags = []string{"tag:router"}
+	router.Hostinfo = &tailcfg.Hostinfo{
+		RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/16")},
+	}
+	router.ApprovedRoutes = router.Hostinfo.RoutableIPs
+
+	nodes := types.Nodes{router, node("u3-a", "100.64.0.3", "fd7a:115c:a1e0::3", u3)}
+	for i, n := range nodes {
+		n.ID = types.NodeID(i + 1) //nolint:gosec // safe conversion in test
+	}
+
+	pm, err := NewPolicyManager([]byte(pol), types.Users{u1, u3}, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	rules, err := pm.FilterForNode(router.View())
+	require.NoError(t, err)
+	require.NotEmpty(t, rules, "the router admits u3 before the rename")
+
+	policyChanged, _, err := pm.SetUsers(types.Users{u1, x3})
+	require.NoError(t, err)
+
+	rules, err = pm.FilterForNode(router.View())
+	require.NoError(t, err)
+	require.Empty(t, rules, "nobody is named u3 any more")
+	require.True(t, policyChanged, "the withdrawn rule must reach clients")
+}
+
 // TestInvalidateGlobalPolicyCache tests the cache invalidation logic for global policies.
 func TestInvalidateGlobalPolicyCache(t *testing.T) {
 	mustIPPtr := func(s string) *netip.Addr {
@@ -1960,6 +1999,72 @@ func TestViaRoutesForPeer(t *testing.T) {
 		require.Empty(t, result.UsePrimary)
 	})
 
+	t.Run("acl_destinations_share_source_match", func(t *testing.T) {
+		t.Parallel()
+
+		nodes := types.Nodes{
+			{
+				ID:       1,
+				Hostname: "viewer",
+				IPv4:     ap("100.64.0.1"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Hostinfo: &tailcfg.Hostinfo{},
+			},
+			{
+				ID:       2,
+				Hostname: "router",
+				IPv4:     ap("100.64.0.2"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Tags:     []string{"tag:router"},
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{mp("10.0.0.0/24")},
+				},
+				ApprovedRoutes: []netip.Prefix{mp("10.0.0.0/24")},
+			},
+		}
+
+		// Only the last destination of each ACL covers the route, and only
+		// the sources of the second ACL match the viewer.
+		pol := func(secondSrc string) string {
+			return `{
+			"tagOwners": {
+				"tag:router": ["user1@"]
+			},
+			"acls": [{
+				"action": "accept",
+				"src": ["user2@"],
+				"dst": ["192.168.0.0/24:*", "10.0.0.0/24:*"]
+			}, {
+				"action": "accept",
+				"src": ["user2@", "` + secondSrc + `"],
+				"dst": ["192.168.0.0/24:*", "10.0.0.0/24:*"]
+			}],
+			"grants": [{
+				"src": ["user1@"],
+				"dst": ["10.0.0.0/24"],
+				"ip": ["*"],
+				"via": ["tag:router"]
+			}]
+		}`
+		}
+
+		pm, err := NewPolicyManager([]byte(pol("user1@")), users, nodes.ViewSlice())
+		require.NoError(t, err)
+
+		result := pm.ViaRoutesForPeer(nodes[0].View(), nodes[1].View())
+		require.Equal(t, []netip.Prefix{mp("10.0.0.0/24")}, result.Include)
+		require.Equal(t, []netip.Prefix{mp("10.0.0.0/24")}, result.UsePrimary)
+
+		pm, err = NewPolicyManager([]byte(pol("user2@")), users, nodes.ViewSlice())
+		require.NoError(t, err)
+
+		result = pm.ViaRoutesForPeer(nodes[0].View(), nodes[1].View())
+		require.Equal(t, []netip.Prefix{mp("10.0.0.0/24")}, result.Include)
+		require.Empty(t, result.UsePrimary)
+	})
+
 	t.Run("peer_does_not_advertise_destination", func(t *testing.T) {
 		t.Parallel()
 
@@ -2533,6 +2638,75 @@ func TestViaRoutesForPeer(t *testing.T) {
 				"members=%s: viewer in group must get exit routes from via-tagged exit node", members)
 			require.Empty(t, result.Exclude)
 		}
+	})
+
+	// A route is steered once, however many dst prefixes or grants overlap
+	// it and however often the peer announces it. Otherwise Include grows
+	// with the policy instead of the peer's routes, and the election pass,
+	// which walks Include per dst, goes quadratic under the policy lock.
+	t.Run("route_steered_once_per_peer", func(t *testing.T) {
+		t.Parallel()
+
+		nodes := types.Nodes{
+			{
+				ID:       1,
+				Hostname: "viewer",
+				IPv4:     ap("100.64.0.1"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Hostinfo: &tailcfg.Hostinfo{},
+			},
+			{
+				ID:       2,
+				Hostname: "router",
+				IPv4:     ap("100.64.0.2"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Tags:     []string{"tag:router"},
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{mp("10.0.0.0/24"), mp("10.0.0.0/24")},
+				},
+				ApprovedRoutes: []netip.Prefix{mp("10.0.0.0/24")},
+			},
+			{
+				ID:       3,
+				Hostname: "other",
+				IPv4:     ap("100.64.0.3"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Tags:     []string{"tag:other"},
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{mp("10.0.0.0/24"), mp("10.0.0.0/24")},
+				},
+				ApprovedRoutes: []netip.Prefix{mp("10.0.0.0/24")},
+			},
+		}
+
+		grant := `{
+			"src": ["user1@"],
+			"dst": ["10.0.0.0/24", "10.0.0.0/24", "10.0.0.0/25", "10.0.0.7/32"],
+			"ip": ["*"],
+			"via": ["tag:router"]
+		}`
+
+		pol := `{
+			"tagOwners": {
+				"tag:router": ["user1@"],
+				"tag:other": ["user1@"]
+			},
+			"grants": [` + grant + `, ` + grant + `]
+		}`
+
+		pm, err := NewPolicyManager([]byte(pol), users, nodes.ViewSlice())
+		require.NoError(t, err)
+
+		result := pm.ViaRoutesForPeer(nodes[0].View(), nodes[1].View())
+		require.Equal(t, []netip.Prefix{mp("10.0.0.0/24")}, result.Include)
+		require.Empty(t, result.Exclude)
+
+		result = pm.ViaRoutesForPeer(nodes[0].View(), nodes[2].View())
+		require.Empty(t, result.Include)
+		require.Equal(t, []netip.Prefix{mp("10.0.0.0/24")}, result.Exclude)
 	})
 }
 
