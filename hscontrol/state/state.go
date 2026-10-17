@@ -350,6 +350,9 @@ func NewState(cfg *types.Config) (*State, error) {
 
 	nodeStore := NewNodeStore(nodes, policyPeersFunc(polMan), batchSize, batchTimeout)
 	polMan.SetRouterSession(nodeStore.RouterSession)
+	nodeStore.reservedLabel = func(label string) bool {
+		return cfg.BaseDomain != "" && cfg.HasExtraRecord(label+"."+cfg.BaseDomain)
+	}
 	nodeStore.Start()
 
 	// Last: NewLRU starts the TTL sweeper goroutine, which only Close stops.
@@ -1337,6 +1340,27 @@ func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView,
 	s.selfRefreshMu.Unlock()
 
 	return nodeView, c, nil
+}
+
+// WarnNodesHoldingExtraRecords logs, and returns, the nodes whose name is also
+// an extra DNS record. They keep it: only an operator adding the record can
+// cause this, so the operator picks which one to rename.
+func (s *State) WarnNodesHoldingExtraRecords() []types.NodeID {
+	var ids []types.NodeID
+
+	for _, n := range s.nodeStore.ListNodes().All() {
+		if !s.nodeStore.reservedLabel(n.GivenName()) {
+			continue
+		}
+
+		ids = append(ids, n.ID())
+		log.Warn().
+			Uint64(zf.NodeID, n.ID().Uint64()).
+			Str("record", n.GivenName()+"."+s.cfg.BaseDomain).
+			Msg("node keeps a name that is also an extra DNS record")
+	}
+
+	return ids
 }
 
 // BackfillNodeIPs assigns IP addresses to nodes that don't have them. The
