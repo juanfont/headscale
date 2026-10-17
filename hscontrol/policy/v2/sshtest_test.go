@@ -2,6 +2,7 @@ package v2
 
 import (
 	"encoding/json"
+	"net/netip"
 	"strings"
 	"testing"
 
@@ -747,6 +748,88 @@ func TestRunSSHTests(t *testing.T) {
 			wantPass:   false,
 			wantErrSub: []string{"autogroup:self", "resolved to no nodes"},
 		},
+		{
+			// A src naming address space is evaluated through the node
+			// addresses inside it, never address by address: ::/0
+			// holds alice's IPv6, which the rule allows.
+			name: "src-cidr-deny-fails-on-covered-node",
+			policy: `{
+				"tagOwners": { "tag:server": ["alice@headscale.net"] },
+				"ssh": [{
+					"action": "accept",
+					"src":    ["alice@headscale.net"],
+					"dst":    ["tag:server"],
+					"users":  ["root"]
+				}],
+				"sshTests": [{
+					"src":  "::/0",
+					"dst":  ["tag:server"],
+					"deny": ["root"]
+				}]
+			}`,
+			wantPass:   false,
+			wantErrSub: []string{"::/0", "expected DENIED, got ALLOWED"},
+		},
+		{
+			name: "src-address-space-deny-pass",
+			policy: `{
+				"hosts":     { "lan": "10.0.0.0/8" },
+				"tagOwners": { "tag:server": ["alice@headscale.net"] },
+				"ssh": [{
+					"action": "accept",
+					"src":    ["alice@headscale.net"],
+					"dst":    ["tag:server"],
+					"users":  ["root"]
+				}],
+				"sshTests": [
+					{ "src": "*",                    "dst": ["tag:server"], "deny": ["ubuntu"] },
+					{ "src": "autogroup:danger-all", "dst": ["tag:server"], "deny": ["ubuntu"] },
+					{ "src": "autogroup:internet",   "dst": ["tag:server"], "deny": ["root"] },
+					{ "src": "lan",                  "dst": ["tag:server"], "deny": ["root"] }
+				]
+			}`,
+			wantPass: true,
+		},
+		{
+			// Every node is allowed, but `*` also covers addresses no
+			// node holds, and all src addresses must agree.
+			name: "src-wildcard-accept-fails-on-unassigned-address",
+			policy: `{
+				"tagOwners": { "tag:server": ["alice@headscale.net"] },
+				"ssh": [{
+					"action": "accept",
+					"src":    ["autogroup:member", "autogroup:tagged"],
+					"dst":    ["tag:server"],
+					"users":  ["root"]
+				}],
+				"sshTests": [{
+					"src":    "*",
+					"dst":    ["tag:server"],
+					"accept": ["root"]
+				}]
+			}`,
+			wantPass:   false,
+			wantErrSub: []string{"expected ALLOWED, got DENIED"},
+		},
+		{
+			// 100.64.0.4/31 is exactly alice-tablet and thor-laptop.
+			name: "src-cidr-fully-assigned-accept-pass",
+			policy: `{
+				"tagOwners": { "tag:server": ["alice@headscale.net"] },
+				"ssh": [{
+					"action": "accept",
+					"src":    ["autogroup:member"],
+					"dst":    ["tag:server"],
+					"users":  ["root"]
+				}],
+				"sshTests": [{
+					"src":    "100.64.0.4/31",
+					"dst":    ["tag:server"],
+					"accept": ["root"]
+				}]
+			}`,
+			wantPass: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -770,6 +853,28 @@ func TestRunSSHTests(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestResolveSSHTestSourceIsBoundedByNodes pins that a src naming address
+// space resolves to the node addresses it covers plus one address standing
+// in for the rest, not to every address in it.
+func TestResolveSSHTestSourceIsBoundedByNodes(t *testing.T) {
+	users := sshTestUsers()
+	nodes := sshTestNodes(users)
+
+	src := Prefix(netip.MustParsePrefix("100.64.0.0/16"))
+
+	got, _, err := resolveSSHTestSource(&src, nil, users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	want := make([]netip.Addr, 0, 1+len(nodes))
+	want = append(want, netip.MustParseAddr("100.64.0.0"))
+
+	for _, n := range nodes {
+		want = append(want, *n.IPv4)
+	}
+
+	require.Equal(t, want, got)
 }
 
 // TestRunSSHTestsBothTestsPassSSHTestsFail captures the distinction the

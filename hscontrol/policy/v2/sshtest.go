@@ -385,6 +385,12 @@ func appendUserDst(m map[string][]string, user, dst string) map[string][]string 
 // resolveSSHTestSource returns the src's principal addresses and, for
 // user-shaped sources, the user ID (so autogroup:self can scope to it).
 // [Tag], [Host], and IP sources return userID 0.
+//
+// SSH principals are always node addresses, so a src is represented by
+// the node addresses it covers plus one address standing in for all
+// the others, which no rule can match. The result is bounded by the
+// node count; a CIDR, `*`, or autogroup:internet src is never walked
+// address by address.
 func resolveSSHTestSource(
 	src Alias,
 	pol *Policy,
@@ -412,7 +418,36 @@ func resolveSSHTestSource(
 		return nil, 0, nil
 	}
 
-	out := slices.Collect(addrs.Iter())
+	var (
+		out  []netip.Addr
+		rest netipx.IPSetBuilder
+	)
+
+	for _, p := range addrs.Prefixes() {
+		rest.AddPrefix(p)
+	}
+
+	for _, n := range nodes.All() {
+		for _, ip := range n.IPs() {
+			if addrs.Contains(ip) {
+				out = append(out, ip)
+				rest.Remove(ip)
+			}
+		}
+	}
+
+	restSet, err := rest.IPSet()
+	if err != nil {
+		return nil, 0, fmt.Errorf("resolving: %w", err)
+	}
+
+	if ranges := restSet.Ranges(); len(ranges) > 0 {
+		out = append(out, ranges[0].From())
+	}
+
+	// Address order, as a full walk has: the first failing address
+	// decides how a check failure is rendered.
+	slices.SortFunc(out, netip.Addr.Compare)
 
 	var userID uint
 
