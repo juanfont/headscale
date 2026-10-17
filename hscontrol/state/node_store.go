@@ -259,6 +259,8 @@ func (s *NodeStore) PutNode(n types.Node) types.NodeView {
 }
 
 // UpdateNodeFunc is a function type that takes a pointer to a [types.Node] and modifies it.
+// Referenced data, including Hostinfo and slices, is shared with published
+// snapshots. Replace it instead of mutating it in place.
 type UpdateNodeFunc func(n *types.Node)
 
 // UpdateNode applies a function to modify a specific node in the
@@ -537,7 +539,7 @@ func (s *NodeStore) applyBatch(batch []work) {
 				}
 
 				oldGivenName := n.GivenName
-				pre := n.Clone()
+				pre := n
 				fn(&n)
 
 				if n.GivenName != oldGivenName {
@@ -550,7 +552,7 @@ func (s *NodeStore) applyBatch(batch []work) {
 					w.pre[id] = pre.View()
 				}
 
-				relation, election := updateChanges(pre, &n)
+				relation, election := updateChanges(&pre, &n)
 				relationChanged = relationChanged || relation
 				electionChanged = electionChanged || election
 			}
