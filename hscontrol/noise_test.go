@@ -32,9 +32,13 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/control/ts2021"
+	"tailscale.com/net/netmon"
 	"tailscale.com/net/netutil"
+	"tailscale.com/net/tsdial"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
+	"tailscale.com/util/eventbus"
 	"tailscale.com/util/zstdframe"
 )
 
@@ -1997,6 +2001,45 @@ func TestNoiseHTTPServerTimeouts(t *testing.T) {
 			t.Fatal("the server kept a tunnel with no open stream")
 		}
 	})
+}
+
+// TestNoiseRouter_DoesNotServeMetrics pins that the metrics registry is not
+// reachable through a Noise tunnel. The handshake accepts any machine key, so
+// every route on the tunnel's router is open to anyone who reaches the public
+// listener; metrics belong on metrics_listen_addr only.
+func TestNoiseRouter_DoesNotServeMetrics(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	server := httptest.NewServer(app.HTTPHandler())
+	t.Cleanup(server.Close)
+
+	dialer := tsdial.NewDialer(netmon.NewStatic())
+	dialer.SetBus(eventbus.New())
+
+	// A machine key that never registered.
+	client, err := ts2021.NewClient(ts2021.ClientOpts{
+		ServerURL:    server.URL,
+		PrivKey:      key.NewMachine(),
+		ServerPubKey: app.noisePrivateKey.Public(),
+		Dialer:       dialer,
+		Logf:         t.Logf,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = client.Close() })
+
+	// The client sends every request down the tunnel whatever the host.
+	req, err := http.NewRequestWithContext(
+		t.Context(), http.MethodGet, "https://headscale/metrics", nil,
+	)
+	require.NoError(t, err)
+
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 }
 
 // TestSSHActionFollowUp_ParksOneRequestPerSession pins that a pending SSH
