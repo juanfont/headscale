@@ -618,7 +618,6 @@ func TestConcurrentMapRequestDERPUsesPersistedState(t *testing.T) {
 				require.NoError(t, err)
 
 				if rotateKey {
-					req.NodeKey = key.NewNode().Public()
 					req.DiscoKey = key.NewDisco().Public()
 				}
 
@@ -1504,6 +1503,73 @@ func TestSetApprovedRoutesReportsVisibility(t *testing.T) {
 			}
 
 			checkAutoApproveAdjacency(t, s)
+		})
+	}
+}
+
+func TestMapRequestKeepsCurrentNodeKey(t *testing.T) {
+	for _, queued := range []bool{false, true} {
+		t.Run(fmt.Sprintf("queued=%t", queued), func(t *testing.T) {
+			s := newRetagTestState(t)
+			user := s.CreateUserForTest("map-key-user")
+			k, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+			require.NoError(t, err)
+			c := registerForPAKRereg(t, s, k)
+			view, pak := c.lookup(t, k.Key)
+			req := c.regReq
+			req.NodeKey = key.NewNode().Public()
+			oldRequest := tailcfg.MapRequest{
+				NodeKey:   c.regReq.NodeKey,
+				Endpoints: []netip.AddrPort{netip.MustParseAddrPort("192.0.2.1:1234")},
+				Hostinfo:  &tailcfg.Hostinfo{Hostname: "stale-host"},
+			}
+
+			if queued {
+				entered, release := make(chan struct{}), make(chan struct{})
+
+				unblock := sync.OnceFunc(func() { close(release) })
+				defer unblock()
+
+				go s.nodeStore.UpdateNode(c.node.ID(), func(*types.Node) {
+					close(entered)
+					<-release
+				})
+
+				<-entered
+
+				registered := make(chan error, 1)
+
+				go func() { _, err := c.reregister(view, pak, req); registered <- err }()
+
+				waitParkedOnWriteQueue(t, "reregisterNodeWithPAK")
+
+				mapped := make(chan error, 1)
+
+				go func() { _, err := s.UpdateNodeFromMapRequest(c.node.ID(), oldRequest); mapped <- err }()
+
+				waitParkedOnWriteQueue(t, "UpdateNodeFromMapRequest")
+				unblock()
+				require.NoError(t, <-registered)
+				require.ErrorContains(t, <-mapped, "node key is no longer current")
+			} else {
+				_, err := c.reregister(view, pak, req)
+				require.NoError(t, err)
+				change, err := s.UpdateNodeFromMapRequest(c.node.ID(), oldRequest)
+				require.ErrorContains(t, err, "node key is no longer current")
+				require.True(t, change.IsEmpty())
+			}
+
+			current, ok := s.GetNodeByID(c.node.ID())
+			require.True(t, ok)
+
+			stored, err := s.db.GetNodeByID(c.node.ID())
+			require.NoError(t, err)
+			require.Equal(t, req.NodeKey, current.NodeKey())
+			require.Equal(t, req.NodeKey, stored.NodeKey)
+			require.Equal(t, "h1", current.Hostname())
+			require.Equal(t, "h1", stored.Hostname)
+			require.Empty(t, current.Endpoints().AsSlice())
+			require.Empty(t, stored.Endpoints)
 		})
 	}
 }
