@@ -1370,8 +1370,8 @@ func (z *zerologRequestLogger) NewLogEntry(
 	r *http.Request,
 ) middleware.LogEntry {
 	return &zerologLogEntry{
-		method: r.Method,
-		path:   r.URL.Path,
+		method: clipForLog(r.Method),
+		path:   clipForLog(r.URL.Path),
 		proto:  r.Proto,
 		remote: r.RemoteAddr,
 	}
