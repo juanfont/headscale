@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"maps"
 	"net/netip"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -105,9 +106,6 @@ var ErrNodeNameNotUnique = errors.New("node name is not unique")
 //     PreAuthKey references after a key has been deleted (#2862).
 //   - User: GORM association, not a real column.
 //   - IsOnline: runtime-only field (gorm:"-").
-//
-// Expiry is included here but may be omitted at call sites that must
-// not touch it (see persistNodeAndRefreshPolicy).
 var nodeUpdateColumns = []string{
 	"MachineKey",
 	"NodeKey",
@@ -677,6 +675,16 @@ func (s *State) ListAllUsers() ([]types.User, error) {
 // Batch callers (e.g. autoApproveNodes) use it to write many rows and then
 // trigger a single policy rebuild instead of one per node.
 func (s *State) persistNode(node types.NodeView) (types.NodeView, error) {
+	return s.persistNodeWith(node, nodeUpdateColumns, nil)
+}
+
+// persistNodeWith writes the current node and any related change in one
+// transaction. inTx runs inside it, with persistMu held.
+func (s *State) persistNodeWith(
+	node types.NodeView,
+	columns []string,
+	inTx func(*gorm.DB) error,
+) (types.NodeView, error) {
 	if !node.Valid() {
 		return types.NodeView{}, ErrInvalidNodeView
 	}
@@ -693,11 +701,10 @@ func (s *State) persistNode(node types.NodeView) (types.NodeView, error) {
 	// ephemeral logout) between the caller's update and this persist: a missing
 	// node means we must not re-insert it.
 	s.persistMu.Lock()
+	defer s.persistMu.Unlock()
 
 	fresh, exists := s.nodeStore.GetNode(node.ID())
 	if !exists {
-		s.persistMu.Unlock()
-
 		log.Warn().
 			EmbedObject(node).
 			Bool("is_ephemeral", node.IsEphemeral()).
@@ -710,11 +717,18 @@ func (s *State) persistNode(node types.NodeView) (types.NodeView, error) {
 
 	// Explicitly select all node columns so GORM includes nil/zero-value
 	// fields (e.g. UserID=nil when converting a user-owned node to tagged).
-	// Omit "Expiry" here: expiry is only updated through explicit
-	// SetNodeExpiry calls or re-registration, not during MapRequest updates.
-	err := s.db.DB.Select(nodeUpdateColumns).Omit("Expiry").Updates(nodePtr).Error
-	s.persistMu.Unlock()
+	err := s.db.Write(func(tx *gorm.DB) error {
+		err := tx.Select(columns).Updates(nodePtr).Error
+		if err != nil {
+			return err
+		}
 
+		if inTx != nil {
+			return inTx(tx)
+		}
+
+		return nil
+	})
 	if err != nil {
 		return types.NodeView{}, fmt.Errorf("saving node: %w", err)
 	}
@@ -1116,8 +1130,7 @@ func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry *time.Time) (types.Nod
 		recompute = change.PolicyChange()
 	}
 
-	// Persist expiry change to database directly since persistNodeAndRefreshPolicy omits expiry.
-	err := s.db.NodeSetExpiry(nodeID, expiry)
+	_, err := s.persistNode(n)
 	if err != nil {
 		c := nodeWriteFailed(nodeID, s.policyChangeSince(genBefore).Merge(recompute))
 
@@ -2341,14 +2354,7 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 		updateColumns = append(slices.Clone(nodeUpdateColumns), "AuthKeyID")
 	}
 
-	_, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-		err := tx.Select(updateColumns).Updates(updatedNodeView.AsStruct()).Error
-		if err != nil {
-			return nil, fmt.Errorf("saving node: %w", err)
-		}
-
-		return nil, nil //nolint:nilnil // side-effect only write
-	})
+	_, err := s.persistNodeWith(updatedNodeView, updateColumns, nil)
 	if err != nil {
 		return types.NodeView{}, false, err
 	}
@@ -3242,9 +3248,11 @@ func (s *State) reregisterNodeWithPAK(
 	}
 
 	// prior is the node the writer replaced: the NetInfo source and the
-	// rollback target if the database write below fails.
+	// rollback target if the database write below fails. written is what this
+	// write left; the view after the batch can hold later writes.
 	var (
 		prior   *types.Node
+		written *types.Node
 		authErr error
 		reauth  bool
 	)
@@ -3255,6 +3263,7 @@ func (s *State) reregisterNodeWithPAK(
 		now := time.Now()
 
 		prior = node.Clone()
+		defer func() { written = node.Clone() }()
 
 		reauth, authErr = pakReregister(node.View(), pak, regReq.NodeKey, now)
 		if authErr != nil {
@@ -3369,54 +3378,35 @@ func (s *State) reregisterNodeWithPAK(
 		return types.NodeView{}, false, authErr
 	}
 
-	_, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-		// Explicitly select all node columns so GORM includes nil/zero-value fields
-		// (see nodeUpdateColumns comment). AuthKeyID is excluded on MapRequest
-		// so a deleted key's stale reference is not persisted, but
-		// re-registration presents a key just loaded from the database, so
-		// its ID must be persisted here — otherwise a restart reloads the old
-		// key and any key-scoped property (e.g. Ephemeral) silently reverts.
-		// A wake-up keeps the prior key, which may have been deleted (#2862).
-		reregColumns := nodeUpdateColumns
-		if reauth {
-			reregColumns = append(slices.Clone(nodeUpdateColumns), "AuthKeyID")
-		}
+	// Explicitly select all node columns so GORM includes nil/zero-value fields
+	// (see nodeUpdateColumns comment). AuthKeyID is excluded on MapRequest
+	// so a deleted key's stale reference is not persisted, but
+	// re-registration presents a key just loaded from the database, so
+	// its ID must be persisted here — otherwise a restart reloads the old
+	// key and any key-scoped property (e.g. Ephemeral) silently reverts.
+	// A wake-up keeps the prior key, which may have been deleted (#2862).
+	reregColumns := nodeUpdateColumns
+	if reauth {
+		reregColumns = append(slices.Clone(nodeUpdateColumns), "AuthKeyID")
+	}
 
-		err := tx.Select(reregColumns).Updates(updatedNodeView.AsStruct()).Error
-		if err != nil {
-			return nil, fmt.Errorf("saving node: %w", err)
-		}
-
+	_, err := s.persistNodeWith(updatedNodeView, reregColumns, func(tx *gorm.DB) error {
 		// Only mark the key used on the *first* registration. On
 		// re-registration the same key is already used and the
 		// atomic compare-and-set in [hsdb.UsePreAuthKey] would otherwise
 		// reject it as "authkey already used", locking out containers
 		// that restart with the same one-shot key.
 		if reauth && !pak.Reusable && !pak.Used {
-			err = hsdb.UsePreAuthKey(tx, pak)
+			err := hsdb.UsePreAuthKey(tx, pak)
 			if err != nil {
-				return nil, fmt.Errorf("using pre auth key: %w", err)
+				return fmt.Errorf("using pre auth key: %w", err)
 			}
 		}
 
-		return nil, nil //nolint:nilnil // intentional: transaction success
+		return nil
 	})
 	if err != nil {
-		// Restore the registration fields from the node the writer replaced.
-		// Sessions, endpoints and health may have moved since that snapshot;
-		// preserve them. LastSeen stays because the node did contact us.
-		s.nodeStore.UpdateNode(prior.ID, func(n *types.Node) {
-			n.NodeKey = prior.NodeKey
-			n.Hostname = prior.Hostname
-			n.Hostinfo = prior.Hostinfo
-			n.RegisterMethod = prior.RegisterMethod
-			n.Tags = prior.Tags
-			n.UserID = prior.UserID
-			n.User = prior.User
-			n.Expiry = prior.Expiry
-			n.AuthKey = prior.AuthKey
-			n.AuthKeyID = prior.AuthKeyID
-		})
+		s.undoReregistration(prior, written)
 
 		return types.NodeView{}, false, fmt.Errorf("writing node to database: %w", err)
 	}
@@ -3431,6 +3421,56 @@ func (s *State) reregisterNodeWithPAK(
 		Msg("Node re-authorized")
 
 	return updatedNodeView, onlyKeysChanged(before, updatedNodeView, time.Now()), nil
+}
+
+// undoReregistration puts back the fields of a failed re-registration that
+// still hold what it wrote, so later admin and map writes survive, and saves
+// the result. LastSeen stays because the node did contact us; sessions,
+// endpoints and health are not rolled back.
+func (s *State) undoReregistration(prior, written *types.Node) {
+	restored, exists := s.nodeStore.UpdateNode(prior.ID, func(n *types.Node) {
+		if n.NodeKey == written.NodeKey {
+			n.NodeKey = prior.NodeKey
+		}
+
+		if n.Hostname == written.Hostname {
+			n.Hostname = prior.Hostname
+		}
+
+		if reflect.DeepEqual(n.Hostinfo, written.Hostinfo) {
+			n.Hostinfo = prior.Hostinfo
+		}
+
+		if n.RegisterMethod == written.RegisterMethod {
+			n.RegisterMethod = prior.RegisterMethod
+		}
+
+		if slices.Equal(n.Tags, written.Tags) &&
+			reflect.DeepEqual(n.UserID, written.UserID) &&
+			reflect.DeepEqual(n.User, written.User) {
+			n.Tags = prior.Tags
+			n.UserID = prior.UserID
+			n.User = prior.User
+		}
+
+		if reflect.DeepEqual(n.Expiry, written.Expiry) {
+			n.Expiry = prior.Expiry
+		}
+
+		if reflect.DeepEqual(n.AuthKeyID, written.AuthKeyID) &&
+			reflect.DeepEqual(n.AuthKey, written.AuthKey) {
+			n.AuthKey = prior.AuthKey
+			n.AuthKeyID = prior.AuthKeyID
+		}
+	})
+	if !exists {
+		return
+	}
+
+	_, err := s.persistNode(restored)
+	if err != nil {
+		log.Error().Err(err).Uint64(zf.NodeID, prior.ID.Uint64()).Msg("Persisting re-registration rollback failed")
+	}
 }
 
 // reauthChange returns the [change.Change] to broadcast after an authentication

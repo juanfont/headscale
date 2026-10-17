@@ -1,10 +1,15 @@
 package state
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
+	"net/netip"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -2234,8 +2239,6 @@ func TestPAKReregisterRollbackKeepsPriorWrite(t *testing.T) {
 
 // TestPAKReregisterConcurrentAdminExpire races a same-key restart with a spent
 // key against an admin expiry. Either serial order leaves the node expired.
-// Only the NodeStore is checked: the order of the two database writes is not
-// serialised with it.
 func TestPAKReregisterConcurrentAdminExpire(t *testing.T) {
 	s := newRetagTestState(t)
 	user := s.CreateUserForTest("pakuser")
@@ -2276,6 +2279,16 @@ func TestPAKReregisterConcurrentAdminExpire(t *testing.T) {
 		n, ok := s.GetNodeByID(c.node.ID())
 		require.True(t, ok)
 		require.True(t, n.IsExpired(), "iteration %d: the spent key revived an expired node", i)
+
+		stored, err := s.db.GetNodeByID(c.node.ID())
+		require.NoError(t, err)
+		require.True(
+			t,
+			stored.IsExpired(),
+			"iteration %d: the row lost the admin expiry",
+			i,
+		)
+		require.True(t, n.Expiry().Get().Equal(*stored.Expiry))
 	}
 }
 
@@ -2324,6 +2337,379 @@ func TestPreAuthKeyRegistrationOwnsHostinfo(t *testing.T) {
 			require.Equal(t, "original", stored.Hostinfo().Hostname())
 			require.Equal(t, uint16(80), stored.Hostinfo().Services().At(0).Port)
 			require.Equal(t, tailcfg.DERPRegionID(1), stored.Hostinfo().NetInfo().PreferredDERP())
+		})
+	}
+}
+
+// beforeNodeTransaction runs once before opening the database transaction so
+// another writer can publish its NodeStore update without sharing a SQL lock.
+type beforeNodeTransaction struct {
+	gorm.ConnPool
+
+	fired  atomic.Bool
+	before func()
+}
+
+func (p *beforeNodeTransaction) BeginTx(
+	ctx context.Context,
+	opts *sql.TxOptions,
+) (gorm.ConnPool, error) {
+	if p.fired.CompareAndSwap(false, true) {
+		p.before()
+	}
+
+	beginner, ok := p.ConnPool.(gorm.TxBeginner)
+	if !ok {
+		return nil, gorm.ErrInvalidTransaction
+	}
+
+	return beginner.BeginTx(ctx, opts)
+}
+
+func TestReauthPersistenceKeepsConcurrentExpiry(t *testing.T) {
+	for _, interactive := range []bool{false, true} {
+		t.Run(fmt.Sprintf("interactive=%t", interactive), func(t *testing.T) {
+			dbPath, s, _ := persistTestSetup(t)
+			t.Cleanup(func() { _ = s.Close() })
+
+			user := s.CreateUserForTest("reauth-persist-user")
+			k, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+			require.NoError(t, err)
+			c := registerForPAKRereg(t, s, k)
+			expiry := time.Now().Add(-time.Minute)
+			expireDone := make(chan struct{})
+
+			var expireErr error
+
+			pool := s.db.DB.ConnPool
+			barrier := &beforeNodeTransaction{ConnPool: pool, before: func() {
+				go func() {
+					defer close(expireDone)
+
+					_, _, expireErr = s.SetNodeExpiry(c.node.ID(), &expiry)
+				}()
+				// Expiry either finishes, or waits for the registration's persist lock.
+				// In both cases its NodeStore update must precede the registration's SQL.
+				buf := make([]byte, 1<<20)
+
+				require.Eventually(t, func() bool {
+					select {
+					case <-expireDone:
+						return true
+					default:
+					}
+
+					stacks := string(buf[:runtime.Stack(buf, true)])
+					for g := range strings.SplitSeq(stacks, "\n\n") {
+						if strings.Contains(g, ".SetNodeExpiry(") &&
+							strings.Contains(g, ".persistNodeWith(") {
+							return true
+						}
+					}
+
+					return false
+				}, 5*time.Second, time.Millisecond)
+			}}
+			s.db.DB.ConnPool = barrier
+			s.db.DB.Statement.ConnPool = barrier
+
+			restore := func() {
+				s.db.DB.ConnPool = pool
+				s.db.DB.Statement.ConnPool = pool
+			}
+			defer restore()
+
+			if interactive {
+				authID := types.MustAuthID()
+				require.NoError(t, s.SetAuthCacheEntry(
+					authID,
+					types.NewRegisterAuthRequest(&types.RegistrationData{
+						MachineKey: c.machineKey,
+						NodeKey:    c.regReq.NodeKey,
+						Hostname:   "h1",
+						Hostinfo:   c.regReq.Hostinfo,
+						Expiry:     &c.regReq.Expiry,
+					}),
+				))
+				_, _, err = s.HandleNodeFromAuthPath(
+					authID,
+					types.UserID(user.ID),
+					nil,
+					util.RegisterMethodOIDC,
+				)
+			} else {
+				_, _, err = s.HandleNodeFromPreAuthKey(c.regReq, c.machineKey)
+			}
+
+			require.NoError(t, err)
+			<-expireDone
+			require.NoError(t, expireErr)
+			restore()
+
+			ns, row := c.fields(t)
+			require.Equal(t, expiry.UnixNano(), ns.Expiry)
+			assert.Equal(
+				t,
+				ns.Expiry,
+				row.Expiry,
+				"the row must retain the concurrent admin expiry",
+			)
+			require.NoError(t, s.Close())
+			reopened := persistTestReopen(t, dbPath)
+			reloaded, ok := reopened.GetNodeByID(c.node.ID())
+			require.True(t, ok)
+			assert.True(t, reloaded.IsExpired(), "a restart must keep the node expired")
+		})
+	}
+}
+
+func TestPersistNodeIncludesCurrentExpiry(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	stale, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+
+	expiry := time.Now().Add(-time.Minute)
+	_, ok = s.nodeStore.UpdateNode(nodeID, func(n *types.Node) { n.Expiry = &expiry })
+	require.True(t, ok)
+
+	_, err := s.persistNode(stale)
+	require.NoError(t, err)
+	stored, err := s.db.GetNodeByID(nodeID)
+	require.NoError(t, err)
+	require.NotNil(t, stored.Expiry)
+	require.True(t, expiry.Equal(*stored.Expiry))
+}
+
+// TestPAKReregisterRollbackKeepsSameBatchWrites: admin writes queued behind a
+// failing re-registration share its NodeStore batch, so the rollback must
+// compare against what the registration wrote, not the node after the batch.
+func TestPAKReregisterRollbackKeepsSameBatchWrites(t *testing.T) {
+	s := newRetagTestState(t)
+	user := s.CreateUserForTest("rollback-user")
+	_, err := s.SetPolicy([]byte(`{"tagOwners":{
+    "tag:prod":["rollback-user@"],"tag:quarantine":["rollback-user@"]}}`))
+	require.NoError(t, err)
+	originalKey, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+	a := registerForPAKRereg(t, s, originalKey)
+	b := registerForPAKRereg(t, s, originalKey)
+
+	// Both rows are read unused; a spends the key, so b fails in the database.
+	sharedKey, err := s.CreatePreAuthKey(nil, false, false, nil, []string{"tag:prod"})
+	require.NoError(t, err)
+	pakA, err := s.GetPreAuthKeyByID(sharedKey.ID)
+	require.NoError(t, err)
+	pakB, err := s.GetPreAuthKeyByID(sharedKey.ID)
+	require.NoError(t, err)
+
+	reqA := a.regReq
+	reqA.Auth = &tailcfg.RegisterResponseAuth{AuthKey: sharedKey.Key}
+	_, err = a.reregister(a.node, pakA, reqA)
+	require.NoError(t, err)
+
+	reqB := b.regReq
+	reqB.Auth = &tailcfg.RegisterResponseAuth{AuthKey: sharedKey.Key}
+	reqB.NodeKey = key.NewNode().Public()
+
+	// Hold the writer so the registration and both admin writes queue behind it
+	// and land in one batch, in this order.
+	entered, release := make(chan struct{}), make(chan struct{})
+
+	releaseOnce := sync.OnceFunc(func() { close(release) })
+	defer releaseOnce()
+
+	go s.nodeStore.UpdateNode(a.node.ID(), func(*types.Node) {
+		close(entered)
+		<-release
+	})
+
+	<-entered
+
+	regDone := make(chan error, 1)
+
+	go func() {
+		_, err := b.reregister(b.node, pakB, reqB)
+		regDone <- err
+	}()
+
+	waitParkedOnWriteQueue(t, "reregisterNodeWithPAK")
+
+	tagsDone := make(chan error, 1)
+
+	go func() {
+		_, _, err := s.SetNodeTags(b.node.ID(), []string{"tag:quarantine"})
+		tagsDone <- err
+	}()
+
+	waitParkedOnWriteQueue(t, "SetNodeTags")
+
+	expiry := time.Now().Add(-time.Minute)
+	expiryDone := make(chan error, 1)
+
+	go func() {
+		_, _, err := s.SetNodeExpiry(b.node.ID(), &expiry)
+		expiryDone <- err
+	}()
+
+	waitParkedOnWriteQueue(t, "SetNodeExpiry")
+
+	releaseOnce()
+
+	require.ErrorIs(t, <-regDone, types.PAKError("authkey already used"))
+	require.NoError(t, <-tagsDone)
+	require.NoError(t, <-expiryDone)
+
+	ns, row := b.fields(t)
+	assert.Equal(t, []string{"tag:quarantine"}, ns.Tags, "admin tags must survive")
+	assert.Equal(t, expiry.UnixNano(), ns.Expiry, "admin expiry must survive")
+	assert.Equal(t, b.regReq.NodeKey, ns.NodeKey, "registration key must roll back")
+	assert.Equal(t, ns, row, "row must match NodeStore")
+}
+
+func TestPAKReregisterRollbackKeepsConcurrentWrites(t *testing.T) {
+	for _, update := range []string{"persisted_grant", "admin", "map"} {
+		t.Run(update, func(t *testing.T) {
+			dbPath, s, _ := persistTestSetup(t)
+			t.Cleanup(func() { _ = s.Close() })
+
+			user := s.CreateUserForTest("rollback-user")
+			_, err := s.SetPolicy([]byte(`{"tagOwners":{
+    "tag:prod":["rollback-user@"],"tag:quarantine":["rollback-user@"]}}`))
+			require.NoError(t, err)
+			originalKey, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+			require.NoError(t, err)
+			a := registerForPAKRereg(t, s, originalKey)
+			b := registerForPAKRereg(t, s, originalKey)
+			sharedKey, err := s.CreatePreAuthKey(nil, false, false, nil, []string{"tag:prod"})
+			require.NoError(t, err)
+			pakA, err := s.GetPreAuthKeyByID(sharedKey.ID)
+			require.NoError(t, err)
+			pakB, err := s.GetPreAuthKeyByID(sharedKey.ID)
+			require.NoError(t, err)
+			require.False(t, pakA.Used)
+			require.False(t, pakB.Used)
+
+			reqA := a.regReq
+			reqA.Auth = &tailcfg.RegisterResponseAuth{AuthKey: sharedKey.Key}
+			_, err = a.reregister(a.node, pakA, reqA)
+			require.NoError(t, err)
+
+			reqB := b.regReq
+			reqB.Auth = &tailcfg.RegisterResponseAuth{AuthKey: sharedKey.Key}
+			reqB.NodeKey = key.NewNode().Public()
+			want := pakFieldsOf(b.node.AsStruct())
+			expiry := time.Now().Add(-time.Minute)
+			endpoint := netip.MustParseAddrPort("192.0.2.1:1234")
+
+			var pending []<-chan error
+
+			pool := s.db.DB.ConnPool
+			barrier := &beforeNodeTransaction{ConnPool: pool, before: func() {
+				published, ok := s.GetNodeByID(b.node.ID())
+				require.True(t, ok)
+				require.Equal(t, []string{"tag:prod"}, published.Tags().AsSlice())
+				// Another persist can write the published grant before registration
+				// takes persistMu. Reproduce that row at the transaction boundary.
+				require.NoError(t, s.db.DB.Select(nodeUpdateColumns).Updates(published.AsStruct()).Error)
+
+				switch update {
+				case "admin":
+					tagsDone := make(chan error, 1)
+					pending = append(pending, tagsDone)
+
+					go func() {
+						_, _, err := s.SetNodeTags(b.node.ID(), []string{"tag:quarantine"})
+						tagsDone <- err
+					}()
+
+					require.Eventually(t, func() bool {
+						n, ok := s.GetNodeByID(b.node.ID())
+						return ok && slices.Equal(n.Tags().AsSlice(), []string{"tag:quarantine"})
+					}, 5*time.Second, time.Millisecond)
+
+					expiryDone := make(chan error, 1)
+					pending = append(pending, expiryDone)
+
+					go func() {
+						_, _, err := s.SetNodeExpiry(b.node.ID(), &expiry)
+						expiryDone <- err
+					}()
+
+					require.Eventually(t, func() bool {
+						n, ok := s.GetNodeByID(b.node.ID())
+						return ok && n.IsExpired()
+					}, 5*time.Second, time.Millisecond)
+
+					want.Tags = []string{"tag:quarantine"}
+					want.UserID = nil
+					want.Expiry = expiry.UnixNano()
+				case "map":
+					mapDone := make(chan error, 1)
+					pending = append(pending, mapDone)
+
+					go func() {
+						_, err := s.UpdateNodeFromMapRequest(b.node.ID(), tailcfg.MapRequest{
+							NodeKey:   reqB.NodeKey,
+							Endpoints: []netip.AddrPort{endpoint},
+							Hostinfo: &tailcfg.Hostinfo{
+								Hostname: "current-host",
+								NetInfo:  &tailcfg.NetInfo{PreferredDERP: 7},
+							},
+						})
+						mapDone <- err
+					}()
+
+					require.Eventually(t, func() bool {
+						n, ok := s.GetNodeByID(b.node.ID())
+						return ok && n.Hostname() == "current-host"
+					}, 5*time.Second, time.Millisecond)
+
+					want.Hostname = "current-host"
+				}
+			}}
+			s.db.DB.ConnPool = barrier
+			s.db.DB.Statement.ConnPool = barrier
+
+			restore := func() {
+				s.db.DB.ConnPool = pool
+				s.db.DB.Statement.ConnPool = pool
+			}
+			defer restore()
+
+			_, err = b.reregister(b.node, pakB, reqB)
+			require.ErrorIs(t, err, types.PAKError("authkey already used"))
+
+			for _, done := range pending {
+				require.NoError(t, <-done)
+			}
+
+			restore()
+
+			ns, row := b.fields(t)
+			assert.Equal(t, want, ns, "rollback must preserve newer writes")
+			assert.Equal(t, want, row, "rollback must repair the persisted grant")
+
+			if update == "map" {
+				current, ok := s.GetNodeByID(b.node.ID())
+				require.True(t, ok)
+				require.True(t, current.Hostinfo().NetInfo().Valid())
+				assert.Equal(t, tailcfg.DERPRegionID(7), current.Hostinfo().NetInfo().PreferredDERP())
+				assert.Equal(t, []netip.AddrPort{endpoint}, current.Endpoints().AsSlice())
+
+				stored, err := s.db.GetNodeByID(b.node.ID())
+				require.NoError(t, err)
+				assert.Equal(t, "current-host", stored.Hostinfo.Hostname)
+				assert.Equal(t, tailcfg.DERPRegionID(7), stored.Hostinfo.NetInfo.PreferredDERP)
+				assert.Equal(t, []netip.AddrPort{endpoint}, stored.Endpoints.List())
+			}
+
+			require.NoError(t, s.Close())
+			reopened := persistTestReopen(t, dbPath)
+			reloaded, ok := reopened.GetNodeByID(b.node.ID())
+			require.True(t, ok)
+			assert.Equal(t, want, pakFieldsOf(reloaded.AsStruct()), "restart must keep the rollback")
 		})
 	}
 }
