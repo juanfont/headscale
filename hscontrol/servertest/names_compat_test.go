@@ -60,16 +60,10 @@ var nameSkipReasons = map[string]string{
 	"names/N12a/pdb/label": adminNameFollowsHostname,
 	"names/N12b/pdb/label": adminNameFollowsHostname,
 	"names/N13/pdb/label":  adminNameFollowsHostname,
-
-	"names/N9a/0/message": nameTakenText,
-	"names/N9b/0/message": nameTakenText,
-
-	"names-svc/S5/0/message": nameTakenText,
 }
 
 const (
 	adminNameFollowsHostname = "ADMIN_NAME_FOLLOWS_HOSTNAME: an admin name equal to the hostname's label counts as derived from it, so a hostname change replaces it; SaaS keeps an admin name across hostname changes"
-	nameTakenText            = "NAME_TAKEN_TEXT: headscale's v2 message for a rename refused as taken is the operation, with the reason only in data; SaaS's message says the name is already taken"
 	v2NameBare               = "V2_NAME_BARE: headscale's v2 device name is the bare label; SaaS's is the FQDN under the tailnet domain"
 )
 
