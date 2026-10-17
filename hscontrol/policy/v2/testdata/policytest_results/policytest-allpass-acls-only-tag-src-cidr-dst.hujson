@@ -1,0 +1,171 @@
+// policytest-allpass-acls-only-tag-src-cidr-dst
+//
+// tests block all-pass: tag src to cidr dst, acls only, tcp
+//
+// Steps: 1
+// Captured at:    2026-10-17T15:11:37Z
+// tool version:   tscap/4ef410b
+// schema version: 1
+{
+	"schema_version": 1,
+	"test_id":        "policytest-allpass-acls-only-tag-src-cidr-dst",
+	"description":    "tests block all-pass: tag src to cidr dst, acls only, tcp",
+	"category":       "policytest",
+	"captured_at":    "2026-10-17T15:11:37.637403038Z",
+	"tool_version":   "tscap/4ef410b",
+	"tailnet":        "odin@example.com",
+	"error":          true,
+	"input": {
+		"api_response_code": 400,
+		"api_response_body": {"message": "test(s) failed", "data": [{"user": "tag:client", "errors": [
+			"[acl test error]: user or host is invalid: unknown user or host: \"10.0.0.0/8\""
+		]}]},
+		"tailnet": {
+			"dns":      {"magic_dns": false, "nameservers": [], "search_paths": [], "split_dns": {}},
+			"settings": {}
+		},
+		"scenario_hujson": "                                                \n  \n                                                                                 \n                                                                              \n                                                                                \n                                                                          \n                                                                              \n                                                                             \n                                                                           \n                                                                             \n{\n\t\"id\":          \"policytest-allpass-acls-only-tag-src-cidr-dst\",\n\t\"category\":    \"policytest\",\n\t\"description\": \"tests block all-pass: tag src to cidr dst, acls only, tcp\",\n\n\t\"topology\": \"../_topologies/acl.hujson\",\n\n\t\"tailnet\": {\n\t\t\"dns\":      {\"magic_dns\": false, \"nameservers\": [], \"search_paths\": [], \"split_dns\": {}},\n\t\t\"settings\": {}\n\t},\n\n\t\"policy\": {\n\t\t\"groups\": {\n\t\t\t\"group:admins\":     [\"odin@example.com\"],\n\t\t\t\"group:developers\": [\"thor@example.org\", \"odin@example.com\"],\n\t\t\t\"group:empty\":      [],\n\t\t\t\"group:monitors\":   [\"freya@example.com\"]\n\t\t},\n\t\t\"tagOwners\": {\n\t\t\t\"tag:client\":   [\"odin@example.com\"],\n\t\t\t\"tag:exit\":     [\"odin@example.com\"],\n\t\t\t\"tag:pidgey\":   [\"odin@example.com\"],\n\t\t\t\"tag:pidgeotto\":   [\"odin@example.com\"],\n\t\t\t\"tag:group-a\":  [\"odin@example.com\"],\n\t\t\t\"tag:group-b\":  [\"odin@example.com\"],\n\t\t\t\"tag:ha\":       [\"odin@example.com\"],\n\t\t\t\"tag:prod\":     [\"odin@example.com\"],\n\t\t\t\"tag:router\":   [\"odin@example.com\"],\n\t\t\t\"tag:spearow\": [\"odin@example.com\"],\n\t\t\t\"tag:fearow\": [\"odin@example.com\"],\n\t\t\t\"tag:server\":   [\"odin@example.com\"]\n\t\t},\n\t\t\"hosts\": {\n\t\t\t\"internal\":  \"10.0.0.0/8\",\n\t\t\t\"prodbox\":   \"100.103.8.15\",\n\t\t\t\"subnet24\":  \"192.168.1.0/24\",\n\t\t\t\"webserver\": \"100.64.0.16\"\n\t\t},\n\t\t\"acls\": [\n\t\t\t{\"action\": \"accept\", \"src\": [\"tag:client\"], \"dst\": [\"10.0.0.0/8:22\"]}\n\t\t],\n\t\t\"tests\": [\n\t\t\t{\"src\": \"tag:client\", \"accept\": [\"10.0.0.0/8:22\"]}\n\t\t]\n\t}\n}\n",
+		"scenario_path":   "scenarios/policytest/policytest-allpass-acls-only-tag-src-cidr-dst.hujson",
+		"full_policy": {
+			"acls": [{"action": "accept", "dst": ["10.0.0.0/8:22"], "src": ["tag:client"]}],
+			"groups": {
+				"group:admins":     ["odin@example.com"],
+				"group:developers": ["thor@example.org", "odin@example.com"],
+				"group:empty":      [],
+				"group:monitors":   ["freya@example.com"]
+			},
+			"hosts": {
+				"internal":  "10.0.0.0/8",
+				"prodbox":   "100.103.8.15",
+				"subnet24":  "192.168.1.0/24",
+				"webserver": "100.64.0.16"
+			},
+			"tagOwners": {
+				"tag:client":    ["odin@example.com"],
+				"tag:exit":      ["odin@example.com"],
+				"tag:pidgey":    ["odin@example.com"],
+				"tag:pidgeotto": ["odin@example.com"],
+				"tag:group-a":   ["odin@example.com"],
+				"tag:group-b":   ["odin@example.com"],
+				"tag:ha":        ["odin@example.com"],
+				"tag:prod":      ["odin@example.com"],
+				"tag:router":    ["odin@example.com"],
+				"tag:spearow":   ["odin@example.com"],
+				"tag:fearow":    ["odin@example.com"],
+				"tag:server":    ["odin@example.com"]
+			},
+			"tests": [{"accept": ["10.0.0.0/8:22"], "src": "tag:client"}]
+		}
+	},
+	"topology": {"users": [
+		{"id": 1, "name": "odin", "email": "odin@example.com"},
+		{"id": 2, "name": "thor", "email": "thor@example.org"},
+		{"id": 3, "name": "freya", "email": "freya@example.com"}
+	], "nodes": {"beedrill": {
+		"hostname":        "beedrill",
+		"tags":            ["tag:server"],
+		"ipv4":            "100.64.0.16",
+		"ipv6":            "fd7a:115c:a1e0::10",
+		"routable_ips":    [],
+		"approved_routes": []
+	}, "bulbasaur": {
+		"hostname":        "bulbasaur",
+		"tags":            [],
+		"ipv4":            "100.64.0.19",
+		"ipv6":            "fd7a:115c:a1e0::13",
+		"user":            "odin",
+		"routable_ips":    [],
+		"approved_routes": []
+	}, "charmander": {
+		"hostname":        "charmander",
+		"tags":            ["tag:exit"],
+		"ipv4":            "100.64.0.4",
+		"ipv6":            "fd7a:115c:a1e0::4",
+		"routable_ips":    ["0.0.0.0/0", "::/0"],
+		"approved_routes": []
+	}, "ivysaur": {
+		"hostname":        "ivysaur",
+		"tags":            [],
+		"ipv4":            "100.64.0.17",
+		"ipv6":            "fd7a:115c:a1e0::11",
+		"user":            "thor",
+		"routable_ips":    [],
+		"approved_routes": []
+	}, "kakuna": {
+		"hostname":        "kakuna",
+		"tags":            ["tag:prod"],
+		"ipv4":            "100.64.0.15",
+		"ipv6":            "fd7a:115c:a1e0::f",
+		"routable_ips":    [],
+		"approved_routes": []
+	}, "squirtle": {
+		"hostname":        "squirtle",
+		"tags":            ["tag:router"],
+		"ipv4":            "100.64.0.13",
+		"ipv6":            "fd7a:115c:a1e0::d",
+		"routable_ips":    ["10.33.0.0/16"],
+		"approved_routes": []
+	}, "venusaur": {
+		"hostname":        "venusaur",
+		"tags":            [],
+		"ipv4":            "100.64.0.18",
+		"ipv6":            "fd7a:115c:a1e0::12",
+		"user":            "freya",
+		"routable_ips":    [],
+		"approved_routes": []
+	}, "weedle": {
+		"hostname":        "weedle",
+		"tags":            ["tag:client"],
+		"ipv4":            "100.64.0.14",
+		"ipv6":            "fd7a:115c:a1e0::e",
+		"routable_ips":    [],
+		"approved_routes": []
+	}}},
+	"captures": {},
+	"steps": [{
+		"name":   "validate",
+		"at":     "2026-10-17T15:11:43.60650233Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "api",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/acl/validate",
+			"header":    {"Content-Type": "application/hujson"},
+			"body": {
+				"acls": [{"action": "accept", "dst": ["10.0.0.0/8:22"], "src": ["tag:client"]}],
+				"groups": {
+					"group:admins":     ["odin@example.com"],
+					"group:developers": ["thor@example.org", "odin@example.com"],
+					"group:empty":      [],
+					"group:monitors":   ["freya@example.com"]
+				},
+				"hosts": {
+					"internal":  "10.0.0.0/8",
+					"prodbox":   "100.103.8.15",
+					"subnet24":  "192.168.1.0/24",
+					"webserver": "100.64.0.16"
+				},
+				"tagOwners": {
+					"tag:client":    ["odin@example.com"],
+					"tag:exit":      ["odin@example.com"],
+					"tag:pidgey":    ["odin@example.com"],
+					"tag:pidgeotto": ["odin@example.com"],
+					"tag:group-a":   ["odin@example.com"],
+					"tag:group-b":   ["odin@example.com"],
+					"tag:ha":        ["odin@example.com"],
+					"tag:prod":      ["odin@example.com"],
+					"tag:router":    ["odin@example.com"],
+					"tag:spearow":   ["odin@example.com"],
+					"tag:fearow":    ["odin@example.com"],
+					"tag:server":    ["odin@example.com"]
+				},
+				"tests": [{"accept": ["10.0.0.0/8:22"], "src": "tag:client"}]
+			},
+			"status": 200,
+			"response": {"data": [{"errors": [
+				"[acl test error]: user or host is invalid: unknown user or host: \"10.0.0.0/8\""
+			], "user": "tag:client"}], "message": "test(s) failed"}
+		}]
+	}]
+}
