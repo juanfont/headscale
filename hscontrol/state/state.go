@@ -182,6 +182,10 @@ type State struct {
 	// polMan handles policy evaluation and management
 	polMan policy.PolicyManager
 
+	// policyMu makes loading the stored policy and installing it one step,
+	// so of two overlapping reloads the older document cannot land last.
+	policyMu sync.Mutex
+
 	// authCache holds pending Web, OIDC and SSH authentication requests.
 	// Admission preserves unexpired entries at capacity. Expiry resolves the
 	// verdict with ErrRegistrationExpired so waiting goroutines wake.
@@ -465,6 +469,9 @@ func (s *State) DERPMap() tailcfg.DERPMapView {
 // Returns the resulting [change.Change] slice when the policy or routes changed,
 // also alongside an error once the policy is swapped.
 func (s *State) ReloadPolicy() ([]change.Change, error) {
+	s.policyMu.Lock()
+	defer s.policyMu.Unlock()
+
 	pol, err := hsdb.PolicyBytes(s.db.DB, s.cfg)
 	if err != nil {
 		return nil, fmt.Errorf("loading policy: %w", err)
