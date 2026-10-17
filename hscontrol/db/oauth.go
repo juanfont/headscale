@@ -26,6 +26,11 @@ var (
 	ErrAccessTokenClientRevoked = errors.New("oauth access token issuing client revoked or deleted")
 )
 
+// maxAccessTokensPerClient bounds the access tokens kept for one OAuth client.
+// Minting needs only the client secret, whatever its scopes, so each mint ends
+// the client's tokens beyond the newest this many.
+const maxAccessTokensPerClient = 1000
+
 // validateScopes rejects any value outside the vocabulary in [scope.Known]. An
 // unknown scope satisfies no requirement, so storing one would silently mint a
 // client with fewer permissions than asked for. Every offending scope is
@@ -193,6 +198,12 @@ func (hsdb *HSDatabase) MintAccessToken(
 ) (string, *types.OAuthAccessToken, error) {
 	tokenStr, prefix, hash := generateSecret(types.AccessTokenPrefix)
 
+	scopes = set.SetOf(scopes).Slice()
+	slices.Sort(scopes)
+
+	tags = set.SetOf(tags).Slice()
+	slices.Sort(tags)
+
 	now := time.Now().UTC()
 	cred := types.Credential{
 		Kind:       types.CredentialOAuthToken,
@@ -223,7 +234,19 @@ func (hsdb *HSDatabase) MintAccessToken(
 			return ErrOAuthClientRevoked
 		}
 
-		return tx.Save(&cred).Error
+		err = tx.Save(&cred).Error
+		if err != nil {
+			return err
+		}
+
+		// Under the limit the subquery is NULL and nothing is deleted.
+		newestSurplus := tx.Model(&types.Credential{}).Select("id").
+			Where("kind = ? AND client_id = ?", types.CredentialOAuthToken, clientID).
+			Order("id DESC").Limit(1).Offset(maxAccessTokensPerClient)
+
+		return tx.Where("kind = ? AND client_id = ? AND id <= (?)",
+			types.CredentialOAuthToken, clientID, newestSurplus).
+			Delete(&types.Credential{}).Error
 	})
 	if err != nil {
 		return "", nil, fmt.Errorf("saving oauth access token: %w", err)
