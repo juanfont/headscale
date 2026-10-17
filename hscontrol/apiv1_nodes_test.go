@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
@@ -306,6 +307,35 @@ func TestAPIV1NodeSetApprovedRoutes(t *testing.T) {
 		res := h.assertParity(t, http.MethodPost, "/api/v1/node/abc/approve_routes",
 			[]byte(`{"routes":[]}`))
 		assertStatus(t, res, http.StatusBadRequest)
+	})
+
+	// The admin's v2 route calls on routers announcing the tailnet's own
+	// addresses, replayed against v1: the same routes accepted or refused.
+	// Test data source: policy/v2/testdata/routes_results/routes-t4-admin.hujson.
+	t.Run("saas compat", func(t *testing.T) {
+		c := readRoutesCapture(t, "routes-t4-admin")
+		h := newAPIV1Harness(t)
+		devices := seedCaptureRouters(t, h.app, c)
+
+		replayRouteCalls(t, c, "v1-", func(a testcapture.Action, alias string) routeCall {
+			target := "/api/v1/node/" + devices[alias]
+			if a.Method == http.MethodPost {
+				target += "/approve_routes"
+			}
+
+			res := h.callHuma(a.Method, target, a.Body)
+
+			var body struct {
+				Node struct {
+					Available []string `json:"availableRoutes"`
+					Approved  []string `json:"approvedRoutes"`
+				} `json:"node"`
+				Detail string `json:"detail"`
+			}
+			require.NoErrorf(t, json.Unmarshal(res.body, &body), "body: %s", res.body)
+
+			return routeCall{res.status, body.Node.Available, body.Node.Approved, body.Detail}
+		})
 	})
 }
 

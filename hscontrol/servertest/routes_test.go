@@ -2,17 +2,26 @@ package servertest_test
 
 import (
 	"context"
+	"fmt"
+	"maps"
+	"net/http"
 	"net/netip"
+	"path/filepath"
 	"slices"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/servertest"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/testcapture"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/netmap"
+	"tailscale.com/types/views"
 )
 
 // TestRoutes verifies that route advertisements and approvals
@@ -346,3 +355,313 @@ func TestRoutes(t *testing.T) {
 }
 
 // [findNodeID] is defined in issues_test.go.
+
+// routeOverlapCompatTests lists captures whose routers announce addresses
+// and prefixes of the tailnet's own range, approved by the policy's
+// autoApprovers (t1–t3), an admin key (t4) or a devices:routes token (t5).
+var routeOverlapCompatTests = []string{
+	"routes-t1-auto-v4-default",
+	"routes-t2-auto-v6-default",
+	"routes-t3-auto-narrow-keys",
+	"routes-t4-admin",
+	"routes-t5-oauth-routes-scope",
+}
+
+// routeOverlapSkipReasons lists checks where headscale differs from SaaS,
+// keyed <test_id>/<node>/<check>. A listed check that matches fails, so a fix
+// must delete its entry.
+var routeOverlapSkipReasons = map[string]string{
+	"routes-t1-auto-v4-default/ovl-db/peer-routes":            tailnetSingleServed,
+	"routes-t1-auto-v4-default/ovl-observer/peer-routes":      tailnetSingleServed,
+	"routes-t1-auto-v4-default/ovl-r-wide-in/peer-routes":     tailnetSingleServed,
+	"routes-t1-auto-v4-default/ovl-r-wide-out/peer-routes":    tailnetSingleServed,
+	"routes-t1-auto-v4-default/ovl-viewer/peer-routes":        tailnetSingleServed,
+	"routes-t2-auto-v6-default/ovl-db/peer-routes":            tailnetSingleServed,
+	"routes-t2-auto-v6-default/ovl-observer/peer-routes":      tailnetSingleServed,
+	"routes-t2-auto-v6-default/ovl-r-wide-in/peer-routes":     tailnetSingleServed,
+	"routes-t2-auto-v6-default/ovl-r-wide-out/peer-routes":    tailnetSingleServed,
+	"routes-t2-auto-v6-default/ovl-viewer/peer-routes":        tailnetSingleServed,
+	"routes-t3-auto-narrow-keys/ovl-db/peer-routes":           tailnetSingleServed,
+	"routes-t3-auto-narrow-keys/ovl-observer/peer-routes":     tailnetSingleServed,
+	"routes-t3-auto-narrow-keys/ovl-r-wide-in/peer-routes":    tailnetSingleServed,
+	"routes-t3-auto-narrow-keys/ovl-r-wide-out/peer-routes":   tailnetSingleServed,
+	"routes-t3-auto-narrow-keys/ovl-viewer/peer-routes":       tailnetSingleServed,
+	"routes-t4-admin/ovl-db/peer-routes":                      tailnetSingleServed,
+	"routes-t4-admin/ovl-observer/peer-routes":                tailnetSingleServed,
+	"routes-t4-admin/ovl-r-wide-in/peer-routes":               tailnetSingleServed,
+	"routes-t4-admin/ovl-r-wide-out/peer-routes":              tailnetSingleServed,
+	"routes-t4-admin/ovl-viewer/peer-routes":                  tailnetSingleServed,
+	"routes-t5-oauth-routes-scope/ovl-db/peer-routes":         tailnetSingleServed,
+	"routes-t5-oauth-routes-scope/ovl-observer/peer-routes":   tailnetSingleServed,
+	"routes-t5-oauth-routes-scope/ovl-r-wide-in/peer-routes":  tailnetSingleServed,
+	"routes-t5-oauth-routes-scope/ovl-r-wide-out/peer-routes": tailnetSingleServed,
+	"routes-t5-oauth-routes-scope/ovl-viewer/peer-routes":     tailnetSingleServed,
+
+	// Once a router is sent its own routes, its self-primary also needs the
+	// approved singles in the tailnet range left unserved.
+	"routes-t1-auto-v4-default/ovl-r-ctrl/self-allowed":      selfRoutesReduced,
+	"routes-t1-auto-v4-default/ovl-r-ctrl/self-primary":      selfRoutesReduced,
+	"routes-t1-auto-v4-default/ovl-r-host4/self-allowed":     selfRoutesReduced,
+	"routes-t1-auto-v4-default/ovl-r-narrow/self-allowed":    selfRoutesReduced,
+	"routes-t1-auto-v4-default/ovl-r-narrow/self-primary":    selfRoutesReduced,
+	"routes-t2-auto-v6-default/ovl-r-host6/self-allowed":     selfRoutesReduced,
+	"routes-t2-auto-v6-default/ovl-r-mapped/self-allowed":    selfRoutesReduced,
+	"routes-t2-auto-v6-default/ovl-r-mapped/self-primary":    selfRoutesReduced,
+	"routes-t2-auto-v6-default/ovl-r-narrow/self-allowed":    selfRoutesReduced,
+	"routes-t2-auto-v6-default/ovl-r-narrow/self-primary":    selfRoutesReduced,
+	"routes-t2-auto-v6-default/ovl-r-via/self-allowed":       selfRoutesReduced,
+	"routes-t2-auto-v6-default/ovl-r-via/self-primary":       selfRoutesReduced,
+	"routes-t3-auto-narrow-keys/ovl-r-ctrl/self-allowed":     selfRoutesReduced,
+	"routes-t3-auto-narrow-keys/ovl-r-ctrl/self-primary":     selfRoutesReduced,
+	"routes-t3-auto-narrow-keys/ovl-r-host4/self-allowed":    selfRoutesReduced,
+	"routes-t3-auto-narrow-keys/ovl-r-host6/self-allowed":    selfRoutesReduced,
+	"routes-t3-auto-narrow-keys/ovl-r-narrow/self-allowed":   selfRoutesReduced,
+	"routes-t3-auto-narrow-keys/ovl-r-narrow/self-primary":   selfRoutesReduced,
+	"routes-t3-auto-narrow-keys/ovl-r-via/self-allowed":      selfRoutesReduced,
+	"routes-t3-auto-narrow-keys/ovl-r-via/self-primary":      selfRoutesReduced,
+	"routes-t4-admin/ovl-r-ctrl/self-allowed":                selfRoutesReduced,
+	"routes-t4-admin/ovl-r-ctrl/self-primary":                selfRoutesReduced,
+	"routes-t4-admin/ovl-r-host4/self-allowed":               selfRoutesReduced,
+	"routes-t4-admin/ovl-r-host6/self-allowed":               selfRoutesReduced,
+	"routes-t4-admin/ovl-r-mapped/self-allowed":              selfRoutesReduced,
+	"routes-t4-admin/ovl-r-mapped/self-primary":              selfRoutesReduced,
+	"routes-t4-admin/ovl-r-narrow/self-allowed":              selfRoutesReduced,
+	"routes-t4-admin/ovl-r-narrow/self-primary":              selfRoutesReduced,
+	"routes-t4-admin/ovl-r-via/self-allowed":                 selfRoutesReduced,
+	"routes-t4-admin/ovl-r-via/self-primary":                 selfRoutesReduced,
+	"routes-t5-oauth-routes-scope/ovl-r-ctrl/self-allowed":   selfRoutesReduced,
+	"routes-t5-oauth-routes-scope/ovl-r-ctrl/self-primary":   selfRoutesReduced,
+	"routes-t5-oauth-routes-scope/ovl-r-host4/self-allowed":  selfRoutesReduced,
+	"routes-t5-oauth-routes-scope/ovl-r-host6/self-allowed":  selfRoutesReduced,
+	"routes-t5-oauth-routes-scope/ovl-r-mapped/self-allowed": selfRoutesReduced,
+	"routes-t5-oauth-routes-scope/ovl-r-mapped/self-primary": selfRoutesReduced,
+	"routes-t5-oauth-routes-scope/ovl-r-narrow/self-allowed": selfRoutesReduced,
+	"routes-t5-oauth-routes-scope/ovl-r-narrow/self-primary": selfRoutesReduced,
+	"routes-t5-oauth-routes-scope/ovl-r-via/self-allowed":    selfRoutesReduced,
+	"routes-t5-oauth-routes-scope/ovl-r-via/self-primary":    selfRoutesReduced,
+}
+
+// routeOverlapNotCompared lists, by key prefix, checks left out: SaaS's
+// answer there is in doubt, so it is no reference.
+var routeOverlapNotCompared = []string{
+	"routes-t1-auto-v4-default/ovl-r-ctrl/peers",
+	"routes-t1-auto-v4-default/ovl-r-host4/peers",
+	"routes-t1-auto-v4-default/ovl-r-host6/peers",
+	"routes-t1-auto-v4-default/ovl-r-mapped/peers",
+	"routes-t1-auto-v4-default/ovl-r-narrow/peers",
+	"routes-t1-auto-v4-default/ovl-r-via/peers",
+	"routes-t1-auto-v4-default/ovl-r-wide-in/peers",
+	"routes-t2-auto-v6-default/ovl-r-ctrl/peers",
+	"routes-t2-auto-v6-default/ovl-r-host4/peers",
+	"routes-t2-auto-v6-default/ovl-r-host6/peers",
+	"routes-t2-auto-v6-default/ovl-r-mapped/peers",
+	"routes-t2-auto-v6-default/ovl-r-narrow/peers",
+	"routes-t2-auto-v6-default/ovl-r-via/peers",
+	"routes-t3-auto-narrow-keys/ovl-r-ctrl/peer-routes",
+	"routes-t3-auto-narrow-keys/ovl-r-ctrl/peers",
+	"routes-t3-auto-narrow-keys/ovl-r-host4/peers",
+	"routes-t3-auto-narrow-keys/ovl-r-host6/peers",
+	"routes-t3-auto-narrow-keys/ovl-r-mapped/peer-routes",
+	"routes-t3-auto-narrow-keys/ovl-r-mapped/peers",
+	"routes-t3-auto-narrow-keys/ovl-r-narrow/peer-routes",
+	"routes-t3-auto-narrow-keys/ovl-r-narrow/peers",
+	"routes-t3-auto-narrow-keys/ovl-r-via/peer-routes",
+	"routes-t3-auto-narrow-keys/ovl-r-via/peers",
+	"routes-t4-admin/ovl-r-ctrl/peer-routes",
+	"routes-t4-admin/ovl-r-ctrl/peers",
+	"routes-t4-admin/ovl-r-host4/peers",
+	"routes-t4-admin/ovl-r-host6/peers",
+	"routes-t4-admin/ovl-r-mapped/peer-routes",
+	"routes-t4-admin/ovl-r-mapped/peers",
+	"routes-t4-admin/ovl-r-narrow/peer-routes",
+	"routes-t4-admin/ovl-r-narrow/peers",
+	"routes-t4-admin/ovl-r-via/peer-routes",
+	"routes-t4-admin/ovl-r-via/peers",
+	"routes-t5-oauth-routes-scope/ovl-r-ctrl/peer-routes",
+	"routes-t5-oauth-routes-scope/ovl-r-ctrl/peers",
+	"routes-t5-oauth-routes-scope/ovl-r-host4/peers",
+	"routes-t5-oauth-routes-scope/ovl-r-host6/peers",
+	"routes-t5-oauth-routes-scope/ovl-r-mapped/peer-routes",
+	"routes-t5-oauth-routes-scope/ovl-r-mapped/peers",
+	"routes-t5-oauth-routes-scope/ovl-r-narrow/peer-routes",
+	"routes-t5-oauth-routes-scope/ovl-r-narrow/peers",
+	"routes-t5-oauth-routes-scope/ovl-r-via/peer-routes",
+	"routes-t5-oauth-routes-scope/ovl-r-via/peers",
+}
+
+const tailnetSingleServed = "TAILNET_SINGLE_SERVED: headscale serves an approved single address inside the tailnet range, which SaaS approves but never serves"
+
+// TestRoutesTailnetOverlapCompat replays routers whose routes overlap the
+// tailnet's addresses and compares approvals, served routes, peers and
+// filters with SaaS. Headscale must hand out SaaS's addresses, so a route
+// naming a node's address names the same node here and AllowedIPs compare
+// literally.
+//
+// Test data source: ../policy/v2/testdata/routes_results/, shared with
+// TestRoutesCompat* in policy/v2.
+func TestRoutesTailnetOverlapCompat(t *testing.T) {
+	t.Parallel()
+
+	for _, id := range routeOverlapCompatTests {
+		t.Run(id, func(t *testing.T) {
+			t.Parallel()
+
+			c, err := testcapture.Read(filepath.Join(
+				"..", "policy", "v2", "testdata", "routes_results", id+".hujson",
+			))
+			require.NoError(t, err)
+
+			srv, clients := startCaptureClients(t, c, routesSetByAPI(c))
+			names := slices.Sorted(maps.Keys(clients))
+
+			for _, name := range names {
+				want, got := c.Captures[name].Netmap.SelfNode, clients[name].Netmap().SelfNode
+				require.Equalf(t, prefixList(want.Addresses()), prefixList(got.Addresses()),
+					"%s: addresses differ from SaaS, so routes would name other nodes", name)
+			}
+
+			saasAddrs := saasAddrsByNode(c, clients)
+
+			// Each node's checks read only its own netmap and node, so the
+			// holds run at once.
+			var wg sync.WaitGroup
+
+			for _, name := range names {
+				wg.Go(func() {
+					t.Run(name, func(t *testing.T) {
+						key := id + "/" + name + "/"
+						want := c.Captures[name].Netmap
+						topo := c.Topology.Nodes[name]
+						nodeID := findNodeID(t, srv, name)
+
+						// Approvals and routes reach clients in batches; retry
+						// the comparisons until they hold.
+						requireNetmapHolds(t, func(t require.TestingT) {
+							nm := clients[name].Netmap()
+
+							if len(topo.RoutableIPs) > 0 {
+								node, ok := srv.State().GetNodeByID(nodeID)
+								require.True(t, ok)
+
+								overlapCheck(t, key+"approved",
+									sortedStrings(topo.ApprovedRoutes),
+									sortedStrings(util.PrefixesToString(node.ApprovedRoutes().AsSlice())))
+							}
+
+							wantPeers, gotPeers := peerRoutes(want, clients), peerRoutes(nm, clients)
+							overlapCheck(t, key+"peers",
+								strings.Join(slices.Sorted(maps.Keys(wantPeers)), "\n"),
+								strings.Join(slices.Sorted(maps.Keys(gotPeers)), "\n"))
+
+							// Peers on one side only are the peers check's; here
+							// only what both sides show is compared.
+							var wantRoutes, gotRoutes []string
+
+							for peer, routes := range wantPeers {
+								if got, ok := gotPeers[peer]; ok {
+									wantRoutes = append(wantRoutes, peer+": "+routes)
+									gotRoutes = append(gotRoutes, peer+": "+got)
+								}
+							}
+
+							overlapCheck(t, key+"peer-routes",
+								strings.Join(slices.Sorted(slices.Values(wantRoutes)), "\n"),
+								strings.Join(slices.Sorted(slices.Values(gotRoutes)), "\n"))
+
+							comparePacketFilter(t, nm, c.Captures[name], clients, saasAddrs,
+								key+"packet-filter", routeOverlapSkipReasons)
+
+							overlapCheck(t, key+"self-primary",
+								prefixList(want.SelfNode.PrimaryRoutes()), prefixList(nm.SelfNode.PrimaryRoutes()))
+							overlapCheck(t, key+"self-allowed",
+								selfAllowed(want.SelfNode), selfAllowed(nm.SelfNode))
+						})
+					})
+				})
+			}
+
+			wg.Wait()
+		})
+	}
+}
+
+// routesSetByAPI reports whether the capture's routes were approved through
+// the routes API rather than by the policy.
+func routesSetByAPI(c *testcapture.Capture) bool {
+	for _, step := range c.Steps {
+		for _, a := range step.Actions {
+			if a.Kind == "api" && a.Method == http.MethodPost &&
+				strings.HasSuffix(a.Path, "/routes") && a.Status == http.StatusOK {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// overlapCheck compares one rendering of a check, honouring
+// routeOverlapSkipReasons: a listed check must keep differing.
+func overlapCheck(t require.TestingT, key, want, got string) {
+	if notCompared(routeOverlapNotCompared, key) {
+		return
+	}
+
+	reason, listed := routeOverlapSkipReasons[key]
+
+	switch {
+	case listed && want == got:
+		t.Errorf("matches SaaS; delete routeOverlapSkipReasons[%q] (%s)", key, reason)
+	case !listed:
+		assert.Equalf(t, want, got, "%s", key)
+	}
+}
+
+// notCompared reports whether key falls under one of prefixes.
+func notCompared(prefixes []string, key string) bool {
+	return slices.ContainsFunc(prefixes, func(p string) bool {
+		return strings.HasPrefix(key, p)
+	})
+}
+
+// peerRoutes maps each peer in clients to its AllowedIPs and PrimaryRoutes.
+func peerRoutes(
+	nm *netmap.NetworkMap,
+	clients map[string]*servertest.TestClient,
+) map[string]string {
+	out := map[string]string{}
+
+	for _, p := range nm.Peers {
+		name := extractHostname(p.Name())
+		if hi := p.Hostinfo(); hi.Valid() && hi.Hostname() != "" {
+			name = hi.Hostname()
+		}
+
+		if _, ok := clients[name]; ok {
+			out[name] = "allowed " + prefixList(p.AllowedIPs()) + " primary " + prefixList(p.PrimaryRoutes())
+		}
+	}
+
+	return out
+}
+
+// selfAllowed is the node's AllowedIPs without its own addresses.
+func selfAllowed(self tailcfg.NodeView) string {
+	var out []netip.Prefix
+
+	for _, pfx := range self.AllowedIPs().All() {
+		if !views.SliceContains(self.Addresses(), pfx) {
+			out = append(out, pfx)
+		}
+	}
+
+	return prefixList(views.SliceOf(out))
+}
+
+func prefixList(pfxs views.Slice[netip.Prefix]) string {
+	return sortedStrings(util.PrefixesToString(pfxs.AsSlice()))
+}
+
+func sortedStrings(s []string) string {
+	return fmt.Sprint(slices.Sorted(slices.Values(s)))
+}
