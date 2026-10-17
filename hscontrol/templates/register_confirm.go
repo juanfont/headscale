@@ -15,6 +15,7 @@ import (
 // detail (hostname, OS, machine-key fingerprint) for the user to
 // recognise whether the device they are about to claim is in fact
 // theirs.
+// The form and user fields are also used for SSH check confirmations.
 type RegisterConfirmInfo struct {
 	// FormAction is the absolute or relative URL the confirm form
 	// POSTs to. Typically /register/confirm/{auth_id}.
@@ -28,8 +29,7 @@ type RegisterConfirmInfo struct {
 	// the cookie set by the OIDC callback before the POST is honoured.
 	CSRFToken string
 
-	// User is the OIDC-authenticated identity the device will be
-	// registered to if the user confirms.
+	// User is the OIDC-authenticated identity approving the request.
 	User string
 
 	// Hostname is the hostname the registering tailscaled instance
@@ -61,7 +61,53 @@ func RegisterConfirm(info RegisterConfirmInfo) *elem.Element {
 		},
 	)
 
-	form := elem.Form(
+	return page(
+		"Headscale - Confirm node registration",
+		H2(elem.Text("Confirm node registration")),
+		P(elem.Text(
+			"A device is asking to be added to your tailnet. "+
+				"Please review the details below and confirm that this device is yours.",
+		)),
+		deviceList,
+		confirmForm(info, "Confirm registration"),
+		P(elem.Text(
+			"If you do not recognise this device, close this window. "+
+				"The registration request will expire automatically.",
+		)),
+	)
+}
+
+// SSHCheckConfirm asks the owner to approve the source and destination node pair.
+func SSHCheckConfirm(
+	info RegisterConfirmInfo,
+	source, destination string,
+) *elem.Element {
+	return page(
+		"Headscale - Confirm SSH session",
+		H2(elem.Text("Confirm SSH session")),
+		P(elem.Text(
+			"An SSH session is waiting for your approval. "+
+				"Review the source and destination nodes before continuing.",
+		)),
+		deviceTable([]deviceRow{
+			{"From", elem.Text(source)},
+			{"To", elem.Text(destination)},
+			{"Approved by", elem.Text(info.User)},
+		}),
+		P(elem.Text(
+			"Approval also allows new SSH sessions between these two nodes "+
+				"without asking again until the check period ends.",
+		)),
+		confirmForm(info, "Approve SSH session"),
+		P(elem.Text(
+			"If you do not recognise this request, close this window. "+
+				"The request will expire automatically.",
+		)),
+	)
+}
+
+func confirmForm(info RegisterConfirmInfo, buttonText string) *elem.Element {
+	return elem.Form(
 		attrs.Props{
 			attrs.Method: "POST",
 			attrs.Action: info.FormAction,
@@ -73,23 +119,8 @@ func RegisterConfirm(info RegisterConfirmInfo) *elem.Element {
 		}),
 		elem.Button(
 			attrs.Props{attrs.Type: "submit"},
-			elem.Text("Confirm registration"),
+			elem.Text(buttonText),
 		),
-	)
-
-	return page(
-		"Headscale - Confirm node registration",
-		H2(elem.Text("Confirm node registration")),
-		P(elem.Text(
-			"A device is asking to be added to your tailnet. "+
-				"Please review the details below and confirm that this device is yours.",
-		)),
-		deviceList,
-		form,
-		P(elem.Text(
-			"If you do not recognise this device, close this window. "+
-				"The registration request will expire automatically.",
-		)),
 	)
 }
 
