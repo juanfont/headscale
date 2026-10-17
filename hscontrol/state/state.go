@@ -397,6 +397,9 @@ func NewState(cfg *types.Config) (*State, error) {
 
 	nodeStore := NewNodeStore(nodes, policyPeersFunc(polMan), batchSize, batchTimeout)
 	polMan.SetRouterSession(nodeStore.RouterSession)
+	nodeStore.reservedLabel = func(label string) bool {
+		return cfg.BaseDomain != "" && cfg.HasExtraRecord(label+"."+cfg.BaseDomain)
+	}
 	nodeStore.Start()
 
 	s := &State{
@@ -1392,6 +1395,27 @@ func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView,
 	s.selfRefreshMu.Unlock()
 
 	return nodeView, c, nil
+}
+
+// WarnNodesHoldingExtraRecords logs, and returns, the nodes whose name is also
+// an extra DNS record. They keep it: only an operator adding the record can
+// cause this, so the operator picks which one to rename.
+func (s *State) WarnNodesHoldingExtraRecords() []types.NodeID {
+	var ids []types.NodeID
+
+	for _, n := range s.nodeStore.ListNodes().All() {
+		if !s.nodeStore.reservedLabel(n.GivenName()) {
+			continue
+		}
+
+		ids = append(ids, n.ID())
+		log.Warn().
+			Uint64(zf.NodeID, n.ID().Uint64()).
+			Str("record", n.GivenName()+"."+s.cfg.BaseDomain).
+			Msg("node keeps a name that is also an extra DNS record")
+	}
+
+	return ids
 }
 
 // BackfillNodeIPs assigns IP addresses to nodes that don't have them. The
@@ -2676,7 +2700,18 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 	}
 
 	// Add to [NodeStore] after database creates the ID
-	return s.nodeStore.PutNode(*savedNode), nil
+	node := s.nodeStore.PutNode(*savedNode)
+	if node.Valid() && node.GivenName() != savedNode.GivenName {
+		fresh, err := s.persistNode(node)
+		if err != nil {
+			// The node is already committed; callers still need to schedule cleanup.
+			return node, err
+		}
+
+		return fresh, nil
+	}
+
+	return node, nil
 }
 
 // validateRequestTags validates that the requested tags are permitted for the node.
@@ -3375,7 +3410,12 @@ func (s *State) HandleNodeFromPreAuthKey(
 			ExistingNodeForNetinfo: differentUserNode,
 		})
 		if err != nil {
-			return types.NodeView{}, s.policyChangeSince(genBefore), fmt.Errorf("creating new node: %w", err)
+			c := s.policyChangeSince(genBefore)
+			if finalNode.Valid() {
+				c = nodeWriteFailed(finalNode.ID(), c)
+			}
+
+			return finalNode, c, fmt.Errorf("creating new node: %w", err)
 		}
 	}
 
@@ -3860,23 +3900,23 @@ func (s *State) PingDB(ctx context.Context) error {
 
 // isAutoDerivedGivenName reports whether given matches what
 // dnsname.SanitizeHostname(hostname) would produce, optionally with a
-// [NodeStore] collision-bump "-N" suffix. It is used to detect whether a
-// GivenName has been admin-renamed (in which case it must not be
-// overwritten by client-side hostname changes).
+// [NodeStore] collision-bump "-N" suffix ([bumpedLabel]). It is used to
+// detect whether a GivenName has been admin-renamed (in which case it must
+// not be overwritten by client-side hostname changes).
 func isAutoDerivedGivenName(given, hostname string) bool {
 	base := dnsname.SanitizeHostname(hostname)
 	if given == base {
 		return true
 	}
 
-	suffix, ok := strings.CutPrefix(given, base+"-")
+	_, suffix, ok := strings.CutLast(given, "-")
 	if !ok {
 		return false
 	}
 
-	_, err := strconv.Atoi(suffix)
+	n, err := strconv.Atoi(suffix)
 
-	return err == nil
+	return err == nil && given == bumpedLabel(base, n)
 }
 
 // UpdateNodeFromMapRequest is the sync point where Hostinfo changes,
