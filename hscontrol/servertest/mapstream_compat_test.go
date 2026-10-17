@@ -82,10 +82,6 @@ var mapStreamSkipReasons = map[string]string{
 	"map-delivery/S3.6/bystander/peers": sameUserPeers,
 	"map-delivery/S3.6/laptop/peers":    sameUserPeers,
 
-	"hidden-peers/S9/observer/removed":  removalSentToAll,
-	"hidden-peers/S10/observer/removed": removalSentToAll,
-	"hidden-peers/S13/observer/removed": removalSentToAll,
-
 	"hidden-peers/S2/witness/presence":   policyResponseToEveryNode,
 	"hidden-peers/S8/observer/presence":  policyResponseToEveryNode,
 	"hidden-peers/S9/observer/presence":  policyResponseToEveryNode,
@@ -129,7 +125,6 @@ const (
 	restartEndpointsKept      = "RESTART_ENDPOINTS_KEPT: headscale keeps a restarted node's last endpoints at its peers until it reports new ones; SaaS sends peers the node without endpoints until then"
 	reconnectAnnounced        = "RECONNECT_ANNOUNCED: headscale tells peers a node is online after a stream gap of a few seconds; SaaS sends them nothing"
 	routerReconnectRecompute  = "ROUTER_RECONNECT_RECOMPUTE: headscale sends every node a policy response when a subnet router's stream comes back after a few seconds; SaaS sends nothing"
-	removalSentToAll          = "REMOVAL_SENT_TO_ALL: headscale tells every connected node that a deleted node is gone; SaaS tells only the nodes that had it as a peer"
 	taggedDeviceUser          = "TAGGED_DEVICE_USER: SaaS shows a tagged device's user as the login that made its key; headscale shows tagged-devices"
 )
 
