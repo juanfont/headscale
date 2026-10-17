@@ -147,6 +147,9 @@ var ErrAuthRequestFinished = errors.New("authentication request already finished
 // binding.
 var ErrNodeKeyInUse = errors.New("node key already in use by another machine")
 
+// ErrNodeKeyNotCurrent is returned when a map request uses a replaced node key.
+var ErrNodeKeyNotCurrent = errors.New("node key is no longer current")
+
 // ErrAmbiguousNodeOwnership is returned when a machine key maps to a set of
 // nodes from which the correct one to update or convert cannot be determined:
 // multiple user-owned candidates for a tagged conversion, or a tagged node and
@@ -3713,6 +3716,7 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		routeChange        bool
 		needsRouteApproval bool
 		autoApprovedRoutes []netip.Prefix
+		staleNodeKey       bool
 	)
 	// Snapshot the primary assignment so we can tell whether the
 	// Hostinfo + auto-approval that follows shifted any prefix.
@@ -3722,10 +3726,14 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 	// We need to ensure we update the node as it is in the [NodeStore] at
 	// the time of the request.
 	updatedNode, ok := s.nodeStore.UpdateNode(id, func(currentNode *types.Node) {
+		if currentNode.NodeKey != req.NodeKey {
+			staleNodeKey = true
+			return
+		}
+
 		// Capture the raw wire-level peer change. LastSeen is always
 		// stamped here, so classification tests must not rely on it.
 		delta.peerChange = currentNode.PeerChangeFromMapRequest(req)
-		delta.keyChanged = delta.peerChange.Key != nil
 		delta.discoKeyChanged = delta.peerChange.DiscoKey != nil
 
 		// Normalize before classifying. A nil req.Hostinfo means the client
@@ -3878,6 +3886,10 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 
 	if !ok {
 		return change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, id)
+	}
+
+	if staleNodeKey {
+		return change.Change{}, ErrNodeKeyNotCurrent
 	}
 
 	if delta.dnsMetadataChanged {
@@ -4055,7 +4067,7 @@ func buildMapRequestChangeResponse(
 		}
 	}
 
-	if delta.keyChanged || delta.discoKeyChanged {
+	if delta.discoKeyChanged {
 		c := change.NodeKeyRotated(node)
 		if delta.derpChanged {
 			c.PeerPatches[0].DERPRegion = currentDERP
@@ -4103,8 +4115,7 @@ func routesChanged(oldNode types.NodeView, newHI *tailcfg.Hostinfo) bool {
 // [Node.PeerChangeFromMapRequest] always stamps: a keepalive that only bumps
 // LastSeen should not trigger a full-row UPDATE and policy rescan.
 func peerChangePersistWorthy(peerChange tailcfg.PeerChange) bool {
-	return peerChange.Key != nil ||
-		peerChange.DiscoKey != nil ||
+	return peerChange.DiscoKey != nil ||
 		peerChange.Online != nil ||
 		peerChange.Endpoints != nil ||
 		peerChange.DERPRegion != 0 ||
