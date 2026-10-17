@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -75,6 +76,48 @@ func writeDebug(w http.ResponseWriter, r *http.Request, jsonVal func() any, text
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(textVal()))
+}
+
+func (h *Headscale) debugHostGuard(next http.Handler) http.Handler {
+	normalize := func(host string) string {
+		name, _, err := net.SplitHostPort(host)
+		if err == nil {
+			host = name
+		}
+
+		return strings.TrimSuffix(strings.ToLower(strings.Trim(host, "[]")), ".")
+	}
+
+	allowed := []string{"localhost", normalize(h.cfg.MetricsAddr)}
+
+	serverURL, err := url.Parse(h.cfg.ServerURL)
+	if err == nil {
+		allowed = append(allowed, normalize(serverURL.Hostname()))
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/metrics" {
+			next.ServeHTTP(w, r)
+
+			return
+		}
+
+		host := normalize(r.Host)
+
+		_, err := netip.ParseAddr(host)
+		if host != "" && (err == nil || slices.Contains(allowed, host)) {
+			next.ServeHTTP(w, r)
+
+			return
+		}
+
+		http.Error(
+			w,
+			"debug host not allowed; use localhost, an IP address, "+
+				"or the server_url or metrics_listen_addr host",
+			http.StatusForbidden,
+		)
+	})
 }
 
 func (h *Headscale) debugHTTPServer() *http.Server {
@@ -224,7 +267,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 	debugHTTPServer := &http.Server{
 		Addr:         h.cfg.MetricsAddr,
-		Handler:      securityHeaders(debugMux),
+		Handler:      securityHeaders(h.debugHostGuard(debugMux)),
 		ReadTimeout:  types.HTTPTimeout,
 		WriteTimeout: 0,
 	}
