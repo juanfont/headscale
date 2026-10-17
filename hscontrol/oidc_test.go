@@ -951,3 +951,80 @@ func TestOIDCConfirmationRejectsWrongRequestKind(t *testing.T) {
 		})
 	}
 }
+
+func TestRegisterConfirmShowsExistingNode(t *testing.T) {
+	b := newOIDCBrowser(t)
+	machineKey := key.NewMachine().Public()
+	existingRow := regexp.MustCompile(`>Existing node</td><td[^>]*>([^<]*)</td>`)
+
+	// A tagged node another credential made: a login on its machine adds a
+	// device instead of taking it.
+	taggedMachine := key.NewMachine().Public()
+	tagKey, err := b.app.state.CreatePreAuthKey(nil, true, false, nil, []string{"tag:server"})
+	require.NoError(t, err)
+	_, _, err = b.app.state.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: tagKey.Key},
+		NodeKey:  key.NewNode().Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "server"},
+	}, taggedMachine)
+	require.NoError(t, err)
+
+	for _, tt := range []struct {
+		name       string
+		machineKey key.MachinePublic
+		existing   string
+		heading    string
+		nodeCount  int
+	}{
+		{
+			name: "first login", machineKey: machineKey,
+			existing: "None, this is a new device", heading: "Node registered", nodeCount: 2,
+		},
+		{
+			name: "same machine", machineKey: machineKey,
+			existing: "laptop", heading: "Node reauthenticated", nodeCount: 2,
+		},
+		{
+			name: "copied hostname", machineKey: key.NewMachine().Public(),
+			existing: "None, this is a new device", heading: "Node registered", nodeCount: 3,
+		},
+		{
+			name: "tagged machine", machineKey: taggedMachine,
+			existing: "None, this is a new device", heading: "Node registered", nodeCount: 4,
+		},
+	} {
+		authID := types.MustAuthID()
+		b.app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+			MachineKey: tt.machineKey,
+			NodeKey:    key.NewNode().Public(),
+			Hostname:   "laptop",
+		}))
+		b.idp.QueueUser(&mockoidc.MockUser{
+			Subject: "existing-device", PreferredUsername: "device-owner",
+		})
+
+		status, landed, body := b.get(t, b.publicURL+"/register/"+authID.String())
+		require.Equal(t, http.StatusOK, status)
+
+		row := existingRow.FindStringSubmatch(body)
+		if assert.Len(t, row, 2, "the page must distinguish an existing node from client-supplied details") {
+			assert.Equal(t, tt.existing, row[1], tt.name)
+		}
+
+		csrf := csrfInputRe.FindStringSubmatch(body)
+		require.Len(t, csrf, 2)
+
+		//nolint:noctx,bodyclose // test response closed below
+		confirmed, err := b.client.PostForm(landed.String(), url.Values{
+			registerConfirmCSRFCookie: {csrf[1]},
+		})
+		require.NoError(t, err)
+
+		confirmedBody, err := io.ReadAll(confirmed.Body)
+		confirmed.Body.Close()
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, confirmed.StatusCode)
+		assert.Contains(t, string(confirmedBody), tt.heading, tt.name)
+		assert.Equal(t, tt.nodeCount, b.app.state.ListNodes().Len(), tt.name)
+	}
+}

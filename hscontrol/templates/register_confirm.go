@@ -43,6 +43,9 @@ type RegisterConfirmInfo struct {
 	// MachineKey is the short fingerprint of the registering machine
 	// key. The full key is intentionally not shown.
 	MachineKey string
+
+	// ExistingNode is the stored node name, empty for a new device.
+	ExistingNode string
 }
 
 // RegisterConfirm renders an interstitial page that asks the
@@ -57,6 +60,7 @@ func RegisterConfirm(info RegisterConfirmInfo) *elem.Element {
 			{"Hostname", elem.Text(info.Hostname)},
 			{"OS", elem.Text(cmp.Or(info.OS, "(unknown)"))},
 			{"Machine key", Code(elem.Text(info.MachineKey))},
+			{"Existing node", elem.Text(cmp.Or(info.ExistingNode, "None, this is a new device"))},
 			{"Registered to", elem.Text(info.User)},
 		},
 	)
