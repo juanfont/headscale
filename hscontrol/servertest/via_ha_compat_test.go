@@ -412,9 +412,9 @@ func createCaptureUsers(t *testing.T, srv *servertest.TestServer) map[string]*ty
 
 // convertCapturePolicy converts a [testcapture.Capture]'s policy for headscale,
 // replacing each SaaS email with the "<name>@" form that resolves to the
-// users [createCaptureUsers] creates. Fails the test if none of the known
-// SaaS emails are present: that would mean the capture was regenerated
-// with a new identity and captureUserNames needs updating.
+// users [createCaptureUsers] creates. Fails the test if the policy names a
+// user but none of the known SaaS emails: that would mean the capture was
+// regenerated with a new identity and captureUserNames needs updating.
 func convertCapturePolicy(t *testing.T, c *testcapture.Capture) []byte {
 	t.Helper()
 
@@ -431,7 +431,7 @@ func convertCapturePolicy(t *testing.T, c *testcapture.Capture) []byte {
 
 	require.True(
 		t,
-		substituted,
+		substituted || !strings.Contains(s, "@"),
 		"%s: no known SaaS email found in policy; update captureUserNames",
 		c.TestID,
 	)

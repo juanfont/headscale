@@ -59,21 +59,30 @@ func loadSSHTestFile(t *testing.T, path string) *testcapture.Capture {
 }
 
 // sshSkipReasons documents captures the upstream control plane accepts
-// but headscale cannot yet represent. Each entry names the feature gap.
+// but headscale cannot yet represent, keyed <test_id> for the whole capture
+// or <test_id>/<node>/<check>. Each entry names the feature gap.
 var sshSkipReasons = map[string]string{
 	"ssh-b5":  "headscale has no passkey authentication; user:*@passkey wildcard unsupported",
 	"ssh-d10": "headscale has no passkey authentication; user:*@passkey wildcard unsupported",
+
+	"ssh-duplicate-rules/beedrill/ssh-rules":   sshUIDZero,
+	"ssh-duplicate-rules/kakuna/ssh-rules":     sshUIDZero,
+	"ssh-equal-src-aliases/beedrill/ssh-rules": sshUIDZero,
 }
 
+const sshUIDZero = `SSH_UID_ZERO: SaaS maps login "0" to no local user in every rule; headscale leaves it out`
+
 // sshRejectSkipReasons documents captures the upstream control plane
-// rejects for reasons headscale cannot apply. Each entry names the
-// feature gap.
+// rejects for reasons headscale cannot apply, keyed <test_id> for the whole
+// capture or <test_id>/<check>. Each entry names the feature gap.
 var sshRejectSkipReasons = map[string]string{
 	"ssh-b4": "headscale has no associated-tailnet-domains config; user:*@domain / localpart:*@domain are not domain-validated",
 	"ssh-d1": "headscale has no associated-tailnet-domains config; user:*@domain / localpart:*@domain are not domain-validated",
 	"ssh-e1": "headscale has no associated-tailnet-domains config; user:*@domain / localpart:*@domain are not domain-validated",
 	"ssh-e2": "headscale has no associated-tailnet-domains config; user:*@domain / localpart:*@domain are not domain-validated",
 	"ssh-malformed-user-localpart-multi-glob": "headscale has no associated-tailnet-domains config; user:*@domain / localpart:*@domain are not domain-validated",
+
+	"ssh-check-tag-src/refused": "SSH_CHECK_TAG_SRC: SaaS refuses a check rule with a tag source; headscale accepts it",
 }
 
 // TestSSHDataCompat loads every ssh-*.hujson capture, parses the policy
@@ -126,33 +135,7 @@ func TestSSHDataCompat(t *testing.T) {
 					return
 				}
 
-				pm, parseErr := NewPolicyManager(policyJSON, users, nodes.ViewSlice())
-
-				var got error
-
-				switch {
-				case parseErr != nil:
-					got = parseErr
-				default:
-					_, setErr := pm.SetPolicy(policyJSON)
-					got = setErr
-				}
-
-				require.Error(t, got, "tailscale rejected; headscale must reject too")
-
-				if tf.Input.APIResponseBody == nil ||
-					tf.Input.APIResponseBody.Message == "" {
-					return
-				}
-
-				want := tf.Input.APIResponseBody.Message
-				if !strings.Contains(got.Error(), want) {
-					t.Errorf(
-						"error body mismatch\n  tailscale wants: %q\n  headscale got:   %q",
-						want,
-						got.Error(),
-					)
-				}
+				testSSHRefusal(t, tf, users, nodes)
 
 				return
 			}
@@ -181,104 +164,132 @@ func TestSSHDataCompat(t *testing.T) {
 					require.NotNilf(t, node,
 						"golden node %s not found in test setup", nodeName)
 
-					// Compile headscale SSH policy for this node
-					gotSSH, err := pol.compileSSHPolicy(
-						"https://unused",
-						users,
-						node.View(),
-						nodes.ViewSlice(),
-					)
-					require.NoError(
-						t,
-						err,
-						"%s/%s: failed to compile SSH policy",
-						tf.TestID,
-						nodeName,
-					)
-
-					// Nil and empty SSHPolicy differ on the wire: nil
-					// keeps the client's previous rules, empty clears
-					// them. Take presence from the captured netmap.
-					wantSSH := &tailcfg.SSHPolicy{Rules: capture.SSHRules}
-					if capture.Netmap != nil && capture.Netmap.SSHPolicy == nil {
-						wantSSH = nil
-					}
-
-					// Compare headscale output against Tailscale expected.
-					// EquateEmpty treats nil and empty slices as equal.
-					// Sort principals within rules (order doesn't matter).
-					// Do NOT sort rules — order matters (first-match-wins).
-					//
-					opts := cmp.Options{
-						cmpopts.SortSlices(func(a, b *tailcfg.SSHPrincipal) bool {
-							return a.NodeIP < b.NodeIP
-						}),
-						cmpopts.EquateEmpty(),
-					}
-					if diff := cmp.Diff(wantSSH, gotSSH, opts...); diff != "" {
-						t.Errorf(
-							"%s/%s: SSH policy mismatch (-tailscale +headscale):\n%s",
-							tf.TestID,
-							nodeName,
-							diff,
-						)
-					}
-
-					pmSSH, err := pm.SSHPolicy("https://unused", node.View())
-					require.NoError(t, err)
-
-					if diff := cmp.Diff(wantSSH, pmSSH, opts...); diff != "" {
-						t.Errorf(
-							"%s/%s: policy manager SSH policy mismatch (-tailscale +headscale):\n%s",
-							tf.TestID,
-							nodeName,
-							diff,
-						)
-					}
-
-					// EquateEmpty hides "rules":null vs "rules":[];
-					// pin the captured shape separately.
-					if capture.Netmap != nil && capture.Netmap.SSHPolicy != nil {
-						for _, got := range []*tailcfg.SSHPolicy{gotSSH, pmSSH} {
-							if got != nil {
-								assert.Equalf(t,
-									capture.Netmap.SSHPolicy.Rules == nil,
-									got.Rules == nil,
-									"%s/%s: rules null-vs-[] mismatch", tf.TestID, nodeName,
-								)
-							}
-						}
-					}
-
-					// Separate presence check: the fields ignored by
-					// the diff above must still be populated on matching
-					// rules. This catches regressions where headscale
-					// would silently drop the HoldAndDelegate URL or
-					// flip Accept to false while we are not looking.
-					if wantSSH != nil && gotSSH != nil {
-						for i, wantRule := range wantSSH.Rules {
-							if i >= len(gotSSH.Rules) {
-								break
-							}
-
-							gotRule := gotSSH.Rules[i]
-							if wantRule.Action == nil || gotRule.Action == nil {
-								continue
-							}
-
-							wantIsCheck := wantRule.Action.HoldAndDelegate != ""
-							gotIsCheck := gotRule.Action.HoldAndDelegate != ""
-
-							assert.Equalf(t, wantIsCheck, gotIsCheck,
-								"%s/%s rule %d: HoldAndDelegate presence mismatch",
-								tf.TestID, nodeName, i,
-							)
-						}
-					}
+					compatCheck(t, sshSkipReasons, tf.TestID+"/"+nodeName+"/ssh-rules", func() string {
+						return sshRulesMismatch(pol, pm, users, nodes, node, capture)
+					})
 				})
 			}
 		})
 	}
+}
+
+// testSSHRefusal replays a policy SaaS refused: headscale must refuse it
+// too, with the captured message in its error.
+func testSSHRefusal(t *testing.T, tf *testcapture.Capture, users types.Users, nodes types.Nodes) {
+	t.Helper()
+
+	policyJSON := []byte(tf.Input.FullPolicy)
+
+	pm, err := NewPolicyManager(policyJSON, users, nodes.ViewSlice())
+	if err == nil {
+		_, err = pm.SetPolicy(policyJSON)
+	}
+
+	key := tf.TestID + "/"
+
+	compatCheck(t, sshRejectSkipReasons, key+"refused", func() string {
+		if err == nil {
+			return "tailscale rejected; headscale accepted"
+		}
+
+		return ""
+	})
+
+	if err == nil {
+		compatChecksNotRun(t, sshRejectSkipReasons, key+"message")
+
+		return
+	}
+
+	var want string
+	if tf.Input.APIResponseBody != nil {
+		want = tf.Input.APIResponseBody.Message
+	}
+
+	compatCheck(t, sshRejectSkipReasons, key+"message", func() string {
+		if strings.Contains(err.Error(), want) {
+			return ""
+		}
+
+		return fmt.Sprintf("tailscale wants: %q\nheadscale got:   %q", want, err.Error())
+	})
+}
+
+// sshRulesMismatch compares the SSH policy headscale compiles for node,
+// directly and through the manager, with the captured one; "" is a match.
+func sshRulesMismatch(
+	pol *Policy,
+	pm *PolicyManager,
+	users types.Users,
+	nodes types.Nodes,
+	node *types.Node,
+	capture testcapture.Node,
+) string {
+	gotSSH, err := pol.compileSSHPolicy("https://unused", users, node.View(), nodes.ViewSlice())
+	if err != nil {
+		return fmt.Sprintf("failed to compile SSH policy: %v", err)
+	}
+
+	pmSSH, err := pm.SSHPolicy("https://unused", node.View())
+	if err != nil {
+		return fmt.Sprintf("policy manager SSH policy: %v", err)
+	}
+
+	// Nil and empty SSHPolicy differ on the wire: nil keeps the client's
+	// previous rules, empty clears them. Take presence from the captured
+	// netmap.
+	wantSSH := &tailcfg.SSHPolicy{Rules: capture.SSHRules}
+	if capture.Netmap != nil && capture.Netmap.SSHPolicy == nil {
+		wantSSH = nil
+	}
+
+	// EquateEmpty treats nil and empty slices as equal. Sort principals
+	// within rules (order doesn't matter). Do NOT sort rules — order
+	// matters (first-match-wins).
+	opts := cmp.Options{
+		cmpopts.SortSlices(func(a, b *tailcfg.SSHPrincipal) bool {
+			return a.NodeIP < b.NodeIP
+		}),
+		cmpopts.EquateEmpty(),
+	}
+
+	var diffs []string
+
+	for name, got := range map[string]*tailcfg.SSHPolicy{"compiled": gotSSH, "policy manager": pmSSH} {
+		if diff := cmp.Diff(wantSSH, got, opts...); diff != "" {
+			diffs = append(diffs, fmt.Sprintf("%s SSH policy mismatch (-tailscale +headscale):\n%s", name, diff))
+		}
+
+		// EquateEmpty hides "rules":null vs "rules":[]; pin the captured
+		// shape separately.
+		if capture.Netmap != nil && capture.Netmap.SSHPolicy != nil && got != nil &&
+			(capture.Netmap.SSHPolicy.Rules == nil) != (got.Rules == nil) {
+			diffs = append(diffs, name+": rules null-vs-[] mismatch")
+		}
+	}
+
+	// The fields ignored by the diff above must still be populated on
+	// matching rules, so a dropped HoldAndDelegate URL is caught.
+	if wantSSH != nil && gotSSH != nil {
+		for i, wantRule := range wantSSH.Rules {
+			if i >= len(gotSSH.Rules) {
+				break
+			}
+
+			gotRule := gotSSH.Rules[i]
+			if wantRule.Action == nil || gotRule.Action == nil {
+				continue
+			}
+
+			if (wantRule.Action.HoldAndDelegate != "") != (gotRule.Action.HoldAndDelegate != "") {
+				diffs = append(diffs, fmt.Sprintf("rule %d: HoldAndDelegate presence mismatch", i))
+			}
+		}
+	}
+
+	slices.Sort(diffs)
+
+	return strings.Join(diffs, "\n")
 }
 
 // sshLocalUser maps sshUser to a local user the way tailssh does for one
