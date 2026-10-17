@@ -990,7 +990,7 @@ func (nv NodeView) CertDomain(cfg *Config) (string, bool) {
 	// certificate for a name the operator gave to a service. A wildcard
 	// order shares its challenge record with the bare name, so names
 	// below the node's are covered too.
-	if cfg.extraRecordAtOrBelow(domain) {
+	if cfg.extraRecordAt(domain, true) {
 		return "", false
 	}
 
