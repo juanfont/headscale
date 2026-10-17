@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"maps"
 	"net/netip"
+	"net/url"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -22,6 +24,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
+	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -214,6 +217,138 @@ func TestNextDNSCapMapRendering(t *testing.T) {
 			t.Errorf("non-nextdns resolver was rewritten: %q", addr)
 		}
 	})
+}
+
+// nextDNSResolverSkipReasons lists checks where headscale's DoH address
+// differs from SaaS, keyed <test_id>/<check>.
+var nextDNSResolverSkipReasons = map[string]string{
+	"nodeattrs-nextdns-d10-resolver-default/device_id":   nextDNSDeviceID,
+	"nodeattrs-nextdns-d11-resolver-profile/device_id":   nextDNSDeviceID,
+	"nodeattrs-nextdns-d13-resolver-malformed/device_id": nextDNSDeviceID,
+}
+
+const nextDNSDeviceID = "NEXTDNS_DEVICE_ID: SaaS adds the node's stable ID to the DoH query as device_id; headscale does not"
+
+// TestNextDNSResolverCompat compares the NextDNS DoH address every node gets
+// with what SaaS sent: the global profile, a per-node profile, and a
+// malformed one, which SaaS skips. The captured self CapMap stands in for
+// the policy, so only the resolver rewrite is compared.
+//
+// Test data source: ../policy/v2/testdata/nodeattrs_results/, shared with
+// TestNodeAttrsCompat, which compares the same captures' CapMaps.
+func TestNextDNSResolverCompat(t *testing.T) {
+	t.Parallel()
+
+	for _, id := range []string{
+		"nodeattrs-nextdns-d10-resolver-default",
+		"nodeattrs-nextdns-d11-resolver-profile",
+		"nodeattrs-nextdns-d13-resolver-malformed",
+	} {
+		t.Run(id, func(t *testing.T) {
+			t.Parallel()
+
+			c, err := testcapture.Read(filepath.Join(
+				"..", "policy", "v2", "testdata", "nodeattrs_results", id+".hujson",
+			))
+			require.NoError(t, err)
+
+			resolvers := make([]*dnstype.Resolver, 0, len(c.Input.Tailnet.DNS.Nameservers))
+			for _, ns := range c.Input.Tailnet.DNS.Nameservers {
+				resolvers = append(resolvers, &dnstype.Resolver{Addr: ns})
+			}
+
+			cfg := &types.Config{TailcfgDNSConfig: &tailcfg.DNSConfig{Resolvers: resolvers}}
+
+			// Mismatches by check, one entry per node.
+			diffs := map[string][]string{}
+
+			for i, name := range slices.Sorted(maps.Keys(c.Captures)) {
+				self := c.Captures[name].Netmap.SelfNode
+				topo := c.Topology.Nodes[name]
+
+				// The capture fleet runs tailscaled on Linux; the self
+				// Hostinfo SaaS echoes back leaves the OS out.
+				node := &types.Node{
+					ID:       types.NodeID(i + 1), //nolint:gosec
+					Hostname: topo.Hostname,
+					IPv4:     iap(topo.IPv4),
+					IPv6:     iap(topo.IPv6),
+					Hostinfo: &tailcfg.Hostinfo{OS: "linux"},
+				}
+
+				capMap := tailcfg.NodeCapMap{}
+				for k, v := range self.CapMap().All() {
+					capMap[k] = v.AsSlice()
+				}
+
+				got := generateDNSConfig(cfg, node.View(), capMap)
+				want := c.Captures[name].Netmap.DNS.Resolvers
+
+				wantAddr, wantQuery, wantID := splitDoHAddrs(t, want, self.StableID())
+				gotAddr, gotQuery, gotID := splitDoHAddrs(t, got.Resolvers, node.ID.StableID())
+
+				for check, diff := range map[string]string{
+					"path":      cmp.Diff(wantAddr, gotAddr),
+					"query":     cmp.Diff(wantQuery, gotQuery),
+					"device_id": cmp.Diff(wantID, gotID),
+				} {
+					if diff != "" {
+						diffs[check] = append(diffs[check], name+" (-tailscale +headscale):\n"+diff)
+					}
+				}
+			}
+
+			for _, check := range []string{"path", "query", "device_id"} {
+				t.Run(check, func(t *testing.T) {
+					key := id + "/" + check
+					reason, listed := nextDNSResolverSkipReasons[key]
+
+					switch {
+					case listed && len(diffs[check]) == 0:
+						t.Errorf("matches SaaS; delete the skip entry %q (%s)", key, reason)
+					case listed:
+						t.Skip(reason)
+					case len(diffs[check]) > 0:
+						t.Error(strings.Join(diffs[check], "\n"))
+					}
+				})
+			}
+		})
+	}
+}
+
+// splitDoHAddrs returns each resolver's address without its query, the query
+// without device_id, and device_id, read as "self" when it is selfID.
+func splitDoHAddrs(
+	t *testing.T,
+	rs []*dnstype.Resolver,
+	selfID tailcfg.StableNodeID,
+) ([]string, []url.Values, []string) {
+	t.Helper()
+
+	addrs := make([]string, 0, len(rs))
+	queries := make([]url.Values, 0, len(rs))
+	ids := make([]string, 0, len(rs))
+
+	for _, r := range rs {
+		u, err := url.Parse(r.Addr)
+		require.NoError(t, err)
+
+		q := u.Query()
+
+		id := q.Get("device_id")
+		if id == string(selfID) {
+			id = "self"
+		}
+
+		q.Del("device_id")
+
+		u.RawQuery = ""
+
+		addrs, queries, ids = append(addrs, u.String()), append(queries, q), append(ids, id)
+	}
+
+	return addrs, queries, ids
 }
 
 // TestBuildFromChangeFiltersPeerPatchesByVisibility proves that incremental
