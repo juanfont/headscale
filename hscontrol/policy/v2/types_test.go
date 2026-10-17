@@ -2,9 +2,11 @@ package v2
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -6483,5 +6485,163 @@ func TestUnmarshalPolicyMaxDstPorts(t *testing.T) {
 
 			require.NoError(t, err)
 		})
+	}
+}
+
+func TestResolveUserPrecedence(t *testing.T) {
+	const (
+		address    = "alice@example.com"
+		providerID = "https://idp.example/alice"
+	)
+
+	owner := types.User{ID: 1, Name: "alice", Email: address}
+	oidcName := types.User{ID: 2, Name: address, Provider: "oidc"}
+	localName := types.User{ID: 3, Name: address}
+	both := types.User{ID: 4, Name: address, Email: address}
+	provider := types.User{
+		ID:                 5,
+		Name:               "provider-user",
+		ProviderIdentifier: sql.NullString{String: providerID, Valid: true},
+	}
+
+	tests := []struct {
+		name    string
+		token   Username
+		users   types.Users
+		want    types.User
+		wantErr error
+	}{
+		{
+			name:  "email owner beats OIDC username",
+			token: Username(address),
+			users: types.Users{owner, oidcName},
+			want:  owner,
+		},
+		{
+			name:  "email owner beats local username",
+			token: Username(address),
+			users: types.Users{owner, localName},
+			want:  owner,
+		},
+		{
+			name:  "address-shaped username without email owner",
+			token: Username(address),
+			users: types.Users{oidcName, {ID: 6, Name: "other", Email: "other@example.com"}},
+			want:  oidcName,
+		},
+		{
+			name:  "email and username on the same user count once",
+			token: Username(address),
+			users: types.Users{both, oidcName},
+			want:  both,
+		},
+		{
+			name:    "duplicate usernames remain ambiguous",
+			token:   Username(address),
+			users:   types.Users{oidcName, localName},
+			wantErr: ErrMultipleUsersFound,
+		},
+		{
+			name:    "duplicate emails remain ambiguous despite a unique username",
+			token:   Username(address),
+			users:   types.Users{owner, {ID: 7, Name: "second-owner", Email: address}, oidcName},
+			wantErr: ErrMultipleUsersFound,
+		},
+		{
+			name:  "provider identifier wins",
+			token: Username(providerID + "@"),
+			users: types.Users{provider, {ID: 8, Name: providerID}},
+			want:  provider,
+		},
+		{
+			name:    "unknown user",
+			token:   "missing@",
+			users:   types.Users{owner, oidcName, localName},
+			wantErr: ErrUserNotFound,
+		},
+	}
+
+	for _, tt := range tests {
+		for _, reverse := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/reverse=%t", tt.name, reverse), func(t *testing.T) {
+				users := slices.Clone(tt.users)
+				if reverse {
+					slices.Reverse(users)
+				}
+
+				got, err := tt.token.resolveUser(users)
+				if tt.wantErr != nil {
+					require.ErrorIs(t, err, tt.wantErr)
+
+					return
+				}
+
+				require.NoError(t, err)
+				require.Equal(t, tt.want, got)
+			})
+		}
+	}
+}
+
+func TestBareAtTokenMatchesNobody(t *testing.T) {
+	users := types.Users{
+		{ID: 1, Name: "first-private-user"},
+		{ID: 2, Name: "second-private-user"},
+	}
+
+	for count := range 3 {
+		t.Run(fmt.Sprintf("users=%d", count), func(t *testing.T) {
+			token := Username("@")
+			_, err := token.resolveUser(users[:count])
+			require.ErrorIs(t, err, ErrUserNotFound)
+
+			for _, user := range users {
+				require.NotContains(t, err.Error(), user.Name)
+			}
+
+			pm, err := NewPolicyManager([]byte(`{
+				"grants": [{"src":["@"], "dst":["*"], "ip":["*"]}]
+			}`), users[:count], types.Nodes{}.ViewSlice())
+			require.NoError(t, err, "stored policies with a bare @ must still load")
+
+			filter, _ := pm.Filter()
+			require.Empty(t, filter)
+		})
+	}
+}
+
+func TestSetPolicyBareAtToken(t *testing.T) {
+	users := types.Users{
+		{ID: 1, Name: "first-private-user"},
+		{ID: 2, Name: "second-private-user"},
+	}
+
+	nodes := types.Nodes{node("first-node", "100.64.0.1", "fd7a:115c:a1e0::1", users[0])}
+	nodes[0].ID = 1
+
+	const allowAll = `"acls": [{"action":"accept", "src":["*"], "dst":["*:*"]}]`
+
+	for _, count := range []int{1, 2} {
+		for _, tt := range []struct {
+			name string
+			src  string
+			dst  string
+		}{
+			{name: "source", src: "@", dst: "100.64.0.1:22"},
+			{name: "destination", src: "100.64.0.1", dst: "@:22"},
+		} {
+			t.Run(fmt.Sprintf("%s/users=%d", tt.name, count), func(t *testing.T) {
+				pm, err := NewPolicyManager([]byte(`{`+allowAll+`}`), users[:count], nodes.ViewSlice())
+				require.NoError(t, err)
+
+				candidate := fmt.Sprintf(`{%s, "tests":[{"src":%q, "accept":[%q]}]}`, allowAll, tt.src, tt.dst)
+				_, err = pm.SetPolicy([]byte(candidate))
+				require.ErrorIs(t, err, errPolicyTestsFailed)
+
+				for _, user := range users {
+					require.NotContains(t, err.Error(), user.Name)
+				}
+			})
+		}
 	}
 }

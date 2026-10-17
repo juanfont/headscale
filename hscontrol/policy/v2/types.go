@@ -434,19 +434,22 @@ func (u *Username) CanBeAutoApprover() bool {
 }
 
 // resolveUser attempts to find a user in the provided [types.Users] slice that matches the [Username].
-// It prioritizes matching the [types.User.ProviderIdentifier], and if not found, it falls back to matching
-// the [types.User.Email] or [types.User.Name].
+// It prioritizes matching the [types.User.ProviderIdentifier], then the [types.User.Email],
+// and falls back to the [types.User.Name] only when no email matches.
 // If no matching user is found, it returns an error indicating no user matching.
 // If multiple matching users are found, it returns an error indicating multiple users matching.
 // It returns the matched [types.User] and a nil error if exactly one match is found.
 func (u *Username) resolveUser(users types.Users) (types.User, error) {
-	var potentialUsers types.Users
+	var emailMatches, nameMatches types.Users
 
 	// At parsetime, we require all usernames to contain an "@" character, if the
 	// username token does not naturally do so (like email), the user have to
 	// add it to the end of the username. We strip it here as we do not expect the
 	// usernames to be stored with the "@".
 	uTrimmed := strings.TrimSuffix(u.String(), "@")
+	if uTrimmed == "" {
+		return types.User{}, fmt.Errorf("%w: token %q", ErrUserNotFound, u.String())
+	}
 
 	for _, user := range users {
 		if user.ProviderIdentifier.Valid && user.ProviderIdentifier.String == uTrimmed {
@@ -454,9 +457,18 @@ func (u *Username) resolveUser(users types.Users) (types.User, error) {
 			return user, nil
 		}
 
-		if user.Email == uTrimmed || user.Name == uTrimmed {
-			potentialUsers = append(potentialUsers, user)
+		if user.Email == uTrimmed {
+			emailMatches = append(emailMatches, user)
 		}
+
+		if user.Name == uTrimmed {
+			nameMatches = append(nameMatches, user)
+		}
+	}
+
+	potentialUsers := emailMatches
+	if len(potentialUsers) == 0 {
+		potentialUsers = nameMatches
 	}
 
 	if len(potentialUsers) == 0 {
@@ -475,21 +487,14 @@ func (u *Username) Resolve(_ *Policy, users types.Users, nodes views.Slice[types
 }
 
 func (u *Username) resolve(_ *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
-	var (
-		ips  netipx.IPSetBuilder
-		errs []error
-	)
+	var ips netipx.IPSetBuilder
 
 	user, err := u.resolveUser(users)
-	if errors.Is(err, ErrUserNotFound) {
-		// A policy may name users before they register (#2863). Report it
-		// as an empty set, not an error: callers that bail on error would
-		// otherwise drop a whole group for one missing member (#3513).
-		return &netipx.IPSet{}, nil
-	}
-
 	if err != nil {
-		errs = append(errs, err)
+		// Users may be missing before registration (#2863), or become
+		// ambiguous after a login. An empty set preserves other group
+		// members (#3513); the policy write boundary rejects ambiguity.
+		return &netipx.IPSet{}, nil //nolint:nilerr // Unresolved users intentionally match no nodes.
 	}
 
 	for _, node := range nodes.All() {
@@ -508,7 +513,7 @@ func (u *Username) resolve(_ *Policy, users types.Users, nodes views.Slice[types
 		}
 	}
 
-	return buildIPSetMultiErr(&ips, errs)
+	return ips.IPSet()
 }
 
 // Group is a special string which is always prefixed with `group:`.
