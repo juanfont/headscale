@@ -238,14 +238,9 @@ func (pol *Policy) compileGrants(
 		return nil
 	}
 
-	grants := pol.Grants
-	for _, acl := range pol.ACLs {
-		grants = append(grants, aclToGrants(acl)...)
-	}
+	compiled := make([]compiledGrant, 0, len(pol.Grants)+len(pol.ACLs))
 
-	compiled := make([]compiledGrant, 0, len(grants))
-
-	for _, grant := range grants {
+	for _, grant := range pol.Grants {
 		cg, err := pol.compileOneGrant(grant, users, nodes)
 		if err != nil {
 			log.Trace().Err(err).Msg("compiling grant")
@@ -258,6 +253,24 @@ func (pol *Policy) compileGrants(
 		}
 	}
 
+	for _, acl := range pol.ACLs {
+		// An ACL becomes one grant per destination, all with the ACL's
+		// sources. Resolve them once and share the result, or both the
+		// work and the memory kept are len(src) × len(dst).
+		srcs, err := resolveGrantSources(pol, acl.Sources, users, nodes)
+		if err != nil {
+			log.Trace().Err(err).Msg("compiling grant")
+
+			continue
+		}
+
+		for _, grant := range aclToGrants(acl) {
+			if cg := pol.compileResolvedGrant(grant, srcs, users, nodes); cg != nil {
+				compiled = append(compiled, *cg)
+			}
+		}
+	}
+
 	return compiled
 }
 
@@ -265,8 +278,6 @@ func (pol *Policy) compileGrants(
 // All source resolution happens here. Non-self, non-via destination
 // resolution also happens here. Per-node data (self dests, via
 // matching) is stored for deferred compilation.
-//
-//nolint:gocyclo,cyclop
 func (pol *Policy) compileOneGrant(
 	grant Grant,
 	users types.Users,
@@ -277,6 +288,62 @@ func (pol *Policy) compileOneGrant(
 		return pol.compileOneViaGrant(grant, users, nodes)
 	}
 
+	srcs, err := resolveGrantSources(pol, grant.Sources, users, nodes)
+	if err != nil {
+		return nil, err
+	}
+
+	return pol.compileResolvedGrant(grant, srcs, users, nodes), nil
+}
+
+// grantSources is what the sources of a non-via grant resolve to. It is
+// read-only once built: the grants of one ACL share it.
+type grantSources struct {
+	resolved     []ResolvedAddresses
+	ipStrings    []string
+	hasWildcard  bool
+	hasDangerAll bool
+}
+
+// resolveGrantSources resolves sources per-alias, tracking non-wildcard
+// sources separately so we can preserve their IPs alongside the
+// wildcard CGNAT ranges (matching Tailscale SaaS behavior).
+func resolveGrantSources(
+	pol *Policy,
+	sources Aliases,
+	users types.Users,
+	nodes views.Slice[types.NodeView],
+) (*grantSources, error) {
+	resolvedSrcs, nonWildcardSrcs, err := resolveSources(
+		pol, sources, users, nodes,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	hasWildcard := sourcesHaveWildcard(sources)
+	hasDangerAll := sourcesHaveDangerAll(sources)
+
+	return &grantSources{
+		resolved: resolvedSrcs,
+		ipStrings: buildSrcIPStrings(
+			resolvedSrcs, nonWildcardSrcs,
+			hasWildcard, hasDangerAll, nodes,
+		),
+		hasWildcard:  hasWildcard,
+		hasDangerAll: hasDangerAll,
+	}, nil
+}
+
+// compileResolvedGrant compiles a non-via grant whose sources have
+// already been resolved into srcs. It returns nil when the grant
+// produces no rules.
+func (pol *Policy) compileResolvedGrant(
+	grant Grant,
+	srcs *grantSources,
+	users types.Users,
+	nodes views.Slice[types.NodeView],
+) *compiledGrant {
 	// Split destinations into self vs other.
 	var autogroupSelfDests, otherDests []Alias
 
@@ -288,43 +355,26 @@ func (pol *Policy) compileOneGrant(
 		}
 	}
 
-	// Resolve sources per-alias, tracking non-wildcard sources
-	// separately so we can preserve their IPs alongside the
-	// wildcard CGNAT ranges (matching Tailscale SaaS behavior).
-	resolvedSrcs, nonWildcardSrcs, err := resolveSources(
-		pol, grant.Sources, users, nodes,
-	)
-	if err != nil {
-		return nil, err
-	}
-
 	// Literally empty src=[] or dst=[] produces no rules.
 	if len(grant.Sources) == 0 || len(grant.Destinations) == 0 {
-		return nil, nil //nolint:nilnil
+		return nil
 	}
 
-	if len(resolvedSrcs) == 0 && grant.App == nil {
-		return nil, nil //nolint:nilnil
+	if len(srcs.resolved) == 0 && grant.App == nil {
+		return nil
 	}
-
-	hasWildcard := sourcesHaveWildcard(grant.Sources)
-	hasDangerAll := sourcesHaveDangerAll(grant.Sources)
-	srcIPStrings := buildSrcIPStrings(
-		resolvedSrcs, nonWildcardSrcs,
-		hasWildcard, hasDangerAll, nodes,
-	)
 
 	cg := &compiledGrant{
-		srcIPStrings: srcIPStrings,
-		hasWildcard:  hasWildcard,
-		hasDangerAll: hasDangerAll,
+		srcIPStrings: srcs.ipStrings,
+		hasWildcard:  srcs.hasWildcard,
+		hasDangerAll: srcs.hasDangerAll,
 	}
 
 	// Compile non-self destination rules (done once, shared).
 	if len(otherDests) > 0 {
 		cg.rules = pol.compileOtherDests(
 			users, nodes, grant, otherDests,
-			resolvedSrcs, srcIPStrings,
+			srcs.resolved, srcs.ipStrings,
 		)
 	}
 
@@ -333,13 +383,13 @@ func (pol *Policy) compileOneGrant(
 	if len(autogroupSelfDests) > 0 {
 		cg.category = grantCategorySelf
 		cg.self = &selfGrantData{
-			resolvedSrcs:      resolvedSrcs,
+			resolvedSrcs:      srcs.resolved,
 			internetProtocols: grant.InternetProtocols,
 			app:               grant.App,
 		}
 	}
 
-	return cg, nil
+	return cg
 }
 
 // mergeResolvedSrcs merges every prefix from the resolved sources into a

@@ -1448,8 +1448,16 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 	// Clip so the appends below allocate: callers share pm.pol under RLock,
 	// and writing into its spare capacity races between them.
 	grants := slices.Clip(pm.pol.Grants)
+
+	// Ports never steer routes, so an ACL is one grant here, not one per
+	// destination that would match its sources once per destination.
 	for _, acl := range pm.pol.ACLs {
-		grants = append(grants, aclToGrants(acl)...)
+		dsts := make(Aliases, 0, len(acl.Destinations))
+		for _, d := range acl.Destinations {
+			dsts = append(dsts, d.Alias)
+		}
+
+		grants = append(grants, Grant{Sources: acl.Sources, Destinations: dsts})
 	}
 
 	// matchViewer resolves a grant lazily and at most once: non-via
