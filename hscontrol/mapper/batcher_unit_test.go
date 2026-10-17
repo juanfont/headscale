@@ -1655,6 +1655,34 @@ func TestRemoveConnectionAtIndex_NilsTrailingSlot(t *testing.T) {
 	mc.mutex.Unlock()
 }
 
+// A node chooses how many map streams it opens and each pins a session, so
+// past the limit a new connection replaces the oldest.
+func TestAddConnectionWithLimit_StopsOldest(t *testing.T) {
+	mc := newMultiChannelNodeConn(1, nil)
+
+	var stopped []int
+
+	for i := range maxConcurrentMapSessionsPerNode + 3 {
+		entry := makeConnectionEntry(
+			fmt.Sprintf("conn-%d", i),
+			make(chan *tailcfg.MapResponse, 1),
+		)
+		entry.stop = func() { stopped = append(stopped, i) }
+		mc.addConnectionWithLimit(entry, maxConcurrentMapSessionsPerNode)
+	}
+
+	assert.Equal(t, maxConcurrentMapSessionsPerNode, mc.getActiveConnectionCount())
+	assert.Equal(t, []int{0, 1, 2}, stopped,
+		"the oldest connections should be stopped, each once")
+
+	// The newest connections are the ones kept, in arrival order.
+	mc.mutex.RLock()
+	assert.Equal(t, "conn-3", mc.connections[0].id)
+	assert.Equal(t, fmt.Sprintf("conn-%d", maxConcurrentMapSessionsPerNode+2),
+		mc.connections[len(mc.connections)-1].id)
+	mc.mutex.RUnlock()
+}
+
 // ============================================================================
 // SSHPolicy delta Tests
 // ============================================================================
