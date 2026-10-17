@@ -2021,10 +2021,17 @@ func (c *Config) CloneTailcfgDNSConfig() *tailcfg.DNSConfig {
 	return c.TailcfgDNSConfig.Clone()
 }
 
-// extraRecordAtOrBelow reports whether an extra DNS record is name or a
-// subdomain of it. Case is ignored, as in TLS name matching; name is
+// HasExtraRecord reports whether an extra DNS record is exactly name,
+// ignoring case and a trailing dot. Safe for concurrent use with
+// [Config.SetExtraRecords].
+func (c *Config) HasExtraRecord(name string) bool {
+	return c.extraRecordAt(strings.ToLower(strings.TrimSuffix(name, ".")), false)
+}
+
+// extraRecordAt reports whether an extra DNS record is name or, with orBelow,
+// a subdomain of it. Case is ignored, as in TLS name matching; name is
 // lowercase.
-func (c *Config) extraRecordAtOrBelow(name string) bool {
+func (c *Config) extraRecordAt(name string, orBelow bool) bool {
 	tailcfgDNSMu.RLock()
 	defer tailcfgDNSMu.RUnlock()
 
@@ -2034,7 +2041,7 @@ func (c *Config) extraRecordAtOrBelow(name string) bool {
 
 	for _, r := range c.TailcfgDNSConfig.ExtraRecords {
 		rn := strings.ToLower(strings.TrimSuffix(r.Name, "."))
-		if rn == name || strings.HasSuffix(rn, "."+name) {
+		if rn == name || (orBelow && strings.HasSuffix(rn, "."+name)) {
 			return true
 		}
 	}
