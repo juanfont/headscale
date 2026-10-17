@@ -4749,3 +4749,62 @@ func TestResolvedPolicyKeepsTagIndex(t *testing.T) {
 	require.NotNil(t, pm.resolvedPol.nodesByTag)
 	require.NotNil(t, pm.resolvedPol.resolvedGroups)
 }
+
+func TestSetNodesUnapprovedRoutesKeepGeneration(t *testing.T) {
+	users := types.Users{{ID: 1, Name: "user1"}}
+	route := netip.MustParsePrefix("10.77.0.0/24")
+
+	for _, tt := range []struct {
+		name   string
+		policy string
+	}{
+		{name: "global", policy: `{"acls": [{"action": "accept",
+			"src": ["user1@"], "dst": ["10.77.0.0/24:*"]}]}`},
+		{name: "self", policy: `{"acls": [{"action": "accept",
+			"src": ["user1@"], "dst": ["autogroup:self:*"]}]}`},
+		{name: "via", policy: `{
+			"tagOwners": {"tag:router": ["user1@"]},
+			"grants": [{"src": ["user1@"], "dst": ["10.77.0.0/24"],
+				"ip": ["*"], "via": ["tag:router"]}]
+		}`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			router := node("router", "100.64.0.1", "fd7a:115c:a1e0::1", users[0])
+			router.ID = 1
+			client := node("client", "100.64.0.2", "fd7a:115c:a1e0::2", users[0])
+			client.ID = 2
+
+			if tt.name == "via" {
+				router.Tags = []string{"tag:router"}
+			}
+
+			pm, err := NewPolicyManager(
+				[]byte(tt.policy),
+				users,
+				types.Nodes{router, client}.ViewSlice(),
+			)
+			require.NoError(t, err)
+			require.Equal(t, tt.name != "global", pm.needsPerNodeFilter)
+			gen := pm.NodesGeneration()
+
+			announced := router.Clone()
+			announced.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{route}}
+			changed, err := pm.SetNodes(types.Nodes{announced, client}.ViewSlice())
+			require.NoError(t, err)
+			require.False(t, changed, "unapproved routes are not policy inputs")
+			require.Equal(t, gen, pm.NodesGeneration())
+			require.Equal(
+				t,
+				[]netip.Prefix{route},
+				pm.nodesByID[router.ID].AnnouncedRoutes(),
+			)
+
+			approved := announced.Clone()
+			approved.ApprovedRoutes = []netip.Prefix{route}
+			changed, err = pm.SetNodes(types.Nodes{approved, client}.ViewSlice())
+			require.NoError(t, err)
+			require.True(t, changed, "approval changes served routes")
+			require.Equal(t, gen+1, pm.NodesGeneration())
+		})
+	}
+}

@@ -1198,31 +1198,6 @@ func (nv NodeView) IPsAsString() []string {
 	return nv.ж.IPsAsString()
 }
 
-// HasNetworkChanges checks if the node has network-related changes.
-// Returns true if IPs, announced routes, or approved routes changed.
-// This is primarily used for policy cache invalidation. Route slices
-// are compared order-insensitively since clients may re-advertise the
-// same routes in a different order.
-func (nv NodeView) HasNetworkChanges(other NodeView) bool {
-	if !slices.Equal(nv.IPs(), other.IPs()) {
-		return true
-	}
-
-	if !equalPrefixesUnordered(nv.AnnouncedRoutes(), other.AnnouncedRoutes()) {
-		return true
-	}
-
-	if !equalPrefixesUnordered(nv.SubnetRoutes(), other.SubnetRoutes()) {
-		return true
-	}
-
-	if !equalPrefixesUnordered(nv.ExitRoutes(), other.ExitRoutes()) {
-		return true
-	}
-
-	return false
-}
-
 // equalPrefixesUnordered reports whether a and b contain the same
 // prefixes, order-independent. Inputs are cloned before sorting so
 // callers' slices are not mutated.

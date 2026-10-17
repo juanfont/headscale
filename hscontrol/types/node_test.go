@@ -687,9 +687,9 @@ func TestApplyPeerChange(t *testing.T) {
 	}
 }
 
-// TestHasNetworkChanges tests the [NodeView] method for detecting
-// when a node's network properties have changed.
-func TestHasNetworkChanges(t *testing.T) {
+// TestHasPolicyChangeAddressesAndRoutes covers the addresses and served
+// routes that policy evaluation reads.
+func TestHasPolicyChangeAddressesAndRoutes(t *testing.T) {
 	mustIPPtr := func(s string) *netip.Addr {
 		ip := netip.MustParseAddr(s)
 		return &ip
@@ -759,7 +759,7 @@ func TestHasNetworkChanges(t *testing.T) {
 				IPv4:     mustIPPtr("100.64.0.1"),
 				Hostinfo: &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")}},
 			},
-			changed: true,
+			changed: false,
 		},
 		{
 			name: "RoutableIPs removed",
@@ -773,7 +773,7 @@ func TestHasNetworkChanges(t *testing.T) {
 				IPv4:     mustIPPtr("100.64.0.1"),
 				Hostinfo: &tailcfg.Hostinfo{},
 			},
-			changed: true,
+			changed: false,
 		},
 		{
 			name: "RoutableIPs changed",
@@ -787,7 +787,7 @@ func TestHasNetworkChanges(t *testing.T) {
 				IPv4:     mustIPPtr("100.64.0.1"),
 				Hostinfo: &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")}},
 			},
-			changed: true,
+			changed: false,
 		},
 		{
 			name: "SubnetRoutes added",
@@ -886,9 +886,9 @@ func TestHasNetworkChanges(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.new.View().HasNetworkChanges(tt.old.View())
+			got := tt.new.View().HasPolicyChange(tt.old.View())
 			if got != tt.changed {
-				t.Errorf("HasNetworkChanges() = %v, want %v", got, tt.changed)
+				t.Errorf("HasPolicyChange() = %v, want %v", got, tt.changed)
 			}
 		})
 	}

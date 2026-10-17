@@ -1580,8 +1580,8 @@ func TestRebuildPeerMapsAfterStopReturns(t *testing.T) {
 }
 
 // TestUpdateNodeRecomputesPeersOnlyForRelationInputs pins which fields make a
-// write recompute peer adjacency: the inputs that force a peer-map rebuild
-// (an announced but unapproved route is included on purpose).
+// write recompute peer adjacency: only inputs read by the policy require
+// a peer-map rebuild.
 func TestUpdateNodeRecomputesPeersOnlyForRelationInputs(t *testing.T) {
 	subnet := netip.MustParsePrefix("10.77.0.0/24")
 
@@ -1614,6 +1614,13 @@ func TestUpdateNodeRecomputesPeersOnlyForRelationInputs(t *testing.T) {
 			name: "announced route",
 			mutate: func(n *types.Node) {
 				n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet}}
+			},
+		},
+		{
+			name: "announced and approved route",
+			mutate: func(n *types.Node) {
+				n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet}}
+				n.ApprovedRoutes = []netip.Prefix{subnet}
 			},
 			wantRecompute: true,
 		},
@@ -1899,9 +1906,9 @@ func TestNodeStoreAdjacencyMatchesFullBuild(t *testing.T) {
 //   - "payload": neither; a write can reuse the previous peer adjacency.
 //
 // A field missing here fails TestUpdateChangesCoversEveryNodeField:
-// classify it, and if it is a relation input, teach HasPolicyChange or
-// HasNetworkChanges about it before updateChanges can let NodeStore
-// reuse peer adjacency across the write.
+// classify it, and if it is a relation input, teach HasPolicyChange
+// about it before updateChanges can let NodeStore reuse peer adjacency
+// across the write.
 var nodeFieldImpact = map[string]string{
 	"ID": "relation", "IPv4": "relation", "IPv6": "relation",
 	"UserID": "relation", "User": "relation", "Tags": "relation",
@@ -1953,16 +1960,11 @@ func TestUpdateChangesReportsRelationFields(t *testing.T) {
 			n.ApprovedRoutes = []netip.Prefix{pfx}
 		}, wantRelation: true, wantElection: true},
 		{
-			// Announcing a route the policy has not approved does not
-			// change who can access it (SubnetRoutes/ExitRoutes, which
-			// gate HasPolicyChange, stay empty), but HasNetworkChanges
-			// tracks the raw announcement so a later approval sees a
-			// fresh Hostinfo rather than one NodeStore decided to reuse.
+			// Policy reads served routes; a later approval triggers its own rebuild.
 			name: "announced but not approved route",
 			mutate: func(n *types.Node) {
 				n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{pfx}}
 			},
-			wantRelation: true, wantElection: true,
 		},
 		{name: "online", mutate: func(n *types.Node) { n.IsOnline = new(true) }, wantElection: true},
 		{name: "unhealthy", mutate: func(n *types.Node) { n.Unhealthy = true }, wantElection: true},
