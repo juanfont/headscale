@@ -1266,10 +1266,9 @@ func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView,
 		c = change.NodeAdded(nodeID)
 	}
 
-	// Set OriginNode so the mapper knows to include self info for this node.
-	// When tags change, persistNodeAndRefreshPolicy returns PolicyChange which doesn't set OriginNode,
-	// so the mapper's self-update check fails and the node never sees its new tags.
-	// Setting OriginNode ensures the node gets a self-update with the new tags.
+	// Records the retagged node. Its new tags reach it either way: a policy
+	// recompute always renders the node's own entry, and NodeAdded already
+	// carries this origin.
 	c.OriginNode = nodeID
 
 	// The new tags may approve announced routes, as on Tailscale SaaS. This
