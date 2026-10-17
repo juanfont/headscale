@@ -97,16 +97,22 @@ var userTokenOverlays = []userTokenOverlay{
 var userTokenSkipReasons = map[string]string{
 	"users-short-name/okta-name-only/server/filter": shortUsernameRow,
 
-	"users-bare-at-test-dst/breakdown":                         testUnknownAlias,
-	"users-bare-at-test-dst/duplicate-unknown-email/breakdown": testUnknownAlias,
-	"users-bare-at-test-dst/name-is-owner-email/breakdown":     testUnknownAlias,
-	"users-bare-at-test-dst/name-is-unknown-email/breakdown":   testUnknownAlias,
-	"users-bare-at-test-dst/no-email-two/breakdown":            testUnknownAlias,
-	"users-bare-at-test-src/breakdown":                         testUnknownAlias,
-	"users-bare-at-test-src/duplicate-unknown-email/breakdown": testUnknownAlias,
-	"users-bare-at-test-src/name-is-owner-email/breakdown":     testUnknownAlias,
-	"users-bare-at-test-src/name-is-unknown-email/breakdown":   testUnknownAlias,
-	"users-bare-at-test-src/no-email-two/breakdown":            testUnknownAlias,
+	"users-bare-at-test-dst/breakdown":                                  testUnknownAlias,
+	"users-bare-at-test-dst/duplicate-unknown-email/breakdown":          testUnknownAlias,
+	"users-bare-at-test-dst/name-is-owner-email/breakdown":              testUnknownAlias,
+	"users-bare-at-test-dst/name-is-unknown-email-unverified/breakdown": testUnknownAlias,
+	"users-bare-at-test-dst/name-is-unknown-email/breakdown":            testUnknownAlias,
+	"users-bare-at-test-dst/no-email-one/breakdown":                     testUnknownAlias,
+	"users-bare-at-test-dst/no-email-two/breakdown":                     testUnknownAlias,
+	"users-bare-at-test-dst/okta-name-only/breakdown":                   testUnknownAlias,
+	"users-bare-at-test-src/breakdown":                                  testUnknownAlias,
+	"users-bare-at-test-src/duplicate-unknown-email/breakdown":          testUnknownAlias,
+	"users-bare-at-test-src/name-is-owner-email/breakdown":              testUnknownAlias,
+	"users-bare-at-test-src/name-is-unknown-email-unverified/breakdown": testUnknownAlias,
+	"users-bare-at-test-src/name-is-unknown-email/breakdown":            testUnknownAlias,
+	"users-bare-at-test-src/no-email-one/breakdown":                     testUnknownAlias,
+	"users-bare-at-test-src/no-email-two/breakdown":                     testUnknownAlias,
+	"users-bare-at-test-src/okta-name-only/breakdown":                   testUnknownAlias,
 
 	// The evaluation error repeats the test's source unquoted, here a user's name.
 	"users-bare-at-test-dst/name-is-owner-email/user-list": testUnknownAlias,
@@ -136,33 +142,6 @@ var userTokenSkipReasons = map[string]string{
 	"users-unknown-member/name-is-unknown-email/server/filter":                       usernameAnswersEmail,
 	"users-unknown-member/name-is-unknown-email/server/ssh":                          usernameAnswersEmail,
 
-	"users-bare-at-dst/name-is-unknown-email-unverified/overlay-1/filter":         bareAtNoEmail,
-	"users-bare-at-dst/no-email-one/overlay-1/filter":                             bareAtNoEmail,
-	"users-bare-at-dst/no-email-two/user-list":                                    bareAtNoEmail,
-	"users-bare-at-dst/no-email-two/verdict":                                      bareAtNoEmail,
-	"users-bare-at-dst/okta-name-only/user-tid/filter":                            bareAtNoEmail,
-	"users-bare-at-group/name-is-unknown-email-unverified/server/filter":          bareAtNoEmail,
-	"users-bare-at-group/no-email-one/server/filter":                              bareAtNoEmail,
-	"users-bare-at-group/no-email-two/user-list":                                  bareAtNoEmail,
-	"users-bare-at-group/no-email-two/verdict":                                    bareAtNoEmail,
-	"users-bare-at-group/okta-name-only/server/filter":                            bareAtNoEmail,
-	"users-bare-at-nodeattrs/name-is-unknown-email-unverified/overlay-1/capmap":   bareAtNoEmail,
-	"users-bare-at-nodeattrs/no-email-one/overlay-1/capmap":                       bareAtNoEmail,
-	"users-bare-at-nodeattrs/no-email-two/user-list":                              bareAtNoEmail,
-	"users-bare-at-nodeattrs/no-email-two/verdict":                                bareAtNoEmail,
-	"users-bare-at-nodeattrs/okta-name-only/user-tid/capmap":                      bareAtNoEmail,
-	"users-bare-at-src/name-is-unknown-email-unverified/server/filter":            bareAtNoEmail,
-	"users-bare-at-src/no-email-one/server/filter":                                bareAtNoEmail,
-	"users-bare-at-src/no-email-two/user-list":                                    bareAtNoEmail,
-	"users-bare-at-src/no-email-two/verdict":                                      bareAtNoEmail,
-	"users-bare-at-src/okta-name-only/server/filter":                              bareAtNoEmail,
-	"users-bare-at-tagowner/name-is-unknown-email-unverified/overlay-1/tag-owner": bareAtNoEmail,
-	"users-bare-at-tagowner/no-email-one/overlay-1/tag-owner":                     bareAtNoEmail,
-	"users-bare-at-tagowner/no-email-two/user-list":                               bareAtNoEmail,
-	"users-bare-at-tagowner/no-email-two/verdict":                                 bareAtNoEmail,
-	"users-bare-at-test-src/no-email-two/user-list":                               bareAtNoEmail,
-	"users-bare-at-test-src/okta-name-only/verdict":                               bareAtNoEmail,
-
 	"users-short-name/server/filter": shortUsername,
 }
 
@@ -172,7 +151,6 @@ const (
 	ambiguousWrite       = "AMBIGUOUS_USER_WRITE: headscale refuses to store a policy whose user token matches two users (#3160)"
 	ambiguityListsUsers  = "AMBIGUITY_LISTS_USERS: headscale's refusal of a token matching two users lists both users by ID and name"
 	usernameAnswersEmail = "USERNAME_ANSWERS_EMAIL_TOKEN: a username shaped like an unclaimed address takes that address's rights"
-	bareAtNoEmail        = `BARE_AT_NO_EMAIL: "@" matches the users without an e-mail; SaaS matches it to no one`
 )
 
 // TestUserTokenCompat replays every users capture as captured and under
