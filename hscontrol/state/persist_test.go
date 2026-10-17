@@ -1,6 +1,7 @@
 package state
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"maps"
@@ -2610,4 +2611,49 @@ func TestUpdateUserRefreshesNodeCopiesWhenPolicyUpdateFails(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "renamed-user", updated.User().Name(),
 		"the committed row and its cached copy must agree")
+}
+
+func TestUserNameCollisionDoesNotBlockCreationOrRestart(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+	database, err := db.NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	user := database.CreateUserForTest("dup")
+	node := database.CreateRegisteredNodeForTest(user, "duplicate-name-node")
+	_, err = database.SetPolicy(`{
+		"acls": [],
+		"nodeAttrs": [{"target":["dup@"], "attr":["randomize-client-port"]}]
+	}`)
+	require.NoError(t, err)
+	require.NoError(t, database.Close())
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		if s != nil {
+			_ = s.Close()
+		}
+	})
+	require.NotEmpty(t, s.polMan.NodeCapMap(node.ID))
+
+	created, _, err := s.CreateUser(types.User{
+		Name:               "dup",
+		Provider:           "oidc",
+		ProviderIdentifier: sql.NullString{String: "https://idp.example/second", Valid: true},
+	})
+	require.NoError(t, err, "a colliding user must not prevent user creation")
+	require.NotNil(t, created)
+
+	_, _, err = s.CreateUser(types.User{Name: "later"})
+	require.NoError(t, err, "a previous collision must not prevent later user creation")
+	assert.Empty(t, s.polMan.NodeCapMap(node.ID))
+	require.NoError(t, s.Close())
+	s = nil
+
+	reopened := persistTestReopen(t, dbPath)
+	users, err := reopened.ListAllUsers()
+	require.NoError(t, err)
+	require.Len(t, users, 3)
+	require.Empty(t, reopened.polMan.NodeCapMap(node.ID))
 }

@@ -135,8 +135,7 @@ type filterAndPolicy struct {
 	Policy *Policy
 }
 
-// validateUserReferences surfaces ambiguous user@ tokens at policy load so
-// duplicate DB rows fail loudly instead of silently dropping rules.
+// validateUserReferences reports ambiguous user@ tokens so writes can refuse them.
 // Missing-user tokens stay tolerant. Empty users → no-op for
 // syntax-only checks.
 func validateUserReferences(pol *Policy, users types.Users) error {
@@ -247,7 +246,7 @@ func NewPolicyManager(b []byte, users []types.User, nodes views.Slice[types.Node
 
 	err = validateUserReferences(policy, users)
 	if err != nil {
-		return nil, fmt.Errorf("validating policy user references: %w", err)
+		log.Error().Err(err).Msg("ambiguous policy users at boot")
 	}
 
 	pm := PolicyManager{
@@ -1120,6 +1119,11 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, bool, error) {
 		pm.users = prev
 
 		return false, false, err
+	}
+
+	err = validateUserReferences(pm.pol, users)
+	if err != nil {
+		log.Error().Err(err).Msg("ambiguous policy users after updating users")
 	}
 
 	// SSH rules and per-node filters embed user identity outside the filter
