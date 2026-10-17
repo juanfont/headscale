@@ -1055,6 +1055,52 @@ func TestSSHPolicyRemovalClearsRules(t *testing.T) {
 	}
 }
 
+// TestSSHPolicySharedBetweenNodes pins that what an SSH rule expands to is
+// kept once, not once per rule and destination node. There is one principal
+// per source address, so separate copies grow with rules × nodes².
+func TestSSHPolicySharedBetweenNodes(t *testing.T) {
+	users := types.Users{{Name: "user1", Email: "user1@headscale.net"}}
+	users[0].ID = 1
+
+	nodes := types.Nodes{
+		node("node1", "100.64.0.1", "fd7a:115c:a1e0::1", users[0]),
+		node("node2", "100.64.0.2", "fd7a:115c:a1e0::2", users[0]),
+		node("node3", "100.64.0.3", "fd7a:115c:a1e0::3", users[0]),
+	}
+	for i, n := range nodes {
+		n.ID = types.NodeID(i + 1) //nolint:gosec // small test value
+	}
+
+	pm, err := NewPolicyManager([]byte(`{"ssh": [
+		{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:member"], "users": ["a"]},
+		{"action": "accept", "src": ["user1@headscale.net"], "dst": ["autogroup:member"], "users": ["b"]}
+	]}`), users, nodes[:2].ViewSlice())
+	require.NoError(t, err)
+
+	first, err := pm.SSHPolicy("", nodes[0].View())
+	require.NoError(t, err)
+	second, err := pm.SSHPolicy("", nodes[1].View())
+	require.NoError(t, err)
+
+	require.Len(t, first.Rules, 2)
+	require.Len(t, first.Rules[0].Principals, 4)
+	require.Equal(t, first, second)
+
+	require.Same(t, first.Rules[0], second.Rules[0], "between nodes")
+	require.Same(t, first.Rules[0].Principals[0], first.Rules[1].Principals[0],
+		"between rules whose sources resolve to the same addresses")
+
+	// The shared rules are dropped together with the per-node policies.
+	changed, err := pm.SetNodes(nodes.ViewSlice())
+	require.NoError(t, err)
+	require.True(t, changed)
+
+	after, err := pm.SSHPolicy("", nodes[0].View())
+	require.NoError(t, err)
+	require.Len(t, after.Rules, 2)
+	require.Len(t, after.Rules[0].Principals, 6)
+}
+
 // TestTagPropagationToPeerMap tests that when a node's tags change,
 // the peer map is correctly updated. This is a regression test for
 // https://github.com/juanfont/headscale/issues/2389
