@@ -7,9 +7,35 @@ import (
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
 )
+
+func TestNewNodeStoreBumpsDuplicateNames(t *testing.T) {
+	nodes := types.Nodes{
+		{ID: 4, GivenName: "DB"},
+		{ID: 2, GivenName: "db"},
+		{ID: 1, GivenName: "db"},
+		{ID: 3, GivenName: "db-1"},
+		{ID: 5, GivenName: ""},
+		{ID: 6, GivenName: ""},
+	}
+	want := map[types.NodeID]string{
+		1: "db", 2: "db-2", 3: "db-1", 4: "DB-3", 5: "", 6: "",
+	}
+
+	for range 2 {
+		store := NewNodeStore(nodes, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+		for id, name := range want {
+			node, ok := store.GetNode(id)
+			require.True(t, ok)
+			assert.Equal(t, name, node.GivenName())
+		}
+	}
+
+	assert.Equal(t, "db", nodes[1].GivenName, "loading must not mutate the input rows")
+}
 
 func TestPutNodeBumpsPastReservedLabel(t *testing.T) {
 	cfg := persistTestConfig(t.TempDir() + "/headscale.db")
