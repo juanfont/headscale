@@ -5,6 +5,7 @@ import (
 	"maps"
 	"net/netip"
 	"slices"
+	"strings"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"go4.org/netipx"
@@ -106,6 +107,21 @@ func (r SSHPolicyTestResults) Errors() string {
 	return failures.String()
 }
 
+// failures is the breakdown apart per failing entry, so an API answer can
+// name each entry's src.
+func (r SSHPolicyTestResults) failures() []TestFailure {
+	var out []TestFailure
+
+	for _, res := range r.Results {
+		if !res.Passed {
+			one := SSHPolicyTestResults{Results: []SSHPolicyTestResult{res}}
+			out = append(out, TestFailure{Src: res.Src, Errors: strings.Split(one.Errors(), "\n")})
+		}
+	}
+
+	return out
+}
+
 func sortedUsers(m map[string][]string) []string {
 	return slices.Sorted(maps.Keys(m))
 }
@@ -141,7 +157,7 @@ func (pm *PolicyManager) RunSSHTests() error {
 
 	results := runSSHPolicyTests(pm.resolvedPol, pm.users, pm.nodes)
 
-	return wrapTestResult(errSSHPolicyTestsFailed, results.AllPassed, results.Errors)
+	return wrapTestResult(errSSHPolicyTestsFailed, results.AllPassed, results)
 }
 
 // evaluateSSHTests runs the block against pol without mutating live state.
@@ -157,7 +173,7 @@ func evaluateSSHTests(
 	pol = pol.withResolvedGroups(users, nodes)
 	results := runSSHPolicyTests(pol, users, nodes)
 
-	return wrapTestResult(errSSHPolicyTestsFailed, results.AllPassed, results.Errors)
+	return wrapTestResult(errSSHPolicyTestsFailed, results.AllPassed, results)
 }
 
 // runSSHPolicyTests evaluates every sshTests entry. The SSH rules are

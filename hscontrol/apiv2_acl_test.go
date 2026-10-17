@@ -245,12 +245,71 @@ func TestAPIv2ACLPersistFailureKeepsLivePolicy(t *testing.T) {
 	assert.Equal(t, before, after, "an unstored policy must not be enforced")
 }
 
+// TestAPIv2ACLRefusalEnvelope: a refused policy answers with the reason in
+// message and, when tests fail, one data entry per failing test naming its
+// src.
+func TestAPIv2ACLRefusalEnvelope(t *testing.T) {
+	app := createTestApp(t)
+	app.state.CreateUserForTest("alice")
+	api := registerAPIV2(t, app)
+
+	type refusal struct {
+		Message string `json:"message"`
+		Data    []struct {
+			User   string   `json:"user"`
+			Errors []string `json:"errors"`
+		} `json:"data"`
+	}
+
+	decode := func(resp *httptest.ResponseRecorder) refusal {
+		t.Helper()
+		require.Equalf(t, http.StatusBadRequest, resp.Code, "body: %s", resp.Body)
+
+		var r refusal
+		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &r))
+
+		return r
+	}
+
+	parse := decode(setACL(t, api, `{ this is not valid`, "application/json"))
+	assert.NotEmpty(t, parse.Message)
+	assert.NotEqual(t, "setting policy", parse.Message, "the reason is the message")
+	assert.Empty(t, parse.Data)
+
+	tests := decode(setACL(t, api, `{
+		"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}],
+		"tests": [
+			{"src": "alice@", "deny": ["100.64.0.2:22"]},
+			{"src": "100.64.0.1", "accept": ["100.64.0.2:22"]},
+			{"src": "100.64.0.3", "deny": ["100.64.0.2:22", "100.64.0.4:22"]}
+		]
+	}`, "application/json"))
+	assert.Equal(t, "test(s) failed", tests.Message)
+	require.Len(t, tests.Data, 2)
+	assert.Equal(t, "alice", tests.Data[0].User)
+	assert.Len(t, tests.Data[0].Errors, 1)
+	assert.Equal(t, "100.64.0.3", tests.Data[1].User)
+	assert.Len(t, tests.Data[1].Errors, 2)
+}
+
 func TestAPIv2ACLNonDefaultTailnet404(t *testing.T) {
 	api := registerAPIV2(t, createTestApp(t))
 
 	assert.Equal(t, http.StatusNotFound, api.Get("/api/v2/tailnet/example.com/acl").Code)
 	assert.Equal(t, http.StatusNotFound,
 		api.Post("/api/v2/tailnet/example.com/acl", bytes.NewReader([]byte(allowAllPolicy))).Code)
+}
+
+// TestAPIv2ACLUnknownPolicyMode: the handler's 500 carries a nil error detail,
+// which the error transformer must not dereference.
+func TestAPIv2ACLUnknownPolicyMode(t *testing.T) {
+	cfg := &types.Config{Policy: types.PolicyConfig{Mode: "unknown"}}
+	_, api := humatest.New(t, apiv2.Config())
+	apiv2.Register(api, apiv2.Backend{Cfg: cfg})
+
+	get := api.Get("/api/v2/tailnet/-/acl")
+	assert.Equal(t, http.StatusInternalServerError, get.Code)
+	assert.Contains(t, get.Body.String(), "unsupported policy mode")
 }
 
 func TestAPIv2ACLFileModeReadOnly(t *testing.T) {
