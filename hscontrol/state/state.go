@@ -52,10 +52,9 @@ const (
 	registerCacheExpiration = time.Minute * 15
 
 	// defaultRegisterCacheMaxEntries is the default upper bound on the number
-	// of pending registration entries the auth cache will hold. With a 15-minute
-	// TTL and a stripped-down RegistrationData payload (~200 bytes per entry),
-	// 1024 entries cap the worst-case cache footprint at well under 1 MiB even
-	// under sustained unauthenticated cache-fill attempts.
+	// of pending registration entries the auth cache will hold. Each entry
+	// keeps a Hostinfo bounded at decode ([types.MaxHostinfoSize]) and
+	// without routes, so the entry cap bounds the cache's memory.
 	defaultRegisterCacheMaxEntries = 1024
 
 	// defaultNodeStoreBatchSize is the default number of write operations to batch
@@ -2244,6 +2243,10 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 		node.DiscoKey = regData.DiscoKey
 		node.Hostname = params.Hostname
 
+		// Pending registrations do not cache announced routes; keep the
+		// node's own until its next MapRequest reports them.
+		routes := slices.Clone(node.AnnouncedRoutes())
+
 		// Preserve NetInfo from existing node when re-registering
 		node.Hostinfo = params.ValidHostinfo
 		node.Hostinfo.NetInfo = preserveNetInfo(
@@ -2251,6 +2254,7 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 			params.ExistingNode.ID(),
 			params.ValidHostinfo,
 		)
+		node.Hostinfo.RoutableIPs = routes
 
 		// Preserve the node's live endpoints when the register request carried
 		// none. Web/OIDC relogins report endpoints via MapRequest, not register,

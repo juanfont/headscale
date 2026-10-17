@@ -2074,3 +2074,43 @@ func TestBootKeepsHostinfoTheMapPathStored(t *testing.T) {
 	osVersionLen := len(reloaded.Hostinfo().OSVersion())
 	assert.Equal(t, 60<<10, osVersionLen)
 }
+
+// TestReauthKeepsAnnouncedRoutes pins that an auth-path relogin keeps the
+// routes a router announced. Pending registrations carry none, and dropping
+// the node's own would withdraw its primary routes until the next MapRequest.
+func TestReauthKeepsAnnouncedRoutes(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	route := netip.MustParsePrefix("10.0.0.0/24")
+
+	node, ok := s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
+		n.Hostinfo = &tailcfg.Hostinfo{
+			Hostname: n.Hostname, RoutableIPs: []netip.Prefix{route},
+		}
+		n.ApprovedRoutes = []netip.Prefix{route}
+	})
+	require.True(t, ok)
+
+	_, epoch := s.Connect(nodeID)
+	require.NotZero(t, epoch)
+	require.Equal(t, []netip.Prefix{route}, s.GetNodePrimaryRoutes(nodeID),
+		"precondition: the node serves its route")
+
+	authID := types.MustAuthID()
+	s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+		MachineKey: node.MachineKey(),
+		NodeKey:    key.NewNode().Public(),
+		Hostname:   node.Hostname(),
+		Hostinfo:   &tailcfg.Hostinfo{Hostname: node.Hostname()},
+	}))
+
+	relogged, _, err := s.HandleNodeFromAuthPath(
+		authID, node.TypedUserID(), nil, util.RegisterMethodOIDC,
+	)
+	require.NoError(t, err)
+	require.Equal(t, nodeID, relogged.ID(), "relogin must update the existing node")
+
+	assert.Equal(t, []netip.Prefix{route}, relogged.AnnouncedRoutes())
+	assert.Equal(t, []netip.Prefix{route}, s.GetNodePrimaryRoutes(nodeID))
+}
