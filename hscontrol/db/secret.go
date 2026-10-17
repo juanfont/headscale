@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
@@ -57,7 +58,11 @@ var (
 // only run until every stored hash has been upgraded to SHA-256.
 //
 // TODO(kradalby): remove in 0.32 with bcrypt/Argon2id support.
-var legacyHashLimiter = make(chan struct{}, max(2, runtime.GOMAXPROCS(0)))
+var (
+	legacyHashLimiter = make(chan struct{}, max(2, runtime.GOMAXPROCS(0)))
+	legacyHashWait    = 5 * time.Second
+	errLegacyHashBusy = errors.New("legacy hash verification is busy")
+)
 
 // generateSecret builds a new credential string prefix+identifier+"-"+secret,
 // returning the full string (shown ONCE to the user), the public identifier
@@ -95,6 +100,9 @@ func authenticateCredential(
 		query = query.Preload(p)
 	}
 
+	// Session lets the legacy reload below reuse the preloads.
+	query = query.Session(&gorm.Session{})
+
 	err := query.First(&cred, "kind = ? AND identifier = ?", kind, identifier).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, notFound
@@ -117,14 +125,26 @@ func authenticateCredential(
 	if needsRehash {
 		// Best effort: on failure the legacy hash stays and the next
 		// authentication retries.
-		cred.Hash = hashSecret(secret)
-
 		err := tx.Model(&types.Credential{}).Where("id = ?", cred.ID).
-			Update("hash", cred.Hash).Error
+			Update("hash", hashSecret(secret)).Error
 		if err != nil {
 			log.Warn().Err(err).Uint64("credential", cred.ID).
 				Msg("upgrading legacy credential hash")
 		}
+
+		// Validity may change while legacy verification waits for a slot.
+		var current types.Credential
+
+		err = query.First(&current, "id = ?", cred.ID).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, notFound
+		}
+
+		if err != nil {
+			return nil, fmt.Errorf("reloading %s credential %d: %w", kind, cred.ID, err)
+		}
+
+		return &current, nil
 	}
 
 	return &cred, nil
@@ -151,7 +171,12 @@ func verifySecret(encoded []byte, secret string) (bool, error) {
 		return false, nil
 	}
 
-	legacyHashLimiter <- struct{}{}
+	select {
+	case legacyHashLimiter <- struct{}{}:
+	case <-time.After(legacyHashWait):
+		return false, errLegacyHashBusy
+	}
+
 	defer func() { <-legacyHashLimiter }()
 
 	if bytes.HasPrefix(encoded, []byte("$argon2id$")) {

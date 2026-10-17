@@ -128,6 +128,73 @@ func TestVerifySecretConcurrent(t *testing.T) {
 	}
 }
 
+// TODO(kradalby): remove in 0.32 with bcrypt/Argon2id support.
+func TestVerifySecretGivesUpWhenLimiterBusy(t *testing.T) {
+	const secret = "s3cr3t"
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(secret), bcrypt.MinCost)
+	require.NoError(t, err)
+
+	previousWait := legacyHashWait
+	legacyHashWait = 10 * time.Millisecond
+
+	t.Cleanup(func() { legacyHashWait = previousWait })
+
+	for range cap(legacyHashLimiter) {
+		legacyHashLimiter <- struct{}{}
+	}
+
+	release := sync.OnceFunc(func() {
+		for range cap(legacyHashLimiter) {
+			<-legacyHashLimiter
+		}
+	})
+
+	var wg sync.WaitGroup
+
+	defer func() {
+		release()
+		wg.Wait()
+	}()
+
+	_, err = verifySecret(hashSecret(secret), secret)
+	require.NoError(t, err)
+
+	type result struct {
+		needsRehash bool
+		err         error
+	}
+
+	const n = 8
+
+	results := make(chan result, n)
+	for range n {
+		wg.Go(func() {
+			needsRehash, err := verifySecret(hash, secret)
+			results <- result{needsRehash: needsRehash, err: err}
+		})
+	}
+
+	deadline := time.After(time.Second)
+
+	for range n {
+		select {
+		case got := <-results:
+			require.ErrorIs(t, got.err, errLegacyHashBusy)
+			assert.False(t, got.needsRehash)
+		case <-deadline:
+			t.Fatal("legacy verification did not give up while the limiter was full")
+		}
+	}
+
+	release()
+	wg.Wait()
+
+	needsRehash, err := verifySecret(hash, secret)
+	require.NoError(t, err)
+	assert.True(t, needsRehash)
+}
+
 // TestGenerateSecret verifies the unified key shape
 // <prefix><identifier(12)>-<secret(64)> and that the stored hash verifies the
 // secret without needing a rehash.
