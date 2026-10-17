@@ -437,7 +437,9 @@ func TestSSHCheckParamsMatchesCaptures(t *testing.T) {
 
 	for _, file := range files {
 		tf := loadSSHTestFile(t, file)
-		if tf.Input.APIResponseCode != 200 {
+
+		// Validation-only captures hold no node rules to compare.
+		if tf.Input.APIResponseCode != 200 || len(tf.Captures) == 0 {
 			continue
 		}
 

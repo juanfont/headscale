@@ -69,6 +69,7 @@ func buildGrantsNodesFromCapture(
 	for _, nodeDef := range tf.Topology.Nodes {
 		node := &types.Node{
 			ID:        types.NodeID(autoID), //nolint:gosec
+			Hostname:  nodeDef.Hostname,
 			GivenName: nodeDef.Hostname,
 			IPv4:      ptrAddr(nodeDef.IPv4),
 			IPv6:      ptrAddr(nodeDef.IPv6),
