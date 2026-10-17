@@ -27,7 +27,67 @@ import (
 	"tailscale.com/types/views"
 )
 
-var errRegistrationGCPolicy = errors.New("node policy update failed")
+var (
+	errRegistrationGCPolicy = errors.New("node policy update failed")
+	errRegistrationGCName   = errors.New("node name persistence failed")
+)
+
+func TestEphemeralGCArmedAfterNamePersistFailure(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	app.cfg.Node.Ephemeral.InactivityTimeout = time.Hour
+	app.StartEphemeralGCForTest(t)
+	user := app.state.CreateUserForTest("gc-name-user")
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, true, nil, nil)
+	require.NoError(t, err)
+
+	req := tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey:  key.NewNode().Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "shared"},
+	}
+	_, err = app.handleRegisterWithAuthKey(req, key.NewMachine().Public())
+	require.NoError(t, err)
+
+	first, ok := app.state.GetNodeByNodeKey(req.NodeKey)
+	require.True(t, ok)
+
+	require.NoError(t, app.state.DB().DB.Callback().Update().Before("gorm:update").
+		Register("fail_gc_name_persist", func(tx *gorm.DB) {
+			if tx.Statement.Table == "nodes" {
+				_ = tx.AddError(errRegistrationGCName)
+			}
+		}))
+	t.Cleanup(func() {
+		_ = app.state.DB().DB.Callback().Update().Remove("fail_gc_name_persist")
+	})
+
+	app.cfg.Node.Ephemeral.InactivityTimeout = 200 * time.Millisecond
+	req.NodeKey = key.NewNode().Public()
+	_, err = app.handleRegisterWithAuthKey(req, key.NewMachine().Public())
+	require.ErrorIs(t, err, errRegistrationGCName)
+
+	second, ok := app.state.GetNodeByNodeKey(req.NodeKey)
+	require.True(t, ok, "registration committed before the name UPDATE failed")
+	require.Equal(t, "shared-1", second.GivenName())
+	assert.True(t, app.ephemeralGC.IsScheduled(second.ID()))
+	row, err := app.state.DB().GetNodeByID(second.ID())
+	require.NoError(t, err)
+	assert.Equal(t, "shared", row.GivenName)
+
+	require.Eventually(t, func() bool {
+		_, ok := app.state.GetNodeByID(second.ID())
+		return !ok
+	}, 5*time.Second, 10*time.Millisecond,
+		"a committed registration must be collected after a name persistence error")
+
+	_, err = app.state.DB().GetNodeByID(second.ID())
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+
+	_, ok = app.state.GetNodeByID(first.ID())
+	require.True(t, ok)
+}
 
 type registrationGCPolicyManager struct {
 	policy.PolicyManager

@@ -1,6 +1,7 @@
 package state
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"maps"
@@ -13,8 +14,11 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/rs/zerolog/log"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/types/key"
 	"tailscale.com/types/views"
@@ -114,6 +118,9 @@ type NodeStore struct {
 
 	peersFunc  PeersFunc
 	writeQueue chan work
+	// reservedLabel reports labels held outside the NodeStore; nil reserves
+	// none. Set before Start: the writer reads it without a lock.
+	reservedLabel func(string) bool
 
 	// stopped is closed once by Stop to signal the writer goroutine to exit
 	// and to let in-flight writes return cleanly instead of panicking with
@@ -126,10 +133,7 @@ type NodeStore struct {
 }
 
 func NewNodeStore(allNodes types.Nodes, peersFunc PeersFunc, batchSize int, batchTimeout time.Duration) *NodeStore {
-	nodes := make(map[types.NodeID]types.Node, len(allNodes))
-	for _, n := range allNodes {
-		nodes[n.ID] = *n
-	}
+	nodes := uniqueGivenNames(allNodes)
 
 	snap := snapshotFromNodes(nodes, peersFunc, nil, false, false)
 
@@ -145,6 +149,47 @@ func NewNodeStore(allNodes types.Nodes, peersFunc PeersFunc, batchSize int, batc
 	nodeStoreNodesCount.Set(float64(len(nodes)))
 
 	return store
+}
+
+// uniqueGivenNames bumps duplicate names as nodes load; the lowest ID keeps a
+// shared name. Nothing is written back, and extra record names are not checked.
+func uniqueGivenNames(allNodes types.Nodes) map[types.NodeID]types.Node {
+	ordered := slices.SortedFunc(slices.Values(allNodes), func(a, b *types.Node) int {
+		return cmp.Compare(a.ID, b.ID)
+	})
+	nodes := make(map[types.NodeID]types.Node, len(allNodes))
+	taken := make(map[string]bool, len(allNodes))
+
+	var duplicates types.Nodes
+
+	// Keep distinct stored labels before bumping duplicates so a label with
+	// a suffix already has its holder when the duplicate chooses a new name.
+	for _, n := range ordered {
+		name := strings.ToLower(n.GivenName)
+		if name != "" && taken[name] {
+			duplicates = append(duplicates, n)
+			continue
+		}
+
+		nodes[n.ID] = *n
+
+		if name != "" {
+			taken[name] = true
+		}
+	}
+
+	for _, duplicate := range duplicates {
+		n := *duplicate
+		n.GivenName = resolveGivenName(nodes, n.ID, n.GivenName, nil)
+		nodes[n.ID] = n
+		log.Warn().
+			Uint64(zf.NodeID, n.ID.Uint64()).
+			Str(zf.OldGivenName, duplicate.GivenName).
+			Str(zf.NewGivenName, n.GivenName).
+			Msg("renaming duplicate node name in memory")
+	}
+
+	return nodes
 }
 
 // Snapshot is the representation of the current state of the [NodeStore].
@@ -522,7 +567,7 @@ func (s *NodeStore) applyBatch(batch []work) {
 		switch w.op {
 		case put:
 			n := w.node
-			n.GivenName = resolveGivenName(nodes, n.ID, n.GivenName)
+			n.GivenName = resolveGivenName(nodes, n.ID, n.GivenName, s.reservedLabel)
 
 			nodes[w.nodeID] = n
 			if w.nodeResult != nil {
@@ -543,7 +588,9 @@ func (s *NodeStore) applyBatch(batch []work) {
 				fn(&n)
 
 				if n.GivenName != oldGivenName {
-					n.GivenName = resolveGivenName(nodes, n.ID, n.GivenName)
+					n.GivenName = resolveGivenName(
+						nodes, n.ID, n.GivenName, s.reservedLabel,
+					)
 				}
 
 				nodes[id] = n
@@ -581,17 +628,7 @@ func (s *NodeStore) applyBatch(batch []work) {
 				continue
 			}
 
-			taken := false
-
-			// DNS is case-insensitive: a legacy "Laptop" already holds "laptop".
-			for id, other := range nodes {
-				if id != w.nodeID && strings.EqualFold(other.GivenName, w.name) {
-					taken = true
-					break
-				}
-			}
-
-			if taken {
+			if resolveGivenName(nodes, w.nodeID, w.name, s.reservedLabel) != w.name {
 				setErrResults[w] = ErrGivenNameTaken
 				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
 
@@ -670,10 +707,16 @@ func (s *NodeStore) applyBatch(batch []work) {
 // keeps the current label.
 //
 // On collision the label is bumped as base, base-1, base-2, …, first
-// unused wins. Must be called from the [NodeStore] writer goroutine
-// (inside [NodeStore.applyBatch]) so the nodes map reflects all earlier
-// ops in the batch and no other writer can interleave.
-func resolveGivenName(nodes map[types.NodeID]types.Node, self types.NodeID, base string) string {
+// unused wins; the base is cut so base-N stays a valid label, as Tailscale
+// does. Called before the [NodeStore] writer starts when loading nodes,
+// or from its writer goroutine (inside [NodeStore.applyBatch]) so the nodes map
+// reflects all earlier ops in the batch and no other writer can interleave.
+func resolveGivenName(
+	nodes map[types.NodeID]types.Node,
+	self types.NodeID,
+	base string,
+	reservedLabel func(string) bool,
+) string {
 	if base == "" {
 		base = fallbackGivenName
 	}
@@ -690,12 +733,21 @@ func resolveGivenName(nodes map[types.NodeID]types.Node, self types.NodeID, base
 
 	candidate := base
 	for i := 1; ; i++ {
-		if _, busy := taken[strings.ToLower(candidate)]; !busy {
+		_, busy := taken[strings.ToLower(candidate)]
+		if !busy && (reservedLabel == nil || !reservedLabel(candidate)) {
 			return candidate
 		}
 
-		candidate = base + "-" + strconv.Itoa(i)
+		candidate = bumpedLabel(base, i)
 	}
+}
+
+// bumpedLabel is base with a -n suffix, base cut so the result stays a valid
+// label, as Tailscale does.
+func bumpedLabel(base string, n int) string {
+	suffix := "-" + strconv.Itoa(n)
+
+	return base[:min(len(base), util.LabelHostnameLength-len(suffix))] + suffix
 }
 
 // snapshotFromNodes builds a Snapshot from nodes. With reusePeers the
