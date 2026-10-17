@@ -283,6 +283,10 @@ func NewState(cfg *types.Config) (*State, error) {
 		if node.Expiry != nil {
 			node.Expiry = new(node.Expiry.UTC())
 		}
+
+		// Rows written before the client report bounds are served bounded;
+		// the next persist rewrites them.
+		node.BoundClientReport()
 	}
 
 	users, err := db.ListUsers(nil)

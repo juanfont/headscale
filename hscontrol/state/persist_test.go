@@ -1952,3 +1952,125 @@ func TestLoadedExpiryIsUTC(t *testing.T) {
 	assert.True(t, expiry.Equal(got))
 	assert.Equal(t, time.UTC, got.Location())
 }
+
+// TestNewStateBoundsStoredClientReport pins that rows stored before the
+// client report bounds existed are loaded bounded: a key rotation must not
+// resend an unbounded endpoint list to every peer, and the next persist
+// rewrites the row.
+func TestNewStateBoundsStoredClientReport(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale.db"
+	cfg := persistTestConfig(dbPath)
+
+	database, err := db.NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	user := database.CreateUserForTest("bound-user")
+	big := database.CreateRegisteredNodeForTest(user, "big")
+	oversized := database.CreateRegisteredNodeForTest(user, "oversized")
+
+	endpoints := make([]netip.AddrPort, 1000)
+	for i := range endpoints {
+		endpoints[i] = netip.AddrPortFrom(netip.MustParseAddr("192.0.2.1"), uint16(i))
+	}
+
+	services := make([]tailcfg.Service, 1000)
+	for i := range services {
+		services[i] = tailcfg.Service{Proto: tailcfg.TCP, Port: uint16(i)}
+	}
+
+	hostname := strings.Repeat("h", 1<<20)
+
+	err = database.DB.Model(big).Select("Hostname", "Endpoints", "Hostinfo").
+		Updates(&types.Node{
+			Hostname:  hostname,
+			Endpoints: endpoints,
+			Hostinfo:  &tailcfg.Hostinfo{Hostname: hostname, Services: services},
+		}).Error
+	require.NoError(t, err)
+
+	err = database.DB.Model(oversized).Select("Hostinfo").
+		Updates(&types.Node{
+			Hostinfo: &tailcfg.Hostinfo{
+				OSVersion: strings.Repeat("v", types.MaxHostinfoSize),
+			},
+		}).Error
+	require.NoError(t, err)
+
+	require.NoError(t, database.Close())
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	nv, ok := s.GetNodeByID(big.ID)
+	require.True(t, ok)
+
+	hostnameLen, hostinfoHostnameLen := len(nv.Hostname()),
+		len(nv.Hostinfo().Hostname())
+	assert.Equal(t, types.MaxHostnameLength, hostnameLen)
+	assert.Equal(t, types.MaxHostnameLength, hostinfoHostnameLen)
+	assert.Equal(t, types.MaxReportedListLen, nv.Endpoints().Len())
+	assert.Equal(t, types.MaxReportedListLen, nv.Hostinfo().Services().Len())
+
+	c, err := s.UpdateNodeFromMapRequest(big.ID, tailcfg.MapRequest{
+		NodeKey:  nv.NodeKey(),
+		DiscoKey: key.NewDisco().Public(),
+	})
+	require.NoError(t, err)
+	require.Len(t, c.PeerPatches, 1, "a disco key change is a key rotation patch")
+	assert.Len(t, c.PeerPatches[0].Endpoints, types.MaxReportedListLen)
+
+	row, err := s.DB().GetNodeByID(big.ID)
+	require.NoError(t, err)
+
+	rowHostnameLen := len(row.Hostname)
+	assert.Equal(t, types.MaxHostnameLength, rowHostnameLen,
+		"the persist rewrote the row")
+	assert.Len(t, row.Endpoints, types.MaxReportedListLen)
+
+	ov, ok := s.GetNodeByID(oversized.ID)
+	require.True(t, ok)
+	assert.False(t, ov.Hostinfo().Valid(),
+		"a Hostinfo over the size budget is dropped until the node reports again")
+}
+
+// TestBootKeepsHostinfoTheMapPathStored pins that the startup bound keeps
+// what the map path accepted. A report without NetInfo keeps the stored one,
+// so a stored Hostinfo can combine fields from two reports.
+func TestBootKeepsHostinfoTheMapPathStored(t *testing.T) {
+	dbPath, s, nodeID := persistTestSetup(t)
+
+	nv, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+
+	for _, hi := range []*tailcfg.Hostinfo{
+		{
+			Hostname: nv.Hostname(),
+			NetInfo: &tailcfg.NetInfo{
+				PreferredDERP: 1,
+				LinkType:      strings.Repeat("l", 60<<10),
+			},
+		},
+		{Hostname: nv.Hostname(), OSVersion: strings.Repeat("v", 60<<10)},
+	} {
+		req := tailcfg.MapRequest{
+			NodeKey: nv.NodeKey(), DiscoKey: nv.DiscoKey(), Hostinfo: hi,
+		}
+		require.NoError(t, types.BoundMapRequest(&req))
+
+		_, err := s.UpdateNodeFromMapRequest(nodeID, req)
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, s.Close())
+
+	reloaded, ok := persistTestReopen(t, dbPath).GetNodeByID(nodeID)
+	require.True(t, ok)
+	require.True(t, reloaded.Hostinfo().Valid(),
+		"the startup bound must keep a Hostinfo the map path stored")
+	assert.Equal(t, tailcfg.DERPRegionID(1),
+		reloaded.Hostinfo().NetInfo().PreferredDERP())
+
+	osVersionLen := len(reloaded.Hostinfo().OSVersion())
+	assert.Equal(t, 60<<10, osVersionLen)
+}
