@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/juanfont/headscale/hscontrol/scope"
@@ -103,6 +104,10 @@ func registerACL(api huma.API, b Backend) {
 		// The body is an opaque HuJSON document captured raw; skip huma's
 		// schema validation (which would expect a base64 string).
 		SkipValidateBody: true,
+		// huma's own Body defaults, which it never applies to RawBody; also
+		// what v1 setPolicy accepts.
+		MaxBodyBytes:    1 << 20,
+		BodyReadTimeout: 5 * time.Second,
 		Errors: []int{
 			http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden,
 			http.StatusNotFound, http.StatusPreconditionFailed, http.StatusInternalServerError,
@@ -154,6 +159,9 @@ func registerValidateACL(api huma.API, b Backend, aclTags []string) {
 		Security:         security,
 		DefaultStatus:    http.StatusOK,
 		SkipValidateBody: true,
+		// As setACL: huma applies no body limit to RawBody.
+		MaxBodyBytes:    1 << 20,
+		BodyReadTimeout: 5 * time.Second,
 		Errors: []int{
 			http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden,
 			http.StatusNotFound, http.StatusInternalServerError,

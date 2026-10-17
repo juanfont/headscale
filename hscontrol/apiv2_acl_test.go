@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/danielgtaylor/huma/v2/humatest"
@@ -126,6 +127,17 @@ func TestAPIv2ACLSetHuJSONWithComments(t *testing.T) {
 	raw := api.Get("/api/v2/tailnet/-/acl", "Accept: application/hujson")
 	assert.Equal(t, policy, raw.Body.String())
 	assert.Equal(t, policyETagOf(policy), raw.Header().Get("Etag"))
+}
+
+// TestAPIv2ACLSetBodyLimited: huma gives a RawBody input no size limit of its
+// own, so setACL must declare one.
+func TestAPIv2ACLSetBodyLimited(t *testing.T) {
+	app := createTestApp(t)
+	api := registerAPIV2(t, app)
+
+	set := setACL(t, api, allowAllPolicy+strings.Repeat(" ", 1<<20), "application/json")
+	assert.Equal(t, http.StatusRequestEntityTooLarge, set.Code)
+	assert.Empty(t, storedPolicy(t, app))
 }
 
 func TestAPIv2ACLETagChangesOnChangeStableOnNoop(t *testing.T) {
