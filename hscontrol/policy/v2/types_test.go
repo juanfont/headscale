@@ -6364,3 +6364,94 @@ func TestPolicyMetadataFields(t *testing.T) {
 		})
 	}
 }
+
+// TestUnmarshalPolicyMaxDstPorts checks that the size limit counts what the
+// filter holds an entry for, the combinations of destination prefix and port
+// range, and not the length of either list.
+func TestUnmarshalPolicyMaxDstPorts(t *testing.T) {
+	list := func(item string, n int) string {
+		return strings.TrimSuffix(strings.Repeat(item+",", n), ",")
+	}
+	grant := func(extra, dst string, dsts int, ip string) string {
+		return fmt.Sprintf(
+			`{"src": ["*"], %s "dst": [%s], "ip": [%s]}`,
+			extra, list(`"`+dst+`"`, dsts), ip,
+		)
+	}
+	// One range per ip entry; repeats still count.
+	ports := func(n int) string {
+		return list(`"443"`, n)
+	}
+
+	tests := []struct {
+		name    string
+		policy  string
+		wantErr bool
+	}{
+		{
+			name:   "grant with many ports",
+			policy: `{"grants": [` + grant("", "*", 1, ports(50_000)) + `]}`,
+		},
+		{
+			name:   "grant with many destinations",
+			policy: `{"grants": [` + grant("", "*", 50_000, ports(1)) + `]}`,
+		},
+		{
+			name: "many destinations and many ports in different grants",
+			policy: `{"grants": [` + grant("", "*", 50_000, ports(1)) + `,` +
+				grant("", "*", 1, ports(50_000)) + `]}`,
+		},
+		{
+			name:   "grant at the limit",
+			policy: `{"grants": [` + grant("", "*", 100, ports(1000)) + `]}`,
+		},
+		{
+			name:    "grant with many destinations and many ports",
+			policy:  `{"grants": [` + grant("", "*", 1000, ports(1000)) + `]}`,
+			wantErr: true,
+		},
+		{
+			name: "via grant",
+			policy: `{"tagOwners": {"tag:router": []}, "grants": [` +
+				grant(`"via": ["tag:router"],`, "10.0.0.0/24", 1000, ports(1000)) +
+				`]}`,
+			wantErr: true,
+		},
+		{
+			name:    "grants that add up",
+			policy:  `{"grants": [` + list(grant("", "*", 100, ports(100)), 11) + `]}`,
+			wantErr: true,
+		},
+		{
+			name: "autogroup:internet counts as its prefixes",
+			policy: `{"grants": [` +
+				grant("", "autogroup:internet", 100, ports(100)) + `]}`,
+			wantErr: true,
+		},
+		{
+			name: "acl with many ports",
+			policy: `{"acls": [{"action": "accept", "src": ["*"], "dst": ["*:` +
+				list("443", 50_000) + `"]}]}`,
+		},
+		{
+			name: "acl with many ports on autogroup:internet",
+			policy: `{"acls": [{"action": "accept", "src": ["*"], ` +
+				`"dst": ["autogroup:internet:` + list("443", 50_000) + `"]}]}`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := unmarshalPolicy([]byte(tt.policy))
+
+			if tt.wantErr {
+				require.ErrorIs(t, err, ErrTooManyDstPorts)
+
+				return
+			}
+
+			require.NoError(t, err)
+		})
+	}
+}
