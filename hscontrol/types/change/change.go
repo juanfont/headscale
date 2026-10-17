@@ -562,13 +562,28 @@ func NodeAdded(id types.NodeID) Change {
 	return c
 }
 
-// NodeRemoved returns a [Change] for when a node is removed.
-func NodeRemoved(id types.NodeID) Change {
-	return Change{
+// NodeRemoved returns the changes for a deleted node: the teardown of its own
+// sessions, which reaches no other node, and its removal from each of peers.
+// Each names the node in DeletedNodes, so a peer's tick folds it with the
+// tick's other deletions, see [CoalescePeerDeltas].
+func NodeRemoved(id types.NodeID, peers ...types.NodeID) []Change {
+	out := make([]Change, 0, 1+len(peers))
+	out = append(out, Change{
 		Reason:       "node removed",
-		PeersRemoved: []types.NodeID{id},
+		TargetNode:   id,
 		DeletedNodes: []types.NodeID{id},
+	})
+
+	for _, peer := range peers {
+		out = append(out, Change{
+			Reason:       "node removed",
+			TargetNode:   peer,
+			PeersRemoved: []types.NodeID{id},
+			DeletedNodes: []types.NodeID{id},
+		})
 	}
+
+	return out
 }
 
 // KeyExpiryFor returns a [Change] for when a node's key expiry changes.

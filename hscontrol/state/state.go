@@ -798,20 +798,22 @@ func (s *State) DeleteNode(node types.NodeView) ([]change.Change, error) {
 	// node look deleted until the next restart. persistMu stays out of this
 	// write: a persist that still finds the node updates no row, and holding
 	// it would give every concurrent delete a NodeStore batch of its own.
-	s.nodeStore.DeleteNode(node.ID())
+	peers := s.nodeStore.DeleteNode(node.ID())
 
 	s.ipAlloc.FreeIPs(node.IPs())
 
-	// An explicit removal of its own, ahead of the policy refresh, so peers
-	// learn of the deletion without depending on their sent-peers tracking.
-	removed := change.NodeRemoved(node.ID())
+	// Explicit removals of their own, ahead of the policy refresh, so peers
+	// learn of the deletion without depending on their sent-peers tracking,
+	// and nodes the policy hid it from learn nothing.
+	changes := change.NodeRemoved(node.ID(), peers...)
 
 	policyChange, err := s.updatePolicyManagerNodes(genBefore)
 	if err != nil {
-		return []change.Change{removed, policyChange}, fmt.Errorf("updating policy manager after node deletion: %w", err)
+		return append(changes, policyChange),
+			fmt.Errorf("updating policy manager after node deletion: %w", err)
 	}
 
-	return []change.Change{removed, policyChange}, nil
+	return append(changes, policyChange), nil
 }
 
 // Connect acquires a control session and returns the resulting changes
