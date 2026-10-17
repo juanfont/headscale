@@ -162,6 +162,11 @@ type sshCheckPair struct {
 	Dst types.NodeID
 }
 
+type sshCheckAuthRecord struct {
+	at  time.Time
+	src types.NodeView
+}
+
 // State manages Headscale's core state, coordinating between database, policy management,
 // IP allocation, and DERP routing. All methods are thread-safe.
 //
@@ -216,7 +221,7 @@ type State struct {
 	//
 	// Ref: https://github.com/tailscale/tailscale/issues/10480
 	// Ref: https://github.com/tailscale/tailscale/issues/7125
-	sshCheckAuth map[sshCheckPair]time.Time
+	sshCheckAuth map[sshCheckPair]sshCheckAuthRecord
 	sshCheckMu   sync.RWMutex
 
 	// persistMu serialises node-row persistence and deletion so the database
@@ -391,7 +396,7 @@ func NewState(cfg *types.Config) (*State, error) {
 		nodeStore:           nodeStore,
 		pings:               newPingTracker(),
 
-		sshCheckAuth:  make(map[sshCheckPair]time.Time),
+		sshCheckAuth:  make(map[sshCheckPair]sshCheckAuthRecord),
 		registerLocks: xsync.NewMap[key.MachinePublic, *registerLock](),
 	}
 
@@ -1083,7 +1088,7 @@ func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry *time.Time) (types.Nod
 		expiry = &utc
 	}
 
-	var onlineChanged bool
+	var onlineChanged, expired bool
 
 	genBefore := s.polMan.NodesGeneration()
 
@@ -1098,10 +1103,23 @@ func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry *time.Time) (types.Nod
 		// recover the client, but an expired key is not online.
 		node.IsOnline = new(node.ShouldBeOnline())
 		onlineChanged = wasOnline != node.Online()
+		// A relogin later in the batch can renew the node before n is read.
+		expired = node.IsExpired()
 	})
 
 	if !ok {
 		return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, nodeID)
+	}
+
+	if expired {
+		// Expiry revokes the human check even if a pre-auth key renews the node.
+		s.sshCheckMu.Lock()
+		for pair := range s.sshCheckAuth {
+			if pair.Src == nodeID {
+				delete(s.sshCheckAuth, pair)
+			}
+		}
+		s.sshCheckMu.Unlock()
 	}
 
 	// The online flip already re-elected primaries in the NodeStore, so
@@ -2107,18 +2125,33 @@ func (s *State) SetLastSSHAuth(src, dst types.NodeID) {
 	s.sshCheckMu.Lock()
 	defer s.sshCheckMu.Unlock()
 
-	s.sshCheckAuth[sshCheckPair{Src: src, Dst: dst}] = time.Now()
+	node, ok := s.nodeStore.GetNode(src)
+	if !ok {
+		return
+	}
+
+	s.sshCheckAuth[sshCheckPair{Src: src, Dst: dst}] = sshCheckAuthRecord{
+		at: time.Now(), src: node,
+	}
 }
 
 // GetLastSSHAuth returns when src last authenticated for SSH check
-// to dst.
+// to dst, while the source still has the owner that authenticated.
 func (s *State) GetLastSSHAuth(src, dst types.NodeID) (time.Time, bool) {
 	s.sshCheckMu.RLock()
 	defer s.sshCheckMu.RUnlock()
 
-	t, ok := s.sshCheckAuth[sshCheckPair{Src: src, Dst: dst}]
+	record, ok := s.sshCheckAuth[sshCheckPair{Src: src, Dst: dst}]
+	if !ok {
+		return time.Time{}, false
+	}
 
-	return t, ok
+	node, exists := s.nodeStore.GetNode(src)
+	if !exists || !sameOwner(record.src, node) {
+		return time.Time{}, false
+	}
+
+	return record.at, true
 }
 
 // ClearSSHCheckAuth clears all recorded SSH check auth times.
@@ -2127,7 +2160,7 @@ func (s *State) ClearSSHCheckAuth() {
 	s.sshCheckMu.Lock()
 	defer s.sshCheckMu.Unlock()
 
-	s.sshCheckAuth = make(map[sshCheckPair]time.Time)
+	s.sshCheckAuth = make(map[sshCheckPair]sshCheckAuthRecord)
 }
 
 // preserveNetInfo preserves NetInfo from an existing node for faster DERP connectivity.
@@ -2176,6 +2209,20 @@ type authNodeUpdateParams struct {
 	RegisterMethod string
 	// Set true for tagged->user conversion. Affects RegisterMethod and expiry.
 	IsConvertFromTag bool
+}
+
+// sameOwner reports whether a and b have one owner: the same tag set for
+// tagged nodes, the same user otherwise.
+func sameOwner(a, b types.NodeView) bool {
+	if !a.Valid() || !b.Valid() || a.IsTagged() != b.IsTagged() {
+		return false
+	}
+
+	if a.IsTagged() {
+		return views.SliceEqualAnyOrder(a.Tags(), b.Tags())
+	}
+
+	return a.UserID().Valid() && b.UserID().Valid() && a.UserID().Get() == b.UserID().Get()
 }
 
 // applyAuthNodeUpdate applies common update logic for re-authenticating or converting
@@ -2315,6 +2362,9 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 			exp := time.Now().Add(s.cfg.Node.Expiry)
 			node.Expiry = &exp
 		}
+
+		// Route approvals stay on an owner change, as on Tailscale SaaS;
+		// autoApprovers only add.
 	})
 
 	if !ok {
@@ -3361,6 +3411,9 @@ func (s *State) reregisterNodeWithPAK(
 		default:
 			node.Expiry = nil
 		}
+
+		// Route approvals stay on an owner change, as on Tailscale SaaS;
+		// autoApprovers only add.
 	})
 
 	// A nil prior means the writer never saw the node (deleted, or the store
