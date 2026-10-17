@@ -15,6 +15,7 @@ import (
 	"tailscale.com/net/tsdial"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
+	"tailscale.com/types/logger"
 	"tailscale.com/types/netmap"
 	"tailscale.com/types/persist"
 	"tailscale.com/types/views"
@@ -34,6 +35,12 @@ type TestClient struct {
 	direct  *controlclient.Direct
 	authKey string
 	user    *types.User
+
+	// machineKey and discoKey survive [TestClient.Relogin], as they survive
+	// a tailscaled login.
+	machineKey key.MachinePrivate
+	discoKey   key.DiscoPublic
+	logf       logger.Logf
 
 	// Connection lifecycle.
 	pollCtx    context.Context //nolint:containedctx // test-only; context stored for cancel control
@@ -66,6 +73,7 @@ type clientConfig struct {
 	hostname     string
 	tags         []string
 	user         *types.User
+	authKey      string
 	deltaUpdates bool
 }
 
@@ -90,6 +98,11 @@ func WithHostname(name string) ClientOption {
 // WithTags sets ACL tags on the pre-auth key.
 func WithTags(tags ...string) ClientOption {
 	return func(c *clientConfig) { c.tags = tags }
+}
+
+// WithAuthKey registers with key instead of a key minted for the client.
+func WithAuthKey(key string) ClientOption {
+	return func(c *clientConfig) { c.authKey = key }
 }
 
 // WithUser sets the user for the client. If not set, the harness
@@ -123,6 +136,8 @@ func NewClient(tb testing.TB, server *TestServer, name string, opts ...ClientOpt
 	var authKey string
 
 	switch {
+	case cc.authKey != "":
+		authKey = cc.authKey
 	case cc.ephemeral:
 		authKey = server.CreateEphemeralPreAuthKey(tb, uid)
 	case len(cc.tags) > 0:
@@ -141,40 +156,31 @@ func NewClient(tb testing.TB, server *TestServer, name string, opts ...ClientOpt
 	// so that no real TCP sockets are used.
 	dialer.SetSystemDialerForTest(server.MemNet().Dial)
 
-	machineKey := key.NewMachine()
+	tc := &TestClient{
+		Name:       name,
+		server:     server,
+		authKey:    authKey,
+		user:       user,
+		machineKey: key.NewMachine(),
+		discoKey:   key.NewDisco().Public(),
+		logf:       tb.Logf,
+		updates:    make(chan *netmap.NetworkMap, 64),
+		bus:        bus,
+		dialer:     dialer,
+		tracker:    tracker,
 
-	direct, err := controlclient.NewDirect(controlclient.Options{
-		Persist:              persist.Persist{},
-		GetMachinePrivateKey: func() (key.MachinePrivate, error) { return machineKey, nil },
-		ServerURL:            server.URL,
-		AuthKey:              authKey,
-		Hostinfo: &tailcfg.Hostinfo{
-			BackendLogID: "servertest-" + name,
-			Hostname:     cc.hostname,
-		},
-		DiscoPublicKey: key.NewDisco().Public(),
-		Logf:           tb.Logf,
-		HealthTracker:  tracker,
-		Dialer:         dialer,
-		Bus:            bus,
+		deltaUpdates: cc.deltaUpdates,
+	}
+
+	direct, err := tc.newDirect(persist.Persist{}, authKey, &tailcfg.Hostinfo{
+		BackendLogID: "servertest-" + name,
+		Hostname:     cc.hostname,
 	})
 	if err != nil {
 		tb.Fatalf("servertest: NewDirect(%s): %v", name, err)
 	}
 
-	tc := &TestClient{
-		Name:    name,
-		server:  server,
-		direct:  direct,
-		authKey: authKey,
-		user:    user,
-		updates: make(chan *netmap.NetworkMap, 64),
-		bus:     bus,
-		dialer:  dialer,
-		tracker: tracker,
-
-		deltaUpdates: cc.deltaUpdates,
-	}
+	tc.direct = direct
 
 	tb.Cleanup(func() {
 		tc.cleanup()
@@ -187,6 +193,26 @@ func NewClient(tb testing.TB, server *TestServer, name string, opts ...ClientOpt
 	tc.startPoll(tb)
 
 	return tc
+}
+
+// newDirect builds a [controlclient.Direct] for the client's machine.
+func (c *TestClient) newDirect(
+	p persist.Persist,
+	authKey string,
+	hi *tailcfg.Hostinfo,
+) (*controlclient.Direct, error) {
+	return controlclient.NewDirect(controlclient.Options{
+		Persist:              p,
+		GetMachinePrivateKey: func() (key.MachinePrivate, error) { return c.machineKey, nil },
+		ServerURL:            c.server.URL,
+		AuthKey:              authKey,
+		Hostinfo:             hi,
+		DiscoPublicKey:       c.discoKey,
+		Logf:                 c.logf,
+		HealthTracker:        c.tracker,
+		Dialer:               c.dialer,
+		Bus:                  c.bus,
+	})
 }
 
 // register performs the initial [controlclient.Direct.TryLogin] to register the client.
@@ -210,6 +236,13 @@ func (c *TestClient) register(tb testing.TB) {
 func (c *TestClient) startPoll(tb testing.TB) {
 	tb.Helper()
 
+	c.startPollLoop()
+}
+
+// startPollLoop creates a fresh poll context and launches the background
+// [controlclient.Direct.PollNetMap] goroutine, which blocks until the
+// context is cancelled or the server closes the connection.
+func (c *TestClient) startPollLoop() {
 	c.pollCtx, c.pollCancel = context.WithCancel(context.Background())
 	c.pollDone = make(chan struct{})
 
@@ -223,6 +256,23 @@ func (c *TestClient) startPoll(tb testing.TB) {
 
 		_ = c.direct.PollNetMap(c.pollCtx, updater)
 	}()
+}
+
+// resetNetmapState clears the cached netmap and drains any pending
+// updates from a previous session so that convergence waits observe
+// only the new session's maps.
+func (c *TestClient) resetNetmapState() {
+	c.mu.Lock()
+	c.netmap = nil
+	c.mu.Unlock()
+
+	for {
+		select {
+		case <-c.updates:
+		default:
+			return
+		}
+	}
 }
 
 // UpdateFullNetmap implements [controlclient.NetmapUpdater].
@@ -426,6 +476,59 @@ func (c *TestClient) ReloginAndPoll(ctx context.Context) error {
 
 		_ = c.direct.PollNetMap(c.pollCtx, c)
 	}()
+
+	return nil
+}
+
+// Relogin logs the client in again with authKey, as tailscaled does for
+// `tailscale up --auth-key` (force: `--force-reauth`). Like
+// LocalBackend.Start it builds a new [controlclient.Direct] that keeps the
+// machine key and the persisted node key, so the first request presents the
+// current node key unless force rotates it. hi replaces the Hostinfo, so
+// routes can be restated. The poll restarts once the login succeeds.
+//
+// Safe to call from non-test goroutines.
+func (c *TestClient) Relogin(ctx context.Context, authKey string, force bool, hi *tailcfg.Hostinfo) error {
+	if c.pollCancel != nil {
+		c.pollCancel()
+
+		select {
+		case <-c.pollDone:
+		case <-ctx.Done():
+			return fmt.Errorf("servertest: Relogin(%s): poll did not exit: %w", c.Name, ctx.Err())
+		}
+	}
+
+	var p persist.Persist
+	if v := c.direct.GetPersist(); v.Valid() {
+		p = *v.AsStruct()
+	}
+
+	direct, err := c.newDirect(p, authKey, hi)
+	if err != nil {
+		return fmt.Errorf("servertest: Relogin(%s): NewDirect: %w", c.Name, err)
+	}
+
+	c.direct.Close()
+	c.direct = direct
+	c.authKey = authKey
+
+	flags := controlclient.LoginDefault
+	if force {
+		flags = controlclient.LoginInteractive
+	}
+
+	url, err := direct.TryLogin(ctx, flags)
+	if err != nil {
+		return fmt.Errorf("servertest: Relogin(%s): %w", c.Name, err)
+	}
+
+	if url != "" {
+		return fmt.Errorf("servertest: Relogin(%s): unexpected auth URL %q", c.Name, url) //nolint:err113
+	}
+
+	c.resetNetmapState()
+	c.startPollLoop()
 
 	return nil
 }
@@ -654,6 +757,12 @@ func (c *TestClient) WaitForCondition(tb testing.TB, desc string, timeout time.D
 			tb.Fatalf("servertest: WaitForCondition(%s, %q): timeout after %v", c.Name, desc, timeout)
 		}
 	}
+}
+
+// MachineKey is the client's machine key, which identifies its nodes across
+// logins.
+func (c *TestClient) MachineKey() key.MachinePublic {
+	return c.machineKey.Public()
 }
 
 // Direct returns the underlying [controlclient.Direct] for

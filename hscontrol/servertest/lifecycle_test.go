@@ -361,6 +361,45 @@ func TestReloginPeerVisibleHostinfoReachesPeers(t *testing.T) {
 	}, 5*time.Second, 10*time.Millisecond, "observer must see the relogin's peer-visible Hostinfo")
 }
 
+// TestReloginKeepsNodeKeyUnlessForced pins the shape of
+// [servertest.TestClient.Relogin]: a login with a given key presents the
+// current node key, and only a forced one rotates it. The node stays the
+// same either way.
+func TestReloginKeepsNodeKeyUnlessForced(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t)
+	user := srv.CreateUser(t, "relogin")
+	key := srv.CreatePreAuthKey(t, types.UserID(user.ID))
+	client := servertest.NewClient(t, srv, "relogin",
+		servertest.WithUser(user), servertest.WithAuthKey(key))
+
+	id := findNodeID(t, srv, client.Name)
+	nodeKey := func() string {
+		node, ok := srv.State().GetNodeByID(id)
+		require.True(t, ok)
+
+		return node.NodeKey().String()
+	}
+	first := nodeKey()
+
+	hi := &tailcfg.Hostinfo{BackendLogID: "servertest-relogin", Hostname: "relogin"}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	require.NoError(t, client.Relogin(ctx, key, false, hi))
+	assert.Equal(t, first, nodeKey(), "a login without force keeps the node key")
+
+	require.NoError(t, client.Relogin(ctx, key, true, hi))
+	assert.NotEqual(t, first, nodeKey(), "a forced login rotates the node key")
+
+	assert.Len(t, srv.State().GetNodesByMachineKeyAllUsers(client.MachineKey()), 1,
+		"relogin keeps one node per machine")
+	client.WaitForCondition(t, "netmap after relogin", 10*time.Second,
+		func(nm *netmap.NetworkMap) bool { return nm.SelfNode.ID() == id.NodeID() })
+}
+
 func TestNodeExpiryRouteFailover(t *testing.T) {
 	t.Parallel()
 
