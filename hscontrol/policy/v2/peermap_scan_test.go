@@ -295,6 +295,10 @@ func TestBuildPeerMapMatchesPairScan(t *testing.T) {
 			want := buildPeerMapPairScan(pm, in)
 			got := pm.BuildPeerMap(in)
 			require.Equalf(t, want, got, "iteration %d, policy %s", it, polB)
+			require.Equalf(t, want, buildPeerMapSortedSlice(pm, in),
+				"sorted slice: iteration %d, policy %s", it, polB)
+			require.Equalf(t, want, buildPeerMapSliceMap(pm, in),
+				"slice + map: iteration %d, policy %s", it, polB)
 		}
 
 		if pm.needsPerNodeFilter {
@@ -441,6 +445,8 @@ func TestBuildPeerMapIdentities(t *testing.T) {
 
 			got := pm.BuildPeerMap(tt.nodes.ViewSlice())
 			require.Equal(t, buildPeerMapPairScan(pm, tt.nodes.ViewSlice()), got)
+			require.Equal(t, got, buildPeerMapSortedSlice(pm, tt.nodes.ViewSlice()))
+			require.Equal(t, got, buildPeerMapSliceMap(pm, tt.nodes.ViewSlice()))
 
 			if tt.want != nil {
 				require.Equal(t, tt.want, got)
@@ -498,34 +504,343 @@ func scanManyRulesPolicy(n, leases int) string {
 	return string(must(json.Marshal(map[string]any{"tagOwners": owners, "grants": grants})))
 }
 
+// buildPeerMapSortedSlice benchmarks the global-filter path with sorted
+// matcher IDs. Appending in matcher order keeps both indexes sorted.
+func buildPeerMapSortedSlice(
+	pm *PolicyManager,
+	nodes views.Slice[types.NodeView],
+) map[types.NodeID][]types.NodeID {
+	if pm == nil {
+		return nil
+	}
+
+	pm.mu.RLock()
+
+	if pm.needsPerNodeFilter {
+		pm.mu.RUnlock()
+
+		return pm.BuildPeerMap(nodes)
+	}
+	defer pm.mu.RUnlock()
+
+	type nodeRoutes struct {
+		subnet []netip.Prefix
+		isExit bool
+	}
+
+	routeInfo := make(map[types.NodeID]nodeRoutes, nodes.Len())
+	for _, n := range nodes.All() {
+		routeInfo[n.ID()] = nodeRoutes{subnet: n.SubnetRoutes(), isExit: n.IsExitNode()}
+	}
+
+	ret := make(map[types.NodeID][]types.NodeID, nodes.Len())
+	ids := make([]types.NodeID, nodes.Len())
+	srcOf := make([][]int, nodes.Len())
+	dstOf := make([][]int, nodes.Len())
+
+	for i, n := range nodes.All() {
+		ids[i] = n.ID()
+		if !n.Valid() {
+			continue
+		}
+
+		ips, ri := n.IPs(), routeInfo[n.ID()]
+		routed := len(ri.subnet) > 0
+
+		for k := range pm.matchers {
+			m := &pm.matchers[k]
+
+			if m.SrcsContainsIPs(ips...) ||
+				(routed && m.SrcsOverlapsPrefixes(ri.subnet...)) {
+				srcOf[i] = append(srcOf[i], k)
+			}
+
+			if m.DestsContainsIP(ips...) ||
+				(routed && m.DestsOverlapsPrefixes(ri.subnet...)) ||
+				(ri.isExit && m.DestsIsTheInternet()) {
+				dstOf[i] = append(dstOf[i], k)
+			}
+		}
+	}
+
+	for i := range ids {
+		for j := i + 1; j < len(ids); j++ {
+			if ids[i] == ids[j] {
+				continue
+			}
+
+			if sortedMatcherSetsIntersect(srcOf[i], dstOf[j]) ||
+				sortedMatcherSetsIntersect(srcOf[j], dstOf[i]) {
+				ret[ids[i]] = append(ret[ids[i]], ids[j])
+				ret[ids[j]] = append(ret[ids[j]], ids[i])
+			}
+		}
+	}
+
+	return ret
+}
+
+func sortedMatcherSetsIntersect(src, dst []int) bool {
+	i, j := 0, 0
+	for i < len(src) && j < len(dst) {
+		switch {
+		case src[i] == dst[j]:
+			return true
+		case src[i] < dst[j]:
+			i++
+		default:
+			j++
+		}
+	}
+
+	return false
+}
+
+// buildPeerMapSliceMap benchmarks the global-filter path with source matcher
+// IDs in slices and destination matcher IDs in maps.
+func buildPeerMapSliceMap(
+	pm *PolicyManager,
+	nodes views.Slice[types.NodeView],
+) map[types.NodeID][]types.NodeID {
+	if pm == nil {
+		return nil
+	}
+
+	pm.mu.RLock()
+
+	if pm.needsPerNodeFilter {
+		pm.mu.RUnlock()
+
+		return pm.BuildPeerMap(nodes)
+	}
+	defer pm.mu.RUnlock()
+
+	type nodeRoutes struct {
+		subnet []netip.Prefix
+		isExit bool
+	}
+
+	routeInfo := make(map[types.NodeID]nodeRoutes, nodes.Len())
+	for _, n := range nodes.All() {
+		routeInfo[n.ID()] = nodeRoutes{subnet: n.SubnetRoutes(), isExit: n.IsExitNode()}
+	}
+
+	ret := make(map[types.NodeID][]types.NodeID, nodes.Len())
+	ids := make([]types.NodeID, nodes.Len())
+	srcOf := make([][]int, nodes.Len())
+	dstOf := make([]map[int]struct{}, nodes.Len())
+
+	for i, n := range nodes.All() {
+		ids[i] = n.ID()
+		if !n.Valid() {
+			continue
+		}
+
+		ips, ri := n.IPs(), routeInfo[n.ID()]
+		routed := len(ri.subnet) > 0
+
+		for k := range pm.matchers {
+			m := &pm.matchers[k]
+
+			if m.SrcsContainsIPs(ips...) ||
+				(routed && m.SrcsOverlapsPrefixes(ri.subnet...)) {
+				srcOf[i] = append(srcOf[i], k)
+			}
+
+			if m.DestsContainsIP(ips...) ||
+				(routed && m.DestsOverlapsPrefixes(ri.subnet...)) ||
+				(ri.isExit && m.DestsIsTheInternet()) {
+				if dstOf[i] == nil {
+					dstOf[i] = make(map[int]struct{})
+				}
+
+				dstOf[i][k] = struct{}{}
+			}
+		}
+	}
+
+	for i := range ids {
+		for j := i + 1; j < len(ids); j++ {
+			if ids[i] == ids[j] {
+				continue
+			}
+
+			if sliceMapMatcherSetsIntersect(srcOf[i], dstOf[j]) ||
+				sliceMapMatcherSetsIntersect(srcOf[j], dstOf[i]) {
+				ret[ids[i]] = append(ret[ids[i]], ids[j])
+				ret[ids[j]] = append(ret[ids[j]], ids[i])
+			}
+		}
+	}
+
+	return ret
+}
+
+func sliceMapMatcherSetsIntersect(src []int, dst map[int]struct{}) bool {
+	if len(dst) == 0 {
+		return false
+	}
+
+	for _, matcherID := range src {
+		if _, ok := dst[matcherID]; ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+// scanDenseRulesPolicy makes every node match many source and destination
+// rules, with either immediate, last-rule-only, or no intersection. Unique
+// off-tailnet source IPs prevent the compiler from merging the dense rules.
+func scanDenseRulesPolicy(matchers int, shape string) string {
+	const subnet = "100.64.0.0/10"
+
+	grants := make([]map[string][]string, 0, matchers)
+	for k := range matchers {
+		marker := fmt.Sprintf("10.255.%d.%d", k/256, k%256)
+		src, dst := []string{marker}, []string{subnet}
+
+		if shape == "early-overlap" || (shape == "late-overlap" && k == matchers-1) {
+			src = append(src, subnet)
+		} else if k%2 == 0 {
+			src = append(src, subnet)
+			dst = []string{marker}
+		}
+
+		grants = append(grants, map[string][]string{
+			"src": src, "dst": dst, "ip": {"*"},
+		})
+	}
+
+	return string(must(json.Marshal(map[string]any{"grants": grants})))
+}
+
+// TestBuildPeerMapDenseRules pins the compiled rule count and memberships so
+// policy compilation cannot silently turn a dense benchmark into a sparse one.
+func TestBuildPeerMapDenseRules(t *testing.T) {
+	nodes := scanManyRulesNodes(8)
+
+	for _, tt := range []struct {
+		shape                     string
+		sources, destinations     int
+		firstShared, peersPerNode int
+	}{
+		{"early-overlap", 70, 70, 0, 7},
+		{"late-overlap", 36, 35, 69, 7},
+		{"disjoint", 35, 35, -1, 0},
+	} {
+		t.Run(tt.shape, func(t *testing.T) {
+			pm, err := NewPolicyManager(
+				[]byte(scanDenseRulesPolicy(70, tt.shape)), nil, nodes.ViewSlice(),
+			)
+			require.NoError(t, err)
+			require.False(t, pm.needsPerNodeFilter)
+			require.Len(t, pm.matchers, 70)
+
+			want := buildPeerMapPairScan(pm, nodes.ViewSlice())
+			require.Equal(t, want, pm.BuildPeerMap(nodes.ViewSlice()))
+			require.Equal(t, want, buildPeerMapSortedSlice(pm, nodes.ViewSlice()))
+			require.Equal(t, want, buildPeerMapSliceMap(pm, nodes.ViewSlice()))
+
+			for _, node := range nodes {
+				sources, destinations, firstShared := 0, 0, -1
+
+				for k, m := range pm.matchers {
+					src := m.SrcsContainsIPs(node.IPs()...)
+					dst := m.DestsContainsIP(node.IPs()...)
+
+					if src {
+						sources++
+					}
+
+					if dst {
+						destinations++
+					}
+
+					if src && dst && firstShared == -1 {
+						firstShared = k
+					}
+				}
+
+				require.Equal(t, tt.sources, sources)
+				require.Equal(t, tt.destinations, destinations)
+				require.Equal(t, tt.firstShared, firstShared)
+				require.Len(t, want[node.ID], tt.peersPerNode)
+			}
+		})
+	}
+}
+
 // BenchmarkBuildPeerMapManyRules measures [PolicyManager.BuildPeerMap] on the
 // many-rules shape, next to the pair scan it replaced.
+// Each indexed variant includes index construction and peer-map allocation.
 func BenchmarkBuildPeerMapManyRules(b *testing.B) {
 	for _, c := range []struct{ nodes, leases int }{{200, 30}, {1000, 30}, {1000, 100}, {2000, 100}} {
 		nodes := scanManyRulesNodes(c.nodes)
 
-		pm, err := NewPolicyManager([]byte(scanManyRulesPolicy(c.nodes, c.leases)), nil, nodes.ViewSlice())
+		pm, err := NewPolicyManager(
+			[]byte(scanManyRulesPolicy(c.nodes, c.leases)),
+			nil,
+			nodes.ViewSlice(),
+		)
 		require.NoError(b, err)
+		require.False(b, pm.needsPerNodeFilter)
 
-		name := fmt.Sprintf("n=%d/leases=%d/matchers=%d", c.nodes, c.leases, len(pm.matchers))
+		name := fmt.Sprintf(
+			"n=%d/leases=%d/matchers=%d",
+			c.nodes,
+			c.leases,
+			len(pm.matchers),
+		)
 
-		b.Run(name+"/indexed", func(b *testing.B) {
-			b.ReportAllocs()
-
-			for b.Loop() {
-				pm.BuildPeerMap(nodes.ViewSlice())
-			}
+		b.Run(name, func(b *testing.B) {
+			benchmarkPeerMapBuilders(b, pm, nodes)
 		})
+	}
+}
 
-		b.Run(name+"/pairscan", func(b *testing.B) {
-			if testing.Short() {
+func BenchmarkBuildPeerMapDenseRules(b *testing.B) {
+	for _, c := range []struct{ nodes, matchers int }{{200, 256}, {1000, 512}} {
+		nodes := scanManyRulesNodes(c.nodes)
+
+		for _, shape := range []string{"early-overlap", "late-overlap", "disjoint"} {
+			pm, err := NewPolicyManager(
+				[]byte(scanDenseRulesPolicy(c.matchers, shape)), nil, nodes.ViewSlice(),
+			)
+			require.NoError(b, err)
+			require.False(b, pm.needsPerNodeFilter)
+			require.Len(b, pm.matchers, c.matchers)
+
+			name := fmt.Sprintf("%s/n=%d/matchers=%d", shape, c.nodes, c.matchers)
+			b.Run(name, func(b *testing.B) {
+				benchmarkPeerMapBuilders(b, pm, nodes)
+			})
+		}
+	}
+}
+
+func benchmarkPeerMapBuilders(b *testing.B, pm *PolicyManager, nodes types.Nodes) {
+	b.Helper()
+
+	for _, builder := range []struct {
+		name  string
+		build func(*PolicyManager, views.Slice[types.NodeView]) map[types.NodeID][]types.NodeID
+	}{
+		{"bitset", (*PolicyManager).BuildPeerMap},
+		{"sorted-slice", buildPeerMapSortedSlice},
+		{"slice-map", buildPeerMapSliceMap},
+		{"pairscan", buildPeerMapPairScan},
+	} {
+		b.Run(builder.name, func(b *testing.B) {
+			if builder.name == "pairscan" && testing.Short() {
 				b.Skip("the pair scan takes seconds per iteration")
 			}
 
 			b.ReportAllocs()
 
 			for b.Loop() {
-				buildPeerMapPairScan(pm, nodes.ViewSlice())
+				builder.build(pm, nodes.ViewSlice())
 			}
 		})
 	}
