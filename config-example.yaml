@@ -444,6 +444,26 @@ logtail:
   # disabled by default. Enabling this will make your clients send logs to Tailscale Inc.
   enabled: false
 
+# Configuration audit log.
+# Net-Scale keeps an append-only, JSON-lines record of control-plane
+# administrative changes (users, node tags, policy updates, OIDC groups).
+# Useful for compliance; consume it with any JSONL tooling, a future
+# streaming integration will build on the same events.
+audit:
+  # Enable the audit log. When disabled, no events are recorded and no
+  # files are created.
+  enabled: false
+
+  # Base path of the audit file. Rotated generations are stored as
+  # <path>.1 .. <path>.<retain_files>.
+  path: /var/lib/headscale/audit-events.jsonl
+
+  # Rotation threshold in MiB.
+  max_size_mb: 100
+
+  # How many rotated generations to keep.
+  retain_files: 5
+
 # Taildrop configuration
 # Taildrop is the file sharing feature of Tailscale, allowing nodes to
 # send files to each other.

@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/golang-lru/v2/expirable"
+	"github.com/juanfont/headscale/hscontrol/audit"
 	hsdb "github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
@@ -196,6 +197,10 @@ type State struct {
 	selfRefresh   []types.NodeID
 	selfRefreshMu sync.Mutex
 
+	// audit records control-plane administrative changes to the
+	// configuration audit log when enabled; nil otherwise.
+	audit *audit.Logger
+
 	// registerLocks serialises registration per machine key so concurrent
 	// registrations of the same machine resolve to a single node instead of
 	// racing the find-then-create section and each creating their own.
@@ -279,6 +284,20 @@ func NewState(cfg *types.Config) (*State, error) {
 	nodeStore := NewNodeStore(nodes, policyPeersFunc(polMan), batchSize, batchTimeout)
 	nodeStore.Start()
 
+	// Open the configuration audit log only when enabled: a disabled log
+	// must not create any files.
+	var auditLog *audit.Logger
+	if cfg.Audit.Enabled {
+		path := cmp.Or(cfg.Audit.Path, audit.DefaultPath)
+		maxFiles := cmp.Or(cfg.Audit.RetainFiles, audit.DefaultRetainFiles)
+		auditLog, err = audit.New(path, cfg.Audit.MaxSizeMB*1024*1024, maxFiles)
+		if err != nil {
+			return nil, fmt.Errorf("initializing audit log: %w", err)
+		}
+
+		log.Info().Str("path", path).Msg("configuration audit log enabled")
+	}
+
 	s := &State{
 		cfg: cfg,
 
@@ -288,6 +307,7 @@ func NewState(cfg *types.Config) (*State, error) {
 		authCache: authCache,
 		nodeStore: nodeStore,
 		pings:     newPingTracker(),
+		audit:     auditLog,
 
 		sshCheckAuth:  make(map[sshCheckPair]time.Time),
 		registerLocks: xsync.NewMap[key.MachinePublic, *sync.Mutex](),
@@ -299,6 +319,19 @@ func NewState(cfg *types.Config) (*State, error) {
 	s.logNodeHealth()
 
 	return s, nil
+}
+
+// auditRecord writes one event to the configuration audit log if it is
+// enabled. Recording must never break the audited operation, so write
+// failures are logged and swallowed.
+func (s *State) auditRecord(action, target string, detail map[string]any) {
+	if s == nil || s.audit == nil {
+		return
+	}
+
+	if err := s.audit.Record("system", action, target, detail); err != nil {
+		log.Error().Err(err).Str("audit.action", action).Msg("failed to write audit event")
+	}
 }
 
 // policyPeersFunc is the [PeersFunc] [State] runs its [NodeStore] with.
@@ -330,6 +363,10 @@ func policyPeersFunc(pm policy.PolicyManager) PeersFunc {
 func (s *State) Close() error {
 	s.pings.drain()
 	s.nodeStore.Stop()
+
+	if err := s.audit.Close(); err != nil {
+		log.Error().Err(err).Msg("closing audit log")
+	}
 
 	err := s.db.Close()
 	if err != nil {
@@ -430,6 +467,8 @@ func (s *State) CreateUser(user types.User) (*types.User, change.Change, error) 
 
 	log.Info().Str(zf.UserName, user.Name).Msg("user created")
 
+	s.auditRecord(audit.ActionUserCreated, fmt.Sprintf("user:%d", user.ID), map[string]any{"name": user.Name})
+
 	return &user, c, nil
 }
 
@@ -493,6 +532,8 @@ func (s *State) DeleteUser(userID types.UserID) (change.Change, error) {
 		c = change.UserRemoved()
 	}
 
+	s.auditRecord(audit.ActionUserDeleted, fmt.Sprintf("user:%d", userID), nil)
+
 	return c, nil
 }
 
@@ -542,6 +583,8 @@ func (s *State) SetUserOIDCGroups(userID types.UserID, groupNames []string) erro
 	if err != nil {
 		return fmt.Errorf("updating policy manager after OIDC group change: %w", err)
 	}
+
+	s.auditRecord(audit.ActionOIDCGroupsSet, fmt.Sprintf("user:%d", userID), map[string]any{"groups": groupNames})
 
 	return nil
 }
@@ -1057,6 +1100,8 @@ func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView,
 		return nodeView, c, err
 	}
 
+	s.auditRecord(audit.ActionNodeTagged, fmt.Sprintf("node:%d", nodeID), map[string]any{"tags": validatedTags})
+
 	if c.IsEmpty() {
 		// Tags are peer visible (tag owner resolution, ACLs); resend the
 		// whole node even when re-applying the same tags didn't move policy.
@@ -1338,6 +1383,8 @@ func (s *State) SetPolicy(pol []byte) (bool, error) {
 	if err != nil {
 		return changed, err
 	}
+
+	s.auditRecord(audit.ActionPolicySet, "policy", map[string]any{"changed": changed})
 
 	// Clear SSH check auth times when policy changes.
 	s.ClearSSHCheckAuth()

@@ -105,7 +105,7 @@ the Tailscale feature set in a **clean-room** fashion.
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Configuration audit logging | 🟡 | Structured zerolog event stream exists; needs a retained, queryable record |
+| Configuration audit logging | ✅ | Net-Scale-specific MVP: `audit:` config section, append-only JSONL record (`hscontrol/audit`) of user, tag, policy and OIDC-group changes with size-based rotation; SIEM streaming and actor attribution are the next steps |
 | Network flow logging | ❌ | Roadmap (enterprise tier in Tailscale) |
 | Log streaming (SIEM) | ❌ | Roadmap; build on the audit log work |
 | SSH session recording (S3) | ❌ | Roadmap |

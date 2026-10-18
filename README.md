@@ -18,6 +18,11 @@ On top of upstream headscale, Net-Scale adds first-class OIDC group support
 for ACL policies using the standard Tailscale-compatible `group:<name>`
 principal — see [docs/ref/oidc-groups.md](docs/ref/oidc-groups.md).
 
+We are actively working toward full clean-room feature parity with Tailscale.
+The status of every feature and the implementation roadmap live in
+[docs/about/tailscale-feature-parity.md](docs/about/tailscale-feature-parity.md).
+Work in progress: **configuration audit logging** (roadmap item 1).
+
 ## Credits
 
 Net-Scale is a fork of

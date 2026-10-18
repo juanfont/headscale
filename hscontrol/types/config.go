@@ -145,6 +145,7 @@ type Config struct {
 	OIDC OIDCConfig
 
 	LogTail    LogTailConfig
+	Audit      AuditConfig
 	Taildrop   TaildropConfig
 	AutoUpdate AutoUpdateConfig
 
@@ -262,6 +263,26 @@ type DERPConfig struct {
 
 type LogTailConfig struct {
 	Enabled bool
+}
+
+// AuditConfig configures the configuration audit log: an append-only,
+// JSON-lines record of control-plane administrative changes.
+// See [hscontrol/audit].
+type AuditConfig struct {
+	// Enabled turns the audit log on. When off, no events are recorded
+	// and no files are created.
+	Enabled bool
+
+	// Path is the base path of the audit JSONL file. Rotated
+	// generations are stored as <path>.1 … <path>.<RetainFiles>.
+	Path string
+
+	// MaxSizeMB is the rotation threshold in MiB (approximate; rotation
+	// happens between lines).
+	MaxSizeMB int64
+
+	// RetainFiles is how many rotated generations to keep.
+	RetainFiles int
 }
 
 type TaildropConfig struct {
@@ -1465,6 +1486,12 @@ func LoadServerConfig() (*Config, error) {
 		},
 
 		LogTail: logTailConfig,
+		Audit: AuditConfig{
+			Enabled:     viper.GetBool("audit.enabled"),
+			Path:        viper.GetString("audit.path"),
+			MaxSizeMB:   viper.GetInt64("audit.max_size_mb"),
+			RetainFiles: viper.GetInt("audit.retain_files"),
+		},
 		Taildrop: TaildropConfig{
 			Enabled: viper.GetBool("taildrop.enabled"),
 		},
