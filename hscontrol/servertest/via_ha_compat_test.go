@@ -603,11 +603,18 @@ func (r *stepReplay) apply(t *testing.T, step testcapture.Step) map[string]error
 			r.api(t, step.Name, i, a)
 
 		case "join":
+			// The probe joins with its routes, as `tailscale up
+			// --advertise-routes` does. An update sent after the join can
+			// be overtaken by the stream's first request, which has none.
 			hi := &tailcfg.Hostinfo{
 				BackendLogID: "servertest-" + a.Node,
 				Hostname:     a.Hostname,
 				RequestTags:  requestTags(a, nil),
 			}
+			if len(a.Routes) > 0 {
+				hi.RoutableIPs = prefixes(t, a.Routes)
+			}
+
 			r.hostinfo[a.Node] = hi
 
 			opts := []servertest.ClientOption{servertest.WithUser(r.admin)}
@@ -640,10 +647,6 @@ func (r *stepReplay) apply(t *testing.T, step testcapture.Step) map[string]error
 				refused[a.Node] = err
 
 				continue
-			}
-
-			if len(a.Routes) > 0 {
-				r.announce(ctx, t, a.Node, a.Routes)
 			}
 
 			r.remember(a.Node)
