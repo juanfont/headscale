@@ -271,7 +271,7 @@ func (e *expiryStep) selfChecks(x string) []stepCheck {
 
 	checks := []stepCheck{
 		{x + "/self", renderSelfExpiry(saas, e.at), func() string { return renderSelfExpiry(cl.Netmap(), time.Now()) }},
-		{x + "/peers", e.saasPeers(saas), func() string { return e.hsPeers(cl.Netmap()) }},
+		{x + "/peers", peerAliases(saas, e.r.saasAlias), func() string { return peerAliases(cl.Netmap(), e.r.hsAlias) }},
 	}
 
 	prev := e.prevCaps[x].Netmap
@@ -437,54 +437,6 @@ func (e *expiryStep) apiChecks(t *testing.T, saasPrev, hsPrev map[string]deviceV
 	return checks
 }
 
-// saasPeers names the capture's nodes among SaaS's peers in nm.
-func (e *expiryStep) saasPeers(nm *netmap.NetworkMap) string {
-	names := map[tailcfg.NodeID]string{}
-	for alias, id := range e.c.NodeIDs {
-		names[id] = alias
-	}
-
-	var out []string
-
-	for _, p := range nm.Peers {
-		if alias, ok := names[p.ID()]; ok {
-			out = append(out, alias)
-		}
-	}
-
-	return sortedStrings(out)
-}
-
-// hsPeers names the replay's nodes among headscale's peers in nm.
-func (e *expiryStep) hsPeers(nm *netmap.NetworkMap) string {
-	if nm == nil {
-		return "no netmap"
-	}
-
-	var out []string
-
-	for _, p := range nm.Peers {
-		if alias, ok := e.hsAlias(p.ID()); ok {
-			out = append(out, alias)
-		}
-	}
-
-	return sortedStrings(out)
-}
-
-// hsAlias is the alias whose machine holds node id.
-func (e *expiryStep) hsAlias(id tailcfg.NodeID) (string, bool) {
-	for alias := range e.r.clients {
-		for _, nv := range e.r.machineNodes(alias) {
-			if nv.ID().NodeID() == id {
-				return alias, true
-			}
-		}
-	}
-
-	return "", false
-}
-
 // saasRemovedPeers lists the capture's nodes x had as peers before the step
 // and lost during it, or "none".
 func (e *expiryStep) saasRemovedPeers(prev *netmap.NetworkMap, frames []testcapture.Frame) string {
@@ -507,7 +459,7 @@ func (e *expiryStep) hsRemovedPeers(x string) string {
 
 	if before := e.start[x]; before != nil {
 		for _, p := range before.Peers {
-			if alias, ok := e.hsAlias(p.ID()); ok && hsRemoved(history, p.ID()) == "removed" {
+			if alias, ok := e.r.hsAlias(p.ID()); ok && hsRemoved(history, p.ID()) == "removed" {
 				out = append(out, alias)
 			}
 		}
