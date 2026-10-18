@@ -1,8 +1,22 @@
+# Net-Scale
+
 ![headscale logo](./docs/assets/logo/headscale3_header_stacked_left.png)
 
 ![ci](https://github.com/juanfont/headscale/actions/workflows/test.yml/badge.svg)
 
-An open source, self-hosted implementation of the Tailscale control server.
+**Net-Scale** is a fork of headscale: an open source, self-hosted
+implementation of the Tailscale control server.
+
+## Project aim
+
+Net-Scale aims to be a better alternative to the official Tailscale
+control plane, and a multi-node evolution of headscale: instead of
+being limited to a single tailnet, it is built to manage networks
+across multiple nodes.
+
+On top of upstream headscale, Net-Scale adds first-class OIDC group
+support for ACL policies using the standard Tailscale-compatible
+`group:<name>` principal — see [docs/ref/oidc-groups.md](docs/ref/oidc-groups.md).
 
 Join our [Discord server](https://discord.gg/c84AZQhmpx) for a chat.
 

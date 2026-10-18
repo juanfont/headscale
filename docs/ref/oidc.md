@@ -246,7 +246,11 @@ endpoint.
 
 - Support for OpenID Connect aims to be generic and vendor independent. It offers only limited support for quirks of
   specific identity providers.
-- OIDC groups cannot be used in policy rules.
+- OIDC groups can be used in policy rules via `group:<name>`; see
+  [OIDC Groups in ACL Policies](oidc-groups.md). Memberships come from the
+  provider's `groups` claim and are refreshed on login (plus a periodic
+  stale-clear), so manually setting API-side OIDC groups is overridden on the
+  next login unless the user signed in with a username/password provider.
 - The username provided by the identity provider needs to adhere to this pattern:
     - The username must be at least two characters long.
     - It must only contain letters, digits, hyphens, dots, underscores, and up to a single `@`.

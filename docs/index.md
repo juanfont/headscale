@@ -4,11 +4,12 @@ hide:
   - toc
 ---
 
-# Welcome to headscale
+# Welcome to Net-Scale
 
-Headscale is an open source, self-hosted implementation of the Tailscale control server.
+Net-Scale is an open source, self-hosted alternative to the Tailscale
+control server, and a multi-node evolution of headscale.
 
-This page contains the documentation for the latest version of headscale. Please also check our [FAQ](about/faq.md).
+This page contains the documentation for the latest version of Net-Scale. Please also check our [FAQ](about/faq.md).
 
 Join our [Discord server](https://discord.gg/c84AZQhmpx) for a chat and community support.
 
