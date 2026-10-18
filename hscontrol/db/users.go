@@ -296,7 +296,6 @@ func (hsdb *HSDatabase) GetUsersByOIDCGroup(groupName string) ([]types.User, err
 	}
 
 	return users, nil
-	return users, nil
 }
 
 func firstUser(tx *gorm.DB, query string, arg any) (*types.User, error) {
