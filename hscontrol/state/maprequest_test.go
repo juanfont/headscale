@@ -3,6 +3,7 @@ package state
 import (
 	"fmt"
 	"net/netip"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -13,6 +14,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
+	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -986,6 +988,8 @@ func TestHostinfoDERP(t *testing.T) {
 }
 
 func TestBuildMapRequestChangeResponse(t *testing.T) {
+	discoKeys, discoEndpoints := saasDiscoRotation(t)
+
 	node := types.Node{
 		ID:        1,
 		NodeKey:   key.NewNode().Public(),
@@ -1032,8 +1036,8 @@ func TestBuildMapRequestChangeResponse(t *testing.T) {
 			name:  "disco key only",
 			delta: mapRequestDelta{discoKeyChanged: true},
 
-			wantKeys:      true,
-			wantEndpoints: true,
+			wantKeys:      discoKeys,
+			wantEndpoints: discoEndpoints,
 		},
 		{
 			name:     "disco key and derp move",
@@ -1095,6 +1099,65 @@ func TestBuildMapRequestChangeResponse(t *testing.T) {
 			require.Equal(t, tt.wantDERP, patch.DERPRegion, "DERP on patch")
 		})
 	}
+}
+
+// saasDiscoRotation reads how Tailscale SaaS told a peer about a running
+// node's disco key rotation: whether the peer's entry carried the node key
+// and the endpoints. Test data source:
+// ../servertest/testdata/steps/map-delivery.hujson, step S2.2, where laptop
+// rotates and bystander watches; the servertest step captures live there.
+func saasDiscoRotation(t *testing.T) (bool, bool) {
+	t.Helper()
+
+	c, err := testcapture.Read(filepath.Join("..", "servertest", "testdata", "steps", "map-delivery.hujson"))
+	require.NoError(t, err)
+
+	id := c.NodeIDs["laptop"]
+
+	var last *tailcfg.MapRequest
+
+	for _, step := range c.Steps {
+		if step.Name != "S2.2" {
+			for _, f := range step.Frames["laptop"] {
+				if f.Request != nil {
+					last = f.Request
+				}
+			}
+
+			continue
+		}
+
+		// The rotation's first report changes the disco key and nothing
+		// else this row looks at.
+		first := step.Frames["laptop"][0].Request
+		require.NotNil(t, first, "S2.2 starts with laptop's report")
+		require.NotNil(t, last, "laptop reported before S2.2")
+		require.NotEqual(t, last.DiscoKey, first.DiscoKey, "disco key rotated")
+		require.Equal(t, last.Endpoints, first.Endpoints, "endpoints kept")
+		require.Equal(t, last.Hostinfo.NetInfo.PreferredDERP, first.Hostinfo.NetInfo.PreferredDERP, "DERP home kept")
+
+		for _, f := range step.Frames["bystander"] {
+			if f.Response == nil {
+				continue
+			}
+
+			for _, n := range f.Response.PeersChanged {
+				if n.ID == id {
+					return !n.Key.IsZero() && n.DiscoKey == first.DiscoKey, len(n.Endpoints) > 0
+				}
+			}
+
+			for _, p := range f.Response.PeersChangedPatch {
+				if p.NodeID == id {
+					return p.Key != nil && p.DiscoKey != nil, p.Endpoints != nil
+				}
+			}
+		}
+	}
+
+	t.Fatal("no disco rotation reached bystander")
+
+	return false, false
 }
 
 // benchMapRequestSetup pre-creates a sqlite database with n registered
