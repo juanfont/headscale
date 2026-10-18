@@ -2,12 +2,14 @@ package apiv2
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/netip"
 	"slices"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/juanfont/headscale/hscontrol/audit"
 	"github.com/juanfont/headscale/hscontrol/scope"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -276,11 +278,14 @@ func registerDevices(api huma.API, b Backend) {
 		}
 
 		_, nodeChange, err := b.State.SetNodeTags(node.ID(), in.Body.Tags)
-		b.Change(nodeChange)
-
 		if err != nil {
 			return nil, mapError("setting device tags", err)
 		}
+
+		b.Change(nodeChange)
+
+		b.State.Audit(audit.ActorFromContext(ctx), audit.ActionNodeTagged,
+			fmt.Sprintf("node:%d", node.ID()), map[string]any{"tags": in.Body.Tags})
 
 		return &emptyOutput{}, nil
 	})

@@ -15,6 +15,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
+	"github.com/juanfont/headscale/hscontrol/audit"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
@@ -130,6 +131,8 @@ func WithLocalTrust(next http.Handler) http.Handler {
 func authMiddleware(api huma.API, b Backend) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
 		if ctx.Context().Value(localTrustKey{}) != nil {
+			ctx = huma.WithValue(ctx, audit.ActorContextKey{}, audit.ActorLocal)
+
 			next(ctx)
 
 			return
@@ -148,12 +151,16 @@ func authMiddleware(api huma.API, b Backend) func(huma.Context, func(huma.Contex
 			return
 		}
 
-		valid, err := b.State.ValidateAPIKey(token)
-		if err != nil || !valid {
+		// Resolve the credential so its identity can be attributed in the
+		// configuration audit log.
+		key, err := b.State.AuthenticateAPIKey(token)
+		if err != nil {
 			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "Unauthorized")
 
 			return
 		}
+
+		ctx = huma.WithValue(ctx, audit.ActorContextKey{}, "api-key:"+key.Prefix)
 
 		next(ctx)
 	}

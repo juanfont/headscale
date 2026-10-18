@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/juanfont/headscale/hscontrol/audit"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -128,6 +129,8 @@ func registerPolicy(api huma.API, b Backend) {
 			return nil, huma.Error400BadRequest("setting policy", err)
 		}
 
+		b.State.Audit(audit.ActorFromContext(ctx), audit.ActionPolicySet, "policy", nil)
+
 		if nodes.Len() > 0 {
 			_, err = b.State.SSHPolicy(nodes.At(0))
 			if err != nil {
@@ -139,6 +142,8 @@ func registerPolicy(api huma.API, b Backend) {
 		if err != nil {
 			return nil, huma.Error500InternalServerError("setting policy", err)
 		}
+
+		b.State.Audit(audit.ActorFromContext(ctx), audit.ActionPolicySetDB, "policy", nil)
 
 		// Reload even when content is unchanged: routes manually disabled before
 		// may now qualify for auto-approval, so they must be re-evaluated.

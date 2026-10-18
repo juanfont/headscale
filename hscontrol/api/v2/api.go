@@ -24,6 +24,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
+	"github.com/juanfont/headscale/hscontrol/audit"
 	"github.com/juanfont/headscale/hscontrol/scope"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -156,6 +157,8 @@ func WithLocalTrust(next http.Handler) http.Handler {
 func authMiddleware(api huma.API, b Backend) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
 		if ctx.Context().Value(localTrustKey) != nil {
+			ctx = huma.WithValue(ctx, audit.ActorContextKey{}, audit.ActorLocal)
+
 			next(ctx)
 
 			return
@@ -198,6 +201,11 @@ func authMiddleware(api huma.API, b Backend) func(huma.Context, func(huma.Contex
 			ctx = huma.WithValue(ctx, principalScopesKey, at.Scopes)
 			ctx = huma.WithValue(ctx, principalTagsKey, at.Tags)
 
+			// Attribute audit events to this principal; the prefix is an
+			// identifier, not a usable credential.
+			ctx = huma.WithValue(ctx, audit.ActorContextKey{},
+				"oauth-token:"+types.AccessTokenPrefix+at.Prefix+"-***")
+
 			next(ctx)
 
 			return
@@ -216,6 +224,10 @@ func authMiddleware(api huma.API, b Backend) func(huma.Context, func(huma.Contex
 		if key.UserID != nil {
 			ctx = huma.WithValue(ctx, ownerUserKey, types.UserID(*key.UserID))
 		}
+
+		// Attribute audit events to this key; the prefix is an identifier,
+		// not a usable credential.
+		ctx = huma.WithValue(ctx, audit.ActorContextKey{}, "api-key:"+key.Prefix)
 
 		next(ctx)
 	}

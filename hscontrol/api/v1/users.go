@@ -3,11 +3,13 @@ package apiv1
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/juanfont/headscale/hscontrol/audit"
 	"github.com/juanfont/headscale/hscontrol/types"
 )
 
@@ -93,6 +95,9 @@ func registerUsers(api huma.API, b Backend) {
 
 		b.Change(policyChanged)
 
+		b.State.Audit(audit.ActorFromContext(ctx), audit.ActionUserCreated,
+			fmt.Sprintf("user:%d", user.ID), map[string]any{"name": user.Name})
+
 		out := &userOutput{}
 		out.Body.User = userFromView(user.View())
 
@@ -129,6 +134,9 @@ func registerUsers(api huma.API, b Backend) {
 			return nil, huma.Error500InternalServerError("renaming user", err)
 		}
 
+		b.State.Audit(audit.ActorFromContext(ctx), audit.ActionUserRenamed,
+			fmt.Sprintf("user:%d", newUser.ID), map[string]any{"old_name": oldUser.Name, "new_name": in.NewName})
+
 		out := &userOutput{}
 		out.Body.User = userFromView(newUser.View())
 
@@ -159,6 +167,9 @@ func registerUsers(api huma.API, b Backend) {
 		}
 
 		b.Change(policyChanged)
+
+		b.State.Audit(audit.ActorFromContext(ctx), audit.ActionUserDeleted,
+			fmt.Sprintf("user:%d", user.ID), nil)
 
 		return &deleteUserOutput{}, nil
 	})
@@ -348,6 +359,9 @@ func registerOIDCGroupEndpoints(api huma.API, b Backend) {
 		if err := b.State.SetUserOIDCGroups(id, in.Body.Groups); err != nil {
 			return nil, huma.Error500InternalServerError("setting OIDC groups", err)
 		}
+
+		b.State.Audit(audit.ActorFromContext(ctx), audit.ActionOIDCGroupsSet,
+			fmt.Sprintf("user:%d", id), map[string]any{"groups": in.Body.Groups})
 
 		groups, err := b.State.GetUserOIDCGroups(id)
 		if err != nil {

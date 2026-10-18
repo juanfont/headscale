@@ -3,6 +3,7 @@ package apiv1
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/netip"
 	"slices"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/juanfont/headscale/hscontrol/audit"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"tailscale.com/net/tsaddr"
@@ -394,11 +396,14 @@ func registerNodeWriteOps(api huma.API, b Backend) {
 		}
 
 		node, nodeChange, err := b.State.SetNodeTags(nodeID, in.Body.Tags)
-		b.Change(nodeChange)
-
 		if err != nil {
 			return nil, huma.Error400BadRequest("setting tags", err)
 		}
+
+		b.Change(nodeChange)
+
+		b.State.Audit(audit.ActorFromContext(ctx), audit.ActionNodeTagged,
+			fmt.Sprintf("node:%d", nodeID), map[string]any{"tags": in.Body.Tags})
 
 		out := &nodeOutput{}
 		out.Body.Node = nodeFromView(node)

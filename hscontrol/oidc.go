@@ -14,6 +14,7 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/hashicorp/golang-lru/v2/expirable"
+	"github.com/juanfont/headscale/hscontrol/audit"
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/templates"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -344,9 +345,12 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
-	// Store OIDC group memberships for use in policy evaluation (oidcgrp:).
+	// Store OIDC group memberships for use in policy evaluation (group:).
 	if err := a.h.state.SetUserOIDCGroups(types.UserID(user.ID), []string(claims.Groups)); err != nil {
 		log.Error().Err(err).Uint("user_id", user.ID).Msg("failed to store OIDC groups")
+	} else {
+		a.h.state.Audit(audit.ActorSystem, audit.ActionOIDCGroupsSet,
+			fmt.Sprintf("user:%d", user.ID), map[string]any{"groups": []string(claims.Groups), "source": "oidc_login"})
 	}
 
 	// TODO(kradalby): Is this comment right?

@@ -7,10 +7,16 @@
 // single JSON line. The file rotates at a size threshold, keeping the most
 // recent generations so an operator (or a later log-streaming integration)
 // can consume them with any JSONL tooling.
+//
+// Actor attribution follows the mutation site: requests arriving through the
+// admin API record the authenticated credential (resolved by the API auth
+// middlewares via WithActor in the request context), while server-initiated
+// changes record Actor "system".
 package audit
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -29,10 +35,38 @@ const (
 	ActionUserDeleted    = "user.deleted"
 	ActionNodeTagged     = "node.tagged"
 	ActionPolicySet      = "policy.set"
+	ActionPolicySetDB    = "policy.set_in_db"
 	ActionOIDCGroupsSet  = "oidc_groups.set"
 	ActionAuthKeyCreated = "authkey.created"
 	ActionAuthKeyDeleted = "authkey.deleted"
 )
+
+// Actor values used when no authenticated principal is involved.
+const (
+	ActorSystem = "system"
+	ActorLocal  = "local"
+)
+
+// ActorContextKey is the request-context key the API auth middlewares use
+// to carry the authenticated principal's actor string into handlers. It is
+// exported sohuma users can attach it with huma.WithValue.
+type ActorContextKey struct{}
+
+// WithActor returns a context carrying the actor string for the request.
+func WithActor(ctx context.Context, actor string) context.Context {
+	return context.WithValue(ctx, ActorContextKey{}, actor)
+}
+
+// ActorFromContext returns the actor recorded for the request, or "system".
+//
+//nolint:gochecknoglobals // default only; the value is per-request via WithActor.
+var ActorFromContext = func(ctx context.Context) string {
+	if actor, ok := ctx.Value(ActorContextKey{}).(string); ok && actor != "" {
+		return actor
+	}
+
+	return ActorSystem
+}
 
 // Default settings used when the config section leaves them unset.
 const (
@@ -46,8 +80,10 @@ type Event struct {
 	// Time is when the operation completed (UTC).
 	Time time.Time `json:"time"`
 
-	// Actor identifies who performed the change; "admin:<name>" for an
-	// authenticated principal or "system" for server-initiated changes.
+	// Actor identifies who performed the change; "api-key:<prefix>" or
+	// "oauth-token:<prefix>" for an authenticated API principal, "local"
+	// for locally-trusted CLI requests, or "system" for server-initiated
+	// changes.
 	Actor string `json:"actor"`
 
 	// Action is a stable dotted identifier of the operation, one of the
@@ -107,8 +143,7 @@ func New(path string, maxBytes int64, maxFiles int) (*Logger, error) {
 }
 
 // Record persists one event. Recording must never break the operation that
-// audited it: errors are returned wrapped for logging by the caller, but
-// no write happens if the event cannot be encoded.
+// audited it: errors are returned wrapped for logging by the caller.
 func (l *Logger) Record(actor, action, target string, detail map[string]any) error {
 	if l == nil {
 		return nil // audit disabled or not wired: no-op
