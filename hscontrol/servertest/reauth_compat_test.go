@@ -3,7 +3,8 @@
 // Test data source: testdata/steps/{owner-routes,reauth,reauth-foreign,
 // reauth-owner,identity,reauth-user}.hujson, loaded by name. owner-routes is
 // checked by runRouteLifecycleCompat in lifecycle_compat_test.go. The tag
-// owner verdicts of tag-owner-chain.hujson are checked in ../policy/v2.
+// owner verdicts of tag-owner-chain.hujson are checked in ../policy/v2. The
+// refused logins of ephemeral-lifecycle.hujson are rows here too.
 // Source format:    github.com/juanfont/headscale/hscontrol/types/testcapture
 
 package servertest_test
@@ -118,6 +119,11 @@ var reauthSkipReasons = map[string]string{
 
 	"reauth/late-pak-spent-key/late-pak/text":        refusalText,
 	"reauth/late-pak-spent-key/late-pak/legacy-text": refusalText,
+
+	"ephemeral-lifecycle/late-revoked/late/text":            refusalText,
+	"ephemeral-lifecycle/late-revoked/late/legacy-text":     refusalText,
+	"ephemeral-lifecycle/late-expired/late-exp/text":        refusalText,
+	"ephemeral-lifecycle/late-expired/late-exp/legacy-text": refusalText,
 }
 
 const (
@@ -970,12 +976,15 @@ func (r *stepReplay) addrNames() map[netip.Addr]string {
 }
 
 // authKeyRefusalRows are fresh machines logging in with a key whose state
-// the capture shows: spent, and a valid control row.
+// the capture shows: spent, revoked by a delete, expired, and a valid
+// control row.
 var authKeyRefusalRows = []struct {
 	id, step, node string
 }{
 	{"reauth", "late-pak-spent-key", "late-pak"},
 	{"reauth", "t-valid-join", "t-valid"},
+	{"ephemeral-lifecycle", "late-revoked", "late"},
+	{"ephemeral-lifecycle", "late-expired", "late-exp"},
 }
 
 // refusalCheck reports whether a check name belongs to
@@ -1033,6 +1042,9 @@ func runAuthKeyRefusalCompat(t *testing.T, id, stepName, node string, legacy boo
 
 	c := readStepCapture(t, id)
 	r := newStepReplay(t, c)
+	// Statuses are compared by the capture's own test; here a difference
+	// must not stop the replay.
+	r.readAPI = true
 
 	i := slices.IndexFunc(c.Steps, func(s testcapture.Step) bool { return s.Name == stepName })
 	require.GreaterOrEqual(t, i, 0, "%s: no step %s", id, stepName)
