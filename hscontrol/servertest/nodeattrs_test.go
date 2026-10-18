@@ -3,6 +3,7 @@ package servertest_test
 import (
 	"context"
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 
@@ -395,4 +396,164 @@ func TestNodeAttrsSuggestExitNodeOnPeerCapMap(t *testing.T) {
 
 			return false
 		})
+}
+
+// TestSuggestExitNodeDefaultOnPeerCapMap covers the SaaS default: an
+// approved exit node carries suggest-exit-node on its peer view with
+// no nodeAttrs grant, and loses it when approval is withdrawn. Apple
+// clients hide the exit-node list without it (issue #3415).
+func TestSuggestExitNodeDefaultOnPeerCapMap(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t)
+	user := srv.CreateUser(t, "sed-user")
+
+	exit := servertest.NewClient(t, srv, "sed-exit", servertest.WithUser(user))
+	viewer := servertest.NewClient(t, srv, "sed-viewer", servertest.WithUser(user))
+
+	exit.WaitForPeers(t, 1, 10*time.Second)
+	viewer.WaitForPeers(t, 1, 10*time.Second)
+
+	exitRoutes := []netip.Prefix{
+		netip.MustParsePrefix("0.0.0.0/0"),
+		netip.MustParsePrefix("::/0"),
+	}
+
+	exit.Direct().SetHostinfo(&tailcfg.Hostinfo{
+		BackendLogID: "servertest-sed-exit",
+		Hostname:     "sed-exit",
+		RoutableIPs:  exitRoutes,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	require.NoError(t, exit.Direct().SendUpdate(ctx))
+	cancel()
+
+	peerHasCap := func(want bool) func(*netmap.NetworkMap) bool {
+		return func(nm *netmap.NetworkMap) bool {
+			if nm == nil {
+				return false
+			}
+
+			for _, peer := range nm.Peers {
+				if peer.ComputedName() == "sed-exit" {
+					return peer.CapMap().Contains(nodecap.SuggestExitNode) == want
+				}
+			}
+
+			return false
+		}
+	}
+
+	exitID := findNodeID(t, srv, "sed-exit")
+	_, ch, err := srv.State().SetApprovedRoutes(exitID, exitRoutes)
+	require.NoError(t, err)
+	srv.App.Change(ch)
+
+	viewer.WaitForCondition(t, "peer suggest-exit-node without nodeAttrs",
+		10*time.Second, peerHasCap(true))
+
+	// SaaS never stamps it on the exit node's own view.
+	require.False(t, hasCap(exit.Netmap(), nodecap.SuggestExitNode),
+		"suggest-exit-node must not appear on SelfNode by default")
+
+	_, ch, err = srv.State().SetApprovedRoutes(exitID, nil)
+	require.NoError(t, err)
+	srv.App.Change(ch)
+
+	viewer.WaitForCondition(t, "peer suggest-exit-node gone after unapprove",
+		10*time.Second, peerHasCap(false))
+}
+
+// firstResolver returns the address of the first DNS resolver in nm.
+func firstResolver(nm *netmap.NetworkMap) string {
+	if nm == nil || len(nm.DNS.Resolvers) == 0 {
+		return ""
+	}
+
+	return nm.DNS.Resolvers[0].Addr
+}
+
+// TestNodeAttrsNextDNS checks a node's DNS config follows each of its
+// inputs: the NextDNS profile from nodeAttrs, whether reached through a
+// policy reload or a tag change, and the device metadata from its Hostinfo.
+// Policy responses do not carry DNSConfig, so each must arrive on its own.
+func TestNodeAttrsNextDNS(t *testing.T) {
+	t.Parallel()
+
+	setup := func(t *testing.T) (*servertest.TestServer, *servertest.TestClient) {
+		t.Helper()
+
+		srv := servertest.NewServer(t, servertest.WithDNSResolvers("https://dns.nextdns.io/base"))
+		user := srv.CreateUser(t, "nd-user")
+		c := servertest.NewClient(t, srv, "nd-node", servertest.WithUser(user))
+
+		c.WaitForCondition(t, "base resolver", 10*time.Second,
+			func(nm *netmap.NetworkMap) bool {
+				return strings.HasPrefix(firstResolver(nm), "https://dns.nextdns.io/base?")
+			})
+
+		return srv, c
+	}
+
+	waitResolver := func(t *testing.T, c *servertest.TestClient, prefix string) {
+		t.Helper()
+
+		c.WaitForCondition(t, "resolver "+prefix, 10*time.Second,
+			func(nm *netmap.NetworkMap) bool {
+				return strings.HasPrefix(firstResolver(nm), prefix)
+			})
+	}
+
+	t.Run("policy_reload", func(t *testing.T) {
+		t.Parallel()
+
+		srv, c := setup(t)
+
+		reloadPolicy(t, srv, `{
+			"acls":      [{"action": "accept", "src": ["*"], "dst": ["*:*"]}],
+			"nodeAttrs": [{"target": ["nd-user@"], "attr": ["nextdns:userprof"]}]
+		}`)
+
+		waitResolver(t, c, "https://dns.nextdns.io/userprof?")
+	})
+
+	t.Run("tag_change", func(t *testing.T) {
+		t.Parallel()
+
+		srv, c := setup(t)
+
+		reloadPolicy(t, srv, `{
+			"tagOwners": {"tag:dns": ["nd-user@"]},
+			"acls":      [{"action": "accept", "src": ["*"], "dst": ["*:*"]}],
+			"nodeAttrs": [{"target": ["tag:dns"], "attr": ["nextdns:tagprof"]}]
+		}`)
+
+		_, tagChange, err := srv.State().SetNodeTags(findNodeID(t, srv, "nd-node"), []string{"tag:dns"})
+		require.NoError(t, err)
+		srv.App.Change(tagChange)
+
+		waitResolver(t, c, "https://dns.nextdns.io/tagprof?")
+	})
+
+	t.Run("hostname_change", func(t *testing.T) {
+		t.Parallel()
+
+		_, c := setup(t)
+
+		c.Direct().SetHostinfo(&tailcfg.Hostinfo{
+			BackendLogID: "servertest-nd-node",
+			Hostname:     "nd-renamed",
+		})
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		_ = c.Direct().SendUpdate(ctx)
+
+		c.WaitForCondition(t, "renamed device_name", 10*time.Second,
+			func(nm *netmap.NetworkMap) bool {
+				return strings.Contains(firstResolver(nm), "device_name=nd-renamed")
+			})
+	})
 }

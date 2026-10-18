@@ -3234,8 +3234,8 @@ func TestTagsAuthKeyWithoutUserInheritsTags(t *testing.T) {
 }
 
 // TestTagsAuthKeyWithoutUserRejectsAdvertisedTags tests that when an auth key without
-// a user (tags-only) is used WITH --advertise-tags, the registration is rejected.
-// PreAuthKey registrations do not allow client-requested tags.
+// a user (tags-only) is used WITH --advertise-tags naming a tag the key lacks, the
+// registration is rejected. Only a subset of the key's own tags may be advertised.
 //
 // Test 5.2: Auth key without user, with --advertise-tags (should be rejected)
 // Setup: Run `tailscale up --advertise-tags="tag:second" --auth-key AUTH_KEY_WITH_TAGS_NO_USER`

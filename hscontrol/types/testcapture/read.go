@@ -1,12 +1,10 @@
 package testcapture
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 
-	"github.com/tailscale/hujson"
+	"github.com/juanfont/headscale/hscontrol/util"
 )
 
 // ErrUnsupportedSchemaVersion is returned by [Read] when a capture
@@ -22,16 +20,9 @@ var ErrUnsupportedSchemaVersion = errors.New("testcapture: unsupported schema ve
 // The returned [Capture]'s [Capture.CapturedAt] is the value recorded in the file
 // (not "now").
 func Read(path string) (*Capture, error) {
-	data, err := os.ReadFile(path)
+	c, err := util.ReadFileByExt[Capture](path)
 	if err != nil {
-		return nil, fmt.Errorf("testcapture: read %s: %w", path, err)
-	}
-
-	var c Capture
-
-	err = unmarshalHuJSON(data, &c)
-	if err != nil {
-		return nil, fmt.Errorf("testcapture: %s: %w", path, err)
+		return nil, fmt.Errorf("testcapture: %w", err)
 	}
 
 	if c.SchemaVersion > SchemaVersion {
@@ -40,23 +31,4 @@ func Read(path string) (*Capture, error) {
 	}
 
 	return &c, nil
-}
-
-// unmarshalHuJSON parses HuJSON bytes (JSON with comments / trailing
-// commas) into v. Comments are stripped via [hujson.Value.Standardize] before
-// [json.Unmarshal] is called.
-func unmarshalHuJSON(data []byte, v any) error {
-	ast, err := hujson.Parse(data)
-	if err != nil {
-		return fmt.Errorf("hujson parse: %w", err)
-	}
-
-	ast.Standardize()
-
-	err = json.Unmarshal(ast.Pack(), v)
-	if err != nil {
-		return fmt.Errorf("json unmarshal: %w", err)
-	}
-
-	return nil
 }

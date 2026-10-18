@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -55,10 +56,10 @@ func TestDestroyUserErrors(t *testing.T) {
 				err = db.DestroyUser(types.UserID(user.ID))
 				require.NoError(t, err)
 
-				// Verify preauth key was deleted (need to search by prefix for new keys)
-				var foundPak types.PreAuthKey
+				// Verify preauth key credential was deleted.
+				var foundPak types.Credential
 
-				result := db.DB.First(&foundPak, "id = ?", pak.ID)
+				result := db.DB.First(&foundPak, "kind = ? AND id = ?", types.CredentialPreAuthKey, pak.ID)
 				assert.ErrorIs(t, result.Error, gorm.ErrRecordNotFound)
 			},
 		},
@@ -86,7 +87,9 @@ func TestDestroyUserErrors(t *testing.T) {
 				require.NoError(t, trx.Error)
 
 				err = db.DestroyUser(types.UserID(user.ID))
-				assert.ErrorIs(t, err, ErrUserStillHasNodes)
+				require.ErrorIs(t, err, ErrUserStillHasNodes)
+				// The error names the blocking node so it can be found.
+				require.ErrorContains(t, err, fmt.Sprintf("%d (testnode)", node.ID))
 			},
 		},
 		{
@@ -204,13 +207,72 @@ func TestDestroyUserErrors(t *testing.T) {
 		},
 	}
 
+	// User deletion depends on foreign-key actions that differ between the
+	// hand-written SQLite schema and the GORM-generated Postgres schema, so
+	// run every case on both. The Postgres variant skips when no local
+	// server can be started.
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.name+"-sqlite", func(t *testing.T) {
 			db, err := newSQLiteTestDB()
 			require.NoError(t, err)
 
 			tt.test(t, db)
 		})
+		t.Run(tt.name+"-postgres", func(t *testing.T) {
+			tt.test(t, newPostgresTestDB(t))
+		})
+	}
+}
+
+func TestGetUserErrorPropagation(t *testing.T) {
+	lookups := []struct {
+		name string
+		get  func(*HSDatabase) (*types.User, error)
+	}{
+		{
+			name: "by_id",
+			get:  func(db *HSDatabase) (*types.User, error) { return db.GetUserByID(1) },
+		},
+		{
+			name: "by_oidc_identifier",
+			get:  func(db *HSDatabase) (*types.User, error) { return db.GetUserByOIDCIdentifier("oidc-id") },
+		},
+	}
+
+	tests := []struct {
+		name    string
+		closeDB bool
+		wantErr error
+	}{
+		{name: "missing_row_is_not_found", wantErr: ErrUserNotFound},
+		{name: "query_failure_is_returned", closeDB: true},
+	}
+
+	for _, lookup := range lookups {
+		for _, tt := range tests {
+			t.Run(lookup.name+"/"+tt.name, func(t *testing.T) {
+				db, err := newSQLiteTestDB()
+				require.NoError(t, err)
+
+				if tt.closeDB {
+					sqlDB, err := db.DB.DB()
+					require.NoError(t, err)
+					require.NoError(t, sqlDB.Close())
+				}
+
+				user, err := lookup.get(db)
+
+				// A swallowed error surfaces as a zero user and a nil error.
+				require.Error(t, err)
+				assert.Nil(t, user)
+
+				if tt.wantErr != nil {
+					assert.ErrorIs(t, err, tt.wantErr)
+				} else {
+					assert.NotErrorIs(t, err, ErrUserNotFound)
+				}
+			})
+		}
 	}
 }
 

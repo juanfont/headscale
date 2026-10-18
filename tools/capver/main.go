@@ -1,7 +1,5 @@
 package main
 
-//go:generate go run main.go
-
 import (
 	"context"
 	"encoding/json"
@@ -458,8 +456,10 @@ func main() {
 
 	versions, err := getCapabilityVersions(ctx)
 	if err != nil {
-		log.Println("Error:", err)
-		return
+		// Fatal, not a soft return: leaving the generated files untouched is
+		// indistinguishable from "no drift", so check-generated would pass on
+		// stale output and an automated bump could not tell the two apart.
+		log.Fatalln("Error:", err)
 	}
 
 	// Calculate the minimum supported capability version
@@ -467,14 +467,12 @@ func main() {
 
 	err = writeCapabilityVersionsToFile(versions, minSupportedCapVer)
 	if err != nil {
-		log.Println("Error writing to file:", err)
-		return
+		log.Fatalln("Error writing to file:", err)
 	}
 
 	err = writeTestDataFile(versions, minSupportedCapVer)
 	if err != nil {
-		log.Println("Error writing test data file:", err)
-		return
+		log.Fatalln("Error writing test data file:", err)
 	}
 
 	log.Println("Capability versions written to", outputFile)

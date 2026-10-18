@@ -3,14 +3,15 @@ package dns
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/cenkalti/backoff/v5"
 	"github.com/fsnotify/fsnotify"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
 	"tailscale.com/util/set"
@@ -37,17 +38,24 @@ func NewExtraRecordsManager(path string) (*ExtraRecordsMan, error) {
 		return nil, fmt.Errorf("creating watcher: %w", err)
 	}
 
+	closeWatcher := func() {
+		_ = watcher.Close()
+	}
+
 	fi, err := os.Stat(path)
 	if err != nil {
+		closeWatcher()
 		return nil, fmt.Errorf("getting file info: %w", err)
 	}
 
 	if fi.IsDir() {
+		closeWatcher()
 		return nil, fmt.Errorf("%w: %s", ErrPathIsDirectory, path)
 	}
 
 	records, hash, err := readExtraRecordsFromPath(path)
 	if err != nil {
+		closeWatcher()
 		return nil, fmt.Errorf("reading extra records from path: %w", err)
 	}
 
@@ -62,6 +70,8 @@ func NewExtraRecordsManager(path string) (*ExtraRecordsMan, error) {
 
 	err = watcher.Add(path)
 	if err != nil {
+		closeWatcher()
+
 		return nil, fmt.Errorf("adding path to watcher: %w", err)
 	}
 
@@ -101,15 +111,21 @@ func (e *ExtraRecordsMan) Run() {
 				// If a file is removed or renamed, fsnotify will lose track of it
 				// and not watch it. We will therefore attempt to re-add it with a backoff.
 			case fsnotify.Remove, fsnotify.Rename:
-				_, err := backoff.Retry(context.Background(), func() (struct{}, error) {
-					if _, err := os.Stat(e.path); err != nil { //nolint:noinlineerr
-						return struct{}{}, err
+				err := e.waitUntilPathExists()
+				if err != nil {
+					select {
+					case <-e.closeCh:
+						return
+					default:
 					}
 
-					return struct{}{}, nil
-				}, backoff.WithBackOff(backoff.NewExponentialBackOff()))
-				if err != nil {
 					log.Error().Caller().Err(err).Msgf("extra records filewatcher retrying to find file after delete")
+
+					addErr := e.watcher.Add(filepath.Dir(e.path))
+					if addErr != nil {
+						log.Error().Caller().Err(addErr).Msgf("extra records filewatcher watching parent after delete failed")
+					}
+
 					continue
 				}
 
@@ -137,6 +153,29 @@ func (e *ExtraRecordsMan) Run() {
 func (e *ExtraRecordsMan) Close() {
 	e.watcher.Close()
 	close(e.closeCh)
+}
+
+func (e *ExtraRecordsMan) waitUntilPathExists() error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		select {
+		case <-e.closeCh:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
+	_, err := backoff.Retry(ctx, func() (struct{}, error) {
+		if _, err := os.Stat(e.path); err != nil { //nolint:noinlineerr
+			return struct{}{}, err
+		}
+
+		return struct{}{}, nil
+	}, backoff.WithBackOff(backoff.NewExponentialBackOff()))
+
+	return err
 }
 
 func (e *ExtraRecordsMan) UpdateCh() <-chan []tailcfg.DNSRecord {
@@ -183,8 +222,9 @@ func (e *ExtraRecordsMan) updateRecords() {
 	}
 }
 
-// readExtraRecordsFromPath reads a JSON file of [tailcfg.DNSRecord]
-// and returns the records and the hash of the file.
+// readExtraRecordsFromPath reads a file of [tailcfg.DNSRecord] in the format its
+// extension names (see [util.UnmarshalByExt]) and returns the records and the
+// hash of the file.
 func readExtraRecordsFromPath(path string) ([]tailcfg.DNSRecord, [32]byte, error) {
 	var zero [32]byte
 
@@ -199,14 +239,13 @@ func readExtraRecordsFromPath(path string) ([]tailcfg.DNSRecord, [32]byte, error
 		return nil, zero, nil
 	}
 
-	var records []tailcfg.DNSRecord
+	// Hash first: decoding HuJSON may rewrite comments in b.
+	hash := sha256.Sum256(b)
 
-	err = json.Unmarshal(b, &records)
+	records, err := util.UnmarshalByExt[[]tailcfg.DNSRecord](path, b)
 	if err != nil {
 		return nil, zero, fmt.Errorf("unmarshalling records, content: %q: %w", string(b), err)
 	}
-
-	hash := sha256.Sum256(b)
 
 	return records, hash, nil
 }

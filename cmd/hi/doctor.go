@@ -53,6 +53,12 @@ func fail(name, message string, suggestions ...string) DoctorResult {
 
 // runDoctorCheck performs comprehensive pre-flight checks for integration testing.
 func runDoctorCheck(ctx context.Context) error {
+	return runPreflightChecks(ctx, true)
+}
+
+// runPreflightChecks leaves image preparation to the tests that need it.
+// The standalone doctor additionally checks development tools and images.
+func runPreflightChecks(ctx context.Context, full bool) error {
 	results := []DoctorResult{}
 
 	// Check 1: Docker binary availability
@@ -67,12 +73,17 @@ func runDoctorCheck(ctx context.Context) error {
 		results = append(results, checkDockerContext(ctx))
 		results = append(results, checkDockerSocket(ctx))
 		results = append(results, checkDockerHubCredentials())
-		results = append(results, checkGolangImage(ctx))
-		results = append(results, checkK3sImage(ctx))
+
+		if full {
+			results = append(results, checkGolangImage(ctx))
+			results = append(results, checkK3sImage(ctx))
+		}
 	}
 
 	// Check 3: Go installation
-	results = append(results, checkGoInstallation(ctx))
+	if full {
+		results = append(results, checkGoInstallation(ctx))
+	}
 
 	// Check 4: Git repository
 	results = append(results, checkGitRepository(ctx))

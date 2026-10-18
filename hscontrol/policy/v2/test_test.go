@@ -137,6 +137,24 @@ func TestRunTests(t *testing.T) {
 			wantErrSub:  []string{"ghost@headscale.net", "failed to resolve source"},
 			wantNoErrIs: errPolicyTestsFailed,
 		},
+		{
+			// A group tolerates unregistered members like any rule (#3513).
+			name: "group-src-with-unregistered-member",
+			policy: `{
+				"groups": {"group:eng": ["alice@headscale.net", "ghost@headscale.net"]},
+				"tagOwners": { "tag:server": ["alice@headscale.net"] },
+				"acls": [{
+					"action": "accept",
+					"src": ["group:eng"],
+					"dst": ["tag:server:22"]
+				}],
+				"tests": [{
+					"src": "group:eng",
+					"accept": ["tag:server:22"]
+				}]
+			}`,
+			wantPass: true,
+		},
 		// "malformed-dst-missing-port" used to live here; structural
 		// shape errors are now caught at parse by validateTests, so
 		// RunTests no longer sees them. The parse-side behaviour is

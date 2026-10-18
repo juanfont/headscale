@@ -39,6 +39,11 @@ type Change struct {
 	PeerPatches  []*tailcfg.PeerChange
 	SendAllPeers bool
 
+	// DeletedNodes identifies nodes permanently removed from state. Unlike
+	// PeersRemoved, this is an internal lifecycle signal: the batcher uses it
+	// to tear down the deleted nodes' own map sessions.
+	DeletedNodes []types.NodeID
+
 	// RequiresRuntimePeerComputation indicates that peer visibility
 	// must be computed at runtime per-node. Used for policy changes
 	// where each node may have different peer visibility.
@@ -78,6 +83,7 @@ func (r Change) Merge(other Change) Change {
 
 	merged.PeersChanged = uniqueNodeIDs(slices.Concat(r.PeersChanged, other.PeersChanged))
 	merged.PeersRemoved = uniqueNodeIDs(slices.Concat(r.PeersRemoved, other.PeersRemoved))
+	merged.DeletedNodes = uniqueNodeIDs(slices.Concat(r.DeletedNodes, other.DeletedNodes))
 	merged.PeerPatches = slices.Concat(r.PeerPatches, other.PeerPatches)
 
 	// Preserve [Change.OriginNode] for self-update detection.
@@ -139,6 +145,7 @@ func (r Change) IsEmpty() bool {
 
 	return len(r.PeersChanged) == 0 &&
 		len(r.PeersRemoved) == 0 &&
+		len(r.DeletedNodes) == 0 &&
 		len(r.PeerPatches) == 0
 }
 
@@ -147,7 +154,8 @@ func (r Change) IsSelfOnly() bool {
 		return false
 	}
 
-	if r.SendAllPeers || len(r.PeersChanged) > 0 || len(r.PeersRemoved) > 0 || len(r.PeerPatches) > 0 {
+	if r.SendAllPeers || len(r.PeersChanged) > 0 || len(r.PeersRemoved) > 0 ||
+		len(r.DeletedNodes) > 0 || len(r.PeerPatches) > 0 {
 		return false
 	}
 
@@ -169,6 +177,11 @@ func (r Change) IsFull() bool {
 // This provides a bounded set of values suitable for Prometheus labels,
 // unlike [Change.Reason] which is free-form text for logging.
 func (r Change) Type() string {
+	// A suppressed update is a healthy outcome, not an unclassified one.
+	if r.IsEmpty() {
+		return "empty"
+	}
+
 	if r.IsFull() {
 		return "full"
 	}
@@ -185,7 +198,8 @@ func (r Change) Type() string {
 		return "patch"
 	}
 
-	if len(r.PeersChanged) > 0 || len(r.PeersRemoved) > 0 || r.SendAllPeers {
+	if len(r.PeersChanged) > 0 || len(r.PeersRemoved) > 0 ||
+		len(r.DeletedNodes) > 0 || r.SendAllPeers {
 		return "peers"
 	}
 
@@ -214,6 +228,24 @@ func (r Change) ShouldSendToNode(nodeID types.NodeID) bool {
 // HasFull returns true if any response in the slice is a full update ([Change.IsFull]).
 func HasFull(rs []Change) bool {
 	return slices.ContainsFunc(rs, Change.IsFull)
+}
+
+// CollapseToFull returns what nodeID receives when a full update supersedes
+// changes: one [FullUpdate], then a ping-only [PingNode] for every
+// [Change.PingRequest] targeted at nodeID, in order. A full renders state at
+// drain time, so it covers every state change; a ping is a one-shot command
+// the full cannot carry. An untargeted ping is dropped: the ID in its URL is
+// all that authenticates the answer, so any node could answer for another.
+func CollapseToFull(nodeID types.NodeID, changes []Change) []Change {
+	out := []Change{FullUpdate()}
+
+	for _, c := range changes {
+		if c.PingRequest != nil && c.TargetNode == nodeID {
+			out = append(out, PingNode(nodeID, c.PingRequest))
+		}
+	}
+
+	return out
 }
 
 // SplitTargetedAndBroadcast separates responses into targeted (to specific node) and broadcast.
@@ -317,11 +349,14 @@ func FullSelf(nodeID types.NodeID) Change {
 	}
 }
 
+// SelfUpdate sends a node its own entry and the DNS config derived from it
+// (NextDNS profile and device metadata).
 func SelfUpdate(nodeID types.NodeID) Change {
 	return Change{
 		Reason:      "self update",
 		TargetNode:  nodeID,
 		IncludeSelf: true,
+		IncludeDNS:  true,
 	}
 }
 
@@ -337,15 +372,6 @@ func PolicyAndPeers(changedPeers ...types.NodeID) Change {
 		Reason:        "policy and peers update",
 		IncludePolicy: true,
 		PeersChanged:  changedPeers,
-	}
-}
-
-func VisibilityChange(reason string, added, removed []types.NodeID) Change {
-	return Change{
-		Reason:        reason,
-		IncludePolicy: true,
-		PeersChanged:  added,
-		PeersRemoved:  removed,
 	}
 }
 
@@ -447,7 +473,11 @@ func NodeAdded(id types.NodeID) Change {
 
 // NodeRemoved returns a [Change] for when a node is removed.
 func NodeRemoved(id types.NodeID) Change {
-	return PeersRemoved(id)
+	return Change{
+		Reason:       "node removed",
+		PeersRemoved: []types.NodeID{id},
+		DeletedNodes: []types.NodeID{id},
+	}
 }
 
 // KeyExpiryFor returns a [Change] for when a node's key expiry changes.
@@ -474,12 +504,17 @@ func EndpointOrDERPUpdate(id types.NodeID, patch *tailcfg.PeerChange) Change {
 // incremental [tailcfg.PeerChange] patch rather than re-advertising the whole
 // node — the smallest update that conveys the rotation, and the least
 // disruptive for peers reconciling it.
+//
+// Use it only when nothing else peers read changed: [tailcfg.PeerChange] has
+// no field for Hostinfo or for [tailcfg.Node.Expired], which only control can
+// clear, and only by sending the whole node.
 func NodeKeyRotated(node types.NodeView) Change {
 	nk := node.NodeKey()
 	dk := node.DiscoKey()
 
-	// KeyExpiry is always set: the zero value clears any prior expiry on the
-	// peer (un-expire), and a non-zero value carries the new expiry.
+	// KeyExpiry is always set: the zero value clears any prior expiry
+	// timestamp on the peer, and a non-zero value carries the new expiry. It
+	// does not clear [tailcfg.Node.Expired].
 	var expiry time.Time
 	if e, ok := node.Expiry().GetOk(); ok {
 		expiry = e

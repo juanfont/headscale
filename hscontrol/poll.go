@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"net/http"
 	"sync/atomic"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -93,6 +95,15 @@ func (m *mapSession) resetKeepAlive() {
 func (m *mapSession) stopFromBatcher() {
 	if m.cancelChClosed.CompareAndSwap(false, true) {
 		close(m.cancelCh)
+
+		// A channel signal cannot interrupt a response write that is blocked on
+		// HTTP/2 flow control. Expire the stream's write deadline as well so a
+		// client that stopped reading cannot keep the map session, and therefore
+		// server shutdown, alive indefinitely.
+		err := http.NewResponseController(m.w).SetWriteDeadline(time.Now())
+		if err != nil && !errors.Is(err, http.ErrNotSupported) {
+			m.log.Debug().Caller().Err(err).Msg("failed to interrupt map response write")
+		}
 	}
 }
 
@@ -111,12 +122,12 @@ func (m *mapSession) serve() {
 	//
 	// Process the [tailcfg.MapRequest] to update node state (endpoints, hostinfo, etc.)
 	c, err := m.h.state.UpdateNodeFromMapRequest(m.node.ID, m.req)
+	m.h.Change(c)
+
 	if err != nil {
 		httpError(m.w, err)
 		return
 	}
-
-	m.h.Change(c)
 
 	// If OmitPeers is true and Stream is false
 	// then the server will let clients update their endpoints without
@@ -171,7 +182,12 @@ func (m *mapSession) serveLongPoll() {
 		// handler ran late is exactly such a session: if it kept its session
 		// acquired on this path, the surviving session's release could never
 		// take the node offline (the relogin flake).
-		if !stillConnected {
+		// A deleted or expired node cannot return online through a map
+		// reconnect, so release its session without the reconnect grace.
+		// See: https://github.com/juanfont/headscale/issues/3410
+		node, nodeExists := m.h.state.GetNodeByID(m.node.ID)
+
+		if !stillConnected && nodeExists && !node.IsExpired() {
 			// Wait up to 10 seconds for the node to reconnect.
 			// 10 seconds was arbitrary chosen as a reasonable time to reconnect.
 			ticker := time.NewTicker(time.Second)
@@ -191,7 +207,13 @@ func (m *mapSession) serveLongPoll() {
 		// sessions are harmless regardless of the order they run in.
 		disconnectChanges, err := m.h.state.Disconnect(m.node.ID, connectGen)
 		if err != nil {
-			m.log.Error().Caller().Err(err).Msg("failed to disconnect node")
+			// A node deleted mid-session is gone by the time its own session
+			// releases; that is the expected order, not a failure.
+			if errors.Is(err, state.ErrNodeNotFound) {
+				m.log.Debug().Caller().Err(err).Msg("node deleted before its session was released")
+			} else {
+				m.log.Error().Caller().Err(err).Msg("failed to disconnect node")
+			}
 		}
 
 		if len(disconnectChanges) == 0 {
@@ -221,6 +243,8 @@ func (m *mapSession) serveLongPoll() {
 	// the node to be incorrectly removed from AvailableRoutes.
 	mapReqChange, err := m.h.state.UpdateNodeFromMapRequest(m.node.ID, m.req)
 	if err != nil {
+		m.h.Change(mapReqChange)
+
 		m.log.Error().Caller().Err(err).Msg("failed to update node from initial MapRequest")
 		// Write an explicit error rather than returning silently: a bare
 		// return leaves net/http to send an empty 200, which the client
@@ -256,6 +280,9 @@ func (m *mapSession) serveLongPoll() {
 	// time between the node connecting and the batcher being ready.
 	if err := m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.capVer, m.stopFromBatcher); err != nil { //nolint:noinlineerr
 		m.log.Error().Caller().Err(err).Msg("failed to add node to batcher")
+		// The map request already changed state other nodes must see.
+		m.h.Change(mapReqChange)
+
 		// Write an explicit error rather than returning silently: a bare
 		// return leaves net/http to send an empty 200, which the client
 		// reads as "unexpected EOF" and retries forever (issue #3346).
@@ -326,33 +353,11 @@ func (m *mapSession) serveLongPoll() {
 // It also handles flushing the response if the [http.ResponseWriter]
 // implements [http.Flusher].
 func (m *mapSession) writeMap(msg *tailcfg.MapResponse) error {
-	jsonBody, err := json.Marshal(msg)
-	if err != nil {
-		return fmt.Errorf("marshalling map response: %w", err)
-	}
-
-	if m.req.Compress == util.ZstdCompression {
-		jsonBody = zstdframe.AppendEncode(nil, jsonBody, zstdframe.FastestCompression)
-	}
-
-	data := make([]byte, reservedResponseHeaderSize, reservedResponseHeaderSize+len(jsonBody))
-	//nolint:gosec // G115: JSON response size will not exceed uint32 max
-	binary.LittleEndian.PutUint32(data, uint32(len(jsonBody)))
-	data = append(data, jsonBody...)
-
 	startWrite := time.Now()
 
-	_, err = m.w.Write(data)
+	err := writeMapResponse(m.w, m.req.Compress, m.isStreaming(), msg)
 	if err != nil {
 		return err
-	}
-
-	if m.isStreaming() {
-		if f, ok := m.w.(http.Flusher); ok {
-			f.Flush()
-		} else {
-			m.log.Error().Caller().Msg("responseWriter does not implement http.Flusher, cannot flush")
-		}
 	}
 
 	m.log.Trace().
@@ -362,6 +367,44 @@ func (m *mapSession) writeMap(msg *tailcfg.MapResponse) error {
 		Str(zf.MachineKey, m.node.MachineKey.String()).
 		Bool("keepalive", msg.KeepAlive).
 		Msg("finished writing mapresp to node")
+
+	return nil
+}
+
+// writeMapResponse writes a single map response frame: the JSON body,
+// zstd-framed when the client asked for compression, behind a little-endian
+// length prefix. Tailscale clients request zstd unconditionally and decode
+// every frame with it, so the compression step is not optional.
+//
+// It is shared with the deleted-node path in [noiseServer.PollNetMapHandler],
+// which has no [mapSession] to write through.
+func writeMapResponse(w http.ResponseWriter, compress string, flush bool, msg *tailcfg.MapResponse) error {
+	jsonBody, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("marshalling map response: %w", err)
+	}
+
+	if compress == util.ZstdCompression {
+		jsonBody = zstdframe.AppendEncode(nil, jsonBody, zstdframe.FastestCompression)
+	}
+
+	data := make([]byte, reservedResponseHeaderSize, reservedResponseHeaderSize+len(jsonBody))
+	//nolint:gosec // G115: JSON response size will not exceed uint32 max
+	binary.LittleEndian.PutUint32(data, uint32(len(jsonBody)))
+	data = append(data, jsonBody...)
+
+	_, err = w.Write(data)
+	if err != nil {
+		return err
+	}
+
+	if flush {
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		} else {
+			log.Error().Caller().Msg("responseWriter does not implement http.Flusher, cannot flush")
+		}
+	}
 
 	return nil
 }

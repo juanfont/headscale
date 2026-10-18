@@ -23,7 +23,7 @@ func init() {
 	oauthClientsCmd.AddCommand(listOAuthClientsCmd)
 
 	createOAuthClientCmd.Flags().
-		StringArrayP("scope", "s", nil, "Scope the client's tokens are granted (repeatable): auth_keys, oauth_keys, devices:core, devices:routes, policy_file, feature_settings (each with a :read variant), or all/all:read")
+		StringArrayP("scope", "s", nil, "Scope the client's tokens are granted (repeatable): auth_keys, oauth_keys, devices:core, devices:routes, policy_file, feature_settings, users (each with a :read variant), or all/all:read")
 	createOAuthClientCmd.Flags().
 		StringArrayP("tag", "t", nil, "Tag the client's tokens may assign to devices (repeatable), e.g. tag:k8s-operator")
 	createOAuthClientCmd.Flags().StringP("description", "d", "", "Human-readable description")

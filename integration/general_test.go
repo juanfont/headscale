@@ -941,6 +941,214 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 	}, time.Second, 50*time.Millisecond, "hostname updates should be reflected in node list with new suffix")
 }
 
+// peersMapResponseType is the [change.Change.Type] label that
+// headscale_mapresponse_generated_total carries for a whole-peer resend,
+// which is what [change.NodeAdded] produces.
+const peersMapResponseType = "peers"
+
+// mapResponseCountsByType reads headscale_mapresponse_generated_total keyed by
+// its response_type label. curl runs inside the container because the metrics
+// listener is published to the Docker host, not to the network the test
+// process shares with the server.
+func mapResponseCountsByType(headscale ControlServer) (map[string]float64, error) {
+	const (
+		metricName  = "headscale_mapresponse_generated_total"
+		labelPrefix = `response_type="`
+	)
+
+	out, err := headscale.Execute(
+		[]string{"curl", "-s", "http://localhost:9090/metrics"},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("fetching metrics: %w", err)
+	}
+
+	counts := make(map[string]float64)
+
+	for _, line := range strings.Split(out, "\n") {
+		if !strings.HasPrefix(line, metricName+"{") {
+			continue
+		}
+
+		labelStart := strings.Index(line, labelPrefix)
+		if labelStart < 0 {
+			continue
+		}
+
+		rest := line[labelStart+len(labelPrefix):]
+
+		labelEnd := strings.Index(rest, `"`)
+		if labelEnd < 0 {
+			continue
+		}
+
+		valueStart := strings.LastIndex(line, " ")
+		if valueStart < 0 {
+			continue
+		}
+
+		value, err := strconv.ParseFloat(strings.TrimSpace(line[valueStart+1:]), 64)
+		if err != nil {
+			return nil, fmt.Errorf("parsing metric line %q: %w", line, err)
+		}
+
+		counts[rest[:labelEnd]] = value
+	}
+
+	return counts, nil
+}
+
+// quiescedMapResponseCounts waits until the whole-peer map response counter
+// stops moving and then returns the whole counter family. A read taken
+// mid-fan-out charges someone else's responses to the change under test.
+func quiescedMapResponseCounts(
+	t *testing.T,
+	headscale ControlServer,
+	waitingFor string,
+) map[string]float64 {
+	t.Helper()
+
+	var counts map[string]float64
+
+	previous := -1.0
+
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		current, err := mapResponseCountsByType(headscale)
+		assert.NoError(ct, err)
+		assert.NotEmpty(ct, current, "metrics should carry the map response counter")
+		assert.Equal(ct, previous, current[peersMapResponseType],
+			"whole-peer fan-out is still moving")
+
+		previous = current[peersMapResponseType]
+		counts = current
+	}, integrationutil.HAConvergeTimeout, 2*time.Second, waitingFor)
+
+	return counts
+}
+
+// TestHostinfoChangeReachesPeersOnlyWhenPeerVisible pins which Hostinfo edits
+// are worth a whole-peer resend.
+//
+// Peers render only a handful of Hostinfo fields, so a client toggling one they
+// never read should cost their peers nothing, while a field they do render has
+// to arrive. Shields-up and hostname sit on either side of that line.
+//
+// The observable is headscale_mapresponse_generated_total{response_type="peers"}:
+// [change.NodeAdded] is the whole-peer broadcast the map request path emits for
+// a Hostinfo edit peers read, and [change.Change.Type] labels it "peers".
+func TestHostinfoChangeReachesPeersOnlyWhenPeerVisible(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		NodesPerUser: 2,
+		Users:        []string{"user1"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoErrorf(t, err, "failed to create scenario")
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{},
+		hsic.WithTestName("hostinfopeervisible"),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	requireNoErrListClients(t, err)
+	require.Len(t, allClients, 2, "one client changes Hostinfo, the other observes")
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+
+	subject, observer := allClients[0], allClients[1]
+
+	subjectStableID := string(subject.MustStatus().Self.ID)
+	subjectNodeID, err := strconv.ParseUint(subjectStableID, 10, 64)
+	require.NoErrorf(t, err,
+		"headscale issues numeric stable node IDs, got %q", subjectStableID)
+
+	baseline := quiescedMapResponseCounts(t, headscale,
+		"registration fan-out should settle before the baseline counter read")
+
+	// Shields-up moves Hostinfo.ShieldsUp and nothing a peer reads.
+	_, _, err = subject.Execute([]string{"tailscale", "set", "--shields-up=true"})
+	require.NoErrorf(t, err, "failed to raise shields on %s", subject.Hostname())
+
+	// Storing Hostinfo and telling peers about it are separate decisions, so
+	// the NodeStore is the sync point that proves the map request landed
+	// whatever the server chose to broadcast.
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		store, err := headscale.DebugNodeStore()
+		assert.NoError(ct, err)
+
+		node, ok := store[types.NodeID(subjectNodeID)]
+		if !assert.True(ct, ok, "node %d should be in the NodeStore", subjectNodeID) {
+			return
+		}
+
+		if !assert.NotNil(ct, node.Hostinfo, "node %d should carry Hostinfo", subjectNodeID) {
+			return
+		}
+
+		assert.True(ct, node.Hostinfo.ShieldsUp,
+			"headscale should have processed the shields-up map request")
+	}, integrationutil.HAConvergeTimeout, 1*time.Second,
+		"headscale should record the shields-up Hostinfo change")
+
+	afterShields := quiescedMapResponseCounts(t, headscale,
+		"map response counter should settle after the shields-up change")
+
+	t.Logf("map response counts: baseline=%v afterShields=%v", baseline, afterShields)
+
+	// assert, not require: the peer-visible half below is the other side of
+	// the same contract and its evidence is worth having in the same run.
+	assert.Equal(t,
+		baseline[peersMapResponseType],
+		afterShields[peersMapResponseType],
+		"shields-up touches no Hostinfo field a peer reads, so no peer should be handed the whole node again")
+
+	// Hostname is rendered by every peer, so this one has to travel.
+	const newHostname = "shields-up-renamed"
+
+	_, _, err = subject.Execute([]string{"tailscale", "set", "--hostname=" + newHostname})
+	require.NoErrorf(t, err, "failed to set hostname on %s", subject.Hostname())
+
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		status, err := observer.Status()
+		assert.NoError(ct, err)
+
+		var seen bool
+
+		for _, peer := range status.Peer {
+			if string(peer.ID) != subjectStableID {
+				continue
+			}
+
+			seen = true
+
+			assert.Equal(ct, newHostname, peer.HostName,
+				"peer %s should be seen under its new hostname", subjectStableID)
+		}
+
+		assert.True(ct, seen, "observer should still have node %s as a peer", subjectStableID)
+	}, integrationutil.HAConvergeTimeout, 1*time.Second,
+		"hostname is peer-visible, so the rename must reach the peer")
+
+	afterHostname := quiescedMapResponseCounts(t, headscale,
+		"map response counter should settle after the hostname change")
+
+	t.Logf("map response counts after hostname change: %v", afterHostname)
+
+	require.Greater(t,
+		afterHostname[peersMapResponseType],
+		afterShields[peersMapResponseType],
+		"a hostname change is peer-visible and must fan out as a whole-peer resend")
+}
+
 func TestExpireNode(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -986,91 +1194,139 @@ func TestExpireNode(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	require.NoError(t, err)
 
-	// TODO(kradalby): This is Headscale specific and would not play nicely
-	// with other implementations of the [ControlServer] interface
-	result, err := headscale.Execute([]string{
-		"headscale", "nodes", "expire", "--identifier", "1", "--output", "json",
-	})
-	require.NoError(t, err)
+	// Exercise expiry and recovery on every supported test client version.
+	for _, target := range allClients {
+		t.Run(target.Hostname(), func(t *testing.T) {
+			var (
+				selfID  string
+				selfKey key.NodePublic
+			)
 
-	var node clientv1.Node
-	err = json.Unmarshal([]byte(result), &node)
-	require.NoError(t, err)
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				status, err := target.Status()
+				if !assert.NoError(c, err) {
+					return
+				}
+				selfID, selfKey = string(status.Self.ID), status.Self.PublicKey
+			}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "client must report its own status before expiry")
 
-	var expiredNodeKey key.NodePublic
-	err = expiredNodeKey.UnmarshalText([]byte(node.NodeKey))
-	require.NoError(t, err)
+			result, err := headscale.Execute([]string{
+				"headscale", "nodes", "expire", "--identifier", selfID, "--output", "json",
+			})
+			require.NoError(t, err)
+			var node clientv1.Node
+			require.NoError(t, json.Unmarshal([]byte(result), &node))
 
-	t.Logf("Node %s with node_key %s has been expired", node.Name, expiredNodeKey.String())
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				status, err := target.Status()
+				if !assert.NoError(c, err) {
+					return
+				}
+				assert.Equal(c, "NeedsLogin", status.BackendState)
+				assert.Equal(c, selfKey, status.Self.PublicKey)
+			}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "expired client must require authentication")
 
-	// Verify that the expired node has been marked in all peers list.
-	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-		for _, client := range allClients {
-			status, err := client.Status()
-			assert.NoError(ct, err)
-
-			if client.Hostname() != node.Name {
-				// Check if the expired node appears as expired in this client's peer list
-				for key, peer := range status.Peer {
-					if key == expiredNodeKey {
-						assert.True(ct, peer.Expired, "Node should be marked as expired for client %s", client.Hostname())
-						break
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				nodes, err := headscale.ListNodes()
+				if !assert.NoError(c, err) {
+					return
+				}
+				for _, current := range nodes {
+					if current.Id == node.Id {
+						assert.False(c, current.Online, "expired node must be offline in the admin API")
+						return
 					}
 				}
-			}
-		}
-	}, integrationutil.ScaledTimeout(3*time.Minute), 10*time.Second)
+				c.Errorf("expired node %s disappeared", node.Id)
+			}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "Headscale must report the expired node offline")
 
-	now := time.Now()
-
-	// Verify that the expired node has been marked in all peers list.
-	for _, client := range allClients {
-		if client.Hostname() == node.Name {
-			continue
-		}
-
-		assert.EventuallyWithT(t, func(c *assert.CollectT) {
-			status, err := client.Status()
-			assert.NoError(c, err)
-
-			// Ensures that the node is present, and that it is expired.
-			peerStatus, ok := status.Peer[expiredNodeKey]
-			assert.True(c, ok, "expired node key should be present in peer list")
-
-			if ok {
-				assert.NotNil(c, peerStatus.Expired)
-				assert.NotNil(c, peerStatus.KeyExpiry)
-
-				if peerStatus.KeyExpiry != nil {
-					assert.Truef(
-						c,
-						peerStatus.KeyExpiry.Before(now),
-						"node %q should have a key expire before %s, was %s",
-						peerStatus.HostName,
-						now.String(),
-						peerStatus.KeyExpiry,
-					)
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				info, err := headscale.DebugBatcher()
+				if !assert.NoError(c, err) {
+					return
 				}
-
-				assert.Truef(
-					c,
-					peerStatus.Expired,
-					"node %q should be expired, expired is %v",
-					peerStatus.HostName,
-					peerStatus.Expired,
-				)
-
-				_, stderr, _ := client.Execute([]string{"tailscale", "ping", node.Name})
-				if !strings.Contains(stderr, "node key has expired") {
-					c.Errorf(
-						"expected to be unable to ping expired host %q from %q",
-						node.Name,
-						client.Hostname(),
-					)
+				connection, found := info.ConnectedNodes[node.Id]
+				if assert.True(c, found) {
+					assert.True(c, connection.Connected)
+					assert.Positive(c, connection.ActiveConnections)
 				}
+			}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "expired client must retain its control connection")
+
+			for _, peer := range allClients {
+				if peer.Hostname() == target.Hostname() {
+					continue
+				}
+				require.EventuallyWithT(t, func(c *assert.CollectT) {
+					status, err := peer.Status()
+					if !assert.NoError(c, err) {
+						return
+					}
+					expired, found := status.Peer[selfKey]
+					if !assert.True(c, found, "expired node must remain visible") {
+						return
+					}
+					assert.True(c, expired.Expired)
+					assert.False(c, expired.Online)
+					if assert.NotNil(c, expired.KeyExpiry) {
+						assert.True(c, expired.KeyExpiry.Before(time.Now()))
+					}
+				}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "peer must see the expired node offline")
+
+				require.EventuallyWithT(t, func(c *assert.CollectT) {
+					_, stderr, _ := peer.Execute([]string{"tailscale", "ping", node.Name})
+					assert.Contains(c, stderr, "node key has expired")
+				}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "expired node must not be reachable")
 			}
-		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll, "Waiting for expired node status to propagate")
+
+			// No tailscale up/login: restoring expiry must recover the client
+			// using its existing node key and control connection.
+			_, err = headscale.Execute([]string{
+				"headscale", "nodes", "expire", "--identifier", node.Id, "--disable",
+			})
+			require.NoError(t, err)
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				status, err := target.Status()
+				if !assert.NoError(c, err) {
+					return
+				}
+				assert.Equal(c, "Running", status.BackendState)
+				assert.Equal(c, selfKey, status.Self.PublicKey)
+			}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "restored key must recover the client without login")
+
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				nodes, err := headscale.ListNodes()
+				if !assert.NoError(c, err) {
+					return
+				}
+				for _, current := range nodes {
+					if current.Id == node.Id {
+						assert.True(c, current.Online)
+						return
+					}
+				}
+				c.Errorf("restored node %s disappeared", node.Id)
+			}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "restored node must be online in the admin API")
+
+			require.EventuallyWithT(t, func(c *assert.CollectT) {
+				for _, peer := range allClients {
+					if peer.Hostname() == target.Hostname() {
+						continue
+					}
+					status, err := peer.Status()
+					if !assert.NoError(c, err) {
+						continue
+					}
+					restored, found := status.Peer[selfKey]
+					if assert.True(c, found) {
+						assert.False(c, restored.Expired)
+						assert.True(c, restored.Online)
+					}
+				}
+			}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "peers must see the restored node online")
+		})
 	}
+
+	assertPingAll(t, allClients, allAddrs)
 }
 
 // TestSetNodeExpiryInFuture tests setting arbitrary expiration date
@@ -1497,6 +1753,90 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 
 		// Clean up context for this run
 		cancel()
+	}
+}
+
+// TestNodeDeletionEndsLongPoll verifies that deleting a node ends its map
+// session and tells the client to re-authenticate. Before the fix the deleted
+// node's long poll was orphaned: the client stayed Running forever against a
+// node that no longer existed, and the server could not shut down while that
+// stream was open.
+//
+// See: https://github.com/juanfont/headscale/issues/3410
+func TestNodeDeletionEndsLongPoll(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	spec := ScenarioSpec{
+		NodesPerUser: len(MustTestVersions),
+		Users:        []string{"user1"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("deletelongpoll"))
+	requireNoErrHeadscaleEnv(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	requireNoErrListClients(t, err)
+	require.NotEmpty(t, allClients)
+
+	for _, client := range allClients {
+		require.NoError(t, client.WaitForRunning(integrationutil.StatusReadyTimeout),
+			"client %s must be Running before the deletion", client.Hostname())
+	}
+
+	var nodeIDsByName map[string]uint64
+
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		if !assert.NoError(ct, err) || !assert.Len(ct, nodes, len(allClients)) {
+			return
+		}
+
+		ids := make(map[string]uint64, len(nodes))
+
+		for _, node := range nodes {
+			ids[node.Name] = mustParseID(node.Id)
+		}
+
+		for _, client := range allClients {
+			if !assert.Contains(ct, ids, client.Hostname()) {
+				return
+			}
+		}
+
+		nodeIDsByName = ids
+	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "node list should name every client before deletion")
+	require.Len(t, nodeIDsByName, len(allClients))
+
+	for i, deleted := range allClients {
+		deletedID, ok := nodeIDsByName[deleted.Hostname()]
+		require.True(t, ok, "node list must contain client %s", deleted.Hostname())
+		require.NoError(t, headscale.DeleteNode(deletedID))
+
+		require.NoError(t, deleted.WaitForNeedsLogin(integrationutil.StatusReadyTimeout),
+			"deleted client %s must stop polling and ask for a new login", deleted.Hostname())
+
+		for _, client := range allClients[i+1:] {
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				status, err := client.Status()
+				if !assert.NoError(ct, err) || !assert.NotNil(ct, status) {
+					return
+				}
+
+				assert.Equal(ct, "Running", status.BackendState)
+			}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll,
+				"deleting a peer must not disturb client %s", client.Hostname())
+		}
 	}
 }
 

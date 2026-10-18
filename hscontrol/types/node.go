@@ -158,12 +158,12 @@ type Node struct {
 	// Tags cannot be removed once set (one-way transition).
 	Tags Strings `gorm:"column:tags;serializer:json"`
 
-	// When a node has been created with a [PreAuthKey], we need to
-	// prevent the preauthkey from being deleted before the node.
-	// The preauthkey can define "tags" of the node so we need it
-	// around.
+	// When a node has been created with a pre-auth key, we keep the key
+	// credential around: it can define the node's tags and must not be deleted
+	// before the node. The association is to the unified [Credential] (kind
+	// authkey), which is what auth_key_id references.
 	AuthKeyID *uint64 `sql:"DEFAULT:NULL"`
-	AuthKey   *PreAuthKey
+	AuthKey   *Credential
 
 	Expiry *time.Time
 
@@ -181,6 +181,8 @@ type Node struct {
 	UpdatedAt time.Time
 	DeletedAt *time.Time
 
+	// IsOnline caches [Node.ShouldBeOnline]; read it through [Node.Online].
+	// Every writer must derive it, so online means the same thing everywhere.
 	IsOnline *bool `gorm:"-"`
 
 	// Unhealthy excludes the node from primary route election while
@@ -189,10 +191,9 @@ type Node struct {
 
 	// ActiveSessions counts live poll sessions for this node.
 	// [State.Connect] increments it and every session release
-	// ([State.Disconnect]) decrements it, so the node goes offline
-	// exactly when its last session ends — regardless of the order in
-	// which overlapping sessions' cleanups run. Never persisted, like
-	// SessionEpoch.
+	// ([State.Disconnect]) decrements it. Releasing the last session
+	// takes the node offline; expiry can take it offline while sessions
+	// remain. Never persisted, like SessionEpoch.
 	ActiveSessions int `gorm:"-"`
 
 	// SessionEpoch identifies a poll session generation; Connect bumps
@@ -218,6 +219,11 @@ func (ns Nodes) ViewSlice() views.Slice[NodeView] {
 
 // IsExpired returns whether the node registration has expired.
 func (node *Node) IsExpired() bool {
+	return node.IsExpiredAt(time.Now())
+}
+
+// IsExpiredAt reports whether the node registration has expired at now.
+func (node *Node) IsExpiredAt(now time.Time) bool {
 	// If Expiry is not set, the client has not indicated that
 	// it wants an expiry time, it is therefore considered
 	// to mean "not expired"
@@ -225,7 +231,22 @@ func (node *Node) IsExpired() bool {
 		return false
 	}
 
-	return time.Since(*node.Expiry) > 0
+	return now.After(*node.Expiry)
+}
+
+// Online reports the node's last known connectivity. Unknown counts as
+// offline. Use [Node.ShouldBeOnline] to derive the value, not to read it.
+func (node *Node) Online() bool {
+	return node.IsOnline != nil && *node.IsOnline
+}
+
+// ShouldBeOnline derives what [Node.IsOnline] must hold from its two inputs:
+// a live control session and an unexpired node key. An expired client keeps
+// polling control to receive auth updates, so a session alone is not enough.
+// Call it only from a NodeStore write closure, where ActiveSessions is
+// stable; elsewhere read [Node.Online].
+func (node *Node) ShouldBeOnline() bool {
+	return node.ActiveSessions > 0 && !node.IsExpired()
 }
 
 // IsEphemeral returns if the node is registered as an Ephemeral node.
@@ -483,16 +504,6 @@ func (nodes Nodes) FilterByIP(ip netip.Addr) Nodes {
 	return found
 }
 
-func (nodes Nodes) ContainsNodeKey(nodeKey key.NodePublic) bool {
-	for _, node := range nodes {
-		if node.NodeKey == nodeKey {
-			return true
-		}
-	}
-
-	return false
-}
-
 func (node *Node) GetFQDN(baseDomain string) (string, error) {
 	if node.GivenName == "" {
 		return "", fmt.Errorf("creating valid FQDN: %w", ErrNodeHasNoGivenName)
@@ -623,9 +634,8 @@ func (node *Node) MarshalZerologObject(e *zerolog.Event) {
 // PeerChangeFromMapRequest takes a [tailcfg.MapRequest] and compares it to the node
 // to produce a [tailcfg.PeerChange] struct that can be used to updated the node and
 // inform peers about smaller changes to the node.
-// When a field is added to this function, remember to also add it to:
-// - [Node.ApplyPeerChange]
-// - logTracePeerChange in poll.go.
+// When a field is added to this function, also add it to
+// [Node.ApplyPeerChange].
 func (node *Node) PeerChangeFromMapRequest(req tailcfg.MapRequest) tailcfg.PeerChange {
 	ret := tailcfg.PeerChange{
 		NodeID: tailcfg.NodeID(node.ID), //nolint:gosec // NodeID is bounded
@@ -918,6 +928,24 @@ func (nv NodeView) IsExpired() bool {
 	return nv.ж.IsExpired()
 }
 
+// IsExpiredAt reports whether the node registration has expired at now.
+func (nv NodeView) IsExpiredAt(now time.Time) bool {
+	if !nv.Valid() {
+		return true
+	}
+
+	return nv.ж.IsExpiredAt(now)
+}
+
+// Online reports the node's last known connectivity.
+func (nv NodeView) Online() bool {
+	if !nv.Valid() {
+		return false
+	}
+
+	return nv.ж.Online()
+}
+
 // IsEphemeral returns if the node is registered as an Ephemeral node.
 // https://tailscale.com/docs/features/ephemeral-nodes
 func (nv NodeView) IsEphemeral() bool {
@@ -1094,9 +1122,18 @@ func equalUnordered[E comparable](a, b []E, cmp func(E, E) int) bool {
 
 // HasPolicyChange reports whether the node has changes that affect
 // policy evaluation. Includes approved subnet routes because they act
-// as source identity in [Node.CanAccess] for subnet-to-subnet ACLs.
+// as source identity in [Node.CanAccess] for subnet-to-subnet ACLs,
+// and enabled exit routes because autogroup:internet and exit-node
+// reduction depend on which exit nodes are advertised-and-approved.
 func (nv NodeView) HasPolicyChange(other NodeView) bool {
-	if nv.UserID() != other.UserID() {
+	if nv.TypedUserID() != other.TypedUserID() {
+		return true
+	}
+
+	// The policy resolves ownership through the loaded association, so
+	// compare it as well as the raw foreign key.
+	if nv.User().Valid() != other.User().Valid() ||
+		(nv.User().Valid() && nv.User().ID() != other.User().ID()) {
 		return true
 	}
 
@@ -1109,6 +1146,10 @@ func (nv NodeView) HasPolicyChange(other NodeView) bool {
 	}
 
 	if !equalPrefixesUnordered(nv.SubnetRoutes(), other.SubnetRoutes()) {
+		return true
+	}
+
+	if !equalPrefixesUnordered(nv.ExitRoutes(), other.ExitRoutes()) {
 		return true
 	}
 

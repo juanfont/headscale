@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
@@ -305,51 +304,32 @@ func (m *mapper) selfMapResponse(
 }
 
 // policyChangeResponse creates a [tailcfg.MapResponse] for policy changes.
-// It sends:
-//   - PeersRemoved for peers that are no longer visible after the policy change
+// Peers no longer visible after the change are sent separately, see
+// [handleNodeChange]. It sends:
 //   - PeersChanged for remaining peers (their AllowedIPs may have changed due to policy)
 //   - Updated PacketFilters
-//   - Updated SSHPolicy (SSH rules may reference users/groups that changed)
-//   - DNSConfig so the client's resolver state stays anchored even when a
-//     policy-triggered wgengine reconfigure races a netmon LinkChange (the
-//     LinkChange handler reapplies dns.Manager.Set with the engine's
-//     lastDNSConfig; if that snapshot is stale, the OS resolver loses the
-//     MagicDNS reverse-DNS routes and Nameservers and curl-by-FQDN stops
-//     resolving for the rest of the policy window).
-//   - Optionally, the node's own self info (when includeSelf is true)
+//   - Updated SSHPolicy (SSH rules may reference users/groups that changed);
+//     dropped per connection when unchanged, see [connectionEntry.withSSHPolicyDelta]
+//   - The node's own self info, which renders from the same state as peers;
+//     dropped per connection when unchanged, see [connectionEntry.withSelfDelta]
+//
+// DNSConfig is left out: it forces clients into a full netmap rebuild, and
+// the node's DNS config inputs arrive with its own [change.SelfUpdate], see
+// [state.State.DrainSelfRefreshes].
 //
 // This avoids the issue where an empty Peers slice is interpreted by Tailscale
 // clients as "no change" rather than "no peers".
-// When includeSelf is true, the node's self info is included so that a node
-// whose own attributes changed (e.g., tags via admin API) sees its updated
-// self info along with the new packet filters.
 func (m *mapper) policyChangeResponse(
 	nodeID types.NodeID,
 	capVer tailcfg.CapabilityVersion,
-	removedPeers []tailcfg.NodeID,
 	currentPeers views.Slice[types.NodeView],
-	includeSelf bool,
 ) (*tailcfg.MapResponse, error) {
 	builder := m.NewMapResponseBuilder(nodeID).
 		WithDebugType(policyResponseDebug).
 		WithCapabilityVersion(capVer).
-		WithDNSConfig().
 		WithPacketFilters().
-		WithSSHPolicy()
-
-	if includeSelf {
-		builder = builder.WithSelfNode()
-	}
-
-	if len(removedPeers) > 0 {
-		// Convert [tailcfg.NodeID] to [types.NodeID] for [MapResponseBuilder.WithPeersRemoved]
-		removedIDs := make([]types.NodeID, len(removedPeers))
-		for i, id := range removedPeers {
-			removedIDs[i] = types.NodeID(id) //nolint:gosec // NodeID types are equivalent
-		}
-
-		builder.WithPeersRemoved(removedIDs...)
-	}
+		WithSSHPolicy().
+		WithSelfNode()
 
 	// Send remaining peers in PeersChanged - their AllowedIPs may have
 	// changed due to the policy update (e.g., different routes allowed).
@@ -384,6 +364,12 @@ func (m *mapper) buildFromChange(
 		WithCapabilityVersion(capVer).
 		WithDebugType(changeResponseDebug)
 
+	// Clients forget the logtail instruction when their process restarts, and
+	// every stream opens with a full map, so full maps carry it.
+	if resp.IsFull() {
+		builder.WithDebugConfig()
+	}
+
 	if resp.IncludeSelf {
 		builder.WithSelfNode()
 	}
@@ -412,7 +398,7 @@ func (m *mapper) buildFromChange(
 	} else {
 		if len(resp.PeersChanged) > 0 {
 			peers := m.state.ListPeers(nodeID, resp.PeersChanged...)
-			builder.WithUserProfiles(m.filterVisibleNodes(nodeID, peers))
+			builder.WithUserProfiles(peers)
 			builder.WithPeerChanges(peers)
 		}
 
@@ -433,48 +419,9 @@ func (m *mapper) buildFromChange(
 	return builder.Build()
 }
 
-// visiblePeerIDs returns the set of peer node IDs the recipient may see under
-// the current policy. It is the single visibility decision shared by the
-// incremental peer-change and user-profile paths, computed from the same live
-// per-node matchers and [policy.ReduceNodes] filter that
-// [MapResponseBuilder.buildTailPeers] applies to full peer objects, so the
-// paths cannot drift. The snapshot peer map ([NodeStore.ListPeers]) is used
-// only as the candidate set, matching buildTailPeers; the live policy decides
-// visibility because the snapshot is not rebuilt on policy changes.
-//
-// ok is false when the node or its matchers cannot be resolved; callers must
-// then fail closed (emit nothing) rather than risk leaking forbidden peers.
-func (m *mapper) visiblePeerIDs(nodeID types.NodeID) (map[tailcfg.NodeID]struct{}, bool) {
-	node, ok := m.state.GetNodeByID(nodeID)
-	if !ok {
-		return nil, false
-	}
-
-	matchers, err := m.state.MatchersForNode(node)
-	if err != nil {
-		return nil, false
-	}
-
-	peers := m.state.ListPeers(nodeID)
-
-	// No matchers means no policy restrictions, so every peer is visible —
-	// the same default buildTailPeers applies.
-	if len(matchers) > 0 {
-		peers = policy.ReduceNodes(node, peers, matchers)
-	}
-
-	// Key by tailcfg.NodeID so the peer-patch path can look up by patch.NodeID
-	// directly, avoiding an unchecked int64->uint64 conversion.
-	visible := make(map[tailcfg.NodeID]struct{}, peers.Len())
-	for _, peer := range peers.All() {
-		visible[peer.ID().NodeID()] = struct{}{}
-	}
-
-	return visible, true
-}
-
-// filterVisiblePeerPatches drops peer-change patches whose target peer the
-// recipient cannot see under the ACL policy. Without it, online/offline,
+// filterVisiblePeerPatches drops peer-change patches whose target is not in
+// the recipient's NodeStore peer map, the same set
+// [MapResponseBuilder.buildTailPeers] is fed from. Without it, online/offline,
 // endpoint, and key-expiry patches disclose the existence, presence, and
 // addresses of peers the recipient's policy forbids it from accessing.
 func (m *mapper) filterVisiblePeerPatches(
@@ -485,34 +432,18 @@ func (m *mapper) filterVisiblePeerPatches(
 		return patches
 	}
 
-	visible, ok := m.visiblePeerIDs(nodeID)
-	if !ok {
-		// Fail closed: if visibility cannot be resolved, send no patches.
-		return nil
+	// Key by tailcfg.NodeID so patches are looked up by patch.NodeID
+	// directly, avoiding an unchecked int64->uint64 conversion.
+	peers := m.state.ListPeers(nodeID)
+
+	visible := make(map[tailcfg.NodeID]struct{}, peers.Len())
+	for _, peer := range peers.All() {
+		visible[peer.ID().NodeID()] = struct{}{}
 	}
 
 	return filterByVisible(visible, patches, func(p *tailcfg.PeerChange) tailcfg.NodeID {
 		return p.NodeID
 	})
-}
-
-// filterVisibleNodes restricts a peer slice to the nodes the recipient can see
-// under the ACL policy. It guards UserProfiles on the incremental PeersChanged
-// path, which receives an unfiltered node slice and would otherwise leak the
-// identities of users whose nodes the recipient cannot access.
-func (m *mapper) filterVisibleNodes(
-	nodeID types.NodeID,
-	peers views.Slice[types.NodeView],
-) views.Slice[types.NodeView] {
-	visible, ok := m.visiblePeerIDs(nodeID)
-	if !ok {
-		// Fail closed: emit no peer user profiles rather than risk a leak.
-		return views.SliceOf([]types.NodeView{})
-	}
-
-	return views.SliceOf(filterByVisible(visible, peers.AsSlice(), func(p types.NodeView) tailcfg.NodeID {
-		return p.ID().NodeID()
-	}))
 }
 
 // filterByVisible keeps only the items whose key resolves to a NodeID present

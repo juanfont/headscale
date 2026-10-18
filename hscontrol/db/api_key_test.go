@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 func TestCreateAPIKey(t *testing.T) {
@@ -177,6 +178,7 @@ func TestAPIKeyWithPrefix(t *testing.T) {
 			},
 		},
 		{
+			// TODO(kradalby): remove in 0.32 with legacy key formats (announced).
 			name: "legacy_key_still_works",
 			test: func(t *testing.T, db *HSDatabase) {
 				t.Helper()
@@ -185,17 +187,27 @@ func TestAPIKeyWithPrefix(t *testing.T) {
 				legacyPrefix := "abcdefg"
 				legacySecret := strings.Repeat("x", 32)
 				legacyKey := legacyPrefix + "." + legacySecret
-				hash, err := bcrypt.GenerateFromPassword([]byte(legacySecret), bcrypt.DefaultCost)
+				hash, err := bcrypt.GenerateFromPassword([]byte(legacySecret), bcrypt.MinCost)
 				require.NoError(t, err)
 
 				now := time.Now()
 				err = db.DB.Exec(`
-					INSERT INTO api_keys (prefix, hash, created_at)
-					VALUES (?, ?, ?)
-				`, legacyPrefix, hash, now).Error
+					INSERT INTO credentials (kind, identifier, hash, created_at)
+					VALUES (?, ?, ?, ?)
+				`, types.CredentialAPIKey, legacyPrefix, hash, now).Error
 				require.NoError(t, err)
 
-				// Validate legacy key
+				// Validate legacy key through the v2 path, which must also
+				// upgrade the stored hash.
+				key, err := db.AuthenticateAPIKey(legacyKey)
+				require.NoError(t, err)
+				assert.True(t, strings.HasPrefix(string(key.Hash), hashPrefixSHA256))
+
+				stored, err := db.GetAPIKey(legacyPrefix)
+				require.NoError(t, err)
+				assert.True(t, strings.HasPrefix(string(stored.Hash), hashPrefixSHA256),
+					"legacy key must be rehashed on first auth")
+
 				valid, err := db.ValidateAPIKey(legacyKey)
 				require.NoError(t, err)
 				assert.True(t, valid)
@@ -272,4 +284,80 @@ func TestGetAPIKeyByIDNotFound(t *testing.T) {
 	key, err := db.GetAPIKeyByID(99999)
 	require.Error(t, err)
 	assert.Nil(t, key)
+}
+
+// TestAPIKeyLazyRehashesBcrypt seeds a new-format key whose secret is stored as
+// a legacy bcrypt hash and asserts that authenticating it upgrades the stored
+// hash to SHA-256, while continuing to authenticate.
+//
+// TODO(kradalby): remove in 0.32 with bcrypt/Argon2id support.
+func TestAPIKeyLazyRehashesBcrypt(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
+	prefix := "abcdefghijkl"
+	secret := strings.Repeat("a", 64)
+	keyStr := "hskey-api-" + prefix + "-" + secret
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(secret), bcrypt.MinCost)
+	require.NoError(t, err)
+
+	err = db.DB.Exec(
+		`INSERT INTO credentials (kind, identifier, hash, created_at) VALUES (?, ?, ?, ?)`,
+		types.CredentialAPIKey, prefix, hash, time.Now(),
+	).Error
+	require.NoError(t, err)
+
+	valid, err := db.ValidateAPIKey(keyStr)
+	require.NoError(t, err)
+	assert.True(t, valid)
+
+	stored, err := db.GetAPIKey(prefix)
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(string(stored.Hash), hashPrefixSHA256),
+		"a bcrypt-stored key must be rehashed to SHA-256 on first auth")
+
+	valid, err = db.ValidateAPIKey(keyStr)
+	require.NoError(t, err)
+	assert.True(t, valid, "key must still authenticate against the upgraded hash")
+}
+
+// TestCredentialKindsAreIsolated asserts that ids and identifiers, which now
+// share one table, never let an operation or secret of one kind reach another.
+func TestCredentialKindsAreIsolated(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
+	apiKeyStr, apiKey, err := db.CreateAPIKey(nil)
+	require.NoError(t, err)
+
+	pakNew, err := db.CreatePreAuthKey(nil, true, false, nil, []string{"tag:x"})
+	require.NoError(t, err)
+
+	// A pre-auth key id is not an API key and vice versa.
+	_, err = db.GetAPIKeyByID(pakNew.ID)
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+	require.ErrorIs(t, db.DestroyAPIKey(types.APIKey{ID: pakNew.ID}), ErrAPIKeyNotFound)
+	require.ErrorIs(t, db.ExpireAPIKey(&types.APIKey{ID: pakNew.ID}), ErrAPIKeyNotFound)
+	require.ErrorIs(t, db.SetAPIKeyUser(pakNew.ID, 1), ErrAPIKeyNotFound)
+
+	_, err = db.GetPreAuthKeyByID(apiKey.ID)
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+	require.ErrorIs(t, db.SetPreAuthKeyDescription(apiKey.ID, "x"), ErrPreAuthKeyNotFound)
+
+	// Both rows survived the cross-kind attempts.
+	_, err = db.GetPreAuthKeyByID(pakNew.ID)
+	require.NoError(t, err)
+
+	_, err = db.GetAPIKeyByID(apiKey.ID)
+	require.NoError(t, err)
+
+	// A secret presented under another kind's prefix is rejected.
+	_, apiRest, _ := strings.Cut(apiKeyStr, apiKeyPrefix)
+	_, err = db.GetPreAuthKey(authKeyPrefix + apiRest)
+	require.ErrorIs(t, err, ErrPreAuthKeyNotFound)
+
+	_, pakRest, _ := strings.Cut(pakNew.Key, authKeyPrefix)
+	_, err = db.AuthenticateAPIKey(apiKeyPrefix + pakRest)
+	require.ErrorIs(t, err, ErrAPIKeyNotFound)
 }

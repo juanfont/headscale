@@ -19,7 +19,7 @@ import (
 func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcfg.FilterRule {
 	ret := []tailcfg.FilterRule{}
 	subnetRoutes := node.SubnetRoutes()
-	hasExitRoutes := node.IsExitNode()
+	exitRoutes := node.ExitRoutes()
 
 	for _, rule := range rules {
 		// Handle CapGrant rules separately — they use CapGrant[].Dsts
@@ -53,19 +53,16 @@ func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcf
 			// [types.NodeView.SubnetRoutes] returns only approved,
 			// non-exit routes — matching Tailscale SaaS behavior,
 			// which does not generate filter rules for
-			// advertised-but-unapproved routes. Exit routes
-			// (0.0.0.0/0, ::/0) are excluded by
-			// [types.NodeView.SubnetRoutes] and handled separately
-			// via AllowedIPs/routing.
+			// advertised-but-unapproved routes.
 			if slices.ContainsFunc(subnetRoutes, expanded.OverlapsPrefix) {
 				dests = append(dests, dest)
 				continue
 			}
 
-			// Exit-route advertisers need rules targeting the
-			// public internet so the kernel filter accepts
-			// traffic forwarded by autogroup:internet sources.
-			if hasExitRoutes && util.IPSetSubsetOf(expanded, util.TheInternet()) {
+			// Approved exit routes count like subnet routes. They
+			// contain every destination, so Tailscale SaaS sends an
+			// exit node every rule, not only internet ones.
+			if slices.ContainsFunc(exitRoutes, expanded.OverlapsPrefix) {
 				dests = append(dests, dest)
 			}
 		}

@@ -4,7 +4,13 @@
 # This Dockerfile is more or less lifted from tailscale/tailscale
 # to ensure a similar build process when testing the HEAD of tailscale.
 
-FROM golang:1.27.0-alpine AS build-env
+FROM golang:1.27.2-alpine AS build-env
+
+# The builder pin is a floor, not a ceiling: this stage compiles a tailscale
+# tree cloned from an unpinned branch, which can raise its go directive at any
+# time. The golang images set GOTOOLCHAIN=local, which turns that into a hard
+# build failure rather than a toolchain fetch.
+ENV GOTOOLCHAIN=auto
 
 WORKDIR /go/src
 
@@ -36,7 +42,7 @@ RUN GOARCH=$TARGETARCH go install -tags="${BUILD_TAGS}" -ldflags="\
       -X tailscale.com/version.gitCommitStamp=$VERSION_GIT_HASH" \
       -v ./cmd/tailscale ./cmd/tailscaled ./cmd/containerboot
 
-FROM alpine:3.23
+FROM alpine:3.24
 # Upstream: ca-certificates ip6tables iptables iproute2
 # Tests: curl python3 (traceroute via BusyBox)
 RUN apk add --no-cache ca-certificates curl ip6tables iptables iproute2 python3

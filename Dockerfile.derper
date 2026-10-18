@@ -1,6 +1,12 @@
 # For testing purposes only
 
-FROM golang:1.27.0-alpine AS build-env
+FROM golang:1.27.2-alpine AS build-env
+
+# The builder pin is a floor, not a ceiling: this stage compiles a tailscale
+# tree cloned from an unpinned branch, which can raise its go directive at any
+# time. The golang images set GOTOOLCHAIN=local, which turns that into a hard
+# build failure rather than a toolchain fetch.
+ENV GOTOOLCHAIN=auto
 
 WORKDIR /go/src
 
@@ -12,7 +18,7 @@ WORKDIR /go/src/tailscale
 ARG TARGETARCH
 RUN GOARCH=$TARGETARCH go install -v ./cmd/derper
 
-FROM alpine:3.23
+FROM alpine:3.24
 RUN apk add --no-cache ca-certificates iptables iproute2 ip6tables curl
 
 COPY --from=build-env /go/bin/* /usr/local/bin/

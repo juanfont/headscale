@@ -13,8 +13,8 @@
 //   - TestRoutesCompat: validates filter rule compilation (compileFilterRulesForNode
 //     + ReduceFilterRules) against golden file captures.
 //
-//   - TestRoutesCompatPeerVisibility: validates peer visibility (CanAccess /
-//     ReduceNodes) for the subnet-to-subnet scenarios (f10–f15). These tests
+//   - TestRoutesCompatPeerVisibility: validates peer visibility (CanAccess)
+//     for the subnet-to-subnet scenarios (f10–f15). These tests
 //     derive expected peer relationships from the golden file captures: if
 //     Tailscale SaaS delivers filter rules to a node, then the subnet routers
 //     referenced in those rules must be visible as peers. This exercises the
@@ -1504,6 +1504,76 @@ func TestRoutesCompatPeerAllowedIPs(t *testing.T) {
 	require.Positive(t, testedFiles,
 		"no golden files with netmap data found — test is vacuous",
 	)
+}
+
+// TestRoutesCompatPeerCapMap validates the peer-view CapMap against SaaS
+// for route scenarios, whose policies carry no nodeAttrs. SaaS stamps
+// suggest-exit-node on approved exit peers regardless of policy; the
+// Apple 1.102+ GUI hides the exit-node list without it (issue #3415).
+func TestRoutesCompatPeerCapMap(t *testing.T) {
+	t.Parallel()
+
+	files, err := filepath.Glob(
+		filepath.Join("testdata", "routes_results", "routes-*.hujson"),
+	)
+	require.NoError(t, err, "failed to glob test files")
+	require.NotEmpty(t, files)
+
+	issue3212, err := filepath.Glob(
+		filepath.Join("testdata", "issue_3212", "routes-*.hujson"),
+	)
+	require.NoError(t, err, "failed to glob issue_3212 files")
+	require.NotEmpty(t, issue3212)
+
+	files = append(files, issue3212...)
+
+	for _, file := range files {
+		tf := loadRoutesTestFile(t, file)
+		if tf.Error {
+			continue
+		}
+
+		t.Run(tf.TestID, func(t *testing.T) {
+			t.Parallel()
+
+			users, nodes := buildRoutesUsersAndNodes(t, tf.Topology)
+			policyJSON := convertPolicyUserEmails(tf.Input.FullPolicy)
+
+			pm, err := NewPolicyManager(policyJSON, users, nodes.ViewSlice())
+			require.NoError(t, err, "%s: failed to create policy manager", tf.TestID)
+
+			capMaps := pm.NodeCapMaps()
+
+			for viewerName, capture := range tf.Captures {
+				if capture.Netmap == nil {
+					continue
+				}
+
+				for _, nmPeer := range capture.Netmap.Peers {
+					peerName, _, _ := strings.Cut(nmPeer.Name(), ".")
+
+					peer := findNodeByGivenName(nodes, peerName)
+					if peer == nil {
+						continue
+					}
+
+					got := stripUnmodelledTailnetStateCaps(
+						PeerCapMap(peer.View(), capMaps[peer.ID]),
+					)
+					want := stripUnmodelledTailnetStateCaps(
+						capMapFromView(nmPeer.CapMap()),
+					)
+
+					if diff := cmp.Diff(want, got, cmpopts.EquateEmpty()); diff != "" {
+						t.Errorf(
+							"%s/%s/peer=%s: Peer.CapMap mismatch (-tailscale +headscale):\n%s",
+							tf.TestID, viewerName, peerName, diff,
+						)
+					}
+				}
+			}
+		})
+	}
 }
 
 // testRoutesError verifies that an invalid policy produces the expected error.

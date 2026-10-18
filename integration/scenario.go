@@ -24,6 +24,7 @@ import (
 	clientv1 "github.com/juanfont/headscale/gen/client/v1"
 	"github.com/juanfont/headscale/hscontrol/capver"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/dsic"
 	"github.com/juanfont/headscale/integration/hsic"
@@ -51,9 +52,12 @@ const (
 var usePostgresForTest = envknob.Bool("HEADSCALE_INTEGRATION_POSTGRES")
 
 var (
-	errNoHeadscaleAvailable = errors.New("no headscale available")
-	errNoUserAvailable      = errors.New("no user available")
-	errNoClientFound        = errors.New("client not found")
+	errNoHeadscaleAvailable        = errors.New("no headscale available")
+	errNoUserAvailable             = errors.New("no user available")
+	errNoClientFound               = errors.New("client not found")
+	errInvalidHeadscaleImageFormat = errors.New("invalid HEADSCALE_INTEGRATION_HEADSCALE_IMAGE format, expected repository:tag")
+	errInvalidMockOIDCImage        = errors.New("invalid HEADSCALE_INTEGRATION_HEADSCALE_IMAGE format, expected repository:tag")
+	errMockOIDCImageRequiredInCI   = errors.New("HEADSCALE_INTEGRATION_HEADSCALE_IMAGE must be set for mock OIDC in CI")
 
 	// AllVersions represents a list of Tailscale versions the suite
 	// uses to test compatibility with the [ControlServer].
@@ -683,8 +687,8 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 
 			s.mu.Lock()
 
-			opts = append(
-				opts,
+			clientOpts := append(
+				slices.Clone(opts),
 				tsic.WithCACert(cert),
 				tsic.WithHeadscaleName(hostname),
 				tsic.WithExtraHosts(extraHosts),
@@ -697,7 +701,7 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 				tsClient, err := tsic.New(
 					s.pool,
 					version,
-					opts...,
+					clientOpts...,
 				)
 				s.mu.Unlock()
 
@@ -1112,6 +1116,11 @@ func (j *debugJar) Dump(w io.Writer) {
 	}
 }
 
+// registerConfirmCSRFField is the name of both the hidden CSRF form field
+// and the cookie on the OIDC registration confirmation interstitial. It
+// mirrors registerConfirmCSRFCookie in hscontrol, which is unexported.
+const registerConfirmCSRFField = "headscale_register_confirm"
+
 func copyCookie(c *http.Cookie) *http.Cookie {
 	cc := *c
 	return &cc
@@ -1225,10 +1234,11 @@ func doLoginURLWithClient(hostname string, loginURL *url.URL, hc *http.Client, f
 		}
 	}
 
-	// The OIDC registration flow now renders a confirmation interstitial
-	// (POST form) instead of completing immediately. Detect the form and
+	// The OIDC registration flow renders a confirmation interstitial
+	// (POST form) instead of completing immediately. Detect the form by its
+	// CSRF field, which does not move when the form action does, and
 	// auto-submit it so integration tests behave like a real browser.
-	if followRedirects && strings.Contains(body, `action="/register/confirm/`) {
+	if followRedirects && strings.Contains(body, `name="`+registerConfirmCSRFField+`"`) {
 		confirmBody, confirmURL, confirmErr := submitConfirmForm(hostname, body, resp, hc)
 		if confirmErr != nil {
 			return body, redirectURL, confirmErr
@@ -1267,7 +1277,7 @@ func submitConfirmForm(
 
 	// Extract hidden CSRF input value. The rendered <input> has
 	// attributes in name-type-value order so we grab the whole tag.
-	before, _, ok := strings.Cut(htmlBody, `name="headscale_register_confirm"`)
+	before, _, ok := strings.Cut(htmlBody, `name="`+registerConfirmCSRFField+`"`)
 	if !ok {
 		return "", nil, fmt.Errorf("%s confirm form: no CSRF input", hostname) //nolint:err113
 	}
@@ -1293,18 +1303,17 @@ func submitConfirmForm(
 	valEnd := strings.Index(inputTag[valStart:], `"`)
 	csrfToken := inputTag[valStart : valStart+valEnd]
 
-	// Build the absolute POST URL from the response's request URL.
-	base := prevResp.Request.URL
-	confirmURL := &url.URL{
-		Scheme: base.Scheme,
-		Host:   base.Host,
-		Path:   formAction,
+	// Resolve the form action against the page it was served from, so an
+	// absolute and a relative action both work.
+	confirmURL, err := prevResp.Request.URL.Parse(formAction)
+	if err != nil {
+		return "", nil, fmt.Errorf("%s confirm form: resolving action %q: %w", hostname, formAction, err)
 	}
 
 	log.Printf("%s auto-submitting confirm form: %s", hostname, confirmURL)
 
 	formData := url.Values{
-		"headscale_register_confirm": {csrfToken},
+		registerConfirmCSRFField: {csrfToken},
 	}
 
 	ctx := context.Background()
@@ -1633,15 +1642,37 @@ func (s *Scenario) runMockOIDC(accessTTL time.Duration, users []mockoidc.MockUse
 	// Add integration test labels if running under hi tool
 	dockertestutil.DockerAddIntegrationLabels(mockOidcOptions, "oidc")
 
-	if pmockoidc, err := s.pool.BuildAndRunWithBuildOptions( //nolint:noinlineerr
-		headscaleBuildOptions,
-		mockOidcOptions,
-		dockertestutil.DockerRestartPolicy,
-	); err == nil {
-		s.mockOIDC.r = pmockoidc
+	var container *dockertest.Resource
+
+	// CI already built and loaded the Headscale image, including its mockoidc command.
+	// Reuse it instead of downloading dependencies and rebuilding for every OIDC test.
+	if prebuiltImage := os.Getenv("HEADSCALE_INTEGRATION_HEADSCALE_IMAGE"); prebuiltImage != "" {
+		repo, tag, ok := strings.Cut(prebuiltImage, ":")
+		if !ok || repo == "" || tag == "" {
+			return errInvalidMockOIDCImage
+		}
+
+		mockOidcOptions.Repository = repo
+		mockOidcOptions.Tag = tag
+		container, err = s.pool.RunWithOptions(
+			mockOidcOptions,
+			dockertestutil.DockerRestartPolicy,
+		)
+	} else if util.IsCI() {
+		return errMockOIDCImageRequiredInCI
 	} else {
-		return err
+		container, err = s.pool.BuildAndRunWithBuildOptions(
+			headscaleBuildOptions,
+			mockOidcOptions,
+			dockertestutil.DockerRestartPolicy,
+		)
 	}
+
+	if err != nil {
+		return fmt.Errorf("starting mock OIDC container: %w", err)
+	}
+
+	s.mockOIDC.r = container
 
 	// headscale needs to set up the provider with a specific
 	// IP addr to ensure we get the correct config from the well-known
@@ -1727,11 +1758,32 @@ func Webservice(s *Scenario, networkName string) (*dockertest.Resource, error) {
 		ContextDir: dockerContextPath,
 	}
 
-	web, err := s.pool.BuildAndRunWithBuildOptions(
-		webBOpts,
-		webOpts,
-		dockertestutil.DockerRestartPolicy,
+	var (
+		web *dockertest.Resource
+		err error
 	)
+
+	if prebuiltImage := os.Getenv("HEADSCALE_INTEGRATION_HEADSCALE_IMAGE"); prebuiltImage != "" {
+		repo, tag, ok := strings.Cut(prebuiltImage, ":")
+		if !ok {
+			return nil, errInvalidHeadscaleImageFormat
+		}
+
+		webOpts.Repository = repo
+		webOpts.Tag = tag
+
+		web, err = s.pool.RunWithOptions(
+			webOpts,
+			dockertestutil.DockerRestartPolicy,
+		)
+	} else {
+		web, err = s.pool.BuildAndRunWithBuildOptions(
+			webBOpts,
+			webOpts,
+			dockertestutil.DockerRestartPolicy,
+		)
+	}
+
 	if err != nil {
 		return nil, err
 	}

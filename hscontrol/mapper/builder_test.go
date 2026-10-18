@@ -101,17 +101,19 @@ func TestMapResponseBuilder_WithDebugConfig(t *testing.T) {
 	tests := []struct {
 		name           string
 		logTailEnabled bool
-		expected       bool
+		expected       *tailcfg.Debug
 	}{
 		{
+			// Enabled sends no Debug, so the wire matches a server that never
+			// touches client logging.
 			name:           "LogTail enabled",
 			logTailEnabled: true,
-			expected:       false, // DisableLogTail should be false when LogTail is enabled
+			expected:       nil,
 		},
 		{
 			name:           "LogTail disabled",
 			logTailEnabled: false,
-			expected:       true, // DisableLogTail should be true when LogTail is disabled
+			expected:       &tailcfg.Debug{DisableLogTail: true},
 		},
 	}
 
@@ -133,8 +135,7 @@ func TestMapResponseBuilder_WithDebugConfig(t *testing.T) {
 			builder := m.NewMapResponseBuilder(nodeID).
 				WithDebugConfig()
 
-			require.NotNil(t, builder.resp.Debug)
-			assert.Equal(t, tt.expected, builder.resp.Debug.DisableLogTail)
+			assert.Equal(t, tt.expected, builder.resp.Debug)
 			assert.False(t, builder.hasErrors())
 		})
 	}

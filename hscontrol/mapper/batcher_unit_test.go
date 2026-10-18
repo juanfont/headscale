@@ -428,6 +428,59 @@ func TestMultiChannelClose_PreventsSendPanic(t *testing.T) {
 		"send after close should return errConnectionClosed, not panic")
 }
 
+func TestAddToBatch_NodeRemovedStopsSession(t *testing.T) {
+	lb := setupLightweightBatcher(t, 1, 1)
+	defer lb.cleanup()
+
+	mc, ok := lb.b.nodes.Load(1)
+	require.True(t, ok)
+
+	stopped := make(chan struct{})
+
+	mc.mutex.Lock()
+	mc.connections[0].stop = func() { close(stopped) }
+	mc.mutex.Unlock()
+
+	lb.b.AddWork(change.NodeRemoved(1))
+
+	// addToBatch runs synchronously, so the session must already be stopped.
+	select {
+	case <-stopped:
+	default:
+		t.Fatal("deleting a node must stop its map session, otherwise the long poll is orphaned")
+	}
+
+	_, stillTracked := lb.b.nodes.Load(1)
+	assert.False(t, stillTracked, "deleted node should no longer be tracked by the batcher")
+	assert.Equal(t, int64(0), lb.b.totalNodes.Load())
+}
+
+func TestAddToBatch_PeersRemovedKeepsSession(t *testing.T) {
+	lb := setupLightweightBatcher(t, 1, 1)
+	defer lb.cleanup()
+
+	mc, ok := lb.b.nodes.Load(1)
+	require.True(t, ok)
+
+	stopped := make(chan struct{})
+
+	mc.mutex.Lock()
+	mc.connections[0].stop = func() { close(stopped) }
+	mc.mutex.Unlock()
+
+	lb.b.AddWork(change.PeersRemoved(1))
+
+	select {
+	case <-stopped:
+		t.Fatal("a peer visibility delta must not stop the peer's own map session")
+	default:
+	}
+
+	_, stillTracked := lb.b.nodes.Load(1)
+	assert.True(t, stillTracked, "a visible peer removal must remain tracked by the batcher")
+	assert.Equal(t, int64(1), lb.b.totalNodes.Load())
+}
+
 // ============================================================================
 // multiChannelNodeConn connection management Tests
 // ============================================================================
@@ -1140,4 +1193,87 @@ func TestRemoveConnectionAtIndex_NilsTrailingSlot(t *testing.T) {
 		"trailing slot in backing array should be nil after removal")
 
 	mc.mutex.Unlock()
+}
+
+// ============================================================================
+// SSHPolicy delta Tests
+// ============================================================================
+
+func sshPolicyForUser(user string) *tailcfg.SSHPolicy {
+	return &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{{
+		Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.1"}},
+		SSHUsers:   map[string]string{user: user},
+		Action:     &tailcfg.SSHAction{Accept: true},
+	}}}
+}
+
+func emptySSHPolicy() *tailcfg.SSHPolicy {
+	return &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}}
+}
+
+func TestMultiChannelSend_SSHPolicyOnlyWhenChanged(t *testing.T) {
+	tests := []struct {
+		name       string
+		last, next *tailcfg.SSHPolicy
+		wantSent   bool
+	}{
+		{"unchanged empty", emptySSHPolicy(), emptySSHPolicy(), false},
+		{"unchanged rules", sshPolicyForUser("root"), sshPolicyForUser("root"), false},
+		{"rules removed", sshPolicyForUser("root"), emptySSHPolicy(), true},
+		{"rules changed", sshPolicyForUser("root"), sshPolicyForUser("alice"), true},
+		{"none delivered yet", nil, emptySSHPolicy(), true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mc := newMultiChannelNodeConn(1, nil)
+			ch := make(chan *tailcfg.MapResponse, 1)
+			entry := makeConnectionEntry("conn", ch)
+			entry.lastSSHPolicy.Store(tt.last)
+			mc.addConnection(entry)
+
+			data := testMapResponse()
+			data.PacketFilters = map[string][]tailcfg.FilterRule{"base": nil}
+			data.SSHPolicy = tt.next
+
+			require.NoError(t, mc.send(data))
+
+			got := expectReceive(t, ch, "connection should receive the response")
+			assert.Equal(t, data.PacketFilters, got.PacketFilters, "other fields must be kept")
+
+			if tt.wantSent {
+				assert.Same(t, tt.next, got.SSHPolicy)
+			} else {
+				assert.Nil(t, got.SSHPolicy)
+			}
+
+			assert.Same(t, tt.next, entry.lastSSHPolicy.Load(), "latest copy must be stored")
+			assert.Same(t, tt.next, data.SSHPolicy, "shared response must not be modified")
+		})
+	}
+}
+
+// TestMultiChannelSend_SSHPolicyPerConnection pins per-connection tracking:
+// connections of one node can hold different policies, e.g. one that missed
+// deltas while its initial map was in flight.
+func TestMultiChannelSend_SSHPolicyPerConnection(t *testing.T) {
+	mc := newMultiChannelNodeConn(1, nil)
+
+	chA := make(chan *tailcfg.MapResponse, 1)
+	chB := make(chan *tailcfg.MapResponse, 1)
+	a := makeConnectionEntry("a", chA)
+	b := makeConnectionEntry("b", chB)
+
+	a.lastSSHPolicy.Store(sshPolicyForUser("alice"))
+	b.lastSSHPolicy.Store(sshPolicyForUser("root"))
+	mc.addConnection(a)
+	mc.addConnection(b)
+
+	data := testMapResponse()
+	data.SSHPolicy = sshPolicyForUser("alice")
+
+	require.NoError(t, mc.send(data))
+
+	assert.Nil(t, expectReceive(t, chA, "a").SSHPolicy, "a already holds this policy")
+	assert.Same(t, data.SSHPolicy, expectReceive(t, chB, "b").SSHPolicy, "b holds an older policy")
 }

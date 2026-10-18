@@ -259,7 +259,7 @@ type (
 
 type (
 	setUserOIDCGroupsInput struct {
-		ID   string   `format:"uint64" path:"id"`
+		ID   string `format:"uint64" path:"id"`
 		Body struct {
 			Groups []string `json:"groups" nullable:"false"`
 		}

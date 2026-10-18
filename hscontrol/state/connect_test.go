@@ -1,8 +1,10 @@
 package state
 
 import (
+	"fmt"
 	"net/netip"
 	"testing"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
@@ -270,10 +272,104 @@ func TestDisconnectOutOfOrderSessionsCannotStrandNodeOnline(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, hasPeerPatch(cs), "final release must emit the offline peer patch")
 
+	for _, c := range cs {
+		assert.Empty(t, c.PeersChanged,
+			"disconnect must not fan out a whole-peer update, got %+v", c)
+	}
+
 	nv, ok = s.GetNodeByID(nodeID)
 	require.True(t, ok)
 
 	online, known = nv.IsOnline().GetOk()
 	require.True(t, known)
 	assert.False(t, online, "node must be offline after its last session is released")
+}
+
+func TestExpiredNodeSessionAccounting(t *testing.T) {
+	for _, expiry := range []*time.Time{nil, new(time.Time{}), new(time.Now().Add(time.Hour))} {
+		t.Run(fmt.Sprint(expiry), func(t *testing.T) {
+			_, s, id := persistTestSetup(t)
+			t.Cleanup(func() { _ = s.Close() })
+
+			_, first := s.Connect(id)
+			past := time.Now()
+			node, _, err := s.SetNodeExpiry(id, &past)
+			require.NoError(t, err)
+			require.False(t, node.IsOnline().Get())
+			require.Equal(t, 1, node.ActiveSessions())
+
+			changes, second := s.Connect(id)
+			require.Greater(t, second, first)
+
+			for _, c := range changes {
+				for _, patch := range c.PeerPatches {
+					if patch.Online != nil {
+						require.False(t, *patch.Online)
+					}
+				}
+			}
+
+			node, ok := s.GetNodeByID(id)
+			require.True(t, ok)
+			require.False(t, node.IsOnline().Get())
+			require.Equal(t, 2, node.ActiveSessions())
+
+			_, err = s.Disconnect(id, second)
+			require.NoError(t, err)
+
+			node, _, err = s.SetNodeExpiry(id, expiry)
+			require.NoError(t, err)
+			require.True(t, node.IsOnline().Get(), "restoring a key with a live session restores online state")
+			require.Equal(t, 1, node.ActiveSessions())
+
+			_, err = s.Disconnect(id, first)
+			require.NoError(t, err)
+			node, _, err = s.SetNodeExpiry(id, expiry)
+			require.NoError(t, err)
+			require.False(t, node.IsOnline().Get(), "restoring expiry cannot connect a disconnected node")
+			require.Zero(t, node.ActiveSessions())
+		})
+	}
+}
+
+// TestBackfillNodeIPsKeepsLiveSessions guards the IP backfill against
+// replacing NodeStore nodes with their database rows, which drops the
+// runtime-only session count and strands a connected node offline.
+func TestBackfillNodeIPsKeepsLiveSessions(t *testing.T) {
+	dbPath, s, nodeID := persistTestSetup(t)
+	require.NoError(t, s.Close())
+
+	// Dropping the IPv6 prefix gives the backfill work to do.
+	cfg := persistTestConfig(dbPath)
+	cfg.PrefixV6 = nil
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, firstGen := s.Connect(nodeID)
+	s.Connect(nodeID)
+
+	// Connected nodes carry the Hostinfo of their first MapRequest.
+	s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
+		n.Hostinfo = &tailcfg.Hostinfo{Hostname: "persist-node"}
+	})
+
+	changes, _, err := s.BackfillNodeIPs()
+	require.NoError(t, err)
+	require.NotEmpty(t, changes, "precondition: backfill must change the node")
+
+	nv, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+	assert.Len(t, nv.IPs(), 1, "backfill must drop the IPv6 address")
+
+	_, err = s.Disconnect(nodeID, firstGen)
+	require.NoError(t, err)
+
+	nv, ok = s.GetNodeByID(nodeID)
+	require.True(t, ok)
+
+	online, known := nv.IsOnline().GetOk()
+	require.True(t, known)
+	assert.True(t, online, "node must stay online while its second session lives")
 }

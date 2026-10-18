@@ -40,18 +40,23 @@ func httpError(w http.ResponseWriter, err error) {
 // an actionable message derived from the HTTP status code.
 func httpUserError(w http.ResponseWriter, err error) {
 	code := http.StatusInternalServerError
+	userMsg := ""
 
 	if herr, ok := errors.AsType[HTTPError](err); ok {
 		if herr.Code != 0 {
 			code = herr.Code
 		}
 
+		userMsg = herr.UserMsg
+
 		log.Error().Err(herr.Err).Int("code", code).Msgf("user msg: %s", herr.Msg)
 	} else {
 		log.Error().Err(err).Int("code", code).Msg("http internal server error")
 	}
 
-	userMsg := userMessageForStatusCode(code)
+	if userMsg == "" {
+		userMsg = userMessageForStatusCode(code)
+	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(code)
@@ -83,9 +88,10 @@ func userMessageForStatusCode(code int) string {
 
 // HTTPError represents an error that is surfaced to the user via web.
 type HTTPError struct {
-	Code int    // HTTP response code to send to client; 0 means 500
-	Msg  string // Response body to send to client
-	Err  error  // Detailed error to log on the server
+	Code    int    // HTTP response code to send to client; 0 means 500
+	Msg     string // Response body to send to non-browser clients
+	Err     error  // Detailed error to log on the server
+	UserMsg string // Optional safe message for browser-facing error pages
 }
 
 func (e HTTPError) Error() string { return fmt.Sprintf("http error[%d]: %s, %s", e.Code, e.Msg, e.Err) }
@@ -94,6 +100,10 @@ func (e HTTPError) Unwrap() error { return e.Err }
 // NewHTTPError returns an HTTPError containing the given information.
 func NewHTTPError(code int, msg string, err error) HTTPError {
 	return HTTPError{Code: code, Msg: msg, Err: err}
+}
+
+func newHTTPUserError(code int, msg, userMsg string, err error) HTTPError {
+	return HTTPError{Code: code, Msg: msg, Err: err, UserMsg: userMsg}
 }
 
 var errMethodNotAllowed = NewHTTPError(http.StatusMethodNotAllowed, "method not allowed", nil)
@@ -137,19 +147,20 @@ func (h *Headscale) handleVerifyRequest(
 		return NewHTTPError(http.StatusBadRequest, "Bad Request: invalid JSON", fmt.Errorf("parsing DERP client request: %w", err))
 	}
 
-	allow := h.state.ListNodes().ContainsFunc(func(n types.NodeView) bool {
-		return n.NodeKey() == derpAdmitClientRequest.NodePublic
-	})
+	// Every DERP connect lands here, unauthenticated, so use the NodeKey
+	// index rather than scanning every node.
+	nv, ok := h.state.GetNodeByNodeKey(derpAdmitClientRequest.NodePublic)
 
 	resp := &tailcfg.DERPAdmitClientResponse{
-		Allow: allow,
+		Allow: ok && nv.Valid(),
 	}
 
 	return json.NewEncoder(writer).Encode(resp)
 }
 
-// VerifyHandler see https://github.com/tailscale/tailscale/blob/964282d34f06ecc06ce644769c66b0b31d118340/derp/derp_server.go#L1159
-// DERP use verifyClientsURL to verify whether a client is allowed to connect to the DERP server.
+// VerifyHandler answers a DERP server's client-verification POST
+// ([tailcfg.DERPAdmitClientRequest]). A client is admitted while its NodeKey
+// belongs to a registered node; expiry, tags and ephemerality do not gate it.
 func (h *Headscale) VerifyHandler(
 	writer http.ResponseWriter,
 	req *http.Request,

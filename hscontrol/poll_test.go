@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -31,6 +32,69 @@ type delayedSuccessResponseWriter struct {
 
 	mu         sync.Mutex
 	writeCount int
+}
+
+// deadlineResponseWriter simulates an HTTP/2 response blocked on flow control.
+// The write only returns when the handler expires its per-stream write deadline.
+type deadlineResponseWriter struct {
+	header http.Header
+
+	blockWrites atomic.Bool
+	writeCount  atomic.Int64
+
+	writeStarted     chan struct{}
+	writeStartedOnce sync.Once
+	deadlineSet      chan struct{}
+	deadlineSetOnce  sync.Once
+}
+
+func newDeadlineResponseWriter() *deadlineResponseWriter {
+	return &deadlineResponseWriter{
+		header:       make(http.Header),
+		writeStarted: make(chan struct{}),
+		deadlineSet:  make(chan struct{}),
+	}
+}
+
+func (w *deadlineResponseWriter) Header() http.Header {
+	return w.header
+}
+
+func (w *deadlineResponseWriter) WriteHeader(int) {}
+
+func (w *deadlineResponseWriter) Write(data []byte) (int, error) {
+	w.writeCount.Add(1)
+
+	if !w.blockWrites.Load() {
+		return len(data), nil
+	}
+
+	w.writeStartedOnce.Do(func() { close(w.writeStarted) })
+	<-w.deadlineSet
+
+	return 0, context.DeadlineExceeded
+}
+
+func (w *deadlineResponseWriter) Flush() {}
+
+func (w *deadlineResponseWriter) SetWriteDeadline(deadline time.Time) error {
+	if !deadline.IsZero() {
+		w.deadlineSetOnce.Do(func() { close(w.deadlineSet) })
+	}
+
+	return nil
+}
+
+func (w *deadlineResponseWriter) WriteStarted() <-chan struct{} {
+	return w.writeStarted
+}
+
+func (w *deadlineResponseWriter) BlockWrites() {
+	w.blockWrites.Store(true)
+}
+
+func (w *deadlineResponseWriter) WriteCount() int64 {
+	return w.writeCount.Load()
 }
 
 func newDelayedSuccessResponseWriter(firstWriteDelay time.Duration) *delayedSuccessResponseWriter {
@@ -278,6 +342,88 @@ func TestFailedReconnectDoesNotCancelEphemeralGC(t *testing.T) {
 		"failed reconnect must not cancel the ephemeral GC timer (issue #3382)")
 }
 
+// TestEphemeralGCDoesNotDeleteReconnectedNode replays, in order, the
+// interleaving of two sessions from
+// https://github.com/juanfont/headscale/issues/3535: the old session takes the
+// node offline, a reconnect brings it back online and cancels the GC before
+// the old session arms its timer. The armed timer is stale; firing it must not
+// delete a node that has a live session.
+func TestEphemeralGCDoesNotDeleteReconnectedNode(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	app.cfg.Node.Ephemeral.InactivityTimeout = 50 * time.Millisecond
+	app.StartEphemeralGCForTest(t)
+
+	user := app.state.CreateUserForTest("eph-gc-reconnect-user")
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, true, nil, nil)
+	require.NoError(t, err)
+
+	nodeKey := key.NewNode()
+
+	_, err = app.handleRegister(context.Background(), tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "eph-gc-reconnect-node",
+		},
+		Expiry: time.Now().Add(24 * time.Hour),
+	}, key.NewMachine().Public())
+	require.NoError(t, err)
+
+	nodeView, ok := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, ok)
+	require.True(t, nodeView.IsEphemeral(), "test sanity: node must be ephemeral")
+
+	node := nodeView.AsStruct()
+	session := app.newMapSession(context.Background(), tailcfg.MapRequest{
+		Stream:  true,
+		Version: tailcfg.CapabilityVersion(100),
+	}, &recordingResponseWriter{}, node)
+
+	_, oldGen := app.state.Connect(node.ID)
+
+	// Old session's cleanup releases the last session.
+	offline, err := app.state.Disconnect(node.ID, oldGen)
+	require.NoError(t, err)
+	require.NotEmpty(t, offline, "test sanity: old session must take the node offline")
+
+	// Reconnect: what serveLongPoll does at Connect.
+	_, newGen := app.state.Connect(node.ID)
+	app.ephemeralGC.Cancel(node.ID)
+
+	// Old session's cleanup continues and arms the GC.
+	session.afterServeLongPoll()
+
+	online, ok := app.state.GetNodeByID(node.ID)
+	require.True(t, ok)
+	require.True(t, online.Online(), "test sanity: reconnected node must be online")
+
+	// The GC's delete lands only after a NodeStore batch flush, so watch
+	// well past the inactivity timeout.
+	assert.Never(t, func() bool {
+		_, ok := app.state.GetNodeByID(node.ID)
+
+		return !ok
+	}, 2*time.Second, 10*time.Millisecond,
+		"ephemeral GC must not delete a node with a live session (issue #3535)")
+
+	// Once the reconnected session ends, the node is idle and must still be
+	// collected.
+	_, err = app.state.Disconnect(node.ID, newGen)
+	require.NoError(t, err)
+	session.afterServeLongPoll()
+
+	assert.Eventually(t, func() bool {
+		_, ok := app.state.GetNodeByID(node.ID)
+
+		return !ok
+	}, 5*time.Second, 10*time.Millisecond,
+		"an idle ephemeral node must still be garbage collected")
+}
+
 // TestGitHubIssue3129_TransientlyBlockedWriteDoesNotLeaveLiveStaleSession
 // tests the scenario reported in
 // https://github.com/juanfont/headscale/issues/3129.
@@ -385,4 +531,159 @@ func TestGitHubIssue3129_TransientlyBlockedWriteDoesNotLeaveLiveStaleSession(t *
 			return false
 		}
 	}, time.Second, 20*time.Millisecond, "after stale-send cleanup, the stale session should exit")
+}
+
+// TestDeletedNodeEndsLongPoll proves that deleting a node ends its long-poll
+// session, rather than leaving the goroutine streaming to a node that no longer
+// exists. An orphaned session blocks server shutdown on clientStreamsOpen and
+// keeps the client polling instead of re-authenticating.
+//
+// It also pins the teardown latency: a deleted node cannot reconnect, so the
+// session must not spend the reconnect grace period waiting for one.
+//
+// See: https://github.com/juanfont/headscale/issues/3410
+func TestDeletedNodeEndsLongPoll(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("poll-delete-user")
+	createdNode := app.state.CreateRegisteredNodeForTest(user, "poll-delete-node")
+	require.NoError(t, app.state.UpdatePolicyManagerUsersForTest())
+
+	app.cfg.Tuning.NodeMapSessionBufferedChanSize = 1
+
+	// Reload so the NodeStore is populated from the database; the create
+	// helpers only write to the database.
+	app.mapBatcher.Close()
+	require.NoError(t, app.state.Close())
+
+	reloadedState, err := state.NewState(app.cfg)
+	require.NoError(t, err)
+
+	app.state = reloadedState
+	app.mapBatcher = mapper.NewBatcherAndMapper(app.cfg, app.state)
+	app.mapBatcher.Start()
+
+	t.Cleanup(func() {
+		app.mapBatcher.Close()
+		require.NoError(t, app.state.Close())
+	})
+
+	nodeView, ok := app.state.GetNodeByID(createdNode.ID)
+	require.True(t, ok)
+
+	node := nodeView.AsStruct()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	writer := newDelayedSuccessResponseWriter(0)
+	session := app.newMapSession(ctx, tailcfg.MapRequest{
+		Stream:  true,
+		Version: tailcfg.CapabilityVersion(100),
+	}, writer, node)
+
+	serveDone := make(chan struct{})
+
+	go func() {
+		session.serveLongPoll()
+		close(serveDone)
+	}()
+
+	select {
+	case <-writer.FirstWriteStarted():
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected the initial map write to start")
+	}
+
+	cs, err := app.state.DeleteNode(nodeView)
+	require.NoError(t, err)
+	app.Change(cs...)
+
+	// The reconnect grace period is 10s, so a generous bound here still fails
+	// if teardown waits for a node that can never come back.
+	select {
+	case <-serveDone:
+	case <-time.After(3 * time.Second):
+		t.Fatal("deleting a node must promptly end its long-poll session")
+	}
+
+	streamsClosed := make(chan struct{})
+
+	go func() {
+		app.clientStreamsOpen.Wait()
+		close(streamsClosed)
+	}()
+
+	select {
+	case <-streamsClosed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("an orphaned session would block server shutdown on clientStreamsOpen")
+	}
+}
+
+func TestDeletedNodeInterruptsBlockedWrite(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("poll-delete-blocked-user")
+	createdNode := app.state.CreateRegisteredNodeForTest(user, "poll-delete-blocked-node")
+	require.NoError(t, app.state.UpdatePolicyManagerUsersForTest())
+	app.cfg.Tuning.BatchChangeDelay = 20 * time.Millisecond
+	app.cfg.Tuning.NodeMapSessionBufferedChanSize = 1
+
+	app.mapBatcher.Close()
+	require.NoError(t, app.state.Close())
+
+	reloadedState, err := state.NewState(app.cfg)
+	require.NoError(t, err)
+
+	app.state = reloadedState
+	app.mapBatcher = mapper.NewBatcherAndMapper(app.cfg, app.state)
+	app.mapBatcher.Start()
+
+	t.Cleanup(func() {
+		app.mapBatcher.Close()
+		require.NoError(t, app.state.Close())
+	})
+
+	nodeView, ok := app.state.GetNodeByID(createdNode.ID)
+	require.True(t, ok)
+
+	writer := newDeadlineResponseWriter()
+	session := app.newMapSession(t.Context(), tailcfg.MapRequest{
+		Stream:  true,
+		Version: tailcfg.CapabilityVersion(100),
+	}, writer, nodeView.AsStruct())
+
+	serveDone := make(chan struct{})
+
+	go func() {
+		session.serveLongPoll()
+		close(serveDone)
+	}()
+
+	require.Eventually(t, func() bool {
+		return writer.WriteCount() >= 2 && app.mapBatcher.IsConnected(nodeView.ID())
+	}, 2*time.Second, 10*time.Millisecond,
+		"expected the initial map and connect update to be delivered")
+
+	writer.BlockWrites()
+	app.Change(change.SelfUpdate(nodeView.ID()))
+
+	select {
+	case <-writer.WriteStarted():
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected the initial map write to block")
+	}
+
+	cs, err := app.state.DeleteNode(nodeView)
+	require.NoError(t, err)
+	app.Change(cs...)
+
+	select {
+	case <-serveDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("deleting a node must interrupt its blocked map response write")
+	}
 }

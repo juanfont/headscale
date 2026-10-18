@@ -50,7 +50,7 @@ test: check-deps $(GO_SOURCES) go.mod go.sum
 
 # Formatting targets
 .PHONY: fmt
-fmt: fmt-go fmt-mdformat fmt-prettier
+fmt: fmt-go fmt-mdformat fmt-tree
 
 .PHONY: fmt-go
 fmt-go: check-deps $(GO_SOURCES)
@@ -63,10 +63,10 @@ fmt-mdformat: check-deps
 	@echo "Formatting documentation..."
 	mdformat docs/
 
-.PHONY: fmt-prettier
-fmt-prettier: check-deps $(PRETTIER_SOURCES)
-	@echo "Formatting markup and config files..."
-	prettier --write '**/*.{ts,js,md,yaml,yml,sass,css,scss,html}'
+.PHONY: fmt-tree
+fmt-tree: check-deps $(PRETTIER_SOURCES)
+	@echo "Formatting Nix, markup and config files..."
+	nix fmt
 
 # Linting targets
 .PHONY: lint
@@ -100,10 +100,10 @@ client:
 	@echo "Generating API clients..."
 	@tmp=$$(mktemp -t headscale-openapi-3.0.XXXXXX.yaml); \
 	go run ./cmd/gen-openapi -downgrade "$$tmp" && \
-	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.7.1 \
+	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 \
 		-generate types,client -package clientv1 -o gen/client/v1/client.gen.go "$$tmp" && \
 	go run ./cmd/gen-openapi -api v2 -downgrade "$$tmp" && \
-	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.7.1 \
+	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 \
 		-generate types,client -package clientv2 -o gen/client/v2/client.gen.go "$$tmp"; \
 	status=$$?; rm -f "$$tmp"; exit $$status
 
