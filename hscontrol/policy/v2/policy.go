@@ -1841,7 +1841,8 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 			// routes the via grant added to Include.
 			for _, dstPrefix := range resolvedDstPrefixes[i] {
 				for _, p := range result.Include {
-					if grantCoversRoute(dstPrefix, p, reachesInternet) && !slices.Contains(result.UsePrimary, p) {
+					if !tsaddr.IsExitRoute(p) && dstPrefix.Overlaps(p) &&
+						!slices.Contains(result.UsePrimary, p) {
 						result.UsePrimary = append(result.UsePrimary, p)
 					}
 				}
@@ -1872,12 +1873,6 @@ func isPreferredViaPrimary(
 ) bool {
 	return primaryID == 0 || since.Before(primarySince) ||
 		(since.Equal(primarySince) && node.ID() < primaryID)
-}
-
-// Only a grant to the internet covers an exit route,
-// as [types.Node.CanAccessRoutes] decides.
-func grantCoversRoute(dst, route netip.Prefix, reachesInternet bool) bool {
-	return dst.Overlaps(route) && (reachesInternet || !tsaddr.IsExitRoute(route))
 }
 
 // grantReachesInternet reports whether a grant's destinations, resolved
