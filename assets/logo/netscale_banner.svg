@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 256" width="1024" height="256" role="img" aria-label="Net-Scale wordmark">
+  <defs>
+    <linearGradient id="nsbAccent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3fd6ff"/>
+      <stop offset="0.5" stop-color="#2f8dfb"/>
+      <stop offset="1" stop-color="#7a5cff"/>
+    </linearGradient>
+    <linearGradient id="nsbText" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#3fd6ff"/>
+      <stop offset="1" stop-color="#7a5cff"/>
+    </linearGradient>
+  </defs>
+
+  <!-- mark: mini N mesh -->
+  <g transform="translate(48,48) scale(0.31)">
+    <g fill="url(#nsbAccent)">
+      <circle cx="160" cy="176" r="40"/>
+      <circle cx="336" cy="336" r="40"/>
+    </g>
+    <g stroke="url(#nsbAccent)" stroke-width="16" stroke-linecap="round">
+      <line x1="160" y1="336" x2="160" y2="176"/>
+      <line x1="160" y1="176" x2="336" y2="336"/>
+      <line x1="336" y1="336" x2="336" y2="176"/>
+    </g>
+    <g fill="#4e657f">
+      <circle cx="336" cy="176" r="40"/>
+      <circle cx="160" cy="336" r="40"/>
+      <circle cx="404" cy="256" r="20"/>
+      <circle cx="112" cy="256" r="20"/>
+    </g>
+  </g>
+
+  <!-- wordmark -->
+  <text x="220" y="168" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="132" font-weight="700" fill="url(#nsbText)" letter-spacing="-2">Net-Scale</text>
+</svg>

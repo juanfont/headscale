@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Net-Scale logo">
+  <defs>
+    <linearGradient id="nsBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#101b2d"/>
+      <stop offset="1" stop-color="#060d18"/>
+    </linearGradient>
+    <linearGradient id="nsAccent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3fd6ff"/>
+      <stop offset="0.5" stop-color="#2f8dfb"/>
+      <stop offset="1" stop-color="#7a5cff"/>
+    </linearGradient>
+    <linearGradient id="nsDim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3f5470"/>
+      <stop offset="1" stop-color="#26364c"/>
+    </linearGradient>
+    <radialGradient id="nsGlow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#3fd6ff" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#3fd6ff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- rounded tile -->
+  <rect x="16" y="16" width="480" height="480" rx="104" fill="url(#nsBg)"/>
+  <rect x="16" y="16" width="480" height="480" rx="104" fill="none" stroke="#22334a" stroke-width="2"/>
+
+  <!-- glow behind the gradient node -->
+  <ellipse cx="336" cy="336" rx="120" ry="120" fill="url(#nsGlow)"/>
+
+  <!-- mesh links: dim network behind -->
+  <g stroke="url(#nsDim)" stroke-width="10" stroke-linecap="round" opacity="0.85">
+    <line x1="160" y1="176" x2="256" y2="256"/>
+    <line x1="352" y1="176" x2="256" y2="256"/>
+    <line x1="256" y1="256" x2="160" y2="336"/>
+    <line x1="256" y1="256" x2="336" y2="336"/>
+    <line x1="160" y1="336" x2="336" y2="336"/>
+  </g>
+
+  <!-- N silhouette: bold accent links -->
+  <g stroke="url(#nsAccent)" stroke-width="16" stroke-linecap="round">
+    <line x1="160" y1="336" x2="160" y2="176"/>
+    <line x1="160" y1="176" x2="336" y2="336"/>
+    <line x1="336" y1="336" x2="336" y2="176"/>
+  </g>
+
+  <!-- dim mesh nodes -->
+  <g fill="url(#nsDim)">
+    <circle cx="256" cy="256" r="30"/>
+    <circle cx="352" cy="176" r="22"/>
+    <circle cx="112" cy="256" r="18"/>
+    <circle cx="400" cy="256" r="18"/>
+    <circle cx="256" cy="112" r="16"/>
+    <circle cx="256" cy="400" r="16"/>
+  </g>
+
+  <!-- N corner nodes -->
+  <g fill="url(#nsAccent)">
+    <circle cx="160" cy="176" r="40"/>
+    <circle cx="336" cy="176" r="40"/>
+    <circle cx="336" cy="336" r="40"/>
+  </g>
+  <!-- special: bottom-left node (the "self") dim like tailscale motif -->
+  <circle cx="160" cy="336" r="40" fill="url(#nsDim)"/>
+
+  <!-- node highlights -->
+  <circle cx="336" cy="336" r="16" fill="#ffffff" opacity="0.55"/>
+  <circle cx="160" cy="176" r="14" fill="#ffffff" opacity="0.4"/>
+</svg>
