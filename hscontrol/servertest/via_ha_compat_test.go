@@ -2,9 +2,11 @@
 // golden data captured from Tailscale SaaS (v37-v46, v64, v65). These scenarios
 // exercise the interaction between via grant steering and HA primary
 // route election with varying combinations of shared/unique via tags,
-// regular grants, and multiple HA pairs.
+// regular grants, and multiple HA pairs. TestViaGrantHAFailoverCompat replays
+// one such route through failover, step by step.
 //
 // Test data source: ../policy/v2/testdata/grant_results/via-grant-v{37..46,64,65}.hujson
+// and testdata/steps/via-ha-failover.hujson, loaded by name.
 // Source format:    github.com/juanfont/headscale/hscontrol/types/testcapture
 
 package servertest_test
@@ -13,6 +15,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"maps"
 	"net/http"
@@ -213,6 +216,149 @@ func runViaHACompat(t *testing.T, c *testcapture.Capture) {
 			})
 		})
 	}
+}
+
+// viaHAFailoverSkipReasons lists checks where headscale differs from SaaS,
+// keyed <test_id>/<step>/<viewer>/<check>. A listed check that matches
+// fails, so a fix must delete its entry.
+var viaHAFailoverSkipReasons = map[string]string{
+	"via-ha-failover/V1/client-a/route-owner": viaOfflineRouterKept,
+	"via-ha-failover/V9/client-a/route-owner": viaOfflineRouterKept,
+
+	"via-ha-failover/V2/client-a/route-owner":  viaLowestIDAfterRestart,
+	"via-ha-failover/V10/client-a/route-owner": viaLowestIDAfterRestart,
+
+	"via-ha-failover/V5/client-a/route-owner":  viaExpiredRouterKept,
+	"via-ha-failover/V5b/client-a/route-owner": viaExpiredRouterKept,
+
+	"via-ha-failover/V12/client-a/route-owner": readvertisedRouterTakesRoute,
+	"via-ha-failover/V12/client-b/route-owner": readvertisedRouterTakesRoute,
+}
+
+const (
+	viaOfflineRouterKept         = "VIA_OFFLINE_ROUTER_KEPT: headscale keeps a via route on an offline router while another router of the via group is online; SaaS moves it to the online one"
+	viaExpiredRouterKept         = "VIA_EXPIRED_ROUTER_KEPT: headscale keeps a via route on a router whose key expired while another router of the via group is live; SaaS moves it to the live one"
+	viaLowestIDAfterRestart      = "VIA_LOWEST_ID_AFTER_RESTART: headscale serves a via route from the group's lowest-ID router once it reconnects; SaaS keeps the router that served while it was down"
+	readvertisedRouterTakesRoute = "READVERTISED_ROUTER_TAKES_ROUTE: SaaS hands a route back to an HA router that withdrew and re-advertised it, taking it from the router that served it meanwhile; headscale keeps that router"
+)
+
+// viaHAFailoverViewers are the clients whose views are compared: one reaches
+// the route only through the via group, the other through the global
+// election. The routers' own views are stored, not compared; route-cost owns
+// them.
+var viaHAFailoverViewers = []string{"client-a", "client-b"}
+
+// TestViaGrantHAFailoverCompat replays one route served by a non-via router
+// and a via group of two through crashes and returns, the whole via group
+// down, key expiry and restore (an expired router re-advertising included),
+// approval loss, withdraw, re-advertise and delete. After each step it
+// compares, per viewer, which routers carry the route and which peers it
+// sees.
+func TestViaGrantHAFailoverCompat(t *testing.T) {
+	t.Parallel()
+
+	t.Run("via-ha-failover", func(t *testing.T) {
+		t.Parallel()
+
+		runViaHAFailoverCompat(t, "via-ha-failover")
+	})
+}
+
+func runViaHAFailoverCompat(t *testing.T, id string) {
+	t.Helper()
+
+	c := readStepCapture(t, id)
+	r := newStepReplay(t, c)
+	evaluated := map[string]bool{}
+
+	for _, step := range c.Steps {
+		require.Equal(t, "observed", step.Result, "%s: the replay follows every step", step.Name)
+
+		// The probe let each action land before the next, and which router
+		// wins depends on that order.
+		for _, a := range step.Actions {
+			one := step
+			one.Actions = []testcapture.Action{a}
+			require.Empty(t, r.apply(t, one), "%s: every login succeeds", step.Name)
+			r.waitSession(t, step.Name, a)
+		}
+
+		checks := make([]stepCheck, 0, 2*len(viaHAFailoverViewers))
+
+		for _, viewer := range viaHAFailoverViewers {
+			saas := step.Captures[viewer].Netmap
+			require.NotNil(t, saas, "%s: no capture of %s", step.Name, viewer)
+
+			cl := r.clients[viewer]
+			checks = append(checks,
+				stepCheck{viewer + "/route-owner", routeOwners(saas, r.saasAlias), func() string {
+					return routeOwners(cl.Netmap(), r.hsAlias)
+				}},
+				stepCheck{viewer + "/peers", peerAliases(saas, r.saasAlias), func() string {
+					return peerAliases(cl.Netmap(), r.hsAlias)
+				}},
+			)
+		}
+
+		prefix := id + "/" + step.Name + "/"
+
+		t.Run(step.Name, func(t *testing.T) {
+			holdChecks(t, viaHAFailoverSkipReasons, prefix, checks, evaluated)
+		})
+	}
+
+	for k := range viaHAFailoverSkipReasons {
+		if strings.HasPrefix(k, id+"/") && !evaluated[k] {
+			t.Errorf("skip entry %q names no check", k)
+		}
+	}
+}
+
+// routeOwners says, per subnet route among the peers in nm that alias
+// names, which of them carry it in AllowedIPs and which in PrimaryRoutes.
+func routeOwners(nm *netmap.NetworkMap, alias func(tailcfg.NodeID) (string, bool)) string {
+	if nm == nil {
+		return "no netmap"
+	}
+
+	allowed, primary := map[string][]string{}, map[string][]string{}
+
+	for _, p := range nm.Peers {
+		name, ok := alias(p.ID())
+		if !ok {
+			continue
+		}
+
+		for _, pfx := range p.AllowedIPs().All() {
+			if !isTailscaleIP(pfx) {
+				allowed[pfx.String()] = append(allowed[pfx.String()], name)
+			}
+		}
+
+		for _, pfx := range p.PrimaryRoutes().All() {
+			primary[pfx.String()] = append(primary[pfx.String()], name)
+		}
+	}
+
+	routes := slices.Collect(maps.Keys(allowed))
+	for pfx := range primary {
+		if _, ok := allowed[pfx]; !ok {
+			routes = append(routes, pfx)
+		}
+	}
+
+	if len(routes) == 0 {
+		return "none"
+	}
+
+	slices.Sort(routes)
+
+	out := make([]string, 0, len(routes))
+	for _, pfx := range routes {
+		out = append(out, fmt.Sprintf("%s allowed %s primary %s", pfx, sortedStrings(allowed[pfx]), sortedStrings(primary[pfx])))
+	}
+
+	return strings.Join(out, "; ")
 }
 
 // compareCaptureNetmap compares headscale's [tailcfg.MapResponse] against a
@@ -1023,6 +1169,71 @@ func (r *stepReplay) node(t *testing.T, alias string) types.NodeView {
 	require.Len(t, nodes, 1, "%s: nodes on its machine", alias)
 
 	return nodes[0]
+}
+
+// waitSession holds a kill or start until headscale shows the node's
+// session gone or back, as the probe waited for the device's control
+// connection.
+func (r *stepReplay) waitSession(t *testing.T, stepName string, a testcapture.Action) {
+	t.Helper()
+
+	if a.Kind != "kill" && a.Kind != "start" {
+		return
+	}
+
+	want := a.Kind == "start"
+
+	require.Eventuallyf(t, func() bool {
+		nodes := r.machineNodes(a.Node)
+		if len(nodes) != 1 {
+			return false
+		}
+
+		online := nodes[0].IsOnline()
+
+		return online.Valid() && online.Get() == want
+	}, 30*time.Second, 50*time.Millisecond, "%s: %s %s", stepName, a.Kind, a.Node)
+}
+
+// saasAlias is the capture alias of SaaS node id.
+func (r *stepReplay) saasAlias(id tailcfg.NodeID) (string, bool) {
+	for alias, saasID := range r.c.NodeIDs {
+		if saasID == id {
+			return alias, true
+		}
+	}
+
+	return "", false
+}
+
+// hsAlias is the alias whose machine holds node id.
+func (r *stepReplay) hsAlias(id tailcfg.NodeID) (string, bool) {
+	for alias := range r.clients {
+		for _, nv := range r.machineNodes(alias) {
+			if nv.ID().NodeID() == id {
+				return alias, true
+			}
+		}
+	}
+
+	return "", false
+}
+
+// peerAliases names the peers in nm that alias resolves.
+func peerAliases(nm *netmap.NetworkMap, alias func(tailcfg.NodeID) (string, bool)) string {
+	if nm == nil {
+		return "no netmap"
+	}
+
+	var out []string
+
+	for _, p := range nm.Peers {
+		if name, ok := alias(p.ID()); ok {
+			out = append(out, name)
+		}
+	}
+
+	return sortedStrings(out)
 }
 
 func (r *stepReplay) announce(ctx context.Context, t *testing.T, alias string, routes []string) {
