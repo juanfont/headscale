@@ -1090,6 +1090,91 @@ func TestGrantViaExitNodeInternetVisibility(t *testing.T) {
 		})
 }
 
+// TestGrantViaTwoExitGrantsWithACL verifies that a viewer matching two
+// via exit grants with different tags sees both exit nodes, even when a
+// non-via rule from the same viewer overlaps the exit routes.
+func TestGrantViaTwoExitGrantsWithACL(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t)
+	alice := srv.CreateUser(t, "alice")
+
+	exitRouteV4 := netip.MustParsePrefix("0.0.0.0/0")
+	exitRouteV6 := netip.MustParsePrefix("::/0")
+
+	changed, err := srv.State().SetPolicy([]byte(`{
+		"groups": {"group:eng": ["alice@"]},
+		"tagOwners": {"tag:exit-a": [], "tag:exit-b": []},
+		"grants": [
+			{
+				"src": ["group:eng"],
+				"dst": ["autogroup:internet"],
+				"ip": ["*"],
+				"via": ["tag:exit-a"]
+			},
+			{
+				"src": ["autogroup:member"],
+				"dst": ["autogroup:internet"],
+				"ip": ["*"],
+				"via": ["tag:exit-b"]
+			}
+		],
+		"acls": [
+			{"action": "accept", "src": ["autogroup:member"], "dst": ["tag:exit-b:*"]},
+			{"action": "accept", "src": ["group:eng"], "dst": ["tag:exit-a:*"]}
+		]
+	}`))
+	require.NoError(t, err)
+
+	if changed {
+		changes, err := srv.State().ReloadPolicy()
+		require.NoError(t, err)
+		srv.App.Change(changes...)
+	}
+
+	laptop := servertest.NewClient(t, srv, "alice-laptop",
+		servertest.WithUser(alice))
+
+	for _, name := range []string{"exit-a", "exit-b"} {
+		exit := servertest.NewClient(t, srv, name,
+			servertest.WithUser(alice),
+			servertest.WithTags("tag:"+name))
+
+		exit.Direct().SetHostinfo(&tailcfg.Hostinfo{
+			BackendLogID: "servertest-" + name,
+			Hostname:     name,
+			RoutableIPs:  []netip.Prefix{exitRouteV4, exitRouteV6},
+		})
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = exit.Direct().SendUpdate(ctx)
+
+		cancel()
+
+		_, routeChange, err := srv.State().SetApprovedRoutes(
+			findNodeID(t, srv, name), []netip.Prefix{exitRouteV4, exitRouteV6})
+		require.NoError(t, err)
+		srv.App.Change(routeChange)
+	}
+
+	laptop.WaitForCondition(t, "alice-laptop sees exit-a and exit-b with exit AllowedIPs",
+		15*time.Second,
+		func(nm *netmap.NetworkMap) bool {
+			seen := map[string]int{}
+
+			for _, p := range nm.Peers {
+				for i := range p.AllowedIPs().Len() {
+					switch p.AllowedIPs().At(i) {
+					case exitRouteV4, exitRouteV6:
+						seen[p.Hostinfo().Hostname()]++
+					}
+				}
+			}
+
+			return seen["exit-a"] == 2 && seen["exit-b"] == 2
+		})
+}
+
 // hasCapMatches returns true if any Match in the slice contains a
 // non-empty Caps (CapMatch) list.
 func hasCapMatches(matches []filtertype.Match) bool {
