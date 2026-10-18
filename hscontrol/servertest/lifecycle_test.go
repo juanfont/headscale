@@ -463,6 +463,93 @@ func TestLoginProfilesAndRestart(t *testing.T) {
 	}, 10*time.Second, 50*time.Millisecond)
 }
 
+// TestPathsDiscoAndExpiryHelpers pins the shapes of the path, disco and
+// expiry helpers: reported endpoints and home DERP reach a peer and survive a
+// restart, a disco rotation reaches the peer too, an expired node's rotation
+// leaves a login waiting while it keeps polling, and a client's own expiry
+// request is answered.
+func TestPathsDiscoAndExpiryHelpers(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t)
+	user := srv.CreateUser(t, "owner")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	ep := tailcfg.Endpoint{Addr: netip.MustParseAddrPort("192.0.2.1:41641"), Type: tailcfg.EndpointExplicitConf}
+	hi := &tailcfg.Hostinfo{
+		BackendLogID: "servertest-subject",
+		Hostname:     "subject",
+		NetInfo:      &tailcfg.NetInfo{PreferredDERP: 1},
+	}
+
+	subject := servertest.NewClient(t, srv, "subject",
+		servertest.WithUser(user), servertest.WithHostinfo(hi), servertest.WithEndpoints(ep))
+	viewer := servertest.NewClient(t, srv, "viewer", servertest.WithUser(user))
+
+	id := findNodeID(t, srv, "subject")
+	peerOf := func(nm *netmap.NetworkMap) (tailcfg.NodeView, bool) {
+		for _, p := range nm.Peers {
+			if p.ID() == id.NodeID() {
+				return p, true
+			}
+		}
+
+		return tailcfg.NodeView{}, false
+	}
+
+	viewer.WaitForCondition(t, "subject's paths", 10*time.Second, func(nm *netmap.NetworkMap) bool {
+		p, ok := peerOf(nm)
+		return ok && p.HomeDERP() == 1 && p.Endpoints().Len() == 1
+	})
+
+	// A restarted tailscaled no longer holds the key it joined with, so
+	// later logins carry none.
+	require.NoError(t, subject.Restart(ctx, hi))
+
+	before, _ := peerOf(viewer.Netmap())
+
+	require.NoError(t, subject.RotateDisco(ctx))
+	viewer.WaitForCondition(t, "subject's new disco key", 10*time.Second, func(nm *netmap.NetworkMap) bool {
+		p, ok := peerOf(nm)
+		return ok && p.DiscoKey() != before.DiscoKey()
+	})
+
+	soon := time.Now().Add(time.Hour)
+
+	err := subject.SetExpirySooner(ctx, soon)
+	if err != nil {
+		attempts := subject.RegisterAttempts()
+		assert.Equal(t, err.Error(), attempts[len(attempts)-1].Err, "a refusal is the last attempt")
+	} else {
+		node, ok := srv.State().GetNodeByID(id)
+		require.True(t, ok)
+		assert.WithinDuration(t, soon, node.Expiry().Get(), time.Second, "the requested expiry is stored")
+	}
+
+	now := time.Now()
+	_, c, err := srv.State().SetNodeExpiry(id, &now)
+	require.NoError(t, err)
+	srv.App.Change(c)
+	subject.WaitForCondition(t, "own key expired", 10*time.Second, func(nm *netmap.NetworkMap) bool {
+		return nm.SelfKeyExpiry().Before(time.Now())
+	})
+
+	attempts := len(subject.RegisterAttempts())
+	updates := subject.UpdateCount()
+
+	require.NoError(t, subject.RotateDisco(ctx))
+
+	got := subject.RegisterAttempts()[attempts:]
+	require.NotEmpty(t, got)
+	assert.NotEmpty(t, got[0].AuthURL, "an expired node is asked to log in")
+	assert.NotEmpty(t, got[0].OldNodeKey, "with a new node key")
+
+	require.Eventually(t, func() bool { return subject.UpdateCount() > updates }, 10*time.Second, 50*time.Millisecond,
+		"the poll goes on while the login waits")
+}
+
 func TestNodeExpiryRouteFailover(t *testing.T) {
 	t.Parallel()
 
