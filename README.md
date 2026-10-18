@@ -4,29 +4,29 @@
 
 ![ci](https://github.com/juanfont/headscale/actions/workflows/test.yml/badge.svg)
 
-**Net-Scale** is a fork of headscale: an open source, self-hosted
-implementation of the Tailscale control server.
+An open source, self-hosted implementation of the Tailscale control server,
+with support for multi-node setups and additional identity-provider
+integrations.
 
 ## Project aim
 
-Net-Scale aims to be a better alternative to the official Tailscale
-control plane, and a multi-node evolution of headscale: instead of
-being limited to a single tailnet, it is built to manage networks
-across multiple nodes.
+Net-Scale aims to be a better alternative to the official Tailscale control
+plane, and a multi-node evolution of headscale: instead of being limited to a
+single tailnet, it is built to manage networks across multiple nodes.
 
-On top of upstream headscale, Net-Scale adds first-class OIDC group
-support for ACL policies using the standard Tailscale-compatible
-`group:<name>` principal — see [docs/ref/oidc-groups.md](docs/ref/oidc-groups.md).
+On top of upstream headscale, Net-Scale adds first-class OIDC group support
+for ACL policies using the standard Tailscale-compatible `group:<name>`
+principal — see [docs/ref/oidc-groups.md](docs/ref/oidc-groups.md).
 
-Join our [Discord server](https://discord.gg/c84AZQhmpx) for a chat.
+## Credits
 
-**Note:** Always select the same GitHub tag as the released version you use
-to ensure you have the correct example configuration. The `main` branch might
-contain unreleased changes. The documentation is available for stable and
-development versions:
-
-- [Documentation for the stable version](https://headscale.net/stable/)
-- [Documentation for the development version](https://headscale.net/development/)
+Net-Scale is a fork of
+[headscale](https://github.com/juanfont/headscale) — a self-hosted,
+open-source alternative to the [Tailscale](https://tailscale.com/) control
+server. Without the headscale maintainers and contributors this project would
+not exist. Please consider supporting them: see the
+[sponsorship and donation buttons](https://github.com/sponsors/juanfont) on
+the upstream repo.
 
 ## What is Tailscale
 
@@ -48,32 +48,22 @@ A [Tailscale network (tailnet)](https://tailscale.com/docs/concepts/tailnet) is
 private network which Tailscale assigns to a user in terms of private users or an
 organisation.
 
-## Design goal
-
-Headscale aims to implement a self-hosted, open source alternative to the
-[Tailscale](https://tailscale.com/) control server. Headscale's goal is to
-provide self-hosters and hobbyists with an open-source server they can use for
-their projects and labs. It implements a narrow scope, a _single_ Tailscale
-network (tailnet), suitable for a personal use, or a small open-source
-organisation.
-
-## Supporting Headscale
-
-If you like `headscale` and find it useful, there is a sponsorship and donation
-buttons available in the repo.
-
 ## Features
 
-Please see ["Features" in the documentation](https://headscale.net/stable/about/features/).
+- Everything upstream headscale implements — please see
+  ["Features" in the documentation](https://headscale.net/stable/about/features/).
+- **OIDC groups in ACL policies** (Net-Scale specific): use your identity
+  provider's `groups` claim directly as `group:<name>` principals in your
+  policy file — see [docs/ref/oidc-groups.md](docs/ref/oidc-groups.md).
 
 ## Client OS support
 
 Please see ["Client and operating system support" in the documentation](https://headscale.net/stable/about/clients/).
 
-## Running headscale
+## Running Net-Scale
 
 **Please note that we do not support nor encourage the use of reverse proxies
-and container to run Headscale.**
+and container to run Net-Scale.**
 
 Please have a look at the [`documentation`](https://headscale.net/stable/).
 
@@ -85,35 +75,18 @@ Development builds from the `main` branch are available as container images and
 binaries. See the [development builds](https://headscale.net/stable/setup/install/main/)
 documentation for details.
 
-## Talks
-
-- Fosdem 2026 (video): [Headscale & Tailscale: The complementary open source clone](https://fosdem.org/2026/schedule/event/KYQ3LL-headscale-the-complementary-open-source-clone/)
-  - presented by Kristoffer Dalby
-- Fosdem 2023 (video): [Headscale: How we are using integration testing to reimplement Tailscale](https://fosdem.org/2023/schedule/event/goheadscale/)
-  - presented by Juan Font Alonso and Kristoffer Dalby
-
-## Disclaimer
-
-This project is not associated with Tailscale Inc.
-
-However, one of the active maintainers for Headscale [is employed by Tailscale](https://tailscale.com/blog/opensource) and he is allowed to spend work hours contributing to the project. Contributions from this maintainer are reviewed by other maintainers.
-
-The maintainers work together on setting the direction for the project. The underlying principle is to serve the community of self-hosters, enthusiasts and hobbyists - while having a sustainable project.
-
 ## Contributing
 
 Please read the [CONTRIBUTING.md](./CONTRIBUTING.md) file.
 
-Have also a look at our [AI_POLICY.md](./AI_POLICY.md).
-
 ### Requirements
 
-To contribute to headscale you would need the latest version of [Go](https://golang.org)
-and [Buf](https://buf.build) (Protobuf generator).
+To contribute to Net-Scale you would need the latest version of
+[Go](https://golang.org) and [Buf](https://buf.build) (Protobuf generator).
 
 We recommend using [Nix](https://nixos.org/) to setup a development environment. This can
 be done with `nix develop`, which will install the tools and give you a shell.
-This guarantees that you will have the same dev env as `headscale` maintainers.
+This guarantees that you will have the same dev env as the project maintainers.
 
 ### Code style
 
@@ -191,10 +164,9 @@ make build
 
 The Makefile will warn you if any required tools are missing and suggest running `nix develop`. Run `make help` to see all available targets.
 
-## Contributors
+## Disclaimer
 
-<a href="https://github.com/juanfont/headscale/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=juanfont/headscale" />
-</a>
+This project is not associated with Tailscale Inc.
 
-Made with [contrib.rocks](https://contrib.rocks).
+Net-Scale is a community fork of headscale and inherits full credit for the
+upstream project.
