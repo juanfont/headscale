@@ -1,6 +1,6 @@
 # Net-Scale
 
-![headscale logo](./docs/assets/logo/headscale3_header_stacked_left.png)
+![Net-Scale logo](./assets/logo/netscale_banner.svg)
 
 ![ci](https://github.com/juanfont/headscale/actions/workflows/test.yml/badge.svg)
 
