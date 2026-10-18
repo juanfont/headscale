@@ -1566,7 +1566,7 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 			// routes the via grant added to Include.
 			for _, dstPrefix := range resolvedDstPrefixes[i] {
 				for _, p := range result.Include {
-					if dstPrefix.Overlaps(p) &&
+					if !tsaddr.IsExitRoute(p) && dstPrefix.Overlaps(p) &&
 						!slices.Contains(result.UsePrimary, p) {
 						result.UsePrimary = append(result.UsePrimary, p)
 					}
