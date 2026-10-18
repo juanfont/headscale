@@ -1,4 +1,4 @@
-	package db
+package db
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"time"
+
 	"github.com/glebarez/sqlite"
 	"github.com/go-gormigrate/gormigrate/v2"
 	"github.com/juanfont/headscale/hscontrol/db/sqliteconfig"

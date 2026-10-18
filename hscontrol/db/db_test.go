@@ -699,3 +699,214 @@ func TestSQLiteAllTestdataMigrations(t *testing.T) {
 		})
 	}
 }
+
+// TestCredentialTableRoundTrip confirms the unified credentials table is created
+// by migration (newSQLiteTestDB validates the schema with squibble) and stores
+// and reads back a credential of each kind.
+func TestCredentialTableRoundTrip(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
+	now := time.Now().UTC()
+	creds := []types.Credential{
+		{Kind: types.CredentialAPIKey, Identifier: "apikey000001", Hash: []byte("$h1"), CreatedAt: &now},
+		{Kind: types.CredentialPreAuthKey, Identifier: "authkey00001", Hash: []byte("$h2"), Reusable: true, Tags: []string{"tag:a"}, CreatedAt: &now},
+		{Kind: types.CredentialOAuthClient, Identifier: "client000001", Hash: []byte("$h3"), Scopes: []string{"devices:read"}, CreatedAt: &now},
+		{Kind: types.CredentialOAuthToken, Identifier: "oauthtok0001", Hash: []byte("$h4"), ClientID: "client000001", CreatedAt: &now},
+	}
+
+	for i := range creds {
+		require.NoError(t, db.DB.Save(&creds[i]).Error)
+	}
+
+	var got []types.Credential
+	require.NoError(t, db.DB.Order("id").Find(&got).Error)
+	require.Len(t, got, 4)
+	assert.Equal(t, types.CredentialPreAuthKey, got[1].Kind)
+	assert.Equal(t, []string{"tag:a"}, got[1].Tags)
+	assert.Equal(t, "client000001", got[3].ClientID)
+
+	// The composite (kind, identifier) index permits the same identifier under a
+	// different kind but rejects a duplicate within a kind.
+	require.NoError(t, db.DB.Save(&types.Credential{
+		Kind: types.CredentialAPIKey, Identifier: "client000001", Hash: []byte("$h5"), CreatedAt: &now,
+	}).Error)
+
+	err = db.DB.Save(&types.Credential{
+		Kind: types.CredentialAPIKey, Identifier: "apikey000001", Hash: []byte("$dup"), CreatedAt: &now,
+	}).Error
+	require.Error(t, err, "duplicate (kind, identifier) must be rejected")
+}
+
+// requireCredentialConstraints asserts the credentials table rejects rows the
+// application must never write: an unknown kind, a hash in no known format,
+// and a missing hash on a usable (unrevoked) row.
+func requireCredentialConstraints(t *testing.T, db *gorm.DB) {
+	t.Helper()
+
+	now := time.Now().UTC()
+
+	bad := map[string]types.Credential{
+		"unknown kind":        {Kind: "bogus", Identifier: "chk000000001", Hash: []byte("$sha256$00")},
+		"hash format":         {Kind: types.CredentialAPIKey, Identifier: "chk000000002", Hash: []byte("plain")},
+		"missing hash usable": {Kind: types.CredentialAPIKey, Identifier: "chk000000003"},
+	}
+	for name, cred := range bad {
+		require.Error(t, db.Create(&cred).Error, name)
+	}
+
+	// Only the migration writes hashless rows, as NULL.
+	require.NoError(t, db.Exec(
+		`INSERT INTO credentials (kind, identifier, hash, revoked) VALUES (?, ?, NULL, ?)`,
+		types.CredentialPreAuthKey, "chk000000004", now,
+	).Error, "a revoked row may lack a hash")
+}
+
+func TestCredentialConstraints(t *testing.T) {
+	t.Run("fresh sqlite", func(t *testing.T) {
+		db, err := newSQLiteTestDB()
+		require.NoError(t, err)
+		requireCredentialConstraints(t, db.DB)
+	})
+
+	// TODO(kradalby): remove in 0.31 with the credentials migration.
+	t.Run("migrated sqlite", func(t *testing.T) {
+		hsdb := dbForTestWithPath(t, "testdata/sqlite/headscale_0.29.3_dump.sql")
+		requireCredentialConstraints(t, hsdb.DB)
+	})
+
+	t.Run("fresh postgres", func(t *testing.T) {
+		requireCredentialConstraints(t, newPostgresTestDB(t).DB)
+	})
+}
+
+// TestNodeAuthKeyOnlyResolvesPreAuthKeys points a node at a credential of
+// another kind, which the shared table's foreign key permits, and asserts it
+// is not loaded as the node's pre-auth key.
+func TestNodeAuthKeyOnlyResolvesPreAuthKeys(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
+	user := db.CreateUserForTest("kind-filter")
+	node := db.CreateNodeForTest(user, "kind-filter")
+
+	_, apiKey, err := db.CreateAPIKey(nil)
+	require.NoError(t, err)
+
+	require.NoError(t, db.DB.Model(&types.Node{}).Where("id = ?", node.ID).
+		Update("auth_key_id", apiKey.ID).Error)
+
+	got, err := db.GetNodeByID(node.ID)
+	require.NoError(t, err)
+	assert.Nil(t, got.AuthKey, "an API key must not load as a node's pre-auth key")
+}
+
+func sqliteTestConfig(path string) *types.Config {
+	return &types.Config{
+		Database: types.DatabaseConfig{
+			Type:   "sqlite3",
+			Sqlite: types.SqliteConfig{Path: path},
+		},
+		Policy: types.PolicyConfig{Mode: types.PolicyModeDB},
+	}
+}
+
+// TestSQLiteMigrationKeepsPreAuthKeySequence deletes keys before the upgrade
+// (the old table's AUTOINCREMENT remembers them) and asserts their ids are
+// not handed out again, so a stale request by id cannot hit a new key.
+//
+// TODO(kradalby): remove in 0.31 with the credentials migration.
+func TestSQLiteMigrationKeepsPreAuthKeySequence(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale_test.db"
+
+	require.NoError(t, createSQLiteFromSQLFile("testdata/sqlite/headscale_0.29.3_dump.sql", dbPath))
+
+	raw, err := sql.Open("sqlite", dbPath)
+	require.NoError(t, err)
+
+	_, err = raw.ExecContext(context.Background(), `UPDATE sqlite_sequence SET seq = 9 WHERE name = 'pre_auth_keys'`)
+	require.NoError(t, err)
+	require.NoError(t, raw.Close())
+
+	hsdb, err := NewHeadscaleDatabase(sqliteTestConfig(dbPath))
+	require.NoError(t, err)
+
+	pak, err := hsdb.CreatePreAuthKey(nil, false, false, nil, []string{"tag:x"})
+	require.NoError(t, err)
+	assert.Greater(t, pak.ID, uint64(9))
+}
+
+// TestRevokedKeysBackingNodesSurviveCollection revokes the keys behind the
+// migrated ephemeral nodes, runs the collector past the retention window and
+// reloads: keys still backing a node must survive, so the nodes stay
+// ephemeral, while unreferenced revoked keys are reaped.
+//
+// TODO(kradalby): seed without the 0.29.3 fixture in 0.31, when the
+// credentials migration is dropped.
+func TestRevokedKeysBackingNodesSurviveCollection(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale_test.db"
+
+	require.NoError(t, createSQLiteFromSQLFile("testdata/sqlite/headscale_0.29.3_dump.sql", dbPath))
+
+	hsdb, err := NewHeadscaleDatabase(sqliteTestConfig(dbPath))
+	require.NoError(t, err)
+
+	unused, err := hsdb.CreatePreAuthKey(nil, false, false, nil, []string{"tag:x"})
+	require.NoError(t, err)
+
+	for _, id := range []uint64{3, 5, unused.ID} {
+		require.NoError(t, hsdb.RevokePreAuthKey(id))
+	}
+
+	reaped, err := hsdb.DestroyRevokedPreAuthKeysBefore(time.Now().Add(24 * time.Hour))
+	require.NoError(t, err)
+	assert.Equal(t, 1, reaped, "only the unreferenced revoked key is reaped")
+
+	require.NoError(t, hsdb.Close())
+
+	hsdb, err = NewHeadscaleDatabase(sqliteTestConfig(dbPath))
+	require.NoError(t, err)
+
+	ephemeral, err := hsdb.ListEphemeralNodes()
+	require.NoError(t, err)
+
+	ids := make([]types.NodeID, 0, len(ephemeral))
+	for _, n := range ephemeral {
+		ids = append(ids, n.ID)
+	}
+
+	assert.ElementsMatch(t, []types.NodeID{3, 5}, ids)
+}
+
+// TestInterruptedInitSchemaRecovers simulates a first start that created the
+// schema but died before gormigrate recorded the migrations, and asserts the
+// next start completes instead of failing on the existing credentials table.
+func TestInterruptedInitSchemaRecovers(t *testing.T) {
+	t.Run("sqlite", func(t *testing.T) {
+		dbPath := t.TempDir() + "/headscale_test.db"
+
+		hsdb, err := NewHeadscaleDatabase(sqliteTestConfig(dbPath))
+		require.NoError(t, err)
+		require.NoError(t, hsdb.DB.Exec(`DELETE FROM migrations`).Error)
+		require.NoError(t, hsdb.Close())
+
+		hsdb, err = NewHeadscaleDatabase(sqliteTestConfig(dbPath))
+		require.NoError(t, err)
+
+		_, _, err = hsdb.CreateAPIKey(nil)
+		require.NoError(t, err)
+	})
+
+	t.Run("postgres", func(t *testing.T) {
+		u := newPostgresDBForTest(t)
+
+		hsdb := newHeadscaleDBFromPostgresURL(t, u)
+		require.NoError(t, hsdb.DB.Exec(`DELETE FROM migrations`).Error)
+		require.NoError(t, hsdb.Close())
+
+		hsdb = newHeadscaleDBFromPostgresURL(t, u)
+
+		_, _, err := hsdb.CreateAPIKey(nil)
+		require.NoError(t, err)
+	})
+}
