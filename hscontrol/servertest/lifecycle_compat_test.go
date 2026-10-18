@@ -1,8 +1,10 @@
 // This file replays multi-step lifecycle captures from Tailscale SaaS and
 // compares each step's outcome with what SaaS showed.
 //
-// Test data source: testdata/steps/{route-approval,owner-routes}.hujson,
-// loaded by name. owner-routes is consumed by TestReauthCompat.
+// Test data source: testdata/steps/{route-approval,owner-routes,
+// ephemeral-lifecycle}.hujson, loaded by name. owner-routes is consumed by
+// TestReauthCompat; the refused logins of ephemeral-lifecycle are rows of
+// TestAuthKeyRefusalCompat.
 // Source format:    github.com/juanfont/headscale/hscontrol/types/testcapture
 
 package servertest_test
@@ -10,6 +12,7 @@ package servertest_test
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strconv"
@@ -17,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/servertest"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/assert"
@@ -27,8 +31,8 @@ import (
 )
 
 // lifecycleSkipReasons lists checks where headscale differs from SaaS, keyed
-// <test_id>/<step>/<check>. A listed check that matches fails, so a fix must
-// delete its entry.
+// <test_id>/<step>[/<node or action index>]/<check>. A listed check that
+// matches fails, so a fix must delete its entry.
 var lifecycleSkipReasons = map[string]string{
 	"route-approval/b6/enabled":     approvalOnHostinfo,
 	"route-approval/b6/served":      approvalOnHostinfo,
@@ -46,6 +50,22 @@ var lifecycleSkipReasons = map[string]string{
 	"route-approval/b9/self-routes": approvalOnSameKeyReauth,
 
 	"route-approval/r1/served": loggedOutRouterUnserved,
+
+	"ephemeral-lifecycle/E1-logout/eph-logout/outcome":      logoutAnswerUnauthorized,
+	"ephemeral-lifecycle/E1-logout/eph-logout-user/outcome": logoutAnswerUnauthorized,
+
+	"ephemeral-lifecycle/E3-key-delete/2/keys":   deletedKeyListed,
+	"ephemeral-lifecycle/E3-key-delete/3/keys":   deletedKeyListed,
+	"ephemeral-lifecycle/E3-key-delete/4/status": deletedKeyDeleteNotFound,
+
+	"ephemeral-lifecycle/E4-reauth-other-key/eph-to-perm/ephemeral": ephemeralFollowsKey,
+	"ephemeral-lifecycle/E4-reauth-other-key/perm-to-eph/ephemeral": ephemeralFollowsKey,
+	"ephemeral-lifecycle/E6-poll-14/eph-to-perm/left":               ephemeralFollowsKey,
+	"ephemeral-lifecycle/E6-poll-14/perm-to-eph/left":               ephemeralFollowsKey,
+
+	"ephemeral-lifecycle/E5-mem-shutdown/mem/expiry":        taggedLogoutNotExpired,
+	"ephemeral-lifecycle/E5-mem-shutdown/mem/outcome":       taggedLogoutNotExpired,
+	"ephemeral-lifecycle/E5-mem-shutdown/mem/peer-observer": taggedLogoutNotExpired,
 }
 
 // SaaS runs auto-approval when a router's announced routes change and on a
@@ -55,6 +75,13 @@ const (
 	approvalOnPolicy        = "APPROVAL_ON_POLICY: headscale auto-approves announced routes when a policy is set; SaaS waits for the router's next route change or key rotation"
 	approvalOnSameKeyReauth = "APPROVAL_ON_SAME_KEY_REAUTH: headscale auto-approves on a re-auth that keeps the node key; SaaS does not"
 	loggedOutRouterUnserved = "LOGGED_OUT_ROUTER_UNSERVED: headscale stops serving a logged-out router's routes; SaaS keeps them on the expired, offline peer"
+)
+
+const (
+	logoutAnswerUnauthorized = "LOGOUT_ANSWER_UNAUTHORIZED: headscale answers the logout that deletes an ephemeral node with MachineAuthorized false; SaaS answers true"
+	deletedKeyListed         = "DELETED_KEY_LISTED: headscale lists a deleted auth key; SaaS leaves it out of both key lists, while a read by ID still answers"
+	deletedKeyDeleteNotFound = "DELETED_KEY_DELETE_NOT_FOUND: headscale answers 404 to a second delete of an auth key; SaaS answers 200"
+	ephemeralFollowsKey      = "EPHEMERAL_FOLLOWS_KEY: headscale takes a node's ephemeral flag from the key it last logged in with; SaaS keeps the flag the device was created with, so it is collected, or kept, as created"
 )
 
 // Used by reauthSkipReasons.
@@ -543,4 +570,426 @@ func hsRemoved(history []*netmap.NetworkMap, id tailcfg.NodeID) string {
 	}
 
 	return "kept"
+}
+
+// TestEphemeralLifecycleCompat replays ephemeral devices through logout, a
+// rejoin, a device deleted twice, a deleted key and a restart after it,
+// re-auth with a key of the other kind, a shutdown with in-memory state and
+// a kill of several devices. Each step compares with SaaS: the status of
+// every admin exchange, key validity and listing, register answers, the
+// devices on each machine, their ephemeral flag, node key, address and
+// expiry, the observer's view and removals, and at the last read which
+// devices are left once the killed ones could be collected.
+func TestEphemeralLifecycleCompat(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ephemeral-lifecycle", func(t *testing.T) {
+		t.Parallel()
+
+		runEphemeralLifecycleCompat(t, "ephemeral-lifecycle", "observer")
+	})
+}
+
+func runEphemeralLifecycleCompat(t *testing.T, id, observer string) {
+	t.Helper()
+
+	c := readStepCapture(t, id)
+
+	// Short, so the killed devices can be collected while the last read is
+	// checked; collection timing is not compared.
+	r := newStepReplay(t, c, servertest.WithEphemeralTimeout(2*time.Second))
+	r.readAPI = true
+
+	lastRead := -1
+
+	for i, step := range c.Steps {
+		if _, _, ok := stepDeviceRead(step); ok {
+			lastRead = i
+		}
+	}
+
+	saasFirst, hsFirst := map[string]deviceView{}, map[string]deviceView{}
+	saasPrev := map[string][]deviceView{}
+	down := map[string]bool{}
+	evaluated := map[string]bool{}
+	prevObs := c.Captures[observer].Netmap
+
+	for i, step := range c.Steps {
+		require.Contains(t, []string{"observed", "expected-refusal"}, step.Result,
+			"%s: the replay follows every step", step.Name)
+
+		cells := lifecycleCells(step)
+
+		hsPrev := map[string][]deviceView{}
+		attempts := map[string]int{}
+
+		for _, cell := range cells {
+			hsPrev[cell] = r.hsViews(cell)
+			if cl, ok := r.clients[cell]; ok {
+				attempts[cell] = len(cl.RegisterAttempts())
+			}
+		}
+
+		historyStart := 0
+		if obs, ok := r.clients[observer]; ok {
+			historyStart = max(len(obs.History())-1, 0)
+		}
+
+		r.apply(t, step)
+		markDown(step, down)
+
+		checks := r.answerChecks(step)
+		checks = append(checks, r.keyChecks(step)...)
+		checks = append(checks, r.keyListChecks(t, step)...)
+
+		devices, readAt, listed := stepDeviceRead(step)
+
+		r.firstDevices(c, step, saasFirst, hsFirst)
+
+		for _, cell := range cells {
+			// A device killed in the step is judged at the last read only:
+			// when it is collected is timing.
+			want, ok := saasCellDevices(c, step, cell)
+			if down[cell] || !ok {
+				continue
+			}
+
+			checks = append(checks, ephemeralCellChecks(r, step, cell, observer, cellState{
+				want: want, saasPrev: saasPrev[cell], hsPrev: hsPrev[cell],
+				saasFirst: saasFirst[cell], hsFirst: hsFirst[cell],
+				attempts: attempts[cell], prevObs: prevObs, historyStart: historyStart,
+				saasAll: devices, listed: listed,
+			})...)
+		}
+
+		if i == lastRead {
+			checks = append(checks, r.leftChecks(c, step)...)
+		}
+
+		prefix := id + "/" + step.Name + "/"
+		for _, ch := range checks {
+			evaluated[prefix+ch.name] = true
+		}
+
+		if len(checks) > 0 {
+			t.Run(step.Name, func(t *testing.T) {
+				holdChecks(t, lifecycleSkipReasons, prefix, checks, evaluated)
+			})
+		}
+
+		// A device list shows every machine; a device read only its own.
+		if listed {
+			for alias := range r.clients {
+				saasPrev[alias] = saasDeviceViews(c, devices, alias, readAt)
+			}
+		}
+
+		for _, cell := range cells {
+			if want, ok := saasCellDevices(c, step, cell); ok {
+				saasPrev[cell] = want
+			}
+		}
+
+		if obs, ok := step.Captures[observer]; ok && obs.Netmap != nil {
+			prevObs = obs.Netmap
+		}
+	}
+
+	for k := range lifecycleSkipReasons {
+		if strings.HasPrefix(k, id+"/") && !evaluated[k] {
+			t.Errorf("skip entry %q names no check", k)
+		}
+	}
+}
+
+// markDown records the nodes a step killed, and those it brought back.
+func markDown(step testcapture.Step, down map[string]bool) {
+	for _, a := range step.Actions {
+		switch a.Kind {
+		case "kill":
+			down[a.Node] = true
+		case "start", "join", "relogin", "restart":
+			down[a.Node] = false
+		}
+	}
+}
+
+// firstDevices records each machine's device as it first joined: on SaaS
+// from the first device list that shows it.
+func (r *stepReplay) firstDevices(c *testcapture.Capture, step testcapture.Step, saasFirst, hsFirst map[string]deviceView) {
+	devices, at, listed := stepDeviceRead(step)
+
+	for alias := range r.clients {
+		if _, seen := saasFirst[alias]; !seen && listed {
+			if views := saasDeviceViews(c, devices, alias, at); len(views) > 0 {
+				saasFirst[alias] = views[0]
+			}
+		}
+
+		if _, seen := hsFirst[alias]; !seen {
+			if views := r.hsViews(alias); len(views) > 0 {
+				hsFirst[alias] = views[0]
+			}
+		}
+	}
+}
+
+// leftChecks compares how many devices each machine holds at the last read.
+// A device the polls still saw when they gave up is not observed, not kept.
+func (r *stepReplay) leftChecks(c *testcapture.Capture, step testcapture.Step) []stepCheck {
+	devices, at, _ := stepDeviceRead(step)
+
+	_, unseen, _ := strings.Cut(step.Note, "not observed: ")
+	notObserved := strings.Split(unseen, ", ")
+
+	checks := make([]stepCheck, 0, len(r.clients))
+
+	for _, alias := range slices.Sorted(maps.Keys(r.clients)) {
+		if slices.Contains(notObserved, alias) {
+			continue
+		}
+
+		checks = append(checks, stepCheck{alias + "/left", strconv.Itoa(len(saasDeviceViews(c, devices, alias, at))), func() string {
+			return strconv.Itoa(len(r.machineNodes(alias)))
+		}})
+	}
+
+	return checks
+}
+
+// cellState is what a cell's checks compare against: SaaS's devices for the
+// cell in the step and both sides' devices before it.
+type cellState struct {
+	want               []deviceView
+	saasPrev, hsPrev   []deviceView
+	saasFirst, hsFirst deviceView
+	attempts           int
+	prevObs            *netmap.NetworkMap
+	historyStart       int
+	saasAll            []saasDevice
+	listed             bool
+}
+
+// ephemeralCellChecks compares one cell after a step: its devices, their
+// ephemeral flag, node key, address and expiry, its register answers, and the
+// observer's view of it and whether the observer lost it.
+func ephemeralCellChecks(r *stepReplay, step testcapture.Step, cell, observer string, st cellState) []stepCheck {
+	got := func() []deviceView { return r.hsViews(cell) }
+	byID := func(views []deviceView) map[string]deviceView {
+		out := make(map[string]deviceView, len(views))
+		for _, v := range views {
+			out[v.id] = v
+		}
+
+		return out
+	}
+
+	checks := []stepCheck{
+		{cell + "/devices", renderDevices(st.want, st.saasFirst), func() string { return renderDevices(got(), st.hsFirst) }},
+		{cell + "/ephemeral", renderEphemeral(st.want), func() string { return renderEphemeral(got()) }},
+		{cell + "/expiry", renderExpiry(st.want, byID(st.saasPrev)), func() string { return renderExpiry(got(), byID(st.hsPrev)) }},
+	}
+
+	if len(st.saasPrev) > 0 {
+		checks = append(checks, stepCheck{cell + "/node-key", renderNodeKeys(st.want, byID(st.saasPrev)), func() string {
+			return renderNodeKeys(got(), byID(st.hsPrev))
+		}})
+	}
+
+	if st.listed {
+		saasAddrs := map[string]int{}
+		for _, d := range st.saasAll {
+			saasAddrs[sortedStrings(d.Addresses)]++
+		}
+
+		checks = append(checks, stepCheck{cell + "/address", renderAddresses(st.want, st.saasFirst, saasAddrs), func() string {
+			hsAddrs := map[string]int{}
+			for _, nv := range r.srv.State().ListNodes().All() {
+				hsAddrs[sortedStrings(nv.IPsAsString())]++
+			}
+
+			return renderAddresses(got(), st.hsFirst, hsAddrs)
+		}})
+	}
+
+	if saas := step.Register[cell]; len(saas) > 0 {
+		checks = append(checks, stepCheck{cell + "/outcome", registerFlags(saas), func() string {
+			return registerFlags(r.clients[cell].RegisterAttempts()[st.attempts:])
+		}})
+	}
+
+	if view, ok := step.Captures[observer]; ok && cell != observer {
+		checks = append(checks, stepCheck{cell + "/peer-" + observer, renderPeers(st.want, view.Netmap), func() string {
+			return renderPeers(got(), r.clients[observer].Netmap())
+		}})
+	}
+
+	if frames := step.Frames[observer]; len(frames) > 0 && cell != observer {
+		saas := make([]string, 0, len(st.saasPrev))
+		for _, v := range st.saasPrev {
+			saas = append(saas, saasRemoved(st.prevObs, frames, v.nodeID))
+		}
+
+		checks = append(checks, stepCheck{cell + "/removed-" + observer, strings.Join(saas, "; "), func() string {
+			history := r.clients[observer].History()[st.historyStart:]
+
+			hs := make([]string, 0, len(st.hsPrev))
+			for _, v := range st.hsPrev {
+				hs = append(hs, hsRemoved(history, v.nodeID))
+			}
+
+			return strings.Join(hs, "; ")
+		}})
+	}
+
+	return checks
+}
+
+// lifecycleCells returns the nodes a step's actions name, in order: the
+// node of a client action and the device of an API path.
+func lifecycleCells(step testcapture.Step) []string {
+	var cells []string
+
+	for _, a := range step.Actions {
+		node := a.Node
+		if rest, ok := strings.CutPrefix(a.Path, "/device/{device:"); ok {
+			node, _, _ = strings.Cut(rest, "}")
+		}
+
+		if node != "" && !slices.Contains(cells, node) {
+			cells = append(cells, node)
+		}
+	}
+
+	return cells
+}
+
+// saasCellDevices returns SaaS's devices on cell's machine after the step:
+// from its last device list, else from its last read of cell's device. It
+// reports false when the step read neither.
+func saasCellDevices(c *testcapture.Capture, step testcapture.Step, cell string) ([]deviceView, bool) {
+	if devices, at, ok := stepDeviceRead(step); ok {
+		return saasDeviceViews(c, devices, cell, at), true
+	}
+
+	for _, a := range slices.Backward(step.Actions) {
+		if a.Kind != "api" || a.Method != http.MethodGet || !strings.HasPrefix(a.Path, "/device/{device:"+cell+"}?") {
+			continue
+		}
+
+		if a.Status != http.StatusOK {
+			return nil, true
+		}
+
+		var d saasDevice
+		if json.Unmarshal(a.Response, &d) != nil {
+			return nil, false
+		}
+
+		return []deviceView{saasDeviceView(c, d, step.At.Add(time.Duration(a.OffsetMS)*time.Millisecond))}, true
+	}
+
+	return nil, false
+}
+
+// renderAddresses says, per device, whether it holds the first device's
+// addresses and whether no other device holds them.
+func renderAddresses(views []deviceView, first deviceView, holders map[string]int) string {
+	return renderEach(views, func(v deviceView) string {
+		return fmt.Sprintf("first's %t, unique %t", v.addrs == first.addrs, holders[v.addrs] == 1)
+	})
+}
+
+// registerFlags renders each register answer the client logged: its
+// NodeKeyExpired and MachineAuthorized flags and whether it carried an auth
+// URL, or "error" for a refusal and "unanswered" for a request still waiting.
+// Requests the client cancelled are left out.
+func registerFlags(attempts []testcapture.RegisterAttempt) string {
+	out := make([]string, 0, len(attempts))
+
+	for _, a := range attempts {
+		switch {
+		case strings.Contains(a.Err, "context canceled"):
+		case a.Err != "":
+			out = append(out, "error")
+		case a.MachineAuthorized == nil || a.NodeKeyExpired == nil:
+			out = append(out, "unanswered")
+		default:
+			out = append(out, fmt.Sprintf("expired=%t authorized=%t url=%t",
+				*a.NodeKeyExpired, *a.MachineAuthorized, a.AuthURL != ""))
+		}
+	}
+
+	return strings.Join(out, "; ")
+}
+
+// answerChecks compares the status of each admin exchange headscale
+// answered in the step, keyed by the action's index.
+func (r *stepReplay) answerChecks(step testcapture.Step) []stepCheck {
+	checks := make([]stepCheck, 0, len(r.answers))
+
+	for _, i := range slices.Sorted(maps.Keys(r.answers)) {
+		got := strconv.Itoa(r.answers[i].status)
+		checks = append(checks, stepCheck{strconv.Itoa(i) + "/status", strconv.Itoa(step.Actions[i].Status), func() string {
+			return got
+		}})
+	}
+
+	return checks
+}
+
+// keyListChecks compares which of the replay's keys each key listing in the
+// step names.
+func (r *stepReplay) keyListChecks(t *testing.T, step testcapture.Step) []stepCheck {
+	t.Helper()
+
+	labels := map[string]string{}
+	for label, id := range r.keyIDs {
+		labels[strconv.FormatUint(id, 10)] = label
+	}
+
+	listedIn := func(body []byte, label func(string) (string, bool)) string {
+		var out struct {
+			Keys []struct {
+				ID string `json:"id"`
+			} `json:"keys"`
+		}
+		require.NoError(t, json.Unmarshal(body, &out), "%s: key list", step.Name)
+
+		var got []string
+
+		for _, k := range out.Keys {
+			if l, ok := label(k.ID); ok {
+				got = append(got, l)
+			}
+		}
+
+		return sortedStrings(got)
+	}
+
+	var checks []stepCheck
+
+	for i, a := range step.Actions {
+		ans, ok := r.answers[i]
+		if !ok || a.Method != http.MethodGet || !strings.HasPrefix(a.Path, "/tailnet/-/keys") || strings.Contains(a.Path, "{key:") {
+			continue
+		}
+
+		want := listedIn(a.Response, func(id string) (string, bool) {
+			l, ok := strings.CutPrefix(id, "{key:")
+			l = strings.TrimSuffix(l, "}")
+			_, minted := r.keyIDs[l]
+
+			return l, ok && minted
+		})
+
+		got := ""
+		if ans.status == http.StatusOK {
+			got = listedIn(ans.body, func(id string) (string, bool) { l, ok := labels[id]; return l, ok })
+		}
+
+		checks = append(checks, stepCheck{strconv.Itoa(i) + "/keys", want, func() string { return got }})
+	}
+
+	return checks
 }

@@ -478,9 +478,9 @@ func readStepCapture(t *testing.T, id string) *testcapture.Capture {
 
 // stepReplay drives a step capture's actions against headscale: policy
 // pushes, key mints and revokes, joins, relogins, profile switches,
-// restarts, route announcements, logouts, retires and admin calls, the
-// last through the v2 API with the bodies SaaS received. Nothing is seeded
-// from the capture's end state.
+// restarts, kills, shutdowns, route announcements, logouts, retires and admin
+// calls, the last through the v2 API with the bodies SaaS received. Nothing
+// is seeded from the capture's end state.
 type stepReplay struct {
 	c        *testcapture.Capture
 	srv      *servertest.TestServer
@@ -499,6 +499,27 @@ type stepReplay struct {
 
 	// profiles holds the login a node switched away from.
 	profiles map[string]persist.Persist
+
+	// keyExpires holds each minted key's SaaS expiry until the replay has
+	// expired it; see [stepReplay.expireDueKeys].
+	keyExpires map[string]time.Time
+
+	// lastIDs holds each machine's last single node, so a deleted device can
+	// still be addressed.
+	lastIDs map[string]string
+
+	// memState lists the nodes whose tailscaled ran with --state=mem:.
+	memState map[string]bool
+
+	// paths, when set, gives each joining client a home DERP and an
+	// endpoint, as a running tailscaled reports them.
+	paths bool
+
+	// readAPI, when set, replays reads too and keeps headscale's answer to
+	// each admin exchange in answers, by action index, instead of failing on
+	// a status that differs from SaaS's.
+	readAPI bool
+	answers map[int]apiAnswer
 
 	// interactive, when set, picks the joins and logins replayed as a login
 	// approved by the key's user instead of with the key.
@@ -529,11 +550,28 @@ func newStepReplay(t *testing.T, c *testcapture.Capture, opts ...servertest.Serv
 		keyTags:  map[string][]string{},
 		keyUsers: map[string]*types.User{},
 		profiles: map[string]persist.Persist{},
+
+		keyExpires: map[string]time.Time{},
+		lastIDs:    map[string]string{},
+		memState:   memStateNodes[c.TestID],
 	}
 }
 
+// memStateNodes lists, per capture, the nodes the probe ran with
+// --state=mem:, which a join action does not record.
+var memStateNodes = map[string]map[string]bool{
+	"ephemeral-lifecycle": {"mem": true, "mem-kill": true},
+}
+
+// apiAnswer is headscale's answer to one replayed admin exchange.
+type apiAnswer struct {
+	status int
+	body   []byte
+}
+
 // apply runs the step's actions in order and returns the logins headscale
-// refused, by node. Reads are skipped: they are what consumers compare.
+// refused, by node. Reads are what consumers compare, so they are skipped
+// unless readAPI is set.
 func (r *stepReplay) apply(t *testing.T, step testcapture.Step) map[string]error {
 	t.Helper()
 
@@ -542,7 +580,13 @@ func (r *stepReplay) apply(t *testing.T, step testcapture.Step) map[string]error
 
 	refused := map[string]error{}
 
-	for _, a := range step.Actions {
+	r.expireDueKeys(t, step.At)
+
+	if r.readAPI {
+		r.answers = map[int]apiAnswer{}
+	}
+
+	for i, a := range step.Actions {
 		switch a.Kind {
 		case "policy":
 			require.Equal(t, http.StatusOK, a.Status, "%s: replay of a refused policy", step.Name)
@@ -556,7 +600,7 @@ func (r *stepReplay) apply(t *testing.T, step testcapture.Step) map[string]error
 			r.setPolicy(t, step.Name, policy)
 
 		case "api":
-			r.api(t, step.Name, a)
+			r.api(t, step.Name, i, a)
 
 		case "join":
 			hi := &tailcfg.Hostinfo{
@@ -566,7 +610,22 @@ func (r *stepReplay) apply(t *testing.T, step testcapture.Step) map[string]error
 			}
 			r.hostinfo[a.Node] = hi
 
-			opts := []servertest.ClientOption{servertest.WithUser(r.admin), servertest.WithHostinfo(hi.Clone())}
+			opts := []servertest.ClientOption{servertest.WithUser(r.admin)}
+			if r.memState[a.Node] {
+				opts = append(opts, servertest.WithLoginFlags(controlclient.LoginEphemeral))
+			}
+
+			if r.paths {
+				hi.NetInfo = &tailcfg.NetInfo{PreferredDERP: 1}
+
+				opts = append(opts, servertest.WithEndpoints(tailcfg.Endpoint{
+					Addr: netip.AddrPortFrom(netip.MustParseAddr("192.0.2.1"), uint16(41641+len(r.clients))), //nolint:gosec // a handful of clients
+					Type: tailcfg.EndpointExplicitConf,
+				}))
+			}
+
+			opts = append(opts, servertest.WithHostinfo(hi.Clone()))
+
 			if r.interactive != nil && r.interactive(step, a) {
 				opts = append(opts, servertest.WithInteractiveLogin(r.approver(ctx, t, a.Key)))
 			} else {
@@ -586,6 +645,8 @@ func (r *stepReplay) apply(t *testing.T, step testcapture.Step) map[string]error
 			if len(a.Routes) > 0 {
 				r.announce(ctx, t, a.Node, a.Routes)
 			}
+
+			r.remember(a.Node)
 
 		case "relogin":
 			// The probe restates hostname and routes on every login.
@@ -608,6 +669,8 @@ func (r *stepReplay) apply(t *testing.T, step testcapture.Step) map[string]error
 			if err != nil {
 				refused[a.Node] = err
 			}
+
+			r.remember(a.Node)
 
 		case "switch_profile":
 			cl := r.clients[a.Node]
@@ -644,28 +707,9 @@ func (r *stepReplay) apply(t *testing.T, step testcapture.Step) map[string]error
 				refused[a.Node] = err
 			}
 
-		case "restart":
-			require.NoError(t, r.clients[a.Node].Restart(ctx, r.hostinfo[a.Node].Clone()), "%s: restart", step.Name)
-
-		case "advertise":
-			r.announce(ctx, t, a.Node, a.Routes)
-
-		case "cli":
-			args := strings.Join(a.Args, " ")
-			if args == "logout" {
-				require.NoError(t, r.clients[a.Node].LogoutAndDisconnect(ctx), "%s: logout", step.Name)
-
-				continue
-			}
-
-			hostname, ok := strings.CutPrefix(args, "set --hostname=")
-			require.True(t, ok, "%s: no replay for cli %q", step.Name, a.Args)
-
-			r.hostinfo[a.Node].Hostname = hostname
-			r.sendHostinfo(ctx, t, a.Node)
-
-		case "logout":
-			require.NoError(t, r.clients[a.Node].LogoutAndDisconnect(ctx), "%s: logout", step.Name)
+		case "restart", "start", "kill", "shutdown", "logout", "advertise", "set_hostname",
+			"break_tcp_conns", "rotate_disco_key", "cli":
+			r.daemon(ctx, t, step.Name, a)
 
 		case "retire":
 			// SaaS stops the daemon and deletes its devices.
@@ -686,6 +730,110 @@ func (r *stepReplay) apply(t *testing.T, step testcapture.Step) map[string]error
 	}
 
 	return refused
+}
+
+// daemon replays what a node's tailscaled or its CLI did.
+func (r *stepReplay) daemon(ctx context.Context, t *testing.T, stepName string, a testcapture.Action) {
+	t.Helper()
+
+	cl := r.clients[a.Node]
+	args := strings.Join(a.Args, " ")
+
+	switch {
+	case a.Kind == "restart" || a.Kind == "start":
+		// start follows a kill: the daemon comes back on its state.
+		require.NoError(t, cl.Restart(ctx, r.hostinfo[a.Node].Clone()), "%s: %s", stepName, a.Kind)
+
+	case a.Kind == "kill", a.Kind == "shutdown" && !r.memState[a.Node]:
+		cl.Disconnect(t)
+
+	case a.Kind == "shutdown", a.Kind == "logout", a.Kind == "cli" && args == "logout":
+		// tailscaled logs out on shutdown only with in-memory state.
+		require.NoError(t, cl.LogoutAndDisconnect(ctx), "%s: %s", stepName, a.Kind)
+
+	case a.Kind == "advertise":
+		r.announce(ctx, t, a.Node, a.Routes)
+
+	case a.Kind == "set_hostname":
+		r.hostinfo[a.Node].Hostname = a.Hostname
+		r.sendHostinfo(ctx, t, a.Node)
+
+	case a.Kind == "break_tcp_conns":
+		// The client polls again under the same key.
+		require.NoError(t, cl.RestartPoll(ctx), "%s: reconnect", stepName)
+
+	case a.Kind == "rotate_disco_key":
+		require.NoError(t, cl.RotateDisco(ctx), "%s: disco rotation", stepName)
+
+	case strings.HasPrefix(args, "debug set-expire --in="):
+		d, err := time.ParseDuration(strings.TrimPrefix(args, "debug set-expire --in="))
+		require.NoError(t, err, "%s: set-expire duration", stepName)
+
+		// shortcut: the replay asks for at most setExpireLifetime, so the
+		// wait that follows need not be real; a check of the exact expiry
+		// would need the full duration.
+		// A refusal is in the client's register attempts.
+		_ = cl.SetExpirySooner(ctx, time.Now().Add(min(d, setExpireLifetime)))
+
+	case strings.HasPrefix(args, "set --hostname="):
+		r.hostinfo[a.Node].Hostname = strings.TrimPrefix(args, "set --hostname=")
+		r.sendHostinfo(ctx, t, a.Node)
+
+	default:
+		t.Fatalf("%s: no replay for %s %q", stepName, a.Kind, a.Args)
+	}
+}
+
+// setExpireLifetime bounds the key lifetime a replayed
+// `tailscale debug set-expire` asks for.
+const setExpireLifetime = 5 * time.Second
+
+// expireDueKeys expires each minted key whose SaaS expiry passed before at,
+// so a step taken after a key's lifetime finds it expired, as SaaS did,
+// without the replay waiting.
+func (r *stepReplay) expireDueKeys(t *testing.T, at time.Time) {
+	t.Helper()
+
+	for label, exp := range r.keyExpires {
+		if exp.Before(at) {
+			require.NoError(t, r.srv.State().ExpirePreAuthKey(r.keyIDs[label]), "expire key %s", label)
+			delete(r.keyExpires, label)
+		}
+	}
+}
+
+// remember records alias's node while its machine holds exactly one.
+func (r *stepReplay) remember(alias string) {
+	if nodes := r.machineNodes(alias); len(nodes) == 1 {
+		r.lastIDs[alias] = nodes[0].StringID()
+	}
+}
+
+// v2Path maps a SaaS API path onto headscale's v2 API, and its device and
+// key labels onto the replay's IDs. A device is its machine's one node, or
+// the last one it held. It reports false for a label the replay never
+// created and for a machine holding several nodes.
+func (r *stepReplay) v2Path(path string) (string, bool) {
+	if rest, ok := strings.CutPrefix(path, "/device/{device:"); ok {
+		alias, tail, _ := strings.Cut(rest, "}")
+		if len(r.machineNodes(alias)) > 1 {
+			return "", false
+		}
+
+		r.remember(alias)
+		id, ok := r.lastIDs[alias]
+
+		return "/api/v2/device/" + id + tail, ok
+	}
+
+	if rest, ok := strings.CutPrefix(path, "/tailnet/-/keys/{key:"); ok {
+		label, tail, _ := strings.Cut(rest, "}")
+		id, ok := r.keyIDs[label]
+
+		return "/api/v2/tailnet/-/keys/" + strconv.FormatUint(id, 10) + tail, ok
+	}
+
+	return "/api/v2" + path, true
 }
 
 // requestTags is the Hostinfo.RequestTags a login sends: the action's when
@@ -724,15 +872,26 @@ func (r *stepReplay) setPolicy(t *testing.T, stepName, policy string) {
 	}
 }
 
-// api replays one admin exchange. Device and key deletes go to the v2 API;
-// key mints and expiry, which the v2 API lacks or would answer with
-// secrets, go to State.
-func (r *stepReplay) api(t *testing.T, stepName string, a testcapture.Action) {
+// api replays one admin exchange, the i-th action of its step. Device and
+// key deletes go to the v2 API; key mints and expiry, which the v2 API lacks
+// or would answer with secrets, go to State. Reads are replayed only with
+// readAPI.
+func (r *stepReplay) api(t *testing.T, stepName string, i int, a testcapture.Action) {
 	t.Helper()
 
 	switch {
 	case a.Method == http.MethodGet:
-		return
+		if !r.readAPI {
+			return
+		}
+
+		if path, ok := r.v2Path(a.Path); ok {
+			r.exchange(t, stepName, i, a, path)
+		}
+
+	case a.Method == http.MethodPost && strings.HasPrefix(a.Path, "/tailnet/-/dns/"):
+		// Headscale reads DNS from its config, which a consumer sets from
+		// the capture's input; it has no API to change it.
 
 	case a.Method == http.MethodPost && a.Path == "/tailnet/-/acl":
 		require.Equal(t, http.StatusOK, a.Status, "%s: replay of a refused policy", stepName)
@@ -775,13 +934,18 @@ func (r *stepReplay) api(t *testing.T, stepName string, a testcapture.Action) {
 		r.keyTags[a.Key] = create.Tags
 		r.keyUsers[a.Key] = user
 
-	case a.Method == http.MethodDelete && strings.HasPrefix(a.Path, "/tailnet/-/keys/{key:"):
-		label := strings.TrimSuffix(strings.TrimPrefix(a.Path, "/tailnet/-/keys/{key:"), "}")
-		id, ok := r.keyIDs[label]
-		require.True(t, ok, "%s: delete of unknown key %q", stepName, label)
+		var minted struct {
+			Expires time.Time `json:"expires"`
+		}
+		if json.Unmarshal(a.Response, &minted) == nil && !minted.Expires.IsZero() {
+			r.keyExpires[a.Key] = minted.Expires
+		}
 
-		status, resp := r.call(t, a.Method, "/api/v2/tailnet/-/keys/"+strconv.FormatUint(id, 10), nil)
-		require.Equal(t, a.Status, status, "%s: %s %s: %s", stepName, a.Method, a.Path, resp)
+	case a.Method == http.MethodDelete && strings.HasPrefix(a.Path, "/tailnet/-/keys/{key:"):
+		path, ok := r.v2Path(a.Path)
+		require.True(t, ok, "%s: delete of unknown key %q", stepName, a.Path)
+
+		r.exchange(t, stepName, i, a, path)
 
 	case a.Method == http.MethodPost && strings.HasSuffix(a.Path, "/expire"):
 		now := time.Now()
@@ -791,16 +955,29 @@ func (r *stepReplay) api(t *testing.T, stepName string, a testcapture.Action) {
 		r.srv.App.Change(c)
 
 	case strings.HasPrefix(a.Path, "/device/"):
-		alias := deviceAlias(t, a.Path)
-		path := "/api/v2/device/" + r.node(t, alias).StringID() +
-			strings.TrimPrefix(a.Path, "/device/{device:"+alias+"}")
+		path, ok := r.v2Path(a.Path)
+		require.True(t, ok, "%s: %s names no single device", stepName, a.Path)
 
-		status, resp := r.call(t, a.Method, path, a.Body)
-		require.Equal(t, a.Status, status, "%s: %s %s: %s", stepName, a.Method, a.Path, resp)
+		r.exchange(t, stepName, i, a, path)
 
 	default:
 		t.Fatalf("%s: no replay for %s %s", stepName, a.Method, a.Path)
 	}
+}
+
+// exchange sends a's request to headscale at path. With readAPI the answer
+// is kept for the consumer; otherwise its status must be SaaS's.
+func (r *stepReplay) exchange(t *testing.T, stepName string, i int, a testcapture.Action, path string) {
+	t.Helper()
+
+	status, resp := r.call(t, a.Method, path, a.Body)
+	if r.readAPI {
+		r.answers[i] = apiAnswer{status: status, body: resp}
+
+		return
+	}
+
+	require.Equal(t, a.Status, status, "%s: %s %s: %s", stepName, a.Method, a.Path, resp)
 }
 
 // call sends one v2 API request as the admin.
