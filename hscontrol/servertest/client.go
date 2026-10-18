@@ -66,6 +66,9 @@ type TestClient struct {
 	updatesReceived int
 	noHistory       bool
 
+	// streams and streamMaps: see [TestClient.Stream].
+	streams, streamMaps int
+
 	// deltaUpdates and deltaRemoved: see [WithDeltaUpdates].
 	deltaUpdates bool
 	deltaRemoved []tailcfg.NodeID
@@ -399,6 +402,11 @@ func (c *TestClient) startPollLoop() {
 	c.pollCtx, c.pollCancel = context.WithCancel(context.Background())
 	c.pollDone = make(chan struct{})
 
+	c.mu.Lock()
+	c.streams++
+	c.streamMaps = 0
+	c.mu.Unlock()
+
 	go func() {
 		defer close(c.pollDone)
 
@@ -434,6 +442,7 @@ func (c *TestClient) UpdateFullNetmap(nm *netmap.NetworkMap) {
 	c.mu.Lock()
 	c.netmap = nm
 	c.updatesReceived++
+	c.streamMaps++
 
 	if !c.noHistory {
 		c.history = append(c.history, nm)
@@ -908,6 +917,16 @@ func (c *TestClient) UpdateCount() int {
 	defer c.mu.RUnlock()
 
 	return c.updatesReceived
+}
+
+// Stream returns how many map streams the client has opened, then how many
+// netmaps the current one delivered. [TestClient.Netmap] outlives a stream,
+// so only this tells a new stream that was answered from one that was not.
+func (c *TestClient) Stream() (int, int) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.streams, c.streamMaps
 }
 
 // History returns the retained [netmap.NetworkMap] snapshots in order.
