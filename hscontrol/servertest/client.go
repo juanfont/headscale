@@ -47,6 +47,13 @@ type TestClient struct {
 	// approve completes an interactive login; see [WithInteractiveLogin].
 	approve func(authID string) error
 
+	// loginFlags and endpoints: see [WithLoginFlags] and [WithEndpoints].
+	loginFlags controlclient.LoginFlags
+	endpoints  []tailcfg.Endpoint
+
+	// stopFollowup ends the follow-up [TestClient.RotateDisco] left waiting.
+	stopFollowup context.CancelFunc
+
 	// Connection lifecycle.
 	pollCtx    context.Context //nolint:containedctx // test-only; context stored for cancel control
 	pollCancel context.CancelFunc
@@ -88,6 +95,8 @@ type clientConfig struct {
 	noHistory    bool
 	hostinfo     *tailcfg.Hostinfo
 	approve      func(authID string) error
+	loginFlags   controlclient.LoginFlags
+	endpoints    []tailcfg.Endpoint
 }
 
 // WithoutNetmapHistory retains only the latest netmap and one queued update.
@@ -137,6 +146,18 @@ func WithHostinfo(hi *tailcfg.Hostinfo) ClientOption {
 // completes the login, as `headscale auth register` would.
 func WithInteractiveLogin(approve func(authID string) error) ClientOption {
 	return func(c *clientConfig) { c.approve = approve }
+}
+
+// WithLoginFlags adds flags to every login, as tailscaled adds
+// [controlclient.LoginEphemeral] when it runs with --state=mem:.
+func WithLoginFlags(flags controlclient.LoginFlags) ClientOption {
+	return func(c *clientConfig) { c.loginFlags = flags }
+}
+
+// WithEndpoints makes the client report eps in its map requests, as
+// tailscaled does once it has found its paths.
+func WithEndpoints(eps ...tailcfg.Endpoint) ClientOption {
+	return func(c *clientConfig) { c.endpoints = eps }
 }
 
 // WithUser sets the user for the client. If not set, the harness
@@ -219,6 +240,8 @@ func TryNewClient(tb testing.TB, server *TestServer, name string, opts ...Client
 		machineKey: key.NewMachine(),
 		discoKey:   key.NewDisco().Public(),
 		approve:    cc.approve,
+		loginFlags: cc.loginFlags,
+		endpoints:  cc.endpoints,
 		updates:    make(chan *netmap.NetworkMap, updateBuffer),
 		bus:        bus,
 		dialer:     dialer,
@@ -276,7 +299,7 @@ func (c *TestClient) newDirect(
 	authKey string,
 	hi *tailcfg.Hostinfo,
 ) (*controlclient.Direct, error) {
-	return controlclient.NewDirect(controlclient.Options{
+	direct, err := controlclient.NewDirect(controlclient.Options{
 		Persist:              p,
 		GetMachinePrivateKey: func() (key.MachinePrivate, error) { return c.machineKey, nil },
 		ServerURL:            c.server.URL,
@@ -288,6 +311,11 @@ func (c *TestClient) newDirect(
 		Dialer:               c.dialer,
 		Bus:                  c.bus,
 	})
+	if err == nil && len(c.endpoints) > 0 {
+		direct.SetEndpoints(c.endpoints)
+	}
+
+	return direct, err
 }
 
 // register performs the initial [controlclient.Direct.TryLogin] to register the client.
@@ -307,7 +335,7 @@ func (c *TestClient) register(tb testing.TB) {
 // approve, and is an error without it. A failed login is recorded in
 // [TestClient.RegisterAttempts], as tailscaled logs it.
 func (c *TestClient) tryLogin(ctx context.Context, flags controlclient.LoginFlags, approve func(string) error) error {
-	url, err := c.direct.TryLogin(ctx, flags)
+	url, err := c.direct.TryLogin(ctx, flags|c.loginFlags)
 
 	switch {
 	case err != nil:
@@ -458,6 +486,10 @@ func (c *TestClient) DeltaRemovedPeers() []tailcfg.NodeID {
 
 // cleanup releases all resources.
 func (c *TestClient) cleanup() {
+	if c.stopFollowup != nil {
+		c.stopFollowup()
+	}
+
 	if c.pollCancel != nil {
 		c.pollCancel()
 	}
@@ -607,6 +639,10 @@ func (c *TestClient) Login(
 	hi *tailcfg.Hostinfo,
 	approve func(authID string) error,
 ) error {
+	if c.stopFollowup != nil {
+		c.stopFollowup()
+	}
+
 	if c.pollCancel != nil {
 		c.pollCancel()
 
@@ -645,6 +681,60 @@ func (c *TestClient) Restart(ctx context.Context, hi *tailcfg.Hostinfo) error {
 	c.discoKey = key.NewDisco().Public()
 
 	return c.Login(ctx, c.Persist(), "", controlclient.LoginDefault, hi, nil)
+}
+
+// RotateDisco gives the client a new disco key and reports it, then logs in
+// again and restarts the map poll on the same [controlclient.Direct], as
+// `tailscale debug rotate-disco-key` does by restarting the backend. An auth
+// URL is not approved: its follow-up waits, as tailscaled's does, while the
+// poll goes on under the current node key.
+//
+// Safe to call from non-test goroutines.
+func (c *TestClient) RotateDisco(ctx context.Context) error {
+	c.discoKey = key.NewDisco().Public()
+	c.direct.SetDiscoPublicKey(c.discoKey)
+
+	err := c.direct.SendUpdate(ctx)
+	if err != nil {
+		return fmt.Errorf("servertest: RotateDisco(%s): %w", c.Name, err)
+	}
+
+	url, err := c.direct.TryLogin(ctx, controlclient.LoginDefault|c.loginFlags)
+	if err != nil {
+		return fmt.Errorf("servertest: RotateDisco(%s): %w", c.Name, err)
+	}
+
+	if url != "" {
+		if c.stopFollowup != nil {
+			c.stopFollowup()
+		}
+
+		// The follow-up outlives this call, as tailscaled's outlives the CLI.
+		var fctx context.Context
+
+		fctx, c.stopFollowup = context.WithCancel(context.WithoutCancel(ctx))
+		direct := c.direct
+
+		go func() { _, _ = direct.WaitLoginURL(fctx, url) }()
+	}
+
+	return c.RestartPoll(ctx)
+}
+
+// SetExpirySooner asks the server to expire the node's key at expiry, as
+// `tailscale debug set-expire` does. A refusal is recorded in
+// [TestClient.RegisterAttempts], as a failed login is.
+//
+// Safe to call from non-test goroutines.
+func (c *TestClient) SetExpirySooner(ctx context.Context, expiry time.Time) error {
+	err := c.direct.SetExpirySooner(ctx, expiry)
+	if err != nil {
+		c.mu.Lock()
+		c.registers = append(c.registers, testcapture.RegisterAttempt{Err: err.Error()})
+		c.mu.Unlock()
+	}
+
+	return err
 }
 
 // Persist returns the client's current login: its node keys and user.
