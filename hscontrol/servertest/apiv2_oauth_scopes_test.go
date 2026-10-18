@@ -1,13 +1,19 @@
 package servertest_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/servertest"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	_ "tailscale.com/feature/oauthkey"
@@ -575,4 +581,184 @@ func TestAPIv2OAuthTailscaleClientAuthKey(t *testing.T) {
 			assert.False(t, node.AuthKey().Reusable(), "client mints single-use keys")
 		})
 	}
+}
+
+// TestAPIv2OAuthClientDeleteCompat replays, with real clients, SaaS's
+// deletion of an OAuth client whose token made an auth key and a child
+// client: one node joins with that key, the admin deletes the parent, a
+// second node joins with the same key, and the child's tokens are used. Each
+// call's status, each join's outcome, the joined nodes' tags and whether the
+// two see each other must match SaaS.
+//
+// Test data source: testdata/steps/oauth.hujson, loaded by name. Its bodies
+// are compared by TestAPIv2OAuthCompat in ../apiv2_compat_test.go.
+func TestAPIv2OAuthClientDeleteCompat(t *testing.T) {
+	t.Parallel()
+
+	c := readStepCapture(t, "oauth")
+	r := newStepReplay(t, c)
+	r.setPolicy(t, "setup", c.Input.FullPolicy)
+
+	ids := map[string]string{}
+	secrets := map[string]string{}
+	tokens := map[string]string{}
+
+	send := func(a testcapture.Action, header map[string]string, body []byte) (int, []byte) {
+		path := a.Path
+		for label, id := range ids {
+			path = strings.ReplaceAll(path, label, id)
+		}
+
+		req, err := http.NewRequestWithContext(t.Context(), a.Method, r.srv.URL+"/api/v2"+path, bytes.NewReader(body))
+		require.NoError(t, err)
+
+		for k, v := range header {
+			req.Header.Set(k, v)
+		}
+
+		bearer := r.apiKey
+		if a.Principal != "admin" {
+			bearer = tokens[a.Principal]
+		}
+
+		req.Header.Set("Authorization", "Bearer "+bearer)
+
+		resp, err := r.http.Do(req)
+		require.NoError(t, err)
+
+		defer resp.Body.Close()
+
+		out, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		return resp.StatusCode, out
+	}
+
+	mint := func(a testcapture.Action) (int, []byte) {
+		form := url.Values{"grant_type": {"client_credentials"}, "client_secret": {secrets[a.Client]}}
+
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost,
+			r.srv.URL+"/api/v2/oauth/token", strings.NewReader(form.Encode()))
+		require.NoError(t, err)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		resp, err := r.http.Do(req)
+		require.NoError(t, err)
+
+		defer resp.Body.Close()
+
+		out, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		return resp.StatusCode, out
+	}
+
+	replay := func(t *testing.T, step testcapture.Step, i int, a testcapture.Action) {
+		t.Helper()
+
+		var (
+			status int
+			body   []byte
+		)
+
+		switch a.Kind {
+		case "token":
+			status, body = mint(a)
+			if status == http.StatusOK {
+				var tok struct {
+					AccessToken string `json:"access_token"`
+				}
+				require.NoError(t, json.Unmarshal(body, &tok))
+				tokens[a.Principal] = tok.AccessToken
+			}
+
+		case "api":
+			status, body = send(a, a.Header, a.Body)
+			if a.Method == http.MethodPost && status == http.StatusOK {
+				var created struct {
+					ID      string `json:"id"`
+					Key     string `json:"key"`
+					KeyType string `json:"keyType"`
+				}
+				require.NoError(t, json.Unmarshal(body, &created))
+
+				name, label := a.Key, "{key:"+a.Key+"}"
+				if created.KeyType == "client" {
+					name, label = a.Client, "{client:"+a.Client+"}"
+				}
+
+				ids[label], secrets[name] = created.ID, created.Key
+				r.keys[name] = created.Key
+			}
+
+		case "join":
+			refused := r.apply(t, testcapture.Step{Name: step.Name, Actions: []testcapture.Action{a}})
+			require.Empty(t, refused, "%s: %s joins with %s", step.Name, a.Node, a.Key)
+
+			cl := r.clients[a.Node]
+			ids["{device:"+a.Node+"}"] = r.node(t, a.Node).StringID()
+
+			want := step.Captures[a.Node].Netmap.SelfNode.Tags().AsSlice()
+
+			requireNetmapHolds(t, func(c require.TestingT) {
+				nm := cl.Netmap()
+				require.NotNil(c, nm)
+				require.Equal(c, want, nm.SelfNode.Tags().AsSlice(), "%s: self tags", a.Node)
+			})
+
+			return
+
+		default:
+			t.Fatalf("%s: no replay for %q", step.Name, a.Kind)
+		}
+
+		require.Equalf(t, a.Status, status, "%s/%d: %s %s: %s", step.Name, i, a.Method, a.Path, body)
+	}
+
+	// The parent client is one of the admin's setup clients.
+	for _, step := range c.Steps {
+		if step.Name != "setup-clients" {
+			continue
+		}
+
+		for i, a := range step.Actions {
+			if a.Client == "C-parent" {
+				replay(t, step, i, a)
+			}
+		}
+	}
+
+	require.Contains(t, secrets, "C-parent")
+
+	ran := 0
+
+	for _, step := range c.Steps {
+		if !strings.HasPrefix(step.Name, "B") {
+			continue
+		}
+
+		ran++
+
+		for i, a := range step.Actions {
+			replay(t, step, i, a)
+		}
+
+		// Each joined node sees the others SaaS showed it, among those
+		// replayed here.
+		for alias, n := range step.Captures {
+			var want []string
+
+			for _, p := range n.Netmap.Peers {
+				if _, ok := r.clients[p.Hostinfo().Hostname()]; ok {
+					want = append(want, p.Hostinfo().Hostname())
+				}
+			}
+
+			requireNetmapHolds(t, func(c require.TestingT) {
+				require.ElementsMatch(c, want, r.clients[alias].PeerNames(), "%s: %s's peers", step.Name, alias)
+			})
+		}
+	}
+
+	require.Equal(t, 11, ran, "B1 to B11")
 }
