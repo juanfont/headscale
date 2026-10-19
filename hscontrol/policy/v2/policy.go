@@ -717,7 +717,6 @@ func (g *compiledGeneration) buildPeerMap(
 		ids[i], ips[i] = node.ID(), node.IPs()
 		routes[i] = routeInfo[node.ID()]
 		hasExit = hasExit || routes[i].isExit
-
 	}
 
 	// Scratch sets are reused per rule; adjacency stores only nonzero
@@ -903,7 +902,7 @@ func (pm *PolicyManager) setNodesLocked(
 	// For global policies: the filter must be recompiled to include the new nodes.
 	if policyChanged {
 		// Recompile filter with the new node list
-		needsUpdate, err := pm.updateLocked()
+		_, err := pm.updateLocked()
 		if err != nil {
 			// Keep the old list, which pm is still compiled from, so a
 			// retry with the same input recompiles, as in SetUsers. The
@@ -914,9 +913,6 @@ func (pm *PolicyManager) setNodesLocked(
 			return false, err
 		}
 
-		if !needsUpdate {
-			// This ensures fresh filter rules are generated for all nodes
-		}
 		// Always return true when nodes changed, even if filter hash didn't change
 		// (can happen with autogroup:self or when nodes are added but don't affect rules).
 		// A SetNodes that moves pm back to an older snapshot counts too; the

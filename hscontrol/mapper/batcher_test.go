@@ -2417,6 +2417,7 @@ var errInjectedPolicyBuild = errors.New("injected policy build failure")
 
 type failingCapturePolicyManager struct {
 	policy.PolicyManager
+
 	fail *atomic.Bool
 }
 

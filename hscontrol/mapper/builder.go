@@ -189,6 +189,7 @@ func (b *MapResponseBuilder) WithUserProfiles(peers views.Slice[types.NodeView])
 
 		peers = b.view.Peers(ids...)
 	}
+
 	b.resp.UserProfiles = generateUserProfiles(node, peers)
 
 	return b

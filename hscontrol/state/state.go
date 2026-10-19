@@ -282,6 +282,7 @@ func NewState(cfg *types.Config) (*State, error) {
 	if err != nil {
 		return nil, fmt.Errorf("initializing node store policy: %w", err)
 	}
+
 	nodeStore.Start()
 
 	s := &State{

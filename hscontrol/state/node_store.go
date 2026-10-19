@@ -489,6 +489,8 @@ func (s *NodeStore) processWrite() {
 // Each write item is blocked until the batch is applied to ensure
 // the caller knows the operation is complete and do not send any
 // updates that are dependent on a read that is yet to be written.
+//
+//nolint:gocyclo // Keep publication and result delivery in one writer transaction.
 func (s *NodeStore) applyBatch(batch []work) {
 	timer := prometheus.NewTimer(nodeStoreBatchDuration)
 	defer timer.ObserveDuration()

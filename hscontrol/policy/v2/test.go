@@ -84,9 +84,7 @@ func (t *PolicyTest) UnmarshalJSON(b []byte) error {
 		{"deny", raw.Deny, &parsed.Deny},
 	} {
 		for _, value := range field.values {
-			var dst AliasWithPorts
-
-			err := dst.parseString(value)
+			dst, err := parseAliasWithPorts(value)
 			if err != nil {
 				return fmt.Errorf("%w: %s %q: %w", errPolicyTestsFailed, field.name, value, err)
 			}
@@ -394,6 +392,7 @@ func resolveTestSource(alias Alias, pol *Policy, users types.Users, nodes views.
 			return ipset.Set{}, fmt.Errorf("resolving: %w", err)
 		}
 	}
+
 	addrs, err := alias.Resolve(pol, users, nodes)
 	if err != nil {
 		return ipset.Set{}, fmt.Errorf("resolving: %w", err)
@@ -428,6 +427,7 @@ func evalReachability(srcs ipset.Set, dst AliasWithPorts, proto Protocol, pol *P
 			return false, nil
 		}
 	}
+
 	return true, nil
 }
 
@@ -486,6 +486,7 @@ func ruleAllowsAnyDest(rule packetfilter.Rule,
 			return true
 		}
 	}
+
 	return false
 }
 

@@ -178,6 +178,7 @@ func generateMapResponse(
 				peerIDs = append(peerIDs, id.NodeID())
 			}
 		}
+
 		removed = nc.computePeerDiff(peerIDs)
 	}
 

@@ -200,6 +200,7 @@ func (a AliasWithPorts) String() string {
 
 	// Otherwise, format as "alias:ports"
 	var ports []string
+
 	for _, port := range a.Ports {
 		if port.First == port.Last {
 			ports = append(ports, strconv.FormatUint(uint64(port.First), 10))
@@ -794,6 +795,7 @@ type AliasWithPorts struct {
 
 func (ve *AliasWithPorts) UnmarshalJSON(b []byte) error {
 	var v any
+
 	err := json.Unmarshal(b, &v)
 	if err != nil {
 		return err
@@ -804,37 +806,42 @@ func (ve *AliasWithPorts) UnmarshalJSON(b []byte) error {
 		return fmt.Errorf("%w: %T", ErrTypeNotSupported, v)
 	}
 
-	return ve.parseString(vs)
+	parsed, err := parseAliasWithPorts(vs)
+	if err != nil {
+		return err
+	}
+
+	*ve = parsed
+
+	return nil
 }
 
-func (ve *AliasWithPorts) parseString(vs string) error {
+func parseAliasWithPorts(vs string) (AliasWithPorts, error) {
 	if !strings.Contains(vs, ":") {
-		return ErrHostportMissingColon
+		return AliasWithPorts{}, ErrHostportMissingColon
 	}
 
 	alias, portsPart, err := splitDestinationAndPort(vs)
 	if err != nil {
-		return err
+		return AliasWithPorts{}, err
 	}
 
 	ports, err := parsePortRange(portsPart)
 	if err != nil {
-		return fmt.Errorf("dst=%q: port range %q: %w", vs, portsPart, err)
+		return AliasWithPorts{}, fmt.Errorf("dst=%q: port range %q: %w", vs, portsPart, err)
 	}
 
 	parsed, err := parseAlias(alias)
 	if err != nil {
-		return err
+		return AliasWithPorts{}, err
 	}
 
 	err = parsed.Validate()
 	if err != nil {
-		return err
+		return AliasWithPorts{}, err
 	}
 
-	*ve = AliasWithPorts{Alias: parsed, Ports: ports}
-
-	return nil
+	return AliasWithPorts{Alias: parsed, Ports: ports}, nil
 }
 
 // ProtocolPort is a representation of the "network layer capabilities"

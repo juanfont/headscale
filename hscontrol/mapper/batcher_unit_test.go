@@ -81,6 +81,7 @@ func (m *mockNodeConnection) computePeerDiff(currentPeers []tailcfg.NodeID) []ta
 	if m.onDiff != nil {
 		m.onDiff(currentPeers)
 	}
+
 	currentSet := make(map[tailcfg.NodeID]struct{}, len(currentPeers))
 	for _, id := range currentPeers {
 		currentSet[id] = struct{}{}
@@ -101,6 +102,7 @@ func (m *mockNodeConnection) computePeerDiff(currentPeers []tailcfg.NodeID) []ta
 
 func (m *mockNodeConnection) updateSentPeers(resp *tailcfg.MapResponse) {
 	m.peerUpdates.Add(1)
+
 	if resp == nil {
 		return
 	}

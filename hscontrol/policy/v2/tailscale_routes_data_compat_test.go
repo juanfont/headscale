@@ -370,6 +370,7 @@ func addSrcIPToBuilder(
 
 		r := netipx.IPRangeFrom(ip1, ip2)
 		require.True(tb, r.IsValid(), "%s/%s: invalid range %q", testID, nodeName, srcIP)
+
 		for _, pfx := range r.Prefixes() {
 			builder.AddPrefix(pfx)
 		}

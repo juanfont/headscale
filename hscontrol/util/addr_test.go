@@ -29,6 +29,7 @@ func TestIPSetAddrIterMaxAddress(t *testing.T) {
 				builder ipset.Builder
 				want    []netip.Addr
 			)
+
 			for _, s := range tt.ips {
 				ip := netip.MustParseAddr(s)
 				builder.AddAddr(ip)
@@ -47,6 +48,7 @@ func TestIPSetAddrIterMaxAddress(t *testing.T) {
 					break // Bound the regression: Next at the maximum yields an invalid address.
 				}
 			}
+
 			if !slices.Equal(want, got) {
 				t.Errorf("addresses = %v, want %v", got, want)
 			}
@@ -70,6 +72,7 @@ func TestIPSetAddrIterConsumerStop(t *testing.T) {
 		calls++
 		return false
 	})
+
 	if calls != 1 {
 		t.Errorf("yield called %d times after consumer stopped, want 1", calls)
 	}

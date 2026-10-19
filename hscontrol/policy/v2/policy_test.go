@@ -1,8 +1,11 @@
 package v2
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/netip"
+	"runtime"
+	"runtime/debug"
 	"slices"
 	"testing"
 	"time"
@@ -14,6 +17,8 @@ import (
 	"pgregory.net/rapid"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/ipproto"
+	"tailscale.com/types/views"
 )
 
 func node(name, ipv4, ipv6 string, user types.User) *types.Node {
@@ -3872,4 +3877,529 @@ func TestFailedSetNodesKeepsCompiledPolicy(t *testing.T) {
 		require.Equal(t, wantFilter, gotFilter, "node %s filter after the retry", n.Hostname)
 		require.Equal(t, wantSSH, gotSSH, "node %s SSH after the retry", n.Hostname)
 	}
+}
+
+// Generation benchmarks deliberately construct no resolved aliases or Sets in
+// their fixtures. Only common input nodes/users, raw policy bytes, and expected
+// prefixes precede the memory baseline; all manager-owned copies count.
+var generationBenchmarkShapes = []string{
+	"ordinary", "self", "via", "unique4096", "small-aliases128",
+}
+
+// A scalar sink consumes outputs without retaining generations between samples.
+var generationBenchmarkSink int
+
+type generationBenchmarkFixture struct {
+	shape        string
+	users        []types.User
+	nodes        types.Nodes
+	views        views.Slice[types.NodeView]
+	policies     [][]byte
+	destinations []netip.Prefix
+}
+
+func newGenerationBenchmarkFixture(
+	tb testing.TB,
+	shape string,
+) *generationBenchmarkFixture {
+	tb.Helper()
+
+	f := &generationBenchmarkFixture{shape: shape}
+	f.users, f.nodes = benchNodes(617)
+	policy := make(map[string]json.RawMessage)
+
+	switch shape {
+	case "ordinary", "self", "via":
+		index := slices.Index([]string{"ordinary", "self", "via"}, shape)
+		require.NoError(
+			tb,
+			json.Unmarshal([]byte(benchPolicies[index].policy), &policy),
+		)
+	case "unique4096":
+		destinations := make([]string, 0, 4096)
+		for i := range 2048 {
+			// Sparse hosts cannot collapse into one large prefix.
+			destinations = append(destinations,
+				fmt.Sprintf("10.128.%d.%d/32", i/128, 2*(i%128)),
+				fmt.Sprintf("2001:db8:ffff::%x/128", 2*(i+1)))
+		}
+
+		for _, destination := range destinations {
+			f.destinations = append(f.destinations, netip.MustParsePrefix(destination))
+		}
+
+		grants, err := json.Marshal([]map[string]any{{
+			"src": []string{"u2@"}, "dst": destinations,
+			"ip": []string{"tcp:22", "tcp:80-81", "udp:53", "udp:1000-1002"},
+		}})
+		require.NoError(tb, err)
+
+		policy["grants"] = grants
+
+		f.nodes[0].ApprovedRoutes = append(f.nodes[0].ApprovedRoutes,
+			netip.MustParsePrefix("10.128.0.0/16"),
+			netip.MustParsePrefix("2001:db8:ffff::/64"))
+		f.nodes[0].Hostinfo.RoutableIPs = slices.Clone(f.nodes[0].ApprovedRoutes)
+	case "small-aliases128":
+		f.users = make([]types.User, 128)
+		_, f.nodes = benchNodes(128)
+		groups := make(map[string][]string, 128)
+		grants := make([]map[string]any, 128)
+
+		for i := range f.users {
+			f.users[i] = types.User{ID: uint(i + 1), Name: fmt.Sprintf("u%d", i+1)}
+			n := f.nodes[i]
+			n.Tags, n.Hostinfo, n.ApprovedRoutes = nil, nil, nil
+			n.User, n.UserID = &f.users[i], &f.users[i].ID
+			groups[fmt.Sprintf("group:alias%d", i)] = []string{f.users[i].Name + "@"}
+			grants[i] = map[string]any{
+				"src": []string{fmt.Sprintf("group:alias%d", i)},
+				"dst": []string{fmt.Sprintf("group:alias%d", (i+1)%128)},
+				"ip":  []string{"tcp:22", "udp:53"},
+			}
+		}
+
+		var err error
+
+		policy["groups"], err = json.Marshal(groups)
+		require.NoError(tb, err)
+		policy["grants"], err = json.Marshal(grants)
+		require.NoError(tb, err)
+	default:
+		tb.Fatalf("unknown generation benchmark shape %q", shape)
+	}
+
+	for i, n := range f.nodes {
+		address := netip.MustParseAddr(fmt.Sprintf("fd7a:115c:a1e0::%x", i+1))
+		n.IPv6 = &address
+	}
+
+	f.views = f.nodes.ViewSlice()
+
+	// Exercise nonempty capability and SSH storage in every generation. These
+	// grants do not authorize network traffic used by the shape assertions.
+	policy["nodeAttrs"] = json.RawMessage(
+		`[{"target":["u2@"],"attr":["randomize-client-port"]}]`,
+	)
+	policy["ssh"] = json.RawMessage(
+		`[{"action":"accept","src":["autogroup:member"],"dst":["autogroup:self"],"users":["root","autogroup:nonroot"]}]`,
+	)
+
+	grants := make([]json.RawMessage, 0, 2)
+	if data := policy["grants"]; data != nil {
+		require.NoError(tb, json.Unmarshal(data, &grants))
+	}
+
+	grants = append(
+		grants,
+		json.RawMessage(
+			`{"src":["u2@"],"dst":["u3@"],"app":{"example.com/benchmark":[{"allowed":true}]}}`,
+		),
+	)
+
+	grants = append(grants, nil)
+	for generation := range 33 {
+		// A distinct, observable permission proves every retained view differs.
+		grants[len(grants)-1] = json.RawMessage(fmt.Sprintf(
+			`{"src":["u2@"],"dst":["198.18.255.254/32"],"ip":["tcp:%d"]}`,
+			20000+generation))
+
+		var err error
+
+		policy["grants"], err = json.Marshal(grants)
+		require.NoError(tb, err)
+		data, err := json.Marshal(policy)
+		require.NoError(tb, err)
+
+		f.policies = append(f.policies, data)
+	}
+
+	return f
+}
+
+func generationBenchmarkAllows(
+	rules []packetfilter.Rule,
+	src, dst netip.Addr,
+	protocol ipproto.Proto,
+	port uint16,
+) bool {
+	for _, rule := range rules {
+		if rule.Kind() != packetfilter.KindNetwork || !rule.Sources().Contains(src) {
+			continue
+		}
+
+		for candidate := range rule.Protocols() {
+			if candidate != protocol {
+				continue
+			}
+
+			for destination := range rule.Destinations() {
+				if destination.Ports.First <= port && port <= destination.Ports.Last &&
+					destination.Addresses.Contains(dst) {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+func checkGenerationBenchmarkMarker(
+	tb testing.TB, f *generationBenchmarkFixture, view ReadView, generation int,
+) {
+	tb.Helper()
+
+	rules := view.PacketRules()
+	for candidate := range len(f.policies) {
+		allowed := generationBenchmarkAllows(
+			rules,
+			*f.nodes[1].IPv4,
+			netip.MustParseAddr(
+				"198.18.255.254",
+			),
+			ipproto.TCP,
+			uint16(20000+candidate),
+		) //nolint:gosec // bounded fixture ports
+		require.Equal(tb, candidate == generation, allowed,
+			"captured generation %d, marker port %d", generation, 20000+candidate)
+	}
+}
+
+func checkGenerationBenchmarkShape(
+	tb testing.TB,
+	f *generationBenchmarkFixture,
+	view ReadView,
+) {
+	tb.Helper()
+
+	check := func(viewer int, packet bool, destination netip.Addr, protocol ipproto.Proto, port uint16, want bool) {
+		tb.Helper()
+
+		rules, err := view.PeerRulesForNode(f.views.At(viewer))
+		if packet {
+			rules, err = view.PacketRulesForNode(f.views.At(viewer))
+		}
+
+		require.NoError(tb, err)
+
+		for _, source := range []netip.Addr{*f.nodes[1].IPv4, *f.nodes[1].IPv6} {
+			require.Equal(
+				tb,
+				want,
+				generationBenchmarkAllows(rules, source, destination, protocol, port),
+				"%s viewer %d, packet=%t, %s to %s:%d/%d",
+				f.shape,
+				viewer,
+				packet,
+				source,
+				destination,
+				port,
+				protocol,
+			)
+		}
+	}
+
+	switch f.shape {
+	case "ordinary", "via":
+		check(0, true, netip.MustParseAddr("10.0.0.1"), ipproto.TCP, 443, true)
+		check(0, true, netip.MustParseAddr("192.0.2.1"), ipproto.TCP, 443, false)
+
+		if f.shape == "via" {
+			check(1, false, netip.MustParseAddr("10.0.0.1"), ipproto.TCP, 443, false)
+		}
+	case "self":
+		for _, destination := range []netip.Addr{*f.nodes[11].IPv4, *f.nodes[11].IPv6} {
+			check(11, true, destination, ipproto.TCP, 443, true)
+			check(0, false, destination, ipproto.TCP, 443, false)
+		}
+	case "unique4096":
+		for _, destination := range []netip.Addr{
+			f.destinations[0].Addr(), f.destinations[1].Addr(),
+			f.destinations[4094].Addr(), f.destinations[4095].Addr(),
+		} {
+			check(0, true, destination, ipproto.TCP, 22, true)
+			check(0, true, destination, ipproto.TCP, 81, true)
+			check(0, true, destination, ipproto.UDP, 53, true)
+			check(0, true, destination, ipproto.UDP, 1002, true)
+			check(0, true, destination, ipproto.TCP, 53, false)
+			check(0, true, destination, ipproto.UDP, 22, false)
+		}
+
+		seen := make(map[netip.Prefix]bool, 4096)
+
+		for _, rule := range view.PacketRules() {
+			for destination := range rule.Destinations() {
+				if destination.Ports == (tailcfg.PortRange{First: 22, Last: 22}) {
+					for prefix := range destination.Addresses.Prefixes() {
+						seen[prefix] = true
+					}
+				}
+			}
+		}
+
+		require.Len(tb, seen, 4096, "all unique destinations must reach compiled rules")
+
+		for _, prefix := range f.destinations {
+			require.True(tb, seen[prefix], "missing destination %s", prefix)
+		}
+	case "small-aliases128":
+		for _, destination := range []netip.Addr{*f.nodes[2].IPv4, *f.nodes[2].IPv6} {
+			check(2, true, destination, ipproto.TCP, 22, true)
+			check(2, true, destination, ipproto.UDP, 53, true)
+			check(2, true, destination, ipproto.TCP, 53, false)
+		}
+	}
+
+	require.NotEmpty(tb, view.NodeCapMap(f.nodes[1].ID))
+	ssh, err := view.SSHPolicy("https://benchmark.invalid", f.views.At(1))
+	require.NoError(tb, err)
+	require.NotNil(tb, ssh)
+	require.NotEmpty(tb, ssh.Rules)
+
+	capability := false
+
+	for _, rule := range view.PacketRules() {
+		for _, grant := range rule.CapGrants() {
+			capability = capability || (grant.Addresses.Contains(*f.nodes[2].IPv4) &&
+				len(grant.CapMap["example.com/benchmark"]) == 1)
+		}
+	}
+
+	require.True(tb, capability, "application capability must be compiled")
+}
+
+func warmGenerationBenchmark(
+	tb testing.TB,
+	pm *PolicyManager,
+	f *generationBenchmarkFixture,
+) ReadView {
+	tb.Helper()
+
+	view := pm.ReadView()
+	require.True(tb, view.Valid())
+	generationBenchmarkSink += len(view.PacketRules())
+	// Twelve fixed recipients include a router and a second u2 device in the
+	// 617-node fixtures; small-aliases128 warms twelve independent owners.
+	for i := range 12 {
+		node := f.views.At(i)
+		packet, err := view.PacketRulesForNode(node)
+		require.NoError(tb, err)
+		peer, err := view.PeerRulesForNode(node)
+		require.NoError(tb, err)
+		ssh, err := view.SSHPolicy("https://benchmark.invalid", node)
+		require.NoError(tb, err)
+
+		generationBenchmarkSink += len(
+			packet,
+		) + len(
+			peer,
+		) + len(
+			view.NodeCapMap(node.ID()),
+		) +
+			len(
+				view.PeerCapMap(node),
+			)
+		if ssh != nil {
+			generationBenchmarkSink += len(ssh.Rules)
+		}
+	}
+
+	peers := pm.BuildPeerMap(f.views)
+
+	edges := 0
+	for _, ids := range peers {
+		edges += len(ids)
+	}
+
+	require.Positive(tb, edges, "peer-map workload must authorize peers")
+	generationBenchmarkSink += edges
+
+	return view
+}
+
+// Losing a publication, sharing mutable generation caches, or accidentally
+// benchmarking an empty policy must fail this fixture check before measurement.
+func TestPolicyGenerationBenchmarkFixtures(t *testing.T) {
+	for _, shape := range generationBenchmarkShapes {
+		t.Run(shape, func(t *testing.T) {
+			f := newGenerationBenchmarkFixture(t, shape)
+			pm, err := NewPolicyManager(f.policies[0], f.users, f.views)
+			require.NoError(t, err)
+
+			retained := []ReadView{warmGenerationBenchmark(t, pm, f)}
+			for generation := 1; generation < 3; generation++ {
+				changed, err := pm.SetPolicy(f.policies[generation])
+				require.NoError(t, err)
+				require.True(t, changed)
+				retained = append(retained, warmGenerationBenchmark(t, pm, f))
+			}
+
+			for generation, view := range retained {
+				checkGenerationBenchmarkMarker(t, f, view, generation)
+				checkGenerationBenchmarkShape(t, f, view)
+			}
+		})
+	}
+}
+
+// These time only real construction and SetPolicy publication. Existing
+// BuildPeerMap/SetNodes benchmarks cover their respective hot paths. Forced GC,
+// memory observation, and cache warming never run inside these timed loops.
+func BenchmarkPolicyGeneration(b *testing.B) {
+	for _, shape := range generationBenchmarkShapes {
+		b.Run(shape, func(b *testing.B) {
+			f := newGenerationBenchmarkFixture(b, shape)
+			b.Run("Construct", func(b *testing.B) {
+				pm, err := NewPolicyManager(f.policies[0], f.users, f.views)
+				require.NoError(b, err)
+				checkGenerationBenchmarkShape(b, f, warmGenerationBenchmark(b, pm, f))
+				b.ReportAllocs()
+
+				for b.Loop() {
+					pm, err := NewPolicyManager(f.policies[0], f.users, f.views)
+					if err != nil {
+						b.Fatal(err)
+					}
+
+					runtime.KeepAlive(pm)
+				}
+			})
+			b.Run("Publish", func(b *testing.B) {
+				pm, err := NewPolicyManager(f.policies[0], f.users, f.views)
+				require.NoError(b, err)
+				warmGenerationBenchmark(b, pm, f)
+				checkGenerationBenchmarkShape(b, f, pm.ReadView())
+				b.ReportAllocs()
+
+				generation := 1
+				for b.Loop() {
+					changed, err := pm.SetPolicy(f.policies[generation])
+					if err != nil {
+						b.Fatal(err)
+					}
+
+					if !changed {
+						b.Fatal("SetPolicy must publish a distinct marker permission")
+					}
+
+					generation = (generation + 1) % len(f.policies)
+				}
+
+				runtime.KeepAlive(pm)
+			})
+		})
+	}
+}
+
+// BenchmarkPolicyGenerationMemory requires -benchtime=1x. Its metrics are heap
+// deltas, not timing results. No automatic GC runs during the single measured
+// update: the endpoint includes all update garbage and bounds that update's
+// allocated Go heap, not a production peak, RSS, or allocator-reserved memory.
+// Run separately from timing benchmarks, with no competing benchmark processes.
+func BenchmarkPolicyGenerationMemory(b *testing.B) {
+	for _, shape := range generationBenchmarkShapes {
+		for _, live := range []int{1, 32} {
+			b.Run(fmt.Sprintf("%s/live=%d", shape, live), func(b *testing.B) {
+				b.StopTimer()
+
+				if b.N != 1 {
+					b.Fatal("memory benchmarks require -benchtime=1x")
+				}
+
+				f := newGenerationBenchmarkFixture(b, shape)
+				measurePolicyGenerationMemory(b, f, live)
+				b.ReportMetric(0, "ns/op")
+			})
+		}
+	}
+}
+
+func measurePolicyGenerationMemory(
+	b *testing.B,
+	f *generationBenchmarkFixture,
+	live int,
+) {
+	b.Helper()
+
+	roots := make([]ReadView, live)
+
+	var baseline, retained, updated, settled, latest, released runtime.MemStats
+	// Crucially, this precedes NewPolicyManager and every resolved alias,
+	// compiled projection, rule union, index, self fragment, and generation cache.
+	runtime.GC()
+	runtime.ReadMemStats(&baseline)
+
+	pm, err := NewPolicyManager(f.policies[0], f.users, f.views)
+	require.NoError(b, err)
+	roots[0] = warmGenerationBenchmark(b, pm, f)
+	checkGenerationBenchmarkShape(b, f, roots[0])
+
+	for generation := 1; generation < live; generation++ {
+		changed, err := pm.SetPolicy(f.policies[generation])
+		require.NoError(b, err)
+		require.True(b, changed)
+		roots[generation] = warmGenerationBenchmark(b, pm, f)
+	}
+
+	for generation, view := range roots {
+		checkGenerationBenchmarkMarker(b, f, view, generation)
+	}
+
+	runtime.GC()
+	runtime.ReadMemStats(&retained)
+
+	previousGC := debug.SetGCPercent(-1)
+	defer debug.SetGCPercent(previousGC)
+
+	changed, err := pm.SetPolicy(f.policies[live])
+	require.NoError(b, err)
+	require.True(b, changed)
+	warmGenerationBenchmark(b, pm, f)
+	runtime.ReadMemStats(&updated)
+	debug.SetGCPercent(previousGC)
+	require.Equal(b, retained.NumGC, updated.NumGC,
+		"GC during bounded update invalidates its no-GC high-water metric")
+
+	// Keep all old roots through this GC: settled holds live+1 generations.
+	runtime.GC()
+	runtime.ReadMemStats(&settled)
+
+	for generation, view := range roots {
+		checkGenerationBenchmarkMarker(b, f, view, generation)
+	}
+
+	checkGenerationBenchmarkMarker(b, f, pm.ReadView(), live)
+	clear(roots)
+	runtime.GC()
+	runtime.ReadMemStats(&latest)
+	runtime.KeepAlive(pm)
+	pm = nil //nolint:wastedassign // Make the measured root release explicit before GC.
+
+	runtime.GC()
+	runtime.ReadMemStats(&released)
+	// Common inputs and the empty root container stay live at every sample.
+	runtime.KeepAlive(f)
+	runtime.KeepAlive(roots)
+
+	// Signed deltas expose process-level GC noise instead of hiding it or
+	// underflowing uint64 counters. No absolute reclamation threshold is stable.
+	delta := func(after, before uint64) float64 { return float64(after) - float64(before) }
+	b.ReportMetric(delta(retained.HeapAlloc, baseline.HeapAlloc), "retained-B")
+	b.ReportMetric(
+		delta(updated.HeapAlloc, baseline.HeapAlloc),
+		"update-no-gc-highwater-B",
+	)
+	b.ReportMetric(
+		delta(updated.TotalAlloc, retained.TotalAlloc),
+		"update-total-alloc-B",
+	)
+	b.ReportMetric(delta(updated.HeapAlloc, settled.HeapAlloc), "update-transient-B")
+	b.ReportMetric(delta(settled.HeapAlloc, baseline.HeapAlloc), "updated-retained-B")
+	b.ReportMetric(
+		delta(settled.HeapAlloc, latest.HeapAlloc),
+		"old-generations-reclaimed-B",
+	)
+	b.ReportMetric(delta(latest.HeapAlloc, baseline.HeapAlloc), "latest-retained-B")
+	b.ReportMetric(delta(released.HeapAlloc, baseline.HeapAlloc), "released-residual-B")
 }

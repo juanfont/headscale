@@ -1328,6 +1328,7 @@ func TestBuildPeerMapPerNodeInternet(t *testing.T) {
 					)
 				}
 			}
+
 			require.Equal(t, want, pm.BuildPeerMap(nodes.ViewSlice()))
 		})
 	}

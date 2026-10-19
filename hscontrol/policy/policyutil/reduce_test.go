@@ -1935,6 +1935,7 @@ func reduceCapGrantRuleReference(
 			nodeIPs = append(nodeIPs, ip)
 		}
 	}
+
 	subnetRoutes := node.SubnetRoutes()
 
 	for _, cg := range rule.CapGrant {
