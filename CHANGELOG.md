@@ -102,6 +102,8 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 
 #### Configuration
 
+- `prefixes.v4` and `prefixes.v6` now reject prefixes of the wrong address family
+  at startup; place IPv4 ranges in `prefixes.v4` and IPv6 ranges in `prefixes.v6`.
 - `derp.paths` files must end in `.yaml`, `.yml`, `.json` or `.hujson`; the extension picks the format
 - `dns.extra_records_path` must end in `.json`, `.hujson`, `.yaml` or `.yml`; the extension picks the format
 - A `derp.paths` file that decodes to no regions now stops headscale from starting instead of being silently ignored

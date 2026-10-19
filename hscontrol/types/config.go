@@ -47,6 +47,7 @@ var (
 	errServerURLSame             = errors.New("server_url cannot use the same domain as base_domain in a way that could make the DERP and headscale server unreachable")
 	errInvalidPKCEMethod         = errors.New("pkce.method must be either 'plain' or 'S256'")
 	errTrustedProxyZeroRange     = errors.New("0.0.0.0/0 and ::/0 are not allowed")
+	errPrefixFamilyMismatch      = errors.New("prefix address family does not match field")
 	ErrNoPrefixConfigured        = errors.New("no IPv4 or IPv6 prefix configured, minimum one prefix is required")
 	ErrInvalidAllocationStrategy = errors.New("invalid prefix allocation strategy")
 )
@@ -1359,8 +1360,15 @@ func parsePrefixConfig(key string, standardRange netip.Prefix, family string) (*
 		return nil, false, fmt.Errorf("parsing %s prefix from config: %w", family, err)
 	}
 
-	withinStandard := prefix.Addr().BitLen() == standardRange.Addr().BitLen() &&
-		prefix.Bits() >= standardRange.Bits() && standardRange.Contains(prefix.Addr())
+	if prefix.Addr().BitLen() != standardRange.Addr().BitLen() {
+		return nil, false, fmt.Errorf(
+			"parsing %s prefix from config: %s %q: %w",
+			family, key, s, errPrefixFamilyMismatch,
+		)
+	}
+
+	withinStandard := prefix.Bits() >= standardRange.Bits() &&
+		standardRange.Contains(prefix.Addr())
 
 	return &prefix, !withinStandard, nil
 }

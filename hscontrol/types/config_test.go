@@ -23,7 +23,7 @@ import (
 	"tailscale.com/types/dnstype"
 )
 
-func TestParsePrefixConfigPreservesInputs(t *testing.T) {
+func TestParsePrefixConfigBoundarySemantics(t *testing.T) {
 	tests := []struct {
 		name        string
 		input       string
@@ -33,6 +33,7 @@ func TestParsePrefixConfigPreservesInputs(t *testing.T) {
 		wantErr     bool
 	}{
 		{"unset", "", tsaddr.CGNATRange(), "IPv4", false, false},
+		{"IPv6 unset", "", tsaddr.TailscaleULARange(), "IPv6", false, false},
 		{"IPv4 standard", "100.64.0.0/10", tsaddr.CGNATRange(), "IPv4", false, false},
 		{"IPv4 subset", "100.100.100.0/24", tsaddr.CGNATRange(), "IPv4", false, false},
 		{"IPv4 outside", "192.0.2.0/24", tsaddr.CGNATRange(), "IPv4", true, false},
@@ -98,22 +99,30 @@ func TestParsePrefixConfigPreservesInputs(t *testing.T) {
 			"fd7a:115c:a1e0::/48",
 			tsaddr.CGNATRange(),
 			"IPv4",
-			true,
 			false,
+			true,
 		},
 		{
 			"IPv4 in IPv6 field",
 			"100.64.0.0/10",
 			tsaddr.TailscaleULARange(),
 			"IPv6",
-			true,
 			false,
+			true,
 		},
 		{
-			"mapped IPv4 stays IPv6",
+			"mapped IPv4 rejected in IPv4 field",
 			"::ffff:100.64.0.0/106",
 			tsaddr.CGNATRange(),
 			"IPv4",
+			false,
+			true,
+		},
+		{
+			"mapped IPv4 accepted as nonstandard IPv6",
+			"::ffff:100.64.0.0/106",
+			tsaddr.TailscaleULARange(),
+			"IPv6",
 			true,
 			false,
 		},
@@ -131,10 +140,16 @@ func TestParsePrefixConfigPreservesInputs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			viper.Reset()
 			t.Cleanup(viper.Reset)
-			viper.Set("prefixes.test", tt.input)
+
+			key := "prefixes.v6"
+			if tt.standard.Addr().Is4() {
+				key = "prefixes.v4"
+			}
+
+			viper.Set(key, tt.input)
 
 			prefix, nonStandard, err := parsePrefixConfig(
-				"prefixes.test",
+				key,
 				tt.standard,
 				tt.family,
 			)
@@ -144,6 +159,14 @@ func TestParsePrefixConfigPreservesInputs(t *testing.T) {
 					err,
 					"parsing "+tt.family+" prefix from config:",
 				)
+
+				_, parseErr := netip.ParsePrefix(tt.input)
+				if parseErr == nil {
+					require.ErrorIs(t, err, errPrefixFamilyMismatch)
+					require.ErrorContains(t, err, key)
+					require.ErrorContains(t, err, tt.input)
+				}
+
 				assert.Nil(t, prefix)
 				assert.False(t, nonStandard)
 
