@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net/netip"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -28,7 +29,9 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/require"
+	"go4.org/netipx"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/peercap"
 )
 
 // ptrAddr is a helper to create a pointer to a netip.Addr.
@@ -109,6 +112,158 @@ func cmpOptions() []cmp.Option {
 			return string(ja) == string(jb)
 		}),
 	}
+}
+
+// filterRuleBucket keeps each source/destination association intact. Callers
+// must compare one recipient at a time, before discarding viewer/owner identity.
+type filterRuleBucket struct {
+	Sources    string
+	Protocols  string
+	Kind       string
+	Ports      tailcfg.PortRange
+	Capability string
+}
+
+func filterRulesDiff(t *testing.T, want, got []tailcfg.FilterRule) string {
+	t.Helper()
+
+	return cmp.Diff(
+		semanticFilterRules(t, want),
+		semanticFilterRules(t, got),
+		cmpopts.EquateComparable(netip.Prefix{}),
+	)
+}
+
+func semanticFilterRules(
+	t *testing.T,
+	rules []tailcfg.FilterRule,
+) map[filterRuleBucket][]netip.Prefix {
+	t.Helper()
+
+	buckets := make(map[filterRuleBucket]*netipx.IPSetBuilder)
+
+	for _, rule := range rules {
+		var sources netipx.IPSetBuilder
+
+		for i, source := range rule.SrcIPs {
+			var bits *int
+			if i < len(rule.SrcBits) {
+				bits = &rule.SrcBits[i]
+			}
+
+			addFilterIPToBuilder(t, &sources, source, bits)
+		}
+
+		sourceSet, err := sources.IPSet()
+		require.NoError(t, err)
+
+		protocols := slices.Clone(rule.IPProto)
+		if len(protocols) == 0 {
+			protocols = []int{1, 6, 17, 58}
+		}
+
+		slices.Sort(protocols)
+		protocols = slices.Compact(protocols)
+		key := filterRuleBucket{
+			Sources:   fmt.Sprint(sourceSet.Prefixes()),
+			Protocols: fmt.Sprint(protocols),
+			Kind:      "network",
+		}
+
+		require.False(t, len(rule.DstPorts) > 0 && len(rule.CapGrant) > 0,
+			"mixed network and capability rule: %+v", rule)
+
+		for _, destination := range rule.DstPorts {
+			key.Ports = destination.Ports
+			if buckets[key] == nil {
+				buckets[key] = new(netipx.IPSetBuilder)
+			}
+
+			addFilterIPToBuilder(t, buckets[key], destination.IP, destination.Bits)
+		}
+
+		key.Kind = "capability"
+		for _, grant := range rule.CapGrant {
+			key.Capability = capabilityPayload(t, grant)
+			if buckets[key] == nil {
+				buckets[key] = new(netipx.IPSetBuilder)
+			}
+
+			for _, destination := range grant.Dsts {
+				buckets[key].AddPrefix(destination)
+			}
+		}
+	}
+
+	result := make(map[filterRuleBucket][]netip.Prefix, len(buckets))
+	for key, builder := range buckets {
+		set, err := builder.IPSet()
+		require.NoError(t, err)
+
+		if prefixes := set.Prefixes(); len(prefixes) > 0 {
+			result[key] = prefixes
+		}
+	}
+
+	return result
+}
+
+func addFilterIPToBuilder(
+	t *testing.T,
+	builder *netipx.IPSetBuilder,
+	ip string,
+	bits *int,
+) {
+	t.Helper()
+
+	address, err := netip.ParseAddr(ip)
+	if err == nil && bits != nil {
+		require.GreaterOrEqual(t, *bits, 0)
+		require.LessOrEqual(t, *bits, address.BitLen())
+		builder.AddPrefix(netip.PrefixFrom(address, *bits))
+
+		return
+	}
+
+	addSrcIPToBuilder(t, builder, ip, "filter comparison", "recipient")
+}
+
+func capabilityPayload(t *testing.T, grant tailcfg.CapGrant) string {
+	t.Helper()
+
+	var capMap tailcfg.PeerCapMap
+	if grant.CapMap != nil {
+		capMap = make(tailcfg.PeerCapMap, len(grant.CapMap))
+	}
+
+	for name, values := range grant.CapMap {
+		capMap[name] = nil
+		if values != nil {
+			capMap[name] = make([]tailcfg.RawMessage, len(values))
+		}
+
+		for i, raw := range values {
+			require.True(t, json.Valid([]byte(raw)), "invalid capability JSON: %q", raw)
+			decoder := json.NewDecoder(strings.NewReader(string(raw)))
+			decoder.UseNumber()
+
+			var value any
+			require.NoError(t, decoder.Decode(&value))
+			canonical, err := json.Marshal(value)
+			require.NoError(t, err)
+
+			capMap[name][i] = tailcfg.RawMessage(canonical)
+		}
+	}
+
+	// No omitempty: nil/empty containers and ordered values are payload, too.
+	payload, err := json.Marshal(struct {
+		Caps   []peercap.Cap
+		CapMap tailcfg.PeerCapMap
+	}{grant.Caps, capMap})
+	require.NoError(t, err)
+
+	return string(payload)
 }
 
 // buildACLUsersAndNodes constructs users and nodes from an ACL
@@ -369,16 +524,8 @@ func testACLSuccess(
 
 			wantRules := capture.PacketFilterRules
 
-			// Compare
-			opts := append(
-				cmpOptions(),
-				cmpopts.EquateEmpty(),
-			)
-			if diff := cmp.Diff(
-				wantRules,
-				gotRules,
-				opts...,
-			); diff != "" {
+			// Compare coverage for this recipient, preserving source associations.
+			if diff := filterRulesDiff(t, wantRules, gotRules); diff != "" {
 				t.Errorf(
 					"%s/%s: filter rules mismatch (-want +got):\n%s",
 					tf.TestID,
@@ -386,6 +533,307 @@ func testACLSuccess(
 					diff,
 				)
 			}
+		})
+	}
+}
+
+func TestFilterRulesSemanticComparison(t *testing.T) {
+	t.Parallel()
+
+	http := tailcfg.PortRange{First: 80, Last: 80}
+	https := tailcfg.PortRange{First: 443, Last: 443}
+	network := func(src, dst string, ports tailcfg.PortRange, proto ...int) tailcfg.FilterRule {
+		return tailcfg.FilterRule{
+			SrcIPs: []string{src}, IPProto: proto,
+			DstPorts: []tailcfg.NetPortRange{{IP: dst, Ports: ports}},
+		}
+	}
+	capability := func(dst string, payload tailcfg.PeerCapMap) tailcfg.FilterRule {
+		return tailcfg.FilterRule{
+			SrcIPs: []string{"100.64.0.1"},
+			CapGrant: []tailcfg.CapGrant{{
+				Dsts: []netip.Prefix{netip.MustParsePrefix(dst)}, CapMap: payload,
+			}},
+		}
+	}
+
+	web := network("100.64.0.1", "10.0.0.0/24", http)
+	secure := network("100.64.0.1", "10.0.1.0/24", https)
+	mergedSources := network("100.64.0.0/31", "10.0.0.0/24", http)
+	listedSources := web
+	listedSources.SrcIPs = []string{"100.64.0.1", "100.64.0.0"}
+	legacySource := web
+	legacySource.SrcBits = []int{24}
+	legacyDestination := web
+	legacyDestination.DstPorts = []tailcfg.NetPortRange{{
+		IP: "10.0.0.1", Bits: new(24), Ports: http,
+	}}
+	capPayload := tailcfg.PeerCapMap{
+		"example.com/cap":  {`{"role":"reader","ids":[1,2]}`},
+		"example.com/flag": nil,
+	}
+	capRule := capability("10.0.0.0/24", capPayload)
+	legacyCap := capability("10.0.0.0/24", nil)
+	legacyCap.CapGrant[0].Caps = []peercap.Cap{"example.com/legacy"}
+	otherLegacyCap := capability("10.0.0.0/24", nil)
+	otherLegacyCap.CapGrant[0].Caps = []peercap.Cap{"example.com/other"}
+
+	tests := []struct {
+		name  string
+		want  []tailcfg.FilterRule
+		got   []tailcfg.FilterRule
+		equal bool
+	}{
+		{
+			name:  "bare-host-and-cidr",
+			want:  []tailcfg.FilterRule{network("100.64.0.1", "10.0.0.1", http)},
+			got:   []tailcfg.FilterRule{network("100.64.0.1/32", "10.0.0.1/32", http)},
+			equal: true,
+		},
+		{
+			name: "wildcard-and-all-prefixes",
+			want: []tailcfg.FilterRule{network("*", "*", http)},
+			got: []tailcfg.FilterRule{{
+				SrcIPs: []string{"0.0.0.0/0", "::/0"},
+				DstPorts: []tailcfg.NetPortRange{
+					{IP: "0.0.0.0/0", Ports: http}, {IP: "::/0", Ports: http},
+				},
+			}},
+			equal: true,
+		},
+		{
+			name:  "equivalent-source-merging",
+			want:  []tailcfg.FilterRule{listedSources},
+			got:   []tailcfg.FilterRule{mergedSources},
+			equal: true,
+		},
+		{
+			name: "destination-union-across-rules",
+			want: []tailcfg.FilterRule{
+				network("100.64.0.1", "10.0.0.0/25", http),
+				network("100.64.0.1/32", "10.0.0.128-10.0.0.255", http),
+				web,
+			},
+			got:   []tailcfg.FilterRule{web},
+			equal: true,
+		},
+		{
+			name: "default-protocols-and-duplicates",
+			want: []tailcfg.FilterRule{web},
+			got: []tailcfg.FilterRule{
+				network("100.64.0.1", "10.0.0.0/24", http, 58, 17, 6, 1, 6),
+			},
+			equal: true,
+		},
+		{
+			name:  "legacy-source-bits",
+			want:  []tailcfg.FilterRule{legacySource},
+			got:   []tailcfg.FilterRule{network("100.64.0.0/24", "10.0.0.0/24", http)},
+			equal: true,
+		},
+		{
+			name: "legacy-destination-bits",
+			want: []tailcfg.FilterRule{
+				legacyDestination,
+			},
+			got:   []tailcfg.FilterRule{web},
+			equal: true,
+		},
+		{
+			name:  "empty-revocation",
+			want:  nil,
+			got:   []tailcfg.FilterRule{},
+			equal: true,
+		},
+		{
+			name: "swapped-ports",
+			want: []tailcfg.FilterRule{web, secure},
+			got: []tailcfg.FilterRule{
+				network("100.64.0.1", "10.0.0.0/24", https),
+				network("100.64.0.1", "10.0.1.0/24", http),
+			},
+		},
+		{
+			name: "exact-port-ranges",
+			want: []tailcfg.FilterRule{
+				network(
+					"100.64.0.1",
+					"10.0.0.0/24",
+					tailcfg.PortRange{First: 80, Last: 81},
+				),
+			},
+			got: []tailcfg.FilterRule{
+				web,
+				network(
+					"100.64.0.1",
+					"10.0.0.0/24",
+					tailcfg.PortRange{First: 81, Last: 81},
+				),
+			},
+		},
+		{
+			name: "widened-source", want: []tailcfg.FilterRule{web},
+			got: []tailcfg.FilterRule{network("100.64.0.0/24", "10.0.0.0/24", http)},
+		},
+		{
+			name: "source-destination-cross-product",
+			want: []tailcfg.FilterRule{web, network("100.64.0.2", "10.0.1.0/24", http)},
+			got: []tailcfg.FilterRule{{
+				SrcIPs: []string{"100.64.0.1", "100.64.0.2"},
+				DstPorts: []tailcfg.NetPortRange{
+					{IP: "10.0.0.0/24", Ports: http}, {IP: "10.0.1.0/24", Ports: http},
+				},
+			}},
+		},
+		{
+			name: "missing-destination-coverage", want: []tailcfg.FilterRule{web},
+			got: []tailcfg.FilterRule{network("100.64.0.1", "10.0.0.0/25", http)},
+		},
+		{
+			name: "missing-ipv6-coverage",
+			want: []tailcfg.FilterRule{network("*", "*", http)},
+			got:  []tailcfg.FilterRule{network("*", "0.0.0.0/0", http)},
+		},
+		{
+			name: "widened-protocols",
+			want: []tailcfg.FilterRule{web},
+			got: []tailcfg.FilterRule{
+				network("100.64.0.1", "10.0.0.0/24", http, 1, 6, 17, 47, 58, 132),
+			},
+		},
+		{
+			name: "removed-protocols", want: []tailcfg.FilterRule{web},
+			got: []tailcfg.FilterRule{network("100.64.0.1", "10.0.0.0/24", http, 6)},
+		},
+		{
+			name: "protocol-destination-cross-product",
+			want: []tailcfg.FilterRule{
+				network("100.64.0.1", "10.0.0.0/24", http, 6),
+				network("100.64.0.1", "10.0.1.0/24", http, 17),
+			},
+			got: []tailcfg.FilterRule{
+				network("100.64.0.1", "10.0.0.0/24", http, 17),
+				network("100.64.0.1", "10.0.1.0/24", http, 6),
+			},
+		},
+		{
+			name: "mapped-is-not-native",
+			want: []tailcfg.FilterRule{network("100.64.0.1", "10.0.0.1", http)},
+			got:  []tailcfg.FilterRule{network("100.64.0.1", "::ffff:10.0.0.1", http)},
+		},
+		{
+			name: "capability-union-and-json-object-order",
+			want: []tailcfg.FilterRule{capRule},
+			got: []tailcfg.FilterRule{
+				capability("10.0.0.0/25", capPayload),
+				capability("10.0.0.128/25", tailcfg.PeerCapMap{
+					"example.com/flag": nil,
+					"example.com/cap":  {`{ "ids": [1, 2], "role": "reader" }`},
+				}),
+			},
+			equal: true,
+		},
+		{
+			name: "changed-capability-value", want: []tailcfg.FilterRule{capRule},
+			got: []tailcfg.FilterRule{capability("10.0.0.0/24", tailcfg.PeerCapMap{
+				"example.com/cap": {
+					`{"role":"writer","ids":[1,2]}`,
+				},
+				"example.com/flag": nil,
+			})},
+		},
+		{
+			name: "removed-capability-key", want: []tailcfg.FilterRule{capRule},
+			got: []tailcfg.FilterRule{capability("10.0.0.0/24", tailcfg.PeerCapMap{
+				"example.com/cap": {`{"role":"reader","ids":[1,2]}`},
+			})},
+		},
+		{
+			name: "capability-value-array-order",
+			want: []tailcfg.FilterRule{
+				capability(
+					"10.0.0.0/24",
+					tailcfg.PeerCapMap{"example.com/cap": {`1`, `2`}},
+				),
+			},
+			got: []tailcfg.FilterRule{
+				capability(
+					"10.0.0.0/24",
+					tailcfg.PeerCapMap{"example.com/cap": {`2`, `1`}},
+				),
+			},
+		},
+		{
+			name: "capability-nil-and-empty-values",
+			want: []tailcfg.FilterRule{
+				capability("10.0.0.0/24", tailcfg.PeerCapMap{"example.com/cap": nil}),
+			},
+			got: []tailcfg.FilterRule{
+				capability("10.0.0.0/24", tailcfg.PeerCapMap{"example.com/cap": {}}),
+			},
+		},
+		{
+			name: "capability-large-integers",
+			want: []tailcfg.FilterRule{
+				capability(
+					"10.0.0.0/24",
+					tailcfg.PeerCapMap{"example.com/cap": {`9007199254740992`}},
+				),
+			},
+			got: []tailcfg.FilterRule{
+				capability(
+					"10.0.0.0/24",
+					tailcfg.PeerCapMap{"example.com/cap": {`9007199254740993`}},
+				),
+			},
+		},
+		{
+			name: "capability-payload-destination-association",
+			want: []tailcfg.FilterRule{
+				capRule,
+				capability("10.0.1.0/24", tailcfg.PeerCapMap{"example.com/other": nil}),
+			},
+			got: []tailcfg.FilterRule{
+				capability("10.0.1.0/24", capPayload),
+				capability("10.0.0.0/24", tailcfg.PeerCapMap{"example.com/other": nil}),
+			},
+		},
+		{
+			name: "legacy-capability-payload", want: []tailcfg.FilterRule{legacyCap},
+			got: []tailcfg.FilterRule{otherLegacyCap},
+		},
+		{
+			name: "network-capability-kind", want: []tailcfg.FilterRule{web},
+			got: []tailcfg.FilterRule{capRule},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			beforeWant, err := json.Marshal(tt.want)
+			require.NoError(t, err)
+			beforeGot, err := json.Marshal(tt.got)
+			require.NoError(t, err)
+
+			diff := filterRulesDiff(t, tt.want, tt.got)
+			if tt.equal {
+				require.Empty(t, diff, "equivalent rules differ (-want +got)")
+			} else {
+				require.NotEmpty(
+					t,
+					diff,
+					"comparison lost an authorization distinction",
+				)
+			}
+
+			afterWant, err := json.Marshal(tt.want)
+			require.NoError(t, err)
+			afterGot, err := json.Marshal(tt.got)
+			require.NoError(t, err)
+			require.Equal(t, beforeWant, afterWant, "comparison mutated expected rules")
+			require.Equal(t, beforeGot, afterGot, "comparison mutated actual rules")
 		})
 	}
 }

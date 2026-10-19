@@ -23,8 +23,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
@@ -152,22 +150,6 @@ var grantSkipReasons = map[string]string{
 	// authentication and has no equivalent for this wildcard pattern.
 	"grant-k20": "USER_PASSKEY_WILDCARD: src=user:*@passkey not supported in headscale",
 	"grant-k21": "USER_PASSKEY_WILDCARD: dst=user:*@passkey not supported in headscale",
-
-	// SaaS lists contiguous source addresses one by one and writes
-	// autogroup:internet as address ranges; headscale merges sources into
-	// ranges and writes the internet as prefixes. The address sets match;
-	// TestViaGrantMapCompat compares these captures' filters by address.
-	"via-grant-v52": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v53": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v54": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v55": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v56": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v57": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v58": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v59": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v60": "FILTER_ADDRESS_FORM: same addresses, different wire form and rule order",
-	"via-grant-v61": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v62": "FILTER_ADDRESS_FORM: same addresses, different wire form",
 }
 
 // TestGrantsCompat is a data-driven test that loads all GRANT-*.json
@@ -312,10 +294,8 @@ func testGrantSuccess(
 			// Compare headscale output against Tailscale expected output.
 			// The diff labels show (-tailscale +headscale) to make clear
 			// which side produced which output.
-			// EquateEmpty treats nil and empty slices as equal since
-			// Tailscale's JSON null -> nil, headscale may return empty slice.
-			opts := append(cmpOptions(), cmpopts.EquateEmpty())
-			if diff := cmp.Diff(wantRules, gotRules, opts...); diff != "" {
+			// Empty revocations compare equally; payload nil/empty distinctions remain.
+			if diff := filterRulesDiff(t, wantRules, gotRules); diff != "" {
 				t.Errorf(
 					"%s/%s: filter rules mismatch (-tailscale +headscale):\n%s",
 					tf.TestID,

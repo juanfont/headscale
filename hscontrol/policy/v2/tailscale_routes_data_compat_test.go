@@ -248,15 +248,7 @@ func TestRoutesCompat(t *testing.T) {
 
 					wantRules := capture.PacketFilterRules
 
-					opts := append(
-						cmpOptions(),
-						cmpopts.EquateEmpty(),
-					)
-					if diff := cmp.Diff(
-						wantRules,
-						gotRules,
-						opts...,
-					); diff != "" {
+					if diff := filterRulesDiff(t, wantRules, gotRules); diff != "" {
 						t.Errorf(
 							"%s/%s: filter rules mismatch (-want +got):\n%s",
 							tf.TestID,
@@ -355,6 +347,8 @@ func addSrcIPToBuilder(
 	// Try CIDR notation first.
 	prefix, prefixErr := netip.ParsePrefix(srcIP)
 	if prefixErr == nil {
+		require.Equal(t, prefix, prefix.Masked(),
+			"%s/%s: non-network bits in %q", testID, nodeName, srcIP)
 		builder.AddPrefix(prefix)
 
 		return
@@ -376,6 +370,7 @@ func addSrcIPToBuilder(
 		)
 
 		r := netipx.IPRangeFrom(ip1, ip2)
+		require.True(t, r.IsValid(), "%s/%s: invalid range %q", testID, nodeName, srcIP)
 		for _, pfx := range r.Prefixes() {
 			builder.AddPrefix(pfx)
 		}
