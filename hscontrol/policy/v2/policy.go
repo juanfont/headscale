@@ -1199,6 +1199,7 @@ func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Pr
 	// approve the whole /0 range.
 	// However, an auto approver might be /0, meaning that they can approve
 	// all routes available, just not exit nodes.
+	route = route.Masked()
 	if tsaddr.IsExitRoute(route) {
 		if pm.exitApprovers.IsEmpty() {
 			return false

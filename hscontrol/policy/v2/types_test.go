@@ -3566,7 +3566,9 @@ func TestNodeCanApproveRouteDefaultPrefixes(t *testing.T) {
 	}}`), users, nodes.ViewSlice())
 	require.NoError(t, err)
 
-	for _, route := range []string{"0.0.0.0/0", "::/0"} {
+	for _, route := range []string{
+		"0.0.0.0/0", "::/0", "192.0.2.1/0", "2001:db8::1/0",
+	} {
 		assert.False(t, pm.NodeCanApproveRoute(nodes[0].View(), mp(route)), route)
 		assert.True(t, pm.NodeCanApproveRoute(nodes[1].View(), mp(route)), route)
 		assert.False(t, pm.NodeCanApproveRoute(nodes[2].View(), mp(route)), route)
