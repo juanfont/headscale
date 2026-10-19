@@ -13,6 +13,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/policy"
+	"github.com/juanfont/headscale/hscontrol/policy/packetfilter"
 	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -783,11 +784,14 @@ func TestReduceFilterRules(t *testing.T) {
 				pm, err = pmf(users, append(tt.peers, tt.node).ViewSlice())
 				require.NoError(t, err)
 
-				got, _ := pm.Filter()
+				got := packetfilter.ToTailcfg(pm.PacketRules())
 				t.Logf("full filter:\n%s", must.Get(json.MarshalIndent(got, "", "  ")))
 				got = policyutil.ReduceFilterRules(tt.node.View(), got)
 
-				if diff := cmp.Diff(tt.want, got); diff != "" {
+				if diff := cmp.Diff(
+					semanticRulesReference(t, tt.want),
+					semanticRulesReference(t, got),
+				); diff != "" {
 					log.Trace().Interface("got", got).Msg("result")
 					t.Errorf("TestReduceFilterRules() unexpected result (-want +got):\n%s", diff)
 				}
@@ -1419,8 +1423,9 @@ func assertReductionMatchesReference(
 
 	got := policyutil.ReduceFilterRules(node, rules)
 	if diff := cmp.Diff(
-		want,
-		got,
+		semanticRulesReference(t, want),
+		semanticRulesReference(t,
+			got),
 		cmpopts.EquateComparable(netip.Prefix{}),
 	); diff != "" {
 		t.Fatalf("reduction differs from frozen reference (-want +got):\n%s", diff)
@@ -1685,7 +1690,15 @@ func TestReduceFilterRulesReferenceRandomized(t *testing.T) {
 	}
 }
 
-func BenchmarkReduceFilterRules(b *testing.B) {
+type reductionBenchmarkFixture struct {
+	name  string
+	node  types.NodeView
+	rules []tailcfg.FilterRule
+}
+
+func reductionBenchmarkFixtures() []reductionBenchmarkFixture {
+	var fixtures []reductionBenchmarkFixture
+
 	plain := &types.Node{IPv4: ap("100.64.0.1"), IPv6: ap("fd7a:115c:a1e0::1")}
 	router := plain.Clone()
 
@@ -1778,46 +1791,66 @@ func BenchmarkReduceFilterRules(b *testing.B) {
 					}
 				}
 
-				want := reduceFilterRulesReference(workload.node.View(), rules)
-				for _, impl := range []struct {
-					name string
-					run  func(types.NodeView, []tailcfg.FilterRule) []tailcfg.FilterRule
-				}{
-					{"old", reduceFilterRulesReference}, {"new", policyutil.ReduceFilterRules},
-				} {
-					b.Run(
-						fmt.Sprintf(
-							"%s/unique=%t/dests=%d/%s",
-							workload.name,
-							unique,
-							count,
-							impl.name,
-						),
-						func(b *testing.B) {
-							b.ReportAllocs()
-
-							var got []tailcfg.FilterRule
-							for b.Loop() {
-								got = impl.run(workload.node.View(), rules)
-							}
-
-							if diff := cmp.Diff(
-								want,
-								got,
-								cmpopts.EquateComparable(netip.Prefix{}),
-							); diff != "" {
-								b.Fatalf("reduction differs (-want +got):\n%s", diff)
-							}
-						},
-					)
-				}
+				fixtures = append(fixtures, reductionBenchmarkFixture{
+					name: fmt.Sprintf("%s/unique=%t/dests=%d", workload.name, unique, count),
+					node: workload.node.View(), rules: rules,
+				})
 			}
+		}
+	}
+
+	return fixtures
+}
+
+// Archived wire reducers are diagnostics, not the production typed reducer.
+func BenchmarkArchivedWireReduction(b *testing.B) {
+	for _, fixture := range reductionBenchmarkFixtures() {
+		want := reduceFilterRulesReference(fixture.node, fixture.rules)
+		for _, impl := range []struct {
+			name string
+			run  func(types.NodeView, []tailcfg.FilterRule) []tailcfg.FilterRule
+		}{
+			{"frozen-reference", reduceFilterRulesReference},
+			{"archived-optimized", policyutil.ReduceFilterRules},
+		} {
+			b.Run(fixture.name+"/"+impl.name, func(b *testing.B) {
+				require.Empty(b, cmp.Diff(want, impl.run(fixture.node, fixture.rules),
+					cmpopts.EquateComparable(netip.Prefix{})))
+				b.ReportAllocs()
+
+				for b.Loop() {
+					impl.run(fixture.node, fixture.rules)
+				}
+			})
 		}
 	}
 }
 
+func BenchmarkPacketFilterReduce(b *testing.B) {
+	for _, fixture := range reductionBenchmarkFixtures() {
+		b.Run(fixture.name, func(b *testing.B) {
+			rules := policyutil.TypedRulesForTest(fixture.rules)
+			require.Equal(b, semanticRulesReference(b, fixture.rules),
+				semanticRulesReference(b, packetfilter.ToTailcfg(rules)))
+			target := packetfilter.Target{
+				IPv4: fixture.node.IPv4().Clone(), IPv6: fixture.node.IPv6().Clone(),
+				SubnetRoutes: fixture.node.SubnetRoutes(), ExitRoutes: fixture.node.ExitRoutes(),
+			}
+			want := reduceFilterRulesReference(fixture.node, fixture.rules)
+			require.Equal(b, semanticRulesReference(b, want),
+				semanticRulesReference(b, packetfilter.ToTailcfg(packetfilter.Reduce(rules, target))))
+			b.ReportAllocs()
+
+			for b.Loop() {
+				packetfilter.Reduce(rules, target)
+			}
+		})
+	}
+}
+
 // Frozen pre-optimization reducers: keep independent for exact comparisons and benchmarks.
-func reduceFilterRulesReference(node types.NodeView, rules []tailcfg.FilterRule) []tailcfg.FilterRule {
+func reduceFilterRulesReference(node types.NodeView, rules []tailcfg.FilterRule,
+) []tailcfg.FilterRule {
 	ret := []tailcfg.FilterRule{}
 	subnetRoutes := node.SubnetRoutes()
 	exitRoutes := node.ExitRoutes()
@@ -2305,4 +2338,175 @@ func TestTypedAddressBoundaryMatchesReference(t *testing.T) {
 			}
 		}
 	}
+}
+
+// semanticRulesReference retains source/protocol/port/capability associations.
+// Its parser and union operations are independent netipx implementations.
+func sourcePrefixesReference(tb testing.TB, rule tailcfg.FilterRule) []netip.Prefix {
+	tb.Helper()
+
+	var builder netipx.IPSetBuilder
+
+	for i, raw := range rule.SrcIPs {
+		var bits *int
+		if i < len(rule.SrcBits) {
+			bits = &rule.SrcBits[i]
+		}
+
+		set, err := parseIPSetReference(raw, bits)
+		if err == nil {
+			builder.AddSet(set)
+		}
+	}
+
+	set, err := builder.IPSet()
+	require.NoError(tb, err)
+
+	return set.Prefixes()
+}
+
+func semanticRulesReference(
+	tb testing.TB,
+	rules []tailcfg.FilterRule,
+) map[string][]string {
+	tb.Helper()
+
+	buckets := make(map[string]*netipx.IPSetBuilder)
+
+	for _, rule := range rules {
+		protocols := slices.Clone(rule.IPProto)
+		if len(protocols) == 0 {
+			protocols = []int{1, 6, 17, 58}
+		}
+
+		slices.Sort(protocols)
+		protocols = slices.Compact(protocols)
+
+		base := fmt.Sprintf("%v/%v", sourcePrefixesReference(tb, rule), protocols)
+		for _, destination := range rule.DstPorts {
+			set, err := parseIPSetReference(destination.IP, nil)
+			if err != nil {
+				continue
+			}
+
+			key := fmt.Sprintf(
+				"%s/network/%d/%d",
+				base,
+				destination.Ports.First,
+				destination.Ports.Last,
+			)
+			if buckets[key] == nil {
+				buckets[key] = new(netipx.IPSetBuilder)
+			}
+
+			buckets[key].AddSet(set)
+		}
+
+		for _, grant := range rule.CapGrant {
+			payload, err := json.Marshal(struct {
+				Caps   []peercap.Cap
+				CapMap tailcfg.PeerCapMap
+			}{grant.Caps, grant.CapMap})
+			require.NoError(tb, err)
+
+			key := base + "/capability/" + string(payload)
+			if buckets[key] == nil {
+				buckets[key] = new(netipx.IPSetBuilder)
+			}
+
+			for _, prefix := range grant.Dsts {
+				buckets[key].AddPrefix(prefix)
+			}
+		}
+	}
+
+	result := make(map[string][]string, len(buckets))
+	for key, builder := range buckets {
+		set, err := builder.IPSet()
+		require.NoError(tb, err)
+
+		for _, prefix := range set.Prefixes() {
+			result[key] = append(result[key], prefix.String())
+		}
+	}
+
+	return result
+}
+
+// Typed inputs have validated protocols and canonical capability address unions.
+// The archived randomized wire proof above still covers malformed legacy fields.
+func TestTypedReductionMatchesFrozenOracle(t *testing.T) {
+	nodes := []types.NodeView{
+		(&types.Node{IPv4: mustIPPtr("100.64.0.1"), IPv6: mustIPPtr("fd7a:115c:a1e0::1")}).View(),
+		(&types.Node{IPv4: mustIPPtr("100.64.0.2"), Hostinfo: &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")}}, ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")}}).View(),
+		(&types.Node{IPv4: mustIPPtr("100.64.0.3"), Hostinfo: &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0")}}, ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0")}}).View(),
+	}
+
+	for _, source := range []string{"100.64.0.1", "100.64.0.0/24", "*"} {
+		for _, destination := range []string{"100.64.0.1", "fd7a:115c:a1e0::1", "10.0.0.0/16", "10.0.0.0/25", "*", "100.64.0.1-100.64.0.3"} {
+			for _, protocols := range [][]int{nil, {6}, {17}, {47}, {132}} {
+				wire := []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{source},
+						DstPorts: []tailcfg.NetPortRange{
+							{
+								IP:    destination,
+								Ports: tailcfg.PortRange{First: 22, Last: 443},
+							},
+							{
+								IP:    "100.64.0.99",
+								Ports: tailcfg.PortRange{First: 53, Last: 53},
+							},
+						},
+						IPProto: protocols,
+					},
+				}
+				for _, node := range nodes {
+					want := reduceFilterRulesReference(node, wire)
+					got := policyutil.ReduceTypedRules(node, wire)
+					require.Equal(
+						t,
+						semanticRulesReference(t, want),
+						semanticRulesReference(t, got),
+						"%s to %s protocols %v",
+						source,
+						destination,
+						protocols,
+					)
+				}
+			}
+		}
+	}
+
+	for _, prefix := range []string{"100.64.0.0/24", "10.0.0.0/16", "fd7a:115c:a1e0::/48"} {
+		wire := []tailcfg.FilterRule{
+			{
+				SrcIPs: []string{"100.64.0.1"},
+				CapGrant: []tailcfg.CapGrant{
+					{
+						Dsts: []netip.Prefix{netip.MustParsePrefix(prefix)},
+						CapMap: tailcfg.PeerCapMap{
+							"example.com/cap": {tailcfg.RawMessage(`{"role":"read"}`)},
+						},
+					},
+				},
+			},
+		}
+		for _, node := range nodes {
+			want := reduceFilterRulesReference(node, wire)
+			got := policyutil.ReduceTypedRules(node, wire)
+			require.Equal(
+				t,
+				semanticRulesReference(t, want),
+				semanticRulesReference(t, got),
+			)
+		}
+	}
+}
+
+func mustIPPtr(
+	raw string,
+) *netip.Addr {
+	address := netip.MustParseAddr(raw)
+	return &address
 }

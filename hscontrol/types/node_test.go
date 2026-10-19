@@ -9,10 +9,12 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/juanfont/headscale/hscontrol/policy/matcher"
+	"github.com/juanfont/headscale/hscontrol/ipset"
+	"github.com/juanfont/headscale/hscontrol/policy/packetfilter"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/ipproto"
 	"tailscale.com/types/key"
 )
 
@@ -295,7 +297,7 @@ func Test_NodeCanAccess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			matchers := matcher.MatchesFromFilterRules(tt.rules)
+			matchers := testPacketRules(tt.rules)
 			got := tt.node1.CanAccess(matchers, &tt.node2)
 
 			if got != tt.want {
@@ -328,7 +330,7 @@ func Test_NodeCanAccess_Unidirectional(t *testing.T) {
 		},
 	}
 
-	matchers := matcher.MatchesFromFilterRules(rules)
+	matchers := testPacketRules(rules)
 
 	if !nodeA.CanAccess(matchers, &nodeB) {
 		t.Errorf("A→B: want true, got false")
@@ -1072,4 +1074,43 @@ func TestNodeIsExpiredAt(t *testing.T) {
 		require.True(t, NodeView{}.IsExpiredAt(now),
 			"an invalid view counts as expired, like IsExpired")
 	})
+}
+
+func testPacketRules(wire []tailcfg.FilterRule) []packetfilter.Rule {
+	rules := make([]packetfilter.Rule, 0, len(wire))
+	for _, rule := range wire {
+		var src ipset.Builder
+
+		for _, raw := range rule.SrcIPs {
+			set, _ := util.ParseIPSet(raw, nil)
+			src.AddSet(set)
+		}
+
+		sources, _ := src.Build()
+
+		var destinations []packetfilter.Destination
+
+		for _, entry := range rule.DstPorts {
+			set, _ := util.ParseIPSet(entry.IP, nil)
+			destinations = append(
+				destinations,
+				packetfilter.Destination{Addresses: set, Ports: entry.Ports},
+			)
+		}
+
+		var protocols []ipproto.Proto
+
+		for _, protocol := range rule.IPProto {
+			if protocol >= 0 && protocol <= 255 {
+				protocols = append(protocols, ipproto.Proto(protocol))
+			}
+		}
+
+		rules = append(
+			rules,
+			packetfilter.NewNetworkRule(sources, destinations, protocols),
+		)
+	}
+
+	return rules
 }

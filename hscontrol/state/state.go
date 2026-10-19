@@ -27,7 +27,7 @@ import (
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	hsdb "github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/policy"
-	"github.com/juanfont/headscale/hscontrol/policy/matcher"
+	"github.com/juanfont/headscale/hscontrol/policy/packetfilter"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -1289,19 +1289,13 @@ func (s *State) SSHCheckParams(
 	return s.polMan.SSHCheckParams(srcNodeID, dstNodeID, localUser)
 }
 
-// Filter returns the current network filter rules and matches.
-func (s *State) Filter() ([]tailcfg.FilterRule, []matcher.Match) {
-	return s.polMan.Filter()
+func (s *State) PacketRules() []packetfilter.Rule { return s.polMan.PacketRules() }
+func (s *State) PacketRulesForNode(node types.NodeView) ([]packetfilter.Rule, error) {
+	return s.polMan.PacketRulesForNode(node)
 }
 
-// FilterForNode returns filter rules for a specific node, handling autogroup:self per-node.
-func (s *State) FilterForNode(node types.NodeView) ([]tailcfg.FilterRule, error) {
-	return s.polMan.FilterForNode(node)
-}
-
-// MatchersForNode returns matchers for peer relationship determination (unreduced).
-func (s *State) MatchersForNode(node types.NodeView) ([]matcher.Match, error) {
-	return s.polMan.MatchersForNode(node)
+func (s *State) PeerRulesForNode(node types.NodeView) ([]packetfilter.Rule, error) {
+	return s.polMan.PeerRulesForNode(node)
 }
 
 // NodeCapMap returns the policy-derived CapMap for the given node, suitable
@@ -1398,7 +1392,7 @@ func (s *State) GetNodePrimaryRoutes(nodeID types.NodeID) []netip.Prefix {
 // ones do not.
 func (s *State) RoutesForPeer(
 	viewer, peer types.NodeView,
-	matchers []matcher.Match,
+	rules []packetfilter.Rule,
 ) []netip.Prefix {
 	viaResult := s.polMan.ViaRoutesForPeer(viewer, peer)
 	globalPrimaries := s.nodeStore.PrimaryRoutesForNode(peer.ID())
@@ -1410,7 +1404,7 @@ func (s *State) RoutesForPeer(
 	if len(viaResult.Include) == 0 && len(viaResult.Exclude) == 0 {
 		allRoutes := slices.Concat(globalPrimaries, exitRoutes)
 
-		reduced = policy.ReduceRoutes(viewer, allRoutes, matchers)
+		reduced = policy.ReduceRoutes(viewer, allRoutes, rules)
 	} else {
 		// Slow path: drop excluded routes, reduce, append via-included.
 		routes := make([]netip.Prefix, 0, len(globalPrimaries)+len(exitRoutes))
@@ -1420,7 +1414,7 @@ func (s *State) RoutesForPeer(
 			}
 		}
 
-		reduced = policy.ReduceRoutes(viewer, routes, matchers)
+		reduced = policy.ReduceRoutes(viewer, routes, rules)
 
 		// Append via-included routes. The via grant IS the authorization
 		// (no matcher filter needed), but HA primary election applies

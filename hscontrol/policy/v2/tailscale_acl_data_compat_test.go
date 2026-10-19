@@ -25,7 +25,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/require"
@@ -124,21 +123,21 @@ type filterRuleBucket struct {
 	Capability string
 }
 
-func filterRulesDiff(t *testing.T, want, got []tailcfg.FilterRule) string {
-	t.Helper()
+func filterRulesDiff(tb testing.TB, want, got []tailcfg.FilterRule) string {
+	tb.Helper()
 
 	return cmp.Diff(
-		semanticFilterRules(t, want),
-		semanticFilterRules(t, got),
+		semanticFilterRules(tb, want),
+		semanticFilterRules(tb, got),
 		cmpopts.EquateComparable(netip.Prefix{}),
 	)
 }
 
 func semanticFilterRules(
-	t *testing.T,
+	tb testing.TB,
 	rules []tailcfg.FilterRule,
 ) map[filterRuleBucket][]netip.Prefix {
-	t.Helper()
+	tb.Helper()
 
 	buckets := make(map[filterRuleBucket]*netipx.IPSetBuilder)
 
@@ -151,11 +150,11 @@ func semanticFilterRules(
 				bits = &rule.SrcBits[i]
 			}
 
-			addFilterIPToBuilder(t, &sources, source, bits)
+			addFilterIPToBuilder(tb, &sources, source, bits)
 		}
 
 		sourceSet, err := sources.IPSet()
-		require.NoError(t, err)
+		require.NoError(tb, err)
 
 		protocols := slices.Clone(rule.IPProto)
 		if len(protocols) == 0 {
@@ -170,7 +169,7 @@ func semanticFilterRules(
 			Kind:      "network",
 		}
 
-		require.False(t, len(rule.DstPorts) > 0 && len(rule.CapGrant) > 0,
+		require.False(tb, len(rule.DstPorts) > 0 && len(rule.CapGrant) > 0,
 			"mixed network and capability rule: %+v", rule)
 
 		for _, destination := range rule.DstPorts {
@@ -179,12 +178,12 @@ func semanticFilterRules(
 				buckets[key] = new(netipx.IPSetBuilder)
 			}
 
-			addFilterIPToBuilder(t, buckets[key], destination.IP, destination.Bits)
+			addFilterIPToBuilder(tb, buckets[key], destination.IP, destination.Bits)
 		}
 
 		key.Kind = "capability"
 		for _, grant := range rule.CapGrant {
-			key.Capability = capabilityPayload(t, grant)
+			key.Capability = capabilityPayload(tb, grant)
 			if buckets[key] == nil {
 				buckets[key] = new(netipx.IPSetBuilder)
 			}
@@ -198,7 +197,7 @@ func semanticFilterRules(
 	result := make(map[filterRuleBucket][]netip.Prefix, len(buckets))
 	for key, builder := range buckets {
 		set, err := builder.IPSet()
-		require.NoError(t, err)
+		require.NoError(tb, err)
 
 		if prefixes := set.Prefixes(); len(prefixes) > 0 {
 			result[key] = prefixes
@@ -209,27 +208,27 @@ func semanticFilterRules(
 }
 
 func addFilterIPToBuilder(
-	t *testing.T,
+	tb testing.TB,
 	builder *netipx.IPSetBuilder,
 	ip string,
 	bits *int,
 ) {
-	t.Helper()
+	tb.Helper()
 
 	address, err := netip.ParseAddr(ip)
 	if err == nil && bits != nil {
-		require.GreaterOrEqual(t, *bits, 0)
-		require.LessOrEqual(t, *bits, address.BitLen())
+		require.GreaterOrEqual(tb, *bits, 0)
+		require.LessOrEqual(tb, *bits, address.BitLen())
 		builder.AddPrefix(netip.PrefixFrom(address, *bits))
 
 		return
 	}
 
-	addSrcIPToBuilder(t, builder, ip, "filter comparison", "recipient")
+	addSrcIPToBuilder(tb, builder, ip, "filter comparison", "recipient")
 }
 
-func capabilityPayload(t *testing.T, grant tailcfg.CapGrant) string {
-	t.Helper()
+func capabilityPayload(tb testing.TB, grant tailcfg.CapGrant) string {
+	tb.Helper()
 
 	var capMap tailcfg.PeerCapMap
 	if grant.CapMap != nil {
@@ -243,14 +242,14 @@ func capabilityPayload(t *testing.T, grant tailcfg.CapGrant) string {
 		}
 
 		for i, raw := range values {
-			require.True(t, json.Valid([]byte(raw)), "invalid capability JSON: %q", raw)
+			require.True(tb, json.Valid([]byte(raw)), "invalid capability JSON: %q", raw)
 			decoder := json.NewDecoder(strings.NewReader(string(raw)))
 			decoder.UseNumber()
 
 			var value any
-			require.NoError(t, decoder.Decode(&value))
+			require.NoError(tb, decoder.Decode(&value))
 			canonical, err := json.Marshal(value)
-			require.NoError(t, err)
+			require.NoError(tb, err)
 
 			capMap[name][i] = tailcfg.RawMessage(canonical)
 		}
@@ -261,7 +260,7 @@ func capabilityPayload(t *testing.T, grant tailcfg.CapGrant) string {
 		Caps   []peercap.Cap
 		CapMap tailcfg.PeerCapMap
 	}{grant.Caps, capMap})
-	require.NoError(t, err)
+	require.NoError(tb, err)
 
 	return string(payload)
 }
@@ -517,7 +516,7 @@ func testACLSuccess(
 				nodes.ViewSlice(),
 			)
 
-			gotRules := policyutil.ReduceFilterRules(
+			gotRules := reduceWireRulesForTest(
 				node.View(),
 				compiledRules,
 			)

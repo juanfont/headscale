@@ -6554,12 +6554,12 @@ func TestResolutionCallerErrors(t *testing.T) {
 	assert.True(t, shared.Contains(*ap("fd7a:115c:a1e0::1")))
 	assert.False(t, shared.Contains(*ap("100.64.0.3")))
 
-	sources, _, err := resolveSources(pol, aliases, users, nodes)
+	sources, _, err := legacyResolveSources(pol, aliases, users, nodes)
 	require.NoError(t, err)
 	require.Len(t, sources, 1)
 	assert.True(t, sources[0].Contains(*ap("100.64.0.1")))
-	assert.Len(t, pol.destinationsToNetPortRange(users, nodes, aliases, []tailcfg.PortRange{tailcfg.PortRangeAny}), 2)
-	via, _ := resolveViaDestinations(pol, users, nodes, aliases)
+	assert.Len(t, pol.legacyDestinationsToNetPortRange(users, nodes, aliases, []tailcfg.PortRange{tailcfg.PortRangeAny}), 2)
+	via, _ := legacyResolveViaDestinations(pol, users, nodes, aliases)
 	assert.Empty(t, via)
 
 	_, err = resolveTestSource(aliases[0], pol, users, nodes)

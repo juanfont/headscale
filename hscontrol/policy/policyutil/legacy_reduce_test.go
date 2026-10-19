@@ -3,6 +3,7 @@ package policyutil
 import (
 	"net/netip"
 	"slices"
+	"strings"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -16,10 +17,15 @@ import (
 // (from autogroup:self policies) are already node-specific and should not be passed
 // to this function. Use [policy.PolicyManager.FilterForNode] instead, which handles
 // both cases.
-func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcfg.FilterRule {
+func ReduceFilterRules(
+	node types.NodeView,
+	rules []tailcfg.FilterRule,
+) []tailcfg.FilterRule {
 	ret := []tailcfg.FilterRule{}
 	subnetRoutes := node.SubnetRoutes()
 	exitRoutes := node.ExitRoutes()
+
+	var nodeIPs []netip.Addr
 
 	for _, rule := range rules {
 		// Handle CapGrant rules separately — they use CapGrant[].Dsts
@@ -37,6 +43,35 @@ func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcf
 		var dests []tailcfg.NetPortRange
 
 		for _, dest := range rule.DstPorts {
+			var prefix netip.Prefix
+			if strings.Contains(dest.IP, "/") {
+				prefix, _ = netip.ParsePrefix(dest.IP)
+				// Like ParseIPSet, reject prefixes with host bits set.
+				if prefix != prefix.Masked() {
+					continue
+				}
+			} else if !strings.ContainsAny(dest.IP, "*%-") {
+				ip, err := netip.ParseAddr(dest.IP)
+				if err == nil && ip.Zone() == "" {
+					// Leave zone and range handling to the original parser.
+					prefix = netip.PrefixFrom(ip, ip.BitLen())
+				}
+			}
+
+			if prefix.IsValid() {
+				if nodeIPs == nil {
+					nodeIPs = node.IPs()
+				}
+
+				if slices.ContainsFunc(nodeIPs, prefix.Contains) ||
+					slices.ContainsFunc(subnetRoutes, prefix.Overlaps) ||
+					slices.ContainsFunc(exitRoutes, prefix.Overlaps) {
+					dests = append(dests, dest)
+				}
+
+				continue
+			}
+
 			expanded, err := util.ParseIPSet(dest.IP, nil)
 			// Fail closed: unparseable dests are dropped.
 			if err != nil {
@@ -110,7 +145,10 @@ func reduceCapGrantRule(
 				// Broad prefix — narrow to node's specific IPs.
 				for _, ip := range nodeIPs {
 					if dst.Contains(ip) {
-						matchingDsts = append(matchingDsts, netip.PrefixFrom(ip, ip.BitLen()))
+						matchingDsts = append(
+							matchingDsts,
+							netip.PrefixFrom(ip, ip.BitLen()),
+						)
 					}
 				}
 			}

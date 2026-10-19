@@ -8,9 +8,8 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/juanfont/headscale/hscontrol/policy/matcher"
+	"github.com/juanfont/headscale/hscontrol/policy/packetfilter"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/require"
 	"pgregory.net/rapid"
 	"tailscale.com/net/tsaddr"
@@ -39,28 +38,28 @@ func TestPolicyManager(t *testing.T) {
 		pol          string
 		nodes        types.Nodes
 		wantFilter   []tailcfg.FilterRule
-		wantMatchers []matcher.Match
+		wantMatchers []packetfilter.Rule
 	}{
 		{
 			name:         "empty-policy",
 			pol:          "{}",
 			nodes:        types.Nodes{},
 			wantFilter:   tailcfg.FilterAllowAll,
-			wantMatchers: matcher.MatchesFromFilterRules(tailcfg.FilterAllowAll),
+			wantMatchers: rulesFromWireForTest(tailcfg.FilterAllowAll),
 		},
 		{
 			name:         "empty-acls-denies-all",
 			pol:          `{"acls": []}`,
 			nodes:        types.Nodes{},
 			wantFilter:   nil,
-			wantMatchers: matcher.MatchesFromFilterRules(nil),
+			wantMatchers: rulesFromWireForTest(nil),
 		},
 		{
 			name:         "empty-grants-denies-all",
 			pol:          `{"grants": []}`,
 			nodes:        types.Nodes{},
 			wantFilter:   nil,
-			wantMatchers: matcher.MatchesFromFilterRules(nil),
+			wantMatchers: rulesFromWireForTest(nil),
 		},
 	}
 
@@ -69,15 +68,15 @@ func TestPolicyManager(t *testing.T) {
 			pm, err := NewPolicyManager([]byte(tt.pol), users, tt.nodes.ViewSlice())
 			require.NoError(t, err)
 
-			filter, matchers := pm.Filter()
-			if diff := cmp.Diff(tt.wantFilter, filter); diff != "" {
+			filter, matchers := pm.legacyFilter()
+			if diff := filterRulesDiff(t, tt.wantFilter, filter); diff != "" {
 				t.Errorf("Filter() filter mismatch (-want +got):\n%s", diff)
 			}
 
 			if diff := cmp.Diff(
 				tt.wantMatchers,
 				matchers,
-				cmp.AllowUnexported(matcher.Match{}),
+				cmp.Comparer(func(a, b packetfilter.Rule) bool { return a.Equal(b) }),
 			); diff != "" {
 				t.Errorf("Filter() matchers mismatch (-want +got):\n%s", diff)
 			}
@@ -107,8 +106,8 @@ func TestSetPolicyRejectedKeepsLiveFilter(t *testing.T) {
 	}`), users, nodes.ViewSlice())
 	require.NoError(t, err)
 
-	before, _ := pm.Filter()
-	beforeRules, err := pm.FilterForNode(nodes[1].View())
+	before, _ := pm.legacyFilter()
+	beforeRules, err := pm.legacyFilterForNode(nodes[1].View())
 	require.NoError(t, err)
 
 	_, err = pm.SetPolicy([]byte(`{
@@ -117,10 +116,10 @@ func TestSetPolicyRejectedKeepsLiveFilter(t *testing.T) {
 	}`))
 	require.Error(t, err)
 
-	after, _ := pm.Filter()
+	after, _ := pm.legacyFilter()
 	require.Equal(t, before, after, "a rejected policy must not replace the live filter")
 
-	afterRules, err := pm.FilterForNode(nodes[1].View())
+	afterRules, err := pm.legacyFilterForNode(nodes[1].View())
 	require.NoError(t, err)
 	require.Equal(t, beforeRules, afterRules)
 }
@@ -159,11 +158,11 @@ func TestInvalidateAutogroupSelfCache(t *testing.T) {
 
 	// Add to cache by calling FilterForNode for each node
 	for _, n := range initialNodes {
-		_, err := pm.FilterForNode(n.View())
+		_, err := pm.legacyFilterForNode(n.View())
 		require.NoError(t, err)
 	}
 
-	require.Equal(t, len(initialNodes), pm.filterRulesMap.Size())
+	require.Equal(t, len(initialNodes), pm.ReadView().caches.packet.Size())
 
 	tests := []struct {
 		name            string
@@ -248,22 +247,42 @@ func TestInvalidateAutogroupSelfCache(t *testing.T) {
 				}
 			}
 
-			pm.filterRulesMap.Clear()
+			pm, err := NewPolicyManager([]byte(policy), users, initialNodes.ViewSlice())
+			require.NoError(t, err)
 
-			for _, n := range initialNodes {
-				_, err := pm.FilterForNode(n.View())
+			for _, node := range initialNodes {
+				_, err := pm.PacketRulesForNode(node.View())
 				require.NoError(t, err)
 			}
 
-			initialCacheSize := pm.filterRulesMap.Size()
-			require.Equal(t, len(initialNodes), initialCacheSize)
+			old := pm.ReadView()
+			changed, err := pm.SetNodes(tt.newNodes.ViewSlice())
+			require.NoError(t, err)
+			require.Equal(t, tt.expectedCleared > 0, changed)
+			require.Equal(
+				t,
+				len(initialNodes),
+				old.caches.packet.Size(),
+				"captured generation caches must survive updates",
+			)
 
-			pm.invalidateAutogroupSelfCache(initialNodes.ViewSlice(), tt.newNodes.ViewSlice())
-
-			// Verify the expected number of cache entries were cleared
-			finalCacheSize := pm.filterRulesMap.Size()
-			clearedEntries := initialCacheSize - finalCacheSize
-			require.Equal(t, tt.expectedCleared, clearedEntries, tt.description)
+			for _, node := range tt.newNodes {
+				got, err := pm.PacketRulesForNode(node.View())
+				require.NoError(t, err)
+				fresh, err := NewPolicyManager(
+					[]byte(policy),
+					users,
+					tt.newNodes.ViewSlice(),
+				)
+				require.NoError(t, err)
+				want, err := fresh.PacketRulesForNode(node.View())
+				require.NoError(t, err)
+				requireWireEqual(
+					t,
+					packetfilter.ToTailcfg(want),
+					packetfilter.ToTailcfg(got),
+				)
+			}
 		})
 	}
 }
@@ -473,10 +492,10 @@ func TestSetUsers(t *testing.T) {
 	}
 }
 
-func matcherStrings(ms []matcher.Match) []string {
+func matcherStrings(ms []packetfilter.Rule) []string {
 	out := make([]string, 0, len(ms))
 	for i := range ms {
-		out = append(out, ms[i].DebugString())
+		out = append(out, ms[i].Hash().String())
 	}
 
 	return out
@@ -520,9 +539,9 @@ func TestSetUsersDropsStaleSelfFilters(t *testing.T) {
 			require.NoError(t, err)
 
 			for _, n := range nodes {
-				_, err := pm.FilterForNode(n.View())
+				_, err := pm.legacyFilterForNode(n.View())
 				require.NoError(t, err)
-				_, err = pm.MatchersForNode(n.View())
+				_, err = pm.legacyMatchersForNode(n.View())
 				require.NoError(t, err)
 			}
 
@@ -534,17 +553,17 @@ func TestSetUsersDropsStaleSelfFilters(t *testing.T) {
 			require.NoError(t, err)
 
 			for _, n := range nodes {
-				got, err := pm.FilterForNode(n.View())
+				got, err := pm.legacyFilterForNode(n.View())
 				require.NoError(t, err)
 
-				want, err := fresh.FilterForNode(n.View())
+				want, err := fresh.legacyFilterForNode(n.View())
 				require.NoError(t, err)
 				require.Empty(t, cmp.Diff(want, got), "node %d FilterForNode (-fresh +cached)", n.ID)
 
-				gotM, err := pm.MatchersForNode(n.View())
+				gotM, err := pm.legacyMatchersForNode(n.View())
 				require.NoError(t, err)
 
-				wantM, err := fresh.MatchersForNode(n.View())
+				wantM, err := fresh.legacyMatchersForNode(n.View())
 				require.NoError(t, err)
 				require.Equal(t, matcherStrings(wantM), matcherStrings(gotM), "node %d MatchersForNode", n.ID)
 			}
@@ -695,21 +714,28 @@ func TestInvalidateGlobalPolicyCache(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pm := &PolicyManager{
-				nodes:              tt.oldNodes.ViewSlice(),
-				filterRulesMap:     xsync.NewMap[types.NodeID, []tailcfg.FilterRule](),
-				matchersForNodeMap: xsync.NewMap[types.NodeID, []matcher.Match](),
-			}
-			for id, rules := range tt.initialCache {
-				pm.filterRulesMap.Store(id, rules)
+			pm, err := NewPolicyManager([]byte(`{}`), nil, tt.oldNodes.ViewSlice())
+			require.NoError(t, err)
+
+			for id := range tt.initialCache {
+				node := pm.view.generation.nodesByID[id]
+				_, err := pm.PacketRulesForNode(node)
+				require.NoError(t, err)
 			}
 
-			pm.invalidateGlobalPolicyCache(tt.newNodes.ViewSlice())
+			old := pm.ReadView()
+			_, err = pm.SetNodes(tt.newNodes.ViewSlice())
+			require.NoError(t, err)
 
-			// Verify cache state
-			for nodeID, shouldExist := range tt.expectedCacheAfter {
-				_, exists := pm.filterRulesMap.Load(nodeID)
-				require.Equal(t, shouldExist, exists, "node %d cache existence mismatch", nodeID)
+			for id := range tt.initialCache {
+				_, exists := old.caches.packet.Load(id)
+				require.True(t, exists, "old generation entry %d must survive", id)
+			}
+
+			for _, node := range tt.newNodes {
+				got, err := pm.PacketRulesForNode(node.View())
+				require.NoError(t, err)
+				require.NotEmpty(t, got)
 			}
 		})
 	}
@@ -747,11 +773,11 @@ func TestAutogroupSelfReducedVsUnreducedRules(t *testing.T) {
 
 	// Test FilterForNode returns reduced rules
 	// For node1: should have rules where node1 is in destinations (its own IP)
-	filterNode1, err := pm.FilterForNode(nodes[0].View())
+	filterNode1, err := pm.legacyFilterForNode(nodes[0].View())
 	require.NoError(t, err)
 
 	// For node2: should have rules where node2 is in destinations (its own IP)
-	filterNode2, err := pm.FilterForNode(nodes[1].View())
+	filterNode2, err := pm.legacyFilterForNode(nodes[1].View())
 	require.NoError(t, err)
 
 	// FilterForNode should return reduced rules - verify they only contain the node's own IPs as destinations
@@ -861,10 +887,11 @@ func TestAutogroupSelfWithOtherRules(t *testing.T) {
 
 	// Verify test-1 can see the router (group:home -> tag:node-router rule)
 	require.True(t, slices.Contains(test1Peers, test2RouterNode.ID),
-		"test-1 should see test-2's router via group:home -> tag:node-router rule, even when autogroup:self rule exists (issue #2838)")
+		"test-1 should see test-2's router via group:home -> tag:node-router rule, even when autogroup:self rule exists (issue #2838)",
+	)
 
 	// Verify that test-1 has filter rules (including autogroup:self and tag:node-router access)
-	rules, err := pm.FilterForNode(test1Node.View())
+	rules, err := pm.legacyFilterForNode(test1Node.View())
 	require.NoError(t, err)
 	require.NotEmpty(t, rules, "test-1 should have filter rules from both ACL rules")
 }
@@ -918,7 +945,7 @@ func TestAutogroupSelfPolicyUpdateTriggersMapResponse(t *testing.T) {
 	require.True(t, pm.needsPerNodeFilter, "policy should need per-node filter")
 
 	// Get initial filter rules for test-1 (should be cached)
-	rules1, err := pm.FilterForNode(test1Node.View())
+	rules1, err := pm.legacyFilterForNode(test1Node.View())
 	require.NoError(t, err)
 	require.NotEmpty(t, rules1, "test-1 should have filter rules")
 
@@ -945,7 +972,7 @@ func TestAutogroupSelfPolicyUpdateTriggersMapResponse(t *testing.T) {
 
 	// Verify that caches were cleared and new rules are generated
 	// The cache should be empty, so FilterForNode will recompile
-	rules2, err := pm.FilterForNode(test1Node.View())
+	rules2, err := pm.legacyFilterForNode(test1Node.View())
 	require.NoError(t, err)
 	require.NotEmpty(t, rules2, "test-1 should have filter rules after policy update")
 
@@ -1115,7 +1142,7 @@ func TestTagPropagationToPeerMap(t *testing.T) {
 
 	// Also verify MatchersForNode returns non-empty matchers and ReduceNodes filters correctly
 	// This simulates what buildTailPeers does in the mapper
-	matchersForUser2, err := pm.MatchersForNode(user2Node.View())
+	matchersForUser2, err := pm.legacyMatchersForNode(user2Node.View())
 	require.NoError(t, err)
 	require.NotEmpty(t, matchersForUser2, "MatchersForNode should return non-empty matchers (at least self-access rule)")
 
@@ -1683,7 +1710,7 @@ func TestAutogroupSelfRulesReachExitNodes(t *testing.T) {
 	require.NoError(t, err)
 
 	dsts := func(n *types.Node) []string {
-		rules, err := pm.FilterForNode(n.View())
+		rules, err := pm.legacyFilterForNode(n.View())
 		require.NoError(t, err)
 
 		var out []string
@@ -1784,7 +1811,7 @@ func TestIssue2990SameUserTaggedDevice(t *testing.T) {
 		"node2 should see node1 as peer (symmetric visibility)")
 
 	// Check packet filter for node1 - should allow access to node2
-	filter1, err := pm.FilterForNode(node1.View())
+	filter1, err := pm.legacyFilterForNode(node1.View())
 	require.NoError(t, err)
 	t.Logf("node1 filter rules: %d", len(filter1))
 
@@ -1798,7 +1825,7 @@ func TestIssue2990SameUserTaggedDevice(t *testing.T) {
 		"node1's packet filter should have rules (group:admin -> *:*)")
 
 	// Check packet filter for node2 - tagged device, should have limited access
-	filter2, err := pm.FilterForNode(node2.View())
+	filter2, err := pm.legacyFilterForNode(node2.View())
 	require.NoError(t, err)
 	t.Logf("node2 filter rules: %d", len(filter2))
 
@@ -2305,7 +2332,7 @@ func TestViaRoutesForPeer(t *testing.T) {
 
 		// Matchers for the client cover tag-to-tag connectivity
 		// but do NOT cover the 10.0.0.0/24 subnet prefix.
-		matchers, err := pm.MatchersForNode(client)
+		matchers, err := pm.legacyMatchersForNode(client)
 		require.NoError(t, err)
 		require.NotEmpty(t, matchers)
 
@@ -2409,7 +2436,8 @@ func TestViaRoutesForPeer(t *testing.T) {
 
 		result := pm.ViaRoutesForPeer(nodes[0].View(), nodes[1].View())
 		require.Equal(t, []netip.Prefix{mp("10.33.0.0/16")}, result.Include,
-			"Include must hold the advertised route /16 that covers the narrower grant dst /24")
+			"Include must hold the advertised route /16 that covers the narrower grant dst /24",
+		)
 		require.Empty(t, result.Exclude)
 	})
 
@@ -2456,7 +2484,8 @@ func TestViaRoutesForPeer(t *testing.T) {
 
 		result := pm.ViaRoutesForPeer(nodes[0].View(), nodes[1].View())
 		require.Empty(t, result.Include,
-			"disjoint dst must produce nothing — the via gate requires advertised-route overlap")
+			"disjoint dst must produce nothing — the via gate requires advertised-route overlap",
+		)
 		require.Empty(t, result.Exclude)
 	})
 
@@ -2516,15 +2545,17 @@ func TestViaRoutesForPeer(t *testing.T) {
 
 			// The exit node's filter already admits the viewer: the
 			// compile path keeps a group's partial resolution.
-			rules, err := pm.FilterForNode(nodes[1].View())
+			rules, err := pm.legacyFilterForNode(nodes[1].View())
 			require.NoError(t, err)
 			require.NotEmpty(t, rules, "members=%s: exit node must accept viewer traffic", members)
 
 			result := pm.ViaRoutesForPeer(nodes[0].View(), nodes[1].View())
 			require.Containsf(t, result.Include, mp("0.0.0.0/0"),
-				"members=%s: viewer in group must get exit routes from via-tagged exit node", members)
+				"members=%s: viewer in group must get exit routes from via-tagged exit node", members,
+			)
 			require.Containsf(t, result.Include, mp("::/0"),
-				"members=%s: viewer in group must get exit routes from via-tagged exit node", members)
+				"members=%s: viewer in group must get exit routes from via-tagged exit node", members,
+			)
 			require.Empty(t, result.Exclude)
 		}
 	})
@@ -2568,11 +2599,13 @@ func TestBuildPeerMap_AutogroupInternetMakesExitNodeVisible(t *testing.T) {
 
 	require.True(t,
 		slices.Contains(peerMap[aliceNode.ID], exitNode.ID),
-		"alice should see the exit node as a peer when an ACL grants autogroup:internet (#3212)")
+		"alice should see the exit node as a peer when an ACL grants autogroup:internet (#3212)",
+	)
 
-	_, matchers := pm.Filter()
+	_, matchers := pm.legacyFilter()
 	require.True(t, aliceNode.View().CanAccess(matchers, exitNode.View()),
-		"alice.CanAccess(exit) should be true via DestsIsTheInternet()+IsExitNode() (#3212)")
+		"alice.CanAccess(exit) should be true via DestsIsTheInternet()+IsExitNode() (#3212)",
+	)
 }
 
 // Reproduction for #3160: ambiguous user@ used to silently drop rules.
@@ -2647,13 +2680,15 @@ func TestUnregisteredUsersAreNoOp(t *testing.T) {
 			withHostinfo(node("exit", "100.64.0.4", "fd7a:115c:a1e0::4", users[1]),
 				[]string{"tag:exit"}, exitRoutes, exitRoutes),
 			withHostinfo(node("router", "100.64.0.5", "fd7a:115c:a1e0::5", users[1]),
-				[]string{"tag:router"}, []netip.Prefix{mp("10.33.0.0/16")}, []netip.Prefix{mp("10.33.0.0/16")}),
+				[]string{"tag:router"}, []netip.Prefix{mp("10.33.0.0/16")}, []netip.Prefix{mp("10.33.0.0/16")},
+			),
 			withHostinfo(node("server", "100.64.0.6", "fd7a:115c:a1e0::6", users[1]),
 				[]string{"tag:server"}, nil, nil),
 		}
 		if len(users) > 2 {
 			nodes = append(nodes, withHostinfo(
-				node("ghost", "100.64.0.7", "fd7a:115c:a1e0::7", users[2]), nil, userRoutes, nil))
+				node("ghost", "100.64.0.7", "fd7a:115c:a1e0::7", users[2]), nil, userRoutes, nil,
+			))
 		}
 
 		for i, n := range nodes {
@@ -2735,13 +2770,13 @@ func TestUnregisteredUsersAreNoOp(t *testing.T) {
 		t.Helper()
 
 		got := map[string]any{}
-		got["filter"], _ = pm.Filter()
+		got["filter"], _ = pm.legacyFilter()
 		peers := pm.BuildPeerMap(nodes.ViewSlice())
 
 		for _, n := range nodes {
 			nv := n.View()
 
-			rules, err := pm.FilterForNode(nv)
+			rules, err := pm.legacyFilterForNode(nv)
 			require.NoError(t, err)
 
 			ssh, err := pm.SSHPolicy("", nv)
@@ -2822,7 +2857,8 @@ func TestUnregisteredUsersAreNoOp(t *testing.T) {
 			require.Empty(t, diff(want, snapshot(t, pm, nodes)),
 				"an unregistered user must change nothing")
 			require.NotEmpty(t, diff(want, snapshot(t, load(`"bob@"`, registered, nodes), nodes)),
-				"the site must react to its members")
+				"the site must react to its members",
+			)
 
 			// ghost registers, then their node joins.
 			grown := mkNodes(all)
@@ -2834,9 +2870,11 @@ func TestUnregisteredUsersAreNoOp(t *testing.T) {
 
 			joined := snapshot(t, pm, grown)
 			require.Empty(t, diff(snapshot(t, load(withGhost, all, grown), grown), joined),
-				"after joining, ghost must match a fresh load")
+				"after joining, ghost must match a fresh load",
+			)
 			require.NotEmpty(t, diff(snapshot(t, load(alice, all, grown), grown), joined),
-				"after joining, ghost must gain access")
+				"after joining, ghost must gain access",
+			)
 
 			// ghost's node leaves, then ghost is deleted.
 			_, err = pm.SetNodes(nodes.ViewSlice())
@@ -2873,7 +2911,7 @@ func TestSetPolicy_DuplicateUsername(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrMultipleUsersFound)
 
-	filter, _ := pm.Filter()
+	filter, _ := pm.legacyFilter()
 	require.NotNil(t, filter, "filter must remain populated after rejected SetPolicy")
 }
 
@@ -3338,7 +3376,7 @@ func BenchmarkBuildPeerMap(b *testing.B) {
 				pm, err := NewPolicyManager([]byte(pol.policy), users, nodes.ViewSlice())
 				require.NoError(b, err)
 
-				rules, err := pm.FilterForNode(nodes[0].View())
+				rules, err := pm.legacyFilterForNode(nodes[0].View())
 				require.NoError(b, err)
 				require.Equal(b, pol.routerFiltered, len(rules) > 0,
 					"router filter rules: %v", rules)
@@ -3583,16 +3621,16 @@ func TestSetNodesCachedResultsMatchFresh(t *testing.T) {
 					for _, n := range nodes {
 						nv := n.View()
 
-						got, _ := pm.FilterForNode(nv)
+						got, _ := pm.legacyFilterForNode(nv)
 
-						want, _ := fresh.FilterForNode(nv)
+						want, _ := fresh.legacyFilterForNode(nv)
 						if diff := cmp.Diff(want, got); diff != "" {
 							rt.Fatalf("node %d FilterForNode (-fresh +cached):\n%s", n.ID, diff)
 						}
 
-						gotM, _ := pm.MatchersForNode(nv)
+						gotM, _ := pm.legacyMatchersForNode(nv)
 
-						wantM, _ := fresh.MatchersForNode(nv)
+						wantM, _ := fresh.legacyMatchersForNode(nv)
 						if diff := cmp.Diff(matcherStrings(wantM), matcherStrings(gotM)); diff != "" {
 							rt.Fatalf("node %d MatchersForNode (-fresh +cached):\n%s", n.ID, diff)
 						}
@@ -3716,7 +3754,7 @@ func TestFailedSetUsersKeepsCompiledPolicy(t *testing.T) {
 	read := func(pm *PolicyManager, n *types.Node) view {
 		t.Helper()
 
-		f, err := pm.FilterForNode(n.View())
+		f, err := pm.legacyFilterForNode(n.View())
 		require.NoError(t, err)
 
 		ssh, err := pm.SSHPolicy("", n.View())
@@ -3783,7 +3821,7 @@ func TestFailedSetNodesKeepsCompiledPolicy(t *testing.T) {
 	read := func(pm *PolicyManager, n *types.Node) ([]tailcfg.FilterRule, *tailcfg.SSHPolicy) {
 		t.Helper()
 
-		f, err := pm.FilterForNode(n.View())
+		f, err := pm.legacyFilterForNode(n.View())
 		require.NoError(t, err)
 
 		ssh, err := pm.SSHPolicy("", n.View())
@@ -3793,7 +3831,7 @@ func TestFailedSetNodesKeepsCompiledPolicy(t *testing.T) {
 	}
 
 	beforeFilter, beforeSSH := read(pm, nodes[0])
-	beforeGlobal, _ := pm.Filter()
+	beforeGlobal, _ := pm.legacyFilter()
 
 	retagged := slices.Clone(nodes)
 	tagged := nodes[1].Clone()
@@ -3814,7 +3852,7 @@ func TestFailedSetNodesKeepsCompiledPolicy(t *testing.T) {
 	require.Equal(t, beforeFilter, gotFilter, "a failed SetNodes must not change compiled results")
 	require.Equal(t, beforeSSH, gotSSH, "a failed SetNodes must not change compiled results")
 
-	gotGlobal, _ := pm.Filter()
+	gotGlobal, _ := pm.legacyFilter()
 	require.Equal(t, beforeGlobal, gotGlobal, "a failed SetNodes must not change compiled results")
 
 	_, err = pm.SetNodes(retagged.ViewSlice())

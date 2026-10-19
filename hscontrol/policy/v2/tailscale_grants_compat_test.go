@@ -23,7 +23,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/require"
@@ -238,7 +237,8 @@ func testGrantError(t *testing.T, policyJSON []byte, tf *testcapture.Capture) {
 	}
 
 	t.Errorf("%s: expected error (api_response_code=400) but policy parsed and validated successfully; want message: %q",
-		tf.TestID, wantMsg)
+		tf.TestID, wantMsg,
+	)
 }
 
 // assertGrantErrorContains requires that headscale's error contains
@@ -287,7 +287,7 @@ func testGrantSuccess(
 				nodes.ViewSlice(),
 			)
 
-			gotRules = policyutil.ReduceFilterRules(node.View(), gotRules)
+			gotRules = reduceWireRulesForTest(node.View(), gotRules)
 
 			wantRules := capture.PacketFilterRules
 

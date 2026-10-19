@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/policy/packetfilter"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
@@ -167,7 +168,8 @@ func TestSnapshotFromNodes(t *testing.T) {
 
 // Helper functions
 
-func createTestNode(nodeID types.NodeID, userID uint, username, hostname string) types.Node {
+func createTestNode(nodeID types.NodeID, userID uint, username, hostname string,
+) types.Node {
 	now := time.Now()
 	machineKey := key.NewMachine()
 	nodeKey := key.NewNode()
@@ -1072,7 +1074,8 @@ func TestNodeStoreResourceCleanup(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		finalGoroutines := runtime.NumGoroutine()
 		assert.LessOrEqual(c, finalGoroutines, afterStartGoroutines+2,
-			"Potential goroutine leak: started with %d, ended with %d", afterStartGoroutines, finalGoroutines)
+			"Potential goroutine leak: started with %d, ended with %d", afterStartGoroutines, finalGoroutines,
+		)
 	}, time.Second, 10*time.Millisecond, "goroutines should not leak")
 }
 
@@ -1423,7 +1426,8 @@ func TestPeerIrrelevantWriteReusesPeerMap(t *testing.T) {
 
 	require.Equalf(t, int64(0), peersCalls.Load(),
 		"payload/index-only writes must not recompute the peer map, got %d recomputations",
-		peersCalls.Load())
+		peersCalls.Load(),
+	)
 
 	_, ok = store.UpdateNode(1, func(n *types.Node) {
 		n.User = nil
@@ -1733,7 +1737,8 @@ type fatalfer interface {
 
 // nodeStoreWithPolicy builds a [NodeStore] whose [PeersFunc] runs a real
 // [policyv2.PolicyManager], mirroring how [State] wires the two together.
-func nodeStoreWithPolicy(t fatalfer, pol string, users []types.User, nodes types.Nodes) (*NodeStore, *policyv2.PolicyManager) {
+func nodeStoreWithPolicy(t fatalfer, pol string, users []types.User, nodes types.Nodes,
+) (*NodeStore, *policyv2.PolicyManager) {
 	pm, err := policyv2.NewPolicyManager([]byte(pol), users, nodes.ViewSlice())
 	if err != nil {
 		t.Fatalf("policy: %v", err)
@@ -1766,7 +1771,8 @@ func syncPolicy(t fatalfer, store *NodeStore, pm *policyv2.PolicyManager) {
 // the same nodes. The fresh manager keeps the oracle independent of the
 // one the NodeStore writer updates. Divergence means the store served
 // stale adjacency.
-func checkAdjacencyMatchesFullBuild(t fatalfer, store *NodeStore, pol string, users []types.User) {
+func checkAdjacencyMatchesFullBuild(t fatalfer, store *NodeStore, pol string, users []types.User,
+) {
 	snap := store.data.Load()
 	nodes := views.SliceOf(snap.allNodes)
 
@@ -2110,7 +2116,8 @@ func countStatePeerBuilds(t *testing.T, s *State) *atomic.Int64 {
 		calls.Add(1)
 
 		return inner(ns)
-	}, TestBatchSize, TestBatchTimeout)
+	}, TestBatchSize, TestBatchTimeout,
+	)
 	s.nodeStore.Start()
 
 	calls.Store(0)
@@ -2182,22 +2189,26 @@ func TestStatePolicyWriteBuildsPeersOnce(t *testing.T) {
 		name  string
 		write func(t *testing.T, s *State, id types.NodeID) change.Change
 	}{
-		{name: "tag", write: func(t *testing.T, s *State, id types.NodeID) change.Change {
-			t.Helper()
+		{
+			name: "tag", write: func(t *testing.T, s *State, id types.NodeID) change.Change {
+				t.Helper()
 
-			_, c, err := s.SetNodeTags(id, []string{"tag:a"})
-			require.NoError(t, err)
+				_, c, err := s.SetNodeTags(id, []string{"tag:a"})
+				require.NoError(t, err)
 
-			return c
-		}},
-		{name: "route", write: func(t *testing.T, s *State, id types.NodeID) change.Change {
-			t.Helper()
+				return c
+			},
+		},
+		{
+			name: "route", write: func(t *testing.T, s *State, id types.NodeID) change.Change {
+				t.Helper()
 
-			_, c, err := s.SetApprovedRoutes(id, []netip.Prefix{netip.MustParsePrefix("10.55.0.0/24")})
-			require.NoError(t, err)
+				_, c, err := s.SetApprovedRoutes(id, []netip.Prefix{netip.MustParsePrefix("10.55.0.0/24")})
+				require.NoError(t, err)
 
-			return c
-		}},
+				return c
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -2244,7 +2255,8 @@ func TestStateConcurrentTagWritesEachReportPolicyChange(t *testing.T) {
 		for i := range 2 {
 			require.NoError(t, errs[i])
 			require.True(t, changes[i].RequiresRuntimePeerComputation,
-				"round %d writer %d: %s must report a policy change", round, i, changes[i].Type())
+				"round %d writer %d: %s must report a policy change", round, i, changes[i].Type(),
+			)
 			require.Equal(t, ids[1+i], changes[i].OriginNode, "round %d writer %d", round, i)
 		}
 
@@ -2283,7 +2295,8 @@ func TestPolicyWriteReportsAfterPublish(t *testing.T) {
 		}
 
 		return inner(ns)
-	}, TestBatchSize, TestBatchTimeout)
+	}, TestBatchSize, TestBatchTimeout,
+	)
 	s.nodeStore.Start()
 
 	other := s.polMan.NodesGeneration()
@@ -2378,7 +2391,8 @@ func TestPolicyCachesSurviveOldViewDuringBuild(t *testing.T) {
 				n.ApprovedRoutes = []netip.Prefix{subnet}
 			},
 			probe: func(pm *policyv2.PolicyManager, view types.NodeView) (bool, error) {
-				rules, err := pm.FilterForNode(view)
+				typedRules, err := pm.PacketRulesForNode(view)
+				rules := packetfilter.ToTailcfg(typedRules)
 				if err != nil {
 					return false, err
 				}
@@ -2455,7 +2469,8 @@ func TestPolicyCachesSurviveOldViewDuringBuild(t *testing.T) {
 				}
 
 				return inner(ns)
-			}, TestBatchSize, TestBatchTimeout)
+			}, TestBatchSize, TestBatchTimeout,
+			)
 			store.Start()
 
 			defer store.Stop()

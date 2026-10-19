@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/juanfont/headscale/hscontrol/ipset"
-	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
+	"github.com/juanfont/headscale/hscontrol/policy/packetfilter"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
@@ -381,7 +381,7 @@ func TestParsing(t *testing.T) {
 					},
 				}.ViewSlice())
 
-			if diff := cmp.Diff(tt.want, rules); diff != "" {
+			if diff := filterRulesDiff(t, tt.want, rules); diff != "" {
 				t.Errorf("parsing() unexpected result (-want +got):\n%s", diff)
 			}
 		})
@@ -1494,7 +1494,7 @@ func TestTagUserMutualExclusivity(t *testing.T) {
 
 	compiled := pol.compileFilterRulesForNode(users, userNode, nodes.ViewSlice())
 
-	userRules := policyutil.ReduceFilterRules(userNode, compiled)
+	userRules := reduceWireRulesForTest(userNode, compiled)
 
 	for _, rule := range userRules {
 		for _, dst := range rule.DstPorts {
@@ -1516,7 +1516,7 @@ func TestTagUserMutualExclusivity(t *testing.T) {
 
 	compiled = pol.compileFilterRulesForNode(users, dbNode, nodes.ViewSlice())
 
-	dbRules := policyutil.ReduceFilterRules(dbNode, compiled)
+	dbRules := reduceWireRulesForTest(dbNode, compiled)
 
 	foundServerSrc := false
 
@@ -1587,7 +1587,7 @@ func TestUserToTagCrossIdentityGrant(t *testing.T) {
 
 	compiled := pol.compileFilterRulesForNode(users, taggedNode, nodes.ViewSlice())
 
-	rules := policyutil.ReduceFilterRules(taggedNode, compiled)
+	rules := reduceWireRulesForTest(taggedNode, compiled)
 
 	// user1's IP should appear as a source that can reach tag:server.
 	foundUser1Src := false
@@ -1605,7 +1605,8 @@ func TestUserToTagCrossIdentityGrant(t *testing.T) {
 	}
 
 	assert.True(t, foundUser1Src,
-		"explicit user1@ -> tag:server ACL should allow user1 devices to reach tagged node")
+		"explicit user1@ -> tag:server ACL should allow user1 devices to reach tagged node",
+	)
 
 	// user2 should NOT appear as a source.
 	for _, rule := range rules {
@@ -2357,7 +2358,8 @@ func TestAutogroupSelfWithNonExistentUserInGroup(t *testing.T) {
 	// Key assertion: superadmin's IP should appear as a source in rules
 	// despite phantom_user in group:superadmin causing a partial resolution error
 	assert.True(t, containsSrcIP(superadminRules, "100.64.0.1"),
-		"superadmin's IP should appear in sources despite phantom_user in group:superadmin")
+		"superadmin's IP should appear in sources despite phantom_user in group:superadmin",
+	)
 
 	// Test admin's device: admin is in group:admin which has NO phantom users.
 	// The key bug was: when group:superadmin (with phantom_user) appeared as a source
@@ -2373,7 +2375,8 @@ func TestAutogroupSelfWithNonExistentUserInGroup(t *testing.T) {
 	assert.True(t, containsIP(adminRules, "100.64.0.10"),
 		"admin rules should include tag:common server (group:admin resolves correctly)")
 	assert.True(t, containsSrcIP(adminRules, "100.64.0.1"),
-		"superadmin's IP should be in sources for rules seen by admin (partial resolution preserved)")
+		"superadmin's IP should be in sources for rules seen by admin (partial resolution preserved)",
+	)
 	assert.True(t, containsSrcIP(adminRules, "100.64.0.2"),
 		"admin's own IP should be in sources")
 
@@ -2386,7 +2389,8 @@ func TestAutogroupSelfWithNonExistentUserInGroup(t *testing.T) {
 		"direction's own IP should be in sources")
 	// With fix: superadmin's IP preserved in rules that include group:superadmin
 	assert.True(t, containsSrcIP(directionRules, "100.64.0.1"),
-		"superadmin's IP should be in sources for rule 1 (partial resolution preserved)")
+		"superadmin's IP should be in sources for rule 1 (partial resolution preserved)",
+	)
 }
 
 func TestMergeFilterRules(t *testing.T) {
@@ -3413,9 +3417,11 @@ func TestCompanionCapGrantRules(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := companionCapGrantRules(tt.dstIPStrings, tt.srcPrefixes, tt.capMap)
+			got := legacyCompanionCapGrantRules(tt.dstIPStrings, tt.srcPrefixes, tt.capMap)
 			if diff := cmp.Diff(tt.want, got, util.Comparers...); diff != "" {
-				t.Errorf("companionCapGrantRules() mismatch (-want +got):\n%s", diff)
+				t.Errorf(
+					"legacyCompanionCapGrantRules() mismatch (-want +got):\n%s", diff,
+				)
 			}
 		})
 	}
@@ -3682,7 +3688,7 @@ func TestFilterAllowAllFix(t *testing.T) {
 
 			rules := tt.pol.compileFilterRules(users, nodes)
 
-			isFilterAllowAll := cmp.Diff(tailcfg.FilterAllowAll, rules) == ""
+			isFilterAllowAll := filterRulesDiff(t, tailcfg.FilterAllowAll, rules) == ""
 			assert.Equal(t, tt.wantFilterAllow, isFilterAllowAll,
 				"FilterAllowAll mismatch: got rules=%v", rules)
 		})
@@ -3966,7 +3972,7 @@ func TestCompileViaGrant(t *testing.T) {
 
 			var got []tailcfg.FilterRule
 			if cg != nil {
-				got = compileViaForNode(cg, nodeView)
+				got = typedViaRulesForTest(cg, nodeView)
 			}
 
 			if tt.name == "wildcard sources include subnet routes in SrcIPs" {
@@ -3978,7 +3984,7 @@ func TestCompileViaGrant(t *testing.T) {
 				return
 			}
 
-			if diff := cmp.Diff(tt.want, got); diff != "" {
+			if diff := filterRulesDiff(t, tt.want, got); diff != "" {
 				t.Errorf("compileViaGrant() mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -4140,7 +4146,13 @@ func TestCompileGrantWithAutogroupSelf_GrantPaths(t *testing.T) {
 
 			var got []tailcfg.FilterRule
 			if cg != nil {
-				got = append(got, cg.rules...)
+				got = append(got,
+					packetfilter.ToTailcfg(
+						mergeFragments(
+							wrapUnrestricted(cg.fragments),
+							nodesSlice,
+						).rules,
+					)...)
 				got = append(got, compileAutogroupSelf(cg, nodeView, userIdx)...)
 				got = mergeFilterRules(got)
 			}
@@ -4153,9 +4165,11 @@ func TestCompileGrantWithAutogroupSelf_GrantPaths(t *testing.T) {
 				require.NotEmpty(t, got, "expected rules for autogroup:self")
 				rule := got[0]
 				// SrcIPs from IPSet may be a merged range.
-				require.Len(t, rule.SrcIPs, 1)
-				assert.Equal(t, "100.64.0.1-100.64.0.2", rule.SrcIPs[0],
-					"SrcIPs should contain merged range for user1 untagged devices")
+				assert.ElementsMatch(
+					t,
+					[]string{"100.64.0.1", "100.64.0.2"}, rule.SrcIPs,
+					"canonical source coverage must contain only the user-owned devices",
+				)
 
 				var destIPs []string
 				for _, dp := range rule.DstPorts {
@@ -4184,7 +4198,7 @@ func TestCompileGrantWithAutogroupSelf_GrantPaths(t *testing.T) {
 				assert.True(t, hasCapGrant, "should have rules with CapGrant")
 
 			default:
-				if diff := cmp.Diff(tt.want, got); diff != "" {
+				if diff := filterRulesDiff(t, tt.want, got); diff != "" {
 					t.Errorf("compileGrantWithAutogroupSelf() mismatch (-want +got):\n%s", diff)
 				}
 			}
@@ -4245,7 +4259,7 @@ func TestDestinationsToNetPortRange_AutogroupInternet(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := pol.destinationsToNetPortRange(users, nodes, tt.dests, ports)
+			got := pol.legacyDestinationsToNetPortRange(users, nodes, tt.dests, ports)
 			assert.Len(t, got, tt.wantLen)
 
 			if tt.wantStar && len(got) > 0 {

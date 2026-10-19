@@ -6,12 +6,14 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/juanfont/headscale/hscontrol/policy/matcher"
+	"github.com/juanfont/headscale/hscontrol/ipset"
+	"github.com/juanfont/headscale/hscontrol/policy/packetfilter"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/ipproto"
 )
 
 var ap = func(ipStr string) *netip.Addr {
@@ -274,7 +276,7 @@ func TestBuildPeerMapFromPolicy(t *testing.T) {
 				pm, err = pmf(nil, tt.nodes.ViewSlice())
 				require.NoError(t, err)
 
-				matchers, err := pm.MatchersForNode(tt.node.View())
+				matchers, err := pm.PeerRulesForNode(tt.node.View())
 				require.NoError(t, err)
 				assert.Len(t, matchers, tt.wantMatchers)
 
@@ -288,7 +290,7 @@ func TestBuildPeerMapFromPolicy(t *testing.T) {
 					t.Log("Matchers: ")
 
 					for _, m := range matchers {
-						t.Log("\t+", m.DebugString())
+						t.Log("\t+", m.Hash().String())
 					}
 				}
 			})
@@ -1599,7 +1601,7 @@ func TestReduceRoutes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			matchers := matcher.MatchesFromFilterRules(tt.args.rules)
+			matchers := testPacketRules(tt.args.rules)
 
 			got := ReduceRoutes(
 				tt.args.node.View(),
@@ -1611,4 +1613,42 @@ func TestReduceRoutes(t *testing.T) {
 			}
 		})
 	}
+}
+
+func testPacketRules(wire []tailcfg.FilterRule) []packetfilter.Rule {
+	rules := make([]packetfilter.Rule, 0, len(wire))
+	for _, rule := range wire {
+		var src ipset.Builder
+
+		for _, raw := range rule.SrcIPs {
+			set, _ := util.ParseIPSet(raw, nil)
+			src.AddSet(set)
+		}
+
+		sources, _ := src.Build()
+		destinations := make([]packetfilter.Destination, 0, len(rule.DstPorts))
+
+		for _, entry := range rule.DstPorts {
+			set, _ := util.ParseIPSet(entry.IP, nil)
+			destinations = append(
+				destinations,
+				packetfilter.Destination{Addresses: set, Ports: entry.Ports},
+			)
+		}
+
+		var protocols []ipproto.Proto
+
+		for _, protocol := range rule.IPProto {
+			if protocol >= 0 && protocol <= 255 {
+				protocols = append(protocols, ipproto.Proto(protocol))
+			}
+		}
+
+		rules = append(
+			rules,
+			packetfilter.NewNetworkRule(sources, destinations, protocols),
+		)
+	}
+
+	return rules
 }

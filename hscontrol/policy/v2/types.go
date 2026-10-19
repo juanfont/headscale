@@ -22,7 +22,6 @@ import (
 	"tailscale.com/types/ipproto"
 	"tailscale.com/types/views"
 	"tailscale.com/util/multierr"
-	"tailscale.com/util/set"
 	"tailscale.com/util/slicesx"
 )
 
@@ -215,7 +214,8 @@ func (a Asterix) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (a Asterix) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ipset.Set, error) {
+func (a Asterix) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView],
+) (ipset.Set, error) {
 	var ips ipset.Builder
 
 	err := a.resolveInto(p, users, nodes, &ips)
@@ -223,34 +223,10 @@ func (a Asterix) Resolve(p *Policy, users types.Users, nodes views.Slice[types.N
 	return buildIPSetMultiErr(&ips, err)
 }
 
-func (a Asterix) resolveInto(_ *Policy, _ types.Users, _ views.Slice[types.NodeView], ips *ipset.Builder) error {
+func (a Asterix) resolveInto(_ *Policy, _ types.Users, _ views.Slice[types.NodeView], ips *ipset.Builder,
+) error {
 	ips.AddSet(util.Tailnet())
 	return nil
-}
-
-// approvedSubnetRoutes collects all approved non-exit subnet routes
-// advertised across all nodes. Per Tailscale documentation, wildcard
-// (*) SrcIPs include "any approved subnets".
-//
-// These are collected separately from the Asterix IPSet because
-// IPSet merges overlapping ranges (e.g. 10.0.0.0/8 absorbs
-// 10.33.0.0/16), but Tailscale preserves individual route entries.
-func approvedSubnetRoutes(nodes views.Slice[types.NodeView]) []string {
-	seen := make(set.Set[string])
-
-	var routes []string
-
-	for _, node := range nodes.All() {
-		for _, route := range node.SubnetRoutes() {
-			s := route.String()
-			if !seen.Contains(s) {
-				seen.Add(s)
-				routes = append(routes, s)
-			}
-		}
-	}
-
-	return routes
 }
 
 // Username is a string that represents a username, it must contain an @.
@@ -334,7 +310,8 @@ func (u *Username) resolveUser(users types.Users) (types.User, error) {
 	return potentialUsers[0], nil
 }
 
-func (u *Username) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ipset.Set, error) {
+func (u *Username) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView],
+) (ipset.Set, error) {
 	var ips ipset.Builder
 
 	err := u.resolveInto(p, users, nodes, &ips)
@@ -342,7 +319,8 @@ func (u *Username) Resolve(p *Policy, users types.Users, nodes views.Slice[types
 	return buildIPSetMultiErr(&ips, err)
 }
 
-func (u *Username) resolveInto(_ *Policy, users types.Users, nodes views.Slice[types.NodeView], ips *ipset.Builder) error {
+func (u *Username) resolveInto(_ *Policy, users types.Users, nodes views.Slice[types.NodeView], ips *ipset.Builder,
+) error {
 	var errs []error
 
 	user, err := u.resolveUser(users)
@@ -425,7 +403,8 @@ func (g *Group) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(*g))
 }
 
-func (g *Group) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ipset.Set, error) {
+func (g *Group) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView],
+) (ipset.Set, error) {
 	var ips ipset.Builder
 
 	err := g.resolveInto(p, users, nodes, &ips)
@@ -433,7 +412,8 @@ func (g *Group) Resolve(p *Policy, users types.Users, nodes views.Slice[types.No
 	return buildIPSetMultiErr(&ips, err)
 }
 
-func (g *Group) resolveInto(p *Policy, users types.Users, nodes views.Slice[types.NodeView], ips *ipset.Builder) error {
+func (g *Group) resolveInto(p *Policy, users types.Users, nodes views.Slice[types.NodeView], ips *ipset.Builder,
+) error {
 	var errs []error
 
 	for _, user := range p.Groups[*g] {
@@ -483,7 +463,8 @@ func (t *Tag) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (t *Tag) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ipset.Set, error) {
+func (t *Tag) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView],
+) (ipset.Set, error) {
 	var ips ipset.Builder
 
 	err := t.resolveInto(p, users, nodes, &ips)
@@ -491,7 +472,8 @@ func (t *Tag) Resolve(p *Policy, users types.Users, nodes views.Slice[types.Node
 	return buildIPSetMultiErr(&ips, err)
 }
 
-func (t *Tag) resolveInto(p *Policy, users types.Users, nodes views.Slice[types.NodeView], ips *ipset.Builder) error {
+func (t *Tag) resolveInto(p *Policy, users types.Users, nodes views.Slice[types.NodeView], ips *ipset.Builder,
+) error {
 	for _, node := range nodes.All() {
 		// Check if node has this tag
 		if node.HasTag(string(*t)) {
@@ -541,7 +523,8 @@ func (h *Host) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (h *Host) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ipset.Set, error) {
+func (h *Host) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView],
+) (ipset.Set, error) {
 	var ips ipset.Builder
 
 	err := h.resolveInto(p, users, nodes, &ips)
@@ -549,7 +532,8 @@ func (h *Host) Resolve(p *Policy, users types.Users, nodes views.Slice[types.Nod
 	return buildIPSetMultiErr(&ips, err)
 }
 
-func (h *Host) resolveInto(p *Policy, _ types.Users, _ views.Slice[types.NodeView], ips *ipset.Builder) error {
+func (h *Host) resolveInto(p *Policy, _ types.Users, _ views.Slice[types.NodeView], ips *ipset.Builder,
+) error {
 	pref, ok := p.Hosts[*h]
 	if !ok {
 		return fmt.Errorf("%w: %q", ErrHostResolve, *h)
@@ -628,7 +612,8 @@ func (p *Prefix) UnmarshalJSON(b []byte) error {
 // It is the product of the [Prefix] and the [Policy], [types.Users], and [types.Nodes].
 //
 // See [Policy], [types.Users], and [types.Nodes] for more details.
-func (p *Prefix) Resolve(pol *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ipset.Set, error) {
+func (p *Prefix) Resolve(pol *Policy, users types.Users, nodes views.Slice[types.NodeView],
+) (ipset.Set, error) {
 	var ips ipset.Builder
 
 	err := p.resolveInto(pol, users, nodes, &ips)
@@ -636,7 +621,8 @@ func (p *Prefix) Resolve(pol *Policy, users types.Users, nodes views.Slice[types
 	return buildIPSetMultiErr(&ips, err)
 }
 
-func (p *Prefix) resolveInto(_ *Policy, _ types.Users, _ views.Slice[types.NodeView], ips *ipset.Builder) error {
+func (p *Prefix) resolveInto(_ *Policy, _ types.Users, _ views.Slice[types.NodeView], ips *ipset.Builder,
+) error {
 	err := p.Validate()
 	if err != nil {
 		return err
@@ -699,7 +685,8 @@ func (ag *AutoGroup) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(*ag))
 }
 
-func (ag *AutoGroup) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ipset.Set, error) {
+func (ag *AutoGroup) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView],
+) (ipset.Set, error) {
 	var ips ipset.Builder
 
 	err := ag.resolveInto(p, users, nodes, &ips)
@@ -707,7 +694,8 @@ func (ag *AutoGroup) Resolve(p *Policy, users types.Users, nodes views.Slice[typ
 	return buildIPSetMultiErr(&ips, err)
 }
 
-func (ag *AutoGroup) resolveInto(p *Policy, users types.Users, nodes views.Slice[types.NodeView], ips *ipset.Builder) error {
+func (ag *AutoGroup) resolveInto(p *Policy, users types.Users, nodes views.Slice[types.NodeView], ips *ipset.Builder,
+) error {
 	switch *ag {
 	case AutoGroupInternet:
 		ips.AddSet(util.TheInternet())
@@ -785,9 +773,11 @@ type Alias interface {
 	// It is the product of the [Alias] and the [Policy], [types.Users] and
 	// [types.Nodes]. This is an interface definition and the implementation is
 	// independent of the [Alias] type.
-	Resolve(pol *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ipset.Set, error)
+	Resolve(pol *Policy, users types.Users, nodes views.Slice[types.NodeView],
+	) (ipset.Set, error)
 
-	resolveInto(pol *Policy, users types.Users, nodes views.Slice[types.NodeView], ips *ipset.Builder) error
+	resolveInto(pol *Policy, users types.Users, nodes views.Slice[types.NodeView], ips *ipset.Builder,
+	) error
 }
 
 type AliasWithPorts struct {
@@ -1042,7 +1032,8 @@ func (a *Aliases) MarshalJSON() ([]byte, error) {
 	return json.Marshal(aliases)
 }
 
-func (a *Aliases) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ipset.Set, error) {
+func (a *Aliases) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView],
+) (ipset.Set, error) {
 	var (
 		ips  ipset.Builder
 		errs []error
@@ -1445,7 +1436,8 @@ func (ap AutoApproverPolicy) MarshalJSON() ([]byte, error) {
 // resolveAutoApprovers resolves the [AutoApprovers] to a map of [netip.Prefix] to [ipset.Set].
 // The resulting map can be used to quickly look up if a node can self-approve a route.
 // It is intended for internal use in a [PolicyManager].
-func resolveAutoApprovers(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (map[netip.Prefix]ipset.Set, ipset.Set, error) {
+func resolveAutoApprovers(p *Policy, users types.Users, nodes views.Slice[types.NodeView],
+) (map[netip.Prefix]ipset.Set, ipset.Set, error) {
 	if p == nil {
 		return nil, ipset.Set{}, nil
 	}
@@ -1614,15 +1606,6 @@ func (p Protocol) IPProtocols() []ipproto.Proto {
 	}
 
 	return []ipproto.Proto{ipproto.Proto(p)}
-}
-
-// toIANAProtocolNumbers preserves omitted protocols at the legacy wire boundary.
-func (p Protocol) toIANAProtocolNumbers() []int {
-	if p == 0 {
-		return nil
-	}
-
-	return []int{int(p)}
 }
 
 // UnmarshalJSON accepts named and numeric protocol strings at the boundary.
@@ -2009,7 +1992,8 @@ func validateAutogroupForSSHDst(dst *AutoGroup) error {
 //   - Destination can be: tags, autogroup:self (if source is users/groups), or same-user
 //   - Tags/autogroup:tagged CANNOT SSH to user destinations
 //   - [Username] destinations require the source to be that same single user only.
-func validateSSHSrcDstCombination(sources SSHSrcAliases, destinations SSHDstAliases) error {
+func validateSSHSrcDstCombination(sources SSHSrcAliases, destinations SSHDstAliases,
+) error {
 	// Categorize source types
 	srcHasTaggedEntities := false
 	srcHasGroups := false
@@ -2039,12 +2023,14 @@ func validateSSHSrcDstCombination(sources SSHSrcAliases, destinations SSHDstAlia
 			// Rule: Tags/autogroup:tagged CANNOT SSH to user destinations
 			if srcHasTaggedEntities {
 				return fmt.Errorf("%w (%s); use autogroup:tagged or specific tags as destinations instead",
-					ErrSSHTagSourceToUserDest, *v)
+					ErrSSHTagSourceToUserDest, *v,
+				)
 			}
 			// Rule: Username destination requires source to be that same single user only
 			if srcHasGroups || len(srcUsernames) != 1 || !srcUsernames[string(*v)] {
 				return fmt.Errorf("%w %q; use autogroup:self instead for same-user SSH access",
-					ErrSSHUserDestRequiresSameUser, *v)
+					ErrSSHUserDestRequiresSameUser, *v,
+				)
 			}
 		case *AutoGroup:
 			// Rule: autogroup:self requires source to NOT contain tags
@@ -2066,7 +2052,8 @@ func validateSSHSrcDstCombination(sources SSHSrcAliases, destinations SSHDstAlia
 //   - autogroup:self destinations require ALL sources to be users, groups, autogroup:member, or wildcard (*)
 //   - Tags, autogroup:tagged, hosts, and raw IPs are NOT valid sources for autogroup:self
 //   - Wildcard (*) is allowed because autogroup:self evaluation narrows it per-node to the node's own IPs.
-func validateACLSrcDstCombination(sources Aliases, destinations []AliasWithPorts) error {
+func validateACLSrcDstCombination(sources Aliases, destinations []AliasWithPorts,
+) error {
 	// Check if any destination is autogroup:self
 	hasAutogroupSelf := false
 
@@ -2841,7 +2828,8 @@ func (a *SSHSrcAliases) MarshalJSON() ([]byte, error) {
 	return json.Marshal(aliases)
 }
 
-func (a *SSHSrcAliases) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ipset.Set, error) {
+func (a *SSHSrcAliases) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView],
+) (ipset.Set, error) {
 	return (*Aliases)(a).Resolve(p, users, nodes)
 }
 
@@ -3056,7 +3044,8 @@ func unmarshalPolicy(b []byte) (*Policy, error) {
 
 // validateProtocolPortCompatibility checks that only TCP, UDP, and SCTP [Protocol]s
 // can have specific ports. All other [Protocol]s should only use wildcard ports.
-func validateProtocolPortCompatibility(protocol Protocol, destinations []AliasWithPorts) error {
+func validateProtocolPortCompatibility(protocol Protocol, destinations []AliasWithPorts,
+) error {
 	// Only TCP, UDP, and SCTP support specific ports
 	supportsSpecificPorts := protocol == ProtocolNameTCP || protocol == ProtocolNameUDP || protocol == ProtocolNameSCTP || protocol == 0
 

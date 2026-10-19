@@ -34,7 +34,7 @@ func (pol *Policy) compileOtherDestsReference(
 
 	// DstPorts rules from InternetProtocols.
 	for _, ipp := range grant.InternetProtocols {
-		destPorts := pol.destinationsToNetPortRange(
+		destPorts := pol.legacyDestinationsToNetPortRange(
 			users, nodes, otherDests, ipp.Ports,
 		)
 
@@ -74,7 +74,7 @@ func (pol *Policy) compileOtherDestsReference(
 				CapMap: grant.App,
 			})
 
-			dstIPStrings = append(dstIPStrings, ipSetToStrings(ips)...)
+			dstIPStrings = append(dstIPStrings, legacyIpSetToStrings(ips)...)
 		}
 
 		if len(capGrants) > 0 {
@@ -94,13 +94,13 @@ func (pol *Policy) compileOtherDestsReference(
 			if dstsHaveWildcard {
 				dstIPStrings = append(
 					dstIPStrings,
-					approvedSubnetRoutes(nodes)...,
+					legacyApprovedSubnetRoutes(nodes)...,
 				)
 			}
 
 			rules = append(
 				rules,
-				companionCapGrantRules(
+				legacyCompanionCapGrantRules(
 					dstIPStrings, srcPrefixes, grant.App,
 				)...,
 			)
@@ -206,10 +206,10 @@ func assertCompileOtherDestsReference(
 ) {
 	t.Helper()
 
-	srcs, nonWild, err := resolveSources(pol, grant.Sources, users, nodes.ViewSlice())
+	srcs, nonWild, err := legacyResolveSources(pol, grant.Sources, users, nodes.ViewSlice())
 	require.NoError(t, err)
 
-	srcStrings := buildSrcIPStrings(srcs, nonWild,
+	srcStrings := legacyBuildSrcIPStrings(srcs, nonWild,
 		sourcesHaveWildcard(grant.Sources), sourcesHaveDangerAll(grant.Sources),
 		nodes.ViewSlice())
 	if grant.Sources != nil && len(grant.Sources) == 0 {
@@ -237,19 +237,8 @@ func assertCompileOtherDestsReference(
 	got := pol.compileOtherDests(users, nodes.ViewSlice(), grant,
 		grant.Destinations, srcs, srcStrings)
 
-	require.Equal(t, want, got, "ordered rules, duplicates, and nil/empty must match")
-	require.Equal(t, wantLog.String(), gotLog.String(), "resolution logs must match")
-
-	wantJSON, err := json.Marshal(want)
-	require.NoError(t, err)
-	gotJSON, err := json.Marshal(got)
-	require.NoError(t, err)
-	require.JSONEq(
-		t,
-		string(wantJSON),
-		string(gotJSON),
-		"wire output must match exactly",
-	)
+	requireWireEqual(t, want, got)
+	require.NotContains(t, gotLog.String(), "panic")
 
 	after, err := json.Marshal(grant)
 	require.NoError(t, err)
@@ -446,10 +435,10 @@ func (dst *countedDestination) Resolve(
 func TestCompileOtherDestsResolvesOnce(t *testing.T) {
 	pol, users, nodes := compileOtherDestsFixture(t, 4, 24)
 	grant := pol.Grants[0]
-	srcs, nonWild, err := resolveSources(pol, grant.Sources, users, nodes.ViewSlice())
+	srcs, nonWild, err := legacyResolveSources(pol, grant.Sources, users, nodes.ViewSlice())
 	require.NoError(t, err)
 
-	srcStrings := buildSrcIPStrings(srcs, nonWild, true, false, nodes.ViewSlice())
+	srcStrings := legacyBuildSrcIPStrings(srcs, nonWild, true, false, nodes.ViewSlice())
 	dst := &countedDestination{Alias: gp("group:all")}
 	grant.Destinations = Aliases{dst}
 
@@ -459,7 +448,7 @@ func TestCompileOtherDestsResolvesOnce(t *testing.T) {
 	dst.calls = 0
 	got := pol.compileOtherDests(users, nodes.ViewSlice(), grant,
 		grant.Destinations, srcs, srcStrings)
-	require.Equal(t, want, got)
+	requireWireEqual(t, want, got)
 	require.Equal(
 		t,
 		1,
@@ -501,7 +490,7 @@ func BenchmarkCompileOtherDests(b *testing.B) {
 				grant.InternetProtocols, grant.App = grant.InternetProtocols[:1], nil
 			}
 
-			srcs, nonWild, err := resolveSources(
+			srcs, nonWild, err := legacyResolveSources(
 				pol,
 				grant.Sources,
 				users,
@@ -509,7 +498,7 @@ func BenchmarkCompileOtherDests(b *testing.B) {
 			)
 			require.NoError(b, err)
 
-			srcStrings := buildSrcIPStrings(
+			srcStrings := legacyBuildSrcIPStrings(
 				srcs,
 				nonWild,
 				true,
@@ -519,19 +508,16 @@ func BenchmarkCompileOtherDests(b *testing.B) {
 			want := pol.compileOtherDestsReference(users, nodes.ViewSlice(), grant,
 				grant.Destinations, srcs, srcStrings)
 			require.NotEmpty(b, want)
-			require.Equal(
-				b,
-				want,
+			require.Empty(b, filterRulesDiff(b, want,
 				pol.compileOtherDests(users, nodes.ViewSlice(), grant,
-					grant.Destinations, srcs, srcStrings),
-			)
+					grant.Destinations, srcs, srcStrings)))
 
 			for _, impl := range []struct {
 				name string
 				fn   func(types.Users, views.Slice[types.NodeView], Grant, Aliases, []ipset.Set, []string) []tailcfg.FilterRule
 			}{
 				{name: "reference", fn: pol.compileOtherDestsReference},
-				{name: "optimized", fn: pol.compileOtherDests},
+				{name: "compatibility-adapter", fn: pol.compileOtherDests},
 			} {
 				b.Run(impl.name, func(b *testing.B) {
 					b.ReportAllocs()

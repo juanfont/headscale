@@ -20,6 +20,8 @@ import (
 // It uses an autogroup:self policy so reads take the per-node filter slow path
 // — the same path that made #3346's reconnect storm expensive — which is where
 // the lazy caches are written.
+//
+//nolint:testifylint // Concurrent workers must not call FailNow.
 func TestPolicyManagerConcurrentReads(t *testing.T) {
 	users := types.Users{
 		{ID: 1, Name: "user1", Email: "user1@headscale.net"},
@@ -71,14 +73,14 @@ func TestPolicyManagerConcurrentReads(t *testing.T) {
 			for i := range iterations {
 				nv := nodes[(r+i)%len(nodes)].View()
 
-				rules, err := pm.FilterForNode(nv)
+				rules, err := pm.legacyFilterForNode(nv)
 				assert.NoError(t, err) //nolint:testifylint // assert (not require) is correct off the test goroutine
 				assert.NotNil(t, rules)
 
-				_, err = pm.MatchersForNode(nv)
+				_, err = pm.legacyMatchersForNode(nv)
 				assert.NoError(t, err) //nolint:testifylint // assert (not require) is correct off the test goroutine
 
-				pm.Filter()
+				pm.legacyFilter()
 				pm.NodeCapMap(nv.ID())
 
 				// BuildPeerMap is the O(n^2) writer-side read; exercise it

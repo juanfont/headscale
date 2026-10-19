@@ -2,9 +2,13 @@ package v2
 
 import (
 	"encoding/json"
+	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/juanfont/headscale/hscontrol/ipset"
+	"github.com/juanfont/headscale/hscontrol/policy/packetfilter"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -314,7 +318,7 @@ func TestSetPolicyRejectsFailingTests(t *testing.T) {
 	pm, err := NewPolicyManager([]byte(good), users, nodes.ViewSlice())
 	require.NoError(t, err)
 
-	beforeFilter, _ := pm.Filter()
+	beforeFilter, _ := pm.legacyFilter()
 
 	changed, err := pm.SetPolicy([]byte(bad))
 	require.Error(t, err, "SetPolicy must reject a policy whose tests fail")
@@ -322,7 +326,7 @@ func TestSetPolicyRejectsFailingTests(t *testing.T) {
 	require.ErrorIs(t, err, errPolicyTestsFailed)
 	require.Contains(t, err.Error(), "expected ALLOWED")
 
-	afterFilter, _ := pm.Filter()
+	afterFilter, _ := pm.legacyFilter()
 	require.Len(t, afterFilter, len(beforeFilter), "live filter must not change after a rejected SetPolicy")
 }
 
@@ -410,7 +414,8 @@ func TestRunTestsEmptyProtoMatchesDefaultProtocols(t *testing.T) {
 	require.NoError(t, err, "policy must parse and compile")
 
 	require.NoError(t, pm.RunTests(),
-		"empty-proto test must match a tcp-only grant rule (TCP is in the client default set)")
+		"empty-proto test must match a tcp-only grant rule (TCP is in the client default set)",
+	)
 }
 
 // TestPolicyTestResultsErrorsRendering checks the multi-line render layout
@@ -482,7 +487,11 @@ func TestPolicyTestTypedIngress(t *testing.T) {
 
 func TestRuleMatchesProtoDoesNotWrap(t *testing.T) {
 	for _, invalid := range []int{-250, 262} {
-		assert.False(t, ruleMatchesProto(tailcfg.FilterRule{IPProto: []int{invalid}}, []ipproto.Proto{ipproto.TCP}))
+		var protocol Protocol
+		require.Error(
+			t,
+			protocol.UnmarshalJSON([]byte(fmt.Sprintf("%q", strconv.Itoa(invalid)))),
+		)
 	}
 }
 
@@ -500,11 +509,13 @@ func TestTypedPolicyTestDiagnosticJSON(t *testing.T) {
 
 	var test PolicyTest
 	require.NoError(t, json.Unmarshal([]byte(`{"src":"alice\"quoted@","proto":"6","accept":["host\"quoted:443"]}`), &test))
-	result := runPolicyTest(test, pol, []tailcfg.FilterRule{{
-		SrcIPs:   []string{"100.64.0.1"},
-		DstPorts: []tailcfg.NetPortRange{{IP: "100.64.0.2", Ports: tailcfg.PortRange{First: 443, Last: 443}}},
-		IPProto:  []int{6},
-	}}, users, nodes)
+	result := runPolicyTest(test, pol, rulesFromWireForTest([]tailcfg.FilterRule{
+		{
+			SrcIPs:   []string{"100.64.0.1"},
+			DstPorts: []tailcfg.NetPortRange{{IP: "100.64.0.2", Ports: tailcfg.PortRange{First: 443, Last: 443}}},
+			IPProto:  []int{6},
+		},
+	}), users, nodes)
 	require.True(t, result.Passed, result.Errors)
 	encoded, err := json.Marshal(result)
 	require.NoError(t, err)
@@ -513,11 +524,24 @@ func TestTypedPolicyTestDiagnosticJSON(t *testing.T) {
 
 func TestOmittedRuleProtocolsExcludeGREAndSCTP(t *testing.T) {
 	for _, protocol := range []ipproto.Proto{47, 132} {
-		assert.False(t, ruleMatchesProto(tailcfg.FilterRule{}, []ipproto.Proto{protocol}))
-		assert.True(t, ruleMatchesProto(tailcfg.FilterRule{IPProto: []int{int(protocol)}}, []ipproto.Proto{protocol}))
+		assert.False(t, ruleMatchesProto(
+			packetfilter.NewNetworkRule(ipset.Set{}, nil, nil), []ipproto.Proto{protocol},
+		),
+		)
+		assert.True(t, ruleMatchesProto(
+			packetfilter.NewNetworkRule(
+				ipset.Set{},
+				nil,
+				[]ipproto.Proto{protocol},
+			), []ipproto.Proto{protocol},
+		),
+		)
 	}
 
 	for _, protocol := range Protocol(0).IPProtocols() {
-		assert.True(t, ruleMatchesProto(tailcfg.FilterRule{}, []ipproto.Proto{protocol}))
+		assert.True(t, ruleMatchesProto(
+			packetfilter.NewNetworkRule(ipset.Set{}, nil, nil), []ipproto.Proto{protocol},
+		),
+		)
 	}
 }

@@ -4,7 +4,7 @@ import (
 	"net/netip"
 	"slices"
 
-	"github.com/juanfont/headscale/hscontrol/policy/matcher"
+	"github.com/juanfont/headscale/hscontrol/policy/packetfilter"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
@@ -14,12 +14,12 @@ import (
 func ReduceRoutes(
 	node types.NodeView,
 	routes []netip.Prefix,
-	matchers []matcher.Match,
+	rules []packetfilter.Rule,
 ) []netip.Prefix {
 	var result []netip.Prefix
 
 	for _, route := range routes {
-		if node.CanAccessRoute(matchers, route) {
+		if node.CanAccessRoute(rules, route) {
 			result = append(result, route)
 		}
 	}
@@ -37,7 +37,8 @@ func ReduceRoutes(
 // - Previously approved routes are ALWAYS preserved (auto-approval never removes routes)
 // - New routes can be auto-approved according to policy
 // - Routes can only be removed by explicit admin action (not by auto-approval).
-func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView, currentApproved, announcedRoutes []netip.Prefix) ([]netip.Prefix, bool) {
+func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView, currentApproved, announcedRoutes []netip.Prefix,
+) ([]netip.Prefix, bool) {
 	if pm == nil {
 		return currentApproved, false
 	}

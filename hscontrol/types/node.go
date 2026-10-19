@@ -12,7 +12,7 @@ import (
 
 	hsdns "github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/juanfont/headscale/hscontrol/ipset"
-	"github.com/juanfont/headscale/hscontrol/policy/matcher"
+	"github.com/juanfont/headscale/hscontrol/policy/packetfilter"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog"
@@ -388,7 +388,7 @@ func (node *Node) AppendToIPSet(build *ipset.Builder) {
 }
 
 // CanAccess reports whether node may reach node2 under the given
-// matchers. A node owns two source identities for ACL purposes:
+// rules. A node owns two source identities for ACL purposes:
 //   - its own IPs (regular peer membership)
 //   - any approved subnet routes it advertises (subnet-router-as-src,
 //     used for subnet-to-subnet ACLs)
@@ -396,8 +396,10 @@ func (node *Node) AppendToIPSet(build *ipset.Builder) {
 // Either identity matching a rule's src — combined with the dst
 // matching node2's IPs, node2's approved subnet routes, or "the
 // internet" when node2 is an exit node — grants access.
-func (node *Node) CanAccess(matchers []matcher.Match, node2 *Node) bool {
-	return node.canAccess(matchers, node2, node.SubnetRoutes(), node2.SubnetRoutes(), node2.IsExitNode())
+func (node *Node) CanAccess(rules []packetfilter.Rule, node2 *Node) bool {
+	return node.canAccess(
+		rules, node2, node.SubnetRoutes(), node2.SubnetRoutes(), node2.IsExitNode(),
+	)
 }
 
 // canAccess is [Node.CanAccess] with the snapshot-stable route data supplied by
@@ -405,7 +407,7 @@ func (node *Node) CanAccess(matchers []matcher.Match, node2 *Node) bool {
 // exit-node status once and passes them here, so the O(n^2) pair scan does not
 // recompute them for every pair.
 func (node *Node) canAccess(
-	matchers []matcher.Match,
+	rules []packetfilter.Rule,
 	node2 *Node,
 	srcRoutes, dstRoutes []netip.Prefix,
 	dstIsExit bool,
@@ -413,23 +415,26 @@ func (node *Node) canAccess(
 	src := node.IPs()
 	allowedIPs := node2.IPs()
 
-	for _, m := range matchers {
-		srcMatchesIP := m.SrcsContainsIPs(src...)
-		srcMatchesRoutes := len(srcRoutes) > 0 && m.SrcsOverlapsPrefixes(srcRoutes...)
+	for _, m := range rules {
+		srcMatchesIP := slices.ContainsFunc(src, m.Sources().Contains)
+		srcMatchesRoutes := len(srcRoutes) > 0 &&
+			slices.ContainsFunc(srcRoutes, m.Sources().OverlapsPrefix)
 
 		if !srcMatchesIP && !srcMatchesRoutes {
 			continue
 		}
 
-		if m.DestsContainsIP(allowedIPs...) {
+		if slices.ContainsFunc(allowedIPs, m.DestinationSet().Contains) {
 			return true
 		}
 
-		if len(dstRoutes) > 0 && m.DestsOverlapsPrefixes(dstRoutes...) {
+		if len(dstRoutes) > 0 &&
+			slices.ContainsFunc(dstRoutes, m.DestinationSet().OverlapsPrefix) {
 			return true
 		}
 
-		if dstIsExit && m.DestsIsTheInternet() {
+		if dstIsExit &&
+			(m.DestinationSet().ContainsPrefix(tsaddr.AllIPv4()) || m.DestinationSet().ContainsPrefix(tsaddr.AllIPv6()) || m.DestinationSet().ContainsSet(util.TheInternet())) {
 			return true
 		}
 	}
@@ -438,31 +443,35 @@ func (node *Node) canAccess(
 }
 
 // CanAccessRoute determines whether a specific route prefix should be
-// visible to this node based on the given matchers.
+// visible to this node based on the given rules.
 //
 // Unlike [Node.CanAccess], this function intentionally does NOT check
-// [matcher.Match.DestsIsTheInternet]. Exit routes (0.0.0.0/0, ::/0) are handled by
+// the complete-internet coverage check. Exit routes (0.0.0.0/0, ::/0) are handled by
 // RoutesForPeer (state.go) which adds them unconditionally from
 // [Node.ExitRoutes], not through ACL-based route filtering. The
-// [matcher.Match.DestsIsTheInternet] check in [Node.CanAccess] exists solely for peer
+// the complete-internet coverage check in [Node.CanAccess] exists solely for peer
 // visibility determination (should two nodes see each other), which
 // is a separate concern from route prefix authorization.
 //
 // Additionally, autogroup:internet is explicitly skipped during filter
-// rule compilation (filter.go), so no matchers ever contain "the
+// rule compilation (filter.go), so no rules ever contain "the
 // internet" from internet-targeted ACLs. Wildcard "*" dests produce
-// matchers where [matcher.Match.DestsOverlapsPrefixes](0.0.0.0/0) already returns
+// rules where destination-prefix overlap(0.0.0.0/0) already returns
 // true, so the check would be redundant for that case.
-func (node *Node) CanAccessRoute(matchers []matcher.Match, route netip.Prefix) bool {
+func (node *Node) CanAccessRoute(
+	rules []packetfilter.Rule, route netip.Prefix,
+) bool {
 	src := node.IPs()
 	subnetRoutes := node.SubnetRoutes()
 
-	for _, matcher := range matchers {
-		if matcher.SrcsContainsIPs(src...) && matcher.DestsOverlapsPrefixes(route) {
+	for _, rule := range rules {
+		if slices.ContainsFunc(src, rule.Sources().Contains) &&
+			rule.DestinationSet().OverlapsPrefix(route) {
 			return true
 		}
 
-		if matcher.SrcsOverlapsPrefixes(route) && matcher.DestsContainsIP(src...) {
+		if rule.Sources().OverlapsPrefix(route) &&
+			slices.ContainsFunc(src, rule.DestinationSet().Contains) {
 			return true
 		}
 
@@ -471,16 +480,18 @@ func (node *Node) CanAccessRoute(matchers []matcher.Match, route netip.Prefix) b
 		// and the route overlaps the destination set, the router needs
 		// this route to forward traffic from its local subnet.
 		if len(subnetRoutes) > 0 {
-			if matcher.SrcsOverlapsPrefixes(subnetRoutes...) &&
-				matcher.DestsOverlapsPrefixes(route) {
+			if slices.ContainsFunc(subnetRoutes, rule.Sources().OverlapsPrefix) &&
+				rule.DestinationSet().OverlapsPrefix(route) {
 				return true
 			}
 
 			// Reverse: traffic from the route's subnet is destined for
 			// this node's subnets; the router needs the route for return
 			// traffic.
-			if matcher.SrcsOverlapsPrefixes(route) &&
-				matcher.DestsOverlapsPrefixes(subnetRoutes...) {
+			if rule.Sources().OverlapsPrefix(route) &&
+				slices.ContainsFunc(subnetRoutes,
+					rule.DestinationSet().OverlapsPrefix,
+				) {
 				return true
 			}
 		}
@@ -862,18 +873,18 @@ func (nv NodeView) InIPSet(set ipset.Set) bool {
 	return nv.ж.InIPSet(set)
 }
 
-func (nv NodeView) CanAccess(matchers []matcher.Match, node2 NodeView) bool {
+func (nv NodeView) CanAccess(rules []packetfilter.Rule, node2 NodeView) bool {
 	if !nv.Valid() || !node2.Valid() {
 		return false
 	}
 
-	return nv.ж.CanAccess(matchers, node2.ж)
+	return nv.ж.CanAccess(rules, node2.ж)
 }
 
 // CanAccessWithRoutes is [NodeView.CanAccess] with precomputed route data, used
 // by the peer-map build to avoid recomputing each node's routes per pair.
 func (nv NodeView) CanAccessWithRoutes(
-	matchers []matcher.Match,
+	rules []packetfilter.Rule,
 	node2 NodeView,
 	srcRoutes, dstRoutes []netip.Prefix,
 	dstIsExit bool,
@@ -882,15 +893,17 @@ func (nv NodeView) CanAccessWithRoutes(
 		return false
 	}
 
-	return nv.ж.canAccess(matchers, node2.ж, srcRoutes, dstRoutes, dstIsExit)
+	return nv.ж.canAccess(rules, node2.ж, srcRoutes, dstRoutes, dstIsExit)
 }
 
-func (nv NodeView) CanAccessRoute(matchers []matcher.Match, route netip.Prefix) bool {
+func (nv NodeView) CanAccessRoute(
+	rules []packetfilter.Rule, route netip.Prefix,
+) bool {
 	if !nv.Valid() {
 		return false
 	}
 
-	return nv.ж.CanAccessRoute(matchers, route)
+	return nv.ж.CanAccessRoute(rules, route)
 }
 
 func (nv NodeView) AnnouncedRoutes() []netip.Prefix {
