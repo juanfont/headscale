@@ -2,11 +2,81 @@ package util
 
 import (
 	"net/netip"
+	"slices"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"go4.org/netipx"
 )
+
+func TestIPSetAddrIterMaxAddress(t *testing.T) {
+	tests := []struct {
+		name string
+		ips  []string
+	}{
+		{"IPv4 maximum", []string{"255.255.255.254", "255.255.255.255"}},
+		{"IPv6 maximum", []string{
+			"ffff:ffff:ffff:ffff:ffff:ffff:ffff:fffe",
+			"ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+		}},
+		{"IPv4 maximum continues to IPv6", []string{
+			"255.255.255.255", "2001:db8::1", "2001:db8::2",
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var (
+				builder netipx.IPSetBuilder
+				want    []netip.Addr
+			)
+
+			for _, s := range tt.ips {
+				ip := netip.MustParseAddr(s)
+				builder.Add(ip)
+				want = append(want, ip)
+			}
+
+			set, err := builder.IPSet()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			var got []netip.Addr
+			for ip := range IPSetAddrIter(set) {
+				got = append(got, ip)
+				if len(got) > len(want) {
+					break // Bound the regression: Next at the maximum yields an invalid address.
+				}
+			}
+
+			if !slices.Equal(want, got) {
+				t.Errorf("addresses = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+func TestIPSetAddrIterConsumerStop(t *testing.T) {
+	var builder netipx.IPSetBuilder
+	builder.Add(netip.MustParseAddr("255.255.255.255"))
+	builder.Add(netip.MustParseAddr("2001:db8::1"))
+
+	set, err := builder.IPSet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	calls := 0
+
+	IPSetAddrIter(set)(func(netip.Addr) bool {
+		calls++
+		return false
+	})
+
+	if calls != 1 {
+		t.Errorf("yield called %d times after consumer stopped, want 1", calls)
+	}
+}
 
 func Test_parseIPSet(t *testing.T) {
 	set := func(ips []string, prefixes []string) *netipx.IPSet {

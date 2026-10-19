@@ -114,6 +114,10 @@ func IPSetAddrIter(ipSet *netipx.IPSet) iter.Seq[netip.Addr] {
 				if !yield(ip) {
 					return
 				}
+
+				if ip == rng.To() {
+					break
+				}
 			}
 		}
 	}
