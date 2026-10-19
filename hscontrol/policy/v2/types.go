@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gaissmai/bart"
 	"github.com/go-json-experiment/json"
 	"github.com/juanfont/headscale/hscontrol/ipset"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -1438,13 +1439,14 @@ func (ap AutoApproverPolicy) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&obj)
 }
 
-// resolveAutoApprovers resolves the [AutoApprovers] to a map of [netip.Prefix] to [ipset.Set].
-// The resulting map can be used to quickly look up if a node can self-approve a route.
+// resolveAutoApprovers resolves the [AutoApprovers] to a table of [netip.Prefix] to [ipset.Set].
+// The resulting table can be used to quickly look up if a node can self-approve a route.
 // It is intended for internal use in a [PolicyManager].
 func resolveAutoApprovers(p *Policy, users types.Users, nodes views.Slice[types.NodeView],
-) (map[netip.Prefix]ipset.Set, ipset.Set, error) {
+) (*bart.Table[ipset.Set], ipset.Set, error) {
+	ret := new(bart.Table[ipset.Set])
 	if p == nil {
-		return nil, ipset.Set{}, nil
+		return ret, ipset.Set{}, nil
 	}
 
 	var err error
@@ -1452,6 +1454,7 @@ func resolveAutoApprovers(p *Policy, users types.Users, nodes views.Slice[types.
 	routes := make(map[netip.Prefix]*ipset.Builder)
 
 	for prefix, autoApprovers := range p.AutoApprovers.Routes {
+		prefix = prefix.Masked()
 		if _, ok := routes[prefix]; !ok {
 			routes[prefix] = new(ipset.Builder)
 		}
@@ -1481,15 +1484,13 @@ func resolveAutoApprovers(p *Policy, users types.Users, nodes views.Slice[types.
 		}
 	}
 
-	ret := make(map[netip.Prefix]ipset.Set)
-
 	for prefix, builder := range routes {
 		ipSet, err := builder.Build()
 		if err != nil {
 			return nil, ipset.Set{}, err
 		}
 
-		ret[prefix] = ipSet
+		ret.Insert(prefix, ipSet)
 	}
 
 	var exitNodeSet ipset.Set

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/netip"
 	"slices"
 	"strings"
@@ -2863,6 +2864,52 @@ func TestResolveAutoApprovers(t *testing.T) {
 		wantErr         bool
 	}{
 		{
+			name: "canonical-duplicate-routes-union-authorizers",
+			policy: &Policy{
+				AutoApprovers: AutoApproverPolicy{
+					Routes: map[netip.Prefix]AutoApprovers{
+						mp("10.0.0.1/24"):    {up("user1@")},
+						mp("10.0.0.2/24"):    {up("user2@")},
+						mp("2001:db8::1/64"): {up("user1@")},
+						mp("2001:db8::2/64"): {up("user2@")},
+					},
+				},
+			},
+			want: map[netip.Prefix]ipset.Set{
+				mp("10.0.0.0/24"):   mustIPSet("100.64.0.1/32", "100.64.0.2/32"),
+				mp("2001:db8::/64"): mustIPSet("100.64.0.1/32", "100.64.0.2/32"),
+			},
+		},
+		{
+			name: "adjacent-and-nested-route-keys-stay-exact",
+			policy: &Policy{
+				AutoApprovers: AutoApproverPolicy{
+					Routes: map[netip.Prefix]AutoApprovers{
+						mp("10.0.0.0/25"):   {up("user1@")},
+						mp("10.0.0.128/25"): {up("user1@")},
+						mp("10.0.0.0/26"):   {up("user2@")},
+					},
+				},
+			},
+			want: map[netip.Prefix]ipset.Set{
+				mp("10.0.0.0/25"):   mustIPSet("100.64.0.1/32"),
+				mp("10.0.0.128/25"): mustIPSet("100.64.0.1/32"),
+				mp("10.0.0.0/26"):   mustIPSet("100.64.0.2/32"),
+			},
+		},
+		{
+			name: "unresolved-owner-keeps-empty-route",
+			policy: &Policy{
+				AutoApprovers: AutoApproverPolicy{
+					Routes: map[netip.Prefix]AutoApprovers{
+						mp("10.0.0.0/24"): {up("missing@")},
+					},
+					ExitNode: AutoApprovers{up("missing@")},
+				},
+			},
+			want: map[netip.Prefix]ipset.Set{mp("10.0.0.0/24"): {}},
+		},
+		{
 			name: "single-route",
 			policy: &Policy{
 				AutoApprovers: AutoApproverPolicy{
@@ -2984,7 +3031,9 @@ func TestResolveAutoApprovers(t *testing.T) {
 				return
 			}
 
-			if diff := cmp.Diff(tt.want, got, cmps...); diff != "" {
+			gotRoutes := maps.Collect(got.All())
+
+			if diff := cmp.Diff(tt.want, gotRoutes, cmps...); diff != "" {
 				t.Errorf("resolveAutoApprovers() mismatch (-want +got):\n%s", diff)
 			}
 
@@ -3418,6 +3467,219 @@ func TestNodeCanApproveRoute(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNodeCanApproveRouteSupernets(t *testing.T) {
+	users := policyTestUsers()
+
+	for _, family := range []struct {
+		name, broad, narrow, route, left, right, parent, outside string
+	}{
+		{
+			"ipv4", "10.0.0.0/8", "10.1.0.0/16", "10.1.2.3/24",
+			"192.0.2.0/25", "192.0.2.128/25", "192.0.2.0/24", "172.16.0.0/16",
+		},
+		{
+			"ipv6", "2001:db8::/32", "2001:db8:1::/48", "2001:db8:1::1234/64",
+			"2001:db9::/65", "2001:db9:0:0:8000::/65", "2001:db9::/64", "2001:dba::/32",
+		},
+	} {
+		t.Run(family.name, func(t *testing.T) {
+			nodes := policyTestNodes(users)
+			if family.name == "ipv4" {
+				for _, node := range nodes {
+					node.IPv6 = nil
+				}
+			} else {
+				for _, node := range nodes {
+					node.IPv4 = nil
+				}
+			}
+
+			policy := fmt.Sprintf(`{"autoApprovers":{"routes":{
+				%q:["alice@"], %q:["bob@"], %q:["missing@"],
+				%q:["alice@"], %q:["alice@"]
+			}}}`, family.broad, family.narrow, family.route, family.left, family.right)
+			pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			for _, tt := range []struct {
+				name  string
+				node  *types.Node
+				route string
+				want  bool
+			}{
+				{"broad-authorizer-beyond-narrow-misses", nodes[0], family.route, true},
+				{"narrow-authorizer-beyond-empty-exact", nodes[1], family.route, true},
+				{"tagged-creator-is-not-owner", nodes[2], family.route, false},
+				{"child-does-not-authorize-parent", nodes[1], family.broad, false},
+				{"adjacent-routes-do-not-authorize-parent", nodes[0], family.parent, false},
+				{"left-route-kept", nodes[0], family.left, true},
+				{"right-route-kept", nodes[0], family.right, true},
+				{"outside-route-denied", nodes[0], family.outside, false},
+			} {
+				t.Run(tt.name, func(t *testing.T) {
+					assert.Equal(t, tt.want, pm.NodeCanApproveRoute(tt.node.View(), mp(tt.route)))
+				})
+			}
+
+			assert.False(t, pm.NodeCanApproveRoute(nodes[0].View(), netip.Prefix{}))
+		})
+	}
+}
+
+func TestNodeCanApproveRouteAddressForms(t *testing.T) {
+	users := policyTestUsers()
+	nodes := types.Nodes{
+		{ID: 1, User: &users[0], IPv4: ap("100.64.0.1"), IPv6: ap("fe80::1%eth0")},
+		{ID: 2, User: &users[1], IPv6: ap("::ffff:100.64.0.1")},
+	}
+	pm, err := NewPolicyManager([]byte(`{"autoApprovers":{"routes":{
+		"192.0.2.0/24":["alice@"],"::ffff:192.0.2.0/120":["bob@"]
+	}}}`), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	for _, tt := range []struct {
+		address, route string
+		want           bool
+	}{
+		{"100.64.0.1", "192.0.2.0/24", true},
+		{"::ffff:100.64.0.1", "192.0.2.0/24", false},
+		{"100.64.0.1", "::ffff:192.0.2.0/120", false},
+		{"::ffff:100.64.0.1", "::ffff:192.0.2.0/120", true},
+		{"fe80::1", "192.0.2.0/24", true},
+		{"fe80::1%eth0", "192.0.2.0/24", false},
+	} {
+		t.Run(tt.address+"/"+tt.route, func(t *testing.T) {
+			node := &types.Node{IPv6: ap(tt.address)}
+			assert.Equal(t, tt.want, pm.NodeCanApproveRoute(node.View(), mp(tt.route)))
+		})
+	}
+}
+
+func TestNodeCanApproveRouteDefaultPrefixes(t *testing.T) {
+	users := policyTestUsers()
+	nodes := policyTestNodes(users)
+	pm, err := NewPolicyManager([]byte(`{"autoApprovers":{
+		"routes":{"0.0.0.0/0":["alice@"],"::/0":["alice@"]},
+		"exitNode":["bob@"]
+	}}`), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	for _, route := range []string{"0.0.0.0/0", "::/0"} {
+		assert.False(t, pm.NodeCanApproveRoute(nodes[0].View(), mp(route)), route)
+		assert.True(t, pm.NodeCanApproveRoute(nodes[1].View(), mp(route)), route)
+		assert.False(t, pm.NodeCanApproveRoute(nodes[2].View(), mp(route)), route)
+	}
+
+	for _, route := range []string{"10.1.0.0/16", "2001:db8::/32"} {
+		assert.True(t, pm.NodeCanApproveRoute(nodes[0].View(), mp(route)), route)
+		assert.False(t, pm.NodeCanApproveRoute(nodes[1].View(), mp(route)), route)
+	}
+
+	var absent *PolicyManager
+	assert.False(t, absent.NodeCanApproveRoute(nodes[0].View(), mp("10.1.0.0/16")))
+	assert.False(t, new(PolicyManager).NodeCanApproveRoute(nodes[0].View(), mp("10.1.0.0/16")))
+	pm, err = NewPolicyManager(nil, users, nodes.ViewSlice())
+	require.NoError(t, err)
+	assert.False(t, pm.NodeCanApproveRoute(nodes[0].View(), mp("10.1.0.0/16")))
+}
+
+func TestAutoApproverHashes(t *testing.T) {
+	users := policyTestUsers()
+	nodes := policyTestNodes(users)
+
+	const initial = `{"autoApprovers":{
+		"routes":{"10.0.0.0/24":["alice@","bob@"],"2001:db8::/64":["alice@"]},
+		"exitNode":["alice@","bob@"]
+	}}`
+
+	for _, tt := range []struct {
+		name, policy                  string
+		wantRoutesSame, wantExitsSame bool
+	}{
+		{"input-order", `{"autoApprovers":{
+			"exitNode":["bob@","alice@"],
+			"routes":{"2001:db8::/64":["alice@"],"10.0.0.0/24":["bob@","alice@"]}
+		}}`, true, true},
+		{"canonical-duplicate-keys", `{"autoApprovers":{
+			"routes":{"10.0.0.1/24":["alice@"],"10.0.0.2/24":["bob@"],
+				"2001:db8::1234/64":["alice@"]},
+			"exitNode":["alice@","bob@","alice@"]
+		}}`, true, true},
+		{"route-owner-change", `{"autoApprovers":{
+			"routes":{"10.0.0.0/24":["alice@"],"2001:db8::/64":["alice@"]},
+			"exitNode":["alice@","bob@"]
+		}}`, false, true},
+		{"exit-owner-change", `{"autoApprovers":{
+			"routes":{"10.0.0.0/24":["alice@","bob@"],"2001:db8::/64":["alice@"]},
+			"exitNode":["bob@"]
+		}}`, true, false},
+		{"exact-route-keys", `{"autoApprovers":{
+			"routes":{"10.0.0.0/25":["alice@","bob@"],"10.0.0.128/25":["alice@","bob@"],
+				"2001:db8::/64":["alice@"]},
+			"exitNode":["alice@","bob@"]
+		}}`, false, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			pm, err := NewPolicyManager([]byte(initial), users, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			routesHash, exitsHash := pm.autoApproversHash, pm.exitApproversHash
+			changed, err := pm.SetPolicy([]byte(tt.policy))
+			require.NoError(t, err)
+			assert.True(t, changed, "full policy changes still notify even when approval hashes match")
+			assert.Equal(t, tt.wantRoutesSame, routesHash == pm.autoApproversHash)
+			assert.Equal(t, tt.wantExitsSame, exitsHash == pm.exitApproversHash)
+
+			if tt.wantRoutesSame {
+				assert.True(t, pm.NodeCanApproveRoute(nodes[0].View(), mp("10.0.0.0/24")))
+				assert.True(t, pm.NodeCanApproveRoute(nodes[1].View(), mp("10.0.0.0/24")))
+			}
+
+			changed, err = pm.SetPolicy([]byte(tt.policy))
+			require.NoError(t, err)
+			assert.False(t, changed, "identical policy reload must not notify")
+		})
+	}
+}
+
+func TestAutoApproverOwnerChanges(t *testing.T) {
+	users := policyTestUsers()
+	nodes := policyTestNodes(users)
+	pm, err := NewPolicyManager([]byte(`{"autoApprovers":{
+		"routes":{"10.0.0.0/8":["alice@"]},"exitNode":["alice@"]
+	}}`), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	routesHash, exitsHash := pm.autoApproversHash, pm.exitApproversHash
+
+	retagged := policyTestNodes(users)
+	retagged[0].Tags = []string{"tag:server"}
+	changed, err := pm.SetNodes(retagged.ViewSlice())
+	require.NoError(t, err)
+	assert.True(t, changed)
+	assert.NotEqual(t, routesHash, pm.autoApproversHash)
+	assert.NotEqual(t, exitsHash, pm.exitApproversHash)
+	assert.False(t, pm.NodeCanApproveRoute(retagged[0].View(), mp("10.1.0.0/16")))
+	assert.False(t, pm.NodeCanApproveRoute(retagged[0].View(), tsaddr.AllIPv6()))
+
+	changed, err = pm.SetNodes(nodes.ViewSlice())
+	require.NoError(t, err)
+	assert.True(t, changed)
+	assert.Equal(t, routesHash, pm.autoApproversHash)
+	assert.Equal(t, exitsHash, pm.exitApproversHash)
+	assert.True(t, pm.NodeCanApproveRoute(nodes[0].View(), mp("10.1.0.0/16")))
+
+	renamed := policyTestUsers()
+	renamed[0].Name = "charlie"
+	changed, _, err = pm.SetUsers(renamed)
+	require.NoError(t, err)
+	assert.True(t, changed)
+	assert.NotEqual(t, routesHash, pm.autoApproversHash)
+	assert.NotEqual(t, exitsHash, pm.exitApproversHash)
+	assert.False(t, pm.NodeCanApproveRoute(nodes[0].View(), mp("10.1.0.0/16")))
+	assert.False(t, pm.NodeCanApproveRoute(nodes[0].View(), tsaddr.AllIPv4()))
 }
 
 func TestResolveTagOwners(t *testing.T) {
@@ -6573,6 +6835,9 @@ func TestResolutionCallerErrors(t *testing.T) {
 
 	routes, exits, err := resolveAutoApprovers(pol, users, nodes)
 	require.NoError(t, err)
-	assert.True(t, routes[mp("192.0.2.0/24")].Contains(*ap("100.64.0.1")))
+
+	approvers, ok := routes.Get(mp("192.0.2.0/24"))
+	require.True(t, ok)
+	assert.True(t, approvers.Contains(*ap("100.64.0.1")))
 	assert.True(t, exits.Contains(*ap("100.64.0.1")))
 }

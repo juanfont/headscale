@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gaissmai/bart"
 	"github.com/juanfont/headscale/hscontrol/ipset"
 	"github.com/juanfont/headscale/hscontrol/policy/packetfilter"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -44,10 +45,10 @@ type PolicyManager struct {
 	tagOwnerMapHash deephash.Sum
 	tagOwnerMap     map[Tag]ipset.Set
 
-	exitSetHash        deephash.Sum
-	exitSet            ipset.Set
-	autoApproveMapHash deephash.Sum
-	autoApproveMap     map[netip.Prefix]ipset.Set
+	exitApproversHash deephash.Sum
+	exitApprovers     ipset.Set
+	autoApproversHash deephash.Sum
+	autoApprovers     *bart.Table[ipset.Set]
 
 	// relayTargetIPs holds the IPs of nodes that are destinations of a
 	// tailscale.com/cap/relay grant; viaTargetTags holds the tags used as
@@ -241,7 +242,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 		return false, fmt.Errorf("resolving tag owners map: %w", err)
 	}
 
-	autoMap, exitSet, err := resolveAutoApprovers(pm.pol, pm.users, pm.nodes)
+	autoApprovers, exitApprovers, err := resolveAutoApprovers(pm.pol, pm.users, pm.nodes)
 	if err != nil {
 		return false, fmt.Errorf("resolving auto approvers map: %w", err)
 	}
@@ -324,39 +325,52 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	pm.tagOwnerMap = tagMap
 	pm.tagOwnerMapHash = tagOwnerMapHash
 
-	autoPrefixes := make(map[netip.Prefix][]netip.Prefix, len(autoMap))
-	for route, addresses := range autoMap {
-		autoPrefixes[route] = slices.Collect(addresses.Prefixes())
+	type autoApproverEntry struct {
+		Route     netip.Prefix
+		Approvers []netip.Prefix
 	}
 
-	autoApproveMapHash := deephash.Hash(&autoPrefixes)
+	autoPrefixes := make([]autoApproverEntry, 0, autoApprovers.Size())
+	for route, addresses := range autoApprovers.AllSorted() {
+		autoPrefixes = append(autoPrefixes, autoApproverEntry{
+			Route:     route,
+			Approvers: slices.Collect(addresses.Prefixes()),
+		})
+	}
 
-	autoApproveChanged := autoApproveMapHash != pm.autoApproveMapHash
+	autoApproversHash := deephash.Hash(&autoPrefixes)
+
+	autoApproveChanged := autoApproversHash != pm.autoApproversHash
 	if autoApproveChanged {
+		var oldCount int
+		if pm.autoApprovers != nil {
+			oldCount = pm.autoApprovers.Size()
+		}
+
 		log.Debug().
-			Str("autoApprove.hash.old", pm.autoApproveMapHash.String()[:8]).
-			Str("autoApprove.hash.new", autoApproveMapHash.String()[:8]).
-			Int("autoApprovers.old", len(pm.autoApproveMap)).
-			Int("autoApprovers.new", len(autoMap)).
+			Str("autoApprove.hash.old", pm.autoApproversHash.String()[:8]).
+			Str("autoApprove.hash.new", autoApproversHash.String()[:8]).
+			Int("autoApprovers.old", oldCount).
+			Int("autoApprovers.new", autoApprovers.Size()).
 			Msg("Auto-approvers hash changed")
 	}
 
-	pm.autoApproveMap = autoMap
-	pm.autoApproveMapHash = autoApproveMapHash
+	pm.autoApprovers = autoApprovers
+	pm.autoApproversHash = autoApproversHash
 
-	exitPrefixes := slices.Collect(exitSet.Prefixes())
-	exitSetHash := deephash.Hash(&exitPrefixes)
+	exitPrefixes := slices.Collect(exitApprovers.Prefixes())
+	exitApproversHash := deephash.Hash(&exitPrefixes)
 
-	exitSetChanged := exitSetHash != pm.exitSetHash
+	exitSetChanged := exitApproversHash != pm.exitApproversHash
 	if exitSetChanged {
 		log.Debug().
-			Str("exitSet.hash.old", pm.exitSetHash.String()[:8]).
-			Str("exitSet.hash.new", exitSetHash.String()[:8]).
+			Str("exitSet.hash.old", pm.exitApproversHash.String()[:8]).
+			Str("exitSet.hash.new", exitApproversHash.String()[:8]).
 			Msg("Exit node set hash changed")
 	}
 
-	pm.exitSet = exitSet
-	pm.exitSetHash = exitSetHash
+	pm.exitApprovers = exitApprovers
+	pm.exitApproversHash = exitApproversHash
 
 	// Install the per-node nodeAttrs CapMap and append the diff to
 	// pm.nodeAttrsChanged. The drain (NodesWithChangedCapMap) returns
@@ -1186,35 +1200,22 @@ func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Pr
 	// However, an auto approver might be /0, meaning that they can approve
 	// all routes available, just not exit nodes.
 	if tsaddr.IsExitRoute(route) {
-		if pm.exitSet.IsEmpty() {
+		if pm.exitApprovers.IsEmpty() {
 			return false
 		}
 
-		return slices.ContainsFunc(node.IPs(), pm.exitSet.Contains)
+		return slices.ContainsFunc(node.IPs(), pm.exitApprovers.Contains)
 	}
 
-	// The fast path is that a node requests to approve a prefix
-	// where there is an exact entry, e.g. 10.0.0.0/8, then
-	// check and return quickly
-	if approvers, ok := pm.autoApproveMap[route]; ok {
-		canApprove := slices.ContainsFunc(node.IPs(), approvers.Contains)
-		if canApprove {
+	if pm.autoApprovers == nil {
+		return false
+	}
+
+	// A narrower entry can miss while a broader entry authorizes the node.
+	ips := node.IPs()
+	for _, approvers := range pm.autoApprovers.Supernets(route) {
+		if slices.ContainsFunc(ips, approvers.Contains) {
 			return true
-		}
-	}
-
-	// The slow path is that the node tries to approve
-	// 10.0.10.0/24, which is a part of 10.0.0.0/8, then we
-	// cannot just lookup in the prefix map and have to check
-	// if there is a "parent" prefix available.
-	for prefix, approveAddrs := range pm.autoApproveMap {
-		// Check if prefix is larger (so containing) and then overlaps
-		// the route to see if the node can approve a subset of an autoapprover
-		if prefix.Bits() <= route.Bits() && prefix.Overlaps(route) {
-			canApprove := slices.ContainsFunc(node.IPs(), approveAddrs.Contains)
-			if canApprove {
-				return true
-			}
 		}
 	}
 
@@ -1518,9 +1519,14 @@ func (pm *PolicyManager) DebugString() string {
 		}
 	}
 
-	fmt.Fprintf(&sb, "AutoApprover (%d):\n", len(pm.autoApproveMap))
+	autoApprovers := pm.autoApprovers
+	if autoApprovers == nil {
+		autoApprovers = new(bart.Table[ipset.Set])
+	}
 
-	for prefix, approveAddrs := range pm.autoApproveMap {
+	fmt.Fprintf(&sb, "AutoApprover (%d):\n", autoApprovers.Size())
+
+	for prefix, approveAddrs := range autoApprovers.AllSorted() {
 		fmt.Fprintf(&sb, "\t%s:\n", prefix)
 
 		for iprange := range approveAddrs.Ranges() {

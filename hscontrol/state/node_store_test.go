@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/netip"
 	"reflect"
@@ -1522,6 +1523,167 @@ func TestPrimaryRoutesForNodeSorted(t *testing.T) {
 	}
 }
 
+func TestElectPrimaryRoutesIndexesFinalAssignments(t *testing.T) {
+	parent := mp("10.0.0.0/8")
+	child := mp("10.1.0.0/16")
+	unmasked := mp("10.1.2.3/16")
+	mapped := mp("::ffff:10.1.0.0/112")
+	ipv6 := mp("fd00::/64")
+
+	tests := []struct {
+		name       string
+		unhealthy1 bool
+		unhealthy2 bool
+		offline1   bool
+		previous   map[netip.Prefix]types.NodeID
+		wantRoutes map[netip.Prefix]types.NodeID
+		wantByNode map[types.NodeID][]netip.Prefix
+	}{
+		{
+			name:     "exact prefixes and independent parent and child",
+			previous: map[netip.Prefix]types.NodeID{child: 2},
+			wantRoutes: map[netip.Prefix]types.NodeID{
+				parent: 1, child: 2, unmasked: 1, mapped: 1, ipv6: 1,
+			},
+			wantByNode: map[types.NodeID][]netip.Prefix{
+				1: {parent, unmasked, mapped, ipv6},
+				2: {child},
+			},
+		},
+		{
+			name:       "failover uses final assignments",
+			unhealthy1: true,
+			previous: map[netip.Prefix]types.NodeID{
+				parent: 1, child: 1, unmasked: 1, mapped: 1, ipv6: 1,
+			},
+			wantRoutes: map[netip.Prefix]types.NodeID{
+				parent: 1, child: 2, unmasked: 1, mapped: 1, ipv6: 1,
+			},
+			wantByNode: map[types.NodeID][]netip.Prefix{
+				1: {parent, unmasked, mapped, ipv6},
+				2: {child},
+			},
+		},
+		{
+			name:       "all unhealthy retains only eligible previous primaries",
+			unhealthy1: true,
+			unhealthy2: true,
+			previous:   map[netip.Prefix]types.NodeID{parent: 1, child: 2, mapped: 99},
+			wantRoutes: map[netip.Prefix]types.NodeID{parent: 1, child: 2},
+			wantByNode: map[types.NodeID][]netip.Prefix{1: {parent}, 2: {child}},
+		},
+		{
+			name:       "all unhealthy without previous primaries",
+			unhealthy1: true,
+			unhealthy2: true,
+			wantRoutes: map[netip.Prefix]types.NodeID{},
+			wantByNode: map[types.NodeID][]netip.Prefix{},
+		},
+		{
+			name:       "offline primary loses all assignments",
+			offline1:   true,
+			previous:   map[netip.Prefix]types.NodeID{parent: 1, child: 1},
+			wantRoutes: map[netip.Prefix]types.NodeID{child: 2},
+			wantByNode: map[types.NodeID][]netip.Prefix{2: {child}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			prefixes := []netip.Prefix{
+				ipv6, mapped, unmasked, child, parent, child,
+				mp("0.0.0.0/0"), mp("::/0"),
+			}
+			nodes := map[types.NodeID]types.Node{
+				1: {
+					ID:             1,
+					IsOnline:       new(!tt.offline1),
+					Unhealthy:      tt.unhealthy1,
+					Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: prefixes},
+					ApprovedRoutes: prefixes,
+				},
+				2: {
+					ID:             2,
+					IsOnline:       new(true),
+					Unhealthy:      tt.unhealthy2,
+					Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{child}},
+					ApprovedRoutes: []netip.Prefix{child},
+				},
+			}
+
+			routes, byNode := electPrimaryRoutes(nodes, tt.previous)
+			require.Equal(t, tt.wantRoutes, routes)
+			require.Equal(t, tt.wantByNode, byNode)
+		})
+	}
+}
+
+func TestPrimaryRoutesForNodeSnapshotIsolation(t *testing.T) {
+	f := newPrimariesFixture(t, 1, 2, 3)
+	parent := mp("10.0.0.0/8")
+	child := mp("10.1.0.0/16")
+	mapped := mp("::ffff:10.1.0.0/112")
+	want := []netip.Prefix{parent, child, mapped}
+	f.advertise(1, mapped, child, parent, child)
+	f.advertise(2, child)
+
+	before := f.ns.data.Load()
+	oldStore := &NodeStore{}
+	oldStore.data.Store(before)
+
+	got := f.ns.PrimaryRoutesForNode(1)
+	require.Equal(t, want, got)
+	got[0] = mp("192.0.2.0/24")
+	got = append(got, mp("2001:db8::/32"))
+	require.Len(t, got, 4)
+	require.Equal(t, want, f.ns.PrimaryRoutesForNode(1))
+	require.Equal(t, want, oldStore.PrimaryRoutesForNode(1))
+	require.Nil(t, f.ns.PrimaryRoutesForNode(2))
+	require.Nil(t, f.ns.PrimaryRoutesForNode(3))
+	require.Nil(t, f.ns.PrimaryRoutesForNode(99))
+
+	_, ok := f.ns.UpdateNode(1, func(n *types.Node) {
+		n.LastSeen = new(time.Now())
+	})
+	require.True(t, ok)
+
+	reused := f.ns.data.Load()
+	require.NotSame(t, before, reused)
+	require.Equal(t, before.routes, reused.routes)
+	require.Equal(t, before.primaryRoutesByNode, reused.primaryRoutesByNode)
+	require.Same(t, &before.primaryRoutesByNode[1][0], &reused.primaryRoutesByNode[1][0])
+	require.Equal(t, want, f.ns.PrimaryRoutesForNode(1))
+
+	reusedStore := &NodeStore{}
+	reusedStore.data.Store(reused)
+	got = reusedStore.PrimaryRoutesForNode(1)
+	got[0] = mp("198.51.100.0/24")
+
+	require.Equal(t, want, oldStore.PrimaryRoutesForNode(1))
+	require.Equal(t, want, f.ns.PrimaryRoutesForNode(1))
+
+	f.unhealthy(1)
+	f.requirePrimary(parent, 1)
+	f.requirePrimary(child, 2)
+	f.requirePrimary(mapped, 1)
+	require.Equal(t, []netip.Prefix{parent, mapped}, f.ns.PrimaryRoutesForNode(1))
+	require.Equal(t, []netip.Prefix{child}, f.ns.PrimaryRoutesForNode(2))
+	require.Equal(t, want, oldStore.PrimaryRoutesForNode(1))
+	require.Equal(t, want, reusedStore.PrimaryRoutesForNode(1))
+
+	primary, ok := oldStore.PrimaryRouteFor(child)
+	require.True(t, ok)
+	require.Equal(t, types.NodeID(1), primary)
+
+	f.disconnect(1)
+	require.Nil(t, f.ns.PrimaryRoutesForNode(1))
+	f.requireNoPrimary(parent)
+	f.requireNoPrimary(mapped)
+	f.requirePrimary(child, 2)
+	require.Equal(t, want, oldStore.PrimaryRoutesForNode(1))
+	require.Equal(t, want, reusedStore.PrimaryRoutesForNode(1))
+}
+
 func BenchmarkSnapshotPayloadDense(b *testing.B) {
 	const nodeCount = 500
 
@@ -2365,6 +2527,8 @@ func TestBackfillNodeIPsReportsPolicyChange(t *testing.T) {
 // written node's old view can ask for its filter or SSH policy then. The
 // answer for that old view must not be cached under the node's ID, or
 // the node keeps it after the swap, since nothing invalidates it again.
+var errCapturedPolicyDuringBuild = errors.New("captured policy changed during peer map build")
+
 func TestPolicyCachesSurviveOldViewDuringBuild(t *testing.T) {
 	users := []types.User{{ID: 1, Name: "u1"}, {ID: 2, Name: "u2"}}
 	subnet := netip.MustParsePrefix("10.33.0.0/24")
@@ -2381,7 +2545,7 @@ func TestPolicyCachesSurviveOldViewDuringBuild(t *testing.T) {
 		// probe reports a property of node 1's cached artefact that the
 		// write flips from !want to want. It takes no *testing.T because it
 		// also runs on the NodeStore writer, where FailNow would hang.
-		probe func(pm *policyv2.PolicyManager, view types.NodeView) (bool, error)
+		probe func(pm policyv2.ReadView, view types.NodeView) (bool, error)
 		want  bool
 	}{
 		{
@@ -2390,7 +2554,7 @@ func TestPolicyCachesSurviveOldViewDuringBuild(t *testing.T) {
 				n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet}}
 				n.ApprovedRoutes = []netip.Prefix{subnet}
 			},
-			probe: func(pm *policyv2.PolicyManager, view types.NodeView) (bool, error) {
+			probe: func(pm policyv2.ReadView, view types.NodeView) (bool, error) {
 				typedRules, err := pm.PacketRulesForNode(view)
 				rules := packetfilter.ToTailcfg(typedRules)
 				if err != nil {
@@ -2417,7 +2581,7 @@ func TestPolicyCachesSurviveOldViewDuringBuild(t *testing.T) {
 				n.Tags = []string{"tag:srv"}
 				n.UserID, n.User = nil, nil
 			},
-			probe: func(pm *policyv2.PolicyManager, view types.NodeView) (bool, error) {
+			probe: func(pm policyv2.ReadView, view types.NodeView) (bool, error) {
 				sshPol, err := pm.SSHPolicy("", view)
 				if err != nil {
 					return false, err
@@ -2453,6 +2617,7 @@ func TestPolicyCachesSurviveOldViewDuringBuild(t *testing.T) {
 				buildErr atomic.Pointer[error]
 			)
 
+			captured := pm.ReadView()
 			inner := policyPeersFunc(pm)
 			store := NewNodeStore(nodes, func(ns []types.NodeView) map[types.NodeID][]types.NodeID {
 				// Stand in for a mapper that read the snapshot just before
@@ -2460,7 +2625,12 @@ func TestPolicyCachesSurviveOldViewDuringBuild(t *testing.T) {
 				if v := oldView.Load(); v != nil {
 					_, err := pm.SetNodes(views.SliceOf(ns))
 					if err == nil {
-						_, err = tt.probe(pm, *v)
+						var got bool
+
+						got, err = tt.probe(captured, *v)
+						if err == nil && got == tt.want {
+							err = errCapturedPolicyDuringBuild
+						}
 					}
 
 					if err != nil {
@@ -2478,7 +2648,7 @@ func TestPolicyCachesSurviveOldViewDuringBuild(t *testing.T) {
 			before, ok := store.GetNode(1)
 			require.True(t, ok)
 
-			got, err := tt.probe(pm, before)
+			got, err := tt.probe(captured, before)
 			require.NoError(t, err)
 			require.NotEqual(t, tt.want, got, "precondition: the write must flip the probed artefact")
 
@@ -2492,7 +2662,7 @@ func TestPolicyCachesSurviveOldViewDuringBuild(t *testing.T) {
 				require.NoError(t, *e, "probe during peer map build")
 			}
 
-			got, err = tt.probe(pm, after)
+			got, err = tt.probe(pm.ReadView(), after)
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got, "cached artefact must reflect the written node")
 		})
