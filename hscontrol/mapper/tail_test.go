@@ -321,10 +321,11 @@ func TestTailNodeBaselineGates(t *testing.T) {
 				},
 			},
 			want: tailcfg.NodeCapMap{
-				nodecap.Admin:             []tailcfg.RawMessage{},
-				nodecap.SSH:               []tailcfg.RawMessage{},
-				nodecap.HTTPS:             []tailcfg.RawMessage{},
-				nodecap.DefaultAutoUpdate: autoUpdate(false),
+				nodecap.Admin:                   []tailcfg.RawMessage{},
+				nodecap.SSH:                     []tailcfg.RawMessage{},
+				nodecap.HTTPS:                   []tailcfg.RawMessage{},
+				nodecap.DefaultAutoUpdate:       autoUpdate(false),
+				nodecap.SSHEnvironmentVariables: []tailcfg.RawMessage{},
 			},
 		},
 		{
