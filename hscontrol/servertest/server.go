@@ -203,6 +203,14 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 		tb.Fatalf("servertest: NewHeadscale: %v", err)
 	}
 
+	// Registered first so clients, HTTP, and background subsystems stop first.
+	tb.Cleanup(func() {
+		err := app.GetState().Close()
+		if err != nil {
+			tb.Errorf("servertest: close state: %v", err)
+		}
+	})
+
 	// Set a minimal DERP map so MapResponse generation works.
 	app.GetState().SetDERPMap(&tailcfg.DERPMap{
 		Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{

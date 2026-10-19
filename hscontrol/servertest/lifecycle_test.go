@@ -660,3 +660,13 @@ func describeNetmap(c *servertest.TestClient) string {
 
 	return out.String()
 }
+
+func TestServerStateCleanup(t *testing.T) {
+	var srv *servertest.TestServer
+
+	t.Run("server", func(t *testing.T) { srv = servertest.NewServer(t) })
+
+	database, err := srv.State().DB().DB.DB()
+	require.NoError(t, err)
+	require.ErrorContains(t, database.Ping(), "database is closed")
+}
