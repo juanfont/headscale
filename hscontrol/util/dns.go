@@ -185,9 +185,19 @@ func GenerateIPv6DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	} else {
 		domCount := 1 << (maskBits % nibbleLen)
 
+		var firstNibble uint64
+		// Config accepts IPv4 here; preserve its legacy zone generation.
+		if ipPrefix.Addr().Is6() {
+			domCount = 1 << (nibbleLen - maskBits%nibbleLen)
+			firstNibble, _ = strconv.ParseUint(
+				string(nibbleStr[maskBits/nibbleLen]), 16, nibbleLen,
+			)
+			firstNibble &^= 0xf >> (maskBits % nibbleLen)
+		}
+
 		fqdns = make([]dnsname.FQDN, 0, domCount)
 		for i := range domCount {
-			varNibble := fmt.Sprintf("%x", i)
+			varNibble := strconv.FormatUint(firstNibble+uint64(i), 16)
 
 			dom, err := makeDomain(varNibble)
 			if err != nil {
