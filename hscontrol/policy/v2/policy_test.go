@@ -2043,6 +2043,7 @@ func TestViaRoutesForPeer(t *testing.T) {
 			{
 				ID:       2,
 				Hostname: "router",
+				IsOnline: new(true),
 				IPv4:     ap("100.64.0.2"),
 				User:     new(users[0]),
 				UserID:   new(users[0].ID),
@@ -2137,6 +2138,7 @@ func TestViaRoutesForPeer(t *testing.T) {
 			{
 				ID:       2,
 				Hostname: "router",
+				IsOnline: new(true),
 				IPv4:     ap("100.64.0.2"),
 				User:     new(users[0]),
 				UserID:   new(users[0].ID),
@@ -2288,6 +2290,7 @@ func TestViaRoutesForPeer(t *testing.T) {
 			{
 				ID:       2,
 				Hostname: "router",
+				IsOnline: new(true),
 				IPv4:     ap("100.64.0.2"),
 				User:     new(users[0]),
 				UserID:   new(users[0].ID),
@@ -2361,6 +2364,7 @@ func TestViaRoutesForPeer(t *testing.T) {
 			{
 				ID:       2,
 				Hostname: "router",
+				IsOnline: new(true),
 				IPv4:     ap("100.64.0.2"),
 				User:     new(users[0]),
 				UserID:   new(users[0].ID),
@@ -2408,6 +2412,7 @@ func TestViaRoutesForPeer(t *testing.T) {
 			{
 				ID:       2,
 				Hostname: "router",
+				IsOnline: new(true),
 				IPv4:     ap("100.64.0.2"),
 				User:     new(users[0]),
 				UserID:   new(users[0].ID),

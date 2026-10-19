@@ -717,6 +717,7 @@ func TestViaRoutesForViewerUsesCapturedCandidates(t *testing.T) {
 			ID:             10,
 			IPv4:           ap("100.64.0.10"),
 			Tags:           []string{"tag:router"},
+			IsOnline:       new(true),
 			Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{route}},
 			ApprovedRoutes: []netip.Prefix{route},
 		},
@@ -724,6 +725,7 @@ func TestViaRoutesForViewerUsesCapturedCandidates(t *testing.T) {
 			ID:             20,
 			IPv4:           ap("100.64.0.20"),
 			Tags:           []string{"tag:router"},
+			IsOnline:       new(true),
 			Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{route}},
 			ApprovedRoutes: []netip.Prefix{route},
 		},
@@ -754,6 +756,218 @@ func TestViaRoutesForViewerUsesCapturedCandidates(t *testing.T) {
 
 	retained = view.ViaRoutesForViewer(captured[0].View(), captured.ViewSlice())
 	require.Equal(t, []netip.Prefix{route}, retained[20].Include)
+
+	t.Run("absent_group_does_not_demote_available_group", func(t *testing.T) {
+		other, err := NewPolicyManager([]byte(`{
+			"tagOwners":{"tag:router":[],"tag:absent":[]},
+			"grants":[
+				{"src":["u1@"],"dst":["10.0.0.0/8"],"ip":["*"],"via":["tag:router"]},
+				{"src":["u1@"],"dst":["10.0.0.0/8"],"ip":["*"],"via":["tag:absent"]}
+			]
+		}`), users, captured.ViewSlice())
+		require.NoError(t, err)
+
+		got := other.ReadView().ViaRoutesForViewer(captured[0].View(), captured.ViewSlice())
+		require.Equal(t, []netip.Prefix{route}, got[20].Include)
+	})
+}
+
+func TestViaRoutesForViewerHealth(t *testing.T) {
+	t.Parallel()
+
+	route := mp("10.0.0.0/24")
+	users := types.Users{{ID: 1, Name: "u1"}}
+
+	nodes := types.Nodes{
+		{ID: 1, IPv4: ap("100.64.0.1"), User: &users[0], UserID: &users[0].ID},
+		{
+			ID: 10, IPv4: ap("100.64.0.10"), Tags: []string{"tag:router"},
+			IsOnline:       new(true),
+			Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{route}},
+			ApprovedRoutes: []netip.Prefix{route},
+		},
+		{
+			ID: 20, IPv4: ap("100.64.0.20"), Tags: []string{"tag:router"},
+			IsOnline:       new(true),
+			Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{route}},
+			ApprovedRoutes: []netip.Prefix{route},
+		},
+		{
+			ID: 2, IPv4: ap("100.64.0.2"), Tags: []string{"tag:other"},
+			IsOnline:       new(true),
+			Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{route}},
+			ApprovedRoutes: []netip.Prefix{route},
+		},
+	}
+	pm, err := NewPolicyManager([]byte(`{
+		"tagOwners":{"tag:router":[],"tag:other":[]},
+		"grants":[{"src":["u1@"],"dst":["10.0.0.0/24"],
+		"ip":["*"],"via":["tag:router"]}]
+	}`), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	view := pm.ReadView()
+
+	for _, tt := range []struct {
+		name                        string
+		lowOnline, highOnline       *bool
+		lowUnhealthy, highUnhealthy bool
+		want                        types.NodeID
+	}{
+		{"both_healthy", new(true), new(true), false, false, 10},
+		{"lower_offline", new(false), new(true), false, false, 20},
+		{"lower_unknown", nil, new(true), false, false, 20},
+		{"lower_unhealthy", new(true), new(true), true, false, 20},
+		{"higher_unhealthy", new(true), new(true), false, true, 10},
+		{"higher_offline", new(true), new(false), false, false, 10},
+		{"all_offline", new(false), new(false), false, false, 0},
+		{"all_unknown", nil, nil, false, false, 0},
+		{"all_unhealthy", new(true), new(true), true, true, 0},
+		{"only_online_router_unhealthy", new(false), new(true), false, true, 0},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			captured := types.Nodes{
+				nodes[0].Clone(), nodes[1].Clone(), nodes[2].Clone(), nodes[3].Clone(),
+			}
+			captured[1].IsOnline, captured[2].IsOnline = tt.lowOnline, tt.highOnline
+			captured[1].Unhealthy, captured[2].Unhealthy = tt.lowUnhealthy, tt.highUnhealthy
+
+			// Deliberately reverse the candidates; selection must use IDs and
+			// fresh captured health, not input order or the policy generation.
+			slices.Reverse(captured)
+			got := view.ViaRoutesForViewer(nodes[0].View(), captured.ViewSlice())
+
+			for _, id := range []types.NodeID{10, 20, 2} {
+				if id == tt.want {
+					require.Equal(
+						t,
+						[]netip.Prefix{route},
+						got[id].Include,
+						"router %d",
+						id,
+					)
+					require.Empty(t, got[id].Exclude, "router %d", id)
+				} else {
+					require.Empty(t, got[id].Include, "router %d", id)
+					require.Equal(
+						t,
+						[]netip.Prefix{route},
+						got[id].Exclude,
+						"router %d",
+						id,
+					)
+				}
+
+				require.Empty(t, got[id].UsePrimary, "router %d", id)
+			}
+
+			// A retained healthy capture must remain usable after another
+			// response observes failover or an all-unhealthy group.
+			again := view.ViaRoutesForViewer(nodes[0].View(), nodes.ViewSlice())
+			require.Equal(t, []netip.Prefix{route}, again[10].Include)
+			require.Equal(t, []netip.Prefix{route}, again[20].Exclude)
+		})
+	}
+}
+
+func TestViaRoutesForViewerHealthKeepsExactRoutesAndRegularOverride(t *testing.T) {
+	t.Parallel()
+
+	users := types.Users{{ID: 1, Name: "u1"}}
+	parent := mp("10.0.0.0/16")
+	child := mp("10.0.0.0/24")
+	child6 := mp("2001:db8::/64")
+
+	for _, regular := range []bool{false, true} {
+		t.Run(
+			map[bool]string{false: "via_only", true: "regular_override"}[regular],
+			func(t *testing.T) {
+				t.Parallel()
+
+				nodes := types.Nodes{
+					{
+						ID:     1,
+						IPv4:   ap("100.64.0.1"),
+						User:   &users[0],
+						UserID: &users[0].ID,
+					},
+					{
+						ID:        10,
+						IPv4:      ap("100.64.0.10"),
+						Tags:      []string{"tag:router"},
+						IsOnline:  new(true),
+						Unhealthy: true,
+						Hostinfo: &tailcfg.Hostinfo{
+							RoutableIPs: []netip.Prefix{parent, child, child6},
+						},
+						ApprovedRoutes: []netip.Prefix{parent, child, child6},
+					},
+					{
+						ID:       20,
+						IPv4:     ap("100.64.0.20"),
+						Tags:     []string{"tag:router"},
+						IsOnline: new(true),
+						Hostinfo: &tailcfg.Hostinfo{
+							RoutableIPs: []netip.Prefix{child, child6},
+						},
+						ApprovedRoutes: []netip.Prefix{child, child6},
+					},
+					{
+						ID:       2,
+						IPv4:     ap("100.64.0.2"),
+						Tags:     []string{"tag:other"},
+						IsOnline: new(true),
+						Hostinfo: &tailcfg.Hostinfo{
+							RoutableIPs: []netip.Prefix{parent, child, child6},
+						},
+						ApprovedRoutes: []netip.Prefix{parent, child, child6},
+					},
+				}
+
+				pol := `{"tagOwners":{"tag:router":[],"tag:other":[]},"grants":[
+				{"src":["u1@"],"dst":["10.0.0.0/16","2001:db8::/32"],
+				"ip":["*"],"via":["tag:router"]}`
+
+				if regular {
+					pol += `,{"src":["u1@"],"dst":["10.0.0.0/16","2001:db8::/32"],"ip":["*"]}`
+				}
+
+				pm, err := NewPolicyManager([]byte(pol+`]}`), users, nodes.ViewSlice())
+				require.NoError(t, err)
+
+				got := pm.ReadView().
+					ViaRoutesForViewer(nodes[0].View(), nodes.ViewSlice())
+				require.ElementsMatch(t, []netip.Prefix{child, child6}, got[20].Include)
+				require.Empty(t, got[20].Exclude)
+				require.Empty(t, got[10].Include)
+				require.Empty(t, got[2].Include)
+
+				if regular {
+					require.ElementsMatch(
+						t,
+						[]netip.Prefix{child, child6},
+						got[20].UsePrimary,
+					)
+					require.Empty(t, got[10].Exclude)
+					require.Empty(t, got[2].Exclude)
+				} else {
+					require.Empty(t, got[20].UsePrimary)
+					require.ElementsMatch(
+						t,
+						[]netip.Prefix{parent, child, child6},
+						got[10].Exclude,
+					)
+					require.ElementsMatch(
+						t,
+						[]netip.Prefix{parent, child, child6},
+						got[2].Exclude,
+					)
+				}
+			},
+		)
+	}
 }
 
 func TestExitSelfExtrasFollowRecipientRules(t *testing.T) {

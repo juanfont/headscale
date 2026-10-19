@@ -1264,6 +1264,10 @@ func (v ReadView) prepareVia(
 			hasVia = true
 
 			for _, node := range nodes.All() {
+				if !node.Online() || node.Unhealthy() {
+					continue
+				}
+
 				if !slices.ContainsFunc(
 					grant.via.viaTags,
 					func(tag Tag) bool { return node.HasTag(string(tag)) },
@@ -1391,8 +1395,8 @@ func (prepared viaViewer) routesForPeer(
 	if len(result.Include) > 0 || len(result.Exclude) > 0 {
 		// Multi-router via election: when a via grant's tag matches
 		// multiple peers advertising the same prefix, only the
-		// lowest-ID peer (the via-group primary) keeps the prefix in
-		// Include. The others move to Exclude. This mirrors HA
+		// lowest-ID online, healthy peer (the via-group primary) keeps the
+		// prefix in Include. The others move to Exclude. This mirrors HA
 		// primary election scoped to the via tag group.
 		//
 		// Unlike the global [tailcfg.Node.PrimaryRoutes] election
@@ -1404,6 +1408,8 @@ func (prepared viaViewer) routesForPeer(
 		// Only process via grants where the viewer matches the source,
 		// otherwise grants for other viewer groups would incorrectly
 		// demote the peer.
+		// No previous via primary is retained, so an all-unhealthy group
+		// has no winner, as in HA election without a previous candidate.
 		for i, grant := range grants {
 			if grant.via == nil {
 				continue
@@ -1420,7 +1426,9 @@ func (prepared viaViewer) routesForPeer(
 
 					viaPrimaryID := prepared.primaries[i][included]
 
-					if viaPrimaryID != 0 && peer.ID() != viaPrimaryID {
+					if !tsaddr.IsExitRoute(included) &&
+						(!peer.Online() || peer.Unhealthy() ||
+							(viaPrimaryID != 0 && peer.ID() != viaPrimaryID)) {
 						result.Include = slices.DeleteFunc(result.Include, func(p netip.Prefix) bool {
 							return p == included
 						},

@@ -58,6 +58,7 @@ func TestIssue3267ViaGrantBroaderDestination(t *testing.T) {
 
 			router := node("subnet-router", "100.64.0.11", "fd7a:115c:a1e0::b", users[0])
 			router.ID = 2
+			router.IsOnline = new(true)
 			router.Tags = []string{"tag:subnet-router"}
 			route := netip.MustParsePrefix(tc.advertised)
 			router.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{route}}

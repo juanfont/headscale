@@ -429,7 +429,7 @@ func TestMapViewViaGroupsAndRegularOverride(t *testing.T) {
 	}
 }
 
-func TestHealthOnlySnapshotKeepsViaSteering(t *testing.T) {
+func TestHealthOnlySnapshotUpdatesViaSteering(t *testing.T) {
 	s := mapViewTestState(t, "")
 	route := netip.MustParsePrefix("10.0.0.0/24")
 
@@ -453,7 +453,7 @@ func TestHealthOnlySnapshotKeepsViaSteering(t *testing.T) {
 	after, err := s.MapView(1)
 	require.NoError(t, err)
 	require.Equal(t, oldPolicy, s.nodeStore.data.Load().policy)
-	// Via keeps the existing lowest-ID election; global HA routes still fail over.
+	// Reuse the policy generation with fresh health facts for via and global HA.
 	require.False(t, before.Peers(2).At(0).Unhealthy())
 	require.True(t, after.Peers(2).At(0).Unhealthy())
 	require.Contains(t, after.snapshot.primaryRoutesByNode[3], route)
@@ -463,10 +463,10 @@ func TestHealthOnlySnapshotKeepsViaSteering(t *testing.T) {
 	newRoutes, err := after.NodeAddresses(2)
 	require.NoError(t, err)
 	require.Contains(t, oldRoutes.PrimaryRoutes, route)
-	require.Contains(t, newRoutes.PrimaryRoutes, route)
+	require.NotContains(t, newRoutes.PrimaryRoutes, route)
 	newRoutes, err = after.NodeAddresses(3)
 	require.NoError(t, err)
-	require.NotContains(t, newRoutes.PrimaryRoutes, route)
+	require.Contains(t, newRoutes.PrimaryRoutes, route)
 }
 
 func BenchmarkMapViewRoutes(b *testing.B) {
