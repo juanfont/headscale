@@ -11,6 +11,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
@@ -1061,5 +1062,122 @@ func TestGenerateMapResponseDebugOnlyOnFullMaps(t *testing.T) {
 				assert.Equal(t, want, resps[0].Debug)
 			})
 		}
+	}
+}
+
+// TestCertDomains pins the name sent in DNSConfig.CertDomains: the
+// client only runs `tailscale cert` for a name it finds there exactly,
+// compared against its own MagicDNS name without the trailing dot.
+func TestCertDomains(t *testing.T) {
+	enabled := types.DNSConfig{Certificates: types.CertificatesConfig{Enabled: true}}
+
+	acmeDNS, err := dns.NewProvider("acmedns", map[string]any{"config": map[string]any{
+		"laptop.ts.example.com": map[string]any{
+			"username":   "user",
+			"password":   "pass",
+			"subdomain":  "reg",
+			"server_url": "https://auth.acme-dns.io",
+		},
+	}}, func(string) (any, bool) { return nil, false })
+	require.NoError(t, err)
+
+	tests := []struct {
+		name       string
+		node       *types.Node
+		dns        types.DNSConfig
+		provider   dns.Provider
+		baseDomain string
+		want       []string
+	}{
+		{
+			name:     "own acme-dns registration",
+			node:     &types.Node{GivenName: "laptop"},
+			dns:      enabled,
+			provider: acmeDNS,
+			want:     []string{"laptop.ts.example.com"},
+		},
+		{
+			// Without a registration of its own, the node's challenge would
+			// be answered from a record another name's challenge shares.
+			name:     "no acme-dns registration of its own",
+			node:     &types.Node{GivenName: "desktop"},
+			dns:      enabled,
+			provider: acmeDNS,
+		},
+		{
+			name: "user owned",
+			node: &types.Node{GivenName: "laptop", UserID: new(uint(1))},
+			dns:  enabled,
+			want: []string{"laptop.ts.example.com"},
+		},
+		{
+			name: "tagged",
+			node: &types.Node{GivenName: "server", Tags: []string{"tag:server"}},
+			dns:  enabled,
+			want: []string{"server.ts.example.com"},
+		},
+		{
+			name: "disabled",
+			node: &types.Node{GivenName: "laptop"},
+		},
+		{
+			// The operator gave this name, in another case, to a service; a
+			// node naming itself grafana must not get a certificate for it.
+			name: "extra record name",
+			node: &types.Node{GivenName: "grafana"},
+			dns:  enabled,
+		},
+		{
+			// A wildcard order for *.svc shares its challenge record with
+			// svc, so svc must not get one covering grafana.svc.
+			name: "extra record below name",
+			node: &types.Node{GivenName: "svc"},
+			dns:  enabled,
+		},
+		{
+			name: "label suffix of extra record",
+			node: &types.Node{GivenName: "fana"},
+			dns:  enabled,
+			want: []string{"fana.ts.example.com"},
+		},
+		{
+			// Renames are lowercased now; an older mixed-case name could
+			// share its challenge record with another node's name.
+			name: "mixed case name",
+			node: &types.Node{GivenName: "Laptop"},
+			dns:  enabled,
+		},
+		{
+			name:       "challenge name too long",
+			node:       &types.Node{GivenName: strings.Repeat("a", 63)},
+			dns:        enabled,
+			baseDomain: strings.Repeat("b.", 87) + "example.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			baseDomain := tt.baseDomain
+			if baseDomain == "" {
+				baseDomain = "ts.example.com"
+			}
+
+			cfg := &types.Config{
+				BaseDomain:   baseDomain,
+				DNSConfig:    tt.dns,
+				DNSChallenge: types.DNSChallengeConfig{Provider: tt.provider},
+				TailcfgDNSConfig: &tailcfg.DNSConfig{
+					Proxied: true,
+					ExtraRecords: []tailcfg.DNSRecord{
+						{Name: "Grafana.ts.example.com", Type: "A", Value: "100.64.0.3"},
+						{Name: "grafana.svc.ts.example.com.", Type: "A", Value: "100.64.0.4"},
+					},
+				},
+			}
+
+			got := generateDNSConfig(cfg, tt.node.View(), nil)
+			assert.Equal(t, tt.want, got.CertDomains)
+			assert.Nil(t, cfg.TailcfgDNSConfig.CertDomains, "global DNS config must stay untouched")
+		})
 	}
 }

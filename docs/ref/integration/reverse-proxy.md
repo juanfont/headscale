@@ -38,8 +38,9 @@ values to your Headscale [configuration file](../configuration.md):
 
 ```yaml title="config.yaml" hl_lines="1"
 server_url: https://<SERVER_NAME>
-tls_cert_path: ""
-tls_key_path: ""
+tls:
+  cert_path: ""
+  key_path: ""
 ```
 
 Headscale logs `WRN listening without TLS but ServerURL does not start with http://` during startup. This is expected
@@ -92,8 +93,9 @@ metrics_listen_addr: 127.0.0.1:9090
 trusted_proxies:
   - 127.0.0.1/32
   - ::1/128
-tls_cert_path: ""
-tls_key_path: ""
+tls:
+  cert_path: ""
+  key_path: ""
 ```
 
 ### Apache

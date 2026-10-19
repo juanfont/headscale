@@ -24,13 +24,21 @@ in
   nodes = {
     headscale = {
       imports = [ self.nixosModules.testkit ];
-      services.headscale.settings.dns.extra_records = [
-        {
-          name = "foo.bar";
-          type = "A";
-          value = "100.64.0.2";
-        }
-      ];
+      services.headscale.settings.dns = {
+        extra_records = [
+          {
+            name = "foo.bar";
+            type = "A";
+            value = "100.64.0.2";
+          }
+        ];
+        # Startup builds the provider but does not call it.
+        certificates.enabled = true;
+        challenge.provider = {
+          name = "rfc2136";
+          server = "127.0.0.1:53";
+        };
+      };
     };
     # All of peer1's noise goes over the kit's TLS listener, not plain :80.
     peer1 = {
@@ -56,6 +64,9 @@ in
     peer2.wait_until_succeeds("tailscale ping --until-direct=false -c 1 peer1.tailnet")
     res = peer1.wait_until_succeeds("${lib.getExe pkgs.dig} +short foo.bar").strip()
     assert res == "100.64.0.2", res
+    peer1.wait_until_succeeds(
+        "tailscale status --json | ${lib.getExe pkgs.jq} -e '.CertDomains == [\"peer1.tailnet\"]'"
+    )
 
     headscale.succeed("headscale policy set -f ${policy}")
 

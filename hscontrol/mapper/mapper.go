@@ -147,6 +147,10 @@ func generateDNSConfig(
 		}
 	}
 
+	if domain, ok := node.CertDomain(cfg); ok {
+		dnsConfig.CertDomains = []string{domain}
+	}
+
 	return dnsConfig
 }
 

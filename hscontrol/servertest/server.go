@@ -13,6 +13,7 @@ import (
 	"time"
 
 	hscontrol "github.com/juanfont/headscale/hscontrol"
+	hsdns "github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"tailscale.com/net/memnet"
@@ -49,6 +50,7 @@ type serverConfig struct {
 	realListener     bool
 	magicDNSDomain   string
 	dnsResolvers     []string
+	certProvider     hsdns.Provider
 }
 
 func defaultServerConfig() *serverConfig {
@@ -109,6 +111,13 @@ func WithTaildropEnabled(enabled bool) ServerOption {
 // [tailcfg.DNSConfig].
 func WithMagicDNS(domain string) ServerOption {
 	return func(c *serverConfig) { c.magicDNSDomain = domain }
+}
+
+// WithCertificates enables node certificates (dns.certificates) with
+// provider publishing the challenges. It needs [WithMagicDNS]; the
+// propagation check is off because the provider is not real DNS.
+func WithCertificates(provider hsdns.Provider) ServerOption {
+	return func(c *serverConfig) { c.certProvider = provider }
 }
 
 // WithDNSResolvers sets the global DNS resolvers, so map responses carry a
@@ -178,6 +187,11 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 		cfg.BaseDomain = sc.magicDNSDomain
 		cfg.TailcfgDNSConfig.Proxied = true
 		cfg.TailcfgDNSConfig.Domains = []string{sc.magicDNSDomain}
+	}
+
+	if sc.certProvider != nil {
+		cfg.DNSConfig.Certificates = types.CertificatesConfig{Enabled: true, Zone: cfg.BaseDomain}
+		cfg.DNSChallenge.Provider = sc.certProvider
 	}
 
 	for _, addr := range sc.dnsResolvers {

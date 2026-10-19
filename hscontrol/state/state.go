@@ -191,8 +191,8 @@ type State struct {
 	// caller snapshot or resurrected by an update racing with deletion.
 	persistMu sync.Mutex
 
-	// selfRefresh holds nodes whose NextDNS device metadata changed, drained
-	// by [State.DrainSelfRefreshes].
+	// selfRefresh holds nodes whose own DNS config inputs changed (NextDNS
+	// device metadata, given name), drained by [State.DrainSelfRefreshes].
 	selfRefresh   []types.NodeID
 	selfRefreshMu sync.Mutex
 
@@ -368,7 +368,17 @@ func (s *State) ReloadPolicy() ([]change.Change, error) {
 	// uses the [policy.PolicyManager]'s filters. Without this, nodes won't see
 	// newly allowed peers until a node is added/removed, causing autogroup:self
 	// policies to not propagate correctly when switching between policy types.
-	s.nodeStore.RebuildPeerMaps()
+	//
+	// An unchanged policy leaves the matchers as they were, and the other
+	// inputs of the peer map rebuild it themselves (node writes in the
+	// [NodeStore], [State.updatePolicyManagerNodes] and
+	// [State.updatePolicyManagerUsers]), so the O(n^2) rebuild is skipped
+	// then. The policy API handlers always get here that way: they apply
+	// the policy with [State.SetPolicy], which rebuilds, store it, and
+	// reload the very same bytes.
+	if policyChanged {
+		s.nodeStore.RebuildPeerMaps()
+	}
 
 	// Nodes whose CapMap shifted get their self refresh from
 	// [State.DrainSelfRefreshes] when these changes are dispatched.
@@ -1100,6 +1110,10 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (t
 // auto-sanitisation) and collisions error out rather than silently
 // bumping a user-facing label. See HOSTNAME.md for the CLI contract.
 func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView, change.Change, error) {
+	// DNS is case-insensitive but uniqueness and the client's certificate
+	// name match are not, so "Foo" and "foo" would share one name.
+	newName = strings.ToLower(newName)
+
 	// Validate the label AND that the resulting FQDN fits MaxHostnameLength:
 	// a valid 63-char label can still overflow under a long base_domain, and
 	// an unmappable name would break this node and its peers (issue #3346).
@@ -1131,6 +1145,12 @@ func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView,
 		// A rename is peer visible; resend the whole node.
 		c = change.NodeAdded(nodeID)
 	}
+
+	// The node's own DNS config carries its name (CertDomains), and the
+	// change above does not resend DNS config to the renamed node itself.
+	s.selfRefreshMu.Lock()
+	s.selfRefresh = append(s.selfRefresh, nodeID)
+	s.selfRefreshMu.Unlock()
 
 	return nodeView, c, nil
 }

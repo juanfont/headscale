@@ -7,6 +7,7 @@ const (
 	HTTPShutdownTimeout    = 3 * time.Second
 	TLSALPN01ChallengeType = "TLS-ALPN-01"
 	HTTP01ChallengeType    = "HTTP-01"
+	DNS01ChallengeType     = "DNS-01"
 
 	JSONLogFormat = "json"
 	TextLogFormat = "text"
