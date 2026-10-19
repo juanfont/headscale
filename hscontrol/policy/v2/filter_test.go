@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
 	"tailscale.com/tailcfg/peercap"
+	"tailscale.com/types/views"
 )
 
 // aliasWithPorts creates an AliasWithPorts structure from an alias and ports.
@@ -4264,4 +4265,19 @@ func TestDestinationsToNetPortRange_AutogroupInternet(t *testing.T) {
 			}
 		})
 	}
+}
+
+// compileSSHPolicy adapts typed rules for the unchanged wire-format fixtures.
+func (pol *Policy) compileSSHPolicy(
+	baseURL string,
+	users types.Users,
+	node types.NodeView,
+	nodes views.Slice[types.NodeView],
+) (*tailcfg.SSHPolicy, error) {
+	compiled, err := pol.compileSSHRules(users, node, nodes)
+	if err != nil {
+		return nil, err
+	}
+
+	return compiled.toTailcfg(baseURL), nil
 }

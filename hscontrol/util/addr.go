@@ -9,16 +9,10 @@ import (
 	"github.com/juanfont/headscale/hscontrol/ipset"
 )
 
-// This is borrowed from, and updated to use [ipset.Set]
-// https://github.com/tailscale/tailscale/blob/71029cea2ddf82007b80f465b256d027eab0f02d/wgengine/filter/tailcfg.go#L97-L162
-// TODO(kradalby): contribute upstream and make public.
-
-// parseIPSet parses arg as one:
+// ParseIPSet decodes legacy filter-address syntax for compatibility tests.
+// Runtime policy processing resolves typed aliases directly.
 //
-//   - an IP address (IPv4 or IPv6)
-//   - the string "*" to match everything (both IPv4 & IPv6)
-//   - a CIDR (e.g. "192.168.0.0/16")
-//   - a range of two IPs, inclusive, separated by hyphen ("2eff::1-2eff::0800")
+// It accepts an address, "*", a CIDR, or an inclusive "first-last" range.
 //
 // bits, if non-nil, is the legacy [tailcfg.FilterRule.SrcBits] CIDR length to make a IP
 // address (without a slash) treated as a CIDR of *bits length.

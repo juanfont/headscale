@@ -174,6 +174,10 @@ headscale/
   in-memory cache backed by `atomic.Pointer[Snapshot]`. Every read is a
   pointer load; writes rebuild a new snapshot and atomically swap. It is
   the hot path for `MapRequest` processing and peer visibility.
+- **Response construction** captures `State.MapView` once and uses its node
+  snapshot and matching policy `ReadView` for self, peers, routes, policies,
+  capabilities, and DNS. A failed policy build preserves node facts but makes
+  `MapView` return the original error; recovery dispatches one full refresh.
 - **The map-request sync point** is
   `State.UpdateNodeFromMapRequest()` in `hscontrol/state/state.go`. This
   is where Hostinfo changes, endpoint updates, and route advertisements
@@ -230,6 +234,14 @@ if node.UserID().Valid() && !node.IsTagged() { /* ok */ }  // correct
 `hscontrol/policy/v2/policy.go` is the policy implementation. The
 top-level `hscontrol/policy/policy.go` contains only wrapper functions
 around v2. There is no v1 directory.
+
+Policy processing uses `ipset.Set` for immutable address unions and
+`packetfilter.Rule` for typed packet decisions. Parse aliases at ingress,
+resolve them for each generation, share immutable results, and encode rules at
+response/debug
+boundaries. Builders are local mutable accumulators; `Build` publishes an
+immutable Set and resets the builder. Primary-route maps preserve exact
+prefix identity; autoapprovers use BART to find all matching supernets.
 
 Key concepts an agent will encounter:
 

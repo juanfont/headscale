@@ -1010,7 +1010,7 @@ func (pm *PolicyManager) NodeCanHaveTag(node types.NodeView, tag string) bool {
 	// (usernames/groups) to their nodes' IPs, so checking if the node's IP
 	// is in the set answers "does this node's owner own this tag?"
 	if ips, ok := pm.tagOwnerMap[Tag(tag)]; ok {
-		if slices.ContainsFunc(node.IPs(), ips.Contains) {
+		if node.InIPSet(ips) {
 			return true
 		}
 	}
@@ -1205,7 +1205,7 @@ func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Pr
 			return false
 		}
 
-		return slices.ContainsFunc(node.IPs(), pm.exitApprovers.Contains)
+		return node.InIPSet(pm.exitApprovers)
 	}
 
 	if pm.autoApprovers == nil {

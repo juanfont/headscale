@@ -90,21 +90,6 @@ type sshPolicy struct {
 	rules []sshRule
 }
 
-// compileSSHPolicy is the terminal adapter for callers that need wire policies.
-func (pol *Policy) compileSSHPolicy(
-	baseURL string,
-	users types.Users,
-	node types.NodeView,
-	nodes views.Slice[types.NodeView],
-) (*tailcfg.SSHPolicy, error) {
-	compiled, err := pol.compileSSHRules(users, node, nodes)
-	if err != nil {
-		return nil, err
-	}
-
-	return compiled.toTailcfg(baseURL), nil
-}
-
 func (p sshPolicy) toTailcfg(baseURL string) *tailcfg.SSHPolicy {
 	// Never nil: clients read a nil SSHPolicy as "keep the previous
 	// rules", so revoked access would stay. SaaS sends "rules":[].
@@ -406,7 +391,7 @@ func (pol *Policy) compileSSHRules(
 						appendRules(allPrincipals, 0, false)
 					}
 				}
-			} else if hasLocalpart && slices.ContainsFunc(node.IPs(), srcIPs.Contains) {
+			} else if hasLocalpart && node.InIPSet(srcIPs) {
 				// Self-access: source node not in destination set
 				// receives rules scoped to its own user.
 				if node.IsTagged() {
@@ -511,7 +496,7 @@ func groupSourcesByUser(
 	var taggedPrincipals []netip.Addr
 
 	for _, n := range nodes.All() {
-		if !slices.ContainsFunc(n.IPs(), srcIPs.Contains) {
+		if !n.InIPSet(srcIPs) {
 			continue
 		}
 
