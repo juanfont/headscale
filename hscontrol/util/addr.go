@@ -7,7 +7,6 @@ import (
 
 	"github.com/gaissmai/iprange"
 	"github.com/juanfont/headscale/hscontrol/ipset"
-	"go4.org/netipx"
 )
 
 // This is borrowed from, and updated to use [ipset.Set]
@@ -79,12 +78,6 @@ func ParseIPSet(arg string, bits *int) (ipset.Set, error) {
 	ipSet.AddPrefix(netip.PrefixFrom(ip, int(bits8)))
 
 	return ipSet.Build()
-}
-
-func GetIPPrefixEndpoints(na netip.Prefix) (netip.Addr, netip.Addr) {
-	ipRange := netipx.RangeOfPrefix(na)
-
-	return ipRange.From(), ipRange.To()
 }
 
 func StringToIPPrefix(prefixes []string) ([]netip.Prefix, error) {
