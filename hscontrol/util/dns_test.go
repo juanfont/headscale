@@ -66,6 +66,79 @@ func TestMagicDNSRootDomainsIPv6WrongFamilyCompatibility(t *testing.T) {
 	}
 }
 
+func TestDNSRootDomainsInvalidPrefix(t *testing.T) {
+	tests := []struct {
+		name   string
+		prefix netip.Prefix
+	}{
+		{"zero", netip.Prefix{}},
+		{"IPv4 too many bits", netip.PrefixFrom(netip.MustParseAddr("100.64.0.1"), 33)},
+		{"IPv4 negative bits", netip.PrefixFrom(netip.MustParseAddr("100.64.0.1"), -1)},
+		{
+			"IPv6 too many bits",
+			netip.PrefixFrom(netip.MustParseAddr("fd7a:115c:a1e0::1"), 129),
+		},
+		{
+			"IPv6 negative bits",
+			netip.PrefixFrom(netip.MustParseAddr("fd7a:115c:a1e0::1"), -1),
+		},
+		{
+			"mapped IPv4 too many bits",
+			netip.PrefixFrom(netip.MustParseAddr("::ffff:100.64.0.1"), 129),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.False(t, tt.prefix.IsValid())
+			assert.Equal(
+				t,
+				[]dnsname.FQDN{"in-addr.arpa."},
+				GenerateIPv4DNSRootDomain(tt.prefix),
+			)
+			assert.Equal(
+				t,
+				[]dnsname.FQDN{"ip6.arpa."},
+				GenerateIPv6DNSRootDomain(tt.prefix),
+			)
+		})
+	}
+}
+
+func TestDNSRootDomainPrefixBoundaries(t *testing.T) {
+	tests := []struct {
+		prefix string
+		count  int
+		first  string
+		last   string
+	}{
+		{"100.64.0.1/32", 1, "1.0.64.100.in-addr.arpa.", "1.0.64.100.in-addr.arpa."},
+		{"100.70.0.0/10", 64, "70.100.in-addr.arpa.", "133.100.in-addr.arpa."},
+		{"0.0.0.0/0", 256, "0.in-addr.arpa.", "255.in-addr.arpa."},
+		{"::/0", 1, "ip6.arpa.", "ip6.arpa."},
+		{
+			"::1/128", 1,
+			"1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.ip6.arpa.",
+			"1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.ip6.arpa.",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.prefix, func(t *testing.T) {
+			prefix := netip.MustParsePrefix(tt.prefix)
+
+			var domains []dnsname.FQDN
+			if prefix.Addr().Is4() {
+				domains = GenerateIPv4DNSRootDomain(prefix)
+			} else {
+				domains = GenerateIPv6DNSRootDomain(prefix)
+			}
+
+			require.Len(t, domains, tt.count)
+			assert.Equal(t, tt.first, domains[0].WithTrailingDot())
+			assert.Equal(t, tt.last, domains[len(domains)-1].WithTrailingDot())
+		})
+	}
+}
+
 func TestMagicDNSRootDomains100(t *testing.T) {
 	domains := GenerateIPv4DNSRootDomain(netip.MustParsePrefix("100.64.0.0/10"))
 

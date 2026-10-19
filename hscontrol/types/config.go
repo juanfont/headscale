@@ -22,7 +22,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
-	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
@@ -1360,12 +1359,10 @@ func parsePrefixConfig(key string, standardRange netip.Prefix, family string) (*
 		return nil, false, fmt.Errorf("parsing %s prefix from config: %w", family, err)
 	}
 
-	builder := netipx.IPSetBuilder{}
-	builder.AddPrefix(standardRange)
+	withinStandard := prefix.Addr().BitLen() == standardRange.Addr().BitLen() &&
+		prefix.Bits() >= standardRange.Bits() && standardRange.Contains(prefix.Addr())
 
-	ipSet, _ := builder.IPSet()
-
-	return &prefix, !ipSet.ContainsPrefix(prefix), nil
+	return &prefix, !withinStandard, nil
 }
 
 // trustedProxies rejects 0.0.0.0/0 and ::/0 because they defeat the
