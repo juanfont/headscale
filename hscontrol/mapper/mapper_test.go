@@ -1,9 +1,14 @@
 package mapper
 
 import (
+	stdcmp "cmp"
+	"database/sql"
 	"errors"
 	"fmt"
+	"maps"
 	"net/netip"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -15,11 +20,13 @@ import (
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
+	"tailscale.com/types/views"
 )
 
 var iap = func(ipStr string) *netip.Addr {
@@ -1179,5 +1186,362 @@ func TestCertDomains(t *testing.T) {
 			assert.Equal(t, tt.want, got.CertDomains)
 			assert.Nil(t, cfg.TailcfgDNSConfig.CertDomains, "global DNS config must stay untouched")
 		})
+	}
+}
+
+// profileUserOriginal freezes the user profile helpers from 1096abfc8.
+// This package cannot call the test-only originals in types.
+type profileUserOriginal types.User
+
+func (u *profileUserOriginal) StringID() string {
+	if u == nil {
+		return ""
+	}
+
+	return strconv.FormatUint(uint64(u.ID), 10)
+}
+
+func (u *profileUserOriginal) Username() string {
+	return stdcmp.Or(
+		u.Email,
+		u.Name,
+		u.ProviderIdentifier.String,
+		u.StringID(),
+	)
+}
+
+func (u *profileUserOriginal) Display() string {
+	return stdcmp.Or(u.DisplayName, u.Username())
+}
+
+func (u *profileUserOriginal) TailscaleUserProfile() tailcfg.UserProfile {
+	return tailcfg.UserProfile{
+		ID:            tailcfg.UserID(u.ID), //nolint:gosec // UserID is bounded
+		LoginName:     u.Username(),
+		DisplayName:   u.Display(),
+		ProfilePicURL: u.ProfilePicURL,
+	}
+}
+
+// userProfileOriginal reads the view without cloning or calling changed helpers.
+func userProfileOriginal(view *types.UserView) tailcfg.UserProfile {
+	u := profileUserOriginal{
+		Model:              view.Model(),
+		Name:               view.Name(),
+		Email:              view.Email(),
+		DisplayName:        view.DisplayName(),
+		ProviderIdentifier: view.ProviderIdentifier(),
+		ProfilePicURL:      view.ProfilePicURL(),
+	}
+
+	return u.TailscaleUserProfile()
+}
+
+// generateUserProfilesOriginal freezes 1096abfc8, including its profile helpers.
+func generateUserProfilesOriginal(
+	node types.NodeView,
+	peers views.Slice[types.NodeView],
+) []tailcfg.UserProfile {
+	userMap := make(map[uint]*types.UserView)
+
+	user := node.Owner()
+	if !user.Valid() {
+		log.Error().
+			EmbedObject(node).
+			Msg("node has no valid owner, skipping user profile generation")
+
+		return nil
+	}
+
+	userMap[user.Model().ID] = &user
+
+	for _, peer := range peers.All() {
+		peerUser := peer.Owner()
+		if !peerUser.Valid() {
+			continue
+		}
+
+		userMap[peerUser.Model().ID] = &peerUser
+	}
+
+	var profiles []tailcfg.UserProfile
+
+	for _, id := range slices.Sorted(maps.Keys(userMap)) {
+		profiles = append(profiles, userProfileOriginal(userMap[id]))
+	}
+
+	return profiles
+}
+
+// generateUserProfilesPointerMap freezes the map work but uses current name helpers,
+// so map-only benchmarks do not include the frozen profile's view adapter.
+func generateUserProfilesPointerMap(
+	node types.NodeView,
+	peers views.Slice[types.NodeView],
+) []tailcfg.UserProfile {
+	userMap := make(map[uint]*types.UserView)
+
+	user := node.Owner()
+	if !user.Valid() {
+		log.Error().
+			EmbedObject(node).
+			Msg("node has no valid owner, skipping user profile generation")
+
+		return nil
+	}
+
+	userMap[user.Model().ID] = &user
+
+	for _, peer := range peers.All() {
+		peerUser := peer.Owner()
+		if !peerUser.Valid() {
+			continue
+		}
+
+		userMap[peerUser.Model().ID] = &peerUser
+	}
+
+	var profiles []tailcfg.UserProfile
+
+	for _, id := range slices.Sorted(maps.Keys(userMap)) {
+		profiles = append(profiles, userMap[id].TailscaleUserProfile())
+	}
+
+	return profiles
+}
+
+func checkUserProfilesOriginal(
+	t *testing.T,
+	node types.NodeView,
+	peers views.Slice[types.NodeView],
+) {
+	t.Helper()
+
+	want := generateUserProfilesOriginal(node, peers)
+	require.Equal(t, want, generateUserProfiles(node, peers))
+	require.Equal(t, want, generateUserProfilesPointerMap(node, peers))
+}
+
+func TestGenerateUserProfilesMatchesOriginal(t *testing.T) {
+	first := &types.User{
+		ID: 7, Name: "first", DisplayName: "First",
+		Email: "first@example.com", ProfilePicURL: "https://example.com/first",
+	}
+	last := &types.User{
+		ID: 7, Name: "last", DisplayName: "Last",
+		Email: "last@example.com", ProfilePicURL: "https://example.com/last",
+	}
+	other := &types.User{ID: 100}
+	node := (&types.Node{ID: 1, UserID: new(first.ID), User: first}).View()
+	duplicate := (&types.Node{ID: 2, UserID: new(last.ID), User: last}).View()
+	peer := (&types.Node{ID: 3, UserID: new(other.ID), User: other}).View()
+	orphan := (&types.Node{ID: 4}).View()
+	missingUser := (&types.Node{ID: 5, UserID: new(first.ID)}).View()
+	tagged := (&types.Node{ID: 6, Tags: []string{"tag:server"}}).View()
+	taggedCreator := (&types.Node{
+		ID: 7, Tags: []string{"tag:server"}, UserID: new(first.ID), User: first,
+	}).View()
+	zeroUser := (&types.Node{ID: 8, User: &types.User{}}).View()
+
+	for _, tt := range []struct {
+		name  string
+		node  types.NodeView
+		peers []types.NodeView
+	}{
+		{name: "nil_peers", node: node},
+		{name: "empty_peers", node: node, peers: []types.NodeView{}},
+		{name: "unowned_requester", node: orphan, peers: []types.NodeView{peer}},
+		{name: "missing_requester_user", node: missingUser, peers: []types.NodeView{peer}},
+		{name: "invalid_peer_after_unowned_requester", node: orphan, peers: []types.NodeView{{}}},
+		{name: "invalid_owner_peers", node: node, peers: []types.NodeView{orphan, missingUser}},
+		{name: "same_owner", node: node, peers: []types.NodeView{node, node, node}},
+		{name: "last_peer_wins", node: node, peers: []types.NodeView{peer, node, duplicate}},
+		{name: "reverse_duplicate_order", node: node, peers: []types.NodeView{duplicate, peer, node}},
+		{name: "zero_id_and_no_user_id", node: zeroUser, peers: []types.NodeView{peer, node}},
+		{name: "tagged_requester", node: tagged},
+		{name: "tagged_requester_with_creator", node: taggedCreator},
+		{name: "tagged_peers", node: node, peers: []types.NodeView{tagged, taggedCreator}},
+		{
+			name: "mixed_unsorted_owners", node: node,
+			peers: []types.NodeView{taggedCreator, peer, orphan, zeroUser, tagged, duplicate},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			checkUserProfilesOriginal(t, tt.node, views.SliceOf(tt.peers))
+		})
+	}
+
+	require.Equal(t, []tailcfg.UserProfile{
+		{
+			ID:            7,
+			LoginName:     last.Email,
+			DisplayName:   last.DisplayName,
+			ProfilePicURL: last.ProfilePicURL,
+		},
+		{ID: 100, LoginName: "100", DisplayName: "100"},
+	}, generateUserProfiles(node, views.SliceOf([]types.NodeView{peer, node, duplicate})))
+	require.Equal(t, []tailcfg.UserProfile{
+		{
+			ID:          types.TaggedDevicesUserID,
+			LoginName:   "tagged-devices",
+			DisplayName: "Tagged Devices",
+		},
+	}, generateUserProfiles(taggedCreator, views.SliceOf([]types.NodeView{tagged})))
+	require.Nil(t, generateUserProfiles(orphan, views.SliceOf([]types.NodeView{peer})))
+
+	for _, tt := range []struct {
+		name  string
+		node  types.NodeView
+		peers []types.NodeView
+	}{
+		{name: "invalid_requester"},
+		{name: "invalid_peer", node: node, peers: []types.NodeView{{}}},
+		{name: "invalid_peer_after_valid", node: node, peers: []types.NodeView{peer, {}}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			peers := views.SliceOf(tt.peers)
+
+			require.Panics(t, func() { generateUserProfilesOriginal(tt.node, peers) })
+			require.Panics(t, func() { generateUserProfiles(tt.node, peers) })
+			require.Panics(t, func() { generateUserProfilesPointerMap(tt.node, peers) })
+			require.Panics(t, func() { generateUserProfiles(tt.node, peers) })
+		})
+	}
+}
+
+func TestGenerateUserProfilesFallbacksMatchOriginal(t *testing.T) {
+	for _, id := range []uint{0, 99, 100, 101, ^uint(0)} {
+		for mask := range 32 {
+			t.Run(fmt.Sprintf("ID=%d/fields=%02d", id, mask), func(t *testing.T) {
+				u := &types.User{
+					ID:                 id,
+					ProfilePicURL:      "https://example.com/avatar",
+					ProviderIdentifier: sql.NullString{Valid: mask&8 != 0},
+				}
+
+				if mask&1 != 0 {
+					u.Email = "email@example.com"
+				}
+
+				if mask&2 != 0 {
+					u.Name = "username"
+				}
+
+				if mask&4 != 0 {
+					u.ProviderIdentifier.String = "https://issuer.example.com/subject"
+				}
+
+				if mask&16 != 0 {
+					u.DisplayName = "Display Name"
+				}
+
+				node := (&types.Node{User: u}).View()
+				checkUserProfilesOriginal(t, node, views.Slice[types.NodeView]{})
+
+				tagged := (&types.Node{Tags: []string{"tag:server"}}).View()
+				checkUserProfilesOriginal(
+					t,
+					tagged,
+					views.SliceOf([]types.NodeView{node}),
+				)
+			})
+		}
+	}
+}
+
+func userProfilesFixture(
+	peerCount, ownerCount int,
+	names string,
+) (types.NodeView, views.Slice[types.NodeView]) {
+	users := make([]types.User, ownerCount)
+	for i := range users {
+		users[i].ID = uint(i + 1000)
+		if names == "named" {
+			users[i].Name = fmt.Sprintf("user-%d", i)
+			users[i].Email = fmt.Sprintf("user-%d@example.com", i)
+			users[i].DisplayName = fmt.Sprintf("User %d", i)
+		}
+
+		users[i].ProfilePicURL = "https://example.com/avatar"
+	}
+
+	peers := make([]types.NodeView, peerCount)
+	for i := range peers {
+		u := &users[i%ownerCount]
+		peers[i] = (&types.Node{UserID: new(u.ID), User: u}).View()
+	}
+
+	return (&types.Node{UserID: new(users[0].ID), User: &users[0]}).View(), views.SliceOf(
+		peers,
+	)
+}
+
+func TestGenerateUserProfilesTailnetsMatchOriginal(t *testing.T) {
+	for _, peerCount := range []int{8, 128, 1024, 8192} {
+		for _, ownerCount := range []int{1, peerCount} {
+			for _, names := range []string{"named", "numeric"} {
+				t.Run(
+					fmt.Sprintf("peers=%d/owners=%d/%s", peerCount, ownerCount, names),
+					func(t *testing.T) {
+						node, peers := userProfilesFixture(peerCount, ownerCount, names)
+						checkUserProfilesOriginal(t, node, peers)
+					},
+				)
+			}
+		}
+	}
+}
+
+func BenchmarkGenerateUserProfiles(b *testing.B) {
+	for _, peerCount := range []int{8, 128, 1024, 8192} {
+		for _, ownerCount := range []int{1, peerCount} {
+			for _, names := range []string{"named", "numeric"} {
+				b.Run(
+					fmt.Sprintf("peers=%d/owners=%d/%s", peerCount, ownerCount, names),
+					func(b *testing.B) {
+						node, peers := userProfilesFixture(peerCount, ownerCount, names)
+						require.Equal(
+							b,
+							generateUserProfilesOriginal(node, peers),
+							generateUserProfiles(node, peers),
+						)
+						require.Equal(
+							b,
+							generateUserProfilesPointerMap(node, peers),
+							generateUserProfiles(node, peers),
+						)
+
+						b.Run("frozen-original", func(b *testing.B) {
+							b.ReportAllocs()
+
+							for b.Loop() {
+								_ = generateUserProfilesOriginal(node, peers)
+							}
+						})
+						b.Run("current", func(b *testing.B) {
+							b.ReportAllocs()
+
+							for b.Loop() {
+								_ = generateUserProfiles(node, peers)
+							}
+						})
+						b.Run("pointer-map", func(b *testing.B) {
+							b.ReportAllocs()
+
+							for b.Loop() {
+								_ = generateUserProfilesPointerMap(node, peers)
+							}
+						})
+						b.Run("value-map", func(b *testing.B) {
+							b.ReportAllocs()
+
+							for b.Loop() {
+								_ = generateUserProfiles(node, peers)
+							}
+						})
+					},
+				)
+			}
+		}
 	}
 }
