@@ -65,6 +65,53 @@ func TestGenerateRegionInsecureTLS(t *testing.T) {
 	}
 }
 
+func TestGenerateRegionURLHost(t *testing.T) {
+	tests := []struct {
+		url      string
+		wantHost string
+		wantPort int
+	}{
+		{"https://headscale.example.com", "headscale.example.com", 443},
+		{"http://headscale.example.com", "headscale.example.com", 80},
+		{"https://headscale.example.com:8443", "headscale.example.com", 8443},
+		{"http://192.0.2.1:8080", "192.0.2.1", 8080},
+		{"https://[2001:db8::1]", "2001:db8::1", 443},
+		{"http://[2001:db8::1]", "2001:db8::1", 80},
+		{"https://[2001:db8::1]:8443", "2001:db8::1", 8443},
+		{"https://[fe80::1%25eth0]", "fe80::1%eth0", 443},
+	}
+	for _, tt := range tests {
+		t.Run(tt.url, func(t *testing.T) {
+			d := &DERPServer{
+				serverURL: tt.url,
+				cfg:       &types.DERPConfig{STUNAddr: "[::]:3478"},
+			}
+			region, err := d.GenerateRegion()
+			require.NoError(t, err)
+			require.Len(t, region.Nodes, 1)
+			assert.Equal(t, tt.wantHost, region.Nodes[0].HostName)
+			assert.Equal(t, tt.wantPort, region.Nodes[0].DERPPort)
+		})
+	}
+}
+
+func TestGenerateRegionRejectsInvalidPort(t *testing.T) {
+	for _, serverURL := range []string{
+		"https://headscale.example.com:",
+		"https://[2001:db8::1]:",
+		"https://headscale.example.com:invalid",
+	} {
+		t.Run(serverURL, func(t *testing.T) {
+			d := &DERPServer{
+				serverURL: serverURL,
+				cfg:       &types.DERPConfig{STUNAddr: "[::]:3478"},
+			}
+			_, err := d.GenerateRegion()
+			require.Error(t, err)
+		})
+	}
+}
+
 // TestDERPBootstrapDNSHandlerFollowsDERPMapUpdates guards against the handler
 // resolving a DERP map captured at startup: hostnames that a later
 // auto-update adds must be served.

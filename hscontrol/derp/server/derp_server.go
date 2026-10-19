@@ -88,12 +88,11 @@ func (d *DERPServer) GenerateRegion() (tailcfg.DERPRegion, error) {
 	}
 
 	// Extract hostname and port from URL
-	host, portStr, err := net.SplitHostPort(serverURL.Host)
+	host, portStr := serverURL.Hostname(), serverURL.Port()
 
 	var port int
 
-	if err != nil {
-		host = serverURL.Host
+	if portStr == "" && !strings.HasSuffix(serverURL.Host, ":") {
 		if serverURL.Scheme == "https" {
 			port = 443
 		} else {
