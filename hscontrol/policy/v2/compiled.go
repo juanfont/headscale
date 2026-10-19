@@ -483,6 +483,21 @@ func buildSrcIPStrings(
 	return srcIPStrs
 }
 
+type resolvedDestination struct {
+	Alias
+
+	addresses ResolvedAddresses
+	err       error
+}
+
+func (dst resolvedDestination) Resolve(
+	_ *Policy,
+	_ types.Users,
+	_ views.Slice[types.NodeView],
+) (ResolvedAddresses, error) {
+	return dst.addresses, dst.err
+}
+
 // compileOtherDests compiles filter rules for non-self, non-via
 // destinations. This produces both [tailcfg.FilterRule.DstPorts] rules
 // (from [Grant.InternetProtocols]) and [tailcfg.CapGrant] rules (from
@@ -496,6 +511,28 @@ func (pol *Policy) compileOtherDests(
 	srcIPStrings []string,
 ) []tailcfg.FilterRule {
 	var rules []tailcfg.FilterRule
+
+	// Reuse resolutions while keeping the port encoder's partial-error handling
+	// and logging. Wildcards must retain their special port and companion rules.
+	if len(grant.InternetProtocols) > 1 ||
+		(len(grant.InternetProtocols) > 0 && grant.App != nil) {
+		resolvedDests := make(Aliases, len(otherDests))
+		for i, dst := range otherDests {
+			resolvedDests[i] = dst
+			if _, wildcard := dst.(Asterix); wildcard {
+				continue
+			}
+
+			addresses, err := dst.Resolve(pol, users, nodes)
+			resolvedDests[i] = resolvedDestination{
+				Alias:     dst,
+				addresses: addresses,
+				err:       err,
+			}
+		}
+
+		otherDests = resolvedDests
+	}
 
 	// DstPorts rules from InternetProtocols.
 	for _, ipp := range grant.InternetProtocols {
