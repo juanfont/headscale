@@ -1,10 +1,13 @@
 package types
 
 import (
+	"net/netip"
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"tailscale.com/tailcfg"
 )
 
 // TestNodeIsTagged tests the [Node.IsTagged] method for determining if a node is tagged.
@@ -290,4 +293,26 @@ func TestUserTypedID(t *testing.T) {
 	typedID := user.TypedID()
 	assert.NotNil(t, typedID, "TypedID() should return non-nil pointer")
 	assert.Equal(t, UserID(42), *typedID, "TypedID() should return correct UserID value")
+}
+
+func TestTailNodeOwnsPreparedAddressesAndCapabilities(t *testing.T) {
+	node := (&Node{ID: 1, GivenName: "node"}).View()
+	addresses := NodeAddresses{
+		Addresses:     []netip.Prefix{netip.MustParsePrefix("100.64.0.1/32")},
+		AllowedIPs:    []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")},
+		PrimaryRoutes: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")},
+	}
+	caps := tailcfg.NodeCapMap{"test": []tailcfg.RawMessage{`"original"`}}
+	tailNode, err := node.TailNode(0, addresses, &Config{}, caps)
+	require.NoError(t, err)
+
+	tailNode.Addresses[0] = netip.MustParsePrefix("192.0.2.0/24")
+	tailNode.AllowedIPs[0] = netip.MustParsePrefix("192.0.2.0/24")
+	tailNode.PrimaryRoutes[0] = netip.MustParsePrefix("192.0.2.0/24")
+	tailNode.CapMap["test"][0] = `"changed"`
+
+	require.Equal(t, netip.MustParsePrefix("100.64.0.1/32"), addresses.Addresses[0])
+	require.Equal(t, netip.MustParsePrefix("10.0.0.0/24"), addresses.AllowedIPs[0])
+	require.Equal(t, netip.MustParsePrefix("10.0.0.0/24"), addresses.PrimaryRoutes[0])
+	require.Equal(t, tailcfg.RawMessage(`"original"`), caps["test"][0])
 }

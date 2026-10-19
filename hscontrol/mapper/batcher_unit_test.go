@@ -40,7 +40,10 @@ type mockNodeConnection struct {
 	mu   sync.Mutex
 
 	// Peer tracking
-	peers *xsync.Map[tailcfg.NodeID, struct{}]
+	peers       *xsync.Map[tailcfg.NodeID, struct{}]
+	diffCalls   atomic.Int32
+	peerUpdates atomic.Int32
+	onDiff      func([]tailcfg.NodeID)
 }
 
 func newMockNodeConnection(id types.NodeID) *mockNodeConnection {
@@ -73,6 +76,11 @@ func (m *mockNodeConnection) send(data *tailcfg.MapResponse) error {
 }
 
 func (m *mockNodeConnection) computePeerDiff(currentPeers []tailcfg.NodeID) []tailcfg.NodeID {
+	m.diffCalls.Add(1)
+
+	if m.onDiff != nil {
+		m.onDiff(currentPeers)
+	}
 	currentSet := make(map[tailcfg.NodeID]struct{}, len(currentPeers))
 	for _, id := range currentPeers {
 		currentSet[id] = struct{}{}
@@ -92,6 +100,7 @@ func (m *mockNodeConnection) computePeerDiff(currentPeers []tailcfg.NodeID) []ta
 }
 
 func (m *mockNodeConnection) updateSentPeers(resp *tailcfg.MapResponse) {
+	m.peerUpdates.Add(1)
 	if resp == nil {
 		return
 	}

@@ -3,7 +3,6 @@ package types
 import (
 	"errors"
 	"fmt"
-	"maps"
 	"net/netip"
 	"slices"
 	"strconv"
@@ -33,29 +32,11 @@ var (
 	ErrInvalidNodeView      = errors.New("cannot convert invalid NodeView to tailcfg.Node")
 )
 
-// RouteFunc is a function that takes a node ID and returns a list of
-// [netip.Prefix] values representing the routes for that node.
-type RouteFunc func(id NodeID) []netip.Prefix
-
-// nodeAttrDisableIPv4 is the policy nodeAttr key that suppresses the
-// node's own IPv4 CGNAT prefix in [tailcfg.Node.Addresses] and
-// [tailcfg.Node.AllowedIPs]. Subnet routes the node advertises remain.
-// See https://tailscale.com/docs/reference/troubleshooting/network-configuration/cgnat-conflicts.
-const nodeAttrDisableIPv4 nodecap.Cap = "disable-ipv4"
-
-// filterIPv4 returns ps with every IPv4 prefix dropped. Used by
-// [NodeView.TailNode] when the node carries the disable-ipv4 nodeAttr.
-func filterIPv4(ps []netip.Prefix) []netip.Prefix {
-	out := ps[:0:0]
-	for _, p := range ps {
-		if p.Addr().Is4() {
-			continue
-		}
-
-		out = append(out, p)
-	}
-
-	return out
+// NodeAddresses contains caller-owned address and route slices prepared for a viewer.
+type NodeAddresses struct {
+	Addresses     []netip.Prefix
+	AllowedIPs    []netip.Prefix
+	PrimaryRoutes []netip.Prefix
 }
 
 // ViaRouteResult describes via grant effects for a viewer-peer pair.
@@ -1214,29 +1195,6 @@ func (nv NodeView) HasPolicyChange(other NodeView) bool {
 	return false
 }
 
-// TailNodes converts a slice of [NodeView] values into Tailscale [tailcfg.Node] values.
-func TailNodes(
-	nodes views.Slice[NodeView],
-	capVer tailcfg.CapabilityVersion,
-	primaryRouteFunc RouteFunc,
-	cfg *Config,
-) ([]*tailcfg.Node, error) {
-	tNodes := make([]*tailcfg.Node, 0, nodes.Len())
-
-	for _, node := range nodes.All() {
-		// nil selfPolicyCaps: this batch builds peer views; the caller
-		// sets each peer's CapMap from [policyv2.PeerCapMap].
-		tNode, err := node.TailNode(capVer, primaryRouteFunc, cfg, nil)
-		if err != nil {
-			return nil, err
-		}
-
-		tNodes = append(tNodes, tNode)
-	}
-
-	return tNodes, nil
-}
-
 // TailNode converts a [NodeView] into a Tailscale [tailcfg.Node].
 //
 // selfPolicyCaps is the per-node CapMap from [policy.PolicyManager.NodeCapMap]
@@ -1246,7 +1204,7 @@ func TailNodes(
 // [policyv2.PeerCapMap]).
 func (nv NodeView) TailNode(
 	capVer tailcfg.CapabilityVersion,
-	primaryRouteFunc RouteFunc,
+	addresses NodeAddresses,
 	cfg *Config,
 	selfPolicyCaps tailcfg.NodeCapMap,
 ) (*tailcfg.Node, error) {
@@ -1267,33 +1225,6 @@ func (nv NodeView) TailNode(
 	var keyExpiry time.Time
 	if nv.Expiry().Valid() {
 		keyExpiry = nv.Expiry().Get()
-	}
-
-	// disable-ipv4 (https://tailscale.com/docs/reference/troubleshooting/network-configuration/cgnat-conflicts)
-	// drops the node's own IPv4 CGNAT prefix from Addresses and from
-	// the AllowedIPs slot the node's own /32 occupies. Advertised
-	// subnet routes -- even IPv4 ones -- survive: routes belong to
-	// the routing layer, not the node's identity. Mirrors the SaaS
-	// captures in testdata/nodeattrs_results/nodeattrs-attr-c1{5,6}-disable-ipv4*.
-	_, ipv4Disabled := selfPolicyCaps[nodeAttrDisableIPv4]
-
-	addresses := nv.Prefixes()
-	if ipv4Disabled {
-		addresses = filterIPv4(addresses)
-	}
-
-	// routeFunc returns ALL routes (subnet + exit) for this node.
-	allRoutes := primaryRouteFunc(nv.ID())
-	allowedIPs := slices.Concat(addresses, allRoutes)
-	slices.SortFunc(allowedIPs, netip.Prefix.Compare)
-
-	// PrimaryRoutes only includes non-exit subnet routes for HA tracking.
-	var primaryRoutes []netip.Prefix
-
-	for _, r := range allRoutes {
-		if !tsaddr.IsExitRoute(r) {
-			primaryRoutes = append(primaryRoutes, r)
-		}
 	}
 
 	// Baseline caps every node receives, regardless of policy. Mirrors
@@ -1328,7 +1259,9 @@ func (nv NodeView) TailNode(
 
 	// Policy nodeAttrs overlay the baseline on the self view. Peers
 	// pass nil; their CapMap is replaced downstream by [policyv2.PeerCapMap].
-	maps.Copy(capMap, selfPolicyCaps)
+	for cap, values := range selfPolicyCaps {
+		capMap[cap] = slices.Clone(values)
+	}
 
 	tNode := tailcfg.Node{
 		//nolint:gosec // G115: NodeID values are within int64 range
@@ -1345,9 +1278,9 @@ func (nv NodeView) TailNode(
 
 		Machine:       nv.MachineKey(),
 		DiscoKey:      nv.DiscoKey(),
-		Addresses:     addresses,
-		PrimaryRoutes: primaryRoutes,
-		AllowedIPs:    allowedIPs,
+		Addresses:     slices.Clone(addresses.Addresses),
+		PrimaryRoutes: slices.Clone(addresses.PrimaryRoutes),
+		AllowedIPs:    slices.Clone(addresses.AllowedIPs),
 		Endpoints:     nv.Endpoints().AsSlice(),
 		HomeDERP:      derp,
 		Hostinfo:      nv.Hostinfo(),

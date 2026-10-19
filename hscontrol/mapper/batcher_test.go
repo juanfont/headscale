@@ -21,7 +21,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/dnstype"
 	"tailscale.com/types/netmap"
+	"tailscale.com/types/views"
 )
 
 var errNodeNotFoundAfterAdd = errors.New("node not found after adding to batcher")
@@ -2411,19 +2413,23 @@ func TestAddWorkFullUpdateUnaffectedByEmpty(t *testing.T) {
 	}
 }
 
-var errInjectedSSHPolicy = errors.New("injected SSH policy failure")
+var errInjectedPolicyBuild = errors.New("injected policy build failure")
 
-type failingSSHPolicyManager struct {
+type failingCapturePolicyManager struct {
 	policy.PolicyManager
+	fail *atomic.Bool
 }
 
-func (failingSSHPolicyManager) SSHPolicy(string, types.NodeView) (*tailcfg.SSHPolicy, error) {
-	return nil, errInjectedSSHPolicy
+func (pm failingCapturePolicyManager) SetNodesAndBuildPeerMap(nodes views.Slice[types.NodeView]) (policy.ReadView, map[types.NodeID][]types.NodeID, error) {
+	if pm.fail == nil || pm.fail.Load() {
+		return policy.ReadView{}, nil, errInjectedPolicyBuild
+	}
+
+	return pm.PolicyManager.SetNodesAndBuildPeerMap(nodes)
 }
 
-// TestSSHPolicyEmptyOnWire pins that a node without SSH rules, or whose SSH
-// policy fails to compile, gets "SSHPolicy":{"rules":[]}. A nil SSHPolicy
-// leaves the client's previous rules in force.
+// TestSSHPolicyEmptyOnWire pins explicit SSH revocation for a valid generation.
+// A failed policy build withholds the complete response and leaves tracking intact.
 // https://github.com/juanfont/headscale/issues/3508
 func TestSSHPolicyEmptyOnWire(t *testing.T) {
 	for name, failCompile := range map[string]bool{
@@ -2437,13 +2443,24 @@ func TestSSHPolicyEmptyOnWire(t *testing.T) {
 			if failCompile {
 				testData.State.WrapPolicyManagerForTest(
 					func(pm policy.PolicyManager) policy.PolicyManager {
-						return failingSSHPolicyManager{PolicyManager: pm}
+						return failingCapturePolicyManager{PolicyManager: pm}
 					},
 				)
 			}
 
 			self := testData.Nodes[0].n.ID
 			mc := newMockNodeConnection(self)
+
+			if failCompile {
+				testData.State.PutNodeInStoreForTest(*testData.Nodes[0].n)
+				err := handleNodeChange(mc, testData.Batcher.mapper, change.PolicyChange())
+				require.ErrorIs(t, err, errInjectedPolicyBuild)
+				require.Empty(t, mc.getSent())
+				require.Zero(t, mc.diffCalls.Load())
+				require.Zero(t, mc.peerUpdates.Load())
+
+				return
+			}
 
 			require.NoError(t, handleNodeChange(mc, testData.Batcher.mapper, change.PolicyChange()))
 			require.NoError(t, handleNodeChange(mc, testData.Batcher.mapper, change.FullSelf(self)))
@@ -2926,4 +2943,142 @@ func TestSSHPolicySentOnlyWhenChanged(t *testing.T) {
 	for i, frame := range policyFrame(self.ch, ch2) {
 		assert.Nil(t, frame.SSHPolicy, "connection %d already holds the policy", i)
 	}
+}
+
+func TestPolicyRecoverySendsWithheldSelfAndPeers(t *testing.T) {
+	td, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 2, normalBufferSize)
+	defer cleanup()
+
+	td.Config.TailcfgDNSConfig = &tailcfg.DNSConfig{Resolvers: []*dnstype.Resolver{{Addr: nextDNSDoHPrefix + "/test"}}}
+	_, err := td.State.SetPolicy(nil)
+	require.NoError(t, err)
+
+	self := td.Nodes[0].n.ID
+
+	var fail atomic.Bool
+
+	td.State.WrapPolicyManagerForTest(func(pm policy.PolicyManager) policy.PolicyManager {
+		return failingCapturePolicyManager{PolicyManager: pm, fail: &fail}
+	})
+
+	mc := newMockNodeConnection(self)
+	require.NoError(t, handleNodeChange(mc, td.Batcher.mapper, change.FullUpdate()))
+	mc.diffCalls.Store(0)
+	mc.peerUpdates.Store(0)
+	fail.Store(true)
+
+	current, _ := td.State.GetNodeByID(self)
+	withheld := current.AsStruct()
+	withheld.GivenName = "withheld-self"
+	withheld.Hostname = "withheld-host"
+	withheld.IPv4 = new(netip.MustParseAddr("100.64.0.99"))
+	td.State.PutNodeInStoreForTest(*withheld)
+	resps, err := generateMapResponse(mc, td.Batcher.mapper, change.FullUpdate())
+	require.ErrorIs(t, err, errInjectedPolicyBuild)
+	require.Nil(t, resps)
+	require.Zero(t, mc.diffCalls.Load())
+	require.Zero(t, mc.peerUpdates.Load())
+
+	fail.Store(false)
+
+	changed, err := td.State.SetPolicy(nil)
+	require.NoError(t, err)
+	require.False(t, changed, "recovery must work with unchanged policy hashes")
+
+	catchup := td.State.DrainSelfRefreshes()
+	require.Equal(t, []change.Change{change.FullUpdate()}, catchup)
+	require.Empty(t, td.State.DrainSelfRefreshes())
+	resps, err = generateMapResponse(mc, td.Batcher.mapper, catchup[0])
+	require.NoError(t, err)
+	require.Len(t, resps, 1)
+	require.Contains(t, resps[0].Node.Name, "withheld-self")
+	require.Contains(t, resps[0].Node.Addresses, netip.MustParsePrefix("100.64.0.99/32"))
+	require.Len(t, resps[0].Peers, 1)
+	require.NotNil(t, resps[0].PacketFilters)
+	require.NotNil(t, resps[0].SSHPolicy)
+	require.NotNil(t, resps[0].DNSConfig)
+	require.Contains(t, resps[0].DNSConfig.Resolvers[0].Addr, "device_name=withheld-host")
+	require.Contains(t, resps[0].DNSConfig.Resolvers[0].Addr, "device_ip=100.64.0.99")
+	require.Zero(t, mc.peerUpdates.Load(), "generation is not delivery")
+}
+
+func TestMapDeliveryFailureDoesNotUpdateSentPeers(t *testing.T) {
+	td, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 2, normalBufferSize)
+	defer cleanup()
+
+	for _, sendError := range []error{assert.AnError, errNoActiveConnections} {
+		mc := newMockNodeConnection(td.Nodes[0].n.ID).withSendError(sendError)
+
+		err := handleNodeChange(mc, td.Batcher.mapper, change.FullUpdate())
+		if errors.Is(sendError, errNoActiveConnections) {
+			require.NoError(t, err)
+		} else {
+			require.ErrorIs(t, err, sendError)
+		}
+
+		require.Zero(t, mc.peerUpdates.Load())
+		require.Empty(t, mc.getSent())
+		require.Zero(t, mc.peers.Size())
+	}
+}
+
+func TestAddNodeReconnectRemovesUnrenderablePeer(t *testing.T) {
+	td, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 2, normalBufferSize)
+	defer cleanup()
+
+	b := NewBatcher(time.Hour, 1, td.Batcher.mapper)
+	b.Start()
+	t.Cleanup(b.Close)
+
+	self, peer := td.Nodes[0].n.ID, td.Nodes[1].n.ID
+	first := make(chan *tailcfg.MapResponse, normalBufferSize)
+	require.NoError(t, b.AddNode(self, first, 100, nil))
+	initial := expectReceive(t, first, "first stream's initial map")
+	require.Len(t, initial.Peers, 1)
+	require.Equal(t, peer.NodeID(), initial.Peers[0].ID)
+
+	nc, ok := b.nodes.Load(self)
+	require.True(t, ok)
+
+	_, tracked := nc.lastSentPeers.Load(peer.NodeID())
+	require.True(t, tracked, "first stream delivered the only peer")
+	b.RemoveNode(self, first)
+
+	node, ok := td.State.GetNodeByID(peer)
+	require.True(t, ok)
+
+	bad := node.AsStruct()
+	bad.GivenName = strings.Repeat("x", types.MaxHostnameLength+1)
+	td.State.PutNodeInStoreForTest(*bad)
+	view, err := td.State.MapView(self)
+	require.NoError(t, err)
+	require.Equal(t, []types.NodeID{peer}, view.PeerIDs(), "omitted peer remains adjacent")
+
+	second := make(chan *tailcfg.MapResponse, normalBufferSize)
+	require.NoError(t, b.AddNode(self, second, 100, nil))
+	initial = expectReceive(t, second, "reconnected stream's initial map")
+	require.NotNil(t, initial.Node)
+	require.Empty(t, initial.Peers, "the invalid peer cannot be rendered")
+	require.Empty(t, initial.PeersRemoved, "the removal must follow the initial map as a delta")
+
+	_, tracked = nc.lastSentPeers.Load(peer.NodeID())
+	require.True(t, tracked, "empty Peers cannot clear the client's only peer")
+
+	preview, err := generateMapResponse(nc, b.mapper, change.PeersRemoved(peer))
+	require.NoError(t, err)
+	require.Len(t, preview, 1)
+	require.Equal(t, []tailcfg.NodeID{peer.NodeID()}, preview[0].PeersRemoved)
+	_, tracked = nc.lastSentPeers.Load(peer.NodeID())
+	require.True(t, tracked, "rendering a removal must not record delivery")
+
+	b.processBatchedChanges()
+
+	removal := expectReceive(t, second, "queued removal of the unrenderable peer")
+	require.Equal(t, []tailcfg.NodeID{peer.NodeID()}, removal.PeersRemoved)
+	_, delta := netmap.MutationsFromMapResponse(removal, time.Time{})
+	require.True(t, delta, "the client must apply the removal as a delta")
+	require.Eventually(t, func() bool { return !nc.inFlight.Load() }, updateTimeout, 10*time.Millisecond)
+
+	_, tracked = nc.lastSentPeers.Load(peer.NodeID())
+	require.False(t, tracked, "confirmed removal delivery clears tracking")
 }

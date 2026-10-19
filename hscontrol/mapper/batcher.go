@@ -105,6 +105,11 @@ func generateMapResponse(
 		return nil, nil
 	}
 
+	view, err := mapper.state.MapView(nodeID)
+	if err != nil {
+		return nil, fmt.Errorf("capturing map view for nodeID %d: %w", nodeID, err)
+	}
+
 	// Check if this is a self-update (the changed node is the receiving node).
 	// When true, ensure the response includes the node's self info so it sees
 	// its own attribute changes (e.g., tags changed via admin API).
@@ -113,28 +118,19 @@ func generateMapResponse(
 	var (
 		resp    *tailcfg.MapResponse
 		removed []tailcfg.NodeID
-		err     error
 	)
 
 	// Track metric using categorized type, not free-form reason
 	mapResponseGenerated.WithLabelValues(r.Type()).Inc()
 
-	// Check if this requires runtime peer visibility computation (e.g., policy changes)
-	if r.RequiresRuntimePeerComputation {
-		currentPeers := mapper.state.ListPeers(nodeID)
-
-		currentPeerIDs := make([]tailcfg.NodeID, 0, currentPeers.Len())
-		for _, peer := range currentPeers.All() {
-			currentPeerIDs = append(currentPeerIDs, peer.ID().NodeID())
-		}
-
-		removed = nc.computePeerDiff(currentPeerIDs)
-		resp, err = mapper.policyChangeResponse(nodeID, version, currentPeers)
+	if r.IsFull() {
+		resp, err = mapper.buildFromChange(view, version, &r)
+	} else if r.RequiresRuntimePeerComputation {
+		resp, err = mapper.policyChangeResponse(view, version)
 	} else if isSelfUpdate {
-		// Non-policy self-update: just send the self node info
-		resp, err = mapper.selfMapResponse(nodeID, version)
+		resp, err = mapper.selfMapResponse(view, version)
 	} else {
-		resp, err = mapper.buildFromChange(nodeID, version, &r)
+		resp, err = mapper.buildFromChange(view, version, &r)
 	}
 
 	if err != nil {
@@ -150,12 +146,38 @@ func generateMapResponse(
 	// non-empty, so a full update that isolates a node (e.g.
 	// [Batcher.addToBatch] replacing a pending [change.PolicyChange] with a
 	// [change.FullUpdate]) needs them sent explicitly.
-	if resp.Peers != nil {
-		peerIDs := make([]tailcfg.NodeID, 0, len(resp.Peers))
-		for _, peer := range resp.Peers {
+	if resp.Peers != nil || r.RequiresRuntimePeerComputation {
+		peers := resp.Peers
+		if peers == nil {
+			peers = resp.PeersChanged
+		}
+
+		peerIDs := make([]tailcfg.NodeID, 0, len(peers))
+		for _, peer := range peers {
 			peerIDs = append(peerIDs, peer.ID)
 		}
 
+		removed = nc.computePeerDiff(peerIDs)
+	} else if resp.PeersChanged != nil {
+		// Unselected peers retain their captured visibility. Selected peers
+		// omitted during rendering must also disappear from the client's map.
+		omitted := make(map[tailcfg.NodeID]bool, len(r.PeersChanged))
+		for _, id := range r.PeersChanged {
+			omitted[id.NodeID()] = true
+		}
+
+		for _, peer := range resp.PeersChanged {
+			delete(omitted, peer.ID)
+		}
+
+		current := view.PeerIDs()
+
+		peerIDs := make([]tailcfg.NodeID, 0, len(current))
+		for _, id := range current {
+			if !omitted[id.NodeID()] {
+				peerIDs = append(peerIDs, id.NodeID())
+			}
+		}
 		removed = nc.computePeerDiff(peerIDs)
 	}
 

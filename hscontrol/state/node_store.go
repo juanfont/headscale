@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -110,7 +111,8 @@ var (
 // is responsible for ensuring an update depending on a write
 // is not issued before the write is complete.
 type NodeStore struct {
-	data atomic.Pointer[Snapshot]
+	data            atomic.Pointer[Snapshot]
+	policyRecovered atomic.Bool
 
 	peersFunc  PeersFunc
 	writeQueue chan work
@@ -128,7 +130,7 @@ type NodeStore struct {
 func NewNodeStore(allNodes types.Nodes, peersFunc PeersFunc, batchSize int, batchTimeout time.Duration) *NodeStore {
 	nodes := make(map[types.NodeID]types.Node, len(allNodes))
 	for _, n := range allNodes {
-		nodes[n.ID] = *n
+		nodes[n.ID] = *n.Clone()
 	}
 
 	snap := snapshotFromNodes(nodes, peersFunc, nil, false, false)
@@ -153,6 +155,8 @@ func NewNodeStore(allNodes types.Nodes, peersFunc PeersFunc, batchSize int, batc
 // a new [Snapshot] is created with the updated state,
 // and replaces the old one atomically.
 type Snapshot struct {
+	policy         policy.ReadView
+	policyBuildErr error
 	// nodesByID is the main source of truth for nodes.
 	nodesByID map[types.NodeID]types.Node
 	// nodeViewsByID resolves peer adjacency IDs to immutable views from this
@@ -180,7 +184,7 @@ type Snapshot struct {
 // with the relationships between nodes and their peers.
 // This will typically be used to calculate which nodes can see each other
 // based on the current policy.
-type PeersFunc func(nodes []types.NodeView) map[types.NodeID][]types.NodeID
+type PeersFunc func(nodes []types.NodeView) (policy.ReadView, map[types.NodeID][]types.NodeID, error)
 
 // work represents a single operation to be performed on the [NodeStore].
 type work struct {
@@ -515,7 +519,7 @@ func (s *NodeStore) applyBatch(batch []work) {
 		w := &batch[i]
 		switch w.op {
 		case put:
-			n := w.node
+			n := *w.node.Clone()
 			n.GivenName = resolveGivenName(nodes, n.ID, n.GivenName)
 
 			nodes[w.nodeID] = n
@@ -533,7 +537,8 @@ func (s *NodeStore) applyBatch(batch []work) {
 				}
 
 				oldGivenName := n.GivenName
-				pre := n.Clone()
+				pre := n
+				n = *n.Clone()
 				fn(&n)
 
 				if n.GivenName != oldGivenName {
@@ -546,7 +551,7 @@ func (s *NodeStore) applyBatch(batch []work) {
 					w.pre[id] = pre.View()
 				}
 
-				relation, election := updateChanges(pre, &n)
+				relation, election := updateChanges(&pre, &n)
 				relationChanged = relationChanged || relation
 				electionChanged = electionChanged || election
 			}
@@ -610,14 +615,20 @@ func (s *NodeStore) applyBatch(batch []work) {
 
 	// A relation change recomputes adjacency; anything else reuses the
 	// previous peer IDs and re-elects routes only if an election input moved.
-	if relationChanged {
+	// An invalid policy snapshot always retries compilation.
+	reusePeers := !relationChanged && prev.policyBuildErr == nil && prev.policy.Valid()
+	if !reusePeers {
 		nodeStoreSnapshotBuilds.WithLabelValues("recomputed").Inc()
 	} else {
 		nodeStoreSnapshotBuilds.WithLabelValues("reused").Inc()
 	}
 
-	newSnap := snapshotFromNodes(nodes, s.peersFunc, prev, !relationChanged, !electionChanged)
+	newSnap := snapshotFromNodes(nodes, s.peersFunc, prev, reusePeers, !electionChanged)
 	s.data.Store(&newSnap)
+
+	if prev.policyBuildErr != nil && newSnap.policyBuildErr == nil {
+		s.policyRecovered.Store(true)
+	}
 
 	// Update node count gauge
 	nodeStoreNodesCount.Set(float64(len(nodes)))
@@ -734,18 +745,34 @@ func snapshotFromNodes(
 		routes, primaryRoutesByNode = electPrimaryRoutes(nodes, prevRoutes)
 	}
 
-	var peerIDsByNode map[types.NodeID][]types.NodeID
+	var (
+		peerIDsByNode  map[types.NodeID][]types.NodeID
+		policyView     policy.ReadView
+		policyBuildErr error
+	)
 
-	if reusePeers {
+	if reusePeers && prev.policyBuildErr == nil && prev.policy.Valid() {
 		peerIDsByNode = prev.peersByNode
+		policyView = prev.policy
 	} else {
 		peersTimer := prometheus.NewTimer(nodeStorePeersCalculationDuration)
-		peerIDsByNode = peersFunc(allNodes)
+
+		policyView, peerIDsByNode, policyBuildErr = peersFunc(allNodes)
+		if policyBuildErr == nil && !policyView.Valid() {
+			policyBuildErr = ErrInvalidPolicyView
+		}
+
+		if policyBuildErr != nil {
+			policyView = policy.ReadView{}
+			peerIDsByNode = nil
+		}
 
 		peersTimer.ObserveDuration()
 	}
 
 	newSnap := Snapshot{
+		policy:              policyView,
+		policyBuildErr:      policyBuildErr,
 		nodesByID:           nodes,
 		nodeViewsByID:       nodeViewsByID,
 		allNodes:            allNodes,

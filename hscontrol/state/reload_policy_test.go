@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
 )
@@ -37,7 +38,7 @@ func TestReloadPolicyRebuildsPeerMapOnChangeOnly(t *testing.T) {
 	var builds atomic.Int32
 
 	peersFunc := s.nodeStore.peersFunc
-	s.nodeStore.peersFunc = func(n []types.NodeView) map[types.NodeID][]types.NodeID {
+	s.nodeStore.peersFunc = func(n []types.NodeView) (policy.ReadView, map[types.NodeID][]types.NodeID, error) {
 		builds.Add(1)
 
 		return peersFunc(n)

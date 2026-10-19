@@ -2,10 +2,15 @@ package servertest_test
 
 import (
 	"context"
+	"errors"
 	"net/netip"
+	"slices"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/servertest"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -13,6 +18,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/netmap"
+	"tailscale.com/types/views"
 )
 
 // advertiseAndApproveRoute sets [tailcfg.Hostinfo.RoutableIPs] on a client and approves
@@ -391,4 +398,136 @@ func TestHAHealthProbe_NoHARoutes(t *testing.T) {
 		dispatched = true
 	})
 	assert.False(t, dispatched, "no HA routes should produce no changes")
+}
+
+var errHealthRecoveryPolicyBuild = errors.New("injected health recovery policy failure")
+
+type healthRecoveryPolicyManager struct {
+	policy.PolicyManager
+
+	fail *atomic.Bool
+}
+
+func (pm healthRecoveryPolicyManager) SetNodesAndBuildPeerMap(nodes views.Slice[types.NodeView]) (policy.ReadView, map[types.NodeID][]types.NodeID, error) {
+	if pm.fail.Load() {
+		return policy.ReadView{}, nil, errHealthRecoveryPolicyBuild
+	}
+
+	return pm.PolicyManager.SetNodesAndBuildPeerMap(nodes)
+}
+
+// TestHAHealthProbe_PolicyRecoveryWithoutPrimaryChange exercises the real
+// prober, batched health write, Headscale.Change and connected client path.
+func TestHAHealthProbe_PolicyRecoveryWithoutPrimaryChange(t *testing.T) {
+	srv := servertest.NewServer(t,
+		servertest.WithMagicDNS("headscale.test"),
+		servertest.WithDNSResolvers("https://dns.nextdns.io/test"),
+	)
+	user := srv.CreateUser(t, "ha-policy-recovery")
+
+	const pol = `{"grants":[{"src":["*"],"dst":["*"],"ip":["*"]}],"ssh":[{"action":"accept","src":["autogroup:member"],"dst":["autogroup:self"],"users":["root"]}]}`
+
+	_, err := srv.State().SetPolicy([]byte(pol))
+	require.NoError(t, err)
+
+	var fail atomic.Bool
+
+	srv.State().WrapPolicyManagerForTest(func(pm policy.PolicyManager) policy.PolicyManager {
+		return healthRecoveryPolicyManager{PolicyManager: pm, fail: &fail}
+	})
+
+	r1 := servertest.NewClient(t, srv, "ha-recovery-r1", servertest.WithUser(user))
+	r2 := servertest.NewClient(t, srv, "ha-recovery-r2", servertest.WithUser(user))
+
+	viewer := servertest.NewClient(t, srv, "ha-recovery-viewer", servertest.WithUser(user))
+	for _, client := range []*servertest.TestClient{r1, r2, viewer} {
+		client.WaitForPeers(t, 2, 10*time.Second)
+	}
+
+	route := netip.MustParsePrefix("10.104.0.0/24")
+	router1 := advertiseAndApproveRoute(t, srv, r1, route)
+	router2 := advertiseAndApproveRoute(t, srv, r2, route)
+	viewerID := findNodeID(t, srv, viewer.Name)
+	require.Contains(t, srv.State().GetNodePrimaryRoutes(router1), route)
+	require.Empty(t, srv.State().GetNodePrimaryRoutes(router2))
+
+	prober := state.NewHAHealthProber(srv.State(), types.HARouteConfig{
+		ProbeInterval: 30 * time.Second,
+		ProbeTimeout:  time.Second,
+	}, srv.URL, srv.App.MapBatcher().IsConnected)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	// Establish stable sessions before the failed snapshot withholds pings.
+	prober.ProbeOnce(ctx, srv.App.Change)
+	require.True(t, srv.State().IsNodeHealthy(router1))
+	require.True(t, srv.State().IsNodeHealthy(router2))
+
+	fail.Store(true)
+
+	current, ok := srv.State().GetNodeByID(viewerID)
+	require.True(t, ok)
+
+	withheld := current.AsStruct()
+	withheld.GivenName = "withheld-self"
+	withheld.Hostname = "withheld-host"
+	withheld.Hostinfo.Hostname = "withheld-host"
+	withheld.IPv4 = new(netip.MustParseAddr("100.64.0.99"))
+	srv.State().PutNodeInStoreForTest(*withheld)
+	_, err = srv.State().MapView(viewerID)
+	require.ErrorIs(t, err, errHealthRecoveryPolicyBuild)
+	// MagicDNS names on the wire are absolute FQDNs, including the final dot.
+	const wantSelfName = "withheld-self.headscale.test."
+
+	require.NotEqual(t, wantSelfName, viewer.Netmap().SelfNode.Name())
+	fail.Store(false)
+
+	var healthDispatches int
+
+	dispatch := func(cs ...change.Change) {
+		for _, c := range cs {
+			if c.IsBroadcastPolicyChange() {
+				healthDispatches++
+			}
+		}
+
+		srv.App.Change(cs...)
+	}
+	// Invalid maps withhold both pings. Both stable sessions time out, and
+	// the all-unhealthy election retains the previous primary unchanged.
+	prober.ProbeOnce(ctx, dispatch)
+	require.Equal(t, 1, healthDispatches, "policy recovery must dispatch even when primaries do not change")
+	require.False(t, srv.State().IsNodeHealthy(router1))
+	require.False(t, srv.State().IsNodeHealthy(router2))
+	require.Contains(t, srv.State().GetNodePrimaryRoutes(router1), route)
+	require.Empty(t, srv.State().GetNodePrimaryRoutes(router2))
+	recovered, err := srv.State().MapView(viewerID)
+	require.NoError(t, err)
+	t.Logf("recovered snapshot: self=%q hostname=%q addresses=%v health_dispatches=%d",
+		recovered.Viewer().GivenName(), recovered.Viewer().Hostname(), recovered.Viewer().Prefixes(), healthDispatches)
+
+	defer func() {
+		nm := viewer.Netmap()
+		t.Logf("recovery client: want_self=%q self=%q addresses=%v resolver=%q peers=%d packet_rules=%d",
+			wantSelfName, nm.SelfNode.Name(), nm.SelfNode.Addresses().AsSlice(), firstResolver(nm), len(nm.Peers), nm.PacketFilterRules.Len())
+	}()
+
+	viewer.WaitForCondition(t, "health-only recovery sends withheld self state", 10*time.Second, func(nm *netmap.NetworkMap) bool {
+		return nm.SelfNode.Name() == wantSelfName &&
+			slices.Contains(nm.SelfNode.Addresses().AsSlice(), netip.MustParsePrefix("100.64.0.99/32")) &&
+			len(nm.DNS.Resolvers) > 0 && strings.Contains(nm.DNS.Resolvers[0].Addr, "device_name=withheld-host") &&
+			strings.Contains(nm.DNS.Resolvers[0].Addr, "device_ip=100.64.0.99")
+	})
+	nm := viewer.Netmap()
+	require.Len(t, nm.Peers, 2)
+	require.Positive(t, nm.PacketFilterRules.Len())
+	require.NotNil(t, nm.SSHPolicy)
+	require.NotEmpty(t, nm.SSHPolicy.Rules)
+
+	changed, err := srv.State().SetPolicy([]byte(pol))
+	require.NoError(t, err)
+	require.False(t, changed, "recovery does not require a policy-hash change")
+	// The real Headscale dispatch consumed the one recovery bit. Repeating
+	// unchanged health must not request another catch-up dispatch.
+	require.False(t, srv.State().BatchSetNodeHealth(map[types.NodeID]bool{router1: false, router2: false}))
 }

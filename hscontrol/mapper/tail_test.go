@@ -225,11 +225,7 @@ func TestTailNode(t *testing.T) {
 			nv := tt.node.View()
 			got, err := nv.TailNode(
 				0,
-				func(id types.NodeID) []netip.Prefix {
-					// Route function returns primaries + exit routes
-					// (matching the real caller contract).
-					return slices.Concat(primaries[id], nv.ExitRoutes())
-				},
+				nodeAddressesForTest(nv, slices.Concat(primaries[nv.ID()], nv.ExitRoutes())),
 				cfg,
 				nil,
 			)
@@ -343,7 +339,7 @@ func TestTailNodeBaselineGates(t *testing.T) {
 
 			got, err := node.View().TailNode(
 				0,
-				func(types.NodeID) []netip.Prefix { return nil },
+				types.NodeAddresses{},
 				tt.cfg,
 				nil,
 			)
@@ -364,7 +360,7 @@ func TestTailNodeBaselineGates(t *testing.T) {
 // IPv4 ones -- remain in AllowedIPs and PrimaryRoutes. Matches the
 // SaaS behaviour captured in
 // hscontrol/policy/v2/testdata/nodeattrs_results/nodeattrs-attr-c1{5,6}-disable-ipv4*.hujson.
-func TestTailNodeDisableIPv4(t *testing.T) {
+func TestTailNodePreparedAddresses(t *testing.T) {
 	t.Parallel()
 
 	const NodeAttrDisableIPv4 nodecap.Cap = "disable-ipv4"
@@ -430,9 +426,7 @@ func TestTailNodeDisableIPv4(t *testing.T) {
 
 			got, err := node.View().TailNode(
 				0,
-				func(types.NodeID) []netip.Prefix {
-					return tt.approved
-				},
+				types.NodeAddresses{Addresses: tt.wantAddrs, AllowedIPs: tt.wantAllowed, PrimaryRoutes: tt.wantPrimary},
 				&types.Config{Taildrop: types.TaildropConfig{Enabled: true}},
 				selfCaps,
 			)
@@ -501,9 +495,7 @@ func TestNodeExpiry(t *testing.T) {
 
 			tn, err := node.View().TailNode(
 				0,
-				func(id types.NodeID) []netip.Prefix {
-					return []netip.Prefix{}
-				},
+				types.NodeAddresses{},
 				&types.Config{Taildrop: types.TaildropConfig{Enabled: true}},
 				nil,
 			)
@@ -533,4 +525,21 @@ func TestNodeExpiry(t *testing.T) {
 			}
 		})
 	}
+}
+
+// nodeAddressesForTest supplies the serializer with already prepared route facts.
+func nodeAddressesForTest(node types.NodeView, routes []netip.Prefix) types.NodeAddresses {
+	addresses := node.Prefixes()
+	allowed := slices.Concat(addresses, routes)
+	slices.SortFunc(allowed, netip.Prefix.Compare)
+
+	var primary []netip.Prefix
+
+	for _, p := range routes {
+		if p.Bits() != 0 {
+			primary = append(primary, p)
+		}
+	}
+
+	return types.NodeAddresses{Addresses: addresses, AllowedIPs: allowed, PrimaryRoutes: primary}
 }

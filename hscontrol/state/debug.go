@@ -215,7 +215,7 @@ func (s *State) DebugPolicy() (string, error) {
 	}
 }
 
-// DebugFilter returns the current filter rules and matchers.
+// DebugFilter returns current packet rules in wire format.
 func (s *State) DebugFilter() ([]tailcfg.FilterRule, error) {
 	return packetfilter.ToTailcfg(s.PacketRules()), nil
 }

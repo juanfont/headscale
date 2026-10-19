@@ -2,13 +2,11 @@ package mapper
 
 import (
 	"cmp"
-	"net/netip"
 	"slices"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/policy/packetfilter"
-	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
+	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
@@ -21,6 +19,7 @@ import (
 type MapResponseBuilder struct {
 	resp   *tailcfg.MapResponse
 	mapper *mapper
+	view   state.MapView
 	nodeID types.NodeID
 	capVer tailcfg.CapabilityVersion
 	errs   []error
@@ -38,8 +37,13 @@ const (
 )
 
 // NewMapResponseBuilder creates a new builder with basic fields set.
-func (m *mapper) NewMapResponseBuilder(nodeID types.NodeID) *MapResponseBuilder {
+func (m *mapper) NewMapResponseBuilder(view state.MapView) *MapResponseBuilder {
 	now := time.Now()
+
+	var nodeID types.NodeID
+	if node := view.Viewer(); node.Valid() {
+		nodeID = node.ID()
+	}
 
 	return &MapResponseBuilder{
 		resp: &tailcfg.MapResponse{
@@ -47,6 +51,7 @@ func (m *mapper) NewMapResponseBuilder(nodeID types.NodeID) *MapResponseBuilder 
 			ControlTime: &now,
 		},
 		mapper: m,
+		view:   view,
 		nodeID: nodeID,
 		errs:   nil,
 	}
@@ -66,7 +71,9 @@ func (b *MapResponseBuilder) hasErrors() bool {
 
 // node looks up the requesting node, recording ErrNodeNotFoundMapper on miss.
 func (b *MapResponseBuilder) node() (types.NodeView, bool) {
-	nv, ok := b.mapper.state.GetNodeByID(b.nodeID)
+	nv := b.view.Viewer()
+
+	ok := nv.Valid()
 	if !ok {
 		b.addError(ErrNodeNotFoundMapper)
 	}
@@ -75,8 +82,7 @@ func (b *MapResponseBuilder) node() (types.NodeView, bool) {
 }
 
 // WithCapabilityVersion sets the capability version for the response.
-func (b *MapResponseBuilder) WithCapabilityVersion(capVer tailcfg.CapabilityVersion,
-) *MapResponseBuilder {
+func (b *MapResponseBuilder) WithCapabilityVersion(capVer tailcfg.CapabilityVersion) *MapResponseBuilder {
 	b.capVer = capVer
 	return b
 }
@@ -88,21 +94,13 @@ func (b *MapResponseBuilder) WithSelfNode() *MapResponseBuilder {
 		return b
 	}
 
-	rules := b.mapper.state.PacketRules()
+	addresses, err := b.view.NodeAddresses(nv.ID())
+	if err != nil {
+		b.addError(err)
+		return b
+	}
 
-	tailnode, err := nv.TailNode(
-		b.capVer,
-		func(id types.NodeID) []netip.Prefix {
-			// Self node: include own primaries + exit routes (no via steering for self).
-			primaries := policy.ReduceRoutes(nv, b.mapper.state.GetNodePrimaryRoutes(id),
-				rules,
-			)
-
-			return slices.Concat(primaries, nv.ExitRoutes())
-		},
-		b.mapper.cfg,
-		b.mapper.state.NodeCapMap(nv.ID()),
-	)
+	tailnode, err := nv.TailNode(b.capVer, addresses, b.mapper.cfg, b.view.NodeCapMap(nv.ID()))
 	if err != nil {
 		b.addError(err)
 		return b
@@ -148,22 +146,15 @@ func (b *MapResponseBuilder) WithDebugConfig() *MapResponseBuilder {
 
 // WithSSHPolicy adds SSH policy configuration for the requesting node.
 func (b *MapResponseBuilder) WithSSHPolicy() *MapResponseBuilder {
-	node, ok := b.node()
+	_, ok := b.node()
 	if !ok {
 		return b
 	}
 
-	sshPolicy, err := b.mapper.state.SSHPolicy(node)
+	sshPolicy, err := b.view.SSHPolicy(b.mapper.cfg.ServerURL)
 	if err != nil {
-		// Don't fail the whole map over SSH, but fail closed: a nil
-		// SSHPolicy would leave the client's previous rules in force.
-		log.Error().Caller().
-			Err(err).
-			Uint64(zf.NodeID, node.ID().Uint64()).
-			Str(zf.NodeHostname, node.Hostname()).
-			Msg("building map response: compiling SSH policy failed; sending empty SSH policy")
-
-		sshPolicy = &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}}
+		b.addError(err)
+		return b
 	}
 
 	b.resp.SSHPolicy = sshPolicy
@@ -178,19 +169,26 @@ func (b *MapResponseBuilder) WithDNSConfig() *MapResponseBuilder {
 		return b
 	}
 
-	b.resp.DNSConfig = generateDNSConfig(b.mapper.cfg, node, b.mapper.state.NodeCapMap(node.ID()))
+	b.resp.DNSConfig = generateDNSConfig(b.mapper.cfg, node, b.view.NodeCapMap(node.ID()))
 
 	return b
 }
 
 // WithUserProfiles adds user profiles for the requesting node and given peers.
-func (b *MapResponseBuilder) WithUserProfiles(peers views.Slice[types.NodeView],
-) *MapResponseBuilder {
+func (b *MapResponseBuilder) WithUserProfiles(peers views.Slice[types.NodeView]) *MapResponseBuilder {
 	node, ok := b.node()
 	if !ok {
 		return b
 	}
 
+	if peers.Len() > 0 {
+		ids := make([]types.NodeID, 0, peers.Len())
+		for _, peer := range peers.All() {
+			ids = append(ids, peer.ID())
+		}
+
+		peers = b.view.Peers(ids...)
+	}
 	b.resp.UserProfiles = generateUserProfiles(node, peers)
 
 	return b
@@ -198,16 +196,14 @@ func (b *MapResponseBuilder) WithUserProfiles(peers views.Slice[types.NodeView],
 
 // WithPacketFilters adds packet filter rules based on policy.
 //
-// [State.PacketRulesForNode] returns rules already reduced to only those relevant for this node.
-// For autogroup:self policies, it returns per-node compiled rules.
-// For global policies, it returns the global filter reduced for this node.
+// Rules come from the retained policy generation, already reduced for this node.
 func (b *MapResponseBuilder) WithPacketFilters() *MapResponseBuilder {
-	node, ok := b.node()
+	_, ok := b.node()
 	if !ok {
 		return b
 	}
 
-	filter, err := b.mapper.state.PacketRulesForNode(node)
+	filter, err := b.view.PacketRules()
 	if err != nil {
 		b.addError(err)
 		return b
@@ -225,8 +221,7 @@ func (b *MapResponseBuilder) WithPacketFilters() *MapResponseBuilder {
 }
 
 // WithPeers adds full peer list with policy filtering (for full map response).
-func (b *MapResponseBuilder) WithPeers(peers views.Slice[types.NodeView],
-) *MapResponseBuilder {
+func (b *MapResponseBuilder) WithPeers(peers views.Slice[types.NodeView]) *MapResponseBuilder {
 	tailPeers, err := b.buildTailPeers(peers)
 	if err != nil {
 		b.addError(err)
@@ -239,8 +234,7 @@ func (b *MapResponseBuilder) WithPeers(peers views.Slice[types.NodeView],
 }
 
 // WithPeerChanges adds changed peers with policy filtering (for incremental updates).
-func (b *MapResponseBuilder) WithPeerChanges(peers views.Slice[types.NodeView],
-) *MapResponseBuilder {
+func (b *MapResponseBuilder) WithPeerChanges(peers views.Slice[types.NodeView]) *MapResponseBuilder {
 	tailPeers, err := b.buildTailPeers(peers)
 	if err != nil {
 		b.addError(err)
@@ -255,38 +249,28 @@ func (b *MapResponseBuilder) WithPeerChanges(peers views.Slice[types.NodeView],
 // buildTailPeers converts [views.Slice] of [types.NodeView] to a sorted slice of
 // [tailcfg.Node]. The peers come from the NodeStore peer map, which already
 // decided visibility; only each peer's routes are filtered by policy here.
-func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView],
-) ([]*tailcfg.Node, error) {
-	node, ok := b.mapper.state.GetNodeByID(b.nodeID)
-	if !ok {
-		return nil, ErrNodeNotFoundMapper
+func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) ([]*tailcfg.Node, error) {
+	if peers.Len() == 0 {
+		return []*tailcfg.Node{}, nil
 	}
 
-	// [State.RoutesForPeer] needs the unreduced rules: every rule where the
-	// node is source or destination, not only the [State.PacketRulesForNode] rules
-	// where it is destination.
-	rules, err := b.mapper.state.PeerRulesForNode(node)
-	if err != nil {
-		return nil, err
+	ids := make([]types.NodeID, 0, peers.Len())
+	for _, peer := range peers.All() {
+		ids = append(ids, peer.ID())
 	}
 
-	// Snapshot the per-node policy CapMap once per peer-list build
-	// instead of locking the policy manager per peer. The per-call
-	// path used to take pm.mu N times for an N-peer response.
-	allCapMaps := b.mapper.state.NodeCapMaps()
+	peers = b.view.Peers(ids...)
 
 	// Build tail nodes with per-peer via-aware route function.
 	tailPeers := make([]*tailcfg.Node, 0, peers.Len())
 
 	for _, peer := range peers.All() {
-		// Pass the peer's policy CapMap as selfPolicyCaps so per-peer
-		// address-shape rules (today: disable-ipv4) apply consistently
-		// in the viewer's netmap. The CapMap merge into tn.CapMap is
-		// overwritten by the PeerCapMap call below; only the address
-		// filtering side-effect inside TailNode survives.
-		tn, err := peer.TailNode(b.capVer, func(_ types.NodeID) []netip.Prefix {
-			return b.mapper.state.RoutesForPeer(node, peer, rules)
-		}, b.mapper.cfg, allCapMaps[peer.ID()])
+		addresses, err := b.view.NodeAddresses(peer.ID())
+		if err != nil {
+			return nil, err
+		}
+
+		tn, err := peer.TailNode(b.capVer, addresses, b.mapper.cfg, nil)
 		if err != nil {
 			// One peer with invalid data (e.g. an empty or over-long
 			// GivenName that fails GetFQDN) must not blank out the map for
@@ -312,7 +296,7 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView],
 		// the peer satisfies the cap's emission condition; every other
 		// cap stays off the peer view, leaving CapMap empty for most
 		// peers. [policyv2.PeerCapMap] encodes those conditions.
-		tn.CapMap = policyv2.PeerCapMap(peer, allCapMaps[peer.ID()])
+		tn.CapMap = b.view.PeerCapMap(peer.ID())
 
 		tailPeers = append(tailPeers, tn)
 	}
@@ -326,22 +310,19 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView],
 }
 
 // WithPingRequest adds a PingRequest to the response.
-func (b *MapResponseBuilder) WithPingRequest(pr *tailcfg.PingRequest,
-) *MapResponseBuilder {
+func (b *MapResponseBuilder) WithPingRequest(pr *tailcfg.PingRequest) *MapResponseBuilder {
 	b.resp.PingRequest = pr
 	return b
 }
 
 // WithPeerChangedPatch adds peer change patches.
-func (b *MapResponseBuilder) WithPeerChangedPatch(changes []*tailcfg.PeerChange,
-) *MapResponseBuilder {
+func (b *MapResponseBuilder) WithPeerChangedPatch(changes []*tailcfg.PeerChange) *MapResponseBuilder {
 	b.resp.PeersChangedPatch = changes
 	return b
 }
 
 // WithPeersRemoved adds removed peer IDs.
-func (b *MapResponseBuilder) WithPeersRemoved(removedIDs ...types.NodeID,
-) *MapResponseBuilder {
+func (b *MapResponseBuilder) WithPeersRemoved(removedIDs ...types.NodeID) *MapResponseBuilder {
 	tailscaleIDs := make([]tailcfg.NodeID, 0, len(removedIDs))
 	for _, id := range removedIDs {
 		tailscaleIDs = append(tailscaleIDs, id.NodeID())
