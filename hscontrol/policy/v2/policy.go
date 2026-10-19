@@ -433,7 +433,7 @@ func (pm *PolicyManager) NodeNeedsPeerRecompute(node types.NodeView) bool {
 // caching on first access. Rules use SessionDuration = 0 (no
 // auto-approval) and emit check URLs of the form
 // /machine/ssh/action/{src}/to/{dst}?local_user={local_user} per the
-// SaaS wire format. Cache is invalidated on policy reload.
+// SaaS wire format. Each captured generation owns its typed decision cache.
 func (pm *PolicyManager) SSHPolicy(baseURL string, node types.NodeView,
 ) (*tailcfg.SSHPolicy, error) {
 	return pm.ReadView().SSHPolicy(baseURL, node)
@@ -453,137 +453,6 @@ func (pm *PolicyManager) SSHCheckParams(
 	localUser string,
 ) (time.Duration, bool) {
 	return pm.ReadView().SSHCheckParams(src, dst, localUser)
-}
-
-func (v ReadView) SSHCheckParams(
-	srcNodeID, dstNodeID types.NodeID,
-	localUser string,
-) (time.Duration, bool) {
-	if !v.Valid() {
-		return 0, false
-	}
-
-	g := v.generation
-
-	if g.pol == nil || len(g.pol.SSHs) == 0 {
-		return 0, false
-	}
-
-	// Find the source and destination node views.
-	var srcNode, dstNode types.NodeView
-
-	for _, n := range g.nodes.All() {
-		nid := n.ID()
-		if nid == srcNodeID {
-			srcNode = n
-		}
-
-		if nid == dstNodeID {
-			dstNode = n
-		}
-
-		if srcNode.Valid() && dstNode.Valid() {
-			break
-		}
-	}
-
-	if !srcNode.Valid() || !dstNode.Valid() {
-		return 0, false
-	}
-
-	// Iterate SSH rules to find the first matching check rule.
-	for _, rule := range g.pol.SSHs {
-		if rule.Action != SSHActionCheck {
-			continue
-		}
-
-		// Resolve sources and check if src node matches.
-		srcIPs, err := rule.Sources.Resolve(g.pol, g.users, g.nodes)
-		if err != nil || srcIPs.IsEmpty() {
-			continue
-		}
-
-		if !slices.ContainsFunc(srcNode.IPs(), srcIPs.Contains) {
-			continue
-		}
-
-		if !sshRuleAllowsUser(rule, srcNode, localUser, g.users) {
-			continue
-		}
-
-		// Check if dst node matches any destination.
-		hasOtherDests := false
-
-		for _, dst := range rule.Destinations {
-			if ag, isAG := dst.(*AutoGroup); isAG && ag.Is(AutoGroupSelf) {
-				if sshNodesShareUser(srcNode, dstNode) {
-					return checkPeriodFromRule(rule), true
-				}
-
-				continue
-			}
-
-			hasOtherDests = true
-
-			dstIPs, err := dst.Resolve(g.pol, g.users, g.nodes)
-			if err != nil || dstIPs.IsEmpty() {
-				continue
-			}
-
-			if slices.ContainsFunc(dstNode.IPs(), dstIPs.Contains) {
-				return checkPeriodFromRule(rule), true
-			}
-		}
-
-		// Localpart self-access: a source outside dst still gets the rule
-		// for its own user's nodes, or itself if tagged (compileSSHPolicy).
-		if hasOtherDests && rule.Users.ContainsLocalpart() &&
-			slices.ContainsFunc(dstNode.IPs(), srcIPs.Contains) {
-			if dstNode.IsTagged() {
-				if srcNodeID == dstNodeID {
-					return checkPeriodFromRule(rule), true
-				}
-			} else if sshNodesShareUser(srcNode, dstNode) {
-				return checkPeriodFromRule(rule), true
-			}
-		}
-	}
-
-	return 0, false
-}
-
-// sshNodesShareUser matches user-owned nodes with hydrated user associations.
-// IsTagged alone does not guard User().ID(): the NodeStore can hold a
-// non-tagged node whose UserID is set but whose User association is nil.
-func sshNodesShareUser(srcNode, dstNode types.NodeView) bool {
-	return !srcNode.IsTagged() && !dstNode.IsTagged() &&
-		srcNode.User().Valid() && dstNode.User().Valid() &&
-		srcNode.User().ID() == dstNode.User().ID()
-}
-
-// sshRuleAllowsUser reports whether rule lets src log in as localUser,
-// mirroring the SSHUsers maps compileSSHPolicy emits: root when listed,
-// other users via autogroup:nonroot or a literal name, and anyone, root
-// included, whose name is the source user's localpart.
-func sshRuleAllowsUser(rule SSH, srcNode types.NodeView, localUser string,
-	users types.Users,
-) bool {
-	isRoot := localUser == "root"
-
-	switch {
-	case localUser == "":
-		return false
-	case isRoot && rule.Users.ContainsRoot(),
-		!isRoot && rule.Users.ContainsNonRoot(),
-		!isRoot && slices.Contains(rule.Users.NormalUsers(), SSHUser(localUser)):
-		return true
-	case srcNode.IsTagged() || !srcNode.User().Valid() || !rule.Users.ContainsLocalpart():
-		return false
-	}
-
-	lp, ok := resolveLocalparts(rule.Users.LocalpartEntries(), users)[srcNode.User().ID()]
-
-	return ok && lp == localUser
 }
 
 func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {

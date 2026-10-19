@@ -3,17 +3,223 @@ package v2
 import (
 	"net/netip"
 	"slices"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/ipset"
 	"github.com/juanfont/headscale/hscontrol/policy/packetfilter"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/ipproto"
 	"tailscale.com/types/views"
 	"tailscale.com/util/deephash"
 )
+
+func TestReadViewSSHRejectsForeignNodes(t *testing.T) {
+	users := sshTestUsers()
+	nodes := sshTestNodes(users)
+	pm, err := NewPolicyManager([]byte(`{
+		"tagOwners":{"tag:server":["alice@"]},
+		"ssh":[{"action":"check","src":["alice@"],"dst":["tag:server"],"users":["root"]}]
+	}`), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	view := pm.ReadView()
+	missing := nodes[2].Clone()
+	missing.ID = 999
+	stale := nodes[2].Clone()
+	stale.Tags = []string{"tag:prod"}
+	newAddress := nodes[2].Clone()
+	newAddress.IPv4 = ap("100.64.0.99")
+
+	for _, node := range []types.NodeView{{}, missing.View(), stale.View(), newAddress.View()} {
+		wire, err := view.SSHPolicy("", node)
+		require.Error(t, err)
+		assert.Nil(t, wire)
+	}
+
+	_, err = (ReadView{}).SSHPolicy("", nodes[2].View())
+	require.ErrorIs(t, err, errInvalidPolicyReadView)
+
+	for _, ids := range [][2]types.NodeID{{999, 3}, {1, 999}} {
+		_, ok := view.SSHCheckParams(ids[0], ids[1], "root")
+		require.False(t, ok)
+	}
+
+	_, ok := (ReadView{}).SSHCheckParams(1, 3, "root")
+	require.False(t, ok)
+
+	wire, err := view.SSHPolicy("", nodes[2].View())
+	require.NoError(t, err)
+	require.Len(t, wire.Rules, 1, "invalid lookups must not poison the generation cache")
+}
+
+func TestReadViewSSHCachesTypedDecisions(t *testing.T) {
+	users := sshTestUsers()
+	nodes := sshTestNodes(users)
+	pm, err := NewPolicyManager([]byte(`{
+		"tagOwners":{"tag:server":["alice@"]},
+		"ssh":[{"action":"check","src":["alice@"],"dst":["tag:server"],
+			"users":["root","localpart:*@headscale.net"],"acceptEnv":["LANG"],"checkPeriod":"2h"}]
+	}`), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	view := pm.ReadView()
+	period, ok := view.SSHCheckParams(1, 3, "alice")
+	require.True(t, ok)
+	require.Equal(t, 2*time.Hour, period)
+	require.Equal(t, 1, view.caches.ssh.Size(), "check lookup must populate the shared typed cache")
+
+	first, err := pm.SSHPolicy("https://first", nodes[2].View())
+	require.NoError(t, err)
+	require.Len(t, first.Rules, 2)
+	first.Rules[0].Principals[0].NodeIP = "192.0.2.1"
+	first.Rules[0].SSHUsers["root"] = ""
+	first.Rules[0].AcceptEnv[0] = "SECRET"
+	first.Rules[0].Action.HoldAndDelegate = "changed"
+	first.Rules[0].Action.SessionDuration = time.Hour
+	require.Equal(t, "100.64.0.1", first.Rules[1].Principals[0].NodeIP)
+	require.Equal(t, []string{"LANG"}, first.Rules[1].AcceptEnv)
+
+	second, err := view.SSHPolicy("https://second", nodes[2].View())
+	require.NoError(t, err)
+	require.Equal(t, "100.64.0.1", second.Rules[0].Principals[0].NodeIP)
+	require.Equal(t, "root", second.Rules[0].SSHUsers["root"])
+	require.Equal(t, []string{"LANG"}, second.Rules[0].AcceptEnv)
+	require.Zero(t, second.Rules[0].Action.SessionDuration)
+	require.Equal(t, "https://second/machine/ssh/action/$SRC_NODE_ID/to/$DST_NODE_ID?local_user=$LOCAL_USER", second.Rules[0].Action.HoldAndDelegate)
+	require.Equal(t, 1, view.caches.ssh.Size(), "base URLs must not duplicate compiled decisions")
+
+	period, ok = pm.SSHCheckParams(1, 3, "root")
+	require.True(t, ok)
+	require.Equal(t, 2*time.Hour, period)
+}
+
+func TestReadViewSSHSurvivesGenerationReplacement(t *testing.T) {
+	users := sshTestUsers()
+	nodes := sshTestNodes(users)
+	policy := []byte(`{
+		"tagOwners":{"tag:server":["alice@"]},
+		"ssh":[{"action":"check","src":["alice@"],"dst":["tag:server"],
+			"users":["root","localpart:*@headscale.net"],"checkPeriod":"2h"}]
+	}`)
+	pm, err := NewPolicyManager(policy, users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	old := pm.ReadView()
+	_, err = pm.SetPolicy([]byte(`{"ssh":[]}`))
+	require.NoError(t, err)
+
+	revoked, err := pm.SSHPolicy("", nodes[2].View())
+	require.NoError(t, err)
+	require.NotNil(t, revoked.Rules)
+	require.Empty(t, revoked.Rules)
+
+	_, ok := pm.SSHCheckParams(1, 3, "root")
+	require.False(t, ok)
+
+	// Populate the old generation only after the new generation's cache is populated.
+	retained, err := old.SSHPolicy("", nodes[2].View())
+	require.NoError(t, err)
+	require.Len(t, retained.Rules, 2)
+
+	period, ok := old.SSHCheckParams(1, 3, "alice")
+	require.True(t, ok)
+	require.Equal(t, 2*time.Hour, period)
+
+	_, err = pm.SetPolicy(policy)
+	require.NoError(t, err)
+
+	beforeNodes := pm.ReadView()
+
+	replacement := make(types.Nodes, 0, len(nodes)-1)
+	for _, node := range nodes {
+		if node.ID == 1 {
+			continue
+		}
+
+		updated := node.Clone()
+		if updated.ID == 3 {
+			updated.Tags = []string{"tag:prod"}
+		}
+
+		replacement = append(replacement, updated)
+	}
+
+	_, err = pm.SetNodes(replacement.ViewSlice())
+	require.NoError(t, err)
+
+	_, ok = pm.SSHCheckParams(1, 3, "root")
+	require.False(t, ok)
+
+	_, err = pm.SSHPolicy("", nodes[2].View())
+	require.Error(t, err, "old destination identity must not use the new generation")
+
+	period, ok = beforeNodes.SSHCheckParams(1, 3, "root")
+	require.True(t, ok)
+	require.Equal(t, 2*time.Hour, period)
+
+	beforeFailure := pm.ReadView()
+	_, err = pm.SetPolicy([]byte(`{"ssh":[{"action":"invalid"}]}`))
+	require.Error(t, err)
+	require.Same(t, beforeFailure.generation, pm.ReadView().generation)
+	require.Same(t, beforeFailure.caches, pm.ReadView().caches)
+}
+
+//nolint:testifylint // Concurrent readers cannot call FailNow.
+func TestReadViewSSHConcurrentReplacement(t *testing.T) {
+	users := sshTestUsers()
+	nodes := sshTestNodes(users)
+	allowed := []byte(`{
+		"tagOwners":{"tag:server":["alice@"]},
+		"ssh":[{"action":"check","src":["alice@"],"dst":["tag:server"],"users":["root"]}],
+		"sshTests":[{"src":"alice@","dst":["tag:server"],"accept":["root"]}]
+	}`)
+	pm, err := NewPolicyManager(allowed, users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	old := pm.ReadView()
+
+	var workers sync.WaitGroup
+
+	for range 4 {
+		workers.Go(func() {
+			for range 20 {
+				view := pm.ReadView()
+				wire, err := view.SSHPolicy("https://reader", nodes[2].View())
+				assert.NoError(t, err)
+
+				if wire != nil {
+					_, ok := view.SSHCheckParams(1, 3, "root")
+					assert.Equal(t, len(wire.Rules) != 0, ok)
+
+					if len(wire.Rules) > 0 {
+						wire.Rules[0].SSHUsers["root"] = "changed"
+						wire.Rules[0].Action.HoldAndDelegate = "changed"
+					}
+				}
+
+				period, ok := old.SSHCheckParams(1, 3, "root")
+				assert.True(t, ok)
+				assert.Equal(t, 12*time.Hour, period)
+				assert.NoError(t, pm.RunSSHTests())
+			}
+		})
+	}
+
+	for range 10 {
+		_, err = pm.SetPolicy([]byte(`{"ssh":[]}`))
+		assert.NoError(t, err)
+
+		_, err = pm.SetPolicy(allowed)
+		assert.NoError(t, err)
+	}
+
+	workers.Wait()
+}
 
 func TestReturnedRuleSliceIsolation(t *testing.T) {
 	nodes := types.Nodes{{ID: 1, IPv4: ap("100.64.0.1")}}

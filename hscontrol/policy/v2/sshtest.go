@@ -3,12 +3,11 @@ package v2
 import (
 	"fmt"
 	"maps"
-	"net/netip"
 	"slices"
 	"strings"
 
+	"github.com/juanfont/headscale/hscontrol/ipset"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"tailscale.com/tailcfg"
 	"tailscale.com/types/views"
 )
 
@@ -117,17 +116,14 @@ func checkFailReason(res SSHPolicyTestResult, user, dst string) string {
 // RunSSHTests evaluates the live policy's sshTests block and wraps any
 // failure in [errSSHPolicyTestsFailed].
 func (pm *PolicyManager) RunSSHTests() error {
-	if pm == nil || pm.pol == nil || len(pm.pol.SSHTests) == 0 {
+	view := pm.ReadView()
+	if !view.Valid() {
 		return nil
 	}
 
-	pm.mu.RLock()
-	defer pm.mu.RUnlock()
+	g := view.generation
 
-	cache := make(map[types.NodeID]*tailcfg.SSHPolicy)
-	results := runSSHPolicyTests(pm.pol, pm.users, pm.nodes, cache)
-
-	return wrapTestResult(errSSHPolicyTestsFailed, results.AllPassed, results.Errors)
+	return evaluateSSHTests(g.pol, g.users, g.nodes)
 }
 
 // evaluateSSHTests runs the block against pol without mutating live state.
@@ -140,7 +136,7 @@ func evaluateSSHTests(
 		return nil
 	}
 
-	cache := make(map[types.NodeID]*tailcfg.SSHPolicy)
+	cache := make(map[types.NodeID]sshPolicy)
 	results := runSSHPolicyTests(pol, users, nodes, cache)
 
 	return wrapTestResult(errSSHPolicyTestsFailed, results.AllPassed, results.Errors)
@@ -152,7 +148,7 @@ func runSSHPolicyTests(
 	pol *Policy,
 	users []types.User,
 	nodes views.Slice[types.NodeView],
-	cache map[types.NodeID]*tailcfg.SSHPolicy,
+	cache map[types.NodeID]sshPolicy,
 ) SSHPolicyTestResults {
 	results := SSHPolicyTestResults{
 		AllPassed: true,
@@ -178,7 +174,7 @@ func runSSHPolicyTest(
 	pol *Policy,
 	users []types.User,
 	nodes views.Slice[types.NodeView],
-	cache map[types.NodeID]*tailcfg.SSHPolicy,
+	cache map[types.NodeID]sshPolicy,
 ) SSHPolicyTestResult {
 	srcLabel := ""
 	if test.Src != nil {
@@ -199,7 +195,7 @@ func runSSHPolicyTest(
 		return res
 	}
 
-	if len(srcAddrs) == 0 {
+	if srcAddrs.IsEmpty() {
 		res.Passed = false
 		res.Errors = append(res.Errors,
 			fmt.Sprintf("source %q resolved to no IP addresses", srcLabel))
@@ -271,8 +267,8 @@ func evaluateAssertion(
 	pol *Policy,
 	users []types.User,
 	nodes views.Slice[types.NodeView],
-	cache map[types.NodeID]*tailcfg.SSHPolicy,
-	srcAddrs []netip.Addr,
+	cache map[types.NodeID]sshPolicy,
+	srcAddrs ipset.Set,
 	dstNodes []types.NodeView,
 	user string,
 	kind sshAssertion,
@@ -295,8 +291,8 @@ dstLoop:
 		acceptHit := false
 		checkHit := false
 
-		for _, srcAddr := range srcAddrs {
-			a, c := reachability(dstPol, srcAddr, user)
+		for srcAddr := range srcAddrs.Addrs() {
+			a, c := dstPol.reachability(srcAddr, user)
 			if a {
 				acceptHit = true
 			}
@@ -373,29 +369,27 @@ func resolveSSHTestSource(
 	pol *Policy,
 	users []types.User,
 	nodes views.Slice[types.NodeView],
-) ([]netip.Addr, uint, error) {
+) (ipset.Set, uint, error) {
 	if src == nil {
-		return nil, 0, nil
+		return ipset.Set{}, 0, nil
 	}
 
 	// Mirrors resolveTestSource: an unregistered user fails the test.
 	if u, ok := src.(*Username); ok {
 		_, err := u.resolveUser(users)
 		if err != nil {
-			return nil, 0, fmt.Errorf("resolving: %w", err)
+			return ipset.Set{}, 0, fmt.Errorf("resolving: %w", err)
 		}
 	}
 
 	addrs, err := src.Resolve(pol, users, nodes)
 	if err != nil {
-		return nil, 0, fmt.Errorf("resolving: %w", err)
+		return ipset.Set{}, 0, fmt.Errorf("resolving: %w", err)
 	}
 
 	if addrs.IsEmpty() {
-		return nil, 0, nil
+		return ipset.Set{}, 0, nil
 	}
-
-	out := slices.Collect(addrs.Addrs())
 
 	var userID uint
 
@@ -407,7 +401,7 @@ func resolveSSHTestSource(
 		}
 	}
 
-	return out, userID, nil
+	return addrs, userID, nil
 }
 
 // resolveSSHTestDestNodes maps each dst alias to its destination
@@ -506,126 +500,24 @@ func resolveSSHTestDestNodes(
 	return out, emptyDsts, nil
 }
 
-// compiledSSHPolicy returns the per-node compiled [tailcfg.SSHPolicy], caching
-// on miss. baseURL is empty because reachability only checks for the
-// presence of [tailcfg.SSHAction.HoldAndDelegate], not its value.
+// compiledSSHPolicy returns the per-node typed SSH policy, caching on miss.
 func compiledSSHPolicy(
 	pol *Policy,
 	users []types.User,
 	nodes views.Slice[types.NodeView],
-	cache map[types.NodeID]*tailcfg.SSHPolicy,
+	cache map[types.NodeID]sshPolicy,
 	node types.NodeView,
-) (*tailcfg.SSHPolicy, error) {
+) (sshPolicy, error) {
 	if sshPol, ok := cache[node.ID()]; ok {
 		return sshPol, nil
 	}
 
-	sshPol, err := pol.compileSSHPolicy("", users, node, nodes)
+	sshPol, err := pol.compileSSHRules(users, node, nodes)
 	if err != nil {
-		return nil, err
+		return sshPolicy{}, err
 	}
 
 	cache[node.ID()] = sshPol
 
 	return sshPol, nil
-}
-
-// reachability reports whether srcAddr can log in as user via:
-//
-//   - any matching rule (acceptHit, satisfies accept assertions)
-//   - a check-action rule (checkHit, satisfies check assertions)
-func reachability(
-	dstPolicy *tailcfg.SSHPolicy,
-	srcAddr netip.Addr,
-	user string,
-) (bool, bool) {
-	if dstPolicy == nil {
-		return false, false
-	}
-
-	var acceptHit, checkHit bool
-
-	for _, rule := range dstPolicy.Rules {
-		if !principalContainsAddr(rule.Principals, srcAddr) {
-			continue
-		}
-
-		if !sshUserMapAllows(rule.SSHUsers, user) {
-			continue
-		}
-
-		if rule.Action == nil {
-			continue
-		}
-
-		acceptHit = true
-
-		if rule.Action.HoldAndDelegate != "" {
-			checkHit = true
-		}
-
-		// Early-out only when both bits are set: a rule satisfying
-		// accept does not always satisfy check.
-		if acceptHit && checkHit {
-			return acceptHit, checkHit
-		}
-	}
-
-	return acceptHit, checkHit
-}
-
-// principalContainsAddr reports whether any principal's [tailcfg.SSHPrincipal.NodeIP]
-// matches srcAddr exactly (the SSH compiler emits one principal per source IP).
-func principalContainsAddr(
-	principals []*tailcfg.SSHPrincipal,
-	srcAddr netip.Addr,
-) bool {
-	for _, p := range principals {
-		if p == nil {
-			continue
-		}
-
-		if p.NodeIP == "" {
-			continue
-		}
-
-		addr, err := netip.ParseAddr(p.NodeIP)
-		if err != nil {
-			continue
-		}
-
-		if addr == srcAddr {
-			return true
-		}
-	}
-
-	return false
-}
-
-// sshUserMapAllows reports whether [SSHUsers] permits user. The [SSHUsers]
-// wire shape (see filter.go compileSSHPolicy):
-//
-//   - SSHUsers["root"] == "root" allows root; == "" disallows it.
-//   - SSHUsers["*"] == "=" is the wildcard fallback for non-root users
-//     (set when the rule lists autogroup:nonroot).
-//   - SSHUsers[<literal>] == <literal> for every named user.
-func sshUserMapAllows(m map[string]string, user string) bool {
-	if user == "" {
-		return false
-	}
-
-	if v, ok := m[user]; ok {
-		return v != ""
-	}
-
-	if user == "root" {
-		return false
-	}
-
-	// Wildcard fallback for non-root users.
-	if v, ok := m["*"]; ok {
-		return v != ""
-	}
-
-	return false
 }

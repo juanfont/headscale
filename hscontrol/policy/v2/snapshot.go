@@ -40,11 +40,7 @@ type compiledGeneration struct {
 
 type generationCaches struct {
 	packet *xsync.Map[types.NodeID, []packetfilter.Rule]
-	ssh    *xsync.Map[sshCacheKey, *tailcfg.SSHPolicy]
-}
-type sshCacheKey struct {
-	nodeID  types.NodeID
-	baseURL string
+	ssh    *xsync.Map[types.NodeID, sshPolicy]
 }
 
 type ownerApplicability struct {
@@ -137,7 +133,7 @@ func newReadView(
 		g,
 		&generationCaches{
 			packet: xsync.NewMap[types.NodeID, []packetfilter.Rule](),
-			ssh:    xsync.NewMap[sshCacheKey, *tailcfg.SSHPolicy](),
+			ssh:    xsync.NewMap[types.NodeID, sshPolicy](),
 		},
 	}
 }
@@ -504,38 +500,4 @@ func (v ReadView) NodeCapMap(id types.NodeID) tailcfg.NodeCapMap {
 
 func (v ReadView) PeerCapMap(node types.NodeView) tailcfg.NodeCapMap {
 	return PeerCapMap(node, v.NodeCapMap(node.ID()))
-}
-
-func (v ReadView) SSHPolicy(
-	baseURL string,
-	node types.NodeView,
-) (*tailcfg.SSHPolicy, error) {
-	if !v.Valid() {
-		return nil, errInvalidPolicyReadView
-	}
-
-	key := sshCacheKey{node.ID(), baseURL}
-
-	cacheable := v.cacheable(node)
-	if cacheable {
-		if policy, ok := v.caches.ssh.Load(key); ok {
-			return policy.Clone(), nil
-		}
-	}
-
-	policy, err := v.generation.pol.compileSSHPolicy(
-		baseURL,
-		v.generation.users,
-		node,
-		v.generation.nodes,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	if cacheable {
-		v.caches.ssh.Store(key, policy)
-	}
-
-	return policy.Clone(), nil
 }

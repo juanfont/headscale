@@ -2674,87 +2674,56 @@ func TestCompileSSHPolicy_CheckPeriodVariants(t *testing.T) {
 	}
 }
 
-func TestIPSetToPrincipals(t *testing.T) {
-	tests := []struct {
-		name string
-		ips  []string // IPs to add to the set
-		want []*tailcfg.SSHPrincipal
-	}{
-		{
-			name: "nil input",
-			ips:  nil,
-			want: nil,
-		},
-		{
-			name: "single IPv4",
-			ips:  []string{"100.64.0.1"},
-			want: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.1"}},
-		},
-		{
-			name: "multiple IPs",
-			ips:  []string{"100.64.0.1", "100.64.0.2"},
-			want: []*tailcfg.SSHPrincipal{
-				{NodeIP: "100.64.0.1"},
-				{NodeIP: "100.64.0.2"},
-			},
-		},
-		{
-			name: "IPv6",
-			ips:  []string{"fd7a:115c:a1e0::1"},
-			want: []*tailcfg.SSHPrincipal{{NodeIP: "fd7a:115c:a1e0::1"}},
-		},
-		{
-			name: "mixed IPv4 and IPv6",
-			ips:  []string{"100.64.0.1", "fd7a:115c:a1e0::1"},
-			want: []*tailcfg.SSHPrincipal{
-				{NodeIP: "100.64.0.1"},
-				{NodeIP: "fd7a:115c:a1e0::1"},
-			},
-		},
-	}
+func TestCompileSSHPolicyIndependentWireObjects(t *testing.T) {
+	users := sshTestUsers()
+	nodes := sshTestNodes(users)
+	pol, err := unmarshalPolicy([]byte(`{
+		"tagOwners": {"tag:server": ["alice@"]},
+		"ssh": [{
+			"action": "check", "src": ["alice@"], "dst": ["tag:server"],
+			"users": ["autogroup:nonroot", "localpart:*@headscale.net"],
+			"acceptEnv": ["LANG"]
+		}]
+	}`))
+	require.NoError(t, err)
+	first, err := pol.compileSSHPolicy(
+		"https://first",
+		users,
+		nodes[2].View(),
+		nodes.ViewSlice(),
+	)
+	require.NoError(t, err)
+	second, err := pol.compileSSHPolicy(
+		"https://second",
+		users,
+		nodes[2].View(),
+		nodes.ViewSlice(),
+	)
+	require.NoError(t, err)
+	require.Len(t, first.Rules, 2)
+	require.Len(t, second.Rules, 2)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var ipSet ipset.Set
+	first.Rules[0].Action.HoldAndDelegate = "changed"
+	first.Rules[0].Principals[0].NodeIP = "192.0.2.1"
+	first.Rules[0].SSHUsers["*"] = ""
+	first.Rules[0].AcceptEnv[0] = "SECRET"
 
-			if tt.ips != nil {
-				var builder ipset.Builder
-
-				for _, ip := range tt.ips {
-					addr := netip.MustParseAddr(ip)
-					builder.AddAddr(addr)
-				}
-
-				var err error
-
-				ipSet, err = builder.Build()
-				require.NoError(t, err)
-			}
-
-			got := ipSetToPrincipals(ipSet)
-
-			// Sort for deterministic comparison
-			sortPrincipals := func(p []*tailcfg.SSHPrincipal) {
-				slices.SortFunc(p, func(a, b *tailcfg.SSHPrincipal) int {
-					if a.NodeIP < b.NodeIP {
-						return -1
-					}
-
-					if a.NodeIP > b.NodeIP {
-						return 1
-					}
-
-					return 0
-				})
-			}
-			sortPrincipals(got)
-			sortPrincipals(tt.want)
-
-			if diff := cmp.Diff(tt.want, got); diff != "" {
-				t.Errorf("ipSetToPrincipals() mismatch (-want +got):\n%s", diff)
-			}
-		})
-	}
+	assert.Equal(t, []string{"LANG"}, pol.SSHs[0].AcceptEnv)
+	assert.Equal(t, "100.64.0.1", first.Rules[1].Principals[0].NodeIP)
+	assert.Equal(t, []string{"LANG"}, first.Rules[1].AcceptEnv)
+	assert.Equal(
+		t,
+		"https://first/machine/ssh/action/$SRC_NODE_ID/to/$DST_NODE_ID?local_user=$LOCAL_USER",
+		first.Rules[1].Action.HoldAndDelegate,
+	)
+	assert.Equal(t, "100.64.0.1", second.Rules[0].Principals[0].NodeIP)
+	assert.Equal(t, "=", second.Rules[0].SSHUsers["*"])
+	assert.Equal(t, []string{"LANG"}, second.Rules[0].AcceptEnv)
+	assert.Equal(
+		t,
+		"https://second/machine/ssh/action/$SRC_NODE_ID/to/$DST_NODE_ID?local_user=$LOCAL_USER",
+		second.Rules[0].Action.HoldAndDelegate,
+	)
 }
 
 // overlappingSSHChecks has a localpart check rule whose self-access reaches
@@ -3037,6 +3006,30 @@ func TestSSHCheckParams(t *testing.T) {
 				localUser = "alice"
 			}
 
+			var src, dst types.NodeView
+
+			for _, n := range nodes {
+				if n.ID == tt.srcID {
+					src = n.View()
+				}
+
+				if n.ID == tt.dstID {
+					dst = n.View()
+				}
+			}
+
+			if dst.Valid() {
+				compiled, err := pm.pol.compileSSHRules(users, dst, nodes.ViewSlice())
+				require.NoError(t, err)
+
+				period, ok := compiled.checkParams(src, localUser)
+				assert.Equal(t, tt.wantOK, ok, "typed check match")
+
+				if tt.wantOK {
+					assert.Equal(t, tt.wantPeriod, period, "typed check period")
+				}
+			}
+
 			period, ok := pm.SSHCheckParams(tt.srcID, tt.dstID, localUser)
 			assert.Equal(t, tt.wantOK, ok, "ok mismatch")
 
@@ -3247,17 +3240,17 @@ func TestGroupSourcesByUser(t *testing.T) {
 
 			if tt.wantAliceIP != "" {
 				require.Contains(t, byUser, uint(1))
-				assert.Equal(t, tt.wantAliceIP, byUser[1][0].NodeIP)
+				assert.Equal(t, tt.wantAliceIP, byUser[1][0].String())
 			}
 
 			if tt.wantBobIP != "" {
 				require.Contains(t, byUser, uint(2))
-				assert.Equal(t, tt.wantBobIP, byUser[2][0].NodeIP)
+				assert.Equal(t, tt.wantBobIP, byUser[2][0].String())
 			}
 
 			if tt.wantTaggedIP != "" {
 				require.NotEmpty(t, tagged)
-				assert.Equal(t, tt.wantTaggedIP, tagged[0].NodeIP)
+				assert.Equal(t, tt.wantTaggedIP, tagged[0].String())
 			}
 		})
 	}
