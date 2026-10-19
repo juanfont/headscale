@@ -2,6 +2,7 @@ package v2
 
 import (
 	"fmt"
+	"maps"
 	"net/netip"
 	"slices"
 	"testing"
@@ -11,10 +12,13 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/puzpuzpuz/xsync/v4"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"pgregory.net/rapid"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/nodecap"
+	"tailscale.com/types/views"
 )
 
 func node(name, ipv4, ipv6 string, user types.User) *types.Node {
@@ -3828,5 +3832,346 @@ func TestFailedSetNodesKeepsCompiledPolicy(t *testing.T) {
 		gotFilter, gotSSH := read(pm, n)
 		require.Equal(t, wantFilter, gotFilter, "node %s filter after the retry", n.Hostname)
 		require.Equal(t, wantSSH, gotSSH, "node %s SSH after the retry", n.Hostname)
+	}
+}
+
+// nodeCapMapsReference is the complete bulk accessor from d00f135bf.
+func (pm *PolicyManager) nodeCapMapsReference() map[types.NodeID]tailcfg.NodeCapMap {
+	if pm == nil {
+		return nil
+	}
+
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	out := make(map[types.NodeID]tailcfg.NodeCapMap, len(pm.nodeAttrsMap))
+	maps.Copy(out, pm.nodeAttrsMap)
+
+	return out
+}
+
+func TestNodeCapMapsForPeersReference(t *testing.T) {
+	var nilManager *PolicyManager
+	require.Nil(t, nilManager.NodeCapMaps())
+	require.Nil(t, nilManager.nodeCapMapsReference())
+	require.Nil(t, nilManager.NodeCapMapsForPeers(views.SliceOf([]types.NodeView{(&types.Node{ID: 1}).View()})))
+
+	for _, attrs := range []struct {
+		name string
+		caps map[types.NodeID]tailcfg.NodeCapMap
+	}{
+		{"nil", nil},
+		{"empty", map[types.NodeID]tailcfg.NodeCapMap{}},
+		{"single", map[types.NodeID]tailcfg.NodeCapMap{3: {"disable-ipv4": nil}}},
+		{"partial", map[types.NodeID]tailcfg.NodeCapMap{
+			1: nil,
+			2: {},
+			3: {"disable-ipv4": nil, "value": {`{"a":1}`}},
+			5: {"randomize-client-port": {}},
+		}},
+	} {
+		t.Run(attrs.name, func(t *testing.T) {
+			pm := &PolicyManager{nodeAttrsMap: attrs.caps}
+			all := pm.nodeCapMapsReference()
+			require.NotNil(t, all)
+			require.Equal(t, all, pm.NodeCapMaps())
+
+			for _, selection := range []struct {
+				name string
+				ids  []types.NodeID
+			}{
+				{"nil", nil},
+				{"empty", []types.NodeID{}},
+				{"missing", []types.NodeID{99}},
+				{"one", []types.NodeID{3}},
+				{"below threshold", []types.NodeID{5, 3, 3}},
+				{"threshold missing", []types.NodeID{99, 99, 99, 99}},
+				{"duplicates", []types.NodeID{3, 5, 3, 99, 1, 2}},
+				{"full", []types.NodeID{5, 4, 3, 2, 1}},
+			} {
+				t.Run(selection.name, func(t *testing.T) {
+					var peers []types.NodeView
+					for _, id := range selection.ids {
+						peers = append(peers, (&types.Node{ID: id}).View())
+					}
+
+					if selection.ids != nil && len(peers) == 0 {
+						peers = []types.NodeView{}
+					}
+
+					before := slices.Clone(peers)
+
+					var want map[types.NodeID]tailcfg.NodeCapMap
+					if len(peers) > 0 && len(all) > 0 {
+						want = make(map[types.NodeID]tailcfg.NodeCapMap)
+
+						if len(peers) >= len(all) {
+							maps.Copy(want, all)
+						} else {
+							for _, peer := range peers {
+								if caps, ok := all[peer.ID()]; ok {
+									want[peer.ID()] = caps
+								}
+							}
+						}
+					}
+
+					got := pm.NodeCapMapsForPeers(views.SliceOf(peers))
+					require.Equal(t, want, got)
+					require.Equal(t, before, peers)
+
+					for _, peer := range peers {
+						require.Equal(t, all[peer.ID()], got[peer.ID()], "requested lookups must match the bulk snapshot")
+					}
+
+					if got != nil {
+						clear(got)
+						got[99] = tailcfg.NodeCapMap{"caller-only": nil}
+					}
+
+					require.Equal(t, all, pm.NodeCapMaps(), "outer mutations must not reach the manager")
+				})
+			}
+
+			wantAll := pm.nodeCapMapsReference()
+
+			clear(all)
+			require.Equal(t, wantAll, pm.NodeCapMaps(), "bulk container remains independently owned")
+		})
+	}
+}
+
+func TestNodeCapMapsForPeersSnapshots(t *testing.T) {
+	user := types.User{ID: 1, Name: "capuser"}
+	nodes := types.Nodes{
+		node("one", "100.64.0.1", "fd7a:115c:a1e0::1", user),
+		node("two", "100.64.0.2", "fd7a:115c:a1e0::2", user),
+	}
+	nodes[0].ID, nodes[1].ID = 1, 2
+	pm, err := NewPolicyManager([]byte(`{"nodeAttrs":[{"target":["*"],"attr":["disable-ipv4"]}]}`), []types.User{user}, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	old := pm.NodeCapMapsForPeers(nodes.ViewSlice())
+	all := pm.nodeCapMapsReference()
+
+	require.Len(t, old, 2)
+	require.Equal(t, all, old)
+	// Probe the documented shared-inner contract, then restore before any policy update.
+	old[1]["alias-probe"] = []tailcfg.RawMessage{`{"shared":true}`}
+
+	require.Contains(t, pm.nodeAttrsMap[1], nodecap.Cap("alias-probe"))
+	require.Same(t, &old[1]["alias-probe"][0], &all[1]["alias-probe"][0])
+	delete(old[1], "alias-probe")
+
+	owned := pm.NodeCapMap(1)
+	delete(owned, "disable-ipv4")
+	require.Contains(t, old[1], nodecap.Cap("disable-ipv4"), "single-node accessor still clones its inner map")
+
+	_, err = pm.SetPolicy([]byte(`{"nodeAttrs":[{"target":["100.64.0.2"],"attr":["randomize-client-port"]}]}`))
+	require.NoError(t, err)
+
+	current := pm.NodeCapMapsForPeers(nodes.ViewSlice())
+	require.Equal(t, pm.nodeCapMapsReference(), current)
+	require.NotContains(t, current, types.NodeID(1))
+	require.Contains(t, current[2], nodecap.Cap("randomize-client-port"))
+
+	for _, caps := range old {
+		require.Equal(t, tailcfg.NodeCapMap{"disable-ipv4": nil}, caps, "old snapshot survives policy replacement")
+	}
+
+	_, err = pm.SetPolicy([]byte(`{}`))
+	require.NoError(t, err)
+	require.Nil(t, pm.NodeCapMapsForPeers(nodes.ViewSlice()))
+	require.Contains(t, current[2], nodecap.Cap("randomize-client-port"))
+	require.NotNil(t, pm.NodeCapMaps(), "bulk empty result must remain non-nil")
+}
+
+func TestNodeCapMapsForPeersGlobalRandomizeClientPort(t *testing.T) {
+	users, nodes := benchNodes(2)
+	pm, err := NewPolicyManager([]byte(`{"randomizeClientPort":true}`), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	all := pm.nodeCapMapsReference()
+	require.Len(t, all, 2)
+
+	peers := nodes.ViewSlice().Slice(0, 1)
+	got := pm.NodeCapMapsForPeers(peers)
+	require.Equal(t, map[types.NodeID]tailcfg.NodeCapMap{
+		nodes[0].ID: {"randomize-client-port": nil},
+	}, got)
+	require.Equal(t, all, pm.NodeCapMapsForPeers(nodes.ViewSlice()))
+	require.Nil(t, pm.NodeCapMapsForPeers(views.SliceOf([]types.NodeView(nil))))
+}
+
+func TestNodeCapMapsForPeersConcurrentPolicy(t *testing.T) {
+	for _, k := range []int{3, 8} {
+		t.Run(fmt.Sprintf("K%d", k), func(t *testing.T) {
+			users, nodes := benchNodes(8)
+			policies := []string{
+				`{"nodeAttrs":[{"target":["*"],"attr":["disable-ipv4"]}]}`,
+				`{"nodeAttrs":[{"target":["*"],"attr":["randomize-client-port"]}]}`,
+			}
+			pm, err := NewPolicyManager([]byte(policies[0]), users, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			peers := nodes.ViewSlice().Slice(0, k)
+			generations := []tailcfg.NodeCapMap{
+				{"disable-ipv4": nil},
+				{"randomize-client-port": nil},
+			}
+			checkSnapshot := func(generation int) {
+				t.Helper()
+
+				snapshot := pm.NodeCapMapsForPeers(peers)
+				if len(snapshot) != peers.Len() {
+					t.Errorf("snapshot has %d entries, want %d", len(snapshot), peers.Len())
+				}
+
+				first := snapshot[nodes[0].ID]
+				if !maps.EqualFunc(generations[0], first, slices.Equal) &&
+					!maps.EqualFunc(generations[1], first, slices.Equal) {
+					t.Errorf("snapshot has unexpected capabilities: %v", first)
+				}
+
+				for _, caps := range snapshot {
+					if !maps.EqualFunc(first, caps, slices.Equal) {
+						t.Error("snapshot mixed policy generations")
+					}
+
+					if generation >= 0 && !maps.EqualFunc(generations[generation], caps, slices.Equal) {
+						t.Errorf("snapshot did not observe published generation %d: %v", generation, caps)
+					}
+				}
+			}
+			checkSnapshot(0)
+
+			published := make(chan int)
+			acknowledged := make(chan struct{})
+			writerErrors := make(chan error, 1)
+
+			go func() {
+				defer close(published)
+
+				var err error
+				defer func() { writerErrors <- err }()
+
+				for i := range 100 {
+					generation := (i + 1) % 2
+
+					_, err = pm.SetPolicy([]byte(policies[generation]))
+					if err != nil {
+						return
+					}
+
+					published <- generation
+
+					<-acknowledged
+				}
+			}()
+
+			var observed [2]int
+
+			for active := true; active; {
+				checkSnapshot(-1)
+
+				select {
+				case generation, ok := <-published:
+					if !ok {
+						active = false
+						continue
+					}
+
+					checkSnapshot(generation)
+					observed[generation]++
+
+					acknowledged <- struct{}{}
+				default:
+				}
+			}
+
+			require.NoError(t, <-writerErrors)
+			checkSnapshot(0)
+			require.Equal(t, [2]int{50, 50}, observed)
+		})
+	}
+}
+
+var nodeCapMapsBenchmarkSink map[types.NodeID]tailcfg.NodeCapMap
+
+// Each call constructs a fresh outer snapshot; there is no retained selector index.
+// Direct method calls keep interface adapters out of this isolated measurement.
+func BenchmarkNodeCapMapsSelection(b *testing.B) {
+	previousLevel := zerolog.GlobalLevel()
+
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	b.Cleanup(func() { zerolog.SetGlobalLevel(previousLevel) })
+
+	for _, n := range []int{100, 1000, 10000} {
+		_, nodes := benchNodes(n)
+		allPeers := nodes.ViewSlice()
+
+		for _, stride := range []int{0, 10, 1, n} {
+			b.Run(fmt.Sprintf("N%d/attrStride%d", n, stride), func(b *testing.B) {
+				pm := &PolicyManager{nodeAttrsMap: make(map[types.NodeID]tailcfg.NodeCapMap)}
+
+				if stride > 0 {
+					for i := 0; i < n; i += stride {
+						pm.nodeAttrsMap[nodes[i].ID] = tailcfg.NodeCapMap{"disable-ipv4": {}}
+					}
+				}
+
+				for _, k := range []int{0, 1, 8, n} {
+					peers := allPeers.Slice(0, k)
+					b.Run(fmt.Sprintf("K%d/reference", k), func(b *testing.B) {
+						b.ReportAllocs()
+
+						for b.Loop() {
+							nodeCapMapsBenchmarkSink = pm.nodeCapMapsReference()
+						}
+					})
+					b.Run(fmt.Sprintf("K%d/selected", k), func(b *testing.B) {
+						b.ReportAllocs()
+
+						for b.Loop() {
+							nodeCapMapsBenchmarkSink = pm.NodeCapMapsForPeers(peers)
+						}
+					})
+				}
+			})
+		}
+	}
+}
+
+func BenchmarkNodeCapMapsConstruction(b *testing.B) {
+	previousLevel := zerolog.GlobalLevel()
+
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	b.Cleanup(func() { zerolog.SetGlobalLevel(previousLevel) })
+
+	for _, n := range []int{100, 1000, 10000} {
+		users, nodes := benchNodes(n)
+		peers := nodes.ViewSlice().Slice(0, 1)
+
+		for _, attrs := range []string{`[]`, `[{"target":["*"],"attr":["disable-ipv4"]}]`} {
+			pol := []byte(`{"acls":[],"nodeAttrs":` + attrs + `}`)
+			for _, selected := range []bool{false, true} {
+				b.Run(fmt.Sprintf("N%d/attrs%t/selected%t", n, attrs != `[]`, selected), func(b *testing.B) {
+					b.ReportAllocs()
+
+					for b.Loop() {
+						pm, err := NewPolicyManager(pol, users, nodes.ViewSlice())
+						if err != nil {
+							b.Fatal(err)
+						}
+
+						if selected {
+							nodeCapMapsBenchmarkSink = pm.NodeCapMapsForPeers(peers)
+						} else {
+							nodeCapMapsBenchmarkSink = pm.nodeCapMapsReference()
+						}
+					}
+				})
+			}
+		}
 	}
 }
