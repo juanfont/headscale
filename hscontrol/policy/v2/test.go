@@ -411,7 +411,7 @@ func resolveTestSource(alias Alias, pol *Policy, users types.Users, nodes views.
 //
 // Empty proto means the default set the client applies when proto is
 // omitted (TCP/UDP/ICMP) — we accept a rule whose IPProto list contains
-// any of those, or rules with no IPProto restriction at all.
+// any of those. Omitted rule protocols use that same default set.
 func evalReachability(srcs ipset.Set, dst AliasWithPorts, proto Protocol, pol *Policy, filter []tailcfg.FilterRule, users types.Users, nodes views.Slice[types.NodeView]) (bool, error) {
 	dstAddrs, err := dst.Resolve(pol, users, nodes)
 	if err != nil {
@@ -484,13 +484,19 @@ func ruleMatchesSource(rule tailcfg.FilterRule, src netip.Prefix) bool {
 }
 
 // ruleMatchesProto reports whether the rule permits any of requestedProtos.
-// An unset [tailcfg.FilterRule.IPProto] means "any protocol" and matches
-// everything. requestedProtos is the per-test protocol set: a single proto
+// An unset [tailcfg.FilterRule.IPProto] uses the client's default protocols.
+// requestedProtos is the per-test protocol set: a single proto
 // for an explicit [PolicyTest.Proto], or the default set when
 // [PolicyTest.Proto] is empty.
 func ruleMatchesProto(rule tailcfg.FilterRule, requestedProtos []ipproto.Proto) bool {
 	if len(rule.IPProto) == 0 {
-		return true
+		for _, protocol := range Protocol(0).IPProtocols() {
+			if slices.Contains(requestedProtos, protocol) {
+				return true
+			}
+		}
+
+		return false
 	}
 
 	for _, ruleProto := range rule.IPProto {

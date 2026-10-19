@@ -510,3 +510,14 @@ func TestTypedPolicyTestDiagnosticJSON(t *testing.T) {
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"src":"alice\"quoted@","proto":"tcp","passed":true,"accept_ok":["host\"quoted:443"]}`, string(encoded))
 }
+
+func TestOmittedRuleProtocolsExcludeGREAndSCTP(t *testing.T) {
+	for _, protocol := range []ipproto.Proto{47, 132} {
+		assert.False(t, ruleMatchesProto(tailcfg.FilterRule{}, []ipproto.Proto{protocol}))
+		assert.True(t, ruleMatchesProto(tailcfg.FilterRule{IPProto: []int{int(protocol)}}, []ipproto.Proto{protocol}))
+	}
+
+	for _, protocol := range Protocol(0).IPProtocols() {
+		assert.True(t, ruleMatchesProto(tailcfg.FilterRule{}, []ipproto.Proto{protocol}))
+	}
+}
