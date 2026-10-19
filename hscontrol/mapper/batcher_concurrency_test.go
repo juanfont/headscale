@@ -245,6 +245,127 @@ func TestAddToBatch_ConcurrentBroadcast(t *testing.T) {
 		"at least some nodes should have pending changes after broadcast")
 }
 
+func TestAddToBatchDifferential(t *testing.T) {
+	baseline := setupLightweightBatcher(t, 4, 1)
+	candidate := setupLightweightBatcher(t, 4, 1)
+	t.Cleanup(baseline.cleanup)
+	t.Cleanup(candidate.cleanup)
+
+	var stopped [2]atomic.Int64
+
+	for i, lb := range []*lightweightBatcher{baseline, candidate} {
+		nc, _ := lb.b.nodes.Load(4)
+		nc.connections[0].stop = func() { stopped[i].Add(1) }
+
+		lb.b.RemoveNode(3, lb.channels[3])
+		lb.b.nodes.Store(99, nil)
+	}
+
+	endpoint := change.EndpointOrDERPUpdate(1, &tailcfg.PeerChange{
+		NodeID: 1, DERPRegion: 7, Online: new(true),
+	})
+	ping := change.PingNode(2, &tailcfg.PingRequest{URL: "https://example.com/one"})
+	stages := []struct {
+		name    string
+		changes []change.Change
+	}{
+		{"empty", nil},
+		{"mixed", []change.Change{
+			change.NodeOnline(2), change.SelfUpdate(1), endpoint,
+			change.SelfUpdate(88), ping, change.NodeOnline(2),
+		}},
+		{"repeated_kinds", []change.Change{
+			change.NodeOnline(2), change.NodeOffline(2), change.NodeOnline(2),
+			change.PeersChanged("several peers", 3, 1),
+		}},
+		{"deletion", []change.Change{
+			change.NodeRemoved(4), change.SelfUpdate(4), change.PeersRemoved(3),
+		}},
+		{
+			"full_with_pings",
+			[]change.Change{
+				change.FullUpdate(),
+				change.PingNode(
+					1,
+					&tailcfg.PingRequest{URL: "https://example.com/two"},
+				),
+				change.PingNode(
+					88,
+					&tailcfg.PingRequest{URL: "https://example.com/missing"},
+				),
+				change.NodeOnline(3),
+			},
+		},
+		{"repeated_full", []change.Change{change.FullUpdate(), change.FullUpdate()}},
+		{"after_full", []change.Change{endpoint, change.SelfUpdate(1), ping}},
+	}
+
+	for _, stage := range stages {
+		t.Run(stage.name, func(t *testing.T) {
+			baselineAddToBatch(baseline.b, stage.changes...)
+			candidate.b.addToBatch(stage.changes...)
+
+			for _, id := range []types.NodeID{1, 2, 3, 4, 88, 99} {
+				want, wantExists := baseline.b.nodes.Load(id)
+				got, gotExists := candidate.b.nodes.Load(id)
+				require.Equal(t, wantExists, gotExists, "node %d", id)
+				require.Equal(t, want == nil, got == nil, "node %d", id)
+
+				if got == nil {
+					continue
+				}
+
+				assert.Equal(t, getPendingForNode(baseline.b, id),
+					getPendingForNode(candidate.b, id), "node %d", id)
+			}
+
+			assert.Equal(t, baseline.b.totalNodes.Load(), candidate.b.totalNodes.Load())
+			assert.Equal(t, stopped[0].Load(), stopped[1].Load())
+
+			if stage.name == "mixed" {
+				assert.Equal(t, []change.Change{
+					change.SelfUpdate(
+						1,
+					),
+					change.NodeOnline(2),
+					endpoint,
+					change.NodeOnline(2),
+				}, getPendingForNode(candidate.b, 1))
+				assert.Equal(t, []change.Change{
+					change.NodeOnline(2), endpoint, change.NodeOnline(2),
+				}, getPendingForNode(candidate.b, 3), "disconnected recipient retains broadcasts")
+			}
+		})
+	}
+
+	require.EqualValues(t, 1, stopped[1].Load(), "deletion must stop the session once")
+}
+
+func TestAddToBatchRecipientStorage(t *testing.T) {
+	for _, impl := range batchIngressImplementations {
+		t.Run(impl.name, func(t *testing.T) {
+			lb := setupLightweightBatcher(t, 2, 1)
+			t.Cleanup(lb.cleanup)
+
+			incoming := []change.Change{change.NodeOnline(1), change.NodeOffline(1)}
+			impl.add(lb.b, incoming...)
+			incoming[0] = change.FullUpdate()
+
+			first, _ := lb.b.nodes.Load(1)
+			first.pendingMu.Lock()
+			first.pending[0].Reason = "recipient-local change"
+			first.pendingMu.Unlock()
+
+			assert.Equal(
+				t,
+				[]change.Change{change.NodeOnline(1), change.NodeOffline(1)},
+				getPendingForNode(lb.b, 2),
+				"recipients must own their pending slices",
+			)
+		})
+	}
+}
+
 // TestAddToBatch_FullUpdateOverrides verifies that a FullUpdate replaces
 // all pending changes for every node.
 func TestAddToBatch_FullUpdateOverrides(t *testing.T) {

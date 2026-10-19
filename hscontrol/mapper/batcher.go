@@ -716,18 +716,14 @@ func (b *Batcher) addToBatch(changes ...change.Change) {
 		}
 	}
 
-	// Handle broadcast changes - send to all nodes, filtering as needed
+	// Broadcasts have no TargetNode, so every node receives the same changes.
 	if len(broadcast) > 0 {
-		b.nodes.Range(func(nodeID types.NodeID, nc *multiChannelNodeConn) bool {
+		b.nodes.Range(func(_ types.NodeID, nc *multiChannelNodeConn) bool {
 			if nc == nil {
 				return true
 			}
 
-			filtered := change.FilterForNode(nodeID, broadcast)
-
-			if len(filtered) > 0 {
-				nc.appendPending(filtered...)
-			}
+			nc.appendPending(broadcast...)
 
 			return true
 		})
