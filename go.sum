@@ -191,8 +191,12 @@ github.com/fsnotify/fsnotify v1.10.1 h1:b0/UzAf9yR5rhf3RPm9gf3ehBPpf0oZKIjtpKrx5
 github.com/fsnotify/fsnotify v1.10.1/go.mod h1:TLheqan6HD6GBK6PrDWyDPBaEV8LspOxvPSjC+bVfgo=
 github.com/fxamacker/cbor/v2 v2.9.3 h1:oQBnFATpNdY8gJHTndDDv5Xl4QqNaz51G5LLEPhng3Q=
 github.com/fxamacker/cbor/v2 v2.9.3/go.mod h1:vM4b+DJCtHn+zz7h3FFp/hDAI9WNWCsZj23V5ytsSxQ=
-github.com/gaissmai/bart v0.29.0 h1:wO6HGE8g9YE0Wm0bCpYxwRzfQ4+fbJKOhL64e5ACGCI=
-github.com/gaissmai/bart v0.29.0/go.mod h1:GREWQfTLRWz/c5FTOsIw+KkscuFkIV5t8Rp7Nd1Td5c=
+github.com/gaissmai/bart v0.30.0 h1:K1oTSQ6Nf76bhrgxeTqzZa4hE0M9x4xDfL6n6UG67Sc=
+github.com/gaissmai/bart v0.30.0/go.mod h1:GREWQfTLRWz/c5FTOsIw+KkscuFkIV5t8Rp7Nd1Td5c=
+github.com/gaissmai/extnetip v1.3.2 h1:lNjdWx0pT6hXSfp4lc6jG1WPne0/PS2T8kRPYw26NsM=
+github.com/gaissmai/extnetip v1.3.2/go.mod h1:PepswGWH0GJ4XSdiY7bY2EaEPpCQs7OaYcySeW525fg=
+github.com/gaissmai/iprange v0.7.2 h1:SbJp48XTENS1G6C3uD4iTmUpKsNXooPKhSNFQdP1Bi4=
+github.com/gaissmai/iprange v0.7.2/go.mod h1:TaJ+TAd8tDdpdr+vCnogekk2dZ2U/8EGNA2n5nIp86k=
 github.com/github/fakeca v0.1.0 h1:Km/MVOFvclqxPM9dZBC4+QE564nU4gz4iZ0D9pMw28I=
 github.com/github/fakeca v0.1.0/go.mod h1:+bormgoGMMuamOscx7N91aOuUST7wdaJ2rNjeohylyo=
 github.com/glebarez/go-sqlite v1.22.0 h1:uAcMJhaA6r3LHMTFgP0SifzgXg46yJkgxqyuyec+ruQ=
