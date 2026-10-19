@@ -3,6 +3,7 @@ package mapper
 import (
 	stdcmp "cmp"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -17,14 +18,18 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/dns"
+	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/nodecap"
 	"tailscale.com/types/dnstype"
 	"tailscale.com/types/views"
 )
@@ -1542,6 +1547,348 @@ func BenchmarkGenerateUserProfiles(b *testing.B) {
 					},
 				)
 			}
+		}
+	}
+}
+
+// Frozen from d00f135bf before selected capability snapshots; only names and cmp alias differ.
+func (b *MapResponseBuilder) buildTailPeersCapMapsReference(peers views.Slice[types.NodeView]) ([]*tailcfg.Node, error) {
+	node, ok := b.mapper.state.GetNodeByID(b.nodeID)
+	if !ok {
+		return nil, ErrNodeNotFoundMapper
+	}
+
+	// [State.RoutesForPeer] needs the unreduced matchers: every rule where the
+	// node is source or destination, not only the [State.FilterForNode] rules
+	// where it is destination.
+	matchers, err := b.mapper.state.MatchersForNode(node)
+	if err != nil {
+		return nil, err
+	}
+
+	// Snapshot the per-node policy CapMap once per peer-list build
+	// instead of locking the policy manager per peer. The per-call
+	// path used to take pm.mu N times for an N-peer response.
+	allCapMaps := b.mapper.state.NodeCapMaps()
+
+	// Build tail nodes with per-peer via-aware route function.
+	tailPeers := make([]*tailcfg.Node, 0, peers.Len())
+
+	for _, peer := range peers.All() {
+		// Pass the peer's policy CapMap as selfPolicyCaps so per-peer
+		// address-shape rules (today: disable-ipv4) apply consistently
+		// in the viewer's netmap. The CapMap merge into tn.CapMap is
+		// overwritten by the PeerCapMap call below; only the address
+		// filtering side-effect inside TailNode survives.
+		tn, err := peer.TailNode(b.capVer, func(_ types.NodeID) []netip.Prefix {
+			return b.mapper.state.RoutesForPeer(node, peer, matchers)
+		}, b.mapper.cfg, allCapMaps[peer.ID()])
+		if err != nil {
+			// One peer with invalid data (e.g. an empty or over-long
+			// GivenName that fails GetFQDN) must not blank out the map for
+			// every node that can see it. Drop the offending peer, log it
+			// with the identity an operator needs to fix it, and keep
+			// building from the remaining valid peers.
+			log.Warn().Caller().
+				Err(err).
+				Uint64(zf.NodeID, peer.ID().Uint64()).
+				Str(zf.NodeHostname, peer.Hostname()).
+				Uint64("map.viewer.node.id", b.nodeID.Uint64()).
+				Msgf("dropping peer %d from map response: invalid node data; fix with `headscale nodes rename %d <name>`", peer.ID(), peer.ID())
+
+			continue
+		}
+
+		// [tailcfg.Node.CapMap] on a peer carries the small set of
+		// caps the Tailscale client reads from the peer view rather
+		// than the self view (suggest-exit-node, dns-subdomain-resolve
+		// — see [tailcfg.NodeAttrSuggestExitNode] and
+		// [tailcfg.NodeAttrDNSSubdomainResolve]).
+		// The Tailscale-hosted control plane stamps these only when
+		// the peer satisfies the cap's emission condition; every other
+		// cap stays off the peer view, leaving CapMap empty for most
+		// peers. [policyv2.PeerCapMap] encodes those conditions.
+		tn.CapMap = policyv2.PeerCapMap(peer, allCapMaps[peer.ID()])
+
+		tailPeers = append(tailPeers, tn)
+	}
+
+	// Peers is always returned sorted by Node.ID.
+	slices.SortStableFunc(tailPeers, func(a, b *tailcfg.Node) int {
+		return stdcmp.Compare(a.ID, b.ID)
+	})
+
+	return tailPeers, nil
+}
+
+func (b *MapResponseBuilder) withPeersCapMapsReference(peers views.Slice[types.NodeView]) *MapResponseBuilder {
+	tailPeers, err := b.buildTailPeersCapMapsReference(peers)
+	if err != nil {
+		b.addError(err)
+		return b
+	}
+
+	b.resp.Peers = tailPeers
+
+	return b
+}
+
+func (m *mapper) fullMapResponseCapMapsReference(
+	nodeID types.NodeID,
+	capVer tailcfg.CapabilityVersion,
+) (*tailcfg.MapResponse, error) {
+	peers := m.state.ListPeers(nodeID)
+
+	return m.NewMapResponseBuilder(nodeID).
+		WithDebugType(fullResponseDebug).
+		WithCapabilityVersion(capVer).
+		WithSelfNode().
+		WithDERPMap().
+		WithDomain().
+		WithCollectServicesDisabled().
+		WithDebugConfig().
+		WithSSHPolicy().
+		WithDNSConfig().
+		WithUserProfiles(peers).
+		WithPacketFilters().
+		withPeersCapMapsReference(peers).
+		Build()
+}
+
+// A star policy gives the viewer all peers without retaining a dense N² peer map.
+func capMapsMapperFixture(tb testing.TB, n int, attrs string) (*mapper, []types.NodeView) {
+	tb.Helper()
+
+	p4 := netip.MustParsePrefix("100.64.0.0/10")
+	p6 := netip.MustParsePrefix("fd7a:115c:a1e0::/48")
+	cfg := &types.Config{
+		Database: types.DatabaseConfig{
+			Type:   types.DatabaseSqlite,
+			Sqlite: types.SqliteConfig{Path: tb.TempDir() + "/caps.db"},
+		},
+		PrefixV4: &p4, PrefixV6: &p6,
+		IPAllocation: types.IPAllocationStrategySequential,
+		BaseDomain:   "headscale.test",
+		Policy:       types.PolicyConfig{Mode: types.PolicyModeDB},
+		Tuning: types.Tuning{
+			NodeStoreBatchSize:    state.TestBatchSize,
+			NodeStoreBatchTimeout: state.TestBatchTimeout,
+		},
+	}
+	database, err := db.NewHeadscaleDatabase(cfg)
+	require.NoError(tb, err)
+
+	user := database.CreateUserForTest("capuser")
+	nodes := make(types.Nodes, n)
+	ip4, ip6 := netip.MustParseAddr("100.64.0.1"), netip.MustParseAddr("fd7a:115c:a1e0::1")
+
+	for i := range nodes {
+		name := fmt.Sprintf("capnode%d", i+1)
+
+		nodes[i] = &types.Node{
+			ID: types.NodeID(i + 1), Hostname: name, GivenName: name,
+			UserID: &user.ID, User: user,
+			IPv4: new(ip4), IPv6: new(ip6),
+			Hostinfo: &tailcfg.Hostinfo{},
+		}
+		if i%8 == 1 {
+			routes := []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0")}
+			nodes[i].ApprovedRoutes = routes
+			nodes[i].Hostinfo.RoutableIPs = routes
+		}
+
+		ip4, ip6 = ip4.Next(), ip6.Next()
+	}
+
+	require.NoError(tb, database.DB.Omit("User").CreateInBatches(nodes, 100).Error)
+	_, err = database.SetPolicy(`{
+		"acls":[{"action":"accept","src":["100.64.0.1"],"dst":["*:*"]}],
+		"nodeAttrs":` + attrs + `}`)
+	require.NoError(tb, err)
+	require.NoError(tb, database.Close())
+
+	s, err := state.NewState(cfg)
+	require.NoError(tb, err)
+	tb.Cleanup(func() { require.NoError(tb, s.Close()) })
+	s.SetDERPMap(&tailcfg.DERPMap{Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{}})
+	stored := s.ListNodes().AsSlice()
+	slices.SortFunc(stored, func(a, b types.NodeView) int { return stdcmp.Compare(a.ID(), b.ID()) })
+	require.Len(tb, stored, n)
+
+	return &mapper{state: s, cfg: cfg}, stored
+}
+
+func TestBuildTailPeersCapMapsReference(t *testing.T) {
+	for _, attrs := range []struct {
+		name, policy string
+	}{
+		{"empty", `[]`},
+		{"partial", `[{"target":["100.64.0.2"],"attr":["disable-ipv4","suggest-exit-node"]}]`},
+		{"all", `[{"target":["*"],"attr":["disable-ipv4","suggest-exit-node"]}]`},
+	} {
+		t.Run(attrs.name, func(t *testing.T) {
+			m, nodes := capMapsMapperFixture(t, 5, attrs.policy)
+			duplicate := nodes[1].AsStruct()
+			duplicate.GivenName = "same-id-different-name"
+			missing := nodes[2].AsStruct()
+			missing.ID = 999
+			invalid := nodes[3].AsStruct()
+
+			invalid.GivenName = ""
+			for _, selection := range []struct {
+				name  string
+				peers []types.NodeView
+			}{
+				{"nil", nil},
+				{"empty", []types.NodeView{}},
+				{"one", nodes[1:2]},
+				{"full", nodes[1:]},
+				{"missing", []types.NodeView{missing.View()}},
+				{"duplicates", []types.NodeView{nodes[3], duplicate.View(), nodes[1], nodes[2], nodes[1]}},
+				{"invalid-name", []types.NodeView{invalid.View(), nodes[1]}},
+			} {
+				t.Run(selection.name, func(t *testing.T) {
+					peers := views.SliceOf(selection.peers)
+					before, err := json.Marshal(m.state.NodeCapMaps())
+					require.NoError(t, err)
+
+					builder := m.NewMapResponseBuilder(nodes[0].ID()).WithCapabilityVersion(tailcfg.CurrentCapabilityVersion)
+					want, wantErr := builder.buildTailPeersCapMapsReference(peers)
+					got, gotErr := builder.buildTailPeers(peers)
+					require.Equal(t, wantErr, gotErr)
+					require.Equal(t, want, got, "nil/empty, ordering, duplicates, routes and peer caps must match")
+					require.NotNil(t, got)
+
+					for _, peer := range got {
+						if peer.ID == nodes[1].ID().NodeID() {
+							require.Contains(t, peer.CapMap, nodecap.SuggestExitNode)
+
+							if attrs.name != "empty" {
+								require.Equal(t, []netip.Prefix{netip.PrefixFrom(nodes[1].IPv6().Get(), 128)}, peer.Addresses)
+								require.NotContains(t, peer.CapMap, nodecap.Cap("disable-ipv4"), "self caps must not leak into the peer view")
+							}
+						}
+
+						if peer.CapMap != nil {
+							peer.CapMap["caller-only"] = nil
+							delete(peer.CapMap, nodecap.SuggestExitNode)
+						}
+					}
+
+					after, err := json.Marshal(m.state.NodeCapMaps())
+					require.NoError(t, err)
+					require.Equal(t, before, after, "rendering must not mutate manager-owned inner maps")
+
+					again, err := builder.buildTailPeers(peers)
+					require.NoError(t, err)
+					require.Equal(t, want, again, "output mutations must not affect later builds")
+				})
+			}
+
+			builder := m.NewMapResponseBuilder(999)
+			want, wantErr := builder.buildTailPeersCapMapsReference(views.SliceOf(nodes))
+			got, gotErr := builder.buildTailPeers(views.SliceOf(nodes))
+			require.Equal(t, want, got)
+			require.Equal(t, wantErr, gotErr)
+			require.ErrorIs(t, gotErr, ErrNodeNotFoundMapper)
+
+			for _, pol := range []string{
+				"",
+				`{"nodeAttrs":[{"target":["*"],"attr":["randomize-client-port"]}]}`,
+				`{"randomizeClientPort":true}`,
+			} {
+				if pol != "" {
+					_, err := m.state.SetPolicy([]byte(pol))
+					require.NoError(t, err)
+				}
+
+				want, err := m.fullMapResponseCapMapsReference(nodes[0].ID(), tailcfg.CurrentCapabilityVersion)
+				require.NoError(t, err)
+				got, err := m.fullMapResponse(nodes[0].ID(), tailcfg.CurrentCapabilityVersion)
+				require.NoError(t, err)
+
+				want.ControlTime, got.ControlTime = nil, nil
+				require.Equal(t, want, got)
+			}
+		})
+	}
+}
+
+var (
+	capMapsBuilderBenchmarkSink  []*tailcfg.Node
+	capMapsResponseBenchmarkSink *tailcfg.MapResponse
+)
+
+func BenchmarkBuildTailPeersCapMaps(b *testing.B) {
+	previousLevel := zerolog.GlobalLevel()
+
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	b.Cleanup(func() { zerolog.SetGlobalLevel(previousLevel) })
+
+	for _, n := range []int{100, 1000, 10000} {
+		for _, attrs := range []struct{ name, policy string }{
+			{"empty", `[]`},
+			{"partial", `[{"target":["100.64.0.2"],"attr":["disable-ipv4"]}]`},
+			{"all", `[{"target":["*"],"attr":["disable-ipv4"]}]`},
+		} {
+			b.Run(fmt.Sprintf("N%d/%s", n, attrs.name), func(b *testing.B) {
+				m, nodes := capMapsMapperFixture(b, n, attrs.policy)
+				builder := m.NewMapResponseBuilder(nodes[0].ID()).WithCapabilityVersion(tailcfg.CurrentCapabilityVersion)
+
+				allPeers := views.SliceOf(nodes[1:])
+				for _, k := range []int{0, 1, 8, allPeers.Len()} {
+					peers := allPeers.Slice(0, k)
+					b.Run(fmt.Sprintf("K%d/reference", k), func(b *testing.B) {
+						b.ReportAllocs()
+
+						for b.Loop() {
+							var err error
+
+							capMapsBuilderBenchmarkSink, err = builder.buildTailPeersCapMapsReference(peers)
+							if err != nil {
+								b.Fatal(err)
+							}
+						}
+					})
+					b.Run(fmt.Sprintf("K%d/selected", k), func(b *testing.B) {
+						b.ReportAllocs()
+
+						for b.Loop() {
+							var err error
+
+							capMapsBuilderBenchmarkSink, err = builder.buildTailPeers(peers)
+							if err != nil {
+								b.Fatal(err)
+							}
+						}
+					})
+				}
+
+				b.Run("fullresponse/reference", func(b *testing.B) {
+					b.ReportAllocs()
+
+					for b.Loop() {
+						var err error
+
+						capMapsResponseBenchmarkSink, err = m.fullMapResponseCapMapsReference(nodes[0].ID(), tailcfg.CurrentCapabilityVersion)
+						if err != nil {
+							b.Fatal(err)
+						}
+					}
+				})
+				b.Run("fullresponse/selected", func(b *testing.B) {
+					b.ReportAllocs()
+
+					for b.Loop() {
+						var err error
+
+						capMapsResponseBenchmarkSink, err = m.fullMapResponse(nodes[0].ID(), tailcfg.CurrentCapabilityVersion)
+						if err != nil {
+							b.Fatal(err)
+						}
+					}
+				})
+			})
 		}
 	}
 }
