@@ -2,14 +2,15 @@ package util
 
 import (
 	"fmt"
-	"iter"
 	"net/netip"
 	"strings"
 
+	"github.com/gaissmai/iprange"
+	"github.com/juanfont/headscale/hscontrol/ipset"
 	"go4.org/netipx"
 )
 
-// This is borrowed from, and updated to use [netipx.IPSet]
+// This is borrowed from, and updated to use [ipset.Set]
 // https://github.com/tailscale/tailscale/blob/71029cea2ddf82007b80f465b256d027eab0f02d/wgengine/filter/tailcfg.go#L97-L162
 // TODO(kradalby): contribute upstream and make public.
 
@@ -23,66 +24,61 @@ import (
 // bits, if non-nil, is the legacy [tailcfg.FilterRule.SrcBits] CIDR length to make a IP
 // address (without a slash) treated as a CIDR of *bits length.
 // nolint
-func ParseIPSet(arg string, bits *int) (*netipx.IPSet, error) {
-	var ipSet netipx.IPSetBuilder
+func ParseIPSet(arg string, bits *int) (ipset.Set, error) {
+	var ipSet ipset.Builder
 	if arg == "*" {
-		ipSet.AddPrefix(netip.PrefixFrom(netip.IPv4Unspecified(), 0))
-		ipSet.AddPrefix(netip.PrefixFrom(netip.IPv6Unspecified(), 0))
-
-		return ipSet.IPSet()
+		return ipset.All(), nil
 	}
 	if strings.Contains(arg, "/") {
 		pfx, err := netip.ParsePrefix(arg)
 		if err != nil {
-			return nil, err
+			return ipset.Set{}, err
 		}
 		if pfx != pfx.Masked() {
-			return nil, fmt.Errorf("%v contains non-network bits set", pfx)
+			return ipset.Set{}, fmt.Errorf("%v contains non-network bits set", pfx)
 		}
 
 		ipSet.AddPrefix(pfx)
 
-		return ipSet.IPSet()
+		return ipSet.Build()
 	}
 	if strings.Count(arg, "-") == 1 {
 		ip1s, ip2s, _ := strings.Cut(arg, "-")
 
 		ip1, err := netip.ParseAddr(ip1s)
 		if err != nil {
-			return nil, err
+			return ipset.Set{}, err
 		}
 
 		ip2, err := netip.ParseAddr(ip2s)
 		if err != nil {
-			return nil, err
+			return ipset.Set{}, err
 		}
 
-		r := netipx.IPRangeFrom(ip1, ip2)
-		if !r.IsValid() {
-			return nil, fmt.Errorf("invalid IP range %q", arg)
+		r, err := iprange.FromAddrs(ip1.WithZone(""), ip2.WithZone(""))
+		if err != nil {
+			return ipset.Set{}, fmt.Errorf("invalid IP range %q", arg)
 		}
 
-		for _, prefix := range r.Prefixes() {
-			ipSet.AddPrefix(prefix)
-		}
+		ipSet.AddRange(r)
 
-		return ipSet.IPSet()
+		return ipSet.Build()
 	}
 	ip, err := netip.ParseAddr(arg)
 	if err != nil {
-		return nil, fmt.Errorf("invalid IP address %q", arg)
+		return ipset.Set{}, fmt.Errorf("invalid IP address %q", arg)
 	}
 	bits8 := uint8(ip.BitLen())
 	if bits != nil {
 		if *bits < 0 || *bits > int(bits8) {
-			return nil, fmt.Errorf("invalid CIDR size %d for IP %q", *bits, arg)
+			return ipset.Set{}, fmt.Errorf("invalid CIDR size %d for IP %q", *bits, arg)
 		}
 		bits8 = uint8(*bits)
 	}
 
 	ipSet.AddPrefix(netip.PrefixFrom(ip, int(bits8)))
 
-	return ipSet.IPSet()
+	return ipSet.Build()
 }
 
 func GetIPPrefixEndpoints(na netip.Prefix) (netip.Addr, netip.Addr) {
@@ -104,21 +100,4 @@ func StringToIPPrefix(prefixes []string) ([]netip.Prefix, error) {
 	}
 
 	return result, nil
-}
-
-// IPSetAddrIter returns a function that iterates over all the IPs in the [netipx.IPSet].
-func IPSetAddrIter(ipSet *netipx.IPSet) iter.Seq[netip.Addr] {
-	return func(yield func(netip.Addr) bool) {
-		for _, rng := range ipSet.Ranges() {
-			for ip := rng.From(); ip.Compare(rng.To()) <= 0; ip = ip.Next() {
-				if !yield(ip) {
-					return
-				}
-
-				if ip == rng.To() {
-					break
-				}
-			}
-		}
-	}
 }

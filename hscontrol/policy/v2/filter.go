@@ -8,10 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/ipset"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
-	"go4.org/netipx"
 	"tailscale.com/tailcfg"
 	"tailscale.com/tailcfg/peercap"
 	"tailscale.com/types/views"
@@ -103,11 +102,29 @@ func sourcesHaveDangerAll(srcs Aliases) bool {
 	return false
 }
 
+// ipSetToStrings preserves legacy wire address and range formatting.
+func ipSetToStrings(ips ipset.Set) []string {
+	var result []string
+
+	for r := range ips.Ranges() {
+		first, last := r.Addrs()
+		if first == last {
+			result = append(result, first.String())
+		} else if p, ok := r.Prefix(); ok {
+			result = append(result, p.String())
+		} else {
+			result = append(result, r.String())
+		}
+	}
+
+	return result
+}
+
 // srcIPsWithRoutes returns the [tailcfg.FilterRule.SrcIPs] string slice,
 // appending approved subnet routes when the sources include a wildcard.
 // When hasDangerAll is true, returns ["*"] to represent all IPs.
 func srcIPsWithRoutes(
-	resolved ResolvedAddresses,
+	resolved ipset.Set,
 	hasWildcard bool,
 	hasDangerAll bool,
 	nodes views.Slice[types.NodeView],
@@ -116,7 +133,7 @@ func srcIPsWithRoutes(
 		return []string{"*"}
 	}
 
-	ips := resolved.Strings()
+	ips := ipSetToStrings(resolved)
 	if hasWildcard {
 		ips = append(ips, approvedSubnetRoutes(nodes)...)
 	}
@@ -164,14 +181,14 @@ func (pol *Policy) destinationsToNetPortRange(
 			log.Trace().Caller().Err(err).Msgf("resolving destination ips")
 		}
 
-		if ips == nil {
+		if ips.IsEmpty() {
 			log.Debug().Caller().Msgf("destination resolved to nil ips: %v", dest)
 			continue
 		}
 
 		prefixes := ips.Prefixes()
 
-		for _, pref := range prefixes {
+		for pref := range prefixes {
 			for _, port := range ports {
 				pr := tailcfg.NetPortRange{
 					IP:    pref.String(),
@@ -289,7 +306,7 @@ func (pol *Policy) compileSSHPolicy(
 			)
 		}
 
-		if srcIPs == nil || len(srcIPs.Prefixes()) == 0 {
+		if srcIPs.IsEmpty() {
 			continue
 		}
 
@@ -375,7 +392,7 @@ func (pol *Policy) compileSSHPolicy(
 
 		// Handle other destinations.
 		if len(otherDests) > 0 {
-			var dest netipx.IPSetBuilder
+			var dest ipset.Builder
 
 			for _, dst := range otherDests {
 				ips, err := dst.Resolve(pol, users, nodes)
@@ -384,14 +401,10 @@ func (pol *Policy) compileSSHPolicy(
 						Msgf("resolving destination ips")
 				}
 
-				if ips != nil {
-					for _, pref := range ips.Prefixes() {
-						dest.AddPrefix(pref)
-					}
-				}
+				dest.AddSet(ips)
 			}
 
-			destSet, err := dest.IPSet()
+			destSet, err := dest.Build()
 			if err != nil {
 				return nil, err
 			}
@@ -429,12 +442,12 @@ func (pol *Policy) compileSSHPolicy(
 				// Self-access: source node not in destination set
 				// receives rules scoped to its own user.
 				if node.IsTagged() {
-					var builder netipx.IPSetBuilder
+					var builder ipset.Builder
 
 					node.AppendToIPSet(&builder)
 
-					ipSet, err := builder.IPSet()
-					if err == nil && ipSet != nil {
+					ipSet, err := builder.Build()
+					if err == nil && !ipSet.IsEmpty() {
 						if principals := ipSetToPrincipals(ipSet); len(principals) > 0 {
 							appendRules(principals, 0, false)
 						}
@@ -471,15 +484,15 @@ func (pol *Policy) compileSSHPolicy(
 	}, nil
 }
 
-// ipSetToPrincipals converts an [netipx.IPSet] into SSH principals, one per address.
-func ipSetToPrincipals(ipSet *netipx.IPSet) []*tailcfg.SSHPrincipal {
-	if ipSet == nil {
+// ipSetToPrincipals converts an [ipset.Set] into SSH principals, one per address.
+func ipSetToPrincipals(ipSet ipset.Set) []*tailcfg.SSHPrincipal {
+	if ipSet.IsEmpty() {
 		return nil
 	}
 
 	var principals []*tailcfg.SSHPrincipal
 
-	for addr := range util.IPSetAddrIter(ipSet) {
+	for addr := range ipSet.Addrs() {
 		principals = append(principals, &tailcfg.SSHPrincipal{
 			NodeIP: addr.String(),
 		})
@@ -538,9 +551,9 @@ func resolveLocalparts(
 // Only includes nodes whose IPs are in the srcIPs set.
 func groupSourcesByUser(
 	nodes views.Slice[types.NodeView],
-	srcIPs ResolvedAddresses,
+	srcIPs ipset.Set,
 ) ([]uint, map[uint][]*tailcfg.SSHPrincipal, []*tailcfg.SSHPrincipal) {
-	userIPSets := make(map[uint]*netipx.IPSetBuilder)
+	userIPSets := make(map[uint]*ipset.Builder)
 
 	var taggedPrincipals []*tailcfg.SSHPrincipal
 
@@ -572,7 +585,7 @@ func groupSourcesByUser(
 		uid := n.User().ID()
 
 		if _, ok := userIPSets[uid]; !ok {
-			userIPSets[uid] = &netipx.IPSetBuilder{}
+			userIPSets[uid] = &ipset.Builder{}
 		}
 
 		n.AppendToIPSet(userIPSets[uid])
@@ -583,8 +596,8 @@ func groupSourcesByUser(
 	principalsByUser := make(map[uint][]*tailcfg.SSHPrincipal, len(userIPSets))
 
 	for uid, builder := range userIPSets {
-		ipSet, err := builder.IPSet()
-		if err != nil || ipSet == nil {
+		ipSet, err := builder.Build()
+		if err != nil || ipSet.IsEmpty() {
 			continue
 		}
 

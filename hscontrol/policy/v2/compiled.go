@@ -6,10 +6,10 @@ import (
 	"net/netip"
 	"slices"
 
+	"github.com/juanfont/headscale/hscontrol/ipset"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
-	"go4.org/netipx"
 	"tailscale.com/tailcfg"
 	"tailscale.com/tailcfg/nodecap"
 	"tailscale.com/tailcfg/peercap"
@@ -64,7 +64,7 @@ type compiledGrant struct {
 // selfGrantData holds data needed for per-node autogroup:self
 // compilation. Sources are already resolved.
 type selfGrantData struct {
-	resolvedSrcs      []ResolvedAddresses
+	resolvedSrcs      []ipset.Set
 	internetProtocols []ProtocolPort
 	app               tailcfg.PeerCapMap
 }
@@ -108,11 +108,11 @@ func resolveViaDestinations(
 		}
 
 		ips, err := d.Resolve(pol, users, nodes)
-		if err != nil || ips == nil {
+		if err != nil || ips.IsEmpty() {
 			continue
 		}
 
-		prefixes = append(prefixes, ips.Prefixes()...)
+		prefixes = append(prefixes, slices.Collect(ips.Prefixes())...)
 	}
 
 	return prefixes, hasAutoGroupInternet
@@ -207,7 +207,7 @@ func (pol *Policy) compileNodeAttrs(
 			return nil, fmt.Errorf("nodeAttrs target %s: %w", na.Targets, err)
 		}
 
-		if resolved == nil {
+		if resolved.IsEmpty() {
 			continue
 		}
 
@@ -343,17 +343,15 @@ func (pol *Policy) compileOneGrant(
 }
 
 // mergeResolvedSrcs merges every prefix from the resolved sources into a
-// single [resolved] address set.
-func mergeResolvedSrcs(resolvedSrcs []ResolvedAddresses) (resolved, error) {
-	var b netipx.IPSetBuilder
+// single [ipset.Set] address set.
+func mergeResolvedSrcs(resolvedSrcs []ipset.Set) (ipset.Set, error) {
+	var b ipset.Builder
 
 	for _, ips := range resolvedSrcs {
-		for _, pref := range ips.Prefixes() {
-			b.AddPrefix(pref)
-		}
+		b.AddSet(ips)
 	}
 
-	return newResolved(&b)
+	return b.Build()
 }
 
 // compileOneViaGrant resolves sources for a via grant and stores the
@@ -385,7 +383,7 @@ func (pol *Policy) compileOneViaGrant(
 		return nil, err
 	}
 
-	if srcResolved.Empty() {
+	if srcResolved.IsEmpty() {
 		return nil, nil //nolint:nilnil
 	}
 
@@ -420,8 +418,8 @@ func resolveSources(
 	sources Aliases,
 	users types.Users,
 	nodes views.Slice[types.NodeView],
-) ([]ResolvedAddresses, []ResolvedAddresses, error) {
-	var all, nonWild []ResolvedAddresses
+) ([]ipset.Set, []ipset.Set, error) {
+	var all, nonWild []ipset.Set
 
 	for i, src := range sources {
 		if ag, ok := src.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
@@ -434,7 +432,7 @@ func resolveSources(
 				Msg("resolving source ips")
 		}
 
-		if ips != nil {
+		if !ips.IsEmpty() {
 			all = append(all, ips)
 
 			if _, isWildcard := sources[i].(Asterix); !isWildcard {
@@ -450,12 +448,12 @@ func resolveSources(
 // resolved sources, preserving non-wildcard IPs alongside wildcard
 // CGNAT ranges to match Tailscale SaaS behavior.
 func buildSrcIPStrings(
-	resolvedSrcs, nonWildcardSrcs []ResolvedAddresses,
+	resolvedSrcs, nonWildcardSrcs []ipset.Set,
 	hasWildcard, hasDangerAll bool,
 	nodes views.Slice[types.NodeView],
 ) []string {
 	srcResolved, err := mergeResolvedSrcs(resolvedSrcs)
-	if err != nil || srcResolved.Empty() {
+	if err != nil || srcResolved.IsEmpty() {
 		return nil
 	}
 
@@ -471,7 +469,7 @@ func buildSrcIPStrings(
 		seen := set.SetOf(srcIPStrs)
 
 		for _, ips := range nonWildcardSrcs {
-			for _, s := range ips.Strings() {
+			for _, s := range ipSetToStrings(ips) {
 				if !seen.Contains(s) {
 					seen.Add(s)
 					srcIPStrs = append(srcIPStrs, s)
@@ -483,6 +481,26 @@ func buildSrcIPStrings(
 	return srcIPStrs
 }
 
+type resolvedDestination struct {
+	Alias
+
+	addresses ipset.Set
+	err       error
+}
+
+func (dst resolvedDestination) Resolve(
+	_ *Policy,
+	_ types.Users,
+	_ views.Slice[types.NodeView],
+) (ipset.Set, error) {
+	return dst.addresses, dst.err
+}
+
+func (dst resolvedDestination) resolveInto(_ *Policy, _ types.Users, _ views.Slice[types.NodeView], b *ipset.Builder) error {
+	b.AddSet(dst.addresses)
+	return dst.err
+}
+
 // compileOtherDests compiles filter rules for non-self, non-via
 // destinations. This produces both [tailcfg.FilterRule.DstPorts] rules
 // (from [Grant.InternetProtocols]) and [tailcfg.CapGrant] rules (from
@@ -492,7 +510,7 @@ func (pol *Policy) compileOtherDests(
 	nodes views.Slice[types.NodeView],
 	grant Grant,
 	otherDests Aliases,
-	resolvedSrcs []ResolvedAddresses,
+	resolvedSrcs []ipset.Set,
 	srcIPStrings []string,
 ) []tailcfg.FilterRule {
 	var rules []tailcfg.FilterRule
@@ -535,18 +553,18 @@ func (pol *Policy) compileOtherDests(
 			}
 
 			capGrants = append(capGrants, tailcfg.CapGrant{
-				Dsts:   ips.Prefixes(),
+				Dsts:   slices.Collect(ips.Prefixes()),
 				CapMap: grant.App,
 			})
 
-			dstIPStrings = append(dstIPStrings, ips.Strings()...)
+			dstIPStrings = append(dstIPStrings, ipSetToStrings(ips)...)
 		}
 
 		if len(capGrants) > 0 {
 			srcPrefixes := make([]netip.Prefix, 0, len(resolvedSrcs)*2)
 			for _, ips := range resolvedSrcs {
 				srcPrefixes = append(
-					srcPrefixes, ips.Prefixes()...,
+					srcPrefixes, slices.Collect(ips.Prefixes())...,
 				)
 			}
 
@@ -595,8 +613,8 @@ func hasPerNodeGrants(grants []compiledGrant) bool {
 // resolved relay destinations (see [Policy.compileOtherDests]); the reversed
 // companion rule carries [tailcfg.PeerCapabilityRelayTarget] instead and is
 // intentionally skipped.
-func collectRelayTargetIPs(grants []compiledGrant) (*netipx.IPSet, error) {
-	var b netipx.IPSetBuilder
+func collectRelayTargetIPs(grants []compiledGrant) (ipset.Set, error) {
+	var b ipset.Builder
 
 	for i := range grants {
 		for _, rule := range grants[i].rules {
@@ -612,7 +630,7 @@ func collectRelayTargetIPs(grants []compiledGrant) (*netipx.IPSet, error) {
 		}
 	}
 
-	return b.IPSet()
+	return b.Build()
 }
 
 // collectViaTargetTags returns the set of tags used as via targets across all
@@ -763,7 +781,7 @@ func compileSelfForUser(
 	srcResolved := filterSourcesToSameUser(
 		cg.self.resolvedSrcs, sameUserNodes,
 	)
-	if srcResolved == nil || srcResolved.Empty() {
+	if srcResolved.IsEmpty() {
 		return nil
 	}
 
@@ -787,7 +805,7 @@ func compileSelfForUser(
 
 		if len(destPorts) > 0 {
 			rules = append(rules, tailcfg.FilterRule{
-				SrcIPs:   srcResolved.Strings(),
+				SrcIPs:   ipSetToStrings(srcResolved),
 				DstPorts: destPorts,
 				IPProto:  ipp.Protocol.toIANAProtocolNumbers(),
 			})
@@ -821,7 +839,7 @@ func compileSelfForUser(
 
 		if len(capGrants) > 0 {
 			rules = append(rules, tailcfg.FilterRule{
-				SrcIPs:   srcResolved.Strings(),
+				SrcIPs:   ipSetToStrings(srcResolved),
 				CapGrant: capGrants,
 			})
 
@@ -829,7 +847,7 @@ func compileSelfForUser(
 				rules,
 				companionCapGrantRules(
 					dstIPStrings,
-					srcResolved.Prefixes(),
+					slices.Collect(srcResolved.Prefixes()),
 					cg.self.app,
 				)...,
 			)
@@ -843,10 +861,10 @@ func compileSelfForUser(
 // same-user untagged device IPs, returning only the addresses that
 // belong to those devices.
 func filterSourcesToSameUser(
-	resolvedSrcs []ResolvedAddresses,
+	resolvedSrcs []ipset.Set,
 	sameUserNodes []types.NodeView,
-) ResolvedAddresses {
-	var srcIPs netipx.IPSetBuilder
+) ipset.Set {
+	var srcIPs ipset.Builder
 
 	for _, ips := range resolvedSrcs {
 		for _, n := range sameUserNodes {
@@ -856,9 +874,9 @@ func filterSourcesToSameUser(
 		}
 	}
 
-	srcResolved, err := newResolved(&srcIPs)
+	srcResolved, err := srcIPs.Build()
 	if err != nil {
-		return nil
+		return ipset.Set{}
 	}
 
 	return srcResolved
@@ -921,7 +939,7 @@ func compileViaForNode(
 	if cg.via.hasAutoGroupInternet && node.IsExitNode() {
 		viaDstPrefixes = append(
 			viaDstPrefixes,
-			util.TheInternet().Prefixes()...,
+			slices.Collect(util.TheInternet().Prefixes())...,
 		)
 	}
 

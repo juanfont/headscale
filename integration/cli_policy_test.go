@@ -46,7 +46,7 @@ func TestPolicyCheckCommand(t *testing.T) {
 		ACLs: []policyv2.ACL{
 			{
 				Action:   policyv2.ActionAccept,
-				Protocol: "tcp", //nolint:goconst // protocol literal, used inline once
+				Protocol: policyv2.ProtocolNameTCP,
 				Sources:  []policyv2.Alias{usernamep(user1)},
 				Destinations: []policyv2.AliasWithPorts{
 					aliasWithPorts(usernamep(user2), tailcfg.PortRange{First: 22, Last: 22}),
@@ -58,8 +58,8 @@ func TestPolicyCheckCommand(t *testing.T) {
 	aclPlusPassingTests := aclOnly
 	aclPlusPassingTests.Tests = []policyv2.PolicyTest{
 		{
-			Src:    user1,
-			Accept: []string{user2 + ":22"},
+			Src:    usernamep(user1),
+			Accept: []policyv2.AliasWithPorts{aliasWithPorts(usernamep(user2), tailcfg.PortRange{First: 22, Last: 22})},
 		},
 	}
 
@@ -68,8 +68,8 @@ func TestPolicyCheckCommand(t *testing.T) {
 		{
 			// Reverse direction is not allowed by the ACL; the test
 			// asserts ALLOWED, so it must fail.
-			Src:    user2,
-			Accept: []string{user1 + ":22"},
+			Src:    usernamep(user2),
+			Accept: []policyv2.AliasWithPorts{aliasWithPorts(usernamep(user1), tailcfg.PortRange{First: 22, Last: 22})},
 		},
 	}
 
@@ -340,7 +340,7 @@ func TestPolicyCommand(t *testing.T) {
 		ACLs: []policyv2.ACL{
 			{
 				Action:   "accept",
-				Protocol: "tcp",
+				Protocol: policyv2.ProtocolNameTCP,
 				Sources:  []policyv2.Alias{wildcard()},
 				Destinations: []policyv2.AliasWithPorts{
 					aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
@@ -427,7 +427,7 @@ func TestPolicyBrokenConfigCommand(t *testing.T) {
 				// This is an unknown action, so it will return an error
 				// and the config will not be applied.
 				Action:   "unknown-action",
-				Protocol: "tcp",
+				Protocol: policyv2.ProtocolNameTCP,
 				Sources:  []policyv2.Alias{wildcard()},
 				Destinations: []policyv2.AliasWithPorts{
 					aliasWithPorts(wildcard(), tailcfg.PortRangeAny),

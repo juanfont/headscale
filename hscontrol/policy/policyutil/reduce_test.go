@@ -91,7 +91,7 @@ var hsExitNodeDestForTest = []tailcfg.NetPortRange{
 func TestTheInternet(t *testing.T) {
 	internetSet := util.TheInternet()
 
-	internetPrefs := internetSet.Prefixes()
+	internetPrefs := slices.Collect(internetSet.Prefixes())
 
 	for i := range internetPrefs {
 		if internetPrefs[i].String() != hsExitNodeDestForTest[i].IP {
@@ -2275,5 +2275,34 @@ func TestNodeInIPSetReference(t *testing.T) {
 
 			require.Equal(t, tt.want, nodeInIPSetReference(tt.node.View(), set))
 		})
+	}
+}
+
+func TestTypedAddressBoundaryMatchesReference(t *testing.T) {
+	for _, input := range []string{
+		"*", "100.64.0.1", "fd00::1", "10.0.0.0/24", "10.0.0.1/24",
+		"10.0.0.1-10.0.0.3", "fd00::1-fd00::3", "10.0.0.3-10.0.0.1",
+		"10.0.0.1-fd00::1", "fe80::1%eth0", "fe80::1%eth0-fe80::2%eth1",
+		"fe80::1%eth-0", "fe80::1%eth--0", "fe80::1%eth0/64",
+		"::ffff:100.64.0.1", "::ffff:100.64.0.0/112", "::ffff:100.64.0.1/120",
+		"255.255.255.255", "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff", "invalid", "",
+	} {
+		for _, bits := range []*int{nil, new(-1), new(0), new(24), new(32), new(64), new(128), new(129)} {
+			want, wantErr := parseIPSetReference(input, bits)
+			got, gotErr := util.ParseIPSet(input, bits)
+			require.Equal(t, fmt.Sprint(wantErr), fmt.Sprint(gotErr), "input %q, bits %v", input, bits)
+
+			if wantErr != nil {
+				continue
+			}
+
+			require.Equal(t, want.Prefixes(), slices.Collect(got.Prefixes()), input)
+
+			for _, address := range []string{"100.64.0.1", "::ffff:100.64.0.1", "fe80::1", "fe80::1%eth0", "fd00::1"} {
+				node := types.Node{IPv4: new(netip.MustParseAddr(address)), IPv6: new(netip.MustParseAddr("fd00::2"))}
+				require.Equal(t, nodeInIPSetReference(node.View(), want), node.InIPSet(got), input)
+				require.Equal(t, nodeInIPSetReference(node.View(), want), node.View().InIPSet(got), input)
+			}
+		}
 	}
 }

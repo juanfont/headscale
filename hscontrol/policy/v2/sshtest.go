@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/juanfont/headscale/hscontrol/types"
-	"go4.org/netipx"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/views"
 )
@@ -392,11 +391,11 @@ func resolveSSHTestSource(
 		return nil, 0, fmt.Errorf("resolving: %w", err)
 	}
 
-	if addrs == nil || addrs.Empty() {
+	if addrs.IsEmpty() {
 		return nil, 0, nil
 	}
 
-	out := slices.Collect(addrs.Iter())
+	out := slices.Collect(addrs.Addrs())
 
 	var userID uint
 
@@ -414,7 +413,7 @@ func resolveSSHTestSource(
 // resolveSSHTestDestNodes maps each dst alias to its destination
 // [types.NodeView]s. autogroup:self needs special handling: it cannot
 // resolve without per-node context, so it walks the node set keyed on
-// src's owning user. Other aliases resolve to an [netipx.IPSet] and match
+// src's owning user. Other aliases resolve to an [ipset.Set] and match
 // via [types.NodeView.InIPSet].
 func resolveSSHTestDestNodes(
 	dsts SSHTestDestinations,
@@ -478,19 +477,14 @@ func resolveSSHTestDestNodes(
 			return nil, nil, fmt.Errorf("resolving destination %q: %w", dstLabel, err)
 		}
 
-		if ips == nil || ips.Empty() {
+		if ips.IsEmpty() {
 			emptyDsts = append(emptyDsts, dstLabel)
 
 			continue
 		}
 
-		set, err := prefixesToIPSet(ips.Prefixes())
-		if err != nil {
-			return nil, nil, fmt.Errorf("building IPSet for %q: %w", dstLabel, err)
-		}
-
 		for _, n := range nodes.All() {
-			if !n.InIPSet(set) {
+			if !n.InIPSet(ips) {
 				continue
 			}
 
@@ -510,18 +504,6 @@ func resolveSSHTestDestNodes(
 	}
 
 	return out, emptyDsts, nil
-}
-
-// prefixesToIPSet builds the [netipx.IPSet] that [types.NodeView.InIPSet]
-// expects on the node side.
-func prefixesToIPSet(prefixes []netip.Prefix) (*netipx.IPSet, error) {
-	var b netipx.IPSetBuilder
-
-	for _, p := range prefixes {
-		b.AddPrefix(p)
-	}
-
-	return b.IPSet()
 }
 
 // compiledSSHPolicy returns the per-node compiled [tailcfg.SSHPolicy], caching

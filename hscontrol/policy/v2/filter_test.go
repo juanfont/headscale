@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/juanfont/headscale/hscontrol/ipset"
 	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go4.org/netipx"
 	"tailscale.com/tailcfg"
 	"tailscale.com/tailcfg/peercap"
 )
@@ -2711,19 +2711,19 @@ func TestIPSetToPrincipals(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var ipSet *netipx.IPSet
+			var ipSet ipset.Set
 
 			if tt.ips != nil {
-				var builder netipx.IPSetBuilder
+				var builder ipset.Builder
 
 				for _, ip := range tt.ips {
 					addr := netip.MustParseAddr(ip)
-					builder.Add(addr)
+					builder.AddAddr(addr)
 				}
 
 				var err error
 
-				ipSet, err = builder.IPSet()
+				ipSet, err = builder.Build()
 				require.NoError(t, err)
 			}
 
@@ -3152,20 +3152,19 @@ func TestGroupSourcesByUser(t *testing.T) {
 	}
 
 	// Build an IPSet that includes all node IPs
-	allIPs := func() ResolvedAddresses {
-		var b netipx.IPSetBuilder
+	allIPs := func() ipset.Set {
+		var b ipset.Builder
 		b.AddPrefix(netip.MustParsePrefix("100.64.0.0/24"))
 
-		s, _ := b.IPSet()
-		r, _ := newResolvedAddresses(s, nil)
+		s, _ := b.Build()
 
-		return r
+		return s
 	}()
 
 	tests := []struct {
 		name          string
 		nodes         types.Nodes
-		srcIPs        ResolvedAddresses
+		srcIPs        ipset.Set
 		wantUIDs      []uint
 		wantUserCount int
 		wantHasTagged bool
@@ -3206,14 +3205,13 @@ func TestGroupSourcesByUser(t *testing.T) {
 		{
 			name:  "node not in srcIPs excluded",
 			nodes: types.Nodes{&nodeAlice, &nodeBob},
-			srcIPs: func() ResolvedAddresses {
-				var b netipx.IPSetBuilder
-				b.Add(netip.MustParseAddr("100.64.0.1")) // only alice
+			srcIPs: func() ipset.Set {
+				var b ipset.Builder
+				b.AddAddr(netip.MustParseAddr("100.64.0.1")) // only alice
 
-				s, _ := b.IPSet()
-				r, _ := newResolvedAddresses(s, nil)
+				s, _ := b.Build()
 
-				return r
+				return s
 			}(),
 			wantUIDs:      []uint{1},
 			wantUserCount: 1,
@@ -3503,10 +3501,10 @@ func TestSrcIPsWithRoutes(t *testing.T) {
 	t.Parallel()
 
 	// Build a resolved address set for a single IP.
-	var b netipx.IPSetBuilder
+	var b ipset.Builder
 	b.AddPrefix(netip.MustParsePrefix("100.64.0.1/32"))
 
-	resolved, err := newResolved(&b)
+	resolved, err := b.Build()
 	require.NoError(t, err)
 
 	// Node with approved subnet route.
@@ -3528,7 +3526,7 @@ func TestSrcIPsWithRoutes(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		resolved     ResolvedAddresses
+		resolved     ipset.Set
 		hasWildcard  bool
 		hasDangerAll bool
 		nodes        func() []string
@@ -3760,10 +3758,10 @@ func TestCompileViaGrant(t *testing.T) {
 	// advertiser: SrcIPs scoped to the grant source, DstPorts
 	// enumerating util.TheInternet() prefixes.
 	internetDstPorts := make(
-		[]tailcfg.NetPortRange, 0, len(util.TheInternet().Prefixes()),
+		[]tailcfg.NetPortRange, 0, len(slices.Collect(util.TheInternet().Prefixes())),
 	)
 
-	for _, p := range util.TheInternet().Prefixes() {
+	for p := range util.TheInternet().Prefixes() {
 		internetDstPorts = append(internetDstPorts, tailcfg.NetPortRange{
 			IP:    p.String(),
 			Ports: tailcfg.PortRangeAny,
@@ -4217,7 +4215,7 @@ func TestDestinationsToNetPortRange_AutogroupInternet(t *testing.T) {
 	// DestsIsTheInternet (#3212). The wire format is currently the
 	// canonical CIDR breakdown of util.TheInternet(); aligning it to
 	// the SaaS range form is tracked separately.
-	internetPrefixCount := len(util.TheInternet().Prefixes())
+	internetPrefixCount := len(slices.Collect(util.TheInternet().Prefixes()))
 
 	tests := []struct {
 		name     string

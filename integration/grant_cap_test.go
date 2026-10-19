@@ -111,7 +111,7 @@ func TestGrantCapRelay(t *testing.T) {
 					tagp("tag:relay"), tagp("tag:client-a"), tagp("tag:client-b"),
 				},
 				InternetProtocols: []policyv2.ProtocolPort{
-					{Protocol: "*", Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
+					{Protocol: policyv2.ProtocolNameWildcard, Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
 				},
 			},
 			// Grant 2: Relay cap - clients can use relay node for UDP relaying.
@@ -580,7 +580,7 @@ func TestGrantCapDrive(t *testing.T) {
 					tagp("tag:ro-client"), tagp("tag:no-access"),
 				},
 				InternetProtocols: []policyv2.ProtocolPort{
-					{Protocol: "*", Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
+					{Protocol: policyv2.ProtocolNameWildcard, Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
 				},
 			},
 			// Grant 2: cap/drive RW - rw-client can read+write sharer's drives.

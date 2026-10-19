@@ -13,12 +13,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/ipset"
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/rs/zerolog/log"
-	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/views"
@@ -45,12 +45,12 @@ type PolicyManager struct {
 	matchers   []matcher.Match
 
 	tagOwnerMapHash deephash.Sum
-	tagOwnerMap     map[Tag]*netipx.IPSet
+	tagOwnerMap     map[Tag]ipset.Set
 
 	exitSetHash        deephash.Sum
-	exitSet            *netipx.IPSet
+	exitSet            ipset.Set
 	autoApproveMapHash deephash.Sum
-	autoApproveMap     map[netip.Prefix]*netipx.IPSet
+	autoApproveMap     map[netip.Prefix]ipset.Set
 
 	// relayTargetIPs holds the IPs of nodes that are destinations of a
 	// tailscale.com/cap/relay grant; viaTargetTags holds the tags used as
@@ -58,7 +58,7 @@ type PolicyManager struct {
 	// forces peers to recompute their netmap when its online state changes
 	// (see [PolicyManager.NodeNeedsPeerRecompute]). Recomputed from the
 	// compiled grants on every policy/user/node change.
-	relayTargetIPs *netipx.IPSet
+	relayTargetIPs ipset.Set
 	viaTargetTags  map[Tag]struct{}
 
 	// Lazy map of SSH policies
@@ -324,7 +324,12 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 		pm.matchers = matcher.MatchesFromFilterRules(pm.filter)
 	}
 
-	tagOwnerMapHash := deephash.Hash(&tagMap)
+	tagPrefixes := make(map[Tag][]netip.Prefix, len(tagMap))
+	for tag, addresses := range tagMap {
+		tagPrefixes[tag] = slices.Collect(addresses.Prefixes())
+	}
+
+	tagOwnerMapHash := deephash.Hash(&tagPrefixes)
 
 	tagOwnerChanged := tagOwnerMapHash != pm.tagOwnerMapHash
 	if tagOwnerChanged {
@@ -339,7 +344,12 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	pm.tagOwnerMap = tagMap
 	pm.tagOwnerMapHash = tagOwnerMapHash
 
-	autoApproveMapHash := deephash.Hash(&autoMap)
+	autoPrefixes := make(map[netip.Prefix][]netip.Prefix, len(autoMap))
+	for route, addresses := range autoMap {
+		autoPrefixes[route] = slices.Collect(addresses.Prefixes())
+	}
+
+	autoApproveMapHash := deephash.Hash(&autoPrefixes)
 
 	autoApproveChanged := autoApproveMapHash != pm.autoApproveMapHash
 	if autoApproveChanged {
@@ -354,7 +364,8 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	pm.autoApproveMap = autoMap
 	pm.autoApproveMapHash = autoApproveMapHash
 
-	exitSetHash := deephash.Hash(&exitSet)
+	exitPrefixes := slices.Collect(exitSet.Prefixes())
+	exitSetHash := deephash.Hash(&exitPrefixes)
 
 	exitSetChanged := exitSetHash != pm.exitSetHash
 	if exitSetChanged {
@@ -439,7 +450,7 @@ func (pm *PolicyManager) NodeNeedsPeerRecompute(node types.NodeView) bool {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
-	if pm.relayTargetIPs != nil && node.InIPSet(pm.relayTargetIPs) {
+	if node.InIPSet(pm.relayTargetIPs) {
 		return true
 	}
 
@@ -527,7 +538,7 @@ func (pm *PolicyManager) SSHCheckParams(
 
 		// Resolve sources and check if src node matches.
 		srcIPs, err := rule.Sources.Resolve(pm.pol, pm.users, pm.nodes)
-		if err != nil || srcIPs == nil {
+		if err != nil || srcIPs.IsEmpty() {
 			continue
 		}
 
@@ -554,7 +565,7 @@ func (pm *PolicyManager) SSHCheckParams(
 			hasOtherDests = true
 
 			dstIPs, err := dst.Resolve(pm.pol, pm.users, pm.nodes)
-			if err != nil || dstIPs == nil {
+			if err != nil || dstIPs.IsEmpty() {
 				continue
 			}
 
@@ -1360,7 +1371,7 @@ func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Pr
 	// However, an auto approver might be /0, meaning that they can approve
 	// all routes available, just not exit nodes.
 	if tsaddr.IsExitRoute(route) {
-		if pm.exitSet == nil {
+		if pm.exitSet.IsEmpty() {
 			return false
 		}
 
@@ -1461,7 +1472,7 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 				continue
 			}
 
-			if ips != nil && slices.ContainsFunc(viewerIPs, ips.Contains) {
+			if !ips.IsEmpty() && slices.ContainsFunc(viewerIPs, ips.Contains) {
 				viewerMatchesGrant[i] = true
 
 				break
@@ -1698,7 +1709,7 @@ func (pm *PolicyManager) DebugString() string {
 	for prefix, approveAddrs := range pm.autoApproveMap {
 		fmt.Fprintf(&sb, "\t%s:\n", prefix)
 
-		for _, iprange := range approveAddrs.Ranges() {
+		for iprange := range approveAddrs.Ranges() {
 			fmt.Fprintf(&sb, "\t\t%s\n", iprange)
 		}
 	}
@@ -1710,7 +1721,7 @@ func (pm *PolicyManager) DebugString() string {
 	for prefix, tagOwners := range pm.tagOwnerMap {
 		fmt.Fprintf(&sb, "\t%s:\n", prefix)
 
-		for _, iprange := range tagOwners.Ranges() {
+		for iprange := range tagOwners.Ranges() {
 			fmt.Fprintf(&sb, "\t\t%s\n", iprange)
 		}
 	}
@@ -1971,19 +1982,19 @@ func flattenTagOwners(tagOwners TagOwners) (TagOwners, error) {
 	return ret, nil
 }
 
-// resolveTagOwners resolves the [TagOwners] to a map of [Tag] to [netipx.IPSet].
+// resolveTagOwners resolves the [TagOwners] to a map of [Tag] to [ipset.Set].
 // The resulting map can be used to quickly look up the IPSet for a given [Tag].
 // It is intended for internal use in a [PolicyManager].
-func resolveTagOwners(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (map[Tag]*netipx.IPSet, error) {
+func resolveTagOwners(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (map[Tag]ipset.Set, error) {
 	if p == nil {
-		return make(map[Tag]*netipx.IPSet), nil
+		return make(map[Tag]ipset.Set), nil
 	}
 
 	if len(p.TagOwners) == 0 {
-		return make(map[Tag]*netipx.IPSet), nil
+		return make(map[Tag]ipset.Set), nil
 	}
 
-	ret := make(map[Tag]*netipx.IPSet)
+	ret := make(map[Tag]ipset.Set)
 
 	tagOwners, err := flattenTagOwners(p.TagOwners)
 	if err != nil {
@@ -1991,7 +2002,7 @@ func resolveTagOwners(p *Policy, users types.Users, nodes views.Slice[types.Node
 	}
 
 	for tag, owners := range tagOwners {
-		var ips netipx.IPSetBuilder
+		var ips ipset.Builder
 
 		for _, owner := range owners {
 			switch o := owner.(type) {
@@ -2001,12 +2012,7 @@ func resolveTagOwners(p *Policy, users types.Users, nodes views.Slice[types.Node
 
 			case Alias:
 				// If it does not resolve, that means the tag is not associated with any IP addresses.
-				resolved, _ := o.Resolve(p, users, nodes)
-				if resolved != nil {
-					for _, pref := range resolved.Prefixes() {
-						ips.AddPrefix(pref)
-					}
-				}
+				_ = o.resolveInto(p, users, nodes, &ips)
 
 			default:
 				// Should never happen - after flattening, all owners should be Alias types
@@ -2014,7 +2020,7 @@ func resolveTagOwners(p *Policy, users types.Users, nodes views.Slice[types.Node
 			}
 		}
 
-		ipSet, err := ips.IPSet()
+		ipSet, err := ips.Build()
 		if err != nil {
 			return nil, err
 		}

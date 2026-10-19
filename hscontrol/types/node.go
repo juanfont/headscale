@@ -11,11 +11,11 @@ import (
 	"time"
 
 	hsdns "github.com/juanfont/headscale/hscontrol/dns"
+	"github.com/juanfont/headscale/hscontrol/ipset"
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog"
-	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/tailcfg/nodecap"
@@ -368,21 +368,22 @@ func (node *Node) IPsAsString() []string {
 	return ret
 }
 
-func (node *Node) InIPSet(set *netipx.IPSet) bool {
-	return slices.ContainsFunc(node.IPs(), set.Contains)
+func (node *Node) InIPSet(set ipset.Set) bool {
+	return (node.IPv4 != nil && set.Contains(*node.IPv4)) ||
+		(node.IPv6 != nil && set.Contains(*node.IPv6))
 }
 
 // AppendToIPSet adds all IP addresses of the node to the given
-// [netipx.IPSetBuilder]. For identity-based aliases (tags, users,
+// [ipset.Builder]. For identity-based aliases (tags, users,
 // groups, autogroups), both IPv4 and IPv6 must be included to
 // match Tailscale's behavior in the [tailcfg.FilterRule] wire format.
-func (node *Node) AppendToIPSet(build *netipx.IPSetBuilder) {
+func (node *Node) AppendToIPSet(build *ipset.Builder) {
 	if node.IPv4 != nil {
-		build.Add(*node.IPv4)
+		build.AddAddr(*node.IPv4)
 	}
 
 	if node.IPv6 != nil {
-		build.Add(*node.IPv6)
+		build.AddAddr(*node.IPv6)
 	}
 }
 
@@ -853,7 +854,7 @@ func (nv NodeView) IPs() []netip.Addr {
 	return nv.ж.IPs()
 }
 
-func (nv NodeView) InIPSet(set *netipx.IPSet) bool {
+func (nv NodeView) InIPSet(set ipset.Set) bool {
 	if !nv.Valid() {
 		return false
 	}
@@ -924,7 +925,7 @@ func (nv NodeView) AllApprovedRoutes() []netip.Prefix {
 	return nv.ж.AllApprovedRoutes()
 }
 
-func (nv NodeView) AppendToIPSet(build *netipx.IPSetBuilder) {
+func (nv NodeView) AppendToIPSet(build *ipset.Builder) {
 	if !nv.Valid() {
 		return
 	}

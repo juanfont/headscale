@@ -84,7 +84,7 @@ func TestSSHOneUserToAll(t *testing.T) {
 			ACLs: []policyv2.ACL{
 				{
 					Action:   "accept",
-					Protocol: "tcp",
+					Protocol: policyv2.ProtocolNameTCP,
 					Sources:  []policyv2.Alias{wildcard()},
 					Destinations: []policyv2.AliasWithPorts{
 						aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
@@ -159,7 +159,7 @@ func TestSSHMultipleUsersAllToAll(t *testing.T) {
 			ACLs: []policyv2.ACL{
 				{
 					Action:   "accept",
-					Protocol: "tcp",
+					Protocol: policyv2.ProtocolNameTCP,
 					Sources:  []policyv2.Alias{wildcard()},
 					Destinations: []policyv2.AliasWithPorts{
 						aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
@@ -245,7 +245,7 @@ func TestSSHNoSSHConfigured(t *testing.T) {
 			ACLs: []policyv2.ACL{
 				{
 					Action:   "accept",
-					Protocol: "tcp",
+					Protocol: policyv2.ProtocolNameTCP,
 					Sources:  []policyv2.Alias{wildcard()},
 					Destinations: []policyv2.AliasWithPorts{
 						aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
@@ -293,7 +293,7 @@ func TestSSHRulesRemovedDeniesAccess(t *testing.T) {
 		ACLs: []policyv2.ACL{
 			{
 				Action:   "accept",
-				Protocol: "tcp",
+				Protocol: policyv2.ProtocolNameTCP,
 				Sources:  []policyv2.Alias{wildcard()},
 				Destinations: []policyv2.AliasWithPorts{
 					aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
@@ -371,7 +371,7 @@ func TestSSHIsBlockedInACL(t *testing.T) {
 			ACLs: []policyv2.ACL{
 				{
 					Action:   "accept",
-					Protocol: "tcp",
+					Protocol: policyv2.ProtocolNameTCP,
 					Sources:  []policyv2.Alias{wildcard()},
 					Destinations: []policyv2.AliasWithPorts{
 						aliasWithPorts(wildcard(), tailcfg.PortRange{First: 80, Last: 80}),
@@ -424,7 +424,7 @@ func TestSSHUserOnlyIsolation(t *testing.T) {
 			ACLs: []policyv2.ACL{
 				{
 					Action:   "accept",
-					Protocol: "tcp",
+					Protocol: policyv2.ProtocolNameTCP,
 					Sources:  []policyv2.Alias{wildcard()},
 					Destinations: []policyv2.AliasWithPorts{
 						aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
@@ -647,7 +647,7 @@ func TestSSHAutogroupSelf(t *testing.T) {
 			ACLs: []policyv2.ACL{
 				{
 					Action:   "accept",
-					Protocol: "tcp",
+					Protocol: policyv2.ProtocolNameTCP,
 					Sources:  []policyv2.Alias{wildcard()},
 					Destinations: []policyv2.AliasWithPorts{
 						aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
@@ -822,7 +822,7 @@ func sshCheckPolicy() *policyv2.Policy {
 		ACLs: []policyv2.ACL{
 			{
 				Action:   "accept",
-				Protocol: "tcp",
+				Protocol: policyv2.ProtocolNameTCP,
 				Sources:  []policyv2.Alias{wildcard()},
 				Destinations: []policyv2.AliasWithPorts{
 					aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
@@ -855,7 +855,7 @@ func sshCheckPolicyWithPeriod(period time.Duration) *policyv2.Policy {
 		ACLs: []policyv2.ACL{
 			{
 				Action:   "accept",
-				Protocol: "tcp",
+				Protocol: policyv2.ProtocolNameTCP,
 				Sources:  []policyv2.Alias{wildcard()},
 				Destinations: []policyv2.AliasWithPorts{
 					aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
@@ -1498,7 +1498,7 @@ func TestSSHLocalpart(t *testing.T) {
 	baseACLs := []policyv2.ACL{
 		{
 			Action:   "accept",
-			Protocol: "tcp",
+			Protocol: policyv2.ProtocolNameTCP,
 			Sources:  []policyv2.Alias{wildcard()},
 			Destinations: []policyv2.AliasWithPorts{
 				aliasWithPorts(wildcard(), tailcfg.PortRangeAny),

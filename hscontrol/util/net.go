@@ -6,7 +6,7 @@ import (
 	"net/netip"
 	"sync"
 
-	"go4.org/netipx"
+	"github.com/juanfont/headscale/hscontrol/ipset"
 	"tailscale.com/net/tsaddr"
 )
 
@@ -36,45 +36,43 @@ func MustStringsToPrefixes(strings []string) []netip.Prefix {
 	return prefixes
 }
 
-// TheInternet returns the [netipx.IPSet] for the Internet.
+// TheInternet returns the [ipset.Set] for the Internet.
 // https://www.youtube.com/watch?v=iDbyYGrswtg
-var TheInternet = sync.OnceValue(func() *netipx.IPSet {
-	var internetBuilder netipx.IPSetBuilder
+var TheInternet = sync.OnceValue(func() ipset.Set {
+	var internetBuilder, exclusions ipset.Builder
 	internetBuilder.AddPrefix(netip.MustParsePrefix("2000::/3"))
 	internetBuilder.AddPrefix(tsaddr.AllIPv4())
 
 	// Delete Private network addresses
 	// https://datatracker.ietf.org/doc/html/rfc1918
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("fc00::/7"))
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("10.0.0.0/8"))
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("172.16.0.0/12"))
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("192.168.0.0/16"))
+	exclusions.AddPrefix(netip.MustParsePrefix("fc00::/7"))
+	exclusions.AddPrefix(netip.MustParsePrefix("10.0.0.0/8"))
+	exclusions.AddPrefix(netip.MustParsePrefix("172.16.0.0/12"))
+	exclusions.AddPrefix(netip.MustParsePrefix("192.168.0.0/16"))
 
 	// Delete Tailscale networks
-	internetBuilder.RemovePrefix(tsaddr.TailscaleULARange())
-	internetBuilder.RemovePrefix(tsaddr.CGNATRange())
+	exclusions.AddPrefix(tsaddr.TailscaleULARange())
+	exclusions.AddPrefix(tsaddr.CGNATRange())
 
 	// Delete "can't find DHCP networks"
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("fe80::/10")) // link-local
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("169.254.0.0/16"))
+	exclusions.AddPrefix(netip.MustParsePrefix("fe80::/10")) // link-local
+	exclusions.AddPrefix(netip.MustParsePrefix("169.254.0.0/16"))
 
-	theInternetSet, _ := internetBuilder.IPSet()
+	theInternetSet, _ := internetBuilder.Build()
+	excluded, _ := exclusions.Build()
 
-	return theInternetSet
+	return theInternetSet.Subtract(excluded)
 })
 
-// IPSetSubsetOf reports whether every prefix of candidate is contained in
-// container. A nil candidate or container returns false.
-func IPSetSubsetOf(candidate, container *netipx.IPSet) bool {
-	if candidate == nil || container == nil {
-		return false
-	}
+// Tailnet returns the Tailscale address ranges excluding ChromeOS VM addresses.
+var Tailnet = sync.OnceValue(func() ipset.Set {
+	var addresses, exclusions ipset.Builder
+	addresses.AddPrefix(tsaddr.TailscaleULARange())
+	addresses.AddPrefix(tsaddr.CGNATRange())
+	exclusions.AddPrefix(tsaddr.ChromeOSVMRange())
 
-	for _, pref := range candidate.Prefixes() {
-		if !container.ContainsPrefix(pref) {
-			return false
-		}
-	}
+	tailnet, _ := addresses.Build()
+	chromeOS, _ := exclusions.Build()
 
-	return true
-}
+	return tailnet.Subtract(chromeOS)
+})

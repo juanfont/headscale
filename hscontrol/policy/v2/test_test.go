@@ -1,12 +1,15 @@
 package v2
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/tailcfg"
+	"tailscale.com/types/ipproto"
 )
 
 // policyTestUsers/policyTestNodes are reused across the test cases below to
@@ -422,7 +425,7 @@ func TestPolicyTestResultsErrorsRendering(t *testing.T) {
 			},
 			{
 				Src:      "bob@headscale.net",
-				Proto:    "tcp",
+				Proto:    ProtocolNameTCP,
 				DenyFail: []string{"tag:server:443"},
 			},
 		},
@@ -438,4 +441,72 @@ func TestPolicyTestResultsErrorsRendering(t *testing.T) {
 
 	// Lines should be newline-separated, not space-joined.
 	assert.Equal(t, 2, strings.Count(rendered, "\n")+1, "expected one line per failing assertion")
+}
+
+func TestPolicyTestTypedIngress(t *testing.T) {
+	for _, input := range []string{
+		`{"src":"alice@","accept":["tag:server:443"],"deny":["[fd7a:115c:a1e0::2]:22"],"proto":"6"}`,
+		`{"src":"group:team","accept":["100.64.0.1:80-90"]}`,
+		`{"src":"100.64.0.1","accept":["server:80,443"]}`,
+		`{"src":"fd7a:115c:a1e0::1","accept":["server:*"]}`,
+		`{"src":"user\"name@","accept":["host\"name:443"]}`,
+	} {
+		t.Run(input, func(t *testing.T) {
+			var test PolicyTest
+			require.NoError(t, json.Unmarshal([]byte(input), &test))
+			_, typedSource := any(test.Src).(Alias)
+			require.True(t, typedSource, "source must be decoded before evaluation")
+
+			_, typedDestinations := any(test.Accept).([]AliasWithPorts)
+			require.True(t, typedDestinations, "destinations must be decoded before evaluation")
+
+			encoded, err := json.Marshal(test)
+			require.NoError(t, err)
+
+			var roundTrip PolicyTest
+			require.NoError(t, json.Unmarshal(encoded, &roundTrip))
+			assert.Equal(t, test, roundTrip)
+		})
+	}
+
+	for _, input := range []string{
+		`{"src":"bad:selector","accept":["server:443"]}`,
+		`{"src":"alice@","accept":["server"]}`,
+		`{"src":"alice@","accept":["server:65536"]}`,
+		`{"src":"alice@","accept":["[bad]:443"]}`,
+	} {
+		var test PolicyTest
+		require.Error(t, json.Unmarshal([]byte(input), &test), input)
+	}
+}
+
+func TestRuleMatchesProtoDoesNotWrap(t *testing.T) {
+	for _, invalid := range []int{-250, 262} {
+		assert.False(t, ruleMatchesProto(tailcfg.FilterRule{IPProto: []int{invalid}}, []ipproto.Proto{ipproto.TCP}))
+	}
+}
+
+func TestRunPolicyTestEmptySource(t *testing.T) {
+	result := runPolicyTest(PolicyTest{}, &Policy{}, nil, nil, types.Nodes{}.ViewSlice())
+	assert.False(t, result.Passed)
+	require.Len(t, result.Errors, 1)
+	assert.Contains(t, result.Errors[0], ErrInvalidAlias.Error())
+}
+
+func TestTypedPolicyTestDiagnosticJSON(t *testing.T) {
+	users := types.Users{{ID: 1, Name: `alice"quoted`}}
+	nodes := types.Nodes{{User: &users[0], IPv4: ap("100.64.0.1")}}.ViewSlice()
+	pol := &Policy{Hosts: Hosts{`host"quoted`: p("100.64.0.2/32")}}
+
+	var test PolicyTest
+	require.NoError(t, json.Unmarshal([]byte(`{"src":"alice\"quoted@","proto":"6","accept":["host\"quoted:443"]}`), &test))
+	result := runPolicyTest(test, pol, []tailcfg.FilterRule{{
+		SrcIPs:   []string{"100.64.0.1"},
+		DstPorts: []tailcfg.NetPortRange{{IP: "100.64.0.2", Ports: tailcfg.PortRange{First: 443, Last: 443}}},
+		IPProto:  []int{6},
+	}}, users, nodes)
+	require.True(t, result.Passed, result.Errors)
+	encoded, err := json.Marshal(result)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"src":"alice\"quoted@","proto":"tcp","passed":true,"accept_ok":["host\"quoted:443"]}`, string(encoded))
 }

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"go4.org/netipx"
+	"github.com/juanfont/headscale/hscontrol/ipset"
 )
 
 func TestIPSetAddrIterMaxAddress(t *testing.T) {
@@ -26,29 +26,27 @@ func TestIPSetAddrIterMaxAddress(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var (
-				builder netipx.IPSetBuilder
+				builder ipset.Builder
 				want    []netip.Addr
 			)
-
 			for _, s := range tt.ips {
 				ip := netip.MustParseAddr(s)
-				builder.Add(ip)
+				builder.AddAddr(ip)
 				want = append(want, ip)
 			}
 
-			set, err := builder.IPSet()
+			set, err := builder.Build()
 			if err != nil {
 				t.Fatal(err)
 			}
 
 			var got []netip.Addr
-			for ip := range IPSetAddrIter(set) {
+			for ip := range set.Addrs() {
 				got = append(got, ip)
 				if len(got) > len(want) {
 					break // Bound the regression: Next at the maximum yields an invalid address.
 				}
 			}
-
 			if !slices.Equal(want, got) {
 				t.Errorf("addresses = %v, want %v", got, want)
 			}
@@ -57,40 +55,39 @@ func TestIPSetAddrIterMaxAddress(t *testing.T) {
 }
 
 func TestIPSetAddrIterConsumerStop(t *testing.T) {
-	var builder netipx.IPSetBuilder
-	builder.Add(netip.MustParseAddr("255.255.255.255"))
-	builder.Add(netip.MustParseAddr("2001:db8::1"))
+	var builder ipset.Builder
+	builder.AddAddr(netip.MustParseAddr("255.255.255.255"))
+	builder.AddAddr(netip.MustParseAddr("2001:db8::1"))
 
-	set, err := builder.IPSet()
+	set, err := builder.Build()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	calls := 0
 
-	IPSetAddrIter(set)(func(netip.Addr) bool {
+	set.Addrs()(func(netip.Addr) bool {
 		calls++
 		return false
 	})
-
 	if calls != 1 {
 		t.Errorf("yield called %d times after consumer stopped, want 1", calls)
 	}
 }
 
 func Test_parseIPSet(t *testing.T) {
-	set := func(ips []string, prefixes []string) *netipx.IPSet {
-		var builder netipx.IPSetBuilder
+	set := func(ips []string, prefixes []string) ipset.Set {
+		var builder ipset.Builder
 
 		for _, ip := range ips {
-			builder.Add(netip.MustParseAddr(ip))
+			builder.AddAddr(netip.MustParseAddr(ip))
 		}
 
 		for _, pre := range prefixes {
 			builder.AddPrefix(netip.MustParsePrefix(pre))
 		}
 
-		s, _ := builder.IPSet()
+		s, _ := builder.Build()
 
 		return s
 	}
@@ -103,7 +100,7 @@ func Test_parseIPSet(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    *netipx.IPSet
+		want    ipset.Set
 		wantErr bool
 	}{
 		{
@@ -185,6 +182,55 @@ func Test_parseIPSet(t *testing.T) {
 
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("parseIPSet() = (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestParseIPSetBoundarySemantics(t *testing.T) {
+	for _, tt := range []struct {
+		name, input string
+		bits        *int
+		want        []netip.Prefix
+		wantErr     string
+	}{
+		{"host bits rejected", "192.0.2.1/24", nil, nil, "192.0.2.1/24 contains non-network bits set"},
+		{"source bits mask host", "192.0.2.1", new(24), []netip.Prefix{netip.MustParsePrefix("192.0.2.0/24")}, ""},
+		{"source bits ignored on CIDR", "192.0.2.0/24", new(-1), []netip.Prefix{netip.MustParsePrefix("192.0.2.0/24")}, ""},
+		{"invalid source bits", "192.0.2.1", new(33), nil, `invalid CIDR size 33 for IP "192.0.2.1"`},
+		{"negative source bits", "::1", new(-1), nil, `invalid CIDR size -1 for IP "::1"`},
+		{"range", "192.0.2.1-192.0.2.3", nil, []netip.Prefix{netip.MustParsePrefix("192.0.2.1/32"), netip.MustParsePrefix("192.0.2.2/31")}, ""},
+		{"reversed range", "192.0.2.3-192.0.2.1", nil, nil, `invalid IP range "192.0.2.3-192.0.2.1"`},
+		{"mixed range", "192.0.2.1-::ffff:192.0.2.2", nil, nil, `invalid IP range "192.0.2.1-::ffff:192.0.2.2"`},
+		{"zoned address", "fe80::1%eth0", nil, []netip.Prefix{netip.MustParsePrefix("fe80::1/128")}, ""},
+		{"zoned range", "fe80::1%eth0-fe80::2%eth1", nil, []netip.Prefix{netip.MustParsePrefix("fe80::1/128"), netip.MustParsePrefix("fe80::2/128")}, ""},
+		{"mapped address", "::ffff:192.0.2.1", nil, []netip.Prefix{netip.MustParsePrefix("::ffff:192.0.2.1/128")}, ""},
+		{"invalid address", "not an address", nil, nil, `invalid IP address "not an address"`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseIPSet(tt.input, tt.bits)
+			if tt.wantErr != "" {
+				if err == nil || err.Error() != tt.wantErr {
+					t.Fatalf("error = %v, want %s", err, tt.wantErr)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if diff := cmp.Diff(tt.want, slices.Collect(got.Prefixes()), Comparers...); diff != "" {
+				t.Fatal(diff)
+			}
+
+			if got.Contains(netip.MustParseAddr("fe80::1%eth0")) {
+				t.Fatal("zoned membership must not match")
+			}
+
+			if tt.name == "mapped address" && got.Contains(netip.MustParseAddr("192.0.2.1")) {
+				t.Fatal("mapped IPv6 must not match native IPv4")
 			}
 		})
 	}

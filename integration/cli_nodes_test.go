@@ -1022,7 +1022,7 @@ func TestNodeTagCommand(t *testing.T) {
 		ACLs: []policyv2.ACL{
 			{
 				Action:   "accept",
-				Protocol: "tcp",
+				Protocol: policyv2.ProtocolNameTCP,
 				Sources:  []policyv2.Alias{wildcard()},
 				Destinations: []policyv2.AliasWithPorts{
 					aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
