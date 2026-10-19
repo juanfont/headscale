@@ -779,7 +779,7 @@ func snapshotFromNodes(
 	return newSnap
 }
 
-// onlineAdvertisers maps each non-exit prefix to the IDs of online nodes
+// onlineAdvertisers maps each non-exit prefix to the IDs of distinct online nodes
 // that approve it. Nodes are visited in the order of ids, so the per-prefix
 // slices preserve that order.
 func onlineAdvertisers(
@@ -799,7 +799,13 @@ func onlineAdvertisers(
 				continue
 			}
 
-			advertisers[p] = append(advertisers[p], id)
+			// A node's advertisements are consecutive in each candidate list.
+			candidates := advertisers[p]
+			if len(candidates) > 0 && candidates[len(candidates)-1] == id {
+				continue
+			}
+
+			advertisers[p] = append(candidates, id)
 		}
 	}
 

@@ -339,3 +339,79 @@ func TestPrimaries_HANodes(t *testing.T) {
 		})
 	}
 }
+
+func TestOnlineAdvertisersDeduplicatesExactPrefixes(t *testing.T) {
+	parent := mp("10.0.0.0/8")
+	child := mp("10.1.0.0/16")
+	unmasked := mp("10.1.2.3/16")
+	mapped := mp("::ffff:10.1.0.0/112")
+	prefixes := []netip.Prefix{
+		child, parent, child, unmasked, mapped, parent, unmasked, mapped,
+		mp("0.0.0.0/0"), mp("::/0"),
+	}
+	original := slices.Clone(prefixes)
+	shared := []netip.Prefix{child, parent, child, parent}
+	nodes := map[types.NodeID]types.Node{
+		1: {
+			ID:             1,
+			IsOnline:       new(true),
+			Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: prefixes},
+			ApprovedRoutes: prefixes,
+		},
+		2: {
+			ID:             2,
+			IsOnline:       new(true),
+			Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: shared},
+			ApprovedRoutes: shared,
+		},
+		3: {
+			ID:             3,
+			IsOnline:       new(false),
+			Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: shared},
+			ApprovedRoutes: shared,
+		},
+		4: {
+			ID:             4,
+			Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: shared},
+			ApprovedRoutes: shared,
+		},
+	}
+
+	got := onlineAdvertisers(nodes, []types.NodeID{1, 2, 3, 4})
+	require.Equal(t, map[netip.Prefix][]types.NodeID{
+		parent:   {1, 2},
+		child:    {1, 2},
+		unmasked: {1},
+		mapped:   {1},
+	}, got)
+	require.Equal(t, original, nodes[1].Hostinfo.RoutableIPs)
+	require.Equal(t, types.Prefixes(original), nodes[1].ApprovedRoutes)
+}
+
+func TestPrimaries_HANodesDuplicateAdvertisements(t *testing.T) {
+	f := newPrimariesFixture(t, 1, 2, 3)
+	parent := mp("10.0.0.0/8")
+	child := mp("10.1.0.0/16")
+
+	f.advertise(1, child, parent, child, parent)
+	require.Empty(t, f.ns.HANodes(), "duplicate routes from one node do not form HA")
+
+	f.advertise(2, parent, parent)
+	require.Equal(t, map[netip.Prefix][]types.NodeID{
+		parent: {1, 2},
+	}, f.ns.HANodes())
+
+	f.advertise(3, child, child)
+	require.Equal(t, map[netip.Prefix][]types.NodeID{
+		parent: {1, 2},
+		child:  {1, 3},
+	}, f.ns.HANodes())
+
+	f.disconnect(2)
+	require.Equal(t, map[netip.Prefix][]types.NodeID{
+		child: {1, 3},
+	}, f.ns.HANodes())
+
+	f.disconnect(3)
+	require.Empty(t, f.ns.HANodes())
+}
