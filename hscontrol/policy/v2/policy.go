@@ -728,6 +728,8 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 		// once per pair: a can reach b iff a's source set and b's
 		// destination set intersect. That turns the O(n^2 * matchers)
 		// scan into O(n * matchers) set lookups plus O(n^2) word ANDs.
+		// Bit k of a set stands for pm.matchers[k]: it lives in word k/64
+		// at position k%64, so 64 matchers fit in one uint64.
 		words := (len(pm.matchers) + 63) / 64 //nolint:mnd
 		ids := make([]types.NodeID, nodes.Len())
 		srcOf := make([][]uint64, nodes.Len()) // nil: source of no matcher
