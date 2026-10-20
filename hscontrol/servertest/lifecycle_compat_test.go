@@ -32,8 +32,9 @@ import (
 )
 
 // lifecycleSkipReasons lists checks where headscale differs from SaaS, keyed
-// <test_id>/<step>[/<node or action index>]/<check>. A listed check that
-// matches fails, so a fix must delete its entry.
+// <test_id>/<step>[/<node or action index>]/<check>, with "collection" for
+// the step of what killed nodes leave behind. A listed check that matches
+// fails, so a fix must delete its entry.
 var lifecycleSkipReasons = map[string]string{
 	"route-approval/b6/enabled":     approvalOnHostinfo,
 	"route-approval/b6/served":      approvalOnHostinfo,
@@ -61,8 +62,13 @@ var lifecycleSkipReasons = map[string]string{
 
 	"ephemeral-lifecycle/E4-reauth-other-key/eph-to-perm/ephemeral": ephemeralFollowsKey,
 	"ephemeral-lifecycle/E4-reauth-other-key/perm-to-eph/ephemeral": ephemeralFollowsKey,
-	"ephemeral-lifecycle/E6-poll-14/eph-to-perm/left":               ephemeralFollowsKey,
-	"ephemeral-lifecycle/E6-poll-14/perm-to-eph/left":               ephemeralFollowsKey,
+
+	"ephemeral-lifecycle/collection/eph-to-perm/left":             ephemeralFollowsKey,
+	"ephemeral-lifecycle/collection/eph-to-perm/removed-observer": ephemeralFollowsKey,
+	"ephemeral-lifecycle/collection/eph-to-perm/present-observer": ephemeralFollowsKey,
+	"ephemeral-lifecycle/collection/perm-to-eph/left":             ephemeralFollowsKey,
+	"ephemeral-lifecycle/collection/perm-to-eph/removed-observer": ephemeralFollowsKey,
+	"ephemeral-lifecycle/collection/perm-to-eph/present-observer": ephemeralFollowsKey,
 
 	"ephemeral-lifecycle/E5-mem-shutdown/mem/expiry":        taggedLogoutNotExpired,
 	"ephemeral-lifecycle/E5-mem-shutdown/mem/outcome":       taggedLogoutNotExpired,
@@ -716,7 +722,8 @@ func TestDroppedRoutes(t *testing.T) {
 // every admin exchange, key validity and listing, register answers, the
 // devices on each machine, their ephemeral flag, node key, address and
 // expiry, the observer's view and removals, and at the last read which
-// devices are left once the killed ones could be collected.
+// devices are left once the killed ones could be collected and whether the
+// observer lost them.
 func TestEphemeralLifecycleCompat(t *testing.T) {
 	t.Parallel()
 
@@ -747,7 +754,7 @@ func runEphemeralLifecycleCompat(t *testing.T, id, observer string) {
 
 	saasFirst, hsFirst := map[string]deviceView{}, map[string]deviceView{}
 	saasPrev := map[string][]deviceView{}
-	down := map[string]bool{}
+	killed := map[string]*killedNode{}
 	evaluated := map[string]bool{}
 	prevObs := c.Captures[observer].Netmap
 
@@ -773,7 +780,13 @@ func runEphemeralLifecycleCompat(t *testing.T, id, observer string) {
 		}
 
 		r.apply(t, step)
-		markDown(step, down)
+		markKilled(step, killed, func(node string) *killedNode {
+			return &killedNode{saas: saasPrev[node], hs: hsPrev[node], prevObs: prevObs, historyStart: historyStart}
+		})
+
+		for _, k := range killed {
+			k.frames = append(k.frames, step.Frames[observer]...)
+		}
 
 		checks := r.answerChecks(step)
 		checks = append(checks, r.keyChecks(step)...)
@@ -787,7 +800,7 @@ func runEphemeralLifecycleCompat(t *testing.T, id, observer string) {
 			// A device killed in the step is judged at the last read only:
 			// when it is collected is timing.
 			want, ok := saasCellDevices(c, step, cell)
-			if down[cell] || !ok {
+			if killed[cell] != nil || !ok {
 				continue
 			}
 
@@ -799,19 +812,25 @@ func runEphemeralLifecycleCompat(t *testing.T, id, observer string) {
 			})...)
 		}
 
+		run := func(name string, checks []stepCheck) {
+			prefix := id + "/" + name + "/"
+			for _, ch := range checks {
+				evaluated[prefix+ch.name] = true
+			}
+
+			if len(checks) > 0 {
+				t.Run(name, func(t *testing.T) {
+					holdChecks(t, lifecycleSkipReasons, prefix, checks, evaluated)
+				})
+			}
+		}
+
+		run(step.Name, checks)
+
+		// Keyed apart from the step, so the poll that first finds a device
+		// gone does not name the check.
 		if i == lastRead {
-			checks = append(checks, r.leftChecks(c, step)...)
-		}
-
-		prefix := id + "/" + step.Name + "/"
-		for _, ch := range checks {
-			evaluated[prefix+ch.name] = true
-		}
-
-		if len(checks) > 0 {
-			t.Run(step.Name, func(t *testing.T) {
-				holdChecks(t, lifecycleSkipReasons, prefix, checks, evaluated)
-			})
+			run("collection", append(r.leftChecks(c, step), r.collectionChecks(killed, observer)...))
 		}
 
 		// A device list shows every machine; a device read only its own.
@@ -839,16 +858,91 @@ func runEphemeralLifecycleCompat(t *testing.T, id, observer string) {
 	}
 }
 
-// markDown records the nodes a step killed, and those it brought back.
-func markDown(step testcapture.Step, down map[string]bool) {
+// killedNode is what a killed node's collection is judged against: both
+// sides' devices and SaaS's observer view before the kill, where the
+// observer's headscale history stood then, and SaaS's observer frames since.
+type killedNode struct {
+	saas, hs     []deviceView
+	prevObs      *netmap.NetworkMap
+	historyStart int
+	frames       []testcapture.Frame
+}
+
+// markKilled records the nodes a step killed, as before reports them, and
+// forgets those it brought back.
+func markKilled(step testcapture.Step, killed map[string]*killedNode, before func(node string) *killedNode) {
 	for _, a := range step.Actions {
 		switch a.Kind {
 		case "kill":
-			down[a.Node] = true
+			killed[a.Node] = before(a.Node)
 		case "start", "join", "relogin", "restart":
-			down[a.Node] = false
+			delete(killed, a.Node)
 		}
 	}
+}
+
+// collectionChecks compares, per device of each node still killed, whether
+// the observer lost it since the kill and whether it is still a peer.
+func (r *stepReplay) collectionChecks(killed map[string]*killedNode, observer string) []stepCheck {
+	var checks []stepCheck
+
+	for _, node := range slices.Sorted(maps.Keys(killed)) {
+		k := killed[node]
+		if len(k.saas) == 0 {
+			continue
+		}
+
+		checks = append(checks,
+			stepCheck{node + "/removed-" + observer, renderEach(k.saas, func(v deviceView) string {
+				return saasRemoved(k.prevObs, k.frames, v.nodeID)
+			}), func() string {
+				history := r.clients[observer].History()[k.historyStart:]
+
+				return renderEach(k.hs, func(v deviceView) string { return hsRemoved(history, v.nodeID) })
+			}},
+			stepCheck{node + "/present-" + observer, renderEach(k.saas, func(v deviceView) string {
+				return saasPresent(k.prevObs, k.frames, v.nodeID)
+			}), func() string {
+				nm := r.clients[observer].Netmap()
+
+				return renderEach(k.hs, func(v deviceView) string {
+					if _, missing := peerByID(nm, v.nodeID); missing != "" {
+						return missing
+					}
+
+					return "present"
+				})
+			}},
+		)
+	}
+
+	return checks
+}
+
+// saasPresent reports whether the peer is listed once the frames apply to
+// the netmap before them.
+func saasPresent(before *netmap.NetworkMap, frames []testcapture.Frame, id tailcfg.NodeID) string {
+	_, missing := peerByID(before, id)
+	present := missing == ""
+	byID := func(n *tailcfg.Node) bool { return n.ID == id }
+
+	for _, f := range frames {
+		switch resp := f.Response; {
+		case resp == nil:
+		case slices.Contains(resp.PeersRemoved, id):
+			present = false
+		case resp.Peers != nil:
+			present = slices.ContainsFunc(resp.Peers, byID)
+		case slices.ContainsFunc(resp.PeersChanged, byID):
+			present = true
+		}
+	}
+
+	if present {
+		return "present"
+	}
+
+	return "absent"
 }
 
 // firstDevices records each machine's device as it first joined: on SaaS
