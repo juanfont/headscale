@@ -179,12 +179,13 @@ func runNodeExpiryCompat(t *testing.T, id, observer string) {
 		require.Equal(t, "observed", step.Result, "%s: the replay follows every step", step.Name)
 
 		start := map[string]*netmap.NetworkMap{}
-		historyStart, attempts := map[string]int{}, map[string]int{}
+		historyStart, attempts, streams := map[string]int{}, map[string]int{}, map[string]int{}
 
 		for alias, cl := range r.clients {
 			start[alias] = cl.Netmap()
 			historyStart[alias] = max(len(cl.History())-1, 0)
 			attempts[alias] = len(cl.RegisterAttempts())
+			streams[alias], _ = cl.Stream()
 
 			if v := r.hsViews(alias); len(v) == 1 {
 				hsPrev[alias] = v[0]
@@ -195,7 +196,7 @@ func runNodeExpiryCompat(t *testing.T, id, observer string) {
 
 		e := &expiryStep{
 			r: r, c: c, step: step, at: stepCaptureTime(step), saasNames: r.saasAddrNames(step),
-			prevCaps: prevCaps, start: start, historyStart: historyStart,
+			prevCaps: prevCaps, start: start, historyStart: historyStart, streams: streams,
 		}
 
 		var checks []stepCheck
@@ -259,17 +260,19 @@ type expiryStep struct {
 	// SaaS addresses.
 	saasNames map[netip.Addr]string
 
-	// prevCaps holds SaaS's captures of the step before; start and
-	// historyStart headscale's netmaps when the step began.
+	// prevCaps holds SaaS's captures of the step before; start, historyStart
+	// and streams headscale's netmaps and map streams when the step began.
 	prevCaps     map[string]testcapture.Node
 	start        map[string]*netmap.NetworkMap
 	historyStart map[string]int
+	streams      map[string]int
 }
 
 // selfChecks compares x's own view: its key expiry flags, its peers among
-// the capture's nodes, its packet filter and SSH rules and, when the step
-// before captured x too, whether it lost any peer during the step and
-// whether its DNS, packet filter and SSH policy changed.
+// the capture's nodes, its packet filter and SSH rules, whether a map stream
+// the step opened was answered and, when the step before captured x too,
+// whether it lost any peer during the step and whether its DNS, packet
+// filter and SSH policy changed.
 func (e *expiryStep) selfChecks(t *testing.T, x string) []stepCheck {
 	t.Helper()
 
@@ -291,6 +294,20 @@ func (e *expiryStep) selfChecks(t *testing.T, x string) []stepCheck {
 			return strings.Join(append(hsFilterTriples(&errs, nm.PacketFilter, e.r.addrNames()), errs...), "\n")
 		}},
 		{x + "/ssh-rules", renderSSHRules(saas, e.saasNames), func() string { return renderSSHRules(cl.Netmap(), e.r.addrNames()) }},
+	}
+
+	// Only nodes whose stream SaaS recorded; opening one logs its request.
+	if opensStream(e.step, x) && len(e.step.Frames[x]) > 0 {
+		checks = append(checks, stepCheck{x + "/stream", saasStreamAnswer(e.step.Frames[x]), func() string {
+			switch opened, maps := cl.Stream(); {
+			case opened == e.streams[x]:
+				return "not opened"
+			case maps == 0:
+				return "unanswered"
+			default:
+				return "answered"
+			}
+		}})
 	}
 
 	prev := e.prevCaps[x].Netmap
@@ -707,6 +724,33 @@ func renderSSHRules(nm *netmap.NetworkMap, names map[netip.Addr]string) string {
 	}
 
 	return strings.Join(out, "\n")
+}
+
+// opensStream reports whether the step's actions open a new map stream for
+// x: a login, a restart or a reconnect.
+func opensStream(step testcapture.Step, x string) bool {
+	return slices.ContainsFunc(step.Actions, func(a testcapture.Action) bool {
+		return a.Node == x && slices.Contains([]string{
+			"join", "relogin", "login", "restart", "start", "break_tcp_conns", "rotate_disco_key",
+		}, a.Kind)
+	})
+}
+
+// saasStreamAnswer says whether SaaS answered the last map stream the frames
+// show opening with a full map.
+func saasStreamAnswer(frames []testcapture.Frame) string {
+	answer := "not opened"
+
+	for _, f := range frames {
+		switch {
+		case f.Request != nil && f.Request.Stream:
+			answer = "unanswered"
+		case answer == "unanswered" && f.Response != nil && f.Response.Node != nil:
+			answer = "answered"
+		}
+	}
+
+	return answer
 }
 
 func changed(before, after string) string {
