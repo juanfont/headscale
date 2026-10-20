@@ -1229,13 +1229,20 @@ func (r *stepReplay) saasAlias(id tailcfg.NodeID) (string, bool) {
 	return "", false
 }
 
-// hsAlias is the alias whose machine holds node id.
+// hsAlias is the alias whose machine holds node id, or last held it: a
+// deleted node a client still lists must count, as saasAlias counts it.
 func (r *stepReplay) hsAlias(id tailcfg.NodeID) (string, bool) {
 	for alias := range r.clients {
 		for _, nv := range r.machineNodes(alias) {
 			if nv.ID().NodeID() == id {
 				return alias, true
 			}
+		}
+	}
+
+	for alias, last := range r.lastIDs {
+		if last == strconv.FormatInt(int64(id), 10) {
+			return alias, true
 		}
 	}
 
