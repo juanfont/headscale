@@ -18,7 +18,7 @@ type Target struct {
 // Reduce selects complete network groups relevant to target. Capability grants
 // instead narrow to stored node addresses and preserve overlapping subnet scope.
 func Reduce(rules []Rule, target Target) []Rule {
-	reduced := make([]Rule, 0, len(rules))
+	reduced := make([]Rule, 0)
 	for _, rule := range rules {
 		switch rule.kind {
 		case KindInvalid:

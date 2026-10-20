@@ -52,8 +52,10 @@ type ownedFragment struct {
 	owners   ownerApplicability
 }
 type ruleIndex struct {
-	rules  []packetfilter.Rule
-	owners []ownerApplicability
+	rules        []packetfilter.Rule
+	owners       []ownerApplicability
+	unrestricted []int
+	// Every known node has a key; values contain only restricted rule IDs.
 	byNode map[types.NodeID][]int
 }
 
@@ -345,6 +347,9 @@ func mergeFragmentsWithHash(
 	}
 
 	index := ruleIndex{byNode: make(map[types.NodeID][]int)}
+	for _, node := range nodes.All() {
+		index.byNode[node.ID()] = nil
+	}
 
 	for _, fragment := range merged {
 		var rule packetfilter.Rule
@@ -366,12 +371,7 @@ func mergeFragmentsWithHash(
 
 		index.owners = append(index.owners, fragment.owners)
 		if fragment.owners.unrestricted {
-			for _, node := range nodes.All() {
-				ids := index.byNode[node.ID()]
-				if len(ids) == 0 || ids[len(ids)-1] != id {
-					index.byNode[node.ID()] = append(ids, id)
-				}
-			}
+			index.unrestricted = append(index.unrestricted, id)
 		} else {
 			for _, ordinal := range fragment.owners.ordinals {
 				nodeID := nodes.At(ordinal).ID()
@@ -450,8 +450,23 @@ func (v ReadView) cacheable(node types.NodeView) bool {
 }
 
 func (index ruleIndex) forNode(id types.NodeID) []packetfilter.Rule {
-	rules := make([]packetfilter.Rule, 0, len(index.byNode[id]))
-	for _, ruleID := range index.byNode[id] {
+	ids, known := index.byNode[id]
+	if !known {
+		return []packetfilter.Rule{}
+	}
+
+	rules := make([]packetfilter.Rule, 0, len(index.unrestricted)+len(ids))
+	// Both ID lists follow construction order; merge into a caller-owned slice.
+	for _, ruleID := range index.unrestricted {
+		for len(ids) > 0 && ids[0] < ruleID {
+			rules = append(rules, index.rules[ids[0]])
+			ids = ids[1:]
+		}
+
+		rules = append(rules, index.rules[ruleID])
+	}
+
+	for _, ruleID := range ids {
 		rules = append(rules, index.rules[ruleID])
 	}
 

@@ -3,6 +3,7 @@ package v2
 import (
 	"fmt"
 	"net/netip"
+	"runtime"
 	"slices"
 	"sync"
 	"testing"
@@ -566,6 +567,149 @@ func TestTypedRulesPreserveOwnerGate(t *testing.T) {
 		func(ownedFragment) deephash.Sum { return deephash.Sum{} },
 	)
 	require.Len(t, collisionIndex.rules, 2)
+}
+
+func TestRuleIndexUnrestrictedMembershipRetainedGrowth(t *testing.T) {
+	const ruleCount = 256
+
+	nodes := make(types.Nodes, 512)
+	for i := range nodes {
+		nodes[i] = &types.Node{ID: types.NodeID(i + 1)}
+	}
+
+	fragments := make([]ownedFragment, ruleCount)
+	for i := range fragments {
+		fragments[i] = ownedFragment{
+			fragment: ruleFragment{
+				sources: singletonPrefix(netip.PrefixFrom(
+					netip.AddrFrom4([4]byte{192, 0, 2, byte(i)}), 32,
+				)),
+				destinations: []packetfilter.Destination{
+					{Addresses: ipset.All(), Ports: tailcfg.PortRangeAny},
+				},
+			},
+			owners: ownerApplicability{unrestricted: true},
+		}
+	}
+
+	retainedBytes := func(nodeCount int) float64 {
+		lastKnownID := nodes[nodeCount-1].ID
+		views := nodes[:nodeCount].ViewSlice()
+		// Warm hash metadata before measuring generation-owned storage.
+		_ = mergeFragments(fragments, views)
+
+		var indexes [4]ruleIndex
+
+		runtime.GC()
+
+		var before, after runtime.MemStats
+
+		runtime.ReadMemStats(&before)
+
+		for i := range indexes {
+			indexes[i] = mergeFragments(fragments, views)
+		}
+
+		runtime.GC()
+		runtime.ReadMemStats(&after)
+
+		retained := (float64(after.HeapAlloc) - float64(before.HeapAlloc)) /
+			float64(len(indexes))
+		for _, index := range indexes {
+			require.Len(t, index.forNode(lastKnownID), ruleCount)
+			require.Empty(t, index.forNode(lastKnownID+1))
+		}
+
+		runtime.KeepAlive(indexes)
+		runtime.KeepAlive(views)
+		runtime.KeepAlive(fragments)
+
+		return retained
+	}
+
+	small, large := retainedBytes(16), retainedBytes(len(nodes))
+	t.Logf("retained bytes/index: 16 nodes=%.0f, 512 nodes=%.0f", small, large)
+	// Node membership may grow; 256 unrestricted IDs per node may not.
+	require.Less(t, large-small, float64(128<<10),
+		"unrestricted rule storage must not grow as nodes times rules")
+	runtime.KeepAlive(nodes)
+	runtime.KeepAlive(fragments)
+}
+
+func TestRuleIndexSelectionPreservesOrderAndOwnership(t *testing.T) {
+	nodes := types.Nodes{{ID: 9001}, {ID: 17}, {ID: 17}, {ID: 42}}
+
+	fragments := []ownedFragment{
+		{owners: ownerApplicability{ordinals: []int{1, 2}}},
+		{owners: ownerApplicability{unrestricted: true}},
+		{owners: ownerApplicability{ordinals: []int{0}}},
+		{owners: ownerApplicability{unrestricted: true}},
+		{owners: ownerApplicability{ordinals: []int{1, 2}}},
+	}
+	for i := range fragments {
+		fragments[i].fragment = ruleFragment{
+			sources: singletonPrefix(netip.PrefixFrom(
+				netip.AddrFrom4([4]byte{192, 0, 2, byte(i + 1)}), 32,
+			)),
+			destinations: []packetfilter.Destination{
+				{
+					Addresses: singletonPrefix(mp("100.64.0.1/32")),
+					Ports: tailcfg.PortRange{
+						First: uint16(80 + i), Last: uint16(80 + i),
+					},
+				},
+			},
+			protocols: []ipproto.Proto{17, 6, 17},
+		}
+	}
+
+	fragments[3].fragment.destinations = nil
+	fragments[3].fragment.capabilities = []packetfilter.CapabilityGrant{{
+		Addresses: singletonPrefix(mp("100.64.0.1/32")),
+		CapMap:    tailcfg.PeerCapMap{"example.com/access": {`{"role":"reader"}`}},
+	}}
+
+	index := mergeFragmentsWithHash(fragments, nodes.ViewSlice(),
+		func(ownedFragment) deephash.Sum { return deephash.Sum{} })
+
+	for _, test := range []struct {
+		id      types.NodeID
+		sources []string
+	}{
+		{17, []string{"192.0.2.1", "192.0.2.2", "192.0.2.4", "192.0.2.5"}},
+		{9001, []string{"192.0.2.2", "192.0.2.3", "192.0.2.4"}},
+		{42, []string{"192.0.2.2", "192.0.2.4"}},
+		{99, nil},
+	} {
+		rules := index.forNode(test.id)
+		wire := packetfilter.ToTailcfg(rules)
+		require.Len(t, wire, len(test.sources))
+
+		for i, source := range test.sources {
+			require.Equal(t, []string{source}, wire[i].SrcIPs)
+
+			if source == "192.0.2.4" {
+				require.Equal(t, fragments[3].fragment.capabilities, rules[i].CapGrants())
+			} else {
+				require.Equal(t, []int{6, 17}, wire[i].IPProto)
+				require.Len(t, wire[i].DstPorts, 1)
+				require.Equal(t, "100.64.0.1", wire[i].DstPorts[0].IP)
+
+				port := uint16(79 + netip.MustParseAddr(source).As4()[3])
+				require.Equal(t, tailcfg.PortRange{First: port, Last: port}, wire[i].DstPorts[0].Ports)
+			}
+		}
+
+		if len(rules) > 0 {
+			rules[0] = packetfilter.Rule{}
+
+			require.NotEqual(t, packetfilter.KindInvalid, index.forNode(test.id)[0].Kind())
+		}
+	}
+
+	restricted := mergeFragments([]ownedFragment{fragments[0]}, nodes.ViewSlice())
+	require.Empty(t, restricted.forNode(42), "known nodes with no applicable IDs stay empty")
+	require.Empty(t, restricted.forNode(99), "unknown nodes stay empty")
 }
 
 type partialSourceAlias struct {

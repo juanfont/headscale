@@ -3,7 +3,9 @@ package packetfilter
 import (
 	"net/netip"
 	"reflect"
+	"runtime"
 	"slices"
+	"strconv"
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/ipset"
@@ -14,6 +16,64 @@ import (
 func addrPointer(value string) *netip.Addr {
 	addr := netip.MustParseAddr(value)
 	return &addr
+}
+
+func TestReduceAllocationTracksSelectedRules(t *testing.T) {
+	selected := NewNetworkRule(testSet(t, "192.0.2.1/32"), []Destination{
+		{Addresses: testSet(t, "100.64.0.1/32"), Ports: tailcfg.PortRangeAny},
+	}, []ipproto.Proto{6})
+	unrelated := NewNetworkRule(ipset.All(), []Destination{
+		{Addresses: testSet(t, "100.64.0.99/32"), Ports: tailcfg.PortRangeAny},
+	}, nil)
+	target := Target{IPv4: addrPointer("100.64.0.1")}
+
+	for _, inputSize := range []int{16, 4096} {
+		t.Run(strconv.Itoa(inputSize), func(t *testing.T) {
+			rules := slices.Repeat([]Rule{unrelated}, inputSize)
+			rules[inputSize/2] = selected
+
+			var results [16][]Rule
+
+			runtime.GC()
+
+			var before, after runtime.MemStats
+
+			runtime.ReadMemStats(&before)
+
+			for i := range results {
+				results[i] = Reduce(rules, target)
+			}
+
+			runtime.ReadMemStats(&after)
+
+			// One selected rule must not allocate storage for unrelated rules.
+			bytesPerResult := (after.TotalAlloc - before.TotalAlloc) / uint64(len(results))
+			t.Logf("%d input rules: %d allocated bytes/result", inputSize, bytesPerResult)
+
+			if bytesPerResult > 8<<10 {
+				t.Errorf("one selected rule allocated %d bytes; budget is 8 KiB", bytesPerResult)
+			}
+
+			for _, result := range results {
+				if len(result) != 1 || !result[0].Equal(selected) {
+					t.Fatal("reduction changed the selected rule")
+				}
+			}
+
+			results[0][0] = Rule{}
+			if !rules[inputSize/2].Equal(selected) || !results[1][0].Equal(selected) {
+				t.Fatal("reduced rule containers share mutable storage")
+			}
+
+			runtime.KeepAlive(results)
+			runtime.KeepAlive(rules)
+		})
+	}
+
+	wire := ToTailcfg(Reduce([]Rule{unrelated}, target))
+	if wire == nil || len(wire) != 0 {
+		t.Fatal("no matching rules must encode an explicit empty revocation")
+	}
 }
 
 func TestOrdinaryAliasReductionKeepsOnlyRecipient(t *testing.T) {
