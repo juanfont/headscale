@@ -110,6 +110,43 @@ func TestPolicyViewRefreshesWithUnchangedAdjacency(t *testing.T) {
 	require.NotContains(t, fresh.Addresses, netip.MustParsePrefix("::/0"))
 }
 
+func TestMapViewCapabilityResultsAreOwned(t *testing.T) {
+	s := mapViewTestState(t, `{"nodeAttrs":[{"target":["*"],"attr":["randomize-client-port","suggest-exit-node"]}]}`)
+	s.nodeStore.UpdateNode(2, func(n *types.Node) {
+		n.ApprovedRoutes = []netip.Prefix{
+			netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0"),
+		}
+		n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: slices.Clone(n.ApprovedRoutes)}
+	})
+	view, err := s.MapView(1)
+	require.NoError(t, err)
+
+	for _, id := range []types.NodeID{1, 2} {
+		caps := view.NodeCapMap(id)
+		require.Contains(t, caps, nodecap.RandomizeClientPort)
+		caps[nodecap.RandomizeClientPort] = []tailcfg.RawMessage{`"changed"`}
+		delete(caps, nodecap.SuggestExitNode)
+
+		fresh := view.NodeCapMap(id)
+		require.Contains(t, fresh, nodecap.RandomizeClientPort)
+		require.Nil(t, fresh[nodecap.RandomizeClientPort])
+		require.Contains(t, fresh, nodecap.SuggestExitNode)
+	}
+
+	peer := view.PeerCapMap(2)
+	require.Contains(t, peer, nodecap.SuggestExitNode)
+	peer[nodecap.SuggestExitNode] = []tailcfg.RawMessage{`"changed"`}
+	delete(peer, nodecap.SuggestExitNode)
+
+	fresh := view.PeerCapMap(2)
+	require.Contains(t, fresh, nodecap.SuggestExitNode)
+	require.Nil(t, fresh[nodecap.SuggestExitNode])
+	require.Nil(t, view.NodeCapMap(2)[nodecap.SuggestExitNode])
+	require.Nil(t, view.PeerCapMap(1))
+	require.Nil(t, view.PeerCapMap(999))
+	require.Nil(t, view.NodeCapMap(999))
+}
+
 func TestHealthOnlySnapshotUsesFreshRoutes(t *testing.T) {
 	s := mapViewTestState(t, "")
 	route := netip.MustParsePrefix("10.0.0.0/24")

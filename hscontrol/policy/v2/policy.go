@@ -36,8 +36,6 @@ type PolicyManager struct {
 	pol   *Policy
 	users []types.User
 	nodes views.Slice[types.NodeView]
-	// nodesByID indexes nodes; see [PolicyManager.cacheableLocked].
-	nodesByID map[types.NodeID]types.NodeView
 
 	filterHash deephash.Sum
 	view       ReadView
@@ -192,10 +190,9 @@ func NewPolicyManager(b []byte, users []types.User, nodes views.Slice[types.Node
 	}
 
 	pm := PolicyManager{
-		pol:       policy,
-		users:     users,
-		nodes:     nodes,
-		nodesByID: nodeIDViewMap(nodes),
+		pol:   policy,
+		users: users,
+		nodes: nodes,
 	}
 
 	_, err = pm.updateLocked()
@@ -302,7 +299,6 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	pm.view = view
 	pm.users = view.generation.users
 	pm.nodes = view.generation.nodes
-	pm.nodesByID = view.generation.nodesByID
 	pm.filterHash = filterHash
 
 	tagPrefixes := make(map[Tag][]netip.Prefix, len(tagMap))
@@ -886,9 +882,8 @@ func (pm *PolicyManager) setNodesLocked(
 	// For autogroup:self: invalidate all nodes belonging to affected users (peer changes).
 	// For global policies: invalidate only nodes whose properties changed (IPs, routes).
 
-	prevNodes, prevByID := pm.nodes, pm.nodesByID
+	prevNodes := pm.nodes
 	pm.nodes = nodes
-	pm.nodesByID = nodeIDViewMap(nodes)
 
 	// When policy-affecting node properties change, we must recompile filters because:
 	// 1. User/group aliases (like "user1@") resolve to node IPs
@@ -908,7 +903,7 @@ func (pm *PolicyManager) setNodesLocked(
 			// retry with the same input recompiles, as in SetUsers. The
 			// NodeStore writer only logs this error; the writing caller's
 			// own SetNodes then retries and returns it.
-			pm.nodes, pm.nodesByID = prevNodes, prevByID
+			pm.nodes = prevNodes
 
 			return false, err
 		}
@@ -1224,10 +1219,6 @@ func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Pr
 // peer advertises any of the grant's destination prefixes. If the peer has the
 // via tag, those prefixes go into [types.ViaRouteResult.Include]; otherwise
 // into [types.ViaRouteResult.Exclude].
-//
-// Performance note: this holds [PolicyManager.mu] for its full duration. Hot
-// callers should memoise by (policy-hash, viewer-id) rather than invoking
-// this per-pair.
 //
 //nolint:gocyclo // three-pass via-grant resolution (match, primary election, regular-overlap)
 type viaViewer struct {

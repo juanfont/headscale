@@ -113,6 +113,7 @@ func newReadView(
 
 	g.peer = g.buildRuleIndex(nodes, false)
 	g.packet = g.peer
+	indexes := [][]packetfilter.Rule{g.peer.rules}
 
 	hasExit := false
 	for _, node := range nodes.All() {
@@ -121,6 +122,25 @@ func newReadView(
 
 	if hasExit && len(g.self) > 0 {
 		g.packet = g.buildRuleIndex(nodes, true)
+		indexes = append(indexes, g.packet.rules)
+	}
+
+	// Share final contents across indexes without changing their owner gates.
+	rulesByHash := make(map[deephash.Sum][]packetfilter.Rule)
+
+	for _, rules := range indexes {
+	ruleLoop:
+		for i, rule := range rules {
+			hash := rule.Hash()
+			for _, shared := range rulesByHash[hash] {
+				if rule.Equal(shared) {
+					rules[i] = shared
+					continue ruleLoop
+				}
+			}
+
+			rulesByHash[hash] = append(rulesByHash[hash], rule)
+		}
 	}
 
 	for i, rule := range g.peer.rules {

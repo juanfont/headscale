@@ -2,7 +2,6 @@ package state
 
 import (
 	"cmp"
-	"maps"
 	"net/netip"
 	"slices"
 
@@ -102,12 +101,7 @@ func (v MapView) SSHPolicy(baseURL string) (*tailcfg.SSHPolicy, error) {
 }
 
 func (v MapView) NodeCapMap(id types.NodeID) tailcfg.NodeCapMap {
-	capMap := maps.Clone(v.snapshot.policy.NodeCapMap(id))
-	for cap, values := range capMap {
-		capMap[cap] = slices.Clone(values)
-	}
-
-	return capMap
+	return v.snapshot.policy.NodeCapMap(id)
 }
 
 func (v MapView) PeerCapMap(id types.NodeID) tailcfg.NodeCapMap {
@@ -116,12 +110,7 @@ func (v MapView) PeerCapMap(id types.NodeID) tailcfg.NodeCapMap {
 		return nil
 	}
 
-	capMap := maps.Clone(v.snapshot.policy.PeerCapMap(peer))
-	for cap, values := range capMap {
-		capMap[cap] = slices.Clone(values)
-	}
-
-	return capMap
+	return v.snapshot.policy.PeerCapMap(peer)
 }
 
 // NodeAddresses prepares independent address slices for self or a visible peer.

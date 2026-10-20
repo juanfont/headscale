@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"fmt"
 	"net/netip"
 	"slices"
 	"sync"
@@ -284,6 +285,161 @@ func TestSelfFragmentsSharedByGrantAndUser(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, nodes[0].View().CanAccess(first, nodes[1].View()))
 	require.False(t, nodes[0].View().CanAccess(first, nodes[2].View()))
+}
+
+func TestReadViewSharesFinalRulesAcrossIndexes(t *testing.T) {
+	users := types.Users{{ID: 1, Name: "u1"}, {ID: 2, Name: "u2"}}
+
+	nodes := types.Nodes{
+		node("one", "100.64.0.1", "fd7a:115c:a1e0::1", users[0]),
+		node("two", "100.64.0.2", "fd7a:115c:a1e0::2", users[0]),
+		node("three", "100.64.0.3", "fd7a:115c:a1e0::3", users[1]),
+		{Tags: []string{"tag:exit"}, IPv4: ap("100.64.0.4")},
+	}
+	for i, n := range nodes {
+		n.ID = types.NodeID(i + 1)
+	}
+
+	exit := nodes[3]
+	exit.ApprovedRoutes = []netip.Prefix{mp("0.0.0.0/0"), mp("::/0")}
+	exit.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: slices.Clone(exit.ApprovedRoutes)}
+	pm, err := NewPolicyManager([]byte(`{
+		"tagOwners":{"tag:exit":[]},
+		"grants":[
+			{"src":["*"],"dst":["*"],"ip":["tcp:443"]},
+			{"src":["autogroup:member"],"dst":["autogroup:self"],"ip":["tcp:22"]}
+		]
+	}`), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	view := pm.ReadView()
+	packet, err := view.PacketRulesForNode(exit.View())
+	require.NoError(t, err)
+	require.Len(t, packet, 3)
+
+	for _, n := range nodes[:3] {
+		peer, err := view.PeerRulesForNode(n.View())
+		require.NoError(t, err)
+		require.Len(t, peer, 2)
+
+		for _, rule := range peer {
+			match := slices.IndexFunc(packet, rule.Equal)
+			require.NotEqual(t, -1, match)
+			require.Greater(t, len(slices.Collect(rule.DestinationSet().Prefixes())), 1)
+			// Set equality with == checks shared storage, not only equal coverage.
+			//nolint:testifylint // Compare immutable backing storage identities.
+			require.True(t, rule.DestinationSet() == packet[match].DestinationSet(),
+				"equal final peer and packet rules must share their destination union")
+		}
+	}
+
+	global := view.PacketRules()
+	require.Len(t, global, 1)
+	//nolint:testifylint // Compare immutable backing storage identities.
+	require.True(t, global[0].DestinationSet() == packet[0].DestinationSet())
+
+	peer, err := view.PeerRulesForNode(nodes[0].View())
+	require.NoError(t, err)
+
+	port := []tailcfg.PortRange{{First: 22, Last: 22}}
+	destination := []netip.Prefix{mp("100.64.0.2/32")}
+	require.True(t, srcReachesDst(mp("100.64.0.1/32"), destination, port, ProtocolNameTCP, peer))
+	require.False(t, srcReachesDst(mp("100.64.0.3/32"), destination, port, ProtocolNameTCP, peer))
+	peer, err = view.PeerRulesForNode(exit.View())
+	require.NoError(t, err)
+	require.Len(t, peer, 1, "exit extras must not expand peer visibility")
+}
+
+func TestReadViewFinalRuleSharingPreservesOwnersAndContents(t *testing.T) {
+	users := types.Users{{ID: 1, Name: "u1"}, {ID: 2, Name: "u2"}}
+	routes := []netip.Prefix{mp("10.0.0.0/24"), mp("2001:db8::/64")}
+	nodes := types.Nodes{
+		{ID: 1, User: &users[0], IPv4: ap("100.64.0.1")},
+		{
+			ID: 2, Tags: []string{"tag:a"}, ApprovedRoutes: routes,
+			Hostinfo: &tailcfg.Hostinfo{RoutableIPs: routes},
+		},
+		{
+			ID: 3, Tags: []string{"tag:b"}, ApprovedRoutes: routes,
+			Hostinfo: &tailcfg.Hostinfo{RoutableIPs: routes},
+		},
+		{ID: 4, User: &users[1], IPv4: ap("100.64.0.4")},
+	}
+
+	for _, tt := range []struct {
+		name, source, destinations, protocol string
+		equal                                bool
+	}{
+		{"equal after merging", "u1@", `"10.0.0.0/24","2001:db8::/64"`, "tcp:443", true},
+		{"different source", "u2@", `"10.0.0.0/24","2001:db8::/64"`, "tcp:443", false},
+		{"different destination", "u1@", `"10.0.0.0/25","2001:db8::/64"`, "tcp:443", false},
+		{"different order", "u1@", `"2001:db8::/64","10.0.0.0/24"`, "tcp:443", false},
+		{"duplicate destination", "u1@", `"10.0.0.0/24","2001:db8::/64","10.0.0.0/24"`, "tcp:443", false},
+		{"different port", "u1@", `"10.0.0.0/24","2001:db8::/64"`, "tcp:8443", false},
+		{"different protocol", "u1@", `"10.0.0.0/24","2001:db8::/64"`, "udp:443", false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			pm, err := NewPolicyManager([]byte(fmt.Sprintf(`{
+				"tagOwners":{"tag:a":[],"tag:b":[]},
+				"grants":[
+					{"src":["u1@"],"dst":["10.0.0.0/24"],"via":["tag:a"],"ip":["tcp:443"]},
+					{"src":["u1@"],"dst":["2001:db8::/64"],"via":["tag:a"],"ip":["tcp:443"]},
+					{"src":[%q],"dst":[%s],"via":["tag:b"],"ip":[%q]}
+				]
+			}`, tt.source, tt.destinations, tt.protocol)), users, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			view := pm.ReadView()
+			first, err := view.PeerRulesForNode(nodes[1].View())
+			require.NoError(t, err)
+			second, err := view.PeerRulesForNode(nodes[2].View())
+			require.NoError(t, err)
+			require.Len(t, first, 1)
+			require.Len(t, second, 1)
+			require.Equal(t, tt.equal, first[0].Equal(second[0]))
+			require.Equal(t, tt.equal, first[0].DestinationSet() == second[0].DestinationSet(),
+				"share complete equal rules only after owner-aware merging")
+			require.Len(t, view.generation.peer.rules, 2)
+			require.NotEqual(t, view.generation.peer.byNode[2], view.generation.peer.byNode[3],
+				"content sharing must preserve separate owner applicability")
+			client, err := view.PeerRulesForNode(nodes[0].View())
+			require.NoError(t, err)
+			require.Empty(t, client)
+			require.Empty(t, view.PacketRules())
+		})
+	}
+}
+
+func TestReadViewFinalCapabilitySharingPreservesPayloads(t *testing.T) {
+	users := types.Users{{ID: 1, Name: "u1"}}
+	nodes := types.Nodes{node("one", "100.64.0.1", "fd7a:115c:a1e0::1", users[0])}
+	nodes[0].ID = 1
+	pm, err := NewPolicyManager([]byte(`{"grants":[
+		{"src":["u1@"],"dst":["u1@"],"app":{"example.com/cap":[{"enabled":true}]}},
+		{"src":["u1@"],"dst":["u1@"],"app":{"example.com/cap":[{"enabled":true}]}},
+		{"src":["u1@"],"dst":["u1@"],"app":{"example.com/cap":[{"enabled":false}]}}
+	]}`), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	rules := pm.ReadView().PacketRules()
+	require.Len(t, rules, 3, "capability grants must remain separate")
+	require.True(t, rules[0].Equal(rules[1]))
+	require.False(t, rules[0].Equal(rules[2]))
+	require.Greater(t, len(slices.Collect(rules[0].DestinationSet().Prefixes())), 1)
+	//nolint:testifylint // Compare immutable backing storage identities.
+	require.True(t, rules[0].DestinationSet() == rules[1].DestinationSet())
+	//nolint:testifylint // Compare immutable backing storage identities.
+	require.False(t, rules[0].DestinationSet() == rules[2].DestinationSet())
+
+	returned := rules[0].CapGrants()
+	returned[0].CapMap["example.com/cap"][0] = "changed"
+	delete(returned[0].CapMap, "example.com/cap")
+
+	for i, want := range []tailcfg.RawMessage{
+		`{"enabled":true}`, `{"enabled":true}`, `{"enabled":false}`,
+	} {
+		require.Equal(t, want, rules[i].CapGrants()[0].CapMap["example.com/cap"][0])
+	}
 }
 
 func TestSelfSourceMembershipIncludesBothFamilies(t *testing.T) {
@@ -670,8 +826,13 @@ func TestReadViewSSHAndCapabilitiesAreOwned(t *testing.T) {
 	require.NoError(t, err)
 
 	caps := map[types.NodeID]tailcfg.NodeCapMap{
-		2: {"example.com/cap": {tailcfg.RawMessage(`{"enabled":true}`)}},
+		2: {
+			"example.com/cap":   {tailcfg.RawMessage(`{"enabled":true}`)},
+			"suggest-exit-node": {tailcfg.RawMessage(`{"priority":1}`)},
+		},
 	}
+	nodes[1].ApprovedRoutes = []netip.Prefix{mp("0.0.0.0/0"), mp("::/0")}
+	nodes[1].Hostinfo = &tailcfg.Hostinfo{RoutableIPs: slices.Clone(nodes[1].ApprovedRoutes)}
 	view := newReadView(
 		pol,
 		users,
@@ -706,6 +867,14 @@ func TestReadViewSSHAndCapabilitiesAreOwned(t *testing.T) {
 		tailcfg.RawMessage(`{"enabled":true}`),
 		view.NodeCapMap(2)["example.com/cap"][0],
 	)
+	peerCaps := view.PeerCapMap(nodes[1].View())
+	peerCaps["suggest-exit-node"][0] = "changed"
+	caps[2]["suggest-exit-node"][0] = "changed-input"
+
+	require.Equal(t, tailcfg.RawMessage(`{"priority":1}`),
+		view.PeerCapMap(nodes[1].View())["suggest-exit-node"][0])
+	require.Equal(t, tailcfg.RawMessage(`{"priority":1}`),
+		view.NodeCapMap(2)["suggest-exit-node"][0])
 }
 
 func TestViaRoutesForViewerUsesCapturedCandidates(t *testing.T) {
