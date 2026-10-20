@@ -39,8 +39,10 @@ import (
 // apiv2CompatSkipReasons lists checks where headscale differs from SaaS, keyed
 // <test_id>/<step>/<i>[/<node>]/<check>, where <i> is the action's index in
 // its step, or <test_id>/<check> for a check over every body in the capture.
-// v1-* checks are TestAPIV1PolicyVerdictCompat's. A listed check that matches
-// fails, so a fix must delete its entry.
+// Every call has a status check and an outcome check (allowed or refused), so
+// a listed status still fails when the call flips. v1-* checks are
+// TestAPIV1PolicyVerdictCompat's. A listed check that matches fails, so a fix
+// must delete its entry.
 var apiv2CompatSkipReasons = map[string]string{
 	"oauth/R2/4/status":  missingScopeNotFound,
 	"oauth/R3/1/status":  missingScopeNotFound,
@@ -64,30 +66,37 @@ var apiv2CompatSkipReasons = map[string]string{
 	"oauth/B3/0/tags":  mintTagsNotEchoed,
 	"oauth/B11/1/tags": mintTagsNotEchoed,
 
-	"oauth/K1/0/status": unknownPropertyRefused,
-	"oauth/K1/1/status": unknownPropertyRefused,
-	"oauth/K2/0/status": unknownKeyType,
-	"oauth/K5/0/status": unknownKeyType,
+	"oauth/K1/0/status":  unknownPropertyRefused,
+	"oauth/K1/0/outcome": unknownPropertyRefused,
+	"oauth/K1/1/status":  unknownPropertyRefused,
+	"oauth/K1/1/outcome": unknownPropertyRefused,
+	"oauth/K2/0/status":  unknownKeyType,
+	"oauth/K2/0/outcome": unknownKeyType,
+	"oauth/K5/0/status":  unknownKeyType,
 
 	"oauth/J3/1/hostnames": sshTestHostnames,
 	"oauth/J4/0/hostnames": sshTestHostnames,
 	"oauth/J3/1/detail":    refusalDetail,
 	"oauth/J4/0/detail":    refusalDetail,
 
-	"oauth/E2/0/status":  taggedAllClientAnyTag,
-	"oauth/E9a/1/status": taggedAllClientAnyTag,
+	"oauth/E2/0/status":   taggedAllClientAnyTag,
+	"oauth/E2/0/outcome":  taggedAllClientAnyTag,
+	"oauth/E9a/1/status":  taggedAllClientAnyTag,
+	"oauth/E9a/1/outcome": taggedAllClientAnyTag,
 
 	"oauth/E4/0/status": tagRefusalStatus,
 	"oauth/E5/0/status": tagRefusalStatus,
 	"oauth/T2/1/status": tagRefusalStatus,
 	"oauth/T3/1/status": tagRefusalStatus,
 
-	"oauth/T4/1/status": retagRemovesUnownedTag,
-	"oauth/T4/2/tags":   retagRemovesUnownedTag,
-	"oauth/T4/2/owner":  retagRemovesUnownedTag,
-	"oauth/T5/1/status": retagRemovesUnownedTag,
-	"oauth/T5/2/tags":   retagRemovesUnownedTag,
-	"oauth/T5/2/owner":  retagRemovesUnownedTag,
+	"oauth/T4/1/status":  retagRemovesUnownedTag,
+	"oauth/T4/1/outcome": retagRemovesUnownedTag,
+	"oauth/T4/2/tags":    retagRemovesUnownedTag,
+	"oauth/T4/2/owner":   retagRemovesUnownedTag,
+	"oauth/T5/1/status":  retagRemovesUnownedTag,
+	"oauth/T5/1/outcome": retagRemovesUnownedTag,
+	"oauth/T5/2/tags":    retagRemovesUnownedTag,
+	"oauth/T5/2/owner":   retagRemovesUnownedTag,
 
 	"oauth/D0/1/listed":  keyListWithoutAll,
 	"oauth/B11/0/listed": keyListWithoutAll,
@@ -95,6 +104,7 @@ var apiv2CompatSkipReasons = map[string]string{
 	"oauth/D0/2/listed":  keyListInvalidKeys,
 
 	"oauth/D7/2/status":  deletedClientGone,
+	"oauth/D7/2/outcome": deletedClientGone,
 	"oauth/D7/3/message": deletedClientCredentialText,
 	"oauth/D7/4/message": deletedClientCredentialText,
 	"oauth/B7/0/message": deletedClientCredentialText,
@@ -105,11 +115,17 @@ var apiv2CompatSkipReasons = map[string]string{
 	"oauth/device-oauth-client":  deviceOAuthClientID,
 	"oauth/empty-route-lists":    emptyRouteListsOmitted,
 
-	"policy-api/P2/0/status":    noV2Validate,
-	"policy-api/P3/0/status":    noV2Validate,
-	"policy-api/P4/0/status":    noV2Validate,
-	"policy-api/P5-R1/0/status": noV2Validate,
-	"policy-api/P5-R2/0/status": noV2Validate,
+	"policy-api/P2/0/status":     noV2Validate,
+	"policy-api/P2/0/message":    noV2Validate,
+	"policy-api/P3/0/status":     noV2Validate,
+	"policy-api/P3/0/message":    noV2Validate,
+	"policy-api/P4/0/status":     noV2Validate,
+	"policy-api/P4/0/outcome":    noV2Validate,
+	"policy-api/P5-R1/0/status":  noV2Validate,
+	"policy-api/P5-R1/0/message": noV2Validate,
+	"policy-api/P5-R2/0/status":  noV2Validate,
+	"policy-api/P5-R2/0/message": noV2Validate,
+	"policy-api/P5-R2/0/detail":  noV2Validate,
 
 	"policy-api/P3/1/detail":    refusalDetail,
 	"policy-api/P5-R1/1/detail": refusalDetail,
@@ -125,6 +141,7 @@ var apiv2CompatSkipReasons = map[string]string{
 // answer there is in doubt, so it is no reference.
 var apiv2CompatNotCompared = []string{
 	"policy-api/P2/1/status",
+	"policy-api/P2/1/outcome",
 	"policy-api/P2/1/enforced",
 	"policy-api/P2/1/v1-verdict",
 	"policy-api/P2/1/v1-stored",
@@ -513,7 +530,10 @@ func (r *apiReplay) token(t *testing.T, a testcapture.Action) []apiCheck {
 	status, _, body := r.serve(t, http.MethodPost, "/api/v2/oauth/token",
 		map[string]string{"Content-Type": "application/x-www-form-urlencoded"}, []byte(form.Encode()), r.v2)
 
-	checks := []apiCheck{{"status", strconv.Itoa(a.Status), strconv.Itoa(status)}}
+	checks := []apiCheck{
+		{"status", strconv.Itoa(a.Status), strconv.Itoa(status)},
+		{"outcome", verdict(a.Status == http.StatusOK), verdict(status == http.StatusOK)},
+	}
 
 	var want, got struct {
 		AccessToken string `json:"access_token"`
@@ -567,6 +587,7 @@ func (r *apiReplay) api(t *testing.T, step testcapture.Step, i int, a testcaptur
 	}
 
 	isWrite := a.Method == http.MethodPost && endpoint == "/tailnet/-/acl"
+	isValidate := endpoint == "/tailnet/-/acl/validate"
 	path, header, body := r.request(t, a, isPolicy)
 
 	var before string
@@ -576,12 +597,19 @@ func (r *apiReplay) api(t *testing.T, step testcapture.Step, i int, a testcaptur
 
 	status, respHeader, resp := r.serve(t, a.Method, path, header, body, r.v2)
 
-	checks := []apiCheck{{"status", strconv.Itoa(a.Status), strconv.Itoa(status)}}
-
 	saasOK := a.Status/100 == 2
 	hsOK := status/100 == 2
 
-	if !saasOK && a.Status == status && len(a.Response) > 0 {
+	// SaaS's validate answers some refusals with 200 and a message.
+	saasRefused := !saasOK || isValidate && len(errorTexts(a.Response)) > 0
+	hsRefused := !hsOK || isValidate && len(errorTexts(resp)) > 0
+
+	checks := []apiCheck{
+		{"status", strconv.Itoa(a.Status), strconv.Itoa(status)},
+		{"outcome", verdict(!saasRefused), verdict(!hsRefused)},
+	}
+
+	if len(a.Response) > 0 && (!saasOK && a.Status == status || isValidate && saasRefused) {
 		checks = append(checks, messageCheck(t, a.Response, resp))
 	}
 
@@ -599,11 +627,11 @@ func (r *apiReplay) api(t *testing.T, step testcapture.Step, i int, a testcaptur
 		checks = append(checks, r.etagCheck(step, i, label, respHeader.Get("ETag")))
 	}
 
-	if isWrite {
-		if a.Kind == "api" && !saasOK {
-			checks = append(checks, r.refusalChecks(t, a, body, resp)...)
-		}
+	if a.Kind == "api" && saasRefused && (isWrite || isValidate) {
+		checks = append(checks, r.refusalChecks(t, a, endpoint, body, resp)...)
+	}
 
+	if isWrite {
 		if ch, ok := r.enforcedCheck(t, step, a.Kind, before); ok {
 			checks = append(checks, ch)
 		}
@@ -1120,10 +1148,11 @@ func (r *apiReplay) etagCheck(step testcapture.Step, i int, label, hs string) ap
 	return apiCheck{"etag", first(r.saasETag, label), first(r.hsETag, hs)}
 }
 
-// refusalChecks compare a refused policy write's detail: the hostnames it
-// names that the policy does not, how many detail entries for which users,
-// and whether a second principal sending the same body got the same answer.
-func (r *apiReplay) refusalChecks(t *testing.T, a testcapture.Action, sent, resp []byte) []apiCheck {
+// refusalChecks compare a refused policy write or validate's detail: the
+// hostnames it names that the policy does not, how many detail entries for
+// which users, and whether a second principal sending the same body to the
+// same endpoint got the same answer.
+func (r *apiReplay) refusalChecks(t *testing.T, a testcapture.Action, endpoint string, sent, resp []byte) []apiCheck {
 	t.Helper()
 
 	var hostnames []string
@@ -1153,7 +1182,11 @@ func (r *apiReplay) refusalChecks(t *testing.T, a testcapture.Action, sent, resp
 	}
 
 	require.NoError(t, json.Unmarshal(a.Response, &want))
-	require.NoError(t, json.Unmarshal(resp, &got))
+
+	// Headscale has no v2 validate, so only there may its answer not be JSON.
+	if err := json.Unmarshal(resp, &got); endpoint != "/tailnet/-/acl/validate" {
+		require.NoErrorf(t, err, "body: %s", resp)
+	}
 
 	users := func(data []struct {
 		User string `json:"user"`
@@ -1172,11 +1205,12 @@ func (r *apiReplay) refusalChecks(t *testing.T, a testcapture.Action, sent, resp
 		{"detail", users(want.Data), users(got.Data)},
 	}
 
-	if prev, ok := r.refusals[string(sent)]; ok && bytes.Equal(prev[0], a.Response) {
+	sameBody := endpoint + " " + string(sent)
+	if prev, ok := r.refusals[sameBody]; ok && bytes.Equal(prev[0], a.Response) {
 		checks = append(checks, apiCheck{"same-answer", "same", map[bool]string{true: "same", false: "differs"}[bytes.Equal(prev[1], resp)]})
 	}
 
-	r.refusals[string(sent)] = [2][]byte{a.Response, resp}
+	r.refusals[sameBody] = [2][]byte{a.Response, resp}
 
 	return checks
 }
@@ -1269,14 +1303,6 @@ func (r *apiReplay) v1Policy(t *testing.T, step testcapture.Step, i int, a testc
 	body, err := json.Marshal(map[string]string{"policy": string(r.policyBody(t, a.Body))})
 	require.NoError(t, err)
 
-	verdict := func(ok bool) string {
-		if ok {
-			return "accepted"
-		}
-
-		return "refused"
-	}
-
 	if endpoint == "/tailnet/-/acl/validate" {
 		res := callHandler(r.v1, http.MethodPost, "/api/v1/policy/check", body)
 
@@ -1325,6 +1351,14 @@ func (r *apiReplay) v1Policy(t *testing.T, step testcapture.Step, i int, a testc
 	}
 
 	return checks
+}
+
+func verdict(ok bool) string {
+	if ok {
+		return "accepted"
+	}
+
+	return "refused"
 }
 
 func changed(c bool) string {
