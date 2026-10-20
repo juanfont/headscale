@@ -45,10 +45,8 @@ var mapStreamSkipReasons = map[string]string{
 	"map-delivery/S1.4/router/frames": policyResponseToEveryNode,
 	"map-delivery/S1.4/sshd/frames":   policyResponseToEveryNode,
 
-	"map-delivery/S3.5-remove/db1/frames":   policyResponseToEveryNode,
-	"map-delivery/S3.5-restore/appc/frames": policyResponseToEveryNode,
-	"map-delivery/S3.5-restore/db1/frames":  policyResponseToEveryNode,
-	"map-delivery/S3.5-restore/sshd/frames": policyResponseToEveryNode,
+	"map-delivery/S3.5-remove/db1/frames":  policyResponseToEveryNode,
+	"map-delivery/S3.5-restore/db1/frames": policyResponseToEveryNode,
 
 	"map-delivery/S2.1/laptop/frames":         ownReportEchoed,
 	"map-delivery/S2.3/laptop/frames":         ownReportEchoed,
