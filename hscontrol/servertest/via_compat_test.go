@@ -29,6 +29,7 @@ import (
 	"tailscale.com/tailcfg/peercap"
 	"tailscale.com/types/netmap"
 	"tailscale.com/types/views"
+	"tailscale.com/wgengine/filter"
 )
 
 // viaCompatTests lists golden captures that exercise via grant steering.
@@ -1076,58 +1077,8 @@ func comparePacketFilter(
 		h.Helper()
 	}
 
-	hsAddrs := hsAddrsByPeer(clients)
-
-	wantTriples := map[string]struct{}{}
-
-	for i, rule := range want.PacketFilterRules {
-		srcs := strings.Join(canonicaliseSrcStrings(t, rule.SrcIPs, saasAddrs, i), ",")
-
-		for _, dp := range rule.DstPorts {
-			pfxs, err := parseDstPrefixes(dp.IP)
-			require.NoErrorf(t, err,
-				"golden DstPorts[%d].IP %q should parse as prefix, addr or range", i, dp.IP)
-
-			for _, pfx := range pfxs {
-				for _, dst := range peerIdents(t, pfx, saasAddrs, i) {
-					wantTriples[filterTriple(srcs, dst, dp.Ports.First, dp.Ports.Last)] = struct{}{}
-				}
-			}
-		}
-
-		for _, cg := range rule.CapGrant {
-			caps := slices.Collect(maps.Keys(cg.CapMap))
-			caps = append(caps, cg.Caps...)
-
-			for _, pfx := range cg.Dsts {
-				for _, dst := range peerIdents(t, pfx, saasAddrs, i) {
-					for _, c := range caps {
-						wantTriples[capTriple(srcs, dst, c)] = struct{}{}
-					}
-				}
-			}
-		}
-	}
-
-	gotTriples := map[string]struct{}{}
-
-	for i, match := range got.PacketFilter {
-		srcs := strings.Join(canonicaliseSrcPrefixes(t, match.Srcs, hsAddrs, i), ",")
-
-		for _, dp := range match.Dsts {
-			for _, dst := range peerIdents(t, dp.Net, hsAddrs, i) {
-				gotTriples[filterTriple(srcs, dst, dp.Ports.First, dp.Ports.Last)] = struct{}{}
-			}
-		}
-
-		for _, cm := range match.Caps {
-			for _, dst := range peerIdents(t, cm.Dst, hsAddrs, i) {
-				gotTriples[capTriple(srcs, dst, cm.Cap)] = struct{}{}
-			}
-		}
-	}
-
-	wantList, gotList := sortedKeys(wantTriples), sortedKeys(gotTriples)
+	wantList := saasFilterTriples(t, want.PacketFilterRules, saasAddrs)
+	gotList := hsFilterTriples(t, got.PacketFilter, hsAddrsByPeer(clients))
 
 	if reason, listed := skips[key]; listed {
 		if slices.Equal(wantList, gotList) {
@@ -1139,6 +1090,75 @@ func comparePacketFilter(
 
 	assert.ElementsMatchf(t, wantList, gotList,
 		"PacketFilter (source, destination, ports) mismatch")
+}
+
+// saasFilterTriples renders captured PacketFilter rules as sorted (source,
+// destination, ports or capability) triples, peers named by saasAddrs.
+func saasFilterTriples(t require.TestingT, rules []tailcfg.FilterRule, saasAddrs map[netip.Addr]string) []string {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
+
+	triples := map[string]struct{}{}
+
+	for i, rule := range rules {
+		srcs := strings.Join(canonicaliseSrcStrings(t, rule.SrcIPs, saasAddrs, i), ",")
+
+		for _, dp := range rule.DstPorts {
+			pfxs, err := parseDstPrefixes(dp.IP)
+			require.NoErrorf(t, err,
+				"golden DstPorts[%d].IP %q should parse as prefix, addr or range", i, dp.IP)
+
+			for _, pfx := range pfxs {
+				for _, dst := range peerIdents(t, pfx, saasAddrs, i) {
+					triples[filterTriple(srcs, dst, dp.Ports.First, dp.Ports.Last)] = struct{}{}
+				}
+			}
+		}
+
+		for _, cg := range rule.CapGrant {
+			caps := slices.Collect(maps.Keys(cg.CapMap))
+			caps = append(caps, cg.Caps...)
+
+			for _, pfx := range cg.Dsts {
+				for _, dst := range peerIdents(t, pfx, saasAddrs, i) {
+					for _, c := range caps {
+						triples[capTriple(srcs, dst, c)] = struct{}{}
+					}
+				}
+			}
+		}
+	}
+
+	return sortedKeys(triples)
+}
+
+// hsFilterTriples renders a client's packet filter as the triples
+// [saasFilterTriples] gives, peers named by hsAddrs.
+func hsFilterTriples(t require.TestingT, matches []filter.Match, hsAddrs map[netip.Addr]string) []string {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
+
+	triples := map[string]struct{}{}
+
+	for i, match := range matches {
+		srcs := strings.Join(canonicaliseSrcPrefixes(t, match.Srcs, hsAddrs, i), ",")
+
+		for _, dp := range match.Dsts {
+			for _, dst := range peerIdents(t, dp.Net, hsAddrs, i) {
+				triples[filterTriple(srcs, dst, dp.Ports.First, dp.Ports.Last)] = struct{}{}
+			}
+		}
+
+		for _, cm := range match.Caps {
+			for _, dst := range peerIdents(t, cm.Dst, hsAddrs, i) {
+				triples[capTriple(srcs, dst, cm.Cap)] = struct{}{}
+			}
+		}
+	}
+
+	return sortedKeys(triples)
 }
 
 func filterTriple(srcs, dst string, first, last uint16) string {

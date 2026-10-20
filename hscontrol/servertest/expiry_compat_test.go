@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
+	"net/netip"
 	"slices"
 	"strings"
 	"testing"
@@ -193,7 +194,7 @@ func runNodeExpiryCompat(t *testing.T, id, observer string) {
 		r.apply(t, step)
 
 		e := &expiryStep{
-			r: r, c: c, step: step, at: stepCaptureTime(step),
+			r: r, c: c, step: step, at: stepCaptureTime(step), saasNames: r.saasAddrNames(step),
 			prevCaps: prevCaps, start: start, historyStart: historyStart,
 		}
 
@@ -205,7 +206,7 @@ func runNodeExpiryCompat(t *testing.T, id, observer string) {
 				continue
 			}
 
-			checks = append(checks, e.selfChecks(x)...)
+			checks = append(checks, e.selfChecks(t, x)...)
 
 			for _, v := range captured {
 				if v != x && step.Captures[v].Netmap != nil && r.clients[v] != nil {
@@ -254,6 +255,10 @@ type expiryStep struct {
 	// at is when SaaS's captures were taken.
 	at time.Time
 
+	// saasNames names the capture's nodes the step's netmaps show by their
+	// SaaS addresses.
+	saasNames map[netip.Addr]string
+
 	// prevCaps holds SaaS's captures of the step before; start and
 	// historyStart headscale's netmaps when the step began.
 	prevCaps     map[string]testcapture.Node
@@ -261,17 +266,31 @@ type expiryStep struct {
 	historyStart map[string]int
 }
 
-// selfChecks compares x's own view: its key expiry flags and its peers among
-// the capture's nodes and, when the step before captured x too, whether it
-// lost any during the step and whether its DNS, packet filter and SSH policy
-// changed.
-func (e *expiryStep) selfChecks(x string) []stepCheck {
+// selfChecks compares x's own view: its key expiry flags, its peers among
+// the capture's nodes, its packet filter and SSH rules and, when the step
+// before captured x too, whether it lost any peer during the step and
+// whether its DNS, packet filter and SSH policy changed.
+func (e *expiryStep) selfChecks(t *testing.T, x string) []stepCheck {
+	t.Helper()
+
 	saas := e.step.Captures[x].Netmap
 	cl := e.r.clients[x]
 
 	checks := []stepCheck{
 		{x + "/self", renderSelfExpiry(saas, e.at), func() string { return renderSelfExpiry(cl.Netmap(), time.Now()) }},
 		{x + "/peers", peerAliases(saas, e.r.saasAlias), func() string { return peerAliases(cl.Netmap(), e.r.hsAlias) }},
+		{x + "/filter-rules", strings.Join(saasFilterTriples(t, e.step.Captures[x].PacketFilterRules, e.saasNames), "\n"), func() string {
+			nm := cl.Netmap()
+			if nm == nil {
+				return "no netmap"
+			}
+
+			// Polled outside the test's own flow, so failures become text.
+			var errs errText
+
+			return strings.Join(append(hsFilterTriples(&errs, nm.PacketFilter, e.r.addrNames()), errs...), "\n")
+		}},
+		{x + "/ssh-rules", renderSSHRules(saas, e.saasNames), func() string { return renderSSHRules(cl.Netmap(), e.r.addrNames()) }},
 	}
 
 	prev := e.prevCaps[x].Netmap
@@ -592,6 +611,102 @@ func discoState(before, after string) string {
 	default:
 		return "rotated"
 	}
+}
+
+// saasAddrNames names by alias each SaaS address of the capture's nodes that
+// a netmap of step shows, itself or as a peer: the devices then present.
+func (r *stepReplay) saasAddrNames(step testcapture.Step) map[netip.Addr]string {
+	out := map[netip.Addr]string{}
+
+	add := func(n tailcfg.NodeView) {
+		if alias, ok := r.saasAlias(n.ID()); ok {
+			for _, p := range n.Addresses().All() {
+				out[p.Addr()] = alias
+			}
+		}
+	}
+
+	for _, node := range step.Captures {
+		if nm := node.Netmap; nm != nil {
+			add(nm.SelfNode)
+
+			for _, p := range nm.Peers {
+				add(p)
+			}
+		}
+	}
+
+	return out
+}
+
+// errText is a [require.TestingT] that keeps failures as text.
+type errText []string
+
+func (e *errText) Errorf(format string, args ...any) { *e = append(*e, fmt.Sprintf(format, args...)) }
+
+func (e *errText) FailNow() {}
+
+// renderSSHRules gives a node's SSH rules in order: principals by name and
+// address family, local user mappings and the action. Addresses of nodes
+// outside the capture are left out, and so is a rule left with no
+// principal. SaaS's login "0" to no user mapping is left out too:
+// TestSSHDataCompat checks it apart.
+func renderSSHRules(nm *netmap.NetworkMap, names map[netip.Addr]string) string {
+	if nm == nil {
+		return "no netmap"
+	}
+
+	if nm.SSHPolicy == nil {
+		return "none"
+	}
+
+	var out []string
+
+	for _, rule := range nm.SSHPolicy.Rules {
+		var who []string
+
+		for _, p := range rule.Principals {
+			addr, err := netip.ParseAddr(p.NodeIP)
+
+			switch {
+			case err != nil:
+				who = append(who, fmt.Sprintf("%+v", *p))
+			case names[addr] != "":
+				family := "/ipv6"
+				if addr.Is4() {
+					family = "/ipv4"
+				}
+
+				who = append(who, names[addr]+family)
+			case !prefixInTailscaleRange(netip.PrefixFrom(addr, addr.BitLen())):
+				who = append(who, p.NodeIP)
+			}
+		}
+
+		if len(who) == 0 {
+			continue
+		}
+
+		users := make([]string, 0, len(rule.SSHUsers))
+		for from, to := range rule.SSHUsers {
+			if from != "0" || to != "" {
+				users = append(users, from+"="+to)
+			}
+		}
+
+		action := "no action"
+		if a := rule.Action; a != nil {
+			action = fmt.Sprintf("accept %t, reject %t, check %t", a.Accept, a.Reject, a.HoldAndDelegate != "")
+		}
+
+		out = append(out, fmt.Sprintf("%s as %s: %s", sortedStrings(who), sortedStrings(users), action))
+	}
+
+	if len(out) == 0 {
+		return "none"
+	}
+
+	return strings.Join(out, "\n")
 }
 
 func changed(before, after string) string {
