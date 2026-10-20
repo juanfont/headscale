@@ -23,6 +23,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/juanfont/headscale/hscontrol/policy/packetfilter"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/require"
@@ -161,8 +162,8 @@ var grantSkipReasons = map[string]string{
 //   - For error cases: expected error message
 //
 // The test converts Tailscale user email formats to headscale format
-// (@example.com, @example.org) and runs the policy through unmarshalPolicy,
-// validate, compileFilterRulesForNode, and ReduceFilterRules.
+// (@example.com, @example.org) and runs the policy through NewPolicyManager
+// and PacketRulesForNode, as production responses do.
 //
 // Scenarios in grantSkipReasons are skipped.
 func TestGrantsCompat(t *testing.T) {
@@ -268,11 +269,8 @@ func testGrantSuccess(
 ) {
 	t.Helper()
 
-	pol, err := unmarshalPolicy(policyJSON)
-	require.NoError(t, err, "%s: policy should parse successfully", tf.TestID)
-
-	err = pol.validate()
-	require.NoError(t, err, "%s: policy should validate successfully", tf.TestID)
+	pm, err := NewPolicyManager(policyJSON, users, nodes.ViewSlice())
+	require.NoError(t, err, "%s: policy manager should build successfully", tf.TestID)
 
 	for nodeName, capture := range tf.Captures {
 		t.Run(nodeName, func(t *testing.T) {
@@ -281,13 +279,10 @@ func testGrantSuccess(
 				"golden node %s not found in test setup", nodeName)
 
 			// Compile headscale filter rules for this node
-			gotRules := pol.compileFilterRulesForNode(
-				users,
-				node.View(),
-				nodes.ViewSlice(),
-			)
+			rules, err := pm.ReadView().PacketRulesForNode(node.View())
+			require.NoError(t, err)
 
-			gotRules = reduceWireRulesForTest(node.View(), gotRules)
+			gotRules := packetfilter.ToTailcfg(rules)
 
 			wantRules := capture.PacketFilterRules
 

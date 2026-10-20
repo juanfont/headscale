@@ -1601,7 +1601,7 @@ func TestReduceRoutes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			matchers := testPacketRules(tt.args.rules)
+			matchers := testPacketRules(t, tt.args.rules)
 
 			got := ReduceRoutes(
 				tt.args.node.View(),
@@ -1615,21 +1615,59 @@ func TestReduceRoutes(t *testing.T) {
 	}
 }
 
-func testPacketRules(wire []tailcfg.FilterRule) []packetfilter.Rule {
+func testPacketRules(tb testing.TB, wire []tailcfg.FilterRule) []packetfilter.Rule {
+	tb.Helper()
+
 	rules := make([]packetfilter.Rule, 0, len(wire))
 	for _, rule := range wire {
 		var src ipset.Builder
 
-		for _, raw := range rule.SrcIPs {
-			set, _ := util.ParseIPSet(raw, nil)
+		for i, raw := range rule.SrcIPs {
+			var bits *int
+			if i < len(rule.SrcBits) {
+				bits = &rule.SrcBits[i]
+			}
+
+			set, err := util.ParseIPSet(raw, bits)
+			require.NoError(tb, err)
 			src.AddSet(set)
 		}
 
-		sources, _ := src.Build()
+		sources, err := src.Build()
+		require.NoError(tb, err)
+
+		if len(rule.CapGrant) > 0 {
+			require.Empty(tb, rule.DstPorts, "typed rules have one kind")
+			require.Empty(tb, rule.IPProto, "capability rules have no protocols")
+
+			caps := make([]packetfilter.CapabilityGrant, 0, len(rule.CapGrant))
+			for _, grant := range rule.CapGrant {
+				require.Empty(tb, grant.Caps, "typed grants use CapMap")
+
+				var dst ipset.Builder
+				for _, prefix := range grant.Dsts {
+					dst.AddPrefix(prefix)
+				}
+
+				set, err := dst.Build()
+				require.NoError(tb, err)
+
+				caps = append(
+					caps,
+					packetfilter.CapabilityGrant{Addresses: set, CapMap: grant.CapMap},
+				)
+			}
+
+			rules = append(rules, packetfilter.NewCapabilityRule(sources, caps))
+
+			continue
+		}
+
 		destinations := make([]packetfilter.Destination, 0, len(rule.DstPorts))
 
 		for _, entry := range rule.DstPorts {
-			set, _ := util.ParseIPSet(entry.IP, nil)
+			set, err := util.ParseIPSet(entry.IP, entry.Bits)
+			require.NoError(tb, err)
 			destinations = append(
 				destinations,
 				packetfilter.Destination{Addresses: set, Ports: entry.Ports},
@@ -1639,9 +1677,10 @@ func testPacketRules(wire []tailcfg.FilterRule) []packetfilter.Rule {
 		var protocols []ipproto.Proto
 
 		for _, protocol := range rule.IPProto {
-			if protocol >= 0 && protocol <= 255 {
-				protocols = append(protocols, ipproto.Proto(protocol))
-			}
+			require.GreaterOrEqual(tb, protocol, 0)
+			require.LessOrEqual(tb, protocol, 255)
+			//nolint:gosec // Assertions above enforce the protocol range.
+			protocols = append(protocols, ipproto.Proto(protocol))
 		}
 
 		rules = append(

@@ -25,7 +25,7 @@ type legacyGrantCategory int
 
 const (
 	// legacyGrantCategoryRegular requires no per-node work. The pre-compiled
-	// rules are complete and only need [policyutil.ReduceFilterRules].
+	// rules are complete and only need [packetfilter.Reduce].
 	legacyGrantCategoryRegular legacyGrantCategory = iota
 
 	// legacyGrantCategorySelf has autogroup:self destinations that must be
@@ -779,7 +779,7 @@ func legacyCompileViaForNode(
 	// whose DstPorts enumerate [util.TheInternet]. The matchers derived
 	// from this rule let [types.NodeView.CanAccess] surface the exit node
 	// to the grant source via [matcher.Match.DestsIsTheInternet].
-	// [policyutil.ReduceFilterRules] strips the rule from the wire format
+	// [packetfilter.Reduce] strips the rule from the wire format
 	// on non-exit advertisers, preserving SaaS PacketFilter encoding.
 	if cg.via.hasAutoGroupInternet && node.IsExitNode() {
 		viaDstPrefixes = append(
@@ -844,7 +844,7 @@ var legacyCompanionCaps = []legacyCompanionCap{
 // well-known capabilities that have companion caps. Companion rules
 // are **reversed**: SrcIPs come from the original destinations and
 // CapGrant Dsts come from the original sources. This allows
-// [policyutil.ReduceFilterRules] to distribute companion rules to source
+// [packetfilter.Reduce] to distribute companion rules to source
 // nodes (e.g. drive-sharer goes to the member nodes, not the destination).
 // Rules are ordered by the original capability name.
 //
@@ -1160,15 +1160,6 @@ func rulesFromWireForTest(rules []tailcfg.FilterRule) []packetfilter.Rule {
 	}
 
 	return result
-}
-
-func reduceWireRulesForTest(
-	node types.NodeView,
-	rules []tailcfg.FilterRule,
-) []tailcfg.FilterRule {
-	return packetfilter.ToTailcfg(
-		packetfilter.Reduce(rulesFromWireForTest(rules), targetForNode(node)),
-	)
 }
 
 func mergeFilterRules(rules []tailcfg.FilterRule) []tailcfg.FilterRule {

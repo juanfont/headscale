@@ -1484,18 +1484,25 @@ func TestTagUserMutualExclusivity(t *testing.T) {
 		},
 	}
 
-	err := pol.validate()
+	for i, node := range nodes {
+		node.ID = types.NodeID(i + 1) //nolint:gosec // bounded fixture
+	}
+
+	policyJSON, err := json.Marshal(pol)
+	require.NoError(t, err)
+
+	pm, err := NewPolicyManager(policyJSON, users, nodes.ViewSlice())
 	require.NoError(t, err)
 
 	// User1's user-owned node should have no rules reaching tagged nodes
-	// since there is no explicit user→tag ACL rule. ReduceFilterRules
-	// filters compiled rules to only those where the node is a destination,
-	// matching the production pipeline in filterForNodeLocked.
+	// since there is no explicit user→tag ACL rule. PacketRulesForNode
+	// selects rules for the recipient and reduces them to relevant destinations.
 	userNode := nodes[0].View()
 
-	compiled := pol.compileFilterRulesForNode(users, userNode, nodes.ViewSlice())
+	rules, err := pm.ReadView().PacketRulesForNode(userNode)
+	require.NoError(t, err)
 
-	userRules := reduceWireRulesForTest(userNode, compiled)
+	userRules := packetfilter.ToTailcfg(rules)
 
 	for _, rule := range userRules {
 		for _, dst := range rule.DstPorts {
@@ -1515,9 +1522,10 @@ func TestTagUserMutualExclusivity(t *testing.T) {
 	// Tag:database should receive the tag:server → tag:database rule after reduction.
 	dbNode := nodes[3].View()
 
-	compiled = pol.compileFilterRulesForNode(users, dbNode, nodes.ViewSlice())
+	rules, err = pm.ReadView().PacketRulesForNode(dbNode)
+	require.NoError(t, err)
 
-	dbRules := reduceWireRulesForTest(dbNode, compiled)
+	dbRules := packetfilter.ToTailcfg(rules)
 
 	foundServerSrc := false
 
@@ -1578,17 +1586,24 @@ func TestUserToTagCrossIdentityGrant(t *testing.T) {
 		},
 	}
 
-	err := pol.validate()
+	for i, node := range nodes {
+		node.ID = types.NodeID(i + 1) //nolint:gosec // bounded fixture
+	}
+
+	policyJSON, err := json.Marshal(pol)
 	require.NoError(t, err)
 
-	// Compile and reduce rules for the tag:server node — it is the
-	// destination, so after ReduceFilterRules, the filter should include
-	// user1's IP as source.
+	pm, err := NewPolicyManager(policyJSON, users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	// The tag:server node is the destination, so its production packet rules
+	// should include user1's IP as source.
 	taggedNode := nodes[2].View()
 
-	compiled := pol.compileFilterRulesForNode(users, taggedNode, nodes.ViewSlice())
+	packetRules, err := pm.ReadView().PacketRulesForNode(taggedNode)
+	require.NoError(t, err)
 
-	rules := reduceWireRulesForTest(taggedNode, compiled)
+	rules := packetfilter.ToTailcfg(packetRules)
 
 	// user1's IP should appear as a source that can reach tag:server.
 	foundUser1Src := false
@@ -4215,6 +4230,7 @@ func TestSelfAppGrantKeepsNodeAddressesTogether(t *testing.T) {
 		"app":{"example.com/cap":[{}]}}]}`
 	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
 	require.NoError(t, err)
+
 	rules, err := pm.ReadView().PeerRulesForNode(nodes[0].View())
 	require.NoError(t, err)
 

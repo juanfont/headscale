@@ -26,6 +26,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/ipset"
+	"github.com/juanfont/headscale/hscontrol/policy/packetfilter"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -551,45 +552,20 @@ func testACLSuccess(
 	// Convert Tailscale SaaS user emails to headscale @example.com format.
 	policyJSON := convertPolicyUserEmails(tf.Input.FullPolicy)
 
-	pol, err := unmarshalPolicy(policyJSON)
-	require.NoError(
-		t,
-		err,
-		"%s: policy should parse successfully",
-		tf.TestID,
-	)
-
-	err = pol.validate()
-	require.NoError(
-		t,
-		err,
-		"%s: policy should validate successfully",
-		tf.TestID,
-	)
+	pm, err := NewPolicyManager(policyJSON, users, nodes.ViewSlice())
+	require.NoError(t, err, "%s: policy manager should build successfully", tf.TestID)
 
 	for nodeName, capture := range tf.Captures {
 		t.Run(nodeName, func(t *testing.T) {
 			node := findNodeByGivenName(nodes, nodeName)
-			if node == nil {
-				t.Skipf(
-					"node %s not found in test setup",
-					nodeName,
-				)
-
-				return
-			}
+			require.NotNilf(t, node,
+				"golden node %s not found in test setup", nodeName)
 
 			// Compile headscale filter rules for this node
-			compiledRules := pol.compileFilterRulesForNode(
-				users,
-				node.View(),
-				nodes.ViewSlice(),
-			)
+			rules, err := pm.ReadView().PacketRulesForNode(node.View())
+			require.NoError(t, err)
 
-			gotRules := reduceWireRulesForTest(
-				node.View(),
-				compiledRules,
-			)
+			gotRules := packetfilter.ToTailcfg(rules)
 
 			wantRules := capture.PacketFilterRules
 

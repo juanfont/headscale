@@ -1,4 +1,4 @@
-package policyutil_test
+package policy
 
 import (
 	"encoding/json"
@@ -11,10 +11,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/policy/packetfilter"
-	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
@@ -25,16 +22,6 @@ import (
 	"tailscale.com/tailcfg/peercap"
 	"tailscale.com/util/must"
 )
-
-var ap = func(ipStr string) *netip.Addr {
-	ip := netip.MustParseAddr(ipStr)
-	return &ip
-}
-
-var p = func(prefStr string) netip.Prefix {
-	ip := netip.MustParsePrefix(prefStr)
-	return ip
-}
 
 // hsExitNodeDestForTest is the list of destination IP ranges that are allowed when
 // we use headscale "autogroup:internet".
@@ -772,21 +759,32 @@ func TestReduceFilterRules(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		for idx, pmf := range policy.PolicyManagerFuncsForTest(
+		for idx, pmf := range PolicyManagerFuncsForTest(
 			[]byte(tt.pol),
 		) {
 			t.Run(fmt.Sprintf("%s-index%d", tt.name, idx), func(t *testing.T) {
 				var (
-					pm  policy.PolicyManager
+					pm  PolicyManager
 					err error
 				)
 
-				pm, err = pmf(users, append(tt.peers, tt.node).ViewSlice())
+				nodes := append(slices.Clone(tt.peers), tt.node)
+				for i, node := range nodes {
+					nodes[i] = node.Clone()
+					nodes[i].ID = types.NodeID(i + 1) //nolint:gosec // bounded fixture
+				}
+
+				pm, err = pmf(users, nodes.ViewSlice())
 				require.NoError(t, err)
 
-				got := packetfilter.ToTailcfg(pm.PacketRules())
-				t.Logf("full filter:\n%s", must.Get(json.MarshalIndent(got, "", "  ")))
-				got = policyutil.ReduceFilterRules(tt.node.View(), got)
+				rules, err := pm.ReadView().PacketRulesForNode(
+					nodes[len(nodes)-1].View(),
+				)
+				require.NoError(t, err)
+
+				got := packetfilter.ToTailcfg(rules)
+
+				testPacketRules(t, tt.want)
 
 				if diff := cmp.Diff(
 					semanticRulesReference(t, tt.want),
@@ -800,7 +798,7 @@ func TestReduceFilterRules(t *testing.T) {
 	}
 }
 
-// TestReduceFilterRulesPartialApproval verifies that ReduceFilterRules
+// TestReduceFilterRulesPartialApproval verifies that production reduction
 // only preserves filter rules for routes that are both advertised
 // (RoutableIPs) AND approved (ApprovedRoutes), matching Tailscale
 // SaaS behavior. Advertised-but-unapproved routes do not cause rule
@@ -961,8 +959,8 @@ func TestReduceFilterRulesPartialApproval(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := policyutil.ReduceFilterRules(
-				tt.node.View(), tt.rules,
+			got := reducePacketRules(
+				t, tt.node.View(), tt.rules,
 			)
 			require.Len(t, got, tt.wantCount,
 				"rule count mismatch")
@@ -979,9 +977,8 @@ func TestReduceFilterRulesPartialApproval(t *testing.T) {
 	}
 }
 
-// TestReduceFilterRulesCapGrant tests the CapGrant branch of
-// ReduceFilterRules, which was previously untested. All existing
-// test cases use ACL-only policies with DstPorts rules.
+// TestReduceFilterRulesCapGrant verifies capability reduction through
+// packetfilter.Reduce, including destination scope and capability payloads.
 func TestReduceFilterRulesCapGrant(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -1326,7 +1323,7 @@ func TestReduceFilterRulesCapGrant(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := policyutil.ReduceFilterRules(tt.node.View(), tt.rules)
+			got := reducePacketRules(t, tt.node.View(), tt.rules)
 
 			require.Len(t, got, len(tt.want),
 				"rule count mismatch")
@@ -1340,10 +1337,22 @@ func TestReduceFilterRulesCapGrant(t *testing.T) {
 					"rule[%d] CapGrant count", i)
 
 				for j := range tt.want[i].CapGrant {
+					var expected netipx.IPSetBuilder
+					for _, prefix := range tt.want[i].CapGrant[j].Dsts {
+						expected.AddPrefix(prefix)
+					}
+
+					set, err := expected.IPSet()
+					require.NoError(t, err)
 					require.ElementsMatch(t,
-						tt.want[i].CapGrant[j].Dsts,
+						set.Prefixes(),
 						got[i].CapGrant[j].Dsts,
 						"rule[%d].CapGrant[%d] Dsts", i, j,
+					)
+					require.Equal(t,
+						tt.want[i].CapGrant[j].CapMap,
+						got[i].CapGrant[j].CapMap,
+						"rule[%d].CapGrant[%d] CapMap", i, j,
 					)
 				}
 			}
@@ -1351,7 +1360,7 @@ func TestReduceFilterRulesCapGrant(t *testing.T) {
 	}
 }
 
-var reductionDestinationInputs = []string{
+var addressBoundaryInputs = []string{
 	"100.64.0.1",
 	"100.64.0.1/32",
 	"100.64.0.0/10",
@@ -1410,7 +1419,7 @@ var reductionDestinationInputs = []string{
 	"not-an-ip",
 }
 
-func assertReductionMatchesReference(
+func assertTypedReductionMatchesReference(
 	t *testing.T,
 	node types.NodeView,
 	rules []tailcfg.FilterRule,
@@ -1419,23 +1428,33 @@ func assertReductionMatchesReference(
 
 	before := must.Get(json.Marshal(rules))
 	nodeBefore := node.AsStruct()
-	want := reduceFilterRulesReference(node, rules)
+	typed := testPacketRules(t, rules)
+	typedBefore := must.Get(json.Marshal(packetfilter.ToTailcfg(typed)))
+	want := testPacketRules(t, reduceFilterRulesReference(node, rules))
 
-	got := policyutil.ReduceFilterRules(node, rules)
+	target := packetfilter.Target{}
+	if node.Valid() {
+		target = packetfilter.Target{
+			IPv4: node.IPv4().Clone(), IPv6: node.IPv6().Clone(),
+			SubnetRoutes: node.SubnetRoutes(), ExitRoutes: node.ExitRoutes(),
+		}
+	}
+
+	got := packetfilter.Reduce(typed, target)
 	if diff := cmp.Diff(
-		semanticRulesReference(t, want),
-		semanticRulesReference(t,
-			got),
-		cmpopts.EquateComparable(netip.Prefix{}),
+		want, got,
+		cmp.Comparer(func(a, b packetfilter.Rule) bool { return a.Equal(b) }),
 	); diff != "" {
 		t.Fatalf("reduction differs from frozen reference (-want +got):\n%s", diff)
 	}
 
 	require.Equal(t, before, must.Get(json.Marshal(rules)), "rules must not be mutated")
 	require.Equal(t, nodeBefore, node.AsStruct(), "node must not be mutated")
+	require.Equal(t, typedBefore, must.Get(json.Marshal(packetfilter.ToTailcfg(typed))),
+		"typed input must not be mutated")
 }
 
-func TestReduceFilterRulesReference(t *testing.T) {
+func TestTypedReductionTargetsMatchFrozenOracle(t *testing.T) {
 	routes := []netip.Prefix{p("10.0.0.128/25"), p("10.0.1.0/24"), p("fd00:1::/64")}
 	tests := []struct {
 		name string
@@ -1495,11 +1514,20 @@ func TestReduceFilterRulesReference(t *testing.T) {
 		}},
 	}
 
-	dests := make([]tailcfg.NetPortRange, 0, len(reductionDestinationInputs)+2)
-	for i, ip := range reductionDestinationInputs {
+	destinationInputs := []string{
+		"100.64.0.1", "100.64.0.1/32", "100.64.0.0/10", "0.0.0.0", "0.0.0.0/0",
+		"255.255.255.255/32", "fd7a:115c:a1e0::1", "fd7a:115c:a1e0::/48",
+		"::", "::1", "::/0", "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+		"fe80::1", "::ffff:100.64.0.1", "::ffff:100.64.0.0/112",
+		"100.64.0.0-100.64.0.2", "fd7a:115c:a1e0::-fd7a:115c:a1e0::2",
+		"10.0.0.0/8", "10.0.0.0/25", "10.0.0.128/25", "10.0.1.0/24",
+		"192.0.2.0/24", "fd00::/8", "fd00:1::/48", "fd00:1::/65", "*",
+	}
+
+	dests := make([]tailcfg.NetPortRange, 0, len(destinationInputs)+2)
+	for i, ip := range destinationInputs {
 		dests = append(dests, tailcfg.NetPortRange{
-			IP:   ip,
-			Bits: new(24),
+			IP: ip,
 			Ports: tailcfg.PortRange{
 				First: uint16(i),
 				Last:  uint16(i + 10),
@@ -1507,7 +1535,7 @@ func TestReduceFilterRulesReference(t *testing.T) {
 		})
 	}
 
-	// Repeated destinations retain their original position, ports, and metadata.
+	// Repeated destinations retain their original position and ports.
 	dests = append(
 		dests,
 		dests[0],
@@ -1518,12 +1546,11 @@ func TestReduceFilterRulesReference(t *testing.T) {
 			"*",
 			"100.64.0.2",
 		},
-		SrcBits:  []int{0, 32},
 		IPProto:  []int{6, 17, 1},
 		DstPorts: dests,
 		CapGrant: []tailcfg.CapGrant{},
 	}
-	capRule := ordinary
+	capRule := tailcfg.FilterRule{SrcIPs: ordinary.SrcIPs}
 	capRule.CapGrant = []tailcfg.CapGrant{
 		{
 			Dsts: []netip.Prefix{
@@ -1532,7 +1559,6 @@ func TestReduceFilterRulesReference(t *testing.T) {
 				p("10.0.0.0/8"),
 				p("10.0.0.0/8"),
 			},
-			Caps: []peercap.Cap{"test/legacy"},
 			CapMap: tailcfg.PeerCapMap{
 				"test/nil":   nil,
 				"test/empty": {},
@@ -1541,41 +1567,36 @@ func TestReduceFilterRulesReference(t *testing.T) {
 		},
 		{Dsts: []netip.Prefix{p("100.64.0.1/32")}, CapMap: tailcfg.PeerCapMap{}},
 	}
-	capOnly := capRule
-	capOnly.DstPorts = nil
 	rules := []tailcfg.FilterRule{
 		ordinary,
 		{},
-		capOnly,
+		capRule,
 		capRule,
 		{DstPorts: []tailcfg.NetPortRange{}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assertReductionMatchesReference(t, tt.node.View(), nil)
-			assertReductionMatchesReference(t, tt.node.View(), []tailcfg.FilterRule{})
-			assertReductionMatchesReference(t, tt.node.View(), rules)
+			assertTypedReductionMatchesReference(t, tt.node.View(), nil)
+			assertTypedReductionMatchesReference(
+				t, tt.node.View(), []tailcfg.FilterRule{},
+			)
+			assertTypedReductionMatchesReference(t, tt.node.View(), rules)
 		})
 	}
 }
 
 //nolint:gosec // Deterministic, bounded differential-test inputs.
-func TestReduceFilterRulesReferenceRandomized(t *testing.T) {
+func TestTypedReductionRandomizedMatchesFrozenOracle(t *testing.T) {
 	rng := rand.New(rand.NewPCG(0, 0))
 	ips := []string{
-		"100.64.0.1",
-		"100.64.0.2",
-		"0.0.0.0",
-		"fd7a:115c:a1e0::1",
-		"fe80::1",
-		"fe80::1%eth0",
-		"::ffff:100.64.0.1",
+		"100.64.0.1", "100.64.0.2", "0.0.0.0", "fd7a:115c:a1e0::1",
+		"fe80::1", "::ffff:100.64.0.1",
 	}
 	prefixes := []netip.Prefix{
-		{},
-		p("10.0.0.1/24"), p("10.0.0.128/25"), p("10.0.1.0/24"), p("100.64.0.0/24"),
-		p("fd7a:115c:a1e0::/48"), p("fd00:1::/64"), tsaddr.AllIPv4(), tsaddr.AllIPv6(),
+		p("10.0.0.128/25"), p("10.0.1.0/24"), p("100.64.0.0/24"),
+		p("fd7a:115c:a1e0::/48"), p("fd00:1::/64"), p("::ffff:100.64.0.0/120"),
+		tsaddr.AllIPv4(), tsaddr.AllIPv6(),
 	}
 
 	for iteration := range 1000 {
@@ -1587,25 +1608,16 @@ func TestReduceFilterRulesReferenceRandomized(t *testing.T) {
 
 			ip4 := netip.AddrFrom4([4]byte{raw[0], raw[1], raw[2], raw[3]})
 			ip6 := netip.AddrFrom16(raw)
-			prefix4 := netip.PrefixFrom(ip4, rng.IntN(33))
-			prefix6 := netip.PrefixFrom(ip6, rng.IntN(129))
 			ipCandidates := append(slices.Clone(ips), ip4.String(), ip6.String())
-			routeCandidates := append(
-				slices.Clone(prefixes),
-				prefix4,
-				prefix4.Masked(),
-				prefix6,
-				prefix6.Masked(),
-			)
-			destCandidates := append(
-				slices.Clone(reductionDestinationInputs),
-				ip4.String(),
-				ip6.String(),
-				prefix4.String(),
-				prefix4.Masked().String(),
-				prefix6.String(),
-				prefix6.Masked().String(),
-			)
+			routeCandidates := append(slices.Clone(prefixes),
+				netip.PrefixFrom(ip4, rng.IntN(33)).Masked(),
+				netip.PrefixFrom(ip6, rng.IntN(129)).Masked())
+
+			destCandidates := append(slices.Clone(ipCandidates),
+				"*", "100.64.0.0-100.64.0.2", "fd7a:115c:a1e0::-fd7a:115c:a1e0::2")
+			for _, prefix := range routeCandidates {
+				destCandidates = append(destCandidates, prefix.String())
+			}
 
 			node := &types.Node{}
 			if rng.IntN(4) != 0 {
@@ -1619,73 +1631,69 @@ func TestReduceFilterRulesReferenceRandomized(t *testing.T) {
 			if rng.IntN(4) != 0 {
 				node.Hostinfo = &tailcfg.Hostinfo{}
 				for range rng.IntN(12) {
-					node.Hostinfo.RoutableIPs = append(
-						node.Hostinfo.RoutableIPs,
-						routeCandidates[rng.IntN(len(routeCandidates))],
-					)
+					node.Hostinfo.RoutableIPs = append(node.Hostinfo.RoutableIPs,
+						routeCandidates[rng.IntN(len(routeCandidates))])
 				}
 			}
 
 			for range rng.IntN(12) {
-				node.ApprovedRoutes = append(
-					node.ApprovedRoutes,
-					routeCandidates[rng.IntN(len(routeCandidates))],
-				)
+				node.ApprovedRoutes = append(node.ApprovedRoutes,
+					routeCandidates[rng.IntN(len(routeCandidates))])
 			}
 
 			rules := make([]tailcfg.FilterRule, rng.IntN(12))
 			for i := range rules {
 				rule := &rules[i]
-				rule.SrcIPs = [][]string{nil, {}, {"*", "100.64.0.2"}}[rng.IntN(3)]
-				rule.SrcBits = [][]int{nil, {}, {0, 32}}[rng.IntN(3)]
 
-				rule.IPProto = [][]int{nil, {}, {1, 6, 17}, {-1, 300}}[rng.IntN(4)]
-				if rng.IntN(2) == 0 {
-					rule.DstPorts = []tailcfg.NetPortRange{}
-				}
-
-				for range rng.IntN(12) {
-					ip := destCandidates[rng.IntN(len(destCandidates))]
-					if rng.IntN(8) == 0 {
-						ip += string(rune(rng.IntN(128)))
-					}
-
-					dest := tailcfg.NetPortRange{IP: ip, Ports: tailcfg.PortRange{
-						First: uint16(
-							rng.IntN(65536),
-						),
-						Last: uint16(
-							rng.IntN(65536),
-						), //nolint:gosec // bounded generator
-					}}
-					if rng.IntN(2) == 0 {
-						dest.Bits = new(rng.IntN(150) - 10)
-					}
-
-					rule.DstPorts = append(rule.DstPorts, dest)
-				}
-
-				if rng.IntN(2) == 0 {
-					rule.CapGrant = []tailcfg.CapGrant{}
-				}
-
+				rule.SrcIPs = [][]string{
+					nil,
+					{},
+					{"*", "100.64.0.2"},
+					{"100.64.0.1", "fd7a:115c:a1e0::1"},
+				}[rng.IntN(4)]
 				if rng.IntN(3) == 0 {
-					for range rng.IntN(4) {
-						cg := tailcfg.CapGrant{Caps: []peercap.Cap{"test/legacy"}}
+					for range 1 + rng.IntN(4) {
+						var addresses netipx.IPSetBuilder
 						for range rng.IntN(8) {
-							cg.Dsts = append(
-								cg.Dsts,
+							addresses.AddPrefix(
 								routeCandidates[rng.IntN(len(routeCandidates))],
 							)
 						}
 
-						cg.CapMap = []tailcfg.PeerCapMap{nil, {}, {"test/nil": nil, "test/empty": {}, "test/value": {"true"}}}[rng.IntN(3)]
-						rule.CapGrant = append(rule.CapGrant, cg)
+						// Canonical unions determine retained subnet scope in both reducers.
+						set, err := addresses.IPSet()
+						require.NoError(t, err)
+
+						rule.CapGrant = append(rule.CapGrant, tailcfg.CapGrant{
+							Dsts: set.Prefixes(),
+							CapMap: []tailcfg.PeerCapMap{
+								nil, {}, {
+									"test/nil": nil, "test/empty": {},
+									"test/value": {`true`, `{"role":"read"}`},
+								},
+							}[rng.IntN(3)],
+						})
 					}
+
+					continue
+				}
+
+				rule.IPProto = [][]int{
+					nil, {}, {1, 6, 17}, {47}, {132}, {58},
+				}[rng.IntN(6)]
+				for range rng.IntN(12) {
+					first := rng.IntN(65536)
+					rule.DstPorts = append(rule.DstPorts, tailcfg.NetPortRange{
+						IP: destCandidates[rng.IntN(len(destCandidates))],
+						Ports: tailcfg.PortRange{
+							First: uint16(first),
+							Last:  uint16(first + rng.IntN(65536-first)),
+						},
+					})
 				}
 			}
 
-			assertReductionMatchesReference(t, node.View(), rules)
+			assertTypedReductionMatchesReference(t, node.View(), rules)
 		})
 	}
 }
@@ -1802,34 +1810,10 @@ func reductionBenchmarkFixtures() []reductionBenchmarkFixture {
 	return fixtures
 }
 
-// Archived wire reducers are diagnostics, not the production typed reducer.
-func BenchmarkArchivedWireReduction(b *testing.B) {
-	for _, fixture := range reductionBenchmarkFixtures() {
-		want := reduceFilterRulesReference(fixture.node, fixture.rules)
-		for _, impl := range []struct {
-			name string
-			run  func(types.NodeView, []tailcfg.FilterRule) []tailcfg.FilterRule
-		}{
-			{"frozen-reference", reduceFilterRulesReference},
-			{"archived-optimized", policyutil.ReduceFilterRules},
-		} {
-			b.Run(fixture.name+"/"+impl.name, func(b *testing.B) {
-				require.Empty(b, cmp.Diff(want, impl.run(fixture.node, fixture.rules),
-					cmpopts.EquateComparable(netip.Prefix{})))
-				b.ReportAllocs()
-
-				for b.Loop() {
-					impl.run(fixture.node, fixture.rules)
-				}
-			})
-		}
-	}
-}
-
 func BenchmarkPacketFilterReduce(b *testing.B) {
 	for _, fixture := range reductionBenchmarkFixtures() {
 		b.Run(fixture.name, func(b *testing.B) {
-			rules := policyutil.TypedRulesForTest(fixture.rules)
+			rules := testPacketRules(b, fixture.rules)
 			require.Equal(b, semanticRulesReference(b, fixture.rules),
 				semanticRulesReference(b, packetfilter.ToTailcfg(rules)))
 			target := packetfilter.Target{
@@ -2091,146 +2075,7 @@ func nodeInIPSetReference(node types.NodeView, set *netipx.IPSet) bool {
 	return false
 }
 
-func TestParseIPSetReference(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		input   string
-		bits    *int
-		want    []string
-		wantErr bool
-	}{
-		{name: "wildcard", input: "*", want: []string{"0.0.0.0/0", "::/0"}},
-		{name: "ipv4", input: "100.64.0.1", want: []string{"100.64.0.1/32"}},
-		{name: "ipv6", input: "fd00::1", want: []string{"fd00::1/128"}},
-		{name: "prefix", input: "10.0.0.0/24", want: []string{"10.0.0.0/24"}},
-		{name: "host-bits", input: "10.0.0.1/24", wantErr: true},
-		{name: "ipv6-host-bits", input: "fd00::1/64", wantErr: true},
-		{
-			name:  "range",
-			input: "10.0.0.1-10.0.0.3",
-			want:  []string{"10.0.0.1/32", "10.0.0.2/31"},
-		},
-		{
-			name:  "ipv6-range",
-			input: "fd00::1-fd00::3",
-			want:  []string{"fd00::1/128", "fd00::2/127"},
-		},
-		{name: "reversed-range", input: "10.0.0.3-10.0.0.1", wantErr: true},
-		{name: "mixed-range", input: "10.0.0.1-fd00::1", wantErr: true},
-		{name: "zone-stripped", input: "fe80::1%eth0", want: []string{"fe80::1/128"}},
-		{
-			name:  "zone-range",
-			input: "fe80::1%eth0-fe80::2%eth0",
-			want:  []string{"fe80::1/128", "fe80::2/128"},
-		},
-		{name: "zone-single-hyphen", input: "fe80::1%eth-0", wantErr: true},
-		{
-			name:  "zone-two-hyphens",
-			input: "fe80::1%eth--0",
-			want:  []string{"fe80::1/128"},
-		},
-		{name: "zone-prefix", input: "fe80::1%eth0/64", wantErr: true},
-		{
-			name:  "mapped-host",
-			input: "::ffff:100.64.0.1",
-			want:  []string{"::ffff:100.64.0.1/128"},
-		},
-		{
-			name:  "mapped-prefix",
-			input: "::ffff:100.64.0.0/112",
-			want:  []string{"::ffff:100.64.0.0/112"},
-		},
-		{name: "mapped-host-bits", input: "::ffff:100.64.0.1/120", wantErr: true},
-		{
-			name:  "source-bits-mask-host",
-			input: "100.64.0.1",
-			bits:  new(24),
-			want:  []string{"100.64.0.0/24"},
-		},
-		{
-			name:  "source-bits-zero",
-			input: "100.64.0.1",
-			bits:  new(0),
-			want:  []string{"0.0.0.0/0"},
-		},
-		{
-			name:  "source-bits-ipv6",
-			input: "fd00::1",
-			bits:  new(64),
-			want:  []string{"fd00::/64"},
-		},
-		{
-			name:  "source-bits-mapped",
-			input: "::ffff:100.64.0.1",
-			bits:  new(120),
-			want:  []string{"::ffff:100.64.0.0/120"},
-		},
-		{
-			name:    "source-bits-negative",
-			input:   "100.64.0.1",
-			bits:    new(-1),
-			wantErr: true,
-		},
-		{
-			name:    "source-bits-too-large",
-			input:   "100.64.0.1",
-			bits:    new(33),
-			wantErr: true,
-		},
-		{
-			name:    "source-bits-ipv6-too-large",
-			input:   "fd00::1",
-			bits:    new(129),
-			wantErr: true,
-		},
-		{
-			name:  "wildcard-ignores-bits",
-			input: "*",
-			bits:  new(-1),
-			want:  []string{"0.0.0.0/0", "::/0"},
-		},
-		{
-			name:  "prefix-ignores-bits",
-			input: "10.0.0.0/24",
-			bits:  new(-1),
-			want:  []string{"10.0.0.0/24"},
-		},
-		{
-			name:  "range-ignores-bits",
-			input: "10.0.0.1-10.0.0.1",
-			bits:  new(-1),
-			want:  []string{"10.0.0.1/32"},
-		},
-		{name: "empty", input: "", wantErr: true},
-		{name: "whitespace", input: " 100.64.0.1", wantErr: true},
-		{name: "malformed", input: "not-an-ip", wantErr: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			got, err := parseIPSetReference(tt.input, tt.bits)
-			if tt.wantErr {
-				require.Error(t, err)
-				return
-			}
-
-			require.NoError(t, err)
-
-			var prefixes []string
-			for _, prefix := range got.Prefixes() {
-				prefixes = append(prefixes, prefix.String())
-			}
-
-			require.Equal(t, tt.want, prefixes)
-		})
-	}
-}
-
-func TestNodeInIPSetReference(t *testing.T) {
+func TestTypedNodeMembershipMatchesReference(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -2308,20 +2153,31 @@ func TestNodeInIPSetReference(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Equal(t, tt.want, nodeInIPSetReference(tt.node.View(), set))
+			actual, err := util.ParseIPSet(tt.prefix, nil)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, tt.node.View().InIPSet(actual))
+
+			if tt.node != nil {
+				require.Equal(t, tt.want, tt.node.InIPSet(actual))
+			}
 		})
 	}
 }
 
 func TestTypedAddressBoundaryMatchesReference(t *testing.T) {
-	for _, input := range []string{
+	inputs := append(slices.Clone(addressBoundaryInputs), []string{
 		"*", "100.64.0.1", "fd00::1", "10.0.0.0/24", "10.0.0.1/24",
 		"10.0.0.1-10.0.0.3", "fd00::1-fd00::3", "10.0.0.3-10.0.0.1",
 		"10.0.0.1-fd00::1", "fe80::1%eth0", "fe80::1%eth0-fe80::2%eth1",
 		"fe80::1%eth-0", "fe80::1%eth--0", "fe80::1%eth0/64",
 		"::ffff:100.64.0.1", "::ffff:100.64.0.0/112", "::ffff:100.64.0.1/120",
 		"255.255.255.255", "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff", "invalid", "",
-	} {
-		for _, bits := range []*int{nil, new(-1), new(0), new(24), new(32), new(64), new(128), new(129)} {
+	}...)
+	for _, input := range inputs {
+		for _, bits := range []*int{
+			nil, new(-1), new(0), new(24), new(32),
+			new(33), new(64), new(120), new(128), new(129),
+		} {
 			want, wantErr := parseIPSetReference(input, bits)
 			got, gotErr := util.ParseIPSet(input, bits)
 			require.Equal(t, fmt.Sprint(wantErr), fmt.Sprint(gotErr), "input %q, bits %v", input, bits)
@@ -2337,6 +2193,46 @@ func TestTypedAddressBoundaryMatchesReference(t *testing.T) {
 				require.Equal(t, nodeInIPSetReference(node.View(), want), node.InIPSet(got), input)
 				require.Equal(t, nodeInIPSetReference(node.View(), want), node.View().InIPSet(got), input)
 			}
+		}
+	}
+}
+
+//nolint:gosec // Deterministic parser-boundary mutations.
+func TestTypedAddressBoundaryRandomizedMatchesReference(t *testing.T) {
+	rng := rand.New(rand.NewPCG(1, 0))
+
+	for iteration := range 1000 {
+		var raw [16]byte
+		for i := range raw {
+			raw[i] = byte(rng.IntN(256))
+		}
+
+		ip4 := netip.AddrFrom4([4]byte{raw[0], raw[1], raw[2], raw[3]})
+		ip6 := netip.AddrFrom16(raw)
+		prefix4 := netip.PrefixFrom(ip4, rng.IntN(33))
+		prefix6 := netip.PrefixFrom(ip6, rng.IntN(129))
+		inputs := append(slices.Clone(addressBoundaryInputs),
+			ip4.String(), ip6.String(), prefix4.String(), prefix4.Masked().String(),
+			prefix6.String(), prefix6.Masked().String())
+
+		input := inputs[rng.IntN(len(inputs))]
+		if rng.IntN(8) == 0 {
+			input += string(rune(rng.IntN(128)))
+		}
+
+		var bits *int
+		if rng.IntN(2) == 0 {
+			bits = new(rng.IntN(150) - 10)
+		}
+
+		want, wantErr := parseIPSetReference(input, bits)
+		got, gotErr := util.ParseIPSet(input, bits)
+		require.Equal(t, fmt.Sprint(wantErr), fmt.Sprint(gotErr),
+			"iteration %d, input %q, bits %v", iteration, input, bits)
+
+		if wantErr == nil {
+			require.Equal(t, want.Prefixes(), slices.Collect(got.Prefixes()),
+				"iteration %d, input %q, bits %v", iteration, input, bits)
 		}
 	}
 }
@@ -2435,7 +2331,7 @@ func semanticRulesReference(
 }
 
 // Typed inputs have validated protocols and canonical capability address unions.
-// The archived randomized wire proof above still covers malformed legacy fields.
+// Malformed wire addresses are checked separately at the parser boundary.
 func TestTypedReductionMatchesFrozenOracle(t *testing.T) {
 	nodes := []types.NodeView{
 		(&types.Node{IPv4: mustIPPtr("100.64.0.1"), IPv6: mustIPPtr("fd7a:115c:a1e0::1")}).View(),
@@ -2464,7 +2360,7 @@ func TestTypedReductionMatchesFrozenOracle(t *testing.T) {
 				}
 				for _, node := range nodes {
 					want := reduceFilterRulesReference(node, wire)
-					got := policyutil.ReduceTypedRules(node, wire)
+					got := reducePacketRules(t, node, wire)
 					require.Equal(
 						t,
 						semanticRulesReference(t, want),
@@ -2495,7 +2391,7 @@ func TestTypedReductionMatchesFrozenOracle(t *testing.T) {
 		}
 		for _, node := range nodes {
 			want := reduceFilterRulesReference(node, wire)
-			got := policyutil.ReduceTypedRules(node, wire)
+			got := reducePacketRules(t, node, wire)
 			require.Equal(
 				t,
 				semanticRulesReference(t, want),
@@ -2510,4 +2406,26 @@ func mustIPPtr(
 ) *netip.Addr {
 	address := netip.MustParseAddr(raw)
 	return &address
+}
+
+func reducePacketRules(
+	tb testing.TB,
+	node types.NodeView,
+	wire []tailcfg.FilterRule,
+) []tailcfg.FilterRule {
+	tb.Helper()
+
+	target := packetfilter.Target{}
+	if node.Valid() {
+		target = packetfilter.Target{
+			IPv4:         node.IPv4().Clone(),
+			IPv6:         node.IPv6().Clone(),
+			SubnetRoutes: node.SubnetRoutes(),
+			ExitRoutes:   node.ExitRoutes(),
+		}
+	}
+
+	return packetfilter.ToTailcfg(
+		packetfilter.Reduce(testPacketRules(tb, wire), target),
+	)
 }
