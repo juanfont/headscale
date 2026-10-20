@@ -172,15 +172,15 @@ var (
 
 	// [ssh test error]: src "a" at "ip", dst "b" at "ip", ssh user "root": want: "accept" got: "deny".
 	saasSSHTestFailRE = regexp.MustCompile(
-		`^\[ssh test error\]: src ".*" at ".*", dst ".*" at ".*", ssh user "(.*)": want: "(accept|check|deny)" got: "[a-z]+"$`)
+		`^\[ssh test error\]: src ".*" at ".*", dst "([^"]*)" at "[^"]*", ssh user "(.*)": want: "(accept|check|deny)" got: "[a-z]+"$`)
 )
 
 // requireFailureBreakdown compares the failures SaaS lists in its error data
 // with the ones headscale's evaluators report, as sorted lines of
-// "src -> dst: want" (tests), "src/user: want" (sshTests) and "src: error"
-// for an entry that could not be evaluated. Repeats are kept. sshTests lines
-// leave the destination out: SaaS names the alias, headscale each node, and
-// the label check covers that.
+// "src -> dst: want" (tests), "src/user: want @ dst" (sshTests) and
+// "src: error" for an entry that could not be evaluated. Repeats are kept.
+// An sshTests dst is the entry's alias in headscale's form: SaaS names the
+// alias, headscale the node, which the label check compares.
 func requireFailureBreakdown(
 	t *testing.T,
 	skips map[string]string,
@@ -203,7 +203,14 @@ func requireFailureBreakdown(
 			}
 
 			if m := saasSSHTestFailRE.FindStringSubmatch(line); m != nil {
-				want = append(want, fmt.Sprintf("%s/%s: %s", d.User, m[1], m[2]))
+				dst := m[1]
+
+				alias, err := parseAlias(dst)
+				if err == nil {
+					dst = alias.String()
+				}
+
+				want = append(want, fmt.Sprintf("%s/%s: %s @ %s", d.User, m[2], m[3], dst))
 
 				continue
 			}
@@ -299,10 +306,13 @@ func testerBreakdown(pm *PolicyManager) []string {
 
 	cache := make(map[types.NodeID]*tailcfg.SSHPolicy)
 
-	for _, res := range runSSHPolicyTests(pm.pol, pm.users, pm.nodes, cache).Results {
+	// One result per entry, in policy order.
+	for i, res := range runSSHPolicyTests(pm.pol, pm.users, pm.nodes, cache).Results {
 		for range res.Errors {
 			out = append(out, res.Src+": error")
 		}
+
+		aliases := sshTestDstAliases(pm, pm.pol.SSHTests[i])
 
 		for want, fails := range map[string]map[string][]string{
 			"accept": res.AcceptFail,
@@ -310,14 +320,38 @@ func testerBreakdown(pm *PolicyManager) []string {
 			"check":  res.CheckFail,
 		} {
 			for user, dsts := range fails {
-				for range dsts {
-					out = append(out, fmt.Sprintf("%s/%s: %s", res.Src, user, want))
+				for _, dst := range dsts {
+					out = append(out, fmt.Sprintf("%s/%s: %s @ %s", res.Src, user, want, aliases[dst]))
 				}
 			}
 		}
 	}
 
 	slices.Sort(out)
+
+	return out
+}
+
+// sshTestDstAliases maps each node hostname an sshTests entry reaches to the
+// first of its dst aliases that selects it, the one the evaluator checks the
+// node under.
+func sshTestDstAliases(pm *PolicyManager, test SSHPolicyTest) map[string]string {
+	_, srcUserID, _ := resolveSSHTestSource(test.Src, pm.pol, pm.users, pm.nodes)
+
+	out := make(map[string]string)
+
+	for _, alias := range test.Dst {
+		nodes, _, err := resolveSSHTestDestNodes(SSHTestDestinations{alias}, pm.pol, pm.users, pm.nodes, srcUserID)
+		if err != nil {
+			continue
+		}
+
+		for _, n := range nodes {
+			if _, ok := out[n.Hostname()]; !ok {
+				out[n.Hostname()] = alias.String()
+			}
+		}
+	}
 
 	return out
 }
