@@ -428,6 +428,8 @@ func (r *stepReplay) hsDeviceRoutes(t *testing.T, alias string) (deviceRoutes, b
 // Keys and IDs are the capture's labels.
 type saasDevice struct {
 	ID                string   `json:"id"`
+	Name              string   `json:"name"`
+	Hostname          string   `json:"hostname"`
 	NodeKey           string   `json:"nodeKey"`
 	MachineKey        string   `json:"machineKey"`
 	Addresses         []string `json:"addresses"`
