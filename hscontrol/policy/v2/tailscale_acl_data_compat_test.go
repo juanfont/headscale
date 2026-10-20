@@ -271,7 +271,7 @@ func TestACLCompat(t *testing.T) {
 			t.Parallel()
 
 			if tf.Error {
-				testACLError(t, tf)
+				testCompatRefusal(t, aclSkipReasons, tf)
 
 				return
 			}
@@ -288,8 +288,9 @@ func TestACLCompat(t *testing.T) {
 	}
 }
 
-// testACLError verifies that an invalid policy produces the expected error.
-func testACLError(t *testing.T, tf *testcapture.Capture) {
+// testCompatRefusal checks that headscale refuses a policy SaaS refused, with
+// SaaS's message in its error; checks are keyed <test_id>/<check> in skips.
+func testCompatRefusal(t *testing.T, skips map[string]string, tf *testcapture.Capture) {
 	t.Helper()
 
 	policyJSON := convertPolicyUserEmails(tf.Input.FullPolicy)
@@ -301,7 +302,7 @@ func testACLError(t *testing.T, tf *testcapture.Capture) {
 
 	key := tf.TestID + "/"
 
-	compatCheck(t, aclSkipReasons, key+"refused", func() string {
+	compatCheck(t, skips, key+"refused", func() string {
 		if err == nil {
 			return "SaaS refused; the policy parsed and validated"
 		}
@@ -310,7 +311,7 @@ func testACLError(t *testing.T, tf *testcapture.Capture) {
 	})
 
 	if err == nil {
-		compatChecksNotRun(t, aclSkipReasons, key+"message")
+		compatChecksNotRun(t, skips, key+"message")
 
 		return
 	}
@@ -322,7 +323,7 @@ func testACLError(t *testing.T, tf *testcapture.Capture) {
 		want = tf.Input.APIResponseBody.Message
 	}
 
-	compatCheck(t, aclSkipReasons, key+"message", func() string {
+	compatCheck(t, skips, key+"message", func() string {
 		if strings.Contains(err.Error(), want) {
 			return ""
 		}
