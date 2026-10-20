@@ -38,11 +38,12 @@ import (
 
 // apiv2CompatSkipReasons lists checks where headscale differs from SaaS, keyed
 // <test_id>/<step>/<i>[/<node>]/<check>, where <i> is the action's index in
-// its step, or <test_id>/<check> for a check over every body in the capture.
-// Every call has a status check and an outcome check (allowed or refused), so
-// a listed status still fails when the call flips. v1-* checks are
-// TestAPIV1PolicyVerdictCompat's. A listed check that matches fails, so a fix
-// must delete its entry.
+// its step, or <test_id>/<object>/[<shape>/]<check> for a field compared
+// over every body that names the object (key:K, client:C, device:x), device
+// fields once per read shape (default, all). Every call has a status check
+// and an outcome check (allowed or refused), so a listed status still fails
+// when the call flips. v1-* checks are TestAPIV1PolicyVerdictCompat's. A
+// listed check that matches fails, so a fix must delete its entry.
 var apiv2CompatSkipReasons = map[string]string{
 	"oauth/R2/4/status":  missingScopeNotFound,
 	"oauth/R3/1/status":  missingScopeNotFound,
@@ -110,10 +111,52 @@ var apiv2CompatSkipReasons = map[string]string{
 	"oauth/B7/0/message": deletedClientCredentialText,
 	"oauth/B7/1/message": deletedClientCredentialText,
 
-	"oauth/creator-user-id":      taggedKeyNoUserID,
-	"policy-api/creator-user-id": taggedKeyNoUserID,
-	"oauth/device-oauth-client":  deviceOAuthClientID,
-	"oauth/empty-route-lists":    emptyRouteListsOmitted,
+	"oauth/key:J-ci-runner/creator-user-id":   taggedKeyNoUserID,
+	"oauth/key:J-managed/creator-user-id":     taggedKeyNoUserID,
+	"oauth/key:J-mixed/creator-user-id":       taggedKeyNoUserID,
+	"oauth/key:J-prod-db/creator-user-id":     taggedKeyNoUserID,
+	"oauth/key:J-router/creator-user-id":      taggedKeyNoUserID,
+	"oauth/key:K-ci/creator-user-id":          taggedKeyNoUserID,
+	"oauth/key:K-mixed/creator-user-id":       taggedKeyNoUserID,
+	"oauth/key:K-prod/creator-user-id":        taggedKeyNoUserID,
+	"policy-api/key:J-server/creator-user-id": taggedKeyNoUserID,
+
+	"oauth/device:before/all/device-oauth-client":        deviceOAuthClientID,
+	"oauth/device:ci-runner/all/device-oauth-client":     deviceOAuthClientID,
+	"oauth/device:joiner/all/device-oauth-client":        deviceOAuthClientID,
+	"oauth/device:laptop/all/device-oauth-client":        deviceOAuthClientID,
+	"oauth/device:managed/all/device-oauth-client":       deviceOAuthClientID,
+	"oauth/device:mixed/all/device-oauth-client":         deviceOAuthClientID,
+	"oauth/device:prod-db/all/device-oauth-client":       deviceOAuthClientID,
+	"oauth/device:router/all/device-oauth-client":        deviceOAuthClientID,
+	"oauth/device:ci-runner/default/device-oauth-client": deviceOAuthClientID,
+	"oauth/device:laptop/default/device-oauth-client":    deviceOAuthClientID,
+	"oauth/device:managed/default/device-oauth-client":   deviceOAuthClientID,
+	"oauth/device:mixed/default/device-oauth-client":     deviceOAuthClientID,
+	"oauth/device:prod-db/default/device-oauth-client":   deviceOAuthClientID,
+	"oauth/device:router/default/device-oauth-client":    deviceOAuthClientID,
+
+	"oauth/device:before/all/device-user":        taggedDeviceUser,
+	"oauth/device:ci-runner/all/device-user":     taggedDeviceUser,
+	"oauth/device:joiner/all/device-user":        taggedDeviceUser,
+	"oauth/device:laptop/all/device-user":        taggedDeviceUser,
+	"oauth/device:managed/all/device-user":       taggedDeviceUser,
+	"oauth/device:mixed/all/device-user":         taggedDeviceUser,
+	"oauth/device:prod-db/all/device-user":       taggedDeviceUser,
+	"oauth/device:router/all/device-user":        taggedDeviceUser,
+	"oauth/device:ci-runner/default/device-user": taggedDeviceUser,
+	"oauth/device:managed/default/device-user":   taggedDeviceUser,
+	"oauth/device:mixed/default/device-user":     taggedDeviceUser,
+	"oauth/device:prod-db/default/device-user":   taggedDeviceUser,
+	"oauth/device:router/default/device-user":    taggedDeviceUser,
+
+	"oauth/device:before/empty-route-lists":    emptyRouteListsOmitted,
+	"oauth/device:ci-runner/empty-route-lists": emptyRouteListsOmitted,
+	"oauth/device:joiner/empty-route-lists":    emptyRouteListsOmitted,
+	"oauth/device:laptop/empty-route-lists":    emptyRouteListsOmitted,
+	"oauth/device:managed/empty-route-lists":   emptyRouteListsOmitted,
+	"oauth/device:mixed/empty-route-lists":     emptyRouteListsOmitted,
+	"oauth/device:prod-db/empty-route-lists":   emptyRouteListsOmitted,
 
 	"policy-api/P3/1/detail":    refusalDetail,
 	"policy-api/P5-R1/1/detail": refusalDetail,
@@ -177,6 +220,7 @@ const (
 	missingScopeText            = "MISSING_SCOPE_TEXT: SaaS refuses a delete outside the token's scopes with calling actor does not have enough permissions; headscale names the missing scope"
 	taggedKeyNoUserID           = "TAGGED_KEY_NO_USER_ID: SaaS shows the creating user's userId on a tagged auth key the admin made; headscale leaves userId off every tagged key"
 	deviceOAuthClientID         = "DEVICE_OAUTH_CLIENT_ID: SaaS device bodies carry oauthClientId, naming the join key or the OAuth client that made it; headscale's have no such field"
+	taggedDeviceUser            = "TAGGED_DEVICE_USER: SaaS shows a tagged device's user as the login that made its key, empty for a key a token made; headscale shows tagged-devices"
 	emptyRouteListsOmitted      = "EMPTY_ROUTE_LISTS_OMITTED: SaaS sends advertisedRoutes and enabledRoutes as [] for a device without routes under fields=all; headscale leaves both out"
 	refusalDetail               = "REFUSAL_DETAIL: SaaS puts a refused policy's reason in message, with one detail per failing test naming the user; headscale answers setting policy with the reason as one detail without a user"
 	hujsonFormatted             = "HUJSON_FORMATTED: SaaS stores a HuJSON policy formatted, comments kept; headscale stores the bytes as sent"
@@ -922,7 +966,14 @@ func (r *apiReplay) deviceListChecks(t *testing.T, a testcapture.Action, resp []
 func (r *apiReplay) deviceChecks(prefix, alias string, all bool, want, got apiBody) []apiCheck {
 	label := "{device:" + alias + "}"
 
-	r.observe("device-oauth-client", label, optional(want.OAuthClientID), optional(got.OAuthClientID))
+	// Apart per read shape, so a field fixed in one shape only shows.
+	shape := "default/"
+	if all {
+		shape = "all/"
+	}
+
+	r.observe(shape+"device-oauth-client", label, optional(want.OAuthClientID), r.credentialLabel(got.OAuthClientID))
+	r.observe(shape+"device-user", label, r.userName(want.User), got.User)
 
 	checks := []apiCheck{
 		{prefix + "tags", sortedStrings(want.Tags), sortedStrings(got.Tags)},
@@ -998,8 +1049,24 @@ func optional(s *string) string {
 	return *s
 }
 
-// observe records one object's value on each side for a check over the
-// whole capture.
+// credentialLabel is the SaaS label of an auth key or OAuth client ID
+// headscale sent.
+func (r *apiReplay) credentialLabel(id *string) string {
+	if id == nil {
+		return "absent"
+	}
+
+	for _, kind := range []string{"auth", "client"} {
+		if l, ok := r.labels[kind+"/"+*id]; ok {
+			return l
+		}
+	}
+
+	return "{unmatched}"
+}
+
+// observe records one object's value on each side for a check over every
+// body that names it.
 func (r *apiReplay) observe(check, label, want, got string) {
 	if r.aggregates[check] == nil {
 		r.aggregates[check] = map[string][2]map[string]bool{}
@@ -1015,32 +1082,24 @@ func (r *apiReplay) observe(check, label, want, got string) {
 	seen[1][got] = true
 }
 
-// aggregateChecks compares, per check, every object's values over the
-// capture: each one field headscale renders the same way for every object.
+// aggregateChecks compares, per object and check, the values each side
+// showed over the capture.
 func (r *apiReplay) aggregateChecks(t *testing.T) {
 	t.Helper()
 
-	checks := make([]apiCheck, 0, len(r.aggregates))
-
 	for _, check := range slices.Sorted(maps.Keys(r.aggregates)) {
-		var want, got []string
-
 		for _, label := range slices.Sorted(maps.Keys(r.aggregates[check])) {
 			seen := r.aggregates[check][label]
-			want = append(want, label+"="+strings.Join(slices.Sorted(maps.Keys(seen[0])), "|"))
-			got = append(got, label+"="+strings.Join(slices.Sorted(maps.Keys(seen[1])), "|"))
+			name := strings.Trim(label, "{}") + "/" + check
+			key := r.c.TestID + "/" + name
+			r.evaluated[key] = true
+
+			t.Run(name, func(t *testing.T) {
+				apiCompatCheck(t, key,
+					strings.Join(slices.Sorted(maps.Keys(seen[0])), "|"),
+					strings.Join(slices.Sorted(maps.Keys(seen[1])), "|"))
+			})
 		}
-
-		checks = append(checks, apiCheck{check, strings.Join(want, " "), strings.Join(got, " ")})
-	}
-
-	for _, ch := range checks {
-		key := r.c.TestID + "/" + ch.name
-		r.evaluated[key] = true
-
-		t.Run(ch.name, func(t *testing.T) {
-			apiCompatCheck(t, key, ch.want, ch.got)
-		})
 	}
 }
 
