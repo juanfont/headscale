@@ -550,6 +550,73 @@ func TestPathsDiscoAndExpiryHelpers(t *testing.T) {
 		"the poll goes on while the login waits")
 }
 
+// TestFramesCountResponsesWithoutControlTime checks that Frames counts the
+// responses headscale sends without a ControlTime: a removal ahead of its
+// batch, and the expiry a deleted node's new stream opens with. A client
+// that rebuilds its netmap on every response counts one frame per rebuild.
+func TestFramesCountResponsesWithoutControlTime(t *testing.T) {
+	t.Parallel()
+
+	requireFramePerRebuild := func(t *testing.T, cl *servertest.TestClient) {
+		t.Helper()
+
+		assert.EventuallyWithT(t, func(c *assert.CollectT) {
+			assert.Equal(c, cl.UpdateCount(), cl.Frames())
+		}, 10*time.Second, 50*time.Millisecond)
+	}
+
+	t.Run("removal", func(t *testing.T) {
+		t.Parallel()
+
+		srv := servertest.NewServer(t)
+		user1 := srv.CreateUser(t, "frames-user1")
+		user2 := srv.CreateUser(t, "frames-user2")
+		viewer := servertest.NewClient(t, srv, "frames-viewer", servertest.WithUser(user1))
+		servertest.NewClient(t, srv, "frames-peer", servertest.WithUser(user2))
+		viewer.WaitForPeers(t, 1, 15*time.Second)
+
+		changed, err := srv.State().SetPolicy([]byte(`{
+			"acls": [
+				{"action": "accept", "src": ["frames-user1@"], "dst": ["frames-user1@:*"]},
+				{"action": "accept", "src": ["frames-user2@"], "dst": ["frames-user2@:*"]}
+			]
+		}`))
+		require.NoError(t, err)
+		require.True(t, changed)
+
+		changes, err := srv.State().ReloadPolicy()
+		require.NoError(t, err)
+		srv.App.Change(changes...)
+
+		viewer.WaitForPeerCount(t, 0, 15*time.Second)
+		requireFramePerRebuild(t, viewer)
+	})
+
+	t.Run("deleted-node-expiry", func(t *testing.T) {
+		t.Parallel()
+
+		srv := servertest.NewServer(t)
+		cl := servertest.NewClient(t, srv, "frames-deleted")
+		cl.WaitForCondition(t, "initial netmap", 15*time.Second,
+			func(nm *netmap.NetworkMap) bool { return nm != nil })
+
+		node, ok := srv.State().GetNodeByID(findNodeID(t, srv, "frames-deleted"))
+		require.True(t, ok)
+
+		changes, err := srv.State().DeleteNode(node)
+		require.NoError(t, err)
+		srv.App.Change(changes...)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		require.NoError(t, cl.RestartPoll(ctx))
+		cl.WaitForCondition(t, "expired self", 15*time.Second,
+			func(nm *netmap.NetworkMap) bool { return nm != nil && nm.SelfNode.Expired() })
+		requireFramePerRebuild(t, cl)
+	})
+}
+
 func TestNodeExpiryRouteFailover(t *testing.T) {
 	t.Parallel()
 
