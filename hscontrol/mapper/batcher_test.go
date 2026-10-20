@@ -2429,19 +2429,45 @@ func (pm failingCapturePolicyManager) SetNodesAndBuildPeerMap(nodes views.Slice[
 	return pm.PolicyManager.SetNodesAndBuildPeerMap(nodes)
 }
 
+type staleCapturePolicyManager struct {
+	policy.PolicyManager
+
+	view policy.ReadView
+}
+
+func (pm staleCapturePolicyManager) SetNodesAndBuildPeerMap(
+	nodes views.Slice[types.NodeView],
+) (policy.ReadView, map[types.NodeID][]types.NodeID, error) {
+	_, peers, err := pm.PolicyManager.SetNodesAndBuildPeerMap(nodes)
+	return pm.view, peers, err
+}
+
 // TestSSHPolicyEmptyOnWire pins explicit SSH revocation for a valid generation.
 // A failed policy build withholds the complete response and leaves tracking intact.
+// An SSH-only error still sends the packet policy and explicitly revokes SSH.
 // https://github.com/juanfont/headscale/issues/3508
 func TestSSHPolicyEmptyOnWire(t *testing.T) {
-	for name, failCompile := range map[string]bool{
-		"no ssh rules":  false,
-		"compile error": true,
+	for _, tt := range []struct {
+		name      string
+		failBuild bool
+		staleView bool
+	}{
+		{name: "no ssh rules"},
+		{name: "policy build error", failBuild: true},
+		{name: "ssh error", staleView: true},
 	} {
-		t.Run(name, func(t *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
 			testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 2, normalBufferSize)
 			defer cleanup()
 
-			if failCompile {
+			self := testData.Nodes[0].n.ID
+			view := mapViewForTest(t, testData.State, self)
+			packetResponse, err := testData.Batcher.mapper.NewMapResponseBuilder(view).
+				WithPacketFilters().Build()
+			require.NoError(t, err)
+			require.NotEmpty(t, packetResponse.PacketFilters["base"])
+
+			if tt.failBuild {
 				testData.State.WrapPolicyManagerForTest(
 					func(pm policy.PolicyManager) policy.PolicyManager {
 						return failingCapturePolicyManager{PolicyManager: pm}
@@ -2449,10 +2475,25 @@ func TestSSHPolicyEmptyOnWire(t *testing.T) {
 				)
 			}
 
-			self := testData.Nodes[0].n.ID
+			if tt.staleView {
+				testData.State.WrapPolicyManagerForTest(
+					func(pm policy.PolicyManager) policy.PolicyManager {
+						return staleCapturePolicyManager{PolicyManager: pm, view: pm.ReadView()}
+					},
+				)
+
+				updated := view.Viewer().AsStruct()
+				updated.IPv4 = new(netip.MustParseAddr("100.64.0.99"))
+				testData.State.PutNodeInStoreForTest(*updated)
+
+				view = mapViewForTest(t, testData.State, self)
+				_, err = view.SSHPolicy(testData.Config.ServerURL)
+				require.ErrorContains(t, err, "SSH node does not match policy generation")
+			}
+
 			mc := newMockNodeConnection(self)
 
-			if failCompile {
+			if tt.failBuild {
 				testData.State.PutNodeInStoreForTest(*testData.Nodes[0].n)
 				err := handleNodeChange(mc, testData.Batcher.mapper, change.PolicyChange())
 				require.ErrorIs(t, err, errInjectedPolicyBuild)
@@ -2470,6 +2511,7 @@ func TestSSHPolicyEmptyOnWire(t *testing.T) {
 			require.Len(t, sent, 2)
 
 			for _, resp := range sent {
+				assert.Equal(t, packetResponse.PacketFilters, resp.PacketFilters)
 				wire, err := json.Marshal(resp)
 				require.NoError(t, err)
 				assert.Contains(t, string(wire), `"SSHPolicy":{"rules":[]}`)

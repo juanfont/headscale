@@ -11,8 +11,8 @@ import (
 	"tailscale.com/types/views"
 )
 
-// sshTests assertions evaluate on user-initiated writes; boot reload
-// skips them so a stale reference does not block startup. Each entry
+// sshTests assertions reject invalid user-initiated writes; boot evaluates
+// them and warns so stale references do not block startup. Each entry
 // names a src and one or more dst, and uses:
 //
 //   - accept: every listed user reaches every dst via an accept- or
@@ -260,7 +260,7 @@ const (
 	assertCheck
 )
 
-// evaluateAssertion walks every (srcAddr, dstNode) pair for one user
+// evaluateAssertion compares the source set with each destination for one user
 // and records the outcome. Empty username fails — SSH login users
 // cannot be empty even when parse accepted it.
 func evaluateAssertion(
@@ -274,7 +274,6 @@ func evaluateAssertion(
 	kind sshAssertion,
 	res *SSHPolicyTestResult,
 ) {
-dstLoop:
 	for _, dst := range dstNodes {
 		dstPol, err := compiledSSHPolicy(pol, users, nodes, cache, dst)
 		if err != nil {
@@ -288,63 +287,49 @@ dstLoop:
 
 		dstLabel := dst.Hostname()
 
-		acceptHit := false
-		checkHit := false
+		reach, check, err := dstPol.reachableSets(user)
+		if err != nil {
+			res.Passed = false
+			res.Errors = append(res.Errors,
+				fmt.Sprintf("resolving SSH principals for %s: %v", dstLabel, err))
 
-		for srcAddr := range srcAddrs.Addrs() {
-			a, c := dstPol.reachability(srcAddr, user)
-			if a {
-				acceptHit = true
+			continue
+		}
+
+		// All src IPs must agree; one counter-example fails
+		// the whole (user, dst) pair.
+		switch kind {
+		case assertAccept:
+			if reach.ContainsSet(srcAddrs) {
+				res.AcceptOK = appendUserDst(res.AcceptOK, user, dstLabel)
+			} else {
+				res.Passed = false
+				res.AcceptFail = appendUserDst(res.AcceptFail, user, dstLabel)
 			}
-
-			if c {
-				checkHit = true
+		case assertDeny:
+			if reach.Overlaps(srcAddrs) {
+				res.Passed = false
+				res.DenyFail = appendUserDst(res.DenyFail, user, dstLabel)
+			} else {
+				res.DenyOK = appendUserDst(res.DenyOK, user, dstLabel)
 			}
+		case assertCheck:
+			if check.ContainsSet(srcAddrs) {
+				res.CheckOK = appendUserDst(res.CheckOK, user, dstLabel)
+			} else {
+				res.Passed = false
+				res.CheckFail = appendUserDst(res.CheckFail, user, dstLabel)
 
-			// All src IPs must agree; one counter-example fails
-			// the whole (user, dst) pair.
-			switch kind {
-			case assertAccept:
-				if !a {
-					res.Passed = false
-					res.AcceptFail = appendUserDst(res.AcceptFail, user, dstLabel)
-
-					continue dstLoop
-				}
-			case assertDeny:
-				if a {
-					res.Passed = false
-					res.DenyFail = appendUserDst(res.DenyFail, user, dstLabel)
-
-					continue dstLoop
-				}
-			case assertCheck:
-				if !c {
-					res.Passed = false
-					res.CheckFail = appendUserDst(res.CheckFail, user, dstLabel)
-
-					// Record whether the accept side passed so
-					// the rendered error can say "ALLOWED via
-					// accept" instead of "DENIED".
-					if a {
+				// Record whether the accept side passed so
+				// the rendered error can say "ALLOWED via
+				// accept" instead of "DENIED".
+				for addr := range srcAddrs.Subtract(check).Addrs() {
+					if reach.Contains(addr) {
 						res.AcceptOK = appendUserDst(res.AcceptOK, user, dstLabel)
 					}
 
-					continue dstLoop
+					break
 				}
-			}
-		}
-
-		switch kind {
-		case assertAccept:
-			if acceptHit {
-				res.AcceptOK = appendUserDst(res.AcceptOK, user, dstLabel)
-			}
-		case assertDeny:
-			res.DenyOK = appendUserDst(res.DenyOK, user, dstLabel)
-		case assertCheck:
-			if checkHit {
-				res.CheckOK = appendUserDst(res.CheckOK, user, dstLabel)
 			}
 		}
 	}

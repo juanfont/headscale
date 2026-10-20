@@ -142,28 +142,43 @@ func (p sshPolicy) toTailcfg(baseURL string) *tailcfg.SSHPolicy {
 	return wire
 }
 
-// reachability reports whether srcAddr can log in as user via:
+// reachableSets returns the addresses that can log in as user via:
 //
-//   - any matching rule (acceptHit, satisfies accept assertions)
-//   - a check-action rule (checkHit, satisfies check assertions)
-func (p sshPolicy) reachability(srcAddr netip.Addr, user string) (bool, bool) {
-	var acceptHit bool
+//   - any matching rule (reach, satisfies accept assertions)
+//   - a check-action rule (check, satisfies check assertions)
+func (p sshPolicy) reachableSets(user string) (ipset.Set, ipset.Set, error) {
+	var reachable, checked ipset.Builder
 
 	for _, rule := range p.rules {
-		if !slices.Contains(rule.principals, srcAddr) ||
-			!sshUserMapAllows(rule.users, user) {
+		if !sshUserMapAllows(rule.users, user) {
 			continue
 		}
 
 		switch rule.action {
-		case SSHActionCheck:
-			return true, true
-		case SSHActionAccept:
-			acceptHit = true
+		case SSHActionAccept, SSHActionCheck:
+			for _, addr := range rule.principals {
+				// Source sets have no zones, so a zoned principal cannot match.
+				if addr.Zone() != "" {
+					continue
+				}
+
+				reachable.AddAddr(addr)
+
+				if rule.action == SSHActionCheck {
+					checked.AddAddr(addr)
+				}
+			}
 		}
 	}
 
-	return acceptHit, false
+	reach, err := reachable.Build()
+	if err != nil {
+		return ipset.Set{}, ipset.Set{}, err
+	}
+
+	check, err := checked.Build()
+
+	return reach, check, err
 }
 
 // checkParams returns the first matching check rule's server-side period.
@@ -271,7 +286,7 @@ func (pol *Policy) compileSSHRules(
 		default:
 			return sshPolicy{}, fmt.Errorf(
 				"parsing SSH policy, unknown action %q, index: %d: %w",
-				rule.Action, index, err,
+				rule.Action, index, ErrSSHActionInvalid,
 			)
 		}
 

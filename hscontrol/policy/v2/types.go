@@ -39,10 +39,7 @@ var ErrAutogroupSelfRequiresPerNodeResolution = errors.New("autogroup:self requi
 
 var ErrUndefinedTagReference = errors.New("references undefined tag")
 
-var (
-	ErrInvalidAction = errors.New("invalid action")
-	errSelfInSources = errors.New("autogroup:self cannot be used in sources")
-)
+var errSelfInSources = errors.New("autogroup:self cannot be used in sources")
 
 // SSH validation errors.
 var (

@@ -1,8 +1,11 @@
 package v2
 
 import (
+	"context"
 	"encoding/json"
 	"net/netip"
+	"os"
+	"os/exec"
 	"slices"
 	"strings"
 	"testing"
@@ -51,9 +54,10 @@ func TestSSHRulesStableOrderAndOwnership(t *testing.T) {
 	wire.Rules[0].Action.HoldAndDelegate = "changed"
 	wire.Rules[0].AcceptEnv[0] = "changed"
 	wire.Rules = nil
-	accept, check := compiled.reachability(*nodes[0].IPv4, "root")
-	assert.True(t, accept)
-	assert.True(t, check)
+	reach, check, err := compiled.reachableSets("root")
+	require.NoError(t, err)
+	assert.True(t, reach.Contains(*nodes[0].IPv4))
+	assert.True(t, check.Contains(*nodes[0].IPv4))
 
 	again := compiled.toTailcfg("https://second")
 	require.Len(t, again.Rules, 4)
@@ -82,16 +86,14 @@ func TestSSHRulesEmptyPolicyRevokesAccess(t *testing.T) {
 		require.NotNil(t, wire.Rules)
 		assert.Empty(t, wire.Rules)
 
-		accept, check := compiled.reachability(
-			netip.MustParseAddr("100.64.0.1"),
-			"root",
-		)
-		assert.False(t, accept)
-		assert.False(t, check)
+		reach, check, err := compiled.reachableSets("root")
+		require.NoError(t, err)
+		assert.True(t, reach.IsEmpty())
+		assert.True(t, check.IsEmpty())
 	}
 }
 
-func TestSSHRulesAddressMembership(t *testing.T) {
+func TestSSHRulesWireAddressIdentity(t *testing.T) {
 	for _, addr := range []string{"192.0.2.1", "::ffff:192.0.2.1", "fe80::1%eth0"} {
 		t.Run(addr, func(t *testing.T) {
 			compiled := sshPolicy{rules: []sshRule{{
@@ -99,11 +101,233 @@ func TestSSHRulesAddressMembership(t *testing.T) {
 				users:      map[string]string{"root": "root"},
 				action:     SSHActionAccept,
 			}}}
-			for _, src := range []string{"192.0.2.1", "::ffff:192.0.2.1", "fe80::1%eth0", "fe80::1", "fe80::1%eth1"} {
-				accept, check := compiled.reachability(netip.MustParseAddr(src), "root")
-				assert.Equal(t, addr == src, accept, src)
-				assert.False(t, check, src)
+			wire := compiled.toTailcfg("")
+			require.Len(t, wire.Rules, 1)
+			require.Len(t, wire.Rules[0].Principals, 1)
+			assert.Equal(t, addr, wire.Rules[0].Principals[0].NodeIP)
+
+			for _, action := range []SSHAction{SSHActionAccept, SSHActionCheck} {
+				compiled.rules[0].action = action
+				reach, check, err := compiled.reachableSets("root")
+				require.NoError(t, err)
+
+				for _, source := range []string{
+					"192.0.2.1", "::ffff:192.0.2.1", "fe80::1",
+				} {
+					ip := netip.MustParseAddr(source)
+					assert.Equal(t, addr == source, reach.Contains(ip))
+					assert.Equal(t, addr == source && action == SSHActionCheck,
+						check.Contains(ip))
+				}
 			}
+		})
+	}
+}
+
+func TestSSHRulesReachableSets(t *testing.T) {
+	t.Parallel()
+
+	compiled := sshPolicy{rules: []sshRule{
+		{
+			principals: []netip.Addr{netip.MustParseAddr("192.0.2.1")},
+			users:      map[string]string{"root": "root"},
+			action:     SSHActionAccept,
+		},
+		{
+			principals: []netip.Addr{
+				netip.MustParseAddr("::ffff:192.0.2.1"),
+				netip.MustParseAddr("2001:db8::1"),
+			},
+			users:  map[string]string{"root": "root"},
+			action: SSHActionCheck,
+		},
+	}}
+	reach, check, err := compiled.reachableSets("root")
+	require.NoError(t, err)
+	assert.Equal(t, []netip.Addr{
+		netip.MustParseAddr("192.0.2.1"),
+		netip.MustParseAddr("::ffff:192.0.2.1"),
+		netip.MustParseAddr("2001:db8::1"),
+	}, slices.Collect(reach.Addrs()))
+	assert.Equal(t, compiled.rules[1].principals, slices.Collect(check.Addrs()))
+
+	reach, check, err = compiled.reachableSets("nobody")
+	require.NoError(t, err)
+	assert.True(t, reach.IsEmpty())
+	assert.True(t, check.IsEmpty())
+
+	compiled.rules[0].principals = []netip.Addr{{}}
+	_, _, err = compiled.reachableSets("root")
+	require.Error(t, err)
+}
+
+func TestSSHTestsSourceSetAssertions(t *testing.T) {
+	t.Parallel()
+
+	users := sshTestUsers()
+	nodes := sshTestNodes(users)
+	src, err := parseAlias("192.0.2.0/30")
+	require.NoError(t, err)
+	source, _, err := resolveSSHTestSource(src, nil, nil, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	for _, tt := range []struct {
+		name            string
+		accept          []string
+		check           []string
+		wantAccept      bool
+		wantDeny        bool
+		wantCheck       bool
+		wantCheckReason string
+	}{
+		{
+			name:       "all covered by accept and check",
+			accept:     []string{"192.0.2.2", "192.0.2.3"},
+			check:      []string{"192.0.2.0", "192.0.2.1"},
+			wantAccept: true, wantCheckReason: "ALLOWED via accept",
+		},
+		{
+			name: "all checked",
+			check: []string{
+				"192.0.2.0", "192.0.2.1", "192.0.2.2", "192.0.2.3",
+			},
+			wantAccept: true, wantCheck: true,
+		},
+		{
+			name:            "first unchecked address denied before accepted address",
+			accept:          []string{"192.0.2.2"},
+			check:           []string{"192.0.2.0"},
+			wantCheckReason: "DENIED",
+		},
+		{
+			name:            "first unchecked address accepted before denied address",
+			accept:          []string{"192.0.2.0"},
+			check:           []string{"192.0.2.1"},
+			wantCheckReason: "ALLOWED via accept",
+		},
+		{
+			name: "none allowed", wantDeny: true, wantCheckReason: "DENIED",
+		},
+		{
+			name:   "last address allowed",
+			accept: []string{"192.0.2.3"}, wantCheckReason: "DENIED",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var compiled sshPolicy
+
+			for _, rule := range []struct {
+				action SSHAction
+				addrs  []string
+			}{
+				{SSHActionAccept, tt.accept},
+				{SSHActionCheck, tt.check},
+			} {
+				var principals []netip.Addr
+				for _, addr := range rule.addrs {
+					principals = append(principals, netip.MustParseAddr(addr))
+				}
+
+				compiled.rules = append(compiled.rules, sshRule{
+					principals: principals,
+					users:      map[string]string{"root": "root"},
+					action:     rule.action,
+				})
+			}
+
+			dst := nodes[2].View()
+			cache := map[types.NodeID]sshPolicy{dst.ID(): compiled}
+
+			for _, assertion := range []struct {
+				kind     sshAssertion
+				pass     bool
+				acceptOK bool
+			}{
+				{assertAccept, tt.wantAccept, tt.wantAccept},
+				{assertDeny, tt.wantDeny, false},
+				{assertCheck, tt.wantCheck, tt.wantCheckReason == "ALLOWED via accept"},
+			} {
+				result := SSHPolicyTestResult{Passed: true}
+				evaluateAssertion(nil, users, nodes.ViewSlice(), cache,
+					source, []types.NodeView{dst}, "root", assertion.kind, &result)
+				assert.Equal(t, assertion.pass, result.Passed, "kind %v", assertion.kind)
+				assert.Empty(t, result.Errors)
+
+				var wantAcceptOK map[string][]string
+				if assertion.acceptOK {
+					wantAcceptOK = map[string][]string{"root": {dst.Hostname()}}
+				}
+
+				assert.Equal(t, wantAcceptOK, result.AcceptOK, "kind %v", assertion.kind)
+
+				if assertion.kind == assertCheck && !tt.wantCheck {
+					assert.Equal(t, tt.wantCheckReason,
+						checkFailReason(result, "root", dst.Hostname()))
+				}
+			}
+		})
+	}
+}
+
+func TestCompileSSHRulesInvalidAction(t *testing.T) {
+	t.Parallel()
+
+	users := sshTestUsers()
+	nodes := sshTestNodes(users)
+	pol := &Policy{SSHs: []SSH{{
+		Action:       SSHAction("invalid"),
+		Sources:      SSHSrcAliases{new(Username("alice@"))},
+		Destinations: SSHDstAliases{tp("tag:server")},
+		Users:        SSHUsers{"root"},
+	}}}
+	_, err := pol.compileSSHRules(users, nodes[2].View(), nodes.ViewSlice())
+	require.ErrorIs(t, err, ErrSSHActionInvalid)
+	assert.NotContains(t, err.Error(), "%!w")
+}
+
+func TestSSHTestsWideSourceBounded(t *testing.T) {
+	const helperEnv = "HEADSCALE_SSH_WIDE_SOURCE_TEST"
+	if os.Getenv(helperEnv) == "" {
+		// A regressed address walk must terminate with the child, not leak a goroutine.
+		binary, err := os.Executable()
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		defer cancel()
+
+		cmd := exec.CommandContext(ctx, binary,
+			"-test.run=^TestSSHTestsWideSourceBounded$", "-test.timeout=8s")
+
+		cmd.Env = append(os.Environ(), helperEnv+"=1")
+		output, err := cmd.CombinedOutput()
+		require.NoError(t, err, "%s", output)
+
+		return
+	}
+
+	users := sshTestUsers()
+	nodes := sshTestNodes(users)
+
+	for _, source := range []string{"::/0", "*"} {
+		t.Run(source, func(t *testing.T) {
+			src, err := parseAlias(source)
+			require.NoError(t, err)
+
+			result := runSSHPolicyTest(SSHPolicyTest{
+				Src:    src,
+				Dst:    SSHTestDestinations{tp("tag:server")},
+				Accept: []SSHUser{"root"},
+				Deny:   []SSHUser{"root"},
+				Check:  []SSHUser{"root"},
+			}, &Policy{}, users, nodes.ViewSlice(), make(map[types.NodeID]sshPolicy))
+			assert.False(t, result.Passed)
+			assert.Empty(t, result.Errors)
+			assert.Equal(t, map[string][]string{"root": {"server"}}, result.AcceptFail)
+			assert.Equal(t, map[string][]string{"root": {"server"}}, result.DenyOK)
+			assert.Equal(t, map[string][]string{"root": {"server"}}, result.CheckFail)
+			assert.Empty(t, result.AcceptOK)
 		})
 	}
 }
@@ -203,13 +427,14 @@ func TestSSHRulesSelectRegisteredDevices(t *testing.T) {
 		slices.Contains(compiled.rules[0].principals, *nodes[2].IPv4),
 		"tagged creator is not an owner",
 	)
-	accept, check := compiled.reachability(*nodes[0].IPv6, "alice")
+	reach, check, err := compiled.reachableSets("alice")
+	require.NoError(t, err)
 	assert.True(
 		t,
-		accept,
+		reach.Contains(*nodes[0].IPv6),
 		"selecting one family includes the registered device's other address",
 	)
-	assert.False(t, check)
+	assert.True(t, check.IsEmpty())
 }
 
 // sshTestUsers/sshTestNodes are reused across the table below to keep

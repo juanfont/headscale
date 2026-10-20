@@ -144,15 +144,19 @@ func (b *MapResponseBuilder) WithDebugConfig() *MapResponseBuilder {
 
 // WithSSHPolicy adds SSH policy configuration for the requesting node.
 func (b *MapResponseBuilder) WithSSHPolicy() *MapResponseBuilder {
-	_, ok := b.node()
+	node, ok := b.node()
 	if !ok {
 		return b
 	}
 
 	sshPolicy, err := b.view.SSHPolicy(b.mapper.cfg.ServerURL)
 	if err != nil {
-		b.addError(err)
-		return b
+		log.Error().Caller().Err(err).
+			Uint64(zf.NodeID, b.nodeID.Uint64()).
+			Str(zf.NodeHostname, node.Hostname()).
+			Msg("SSH policy unavailable")
+		// Empty rules revoke access; nil would retain the client's previous policy.
+		sshPolicy = &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{}}
 	}
 
 	b.resp.SSHPolicy = sshPolicy
