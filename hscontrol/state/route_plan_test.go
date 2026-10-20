@@ -664,3 +664,122 @@ func TestUnchangedHealthRetriesInvalidPolicySnapshot(t *testing.T) {
 	require.Equal(t, []change.Change{change.FullUpdate()}, s.DrainSelfRefreshes())
 	require.False(t, s.BatchSetNodeHealth(map[types.NodeID]bool{2: true}))
 }
+
+func TestBatchSetNodeHealthViaSelectionRefresh(t *testing.T) {
+	for _, regular := range []bool{false, true} {
+		name := "via_only"
+		if regular {
+			name = "regular_override"
+		}
+
+		t.Run(name, func(t *testing.T) {
+			s := mapViewTestState(t, "")
+			route := netip.MustParsePrefix("10.106.0.0/24")
+			fourth := createTestNode(4, 1, "user1", "noded")
+			fourth.User.ID = 1
+			fourth.IPv4 = new(netip.MustParseAddr("100.64.0.4"))
+			fourth.IsOnline = new(true)
+			s.nodeStore.PutNode(fourth)
+
+			for _, id := range []types.NodeID{2, 3, 4} {
+				s.nodeStore.UpdateNode(id, func(n *types.Node) {
+					n.IPv6 = new(netip.MustParseAddr(fmt.Sprintf("fd7a:115c:a1e0::%d", id)))
+					n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{route}}
+
+					n.ApprovedRoutes = []netip.Prefix{route}
+					if id != 2 {
+						n.Tags = []string{"tag:via"}
+						n.UserID = nil
+						n.User = nil
+					}
+				})
+			}
+
+			grants := `{"tagOwners":{"tag:via":["user1@"]},"grants":[
+				{"src":["user1@"],"dst":["10.106.0.0/24"],"via":["tag:via"],"ip":["tcp:443"]}`
+			if regular {
+				grants += `,{"src":["user1@"],"dst":["10.106.0.0/24"],"ip":["tcp:443"]}`
+			}
+
+			_, err := s.SetPolicy([]byte(grants + `]}`))
+			require.NoError(t, err)
+
+			before, err := s.MapView(1)
+			require.NoError(t, err)
+
+			globalRoutes := s.nodeStore.PrimaryRoutes()
+			generation := s.polMan.NodesGeneration()
+
+			require.Equal(t, types.NodeID(2), globalRoutes[route])
+
+			checkOwner := func(view MapView, want types.NodeID) {
+				t.Helper()
+
+				var owners []types.NodeID
+
+				for _, peer := range view.Peers().All() {
+					addresses, err := view.NodeAddresses(peer.ID())
+					require.NoError(t, err)
+
+					hasRoute := slices.Contains(addresses.PrimaryRoutes, route)
+					require.Equal(t, hasRoute, slices.Contains(addresses.AllowedIPs, route))
+
+					if hasRoute {
+						owners = append(owners, peer.ID())
+					}
+				}
+
+				var expected []types.NodeID
+
+				if want != 0 {
+					expected = []types.NodeID{want}
+				}
+
+				require.Equal(t, expected, owners,
+					"only the captured via winner or regular global primary may carry the route")
+			}
+
+			initialOwner := types.NodeID(3)
+
+			if regular {
+				initialOwner = 2
+			}
+
+			checkOwner(before, initialOwner)
+
+			for _, step := range []struct {
+				id      types.NodeID
+				healthy bool
+				owner   types.NodeID
+			}{
+				{3, false, 4},
+				{4, false, 0},
+				{3, true, 3},
+			} {
+				refreshNeeded := s.BatchSetNodeHealth(map[types.NodeID]bool{step.id: step.healthy})
+
+				after, err := s.MapView(1)
+				require.NoError(t, err)
+
+				require.Equal(t, globalRoutes, s.nodeStore.PrimaryRoutes())
+				require.Equal(t, before.snapshot.policy, after.snapshot.policy,
+					"health-only publication must retain the policy generation")
+				require.Equal(t, generation, s.polMan.NodesGeneration())
+				require.True(t, s.IsNodeHealthy(2), "global primary remains healthy outside via")
+
+				want := step.owner
+
+				if regular {
+					want = 2
+				}
+
+				checkOwner(after, want)
+				checkOwner(before, initialOwner)
+				require.False(t, before.Peers(3).At(0).Unhealthy(), "retained facts stay immutable")
+				require.True(t, refreshNeeded, "applied health changes need refresh despite stable global routes")
+				require.False(t, s.BatchSetNodeHealth(map[types.NodeID]bool{step.id: step.healthy}),
+					"repeating unchanged health must not request another refresh")
+			}
+		})
+	}
+}

@@ -153,8 +153,8 @@ func TestHAHealthProbe_RecoveryNoFlap(t *testing.T) {
 	require.Contains(t, primaries, route, "node 2 should be primary")
 
 	// Recovery: node 1 healthy again. Node 2 should STAY primary.
-	changed := srv.State().SetNodeHealth(nodeID1, true)
-	assert.False(t, changed, "recovery should not change primaries (no flap)")
+	refreshNeeded := srv.State().SetNodeHealth(nodeID1, true)
+	assert.True(t, refreshNeeded, "health recovery must refresh per-viewer routes")
 
 	primaries = srv.State().GetNodePrimaryRoutes(nodeID2)
 	assert.Contains(t, primaries, route, "node 2 should remain primary after recovery")
@@ -530,4 +530,147 @@ func TestHAHealthProbe_PolicyRecoveryWithoutPrimaryChange(t *testing.T) {
 	// The real Headscale dispatch consumed the one recovery bit. Repeating
 	// unchanged health must not request another catch-up dispatch.
 	require.False(t, srv.State().BatchSetNodeHealth(map[types.NodeID]bool{router1: false, router2: false}))
+}
+
+func TestHAHealthProbe_ViaChangeWithoutGlobalPrimaryChange(t *testing.T) {
+	srv := servertest.NewServer(t)
+	user := srv.CreateUser(t, "ha-via-dispatch")
+	_, err := srv.State().SetPolicy([]byte(`{
+		"tagOwners":{"tag:via":["ha-via-dispatch@"]},
+		"grants":[{"src":["ha-via-dispatch@"],"dst":["10.105.0.0/24"],
+			"via":["tag:via"],"ip":["tcp:443"]}]
+	}`))
+	require.NoError(t, err)
+
+	global := servertest.NewClient(t, srv, "via-global", servertest.WithUser(user))
+	via1 := servertest.NewClient(t, srv, "via-first",
+		servertest.WithUser(user), servertest.WithTags("tag:via"))
+	via2 := servertest.NewClient(t, srv, "via-second",
+		servertest.WithUser(user), servertest.WithTags("tag:via"))
+	viewer := servertest.NewClient(t, srv, "via-viewer", servertest.WithUser(user))
+	route := netip.MustParsePrefix("10.105.0.0/24")
+	globalID := advertiseAndApproveRoute(t, srv, global, route)
+	via1ID := advertiseAndApproveRoute(t, srv, via1, route)
+	via2ID := advertiseAndApproveRoute(t, srv, via2, route)
+	viewerID := findNodeID(t, srv, viewer.Name)
+
+	require.Less(t, globalID, via1ID)
+	require.Less(t, via1ID, via2ID)
+	require.Contains(t, srv.State().GetNodePrimaryRoutes(globalID), route)
+
+	hasRouteOwner := func(want types.NodeID) func(*netmap.NetworkMap) bool {
+		return func(nm *netmap.NetworkMap) bool {
+			var owner tailcfg.NodeID
+
+			for _, peer := range nm.Peers {
+				hasRoute := slices.Contains(peer.PrimaryRoutes().AsSlice(), route)
+				if hasRoute != slices.Contains(peer.AllowedIPs().AsSlice(), route) {
+					return false
+				}
+
+				if hasRoute {
+					if owner != 0 {
+						return false
+					}
+
+					owner = peer.ID()
+				}
+			}
+
+			return owner == want.NodeID()
+		}
+	}
+
+	viewer.WaitForCondition(t, "initial via winner", 10*time.Second, hasRouteOwner(via1ID))
+
+	prober := state.NewHAHealthProber(srv.State(), types.HARouteConfig{
+		ProbeInterval: 30 * time.Second,
+		ProbeTimeout:  time.Second,
+	}, srv.URL, srv.App.MapBatcher().IsConnected)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+
+	var policyDispatches int
+
+	blockedPings := make(map[types.NodeID]bool)
+	dispatch := func(cs ...change.Change) {
+		for _, c := range cs {
+			// Withhold only selected routers' ping delivery. Other clients
+			// answer real HEAD pings; no ping result or policy event is fabricated.
+			if c.PingRequest != nil && blockedPings[c.TargetNode] {
+				continue
+			}
+
+			if c.IsBroadcastPolicyChange() {
+				policyDispatches++
+			}
+
+			srv.App.Change(c)
+		}
+	}
+
+	prober.ProbeOnce(ctx, dispatch)
+	require.Zero(t, policyDispatches, "unchanged healthy warmup needs no refresh")
+
+	for _, step := range []struct {
+		name    string
+		blocked []types.NodeID
+		owner   types.NodeID
+		refresh bool
+	}{
+		{"via failover", []types.NodeID{via1ID}, via2ID, true},
+		{"unchanged via failover", []types.NodeID{via1ID}, via2ID, false},
+		{"all via unhealthy withdrawal", []types.NodeID{via1ID, via2ID}, 0, true},
+		{"unchanged withdrawal", []types.NodeID{via1ID, via2ID}, 0, false},
+		{"via recovery", []types.NodeID{via2ID}, via1ID, true},
+	} {
+		clear(blockedPings)
+
+		for _, id := range step.blocked {
+			blockedPings[id] = true
+		}
+
+		beforeDispatches := policyDispatches
+
+		prober.ProbeOnce(ctx, dispatch)
+
+		for _, id := range []types.NodeID{globalID, via1ID, via2ID} {
+			require.Equal(t, !blockedPings[id], srv.State().IsNodeHealthy(id), step.name)
+		}
+
+		require.Contains(t, srv.State().GetNodePrimaryRoutes(globalID), route, step.name)
+
+		fresh, err := srv.State().MapView(viewerID)
+		require.NoError(t, err)
+
+		var owners []types.NodeID
+
+		for _, peer := range fresh.Peers().All() {
+			addresses, err := fresh.NodeAddresses(peer.ID())
+			require.NoError(t, err)
+
+			if slices.Contains(addresses.PrimaryRoutes, route) {
+				owners = append(owners, peer.ID())
+			}
+		}
+
+		var expected []types.NodeID
+
+		if step.owner != 0 {
+			expected = []types.NodeID{step.owner}
+		}
+
+		require.Equal(t, expected, owners, "fresh MapView must select the intended via owner: %s", step.name)
+
+		wantDispatches := beforeDispatches
+
+		if step.refresh {
+			wantDispatches++
+		}
+
+		require.Equal(t, wantDispatches, policyDispatches, step.name)
+
+		viewer.WaitForCondition(t, step.name, 10*time.Second, hasRouteOwner(step.owner))
+	}
 }

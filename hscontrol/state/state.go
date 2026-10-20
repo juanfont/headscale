@@ -1401,9 +1401,9 @@ func (s *State) IsNodeHealthy(id types.NodeID) bool {
 }
 
 // SetNodeHealth flips the runtime health bit for one node and reports
-// whether the resulting primary-route assignment changed or policy recovery
-// needs dispatch, so the HA prober can decide whether to fan out a PolicyChange. true means
-// healthy; false means unhealthy. An unhealthy mark is dropped when
+// whether clients need a refresh for global routes, via routes, or policy
+// recovery. The healthy argument is true for healthy and false for unhealthy.
+// An unhealthy mark is dropped when
 // the node is no longer an HA candidate (offline or no approved
 // routes) — between probe dispatch and result the node may have left
 // candidacy, and the bit would just be stale. The check happens
@@ -1416,10 +1416,11 @@ func (s *State) SetNodeHealth(id types.NodeID, healthy bool) bool {
 
 // BatchSetNodeHealth applies a set of health updates atomically: the
 // election runs once after every flag has been flipped, so observers
-// never see an intermediate snapshot. Returns true when the
-// primary-route assignment differs from before the batch or policy recovery
-// is pending, so callers can gate a single dispatch. Map value true = healthy;
-// false = unhealthy (gated as in [State.SetNodeHealth]).
+// never see an intermediate snapshot. Returns true when an applied health
+// value or global primary assignment changed, or policy recovery is pending.
+// Health changes can move via selections independently of global primaries,
+// so callers must refresh even when the global assignments stay unchanged.
+// Map value true = healthy; false = unhealthy (gated as in [State.SetNodeHealth]).
 //
 // Per-call publication would let a writer applying two flips
 // back-to-back elect a node that the next snapshot demotes,
@@ -1436,6 +1437,7 @@ func (s *State) BatchSetNodeHealth(updates map[types.NodeID]bool) bool {
 	// Invalid snapshots still retry compilation below. healthSetter stays
 	// authoritative for candidacy and race checks under the writer.
 	fns := make(map[types.NodeID]UpdateNodeFunc, len(updates))
+	healthChanged := false
 
 	for id, healthy := range updates {
 		if nv, ok := s.nodeStore.GetNode(id); ok && nv.Unhealthy() == !healthy {
@@ -1444,7 +1446,13 @@ func (s *State) BatchSetNodeHealth(updates map[types.NodeID]bool) bool {
 			continue
 		}
 
-		fns[id] = healthSetter(healthy)
+		setHealth := healthSetter(healthy)
+		fns[id] = func(n *types.Node) {
+			before := n.Unhealthy
+			setHealth(n)
+
+			healthChanged = healthChanged || n.Unhealthy != before
+		}
 	}
 
 	if len(fns) == 0 {
@@ -1455,9 +1463,10 @@ func (s *State) BatchSetNodeHealth(updates map[types.NodeID]bool) bool {
 		return s.nodeStore.policyRecovered.Load()
 	}
 
+	// UpdateNodes waits for the single writer, including these closures.
 	s.nodeStore.UpdateNodes(fns)
 
-	return !maps.Equal(prevRoutes, s.nodeStore.PrimaryRoutes()) ||
+	return healthChanged || !maps.Equal(prevRoutes, s.nodeStore.PrimaryRoutes()) ||
 		s.nodeStore.policyRecovered.Load()
 }
 

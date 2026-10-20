@@ -82,10 +82,30 @@ func TestBatchSetNodeHealthUnchangedSkipsWrite(t *testing.T) {
 	// The node starts with Unhealthy=false. Asking for "healthy=true"
 	// means Unhealthy stays false — no change.
 	for range 20 {
-		changed := s.BatchSetNodeHealth(map[types.NodeID]bool{nodeID: true})
-		require.False(t, changed,
-			"unchanged health write must not report a route-primary change")
+		refreshNeeded := s.BatchSetNodeHealth(map[types.NodeID]bool{nodeID: true})
+		require.False(t, refreshNeeded,
+			"unchanged health write must not request a refresh")
 		require.Same(t, initialSnapshot, s.nodeStore.data.Load(),
 			"unchanged health write must not publish a new snapshot")
 	}
+}
+
+func TestBatchSetNodeHealthRejectedOrMissingDoesNotRefresh(t *testing.T) {
+	s := mapViewTestState(t, "")
+	s.nodeStore.UpdateNode(2, func(n *types.Node) { n.IsOnline = new(false) })
+
+	for _, updates := range []map[types.NodeID]bool{
+		{999: false},
+		{999: true},
+		{2: false},
+		{3: false},
+	} {
+		for range 2 {
+			require.False(t, s.BatchSetNodeHealth(updates),
+				"missing nodes and rejected unhealthy marks must not request refresh")
+		}
+	}
+
+	require.True(t, s.IsNodeHealthy(2), "offline nodes reject unhealthy marks")
+	require.True(t, s.IsNodeHealthy(3), "nodes without approved routes reject unhealthy marks")
 }
