@@ -175,6 +175,8 @@ var grantSkipReasons = map[string]string{
 	"via-grant-v63/blastoise/filter": viaDstAddressForm,
 	"via-grant-v63/squirtle/filter":  viaDstAddressForm,
 
+	"grant-dxp-comma-ports/refused": grantPortList,
+
 	// Contiguous pinned addresses; TestViaGrantHACompat compares these
 	// filters by address.
 	"via-grant-v64/client-a/filter":  srcAddressForm,
@@ -190,6 +192,8 @@ var grantSkipReasons = map[string]string{
 	"via-grant-v65/via-empty/filter": srcAddressForm,
 	"via-grant-v65/via-r/filter":     srcAddressForm,
 }
+
+const grantPortList = "GRANT_PORT_LIST: SaaS refuses a comma port list in a grant ip entry (only one port range allowed); headscale accepts it"
 
 const viaDstAddressForm = "FILTER_ADDRESS_FORM: SaaS writes a single-address via destination as a bare address, headscale as a /32 prefix"
 
@@ -240,62 +244,13 @@ func TestGrantsCompat(t *testing.T) {
 			policyJSON := convertPolicyUserEmails(tf.Input.FullPolicy)
 
 			if tf.Input.APIResponseCode == 400 || tf.Error {
-				testGrantError(t, policyJSON, tf)
+				testCompatRefusal(t, grantSkipReasons, tf)
 				return
 			}
 
 			testGrantSuccess(t, policyJSON, tf, users, nodes)
 		})
 	}
-}
-
-// testGrantError verifies that an invalid policy produces the expected error.
-func testGrantError(t *testing.T, policyJSON []byte, tf *testcapture.Capture) {
-	t.Helper()
-
-	wantMsg := ""
-	if tf.Input.APIResponseBody != nil {
-		wantMsg = tf.Input.APIResponseBody.Message
-	}
-
-	pol, err := unmarshalPolicy(policyJSON)
-	if err != nil {
-		// Parse-time error
-		if wantMsg != "" {
-			assertGrantErrorContains(t, err, wantMsg, tf.TestID)
-		}
-
-		return
-	}
-
-	err = pol.validate()
-	if err != nil {
-		// Validation error
-		if wantMsg != "" {
-			assertGrantErrorContains(t, err, wantMsg, tf.TestID)
-		}
-
-		return
-	}
-
-	t.Errorf("%s: expected error (api_response_code=400) but policy parsed and validated successfully; want message: %q",
-		tf.TestID, wantMsg)
-}
-
-// assertGrantErrorContains requires that headscale's error contains
-// the Tailscale SaaS error message exactly. Divergence means an
-// emitter needs to be aligned, not papered over with a translation
-// table.
-func assertGrantErrorContains(t *testing.T, err error, wantMsg string, testID string) {
-	t.Helper()
-
-	errStr := err.Error()
-	if strings.Contains(errStr, wantMsg) {
-		return
-	}
-
-	t.Errorf("%s: error message mismatch\n  tailscale wants: %q\n  headscale got:   %q",
-		testID, wantMsg, errStr)
 }
 
 // testGrantSuccess verifies that a valid policy produces the expected
