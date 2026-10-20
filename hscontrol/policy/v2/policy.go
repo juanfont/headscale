@@ -1177,7 +1177,8 @@ func (pm *PolicyManager) TagExists(tag string) bool {
 
 func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Prefix,
 ) bool {
-	if pm == nil {
+	// Approval and storage must refer to the same canonical route.
+	if pm == nil || !route.IsValid() || route != route.Masked() {
 		return false
 	}
 
@@ -1190,7 +1191,6 @@ func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Pr
 	// approve the whole /0 range.
 	// However, an auto approver might be /0, meaning that they can approve
 	// all routes available, just not exit nodes.
-	route = route.Masked()
 	if tsaddr.IsExitRoute(route) {
 		if pm.exitApprovers.IsEmpty() {
 			return false

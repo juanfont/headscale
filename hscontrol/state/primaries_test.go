@@ -379,10 +379,9 @@ func TestOnlineAdvertisersDeduplicatesExactPrefixes(t *testing.T) {
 
 	got := onlineAdvertisers(nodes, []types.NodeID{1, 2, 3, 4})
 	require.Equal(t, map[netip.Prefix][]types.NodeID{
-		parent:   {1, 2},
-		child:    {1, 2},
-		unmasked: {1},
-		mapped:   {1},
+		parent: {1, 2},
+		child:  {1, 2},
+		mapped: {1},
 	}, got)
 	require.Equal(t, original, nodes[1].Hostinfo.RoutableIPs)
 	require.Equal(t, types.Prefixes(original), nodes[1].ApprovedRoutes)

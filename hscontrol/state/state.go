@@ -2373,6 +2373,7 @@ func (s *State) HandleNodeFromAuthPath(
 	}
 
 	hostinfo.Hostname = hostname
+	hostinfo.RoutableIPs = slices.DeleteFunc(hostinfo.RoutableIPs, invalidAdvertisedRoute)
 
 	// Lookup existing nodes
 	machineKey := regData.MachineKey
@@ -2711,8 +2712,9 @@ func (s *State) HandleNodeFromPreAuthKey(
 	}
 
 	// Ensure we have valid hostinfo
-	validHostinfo := cmp.Or(regReq.Hostinfo, &tailcfg.Hostinfo{})
+	validHostinfo := cmp.Or(regReq.Hostinfo, &tailcfg.Hostinfo{}).Clone()
 	validHostinfo.Hostname = hostname
+	validHostinfo.RoutableIPs = slices.DeleteFunc(validHostinfo.RoutableIPs, invalidAdvertisedRoute)
 
 	log.Debug().
 		Caller().
@@ -3358,6 +3360,10 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 			// Copy so the classification never mutates the caller's request.
 			hi := *req.Hostinfo
 			hi.NetInfo = netInfoFromMapRequest(id, currentNode.Hostinfo, req.Hostinfo)
+			hi.RoutableIPs = slices.DeleteFunc(
+				slices.Clone(hi.RoutableIPs),
+				invalidAdvertisedRoute,
+			)
 			newHostinfo = &hi
 		}
 
@@ -3414,7 +3420,7 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		// Calculate route approval before [NodeStore] update to avoid
 		// calling View() inside callback
 		var hasNewRoutes bool
-		if hi := req.Hostinfo; hi != nil {
+		if hi := newHostinfo; hi != nil {
 			hasNewRoutes = len(hi.RoutableIPs) > 0
 		}
 
@@ -3423,8 +3429,8 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		if needsRouteApproval {
 			// Extract announced routes from request
 			var announcedRoutes []netip.Prefix
-			if req.Hostinfo != nil {
-				announcedRoutes = req.Hostinfo.RoutableIPs
+			if newHostinfo != nil {
+				announcedRoutes = newHostinfo.RoutableIPs
 			}
 
 			// Apply policy-based auto-approval if routes are announced
@@ -3701,6 +3707,10 @@ func buildMapRequestChangeResponse(
 	}
 
 	return change.Change{}
+}
+
+func invalidAdvertisedRoute(route netip.Prefix) bool {
+	return !route.IsValid() || route != route.Masked()
 }
 
 func routesChanged(oldNode types.NodeView, newHI *tailcfg.Hostinfo) bool {

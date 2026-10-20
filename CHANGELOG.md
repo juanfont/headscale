@@ -112,6 +112,13 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
   - The old keys continue to work, with a warning, but will be removed in a future release
 - Headscale's own ACME certificate is managed by CertMagic instead of autocert; the first start registers a new ACME account and obtains a new certificate in `tls.acme.cache_dir`, which now defaults to `/var/lib/headscale/cache` [#3554](https://github.com/juanfont/headscale/pull/3554)
 
+#### Routes
+
+- Invalid routes and prefixes with host bits, such as `10.0.0.1/24`, are never
+  auto-approved or made effective. Existing approval records are retained;
+  advertise and approve the canonical network to activate a route.
+  [#3572](https://github.com/juanfont/headscale/pull/3572)
+
 #### CLI
 
 - `--output json` / `--output yaml` now emit the API's shape — camelCase fields, string-encoded IDs, RFC3339 timestamps — instead of the old Protobuf encoding [#3324](https://github.com/juanfont/headscale/pull/3324)

@@ -1584,10 +1584,10 @@ func TestElectPrimaryRoutesIndexesFinalAssignments(t *testing.T) {
 			name:     "exact prefixes and independent parent and child",
 			previous: map[netip.Prefix]types.NodeID{child: 2},
 			wantRoutes: map[netip.Prefix]types.NodeID{
-				parent: 1, child: 2, unmasked: 1, mapped: 1, ipv6: 1,
+				parent: 1, child: 2, mapped: 1, ipv6: 1,
 			},
 			wantByNode: map[types.NodeID][]netip.Prefix{
-				1: {parent, unmasked, mapped, ipv6},
+				1: {parent, mapped, ipv6},
 				2: {child},
 			},
 		},
@@ -1598,10 +1598,10 @@ func TestElectPrimaryRoutesIndexesFinalAssignments(t *testing.T) {
 				parent: 1, child: 1, unmasked: 1, mapped: 1, ipv6: 1,
 			},
 			wantRoutes: map[netip.Prefix]types.NodeID{
-				parent: 1, child: 2, unmasked: 1, mapped: 1, ipv6: 1,
+				parent: 1, child: 2, mapped: 1, ipv6: 1,
 			},
 			wantByNode: map[types.NodeID][]netip.Prefix{
-				1: {parent, unmasked, mapped, ipv6},
+				1: {parent, mapped, ipv6},
 				2: {child},
 			},
 		},
@@ -1609,7 +1609,7 @@ func TestElectPrimaryRoutesIndexesFinalAssignments(t *testing.T) {
 			name:       "all unhealthy retains only eligible previous primaries",
 			unhealthy1: true,
 			unhealthy2: true,
-			previous:   map[netip.Prefix]types.NodeID{parent: 1, child: 2, mapped: 99},
+			previous:   map[netip.Prefix]types.NodeID{parent: 1, child: 2, mapped: 99, unmasked: 1},
 			wantRoutes: map[netip.Prefix]types.NodeID{parent: 1, child: 2},
 			wantByNode: map[types.NodeID][]netip.Prefix{1: {parent}, 2: {child}},
 		},

@@ -3476,11 +3476,11 @@ func TestNodeCanApproveRouteSupernets(t *testing.T) {
 		name, broad, narrow, route, left, right, parent, outside string
 	}{
 		{
-			"ipv4", "10.0.0.0/8", "10.1.0.0/16", "10.1.2.3/24",
+			"ipv4", "10.0.0.0/8", "10.1.0.0/16", "10.1.2.0/24",
 			"192.0.2.0/25", "192.0.2.128/25", "192.0.2.0/24", "172.16.0.0/16",
 		},
 		{
-			"ipv6", "2001:db8::/32", "2001:db8:1::/48", "2001:db8:1::1234/64",
+			"ipv6", "2001:db8::/32", "2001:db8:1::/48", "2001:db8:1::/64",
 			"2001:db9::/65", "2001:db9:0:0:8000::/65", "2001:db9::/64", "2001:dba::/32",
 		},
 	} {
@@ -3567,11 +3567,19 @@ func TestNodeCanApproveRouteDefaultPrefixes(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, route := range []string{
-		"0.0.0.0/0", "::/0", "192.0.2.1/0", "2001:db8::1/0",
+		"0.0.0.0/0", "::/0",
 	} {
 		assert.False(t, pm.NodeCanApproveRoute(nodes[0].View(), mp(route)), route)
 		assert.True(t, pm.NodeCanApproveRoute(nodes[1].View(), mp(route)), route)
 		assert.False(t, pm.NodeCanApproveRoute(nodes[2].View(), mp(route)), route)
+	}
+
+	for _, route := range []string{
+		"192.0.2.1/0", "2001:db8::1/0", "10.1.0.1/16", "2001:db8::1/32",
+	} {
+		for _, node := range nodes {
+			assert.False(t, pm.NodeCanApproveRoute(node.View(), mp(route)), route)
+		}
 	}
 
 	for _, route := range []string{"10.1.0.0/16", "2001:db8::/32"} {

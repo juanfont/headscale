@@ -569,7 +569,9 @@ func (node *Node) SubnetRoutes() []netip.Prefix {
 	var routes []netip.Prefix
 
 	for _, route := range node.AnnouncedRoutes() {
-		if tsaddr.IsExitRoute(route) {
+		// Only canonical routes provide subnet identity, including during
+		// registration and when loading old announcements.
+		if !route.IsValid() || route != route.Masked() || tsaddr.IsExitRoute(route) {
 			continue
 		}
 
