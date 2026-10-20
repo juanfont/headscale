@@ -734,6 +734,20 @@ func TestSelfRoutesKeepsHostRoutes(t *testing.T) {
 		selfRoutes(nm(subnet, host)))
 }
 
+func TestFilterSourcesKeepAddressFamily(t *testing.T) {
+	t.Parallel()
+
+	addrs := map[netip.Addr]string{
+		netip.MustParseAddr("100.64.0.1"):        "a",
+		netip.MustParseAddr("fd7a:115c:a1e0::1"): "a",
+	}
+
+	assert.Equal(t, []string{"peer:a/ipv4", "peer:a/ipv6"},
+		canonicaliseSrcStrings(t, []string{"100.64.0.1", "fd7a:115c:a1e0::1"}, addrs, 0))
+	assert.Equal(t, []string{"peer:a/ipv4"},
+		canonicaliseSrcStrings(t, []string{"100.64.0.1"}, addrs, 0))
+}
+
 // requireNetmapHolds retries check until it passes on several consecutive
 // ticks. One passing tick is not enough: a netmap that matches and then
 // drifts, such as a primary flipping away, is the bug these oracles guard.
@@ -1220,10 +1234,10 @@ func hsAddrsByPeer(clients map[string]*servertest.TestClient) map[netip.Addr]str
 
 // canonicaliseSrcStrings converts a SrcIPs slice (as produced by the
 // SaaS wire format) into a sorted list of canonical identifiers: "*"
-// for wildcard, "peer:<name>" for each Tailscale address or prefix
-// that resolves to a known peer, or the raw CIDR string for
-// non-Tailscale prefixes. A Tailscale prefix or address range expands
-// to the union of its contained peers.
+// for wildcard, "peer:<name>/ipv4" or "peer:<name>/ipv6" for each
+// Tailscale address or prefix that resolves to a known peer, or the
+// raw CIDR string for non-Tailscale prefixes. A Tailscale prefix or
+// address range expands to the union of its contained peers.
 func canonicaliseSrcStrings(
 	t require.TestingT,
 	srcs []string,
@@ -1310,7 +1324,14 @@ func addIdentsForSrc(
 
 	for addr, name := range addrToPeer {
 		if pfx.Contains(addr) {
-			seen["peer:"+name] = struct{}{}
+			// The family stays in the token so a rule that loses one
+			// family of a peer's addresses still differs.
+			family := "/ipv6"
+			if addr.Is4() {
+				family = "/ipv4"
+			}
+
+			seen["peer:"+name+family] = struct{}{}
 			matched = true
 		}
 	}
