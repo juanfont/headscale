@@ -106,10 +106,12 @@ var routesMapCompatTests = []struct {
 var viaCompatSkipReasons = map[string]string{
 	"tagged-self": "TAGGED_SELF_PROFILE: SaaS gives a tagged node a profile of its own, headscale the shared tagged-devices one",
 
-	// TestViaGrantSourceLossCompat, keyed <test_id>/rename/<node>/netmap.
-	"via-grant-v67/rename/squirtle/netmap":  viaSourceLossNotSent,
-	"via-grant-v67/rename/blastoise/netmap": viaSourceLossNotSent,
-	"via-grant-v67/rename/ivysaur/netmap":   viaSourceLossNotSent,
+	// TestViaGrantSourceLossCompat, keyed <test_id>/rename/<node>/<check>.
+	"via-grant-v67/rename/squirtle/peers":          viaSourceLossNotSent,
+	"via-grant-v67/rename/squirtle/packet-filter":  viaSourceLossNotSent,
+	"via-grant-v67/rename/blastoise/peers":         viaSourceLossNotSent,
+	"via-grant-v67/rename/blastoise/packet-filter": viaSourceLossNotSent,
+	"via-grant-v67/rename/ivysaur/peers":           viaSourceLossNotSent,
 
 	// Adjacent member addresses merge into one prefix, and the reduced
 	// filter keeps all of it; SaaS lists only the node's own address.
@@ -375,32 +377,53 @@ func TestViaGrantSourceLossCompat(t *testing.T) {
 		t.Run("rename/"+name, func(t *testing.T) {
 			t.Parallel()
 
-			key := after.TestID + "/rename/" + name + "/netmap"
+			key := after.TestID + "/rename/" + name + "/"
 			want := after.Captures[name]
 
-			// Profiles are left out: the rename changes the user's login
-			// by construction.
-			check := func(tt require.TestingT) {
+			current := func(tt require.TestingT) *netmap.NetworkMap {
 				nm := clients[name].Netmap()
 				require.NotNil(tt, nm, "netmap is nil")
 
-				comparePeers(tt, nm, want, clients)
-				comparePacketFilter(tt, nm, want, clients, saasAddrs, key+"/packet-filter", viaCompatSkipReasons)
+				return nm
 			}
 
-			reason, listed := viaCompatSkipReasons[key]
-			if !listed {
-				requireNetmapHolds(t, check)
+			// Profiles are left out: the rename changes the user's login
+			// by construction.
+			t.Run("peers", func(t *testing.T) {
+				t.Parallel()
 
-				return
-			}
+				holdsUnlessListed(t, key+"peers", func(tt require.TestingT) {
+					comparePeers(tt, current(tt), want, clients)
+				})
+			})
 
-			// Long enough for a change in flight to arrive.
-			assert.Never(t, func() bool { return passesOnce(check) }, 5*time.Second, 100*time.Millisecond,
-				"netmap matches SaaS; delete viaCompatSkipReasons[%q]", key)
-			t.Skip(reason)
+			t.Run("packet-filter", func(t *testing.T) {
+				t.Parallel()
+
+				holdsUnlessListed(t, key+"packet-filter", func(tt require.TestingT) {
+					comparePacketFilter(tt, current(tt), want, clients, saasAddrs, key+"packet-filter", nil)
+				})
+			})
 		})
 	}
+}
+
+// holdsUnlessListed requires check to hold, or, for a key listed in
+// viaCompatSkipReasons, to keep failing.
+func holdsUnlessListed(t *testing.T, key string, check func(require.TestingT)) {
+	t.Helper()
+
+	reason, listed := viaCompatSkipReasons[key]
+	if !listed {
+		requireNetmapHolds(t, check)
+
+		return
+	}
+
+	// Long enough for a change in flight to arrive.
+	assert.Never(t, func() bool { return passesOnce(check) }, 5*time.Second, 100*time.Millisecond,
+		"matches SaaS; delete viaCompatSkipReasons[%q]", key)
+	t.Skip(reason)
 }
 
 // passesOnce runs check once and reports whether it passed. It runs in its
