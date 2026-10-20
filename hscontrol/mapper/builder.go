@@ -1,8 +1,6 @@
 package mapper
 
 import (
-	"cmp"
-	"slices"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/policy/packetfilter"
@@ -302,10 +300,7 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 		tailPeers = append(tailPeers, tn)
 	}
 
-	// Peers is always returned sorted by Node.ID.
-	slices.SortStableFunc(tailPeers, func(a, b *tailcfg.Node) int {
-		return cmp.Compare(a.ID, b.ID)
-	})
+	// Captured peers are sorted by Node.ID; dropping invalid peers preserves order.
 
 	return tailPeers, nil
 }

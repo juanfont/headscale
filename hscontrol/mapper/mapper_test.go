@@ -1233,6 +1233,35 @@ func TestBuilderRetainsMapViewAndRendersPatchHints(t *testing.T) {
 	require.Empty(t, m.filterVisiblePeerPatches(mapViewForTest(t, td.State, self), patches))
 }
 
+func TestPeerPatchSelectsOnlyItsCapturedTarget(t *testing.T) {
+	td, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 50, normalBufferSize)
+	defer cleanup()
+
+	self, target := td.Nodes[0].n.ID, td.Nodes[1].n.ID
+	view := mapViewForTest(t, td.State, self)
+	peer := view.Peers(target).At(0)
+	hints := []*tailcfg.PeerChange{{NodeID: target.NodeID(), Online: new(!peer.Online())}}
+	allocations := testing.AllocsPerRun(20, func() {
+		patches := td.Batcher.mapper.filterVisiblePeerPatches(view, hints)
+		if len(patches) != 1 || patches[0].Online == nil || *patches[0].Online != peer.Online() {
+			panic("patch must use captured facts")
+		}
+	})
+	require.LessOrEqual(t, allocations, float64(4),
+		"one peer patch must not materialize every visible node and an ID map")
+
+	patches := td.Batcher.mapper.filterVisiblePeerPatches(view, hints)
+	*patches[0].Online = !peer.Online()
+	again := td.Batcher.mapper.filterVisiblePeerPatches(view, hints)
+	require.Equal(t, peer.Online(), *again[0].Online)
+	require.Empty(t, td.Batcher.mapper.filterVisiblePeerPatches(view, []*tailcfg.PeerChange{
+		nil,
+		{NodeID: self.NodeID(), Online: new(true)},
+		{NodeID: 999, Online: new(true)},
+		{NodeID: -1, Online: new(true)},
+	}))
+}
+
 func TestMapRenderFailureDoesNotComputePeerDiff(t *testing.T) {
 	td, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 2, normalBufferSize)
 	defer cleanup()

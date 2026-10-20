@@ -81,6 +81,65 @@ func TestMapViewUsesOneSnapshot(t *testing.T) {
 	require.NotContains(t, before.PeerIDs(), types.NodeID(999))
 }
 
+func TestUnroutedMapViewCaptureAllocationBudget(t *testing.T) {
+	s := mapViewTestState(t, "")
+	allocations := testing.AllocsPerRun(20, func() {
+		view, err := s.MapView(1)
+		if err != nil || !view.Viewer().Valid() {
+			panic("capturing valid unrouted map")
+		}
+	})
+	require.LessOrEqual(t, allocations, float64(2),
+		"capturing ordinary nodes must not build per-node via results or copy rules")
+}
+
+func TestMapViewAddressResultsRemainIndependent(t *testing.T) {
+	s := mapViewTestState(t, "")
+	subnet := netip.MustParsePrefix("10.0.0.0/24")
+	exit := netip.MustParsePrefix("0.0.0.0/0")
+
+	s.nodeStore.UpdateNode(2, func(n *types.Node) {
+		n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet, exit}}
+		n.ApprovedRoutes = []netip.Prefix{subnet, exit}
+	})
+	view, err := s.MapView(1)
+	require.NoError(t, err)
+
+	selected := view.Peers(3, 2, 2, 1, 999)
+	require.Equal(t, types.NodeID(2), selected.At(0).ID())
+	require.Equal(t, types.NodeID(3), selected.At(1).ID())
+	require.Equal(t, 2, selected.Len())
+
+	addresses, err := view.NodeAddresses(2)
+	require.NoError(t, err)
+
+	wantAddresses := slices.Clone(addresses.Addresses)
+	wantAllowed := slices.Clone(addresses.AllowedIPs)
+	wantPrimary := []netip.Prefix{subnet}
+	require.Equal(t, wantPrimary, addresses.PrimaryRoutes)
+	require.Contains(t, wantAllowed, exit)
+
+	addresses.Addresses[0] = netip.MustParsePrefix("192.0.2.1/32")
+	require.Equal(t, wantAllowed, addresses.AllowedIPs, "address fields cannot alias")
+	addresses.AllowedIPs[0] = netip.MustParsePrefix("192.0.2.2/32")
+	require.Equal(t, wantPrimary, addresses.PrimaryRoutes, "route fields cannot alias")
+	addresses.PrimaryRoutes[0] = netip.MustParsePrefix("192.0.2.0/24")
+
+	s.nodeStore.UpdateNode(2, func(n *types.Node) {
+		n.ApprovedRoutes = nil
+		*n.IPv4 = netip.MustParseAddr("100.64.0.99")
+	})
+
+	fresh, err := view.NodeAddresses(2)
+	require.NoError(t, err)
+	require.Equal(t, wantAddresses, fresh.Addresses)
+	require.Equal(t, wantAllowed, fresh.AllowedIPs)
+	require.Equal(t, wantPrimary, fresh.PrimaryRoutes)
+
+	_, err = view.NodeAddresses(999)
+	require.ErrorIs(t, err, ErrNodeNotFound)
+}
+
 func TestPolicyViewRefreshesWithUnchangedAdjacency(t *testing.T) {
 	s := mapViewTestState(t, `{"grants":[{"src":["*"],"dst":["*"],"ip":["tcp:80"]}]}`)
 	before, err := s.MapView(1)

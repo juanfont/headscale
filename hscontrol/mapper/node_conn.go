@@ -523,21 +523,23 @@ func (mc *multiChannelNodeConn) updateSentPeers(resp *tailcfg.MapResponse) {
 // computePeerDiff compares the current peer list against what was last sent
 // and returns the peers that were removed (in lastSentPeers but not in current).
 func (mc *multiChannelNodeConn) computePeerDiff(currentPeers []tailcfg.NodeID) []tailcfg.NodeID {
-	currentSet := make(map[tailcfg.NodeID]struct{}, len(currentPeers))
-	for _, id := range currentPeers {
-		currentSet[id] = struct{}{}
+	// Rendered IDs are sorted; clone only unsorted caller-owned input.
+	if !slices.IsSorted(currentPeers) {
+		currentPeers = slices.Clone(currentPeers)
+		slices.Sort(currentPeers)
 	}
 
 	var removed []tailcfg.NodeID
 
 	// Find removed: in lastSentPeers but not in current
 	mc.lastSentPeers.Range(func(id tailcfg.NodeID, _ struct{}) bool {
-		if _, exists := currentSet[id]; !exists {
+		if _, exists := slices.BinarySearch(currentPeers, id); !exists {
 			removed = append(removed, id)
 		}
 
 		return true
 	})
+	slices.Sort(removed)
 
 	return removed
 }

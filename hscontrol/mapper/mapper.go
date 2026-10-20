@@ -455,26 +455,20 @@ func (m *mapper) filterVisiblePeerPatches(
 		return patches
 	}
 
-	// Events select fields; values come from the same snapshot as the map.
-	peers := view.Peers()
-
-	visible := make(map[tailcfg.NodeID]types.NodeView, peers.Len())
-	for _, peer := range peers.All() {
-		visible[peer.ID().NodeID()] = peer
-	}
-
 	var rendered []*tailcfg.PeerChange
 
 	for _, hint := range patches {
-		if hint == nil {
+		if hint == nil || hint.NodeID <= 0 {
 			continue
 		}
 
-		peer, ok := visible[hint.NodeID]
-		if !ok {
+		// Events select fields; values come from the same snapshot as the map.
+		peers := view.Peers(types.NodeID(hint.NodeID))
+		if peers.Len() == 0 {
 			continue
 		}
 
+		peer := peers.At(0)
 		patch := &tailcfg.PeerChange{NodeID: hint.NodeID, Cap: hint.Cap, KeySignature: slices.Clone(hint.KeySignature)}
 		if hint.DERPRegion != 0 && peer.Hostinfo().Valid() && peer.Hostinfo().NetInfo().Valid() {
 			patch.DERPRegion = peer.Hostinfo().NetInfo().PreferredDERP()

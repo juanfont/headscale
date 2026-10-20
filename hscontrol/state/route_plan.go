@@ -44,21 +44,36 @@ func (s *State) MapView(viewerID types.NodeID) (MapView, error) {
 		return MapView{}, ErrNodeNotFound
 	}
 
-	rules, err := snapshot.policy.PeerRulesForNode(viewer)
-	if err != nil {
-		return MapView{}, err
+	// Only approved-route advertisers can contribute via routing facts.
+	var routers []types.NodeView
+
+	for _, node := range snapshot.allNodes {
+		if node.ApprovedRoutes().Len() > 0 {
+			routers = append(routers, node)
+		}
 	}
 
-	return MapView{
+	view := MapView{
 		snapshot: snapshot,
 		viewer:   viewer,
-		peerIDs:  slices.Sorted(slices.Values(snapshot.peersByNode[viewerID])),
-		routes: viewerRoutePlan{
+		peerIDs:  slices.Clone(snapshot.peersByNode[viewerID]),
+	}
+	slices.Sort(view.peerIDs)
+
+	if len(routers) > 0 {
+		rules, err := snapshot.policy.PeerRulesForNode(viewer)
+		if err != nil {
+			return MapView{}, err
+		}
+
+		view.routes = viewerRoutePlan{
 			rules:   rules,
-			via:     snapshot.policy.ViaRoutesForViewer(viewer, views.SliceOf(snapshot.allNodes)),
+			via:     snapshot.policy.ViaRoutesForViewer(viewer, views.SliceOf(routers)),
 			subnets: viewer.SubnetRoutes(),
-		},
-	}, nil
+		}
+	}
+
+	return view, nil
 }
 
 func (v MapView) Viewer() types.NodeView { return v.viewer }
@@ -67,14 +82,22 @@ func (v MapView) Viewer() types.NodeView { return v.viewer }
 // With no IDs it returns the complete peer set.
 func (v MapView) Peers(ids ...types.NodeID) views.Slice[types.NodeView] {
 	visible := v.peerIDs
-	if len(ids) == 0 {
+
+	all := len(ids) == 0
+	if all {
 		ids = visible
 	}
 
 	peers := make([]types.NodeView, 0, len(ids))
 	for _, id := range ids {
-		if _, ok := slices.BinarySearch(visible, id); id == v.viewer.ID() || !ok {
+		if id == v.viewer.ID() {
 			continue
+		}
+
+		if !all {
+			if _, ok := slices.BinarySearch(visible, id); !ok {
+				continue
+			}
 		}
 
 		if node, ok := v.snapshot.nodeViewsByID[id]; ok {
@@ -82,8 +105,10 @@ func (v MapView) Peers(ids ...types.NodeID) views.Slice[types.NodeView] {
 		}
 	}
 
-	slices.SortFunc(peers, func(a, b types.NodeView) int { return cmp.Compare(a.ID(), b.ID()) })
-	peers = slices.CompactFunc(peers, func(a, b types.NodeView) bool { return a.ID() == b.ID() })
+	if !all {
+		slices.SortFunc(peers, func(a, b types.NodeView) int { return cmp.Compare(a.ID(), b.ID()) })
+		peers = slices.CompactFunc(peers, func(a, b types.NodeView) bool { return a.ID() == b.ID() })
+	}
 
 	return views.SliceOf(peers)
 }
@@ -122,15 +147,30 @@ func (v MapView) NodeAddresses(id types.NodeID) (types.NodeAddresses, error) {
 		return types.NodeAddresses{}, ErrNodeNotFound
 	}
 
-	addresses := node.Prefixes()
-	if _, disabled := v.snapshot.policy.NodeCapMap(id)["disable-ipv4"]; disabled {
-		addresses = slices.DeleteFunc(addresses, func(p netip.Prefix) bool { return p.Addr().Is4() })
+	var addresses []netip.Prefix
+	if node.IPv4().Valid() || node.IPv6().Valid() {
+		addresses = make([]netip.Prefix, 0, 2)
+	}
+
+	_, disabled := v.snapshot.policy.NodeCapMap(id)["disable-ipv4"]
+
+	for _, address := range [...]views.ValuePointer[netip.Addr]{node.IPv4(), node.IPv6()} {
+		if address.Valid() {
+			ip := address.Get()
+			if !disabled || !ip.Is4() {
+				addresses = append(addresses, netip.PrefixFrom(ip, ip.BitLen()))
+			}
+		}
 	}
 
 	var routes []netip.Prefix
 	if id == v.viewer.ID() {
 		// Self has no via steering. Approved exits are never reduced for self.
-		routes = slices.Concat(policy.ReduceRoutes(node, v.snapshot.primaryRoutesByNode[id], v.snapshot.policy.PacketRules()), node.ExitRoutes())
+		if primaries := v.snapshot.primaryRoutesByNode[id]; len(primaries) > 0 {
+			routes = policy.ReduceRoutes(node, primaries, v.snapshot.policy.PacketRules())
+		}
+
+		routes = append(routes, node.ExitRoutes()...)
 	} else {
 		routes = v.routesForPeer(node)
 	}
