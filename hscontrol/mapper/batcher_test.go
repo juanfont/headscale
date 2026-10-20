@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/netip"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -2357,6 +2358,106 @@ func TestEvictedSessionLeavesPeerTrackingAlone(t *testing.T) {
 
 	_, sent := nc.lastSentPeers.Load(peer)
 	assert.True(t, sent, "the peer stays tracked as sent")
+}
+
+// TestOlderInitialMapLeavesNewerStreamsPeers keeps a stream whose initial map,
+// generated while a peer was hidden, in flight until newer streams of the node
+// have recorded theirs, which list the peer. Finishing the older call must not
+// remove the peer from them, and must bring the older stream up to date.
+func TestOlderInitialMapLeavesNewerStreamsPeers(t *testing.T) {
+	td, cleanup := setupBatcherWithTestData(
+		t,
+		NewBatcherAndMapper,
+		1,
+		2,
+		normalBufferSize,
+	)
+	defer cleanup()
+
+	b := unwrapBatcher(td.Batcher)
+	peer, target := td.Nodes[0].n.ID.NodeID(), td.Nodes[1].n.ID
+	capVer := tailcfg.CapabilityVersion(100)
+
+	peerIDs := func(resp *tailcfg.MapResponse) []tailcfg.NodeID {
+		ids := make([]tailcfg.NodeID, 0, len(resp.Peers))
+		for _, p := range resp.Peers {
+			ids = append(ids, p.ID)
+		}
+
+		return ids
+	}
+
+	_, err := td.State.SetPolicy([]byte(`{"acls":[]}`))
+	require.NoError(t, err)
+
+	// Unbuffered and unread: AddNode parks on the initial map send.
+	olderCh := make(chan *tailcfg.MapResponse)
+	addErr := make(chan error, 1)
+
+	go func() { addErr <- b.AddNode(target, olderCh, capVer, nil) }()
+
+	waitInitialMapSendParked(t)
+
+	_, err = td.State.SetPolicy(
+		[]byte(`{"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`),
+	)
+	require.NoError(t, err)
+
+	// One short of the cap, so the older stream stays.
+	newer := make([]chan *tailcfg.MapResponse, maxConcurrentMapSessionsPerNode-1)
+	for i := range newer {
+		newer[i] = make(chan *tailcfg.MapResponse, normalBufferSize)
+		require.NoError(t, b.AddNode(target, newer[i], capVer, nil))
+		require.Contains(t, peerIDs(<-newer[i]), peer, "stream %d initial map", i)
+	}
+
+	// Read from here on, so later sends find the older stream draining.
+	older := make(chan *tailcfg.MapResponse, normalBufferSize)
+
+	go func() {
+		for {
+			select {
+			case resp := <-olderCh:
+				older <- resp
+			case <-t.Context().Done():
+				return
+			}
+		}
+	}()
+
+	stale := <-older
+	require.NotContains(t, peerIDs(stale), peer, "the map predates the policy change")
+	require.NoError(t, <-addErr)
+
+	// Queued behind anything the older call queued.
+	b.AddWork(change.DERPMap())
+
+	for i, ch := range newer {
+		for done := false; !done; {
+			select {
+			case resp := <-ch:
+				require.NotContains(t, resp.PeersRemoved, peer, "stream %d", i)
+				done = resp.DERPMap != nil
+			case <-time.After(5 * time.Second):
+				t.Fatalf("stream %d never got the DERP map", i)
+			}
+		}
+	}
+
+	nc, ok := b.nodes.Load(target)
+	require.True(t, ok)
+
+	_, sent := nc.lastSentPeers.Load(peer)
+	assert.True(t, sent, "the peer stays tracked as sent")
+
+	for listed := false; !listed; {
+		select {
+		case resp := <-older:
+			listed = slices.Contains(peerIDs(resp), peer)
+		case <-time.After(5 * time.Second):
+			t.Fatal("the older stream never got the peer")
+		}
+	}
 }
 
 // TestNodeDeletedWhileChangesPending reproduces issue #2924 where deleting a node

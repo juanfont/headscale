@@ -178,6 +178,12 @@ type multiChannelNodeConn struct {
 
 	// Partial additions remain removal candidates when retries render newer state.
 	partialPeers *xsync.Map[tailcfg.NodeID, struct{}]
+
+	// trackedInitialMaps counts initial maps recorded in lastSentPeers.
+	// [Batcher.AddNode] records its map after sending it, outside the workMu
+	// hold that built it, so a change across that gap means another stream's
+	// map, possibly built later, was recorded in between.
+	trackedInitialMaps atomic.Uint64
 }
 
 // connIDCounter is a monotonically increasing counter used to generate
