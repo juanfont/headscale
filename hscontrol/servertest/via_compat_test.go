@@ -249,8 +249,8 @@ var viaCompatSkipReasons = map[string]string{
 	"via-grant-v67/blastoise/self-routes": selfRoutesReduced,
 	"via-grant-v67/squirtle/self-routes":  selfRoutesReduced,
 
-	"routes-m1-wildcard-src-multi-range/srv/peers":         exitRoutesOnOverlap,
-	"routes-m6-subnet-to-subnet-multi-route/r-multi/peers": exitRoutesOnOverlap,
+	"routes-m1-wildcard-src-multi-range/srv/peer-allowed-ips":         exitRoutesOnOverlap,
+	"routes-m6-subnet-to-subnet-multi-route/r-multi/peer-allowed-ips": exitRoutesOnOverlap,
 
 	"routes-m1-wildcard-src-multi-range/m-odin1/peers":     sameUserPeers,
 	"routes-m1-wildcard-src-multi-range/m-odin2/peers":     sameUserPeers,
@@ -391,7 +391,7 @@ func TestViaGrantSourceLossCompat(t *testing.T) {
 				t.Parallel()
 
 				holdsUnlessListed(t, key+"peers", func(tt require.TestingT) {
-					comparePeers(tt, current(tt), want, clients)
+					comparePeers(tt, current(tt), want, clients, "", nil)
 				})
 			})
 
@@ -793,35 +793,55 @@ func compareNetmap(
 		h.Helper()
 	}
 
-	peers := func(tt require.TestingT) { comparePeers(tt, got, want, clients) }
-	if reason, listed := viaCompatSkipReasons[key+"/peers"]; listed {
-		if passesOnce(peers) {
-			t.Errorf("peers match SaaS; delete viaCompatSkipReasons[%q] (%s)", key+"/peers", reason)
-		}
-	} else {
-		peers(t)
-	}
-
+	comparePeers(t, got, want, clients, key, viaCompatSkipReasons)
 	comparePacketFilter(t, got, want, clients, saasAddrs, key+"/packet-filter", viaCompatSkipReasons)
 	compareUserProfiles(t, got, want.Netmap, clients)
 }
 
-// comparePeers validates, for the peers in clients:
-//   - Peer visibility (which peers are present, by hostname)
-//   - Route prefixes in AllowedIPs (non-Tailscale-IP entries like 10.44.0.0/16)
-//   - Number of Tailscale IPs per peer (should be 2: one v4 + one v6)
-//   - PrimaryRoutes per peer
+// comparePeers validates, for the peers in clients, each check apart so a
+// difference listed for one leaves the others asserted:
+//   - peers: visibility (which peers are present, by hostname)
+//   - peer-allowed-ips: route prefixes in AllowedIPs (non-Tailscale-IP
+//     entries like 10.44.0.0/16)
+//   - peer-addresses: the Tailscale IPs in AllowedIPs, by count and owner
+//   - peer-primary-routes: PrimaryRoutes
+//
+// The last three cover peers both sides list. A check listed in skips as
+// <key>/<check> must differ.
 func comparePeers(
 	t require.TestingT,
 	got *netmap.NetworkMap,
 	want testcapture.Node,
 	clients map[string]*servertest.TestClient,
+	key string,
+	skips map[string]string,
 ) {
 	if h, ok := t.(interface{ Helper() }); ok {
 		h.Helper()
 	}
 
 	require.NotNil(t, want.Netmap, "golden Netmap is nil")
+
+	check := map[string]require.TestingT{}
+	listed := map[string]*failRecorder{}
+
+	for _, name := range []string{"peers", "peer-allowed-ips", "peer-addresses", "peer-primary-routes"} {
+		check[name] = t
+
+		if _, ok := skips[key+"/"+name]; ok {
+			listed[name] = &failRecorder{CollectT: new(assert.CollectT)}
+			check[name] = listed[name]
+		}
+	}
+
+	defer func() {
+		for name, rec := range listed {
+			if !rec.failed {
+				t.Errorf("%s match SaaS; delete the skip entry %q (%s)",
+					name, key+"/"+name, skips[key+"/"+name])
+			}
+		}
+	}()
 
 	// Build golden peer map (only peers in our client set).
 	wantPeers := map[string]tailcfg.NodeView{}
@@ -893,7 +913,7 @@ func comparePeers(
 		gotPeer, visible := gotPeers[name]
 		if !visible {
 			wantRoutes := extractRoutePrefixesView(wantPeer.AllowedIPs())
-			t.Errorf("peer %s: visible in Tailscale SaaS (routes=%v), missing in headscale",
+			check["peers"].Errorf("peer %s: visible in Tailscale SaaS (routes=%v), missing in headscale",
 				name, wantRoutes)
 
 			continue
@@ -903,14 +923,14 @@ func comparePeers(
 		wantRoutes := extractRoutePrefixesView(wantPeer.AllowedIPs())
 		slices.Sort(wantRoutes)
 
-		assert.Equalf(t, wantRoutes, gotPeer.RoutePrefixes,
+		assert.Equalf(check["peer-allowed-ips"], wantRoutes, gotPeer.RoutePrefixes,
 			"peer %s: route prefixes in AllowedIPs mismatch", name)
 
 		// Tailscale IPs: count should match, and they must belong to
 		// this peer (not some other node's IPs).
 		wantTSIPCount := countTailscaleIPsView(wantPeer.AllowedIPs())
 
-		assert.Lenf(t, gotPeer.TailscaleIPs, wantTSIPCount,
+		assert.Lenf(check["peer-addresses"], gotPeer.TailscaleIPs, wantTSIPCount,
 			"peer %s: Tailscale IP count mismatch", name)
 
 		// Verify the Tailscale IPs are actually this peer's addresses.
@@ -925,7 +945,7 @@ func comparePeers(
 				}
 
 				for _, tsIP := range gotPeer.TailscaleIPs {
-					assert.Truef(t, peerAddrs[tsIP],
+					assert.Truef(check["peer-addresses"], peerAddrs[tsIP],
 						"peer %s: AllowedIPs contains Tailscale IP %s which is NOT this peer's address (peer has %v)",
 						name, tsIP, peerAddrs)
 				}
@@ -938,14 +958,14 @@ func comparePeers(
 			wantPRoutes = append(wantPRoutes, wantPeer.PrimaryRoutes().At(i).String())
 		}
 
-		assert.ElementsMatchf(t, wantPRoutes, gotPeer.PrimaryRoutes,
+		assert.ElementsMatchf(check["peer-primary-routes"], wantPRoutes, gotPeer.PrimaryRoutes,
 			"peer %s: PrimaryRoutes mismatch", name)
 	}
 
 	// Check for extra peers headscale shows that Tailscale SaaS doesn't.
 	for name := range gotPeers {
 		if _, expected := wantPeers[name]; !expected {
-			t.Errorf("peer %s: visible in headscale but NOT in Tailscale SaaS", name)
+			check["peers"].Errorf("peer %s: visible in headscale but NOT in Tailscale SaaS", name)
 		}
 	}
 }
