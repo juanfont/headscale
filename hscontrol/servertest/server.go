@@ -20,6 +20,7 @@ import (
 	hsdns "github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
 	"tailscale.com/net/memnet"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
@@ -38,6 +39,7 @@ type TestServer struct {
 	ln         net.Listener
 	httpServer *http.Server
 	st         *state.State
+	cfg        *types.Config
 }
 
 // ServerOption configures a [TestServer].
@@ -280,6 +282,7 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 		ln:         ln,
 		httpServer: httpServer,
 		st:         app.GetState(),
+		cfg:        &cfg,
 	}
 
 	tb.Cleanup(ts.Close)
@@ -310,6 +313,15 @@ func (s *TestServer) Close() {
 // so that [TestClient] dialers can be wired to it.
 func (s *TestServer) MemNet() *memnet.Network {
 	return s.memNet
+}
+
+// SetExtraRecords replaces the extra DNS records and sends them to every
+// node, as a reload of dns.extra_records_path does. The server needs
+// [WithMagicDNS] or [WithDNSResolvers], which give it a DNS config to hold
+// them.
+func (s *TestServer) SetExtraRecords(records []tailcfg.DNSRecord) {
+	s.cfg.SetExtraRecords(records)
+	s.App.Change(change.ExtraRecords())
 }
 
 // CreateUser creates a test user and returns it.
