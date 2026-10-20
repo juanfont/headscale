@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/netip"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -11,8 +12,10 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/policy/packetfilter"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -1299,6 +1302,306 @@ func TestMapRequestAutoApprovalIsOneWrite(t *testing.T) {
 	assert.Contains(t, nv.SubnetRoutes(), route)
 
 	checkAutoApproveAdjacency(t, s)
+}
+
+func TestMapRequestRejectsNoncanonicalRoutes(t *testing.T) {
+	for _, family := range []struct {
+		name, exit, subnet, broad, badExit, badSubnet, probe string
+	}{
+		{
+			"ipv4", "0.0.0.0/0", "10.55.1.0/24", "10.55.0.0/16",
+			"192.0.2.1/0", "10.55.1.1/24", "198.51.100.1",
+		},
+		{
+			"ipv6", "::/0", "fd55:1::/64", "fd55::/16",
+			"2001:db8::1/0", "fd55:1::1/64", "2001:db8:feed::1",
+		},
+	} {
+		for _, initial := range []string{"fresh", "approved", "unapproved"} {
+			t.Run(family.name+"/"+initial, func(t *testing.T) {
+				valid := []netip.Prefix{
+					netip.MustParsePrefix(
+						family.exit,
+					),
+					netip.MustParsePrefix(family.subnet),
+				}
+				bad := []netip.Prefix{
+					netip.MustParsePrefix(
+						family.badExit,
+					),
+					netip.MustParsePrefix(family.badSubnet),
+				}
+				s, ids, builds := newAutoApproveTestState(t, func(nodes []*types.Node) {
+					for i, node := range nodes {
+						node.IPv6 = new(
+							netip.MustParseAddr(fmt.Sprintf("fd7a:115c:a1e0::%d", i+1)),
+						)
+					}
+
+					if initial != "fresh" {
+						routes := append(slices.Clone(valid), bad...)
+						nodes[0].Hostinfo = &tailcfg.Hostinfo{RoutableIPs: routes}
+
+						nodes[0].ApprovedRoutes = slices.Clone(valid)
+						if initial == "approved" {
+							nodes[0].ApprovedRoutes = slices.Clone(routes)
+						}
+					}
+				})
+				_, epoch := s.Connect(ids[0])
+				require.NotZero(t, epoch)
+
+				sender, ok := s.GetNodeByID(ids[1])
+				require.True(t, ok)
+				receiver, ok := s.GetNodeByID(ids[2])
+				require.True(t, ok)
+
+				senderIP, receiverIP := sender.IPs()[0], receiver.IPs()[0]
+				if family.name == "ipv6" {
+					senderIP, receiverIP = sender.IPs()[1], receiver.IPs()[1]
+				}
+
+				_, err := s.SetPolicy([]byte(fmt.Sprintf(`{
+					"grants":[
+						{"src":["*"],"dst":[%q],"ip":["tcp:443"]},
+						{"src":[%q],"dst":[%q],"app":{"example.com/private":[{}]}}
+					],
+					"autoApprovers":{"exitNode":["aa-user@"],"routes":{%q:["aa-user@"]}}
+				}`, receiverIP.String(), senderIP.String(), receiverIP.String(), family.broad)))
+				require.NoError(t, err)
+
+				if initial == "unapproved" {
+					_, err := s.autoApproveNodes()
+					require.NoError(t, err)
+
+					row, err := s.DB().GetNodeByID(ids[0])
+					require.NoError(t, err)
+					assert.ElementsMatch(t, valid, row.ApprovedRoutes,
+						"policy reload must not approve stored malformed announcements")
+				}
+
+				assertIsolated := func() {
+					t.Helper()
+
+					observer, err := s.MapView(ids[1])
+					require.NoError(t, err)
+					assert.Equal(t, []types.NodeID{ids[2]}, observer.PeerIDs())
+					view, err := s.MapView(ids[2])
+					require.NoError(t, err)
+					rules, err := view.PacketRules()
+					require.NoError(t, err)
+
+					for _, rule := range rules {
+						assert.False(
+							t,
+							rule.Sources().Contains(netip.MustParseAddr(family.probe)),
+							"a malformed advertisement must not widen wildcard sources",
+						)
+					}
+
+					assert.True(
+						t,
+						slices.ContainsFunc(rules, func(rule packetfilter.Rule) bool {
+							return rule.Kind() == packetfilter.KindCapability
+						}),
+						"the intended recipient must receive its capability grant",
+					)
+
+					router, err := s.MapView(ids[0])
+					require.NoError(t, err)
+					rules, err = router.PacketRules()
+					require.NoError(t, err)
+
+					for _, rule := range rules {
+						assert.NotEqual(
+							t,
+							packetfilter.KindCapability,
+							rule.Kind(),
+							"an exit node must not receive another node's capability grant",
+						)
+					}
+
+					for _, captured := range []MapView{router, view} {
+						addresses, err := captured.NodeAddresses(ids[0])
+						require.NoError(t, err)
+
+						for _, route := range bad {
+							assert.NotContains(t, s.nodeStore.PrimaryRoutes(), route)
+							assert.NotContains(t, addresses.PrimaryRoutes, route)
+							assert.NotContains(t, addresses.AllowedIPs, route)
+						}
+					}
+				}
+				assertIsolated()
+
+				announced := []netip.Prefix{bad[0], valid[0], bad[1], valid[1]}
+				req := routeMapRequest(t, s, ids[0], announced...)
+				before := req.Hostinfo.Clone()
+				_, err = s.UpdateNodeFromMapRequest(ids[0], req)
+				require.NoError(t, err)
+				assert.Equal(
+					t,
+					before,
+					req.Hostinfo,
+					"validation must not mutate the request",
+				)
+
+				row, err := s.DB().GetNodeByID(ids[0])
+				require.NoError(t, err)
+				assert.ElementsMatch(t, valid, row.Hostinfo.RoutableIPs)
+
+				if initial == "approved" {
+					// Approval history is retained without making malformed routes effective.
+					assert.ElementsMatch(
+						t,
+						append(slices.Clone(valid), bad...),
+						row.ApprovedRoutes,
+					)
+				} else {
+					assert.ElementsMatch(t, valid, row.ApprovedRoutes)
+				}
+
+				node, ok := s.GetNodeByID(ids[0])
+				require.True(t, ok)
+				assert.ElementsMatch(t, valid, node.AnnouncedRoutes())
+				assert.ElementsMatch(t, valid, node.AllApprovedRoutes())
+				assert.Equal(t, []netip.Prefix{valid[0]}, node.ExitRoutes())
+				assert.Equal(t, []netip.Prefix{valid[1]}, node.SubnetRoutes())
+				assert.Equal(t, ids[0], s.nodeStore.PrimaryRoutes()[valid[1]])
+
+				view, err := s.MapView(ids[2])
+				require.NoError(t, err)
+				rules, err := view.PacketRules()
+				require.NoError(t, err)
+				assert.True(
+					t,
+					slices.ContainsFunc(rules, func(rule packetfilter.Rule) bool {
+						return rule.Sources().Contains(valid[1].Addr().Next())
+					}),
+					"canonical subnet identity must remain usable",
+				)
+				assertIsolated()
+
+				built := builds.Load()
+				generation := s.polMan.NodesGeneration()
+				updates := countNodeRowUpdates(t, s)
+				c, err := s.UpdateNodeFromMapRequest(ids[0], req)
+				require.NoError(t, err)
+				assert.Zero(
+					t,
+					updates.Load(),
+					"repeating rejected routes must not rewrite the node",
+				)
+				assert.Equal(
+					t,
+					built,
+					builds.Load(),
+					"repeating rejected routes must not rebuild peers",
+				)
+				assert.Equal(t, generation, s.polMan.NodesGeneration())
+				assert.True(
+					t,
+					c.IsEmpty(),
+					"repeating rejected routes must not broadcast a change",
+				)
+				assertIsolated()
+			})
+		}
+	}
+}
+
+func TestRegistrationRejectsNoncanonicalRoutes(t *testing.T) {
+	valid := []netip.Prefix{
+		netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0"),
+		netip.MustParsePrefix("10.55.1.0/24"),
+	}
+	bad := []netip.Prefix{
+		netip.MustParsePrefix("192.0.2.1/0"), netip.MustParsePrefix("2001:db8::1/0"),
+		netip.MustParsePrefix("10.55.1.1/24"),
+		{},
+	}
+
+	for _, method := range []string{"preauth", "oidc"} {
+		t.Run(method, func(t *testing.T) {
+			s, ids, _ := newAutoApproveTestState(t, nil)
+			existing, ok := s.GetNodeByID(ids[0])
+			require.True(t, ok)
+
+			userID := types.UserID(existing.User().ID())
+
+			var authKey string
+
+			if method == "preauth" {
+				pak, err := s.CreatePreAuthKey(&userID, true, false, nil, nil)
+				require.NoError(t, err)
+
+				authKey = pak.Key
+			}
+
+			machineKey := key.NewMachine().Public()
+
+			var nodeID types.NodeID
+
+			for range 2 {
+				hi := &tailcfg.Hostinfo{
+					Hostname:    "route-registration",
+					RoutableIPs: append(slices.Clone(valid), bad...),
+				}
+				before := hi.Clone()
+				nodeKey := key.NewNode().Public()
+				expiry := time.Now().Add(24 * time.Hour)
+
+				var (
+					node types.NodeView
+					err  error
+				)
+				if method == "preauth" {
+					node, _, err = s.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+						Auth:    &tailcfg.RegisterResponseAuth{AuthKey: authKey},
+						NodeKey: nodeKey, Hostinfo: hi, Expiry: expiry,
+					}, machineKey)
+				} else {
+					authID := types.MustAuthID()
+					s.SetAuthCacheEntry(
+						authID,
+						types.NewRegisterAuthRequest(&types.RegistrationData{
+							MachineKey: machineKey, NodeKey: nodeKey,
+							Hostname: hi.Hostname, Hostinfo: hi, Expiry: &expiry,
+						}),
+					)
+					node, _, err = s.HandleNodeFromAuthPath(
+						authID,
+						userID,
+						nil,
+						util.RegisterMethodOIDC,
+					)
+				}
+
+				require.NoError(t, err)
+				assert.Equal(
+					t,
+					before,
+					hi,
+					"registration validation must not mutate its input",
+				)
+				assert.ElementsMatch(t, valid, node.AnnouncedRoutes())
+
+				if nodeID != 0 {
+					assert.Equal(
+						t,
+						nodeID,
+						node.ID(),
+						"re-registration must update the same node",
+					)
+				}
+
+				nodeID = node.ID()
+				row, err := s.DB().GetNodeByID(nodeID)
+				require.NoError(t, err)
+				assert.ElementsMatch(t, valid, row.Hostinfo.RoutableIPs)
+			}
+		})
+	}
 }
 
 // TestMapRequestWithdrawingRoutesClearsUnhealthy pins that a node whose

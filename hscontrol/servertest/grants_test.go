@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
 	"tailscale.com/tailcfg/peercap"
+	"tailscale.com/types/ipproto"
 	"tailscale.com/types/netmap"
 	"tailscale.com/wgengine/filter/filtertype"
 )
@@ -204,9 +205,6 @@ func TestGrantPolicies(t *testing.T) { //nolint:gocyclo
 		c2.WaitForPeers(t, 1, 10*time.Second)
 
 		// Phase 1: Set a grant policy allowing only TCP port 22.
-		countC1 := c1.UpdateCount()
-		countC2 := c2.UpdateCount()
-
 		changed, err := srv.State().SetPolicy([]byte(`{
 			"grants": [{
 				"src": ["propagation-user@"],
@@ -222,24 +220,36 @@ func TestGrantPolicies(t *testing.T) { //nolint:gocyclo
 			srv.App.Change(changes...)
 		}
 
-		c1.WaitForCondition(t, "first grant policy update",
-			10*time.Second,
-			func(nm *netmap.NetworkMap) bool {
-				return c1.UpdateCount() > countC1
-			})
-		c2.WaitForCondition(t, "first grant policy update",
-			10*time.Second,
-			func(nm *netmap.NetworkMap) bool {
-				return c2.UpdateCount() > countC2
-			})
+		for _, client := range []*servertest.TestClient{c1, c2} {
+			client.WaitForCondition(t, "first grant policy with only TCP port 22",
+				10*time.Second,
+				func(nm *netmap.NetworkMap) bool {
+					if len(nm.PacketFilter) == 0 {
+						return false
+					}
 
-		// Capture the update count after first policy.
+					for _, m := range nm.PacketFilter {
+						if m.IPProto.Len() != 1 || m.IPProto.At(0) != ipproto.TCP ||
+							len(m.Dsts) == 0 || len(m.Caps) > 0 {
+							return false
+						}
+
+						for _, dst := range m.Dsts {
+							if dst.Ports.First != 22 || dst.Ports.Last != 22 {
+								return false
+							}
+						}
+					}
+
+					return true
+				})
+		}
+
+		// Capture the packet filter after first policy.
 		nm1Before := c1.Netmap()
 		require.NotNil(t, nm1Before)
 		require.NotEmpty(t, nm1Before.PacketFilter,
 			"PacketFilter should have rules from first grant policy")
-
-		updateCountPhase1 := c1.UpdateCount()
 
 		// Phase 2: Change to a grant policy with app capability
 		// (structurally different from IP-only grant).
@@ -268,16 +278,21 @@ func TestGrantPolicies(t *testing.T) { //nolint:gocyclo
 		}
 
 		// Wait for the second policy update to arrive.
-		c1.WaitForCondition(t, "second grant policy update",
-			10*time.Second,
-			func(nm *netmap.NetworkMap) bool {
-				return c1.UpdateCount() > updateCountPhase1
-			})
-		c2.WaitForCondition(t, "second grant policy update",
-			10*time.Second,
-			func(nm *netmap.NetworkMap) bool {
-				return c2.UpdateCount() > countC2
-			})
+		for _, client := range []*servertest.TestClient{c1, c2} {
+			client.WaitForCondition(t, "second grant policy with cap/drive",
+				10*time.Second,
+				func(nm *netmap.NetworkMap) bool {
+					for _, m := range nm.PacketFilter {
+						for _, cm := range m.Caps {
+							if cm.Cap == peercap.Taildrive {
+								return true
+							}
+						}
+					}
+
+					return false
+				})
+		}
 
 		// Verify the second policy added cap grants that weren't
 		// in the first (IP-only) policy.

@@ -23,30 +23,81 @@ func TestAllocatorConcurrentNextAndBackfillNoRace(t *testing.T) {
 
 	const iterations = 2000
 
+	issued := make(chan netip.Addr, 4*iterations)
+	errors := make(chan error, 2)
+
+	released := make([]netip.Addr, 0, 2*iterations)
+
+	for range iterations {
+		v4, v6, err := alloc.Next()
+		require.NoError(t, err)
+
+		released = append(released, *v4, *v6)
+	}
+
 	var wg sync.WaitGroup
 
 	wg.Go(func() {
 		for range iterations {
-			_, _, err := alloc.Next()
+			v4, v6, err := alloc.Next()
 			if err != nil {
+				errors <- err
 				return
 			}
+
+			issued <- *v4
+
+			issued <- *v6
 		}
 	})
 
 	wg.Go(func() {
 		for range iterations {
-			_, err := alloc.allocateNext(&alloc.prev4, alloc.prefix4)
+			v4, err := alloc.allocateNext(&alloc.prev4, alloc.prefix4)
 			if err != nil {
+				errors <- err
 				return
 			}
 
-			_, err = alloc.allocateNext(&alloc.prev6, alloc.prefix6)
+			v6, err := alloc.allocateNext(&alloc.prev6, alloc.prefix6)
 			if err != nil {
+				errors <- err
 				return
 			}
+
+			issued <- *v4
+
+			issued <- *v6
+		}
+	})
+	wg.Go(func() {
+		for _, ip := range released {
+			alloc.FreeIPs([]netip.Addr{ip})
 		}
 	})
 
 	wg.Wait()
+	close(errors)
+	close(issued)
+
+	for err := range errors {
+		require.NoError(t, err)
+	}
+
+	seen := make(map[netip.Addr]bool)
+	for ip := range issued {
+		require.False(t, seen[ip], "duplicate address: %s", ip)
+		seen[ip] = true
+	}
+
+	require.Len(t, seen, 4*iterations)
+
+	for _, ip := range released {
+		require.False(
+			t,
+			seen[ip],
+			"sequential allocation wrapped to released address: %s",
+			ip,
+		)
+	}
 }

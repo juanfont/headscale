@@ -3352,7 +3352,7 @@ func TestGrantViaSubnetSteering(t *testing.T) {
 					tagp("tag:group-a"), tagp("tag:group-b"),
 				},
 				InternetProtocols: []policyv2.ProtocolPort{
-					{Protocol: "*", Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
+					{Protocol: policyv2.ProtocolNameWildcard, Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
 				},
 			},
 			// Via grant: steer tag:group-a traffic to usernet1 subnet through tag:router-a.
@@ -3360,7 +3360,7 @@ func TestGrantViaSubnetSteering(t *testing.T) {
 				Sources:      policyv2.Aliases{tagp("tag:group-a")},
 				Destinations: policyv2.Aliases{prefixp(route.String())},
 				InternetProtocols: []policyv2.ProtocolPort{
-					{Protocol: "*", Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
+					{Protocol: policyv2.ProtocolNameWildcard, Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
 				},
 				Via: []policyv2.Tag{policyv2.Tag("tag:router-a")},
 			},
@@ -3369,7 +3369,7 @@ func TestGrantViaSubnetSteering(t *testing.T) {
 				Sources:      policyv2.Aliases{tagp("tag:group-b")},
 				Destinations: policyv2.Aliases{prefixp(route.String())},
 				InternetProtocols: []policyv2.ProtocolPort{
-					{Protocol: "*", Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
+					{Protocol: policyv2.ProtocolNameWildcard, Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
 				},
 				Via: []policyv2.Tag{policyv2.Tag("tag:router-b")},
 			},

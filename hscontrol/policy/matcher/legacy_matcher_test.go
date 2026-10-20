@@ -5,15 +5,15 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/juanfont/headscale/hscontrol/ipset"
 	"github.com/juanfont/headscale/hscontrol/util"
-	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
 
 type Match struct {
-	srcs  *netipx.IPSet
-	dests *netipx.IPSet
+	srcs  ipset.Set
+	dests ipset.Set
 }
 
 func (m *Match) DebugString() string {
@@ -22,13 +22,13 @@ func (m *Match) DebugString() string {
 	sb.WriteString("Match:\n")
 	sb.WriteString("  Sources:\n")
 
-	for _, prefix := range m.srcs.Prefixes() {
+	for prefix := range m.srcs.Prefixes() {
 		sb.WriteString("    " + prefix.String() + "\n")
 	}
 
 	sb.WriteString("  Destinations:\n")
 
-	for _, prefix := range m.dests.Prefixes() {
+	for prefix := range m.dests.Prefixes() {
 		sb.WriteString("    " + prefix.String() + "\n")
 	}
 
@@ -52,7 +52,7 @@ func MatchesFromFilterRules(rules []tailcfg.FilterRule) []Match {
 // [policy.ReduceNodes], hiding the cap target
 // from the source unless a companion IP-level rule also exists.
 func MatchFromFilterRule(rule tailcfg.FilterRule) Match {
-	dests := new(netipx.IPSetBuilder)
+	dests := new(ipset.Builder)
 
 	for _, dp := range rule.DstPorts {
 		set, _ := util.ParseIPSet(dp.IP, nil)
@@ -65,7 +65,7 @@ func MatchFromFilterRule(rule tailcfg.FilterRule) Match {
 		}
 	}
 
-	destsSet, _ := dests.IPSet()
+	destsSet, _ := dests.Build()
 
 	return Match{
 		srcs:  buildIPSet(rule.SrcIPs),
@@ -74,18 +74,18 @@ func MatchFromFilterRule(rule tailcfg.FilterRule) Match {
 }
 
 // buildIPSet parses each string via [util.ParseIPSet] and unions the
-// results into a single [netipx.IPSet]. Unparseable entries are silently
+// results into a single [ipset.Set]. Unparseable entries are silently
 // dropped (fail-open): the result is narrower than the input described,
 // but never wider.
-func buildIPSet(addrs []string) *netipx.IPSet {
-	builder := new(netipx.IPSetBuilder)
+func buildIPSet(addrs []string) ipset.Set {
+	builder := new(ipset.Builder)
 
 	for _, addr := range addrs {
 		set, _ := util.ParseIPSet(addr, nil)
 		builder.AddSet(set)
 	}
 
-	set, _ := builder.IPSet()
+	set, _ := builder.Build()
 
 	return set
 }
@@ -120,5 +120,5 @@ func (m *Match) DestsIsTheInternet() bool {
 
 	// Superset-of-[util.TheInternet] check handles merged filter rules
 	// where the internet prefixes are combined with other dests.
-	return util.IPSetSubsetOf(util.TheInternet(), m.dests)
+	return m.dests.ContainsSet(util.TheInternet())
 }

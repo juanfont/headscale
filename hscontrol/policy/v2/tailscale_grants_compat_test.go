@@ -23,9 +23,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
+	"github.com/juanfont/headscale/hscontrol/policy/packetfilter"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/require"
@@ -143,7 +141,7 @@ func loadGrantTestFile(t *testing.T, path string) *testcapture.Capture {
 //
 //	USER_PASSKEY_WILDCARD - 2 tests: user:*@passkey wildcard pattern not supported
 //
-// Total: 2 tests skipped, ~246 tests expected to pass.
+// Total: 2 tests skipped.
 var grantSkipReasons = map[string]string{
 	// USER_PASSKEY_WILDCARD (2 tests)
 	//
@@ -152,22 +150,6 @@ var grantSkipReasons = map[string]string{
 	// authentication and has no equivalent for this wildcard pattern.
 	"grant-k20": "USER_PASSKEY_WILDCARD: src=user:*@passkey not supported in headscale",
 	"grant-k21": "USER_PASSKEY_WILDCARD: dst=user:*@passkey not supported in headscale",
-
-	// SaaS lists contiguous source addresses one by one and writes
-	// autogroup:internet as address ranges; headscale merges sources into
-	// ranges and writes the internet as prefixes. The address sets match;
-	// TestViaGrantMapCompat compares these captures' filters by address.
-	"via-grant-v52": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v53": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v54": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v55": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v56": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v57": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v58": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v59": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v60": "FILTER_ADDRESS_FORM: same addresses, different wire form and rule order",
-	"via-grant-v61": "FILTER_ADDRESS_FORM: same addresses, different wire form",
-	"via-grant-v62": "FILTER_ADDRESS_FORM: same addresses, different wire form",
 }
 
 // TestGrantsCompat is a data-driven test that loads all GRANT-*.json
@@ -180,8 +162,8 @@ var grantSkipReasons = map[string]string{
 //   - For error cases: expected error message
 //
 // The test converts Tailscale user email formats to headscale format
-// (@example.com, @example.org) and runs the policy through unmarshalPolicy,
-// validate, compileFilterRulesForNode, and ReduceFilterRules.
+// (@example.com, @example.org) and runs the policy through NewPolicyManager
+// and PacketRulesForNode, as production responses do.
 //
 // Scenarios in grantSkipReasons are skipped.
 func TestGrantsCompat(t *testing.T) {
@@ -256,7 +238,8 @@ func testGrantError(t *testing.T, policyJSON []byte, tf *testcapture.Capture) {
 	}
 
 	t.Errorf("%s: expected error (api_response_code=400) but policy parsed and validated successfully; want message: %q",
-		tf.TestID, wantMsg)
+		tf.TestID, wantMsg,
+	)
 }
 
 // assertGrantErrorContains requires that headscale's error contains
@@ -286,11 +269,8 @@ func testGrantSuccess(
 ) {
 	t.Helper()
 
-	pol, err := unmarshalPolicy(policyJSON)
-	require.NoError(t, err, "%s: policy should parse successfully", tf.TestID)
-
-	err = pol.validate()
-	require.NoError(t, err, "%s: policy should validate successfully", tf.TestID)
+	pm, err := NewPolicyManager(policyJSON, users, nodes.ViewSlice())
+	require.NoError(t, err, "%s: policy manager should build successfully", tf.TestID)
 
 	for nodeName, capture := range tf.Captures {
 		t.Run(nodeName, func(t *testing.T) {
@@ -299,23 +279,23 @@ func testGrantSuccess(
 				"golden node %s not found in test setup", nodeName)
 
 			// Compile headscale filter rules for this node
-			gotRules := pol.compileFilterRulesForNode(
-				users,
-				node.View(),
-				nodes.ViewSlice(),
-			)
+			rules, err := pm.ReadView().PacketRulesForNode(node.View())
+			require.NoError(t, err)
 
-			gotRules = policyutil.ReduceFilterRules(node.View(), gotRules)
+			gotRules := packetfilter.ToTailcfg(rules)
 
 			wantRules := capture.PacketFilterRules
 
 			// Compare headscale output against Tailscale expected output.
 			// The diff labels show (-tailscale +headscale) to make clear
 			// which side produced which output.
-			// EquateEmpty treats nil and empty slices as equal since
-			// Tailscale's JSON null -> nil, headscale may return empty slice.
-			opts := append(cmpOptions(), cmpopts.EquateEmpty())
-			if diff := cmp.Diff(wantRules, gotRules, opts...); diff != "" {
+			// Empty revocations compare equally; capability payloads remain exact.
+			diffRules := filterRulesDiff
+			if _, known := filterWireDifferences[tf.TestID]; known {
+				diffRules = semanticFilterRulesDiff
+			}
+
+			if diff := diffRules(t, wantRules, gotRules); diff != "" {
 				t.Errorf(
 					"%s/%s: filter rules mismatch (-tailscale +headscale):\n%s",
 					tf.TestID,

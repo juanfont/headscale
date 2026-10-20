@@ -18,9 +18,174 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
 )
+
+func TestParsePrefixConfigBoundarySemantics(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		standard    netip.Prefix
+		family      string
+		nonStandard bool
+		wantErr     bool
+	}{
+		{"unset", "", tsaddr.CGNATRange(), "IPv4", false, false},
+		{"IPv6 unset", "", tsaddr.TailscaleULARange(), "IPv6", false, false},
+		{"IPv4 standard", "100.64.0.0/10", tsaddr.CGNATRange(), "IPv4", false, false},
+		{"IPv4 subset", "100.100.100.0/24", tsaddr.CGNATRange(), "IPv4", false, false},
+		{"IPv4 outside", "192.0.2.0/24", tsaddr.CGNATRange(), "IPv4", true, false},
+		{"IPv4 broader", "100.64.0.0/9", tsaddr.CGNATRange(), "IPv4", true, false},
+		{
+			"IPv4 noncanonical subset",
+			"100.100.100.1/24",
+			tsaddr.CGNATRange(),
+			"IPv4",
+			false,
+			false,
+		},
+		{
+			"IPv4 noncanonical broader",
+			"100.64.0.1/9",
+			tsaddr.CGNATRange(),
+			"IPv4",
+			true,
+			false,
+		},
+		{
+			"IPv6 standard",
+			"fd7a:115c:a1e0::/48",
+			tsaddr.TailscaleULARange(),
+			"IPv6",
+			false,
+			false,
+		},
+		{
+			"IPv6 subset",
+			"fd7a:115c:a1e0:abcd::/64",
+			tsaddr.TailscaleULARange(),
+			"IPv6",
+			false,
+			false,
+		},
+		{
+			"IPv6 outside",
+			"2001:db8::/32",
+			tsaddr.TailscaleULARange(),
+			"IPv6",
+			true,
+			false,
+		},
+		{
+			"IPv6 broader",
+			"fd7a:115c:a1e0::/47",
+			tsaddr.TailscaleULARange(),
+			"IPv6",
+			true,
+			false,
+		},
+		{
+			"IPv6 noncanonical",
+			"fd7a:115c:a1e0::1/48",
+			tsaddr.TailscaleULARange(),
+			"IPv6",
+			false,
+			false,
+		},
+		{
+			"IPv6 in IPv4 field",
+			"fd7a:115c:a1e0::/48",
+			tsaddr.CGNATRange(),
+			"IPv4",
+			false,
+			true,
+		},
+		{
+			"IPv4 in IPv6 field",
+			"100.64.0.0/10",
+			tsaddr.TailscaleULARange(),
+			"IPv6",
+			false,
+			true,
+		},
+		{
+			"mapped IPv4 rejected in IPv4 field",
+			"::ffff:100.64.0.0/106",
+			tsaddr.CGNATRange(),
+			"IPv4",
+			false,
+			true,
+		},
+		{
+			"mapped IPv4 accepted as nonstandard IPv6",
+			"::ffff:100.64.0.0/106",
+			tsaddr.TailscaleULARange(),
+			"IPv6",
+			true,
+			false,
+		},
+		{"invalid address", "invalid/24", tsaddr.CGNATRange(), "IPv4", false, true},
+		{
+			"zoned prefix rejected",
+			"fe80::%eth0/64",
+			tsaddr.TailscaleULARange(),
+			"IPv6",
+			false,
+			true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+			t.Cleanup(viper.Reset)
+
+			key := "prefixes.v6"
+			if tt.standard.Addr().Is4() {
+				key = "prefixes.v4"
+			}
+
+			viper.Set(key, tt.input)
+
+			prefix, nonStandard, err := parsePrefixConfig(
+				key,
+				tt.standard,
+				tt.family,
+			)
+			if tt.wantErr {
+				require.ErrorContains(
+					t,
+					err,
+					"parsing "+tt.family+" prefix from config:",
+				)
+
+				_, parseErr := netip.ParsePrefix(tt.input)
+				if parseErr == nil {
+					require.ErrorIs(t, err, errPrefixFamilyMismatch)
+					require.ErrorContains(t, err, key)
+					require.ErrorContains(t, err, tt.input)
+				}
+
+				assert.Nil(t, prefix)
+				assert.False(t, nonStandard)
+
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.nonStandard, nonStandard)
+
+			if tt.input == "" {
+				assert.Nil(t, prefix)
+				return
+			}
+
+			require.NotNil(t, prefix)
+			assert.Equal(t, netip.MustParsePrefix(tt.input).Masked(), *prefix)
+		})
+	}
+}
 
 func TestReadConfig(t *testing.T) {
 	tests := []struct {

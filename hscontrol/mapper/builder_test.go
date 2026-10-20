@@ -25,13 +25,11 @@ func TestMapResponseBuilder_Basic(t *testing.T) {
 		state: mockState,
 	}
 
-	nodeID := types.NodeID(1)
-
-	builder := m.NewMapResponseBuilder(nodeID)
+	builder := m.NewMapResponseBuilder(state.MapView{})
 
 	// Test basic builder creation
 	assert.NotNil(t, builder)
-	assert.Equal(t, nodeID, builder.nodeID)
+	assert.Zero(t, builder.nodeID)
 	assert.NotNil(t, builder.resp)
 	assert.False(t, builder.resp.KeepAlive)
 	assert.NotNil(t, builder.resp.ControlTime)
@@ -46,10 +44,9 @@ func TestMapResponseBuilder_WithCapabilityVersion(t *testing.T) {
 		state: mockState,
 	}
 
-	nodeID := types.NodeID(1)
 	capVer := tailcfg.CapabilityVersion(42)
 
-	builder := m.NewMapResponseBuilder(nodeID).
+	builder := m.NewMapResponseBuilder(state.MapView{}).
 		WithCapabilityVersion(capVer)
 
 	assert.Equal(t, capVer, builder.capVer)
@@ -69,9 +66,7 @@ func TestMapResponseBuilder_WithDomain(t *testing.T) {
 		state: mockState,
 	}
 
-	nodeID := types.NodeID(1)
-
-	builder := m.NewMapResponseBuilder(nodeID).
+	builder := m.NewMapResponseBuilder(state.MapView{}).
 		WithDomain()
 
 	assert.Equal(t, domain, builder.resp.Domain)
@@ -86,9 +81,7 @@ func TestMapResponseBuilder_WithCollectServicesDisabled(t *testing.T) {
 		state: mockState,
 	}
 
-	nodeID := types.NodeID(1)
-
-	builder := m.NewMapResponseBuilder(nodeID).
+	builder := m.NewMapResponseBuilder(state.MapView{}).
 		WithCollectServicesDisabled()
 
 	value, isSet := builder.resp.CollectServices.Get()
@@ -130,9 +123,7 @@ func TestMapResponseBuilder_WithDebugConfig(t *testing.T) {
 				state: mockState,
 			}
 
-			nodeID := types.NodeID(1)
-
-			builder := m.NewMapResponseBuilder(nodeID).
+			builder := m.NewMapResponseBuilder(state.MapView{}).
 				WithDebugConfig()
 
 			assert.Equal(t, tt.expected, builder.resp.Debug)
@@ -149,7 +140,6 @@ func TestMapResponseBuilder_WithPeerChangedPatch(t *testing.T) {
 		state: mockState,
 	}
 
-	nodeID := types.NodeID(1)
 	changes := []*tailcfg.PeerChange{
 		{
 			NodeID:     123,
@@ -161,7 +151,7 @@ func TestMapResponseBuilder_WithPeerChangedPatch(t *testing.T) {
 		},
 	}
 
-	builder := m.NewMapResponseBuilder(nodeID).
+	builder := m.NewMapResponseBuilder(state.MapView{}).
 		WithPeerChangedPatch(changes)
 
 	assert.Equal(t, changes, builder.resp.PeersChangedPatch)
@@ -176,11 +166,10 @@ func TestMapResponseBuilder_WithPeersRemoved(t *testing.T) {
 		state: mockState,
 	}
 
-	nodeID := types.NodeID(1)
 	removedID1 := types.NodeID(123)
 	removedID2 := types.NodeID(456)
 
-	builder := m.NewMapResponseBuilder(nodeID).
+	builder := m.NewMapResponseBuilder(state.MapView{}).
 		WithPeersRemoved(removedID1, removedID2)
 
 	expected := []tailcfg.NodeID{
@@ -199,10 +188,8 @@ func TestMapResponseBuilder_ErrorHandling(t *testing.T) {
 		state: mockState,
 	}
 
-	nodeID := types.NodeID(1)
-
 	// Simulate an error in the builder
-	builder := m.NewMapResponseBuilder(nodeID)
+	builder := m.NewMapResponseBuilder(state.MapView{})
 	builder.addError(assert.AnError)
 
 	// All subsequent calls should continue to work and accumulate errors
@@ -237,10 +224,9 @@ func TestMapResponseBuilder_ChainedCalls(t *testing.T) {
 		state: mockState,
 	}
 
-	nodeID := types.NodeID(1)
 	capVer := tailcfg.CapabilityVersion(99)
 
-	builder := m.NewMapResponseBuilder(nodeID).
+	builder := m.NewMapResponseBuilder(state.MapView{}).
 		WithCapabilityVersion(capVer).
 		WithDomain().
 		WithCollectServicesDisabled().
@@ -265,12 +251,11 @@ func TestMapResponseBuilder_MultipleWithPeersRemoved(t *testing.T) {
 		state: mockState,
 	}
 
-	nodeID := types.NodeID(1)
 	removedID1 := types.NodeID(100)
 	removedID2 := types.NodeID(200)
 
 	// Test calling WithPeersRemoved multiple times
-	builder := m.NewMapResponseBuilder(nodeID).
+	builder := m.NewMapResponseBuilder(state.MapView{}).
 		WithPeersRemoved(removedID1).
 		WithPeersRemoved(removedID2)
 
@@ -288,9 +273,7 @@ func TestMapResponseBuilder_EmptyPeerChangedPatch(t *testing.T) {
 		state: mockState,
 	}
 
-	nodeID := types.NodeID(1)
-
-	builder := m.NewMapResponseBuilder(nodeID).
+	builder := m.NewMapResponseBuilder(state.MapView{}).
 		WithPeerChangedPatch([]*tailcfg.PeerChange{})
 
 	assert.Empty(t, builder.resp.PeersChangedPatch)
@@ -305,9 +288,7 @@ func TestMapResponseBuilder_NilPeerChangedPatch(t *testing.T) {
 		state: mockState,
 	}
 
-	nodeID := types.NodeID(1)
-
-	builder := m.NewMapResponseBuilder(nodeID).
+	builder := m.NewMapResponseBuilder(state.MapView{}).
 		WithPeerChangedPatch(nil)
 
 	assert.Nil(t, builder.resp.PeersChangedPatch)
@@ -322,10 +303,8 @@ func TestMapResponseBuilder_MultipleErrors(t *testing.T) {
 		state: mockState,
 	}
 
-	nodeID := types.NodeID(1)
-
 	// Create a builder and add multiple errors
-	builder := m.NewMapResponseBuilder(nodeID)
+	builder := m.NewMapResponseBuilder(state.MapView{})
 	builder.addError(assert.AnError)
 	builder.addError(assert.AnError)
 	builder.addError(nil) // This should be ignored

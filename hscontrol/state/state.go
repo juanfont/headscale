@@ -27,7 +27,7 @@ import (
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	hsdb "github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/policy"
-	"github.com/juanfont/headscale/hscontrol/policy/matcher"
+	"github.com/juanfont/headscale/hscontrol/policy/packetfilter"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -73,6 +73,9 @@ var ErrNodeNotFound = errors.New("node not found")
 
 // ErrInvalidNodeView is returned when an invalid node view is provided.
 var ErrInvalidNodeView = errors.New("invalid node view provided")
+
+// ErrInvalidPolicyView reports a snapshot with no compiled policy generation.
+var ErrInvalidPolicyView = errors.New("invalid policy view")
 
 // ErrNodeNotInNodeStore is returned when a node no longer exists in the [NodeStore].
 var ErrNodeNotInNodeStore = errors.New("node no longer exists in NodeStore")
@@ -246,6 +249,8 @@ func NewState(cfg *types.Config) (*State, error) {
 		return nil, fmt.Errorf("loading nodes: %w", err)
 	}
 
+	slices.SortFunc(nodes, func(a, b *types.Node) int { return cmp.Compare(a.ID, b.ID) })
+
 	// On startup, all nodes should be marked as offline until they reconnect
 	// This ensures we don't have stale online status from previous runs
 	for _, node := range nodes {
@@ -274,6 +279,12 @@ func NewState(cfg *types.Config) (*State, error) {
 	batchTimeout := cmp.Or(cfg.Tuning.NodeStoreBatchTimeout, defaultNodeStoreBatchTimeout)
 
 	nodeStore := NewNodeStore(nodes, policyPeersFunc(polMan), batchSize, batchTimeout)
+
+	err = nodeStore.data.Load().policyBuildErr
+	if err != nil {
+		return nil, fmt.Errorf("initializing node store policy: %w", err)
+	}
+
 	nodeStore.Start()
 
 	s := &State{
@@ -300,8 +311,8 @@ func NewState(cfg *types.Config) (*State, error) {
 
 // policyPeersFunc is the [PeersFunc] [State] runs its [NodeStore] with.
 // It feeds the nodes being built to the policy manager first, so the
-// build already uses the matchers they imply; building with the old
-// matchers would serve stale adjacency until a second full rebuild.
+// build already uses the generation they imply; building with the old
+// generation would serve stale adjacency until a second full rebuild.
 // [policy.PolicyManager.NodesGeneration] tells the writing caller the
 // SetNodes happened here.
 //
@@ -309,17 +320,8 @@ func NewState(cfg *types.Config) (*State, error) {
 // manager's lock, which is safe only while the policy manager never
 // waits on a NodeStore write while holding it.
 func policyPeersFunc(pm policy.PolicyManager) PeersFunc {
-	return func(nodes []types.NodeView) map[types.NodeID][]types.NodeID {
-		slice := views.SliceOf(nodes)
-
-		// A failed recompile keeps the old nodes, so a caller that
-		// refreshes the policy retries it and returns the error.
-		_, err := pm.SetNodes(slice)
-		if err != nil {
-			log.Error().Err(err).Msg("refreshing policy nodes before peer map build")
-		}
-
-		return pm.BuildPeerMap(slice)
+	return func(nodes []types.NodeView) (policy.ReadView, map[types.NodeID][]types.NodeID, error) {
+		return pm.SetNodesAndBuildPeerMap(views.SliceOf(nodes))
 	}
 }
 
@@ -369,15 +371,20 @@ func (s *State) ReloadPolicy() ([]change.Change, error) {
 	// newly allowed peers until a node is added/removed, causing autogroup:self
 	// policies to not propagate correctly when switching between policy types.
 	//
-	// An unchanged policy leaves the matchers as they were, and the other
+	// An unchanged policy leaves the generation as it was, and the other
 	// inputs of the peer map rebuild it themselves (node writes in the
 	// [NodeStore], [State.updatePolicyManagerNodes] and
 	// [State.updatePolicyManagerUsers]), so the O(n^2) rebuild is skipped
 	// then. The policy API handlers always get here that way: they apply
 	// the policy with [State.SetPolicy], which rebuilds, store it, and
 	// reload the very same bytes.
-	if policyChanged {
+	if policyChanged || s.nodeStore.data.Load().policyBuildErr != nil {
 		s.nodeStore.RebuildPeerMaps()
+	}
+
+	err = s.nodeStore.data.Load().policyBuildErr
+	if err != nil {
+		return nil, err
 	}
 
 	// Nodes whose CapMap shifted get their self refresh from
@@ -890,8 +897,8 @@ func (s *State) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) views.Sl
 
 	// Incremental updates (NodeAdded, NodeChanged) name the peers involved.
 	// Resolve them through the recipient's adjacency so a changed node the
-	// policy hides from this recipient is never delivered; the mapper still
-	// applies the live matchers on top.
+	// policy hides from this recipient is never delivered; responses use
+	// the matching captured policy generation.
 	nodeIDSet := make(map[types.NodeID]struct{}, len(peerIDs))
 	for _, id := range peerIDs {
 		nodeIDSet[id] = struct{}{}
@@ -1289,19 +1296,19 @@ func (s *State) SSHCheckParams(
 	return s.polMan.SSHCheckParams(srcNodeID, dstNodeID, localUser)
 }
 
-// Filter returns the current network filter rules and matches.
-func (s *State) Filter() ([]tailcfg.FilterRule, []matcher.Match) {
-	return s.polMan.Filter()
+// PacketRules returns the current typed network rules.
+func (s *State) PacketRules() []packetfilter.Rule {
+	return s.polMan.PacketRules()
 }
 
-// FilterForNode returns filter rules for a specific node, handling autogroup:self per-node.
-func (s *State) FilterForNode(node types.NodeView) ([]tailcfg.FilterRule, error) {
-	return s.polMan.FilterForNode(node)
+// PacketRulesForNode returns recipient-reduced packet rules.
+func (s *State) PacketRulesForNode(node types.NodeView) ([]packetfilter.Rule, error) {
+	return s.polMan.PacketRulesForNode(node)
 }
 
-// MatchersForNode returns matchers for peer relationship determination (unreduced).
-func (s *State) MatchersForNode(node types.NodeView) ([]matcher.Match, error) {
-	return s.polMan.MatchersForNode(node)
+// PeerRulesForNode returns unreduced rules selected for the node's owner.
+func (s *State) PeerRulesForNode(node types.NodeView) ([]packetfilter.Rule, error) {
+	return s.polMan.PeerRulesForNode(node)
 }
 
 // NodeCapMap returns the policy-derived CapMap for the given node, suitable
@@ -1311,18 +1318,15 @@ func (s *State) NodeCapMap(id types.NodeID) tailcfg.NodeCapMap {
 	return s.polMan.NodeCapMap(id)
 }
 
-// NodeCapMaps returns a snapshot of every node's policy CapMap so
-// callers can amortise lock acquisition over a peer loop.
-func (s *State) NodeCapMaps() map[types.NodeID]tailcfg.NodeCapMap {
-	return s.polMan.NodeCapMaps()
-}
-
 // NodeCanHaveTag checks if a node is allowed to have a specific tag.
 func (s *State) NodeCanHaveTag(node types.NodeView, tag string) bool {
 	return s.polMan.NodeCanHaveTag(node, tag)
 }
 
 // SetPolicy updates the policy configuration.
+// Parse, validation, and policy-test rejections publish no new generation.
+// If the manager swap succeeds but snapshot rebuilding fails, the policy stays
+// applied. MapView fails closed until a later snapshot rebuild succeeds.
 func (s *State) SetPolicy(pol []byte) (bool, error) {
 	changed, err := s.polMan.SetPolicy(pol)
 	if err != nil {
@@ -1334,11 +1338,11 @@ func (s *State) SetPolicy(pol []byte) (bool, error) {
 
 	// Payload-only writes reuse the cached adjacency, so a policy swap
 	// must rebuild it here rather than wait for the next relation write.
-	if changed {
+	if changed || s.nodeStore.data.Load().policyBuildErr != nil {
 		s.nodeStore.RebuildPeerMaps()
 	}
 
-	return changed, nil
+	return changed, s.nodeStore.data.Load().policyBuildErr
 }
 
 // AutoApproveRoutes checks if a node's routes should be auto-approved.
@@ -1389,78 +1393,6 @@ func (s *State) GetNodePrimaryRoutes(nodeID types.NodeID) []netip.Prefix {
 	return s.nodeStore.PrimaryRoutesForNode(nodeID)
 }
 
-// RoutesForPeer computes the routes a peer should advertise in a viewer's
-// AllowedIPs, combining primary routes (from HA election), approved exit
-// routes, and via grant steering.
-//
-// Approved exit routes (0.0.0.0/0, ::/0) are included alongside subnet
-// routes — they appear in every peer's AllowedIPs, while unapproved
-// ones do not.
-func (s *State) RoutesForPeer(
-	viewer, peer types.NodeView,
-	matchers []matcher.Match,
-) []netip.Prefix {
-	viaResult := s.polMan.ViaRoutesForPeer(viewer, peer)
-	globalPrimaries := s.nodeStore.PrimaryRoutesForNode(peer.ID())
-	exitRoutes := peer.ExitRoutes()
-
-	var reduced []netip.Prefix
-
-	// Fast path: no via grants affect this pair.
-	if len(viaResult.Include) == 0 && len(viaResult.Exclude) == 0 {
-		allRoutes := slices.Concat(globalPrimaries, exitRoutes)
-
-		reduced = policy.ReduceRoutes(viewer, allRoutes, matchers)
-	} else {
-		// Slow path: drop excluded routes, reduce, append via-included.
-		routes := make([]netip.Prefix, 0, len(globalPrimaries)+len(exitRoutes))
-		for _, p := range slices.Concat(globalPrimaries, exitRoutes) {
-			if !slices.Contains(viaResult.Exclude, p) {
-				routes = append(routes, p)
-			}
-		}
-
-		reduced = policy.ReduceRoutes(viewer, routes, matchers)
-
-		// Append via-included routes. The via grant IS the authorization
-		// (no matcher filter needed), but HA primary election applies
-		// when a regular (non-via) grant also covers the same prefix.
-		//
-		// Rules:
-		//   - Peer is HA primary → always include
-		//   - Peer is NOT primary, no regular grant → include
-		//     (per-viewer via steering)
-		//   - Peer is NOT primary, regular grant exists → exclude
-		//     (HA primary wins)
-		for _, p := range viaResult.Include {
-			if slices.Contains(reduced, p) {
-				continue
-			}
-
-			if slices.Contains(globalPrimaries, p) {
-				reduced = append(reduced, p)
-			} else if !slices.Contains(viaResult.UsePrimary, p) {
-				reduced = append(reduced, p)
-			}
-		}
-	}
-
-	// Co-router visibility: when the viewer advertises the same prefix
-	// that the peer is HA primary for, the viewer must see that route
-	// regardless of matcher authorization. HA secondaries need this to
-	// know which peer is primary for their shared prefix.
-	viewerSubnets := viewer.SubnetRoutes()
-	if len(viewerSubnets) > 0 {
-		for _, p := range globalPrimaries {
-			if slices.Contains(viewerSubnets, p) && !slices.Contains(reduced, p) {
-				reduced = append(reduced, p)
-			}
-		}
-	}
-
-	return reduced
-}
-
 // PrimaryRoutesString renders the current prefix→primary assignment
 // for diagnostics.
 func (s *State) PrimaryRoutesString() string {
@@ -1474,9 +1406,9 @@ func (s *State) IsNodeHealthy(id types.NodeID) bool {
 }
 
 // SetNodeHealth flips the runtime health bit for one node and reports
-// whether the resulting primary-route assignment changed, so the HA
-// prober can decide whether to fan out a PolicyChange. true means
-// healthy; false means unhealthy. An unhealthy mark is dropped when
+// whether clients need a refresh for global routes, via routes, or policy
+// recovery. The healthy argument is true for healthy and false for unhealthy.
+// An unhealthy mark is dropped when
 // the node is no longer an HA candidate (offline or no approved
 // routes) — between probe dispatch and result the node may have left
 // candidacy, and the bit would just be stale. The check happens
@@ -1489,44 +1421,58 @@ func (s *State) SetNodeHealth(id types.NodeID, healthy bool) bool {
 
 // BatchSetNodeHealth applies a set of health updates atomically: the
 // election runs once after every flag has been flipped, so observers
-// never see an intermediate snapshot. Returns true when the
-// primary-route assignment differs from before the batch so callers
-// can gate a single PolicyChange dispatch. Map value true = healthy;
-// false = unhealthy (gated as in [State.SetNodeHealth]).
+// never see an intermediate snapshot. Returns true when a global primary
+// assignment or a via target's health changed, or policy recovery is pending.
+// Via selections can move independently of global primaries. Empty and
+// unchanged batches retry compilation when the published policy is invalid.
+// Map value true = healthy; false = unhealthy (gated as in [State.SetNodeHealth]).
 //
 // Per-call publication would let a writer applying two flips
 // back-to-back elect a node that the next snapshot demotes,
 // momentarily pointing peers at the wrong primary; the batched form
 // closes that window.
 func (s *State) BatchSetNodeHealth(updates map[types.NodeID]bool) bool {
-	if len(updates) == 0 {
-		return false
-	}
+	snapshot := s.nodeStore.data.Load()
+	prevRoutes := snapshot.routes
 
-	prevRoutes := s.nodeStore.PrimaryRoutes()
-
-	// Skip writes that would not change anything so an all-unchanged
-	// probe cycle publishes no snapshot. healthSetter stays authoritative
-	// for the candidacy and race checks under the writer.
+	// Skip unchanged health writes while the published policy is valid.
+	// Invalid snapshots still retry compilation below. healthSetter stays
+	// authoritative for candidacy and race checks under the writer.
 	fns := make(map[types.NodeID]UpdateNodeFunc, len(updates))
+	viaHealthChanged := false
 
 	for id, healthy := range updates {
-		if nv, ok := s.nodeStore.GetNode(id); ok && nv.Unhealthy() == !healthy {
+		nv, ok := snapshot.nodeViewsByID[id]
+		if ok && nv.Unhealthy() == !healthy {
 			haHealthUpdates.WithLabelValues("unchanged").Inc()
 
 			continue
 		}
 
-		fns[id] = healthSetter(healthy)
+		setHealth := healthSetter(healthy)
+		fns[id] = func(n *types.Node) {
+			// Earlier tag or policy publications must affect this decision.
+			viaTarget := s.nodeStore.data.Load().policy.HasViaTarget(n.View())
+			before := n.Unhealthy
+			setHealth(n)
+
+			viaHealthChanged = viaHealthChanged || (viaTarget && n.Unhealthy != before)
+		}
 	}
 
 	if len(fns) == 0 {
-		return false
+		if s.nodeStore.data.Load().policyBuildErr != nil {
+			s.nodeStore.RebuildPeerMaps()
+		}
+
+		return s.nodeStore.policyRecovered.Load()
 	}
 
+	// UpdateNodes waits for the single writer, including these closures.
 	s.nodeStore.UpdateNodes(fns)
 
-	return !maps.Equal(prevRoutes, s.nodeStore.PrimaryRoutes())
+	return viaHealthChanged || !maps.Equal(prevRoutes, s.nodeStore.PrimaryRoutes()) ||
+		s.nodeStore.policyRecovered.Load()
 }
 
 // healthSetter returns an UpdateNodeFunc that flips n.Unhealthy to
@@ -1646,10 +1592,11 @@ func (s *State) DeleteNodeFromStoreForTest(id types.NodeID) {
 }
 
 // WrapPolicyManagerForTest replaces the policy manager with wrap(current) so
-// tests can fail a single method. The [NodeStore] keeps the original manager,
-// so wrap must delegate to its argument. Call before any map is served.
+// tests can fail a single method, including atomic snapshot compilation.
+// The wrapper must delegate other methods. Call before any map is served.
 func (s *State) WrapPolicyManagerForTest(wrap func(policy.PolicyManager) policy.PolicyManager) {
 	s.polMan = wrap(s.polMan)
+	s.nodeStore.peersFunc = policyPeersFunc(s.polMan)
 }
 
 // UpdatePolicyManagerNodesForTest syncs the policy manager with the
@@ -2431,6 +2378,7 @@ func (s *State) HandleNodeFromAuthPath(
 	}
 
 	hostinfo.Hostname = hostname
+	hostinfo.RoutableIPs = slices.DeleteFunc(hostinfo.RoutableIPs, invalidAdvertisedRoute)
 
 	// Lookup existing nodes
 	machineKey := regData.MachineKey
@@ -2769,8 +2717,9 @@ func (s *State) HandleNodeFromPreAuthKey(
 	}
 
 	// Ensure we have valid hostinfo
-	validHostinfo := cmp.Or(regReq.Hostinfo, &tailcfg.Hostinfo{})
+	validHostinfo := cmp.Or(regReq.Hostinfo, &tailcfg.Hostinfo{}).Clone()
 	validHostinfo.Hostname = hostname
+	validHostinfo.RoutableIPs = slices.DeleteFunc(validHostinfo.RoutableIPs, invalidAdvertisedRoute)
 
 	log.Debug().
 		Caller().
@@ -3150,11 +3099,16 @@ func (s *State) updatePolicyManagerUsers() (change.Change, error) {
 
 	log.Debug().Caller().Bool("policy.changed", changed).Msg("policy manager user update completed because SetUsers operation finished")
 
-	if peerMapChanged {
+	if changed || peerMapChanged || s.nodeStore.data.Load().policyBuildErr != nil {
 		// User-driven matcher state changed: rebuild candidate adjacency
 		// so peer visibility reflects the new policy. Without this, the
 		// cached peersByNode stays stale until the next node write.
 		s.nodeStore.RebuildPeerMaps()
+	}
+
+	err = s.nodeStore.data.Load().policyBuildErr
+	if err != nil {
+		return change.Change{}, err
 	}
 
 	if changed {
@@ -3187,6 +3141,10 @@ func (s *State) DrainSelfRefreshes() []change.Change {
 	slices.Sort(ids)
 	ids = slices.Compact(ids)
 
+	if s.nodeStore.policyRecovered.Swap(false) {
+		return []change.Change{change.FullUpdate()}
+	}
+
 	cs := make([]change.Change, 0, len(ids))
 	for _, id := range ids {
 		cs = append(cs, change.SelfUpdate(id))
@@ -3212,14 +3170,14 @@ func (s *State) updatePolicyManagerNodes(genBefore uint64) (change.Change, error
 		return s.policyChangeSince(genBefore), fmt.Errorf("updating policy manager nodes: %w", err)
 	}
 
-	if changed {
+	if changed || s.nodeStore.data.Load().policyBuildErr != nil {
 		// The writer refreshes the policy before every relation build, so
 		// a change here means this snapshot raced another writer and moved
 		// the policy manager away from what adjacency was built with.
 		s.nodeStore.RebuildPeerMaps()
 	}
 
-	return s.policyChangeSince(genBefore), nil
+	return s.policyChangeSince(genBefore), s.nodeStore.data.Load().policyBuildErr
 }
 
 // nodeWriteFailed is the change a write returns with its error once its
@@ -3407,6 +3365,10 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 			// Copy so the classification never mutates the caller's request.
 			hi := *req.Hostinfo
 			hi.NetInfo = netInfoFromMapRequest(id, currentNode.Hostinfo, req.Hostinfo)
+			hi.RoutableIPs = slices.DeleteFunc(
+				slices.Clone(hi.RoutableIPs),
+				invalidAdvertisedRoute,
+			)
 			newHostinfo = &hi
 		}
 
@@ -3463,7 +3425,7 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		// Calculate route approval before [NodeStore] update to avoid
 		// calling View() inside callback
 		var hasNewRoutes bool
-		if hi := req.Hostinfo; hi != nil {
+		if hi := newHostinfo; hi != nil {
 			hasNewRoutes = len(hi.RoutableIPs) > 0
 		}
 
@@ -3472,8 +3434,8 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		if needsRouteApproval {
 			// Extract announced routes from request
 			var announcedRoutes []netip.Prefix
-			if req.Hostinfo != nil {
-				announcedRoutes = req.Hostinfo.RoutableIPs
+			if newHostinfo != nil {
+				announcedRoutes = newHostinfo.RoutableIPs
 			}
 
 			// Apply policy-based auto-approval if routes are announced
@@ -3581,7 +3543,7 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 	// Otherwise we persist the row directly and refresh the policy manager
 	// only when node inputs visible to the policy actually changed
 	// (structural Hostinfo or routes), letting updatePolicyManagerNodes
-	// decide whether matchers changed.
+	// decide whether compiled rules changed.
 	policyChange := change.Change{}
 
 	if delta.persistWorthy {
@@ -3750,6 +3712,10 @@ func buildMapRequestChangeResponse(
 	}
 
 	return change.Change{}
+}
+
+func invalidAdvertisedRoute(route netip.Prefix) bool {
+	return !route.IsValid() || route != route.Masked()
 }
 
 func routesChanged(oldNode types.NodeView, newHI *tailcfg.Hostinfo) bool {

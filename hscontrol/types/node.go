@@ -3,7 +3,6 @@ package types
 import (
 	"errors"
 	"fmt"
-	"maps"
 	"net/netip"
 	"slices"
 	"strconv"
@@ -11,11 +10,11 @@ import (
 	"time"
 
 	hsdns "github.com/juanfont/headscale/hscontrol/dns"
-	"github.com/juanfont/headscale/hscontrol/policy/matcher"
+	"github.com/juanfont/headscale/hscontrol/ipset"
+	"github.com/juanfont/headscale/hscontrol/policy/packetfilter"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog"
-	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/tailcfg/nodecap"
@@ -33,29 +32,11 @@ var (
 	ErrInvalidNodeView      = errors.New("cannot convert invalid NodeView to tailcfg.Node")
 )
 
-// RouteFunc is a function that takes a node ID and returns a list of
-// [netip.Prefix] values representing the routes for that node.
-type RouteFunc func(id NodeID) []netip.Prefix
-
-// nodeAttrDisableIPv4 is the policy nodeAttr key that suppresses the
-// node's own IPv4 CGNAT prefix in [tailcfg.Node.Addresses] and
-// [tailcfg.Node.AllowedIPs]. Subnet routes the node advertises remain.
-// See https://tailscale.com/docs/reference/troubleshooting/network-configuration/cgnat-conflicts.
-const nodeAttrDisableIPv4 nodecap.Cap = "disable-ipv4"
-
-// filterIPv4 returns ps with every IPv4 prefix dropped. Used by
-// [NodeView.TailNode] when the node carries the disable-ipv4 nodeAttr.
-func filterIPv4(ps []netip.Prefix) []netip.Prefix {
-	out := ps[:0:0]
-	for _, p := range ps {
-		if p.Addr().Is4() {
-			continue
-		}
-
-		out = append(out, p)
-	}
-
-	return out
+// NodeAddresses contains caller-owned address and route slices prepared for a viewer.
+type NodeAddresses struct {
+	Addresses     []netip.Prefix
+	AllowedIPs    []netip.Prefix
+	PrimaryRoutes []netip.Prefix
 }
 
 // ViaRouteResult describes via grant effects for a viewer-peer pair.
@@ -368,26 +349,27 @@ func (node *Node) IPsAsString() []string {
 	return ret
 }
 
-func (node *Node) InIPSet(set *netipx.IPSet) bool {
-	return slices.ContainsFunc(node.IPs(), set.Contains)
+func (node *Node) InIPSet(set ipset.Set) bool {
+	return (node.IPv4 != nil && set.Contains(*node.IPv4)) ||
+		(node.IPv6 != nil && set.Contains(*node.IPv6))
 }
 
 // AppendToIPSet adds all IP addresses of the node to the given
-// [netipx.IPSetBuilder]. For identity-based aliases (tags, users,
+// [ipset.Builder]. For identity-based aliases (tags, users,
 // groups, autogroups), both IPv4 and IPv6 must be included to
 // match Tailscale's behavior in the [tailcfg.FilterRule] wire format.
-func (node *Node) AppendToIPSet(build *netipx.IPSetBuilder) {
+func (node *Node) AppendToIPSet(build *ipset.Builder) {
 	if node.IPv4 != nil {
-		build.Add(*node.IPv4)
+		build.AddAddr(*node.IPv4)
 	}
 
 	if node.IPv6 != nil {
-		build.Add(*node.IPv6)
+		build.AddAddr(*node.IPv6)
 	}
 }
 
 // CanAccess reports whether node may reach node2 under the given
-// matchers. A node owns two source identities for ACL purposes:
+// rules. A node owns two source identities for ACL purposes:
 //   - its own IPs (regular peer membership)
 //   - any approved subnet routes it advertises (subnet-router-as-src,
 //     used for subnet-to-subnet ACLs)
@@ -395,8 +377,10 @@ func (node *Node) AppendToIPSet(build *netipx.IPSetBuilder) {
 // Either identity matching a rule's src — combined with the dst
 // matching node2's IPs, node2's approved subnet routes, or "the
 // internet" when node2 is an exit node — grants access.
-func (node *Node) CanAccess(matchers []matcher.Match, node2 *Node) bool {
-	return node.canAccess(matchers, node2, node.SubnetRoutes(), node2.SubnetRoutes(), node2.IsExitNode())
+func (node *Node) CanAccess(rules []packetfilter.Rule, node2 *Node) bool {
+	return node.canAccess(
+		rules, node2, node.SubnetRoutes(), node2.SubnetRoutes(), node2.IsExitNode(),
+	)
 }
 
 // canAccess is [Node.CanAccess] with the snapshot-stable route data supplied by
@@ -404,7 +388,7 @@ func (node *Node) CanAccess(matchers []matcher.Match, node2 *Node) bool {
 // exit-node status once and passes them here, so the O(n^2) pair scan does not
 // recompute them for every pair.
 func (node *Node) canAccess(
-	matchers []matcher.Match,
+	rules []packetfilter.Rule,
 	node2 *Node,
 	srcRoutes, dstRoutes []netip.Prefix,
 	dstIsExit bool,
@@ -412,23 +396,26 @@ func (node *Node) canAccess(
 	src := node.IPs()
 	allowedIPs := node2.IPs()
 
-	for _, m := range matchers {
-		srcMatchesIP := m.SrcsContainsIPs(src...)
-		srcMatchesRoutes := len(srcRoutes) > 0 && m.SrcsOverlapsPrefixes(srcRoutes...)
+	for _, m := range rules {
+		srcMatchesIP := slices.ContainsFunc(src, m.Sources().Contains)
+		srcMatchesRoutes := len(srcRoutes) > 0 &&
+			slices.ContainsFunc(srcRoutes, m.Sources().OverlapsPrefix)
 
 		if !srcMatchesIP && !srcMatchesRoutes {
 			continue
 		}
 
-		if m.DestsContainsIP(allowedIPs...) {
+		if slices.ContainsFunc(allowedIPs, m.DestinationSet().Contains) {
 			return true
 		}
 
-		if len(dstRoutes) > 0 && m.DestsOverlapsPrefixes(dstRoutes...) {
+		if len(dstRoutes) > 0 &&
+			slices.ContainsFunc(dstRoutes, m.DestinationSet().OverlapsPrefix) {
 			return true
 		}
 
-		if dstIsExit && m.DestsIsTheInternet() {
+		if dstIsExit &&
+			(m.DestinationSet().ContainsPrefix(tsaddr.AllIPv4()) || m.DestinationSet().ContainsPrefix(tsaddr.AllIPv6()) || m.DestinationSet().ContainsSet(util.TheInternet())) {
 			return true
 		}
 	}
@@ -437,31 +424,35 @@ func (node *Node) canAccess(
 }
 
 // CanAccessRoute determines whether a specific route prefix should be
-// visible to this node based on the given matchers.
+// visible to this node based on the given rules.
 //
 // Unlike [Node.CanAccess], this function intentionally does NOT check
-// [matcher.Match.DestsIsTheInternet]. Exit routes (0.0.0.0/0, ::/0) are handled by
+// the complete-internet coverage check. Exit routes (0.0.0.0/0, ::/0) are handled by
 // RoutesForPeer (state.go) which adds them unconditionally from
 // [Node.ExitRoutes], not through ACL-based route filtering. The
-// [matcher.Match.DestsIsTheInternet] check in [Node.CanAccess] exists solely for peer
+// the complete-internet coverage check in [Node.CanAccess] exists solely for peer
 // visibility determination (should two nodes see each other), which
 // is a separate concern from route prefix authorization.
 //
 // Additionally, autogroup:internet is explicitly skipped during filter
-// rule compilation (filter.go), so no matchers ever contain "the
+// rule compilation (filter.go), so no rules ever contain "the
 // internet" from internet-targeted ACLs. Wildcard "*" dests produce
-// matchers where [matcher.Match.DestsOverlapsPrefixes](0.0.0.0/0) already returns
+// rules where destination-prefix overlap(0.0.0.0/0) already returns
 // true, so the check would be redundant for that case.
-func (node *Node) CanAccessRoute(matchers []matcher.Match, route netip.Prefix) bool {
+func (node *Node) CanAccessRoute(
+	rules []packetfilter.Rule, route netip.Prefix,
+) bool {
 	src := node.IPs()
 	subnetRoutes := node.SubnetRoutes()
 
-	for _, matcher := range matchers {
-		if matcher.SrcsContainsIPs(src...) && matcher.DestsOverlapsPrefixes(route) {
+	for _, rule := range rules {
+		if slices.ContainsFunc(src, rule.Sources().Contains) &&
+			rule.DestinationSet().OverlapsPrefix(route) {
 			return true
 		}
 
-		if matcher.SrcsOverlapsPrefixes(route) && matcher.DestsContainsIP(src...) {
+		if rule.Sources().OverlapsPrefix(route) &&
+			slices.ContainsFunc(src, rule.DestinationSet().Contains) {
 			return true
 		}
 
@@ -470,16 +461,18 @@ func (node *Node) CanAccessRoute(matchers []matcher.Match, route netip.Prefix) b
 		// and the route overlaps the destination set, the router needs
 		// this route to forward traffic from its local subnet.
 		if len(subnetRoutes) > 0 {
-			if matcher.SrcsOverlapsPrefixes(subnetRoutes...) &&
-				matcher.DestsOverlapsPrefixes(route) {
+			if slices.ContainsFunc(subnetRoutes, rule.Sources().OverlapsPrefix) &&
+				rule.DestinationSet().OverlapsPrefix(route) {
 				return true
 			}
 
 			// Reverse: traffic from the route's subnet is destined for
 			// this node's subnets; the router needs the route for return
 			// traffic.
-			if matcher.SrcsOverlapsPrefixes(route) &&
-				matcher.DestsOverlapsPrefixes(subnetRoutes...) {
+			if rule.Sources().OverlapsPrefix(route) &&
+				slices.ContainsFunc(subnetRoutes,
+					rule.DestinationSet().OverlapsPrefix,
+				) {
 				return true
 			}
 		}
@@ -576,7 +569,9 @@ func (node *Node) SubnetRoutes() []netip.Prefix {
 	var routes []netip.Prefix
 
 	for _, route := range node.AnnouncedRoutes() {
-		if tsaddr.IsExitRoute(route) {
+		// Only canonical routes provide subnet identity, including during
+		// registration and when loading old announcements.
+		if !route.IsValid() || route != route.Masked() || tsaddr.IsExitRoute(route) {
 			continue
 		}
 
@@ -853,7 +848,7 @@ func (nv NodeView) IPs() []netip.Addr {
 	return nv.ж.IPs()
 }
 
-func (nv NodeView) InIPSet(set *netipx.IPSet) bool {
+func (nv NodeView) InIPSet(set ipset.Set) bool {
 	if !nv.Valid() {
 		return false
 	}
@@ -861,18 +856,18 @@ func (nv NodeView) InIPSet(set *netipx.IPSet) bool {
 	return nv.ж.InIPSet(set)
 }
 
-func (nv NodeView) CanAccess(matchers []matcher.Match, node2 NodeView) bool {
+func (nv NodeView) CanAccess(rules []packetfilter.Rule, node2 NodeView) bool {
 	if !nv.Valid() || !node2.Valid() {
 		return false
 	}
 
-	return nv.ж.CanAccess(matchers, node2.ж)
+	return nv.ж.CanAccess(rules, node2.ж)
 }
 
 // CanAccessWithRoutes is [NodeView.CanAccess] with precomputed route data, used
 // by the peer-map build to avoid recomputing each node's routes per pair.
 func (nv NodeView) CanAccessWithRoutes(
-	matchers []matcher.Match,
+	rules []packetfilter.Rule,
 	node2 NodeView,
 	srcRoutes, dstRoutes []netip.Prefix,
 	dstIsExit bool,
@@ -881,15 +876,17 @@ func (nv NodeView) CanAccessWithRoutes(
 		return false
 	}
 
-	return nv.ж.canAccess(matchers, node2.ж, srcRoutes, dstRoutes, dstIsExit)
+	return nv.ж.canAccess(rules, node2.ж, srcRoutes, dstRoutes, dstIsExit)
 }
 
-func (nv NodeView) CanAccessRoute(matchers []matcher.Match, route netip.Prefix) bool {
+func (nv NodeView) CanAccessRoute(
+	rules []packetfilter.Rule, route netip.Prefix,
+) bool {
 	if !nv.Valid() {
 		return false
 	}
 
-	return nv.ж.CanAccessRoute(matchers, route)
+	return nv.ж.CanAccessRoute(rules, route)
 }
 
 func (nv NodeView) AnnouncedRoutes() []netip.Prefix {
@@ -924,7 +921,7 @@ func (nv NodeView) AllApprovedRoutes() []netip.Prefix {
 	return nv.ж.AllApprovedRoutes()
 }
 
-func (nv NodeView) AppendToIPSet(build *netipx.IPSetBuilder) {
+func (nv NodeView) AppendToIPSet(build *ipset.Builder) {
 	if !nv.Valid() {
 		return
 	}
@@ -1200,29 +1197,6 @@ func (nv NodeView) HasPolicyChange(other NodeView) bool {
 	return false
 }
 
-// TailNodes converts a slice of [NodeView] values into Tailscale [tailcfg.Node] values.
-func TailNodes(
-	nodes views.Slice[NodeView],
-	capVer tailcfg.CapabilityVersion,
-	primaryRouteFunc RouteFunc,
-	cfg *Config,
-) ([]*tailcfg.Node, error) {
-	tNodes := make([]*tailcfg.Node, 0, nodes.Len())
-
-	for _, node := range nodes.All() {
-		// nil selfPolicyCaps: this batch builds peer views; the caller
-		// sets each peer's CapMap from [policyv2.PeerCapMap].
-		tNode, err := node.TailNode(capVer, primaryRouteFunc, cfg, nil)
-		if err != nil {
-			return nil, err
-		}
-
-		tNodes = append(tNodes, tNode)
-	}
-
-	return tNodes, nil
-}
-
 // TailNode converts a [NodeView] into a Tailscale [tailcfg.Node].
 //
 // selfPolicyCaps is the per-node CapMap from [policy.PolicyManager.NodeCapMap]
@@ -1232,7 +1206,7 @@ func TailNodes(
 // [policyv2.PeerCapMap]).
 func (nv NodeView) TailNode(
 	capVer tailcfg.CapabilityVersion,
-	primaryRouteFunc RouteFunc,
+	addresses NodeAddresses,
 	cfg *Config,
 	selfPolicyCaps tailcfg.NodeCapMap,
 ) (*tailcfg.Node, error) {
@@ -1253,33 +1227,6 @@ func (nv NodeView) TailNode(
 	var keyExpiry time.Time
 	if nv.Expiry().Valid() {
 		keyExpiry = nv.Expiry().Get()
-	}
-
-	// disable-ipv4 (https://tailscale.com/docs/reference/troubleshooting/network-configuration/cgnat-conflicts)
-	// drops the node's own IPv4 CGNAT prefix from Addresses and from
-	// the AllowedIPs slot the node's own /32 occupies. Advertised
-	// subnet routes -- even IPv4 ones -- survive: routes belong to
-	// the routing layer, not the node's identity. Mirrors the SaaS
-	// captures in testdata/nodeattrs_results/nodeattrs-attr-c1{5,6}-disable-ipv4*.
-	_, ipv4Disabled := selfPolicyCaps[nodeAttrDisableIPv4]
-
-	addresses := nv.Prefixes()
-	if ipv4Disabled {
-		addresses = filterIPv4(addresses)
-	}
-
-	// routeFunc returns ALL routes (subnet + exit) for this node.
-	allRoutes := primaryRouteFunc(nv.ID())
-	allowedIPs := slices.Concat(addresses, allRoutes)
-	slices.SortFunc(allowedIPs, netip.Prefix.Compare)
-
-	// PrimaryRoutes only includes non-exit subnet routes for HA tracking.
-	var primaryRoutes []netip.Prefix
-
-	for _, r := range allRoutes {
-		if !tsaddr.IsExitRoute(r) {
-			primaryRoutes = append(primaryRoutes, r)
-		}
 	}
 
 	// Baseline caps every node receives, regardless of policy. Mirrors
@@ -1314,7 +1261,9 @@ func (nv NodeView) TailNode(
 
 	// Policy nodeAttrs overlay the baseline on the self view. Peers
 	// pass nil; their CapMap is replaced downstream by [policyv2.PeerCapMap].
-	maps.Copy(capMap, selfPolicyCaps)
+	for cap, values := range selfPolicyCaps {
+		capMap[cap] = slices.Clone(values)
+	}
 
 	tNode := tailcfg.Node{
 		//nolint:gosec // G115: NodeID values are within int64 range
@@ -1331,9 +1280,9 @@ func (nv NodeView) TailNode(
 
 		Machine:       nv.MachineKey(),
 		DiscoKey:      nv.DiscoKey(),
-		Addresses:     addresses,
-		PrimaryRoutes: primaryRoutes,
-		AllowedIPs:    allowedIPs,
+		Addresses:     slices.Clone(addresses.Addresses),
+		PrimaryRoutes: slices.Clone(addresses.PrimaryRoutes),
+		AllowedIPs:    slices.Clone(addresses.AllowedIPs),
 		Endpoints:     nv.Endpoints().AsSlice(),
 		HomeDERP:      derp,
 		Hostinfo:      nv.Hostinfo(),

@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/netip"
 	"reflect"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
@@ -34,8 +36,8 @@ func TestSnapshotFromNodes(t *testing.T) {
 			name: "empty nodes",
 			setupFunc: func() (map[types.NodeID]types.Node, PeersFunc) {
 				nodes := make(map[types.NodeID]types.Node)
-				peersFunc := func(nodes []types.NodeView) map[types.NodeID][]types.NodeID {
-					return make(map[types.NodeID][]types.NodeID)
+				peersFunc := func(nodes []types.NodeView) (policy.ReadView, map[types.NodeID][]types.NodeID, error) {
+					return testPolicyReadView, make(map[types.NodeID][]types.NodeID), nil
 				}
 
 				return nodes, peersFunc
@@ -165,9 +167,101 @@ func TestSnapshotFromNodes(t *testing.T) {
 	}
 }
 
+func TestSnapshotPublicationOrderAndPeerOwnership(t *testing.T) {
+	t.Parallel()
+
+	nodes := make(types.Nodes, 32)
+
+	wantIDs := make([]types.NodeID, len(nodes))
+	for i := range nodes {
+		id := types.NodeID(len(nodes) - i) //nolint:gosec // IDs are bounded to [1, 32].
+		node := createTestNode(id, 1, "user1", fmt.Sprintf("node%d", id))
+		nodes[i] = &node
+		wantIDs[i] = types.NodeID(i + 1)
+	}
+
+	wantPeers := wantIDs[1:]
+	wantBorrowed := slices.Clone(wantPeers)
+	slices.Reverse(wantBorrowed)
+
+	var borrowed []types.NodeID
+
+	peersFunc := func(
+		nodes []types.NodeView,
+	) (policy.ReadView, map[types.NodeID][]types.NodeID, error) {
+		ids := make([]types.NodeID, len(nodes))
+		for i, node := range nodes {
+			ids[i] = node.ID()
+		}
+
+		assert.Equal(t, wantIDs, ids, "policy inputs must follow publication order")
+
+		view, peers, err := allowAllPeersFunc(nodes)
+		for _, ids := range peers {
+			slices.Sort(ids)
+			slices.Reverse(ids)
+		}
+
+		borrowed = peers[1]
+
+		return view, peers, err
+	}
+
+	store := NewNodeStore(nodes, peersFunc, TestBatchSize, TestBatchTimeout)
+	store.Start()
+	t.Cleanup(store.Stop)
+	s := &State{nodeStore: store}
+
+	check := func() MapView {
+		t.Helper()
+
+		snapshot := store.data.Load()
+
+		ids := make([]types.NodeID, len(snapshot.allNodes))
+		for i, node := range snapshot.allNodes {
+			ids[i] = node.ID()
+		}
+
+		require.Equal(t, wantIDs, ids)
+		require.Equal(t, wantBorrowed, borrowed,
+			"sorting must not mutate a borrowed peer slice")
+
+		view, err := s.MapView(1)
+		require.NoError(t, err)
+		require.Equal(t, wantPeers, view.PeerIDs())
+		require.Equal(t, wantPeers, store.ListPeerIDs(1))
+
+		for _, ids := range snapshot.peersByNode {
+			require.True(t, slices.IsSorted(ids))
+		}
+
+		ids = store.ListPeerIDs(1)
+		ids[0] = 999
+
+		require.Equal(t, wantPeers, store.ListPeerIDs(1),
+			"public getters must own their results")
+
+		return view
+	}
+
+	before := check()
+
+	store.RebuildPeerMaps()
+	check()
+
+	_, err := store.SetGivenName(1, "renamed")
+	require.NoError(t, err)
+
+	after := check()
+	require.Equal(t, "renamed", after.Viewer().GivenName())
+	require.Equal(t, "node1", before.Viewer().GivenName())
+	require.Equal(t, wantPeers, before.PeerIDs())
+}
+
 // Helper functions
 
-func createTestNode(nodeID types.NodeID, userID uint, username, hostname string) types.Node {
+func createTestNode(nodeID types.NodeID, userID uint, username, hostname string,
+) types.Node {
 	now := time.Now()
 	machineKey := key.NewMachine()
 	nodeKey := key.NewNode()
@@ -196,9 +290,50 @@ func createTestNode(nodeID types.NodeID, userID uint, username, hostname string)
 	}
 }
 
+func TestNodeStoreUpdatePreservesCapturedNestedFields(t *testing.T) {
+	node := createTestNode(1, 1, "user1", "node1")
+	node.Hostinfo = &tailcfg.Hostinfo{
+		RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")},
+		NetInfo:     &tailcfg.NetInfo{PreferredDERP: 1},
+	}
+	node.Endpoints = []netip.AddrPort{netip.MustParseAddrPort("192.0.2.1:1234")}
+	node.Tags = []string{"tag:old"}
+	node.ApprovedRoutes = slices.Clone(node.Hostinfo.RoutableIPs)
+	store := NewNodeStore(types.Nodes{&node}, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+
+	store.Start()
+	defer store.Stop()
+
+	before, ok := store.GetNode(1)
+	require.True(t, ok)
+
+	want := before.AsStruct()
+
+	store.UpdateNode(1, func(n *types.Node) {
+		n.Hostinfo.RoutableIPs[0] = netip.MustParsePrefix("10.1.0.0/24")
+		n.Hostinfo.NetInfo.PreferredDERP = 2
+		n.Endpoints[0] = netip.MustParseAddrPort("192.0.2.2:4321")
+		n.Tags[0] = "tag:new"
+		n.ApprovedRoutes[0] = netip.MustParsePrefix("10.1.0.0/24")
+		*n.IPv4 = netip.MustParseAddr("100.64.0.9")
+	})
+
+	require.Equal(t, want, before.AsStruct(), "update closures must never mutate a retained snapshot")
+}
+
 // Peer functions
 
-func allowAllPeersFunc(nodes []types.NodeView) map[types.NodeID][]types.NodeID {
+// Synthetic adjacency tests need a valid generation to exercise snapshot reuse.
+var testPolicyReadView = func() policy.ReadView {
+	pm, err := policy.NewPolicyManager(nil, nil, views.SliceOf([]types.NodeView{}))
+	if err != nil {
+		panic(err)
+	}
+
+	return pm.ReadView()
+}()
+
+func allowAllPeersFunc(nodes []types.NodeView) (policy.ReadView, map[types.NodeID][]types.NodeID, error) {
 	ret := make(map[types.NodeID][]types.NodeID, len(nodes))
 	for _, node := range nodes {
 		var peers []types.NodeID
@@ -212,10 +347,10 @@ func allowAllPeersFunc(nodes []types.NodeView) map[types.NodeID][]types.NodeID {
 		ret[node.ID()] = peers
 	}
 
-	return ret
+	return testPolicyReadView, ret, nil
 }
 
-func oddEvenPeersFunc(nodes []types.NodeView) map[types.NodeID][]types.NodeID {
+func oddEvenPeersFunc(nodes []types.NodeView) (policy.ReadView, map[types.NodeID][]types.NodeID, error) {
 	ret := make(map[types.NodeID][]types.NodeID, len(nodes))
 	for _, node := range nodes {
 		var peers []types.NodeID
@@ -238,7 +373,7 @@ func oddEvenPeersFunc(nodes []types.NodeView) map[types.NodeID][]types.NodeID {
 		ret[node.ID()] = peers
 	}
 
-	return ret
+	return testPolicyReadView, ret, nil
 }
 
 func TestNodeStoreOperations(t *testing.T) {
@@ -1072,7 +1207,8 @@ func TestNodeStoreResourceCleanup(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		finalGoroutines := runtime.NumGoroutine()
 		assert.LessOrEqual(c, finalGoroutines, afterStartGoroutines+2,
-			"Potential goroutine leak: started with %d, ended with %d", afterStartGoroutines, finalGoroutines)
+			"Potential goroutine leak: started with %d, ended with %d", afterStartGoroutines, finalGoroutines,
+		)
 	}, time.Second, 10*time.Millisecond, "goroutines should not leak")
 }
 
@@ -1233,7 +1369,7 @@ func TestRebuildPeerMapsWithChangedPeersFunc(t *testing.T) {
 
 	// This simulates how PolicyManager.BuildPeerMap works - it reads state
 	// that can change between calls
-	dynamicPeersFunc := func(nodes []types.NodeView) map[types.NodeID][]types.NodeID {
+	dynamicPeersFunc := func(nodes []types.NodeView) (policy.ReadView, map[types.NodeID][]types.NodeID, error) {
 		ret := make(map[types.NodeID][]types.NodeID, len(nodes))
 		if allowPeers {
 			// Allow all peers
@@ -1255,7 +1391,7 @@ func TestRebuildPeerMapsWithChangedPeersFunc(t *testing.T) {
 			}
 		}
 
-		return ret
+		return testPolicyReadView, ret, nil
 	}
 
 	// Create nodes
@@ -1380,7 +1516,7 @@ func TestGetNodesByMachineKeyAllUsers(t *testing.T) {
 func TestPeerIrrelevantWriteReusesPeerMap(t *testing.T) {
 	var peersCalls atomic.Int64
 
-	countingPeersFunc := func(nodes []types.NodeView) map[types.NodeID][]types.NodeID {
+	countingPeersFunc := func(nodes []types.NodeView) (policy.ReadView, map[types.NodeID][]types.NodeID, error) {
 		peersCalls.Add(1)
 
 		return allowAllPeersFunc(nodes)
@@ -1423,7 +1559,8 @@ func TestPeerIrrelevantWriteReusesPeerMap(t *testing.T) {
 
 	require.Equalf(t, int64(0), peersCalls.Load(),
 		"payload/index-only writes must not recompute the peer map, got %d recomputations",
-		peersCalls.Load())
+		peersCalls.Load(),
+	)
 
 	_, ok = store.UpdateNode(1, func(n *types.Node) {
 		n.User = nil
@@ -1438,7 +1575,7 @@ func TestPeerIrrelevantWriteReusesPeerMap(t *testing.T) {
 func TestHealthOnlyWriteReusesPeerMap(t *testing.T) {
 	var peersCalls atomic.Int64
 
-	countingPeersFunc := func(nodes []types.NodeView) map[types.NodeID][]types.NodeID {
+	countingPeersFunc := func(nodes []types.NodeView) (policy.ReadView, map[types.NodeID][]types.NodeID, error) {
 		peersCalls.Add(1)
 
 		return allowAllPeersFunc(nodes)
@@ -1516,6 +1653,167 @@ func TestPrimaryRoutesForNodeSorted(t *testing.T) {
 	for range 20 {
 		require.Equal(t, prefixes, store.PrimaryRoutesForNode(1))
 	}
+}
+
+func TestElectPrimaryRoutesIndexesFinalAssignments(t *testing.T) {
+	parent := mp("10.0.0.0/8")
+	child := mp("10.1.0.0/16")
+	unmasked := mp("10.1.2.3/16")
+	mapped := mp("::ffff:10.1.0.0/112")
+	ipv6 := mp("fd00::/64")
+
+	tests := []struct {
+		name       string
+		unhealthy1 bool
+		unhealthy2 bool
+		offline1   bool
+		previous   map[netip.Prefix]types.NodeID
+		wantRoutes map[netip.Prefix]types.NodeID
+		wantByNode map[types.NodeID][]netip.Prefix
+	}{
+		{
+			name:     "exact prefixes and independent parent and child",
+			previous: map[netip.Prefix]types.NodeID{child: 2},
+			wantRoutes: map[netip.Prefix]types.NodeID{
+				parent: 1, child: 2, mapped: 1, ipv6: 1,
+			},
+			wantByNode: map[types.NodeID][]netip.Prefix{
+				1: {parent, mapped, ipv6},
+				2: {child},
+			},
+		},
+		{
+			name:       "failover uses final assignments",
+			unhealthy1: true,
+			previous: map[netip.Prefix]types.NodeID{
+				parent: 1, child: 1, unmasked: 1, mapped: 1, ipv6: 1,
+			},
+			wantRoutes: map[netip.Prefix]types.NodeID{
+				parent: 1, child: 2, mapped: 1, ipv6: 1,
+			},
+			wantByNode: map[types.NodeID][]netip.Prefix{
+				1: {parent, mapped, ipv6},
+				2: {child},
+			},
+		},
+		{
+			name:       "all unhealthy retains only eligible previous primaries",
+			unhealthy1: true,
+			unhealthy2: true,
+			previous:   map[netip.Prefix]types.NodeID{parent: 1, child: 2, mapped: 99, unmasked: 1},
+			wantRoutes: map[netip.Prefix]types.NodeID{parent: 1, child: 2},
+			wantByNode: map[types.NodeID][]netip.Prefix{1: {parent}, 2: {child}},
+		},
+		{
+			name:       "all unhealthy without previous primaries",
+			unhealthy1: true,
+			unhealthy2: true,
+			wantRoutes: map[netip.Prefix]types.NodeID{},
+			wantByNode: map[types.NodeID][]netip.Prefix{},
+		},
+		{
+			name:       "offline primary loses all assignments",
+			offline1:   true,
+			previous:   map[netip.Prefix]types.NodeID{parent: 1, child: 1},
+			wantRoutes: map[netip.Prefix]types.NodeID{child: 2},
+			wantByNode: map[types.NodeID][]netip.Prefix{2: {child}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			prefixes := []netip.Prefix{
+				ipv6, mapped, unmasked, child, parent, child,
+				mp("0.0.0.0/0"), mp("::/0"),
+			}
+			nodes := map[types.NodeID]types.Node{
+				1: {
+					ID:             1,
+					IsOnline:       new(!tt.offline1),
+					Unhealthy:      tt.unhealthy1,
+					Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: prefixes},
+					ApprovedRoutes: prefixes,
+				},
+				2: {
+					ID:             2,
+					IsOnline:       new(true),
+					Unhealthy:      tt.unhealthy2,
+					Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{child}},
+					ApprovedRoutes: []netip.Prefix{child},
+				},
+			}
+
+			routes, byNode := electPrimaryRoutes(nodes, tt.previous)
+			require.Equal(t, tt.wantRoutes, routes)
+			require.Equal(t, tt.wantByNode, byNode)
+		})
+	}
+}
+
+func TestPrimaryRoutesForNodeSnapshotIsolation(t *testing.T) {
+	f := newPrimariesFixture(t, 1, 2, 3)
+	parent := mp("10.0.0.0/8")
+	child := mp("10.1.0.0/16")
+	mapped := mp("::ffff:10.1.0.0/112")
+	want := []netip.Prefix{parent, child, mapped}
+	f.advertise(1, mapped, child, parent, child)
+	f.advertise(2, child)
+
+	before := f.ns.data.Load()
+	oldStore := &NodeStore{}
+	oldStore.data.Store(before)
+
+	got := f.ns.PrimaryRoutesForNode(1)
+	require.Equal(t, want, got)
+	got[0] = mp("192.0.2.0/24")
+	got = append(got, mp("2001:db8::/32"))
+	require.Len(t, got, 4)
+	require.Equal(t, want, f.ns.PrimaryRoutesForNode(1))
+	require.Equal(t, want, oldStore.PrimaryRoutesForNode(1))
+	require.Nil(t, f.ns.PrimaryRoutesForNode(2))
+	require.Nil(t, f.ns.PrimaryRoutesForNode(3))
+	require.Nil(t, f.ns.PrimaryRoutesForNode(99))
+
+	_, ok := f.ns.UpdateNode(1, func(n *types.Node) {
+		n.LastSeen = new(time.Now())
+	})
+	require.True(t, ok)
+
+	reused := f.ns.data.Load()
+	require.NotSame(t, before, reused)
+	require.Equal(t, before.routes, reused.routes)
+	require.Equal(t, before.primaryRoutesByNode, reused.primaryRoutesByNode)
+	require.Same(t, &before.primaryRoutesByNode[1][0], &reused.primaryRoutesByNode[1][0])
+	require.Equal(t, want, f.ns.PrimaryRoutesForNode(1))
+
+	reusedStore := &NodeStore{}
+	reusedStore.data.Store(reused)
+	got = reusedStore.PrimaryRoutesForNode(1)
+	got[0] = mp("198.51.100.0/24")
+
+	require.Equal(t, want, oldStore.PrimaryRoutesForNode(1))
+	require.Equal(t, want, f.ns.PrimaryRoutesForNode(1))
+
+	f.unhealthy(1)
+	f.requirePrimary(parent, 1)
+	f.requirePrimary(child, 2)
+	f.requirePrimary(mapped, 1)
+	require.Equal(t, []netip.Prefix{parent, mapped}, f.ns.PrimaryRoutesForNode(1))
+	require.Equal(t, []netip.Prefix{child}, f.ns.PrimaryRoutesForNode(2))
+	require.Equal(t, want, oldStore.PrimaryRoutesForNode(1))
+	require.Equal(t, want, reusedStore.PrimaryRoutesForNode(1))
+
+	primary, ok := oldStore.PrimaryRouteFor(child)
+	require.True(t, ok)
+	require.Equal(t, types.NodeID(1), primary)
+
+	f.disconnect(1)
+	require.Nil(t, f.ns.PrimaryRoutesForNode(1))
+	f.requireNoPrimary(parent)
+	f.requireNoPrimary(mapped)
+	f.requirePrimary(child, 2)
+	require.Equal(t, want, oldStore.PrimaryRoutesForNode(1))
+	require.Equal(t, want, reusedStore.PrimaryRoutesForNode(1))
 }
 
 func BenchmarkSnapshotPayloadDense(b *testing.B) {
@@ -1624,7 +1922,7 @@ func TestUpdateNodeRecomputesPeersOnlyForRelationInputs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var peersCalls atomic.Int64
 
-			countingPeersFunc := func(nodes []types.NodeView) map[types.NodeID][]types.NodeID {
+			countingPeersFunc := func(nodes []types.NodeView) (policy.ReadView, map[types.NodeID][]types.NodeID, error) {
 				peersCalls.Add(1)
 
 				return allowAllPeersFunc(nodes)
@@ -1733,7 +2031,8 @@ type fatalfer interface {
 
 // nodeStoreWithPolicy builds a [NodeStore] whose [PeersFunc] runs a real
 // [policyv2.PolicyManager], mirroring how [State] wires the two together.
-func nodeStoreWithPolicy(t fatalfer, pol string, users []types.User, nodes types.Nodes) (*NodeStore, *policyv2.PolicyManager) {
+func nodeStoreWithPolicy(t fatalfer, pol string, users []types.User, nodes types.Nodes,
+) (*NodeStore, *policyv2.PolicyManager) {
 	pm, err := policyv2.NewPolicyManager([]byte(pol), users, nodes.ViewSlice())
 	if err != nil {
 		t.Fatalf("policy: %v", err)
@@ -1766,7 +2065,8 @@ func syncPolicy(t fatalfer, store *NodeStore, pm *policyv2.PolicyManager) {
 // the same nodes. The fresh manager keeps the oracle independent of the
 // one the NodeStore writer updates. Divergence means the store served
 // stale adjacency.
-func checkAdjacencyMatchesFullBuild(t fatalfer, store *NodeStore, pol string, users []types.User) {
+func checkAdjacencyMatchesFullBuild(t fatalfer, store *NodeStore, pol string, users []types.User,
+) {
 	snap := store.data.Load()
 	nodes := views.SliceOf(snap.allNodes)
 
@@ -2059,7 +2359,7 @@ func BenchmarkNodeStoreWrite(b *testing.B) {
 			require.NoError(b, err)
 
 			inner := policyPeersFunc(pm)
-			peersFunc := func(ns []types.NodeView) map[types.NodeID][]types.NodeID {
+			peersFunc := func(ns []types.NodeView) (policy.ReadView, map[types.NodeID][]types.NodeID, error) {
 				calls.Add(1)
 
 				return inner(ns)
@@ -2106,11 +2406,12 @@ func countStatePeerBuilds(t *testing.T, s *State) *atomic.Int64 {
 	var calls atomic.Int64
 
 	inner := policyPeersFunc(s.polMan)
-	s.nodeStore = NewNodeStore(nodes, func(ns []types.NodeView) map[types.NodeID][]types.NodeID {
+	s.nodeStore = NewNodeStore(nodes, func(ns []types.NodeView) (policy.ReadView, map[types.NodeID][]types.NodeID, error) {
 		calls.Add(1)
 
 		return inner(ns)
-	}, TestBatchSize, TestBatchTimeout)
+	}, TestBatchSize, TestBatchTimeout,
+	)
 	s.nodeStore.Start()
 
 	calls.Store(0)
@@ -2182,22 +2483,26 @@ func TestStatePolicyWriteBuildsPeersOnce(t *testing.T) {
 		name  string
 		write func(t *testing.T, s *State, id types.NodeID) change.Change
 	}{
-		{name: "tag", write: func(t *testing.T, s *State, id types.NodeID) change.Change {
-			t.Helper()
+		{
+			name: "tag", write: func(t *testing.T, s *State, id types.NodeID) change.Change {
+				t.Helper()
 
-			_, c, err := s.SetNodeTags(id, []string{"tag:a"})
-			require.NoError(t, err)
+				_, c, err := s.SetNodeTags(id, []string{"tag:a"})
+				require.NoError(t, err)
 
-			return c
-		}},
-		{name: "route", write: func(t *testing.T, s *State, id types.NodeID) change.Change {
-			t.Helper()
+				return c
+			},
+		},
+		{
+			name: "route", write: func(t *testing.T, s *State, id types.NodeID) change.Change {
+				t.Helper()
 
-			_, c, err := s.SetApprovedRoutes(id, []netip.Prefix{netip.MustParsePrefix("10.55.0.0/24")})
-			require.NoError(t, err)
+				_, c, err := s.SetApprovedRoutes(id, []netip.Prefix{netip.MustParsePrefix("10.55.0.0/24")})
+				require.NoError(t, err)
 
-			return c
-		}},
+				return c
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -2244,7 +2549,8 @@ func TestStateConcurrentTagWritesEachReportPolicyChange(t *testing.T) {
 		for i := range 2 {
 			require.NoError(t, errs[i])
 			require.True(t, changes[i].RequiresRuntimePeerComputation,
-				"round %d writer %d: %s must report a policy change", round, i, changes[i].Type())
+				"round %d writer %d: %s must report a policy change", round, i, changes[i].Type(),
+			)
 			require.Equal(t, ids[1+i], changes[i].OriginNode, "round %d writer %d", round, i)
 		}
 
@@ -2274,7 +2580,7 @@ func TestPolicyWriteReportsAfterPublish(t *testing.T) {
 	)
 
 	inner := policyPeersFunc(s.polMan)
-	s.nodeStore = NewNodeStore(nodes, func(ns []types.NodeView) map[types.NodeID][]types.NodeID {
+	s.nodeStore = NewNodeStore(nodes, func(ns []types.NodeView) (policy.ReadView, map[types.NodeID][]types.NodeID, error) {
 		if armed.CompareAndSwap(true, false) {
 			_, err := s.polMan.SetNodes(views.SliceOf(ns))
 			assert.NoError(t, err)
@@ -2283,7 +2589,8 @@ func TestPolicyWriteReportsAfterPublish(t *testing.T) {
 		}
 
 		return inner(ns)
-	}, TestBatchSize, TestBatchTimeout)
+	}, TestBatchSize, TestBatchTimeout,
+	)
 	s.nodeStore.Start()
 
 	other := s.polMan.NodesGeneration()
@@ -2352,6 +2659,8 @@ func TestBackfillNodeIPsReportsPolicyChange(t *testing.T) {
 // written node's old view can ask for its filter or SSH policy then. The
 // answer for that old view must not be cached under the node's ID, or
 // the node keeps it after the swap, since nothing invalidates it again.
+var errCapturedPolicyDuringBuild = errors.New("captured policy changed during peer map build")
+
 func TestPolicyCachesSurviveOldViewDuringBuild(t *testing.T) {
 	users := []types.User{{ID: 1, Name: "u1"}, {ID: 2, Name: "u2"}}
 	subnet := netip.MustParsePrefix("10.33.0.0/24")
@@ -2368,7 +2677,7 @@ func TestPolicyCachesSurviveOldViewDuringBuild(t *testing.T) {
 		// probe reports a property of node 1's cached artefact that the
 		// write flips from !want to want. It takes no *testing.T because it
 		// also runs on the NodeStore writer, where FailNow would hang.
-		probe func(pm *policyv2.PolicyManager, view types.NodeView) (bool, error)
+		probe func(pm policyv2.ReadView, view types.NodeView) (bool, error)
 		want  bool
 	}{
 		{
@@ -2377,15 +2686,15 @@ func TestPolicyCachesSurviveOldViewDuringBuild(t *testing.T) {
 				n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{subnet}}
 				n.ApprovedRoutes = []netip.Prefix{subnet}
 			},
-			probe: func(pm *policyv2.PolicyManager, view types.NodeView) (bool, error) {
-				rules, err := pm.FilterForNode(view)
+			probe: func(pm policyv2.ReadView, view types.NodeView) (bool, error) {
+				rules, err := pm.PacketRulesForNode(view)
 				if err != nil {
 					return false, err
 				}
 
 				for _, r := range rules {
-					for _, d := range r.DstPorts {
-						if d.IP == subnet.String() {
+					for d := range r.Destinations() {
+						if d.Addresses.ContainsPrefix(subnet) {
 							return true, nil
 						}
 					}
@@ -2403,7 +2712,7 @@ func TestPolicyCachesSurviveOldViewDuringBuild(t *testing.T) {
 				n.Tags = []string{"tag:srv"}
 				n.UserID, n.User = nil, nil
 			},
-			probe: func(pm *policyv2.PolicyManager, view types.NodeView) (bool, error) {
+			probe: func(pm policyv2.ReadView, view types.NodeView) (bool, error) {
 				sshPol, err := pm.SSHPolicy("", view)
 				if err != nil {
 					return false, err
@@ -2439,14 +2748,20 @@ func TestPolicyCachesSurviveOldViewDuringBuild(t *testing.T) {
 				buildErr atomic.Pointer[error]
 			)
 
+			captured := pm.ReadView()
 			inner := policyPeersFunc(pm)
-			store := NewNodeStore(nodes, func(ns []types.NodeView) map[types.NodeID][]types.NodeID {
+			store := NewNodeStore(nodes, func(ns []types.NodeView) (policy.ReadView, map[types.NodeID][]types.NodeID, error) {
 				// Stand in for a mapper that read the snapshot just before
 				// this write and asks between SetNodes and the swap.
 				if v := oldView.Load(); v != nil {
 					_, err := pm.SetNodes(views.SliceOf(ns))
 					if err == nil {
-						_, err = tt.probe(pm, *v)
+						var got bool
+
+						got, err = tt.probe(captured, *v)
+						if err == nil && got == tt.want {
+							err = errCapturedPolicyDuringBuild
+						}
 					}
 
 					if err != nil {
@@ -2455,7 +2770,8 @@ func TestPolicyCachesSurviveOldViewDuringBuild(t *testing.T) {
 				}
 
 				return inner(ns)
-			}, TestBatchSize, TestBatchTimeout)
+			}, TestBatchSize, TestBatchTimeout,
+			)
 			store.Start()
 
 			defer store.Stop()
@@ -2463,7 +2779,7 @@ func TestPolicyCachesSurviveOldViewDuringBuild(t *testing.T) {
 			before, ok := store.GetNode(1)
 			require.True(t, ok)
 
-			got, err := tt.probe(pm, before)
+			got, err := tt.probe(captured, before)
 			require.NoError(t, err)
 			require.NotEqual(t, tt.want, got, "precondition: the write must flip the probed artefact")
 
@@ -2477,7 +2793,7 @@ func TestPolicyCachesSurviveOldViewDuringBuild(t *testing.T) {
 				require.NoError(t, *e, "probe during peer map build")
 			}
 
-			got, err = tt.probe(pm, after)
+			got, err = tt.probe(pm.ReadView(), after)
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got, "cached artefact must reflect the written node")
 		})
@@ -2514,7 +2830,7 @@ func nodeKeyIndexMismatch(snap *Snapshot) string {
 func TestNodeStoreNodeKeyIndexMatchesNodes(t *testing.T) {
 	var peersCalls atomic.Int64
 
-	countingPeersFunc := func(nodes []types.NodeView) map[types.NodeID][]types.NodeID {
+	countingPeersFunc := func(nodes []types.NodeView) (policy.ReadView, map[types.NodeID][]types.NodeID, error) {
 		peersCalls.Add(1)
 
 		return allowAllPeersFunc(nodes)
@@ -2617,4 +2933,38 @@ func TestNodeStoreNodeKeyIndexMatchesNodes(t *testing.T) {
 	}
 
 	require.Empty(t, nodeKeyIndexMismatch(store.data.Load()))
+}
+
+func TestNodeStoreOwnsPublishedNodeInputs(t *testing.T) {
+	for _, put := range []bool{false, true} {
+		t.Run(fmt.Sprintf("put=%v", put), func(t *testing.T) {
+			n := createTestNode(1, 1, "u", "n")
+			n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")}}
+			n.Tags = []string{"tag:a"}
+
+			var initial types.Nodes
+			if !put {
+				initial = types.Nodes{&n}
+			}
+
+			store := NewNodeStore(initial, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+
+			store.Start()
+			defer store.Stop()
+
+			if put {
+				store.PutNode(n)
+			}
+
+			captured, ok := store.GetNode(1)
+			require.True(t, ok)
+
+			want := captured.AsStruct()
+			n.Hostinfo.RoutableIPs[0] = netip.MustParsePrefix("10.1.0.0/24")
+			n.Tags[0] = "tag:b"
+			*n.IPv4 = netip.MustParseAddr("100.64.0.99")
+
+			require.Equal(t, want, captured.AsStruct())
+		})
+	}
 }

@@ -9,7 +9,6 @@ import (
 	"strings"
 	"unicode"
 
-	"go4.org/netipx"
 	"tailscale.com/util/dnsname"
 )
 
@@ -94,9 +93,15 @@ func ValidateUsername(username string) error {
 // From the netmask we can find out the wildcard bits (the bits that are not set in the netmask).
 // This allows us to then calculate the subnets included in the subsequent class block and generate the entries.
 func GenerateIPv4DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
-	// Conversion to the std lib [net.IPNet], a bit easier to operate
-	netRange := netipx.PrefixIPNet(ipPrefix)
-	maskBits, _ := netRange.Mask.Size()
+	if !ipPrefix.IsValid() || !ipPrefix.Addr().Is4() {
+		return nil
+	}
+
+	ipPrefix = ipPrefix.Masked()
+
+	// Use the address bytes and prefix length directly.
+	ipBytes := ipPrefix.Addr().AsSlice()
+	maskBits := ipPrefix.Bits()
 
 	// lastOctet is the last IP byte covered by the mask
 	lastOctet := maskBits / ByteSize
@@ -107,9 +112,9 @@ func GenerateIPv4DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	// A mask covering the full address width (an IPv4 /32) leaves no wildcard
 	// octet, so lastOctet would index past the address. Emit the single
 	// reverse-DNS name for that exact address instead of panicking.
-	if lastOctet >= len(netRange.IP) {
-		rdnsSlice := make([]string, 0, len(netRange.IP)+1)
-		for _, v := range slices.Backward(netRange.IP) {
+	if lastOctet >= len(ipBytes) {
+		rdnsSlice := make([]string, 0, len(ipBytes)+1)
+		for _, v := range slices.Backward(ipBytes) {
 			rdnsSlice = append(rdnsSlice, strconv.FormatUint(uint64(v), 10))
 		}
 
@@ -125,12 +130,12 @@ func GenerateIPv4DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 
 	// minVal is the value in the lastOctet byte of the IP
 	// maxVal is basically 2^wildcardBits - i.e., the value when all the wildcardBits are set to 1
-	minVal := uint(netRange.IP[lastOctet])
+	minVal := uint(ipBytes[lastOctet])
 	maxVal := (minVal + 1<<uint(wildcardBits)) - 1 //nolint:gosec // wildcardBits is always < 8, no overflow
 
 	// here we generate the base domain (e.g., 100.in-addr.arpa., 16.172.in-addr.arpa., etc.)
 	rdnsSlice := []string{}
-	for _, b := range slices.Backward(netRange.IP[:lastOctet]) {
+	for _, b := range slices.Backward(ipBytes[:lastOctet]) {
 		rdnsSlice = append(rdnsSlice, strconv.FormatUint(uint64(b), 10))
 	}
 
@@ -156,7 +161,12 @@ func GenerateIPv4DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 func GenerateIPv6DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	const nibbleLen = 4
 
-	maskBits, _ := netipx.PrefixIPNet(ipPrefix).Mask.Size()
+	if !ipPrefix.IsValid() || !ipPrefix.Addr().Is6() {
+		return nil
+	}
+
+	ipPrefix = ipPrefix.Masked()
+	maskBits := ipPrefix.Bits()
 	expanded := ipPrefix.Addr().StringExpanded()
 	nibbleStr := strings.ReplaceAll(expanded, ":", "")
 
@@ -183,11 +193,14 @@ func GenerateIPv6DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 		dom, _ := makeDomain()
 		fqdns = append(fqdns, dom)
 	} else {
-		domCount := 1 << (maskBits % nibbleLen)
+		domCount := 1 << (nibbleLen - maskBits%nibbleLen)
+		firstNibble, _ := strconv.ParseUint(
+			string(nibbleStr[maskBits/nibbleLen]), 16, nibbleLen,
+		)
 
 		fqdns = make([]dnsname.FQDN, 0, domCount)
 		for i := range domCount {
-			varNibble := fmt.Sprintf("%x", i)
+			varNibble := strconv.FormatUint(firstNibble+uint64(i), 16)
 
 			dom, err := makeDomain(varNibble)
 			if err != nil {

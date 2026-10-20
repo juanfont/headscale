@@ -2713,7 +2713,7 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 					aliasWithPorts(tagp("tag:webserver"), tailcfg.PortRangeAny),
 					aliasWithPorts(tagp("tag:sshonly"), tailcfg.PortRangeAny),
 				},
-				Protocol: "icmp",
+				Protocol: policyv2.ProtocolNameICMP,
 			},
 			// Return path
 			{

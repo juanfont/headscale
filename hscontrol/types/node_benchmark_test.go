@@ -5,7 +5,6 @@ import (
 	"net/netip"
 	"testing"
 
-	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"tailscale.com/tailcfg"
 )
 
@@ -26,7 +25,7 @@ func BenchmarkNodeViewCanAccess(b *testing.B) {
 			},
 		},
 	}
-	matchers := matcher.MatchesFromFilterRules(rules)
+	matchers := testPacketRules(rules)
 
 	derpLatency := make(map[string]float64, 256)
 	for i := range 128 {

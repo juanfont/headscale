@@ -266,12 +266,12 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, node types.NodeView) {
 //
 //nolint:unused
 func (m *mapper) fullMapResponse(
-	nodeID types.NodeID,
+	view state.MapView,
 	capVer tailcfg.CapabilityVersion,
 ) (*tailcfg.MapResponse, error) {
-	peers := m.state.ListPeers(nodeID)
+	peers := view.Peers()
 
-	return m.NewMapResponseBuilder(nodeID).
+	return m.NewMapResponseBuilder(view).
 		WithDebugType(fullResponseDebug).
 		WithCapabilityVersion(capVer).
 		WithSelfNode().
@@ -288,10 +288,10 @@ func (m *mapper) fullMapResponse(
 }
 
 func (m *mapper) selfMapResponse(
-	nodeID types.NodeID,
+	view state.MapView,
 	capVer tailcfg.CapabilityVersion,
 ) (*tailcfg.MapResponse, error) {
-	ma, err := m.NewMapResponseBuilder(nodeID).
+	ma, err := m.NewMapResponseBuilder(view).
 		WithDebugType(selfResponseDebug).
 		WithCapabilityVersion(capVer).
 		WithSelfNode().
@@ -324,11 +324,11 @@ func (m *mapper) selfMapResponse(
 // This avoids the issue where an empty Peers slice is interpreted by Tailscale
 // clients as "no change" rather than "no peers".
 func (m *mapper) policyChangeResponse(
-	nodeID types.NodeID,
+	view state.MapView,
 	capVer tailcfg.CapabilityVersion,
-	currentPeers views.Slice[types.NodeView],
 ) (*tailcfg.MapResponse, error) {
-	builder := m.NewMapResponseBuilder(nodeID).
+	currentPeers := view.Peers()
+	builder := m.NewMapResponseBuilder(view).
 		WithDebugType(policyResponseDebug).
 		WithCapabilityVersion(capVer).
 		WithPacketFilters().
@@ -350,7 +350,7 @@ func (m *mapper) policyChangeResponse(
 // buildFromChange builds a [tailcfg.MapResponse] from a [change.Change] specification.
 // This provides fine-grained control over what gets included in the response.
 func (m *mapper) buildFromChange(
-	nodeID types.NodeID,
+	view state.MapView,
 	capVer tailcfg.CapabilityVersion,
 	resp *change.Change,
 ) (*tailcfg.MapResponse, error) {
@@ -360,11 +360,11 @@ func (m *mapper) buildFromChange(
 
 	// If this is a self-update (the changed node is the receiving node),
 	// send a self-update response to ensure the node sees its own changes.
-	if resp.OriginNode != 0 && resp.OriginNode == nodeID {
-		return m.selfMapResponse(nodeID, capVer)
+	if !resp.IsFull() && resp.OriginNode != 0 && resp.OriginNode == view.Viewer().ID() {
+		return m.selfMapResponse(view, capVer)
 	}
 
-	builder := m.NewMapResponseBuilder(nodeID).
+	builder := m.NewMapResponseBuilder(view).
 		WithCapabilityVersion(capVer).
 		WithDebugType(changeResponseDebug)
 
@@ -396,22 +396,41 @@ func (m *mapper) buildFromChange(
 	}
 
 	if resp.SendAllPeers {
-		peers := m.state.ListPeers(nodeID)
+		peers := view.Peers()
 		builder.WithUserProfiles(peers)
 		builder.WithPeers(peers)
 	} else {
 		if len(resp.PeersChanged) > 0 {
-			peers := m.state.ListPeers(nodeID, resp.PeersChanged...)
+			peers := view.Peers(resp.PeersChanged...)
 			builder.WithUserProfiles(peers)
 			builder.WithPeerChanges(peers)
 		}
 
 		if len(resp.PeersRemoved) > 0 {
-			builder.WithPeersRemoved(resp.PeersRemoved...)
+			// Reconnect removals include adjacent peers omitted from the initial
+			// render. Only a visible, renderable peer makes a removal hint stale.
+			peers, err := builder.buildTailPeers(view.Peers(resp.PeersRemoved...))
+			if err != nil {
+				return nil, err
+			}
+
+			renderable := make(map[tailcfg.NodeID]bool, len(peers))
+			for _, peer := range peers {
+				renderable[peer.ID] = true
+			}
+
+			removed := make([]types.NodeID, 0, len(resp.PeersRemoved))
+			for _, id := range resp.PeersRemoved {
+				if !renderable[id.NodeID()] {
+					removed = append(removed, id)
+				}
+			}
+
+			builder.WithPeersRemoved(removed...)
 		}
 	}
 
-	patches := m.filterVisiblePeerPatches(nodeID, resp.PeerPatches)
+	patches := m.filterVisiblePeerPatches(view, resp.PeerPatches)
 	if len(patches) > 0 {
 		builder.WithPeerChangedPatch(patches)
 	}
@@ -429,43 +448,71 @@ func (m *mapper) buildFromChange(
 // endpoint, and key-expiry patches disclose the existence, presence, and
 // addresses of peers the recipient's policy forbids it from accessing.
 func (m *mapper) filterVisiblePeerPatches(
-	nodeID types.NodeID,
+	view state.MapView,
 	patches []*tailcfg.PeerChange,
 ) []*tailcfg.PeerChange {
 	if len(patches) == 0 {
 		return patches
 	}
 
-	// Key by tailcfg.NodeID so patches are looked up by patch.NodeID
-	// directly, avoiding an unchecked int64->uint64 conversion.
-	peers := m.state.ListPeers(nodeID)
+	var rendered []*tailcfg.PeerChange
 
-	visible := make(map[tailcfg.NodeID]struct{}, peers.Len())
-	for _, peer := range peers.All() {
-		visible[peer.ID().NodeID()] = struct{}{}
-	}
-
-	return filterByVisible(visible, patches, func(p *tailcfg.PeerChange) tailcfg.NodeID {
-		return p.NodeID
-	})
-}
-
-// filterByVisible keeps only the items whose key resolves to a NodeID present
-// in the visible set, preserving input order.
-func filterByVisible[T any](
-	visible map[tailcfg.NodeID]struct{},
-	items []T,
-	key func(T) tailcfg.NodeID,
-) []T {
-	var filtered []T
-
-	for _, it := range items {
-		if _, ok := visible[key(it)]; ok {
-			filtered = append(filtered, it)
+	for _, hint := range patches {
+		if hint == nil || hint.NodeID <= 0 {
+			continue
 		}
+
+		// Events select fields; values come from the same snapshot as the map.
+		peers := view.Peers(types.NodeID(hint.NodeID))
+		if peers.Len() == 0 {
+			continue
+		}
+
+		peer := peers.At(0)
+
+		patch := &tailcfg.PeerChange{NodeID: hint.NodeID, Cap: hint.Cap, KeySignature: slices.Clone(hint.KeySignature)}
+		if hint.DERPRegion != 0 && peer.Hostinfo().Valid() && peer.Hostinfo().NetInfo().Valid() {
+			patch.DERPRegion = peer.Hostinfo().NetInfo().PreferredDERP()
+		}
+
+		if hint.CapMap != nil {
+			patch.CapMap = view.PeerCapMap(peer.ID())
+			if patch.CapMap == nil {
+				patch.CapMap = tailcfg.NodeCapMap{}
+			}
+		}
+
+		if len(hint.Endpoints) > 0 {
+			patch.Endpoints = peer.Endpoints().AsSlice()
+		}
+
+		if hint.Key != nil {
+			patch.Key = new(peer.NodeKey())
+		}
+
+		if hint.DiscoKey != nil {
+			patch.DiscoKey = new(peer.DiscoKey())
+		}
+
+		if hint.Online != nil {
+			patch.Online = peer.IsOnline().Clone()
+		}
+
+		if hint.LastSeen != nil {
+			patch.LastSeen = peer.LastSeen().Clone()
+		}
+
+		if hint.KeyExpiry != nil {
+			patch.KeyExpiry = peer.Expiry().Clone()
+			if patch.KeyExpiry == nil {
+				patch.KeyExpiry = new(time.Time{})
+			}
+		}
+
+		rendered = append(rendered, patch)
 	}
 
-	return filtered
+	return rendered
 }
 
 func writeDebugMapResponse(

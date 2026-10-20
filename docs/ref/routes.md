@@ -345,6 +345,20 @@ availability](https://tailscale.com/docs/how-to/set-up-high-availability#subnet-
 This feature is enabled by default when at least two nodes advertise the same prefix. See the configuration options
 `node.routes.ha` in the [configuration file](configuration.md) for details.
 
+For subnet routes, Headscale elects a global primary for each exact prefix from online routers that advertise and
+have approval for that prefix. A healthy current primary keeps its role. If it goes offline or becomes unhealthy,
+the healthy online router with the lowest node ID takes over. A recovered router does not reclaim the role while
+the current primary remains healthy. If all online advertisers are unhealthy, an existing primary is retained
+while it remains online; otherwise the route has no primary until a healthy advertiser is available.
+
+Subnet routes selected by a `via` grant have a separate election within that grant's `via` tag group. The online,
+healthy router with the lowest node ID wins for each advertised and approved prefix. A recovered lower-ID router
+reclaims the route. If no router in the group is online and healthy, the route is withdrawn from that viewer.
+Different `via` tag groups elect their routers independently.
+
+If a viewer also has a regular grant without `via` overlapping the same subnet route, that route follows the global
+HA primary election, including its recovery behavior.
+
 ## Troubleshooting
 
 ### Enable IP forwarding

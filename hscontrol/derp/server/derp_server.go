@@ -10,7 +10,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -88,12 +87,11 @@ func (d *DERPServer) GenerateRegion() (tailcfg.DERPRegion, error) {
 	}
 
 	// Extract hostname and port from URL
-	host, portStr, err := net.SplitHostPort(serverURL.Host)
+	host, portStr := serverURL.Hostname(), serverURL.Port()
 
 	var port int
 
-	if err != nil {
-		host = serverURL.Host
+	if portStr == "" && !strings.HasSuffix(serverURL.Host, ":") {
 		if serverURL.Scheme == "https" {
 			port = 443
 		} else {
@@ -399,7 +397,7 @@ func serverSTUNListener(ctx context.Context, packetConn *net.UDPConn) {
 	var buf [64 << 10]byte
 
 	for {
-		bytesRead, udpAddr, err := packetConn.ReadFromUDP(buf[:])
+		bytesRead, udpAddr, err := packetConn.ReadFromUDPAddrPort(buf[:])
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -433,10 +431,9 @@ func serverSTUNListener(ctx context.Context, packetConn *net.UDPConn) {
 			continue
 		}
 
-		addr, _ := netip.AddrFromSlice(udpAddr.IP)
-		res := stun.Response(txid, netip.AddrPortFrom(addr, uint16(udpAddr.Port))) //nolint:gosec // port is always <=65535
+		res := stun.Response(txid, udpAddr)
 
-		_, err = packetConn.WriteTo(res, udpAddr)
+		_, err = packetConn.WriteToUDPAddrPort(res, udpAddr)
 		if err != nil {
 			log.Trace().Caller().Err(err).Msgf("issue writing to UDP")
 

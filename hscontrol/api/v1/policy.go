@@ -118,21 +118,10 @@ func registerPolicy(api huma.API, b Backend) {
 
 		p := in.Body.Policy
 
-		// Reject policy that would fail when building a map response. SSH rule
-		// validation needs a node, so a server with no nodes can't catch every
-		// case here.
-		nodes := b.State.ListNodes()
-
+		// SetPolicy validates SSH rules and policy tests before publication.
 		_, err := b.State.SetPolicy([]byte(p))
 		if err != nil {
 			return nil, huma.Error400BadRequest("setting policy", err)
-		}
-
-		if nodes.Len() > 0 {
-			_, err = b.State.SSHPolicy(nodes.At(0))
-			if err != nil {
-				return nil, huma.Error400BadRequest("verifying SSH rules", err)
-			}
 		}
 
 		updated, err := b.State.SetPolicyInDB(p)

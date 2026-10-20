@@ -8,6 +8,7 @@ import (
 	"time"
 
 	hsdb "github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/policy/packetfilter"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"tailscale.com/tailcfg"
 )
@@ -214,10 +215,9 @@ func (s *State) DebugPolicy() (string, error) {
 	}
 }
 
-// DebugFilter returns the current filter rules and matchers.
+// DebugFilter returns current packet rules in wire format.
 func (s *State) DebugFilter() ([]tailcfg.FilterRule, error) {
-	filter, _ := s.Filter()
-	return filter, nil
+	return packetfilter.ToTailcfg(s.PacketRules()), nil
 }
 
 // DebugRoutes returns the current primary routes information as a

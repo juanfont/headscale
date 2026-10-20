@@ -4,7 +4,6 @@ import (
 	"net/netip"
 	"testing"
 
-	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"tailscale.com/tailcfg"
@@ -27,7 +26,7 @@ func TestCanAccessWithRoutesMatchesCanAccess(t *testing.T) {
 
 	plain := node("plain", "100.64.0.3", "fd7a:115c:a1e0::3", user)
 
-	matchers := matcher.MatchesFromFilterRules([]tailcfg.FilterRule{
+	matchers := rulesFromWireForTest([]tailcfg.FilterRule{
 		{
 			SrcIPs:   []string{"*"},
 			DstPorts: []tailcfg.NetPortRange{{IP: "*", Ports: tailcfg.PortRangeAny}},

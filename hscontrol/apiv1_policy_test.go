@@ -2,14 +2,17 @@ package hscontrol
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"testing"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/mapper"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/tailcfg"
 )
 
 // validPolicy is a minimal policy that passes validation without nodes or users.
@@ -110,6 +113,120 @@ func TestAPIV1PolicySet(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, hum.status,
 			"huma body: %s", hum.body)
 	})
+}
+
+type sshRenderingErrorPolicyManager struct {
+	policy.PolicyManager
+}
+
+var errInjectedSSHRendering = errors.New("injected SSH rendering failure")
+
+func (sshRenderingErrorPolicyManager) SSHPolicy(
+	string, types.NodeView,
+) (*tailcfg.SSHPolicy, error) {
+	return nil, errInjectedSSHRendering
+}
+
+func TestPolicyAPISSHValidation(t *testing.T) {
+	const good = `{
+		"ssh": [{
+			"action":"accept","src":["alice@"],
+			"dst":["autogroup:self"],"users":["root"]
+		}]
+	}`
+
+	for _, api := range []struct {
+		name string
+		set  func(*testing.T, *Headscale, string) httpResult
+	}{
+		{
+			name: "v1",
+			set: func(t *testing.T, app *Headscale, data string) httpResult {
+				t.Helper()
+
+				body, err := json.Marshal(map[string]string{"policy": data})
+				require.NoError(t, err)
+
+				return callHandler(
+					newHumaTestHandler(app), http.MethodPut, "/api/v1/policy", body,
+				)
+			},
+		},
+		{
+			name: "v2",
+			set: func(t *testing.T, app *Headscale, data string) httpResult {
+				t.Helper()
+
+				res := setACL(t, registerAPIV2(t, app), data, "application/json")
+
+				return httpResult{status: res.Code, body: res.Body.Bytes()}
+			},
+		},
+	} {
+		t.Run(api.name, func(t *testing.T) {
+			app := createTestApp(t)
+			nodeID := putSSHCheckNodes(t, app, "alice", "alice-node")[0].ID
+			app.state.WrapPolicyManagerForTest(
+				func(pm policy.PolicyManager) policy.PolicyManager {
+					return sshRenderingErrorPolicyManager{pm}
+				},
+			)
+
+			res := api.set(t, app, good)
+			require.Equal(t, http.StatusOK, res.status, "body: %s", res.body)
+			//nolint:testifylint // Preserve the submitted policy bytes, including formatting.
+			require.Equal(t, good, storedPolicy(t, app))
+
+			view, err := app.state.MapView(nodeID)
+			require.NoError(t, err)
+			before, err := view.SSHPolicy(app.cfg.ServerURL)
+			require.NoError(t, err)
+			require.Len(t, before.Rules, 1)
+			assert.True(t, before.Rules[0].Action.Accept)
+			assert.Equal(t, "root", before.Rules[0].SSHUsers["root"])
+			assert.NotEmpty(t, before.Rules[0].Principals)
+
+			for _, invalid := range []struct {
+				name      string
+				data      string
+				wantError string
+			}{
+				{
+					name: "unknown action",
+					data: `{"ssh":[{
+						"action":"invalid","src":["alice@"],
+						"dst":["autogroup:self"],"users":["root"]
+					}]}`,
+					wantError: "is not a valid action",
+				},
+				{
+					name: "failing sshTests",
+					data: `{"ssh":[],"sshTests":[{
+						"src":"alice@","dst":["alice@"],"accept":["root"]
+					}]}`,
+					wantError: "expected ALLOWED",
+				},
+			} {
+				t.Run(invalid.name, func(t *testing.T) {
+					res := api.set(t, app, invalid.data)
+					require.Equal(
+						t, http.StatusBadRequest, res.status, "body: %s", res.body,
+					)
+					assert.Contains(t, string(res.body), invalid.wantError)
+					//nolint:testifylint // Rejection must preserve the stored policy bytes.
+					assert.Equal(t, good, storedPolicy(t, app))
+
+					view, err := app.state.MapView(nodeID)
+					require.NoError(t, err)
+					after, err := view.SSHPolicy(app.cfg.ServerURL)
+					require.NoError(t, err)
+					assert.Equal(
+						t, before, after, "rejected policy must not change live SSH rules",
+					)
+				})
+			}
+		})
+	}
 }
 
 func TestAPIV1PolicyCheck(t *testing.T) {

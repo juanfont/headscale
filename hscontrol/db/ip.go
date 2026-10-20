@@ -9,10 +9,9 @@ import (
 	"net/netip"
 	"sync"
 
+	"github.com/gaissmai/extnetip"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
-	"go4.org/netipx"
 	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 )
@@ -21,6 +20,9 @@ var (
 	errGeneratedIPBytesInvalid = errors.New("generated ip bytes are invalid ip")
 	errGeneratedIPNotInPrefix  = errors.New("generated ip not in prefix")
 	errIPAllocatorNil          = errors.New("ip allocator was nil")
+	errInvalidIPv4Prefix       = errors.New("invalid IPv4 prefix")
+	errInvalidIPv6Prefix       = errors.New("invalid IPv6 prefix")
+	errInvalidIPRelease        = errors.New("removing invalid IP address")
 )
 
 // IPAllocator is a singleton responsible for allocating
@@ -46,7 +48,10 @@ type IPAllocator struct {
 	// but it is more conservative. If saves to the
 	// database fails, the IP will be allocated here
 	// until the next restart of Headscale.
-	usedIPs netipx.IPSetBuilder
+	usedIPs map[netip.Addr]struct{}
+
+	// Invalid releases are reported once on the next allocation.
+	err error
 }
 
 // NewIPAllocator returns a new [IPAllocator] singleton which
@@ -87,14 +92,18 @@ func NewIPAllocator(
 		}
 	}
 
-	var ips netipx.IPSetBuilder
+	ips := make(map[netip.Addr]struct{}, len(v4s)+len(v6s)+4)
 
 	// Add network and broadcast addrs to used pool so they
 	// are not handed out to nodes.
 	if prefix4 != nil {
-		network4, broadcast4 := util.GetIPPrefixEndpoints(*prefix4)
-		ips.Add(network4)
-		ips.Add(broadcast4)
+		if !prefix4.IsValid() {
+			return nil, fmt.Errorf("%w: %s", errInvalidIPv4Prefix, prefix4)
+		}
+
+		network4, broadcast4 := extnetip.Range(*prefix4)
+		ips[network4] = struct{}{}
+		ips[broadcast4] = struct{}{}
 
 		// Use network as starting point, it will be used to call .Next()
 		// TODO(kradalby): Could potentially take all the IPs loaded from
@@ -103,9 +112,13 @@ func NewIPAllocator(
 	}
 
 	if prefix6 != nil {
-		network6, broadcast6 := util.GetIPPrefixEndpoints(*prefix6)
-		ips.Add(network6)
-		ips.Add(broadcast6)
+		if !prefix6.IsValid() {
+			return nil, fmt.Errorf("%w: %s", errInvalidIPv6Prefix, prefix6)
+		}
+
+		network6, broadcast6 := extnetip.Range(*prefix6)
+		ips[network6] = struct{}{}
+		ips[broadcast6] = struct{}{}
 
 		ret.prev6 = network6
 	}
@@ -119,17 +132,8 @@ func NewIPAllocator(
 				return nil, fmt.Errorf("parsing IP address from database: %w", err)
 			}
 
-			ips.Add(addr)
+			ips[addr.WithZone("")] = struct{}{}
 		}
-	}
-
-	// Build the initial IPSet to validate that we can use it.
-	_, err := ips.IPSet()
-	if err != nil {
-		return nil, fmt.Errorf(
-			"building initial IP Set: %w",
-			err,
-		)
 	}
 
 	ret.usedIPs = ips
@@ -198,9 +202,10 @@ func (i *IPAllocator) next(prev netip.Addr, prefix *netip.Prefix) (*netip.Addr, 
 		}
 	}
 
-	// TODO(kradalby): maybe this can be done less often.
-	set, err := i.usedIPs.IPSet()
-	if err != nil {
+	if i.err != nil {
+		err := i.err
+		i.err = nil
+
 		return nil, err
 	}
 
@@ -211,8 +216,9 @@ func (i *IPAllocator) next(prev netip.Addr, prefix *netip.Prefix) (*netip.Addr, 
 	// instead of re-drawing in-prefix addresses forever under i.mu.
 	start := ip
 	for {
-		if prefix.Contains(ip) && !set.Contains(ip) && !isTailscaleReservedIP(ip) {
-			i.usedIPs.Add(ip)
+		_, used := i.usedIPs[ip]
+		if prefix.Contains(ip) && !used && !isTailscaleReservedIP(ip) {
+			i.usedIPs[ip] = struct{}{}
 
 			return &ip, nil
 		}
@@ -242,8 +248,7 @@ func (i *IPAllocator) next(prev netip.Addr, prefix *netip.Prefix) (*netip.Addr, 
 }
 
 func randomNext(pfx netip.Prefix) (netip.Addr, error) {
-	rang := netipx.RangeOfPrefix(pfx)
-	fromIP, toIP := rang.From(), rang.To()
+	fromIP, toIP := extnetip.Range(pfx)
 
 	var from, to big.Int
 
@@ -387,6 +392,11 @@ func (i *IPAllocator) FreeIPs(ips []netip.Addr) {
 	defer i.mu.Unlock()
 
 	for _, ip := range ips {
-		i.usedIPs.Remove(ip)
+		if !ip.IsValid() {
+			i.err = errInvalidIPRelease
+			continue
+		}
+
+		delete(i.usedIPs, ip.WithZone(""))
 	}
 }

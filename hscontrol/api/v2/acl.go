@@ -113,19 +113,10 @@ func registerACL(api huma.API, b Backend) {
 			}
 		}
 
-		// Mirror the v1 setPolicy flow: validate, SSH-check, persist, reload.
-		nodes := b.State.ListNodes()
-
+		// Mirror the v1 setPolicy flow: validate and publish, persist, reload.
 		_, err = b.State.SetPolicy(in.RawBody)
 		if err != nil {
 			return nil, huma.Error400BadRequest("setting policy", err)
-		}
-
-		if nodes.Len() > 0 {
-			_, err = b.State.SSHPolicy(nodes.At(0))
-			if err != nil {
-				return nil, huma.Error400BadRequest("verifying SSH rules", err)
-			}
 		}
 
 		updated, err := b.State.SetPolicyInDB(string(in.RawBody))

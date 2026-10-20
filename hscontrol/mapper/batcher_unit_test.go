@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -40,7 +41,10 @@ type mockNodeConnection struct {
 	mu   sync.Mutex
 
 	// Peer tracking
-	peers *xsync.Map[tailcfg.NodeID, struct{}]
+	peers       *xsync.Map[tailcfg.NodeID, struct{}]
+	diffCalls   atomic.Int32
+	peerUpdates atomic.Int32
+	onDiff      func([]tailcfg.NodeID)
 }
 
 func newMockNodeConnection(id types.NodeID) *mockNodeConnection {
@@ -73,6 +77,12 @@ func (m *mockNodeConnection) send(data *tailcfg.MapResponse) error {
 }
 
 func (m *mockNodeConnection) computePeerDiff(currentPeers []tailcfg.NodeID) []tailcfg.NodeID {
+	m.diffCalls.Add(1)
+
+	if m.onDiff != nil {
+		m.onDiff(currentPeers)
+	}
+
 	currentSet := make(map[tailcfg.NodeID]struct{}, len(currentPeers))
 	for _, id := range currentPeers {
 		currentSet[id] = struct{}{}
@@ -92,6 +102,8 @@ func (m *mockNodeConnection) computePeerDiff(currentPeers []tailcfg.NodeID) []ta
 }
 
 func (m *mockNodeConnection) updateSentPeers(resp *tailcfg.MapResponse) {
+	m.peerUpdates.Add(1)
+
 	if resp == nil {
 		return
 	}
@@ -591,6 +603,18 @@ func TestComputePeerDiff(t *testing.T) {
 			current:     ids(4, 5, 6),
 			wantRemoved: ids(1, 2, 3),
 		},
+		{
+			name:        "unsorted_duplicate_ids",
+			tracked:     ids(9, 5, 1, 3, 3, 7, 5),
+			current:     ids(7, 3, 3, 1, 7),
+			wantRemoved: ids(5, 9),
+		},
+		{
+			name:        "sorted_duplicate_ids",
+			tracked:     ids(9, 5, 1, 3, 7),
+			current:     ids(1, 1, 3, 7, 7),
+			wantRemoved: ids(5, 9),
+		},
 	}
 
 	for _, tt := range tests {
@@ -602,12 +626,35 @@ func TestComputePeerDiff(t *testing.T) {
 				mc.lastSentPeers.Store(id, struct{}{})
 			}
 
+			original := slices.Clone(tt.current)
+			trackedCount := mc.lastSentPeers.Size()
 			got := mc.computePeerDiff(tt.current)
 
 			assert.ElementsMatch(t, tt.wantRemoved, got,
 				"removed peers should match expected")
+			assert.Equal(t, original, tt.current, "comparison cannot mutate its input")
+			assert.True(t, slices.IsSorted(got), "removals must have deterministic order")
+			assert.Equal(t, trackedCount, mc.lastSentPeers.Size(),
+				"comparison cannot record delivery or remove tracked peers")
 		})
 	}
+}
+
+func TestComputePeerDiffUnchangedAllocationBudget(t *testing.T) {
+	mc := newMultiChannelNodeConn(1, nil)
+
+	current := make([]tailcfg.NodeID, 100)
+	for i := range current {
+		current[i] = tailcfg.NodeID(i + 1)
+		mc.lastSentPeers.Store(current[i], struct{}{})
+	}
+
+	allocations := testing.AllocsPerRun(20, func() {
+		if len(mc.computePeerDiff(current)) != 0 {
+			panic("unchanged delivered peers cannot be removed")
+		}
+	})
+	require.Zero(t, allocations, "a sorted unchanged peer set needs no temporary membership map")
 }
 
 // ============================================================================

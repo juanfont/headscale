@@ -572,6 +572,10 @@ func (failingSetNodesPolicyManager) SetNodes(views.Slice[types.NodeView]) (bool,
 	return false, errInjectedPolicyNodeUpdate
 }
 
+func (failingSetNodesPolicyManager) SetNodesAndBuildPeerMap(views.Slice[types.NodeView]) (policy.ReadView, map[types.NodeID][]types.NodeID, error) {
+	return policy.ReadView{}, nil, errInjectedPolicyNodeUpdate
+}
+
 func TestDeleteNodeKeepsStoreOnDBFailure(t *testing.T) {
 	_, s, nodeID := persistTestSetup(t)
 	t.Cleanup(func() { _ = s.Close() })

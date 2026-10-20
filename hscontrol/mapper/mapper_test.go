@@ -19,7 +19,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/nodecap"
 	"tailscale.com/types/dnstype"
+	"tailscale.com/types/key"
+	"tailscale.com/types/views"
 )
 
 var iap = func(ipStr string) *netip.Addr {
@@ -262,7 +265,7 @@ func TestBuildFromChangeFiltersPeerPatchesByVisibility(t *testing.T) {
 
 	// n2 (user2) comes online; n1 (user1) must NOT receive its patch.
 	leakChange := change.NodeOnline(n2.ID)
-	resp, err := m.buildFromChange(n1.ID, tailcfg.CurrentCapabilityVersion, &leakChange)
+	resp, err := m.buildFromChange(mapViewForTest(t, s, n1.ID), tailcfg.CurrentCapabilityVersion, &leakChange)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 
@@ -273,7 +276,7 @@ func TestBuildFromChangeFiltersPeerPatchesByVisibility(t *testing.T) {
 
 	// Control: n1b (same user) coming online IS visible to n1.
 	okChange := change.NodeOnline(n1b.ID)
-	resp2, err := m.buildFromChange(n1.ID, tailcfg.CurrentCapabilityVersion, &okChange)
+	resp2, err := m.buildFromChange(mapViewForTest(t, s, n1.ID), tailcfg.CurrentCapabilityVersion, &okChange)
 	require.NoError(t, err)
 	require.NotNil(t, resp2)
 
@@ -348,7 +351,7 @@ func TestBuildFromChangeFiltersUserProfilesByVisibility(t *testing.T) {
 	// n2 (user2) is added and broadcast. n1 (user1) cannot access it, so n1
 	// must NOT receive user2's profile.
 	c := change.NodeAdded(n2.ID)
-	resp, err := m.buildFromChange(n1.ID, tailcfg.CurrentCapabilityVersion, &c)
+	resp, err := m.buildFromChange(mapViewForTest(t, s, n1.ID), tailcfg.CurrentCapabilityVersion, &c)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 
@@ -414,7 +417,7 @@ func TestBuildFromChangeVisibilityMatchesFullMap(t *testing.T) {
 	fullVisible := func(t *testing.T) map[tailcfg.NodeID]bool {
 		t.Helper()
 
-		resp, err := m.fullMapResponse(n1.ID, capVer)
+		resp, err := m.fullMapResponse(mapViewForTest(t, s, n1.ID), capVer)
 		require.NoError(t, err)
 
 		got := map[tailcfg.NodeID]bool{}
@@ -429,7 +432,7 @@ func TestBuildFromChangeVisibilityMatchesFullMap(t *testing.T) {
 		t.Helper()
 
 		c := change.NodeOnline(id)
-		resp, err := m.buildFromChange(n1.ID, capVer, &c)
+		resp, err := m.buildFromChange(mapViewForTest(t, s, n1.ID), capVer, &c)
 		require.NoError(t, err)
 
 		if resp == nil {
@@ -449,7 +452,7 @@ func TestBuildFromChangeVisibilityMatchesFullMap(t *testing.T) {
 		t.Helper()
 
 		c := change.NodeAdded(id)
-		resp, err := m.buildFromChange(n1.ID, capVer, &c)
+		resp, err := m.buildFromChange(mapViewForTest(t, s, n1.ID), capVer, &c)
 		require.NoError(t, err)
 
 		if resp == nil {
@@ -471,7 +474,7 @@ func TestBuildFromChangeVisibilityMatchesFullMap(t *testing.T) {
 		t.Helper()
 
 		c := change.NodeAdded(n.ID)
-		resp, err := m.buildFromChange(n1.ID, capVer, &c)
+		resp, err := m.buildFromChange(mapViewForTest(t, s, n1.ID), capVer, &c)
 		require.NoError(t, err)
 
 		if resp == nil {
@@ -612,7 +615,7 @@ func TestFullMapResponseSurvivesPeerWithInvalidName(t *testing.T) {
 			m := &mapper{state: s, cfg: cfg}
 			capVer := tailcfg.CurrentCapabilityVersion
 
-			resp, err := m.fullMapResponse(n1.ID, capVer)
+			resp, err := m.fullMapResponse(mapViewForTest(t, s, n1.ID), capVer)
 			require.NoError(t, err, "n1's map must build despite a peer with an invalid name")
 			require.NotNil(t, resp)
 			require.NotNil(t, resp.Node, "n1 must receive its own self node")
@@ -1180,4 +1183,201 @@ func TestCertDomains(t *testing.T) {
 			assert.Nil(t, cfg.TailcfgDNSConfig.CertDomains, "global DNS config must stay untouched")
 		})
 	}
+}
+
+func mapViewForTest(tb testing.TB, s *state.State, id types.NodeID) state.MapView {
+	tb.Helper()
+
+	view, err := s.MapView(id)
+	require.NoError(tb, err)
+
+	return view
+}
+
+func TestBuilderRetainsMapViewAndRendersPatchHints(t *testing.T) {
+	td, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 3, normalBufferSize)
+	defer cleanup()
+
+	self, peer := td.Nodes[0].n.ID, td.Nodes[1].n.ID
+	m := newMapper(td.Config, td.State)
+	old := mapViewForTest(t, td.State, self)
+	oldPeer := old.Peers(peer).At(0)
+	updated := oldPeer.AsStruct()
+	updated.GivenName = "new-peer"
+	updated.Endpoints = []netip.AddrPort{netip.MustParseAddrPort("192.0.2.2:2222")}
+	updated.Tags = []string{"tag:new"}
+	td.State.PutNodeInStoreForTest(*updated)
+	_, err := td.State.SetPolicy([]byte(`{"grants":[]}`))
+	require.NoError(t, err)
+
+	resp, err := m.NewMapResponseBuilder(old).
+		WithCapabilityVersion(tailcfg.CurrentCapabilityVersion).
+		WithSelfNode().WithPacketFilters().WithSSHPolicy().WithDNSConfig().
+		WithPeers(views.SliceOf([]types.NodeView{updated.View()})).Build()
+	require.NoError(t, err)
+	require.Len(t, resp.Peers, 1)
+	require.Empty(t, resp.Peers[0].Tags)
+	require.Equal(t, oldPeer.Endpoints().AsSlice(), resp.Peers[0].Endpoints)
+	require.Equal(t, oldPeer.Prefixes(), resp.Peers[0].Addresses)
+	require.Contains(t, resp.Peers[0].Name, oldPeer.GivenName())
+
+	patches := m.filterVisiblePeerPatches(old, []*tailcfg.PeerChange{{
+		NodeID: peer.NodeID(), Online: new(true), Endpoints: updated.Endpoints,
+		Key: new(key.NewNode().Public()), CapMap: tailcfg.NodeCapMap{"unexpected": nil},
+	}})
+	require.Len(t, patches, 1)
+	require.Equal(t, oldPeer.IsOnline().Clone(), patches[0].Online)
+	require.Equal(t, oldPeer.Endpoints().AsSlice(), patches[0].Endpoints)
+	require.Equal(t, oldPeer.NodeKey(), *patches[0].Key)
+	require.NotContains(t, patches[0].CapMap, nodecap.Cap("unexpected"))
+	require.Empty(t, m.filterVisiblePeerPatches(mapViewForTest(t, td.State, self), patches))
+}
+
+func TestPeerPatchSelectsOnlyItsCapturedTarget(t *testing.T) {
+	td, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 50, normalBufferSize)
+	defer cleanup()
+
+	self, target := td.Nodes[0].n.ID, td.Nodes[1].n.ID
+	view := mapViewForTest(t, td.State, self)
+	peer := view.Peers(target).At(0)
+	hints := []*tailcfg.PeerChange{{NodeID: target.NodeID(), Online: new(!peer.Online())}}
+	allocations := testing.AllocsPerRun(20, func() {
+		patches := td.Batcher.mapper.filterVisiblePeerPatches(view, hints)
+		if len(patches) != 1 || patches[0].Online == nil || *patches[0].Online != peer.Online() {
+			panic("patch must use captured facts")
+		}
+	})
+	require.LessOrEqual(t, allocations, float64(4),
+		"one peer patch must not materialize every visible node and an ID map")
+
+	patches := td.Batcher.mapper.filterVisiblePeerPatches(view, hints)
+	*patches[0].Online = !peer.Online()
+	again := td.Batcher.mapper.filterVisiblePeerPatches(view, hints)
+	require.Equal(t, peer.Online(), *again[0].Online)
+	require.Empty(t, td.Batcher.mapper.filterVisiblePeerPatches(view, []*tailcfg.PeerChange{
+		nil,
+		{NodeID: self.NodeID(), Online: new(true)},
+		{NodeID: 999, Online: new(true)},
+		{NodeID: -1, Online: new(true)},
+	}))
+}
+
+func TestMapRenderFailureDoesNotComputePeerDiff(t *testing.T) {
+	td, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 2, normalBufferSize)
+	defer cleanup()
+
+	self := td.Nodes[0].n.ID
+	node, ok := td.State.GetNodeByID(self)
+	require.True(t, ok)
+
+	bad := node.AsStruct()
+	bad.GivenName = strings.Repeat("x", types.MaxHostnameLength+1)
+	td.State.PutNodeInStoreForTest(*bad)
+
+	mc := newMockNodeConnection(self)
+	mc.peers.Store(td.Nodes[1].n.ID.NodeID(), struct{}{})
+	resps, err := generateMapResponse(mc, td.Batcher.mapper, change.PolicyChange())
+	require.Error(t, err)
+	require.Nil(t, resps)
+	require.Zero(t, mc.diffCalls.Load())
+	require.Zero(t, mc.peerUpdates.Load())
+	require.Equal(t, 1, mc.peers.Size())
+}
+
+func TestMapPeerDiffUsesRenderedPeers(t *testing.T) {
+	td, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 3, normalBufferSize)
+	defer cleanup()
+
+	self, badID, goodID := td.Nodes[0].n.ID, td.Nodes[1].n.ID, td.Nodes[2].n.ID
+	bad, _ := td.State.GetNodeByID(badID)
+	node := bad.AsStruct()
+	node.GivenName = strings.Repeat("x", types.MaxHostnameLength+1)
+	td.State.PutNodeInStoreForTest(*node)
+
+	mc := newMockNodeConnection(self)
+	mc.peers.Store(badID.NodeID(), struct{}{})
+	mc.peers.Store(goodID.NodeID(), struct{}{})
+	mc.onDiff = func(ids []tailcfg.NodeID) {
+		require.Equal(t, []tailcfg.NodeID{goodID.NodeID()}, ids)
+		// A later publication cannot change the already rendered response.
+		_, err := td.State.SetPolicy([]byte(`{"grants":[]}`))
+		require.NoError(t, err)
+	}
+	resps, err := generateMapResponse(mc, td.Batcher.mapper, change.PolicyChange())
+	require.NoError(t, err)
+	require.Len(t, resps, 2)
+	require.Equal(t, []tailcfg.NodeID{badID.NodeID()}, resps[0].PeersRemoved)
+	require.Len(t, resps[1].PeersChanged, 1)
+	require.Equal(t, goodID.NodeID(), resps[1].PeersChanged[0].ID)
+	require.EqualValues(t, 1, mc.diffCalls.Load())
+	require.Zero(t, mc.peerUpdates.Load(), "generation never records delivery")
+}
+
+func TestIncrementalOmissionRemovesPreviouslySentPeer(t *testing.T) {
+	td, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 3, normalBufferSize)
+	defer cleanup()
+
+	self, badID, goodID := td.Nodes[0].n.ID, td.Nodes[1].n.ID, td.Nodes[2].n.ID
+	bad, _ := td.State.GetNodeByID(badID)
+	node := bad.AsStruct()
+	node.GivenName = strings.Repeat("x", types.MaxHostnameLength+1)
+	td.State.PutNodeInStoreForTest(*node)
+
+	mc := newMockNodeConnection(self)
+	mc.peers.Store(badID.NodeID(), struct{}{})
+	mc.peers.Store(goodID.NodeID(), struct{}{})
+	resps, err := generateMapResponse(mc, td.Batcher.mapper, change.NodeAdded(badID))
+	require.NoError(t, err)
+	require.Len(t, resps, 2)
+	require.Equal(t, []tailcfg.NodeID{badID.NodeID()}, resps[0].PeersRemoved)
+	require.Empty(t, resps[1].PeersChanged)
+	require.Zero(t, mc.peerUpdates.Load())
+}
+
+func TestFullRefreshSurvivesMergedPolicyAndSelfHints(t *testing.T) {
+	td, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 2, normalBufferSize)
+	defer cleanup()
+
+	td.Config.TailcfgDNSConfig = &tailcfg.DNSConfig{Domains: []string{"example.test"}}
+	self := td.Nodes[0].n.ID
+	c := change.FullUpdate().Merge(change.PolicyChange())
+	c.OriginNode = self
+	mc := newMockNodeConnection(self)
+	resps, err := generateMapResponse(mc, td.Batcher.mapper, c)
+	require.NoError(t, err)
+	require.Len(t, resps, 1)
+	require.NotNil(t, resps[0].Node)
+	require.NotNil(t, resps[0].DNSConfig)
+	require.NotNil(t, resps[0].PacketFilters)
+	require.NotNil(t, resps[0].SSHPolicy)
+	require.Len(t, resps[0].Peers, 1)
+}
+
+func TestRemovalHintsUseCapturedRenderability(t *testing.T) {
+	td, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 3, normalBufferSize)
+	defer cleanup()
+
+	self, badID, goodID := td.Nodes[0].n.ID, td.Nodes[1].n.ID, td.Nodes[2].n.ID
+	node, ok := td.State.GetNodeByID(badID)
+	require.True(t, ok)
+
+	bad := node.AsStruct()
+	bad.GivenName = strings.Repeat("x", types.MaxHostnameLength+1)
+	td.State.PutNodeInStoreForTest(*bad)
+	view := mapViewForTest(t, td.State, self)
+
+	// Later publications cannot make a captured invalid peer renderable or
+	// revoke a captured valid peer while these removal hints are rendered.
+	bad.GivenName = "repaired"
+	td.State.PutNodeInStoreForTest(*bad)
+	_, err := td.State.SetPolicy([]byte(`{"grants":[]}`))
+	require.NoError(t, err)
+
+	const absentID = types.NodeID(999)
+
+	removals := change.PeersRemoved(badID, goodID, absentID)
+	resp, err := td.Batcher.mapper.buildFromChange(view, 100, &removals)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []tailcfg.NodeID{badID.NodeID(), absentID.NodeID()}, resp.PeersRemoved,
+		"remove captured unrenderable or invisible peers; suppress stale hints for captured renderable peers")
 }

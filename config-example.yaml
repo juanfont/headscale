@@ -164,6 +164,12 @@ node:
   # primary role moves to the next healthy node. A node that later responds
   # is marked healthy again but does NOT reclaim primary (avoids flapping).
   #
+  # Subnet routes selected by a via grant elect the lowest-ID online, healthy
+  # router within that grant's via tag group. A recovered lower-ID router
+  # reclaims the route; if none are online and healthy, the route is withdrawn.
+  # A regular grant overlapping the same route for that viewer uses the global
+  # primary election described above instead.
+  #
   # Worst-case detection time is probe_interval + probe_timeout (15s default).
   # No-op when no HA routes exist. Set probe_interval to 0 to disable.
   routes:

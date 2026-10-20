@@ -182,20 +182,6 @@ func (m *primariesModel) allPrefixes() []netip.Prefix {
 	return out
 }
 
-func samePrefixSet(a, b []netip.Prefix) bool {
-	if len(a) != len(b) {
-		return false
-	}
-
-	aa := slices.Clone(a)
-	bb := slices.Clone(b)
-
-	slices.SortFunc(aa, netip.Prefix.Compare)
-	slices.SortFunc(bb, netip.Prefix.Compare)
-
-	return slices.Equal(aa, bb)
-}
-
 // checkPrimariesProperties asserts every rule we expect of the snapshot's
 // primaries map given the model. prevSnapshotPrimaries is the snapshot's
 // PrimaryRoutes() reading taken before the just-applied op, used to
@@ -217,12 +203,25 @@ func checkPrimariesProperties(
 	for _, id := range nodeIDs {
 		got := ns.PrimaryRoutesForNode(id)
 		want := expectedByNode[id]
+		slices.SortFunc(want, netip.Prefix.Compare)
 
-		if !samePrefixSet(got, want) {
+		if !slices.Equal(got, want) {
 			rt.Fatalf(
 				"PrimaryRoutesForNode(%d) = %v, model expected %v",
 				id, got, want,
 			)
+		}
+
+		if len(want) == 0 && got != nil {
+			rt.Fatalf("PrimaryRoutesForNode(%d) = %v, expected nil", id, got)
+		}
+
+		if len(got) > 0 {
+			got[0] = netip.Prefix{}
+
+			if !slices.Equal(ns.PrimaryRoutesForNode(id), want) {
+				rt.Fatalf("mutating PrimaryRoutesForNode(%d) changed the snapshot", id)
+			}
 		}
 
 		if want := !m.unhealthy[id]; ns.IsNodeHealthy(id) != want {
@@ -264,11 +263,10 @@ func checkPrimariesProperties(
 	// that is offline but still has the prefix attributed to it.
 	snapshotPrimaries := ns.PrimaryRoutes()
 
-	// A primary that owns ≥1 prefix in `routes` must also light up
-	// `isPrimaryRoute` (PrimaryRoutesForNode returns nil unless the
-	// id is in that map). The inverse check — PrimaryRoutesForNode
-	// returning the right prefixes — is already covered above; this
-	// catches the reverse direction.
+	// A primary that owns ≥1 prefix in routes must also have entries
+	// in the reverse index. The inverse check — PrimaryRoutesForNode
+	// returning the right sorted prefixes — is already covered above;
+	// this catches the reverse direction.
 	ownersInRoutes := map[types.NodeID]bool{}
 	for _, owner := range snapshotPrimaries {
 		ownersInRoutes[owner] = true

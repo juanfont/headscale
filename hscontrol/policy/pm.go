@@ -4,27 +4,31 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/policy/matcher"
+	"github.com/juanfont/headscale/hscontrol/policy/packetfilter"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/views"
 )
 
+type ReadView = policyv2.ReadView
+
 type PolicyManager interface {
-	// Filter returns the current filter rules for the entire tailnet and the associated matchers.
-	Filter() ([]tailcfg.FilterRule, []matcher.Match)
-	// FilterForNode returns filter rules for a specific node, handling autogroup:self
-	FilterForNode(node types.NodeView) ([]tailcfg.FilterRule, error)
-	// MatchersForNode returns matchers for peer relationship determination (unreduced)
-	MatchersForNode(node types.NodeView) ([]matcher.Match, error)
+	ReadView() ReadView
+	PacketRules() []packetfilter.Rule
+	PacketRulesForNode(node types.NodeView) ([]packetfilter.Rule, error)
+	PeerRulesForNode(node types.NodeView) ([]packetfilter.Rule, error)
+	SetNodesAndBuildPeerMap(
+		nodes views.Slice[types.NodeView],
+	) (ReadView, map[types.NodeID][]types.NodeID, error)
 	// BuildPeerMap constructs peer relationship maps for the given nodes
 	BuildPeerMap(nodes views.Slice[types.NodeView]) map[types.NodeID][]types.NodeID
 	SSHPolicy(baseURL string, node types.NodeView) (*tailcfg.SSHPolicy, error)
 	// SSHCheckParams resolves the SSH check period for src logging in to
 	// dst as localUser from the current policy, avoiding trust of
 	// client-provided URL params.
-	SSHCheckParams(srcNodeID, dstNodeID types.NodeID, localUser string) (time.Duration, bool)
+	SSHCheckParams(srcNodeID, dstNodeID types.NodeID, localUser string,
+	) (time.Duration, bool)
 	SetPolicy(pol []byte) (bool, error)
 	// SetUsers replaces the user list. policyChanged reports whether clients
 	// need a policy refresh; peerMapChanged reports whether user-derived peer
@@ -96,7 +100,8 @@ type PolicyManager interface {
 }
 
 // NewPolicyManager returns a new [PolicyManager].
-func NewPolicyManager(pol []byte, users []types.User, nodes views.Slice[types.NodeView]) (PolicyManager, error) {
+func NewPolicyManager(pol []byte, users []types.User, nodes views.Slice[types.NodeView],
+) (PolicyManager, error) {
 	var (
 		polMan PolicyManager
 		err    error
@@ -113,7 +118,8 @@ func NewPolicyManager(pol []byte, users []types.User, nodes views.Slice[types.No
 // PolicyManagersForTest returns all available [PolicyManager] implementations to
 // be used in tests to validate them in tests that try to determine that they
 // behave the same.
-func PolicyManagersForTest(pol []byte, users []types.User, nodes views.Slice[types.NodeView]) ([]PolicyManager, error) {
+func PolicyManagersForTest(pol []byte, users []types.User, nodes views.Slice[types.NodeView],
+) ([]PolicyManager, error) {
 	var polMans []PolicyManager
 
 	for _, pmf := range PolicyManagerFuncsForTest(pol) {
@@ -128,12 +134,14 @@ func PolicyManagersForTest(pol []byte, users []types.User, nodes views.Slice[typ
 	return polMans, nil
 }
 
-func PolicyManagerFuncsForTest(pol []byte) []func([]types.User, views.Slice[types.NodeView]) (PolicyManager, error) {
+func PolicyManagerFuncsForTest(pol []byte,
+) []func([]types.User, views.Slice[types.NodeView]) (PolicyManager, error) {
 	polmanFuncs := make([]func([]types.User, views.Slice[types.NodeView]) (PolicyManager, error), 0, 1)
 
 	polmanFuncs = append(polmanFuncs, func(u []types.User, n views.Slice[types.NodeView]) (PolicyManager, error) {
 		return policyv2.NewPolicyManager(pol, u, n)
-	})
+	},
+	)
 
 	return polmanFuncs
 }

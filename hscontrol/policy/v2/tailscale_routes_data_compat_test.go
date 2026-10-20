@@ -10,8 +10,8 @@
 //
 // Two test runners use this data:
 //
-//   - TestRoutesCompat: validates filter rule compilation (compileFilterRulesForNode
-//     + ReduceFilterRules) against golden file captures.
+//   - TestRoutesCompat: validates production PacketRulesForNode output
+//     against golden file captures.
 //
 //   - TestRoutesCompatPeerVisibility: validates peer visibility (CanAccess)
 //     for the subnet-to-subnet scenarios (f10–f15). These tests
@@ -36,7 +36,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
+	"github.com/juanfont/headscale/hscontrol/policy/packetfilter"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/assert"
@@ -212,22 +212,10 @@ func TestRoutesCompat(t *testing.T) {
 			// Convert Tailscale SaaS user emails to headscale format
 			policyJSON := convertPolicyUserEmails(tf.Input.FullPolicy)
 
-			// Parse and validate policy
-			pol, err := unmarshalPolicy(policyJSON)
-			require.NoError(
-				t,
-				err,
-				"%s: policy should parse successfully",
-				tf.TestID,
-			)
-
-			err = pol.validate()
-			require.NoError(
-				t,
-				err,
-				"%s: policy should validate successfully",
-				tf.TestID,
-			)
+			// Build the same policy generation used by production responses.
+			pm, err := NewPolicyManager(policyJSON, users, nodes.ViewSlice())
+			require.NoError(t, err,
+				"%s: policy manager should build successfully", tf.TestID)
 
 			for nodeName, capture := range tf.Captures {
 				t.Run(nodeName, func(t *testing.T) {
@@ -235,28 +223,14 @@ func TestRoutesCompat(t *testing.T) {
 					require.NotNilf(t, node,
 						"golden node %s not found in topology", nodeName)
 
-					compiledRules := pol.compileFilterRulesForNode(
-						users,
-						node.View(),
-						nodes.ViewSlice(),
-					)
+					rules, err := pm.ReadView().PacketRulesForNode(node.View())
+					require.NoError(t, err)
 
-					gotRules := policyutil.ReduceFilterRules(
-						node.View(),
-						compiledRules,
-					)
+					gotRules := packetfilter.ToTailcfg(rules)
 
 					wantRules := capture.PacketFilterRules
 
-					opts := append(
-						cmpOptions(),
-						cmpopts.EquateEmpty(),
-					)
-					if diff := cmp.Diff(
-						wantRules,
-						gotRules,
-						opts...,
-					); diff != "" {
+					if diff := filterRulesDiff(t, wantRules, gotRules); diff != "" {
 						t.Errorf(
 							"%s/%s: filter rules mismatch (-want +got):\n%s",
 							tf.TestID,
@@ -338,11 +312,11 @@ func orderedPair(a, b string) [2]string {
 // or IP range like "100.64.0.0-100.115.91.255") and adds it to the
 // IPSetBuilder.
 func addSrcIPToBuilder(
-	t *testing.T,
+	tb testing.TB,
 	builder *netipx.IPSetBuilder,
 	srcIP, testID, nodeName string,
 ) {
-	t.Helper()
+	tb.Helper()
 
 	// Handle wildcard.
 	if srcIP == "*" {
@@ -355,6 +329,8 @@ func addSrcIPToBuilder(
 	// Try CIDR notation first.
 	prefix, prefixErr := netip.ParsePrefix(srcIP)
 	if prefixErr == nil {
+		require.Equal(tb, prefix, prefix.Masked(),
+			"%s/%s: non-network bits in %q", testID, nodeName, srcIP)
 		builder.AddPrefix(prefix)
 
 		return
@@ -366,16 +342,18 @@ func addSrcIPToBuilder(
 		ip1, err1 := netip.ParseAddr(parts[0])
 		ip2, err2 := netip.ParseAddr(parts[1])
 
-		require.NoError(t, err1,
+		require.NoError(tb, err1,
 			"%s/%s: cannot parse range start in %q",
 			testID, nodeName, srcIP,
 		)
-		require.NoError(t, err2,
+		require.NoError(tb, err2,
 			"%s/%s: cannot parse range end in %q",
 			testID, nodeName, srcIP,
 		)
 
 		r := netipx.IPRangeFrom(ip1, ip2)
+		require.True(tb, r.IsValid(), "%s/%s: invalid range %q", testID, nodeName, srcIP)
+
 		for _, pfx := range r.Prefixes() {
 			builder.AddPrefix(pfx)
 		}
@@ -385,7 +363,7 @@ func addSrcIPToBuilder(
 
 	// Try single IP address.
 	addr, err := netip.ParseAddr(srcIP)
-	require.NoError(t, err,
+	require.NoError(tb, err,
 		"%s/%s: cannot parse SrcIP %q",
 		testID, nodeName, srcIP,
 	)
@@ -459,8 +437,7 @@ func deriveAllPeerPairsFromCaptures(
 // visibility (CanAccess) for subnet-to-subnet ACL scenarios using the same
 // golden file data captured from Tailscale SaaS.
 //
-// Unlike TestRoutesCompat which tests filter rule compilation
-// (compileFilterRulesForNode + ReduceFilterRules), this test exercises the
+// Unlike TestRoutesCompat which tests PacketRulesForNode, this test exercises the
 // CanAccess code path that determines whether two nodes should see each
 // other as peers. This is the code path fixed in issue #3157: before the
 // fix, CanAccess only checked node IPs against matcher sources, missing
@@ -522,9 +499,9 @@ func TestRoutesCompatPeerVisibility(t *testing.T) {
 						"node %s not found", pair[1],
 					)
 
-					matchersA, err := pm.MatchersForNode(nodeA.View())
+					matchersA, err := pm.legacyMatchersForNode(nodeA.View())
 					require.NoError(t, err)
-					matchersB, err := pm.MatchersForNode(nodeB.View())
+					matchersB, err := pm.legacyMatchersForNode(nodeB.View())
 					require.NoError(t, err)
 
 					canAccess := nodeA.View().CanAccess(
@@ -548,7 +525,7 @@ func TestRoutesCompatPeerVisibility(t *testing.T) {
 				// inlined to avoid an import cycle with the policy
 				// package.
 				for _, node := range nodes {
-					matchers, err := pm.MatchersForNode(
+					matchers, err := pm.legacyMatchersForNode(
 						node.View(),
 					)
 					require.NoError(t, err)
@@ -630,7 +607,8 @@ func TestRoutesCompatPeerVisibility(t *testing.T) {
 								// DstPorts.IP can be a bare IP without /prefix.
 								addr, addrErr := netip.ParseAddr(dp.IP)
 								require.NoErrorf(t, addrErr,
-									"golden DstPorts.IP %q unparseable as prefix or addr", dp.IP)
+									"golden DstPorts.IP %q unparseable as prefix or addr", dp.IP,
+								)
 
 								prefix = netip.PrefixFrom(addr, addr.BitLen())
 							}
@@ -661,7 +639,7 @@ func TestRoutesCompatPeerVisibility(t *testing.T) {
 						)
 						require.NotNil(t, srcNode)
 
-						matchers, err := pm.MatchersForNode(
+						matchers, err := pm.legacyMatchersForNode(
 							srcNode.View(),
 						)
 						require.NoError(t, err)
@@ -936,7 +914,7 @@ func TestRoutesCompatReduceRoutes(t *testing.T) {
 							continue
 						}
 
-						matchers, matchErr := pm.MatchersForNode(nv)
+						matchers, matchErr := pm.legacyMatchersForNode(nv)
 						require.NoError(t, matchErr)
 
 						t.Run(
@@ -1036,7 +1014,7 @@ func TestRoutesCompatExitNodePeerVisibility(t *testing.T) {
 					)
 					require.NotNil(t, exitNode)
 
-					matchers, err := pm.MatchersForNode(
+					matchers, err := pm.legacyMatchersForNode(
 						exitNode.View(),
 					)
 					require.NoError(t, err)
@@ -1074,12 +1052,12 @@ func TestRoutesCompatExitNodePeerVisibility(t *testing.T) {
 					require.NotNil(t, node1)
 					require.NotNil(t, node2)
 
-					matchers1, err := pm.MatchersForNode(
+					matchers1, err := pm.legacyMatchersForNode(
 						node1.View(),
 					)
 					require.NoError(t, err)
 
-					matchers2, err := pm.MatchersForNode(
+					matchers2, err := pm.legacyMatchersForNode(
 						node2.View(),
 					)
 					require.NoError(t, err)
@@ -1119,7 +1097,7 @@ func TestRoutesCompatExitNodePeerVisibility(t *testing.T) {
 						continue
 					}
 
-					matchers, err := pm.MatchersForNode(
+					matchers, err := pm.legacyMatchersForNode(
 						other.View(),
 					)
 					require.NoError(t, err)
@@ -1228,7 +1206,7 @@ func TestRoutesCompatNoPeersBeyondCaptures(t *testing.T) {
 			falsePositives := 0
 
 			for i, nodeA := range nodes {
-				matchersA, err := pm.MatchersForNode(
+				matchersA, err := pm.legacyMatchersForNode(
 					nodeA.View(),
 				)
 				require.NoError(t, err)
@@ -1243,7 +1221,7 @@ func TestRoutesCompatNoPeersBeyondCaptures(t *testing.T) {
 						continue
 					}
 
-					matchersB, err := pm.MatchersForNode(
+					matchersB, err := pm.legacyMatchersForNode(
 						nodeB.View(),
 					)
 					require.NoError(t, err)
@@ -1338,7 +1316,7 @@ func TestRoutesCompatNoFalsePositivePeers(t *testing.T) {
 					continue
 				}
 
-				matchers, err := pm.MatchersForNode(
+				matchers, err := pm.legacyMatchersForNode(
 					nonRouter.View(),
 				)
 				require.NoError(t, err)
@@ -1449,7 +1427,7 @@ func TestRoutesCompatPeerAllowedIPs(t *testing.T) {
 				}
 
 				t.Run(viewerName, func(t *testing.T) {
-					matchers, err := pm.MatchersForNode(viewer.View())
+					matchers, err := pm.legacyMatchersForNode(viewer.View())
 					require.NoError(t, err)
 
 					for _, nmPeer := range capture.Netmap.Peers {

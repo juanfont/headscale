@@ -4,26 +4,25 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"iter"
 	"net/netip"
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
+	"github.com/gaissmai/bart"
 	"github.com/go-json-experiment/json"
+	"github.com/juanfont/headscale/hscontrol/ipset"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/tailscale/hujson"
-	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/tailcfg/nodecap"
 	"tailscale.com/tailcfg/peercap"
+	"tailscale.com/types/ipproto"
 	"tailscale.com/types/views"
 	"tailscale.com/util/multierr"
-	"tailscale.com/util/set"
 	"tailscale.com/util/slicesx"
 )
 
@@ -39,6 +38,8 @@ const Wildcard = Asterix(0)
 var ErrAutogroupSelfRequiresPerNodeResolution = errors.New("autogroup:self requires per-node resolution and cannot be resolved in this context")
 
 var ErrUndefinedTagReference = errors.New("references undefined tag")
+
+var errSelfInSources = errors.New("autogroup:self cannot be used in sources")
 
 // SSH validation errors.
 var (
@@ -158,88 +159,6 @@ var (
 	ErrSSHTestDstDisallowedElement = errors.New("SSH tests dst contains disallowed element")
 )
 
-type resolved struct {
-	ips netipx.IPSet
-}
-
-func newResolved(ipb *netipx.IPSetBuilder) (resolved, error) {
-	ips, err := ipb.IPSet()
-	if err != nil {
-		return resolved{}, err
-	}
-
-	return resolved{ips: *ips}, nil
-}
-
-func newResolvedAddresses(ips *netipx.IPSet, err error) (ResolvedAddresses, error) {
-	if ips == nil {
-		return nil, err
-	}
-
-	return resolved{ips: *ips}, err
-}
-
-func ipSetToStrings(ips *netipx.IPSet) []string {
-	var result []string
-
-	for _, r := range ips.Ranges() {
-		if r.From() == r.To() {
-			result = append(result, r.From().String())
-			continue
-		}
-
-		if p, ok := r.Prefix(); ok {
-			result = append(result, p.String())
-			continue
-		}
-
-		result = append(result, r.String())
-	}
-
-	return result
-}
-
-func (res resolved) Strings() []string {
-	return ipSetToStrings(&res.ips)
-}
-
-func (res resolved) Prefixes() []netip.Prefix {
-	ret := res.ips.Prefixes()
-
-	return ret
-}
-
-func (res resolved) Empty() bool {
-	return len(res.ips.Prefixes()) == 0
-}
-
-func (res resolved) Iter() iter.Seq[netip.Addr] {
-	return util.IPSetAddrIter(&res.ips)
-}
-
-func (res resolved) Contains(ip netip.Addr) bool {
-	return res.ips.Contains(ip)
-}
-
-type ResolvedAddresses interface {
-	// Strings returns a slice of string representations of IP addresses,
-	// it will return the appropriate representation for the underlying Alias.
-	// Some should be returned as Prefixes and some as IP ranges.
-	Strings() []string
-
-	// Prefixes returns a slice of netip.Prefix representations of IP addresses.
-	Prefixes() []netip.Prefix
-
-	// Empty reports if there are no addresses in the ResolvedAddresses.
-	Empty() bool
-
-	// Iter returns an iterator over netip.Addr representations of IP addresses.
-	Iter() iter.Seq[netip.Addr]
-
-	// Contains reports if the given IP address is contained in the ResolvedAddresses.
-	Contains(ip netip.Addr) bool
-}
-
 type Asterix int
 
 func (a Asterix) Validate() error {
@@ -255,22 +174,25 @@ func (a Asterix) MarshalJSON() ([]byte, error) {
 	return []byte(`"*"`), nil
 }
 
-// MarshalJSON marshals the AliasWithPorts to JSON.
-func (a AliasWithPorts) MarshalJSON() ([]byte, error) {
+// String formats a destination selector and its ports.
+func (a AliasWithPorts) String() string {
 	if a.Alias == nil {
-		return []byte(`""`), nil
+		return ""
 	}
 
-	alias := a.String()
+	alias := a.Alias.String()
+	if prefix, ok := a.Alias.(*Prefix); ok && netip.Prefix(*prefix).IsSingleIP() {
+		alias = netip.Prefix(*prefix).Addr().String()
+	}
 
 	// If no ports are specified
 	if len(a.Ports) == 0 {
-		return json.Marshal(alias)
+		return alias
 	}
 
 	// Check if it's the wildcard port range
 	if len(a.Ports) == 1 && a.Ports[0].First == 0 && a.Ports[0].Last == 65535 {
-		return json.Marshal(alias + ":*")
+		return alias + ":*"
 	}
 
 	// Otherwise, format as "alias:ports"
@@ -284,58 +206,31 @@ func (a AliasWithPorts) MarshalJSON() ([]byte, error) {
 		}
 	}
 
-	return json.Marshal(fmt.Sprintf("%s:%s", alias, strings.Join(ports, ",")))
+	return fmt.Sprintf("%s:%s", alias, strings.Join(ports, ","))
+}
+
+// MarshalJSON marshals the AliasWithPorts to JSON.
+func (a AliasWithPorts) MarshalJSON() ([]byte, error) {
+	return json.Marshal(a.String())
 }
 
 func (a Asterix) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-var asterixResolved = sync.OnceValue(func() *netipx.IPSet {
-	var ipb netipx.IPSetBuilder
-	ipb.AddPrefix(tsaddr.TailscaleULARange())
-	ipb.AddPrefix(tsaddr.CGNATRange())
-	ipb.RemovePrefix(tsaddr.ChromeOSVMRange())
+func (a Asterix) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView],
+) (ipset.Set, error) {
+	var ips ipset.Builder
 
-	ips, err := ipb.IPSet()
-	if err != nil {
-		panic(fmt.Sprintf("failed to build IPSet for wildcard: %v", err))
-	}
+	err := a.resolveInto(p, users, nodes, &ips)
 
-	return ips
-})
-
-func (a Asterix) Resolve(p *Policy, u types.Users, n views.Slice[types.NodeView]) (ResolvedAddresses, error) {
-	return newResolvedAddresses(a.resolve(p, u, n))
+	return buildIPSetMultiErr(&ips, err)
 }
 
-func (a Asterix) resolve(_ *Policy, _ types.Users, _ views.Slice[types.NodeView]) (*netipx.IPSet, error) {
-	return asterixResolved(), nil
-}
-
-// approvedSubnetRoutes collects all approved non-exit subnet routes
-// advertised across all nodes. Per Tailscale documentation, wildcard
-// (*) SrcIPs include "any approved subnets".
-//
-// These are collected separately from the Asterix IPSet because
-// IPSet merges overlapping ranges (e.g. 10.0.0.0/8 absorbs
-// 10.33.0.0/16), but Tailscale preserves individual route entries.
-func approvedSubnetRoutes(nodes views.Slice[types.NodeView]) []string {
-	seen := make(set.Set[string])
-
-	var routes []string
-
-	for _, node := range nodes.All() {
-		for _, route := range node.SubnetRoutes() {
-			s := route.String()
-			if !seen.Contains(s) {
-				seen.Add(s)
-				routes = append(routes, s)
-			}
-		}
-	}
-
-	return routes
+func (a Asterix) resolveInto(_ *Policy, _ types.Users, _ views.Slice[types.NodeView], ips *ipset.Builder,
+) error {
+	ips.AddSet(util.Tailnet())
+	return nil
 }
 
 // Username is a string that represents a username, it must contain an @.
@@ -419,22 +314,25 @@ func (u *Username) resolveUser(users types.Users) (types.User, error) {
 	return potentialUsers[0], nil
 }
 
-func (u *Username) Resolve(_ *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ResolvedAddresses, error) {
-	return newResolvedAddresses(u.resolve(nil, users, nodes))
+func (u *Username) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView],
+) (ipset.Set, error) {
+	var ips ipset.Builder
+
+	err := u.resolveInto(p, users, nodes, &ips)
+
+	return buildIPSetMultiErr(&ips, err)
 }
 
-func (u *Username) resolve(_ *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
-	var (
-		ips  netipx.IPSetBuilder
-		errs []error
-	)
+func (u *Username) resolveInto(_ *Policy, users types.Users, nodes views.Slice[types.NodeView], ips *ipset.Builder,
+) error {
+	var errs []error
 
 	user, err := u.resolveUser(users)
 	if errors.Is(err, ErrUserNotFound) {
 		// A policy may name users before they register (#2863). Report it
 		// as an empty set, not an error: callers that bail on error would
 		// otherwise drop a whole group for one missing member (#3513).
-		return &netipx.IPSet{}, nil
+		return nil
 	}
 
 	if err != nil {
@@ -453,11 +351,11 @@ func (u *Username) resolve(_ *Policy, users types.Users, nodes views.Slice[types
 		}
 
 		if node.User().ID() == user.ID {
-			node.AppendToIPSet(&ips)
+			node.AppendToIPSet(ips)
 		}
 	}
 
-	return buildIPSetMultiErr(&ips, errs)
+	return multierr.New(errs...)
 }
 
 // Group is a special string which is always prefixed with `group:`.
@@ -509,26 +407,27 @@ func (g *Group) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(*g))
 }
 
-func (g *Group) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ResolvedAddresses, error) {
-	return newResolvedAddresses(g.resolve(p, users, nodes))
+func (g *Group) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView],
+) (ipset.Set, error) {
+	var ips ipset.Builder
+
+	err := g.resolveInto(p, users, nodes, &ips)
+
+	return buildIPSetMultiErr(&ips, err)
 }
 
-func (g *Group) resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
-	var (
-		ips  netipx.IPSetBuilder
-		errs []error
-	)
+func (g *Group) resolveInto(p *Policy, users types.Users, nodes views.Slice[types.NodeView], ips *ipset.Builder,
+) error {
+	var errs []error
 
 	for _, user := range p.Groups[*g] {
-		uips, err := user.resolve(nil, users, nodes)
+		err := user.resolveInto(nil, users, nodes, ips)
 		if err != nil {
 			errs = append(errs, err)
 		}
-
-		ips.AddSet(uips)
 	}
 
-	return buildIPSetMultiErr(&ips, errs)
+	return multierr.New(errs...)
 }
 
 // Tag is a special string which is always prefixed with `tag:`.
@@ -568,21 +467,25 @@ func (t *Tag) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (t *Tag) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ResolvedAddresses, error) {
-	return newResolvedAddresses(t.resolve(p, users, nodes))
+func (t *Tag) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView],
+) (ipset.Set, error) {
+	var ips ipset.Builder
+
+	err := t.resolveInto(p, users, nodes, &ips)
+
+	return buildIPSetMultiErr(&ips, err)
 }
 
-func (t *Tag) resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
-	var ips netipx.IPSetBuilder
-
+func (t *Tag) resolveInto(p *Policy, users types.Users, nodes views.Slice[types.NodeView], ips *ipset.Builder,
+) error {
 	for _, node := range nodes.All() {
 		// Check if node has this tag
 		if node.HasTag(string(*t)) {
-			node.AppendToIPSet(&ips)
+			node.AppendToIPSet(ips)
 		}
 	}
 
-	return ips.IPSet()
+	return nil
 }
 
 func (t *Tag) CanBeAutoApprover() bool {
@@ -624,24 +527,25 @@ func (h *Host) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (h *Host) Resolve(p *Policy, _ types.Users, nodes views.Slice[types.NodeView]) (ResolvedAddresses, error) {
-	return newResolvedAddresses(h.resolve(p, nil, nodes))
+func (h *Host) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView],
+) (ipset.Set, error) {
+	var ips ipset.Builder
+
+	err := h.resolveInto(p, users, nodes, &ips)
+
+	return buildIPSetMultiErr(&ips, err)
 }
 
-func (h *Host) resolve(p *Policy, _ types.Users, _ views.Slice[types.NodeView]) (*netipx.IPSet, error) {
-	var (
-		ips  netipx.IPSetBuilder
-		errs []error
-	)
-
+func (h *Host) resolveInto(p *Policy, _ types.Users, _ views.Slice[types.NodeView], ips *ipset.Builder,
+) error {
 	pref, ok := p.Hosts[*h]
 	if !ok {
-		return nil, fmt.Errorf("%w: %q", ErrHostResolve, *h)
+		return fmt.Errorf("%w: %q", ErrHostResolve, *h)
 	}
 
 	err := pref.Validate()
 	if err != nil {
-		errs = append(errs, err)
+		return err
 	}
 
 	// Address-based aliases (host names) resolve to exactly the
@@ -649,7 +553,7 @@ func (h *Host) resolve(p *Policy, _ types.Users, _ views.Slice[types.NodeView]) 
 	// include the matching node's other IP addresses.
 	ips.AddPrefix(netip.Prefix(pref))
 
-	return buildIPSetMultiErr(&ips, errs)
+	return nil
 }
 
 type Prefix netip.Prefix
@@ -699,34 +603,41 @@ func (p *Prefix) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	if err := p.Validate(); err != nil { //nolint:noinlineerr
+	err = p.Validate()
+	if err != nil { //nolint:noinlineerr
 		return err
 	}
 
 	return nil
 }
 
-// Resolve resolves the [Prefix] to an [netipx.IPSet]. The [netipx.IPSet] will
+// Resolve resolves the [Prefix] to an [ipset.Set]. The [ipset.Set] will
 // contain all the IP addresses that the [Prefix] represents within Headscale.
 // It is the product of the [Prefix] and the [Policy], [types.Users], and [types.Nodes].
 //
 // See [Policy], [types.Users], and [types.Nodes] for more details.
-func (p *Prefix) Resolve(_ *Policy, _ types.Users, nodes views.Slice[types.NodeView]) (ResolvedAddresses, error) {
-	return newResolvedAddresses(p.resolve(nil, nil, nodes))
+func (p *Prefix) Resolve(pol *Policy, users types.Users, nodes views.Slice[types.NodeView],
+) (ipset.Set, error) {
+	var ips ipset.Builder
+
+	err := p.resolveInto(pol, users, nodes, &ips)
+
+	return buildIPSetMultiErr(&ips, err)
 }
 
-func (p *Prefix) resolve(_ *Policy, _ types.Users, _ views.Slice[types.NodeView]) (*netipx.IPSet, error) {
-	var (
-		ips  netipx.IPSetBuilder
-		errs []error
-	)
+func (p *Prefix) resolveInto(_ *Policy, _ types.Users, _ views.Slice[types.NodeView], ips *ipset.Builder,
+) error {
+	err := p.Validate()
+	if err != nil {
+		return err
+	}
 
 	// Address-based aliases resolve to exactly the literal prefix.
 	// Unlike identity-based aliases (tags, users, groups), they do
 	// NOT expand to include the matching node's other IP addresses.
 	ips.AddPrefix(netip.Prefix(*p))
 
-	return buildIPSetMultiErr(&ips, errs)
+	return nil
 }
 
 // AutoGroup is a special string which is always prefixed with `autogroup:`.
@@ -778,16 +689,21 @@ func (ag *AutoGroup) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(*ag))
 }
 
-func (ag *AutoGroup) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ResolvedAddresses, error) {
-	return newResolvedAddresses(ag.resolve(p, users, nodes))
+func (ag *AutoGroup) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView],
+) (ipset.Set, error) {
+	var ips ipset.Builder
+
+	err := ag.resolveInto(p, users, nodes, &ips)
+
+	return buildIPSetMultiErr(&ips, err)
 }
 
-func (ag *AutoGroup) resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
-	var build netipx.IPSetBuilder
-
+func (ag *AutoGroup) resolveInto(p *Policy, users types.Users, nodes views.Slice[types.NodeView], ips *ipset.Builder,
+) error {
 	switch *ag {
 	case AutoGroupInternet:
-		return util.TheInternet(), nil
+		ips.AddSet(util.TheInternet())
+		return nil
 
 	case AutoGroupMember:
 		for _, node := range nodes.All() {
@@ -797,10 +713,10 @@ func (ag *AutoGroup) resolve(p *Policy, users types.Users, nodes views.Slice[typ
 			}
 
 			// Node is a member if it is not tagged
-			node.AppendToIPSet(&build)
+			node.AppendToIPSet(ips)
 		}
 
-		return build.IPSet()
+		return nil
 
 	case AutoGroupTagged:
 		for _, node := range nodes.All() {
@@ -809,33 +725,32 @@ func (ag *AutoGroup) resolve(p *Policy, users types.Users, nodes views.Slice[typ
 				continue
 			}
 
-			node.AppendToIPSet(&build)
+			node.AppendToIPSet(ips)
 		}
 
-		return build.IPSet()
+		return nil
 
 	case AutoGroupSelf:
 		// autogroup:self represents all devices owned by the same user.
 		// This cannot be resolved in the general context and should be handled
 		// specially during policy compilation per-node for security.
-		return nil, ErrAutogroupSelfRequiresPerNodeResolution
+		return ErrAutogroupSelfRequiresPerNodeResolution
 
 	case AutoGroupDangerAll:
 		// autogroup:danger-all matches ALL IP addresses, including
 		// non-Tailscale addresses. Resolves to 0.0.0.0/0 + ::/0.
 		// Filter compilation converts this to SrcIPs: ["*"].
-		build.AddPrefix(netip.MustParsePrefix("0.0.0.0/0"))
-		build.AddPrefix(netip.MustParsePrefix("::/0"))
+		ips.AddSet(ipset.All())
 
-		return build.IPSet()
+		return nil
 
 	case AutoGroupNonRoot:
 		// autogroup:nonroot represents non-root users on multi-user devices.
 		// This is not supported in headscale and requires OS-level user detection.
-		return nil, fmt.Errorf("%w: %q", ErrUnknownAutogroup, *ag)
+		return fmt.Errorf("%w: %q", ErrUnknownAutogroup, *ag)
 
 	default:
-		return nil, fmt.Errorf("%w: %q", ErrUnknownAutogroup, *ag)
+		return fmt.Errorf("%w: %q", ErrUnknownAutogroup, *ag)
 	}
 }
 
@@ -857,14 +772,16 @@ type Alias interface {
 	// identity in rendered errors and logs.
 	String() string
 
-	// Resolve resolves the [Alias] to a [netipx.IPSet]. The [netipx.IPSet] will
+	// Resolve resolves the [Alias] to a [ipset.Set]. The [ipset.Set] will
 	// contain all the IP addresses that the [Alias] represents within Headscale.
 	// It is the product of the [Alias] and the [Policy], [types.Users] and
 	// [types.Nodes]. This is an interface definition and the implementation is
 	// independent of the [Alias] type.
-	Resolve(pol *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ResolvedAddresses, error)
+	Resolve(pol *Policy, users types.Users, nodes views.Slice[types.NodeView],
+	) (ipset.Set, error)
 
-	resolve(pol *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error)
+	resolveInto(pol *Policy, users types.Users, nodes views.Slice[types.NodeView], ips *ipset.Builder,
+	) error
 }
 
 type AliasWithPorts struct {
@@ -881,48 +798,47 @@ func (ve *AliasWithPorts) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	switch vs := v.(type) {
-	case string:
-		var (
-			portsPart string
-			err       error
-		)
-
-		originalDst := vs
-
-		if strings.Contains(vs, ":") {
-			vs, portsPart, err = splitDestinationAndPort(vs)
-			if err != nil {
-				return err
-			}
-
-			ports, err := parsePortRange(portsPart)
-			if err != nil {
-				return fmt.Errorf(
-					"dst=%q: port range %q: %w",
-					originalDst, portsPart, err,
-				)
-			}
-
-			ve.Ports = ports
-		} else {
-			return ErrHostportMissingColon
-		}
-
-		ve.Alias, err = parseAlias(vs)
-		if err != nil {
-			return err
-		}
-
-		if err := ve.Validate(); err != nil { //nolint:noinlineerr
-			return err
-		}
-
-	default:
-		return fmt.Errorf("%w: %T", ErrTypeNotSupported, vs)
+	vs, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("%w: %T", ErrTypeNotSupported, v)
 	}
 
+	parsed, err := parseAliasWithPorts(vs)
+	if err != nil {
+		return err
+	}
+
+	*ve = parsed
+
 	return nil
+}
+
+func parseAliasWithPorts(vs string) (AliasWithPorts, error) {
+	if !strings.Contains(vs, ":") {
+		return AliasWithPorts{}, ErrHostportMissingColon
+	}
+
+	alias, portsPart, err := splitDestinationAndPort(vs)
+	if err != nil {
+		return AliasWithPorts{}, err
+	}
+
+	ports, err := parsePortRange(portsPart)
+	if err != nil {
+		return AliasWithPorts{}, fmt.Errorf("dst=%q: port range %q: %w", vs, portsPart, err)
+	}
+
+	parsed, err := parseAlias(alias)
+	if err != nil {
+		return AliasWithPorts{}, err
+	}
+
+	err = parsed.Validate()
+	if err != nil {
+		return AliasWithPorts{}, err
+	}
+
+	return AliasWithPorts{Alias: parsed, Ports: ports}, nil
 }
 
 // ProtocolPort is a representation of the "network layer capabilities"
@@ -967,9 +883,7 @@ func (ve *ProtocolPort) UnmarshalJSON(b []byte) error {
 			return fmt.Errorf("%w, got: %v(%d)", ErrProtocolPortInvalidFormat, parts, len(parts))
 		}
 
-		protocol := Protocol(parts[0])
-
-		err := protocol.validate()
+		protocol, err := parseProtocol(parts[0])
 		if err != nil {
 			return err
 		}
@@ -1010,6 +924,9 @@ func (ve ProtocolPort) MarshalJSON() ([]byte, error) {
 	}
 
 	portStr := strings.Join(portParts, ",")
+	if ve.Protocol == 0 {
+		return json.Marshal(portStr)
+	}
 
 	// Combine protocol and ports
 	result := fmt.Sprintf("%s:%s", ve.Protocol, portStr)
@@ -1125,26 +1042,25 @@ func (a *Aliases) MarshalJSON() ([]byte, error) {
 	return json.Marshal(aliases)
 }
 
-func (a *Aliases) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ResolvedAddresses, error) {
+func (a *Aliases) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView],
+) (ipset.Set, error) {
 	var (
-		ips  netipx.IPSetBuilder
+		ips  ipset.Builder
 		errs []error
 	)
 
 	for _, alias := range *a {
-		aips, err := alias.resolve(p, users, nodes)
+		err := alias.resolveInto(p, users, nodes, &ips)
 		if err != nil {
 			errs = append(errs, err)
 		}
-
-		ips.AddSet(aips)
 	}
 
-	return newResolvedAddresses(buildIPSetMultiErr(&ips, errs))
+	return buildIPSetMultiErr(&ips, errs...)
 }
 
-func buildIPSetMultiErr(ipBuilder *netipx.IPSetBuilder, errs []error) (*netipx.IPSet, error) {
-	ips, err := ipBuilder.IPSet()
+func buildIPSetMultiErr(ipBuilder *ipset.Builder, errs ...error) (ipset.Set, error) {
+	ips, err := ipBuilder.Build()
 	return ips, multierr.New(append(errs, err)...)
 }
 
@@ -1527,66 +1443,65 @@ func (ap AutoApproverPolicy) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&obj)
 }
 
-// resolveAutoApprovers resolves the [AutoApprovers] to a map of [netip.Prefix] to [netipx.IPSet].
-// The resulting map can be used to quickly look up if a node can self-approve a route.
+// resolveAutoApprovers resolves the [AutoApprovers] to a table of [netip.Prefix] to [ipset.Set].
+// The resulting table can be used to quickly look up if a node can self-approve a route.
 // It is intended for internal use in a [PolicyManager].
-func resolveAutoApprovers(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (map[netip.Prefix]*netipx.IPSet, *netipx.IPSet, error) {
+func resolveAutoApprovers(p *Policy, users types.Users, nodes views.Slice[types.NodeView],
+) (*bart.Table[ipset.Set], ipset.Set, error) {
+	ret := new(bart.Table[ipset.Set])
 	if p == nil {
-		return nil, nil, nil
+		return ret, ipset.Set{}, nil
 	}
 
 	var err error
 
-	routes := make(map[netip.Prefix]*netipx.IPSetBuilder)
+	routes := make(map[netip.Prefix]*ipset.Builder)
 
 	for prefix, autoApprovers := range p.AutoApprovers.Routes {
+		prefix = prefix.Masked()
 		if _, ok := routes[prefix]; !ok {
-			routes[prefix] = new(netipx.IPSetBuilder)
+			routes[prefix] = new(ipset.Builder)
 		}
 
 		for _, autoApprover := range autoApprovers {
 			aa, ok := autoApprover.(Alias)
 			if !ok {
 				// Should never happen
-				return nil, nil, fmt.Errorf("%w: %v", ErrAutoApproverNotAlias, autoApprover)
+				return nil, ipset.Set{}, fmt.Errorf("%w: %v", ErrAutoApproverNotAlias, autoApprover)
 			}
 			// If it does not resolve, that means the autoApprover is not associated with any IP addresses.
-			ips, _ := aa.resolve(p, users, nodes)
-			routes[prefix].AddSet(ips)
+			_ = aa.resolveInto(p, users, nodes, routes[prefix])
 		}
 	}
 
-	var exitNodeSetBuilder netipx.IPSetBuilder
+	var exitNodeSetBuilder ipset.Builder
 
 	if len(p.AutoApprovers.ExitNode) > 0 {
 		for _, autoApprover := range p.AutoApprovers.ExitNode {
 			aa, ok := autoApprover.(Alias)
 			if !ok {
 				// Should never happen
-				return nil, nil, fmt.Errorf("%w: %v", ErrAutoApproverNotAlias, autoApprover)
+				return nil, ipset.Set{}, fmt.Errorf("%w: %v", ErrAutoApproverNotAlias, autoApprover)
 			}
 			// If it does not resolve, that means the autoApprover is not associated with any IP addresses.
-			ips, _ := aa.resolve(p, users, nodes)
-			exitNodeSetBuilder.AddSet(ips)
+			_ = aa.resolveInto(p, users, nodes, &exitNodeSetBuilder)
 		}
 	}
-
-	ret := make(map[netip.Prefix]*netipx.IPSet)
 
 	for prefix, builder := range routes {
-		ipSet, err := builder.IPSet()
+		ipSet, err := builder.Build()
 		if err != nil {
-			return nil, nil, err
+			return nil, ipset.Set{}, err
 		}
 
-		ret[prefix] = ipSet
+		ret.Insert(prefix, ipSet)
 	}
 
-	var exitNodeSet *netipx.IPSet
+	var exitNodeSet ipset.Set
 	if len(p.AutoApprovers.ExitNode) > 0 {
-		exitNodeSet, err = exitNodeSetBuilder.IPSet()
+		exitNodeSet, err = exitNodeSetBuilder.Build()
 		if err != nil {
-			return nil, nil, err
+			return nil, ipset.Set{}, err
 		}
 	}
 
@@ -1660,142 +1575,113 @@ func (a *SSHAction) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(*a))
 }
 
-// Protocol represents a network protocol with its IANA number and descriptions.
-type Protocol string
+// Protocol is a numeric IANA protocol; zero denotes omitted/default syntax.
+type Protocol ipproto.Proto
 
 const (
-	ProtocolNameICMP     Protocol = "icmp"
-	ProtocolNameIGMP     Protocol = "igmp"
-	ProtocolNameIPv4     Protocol = "ipv4"
-	ProtocolNameIPInIP   Protocol = "ip-in-ip"
-	ProtocolNameTCP      Protocol = "tcp"
-	ProtocolNameEGP      Protocol = "egp"
-	ProtocolNameIGP      Protocol = "igp"
-	ProtocolNameUDP      Protocol = "udp"
-	ProtocolNameGRE      Protocol = "gre"
-	ProtocolNameESP      Protocol = "esp"
-	ProtocolNameAH       Protocol = "ah"
-	ProtocolNameIPv6ICMP Protocol = "ipv6-icmp"
-	ProtocolNameSCTP     Protocol = "sctp"
-	ProtocolNameFC       Protocol = "fc"
-	ProtocolNameWildcard Protocol = "*"
+	ProtocolNameICMP     Protocol = 1
+	ProtocolNameIGMP     Protocol = 2
+	ProtocolNameIPv4     Protocol = 4
+	ProtocolNameIPInIP   Protocol = 4
+	ProtocolNameTCP      Protocol = 6
+	ProtocolNameEGP      Protocol = 8
+	ProtocolNameIGP      Protocol = 9
+	ProtocolNameUDP      Protocol = 17
+	ProtocolNameGRE      Protocol = 47
+	ProtocolNameESP      Protocol = 50
+	ProtocolNameAH       Protocol = 51
+	ProtocolNameIPv6ICMP Protocol = 58
+	ProtocolNameSCTP     Protocol = 132
+	ProtocolNameFC       Protocol = 133
+	ProtocolNameWildcard Protocol = 0
 )
 
-// String returns the string representation of the [Protocol].
-func (p *Protocol) String() string {
-	return string(*p)
-}
-
-// toIANAProtocolNumbers converts a [Protocol] to its IANA protocol numbers.
-// Since validation happens during [Protocol.UnmarshalJSON], this method should not fail for valid [Protocol] values.
-func (p *Protocol) toIANAProtocolNumbers() []int {
-	switch *p {
-	case "":
-		// Empty means the same as wildcard-ish, the client will add the default protocols (TCP, UDP, ICMP) if empty.
-		return nil
-	case ProtocolNameWildcard:
-		// Wildcard protocol - defensive handling (should not reach here due to validation)
-		return nil
-	case ProtocolNameIGMP:
-		return []int{ProtocolIGMP}
-	case ProtocolNameIPv4, ProtocolNameIPInIP:
-		return []int{ProtocolIPv4}
-	case ProtocolNameTCP:
-		return []int{ProtocolTCP}
-	case ProtocolNameEGP:
-		return []int{ProtocolEGP}
-	case ProtocolNameIGP:
-		return []int{ProtocolIGP}
-	case ProtocolNameUDP:
-		return []int{ProtocolUDP}
-	case ProtocolNameGRE:
-		return []int{ProtocolGRE}
-	case ProtocolNameESP:
-		return []int{ProtocolESP}
-	case ProtocolNameAH:
-		return []int{ProtocolAH}
-	case ProtocolNameSCTP:
-		return []int{ProtocolSCTP}
-	case ProtocolNameICMP:
-		// ICMP only - use "ipv6-icmp" or protocol number 58 for ICMPv6
-		return []int{ProtocolICMP}
-	case ProtocolNameIPv6ICMP:
-		return []int{ProtocolIPv6ICMP}
-	case ProtocolNameFC:
-		return []int{ProtocolFC}
-	default:
-		// Try to parse as a numeric protocol number
-		// This should not fail since validation happened during unmarshaling
-		protocolNumber, _ := strconv.Atoi(string(*p))
-		return []int{protocolNumber}
+// String returns the canonical policy spelling of the protocol.
+func (p Protocol) String() string {
+	if p == 0 {
+		return ""
 	}
+
+	if name, ok := ProtocolNumberToName[p]; ok {
+		return name
+	}
+
+	return strconv.Itoa(int(p))
 }
 
-// UnmarshalJSON implements JSON unmarshaling for [Protocol].
-//
-// Tailscale accepts both named ("tcp") and numeric IANA ("6") forms.
-// Storing whichever form the user wrote leaves downstream code with
-// two equivalents to handle separately, and any consumer that
-// branches on the named form would silently mishandle the numeric
-// equivalent. Canonicalising to the named form here makes [Protocol]
-// hold one value post-parse — every downstream consumer sees the
-// same form regardless of what the user wrote.
+// IPProtocols returns the effective protocols, including client defaults.
+func (p Protocol) IPProtocols() []ipproto.Proto {
+	if p == 0 {
+		return []ipproto.Proto{ipproto.ICMPv4, ipproto.TCP, ipproto.UDP, ipproto.ICMPv6}
+	}
+
+	return []ipproto.Proto{ipproto.Proto(p)}
+}
+
+// UnmarshalJSON accepts named and numeric protocol strings at the boundary.
 func (p *Protocol) UnmarshalJSON(b []byte) error {
-	str := strings.Trim(string(b), `"`)
-
-	// Normalize to lowercase for case-insensitive matching
-	*p = Protocol(strings.ToLower(str))
-
-	num, atoiErr := strconv.Atoi(string(*p))
-	if atoiErr == nil && num >= 0 && num <= 255 {
-		if name, ok := ProtocolNumberToName[num]; ok {
-			*p = name
+	str := strings.ToLower(strings.Trim(string(b), `"`))
+	// Preserve legacy normalization of known numeric spellings before validation.
+	num, err := strconv.Atoi(str)
+	if err == nil && num > 0 && num <= 255 {
+		if _, known := ProtocolNumberToName[Protocol(num)]; known {
+			*p = Protocol(num)
+			return nil
 		}
 	}
 
-	err := p.validate()
+	protocol, err := parseProtocol(str)
 	if err != nil {
 		return err
 	}
 
+	*p = protocol
+
 	return nil
 }
 
-// validate checks if the [Protocol] is valid.
-func (p *Protocol) validate() error {
-	switch *p {
-	case "", ProtocolNameICMP, ProtocolNameIGMP, ProtocolNameIPv4, ProtocolNameIPInIP,
-		ProtocolNameTCP, ProtocolNameEGP, ProtocolNameIGP, ProtocolNameUDP, ProtocolNameGRE,
-		ProtocolNameESP, ProtocolNameAH, ProtocolNameSCTP, ProtocolNameIPv6ICMP, ProtocolNameFC:
-		return nil
-	case ProtocolNameWildcard:
-		// Wildcard "*" is not allowed - Tailscale rejects it
-		return errUnknownProtocolWildcard
-	default:
-		// Try to parse as a numeric protocol number
-		str := string(*p)
-
-		// Check for leading zeros (not allowed by Tailscale)
-		if str == "0" || (len(str) > 1 && str[0] == '0') {
-			return fmt.Errorf("%w: %q", ErrProtocolLeadingZero, str)
-		}
-
-		protocolNumber, err := strconv.Atoi(str)
-		if err != nil {
-			return fmt.Errorf("%w: %q must be a known protocol name or valid protocol number 0-255", ErrInvalidProtocolNumber, *p)
-		}
-
-		if protocolNumber < 0 || protocolNumber > 255 {
-			return fmt.Errorf("%w: %d", ErrProtocolOutOfRange, protocolNumber)
-		}
-
-		return nil
+func parseProtocol(str string) (Protocol, error) {
+	if str == "" {
+		return 0, nil
 	}
+
+	if str == "ip-in-ip" {
+		return ProtocolNameIPv4, nil
+	}
+
+	for num, name := range ProtocolNumberToName {
+		if str == name {
+			return num, nil
+		}
+	}
+
+	if str == "*" {
+		return 0, errUnknownProtocolWildcard
+	}
+
+	if str == "0" || (len(str) > 1 && str[0] == '0') {
+		return 0, fmt.Errorf("%w: %q", ErrProtocolLeadingZero, str)
+	}
+
+	num, err := strconv.Atoi(str)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %q must be a known protocol name or valid protocol number 0-255", ErrInvalidProtocolNumber, str)
+	}
+
+	if num < 0 || num > 255 {
+		return 0, fmt.Errorf("%w: %d", ErrProtocolOutOfRange, num)
+	}
+
+	if num == 0 {
+		return 0, fmt.Errorf("%w: %q", ErrProtocolLeadingZero, str)
+	}
+
+	return Protocol(num), nil
 }
 
-// MarshalJSON implements JSON marshaling for [Protocol].
-func (p *Protocol) MarshalJSON() ([]byte, error) {
-	return json.Marshal(string(*p))
+// MarshalJSON retains the external string schema.
+func (p Protocol) MarshalJSON() ([]byte, error) {
+	return json.Marshal(p.String())
 }
 
 // Protocol constants matching the IANA numbers.
@@ -1816,20 +1702,20 @@ const (
 )
 
 // ProtocolNumberToName maps IANA protocol numbers to their [Protocol] name strings.
-var ProtocolNumberToName = map[int]Protocol{
-	ProtocolICMP:     ProtocolNameICMP,
-	ProtocolIGMP:     ProtocolNameIGMP,
-	ProtocolIPv4:     ProtocolNameIPv4,
-	ProtocolTCP:      ProtocolNameTCP,
-	ProtocolEGP:      ProtocolNameEGP,
-	ProtocolIGP:      ProtocolNameIGP,
-	ProtocolUDP:      ProtocolNameUDP,
-	ProtocolGRE:      ProtocolNameGRE,
-	ProtocolESP:      ProtocolNameESP,
-	ProtocolAH:       ProtocolNameAH,
-	ProtocolIPv6ICMP: ProtocolNameIPv6ICMP,
-	ProtocolSCTP:     ProtocolNameSCTP,
-	ProtocolFC:       ProtocolNameFC,
+var ProtocolNumberToName = map[Protocol]string{
+	ProtocolICMP:     "icmp",
+	ProtocolIGMP:     "igmp",
+	ProtocolIPv4:     "ipv4",
+	ProtocolTCP:      "tcp",
+	ProtocolEGP:      "egp",
+	ProtocolIGP:      "igp",
+	ProtocolUDP:      "udp",
+	ProtocolGRE:      "gre",
+	ProtocolESP:      "esp",
+	ProtocolAH:       "ah",
+	ProtocolIPv6ICMP: "ipv6-icmp",
+	ProtocolSCTP:     "sctp",
+	ProtocolFC:       "fc",
 }
 
 type ACL struct {
@@ -2116,7 +2002,8 @@ func validateAutogroupForSSHDst(dst *AutoGroup) error {
 //   - Destination can be: tags, autogroup:self (if source is users/groups), or same-user
 //   - Tags/autogroup:tagged CANNOT SSH to user destinations
 //   - [Username] destinations require the source to be that same single user only.
-func validateSSHSrcDstCombination(sources SSHSrcAliases, destinations SSHDstAliases) error {
+func validateSSHSrcDstCombination(sources SSHSrcAliases, destinations SSHDstAliases,
+) error {
 	// Categorize source types
 	srcHasTaggedEntities := false
 	srcHasGroups := false
@@ -2146,12 +2033,14 @@ func validateSSHSrcDstCombination(sources SSHSrcAliases, destinations SSHDstAlia
 			// Rule: Tags/autogroup:tagged CANNOT SSH to user destinations
 			if srcHasTaggedEntities {
 				return fmt.Errorf("%w (%s); use autogroup:tagged or specific tags as destinations instead",
-					ErrSSHTagSourceToUserDest, *v)
+					ErrSSHTagSourceToUserDest, *v,
+				)
 			}
 			// Rule: Username destination requires source to be that same single user only
 			if srcHasGroups || len(srcUsernames) != 1 || !srcUsernames[string(*v)] {
 				return fmt.Errorf("%w %q; use autogroup:self instead for same-user SSH access",
-					ErrSSHUserDestRequiresSameUser, *v)
+					ErrSSHUserDestRequiresSameUser, *v,
+				)
 			}
 		case *AutoGroup:
 			// Rule: autogroup:self requires source to NOT contain tags
@@ -2173,7 +2062,8 @@ func validateSSHSrcDstCombination(sources SSHSrcAliases, destinations SSHDstAlia
 //   - autogroup:self destinations require ALL sources to be users, groups, autogroup:member, or wildcard (*)
 //   - Tags, autogroup:tagged, hosts, and raw IPs are NOT valid sources for autogroup:self
 //   - Wildcard (*) is allowed because autogroup:self evaluation narrows it per-node to the node's own IPs.
-func validateACLSrcDstCombination(sources Aliases, destinations []AliasWithPorts) error {
+func validateACLSrcDstCombination(sources Aliases, destinations []AliasWithPorts,
+) error {
 	// Check if any destination is autogroup:self
 	hasAutogroupSelf := false
 
@@ -2948,22 +2838,9 @@ func (a *SSHSrcAliases) MarshalJSON() ([]byte, error) {
 	return json.Marshal(aliases)
 }
 
-func (a *SSHSrcAliases) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (ResolvedAddresses, error) {
-	var (
-		ips  netipx.IPSetBuilder
-		errs []error
-	)
-
-	for _, alias := range *a {
-		aips, err := alias.resolve(p, users, nodes)
-		if err != nil {
-			errs = append(errs, err)
-		}
-
-		ips.AddSet(aips)
-	}
-
-	return newResolvedAddresses(buildIPSetMultiErr(&ips, errs))
+func (a *SSHSrcAliases) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView],
+) (ipset.Set, error) {
+	return (*Aliases)(a).Resolve(p, users, nodes)
 }
 
 // SSHDstAliases is a list of aliases that can be used as destinations in an [SSH] rule.
@@ -3177,9 +3054,10 @@ func unmarshalPolicy(b []byte) (*Policy, error) {
 
 // validateProtocolPortCompatibility checks that only TCP, UDP, and SCTP [Protocol]s
 // can have specific ports. All other [Protocol]s should only use wildcard ports.
-func validateProtocolPortCompatibility(protocol Protocol, destinations []AliasWithPorts) error {
+func validateProtocolPortCompatibility(protocol Protocol, destinations []AliasWithPorts,
+) error {
 	// Only TCP, UDP, and SCTP support specific ports
-	supportsSpecificPorts := protocol == ProtocolNameTCP || protocol == ProtocolNameUDP || protocol == ProtocolNameSCTP || protocol == ""
+	supportsSpecificPorts := protocol == ProtocolNameTCP || protocol == ProtocolNameUDP || protocol == ProtocolNameSCTP || protocol == 0
 
 	if supportsSpecificPorts {
 		return nil // No validation needed for these protocols
@@ -3211,7 +3089,7 @@ func validateTests(pol *Policy, tests []PolicyTest) error {
 			errs = append(errs, fmt.Errorf("test %d: %w", i, ErrTestEmptyAssertions))
 		}
 
-		if t.Proto != "" &&
+		if t.Proto != 0 &&
 			t.Proto != ProtocolNameTCP &&
 			t.Proto != ProtocolNameUDP &&
 			t.Proto != ProtocolNameSCTP {
@@ -3247,15 +3125,9 @@ func validateTests(pol *Policy, tests []PolicyTest) error {
 // (range/list/wildcard, no single allow/deny answer); and CIDR ranges
 // — both raw `/N` syntax and `hosts:`-table aliases whose RHS is a
 // multi-host prefix. Bare IP literals reach this function as *[Prefix]
-// /32 or /128 just like explicit `/32` / `/128` does, so the CIDR
-// check inspects the raw input string for `/` rather than the parsed
-// alias type.
-func validateTestDestination(pol *Policy, dst string) error {
-	awp, err := parseDestinationAlias(dst)
-	if err != nil {
-		return err
-	}
-
+// /32 or /128. Explicit CIDR spelling is rejected during PolicyTest decoding,
+// before that distinction is lost.
+func validateTestDestination(pol *Policy, awp AliasWithPorts) error {
 	if ag, ok := awp.Alias.(*AutoGroup); ok && *ag == AutoGroupInternet {
 		return ErrAutogroupInternetTestDst
 	}
@@ -3264,7 +3136,7 @@ func validateTestDestination(pol *Policy, dst string) error {
 		return ErrTestDestinationMultiPort
 	}
 
-	if _, isPrefix := awp.Alias.(*Prefix); isPrefix && strings.Contains(dst, "/") {
+	if prefix, isPrefix := awp.Alias.(*Prefix); isPrefix && !netip.Prefix(*prefix).IsSingleIP() {
 		return ErrTestDestinationCIDR
 	}
 

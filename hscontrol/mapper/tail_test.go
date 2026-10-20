@@ -225,11 +225,7 @@ func TestTailNode(t *testing.T) {
 			nv := tt.node.View()
 			got, err := nv.TailNode(
 				0,
-				func(id types.NodeID) []netip.Prefix {
-					// Route function returns primaries + exit routes
-					// (matching the real caller contract).
-					return slices.Concat(primaries[id], nv.ExitRoutes())
-				},
+				nodeAddressesForTest(nv, slices.Concat(primaries[nv.ID()], nv.ExitRoutes())),
 				cfg,
 				nil,
 			)
@@ -343,7 +339,7 @@ func TestTailNodeBaselineGates(t *testing.T) {
 
 			got, err := node.View().TailNode(
 				0,
-				func(types.NodeID) []netip.Prefix { return nil },
+				types.NodeAddresses{},
 				tt.cfg,
 				nil,
 			)
@@ -353,112 +349,6 @@ func TestTailNodeBaselineGates(t *testing.T) {
 
 			if diff := cmp.Diff(tt.want, got.CapMap, cmpopts.EquateEmpty()); diff != "" {
 				t.Errorf("CapMap mismatch (-want +got):\n%s", diff)
-			}
-		})
-	}
-}
-
-// TestTailNodeDisableIPv4 asserts that a node with the disable-ipv4
-// nodeAttr has its own IPv4 (the CGNAT /32) stripped from Addresses
-// and AllowedIPs, while subnet routes the node advertises -- even
-// IPv4 ones -- remain in AllowedIPs and PrimaryRoutes. Matches the
-// SaaS behaviour captured in
-// hscontrol/policy/v2/testdata/nodeattrs_results/nodeattrs-attr-c1{5,6}-disable-ipv4*.hujson.
-func TestTailNodeDisableIPv4(t *testing.T) {
-	t.Parallel()
-
-	const NodeAttrDisableIPv4 nodecap.Cap = "disable-ipv4"
-
-	v4 := iap("100.64.0.1")
-	v6Addr := netip.MustParseAddr("fd7a:115c:a1e0::1")
-	v6 := &v6Addr
-	subnet := netip.MustParsePrefix("10.33.0.0/16")
-
-	tests := []struct {
-		name        string
-		hasCap      bool
-		approved    []netip.Prefix
-		wantAllowed []netip.Prefix
-		wantPrimary []netip.Prefix
-		wantAddrs   []netip.Prefix
-	}{
-		{
-			name:        "no-cap_emits_both_families",
-			hasCap:      false,
-			wantAllowed: []netip.Prefix{netip.MustParsePrefix("100.64.0.1/32"), netip.MustParsePrefix("fd7a:115c:a1e0::1/128")},
-			wantAddrs:   []netip.Prefix{netip.MustParsePrefix("100.64.0.1/32"), netip.MustParsePrefix("fd7a:115c:a1e0::1/128")},
-		},
-		{
-			name:        "cap_strips_own_ipv4",
-			hasCap:      true,
-			wantAllowed: []netip.Prefix{netip.MustParsePrefix("fd7a:115c:a1e0::1/128")},
-			wantAddrs:   []netip.Prefix{netip.MustParsePrefix("fd7a:115c:a1e0::1/128")},
-		},
-		{
-			name:     "cap_keeps_advertised_subnet_route",
-			hasCap:   true,
-			approved: []netip.Prefix{subnet},
-			// AllowedIPs is sorted by netip.Prefix.Compare so IPv4
-			// sorts before IPv6.
-			wantAllowed: []netip.Prefix{
-				subnet,
-				netip.MustParsePrefix("fd7a:115c:a1e0::1/128"),
-			},
-			wantPrimary: []netip.Prefix{subnet},
-			wantAddrs:   []netip.Prefix{netip.MustParsePrefix("fd7a:115c:a1e0::1/128")},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			node := &types.Node{
-				GivenName: "ipv4-disabled-node",
-				IPv4:      v4,
-				IPv6:      v6,
-				Hostinfo: &tailcfg.Hostinfo{
-					RoutableIPs: tt.approved,
-				},
-				ApprovedRoutes: tt.approved,
-			}
-
-			var selfCaps tailcfg.NodeCapMap
-			if tt.hasCap {
-				selfCaps = tailcfg.NodeCapMap{NodeAttrDisableIPv4: nil}
-			}
-
-			got, err := node.View().TailNode(
-				0,
-				func(types.NodeID) []netip.Prefix {
-					return tt.approved
-				},
-				&types.Config{Taildrop: types.TaildropConfig{Enabled: true}},
-				selfCaps,
-			)
-			if err != nil {
-				t.Fatalf("TailNode: %v", err)
-			}
-
-			prefStrings := func(ps []netip.Prefix) []string {
-				out := make([]string, len(ps))
-				for i, p := range ps {
-					out[i] = p.String()
-				}
-
-				return out
-			}
-
-			if diff := cmp.Diff(prefStrings(tt.wantAddrs), prefStrings(got.Addresses), cmpopts.EquateEmpty()); diff != "" {
-				t.Errorf("Addresses (-want +got):\n%s", diff)
-			}
-
-			if diff := cmp.Diff(prefStrings(tt.wantAllowed), prefStrings(got.AllowedIPs), cmpopts.EquateEmpty()); diff != "" {
-				t.Errorf("AllowedIPs (-want +got):\n%s", diff)
-			}
-
-			if diff := cmp.Diff(prefStrings(tt.wantPrimary), prefStrings(got.PrimaryRoutes), cmpopts.EquateEmpty()); diff != "" {
-				t.Errorf("PrimaryRoutes (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -501,9 +391,7 @@ func TestNodeExpiry(t *testing.T) {
 
 			tn, err := node.View().TailNode(
 				0,
-				func(id types.NodeID) []netip.Prefix {
-					return []netip.Prefix{}
-				},
+				types.NodeAddresses{},
 				&types.Config{Taildrop: types.TaildropConfig{Enabled: true}},
 				nil,
 			)
@@ -533,4 +421,21 @@ func TestNodeExpiry(t *testing.T) {
 			}
 		})
 	}
+}
+
+// nodeAddressesForTest supplies the serializer with already prepared route facts.
+func nodeAddressesForTest(node types.NodeView, routes []netip.Prefix) types.NodeAddresses {
+	addresses := node.Prefixes()
+	allowed := slices.Concat(addresses, routes)
+	slices.SortFunc(allowed, netip.Prefix.Compare)
+
+	var primary []netip.Prefix
+
+	for _, p := range routes {
+		if p.Bits() != 0 {
+			primary = append(primary, p)
+		}
+	}
+
+	return types.NodeAddresses{Addresses: addresses, AllowedIPs: allowed, PrimaryRoutes: primary}
 }

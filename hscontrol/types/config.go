@@ -22,7 +22,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
-	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
@@ -48,6 +47,7 @@ var (
 	errServerURLSame             = errors.New("server_url cannot use the same domain as base_domain in a way that could make the DERP and headscale server unreachable")
 	errInvalidPKCEMethod         = errors.New("pkce.method must be either 'plain' or 'S256'")
 	errTrustedProxyZeroRange     = errors.New("0.0.0.0/0 and ::/0 are not allowed")
+	errPrefixFamilyMismatch      = errors.New("prefix address family does not match field")
 	ErrNoPrefixConfigured        = errors.New("no IPv4 or IPv6 prefix configured, minimum one prefix is required")
 	ErrInvalidAllocationStrategy = errors.New("invalid prefix allocation strategy")
 )
@@ -1360,12 +1360,18 @@ func parsePrefixConfig(key string, standardRange netip.Prefix, family string) (*
 		return nil, false, fmt.Errorf("parsing %s prefix from config: %w", family, err)
 	}
 
-	builder := netipx.IPSetBuilder{}
-	builder.AddPrefix(standardRange)
+	if prefix.Addr().BitLen() != standardRange.Addr().BitLen() {
+		return nil, false, fmt.Errorf(
+			"parsing %s prefix from config: %s %q: %w",
+			family, key, s, errPrefixFamilyMismatch,
+		)
+	}
 
-	ipSet, _ := builder.IPSet()
+	prefix = prefix.Masked()
+	withinStandard := prefix.Bits() >= standardRange.Bits() &&
+		standardRange.Contains(prefix.Addr())
 
-	return &prefix, !ipSet.ContainsPrefix(prefix), nil
+	return &prefix, !withinStandard, nil
 }
 
 // trustedProxies rejects 0.0.0.0/0 and ::/0 because they defeat the

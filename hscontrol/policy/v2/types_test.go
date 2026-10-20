@@ -4,21 +4,24 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/netip"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/juanfont/headscale/hscontrol/ipset"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go4.org/netipx"
 	xmaps "golang.org/x/exp/maps"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/ipproto"
 )
 
 // TestUnmarshalPolicy tests the unmarshalling of JSON into Policy objects and the marshalling
@@ -50,7 +53,7 @@ func TestMarshalJSON(t *testing.T) {
 		ACLs: []ACL{
 			{
 				Action:   "accept",
-				Protocol: "tcp",
+				Protocol: ProtocolNameTCP,
 				Sources: Aliases{
 					new(Username("user@example.com")),
 				},
@@ -235,7 +238,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 				ACLs: []ACL{
 					{
 						Action:   "accept",
-						Protocol: "tcp",
+						Protocol: ProtocolNameTCP,
 						Sources: Aliases{
 							Wildcard,
 						},
@@ -251,7 +254,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 					},
 					{
 						Action:   "accept",
-						Protocol: "tcp",
+						Protocol: ProtocolNameTCP,
 						Sources: Aliases{
 							new(Username("testuser@headscale.net")),
 						},
@@ -264,7 +267,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 					},
 					{
 						Action:   "accept",
-						Protocol: "tcp",
+						Protocol: ProtocolNameTCP,
 						Sources: Aliases{
 							gp("group:example"),
 						},
@@ -277,7 +280,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 					},
 					{
 						Action:   "accept",
-						Protocol: "tcp",
+						Protocol: ProtocolNameTCP,
 						Sources: Aliases{
 							pp("100.101.102.103/32"),
 						},
@@ -290,7 +293,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 					},
 					{
 						Action:   "accept",
-						Protocol: "udp",
+						Protocol: ProtocolNameUDP,
 						Sources: Aliases{
 							pp("10.0.0.0/8"),
 						},
@@ -303,7 +306,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 					},
 					{
 						Action:   "accept",
-						Protocol: "tcp",
+						Protocol: ProtocolNameTCP,
 						Sources: Aliases{
 							hp("subnet-1"),
 						},
@@ -316,7 +319,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 					},
 					{
 						Action:   "accept",
-						Protocol: "tcp",
+						Protocol: ProtocolNameTCP,
 						Sources: Aliases{
 							tp("tag:group"),
 						},
@@ -332,7 +335,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 					},
 					{
 						Action:   "accept",
-						Protocol: "tcp",
+						Protocol: ProtocolNameTCP,
 						Sources: Aliases{
 							tp("tag:group"),
 						},
@@ -1242,7 +1245,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 				ACLs: []ACL{
 					{
 						Action:   "accept",
-						Protocol: "icmp",
+						Protocol: ProtocolNameICMP,
 						Sources: Aliases{
 							Wildcard,
 						},
@@ -1274,7 +1277,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 				ACLs: []ACL{
 					{
 						Action:   "accept",
-						Protocol: "icmp",
+						Protocol: ProtocolNameICMP,
 						Sources: Aliases{
 							Wildcard,
 						},
@@ -1321,7 +1324,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 				ACLs: []ACL{
 					{
 						Action:   "accept",
-						Protocol: "",
+						Protocol: ProtocolNameWildcard,
 						Sources: Aliases{
 							Wildcard,
 						},
@@ -1369,7 +1372,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 				ACLs: []ACL{
 					{
 						Action:   "accept",
-						Protocol: "icmp",
+						Protocol: ProtocolNameICMP,
 						Sources: Aliases{
 							Wildcard,
 						},
@@ -1417,7 +1420,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 				ACLs: []ACL{
 					{
 						Action:   "accept",
-						Protocol: "tcp",
+						Protocol: ProtocolNameTCP,
 						Sources: Aliases{
 							Wildcard,
 						},
@@ -1449,7 +1452,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 				ACLs: []ACL{
 					{
 						Action:   "accept",
-						Protocol: "udp",
+						Protocol: ProtocolNameUDP,
 						Sources: Aliases{
 							Wildcard,
 						},
@@ -1481,7 +1484,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 				ACLs: []ACL{
 					{
 						Action:   "accept",
-						Protocol: "sctp",
+						Protocol: ProtocolNameSCTP,
 						Sources: Aliases{
 							Wildcard,
 						},
@@ -1521,7 +1524,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 				ACLs: []ACL{
 					{
 						Action:   "accept",
-						Protocol: "tcp",
+						Protocol: ProtocolNameTCP,
 						Sources: Aliases{
 							Wildcard,
 						},
@@ -2271,7 +2274,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 				ACLs: []ACL{
 					{
 						Action:   "accept",
-						Protocol: "tcp",
+						Protocol: ProtocolNameTCP,
 						Sources: Aliases{
 							Wildcard,
 						},
@@ -2581,7 +2584,7 @@ func TestResolvePolicy(t *testing.T) {
 		{
 			name:      "autogroup-internet",
 			toResolve: agp("autogroup:internet"),
-			want:      util.TheInternet().Prefixes(),
+			want:      slices.Collect(util.TheInternet().Prefixes()),
 		},
 		{
 			// Unregistered users resolve to nothing, without an error (#3513).
@@ -2810,8 +2813,8 @@ func TestResolvePolicy(t *testing.T) {
 
 			var prefs []netip.Prefix
 
-			if ips != nil {
-				if p := ips.Prefixes(); len(p) > 0 {
+			if !ips.IsEmpty() {
+				if p := slices.Collect(ips.Prefixes()); len(p) > 0 {
 					prefs = p
 				}
 			}
@@ -2856,10 +2859,56 @@ func TestResolveAutoApprovers(t *testing.T) {
 	tests := []struct {
 		name            string
 		policy          *Policy
-		want            map[netip.Prefix]*netipx.IPSet
-		wantAllIPRoutes *netipx.IPSet
+		want            map[netip.Prefix]ipset.Set
+		wantAllIPRoutes ipset.Set
 		wantErr         bool
 	}{
+		{
+			name: "canonical-duplicate-routes-union-authorizers",
+			policy: &Policy{
+				AutoApprovers: AutoApproverPolicy{
+					Routes: map[netip.Prefix]AutoApprovers{
+						mp("10.0.0.1/24"):    {up("user1@")},
+						mp("10.0.0.2/24"):    {up("user2@")},
+						mp("2001:db8::1/64"): {up("user1@")},
+						mp("2001:db8::2/64"): {up("user2@")},
+					},
+				},
+			},
+			want: map[netip.Prefix]ipset.Set{
+				mp("10.0.0.0/24"):   mustIPSet("100.64.0.1/32", "100.64.0.2/32"),
+				mp("2001:db8::/64"): mustIPSet("100.64.0.1/32", "100.64.0.2/32"),
+			},
+		},
+		{
+			name: "adjacent-and-nested-route-keys-stay-exact",
+			policy: &Policy{
+				AutoApprovers: AutoApproverPolicy{
+					Routes: map[netip.Prefix]AutoApprovers{
+						mp("10.0.0.0/25"):   {up("user1@")},
+						mp("10.0.0.128/25"): {up("user1@")},
+						mp("10.0.0.0/26"):   {up("user2@")},
+					},
+				},
+			},
+			want: map[netip.Prefix]ipset.Set{
+				mp("10.0.0.0/25"):   mustIPSet("100.64.0.1/32"),
+				mp("10.0.0.128/25"): mustIPSet("100.64.0.1/32"),
+				mp("10.0.0.0/26"):   mustIPSet("100.64.0.2/32"),
+			},
+		},
+		{
+			name: "unresolved-owner-keeps-empty-route",
+			policy: &Policy{
+				AutoApprovers: AutoApproverPolicy{
+					Routes: map[netip.Prefix]AutoApprovers{
+						mp("10.0.0.0/24"): {up("missing@")},
+					},
+					ExitNode: AutoApprovers{up("missing@")},
+				},
+			},
+			want: map[netip.Prefix]ipset.Set{mp("10.0.0.0/24"): {}},
+		},
 		{
 			name: "single-route",
 			policy: &Policy{
@@ -2869,10 +2918,10 @@ func TestResolveAutoApprovers(t *testing.T) {
 					},
 				},
 			},
-			want: map[netip.Prefix]*netipx.IPSet{
+			want: map[netip.Prefix]ipset.Set{
 				mp("10.0.0.0/24"): mustIPSet("100.64.0.1/32"),
 			},
-			wantAllIPRoutes: nil,
+			wantAllIPRoutes: ipset.Set{},
 			wantErr:         false,
 		},
 		{
@@ -2885,11 +2934,11 @@ func TestResolveAutoApprovers(t *testing.T) {
 					},
 				},
 			},
-			want: map[netip.Prefix]*netipx.IPSet{
+			want: map[netip.Prefix]ipset.Set{
 				mp("10.0.0.0/24"): mustIPSet("100.64.0.1/32"),
 				mp("10.0.1.0/24"): mustIPSet("100.64.0.2/32"),
 			},
-			wantAllIPRoutes: nil,
+			wantAllIPRoutes: ipset.Set{},
 			wantErr:         false,
 		},
 		{
@@ -2899,7 +2948,7 @@ func TestResolveAutoApprovers(t *testing.T) {
 					ExitNode: AutoApprovers{new(Username("user1@"))},
 				},
 			},
-			want:            map[netip.Prefix]*netipx.IPSet{},
+			want:            map[netip.Prefix]ipset.Set{},
 			wantAllIPRoutes: mustIPSet("100.64.0.1/32"),
 			wantErr:         false,
 		},
@@ -2915,10 +2964,10 @@ func TestResolveAutoApprovers(t *testing.T) {
 					},
 				},
 			},
-			want: map[netip.Prefix]*netipx.IPSet{
+			want: map[netip.Prefix]ipset.Set{
 				mp("10.0.0.0/24"): mustIPSet("100.64.0.1/32", "100.64.0.2/32"),
 			},
-			wantAllIPRoutes: nil,
+			wantAllIPRoutes: ipset.Set{},
 			wantErr:         false,
 		},
 		{
@@ -2943,7 +2992,7 @@ func TestResolveAutoApprovers(t *testing.T) {
 					},
 				},
 			},
-			want: map[netip.Prefix]*netipx.IPSet{
+			want: map[netip.Prefix]ipset.Set{
 				mp("10.0.1.0/24"): mustIPSet("100.64.0.4/32"),
 			},
 			wantAllIPRoutes: mustIPSet("100.64.0.5/32"),
@@ -2963,7 +3012,7 @@ func TestResolveAutoApprovers(t *testing.T) {
 					ExitNode: AutoApprovers{new(Username("user1@"))},
 				},
 			},
-			want: map[netip.Prefix]*netipx.IPSet{
+			want: map[netip.Prefix]ipset.Set{
 				mp("10.0.0.0/24"): mustIPSet("100.64.0.1/32", "100.64.0.2/32"),
 				mp("10.0.1.0/24"): mustIPSet("100.64.0.3/32"),
 			},
@@ -2982,17 +3031,19 @@ func TestResolveAutoApprovers(t *testing.T) {
 				return
 			}
 
-			if diff := cmp.Diff(tt.want, got, cmps...); diff != "" {
+			gotRoutes := maps.Collect(got.All())
+
+			if diff := cmp.Diff(tt.want, gotRoutes, cmps...); diff != "" {
 				t.Errorf("resolveAutoApprovers() mismatch (-want +got):\n%s", diff)
 			}
 
-			if tt.wantAllIPRoutes != nil {
-				if gotAllIPRoutes == nil {
+			if !tt.wantAllIPRoutes.IsEmpty() {
+				if gotAllIPRoutes.IsEmpty() {
 					t.Error("resolveAutoApprovers() expected non-nil allIPRoutes, got nil")
 				} else if diff := cmp.Diff(tt.wantAllIPRoutes, gotAllIPRoutes, cmps...); diff != "" {
 					t.Errorf("resolveAutoApprovers() allIPRoutes mismatch (-want +got):\n%s", diff)
 				}
-			} else if gotAllIPRoutes != nil {
+			} else if !gotAllIPRoutes.IsEmpty() {
 				t.Error("resolveAutoApprovers() expected nil allIPRoutes, got non-nil")
 			}
 		})
@@ -3270,23 +3321,19 @@ func TestSSHUser_ParseLocalpart(t *testing.T) {
 	}
 }
 
-func mustIPSet(prefixes ...string) *netipx.IPSet {
-	var builder netipx.IPSetBuilder
+func mustIPSet(prefixes ...string) ipset.Set {
+	var builder ipset.Builder
 	for _, p := range prefixes {
 		builder.AddPrefix(mp(p))
 	}
 
-	ipSet, _ := builder.IPSet()
+	ipSet, _ := builder.Build()
 
 	return ipSet
 }
 
-func ipSetComparer(x, y *netipx.IPSet) bool {
-	if x == nil || y == nil {
-		return x == y
-	}
-
-	return cmp.Equal(x.Prefixes(), y.Prefixes(), util.Comparers...)
+func ipSetComparer(x, y ipset.Set) bool {
+	return x.Equal(y)
 }
 
 func TestNodeCanApproveRoute(t *testing.T) {
@@ -3422,6 +3469,229 @@ func TestNodeCanApproveRoute(t *testing.T) {
 	}
 }
 
+func TestNodeCanApproveRouteSupernets(t *testing.T) {
+	users := policyTestUsers()
+
+	for _, family := range []struct {
+		name, broad, narrow, route, left, right, parent, outside string
+	}{
+		{
+			"ipv4", "10.0.0.0/8", "10.1.0.0/16", "10.1.2.0/24",
+			"192.0.2.0/25", "192.0.2.128/25", "192.0.2.0/24", "172.16.0.0/16",
+		},
+		{
+			"ipv6", "2001:db8::/32", "2001:db8:1::/48", "2001:db8:1::/64",
+			"2001:db9::/65", "2001:db9:0:0:8000::/65", "2001:db9::/64", "2001:dba::/32",
+		},
+	} {
+		t.Run(family.name, func(t *testing.T) {
+			nodes := policyTestNodes(users)
+			if family.name == "ipv4" {
+				for _, node := range nodes {
+					node.IPv6 = nil
+				}
+			} else {
+				for _, node := range nodes {
+					node.IPv4 = nil
+				}
+			}
+
+			policy := fmt.Sprintf(`{"autoApprovers":{"routes":{
+				%q:["alice@"], %q:["bob@"], %q:["missing@"],
+				%q:["alice@"], %q:["alice@"]
+			}}}`, family.broad, family.narrow, family.route, family.left, family.right)
+			pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			for _, tt := range []struct {
+				name  string
+				node  *types.Node
+				route string
+				want  bool
+			}{
+				{"broad-authorizer-beyond-narrow-misses", nodes[0], family.route, true},
+				{"narrow-authorizer-beyond-empty-exact", nodes[1], family.route, true},
+				{"tagged-creator-is-not-owner", nodes[2], family.route, false},
+				{"child-does-not-authorize-parent", nodes[1], family.broad, false},
+				{"adjacent-routes-do-not-authorize-parent", nodes[0], family.parent, false},
+				{"left-route-kept", nodes[0], family.left, true},
+				{"right-route-kept", nodes[0], family.right, true},
+				{"outside-route-denied", nodes[0], family.outside, false},
+			} {
+				t.Run(tt.name, func(t *testing.T) {
+					assert.Equal(t, tt.want, pm.NodeCanApproveRoute(tt.node.View(), mp(tt.route)))
+				})
+			}
+
+			assert.False(t, pm.NodeCanApproveRoute(nodes[0].View(), netip.Prefix{}))
+		})
+	}
+}
+
+func TestNodeCanApproveRouteAddressForms(t *testing.T) {
+	users := policyTestUsers()
+	nodes := types.Nodes{
+		{ID: 1, User: &users[0], IPv4: ap("100.64.0.1"), IPv6: ap("fe80::1%eth0")},
+		{ID: 2, User: &users[1], IPv6: ap("::ffff:100.64.0.1")},
+	}
+	pm, err := NewPolicyManager([]byte(`{"autoApprovers":{"routes":{
+		"192.0.2.0/24":["alice@"],"::ffff:192.0.2.0/120":["bob@"]
+	}}}`), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	for _, tt := range []struct {
+		address, route string
+		want           bool
+	}{
+		{"100.64.0.1", "192.0.2.0/24", true},
+		{"::ffff:100.64.0.1", "192.0.2.0/24", false},
+		{"100.64.0.1", "::ffff:192.0.2.0/120", false},
+		{"::ffff:100.64.0.1", "::ffff:192.0.2.0/120", true},
+		{"fe80::1", "192.0.2.0/24", true},
+		{"fe80::1%eth0", "192.0.2.0/24", false},
+	} {
+		t.Run(tt.address+"/"+tt.route, func(t *testing.T) {
+			node := &types.Node{IPv6: ap(tt.address)}
+			assert.Equal(t, tt.want, pm.NodeCanApproveRoute(node.View(), mp(tt.route)))
+		})
+	}
+}
+
+func TestNodeCanApproveRouteDefaultPrefixes(t *testing.T) {
+	users := policyTestUsers()
+	nodes := policyTestNodes(users)
+	pm, err := NewPolicyManager([]byte(`{"autoApprovers":{
+		"routes":{"0.0.0.0/0":["alice@"],"::/0":["alice@"]},
+		"exitNode":["bob@"]
+	}}`), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	for _, route := range []string{
+		"0.0.0.0/0", "::/0",
+	} {
+		assert.False(t, pm.NodeCanApproveRoute(nodes[0].View(), mp(route)), route)
+		assert.True(t, pm.NodeCanApproveRoute(nodes[1].View(), mp(route)), route)
+		assert.False(t, pm.NodeCanApproveRoute(nodes[2].View(), mp(route)), route)
+	}
+
+	for _, route := range []string{
+		"192.0.2.1/0", "2001:db8::1/0", "10.1.0.1/16", "2001:db8::1/32",
+	} {
+		for _, node := range nodes {
+			assert.False(t, pm.NodeCanApproveRoute(node.View(), mp(route)), route)
+		}
+	}
+
+	for _, route := range []string{"10.1.0.0/16", "2001:db8::/32"} {
+		assert.True(t, pm.NodeCanApproveRoute(nodes[0].View(), mp(route)), route)
+		assert.False(t, pm.NodeCanApproveRoute(nodes[1].View(), mp(route)), route)
+	}
+
+	var absent *PolicyManager
+	assert.False(t, absent.NodeCanApproveRoute(nodes[0].View(), mp("10.1.0.0/16")))
+	assert.False(t, new(PolicyManager).NodeCanApproveRoute(nodes[0].View(), mp("10.1.0.0/16")))
+	pm, err = NewPolicyManager(nil, users, nodes.ViewSlice())
+	require.NoError(t, err)
+	assert.False(t, pm.NodeCanApproveRoute(nodes[0].View(), mp("10.1.0.0/16")))
+}
+
+func TestAutoApproverHashes(t *testing.T) {
+	users := policyTestUsers()
+	nodes := policyTestNodes(users)
+
+	const initial = `{"autoApprovers":{
+		"routes":{"10.0.0.0/24":["alice@","bob@"],"2001:db8::/64":["alice@"]},
+		"exitNode":["alice@","bob@"]
+	}}`
+
+	for _, tt := range []struct {
+		name, policy                  string
+		wantRoutesSame, wantExitsSame bool
+	}{
+		{"input-order", `{"autoApprovers":{
+			"exitNode":["bob@","alice@"],
+			"routes":{"2001:db8::/64":["alice@"],"10.0.0.0/24":["bob@","alice@"]}
+		}}`, true, true},
+		{"canonical-duplicate-keys", `{"autoApprovers":{
+			"routes":{"10.0.0.1/24":["alice@"],"10.0.0.2/24":["bob@"],
+				"2001:db8::1234/64":["alice@"]},
+			"exitNode":["alice@","bob@","alice@"]
+		}}`, true, true},
+		{"route-owner-change", `{"autoApprovers":{
+			"routes":{"10.0.0.0/24":["alice@"],"2001:db8::/64":["alice@"]},
+			"exitNode":["alice@","bob@"]
+		}}`, false, true},
+		{"exit-owner-change", `{"autoApprovers":{
+			"routes":{"10.0.0.0/24":["alice@","bob@"],"2001:db8::/64":["alice@"]},
+			"exitNode":["bob@"]
+		}}`, true, false},
+		{"exact-route-keys", `{"autoApprovers":{
+			"routes":{"10.0.0.0/25":["alice@","bob@"],"10.0.0.128/25":["alice@","bob@"],
+				"2001:db8::/64":["alice@"]},
+			"exitNode":["alice@","bob@"]
+		}}`, false, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			pm, err := NewPolicyManager([]byte(initial), users, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			routesHash, exitsHash := pm.autoApproversHash, pm.exitApproversHash
+			changed, err := pm.SetPolicy([]byte(tt.policy))
+			require.NoError(t, err)
+			assert.True(t, changed, "full policy changes still notify even when approval hashes match")
+			assert.Equal(t, tt.wantRoutesSame, routesHash == pm.autoApproversHash)
+			assert.Equal(t, tt.wantExitsSame, exitsHash == pm.exitApproversHash)
+
+			if tt.wantRoutesSame {
+				assert.True(t, pm.NodeCanApproveRoute(nodes[0].View(), mp("10.0.0.0/24")))
+				assert.True(t, pm.NodeCanApproveRoute(nodes[1].View(), mp("10.0.0.0/24")))
+			}
+
+			changed, err = pm.SetPolicy([]byte(tt.policy))
+			require.NoError(t, err)
+			assert.False(t, changed, "identical policy reload must not notify")
+		})
+	}
+}
+
+func TestAutoApproverOwnerChanges(t *testing.T) {
+	users := policyTestUsers()
+	nodes := policyTestNodes(users)
+	pm, err := NewPolicyManager([]byte(`{"autoApprovers":{
+		"routes":{"10.0.0.0/8":["alice@"]},"exitNode":["alice@"]
+	}}`), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	routesHash, exitsHash := pm.autoApproversHash, pm.exitApproversHash
+
+	retagged := policyTestNodes(users)
+	retagged[0].Tags = []string{"tag:server"}
+	changed, err := pm.SetNodes(retagged.ViewSlice())
+	require.NoError(t, err)
+	assert.True(t, changed)
+	assert.NotEqual(t, routesHash, pm.autoApproversHash)
+	assert.NotEqual(t, exitsHash, pm.exitApproversHash)
+	assert.False(t, pm.NodeCanApproveRoute(retagged[0].View(), mp("10.1.0.0/16")))
+	assert.False(t, pm.NodeCanApproveRoute(retagged[0].View(), tsaddr.AllIPv6()))
+
+	changed, err = pm.SetNodes(nodes.ViewSlice())
+	require.NoError(t, err)
+	assert.True(t, changed)
+	assert.Equal(t, routesHash, pm.autoApproversHash)
+	assert.Equal(t, exitsHash, pm.exitApproversHash)
+	assert.True(t, pm.NodeCanApproveRoute(nodes[0].View(), mp("10.1.0.0/16")))
+
+	renamed := policyTestUsers()
+	renamed[0].Name = "charlie"
+	changed, _, err = pm.SetUsers(renamed)
+	require.NoError(t, err)
+	assert.True(t, changed)
+	assert.NotEqual(t, routesHash, pm.autoApproversHash)
+	assert.NotEqual(t, exitsHash, pm.exitApproversHash)
+	assert.False(t, pm.NodeCanApproveRoute(nodes[0].View(), mp("10.1.0.0/16")))
+	assert.False(t, pm.NodeCanApproveRoute(nodes[0].View(), tsaddr.AllIPv4()))
+}
+
 func TestResolveTagOwners(t *testing.T) {
 	users := types.Users{
 		{ID: 1, Name: "user1"},
@@ -3447,7 +3717,7 @@ func TestResolveTagOwners(t *testing.T) {
 	tests := []struct {
 		name    string
 		policy  *Policy
-		want    map[Tag]*netipx.IPSet
+		want    map[Tag]ipset.Set
 		wantErr bool
 	}{
 		{
@@ -3457,7 +3727,7 @@ func TestResolveTagOwners(t *testing.T) {
 					Tag("tag:test"): Owners{new(Username("user1@"))},
 				},
 			},
-			want: map[Tag]*netipx.IPSet{
+			want: map[Tag]ipset.Set{
 				Tag("tag:test"): mustIPSet("100.64.0.1/32"),
 			},
 			wantErr: false,
@@ -3469,7 +3739,7 @@ func TestResolveTagOwners(t *testing.T) {
 					Tag("tag:test"): Owners{new(Username("user1@")), new(Username("user2@"))},
 				},
 			},
-			want: map[Tag]*netipx.IPSet{
+			want: map[Tag]ipset.Set{
 				Tag("tag:test"): mustIPSet("100.64.0.1/32", "100.64.0.2/32"),
 			},
 			wantErr: false,
@@ -3484,7 +3754,7 @@ func TestResolveTagOwners(t *testing.T) {
 					Tag("tag:test"): Owners{new(Group("group:testgroup"))},
 				},
 			},
-			want: map[Tag]*netipx.IPSet{
+			want: map[Tag]ipset.Set{
 				Tag("tag:test"): mustIPSet("100.64.0.1/32", "100.64.0.2/32"),
 			},
 			wantErr: false,
@@ -3497,7 +3767,7 @@ func TestResolveTagOwners(t *testing.T) {
 					Tag("tag:smallbrother"): Owners{new(Tag("tag:bigbrother"))},
 				},
 			},
-			want: map[Tag]*netipx.IPSet{
+			want: map[Tag]ipset.Set{
 				Tag("tag:bigbrother"):   mustIPSet("100.64.0.1/32"),
 				Tag("tag:smallbrother"): mustIPSet("100.64.0.1/32"),
 			},
@@ -3919,7 +4189,7 @@ func TestACL_UnmarshalJSON_WithCommentFields(t *testing.T) {
 			}`,
 			expected: ACL{
 				Action:   "accept",
-				Protocol: "tcp",
+				Protocol: ProtocolNameTCP,
 				Sources:  []Alias{mustParseAlias("user1@example.com")},
 				Destinations: []AliasWithPorts{
 					{
@@ -3943,7 +4213,7 @@ func TestACL_UnmarshalJSON_WithCommentFields(t *testing.T) {
 			}`,
 			expected: ACL{
 				Action:   "accept",
-				Protocol: "tcp",
+				Protocol: ProtocolNameTCP,
 				Sources:  []Alias{mustParseAlias("group:developers")},
 				Destinations: []AliasWithPorts{
 					{
@@ -3969,7 +4239,7 @@ func TestACL_UnmarshalJSON_WithCommentFields(t *testing.T) {
 			}`,
 			expected: ACL{
 				Action:   ActionAccept,
-				Protocol: "udp",
+				Protocol: ProtocolNameUDP,
 				Sources:  []Alias{Wildcard},
 				Destinations: []AliasWithPorts{
 					{
@@ -4000,7 +4270,7 @@ func TestACL_UnmarshalJSON_WithCommentFields(t *testing.T) {
 			}`,
 			expected: ACL{
 				Action:   ActionAccept,
-				Protocol: "icmp",
+				Protocol: ProtocolNameICMP,
 				Sources:  []Alias{mustParseAlias("tag:client")},
 				Destinations: []AliasWithPorts{
 					{
@@ -4019,7 +4289,7 @@ func TestACL_UnmarshalJSON_WithCommentFields(t *testing.T) {
 			}`,
 			expected: ACL{
 				Action:       Action(""),
-				Protocol:     Protocol(""),
+				Protocol:     ProtocolNameWildcard,
 				Sources:      nil,
 				Destinations: nil,
 			},
@@ -4099,7 +4369,7 @@ func TestACL_UnmarshalJSON_Roundtrip(t *testing.T) {
 	// Test that marshaling and unmarshaling preserves data (excluding comments)
 	original := ACL{
 		Action:   "accept",
-		Protocol: "tcp",
+		Protocol: ProtocolNameTCP,
 		Sources:  []Alias{mustParseAlias("group:admins")},
 		Destinations: []AliasWithPorts{
 			{
@@ -4164,14 +4434,14 @@ func TestACL_UnmarshalJSON_PolicyIntegration(t *testing.T) {
 	// First ACL
 	acl1 := policy.ACLs[0]
 	assert.Equal(t, ActionAccept, acl1.Action)
-	assert.Equal(t, Protocol("tcp"), acl1.Protocol)
+	assert.Equal(t, ProtocolNameTCP, acl1.Protocol)
 	require.Len(t, acl1.Sources, 1)
 	require.Len(t, acl1.Destinations, 1)
 
 	// Second ACL
 	acl2 := policy.ACLs[1]
 	assert.Equal(t, ActionAccept, acl2.Action)
-	assert.Equal(t, Protocol("tcp"), acl2.Protocol)
+	assert.Equal(t, ProtocolNameTCP, acl2.Protocol)
 	require.Len(t, acl2.Sources, 1)
 	require.Len(t, acl2.Destinations, 1)
 }
@@ -5103,8 +5373,8 @@ func TestUnmarshalGrants(t *testing.T) {
 							tp("tag:server"),
 						},
 						InternetProtocols: []ProtocolPort{
-							{Protocol: "tcp", Ports: []tailcfg.PortRange{{First: 443, Last: 443}}},
-							{Protocol: "tcp", Ports: []tailcfg.PortRange{{First: 80, Last: 80}}},
+							{Protocol: ProtocolNameTCP, Ports: []tailcfg.PortRange{{First: 443, Last: 443}}},
+							{Protocol: ProtocolNameTCP, Ports: []tailcfg.PortRange{{First: 80, Last: 80}}},
 						},
 					},
 				},
@@ -5191,7 +5461,7 @@ func TestUnmarshalGrants(t *testing.T) {
 							agp("autogroup:internet"),
 						},
 						InternetProtocols: []ProtocolPort{
-							{Protocol: "*", Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
+							{Protocol: ProtocolNameWildcard, Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
 						},
 						Via: []Tag{Tag("tag:router")},
 					},
@@ -5221,7 +5491,7 @@ func TestUnmarshalGrants(t *testing.T) {
 							Wildcard,
 						},
 						InternetProtocols: []ProtocolPort{
-							{Protocol: "*", Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
+							{Protocol: ProtocolNameWildcard, Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
 						},
 					},
 				},
@@ -5276,8 +5546,8 @@ func TestUnmarshalGrants(t *testing.T) {
 							hp("server1"),
 						},
 						InternetProtocols: []ProtocolPort{
-							{Protocol: "tcp", Ports: []tailcfg.PortRange{{First: 443, Last: 443}}},
-							{Protocol: "udp", Ports: []tailcfg.PortRange{{First: 53, Last: 53}}},
+							{Protocol: ProtocolNameTCP, Ports: []tailcfg.PortRange{{First: 443, Last: 443}}},
+							{Protocol: ProtocolNameUDP, Ports: []tailcfg.PortRange{{First: 53, Last: 53}}},
 						},
 					},
 				},
@@ -5306,9 +5576,9 @@ func TestUnmarshalGrants(t *testing.T) {
 							Wildcard,
 						},
 						InternetProtocols: []ProtocolPort{
-							{Protocol: "tcp", Ports: []tailcfg.PortRange{{First: 8000, Last: 9000}}},
-							{Protocol: "*", Ports: []tailcfg.PortRange{{First: 80, Last: 80}}},
-							{Protocol: "*", Ports: []tailcfg.PortRange{{First: 443, Last: 443}}},
+							{Protocol: ProtocolNameTCP, Ports: []tailcfg.PortRange{{First: 8000, Last: 9000}}},
+							{Protocol: ProtocolNameWildcard, Ports: []tailcfg.PortRange{{First: 80, Last: 80}}},
+							{Protocol: ProtocolNameWildcard, Ports: []tailcfg.PortRange{{First: 443, Last: 443}}},
 						},
 					},
 				},
@@ -5337,7 +5607,7 @@ func TestUnmarshalGrants(t *testing.T) {
 							agp("autogroup:self"),
 						},
 						InternetProtocols: []ProtocolPort{
-							{Protocol: "*", Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
+							{Protocol: ProtocolNameWildcard, Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
 						},
 					},
 				},
@@ -5369,7 +5639,7 @@ func TestUnmarshalGrants(t *testing.T) {
 							Wildcard,
 						},
 						InternetProtocols: []ProtocolPort{
-							{Protocol: "tcp", Ports: []tailcfg.PortRange{{First: 443, Last: 443}}},
+							{Protocol: ProtocolNameTCP, Ports: []tailcfg.PortRange{{First: 443, Last: 443}}},
 						},
 						App: tailcfg.PeerCapMap{
 							"tailscale.com/cap/relay": []tailcfg.RawMessage{},
@@ -5411,7 +5681,7 @@ func TestUnmarshalGrants(t *testing.T) {
 						Sources:      Aliases{},
 						Destinations: Aliases{Wildcard},
 						InternetProtocols: []ProtocolPort{
-							{Protocol: "*", Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
+							{Protocol: ProtocolNameWildcard, Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
 						},
 					},
 				},
@@ -5436,7 +5706,7 @@ func TestUnmarshalGrants(t *testing.T) {
 						Sources:      Aliases{Wildcard},
 						Destinations: Aliases{},
 						InternetProtocols: []ProtocolPort{
-							{Protocol: "*", Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
+							{Protocol: ProtocolNameWildcard, Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
 						},
 					},
 				},
@@ -6417,4 +6687,167 @@ func TestPolicyMetadataFields(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestProtocolCanonicalIngress(t *testing.T) {
+	for _, tt := range []struct{ input, want string }{
+		{`"TCP"`, "tcp"},
+		{`"6"`, "tcp"},
+		{`"006"`, "tcp"},
+		{`"ip-in-ip"`, "ipv4"},
+		{`"4"`, "ipv4"},
+		{`"58"`, "ipv6-icmp"},
+		{`"132"`, "sctp"},
+		{`"143"`, "143"},
+		{`""`, ""},
+	} {
+		t.Run(tt.input, func(t *testing.T) {
+			var proto Protocol
+			require.NoError(t, json.Unmarshal([]byte(tt.input), &proto))
+			assert.Equal(t, tt.want, proto.String())
+			encoded, err := json.Marshal(proto)
+			require.NoError(t, err)
+			assert.JSONEq(t, fmt.Sprintf("%q", tt.want), string(encoded))
+
+			var roundTrip Protocol
+			require.NoError(t, json.Unmarshal(encoded, &roundTrip))
+			assert.Equal(t, proto, roundTrip)
+		})
+	}
+
+	for _, tt := range []struct {
+		input string
+		want  error
+	}{
+		{`"0"`, ErrProtocolLeadingZero},
+		{`"0143"`, ErrProtocolLeadingZero},
+		{`"256"`, ErrProtocolOutOfRange},
+		{`"-1"`, ErrProtocolOutOfRange},
+		{`"nonsense"`, ErrInvalidProtocolNumber},
+		{`"*"`, errUnknownProtocolWildcard},
+	} {
+		var proto Protocol
+		require.ErrorIs(t, json.Unmarshal([]byte(tt.input), &proto), tt.want)
+	}
+}
+
+func TestResolvePartialAliases(t *testing.T) {
+	users := append(policyTestUsers(), types.User{ID: 3, Name: "ambiguous"}, types.User{ID: 4, Name: "ambiguous"})
+	nodes := policyTestNodes(users).ViewSlice()
+	pol := &Policy{
+		Groups: Groups{"group:partial": {"missing@", "alice@", "ambiguous@", "bob@"}},
+		Hosts:  Hosts{"laptop": p("100.64.0.1/32")},
+	}
+
+	for _, tt := range []struct {
+		name    string
+		aliases Aliases
+		want    []string
+		wantErr error
+	}{
+		{"missing", Aliases{up("missing@")}, nil, nil},
+		{"ambiguous", Aliases{up("ambiguous@")}, nil, ErrMultipleUsersFound},
+		{"partial group", Aliases{gp("group:partial")}, []string{"100.64.0.1", "100.64.0.2", "fd7a:115c:a1e0::1", "fd7a:115c:a1e0::2"}, ErrMultipleUsersFound},
+		{"missing host alongside user", Aliases{hp("absent"), up("alice@")}, []string{"100.64.0.1", "fd7a:115c:a1e0::1"}, ErrHostResolve},
+		{"literal host", Aliases{hp("laptop")}, []string{"100.64.0.1"}, nil},
+		{"tag with creator", Aliases{tp("tag:server")}, []string{"100.64.0.3", "fd7a:115c:a1e0::3"}, nil},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tt.aliases.Resolve(pol, users, nodes)
+			require.ErrorIs(t, err, tt.wantErr)
+
+			for _, node := range nodes.All() {
+				for _, addr := range node.IPs() {
+					assert.Equal(t, slices.Contains(tt.want, addr.String()), got.Contains(addr), addr)
+				}
+			}
+		})
+	}
+}
+
+func TestProtocolPortTypedIngress(t *testing.T) {
+	for _, tt := range []struct {
+		input, wantJSON string
+		want            Protocol
+	}{
+		{`"6:443"`, `"tcp:443"`, ProtocolNameTCP},
+		{`"ip-in-ip:*"`, `"ipv4:0-65535"`, ProtocolNameIPv4},
+		{`"143:*"`, `"143:0-65535"`, Protocol(143)},
+		{`"80"`, `"80"`, 0},
+		{`":80"`, `"80"`, 0},
+		{`"*"`, `"*"`, 0},
+	} {
+		t.Run(tt.input, func(t *testing.T) {
+			var got ProtocolPort
+			require.NoError(t, json.Unmarshal([]byte(tt.input), &got))
+			assert.Equal(t, tt.want, got.Protocol)
+			encoded, err := json.Marshal(got)
+			require.NoError(t, err)
+			assert.JSONEq(t, tt.wantJSON, string(encoded))
+
+			var roundTrip ProtocolPort
+			require.NoError(t, json.Unmarshal(encoded, &roundTrip))
+			assert.Equal(t, got, roundTrip)
+		})
+	}
+
+	for _, input := range []string{`"0:80"`, `"006:80"`, `"TCP:80"`, `"*:80"`, `"256:80"`} {
+		var got ProtocolPort
+		require.Error(t, json.Unmarshal([]byte(input), &got), input)
+	}
+
+	var omitted Protocol
+	assert.Equal(t, []ipproto.Proto{1, 6, 17, 58}, omitted.IPProtocols())
+	assert.Nil(t, omitted.toIANAProtocolNumbers())
+	assert.Equal(t, []ipproto.Proto{6}, ProtocolNameTCP.IPProtocols())
+	assert.Equal(t, []int{6}, ProtocolNameTCP.toIANAProtocolNumbers())
+}
+
+func TestResolutionCallerErrors(t *testing.T) {
+	users := append(policyTestUsers(), types.User{ID: 3, Name: "ambiguous"}, types.User{ID: 4, Name: "ambiguous"})
+	nodes := policyTestNodes(users).ViewSlice()
+	pol := &Policy{
+		Groups:    Groups{"group:partial": {"ambiguous@", "alice@"}},
+		TagOwners: TagOwners{"tag:test": {gp("group:partial")}},
+		AutoApprovers: AutoApproverPolicy{
+			Routes:   map[netip.Prefix]AutoApprovers{mp("192.0.2.0/24"): {gp("group:partial")}},
+			ExitNode: AutoApprovers{gp("group:partial")},
+		},
+	}
+	aliases := Aliases{gp("group:partial")}
+
+	var builder ipset.Builder
+	builder.AddAddr(*ap("192.0.2.1"))
+	require.ErrorIs(t, aliases[0].resolveInto(pol, users, nodes, &builder), ErrMultipleUsersFound)
+	shared, err := builder.Build()
+	require.NoError(t, err)
+	assert.True(t, shared.Contains(*ap("192.0.2.1")))
+	assert.True(t, shared.Contains(*ap("100.64.0.1")))
+	assert.True(t, shared.Contains(*ap("fd7a:115c:a1e0::1")))
+	assert.False(t, shared.Contains(*ap("100.64.0.3")))
+
+	sources, _, err := legacyResolveSources(pol, aliases, users, nodes)
+	require.NoError(t, err)
+	require.Len(t, sources, 1)
+	assert.True(t, sources[0].Contains(*ap("100.64.0.1")))
+	assert.Len(t, pol.legacyDestinationsToNetPortRange(users, nodes, aliases, []tailcfg.PortRange{tailcfg.PortRangeAny}), 2)
+	via, _ := legacyResolveViaDestinations(pol, users, nodes, aliases)
+	assert.Empty(t, via)
+
+	_, err = resolveTestSource(aliases[0], pol, users, nodes)
+	require.ErrorIs(t, err, ErrMultipleUsersFound)
+	_, err = resolveTestSource(up("missing@"), pol, users, nodes)
+	require.ErrorIs(t, err, ErrUserNotFound)
+
+	owners, err := resolveTagOwners(pol, users, nodes)
+	require.NoError(t, err)
+	assert.True(t, owners["tag:test"].Contains(*ap("100.64.0.1")))
+
+	routes, exits, err := resolveAutoApprovers(pol, users, nodes)
+	require.NoError(t, err)
+
+	approvers, ok := routes.Get(mp("192.0.2.0/24"))
+	require.True(t, ok)
+	assert.True(t, approvers.Contains(*ap("100.64.0.1")))
+	assert.True(t, exits.Contains(*ap("100.64.0.1")))
 }

@@ -1,6 +1,7 @@
 package state
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"maps"
@@ -12,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -110,7 +112,8 @@ var (
 // is responsible for ensuring an update depending on a write
 // is not issued before the write is complete.
 type NodeStore struct {
-	data atomic.Pointer[Snapshot]
+	data            atomic.Pointer[Snapshot]
+	policyRecovered atomic.Bool
 
 	peersFunc  PeersFunc
 	writeQueue chan work
@@ -128,7 +131,7 @@ type NodeStore struct {
 func NewNodeStore(allNodes types.Nodes, peersFunc PeersFunc, batchSize int, batchTimeout time.Duration) *NodeStore {
 	nodes := make(map[types.NodeID]types.Node, len(allNodes))
 	for _, n := range allNodes {
-		nodes[n.ID] = *n
+		nodes[n.ID] = *n.Clone()
 	}
 
 	snap := snapshotFromNodes(nodes, peersFunc, nil, false, false)
@@ -153,6 +156,8 @@ func NewNodeStore(allNodes types.Nodes, peersFunc PeersFunc, batchSize int, batc
 // a new [Snapshot] is created with the updated state,
 // and replaces the old one atomically.
 type Snapshot struct {
+	policy         policy.ReadView
+	policyBuildErr error
 	// nodesByID is the main source of truth for nodes.
 	nodesByID map[types.NodeID]types.Node
 	// nodeViewsByID resolves peer adjacency IDs to immutable views from this
@@ -162,24 +167,29 @@ type Snapshot struct {
 	// calculated from nodesByID
 	nodesByNodeKey    map[key.NodePublic]types.NodeView
 	nodesByMachineKey map[key.MachinePublic]map[types.UserID]types.NodeView
-	// peersByNode stores immutable adjacency as IDs; ListPeers resolves the
+	// peersByNode stores immutable adjacency as sorted IDs; ListPeers resolves the
 	// corresponding views through nodeViewsByID.
 	peersByNode map[types.NodeID][]types.NodeID
 	nodesByUser map[types.UserID][]types.NodeView
-	allNodes    []types.NodeView
+	// allNodes contains immutable node views sorted by ID.
+	allNodes []types.NodeView
+	// routers contains approved-route advertisers, sorted by ID.
+	routers []types.NodeView
 
 	// routes maps each prefix to its current primary advertiser. The
 	// previous assignment is carried over when still valid so the
 	// primary does not flap on every unrelated batch.
-	routes         map[netip.Prefix]types.NodeID
-	isPrimaryRoute map[types.NodeID]bool
+	routes map[netip.Prefix]types.NodeID
+	// primaryRoutesByNode is the sorted reverse index of routes.
+	primaryRoutesByNode map[types.NodeID][]netip.Prefix
 }
 
-// PeersFunc is a function that takes a list of nodes and returns a map
+// PeersFunc is a function that takes nodes sorted by ID and returns a map
 // with the relationships between nodes and their peers.
 // This will typically be used to calculate which nodes can see each other
-// based on the current policy.
-type PeersFunc func(nodes []types.NodeView) map[types.NodeID][]types.NodeID
+// based on the current policy. The returned map belongs to the snapshot;
+// its immutable peer-ID slices are sorted before publication.
+type PeersFunc func(nodes []types.NodeView) (policy.ReadView, map[types.NodeID][]types.NodeID, error)
 
 // work represents a single operation to be performed on the [NodeStore].
 type work struct {
@@ -484,6 +494,8 @@ func (s *NodeStore) processWrite() {
 // Each write item is blocked until the batch is applied to ensure
 // the caller knows the operation is complete and do not send any
 // updates that are dependent on a read that is yet to be written.
+//
+//nolint:gocyclo // Keep publication and result delivery in one writer transaction.
 func (s *NodeStore) applyBatch(batch []work) {
 	timer := prometheus.NewTimer(nodeStoreBatchDuration)
 	defer timer.ObserveDuration()
@@ -514,7 +526,7 @@ func (s *NodeStore) applyBatch(batch []work) {
 		w := &batch[i]
 		switch w.op {
 		case put:
-			n := w.node
+			n := *w.node.Clone()
 			n.GivenName = resolveGivenName(nodes, n.ID, n.GivenName)
 
 			nodes[w.nodeID] = n
@@ -532,7 +544,8 @@ func (s *NodeStore) applyBatch(batch []work) {
 				}
 
 				oldGivenName := n.GivenName
-				pre := n.Clone()
+				pre := n
+				n = *n.Clone()
 				fn(&n)
 
 				if n.GivenName != oldGivenName {
@@ -545,7 +558,7 @@ func (s *NodeStore) applyBatch(batch []work) {
 					w.pre[id] = pre.View()
 				}
 
-				relation, election := updateChanges(pre, &n)
+				relation, election := updateChanges(&pre, &n)
 				relationChanged = relationChanged || relation
 				electionChanged = electionChanged || election
 			}
@@ -609,14 +622,20 @@ func (s *NodeStore) applyBatch(batch []work) {
 
 	// A relation change recomputes adjacency; anything else reuses the
 	// previous peer IDs and re-elects routes only if an election input moved.
-	if relationChanged {
+	// An invalid policy snapshot always retries compilation.
+	reusePeers := !relationChanged && prev.policyBuildErr == nil && prev.policy.Valid()
+	if !reusePeers {
 		nodeStoreSnapshotBuilds.WithLabelValues("recomputed").Inc()
 	} else {
 		nodeStoreSnapshotBuilds.WithLabelValues("reused").Inc()
 	}
 
-	newSnap := snapshotFromNodes(nodes, s.peersFunc, prev, !relationChanged, !electionChanged)
+	newSnap := snapshotFromNodes(nodes, s.peersFunc, prev, reusePeers, !electionChanged)
 	s.data.Store(&newSnap)
+
+	if prev.policyBuildErr != nil && newSnap.policyBuildErr == nil {
+		s.policyRecovered.Store(true)
+	}
 
 	// Update node count gauge
 	nodeStoreNodesCount.Set(float64(len(nodes)))
@@ -715,13 +734,25 @@ func snapshotFromNodes(
 		nodeViewsByID[n.ID] = nv
 	}
 
+	slices.SortFunc(allNodes, func(a, b types.NodeView) int {
+		return cmp.Compare(a.ID(), b.ID())
+	})
+
+	var routers []types.NodeView
+
+	for _, node := range allNodes {
+		if node.ApprovedRoutes().Len() > 0 {
+			routers = append(routers, node)
+		}
+	}
+
 	var (
-		routes         map[netip.Prefix]types.NodeID
-		isPrimaryRoute map[types.NodeID]bool
+		routes              map[netip.Prefix]types.NodeID
+		primaryRoutesByNode map[types.NodeID][]netip.Prefix
 	)
 
 	if reuseRoutes {
-		routes, isPrimaryRoute = prev.routes, prev.isPrimaryRoute
+		routes, primaryRoutesByNode = prev.routes, prev.primaryRoutesByNode
 	} else {
 		// Carrying the previous assignment forward lets a still-valid
 		// primary survive unrelated batches.
@@ -730,30 +761,55 @@ func snapshotFromNodes(
 			prevRoutes = prev.routes
 		}
 
-		routes, isPrimaryRoute = electPrimaryRoutes(nodes, prevRoutes)
+		routes, primaryRoutesByNode = electPrimaryRoutes(nodes, prevRoutes)
 	}
 
-	var peerIDsByNode map[types.NodeID][]types.NodeID
+	var (
+		peerIDsByNode  map[types.NodeID][]types.NodeID
+		policyView     policy.ReadView
+		policyBuildErr error
+	)
 
-	if reusePeers {
+	if reusePeers && prev.policyBuildErr == nil && prev.policy.Valid() {
 		peerIDsByNode = prev.peersByNode
+		policyView = prev.policy
 	} else {
 		peersTimer := prometheus.NewTimer(nodeStorePeersCalculationDuration)
-		peerIDsByNode = peersFunc(allNodes)
+
+		policyView, peerIDsByNode, policyBuildErr = peersFunc(allNodes)
+		if policyBuildErr == nil && !policyView.Valid() {
+			policyBuildErr = ErrInvalidPolicyView
+		}
+
+		if policyBuildErr != nil {
+			policyView = policy.ReadView{}
+			peerIDsByNode = nil
+		}
+
+		for id, ids := range peerIDsByNode {
+			if !slices.IsSorted(ids) {
+				ids = slices.Clone(ids)
+				slices.Sort(ids)
+				peerIDsByNode[id] = ids
+			}
+		}
 
 		peersTimer.ObserveDuration()
 	}
 
 	newSnap := Snapshot{
-		nodesByID:         nodes,
-		nodeViewsByID:     nodeViewsByID,
-		allNodes:          allNodes,
-		nodesByNodeKey:    make(map[key.NodePublic]types.NodeView),
-		nodesByMachineKey: make(map[key.MachinePublic]map[types.UserID]types.NodeView),
-		peersByNode:       peerIDsByNode,
-		nodesByUser:       make(map[types.UserID][]types.NodeView),
-		routes:            routes,
-		isPrimaryRoute:    isPrimaryRoute,
+		policy:              policyView,
+		policyBuildErr:      policyBuildErr,
+		nodesByID:           nodes,
+		nodeViewsByID:       nodeViewsByID,
+		allNodes:            allNodes,
+		routers:             routers,
+		nodesByNodeKey:      make(map[key.NodePublic]types.NodeView),
+		nodesByMachineKey:   make(map[key.MachinePublic]map[types.UserID]types.NodeView),
+		peersByNode:         peerIDsByNode,
+		nodesByUser:         make(map[types.UserID][]types.NodeView),
+		routes:              routes,
+		primaryRoutesByNode: primaryRoutesByNode,
 	}
 
 	for _, n := range nodes {
@@ -778,7 +834,7 @@ func snapshotFromNodes(
 	return newSnap
 }
 
-// onlineAdvertisers maps each non-exit prefix to the IDs of online nodes
+// onlineAdvertisers maps each non-exit prefix to the IDs of distinct online nodes
 // that approve it. Nodes are visited in the order of ids, so the per-prefix
 // slices preserve that order.
 func onlineAdvertisers(
@@ -798,7 +854,13 @@ func onlineAdvertisers(
 				continue
 			}
 
-			advertisers[p] = append(advertisers[p], id)
+			// A node's advertisements are consecutive in each candidate list.
+			candidates := advertisers[p]
+			if len(candidates) > 0 && candidates[len(candidates)-1] == id {
+				continue
+			}
+
+			advertisers[p] = append(candidates, id)
 		}
 	}
 
@@ -817,7 +879,7 @@ func onlineAdvertisers(
 func electPrimaryRoutes(
 	nodes map[types.NodeID]types.Node,
 	prev map[netip.Prefix]types.NodeID,
-) (map[netip.Prefix]types.NodeID, map[types.NodeID]bool) {
+) (map[netip.Prefix]types.NodeID, map[types.NodeID][]netip.Prefix) {
 	advertisers := onlineAdvertisers(nodes, slices.Sorted(maps.Keys(nodes)))
 
 	routes := make(map[netip.Prefix]types.NodeID, len(advertisers))
@@ -860,12 +922,16 @@ func electPrimaryRoutes(
 		}
 	}
 
-	isPrimaryRoute := make(map[types.NodeID]bool, len(routes))
-	for _, id := range routes {
-		isPrimaryRoute[id] = true
+	primaryRoutesByNode := make(map[types.NodeID][]netip.Prefix)
+	for prefix, id := range routes {
+		primaryRoutesByNode[id] = append(primaryRoutesByNode[id], prefix)
 	}
 
-	return routes, isPrimaryRoute
+	for _, prefixes := range primaryRoutesByNode {
+		slices.SortFunc(prefixes, netip.Prefix.Compare)
+	}
+
+	return routes, primaryRoutesByNode
 }
 
 // GetNode retrieves a node by its ID.
@@ -983,7 +1049,7 @@ func (s *NodeStore) DebugString() string {
 	return sb.String()
 }
 
-// ListNodes returns a slice of all nodes in the store.
+// ListNodes returns all nodes in the store in ascending ID order.
 func (s *NodeStore) ListNodes() views.Slice[types.NodeView] {
 	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("list"))
 	defer timer.ObserveDuration()
@@ -1016,7 +1082,7 @@ func (s *NodeStore) ListPeers(id types.NodeID) views.Slice[types.NodeView] {
 // ListPeerIDs returns the sorted IDs of id's peers as a copy the caller
 // may keep across later writes.
 func (s *NodeStore) ListPeerIDs(id types.NodeID) []types.NodeID {
-	return slices.Sorted(slices.Values(s.data.Load().peersByNode[id]))
+	return slices.Clone(s.data.Load().peersByNode[id])
 }
 
 // PrimaryRouteFor returns the current primary advertiser for prefix.
@@ -1027,23 +1093,9 @@ func (s *NodeStore) PrimaryRouteFor(prefix netip.Prefix) (types.NodeID, bool) {
 
 // PrimaryRoutesForNode returns the prefixes for which id is the current
 // primary advertiser, sorted so an unchanged node renders identically.
+// The caller owns the returned slice.
 func (s *NodeStore) PrimaryRoutesForNode(id types.NodeID) []netip.Prefix {
-	snap := s.data.Load()
-	if !snap.isPrimaryRoute[id] {
-		return nil
-	}
-
-	out := make([]netip.Prefix, 0)
-
-	for prefix, nodeID := range snap.routes {
-		if nodeID == id {
-			out = append(out, prefix)
-		}
-	}
-
-	slices.SortFunc(out, netip.Prefix.Compare)
-
-	return out
+	return slices.Clone(s.data.Load().primaryRoutesByNode[id])
 }
 
 // HANodes returns the prefixes with two or more online advertisers, the

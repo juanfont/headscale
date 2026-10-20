@@ -6,12 +6,14 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/juanfont/headscale/hscontrol/policy/matcher"
+	"github.com/juanfont/headscale/hscontrol/ipset"
+	"github.com/juanfont/headscale/hscontrol/policy/packetfilter"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/ipproto"
 )
 
 var ap = func(ipStr string) *netip.Addr {
@@ -274,7 +276,7 @@ func TestBuildPeerMapFromPolicy(t *testing.T) {
 				pm, err = pmf(nil, tt.nodes.ViewSlice())
 				require.NoError(t, err)
 
-				matchers, err := pm.MatchersForNode(tt.node.View())
+				matchers, err := pm.PeerRulesForNode(tt.node.View())
 				require.NoError(t, err)
 				assert.Len(t, matchers, tt.wantMatchers)
 
@@ -288,7 +290,7 @@ func TestBuildPeerMapFromPolicy(t *testing.T) {
 					t.Log("Matchers: ")
 
 					for _, m := range matchers {
-						t.Log("\t+", m.DebugString())
+						t.Log("\t+", m.Hash().String())
 					}
 				}
 			})
@@ -1599,7 +1601,7 @@ func TestReduceRoutes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			matchers := matcher.MatchesFromFilterRules(tt.args.rules)
+			matchers := testPacketRules(t, tt.args.rules)
 
 			got := ReduceRoutes(
 				tt.args.node.View(),
@@ -1611,4 +1613,82 @@ func TestReduceRoutes(t *testing.T) {
 			}
 		})
 	}
+}
+
+func testPacketRules(tb testing.TB, wire []tailcfg.FilterRule) []packetfilter.Rule {
+	tb.Helper()
+
+	rules := make([]packetfilter.Rule, 0, len(wire))
+	for _, rule := range wire {
+		var src ipset.Builder
+
+		for i, raw := range rule.SrcIPs {
+			var bits *int
+			if i < len(rule.SrcBits) {
+				bits = &rule.SrcBits[i]
+			}
+
+			set, err := util.ParseIPSet(raw, bits)
+			require.NoError(tb, err)
+			src.AddSet(set)
+		}
+
+		sources, err := src.Build()
+		require.NoError(tb, err)
+
+		if len(rule.CapGrant) > 0 {
+			require.Empty(tb, rule.DstPorts, "typed rules have one kind")
+			require.Empty(tb, rule.IPProto, "capability rules have no protocols")
+
+			caps := make([]packetfilter.CapabilityGrant, 0, len(rule.CapGrant))
+			for _, grant := range rule.CapGrant {
+				require.Empty(tb, grant.Caps, "typed grants use CapMap")
+
+				var dst ipset.Builder
+				for _, prefix := range grant.Dsts {
+					dst.AddPrefix(prefix)
+				}
+
+				set, err := dst.Build()
+				require.NoError(tb, err)
+
+				caps = append(
+					caps,
+					packetfilter.CapabilityGrant{Addresses: set, CapMap: grant.CapMap},
+				)
+			}
+
+			rules = append(rules, packetfilter.NewCapabilityRule(sources, caps))
+
+			continue
+		}
+
+		destinations := make([]packetfilter.Destination, 0, len(rule.DstPorts))
+
+		for _, entry := range rule.DstPorts {
+			set, err := util.ParseIPSet(entry.IP, entry.Bits)
+			require.NoError(tb, err)
+
+			destinations = append(
+				destinations,
+				packetfilter.Destination{Addresses: set, Ports: entry.Ports},
+			)
+		}
+
+		protocols := make([]ipproto.Proto, 0, len(rule.IPProto))
+
+		for _, protocol := range rule.IPProto {
+			require.GreaterOrEqual(tb, protocol, 0)
+			require.LessOrEqual(tb, protocol, 255)
+			//nolint:gosec // Assertions above enforce the protocol range.
+			protocols = append(protocols, ipproto.Proto(protocol))
+		}
+
+		rules = append(
+			rules,
+			packetfilter.NewNetworkRule(sources, destinations, protocols),
+		)
+	}
+
+	return rules
 }

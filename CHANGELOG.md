@@ -102,6 +102,8 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 
 #### Configuration
 
+- `prefixes.v4` and `prefixes.v6` now reject prefixes of the wrong address family
+  at startup; place IPv4 ranges in `prefixes.v4` and IPv6 ranges in `prefixes.v6`.
 - `derp.paths` files must end in `.yaml`, `.yml`, `.json` or `.hujson`; the extension picks the format
 - `dns.extra_records_path` must end in `.json`, `.hujson`, `.yaml` or `.yml`; the extension picks the format
 - A `derp.paths` file that decodes to no regions now stops headscale from starting instead of being silently ignored
@@ -109,6 +111,18 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - `tls_cert_path`, `tls_key_path`, `tls_letsencrypt_*`, `acme_url` and `acme_email` are deprecated in favour of `tls.cert_path`, `tls.key_path` and `tls.acme.*` [#3554](https://github.com/juanfont/headscale/pull/3554)
   - The old keys continue to work, with a warning, but will be removed in a future release
 - Headscale's own ACME certificate is managed by CertMagic instead of autocert; the first start registers a new ACME account and obtains a new certificate in `tls.acme.cache_dir`, which now defaults to `/var/lib/headscale/cache` [#3554](https://github.com/juanfont/headscale/pull/3554)
+
+#### Routes
+
+- Invalid routes and prefixes with host bits, such as `10.0.0.1/24`, are never
+  auto-approved or made effective. Existing approval records are retained;
+  advertise and approve the canonical network to activate a route.
+  [#3572](https://github.com/juanfont/headscale/pull/3572)
+
+#### Policy
+
+- Policy `tests[].src` selectors are parsed when loading the policy. Malformed sources such as `100.64.0.1:22` now reject the policy and can prevent startup with an already-stored policy; correct them before upgrading [#3572](https://github.com/juanfont/headscale/pull/3572)
+- Policy `tests` without `proto` now check only ICMP, TCP, UDP and ICMPv6, matching client filter defaults; set `proto` explicitly to test other IP protocols [#3572](https://github.com/juanfont/headscale/pull/3572)
 
 #### CLI
 
@@ -122,6 +136,11 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - `settings.tls_*` options move to `settings.tls.*`; old `settings.tls_*` values still work [#3554](https://github.com/juanfont/headscale/pull/3554)
 
 ### Changes
+
+- Subnet routes selected by `via` grants elect the lowest-ID online, healthy router within each grant's tag group. A recovered lower-ID router reclaims the route, and routes are withdrawn when no healthy online router remains. A regular grant overlapping the same route for the viewer follows global HA instead [#3572](https://github.com/juanfont/headscale/pull/3572)
+- Fix the embedded DERP region using a bracketed IPv6 hostname when `server_url` contains an IPv6 literal [#3572](https://github.com/juanfont/headscale/pull/3572)
+- Mask configured IP prefixes so MagicDNS reverse zones use their network address, and fix IPv6 reverse zones for prefix lengths that are not a multiple of four bits [#3572](https://github.com/juanfont/headscale/pull/3572)
+- Fix SSH check-period resolution dropping valid sources when another source in the same rule cannot be resolved [#3572](https://github.com/juanfont/headscale/pull/3572)
 
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
