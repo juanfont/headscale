@@ -72,8 +72,9 @@ func runPendingLoginCompat(t *testing.T, id string) {
 		r.step(t, step)
 	}
 
+	// The map serves this capture alone, so every entry must name a check.
 	for k := range pendingLoginSkipReasons {
-		if strings.HasPrefix(k, id+"/") && !r.evaluated[k] {
+		if !r.evaluated[k] {
 			t.Errorf("skip entry %q names no check", k)
 		}
 	}

@@ -240,8 +240,9 @@ func runNodeExpiryCompat(t *testing.T, id, observer string) {
 		prevCaps = step.Captures
 	}
 
+	// The map serves this capture alone, so every entry must name a check.
 	for k := range expirySkipReasons {
-		if strings.HasPrefix(k, id+"/") && !evaluated[k] {
+		if !evaluated[k] {
 			t.Errorf("skip entry %q names no check", k)
 		}
 	}
