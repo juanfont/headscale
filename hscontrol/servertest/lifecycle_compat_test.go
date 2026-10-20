@@ -349,6 +349,11 @@ func holdChecks(
 		}
 	}
 
+	// A last-sample match is not a settled one.
+	if held < holdTicks {
+		t.Errorf("%s: checks still changing at the deadline", strings.TrimSuffix(prefix, "/"))
+	}
+
 	for i, c := range checks {
 		key := prefix + c.name
 		evaluated[key] = true
