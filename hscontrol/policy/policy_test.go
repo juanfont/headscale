@@ -1668,13 +1668,14 @@ func testPacketRules(tb testing.TB, wire []tailcfg.FilterRule) []packetfilter.Ru
 		for _, entry := range rule.DstPorts {
 			set, err := util.ParseIPSet(entry.IP, entry.Bits)
 			require.NoError(tb, err)
+
 			destinations = append(
 				destinations,
 				packetfilter.Destination{Addresses: set, Ports: entry.Ports},
 			)
 		}
 
-		var protocols []ipproto.Proto
+		protocols := make([]ipproto.Proto, 0, len(rule.IPProto))
 
 		for _, protocol := range rule.IPProto {
 			require.GreaterOrEqual(tb, protocol, 0)
