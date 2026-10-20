@@ -1078,6 +1078,10 @@ func (r *stepReplay) api(t *testing.T, stepName string, i int, a testcapture.Act
 		// Headscale reads DNS from its config, which a consumer sets from
 		// the capture's input; it has no API to change it.
 
+	case a.Method == http.MethodPost && a.Path == "/tailnet/-/acl/validate":
+		// A validation changes nothing, and headscale's v2 API has none;
+		// TestAPIv2ACLCompat in .. lists that difference.
+
 	case a.Method == http.MethodPost && a.Path == "/tailnet/-/acl":
 		require.Equal(t, http.StatusOK, a.Status, "%s: replay of a refused policy", stepName)
 		r.setPolicy(t, stepName, string(a.Body))
