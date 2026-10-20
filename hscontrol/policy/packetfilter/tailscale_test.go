@@ -7,9 +7,54 @@ import (
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/ipset"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/ipproto"
 )
+
+func TestToTailcfgSourceForms(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{"all", "*", "*"},
+		{"ipv4 host", "192.0.2.1/32", "192.0.2.1"},
+		{"ipv6 host", "2001:db8::1/128", "2001:db8::1"},
+		{"ipv4 range", "192.0.2.1-192.0.2.2", "192.0.2.1-192.0.2.2"},
+		{"ipv6 range", "2001:db8::1-2001:db8::2", "2001:db8::1-2001:db8::2"},
+		{"aligned range", "192.0.2.0-192.0.2.255", "192.0.2.0/24"},
+		{"ipv6 prefix", "2001:db8::/64", "2001:db8::/64"},
+		{"ipv4 all", "0.0.0.0/0", "0.0.0.0/0"},
+		{"ipv6 all", "::/0", "::/0"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			sources, err := util.ParseIPSet(tt.source, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			rules := []Rule{
+				NewNetworkRule(sources, []Destination{{
+					Addresses: ipset.All(), Ports: tailcfg.PortRangeAny,
+				}}, nil),
+				NewCapabilityRule(sources, []CapabilityGrant{{
+					Addresses: ipset.All(),
+					CapMap:    tailcfg.PeerCapMap{"example.com/access": nil},
+				}}),
+			}
+			for _, wire := range ToTailcfg(rules) {
+				if !slices.Equal(wire.SrcIPs, []string{tt.want}) {
+					t.Fatalf("got SrcIPs %v, want %q", wire.SrcIPs, tt.want)
+				}
+			}
+		})
+	}
+}
 
 func TestToTailcfgCanonicalAddresses(t *testing.T) {
 	sources := testSet(

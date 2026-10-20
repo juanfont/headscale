@@ -1372,7 +1372,7 @@ func referenceCanAccessWithRoutes(
 func requireWireEqual(t *testing.T, want, got []tailcfg.FilterRule) {
 	t.Helper()
 
-	if diff := filterRulesDiff(t, want, got); diff != "" {
+	if diff := semanticFilterRulesDiff(t, want, got); diff != "" {
 		t.Fatal(diff)
 	}
 }

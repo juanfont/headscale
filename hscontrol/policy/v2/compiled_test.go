@@ -508,7 +508,7 @@ func BenchmarkCompileOtherDests(b *testing.B) {
 			want := pol.compileOtherDestsReference(users, nodes.ViewSlice(), grant,
 				grant.Destinations, srcs, srcStrings)
 			require.NotEmpty(b, want)
-			require.Empty(b, filterRulesDiff(b, want,
+			require.Empty(b, semanticFilterRulesDiff(b, want,
 				pol.compileOtherDests(users, nodes.ViewSlice(), grant,
 					grant.Destinations, srcs, srcStrings)))
 

@@ -18,8 +18,16 @@ func ToTailcfg(rules []Rule) []tailcfg.FilterRule {
 		}
 
 		wire := tailcfg.FilterRule{}
-		for prefix := range rule.sources.Prefixes() {
-			wire.SrcIPs = append(wire.SrcIPs, prefixString(prefix))
+		if rule.sources.Equal(ipset.All()) {
+			wire.SrcIPs = []string{"*"}
+		} else {
+			for addresses := range rule.sources.Ranges() {
+				if prefix, ok := addresses.Prefix(); ok {
+					wire.SrcIPs = append(wire.SrcIPs, prefixString(prefix))
+				} else {
+					wire.SrcIPs = append(wire.SrcIPs, addresses.String())
+				}
+			}
 		}
 
 		switch rule.kind {

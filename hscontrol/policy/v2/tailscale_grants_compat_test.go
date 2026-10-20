@@ -140,7 +140,7 @@ func loadGrantTestFile(t *testing.T, path string) *testcapture.Capture {
 //
 //	USER_PASSKEY_WILDCARD - 2 tests: user:*@passkey wildcard pattern not supported
 //
-// Total: 2 tests skipped, ~246 tests expected to pass.
+// Total: 2 tests skipped.
 var grantSkipReasons = map[string]string{
 	// USER_PASSKEY_WILDCARD (2 tests)
 	//
@@ -294,8 +294,13 @@ func testGrantSuccess(
 			// Compare headscale output against Tailscale expected output.
 			// The diff labels show (-tailscale +headscale) to make clear
 			// which side produced which output.
-			// Empty revocations compare equally; payload nil/empty distinctions remain.
-			if diff := filterRulesDiff(t, wantRules, gotRules); diff != "" {
+			// Empty revocations compare equally; capability payloads remain exact.
+			diffRules := filterRulesDiff
+			if _, known := filterWireDifferences[tf.TestID]; known {
+				diffRules = semanticFilterRulesDiff
+			}
+
+			if diff := diffRules(t, wantRules, gotRules); diff != "" {
 				t.Errorf(
 					"%s/%s: filter rules mismatch (-tailscale +headscale):\n%s",
 					tf.TestID,

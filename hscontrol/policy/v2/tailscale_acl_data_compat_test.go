@@ -25,8 +25,10 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/juanfont/headscale/hscontrol/ipset"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/require"
 	"go4.org/netipx"
 	"tailscale.com/tailcfg"
@@ -95,12 +97,22 @@ func cmpOptions() []cmp.Option {
 		cmp.Comparer(func(a, b tailcfg.RawMessage) bool {
 			var va, vb any
 
-			err := json.Unmarshal([]byte(a), &va)
+			if !json.Valid([]byte(a)) || !json.Valid([]byte(b)) {
+				panic("golden RawMessage contains invalid JSON")
+			}
+
+			decoder := json.NewDecoder(strings.NewReader(string(a)))
+			decoder.UseNumber()
+
+			err := decoder.Decode(&va)
 			if err != nil {
 				panic(fmt.Sprintf("golden RawMessage A unparseable: %v", err))
 			}
 
-			err = json.Unmarshal([]byte(b), &vb)
+			decoder = json.NewDecoder(strings.NewReader(string(b)))
+			decoder.UseNumber()
+
+			err = decoder.Decode(&vb)
 			if err != nil {
 				panic(fmt.Sprintf("golden RawMessage B unparseable: %v", err))
 			}
@@ -124,6 +136,64 @@ type filterRuleBucket struct {
 }
 
 func filterRulesDiff(tb testing.TB, want, got []tailcfg.FilterRule) string {
+	tb.Helper()
+
+	return cmp.Diff(dropCoveredSaaSSources(tb, want), got,
+		append(cmpOptions(), cmp.FilterPath(func(path cmp.Path) bool {
+			for _, step := range path {
+				if field, ok := step.(cmp.StructField); ok &&
+					(field.Name() == "CapMap" || field.Name() == "Caps") {
+					return false
+				}
+			}
+
+			return true
+		}, cmpopts.EquateEmpty()))...)
+}
+
+// SaaS sometimes lists a subnet alongside a covering source in the same rule.
+func dropCoveredSaaSSources(
+	tb testing.TB,
+	rules []tailcfg.FilterRule,
+) []tailcfg.FilterRule {
+	tb.Helper()
+
+	result := slices.Clone(rules)
+	for i, rule := range result {
+		if len(rule.SrcBits) > 0 {
+			continue
+		}
+
+		sets := make([]ipset.Set, len(rule.SrcIPs))
+		for j, source := range rule.SrcIPs {
+			var err error
+
+			sets[j], err = util.ParseIPSet(source, nil)
+			require.NoError(tb, err)
+		}
+
+		result[i].SrcIPs = nil
+		for j, source := range rule.SrcIPs {
+			covered := false
+
+			for k, other := range sets {
+				if k != j && other.ContainsSet(sets[j]) &&
+					(k < j || !other.Equal(sets[j])) {
+					covered = true
+					break
+				}
+			}
+
+			if !covered {
+				result[i].SrcIPs = append(result[i].SrcIPs, source)
+			}
+		}
+	}
+
+	return result
+}
+
+func semanticFilterRulesDiff(tb testing.TB, want, got []tailcfg.FilterRule) string {
 	tb.Helper()
 
 	return cmp.Diff(
@@ -523,8 +593,13 @@ func testACLSuccess(
 
 			wantRules := capture.PacketFilterRules
 
-			// Compare coverage for this recipient, preserving source associations.
-			if diff := filterRulesDiff(t, wantRules, gotRules); diff != "" {
+			// Compare wire rules exactly, apart from redundant SaaS sources.
+			diffRules := filterRulesDiff
+			if _, known := filterWireDifferences[tf.TestID]; known {
+				diffRules = semanticFilterRulesDiff
+			}
+
+			if diff := diffRules(t, wantRules, gotRules); diff != "" {
 				t.Errorf(
 					"%s/%s: filter rules mismatch (-want +got):\n%s",
 					tf.TestID,
@@ -532,6 +607,124 @@ func testACLSuccess(
 					diff,
 				)
 			}
+		})
+	}
+}
+
+// These captures retain semantic assertions for every protocol and capability.
+var filterWireDifferences = map[string]string{
+	"acl-d08": "SaaS repeats DstPorts in one rule; " +
+		"headscale preserves distinct-owner rules",
+	"via-grant-v52": "SaaS source ranges and rule order differ",
+	"via-grant-v53": "SaaS source ranges and rule order differ",
+	"via-grant-v54": "SaaS source ranges and rule order differ",
+	"via-grant-v55": "SaaS source ranges and rule order differ",
+	"via-grant-v56": "SaaS source ranges and rule order differ",
+	"via-grant-v57": "SaaS source ranges and rule order differ",
+	"via-grant-v58": "SaaS source ranges and rule order differ",
+	"via-grant-v59": "SaaS source ranges and rule order differ",
+	"via-grant-v60": "SaaS source ranges and rule order differ",
+	"via-grant-v61": "SaaS source ranges and rule order differ",
+	"via-grant-v62": "SaaS source ranges and rule order differ",
+}
+
+func TestFilterRulesExactComparison(t *testing.T) {
+	t.Parallel()
+
+	rule := func(sources ...string) tailcfg.FilterRule {
+		return tailcfg.FilterRule{
+			SrcIPs: sources,
+			DstPorts: []tailcfg.NetPortRange{{
+				IP: "100.64.0.1", Ports: tailcfg.PortRangeAny,
+			}},
+		}
+	}
+
+	capRule := func(values []tailcfg.RawMessage) tailcfg.FilterRule {
+		return tailcfg.FilterRule{
+			SrcIPs: []string{"100.64.0.1"},
+			CapGrant: []tailcfg.CapGrant{{
+				Dsts:   []netip.Prefix{netip.MustParsePrefix("100.64.0.2/32")},
+				CapMap: tailcfg.PeerCapMap{"example.com/cap": values},
+			}},
+		}
+	}
+	for _, tt := range []struct {
+		name  string
+		want  []tailcfg.FilterRule
+		got   []tailcfg.FilterRule
+		equal bool
+	}{
+		{
+			"covered source",
+			[]tailcfg.FilterRule{rule("10.0.0.1", "10.0.0.0/24")},
+			[]tailcfg.FilterRule{rule("10.0.0.0/24")},
+			true,
+		},
+		{
+			"duplicate source",
+			[]tailcfg.FilterRule{rule("10.0.0.1", "10.0.0.1")},
+			[]tailcfg.FilterRule{rule("10.0.0.1")},
+			true,
+		},
+		{
+			"actual redundancy",
+			[]tailcfg.FilterRule{rule("10.0.0.0/24")},
+			[]tailcfg.FilterRule{rule("10.0.0.0/24", "10.0.0.1")},
+			false,
+		},
+		{
+			"adjacent hosts",
+			[]tailcfg.FilterRule{rule("10.0.0.1", "10.0.0.2")},
+			[]tailcfg.FilterRule{rule("10.0.0.1-10.0.0.2")},
+			false,
+		},
+		{
+			"duplicate rules",
+			[]tailcfg.FilterRule{rule("10.0.0.1"), rule("10.0.0.1")},
+			[]tailcfg.FilterRule{rule("10.0.0.1")},
+			false,
+		},
+		{
+			"coverage across rules",
+			[]tailcfg.FilterRule{rule("10.0.0.0/24"), rule("10.0.0.1")},
+			[]tailcfg.FilterRule{rule("10.0.0.0/24"), rule()},
+			false,
+		},
+		{"empty revocation", nil, []tailcfg.FilterRule{}, true},
+		{
+			"empty capability values",
+			[]tailcfg.FilterRule{capRule(nil)},
+			[]tailcfg.FilterRule{capRule([]tailcfg.RawMessage{})},
+			false,
+		},
+		{
+			"large capability integers",
+			[]tailcfg.FilterRule{capRule([]tailcfg.RawMessage{`9007199254740992`})},
+			[]tailcfg.FilterRule{capRule([]tailcfg.RawMessage{`9007199254740993`})},
+			false,
+		},
+		{
+			"capability value order",
+			[]tailcfg.FilterRule{capRule([]tailcfg.RawMessage{`1`, `2`})},
+			[]tailcfg.FilterRule{capRule([]tailcfg.RawMessage{`2`, `1`})},
+			false,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			beforeWant, err := json.Marshal(tt.want)
+			require.NoError(t, err)
+			beforeGot, err := json.Marshal(tt.got)
+			require.NoError(t, err)
+			require.Equal(t, tt.equal, filterRulesDiff(t, tt.want, tt.got) == "")
+			afterWant, err := json.Marshal(tt.want)
+			require.NoError(t, err)
+			afterGot, err := json.Marshal(tt.got)
+			require.NoError(t, err)
+			require.Equal(t, beforeWant, afterWant)
+			require.Equal(t, beforeGot, afterGot)
 		})
 	}
 }
@@ -816,7 +1009,7 @@ func TestFilterRulesSemanticComparison(t *testing.T) {
 			beforeGot, err := json.Marshal(tt.got)
 			require.NoError(t, err)
 
-			diff := filterRulesDiff(t, tt.want, tt.got)
+			diff := semanticFilterRulesDiff(t, tt.want, tt.got)
 			if tt.equal {
 				require.Empty(t, diff, "equivalent rules differ (-want +got)")
 			} else {

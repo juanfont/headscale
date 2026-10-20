@@ -80,10 +80,16 @@ func compileSelfForUser(grant *compiledGrant, nodes []types.NodeView) []ruleFrag
 	if grant.self.app != nil {
 		var destinations []resolvedDestination
 
-		for _, addresses := range nodeAddresses {
-			for _, set := range addresses {
-				destinations = append(destinations, resolvedDestination{addresses: set})
+		for _, node := range nodes {
+			var addresses ipset.Builder
+			node.AppendToIPSet(&addresses)
+
+			allIPs, _ := addresses.Build()
+			if allIPs.IsEmpty() {
+				continue
 			}
+
+			destinations = append(destinations, resolvedDestination{addresses: allIPs})
 		}
 
 		fragments = append(fragments, compileDestinations(

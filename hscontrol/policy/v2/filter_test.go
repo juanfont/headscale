@@ -4161,7 +4161,7 @@ func TestCompileGrantWithAutogroupSelf_GrantPaths(t *testing.T) {
 				// SrcIPs from IPSet may be a merged range.
 				assert.ElementsMatch(
 					t,
-					[]string{"100.64.0.1", "100.64.0.2"}, rule.SrcIPs,
+					[]string{"100.64.0.1-100.64.0.2"}, rule.SrcIPs,
 					"canonical source coverage must contain only the user-owned devices",
 				)
 
@@ -4198,6 +4198,58 @@ func TestCompileGrantWithAutogroupSelf_GrantPaths(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSelfAppGrantKeepsNodeAddressesTogether(t *testing.T) {
+	t.Parallel()
+
+	users := types.Users{{ID: 1, Name: "alice"}, {ID: 2, Name: "bob"}}
+	nodes := types.Nodes{
+		{ID: 1, User: &users[0], IPv4: ap("100.64.0.1"), IPv6: ap("fd7a:115c:a1e0::1")},
+		{ID: 2, User: &users[0], IPv4: ap("100.64.0.2"), IPv6: ap("fd7a:115c:a1e0::2")},
+		{ID: 3, User: &users[1], IPv4: ap("100.64.0.3"), IPv6: ap("fd7a:115c:a1e0::3")},
+		{ID: 4, User: &users[0], IPv4: ap("100.64.0.4"), Tags: []string{"tag:server"}},
+	}
+
+	policy := `{"grants":[{"src":["alice@"],"dst":["autogroup:self"],
+		"app":{"example.com/cap":[{}]}}]}`
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+	rules, err := pm.ReadView().PeerRulesForNode(nodes[0].View())
+	require.NoError(t, err)
+
+	want := []tailcfg.FilterRule{{
+		SrcIPs: []string{
+			"100.64.0.1-100.64.0.2",
+			"fd7a:115c:a1e0::1-fd7a:115c:a1e0::2",
+		},
+		CapGrant: []tailcfg.CapGrant{
+			{
+				Dsts: []netip.Prefix{
+					netip.MustParsePrefix("100.64.0.1/32"),
+					netip.MustParsePrefix("fd7a:115c:a1e0::1/128"),
+				},
+				CapMap: tailcfg.PeerCapMap{"example.com/cap": {`{}`}},
+			},
+			{
+				Dsts: []netip.Prefix{
+					netip.MustParsePrefix("100.64.0.2/32"),
+					netip.MustParsePrefix("fd7a:115c:a1e0::2/128"),
+				},
+				CapMap: tailcfg.PeerCapMap{"example.com/cap": {`{}`}},
+			},
+		},
+	}}
+	require.Empty(t, cmp.Diff(
+		want, packetfilter.ToTailcfg(rules), cmpOptions()...,
+	))
+
+	// Packet reduction keeps only the recipient's dual-stack capability grant.
+	rules, err = pm.ReadView().PacketRulesForNode(nodes[0].View())
+	require.NoError(t, err)
+
+	want[0].CapGrant = want[0].CapGrant[:1]
+	require.Empty(t, cmp.Diff(want, packetfilter.ToTailcfg(rules), cmpOptions()...))
 }
 
 func TestDestinationsToNetPortRange_AutogroupInternet(t *testing.T) {
