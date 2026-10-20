@@ -106,6 +106,13 @@ func TestRouteApprovalCompat(t *testing.T) {
 	})
 }
 
+func TestLifecycleSkipEntriesNameCaptures(t *testing.T) {
+	t.Parallel()
+
+	requireSkipCaptures(t, lifecycleSkipReasons, "route-approval", "ephemeral-lifecycle")
+	requireSkipCaptures(t, reauthSkipReasons, append([]string{"owner-routes", "ephemeral-lifecycle"}, reauthCompatTests...)...)
+}
+
 // stepCheck is one rendering of a step outcome: SaaS's, and how to read
 // headscale's.
 type stepCheck struct {
