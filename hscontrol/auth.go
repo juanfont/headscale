@@ -376,7 +376,7 @@ func (h *Headscale) reqToNewRegisterResponse(
 	h.state.SetAuthCacheEntry(newAuthID, authRegReq)
 
 	return &tailcfg.RegisterResponse{
-		AuthURL: h.authProvider.RegisterURL(newAuthID),
+		AuthURL: h.getAuthProvider().RegisterURL(newAuthID),
 	}, nil
 }
 
@@ -506,6 +506,6 @@ func (h *Headscale) handleRegisterInteractive(
 	log.Info().Msgf("starting node registration using auth id: %s", authID)
 
 	return &tailcfg.RegisterResponse{
-		AuthURL: h.authProvider.RegisterURL(authID),
+		AuthURL: h.getAuthProvider().RegisterURL(authID),
 	}, nil
 }
