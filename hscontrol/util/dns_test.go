@@ -18,6 +18,7 @@ func TestMagicDNSRootDomainsIPv6PartialNibble(t *testing.T) {
 		{"fd7a:115c:a1e0::/49", []string{"0", "1", "2", "3", "4", "5", "6", "7"}},
 		{"fd7a:115c:a1e0:8000::/49", []string{"8", "9", "a", "b", "c", "d", "e", "f"}},
 		{"fd7a:115c:a1e0:c000::/50", []string{"c", "d", "e", "f"}},
+		{"fd7a:115c:a1e0:d123::1/50", []string{"c", "d", "e", "f"}},
 		{"fd7a:115c:a1e0:a000::/51", []string{"a", "b"}},
 	}
 	for _, tt := range tests {
@@ -36,37 +37,10 @@ func TestMagicDNSRootDomainsIPv6PartialNibble(t *testing.T) {
 	}
 }
 
-func TestMagicDNSRootDomainsIPv6WrongFamilyCompatibility(t *testing.T) {
-	tests := []struct {
-		prefix string
-		want   []dnsname.FQDN
-	}{
-		{"1.1.1.0/29", []dnsname.FQDN{}},
-		{"1.1.1.0/30", []dnsname.FQDN{}},
-		{"1.1.1.0/31", []dnsname.FQDN{}},
-		{"192.0.2.0/29", []dnsname.FQDN{}},
-		{"1.1.1.0/0", []dnsname.FQDN{"ip6.arpa."}},
-		{"1.1.1.0/1", []dnsname.FQDN{"0.ip6.arpa.", "1.ip6.arpa."}},
-		{"3.0.0.0/3", []dnsname.FQDN{
-			"0.ip6.arpa.", "1.ip6.arpa.", "2.ip6.arpa.", "3.ip6.arpa.",
-			"4.ip6.arpa.", "5.ip6.arpa.", "6.ip6.arpa.", "7.ip6.arpa.",
-		}},
-		{"1.1.1.0/5", []dnsname.FQDN{"0.1.ip6.arpa.", "1.1.ip6.arpa."}},
-		{"1.1.1.0/28", []dnsname.FQDN{""}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.prefix, func(t *testing.T) {
-			var domains []dnsname.FQDN
-
-			require.NotPanics(t, func() {
-				domains = GenerateIPv6DNSRootDomain(netip.MustParsePrefix(tt.prefix))
-			})
-			assert.Equal(t, tt.want, domains)
-		})
-	}
-}
-
 func TestDNSRootDomainsInvalidPrefix(t *testing.T) {
+	assert.Nil(t, GenerateIPv4DNSRootDomain(netip.MustParsePrefix("fd7a:115c:a1e0::/48")))
+	assert.Nil(t, GenerateIPv6DNSRootDomain(netip.MustParsePrefix("100.64.0.0/10")))
+
 	tests := []struct {
 		name   string
 		prefix netip.Prefix
@@ -92,12 +66,12 @@ func TestDNSRootDomainsInvalidPrefix(t *testing.T) {
 			require.False(t, tt.prefix.IsValid())
 			assert.Equal(
 				t,
-				[]dnsname.FQDN{"in-addr.arpa."},
+				[]dnsname.FQDN(nil),
 				GenerateIPv4DNSRootDomain(tt.prefix),
 			)
 			assert.Equal(
 				t,
-				[]dnsname.FQDN{"ip6.arpa."},
+				[]dnsname.FQDN(nil),
 				GenerateIPv6DNSRootDomain(tt.prefix),
 			)
 		})
@@ -112,7 +86,7 @@ func TestDNSRootDomainPrefixBoundaries(t *testing.T) {
 		last   string
 	}{
 		{"100.64.0.1/32", 1, "1.0.64.100.in-addr.arpa.", "1.0.64.100.in-addr.arpa."},
-		{"100.70.0.0/10", 64, "70.100.in-addr.arpa.", "133.100.in-addr.arpa."},
+		{"100.70.0.0/10", 64, "64.100.in-addr.arpa.", "127.100.in-addr.arpa."},
 		{"0.0.0.0/0", 256, "0.in-addr.arpa.", "255.in-addr.arpa."},
 		{"::/0", 1, "ip6.arpa.", "ip6.arpa."},
 		{

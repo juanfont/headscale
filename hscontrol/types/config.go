@@ -1367,6 +1367,7 @@ func parsePrefixConfig(key string, standardRange netip.Prefix, family string) (*
 		)
 	}
 
+	prefix = prefix.Masked()
 	withinStandard := prefix.Bits() >= standardRange.Bits() &&
 		standardRange.Contains(prefix.Addr())
 

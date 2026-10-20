@@ -93,9 +93,11 @@ func ValidateUsername(username string) error {
 // From the netmask we can find out the wildcard bits (the bits that are not set in the netmask).
 // This allows us to then calculate the subnets included in the subsequent class block and generate the entries.
 func GenerateIPv4DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
-	if !ipPrefix.IsValid() {
-		return []dnsname.FQDN{"in-addr.arpa."}
+	if !ipPrefix.IsValid() || !ipPrefix.Addr().Is4() {
+		return nil
 	}
+
+	ipPrefix = ipPrefix.Masked()
 
 	// Use the address bytes and prefix length directly.
 	ipBytes := ipPrefix.Addr().AsSlice()
@@ -159,7 +161,12 @@ func GenerateIPv4DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 func GenerateIPv6DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	const nibbleLen = 4
 
-	maskBits := max(ipPrefix.Bits(), 0)
+	if !ipPrefix.IsValid() || !ipPrefix.Addr().Is6() {
+		return nil
+	}
+
+	ipPrefix = ipPrefix.Masked()
+	maskBits := ipPrefix.Bits()
 	expanded := ipPrefix.Addr().StringExpanded()
 	nibbleStr := strings.ReplaceAll(expanded, ":", "")
 
@@ -186,17 +193,10 @@ func GenerateIPv6DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 		dom, _ := makeDomain()
 		fqdns = append(fqdns, dom)
 	} else {
-		domCount := 1 << (maskBits % nibbleLen)
-
-		var firstNibble uint64
-		// Config accepts IPv4 here; preserve its legacy zone generation.
-		if ipPrefix.Addr().Is6() {
-			domCount = 1 << (nibbleLen - maskBits%nibbleLen)
-			firstNibble, _ = strconv.ParseUint(
-				string(nibbleStr[maskBits/nibbleLen]), 16, nibbleLen,
-			)
-			firstNibble &^= 0xf >> (maskBits % nibbleLen)
-		}
+		domCount := 1 << (nibbleLen - maskBits%nibbleLen)
+		firstNibble, _ := strconv.ParseUint(
+			string(nibbleStr[maskBits/nibbleLen]), 16, nibbleLen,
+		)
 
 		fqdns = make([]dnsname.FQDN, 0, domCount)
 		for i := range domCount {

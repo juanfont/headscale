@@ -182,7 +182,7 @@ func TestParsePrefixConfigBoundarySemantics(t *testing.T) {
 			}
 
 			require.NotNil(t, prefix)
-			assert.Equal(t, netip.MustParsePrefix(tt.input), *prefix)
+			assert.Equal(t, netip.MustParsePrefix(tt.input).Masked(), *prefix)
 		})
 	}
 }
