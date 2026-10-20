@@ -2,12 +2,15 @@
 // is sent when a device is retagged, when a running peer changes its DERP
 // home, disco key, hostname or port, when a node goes down and up around
 // policy pushes, and which Hostinfo fields peers and the node itself get;
-// what a node hears of nodes it cannot see; and what a router's peers hear
-// of routes it announces but has no approval for.
+// what a node hears of nodes it cannot see; what a router's peers hear of
+// routes it announces but has no approval for; and what every node is sent
+// as one policy is compiled again for node changes and a group edit.
 //
-// Test data source: testdata/steps/{map-delivery,hidden-peers,route-announce}.hujson,
-// loaded by name. The disco rotation of map-delivery also pins a row of
-// TestBuildMapRequestChangeResponse in ../state.
+// Test data source: testdata/steps/{map-delivery,hidden-peers,route-announce,
+// policy-generation}.hujson, loaded by name. The disco rotation of
+// map-delivery also pins a row of TestBuildMapRequestChangeResponse in
+// ../state; policy-generation is also read by TestPolicySequenceCompat in
+// ../policy/v2.
 // Source format:    github.com/juanfont/headscale/hscontrol/types/testcapture
 
 package servertest_test
@@ -17,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"net/http"
 	"net/netip"
 	"slices"
 	"strconv"
@@ -123,6 +127,33 @@ var mapStreamSkipReasons = map[string]string{
 	"route-announce/RA9/rtr/self-routes":  selfRoutesReduced,
 	"route-announce/RA10/rtr/self-routes": selfRoutesReduced,
 	"route-announce/RA11/rtr/self-routes": selfRoutesReduced,
+
+	"policy-generation/G2/thor-1/peers":       sameUserPeers,
+	"policy-generation/G2/thor-2/peers":       sameUserPeers,
+	"policy-generation/G3/thor-1/peers":       sameUserPeers,
+	"policy-generation/G3/thor-2/peers":       sameUserPeers,
+	"policy-generation/G4/thor-1/peers":       sameUserPeers,
+	"policy-generation/G4/thor-2/peers":       sameUserPeers,
+	"policy-generation/G2/thor-1/peer-owners": sameUserPeers,
+	"policy-generation/G2/thor-2/peer-owners": sameUserPeers,
+	"policy-generation/G3/thor-1/peer-owners": sameUserPeers,
+	"policy-generation/G3/thor-2/peer-owners": sameUserPeers,
+	"policy-generation/G4/thor-1/peer-owners": sameUserPeers,
+	"policy-generation/G4/thor-2/peer-owners": sameUserPeers,
+
+	"policy-generation/G2/freya-1/filter": filterDstMerged,
+	"policy-generation/G2/thor-2/filter":  filterDstMerged,
+	"policy-generation/G3/freya-1/filter": filterDstMerged,
+	"policy-generation/G3/thor-2/filter":  filterDstMerged,
+	"policy-generation/G4/freya-1/filter": filterDstMerged,
+	"policy-generation/G4/thor-2/filter":  filterDstMerged,
+	"policy-generation/G5/freya-1/filter": filterDstMerged,
+	"policy-generation/G5/thor-2/filter":  filterDstMerged,
+
+	"policy-generation/G4/rt/enabled": withdrawnRouteEnabled,
+	"policy-generation/G5/rt/enabled": withdrawnRouteEnabled,
+	"policy-generation/G7/rt/enabled": withdrawnRouteEnabled,
+	"policy-generation/G8/rt/enabled": withdrawnRouteEnabled,
 }
 
 const (
@@ -136,6 +167,7 @@ const (
 	peerServicesWhole         = "PEER_SERVICES_WHOLE: headscale sends peers every service a node reports; SaaS leaves out peerapi-dns-proxy"
 	removalSentToAll          = "REMOVAL_SENT_TO_ALL: headscale tells every connected node that a deleted node is gone; SaaS tells only the nodes that had it as a peer"
 	announcePolicyResend      = "ANNOUNCE_POLICY_RESEND: under an autogroup:self or via policy, headscale sends every connected node a policy response when a router changes only routes nobody approved; SaaS sends nothing to nodes that cannot see the router"
+	withdrawnRouteEnabled     = "WITHDRAWN_ROUTE_ENABLED: headscale's routes API keeps a route the device stopped advertising in enabledRoutes; SaaS lists only advertised routes as enabled"
 )
 
 // mapStreamNotCompared lists, by key prefix, checks left out: SaaS's answer
@@ -159,6 +191,11 @@ var mapStreamNotCompared = []string{
 	"route-announce/RA11/observer/presence",
 	"route-announce/RA11/srv/presence",
 	"route-announce/RA11/witness/presence",
+
+	"policy-generation/G7/rt-b/filter",
+	"policy-generation/G7/rt-plain/filter",
+	"policy-generation/G7/srv/filter",
+	"policy-generation/G7/srv/ssh",
 }
 
 // compared drops the checks mapStreamNotCompared leaves out.
@@ -502,16 +539,7 @@ type deliveryStep struct {
 // on; and, per node, whether it was sent anything.
 func deliveryChecks(d *deliveryStep) []stepCheck {
 	r := d.r
-	saasNames := map[netip.Addr]string{}
-
-	for alias, n := range r.c.Topology.Nodes {
-		for _, s := range []string{n.IPv4, n.IPv6} {
-			addr, err := netip.ParseAddr(s)
-			if err == nil {
-				saasNames[addr] = alias
-			}
-		}
-	}
+	saasNames := topologyAddrNames(r.c)
 
 	var checks []stepCheck
 
@@ -616,6 +644,23 @@ func (d *deliveryStep) subjectChecks(x, v string) []stepCheck {
 			return hsEndpointsCleared(r.clients[v].History()[d.updates[v]:], id)
 		}},
 	}
+}
+
+// topologyAddrNames names each SaaS address in c's topology by alias, so a
+// rule naming a device that has since left still reads by name.
+func topologyAddrNames(c *testcapture.Capture) map[netip.Addr]string {
+	out := map[netip.Addr]string{}
+
+	for alias, n := range c.Topology.Nodes {
+		for _, s := range []string{n.IPv4, n.IPv6} {
+			addr, err := netip.ParseAddr(s)
+			if err == nil {
+				out[addr] = alias
+			}
+		}
+	}
+
+	return out
 }
 
 // stepSubjects names the nodes the step acted on, by action or device path.
@@ -910,7 +955,7 @@ func TestRouteAnnouncementCompat(t *testing.T) {
 func TestMapStreamSkipEntriesNameCaptures(t *testing.T) {
 	t.Parallel()
 
-	requireSkipCaptures(t, mapStreamSkipReasons, "map-delivery", "hidden-peers", "route-announce")
+	requireSkipCaptures(t, mapStreamSkipReasons, "map-delivery", "hidden-peers", "route-announce", "policy-generation")
 }
 
 // visibilityMark is what a client had been sent when a step began.
@@ -1142,4 +1187,159 @@ func (r *stepReplay) hsRemovedPeers(cl *servertest.TestClient, mark visibilityMa
 	}
 
 	return sortedStrings(slices.Collect(maps.Keys(set)))
+}
+
+// TestPolicySequenceMapCompat replays one policy while members join, a
+// second via router joins and the first withdraws its routes, the admin tags
+// one member's device and deletes another, then the group the policy names
+// in ACLs, a via grant, SSH and autoApprovers is edited. After each step it
+// compares, per captured node, its peers, whom it sees each owned by, which
+// peers serve each route, and its filter and SSH rules by device; and per
+// device, its owner and routes. TestPolicySequenceCompat in ../policy/v2
+// compares the same steps at the policy layer.
+func TestPolicySequenceMapCompat(t *testing.T) {
+	t.Parallel()
+
+	t.Run("policy-generation", func(t *testing.T) {
+		t.Parallel()
+
+		replayPolicySequence(t, "policy-generation")
+	})
+}
+
+func replayPolicySequence(t *testing.T, id string) {
+	t.Helper()
+
+	c := readStepCapture(t, id)
+	r := newStepReplay(t, c)
+	saasNames := topologyAddrNames(c)
+	evaluated := map[string]bool{}
+
+	// Kept past a deletion, as saasNames are, so a deleted device's
+	// addresses still read as that device in rules that keep them.
+	hsNames := map[netip.Addr]string{}
+	names := func() map[netip.Addr]string {
+		maps.Copy(hsNames, r.addrNames())
+
+		return hsNames
+	}
+
+	for _, step := range c.Steps {
+		require.Equal(t, "observed", step.Result, "%s: the replay follows every step", step.Name)
+
+		// The probe let each action land before the next, and which router
+		// serves a route depends on join order.
+		for _, a := range step.Actions {
+			one := step
+			one.Actions = []testcapture.Action{a}
+			require.Empty(t, r.apply(t, one), "%s: every login succeeds", step.Name)
+			r.waitSession(t, step.Name, a)
+		}
+
+		t.Run(step.Name, func(t *testing.T) {
+			prefix := id + "/" + step.Name + "/"
+			holdChecks(t, mapStreamSkipReasons, prefix, compared(prefix, sequenceChecks(t, r, step, saasNames, names)), evaluated)
+		})
+	}
+
+	for k := range mapStreamSkipReasons {
+		if strings.HasPrefix(k, id+"/") && !evaluated[k] {
+			t.Errorf("skip entry %q names no check", k)
+		}
+	}
+}
+
+// sequenceChecks compares, per node SaaS captured in the step, its peers,
+// their owners and routes, and its filter and SSH rules with devices named
+// by saasNames and hsNames; per device in the step's device list, its owner;
+// and per device whose routes the step read, the routes API.
+func sequenceChecks(
+	t *testing.T,
+	r *stepReplay,
+	step testcapture.Step,
+	saasNames map[netip.Addr]string,
+	hsNames func() map[netip.Addr]string,
+) []stepCheck {
+	t.Helper()
+
+	var checks []stepCheck
+
+	for _, x := range slices.Sorted(maps.Keys(step.Captures)) {
+		saas, cl := step.Captures[x].Netmap, r.clients[x]
+		require.NotNil(t, saas, "%s: no netmap of %s", step.Name, x)
+		require.NotNil(t, cl, "%s: %s never joined", step.Name, x)
+
+		checks = append(checks,
+			stepCheck{x + "/peers", peerAliases(saas, r.saasAlias), func() string { return peerAliases(cl.Netmap(), r.hsAlias) }},
+			stepCheck{x + "/peer-owners", peerOwners(saas, r.saasAlias), func() string { return peerOwners(cl.Netmap(), r.hsAlias) }},
+			stepCheck{x + "/route-owner", routeOwners(saas, r.saasAlias), func() string { return routeOwners(cl.Netmap(), r.hsAlias) }},
+			stepCheck{x + "/filter", renderMatches(saas, saasNames), func() string { return renderMatches(cl.Netmap(), hsNames()) }},
+			stepCheck{x + "/ssh", renderSSHRules(saas, saasNames), func() string { return renderSSHRules(cl.Netmap(), hsNames()) }},
+		)
+	}
+
+	for _, d := range stepDevices(t, step) {
+		x := deviceLabelAlias(d.ID)
+		checks = append(checks, stepCheck{x + "/owner", saasOwner(d), func() string { return renderOwners(r.hsViews(x)) }})
+	}
+
+	for _, a := range step.Actions {
+		if a.Kind != "api" || a.Method != http.MethodGet || !strings.HasSuffix(a.Path, "/routes") {
+			continue
+		}
+
+		x := deviceAlias(t, a.Path)
+
+		var want deviceRoutes
+		require.NoError(t, json.Unmarshal(a.Response, &want), "%s: %s", step.Name, a.Path)
+
+		hs := func(pick func(deviceRoutes) []string) func() string {
+			return func() string {
+				got, ok := r.hsDeviceRoutes(t, x)
+				if !ok {
+					return "no single device"
+				}
+
+				return sortedStrings(pick(got))
+			}
+		}
+
+		checks = append(checks,
+			stepCheck{x + "/advertised", sortedStrings(want.Advertised), hs(func(d deviceRoutes) []string { return d.Advertised })},
+			stepCheck{x + "/enabled", sortedStrings(want.Enabled), hs(func(d deviceRoutes) []string { return d.Enabled })},
+		)
+	}
+
+	return checks
+}
+
+// peerOwners gives, per peer in nm that alias names, its tags and the login
+// of the user it is shown under, SaaS emails mapped to user names.
+func peerOwners(nm *netmap.NetworkMap, alias func(tailcfg.NodeID) (string, bool)) string {
+	if nm == nil {
+		return "no netmap"
+	}
+
+	var out []string
+
+	for _, p := range nm.Peers {
+		name, ok := alias(p.ID())
+		if !ok {
+			continue
+		}
+
+		login := "no profile"
+		if prof, ok := nm.UserProfiles[p.User()]; ok {
+			login = prof.LoginName()
+			if user, ok := captureUserNames[login]; ok {
+				login = user
+			}
+		}
+
+		out = append(out, fmt.Sprintf("%s %s as %s", name, sortedStrings(p.Tags().AsSlice()), login))
+	}
+
+	slices.Sort(out)
+
+	return strings.Join(out, "; ")
 }
