@@ -164,6 +164,7 @@ func (v MapView) NodeAddresses(id types.NodeID) (types.NodeAddresses, error) {
 	}
 
 	var routes []netip.Prefix
+
 	if id == v.viewer.ID() {
 		// Self has no via steering. Approved exits are never reduced for self.
 		if primaries := v.snapshot.primaryRoutesByNode[id]; len(primaries) > 0 {

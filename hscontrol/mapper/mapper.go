@@ -469,6 +469,7 @@ func (m *mapper) filterVisiblePeerPatches(
 		}
 
 		peer := peers.At(0)
+
 		patch := &tailcfg.PeerChange{NodeID: hint.NodeID, Cap: hint.Cap, KeySignature: slices.Clone(hint.KeySignature)}
 		if hint.DERPRegion != 0 && peer.Hostinfo().Valid() && peer.Hostinfo().NetInfo().Valid() {
 			patch.DERPRegion = peer.Hostinfo().NetInfo().PreferredDERP()
