@@ -871,7 +871,7 @@ func (r *stepReplay) apply(t *testing.T, step testcapture.Step) map[string]error
 			}
 
 		case "restart", "start", "kill", "shutdown", "logout", "advertise", "set_hostname",
-			"break_tcp_conns", "rotate_disco_key", "cli":
+			"break_tcp_conns", "rotate_disco_key", "cli", "disconnect_control":
 			r.daemon(ctx, t, step.Name, a)
 
 		case "retire":
@@ -909,7 +909,10 @@ func (r *stepReplay) daemon(ctx context.Context, t *testing.T, stepName string, 
 		// start follows a kill: the daemon comes back on its state.
 		require.NoError(t, cl.Restart(ctx, r.hostinfo[a.Node].Clone()), "%s: %s", stepName, a.Kind)
 
-	case a.Kind == "kill", a.Kind == "shutdown" && !r.memState[a.Node]:
+	case a.Kind == "kill", a.Kind == "disconnect_control",
+		a.Kind == "shutdown" && !r.memState[a.Node]:
+		// disconnect_control stops a refused login's retries; the next login
+		// starts a new control client, as every replayed login does.
 		cl.Disconnect(t)
 
 	case a.Kind == "shutdown", a.Kind == "logout", a.Kind == "cli" && args == "logout":
