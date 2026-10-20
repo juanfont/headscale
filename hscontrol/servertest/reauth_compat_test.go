@@ -1,9 +1,10 @@
 // This file replays re-authentication captures from Tailscale SaaS.
 //
 // Test data source: testdata/steps/{owner-routes,reauth,reauth-foreign,
-// reauth-owner,identity,reauth-user}.hujson, loaded by name. owner-routes is
-// checked by runRouteLifecycleCompat in lifecycle_compat_test.go. The tag
-// owner verdicts of tag-owner-chain.hujson are checked in ../policy/v2. The
+// reauth-owner,identity,reauth-user,tag-owner-chain}.hujson, loaded by name.
+// owner-routes is checked by runRouteLifecycleCompat in
+// lifecycle_compat_test.go. tag-owner-chain's joins are replayed here; its
+// OAuth mints and the tag owner functions are checked in ../policy/v2. The
 // refused logins of ephemeral-lifecycle.hujson are rows here too.
 // Source format:    github.com/juanfont/headscale/hscontrol/types/testcapture
 
@@ -80,6 +81,22 @@ var reauthSkipReasons = map[string]string{
 	"identity/w-tagreq-new-join/w-tagreq-new/peer-obs":      keyLoginTagsRefused,
 	"identity/w-tagreq-new-join/w-tagreq-new/peer-key-obs":  keyLoginTagsRefused,
 
+	"tag-owner-chain/u-base-join/u-base/devices":      keyLoginTagsRefused,
+	"tag-owner-chain/u-base-join/u-base/owner":        keyLoginTagsRefused,
+	"tag-owner-chain/u-base-join/u-base/outcome":      keyLoginTagsRefused,
+	"tag-owner-chain/u-base-join/u-base/expiry":       keyLoginTagsRefused,
+	"tag-owner-chain/u-base-join/u-base/ephemeral":    keyLoginTagsRefused,
+	"tag-owner-chain/u-base-join/u-base/peer-obs":     keyLoginTagsRefused,
+	"tag-owner-chain/u-base-join/u-base/peer-key-obs": keyLoginTagsRefused,
+
+	"tag-owner-chain/t-mid-join/t-mid/devices":      taggedKeyOwnedTagRefused,
+	"tag-owner-chain/t-mid-join/t-mid/owner":        taggedKeyOwnedTagRefused,
+	"tag-owner-chain/t-mid-join/t-mid/outcome":      taggedKeyOwnedTagRefused,
+	"tag-owner-chain/t-mid-join/t-mid/expiry":       taggedKeyOwnedTagRefused,
+	"tag-owner-chain/t-mid-join/t-mid/ephemeral":    taggedKeyOwnedTagRefused,
+	"tag-owner-chain/t-mid-join/t-mid/peer-obs":     taggedKeyOwnedTagRefused,
+	"tag-owner-chain/t-mid-join/t-mid/peer-key-obs": taggedKeyOwnedTagRefused,
+
 	"reauth/late-pak-spent-key/late-pak/text":        refusalText,
 	"reauth/late-pak-spent-key/late-pak/legacy-text": refusalText,
 
@@ -96,12 +113,13 @@ const (
 )
 
 const (
-	expiredKeyNotRotated   = "EXPIRED_KEY_NOT_ROTATED: headscale answers an expired node's key login without asking for a new node key; SaaS answers NodeKeyExpired first, so the client rotates it"
-	sameKeyRenewsExpiry    = "SAME_KEY_LOGIN_RENEWS_EXPIRY: headscale renews a user node's expiry on a key login that keeps its node key; SaaS renews it only with a new node key"
-	taggedLogoutNotExpired = "TAGGED_LOGOUT_NOT_EXPIRED: headscale leaves a tagged node unexpired when it logs out; SaaS expires it"
-	wakeWithTagsRefused    = "WAKE_WITH_TAGS_REFUSED: headscale refuses a key login that requests tags the key does not carry even when the node keeps its node key and tags; SaaS accepts it and changes nothing"
-	keyLoginTagsRefused    = "KEY_LOGIN_TAGS_REFUSED: headscale refuses a user's key login that requests tags the user owns; SaaS tags the device, converting it in place or creating it tagged"
-	refusalText            = "REFUSAL_TEXT: SaaS refuses a key by naming its ID; headscale says why the key is refused"
+	expiredKeyNotRotated     = "EXPIRED_KEY_NOT_ROTATED: headscale answers an expired node's key login without asking for a new node key; SaaS answers NodeKeyExpired first, so the client rotates it"
+	sameKeyRenewsExpiry      = "SAME_KEY_LOGIN_RENEWS_EXPIRY: headscale renews a user node's expiry on a key login that keeps its node key; SaaS renews it only with a new node key"
+	taggedLogoutNotExpired   = "TAGGED_LOGOUT_NOT_EXPIRED: headscale leaves a tagged node unexpired when it logs out; SaaS expires it"
+	wakeWithTagsRefused      = "WAKE_WITH_TAGS_REFUSED: headscale refuses a key login that requests tags the key does not carry even when the node keeps its node key and tags; SaaS accepts it and changes nothing"
+	keyLoginTagsRefused      = "KEY_LOGIN_TAGS_REFUSED: headscale refuses a user's key login that requests tags the user owns; SaaS tags the device, converting it in place or creating it tagged"
+	taggedKeyOwnedTagRefused = "TAGGED_KEY_OWNED_TAG_REFUSED: headscale refuses a tagged key's login that requests a tag the key's tags own; SaaS gives the device the requested tags"
+	refusalText              = "REFUSAL_TEXT: SaaS refuses a key by naming its ID; headscale says why the key is refused"
 )
 
 // reauthNotCompared lists, by key prefix, checks left out: SaaS's answer
@@ -123,7 +141,7 @@ var reauthNotCompared = []string{
 }
 
 // reauthCompatTests are the captures [runReauthCompat] replays.
-var reauthCompatTests = []string{"reauth", "reauth-foreign", "reauth-owner", "identity", "reauth-user"}
+var reauthCompatTests = []string{"reauth", "reauth-foreign", "reauth-owner", "identity", "reauth-user", "tag-owner-chain"}
 
 // reauthObservers stay up through a capture: their view of each cell and
 // their own filters are checked.
@@ -133,9 +151,9 @@ var reauthObservers = []string{"obs", "t-server"}
 // owner changes on routers with approved routes. The others: expired and
 // live devices logging in again with spent, revoked, valid and other users'
 // keys, logout, ephemeral devices, admin tagging, conversion either way, a
-// second profile, and one single-use tagged key presented by several
-// devices. via=login replays a user's key logins as interactive logins that
-// user approves.
+// second profile, one single-use tagged key presented by several devices,
+// and joins requesting tags owned through other tags. via=login replays a
+// user's key logins as interactive logins that user approves.
 func TestReauthCompat(t *testing.T) {
 	t.Parallel()
 
@@ -193,6 +211,20 @@ func runReauthCompat(t *testing.T, id string, viaLogin bool) {
 	}
 
 	for _, step := range c.Steps {
+		// The replay has no OAuth client; ../policy/v2 checks the mints
+		// against TagOwnedByTags, which headscale's mint asks.
+		if slices.ContainsFunc(step.Actions, func(a testcapture.Action) bool { return a.Kind == "token" }) {
+			break
+		}
+
+		if step.Result == "setup-failed" {
+			require.False(t, slices.ContainsFunc(step.Actions, func(a testcapture.Action) bool {
+				return a.Kind != "api" || a.Status < http.StatusBadRequest
+			}), "%s: a failed setup is skipped only when SaaS refused all of it", step.Name)
+
+			continue
+		}
+
 		require.Contains(t, []string{"observed", "expected-refusal"}, step.Result,
 			"%s: the replay follows every step", step.Name)
 
@@ -772,6 +804,12 @@ func (r *stepReplay) keyChecks(step testcapture.Step) []stepCheck {
 	for _, a := range step.Actions {
 		label, ok := strings.CutPrefix(a.Path, "/tailnet/-/keys/{key:")
 		if a.Kind != "api" || a.Method != http.MethodGet || !ok {
+			continue
+		}
+
+		// A member may read no keys, so his refused read says nothing about
+		// the key.
+		if a.Status != http.StatusOK && a.Principal != "admin" {
 			continue
 		}
 
