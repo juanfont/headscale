@@ -1,10 +1,15 @@
 package state
 
 import (
+	"encoding/json"
 	"errors"
+	"maps"
+	"net/http"
 	"net/netip"
+	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -15,6 +20,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
+	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1356,6 +1362,351 @@ func TestBackfillNodeIPsSurvivesConcurrentPersist(t *testing.T) {
 	dbNode, err := s.db.GetNodeByID(nodeID)
 	require.NoError(t, err)
 	assert.Nil(t, dbNode.IPv6, "database kept the removed IPv6 address")
+}
+
+// nameSkipReasons lists checks of [TestNodeNameReplayCompat] where headscale
+// differs from SaaS, keyed <test_id>/<step>/<node or action index>/<check>.
+// A listed check that matches fails, so a fix must delete its entry.
+var nameSkipReasons = map[string]string{
+	"names/N1/db-b/reopen": labelNotSaved,
+	"names/N5/e2/reopen":   labelNotSaved,
+	"names/N5/e1/reopen":   labelNotSaved,
+	"names/N6/e2/reopen":   labelNotSaved,
+	"names/N6/e1/reopen":   labelNotSaved,
+	"names/N7/e2/reopen":   labelNotSaved,
+	"names/N7/e1/reopen":   labelNotSaved,
+	"names/N8/e2/reopen":   labelNotSaved,
+	"names/N8/e1/reopen":   labelNotSaved,
+	"names/N9a/e2/reopen":  labelNotSaved,
+	"names/N9a/e1/reopen":  labelNotSaved,
+	"names/N9b/e2/reopen":  labelNotSaved,
+	"names/N9b/e1/reopen":  labelNotSaved,
+	"names/N10/e2/reopen":  labelNotSaved,
+	"names/N10/e1/reopen":  labelNotSaved,
+	"names/N11/e2/reopen":  labelNotSaved,
+	"names/N11/e1/reopen":  labelNotSaved,
+	"names/N11b/e2/reopen": labelNotSaved,
+	"names/N11b/e1/reopen": labelNotSaved,
+	"names/N12a/e2/reopen": labelNotSaved,
+	"names/N12a/e1/reopen": labelNotSaved,
+	"names/N12b/e2/reopen": labelNotSaved,
+	"names/N12b/e1/reopen": labelNotSaved,
+	"names/N13/e2/reopen":  labelNotSaved,
+	"names/N13/e1/reopen":  labelNotSaved,
+
+	"names/N1/n63b/label":  labelSuffixOverflow,
+	"names/N2/n63b/label":  labelSuffixOverflow,
+	"names/N3/n63b/label":  labelSuffixOverflow,
+	"names/N4/n63b/label":  labelSuffixOverflow,
+	"names/N5/n63b/label":  labelSuffixOverflow,
+	"names/N6/n63b/label":  labelSuffixOverflow,
+	"names/N7/n63b/label":  labelSuffixOverflow,
+	"names/N8/n63b/label":  labelSuffixOverflow,
+	"names/N9a/n63b/label": labelSuffixOverflow,
+	"names/N9b/n63b/label": labelSuffixOverflow,
+	"names/N10/n63b/label": labelSuffixOverflow,
+	"names/N11/n63b/label": labelSuffixOverflow,
+
+	"names/N1/n63b/reopen":  labelNotSavedOverflow,
+	"names/N2/n63b/reopen":  labelNotSavedOverflow,
+	"names/N3/n63b/reopen":  labelNotSavedOverflow,
+	"names/N4/n63b/reopen":  labelNotSavedOverflow,
+	"names/N5/n63b/reopen":  labelNotSavedOverflow,
+	"names/N6/n63b/reopen":  labelNotSavedOverflow,
+	"names/N7/n63b/reopen":  labelNotSavedOverflow,
+	"names/N8/n63b/reopen":  labelNotSavedOverflow,
+	"names/N9a/n63b/reopen": labelNotSavedOverflow,
+	"names/N9b/n63b/reopen": labelNotSavedOverflow,
+	"names/N10/n63b/reopen": labelNotSavedOverflow,
+	"names/N11/n63b/reopen": labelNotSavedOverflow,
+
+	"names/N11/pdb/label":   adminNameFollowsHostname,
+	"names/N11/pdb/reopen":  adminNameFollowsHostname,
+	"names/N11b/pdb/label":  adminNameFollowsHostname,
+	"names/N11b/pdb/reopen": adminNameFollowsHostname,
+	"names/N12a/pdb/label":  adminNameFollowsHostname,
+	"names/N12a/pdb/reopen": adminNameFollowsHostname,
+	"names/N12b/pdb/label":  adminNameFollowsHostname,
+	"names/N12b/pdb/reopen": adminNameFollowsHostname,
+	"names/N13/pdb/label":   adminNameFollowsHostname,
+	"names/N13/pdb/reopen":  adminNameFollowsHostname,
+
+	"names/N7/m1/reopen":   labelNotSaved,
+	"names/N8/m1/reopen":   labelNotSaved,
+	"names/N9a/m1/reopen":  labelNotSaved,
+	"names/N9b/m1/reopen":  labelNotSaved,
+	"names/N10/m1/reopen":  labelNotSaved,
+	"names/N11/m1/reopen":  labelNotSaved,
+	"names/N11b/m1/reopen": labelNotSaved,
+	"names/N12a/m1/reopen": labelNotSaved,
+	"names/N12b/m1/reopen": labelNotSaved,
+	"names/N13/m1/reopen":  labelNotSaved,
+}
+
+const (
+	labelSuffixOverflow      = "LABEL_SUFFIX_OVERFLOW: headscale appends -N to a 63-byte label, giving a 65-byte one; SaaS cuts the label so the suffix fits in 63 bytes"
+	adminNameFollowsHostname = "ADMIN_NAME_FOLLOWS_HOSTNAME: an admin name equal to the hostname's label counts as derived from it, so a hostname change replaces it; SaaS keeps an admin name across hostname changes"
+	labelNotSaved            = "LABEL_NOT_SAVED: headscale writes a new node's row with its hostname's label before the NodeStore resolves a collision or an empty label, and saves the result only on a later change; SaaS keeps the label it gave"
+	labelNotSavedOverflow    = "LABEL_NOT_SAVED+LABEL_SUFFIX_OVERFLOW: the row keeps the unsuffixed 63-byte label, and the label the NodeStore resolves is 65 bytes; SaaS cuts the label so the suffix fits"
+)
+
+// TestNodeNameReplayCompat replays the names capture through State: joins by
+// pre-auth key with no map request after them, restarts and hostname changes
+// as map requests, renames and deletes. After each step every device's label
+// must be SaaS's, in the NodeStore and as a restart would load it from the
+// database, since SaaS never changes a label without a cause.
+//
+// Test data source: ../servertest/testdata/steps/names.hujson, loaded by
+// name; TestNodeNameCompat in ../servertest replays it with clients.
+func TestNodeNameReplayCompat(t *testing.T) {
+	c, err := testcapture.Read(filepath.Join("..", "servertest", "testdata", "steps", "names.hujson"))
+	require.NoError(t, err)
+
+	s, err := NewState(persistTestConfig(t.TempDir() + "/headscale.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	// SaaS keys and admin calls act as the tailnet's admin.
+	adminName, _, _ := strings.Cut(c.Tailnet, "@")
+	admin := s.CreateUserForTest(adminName)
+
+	type replayNode struct {
+		id       types.NodeID
+		machine  key.MachinePublic
+		nodeKey  key.NodePublic
+		hostinfo *tailcfg.Hostinfo
+	}
+
+	keys := map[string]string{}
+	nodes := map[string]*replayNode{}
+	evaluated := map[string]bool{}
+
+	for _, step := range c.Steps {
+		outcomes := map[int]string{}
+
+		for i, a := range step.Actions {
+			switch {
+			case a.Kind == "policy":
+				_, err := s.SetPolicy([]byte(strings.ReplaceAll(string(a.Body), c.Tailnet, adminName+"@")))
+				require.NoError(t, err, "%s: policy", step.Name)
+
+			case a.Kind == "api" && a.Method == http.MethodPost && a.Path == "/tailnet/-/keys":
+				var body struct {
+					Capabilities struct {
+						Devices struct {
+							Create struct {
+								Tags []string `json:"tags"`
+							} `json:"create"`
+						} `json:"devices"`
+					} `json:"capabilities"`
+				}
+				require.NoError(t, json.Unmarshal(a.Body, &body), "%s: key body", step.Name)
+
+				pak, err := s.CreatePreAuthKey(admin.TypedID(), true, false, nil, body.Capabilities.Devices.Create.Tags)
+				require.NoError(t, err, "%s: mint %s", step.Name, a.Key)
+
+				keys[a.Key] = pak.Key
+
+			case a.Kind == "join":
+				n := &replayNode{
+					machine:  key.NewMachine().Public(),
+					nodeKey:  key.NewNode().Public(),
+					hostinfo: &tailcfg.Hostinfo{Hostname: a.Hostname},
+				}
+				if a.RequestTags != nil {
+					n.hostinfo.RequestTags = *a.RequestTags
+				}
+
+				nv, _, err := s.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+					Auth:     &tailcfg.RegisterResponseAuth{AuthKey: keys[a.Key]},
+					NodeKey:  n.nodeKey,
+					Hostinfo: n.hostinfo.Clone(),
+				}, n.machine)
+				require.NoError(t, err, "%s: join %s", step.Name, a.Node)
+
+				n.id = nv.ID()
+				nodes[a.Node] = n
+
+			case a.Kind == "restart", a.Kind == "set_hostname":
+				// A restarted tailscaled polls with a new disco key.
+				n := nodes[a.Node]
+				if a.Kind == "set_hostname" {
+					n.hostinfo.Hostname = a.Hostname
+				}
+
+				_, err := s.UpdateNodeFromMapRequest(n.id, tailcfg.MapRequest{
+					NodeKey:  n.nodeKey,
+					DiscoKey: key.NewDisco().Public(),
+					Hostinfo: n.hostinfo.Clone(),
+				})
+				require.NoError(t, err, "%s: %s %s", step.Name, a.Kind, a.Node)
+
+			case a.Kind == "retire", a.Kind == "api" && a.Method == http.MethodDelete:
+				alias := a.Node
+				if alias == "" {
+					alias = captureDeviceAlias(a.Path)
+				}
+
+				nv, ok := s.GetNodeByID(nodes[alias].id)
+				require.True(t, ok, "%s: delete of a missing %s", step.Name, alias)
+
+				_, err := s.DeleteNode(nv)
+				require.NoError(t, err, "%s: delete %s", step.Name, alias)
+
+			case a.Kind == "api" && strings.HasSuffix(a.Path, "/name"):
+				var body struct {
+					Name string `json:"name"`
+				}
+				require.NoError(t, json.Unmarshal(a.Body, &body), "%s: rename body", step.Name)
+
+				_, _, err := s.RenameNode(nodes[captureDeviceAlias(a.Path)].id, body.Name)
+				outcomes[i] = renameOutcome(err == nil)
+
+			case a.Kind == "kill", a.Kind == "wait",
+				a.Kind == "api" && (a.Method == http.MethodGet || strings.HasPrefix(a.Path, "/tailnet/-/dns/")):
+				// A killed daemon only stops polling; reads change nothing,
+				// and DNS comes from the config.
+
+			default:
+				t.Fatalf("%s: no replay for %s %s %s", step.Name, a.Kind, a.Method, a.Path)
+			}
+		}
+
+		devices, ok := captureDevices(t, step)
+		if !ok {
+			continue
+		}
+
+		reopened := reopenLabels(t, s)
+
+		t.Run(step.Name, func(t *testing.T) {
+			prefix := c.TestID + "/" + step.Name + "/"
+
+			var listed, live []string
+
+			for _, d := range devices {
+				alias := captureDeviceAlias(d.ID)
+				n, ok := nodes[alias]
+				require.True(t, ok, "%s never joined", alias)
+
+				listed = append(listed, alias)
+				want, _, _ := strings.Cut(d.Name, ".")
+
+				got := "absent"
+				if nv, ok := s.GetNodeByID(n.id); ok {
+					got = nv.GivenName()
+				}
+
+				reload, ok := reopened[n.id]
+				if !ok {
+					reload = "absent"
+				}
+
+				nameCheck(t, prefix, alias+"/label", want, got, evaluated)
+				nameCheck(t, prefix, alias+"/reopen", want, reload, evaluated)
+			}
+
+			for alias, n := range nodes {
+				if _, ok := s.GetNodeByID(n.id); ok {
+					live = append(live, alias)
+				}
+			}
+
+			slices.Sort(listed)
+			slices.Sort(live)
+			nameCheck(t, prefix, "devices", strings.Join(listed, " "), strings.Join(live, " "), evaluated)
+
+			for _, i := range slices.Sorted(maps.Keys(outcomes)) {
+				want := renameOutcome(step.Actions[i].Status == http.StatusOK)
+				nameCheck(t, prefix, strconv.Itoa(i)+"/outcome", want, outcomes[i], evaluated)
+			}
+		})
+	}
+
+	for k := range nameSkipReasons {
+		if !evaluated[k] {
+			t.Errorf("skip entry %q names no check", k)
+		}
+	}
+}
+
+// nameCheck compares one check against SaaS. A check listed in
+// nameSkipReasons is skipped while it differs and fails once it matches.
+func nameCheck(t *testing.T, prefix, name, want, got string, evaluated map[string]bool) {
+	t.Helper()
+
+	key := prefix + name
+	evaluated[key] = true
+
+	t.Run(name, func(t *testing.T) {
+		reason, listed := nameSkipReasons[key]
+
+		switch {
+		case listed && got == want:
+			t.Errorf("matches SaaS; delete the skip entry %q (%s)", key, reason)
+		case listed:
+			t.Skip(reason)
+		default:
+			assert.Equal(t, want, got)
+		}
+	})
+}
+
+func renameOutcome(accepted bool) string {
+	if accepted {
+		return "accepted"
+	}
+
+	return "refused"
+}
+
+// captureDevices decodes the step's last device-list read.
+func captureDevices(t *testing.T, step testcapture.Step) ([]struct{ ID, Name string }, bool) {
+	t.Helper()
+
+	for _, a := range slices.Backward(step.Actions) {
+		if a.Kind != "api" || a.Method != http.MethodGet || !strings.HasPrefix(a.Path, "/tailnet/-/devices") {
+			continue
+		}
+
+		var out struct {
+			Devices []struct{ ID, Name string } `json:"devices"`
+		}
+		require.NoError(t, json.Unmarshal(a.Response, &out), "%s: %s", step.Name, a.Path)
+
+		return out.Devices, true
+	}
+
+	return nil, false
+}
+
+// captureDeviceAlias extracts x from "{device:x}" or "/device/{device:x}/...".
+func captureDeviceAlias(s string) string {
+	_, rest, _ := strings.Cut(s, "{device:")
+	alias, _, _ := strings.Cut(rest, "}")
+
+	return alias
+}
+
+// reopenLabels returns each node's label as a restart would load it: from a
+// State opened on a copy of s's database.
+func reopenLabels(t *testing.T, s *State) map[types.NodeID]string {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "copy.db")
+	require.NoError(t, s.db.DB.Exec("VACUUM INTO ?", path).Error)
+
+	reopened, err := NewState(persistTestConfig(path))
+	require.NoError(t, err)
+
+	defer reopened.Close()
+
+	out := map[types.NodeID]string{}
+	for _, nv := range reopened.ListNodes().All() {
+		out[nv.ID()] = nv.GivenName()
+	}
+
+	return out
 }
 
 // TestSetNodeExpiryRejectsUnencodableExpiry proves an admin cannot store a key
