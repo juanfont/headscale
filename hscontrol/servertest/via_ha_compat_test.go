@@ -1194,17 +1194,19 @@ func (r *stepReplay) node(t *testing.T, alias string) types.NodeView {
 	return nodes[0]
 }
 
-// waitSession holds a kill or start until headscale shows the node's
-// session gone or back, as the probe waited for the device's control
-// connection.
+// waitSession holds a join, kill or start until headscale shows the node's
+// session up or gone, and a join's routes approved, as the probe waited for
+// the device's control connection. A join's poll starts in the background,
+// and the election keeps the router that came online first.
 func (r *stepReplay) waitSession(t *testing.T, stepName string, a testcapture.Action) {
 	t.Helper()
 
-	if a.Kind != "kill" && a.Kind != "start" {
+	if a.Kind != "join" && a.Kind != "kill" && a.Kind != "start" {
 		return
 	}
 
-	want := a.Kind == "start"
+	want := a.Kind != "kill"
+	routes := prefixes(t, a.Routes)
 
 	require.Eventuallyf(t, func() bool {
 		nodes := r.machineNodes(a.Node)
@@ -1213,8 +1215,10 @@ func (r *stepReplay) waitSession(t *testing.T, stepName string, a testcapture.Ac
 		}
 
 		online := nodes[0].IsOnline()
+		approved := nodes[0].AllApprovedRoutes()
 
-		return online.Valid() && online.Get() == want
+		return online.Valid() && online.Get() == want &&
+			!slices.ContainsFunc(routes, func(p netip.Prefix) bool { return !slices.Contains(approved, p) })
 	}, 30*time.Second, 50*time.Millisecond, "%s: %s %s", stepName, a.Kind, a.Node)
 }
 
