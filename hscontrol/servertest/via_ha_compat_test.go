@@ -871,7 +871,9 @@ func (r *stepReplay) apply(t *testing.T, step testcapture.Step) map[string]error
 			}
 
 		case "wait":
-			// SaaS settle time.
+			// SaaS settle time. The test server runs no scheduled tasks
+			// (expiry, HA probes), so passing time alone changes nothing
+			// but ephemeral collection, which its consumers shorten.
 
 		default:
 			t.Fatalf("%s: no replay for action %q", step.Name, a.Kind)
