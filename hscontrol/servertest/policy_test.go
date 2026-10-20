@@ -321,6 +321,8 @@ var rejectedPolicySkipReasons = map[string]string{
 
 	"ssh-check-tag-src/refused": "SSH_CHECK_TAG_SRC: headscale accepts a check rule with a tag source",
 
+	"grant-dxp-comma-ports/refused": "GRANT_PORT_LIST: headscale accepts a comma port list in a grant ip entry",
+
 	"policytest-src-cidr-accept/refused":              "TEST_SRC_SHAPE: headscale evaluates a CIDR tests source",
 	"policytest-src-wildcard-deny/refused":            "TEST_SRC_SHAPE: headscale evaluates \"*\" as a tests source",
 	"policytest-dst-multinode-partial-accept/refused": "TEST_DST_EVERY_NODE: headscale accepts when one node of the dst alias is reached",
