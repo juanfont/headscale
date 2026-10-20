@@ -10,6 +10,7 @@ package v2
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -65,9 +66,9 @@ var sshSkipReasons = map[string]string{
 	"ssh-b5":  "headscale has no passkey authentication; user:*@passkey wildcard unsupported",
 	"ssh-d10": "headscale has no passkey authentication; user:*@passkey wildcard unsupported",
 
-	"ssh-duplicate-rules/beedrill/ssh-rules":   sshUIDZero,
-	"ssh-duplicate-rules/kakuna/ssh-rules":     sshUIDZero,
-	"ssh-equal-src-aliases/beedrill/ssh-rules": sshUIDZero,
+	"ssh-duplicate-rules/beedrill/uid-zero":   sshUIDZero,
+	"ssh-duplicate-rules/kakuna/uid-zero":     sshUIDZero,
+	"ssh-equal-src-aliases/beedrill/uid-zero": sshUIDZero,
 }
 
 const sshUIDZero = `SSH_UID_ZERO: SaaS maps login "0" to no local user in every rule; headscale leaves it out`
@@ -164,8 +165,14 @@ func TestSSHDataCompat(t *testing.T) {
 					require.NotNilf(t, node,
 						"golden node %s not found in test setup", nodeName)
 
-					compatCheck(t, sshSkipReasons, tf.TestID+"/"+nodeName+"/ssh-rules", func() string {
-						return sshRulesMismatch(pol, pm, users, nodes, node, capture)
+					key := tf.TestID + "/" + nodeName + "/"
+
+					compatCheck(t, sshSkipReasons, key+"ssh-rules", func() string {
+						return sshRulesMismatch(pol, pm, users, nodes, node, capture, withoutUIDZero)
+					})
+
+					compatCheck(t, sshSkipReasons, key+"uid-zero", func() string {
+						return uidZeroMismatch(pm, node, capture)
 					})
 				})
 			}
@@ -217,6 +224,7 @@ func testSSHRefusal(t *testing.T, tf *testcapture.Capture, users types.Users, no
 
 // sshRulesMismatch compares the SSH policy headscale compiles for node,
 // directly and through the manager, with the captured one; "" is a match.
+// Each normalize runs on the captured rules and on headscale's alike.
 func sshRulesMismatch(
 	pol *Policy,
 	pm *PolicyManager,
@@ -224,6 +232,7 @@ func sshRulesMismatch(
 	nodes types.Nodes,
 	node *types.Node,
 	capture testcapture.Node,
+	normalize ...func(testcapture.Node) testcapture.Node,
 ) string {
 	gotSSH, err := pol.compileSSHPolicy("https://unused", users, node.View(), nodes.ViewSlice())
 	if err != nil {
@@ -238,7 +247,16 @@ func sshRulesMismatch(
 	// Nil and empty SSHPolicy differ on the wire: nil keeps the client's
 	// previous rules, empty clears them. Take presence from the captured
 	// netmap.
-	wantSSH := &tailcfg.SSHPolicy{Rules: capture.SSHRules}
+	rules := func(r []*tailcfg.SSHRule) []*tailcfg.SSHRule {
+		n := testcapture.Node{SSHRules: r}
+		for _, f := range normalize {
+			n = f(n)
+		}
+
+		return n.SSHRules
+	}
+
+	wantSSH := &tailcfg.SSHPolicy{Rules: rules(capture.SSHRules)}
 	if capture.Netmap != nil && capture.Netmap.SSHPolicy == nil {
 		wantSSH = nil
 	}
@@ -256,7 +274,12 @@ func sshRulesMismatch(
 	var diffs []string
 
 	for name, got := range map[string]*tailcfg.SSHPolicy{"compiled": gotSSH, "policy manager": pmSSH} {
-		if diff := cmp.Diff(wantSSH, got, opts...); diff != "" {
+		compared := got
+		if got != nil {
+			compared = &tailcfg.SSHPolicy{Rules: rules(got.Rules)}
+		}
+
+		if diff := cmp.Diff(wantSSH, compared, opts...); diff != "" {
 			diffs = append(diffs, fmt.Sprintf("%s SSH policy mismatch (-tailscale +headscale):\n%s", name, diff))
 		}
 
@@ -290,6 +313,54 @@ func sshRulesMismatch(
 	slices.Sort(diffs)
 
 	return strings.Join(diffs, "\n")
+}
+
+// withoutUIDZero drops the per-rule "0": "" login mapping, which
+// [uidZeroMismatch] checks on its own, so that one difference leaves the
+// rest of each rule compared.
+func withoutUIDZero(capture testcapture.Node) testcapture.Node {
+	rules := make([]*tailcfg.SSHRule, 0, len(capture.SSHRules))
+
+	for _, r := range capture.SSHRules {
+		if local, ok := r.SSHUsers["0"]; ok && local == "" {
+			c := *r
+			c.SSHUsers = maps.Clone(r.SSHUsers)
+			delete(c.SSHUsers, "0")
+			r = &c
+		}
+
+		rules = append(rules, r)
+	}
+
+	capture.SSHRules = rules
+
+	return capture
+}
+
+// uidZeroMismatch compares, rule by rule, which rules map login "0" to no
+// local user; "" is a match.
+func uidZeroMismatch(pm *PolicyManager, node *types.Node, capture testcapture.Node) string {
+	got, err := pm.SSHPolicy("https://unused", node.View())
+	if err != nil {
+		return fmt.Sprintf("policy manager SSH policy: %v", err)
+	}
+
+	uidZero := func(rules []*tailcfg.SSHRule) []bool {
+		out := make([]bool, 0, len(rules))
+		for _, r := range rules {
+			local, ok := r.SSHUsers["0"]
+			out = append(out, ok && local == "")
+		}
+
+		return out
+	}
+
+	var gotRules []*tailcfg.SSHRule
+	if got != nil {
+		gotRules = got.Rules
+	}
+
+	return cmp.Diff(uidZero(capture.SSHRules), uidZero(gotRules))
 }
 
 // sshLocalUser maps sshUser to a local user the way tailssh does for one
