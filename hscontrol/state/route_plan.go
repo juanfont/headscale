@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"net/netip"
 	"slices"
+	"sync"
 
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/policy/packetfilter"
@@ -19,7 +20,7 @@ type MapView struct {
 	snapshot *Snapshot
 	viewer   types.NodeView
 	peerIDs  []types.NodeID
-	routes   viewerRoutePlan
+	routes   func() (viewerRoutePlan, error)
 }
 
 type viewerRoutePlan struct {
@@ -44,33 +45,27 @@ func (s *State) MapView(viewerID types.NodeID) (MapView, error) {
 		return MapView{}, ErrNodeNotFound
 	}
 
-	// Only approved-route advertisers can contribute via routing facts.
-	var routers []types.NodeView
-
-	for _, node := range snapshot.allNodes {
-		if node.ApprovedRoutes().Len() > 0 {
-			routers = append(routers, node)
-		}
-	}
-
 	view := MapView{
 		snapshot: snapshot,
 		viewer:   viewer,
-		peerIDs:  slices.Clone(snapshot.peersByNode[viewerID]),
+		peerIDs:  snapshot.peersByNode[viewerID],
 	}
-	slices.Sort(view.peerIDs)
 
-	if len(routers) > 0 {
-		rules, err := snapshot.policy.PeerRulesForNode(viewer)
-		if err != nil {
-			return MapView{}, err
-		}
+	if len(snapshot.routers) > 0 {
+		view.routes = sync.OnceValues(func() (viewerRoutePlan, error) {
+			rules, err := snapshot.policy.PeerRulesForNode(viewer)
+			if err != nil {
+				return viewerRoutePlan{}, err
+			}
 
-		view.routes = viewerRoutePlan{
-			rules:   rules,
-			via:     snapshot.policy.ViaRoutesForViewer(viewer, views.SliceOf(routers)),
-			subnets: viewer.SubnetRoutes(),
-		}
+			return viewerRoutePlan{
+				rules: rules,
+				via: snapshot.policy.ViaRoutesForViewer(
+					viewer, views.SliceOf(snapshot.routers),
+				),
+				subnets: viewer.SubnetRoutes(),
+			}, nil
+		})
 	}
 
 	return view, nil
@@ -152,7 +147,7 @@ func (v MapView) NodeAddresses(id types.NodeID) (types.NodeAddresses, error) {
 		addresses = make([]netip.Prefix, 0, 2)
 	}
 
-	_, disabled := v.snapshot.policy.NodeCapMap(id)["disable-ipv4"]
+	disabled := v.snapshot.policy.HasNodeCap(id, "disable-ipv4")
 
 	for _, address := range [...]views.ValuePointer[netip.Addr]{node.IPv4(), node.IPv6()} {
 		if address.Valid() {
@@ -173,7 +168,12 @@ func (v MapView) NodeAddresses(id types.NodeID) (types.NodeAddresses, error) {
 
 		routes = append(routes, node.ExitRoutes()...)
 	} else {
-		routes = v.routesForPeer(node)
+		var err error
+
+		routes, err = v.routesForPeer(node)
+		if err != nil {
+			return types.NodeAddresses{}, err
+		}
 	}
 
 	allowed := slices.Concat(addresses, routes)
@@ -190,8 +190,17 @@ func (v MapView) NodeAddresses(id types.NodeID) (types.NodeAddresses, error) {
 	return types.NodeAddresses{Addresses: addresses, AllowedIPs: allowed, PrimaryRoutes: primary}, nil
 }
 
-func (v MapView) routesForPeer(peer types.NodeView) []netip.Prefix {
-	via := v.routes.via[peer.ID()]
+func (v MapView) routesForPeer(peer types.NodeView) ([]netip.Prefix, error) {
+	if v.routes == nil || peer.ApprovedRoutes().Len() == 0 {
+		return nil, nil
+	}
+
+	plan, err := v.routes()
+	if err != nil {
+		return nil, err
+	}
+
+	via := plan.via[peer.ID()]
 	primaries := v.snapshot.primaryRoutesByNode[peer.ID()]
 
 	routes := slices.Concat(primaries, peer.ExitRoutes())
@@ -199,7 +208,7 @@ func (v MapView) routesForPeer(peer types.NodeView) []netip.Prefix {
 		routes = slices.DeleteFunc(routes, func(p netip.Prefix) bool { return slices.Contains(via.Exclude, p) })
 	}
 
-	reduced := policy.ReduceRoutes(v.viewer, routes, v.routes.rules)
+	reduced := policy.ReduceRoutes(v.viewer, routes, plan.rules)
 	// Via authorizes a route directly unless a regular grant requires the
 	// global primary. Independent via groups retain their own elections.
 	for _, route := range via.Include {
@@ -209,10 +218,10 @@ func (v MapView) routesForPeer(peer types.NodeView) []netip.Prefix {
 	}
 	// Co-routers must see the exact shared prefix's elected primary.
 	for _, route := range primaries {
-		if slices.Contains(v.routes.subnets, route) && !slices.Contains(reduced, route) {
+		if slices.Contains(plan.subnets, route) && !slices.Contains(reduced, route) {
 			reduced = append(reduced, route)
 		}
 	}
 
-	return reduced
+	return reduced, nil
 }

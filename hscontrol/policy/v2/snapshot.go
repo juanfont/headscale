@@ -11,14 +11,15 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/puzpuzpuz/xsync/v4"
 	"tailscale.com/tailcfg"
+	"tailscale.com/tailcfg/nodecap"
 	"tailscale.com/types/ipproto"
 	"tailscale.com/types/views"
 	"tailscale.com/util/deephash"
 )
 
-// ReadView retains immutable policy inputs and only that generation's caches.
 var errInvalidPolicyReadView = errors.New("invalid policy read view")
 
+// ReadView retains immutable policy inputs and only that generation's caches.
 type ReadView struct {
 	generation *compiledGeneration
 	caches     *generationCaches
@@ -30,6 +31,7 @@ type compiledGeneration struct {
 	nodes     views.Slice[types.NodeView]
 	nodesByID map[types.NodeID]types.NodeView
 	grants    []compiledGrant
+	viaTags   map[Tag]struct{}
 	self      map[selfKey][]ruleFragment
 	userIDs   []uint
 	peer      ruleIndex
@@ -59,6 +61,7 @@ type ruleIndex struct {
 	byNode map[types.NodeID][]int
 }
 
+// newReadView shares manager-owned inputs and freshly compiled capability maps.
 func newReadView(
 	pol *Policy,
 	users types.Users,
@@ -66,39 +69,13 @@ func newReadView(
 	grants []compiledGrant,
 	caps map[types.NodeID]tailcfg.NodeCapMap,
 ) ReadView {
-	ownedNodes := make([]types.NodeView, nodes.Len())
-	for i, node := range nodes.All() {
-		if node.Valid() {
-			ownedNodes[i] = node.AsStruct().View()
-		}
-	}
-
-	nodes = views.SliceOf(ownedNodes)
-
-	ownedUsers := make(types.Users, len(users))
-	for i := range users {
-		ownedUsers[i] = *users[i].Clone()
-	}
-
-	users = ownedUsers
-
-	ownedCaps := make(map[types.NodeID]tailcfg.NodeCapMap, len(caps))
-	for id, capMap := range caps {
-		cloned := maps.Clone(capMap)
-		for cap, values := range cloned {
-			cloned[cap] = slices.Clone(values)
-		}
-
-		ownedCaps[id] = cloned
-	}
-
-	caps = ownedCaps
 	g := &compiledGeneration{
 		pol:       pol,
-		users:     slices.Clone(users),
+		users:     users,
 		nodes:     nodes,
 		nodesByID: nodeIDViewMap(nodes),
 		grants:    grants,
+		viaTags:   collectViaTargetTags(grants),
 		self:      make(map[selfKey][]ruleFragment),
 		nodeCaps:  caps,
 	}
@@ -158,6 +135,30 @@ func newReadView(
 			ssh:    xsync.NewMap[types.NodeID, sshPolicy](),
 		},
 	}
+}
+
+// peerIndex reuses owner ordinals only when nodes retain the generation's order.
+func (g *compiledGeneration) peerIndex(
+	nodes views.Slice[types.NodeView],
+) (ruleIndex, bool) {
+	if nodes.Len() == g.nodes.Len() {
+		same := true
+
+		for i, node := range nodes.All() {
+			own := g.nodes.At(i)
+			if node.ID() != own.ID() || node.HasPolicyChange(own) ||
+				node.HasNetworkChanges(own) {
+				same = false
+				break
+			}
+		}
+
+		if same {
+			return g.peer, true
+		}
+	}
+
+	return g.buildRuleIndex(nodes, false), false
 }
 
 func (g *compiledGeneration) buildRuleIndex(
@@ -533,6 +534,41 @@ func (v ReadView) NodeCapMap(id types.NodeID) tailcfg.NodeCapMap {
 	return caps
 }
 
+// HasNodeCap reports capability presence without copying its payload.
+func (v ReadView) HasNodeCap(id types.NodeID, capability nodecap.Cap) bool {
+	if !v.Valid() {
+		return false
+	}
+
+	_, ok := v.generation.nodeCaps[id][capability]
+
+	return ok
+}
+
+// HasViaTarget reports whether node has a via tag from this generation.
+func (v ReadView) HasViaTarget(node types.NodeView) bool {
+	if !v.Valid() || !node.Valid() {
+		return false
+	}
+
+	for tag := range v.generation.viaTags {
+		if node.HasTag(string(tag)) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (v ReadView) PeerCapMap(node types.NodeView) tailcfg.NodeCapMap {
-	return PeerCapMap(node, v.NodeCapMap(node.ID()))
+	if !v.Valid() || !node.Valid() || !node.IsExitNode() {
+		return nil
+	}
+
+	caps := PeerCapMap(node, v.generation.nodeCaps[node.ID()])
+	for cap, values := range caps {
+		caps[cap] = slices.Clone(values)
+	}
+
+	return caps
 }

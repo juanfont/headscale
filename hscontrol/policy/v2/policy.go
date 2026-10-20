@@ -35,6 +35,8 @@ type PolicyManager struct {
 	mu    sync.RWMutex
 	pol   *Policy
 	users []types.User
+	// nodes owns its inputs. No-op updates retain prior non-policy fields;
+	// responses read current node facts from their NodeStore snapshot.
 	nodes views.Slice[types.NodeView]
 
 	filterHash deephash.Sum
@@ -49,25 +51,21 @@ type PolicyManager struct {
 	autoApprovers     *bart.Table[ipset.Set]
 
 	// relayTargetIPs holds the IPs of nodes that are destinations of a
-	// tailscale.com/cap/relay grant; viaTargetTags holds the tags used as
-	// via targets. A node matching either, or that is a subnet router,
-	// forces peers to recompute their netmap when its online state changes
+	// tailscale.com/cap/relay grant. A relay target, via target in pm.view,
+	// or subnet router forces peers to recompute their netmap on online changes
 	// (see [PolicyManager.NodeNeedsPeerRecompute]). Recomputed from the
 	// compiled grants on every policy/user/node change.
 	relayTargetIPs ipset.Set
-	viaTargetTags  map[Tag]struct{}
 
 	// needsPerNodeFilter is true when any compiled grant requires
 	// per-node work (autogroup:self or via grants).
 	needsPerNodeFilter bool
 
-	// nodeAttrsMap is the per-node CapMap compiled from policy.NodeAttrs.
-	// nodeAttrsHashes shadow it for change detection between updateLocked
-	// runs. nodeAttrsChanged accumulates the union of all per-call diffs
+	// nodeAttrsHashes track the per-node CapMap for change detection between
+	// updateLocked runs. nodeAttrsChanged accumulates the union of all per-call diffs
 	// since the last drain — refresh APPENDS, never overwrites, so a
 	// concurrent SetUsers/SetNodes between SetPolicy and the drain
 	// cannot silently lose the policy-reload diff.
-	nodeAttrsMap     map[types.NodeID]tailcfg.NodeCapMap
 	nodeAttrsHashes  map[types.NodeID]deephash.Sum
 	nodeAttrsChanged []types.NodeID
 
@@ -191,8 +189,8 @@ func NewPolicyManager(b []byte, users []types.User, nodes views.Slice[types.Node
 
 	pm := PolicyManager{
 		pol:   policy,
-		users: users,
-		nodes: nodes,
+		users: cloneUsers(users),
+		nodes: cloneNodeViews(nodes),
 	}
 
 	_, err = pm.updateLocked()
@@ -261,12 +259,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 		}
 	}
 
-	caps := nodeAttrs
-	if !refreshNodeAttrs {
-		caps = pm.nodeAttrsMap
-	}
-
-	view := newReadView(pm.pol, pm.users, pm.nodes, grants, caps)
+	view := newReadView(pm.pol, pm.users, pm.nodes, grants, nodeAttrs)
 	filter := view.PacketRules()
 
 	ruleHashes := make([]deephash.Sum, len(filter))
@@ -275,7 +268,6 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	}
 
 	pm.needsPerNodeFilter = hasPerNodeGrants(grants)
-	pm.viaTargetTags = collectViaTargetTags(grants)
 	pm.relayTargetIPs = relayTargetIPs
 	// Hash both the compiled filter AND the policy content together.
 	// This ensures filterHash changes when policy changes, even for autogroup:self
@@ -297,8 +289,6 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	}
 
 	pm.view = view
-	pm.users = view.generation.users
-	pm.nodes = view.generation.nodes
 	pm.filterHash = filterHash
 
 	tagPrefixes := make(map[Tag][]netip.Prefix, len(tagMap))
@@ -430,13 +420,7 @@ func (pm *PolicyManager) NodeNeedsPeerRecompute(node types.NodeView) bool {
 		return true
 	}
 
-	for tag := range pm.viaTargetTags {
-		if node.HasTag(string(tag)) {
-			return true
-		}
-	}
-
-	return false
+	return pm.view.HasViaTarget(node)
 }
 
 // SSHPolicy returns the [tailcfg.SSHPolicy] for node, compiling and
@@ -564,14 +548,16 @@ func (pm *PolicyManager) SetNodesAndBuildPeerMap(
 	nodes views.Slice[types.NodeView],
 ) (ReadView, map[types.NodeID][]types.NodeID, error) {
 	pm.mu.Lock()
-	defer pm.mu.Unlock()
-
 	_, err := pm.setNodesLocked(nodes)
+	view := pm.view
+	pm.mu.Unlock()
+
 	if err != nil {
 		return ReadView{}, nil, err
 	}
 
-	return pm.view, pm.view.generation.buildPeerMap(nodes), nil
+	// The captured generation is immutable; peer construction needs no manager lock.
+	return view, view.generation.buildPeerMap(nodes), nil
 }
 
 func ruleIncludesInternet(rule packetfilter.Rule) bool {
@@ -586,24 +572,7 @@ func ruleIncludesInternet(rule packetfilter.Rule) bool {
 func (g *compiledGeneration) buildPeerMap(
 	nodes views.Slice[types.NodeView],
 ) map[types.NodeID][]types.NodeID {
-	index := g.peer
-
-	same := nodes.Len() == g.nodes.Len()
-	if same {
-		for i, node := range nodes.All() {
-			own := g.nodes.At(i)
-			if node.ID() != own.ID() || node.HasPolicyChange(own) ||
-				node.HasNetworkChanges(own) {
-				same = false
-				break
-			}
-		}
-	}
-
-	if !same {
-		index = g.buildRuleIndex(nodes, false)
-	}
-
+	index, _ := g.peerIndex(nodes)
 	rules := index.rules
 	// Precompute each node's subnet routes and exit-node status once; the
 	// O(n^2) pair scans below would otherwise recompute them for every pair.
@@ -823,7 +792,7 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, bool, error) {
 	}
 
 	prev := pm.users
-	pm.users = users
+	pm.users = cloneUsers(users)
 
 	// SSH policies and autogroup:self sources resolve users by name, and
 	// the self sources are outside the filter hash, so updateLocked can
@@ -877,13 +846,16 @@ func (pm *PolicyManager) setNodesLocked(
 	nodes views.Slice[types.NodeView],
 ) (bool, error) {
 	policyChanged := pm.nodesHavePolicyAffectingChanges(nodes)
+	if !policyChanged {
+		return false, nil
+	}
 
 	// Invalidate cache entries for nodes that changed.
 	// For autogroup:self: invalidate all nodes belonging to affected users (peer changes).
 	// For global policies: invalidate only nodes whose properties changed (IPs, routes).
 
 	prevNodes := pm.nodes
-	pm.nodes = nodes
+	pm.nodes = cloneNodeViews(nodes)
 
 	// When policy-affecting node properties change, we must recompile filters because:
 	// 1. User/group aliases (like "user1@") resolve to node IPs
@@ -895,29 +867,24 @@ func (pm *PolicyManager) setNodesLocked(
 	// has its own filter), so the hash never changes. But peer relationships DO
 	// change when nodes are added/removed, so we must signal this to trigger updates.
 	// For global policies: the filter must be recompiled to include the new nodes.
-	if policyChanged {
-		// Recompile filter with the new node list
-		_, err := pm.updateLocked()
-		if err != nil {
-			// Keep the old list, which pm is still compiled from, so a
-			// retry with the same input recompiles, as in SetUsers. The
-			// NodeStore writer only logs this error; the writing caller's
-			// own SetNodes then retries and returns it.
-			pm.nodes = prevNodes
+	// Recompile filter with the new node list
+	_, err := pm.updateLocked()
+	if err != nil {
+		// Keep the old list, which pm is still compiled from, so a
+		// retry with the same input recompiles, as in SetUsers. The
+		// NodeStore retains the error until a later write recovers.
+		pm.nodes = prevNodes
 
-			return false, err
-		}
-
-		// Always return true when nodes changed, even if filter hash didn't change
-		// (can happen with autogroup:self or when nodes are added but don't affect rules).
-		// A SetNodes that moves pm back to an older snapshot counts too; the
-		// extra PolicyChange it causes is deduplicated downstream.
-		pm.nodesGen.Add(1)
-
-		return true, nil
+		return false, err
 	}
 
-	return false, nil
+	// Always return true when nodes changed, even if filter hash didn't change
+	// (can happen with autogroup:self or when nodes are added but don't affect rules).
+	// A SetNodes that moves pm back to an older snapshot counts too; the
+	// extra PolicyChange it causes is deduplicated downstream.
+	pm.nodesGen.Add(1)
+
+	return true, nil
 }
 
 // NodesGeneration returns how many SetNodes calls have reported a change.
@@ -938,6 +905,26 @@ func nodeIDViewMap(s views.Slice[types.NodeView]) map[types.NodeID]types.NodeVie
 	}
 
 	return m
+}
+
+func cloneNodeViews(nodes views.Slice[types.NodeView]) views.Slice[types.NodeView] {
+	owned := make([]types.NodeView, nodes.Len())
+	for i, node := range nodes.All() {
+		if node.Valid() {
+			owned[i] = node.AsStruct().View()
+		}
+	}
+
+	return views.SliceOf(owned)
+}
+
+func cloneUsers(users []types.User) types.Users {
+	owned := make(types.Users, len(users))
+	for i := range users {
+		owned[i] = *users[i].Clone()
+	}
+
+	return owned
 }
 
 func (pm *PolicyManager) nodesHavePolicyAffectingChanges(newNodes views.Slice[types.NodeView],
@@ -1234,7 +1221,7 @@ func (v ReadView) prepareVia(
 
 	hasVia := false
 
-	if !v.Valid() {
+	if !v.Valid() || len(v.generation.viaTags) == 0 {
 		return prepared
 	}
 
@@ -1245,10 +1232,12 @@ func (v ReadView) prepareVia(
 		}
 
 		prepared.grants = append(prepared.grants, grant)
-		primaries := make(map[netip.Prefix]types.NodeID)
+
+		var primaries map[netip.Prefix]types.NodeID
 
 		if grant.via != nil {
 			hasVia = true
+			primaries = make(map[netip.Prefix]types.NodeID)
 
 			for _, node := range nodes.All() {
 				if !node.Online() || node.Unhealthy() {
@@ -1295,9 +1284,12 @@ func (v ReadView) ViaRoutesForViewer(
 	viewer types.NodeView,
 	nodes views.Slice[types.NodeView],
 ) map[types.NodeID]types.ViaRouteResult {
-	result := make(map[types.NodeID]types.ViaRouteResult)
-
 	prepared := v.prepareVia(viewer, nodes)
+	if len(prepared.grants) == 0 {
+		return nil
+	}
+
+	result := make(map[types.NodeID]types.ViaRouteResult)
 	for _, peer := range nodes.All() {
 		result[peer.ID()] = prepared.routesForPeer(viewer, peer)
 	}
@@ -1676,8 +1668,8 @@ func resolveTagOwners(p *Policy, users types.Users, nodes views.Slice[types.Node
 	return ret, nil
 }
 
-// refreshNodeAttrsLocked installs a compiled per-node nodeAttrs CapMap and
-// appends the IDs whose CapMap differs from the previous snapshot
+// refreshNodeAttrsLocked records capability hashes and appends the IDs
+// whose CapMap differs from the previous snapshot
 // (including newly-targeted nodes and nodes that lost all attrs) to
 // pm.nodeAttrsChanged. Append, not overwrite: a concurrent
 // SetUsers/SetNodes between SetPolicy and a NodesWithChangedCapMap
@@ -1711,7 +1703,6 @@ func (pm *PolicyManager) refreshNodeAttrsLocked(newMap map[types.NodeID]tailcfg.
 		changed = append(changed, id)
 	}
 
-	pm.nodeAttrsMap = newMap
 	pm.nodeAttrsHashes = newHashes
 	pm.nodeAttrsChanged = append(pm.nodeAttrsChanged, changed...)
 

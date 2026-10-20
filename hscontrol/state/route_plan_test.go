@@ -93,6 +93,38 @@ func TestUnroutedMapViewCaptureAllocationBudget(t *testing.T) {
 		"capturing ordinary nodes must not build per-node via results or copy rules")
 }
 
+func TestMapViewRoutePlanErrorsAffectOnlyRoutedPeers(t *testing.T) {
+	s := mapViewTestState(t, "")
+	route := netip.MustParsePrefix("10.0.0.0/24")
+
+	s.nodeStore.UpdateNode(2, func(n *types.Node) {
+		n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{route}}
+		n.ApprovedRoutes = []netip.Prefix{route}
+	})
+	view, err := s.MapView(1)
+	require.NoError(t, err)
+
+	plan := view.routes
+	first, err := plan()
+	require.NoError(t, err)
+	require.NotEmpty(t, first.rules)
+
+	second, err := plan()
+	require.NoError(t, err)
+	require.Same(t, &first.rules[0], &second.rules[0],
+		"route rules must build once per captured view")
+
+	view.routes = func() (viewerRoutePlan, error) {
+		return viewerRoutePlan{}, errMapViewPolicyBuild
+	}
+	_, err = view.NodeAddresses(1)
+	require.NoError(t, err, "self addresses do not use peer routing")
+	_, err = view.NodeAddresses(3)
+	require.NoError(t, err, "ordinary peers do not use peer routing")
+	_, err = view.NodeAddresses(2)
+	require.Same(t, errMapViewPolicyBuild, err)
+}
+
 func TestMapViewAddressResultsRemainIndependent(t *testing.T) {
 	s := mapViewTestState(t, "")
 	subnet := netip.MustParsePrefix("10.0.0.0/24")
@@ -464,24 +496,57 @@ func TestBootstrapSnapshotRejectsMissingPolicyView(t *testing.T) {
 }
 
 func TestNodeAddressesDisableIPv4PreservesSubnetAndExitRoutes(t *testing.T) {
-	s := mapViewTestState(t, `{"nodeAttrs":[{"target":["*"],"attr":["disable-ipv4"]}],"grants":[{"src":["*"],"dst":["*"],"ip":["*"]}]}`)
+	t.Parallel()
+
 	subnet := netip.MustParsePrefix("10.0.0.0/24")
 	exits := []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0")}
+	ipv4 := netip.MustParsePrefix("100.64.0.2/32")
+	ipv6 := netip.MustParsePrefix("fd7a:115c:a1e0::2/128")
 
-	s.nodeStore.UpdateNode(2, func(n *types.Node) {
-		n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: slices.Concat([]netip.Prefix{subnet}, exits)}
-		n.ApprovedRoutes = slices.Clone(n.Hostinfo.RoutableIPs)
-	})
-	view, err := s.MapView(1)
-	require.NoError(t, err)
-	addresses, err := view.NodeAddresses(2)
-	require.NoError(t, err)
-	require.Equal(t, []netip.Prefix{netip.MustParsePrefix("fd7a:115c:a1e0::1/128")}, addresses.Addresses)
-	require.NotContains(t, addresses.AllowedIPs, netip.MustParsePrefix("100.64.0.2/32"))
-	require.Contains(t, addresses.AllowedIPs, subnet)
-	require.Contains(t, addresses.AllowedIPs, exits[0])
-	require.Contains(t, addresses.AllowedIPs, exits[1])
-	require.Equal(t, []netip.Prefix{subnet}, addresses.PrimaryRoutes)
+	for _, tt := range []struct {
+		name     string
+		viewerID types.NodeID
+		disabled bool
+	}{
+		{name: "self_ipv4_enabled", viewerID: 2},
+		{name: "self_ipv4_disabled", viewerID: 2, disabled: true},
+		{name: "peer_ipv4_enabled", viewerID: 1},
+		{name: "peer_ipv4_disabled", viewerID: 1, disabled: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			pol := `{"grants":[{"src":["*"],"dst":["*"],"ip":["*"]}]}`
+			if tt.disabled {
+				pol = `{"nodeAttrs":[{"target":["100.64.0.2"],"attr":["disable-ipv4"]}],"grants":[{"src":["*"],"dst":["*"],"ip":["*"]}]}`
+			}
+
+			s := mapViewTestState(t, pol)
+			s.nodeStore.UpdateNode(2, func(n *types.Node) {
+				n.IPv6 = new(ipv6.Addr())
+				n.Hostinfo = &tailcfg.Hostinfo{
+					RoutableIPs: slices.Concat([]netip.Prefix{subnet}, exits),
+				}
+				n.ApprovedRoutes = slices.Clone(n.Hostinfo.RoutableIPs)
+			})
+			view, err := s.MapView(tt.viewerID)
+			require.NoError(t, err)
+			addresses, err := view.NodeAddresses(2)
+			require.NoError(t, err)
+
+			wantAddresses := []netip.Prefix{ipv4, ipv6}
+			if tt.disabled {
+				wantAddresses = []netip.Prefix{ipv6}
+			}
+
+			wantAllowed := slices.Concat(wantAddresses, []netip.Prefix{subnet}, exits)
+			slices.SortFunc(wantAllowed, netip.Prefix.Compare)
+
+			require.Equal(t, wantAddresses, addresses.Addresses)
+			require.Equal(t, wantAllowed, addresses.AllowedIPs)
+			require.Equal(t, []netip.Prefix{subnet}, addresses.PrimaryRoutes)
+		})
+	}
 }
 
 func TestMapViewViaGroupsAndRegularOverride(t *testing.T) {
@@ -592,6 +657,41 @@ func BenchmarkMapViewRoutes(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
+			}
+		})
+	}
+}
+
+func BenchmarkMapViewCapture(b *testing.B) {
+	for _, count := range []int{100, 1000} {
+		b.Run(fmt.Sprintf("nodes=%d", count), func(b *testing.B) {
+			nodes := make(types.Nodes, count)
+			route := netip.MustParsePrefix("10.0.0.0/24")
+
+			for i := range nodes {
+				node := createTestNode(
+					types.NodeID(i+1), 1, "user1", fmt.Sprintf("node%d", i+1),
+				)
+				node.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{route}}
+				node.ApprovedRoutes = []netip.Prefix{route}
+				nodes[i] = &node
+			}
+
+			store := NewNodeStore(
+				nodes, allowAllPeersFunc, TestBatchSize, TestBatchTimeout,
+			)
+			s := &State{nodeStore: store}
+
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for b.Loop() {
+				view, err := s.MapView(1)
+				if err != nil {
+					b.Fatal(err)
+				}
+
+				runtime.KeepAlive(view)
 			}
 		})
 	}

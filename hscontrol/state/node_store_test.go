@@ -167,6 +167,97 @@ func TestSnapshotFromNodes(t *testing.T) {
 	}
 }
 
+func TestSnapshotPublicationOrderAndPeerOwnership(t *testing.T) {
+	t.Parallel()
+
+	nodes := make(types.Nodes, 32)
+
+	wantIDs := make([]types.NodeID, len(nodes))
+	for i := range nodes {
+		id := types.NodeID(len(nodes) - i) //nolint:gosec // IDs are bounded to [1, 32].
+		node := createTestNode(id, 1, "user1", fmt.Sprintf("node%d", id))
+		nodes[i] = &node
+		wantIDs[i] = types.NodeID(i + 1)
+	}
+
+	wantPeers := wantIDs[1:]
+	wantBorrowed := slices.Clone(wantPeers)
+	slices.Reverse(wantBorrowed)
+
+	var borrowed []types.NodeID
+
+	peersFunc := func(
+		nodes []types.NodeView,
+	) (policy.ReadView, map[types.NodeID][]types.NodeID, error) {
+		ids := make([]types.NodeID, len(nodes))
+		for i, node := range nodes {
+			ids[i] = node.ID()
+		}
+
+		assert.Equal(t, wantIDs, ids, "policy inputs must follow publication order")
+
+		view, peers, err := allowAllPeersFunc(nodes)
+		for _, ids := range peers {
+			slices.Sort(ids)
+			slices.Reverse(ids)
+		}
+
+		borrowed = peers[1]
+
+		return view, peers, err
+	}
+
+	store := NewNodeStore(nodes, peersFunc, TestBatchSize, TestBatchTimeout)
+	store.Start()
+	t.Cleanup(store.Stop)
+	s := &State{nodeStore: store}
+
+	check := func() MapView {
+		t.Helper()
+
+		snapshot := store.data.Load()
+
+		ids := make([]types.NodeID, len(snapshot.allNodes))
+		for i, node := range snapshot.allNodes {
+			ids[i] = node.ID()
+		}
+
+		require.Equal(t, wantIDs, ids)
+		require.Equal(t, wantBorrowed, borrowed,
+			"sorting must not mutate a borrowed peer slice")
+
+		view, err := s.MapView(1)
+		require.NoError(t, err)
+		require.Equal(t, wantPeers, view.PeerIDs())
+		require.Equal(t, wantPeers, store.ListPeerIDs(1))
+
+		for _, ids := range snapshot.peersByNode {
+			require.True(t, slices.IsSorted(ids))
+		}
+
+		ids = store.ListPeerIDs(1)
+		ids[0] = 999
+
+		require.Equal(t, wantPeers, store.ListPeerIDs(1),
+			"public getters must own their results")
+
+		return view
+	}
+
+	before := check()
+
+	store.RebuildPeerMaps()
+	check()
+
+	_, err := store.SetGivenName(1, "renamed")
+	require.NoError(t, err)
+
+	after := check()
+	require.Equal(t, "renamed", after.Viewer().GivenName())
+	require.Equal(t, "node1", before.Viewer().GivenName())
+	require.Equal(t, wantPeers, before.PeerIDs())
+}
+
 // Helper functions
 
 func createTestNode(nodeID types.NodeID, userID uint, username, hostname string,

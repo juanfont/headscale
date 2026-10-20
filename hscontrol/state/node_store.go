@@ -1,6 +1,7 @@
 package state
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"maps"
@@ -166,11 +167,14 @@ type Snapshot struct {
 	// calculated from nodesByID
 	nodesByNodeKey    map[key.NodePublic]types.NodeView
 	nodesByMachineKey map[key.MachinePublic]map[types.UserID]types.NodeView
-	// peersByNode stores immutable adjacency as IDs; ListPeers resolves the
+	// peersByNode stores immutable adjacency as sorted IDs; ListPeers resolves the
 	// corresponding views through nodeViewsByID.
 	peersByNode map[types.NodeID][]types.NodeID
 	nodesByUser map[types.UserID][]types.NodeView
-	allNodes    []types.NodeView
+	// allNodes contains immutable node views sorted by ID.
+	allNodes []types.NodeView
+	// routers contains approved-route advertisers, sorted by ID.
+	routers []types.NodeView
 
 	// routes maps each prefix to its current primary advertiser. The
 	// previous assignment is carried over when still valid so the
@@ -180,10 +184,11 @@ type Snapshot struct {
 	primaryRoutesByNode map[types.NodeID][]netip.Prefix
 }
 
-// PeersFunc is a function that takes a list of nodes and returns a map
+// PeersFunc is a function that takes nodes sorted by ID and returns a map
 // with the relationships between nodes and their peers.
 // This will typically be used to calculate which nodes can see each other
-// based on the current policy.
+// based on the current policy. The returned map belongs to the snapshot;
+// its immutable peer-ID slices are sorted before publication.
 type PeersFunc func(nodes []types.NodeView) (policy.ReadView, map[types.NodeID][]types.NodeID, error)
 
 // work represents a single operation to be performed on the [NodeStore].
@@ -729,6 +734,18 @@ func snapshotFromNodes(
 		nodeViewsByID[n.ID] = nv
 	}
 
+	slices.SortFunc(allNodes, func(a, b types.NodeView) int {
+		return cmp.Compare(a.ID(), b.ID())
+	})
+
+	var routers []types.NodeView
+
+	for _, node := range allNodes {
+		if node.ApprovedRoutes().Len() > 0 {
+			routers = append(routers, node)
+		}
+	}
+
 	var (
 		routes              map[netip.Prefix]types.NodeID
 		primaryRoutesByNode map[types.NodeID][]netip.Prefix
@@ -769,6 +786,14 @@ func snapshotFromNodes(
 			peerIDsByNode = nil
 		}
 
+		for id, ids := range peerIDsByNode {
+			if !slices.IsSorted(ids) {
+				ids = slices.Clone(ids)
+				slices.Sort(ids)
+				peerIDsByNode[id] = ids
+			}
+		}
+
 		peersTimer.ObserveDuration()
 	}
 
@@ -778,6 +803,7 @@ func snapshotFromNodes(
 		nodesByID:           nodes,
 		nodeViewsByID:       nodeViewsByID,
 		allNodes:            allNodes,
+		routers:             routers,
 		nodesByNodeKey:      make(map[key.NodePublic]types.NodeView),
 		nodesByMachineKey:   make(map[key.MachinePublic]map[types.UserID]types.NodeView),
 		peersByNode:         peerIDsByNode,
@@ -1023,7 +1049,7 @@ func (s *NodeStore) DebugString() string {
 	return sb.String()
 }
 
-// ListNodes returns a slice of all nodes in the store.
+// ListNodes returns all nodes in the store in ascending ID order.
 func (s *NodeStore) ListNodes() views.Slice[types.NodeView] {
 	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("list"))
 	defer timer.ObserveDuration()
@@ -1056,7 +1082,7 @@ func (s *NodeStore) ListPeers(id types.NodeID) views.Slice[types.NodeView] {
 // ListPeerIDs returns the sorted IDs of id's peers as a copy the caller
 // may keep across later writes.
 func (s *NodeStore) ListPeerIDs(id types.NodeID) []types.NodeID {
-	return slices.Sorted(slices.Values(s.data.Load().peersByNode[id]))
+	return slices.Clone(s.data.Load().peersByNode[id])
 }
 
 // PrimaryRouteFor returns the current primary advertiser for prefix.

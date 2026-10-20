@@ -871,6 +871,270 @@ func TestReadViewOwnsConstructorInputs(t *testing.T) {
 	require.NotEmpty(t, rules)
 }
 
+func TestReadViewOwnsNodeUpdates(t *testing.T) {
+	for _, buildPeers := range []bool{false, true} {
+		for _, changed := range []bool{false, true} {
+			name := fmt.Sprintf("buildPeers=%t/changed=%t", buildPeers, changed)
+			t.Run(name, func(t *testing.T) {
+				users := types.Users{{ID: 1, Name: "u1"}}
+				nodes := types.Nodes{
+					node("one", "100.64.0.1", "fd7a:115c:a1e0::1", users[0]),
+					node("two", "100.64.0.2", "fd7a:115c:a1e0::2", users[0]),
+				}
+				nodes[0].ID, nodes[1].ID = 1, 2
+				pm, err := NewPolicyManager([]byte(`{
+					"grants":[{"src":["u1@"],"dst":["autogroup:self"],"ip":["*"]}]
+				}`), users, nodes.ViewSlice())
+				require.NoError(t, err)
+
+				old := pm.ReadView()
+
+				inputs := types.Nodes{nodes[0].Clone(), nodes[1].Clone()}
+				if changed {
+					inputs[0].IPv4 = ap("100.64.0.10")
+				}
+
+				inputViews := inputs.ViewSlice().AsSlice()
+				if buildPeers {
+					view, adjacency, err := pm.SetNodesAndBuildPeerMap(
+						views.SliceOf(inputViews),
+					)
+					require.NoError(t, err)
+					require.Same(t, view.generation, pm.ReadView().generation)
+					require.Equal(t, []types.NodeID{2}, adjacency[1])
+				} else {
+					updated, err := pm.SetNodes(views.SliceOf(inputViews))
+					require.NoError(t, err)
+					require.Equal(t, changed, updated)
+				}
+
+				captured := pm.ReadView()
+				original := inputs[0].Clone()
+				inputs[0].IPv4 = ap("100.64.0.99")
+				inputs[0].User.Name = "changed"
+				inputs[0].Tags = []string{"tag:changed"}
+				inputViews[0] = inputs[1].View()
+
+				_, err = pm.SetPolicy([]byte(`{
+					"grants":[{"src":["u1@"],"dst":["autogroup:self"],"ip":["tcp:443"]}]
+				}`))
+				require.NoError(t, err)
+
+				current := pm.ReadView()
+				require.NotSame(t, captured.generation, current.generation)
+
+				for _, view := range []ReadView{captured, current} {
+					require.Contains(t, view.generation.nodesByID, types.NodeID(1))
+					require.Equal(t,
+						original.IPv4.String(),
+						view.generation.nodesByID[1].IPv4().Get().String(),
+					)
+					require.Equal(t, "u1", view.generation.nodesByID[1].User().Name())
+					rules, err := view.PacketRulesForNode(original.View())
+					require.NoError(t, err)
+					require.NotEmpty(t, rules)
+					require.True(t, rules[0].Sources().Contains(*original.IPv4))
+					require.False(t, rules[0].Sources().Contains(*ap("100.64.0.99")))
+				}
+
+				require.Equal(t,
+					"100.64.0.1",
+					old.generation.nodesByID[1].IPv4().Get().String(),
+				)
+				oldRules, err := old.PacketRulesForNode(nodes[0].View())
+				require.NoError(t, err)
+				require.NotEmpty(t, oldRules)
+				require.True(t, oldRules[0].Sources().Contains(*nodes[0].IPv4))
+			})
+		}
+	}
+}
+
+func TestReadViewOwnsUserUpdates(t *testing.T) {
+	for _, name := range []string{"u1", "renamed"} {
+		t.Run(name, func(t *testing.T) {
+			users := types.Users{{ID: 1, Name: "u1"}}
+			nodes := types.Nodes{
+				node("one", "100.64.0.1", "fd7a:115c:a1e0::1", users[0]),
+			}
+			nodes[0].ID = 1
+			pm, err := NewPolicyManager([]byte(`{}`), users, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			old := pm.ReadView()
+			inputs := types.Users{{ID: 1, Name: name}}
+			_, peerChanged, err := pm.SetUsers(inputs)
+			require.NoError(t, err)
+			require.Equal(t, name != "u1", peerChanged)
+
+			captured := pm.ReadView()
+			inputs[0].Name = "changed-input"
+
+			_, err = pm.SetPolicy(fmt.Appendf(nil, `{
+				"grants":[{"src":[%q],"dst":["*"],"ip":["*"]}]
+			}`, name+"@"))
+			require.NoError(t, err)
+			require.Equal(t, "u1", old.generation.users[0].Name)
+			require.Equal(t, name, captured.generation.users[0].Name)
+			require.Equal(t, name, pm.ReadView().generation.users[0].Name)
+			rules, err := pm.ReadView().PacketRulesForNode(nodes[0].View())
+			require.NoError(t, err)
+			require.NotEmpty(t, rules)
+			require.True(t, rules[0].Sources().Contains(*nodes[0].IPv4))
+		})
+	}
+}
+
+func TestPeerIndexReusesOnlyMatchingNodeOrder(t *testing.T) {
+	users := types.Users{{ID: 1, Name: "u1"}, {ID: 2, Name: "u2"}}
+
+	nodes := types.Nodes{
+		node("one", "100.64.0.1", "fd7a:115c:a1e0::1", users[0]),
+		node("two", "100.64.0.2", "fd7a:115c:a1e0::2", users[0]),
+		node("three", "100.64.0.3", "fd7a:115c:a1e0::3", users[1]),
+	}
+	for i := range nodes {
+		nodes[i].ID = types.NodeID(i + 1)
+	}
+
+	pm, err := NewPolicyManager([]byte(`{
+		"grants":[{"src":["autogroup:member"],"dst":["autogroup:self"],"ip":["*"]}]
+	}`), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	view := pm.ReadView()
+	_, reused := view.generation.peerIndex(nodes.ViewSlice())
+	require.True(t, reused)
+
+	reversed := slices.Clone(nodes)
+	slices.Reverse(reversed)
+	index, reused := view.generation.peerIndex(reversed.ViewSlice())
+	require.False(t, reused)
+	require.True(t, nodes[0].View().CanAccess(index.forNode(1), nodes[1].View()))
+	require.False(t, nodes[0].View().CanAccess(index.forNode(1), nodes[2].View()))
+	require.Equal(t,
+		view.generation.buildPeerMap(nodes.ViewSlice()),
+		view.generation.buildPeerMap(reversed.ViewSlice()),
+	)
+}
+
+func TestReadViewHasViaTargetUsesCapturedTags(t *testing.T) {
+	nodes := types.Nodes{{ID: 1, IPv4: ap("100.64.0.1"), Tags: []string{"tag:router"}}}
+	pm, err := NewPolicyManager([]byte(`{
+		"tagOwners":{"tag:router":[]},
+		"grants":[{"src":["*"],"dst":["10.0.0.0/24"],"ip":["*"],"via":["tag:router"]}]
+	}`), nil, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	old := pm.ReadView()
+	require.True(t, old.HasViaTarget(nodes[0].View()))
+	require.False(t, old.HasViaTarget(types.NodeView{}))
+	require.False(t, (ReadView{}).HasViaTarget(nodes[0].View()))
+
+	other := &types.Node{Tags: []string{"tag:other"}}
+	require.False(t, old.HasViaTarget(other.View()))
+
+	_, err = pm.SetPolicy([]byte(`{"grants":[]}`))
+	require.NoError(t, err)
+	require.False(t, pm.ReadView().HasViaTarget(nodes[0].View()))
+	require.True(t, old.HasViaTarget(nodes[0].View()))
+}
+
+//nolint:testifylint // The concurrent writer cannot call FailNow.
+func TestSetNodesAndBuildPeerMapCapturesOneGeneration(t *testing.T) {
+	nodes := types.Nodes{
+		{ID: 1, IPv4: ap("100.64.0.1")},
+		{ID: 2, IPv4: ap("100.64.0.2")},
+		{ID: 3, IPv4: ap("100.64.0.3")},
+	}
+	policies := [][]byte{
+		[]byte(`{"grants":[{"src":["*"],"dst":["*"],"ip":["*"]}]}`),
+		[]byte(`{"grants":[]}`),
+	}
+	pm, err := NewPolicyManager(policies[0], nil, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	var workers sync.WaitGroup
+
+	workers.Go(func() {
+		for i := range 60 {
+			_, err := pm.SetPolicy(policies[i%2])
+			assert.NoError(t, err)
+		}
+	})
+	defer workers.Wait()
+
+	for i := range 60 {
+		current := nodes[:2+i%2]
+		view, peers, err := pm.SetNodesAndBuildPeerMap(current.ViewSlice())
+		require.NoError(t, err)
+
+		if len(view.PacketRules()) == 0 {
+			require.Empty(t, peers)
+			continue
+		}
+
+		for _, node := range current {
+			var want []types.NodeID
+
+			for _, other := range current {
+				if node.ID != other.ID {
+					want = append(want, other.ID)
+				}
+			}
+
+			require.Equal(t, want, peers[node.ID])
+		}
+	}
+}
+
+func TestViaRoutesForViewerWithoutViaGrants(t *testing.T) {
+	nodes := types.Nodes{{ID: 1, IPv4: ap("100.64.0.1")}}
+	pm, err := NewPolicyManager([]byte(`{
+		"grants":[{"src":["*"],"dst":["*"],"ip":["*"]}]
+	}`), nil, nodes.ViewSlice())
+	require.NoError(t, err)
+	require.Nil(t, pm.ReadView().ViaRoutesForViewer(nodes[0].View(), nodes.ViewSlice()))
+	require.Nil(t, (ReadView{}).ViaRoutesForViewer(nodes[0].View(), nodes.ViewSlice()))
+}
+
+func BenchmarkSetNodesAndBuildPeerMap(b *testing.B) {
+	for _, pol := range benchSetNodesPolicies {
+		b.Run(pol.name, func(b *testing.B) {
+			users, nodes := benchNodes(617)
+			pm, err := NewPolicyManager([]byte(pol.policy), users, nodes.ViewSlice())
+			require.NoError(b, err)
+			b.ReportAllocs()
+
+			i := 0
+			for b.Loop() {
+				i++
+				address := netip.AddrFrom4([4]byte{10, byte(200 + i%50), 0, 0}) //nolint:gosec
+				subnet := netip.PrefixFrom(address, 24)
+				updated := nodes[0].Clone()
+				updated.Hostinfo = &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{subnet},
+				}
+				updated.ApprovedRoutes = []netip.Prefix{subnet}
+				nodes[0] = updated
+
+				generation := pm.NodesGeneration()
+
+				_, peers, err := pm.SetNodesAndBuildPeerMap(nodes.ViewSlice())
+				if err != nil {
+					b.Fatal(err)
+				}
+
+				if pm.NodesGeneration() != generation+1 {
+					b.Fatal("SetNodesAndBuildPeerMap must publish each changed node")
+				}
+
+				generationBenchmarkSink += len(peers)
+			}
+		})
+	}
+}
+
 func TestPacketFilterRevocationIsExplicit(t *testing.T) {
 	nodes := types.Nodes{{ID: 1, IPv4: ap("100.64.0.1")}}
 	pm, err := NewPolicyManager([]byte(`{}`), nil, nodes.ViewSlice())
@@ -973,6 +1237,7 @@ func TestReadViewSSHAndCapabilitiesAreOwned(t *testing.T) {
 		2: {
 			"example.com/cap":   {tailcfg.RawMessage(`{"enabled":true}`)},
 			"suggest-exit-node": {tailcfg.RawMessage(`{"priority":1}`)},
+			"nil-payload":       nil,
 		},
 	}
 	nodes[1].ApprovedRoutes = []netip.Prefix{mp("0.0.0.0/0"), mp("::/0")}
@@ -984,6 +1249,7 @@ func TestReadViewSSHAndCapabilitiesAreOwned(t *testing.T) {
 		pol.compileGrants(users, nodes.ViewSlice()),
 		caps,
 	)
+	pm := &PolicyManager{view: view}
 	first, err := view.SSHPolicy("https://first", nodes[1].View())
 	require.NoError(t, err)
 	require.NotEmpty(t, first.Rules)
@@ -1004,7 +1270,8 @@ func TestReadViewSSHAndCapabilitiesAreOwned(t *testing.T) {
 
 	returned := view.NodeCapMap(2)
 	returned["example.com/cap"][0] = "changed"
-	caps[2]["example.com/cap"][0] = "changed-input"
+	returnedCaps := pm.NodeCapMaps()
+	returnedCaps[2]["example.com/cap"][0] = "changed-input"
 
 	require.Equal(
 		t,
@@ -1013,12 +1280,17 @@ func TestReadViewSSHAndCapabilitiesAreOwned(t *testing.T) {
 	)
 	peerCaps := view.PeerCapMap(nodes[1].View())
 	peerCaps["suggest-exit-node"][0] = "changed"
-	caps[2]["suggest-exit-node"][0] = "changed-input"
+	returnedCaps[2]["suggest-exit-node"][0] = "changed-input"
 
 	require.Equal(t, tailcfg.RawMessage(`{"priority":1}`),
 		view.PeerCapMap(nodes[1].View())["suggest-exit-node"][0])
 	require.Equal(t, tailcfg.RawMessage(`{"priority":1}`),
 		view.NodeCapMap(2)["suggest-exit-node"][0])
+	require.True(t, view.HasNodeCap(2, "example.com/cap"))
+	require.True(t, view.HasNodeCap(2, "nil-payload"))
+	require.False(t, view.HasNodeCap(2, "missing"))
+	require.False(t, view.HasNodeCap(999, "example.com/cap"))
+	require.False(t, (ReadView{}).HasNodeCap(2, "example.com/cap"))
 }
 
 func TestViaRoutesForViewerUsesCapturedCandidates(t *testing.T) {

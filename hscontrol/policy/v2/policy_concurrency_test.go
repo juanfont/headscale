@@ -12,9 +12,9 @@ import (
 )
 
 // TestPolicyManagerConcurrentReads is the correctness guard for the #3346 fix:
-// PolicyManager read methods take a shared RLock and populate their per-node
-// caches (filterRulesMap, matchersForNodeMap) concurrently. This test hammers
-// those reads from many goroutines while a writer mutates the node set, so the
+// PolicyManager readers capture a generation and populate its per-node
+// caches concurrently. This test hammers those reads from many goroutines
+// while a writer replaces nodes and policies, so the
 // race detector catches any unsafe access to the shared caches or policy state.
 //
 // It uses an autogroup:self policy so reads take the per-node filter slow path
@@ -56,6 +56,14 @@ func TestPolicyManagerConcurrentReads(t *testing.T) {
 	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
 	require.NoError(t, err)
 
+	tagged := slices.Clone(nodes)
+	tagged[0] = nodes[0].Clone()
+	tagged[0].Tags = []string{"tag:changed"}
+	policies := [][]byte{[]byte(policy), []byte(`{
+		"acls":[{"action":"accept","src":["autogroup:member"],
+		"dst":["autogroup:self:443"]}]
+	}`)}
+
 	const (
 		readers        = 16
 		iterations     = 60
@@ -64,40 +72,64 @@ func TestPolicyManagerConcurrentReads(t *testing.T) {
 
 	var wg sync.WaitGroup
 
-	// Concurrent readers exercise every converted RLock read path, including
+	// Concurrent readers exercise the captured generation read paths, including
 	// the two lazily populated per-node caches. Assertions inside the
 	// goroutines use assert (not require) so a failure does not call
 	// t.FailNow from a non-test goroutine.
 	for r := range readers {
 		wg.Go(func() {
 			for i := range iterations {
-				nv := nodes[(r+i)%len(nodes)].View()
+				view := pm.ReadView()
+				nv := view.generation.nodes.At((r + i) % len(nodes))
 
-				rules, err := pm.legacyFilterForNode(nv)
+				rules, err := view.PacketRulesForNode(nv)
 				assert.NoError(t, err) //nolint:testifylint // assert (not require) is correct off the test goroutine
 				assert.NotNil(t, rules)
 
-				_, err = pm.legacyMatchersForNode(nv)
+				again, err := view.PacketRulesForNode(nv)
+				assert.NoError(t, err)
+				assert.Equal(t, rules, again)
+
+				peerRules, err := view.PeerRulesForNode(nv)
 				assert.NoError(t, err) //nolint:testifylint // assert (not require) is correct off the test goroutine
+				peerAgain, err := view.PeerRulesForNode(nv)
+				assert.NoError(t, err)
+				assert.Equal(t, peerRules, peerAgain)
 
-				pm.legacyFilter()
-				pm.NodeCapMap(nv.ID())
+				view.PacketRules()
+				view.NodeCapMap(nv.ID())
 
-				// BuildPeerMap is the O(n^2) writer-side read; exercise it
-				// under RLock too, but not every iteration.
+				// BuildPeerMap is the O(n^2) writer-side read; exercise the
+				// captured generation too, but not every iteration.
 				if i%8 == 0 {
-					assert.NotNil(t, pm.BuildPeerMap(nodes.ViewSlice()))
+					assert.NotNil(t,
+						view.generation.buildPeerMap(view.generation.nodes),
+					)
 				}
 			}
 		})
 	}
 
-	// A writer repeatedly re-sets the node set, invalidating and racing the
+	// A writer repeatedly changes nodes and policies, replacing and racing the
 	// caches the readers are populating.
 	wg.Go(func() {
-		for range mutatorReloads {
-			_, err := pm.SetNodes(nodes.ViewSlice())
+		for i := range mutatorReloads {
+			replacement := tagged
+			if i%2 != 0 {
+				replacement = nodes
+			}
+
+			before := pm.ReadView()
+			changed, err := pm.SetNodes(replacement.ViewSlice())
 			assert.NoError(t, err) //nolint:testifylint // assert (not require) is correct off the test goroutine
+			assert.True(t, changed)
+
+			afterNodes := pm.ReadView()
+			assert.NotSame(t, before.generation, afterNodes.generation)
+
+			_, err = pm.SetPolicy(policies[(i+1)%2])
+			assert.NoError(t, err)
+			assert.NotSame(t, afterNodes.generation, pm.ReadView().generation)
 		}
 	})
 
