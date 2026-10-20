@@ -1115,6 +1115,10 @@ func (r *stepReplay) api(t *testing.T, stepName string, i int, a testcapture.Act
 
 		r.exchange(t, stepName, i, a, path)
 
+	case a.Method == http.MethodPost && strings.HasSuffix(a.Path, "/role"):
+		// Headscale has no user roles; a role decides only what the user's
+		// own API key may call, and the replay mints for him directly.
+
 	case a.Method == http.MethodPost && strings.HasSuffix(a.Path, "/expire"):
 		now := time.Now()
 
