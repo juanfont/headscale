@@ -249,6 +249,8 @@ func NewState(cfg *types.Config) (*State, error) {
 		return nil, fmt.Errorf("loading nodes: %w", err)
 	}
 
+	slices.SortFunc(nodes, func(a, b *types.Node) int { return cmp.Compare(a.ID, b.ID) })
+
 	// On startup, all nodes should be marked as offline until they reconnect
 	// This ensures we don't have stale online status from previous runs
 	for _, node := range nodes {
@@ -309,8 +311,8 @@ func NewState(cfg *types.Config) (*State, error) {
 
 // policyPeersFunc is the [PeersFunc] [State] runs its [NodeStore] with.
 // It feeds the nodes being built to the policy manager first, so the
-// build already uses the matchers they imply; building with the old
-// matchers would serve stale adjacency until a second full rebuild.
+// build already uses the generation they imply; building with the old
+// generation would serve stale adjacency until a second full rebuild.
 // [policy.PolicyManager.NodesGeneration] tells the writing caller the
 // SetNodes happened here.
 //
@@ -369,7 +371,7 @@ func (s *State) ReloadPolicy() ([]change.Change, error) {
 	// newly allowed peers until a node is added/removed, causing autogroup:self
 	// policies to not propagate correctly when switching between policy types.
 	//
-	// An unchanged policy leaves the matchers as they were, and the other
+	// An unchanged policy leaves the generation as it was, and the other
 	// inputs of the peer map rebuild it themselves (node writes in the
 	// [NodeStore], [State.updatePolicyManagerNodes] and
 	// [State.updatePolicyManagerUsers]), so the O(n^2) rebuild is skipped
@@ -895,8 +897,8 @@ func (s *State) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) views.Sl
 
 	// Incremental updates (NodeAdded, NodeChanged) name the peers involved.
 	// Resolve them through the recipient's adjacency so a changed node the
-	// policy hides from this recipient is never delivered; the mapper still
-	// applies the live matchers on top.
+	// policy hides from this recipient is never delivered; responses use
+	// the matching captured policy generation.
 	nodeIDSet := make(map[types.NodeID]struct{}, len(peerIDs))
 	for _, id := range peerIDs {
 		nodeIDSet[id] = struct{}{}
@@ -1322,6 +1324,9 @@ func (s *State) NodeCanHaveTag(node types.NodeView, tag string) bool {
 }
 
 // SetPolicy updates the policy configuration.
+// Parse, validation, and policy-test rejections publish no new generation.
+// If the manager swap succeeds but snapshot rebuilding fails, the policy stays
+// applied. MapView fails closed until a later snapshot rebuild succeeds.
 func (s *State) SetPolicy(pol []byte) (bool, error) {
 	changed, err := s.polMan.SetPolicy(pol)
 	if err != nil {
@@ -1416,10 +1421,10 @@ func (s *State) SetNodeHealth(id types.NodeID, healthy bool) bool {
 
 // BatchSetNodeHealth applies a set of health updates atomically: the
 // election runs once after every flag has been flipped, so observers
-// never see an intermediate snapshot. Returns true when an applied health
-// value or global primary assignment changed, or policy recovery is pending.
-// Health changes can move via selections independently of global primaries,
-// so callers must refresh even when the global assignments stay unchanged.
+// never see an intermediate snapshot. Returns true when a global primary
+// assignment or a via target's health changed, or policy recovery is pending.
+// Via selections can move independently of global primaries. Empty and
+// unchanged batches retry compilation when the published policy is invalid.
 // Map value true = healthy; false = unhealthy (gated as in [State.SetNodeHealth]).
 //
 // Per-call publication would let a writer applying two flips
@@ -1427,20 +1432,18 @@ func (s *State) SetNodeHealth(id types.NodeID, healthy bool) bool {
 // momentarily pointing peers at the wrong primary; the batched form
 // closes that window.
 func (s *State) BatchSetNodeHealth(updates map[types.NodeID]bool) bool {
-	if len(updates) == 0 {
-		return s.nodeStore.policyRecovered.Load()
-	}
-
-	prevRoutes := s.nodeStore.PrimaryRoutes()
+	snapshot := s.nodeStore.data.Load()
+	prevRoutes := snapshot.routes
 
 	// Skip unchanged health writes while the published policy is valid.
 	// Invalid snapshots still retry compilation below. healthSetter stays
 	// authoritative for candidacy and race checks under the writer.
 	fns := make(map[types.NodeID]UpdateNodeFunc, len(updates))
-	healthChanged := false
+	viaHealthChanged := false
 
 	for id, healthy := range updates {
-		if nv, ok := s.nodeStore.GetNode(id); ok && nv.Unhealthy() == !healthy {
+		nv, ok := snapshot.nodeViewsByID[id]
+		if ok && nv.Unhealthy() == !healthy {
 			haHealthUpdates.WithLabelValues("unchanged").Inc()
 
 			continue
@@ -1448,10 +1451,12 @@ func (s *State) BatchSetNodeHealth(updates map[types.NodeID]bool) bool {
 
 		setHealth := healthSetter(healthy)
 		fns[id] = func(n *types.Node) {
+			// Earlier tag or policy publications must affect this decision.
+			viaTarget := s.nodeStore.data.Load().policy.HasViaTarget(n.View())
 			before := n.Unhealthy
 			setHealth(n)
 
-			healthChanged = healthChanged || n.Unhealthy != before
+			viaHealthChanged = viaHealthChanged || (viaTarget && n.Unhealthy != before)
 		}
 	}
 
@@ -1466,7 +1471,7 @@ func (s *State) BatchSetNodeHealth(updates map[types.NodeID]bool) bool {
 	// UpdateNodes waits for the single writer, including these closures.
 	s.nodeStore.UpdateNodes(fns)
 
-	return healthChanged || !maps.Equal(prevRoutes, s.nodeStore.PrimaryRoutes()) ||
+	return viaHealthChanged || !maps.Equal(prevRoutes, s.nodeStore.PrimaryRoutes()) ||
 		s.nodeStore.policyRecovered.Load()
 }
 
@@ -3538,7 +3543,7 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 	// Otherwise we persist the row directly and refresh the policy manager
 	// only when node inputs visible to the policy actually changed
 	// (structural Hostinfo or routes), letting updatePolicyManagerNodes
-	// decide whether matchers changed.
+	// decide whether compiled rules changed.
 	policyChange := change.Change{}
 
 	if delta.persistWorthy {

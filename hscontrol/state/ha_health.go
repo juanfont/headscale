@@ -72,6 +72,14 @@ func (p *HAHealthProber) ProbeOnce(
 	ctx context.Context,
 	dispatch func(...change.Change),
 ) {
+	if p.state.nodeStore.data.Load().policyBuildErr != nil {
+		if p.state.BatchSetNodeHealth(nil) {
+			dispatch(change.PolicyChange())
+		}
+
+		return
+	}
+
 	haNodes := p.state.nodeStore.HANodes()
 
 	// Build the deduplicated node-ID set and slice in one pass.
@@ -206,6 +214,16 @@ func (p *HAHealthProber) ProbeOnce(
 	}
 
 	wg.Wait()
+
+	// shortcut: failure and recovery within one probe timeout can still look
+	// like router failure; track publication history if this needs exclusion.
+	if p.state.nodeStore.data.Load().policyBuildErr != nil {
+		if p.state.BatchSetNodeHealth(nil) {
+			dispatch(change.PolicyChange())
+		}
+
+		return
+	}
 
 	// When any probe in the cycle was deferred (fresh session or
 	// reconnected mid-probe), drop the whole cycle's results: a partial

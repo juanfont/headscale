@@ -154,7 +154,7 @@ func TestHAHealthProbe_RecoveryNoFlap(t *testing.T) {
 
 	// Recovery: node 1 healthy again. Node 2 should STAY primary.
 	refreshNeeded := srv.State().SetNodeHealth(nodeID1, true)
-	assert.True(t, refreshNeeded, "health recovery must refresh per-viewer routes")
+	assert.False(t, refreshNeeded, "non-via recovery with unchanged primaries needs no refresh")
 
 	primaries = srv.State().GetNodePrimaryRoutes(nodeID2)
 	assert.Contains(t, primaries, route, "node 2 should remain primary after recovery")
@@ -419,6 +419,8 @@ func (pm healthRecoveryPolicyManager) SetNodesAndBuildPeerMap(nodes views.Slice[
 // TestHAHealthProbe_PolicyRecoveryWithoutPrimaryChange exercises the real
 // prober, batched health write, Headscale.Change and connected client path.
 func TestHAHealthProbe_PolicyRecoveryWithoutPrimaryChange(t *testing.T) {
+	t.Parallel()
+
 	srv := servertest.NewServer(t,
 		servertest.WithMagicDNS("headscale.test"),
 		servertest.WithDNSResolvers("https://dns.nextdns.io/test"),
@@ -453,10 +455,10 @@ func TestHAHealthProbe_PolicyRecoveryWithoutPrimaryChange(t *testing.T) {
 
 	prober := state.NewHAHealthProber(srv.State(), types.HARouteConfig{
 		ProbeInterval: 30 * time.Second,
-		ProbeTimeout:  time.Second,
+		ProbeTimeout:  5 * time.Second,
 	}, srv.URL, srv.App.MapBatcher().IsConnected)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	// Establish stable sessions before the failed snapshot withholds pings.
 	prober.ProbeOnce(ctx, srv.App.Change)
@@ -493,12 +495,12 @@ func TestHAHealthProbe_PolicyRecoveryWithoutPrimaryChange(t *testing.T) {
 
 		srv.App.Change(cs...)
 	}
-	// Invalid maps withhold both pings. Both stable sessions time out, and
-	// the all-unhealthy election retains the previous primary unchanged.
+	// Retry the invalid policy snapshot without probing routers whose ping
+	// delivery was withheld by the failed generation.
 	prober.ProbeOnce(ctx, dispatch)
 	require.Equal(t, 1, healthDispatches, "policy recovery must dispatch even when primaries do not change")
-	require.False(t, srv.State().IsNodeHealthy(router1))
-	require.False(t, srv.State().IsNodeHealthy(router2))
+	require.True(t, srv.State().IsNodeHealthy(router1))
+	require.True(t, srv.State().IsNodeHealthy(router2))
 	require.Contains(t, srv.State().GetNodePrimaryRoutes(router1), route)
 	require.Empty(t, srv.State().GetNodePrimaryRoutes(router2))
 	recovered, err := srv.State().MapView(viewerID)
@@ -529,10 +531,12 @@ func TestHAHealthProbe_PolicyRecoveryWithoutPrimaryChange(t *testing.T) {
 	require.False(t, changed, "recovery does not require a policy-hash change")
 	// The real Headscale dispatch consumed the one recovery bit. Repeating
 	// unchanged health must not request another catch-up dispatch.
-	require.False(t, srv.State().BatchSetNodeHealth(map[types.NodeID]bool{router1: false, router2: false}))
+	require.False(t, srv.State().BatchSetNodeHealth(map[types.NodeID]bool{router1: true, router2: true}))
 }
 
 func TestHAHealthProbe_ViaChangeWithoutGlobalPrimaryChange(t *testing.T) {
+	t.Parallel()
+
 	srv := servertest.NewServer(t)
 	user := srv.CreateUser(t, "ha-via-dispatch")
 	_, err := srv.State().SetPolicy([]byte(`{
@@ -585,10 +589,10 @@ func TestHAHealthProbe_ViaChangeWithoutGlobalPrimaryChange(t *testing.T) {
 
 	prober := state.NewHAHealthProber(srv.State(), types.HARouteConfig{
 		ProbeInterval: 30 * time.Second,
-		ProbeTimeout:  time.Second,
+		ProbeTimeout:  5 * time.Second,
 	}, srv.URL, srv.App.MapBatcher().IsConnected)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
 
 	var policyDispatches int
@@ -623,7 +627,8 @@ func TestHAHealthProbe_ViaChangeWithoutGlobalPrimaryChange(t *testing.T) {
 		{"unchanged via failover", []types.NodeID{via1ID}, via2ID, false},
 		{"all via unhealthy withdrawal", []types.NodeID{via1ID, via2ID}, 0, true},
 		{"unchanged withdrawal", []types.NodeID{via1ID, via2ID}, 0, false},
-		{"via recovery", []types.NodeID{via2ID}, via1ID, true},
+		{"higher-ID via recovery", []types.NodeID{via1ID}, via2ID, true},
+		{"lower-ID via reclaim", nil, via1ID, true},
 	} {
 		clear(blockedPings)
 

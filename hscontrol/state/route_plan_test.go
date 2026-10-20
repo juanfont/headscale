@@ -796,32 +796,62 @@ func BenchmarkMapViewPublication(b *testing.B) {
 	}
 }
 
-func TestUnchangedHealthRetriesInvalidPolicySnapshot(t *testing.T) {
-	s := mapViewTestState(t, "")
-	inner := s.nodeStore.peersFunc
-	fail := true
-	s.nodeStore.peersFunc = func(nodes []types.NodeView) (policy.ReadView, map[types.NodeID][]types.NodeID, error) {
-		if fail {
-			return policy.ReadView{}, nil, errMapViewPolicyBuild
-		}
+func TestBatchSetNodeHealthPolicyRecovery(t *testing.T) {
+	for name, updates := range map[string]map[types.NodeID]bool{
+		"nil":       nil,
+		"empty":     {},
+		"unchanged": {2: true},
+		"changed":   {3: false},
+		"missing":   {999: false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := mapViewTestState(t, "")
+			route := netip.MustParsePrefix("10.108.0.0/24")
 
-		return inner(nodes)
+			for _, id := range []types.NodeID{2, 3} {
+				s.nodeStore.UpdateNode(id, func(n *types.Node) {
+					n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{route}}
+					n.ApprovedRoutes = []netip.Prefix{route}
+				})
+			}
+
+			primaries := s.nodeStore.PrimaryRoutes()
+			inner := s.nodeStore.peersFunc
+
+			var fail atomic.Bool
+			fail.Store(true)
+
+			s.nodeStore.peersFunc = func(nodes []types.NodeView) (policy.ReadView, map[types.NodeID][]types.NodeID, error) {
+				if fail.Load() {
+					return policy.ReadView{}, nil, errMapViewPolicyBuild
+				}
+
+				return inner(nodes)
+			}
+			s.nodeStore.UpdateNode(1, func(n *types.Node) {
+				n.GivenName = "withheld"
+				n.IPv4 = new(netip.MustParseAddr("100.64.0.99"))
+			})
+			_, err := s.MapView(1)
+			require.ErrorIs(t, err, errMapViewPolicyBuild)
+			require.False(t, s.BatchSetNodeHealth(nil), "failed retry must not request recovery")
+			_, err = s.MapView(1)
+			require.ErrorIs(t, err, errMapViewPolicyBuild)
+
+			fail.Store(false)
+
+			require.True(t, s.BatchSetNodeHealth(updates), "recovery must request dispatch with unchanged routes")
+			require.Equal(t, primaries, s.nodeStore.PrimaryRoutes())
+			view, err := s.MapView(1)
+			require.NoError(t, err)
+			require.Equal(t, "withheld", view.Viewer().GivenName())
+			require.Contains(t, view.Viewer().Prefixes(), netip.MustParsePrefix("100.64.0.99/32"))
+			require.True(t, s.BatchSetNodeHealth(nil), "recovery remains pending until dispatch drains it")
+			require.Equal(t, []change.Change{change.FullUpdate()}, s.DrainSelfRefreshes())
+			require.Empty(t, s.DrainSelfRefreshes())
+			require.False(t, s.BatchSetNodeHealth(updates))
+		})
 	}
-	s.nodeStore.UpdateNode(1, func(n *types.Node) {
-		n.GivenName = "withheld"
-		n.IPv4 = new(netip.MustParseAddr("100.64.0.99"))
-	})
-	_, err := s.MapView(1)
-	require.Error(t, err)
-
-	fail = false
-
-	require.True(t, s.BatchSetNodeHealth(map[types.NodeID]bool{2: true}), "recovery must request dispatch with unchanged health and routes")
-	view, err := s.MapView(1)
-	require.NoError(t, err)
-	require.Equal(t, "withheld", view.Viewer().GivenName())
-	require.Equal(t, []change.Change{change.FullUpdate()}, s.DrainSelfRefreshes())
-	require.False(t, s.BatchSetNodeHealth(map[types.NodeID]bool{2: true}))
 }
 
 func TestBatchSetNodeHealthViaSelectionRefresh(t *testing.T) {
@@ -913,6 +943,7 @@ func TestBatchSetNodeHealthViaSelectionRefresh(t *testing.T) {
 			}{
 				{3, false, 4},
 				{4, false, 0},
+				{4, true, 4},
 				{3, true, 3},
 			} {
 				refreshNeeded := s.BatchSetNodeHealth(map[types.NodeID]bool{step.id: step.healthy})

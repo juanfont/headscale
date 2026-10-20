@@ -153,6 +153,8 @@ headscale/
   Performance-critical.
 - `policy/` — `policy/v2/` is **the** policy implementation. The
   top-level `policy.go` is thin wrappers. There is no v1 directory.
+- `ipset/` — immutable address unions and mutable builders.
+- `policy/packetfilter/` — typed packet rules and client wire encoding.
 - `routes/`, `dns/`, `derp/`, `types/`, `util/`, `templates/`, `capver/`
   — routing, MagicDNS, relay, core types, helpers, client templates,
   capability versioning.
@@ -238,9 +240,8 @@ around v2. There is no v1 directory.
 Policy processing uses `ipset.Set` for immutable address unions and
 `packetfilter.Rule` for typed packet decisions. Parse aliases at ingress,
 resolve them for each generation, share immutable results, and encode rules at
-response/debug
-boundaries. Builders are local mutable accumulators; `Build` publishes an
-immutable Set and resets the builder. Primary-route maps preserve exact
+response/debug boundaries. Builders are local mutable accumulators; `Build`
+publishes an immutable Set and resets the builder. Primary-route maps preserve exact
 prefix identity; autoapprovers use BART to find all matching supernets.
 
 Key concepts an agent will encounter:

@@ -119,6 +119,11 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
   advertise and approve the canonical network to activate a route.
   [#3572](https://github.com/juanfont/headscale/pull/3572)
 
+#### Policy
+
+- Policy `tests[].src` selectors are parsed when loading the policy. Malformed sources such as `100.64.0.1:22` now reject the policy and can prevent startup with an already-stored policy; correct them before upgrading [#3572](https://github.com/juanfont/headscale/pull/3572)
+- Policy `tests` without `proto` now check only ICMP, TCP, UDP and ICMPv6, matching client filter defaults; set `proto` explicitly to test other IP protocols [#3572](https://github.com/juanfont/headscale/pull/3572)
+
 #### CLI
 
 - `--output json` / `--output yaml` now emit the API's shape — camelCase fields, string-encoded IDs, RFC3339 timestamps — instead of the old Protobuf encoding [#3324](https://github.com/juanfont/headscale/pull/3324)
@@ -131,6 +136,11 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - `settings.tls_*` options move to `settings.tls.*`; old `settings.tls_*` values still work [#3554](https://github.com/juanfont/headscale/pull/3554)
 
 ### Changes
+
+- Subnet routes selected by `via` grants elect the lowest-ID online, healthy router within each grant's tag group. A recovered lower-ID router reclaims the route, and routes are withdrawn when no healthy online router remains. A regular grant overlapping the same route for the viewer follows global HA instead [#3572](https://github.com/juanfont/headscale/pull/3572)
+- Fix the embedded DERP region using a bracketed IPv6 hostname when `server_url` contains an IPv6 literal [#3572](https://github.com/juanfont/headscale/pull/3572)
+- Mask configured IP prefixes so MagicDNS reverse zones use their network address, and fix IPv6 reverse zones for prefix lengths that are not a multiple of four bits [#3572](https://github.com/juanfont/headscale/pull/3572)
+- Fix SSH check-period resolution dropping valid sources when another source in the same rule cannot be resolved [#3572](https://github.com/juanfont/headscale/pull/3572)
 
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
