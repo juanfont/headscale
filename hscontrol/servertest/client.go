@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -75,6 +76,11 @@ type TestClient struct {
 
 	// registers: see [TestClient.RegisterAttempts].
 	registers []testcapture.RegisterAttempt
+
+	// frames: see [TestClient.Frames]. stamped is set while the response
+	// in hand carried a ControlTime, so its rebuild is already counted.
+	frames  int
+	stamped bool
 
 	// updates is a buffered channel that receives a signal
 	// each time a new [netmap.NetworkMap] arrives.
@@ -260,6 +266,12 @@ func TryNewClient(tb testing.TB, server *TestServer, name string, opts ...Client
 
 		tc.mu.Lock()
 		tc.registers, _ = testcapture.AppendRegisterLine(tc.registers, line)
+
+		// The poll logs a response's ControlTime before it applies it.
+		if strings.Contains(line, `{"controltime":`) {
+			tc.frames++
+			tc.stamped = true
+		}
 		tc.mu.Unlock()
 	}
 
@@ -405,6 +417,7 @@ func (c *TestClient) startPollLoop() {
 	c.mu.Lock()
 	c.streams++
 	c.streamMaps = 0
+	c.stamped = false
 	c.mu.Unlock()
 
 	go func() {
@@ -447,6 +460,16 @@ func (c *TestClient) UpdateFullNetmap(nm *netmap.NetworkMap) {
 	if !c.noHistory {
 		c.history = append(c.history, nm)
 	}
+
+	// Removals sent ahead of their batch and a deleted node's expiry carry
+	// no ControlTime, so a rebuild with none before it is a response too.
+	// shortcut: one right after a response a delta client applied in place
+	// goes uncounted; count at the decoder if headscale sends one alone.
+	if !c.stamped {
+		c.frames++
+	}
+
+	c.stamped = false
 	c.mu.Unlock()
 
 	// Non-blocking send to the updates channel.
@@ -917,6 +940,17 @@ func (c *TestClient) UpdateCount() int {
 	defer c.mu.RUnlock()
 
 	return c.updatesReceived
+}
+
+// Frames returns how many map responses other than keep-alives the client
+// has been sent: each one with a ControlTime, and each netmap rebuild from
+// one without. Unlike [TestClient.UpdateCount] it also counts responses that
+// a [WithDeltaUpdates] client applies without rebuilding its netmap.
+func (c *TestClient) Frames() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.frames
 }
 
 // Stream returns how many map streams the client has opened, then how many
