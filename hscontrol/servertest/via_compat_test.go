@@ -112,10 +112,8 @@ var viaCompatSkipReasons = map[string]string{
 	"via-grant-v67/rename/blastoise/packet-filter": viaSourceLossNotSent,
 	"via-grant-v67/rename/ivysaur/peers":           viaSourceLossNotSent,
 
-	// Adjacent member addresses merge into one prefix, and the reduced
-	// filter keeps all of it; SaaS lists only the node's own address.
-	"routes-f2-subnet-as-acl-source/ivysaur/packet-filter":  "FILTER_DST_MERGED: own filter names a neighbour's address",
-	"routes-f2-subnet-as-acl-source/venusaur/packet-filter": "FILTER_DST_MERGED: own filter names a neighbour's address",
+	"routes-f2-subnet-as-acl-source/ivysaur/packet-filter":  filterDstMerged,
+	"routes-f2-subnet-as-acl-source/venusaur/packet-filter": filterDstMerged,
 
 	// SaaS sends a router every approved route in its own AllowedIPs and
 	// every route it is primary for in PrimaryRoutes.
@@ -266,6 +264,10 @@ var viaCompatSkipReasons = map[string]string{
 const viaSourceLossNotSent = "VIA_SOURCE_LOSS_NOT_SENT: a user change that leaves a via grant without sources does not reach open streams"
 
 const exitRoutesOnOverlap = "EXIT_ROUTES_ON_OVERLAP: headscale offers a peer's exit routes to a viewer whose rules reach only nodes or subnets; SaaS leaves them out"
+
+// Adjacent member addresses merge into one prefix, and the reduced filter
+// keeps all of it; SaaS lists only the node's own address.
+const filterDstMerged = "FILTER_DST_MERGED: own filter names a neighbour's address"
 
 const sameUserPeers = "SAME_USER_PEERS: SaaS lists a user's own devices as each other's peers with no rule linking them; headscale peers only what the policy links"
 
