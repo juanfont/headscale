@@ -622,6 +622,20 @@ func readStepCapture(t *testing.T, id string) *testcapture.Capture {
 	return c
 }
 
+// requireSkipCaptures fails on a skip entry that is not
+// <id>/<step>/.../<check> for one of ids, the captures the map's consumers
+// replay. Each consumer checks only the entries under its own capture, so
+// such an entry would never go stale.
+func requireSkipCaptures(t *testing.T, skips map[string]string, ids ...string) {
+	t.Helper()
+
+	for k := range skips {
+		id, rest, _ := strings.Cut(k, "/")
+		assert.True(t, slices.Contains(ids, id) && strings.Contains(rest, "/"),
+			"skip entry %q names no replayed capture and step", k)
+	}
+}
+
 // stepReplay drives a step capture's actions against headscale: policy
 // pushes, key mints and revokes, joins, relogins, profile switches,
 // restarts, kills, shutdowns, route announcements, logouts, retires and admin
