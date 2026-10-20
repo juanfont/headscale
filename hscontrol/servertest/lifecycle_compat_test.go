@@ -28,6 +28,7 @@ import (
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 	"tailscale.com/types/netmap"
+	"tailscale.com/types/views"
 )
 
 // lifecycleSkipReasons lists checks where headscale differs from SaaS, keyed
@@ -121,8 +122,9 @@ type stepCheck struct {
 //     the step rotated its node key;
 //   - served, expired, online: the router as the observer's peer;
 //   - self-routes: the router's own routes, while SaaS showed it running;
-//   - removed: whether the observer lost the router during the step, when
-//     SaaS recorded the observer's map stream.
+//   - removed, dropped: whether the observer lost the router, or any route
+//     it served both before and after, during the step, when SaaS recorded
+//     the observer's map stream.
 func runRouteLifecycleCompat(t *testing.T, id, observer string, skips map[string]string) {
 	t.Helper()
 
@@ -141,6 +143,10 @@ func runRouteLifecycleCompat(t *testing.T, id, observer string, skips map[string
 	evaluated := map[string]bool{}
 
 	var prevObserved *netmap.NetworkMap
+
+	// The probe records the observer's stream through a whole capture or not
+	// at all, so a step without frames was silent.
+	streamed := slices.ContainsFunc(c.Steps, func(s testcapture.Step) bool { return len(s.Frames[observer]) > 0 })
 
 	for _, step := range c.Steps {
 		require.Equal(t, "observed", step.Result, "%s: the replay follows every step", step.Name)
@@ -284,15 +290,35 @@ func runRouteLifecycleCompat(t *testing.T, id, observer string, skips map[string
 				}})
 			}
 
-			if frames := step.Frames[observer]; len(frames) > 0 {
-				checks = append(checks, stepCheck{"removed", saasRemoved(prevSaaS, frames, saasRouterID), func() string {
+			if streamed {
+				frames := step.Frames[observer]
+				hsHistory := func() ([]*netmap.NetworkMap, tailcfg.NodeID, string) {
 					nodes := r.machineNodes(router)
 					if len(nodes) != 1 {
-						return fmt.Sprintf("devices %d", len(nodes))
+						return nil, 0, fmt.Sprintf("devices %d", len(nodes))
 					}
 
-					return hsRemoved(r.clients[observer].History()[historyStart:], nodes[0].ID().NodeID())
-				}})
+					return r.clients[observer].History()[historyStart:], nodes[0].ID().NodeID(), ""
+				}
+
+				checks = append(checks,
+					stepCheck{"removed", saasRemoved(prevSaaS, frames, saasRouterID), func() string {
+						history, nodeID, missing := hsHistory()
+						if missing != "" {
+							return missing
+						}
+
+						return hsRemoved(history, nodeID)
+					}},
+					stepCheck{"dropped", droppedRoutes(saasServedViews(prevSaaS, frames, step.Captures[observer].Netmap, saasRouterID)), func() string {
+						history, nodeID, missing := hsHistory()
+						if missing != "" {
+							return missing
+						}
+
+						return droppedRoutes(hsServedViews(history, nodeID))
+					}},
+				)
 			}
 
 			holdChecks(t, skips, id+"/"+step.Name+"/", checks, evaluated)
@@ -575,6 +601,105 @@ func hsRemoved(history []*netmap.NetworkMap, id tailcfg.NodeID) string {
 	}
 
 	return "kept"
+}
+
+// servedEntries lists a peer's subnet routes, by field; none when missing.
+func servedEntries(p tailcfg.NodeView, missing string) []string {
+	if missing != "" {
+		return nil
+	}
+
+	var out []string
+
+	for _, pfx := range p.AllowedIPs().All() {
+		if !views.SliceContains(p.Addresses(), pfx) {
+			out = append(out, "allowed "+pfx.String())
+		}
+	}
+
+	for _, pfx := range p.PrimaryRoutes().All() {
+		out = append(out, "primary "+pfx.String())
+	}
+
+	return out
+}
+
+// saasServedViews returns the peer's routes before the step, after each
+// frame that names it, and at the step's end.
+func saasServedViews(before *netmap.NetworkMap, frames []testcapture.Frame, after *netmap.NetworkMap, id tailcfg.NodeID) [][]string {
+	out := [][]string{servedEntries(peerByID(before, id))}
+
+	for _, f := range frames {
+		resp := f.Response
+		if resp == nil {
+			continue
+		}
+
+		if slices.Contains(resp.PeersRemoved, id) {
+			out = append(out, nil)
+
+			continue
+		}
+
+		byID := func(n *tailcfg.Node) bool { return n.ID == id }
+
+		switch changed, listed := slices.IndexFunc(resp.PeersChanged, byID), slices.IndexFunc(resp.Peers, byID); {
+		case changed >= 0:
+			out = append(out, servedEntries(resp.PeersChanged[changed].View(), ""))
+		case listed >= 0:
+			out = append(out, servedEntries(resp.Peers[listed].View(), ""))
+		case resp.Peers != nil:
+			out = append(out, nil)
+		}
+	}
+
+	return append(out, servedEntries(peerByID(after, id)))
+}
+
+func hsServedViews(history []*netmap.NetworkMap, id tailcfg.NodeID) [][]string {
+	out := make([][]string, 0, len(history))
+	for _, nm := range history {
+		out = append(out, servedEntries(peerByID(nm, id)))
+	}
+
+	return out
+}
+
+// droppedRoutes lists the routes served both before and after a step that
+// some view in between left out, so routes cleared and restored within a
+// step do not pass as kept.
+func droppedRoutes(seen [][]string) string {
+	if len(seen) < 2 {
+		return "none"
+	}
+
+	var out []string
+
+	for _, r := range seen[0] {
+		if !slices.Contains(seen[len(seen)-1], r) {
+			continue
+		}
+
+		if slices.ContainsFunc(seen[1:], func(v []string) bool { return !slices.Contains(v, r) }) {
+			out = append(out, r)
+		}
+	}
+
+	if len(out) == 0 {
+		return "none"
+	}
+
+	return sortedStrings(out)
+}
+
+func TestDroppedRoutes(t *testing.T) {
+	t.Parallel()
+
+	a, b := "primary 10.0.0.0/24", "primary 10.1.0.0/24"
+
+	assert.Equal(t, "none", droppedRoutes([][]string{{a, b}, {a, b}}))
+	assert.Equal(t, "[primary 10.0.0.0/24]", droppedRoutes([][]string{{a, b}, {b}, {a, b}}))
+	assert.Equal(t, "none", droppedRoutes([][]string{{a, b}, {b}, {b}}), "a route gone at the end is not dropped")
 }
 
 // TestEphemeralLifecycleCompat replays ephemeral devices through logout, a
