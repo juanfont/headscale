@@ -1548,6 +1548,36 @@ func TestUnmarshalPolicy(t *testing.T) {
 		},
 		// SSH source/destination validation tests (#3009, #3010)
 		{
+			name: "ssh-check-tag-src-rejected",
+			input: `
+{
+  "tagOwners": {"tag:client": ["admin@"], "tag:server": ["admin@"]},
+  "ssh": [{
+    "action": "check",
+    "src": ["admin@", "tag:client"],
+    "dst": ["tag:server"],
+    "users": ["root"]
+  }]
+}
+`,
+			wantErr: `[ssh] "check" action does not support tags in src`,
+		},
+		{
+			name: "ssh-check-autogroup-tagged-src-rejected",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@"]},
+  "ssh": [{
+    "action": "check",
+    "src": ["admin@", "autogroup:tagged"],
+    "dst": ["tag:server"],
+    "users": ["root"]
+  }]
+}
+`,
+			wantErr: `[ssh] "check" action does not support tags in src`,
+		},
+		{
 			name: "ssh-tag-to-user-rejected",
 			input: `
 {
