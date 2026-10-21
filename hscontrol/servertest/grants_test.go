@@ -1243,8 +1243,22 @@ func TestGrantViaSubnetFailover(t *testing.T) {
 				setExpiry(t, srv, router1ID, nil)
 			}
 
-			clients["client"].WaitForCondition(t, "route returns to router-1",
-				30*time.Second, onlyHolder("router-1"))
+			// router-1 keeps its control session through health and expiry
+			// changes, so it is older than router-2 and takes the route
+			// back; a reconnect opens a newer one.
+			want := "router-1"
+			if mode == "offline" {
+				want = "router-2"
+			}
+
+			clients["client"].WaitForCondition(t, "route settles on "+want,
+				30*time.Second, func(nm *netmap.NetworkMap) bool {
+					router1Online := slices.ContainsFunc(nm.Peers, func(p tailcfg.NodeView) bool {
+						return p.Hostinfo().Hostname() == "router-1" && p.Online().Get()
+					})
+
+					return router1Online && onlyHolder(want)(nm)
+				})
 			assert.Contains(t, srv.State().GetNodePrimaryRoutes(otherID), route)
 		})
 	}

@@ -121,9 +121,10 @@ func TestHAHealthProbe_UnhealthyFailover(t *testing.T) {
 	assert.NotContains(t, primaries1, route, "node 1 should not be primary")
 }
 
-// TestHAHealthProbe_RecoveryNoFlap verifies that marking an unhealthy
-// node healthy again does NOT cause it to reclaim primary (stability).
-func TestHAHealthProbe_RecoveryNoFlap(t *testing.T) {
+// TestHAHealthProbe_RecoveryReturnsRoute verifies that marking an unhealthy
+// node healthy again hands it the route back: it kept the older control
+// session.
+func TestHAHealthProbe_RecoveryReturnsRoute(t *testing.T) {
 	t.Parallel()
 
 	srv := servertest.NewServer(t)
@@ -145,12 +146,12 @@ func TestHAHealthProbe_RecoveryNoFlap(t *testing.T) {
 	primaries := srv.State().GetNodePrimaryRoutes(nodeID2)
 	require.Contains(t, primaries, route, "node 2 should be primary")
 
-	// Recovery: node 1 healthy again. Node 2 should STAY primary.
+	// Recovery: node 1 healthy again, with the older session.
 	changed := srv.State().SetNodeHealth(nodeID1, true)
-	assert.False(t, changed, "recovery should not change primaries (no flap)")
+	assert.True(t, changed, "recovery should hand the route back")
 
-	primaries = srv.State().GetNodePrimaryRoutes(nodeID2)
-	assert.Contains(t, primaries, route, "node 2 should remain primary after recovery")
+	primaries = srv.State().GetNodePrimaryRoutes(nodeID1)
+	assert.Contains(t, primaries, route, "node 1 should be primary again after recovery")
 }
 
 // TestHAHealthProbe_ConnectClearsUnhealthy verifies that reconnecting
@@ -290,9 +291,8 @@ func TestHAHealthProbe_SetUnhealthyNoRoutesIsNoOp(t *testing.T) {
 // [HAHealthProber.ProbeOnce], the timeout path observes the reconnect
 // and bails out instead of installing a spurious Unhealthy bit.
 //
-// Without the guard, the primary fails over to the standby and the
-// anti-flap election preserves that choice even after the original
-// primary is fully back online.
+// Without the guard, the stale timeout marks the reconnected primary
+// unhealthy and the route fails over to the standby.
 func TestHAHealthProbe_ReconnectDuringProbeKeepsHealthy(t *testing.T) {
 	t.Parallel()
 
@@ -445,7 +445,8 @@ func TestHAHealthProbe_DeferralScopedToPrefix(t *testing.T) {
 	assert.True(t, srv.State().IsNodeHealthy(officeID1))
 	assert.True(t, srv.State().IsNodeHealthy(labID1),
 		"a deferral on another prefix must not withhold the lab node's recovery")
-	assert.Contains(t, srv.State().GetNodePrimaryRoutes(labID2), labRoute)
+	assert.Contains(t, srv.State().GetNodePrimaryRoutes(labID1), labRoute,
+		"the recovered lab node has the older session and takes its route back")
 }
 
 func TestHAHealthProbe_LastAdvertiserRecovers(t *testing.T) {
