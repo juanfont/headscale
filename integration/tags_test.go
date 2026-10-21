@@ -3415,10 +3415,9 @@ func TestTagsAuthKeyConvertToUserViaCLIRegister(t *testing.T) {
 // TestTaggedNodeLogoutReloginSingleUseKeyOnline reproduces issue #3371
 // end-to-end with a real tailscale client: a tagged node registered with a
 // single-use key logs out (`tailscale logout`) and re-authenticates with a
-// FRESH single-use tagged key. Tagged nodes never expire (KB 1068), so logout
-// must not stamp an expiry; before the fix the node was left permanently
-// expired and the fresh key was consumed on a re-registration that still
-// reported NodeKeyExpired, locking the node out forever.
+// FRESH single-use tagged key. Logout expires the tagged node, as on Tailscale
+// SaaS; before the fix the fresh key was consumed on a re-registration that
+// still reported NodeKeyExpired, locking the node out forever.
 //
 // The observable proof at the integration level is that after relogin the node
 // is back online with a NULL expiry and the same node ID — not stuck expired.
@@ -3479,15 +3478,13 @@ func TestTaggedNodeLogoutReloginSingleUseKeyOnline(t *testing.T) {
 		}
 	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "waiting for initial registration")
 
-	// `tailscale logout`. A tagged node must not be expired by this.
+	// `tailscale logout` expires the tagged node.
 	err = client.Logout()
 	require.NoError(t, err)
 
 	err = client.WaitForNeedsLogin(integrationutil.ScaledTimeout(60 * time.Second))
 	require.NoError(t, err)
 
-	// The node must remain in the DB, tagged, and crucially NOT carry a
-	// stale expiry. This is the #3371 root cause (a) surface.
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
@@ -3495,9 +3492,9 @@ func TestTaggedNodeLogoutReloginSingleUseKeyOnline(t *testing.T) {
 
 		if len(nodes) == 1 {
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
-			assert.Nil(c, nodes[0].Expiry, "#3371: logout must not stamp expiry on a tagged node")
+			assert.NotNil(c, nodes[0].Expiry, "logout expires a tagged node")
 		}
-	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "tagged node must survive logout without expiry")
+	}, integrationutil.StatusReadyTimeout, integrationutil.SlowPoll, "tagged node must survive logout, expired")
 
 	// KEY2: a FRESH single-use tagged key. Relogin.
 	key2, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})
