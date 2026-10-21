@@ -156,6 +156,7 @@ var (
 	ErrSSHTestEmptyDst             = errors.New("SSH tests entry must have at least one dst")
 	ErrSSHTestDstUnknownTag        = errors.New("SSH tests dst contains unknown tag")
 	ErrSSHTestDstDisallowedElement = errors.New("SSH tests dst contains disallowed element")
+	ErrSSHTestSrcDisallowedElement = errors.New("SSH tests src contains disallowed element")
 )
 
 type resolved struct {
@@ -3397,6 +3398,10 @@ func validateSSHTests(pol *Policy, tests []SSHPolicyTest) error {
 	for i, t := range tests {
 		if t.Src == nil {
 			errs = append(errs, fmt.Errorf("sshTest %d: %w", i, ErrSSHTestEmptySrc))
+		} else if isAddressRange(pol, t.Src) {
+			// Tailscale SaaS refuses a range: a test speaks for one source.
+			errs = append(errs, fmt.Errorf("sshTest %d: %w %q",
+				i, ErrSSHTestSrcDisallowedElement, t.Src.String()))
 		}
 
 		if len(t.Dst) == 0 {
@@ -3418,6 +3423,33 @@ func validateSSHTests(pol *Policy, tests []SSHPolicyTest) error {
 	return nil
 }
 
+// isAddressRange reports whether alias is a CIDR, or a hosts: entry
+// holding one, that names more than one address. A bare IP parses as a
+// `/BitLen` prefix and names one.
+func isAddressRange(pol *Policy, alias Alias) bool {
+	var p netip.Prefix
+
+	switch a := alias.(type) {
+	case *Prefix:
+		p = netip.Prefix(*a)
+	case *Host:
+		if pol == nil {
+			return false
+		}
+
+		pref, ok := pol.Hosts[*a]
+		if !ok {
+			return false
+		}
+
+		p = netip.Prefix(pref)
+	default:
+		return false
+	}
+
+	return p.Bits() < p.Addr().BitLen()
+}
+
 // validateSSHTestDestination rejects sshTests dst shapes that cannot
 // name a single SSH-reachable host:
 //
@@ -3430,19 +3462,15 @@ func validateSSHTests(pol *Policy, tests []SSHPolicyTest) error {
 func validateSSHTestDestination(pol *Policy, alias Alias) error {
 	dst := alias.String()
 
+	if isAddressRange(pol, alias) {
+		return fmt.Errorf("%w %q", ErrSSHTestDstDisallowedElement, dst)
+	}
+
 	switch a := alias.(type) {
 	case *AutoGroup:
 		// autogroup:internet is the only autogroup not valid here;
 		// member/tagged/self/nonroot pass to engine evaluation.
 		if *a == AutoGroupInternet {
-			return fmt.Errorf("%w %q", ErrSSHTestDstDisallowedElement, dst)
-		}
-
-	case *Prefix:
-		// A bare IP parses as `/BitLen` and is a valid single-host dst;
-		// any narrower CIDR is a multi-host range and is rejected.
-		p := netip.Prefix(*a)
-		if p.Bits() < p.Addr().BitLen() {
 			return fmt.Errorf("%w %q", ErrSSHTestDstDisallowedElement, dst)
 		}
 
@@ -3457,23 +3485,6 @@ func validateSSHTestDestination(pol *Policy, alias Alias) error {
 		err := pol.TagOwners.Contains(a)
 		if err != nil {
 			return fmt.Errorf("%w %q", ErrSSHTestDstUnknownTag, string(*a))
-		}
-
-	case *Host:
-		// A hosts: alias that resolves to multiple addresses is a CIDR
-		// in disguise.
-		if pol == nil {
-			return nil
-		}
-
-		pref, ok := pol.Hosts[*a]
-		if !ok {
-			return nil
-		}
-
-		p := netip.Prefix(pref)
-		if p.Bits() < p.Addr().BitLen() {
-			return fmt.Errorf("%w %q", ErrSSHTestDstDisallowedElement, dst)
 		}
 	}
 
