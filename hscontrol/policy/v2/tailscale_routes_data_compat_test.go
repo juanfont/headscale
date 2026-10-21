@@ -257,13 +257,6 @@ var routesSkipReasons = map[string]string{
 	"routes-m6-subnet-to-subnet-multi-route/m-odin2/peers": sameUserPeers,
 }
 
-// notCompared reports whether key falls under one of prefixes.
-func notCompared(prefixes []string, key string) bool {
-	return slices.ContainsFunc(prefixes, func(p string) bool {
-		return strings.HasPrefix(key, p)
-	})
-}
-
 const filterAddressForm = "FILTER_ADDRESS_FORM: same addresses, different wire form"
 
 const sameUserPeers = "SAME_USER_PEERS: SaaS lists a user's own devices as each other's peers with no rule linking them; headscale peers only what the policy links"
