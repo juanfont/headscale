@@ -487,19 +487,11 @@ func registerNodeAdminOps(api huma.API, b Backend) {
 			nil,
 			util.RegisterMethodCLI,
 		)
-		if err != nil {
-			b.Change(nodeChange)
-
-			return nil, mapError("registering node", err)
-		}
-
-		routeChange, err := b.State.AutoApproveRoutes(node)
-
 		// Empty changes are ignored by the change sink.
-		b.Change(nodeChange, routeChange)
+		b.Change(nodeChange)
 
 		if err != nil {
-			return nil, huma.Error500InternalServerError("auto approving routes", err)
+			return nil, mapError("registering node", err)
 		}
 
 		out := &nodeOutput{}
