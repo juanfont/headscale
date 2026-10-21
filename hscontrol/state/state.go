@@ -2270,10 +2270,9 @@ func sameOwner(a, b types.NodeView) bool {
 
 // applyAuthNodeUpdate applies common update logic for re-authenticating or converting
 // an existing node. It updates the node in [NodeStore], processes RequestTags, and
-// persists changes to the database. The bool reports whether peers read the
-// node it replaced and the update the same, apart from its keys; see
-// [onlyKeysChanged].
-func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView, bool, error) {
+// persists changes to the database. It also returns the node the NodeStore
+// writer replaced.
+func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView, types.NodeView, error) {
 	regData := params.RegData
 	// Log the operation type
 	if params.IsConvertFromTag {
@@ -2314,7 +2313,7 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 
 	rejectedTags := s.validateRequestTagsForReauth(params.ExistingNode, authUser, requestTags)
 	if len(rejectedTags) > 0 {
-		return types.NodeView{}, false, fmt.Errorf(
+		return types.NodeView{}, types.NodeView{}, fmt.Errorf(
 			"%w %v are invalid or not permitted",
 			ErrRequestedTagsInvalidOrNotPermitted,
 			rejectedTags,
@@ -2329,7 +2328,7 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 	// the NodeStore NodeKey index (denying the victim service).
 	if existing, ok := s.nodeStore.GetNodeByNodeKey(regData.NodeKey); ok &&
 		existing.MachineKey() != regData.MachineKey {
-		return types.NodeView{}, false, ErrNodeKeyInUse
+		return types.NodeView{}, types.NodeView{}, ErrNodeKeyInUse
 	}
 
 	var hostinfoErr error
@@ -2411,14 +2410,12 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 	})
 
 	if !ok {
-		return types.NodeView{}, false, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, params.ExistingNode.ID())
+		return types.NodeView{}, types.NodeView{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, params.ExistingNode.ID())
 	}
 
 	if hostinfoErr != nil {
-		return types.NodeView{}, false, hostinfoErr
+		return types.NodeView{}, types.NodeView{}, hostinfoErr
 	}
-
-	keysOnly := onlyKeysChanged(before, updatedNodeView, time.Now())
 
 	// Persist to database.
 	// Explicitly select all node columns so GORM includes nil/zero-value fields
@@ -2438,7 +2435,7 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 
 	_, err := s.persistNodeWith(updatedNodeView, updateColumns, nil)
 	if err != nil {
-		return types.NodeView{}, false, err
+		return types.NodeView{}, types.NodeView{}, err
 	}
 
 	// Log completion
@@ -2452,7 +2449,7 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 			Msg("Node re-authorized")
 	}
 
-	return updatedNodeView, keysOnly, nil
+	return updatedNodeView, before, nil
 }
 
 // createAndSaveNewNode creates a new node, allocates IPs, saves to DB, and adds to [NodeStore].
@@ -2859,21 +2856,24 @@ func (s *State) HandleNodeFromAuthPath(
 
 	var (
 		finalNode types.NodeView
+		before    types.NodeView
 		keysOnly  bool
 	)
 
 	if nodeExists && !existingNode.IsTagged() {
 		updateParams.ExistingNode = existingNode
 
-		finalNode, keysOnly, err = s.applyAuthNodeUpdate(updateParams)
+		finalNode, before, err = s.applyAuthNodeUpdate(updateParams)
 		if err != nil {
 			return types.NodeView{}, s.policyChangeSince(genBefore), err
 		}
+
+		keysOnly = onlyKeysChanged(before, finalNode, time.Now())
 	} else if nodeExists {
 		updateParams.ExistingNode = existingNode
 		updateParams.IsConvertFromTag = true
 
-		finalNode, _, err = s.applyAuthNodeUpdate(updateParams)
+		finalNode, before, err = s.applyAuthNodeUpdate(updateParams)
 		if err != nil {
 			return types.NodeView{}, s.policyChangeSince(genBefore), err
 		}
@@ -2930,7 +2930,11 @@ func (s *State) HandleNodeFromAuthPath(
 	// keysOnly is set only for a same-user relogin; a tag->user conversion is
 	// excluded, as it changes the peer's User — a structural change peers must
 	// see in full, not a key-rotation patch.
-	return finalNode, reauthChange(finalNode, keysOnly, policyChanged), nil
+	return s.approveRoutesAfterRegistration(before, finalNode, reauthChange(finalNode, keysOnly, policyChanged))
+}
+
+func sortedPrefixes(p []netip.Prefix) []netip.Prefix {
+	return slices.SortedFunc(slices.Values(p), netip.Prefix.Compare)
 }
 
 // createNewNodeFromAuth creates a new node during auth callback.
@@ -3202,15 +3206,19 @@ func (s *State) HandleNodeFromPreAuthKey(
 		keysOnly  bool
 	)
 
+	var before types.NodeView
+
 	// If this node exists for this user, update the node in place. For a
 	// tags-only key (pak.User == nil) this is true when the machine already has
 	// a tagged node (findExistingNodeForPAK matches it under UserID 0); for a
 	// user-owned key it is true when the same user already has the node.
 	if existsSameUser && existingNodeSameUser.Valid() {
-		finalNode, keysOnly, err = s.reregisterNodeWithPAK(existingNodeSameUser, pak, regReq, machineKey, hostname, validHostinfo)
+		finalNode, before, err = s.reregisterNodeWithPAK(existingNodeSameUser, pak, regReq, machineKey, hostname, validHostinfo)
 		if err != nil {
 			return types.NodeView{}, s.policyChangeSince(genBefore), err
 		}
+
+		keysOnly = onlyKeysChanged(before, finalNode, time.Now())
 	} else {
 		// Node does not exist for this user with this machine key.
 		// For a user-owned key, check whether the machine key is already held
@@ -3304,7 +3312,34 @@ func (s *State) HandleNodeFromPreAuthKey(
 
 	policyChanged := !usersChange.IsEmpty() || !nodesChange.IsEmpty()
 
-	return finalNode, reauthChange(finalNode, keysOnly, policyChanged), nil
+	return s.approveRoutesAfterRegistration(before, finalNode, reauthChange(finalNode, keysOnly, policyChanged))
+}
+
+// approveRoutesAfterRegistration runs route auto-approval after a
+// registration whose NodeStore writer replaced before with node, merging its
+// change into c. As on Tailscale SaaS it runs for a new node, a new node key
+// or a change to the announced routes; a login that changes neither approves
+// nothing. before is what the writer replaced, not the caller's lookup, so an
+// announcement and an admin revoke landing in between do not count as a
+// change. It waits for the registration: the policy manager must know the
+// node's owner first.
+func (s *State) approveRoutesAfterRegistration(
+	before, node types.NodeView,
+	c change.Change,
+) (types.NodeView, change.Change, error) {
+	if before.Valid() && before.NodeKey() == node.NodeKey() &&
+		slices.Equal(sortedPrefixes(before.AnnouncedRoutes()), sortedPrefixes(node.AnnouncedRoutes())) {
+		return node, c, nil
+	}
+
+	routesChange, err := s.AutoApproveRoutes(node)
+	c = c.Merge(routesChange)
+
+	if err != nil {
+		return node, c, fmt.Errorf("auto approving routes: %w", err)
+	}
+
+	return node, c, nil
 }
 
 // reregisterNodeWithPAK updates an existing node in place for a pre-auth key
@@ -3315,8 +3350,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 // in between, and the key or the node can expire. So the writer decides
 // whether the key must be valid on the node it replaces, at its own clock, and
 // leaves the node untouched when it is not. existingNodeSameUser is used only
-// for its ID and for logging. The bool reports whether peers read the node it
-// replaced and the update the same, apart from its keys; see [onlyKeysChanged].
+// for its ID and for logging. It also returns the node the writer replaced.
 func (s *State) reregisterNodeWithPAK(
 	existingNodeSameUser types.NodeView,
 	pak *types.PreAuthKey,
@@ -3324,7 +3358,7 @@ func (s *State) reregisterNodeWithPAK(
 	machineKey key.MachinePublic,
 	hostname string,
 	validHostinfo *tailcfg.Hostinfo,
-) (types.NodeView, bool, error) {
+) (types.NodeView, types.NodeView, error) {
 	log.Trace().
 		Caller().
 		Str(zf.NodeName, existingNodeSameUser.Hostname()).
@@ -3342,7 +3376,7 @@ func (s *State) reregisterNodeWithPAK(
 	// NodeStore NodeKey index, denying the victim service.
 	if existing, ok := s.nodeStore.GetNodeByNodeKey(regReq.NodeKey); ok &&
 		existing.MachineKey() != machineKey {
-		return types.NodeView{}, false, ErrNodeKeyInUse
+		return types.NodeView{}, types.NodeView{}, ErrNodeKeyInUse
 	}
 
 	// prior is the node the writer replaced: the NetInfo source and the
@@ -3467,7 +3501,7 @@ func (s *State) reregisterNodeWithPAK(
 	// A nil prior means the writer never saw the node (deleted, or the store
 	// stopped), so nothing was decided and nothing may be persisted.
 	if !ok || prior == nil {
-		return types.NodeView{}, false, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, existingNodeSameUser.ID())
+		return types.NodeView{}, types.NodeView{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, existingNodeSameUser.ID())
 	}
 
 	if authErr != nil {
@@ -3479,7 +3513,7 @@ func (s *State) reregisterNodeWithPAK(
 			Err(authErr).
 			Msg("Re-registration needs a valid auth key when it applies, rejecting")
 
-		return types.NodeView{}, false, authErr
+		return types.NodeView{}, types.NodeView{}, authErr
 	}
 
 	// Only re-authentication writes a newly loaded key's reference. A wake-up
@@ -3507,7 +3541,7 @@ func (s *State) reregisterNodeWithPAK(
 	if err != nil {
 		s.undoReregistration(prior, written)
 
-		return types.NodeView{}, false, fmt.Errorf("writing node to database: %w", err)
+		return types.NodeView{}, types.NodeView{}, fmt.Errorf("writing node to database: %w", err)
 	}
 
 	log.Trace().
@@ -3519,7 +3553,7 @@ func (s *State) reregisterNodeWithPAK(
 		Str(zf.UserName, pak.Username()).
 		Msg("Node re-authorized")
 
-	return updatedNodeView, onlyKeysChanged(before, updatedNodeView, time.Now()), nil
+	return updatedNodeView, before, nil
 }
 
 // undoReregistration puts back the fields of a failed re-registration that
