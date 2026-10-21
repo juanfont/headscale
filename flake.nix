@@ -86,10 +86,6 @@
             buildGoModule = buildGo;
           };
 
-          golines = prev.golines.override {
-            buildGoModule = buildGo;
-          };
-
           # goimports and friends: they parse Go with the parser of the Go
           # they were built with, so an older one rejects new syntax.
           gotools = prev.gotools.override {
@@ -123,7 +119,6 @@
           ++ [
             golangci-lint
             golangci-lint-langserver
-            golines
             prettier
             nixfmt
             goreleaser
@@ -217,12 +212,12 @@
             }
           );
 
-          # Full-tree golangci-lint (golines, gofumpt, etc.); uses the overlay's
+          # Full-tree golangci-lint (gofumpt, gci, etc.); uses the overlay's
           # golangci-lint built against the pinned Go.
           golangci-lint = fc.goLint common;
 
           # nixfmt + prettier, excluding generated output. goFmt = "off":
-          # Go formatting (golines, gofumpt) is enforced by the golangci-lint
+          # Go formatting (gofumpt, gci) is enforced by the golangci-lint
           # check, not treefmt. prettierExts matches the old prettier-lint glob
           # (no json: testdata fixtures are hand-formatted).
           formatting = fc.goFormat (
