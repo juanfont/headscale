@@ -104,6 +104,53 @@ func TestRunTests(t *testing.T) {
 			wantNoErrIs: errPolicyTestsFailed,
 		},
 		{
+			// An accept needs every node behind the dst; a deny fails
+			// as soon as one is reached.
+			name: "dst-alias-partly-reached",
+			policy: `{
+				"groups": { "group:people": ["alice@headscale.net", "bob@headscale.net"] },
+				"acls": [{
+					"action": "accept",
+					"src": ["alice@headscale.net"],
+					"dst": ["alice@headscale.net:22"]
+				}],
+				"tests": [{
+					"src": "alice@headscale.net",
+					"accept": ["group:people:22"],
+					"deny": ["group:people:22"]
+				}]
+			}`,
+			wantPass: false,
+			wantErrSub: []string{
+				"alice@headscale.net -> group:people:22: expected ALLOWED, got DENIED",
+				"alice@headscale.net -> group:people:22: expected DENIED, got ALLOWED",
+			},
+			wantNoErrIs: errPolicyTestsFailed,
+		},
+		{
+			name: "src-wildcard-not-reached",
+			policy: `{
+				"tagOwners": { "tag:server": ["alice@headscale.net"] },
+				"acls": [{
+					"action": "accept",
+					"src": ["alice@headscale.net"],
+					"dst": ["tag:server:22"]
+				}],
+				"tests": [
+					{ "src": "*", "deny": ["tag:server:80"] },
+					{ "src": "100.64.0.0/30", "deny": ["tag:server:80"] },
+					{ "src": "autogroup:tagged", "deny": ["tag:server:80"] }
+				]
+			}`,
+			wantPass: false,
+			wantErrSub: []string{
+				`unknown user or host: "*"`,
+				`unknown user or host: "100.64.0.0/30"`,
+				`unknown user or host: "autogroup:tagged"`,
+			},
+			wantNoErrIs: errPolicyTestsFailed,
+		},
+		{
 			name: "deny-fail-policy-allows-traffic",
 			policy: `{
 				"tagOwners": { "tag:server": ["alice@headscale.net"] },
