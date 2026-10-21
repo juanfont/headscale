@@ -1264,6 +1264,20 @@ func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView,
 	// Setting OriginNode ensures the node gets a self-update with the new tags.
 	c.OriginNode = nodeID
 
+	// The new tags may approve announced routes, as on Tailscale SaaS. This
+	// runs after the policy refresh above, which teaches the policy manager
+	// the node's new owner.
+	routesChange, err := s.AutoApproveRoutes(nodeView)
+	c = c.Merge(routesChange)
+
+	if fresh, ok := s.nodeStore.GetNode(nodeID); ok {
+		nodeView = fresh
+	}
+
+	if err != nil {
+		return nodeView, c, fmt.Errorf("auto approving routes: %w", err)
+	}
+
 	return nodeView, c, nil
 }
 
