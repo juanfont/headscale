@@ -4,6 +4,7 @@ import (
 	"net/netip"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/puzpuzpuz/xsync/v4"
@@ -236,6 +237,25 @@ func TestPrimaries_AllUnhealthyPreservesPrevious(t *testing.T) {
 
 	f.unhealthy(2)
 	f.requirePrimary(prefix, 2)
+}
+
+func TestPrimaries_ExpiredRouterNotElected(t *testing.T) {
+	// Expiry alone takes a router out of the election, even while its
+	// cached online flag still says connected.
+	prefix := mp("10.0.0.0/24")
+	f := newPrimariesFixture(t, 1, 2)
+	f.advertise(1, prefix)
+	f.advertise(2, prefix)
+	f.requirePrimary(prefix, 1)
+	require.True(t, f.ns.IsRouterAvailable(1))
+
+	f.ns.UpdateNode(1, func(n *types.Node) {
+		n.Expiry = new(time.Now().Add(-time.Minute))
+	})
+
+	f.requirePrimary(prefix, 2)
+	require.False(t, f.ns.IsRouterAvailable(1))
+	require.True(t, f.ns.IsRouterAvailable(2))
 }
 
 func TestPrimaries_ExitRouteNotElected(t *testing.T) {

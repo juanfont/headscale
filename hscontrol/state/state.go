@@ -372,6 +372,7 @@ func NewState(cfg *types.Config) (*State, error) {
 	batchTimeout := cmp.Or(cfg.Tuning.NodeStoreBatchTimeout, defaultNodeStoreBatchTimeout)
 
 	nodeStore := NewNodeStore(nodes, policyPeersFunc(polMan), batchSize, batchTimeout)
+	polMan.SetRouterAvailable(nodeStore.IsRouterAvailable)
 	nodeStore.Start()
 
 	s := &State{
@@ -1692,7 +1693,7 @@ func (s *State) IsNodeHealthy(id types.NodeID) bool {
 }
 
 // SetNodeHealth flips the runtime health bit for one node and reports
-// whether the resulting primary-route assignment changed, so the HA
+// whether peers need to recompute global or via routes, so the HA
 // prober can decide whether to fan out a PolicyChange. true means
 // healthy; false means unhealthy. An unhealthy mark is dropped when
 // the node is no longer an HA candidate (offline or no approved
@@ -1708,7 +1709,7 @@ func (s *State) SetNodeHealth(id types.NodeID, healthy bool) bool {
 // BatchSetNodeHealth applies a set of health updates atomically: the
 // election runs once after every flag has been flipped, so observers
 // never see an intermediate snapshot. Returns true when the
-// primary-route assignment differs from before the batch so callers
+// global primary routes or a via target's health changed, so callers
 // can gate a single PolicyChange dispatch. Map value true = healthy;
 // false = unhealthy (gated as in [State.SetNodeHealth]).
 //
@@ -1744,7 +1745,18 @@ func (s *State) BatchSetNodeHealth(updates map[types.NodeID]bool) bool {
 
 	s.nodeStore.UpdateNodes(fns)
 
-	return !maps.Equal(prevRoutes, s.nodeStore.PrimaryRoutes())
+	if !maps.Equal(prevRoutes, s.nodeStore.PrimaryRoutes()) {
+		return true
+	}
+
+	for id := range fns {
+		nv, ok := s.nodeStore.GetNode(id)
+		if ok && nv.Unhealthy() == !updates[id] && s.polMan.NodeIsViaTarget(nv) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // healthSetter returns an UpdateNodeFunc that flips n.Unhealthy to

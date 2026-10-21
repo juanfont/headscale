@@ -206,14 +206,18 @@ type work struct {
 // updateChanges reports whether an in-place update moved a peer-visibility
 // input (which also re-elects routes) or only a route-election input.
 // Peer visibility depends on what the policy reads; election additionally
-// depends on online and health state, treating unknown online as offline.
+// depends on online, expiry and health state, treating unknown online as
+// offline. Fields are compared, not [servesRoutes]: an expiry that passed
+// before the write reads the same on both sides.
 func updateChanges(pre, post *types.Node) (bool, bool) {
 	preView, postView := pre.View(), post.View()
 	if postView.HasPolicyChange(preView) || postView.HasNetworkChanges(preView) {
 		return true, true
 	}
 
-	return false, pre.Online() != post.Online() || pre.Unhealthy != post.Unhealthy
+	return false, pre.Online() != post.Online() ||
+		!preView.Expiry().GetOr(time.Time{}).Equal(postView.Expiry().GetOr(time.Time{})) ||
+		pre.Unhealthy != post.Unhealthy
 }
 
 // PutNode adds or updates a node in the store.
@@ -778,9 +782,15 @@ func snapshotFromNodes(
 	return newSnap
 }
 
-// onlineAdvertisers maps each non-exit prefix to the IDs of online nodes
-// that approve it. Nodes are visited in the order of ids, so the per-prefix
-// slices preserve that order.
+// servesRoutes reports whether n can carry its routes. Expiry is tested
+// apart from Online because an expired node keeps its control session.
+func servesRoutes(n *types.Node) bool {
+	return n.Online() && !n.IsExpired()
+}
+
+// onlineAdvertisers maps each non-exit prefix to the IDs of online,
+// unexpired nodes that approve it. Nodes are visited in the order of ids, so
+// the per-prefix slices preserve that order.
 func onlineAdvertisers(
 	nodes map[types.NodeID]types.Node,
 	ids []types.NodeID,
@@ -789,7 +799,7 @@ func onlineAdvertisers(
 
 	for _, id := range ids {
 		n := nodes[id]
-		if n.IsOnline == nil || !*n.IsOnline {
+		if !servesRoutes(&n) {
 			continue
 		}
 
@@ -1083,6 +1093,14 @@ func (s *NodeStore) IsNodeHealthy(id types.NodeID) bool {
 	}
 
 	return !n.Unhealthy
+}
+
+// IsRouterAvailable reports whether id may win a primary election: online,
+// unexpired and healthy.
+func (s *NodeStore) IsRouterAvailable(id types.NodeID) bool {
+	n, ok := s.data.Load().nodesByID[id]
+
+	return ok && servesRoutes(&n) && !n.Unhealthy
 }
 
 // PrimaryRoutes returns the snapshot's prefix→primary map. The map is
