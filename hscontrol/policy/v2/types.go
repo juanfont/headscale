@@ -57,6 +57,7 @@ var (
 	ErrSSHActionMustBeSpecified           = errors.New("action must be specified")
 	ErrSSHActionInvalid                   = errors.New("is not a valid action")
 	ErrSSHDestinationHostAlias            = errors.New("invalid dst")
+	ErrSSHCheckTagSource                  = errors.New(`[ssh] "check" action does not support tags in src`)
 	ErrTagNameMustStartWithLetter         = errors.New("tag names must start with a letter, after 'tag:'")
 	ErrGroupMembersCannotBeRecursive      = errors.New("group members cannot be recursive")
 )
@@ -2590,6 +2591,17 @@ func (p *Policy) validate() error {
 					errs = append(errs, err)
 				}
 			}
+		}
+
+		// A check asks the source's user to log in again, and a tagged
+		// node has none; Tailscale SaaS refuses this too.
+		if ssh.Action == SSHActionCheck && slices.ContainsFunc(ssh.Sources, func(a Alias) bool {
+			_, isTag := a.(*Tag)
+			ag, _ := a.(*AutoGroup)
+
+			return isTag || ag.Is(AutoGroupTagged)
+		}) {
+			errs = append(errs, ErrSSHCheckTagSource)
 		}
 
 		for _, dst := range ssh.Destinations {
