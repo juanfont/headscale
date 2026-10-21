@@ -6033,6 +6033,42 @@ func TestUnmarshalPolicySSHTests(t *testing.T) {
 			},
 		},
 		{
+			name: "src-cidr",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "100.64.0.0/24", "dst": ["tag:server"], "deny": ["root"]}
+  ]
+}
+`,
+			wantErr: ErrSSHTestSrcDisallowedElement,
+		},
+		{
+			name: "src-hosts-cidr",
+			input: `
+{
+  "hosts": {"lan": "192.168.1.0/24"},
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "lan", "dst": ["tag:server"], "deny": ["root"]}
+  ]
+}
+`,
+			wantErr: ErrSSHTestSrcDisallowedElement,
+		},
+		{
+			name: "src-bare-ip-accepted",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "100.64.0.30", "dst": ["tag:server"], "accept": ["root"]}
+  ]
+}
+`,
+		},
+		{
 			name: "dst-autogroup-internet",
 			input: `
 {

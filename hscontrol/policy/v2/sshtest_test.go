@@ -749,31 +749,8 @@ func TestRunSSHTests(t *testing.T) {
 			wantErrSub: []string{"autogroup:self", "resolved to no nodes"},
 		},
 		{
-			// A src naming address space is evaluated through the node
-			// addresses inside it, never address by address: ::/0
-			// holds alice's IPv6, which the rule allows.
-			name: "src-cidr-deny-fails-on-covered-node",
-			policy: `{
-				"tagOwners": { "tag:server": ["alice@headscale.net"] },
-				"ssh": [{
-					"action": "accept",
-					"src":    ["alice@headscale.net"],
-					"dst":    ["tag:server"],
-					"users":  ["root"]
-				}],
-				"sshTests": [{
-					"src":  "::/0",
-					"dst":  ["tag:server"],
-					"deny": ["root"]
-				}]
-			}`,
-			wantPass:   false,
-			wantErrSub: []string{"::/0", "expected DENIED, got ALLOWED"},
-		},
-		{
 			name: "src-address-space-deny-pass",
 			policy: `{
-				"hosts":     { "lan": "10.0.0.0/8" },
 				"tagOwners": { "tag:server": ["alice@headscale.net"] },
 				"ssh": [{
 					"action": "accept",
@@ -784,8 +761,7 @@ func TestRunSSHTests(t *testing.T) {
 				"sshTests": [
 					{ "src": "*",                    "dst": ["tag:server"], "deny": ["ubuntu"] },
 					{ "src": "autogroup:danger-all", "dst": ["tag:server"], "deny": ["ubuntu"] },
-					{ "src": "autogroup:internet",   "dst": ["tag:server"], "deny": ["root"] },
-					{ "src": "lan",                  "dst": ["tag:server"], "deny": ["root"] }
+					{ "src": "autogroup:internet",   "dst": ["tag:server"], "deny": ["root"] }
 				]
 			}`,
 			wantPass: true,
@@ -810,25 +786,6 @@ func TestRunSSHTests(t *testing.T) {
 			}`,
 			wantPass:   false,
 			wantErrSub: []string{"expected ALLOWED, got DENIED"},
-		},
-		{
-			// 100.64.0.4/31 is exactly alice-tablet and thor-laptop.
-			name: "src-cidr-fully-assigned-accept-pass",
-			policy: `{
-				"tagOwners": { "tag:server": ["alice@headscale.net"] },
-				"ssh": [{
-					"action": "accept",
-					"src":    ["autogroup:member"],
-					"dst":    ["tag:server"],
-					"users":  ["root"]
-				}],
-				"sshTests": [{
-					"src":    "100.64.0.4/31",
-					"dst":    ["tag:server"],
-					"accept": ["root"]
-				}]
-			}`,
-			wantPass: true,
 		},
 	}
 
