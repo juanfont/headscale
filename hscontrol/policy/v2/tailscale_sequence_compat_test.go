@@ -34,13 +34,6 @@ import (
 // keyed <test_id>/<step>/<node>/<check>. A listed check that matches fails,
 // so a fix must delete its entry.
 var policySequenceSkipReasons = map[string]string{
-	"policy-generation/G0/srv/filter": aclDstDedupe,
-	"policy-generation/G1/srv/filter": aclDstDedupe,
-	"policy-generation/G2/srv/filter": aclDstDedupe,
-	"policy-generation/G3/srv/filter": aclDstDedupe,
-	"policy-generation/G4/srv/filter": aclDstDedupe,
-	"policy-generation/G5/srv/filter": aclDstDedupe,
-
 	"policy-generation/G0/rt/filter":   viaRuleMerged,
 	"policy-generation/G1/rt/filter":   viaRuleMerged,
 	"policy-generation/G2/rt/filter":   viaRuleMerged,
