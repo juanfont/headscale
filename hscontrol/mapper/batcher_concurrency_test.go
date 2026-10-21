@@ -59,6 +59,7 @@ func setupLightweightBatcher(t *testing.T, nodeCount, bufferSize int) *lightweig
 		mc := newMultiChannelNodeConn(id, nil) // nil mapper is fine for channel tests
 		ch := make(chan *tailcfg.MapResponse, bufferSize)
 		entry := &connectionEntry{
+			done:    make(chan struct{}),
 			id:      fmt.Sprintf("conn-%d", i),
 			c:       ch,
 			version: tailcfg.CapabilityVersion(100),
@@ -577,11 +578,9 @@ func TestProcessBatchedChanges_ConcurrentAdd_NoDataLoss(t *testing.T) {
 	wg.Go(func() {
 		for i := range iterations {
 			lb.b.addToBatch(change.Change{
-				Reason:     fmt.Sprintf("add-%d", i),
-				TargetNode: types.NodeID(1),
-				PeerPatches: []*tailcfg.PeerChange{
-					{NodeID: tailcfg.NodeID(i + 100)}, //nolint:gosec // test
-				},
+				Reason:      fmt.Sprintf("add-%d", i),
+				TargetNode:  types.NodeID(1),
+				PingRequest: &tailcfg.PingRequest{URL: fmt.Sprintf("https://ping/%d", i)},
 			})
 			addedCount.Add(1)
 		}
@@ -600,18 +599,27 @@ func TestProcessBatchedChanges_ConcurrentAdd_NoDataLoss(t *testing.T) {
 	// One final process to flush any remaining
 	lb.b.processBatchedChanges()
 
-	// Count the patches across all bundled work items in the channel. Each
-	// work item bundles a node's pending changes, coalescing peer deltas, so
-	// the patches, not the changes, are what must all arrive.
+	// Count the pings across all bundled work items in the channel: pending
+	// may fold or collapse state changes, but every ping must arrive.
 	queuedChanges := 0
 
 	workItems := len(lb.b.workCh)
 	for range workItems {
 		w := <-lb.b.workCh
-		queuedChanges += countPatches(w.changes)
+		for _, ch := range w.changes {
+			if ch.PingRequest != nil {
+				queuedChanges++
+			}
+		}
 	}
-	// Also count any still-pending
-	remaining := countPatches(getPendingForNode(lb.b, types.NodeID(1)))
+	// State can coalesce to a full update, but every ping must survive.
+	remaining := 0
+
+	for _, ch := range getPendingForNode(lb.b, types.NodeID(1)) {
+		if ch.PingRequest != nil {
+			remaining++
+		}
+	}
 
 	total := queuedChanges + remaining
 	added := int(addedCount.Load())
@@ -691,6 +699,7 @@ func TestWorkMu_PreventsInterTickRace(t *testing.T) {
 	mc := newMultiChannelNodeConn(1, nil)
 	ch := make(chan *tailcfg.MapResponse, 100)
 	entry := &connectionEntry{
+		done:    make(chan struct{}),
 		id:      "test",
 		c:       ch,
 		version: tailcfg.CapabilityVersion(100),
@@ -990,6 +999,7 @@ func TestBug3_CleanupOfflineNodes_TOCTOU(t *testing.T) {
 
 	newCh := make(chan *tailcfg.MapResponse, 10)
 	entry := &connectionEntry{
+		done:    make(chan struct{}),
 		id:      "reconnected",
 		c:       newCh,
 		version: tailcfg.CapabilityVersion(100),
@@ -1033,6 +1043,7 @@ func TestBug3_CleanupOfflineNodes_TOCTOU(t *testing.T) {
 			if mc, ok := lb.b.nodes.Load(targetNode); ok {
 				reconnCh := make(chan *tailcfg.MapResponse, 10)
 				reconnEntry := &connectionEntry{
+					done:    make(chan struct{}),
 					id:      "race-reconn",
 					c:       reconnCh,
 					version: tailcfg.CapabilityVersion(100),
@@ -1469,6 +1480,7 @@ func TestScale1000_MultiChannelBroadcast(t *testing.T) {
 			ch := make(chan *tailcfg.MapResponse, bufferSize)
 			nc.channels[j] = ch
 			entry := &connectionEntry{
+				done:    make(chan struct{}),
 				id:      fmt.Sprintf("conn-%d-%d", i, j),
 				c:       ch,
 				version: tailcfg.CapabilityVersion(100),
@@ -1564,6 +1576,7 @@ func TestScale1000_ConnectionChurn(t *testing.T) {
 				// Add new connection
 				newCh := make(chan *tailcfg.MapResponse, 20)
 				entry := &connectionEntry{
+					done:    make(chan struct{}),
 					id:      fmt.Sprintf("churn-%d-%d", i, cycle),
 					c:       newCh,
 					version: tailcfg.CapabilityVersion(100),
@@ -1649,6 +1662,7 @@ func TestScale1000_ConcurrentAddRemove(t *testing.T) {
 			// Add a new connection
 			ch := make(chan *tailcfg.MapResponse, 10)
 			entry := &connectionEntry{
+				done:    make(chan struct{}),
 				id:      fmt.Sprintf("concurrent-%d", i),
 				c:       ch,
 				version: tailcfg.CapabilityVersion(100),
@@ -1768,6 +1782,7 @@ func TestScale1000_BroadcastDuringNodeChurn(t *testing.T) {
 						mc := newMultiChannelNodeConn(id, nil)
 						ch := make(chan *tailcfg.MapResponse, 10)
 						entry := &connectionEntry{
+							done:    make(chan struct{}),
 							id:      fmt.Sprintf("rechurn-%d-%d", i, cycle),
 							c:       ch,
 							version: tailcfg.CapabilityVersion(100),
@@ -1843,6 +1858,7 @@ func TestScale1000_WorkChannelSaturation(t *testing.T) {
 		mc := newMultiChannelNodeConn(id, nil)
 		ch := make(chan *tailcfg.MapResponse, 1)
 		entry := &connectionEntry{
+			done:    make(chan struct{}),
 			id:      fmt.Sprintf("conn-%d", i),
 			c:       ch,
 			version: tailcfg.CapabilityVersion(100),

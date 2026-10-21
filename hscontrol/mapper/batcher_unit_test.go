@@ -1,8 +1,8 @@
 package mapper
 
-// Unit tests for batcher components that do NOT require database setup.
-// These tests exercise connectionEntry, multiChannelNodeConn, computePeerDiff,
-// updateSentPeers, generateMapResponse branching, and handleNodeChange in isolation.
+// Unit tests for batcher components: connectionEntry, multiChannelNodeConn,
+// computePeerDiff, updateSentPeers, generateMapResponse branching and
+// handleNodeChange.
 
 import (
 	"errors"
@@ -11,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -181,6 +182,7 @@ func expectNoReceive(t *testing.T, ch <-chan *tailcfg.MapResponse, timeout time.
 // makeConnectionEntry creates a connectionEntry with the given channel.
 func makeConnectionEntry(id string, ch chan<- *tailcfg.MapResponse) *connectionEntry {
 	entry := &connectionEntry{
+		done:    make(chan struct{}),
 		id:      id,
 		c:       ch,
 		version: tailcfg.CapabilityVersion(100),
@@ -199,6 +201,8 @@ func TestConnectionEntry_SendSuccess(t *testing.T) {
 	ch := make(chan *tailcfg.MapResponse, 1)
 	entry := makeConnectionEntry("test-conn", ch)
 	data := testMapResponse()
+	stalled := time.Now().Add(-connectionStallTimeout)
+	entry.blockedSince.Store(&stalled)
 
 	beforeSend := time.Now().Unix()
 	err := entry.send(data)
@@ -206,6 +210,8 @@ func TestConnectionEntry_SendSuccess(t *testing.T) {
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, entry.lastUsed.Load(), beforeSend,
 		"lastUsed should be updated after successful send")
+	require.ErrorIs(t, entry.send(data), errConnectionBackpressure,
+		"progress must reset the stall deadline before the next full queue")
 
 	// Verify data was actually sent
 	received := expectReceive(t, ch, "data should be on channel")
@@ -223,18 +229,21 @@ func TestConnectionEntry_SendNilData(t *testing.T) {
 }
 
 func TestConnectionEntry_SendTimeout(t *testing.T) {
-	// Unbuffered channel with no reader = always blocks
-	ch := make(chan *tailcfg.MapResponse)
-	entry := makeConnectionEntry("test-conn", ch)
-	data := testMapResponse()
+	// Fake time keeps the bound independent of scheduler load.
+	synctest.Test(t, func(t *testing.T) {
+		// Unbuffered channel with no reader = always blocks
+		ch := make(chan *tailcfg.MapResponse)
+		entry := makeConnectionEntry("test-conn", ch)
+		stalled := time.Now().Add(-connectionStallTimeout)
+		entry.blockedSince.Store(&stalled)
 
-	start := time.Now()
-	err := entry.send(data)
-	elapsed := time.Since(start)
+		start := time.Now()
+		err := entry.send(testMapResponse())
 
-	require.ErrorIs(t, err, ErrConnectionSendTimeout)
-	assert.GreaterOrEqual(t, elapsed, 40*time.Millisecond,
-		"should wait approximately 50ms before timeout")
+		require.ErrorIs(t, err, ErrConnectionSendTimeout)
+		assert.Less(t, time.Since(start), 100*time.Millisecond,
+			"stale detection must not block the worker")
+	})
 }
 
 func TestConnectionEntry_SendClosed(t *testing.T) {
@@ -264,6 +273,423 @@ func TestConnectionEntry_SendUpdatesLastUsed(t *testing.T) {
 
 	assert.Greater(t, entry.lastUsed.Load(), pastTime,
 		"lastUsed should be updated to current time after send")
+}
+
+func TestConnectionEntry_CloseInterruptsWait(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		mc := newMultiChannelNodeConn(1, nil)
+		entry := makeConnectionEntry("blocked", make(chan *tailcfg.MapResponse))
+		mc.addConnection(entry)
+
+		result := make(chan error, 1)
+		go func() { result <- entry.send(testMapResponse()) }()
+
+		synctest.Wait()
+		mc.close()
+		synctest.Wait()
+
+		select {
+		case err := <-result:
+			require.ErrorIs(t, err, errConnectionClosed)
+		default:
+			t.Fatal("closing a connection must interrupt its send wait")
+		}
+	})
+}
+
+func TestConnectionEntry_WaitsForDrainingConsumer(t *testing.T) {
+	// Fake time: the drain always lands inside the send window.
+	synctest.Test(t, func(t *testing.T) {
+		ch := make(chan *tailcfg.MapResponse, 1)
+		ch <- testMapResponse()
+
+		entry := makeConnectionEntry("draining", ch)
+		data := testMapResponse()
+
+		drained := make(chan struct{})
+		go func() {
+			defer close(drained)
+
+			<-time.After(10 * time.Millisecond)
+			<-ch
+		}()
+
+		err := entry.send(data)
+
+		// Join the drainer first: fake time stops once the test body returns.
+		<-drained
+		require.NoError(t, err, "space freed within the send window must not cost another batch tick")
+		require.Same(t, data, expectReceive(t, ch, "send must use the freed slot"))
+	})
+}
+
+func TestBatcherRetryUsesCurrentPolicyAfterReconnect(t *testing.T) {
+	testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 2, 1)
+	defer cleanup()
+
+	_, err := testData.State.SetPolicy([]byte(`{
+		"acls": [{"action":"accept","src":["*"],"dst":["*:*"]}],
+		"ssh": [{"action":"accept","src":["autogroup:member"],
+			"dst":["autogroup:self"],"users":["root"]}]
+	}`))
+	require.NoError(t, err)
+
+	b := NewBatcher(time.Hour, 1, testData.Batcher.mapper)
+
+	b.Start()
+	defer b.Close()
+
+	id := testData.Nodes[0].n.ID
+	slow := make(chan *tailcfg.MapResponse, 1)
+	require.NoError(t, b.AddNode(id, slow, tailcfg.CurrentCapabilityVersion, nil))
+	initial := expectReceive(t, slow, "permissive initial map")
+	require.NotEmpty(t, initial.PacketFilters["base"])
+	require.NotEmpty(t, initial.SSHPolicy.Rules)
+
+	slow <- testMapResponse()
+
+	nc, ok := b.nodes.Load(id)
+	require.True(t, ok)
+	b.AddWork(change.PolicyOnly())
+	b.processBatchedChanges()
+	require.Eventually(t, func() bool { return !nc.inFlight.Load() }, time.Second, time.Millisecond)
+
+	_, err = testData.State.SetPolicy([]byte(`{"acls":[],"ssh":[]}`))
+	require.NoError(t, err)
+
+	fresh := make(chan *tailcfg.MapResponse, 10)
+	require.NoError(t, b.AddNode(id, fresh, tailcfg.CurrentCapabilityVersion, nil))
+	restrictive := expectReceive(t, fresh, "restrictive initial map")
+	require.Empty(t, restrictive.PacketFilters["base"])
+	require.Empty(t, restrictive.SSHPolicy.Rules)
+	require.True(t, b.RemoveNode(id, slow))
+
+	b.processBatchedChanges()
+	require.Eventually(t, func() bool { return !nc.inFlight.Load() }, time.Second, time.Millisecond)
+	require.NotEmpty(t, fresh, "the blocked change must be retried")
+
+	for len(fresh) > 0 {
+		resp := <-fresh
+		require.Empty(t, resp.PacketFilters["base"], "retry must never restore revoked packet access")
+
+		if resp.SSHPolicy != nil {
+			require.Empty(t, resp.SSHPolicy.Rules, "retry must never restore revoked SSH access")
+		}
+	}
+
+	require.Zero(t, b.workErrors.Load())
+}
+
+func TestBatcherUnreadyRetryRegeneratesRemovals(t *testing.T) {
+	testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 2, 1)
+	defer cleanup()
+
+	b := NewBatcher(time.Hour, 1, testData.Batcher.mapper)
+
+	b.Start()
+	defer b.Close()
+
+	id := testData.Nodes[0].n.ID
+	nc := newMultiChannelNodeConn(id, b.mapper)
+	ch := make(chan *tailcfg.MapResponse, 10)
+	entry := makeConnectionEntry("initial-in-flight", ch)
+	entry.pendingInitial.Store(true)
+	nc.addConnection(entry)
+	b.nodes.Store(id, nc)
+
+	initial, err := b.MapResponseFromChange(id, change.FullSelf(id))
+	require.NoError(t, err)
+	require.Len(t, initial.Peers, 1)
+	peerID := initial.Peers[0].ID
+
+	_, err = testData.State.SetPolicy([]byte(`{"acls":[]}`))
+	require.NoError(t, err)
+	b.AddWork(change.FullUpdate())
+	b.processBatchedChanges()
+	require.Eventually(t, func() bool { return !nc.inFlight.Load() }, time.Second, time.Millisecond)
+	require.Empty(t, ch, "broadcast must wait for initial delivery")
+
+	// Finish the initial delivery after the worker saw empty sent-peer tracking.
+	nc.workMu.Lock()
+	ch <- initial
+
+	nc.updateSentPeers(initial)
+	entry.pendingInitial.Store(false)
+	nc.workMu.Unlock()
+	require.Same(t, initial, expectReceive(t, ch, "initial delivery"))
+	b.processBatchedChanges()
+	require.Eventually(t, func() bool { return !nc.inFlight.Load() }, time.Second, time.Millisecond)
+	require.Equal(t, []tailcfg.NodeID{peerID}, expectReceive(t, ch, "regenerated removal").PeersRemoved)
+	require.Zero(t, b.workErrors.Load())
+}
+
+func TestPendingBacklogCollapsesToCurrentState(t *testing.T) {
+	testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 1, 1)
+	defer cleanup()
+
+	b := NewBatcher(time.Hour, 1, testData.Batcher.mapper)
+
+	b.Start()
+	defer b.Close()
+
+	id := testData.Nodes[0].n.ID
+	nc := newMultiChannelNodeConn(id, b.mapper)
+	ch := make(chan *tailcfg.MapResponse, 10)
+	nc.addConnection(makeConnectionEntry("slow", ch))
+	nc.lastSentPeers.Store(999, struct{}{})
+	b.nodes.Store(id, nc)
+
+	for i := range 3 {
+		nc.appendPending(change.PingNode(id, &tailcfg.PingRequest{URL: fmt.Sprintf("https://ping/%d", i)}))
+	}
+
+	for range 2000 {
+		nc.appendPending(change.NodeOnline(id))
+	}
+
+	pending := nc.drainPending()
+	require.LessOrEqual(t, len(pending), 256, "state backlog must collapse while preserving pings")
+
+	// A retry must also collapse against a newer full update and keep older pings first.
+	nc.collapsePendingToFull([]change.Change{change.PingNode(id, &tailcfg.PingRequest{URL: "https://new"})})
+	nc.prependPending(pending...)
+	pending = nc.drainPending()
+	require.Len(t, pending, 5)
+	require.True(t, pending[0].IsFull())
+	nc.prependPending(pending...)
+	b.processBatchedChanges()
+	require.Eventually(t, func() bool { return !nc.inFlight.Load() }, time.Second, time.Millisecond)
+	require.Equal(t, []tailcfg.NodeID{999}, expectReceive(t, ch, "full must retain needed removals").PeersRemoved)
+	require.NotNil(t, expectReceive(t, ch, "collapsed state must be a full map").Node)
+
+	for _, url := range []string{"https://ping/0", "https://ping/1", "https://ping/2", "https://new"} {
+		require.Equal(t, url, expectReceive(t, ch, "pings must survive in order").PingRequest.URL)
+	}
+
+	require.Empty(t, ch)
+	require.Zero(t, b.workErrors.Load())
+}
+
+func TestBatcherSlowConsumerRetriesInOrder(t *testing.T) {
+	testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 2, 1)
+	defer cleanup()
+
+	b := NewBatcher(time.Hour, 1, testData.Batcher.mapper)
+
+	b.Start()
+	defer b.Close()
+
+	id := testData.Nodes[0].n.ID
+	nc := newMultiChannelNodeConn(id, b.mapper)
+
+	slow := make(chan *tailcfg.MapResponse, 1)
+	slow <- testMapResponse()
+
+	fast := make(chan *tailcfg.MapResponse, 100)
+
+	nc.addConnection(makeConnectionEntry("fast", fast))
+	nc.addConnection(makeConnectionEntry("slow", slow))
+	nc.lastSentPeers.Store(999, struct{}{})
+	b.nodes.Store(id, nc)
+
+	otherID := testData.Nodes[1].n.ID
+	other := newMultiChannelNodeConn(otherID, b.mapper)
+	otherCh := make(chan *tailcfg.MapResponse, 1)
+	other.addConnection(makeConnectionEntry("other", otherCh))
+	b.nodes.Store(otherID, other)
+
+	removal := change.PeersRemoved(999)
+	removal.TargetNode = id
+	b.AddWork(removal)
+
+	for i := range 8 {
+		b.AddWork(change.PingNode(id, &tailcfg.PingRequest{URL: fmt.Sprintf("https://ping/%d", i)}))
+	}
+
+	b.AddWork(change.PingNode(otherID, &tailcfg.PingRequest{URL: "https://other"}))
+	b.processBatchedChanges()
+
+	// Requeuing at the first blocked change costs one send window; waiting on
+	// each of the nine changes would take nine.
+	require.Eventually(t, func() bool { return !nc.inFlight.Load() && !other.inFlight.Load() },
+		250*time.Millisecond, time.Millisecond)
+	require.Equal(t, 2, nc.getActiveConnectionCount(), "a full queue is not a dead session")
+	_, tracked := nc.lastSentPeers.Load(999)
+	require.True(t, tracked, "partial delivery must not commit shared peer tracking")
+	require.Equal(t, "https://other", expectReceive(t, otherCh, "other node must progress").PingRequest.URL)
+	<-slow
+
+	for i := range 9 {
+		// Drain slower than the old send timeout, including between retries.
+		<-time.After(70 * time.Millisecond)
+		b.processBatchedChanges()
+		require.Eventually(t, func() bool { return !nc.inFlight.Load() }, time.Second, time.Millisecond)
+		require.Equal(t, 2, nc.getActiveConnectionCount())
+
+		resp := expectReceive(t, slow, "every queued change must reach the slow session")
+		if i == 0 {
+			require.Equal(t, []tailcfg.NodeID{999}, resp.PeersRemoved)
+		} else {
+			require.NotNil(t, resp.PingRequest)
+			require.Equal(t, fmt.Sprintf("https://ping/%d", i-1), resp.PingRequest.URL)
+		}
+	}
+
+	_, tracked = nc.lastSentPeers.Load(999)
+	require.False(t, tracked, "delivered removal must update peer tracking")
+	require.Empty(t, nc.drainPending())
+	require.Zero(t, b.workErrors.Load())
+}
+
+func TestBatcherStalledConsumerEvicted(t *testing.T) {
+	testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 1, 1)
+	defer cleanup()
+
+	b := NewBatcher(5*time.Millisecond, 1, testData.Batcher.mapper)
+	id := testData.Nodes[0].n.ID
+	nc := newMultiChannelNodeConn(id, b.mapper)
+
+	ch := make(chan *tailcfg.MapResponse, 1)
+	ch <- testMapResponse()
+
+	stopped := make(chan struct{})
+	entry := makeConnectionEntry("stalled", ch)
+	entry.stop = func() { close(stopped) }
+	nc.addConnection(entry)
+	b.nodes.Store(id, nc)
+
+	b.Start()
+	defer b.Close()
+
+	b.AddWork(change.PingNode(id, &tailcfg.PingRequest{URL: "https://ping"}))
+
+	select {
+	case <-stopped:
+		t.Fatal("transient backpressure evicted the session")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	select {
+	case <-stopped:
+	case <-time.After(6 * time.Second):
+		t.Fatal("a session that never drains must be stopped")
+	}
+
+	require.Eventually(t, func() bool { return nc.getActiveConnectionCount() == 0 }, time.Second, time.Millisecond)
+}
+
+func TestBatcherCloseWithBlockedConsumers(t *testing.T) {
+	testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 1, 1)
+	defer cleanup()
+
+	b := NewBatcher(time.Hour, 1, testData.Batcher.mapper)
+
+	b.Start()
+	defer b.Close()
+
+	id := testData.Nodes[0].n.ID
+
+	var stopped atomic.Int64
+
+	for range 20 {
+		ch := make(chan *tailcfg.MapResponse, 1)
+		require.NoError(t, b.AddNode(id, ch, tailcfg.CurrentCapabilityVersion, func() { stopped.Add(1) }))
+	}
+
+	nc, ok := b.nodes.Load(id)
+	require.True(t, ok)
+
+	first := nc.connections[0]
+
+	b.AddWork(change.PingNode(id, &tailcfg.PingRequest{URL: "https://ping"}))
+	b.processBatchedChanges()
+	require.Eventually(t, func() bool { return first.blockedSince.Load() != nil && nc.inFlight.Load() },
+		time.Second, time.Millisecond)
+
+	done := make(chan struct{})
+
+	go func() {
+		b.Close()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("blocked consumers held up batcher shutdown")
+	}
+
+	require.Equal(t, int64(20), stopped.Load())
+}
+
+func TestBatcherAlternatingDrainsRevokePolicy(t *testing.T) {
+	testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 1, 1)
+	defer cleanup()
+
+	b := NewBatcher(time.Hour, 1, testData.Batcher.mapper)
+
+	b.Start()
+	defer b.Close()
+
+	id := testData.Nodes[0].n.ID
+
+	channels := []chan *tailcfg.MapResponse{
+		make(chan *tailcfg.MapResponse, 1),
+		make(chan *tailcfg.MapResponse, 1),
+	}
+	for _, ch := range channels {
+		require.NoError(t, b.AddNode(id, ch, tailcfg.CurrentCapabilityVersion, nil))
+		require.NotEmpty(t, expectReceive(t, ch, "permissive initial map").PacketFilters["base"])
+
+		ch <- testMapResponse()
+	}
+
+	nc, ok := b.nodes.Load(id)
+	require.True(t, ok)
+
+	older := nc.connections[0]
+	_, err := testData.State.SetPolicy([]byte(`{"acls":[]}`))
+	require.NoError(t, err)
+	b.AddWork(change.PingNode(id, &tailcfg.PingRequest{URL: "https://ping"}), change.PolicyOnly())
+
+	revoked := [2]bool{}
+
+	for tick := range 8 {
+		side := tick % 2
+		select {
+		case resp := <-channels[side]:
+			if resp.PacketFilters != nil {
+				require.Empty(t, resp.PacketFilters["base"], "revocation must deny access")
+
+				revoked[side] = true
+			}
+		default:
+		}
+
+		b.processBatchedChanges()
+		require.Eventually(t, func() bool { return !nc.inFlight.Load() }, time.Second, time.Millisecond)
+
+		if (revoked[0] || older.closed.Load()) && revoked[1] {
+			break
+		}
+	}
+
+	require.True(t, revoked[0] || older.closed.Load(), "older stream must be revoked or evicted")
+	require.True(t, revoked[1], "alternating progress must not strand revocation behind the ping")
+	require.Zero(t, b.workErrors.Load())
+}
+
+func TestPendingFullAbsorbsRetriedPingPrefix(t *testing.T) {
+	nc := newMultiChannelNodeConn(1, nil)
+	nc.collapsePendingToFull([]change.Change{change.PingNode(1, &tailcfg.PingRequest{URL: "https://new"})})
+	nc.prependPending(change.PingNode(1, &tailcfg.PingRequest{URL: "https://old"}))
+	nc.appendPending(change.NodeOnline(2))
+
+	pending := nc.drainPending()
+	require.Len(t, pending, 3)
+	require.True(t, pending[0].IsFull(), "a newer full must absorb older retried state")
+	require.Equal(t, "https://old", pending[1].PingRequest.URL)
+	require.Equal(t, "https://new", pending[2].PingRequest.URL)
 }
 
 // ============================================================================
@@ -304,7 +730,10 @@ func TestMultiChannelSend_PartialFailure(t *testing.T) {
 	badCh := make(chan *tailcfg.MapResponse) // unbuffered, no reader
 
 	mc.addConnection(makeConnectionEntry("good-1", goodCh1))
-	mc.addConnection(makeConnectionEntry("bad", badCh))
+	bad := makeConnectionEntry("bad", badCh)
+	stalled := time.Now().Add(-connectionStallTimeout)
+	bad.blockedSince.Store(&stalled)
+	mc.addConnection(bad)
 	mc.addConnection(makeConnectionEntry("good-2", goodCh2))
 
 	err := mc.send(testMapResponse())
@@ -324,7 +753,10 @@ func TestMultiChannelSend_AllFail(t *testing.T) {
 	// All unbuffered channels with no readers
 	for i := range 3 {
 		ch := make(chan *tailcfg.MapResponse) // unbuffered
-		mc.addConnection(makeConnectionEntry(fmt.Sprintf("bad-%d", i), ch))
+		entry := makeConnectionEntry(fmt.Sprintf("bad-%d", i), ch)
+		stalled := time.Now().Add(-connectionStallTimeout)
+		entry.blockedSince.Store(&stalled)
+		mc.addConnection(entry)
 	}
 
 	err := mc.send(testMapResponse())
@@ -362,7 +794,10 @@ func TestMultiChannelSend_FailedConnectionRemoved(t *testing.T) {
 	badCh := make(chan *tailcfg.MapResponse)      // unbuffered, will timeout
 
 	mc.addConnection(makeConnectionEntry("good", goodCh))
-	mc.addConnection(makeConnectionEntry("bad", badCh))
+	bad := makeConnectionEntry("bad", badCh)
+	stalled := time.Now().Add(-connectionStallTimeout)
+	bad.blockedSince.Store(&stalled)
+	mc.addConnection(bad)
 
 	assert.Equal(t, 2, mc.getActiveConnectionCount())
 
@@ -1053,7 +1488,7 @@ func TestBatcher_CloseThenStartIsNoop(t *testing.T) {
 	b.Start()
 
 	// Allow a moment for any hypothetical goroutine to appear.
-	time.Sleep(10 * time.Millisecond) //nolint:forbidigo // test timing
+	<-time.After(10 * time.Millisecond) //nolint:forbidigo // test timing
 
 	goroutinesAfter := runtime.NumGoroutine()
 
@@ -1170,7 +1605,7 @@ func TestRemoveConnectionAtIndex_NilsTrailingSlot(t *testing.T) {
 	// Manually add three entries under the lock.
 	entries := make([]*connectionEntry, 3)
 	for i := range entries {
-		entries[i] = &connectionEntry{id: fmt.Sprintf("conn-%d", i), c: make(chan<- *tailcfg.MapResponse)}
+		entries[i] = &connectionEntry{done: make(chan struct{}), id: fmt.Sprintf("conn-%d", i), c: make(chan<- *tailcfg.MapResponse)}
 	}
 
 	mc.mutex.Lock()
@@ -1276,6 +1711,50 @@ func TestMultiChannelSend_SSHPolicyPerConnection(t *testing.T) {
 
 	assert.Nil(t, expectReceive(t, chA, "a").SSHPolicy, "a already holds this policy")
 	assert.Same(t, data.SSHPolicy, expectReceive(t, chB, "b").SSHPolicy, "b holds an older policy")
+}
+
+func TestPartialPeerAdditionThenRevocation(t *testing.T) {
+	td, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 1, 2, 1)
+	defer cleanup()
+
+	_, err := td.State.SetPolicy([]byte(`{"acls":[]}`))
+	require.NoError(t, err)
+
+	b := NewBatcher(time.Hour, 1, td.Batcher.mapper)
+
+	b.Start()
+	defer b.Close()
+
+	id := td.Nodes[0].n.ID
+	fast := make(chan *tailcfg.MapResponse, 10)
+	slow := make(chan *tailcfg.MapResponse, 1)
+
+	require.NoError(t, b.AddNode(id, fast, tailcfg.CurrentCapabilityVersion, nil))
+	require.NoError(t, b.AddNode(id, slow, tailcfg.CurrentCapabilityVersion, nil))
+	require.Empty(t, (<-fast).Peers)
+	require.Empty(t, (<-slow).Peers)
+
+	slow <- testMapResponse()
+
+	nc, _ := b.nodes.Load(id)
+	_, err = td.State.SetPolicy([]byte(`{"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`))
+	require.NoError(t, err)
+	b.AddWork(change.PolicyChange())
+	b.processBatchedChanges()
+	require.Eventually(t, func() bool { return !nc.inFlight.Load() }, time.Second, time.Millisecond)
+	accepted := expectReceive(t, fast, "partial addition")
+	require.Len(t, accepted.PeersChanged, 1)
+	peer := accepted.PeersChanged[0].ID
+	_, committed := nc.lastSentPeers.Load(peer)
+	require.False(t, committed, "backpressure must not advance confirmed peer tracking")
+
+	_, err = td.State.SetPolicy([]byte(`{"acls":[]}`))
+	require.NoError(t, err)
+	<-slow
+	b.AddWork(change.FullUpdate())
+	b.processBatchedChanges()
+	require.Eventually(t, func() bool { return !nc.inFlight.Load() }, time.Second, time.Millisecond)
+	require.Equal(t, []tailcfg.NodeID{peer}, expectReceive(t, fast, "revocation must remove partially delivered peer").PeersRemoved)
 }
 
 func TestEmptyMapResponse(t *testing.T) {

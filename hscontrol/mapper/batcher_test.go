@@ -1177,8 +1177,8 @@ func TestBatcherCoalescesPolicyRecomputesPerTick(t *testing.T) {
 
 // TestBatcherCoalescesPeerDeltasPerTick lands a join storm, every other node
 // added and coming online, in one tick. Rendered one frame per change, a
-// storm outgrows the session channel within a single tick and the batcher
-// drops the connection as stale; the run must reach the node as one frame.
+// storm outgrows the session channel within a single tick and the rest backs
+// off to later ticks; the run must reach the node as one frame.
 func TestBatcherCoalescesPeerDeltasPerTick(t *testing.T) {
 	for _, bf := range allBatcherFunctions {
 		t.Run(bf.name, func(t *testing.T) {
