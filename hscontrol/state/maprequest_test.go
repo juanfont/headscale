@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/netip"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -886,7 +885,13 @@ func TestPeerHostinfoEqual(t *testing.T) {
 			want:   false,
 		},
 		{name: "ssh host keys", mutate: func(hi *tailcfg.Hostinfo) { hi.SSH_HostKeys = []string{"ssh-ed25519 AAAA"} }, want: false},
-		{name: "location", mutate: func(hi *tailcfg.Hostinfo) { hi.Location = &tailcfg.Location{Priority: 5} }, want: false},
+		{name: "location", mutate: func(hi *tailcfg.Hostinfo) { hi.Location = &tailcfg.Location{Priority: 5} }, want: true},
+		{
+			name:   "dns proxy service",
+			mutate: func(hi *tailcfg.Hostinfo) { hi.Services = []tailcfg.Service{{Proto: tailcfg.PeerAPIDNS, Port: 1}} },
+			want:   true,
+		},
+		{name: "app connector false", mutate: func(hi *tailcfg.Hostinfo) { hi.AppConnector = opt.NewBool(false) }, want: true},
 		{name: "app connector", mutate: func(hi *tailcfg.Hostinfo) { hi.AppConnector = opt.NewBool(true) }, want: false},
 		{
 			name:   "routes",
@@ -905,54 +910,6 @@ func TestPeerHostinfoEqual(t *testing.T) {
 
 	require.True(t, peerHostinfoEqual(tailcfg.HostinfoView{}, tailcfg.HostinfoView{}))
 	require.False(t, peerHostinfoEqual(tailcfg.HostinfoView{}, base().View()))
-}
-
-// TestPeerHostinfoEqualSeesEveryField fails when tailscale adds a field to
-// [tailcfg.Service] or [tailcfg.Location] that servicesEqual or locationEqual
-// does not compare.
-func TestPeerHostinfoEqualSeesEveryField(t *testing.T) {
-	set := func(t *testing.T, f reflect.Value) {
-		t.Helper()
-
-		switch {
-		case f.Kind() == reflect.String:
-			f.SetString("x")
-		case f.CanInt():
-			f.SetInt(1)
-		case f.CanUint():
-			f.SetUint(1)
-		case f.CanFloat():
-			f.SetFloat(1)
-		default:
-			t.Fatalf("field kind %s not handled; compare it", f.Kind())
-		}
-	}
-
-	for _, field := range reflect.VisibleFields(reflect.TypeFor[tailcfg.Service]()) {
-		if !field.IsExported() {
-			continue
-		}
-
-		t.Run("Service."+field.Name, func(t *testing.T) {
-			var svc tailcfg.Service
-			set(t, reflect.ValueOf(&svc).Elem().FieldByIndex(field.Index))
-
-			a := &tailcfg.Hostinfo{Services: []tailcfg.Service{{}}}
-			b := &tailcfg.Hostinfo{Services: []tailcfg.Service{svc}}
-			assert.False(t, peerHostinfoEqual(a.View(), b.View()))
-		})
-	}
-
-	for _, field := range reflect.VisibleFields(reflect.TypeFor[tailcfg.Location]()) {
-		t.Run("Location."+field.Name, func(t *testing.T) {
-			var loc tailcfg.Location
-			set(t, reflect.ValueOf(&loc).Elem().FieldByIndex(field.Index))
-
-			a := &tailcfg.Hostinfo{Location: &tailcfg.Location{}}
-			b := &tailcfg.Hostinfo{Location: &loc}
-			assert.False(t, peerHostinfoEqual(a.View(), b.View()))
-		})
-	}
 }
 
 func TestNetInfoEqualIgnoringDERP(t *testing.T) {

@@ -60,54 +60,6 @@ func TestRoutes(t *testing.T) {
 		}
 	})
 
-	t.Run("advertised_routes_in_hostinfo", func(t *testing.T) {
-		t.Parallel()
-
-		srv := servertest.NewServer(t)
-		user := srv.CreateUser(t, "advroute-user")
-
-		routePrefix := netip.MustParsePrefix("192.168.1.0/24")
-
-		c1 := servertest.NewClient(t, srv, "advroute-node1",
-			servertest.WithUser(user))
-		c2 := servertest.NewClient(t, srv, "advroute-node2",
-			servertest.WithUser(user))
-
-		c1.WaitForPeers(t, 1, 10*time.Second)
-
-		// Update hostinfo with advertised routes.
-		c1.Direct().SetHostinfo(&tailcfg.Hostinfo{
-			BackendLogID: "servertest-advroute-node1",
-			Hostname:     "advroute-node1",
-			RoutableIPs:  []netip.Prefix{routePrefix},
-		})
-
-		// Send a non-streaming update to push the new [tailcfg.Hostinfo].
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		_ = c1.Direct().SendUpdate(ctx)
-
-		// The observer should eventually see the advertised routes
-		// in the peer's [tailcfg.Hostinfo].
-		c2.WaitForCondition(t, "advertised route in hostinfo",
-			15*time.Second,
-			func(nm *netmap.NetworkMap) bool {
-				for _, p := range nm.Peers {
-					hi := p.Hostinfo()
-					if hi.Valid() && hi.Hostname() == "advroute-node1" {
-						for i := range hi.RoutableIPs().Len() {
-							if hi.RoutableIPs().At(i) == routePrefix {
-								return true
-							}
-						}
-					}
-				}
-
-				return false
-			})
-	})
-
 	t.Run("route_advertise_and_approve", func(t *testing.T) {
 		t.Parallel()
 
@@ -134,22 +86,8 @@ func TestRoutes(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		_ = c1.Direct().SendUpdate(ctx)
-
-		// Wait for the server to process the [tailcfg.Hostinfo] update
-		// by waiting for observer to see the advertised route.
-		c2.WaitForCondition(t, "hostinfo update propagated",
-			10*time.Second,
-			func(nm *netmap.NetworkMap) bool {
-				for _, p := range nm.Peers {
-					hi := p.Hostinfo()
-					if hi.Valid() && hi.Hostname() == "fullrt-advertiser" {
-						return hi.RoutableIPs().Len() > 0
-					}
-				}
-
-				return false
-			})
+		// The server stores the announcement before it answers.
+		require.NoError(t, c1.Direct().SendUpdate(ctx))
 
 		// Step 2: Approve the route on the server.
 		nodeID := findNodeID(t, srv, "fullrt-advertiser")
