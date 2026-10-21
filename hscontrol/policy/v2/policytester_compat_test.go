@@ -38,27 +38,17 @@ import (
 // knownPolicyTesterDivergences lists checks where headscale's evaluator
 // differs from Tailscale SaaS, keyed <test_id>/<check>.
 var knownPolicyTesterDivergences = map[string]string{ //nolint:gosec // strings here are human-readable notes, not credentials
-	"policytest-accept-fail-autogroup-tagged-src-tag-dst/breakdown": "TEST_SRC_SHAPE: SaaS refuses autogroup:tagged as a tests source as an unknown user or host; headscale evaluates it",
-
 	"policytest-accept-fail-proto-icmp-not-allowed/breakdown": testEntryErrors,
 	"policytest-proto-icmp/breakdown":                         testEntryErrors,
 
 	"policytest-dst-unknown-group/breakdown":      testUnknownAlias,
 	"policytest-src-unknown-group/breakdown":      testUnknownAlias,
 	"policytest-src-unknown-user-email/breakdown": testUnknownAlias,
-
-	"policytest-src-cidr-accept/verdict":       testSrcShape,
-	"policytest-src-cidr-deny/breakdown":       testSrcShape,
-	"policytest-src-wildcard-accept/breakdown": testSrcShape,
-	"policytest-src-wildcard-deny/verdict":     testSrcShape,
-
-	"policytest-dst-multinode-partial-accept/verdict": "TEST_DST_EVERY_NODE: SaaS accepts only when every node of the dst alias is reached; headscale when one is",
 }
 
 const (
 	testEntryErrors  = "TEST_ENTRY_ERRORS: SaaS reports the first shape error of a tests entry, headscale every one"
 	testUnknownAlias = "TEST_UNKNOWN_ALIAS: SaaS reports a test naming an unknown user or group as not reached, headscale as an evaluation error"
-	testSrcShape     = "TEST_SRC_SHAPE: SaaS refuses a CIDR or \"*\" as a tests source as an unknown user or host; headscale evaluates it"
 )
 
 // TestPolicyTesterCompat replays every capture under

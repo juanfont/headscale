@@ -10,6 +10,7 @@ import (
 	"github.com/go-json-experiment/json"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"go4.org/netipx"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/views"
 )
@@ -32,6 +33,7 @@ var (
 	errPolicyTestsFailed    = errors.New("test(s) failed")
 	errSSHPolicyTestsFailed = errors.New("test(s) failed")
 	errTestDestinationNoIP  = errors.New("destination resolved to no IP addresses")
+	errTestSourceUnknown    = errors.New("unknown user or host")
 )
 
 // PolicyTest is one entry in the policy's `tests` block.
@@ -352,7 +354,7 @@ func runPolicyTest(test PolicyTest, pol *Policy, filter []tailcfg.FilterRule, us
 
 	check := func(dsts []string, wantAllowed bool, ok, fail *[]string) {
 		for _, dst := range dsts {
-			allowed, err := evalReachability(srcPrefixes, dst, test.Proto, pol, filter, users, nodes)
+			allowed, err := evalReachability(srcPrefixes, dst, test.Proto, pol, filter, users, nodes, wantAllowed)
 			if err != nil {
 				res.Passed = false
 				res.Errors = append(res.Errors, fmt.Sprintf("error testing %q: %v", dst, err))
@@ -385,6 +387,21 @@ func resolveTestSource(src string, pol *Policy, users []types.User, nodes views.
 		return nil, fmt.Errorf("invalid alias: %w", err)
 	}
 
+	// Tailscale SaaS finds no user or host behind these, so a test from
+	// them fails, whether it accepts or denies.
+	unknown := isAddressRange(pol, alias)
+
+	switch a := alias.(type) {
+	case Asterix:
+		unknown = true
+	case *AutoGroup:
+		unknown = a.Is(AutoGroupTagged)
+	}
+
+	if unknown {
+		return nil, fmt.Errorf("%w: %q", errTestSourceUnknown, src)
+	}
+
 	// Rules tolerate unregistered users; a test naming one must still
 	// fail (SaaS: policytest-src-unknown-user-email).
 	if u, ok := alias.(*Username); ok {
@@ -406,13 +423,25 @@ func resolveTestSource(src string, pol *Policy, users []types.User, nodes views.
 	return addrs.Prefixes(), nil
 }
 
-// evalReachability reports whether traffic from any srcPrefix to dst (in
-// `host:port` form) is allowed by filter for the requested protocol.
+// evalReachability reports whether traffic from every srcPrefix to dst (in
+// `host:port` form) is allowed by filter for the requested protocol. With
+// everyNode, as an accept asks, each node behind dst must be reached, as on
+// Tailscale SaaS; otherwise any address of dst will do, so a deny passes only
+// when none is reached.
 //
 // Empty proto means the default set the client applies when proto is
 // omitted (TCP/UDP/ICMP) — we accept a rule whose IPProto list contains
 // any of those, or rules with no IPProto restriction at all.
-func evalReachability(srcPrefixes []netip.Prefix, dst string, proto Protocol, pol *Policy, filter []tailcfg.FilterRule, users []types.User, nodes views.Slice[types.NodeView]) (bool, error) {
+func evalReachability(
+	srcPrefixes []netip.Prefix,
+	dst string,
+	proto Protocol,
+	pol *Policy,
+	filter []tailcfg.FilterRule,
+	users []types.User,
+	nodes views.Slice[types.NodeView],
+	everyNode bool,
+) (bool, error) {
 	awp, err := parseDestinationAlias(dst)
 	if err != nil {
 		return false, fmt.Errorf("invalid destination %q: %w", dst, err)
@@ -427,17 +456,58 @@ func evalReachability(srcPrefixes []netip.Prefix, dst string, proto Protocol, po
 		return false, fmt.Errorf("%w: %q", errTestDestinationNoIP, dst)
 	}
 
-	dstPrefixes := dstAddrs.Prefixes()
+	targets := [][]netip.Prefix{dstAddrs.Prefixes()}
+	if everyNode {
+		targets = nodeTargets(dstAddrs, nodes)
+	}
 
 	// Tailscale's tests semantics: ALL src prefixes must reach the dst for
 	// the test to consider it allowed. A partial allow is a fail.
 	for _, src := range srcPrefixes {
-		if !srcReachesDst(src, dstPrefixes, awp.Ports, proto, filter) {
-			return false, nil
+		for _, target := range targets {
+			if !srcReachesDst(src, target, awp.Ports, proto, filter) {
+				return false, nil
+			}
 		}
 	}
 
 	return true, nil
+}
+
+// nodeTargets splits dst into the addresses of each node it holds and,
+// when any is left, the addresses no node holds.
+func nodeTargets(dst ResolvedAddresses, nodes views.Slice[types.NodeView]) [][]netip.Prefix {
+	var (
+		out  [][]netip.Prefix
+		rest netipx.IPSetBuilder
+	)
+
+	for _, p := range dst.Prefixes() {
+		rest.AddPrefix(p)
+	}
+
+	for _, n := range nodes.All() {
+		var own []netip.Prefix
+
+		for _, ip := range n.IPs() {
+			if dst.Contains(ip) {
+				own = append(own, netip.PrefixFrom(ip, ip.BitLen()))
+				rest.Remove(ip)
+			}
+		}
+
+		if len(own) > 0 {
+			out = append(out, own)
+		}
+	}
+
+	// The builder only holds valid prefixes, so it cannot fail.
+	set, _ := rest.IPSet()
+	if left := set.Prefixes(); len(left) > 0 {
+		out = append(out, left)
+	}
+
+	return out
 }
 
 // parseDestinationAlias is a thin wrapper over [AliasWithPorts.UnmarshalJSON]
