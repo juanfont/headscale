@@ -2,6 +2,7 @@ package state
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -59,6 +60,27 @@ func TestPutNodeGivenNameCollisionBumps(t *testing.T) {
 	require.Equal(t, "laptop", got1.GivenName(), "first registration keeps base label")
 	require.Equal(t, "laptop-1", got2.GivenName(), "second registration bumps to -1")
 	require.Equal(t, "laptop-2", got3.GivenName(), "third registration bumps to -2")
+}
+
+func TestPutNodeBumpCutsLabelToFitSuffix(t *testing.T) {
+	store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+
+	store.Start()
+	defer store.Stop()
+
+	long := strings.Repeat("a", 63)
+
+	got := make([]string, 0, 12)
+	for id := range types.NodeID(12) {
+		got = append(got, store.PutNode(createTestNode(id+1, 1, "alice", long)).GivenName())
+	}
+
+	require.Equal(t, long, got[0])
+	require.Equal(t, long[:61]+"-1", got[1])
+	require.Equal(t, long[:60]+"-10", got[10])
+	require.Equal(t, long[:60]+"-11", got[11])
+	require.True(t, isAutoDerivedGivenName(got[10], long),
+		"a cut label still follows its hostname")
 }
 
 // TestPutNodeEmptyGivenNameFallsBackToNode covers the SaaS rule that
