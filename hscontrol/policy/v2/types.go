@@ -38,7 +38,7 @@ const Wildcard = Asterix(0)
 
 var ErrAutogroupSelfRequiresPerNodeResolution = errors.New("autogroup:self requires per-node resolution and cannot be resolved in this context")
 
-var ErrUndefinedTagReference = errors.New("references undefined tag")
+var ErrUndefinedTagReference = errors.New("does not exist")
 
 // SSH validation errors.
 var (
@@ -2782,7 +2782,7 @@ func (p *Policy) validate() error {
 		}
 	}
 
-	for _, tagOwners := range p.TagOwners {
+	for tag, tagOwners := range p.TagOwners {
 		for _, tagOwner := range tagOwners {
 			switch tagOwner := tagOwner.(type) {
 			case *Group:
@@ -2793,20 +2793,12 @@ func (p *Policy) validate() error {
 					errs = append(errs, err)
 				}
 			case *Tag:
-				t := tagOwner
-
-				err := p.TagOwners.Contains(t)
-				if err != nil {
-					errs = append(errs, err)
+				if _, ok := p.TagOwners[*tagOwner]; !ok {
+					errs = append(errs, fmt.Errorf("tagOwners[%q]: %q: %w",
+						string(tag), string(*tagOwner), ErrUndefinedTagReference))
 				}
 			}
 		}
-	}
-
-	// Validate tag ownership chains for circular references and undefined tags.
-	_, err := flattenTagOwners(p.TagOwners)
-	if err != nil {
-		errs = append(errs, err)
 	}
 
 	for _, approvers := range p.AutoApprovers.Routes {

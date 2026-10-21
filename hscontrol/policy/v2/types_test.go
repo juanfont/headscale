@@ -1544,7 +1544,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   },
 }
 `,
-			wantErr: `tag "tag:child" references undefined tag "tag:nonexistent"`,
+			wantErr: `tagOwners["tag:child"]: "tag:nonexistent": does not exist`,
 		},
 		// SSH source/destination validation tests (#3009, #3010)
 		{
@@ -3526,9 +3526,37 @@ func TestResolveTagOwners(t *testing.T) {
 			},
 			want: map[Tag]*netipx.IPSet{
 				Tag("tag:bigbrother"):   mustIPSet("100.64.0.1/32"),
-				Tag("tag:smallbrother"): mustIPSet("100.64.0.1/32"),
+				Tag("tag:smallbrother"): mustIPSet(),
 			},
 			wantErr: false,
+		},
+		{
+			name: "tag-owner-chain-keeps-direct-owners",
+			policy: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:a"): Owners{new(Username("user1@"))},
+					Tag("tag:b"): Owners{new(Tag("tag:a"))},
+					Tag("tag:c"): Owners{new(Tag("tag:b")), new(Username("user2@"))},
+				},
+			},
+			want: map[Tag]*netipx.IPSet{
+				Tag("tag:a"): mustIPSet("100.64.0.1/32"),
+				Tag("tag:b"): mustIPSet(),
+				Tag("tag:c"): mustIPSet("100.64.0.2/32"),
+			},
+		},
+		{
+			name: "tag-owner-cycle",
+			policy: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:a"): Owners{new(Tag("tag:b")), new(Username("user1@"))},
+					Tag("tag:b"): Owners{new(Tag("tag:a"))},
+				},
+			},
+			want: map[Tag]*netipx.IPSet{
+				Tag("tag:a"): mustIPSet("100.64.0.1/32"),
+				Tag("tag:b"): mustIPSet(),
+			},
 		},
 	}
 
@@ -4229,193 +4257,6 @@ func mustParseAlias(s string) Alias {
 	}
 
 	return alias
-}
-
-func TestFlattenTagOwners(t *testing.T) {
-	tests := []struct {
-		name    string
-		input   TagOwners
-		want    TagOwners
-		wantErr string
-	}{
-		{
-			name: "tag-owns-tag",
-			input: TagOwners{
-				Tag("tag:bigbrother"):   Owners{new(Group("group:user1"))},
-				Tag("tag:smallbrother"): Owners{new(Tag("tag:bigbrother"))},
-			},
-			want: TagOwners{
-				Tag("tag:bigbrother"):   Owners{new(Group("group:user1"))},
-				Tag("tag:smallbrother"): Owners{new(Group("group:user1"))},
-			},
-			wantErr: "",
-		},
-		{
-			// SaaS tolerates tag:a <-> tag:b cycles by dropping the
-			// cycle edge; both tags resolve to an empty owner set
-			// because neither chain reaches a non-tag owner.
-			name: "circular-reference-resolves-to-empty",
-			input: TagOwners{
-				Tag("tag:a"): Owners{new(Tag("tag:b"))},
-				Tag("tag:b"): Owners{new(Tag("tag:a"))},
-			},
-			want: TagOwners{
-				Tag("tag:a"): nil,
-				Tag("tag:b"): nil,
-			},
-			wantErr: "",
-		},
-		{
-			// tag:a -> tag:a self-reference: the only owner is the
-			// cycle edge itself; result is empty.
-			name: "self-reference-resolves-to-empty",
-			input: TagOwners{
-				Tag("tag:a"): Owners{new(Tag("tag:a"))},
-			},
-			want: TagOwners{
-				Tag("tag:a"): nil,
-			},
-			wantErr: "",
-		},
-		{
-			// Cycle plus a sibling non-tag owner: the cycle edge
-			// drops out, the sibling owner survives.
-			name: "cycle-plus-sibling-keeps-sibling",
-			input: TagOwners{
-				Tag("tag:a"): Owners{new(Tag("tag:b")), new(Username("alice@example.com"))},
-				Tag("tag:b"): Owners{new(Tag("tag:a"))},
-			},
-			want: TagOwners{
-				Tag("tag:a"): Owners{new(Username("alice@example.com"))},
-				Tag("tag:b"): Owners{new(Username("alice@example.com"))},
-			},
-			wantErr: "",
-		},
-		{
-			name: "mixed-owners",
-			input: TagOwners{
-				Tag("tag:x"): Owners{new(Username("user1@")), new(Tag("tag:y"))},
-				Tag("tag:y"): Owners{new(Username("user2@"))},
-			},
-			want: TagOwners{
-				Tag("tag:x"): Owners{new(Username("user1@")), new(Username("user2@"))},
-				Tag("tag:y"): Owners{new(Username("user2@"))},
-			},
-			wantErr: "",
-		},
-		{
-			name: "mixed-dupe-owners",
-			input: TagOwners{
-				Tag("tag:x"): Owners{new(Username("user1@")), new(Tag("tag:y"))},
-				Tag("tag:y"): Owners{new(Username("user1@"))},
-			},
-			want: TagOwners{
-				Tag("tag:x"): Owners{new(Username("user1@"))},
-				Tag("tag:y"): Owners{new(Username("user1@"))},
-			},
-			wantErr: "",
-		},
-		{
-			name: "no-tag-owners",
-			input: TagOwners{
-				Tag("tag:solo"): Owners{new(Username("user1@"))},
-			},
-			want: TagOwners{
-				Tag("tag:solo"): Owners{new(Username("user1@"))},
-			},
-			wantErr: "",
-		},
-		{
-			name: "tag-long-owner-chain",
-			input: TagOwners{
-				Tag("tag:a"): Owners{new(Group("group:user1"))},
-				Tag("tag:b"): Owners{new(Tag("tag:a"))},
-				Tag("tag:c"): Owners{new(Tag("tag:b"))},
-				Tag("tag:d"): Owners{new(Tag("tag:c"))},
-				Tag("tag:e"): Owners{new(Tag("tag:d"))},
-				Tag("tag:f"): Owners{new(Tag("tag:e"))},
-				Tag("tag:g"): Owners{new(Tag("tag:f"))},
-			},
-			want: TagOwners{
-				Tag("tag:a"): Owners{new(Group("group:user1"))},
-				Tag("tag:b"): Owners{new(Group("group:user1"))},
-				Tag("tag:c"): Owners{new(Group("group:user1"))},
-				Tag("tag:d"): Owners{new(Group("group:user1"))},
-				Tag("tag:e"): Owners{new(Group("group:user1"))},
-				Tag("tag:f"): Owners{new(Group("group:user1"))},
-				Tag("tag:g"): Owners{new(Group("group:user1"))},
-			},
-			wantErr: "",
-		},
-		{
-			// Long cycle: every tag eventually points back to itself.
-			// Each tag resolves to the empty owner set.
-			name: "tag-long-circular-chain-resolves-to-empty",
-			input: TagOwners{
-				Tag("tag:a"): Owners{new(Tag("tag:g"))},
-				Tag("tag:b"): Owners{new(Tag("tag:a"))},
-				Tag("tag:c"): Owners{new(Tag("tag:b"))},
-				Tag("tag:d"): Owners{new(Tag("tag:c"))},
-				Tag("tag:e"): Owners{new(Tag("tag:d"))},
-				Tag("tag:f"): Owners{new(Tag("tag:e"))},
-				Tag("tag:g"): Owners{new(Tag("tag:f"))},
-			},
-			want: TagOwners{
-				Tag("tag:a"): nil,
-				Tag("tag:b"): nil,
-				Tag("tag:c"): nil,
-				Tag("tag:d"): nil,
-				Tag("tag:e"): nil,
-				Tag("tag:f"): nil,
-				Tag("tag:g"): nil,
-			},
-			wantErr: "",
-		},
-		{
-			name: "undefined-tag-reference",
-			input: TagOwners{
-				Tag("tag:a"): Owners{new(Tag("tag:nonexistent"))},
-			},
-			wantErr: `tag "tag:a" references undefined tag "tag:nonexistent"`,
-		},
-		{
-			name: "tag-with-empty-owners-is-valid",
-			input: TagOwners{
-				Tag("tag:a"): Owners{new(Tag("tag:b"))},
-				Tag("tag:b"): Owners{}, // empty owners but exists
-			},
-			want: TagOwners{
-				Tag("tag:a"): nil,
-				Tag("tag:b"): nil,
-			},
-			wantErr: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := flattenTagOwners(tt.input)
-			if tt.wantErr != "" {
-				if err == nil {
-					t.Fatalf("flattenTagOwners() expected error %q, got nil", tt.wantErr)
-				}
-
-				if err.Error() != tt.wantErr {
-					t.Fatalf("flattenTagOwners() expected error %q, got %q", tt.wantErr, err.Error())
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("flattenTagOwners() unexpected error: %v", err)
-			}
-
-			if diff := cmp.Diff(tt.want, got); diff != "" {
-				t.Errorf("flattenTagOwners() mismatch (-want +got):\n%s", diff)
-			}
-		})
-	}
 }
 
 func TestSSHCheckPeriodUnmarshal(t *testing.T) {
