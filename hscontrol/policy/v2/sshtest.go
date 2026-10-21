@@ -35,6 +35,11 @@ type SSHPolicyTestResult struct {
 	DenyFail   map[string][]string `json:"deny_fail,omitempty"`
 	CheckOK    map[string][]string `json:"check_ok,omitempty"`
 	CheckFail  map[string][]string `json:"check_fail,omitempty"`
+
+	// CheckDenied holds the check failures where a node was not reached at
+	// all. A dst alias can cover nodes that fail in different ways, and one
+	// node not reached makes the alias DENIED.
+	CheckDenied map[string][]string `json:"check_denied,omitempty"`
 }
 
 // SSHPolicyTestResults aggregates one evaluation run.
@@ -83,7 +88,7 @@ func (r SSHPolicyTestResults) Errors() string {
 
 		for _, user := range sortedUsers(res.CheckFail) {
 			for _, dst := range res.CheckFail[user] {
-				// The reason scans AcceptOK; skip it for lines that
+				// The reason scans CheckDenied; skip it for lines that
 				// are only counted.
 				var reason string
 				if !failures.full() {
@@ -133,11 +138,11 @@ func displayUser(u string) string {
 // checkFailReason annotates a check-fail with whether the user reached
 // the dst via an accept rule or did not reach at all.
 func checkFailReason(res SSHPolicyTestResult, user, dst string) string {
-	if slices.Contains(res.AcceptOK[user], dst) {
-		return "ALLOWED via accept"
+	if slices.Contains(res.CheckDenied[user], dst) {
+		return "DENIED"
 	}
 
-	return "DENIED"
+	return "ALLOWED via accept"
 }
 
 // RunSSHTests evaluates the live policy's sshTests block and wraps any
@@ -209,7 +214,7 @@ func runSSHPolicyTest(
 ) SSHPolicyTestResult {
 	srcLabel := ""
 	if test.Src != nil {
-		srcLabel = test.Src.String()
+		srcLabel = sshTestLabel(test.Src)
 	}
 
 	res := SSHPolicyTestResult{
@@ -243,23 +248,12 @@ func runSSHPolicyTest(
 		return res
 	}
 
-	dstNodes, emptyDsts, err := resolveSSHTestDestNodes(test.Dst, pol, users, nodes, srcUserID)
+	dsts, err := resolveSSHTestDests(test.Dst, pol, users, nodes, srcUserID)
 	if err != nil {
 		res.Passed = false
 		res.Errors = append(res.Errors,
 			fmt.Sprintf("failed to resolve destinations: %v", err))
 
-		return res
-	}
-
-	// A dst resolving to zero nodes would silently pass.
-	for _, dst := range emptyDsts {
-		res.Passed = false
-		res.Errors = append(res.Errors,
-			fmt.Sprintf("dst alias %q resolved to no nodes", dst))
-	}
-
-	if len(dstNodes) == 0 {
 		return res
 	}
 
@@ -274,7 +268,7 @@ func runSSHPolicyTest(
 		for _, user := range g.users {
 			evaluateAssertion(
 				pol, users, nodes, cache,
-				srcAddrs, dstNodes, user.String(),
+				srcAddrs, dsts, user.String(),
 				g.kind, &res,
 			)
 		}
@@ -291,10 +285,77 @@ const (
 	assertCheck
 )
 
-// evaluateAssertion walks every (srcAddr, dstNode) pair for one user
-// and records the outcome. Empty username fails — SSH login users
-// cannot be empty even when parse accepted it.
+// evaluateAssertion records one user's outcome for each dst alias of an
+// entry, under the alias as written: the report goes back to the policy
+// author, who may not be allowed to list nodes. An alias passes when every
+// node it selects does, for every src address; one selecting no node is not
+// reached. Each distinct alias is evaluated once and reported at every
+// occurrence, as Tailscale SaaS reports them.
 func evaluateAssertion(
+	pol *Policy,
+	users []types.User,
+	nodes views.Slice[types.NodeView],
+	cache map[types.NodeID]*tailcfg.SSHPolicy,
+	srcAddrs []netip.Addr,
+	dsts []sshTestDst,
+	user string,
+	kind sshAssertion,
+	res *SSHPolicyTestResult,
+) {
+	type outcome struct{ passed, notReached, failed bool }
+
+	seen := make(map[string]outcome, len(dsts))
+
+	for _, dst := range dsts {
+		o, ok := seen[dst.label]
+		if !ok {
+			passed, notReached, err := sshTestAliasOutcome(
+				pol, users, nodes, cache, srcAddrs, dst.nodes, user, kind,
+			)
+			if err != nil {
+				res.Passed = false
+				res.Errors = append(res.Errors,
+					fmt.Sprintf("compiling SSH policy for %s: %v", dst.label, err))
+			}
+
+			o = outcome{passed, notReached, err != nil}
+			seen[dst.label] = o
+		}
+
+		if o.failed {
+			continue
+		}
+
+		if !o.passed {
+			res.Passed = false
+		}
+
+		switch {
+		case kind == assertAccept && o.passed:
+			res.AcceptOK = appendUserDst(res.AcceptOK, user, dst.label)
+		case kind == assertAccept:
+			res.AcceptFail = appendUserDst(res.AcceptFail, user, dst.label)
+		case kind == assertDeny && o.passed:
+			res.DenyOK = appendUserDst(res.DenyOK, user, dst.label)
+		case kind == assertDeny:
+			res.DenyFail = appendUserDst(res.DenyFail, user, dst.label)
+		case o.passed:
+			res.CheckOK = appendUserDst(res.CheckOK, user, dst.label)
+		default:
+			res.CheckFail = appendUserDst(res.CheckFail, user, dst.label)
+
+			if o.notReached {
+				res.CheckDenied = appendUserDst(res.CheckDenied, user, dst.label)
+			}
+		}
+	}
+}
+
+// sshTestAliasOutcome reports whether user's assertion holds on every node
+// of one dst alias from every src address, and whether a failing node was
+// not reached at all. All src addresses must agree: the first
+// counter-example fails the node.
+func sshTestAliasOutcome(
 	pol *Policy,
 	users []types.User,
 	nodes views.Slice[types.NodeView],
@@ -303,82 +364,43 @@ func evaluateAssertion(
 	dstNodes []types.NodeView,
 	user string,
 	kind sshAssertion,
-	res *SSHPolicyTestResult,
-) {
-dstLoop:
+) (bool, bool, error) {
+	if len(dstNodes) == 0 {
+		return kind == assertDeny, true, nil
+	}
+
+	passed, notReached := true, false
+
 	for _, dst := range dstNodes {
 		dstPol, err := compiledSSHPolicy(pol, users, nodes, cache, dst)
 		if err != nil {
-			res.Passed = false
-			res.Errors = append(res.Errors,
-				fmt.Sprintf("compiling SSH policy for %s: %v",
-					dst.Hostname(), err))
-
-			continue
+			return false, false, err
 		}
-
-		dstLabel := dst.Hostname()
-
-		acceptHit := false
-		checkHit := false
 
 		for _, srcAddr := range srcAddrs {
 			a, c := reachability(dstPol, srcAddr, user)
-			if a {
-				acceptHit = true
-			}
 
-			if c {
-				checkHit = true
-			}
+			var holds bool
 
-			// All src IPs must agree; one counter-example fails
-			// the whole (user, dst) pair.
 			switch kind {
 			case assertAccept:
-				if !a {
-					res.Passed = false
-					res.AcceptFail = appendUserDst(res.AcceptFail, user, dstLabel)
-
-					continue dstLoop
-				}
+				holds = a
 			case assertDeny:
-				if a {
-					res.Passed = false
-					res.DenyFail = appendUserDst(res.DenyFail, user, dstLabel)
-
-					continue dstLoop
-				}
+				holds = !a
 			case assertCheck:
-				if !c {
-					res.Passed = false
-					res.CheckFail = appendUserDst(res.CheckFail, user, dstLabel)
-
-					// Record whether the accept side passed so
-					// the rendered error can say "ALLOWED via
-					// accept" instead of "DENIED".
-					if a {
-						res.AcceptOK = appendUserDst(res.AcceptOK, user, dstLabel)
-					}
-
-					continue dstLoop
-				}
+				holds = c
 			}
-		}
 
-		switch kind {
-		case assertAccept:
-			if acceptHit {
-				res.AcceptOK = appendUserDst(res.AcceptOK, user, dstLabel)
-			}
-		case assertDeny:
-			res.DenyOK = appendUserDst(res.DenyOK, user, dstLabel)
-		case assertCheck:
-			if checkHit {
-				res.CheckOK = appendUserDst(res.CheckOK, user, dstLabel)
+			if !holds {
+				passed = false
+				notReached = notReached || !a
+
+				break
 			}
 		}
 	}
+
+	return passed, notReached, nil
 }
 
 // appendUserDst appends dst to m[user], allocating m on first use.
@@ -472,105 +494,107 @@ func resolveSSHTestSource(
 	return out, userID, nil
 }
 
-// resolveSSHTestDestNodes maps each dst alias to its destination
-// [types.NodeView]s. autogroup:self needs special handling: it cannot
-// resolve without per-node context, so it walks the node set keyed on
-// src's owning user. Other aliases resolve to an [netipx.IPSet] and match
-// via [types.NodeView.InIPSet].
-func resolveSSHTestDestNodes(
+// sshTestLabel names an sshTests alias as its author writes it: a single
+// address bare, not as a /32 or /128 prefix.
+func sshTestLabel(alias Alias) string {
+	if p, ok := alias.(*Prefix); ok {
+		return filterIP(netip.Prefix(*p))
+	}
+
+	return alias.String()
+}
+
+// sshTestDst is one dst alias of an sshTests entry and the nodes it
+// selects.
+type sshTestDst struct {
+	label string
+	nodes []types.NodeView
+}
+
+// resolveSSHTestDests resolves each dst alias of an entry, in order and
+// once per occurrence, so the report can name every alias as written.
+// Each distinct alias resolves once.
+func resolveSSHTestDests(
 	dsts SSHTestDestinations,
 	pol *Policy,
 	users []types.User,
 	nodes views.Slice[types.NodeView],
 	srcUserID uint,
-) ([]types.NodeView, []string, error) {
-	seen := make(map[types.NodeID]struct{})
-
-	var (
-		out       []types.NodeView
-		emptyDsts []string
-	)
+) ([]sshTestDst, error) {
+	selected := make(map[string][]types.NodeView, len(dsts))
+	out := make([]sshTestDst, 0, len(dsts))
 
 	for _, alias := range dsts {
-		dstLabel := alias.String()
-		matched := false
+		label := sshTestLabel(alias)
 
-		if ag, ok := alias.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
-			// autogroup:self resolves to non-tagged nodes owned by
-			// the same user as src; tagged/IP sources have no user.
-			if srcUserID == 0 {
-				emptyDsts = append(emptyDsts, dstLabel)
+		dstNodes, ok := selected[label]
+		if !ok {
+			var err error
 
-				continue
+			dstNodes, err = sshTestDstNodes(alias, pol, users, nodes, srcUserID)
+			if err != nil {
+				return nil, err
 			}
 
-			for _, n := range nodes.All() {
-				if n.IsTagged() {
-					continue
-				}
-
-				if !n.User().Valid() {
-					continue
-				}
-
-				if n.User().ID() != srcUserID {
-					continue
-				}
-
-				matched = true
-
-				if _, dup := seen[n.ID()]; dup {
-					continue
-				}
-
-				seen[n.ID()] = struct{}{}
-				out = append(out, n)
-			}
-
-			if !matched {
-				emptyDsts = append(emptyDsts, dstLabel)
-			}
-
-			continue
+			selected[label] = dstNodes
 		}
 
-		ips, err := alias.Resolve(pol, users, nodes)
-		if err != nil {
-			return nil, nil, fmt.Errorf("resolving destination %q: %w", dstLabel, err)
-		}
+		out = append(out, sshTestDst{label: label, nodes: dstNodes})
+	}
 
-		if ips == nil || ips.Empty() {
-			emptyDsts = append(emptyDsts, dstLabel)
+	return out, nil
+}
 
-			continue
-		}
+// sshTestDstNodes returns the nodes one dst alias selects. autogroup:self
+// cannot resolve without per-node context, so it walks the node set keyed
+// on src's owning user. Other aliases resolve to an [netipx.IPSet] and
+// match via [types.NodeView.InIPSet].
+func sshTestDstNodes(
+	alias Alias,
+	pol *Policy,
+	users []types.User,
+	nodes views.Slice[types.NodeView],
+	srcUserID uint,
+) ([]types.NodeView, error) {
+	var out []types.NodeView
 
-		set, err := prefixesToIPSet(ips.Prefixes())
-		if err != nil {
-			return nil, nil, fmt.Errorf("building IPSet for %q: %w", dstLabel, err)
+	if ag, ok := alias.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
+		// autogroup:self is the src user's untagged nodes; tagged and
+		// address sources have no user.
+		if srcUserID == 0 {
+			return nil, nil
 		}
 
 		for _, n := range nodes.All() {
-			if !n.InIPSet(set) {
-				continue
+			if !n.IsTagged() && n.User().Valid() && n.User().ID() == srcUserID {
+				out = append(out, n)
 			}
-
-			matched = true
-
-			if _, dup := seen[n.ID()]; dup {
-				continue
-			}
-
-			seen[n.ID()] = struct{}{}
-			out = append(out, n)
 		}
 
-		if !matched {
-			emptyDsts = append(emptyDsts, dstLabel)
+		return out, nil
+	}
+
+	ips, err := alias.Resolve(pol, users, nodes)
+	if err != nil {
+		return nil, fmt.Errorf("resolving destination %q: %w", sshTestLabel(alias), err)
+	}
+
+	if ips == nil || ips.Empty() {
+		return nil, nil
+	}
+
+	set, err := prefixesToIPSet(ips.Prefixes())
+	if err != nil {
+		return nil, fmt.Errorf("building IPSet for %q: %w", sshTestLabel(alias), err)
+	}
+
+	for _, n := range nodes.All() {
+		if n.InIPSet(set) {
+			out = append(out, n)
 		}
 	}
 
-	return out, emptyDsts, nil
+	return out, nil
 }
 
 // prefixesToIPSet builds the [netipx.IPSet] that [types.NodeView.InIPSet]
