@@ -424,6 +424,45 @@ func TestEphemeralGCDoesNotDeleteReconnectedNode(t *testing.T) {
 		"an idle ephemeral node must still be garbage collected")
 }
 
+// TestDeleteNodeCancelsEphemeralGC deletes a disconnected ephemeral node
+// through the API while its inactivity timer is armed. The timer belongs to
+// the deleted node, so the delete must disarm it rather than leave it to fire
+// at a node that is no longer there.
+func TestDeleteNodeCancelsEphemeralGC(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	app.StartEphemeralGCForTest(t)
+
+	user := app.state.CreateUserForTest("eph-gc-delete-user")
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, true, nil, nil)
+	require.NoError(t, err)
+
+	nodeKey := key.NewNode()
+
+	_, err = app.handleRegister(context.Background(), tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey:  nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "eph-gc-delete-node"},
+		Expiry:   time.Now().Add(24 * time.Hour),
+	}, key.NewMachine().Public())
+	require.NoError(t, err)
+
+	node, ok := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, ok)
+	require.True(t, node.IsEphemeral(), "test sanity: node must be ephemeral")
+
+	// The state a disconnect leaves behind.
+	app.ephemeralGC.Schedule(node.ID(), time.Hour)
+	require.True(t, app.ephemeralGC.IsScheduled(node.ID()), "test sanity: GC timer must be armed")
+
+	api := registerAPIV2(t, app)
+	require.Equal(t, http.StatusOK, api.Delete("/api/v2/device/"+node.ID().String()).Code)
+
+	assert.False(t, app.ephemeralGC.IsScheduled(node.ID()),
+		"deleting a node must cancel its ephemeral GC timer")
+}
+
 // TestGitHubIssue3129_TransientlyBlockedWriteDoesNotLeaveLiveStaleSession
 // tests the scenario reported in
 // https://github.com/juanfont/headscale/issues/3129.
