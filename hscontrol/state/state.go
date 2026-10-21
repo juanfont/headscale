@@ -92,8 +92,9 @@ var ErrInvalidNodeView = errors.New("invalid node view provided")
 // ErrNodeNotInNodeStore is returned when a node no longer exists in the [NodeStore].
 var ErrNodeNotInNodeStore = errors.New("node no longer exists in NodeStore")
 
-// ErrNodeNameNotUnique is returned when a node name is not unique.
-var ErrNodeNameNotUnique = errors.New("node name is not unique")
+// ErrNodeNameNotUnique is returned when a node name is not unique, wrapped
+// as `name "X" is already taken`.
+var ErrNodeNameNotUnique = errors.New("already taken")
 
 // nodeUpdateColumns lists all Node columns that should be written
 // during a struct-based GORM Updates() call.  Listing them explicitly
@@ -1352,6 +1353,8 @@ func (s *State) updateApprovedRoutes(nodeID types.NodeID, set UpdateNodeFunc) (t
 // auto-sanitisation) and collisions error out rather than silently
 // bumping a user-facing label. See HOSTNAME.md for the CLI contract.
 func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView, change.Change, error) {
+	asked := newName
+
 	// DNS is case-insensitive but uniqueness and the client's certificate
 	// name match are not, so "Foo" and "foo" would share one name.
 	newName = strings.ToLower(newName)
@@ -1370,7 +1373,7 @@ func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView,
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrGivenNameTaken):
-			return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %s", ErrNodeNameNotUnique, newName)
+			return types.NodeView{}, change.Change{}, fmt.Errorf("name %q is %w", asked, ErrNodeNameNotUnique)
 		case errors.Is(err, ErrNodeNotFound):
 			return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, nodeID)
 		default:
