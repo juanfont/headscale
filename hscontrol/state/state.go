@@ -134,6 +134,10 @@ var ErrNodeKeyExpired = errors.New("node key expired")
 // binding.
 var ErrNodeKeyInUse = errors.New("node key already in use by another machine")
 
+// ErrExpiryExtension is returned when a client asks for an expiry no earlier
+// than its node's, or under a node key the node no longer holds.
+var ErrExpiryExtension = errors.New("extending key is not allowed")
+
 // ErrNodeKeyNotCurrent is returned when a map request uses a replaced node key.
 var ErrNodeKeyNotCurrent = errors.New("node key is no longer current")
 
@@ -1028,6 +1032,31 @@ func (s *State) ListEphemeralNodes() views.Slice[types.NodeView] {
 // SetNodeExpiry updates the expiration time for a node.
 // If expiry is nil, the node's expiry is disabled (node will never expire).
 func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry *time.Time) (types.NodeView, change.Change, error) {
+	return s.setNodeExpiry(nodeID, expiry, nil)
+}
+
+// BringNodeExpiryForward stores the expiry a client asks for when the node
+// still holds nodeKey and has no expiry or a later one. The NodeStore writer
+// decides, so an expiry that lands meanwhile, such as an admin's, is never
+// pushed back.
+func (s *State) BringNodeExpiryForward(
+	nodeID types.NodeID,
+	nodeKey key.NodePublic,
+	expiry time.Time,
+) (types.NodeView, change.Change, error) {
+	return s.setNodeExpiry(nodeID, &expiry, func(node *types.Node) bool {
+		return node.NodeKey == nodeKey &&
+			(node.Expiry == nil || node.Expiry.IsZero() || expiry.Before(*node.Expiry))
+	})
+}
+
+// setNodeExpiry sets the node's expiry. A non-nil allow decides on the node
+// as the writer holds it; a refusal writes nothing.
+func (s *State) setNodeExpiry(
+	nodeID types.NodeID,
+	expiry *time.Time,
+	allow func(*types.Node) bool,
+) (types.NodeView, change.Change, error) {
 	if expiry != nil {
 		utc, err := types.ValidateExpiry(*expiry)
 		if err != nil {
@@ -1037,7 +1066,7 @@ func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry *time.Time) (types.Nod
 		expiry = &utc
 	}
 
-	var onlineChanged, expired bool
+	var onlineChanged, expired, refused bool
 
 	genBefore := s.polMan.NodesGeneration()
 
@@ -1046,6 +1075,12 @@ func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry *time.Time) (types.Nod
 	// must make the exact same change. If the database update fails, the [NodeStore]
 	// change will remain, and the change describing it is returned with the error.
 	n, ok := s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
+		if allow != nil && !allow(node) {
+			refused = true
+
+			return
+		}
+
 		wasOnline := node.Online()
 		node.Expiry = expiry
 		// Control stays connected in NeedsLogin so an expiry extension can
@@ -1058,6 +1093,10 @@ func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry *time.Time) (types.Nod
 
 	if !ok {
 		return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, nodeID)
+	}
+
+	if refused {
+		return types.NodeView{}, change.Change{}, ErrExpiryExtension
 	}
 
 	if expired {
@@ -2921,9 +2960,8 @@ func loginNode(all map[types.UserID]types.NodeView, userID types.UserID) (types.
 // --authkey=KEY") re-presents a spent key legitimately. Anything that
 // authorises something new must present a valid key:
 //   - a node key rotation;
-//   - an expired node. Tagged nodes can carry an administrative expiry or
-//     retain their expiry after an admin tags them. Legacy logout stamps
-//     were cleared by migration; logout no longer expires tagged nodes;
+//   - an expired node. Tagged nodes expire at logout, by an administrative
+//     expiry, or keep the expiry they had when an admin tagged them;
 //   - a tagged key converting a user-owned node to tagged;
 //   - a tagged key other than the one the node last authed with, which retags
 //     it.
