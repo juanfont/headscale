@@ -2201,3 +2201,52 @@ func TestPAKReregisterConcurrentAdminExpire(t *testing.T) {
 		require.True(t, n.IsExpired(), "iteration %d: the spent key revived an expired node", i)
 	}
 }
+
+func TestPreAuthKeyRegistrationOwnsHostinfo(t *testing.T) {
+	for _, name := range []string{"new", "reregister", "preserve NetInfo"} {
+		t.Run(name, func(t *testing.T) {
+			s := newRetagTestState(t)
+			user := s.CreateUserForTest("hostinfo-user")
+			pak, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+			require.NoError(t, err)
+
+			machineKey := key.NewMachine().Public()
+
+			regReq := tailcfg.RegisterRequest{
+				Auth:    &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+				NodeKey: key.NewNode().Public(),
+				Hostinfo: &tailcfg.Hostinfo{
+					Hostname: "original",
+					Services: []tailcfg.Service{{Proto: "tcp", Port: 80}},
+					NetInfo:  &tailcfg.NetInfo{PreferredDERP: 1},
+				},
+			}
+			if name != "new" {
+				_, _, err = s.HandleNodeFromPreAuthKey(regReq, machineKey)
+				require.NoError(t, err)
+			}
+
+			if name == "preserve NetInfo" {
+				regReq.Hostinfo.NetInfo = nil
+			}
+
+			original := regReq.Hostinfo.Clone()
+			node, _, err := s.HandleNodeFromPreAuthKey(regReq, machineKey)
+			require.NoError(t, err)
+			require.Equal(t, original, regReq.Hostinfo, "registration must not modify its request")
+
+			regReq.Hostinfo.Hostname = "changed"
+
+			regReq.Hostinfo.Services[0].Port = 443
+			if regReq.Hostinfo.NetInfo != nil {
+				regReq.Hostinfo.NetInfo.PreferredDERP = 2
+			}
+
+			stored, ok := s.GetNodeByID(node.ID())
+			require.True(t, ok)
+			require.Equal(t, "original", stored.Hostinfo().Hostname())
+			require.Equal(t, uint16(80), stored.Hostinfo().Services().At(0).Port)
+			require.Equal(t, tailcfg.DERPRegionID(1), stored.Hostinfo().NetInfo().PreferredDERP())
+		})
+	}
+}

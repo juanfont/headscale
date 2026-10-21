@@ -2776,8 +2776,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 	}
 
 	// Ensure we have valid hostinfo
-	validHostinfo := cmp.Or(regReq.Hostinfo, &tailcfg.Hostinfo{})
-	validHostinfo.Hostname = hostname
+	validHostinfo := cmp.Or(regReq.Hostinfo.Clone(), &tailcfg.Hostinfo{})
 
 	log.Debug().
 		Caller().
@@ -3520,7 +3519,8 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		currentNode.ApplyPeerChange(&delta.peerChange)
 
 		if hostinfoToStore {
-			currentNode.Hostinfo = newHostinfo
+			// The snapshot outlives the request; deep-copy so its slices and NetInfo are never shared.
+			currentNode.Hostinfo = newHostinfo.Clone()
 		}
 
 		// Only a real hostname change may re-derive GivenName: it is peer
