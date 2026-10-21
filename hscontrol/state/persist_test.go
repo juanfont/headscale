@@ -1653,32 +1653,6 @@ func TestBackfillNodeIPsSurvivesConcurrentPersist(t *testing.T) {
 // differs from SaaS, keyed <test_id>/<step>/<node or action index>/<check>.
 // A listed check that matches fails, so a fix must delete its entry.
 var nameSkipReasons = map[string]string{
-	"names/N1/n63b/label":  labelSuffixOverflow,
-	"names/N2/n63b/label":  labelSuffixOverflow,
-	"names/N3/n63b/label":  labelSuffixOverflow,
-	"names/N4/n63b/label":  labelSuffixOverflow,
-	"names/N5/n63b/label":  labelSuffixOverflow,
-	"names/N6/n63b/label":  labelSuffixOverflow,
-	"names/N7/n63b/label":  labelSuffixOverflow,
-	"names/N8/n63b/label":  labelSuffixOverflow,
-	"names/N9a/n63b/label": labelSuffixOverflow,
-	"names/N9b/n63b/label": labelSuffixOverflow,
-	"names/N10/n63b/label": labelSuffixOverflow,
-	"names/N11/n63b/label": labelSuffixOverflow,
-
-	"names/N1/n63b/reopen":  labelSuffixOverflow,
-	"names/N2/n63b/reopen":  labelSuffixOverflow,
-	"names/N3/n63b/reopen":  labelSuffixOverflow,
-	"names/N4/n63b/reopen":  labelSuffixOverflow,
-	"names/N5/n63b/reopen":  labelSuffixOverflow,
-	"names/N6/n63b/reopen":  labelSuffixOverflow,
-	"names/N7/n63b/reopen":  labelSuffixOverflow,
-	"names/N8/n63b/reopen":  labelSuffixOverflow,
-	"names/N9a/n63b/reopen": labelSuffixOverflow,
-	"names/N9b/n63b/reopen": labelSuffixOverflow,
-	"names/N10/n63b/reopen": labelSuffixOverflow,
-	"names/N11/n63b/reopen": labelSuffixOverflow,
-
 	"names/N11/pdb/label":   adminNameFollowsHostname,
 	"names/N11/pdb/reopen":  adminNameFollowsHostname,
 	"names/N11b/pdb/label":  adminNameFollowsHostname,
@@ -1692,7 +1666,6 @@ var nameSkipReasons = map[string]string{
 }
 
 const (
-	labelSuffixOverflow      = "LABEL_SUFFIX_OVERFLOW: headscale appends -N to a 63-byte label, giving a 65-byte one; SaaS cuts the label so the suffix fits in 63 bytes"
 	adminNameFollowsHostname = "ADMIN_NAME_FOLLOWS_HOSTNAME: an admin name equal to the hostname's label counts as derived from it, so a hostname change replaces it; SaaS keeps an admin name across hostname changes"
 )
 

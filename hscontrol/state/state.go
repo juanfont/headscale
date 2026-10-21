@@ -3900,23 +3900,23 @@ func (s *State) PingDB(ctx context.Context) error {
 
 // isAutoDerivedGivenName reports whether given matches what
 // dnsname.SanitizeHostname(hostname) would produce, optionally with a
-// [NodeStore] collision-bump "-N" suffix. It is used to detect whether a
-// GivenName has been admin-renamed (in which case it must not be
-// overwritten by client-side hostname changes).
+// [NodeStore] collision-bump "-N" suffix ([bumpedLabel]). It is used to
+// detect whether a GivenName has been admin-renamed (in which case it must
+// not be overwritten by client-side hostname changes).
 func isAutoDerivedGivenName(given, hostname string) bool {
 	base := dnsname.SanitizeHostname(hostname)
 	if given == base {
 		return true
 	}
 
-	suffix, ok := strings.CutPrefix(given, base+"-")
+	_, suffix, ok := strings.CutLast(given, "-")
 	if !ok {
 		return false
 	}
 
-	_, err := strconv.Atoi(suffix)
+	n, err := strconv.Atoi(suffix)
 
-	return err == nil
+	return err == nil && given == bumpedLabel(base, n)
 }
 
 // UpdateNodeFromMapRequest is the sync point where Hostinfo changes,
