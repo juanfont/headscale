@@ -126,6 +126,10 @@ var nodeUpdateColumns = []string{
 // ErrRegistrationExpired is returned when a registration has expired.
 var ErrRegistrationExpired = errors.New("registration expired")
 
+// ErrNodeKeyExpired is returned when an expired node logs in again under its
+// old node key; the client answers it by rotating the key.
+var ErrNodeKeyExpired = errors.New("node key expired")
+
 // ErrNodeKeyInUse is returned when a registration or re-auth claims a NodeKey
 // already bound to a different machine, enforcing the 1:1 NodeKey<->MachineKey
 // binding.
@@ -2871,6 +2875,12 @@ func pakSkipsValidation(n types.NodeView, pak *types.PreAuthKey, nodeKey key.Nod
 // pakReregister distinguishes re-authentication with a valid key from a
 // wake-up that only refreshes a live node's reported metadata.
 func pakReregister(n types.NodeView, pak *types.PreAuthKey, nodeKey key.NodePublic, now time.Time) (bool, error) {
+	// As on Tailscale SaaS, an expired node is asked for a new node key before
+	// any key is judged.
+	if n.NodeKey() == nodeKey && n.IsExpiredAt(now) {
+		return false, ErrNodeKeyExpired
+	}
+
 	err := pak.ValidAt(now)
 	if err == nil {
 		if pak.CanReauthenticate(n) {
@@ -2953,7 +2963,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 	}
 
 	// A wake-up writes no tags, so the tags it asks for are not refused.
-	if tagsErr != nil && (reauth || err != nil) {
+	if tagsErr != nil && !errors.Is(err, ErrNodeKeyExpired) && (reauth || err != nil) {
 		return types.NodeView{}, s.policyChangeSince(genBefore), tagsErr
 	}
 
@@ -3231,9 +3241,9 @@ func (s *State) reregisterNodeWithPAK(
 			if node.IsExpiredAt(now) {
 				node.Expiry = nil
 			}
-		case prior.NodeKey == regReq.NodeKey && !prior.IsExpiredAt(now):
-			// A live node that keeps its node key keeps its expiry, as on
-			// Tailscale SaaS: renewal comes with a new node key.
+		case prior.NodeKey == regReq.NodeKey:
+			// A node that keeps its node key keeps its expiry, as on Tailscale
+			// SaaS: renewal comes with a new node key.
 		case !regReq.Expiry.IsZero():
 			node.Expiry = &regReq.Expiry
 		case s.cfg.Node.Expiry > 0:
