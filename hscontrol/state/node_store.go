@@ -788,18 +788,19 @@ func servesRoutes(n *types.Node) bool {
 	return n.Online() && !n.IsExpired()
 }
 
-// onlineAdvertisers maps each non-exit prefix to the IDs of online,
-// unexpired nodes that approve it. Nodes are visited in the order of ids, so
-// the per-prefix slices preserve that order.
-func onlineAdvertisers(
+// advertisers maps each non-exit prefix to the IDs of nodes that approve it
+// and pass keep. Nodes are visited in the order of ids, so the per-prefix
+// slices preserve that order.
+func advertisers(
 	nodes map[types.NodeID]types.Node,
 	ids []types.NodeID,
+	keep func(*types.Node) bool,
 ) map[netip.Prefix][]types.NodeID {
-	advertisers := make(map[netip.Prefix][]types.NodeID)
+	out := make(map[netip.Prefix][]types.NodeID)
 
 	for _, id := range ids {
 		n := nodes[id]
-		if !servesRoutes(&n) {
+		if !keep(&n) {
 			continue
 		}
 
@@ -808,65 +809,63 @@ func onlineAdvertisers(
 				continue
 			}
 
-			advertisers[p] = append(advertisers[p], id)
+			out[p] = append(out[p], id)
 		}
 	}
 
-	return advertisers
+	return out
 }
 
-// electPrimaryRoutes picks the primary advertiser for each non-exit
-// prefix. Inputs are restricted to online nodes that advertise the
-// prefix. The previous primary is preserved when it is still online
-// and healthy (anti-flap); otherwise the lowest-NodeID healthy
-// advertiser wins. When every advertiser is unhealthy the previous
-// primary is preserved only if still a candidate — falling back to
-// any other candidate would point peers at a node the prober has
-// already declared unreachable, so leaving the prefix unmapped is
-// preferred until a probe cycle finds one that responds.
+// electPrimaryRoutes picks the primary router for each non-exit prefix any
+// node approves. A router is available when it is online, unexpired and
+// healthy. The previous primary is preserved while it is available
+// (anti-flap); otherwise the lowest-NodeID available router wins.
+//
+// With no router available the prefix stays mapped, so peers keep the route
+// and use it once its router returns: the previous primary keeps it while it
+// still approves the prefix, else the lowest-NodeID approving router does.
+// That fallback never picks a router the prober declared unreachable; with
+// only such routers left the prefix is unmapped until a probe cycle finds one
+// that responds.
 func electPrimaryRoutes(
 	nodes map[types.NodeID]types.Node,
 	prev map[netip.Prefix]types.NodeID,
 ) (map[netip.Prefix]types.NodeID, map[types.NodeID]bool) {
-	advertisers := onlineAdvertisers(nodes, slices.Sorted(maps.Keys(nodes)))
+	approvers := advertisers(nodes, slices.Sorted(maps.Keys(nodes)),
+		func(*types.Node) bool { return true })
 
-	routes := make(map[netip.Prefix]types.NodeID, len(advertisers))
-	for prefix, candidates := range advertisers {
-		if cur, ok := prev[prefix]; ok &&
-			slices.Contains(candidates, cur) &&
-			!nodes[cur].Unhealthy {
+	available := func(id types.NodeID) bool {
+		n := nodes[id]
+
+		return servesRoutes(&n) && !n.Unhealthy
+	}
+	healthy := func(id types.NodeID) bool { return !nodes[id].Unhealthy }
+
+	routes := make(map[netip.Prefix]types.NodeID, len(approvers))
+	for prefix, ids := range approvers {
+		cur, hasPrev := prev[prefix]
+		hasPrev = hasPrev && slices.Contains(ids, cur)
+
+		if hasPrev && available(cur) {
 			routes[prefix] = cur
+
 			continue
 		}
 
-		var (
-			selected types.NodeID
-			found    bool
-		)
+		if i := slices.IndexFunc(ids, available); i >= 0 {
+			routes[prefix] = ids[i]
 
-		for _, c := range candidates {
-			if !nodes[c].Unhealthy {
-				selected = c
-				found = true
-
-				break
-			}
+			continue
 		}
 
-		// All-unhealthy fallback: preserve the previous primary only
-		// when it is still a candidate. Falling back to any candidate
-		// would point peers at a node the prober has already declared
-		// unreachable; leaving the prefix unmapped is honest until a
-		// probe cycle picks one that responds.
-		if !found {
-			if cur, ok := prev[prefix]; ok && slices.Contains(candidates, cur) {
-				selected = cur
-				found = true
-			}
+		if hasPrev {
+			routes[prefix] = cur
+
+			continue
 		}
 
-		if found {
-			routes[prefix] = selected
+		if i := slices.IndexFunc(ids, healthy); i >= 0 {
+			routes[prefix] = ids[i]
 		}
 	}
 
@@ -1061,9 +1060,10 @@ func (s *NodeStore) PrimaryRoutesForNode(id types.NodeID) []netip.Prefix {
 func (s *NodeStore) HANodes() map[netip.Prefix][]types.NodeID {
 	snap := s.data.Load()
 
-	advertisers := onlineAdvertisers(
+	online := advertisers(
 		snap.nodesByID,
 		slices.Sorted(maps.Keys(snap.nodesByID)),
+		servesRoutes,
 	)
 
 	unhealthy := func(id types.NodeID) bool {
@@ -1072,7 +1072,7 @@ func (s *NodeStore) HANodes() map[netip.Prefix][]types.NodeID {
 
 	out := make(map[netip.Prefix][]types.NodeID)
 
-	for p, ids := range advertisers {
+	for p, ids := range online {
 		if len(ids) < 2 && !slices.ContainsFunc(ids, unhealthy) {
 			continue
 		}

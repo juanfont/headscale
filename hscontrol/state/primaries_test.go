@@ -172,13 +172,98 @@ func TestPrimaries_ClearRoutesDropsPrimary(t *testing.T) {
 	f.requireNoPrimary(mp("192.168.1.0/24"))
 }
 
-func TestPrimaries_DisconnectDropsLastAdvertiserPrimary(t *testing.T) {
+func TestPrimaries_DisconnectKeepsLastRouterPrimary(t *testing.T) {
 	f := newPrimariesFixture(t, 1)
 	f.advertise(1, mp("192.168.1.0/24"))
 	f.requirePrimary(mp("192.168.1.0/24"), 1)
 
 	f.disconnect(1)
-	f.requireNoPrimary(mp("192.168.1.0/24"))
+	f.requirePrimary(mp("192.168.1.0/24"), 1)
+}
+
+func TestPrimaries_NoRouterAvailable(t *testing.T) {
+	prefix := mp("10.0.0.0/24")
+	expire := func(f *primariesFixture, id types.NodeID) {
+		f.ns.UpdateNode(id, func(n *types.Node) {
+			n.Expiry = new(time.Now().Add(-time.Minute))
+		})
+	}
+	unapprove := func(f *primariesFixture, id types.NodeID) {
+		f.ns.UpdateNode(id, func(n *types.Node) { n.ApprovedRoutes = nil })
+	}
+
+	tests := []struct {
+		name  string
+		setup func(*primariesFixture)
+		want  types.NodeID
+	}{
+		{
+			name: "expired router keeps its route",
+			setup: func(f *primariesFixture) {
+				f.advertise(1, prefix)
+				expire(f, 1)
+			},
+			want: 1,
+		},
+		{
+			name: "previous primary kept over a lower ID",
+			setup: func(f *primariesFixture) {
+				f.advertise(1, prefix)
+				f.advertise(2, prefix)
+				f.disconnect(1)
+				f.disconnect(2)
+			},
+			want: 2,
+		},
+		{
+			name: "lowest ID approver once the previous primary is gone",
+			setup: func(f *primariesFixture) {
+				f.advertise(1, prefix)
+				f.advertise(2, prefix)
+				f.advertise(3, prefix)
+				f.disconnect(2)
+				f.disconnect(3)
+				f.disconnect(1)
+				unapprove(f, 1)
+			},
+			want: 2,
+		},
+		{
+			name: "unhealthy router passed over",
+			setup: func(f *primariesFixture) {
+				f.advertise(1, prefix)
+				f.advertise(2, prefix)
+				f.advertise(3, prefix)
+				f.disconnect(2)
+				f.unhealthy(1)
+				f.disconnect(3)
+				unapprove(f, 3)
+			},
+			want: 2,
+		},
+		{
+			name: "only unhealthy routers left",
+			setup: func(f *primariesFixture) {
+				f.advertise(1, prefix)
+				f.advertise(3, prefix)
+				f.unhealthy(1)
+				unapprove(f, 3)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newPrimariesFixture(t, 1, 2, 3)
+			tt.setup(f)
+
+			if tt.want == 0 {
+				f.requireNoPrimary(prefix)
+			} else {
+				f.requirePrimary(prefix, tt.want)
+			}
+		})
+	}
 }
 
 func TestPrimaries_UnhealthyTriggersFailover(t *testing.T) {
@@ -269,10 +354,9 @@ func TestPrimaries_ExitRouteNotElected(t *testing.T) {
 }
 
 func TestPrimaries_BothOfflineThenOneReturns(t *testing.T) {
-	// With two HA advertisers, dropping both then bringing one back
-	// used to leave the prefix without any primary. The snapshot
-	// recomputes primaries on every NodeStore write, so the
-	// returning advertiser must be elected.
+	// With two HA advertisers both offline, the last primary keeps the
+	// prefix. The snapshot recomputes primaries on every NodeStore
+	// write, so the first advertiser to return must be elected.
 	prefix := mp("10.0.0.0/24")
 	f := newPrimariesFixture(t, 1, 2)
 	f.advertise(1, prefix)
@@ -283,10 +367,10 @@ func TestPrimaries_BothOfflineThenOneReturns(t *testing.T) {
 	f.requirePrimary(prefix, 2)
 
 	f.disconnect(2)
-	f.requireNoPrimary(prefix)
-
-	f.advertise(2, prefix)
 	f.requirePrimary(prefix, 2)
+
+	f.advertise(1, prefix)
+	f.requirePrimary(prefix, 1)
 }
 
 func TestPrimaries_HANodes(t *testing.T) {
