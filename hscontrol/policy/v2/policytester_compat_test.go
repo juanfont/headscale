@@ -43,6 +43,8 @@ var knownPolicyTesterDivergences = map[string]string{ //nolint:gosec // strings 
 	"policytest-dst-unknown-group/breakdown":      testUnknownAlias,
 	"policytest-src-unknown-group/breakdown":      testUnknownAlias,
 	"policytest-src-unknown-user-email/breakdown": testUnknownAlias,
+
+	"policytest-src-split-across-rules/verdict": "TEST_SRC_ONE_RULE: SaaS needs one rule to cover a group source; headscale lets each member pass through its own rule",
 }
 
 const (
