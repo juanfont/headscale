@@ -1898,6 +1898,49 @@ func reopenLabels(t *testing.T, s *State) map[types.NodeID]string {
 	return out
 }
 
+// TestBringNodeExpiryForwardDecidesInWriter: a client's earlier expiry is
+// checked against the node as the writer holds it, so an admin expiry that
+// lands after the caller read the node is not pushed back, and a node key
+// the node no longer holds changes nothing.
+func TestBringNodeExpiryForwardDecidesInWriter(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	read, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+
+	_, _, err := s.SetNodeExpiry(nodeID, nil)
+	require.NoError(t, err)
+
+	soon := time.Now().Add(time.Hour).Truncate(time.Second)
+	node, _, err := s.BringNodeExpiryForward(nodeID, read.NodeKey(), soon)
+	require.NoError(t, err)
+	require.True(t, node.Expiry().Valid(), "an earlier expiry turns expiry on")
+	assert.True(t, soon.Equal(node.Expiry().Get()))
+
+	_, _, err = s.BringNodeExpiryForward(nodeID, read.NodeKey(), soon.Add(time.Minute))
+	require.ErrorIs(t, err, ErrExpiryExtension, "a later expiry")
+
+	_, _, err = s.BringNodeExpiryForward(nodeID, key.NewNode().Public(), soon.Add(-time.Minute))
+	require.ErrorIs(t, err, ErrExpiryExtension, "another node key")
+
+	past := time.Now().Add(-time.Minute).Truncate(time.Second)
+	_, _, err = s.SetNodeExpiry(nodeID, &past)
+	require.NoError(t, err)
+
+	_, _, err = s.BringNodeExpiryForward(nodeID, read.NodeKey(), soon.Add(-time.Minute))
+	require.ErrorIs(t, err, ErrExpiryExtension, "the admin expiry is earlier")
+
+	current, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+	assert.True(t, current.IsExpired(), "the admin expiry stands")
+
+	stored, err := s.db.GetNodeByID(nodeID)
+	require.NoError(t, err)
+	require.NotNil(t, stored.Expiry)
+	assert.True(t, past.Equal(*stored.Expiry))
+}
+
 // TestSetNodeExpiryRejectsUnencodableExpiry proves an admin cannot store a key
 // expiry that every map carrying the node would fail to encode.
 func TestSetNodeExpiryRejectsUnencodableExpiry(t *testing.T) {
