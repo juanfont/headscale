@@ -1,13 +1,17 @@
 package v2
 
 import (
+	"bytes"
 	"net/netip"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
@@ -363,4 +367,42 @@ func TestNodesWithChangedCapMap(t *testing.T) {
 
 	assert.Empty(t, pm.NodesWithChangedCapMap(),
 		"reloading the same policy must not produce CapMap diffs")
+}
+
+// TestMalformedNextDNSAttrWarnsOnceAtLoad pins that a nextdns: attr whose
+// profile the resolver skips still loads and stays in the CapMap, as on
+// Tailscale SaaS, and is logged once per policy load. Not parallel: it swaps
+// the global logger and level.
+func TestMalformedNextDNSAttrWarnsOnceAtLoad(t *testing.T) {
+	var buf bytes.Buffer
+
+	prev, prevLevel := log.Logger, zerolog.GlobalLevel()
+	log.Logger = zerolog.New(&buf)
+
+	zerolog.SetGlobalLevel(zerolog.WarnLevel)
+
+	t.Cleanup(func() {
+		log.Logger = prev
+
+		zerolog.SetGlobalLevel(prevLevel)
+	})
+
+	users := nodeAttrsTestUsers()
+	nodes := nodeAttrsTestNodes(users)
+
+	pol := []byte(`{
+		"tagOwners": {` + nodeAttrsTagOwners + `},
+		"nodeAttrs": [{"target": ["*"], "attr": ["nextdns:a/b?c", "nextdns:abc123"]}]
+	}`)
+
+	pm, err := NewPolicyManager(pol, users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	// The write path reloads the bytes it just set.
+	_, err = pm.SetPolicy(pol)
+	require.NoError(t, err)
+
+	assert.Contains(t, pm.NodeCapMap(1), nodecap.Cap("nextdns:a/b?c"))
+	assert.Equal(t, 1, strings.Count(buf.String(), "nextdns:a/b?c"), buf.String())
+	assert.NotContains(t, buf.String(), "nextdns:abc123")
 }

@@ -137,6 +137,7 @@ const (
 	AutoApproveHashNew = "autoApprove.hash.new"
 	ExitSetHashOld     = "exitSet.hash.old"
 	ExitSetHashNew     = "exitSet.hash.new"
+	NodeAttrs          = "nodeAttrs"
 )
 
 // Connection/Channel fields.

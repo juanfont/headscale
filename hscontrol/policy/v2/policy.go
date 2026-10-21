@@ -17,6 +17,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/rs/zerolog/log"
 	"go4.org/netipx"
@@ -247,6 +248,8 @@ func NewPolicyManager(b []byte, users []types.User, nodes views.Slice[types.Node
 	if err != nil {
 		return nil, err
 	}
+
+	warnMalformedNextDNSAttrs(policy)
 
 	// Boot path: log a warning if the stored policy's tests would
 	// fail against the current users and nodes, but keep the server
@@ -752,7 +755,25 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 		return false, err
 	}
 
+	// Reloading the same bytes leaves changed false, so each policy warns once.
+	if changed {
+		warnMalformedNextDNSAttrs(pol)
+	}
+
 	return changed, nil
+}
+
+// warnMalformedNextDNSAttrs logs, once per policy load, the nextdns: attrs
+// the resolver skips, which the mapper does in silence on every DNS build.
+func warnMalformedNextDNSAttrs(pol *Policy) {
+	bad := pol.malformedNextDNSAttrs()
+	if len(bad) == 0 {
+		return
+	}
+
+	log.Warn().
+		Strs(zf.NodeAttrs, bad).
+		Msg("nextdns attrs have no effect: a profile must match [A-Za-z0-9._-]{1,64}")
 }
 
 // Filter returns the current filter rules for the entire tailnet and the associated matchers.
