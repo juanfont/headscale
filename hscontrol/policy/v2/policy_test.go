@@ -3437,9 +3437,15 @@ func TestTagOwnedByTags(t *testing.T) {
 			want:      true,
 		},
 		{
-			name:      "transitive chain root owns leaf",
+			name:      "two hops are not reached",
 			tag:       "tag:leaf",
 			ownerTags: []string{"tag:root"},
+			want:      false,
+		},
+		{
+			name:      "one of several held tags owns it",
+			tag:       "tag:leaf",
+			ownerTags: []string{"tag:lone", "tag:mid"},
 			want:      true,
 		},
 		{
