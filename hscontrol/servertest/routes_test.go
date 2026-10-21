@@ -482,13 +482,6 @@ func overlapCheck(t require.TestingT, key, want, got string) {
 	}
 }
 
-// notCompared reports whether key falls under one of prefixes.
-func notCompared(prefixes []string, key string) bool {
-	return slices.ContainsFunc(prefixes, func(p string) bool {
-		return strings.HasPrefix(key, p)
-	})
-}
-
 // peerRoutes maps each peer in clients to its AllowedIPs and PrimaryRoutes.
 func peerRoutes(
 	nm *netmap.NetworkMap,
