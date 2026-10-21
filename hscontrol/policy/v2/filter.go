@@ -173,21 +173,25 @@ func (pol *Policy) destinationsToNetPortRange(
 
 		for _, pref := range prefixes {
 			for _, port := range ports {
-				pr := tailcfg.NetPortRange{
-					IP:    pref.String(),
+				ret = append(ret, tailcfg.NetPortRange{
+					IP:    filterIP(pref),
 					Ports: port,
-				}
-				// Drop the prefix bits if its a single IP.
-				if pref.IsSingleIP() {
-					pr.IP = pref.Addr().String()
-				}
-
-				ret = append(ret, pr)
+				})
 			}
 		}
 	}
 
 	return ret
+}
+
+// filterIP writes pref as a filter destination: a single address bare,
+// any other prefix with its bits, as Tailscale SaaS writes them.
+func filterIP(pref netip.Prefix) string {
+	if pref.IsSingleIP() {
+		return pref.Addr().String()
+	}
+
+	return pref.String()
 }
 
 // compileFilterRulesForNode compiles filter rules for a specific node.
