@@ -36,16 +36,12 @@ import (
 // the step of what killed nodes leave behind. A listed check that matches
 // fails, so a fix must delete its entry.
 var lifecycleSkipReasons = map[string]string{
-	"ephemeral-lifecycle/E1-logout/eph-logout/outcome":      logoutAnswerUnauthorized,
-	"ephemeral-lifecycle/E1-logout/eph-logout-user/outcome": logoutAnswerUnauthorized,
-
 	"ephemeral-lifecycle/E3-key-delete/2/keys":   deletedKeyListed,
 	"ephemeral-lifecycle/E3-key-delete/3/keys":   deletedKeyListed,
 	"ephemeral-lifecycle/E3-key-delete/4/status": deletedKeyDeleteNotFound,
 }
 
 const (
-	logoutAnswerUnauthorized = "LOGOUT_ANSWER_UNAUTHORIZED: headscale answers the logout that deletes an ephemeral node with MachineAuthorized false; SaaS answers true"
 	deletedKeyListed         = "DELETED_KEY_LISTED: headscale lists a deleted auth key; SaaS leaves it out of both key lists, while a read by ID still answers"
 	deletedKeyDeleteNotFound = "DELETED_KEY_DELETE_NOT_FOUND: headscale answers 404 to a second delete of an auth key; SaaS answers 200"
 )
