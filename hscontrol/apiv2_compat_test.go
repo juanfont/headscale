@@ -100,13 +100,6 @@ var apiv2CompatNotReplayed = map[string][]string{
 	"oauth/E9b": {"{key:K-E9b}"}, // uses E7's client
 }
 
-// notCompared reports whether key falls under one of prefixes.
-func notCompared(prefixes []string, key string) bool {
-	return slices.ContainsFunc(prefixes, func(p string) bool {
-		return strings.HasPrefix(key, p)
-	})
-}
-
 // Differences no planned change removes yet.
 const (
 	mintScopeRefusalStatus      = "TOKEN_SCOPE_REFUSAL_STATUS: SaaS refuses a token scope the client lacks with 403 and a message; headscale with 400 invalid_scope"
