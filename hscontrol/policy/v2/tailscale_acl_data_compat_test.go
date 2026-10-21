@@ -207,9 +207,6 @@ var aclSkipReasons = map[string]string{
 	"acl-err10/refused": routeHostBits,
 	"acl-err11/refused": routeHostBits,
 
-	"acl-tagowner-undefined-nested/message":      tagOwnerUndefinedText,
-	"acl-tagowner-undefined-nested-deep/message": tagOwnerUndefinedText,
-
 	"acl-n01/beedrill/filter":   allowAllForm,
 	"acl-n01/bulbasaur/filter":  allowAllForm,
 	"acl-n01/charmander/filter": allowAllForm,
@@ -235,11 +232,10 @@ var aclSkipReasons = map[string]string{
 }
 
 const (
-	routeHostBits         = "ROUTE_HOST_BITS: SaaS refuses an autoApprovers route with host bits; headscale accepts it"
-	tagOwnerUndefinedText = "TAG_OWNER_UNDEFINED_TEXT: SaaS names the owning tag and its undefined owner in one line; headscale words it differently"
-	allowAllForm          = "ALLOW_ALL_FORM: SaaS writes the allow-all default's sources as the tailnet ranges, headscale as \"*\""
-	aclDstDedupe          = "ACL_DST_DEDUPE: SaaS writes a destination repeated within one ACL once, headscale once per mention"
-	srcAddressForm        = "FILTER_ADDRESS_FORM: SaaS lists contiguous source addresses one by one, headscale as a range"
+	routeHostBits  = "ROUTE_HOST_BITS: SaaS refuses an autoApprovers route with host bits; headscale accepts it"
+	allowAllForm   = "ALLOW_ALL_FORM: SaaS writes the allow-all default's sources as the tailnet ranges, headscale as \"*\""
+	aclDstDedupe   = "ACL_DST_DEDUPE: SaaS writes a destination repeated within one ACL once, headscale once per mention"
+	srcAddressForm = "FILTER_ADDRESS_FORM: SaaS lists contiguous source addresses one by one, headscale as a range"
 )
 
 // TestACLCompat is a data-driven test that loads all ACL-*.json test files
