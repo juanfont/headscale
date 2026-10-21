@@ -2797,20 +2797,26 @@ func TestViaRoutesForPeer(t *testing.T) {
 		pm, err := NewPolicyManager([]byte(pol), users, nodes.ViewSlice())
 		require.NoError(t, err)
 
+		// sessions maps each available router to when its control session
+		// began.
+		at := func(sec int64) time.Time { return time.Unix(sec, 0) }
+
 		for _, tt := range []struct {
-			name      string
-			available []types.NodeID
-			want      types.NodeID
+			name     string
+			sessions map[types.NodeID]time.Time
+			want     types.NodeID
 		}{
-			{name: "all available", available: []types.NodeID{2, 3, 4}, want: 2},
-			{name: "lowest ID down", available: []types.NodeID{3, 4}, want: 3},
-			{name: "only highest ID left", available: []types.NodeID{4}, want: 4},
+			{name: "all available", sessions: map[types.NodeID]time.Time{2: at(1), 3: at(1), 4: at(1)}, want: 2},
+			{name: "lowest ID down", sessions: map[types.NodeID]time.Time{3: at(1), 4: at(1)}, want: 3},
+			{name: "only highest ID left", sessions: map[types.NodeID]time.Time{4: at(1)}, want: 4},
 			{name: "whole group down", want: 2},
-			{name: "lowest ID recovers", available: []types.NodeID{2, 3, 4}, want: 2},
+			{name: "oldest session wins", sessions: map[types.NodeID]time.Time{2: at(3), 3: at(1), 4: at(2)}, want: 3},
 		} {
 			t.Run(tt.name, func(t *testing.T) {
-				pm.SetRouterAvailable(func(id types.NodeID) bool {
-					return slices.Contains(tt.available, id)
+				pm.SetRouterSession(func(id types.NodeID) (time.Time, bool) {
+					since, ok := tt.sessions[id]
+
+					return since, ok
 				})
 
 				for _, router := range nodes[1:] {
