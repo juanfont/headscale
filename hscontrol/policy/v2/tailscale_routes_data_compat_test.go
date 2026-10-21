@@ -260,13 +260,6 @@ var routesSkipReasons = map[string]string{
 	"routes-m6-subnet-to-subnet-multi-route/m-odin2/peers": sameUserPeers,
 }
 
-// notCompared reports whether key falls under one of prefixes.
-func notCompared(prefixes []string, key string) bool {
-	return slices.ContainsFunc(prefixes, func(p string) bool {
-		return strings.HasPrefix(key, p)
-	})
-}
-
 const filterAddressForm = "FILTER_ADDRESS_FORM: same addresses, different wire form"
 
 const exitRoutesOnOverlap = "EXIT_ROUTES_ON_OVERLAP: headscale offers a peer's exit routes to a viewer whose rules reach only nodes or subnets; SaaS leaves them out"

@@ -49,6 +49,11 @@ var policySequenceSkipReasons = map[string]string{
 	"policy-generation/G4/rt-b/filter": viaRuleMerged,
 	"policy-generation/G5/rt-b/filter": viaRuleMerged,
 
+	"policy-generation/G7/rt-plain/filter": deletedDeviceInRules,
+	"policy-generation/G7/srv/ssh-rules":   deletedDeviceInRules,
+	"policy-generation/G7/srv/filter":      "ACL_DST_DEDUPE+DELETED_DEVICE_IN_RULES: a repeated destination written once, and the deleted device's addresses kept",
+	"policy-generation/G7/rt-b/filter":     "VIA_RULE_MERGED+DELETED_DEVICE_IN_RULES: the via grant's rule apart from the ACL rule, and the deleted device's addresses kept",
+
 	"policy-generation/G0/odin-1/uid-zero":  sshUIDZero,
 	"policy-generation/G0/srv/uid-zero":     sshUIDZero,
 	"policy-generation/G0/thor-1/uid-zero":  sshUIDZero,
@@ -82,16 +87,10 @@ var policySequenceSkipReasons = map[string]string{
 	"policy-generation/G8/odin-1/uid-zero":  sshUIDZero,
 }
 
-const viaRuleMerged = "VIA_RULE_MERGED: on a via router headscale merges the via grant's filter rule with an ACL rule of the same sources; SaaS sends the two apart"
-
-// policySequenceNotCompared lists, by key prefix, checks left out: SaaS's
-// answer there is in doubt, so it is no reference.
-var policySequenceNotCompared = []string{
-	"policy-generation/G7/rt-plain/filter",
-	"policy-generation/G7/srv/ssh-rules",
-	"policy-generation/G7/srv/filter",
-	"policy-generation/G7/rt-b/filter",
-}
+const (
+	viaRuleMerged        = "VIA_RULE_MERGED: on a via router headscale merges the via grant's filter rule with an ACL rule of the same sources; SaaS sends the two apart"
+	deletedDeviceInRules = "DELETED_DEVICE_IN_RULES: SaaS keeps a deleted device's addresses in other nodes' filter and SSH rules until the next policy change; headscale drops them with the device"
+)
 
 // TestPolicySequenceCompat follows the capture with one PolicyManager, as
 // headscale does: SetNodes after each node change, SetPolicy for the edit,
@@ -182,10 +181,6 @@ func runPolicySequenceCompat(t *testing.T, id string) {
 
 				t.Run(alias, func(t *testing.T) {
 					check := func(name string, mismatch func() string) {
-						if notCompared(policySequenceNotCompared, key+name) {
-							return
-						}
-
 						evaluated[key+name] = true
 						compatCheck(t, policySequenceSkipReasons, key+name, mismatch)
 					}
