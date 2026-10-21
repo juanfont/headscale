@@ -401,12 +401,12 @@ func (hsdb *HSDatabase) RevokePreAuthKey(id uint64) error {
 // RevokePreAuthKey soft-revokes a key (the v2 API's DELETE): the row is kept and
 // stays retrievable with its invalid flag set, but the key can no longer
 // authorize nodes. The background collector hard-deletes it after the retention
-// window. An already-revoked or unknown id returns [ErrPreAuthKeyNotFound], so a
-// repeated DELETE is a clean 404.
+// window. Revoking a revoked key keeps its first revoke time and succeeds, as a
+// repeated DELETE does on Tailscale; an unknown id returns [ErrPreAuthKeyNotFound].
 func RevokePreAuthKey(tx *gorm.DB, id uint64) error {
 	res := tx.Model(&types.Credential{}).
-		Where("kind = ? AND id = ? AND revoked IS NULL", types.CredentialPreAuthKey, id).
-		Update("revoked", time.Now())
+		Where("kind = ? AND id = ?", types.CredentialPreAuthKey, id).
+		Update("revoked", gorm.Expr("COALESCE(revoked, ?)", time.Now()))
 	if res.Error != nil {
 		return res.Error
 	}
