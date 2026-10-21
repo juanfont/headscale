@@ -370,6 +370,51 @@ var routeOverlapCompatTests = []string{
 // keyed <test_id>/<node>/<check>. A listed check that matches fails, so a fix
 // must delete its entry.
 var routeOverlapSkipReasons = map[string]string{
+	// SaaS answers a router's every peer as if the policy linked them.
+	"routes-t1-auto-v4-default/ovl-r-ctrl/peers":            routerSeesEveryPeer,
+	"routes-t1-auto-v4-default/ovl-r-host4/peers":           routerSeesEveryPeer,
+	"routes-t1-auto-v4-default/ovl-r-host6/peers":           routerSeesEveryPeer,
+	"routes-t1-auto-v4-default/ovl-r-mapped/peers":          routerSeesEveryPeer,
+	"routes-t1-auto-v4-default/ovl-r-narrow/peers":          routerSeesEveryPeer,
+	"routes-t1-auto-v4-default/ovl-r-via/peers":             routerSeesEveryPeer,
+	"routes-t1-auto-v4-default/ovl-r-wide-in/peers":         routerSeesEveryPeer,
+	"routes-t2-auto-v6-default/ovl-r-ctrl/peers":            routerSeesEveryPeer,
+	"routes-t2-auto-v6-default/ovl-r-host4/peers":           routerSeesEveryPeer,
+	"routes-t2-auto-v6-default/ovl-r-host6/peers":           routerSeesEveryPeer,
+	"routes-t2-auto-v6-default/ovl-r-mapped/peers":          routerSeesEveryPeer,
+	"routes-t2-auto-v6-default/ovl-r-narrow/peers":          routerSeesEveryPeer,
+	"routes-t2-auto-v6-default/ovl-r-via/peers":             routerSeesEveryPeer,
+	"routes-t3-auto-narrow-keys/ovl-r-ctrl/peer-routes":     routerSeesEveryPeer,
+	"routes-t3-auto-narrow-keys/ovl-r-ctrl/peers":           routerSeesEveryPeer,
+	"routes-t3-auto-narrow-keys/ovl-r-host4/peers":          routerSeesEveryPeer,
+	"routes-t3-auto-narrow-keys/ovl-r-host6/peers":          routerSeesEveryPeer,
+	"routes-t3-auto-narrow-keys/ovl-r-mapped/peer-routes":   routerSeesEveryPeer,
+	"routes-t3-auto-narrow-keys/ovl-r-mapped/peers":         routerSeesEveryPeer,
+	"routes-t3-auto-narrow-keys/ovl-r-narrow/peer-routes":   routerSeesEveryPeer,
+	"routes-t3-auto-narrow-keys/ovl-r-narrow/peers":         routerSeesEveryPeer,
+	"routes-t3-auto-narrow-keys/ovl-r-via/peer-routes":      routerSeesEveryPeer,
+	"routes-t3-auto-narrow-keys/ovl-r-via/peers":            routerSeesEveryPeer,
+	"routes-t4-admin/ovl-r-ctrl/peer-routes":                routerSeesEveryPeer,
+	"routes-t4-admin/ovl-r-ctrl/peers":                      routerSeesEveryPeer,
+	"routes-t4-admin/ovl-r-host4/peers":                     routerSeesEveryPeer,
+	"routes-t4-admin/ovl-r-host6/peers":                     routerSeesEveryPeer,
+	"routes-t4-admin/ovl-r-mapped/peer-routes":              routerSeesEveryPeer,
+	"routes-t4-admin/ovl-r-mapped/peers":                    routerSeesEveryPeer,
+	"routes-t4-admin/ovl-r-narrow/peer-routes":              routerSeesEveryPeer,
+	"routes-t4-admin/ovl-r-narrow/peers":                    routerSeesEveryPeer,
+	"routes-t4-admin/ovl-r-via/peer-routes":                 routerSeesEveryPeer,
+	"routes-t4-admin/ovl-r-via/peers":                       routerSeesEveryPeer,
+	"routes-t5-oauth-routes-scope/ovl-r-ctrl/peer-routes":   routerSeesEveryPeer,
+	"routes-t5-oauth-routes-scope/ovl-r-ctrl/peers":         routerSeesEveryPeer,
+	"routes-t5-oauth-routes-scope/ovl-r-host4/peers":        routerSeesEveryPeer,
+	"routes-t5-oauth-routes-scope/ovl-r-host6/peers":        routerSeesEveryPeer,
+	"routes-t5-oauth-routes-scope/ovl-r-mapped/peer-routes": routerSeesEveryPeer,
+	"routes-t5-oauth-routes-scope/ovl-r-mapped/peers":       routerSeesEveryPeer,
+	"routes-t5-oauth-routes-scope/ovl-r-narrow/peer-routes": routerSeesEveryPeer,
+	"routes-t5-oauth-routes-scope/ovl-r-narrow/peers":       routerSeesEveryPeer,
+	"routes-t5-oauth-routes-scope/ovl-r-via/peer-routes":    routerSeesEveryPeer,
+	"routes-t5-oauth-routes-scope/ovl-r-via/peers":          routerSeesEveryPeer,
+
 	"routes-t1-auto-v4-default/ovl-db/peer-routes":            tailnetSingleServed,
 	"routes-t1-auto-v4-default/ovl-observer/peer-routes":      tailnetSingleServed,
 	"routes-t1-auto-v4-default/ovl-r-wide-in/peer-routes":     tailnetSingleServed,
@@ -440,53 +485,7 @@ var routeOverlapSkipReasons = map[string]string{
 	"routes-t5-oauth-routes-scope/ovl-r-via/self-primary":    selfRoutesReduced,
 }
 
-// routeOverlapNotCompared lists, by key prefix, checks left out: SaaS's
-// answer there is in doubt, so it is no reference.
-var routeOverlapNotCompared = []string{
-	"routes-t1-auto-v4-default/ovl-r-ctrl/peers",
-	"routes-t1-auto-v4-default/ovl-r-host4/peers",
-	"routes-t1-auto-v4-default/ovl-r-host6/peers",
-	"routes-t1-auto-v4-default/ovl-r-mapped/peers",
-	"routes-t1-auto-v4-default/ovl-r-narrow/peers",
-	"routes-t1-auto-v4-default/ovl-r-via/peers",
-	"routes-t1-auto-v4-default/ovl-r-wide-in/peers",
-	"routes-t2-auto-v6-default/ovl-r-ctrl/peers",
-	"routes-t2-auto-v6-default/ovl-r-host4/peers",
-	"routes-t2-auto-v6-default/ovl-r-host6/peers",
-	"routes-t2-auto-v6-default/ovl-r-mapped/peers",
-	"routes-t2-auto-v6-default/ovl-r-narrow/peers",
-	"routes-t2-auto-v6-default/ovl-r-via/peers",
-	"routes-t3-auto-narrow-keys/ovl-r-ctrl/peer-routes",
-	"routes-t3-auto-narrow-keys/ovl-r-ctrl/peers",
-	"routes-t3-auto-narrow-keys/ovl-r-host4/peers",
-	"routes-t3-auto-narrow-keys/ovl-r-host6/peers",
-	"routes-t3-auto-narrow-keys/ovl-r-mapped/peer-routes",
-	"routes-t3-auto-narrow-keys/ovl-r-mapped/peers",
-	"routes-t3-auto-narrow-keys/ovl-r-narrow/peer-routes",
-	"routes-t3-auto-narrow-keys/ovl-r-narrow/peers",
-	"routes-t3-auto-narrow-keys/ovl-r-via/peer-routes",
-	"routes-t3-auto-narrow-keys/ovl-r-via/peers",
-	"routes-t4-admin/ovl-r-ctrl/peer-routes",
-	"routes-t4-admin/ovl-r-ctrl/peers",
-	"routes-t4-admin/ovl-r-host4/peers",
-	"routes-t4-admin/ovl-r-host6/peers",
-	"routes-t4-admin/ovl-r-mapped/peer-routes",
-	"routes-t4-admin/ovl-r-mapped/peers",
-	"routes-t4-admin/ovl-r-narrow/peer-routes",
-	"routes-t4-admin/ovl-r-narrow/peers",
-	"routes-t4-admin/ovl-r-via/peer-routes",
-	"routes-t4-admin/ovl-r-via/peers",
-	"routes-t5-oauth-routes-scope/ovl-r-ctrl/peer-routes",
-	"routes-t5-oauth-routes-scope/ovl-r-ctrl/peers",
-	"routes-t5-oauth-routes-scope/ovl-r-host4/peers",
-	"routes-t5-oauth-routes-scope/ovl-r-host6/peers",
-	"routes-t5-oauth-routes-scope/ovl-r-mapped/peer-routes",
-	"routes-t5-oauth-routes-scope/ovl-r-mapped/peers",
-	"routes-t5-oauth-routes-scope/ovl-r-narrow/peer-routes",
-	"routes-t5-oauth-routes-scope/ovl-r-narrow/peers",
-	"routes-t5-oauth-routes-scope/ovl-r-via/peer-routes",
-	"routes-t5-oauth-routes-scope/ovl-r-via/peers",
-}
+const routerSeesEveryPeer = "ROUTER_SEES_EVERY_PEER: SaaS gives a subnet router every device as a peer, with all the routes each serves, whatever the policy links"
 
 const tailnetSingleServed = "TAILNET_SINGLE_SERVED: headscale serves an approved single address inside the tailnet range, which SaaS approves but never serves"
 
@@ -594,10 +593,6 @@ func routesSetByAPI(c *testcapture.Capture) bool {
 // overlapCheck compares one rendering of a check, honouring
 // routeOverlapSkipReasons: a listed check must keep differing.
 func overlapCheck(t require.TestingT, key, want, got string) {
-	if notCompared(routeOverlapNotCompared, key) {
-		return
-	}
-
 	reason, listed := routeOverlapSkipReasons[key]
 
 	switch {
