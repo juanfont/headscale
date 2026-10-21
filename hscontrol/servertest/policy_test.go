@@ -327,10 +327,6 @@ var rejectedPolicySkipReasons = map[string]string{
 	"policytest-src-cidr-accept/refused":              "TEST_SRC_SHAPE: headscale evaluates a CIDR tests source",
 	"policytest-src-wildcard-deny/refused":            "TEST_SRC_SHAPE: headscale evaluates \"*\" as a tests source",
 	"policytest-dst-multinode-partial-accept/refused": "TEST_DST_EVERY_NODE: headscale accepts when one node of the dst alias is reached",
-
-	"sshtest-src-cidr31-empty-deny/refused":     "SSHTEST_SRC_RANGE: headscale evaluates a CIDR sshTests source",
-	"sshtest-src-cidr31-members-accept/refused": "SSHTEST_SRC_RANGE: headscale evaluates a CIDR sshTests source",
-	"sshtest-src-hosts-cidr-deny/refused":       "SSHTEST_SRC_RANGE: headscale evaluates a host alias holding a CIDR as an sshTests source",
 }
 
 const noTailnetDomains = "NO_TAILNET_DOMAINS: headscale does not check user:*@domain or localpart:*@domain against the tailnet's domains"
