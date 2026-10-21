@@ -246,9 +246,10 @@ func (h *Headscale) handleLogout(
 				return nil, fmt.Errorf("deleting ephemeral node: %w", err)
 			}
 
+			// The node was authorised to log out; Tailscale answers so too.
 			return &tailcfg.RegisterResponse{
 				NodeKeyExpired:    true,
-				MachineAuthorized: false,
+				MachineAuthorized: true,
 			}, nil
 		}
 
