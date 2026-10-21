@@ -31,9 +31,6 @@ var knownSSHTesterDivergences = map[string]string{
 	"sshtest-report-multi/label":                       sshTestNodeLabel,
 	"sshtest-src-unassigned-ip-accept/label":           sshTestNodeLabel,
 
-	"sshtest-fail-label-autogroup-member/message": sshTestDstMember,
-	"sshtest-check-reason-mixed-alias/message":    sshTestDstMember,
-
 	"sshtest-fail-label-same-node-twice/breakdown": "SSHTEST_PER_ALIAS: SaaS reports each dst alias, also two naming one node; headscale checks each node once",
 	"sshtest-fail-label-ip-no-device/breakdown":    sshTestNoDevice,
 	"sshtest-report-multi/breakdown":               "SSHTEST_PER_ALIAS+SSHTEST_NO_DEVICE: SaaS reports one line per dst alias and a deviceless alias as not reached; headscale one per node and an error",
@@ -42,7 +39,6 @@ var knownSSHTesterDivergences = map[string]string{
 
 const (
 	sshTestNodeLabel = "SSHTEST_NODE_LABEL: headscale names each failing dst node by hostname; SaaS names the dst as written"
-	sshTestDstMember = "SSHTEST_DST_MEMBER: SaaS refuses autogroup:member as an sshTests destination when parsing; headscale evaluates it"
 	sshTestNoDevice  = "SSHTEST_NO_DEVICE: SaaS reports a dst that selects no device as not reached; headscale as an error"
 )
 

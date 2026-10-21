@@ -6081,6 +6081,18 @@ func TestUnmarshalPolicySSHTests(t *testing.T) {
 			wantErr: ErrSSHTestDstDisallowedElement,
 		},
 		{
+			name: "dst-autogroup-member",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@example.org"]},
+  "sshTests": [
+    {"src": "thor@example.org", "dst": ["autogroup:member"], "accept": ["root"]}
+  ]
+}
+`,
+			wantErr: ErrSSHTestDstDisallowedElement,
+		},
+		{
 			name: "dst-unknown-tag",
 			input: `
 {
