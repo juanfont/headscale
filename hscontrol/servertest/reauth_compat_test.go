@@ -47,11 +47,6 @@ var reauthSkipReasons = map[string]string{
 	"owner-routes/r-expired-retag/withdraw/enabled": withdrawKeepsAutoApproval,
 	"owner-routes/u-convert/withdraw/enabled":       withdrawKeepsAutoApproval,
 
-	"reauth-foreign/t-logout-logout/t-logout/expiry":    taggedLogoutNotExpired,
-	"reauth-foreign/t-logout-logout/t-logout/peer-obs":  taggedLogoutNotExpired,
-	"reauth-foreign/t-logout-relogin/t-logout/expiry":   taggedLogoutNotExpired,
-	"reauth-foreign/t-logout-relogin/t-logout/peer-obs": taggedLogoutNotExpired,
-
 	"identity/w-tagreq-relogin-tags/w-tagreq/owner":        keyLoginTagsRefused,
 	"identity/w-tagreq-relogin-tags/w-tagreq/outcome":      keyLoginTagsRefused,
 	"identity/w-tagreq-relogin-tags/w-tagreq/node-key":     keyLoginTagsRefused,
@@ -96,7 +91,6 @@ const (
 )
 
 const (
-	taggedLogoutNotExpired   = "TAGGED_LOGOUT_NOT_EXPIRED: headscale leaves a tagged node unexpired when it logs out; SaaS expires it"
 	keyLoginTagsRefused      = "KEY_LOGIN_TAGS_REFUSED: headscale refuses a user's key login that requests tags the user owns; SaaS tags the device, converting it in place or creating it tagged"
 	taggedKeyOwnedTagRefused = "TAGGED_KEY_OWNED_TAG_REFUSED: headscale refuses a tagged key's login that requests a tag the key's tags own; SaaS gives the device the requested tags"
 	refusalText              = "REFUSAL_TEXT: SaaS refuses a key by naming its ID; headscale says why the key is refused"
