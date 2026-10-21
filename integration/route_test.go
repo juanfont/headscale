@@ -311,6 +311,8 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	client := allClients[3]
 
+	orderRouterSessions(t, headscale, subRouter1, subRouter2, subRouter3)
+
 	t.Logf("%s (%s) picked as client", client.Hostname(), client.MustID())
 	t.Logf("=== Initial Route Advertisement - Setting up HA configuration with 3 routers ===")
 	t.Logf("[%s] Starting test section", time.Now().Format(TimestampFormat))
@@ -1027,7 +1029,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	t.Logf("[%s] Starting test section", time.Now().Format(TimestampFormat))
 	t.Logf("  Current state: Router 1 STANDBY, Router 2 STANDBY, Router 3 PRIMARY")
 	t.Logf("  Action: Disabling route approval on router 3 (route still advertised but not approved)")
-	t.Logf("  Expected: Router 1 (%s) should become new PRIMARY (lowest ID with approved route)", subRouter1.Hostname())
+	t.Logf("  Expected: Router 1 (%s) should become new PRIMARY (came back before router 2, so its session is older)", subRouter1.Hostname())
 	t.Logf("  Expected: Router 2 (%s) remains STANDBY", subRouter2.Hostname())
 	t.Logf("  Expected: Router 3 (%s) goes to advertised-only state (no longer serving)", subRouter3.Hostname())
 	_, err = headscale.ApproveRoutes(mustParseID(MustFindNode(subRouter3.Hostname(), nodes).Id), []netip.Prefix{})
@@ -1194,14 +1196,15 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	checkFailureAndPrintRoutes(t, client)
 
-	// enable the route of subnet router 1, no change expected
+	// Re-enable the route of subnet router 1. Its control session is older
+	// than router 2's (it came back first), so it takes the route back.
 	t.Logf("=== ROUTE RE-ENABLE TEST: Re-approving route on router 1 (%s) ===", subRouter1.Hostname())
 	t.Logf("[%s] Starting test section", time.Now().Format(TimestampFormat))
 	t.Logf("  Current state: Router 1 advertised-only, Router 2 PRIMARY, Router 3 advertised-only")
 	t.Logf("  Action: Re-enabling route approval on router 1")
-	t.Logf("  Expected: Router 2 (%s) remains PRIMARY (stability - no unnecessary flapping)", subRouter2.Hostname())
-	t.Logf("  Expected: Router 1 (%s) becomes STANDBY (approved but not primary)", subRouter1.Hostname())
-	t.Logf("  Expected: HA fully restored with Router 2 PRIMARY and Router 1 STANDBY")
+	t.Logf("  Expected: Router 1 (%s) becomes PRIMARY (older control session)", subRouter1.Hostname())
+	t.Logf("  Expected: Router 2 (%s) becomes STANDBY", subRouter2.Hostname())
+	t.Logf("  Expected: HA fully restored with Router 1 PRIMARY and Router 2 STANDBY")
 
 	r1Node := MustFindNode(subRouter1.Hostname(), nodes)
 	_, err = headscale.ApproveRoutes(
@@ -1215,10 +1218,10 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 6)
 
-		requireNodeRouteCountWithCollect(c, MustFindNode(subRouter1.Hostname(), nodes), 1, 1, 0)
-		requireNodeRouteCountWithCollect(c, MustFindNode(subRouter2.Hostname(), nodes), 1, 1, 1)
+		requireNodeRouteCountWithCollect(c, MustFindNode(subRouter1.Hostname(), nodes), 1, 1, 1)
+		requireNodeRouteCountWithCollect(c, MustFindNode(subRouter2.Hostname(), nodes), 1, 1, 0)
 		requireNodeRouteCountWithCollect(c, MustFindNode(subRouter3.Hostname(), nodes), 1, 0, 0)
-	}, propagationTime, 200*time.Millisecond, "Re-enable verification: Router 1 approved as STANDBY, Router 2 remains PRIMARY (no flapping), full HA restored")
+	}, propagationTime, 200*time.Millisecond, "Re-enable verification: Router 1 PRIMARY, Router 2 STANDBY, full HA restored")
 
 	// Verify that the route is announced from subnet router 1
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -1237,33 +1240,33 @@ func TestHASubnetRouterFailover(t *testing.T) {
 			return
 		}
 
-		assert.Nil(c, srs1PeerStatus.PrimaryRoutes)
-		assert.NotNil(c, srs2PeerStatus.PrimaryRoutes)
+		assert.NotNil(c, srs1PeerStatus.PrimaryRoutes)
+		assert.Nil(c, srs2PeerStatus.PrimaryRoutes)
 		assert.Nil(c, srs3PeerStatus.PrimaryRoutes)
 
-		if srs2PeerStatus.PrimaryRoutes != nil {
+		if srs1PeerStatus.PrimaryRoutes != nil {
 			assert.Contains(c,
-				srs2PeerStatus.PrimaryRoutes.AsSlice(),
+				srs1PeerStatus.PrimaryRoutes.AsSlice(),
 				pref,
 			)
 		}
-	}, propagationTime, 200*time.Millisecond, "Verifying Router 2 remains PRIMARY after Router 1 route re-enabled")
+	}, propagationTime, 200*time.Millisecond, "Verifying Router 1 is PRIMARY after its route is re-enabled")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		assertCurlDockerHostname(c, client, weburl, "Verifying client can reach webservice through router 2 after route re-enable")
-	}, propagationTime, 200*time.Millisecond, "Verifying client can reach webservice through router 2 after route re-enable")
+		assertCurlDockerHostname(c, client, weburl, "Verifying client can reach webservice through router 1 after route re-enable")
+	}, propagationTime, 200*time.Millisecond, "Verifying client can reach webservice through router 1 after route re-enable")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		tr, err := client.Traceroute(webip)
 		assert.NoError(c, err)
 
-		ip, err := subRouter2.IPv4()
-		if !assert.NoError(c, err, "failed to get IPv4 for subRouter2") {
+		ip, err := subRouter1.IPv4()
+		if !assert.NoError(c, err, "failed to get IPv4 for subRouter1") {
 			return
 		}
 
 		assertTracerouteViaIPWithCollect(c, tr, ip)
-	}, propagationTime, 200*time.Millisecond, "Verifying traceroute still goes through router 2 after route re-enable")
+	}, propagationTime, 200*time.Millisecond, "Verifying traceroute goes through router 1 after route re-enable")
 
 	// Validate primary routes table state after router 1 re-approval
 	validatePrimaryRoutes(t, headscale, &types.DebugRoutes{
@@ -1273,19 +1276,20 @@ func TestHASubnetRouterFailover(t *testing.T) {
 			// Router 3 route is still not approved
 		},
 		PrimaryRoutes: map[string]types.NodeID{
-			pref.String(): types.NodeID(mustParseID(MustFindNode(subRouter2.Hostname(), nodes).Id)),
+			pref.String(): types.NodeID(mustParseID(MustFindNode(subRouter1.Hostname(), nodes).Id)),
 		},
-	}, "Router 2 should remain primary after router 1 re-approval")
+	}, "Router 1 should be primary after router 1 re-approval")
 
 	checkFailureAndPrintRoutes(t, client)
 
-	// Enable route on node 3, we now have all routes re-enabled
+	// Enable route on node 3, we now have all routes re-enabled. Router 3
+	// never reconnected, so its session is the oldest and it takes the route.
 	t.Logf("=== ROUTE RE-ENABLE TEST: Re-approving route on router 3 (%s) - Full HA Restoration ===", subRouter3.Hostname())
 	t.Logf("[%s] Starting test section", time.Now().Format(TimestampFormat))
-	t.Logf("  Current state: Router 1 STANDBY, Router 2 PRIMARY, Router 3 advertised-only")
+	t.Logf("  Current state: Router 1 PRIMARY, Router 2 STANDBY, Router 3 advertised-only")
 	t.Logf("  Action: Re-enabling route approval on router 3")
-	t.Logf("  Expected: Router 2 (%s) remains PRIMARY (stability preferred)", subRouter2.Hostname())
-	t.Logf("  Expected: Routers 1 & 3 are both STANDBY")
+	t.Logf("  Expected: Router 3 (%s) becomes PRIMARY (oldest control session)", subRouter3.Hostname())
+	t.Logf("  Expected: Routers 1 & 2 are both STANDBY")
 	t.Logf("  Expected: Full HA restored with all 3 routers available")
 
 	r3Node := MustFindNode(subRouter3.Hostname(), nodes)
@@ -1300,11 +1304,11 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 6)
 		require.GreaterOrEqual(t, len(nodes), 3, "need at least 3 nodes to avoid panic")
-		// After router 3 re-approval: Router 2 remains PRIMARY, Routers 1&3 are STANDBY
+		// After router 3 re-approval: Router 3 is PRIMARY, Routers 1&2 are STANDBY
 		// SubnetRoutes should only show routes for PRIMARY node (actively serving)
 		requireNodeRouteCountWithCollect(c, nodes[0], 1, 1, 0) // Router 1: STANDBY (available, approved, but not serving)
-		requireNodeRouteCountWithCollect(c, nodes[1], 1, 1, 1) // Router 2: PRIMARY (available, approved, and serving)
-		requireNodeRouteCountWithCollect(c, nodes[2], 1, 1, 0) // Router 3: STANDBY (available, approved, but not serving)
+		requireNodeRouteCountWithCollect(c, nodes[1], 1, 1, 0) // Router 2: STANDBY (available, approved, but not serving)
+		requireNodeRouteCountWithCollect(c, nodes[2], 1, 1, 1) // Router 3: PRIMARY (available, approved, and serving)
 	}, propagationTime, 200*time.Millisecond, "Waiting for route state after router 3 re-approval")
 
 	// Validate primary routes table state after router 3 re-approval
@@ -1315,9 +1319,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 			types.NodeID(mustParseID(MustFindNode(subRouter3.Hostname(), nodes).Id)): {pref},
 		},
 		PrimaryRoutes: map[string]types.NodeID{
-			pref.String(): types.NodeID(mustParseID(MustFindNode(subRouter2.Hostname(), nodes).Id)),
+			pref.String(): types.NodeID(mustParseID(MustFindNode(subRouter3.Hostname(), nodes).Id)),
 		},
-	}, "Router 2 should remain primary after router 3 re-approval")
+	}, "Router 3 should be primary after router 3 re-approval")
 
 	checkFailureAndPrintRoutes(t, client)
 }
@@ -2164,6 +2168,38 @@ func MustFindNode(hostname string, nodes []*clientv1.Node) *clientv1.Node {
 	}
 
 	panic("node not found")
+}
+
+// orderRouterSessions gives each router after the first a new control
+// session, one after another, so the oldest session, which the primary
+// election prefers, follows the order given. Clients log in concurrently,
+// which leaves that order to chance.
+func orderRouterSessions(t *testing.T, headscale ControlServer, routers ...TailscaleClient) {
+	t.Helper()
+
+	waitOnline := func(r TailscaleClient, online bool) {
+		t.Helper()
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			nodes, err := headscale.ListNodes()
+			assert.NoError(c, err)
+			assert.Equal(c, online, MustFindNode(r.Hostname(), nodes).Online)
+		}, integrationutil.HAConvergeTimeout, 500*time.Millisecond,
+			"%s should have online=%t", r.Hostname(), online)
+	}
+
+	for _, r := range routers[1:] {
+		require.NoError(t, r.Down())
+	}
+
+	// A session ends only once the server's reconnect grace has passed.
+	for _, r := range routers[1:] {
+		waitOnline(r, false)
+	}
+
+	for _, r := range routers[1:] {
+		require.NoError(t, r.Up())
+		waitOnline(r, true)
+	}
 }
 
 // TestAutoApproveMultiNetwork tests auto approving of routes
@@ -3691,6 +3727,8 @@ func TestHASubnetRouterPingFailover(t *testing.T) {
 	subRouter2 := allClients[1]
 	client := allClients[2]
 
+	orderRouterSessions(t, headscale, subRouter1, subRouter2)
+
 	t.Logf("Router 1: %s, Router 2: %s, Client: %s",
 		subRouter1.Hostname(), subRouter2.Hostname(), client.Hostname())
 
@@ -3827,32 +3865,31 @@ func TestHASubnetRouterPingFailover(t *testing.T) {
 	_, _, err = subRouter1.Execute(iptablesDel)
 	require.NoError(t, err, "failed to remove iptables rule")
 
-	// Wait for the prober to detect recovery.
+	// Wait for the prober to detect recovery. Router 1 kept its control
+	// session, the older one, so it takes the route back.
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		pr, err := headscale.PrimaryRoutes()
 		assert.NoError(c, err)
 
-		// Router 1 should be healthy again but NOT primary (no flapping).
 		assert.Equal(c, map[string]types.NodeID{
-			pref.String(): nodeID2,
-		}, pr.PrimaryRoutes, "router 2 should remain primary (no flapping)")
+			pref.String(): nodeID1,
+		}, pr.PrimaryRoutes, "router 1 should be primary again")
 
 		assert.Empty(c, pr.UnhealthyNodes,
 			"no nodes should be unhealthy after recovery")
-	}, propagationTime, 1*time.Second, "waiting for recovery without flapping")
+	}, propagationTime, 1*time.Second, "waiting for recovery")
 
-	// Traffic should still go through router 2 (stability).
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		tr, err := client.Traceroute(webip)
 		assert.NoError(c, err)
 
-		ip, err := subRouter2.IPv4()
+		ip, err := subRouter1.IPv4()
 		if !assert.NoError(c, err) {
 			return
 		}
 
 		assertTracerouteViaIPWithCollect(c, tr, ip)
-	}, propagationTime, 200*time.Millisecond, "traceroute should still go through router 2 after recovery")
+	}, propagationTime, 200*time.Millisecond, "traceroute should go through router 1 after recovery")
 }
 
 // TestHASubnetRouterFailoverBothOffline reproduces issue #3203:
@@ -3931,6 +3968,8 @@ func TestHASubnetRouterFailoverBothOffline(t *testing.T) {
 	subRouter2 := allClients[1]
 	client := allClients[2]
 
+	orderRouterSessions(t, headscale, subRouter1, subRouter2)
+
 	t.Logf("Router 1: %s, Router 2: %s, Client: %s",
 		subRouter1.Hostname(), subRouter2.Hostname(), client.Hostname())
 
@@ -3969,7 +4008,7 @@ func TestHASubnetRouterFailoverBothOffline(t *testing.T) {
 	nodeID1 := types.NodeID(mustParseID(MustFindNode(subRouter1.Hostname(), nodes).Id))
 	nodeID2 := types.NodeID(mustParseID(MustFindNode(subRouter2.Hostname(), nodes).Id))
 
-	// Sanity: r1 starts as primary (lower NodeID).
+	// Sanity: r1 starts as primary (older session).
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		pr, err := headscale.PrimaryRoutes()
 		assert.NoError(c, err)
@@ -4146,6 +4185,8 @@ func TestHASubnetRouterFailoverBothOfflineCablePull(t *testing.T) {
 	subRouter2 := allClients[1]
 	client := allClients[2]
 
+	orderRouterSessions(t, headscale, subRouter1, subRouter2)
+
 	for _, r := range []TailscaleClient{subRouter1, subRouter2} {
 		_, _, err = r.Execute([]string{
 			"tailscale", "set", "--advertise-routes=" + pref.String(),
@@ -4290,7 +4331,7 @@ func TestHASubnetRouterFailoverBothOfflineCablePull(t *testing.T) {
 // disconnect leaves the long-poll TCP half-open at the peer.
 //
 // Phases:
-//  1. r1 starts as primary (lowest NodeID).
+//  1. r1 starts as primary (older session).
 //  2. r1 alone fails and recovers — failover to r2, then traffic
 //     resumes when r1 returns.
 //  3. r2 alone fails and recovers — failover, then traffic resumes.
@@ -4298,9 +4339,10 @@ func TestHASubnetRouterFailoverBothOfflineCablePull(t *testing.T) {
 //     4a. r1 down → r2 promoted.
 //     4b. r2 down → primary must NOT flap to offline r1.
 //     4c. r2 up   → r2 primary again, traffic resumes.
+//     4d. r1 up   → the older session is primary.
 //  5. Simultaneous dual failure.
-//     5a. r1 + r2 down → primary must NOT flap to offline r1.
-//     5b. both up → primary stays r2, traffic resumes.
+//     5a. r1 + r2 down → primary must not move.
+//     5b. both up → the older session is primary, traffic resumes.
 //
 // The no-flap assertions in 4b and 5a are the regression barriers
 // for #3203. Phases 2/3 are functional checks (failover works,
@@ -4370,6 +4412,8 @@ func TestHASubnetRouterFailoverDockerDisconnect(t *testing.T) {
 	subRouter2 := allClients[1]
 	client := allClients[2]
 
+	orderRouterSessions(t, headscale, subRouter1, subRouter2)
+
 	for _, r := range []TailscaleClient{subRouter1, subRouter2} {
 		_, _, err = r.Execute([]string{
 			"tailscale", "set", "--advertise-routes=" + pref.String(),
@@ -4430,8 +4474,7 @@ func TestHASubnetRouterFailoverDockerDisconnect(t *testing.T) {
 	}
 
 	// requirePrimaryStable asserts primary == want for the entire
-	// window. Catches transient flaps and verifies anti-flap on
-	// prev-primary return.
+	// window. Catches transient flaps.
 	requirePrimaryStable := func(want types.NodeID, window time.Duration, msg string) {
 		t.Helper()
 		require.Never(t, func() bool {
@@ -4446,8 +4489,47 @@ func TestHASubnetRouterFailoverDockerDisconnect(t *testing.T) {
 		}, window, 1*time.Second, msg)
 	}
 
+	// requireOlderSessionPrimary blocks until both routers are online and
+	// healthy and the one with the older control session is primary, and
+	// returns it. Whether a cable pull ends a session depends on when the
+	// server notices the dead connection, so the test reads the order.
+	requireOlderSessionPrimary := func(msg string) types.NodeID {
+		t.Helper()
+
+		var want types.NodeID
+
+		assert.EventuallyWithT(t, func(c *assert.CollectT) {
+			store, err := headscale.DebugNodeStore()
+			if !assert.NoError(c, err) {
+				return
+			}
+
+			r1, r2 := store[nodeID1], store[nodeID2]
+			for _, n := range []*types.Node{&r1, &r2} {
+				assert.True(c, n.Online(), "%s: node %d online", msg, n.ID)
+				assert.False(c, n.Unhealthy, "%s: node %d healthy", msg, n.ID)
+			}
+
+			want = nodeID1
+			if r2.SessionStart.Before(r1.SessionStart) {
+				want = nodeID2
+			}
+
+			pr, err := headscale.PrimaryRoutes()
+			if !assert.NoError(c, err) {
+				return
+			}
+
+			assert.Equal(c, map[string]types.NodeID{
+				pref.String(): want,
+			}, pr.PrimaryRoutes, msg)
+		}, propagationTime, 1*time.Second, msg)
+
+		return want
+	}
+
 	// ============================================================
-	// Phase 1: initial state — r1 (lowest NodeID) is primary.
+	// Phase 1: initial state — r1 (older session) is primary.
 	// ============================================================
 	t.Log("=== Phase 1: initial state — r1 should be primary. ===")
 	requirePrimary(nodeID1, "phase 1: r1 primary at start")
@@ -4510,28 +4592,31 @@ func TestHASubnetRouterFailoverDockerDisconnect(t *testing.T) {
 	requirePrimary(nodeID2, "phase 4c: r2 primary after reconnect")
 	requireTrafficWorks("phase 4c: client reaches webservice via r2 after recovery")
 
-	t.Log("=== Phase 4d: reconnect r1, traffic should still flow. ===")
+	t.Log("=== Phase 4d: reconnect r1, the older session should be primary. ===")
 	require.NoError(t, subRouter1.ReconnectToNetwork(usernet1),
 		"phase 4d: docker reconnect r1")
+
+	prev := requireOlderSessionPrimary("phase 4d: older session primary after r1 returns")
+
 	requireTrafficWorks("phase 4d: client still reaches webservice")
 
 	// ============================================================
 	// Phase 5: simultaneous dual failure (whole-segment outage).
-	// prev going in is r2 — primary must not flap to offline r1.
+	// The primary going in must keep the route while both are down.
 	// ============================================================
 	t.Log("=== Phase 5a: cable-pull r1 and r2 simultaneously. ===")
 	require.NoError(t, subRouter1.DisconnectFromNetwork(usernet1),
 		"phase 5a: docker disconnect r1")
 	require.NoError(t, subRouter2.DisconnectFromNetwork(usernet1),
 		"phase 5a: docker disconnect r2")
-	requirePrimaryStable(nodeID2, flapWindow,
-		"phase 5a: primary must not flap to offline r1 (issue #3203)")
+	requirePrimaryStable(prev, flapWindow,
+		"phase 5a: primary must not move while both routers are down (issue #3203)")
 
-	t.Log("=== Phase 5b: reconnect both, r2 should remain primary. ===")
+	t.Log("=== Phase 5b: reconnect both, the older session should be primary. ===")
 	require.NoError(t, subRouter1.ReconnectToNetwork(usernet1),
 		"phase 5b: docker reconnect r1")
 	require.NoError(t, subRouter2.ReconnectToNetwork(usernet1),
 		"phase 5b: docker reconnect r2")
-	requirePrimary(nodeID2, "phase 5b: r2 primary after both reconnect")
-	requireTrafficWorks("phase 5b: client reaches webservice via r2")
+	requireOlderSessionPrimary("phase 5b: older session primary after both reconnect")
+	requireTrafficWorks("phase 5b: client reaches webservice")
 }

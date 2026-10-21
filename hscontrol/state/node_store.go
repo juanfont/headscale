@@ -169,8 +169,8 @@ type Snapshot struct {
 	allNodes    []types.NodeView
 
 	// routes maps each prefix to its current primary advertiser. The
-	// previous assignment is carried over when still valid so the
-	// primary does not flap on every unrelated batch.
+	// next election reads it to keep a prefix where it was while no
+	// router is available.
 	routes         map[netip.Prefix]types.NodeID
 	isPrimaryRoute map[types.NodeID]bool
 }
@@ -217,7 +217,8 @@ func updateChanges(pre, post *types.Node) (bool, bool) {
 
 	return false, pre.Online() != post.Online() ||
 		!preView.Expiry().GetOr(time.Time{}).Equal(postView.Expiry().GetOr(time.Time{})) ||
-		pre.Unhealthy != post.Unhealthy
+		pre.Unhealthy != post.Unhealthy ||
+		!pre.SessionStart.Equal(post.SessionStart)
 }
 
 // PutNode adds or updates a node in the store.
@@ -727,8 +728,8 @@ func snapshotFromNodes(
 	if reuseRoutes {
 		routes, isPrimaryRoute = prev.routes, prev.isPrimaryRoute
 	} else {
-		// Carrying the previous assignment forward lets a still-valid
-		// primary survive unrelated batches.
+		// The previous assignment keeps a prefix mapped while no router
+		// is available.
 		var prevRoutes map[netip.Prefix]types.NodeID
 		if prev != nil {
 			prevRoutes = prev.routes
@@ -818,8 +819,9 @@ func advertisers(
 
 // electPrimaryRoutes picks the primary router for each non-exit prefix any
 // node approves. A router is available when it is online, unexpired and
-// healthy. The previous primary is preserved while it is available
-// (anti-flap); otherwise the lowest-NodeID available router wins.
+// healthy. The available router with the oldest control session wins, the
+// lower NodeID on a tie: a router that reconnects joins as a standby, and
+// one that keeps its session takes its routes back once available again.
 //
 // With no router available the prefix stays mapped, so peers keep the route
 // and use it once its router returns: the previous primary keeps it while it
@@ -843,22 +845,24 @@ func electPrimaryRoutes(
 
 	routes := make(map[netip.Prefix]types.NodeID, len(approvers))
 	for prefix, ids := range approvers {
+		var oldest types.NodeID
+
+		// ids ascend, so a tie keeps the lower ID.
+		for _, id := range ids {
+			if available(id) && (oldest == 0 ||
+				nodes[id].SessionStart.Before(nodes[oldest].SessionStart)) {
+				oldest = id
+			}
+		}
+
+		if oldest != 0 {
+			routes[prefix] = oldest
+
+			continue
+		}
+
 		cur, hasPrev := prev[prefix]
-		hasPrev = hasPrev && slices.Contains(ids, cur)
-
-		if hasPrev && available(cur) {
-			routes[prefix] = cur
-
-			continue
-		}
-
-		if i := slices.IndexFunc(ids, available); i >= 0 {
-			routes[prefix] = ids[i]
-
-			continue
-		}
-
-		if hasPrev {
+		if hasPrev && slices.Contains(ids, cur) {
 			routes[prefix] = cur
 
 			continue
@@ -1095,12 +1099,12 @@ func (s *NodeStore) IsNodeHealthy(id types.NodeID) bool {
 	return !n.Unhealthy
 }
 
-// IsRouterAvailable reports whether id may win a primary election: online,
-// unexpired and healthy.
-func (s *NodeStore) IsRouterAvailable(id types.NodeID) bool {
+// RouterSession reports when id's control session began and whether id may
+// win a primary election: online, unexpired and healthy.
+func (s *NodeStore) RouterSession(id types.NodeID) (time.Time, bool) {
 	n, ok := s.data.Load().nodesByID[id]
 
-	return ok && servesRoutes(&n) && !n.Unhealthy
+	return n.SessionStart, ok && servesRoutes(&n) && !n.Unhealthy
 }
 
 // PrimaryRoutes returns the snapshot's prefix→primary map. The map is
