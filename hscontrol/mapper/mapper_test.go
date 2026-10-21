@@ -1774,6 +1774,7 @@ func (b *MapResponseBuilder) buildTailPeersCapMapsReference(peers views.Slice[ty
 		// cap stays off the peer view, leaving CapMap empty for most
 		// peers. [policyv2.PeerCapMap] encodes those conditions.
 		tn.CapMap = policyv2.PeerCapMap(peer, allCapMaps[peer.ID()])
+		tn.Hostinfo = types.PeerHostinfo(tn.Hostinfo)
 
 		tailPeers = append(tailPeers, tn)
 	}
