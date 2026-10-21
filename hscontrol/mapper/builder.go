@@ -114,6 +114,8 @@ func (b *MapResponseBuilder) WithSelfNode() *MapResponseBuilder {
 	tailnode.MachineAuthorized = true
 	tailnode.Expired = false
 
+	tailnode.Hostinfo = types.SelfHostinfo(tailnode.Hostinfo)
+
 	b.resp.Node = tailnode
 
 	return b
@@ -319,6 +321,7 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 		// cap stays off the peer view, leaving CapMap empty for most
 		// peers. [policyv2.PeerCapMap] encodes those conditions.
 		tn.CapMap = policyv2.PeerCapMap(peer, peerCapMaps[peer.ID()])
+		tn.Hostinfo = types.PeerHostinfo(tn.Hostinfo)
 
 		tailPeers = append(tailPeers, tn)
 	}

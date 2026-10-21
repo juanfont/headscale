@@ -21,6 +21,7 @@ import (
 	"tailscale.com/tailcfg"
 	"tailscale.com/tailcfg/nodecap"
 	"tailscale.com/types/key"
+	"tailscale.com/types/opt"
 	"tailscale.com/types/views"
 	"tailscale.com/util/dnsname"
 	"tailscale.com/util/set"
@@ -1494,4 +1495,50 @@ func (nv NodeView) TailNode(
 	}
 
 	return &tNode, nil
+}
+
+// SelfHostinfo is the part of a node's reported Hostinfo that its own map
+// entry carries, as on Tailscale SaaS.
+func SelfHostinfo(hi tailcfg.HostinfoView) tailcfg.HostinfoView {
+	if !hi.Valid() {
+		return hi
+	}
+
+	return (&tailcfg.Hostinfo{
+		Hostname:    hi.Hostname(),
+		RequestTags: hi.RequestTags().AsSlice(),
+		RoutableIPs: hi.RoutableIPs().AsSlice(),
+		Services:    hi.Services().AsSlice(),
+	}).View()
+}
+
+// PeerHostinfo is the part of a node's reported Hostinfo that its peers are
+// sent, as on Tailscale SaaS. Clients find a peer's DNS proxy by its
+// capability version, so the service announcing it is left out. Empty
+// fields stay nil, so two results compare equal by content.
+func PeerHostinfo(hi tailcfg.HostinfoView) tailcfg.HostinfoView {
+	if !hi.Valid() {
+		return hi
+	}
+
+	out := &tailcfg.Hostinfo{
+		Hostname: hi.Hostname(),
+		OS:       hi.OS(),
+	}
+
+	for _, s := range hi.Services().All() {
+		if s.Proto != tailcfg.PeerAPIDNS {
+			out.Services = append(out.Services, s)
+		}
+	}
+
+	if hi.SSH_HostKeys().Len() > 0 {
+		out.SSH_HostKeys = hi.SSH_HostKeys().AsSlice()
+	}
+
+	if hi.AppConnector().EqualBool(true) {
+		out.AppConnector = opt.NewBool(true)
+	}
+
+	return out.View()
 }
