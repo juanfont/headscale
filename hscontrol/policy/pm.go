@@ -72,9 +72,10 @@ type PolicyManager interface {
 	// both fields are empty and the caller falls back to existing behavior.
 	ViaRoutesForPeer(viewer, peer types.NodeView) types.ViaRouteResult
 
-	// SetRouterAvailable sets the via election's runtime availability check.
+	// SetRouterSession sets the via election's runtime check: when a
+	// router's control session began and whether it may win.
 	// The callback runs under the policy lock and must remain lock-free.
-	SetRouterAvailable(available func(types.NodeID) bool)
+	SetRouterSession(session func(types.NodeID) (time.Time, bool))
 
 	// NodeCapMap returns compiled policy capabilities for the given node,
 	// or nil when none target it. The map is a defensive clone; its values

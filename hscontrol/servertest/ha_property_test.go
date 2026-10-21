@@ -27,8 +27,8 @@ type haPropClient struct {
 	name  string
 	route netip.Prefix
 	// connected mirrors the prober's view (mapBatcher.IsConnected).
-	// Tracked alongside the runtime read so anti-flap invariants can
-	// reason about the candidate set the prober actually evaluates.
+	// Tracked alongside the runtime read so the invariants can reason
+	// about the candidate set the prober actually evaluates.
 	connected bool
 	// freshSinceReconnect is true between a successful Reconnect and
 	// the prober's second observation of the new SessionEpoch — the
@@ -138,7 +138,7 @@ func readPrimaries(
 // checkHAInvariants walks every prefix → primary mapping in the live
 // snapshot and asserts the six properties documented in the test
 // header. prevPrimaries is the snapshot taken before the just-applied
-// op so anti-flap can compare moves.
+// op, the primary that keeps a prefix while no router is available.
 //
 //nolint:gocyclo // invariant checker over several independent properties
 func checkHAInvariants(
@@ -146,7 +146,6 @@ func checkHAInvariants(
 	srv *servertest.TestServer,
 	clients []*haPropClient,
 	prevPrimaries map[netip.Prefix]types.NodeID,
-	skipAntiFlap bool,
 ) {
 	rt.Helper()
 
@@ -246,31 +245,17 @@ func checkHAInvariants(
 			)
 		}
 
-		// Invariant 5 (anti-flap): if the previous snapshot already had
-		// a primary for this prefix AND that primary is still a healthy,
-		// online, advertising candidate, the new snapshot must keep it.
-		// Skipped on settle reads where we re-check without an op in
-		// between — the prober may run in a deferred batch and the
-		// election may legitimately move once on its own timeline.
-		if !skipAntiFlap {
-			if prev, hadPrev := prevPrimaries[prefix]; hadPrev && prev != owner {
-				prevNV, exists := st.GetNodeByID(prev)
-				if exists && prevNV.Valid() {
-					prevOnline, prevKnown := prevNV.IsOnline().GetOk()
-					prevApproved := prevNV.AllApprovedRoutes()
-
-					stillCandidate := prevKnown && prevOnline &&
-						slices.Contains(prevApproved, prefix)
-					stillHealthy := st.IsNodeHealthy(prev)
-
-					if stillCandidate && stillHealthy {
-						rt.Fatalf(
-							"prefix %s flapped primary %d -> %d "+
-								"while previous primary was still a healthy candidate",
-							prefix, prev, owner,
-						)
-					}
-				}
+		// Invariant 5 (oldest session): no healthy online candidate
+		// opened its control session before the primary's. A router
+		// that reconnects joins as a standby; one that keeps its
+		// session wins again once healthy.
+		for _, c := range advertisersByPrefix[prefix] {
+			cv, _ := st.GetNodeByID(c)
+			if st.IsNodeHealthy(c) && cv.SessionStart().Before(nv.SessionStart()) {
+				rt.Fatalf(
+					"prefix %s primary %d holds it over %d, whose session is older",
+					prefix, owner, c,
+				)
 			}
 		}
 	}
@@ -487,17 +472,6 @@ func TestHAProberProperty(t *testing.T) {
 
 			prev := snapshotPrimaries(rt, srv, clients)
 
-			// Anti-flap is meaningful only across operations that do
-			// not themselves mutate the candidate set or per-node
-			// health. Connect/Disconnect both mutate IsOnline (via
-			// state.Connect, or via the asynchronous grace-period
-			// state.Disconnect), and the resulting election move is
-			// expected, not a flap. ProbeOnce, by contrast, must keep
-			// the primary on the previous owner whenever that owner
-			// is still a candidate — this is what the reconnect-
-			// during-probe and dual-disconnect guards preserve.
-			isProberOp := op == 2
-
 			switch op {
 			case 0: // ClientDisconnect
 				idx := idxGen.Draw(rt, fmt.Sprintf("disc_idx_%d", step))
@@ -506,8 +480,8 @@ func TestHAProberProperty(t *testing.T) {
 				// Refuse to disconnect the last connected node. The
 				// prober's HANodes gate requires ≥2 online candidates
 				// per prefix; with only one node left, no probe runs
-				// and the prober-driven invariants (anti-flap,
-				// reconnect-defer) become unfalsifiable. Keeping at
+				// and the prober-driven invariants (health
+				// failover, reconnect-defer) become unfalsifiable. Keeping at
 				// least two candidates is enough to exercise every
 				// failure shape we care about.
 				connectedCount := 0
@@ -615,15 +589,13 @@ func TestHAProberProperty(t *testing.T) {
 				// to wait on; the no-op step still verifies that two
 				// consecutive reads (one snapshot, the same snapshot)
 				// stay consistent. This is invariant 3: stable
-				// conditions = stable primary. We skip the anti-flap
-				// comparison so a primary that legitimately changed
-				// in the prior op is not re-flagged here.
-				checkHAInvariants(rt, srv, clients, prev, true)
+				// conditions = stable primary.
+				checkHAInvariants(rt, srv, clients, prev)
 
 				continue
 			}
 
-			checkHAInvariants(rt, srv, clients, prev, !isProberOp)
+			checkHAInvariants(rt, srv, clients, prev)
 		}
 	})
 }
