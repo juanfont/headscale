@@ -3996,15 +3996,21 @@ func TestHASubnetRouterFailoverBothOffline(t *testing.T) {
 		}, pr.PrimaryRoutes, "r2 should be primary after r1 offline")
 	}, propagationTime, 500*time.Millisecond, "waiting for failover to r2")
 
-	t.Log("=== Step 2: r2 also goes offline. No primary should remain. ===")
+	t.Log("=== Step 2: r2 also goes offline. r2 keeps the route. ===")
 
 	require.NoError(t, subRouter2.Down())
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		current, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.False(c, MustFindNode(subRouter2.Hostname(), current).Online, "r2 should be offline")
+
 		pr, err := headscale.PrimaryRoutes()
 		assert.NoError(c, err)
-		assert.Empty(c, pr.PrimaryRoutes,
-			"no primary should be assigned while both routers are offline")
+		assert.Equal(c, map[string]types.NodeID{
+			pref.String(): nodeID2,
+		}, pr.PrimaryRoutes,
+			"the last primary keeps the route while both routers are offline")
 	}, propagationTime, 500*time.Millisecond, "waiting for both routers to be offline")
 
 	t.Log("=== Step 3: r2 returns. ===")
