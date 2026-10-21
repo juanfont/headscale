@@ -235,13 +235,11 @@ func TestExpiredUserNodeReusedOneShotKey_RotatedNodeKey(t *testing.T) {
 
 // TestExpiredUserNodeReusedOneShotKey_SameNodeKey: the security boundary must
 // not depend on the client rotating its node key. An expired node re-using its
-// node key must still re-validate the key, otherwise a spent one-shot key
-// silently re-authorises it.
+// node key is asked for a new one, so a spent one-shot key never re-authorises
+// it.
 func TestExpiredUserNodeReusedOneShotKey_SameNodeKey(t *testing.T) {
 	_, err := reregisterExpiredUserNodeWithSpentKey(t, true)
-	require.Error(t, err,
-		"expired node re-registering with the same node key must re-validate its key")
-	require.Contains(t, err.Error(), "authkey already used")
+	require.ErrorIs(t, err, ErrNodeKeyExpired)
 }
 
 // TestReusableUserPAKReauthOnTaggedNodeNoDuplicate guards against a reusable
@@ -1098,7 +1096,13 @@ func TestExpiredTaggedNodeRequiresValidPreAuthKey(t *testing.T) {
 			require.Equal(t, past.UnixNano(), nsBefore.Expiry)
 			require.Equal(t, nsBefore, rowBefore)
 
-			node, _, err := s.HandleNodeFromPreAuthKey(c.regReq, c.machineKey)
+			_, _, err = s.HandleNodeFromPreAuthKey(c.regReq, c.machineKey)
+			require.ErrorIs(t, err, ErrNodeKeyExpired, "the old node key is answered first")
+
+			req := c.regReq
+			req.NodeKey = key.NewNode().Public()
+
+			node, _, err := s.HandleNodeFromPreAuthKey(req, c.machineKey)
 			if !reusable {
 				require.ErrorIs(t, err, types.PAKError("authkey already used"))
 				nsAfter, rowAfter := c.fields(t)
@@ -1937,7 +1941,7 @@ func TestPAKReregisterRevalidatesAtMutation(t *testing.T) {
 		nsBefore, dbBefore := c.fields(t)
 
 		_, err = c.reregister(view, pak, c.regReq)
-		require.ErrorIs(t, err, types.PAKError("authkey already used"))
+		require.ErrorIs(t, err, ErrNodeKeyExpired)
 
 		nsAfter, dbAfter := c.fields(t)
 		require.Equal(t, nsBefore, nsAfter, "NodeStore node must be untouched")
@@ -1965,13 +1969,14 @@ func TestPAKReregisterRevalidatesAtMutation(t *testing.T) {
 		_, _, err = s.SetNodeExpiry(c.node.ID(), &tA)
 		require.NoError(t, err)
 
-		got, err := c.reregister(view, pak, c.regReq)
-		require.NoError(t, err, "a valid key re-authorises whatever raced")
-		require.False(t, got.IsExpired())
+		nsBefore, dbBefore := c.fields(t)
 
-		ns, dbNode := c.fields(t)
-		require.Equal(t, c.regReq.Expiry.UnixNano(), ns.Expiry, "expiry is extended")
-		require.Equal(t, ns, dbNode, "database must equal the NodeStore")
+		_, err = c.reregister(view, pak, c.regReq)
+		require.ErrorIs(t, err, ErrNodeKeyExpired, "even a valid key needs a new node key")
+
+		nsAfter, dbAfter := c.fields(t)
+		require.Equal(t, nsBefore, nsAfter)
+		require.Equal(t, dbBefore, dbAfter)
 	})
 
 	t.Run("nodekey_changed_spent_key", func(t *testing.T) {
@@ -2110,9 +2115,9 @@ func TestPAKReregisterRevalidatesAtMutation(t *testing.T) {
 	})
 
 	// The node is expired after the lookup, then the key expires, then the
-	// writer runs. The decision must be taken at the writer's own clock: any
-	// validity or clock read taken before the NodeStore write lets the expired
-	// key revive the node.
+	// writer runs a login under a new node key. The decision must be taken at
+	// the writer's own clock: any validity or clock read taken before the
+	// NodeStore write lets the expired key revive the node.
 	t.Run("admin_expire_then_key_expires", func(t *testing.T) {
 		s := newRetagTestState(t)
 		user := s.CreateUserForTest("pakuser")
@@ -2130,6 +2135,7 @@ func TestPAKReregisterRevalidatesAtMutation(t *testing.T) {
 
 		regReq := c.regReq
 		regReq.Auth = &tailcfg.RegisterResponseAuth{AuthKey: k.Key}
+		regReq.NodeKey = key.NewNode().Public()
 
 		view, pak := c.lookup(t, k.Key)
 		require.NoError(t, pak.ValidAt(time.Now()))
@@ -2213,11 +2219,12 @@ func TestPAKReregisterRollbackKeepsPriorWrite(t *testing.T) {
 
 	regReq := c.regReq
 	regReq.Auth = &tailcfg.RegisterResponseAuth{AuthKey: k.Key}
+	regReq.NodeKey = key.NewNode().Public()
 
 	view, pak := c.lookup(t, k.Key)
 	require.False(t, pak.Used, "precondition: the lookup read a fresh single-use key")
 
-	tA := time.Now()
+	tA := time.Now().Add(time.Hour)
 	_, _, err = s.SetNodeExpiry(c.node.ID(), &tA)
 	require.NoError(t, err)
 
@@ -2235,6 +2242,7 @@ func TestPAKReregisterRollbackKeepsPriorWrite(t *testing.T) {
 	require.Equal(t, tA.UnixNano(), ns.Expiry, "rollback must keep the admin expiry")
 	require.Equal(t, &k0.ID, ns.AuthKeyID)
 	require.Equal(t, "h0", ns.Hostname)
+	require.Equal(t, c.regReq.NodeKey, ns.NodeKey)
 }
 
 // TestPAKReregisterConcurrentAdminExpire races a same-key restart with a spent
@@ -3042,8 +3050,8 @@ func TestPAKWakeAcceptsRequestedTags(t *testing.T) {
 
 // TestUserKeyOnTaggedMachine: a user key on a tagged machine re-authenticates
 // the tagged node only when it speaks for it (the user an admin tagged it
-// from); another user's key wakes it, gets a device of its own beside it with
-// a new node key, and cannot lift its expiry.
+// from); another user's key wakes it or gets a device of its own beside it
+// with a new node key. An expired node is asked for a new node key first.
 func TestUserKeyOnTaggedMachine(t *testing.T) {
 	for _, adminTagged := range []bool{false, true} {
 		for _, mode := range []string{"expired", "rotated", "wake"} {
@@ -3099,8 +3107,8 @@ func TestUserKeyOnTaggedMachine(t *testing.T) {
 				require.NoError(t, keyErr)
 
 				switch {
-				case !adminTagged && mode == "expired":
-					require.EqualError(t, err, "authkey cannot re-authenticate this node")
+				case mode == "expired":
+					require.ErrorIs(t, err, ErrNodeKeyExpired)
 					assert.Equal(t, beforeCache, afterCache)
 					assert.Equal(t, beforeDB, afterDB)
 					assert.False(t, storedKey.Used)
@@ -3133,13 +3141,8 @@ func TestUserKeyOnTaggedMachine(t *testing.T) {
 					require.NoError(t, err)
 					assert.Equal(t, []string{"tag:prod"}, afterCache.Tags, "a same-key relogin keeps it tagged")
 					assert.Equal(t, presented.ID, *afterCache.AuthKeyID)
+					assert.Equal(t, beforeCache.Expiry, afterCache.Expiry)
 					assert.Equal(t, 1, s.ListNodes().Len())
-
-					if mode == "expired" {
-						assert.Zero(t, afterCache.Expiry, "a valid key lifts the past expiry")
-					} else {
-						assert.Equal(t, beforeCache.Expiry, afterCache.Expiry)
-					}
 				}
 			})
 		}
@@ -3147,7 +3150,8 @@ func TestUserKeyOnTaggedMachine(t *testing.T) {
 }
 
 // TestPAKWakeRechecksAuthorityAtMutation: another user's key that wakes a
-// live tagged node is refused when an expiry lands before the writer runs.
+// live tagged node is asked for a new node key when an expiry lands before
+// the writer runs.
 func TestPAKWakeRechecksAuthorityAtMutation(t *testing.T) {
 	s := newRetagTestState(t)
 	original, err := s.CreatePreAuthKey(nil, true, false, nil, []string{"tag:prod"})
@@ -3166,9 +3170,55 @@ func TestPAKWakeRechecksAuthorityAtMutation(t *testing.T) {
 
 	beforeCache, beforeDB := c.fields(t)
 	_, err = c.reregister(view, pak, c.regReq)
-	require.EqualError(t, err, "authkey cannot re-authenticate this node")
+	require.ErrorIs(t, err, ErrNodeKeyExpired)
 
 	afterCache, afterDB := c.fields(t)
 	assert.Equal(t, beforeCache, afterCache)
 	assert.Equal(t, beforeDB, afterDB)
+}
+
+// TestExpiredNodeSameKeyLoginAsksForNewKey: an expired node that logs in
+// under its old node key is asked for a new one and changes nothing, even
+// with a valid key; the login with the new key then renews it.
+func TestExpiredNodeSameKeyLoginAsksForNewKey(t *testing.T) {
+	for _, tagged := range []bool{false, true} {
+		t.Run(fmt.Sprintf("tagged=%t", tagged), func(t *testing.T) {
+			s := newRetagTestState(t)
+
+			var (
+				owner *types.UserID
+				tags  []string
+			)
+
+			if tagged {
+				tags = []string{"tag:prod"}
+			} else {
+				owner = s.CreateUserForTest("expired-user").TypedID()
+			}
+
+			pak, err := s.CreatePreAuthKey(owner, true, false, nil, tags)
+			require.NoError(t, err)
+
+			c := registerForPAKRereg(t, s, pak)
+			past := time.Now().Add(-time.Hour)
+			_, _, err = s.SetNodeExpiry(c.node.ID(), &past)
+			require.NoError(t, err)
+
+			beforeCache, beforeDB := c.fields(t)
+
+			_, _, err = s.HandleNodeFromPreAuthKey(c.regReq, c.machineKey)
+			require.ErrorIs(t, err, ErrNodeKeyExpired)
+
+			afterCache, afterDB := c.fields(t)
+			assert.Equal(t, beforeCache, afterCache)
+			assert.Equal(t, beforeDB, afterDB)
+
+			req := c.regReq
+			req.NodeKey = key.NewNode().Public()
+			node, _, err := s.HandleNodeFromPreAuthKey(req, c.machineKey)
+			require.NoError(t, err)
+			assert.Equal(t, c.node.ID(), node.ID())
+			assert.False(t, node.IsExpired())
+		})
+	}
 }
