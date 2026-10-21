@@ -62,6 +62,7 @@ func TestNodeNameCannotShadowExtraRecord(t *testing.T) {
 
 	_, _, err = s.RenameNode(existing.ID(), "Svc")
 	require.ErrorIs(t, err, ErrNodeNameNotUnique)
+	require.EqualError(t, err, `name "Svc" is already taken`)
 	_, err = s.UpdateNodeFromMapRequest(existing.ID(), tailcfg.MapRequest{
 		NodeKey: existing.NodeKey(), Hostinfo: &tailcfg.Hostinfo{Hostname: "svc"},
 	})
