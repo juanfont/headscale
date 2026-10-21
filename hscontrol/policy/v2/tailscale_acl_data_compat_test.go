@@ -216,25 +216,14 @@ var aclSkipReasons = map[string]string{
 	"acl-n01/venusaur/filter":   allowAllForm,
 	"acl-n01/weedle/filter":     allowAllForm,
 
-	"acl-dup-src-dst/beedrill/filter":   aclDstDedupe,
-	"acl-dup-src-dst/bulbasaur/filter":  aclDstDedupe,
-	"acl-dup-src-dst/charmander/filter": aclDstDedupe,
-	"acl-dup-src-dst/ivysaur/filter":    aclDstDedupe,
-	"acl-dup-src-dst/kakuna/filter":     aclDstDedupe,
-	"acl-dup-src-dst/squirtle/filter":   aclDstDedupe,
-	"acl-dup-src-dst/venusaur/filter":   aclDstDedupe,
-	"acl-dup-src-dst/weedle/filter":     aclDstDedupe,
-	"acl-dxp-dup-ports/beedrill/filter": aclDstDedupe,
-
 	"acl-self-plus-dsts/kakuna/filter":    srcAddressForm,
-	"acl-self-plus-dsts/beedrill/filter":  "FILTER_ADDRESS_FORM+ACL_DST_DEDUPE: sources listed one by one, a repeated destination written once",
+	"acl-self-plus-dsts/beedrill/filter":  srcAddressForm,
 	"acl-self-plus-dsts/bulbasaur/filter": "FILTER_ADDRESS_FORM+SELF_DST_REPEAT: sources listed one by one, the autogroup:self destination written once per source alias",
 }
 
 const (
 	routeHostBits  = "ROUTE_HOST_BITS: SaaS refuses an autoApprovers route with host bits; headscale accepts it"
 	allowAllForm   = "ALLOW_ALL_FORM: SaaS writes the allow-all default's sources as the tailnet ranges, headscale as \"*\""
-	aclDstDedupe   = "ACL_DST_DEDUPE: SaaS writes a destination repeated within one ACL once, headscale once per mention"
 	srcAddressForm = "FILTER_ADDRESS_FORM: SaaS lists contiguous source addresses one by one, headscale as a range"
 )
 
