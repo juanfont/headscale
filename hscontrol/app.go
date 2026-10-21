@@ -161,8 +161,8 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 	ephemeralGC := db.NewEphemeralGarbageCollector(func(ni types.NodeID) {
 		node, ok := app.state.GetNodeByID(ni)
 		if !ok {
-			log.Error().Uint64("node.id", ni.Uint64()).Msg("ephemeral node deletion failed")
-			log.Debug().Caller().Uint64("node.id", ni.Uint64()).Msg("ephemeral node deletion failed because node not found in NodeStore")
+			// A delete that raced this timer already did its job.
+			log.Debug().Caller().Uint64("node.id", ni.Uint64()).Msg("ephemeral node already deleted, skipping garbage collection")
 
 			return
 		}
@@ -1274,6 +1274,14 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 // All change should be enqueued here and empty will be automatically
 // ignored.
 func (h *Headscale) Change(cs ...change.Change) {
+	// Every delete path publishes its removal here; a deleted node's
+	// inactivity timer has nothing left to collect.
+	for _, c := range cs {
+		for _, id := range c.DeletedNodes {
+			h.ephemeralGC.Cancel(id)
+		}
+	}
+
 	h.mapBatcher.AddWork(slices.Concat(cs, h.state.DrainSelfRefreshes())...)
 }
 
