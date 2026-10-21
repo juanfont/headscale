@@ -77,6 +77,7 @@ var (
 // Grant validation errors.
 var (
 	ErrGrantMissingIPOrApp             = errors.New("ip and app can not both be empty")
+	ErrGrantIPPortList                 = errors.New("only one port range allowed")
 	ErrGrantViaNotATag                 = errors.New("via can only be a tag")
 	ErrProtocolPortInvalidFormat       = errors.New("expected only one colon in Internet protocol and port type")
 	ErrCapNameInvalidForm              = errors.New("capability name must have the form {domain}/{path}")
@@ -965,36 +966,32 @@ func (ve *ProtocolPort) UnmarshalJSON(b []byte) error {
 			return nil
 		}
 
-		// Only contains a port, no protocol
-		if !strings.Contains(vs, ":") {
-			ports, err := parsePortRange(vs)
-			if err != nil {
-				return fmt.Errorf("port range %q: %w", vs, err)
+		protocol, portsPart := ProtocolNameWildcard, vs
+
+		// "proto:ports", or ports alone for any protocol.
+		if strings.Contains(vs, ":") {
+			parts := strings.Split(vs, ":")
+			if len(parts) != 2 {
+				return fmt.Errorf("%w, got: %v(%d)", ErrProtocolPortInvalidFormat, parts, len(parts))
 			}
 
-			ve.Protocol = ProtocolNameWildcard
-			ve.Ports = ports
+			protocol, portsPart = Protocol(parts[0]), parts[1]
 
-			return nil
+			err := protocol.validate()
+			if err != nil {
+				return err
+			}
 		}
-
-		parts := strings.Split(vs, ":")
-		if len(parts) != 2 {
-			return fmt.Errorf("%w, got: %v(%d)", ErrProtocolPortInvalidFormat, parts, len(parts))
-		}
-
-		protocol := Protocol(parts[0])
-
-		err := protocol.validate()
-		if err != nil {
-			return err
-		}
-
-		portsPart := parts[1]
 
 		ports, err := parsePortRange(portsPart)
 		if err != nil {
 			return fmt.Errorf("port range %q: %w", portsPart, err)
+		}
+
+		// Tailscale SaaS takes one range per entry; a list goes in
+		// entries of its own.
+		if len(ports) > 1 {
+			return fmt.Errorf("%w: %q", ErrGrantIPPortList, vs)
 		}
 
 		ve.Protocol = protocol
