@@ -1277,3 +1277,31 @@ func TestMultiChannelSend_SSHPolicyPerConnection(t *testing.T) {
 	assert.Nil(t, expectReceive(t, chA, "a").SSHPolicy, "a already holds this policy")
 	assert.Same(t, data.SSHPolicy, expectReceive(t, chB, "b").SSHPolicy, "b holds an older policy")
 }
+
+func TestEmptyMapResponse(t *testing.T) {
+	now := time.Now()
+
+	tests := []struct {
+		name string
+		resp tailcfg.MapResponse
+		want bool
+	}{
+		{"zero", tailcfg.MapResponse{}, true},
+		{"control_time_only", tailcfg.MapResponse{ControlTime: &now}, true},
+		{"self", tailcfg.MapResponse{Node: &tailcfg.Node{}}, false},
+		{"peers_changed", tailcfg.MapResponse{PeersChanged: []*tailcfg.Node{{}}}, false},
+		{"empty_slice_counts", tailcfg.MapResponse{PeersChanged: []*tailcfg.Node{}}, false},
+		{"peers_removed", tailcfg.MapResponse{PeersRemoved: ids(1)}, false},
+		{"patch", tailcfg.MapResponse{PeersChangedPatch: []*tailcfg.PeerChange{{}}}, false},
+		{"packet_filters", tailcfg.MapResponse{PacketFilters: map[string][]tailcfg.FilterRule{"base": nil}}, false},
+		{"ping", tailcfg.MapResponse{PingRequest: &tailcfg.PingRequest{}}, false},
+		{"keepalive", tailcfg.MapResponse{KeepAlive: true}, false},
+		{"debug", tailcfg.MapResponse{Debug: &tailcfg.Debug{}}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, emptyMapResponse(&tt.resp))
+		})
+	}
+}

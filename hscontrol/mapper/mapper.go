@@ -401,9 +401,13 @@ func (m *mapper) buildFromChange(
 		builder.WithPeers(peers)
 	} else {
 		if len(resp.PeersChanged) > 0 {
-			peers := m.state.ListPeers(nodeID, resp.PeersChanged...)
-			builder.WithUserProfiles(peers)
-			builder.WithPeerChanges(peers)
+			// Visibility may leave none of the changed peers for this
+			// recipient; the profiles would then carry only its own
+			// user, which it already holds.
+			if peers := m.state.ListPeers(nodeID, resp.PeersChanged...); peers.Len() > 0 {
+				builder.WithUserProfiles(peers)
+				builder.WithPeerChanges(peers)
+			}
 		}
 
 		if len(resp.PeersRemoved) > 0 {

@@ -1017,6 +1017,9 @@ func TestGenerateMapResponseDebugOnlyOnFullMaps(t *testing.T) {
 				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{999: {RegionID: 999}},
 			},
 		},
+		// Without these the DERP map and DNS config renders carry
+		// nothing and no frame is generated at all.
+		TailcfgDNSConfig: &tailcfg.DNSConfig{Proxied: true},
 		Tuning: types.Tuning{
 			NodeStoreBatchSize:    state.TestBatchSize,
 			NodeStoreBatchTimeout: state.TestBatchTimeout,
@@ -1034,6 +1037,8 @@ func TestGenerateMapResponseDebugOnlyOnFullMaps(t *testing.T) {
 	s, err := state.NewState(cfg)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
+
+	s.SetDERPMap(cfg.DERP.DERPMap)
 
 	_, err = s.SetPolicy([]byte(`{"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`))
 	require.NoError(t, err)
