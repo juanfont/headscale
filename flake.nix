@@ -199,7 +199,7 @@
           # from the test set but kept in source so cmd/hi and friends still
           # compile. Pure integration helper tests remain included.
           # TestPostgres* needs a server (the SQLite equivalents still
-          # run). CGO off matches the build.
+          # run). This check keeps CGO off; gorace below enables it for tests.
           gotest = fc.goTest (
             common
             // {
@@ -209,6 +209,21 @@
               ];
               goSkip = [ "TestPostgres" ];
               testEnv = "export CGO_ENABLED=0";
+            }
+          );
+
+          # -race needs cgo; release build and dev shell stay CGO-free.
+          # Test hscontrol recursively; servertest runs in its own workflow, without -race.
+          gorace = fc.goTest (
+            common
+            // {
+              name = "headscale-gorace";
+              goRace = true;
+              testEnv = "export CGO_ENABLED=1";
+              testFlags = [ "-p=2" ];
+              goSkip = [ "TestPostgres" ];
+              testPackages = "./hscontrol/...";
+              testExclude = [ "/hscontrol/servertest" ];
             }
           );
 

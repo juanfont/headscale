@@ -82,7 +82,10 @@ make clean           # remove build artefacts
 
 # Direct go test invocations
 go test ./...
-go test -race ./...
+CGO_ENABLED=1 go test -race ./...
+
+# CI race check
+nix build -L .#checks.x86_64-linux.gorace
 
 # Integration tests — read cmd/hi/README.md first
 go run ./cmd/hi doctor
@@ -95,6 +98,9 @@ go run ./tools/bump verify   # do the pins still agree
 
 Go 1.27.2 minimum (per `go.mod:3`). `nix develop` pins the exact toolchain
 used in CI.
+
+The dev shell exports `CGO_ENABLED=0`; `-race` needs cgo, and CI runs the
+`gorace` flake check (package selection in `flake.nix`).
 
 ## Pre-Commit with prek
 
