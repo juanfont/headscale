@@ -316,6 +316,7 @@ var rejectedPolicySkipReasons = map[string]string{
 	"ssh-e1/refused": noTailnetDomains,
 	"ssh-e2/refused": noTailnetDomains,
 	"ssh-malformed-user-localpart-multi-glob/refused": noTailnetDomains,
+	"sshtest-malformed-dst-bare-ipv6/refused":         "SSHTEST_BARE_IPV6_DST: headscale accepts a bare IPv6 sshTests destination",
 }
 
 const noTailnetDomains = "NO_TAILNET_DOMAINS: headscale does not check user:*@domain or localpart:*@domain against the tailnet's domains"
