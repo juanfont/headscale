@@ -53,6 +53,7 @@ var knownPolicyTesterDivergences = map[string]string{ //nolint:gosec // strings 
 	"policytest-src-wildcard-deny/verdict":     testSrcShape,
 
 	"policytest-dst-multinode-partial-accept/verdict": "TEST_DST_EVERY_NODE: SaaS accepts only when every node of the dst alias is reached; headscale when one is",
+	"policytest-dst-multinode-partial-deny/verdict":   "TEST_DST_EVERY_NODE: SaaS denies when one node of the dst alias is not reached; headscale only when none is",
 
 	"policytest-src-split-across-rules/verdict": "TEST_SRC_ONE_RULE: SaaS needs one rule to cover a group source; headscale lets each member pass through its own rule",
 
