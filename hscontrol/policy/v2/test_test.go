@@ -468,7 +468,7 @@ func TestFailureBreakdownIsBounded(t *testing.T) {
 		{
 			name: "sshTests dst without node",
 			block: `"sshTests": [{"src": "` + name + `", "dst": [` +
-				strings.Repeat(`"gone",`, failures) + `], "deny": ["root"]}]`,
+				strings.Repeat(`"gone",`, failures) + `], "accept": ["root"]}]`,
 			sentinel: errSSHPolicyTestsFailed,
 		},
 		{
