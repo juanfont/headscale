@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
@@ -190,9 +191,11 @@ func (h *Headscale) handleLogout(
 			Bool("unexpected", true).
 			Msg("Node key expired, forcing re-authentication")
 
+		// The machine stays authorised, as on Tailscale SaaS; only its node
+		// key needs replacing.
 		return &tailcfg.RegisterResponse{
 			NodeKeyExpired:    true,
-			MachineAuthorized: false,
+			MachineAuthorized: true,
 			AuthURL:           "", // Client will need to re-authenticate
 		}, nil
 	}
@@ -447,6 +450,10 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	)
 	if err != nil {
 		h.Change(changed)
+
+		if errors.Is(err, state.ErrNodeKeyExpired) {
+			return &tailcfg.RegisterResponse{NodeKeyExpired: true, MachineAuthorized: true}, nil
+		}
 
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, NewHTTPError(http.StatusUnauthorized, "invalid pre auth key", nil)

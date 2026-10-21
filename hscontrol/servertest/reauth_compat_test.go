@@ -39,8 +39,6 @@ import (
 var reauthSkipReasons = map[string]string{
 	"owner-routes/r-expired-retag/expire/online": expiredPeerOffline,
 
-	"owner-routes/r-expired-retag/owner/node-key": expiredKeyAccepted,
-
 	"owner-routes/r-admin/owner/enabled":     adminRetagNoApproval,
 	"owner-routes/r-admin/owner/served":      adminRetagNoApproval,
 	"owner-routes/r-admin/owner/self-routes": adminRetagNoApproval,
@@ -48,14 +46,6 @@ var reauthSkipReasons = map[string]string{
 	"owner-routes/r-retag/withdraw/enabled":         withdrawKeepsAutoApproval,
 	"owner-routes/r-expired-retag/withdraw/enabled": withdrawKeepsAutoApproval,
 	"owner-routes/u-convert/withdraw/enabled":       withdrawKeepsAutoApproval,
-
-	"reauth/t-spent-relogin/t-spent/outcome":            expiredKeyNotRotated,
-	"reauth/t-revoked-relogin/t-revoked/outcome":        expiredKeyNotRotated,
-	"reauth/t-valid-relogin/t-valid/outcome":            expiredKeyNotRotated,
-	"reauth/t-valid-relogin/t-valid/node-key":           expiredKeyAccepted,
-	"reauth-user/a4-expired-spent-key/u-spent/outcome":  expiredKeyNotRotated,
-	"reauth-user/a5-expired-valid-key/u-valid/outcome":  expiredKeyNotRotated,
-	"reauth-user/a5-expired-valid-key/u-valid/node-key": expiredKeyAccepted,
 
 	"reauth-foreign/t-logout-logout/t-logout/expiry":    taggedLogoutNotExpired,
 	"reauth-foreign/t-logout-logout/t-logout/peer-obs":  taggedLogoutNotExpired,
@@ -101,13 +91,11 @@ var reauthSkipReasons = map[string]string{
 }
 
 const (
-	expiredKeyAccepted        = "EXPIRED_KEY_ACCEPTED: headscale re-registers an expired node under its old node key; SaaS answers NodeKeyExpired, so the client rotates it"
 	adminRetagNoApproval      = "ADMIN_RETAG_NO_APPROVAL: an admin tag change does not auto-approve the routes the new tags may approve; SaaS approves them at once"
 	withdrawKeepsAutoApproval = "WITHDRAW_KEEPS_AUTO_APPROVAL: headscale keeps an auto-approved route once it is withdrawn; SaaS drops it and keeps only admin-set approvals"
 )
 
 const (
-	expiredKeyNotRotated     = "EXPIRED_KEY_NOT_ROTATED: headscale answers an expired node's key login without asking for a new node key; SaaS answers NodeKeyExpired first, so the client rotates it"
 	taggedLogoutNotExpired   = "TAGGED_LOGOUT_NOT_EXPIRED: headscale leaves a tagged node unexpired when it logs out; SaaS expires it"
 	keyLoginTagsRefused      = "KEY_LOGIN_TAGS_REFUSED: headscale refuses a user's key login that requests tags the user owns; SaaS tags the device, converting it in place or creating it tagged"
 	taggedKeyOwnedTagRefused = "TAGGED_KEY_OWNED_TAG_REFUSED: headscale refuses a tagged key's login that requests a tag the key's tags own; SaaS gives the device the requested tags"
