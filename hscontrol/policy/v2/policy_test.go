@@ -2752,6 +2752,80 @@ func TestViaRoutesForPeer(t *testing.T) {
 		require.Empty(t, result.Include)
 		require.Equal(t, []netip.Prefix{mp("10.0.0.0/24")}, result.Exclude)
 	})
+
+	t.Run("via_election_skips_unavailable_routers", func(t *testing.T) {
+		t.Parallel()
+
+		route := mp("10.0.0.0/24")
+		nodes := types.Nodes{
+			{
+				ID:       1,
+				Hostname: "viewer",
+				IPv4:     ap("100.64.0.1"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Tags:     []string{"tag:group-a"},
+				Hostinfo: &tailcfg.Hostinfo{},
+			},
+		}
+
+		for id := types.NodeID(2); id <= 4; id++ {
+			nodes = append(nodes, &types.Node{
+				ID:             id,
+				Hostname:       fmt.Sprintf("router-%d", id),
+				IPv4:           ap(fmt.Sprintf("100.64.0.%d", id)),
+				User:           new(users[0]),
+				UserID:         new(users[0].ID),
+				Tags:           []string{"tag:router-a"},
+				Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{route}},
+				ApprovedRoutes: []netip.Prefix{route},
+			})
+		}
+
+		pol := `{
+			"tagOwners": {
+				"tag:router-a": ["user1@"],
+				"tag:group-a": ["user1@"]
+			},
+			"grants": [{
+				"src": ["tag:group-a"],
+				"dst": ["10.0.0.0/24"],
+				"ip": ["*"],
+				"via": ["tag:router-a"]
+			}]
+		}`
+		pm, err := NewPolicyManager([]byte(pol), users, nodes.ViewSlice())
+		require.NoError(t, err)
+
+		for _, tt := range []struct {
+			name      string
+			available []types.NodeID
+			want      types.NodeID
+		}{
+			{name: "all available", available: []types.NodeID{2, 3, 4}, want: 2},
+			{name: "lowest ID down", available: []types.NodeID{3, 4}, want: 3},
+			{name: "only highest ID left", available: []types.NodeID{4}, want: 4},
+			{name: "whole group down", want: 2},
+			{name: "lowest ID recovers", available: []types.NodeID{2, 3, 4}, want: 2},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				pm.SetRouterAvailable(func(id types.NodeID) bool {
+					return slices.Contains(tt.available, id)
+				})
+
+				for _, router := range nodes[1:] {
+					result := pm.ViaRoutesForPeer(nodes[0].View(), router.View())
+					if router.ID == tt.want {
+						require.Equal(t, []netip.Prefix{route}, result.Include)
+						require.Empty(t, result.Exclude)
+					} else {
+						require.Empty(t, result.Include)
+						require.Equal(t, []netip.Prefix{route}, result.Exclude)
+					}
+				}
+			})
+		}
+	})
 }
 
 // TestBuildPeerMap_AutogroupInternetMakesExitNodeVisible reproduces
