@@ -3,10 +3,13 @@ package servertest_test
 import (
 	"context"
 	"net/netip"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/servertest"
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
@@ -1112,4 +1115,137 @@ func hasDstRules(matches []filtertype.Match) bool {
 	}
 
 	return false
+}
+
+func TestGrantViaSubnetFailover(t *testing.T) {
+	t.Parallel()
+
+	route := netip.MustParsePrefix("10.0.0.0/24")
+	setup := func(
+		t *testing.T,
+	) (*servertest.TestServer, map[string]*servertest.TestClient) {
+		t.Helper()
+
+		srv := servertest.NewServer(t)
+		user := srv.CreateUser(t, "via-ha-user")
+
+		changed, err := srv.State().SetPolicy([]byte(`{
+			"tagOwners": {
+				"tag:other": ["via-ha-user@"],
+				"tag:router": ["via-ha-user@"],
+				"tag:client": ["via-ha-user@"]
+			},
+			"grants": [{
+				"src": ["tag:client"],
+				"dst": ["10.0.0.0/24"],
+				"ip": ["*"],
+				"via": ["tag:router"]
+			}],
+			"autoApprovers": {
+				"routes": {
+					"10.0.0.0/24": ["tag:other", "tag:router"]
+				}
+			}
+		}`))
+		require.NoError(t, err)
+
+		if changed {
+			changes, err := srv.State().ReloadPolicy()
+			require.NoError(t, err)
+			srv.App.Change(changes...)
+		}
+
+		clients := map[string]*servertest.TestClient{}
+
+		// Register the router outside the via group first to hold global primary.
+		for _, c := range []struct{ name, tag string }{
+			{"other", "tag:other"},
+			{"router-1", "tag:router"},
+			{"router-2", "tag:router"},
+			{"client", "tag:client"},
+		} {
+			clients[c.name] = servertest.NewClient(t, srv, c.name,
+				servertest.WithUser(user), servertest.WithTags(c.tag))
+		}
+
+		for _, name := range []string{"other", "router-1", "router-2"} {
+			clients[name].Direct().SetHostinfo(&tailcfg.Hostinfo{
+				BackendLogID: "servertest-" + name,
+				Hostname:     name,
+				RoutableIPs:  []netip.Prefix{route},
+			})
+
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			_ = clients[name].Direct().SendUpdate(ctx)
+
+			cancel()
+		}
+
+		return srv, clients
+	}
+
+	onlyHolder := func(want string) func(*netmap.NetworkMap) bool {
+		return func(nm *netmap.NetworkMap) bool {
+			var holders []string
+
+			for _, p := range nm.Peers {
+				if slices.Contains(p.AllowedIPs().AsSlice(), route) {
+					holders = append(holders, p.Hostinfo().Hostname())
+				}
+			}
+
+			return slices.Equal(holders, []string{want})
+		}
+	}
+
+	setExpiry := func(t *testing.T, srv *servertest.TestServer, id types.NodeID, expiry *time.Time) {
+		t.Helper()
+
+		_, c, err := srv.State().SetNodeExpiry(id, expiry)
+		require.NoError(t, err)
+		srv.App.Change(c)
+	}
+
+	for _, mode := range []string{"offline", "unhealthy", "expired"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
+
+			srv, clients := setup(t)
+			clients["client"].WaitForCondition(t, "route on router-1",
+				15*time.Second, onlyHolder("router-1"))
+			otherID := findNodeID(t, srv, "other")
+			router1ID := findNodeID(t, srv, "router-1")
+			require.Contains(t, srv.State().GetNodePrimaryRoutes(otherID), route)
+
+			switch mode {
+			case "offline":
+				clients["router-1"].Disconnect(t)
+			case "unhealthy":
+				changed := srv.State().SetNodeHealth(router1ID, false)
+				require.True(t, changed, "a via health change must trigger a recompute")
+				srv.App.Change(change.PolicyChange())
+			case "expired":
+				setExpiry(t, srv, router1ID, new(time.Now().Add(-time.Minute)))
+			}
+
+			clients["client"].WaitForCondition(t, "route moves to router-2",
+				30*time.Second, onlyHolder("router-2"))
+			assert.Contains(t, srv.State().GetNodePrimaryRoutes(otherID), route)
+
+			switch mode {
+			case "offline":
+				clients["router-1"].Reconnect(t)
+			case "unhealthy":
+				changed := srv.State().SetNodeHealth(router1ID, true)
+				require.True(t, changed, "a via recovery must trigger a recompute")
+				srv.App.Change(change.PolicyChange())
+			case "expired":
+				setExpiry(t, srv, router1ID, nil)
+			}
+
+			clients["client"].WaitForCondition(t, "route returns to router-1",
+				30*time.Second, onlyHolder("router-1"))
+			assert.Contains(t, srv.State().GetNodePrimaryRoutes(otherID), route)
+		})
+	}
 }
