@@ -229,6 +229,7 @@ func TestGetAuthInfoFromStateSingleUse(t *testing.T) {
 	a := &AuthProviderOIDC{
 		authCache: expirable.NewLRU[string, AuthInfo](16, nil, time.Minute),
 	}
+	t.Cleanup(a.authCache.Close)
 	a.authCache.Add("state-x", AuthInfo{Registration: true})
 
 	got := a.getAuthInfoFromState("state-x")
@@ -336,6 +337,7 @@ func newOIDCBrowserWithPrefix(t *testing.T, prefix string) *oidcBrowser {
 		},
 	)
 	require.NoError(t, err)
+	t.Cleanup(provider.authCache.Close)
 
 	app.authProvider = provider
 	router = app.createRouter(nil, nil)

@@ -223,14 +223,6 @@ func NewState(cfg *types.Config) (*State, error) {
 		cacheMaxEntries = cfg.Tuning.RegisterCacheMaxEntries
 	}
 
-	authCache := expirable.NewLRU[types.AuthID, *types.AuthRequest](
-		cacheMaxEntries,
-		func(id types.AuthID, rn *types.AuthRequest) {
-			rn.FinishAuth(types.AuthVerdict{Err: ErrRegistrationExpired})
-		},
-		cacheExpiration,
-	)
-
 	db, err := hsdb.NewHeadscaleDatabase(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("initializing database: %w", err)
@@ -275,6 +267,15 @@ func NewState(cfg *types.Config) (*State, error) {
 
 	nodeStore := NewNodeStore(nodes, policyPeersFunc(polMan), batchSize, batchTimeout)
 	nodeStore.Start()
+
+	// Last: NewLRU starts the TTL sweeper goroutine, which only Close stops.
+	authCache := expirable.NewLRU[types.AuthID, *types.AuthRequest](
+		cacheMaxEntries,
+		func(id types.AuthID, rn *types.AuthRequest) {
+			rn.FinishAuth(types.AuthVerdict{Err: ErrRegistrationExpired})
+		},
+		cacheExpiration,
+	)
 
 	s := &State{
 		cfg: cfg,
@@ -327,6 +328,10 @@ func policyPeersFunc(pm policy.PolicyManager) PeersFunc {
 func (s *State) Close() error {
 	s.pings.drain()
 	s.nodeStore.Stop()
+	// Purge before Close: Close stops the sweeper, so anything still cached
+	// would never expire and its WaitForAuth caller would hang.
+	s.authCache.Purge()
+	s.authCache.Close()
 
 	err := s.db.Close()
 	if err != nil {
