@@ -22,7 +22,7 @@ require (
 	github.com/go-json-experiment/json v0.0.0-20260820222146-c27c302e5fc3
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/google/go-cmp v0.7.0
-	github.com/hashicorp/golang-lru/v2 v2.0.7
+	github.com/hashicorp/golang-lru/v2 v2.0.8-0.20261012062354-235099c106fc
 	github.com/jagottsicher/termcolor v1.0.2
 	github.com/kradalby/libdns-gigahost v0.0.0-20261014145029-4c03bc63b974
 	github.com/letsencrypt/pebble/v2 v2.10.1
