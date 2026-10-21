@@ -34,25 +34,21 @@ var expirySkipReasons = map[string]string{
 	"expiry/C2-expire-r1/r1/online-r2":       expiredPeerOffline,
 	"expiry/C2-expire-r1/r1/paths-observer":  expiredPeerPaths,
 	"expiry/C2-expire-r1/r1/paths-r2":        expiredPeerPaths,
-	"expiry/C2-expire-r1/r1/self":            selfExpiredFlags,
 
 	"expiry/C4-expire-r2/r2/online-observer": expiredPeerOffline,
 	"expiry/C4-expire-r2/r2/online-r1":       expiredPeerOffline,
 	"expiry/C4-expire-r2/r2/paths-observer":  expiredPeerPaths,
 	"expiry/C4-expire-r2/r2/paths-r1":        expiredPeerPaths,
-	"expiry/C4-expire-r2/r2/self":            selfExpiredFlags,
 
 	// A client asked for this expiry; once it passes the node is expired
 	// like any other.
 	"expiry/D3-past-expiry/subject/online-observer": expiredPeerOffline,
 	"expiry/D3-past-expiry/subject/paths-observer":  expiredPeerPaths,
-	"expiry/D3-past-expiry/subject/self":            selfExpiredFlags,
 
 	"expiry/A2-expire/laptop/online-observer": expiredPeerOffline,
 	"expiry/A2-expire/laptop/online-peer1":    expiredPeerOffline,
 	"expiry/A2-expire/laptop/paths-observer":  expiredPeerPaths,
 	"expiry/A2-expire/laptop/paths-peer1":     expiredPeerPaths,
-	"expiry/A2-expire/laptop/self":            selfExpiredFlags,
 
 	"expiry/A3-peer-change/laptop/online-observer": expiredPeerOffline,
 	"expiry/A3-peer-change/laptop/online-peer1":    expiredPeerOffline,
@@ -60,39 +56,31 @@ var expirySkipReasons = map[string]string{
 	"expiry/A3-peer-change/laptop/paths-observer":  expiredPeerPaths,
 	"expiry/A3-peer-change/laptop/paths-peer1":     expiredPeerPaths,
 	"expiry/A3-peer-change/laptop/paths-peer3":     expiredPeerPaths,
-	"expiry/A3-peer-change/laptop/self":            selfExpiredFlags,
 
 	"expiry/A4-rename/laptop/online-observer": expiredPeerOffline,
 	"expiry/A4-rename/laptop/paths-observer":  expiredPeerPaths,
-	"expiry/A4-rename/laptop/self":            selfExpiredFlags,
 
 	"expiry/A5-advertise/laptop/online-observer": expiredPeerOffline,
 	"expiry/A5-advertise/laptop/paths-observer":  expiredPeerPaths,
-	"expiry/A5-advertise/laptop/self":            selfExpiredFlags,
 
 	"expiry/A7-dns/laptop/dns":             nameserversFromConfig,
 	"expiry/A7-dns/laptop/online-observer": expiredPeerOffline,
 	"expiry/A7-dns/laptop/paths-observer":  expiredPeerPaths,
-	"expiry/A7-dns/laptop/self":            selfExpiredFlags,
 	"expiry/A7-dns/observer/dns":           nameserversFromConfig,
 
 	"expiry/A8-policy/laptop/online-observer": expiredPeerOffline,
 	"expiry/A8-policy/laptop/paths-observer":  expiredPeerPaths,
-	"expiry/A8-policy/laptop/self":            selfExpiredFlags,
 
 	"expiry/A9-ssh/laptop/online-observer": expiredPeerOffline,
 	"expiry/A9-ssh/laptop/paths-observer":  expiredPeerPaths,
-	"expiry/A9-ssh/laptop/self":            selfExpiredFlags,
 
 	"expiry/A10-reconnect/laptop/online-observer": expiredPeerOffline,
 	"expiry/A10-reconnect/laptop/paths-observer":  expiredPeerPaths,
-	"expiry/A10-reconnect/laptop/self":            selfExpiredFlags,
 
 	"expiry/A6a-expire-again/laptop/online-observer": expiredPeerOffline,
 	"expiry/A6a-expire-again/laptop/online-peer1":    expiredPeerOffline,
 	"expiry/A6a-expire-again/laptop/paths-observer":  expiredPeerPaths,
 	"expiry/A6a-expire-again/laptop/paths-peer1":     expiredPeerPaths,
-	"expiry/A6a-expire-again/laptop/self":            selfExpiredFlags,
 
 	"expiry/A6b-rotate-disco/laptop/online-observer": expiredPeerOffline,
 	"expiry/A6b-rotate-disco/laptop/online-peer1":    expiredPeerOffline,
@@ -100,11 +88,9 @@ var expirySkipReasons = map[string]string{
 	"expiry/A6b-rotate-disco/laptop/paths-observer":  expiredPeerPaths,
 	"expiry/A6b-rotate-disco/laptop/paths-peer1":     expiredPeerPaths,
 	"expiry/A6b-rotate-disco/laptop/paths-peer3":     expiredPeerPaths,
-	"expiry/A6b-rotate-disco/laptop/self":            selfExpiredFlags,
 }
 
 const (
-	selfExpiredFlags      = "SELF_EXPIRED_FLAGS: headscale sends an expired node its own entry with MachineAuthorized false and Expired set; SaaS keeps MachineAuthorized true and leaves Expired out"
 	expiredPeerPaths      = "EXPIRED_PEER_PATHS: headscale sends peers an expired node's endpoints and home DERP; SaaS leaves both out"
 	nameserversFromConfig = "NAMESERVERS_FROM_CONFIG: headscale reads nameservers from its config and cannot change them while running; SaaS pushes a change to every node, an expired one too"
 )
