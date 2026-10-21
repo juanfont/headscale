@@ -1,0 +1,1671 @@
+// key-list
+//
+// Auth keys an OAuth token lists by its tags, with and without all=true
+//
+// Steps: 11
+// Captured at:    2026-10-21T14:11:52Z
+// tool version:   saasprobe 084b1d0607d0b0aa51bacbfee2c2150af96a9596
+// schema version: 1
+{
+	"schema_version": 1,
+	"test_id":        "key-list",
+	"description":    "Auth keys an OAuth token lists by its tags, with and without all=true",
+	"captured_at":    "2026-10-21T14:11:52.24839482Z",
+	"tool_version":   "saasprobe 084b1d0607d0b0aa51bacbfee2c2150af96a9596",
+	"tailnet":        "odin@example.com",
+	"input": {"api_response_code": 0, "tailnet": {"dns": {
+		"magic_dns":    false,
+		"nameservers":  null,
+		"search_paths": null,
+		"split_dns":    null
+	}, "settings": {}}, "scenario_hujson": "", "full_policy": {"tagOwners": {
+		"tag:prod":   ["odin@example.com"],
+		"tag:server": ["odin@example.com"],
+		"tag:db":     ["odin@example.com"]
+	}}},
+	"topology": {"users": [
+		{"id": 1, "name": "odin", "email": "odin@example.com"},
+		{"id": 2, "name": "thor", "email": "thor@example.org"},
+		{"id": 3, "name": "freya", "email": "freya@example.com"}
+	], "nodes": {}},
+	"captures": null,
+	"steps": [{
+		"name":   "setup-tailnet",
+		"at":     "2026-10-21T14:11:52.24841642Z",
+		"note":   "no other auth key and no device; the live policy kept for the teardown",
+		"result": "observed",
+		"actions": [{
+			"kind":      "policy",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/acl",
+			"header":    {"Content-Type": "application/hujson"},
+			"body": {"tagOwners": {
+				"tag:db":     ["odin@example.com"],
+				"tag:prod":   ["odin@example.com"],
+				"tag:server": ["odin@example.com"]
+			}},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/hujson", "ETag": "{etag:1}"},
+			"response": {"tagOwners": {
+				"tag:db":     ["odin@example.com"],
+				"tag:prod":   ["odin@example.com"],
+				"tag:server": ["odin@example.com"]
+			}},
+			"offset_ms": 251
+		}]
+	}, {
+		"name":   "setup-clients",
+		"at":     "2026-10-21T14:11:52.51620515Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "api",
+			"client":    "C-list",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {
+				"description": "tscap-saasprobe C-list",
+				"keyType":     "client",
+				"scopes":      ["auth_keys:read"]
+			},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {
+				"created":     "2026-10-21T14:11:55Z",
+				"description": "tscap-saasprobe C-list",
+				"id":          "{client:C-list}",
+				"keyType":     "client",
+				"scopes":      ["auth_keys:read"],
+				"userId":      "{unmatched:1}"
+			},
+			"offset_ms": 2000
+		}, {
+			"kind":      "api",
+			"client":    "C-list-prod",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {
+				"description": "tscap-saasprobe C-list-prod",
+				"keyType":     "client",
+				"scopes":      ["auth_keys:read"],
+				"tags":        ["tag:prod"]
+			},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {
+				"created":     "2026-10-21T14:11:57Z",
+				"description": "tscap-saasprobe C-list-prod",
+				"id":          "{client:C-list-prod}",
+				"keyType":     "client",
+				"scopes":      ["auth_keys:read"],
+				"tags":        ["tag:prod"],
+				"userId":      "{unmatched:1}"
+			},
+			"offset_ms": 4017
+		}, {
+			"kind":      "api",
+			"client":    "C-list-prod-server",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {
+				"description": "tscap-saasprobe C-list-prod-server",
+				"keyType":     "client",
+				"scopes":      ["auth_keys:read"],
+				"tags":        ["tag:prod", "tag:server"]
+			},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {
+				"created":     "2026-10-21T14:11:59Z",
+				"description": "tscap-saasprobe C-list-prod-server",
+				"id":          "{client:C-list-prod-server}",
+				"keyType":     "client",
+				"scopes":      ["auth_keys:read"],
+				"tags":        ["tag:prod", "tag:server"],
+				"userId":      "{unmatched:1}"
+			},
+			"offset_ms": 6034
+		}, {
+			"kind":      "api",
+			"client":    "C-make-prod",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {
+				"description": "tscap-saasprobe C-make-prod",
+				"keyType":     "client",
+				"scopes":      ["auth_keys"],
+				"tags":        ["tag:prod"]
+			},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {
+				"created":     "2026-10-21T14:12:01Z",
+				"description": "tscap-saasprobe C-make-prod",
+				"id":          "{client:C-make-prod}",
+				"keyType":     "client",
+				"scopes":      ["auth_keys"],
+				"tags":        ["tag:prod"],
+				"userId":      "{unmatched:1}"
+			},
+			"offset_ms": 8070
+		}, {
+			"kind":      "api",
+			"client":    "C-make-prod-server",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {
+				"description": "tscap-saasprobe C-make-prod-server",
+				"keyType":     "client",
+				"scopes":      ["auth_keys"],
+				"tags":        ["tag:prod", "tag:server"]
+			},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {
+				"created":     "2026-10-21T14:12:03Z",
+				"description": "tscap-saasprobe C-make-prod-server",
+				"id":          "{client:C-make-prod-server}",
+				"keyType":     "client",
+				"scopes":      ["auth_keys"],
+				"tags":        ["tag:prod", "tag:server"],
+				"userId":      "{unmatched:1}"
+			},
+			"offset_ms": 10087
+		}, {
+			"kind":      "api",
+			"client":    "C-make-prod-db",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {
+				"description": "tscap-saasprobe C-make-prod-db",
+				"keyType":     "client",
+				"scopes":      ["auth_keys"],
+				"tags":        ["tag:prod", "tag:db"]
+			},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {
+				"created":     "2026-10-21T14:12:05Z",
+				"description": "tscap-saasprobe C-make-prod-db",
+				"id":          "{client:C-make-prod-db}",
+				"keyType":     "client",
+				"scopes":      ["auth_keys"],
+				"tags":        ["tag:prod", "tag:db"],
+				"userId":      "{unmatched:1}"
+			},
+			"offset_ms": 12104
+		}, {
+			"kind":      "api",
+			"client":    "C-make-db",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {
+				"description": "tscap-saasprobe C-make-db",
+				"keyType":     "client",
+				"scopes":      ["auth_keys"],
+				"tags":        ["tag:db"]
+			},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {
+				"created":     "2026-10-21T14:12:07Z",
+				"description": "tscap-saasprobe C-make-db",
+				"id":          "{client:C-make-db}",
+				"keyType":     "client",
+				"scopes":      ["auth_keys"],
+				"tags":        ["tag:db"],
+				"userId":      "{unmatched:1}"
+			},
+			"offset_ms": 14123
+		}]
+	}, {
+		"name":   "setup-keys",
+		"at":     "2026-10-21T14:12:06.65670001Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "api",
+			"key":       "A-user",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {"capabilities": {"devices": {
+				"create": {"ephemeral": false, "preauthorized": true, "reusable": true, "tags": null}
+			}}, "description": "tscap-saasprobe A-user", "expirySeconds": 3600},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {
+				"capabilities": {
+					"devices": {"create": {"ephemeral": false, "preauthorized": true, "reusable": true}}
+				},
+				"created":       "2026-10-21T14:12:09Z",
+				"description":   "tscap-saasprobe A-user",
+				"expires":       "2026-10-21T15:12:09Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-user}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			},
+			"offset_ms": 2000
+		}, {
+			"kind":      "api",
+			"key":       "A-prod",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {"capabilities": {"devices": {"create": {
+				"ephemeral":     false,
+				"preauthorized": true,
+				"reusable":      true,
+				"tags":          ["tag:prod"]
+			}}}, "description": "tscap-saasprobe A-prod", "expirySeconds": 3600},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod"]
+				}}},
+				"created":       "2026-10-21T14:12:11Z",
+				"description":   "tscap-saasprobe A-prod",
+				"expires":       "2026-10-21T15:12:11Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-prod}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			},
+			"offset_ms": 4017
+		}, {
+			"kind":      "api",
+			"key":       "A-prod-server",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:server"]
+				}}},
+				"description":   "tscap-saasprobe A-prod-server",
+				"expirySeconds": 3600
+			},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:server"]
+				}}},
+				"created":       "2026-10-21T14:12:13Z",
+				"description":   "tscap-saasprobe A-prod-server",
+				"expires":       "2026-10-21T15:12:13Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-prod-server}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			},
+			"offset_ms": 6036
+		}, {
+			"kind":      "api",
+			"key":       "A-prod-db",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {"capabilities": {"devices": {"create": {
+				"ephemeral":     false,
+				"preauthorized": true,
+				"reusable":      true,
+				"tags":          ["tag:prod", "tag:db"]
+			}}}, "description": "tscap-saasprobe A-prod-db", "expirySeconds": 3600},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:15Z",
+				"description":   "tscap-saasprobe A-prod-db",
+				"expires":       "2026-10-21T15:12:15Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-prod-db}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			},
+			"offset_ms": 8053
+		}, {
+			"kind":      "api",
+			"key":       "A-db",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {"capabilities": {"devices": {"create": {
+				"ephemeral":     false,
+				"preauthorized": true,
+				"reusable":      true,
+				"tags":          ["tag:db"]
+			}}}, "description": "tscap-saasprobe A-db", "expirySeconds": 3600},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:17Z",
+				"description":   "tscap-saasprobe A-db",
+				"expires":       "2026-10-21T15:12:17Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-db}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			},
+			"offset_ms": 10070
+		}]
+	}, {
+		"name":   "setup-token-keys",
+		"at":     "2026-10-21T14:12:16.748683847Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "token",
+			"client":    "C-make-prod",
+			"principal": "token:C-make-prod",
+			"status":    200,
+			"response": {
+				"expires_in": 3600,
+				"scope":      "auth_keys",
+				"tags":       "tag:prod",
+				"token_type": "Bearer"
+			},
+			"offset_ms": 2000
+		}, {
+			"kind":      "api",
+			"key":       "M-prod",
+			"principal": "token:C-make-prod",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {"capabilities": {"devices": {"create": {
+				"ephemeral":     false,
+				"preauthorized": true,
+				"reusable":      true,
+				"tags":          ["tag:prod"]
+			}}}, "description": "tscap-saasprobe M-prod", "expirySeconds": 3600},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod"]
+				}}},
+				"created":       "2026-10-21T14:12:21Z",
+				"description":   "tscap-saasprobe M-prod",
+				"expires":       "2026-10-21T15:12:21Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod}",
+				"keyType":       "auth"
+			},
+			"offset_ms": 4018
+		}, {
+			"kind":      "token",
+			"client":    "C-make-prod-server",
+			"principal": "token:C-make-prod-server",
+			"status":    200,
+			"response": {
+				"expires_in": 3600,
+				"scope":      "auth_keys",
+				"tags":       "tag:prod tag:server",
+				"token_type": "Bearer"
+			},
+			"offset_ms": 6035
+		}, {
+			"kind":      "api",
+			"key":       "M-prod-server",
+			"principal": "token:C-make-prod-server",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:server"]
+				}}},
+				"description":   "tscap-saasprobe M-prod-server",
+				"expirySeconds": 3600
+			},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:server"]
+				}}},
+				"created":       "2026-10-21T14:12:25Z",
+				"description":   "tscap-saasprobe M-prod-server",
+				"expires":       "2026-10-21T15:12:25Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod-server}",
+				"keyType":       "auth"
+			},
+			"offset_ms": 8052
+		}, {
+			"kind":      "token",
+			"client":    "C-make-prod-db",
+			"principal": "token:C-make-prod-db",
+			"status":    200,
+			"response": {
+				"expires_in": 3600,
+				"scope":      "auth_keys",
+				"tags":       "tag:prod tag:db",
+				"token_type": "Bearer"
+			},
+			"offset_ms": 10069
+		}, {
+			"kind":      "api",
+			"key":       "M-prod-db",
+			"principal": "token:C-make-prod-db",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {"capabilities": {"devices": {"create": {
+				"ephemeral":     false,
+				"preauthorized": true,
+				"reusable":      true,
+				"tags":          ["tag:prod", "tag:db"]
+			}}}, "description": "tscap-saasprobe M-prod-db", "expirySeconds": 3600},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:29Z",
+				"description":   "tscap-saasprobe M-prod-db",
+				"expires":       "2026-10-21T15:12:29Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod-db}",
+				"keyType":       "auth"
+			},
+			"offset_ms": 12086
+		}, {
+			"kind":      "token",
+			"client":    "C-make-db",
+			"principal": "token:C-make-db",
+			"status":    200,
+			"response": {
+				"expires_in": 3600,
+				"scope":      "auth_keys",
+				"tags":       "tag:db",
+				"token_type": "Bearer"
+			},
+			"offset_ms": 14104
+		}, {
+			"kind":      "api",
+			"key":       "M-db",
+			"principal": "token:C-make-db",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {"capabilities": {"devices": {"create": {
+				"ephemeral":     false,
+				"preauthorized": true,
+				"reusable":      true,
+				"tags":          ["tag:db"]
+			}}}, "description": "tscap-saasprobe M-db", "expirySeconds": 3600},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:33Z",
+				"description":   "tscap-saasprobe M-db",
+				"expires":       "2026-10-21T15:12:33Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-db}",
+				"keyType":       "auth"
+			},
+			"offset_ms": 16123
+		}]
+	}, {
+		"name":   "setup-late-key",
+		"at":     "2026-10-21T14:12:32.888768853Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "api",
+			"key":       "A-late-prod",
+			"principal": "admin",
+			"method":    "POST",
+			"path":      "/tailnet/-/keys",
+			"header":    {"Content-Type": "application/json"},
+			"body": {"capabilities": {"devices": {"create": {
+				"ephemeral":     false,
+				"preauthorized": true,
+				"reusable":      true,
+				"tags":          ["tag:prod"]
+			}}}, "description": "tscap-saasprobe A-late-prod", "expirySeconds": 3600},
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod"]
+				}}},
+				"created":       "2026-10-21T14:12:35Z",
+				"description":   "tscap-saasprobe A-late-prod",
+				"expires":       "2026-10-21T15:12:35Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-late-prod}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			},
+			"offset_ms": 2000
+		}]
+	}, {
+		"name":   "L-untagged",
+		"at":     "2026-10-21T14:12:34.907964891Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "token",
+			"client":    "C-list",
+			"principal": "token:C-list",
+			"status":    200,
+			"response":  {"expires_in": 3600, "scope": "auth_keys:read", "token_type": "Bearer"},
+			"offset_ms": 2001
+		}, {
+			"kind":        "api",
+			"principal":   "token:C-list",
+			"method":      "GET",
+			"path":        "/tailnet/-/keys",
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {"keys": [{
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod"]
+				}}},
+				"created":       "2026-10-21T14:12:21Z",
+				"description":   "tscap-saasprobe M-prod",
+				"expires":       "2026-10-21T15:12:21Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:server"]
+				}}},
+				"created":       "2026-10-21T14:12:25Z",
+				"description":   "tscap-saasprobe M-prod-server",
+				"expires":       "2026-10-21T15:12:25Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod-server}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:29Z",
+				"description":   "tscap-saasprobe M-prod-db",
+				"expires":       "2026-10-21T15:12:29Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod-db}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:33Z",
+				"description":   "tscap-saasprobe M-db",
+				"expires":       "2026-10-21T15:12:33Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-db}",
+				"keyType":       "auth"
+			}]},
+			"offset_ms": 2017
+		}, {
+			"kind":        "api",
+			"principal":   "token:C-list",
+			"method":      "GET",
+			"path":        "/tailnet/-/keys?all=true",
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {"keys": [{
+				"capabilities": {
+					"devices": {"create": {"ephemeral": false, "preauthorized": true, "reusable": true}}
+				},
+				"created":       "2026-10-21T14:12:09Z",
+				"description":   "tscap-saasprobe A-user",
+				"expires":       "2026-10-21T15:12:09Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-user}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod"]
+				}}},
+				"created":       "2026-10-21T14:12:11Z",
+				"description":   "tscap-saasprobe A-prod",
+				"expires":       "2026-10-21T15:12:11Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-prod}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:server"]
+				}}},
+				"created":       "2026-10-21T14:12:13Z",
+				"description":   "tscap-saasprobe A-prod-server",
+				"expires":       "2026-10-21T15:12:13Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-prod-server}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:15Z",
+				"description":   "tscap-saasprobe A-prod-db",
+				"expires":       "2026-10-21T15:12:15Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-prod-db}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:17Z",
+				"description":   "tscap-saasprobe A-db",
+				"expires":       "2026-10-21T15:12:17Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-db}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod"]
+				}}},
+				"created":       "2026-10-21T14:12:21Z",
+				"description":   "tscap-saasprobe M-prod",
+				"expires":       "2026-10-21T15:12:21Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:server"]
+				}}},
+				"created":       "2026-10-21T14:12:25Z",
+				"description":   "tscap-saasprobe M-prod-server",
+				"expires":       "2026-10-21T15:12:25Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod-server}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:29Z",
+				"description":   "tscap-saasprobe M-prod-db",
+				"expires":       "2026-10-21T15:12:29Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod-db}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:33Z",
+				"description":   "tscap-saasprobe M-db",
+				"expires":       "2026-10-21T15:12:33Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-db}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod"]
+				}}},
+				"created":       "2026-10-21T14:12:35Z",
+				"description":   "tscap-saasprobe A-late-prod",
+				"expires":       "2026-10-21T15:12:35Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-late-prod}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}]},
+			"offset_ms": 2033
+		}]
+	}, {
+		"name":   "L-prod",
+		"at":     "2026-10-21T14:12:36.961535116Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "token",
+			"client":    "C-list-prod",
+			"principal": "token:C-list-prod",
+			"status":    200,
+			"response":  {"expires_in": 3600, "scope": "auth_keys:read", "token_type": "Bearer"},
+			"offset_ms": 1965
+		}, {
+			"kind":        "api",
+			"principal":   "token:C-list-prod",
+			"method":      "GET",
+			"path":        "/tailnet/-/keys",
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {"keys": [{
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod"]
+				}}},
+				"created":       "2026-10-21T14:12:21Z",
+				"description":   "tscap-saasprobe M-prod",
+				"expires":       "2026-10-21T15:12:21Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:server"]
+				}}},
+				"created":       "2026-10-21T14:12:25Z",
+				"description":   "tscap-saasprobe M-prod-server",
+				"expires":       "2026-10-21T15:12:25Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod-server}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:29Z",
+				"description":   "tscap-saasprobe M-prod-db",
+				"expires":       "2026-10-21T15:12:29Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod-db}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:33Z",
+				"description":   "tscap-saasprobe M-db",
+				"expires":       "2026-10-21T15:12:33Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-db}",
+				"keyType":       "auth"
+			}]},
+			"offset_ms": 1980
+		}, {
+			"kind":        "api",
+			"principal":   "token:C-list-prod",
+			"method":      "GET",
+			"path":        "/tailnet/-/keys?all=true",
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {"keys": [{
+				"capabilities": {
+					"devices": {"create": {"ephemeral": false, "preauthorized": true, "reusable": true}}
+				},
+				"created":       "2026-10-21T14:12:09Z",
+				"description":   "tscap-saasprobe A-user",
+				"expires":       "2026-10-21T15:12:09Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-user}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod"]
+				}}},
+				"created":       "2026-10-21T14:12:11Z",
+				"description":   "tscap-saasprobe A-prod",
+				"expires":       "2026-10-21T15:12:11Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-prod}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:server"]
+				}}},
+				"created":       "2026-10-21T14:12:13Z",
+				"description":   "tscap-saasprobe A-prod-server",
+				"expires":       "2026-10-21T15:12:13Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-prod-server}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:15Z",
+				"description":   "tscap-saasprobe A-prod-db",
+				"expires":       "2026-10-21T15:12:15Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-prod-db}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:17Z",
+				"description":   "tscap-saasprobe A-db",
+				"expires":       "2026-10-21T15:12:17Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-db}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod"]
+				}}},
+				"created":       "2026-10-21T14:12:21Z",
+				"description":   "tscap-saasprobe M-prod",
+				"expires":       "2026-10-21T15:12:21Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:server"]
+				}}},
+				"created":       "2026-10-21T14:12:25Z",
+				"description":   "tscap-saasprobe M-prod-server",
+				"expires":       "2026-10-21T15:12:25Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod-server}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:29Z",
+				"description":   "tscap-saasprobe M-prod-db",
+				"expires":       "2026-10-21T15:12:29Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod-db}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:33Z",
+				"description":   "tscap-saasprobe M-db",
+				"expires":       "2026-10-21T15:12:33Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-db}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod"]
+				}}},
+				"created":       "2026-10-21T14:12:35Z",
+				"description":   "tscap-saasprobe A-late-prod",
+				"expires":       "2026-10-21T15:12:35Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-late-prod}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}]},
+			"offset_ms": 1997
+		}]
+	}, {
+		"name":   "L-prod-server",
+		"at":     "2026-10-21T14:12:38.979961954Z",
+		"result": "observed",
+		"actions": [{
+			"kind":      "token",
+			"client":    "C-list-prod-server",
+			"principal": "token:C-list-prod-server",
+			"status":    200,
+			"response":  {"expires_in": 3600, "scope": "auth_keys:read", "token_type": "Bearer"},
+			"offset_ms": 1964
+		}, {
+			"kind":        "api",
+			"principal":   "token:C-list-prod-server",
+			"method":      "GET",
+			"path":        "/tailnet/-/keys",
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {"keys": [{
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod"]
+				}}},
+				"created":       "2026-10-21T14:12:21Z",
+				"description":   "tscap-saasprobe M-prod",
+				"expires":       "2026-10-21T15:12:21Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:server"]
+				}}},
+				"created":       "2026-10-21T14:12:25Z",
+				"description":   "tscap-saasprobe M-prod-server",
+				"expires":       "2026-10-21T15:12:25Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod-server}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:29Z",
+				"description":   "tscap-saasprobe M-prod-db",
+				"expires":       "2026-10-21T15:12:29Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod-db}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:33Z",
+				"description":   "tscap-saasprobe M-db",
+				"expires":       "2026-10-21T15:12:33Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-db}",
+				"keyType":       "auth"
+			}]},
+			"offset_ms": 1981
+		}, {
+			"kind":        "api",
+			"principal":   "token:C-list-prod-server",
+			"method":      "GET",
+			"path":        "/tailnet/-/keys?all=true",
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {"keys": [{
+				"capabilities": {
+					"devices": {"create": {"ephemeral": false, "preauthorized": true, "reusable": true}}
+				},
+				"created":       "2026-10-21T14:12:09Z",
+				"description":   "tscap-saasprobe A-user",
+				"expires":       "2026-10-21T15:12:09Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-user}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod"]
+				}}},
+				"created":       "2026-10-21T14:12:11Z",
+				"description":   "tscap-saasprobe A-prod",
+				"expires":       "2026-10-21T15:12:11Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-prod}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:server"]
+				}}},
+				"created":       "2026-10-21T14:12:13Z",
+				"description":   "tscap-saasprobe A-prod-server",
+				"expires":       "2026-10-21T15:12:13Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-prod-server}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:15Z",
+				"description":   "tscap-saasprobe A-prod-db",
+				"expires":       "2026-10-21T15:12:15Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-prod-db}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:17Z",
+				"description":   "tscap-saasprobe A-db",
+				"expires":       "2026-10-21T15:12:17Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-db}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod"]
+				}}},
+				"created":       "2026-10-21T14:12:21Z",
+				"description":   "tscap-saasprobe M-prod",
+				"expires":       "2026-10-21T15:12:21Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:server"]
+				}}},
+				"created":       "2026-10-21T14:12:25Z",
+				"description":   "tscap-saasprobe M-prod-server",
+				"expires":       "2026-10-21T15:12:25Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod-server}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:29Z",
+				"description":   "tscap-saasprobe M-prod-db",
+				"expires":       "2026-10-21T15:12:29Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod-db}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:33Z",
+				"description":   "tscap-saasprobe M-db",
+				"expires":       "2026-10-21T15:12:33Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-db}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod"]
+				}}},
+				"created":       "2026-10-21T14:12:35Z",
+				"description":   "tscap-saasprobe A-late-prod",
+				"expires":       "2026-10-21T15:12:35Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-late-prod}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}]},
+			"offset_ms": 1997
+		}]
+	}, {
+		"name":   "L-make-prod",
+		"at":     "2026-10-21T14:12:40.997777183Z",
+		"result": "observed",
+		"actions": [{
+			"kind":        "api",
+			"principal":   "token:C-make-prod",
+			"method":      "GET",
+			"path":        "/tailnet/-/keys",
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {"keys": [{
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod"]
+				}}},
+				"created":       "2026-10-21T14:12:21Z",
+				"description":   "tscap-saasprobe M-prod",
+				"expires":       "2026-10-21T15:12:21Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:server"]
+				}}},
+				"created":       "2026-10-21T14:12:25Z",
+				"description":   "tscap-saasprobe M-prod-server",
+				"expires":       "2026-10-21T15:12:25Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod-server}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:29Z",
+				"description":   "tscap-saasprobe M-prod-db",
+				"expires":       "2026-10-21T15:12:29Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod-db}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:33Z",
+				"description":   "tscap-saasprobe M-db",
+				"expires":       "2026-10-21T15:12:33Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-db}",
+				"keyType":       "auth"
+			}]}
+		}, {
+			"kind":        "api",
+			"principal":   "token:C-make-prod",
+			"method":      "GET",
+			"path":        "/tailnet/-/keys?all=true",
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {"keys": [{
+				"capabilities": {
+					"devices": {"create": {"ephemeral": false, "preauthorized": true, "reusable": true}}
+				},
+				"created":       "2026-10-21T14:12:09Z",
+				"description":   "tscap-saasprobe A-user",
+				"expires":       "2026-10-21T15:12:09Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-user}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod"]
+				}}},
+				"created":       "2026-10-21T14:12:11Z",
+				"description":   "tscap-saasprobe A-prod",
+				"expires":       "2026-10-21T15:12:11Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-prod}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:server"]
+				}}},
+				"created":       "2026-10-21T14:12:13Z",
+				"description":   "tscap-saasprobe A-prod-server",
+				"expires":       "2026-10-21T15:12:13Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-prod-server}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:15Z",
+				"description":   "tscap-saasprobe A-prod-db",
+				"expires":       "2026-10-21T15:12:15Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-prod-db}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:17Z",
+				"description":   "tscap-saasprobe A-db",
+				"expires":       "2026-10-21T15:12:17Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-db}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod"]
+				}}},
+				"created":       "2026-10-21T14:12:21Z",
+				"description":   "tscap-saasprobe M-prod",
+				"expires":       "2026-10-21T15:12:21Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:server"]
+				}}},
+				"created":       "2026-10-21T14:12:25Z",
+				"description":   "tscap-saasprobe M-prod-server",
+				"expires":       "2026-10-21T15:12:25Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod-server}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:29Z",
+				"description":   "tscap-saasprobe M-prod-db",
+				"expires":       "2026-10-21T15:12:29Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod-db}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:33Z",
+				"description":   "tscap-saasprobe M-db",
+				"expires":       "2026-10-21T15:12:33Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-db}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod"]
+				}}},
+				"created":       "2026-10-21T14:12:35Z",
+				"description":   "tscap-saasprobe A-late-prod",
+				"expires":       "2026-10-21T15:12:35Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-late-prod}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}]},
+			"offset_ms": 15
+		}]
+	}, {
+		"name":   "L-make-prod-server",
+		"at":     "2026-10-21T14:12:41.033842713Z",
+		"result": "observed",
+		"actions": [{
+			"kind":        "api",
+			"principal":   "token:C-make-prod-server",
+			"method":      "GET",
+			"path":        "/tailnet/-/keys",
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {"keys": [{
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod"]
+				}}},
+				"created":       "2026-10-21T14:12:21Z",
+				"description":   "tscap-saasprobe M-prod",
+				"expires":       "2026-10-21T15:12:21Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:server"]
+				}}},
+				"created":       "2026-10-21T14:12:25Z",
+				"description":   "tscap-saasprobe M-prod-server",
+				"expires":       "2026-10-21T15:12:25Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod-server}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:29Z",
+				"description":   "tscap-saasprobe M-prod-db",
+				"expires":       "2026-10-21T15:12:29Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod-db}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:33Z",
+				"description":   "tscap-saasprobe M-db",
+				"expires":       "2026-10-21T15:12:33Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-db}",
+				"keyType":       "auth"
+			}]}
+		}, {
+			"kind":        "api",
+			"principal":   "token:C-make-prod-server",
+			"method":      "GET",
+			"path":        "/tailnet/-/keys?all=true",
+			"status":      200,
+			"resp_header": {"Content-Type": "application/json"},
+			"response": {"keys": [{
+				"capabilities": {
+					"devices": {"create": {"ephemeral": false, "preauthorized": true, "reusable": true}}
+				},
+				"created":       "2026-10-21T14:12:09Z",
+				"description":   "tscap-saasprobe A-user",
+				"expires":       "2026-10-21T15:12:09Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-user}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod"]
+				}}},
+				"created":       "2026-10-21T14:12:11Z",
+				"description":   "tscap-saasprobe A-prod",
+				"expires":       "2026-10-21T15:12:11Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-prod}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:server"]
+				}}},
+				"created":       "2026-10-21T14:12:13Z",
+				"description":   "tscap-saasprobe A-prod-server",
+				"expires":       "2026-10-21T15:12:13Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-prod-server}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:15Z",
+				"description":   "tscap-saasprobe A-prod-db",
+				"expires":       "2026-10-21T15:12:15Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-prod-db}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:17Z",
+				"description":   "tscap-saasprobe A-db",
+				"expires":       "2026-10-21T15:12:17Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-db}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod"]
+				}}},
+				"created":       "2026-10-21T14:12:21Z",
+				"description":   "tscap-saasprobe M-prod",
+				"expires":       "2026-10-21T15:12:21Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:server"]
+				}}},
+				"created":       "2026-10-21T14:12:25Z",
+				"description":   "tscap-saasprobe M-prod-server",
+				"expires":       "2026-10-21T15:12:25Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod-server}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod", "tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:29Z",
+				"description":   "tscap-saasprobe M-prod-db",
+				"expires":       "2026-10-21T15:12:29Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-prod-db}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:db"]
+				}}},
+				"created":       "2026-10-21T14:12:33Z",
+				"description":   "tscap-saasprobe M-db",
+				"expires":       "2026-10-21T15:12:33Z",
+				"expirySeconds": 3600,
+				"id":            "{key:M-db}",
+				"keyType":       "auth"
+			}, {
+				"capabilities": {"devices": {"create": {
+					"ephemeral":     false,
+					"preauthorized": true,
+					"reusable":      true,
+					"tags":          ["tag:prod"]
+				}}},
+				"created":       "2026-10-21T14:12:35Z",
+				"description":   "tscap-saasprobe A-late-prod",
+				"expires":       "2026-10-21T15:12:35Z",
+				"expirySeconds": 3600,
+				"id":            "{key:A-late-prod}",
+				"keyType":       "auth",
+				"userId":        "{unmatched:1}"
+			}]},
+			"offset_ms": 16
+		}]
+	}, {
+		"name":    "retire",
+		"at":      "2026-10-21T14:12:41.069410518Z",
+		"result":  "observed",
+		"actions": [{"kind": "retire", "args": ["keys", "clients"]}]
+	}]
+}
