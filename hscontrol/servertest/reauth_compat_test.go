@@ -37,7 +37,6 @@ import (
 // <test_id>/<step>[/<node>]/<check>. A listed check that matches fails, so a
 // fix must delete its entry.
 var reauthSkipReasons = map[string]string{
-	"owner-routes/r-expired-retag/expire/served": expiredRouterUnserved,
 	"owner-routes/r-expired-retag/expire/online": expiredPeerOffline,
 
 	"owner-routes/r-expired-retag/owner/node-key": expiredKeyAccepted,
