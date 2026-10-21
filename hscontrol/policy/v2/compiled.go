@@ -1042,7 +1042,7 @@ func compileViaForNode(
 				destPorts = append(
 					destPorts,
 					tailcfg.NetPortRange{
-						IP:    prefix.String(),
+						IP:    filterIP(prefix),
 						Ports: port,
 					},
 				)
