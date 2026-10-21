@@ -26,18 +26,10 @@ import (
 // <test_id>/<step>/<function>. A listed check that matches fails, so a fix
 // must delete its entry.
 var tagOwnerSkipReasons = map[string]string{
-	"tag-owner-chain/u-re-relogin/NodeCanHaveTag": tagOwnedThroughTag,
-
-	"tag-owner-chain/C-base-mint-top/TagOwnedByTags":   tagReachedTwoHops,
-	"tag-owner-chain/C-base-mint-dtop/TagOwnedByTags":  tagReachedTwoHops,
 	"tag-owner-chain/C-two-mint-subset/TagOwnedByTags": clientTagSubset,
 }
 
-const (
-	tagOwnedThroughTag = "TAG_OWNED_THROUGH_TAG: headscale lets a user's node apply a tag whose owner is a tag the user owns; SaaS gives a user only the tags it owns directly"
-	tagReachedTwoHops  = "TAG_REACHED_TWO_HOPS: headscale lets a tagged credential apply a tag any number of ownership steps away; SaaS allows only tags its own tags own directly"
-	clientTagSubset    = "CLIENT_TAG_SUBSET: headscale lets an OAuth client mint a key with a subset of its tags; SaaS needs that subset owned by the client's tags"
-)
+const clientTagSubset = "CLIENT_TAG_SUBSET: headscale lets an OAuth client mint a key with a subset of its tags; SaaS needs that subset owned by the client's tags"
 
 // TestTagOwnerChainCompat compares each SaaS verdict on a tag request with
 // the policy function headscale asks for that request:
