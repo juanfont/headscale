@@ -321,8 +321,6 @@ var rejectedPolicySkipReasons = map[string]string{
 	"acl-err11/refused": "ROUTE_HOST_BITS: headscale accepts an autoApprovers route with host bits",
 
 	"ssh-check-tag-src/refused": "SSH_CHECK_TAG_SRC: headscale accepts a check rule with a tag source",
-
-	"grant-dxp-comma-ports/refused": "GRANT_PORT_LIST: headscale accepts a comma port list in a grant ip entry",
 }
 
 const noTailnetDomains = "NO_TAILNET_DOMAINS: headscale does not check user:*@domain or localpart:*@domain against the tailnet's domains"
