@@ -187,6 +187,12 @@ var apiv2CompatSkipReasons = map[string]string{
 	"policy-api/P5-R2/0/message": noV2Validate,
 	"policy-api/P5-R2/0/detail":  noV2Validate,
 
+	"policy-api/P2/1/status":   emptyPolicyReset,
+	"policy-api/P2/1/outcome":  emptyPolicyReset,
+	"policy-api/P2/1/enforced": emptyPolicyReset,
+	"policy-api/P2/2/body":     emptyPolicyReset,
+	"policy-api/P2/2/etag":     emptyPolicyReset,
+
 	"policy-api/P3/1/detail":    refusalDetail,
 	"policy-api/P5-R1/1/detail": refusalDetail,
 	"policy-api/P5-R2/1/detail": refusalDetail,
@@ -194,20 +200,8 @@ var apiv2CompatSkipReasons = map[string]string{
 	"policy-api/P7/0/body": hujsonFormatted,
 	"policy-api/P7/1/body": hujsonFormatted,
 
-	"policy-api/P2/0/v1-verdict": v1CheckAcceptsEmpty,
-}
-
-// apiv2CompatNotCompared lists, by key prefix, checks left out: SaaS's
-// answer there is in doubt, so it is no reference.
-var apiv2CompatNotCompared = []string{
-	"policy-api/P2/1/status",
-	"policy-api/P2/1/outcome",
-	"policy-api/P2/1/enforced",
-	"policy-api/P2/1/v1-verdict",
-	"policy-api/P2/1/v1-stored",
-	"policy-api/P2/1/v1-enforced",
-	"policy-api/P2/2/body",
-	"policy-api/P2/2/etag",
+	"policy-api/P2/0/v1-verdict":  v1CheckAcceptsEmpty,
+	"policy-api/P2/1/v1-enforced": v1EmptyPolicyNotEnforced,
 }
 
 // apiv2CompatNotReplayed lists steps left out, keyed <test_id>/<step>, with
@@ -258,8 +252,10 @@ const (
 
 // SaaS behaviour recorded as it is; following it is the maintainer's call.
 const (
-	missingScopeNotFound = "MISSING_SCOPE_NOT_FOUND: SaaS answers a call outside the token's scopes with 404 not found; headscale answers 403"
-	unknownScopeGranted  = "UNKNOWN_SCOPE_GRANTED: SaaS ignores an unknown requested scope and grants the client's own; headscale grants the unknown scope alone"
+	missingScopeNotFound     = "MISSING_SCOPE_NOT_FOUND: SaaS answers a call outside the token's scopes with 404 not found; headscale answers 403"
+	unknownScopeGranted      = "UNKNOWN_SCOPE_GRANTED: SaaS ignores an unknown requested scope and grants the client's own; headscale grants the unknown scope alone"
+	emptyPolicyReset         = "EMPTY_POLICY_RESET: SaaS takes a zero-length policy write as a reset to its default policy and enforces it; headscale refuses the body"
+	v1EmptyPolicyNotEnforced = "V1_EMPTY_POLICY_NOT_ENFORCED: SaaS enforces its default policy after a zero-length write; v1 stores the empty policy and keeps enforcing the old one"
 )
 
 // TestAPIv2OAuthCompat replays OAuth clients, token exchanges, auth keys,
@@ -487,17 +483,13 @@ func (r *apiReplay) step(t *testing.T, step testcapture.Step) {
 		}
 	}
 
-	keyPrefix := r.c.TestID + "/" + step.Name + "/"
-	checks = slices.DeleteFunc(checks, func(ch apiCheck) bool {
-		return notCompared(apiv2CompatNotCompared, keyPrefix+ch.name)
-	})
-
 	if len(checks) == 0 {
 		return
 	}
 
 	// Marked here, so a run filtered to other steps does not call these
 	// entries stale.
+	keyPrefix := r.c.TestID + "/" + step.Name + "/"
 	for _, ch := range checks {
 		r.evaluated[keyPrefix+ch.name] = true
 	}
