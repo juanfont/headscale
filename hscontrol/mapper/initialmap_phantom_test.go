@@ -29,6 +29,7 @@ func TestUnreadyConnectionDefersBroadcastsUntilInitialMap(t *testing.T) {
 	// in between registering the channel and delivering the initial map.
 	nc := newMultiChannelNodeConn(targetNode.n.ID, batcher.mapper)
 	entry := &connectionEntry{
+		done:    make(chan struct{}),
 		id:      "test-unready",
 		c:       targetNode.ch,
 		version: tailcfg.CapabilityVersion(100),

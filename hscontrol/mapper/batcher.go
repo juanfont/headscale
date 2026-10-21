@@ -318,11 +318,13 @@ func (b *Batcher) AddNode(
 	// Create new connection entry
 	now := time.Now()
 	newEntry := &connectionEntry{
-		id:      connID,
-		c:       c,
-		version: version,
-		created: now,
-		stop:    stop,
+		done:        make(chan struct{}),
+		id:          connID,
+		c:           c,
+		version:     version,
+		created:     now,
+		stop:        stop,
+		batcherDone: b.done,
 	}
 	// Block broadcast sends to this connection until its initial map
 	// is delivered below, so a delta cannot become the stream's first
@@ -632,22 +634,18 @@ func (b *Batcher) worker(workerID int) {
 			// finish — preventing out-of-order delivery and races
 			// on lastSentPeers (Clear+Store vs Range).
 			if nc, exists := b.nodes.Load(w.nodeID); exists && nc != nil {
-				// Changes that found only connections still awaiting
-				// their initial map are retried next tick: the
-				// in-flight initial map may have been generated from
-				// a snapshot older than the change, so dropping them
-				// would lose updates. Collected and prepended as a
-				// group to keep their order ahead of newer pending
-				// changes — order matters for stateful patches like
-				// online/offline.
+				// Requeue unready or backpressured work so the next tick
+				// regenerates it from current state.
 				var retry []change.Change
 
 				nc.workMu.Lock()
-				for _, ch := range w.changes {
+				for i, ch := range w.changes {
 					err := nc.change(ch)
-					if errors.Is(err, errNoReadyConnections) {
-						retry = append(retry, ch)
-						continue
+					if errors.Is(err, errNoReadyConnections) || errors.Is(err, errConnectionBackpressure) {
+						// Keep the unsent suffix ahead of newer pending changes.
+						// Older reconnect siblings can receive idempotent duplicates on retry.
+						retry = w.changes[i:]
+						break
 					}
 
 					if err != nil {
@@ -664,7 +662,7 @@ func (b *Batcher) worker(workerID int) {
 					nc.prependPending(retry...)
 				}
 
-				// Bundle delivered; allow the next tick's bundle to queue.
+				// Bundle delivered or requeued; allow the next tick's bundle to queue.
 				nc.inFlight.Store(false)
 			}
 		case <-b.done:

@@ -121,6 +121,7 @@ func BenchmarkScale_ConnectionChurn(b *testing.B) {
 
 				newCh := make(chan *tailcfg.MapResponse, 10)
 				entry := &connectionEntry{
+					done:    make(chan struct{}),
 					id:      fmt.Sprintf("sc-%d", i),
 					c:       newCh,
 					version: tailcfg.CapabilityVersion(100),
@@ -408,6 +409,7 @@ func BenchmarkScale_MultiChannelBroadcast(b *testing.B) {
 						for j := range 2 {
 							ch := make(chan *tailcfg.MapResponse, b.N+1)
 							entry := &connectionEntry{
+								done:    make(chan struct{}),
 								id:      fmt.Sprintf("extra-%d-%d", i, j),
 								c:       ch,
 								version: tailcfg.CapabilityVersion(100),
@@ -513,6 +515,7 @@ func BenchmarkScale_ConcurrentSendAndChurn(b *testing.B) {
 
 								newCh := make(chan *tailcfg.MapResponse, b.N+1)
 								entry := &connectionEntry{
+									done:    make(chan struct{}),
 									id:      fmt.Sprintf("sc-churn-%d", i),
 									c:       newCh,
 									version: tailcfg.CapabilityVersion(100),
@@ -585,6 +588,7 @@ func BenchmarkScale_MixedWorkload(b *testing.B) {
 
 								newCh := make(chan *tailcfg.MapResponse, 10)
 								entry := &connectionEntry{
+									done:    make(chan struct{}),
 									id:      fmt.Sprintf("mix-churn-%d", i),
 									c:       newCh,
 									version: tailcfg.CapabilityVersion(100),
