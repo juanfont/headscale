@@ -478,6 +478,11 @@ func (b *Batcher) Start() {
 	b.wg.Go(b.doWork)
 }
 
+// Done is closed when batcher shutdown begins.
+func (b *Batcher) Done() <-chan struct{} {
+	return b.done
+}
+
 func (b *Batcher) Close() {
 	// Signal shutdown to all goroutines, only once.
 	// Workers and queueWork both select on done, so closing it
