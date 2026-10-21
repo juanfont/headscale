@@ -14,3 +14,11 @@ const (
 
 	MaxHostnameLength = 255
 )
+
+// Bounds on what a client reports, applied by [BoundHostinfo] and
+// [BoundMapRequest]. They sit far above what a stock client sends.
+const (
+	MaxReportedListLen = 256
+	MaxRoutableIPs     = 4096
+	MaxHostinfoSize    = 64 << 10
+)
