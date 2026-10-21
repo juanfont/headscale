@@ -5,9 +5,11 @@ import (
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/key"
 )
 
 // TestRouteApprovalWaitsForAnnouncement: approvers run when the announced
@@ -112,4 +114,103 @@ func TestAutoApproveKeepsCurrentManualRoutes(t *testing.T) {
 			assert.ElementsMatch(t, tt.want, stored.ApprovedRoutes.List())
 		})
 	}
+}
+
+// TestRegistrationApprovesOnlyWithNewNodeKey: a registration runs route
+// auto-approval when it brings a new node key or a change to the announced
+// routes, not on a login that keeps both.
+func TestRegistrationApprovesOnlyWithNewNodeKey(t *testing.T) {
+	s := newRetagTestState(t)
+	user := s.CreateUserForTest("approve-user")
+
+	_, err := s.SetPolicy([]byte(`{
+		"autoApprovers": {"routes": {"10.0.0.0/16": ["approve-user@"]}},
+		"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}]
+	}`))
+	require.NoError(t, err)
+
+	pak, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+
+	route := netip.MustParsePrefix("10.0.1.0/24")
+	machineKey := key.NewMachine().Public()
+	req := tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey:  key.NewNode().Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "router", RoutableIPs: []netip.Prefix{route}},
+	}
+
+	node, _, err := s.HandleNodeFromPreAuthKey(req, machineKey)
+	require.NoError(t, err)
+	require.Equal(t, []netip.Prefix{route}, approvedRoutes(t, s, node.ID()), "a new node")
+
+	_, _, err = s.SetApprovedRoutes(node.ID(), nil)
+	require.NoError(t, err)
+
+	_, _, err = s.HandleNodeFromPreAuthKey(req, machineKey)
+	require.NoError(t, err)
+	assert.Empty(t, approvedRoutes(t, s, node.ID()), "the same node key")
+
+	added := netip.MustParsePrefix("10.0.2.0/24")
+	req.Hostinfo = &tailcfg.Hostinfo{Hostname: "router", RoutableIPs: []netip.Prefix{route, added}}
+	_, _, err = s.HandleNodeFromPreAuthKey(req, machineKey)
+	require.NoError(t, err)
+	assert.Equal(t, []netip.Prefix{route, added}, approvedRoutes(t, s, node.ID()), "a new announced route")
+
+	_, _, err = s.SetApprovedRoutes(node.ID(), nil)
+	require.NoError(t, err)
+
+	req.NodeKey = key.NewNode().Public()
+	_, _, err = s.HandleNodeFromPreAuthKey(req, machineKey)
+	require.NoError(t, err)
+	assert.Equal(t, []netip.Prefix{route, added}, approvedRoutes(t, s, node.ID()), "a new node key")
+}
+
+// TestRegistrationApprovalComparesReplacedNode: registration approval compares
+// with the node the writer replaced, so an announcement and an admin revoke
+// that land after the lookup leave an unchanged re-registration approving
+// nothing.
+func TestRegistrationApprovalComparesReplacedNode(t *testing.T) {
+	s := newRetagTestState(t)
+	user := s.CreateUserForTest("approve-user")
+
+	_, err := s.SetPolicy([]byte(`{
+		"autoApprovers": {"routes": {"10.0.0.0/16": ["approve-user@"]}},
+		"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}]
+	}`))
+	require.NoError(t, err)
+
+	pak, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+
+	c := registerForPAKRereg(t, s, pak)
+	stale, stalePAK := c.lookup(t, pak.Key)
+
+	route := netip.MustParsePrefix("10.0.1.0/24")
+	hi := &tailcfg.Hostinfo{Hostname: "h0", RoutableIPs: []netip.Prefix{route}}
+
+	_, err = s.UpdateNodeFromMapRequest(c.node.ID(), tailcfg.MapRequest{NodeKey: c.regReq.NodeKey, Hostinfo: hi})
+	require.NoError(t, err)
+	require.Equal(t, []netip.Prefix{route}, approvedRoutes(t, s, c.node.ID()), "the announcement approves")
+
+	_, _, err = s.SetApprovedRoutes(c.node.ID(), nil)
+	require.NoError(t, err)
+
+	req := c.regReq
+	req.Hostinfo = hi.Clone()
+	node, replaced, err := s.reregisterNodeWithPAK(stale, stalePAK, req, c.machineKey, hi.Hostname, req.Hostinfo)
+	require.NoError(t, err)
+
+	_, _, err = s.approveRoutesAfterRegistration(replaced, node, change.Change{})
+	require.NoError(t, err)
+	assert.Empty(t, approvedRoutes(t, s, c.node.ID()), "the admin revoke stands")
+}
+
+func approvedRoutes(t *testing.T, s *State, id types.NodeID) []netip.Prefix {
+	t.Helper()
+
+	nv, ok := s.GetNodeByID(id)
+	require.True(t, ok)
+
+	return nv.ApprovedRoutes().AsSlice()
 }
