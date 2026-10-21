@@ -879,7 +879,7 @@ func (r *stepReplay) apply(t *testing.T, step testcapture.Step) map[string]error
 			}
 
 		case "restart", "start", "kill", "shutdown", "logout", "advertise", "set_hostname",
-			"break_tcp_conns", "rotate_disco_key", "cli", "disconnect_control":
+			"break_tcp_conns", "rotate_disco_key", "cli", "disconnect_control", "down", "up":
 			r.daemon(ctx, t, step.Name, a)
 
 		case "retire":
@@ -957,10 +957,10 @@ func (r *stepReplay) daemon(ctx context.Context, t *testing.T, stepName string, 
 		r.hostinfo[a.Node].Hostname = strings.TrimPrefix(args, "set --hostname=")
 		r.sendHostinfo(ctx, t, a.Node)
 
-	case a.Kind == "cli" && args == "down":
+	case a.Kind == "down", a.Kind == "cli" && args == "down":
 		cl.Disconnect(t)
 
-	case a.Kind == "cli" && args == "up":
+	case a.Kind == "up", a.Kind == "cli" && args == "up":
 		// tailscaled registers again on its node key, then polls.
 		require.NoError(t, cl.ReloginAndPoll(ctx), "%s: up", stepName)
 
