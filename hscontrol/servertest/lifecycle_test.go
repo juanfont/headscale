@@ -177,7 +177,7 @@ func TestNodeExpiryPreservesControlConnection(t *testing.T) {
 				assert.Equal(c, 1, current.ActiveSessions())
 				assert.Equal(c, epoch, current.SessionEpoch())
 				assert.True(c, h.Server.App.MapBatcher().IsConnected(id))
-				assert.True(c, client.Netmap().SelfNode.Expired())
+				assert.True(c, client.Netmap().SelfNode.KeyExpiry().Before(time.Now()))
 				assert.False(c, client.Netmap().SelfNode.Online().Get())
 
 				peer, found := observer.PeerByName(client.Name)
@@ -220,7 +220,7 @@ func TestNodeExpiryPreservesControlConnection(t *testing.T) {
 				assert.Equal(c, epoch, current.SessionEpoch())
 				assert.Equal(c, nodeKey, current.NodeKey())
 				assert.Equal(c, 1, current.ActiveSessions())
-				assert.False(c, client.Netmap().SelfNode.Expired())
+				assert.True(c, client.Netmap().SelfNode.KeyExpiry().IsZero())
 				assert.True(c, client.Netmap().SelfNode.Online().Get())
 
 				peer, found := observer.PeerByName(client.Name)
