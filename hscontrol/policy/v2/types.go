@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"iter"
 	"net/netip"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -110,6 +111,40 @@ var (
 	ErrNodeAttrIPPoolUnsupported    = errors.New("nodeAttrs ipPool requires the IP allocator (https://github.com/juanfont/headscale/issues/2912)")
 	ErrNodeAttrTargetUnsupported    = errors.New("nodeAttrs target alias type is not supported")
 )
+
+// NextDNSAttrPrefix is the form Tailscale uses for per-node NextDNS profile
+// selection: an attr of "nextdns:<profile-id>" overrides the resolver path,
+// and [NextDNSAttrNoInfo] suppresses the device metadata.
+// See https://tailscale.com/docs/integrations/nextdns.
+const (
+	NextDNSAttrPrefix             = "nextdns:"
+	NextDNSAttrNoInfo nodecap.Cap = "nextdns:no-device-info"
+)
+
+// NextDNSProfileRE bounds a profile ID, which is spliced into the resolver
+// URL path, so it cannot carry `?`, `/` or `@`.
+var NextDNSProfileRE = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
+
+// malformedNextDNSAttrs returns the nextdns: attrs whose profile the resolver
+// skips. They load, as on Tailscale SaaS, and stay in the CapMap.
+func (p *Policy) malformedNextDNSAttrs() []string {
+	if p == nil {
+		return nil
+	}
+
+	var bad []string
+
+	for _, na := range p.NodeAttrs {
+		for _, attr := range na.Attrs {
+			profile, ok := strings.CutPrefix(string(attr), NextDNSAttrPrefix)
+			if ok && attr != NextDNSAttrNoInfo && !NextDNSProfileRE.MatchString(profile) {
+				bad = append(bad, string(attr))
+			}
+		}
+	}
+
+	return bad
+}
 
 // nodeAttrUnsupportedCaps lists caps that headscale parses but cannot act on
 // today. Each entry maps to the tracking issue an operator can follow. The
