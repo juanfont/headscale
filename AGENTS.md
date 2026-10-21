@@ -310,8 +310,9 @@ a broken one.
 - **Protobuf regeneration**: changes under `proto/` require
   `make generate` (which runs `buf generate`) and should land in a
   **separate commit** from the callers that use the regenerated types.
-- **Formatting** is enforced by `golangci-lint` with `golines` (width 88)
-  and `gofumpt`. Run `make fmt` or rely on the pre-commit hook.
+- **Formatting** is enforced by the `golangci-lint` formatters in
+  `.golangci.yaml` (`gofumpt`, `gci`, `goimports`). No line-length limit is
+  enforced. Run `make fmt` or rely on the pre-commit hook.
 - **Logging** uses `zerolog`. Prefer single-line chains
   (`log.Info().Str(...).Msg(...)`). For 4+ fields or conditional fields,
   build incrementally and **reassign** the event variable:
