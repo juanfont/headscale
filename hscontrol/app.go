@@ -1015,6 +1015,11 @@ func (h *Headscale) Serve() error {
 				info("closing socket listener")
 				socketListener.Close()
 
+				// The OIDC state cache runs its own TTL sweeper goroutine.
+				if p, ok := h.authProvider.(*AuthProviderOIDC); ok {
+					p.authCache.Close()
+				}
+
 				// Close state connections
 				info("closing state and database")
 
