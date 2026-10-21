@@ -307,11 +307,14 @@ func TestRoutes(t *testing.T) {
 			20*time.Second, 200*time.Millisecond,
 			"r2 should take over as primary after r1 offline")
 
-		// 2. Take r2 offline. With both routers gone, no primary should remain.
+		// 2. Take r2 offline. With both routers gone, r2 keeps the route.
 		r2.Disconnect(t)
-		assert.Eventually(t, func() bool { return !hasRoute(r1ID) && !hasRoute(r2ID) },
-			20*time.Second, 200*time.Millisecond,
-			"no primary should be assigned while both routers are offline")
+		assert.Eventually(t, func() bool {
+			nv, ok := srv.State().GetNodeByID(r2ID)
+
+			return ok && !nv.IsOnline().Get() && hasRoute(r2ID) && !hasRoute(r1ID)
+		}, 20*time.Second, 200*time.Millisecond,
+			"the last primary keeps the route while both routers are offline")
 
 		// 3. Reconnect r2 (cable plugged back in).
 		r2.Reconnect(t)
