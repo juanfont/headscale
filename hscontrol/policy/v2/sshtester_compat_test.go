@@ -15,6 +15,8 @@ import (
 // knownSSHTesterDivergences names the engine gap for each check where
 // headscale and upstream disagree, keyed <test_id>/<check>.
 var knownSSHTesterDivergences = map[string]string{
+	"sshtest-malformed-dst-bare-ipv6/verdict": "bare-IPv6 sshTests dst: upstream parse-accepts then engine-rejects; headscale accepts (IPv4 mirror passes both sides)",
+
 	"sshtest-accept-fail-no-ssh-rule/label":            sshTestNodeLabel,
 	"sshtest-accept-fail-wrong-login-user/label":       sshTestNodeLabel,
 	"sshtest-both-tests-pass-sshTests-fail/label":      sshTestNodeLabel,
