@@ -63,11 +63,18 @@ type PolicyManager interface {
 	// avoid a tailnet-wide recompute on every ordinary reconnect.
 	NodeNeedsPeerRecompute(node types.NodeView) bool
 
+	// NodeIsViaTarget reports whether a grant steers traffic through the node.
+	NodeIsViaTarget(node types.NodeView) bool
+
 	// ViaRoutesForPeer computes via grant effects for a viewer-peer pair.
 	// It returns which routes should be included (peer is via-designated for viewer)
 	// and excluded (steered to a different peer). When no via grants apply,
 	// both fields are empty and the caller falls back to existing behavior.
 	ViaRoutesForPeer(viewer, peer types.NodeView) types.ViaRouteResult
+
+	// SetRouterAvailable sets the via election's runtime availability check.
+	// The callback runs under the policy lock and must remain lock-free.
+	SetRouterAvailable(available func(types.NodeID) bool)
 
 	// NodeCapMap returns compiled policy capabilities for the given node,
 	// or nil when none target it. The map is a defensive clone; its values
