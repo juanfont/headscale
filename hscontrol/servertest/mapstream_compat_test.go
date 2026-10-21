@@ -82,18 +82,6 @@ var mapStreamSkipReasons = map[string]string{
 	"map-delivery/S3.6/bystander/peers": sameUserPeers,
 	"map-delivery/S3.6/laptop/peers":    sameUserPeers,
 
-	"map-delivery/S2.0/appc/self-hostinfo-keys":      selfHostinfoWhole,
-	"map-delivery/S2.0/bystander/self-hostinfo-keys": selfHostinfoWhole,
-	"map-delivery/S2.0/sshd/self-hostinfo-keys":      selfHostinfoWhole,
-
-	"map-delivery/S2.0/appc/peer-hostinfo-keys":      peerHostinfoWhole,
-	"map-delivery/S2.0/bystander/peer-hostinfo-keys": peerHostinfoWhole,
-	"map-delivery/S2.0/sshd/peer-hostinfo-keys":      peerHostinfoWhole,
-
-	"map-delivery/S2.0/appc/peer-hostinfo":      peerServicesWhole,
-	"map-delivery/S2.0/bystander/peer-hostinfo": peerServicesWhole,
-	"map-delivery/S2.0/sshd/peer-hostinfo":      peerServicesWhole,
-
 	"hidden-peers/S9/observer/removed":  removalSentToAll,
 	"hidden-peers/S10/observer/removed": removalSentToAll,
 	"hidden-peers/S13/observer/removed": removalSentToAll,
@@ -141,9 +129,6 @@ const (
 	restartEndpointsKept      = "RESTART_ENDPOINTS_KEPT: headscale keeps a restarted node's last endpoints at its peers until it reports new ones; SaaS sends peers the node without endpoints until then"
 	reconnectAnnounced        = "RECONNECT_ANNOUNCED: headscale tells peers a node is online after a stream gap of a few seconds; SaaS sends them nothing"
 	routerReconnectRecompute  = "ROUTER_RECONNECT_RECOMPUTE: headscale sends every node a policy response when a subnet router's stream comes back after a few seconds; SaaS sends nothing"
-	selfHostinfoWhole         = "SELF_HOSTINFO_WHOLE: headscale sends a node its whole reported Hostinfo; SaaS sends only Hostname, RequestTags and Services"
-	peerHostinfoWhole         = "PEER_HOSTINFO_WHOLE: headscale sends peers a node's whole reported Hostinfo; SaaS sends only Hostname, OS, Services, the SSH host keys and AppConnector"
-	peerServicesWhole         = "PEER_SERVICES_WHOLE: headscale sends peers every service a node reports; SaaS leaves out peerapi-dns-proxy"
 	removalSentToAll          = "REMOVAL_SENT_TO_ALL: headscale tells every connected node that a deleted node is gone; SaaS tells only the nodes that had it as a peer"
 	taggedDeviceUser          = "TAGGED_DEVICE_USER: SaaS shows a tagged device's user as the login that made its key; headscale shows tagged-devices"
 )
