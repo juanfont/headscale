@@ -171,11 +171,8 @@ var grantSkipReasons = map[string]string{
 	"via-grant-v62": "FILTER_ADDRESS_FORM: same addresses, different wire form",
 
 	// Checks keyed <test_id>/<node>/filter: a listed check that matches
-	// fails, so a fix must delete its entry.
-	"grant-dxp-comma-ports/refused": grantPortList,
-
-	// Contiguous pinned addresses; TestViaGrantHACompat compares these
-	// filters by address.
+	// fails, so a fix must delete its entry. Contiguous pinned addresses;
+	// TestViaGrantHACompat compares these filters by address.
 	"via-grant-v64/client-a/filter":  srcAddressForm,
 	"via-grant-v64/client-b/filter":  srcAddressForm,
 	"via-grant-v64/plain/filter":     srcAddressForm,
@@ -189,8 +186,6 @@ var grantSkipReasons = map[string]string{
 	"via-grant-v65/via-empty/filter": srcAddressForm,
 	"via-grant-v65/via-r/filter":     srcAddressForm,
 }
-
-const grantPortList = "GRANT_PORT_LIST: SaaS refuses a comma port list in a grant ip entry (only one port range allowed); headscale accepts it"
 
 // TestGrantsCompat is a data-driven test that loads all GRANT-*.json
 // test files captured from Tailscale SaaS and compares headscale's grants
