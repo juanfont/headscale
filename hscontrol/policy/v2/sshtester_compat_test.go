@@ -29,6 +29,7 @@ var knownSSHTesterDivergences = map[string]string{
 	"sshtest-fail-label-ip-dst/label":                  sshTestNodeLabel,
 	"sshtest-fail-label-same-node-twice/label":         sshTestNodeLabel,
 	"sshtest-fail-label-user-dst/label":                sshTestNodeLabel,
+	"sshtest-group-split-actions-check/label":          sshTestNodeLabel,
 	"sshtest-repeated-names/label":                     sshTestNodeLabel,
 	"sshtest-report-multi/label":                       sshTestNodeLabel,
 	"sshtest-src-unassigned-ip-accept/label":           sshTestNodeLabel,
@@ -42,6 +43,9 @@ var knownSSHTesterDivergences = map[string]string{
 
 	"sshtest-fail-label-autogroup-member/message": sshTestDstMember,
 	"sshtest-check-reason-mixed-alias/message":    sshTestDstMember,
+
+	"sshtest-group-split-actions-accept/verdict": "SSHTEST_SRC_ONE_RULE: SaaS needs one accept rule to cover a group source; headscale lets each member pass through its own accept or check rule",
+	"sshtest-group-split-actions-deny/verdict":   "SSHTEST_SRC_ONE_RULE: SaaS denies a group source no single rule covers; headscale fails the deny because each member is let in",
 
 	"sshtest-fail-label-same-node-twice/breakdown": "SSHTEST_PER_ALIAS: SaaS reports each dst alias, also two naming one node; headscale checks each node once",
 	"sshtest-fail-label-ip-no-device/breakdown":    sshTestNoDevice,

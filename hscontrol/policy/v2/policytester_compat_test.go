@@ -54,6 +54,8 @@ var knownPolicyTesterDivergences = map[string]string{ //nolint:gosec // strings 
 
 	"policytest-dst-multinode-partial-accept/verdict": "TEST_DST_EVERY_NODE: SaaS accepts only when every node of the dst alias is reached; headscale when one is",
 
+	"policytest-src-split-across-rules/verdict": "TEST_SRC_ONE_RULE: SaaS needs one rule to cover a group source; headscale lets each member pass through its own rule",
+
 	"policytest-report-both-blocks/label": sshTestNodeLabel,
 }
 
