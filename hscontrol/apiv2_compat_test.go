@@ -1,7 +1,7 @@
 // This file replays admin API exchanges captured from Tailscale SaaS, in
 // order and as the principal SaaS saw, and compares each answer with SaaS's.
 //
-// Test data source: servertest/testdata/steps/{oauth,policy-api}.hujson,
+// Test data source: servertest/testdata/steps/{oauth,policy-api,key-list}.hujson,
 // loaded by name. oauth's late joins are also replayed with real clients by
 // TestAPIv2OAuthClientDeleteCompat in servertest.
 // Source format:    github.com/juanfont/headscale/hscontrol/types/testcapture
@@ -67,6 +67,11 @@ var apiv2CompatSkipReasons = map[string]string{
 	"oauth/B3/0/tags":  mintTagsNotEchoed,
 	"oauth/B11/1/tags": mintTagsNotEchoed,
 
+	"key-list/setup-token-keys/0/tags": mintTagsNotEchoed,
+	"key-list/setup-token-keys/2/tags": mintTagsNotEchoed,
+	"key-list/setup-token-keys/4/tags": mintTagsNotEchoed,
+	"key-list/setup-token-keys/6/tags": mintTagsNotEchoed,
+
 	"oauth/K1/0/status":  unknownPropertyRefused,
 	"oauth/K1/0/outcome": unknownPropertyRefused,
 	"oauth/K1/1/status":  unknownPropertyRefused,
@@ -104,6 +109,12 @@ var apiv2CompatSkipReasons = map[string]string{
 	"oauth/B11/2/listed": keyListWithoutAll,
 	"oauth/D0/2/listed":  keyListInvalidKeys,
 
+	"key-list/L-untagged/1/listed":         keyListWithoutAll,
+	"key-list/L-prod/1/listed":             keyListWithoutAll,
+	"key-list/L-prod-server/1/listed":      keyListWithoutAll,
+	"key-list/L-make-prod/0/listed":        keyListWithoutAll,
+	"key-list/L-make-prod-server/0/listed": keyListWithoutAll,
+
 	"oauth/D7/2/status":  deletedClientGone,
 	"oauth/D7/2/outcome": deletedClientGone,
 	"oauth/D7/3/message": deletedClientCredentialText,
@@ -120,6 +131,12 @@ var apiv2CompatSkipReasons = map[string]string{
 	"oauth/key:K-mixed/creator-user-id":       taggedKeyNoUserID,
 	"oauth/key:K-prod/creator-user-id":        taggedKeyNoUserID,
 	"policy-api/key:J-server/creator-user-id": taggedKeyNoUserID,
+
+	"key-list/key:A-db/creator-user-id":          taggedKeyNoUserID,
+	"key-list/key:A-late-prod/creator-user-id":   taggedKeyNoUserID,
+	"key-list/key:A-prod-db/creator-user-id":     taggedKeyNoUserID,
+	"key-list/key:A-prod-server/creator-user-id": taggedKeyNoUserID,
+	"key-list/key:A-prod/creator-user-id":        taggedKeyNoUserID,
 
 	"oauth/device:before/all/device-oauth-client":        deviceOAuthClientID,
 	"oauth/device:ci-runner/all/device-oauth-client":     deviceOAuthClientID,
@@ -225,7 +242,7 @@ const (
 	unknownPropertyRefused      = "UNKNOWN_PROPERTY_REFUSED: SaaS ignores a createKey property it does not define; headscale refuses the body with 422, so the key is never made"
 	unknownKeyType              = "UNKNOWN_KEY_TYPE: SaaS refuses an unknown keyType with 400 before it checks scopes; headscale makes an auth key from it"
 	tagRefusalStatus            = "TAG_REFUSAL_STATUS: SaaS refuses a tag outside the token's grant with 400 requested tags are invalid or not permitted; headscale with 403"
-	keyListWithoutAll           = "KEY_LIST_WITHOUT_ALL: without all=true SaaS lists a token only some auth keys, none to an untagged one; headscale lists every key"
+	keyListWithoutAll           = "KEY_LIST_WITHOUT_ALL: without all=true SaaS lists an OAuth token only the auth keys OAuth tokens made, whatever its tags and theirs; headscale lists every key"
 	keyListInvalidKeys          = "KEY_LIST_INVALID_KEYS: SaaS leaves spent and revoked auth keys out of a listing; headscale lists them"
 	deletedClientGone           = "DELETED_CLIENT_GONE: SaaS keeps a deleted OAuth client readable as invalid and revoked; headscale removes it"
 	deletedClientCredentialText = "DELETED_CLIENT_CREDENTIAL_TEXT: SaaS refuses a deleted client's secret and tokens with API token invalid; headscale says invalid client credentials and unauthorized"
@@ -252,6 +269,15 @@ const (
 // and a parent client deleted while its key and child client live on.
 func TestAPIv2OAuthCompat(t *testing.T) {
 	runAPICompat(t, "oauth", false)
+}
+
+// TestAPIv2KeyListCompat replays auth key listings, with and without
+// all=true, by read-only OAuth tokens untagged and of one and two tags and
+// by the tokens that made keys, over keys of tags inside, overlapping and
+// outside theirs that the admin or a token made, an untagged key the admin
+// made, and an admin key made after the token-made ones.
+func TestAPIv2KeyListCompat(t *testing.T) {
+	runAPICompat(t, "key-list", false)
 }
 
 // TestAPIv2ACLCompat replays policy writes over a fixed baseline: an
