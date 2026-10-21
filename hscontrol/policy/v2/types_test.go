@@ -5261,6 +5261,36 @@ func TestUnmarshalGrants(t *testing.T) {
 			wantErr: "ip and app can not both be empty",
 		},
 		{
+			name: "invalid-grant-ip-port-list",
+			input: `
+{
+	"grants": [
+		{
+			"src": ["*"],
+			"dst": ["*"],
+			"ip": ["tcp:80,443"]
+		}
+	]
+}
+`,
+			wantErr: `only one port range allowed: "tcp:80,443"`,
+		},
+		{
+			name: "invalid-grant-ip-bare-port-list",
+			input: `
+{
+	"grants": [
+		{
+			"src": ["*"],
+			"dst": ["*"],
+			"ip": ["80-90,443"]
+		}
+	]
+}
+`,
+			wantErr: `only one port range allowed: "80-90,443"`,
+		},
+		{
 			name: "valid-grant-empty-sources",
 			input: `
 {
