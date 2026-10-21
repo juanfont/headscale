@@ -31,13 +31,6 @@ var knownSSHTesterDivergences = map[string]string{
 	"sshtest-report-multi/label":                       sshTestNodeLabel,
 	"sshtest-src-unassigned-ip-accept/label":           sshTestNodeLabel,
 
-	"sshtest-src-cidr24-deny/message":           sshTestSrcRange,
-	"sshtest-src-cidr31-empty-accept/message":   sshTestSrcRange,
-	"sshtest-src-cidr31-empty-deny/verdict":     sshTestSrcRange,
-	"sshtest-src-cidr31-hole-accept/message":    sshTestSrcRange,
-	"sshtest-src-cidr31-members-accept/verdict": sshTestSrcRange,
-	"sshtest-src-hosts-cidr-deny/verdict":       sshTestSrcRange,
-
 	"sshtest-fail-label-autogroup-member/message": sshTestDstMember,
 	"sshtest-check-reason-mixed-alias/message":    sshTestDstMember,
 
@@ -49,7 +42,6 @@ var knownSSHTesterDivergences = map[string]string{
 
 const (
 	sshTestNodeLabel = "SSHTEST_NODE_LABEL: headscale names each failing dst node by hostname; SaaS names the dst as written"
-	sshTestSrcRange  = "SSHTEST_SRC_RANGE: SaaS refuses a CIDR, or a host alias holding one, as an sshTests source when parsing; headscale evaluates it"
 	sshTestDstMember = "SSHTEST_DST_MEMBER: SaaS refuses autogroup:member as an sshTests destination when parsing; headscale evaluates it"
 	sshTestNoDevice  = "SSHTEST_NO_DEVICE: SaaS reports a dst that selects no device as not reached; headscale as an error"
 )
