@@ -1273,63 +1273,35 @@ func (pm *PolicyManager) UserCanHaveTag(user types.UserView, tag string) bool {
 }
 
 // TagOwnedByTags reports whether a credential holding ownerTags is authorised to
-// apply tag. It is true when tag is one of ownerTags, or when tag's tagOwners
-// chain (tag-to-tag ownership) transitively includes one of ownerTags. This is
-// the tag-level check used when an OAuth access token mints an auth key: the
-// requested tags must each be owned by the token's tags, so an operator token
-// tagged tag:k8s-operator may mint tag:k8s keys when the policy declares
-// "tag:k8s": ["tag:k8s-operator"]. It is purely tag-relational and does not
-// consult node IPs.
+// apply tag: tag is one of ownerTags, or tag's tagOwners list one of them.
+// Ownership reaches one hop, as on Tailscale SaaS: a tag owned by a tag that
+// ownerTags own is not reached. This is the tag-level check used when an
+// OAuth access token mints an auth key: the requested tags must each be owned
+// by the token's tags, so an operator token tagged tag:k8s-operator may mint
+// tag:k8s keys when the policy declares "tag:k8s": ["tag:k8s-operator"]. It is
+// purely tag-relational and does not consult node IPs.
 func (pm *PolicyManager) TagOwnedByTags(tag string, ownerTags []string) bool {
 	if pm == nil {
 		return false
 	}
 
-	owns := make(map[string]bool, len(ownerTags))
-	for _, t := range ownerTags {
-		owns[t] = true
-	}
-
 	// A credential may always apply a tag it directly holds; this needs no policy.
-	if owns[tag] {
+	if slices.Contains(ownerTags, tag) {
 		return true
 	}
 
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
-	// Owned-by delegation requires the policy's tagOwners.
 	if pm.pol == nil {
 		return false
 	}
 
-	// Walk tag-to-tag ownership transitively, guarding against cycles.
-	visited := make(map[Tag]bool)
+	return slices.ContainsFunc(pm.pol.TagOwners[Tag(tag)], func(owner Owner) bool {
+		ot, ok := owner.(*Tag)
 
-	var walk func(t Tag) bool
-
-	walk = func(t Tag) bool {
-		if visited[t] {
-			return false
-		}
-
-		visited[t] = true
-
-		for _, owner := range pm.pol.TagOwners[t] {
-			ot, ok := owner.(*Tag)
-			if !ok {
-				continue
-			}
-
-			if owns[string(*ot)] || walk(*ot) {
-				return true
-			}
-		}
-
-		return false
-	}
-
-	return walk(Tag(tag))
+		return ok && slices.Contains(ownerTags, string(*ot))
+	})
 }
 
 // userMatchesOwner checks if a user matches a tag owner entry.
@@ -1985,93 +1957,31 @@ func (pm *PolicyManager) invalidateGlobalPolicyCache(newNodes views.Slice[types.
 	})
 }
 
-// flattenTags resolves nested tag-owner references. Cycles
-// (tag:a -> tag:b -> tag:a, or tag:a -> tag:a) drop the cycle-causing
-// edge and contribute no addresses; non-cycle owners on the cycled tags
-// still resolve. Undefined-tag references remain a hard error.
-func flattenTags(tagOwners TagOwners, tag Tag, visiting map[Tag]bool, chain []Tag) (Owners, error) {
-	if visiting[tag] {
-		return nil, nil
-	}
-
-	visiting[tag] = true
-
-	chain = append(chain, tag)
-	defer delete(visiting, tag)
-
-	var result Owners
-
-	for _, owner := range tagOwners[tag] {
-		switch o := owner.(type) {
-		case *Tag:
-			if _, ok := tagOwners[*o]; !ok {
-				return nil, fmt.Errorf("tag %q %w %q", tag, ErrUndefinedTagReference, *o)
-			}
-
-			nested, err := flattenTags(tagOwners, *o, visiting, chain)
-			if err != nil {
-				return nil, err
-			}
-
-			result = append(result, nested...)
-		default:
-			result = append(result, owner)
-		}
-	}
-
-	return result, nil
-}
-
-// flattenTagOwners flattens all [TagOwners] by resolving nested tags and detecting cycles.
-// It will return a new [TagOwners] map where all the [Tag] types have been resolved to their underlying [Owners].
-func flattenTagOwners(tagOwners TagOwners) (TagOwners, error) {
-	ret := make(TagOwners)
-
-	for tag := range tagOwners {
-		flattened, err := flattenTags(tagOwners, tag, make(map[Tag]bool), nil)
-		if err != nil {
-			return nil, err
-		}
-
-		slices.SortFunc(flattened, func(a, b Owner) int {
-			return cmp.Compare(a.String(), b.String())
-		})
-		ret[tag] = slices.CompactFunc(flattened, func(a, b Owner) bool {
-			return a.String() == b.String()
-		})
-	}
-
-	return ret, nil
-}
-
 // resolveTagOwners resolves the [TagOwners] to a map of [Tag] to [netipx.IPSet].
 // The resulting map can be used to quickly look up the IPSet for a given [Tag].
 // It is intended for internal use in a [PolicyManager].
+//
+// Only a tag's own users and groups count: owning a tag does not give the
+// tags it owns, as on Tailscale SaaS. A tag listed as owner is answered by
+// [PolicyManager.TagOwnedByTags].
 func resolveTagOwners(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (map[Tag]*netipx.IPSet, error) {
-	if p == nil {
-		return make(map[Tag]*netipx.IPSet), nil
-	}
-
-	if len(p.TagOwners) == 0 {
-		return make(map[Tag]*netipx.IPSet), nil
-	}
-
 	ret := make(map[Tag]*netipx.IPSet)
-
-	tagOwners, err := flattenTagOwners(p.TagOwners)
-	if err != nil {
-		return nil, err
+	if p == nil {
+		return ret, nil
 	}
 
-	for tag, owners := range tagOwners {
+	for tag, owners := range p.TagOwners {
 		var ips netipx.IPSetBuilder
 
 		for _, owner := range owners {
 			switch o := owner.(type) {
 			case *Tag:
-				// After flattening, Tag types should not appear in the owners list.
-				// If they do, skip them as they represent already-resolved references.
-
+				// validate refuses this; a policy built in code can still
+				// name one.
+				if _, ok := p.TagOwners[*o]; !ok {
+					return nil, fmt.Errorf("tagOwners[%q]: %q: %w",
+						string(tag), string(*o), ErrUndefinedTagReference)
+				}
 			case Alias:
 				// If it does not resolve, that means the tag is not associated with any IP addresses.
 				resolved, _ := o.Resolve(p, users, nodes)
@@ -2082,7 +1992,6 @@ func resolveTagOwners(p *Policy, users types.Users, nodes views.Slice[types.Node
 				}
 
 			default:
-				// Should never happen - after flattening, all owners should be Alias types
 				return nil, fmt.Errorf("%w: %v", ErrInvalidTagOwner, owner)
 			}
 		}
