@@ -154,7 +154,7 @@ func TestNextDNSCapMapRendering(t *testing.T) {
 			nil,
 		)
 
-		want := "https://dns.nextdns.io/abc?device_ip=100.64.0.1&device_model=linux&device_name=node1"
+		want := "https://dns.nextdns.io/abc?device_id=1&device_ip=100.64.0.1&device_model=linux&device_name=node1"
 		if addr := resolverAddr(t, got); addr != want {
 			t.Errorf("addr = %q, want %q", addr, want)
 		}
@@ -173,7 +173,7 @@ func TestNextDNSCapMapRendering(t *testing.T) {
 			capMap,
 		)
 
-		want := "https://dns.nextdns.io/override?device_ip=100.64.0.1&device_model=linux&device_name=node1"
+		want := "https://dns.nextdns.io/override?device_id=1&device_ip=100.64.0.1&device_model=linux&device_name=node1"
 		if addr := resolverAddr(t, got); addr != want {
 			t.Errorf("addr = %q, want %q", addr, want)
 		}
@@ -221,13 +221,7 @@ func TestNextDNSCapMapRendering(t *testing.T) {
 
 // nextDNSResolverSkipReasons lists checks where headscale's DoH address
 // differs from SaaS, keyed <test_id>/<check>.
-var nextDNSResolverSkipReasons = map[string]string{
-	"nodeattrs-nextdns-d10-resolver-default/device_id":   nextDNSDeviceID,
-	"nodeattrs-nextdns-d11-resolver-profile/device_id":   nextDNSDeviceID,
-	"nodeattrs-nextdns-d13-resolver-malformed/device_id": nextDNSDeviceID,
-}
-
-const nextDNSDeviceID = "NEXTDNS_DEVICE_ID: SaaS adds the node's stable ID to the DoH query as device_id; headscale does not"
+var nextDNSResolverSkipReasons = map[string]string{}
 
 // TestNextDNSResolverCompat compares the NextDNS DoH address every node gets
 // with what SaaS sent: the global profile, a per-node profile, and a
