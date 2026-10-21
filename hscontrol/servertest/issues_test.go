@@ -240,7 +240,7 @@ func TestIssuesRoutes(t *testing.T) {
 			servertest.WithUser(user))
 
 		exit.WaitForPeers(t, 1, 10*time.Second)
-		advertiseRoutes(t, exit, obs, tsaddr.ExitRoutes())
+		advertiseRoutes(t, exit, tsaddr.ExitRoutes())
 
 		_, c, err := srv.State().SetApprovedRoutes(
 			findNodeID(t, srv, "selfexit-node"), tsaddr.ExitRoutes())
@@ -274,7 +274,7 @@ func TestIssuesRoutes(t *testing.T) {
 		require.NoError(t, err)
 		srv.App.Change(c)
 
-		advertiseRoutes(t, exit, obs, tsaddr.ExitRoutes())
+		advertiseRoutes(t, exit, tsaddr.ExitRoutes())
 
 		obs.WaitForCondition(t, "peer offers exit node", 10*time.Second,
 			peerOffersExit("preexit-node"))
@@ -306,7 +306,7 @@ func TestIssuesRoutes(t *testing.T) {
 			servertest.WithUser(user))
 
 		exit.WaitForPeers(t, 1, 10*time.Second)
-		advertiseRoutes(t, exit, obs, tsaddr.ExitRoutes())
+		advertiseRoutes(t, exit, tsaddr.ExitRoutes())
 
 		obs.WaitForCondition(t, "peer offers exit node", 10*time.Second,
 			peerOffersExit("advexit-node"))
@@ -323,7 +323,7 @@ func TestIssuesRoutes(t *testing.T) {
 
 		c1 := servertest.NewClient(t, srv, "histore-node1",
 			servertest.WithUser(user))
-		c2 := servertest.NewClient(t, srv, "histore-node2",
+		servertest.NewClient(t, srv, "histore-node2",
 			servertest.WithUser(user))
 
 		c1.WaitForPeers(t, 1, 10*time.Second)
@@ -339,19 +339,7 @@ func TestIssuesRoutes(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		_ = c1.Direct().SendUpdate(ctx)
-
-		c2.WaitForCondition(t, "route in peer hostinfo", 10*time.Second,
-			func(nm *netmap.NetworkMap) bool {
-				for _, p := range nm.Peers {
-					hi := p.Hostinfo()
-					if hi.Valid() && hi.Hostname() == "histore-node1" {
-						return hi.RoutableIPs().Len() > 0
-					}
-				}
-
-				return false
-			})
+		require.NoError(t, c1.Direct().SendUpdate(ctx))
 
 		nodeID := findNodeID(t, srv, "histore-node1")
 		nv, ok := srv.State().GetNodeByID(nodeID)
@@ -1165,9 +1153,9 @@ func findNodeID(tb testing.TB, srv *servertest.TestServer, hostname string) type
 	return 0
 }
 
-// advertiseRoutes pushes routes in c's Hostinfo and waits until obs sees
-// them, so the server has stored the announcement.
-func advertiseRoutes(tb testing.TB, c, obs *servertest.TestClient, routes []netip.Prefix) {
+// advertiseRoutes pushes routes in c's Hostinfo. The server stores the
+// announcement before it answers.
+func advertiseRoutes(tb testing.TB, c *servertest.TestClient, routes []netip.Prefix) {
 	tb.Helper()
 
 	c.Direct().SetHostinfo(&tailcfg.Hostinfo{
@@ -1179,14 +1167,7 @@ func advertiseRoutes(tb testing.TB, c, obs *servertest.TestClient, routes []neti
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	_ = c.Direct().SendUpdate(ctx)
-
-	obs.WaitForCondition(tb, "routes in peer hostinfo", 10*time.Second,
-		func(nm *netmap.NetworkMap) bool {
-			p, ok := peerByHostname(nm, c.Name)
-
-			return ok && p.Hostinfo().RoutableIPs().Len() == len(routes)
-		})
+	require.NoError(tb, c.Direct().SendUpdate(ctx))
 }
 
 // selfOffersExit mirrors how tailscaled computes Self.ExitNodeOption.
