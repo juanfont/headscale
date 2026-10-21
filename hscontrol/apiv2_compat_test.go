@@ -61,6 +61,7 @@ var apiv2CompatSkipReasons = map[string]string{
 	"oauth/O4/0/tags":  mintTagsNotEchoed,
 	"oauth/E1/0/tags":  mintTagsNotEchoed,
 	"oauth/E9a/0/tags": mintTagsNotEchoed,
+	"oauth/E9b/1/tags": mintTagsNotEchoed,
 	"oauth/T1/0/tags":  mintTagsNotEchoed,
 	"oauth/D0/6/tags":  mintTagsNotEchoed,
 	"oauth/B1/0/tags":  mintTagsNotEchoed,
@@ -204,14 +205,6 @@ var apiv2CompatSkipReasons = map[string]string{
 	"policy-api/P2/1/v1-enforced": v1EmptyPolicyNotEnforced,
 }
 
-// apiv2CompatNotReplayed lists steps left out, keyed <test_id>/<step>, with
-// the objects only they create, which listings then leave out: SaaS's answer
-// there is in doubt, so it is no reference.
-var apiv2CompatNotReplayed = map[string][]string{
-	"oauth/E7":  {"{client:C-all-2}"},
-	"oauth/E9b": {"{key:K-E9b}"},
-}
-
 // notCompared reports whether key falls under one of prefixes.
 func notCompared(prefixes []string, key string) bool {
 	return slices.ContainsFunc(prefixes, func(p string) bool {
@@ -306,12 +299,6 @@ func runAPICompat(t *testing.T, id string, v1 bool) {
 		// A setup-failed step sent nothing.
 		require.Contains(t, []string{"observed", "setup-failed"}, step.Result, step.Name)
 
-		if objs, ok := apiv2CompatNotReplayed[id+"/"+step.Name]; ok {
-			r.unlisted = append(r.unlisted, objs...)
-
-			continue
-		}
-
 		r.step(t, step)
 	}
 
@@ -361,9 +348,6 @@ type apiReplay struct {
 	// aggregates holds per-object observations checked over the whole
 	// capture: check → object label → [SaaS, headscale] values seen.
 	aggregates map[string]map[string][2]map[string]bool
-
-	// unlisted holds labels of objects made by steps left out.
-	unlisted []string
 
 	evaluated map[string]bool
 }
@@ -941,9 +925,7 @@ func (r *apiReplay) listedKeys(t *testing.T, raw []byte) string {
 
 	labels := make([]string, 0, len(keys))
 	for _, k := range keys {
-		if l := r.label(k.KeyType, k.ID); !slices.Contains(r.unlisted, l) {
-			labels = append(labels, l)
-		}
+		labels = append(labels, r.label(k.KeyType, k.ID))
 	}
 
 	return sortedStrings(labels)
