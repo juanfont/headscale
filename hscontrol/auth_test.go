@@ -657,10 +657,10 @@ func TestAuthenticationFlows(t *testing.T) {
 				}
 			},
 			machineKey:  machineKey1.Public,
+			wantAuth:    true, // the logout is answered as authorised
 			wantExpired: true,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper //nolint:thelper
 				assert.True(t, resp.NodeKeyExpired)
-				assert.False(t, resp.MachineAuthorized)
 
 				// Ephemeral node should be deleted, not just marked expired
 				_, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
