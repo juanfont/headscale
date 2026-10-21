@@ -349,3 +349,27 @@ func TestRegistrationDropsWithdrawnAutoApprovals(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []netip.Prefix{kept}, approvedRoutes(t, s, node.ID()))
 }
+
+// TestAdminTagChangeApprovesRoutes: an admin tag change runs route
+// auto-approval for the routes the new tags may approve.
+func TestAdminTagChangeApprovesRoutes(t *testing.T) {
+	_, s, id := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, err := s.SetPolicy([]byte(`{
+		"tagOwners": {"tag:router": ["persist-user@"]},
+		"autoApprovers": {"routes": {"10.0.0.0/16": ["tag:router"]}},
+		"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}]
+	}`))
+	require.NoError(t, err)
+
+	route := netip.MustParsePrefix("10.0.1.0/24")
+
+	announce(t, s, id, route)
+	require.Empty(t, approvedRoutes(t, s, id), "the user may not approve it")
+
+	node, _, err := s.SetNodeTags(id, []string{"tag:router"})
+	require.NoError(t, err)
+	assert.Equal(t, []netip.Prefix{route}, node.ApprovedRoutes().AsSlice())
+	assert.Equal(t, []netip.Prefix{route}, approvedRoutes(t, s, id))
+}
