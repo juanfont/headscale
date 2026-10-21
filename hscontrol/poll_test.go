@@ -2,6 +2,7 @@ package hscontrol
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -486,17 +487,13 @@ func TestGitHubIssue3129_TransientlyBlockedWriteDoesNotLeaveLiveStaleSession(t *
 	}()
 
 	t.Cleanup(func() {
-		dummyCh := make(chan *tailcfg.MapResponse, 1)
-		_ = app.mapBatcher.AddNode(node.ID, dummyCh, tailcfg.CapabilityVersion(100), nil)
-
 		cancel()
+		app.mapBatcher.Close()
 
 		select {
 		case <-serveDone:
 		case <-time.After(2 * time.Second):
 		}
-
-		_ = app.mapBatcher.RemoveNode(node.ID, dummyCh)
 	})
 
 	select {
@@ -522,6 +519,12 @@ func TestGitHubIssue3129_TransientlyBlockedWriteDoesNotLeaveLiveStaleSession(t *
 	case <-time.After(2 * time.Second):
 		t.Fatal("expected the blocked write to eventually complete")
 	}
+
+	require.Eventually(t, session.cancelChClosed.Load, 2*time.Second, 10*time.Millisecond,
+		"stale eviction must stop the session before batcher shutdown")
+
+	// Shutdown skips reconnect grace; the stream wait now includes disconnect cleanup.
+	app.mapBatcher.Close()
 
 	assert.Eventually(t, func() bool {
 		select {
@@ -619,6 +622,105 @@ func TestDeletedNodeEndsLongPoll(t *testing.T) {
 	case <-streamsClosed:
 	case <-time.After(2 * time.Second):
 		t.Fatal("an orphaned session would block server shutdown on clientStreamsOpen")
+	}
+}
+
+// TestLongPollShutdownWaitsForCleanup catches streams counted as closed before
+// their disconnect cleanup finishes, including sessions already in reconnect grace.
+func TestLongPollShutdownWaitsForCleanup(t *testing.T) {
+	t.Parallel()
+
+	for _, inGrace := range []bool{false, true} {
+		t.Run(fmt.Sprintf("in_grace=%t", inGrace), func(t *testing.T) {
+			t.Parallel()
+
+			app := createTestApp(t)
+			user := app.state.CreateUserForTest("poll-shutdown-user")
+			createdNode := app.state.CreateRegisteredNodeForTest(user, "poll-shutdown-node")
+			require.NoError(t, app.state.UpdatePolicyManagerUsersForTest())
+			app.cfg.Tuning.NodeMapSessionBufferedChanSize = 1
+
+			app.mapBatcher.Close()
+			require.NoError(t, app.state.Close())
+
+			var err error
+
+			app.state, err = state.NewState(app.cfg)
+			require.NoError(t, err)
+
+			app.mapBatcher = mapper.NewBatcherAndMapper(app.cfg, app.state)
+			app.mapBatcher.Start()
+
+			node, ok := app.state.GetNodeByID(createdNode.ID)
+			require.True(t, ok)
+
+			ctx, cancel := context.WithCancel(t.Context())
+			writer := newDelayedSuccessResponseWriter(0)
+			session := app.newMapSession(ctx, tailcfg.MapRequest{
+				Stream:  true,
+				Version: tailcfg.CapabilityVersion(100),
+			}, writer, node.AsStruct())
+
+			serveDone := make(chan struct{})
+
+			go func() {
+				session.serveLongPoll()
+				close(serveDone)
+			}()
+
+			t.Cleanup(func() {
+				cancel()
+				app.mapBatcher.Close()
+
+				select {
+				case <-serveDone:
+				case <-time.After(15 * time.Second):
+					t.Error("map session did not finish cleanup")
+				}
+
+				require.NoError(t, app.state.Close())
+			})
+
+			require.Eventually(t, func() bool {
+				return writer.WriteCount() >= 2 && app.mapBatcher.IsConnected(node.ID())
+			}, 2*time.Second, 10*time.Millisecond, "map session should connect")
+
+			if inGrace {
+				cancel()
+				require.Eventually(t, func() bool {
+					return !app.mapBatcher.IsConnected(node.ID())
+				}, 2*time.Second, 10*time.Millisecond, "session should enter reconnect grace")
+
+				pending, ok := app.state.GetNodeByID(node.ID())
+				require.True(t, ok)
+				require.Equal(t, 1, pending.ActiveSessions(), "reconnect grace should keep the node online")
+			}
+
+			streamsClosed := make(chan struct{})
+
+			go func() {
+				app.mapBatcher.Close()
+				app.clientStreamsOpen.Wait()
+				close(streamsClosed)
+			}()
+
+			select {
+			case <-streamsClosed:
+			case <-time.After(3 * time.Second):
+				t.Fatal("shutdown must interrupt reconnect grace and wait for cleanup")
+			}
+
+			disconnected, ok := app.state.GetNodeByID(node.ID())
+			require.True(t, ok)
+			assert.Zero(t, disconnected.ActiveSessions(), "shutdown must wait for the session to release")
+			assert.False(t, disconnected.Online(), "the last session must take the node offline before shutdown returns")
+
+			persisted, err := app.state.DB().GetNodeByID(node.ID())
+			require.NoError(t, err)
+			require.NotNil(t, persisted.LastSeen)
+			assert.True(t, persisted.LastSeen.Equal(disconnected.LastSeen().Get()),
+				"shutdown must wait for the disconnect write to finish")
+		})
 	}
 }
 

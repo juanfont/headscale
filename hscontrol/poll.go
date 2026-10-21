@@ -151,6 +151,10 @@ func (m *mapSession) serve() {
 func (m *mapSession) serveLongPoll() {
 	m.log.Trace().Caller().Msg("long poll session started")
 
+	// Add/Done must precede cleanup: LIFO defers make shutdown's Wait cover Disconnect.
+	m.h.clientStreamsOpen.Add(1)
+	defer m.h.clientStreamsOpen.Done()
+
 	// connectGen is set by [state.State.Connect] below and captured by the deferred cleanup closure.
 	// Each Connect acquires one live session in state; the cleanup must release
 	// it with exactly one [state.State.Disconnect] call, in every exit path, or
@@ -193,12 +197,18 @@ func (m *mapSession) serveLongPoll() {
 			ticker := time.NewTicker(time.Second)
 			defer ticker.Stop()
 
+		waitForReconnect:
 			for range 10 {
 				if m.h.mapBatcher.IsConnected(m.node.ID) {
 					break
 				}
 
-				<-ticker.C
+				select {
+				case <-m.h.mapBatcher.Done():
+					// Reconnect grace has no purpose once the server is stopping.
+					break waitForReconnect
+				case <-ticker.C:
+				}
 			}
 		}
 
@@ -224,10 +234,6 @@ func (m *mapSession) serveLongPoll() {
 		m.afterServeLongPoll()
 		m.log.Info().Caller().Str(zf.Chan, fmt.Sprintf("%p", m.ch)).Msg("node has disconnected")
 	}()
-
-	// Set up the client stream
-	m.h.clientStreamsOpen.Add(1)
-	defer m.h.clientStreamsOpen.Done()
 
 	ctx, cancel := context.WithCancel(context.WithValue(m.ctx, nodeNameContextKey, m.node.Hostname))
 	defer cancel()
