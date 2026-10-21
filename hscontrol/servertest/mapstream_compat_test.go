@@ -81,6 +81,18 @@ var mapStreamSkipReasons = map[string]string{
 	"route-announce/RA9/srv/presence":    policyResponseToEveryNode,
 	"route-announce/RA9/wit/presence":    policyResponseToEveryNode,
 
+	"route-announce/RA2/observer/presence":  announcePeerResent,
+	"route-announce/RA2/srv/presence":       announcePeerResent,
+	"route-announce/RA2/witness/presence":   announcePeerResent,
+	"route-announce/RA5/observer/presence":  announcePeerResent,
+	"route-announce/RA5/witness/presence":   announcePeerResent,
+	"route-announce/RA8/observer/presence":  announcePeerResent,
+	"route-announce/RA8/srv/presence":       announcePeerResent,
+	"route-announce/RA8/witness/presence":   announcePeerResent,
+	"route-announce/RA11/observer/presence": announcePeerResent,
+	"route-announce/RA11/srv/presence":      announcePeerResent,
+	"route-announce/RA11/witness/presence":  announcePeerResent,
+
 	"policy-generation/G2/thor-1/peers":       sameUserPeers,
 	"policy-generation/G2/thor-2/peers":       sameUserPeers,
 	"policy-generation/G3/thor-1/peers":       sameUserPeers,
@@ -98,30 +110,12 @@ var mapStreamSkipReasons = map[string]string{
 const (
 	policyResponseToEveryNode = "POLICY_RESPONSE_TO_EVERY_NODE: headscale sends every connected node a policy response when the policy, a node's tags or approved routes, or the set of nodes change; SaaS sends only the nodes whose peers or filter change"
 	restartEndpointsKept      = "RESTART_ENDPOINTS_KEPT: headscale keeps a restarted node's last endpoints at its peers until it reports new ones; SaaS sends peers the node without endpoints until then"
+	announcePeerResent        = "ANNOUNCE_PEER_RESENT: headscale sends a router's peers its entry again whenever its announced routes change; SaaS sends the unchanged entry only after some announcements"
 )
 
 // mapStreamNotCompared lists, by key prefix, checks left out: SaaS's answer
 // there is in doubt, so it is no reference.
 var mapStreamNotCompared = []string{
-	"route-announce/RA2/observer/presence",
-	"route-announce/RA2/srv/presence",
-	"route-announce/RA2/witness/presence",
-	"route-announce/RA5/observer/presence",
-	"route-announce/RA5/srv/presence",
-	"route-announce/RA5/witness/presence",
-	"route-announce/RA7/observer/presence",
-	"route-announce/RA7/srv/presence",
-	"route-announce/RA7/witness/presence",
-	"route-announce/RA8/observer/presence",
-	"route-announce/RA8/srv/presence",
-	"route-announce/RA8/witness/presence",
-	"route-announce/RA10/observer/presence",
-	"route-announce/RA10/srv/presence",
-	"route-announce/RA10/witness/presence",
-	"route-announce/RA11/observer/presence",
-	"route-announce/RA11/srv/presence",
-	"route-announce/RA11/witness/presence",
-
 	"policy-generation/G7/rt-b/filter",
 	"policy-generation/G7/rt-plain/filter",
 	"policy-generation/G7/srv/filter",
@@ -953,8 +947,7 @@ func replayVisibility(t *testing.T, id string) {
 		}
 
 		t.Run(step.Name, func(t *testing.T) {
-			prefix := id + "/" + step.Name + "/"
-			holdChecks(t, mapStreamSkipReasons, prefix, compared(prefix, visibilityChecks(t, r, step, before)), evaluated)
+			holdChecks(t, mapStreamSkipReasons, id+"/"+step.Name+"/", visibilityChecks(t, r, step, before), evaluated)
 		})
 	}
 
