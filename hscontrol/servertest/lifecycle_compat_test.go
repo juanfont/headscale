@@ -56,10 +56,6 @@ var lifecycleSkipReasons = map[string]string{
 	"ephemeral-lifecycle/collection/perm-to-eph/left":             ephemeralFollowsKey,
 	"ephemeral-lifecycle/collection/perm-to-eph/removed-observer": ephemeralFollowsKey,
 	"ephemeral-lifecycle/collection/perm-to-eph/present-observer": ephemeralFollowsKey,
-
-	"ephemeral-lifecycle/E5-mem-shutdown/mem/expiry":        taggedLogoutNotExpired,
-	"ephemeral-lifecycle/E5-mem-shutdown/mem/outcome":       taggedLogoutNotExpired,
-	"ephemeral-lifecycle/E5-mem-shutdown/mem/peer-observer": taggedLogoutNotExpired,
 }
 
 // SaaS runs auto-approval when a router's announced routes change and on a
