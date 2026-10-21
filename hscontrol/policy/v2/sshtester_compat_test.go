@@ -14,33 +14,7 @@ import (
 
 // knownSSHTesterDivergences names the engine gap for each check where
 // headscale and upstream disagree, keyed <test_id>/<check>.
-var knownSSHTesterDivergences = map[string]string{
-	"sshtest-accept-fail-no-ssh-rule/label":            sshTestNodeLabel,
-	"sshtest-accept-fail-wrong-login-user/label":       sshTestNodeLabel,
-	"sshtest-both-tests-pass-sshTests-fail/label":      sshTestNodeLabel,
-	"sshtest-deny-fail-policy-allows/label":            sshTestNodeLabel,
-	"sshtest-malformed-empty-user/label":               sshTestNodeLabel,
-	"sshtest-mixed-acls-tcp22-allow-no-ssh-rule/label": sshTestNodeLabel,
-	"sshtest-user-localpart-domain-mismatch/label":     sshTestNodeLabel,
-	"sshtest-user-nonroot-blocks-root/label":           sshTestNodeLabel,
-	"sshtest-fail-label-host-alias/label":              sshTestNodeLabel,
-	"sshtest-fail-label-ip-dst/label":                  sshTestNodeLabel,
-	"sshtest-fail-label-same-node-twice/label":         sshTestNodeLabel,
-	"sshtest-fail-label-user-dst/label":                sshTestNodeLabel,
-	"sshtest-repeated-names/label":                     sshTestNodeLabel,
-	"sshtest-report-multi/label":                       sshTestNodeLabel,
-	"sshtest-src-unassigned-ip-accept/label":           sshTestNodeLabel,
-
-	"sshtest-fail-label-same-node-twice/breakdown": "SSHTEST_PER_ALIAS: SaaS reports each dst alias, also two naming one node; headscale checks each node once",
-	"sshtest-fail-label-ip-no-device/breakdown":    sshTestNoDevice,
-	"sshtest-report-multi/breakdown":               "SSHTEST_PER_ALIAS+SSHTEST_NO_DEVICE: SaaS reports one line per dst alias and a deviceless alias as not reached; headscale one per node and an error",
-	"sshtest-src-unassigned-ip-accept/breakdown":   "SSHTEST_SRC_LABEL: SaaS labels a single-address source as written, headscale as a /32 prefix",
-}
-
-const (
-	sshTestNodeLabel = "SSHTEST_NODE_LABEL: headscale names each failing dst node by hostname; SaaS names the dst as written"
-	sshTestNoDevice  = "SSHTEST_NO_DEVICE: SaaS reports a dst that selects no device as not reached; headscale as an error"
-)
+var knownSSHTesterDivergences = map[string]string{}
 
 func TestSSHTesterCompat(t *testing.T) {
 	t.Parallel()
