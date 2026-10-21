@@ -21,6 +21,43 @@ import (
 	"tailscale.com/types/opt"
 )
 
+func TestMapRequestOwnsRequestData(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	node, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+
+	req := tailcfg.MapRequest{
+		NodeKey:   node.NodeKey(),
+		DiscoKey:  node.DiscoKey(),
+		Endpoints: []netip.AddrPort{netip.MustParseAddrPort("192.0.2.1:41641")},
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "original",
+			Services: []tailcfg.Service{{Proto: "tcp", Port: 80}},
+			NetInfo: &tailcfg.NetInfo{
+				PreferredDERP: 1,
+				DERPLatency:   map[string]float64{"1-v4": 0.1},
+			},
+		},
+	}
+	original := req.Hostinfo.Clone()
+	_, err := s.UpdateNodeFromMapRequest(nodeID, req)
+	require.NoError(t, err)
+	require.Equal(t, original, req.Hostinfo, "map update must not modify its request")
+
+	req.Hostinfo.Hostname = "changed"
+	req.Hostinfo.Services[0].Port = 443
+	req.Hostinfo.NetInfo.PreferredDERP = 2
+	req.Hostinfo.NetInfo.DERPLatency["1-v4"] = 0.2
+	req.Endpoints[0] = netip.MustParseAddrPort("192.0.2.2:41641")
+
+	stored, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+	require.Equal(t, original, stored.Hostinfo().AsStruct())
+	require.Equal(t, netip.MustParseAddrPort("192.0.2.1:41641"), stored.Endpoints().At(0))
+}
+
 func TestNetInfoFromMapRequest(t *testing.T) {
 	nodeID := types.NodeID(1)
 
