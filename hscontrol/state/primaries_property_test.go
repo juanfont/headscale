@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"pgregory.net/rapid"
@@ -23,7 +24,10 @@ import (
 // is the one inside snapshotFromNodes; the model's job is to predict
 // the same answer from a separate, deliberately direct implementation.
 type primariesModel struct {
+	// connected mirrors IsOnline; since holds the step at which the
+	// node's current session opened.
 	connected map[types.NodeID]bool
+	since     map[types.NodeID]int
 	// announced mirrors Hostinfo.RoutableIPs — what the client says
 	// it can route. The election does not look at this directly; it
 	// is used to recompute the effective set whenever ApprovedRoutes
@@ -40,16 +44,17 @@ type primariesModel struct {
 	prefixes  map[types.NodeID][]netip.Prefix
 	unhealthy map[types.NodeID]bool
 
-	// primary[p] is the current primary for prefix p. The
-	// implementation preserves the current primary across changes to
-	// avoid flapping, so the model has to track this across
-	// operations rather than recompute a fresh choice each time.
+	// primary[p] is the current primary for prefix p. With no router
+	// available the implementation keeps the previous primary, so the
+	// model has to track this across operations rather than recompute
+	// a fresh choice each time.
 	primary map[netip.Prefix]types.NodeID
 }
 
 func newPrimariesModel() *primariesModel {
 	return &primariesModel{
 		connected: map[types.NodeID]bool{},
+		since:     map[types.NodeID]int{},
 		announced: map[types.NodeID][]netip.Prefix{},
 		approved:  map[types.NodeID][]netip.Prefix{},
 		prefixes:  map[types.NodeID][]netip.Prefix{},
@@ -120,6 +125,15 @@ func (m *primariesModel) approversByPrefix() map[netip.Prefix][]types.NodeID {
 	return out
 }
 
+// connect mirrors a session opening on node n at step.
+func (m *primariesModel) connect(n types.NodeID, step int) {
+	if !m.connected[n] {
+		m.since[n] = step
+	}
+
+	m.connected[n] = true
+}
+
 // available reports whether n may win an election: connected and healthy.
 func (m *primariesModel) available(n types.NodeID) bool {
 	return m.connected[n] && !m.unhealthy[n]
@@ -138,18 +152,24 @@ func (m *primariesModel) updatePrimaries() {
 	}
 
 	for p, nodes := range approvers {
+		// The oldest session wins; nodes ascend, so a tie keeps the
+		// lower ID.
+		var oldest types.NodeID
+
+		for _, n := range nodes {
+			if m.available(n) && (oldest == 0 || m.since[n] < m.since[oldest]) {
+				oldest = n
+			}
+		}
+
+		if oldest != 0 {
+			m.primary[p] = oldest
+
+			continue
+		}
+
 		cur, hasPrev := m.primary[p]
 		hasPrev = hasPrev && slices.Contains(nodes, cur)
-
-		if hasPrev && m.available(cur) {
-			continue
-		}
-
-		if i := slices.IndexFunc(nodes, m.available); i >= 0 {
-			m.primary[p] = nodes[i]
-
-			continue
-		}
 
 		// No router available: the previous primary keeps the prefix,
 		// else the lowest-ID approver the prober has not declared
@@ -189,8 +209,8 @@ func samePrefixSet(a, b []netip.Prefix) bool {
 
 // checkPrimariesProperties asserts every rule we expect of the snapshot's
 // primaries map given the model. prevSnapshotPrimaries is the snapshot's
-// PrimaryRoutes() reading taken before the just-applied op, used to
-// catch flap regressions that move primary off a still-eligible owner.
+// PrimaryRoutes() reading taken before the just-applied op, the primary
+// that may stay unhealthy while no router is available.
 func checkPrimariesProperties(
 	rt *rapid.T,
 	ns *NodeStore,
@@ -327,21 +347,15 @@ func checkPrimariesProperties(
 			)
 		}
 
-		// Anti-flap: if the previous snapshot already had a primary
-		// for this prefix AND that primary is still a healthy
-		// candidate after the op, the election must keep it. Flapping
-		// the primary for an unrelated reason violates the contract
-		// the integration tests rely on (HA failover only moves on
-		// loss of candidacy or health).
-		if prev, hadPrev := prevSnapshotPrimaries[prefix]; hadPrev {
-			stillCandidate := slices.Contains(candidates, prev)
-			stillHealthy := !m.unhealthy[prev]
-
-			if stillCandidate && stillHealthy && owner != prev {
+		// Oldest session: no available router opened its control
+		// session before the primary's. A router that reconnects joins
+		// as a standby; one that keeps its session wins again.
+		for _, c := range approversByPrefix[prefix] {
+			cv, _ := ns.GetNode(c)
+			if m.available(c) && cv.SessionStart().Before(nv.SessionStart()) {
 				rt.Fatalf(
-					"prefix %s flapped primary %d -> %d "+
-						"while previous primary was still a healthy candidate",
-					prefix, prev, owner,
+					"prefix %s primary %d holds it over %d, whose session is older",
+					prefix, owner, c,
 				)
 			}
 		}
@@ -447,10 +461,20 @@ func TestPrimaryRoutesProperty(t *testing.T) {
 		for step := range opCount {
 			op := rapid.IntRange(0, 8).Draw(rt, fmt.Sprintf("op_%d", step))
 
+			// connect opens a session, as State.Connect does, when the
+			// node is offline.
+			connect := func(n *types.Node) {
+				if !n.Online() {
+					n.SessionStart = time.Unix(int64(step), 0)
+				}
+
+				n.IsOnline = new(true)
+			}
+
 			// Snapshot primaries before applying the op so the
-			// anti-flap invariant has a stable reference. Reading
-			// after the model has already changed would compare a
-			// stale snapshot to a moved model.
+			// healthy-preference check knows the previous primary.
+			// Reading after the model has already changed would compare
+			// a stale snapshot to a moved model.
 			prevPrimaries := snapshotPrimariesCopy(ns)
 
 			switch op {
@@ -459,7 +483,7 @@ func TestPrimaryRoutesProperty(t *testing.T) {
 				prefs := prefixSubsetGen.Draw(rt, fmt.Sprintf("prefs_%d", step))
 
 				ns.UpdateNode(id, func(n *types.Node) {
-					n.IsOnline = new(true)
+					connect(n)
 					n.Unhealthy = false
 					n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: prefs}
 					n.ApprovedRoutes = prefs
@@ -468,12 +492,7 @@ func TestPrimaryRoutesProperty(t *testing.T) {
 				m.announced[id] = prefs
 				m.approved[id] = prefs
 				m.recomputeEffective(id)
-
-				if len(prefs) == 0 {
-					delete(m.connected, id)
-				} else {
-					m.connected[id] = true
-				}
+				m.connect(id, step)
 
 				delete(m.unhealthy, id)
 
@@ -503,7 +522,7 @@ func TestPrimaryRoutesProperty(t *testing.T) {
 				prefs := prefixSubsetGen.Draw(rt, fmt.Sprintf("prefs_%d", step))
 
 				ns.UpdateNode(id, func(n *types.Node) {
-					n.IsOnline = new(true)
+					connect(n)
 					n.Hostinfo = &tailcfg.Hostinfo{RoutableIPs: prefs}
 					n.ApprovedRoutes = prefs
 				})
@@ -511,12 +530,7 @@ func TestPrimaryRoutesProperty(t *testing.T) {
 				m.announced[id] = prefs
 				m.approved[id] = prefs
 				m.recomputeEffective(id)
-
-				if len(prefs) == 0 {
-					delete(m.connected, id)
-				} else {
-					m.connected[id] = true
-				}
+				m.connect(id, step)
 
 			case 5: // BatchProbeResults — atomic health flips per cycle.
 				// Mirrors State.BatchSetNodeHealth: per-node
