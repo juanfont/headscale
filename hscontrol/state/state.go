@@ -325,7 +325,7 @@ func NewState(cfg *types.Config) (*State, error) {
 	batchTimeout := cmp.Or(cfg.Tuning.NodeStoreBatchTimeout, defaultNodeStoreBatchTimeout)
 
 	nodeStore := NewNodeStore(nodes, policyPeersFunc(polMan), batchSize, batchTimeout)
-	polMan.SetRouterAvailable(nodeStore.IsRouterAvailable)
+	polMan.SetRouterSession(nodeStore.RouterSession)
 	nodeStore.Start()
 
 	// Last: NewLRU starts the TTL sweeper goroutine, which only Close stops.
@@ -752,6 +752,13 @@ func (s *State) Connect(id types.NodeID) ([]change.Change, uint64) {
 	node, ok := s.nodeStore.UpdateNode(id, func(n *types.Node) {
 		n.SessionEpoch++
 		epoch = n.SessionEpoch
+
+		// A reconnect within poll.go's offline grace keeps the age: peers
+		// never saw the node leave, so a blip does not move its routes.
+		if n.ActiveSessions == 0 {
+			n.SessionStart = time.Now()
+		}
+
 		n.ActiveSessions++
 		n.IsOnline = new(n.ShouldBeOnline())
 		n.Unhealthy = false

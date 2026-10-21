@@ -36,11 +36,6 @@ var expirySkipReasons = map[string]string{
 	"expiry/C2-expire-r1/r1/paths-r2":        expiredPeerPaths,
 	"expiry/C2-expire-r1/r1/self":            selfExpiredFlags,
 
-	"expiry/C3-restore-r1/r1/routes-observer": restoredRouterTakesRoute,
-	"expiry/C3-restore-r1/r1/routes-r2":       restoredRouterTakesRoute,
-	"expiry/C3-restore-r1/r2/routes-observer": restoredRouterTakesRoute,
-	"expiry/C3-restore-r1/r2/routes-r1":       restoredRouterTakesRoute,
-
 	"expiry/C4-expire-r2/r2/online-observer": expiredPeerOffline,
 	"expiry/C4-expire-r2/r2/online-r1":       expiredPeerOffline,
 	"expiry/C4-expire-r2/r2/paths-observer":  expiredPeerPaths,
@@ -114,11 +109,10 @@ var expirySkipReasons = map[string]string{
 }
 
 const (
-	selfExpiredFlags         = "SELF_EXPIRED_FLAGS: headscale sends an expired node its own entry with MachineAuthorized false and Expired set; SaaS keeps MachineAuthorized true and leaves Expired out"
-	expiredPeerPaths         = "EXPIRED_PEER_PATHS: headscale sends peers an expired node's endpoints and home DERP; SaaS leaves both out"
-	clientExpiryRefused      = "CLIENT_EXPIRY_REFUSED: headscale refuses a client's request for an earlier key expiry; SaaS stores it, and the node expires then"
-	nameserversFromConfig    = "NAMESERVERS_FROM_CONFIG: headscale reads nameservers from its config and cannot change them while running; SaaS pushes a change to every node, an expired one too"
-	restoredRouterTakesRoute = "RESTORED_ROUTER_TAKES_ROUTE: SaaS hands a route back to a router whose key expiry is lifted, taking it from the standby that served it meanwhile; headscale keeps the standby"
+	selfExpiredFlags      = "SELF_EXPIRED_FLAGS: headscale sends an expired node its own entry with MachineAuthorized false and Expired set; SaaS keeps MachineAuthorized true and leaves Expired out"
+	expiredPeerPaths      = "EXPIRED_PEER_PATHS: headscale sends peers an expired node's endpoints and home DERP; SaaS leaves both out"
+	clientExpiryRefused   = "CLIENT_EXPIRY_REFUSED: headscale refuses a client's request for an earlier key expiry; SaaS stores it, and the node expires then"
+	nameserversFromConfig = "NAMESERVERS_FROM_CONFIG: headscale reads nameservers from its config and cannot change them while running; SaaS pushes a change to every node, an expired one too"
 )
 
 // TestNodeExpiryCompat replays key expiry against SaaS: an expired router
