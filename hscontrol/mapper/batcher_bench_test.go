@@ -65,6 +65,26 @@ func BenchmarkMultiChannelSend(b *testing.B) {
 	}
 }
 
+// BenchmarkEmptyMapResponse pins that the per-response emptiness check
+// does not allocate, on a frame it drops and on one it keeps.
+func BenchmarkEmptyMapResponse(b *testing.B) {
+	for _, tt := range []struct {
+		name string
+		resp *tailcfg.MapResponse
+	}{
+		{"empty", testMapResponse()},
+		{"peers", testMapResponseWithPeers(1, 2, 3)},
+	} {
+		b.Run(tt.name, func(b *testing.B) {
+			b.ReportAllocs()
+
+			for range b.N {
+				_ = emptyMapResponse(tt.resp)
+			}
+		})
+	}
+}
+
 // BenchmarkComputePeerDiff measures the cost of computing peer diffs at scale.
 func BenchmarkComputePeerDiff(b *testing.B) {
 	for _, peerCount := range []int{10, 100, 1000} {

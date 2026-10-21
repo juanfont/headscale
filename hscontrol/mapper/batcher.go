@@ -3,6 +3,7 @@ package mapper
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -159,24 +160,49 @@ func generateMapResponse(
 		removed = nc.computePeerDiff(peerIDs)
 	}
 
+	// Visibility filtering can leave a broadcast with nothing for this
+	// recipient; the frame would only cost encode, write and client decode.
+	if emptyMapResponse(resp) {
+		resp = nil
+	}
+
 	return withRemovals(resp, removed), nil
 }
 
-// withRemovals returns resp and the peers removed from the node's view as the
-// responses to send. The removals lead, in a response of their own: clients
-// before Tailscale v1.104 only report removed peers to IPN bus watchers opted
-// out of full netmaps (the Android app since 1.100) from responses they apply
-// as deltas, and resp can carry DNSConfig, SSHPolicy, Node or Peers, which
-// force a full rebuild.
+// emptyMapResponse reports whether resp carries nothing but ControlTime,
+// which every built response has and clients only sample for clock skew.
+// Any other non-zero field counts, an empty slice or map included, and so
+// does a field headscale does not set today: unknown is sent, not dropped.
+// Per response on the hot path, so it must stay allocation-free; see
+// [BenchmarkEmptyMapResponse].
+func emptyMapResponse(resp *tailcfg.MapResponse) bool {
+	stripped := *resp
+	stripped.ControlTime = nil
+
+	return reflect.ValueOf(stripped).IsZero()
+}
+
+// withRemovals returns resp, if any, and the peers removed from the node's
+// view as the responses to send. The removals lead, in a response of their
+// own: clients before Tailscale v1.104 only report removed peers to IPN bus
+// watchers opted out of full netmaps (the Android app since 1.100) from
+// responses they apply as deltas, and resp can carry DNSConfig, SSHPolicy,
+// Node or Peers, which force a full rebuild.
 //
 // TODO(kradalby): when the tailscale/tailscale#15660 compat goes (see
 // capver.CanOldCodeBeCleanedUp), set resp.PeersRemoved and return resp alone.
 func withRemovals(resp *tailcfg.MapResponse, removed []tailcfg.NodeID) []*tailcfg.MapResponse {
-	if len(removed) == 0 {
-		return []*tailcfg.MapResponse{resp}
+	var resps []*tailcfg.MapResponse
+
+	if len(removed) > 0 {
+		resps = append(resps, &tailcfg.MapResponse{PeersRemoved: removed})
 	}
 
-	return []*tailcfg.MapResponse{{PeersRemoved: removed}, resp}
+	if resp != nil {
+		resps = append(resps, resp)
+	}
+
+	return resps
 }
 
 // handleNodeChange generates and sends the [tailcfg.MapResponse] values for a given node and [change.Change].

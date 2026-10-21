@@ -1071,8 +1071,10 @@ func TestBatcherWorkQueueBatching(t *testing.T) {
 						t.Logf("Update %d: nil update", updateCount)
 					}
 				case <-timeout:
-					// Expected: 5 explicit changes + 1 initial from AddNode + 1 NodeOnline from wrapper = 7 updates
-					expectedUpdates := 7
+					// Expected: 5 explicit changes + 1 initial from AddNode = 6 updates.
+					// The wrapper's NodeOnline is about this node itself, which is
+					// not among its peers, so it leaves nothing to send.
+					expectedUpdates := 6
 					t.Logf("Received %d updates from %d changes (expected %d)",
 						updateCount, 5, expectedUpdates)
 
@@ -2975,4 +2977,77 @@ func TestSSHPolicySentOnlyWhenChanged(t *testing.T) {
 	for i, frame := range policyFrame(self.ch, ch2) {
 		assert.Nil(t, frame.SSHPolicy, "connection %d already holds the policy", i)
 	}
+}
+
+// TestInvisiblePeerChangeSendsNoFrame pins that a broadcast whose every
+// changed peer is hidden from the recipient produces no frame for it, while
+// the same change still reaches a recipient that sees the peer, and content
+// that does not depend on seeing the peer still reaches everyone.
+func TestInvisiblePeerChangeSendsNoFrame(t *testing.T) {
+	testData, cleanup := setupBatcherWithTestData(t, NewBatcherAndMapper, 2, 2, normalBufferSize)
+	defer cleanup()
+
+	b := testData.Batcher.Batcher
+
+	_, err := testData.State.SetPolicy([]byte(
+		`{"acls":[{"action":"accept","src":["autogroup:member"],"dst":["autogroup:self:*"]}]}`,
+	))
+	require.NoError(t, err)
+
+	// sender and sibling share a user; other belongs to the second user, so
+	// it cannot see either.
+	sender, sibling, other := &testData.Nodes[0], &testData.Nodes[1], &testData.Nodes[2]
+
+	for _, n := range []*node{sender, sibling, other} {
+		require.NoError(t, b.AddNode(n.n.ID, n.ch, tailcfg.CapabilityVersion(100), nil))
+		require.NotNil(t, expectReceive(t, n.ch, "initial map").Node)
+	}
+
+	deliver := func(to *node, c change.Change) {
+		t.Helper()
+
+		nc, ok := b.nodes.Load(to.n.ID)
+		require.True(t, ok)
+
+		nc.workMu.Lock()
+		defer nc.workMu.Unlock()
+
+		require.NoError(t, handleNodeChange(nc, b.mapper, c))
+	}
+
+	peerChanges := []struct {
+		name    string
+		c       change.Change
+		carries func(*tailcfg.MapResponse) bool
+	}{
+		{"changed", change.NodeAdded(sender.n.ID), func(r *tailcfg.MapResponse) bool {
+			return len(r.PeersChanged) == 1 && r.PeersChanged[0].ID == sender.n.ID.NodeID()
+		}},
+		{"patched", change.NodeOnline(sender.n.ID), func(r *tailcfg.MapResponse) bool {
+			return len(r.PeersChangedPatch) == 1 && r.PeersChangedPatch[0].NodeID == sender.n.ID.NodeID()
+		}},
+	}
+
+	for _, tt := range peerChanges {
+		deliver(other, tt.c)
+		expectNoReceive(t, other.ch, 20*time.Millisecond, tt.name+": other cannot see sender")
+
+		deliver(sibling, tt.c)
+		assert.True(t, tt.carries(expectReceive(t, sibling.ch, tt.name+": sibling sees sender")),
+			"%s: sibling must get the peer", tt.name)
+	}
+
+	deliver(other, change.PeersRemoved(sender.n.ID))
+	assert.NotEmpty(t, expectReceive(t, other.ch, "removal").PeersRemoved)
+
+	deliver(other, change.PolicyChange())
+	assert.NotNil(t, expectReceive(t, other.ch, "policy").PacketFilters)
+
+	_, _, err = testData.State.RenameNode(other.n.ID, "renamed")
+	require.NoError(t, err)
+	deliver(other, change.NodeAdded(other.n.ID))
+	assert.NotNil(t, expectReceive(t, other.ch, "self").Node)
+
+	deliver(other, change.PingNode(other.n.ID, &tailcfg.PingRequest{URL: "https://ping.test"}))
+	assert.NotNil(t, expectReceive(t, other.ch, "ping").PingRequest)
 }
