@@ -3,14 +3,17 @@
 // home, disco key, hostname or port, when a node goes down and up around
 // policy pushes, and which Hostinfo fields peers and the node itself get;
 // what a node hears of nodes it cannot see; what a router's peers hear of
-// routes it announces but has no approval for; and what every node is sent
-// as one policy is compiled again for node changes and a group edit.
+// routes it announces but has no approval for; what every node is sent as
+// one policy is compiled again for node changes and a group edit; and what
+// every node is sent when an admin role change alters what the policy
+// resolves.
 //
 // Test data source: testdata/steps/{map-delivery,hidden-peers,route-announce,
-// policy-generation}.hujson, loaded by name. The disco rotation of
+// policy-generation,user-role}.hujson, loaded by name. The disco rotation of
 // map-delivery also pins a row of TestBuildMapRequestChangeResponse in
 // ../state; policy-generation is also read by TestPolicySequenceCompat in
-// ../policy/v2.
+// ../policy/v2; user-role's setup step is also read by
+// TestAPIV2TaggedDeviceUserCompat in apiv2_devices_test.go.
 // Source format:    github.com/juanfont/headscale/hscontrol/types/testcapture
 
 package servertest_test
@@ -29,6 +32,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/servertest"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
@@ -154,6 +158,13 @@ var mapStreamSkipReasons = map[string]string{
 	"policy-generation/G5/rt/enabled": withdrawnRouteEnabled,
 	"policy-generation/G7/rt/enabled": withdrawnRouteEnabled,
 	"policy-generation/G8/rt/enabled": withdrawnRouteEnabled,
+
+	"user-role/S1-reconnect/own-a/frames": reconnectAnnounced,
+	"user-role/S1-reconnect/own-b/frames": reconnectAnnounced,
+	"user-role/S2-reconnect/own-a/frames": reconnectAnnounced,
+
+	"user-role/S0/tag-a/device-user": taggedDeviceUser,
+	"user-role/S0/tag-b/device-user": taggedDeviceUser,
 }
 
 const (
@@ -168,6 +179,7 @@ const (
 	removalSentToAll          = "REMOVAL_SENT_TO_ALL: headscale tells every connected node that a deleted node is gone; SaaS tells only the nodes that had it as a peer"
 	announcePolicyResend      = "ANNOUNCE_POLICY_RESEND: under an autogroup:self or via policy, headscale sends every connected node a policy response when a router changes only routes nobody approved; SaaS sends nothing to nodes that cannot see the router"
 	withdrawnRouteEnabled     = "WITHDRAWN_ROUTE_ENABLED: headscale's routes API keeps a route the device stopped advertising in enabledRoutes; SaaS lists only advertised routes as enabled"
+	taggedDeviceUser          = "TAGGED_DEVICE_USER: SaaS shows a tagged device's user as the login that made its key; headscale shows tagged-devices"
 )
 
 // mapStreamNotCompared lists, by key prefix, checks left out: SaaS's answer
@@ -196,6 +208,25 @@ var mapStreamNotCompared = []string{
 	"policy-generation/G7/rt-plain/filter",
 	"policy-generation/G7/srv/filter",
 	"policy-generation/G7/srv/ssh",
+
+	"user-role/S1/own-a/frames",
+	"user-role/S1/own-b/frames",
+	"user-role/S1/own-b/peers",
+	"user-role/S1/tag-a/frames",
+	"user-role/S1/tag-a/peers",
+	"user-role/S1/tag-a/filter",
+	"user-role/S1/tag-b/frames",
+	"user-role/S1/tag-b/peers",
+	"user-role/S1/tag-b/filter",
+	"user-role/S1-reconnect/own-b/peers",
+	"user-role/S1-reconnect/tag-b/peers",
+	"user-role/S1-reconnect/tag-b/filter",
+	"user-role/S2/own-a/frames",
+	"user-role/S2/own-b/frames",
+	"user-role/S2/tag-a/frames",
+	"user-role/S2/tag-a/peers",
+	"user-role/S2/tag-a/filter",
+	"user-role/S2/tag-b/frames",
 }
 
 // compared drops the checks mapStreamNotCompared leaves out.
@@ -955,7 +986,7 @@ func TestRouteAnnouncementCompat(t *testing.T) {
 func TestMapStreamSkipEntriesNameCaptures(t *testing.T) {
 	t.Parallel()
 
-	requireSkipCaptures(t, mapStreamSkipReasons, "map-delivery", "hidden-peers", "route-announce", "policy-generation")
+	requireSkipCaptures(t, mapStreamSkipReasons, "map-delivery", "hidden-peers", "route-announce", "policy-generation", userRoleID)
 }
 
 // visibilityMark is what a client had been sent when a step began.
@@ -1342,4 +1373,203 @@ func peerOwners(nm *netmap.NetworkMap, alias func(tailcfg.NodeID) (string, bool)
 	slices.Sort(out)
 
 	return strings.Join(out, "; ")
+}
+
+// userRoleID is the capture of an admin role change that
+// [TestUserChangeDispatchCompat] and [TestAPIV2TaggedDeviceUserCompat] replay.
+const userRoleID = "user-role"
+
+// userRoleSetup is the step that pushes the policy and joins the nodes; its
+// frames are join traffic, not the role change's.
+const userRoleSetup = "S0"
+
+// adminSuffix marks a user's name while the replay stands in for its admin
+// role; see [stepReplay.applyUserRole].
+const adminSuffix = "-admin"
+
+// TestUserChangeDispatchCompat replays an admin role change under a fixed
+// policy whose autogroup:admin rule reaches two tag:server nodes: freya
+// raised to admin, one tagged node's stream restarted, freya back to member
+// and that stream restarted again. After each step it compares, per node,
+// its peers and filter and, past the setup step, whether it was sent
+// anything.
+func TestUserChangeDispatchCompat(t *testing.T) {
+	t.Parallel()
+
+	t.Run(userRoleID, func(t *testing.T) {
+		t.Parallel()
+
+		c := readStepCapture(t, userRoleID)
+		r := newStepReplay(t, c)
+		saasNames := topologyAddrNames(c)
+		evaluated := map[string]bool{}
+
+		for _, step := range c.Steps {
+			requireUserRoleResult(t, step)
+
+			r.settle(t)
+
+			updates := make(map[string]int, len(r.clients))
+			for alias, cl := range r.clients {
+				updates[alias] = cl.UpdateCount()
+			}
+
+			r.applyUserRole(t, step)
+
+			t.Run(step.Name, func(t *testing.T) {
+				prefix := userRoleID + "/" + step.Name + "/"
+				holdChecks(t, mapStreamSkipReasons, prefix,
+					compared(prefix, userRoleChecks(t, r, step, saasNames, updates)), evaluated)
+			})
+		}
+
+		for k := range mapStreamSkipReasons {
+			if strings.HasPrefix(k, userRoleID+"/") && !deviceListCheck(k) && !evaluated[k] {
+				t.Errorf("skip entry %q names no check", k)
+			}
+		}
+	})
+}
+
+// requireUserRoleResult admits observed steps and barrier timeouts. The
+// probe's barrier waits for the role change to reach the streams; a timeout
+// whose note lists the links that never held is that observation, and its
+// captures and frames are what SaaS showed by the barrier's end.
+func requireUserRoleResult(t *testing.T, step testcapture.Step) {
+	t.Helper()
+
+	if step.Result == "timeout" {
+		require.True(t, strings.HasPrefix(step.Note, "never held:"), "%s: timeout without the links that never held: %q", step.Name, step.Note)
+
+		return
+	}
+
+	require.Equal(t, "observed", step.Result, "%s: the replay follows every step", step.Name)
+}
+
+// applyUserRole applies one user-role step, each action landing before the
+// next. Headscale has no user roles, so a name stands in for the admin role:
+// autogroup:admin becomes the tailnet owner, whom SaaS counts as an admin,
+// plus each user's name with adminSuffix, and a role call renames its user
+// to or from that name through the v1 API. Like the role call, the rename is
+// a user change the policy resolves while its text stays the same, sent by
+// headscale's own admin path. Roles held before the capture's first role
+// call are not mirrored, so the setup step's checks fail if one decides
+// what a node reaches.
+func (r *stepReplay) applyUserRole(t *testing.T, step testcapture.Step) {
+	t.Helper()
+
+	for _, a := range step.Actions {
+		switch a.Kind {
+		case "policy":
+			require.Equal(t, http.StatusOK, a.Status, "%s: replay of a refused policy", step.Name)
+			r.setPolicy(t, step.Name, adminPolicy(r.c.Tailnet, string(a.Body)))
+
+		case "role":
+			r.roleRename(t, step.Name, a)
+
+		default:
+			one := step
+			one.Actions = []testcapture.Action{a}
+			require.Empty(t, r.apply(t, one), "%s: every login succeeds", step.Name)
+			r.waitSession(t, step.Name, a)
+		}
+	}
+}
+
+// adminPolicy replaces autogroup:admin in policy with the owner and the
+// names [stepReplay.roleRename] gives admins.
+func adminPolicy(owner, policy string) string {
+	admins := make([]string, 0, len(captureUserNames)+1)
+
+	admins = append(admins, strconv.Quote(owner))
+	for _, name := range slices.Sorted(maps.Values(captureUserNames)) {
+		admins = append(admins, strconv.Quote(name+adminSuffix+"@"))
+	}
+
+	return strings.ReplaceAll(policy, strconv.Quote("autogroup:admin"), strings.Join(admins, ", "))
+}
+
+// roleRename mirrors a role call on "/users/{user:x}/role": admin renames x
+// to x with adminSuffix, member back to x.
+func (r *stepReplay) roleRename(t *testing.T, stepName string, a testcapture.Action) {
+	t.Helper()
+
+	require.Equal(t, http.StatusOK, a.Status, "%s: replay of a refused role call", stepName)
+
+	rest, ok := strings.CutPrefix(a.Path, "/users/{user:")
+	alias, _, found := strings.Cut(rest, "}")
+	require.True(t, ok && found, "%s: no user label in %q", stepName, a.Path)
+
+	user, ok := r.users[alias]
+	require.True(t, ok, "%s: role of unknown user %s", stepName, alias)
+
+	var body struct {
+		Role string `json:"role"`
+	}
+	require.NoError(t, json.Unmarshal(a.Body, &body), "%s: role body", stepName)
+
+	name := alias
+
+	switch body.Role {
+	case "admin":
+		name += adminSuffix
+	case "member":
+	default:
+		t.Fatalf("%s: no replay for role %q", stepName, body.Role)
+	}
+
+	current, err := r.srv.State().GetUserByID(types.UserID(user.ID))
+	require.NoError(t, err)
+
+	if current.Name == name {
+		return
+	}
+
+	status, resp := r.call(t, http.MethodPost, fmt.Sprintf("/api/v1/user/%d/rename/%s", user.ID, name), nil)
+	require.Equal(t, http.StatusOK, status, "%s: rename %s: %s", stepName, alias, resp)
+}
+
+// userRoleChecks compares, per node SaaS captured, its peers and filter and,
+// past the setup step, whether it was sent anything but a keep-alive since
+// updates, each client's update count when the step began.
+func userRoleChecks(
+	t *testing.T,
+	r *stepReplay,
+	step testcapture.Step,
+	saasNames map[netip.Addr]string,
+	updates map[string]int,
+) []stepCheck {
+	t.Helper()
+
+	var checks []stepCheck
+
+	for _, x := range slices.Sorted(maps.Keys(step.Captures)) {
+		saas, cl := step.Captures[x].Netmap, r.clients[x]
+		require.NotNil(t, saas, "%s: no netmap of %s", step.Name, x)
+		require.NotNil(t, cl, "%s: %s never joined", step.Name, x)
+
+		if step.Name != userRoleSetup {
+			checks = append(checks, stepCheck{x + "/frames", saasDelivered(step.Frames[x]), func() string {
+				if cl.UpdateCount() > updates[x] {
+					return "frame"
+				}
+
+				return "silent"
+			}})
+		}
+
+		checks = append(checks,
+			stepCheck{x + "/peers", peerAliases(saas, r.saasAlias), func() string { return peerAliases(cl.Netmap(), r.hsAlias) }},
+			stepCheck{x + "/filter", renderMatches(saas, saasNames), func() string { return renderMatches(cl.Netmap(), r.addrNames()) }},
+		)
+	}
+
+	return checks
+}
+
+// deviceListCheck reports whether a user-role skip key names one of
+// [TestAPIV2TaggedDeviceUserCompat]'s checks.
+func deviceListCheck(key string) bool {
+	return strings.HasSuffix(key, "/device-user") || strings.HasSuffix(key, "/device-tags")
 }
