@@ -226,6 +226,7 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, node types.NodeView) {
 		}
 
 		q := u.Query()
+		q.Set("device_id", string(node.ID().StableID()))
 		q.Set("device_name", node.Hostname())
 
 		// Guard Hostinfo().Valid() before dereferencing OS(): a node loaded
