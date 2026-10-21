@@ -51,8 +51,6 @@ var lifecycleSkipReasons = map[string]string{
 	"route-approval/b9/served":      approvalOnSameKeyReauth,
 	"route-approval/b9/self-routes": approvalOnSameKeyReauth,
 
-	"route-approval/r1/served": loggedOutRouterUnserved,
-
 	"ephemeral-lifecycle/E1-logout/eph-logout/outcome":      logoutAnswerUnauthorized,
 	"ephemeral-lifecycle/E1-logout/eph-logout-user/outcome": logoutAnswerUnauthorized,
 
@@ -81,7 +79,6 @@ const (
 	approvalOnHostinfo      = "APPROVAL_ON_HOSTINFO: headscale auto-approves when a router with no approved routes sends a Hostinfo change that keeps its routes; SaaS does not"
 	approvalOnPolicy        = "APPROVAL_ON_POLICY: headscale auto-approves announced routes when a policy is set; SaaS waits for the router's next route change or key rotation"
 	approvalOnSameKeyReauth = "APPROVAL_ON_SAME_KEY_REAUTH: headscale auto-approves on a re-auth that keeps the node key; SaaS does not"
-	loggedOutRouterUnserved = "LOGGED_OUT_ROUTER_UNSERVED: headscale stops serving a logged-out router's routes; SaaS keeps them on the expired, offline peer"
 )
 
 const (
@@ -93,8 +90,7 @@ const (
 
 // Used by reauthSkipReasons.
 const (
-	expiredRouterUnserved = "EXPIRED_ROUTER_UNSERVED: headscale stops serving an expired router's routes; SaaS keeps them in the peer's AllowedIPs and PrimaryRoutes"
-	expiredPeerOffline    = "EXPIRED_PEER_OFFLINE: headscale shows an expired peer offline while it is connected; SaaS shows it online"
+	expiredPeerOffline = "EXPIRED_PEER_OFFLINE: headscale shows an expired peer offline while it is connected; SaaS shows it online"
 )
 
 // TestRouteApprovalCompat replays a user-owned router through admin

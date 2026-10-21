@@ -91,11 +91,23 @@ func (m *primariesModel) recomputeEffective(id types.NodeID) {
 func (m *primariesModel) advertisersByPrefix() map[netip.Prefix][]types.NodeID {
 	out := map[netip.Prefix][]types.NodeID{}
 
-	for n, prefs := range m.prefixes {
-		if !m.connected[n] {
-			continue
+	for p, nodes := range m.approversByPrefix() {
+		for _, n := range nodes {
+			if m.connected[n] {
+				out[p] = append(out[p], n)
+			}
 		}
+	}
 
+	return out
+}
+
+// approversByPrefix returns every node that approves each prefix, connected
+// or not, sorted by NodeID.
+func (m *primariesModel) approversByPrefix() map[netip.Prefix][]types.NodeID {
+	out := map[netip.Prefix][]types.NodeID{}
+
+	for n, prefs := range m.prefixes {
 		for _, p := range prefs {
 			out[p] = append(out[p], n)
 		}
@@ -108,78 +120,57 @@ func (m *primariesModel) advertisersByPrefix() map[netip.Prefix][]types.NodeID {
 	return out
 }
 
+// available reports whether n may win an election: connected and healthy.
+func (m *primariesModel) available(n types.NodeID) bool {
+	return m.connected[n] && !m.unhealthy[n]
+}
+
 // updatePrimaries reapplies the algorithm to recompute the primary
 // for each prefix. Called after every operation.
 func (m *primariesModel) updatePrimaries() {
-	advertisers := m.advertisersByPrefix()
+	approvers := m.approversByPrefix()
 
-	// Drop primaries for prefixes that no longer have any advertiser.
+	// Drop primaries for prefixes no node approves any more.
 	for p := range m.primary {
-		if _, ok := advertisers[p]; !ok {
+		if _, ok := approvers[p]; !ok {
 			delete(m.primary, p)
 		}
 	}
 
-	for p, nodes := range advertisers {
-		if cur, ok := m.primary[p]; ok {
-			if slices.Contains(nodes, cur) && !m.unhealthy[cur] {
-				continue
-			}
+	for p, nodes := range approvers {
+		cur, hasPrev := m.primary[p]
+		hasPrev = hasPrev && slices.Contains(nodes, cur)
+
+		if hasPrev && m.available(cur) {
+			continue
 		}
 
-		var (
-			selected types.NodeID
-			found    bool
-		)
+		if i := slices.IndexFunc(nodes, m.available); i >= 0 {
+			m.primary[p] = nodes[i]
 
-		for _, n := range nodes {
-			if !m.unhealthy[n] {
-				selected = n
-				found = true
-
-				break
-			}
+			continue
 		}
 
-		// All-unhealthy fallback: preserve the previous primary if it
-		// is still a candidate, otherwise leave the prefix unmapped.
-		// Choosing any candidate would point peers at a node already
-		// declared unreachable; the model mirrors that policy.
-		if !found && len(nodes) >= 1 {
-			if cur, ok := m.primary[p]; ok && slices.Contains(nodes, cur) {
-				selected = cur
-				found = true
-			}
+		// No router available: the previous primary keeps the prefix,
+		// else the lowest-ID approver the prober has not declared
+		// unreachable; with neither the prefix is unmapped.
+		if hasPrev {
+			continue
 		}
 
-		if found {
-			m.primary[p] = selected
+		if i := slices.IndexFunc(nodes, func(n types.NodeID) bool {
+			return !m.unhealthy[n]
+		}); i >= 0 {
+			m.primary[p] = nodes[i]
 		} else {
 			delete(m.primary, p)
 		}
 	}
 }
 
-// allPrefixes returns every prefix mentioned by any connected node.
+// allPrefixes returns every prefix any node approves.
 func (m *primariesModel) allPrefixes() []netip.Prefix {
-	seen := map[netip.Prefix]bool{}
-
-	for n, prefs := range m.prefixes {
-		if !m.connected[n] {
-			continue
-		}
-
-		for _, p := range prefs {
-			seen[p] = true
-		}
-	}
-
-	out := make([]netip.Prefix, 0, len(seen))
-	for p := range seen {
-		out = append(out, p)
-	}
-
-	return out
+	return slices.Collect(maps.Keys(m.approversByPrefix()))
 }
 
 func samePrefixSet(a, b []netip.Prefix) bool {
@@ -233,10 +224,9 @@ func checkPrimariesProperties(
 		}
 	}
 
-	// Every prefix that has at least one connected advertiser must
-	// have a primary in the snapshot: a prefix silently losing its
-	// primary after a disconnect/reconnect cycle would leave peers
-	// without a route.
+	// Every prefix the model maps must have the same primary in the
+	// snapshot: a prefix silently losing its primary after a
+	// disconnect/reconnect cycle would leave peers without a route.
 	for _, p := range m.allPrefixes() {
 		want, expectExists := m.primary[p]
 		if !expectExists {
@@ -246,7 +236,7 @@ func checkPrimariesProperties(
 		got, ok := ns.PrimaryRouteFor(p)
 		if !ok {
 			rt.Fatalf(
-				"prefix %s has at least one advertiser in the model but no primary in NodeStore",
+				"prefix %s has a primary in the model but none in NodeStore",
 				p,
 			)
 		}
@@ -261,7 +251,7 @@ func checkPrimariesProperties(
 
 	// Structural invariants on the live snapshot, independent of the
 	// model. These catch shapes the model alone cannot — e.g. an owner
-	// that is offline but still has the prefix attributed to it.
+	// that no longer approves the prefix attributed to it.
 	snapshotPrimaries := ns.PrimaryRoutes()
 
 	// A primary that owns ≥1 prefix in `routes` must also light up
@@ -283,9 +273,11 @@ func checkPrimariesProperties(
 		}
 	}
 
-	// Per-owner structural checks: every primary must currently be
-	// online and must currently advertise the prefix it owns.
+	// Per-owner structural checks: every primary must currently
+	// advertise the prefix it owns, and be available whenever any of
+	// its approvers is.
 	advertisersByPrefix := m.advertisersByPrefix()
+	approversByPrefix := m.approversByPrefix()
 
 	for prefix, owner := range snapshotPrimaries {
 		nv, ok := ns.GetNode(owner)
@@ -296,13 +288,14 @@ func checkPrimariesProperties(
 			)
 		}
 
-		// Primary is online: an offline node cannot move packets, so
-		// election must never leave one as the snapshot's primary.
+		// An offline primary is only allowed while no approver could
+		// move packets for the prefix.
 		online, known := nv.IsOnline().GetOk()
-		if !known || !online {
+		if (!known || !online) &&
+			slices.ContainsFunc(approversByPrefix[prefix], m.available) {
 			rt.Fatalf(
-				"prefix %s primary %d is not online",
-				prefix, owner,
+				"prefix %s primary %d is not online but %v had an available router",
+				prefix, owner, approversByPrefix[prefix],
 			)
 		}
 
@@ -317,21 +310,17 @@ func checkPrimariesProperties(
 			)
 		}
 
-		// Healthy preference: if any candidate for this prefix is
-		// healthy, the elected primary must also be healthy. Leaving
-		// the prefix unmapped is fine; pointing at an unhealthy
-		// candidate while a healthy one was available is not.
+		// Healthy preference: if any approver for this prefix is
+		// healthy, the elected primary must also be healthy, unless it
+		// is the previous primary kept while no router is available.
+		// Leaving the prefix unmapped is fine; moving it to an
+		// unhealthy router while a healthy one was there is not.
 		candidates := advertisersByPrefix[prefix]
-		anyHealthy := false
+		anyHealthy := slices.ContainsFunc(approversByPrefix[prefix], func(n types.NodeID) bool {
+			return !m.unhealthy[n]
+		})
 
-		for _, c := range candidates {
-			if !m.unhealthy[c] {
-				anyHealthy = true
-				break
-			}
-		}
-
-		if anyHealthy && m.unhealthy[owner] {
+		if anyHealthy && m.unhealthy[owner] && owner != prevSnapshotPrimaries[prefix] {
 			rt.Fatalf(
 				"prefix %s primary %d is unhealthy but %v had a healthy candidate",
 				prefix, owner, candidates,

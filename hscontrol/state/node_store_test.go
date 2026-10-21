@@ -1910,7 +1910,7 @@ var nodeFieldImpact = map[string]string{
 	"MachineKey": "payload", "NodeKey": "payload", "DiscoKey": "payload",
 	"Endpoints": "payload", "Hostname": "payload", "GivenName": "payload",
 	"RegisterMethod": "payload", "AuthKeyID": "payload", "AuthKey": "payload",
-	"Expiry": "payload", "LastSeen": "payload", "CreatedAt": "payload",
+	"Expiry": "election", "LastSeen": "payload", "CreatedAt": "payload",
 	"UpdatedAt": "payload", "DeletedAt": "payload",
 	"ActiveSessions": "payload", "SessionEpoch": "payload",
 }
@@ -1966,6 +1966,7 @@ func TestUpdateChangesReportsRelationFields(t *testing.T) {
 		},
 		{name: "online", mutate: func(n *types.Node) { n.IsOnline = new(true) }, wantElection: true},
 		{name: "unhealthy", mutate: func(n *types.Node) { n.Unhealthy = true }, wantElection: true},
+		{name: "expiry", mutate: func(n *types.Node) { n.Expiry = new(time.Now().Add(-time.Minute)) }, wantElection: true},
 		{name: "endpoint", mutate: func(n *types.Node) { n.Endpoints = []netip.AddrPort{netip.MustParseAddrPort("192.0.2.1:1")} }},
 		{name: "lastseen", mutate: func(n *types.Node) { n.LastSeen = new(time.Now()) }},
 	}

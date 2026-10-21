@@ -118,6 +118,8 @@ type PolicyManager struct {
 	// nodeAttrsPending mirrors len(nodeAttrsChanged) > 0 so the drain,
 	// called on every dispatched change, skips pm.mu when idle.
 	nodeAttrsPending atomic.Bool
+
+	routerAvailable func(types.NodeID) bool
 }
 
 // filterAndPolicy combines the compiled filter rules with policy content for hashing.
@@ -468,6 +470,22 @@ func (pm *PolicyManager) NodeNeedsPeerRecompute(node types.NodeView) bool {
 		return true
 	}
 
+	return pm.isViaTargetLocked(node)
+}
+
+// NodeIsViaTarget reports whether a grant steers traffic through node.
+func (pm *PolicyManager) NodeIsViaTarget(node types.NodeView) bool {
+	if pm == nil || !node.Valid() {
+		return false
+	}
+
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	return pm.isViaTargetLocked(node)
+}
+
+func (pm *PolicyManager) isViaTargetLocked(node types.NodeView) bool {
 	for tag := range pm.viaTargetTags {
 		if node.HasTag(string(tag)) {
 			return true
@@ -1434,6 +1452,20 @@ func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Pr
 	return false
 }
 
+// SetRouterAvailable installs the availability check used by the via election.
+// Runtime status changes bypass SetNodes; nil treats every router as available.
+// The callback runs with pm.mu held and must remain a lock-free snapshot read.
+func (pm *PolicyManager) SetRouterAvailable(available func(types.NodeID) bool) {
+	if pm == nil {
+		return
+	}
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	pm.routerAvailable = available
+}
+
 // ViaRoutesForPeer computes via grant effects for a viewer-peer pair.
 // For each via grant where the viewer matches the source, it checks whether the
 // peer advertises any of the grant's destination prefixes. If the peer has the
@@ -1607,9 +1639,9 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 	if len(result.Include) > 0 || len(result.Exclude) > 0 {
 		// Multi-router via election: when a via grant's tag matches
 		// multiple peers advertising the same prefix, only the
-		// lowest-ID peer (the via-group primary) keeps the prefix in
-		// Include. The others move to Exclude. This mirrors HA
-		// primary election scoped to the via tag group.
+		// lowest-ID available peer keeps the prefix in Include. The others
+		// move to Exclude. With no available router, the lowest ID keeps the
+		// prefix so the viewer still gets exactly one route.
 		//
 		// Unlike the global [tailcfg.Node.PrimaryRoutes] election
 		// (routes/primary.go), which picks one primary across ALL
@@ -1639,17 +1671,30 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 					continue
 				}
 
-				var viaPrimaryID types.NodeID
+				var viaPrimaryID, viaFallbackID types.NodeID
 
 				for _, viaTag := range grant.Via {
 					for _, node := range pm.nodes.All() {
 						if node.HasTag(string(viaTag)) &&
 							slices.Contains(node.SubnetRoutes(), included) {
+							if viaFallbackID == 0 || node.ID() < viaFallbackID {
+								viaFallbackID = node.ID()
+							}
+
+							if pm.routerAvailable != nil &&
+								!pm.routerAvailable(node.ID()) {
+								continue
+							}
+
 							if viaPrimaryID == 0 || node.ID() < viaPrimaryID {
 								viaPrimaryID = node.ID()
 							}
 						}
 					}
+				}
+
+				if viaPrimaryID == 0 {
+					viaPrimaryID = viaFallbackID
 				}
 
 				if viaPrimaryID != 0 && peer.ID() != viaPrimaryID {

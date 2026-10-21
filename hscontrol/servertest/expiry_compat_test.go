@@ -78,37 +78,30 @@ var expirySkipReasons = map[string]string{
 
 	"expiry/A5-advertise/laptop/online-observer": expiredPeerOffline,
 	"expiry/A5-advertise/laptop/paths-observer":  expiredPeerPaths,
-	"expiry/A5-advertise/laptop/routes-observer": expiredRouterUnserved,
 	"expiry/A5-advertise/laptop/self":            selfExpiredFlags,
 
 	"expiry/A7-dns/laptop/dns":             nameserversFromConfig,
 	"expiry/A7-dns/laptop/online-observer": expiredPeerOffline,
 	"expiry/A7-dns/laptop/paths-observer":  expiredPeerPaths,
-	"expiry/A7-dns/laptop/routes-observer": expiredRouterUnserved,
 	"expiry/A7-dns/laptop/self":            selfExpiredFlags,
 	"expiry/A7-dns/observer/dns":           nameserversFromConfig,
 
 	"expiry/A8-policy/laptop/online-observer": expiredPeerOffline,
 	"expiry/A8-policy/laptop/paths-observer":  expiredPeerPaths,
-	"expiry/A8-policy/laptop/routes-observer": expiredRouterUnserved,
 	"expiry/A8-policy/laptop/self":            selfExpiredFlags,
 
 	"expiry/A9-ssh/laptop/online-observer": expiredPeerOffline,
 	"expiry/A9-ssh/laptop/paths-observer":  expiredPeerPaths,
-	"expiry/A9-ssh/laptop/routes-observer": expiredRouterUnserved,
 	"expiry/A9-ssh/laptop/self":            selfExpiredFlags,
 
 	"expiry/A10-reconnect/laptop/online-observer": expiredPeerOffline,
 	"expiry/A10-reconnect/laptop/paths-observer":  expiredPeerPaths,
-	"expiry/A10-reconnect/laptop/routes-observer": expiredRouterUnserved,
 	"expiry/A10-reconnect/laptop/self":            selfExpiredFlags,
 
 	"expiry/A6a-expire-again/laptop/online-observer": expiredPeerOffline,
 	"expiry/A6a-expire-again/laptop/online-peer1":    expiredPeerOffline,
 	"expiry/A6a-expire-again/laptop/paths-observer":  expiredPeerPaths,
 	"expiry/A6a-expire-again/laptop/paths-peer1":     expiredPeerPaths,
-	"expiry/A6a-expire-again/laptop/routes-observer": expiredRouterUnserved,
-	"expiry/A6a-expire-again/laptop/routes-peer1":    expiredRouterUnserved,
 	"expiry/A6a-expire-again/laptop/self":            selfExpiredFlags,
 
 	"expiry/A6b-rotate-disco/laptop/online-observer": expiredPeerOffline,
@@ -117,9 +110,6 @@ var expirySkipReasons = map[string]string{
 	"expiry/A6b-rotate-disco/laptop/paths-observer":  expiredPeerPaths,
 	"expiry/A6b-rotate-disco/laptop/paths-peer1":     expiredPeerPaths,
 	"expiry/A6b-rotate-disco/laptop/paths-peer3":     expiredPeerPaths,
-	"expiry/A6b-rotate-disco/laptop/routes-observer": expiredRouterUnserved,
-	"expiry/A6b-rotate-disco/laptop/routes-peer1":    expiredRouterUnserved,
-	"expiry/A6b-rotate-disco/laptop/routes-peer3":    expiredRouterUnserved,
 	"expiry/A6b-rotate-disco/laptop/self":            selfExpiredFlags,
 }
 
