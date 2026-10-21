@@ -1967,6 +1967,7 @@ func TestUpdateChangesReportsRelationFields(t *testing.T) {
 		{name: "online", mutate: func(n *types.Node) { n.IsOnline = new(true) }, wantElection: true},
 		{name: "unhealthy", mutate: func(n *types.Node) { n.Unhealthy = true }, wantElection: true},
 		{name: "expiry", mutate: func(n *types.Node) { n.Expiry = new(time.Now().Add(-time.Minute)) }, wantElection: true},
+		{name: "session start", mutate: func(n *types.Node) { n.SessionStart = time.Now() }, wantElection: true},
 		{name: "endpoint", mutate: func(n *types.Node) { n.Endpoints = []netip.AddrPort{netip.MustParseAddrPort("192.0.2.1:1")} }},
 		{name: "lastseen", mutate: func(n *types.Node) { n.LastSeen = new(time.Now()) }},
 	}

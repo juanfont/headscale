@@ -37,10 +37,10 @@ func TestConnectDisconnectRace(t *testing.T) {
 	// real noise/poll path. After this, [state.NodeStore] + primaryRoutes already
 	// have the node, and [state.State.Connect] has been called once.
 	//
-	// Only c2 advertises the route. [tailcfg.NodeView.PrimaryRoutes] preserves a current
-	// primary across changes (anti-flap, see primary.go), so if both
-	// nodes were advertising, c1 (lower NodeID) would stay primary and
-	// the test could never observe the route slipping out of c2's
+	// Only c2 advertises the route. The election keeps a route on the
+	// router with the oldest control session, so if both nodes were
+	// advertising, c1 (connected first) would stay primary and the test
+	// could never observe the route slipping out of c2's
 	// [tailcfg.NodeView.PrimaryRoutes] — it would never have been there in the first place.
 	c1 := servertest.NewClient(t, srv, "race-r1", servertest.WithUser(user))
 	c2 := servertest.NewClient(t, srv, "race-r2", servertest.WithUser(user))
