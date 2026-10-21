@@ -1886,6 +1886,7 @@ type NodeAttrGrant struct {
 
 // aclToGrants converts an [ACL] rule to one or more equivalent [Grant] rules.
 func aclToGrants(acl ACL) []Grant {
+	acl.Destinations = uniqueDestinations(acl.Destinations)
 	ret := make([]Grant, 0, len(acl.Destinations))
 
 	// Check if the ACL has any non-autogroup destinations. If so,
@@ -1950,6 +1951,38 @@ func aclToGrants(acl ACL) []Grant {
 	}
 
 	return ret
+}
+
+// uniqueDestinations keeps each destination and port range of one ACL the
+// first time it is named, as Tailscale SaaS writes a repeated one once.
+// Grants keep their repeats, as there.
+func uniqueDestinations(dsts []AliasWithPorts) []AliasWithPorts {
+	type named struct {
+		alias string
+		ports tailcfg.PortRange
+	}
+
+	seen := make(map[named]bool)
+	out := make([]AliasWithPorts, 0, len(dsts))
+
+	for _, dst := range dsts {
+		var ports []tailcfg.PortRange
+
+		for _, p := range dst.Ports {
+			k := named{dst.String(), p}
+			if !seen[k] {
+				seen[k] = true
+
+				ports = append(ports, p)
+			}
+		}
+
+		if len(ports) > 0 || len(dst.Ports) == 0 {
+			out = append(out, AliasWithPorts{Alias: dst.Alias, Ports: ports})
+		}
+	}
+
+	return out
 }
 
 // Policy represents a Tailscale Network Policy.
