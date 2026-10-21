@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"tailscale.com/net/tsaddr"
@@ -665,7 +666,8 @@ func (s *NodeStore) applyBatch(batch []work) {
 // keeps the current label.
 //
 // On collision the label is bumped as base, base-1, base-2, …, first
-// unused wins. Must be called from the [NodeStore] writer goroutine
+// unused wins; the base is cut so base-N stays a valid label, as Tailscale
+// does. Must be called from the [NodeStore] writer goroutine
 // (inside [NodeStore.applyBatch]) so the nodes map reflects all earlier
 // ops in the batch and no other writer can interleave.
 func resolveGivenName(
@@ -695,8 +697,16 @@ func resolveGivenName(
 			return candidate
 		}
 
-		candidate = base + "-" + strconv.Itoa(i)
+		candidate = bumpedLabel(base, i)
 	}
+}
+
+// bumpedLabel is base with a -n suffix, base cut so the result stays a valid
+// label, as Tailscale does.
+func bumpedLabel(base string, n int) string {
+	suffix := "-" + strconv.Itoa(n)
+
+	return base[:min(len(base), util.LabelHostnameLength-len(suffix))] + suffix
 }
 
 // snapshotFromNodes builds a Snapshot from nodes. With reusePeers the
