@@ -472,27 +472,7 @@ func (h *Headscale) handleRegisterWithAuthKey(
 		return nil, nil //nolint:nilnil // intentional: no node to return when ephemeral deleted
 	}
 
-	// This is a bit of a back and forth, but we have a bit of a chicken and egg
-	// dependency here.
-	// Because the way the policy manager works, we need to have the node
-	// in the database, then add it to the policy manager and then we can
-	// approve the route. This means we get this dance where the node is
-	// first added to the database, then we add it to the policy manager via
-	// nodesChangedHook and then we can auto approve the routes.
-	// As that only approves the struct object, we need to save it again and
-	// ensure we send an update.
-	// This works, but might be another good candidate for doing some sort of
-	// eventbus.
-	// TODO(kradalby): This needs to be ran as part of the batcher maybe?
-	// now since we dont update the node/pol here anymore
-	routesChange, err := h.state.AutoApproveRoutes(node)
-
-	// Send both changes. Empty changes are ignored by Change().
-	h.Change(changed, routesChange)
-
-	if err != nil {
-		return nil, fmt.Errorf("auto approving routes: %w", err)
-	}
+	h.Change(changed)
 
 	resp := &tailcfg.RegisterResponse{
 		MachineAuthorized: true,
