@@ -30,14 +30,13 @@ import (
 // pendingLoginSkipReasons lists checks where headscale differs from SaaS,
 // keyed <test_id>/<step>/<node>/<check>. A listed check that matches fails,
 // so a fix must delete its entry.
-var pendingLoginSkipReasons = map[string]string{}
-
-// pendingLoginNotCompared lists, by key prefix, checks left out: SaaS's
-// answer there is in doubt, so it is no reference.
-var pendingLoginNotCompared = []string{
-	"pending-login/PL-E4-restore/pl-laptop/exchange-0",
-	"pending-login/PL-E4-restore/pl-laptop/devices",
+var pendingLoginSkipReasons = map[string]string{
+	"pending-login/PL-E4-restore/pl-laptop/exchange-0": loginCompletedByRestore,
+	"pending-login/PL-E4-restore/pl-laptop/devices":    loginCompletedByRestore,
 }
+
+// SaaS behaviour recorded as it is, not followed.
+const loginCompletedByRestore = "LOGIN_COMPLETED_BY_RESTORE: SaaS completes a waiting login when the device's key expiry is turned off, giving it the client's newest node key without a login; headscale keeps the login waiting"
 
 // TestPendingLoginCompat replays a fresh machine's interactive login across
 // a restart and a stop, and an expired device restarted twice while its
@@ -45,7 +44,8 @@ var pendingLoginNotCompared = []string{
 // client sent it: same machine and node keys, follow-ups to the URL the
 // server gave. It compares each answer's flags, whether an auth URL is new or
 // repeats an earlier one, and the devices on each machine with their node
-// key.
+// key. The replay approves no login itself, so a waiting login that SaaS
+// completed on restore shows in the follow-up's answer and the node key.
 func TestPendingLoginCompat(t *testing.T) {
 	t.Parallel()
 
@@ -527,10 +527,6 @@ func renderNodeKeys(keys []string) string {
 // then reports each as a subtest. A listed check that matches fails.
 func (r *pendingReplay) hold(t *testing.T, prefix string, checks []pendingCheck) {
 	t.Helper()
-
-	checks = slices.DeleteFunc(checks, func(c pendingCheck) bool {
-		return notCompared(pendingLoginNotCompared, prefix+c.name)
-	})
 
 	const holdTicks = 5
 
