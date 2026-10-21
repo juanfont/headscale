@@ -3455,7 +3455,8 @@ func isAddressRange(pol *Policy, alias Alias) bool {
 //
 //   - `host:port` suffixes (parsed as an unknown tag),
 //   - multi-host CIDRs (raw `/N` or a hosts: entry resolving wider),
-//   - autogroup:internet (valid as ACL dst only).
+//   - autogroup:internet (valid as ACL dst only),
+//   - autogroup:member, which Tailscale SaaS refuses here.
 //
 // A bare IP literal (single-host /BitLen prefix) is accepted. Tag
 // entries must exist in tagOwners.
@@ -3468,9 +3469,8 @@ func validateSSHTestDestination(pol *Policy, alias Alias) error {
 
 	switch a := alias.(type) {
 	case *AutoGroup:
-		// autogroup:internet is the only autogroup not valid here;
-		// member/tagged/self/nonroot pass to engine evaluation.
-		if *a == AutoGroupInternet {
+		// tagged/self/nonroot pass to engine evaluation.
+		if *a == AutoGroupInternet || *a == AutoGroupMember {
 			return fmt.Errorf("%w %q", ErrSSHTestDstDisallowedElement, dst)
 		}
 
