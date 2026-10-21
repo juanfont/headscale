@@ -119,6 +119,18 @@ var mapStreamSkipReasons = map[string]string{
 	"route-announce/RA10/wit/presence": announcePolicyResend,
 	"route-announce/RA11/wit/presence": announcePolicyResend,
 
+	"route-announce/RA2/observer/presence":  announcePeerResent,
+	"route-announce/RA2/srv/presence":       announcePeerResent,
+	"route-announce/RA2/witness/presence":   announcePeerResent,
+	"route-announce/RA5/observer/presence":  announcePeerResent,
+	"route-announce/RA5/witness/presence":   announcePeerResent,
+	"route-announce/RA8/observer/presence":  announcePeerResent,
+	"route-announce/RA8/srv/presence":       announcePeerResent,
+	"route-announce/RA8/witness/presence":   announcePeerResent,
+	"route-announce/RA11/observer/presence": announcePeerResent,
+	"route-announce/RA11/srv/presence":      announcePeerResent,
+	"route-announce/RA11/witness/presence":  announcePeerResent,
+
 	"route-announce/RA0/rtr/self-routes":  selfRoutesReduced,
 	"route-announce/RA1/rtr/self-routes":  selfRoutesReduced,
 	"route-announce/RA2/rtr/self-routes":  selfRoutesReduced,
@@ -178,6 +190,7 @@ const (
 	peerServicesWhole         = "PEER_SERVICES_WHOLE: headscale sends peers every service a node reports; SaaS leaves out peerapi-dns-proxy"
 	removalSentToAll          = "REMOVAL_SENT_TO_ALL: headscale tells every connected node that a deleted node is gone; SaaS tells only the nodes that had it as a peer"
 	announcePolicyResend      = "ANNOUNCE_POLICY_RESEND: under an autogroup:self or via policy, headscale sends every connected node a policy response when a router changes only routes nobody approved; SaaS sends nothing to nodes that cannot see the router"
+	announcePeerResent        = "ANNOUNCE_PEER_RESENT: headscale sends a router's peers its entry again whenever its announced routes change; SaaS sends the unchanged entry only after some announcements"
 	withdrawnRouteEnabled     = "WITHDRAWN_ROUTE_ENABLED: headscale's routes API keeps a route the device stopped advertising in enabledRoutes; SaaS lists only advertised routes as enabled"
 	taggedDeviceUser          = "TAGGED_DEVICE_USER: SaaS shows a tagged device's user as the login that made its key; headscale shows tagged-devices"
 )
@@ -185,25 +198,6 @@ const (
 // mapStreamNotCompared lists, by key prefix, checks left out: SaaS's answer
 // there is in doubt, so it is no reference.
 var mapStreamNotCompared = []string{
-	"route-announce/RA2/observer/presence",
-	"route-announce/RA2/srv/presence",
-	"route-announce/RA2/witness/presence",
-	"route-announce/RA5/observer/presence",
-	"route-announce/RA5/srv/presence",
-	"route-announce/RA5/witness/presence",
-	"route-announce/RA7/observer/presence",
-	"route-announce/RA7/srv/presence",
-	"route-announce/RA7/witness/presence",
-	"route-announce/RA8/observer/presence",
-	"route-announce/RA8/srv/presence",
-	"route-announce/RA8/witness/presence",
-	"route-announce/RA10/observer/presence",
-	"route-announce/RA10/srv/presence",
-	"route-announce/RA10/witness/presence",
-	"route-announce/RA11/observer/presence",
-	"route-announce/RA11/srv/presence",
-	"route-announce/RA11/witness/presence",
-
 	"policy-generation/G7/rt-b/filter",
 	"policy-generation/G7/rt-plain/filter",
 	"policy-generation/G7/srv/filter",
@@ -1026,8 +1020,7 @@ func replayVisibility(t *testing.T, id string) {
 		}
 
 		t.Run(step.Name, func(t *testing.T) {
-			prefix := id + "/" + step.Name + "/"
-			holdChecks(t, mapStreamSkipReasons, prefix, compared(prefix, visibilityChecks(t, r, step, before)), evaluated)
+			holdChecks(t, mapStreamSkipReasons, id+"/"+step.Name+"/", visibilityChecks(t, r, step, before), evaluated)
 		})
 	}
 
