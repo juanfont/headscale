@@ -105,6 +105,8 @@ type Headscale struct {
 	authProvider   AuthProvider
 	mapBatcher     *mapper.Batcher
 
+	// One per long-poll session, held through its Disconnect cleanup, so
+	// shutdown can close state after waiting on it.
 	clientStreamsOpen sync.WaitGroup
 }
 
@@ -1331,14 +1333,17 @@ func (h *Headscale) SetServerURLForTest(tb testing.TB, url string) {
 }
 
 // StartBatcherForTest initialises and starts the map response batcher.
-// It registers a cleanup function on tb to stop the batcher.
+// It registers a cleanup function on tb to stop the batcher and wait for map sessions.
 // It panics when called outside of tests.
 func (h *Headscale) StartBatcherForTest(tb testing.TB) {
 	tb.Helper()
 
 	h.mapBatcher = mapper.NewBatcherAndMapper(h.cfg, h.state)
 	h.mapBatcher.Start()
-	tb.Cleanup(func() { h.mapBatcher.Close() })
+	tb.Cleanup(func() {
+		h.mapBatcher.Close()
+		h.clientStreamsOpen.Wait()
+	})
 }
 
 // MapBatcher returns the map response batcher (for test use).
