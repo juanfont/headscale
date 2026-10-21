@@ -205,13 +205,6 @@ var apiv2CompatSkipReasons = map[string]string{
 	"policy-api/P2/1/v1-enforced": v1EmptyPolicyNotEnforced,
 }
 
-// notCompared reports whether key falls under one of prefixes.
-func notCompared(prefixes []string, key string) bool {
-	return slices.ContainsFunc(prefixes, func(p string) bool {
-		return strings.HasPrefix(key, p)
-	})
-}
-
 // Differences a planned change removes.
 const (
 	scopeEchoAsSent        = "SCOPE_ECHO_AS_SENT: SaaS echoes a token's scopes sorted and without repeats; headscale echoes the request as sent"
