@@ -105,22 +105,23 @@ var mapStreamSkipReasons = map[string]string{
 	"policy-generation/G3/thor-2/peer-owners": sameUserPeers,
 	"policy-generation/G4/thor-1/peer-owners": sameUserPeers,
 	"policy-generation/G4/thor-2/peer-owners": sameUserPeers,
+
+	"policy-generation/G7/rt-b/filter":     deletedDeviceInRules,
+	"policy-generation/G7/rt-plain/filter": deletedDeviceInRules,
+	"policy-generation/G7/srv/filter":      deletedDeviceInRules,
+	"policy-generation/G7/srv/ssh":         deletedDeviceInRules,
 }
 
 const (
 	policyResponseToEveryNode = "POLICY_RESPONSE_TO_EVERY_NODE: headscale sends every connected node a policy response when the policy, a node's tags or approved routes, or the set of nodes change; SaaS sends only the nodes whose peers or filter change"
 	restartEndpointsKept      = "RESTART_ENDPOINTS_KEPT: headscale keeps a restarted node's last endpoints at its peers until it reports new ones; SaaS sends peers the node without endpoints until then"
 	announcePeerResent        = "ANNOUNCE_PEER_RESENT: headscale sends a router's peers its entry again whenever its announced routes change; SaaS sends the unchanged entry only after some announcements"
+	deletedDeviceInRules      = "DELETED_DEVICE_IN_RULES: SaaS keeps a deleted device's addresses in other nodes' filter and SSH rules until the next policy change; headscale drops them with the device"
 )
 
 // mapStreamNotCompared lists, by key prefix, checks left out: SaaS's answer
 // there is in doubt, so it is no reference.
 var mapStreamNotCompared = []string{
-	"policy-generation/G7/rt-b/filter",
-	"policy-generation/G7/rt-plain/filter",
-	"policy-generation/G7/srv/filter",
-	"policy-generation/G7/srv/ssh",
-
 	"user-role/S1/own-a/frames",
 	"user-role/S1/own-b/frames",
 	"user-role/S1/own-b/peers",
@@ -1179,8 +1180,7 @@ func replayPolicySequence(t *testing.T, id string) {
 		}
 
 		t.Run(step.Name, func(t *testing.T) {
-			prefix := id + "/" + step.Name + "/"
-			holdChecks(t, mapStreamSkipReasons, prefix, compared(prefix, sequenceChecks(t, r, step, saasNames, names)), evaluated)
+			holdChecks(t, mapStreamSkipReasons, id+"/"+step.Name+"/", sequenceChecks(t, r, step, saasNames, names), evaluated)
 		})
 	}
 
