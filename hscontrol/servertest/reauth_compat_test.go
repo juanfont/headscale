@@ -134,6 +134,20 @@ var reauthSkipReasons = map[string]string{
 	"reauth-owner/u-tagged-reauth-relogin/u-tagged-reauth/expiry": adminTagsKeptOnUserLogin,
 	"reauth-owner/u-tagged-reauth-relogin/obs/filter":             adminTagsKeptOnUserLogin,
 
+	"reauth-user/a8-convert/u-convert/expiry":                      sameKeyConversionKeepsExpiry,
+	"reauth-user/a8-convert/key:A-Kp":                              singleUseKeyReused,
+	"reauth-user/a9-used-tagged-key/key:A-Kp":                      singleUseKeyReused,
+	"reauth-user/a9-used-tagged-key/u-loser-same/owner":            singleUseKeyReused,
+	"reauth-user/a9-used-tagged-key/u-loser-same/outcome":          singleUseKeyReused,
+	"reauth-user/a9-used-tagged-key/obs/filter":                    singleUseKeyReused,
+	"reauth-user/a9-used-tagged-key/t-server/filter":               singleUseKeyReused,
+	"reauth-user/a10-used-tagged-key-force/u-loser-force/owner":    singleUseKeyReused,
+	"reauth-user/a10-used-tagged-key-force/u-loser-force/outcome":  singleUseKeyReused,
+	"reauth-user/a10-used-tagged-key-force/u-loser-force/node-key": singleUseKeyReused,
+	"reauth-user/a10-used-tagged-key-force/u-loser-force/expiry":   singleUseKeyReused,
+	"reauth-user/a10-used-tagged-key-force/obs/filter":             singleUseKeyReused,
+	"reauth-user/a10-used-tagged-key-force/t-server/filter":        singleUseKeyReused,
+
 	"reauth/late-pak-spent-key/late-pak/text":        refusalText,
 	"reauth/late-pak-spent-key/late-pak/legacy-text": refusalText,
 
@@ -164,23 +178,11 @@ const (
 	refusalText               = "REFUSAL_TEXT: SaaS refuses a key by naming its ID; headscale says why the key is refused"
 )
 
-// reauthNotCompared lists, by key prefix, checks left out: SaaS's answer
-// there is in doubt, so it is no reference.
-var reauthNotCompared = []string{
-	"reauth-user/a8-convert/key:A-Kp",
-	"reauth-user/a8-convert/u-convert/expiry",
-	"reauth-user/a9-used-tagged-key/key:A-Kp",
-	"reauth-user/a9-used-tagged-key/u-loser-same/owner",
-	"reauth-user/a9-used-tagged-key/u-loser-same/outcome",
-	"reauth-user/a9-used-tagged-key/obs/filter",
-	"reauth-user/a9-used-tagged-key/t-server/filter",
-	"reauth-user/a10-used-tagged-key-force/u-loser-force/owner",
-	"reauth-user/a10-used-tagged-key-force/u-loser-force/outcome",
-	"reauth-user/a10-used-tagged-key-force/u-loser-force/node-key",
-	"reauth-user/a10-used-tagged-key-force/u-loser-force/expiry",
-	"reauth-user/a10-used-tagged-key-force/obs/filter",
-	"reauth-user/a10-used-tagged-key-force/t-server/filter",
-}
+// SaaS behaviour recorded as it is, not followed.
+const (
+	sameKeyConversionKeepsExpiry = "SAME_KEY_CONVERSION_KEEPS_EXPIRY: SaaS keeps key expiry on when a tagged key converts a device that keeps its node key, and turns it off for the same conversion with a new node key; headscale turns it off on every tagged node"
+	singleUseKeyReused           = "SINGLE_USE_KEY_REUSED: SaaS lets one single-use tagged key convert several devices that keep their node key and spends it only with a new node key; headscale spends it on first use and refuses it after"
+)
 
 // reauthCompatTests are the captures [runReauthCompat] replays.
 var reauthCompatTests = []string{"reauth", "reauth-foreign", "reauth-owner", "identity", "reauth-user", "tag-owner-chain"}
@@ -375,13 +377,9 @@ func (run *reauthRun) step(t *testing.T, step testcapture.Step) {
 		checks = append(checks, r.filterChecks(t, step, devices)...)
 	}
 
-	prefix := run.c.TestID + "/" + step.Name + "/"
-	checks = slices.DeleteFunc(checks, func(ch stepCheck) bool {
-		return notCompared(reauthNotCompared, prefix+ch.name)
-	})
-
 	// Marked here, so a run filtered to other steps does not call these
 	// entries stale.
+	prefix := run.c.TestID + "/" + step.Name + "/"
 	for _, ch := range checks {
 		run.evaluated[prefix+ch.name] = true
 	}
