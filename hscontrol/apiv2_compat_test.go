@@ -64,6 +64,11 @@ var apiv2CompatSkipReasons = map[string]string{
 
 	"oauth/D0/1/listed": emptyKeyListNull,
 
+	"oauth/E7/0/status":  untaggedChildRefused,
+	"oauth/E7/0/outcome": untaggedChildRefused,
+	"oauth/D0/4/listed":  untaggedChildRefused,
+	"oauth/D0/5/listed":  untaggedChildRefused,
+
 	"oauth/D7/2/status":  deletedClientGone,
 	"oauth/D7/2/outcome": deletedClientGone,
 	"oauth/D7/3/message": deletedClientCredentialText,
@@ -89,11 +94,10 @@ var apiv2CompatSkipReasons = map[string]string{
 }
 
 // apiv2CompatNotReplayed lists steps left out, keyed <test_id>/<step>, with
-// the objects only they create, which listings then leave out: SaaS's answer
-// there is in doubt, so it is no reference.
+// the objects only they create, which listings then leave out: they use an
+// object headscale refused to make.
 var apiv2CompatNotReplayed = map[string][]string{
-	"oauth/E7":  {"{client:C-all-2}"},
-	"oauth/E9b": {"{key:K-E9b}"},
+	"oauth/E9b": {"{key:K-E9b}"}, // uses E7's client
 }
 
 // notCompared reports whether key falls under one of prefixes.
@@ -120,6 +124,7 @@ const (
 	deviceOAuthClientMaker = "DEVICE_OAUTH_CLIENT_ID: SaaS names, in oauthClientId, the OAuth client whose token made the device's key; headscale does not record which client that was, so it leaves the field out"
 	missingScopeNotFound   = "MISSING_SCOPE_NOT_FOUND: SaaS answers a call outside the token's scopes with 404 not found; headscale answers 403"
 	unknownScopeGranted    = "UNKNOWN_SCOPE_GRANTED: SaaS ignores an unknown requested scope and grants the client's own; headscale grants the unknown scope alone"
+	untaggedChildRefused   = "UNTAGGED_CHILD_REFUSED: SaaS lets a tag-limited token create an untagged all-scope client, whose token then takes any tag; headscale refuses the client"
 	emptyPolicyReset       = "EMPTY_POLICY_RESET: SaaS takes a zero-length policy write as a reset to its default policy and enforces it; headscale refuses the body"
 )
 
