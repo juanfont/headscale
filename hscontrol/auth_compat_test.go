@@ -30,12 +30,7 @@ import (
 // pendingLoginSkipReasons lists checks where headscale differs from SaaS,
 // keyed <test_id>/<step>/<node>/<check>. A listed check that matches fails,
 // so a fix must delete its entry.
-var pendingLoginSkipReasons = map[string]string{
-	"pending-login/PL-E2-expire-restart/pl-laptop/exchange-0": expiredRestartUnauthorized,
-	"pending-login/PL-E3-restart/pl-laptop/exchange-1":        expiredRestartUnauthorized,
-}
-
-const expiredRestartUnauthorized = "EXPIRED_RESTART_UNAUTHORIZED: headscale answers an expired node's restart with MachineAuthorized false; SaaS answers true, and both say the node key expired"
+var pendingLoginSkipReasons = map[string]string{}
 
 // pendingLoginNotCompared lists, by key prefix, checks left out: SaaS's
 // answer there is in doubt, so it is no reference.
