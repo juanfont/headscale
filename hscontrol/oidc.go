@@ -986,36 +986,16 @@ func (a *AuthProviderOIDC) handleRegistration(
 	registrationID types.AuthID,
 	expiry *time.Time,
 ) (bool, error) {
-	node, nodeChange, err := a.h.state.HandleNodeFromAuthPath(
+	_, nodeChange, err := a.h.state.HandleNodeFromAuthPath(
 		registrationID,
 		types.UserID(user.ID),
 		expiry,
 		util.RegisterMethodOIDC,
 	)
-	if err != nil {
-		a.h.Change(nodeChange)
+	a.h.Change(nodeChange)
 
+	if err != nil {
 		return false, fmt.Errorf("registering node: %w", err)
-	}
-
-	// This is a bit of a back and forth, but we have a bit of a chicken and egg
-	// dependency here.
-	// Because the way the policy manager works, we need to have the node
-	// in the database, then add it to the policy manager and then we can
-	// approve the route. This means we get this dance where the node is
-	// first added to the database, then we add it to the policy manager via
-	// SaveNode (which automatically updates the policy manager) and then we can auto approve the routes.
-	// As that only approves the struct object, we need to save it again and
-	// ensure we send an update.
-	// This works, but might be another good candidate for doing some sort of
-	// eventbus.
-	routesChange, err := a.h.state.AutoApproveRoutes(node)
-
-	// Send both changes. Empty changes are ignored by Change().
-	a.h.Change(nodeChange, routesChange)
-
-	if err != nil {
-		return false, fmt.Errorf("auto approving routes: %w", err)
 	}
 
 	return !nodeChange.IsEmpty(), nil
