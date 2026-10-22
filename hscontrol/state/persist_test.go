@@ -628,6 +628,59 @@ func TestDeleteNodeReturnsRemovalOnPolicyFailure(t *testing.T) {
 // write during pre-auth-key re-registration does not leave the NodeStore
 // holding a node key that was never persisted: a restart would reload the old
 // row and the client's current key would no longer resolve, locking it out.
+// TestConcurrentDeleteNodesShareNodeStoreBatch deletes two nodes at once with
+// a NodeStore that applies a batch only when it holds two writes. Holding
+// persistMu across the NodeStore write gave every delete a batch, and so a
+// peer map build, of its own; under churn that serialised deletion behind one
+// rebuild each.
+func TestConcurrentDeleteNodesShareNodeStoreBatch(t *testing.T) {
+	cfg := persistTestConfig(t.TempDir() + "/headscale.db")
+	cfg.Tuning.NodeStoreBatchSize = 2
+	cfg.Tuning.NodeStoreBatchTimeout = time.Hour
+
+	database, err := db.NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	user := database.CreateUserForTest("delete-batch-user")
+	nodes := database.CreateNodesForTest(user, 2, "delete-batch-node")
+
+	require.NoError(t, database.Close())
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	var wg sync.WaitGroup
+
+	for _, n := range nodes {
+		node, ok := s.GetNodeByID(n.ID)
+		require.True(t, ok)
+
+		wg.Go(func() {
+			_, err := s.DeleteNode(node)
+			assert.NoError(t, err)
+		})
+	}
+
+	done := make(chan struct{})
+
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("concurrent deletes must be able to share a NodeStore batch")
+	}
+
+	for _, n := range nodes {
+		_, ok := s.GetNodeByID(n.ID)
+		assert.False(t, ok, "deleted node must be gone from the NodeStore")
+	}
+}
+
 func TestPreAuthKeyReauthRevertsNodeStoreOnDBFailure(t *testing.T) {
 	dbPath := t.TempDir() + "/headscale.db"
 	cfg := persistTestConfig(dbPath)
