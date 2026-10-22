@@ -156,11 +156,16 @@ func registerKeys(api huma.API, b Backend) {
 			return nil, err
 		}
 
-		if in.Body.KeyType == keyTypeClient {
+		switch in.Body.KeyType {
+		case keyTypeClient:
 			return createOAuthClient(ctx, b, in.Body)
+		case "", keyTypeAuth:
+			return createAuthKey(ctx, b, in.Body)
+		default:
+			return nil, huma.Error400BadRequest(
+				"invalid key type, " + strconv.Quote(in.Body.KeyType) + " is not supported",
+			)
 		}
-
-		return createAuthKey(ctx, b, in.Body)
 	})
 
 	huma.Register(api, huma.Operation{

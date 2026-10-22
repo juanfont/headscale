@@ -275,6 +275,25 @@ func TestAPIv2OAuth_ValidationErrorsBounded(t *testing.T) {
 	assert.Equal(t, "and 980 more", out.Data[0].Errors[20])
 }
 
+// TestAPIv2OAuth_UnknownKeyTypeRefused: a keyType other than auth or client
+// is refused, not taken as an auth key.
+func TestAPIv2OAuth_UnknownKeyTypeRefused(t *testing.T) {
+	app, baseURL, admin := newOAuthTestServer(t)
+
+	status, body := apiReq(t, http.MethodPost, baseURL+"/api/v2/tailnet/-/keys", admin, map[string]any{
+		"keyType": "nosuch",
+		"capabilities": map[string]any{"devices": map[string]any{"create": map[string]any{
+			"reusable": true, "ephemeral": false, "preauthorized": true, "tags": []string{"tag:ci"},
+		}}},
+	})
+	assert.Equal(t, http.StatusBadRequest, status)
+	assert.Contains(t, string(body), `invalid key type, \"nosuch\" is not supported`)
+
+	keys, err := app.state.ListPreAuthKeys()
+	require.NoError(t, err)
+	assert.Empty(t, keys)
+}
+
 // TestAPIv2OAuth_UnknownPropertiesIgnored: a body property the API does not
 // define is ignored, at the top and nested, as Tailscale's API does.
 func TestAPIv2OAuth_UnknownPropertiesIgnored(t *testing.T) {
