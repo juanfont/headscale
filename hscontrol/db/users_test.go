@@ -41,7 +41,7 @@ func TestDestroyUserKeepsTaggedNodeEphemeral(t *testing.T) {
 
 	retained, err := db.GetPreAuthKeyByID(pak.ID)
 	require.NoError(t, err)
-	require.NotNil(t, retained.Revoked)
+	require.Nil(t, retained.Revoked, "a tagged key outlives the user that made it")
 	require.Nil(t, retained.UserID)
 }
 
@@ -95,6 +95,27 @@ func TestDestroyUserErrors(t *testing.T) {
 
 				result := db.DB.First(&foundPak, "kind = ? AND id = ?", types.CredentialPreAuthKey, pak.ID)
 				assert.ErrorIs(t, result.Error, gorm.ErrRecordNotFound)
+			},
+		},
+		{
+			// A tagged key belongs to its tags, so it outlives the user that
+			// made it and only loses the reference.
+			name: "success_keeps_tagged_preauthkeys",
+			test: func(t *testing.T, db *HSDatabase) {
+				t.Helper()
+
+				user := db.CreateUserForTest("test")
+
+				tagged, err := db.CreatePreAuthKey(user.TypedID(), true, false, nil, []string{"tag:ci"})
+				require.NoError(t, err)
+
+				err = db.DestroyUser(types.UserID(user.ID))
+				require.NoError(t, err)
+
+				got, err := db.GetPreAuthKeyByID(tagged.ID)
+				require.NoError(t, err)
+				assert.Nil(t, got.UserID)
+				assert.Equal(t, []string{"tag:ci"}, got.Tags)
 			},
 		},
 		{
