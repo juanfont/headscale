@@ -627,17 +627,18 @@ func (s *State) DeleteNode(node types.NodeView) ([]change.Change, error) {
 	s.persistMu.Lock()
 
 	err := s.db.DeleteNode(node.AsStruct())
-	if err != nil {
-		s.persistMu.Unlock()
+	s.persistMu.Unlock()
 
+	if err != nil {
 		return nil, err
 	}
 
 	// The database is the durable source of truth. Only remove the in-memory
 	// node after its row is gone so a failed database write cannot make a live
-	// node look deleted until the next restart.
+	// node look deleted until the next restart. persistMu stays out of this
+	// write: a persist that still finds the node updates no row, and holding
+	// it would give every concurrent delete a NodeStore batch of its own.
 	s.nodeStore.DeleteNode(node.ID())
-	s.persistMu.Unlock()
 
 	s.ipAlloc.FreeIPs(node.IPs())
 
