@@ -215,6 +215,15 @@ func TestAPIv2OAuth_TokenEndpoint(t *testing.T) {
 	require.Equalf(t, http.StatusOK, statusDup, "%v", mDup)
 	assert.Equal(t, "auth_keys", mDup["scope"])
 
+	// It names the tags of a token that can assign them; a reader token's
+	// answer has no tags field, whatever its client's tags.
+	assert.Equal(t, "tag:ci", m["tags"])
+
+	_, readerSecret := createClient(t, baseURL, admin, []string{"auth_keys:read"}, []string{"tag:ci"})
+	statusReader, mReader := mintToken(t, baseURL, "", readerSecret, "", false)
+	require.Equalf(t, http.StatusOK, statusReader, "%v", mReader)
+	assert.NotContains(t, mReader, "tags")
+
 	// Bad credentials → RFC 6749 invalid_client.
 	statusBad, mBad := mintToken(t, baseURL, clientID, "hskey-client-deadbeefdead-"+stringOf("0", 64), "", false)
 	assert.Equal(t, http.StatusUnauthorized, statusBad)
