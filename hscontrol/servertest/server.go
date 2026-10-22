@@ -403,9 +403,17 @@ func (s *TestServer) CreateRegisteredNode(tb testing.TB, owner *types.User, host
 	tb.Helper()
 
 	node := s.st.CreateRegisteredNodeForTest(owner, hostname...)
-	// CreateRegisteredNodeForTest sets UserID but leaves the User association
-	// unloaded; the device response renders the owner login, so attach it.
+	// CreateRegisteredNodeForTest sets UserID and AuthKeyID but leaves the
+	// associations unloaded; the device response renders the owner login and,
+	// once tagged, the login that made its key, so attach both.
 	node.User = owner
+
+	pak, err := s.st.GetPreAuthKeyByID(*node.AuthKeyID)
+	if err != nil {
+		tb.Fatalf("servertest: GetPreAuthKeyByID: %v", err)
+	}
+
+	node.AuthKey = pak.AsCredential()
 
 	return s.st.PutNodeInStoreForTest(*node)
 }

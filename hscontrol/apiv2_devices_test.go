@@ -61,6 +61,11 @@ func newDeviceTestEnv(t *testing.T) deviceTestEnv {
 
 	node := app.state.CreateRegisteredNodeForTest(user, "contract-dut")
 	node.User = user
+
+	pak, err := app.state.GetPreAuthKeyByID(*node.AuthKeyID)
+	require.NoError(t, err)
+
+	node.AuthKey = pak.AsCredential()
 	view := app.state.PutNodeInStoreForTest(*node)
 
 	return deviceTestEnv{
@@ -241,7 +246,8 @@ func TestAPIv2Device_SetTags(t *testing.T) {
 	assert.True(t, n.IsTagged())
 	assert.Equal(t, []string{"tag:ci"}, n.Tags().AsSlice())
 	assert.False(t, n.User().Valid())
-	assert.Equal(t, types.TaggedDevices.Username(), getDevice(t, e.api, e.deviceID).User)
+	assert.Equal(t, e.user.Username(), getDevice(t, e.api, e.deviceID).User,
+		"a tagged device shows the login that made its key")
 
 	// Two tags (sorted).
 	require.Equal(t, http.StatusOK, setTags([]string{"tag:ci", "tag:prod"}))
