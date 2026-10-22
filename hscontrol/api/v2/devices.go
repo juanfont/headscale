@@ -143,7 +143,7 @@ func registerDevices(api huma.API, b Backend) {
 			return nil, err
 		}
 
-		return &deviceOutput{Body: deviceFromView(node, in.Fields == "all")}, nil
+		return &deviceOutput{Body: deviceFromView(node, in.Fields == "all", b.Cfg.BaseDomain)}, nil
 	})
 
 	huma.Register(api, requireScope(huma.Operation{
@@ -167,7 +167,7 @@ func registerDevices(api huma.API, b Backend) {
 		out.Body.Devices = make([]Device, 0, nodes.Len())
 
 		for _, node := range nodes.All() {
-			out.Body.Devices = append(out.Body.Devices, deviceFromView(node, allFields))
+			out.Body.Devices = append(out.Body.Devices, deviceFromView(node, allFields, b.Cfg.BaseDomain))
 		}
 
 		return out, nil
@@ -429,12 +429,18 @@ func parseRoutes(routes []string) ([]netip.Prefix, error) {
 // deviceFromView maps a Headscale node onto the Tailscale Device, reading
 // through the [types.NodeView] accessors. allFields gates the route slices,
 // which Tailscale only returns for fields=all.
-func deviceFromView(view types.NodeView, allFields bool) Device {
+func deviceFromView(view types.NodeView, allFields bool, baseDomain string) Device {
 	id := view.StringID()
+
+	// Tailscale names a device by its MagicDNS FQDN, without the root dot.
+	name := view.GivenName()
+	if baseDomain != "" {
+		name += "." + baseDomain
+	}
 
 	d := Device{
 		Addresses:         emptyIfNil(view.IPsAsString()),
-		Name:              view.GivenName(),
+		Name:              name,
 		ID:                id,
 		NodeID:            id,
 		Authorized:        true, // Headscale has no post-registration de-auth state.
