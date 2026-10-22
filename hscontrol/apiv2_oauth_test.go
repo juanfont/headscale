@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	clientv2 "github.com/juanfont/headscale/gen/client/v2"
 	apiv2 "github.com/juanfont/headscale/hscontrol/api/v2"
 	"github.com/juanfont/headscale/hscontrol/scope"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
@@ -245,29 +246,73 @@ func TestAPIv2OAuth_RequestBodiesBounded(t *testing.T) {
 	assert.Equal(t, http.StatusRequestEntityTooLarge, status)
 }
 
-// TestAPIv2OAuth_ValidationErrorsBounded: huma reports one error per unexpected
-// property, and each carries the whole request object as its value.
+// TestAPIv2OAuth_ValidationErrorsBounded: huma reports one error per bad
+// element of the body, and each carries the element as its value.
 func TestAPIv2OAuth_ValidationErrorsBounded(t *testing.T) {
 	_, baseURL, admin := newOAuthTestServer(t)
 	tok := mintScopedToken(t, baseURL, admin, scope.AuthKeys)
 
-	props := map[string]int{}
-	for i := range 1000 {
-		props[fmt.Sprintf("%040d", i)] = 0
+	tags := make([]map[string]string, 1000)
+	for i := range tags {
+		tags[i] = map[string]string{"pad": fmt.Sprintf("%040d", i)}
 	}
 
-	status, body := apiReq(t, http.MethodPost, baseURL+"/api/v2/tailnet/-/keys", tok, props)
-	require.Equal(t, http.StatusUnprocessableEntity, status)
-	require.Less(t, len(body), 16<<10, "the error answer grows with the request")
-	assert.NotContains(t, string(body), "map[")
+	body := map[string]any{"capabilities": map[string]any{"devices": map[string]any{
+		"create": map[string]any{"reusable": true, "ephemeral": false, "preauthorized": true, "tags": tags},
+	}}}
 
-	var resp struct {
+	status, resp := apiReq(t, http.MethodPost, baseURL+"/api/v2/tailnet/-/keys", tok, body)
+	require.Equal(t, http.StatusUnprocessableEntity, status)
+	require.Less(t, len(resp), 16<<10, "the error answer grows with the request")
+	assert.NotContains(t, string(resp), "map[")
+
+	var out struct {
 		Data []struct{ Errors []string }
 	}
-	require.NoError(t, json.Unmarshal(body, &resp))
-	require.Len(t, resp.Data, 1)
-	require.Len(t, resp.Data[0].Errors, 21)
-	assert.Equal(t, "and 980 more", resp.Data[0].Errors[20])
+	require.NoError(t, json.Unmarshal(resp, &out))
+	require.Len(t, out.Data, 1)
+	require.Len(t, out.Data[0].Errors, 21)
+	assert.Equal(t, "and 980 more", out.Data[0].Errors[20])
+}
+
+// TestAPIv2OAuth_UnknownPropertiesIgnored: a body property the API does not
+// define is ignored, at the top and nested, as Tailscale's API does.
+func TestAPIv2OAuth_UnknownPropertiesIgnored(t *testing.T) {
+	_, baseURL, admin := newOAuthTestServer(t)
+
+	status, body := apiReq(t, http.MethodPost, baseURL+"/api/v2/tailnet/-/keys", admin, map[string]any{
+		"deviceDescription": "x",
+		"capabilities": map[string]any{"devices": map[string]any{
+			"create": map[string]any{
+				"reusable": true, "ephemeral": false, "preauthorized": true,
+				"tags": []string{"tag:ci"}, "unknown": true,
+			},
+		}},
+	})
+	require.Equalf(t, http.StatusOK, status, "body: %s", body)
+
+	var key apiv2.Key
+	require.NoError(t, json.Unmarshal(body, &key))
+	assert.Equal(t, []string{"tag:ci"}, key.Capabilities.Devices.Create.Tags)
+}
+
+// TestAPIv2OAuth_GeneratedClientNilTags: the generated client's request
+// types send a nil tags list as null, which the server takes as no tags.
+func TestAPIv2OAuth_GeneratedClientNilTags(t *testing.T) {
+	e := newDeviceTestEnv(t)
+
+	resp := e.api.Post("/api/v2/device/"+e.deviceID+"/tags", clientv2.SetTagsRequest{})
+	require.Equalf(t, http.StatusOK, resp.Code, "body: %s", resp.Body)
+
+	app, baseURL, _ := newOAuthTestServer(t)
+	owner := app.state.CreateUserForTest("odin")
+	ownerKey, apiKey, err := app.state.CreateAPIKey(nil)
+	require.NoError(t, err)
+	require.NoError(t, app.state.SetAPIKeyUser(apiKey.ID, *owner.TypedID()))
+
+	status, body := apiReq(t, http.MethodPost, baseURL+"/api/v2/tailnet/-/keys", ownerKey,
+		clientv2.CreateKeyRequest{Capabilities: &clientv2.KeyCapabilities{}})
+	require.Equalf(t, http.StatusOK, status, "body: %s", body)
 }
 
 func TestAPIv2OAuth_ScopeEnforcement(t *testing.T) {
