@@ -274,7 +274,7 @@ func TestAddToBatchDifferential(t *testing.T) {
 		lb.b.nodes.Store(99, nil)
 	}
 
-	endpoint := change.EndpointOrDERPUpdate(1, &tailcfg.PeerChange{
+	endpoint := change.EndpointOrDERPUpdate(&tailcfg.PeerChange{
 		NodeID: 1, DERPRegion: 7, Online: new(true),
 	})
 	ping := change.PingNode(2, &tailcfg.PingRequest{URL: "https://example.com/one"})
