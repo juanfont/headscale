@@ -3431,6 +3431,33 @@ func BenchmarkSetNodes(b *testing.B) {
 	}
 }
 
+// BenchmarkSetNodesManyTags measures the recompile a join or delete costs
+// when every node carries its own tag and grants reference them, a CI fleet
+// shape where resolving tags dominated the compile.
+func BenchmarkSetNodesManyTags(b *testing.B) {
+	for _, n := range []int{1000, 4000} {
+		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
+			nodes := scanManyRulesNodes(n)
+			pm, err := NewPolicyManager([]byte(scanManyRulesPolicy(n, 400)), nil, nodes.ViewSlice())
+			require.NoError(b, err)
+
+			sets := []views.Slice[types.NodeView]{nodes[:n-1].ViewSlice(), nodes.ViewSlice()}
+
+			b.ReportAllocs()
+
+			i := 0
+			for b.Loop() {
+				i++
+
+				_, err := pm.SetNodes(sets[i%2])
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
 // TestNodesGenerationCountsChangingSetNodes pins that NodesGeneration
 // moves exactly when SetNodes reports a change, so a caller that did not
 // run the SetNodes itself can still tell its write moved the policy.

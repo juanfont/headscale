@@ -2823,6 +2823,33 @@ func TestResolvePolicy(t *testing.T) {
 	}
 }
 
+// TestTagResolveIndexedMatchesScan resolves tags with and without the
+// per-compile tag index: the index must name exactly the nodes HasTag does.
+func TestTagResolveIndexedMatchesScan(t *testing.T) {
+	v4 := func(s string) *netip.Addr { a := netip.MustParseAddr(s); return &a }
+
+	nodes := types.Nodes{
+		{ID: 1, IPv4: v4("100.64.0.1"), IPv6: v4("fd7a:115c:a1e0::1"), Tags: []string{"tag:a", "tag:b"}},
+		{ID: 2, IPv4: v4("100.64.0.2"), Tags: []string{"tag:b"}},
+		{ID: 3, IPv4: v4("100.64.0.3")},
+		{ID: 4, IPv4: v4("100.64.0.4"), Tags: []string{"tag:a", "tag:a"}},
+		{ID: 5, IPv6: v4("fd7a:115c:a1e0::5"), Tags: []string{"tag:c"}},
+	}
+
+	pol := &Policy{}
+	indexed := pol.withNodesByTag(nodes.ViewSlice())
+
+	for _, tag := range []Tag{"tag:a", "tag:b", "tag:c", "tag:missing"} {
+		want, err := tag.resolve(pol, nil, nodes.ViewSlice())
+		require.NoError(t, err)
+
+		got, err := tag.resolve(indexed, nil, nodes.ViewSlice())
+		require.NoError(t, err)
+
+		assert.Equal(t, want.Prefixes(), got.Prefixes(), "%s", tag)
+	}
+}
+
 func TestResolveAutoApprovers(t *testing.T) {
 	users := types.Users{
 		{ID: 1, Name: "user1"},
