@@ -913,13 +913,15 @@ func TestTagsAuthKeyWithTagCLICannotModifyAdminTags(t *testing.T) {
 // Test Suite 3: Auth Key WITHOUT Tags
 // =============================================================================
 
-// TestTagsAuthKeyWithoutTagCannotRequestTags tests that nodes cannot request tags
-// when using an auth key that has no tags.
+// TestTagsAuthKeyWithoutTagCanRequestOwnedTag tests that a node registering
+// with a user's auth key that has no tags gets the tags it requests when the
+// user owns them, as on Tailscale SaaS. Tags the user does not own are still
+// refused (Test 3.8).
 //
-// Test 3.1: Cannot request tags with tagless key
+// Test 3.1: Request an owned tag with a tagless key
 // Setup: Run `tailscale up --advertise-tags="tag:valid-owned" --auth-key AUTH_KEY_WITHOUT_TAG`
-// Expected: Registration fails with error containing "requested tags [tag:valid-owned] are invalid or not permitted".
-func TestTagsAuthKeyWithoutTagCannotRequestTags(t *testing.T) {
+// Expected: Registration succeeds and the node is tagged tag:valid-owned.
+func TestTagsAuthKeyWithoutTagCanRequestOwnedTag(t *testing.T) {
 	IntegrationSkip(t)
 
 	policy := tagsTestPolicy()
@@ -962,26 +964,18 @@ func TestTagsAuthKeyWithoutTagCannotRequestTags(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// Login should fail because the auth key has no tags
 	err = client.Login(headscale.GetEndpoint(), authKey.Key)
-	if err != nil {
-		t.Logf("Test 3.1 PASS: Registration correctly rejected: %v", err)
-		assert.ErrorContains(t, err, "requested tags")
-	} else {
-		// If it succeeded, document this unexpected behavior
-		t.Logf("Test 3.1 UNEXPECTED: Registration succeeded when it should have failed")
+	require.NoError(t, err)
 
-		assert.EventuallyWithT(t, func(c *assert.CollectT) {
-			nodes, err := headscale.ListNodes()
-			assert.NoError(c, err)
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1)
 
-			if len(nodes) == 1 {
-				t.Logf("Node registered with tags: %v (expected rejection)", nodes[0].Tags)
-			}
-		}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "checking node state")
-
-		t.Fail()
-	}
+		if len(nodes) == 1 {
+			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
+		}
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.SlowPoll, "node should carry the owned tag it requested")
 }
 
 // TestTagsAuthKeyWithoutTagRegisterNoTags tests that registering with a tagless auth key
