@@ -73,9 +73,9 @@ func TestProcessBatchedChangesSkipsNodesWithoutConnection(t *testing.T) {
 
 // TestAppendPendingStaysBoundedWhileInFlight appends a churn of joins,
 // deletions and policy changes to a node whose bundle stays in flight, as
-// when the workers fall behind. Pending must stay as small as its coalesced
-// form instead of growing by one entry per change, and draining it must
-// render what coalescing the whole backlog at once would.
+// when the workers fall behind. Below the cap, pending must stay as small as
+// its coalesced form instead of growing by one entry per change, and
+// draining it must render what coalescing the whole backlog at once would.
 func TestAppendPendingStaysBoundedWhileInFlight(t *testing.T) {
 	id := types.NodeID(1)
 	nc := newMultiChannelNodeConn(id, nil)
@@ -83,11 +83,11 @@ func TestAppendPendingStaysBoundedWhileInFlight(t *testing.T) {
 
 	var all []change.Change
 
-	for i := range 10000 {
-		peer := types.NodeID(i%500 + 2) //nolint:gosec // test
+	for i := range 3000 {
+		peer := types.NodeID(i%50 + 2) //nolint:gosec // test
 
 		cs := []change.Change{change.NodeAdded(peer), change.NodeOnline(peer), change.PolicyChange()}
-		if i%7 == 0 {
+		if i%100 == 0 {
 			cs = append(cs, change.NodeRemoved(types.NodeID(i+1000))) //nolint:gosec // test
 		}
 
@@ -103,9 +103,36 @@ func TestAppendPendingStaysBoundedWhileInFlight(t *testing.T) {
 	nc.pendingMu.Unlock()
 
 	assert.Less(t, len(pending), 100, "pending must not grow with every change")
+	assert.False(t, pending[0].IsFull(), "test sanity: the backlog stays below the cap")
 
 	coalesce := func(cs []change.Change) []change.Change {
 		return change.CoalescePeerDeltas(id, change.DedupePolicyChanges(cs))
 	}
 	assert.Equal(t, coalesce(all), coalesce(pending))
+}
+
+// TestAppendPendingBoundsFoldedPatches queues patch-only updates for one peer
+// while a node's bundle stays in flight. Folding keeps each patch, so it must
+// count them: a backlog folded into one change still grows by every patch,
+// and only a collapse to a full map bounds it.
+func TestAppendPendingBoundsFoldedPatches(t *testing.T) {
+	id := types.NodeID(1)
+	nc := newMultiChannelNodeConn(id, nil)
+	nc.inFlight.Store(true)
+
+	for i := range 10000 {
+		if i%2 == 0 {
+			nc.appendPending(change.NodeOnline(2))
+		} else {
+			nc.appendPending(change.NodeOffline(2))
+		}
+	}
+
+	nc.pendingMu.Lock()
+	pending := slices.Clone(nc.pending)
+	nc.pendingMu.Unlock()
+
+	require.NotEmpty(t, pending)
+	assert.True(t, pending[0].IsFull(), "a backlog past the cap must collapse to a full map")
+	assert.LessOrEqual(t, countPatches(pending), maxPendingSize, "pending must not keep every patch")
 }

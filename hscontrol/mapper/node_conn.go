@@ -19,7 +19,7 @@ import (
 	"tailscale.com/tailcfg"
 )
 
-// minPendingFold is the pending length below which appendPending leaves the
+// minPendingFold is the pending size below which appendPending leaves the
 // folding to the drain.
 const minPendingFold = 64
 
@@ -45,8 +45,9 @@ var errConnectionBackpressure = errors.New("connection queue full")
 // Match the initial-map timeout while staying below reconnect grace and client keepalive.
 const connectionStallTimeout = 5 * time.Second
 
-// A full snapshot supersedes state backlog; pings remain one-shot work.
-const maxPendingChanges = 256
+// A full snapshot supersedes state backlog past this size; pings remain
+// one-shot work.
+const maxPendingSize = 256
 
 // connectionEntry represents a single connection to a node.
 type connectionEntry struct {
@@ -122,7 +123,11 @@ type multiChannelNodeConn struct {
 	pendingMu sync.Mutex
 	pending   []change.Change
 
-	// pendingFoldAt is the pending length at which appendPending folds the
+	// pendingSize is [changesSize] of pending. A fold keeps every peer and
+	// patch it merges, so the change count alone hides the backlog.
+	pendingSize int
+
+	// pendingFoldAt is the pending size at which appendPending folds the
 	// backlog again: twice what the last fold left, so appends stay
 	// amortized O(1).
 	pendingFoldAt int
@@ -315,19 +320,20 @@ func (mc *multiChannelNodeConn) appendPending(changes ...change.Change) {
 	mc.pendingMu.Lock()
 
 	mc.pending = append(mc.pending, changes...)
+	mc.pendingSize += changesSize(changes)
 	fullAtHead := len(mc.pending) > 0 && mc.pending[0].IsFull()
 
 	// Pending drains only once the bundle in flight is delivered, so behind
 	// workers it grew by every change; it renders folded anyway, and
 	// folding twice gives what folding once does. Folding first leaves the
 	// cap's collapse to a full map for backlogs that do not fold.
-	if !fullAtHead && len(mc.pending) >= max(mc.pendingFoldAt, minPendingFold) {
-		mc.pending = change.CoalescePeerDeltas(mc.id, change.DedupePolicyChanges(mc.pending))
-		mc.pendingFoldAt = 2 * len(mc.pending)
+	if !fullAtHead && mc.pendingSize >= max(mc.pendingFoldAt, minPendingFold) {
+		mc.setPendingLocked(change.CoalescePeerDeltas(mc.id, change.DedupePolicyChanges(mc.pending)))
+		mc.pendingFoldAt = 2 * mc.pendingSize
 	}
 
-	if fullAtHead || len(mc.pending) > maxPendingChanges {
-		mc.pending = change.CollapseToFull(mc.id, mc.pending)
+	if fullAtHead || mc.pendingSize > maxPendingSize {
+		mc.setPendingLocked(change.CollapseToFull(mc.id, mc.pending))
 	}
 	mc.pendingMu.Unlock()
 }
@@ -343,8 +349,10 @@ func (mc *multiChannelNodeConn) prependPending(changes ...change.Change) {
 		(len(changes) > 0 && changes[0].IsFull())
 
 	mc.pending = append(changes, mc.pending...)
-	if len(mc.pending) > maxPendingChanges || full {
-		mc.pending = change.CollapseToFull(mc.id, mc.pending)
+	mc.pendingSize += changesSize(changes)
+
+	if full || mc.pendingSize > maxPendingSize {
+		mc.setPendingLocked(change.CollapseToFull(mc.id, mc.pending))
 	}
 	mc.pendingMu.Unlock()
 }
@@ -353,7 +361,7 @@ func (mc *multiChannelNodeConn) prependPending(changes ...change.Change) {
 // single full update and the pings it cannot carry ([change.CollapseToFull]).
 func (mc *multiChannelNodeConn) collapsePendingToFull(incoming []change.Change) {
 	mc.pendingMu.Lock()
-	mc.pending = change.CollapseToFull(mc.id, slices.Concat(mc.pending, incoming))
+	mc.setPendingLocked(change.CollapseToFull(mc.id, slices.Concat(mc.pending, incoming)))
 	mc.pendingMu.Unlock()
 }
 
@@ -362,10 +370,27 @@ func (mc *multiChannelNodeConn) collapsePendingToFull(incoming []change.Change) 
 func (mc *multiChannelNodeConn) drainPending() []change.Change {
 	mc.pendingMu.Lock()
 	p := mc.pending
-	mc.pending = nil
+	mc.setPendingLocked(nil)
 	mc.pendingMu.Unlock()
 
 	return p
+}
+
+// setPendingLocked replaces pending. Caller must hold pendingMu.
+func (mc *multiChannelNodeConn) setPendingLocked(p []change.Change) {
+	mc.pending = p
+	mc.pendingSize = changesSize(p)
+}
+
+// changesSize is how much pending holds for changes: each change, and the
+// peers and patches it carries.
+func changesSize(changes []change.Change) int {
+	n := len(changes)
+	for _, c := range changes {
+		n += len(c.PeersChanged) + len(c.PeersRemoved) + len(c.PeerPatches)
+	}
+
+	return n
 }
 
 // takePending drains the pending changes for rendering. A node without a
