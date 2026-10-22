@@ -146,6 +146,23 @@ func TestAPIv2Device_Get(t *testing.T) {
 	assert.Equal(t, n.IPsAsString(), dev.Addresses)
 }
 
+// TestAPIv2Device_NameIsFQDN: with a base domain, a device's name is its
+// MagicDNS FQDN, in a read and in the list.
+func TestAPIv2Device_NameIsFQDN(t *testing.T) {
+	e := newDeviceTestEnv(t)
+	e.app.cfg.BaseDomain = "tailnet.example.com"
+
+	assert.Equal(t, "contract-dut.tailnet.example.com", getDevice(t, e.api, e.deviceID).Name)
+
+	resp := e.api.Get("/api/v2/tailnet/-/devices")
+	require.Equalf(t, http.StatusOK, resp.Code, "body: %s", resp.Body)
+
+	var list struct{ Devices []apiv2.Device }
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &list))
+	require.Len(t, list.Devices, 1)
+	assert.Equal(t, "contract-dut.tailnet.example.com", list.Devices[0].Name)
+}
+
 func TestAPIv2Device_Get_UnknownID_404(t *testing.T) {
 	e := newDeviceTestEnv(t)
 
