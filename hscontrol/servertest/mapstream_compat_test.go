@@ -140,15 +140,6 @@ var mapStreamSkipReasons = map[string]string{
 	"policy-generation/G4/thor-1/peer-owners": sameUserPeers,
 	"policy-generation/G4/thor-2/peer-owners": sameUserPeers,
 
-	"policy-generation/G2/freya-1/filter": filterDstMerged,
-	"policy-generation/G2/thor-2/filter":  filterDstMerged,
-	"policy-generation/G3/freya-1/filter": filterDstMerged,
-	"policy-generation/G3/thor-2/filter":  filterDstMerged,
-	"policy-generation/G4/freya-1/filter": filterDstMerged,
-	"policy-generation/G4/thor-2/filter":  filterDstMerged,
-	"policy-generation/G5/freya-1/filter": filterDstMerged,
-	"policy-generation/G5/thor-2/filter":  filterDstMerged,
-
 	"policy-generation/G4/rt/enabled": withdrawnRouteEnabled,
 	"policy-generation/G5/rt/enabled": withdrawnRouteEnabled,
 	"policy-generation/G7/rt/enabled": withdrawnRouteEnabled,
