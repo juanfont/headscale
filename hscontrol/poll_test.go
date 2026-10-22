@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -664,67 +665,111 @@ func TestDeletedNodeEndsLongPoll(t *testing.T) {
 }
 
 // TestDeletedNodeEndsStreamCleanly serves a long poll over HTTP/2, as the
-// Noise server does, and deletes the node while the session is idle. Nothing
-// is left to interrupt, so the stream must end with END_STREAM: an expired
-// write deadline resets it with INTERNAL_ERROR, which the client reports as a
-// server error.
+// Noise server does, and deletes the node, a clean stop, so the stream must
+// end with END_STREAM: an expired write deadline resets it with
+// INTERNAL_ERROR, which the client reports as a server error. That holds
+// with a write in flight too, as long as the client keeps reading; a client
+// that stopped reading must still not keep the session past the grace.
 func TestDeletedNodeEndsStreamCleanly(t *testing.T) {
 	t.Parallel()
 
-	app := createTestApp(t)
-	app.cfg.Tuning.NodeMapSessionBufferedChanSize = 30
+	for _, tt := range []struct {
+		name              string
+		inFlight, stalled bool
+	}{
+		{name: "idle"},
+		{name: "write_in_flight", inFlight: true},
+		{name: "client_stalled", inFlight: true, stalled: true},
+	} {
+		inFlight := tt.inFlight
 
-	user := app.state.CreateUserForTest("poll-delete-clean-user")
-	pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
-	require.NoError(t, err)
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	nodeKey := key.NewNode()
+			app := createTestApp(t)
+			app.cfg.Tuning.NodeMapSessionBufferedChanSize = 30
 
-	_, err = app.handleRegister(context.Background(), tailcfg.RegisterRequest{
-		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
-		NodeKey:  nodeKey.Public(),
-		Hostinfo: &tailcfg.Hostinfo{Hostname: "poll-delete-clean-node"},
-		Expiry:   time.Now().Add(24 * time.Hour),
-	}, key.NewMachine().Public())
-	require.NoError(t, err)
+			user := app.state.CreateUserForTest("poll-delete-clean-user")
+			pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+			require.NoError(t, err)
 
-	nodeView, ok := app.state.GetNodeByNodeKey(nodeKey.Public())
-	require.True(t, ok)
+			nodeKey := key.NewNode()
 
-	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		app.newMapSession(r.Context(), tailcfg.MapRequest{
-			Stream:  true,
-			Version: tailcfg.CapabilityVersion(100),
-		}, w, nodeView.AsStruct()).serveLongPoll()
-	}))
-	srv.Config.Protocols = new(http.Protocols)
-	srv.Config.Protocols.SetUnencryptedHTTP2(true)
-	srv.Start()
-	t.Cleanup(srv.Close)
+			_, err = app.handleRegister(context.Background(), tailcfg.RegisterRequest{
+				Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+				NodeKey:  nodeKey.Public(),
+				Hostinfo: &tailcfg.Hostinfo{Hostname: "poll-delete-clean-node"},
+				Expiry:   time.Now().Add(24 * time.Hour),
+			}, key.NewMachine().Public())
+			require.NoError(t, err)
 
-	h2c := new(http.Protocols)
-	h2c.SetUnencryptedHTTP2(true)
-	client := &http.Client{Transport: &http.Transport{Protocols: h2c}}
+			nodeView, ok := app.state.GetNodeByNodeKey(nodeKey.Public())
+			require.True(t, ok)
 
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL, nil)
-	require.NoError(t, err)
+			sessions := make(chan *mapSession, 1)
+			served := make(chan struct{})
+			srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				session := app.newMapSession(r.Context(), tailcfg.MapRequest{
+					Stream:  true,
+					Version: tailcfg.CapabilityVersion(100),
+				}, w, nodeView.AsStruct())
+				sessions <- session
 
-	resp, err := client.Do(req)
-	require.NoError(t, err)
+				session.serveLongPoll()
+				close(served)
+			}))
+			srv.Config.Protocols = new(http.Protocols)
+			srv.Config.Protocols.SetUnencryptedHTTP2(true)
+			srv.Start()
+			t.Cleanup(srv.Close)
 
-	defer resp.Body.Close()
+			h2c := new(http.Protocols)
+			h2c.SetUnencryptedHTTP2(true)
+			// A small window lets a client that pauses reading block a write.
+			client := &http.Client{Transport: &http.Transport{
+				Protocols: h2c,
+				HTTP2:     &http.HTTP2Config{MaxReceiveBufferPerStream: 64 << 10},
+			}}
 
-	var size [4]byte
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL, nil)
+			require.NoError(t, err)
 
-	_, err = io.ReadFull(resp.Body, size[:])
-	require.NoError(t, err, "expected the initial map")
+			resp, err := client.Do(req)
+			require.NoError(t, err)
 
-	cs, err := app.state.DeleteNode(nodeView)
-	require.NoError(t, err)
-	app.Change(cs...)
+			defer resp.Body.Close()
 
-	_, err = io.Copy(io.Discard, resp.Body)
-	require.NoError(t, err, "stopping an idle session must end the stream, not reset it")
+			var size [4]byte
+
+			_, err = io.ReadFull(resp.Body, size[:])
+			require.NoError(t, err, "expected the initial map")
+
+			if inFlight {
+				session := <-sessions
+				session.ch <- &tailcfg.MapResponse{Domain: strings.Repeat("x", 1<<20)}
+
+				require.Eventually(t, session.writing.Load, 2*time.Second, 10*time.Millisecond,
+					"test sanity: the frame must outgrow the window and block")
+			}
+
+			cs, err := app.state.DeleteNode(nodeView)
+			require.NoError(t, err)
+			app.Change(cs...)
+
+			if tt.stalled {
+				select {
+				case <-served:
+				case <-time.After(stopWriteGrace + 3*time.Second):
+					t.Fatal("a client that stopped reading must not keep a stopped session")
+				}
+
+				return
+			}
+
+			_, err = io.Copy(io.Discard, resp.Body)
+			require.NoError(t, err, "a clean stop must end the stream, not reset it")
+		})
+	}
 }
 
 func TestDeletedNodeInterruptsBlockedWrite(t *testing.T) {

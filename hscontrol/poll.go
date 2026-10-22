@@ -24,6 +24,10 @@ import (
 
 const (
 	keepAliveInterval = 50 * time.Second
+
+	// stopWriteGrace is how long a stopped session's write in flight may
+	// take to finish before its stream is reset.
+	stopWriteGrace = 5 * time.Second
 )
 
 // errMapSessionStopped is a write refused because the batcher stopped the
@@ -107,15 +111,17 @@ func (m *mapSession) stopFromBatcher() {
 		// A channel signal cannot interrupt a response write that is blocked on
 		// HTTP/2 flow control, so a client that stopped reading would keep the
 		// map session, and therefore server shutdown, alive indefinitely.
-		// Expiring the write deadline resets the stream with INTERNAL_ERROR,
-		// so only do it to a write in flight; an idle session sees cancelCh
-		// and ends the stream cleanly. writeMap checks cancelChClosed after
-		// raising writing, so one side always sees the other.
+		// An expired write deadline resets the stream with INTERNAL_ERROR,
+		// which the client reports as a server error, so it is only a bound:
+		// an idle session sees cancelCh, and a write the client keeps reading
+		// finishes first, both ending the stream cleanly. writeMap checks
+		// cancelChClosed after raising writing, so one side always sees the
+		// other.
 		if !m.writing.Load() {
 			return
 		}
 
-		err := http.NewResponseController(m.w).SetWriteDeadline(time.Now())
+		err := http.NewResponseController(m.w).SetWriteDeadline(time.Now().Add(stopWriteGrace))
 		if err != nil && !errors.Is(err, http.ErrNotSupported) {
 			m.log.Debug().Caller().Err(err).Msg("failed to interrupt map response write")
 		}
