@@ -89,7 +89,7 @@ func (e *apiError) GetStatus() int { return e.Status }
 // policyRefusal answers a refused policy as Tailscale does: the reason in
 // message and, when tests failed, one data entry per failing test naming its
 // src.
-func policyRefusal(err error) error {
+func policyRefusal(err error) *apiError {
 	out := &apiError{Message: err.Error(), Status: http.StatusBadRequest}
 
 	var failures []policyv2.TestFailure
