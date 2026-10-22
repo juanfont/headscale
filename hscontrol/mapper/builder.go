@@ -8,7 +8,6 @@ import (
 	"slices"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/policy"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
@@ -88,15 +87,12 @@ func (b *MapResponseBuilder) WithSelfNode() *MapResponseBuilder {
 		return b
 	}
 
-	_, matchers := b.mapper.state.Filter()
-
 	tailnode, err := nv.TailNode(
 		b.capVer,
-		func(id types.NodeID) []netip.Prefix {
-			// Self node: include own primaries + exit routes (no via steering for self).
-			primaries := policy.ReduceRoutes(nv, b.mapper.state.GetNodePrimaryRoutes(id), matchers)
-
-			return slices.Concat(primaries, nv.ExitRoutes())
+		func(types.NodeID) []netip.Prefix {
+			// A router holds every route it is approved for, whatever
+			// its own policy reaches.
+			return nv.AllApprovedRoutes()
 		},
 		b.mapper.cfg,
 		b.mapper.state.NodeCapMap(nv.ID()),
@@ -105,6 +101,13 @@ func (b *MapResponseBuilder) WithSelfNode() *MapResponseBuilder {
 		b.addError(err)
 		return b
 	}
+
+	// PrimaryRoutes is what the router serves: the routes it is primary
+	// for, under the rule its peers get them by.
+	tailnode.PrimaryRoutes = slices.DeleteFunc(
+		b.mapper.state.GetNodePrimaryRoutes(nv.ID()),
+		func(p netip.Prefix) bool { return !b.mapper.cfg.ServesRoute(p) },
+	)
 
 	b.resp.Node = tailnode
 
