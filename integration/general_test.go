@@ -1266,11 +1266,13 @@ func TestExpireNode(t *testing.T) {
 						return
 					}
 					assert.True(c, expired.Expired)
-					assert.False(c, expired.Online)
+					// It keeps its control connection, so it stays online to
+					// its peers, as on Tailscale SaaS.
+					assert.True(c, expired.Online)
 					if assert.NotNil(c, expired.KeyExpiry) {
 						assert.True(c, expired.KeyExpiry.Before(time.Now()))
 					}
-				}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "peer must see the expired node offline")
+				}, integrationutil.StatusReadyTimeout, integrationutil.FastPoll, "peer must see the expired node expired and online")
 
 				require.EventuallyWithT(t, func(c *assert.CollectT) {
 					_, stderr, _ := peer.Execute([]string{"tailscale", "ping", node.Name})
