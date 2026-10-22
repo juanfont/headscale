@@ -285,7 +285,7 @@ resource "tailscale_tailnet_key" "k" {
 			tags:         []string{"tag:k8s-operator"},
 			config:       k8sAuthKeyConfig("tag:other"),
 			deny:         true,
-			denyContains: []string{"403", "Forbidden", "is not owned"},
+			denyContains: []string{"requested tags [tag:other]", "(400)"},
 		},
 	}
 
@@ -526,7 +526,7 @@ func TestAPIv2OAuthTailscaleClientAuthKey(t *testing.T) {
 			name:    "tag_not_granted",
 			authKey: tsSecret + base,
 			tags:    []string{"tag:other"},
-			wantErr: "may not assign tag tag:other",
+			wantErr: "requested tags [tag:other] are invalid or not permitted",
 		},
 		{
 			name:    "wrong_secret",

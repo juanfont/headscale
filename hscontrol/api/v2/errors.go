@@ -2,6 +2,7 @@ package apiv2
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -119,6 +120,26 @@ func policyRefusal(err error) error {
 	}
 
 	return out
+}
+
+// unownedTags returns the tags a token holding tokenTags may not apply.
+func unownedTags(b Backend, tags, tokenTags []string) []string {
+	var out []string
+
+	for _, tag := range tags {
+		if !b.State.TagOwnedByTags(tag, tokenTags) {
+			out = append(out, tag)
+		}
+	}
+
+	return out
+}
+
+// tagsRefused is Tailscale's 400 for tags a token may not apply.
+func tagsRefused(prefix string, tags []string) error {
+	return huma.Error400BadRequest(
+		fmt.Sprintf("%srequested tags %v are invalid or not permitted", prefix, tags),
+	)
 }
 
 // mapError translates a state/db-layer error into a Huma HTTP error
