@@ -151,6 +151,22 @@ func TestAPIv2Device_Get(t *testing.T) {
 	assert.Equal(t, n.IPsAsString(), dev.Addresses)
 }
 
+// TestAPIv2Device_EmptyRouteLists: fields=all sends a device's route lists
+// even when they are empty; the default read leaves them out.
+func TestAPIv2Device_EmptyRouteLists(t *testing.T) {
+	e := newDeviceTestEnv(t)
+
+	all := e.api.Get("/api/v2/device/" + e.deviceID + "?fields=all")
+	require.Equalf(t, http.StatusOK, all.Code, "body: %s", all.Body)
+	assert.Contains(t, all.Body.String(), `"advertisedRoutes":[]`)
+	assert.Contains(t, all.Body.String(), `"enabledRoutes":[]`)
+
+	def := e.api.Get("/api/v2/device/" + e.deviceID)
+	require.Equalf(t, http.StatusOK, def.Code, "body: %s", def.Body)
+	assert.NotContains(t, def.Body.String(), "advertisedRoutes")
+	assert.NotContains(t, def.Body.String(), "enabledRoutes")
+}
+
 // TestAPIv2Device_NameIsFQDN: with a base domain, a device's name is its
 // MagicDNS FQDN, in a read and in the list.
 func TestAPIv2Device_NameIsFQDN(t *testing.T) {
