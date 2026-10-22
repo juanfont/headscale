@@ -750,8 +750,10 @@ func (b *Batcher) processBatchedChanges() {
 			return true
 		}
 
-		// One policy recompute rebuilds the whole netmap; drop same-tick repeats.
-		pending = change.DedupePolicyChanges(pending)
+		// One policy recompute rebuilds the whole netmap; drop same-tick
+		// repeats. A frame per peer delta lets a join storm outgrow the
+		// session channel within one tick, so render each run as one.
+		pending = change.CoalescePeerDeltas(nodeID, change.DedupePolicyChanges(pending))
 
 		// Queue a single work item containing all pending changes.
 		nc.inFlight.Store(true)

@@ -588,18 +588,27 @@ func TestProcessBatchedChanges_ConcurrentAdd_NoDataLoss(t *testing.T) {
 	// One final process to flush any remaining
 	lb.b.processBatchedChanges()
 
-	// Count total changes across all bundled work items in the channel.
-	// Each work item may contain multiple changes since processBatchedChanges
-	// bundles all pending changes per node into a single work item.
+	// Count the patches across all bundled work items in the channel. Each
+	// work item bundles a node's pending changes, coalescing peer deltas, so
+	// the patches, not the changes, are what must all arrive.
+	patches := func(cs []change.Change) int {
+		n := 0
+		for _, c := range cs {
+			n += len(c.PeerPatches)
+		}
+
+		return n
+	}
+
 	queuedChanges := 0
 
 	workItems := len(lb.b.workCh)
 	for range workItems {
 		w := <-lb.b.workCh
-		queuedChanges += len(w.changes)
+		queuedChanges += patches(w.changes)
 	}
 	// Also count any still-pending
-	remaining := len(getPendingForNode(lb.b, types.NodeID(1)))
+	remaining := patches(getPendingForNode(lb.b, types.NodeID(1)))
 
 	total := queuedChanges + remaining
 	added := int(addedCount.Load())

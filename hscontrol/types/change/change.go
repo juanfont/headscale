@@ -311,6 +311,67 @@ func DedupePolicyChanges(changes []Change) []Change {
 	return out
 }
 
+// isPeerDelta reports whether r only adds, refreshes or patches peers other
+// than nodeID: [CoalescePeerDeltas] can fold such changes together.
+func (r Change) isPeerDelta(nodeID types.NodeID) bool {
+	if r.IncludeSelf || r.IncludeDERPMap || r.IncludeDNS || r.IncludeDomain ||
+		r.IncludePolicy || r.SendAllPeers || r.RequiresRuntimePeerComputation {
+		return false
+	}
+
+	if r.OriginNode == nodeID || r.PingRequest != nil ||
+		len(r.PeersRemoved) > 0 || len(r.DeletedNodes) > 0 {
+		return false
+	}
+
+	return len(r.PeersChanged) > 0 || len(r.PeerPatches) > 0
+}
+
+// CoalescePeerDeltas folds each run of adjacent peer deltas in nodeID's
+// changes for one tick into a single change, so a burst of joins renders as
+// one [tailcfg.MapResponse] instead of one per change. Every change renders
+// from live state after the drain, so a peer in the run's PeersChanged is sent
+// whole and newer than any patch queued for it, and those patches are
+// dropped. Runs never move across other changes, which keeps removals and
+// policy recomputes in order.
+func CoalescePeerDeltas(nodeID types.NodeID, changes []Change) []Change {
+	out := make([]Change, 0, len(changes))
+
+	for i := 0; i < len(changes); {
+		j := i
+		for j < len(changes) && changes[j].isPeerDelta(nodeID) {
+			j++
+		}
+
+		if j-i < 2 {
+			out = append(out, changes[i])
+			i++
+
+			continue
+		}
+
+		merged := Change{Reason: "coalesced peer changes"}
+		for _, c := range changes[i:j] {
+			merged.PeersChanged = append(merged.PeersChanged, c.PeersChanged...)
+		}
+
+		merged.PeersChanged = uniqueNodeIDs(merged.PeersChanged)
+
+		for _, c := range changes[i:j] {
+			for _, p := range c.PeerPatches {
+				if _, whole := slices.BinarySearch(merged.PeersChanged, types.NodeID(p.NodeID)); !whole { //nolint:gosec // NodeID types are equivalent
+					merged.PeerPatches = append(merged.PeerPatches, p)
+				}
+			}
+		}
+
+		out = append(out, merged)
+		i = j
+	}
+
+	return out
+}
+
 func uniqueNodeIDs(ids []types.NodeID) []types.NodeID {
 	if len(ids) == 0 {
 		return nil

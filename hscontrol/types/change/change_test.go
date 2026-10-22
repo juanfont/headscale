@@ -486,6 +486,99 @@ func TestDedupePolicyChanges(t *testing.T) {
 	}
 }
 
+func TestCoalescePeerDeltas(t *testing.T) {
+	const self types.NodeID = 1
+
+	merged := func(peers []types.NodeID, patches ...*tailcfg.PeerChange) Change {
+		return Change{Reason: "coalesced peer changes", PeersChanged: peers, PeerPatches: patches}
+	}
+	patch := func(c Change) *tailcfg.PeerChange { return c.PeerPatches[0] }
+
+	ping := PingNode(self, &tailcfg.PingRequest{URL: "https://example.com/ping"})
+
+	tests := []struct {
+		name    string
+		changes []Change
+		want    []Change
+	}{
+		{
+			name:    "single delta is unchanged",
+			changes: []Change{NodeAdded(2)},
+			want:    []Change{NodeAdded(2)},
+		},
+		{
+			name:    "join storm folds into one change",
+			changes: []Change{NodeAdded(3), NodeOnline(3), NodeAdded(2), NodeOnline(2)},
+			want:    []Change{merged([]types.NodeID{2, 3})},
+		},
+		{
+			name:    "patches for peers sent whole are dropped, others kept in order",
+			changes: []Change{NodeOnline(4), NodeAdded(2), NodeOffline(4), NodeOnline(2)},
+			want:    []Change{merged([]types.NodeID{2}, patch(NodeOnline(4)), patch(NodeOffline(4)))},
+		},
+		{
+			name: "runs do not cross other changes",
+			changes: []Change{
+				NodeAdded(2), NodeOnline(2), PolicyChange(), NodeAdded(3), NodeRemoved(4), NodeOnline(5), ping, NodeOnline(6),
+			},
+			want: []Change{
+				merged([]types.NodeID{2}), PolicyChange(), NodeAdded(3), NodeRemoved(4), NodeOnline(5), ping, NodeOnline(6),
+			},
+		},
+		{
+			name:    "the node's own change is a self update, not a peer delta",
+			changes: []Change{NodeAdded(2), NodeAdded(self), NodeAdded(3)},
+			want:    []Change{NodeAdded(2), NodeAdded(self), NodeAdded(3)},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, CoalescePeerDeltas(self, tt.changes))
+		})
+	}
+}
+
+// TestCoalescePeerDeltasClassifiesEveryField classifies every [Change] field
+// by whether a change setting it may fold into a run of peer deltas. A new
+// field fails here until it is classified.
+func TestCoalescePeerDeltasClassifiesEveryField(t *testing.T) {
+	const self = types.NodeID(1)
+
+	folds := map[string]bool{
+		"Reason":                         true,  // logging only
+		"TargetNode":                     true,  // a node's pending only holds its own
+		"OriginNode":                     false, // set to self: a self update
+		"IncludeSelf":                    false,
+		"IncludeDERPMap":                 false,
+		"IncludeDNS":                     false,
+		"IncludeDomain":                  false,
+		"IncludePolicy":                  false,
+		"PeersChanged":                   true,
+		"PeersRemoved":                   false, // must stay ordered against re-adds
+		"PeerPatches":                    true,
+		"SendAllPeers":                   false,
+		"DeletedNodes":                   false,
+		"RequiresRuntimePeerComputation": false,
+		"PingRequest":                    false,
+	}
+
+	typ := reflect.TypeFor[Change]()
+	require.Len(t, folds, typ.NumField(), "classify every Change field")
+
+	for field := range typ.Fields() {
+		t.Run(field.Name, func(t *testing.T) {
+			want, ok := folds[field.Name]
+			require.True(t, ok, "field %s is not classified", field.Name)
+
+			c := Change{PeersChanged: []types.NodeID{2}}
+			setNonZero(t, reflect.ValueOf(&c).Elem().FieldByIndex(field.Index), self)
+
+			assert.Equal(t, want, c.isPeerDelta(self))
+		})
+	}
+}
+
 func TestChange_Constructors(t *testing.T) {
 	tests := []struct {
 		name        string
