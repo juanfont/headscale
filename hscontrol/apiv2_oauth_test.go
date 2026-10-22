@@ -542,7 +542,7 @@ func TestAPIv2OAuth_ScopeEnforcement(t *testing.T) {
 		"write scope + in-grant tag allowed")
 
 	// ...but not with a tag outside its grant.
-	assert.Equal(t, http.StatusForbidden, createTaggedKey(t, baseURL, writeTok, []string{"tag:other"}),
+	assert.Equal(t, http.StatusBadRequest, createTaggedKey(t, baseURL, writeTok, []string{"tag:other"}),
 		"tag outside grant denied")
 
 	// A read-only token is denied the write.
@@ -612,7 +612,7 @@ func TestAPIv2OAuth_TaggedAllClientStaysInTags(t *testing.T) {
 	assert.Equal(t, "requested tags [tag:b] are invalid or not permitted", m["error_description"])
 
 	tok := tokenFor(t, baseURL, secret)
-	assert.Equal(t, http.StatusForbidden,
+	assert.Equal(t, http.StatusBadRequest,
 		createTaggedKey(t, baseURL, tok, []string{"tag:b"}),
 		"the token is held to its tags")
 
@@ -661,7 +661,7 @@ func TestAPIv2OAuth_TagOwnedBy(t *testing.T) {
 		"a token may use a tag owned by its tag")
 
 	// Unrelated tag: denied.
-	assert.Equal(t, http.StatusForbidden, createTaggedKey(t, baseURL, tok, []string{"tag:other"}),
+	assert.Equal(t, http.StatusBadRequest, createTaggedKey(t, baseURL, tok, []string{"tag:other"}),
 		"a token may not use an unowned tag")
 }
 
@@ -713,13 +713,28 @@ func TestAPIv2OAuth_SetDeviceTagsGrant(t *testing.T) {
 	st, body := apiPost(t, devURL, tok, map[string]any{"tags": []string{"tag:ci"}})
 	assert.Equalf(t, http.StatusOK, st, "in-grant tag: %s", body)
 
+	// The device now carries only tags within the grant.
+	st, body = apiPost(t, devURL, tok, map[string]any{"tags": []string{"tag:ci"}})
+	assert.Equalf(t, http.StatusOK, st, "in-grant device: %s", body)
+
 	// An existing policy tag outside the token's grant is denied, not silently set.
-	st, _ = apiPost(t, devURL, tok, map[string]any{"tags": []string{"tag:other"}})
-	assert.Equal(t, http.StatusForbidden, st, "out-of-grant tag must be denied")
+	st, body = apiPost(t, devURL, tok, map[string]any{"tags": []string{"tag:other"}})
+	assert.Equal(t, http.StatusBadRequest, st, "out-of-grant tag must be denied")
+	assert.Contains(t, string(body), "requested tags [tag:other] are invalid or not permitted")
 
 	// An admin API key is unrestricted.
 	st, body = apiPost(t, devURL, admin, map[string]any{"tags": []string{"tag:other"}})
 	assert.Equalf(t, http.StatusOK, st, "admin may set any policy tag: %s", body)
+
+	// SetNodeTags replaces the set, so retagging would remove tag:other.
+	st, body = apiPost(t, devURL, tok, map[string]any{"tags": []string{"tag:ci", "tag:other"}})
+	assert.Equal(t, http.StatusBadRequest, st, "token must not retag an out-of-grant device")
+	assert.Contains(t, string(body),
+		"cannot remove current tags: requested tags [tag:other] are invalid or not permitted")
+
+	got, ok := app.state.GetNodeByID(view.ID())
+	require.True(t, ok)
+	assert.Equal(t, []string{"tag:other"}, got.Tags().AsSlice())
 }
 
 // TestAPIv2OAuth_UndefinedTagRejected asserts an OAuth token cannot create a
