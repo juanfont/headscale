@@ -107,9 +107,6 @@ var routesMapCompatTests = []struct {
 var viaCompatSkipReasons = map[string]string{
 	"tagged-self": "TAGGED_SELF_PROFILE: SaaS gives a tagged node a profile of its own, headscale the shared tagged-devices one",
 
-	"routes-f2-subnet-as-acl-source/ivysaur/packet-filter":  filterDstMerged,
-	"routes-f2-subnet-as-acl-source/venusaur/packet-filter": filterDstMerged,
-
 	// SaaS sends a router every approved route in its own AllowedIPs and
 	// every route it is primary for in PrimaryRoutes.
 	"grant-v11/blastoise/self-routes": selfRoutesReduced,
@@ -257,10 +254,6 @@ var viaCompatSkipReasons = map[string]string{
 }
 
 const exitRoutesOnOverlap = "EXIT_ROUTES_ON_OVERLAP: headscale offers a peer's exit routes to a viewer whose rules reach only nodes or subnets; SaaS leaves them out"
-
-// Adjacent member addresses merge into one prefix, and the reduced filter
-// keeps all of it; SaaS lists only the node's own address.
-const filterDstMerged = "FILTER_DST_MERGED: own filter names a neighbour's address"
 
 const sameUserPeers = "SAME_USER_PEERS: SaaS lists a user's own devices as each other's peers with no rule linking them; headscale peers only what the policy links"
 
