@@ -2214,6 +2214,48 @@ func TestStatePolicyWriteBuildsPeersOnce(t *testing.T) {
 	}
 }
 
+// TestStateRefreshDoesNotMovePolicyBack replays a writer that has already
+// moved the policy manager to the batch it is building, a snapshot not yet
+// published, when a caller whose write landed earlier refreshes the policy
+// from the published one. The caller must not move the policy manager back:
+// that recompiles, and the peer map rebuild it forces recompiles forward
+// again, so under churn every write paid for three compiles.
+func TestStateRefreshDoesNotMovePolicyBack(t *testing.T) {
+	s, ids, builds := newPeerBuildTestState(t)
+
+	genBefore := s.polMan.NodesGeneration()
+
+	_, ok := s.nodeStore.UpdateNode(ids[1], func(n *types.Node) { n.Tags = []string{"tag:a"} })
+	require.True(t, ok)
+
+	// The next batch, built but not yet published.
+	ahead := make(types.Nodes, 0, s.nodeStore.ListNodes().Len())
+	for _, nv := range s.nodeStore.ListNodes().All() {
+		ahead = append(ahead, nv.AsStruct())
+	}
+
+	for _, n := range ahead {
+		if n.ID == ids[2] {
+			n.Tags = []string{"tag:b"}
+		}
+	}
+
+	changed, err := s.polMan.SetNodes(ahead.ViewSlice())
+	require.NoError(t, err)
+	require.True(t, changed, "test sanity: the batch in flight moves the policy")
+
+	genAhead := s.polMan.NodesGeneration()
+
+	builds.Store(0)
+
+	c, err := s.updatePolicyManagerNodes(genBefore)
+	require.NoError(t, err)
+
+	assert.Equal(t, "policy", c.Type(), "the caller's write still moved the policy")
+	assert.Equal(t, genAhead, s.polMan.NodesGeneration(), "the caller's refresh must not recompile")
+	assert.Equal(t, int64(0), builds.Load(), "the caller's refresh must not force a peer map rebuild")
+}
+
 // TestStateConcurrentTagWritesEachReportPolicyChange runs two SetNodeTags
 // on different nodes at once. The NodeStore may apply both in one batch,
 // so the policy manager sees both tags in a single SetNodes; each caller

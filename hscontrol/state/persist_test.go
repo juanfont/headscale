@@ -606,7 +606,17 @@ func TestDeleteNodeReturnsRemovalOnPolicyFailure(t *testing.T) {
 	node, ok := s.GetNodeByID(nodeID)
 	require.True(t, ok)
 
+	// Fail the writer's refresh too: it shares the policy manager, and a
+	// refresh it applied is not retried by the caller.
+	nodes := make(types.Nodes, 0, s.nodeStore.ListNodes().Len())
+	for _, nv := range s.nodeStore.ListNodes().All() {
+		nodes = append(nodes, nv.AsStruct())
+	}
+
+	s.nodeStore.Stop()
 	s.polMan = failingSetNodesPolicyManager{PolicyManager: s.polMan}
+	s.nodeStore = NewNodeStore(nodes, policyPeersFunc(s.polMan), TestBatchSize, TestBatchTimeout)
+	s.nodeStore.Start()
 
 	cs, err := s.DeleteNode(node)
 	require.ErrorIs(t, err, errInjectedPolicyNodeUpdate)
