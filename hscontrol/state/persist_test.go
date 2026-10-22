@@ -528,8 +528,9 @@ func TestReauthPreservesEndpointsWhenClientOmitsThem(t *testing.T) {
 // TestReauthChange covers the decision both re-auth paths share: a keys-only
 // relogin must be an incremental peer patch (so the tailscale client takes its
 // fast patch path), never a whole-node add (which strands a re-keyed,
-// momentarily-endpoint-less peer disco-deaf); a policy change forces a full
-// recompute; a new node is a whole-node add.
+// momentarily-endpoint-less peer disco-deaf); a relogin peers read as before
+// sends nothing; a policy change forces a full recompute; a new node is a
+// whole-node add.
 func TestReauthChange(t *testing.T) {
 	n := types.Node{
 		ID:       7,
@@ -538,24 +539,28 @@ func TestReauthChange(t *testing.T) {
 	}
 	node := n.View()
 
-	relogin := reauthChange(node, true, false)
-	assert.Len(t, relogin.PeerPatches, 1, "relogin must be a peer patch")
-	assert.Empty(t, relogin.PeersChanged, "relogin must not be a whole-node add")
+	keys := reauthChange(node, reloginKeys, false)
+	assert.Len(t, keys.PeerPatches, 1, "relogin must be a peer patch")
+	assert.Empty(t, keys.PeersChanged, "relogin must not be a whole-node add")
 
-	added := reauthChange(node, false, false)
+	assert.True(t, reauthChange(node, reloginNone, false).IsEmpty(),
+		"a relogin peers read as before must send nothing")
+
+	added := reauthChange(node, reloginWhole, false)
 	assert.Empty(t, added.PeerPatches)
 	assert.Len(t, added.PeersChanged, 1, "a new node must be a whole-node add")
 
-	pol := reauthChange(node, true, true)
+	pol := reauthChange(node, reloginKeys, true)
 	assert.Empty(t, pol.PeerPatches, "a policy change must not be a peer patch")
 	assert.Empty(t, pol.PeersChanged)
 	assert.False(t, pol.IsEmpty(), "a policy change must be non-empty")
 }
 
-// TestOnlyKeysChanged covers which relogins may ride the key-rotation patch:
+// TestReloginChanged covers which relogins may ride the key-rotation patch:
 // one that flips Expired or changes Hostinfo peers read must not, as
-// [tailcfg.PeerChange] carries neither (#3531).
-func TestOnlyKeysChanged(t *testing.T) {
+// [tailcfg.PeerChange] carries neither (#3531); one on the same keys and
+// expiry needs nothing at all.
+func TestReloginChanged(t *testing.T) {
 	now := time.Now()
 	past, future := now.Add(-time.Minute), now.Add(time.Hour)
 
@@ -575,20 +580,27 @@ func TestOnlyKeysChanged(t *testing.T) {
 	withOSVersion.OSVersion = "6.1"
 	withService.Services = []tailcfg.Service{{Proto: tailcfg.PeerAPI4, Port: 4242}}
 
+	same := node(future, hi)
+	renewedNode := same.AsStruct()
+	renewedNode.Expiry = new(future.Add(time.Hour))
+	renewed := renewedNode.View()
+
 	tests := []struct {
 		name          string
 		before, after types.NodeView
-		want          bool
+		want          relogin
 	}{
-		{name: "keys", before: node(future, hi), after: node(future, hi), want: true},
-		{name: "hostinfo peers do not read", before: node(future, hi), after: node(future, withOSVersion), want: true},
-		{name: "un-expired", before: node(past, hi), after: node(future, hi)},
-		{name: "hostinfo peers read", before: node(future, hi), after: node(future, withService)},
+		{name: "keys", before: node(future, hi), after: node(future, hi), want: reloginKeys},
+		{name: "hostinfo peers do not read", before: node(future, hi), after: node(future, withOSVersion), want: reloginKeys},
+		{name: "un-expired", before: node(past, hi), after: node(future, hi), want: reloginWhole},
+		{name: "hostinfo peers read", before: node(future, hi), after: node(future, withService), want: reloginWhole},
+		{name: "same keys", before: same, after: same, want: reloginNone},
+		{name: "same keys, new expiry", before: same, after: renewed, want: reloginKeys},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, onlyKeysChanged(tt.before, tt.after, now))
+			assert.Equal(t, tt.want, reloginChanged(tt.before, tt.after, now))
 		})
 	}
 }
