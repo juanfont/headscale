@@ -482,10 +482,18 @@ func routesFromView(view types.NodeView) DeviceRoutes {
 	}
 }
 
-// deviceUser is the owning login. [types.NodeView.Owner] already resolves the
-// tags-as-identity rule: tagged nodes present the special TaggedDevices user,
-// user-owned nodes present their login, orphaned nodes present nothing.
+// deviceUser is the owning login. A tagged device, owned by its tags, shows
+// the login that made the key it joined with, as Tailscale does: nothing when
+// a token made that key.
 func deviceUser(view types.NodeView) string {
+	if view.IsTagged() {
+		if key := view.AuthKey(); key.Valid() && key.User().Valid() {
+			return key.User().Username()
+		}
+
+		return ""
+	}
+
 	owner := view.Owner()
 	if owner.Valid() {
 		return owner.Username()
