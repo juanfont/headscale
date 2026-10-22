@@ -93,15 +93,11 @@ var mapStreamSkipReasons = map[string]string{
 	"policy-generation/G3/thor-2/peer-owners": sameUserPeers,
 	"policy-generation/G4/thor-1/peer-owners": sameUserPeers,
 	"policy-generation/G4/thor-2/peer-owners": sameUserPeers,
-
-	"user-role/S0/tag-a/device-user": taggedDeviceUser,
-	"user-role/S0/tag-b/device-user": taggedDeviceUser,
 }
 
 const (
 	policyResponseToEveryNode = "POLICY_RESPONSE_TO_EVERY_NODE: headscale sends every connected node a policy response when the policy, a node's tags or approved routes, or the set of nodes change; SaaS sends only the nodes whose peers or filter change"
 	restartEndpointsKept      = "RESTART_ENDPOINTS_KEPT: headscale keeps a restarted node's last endpoints at its peers until it reports new ones; SaaS sends peers the node without endpoints until then"
-	taggedDeviceUser          = "TAGGED_DEVICE_USER: SaaS shows a tagged device's user as the login that made its key; headscale shows tagged-devices"
 )
 
 // mapStreamNotCompared lists, by key prefix, checks left out: SaaS's answer
