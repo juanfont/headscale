@@ -575,6 +575,14 @@ func (t *Tag) Resolve(p *Policy, users types.Users, nodes views.Slice[types.Node
 func (t *Tag) resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 
+	if p != nil && p.nodesByTag != nil {
+		for _, node := range p.nodesByTag[string(*t)] {
+			node.AppendToIPSet(&ips)
+		}
+
+		return ips.IPSet()
+	}
+
 	for _, node := range nodes.All() {
 		// Check if node has this tag
 		if node.HasTag(string(*t)) {
@@ -1961,6 +1969,33 @@ type Policy struct {
 	Tests               []PolicyTest       `json:"tests,omitempty"`
 	SSHTests            []SSHPolicyTest    `json:"sshTests,omitempty"`
 	RandomizeClientPort bool               `json:"randomizeClientPort,omitempty"`
+
+	// nodesByTag is set only on the copy [Policy.withNodesByTag] makes for
+	// one compile, and indexes the nodes that compile resolves against.
+	nodesByTag map[string][]types.NodeView
+}
+
+// withNodesByTag returns a copy of pol to resolve against nodes, and only
+// nodes. Its tag aliases look their members up instead of scanning every
+// node: a compile resolves every tag alias occurrence, so with many tags the
+// scans were most of the compile.
+func (pol *Policy) withNodesByTag(nodes views.Slice[types.NodeView]) *Policy {
+	if pol == nil {
+		return nil
+	}
+
+	byTag := make(map[string][]types.NodeView)
+
+	for _, node := range nodes.All() {
+		for _, tag := range node.Tags().All() {
+			byTag[tag] = append(byTag[tag], node)
+		}
+	}
+
+	indexed := *pol
+	indexed.nodesByTag = byTag
+
+	return &indexed
 }
 
 // MarshalJSON is deliberately not implemented for [Policy].

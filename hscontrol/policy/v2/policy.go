@@ -246,9 +246,12 @@ func NewPolicyManager(b []byte, users []types.User, nodes views.Slice[types.Node
 // pm is written, so a caller that restores its own input on error leaves pm
 // as it was, and a retry with the same input recompiles.
 func (pm *PolicyManager) updateLocked() (bool, error) {
+	// One tag index serves every resolution in this compile.
+	pol := pm.pol.withNodesByTag(pm.nodes)
+
 	// Compile all grants once. Both global and per-node filter
 	// rules are derived from these compiled grants.
-	grants := pm.pol.compileGrants(pm.users, pm.nodes)
+	grants := pol.compileGrants(pm.users, pm.nodes)
 
 	relayTargetIPs, err := collectRelayTargetIPs(grants)
 	if err != nil {
@@ -258,12 +261,12 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	// Order matters, tags might be used in autoapprovers, so we need to ensure
 	// that the map for tag owners is resolved before resolving autoapprovers.
 	// TODO(kradalby): Order might not matter after #2417
-	tagMap, err := resolveTagOwners(pm.pol, pm.users, pm.nodes)
+	tagMap, err := resolveTagOwners(pol, pm.users, pm.nodes)
 	if err != nil {
 		return false, fmt.Errorf("resolving tag owners map: %w", err)
 	}
 
-	autoMap, exitSet, err := resolveAutoApprovers(pm.pol, pm.users, pm.nodes)
+	autoMap, exitSet, err := resolveAutoApprovers(pol, pm.users, pm.nodes)
 	if err != nil {
 		return false, fmt.Errorf("resolving auto approvers map: %w", err)
 	}
@@ -279,7 +282,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 
 	var nodeAttrs map[types.NodeID]tailcfg.NodeCapMap
 	if refreshNodeAttrs {
-		nodeAttrs, err = pm.pol.compileNodeAttrs(pm.users, pm.nodes)
+		nodeAttrs, err = pol.compileNodeAttrs(pm.users, pm.nodes)
 		if err != nil {
 			return false, fmt.Errorf("compiling nodeAttrs: %w", err)
 		}
