@@ -151,12 +151,15 @@ func apiv2DevicesGoClient(t *testing.T, srv *servertest.TestServer, baseURL, api
 	require.NoError(t, dr.SetKey(ctx, deviceID, tsclient.DeviceKey{KeyExpiryDisabled: false}))
 	assert.False(t, srvNodeView(t, srv, id).Expiry().Valid())
 
-	// SetTags — flips ownership to the tags; the user is dropped.
+	// SetTags — flips ownership to the tags; the user is dropped, and the
+	// device shows the login that made its key.
+	joinedBy := dev.User
+
 	require.NoError(t, dr.SetTags(ctx, deviceID, []string{"tag:ci"}))
 	dev, err = dr.Get(ctx, deviceID)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"tag:ci"}, dev.Tags)
-	assert.Equal(t, types.TaggedDevices.Username(), dev.User)
+	assert.Equal(t, joinedBy, dev.User)
 	n := srvNodeView(t, srv, id)
 	assert.True(t, n.IsTagged())
 	assert.Equal(t, []string{"tag:ci"}, n.Tags().AsSlice())
