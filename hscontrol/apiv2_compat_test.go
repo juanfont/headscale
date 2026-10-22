@@ -96,20 +96,8 @@ var apiv2CompatSkipReasons = map[string]string{
 	"oauth/B7/0/message": deletedClientCredentialText,
 	"oauth/B7/1/message": deletedClientCredentialText,
 
-	"oauth/device:before/all/device-oauth-client":        deviceOAuthClientID,
-	"oauth/device:ci-runner/all/device-oauth-client":     deviceOAuthClientID,
-	"oauth/device:joiner/all/device-oauth-client":        deviceOAuthClientID,
-	"oauth/device:laptop/all/device-oauth-client":        deviceOAuthClientID,
-	"oauth/device:managed/all/device-oauth-client":       deviceOAuthClientID,
-	"oauth/device:mixed/all/device-oauth-client":         deviceOAuthClientID,
-	"oauth/device:prod-db/all/device-oauth-client":       deviceOAuthClientID,
-	"oauth/device:router/all/device-oauth-client":        deviceOAuthClientID,
-	"oauth/device:ci-runner/default/device-oauth-client": deviceOAuthClientID,
-	"oauth/device:laptop/default/device-oauth-client":    deviceOAuthClientID,
-	"oauth/device:managed/default/device-oauth-client":   deviceOAuthClientID,
-	"oauth/device:mixed/default/device-oauth-client":     deviceOAuthClientID,
-	"oauth/device:prod-db/default/device-oauth-client":   deviceOAuthClientID,
-	"oauth/device:router/default/device-oauth-client":    deviceOAuthClientID,
+	"oauth/device:before/all/device-oauth-client": deviceOAuthClientMaker,
+	"oauth/device:joiner/all/device-oauth-client": deviceOAuthClientMaker,
 
 	"oauth/device:before/empty-route-lists":    emptyRouteListsOmitted,
 	"oauth/device:ci-runner/empty-route-lists": emptyRouteListsOmitted,
@@ -178,7 +166,6 @@ const (
 	deletedClientGone           = "DELETED_CLIENT_GONE: SaaS keeps a deleted OAuth client readable as invalid and revoked; headscale removes it"
 	deletedClientCredentialText = "DELETED_CLIENT_CREDENTIAL_TEXT: SaaS refuses a deleted client's secret and tokens with API token invalid; headscale says invalid client credentials and unauthorized"
 	missingScopeText            = "MISSING_SCOPE_TEXT: SaaS refuses a delete outside the token's scopes with calling actor does not have enough permissions; headscale names the missing scope"
-	deviceOAuthClientID         = "DEVICE_OAUTH_CLIENT_ID: SaaS device bodies carry oauthClientId, naming the join key or the OAuth client that made it; headscale's have no such field"
 	emptyRouteListsOmitted      = "EMPTY_ROUTE_LISTS_OMITTED: SaaS sends advertisedRoutes and enabledRoutes as [] for a device without routes under fields=all; headscale leaves both out"
 	noV2Validate                = "NO_V2_VALIDATE: headscale's v2 API has no /acl/validate"
 	hujsonFormatted             = "HUJSON_FORMATTED: SaaS stores a HuJSON policy formatted, comments kept; headscale stores the bytes as sent"
@@ -186,8 +173,9 @@ const (
 
 // SaaS behaviour recorded as it is; following it is the maintainer's call.
 const (
-	missingScopeNotFound = "MISSING_SCOPE_NOT_FOUND: SaaS answers a call outside the token's scopes with 404 not found; headscale answers 403"
-	unknownScopeGranted  = "UNKNOWN_SCOPE_GRANTED: SaaS ignores an unknown requested scope and grants the client's own; headscale grants the unknown scope alone"
+	deviceOAuthClientMaker = "DEVICE_OAUTH_CLIENT_ID: SaaS names, in oauthClientId, the OAuth client whose token made the device's key; headscale does not record which client that was, so it leaves the field out"
+	missingScopeNotFound   = "MISSING_SCOPE_NOT_FOUND: SaaS answers a call outside the token's scopes with 404 not found; headscale answers 403"
+	unknownScopeGranted    = "UNKNOWN_SCOPE_GRANTED: SaaS ignores an unknown requested scope and grants the client's own; headscale grants the unknown scope alone"
 )
 
 // TestAPIv2OAuthCompat replays OAuth clients, token exchanges, auth keys,
