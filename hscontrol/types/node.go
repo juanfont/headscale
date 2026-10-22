@@ -338,9 +338,8 @@ func (node *Node) Prefixes() []netip.Prefix {
 }
 
 // ExitRoutes returns the node's approved exit routes (0.0.0.0/0
-// and/or ::/0). Consumed unconditionally by RoutesForPeer when the
-// viewer uses an exit node; excluded from [Node.CanAccessRoute] which only
-// handles non-exit routing.
+// and/or ::/0). [Node.CanAccessRoutes] offers them only to a viewer whose
+// rules reach the internet.
 func (node *Node) ExitRoutes() []netip.Prefix {
 	return node.approvedRoutes(true)
 }
@@ -464,19 +463,10 @@ func (node *Node) CanAccessRoute(matchers []matcher.Match, route netip.Prefix) b
 // CanAccessRoutes returns the authorized routes in input order, evaluating the
 // node's matcher membership once for the whole list.
 //
-// Unlike [Node.CanAccess], this function intentionally does NOT check
-// [matcher.Match.DestsIsTheInternet]. Exit routes (0.0.0.0/0, ::/0) are handled by
-// RoutesForPeer (state.go) which adds them unconditionally from
-// [Node.ExitRoutes], not through ACL-based route filtering. The
-// [matcher.Match.DestsIsTheInternet] check in [Node.CanAccess] exists solely for peer
-// visibility determination (should two nodes see each other), which
-// is a separate concern from route prefix authorization.
-//
-// Additionally, autogroup:internet is explicitly skipped during filter
-// rule compilation (filter.go), so no matchers ever contain "the
-// internet" from internet-targeted ACLs. Wildcard "*" dests produce
-// matchers where [matcher.Match.DestsOverlapsPrefixes](0.0.0.0/0) already returns
-// true, so the check would be redundant for that case.
+// Exit routes (0.0.0.0/0, ::/0) are kept only for a rule from the node to the
+// internet ([matcher.Match.DestsIsTheInternet]), the test [Node.CanAccess]
+// applies to exit nodes: every destination overlaps /0, so overlap would offer
+// them for any rule.
 func (node *Node) CanAccessRoutes(
 	matchers []matcher.Match,
 	routes []netip.Prefix,
@@ -507,7 +497,19 @@ func (node *Node) CanAccessRoutes(
 	var result []netip.Prefix
 
 	for _, route := range routes {
+		exit := tsaddr.IsExitRoute(route)
+
 		for i, m := range matchers {
+			if exit {
+				if sides[i].isSrc && m.DestsIsTheInternet() {
+					result = append(result, route)
+
+					break
+				}
+
+				continue
+			}
+
 			if (sides[i].isSrc && m.DestsOverlapsPrefixes(route)) ||
 				(sides[i].isDst && m.SrcsOverlapsPrefixes(route)) {
 				result = append(result, route)
