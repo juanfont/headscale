@@ -285,12 +285,17 @@ func registerDevices(api huma.API, b Backend) {
 		// owned by a held tag per policy); an admin API key is unrestricted. The
 		// devices:core scope alone must not let a token stamp an arbitrary policy
 		// tag (e.g. tag:prod) onto any node. SetNodeTags still enforces that each
-		// tag exists in policy.
+		// tag exists in policy. SetNodeTags replaces the set, so the token must
+		// also own every tag the device holds; as on Tailscale SaaS, the refusal
+		// then names them all.
 		if tokenTags, isOAuth := principalTags(ctx); isOAuth {
-			for _, tag := range in.Body.Tags {
-				if !b.State.TagOwnedByTags(tag, tokenTags) {
-					return nil, huma.Error403Forbidden("token may not assign tag " + tag)
-				}
+			current := node.Tags().AsSlice()
+			if len(unownedTags(b, current, tokenTags)) > 0 {
+				return nil, tagsRefused("cannot remove current tags: ", current)
+			}
+
+			if refused := unownedTags(b, in.Body.Tags, tokenTags); len(refused) > 0 {
+				return nil, tagsRefused("", refused)
 			}
 		}
 
