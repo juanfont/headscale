@@ -292,6 +292,55 @@ func TestAPIv2ACLRefusalEnvelope(t *testing.T) {
 	assert.Len(t, tests.Data[1].Errors, 2)
 }
 
+// TestAPIv2ACLValidate: validate stores nothing and answers a refused policy
+// with 200, its reason as message and one data entry per failing test; only
+// a body with no policy at all is a 400.
+func TestAPIv2ACLValidate(t *testing.T) {
+	app := createTestApp(t)
+	app.state.CreateUserForTest("alice")
+	api := registerAPIV2(t, app)
+
+	type verdict struct {
+		Message string `json:"message"`
+		Data    []struct {
+			User   string   `json:"user"`
+			Errors []string `json:"errors"`
+		} `json:"data"`
+	}
+
+	validate := func(body string, wantStatus int) verdict {
+		t.Helper()
+
+		resp := api.Post("/api/v2/tailnet/-/acl/validate",
+			bytes.NewReader([]byte(body)), "Content-Type: application/hujson")
+		require.Equalf(t, wantStatus, resp.Code, "body: %s", resp.Body)
+
+		var v verdict
+		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &v))
+
+		return v
+	}
+
+	for _, empty := range []string{"", " \n\t"} {
+		assert.Equal(t, "unexpected end of JSON input",
+			validate(empty, http.StatusBadRequest).Message)
+	}
+
+	assert.Equal(t, verdict{}, validate(allowAllPolicy, http.StatusOK))
+	assert.NotEmpty(t, validate(`{"acls": [`, http.StatusOK).Message)
+
+	failed := validate(`{
+		"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}],
+		"tests": [{"src": "alice@", "deny": ["100.64.0.2:22"]}]
+	}`, http.StatusOK)
+	assert.Equal(t, "test(s) failed", failed.Message)
+	require.Len(t, failed.Data, 1)
+	assert.Equal(t, "alice", failed.Data[0].User)
+
+	_, err := app.state.GetPolicy()
+	require.ErrorIs(t, err, types.ErrPolicyNotFound, "validate stores nothing")
+}
+
 func TestAPIv2ACLNonDefaultTailnet404(t *testing.T) {
 	api := registerAPIV2(t, createTestApp(t))
 
