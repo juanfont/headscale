@@ -771,9 +771,16 @@ func (s *State) Connect(id types.NodeID) ([]change.Change, uint64) {
 
 	// Reconnecting clears Unhealthy: the node just proved basic
 	// connectivity by completing the Noise handshake.
-	var epoch uint64
+	var (
+		epoch     uint64
+		wasOnline bool
+	)
 
 	node, ok := s.nodeStore.UpdateNode(id, func(n *types.Node) {
+		// A stream that comes back within the reconnect grace finds the
+		// node still online: peers saw no change, as on Tailscale SaaS.
+		wasOnline = n.IsOnline != nil && *n.IsOnline
+
 		n.SessionEpoch++
 		epoch = n.SessionEpoch
 
@@ -791,17 +798,22 @@ func (s *State) Connect(id types.NodeID) ([]change.Change, uint64) {
 		return nil, 0
 	}
 
+	log.Info().EmbedObject(node).Msg("node connected")
+
 	// A node coming online sends a lightweight online peer patch. Subnet
 	// routers, relay targets, and via targets get their full peer recompute
 	// from the gated PolicyChange below, so no full update is needed here.
-	c := []change.Change{change.NodeOnline(node.ID())}
-	if !node.Online() {
-		c[0] = change.NodeAdded(node.ID())
+	var c []change.Change
+
+	switch {
+	case !node.Online():
+		c = append(c, change.NodeAdded(node.ID()))
+	case !wasOnline:
+		c = append(c, change.NodeOnline(node.ID()))
 	}
 
-	log.Info().EmbedObject(node).Msg("node connected")
-
-	if !maps.Equal(prevRoutes, s.nodeStore.PrimaryRoutes()) {
+	routesMoved := !maps.Equal(prevRoutes, s.nodeStore.PrimaryRoutes())
+	if routesMoved {
 		c = append(c, change.NodeAdded(id))
 	}
 
@@ -810,7 +822,7 @@ func (s *State) Connect(id types.NodeID) ([]change.Change, uint64) {
 	// An ordinary node coming online just sends the lightweight online
 	// patch above; emitting a PolicyChange for it would force every peer
 	// to rebuild its netmap on every reconnect.
-	if s.polMan.NodeNeedsPeerRecompute(node) {
+	if (!wasOnline || routesMoved) && s.polMan.NodeNeedsPeerRecompute(node) {
 		c = append(c, change.PolicyChange())
 	}
 
@@ -2869,7 +2881,7 @@ func (s *State) HandleNodeFromAuthPath(
 	var (
 		finalNode types.NodeView
 		before    types.NodeView
-		keysOnly  bool
+		changed   relogin
 	)
 
 	if nodeExists && !existingNode.IsTagged() {
@@ -2880,7 +2892,7 @@ func (s *State) HandleNodeFromAuthPath(
 			return types.NodeView{}, s.policyChangeSince(genBefore), err
 		}
 
-		keysOnly = onlyKeysChanged(before, finalNode, time.Now())
+		changed = reloginChanged(before, finalNode, time.Now())
 	} else if nodeExists {
 		updateParams.ExistingNode = existingNode
 		updateParams.IsConvertFromTag = true
@@ -2939,10 +2951,10 @@ func (s *State) HandleNodeFromAuthPath(
 
 	policyChanged := !usersChange.IsEmpty() || !nodesChange.IsEmpty()
 
-	// keysOnly is set only for a same-user relogin; a tag->user conversion is
+	// changed is set only for a same-user relogin; a tag->user conversion is
 	// excluded, as it changes the peer's User — a structural change peers must
 	// see in full, not a key-rotation patch.
-	return s.approveRoutesAfterRegistration(before, finalNode, reauthChange(finalNode, keysOnly, policyChanged))
+	return s.approveRoutesAfterRegistration(before, finalNode, reauthChange(finalNode, changed, policyChanged))
 }
 
 func sortedPrefixes(p []netip.Prefix) []netip.Prefix {
@@ -3226,7 +3238,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 
 	var (
 		finalNode types.NodeView
-		keysOnly  bool
+		changed   relogin
 	)
 
 	var before types.NodeView
@@ -3241,7 +3253,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 			return types.NodeView{}, s.policyChangeSince(genBefore), err
 		}
 
-		keysOnly = onlyKeysChanged(before, finalNode, time.Now())
+		changed = reloginChanged(before, finalNode, time.Now())
 	} else {
 		// Node does not exist for this user with this machine key.
 		// For a user-owned key, check whether the machine key is already held
@@ -3341,7 +3353,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 
 	policyChanged := !usersChange.IsEmpty() || !nodesChange.IsEmpty()
 
-	return s.approveRoutesAfterRegistration(before, finalNode, reauthChange(finalNode, keysOnly, policyChanged))
+	return s.approveRoutesAfterRegistration(before, finalNode, reauthChange(finalNode, changed, policyChanged))
 }
 
 // approveRoutesAfterRegistration runs route auto-approval after a
@@ -3652,32 +3664,61 @@ func (s *State) undoReregistration(prior, written *types.Node) {
 	}
 }
 
+// relogin is what a same-user relogin changed that its peers read.
+type relogin int
+
+const (
+	// reloginWhole: something [change.NodeKeyRotated] cannot patch.
+	reloginWhole relogin = iota
+	// reloginKeys: only what [change.NodeKeyRotated] patches.
+	reloginKeys
+	// reloginNone: nothing, as when a client logs in again on its node key;
+	// Tailscale SaaS sends its peers nothing then.
+	reloginNone
+)
+
 // reauthChange returns the [change.Change] to broadcast after an authentication
-// that updated or created a node. keysOnly marks a same-user relogin that
-// changed nothing peers read besides its keys; see [onlyKeysChanged].
+// that updated or created a node; r is [reloginWhole] for any but a same-user
+// relogin.
 //
-// Such a relogin is sent as the minimal peer patch [change.NodeKeyRotated].
-// Anything else is a whole-node add, and a policy change forces a full
-// recompute.
-func reauthChange(node types.NodeView, keysOnly, policyChanged bool) change.Change {
+// A keys-only relogin is sent as the minimal peer patch
+// [change.NodeKeyRotated]. Anything else is a whole-node add, and a policy
+// change forces a full recompute.
+func reauthChange(node types.NodeView, r relogin, policyChanged bool) change.Change {
 	switch {
 	case policyChanged:
 		return change.PolicyChange()
-	case keysOnly:
+	case r == reloginNone:
+		return change.Change{}
+	case r == reloginKeys:
 		return change.NodeKeyRotated(node)
 	default:
 		return change.NodeAdded(node.ID())
 	}
 }
 
-// onlyKeysChanged reports whether peers read before and after the same, apart
-// from what [change.NodeKeyRotated] patches. [tailcfg.PeerChange] carries
-// neither [tailcfg.Node.Expired] nor Hostinfo: peers left holding an expired
-// node drop its WireGuard handshakes, and the relogin stored the Hostinfo, so
-// no later MapRequest shows the change.
-func onlyKeysChanged(before, after types.NodeView, now time.Time) bool {
-	return before.IsExpiredAt(now) == after.IsExpiredAt(now) &&
-		peerHostinfoEqual(before.Hostinfo(), after.Hostinfo())
+// reloginChanged compares what peers read before and after a relogin.
+// [tailcfg.PeerChange] carries neither [tailcfg.Node.Expired] nor Hostinfo:
+// peers left holding an expired node drop its WireGuard handshakes, and the
+// relogin stored the Hostinfo, so no later MapRequest shows the change.
+func reloginChanged(before, after types.NodeView, now time.Time) relogin {
+	expiry := func(n types.NodeView) time.Time {
+		e, _ := n.Expiry().GetOk()
+
+		return e
+	}
+
+	switch {
+	case before.IsExpiredAt(now) != after.IsExpiredAt(now) ||
+		!peerHostinfoEqual(before.Hostinfo(), after.Hostinfo()):
+		return reloginWhole
+	case before.NodeKey() == after.NodeKey() && before.DiscoKey() == after.DiscoKey() &&
+		expiry(before).Equal(expiry(after)) &&
+		views.SliceEqual(before.Endpoints(), after.Endpoints()):
+		return reloginNone
+	default:
+		return reloginKeys
+	}
 }
 
 // updatePolicyManagerUsers pushes the current user list into the policy
