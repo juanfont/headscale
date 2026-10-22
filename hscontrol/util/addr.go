@@ -146,6 +146,19 @@ func StringToIPPrefix(prefixes []string) ([]netip.Prefix, error) {
 	return result, nil
 }
 
+var ErrRouteHostBits = errors.New("has non-address bits set")
+
+// CheckRouteMasked refuses a route with bits set past its length: routes are
+// matched as written, so it would never equal the masked prefix a client
+// announces.
+func CheckRouteMasked(p netip.Prefix) error {
+	if masked := p.Masked(); p != masked {
+		return fmt.Errorf("%w; expected %s", ErrRouteHostBits, masked)
+	}
+
+	return nil
+}
+
 // IPSetAddrIter returns a function that iterates over all the IPs in the [netipx.IPSet].
 func IPSetAddrIter(ipSet *netipx.IPSet) iter.Seq[netip.Addr] {
 	return func(yield func(netip.Addr) bool) {
