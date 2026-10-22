@@ -19,6 +19,10 @@ import (
 	"tailscale.com/tailcfg"
 )
 
+// minPendingFold is the pending length below which appendPending leaves the
+// folding to the drain.
+const minPendingFold = 64
+
 // errNoActiveConnections is returned by [multiChannelNodeConn.send] when a node
 // has no active connections (disconnected but kept in the batcher for rapid
 // reconnection). Callers must not update peer tracking state (lastSentPeers)
@@ -104,6 +108,11 @@ type multiChannelNodeConn struct {
 	// send() (which sends data to connections).
 	pendingMu sync.Mutex
 	pending   []change.Change
+
+	// pendingFoldAt is the pending length at which appendPending folds the
+	// backlog again: twice what the last fold left, so appends stay
+	// amortized O(1).
+	pendingFoldAt int
 
 	// workMu serializes change processing for this node across batch ticks.
 	// Without this, two workers could process consecutive ticks' bundles
@@ -286,6 +295,14 @@ func (mc *multiChannelNodeConn) offlineDuration() time.Duration {
 func (mc *multiChannelNodeConn) appendPending(changes ...change.Change) {
 	mc.pendingMu.Lock()
 	mc.pending = append(mc.pending, changes...)
+
+	// Pending drains only once the bundle in flight is delivered, so behind
+	// workers it grew by every change; it renders folded anyway, and
+	// folding twice gives what folding once does.
+	if len(mc.pending) >= max(mc.pendingFoldAt, minPendingFold) {
+		mc.pending = change.CoalescePeerDeltas(mc.id, change.DedupePolicyChanges(mc.pending))
+		mc.pendingFoldAt = 2 * len(mc.pending)
+	}
 	mc.pendingMu.Unlock()
 }
 
