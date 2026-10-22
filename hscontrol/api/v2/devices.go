@@ -393,6 +393,11 @@ func parseRoutes(routes []string) ([]netip.Prefix, error) {
 			return nil, huma.Error400BadRequest("parsing route", err)
 		}
 
+		err = util.CheckRouteMasked(prefix)
+		if err != nil {
+			return nil, huma.Error400BadRequest(prefix.String() + " " + err.Error())
+		}
+
 		if prefix == tsaddr.AllIPv4() || prefix == tsaddr.AllIPv6() {
 			approved = append(approved, tsaddr.AllIPv4(), tsaddr.AllIPv6())
 		} else {

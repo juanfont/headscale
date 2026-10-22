@@ -204,9 +204,6 @@ func loadACLTestFile(t *testing.T, path string) *testcapture.Capture {
 // aclSkipReasons lists checks where headscale differs from SaaS, keyed
 // <test_id>[/<node>]/<check>.
 var aclSkipReasons = map[string]string{
-	"acl-err10/refused": routeHostBits,
-	"acl-err11/refused": routeHostBits,
-
 	"acl-n01/beedrill/filter":   allowAllForm,
 	"acl-n01/bulbasaur/filter":  allowAllForm,
 	"acl-n01/charmander/filter": allowAllForm,
@@ -222,7 +219,6 @@ var aclSkipReasons = map[string]string{
 }
 
 const (
-	routeHostBits  = "ROUTE_HOST_BITS: SaaS refuses an autoApprovers route with host bits; headscale accepts it"
 	allowAllForm   = "ALLOW_ALL_FORM: SaaS writes the allow-all default's sources as the tailnet ranges, headscale as \"*\""
 	srcAddressForm = "FILTER_ADDRESS_FORM: SaaS lists contiguous source addresses one by one, headscale as a range"
 )
