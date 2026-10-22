@@ -199,7 +199,7 @@ func TestRegistrationApprovalComparesReplacedNode(t *testing.T) {
 
 	req := c.regReq
 	req.Hostinfo = hi.Clone()
-	node, replaced, err := s.reregisterNodeWithPAK(stale, stalePAK, req, c.machineKey, hi.Hostname, req.Hostinfo)
+	node, replaced, err := s.reregisterNodeWithPAK(stale, stalePAK, nil, req, c.machineKey, hi.Hostname, req.Hostinfo)
 	require.NoError(t, err)
 
 	_, _, err = s.approveRoutesAfterRegistration(replaced, node, change.Change{})
