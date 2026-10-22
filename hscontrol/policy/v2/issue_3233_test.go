@@ -171,6 +171,16 @@ func TestViaInternetExitSteeringSurvivesUnrelatedRules(t *testing.T) {
 			extra:        `"acls": [{"action": "accept", "src": ["autogroup:member"], "dst": ["*:*"]}],`,
 			wantExcluded: false,
 		},
+		{
+			name:         "acl-ipv4-default",
+			extra:        `"acls": [{"action": "accept", "src": ["autogroup:member"], "dst": ["0.0.0.0/0:*"]}],`,
+			wantExcluded: false,
+		},
+		{
+			name:         "acl-ipv6-default",
+			extra:        `"acls": [{"action": "accept", "src": ["autogroup:member"], "dst": ["::/0:*"]}],`,
+			wantExcluded: false,
+		},
 	}
 
 	for _, tt := range tests {

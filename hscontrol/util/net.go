@@ -63,6 +63,15 @@ var TheInternet = sync.OnceValue(func() *netipx.IPSet {
 	return theInternetSet
 })
 
+// CoversTheInternet reports whether set covers [TheInternet]. Either
+// family's /0 counts alone, because operators write it directly and it
+// still denotes the whole internet for that family.
+func CoversTheInternet(set *netipx.IPSet) bool {
+	return set.ContainsPrefix(tsaddr.AllIPv4()) ||
+		set.ContainsPrefix(tsaddr.AllIPv6()) ||
+		IPSetSubsetOf(TheInternet(), set)
+}
+
 // IPSetSubsetOf reports whether every prefix of candidate is contained in
 // container. A nil candidate or container returns false.
 func IPSetSubsetOf(candidate, container *netipx.IPSet) bool {
