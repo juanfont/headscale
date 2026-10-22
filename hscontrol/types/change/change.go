@@ -6,6 +6,7 @@ package change
 
 import (
 	"fmt"
+	"net/netip"
 	"slices"
 	"time"
 
@@ -612,12 +613,18 @@ func NodeKeyRotated(node types.NodeView) Change {
 		expiry = e.UTC()
 	}
 
+	// Peers get an expired node without its endpoints.
+	var endpoints []netip.AddrPort
+	if !node.IsExpired() {
+		endpoints = node.Endpoints().AsSlice()
+	}
+
 	c := PeerPatched("node key rotated (relogin)", &tailcfg.PeerChange{
 		NodeID:    tailcfg.NodeID(node.ID()), //nolint:gosec // NodeID is bounded
 		Key:       &nk,
 		DiscoKey:  &dk,
 		KeyExpiry: &expiry,
-		Endpoints: node.Endpoints().AsSlice(),
+		Endpoints: endpoints,
 	})
 	c.OriginNode = node.ID()
 
