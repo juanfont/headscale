@@ -39,35 +39,6 @@ import (
 var reauthSkipReasons = map[string]string{
 	"owner-routes/r-expired-retag/expire/online": expiredPeerOffline,
 
-	"identity/w-tagreq-relogin-tags/w-tagreq/owner":        keyLoginTagsRefused,
-	"identity/w-tagreq-relogin-tags/w-tagreq/outcome":      keyLoginTagsRefused,
-	"identity/w-tagreq-relogin-tags/w-tagreq/node-key":     keyLoginTagsRefused,
-	"identity/w-tagreq-relogin-tags/w-tagreq/expiry":       keyLoginTagsRefused,
-	"identity/w-tagreq-relogin-tags/obs/filter":            keyLoginTagsRefused,
-	"identity/w-tagreq-new-join/w-tagreq-new/devices":      keyLoginTagsRefused,
-	"identity/w-tagreq-new-join/w-tagreq-new/owner":        keyLoginTagsRefused,
-	"identity/w-tagreq-new-join/w-tagreq-new/outcome":      keyLoginTagsRefused,
-	"identity/w-tagreq-new-join/w-tagreq-new/expiry":       keyLoginTagsRefused,
-	"identity/w-tagreq-new-join/w-tagreq-new/ephemeral":    keyLoginTagsRefused,
-	"identity/w-tagreq-new-join/w-tagreq-new/peer-obs":     keyLoginTagsRefused,
-	"identity/w-tagreq-new-join/w-tagreq-new/peer-key-obs": keyLoginTagsRefused,
-
-	"tag-owner-chain/u-base-join/u-base/devices":      keyLoginTagsRefused,
-	"tag-owner-chain/u-base-join/u-base/owner":        keyLoginTagsRefused,
-	"tag-owner-chain/u-base-join/u-base/outcome":      keyLoginTagsRefused,
-	"tag-owner-chain/u-base-join/u-base/expiry":       keyLoginTagsRefused,
-	"tag-owner-chain/u-base-join/u-base/ephemeral":    keyLoginTagsRefused,
-	"tag-owner-chain/u-base-join/u-base/peer-obs":     keyLoginTagsRefused,
-	"tag-owner-chain/u-base-join/u-base/peer-key-obs": keyLoginTagsRefused,
-
-	"tag-owner-chain/t-mid-join/t-mid/devices":      taggedKeyOwnedTagRefused,
-	"tag-owner-chain/t-mid-join/t-mid/owner":        taggedKeyOwnedTagRefused,
-	"tag-owner-chain/t-mid-join/t-mid/outcome":      taggedKeyOwnedTagRefused,
-	"tag-owner-chain/t-mid-join/t-mid/expiry":       taggedKeyOwnedTagRefused,
-	"tag-owner-chain/t-mid-join/t-mid/ephemeral":    taggedKeyOwnedTagRefused,
-	"tag-owner-chain/t-mid-join/t-mid/peer-obs":     taggedKeyOwnedTagRefused,
-	"tag-owner-chain/t-mid-join/t-mid/peer-key-obs": taggedKeyOwnedTagRefused,
-
 	"reauth/late-pak-spent-key/late-pak/text":        refusalText,
 	"reauth/late-pak-spent-key/late-pak/legacy-text": refusalText,
 
@@ -78,9 +49,7 @@ var reauthSkipReasons = map[string]string{
 }
 
 const (
-	keyLoginTagsRefused      = "KEY_LOGIN_TAGS_REFUSED: headscale refuses a user's key login that requests tags the user owns; SaaS tags the device, converting it in place or creating it tagged"
-	taggedKeyOwnedTagRefused = "TAGGED_KEY_OWNED_TAG_REFUSED: headscale refuses a tagged key's login that requests a tag the key's tags own; SaaS gives the device the requested tags"
-	refusalText              = "REFUSAL_TEXT: SaaS refuses a key by naming its ID; headscale says why the key is refused"
+	refusalText = "REFUSAL_TEXT: SaaS refuses a key by naming its ID; headscale says why the key is refused"
 )
 
 // reauthNotCompared lists, by key prefix, checks left out: SaaS's answer
