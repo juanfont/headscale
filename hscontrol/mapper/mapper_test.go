@@ -1776,6 +1776,14 @@ func (b *MapResponseBuilder) buildTailPeersCapMapsReference(peers views.Slice[ty
 		tn.CapMap = policyv2.PeerCapMap(peer, allCapMaps[peer.ID()])
 		tn.Hostinfo = types.PeerHostinfo(tn.Hostinfo)
 
+		if peer.IsExpired() {
+			if peer.ActiveSessions() > 0 {
+				tn.Online, tn.LastSeen = new(true), nil
+			}
+
+			tn.Endpoints, tn.HomeDERP = nil, 0
+		}
+
 		tailPeers = append(tailPeers, tn)
 	}
 
