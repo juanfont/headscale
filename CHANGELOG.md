@@ -127,7 +127,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
 - Fix `headscale users destroy`/`rename` reporting "multiple users match query" when no user matches; an ambiguous match now lists the matching users [#3476](https://github.com/juanfont/headscale/pull/3476)
 - Deleting a user that still owns nodes now lists the nodes (ID and hostname) that must be deleted first [#3475](https://github.com/juanfont/headscale/pull/3475)
-- Headscale now requires Go 1.27 to build
+- Headscale now requires Go 1.27.3 to build, which carries the `crypto/x509` security fixes [#3560](https://github.com/juanfont/headscale/pull/3560)
 - `headscale preauthkeys create --user` accepts a user name as well as an ID
 - `derp.paths` files may be Tailscale JSON or HuJSON DERP maps as well as YAML
 - `dns.extra_records_path` files may be HuJSON or YAML as well as JSON
