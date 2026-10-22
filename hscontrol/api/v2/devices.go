@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/netip"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -40,6 +41,10 @@ type Device struct {
 	OS                string     `json:"os"`
 	ClientVersion     string     `json:"clientVersion"`
 	UpdateAvailable   bool       `json:"updateAvailable"`
+	// OAuthClientID names the auth key the device joined with. For a key a
+	// token made, Tailscale names the token's OAuth client, which headscale
+	// does not record, so it is left out.
+	OAuthClientID string `json:"oauthClientId,omitempty"`
 
 	// Populated only when fields=all is requested.
 	AdvertisedRoutes []string `json:"advertisedRoutes,omitempty"`
@@ -454,6 +459,10 @@ func deviceFromView(view types.NodeView, allFields bool, baseDomain string) Devi
 		NodeKey:           view.NodeKey().String(),
 		OS:                hostinfoOS(view),
 		ClientVersion:     hostinfoVersion(view),
+	}
+
+	if key := view.AuthKey(); key.Valid() && !key.CreatedByToken() {
+		d.OAuthClientID = strconv.FormatUint(key.ID(), util.Base10)
 	}
 
 	if view.Expiry().Valid() {
