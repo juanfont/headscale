@@ -685,6 +685,30 @@ func (s *State) DeleteUser(userID types.UserID) (change.Change, error) {
 		return change.Change{}, err
 	}
 
+	// Tagged keys outlive the user that made them; their NodeStore copies
+	// must stop naming it, as the database already does.
+	dropCreator := func(n *types.Node) {
+		k := n.AuthKey
+		if k == nil || !k.IsTagged() || k.UserID == nil || types.UserID(*k.UserID) != userID {
+			return
+		}
+
+		key := *k
+		key.UserID, key.User = nil, nil
+		n.AuthKey = &key
+	}
+
+	updates := make(map[types.NodeID]UpdateNodeFunc)
+
+	for _, n := range s.nodeStore.ListNodes().All() {
+		if k := n.AuthKey(); k.Valid() && k.Tags().Len() > 0 && k.UserID().Valid() &&
+			types.UserID(k.UserID().Get()) == userID {
+			updates[n.ID()] = dropCreator
+		}
+	}
+
+	s.nodeStore.UpdateNodes(updates)
+
 	// Update policy manager with the new user list (without the deleted user)
 	// This ensures that if the policy references the deleted user, it gets
 	// re-evaluated immediately rather than when some other operation triggers it.
@@ -3158,21 +3182,8 @@ func (s *State) findExistingNodeForPAK(
 ) (types.NodeView, bool, error) {
 	all := s.nodeStore.GetNodesByMachineKeyAllUsers(machineKey)
 
-	if pak.User != nil {
-		node, ok := all[types.UserID(pak.User.ID)]
-		if !ok {
-			// The machine's tagged node, when the key speaks for it. Any other
-			// key under its own node key is the device restarting (#3312);
-			// pakReregister lets that key only wake it.
-			node, ok = all[0]
-			ok = ok && node.IsTagged() && (pak.CanReauthenticate(node) || node.NodeKey() == nodeKey)
-		}
-
-		return node, ok, nil
-	}
-
-	// A tagged key re-registers the same machine regardless of how it is
-	// currently owned. An existing tagged node is a plain re-registration. A
+	// A tagged key, whether or not it records its creator, re-registers the
+	// same machine regardless of how it is currently owned. An existing tagged node is a plain re-registration. A
 	// single user-owned node is converted to tagged in place (handled by the
 	// caller). More than one user-owned node is ambiguous - we cannot know
 	// which to convert - so reject rather than convert an arbitrary one and
@@ -3201,6 +3212,19 @@ func (s *State) findExistingNodeForPAK(
 		default:
 			return types.NodeView{}, false, ErrAmbiguousNodeOwnership
 		}
+	}
+
+	if pak.User != nil {
+		node, ok := all[types.UserID(pak.User.ID)]
+		if !ok {
+			// The machine's tagged node, when the key speaks for it. Any other
+			// key under its own node key is the device restarting (#3312);
+			// pakReregister lets that key only wake it.
+			node, ok = all[0]
+			ok = ok && node.IsTagged() && (pak.CanReauthenticate(node) || node.NodeKey() == nodeKey)
+		}
+
+		return node, ok, nil
 	}
 
 	return types.NodeView{}, false, nil
