@@ -323,6 +323,16 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 		tn.CapMap = policyv2.PeerCapMap(peer, peerCapMaps[peer.ID()])
 		tn.Hostinfo = types.PeerHostinfo(tn.Hostinfo)
 
+		// As on Tailscale SaaS, a connected expired peer shows online, but
+		// without the endpoints and home DERP region that would reach it.
+		if peer.IsExpired() {
+			if peer.ActiveSessions() > 0 {
+				tn.Online, tn.LastSeen = new(true), nil
+			}
+
+			tn.Endpoints, tn.HomeDERP = nil, 0
+		}
+
 		tailPeers = append(tailPeers, tn)
 	}
 
