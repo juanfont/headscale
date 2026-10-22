@@ -139,6 +139,20 @@ func buildUserNodeIndex(
 	return idx
 }
 
+// nodeAddrSet is the addresses of every node.
+func nodeAddrSet(nodes views.Slice[types.NodeView]) *netipx.IPSet {
+	var b netipx.IPSetBuilder
+
+	for _, n := range nodes.All() {
+		n.AppendToIPSet(&b)
+	}
+
+	// The builder only fails on invalid addresses, which nodes never hold.
+	set, _ := b.IPSet()
+
+	return set
+}
+
 // compileNodeAttrs returns the per-node CapMap derived from policy
 // nodeAttrs plus the tailnet-wide [Policy.RandomizeClientPort] flag.
 //

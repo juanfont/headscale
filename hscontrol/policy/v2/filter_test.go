@@ -1497,7 +1497,7 @@ func TestTagUserMutualExclusivity(t *testing.T) {
 
 	compiled := pol.compileFilterRulesForNode(users, userNode, nodes.ViewSlice())
 
-	userRules := policyutil.ReduceFilterRules(userNode, compiled)
+	userRules := policyutil.ReduceFilterRules(userNode, compiled, nodeAddrSet(nodes.ViewSlice()))
 
 	for _, rule := range userRules {
 		for _, dst := range rule.DstPorts {
@@ -1519,7 +1519,7 @@ func TestTagUserMutualExclusivity(t *testing.T) {
 
 	compiled = pol.compileFilterRulesForNode(users, dbNode, nodes.ViewSlice())
 
-	dbRules := policyutil.ReduceFilterRules(dbNode, compiled)
+	dbRules := policyutil.ReduceFilterRules(dbNode, compiled, nodeAddrSet(nodes.ViewSlice()))
 
 	foundServerSrc := false
 
@@ -1590,7 +1590,7 @@ func TestUserToTagCrossIdentityGrant(t *testing.T) {
 
 	compiled := pol.compileFilterRulesForNode(users, taggedNode, nodes.ViewSlice())
 
-	rules := policyutil.ReduceFilterRules(taggedNode, compiled)
+	rules := policyutil.ReduceFilterRules(taggedNode, compiled, nodeAddrSet(nodes.ViewSlice()))
 
 	// user1's IP should appear as a source that can reach tag:server.
 	foundUser1Src := false
