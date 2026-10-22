@@ -119,3 +119,42 @@ func Test_parseIPSet(t *testing.T) {
 		})
 	}
 }
+
+// TestParseIPRangeMatchesParseIPSet checks ParseIPRange accepts exactly what
+// ParseIPSet does, "*" aside, and denotes the same addresses.
+func TestParseIPRangeMatchesParseIPSet(t *testing.T) {
+	for _, arg := range []string{
+		"10.0.0.1",
+		"2001:db8::2",
+		"192.168.0.0/16",
+		"2001:db8:abcd:1234::/64",
+		"192.168.0.0-192.168.255.255",
+		"10.0.0.5-10.0.0.9",
+		"fd7a::1-fd7a::ff",
+		"10.0.0.1/8",
+		"10.0.0.9-10.0.0.1",
+		"10.0.0.1-fd7a::1",
+		"10.0.0.1-10.0.0.2-10.0.0.3",
+		"fe80::1%eth0",
+		"10.0.0.0/33",
+		"not-an-ip",
+		"",
+	} {
+		set, setErr := ParseIPSet(arg, nil)
+		r, rangeErr := ParseIPRange(arg)
+
+		if (setErr != nil) != (rangeErr != nil) {
+			t.Errorf("%q: ParseIPSet error %v, ParseIPRange error %v", arg, setErr, rangeErr)
+
+			continue
+		}
+
+		if setErr != nil {
+			continue
+		}
+
+		if diff := cmp.Diff(set.Ranges(), []netipx.IPRange{r}, cmp.Comparer(func(a, b netipx.IPRange) bool { return a == b })); diff != "" {
+			t.Errorf("%q: (-ParseIPSet +ParseIPRange):\n%s", arg, diff)
+		}
+	}
+}

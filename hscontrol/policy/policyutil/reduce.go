@@ -6,6 +6,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"go4.org/netipx"
 	"tailscale.com/tailcfg"
 )
 
@@ -18,6 +19,7 @@ import (
 // both cases.
 func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcfg.FilterRule {
 	ret := []tailcfg.FilterRule{}
+	nodeIPs := node.IPs()
 	subnetRoutes := node.SubnetRoutes()
 	exitRoutes := node.ExitRoutes()
 
@@ -37,32 +39,7 @@ func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcf
 		var dests []tailcfg.NetPortRange
 
 		for _, dest := range rule.DstPorts {
-			expanded, err := util.ParseIPSet(dest.IP, nil)
-			// Fail closed: unparseable dests are dropped.
-			if err != nil {
-				continue
-			}
-
-			if node.InIPSet(expanded) {
-				dests = append(dests, dest)
-				continue
-			}
-
-			// If the node has approved subnet routes, preserve
-			// filter rules targeting those routes.
-			// [types.NodeView.SubnetRoutes] returns only approved,
-			// non-exit routes — matching Tailscale SaaS behavior,
-			// which does not generate filter rules for
-			// advertised-but-unapproved routes.
-			if slices.ContainsFunc(subnetRoutes, expanded.OverlapsPrefix) {
-				dests = append(dests, dest)
-				continue
-			}
-
-			// Approved exit routes count like subnet routes. They
-			// contain every destination, so Tailscale SaaS sends an
-			// exit node every rule, not only internet ones.
-			if slices.ContainsFunc(exitRoutes, expanded.OverlapsPrefix) {
+			if destReachesNode(dest.IP, nodeIPs, subnetRoutes, exitRoutes) {
 				dests = append(dests, dest)
 			}
 		}
@@ -77,6 +54,33 @@ func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcf
 	}
 
 	return ret
+}
+
+// destReachesNode reports whether a DstPorts entry targets the node: one of
+// its addresses, or a route it serves. Every node reduces every entry on
+// every policy change, so the entry is parsed as one range rather than an
+// IPSet. Unparseable entries fail closed.
+func destReachesNode(dst string, nodeIPs []netip.Addr, subnetRoutes, exitRoutes []netip.Prefix) bool {
+	// Spans both families, so it is the one form that is not a range.
+	if dst == "*" {
+		return len(nodeIPs) > 0 || len(subnetRoutes) > 0 || len(exitRoutes) > 0
+	}
+
+	r, err := util.ParseIPRange(dst)
+	if err != nil {
+		return false
+	}
+
+	overlaps := func(p netip.Prefix) bool { return r.Overlaps(netipx.RangeOfPrefix(p)) }
+
+	// [types.NodeView.SubnetRoutes] holds only approved, non-exit routes:
+	// Tailscale SaaS generates no rules for advertised-but-unapproved
+	// routes. Approved exit routes count like subnet routes. They contain
+	// every destination, so SaaS sends an exit node every rule, not only
+	// internet ones.
+	return slices.ContainsFunc(nodeIPs, r.Contains) ||
+		slices.ContainsFunc(subnetRoutes, overlaps) ||
+		slices.ContainsFunc(exitRoutes, overlaps)
 }
 
 // reduceCapGrantRule filters a [tailcfg.CapGrant] rule to only include

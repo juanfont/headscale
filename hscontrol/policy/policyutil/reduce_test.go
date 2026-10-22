@@ -1339,3 +1339,78 @@ func TestReduceFilterRulesCapGrant(t *testing.T) {
 		})
 	}
 }
+
+// TestReduceFilterRulesDestForms reduces one rule holding every DstPorts form
+// for a node at 100.64.0.1 routing 10.0.0.0/24, and pins which entries reach
+// it. Malformed entries fail closed.
+func TestReduceFilterRulesDestForms(t *testing.T) {
+	node := &types.Node{
+		IPv4: ap("100.64.0.1"),
+		IPv6: ap("fd7a:115c:a1e0::1"),
+		Hostinfo: &tailcfg.Hostinfo{
+			RoutableIPs: []netip.Prefix{p("10.0.0.0/24")},
+		},
+		ApprovedRoutes: []netip.Prefix{p("10.0.0.0/24")},
+	}
+
+	dsts := map[string]bool{
+		"*":                         true,
+		"100.64.0.1":                true,
+		"fd7a:115c:a1e0::1":         true,
+		"100.64.0.2":                false,
+		"100.64.0.0/10":             true,
+		"100.128.0.0/10":            false,
+		"10.0.0.128/25":             true,
+		"10.0.1.0/24":               false,
+		"100.64.0.0-100.64.0.9":     true,
+		"100.64.0.2-100.64.0.9":     false,
+		"10.0.0.200-10.0.1.5":       true,
+		"100.64.0.1/10":             false, // host bits set
+		"100.64.0.9-100.64.0.1":     false, // reversed range
+		"100.64.0.1-fd7a:115c::1":   false, // mixed families
+		"not-an-ip":                 false,
+		"100.64.0.1-100.64.0.2-100": false,
+	}
+
+	rule := tailcfg.FilterRule{SrcIPs: []string{"*"}}
+	for dst := range dsts {
+		rule.DstPorts = append(rule.DstPorts, tailcfg.NetPortRange{IP: dst, Ports: tailcfg.PortRangeAny})
+	}
+
+	got := policyutil.ReduceFilterRules(node.View(), []tailcfg.FilterRule{rule})
+	require.Len(t, got, 1)
+
+	kept := make(map[string]bool)
+	for _, dp := range got[0].DstPorts {
+		kept[dp.IP] = true
+	}
+
+	for dst, want := range dsts {
+		require.Equal(t, want, kept[dst], "DstPorts %q", dst)
+	}
+}
+
+// TestReduceFilterRulesAllocsIndependentOfDests reduces the global filter as
+// every node does on every policy change. Its DstPorts are plain strings, so
+// anything allocated per entry, such as building an IPSet to test one
+// address, is paid nodes × entries times per change.
+func TestReduceFilterRulesAllocsIndependentOfDests(t *testing.T) {
+	node := (&types.Node{IPv4: ap("100.64.0.1"), IPv6: ap("fd7a:115c:a1e0::1")}).View()
+
+	allocs := func(n int) int {
+		rule := tailcfg.FilterRule{SrcIPs: []string{"*"}}
+		for i := range n {
+			rule.DstPorts = append(rule.DstPorts, tailcfg.NetPortRange{
+				IP:    fmt.Sprintf("100.64.%d.%d", i/250, i%250+2),
+				Ports: tailcfg.PortRangeAny,
+			})
+		}
+
+		rules := []tailcfg.FilterRule{rule}
+
+		return int(testing.AllocsPerRun(10, func() { policyutil.ReduceFilterRules(node, rules) }))
+	}
+
+	require.Equal(t, allocs(10), allocs(1000),
+		"reducing a filter must not allocate per DstPorts entry")
+}
