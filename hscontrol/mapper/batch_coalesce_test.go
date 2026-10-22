@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -68,4 +69,43 @@ func TestProcessBatchedChangesSkipsNodesWithoutConnection(t *testing.T) {
 	assert.Equal(t, 0, pending, "a node without a connection must not accumulate pending changes")
 	assert.Empty(t, b.workCh, "no work may be queued for a node without a connection")
 	assert.False(t, nc.inFlight.Load())
+}
+
+// TestAppendPendingStaysBoundedWhileInFlight appends a churn of joins,
+// deletions and policy changes to a node whose bundle stays in flight, as
+// when the workers fall behind. Pending must stay as small as its coalesced
+// form instead of growing by one entry per change, and draining it must
+// render what coalescing the whole backlog at once would.
+func TestAppendPendingStaysBoundedWhileInFlight(t *testing.T) {
+	id := types.NodeID(1)
+	nc := newMultiChannelNodeConn(id, nil)
+	nc.inFlight.Store(true)
+
+	var all []change.Change
+
+	for i := range 10000 {
+		peer := types.NodeID(i%500 + 2) //nolint:gosec // test
+
+		cs := []change.Change{change.NodeAdded(peer), change.NodeOnline(peer), change.PolicyChange()}
+		if i%7 == 0 {
+			cs = append(cs, change.NodeRemoved(types.NodeID(i+1000))) //nolint:gosec // test
+		}
+
+		for _, c := range cs {
+			nc.appendPending(c)
+		}
+
+		all = append(all, cs...)
+	}
+
+	nc.pendingMu.Lock()
+	pending := slices.Clone(nc.pending)
+	nc.pendingMu.Unlock()
+
+	assert.Less(t, len(pending), 100, "pending must not grow with every change")
+
+	coalesce := func(cs []change.Change) []change.Change {
+		return change.CoalescePeerDeltas(id, change.DedupePolicyChanges(cs))
+	}
+	assert.Equal(t, coalesce(all), coalesce(pending))
 }

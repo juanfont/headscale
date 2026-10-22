@@ -213,15 +213,27 @@ func TestAddToBatch_ConcurrentTargeted_NoDataLoss(t *testing.T) {
 
 	require.Zero(t, panics, "no panics expected")
 
-	// All 100 changes MUST be present. The Load→append→Store race causes
-	// data loss: typically 30-50% of changes are silently dropped.
-	pending := getPendingForNode(lb.b, targetNode)
-	t.Logf("targeted changes: expected=%d, got=%d (lost=%d)",
-		goroutines, len(pending), goroutines-len(pending))
+	// All 100 patches MUST be present; pending may fold them into fewer
+	// changes. The Load→append→Store race causes data loss: typically
+	// 30-50% of changes are silently dropped.
+	got := countPatches(getPendingForNode(lb.b, targetNode))
+	t.Logf("targeted patches: expected=%d, got=%d (lost=%d)",
+		goroutines, got, goroutines-got)
 
-	assert.Len(t, pending, goroutines,
-		"addToBatch lost %d/%d targeted changes under concurrent access",
-		goroutines-len(pending), goroutines)
+	assert.Equal(t, goroutines, got,
+		"addToBatch lost %d/%d targeted patches under concurrent access",
+		goroutines-got, goroutines)
+}
+
+// countPatches counts the peer patches in changes, which pending folds into
+// fewer changes without dropping any.
+func countPatches(cs []change.Change) int {
+	n := 0
+	for _, c := range cs {
+		n += len(c.PeerPatches)
+	}
+
+	return n
 }
 
 // TestAddToBatch_ConcurrentBroadcast verifies that concurrent broadcasts
@@ -591,24 +603,15 @@ func TestProcessBatchedChanges_ConcurrentAdd_NoDataLoss(t *testing.T) {
 	// Count the patches across all bundled work items in the channel. Each
 	// work item bundles a node's pending changes, coalescing peer deltas, so
 	// the patches, not the changes, are what must all arrive.
-	patches := func(cs []change.Change) int {
-		n := 0
-		for _, c := range cs {
-			n += len(c.PeerPatches)
-		}
-
-		return n
-	}
-
 	queuedChanges := 0
 
 	workItems := len(lb.b.workCh)
 	for range workItems {
 		w := <-lb.b.workCh
-		queuedChanges += patches(w.changes)
+		queuedChanges += countPatches(w.changes)
 	}
 	// Also count any still-pending
-	remaining := patches(getPendingForNode(lb.b, types.NodeID(1)))
+	remaining := countPatches(getPendingForNode(lb.b, types.NodeID(1)))
 
 	total := queuedChanges + remaining
 	added := int(addedCount.Load())
