@@ -1173,6 +1173,55 @@ func TestBatcherCoalescesPolicyRecomputesPerTick(t *testing.T) {
 	}
 }
 
+// TestBatcherCoalescesPeerDeltasPerTick lands a join storm, every other node
+// added and coming online, in one tick. Rendered one frame per change, a
+// storm outgrows the session channel within a single tick and the batcher
+// drops the connection as stale; the run must reach the node as one frame.
+func TestBatcherCoalescesPeerDeltasPerTick(t *testing.T) {
+	for _, bf := range allBatcherFunctions {
+		t.Run(bf.name, func(t *testing.T) {
+			testData, cleanup := setupBatcherWithTestData(t, bf.fn, 1, 8, 100)
+			defer cleanup()
+
+			recv := &testData.Nodes[0]
+			require.NoError(t, testData.Batcher.Batcher.AddNode(recv.n.ID, recv.ch, tailcfg.CapabilityVersion(100), nil))
+
+			initial := <-recv.ch
+			require.NotNil(t, initial.Node, "test sanity: initial map first")
+
+			var storm []change.Change
+
+			for i := 1; i < len(testData.Nodes); i++ {
+				id := testData.Nodes[i].n.ID
+				storm = append(storm, change.NodeAdded(id), change.NodeOnline(id))
+			}
+
+			// One AddWork lands in one tick; the DERP map change ends it.
+			testData.Batcher.AddWork(append(storm, change.DERPMap())...)
+
+			var frames []*tailcfg.MapResponse
+
+			deadline := time.After(5 * time.Second)
+
+			for {
+				select {
+				case resp := <-recv.ch:
+					if resp.DERPMap != nil {
+						require.Len(t, frames, 1, "a tick of peer deltas must render as one frame")
+						assert.Len(t, frames[0].PeersChanged, len(storm)/2, "every added peer in the frame")
+
+						return
+					}
+
+					frames = append(frames, resp)
+				case <-deadline:
+					t.Fatal("never received the DERP map change")
+				}
+			}
+		})
+	}
+}
+
 // TestBatcherPingSurvivesFullUpdate queues a ping and a full in one AddWork
 // call against real connections: the target renders the full and then a
 // ping-only frame, and no other node sees the ping.
