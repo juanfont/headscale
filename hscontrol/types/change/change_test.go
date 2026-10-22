@@ -519,10 +519,20 @@ func TestCoalescePeerDeltas(t *testing.T) {
 		{
 			name: "runs do not cross other changes",
 			changes: []Change{
-				NodeAdded(2), NodeOnline(2), PolicyChange(), NodeAdded(3), NodeRemoved(4), NodeOnline(5), ping, NodeOnline(6),
+				NodeAdded(2), NodeOnline(2), PolicyChange(), NodeAdded(3), PeersRemoved(4), NodeOnline(5), ping, NodeOnline(6),
 			},
 			want: []Change{
-				merged([]types.NodeID{2}), PolicyChange(), NodeAdded(3), NodeRemoved(4), NodeOnline(5), ping, NodeOnline(6),
+				merged([]types.NodeID{2}), PolicyChange(), NodeAdded(3), PeersRemoved(4), NodeOnline(5), ping, NodeOnline(6),
+			},
+		},
+		{
+			name: "deletions fold into one removal ahead of the tick",
+			changes: []Change{
+				NodeAdded(2), NodeRemoved(5), NodeOnline(3), PolicyChange(), NodeRemoved(4), NodeAdded(6),
+			},
+			want: []Change{
+				{Reason: "node removed", PeersRemoved: []types.NodeID{4, 5}, DeletedNodes: []types.NodeID{4, 5}},
+				merged([]types.NodeID{2}, patch(NodeOnline(3))), PolicyChange(), NodeAdded(6),
 			},
 		},
 		{
@@ -575,6 +585,46 @@ func TestCoalescePeerDeltasClassifiesEveryField(t *testing.T) {
 			setNonZero(t, reflect.ValueOf(&c).Elem().FieldByIndex(field.Index), self)
 
 			assert.Equal(t, want, c.isPeerDelta(self))
+		})
+	}
+}
+
+// TestCoalescePeerDeltasHoistsOnlyDeletions classifies every [Change] field
+// by whether a deletion setting it may still be hoisted ahead of the tick. A
+// new field fails here until it is classified.
+func TestCoalescePeerDeltasHoistsOnlyDeletions(t *testing.T) {
+	const self = types.NodeID(1)
+
+	hoists := map[string]bool{
+		"Reason":                         true,
+		"TargetNode":                     true,
+		"OriginNode":                     false,
+		"IncludeSelf":                    false,
+		"IncludeDERPMap":                 false,
+		"IncludeDNS":                     false,
+		"IncludeDomain":                  false,
+		"IncludePolicy":                  false,
+		"PeersChanged":                   false,
+		"PeersRemoved":                   true,
+		"PeerPatches":                    false,
+		"SendAllPeers":                   false,
+		"DeletedNodes":                   true,
+		"RequiresRuntimePeerComputation": false,
+		"PingRequest":                    false,
+	}
+
+	typ := reflect.TypeFor[Change]()
+	require.Len(t, hoists, typ.NumField(), "classify every Change field")
+
+	for field := range typ.Fields() {
+		t.Run(field.Name, func(t *testing.T) {
+			want, ok := hoists[field.Name]
+			require.True(t, ok, "field %s is not classified", field.Name)
+
+			c := NodeRemoved(2)
+			setNonZero(t, reflect.ValueOf(&c).Elem().FieldByIndex(field.Index), self)
+
+			assert.Equal(t, want, c.isDeletion())
 		})
 	}
 }
