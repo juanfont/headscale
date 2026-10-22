@@ -79,6 +79,12 @@ func DestroyUser(tx *gorm.DB, uid types.UserID) error {
 	}
 
 	for _, key := range keys {
+		// A tagged key belongs to its tags: deleting the user that made it
+		// only nulls the key's user.
+		if key.IsTagged() {
+			continue
+		}
+
 		err = DestroyPreAuthKey(tx, key.ID)
 		if err != nil {
 			return err
