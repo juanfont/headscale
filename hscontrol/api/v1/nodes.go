@@ -429,6 +429,11 @@ func registerNodeAdminOps(api huma.API, b Backend) {
 				return nil, huma.Error400BadRequest("parsing route", parseErr)
 			}
 
+			maskErr := util.CheckRouteMasked(prefix)
+			if maskErr != nil {
+				return nil, huma.Error400BadRequest(prefix.String() + " " + maskErr.Error())
+			}
+
 			// One exit route implies both families, else the client won't
 			// annotate the node as an exit node.
 			if prefix == tsaddr.AllIPv4() || prefix == tsaddr.AllIPv6() {

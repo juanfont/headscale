@@ -316,9 +316,6 @@ var rejectedPolicySkipReasons = map[string]string{
 	"ssh-e1/refused": noTailnetDomains,
 	"ssh-e2/refused": noTailnetDomains,
 	"ssh-malformed-user-localpart-multi-glob/refused": noTailnetDomains,
-
-	"acl-err10/refused": "ROUTE_HOST_BITS: headscale accepts an autoApprovers route with host bits",
-	"acl-err11/refused": "ROUTE_HOST_BITS: headscale accepts an autoApprovers route with host bits",
 }
 
 const noTailnetDomains = "NO_TAILNET_DOMAINS: headscale does not check user:*@domain or localpart:*@domain against the tailnet's domains"
