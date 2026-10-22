@@ -35,6 +35,9 @@ type tokenResponse struct {
 	TokenType   string `json:"token_type"`
 	ExpiresIn   int    `json:"expires_in"`
 	Scope       string `json:"scope,omitempty"`
+	// Tags names the tags of a token that can assign them, as Tailscale's
+	// answer does; a reader token's answer has none.
+	Tags string `json:"tags,omitempty"`
 }
 
 // oauthTokenHandler implements the client-credentials grant (RFC 6749 §4.4):
@@ -110,12 +113,20 @@ func oauthTokenHandler(b Backend) http.HandlerFunc {
 			return
 		}
 
-		writeJSON(w, http.StatusOK, tokenResponse{
+		resp := tokenResponse{
 			AccessToken: tokenStr,
 			TokenType:   "Bearer",
 			ExpiresIn:   int(accessTokenTTL.Seconds()),
 			Scope:       strings.Join(token.Scopes, " "),
-		})
+		}
+
+		granted := scope.Parse(token.Scopes)
+		if scope.Grants(granted, scope.AuthKeys) || scope.Grants(granted, scope.DevicesCore) ||
+			scope.Grants(granted, scope.OAuthKeys) {
+			resp.Tags = strings.Join(token.Tags, " ")
+		}
+
+		writeJSON(w, http.StatusOK, resp)
 	}
 }
 

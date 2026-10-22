@@ -393,12 +393,10 @@ func createAuthKey(ctx context.Context, b Backend, body CreateKeyRequest) (*keyO
 				if !b.State.TagExists(tag) {
 					return nil, huma.Error400BadRequest("tag " + tag + " is not defined in policy")
 				}
+			}
 
-				if !b.State.TagOwnedByTags(tag, tokenTags) {
-					return nil, huma.Error403Forbidden(
-						"token may not assign tag " + tag,
-					)
-				}
+			if refused := unownedTags(b, create.Tags, tokenTags); len(refused) > 0 {
+				return nil, tagsRefused("", refused)
 			}
 		}
 
@@ -496,12 +494,10 @@ func createOAuthClient(ctx context.Context, b Backend, body CreateKeyRequest) (*
 			if !b.State.TagExists(tag) {
 				return nil, huma.Error400BadRequest("tag " + tag + " is not defined in policy")
 			}
+		}
 
-			if !b.State.TagOwnedByTags(tag, tokenTags) {
-				return nil, huma.Error403Forbidden(
-					"client may not be granted tag " + tag + " beyond the creating token",
-				)
-			}
+		if refused := unownedTags(b, body.Tags, tokenTags); len(refused) > 0 {
+			return nil, tagsRefused("", refused)
 		}
 	}
 
