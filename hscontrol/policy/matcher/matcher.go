@@ -7,7 +7,6 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/util"
 	"go4.org/netipx"
-	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
 
@@ -154,17 +153,7 @@ func overlaps(ranges []netipx.IPRange, r netipx.IPRange) bool {
 
 // DestsIsTheInternet reports whether the destination covers "the
 // internet" — the set represented by autogroup:internet, special-cased
-// for exit nodes. Returns true if either family's /0 is contained
-// (0.0.0.0/0 or ::/0), or if dests is a superset of [util.TheInternet]. A
-// single-family /0 counts because operators may write it directly and
-// it still denotes the whole internet for that family.
+// for exit nodes. See [util.CoversTheInternet].
 func (m *Match) DestsIsTheInternet() bool {
-	if m.dests.ContainsPrefix(tsaddr.AllIPv4()) ||
-		m.dests.ContainsPrefix(tsaddr.AllIPv6()) {
-		return true
-	}
-
-	// Superset-of-[util.TheInternet] check handles merged filter rules
-	// where the internet prefixes are combined with other dests.
-	return util.IPSetSubsetOf(util.TheInternet(), m.dests)
+	return util.CoversTheInternet(m.dests)
 }

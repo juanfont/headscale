@@ -1614,9 +1614,8 @@ func (s *State) GetNodePrimaryRoutes(nodeID types.NodeID) []netip.Prefix {
 // AllowedIPs, combining primary routes (from HA election), approved exit
 // routes, and via grant steering.
 //
-// Approved exit routes (0.0.0.0/0, ::/0) are included alongside subnet
-// routes — they appear in every peer's AllowedIPs, while unapproved
-// ones do not.
+// Approved exit routes (0.0.0.0/0, ::/0) are reduced alongside subnet
+// routes: a viewer gets them when its rules reach the internet.
 func (s *State) RoutesForPeer(
 	viewer, peer types.NodeView,
 	matchers []matcher.Match,
