@@ -33,14 +33,20 @@ const (
 // populates only devices.create (auth keys); the named types (vs Tailscale's
 // anonymous nesting) give Huma stable schema names.
 type KeyCapabilities struct {
+	_ struct{} `additionalProperties:"true"`
+
 	Devices KeyDeviceCapabilities `json:"devices"`
 }
 
 type KeyDeviceCapabilities struct {
+	_ struct{} `additionalProperties:"true"`
+
 	Create KeyDeviceCreateCapabilities `json:"create"`
 }
 
 type KeyDeviceCreateCapabilities struct {
+	_ struct{} `additionalProperties:"true"`
+
 	Reusable      bool `json:"reusable"`
 	Ephemeral     bool `json:"ephemeral"`
 	Preauthorized bool `json:"preauthorized"`
@@ -55,6 +61,9 @@ type KeyDeviceCreateCapabilities struct {
 // OAuth client from the top-level Scopes and Tags. expirySeconds is plain
 // seconds (unlike the response, see Key).
 type CreateKeyRequest struct {
+	// Unknown properties are ignored, as Tailscale's API does.
+	_ struct{} `additionalProperties:"true"`
+
 	KeyType string `doc:"Key kind: \"auth\" (default) or \"client\" (OAuth client)." json:"keyType,omitempty"`
 	// Capabilities is optional: an auth key carries device-create capabilities,
 	// but an OAuth client (keyType:"client") has none and the Tailscale clients
