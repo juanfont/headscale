@@ -3212,6 +3212,15 @@ func (s *State) DrainSelfRefreshes() []change.Change {
 // have the list already available so it could go much quicker. Alternatively
 // the policy manager could have a remove or add list for nodes.
 func (s *State) updatePolicyManagerNodes(genBefore uint64) (change.Change, error) {
+	// A move since genBefore is the writer applying this write's nodes or a
+	// later batch's, which it hands the policy manager before publishing.
+	// The published snapshot read here can then be older, and SetNodes with
+	// it would recompile the policy back. What is left to do here is retry a
+	// recompile the writer failed, which leaves the generation where it was.
+	if s.polMan.NodesGeneration() != genBefore {
+		return change.PolicyChange(), nil
+	}
+
 	nodes := s.ListNodes()
 
 	changed, err := s.polMan.SetNodes(nodes)
