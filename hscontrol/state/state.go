@@ -4207,7 +4207,7 @@ func buildMapRequestChangeResponse(
 			patch.DERPRegion = currentDERP
 		}
 
-		return change.EndpointOrDERPUpdate(id, patch)
+		return change.EndpointOrDERPUpdate(patch)
 	}
 
 	return change.Change{}
