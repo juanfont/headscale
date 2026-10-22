@@ -46,9 +46,9 @@ type Device struct {
 	// does not record, so it is left out.
 	OAuthClientID string `json:"oauthClientId,omitempty"`
 
-	// Populated only when fields=all is requested.
-	AdvertisedRoutes []string `json:"advertisedRoutes,omitempty"`
-	EnabledRoutes    []string `json:"enabledRoutes,omitempty"`
+	// Populated only when fields=all is requested, then as [] when empty.
+	AdvertisedRoutes []string `json:"advertisedRoutes,omitzero"`
+	EnabledRoutes    []string `json:"enabledRoutes,omitzero"`
 }
 
 // DeviceRoutes is the GET /device/{id}/routes response: what the node announces
