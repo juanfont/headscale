@@ -372,7 +372,14 @@ func createAuthKey(ctx context.Context, b Backend, body CreateKeyRequest) (*keyO
 		// A key minted by an OAuth token may only carry tags within the token's
 		// grant (held directly, or owned by a held tag) and defined in policy,
 		// matching SetNodeTags. An admin key keeps the historical behaviour of
-		// validating only tag syntax (db.validateACLTags).
+		// validating only tag syntax (db.validateACLTags), and records its
+		// user as the key's creator.
+		if !isOAuth {
+			if uid, ok := ownerUser(ctx); ok {
+				userID = &uid
+			}
+		}
+
 		if isOAuth {
 			for _, tag := range create.Tags {
 				if !b.State.TagExists(tag) {
@@ -547,8 +554,8 @@ func keyFromNew(pak *types.PreAuthKeyNew, req CreateKeyRequest) Key {
 		key.ExpirySeconds = expirySeconds(pak.CreatedAt, pak.Expiration)
 	}
 
-	// A tagged key presents no owner; a user-owned key reports its user id.
-	if len(pak.Tags) == 0 && pak.User != nil {
+	// A user-owned key reports its owner, a tagged key its creator.
+	if pak.User != nil {
 		key.UserID = pak.User.StringID()
 	}
 
@@ -579,7 +586,7 @@ func keyFromStored(pak *types.PreAuthKey) Key {
 		key.Revoked = pak.Revoked
 	}
 
-	if len(pak.Tags) == 0 && pak.User != nil {
+	if pak.User != nil {
 		key.UserID = pak.User.StringID()
 	}
 

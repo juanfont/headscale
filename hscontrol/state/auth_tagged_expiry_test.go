@@ -285,8 +285,19 @@ func TestReusableUserPAKReauthOnTaggedNodeNoDuplicate(t *testing.T) {
 
 // TestTaggedPAKReauthConvertsUserOwnedNode ensures presenting a tagged pre-auth
 // key for a machine that already has a user-owned node converts that node in
-// place (same machine, new ownership) rather than creating a duplicate.
+// place (same machine, new ownership) rather than creating a duplicate, whether
+// or not the key records who created it.
 func TestTaggedPAKReauthConvertsUserOwnedNode(t *testing.T) {
+	for _, withCreator := range []bool{false, true} {
+		t.Run(fmt.Sprintf("creator=%t", withCreator), func(t *testing.T) {
+			testTaggedPAKReauthConvertsUserOwnedNode(t, withCreator)
+		})
+	}
+}
+
+func testTaggedPAKReauthConvertsUserOwnedNode(t *testing.T, withCreator bool) {
+	t.Helper()
+
 	dbPath := t.TempDir() + "/headscale.db"
 	cfg := persistTestConfig(dbPath)
 
@@ -295,6 +306,11 @@ func TestTaggedPAKReauthConvertsUserOwnedNode(t *testing.T) {
 	t.Cleanup(func() { _ = s.Close() })
 
 	user := s.CreateUserForTest("owner")
+
+	var creator *types.UserID
+	if withCreator {
+		creator = s.CreateUserForTest("admin").TypedID()
+	}
 
 	userPak, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 	require.NoError(t, err)
@@ -312,8 +328,8 @@ func TestTaggedPAKReauthConvertsUserOwnedNode(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, owned.IsTagged(), "precondition: node is user-owned")
 
-	// A tags-only key re-registers the same machine (same node key).
-	taggedPak, err := s.CreatePreAuthKey(nil, true, false, nil, []string{"tag:foo"})
+	// A tagged key re-registers the same machine (same node key).
+	taggedPak, err := s.CreatePreAuthKey(creator, true, false, nil, []string{"tag:foo"})
 	require.NoError(t, err)
 
 	convReq := regReq
@@ -371,19 +387,33 @@ func registerTwoUsersOnOneMachine(t *testing.T) (*State, key.MachinePublic, type
 // so the registration is rejected rather than converting an arbitrary one and
 // orphaning the rest.
 func TestTaggedPAKReauthRejectsAmbiguousMultiUserNode(t *testing.T) {
-	s, mk, _ := registerTwoUsersOnOneMachine(t)
+	for _, withCreator := range []bool{false, true} {
+		t.Run(fmt.Sprintf("creator=%t", withCreator), func(t *testing.T) {
+			s, mk, n1 := registerTwoUsersOnOneMachine(t)
 
-	taggedPak, err := s.CreatePreAuthKey(nil, true, false, nil, []string{"tag:foo"})
-	require.NoError(t, err)
+			// A key created by one of the two owners is still a tagged key.
+			var creator *types.UserID
 
-	_, _, err = s.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
-		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: taggedPak.Key},
-		NodeKey:  key.NewNode().Public(),
-		Hostinfo: &tailcfg.Hostinfo{Hostname: "multi"},
-		Expiry:   time.Now().Add(24 * time.Hour),
-	}, mk)
-	require.ErrorIs(t, err, ErrAmbiguousNodeOwnership)
-	require.Equal(t, 2, s.ListNodes().Len(), "no node created or converted on rejection")
+			if withCreator {
+				nv, ok := s.GetNodeByID(n1)
+				require.True(t, ok)
+
+				creator = new(types.UserID(nv.UserID().Get()))
+			}
+
+			taggedPak, err := s.CreatePreAuthKey(creator, true, false, nil, []string{"tag:foo"})
+			require.NoError(t, err)
+
+			_, _, err = s.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+				Auth:     &tailcfg.RegisterResponseAuth{AuthKey: taggedPak.Key},
+				NodeKey:  key.NewNode().Public(),
+				Hostinfo: &tailcfg.Hostinfo{Hostname: "multi"},
+				Expiry:   time.Now().Add(24 * time.Hour),
+			}, mk)
+			require.ErrorIs(t, err, ErrAmbiguousNodeOwnership)
+			require.Equal(t, 2, s.ListNodes().Len(), "no node created or converted on rejection")
+		})
+	}
 }
 
 // TestAuthPathOnTaggedMachine: a login on a machine with a tagged node and
