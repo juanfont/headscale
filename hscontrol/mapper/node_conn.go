@@ -319,6 +319,25 @@ func (mc *multiChannelNodeConn) drainPending() []change.Change {
 	return p
 }
 
+// takePending drains the pending changes for rendering. A node without a
+// connection gets none and its changes are dropped: send would discard what
+// they render, and its next connection opens with a full map rendered after
+// it registered. The read lock keeps that registration out of the gap between
+// the check and the drain.
+func (mc *multiChannelNodeConn) takePending() []change.Change {
+	mc.mutex.RLock()
+	defer mc.mutex.RUnlock()
+
+	p := mc.drainPending()
+	if len(mc.connections) == 0 {
+		mapperChangesDropped.WithLabelValues("no_connection").Add(float64(len(p)))
+
+		return nil
+	}
+
+	return p
+}
+
 // send broadcasts data to all active connections for the node.
 //
 // To avoid holding the write lock during potentially slow sends (each stale
