@@ -373,50 +373,7 @@ var routeOverlapCompatTests = []string{
 // routeOverlapSkipReasons lists checks where headscale differs from SaaS,
 // keyed <test_id>/<node>/<check>. A listed check that matches fails, so a fix
 // must delete its entry.
-var routeOverlapSkipReasons = map[string]string{
-	// Once a router is sent its own routes, its self-primary also needs the
-	// approved singles in the tailnet range left unserved.
-	"routes-t1-auto-v4-default/ovl-r-ctrl/self-allowed":      selfRoutesReduced,
-	"routes-t1-auto-v4-default/ovl-r-ctrl/self-primary":      selfRoutesReduced,
-	"routes-t1-auto-v4-default/ovl-r-host4/self-allowed":     selfRoutesReduced,
-	"routes-t1-auto-v4-default/ovl-r-narrow/self-allowed":    selfRoutesReduced,
-	"routes-t1-auto-v4-default/ovl-r-narrow/self-primary":    selfRoutesReduced,
-	"routes-t2-auto-v6-default/ovl-r-host6/self-allowed":     selfRoutesReduced,
-	"routes-t2-auto-v6-default/ovl-r-mapped/self-allowed":    selfRoutesReduced,
-	"routes-t2-auto-v6-default/ovl-r-mapped/self-primary":    selfRoutesReduced,
-	"routes-t2-auto-v6-default/ovl-r-narrow/self-allowed":    selfRoutesReduced,
-	"routes-t2-auto-v6-default/ovl-r-narrow/self-primary":    selfRoutesReduced,
-	"routes-t2-auto-v6-default/ovl-r-via/self-allowed":       selfRoutesReduced,
-	"routes-t2-auto-v6-default/ovl-r-via/self-primary":       selfRoutesReduced,
-	"routes-t3-auto-narrow-keys/ovl-r-ctrl/self-allowed":     selfRoutesReduced,
-	"routes-t3-auto-narrow-keys/ovl-r-ctrl/self-primary":     selfRoutesReduced,
-	"routes-t3-auto-narrow-keys/ovl-r-host4/self-allowed":    selfRoutesReduced,
-	"routes-t3-auto-narrow-keys/ovl-r-host6/self-allowed":    selfRoutesReduced,
-	"routes-t3-auto-narrow-keys/ovl-r-narrow/self-allowed":   selfRoutesReduced,
-	"routes-t3-auto-narrow-keys/ovl-r-narrow/self-primary":   selfRoutesReduced,
-	"routes-t3-auto-narrow-keys/ovl-r-via/self-allowed":      selfRoutesReduced,
-	"routes-t3-auto-narrow-keys/ovl-r-via/self-primary":      selfRoutesReduced,
-	"routes-t4-admin/ovl-r-ctrl/self-allowed":                selfRoutesReduced,
-	"routes-t4-admin/ovl-r-ctrl/self-primary":                selfRoutesReduced,
-	"routes-t4-admin/ovl-r-host4/self-allowed":               selfRoutesReduced,
-	"routes-t4-admin/ovl-r-host6/self-allowed":               selfRoutesReduced,
-	"routes-t4-admin/ovl-r-mapped/self-allowed":              selfRoutesReduced,
-	"routes-t4-admin/ovl-r-mapped/self-primary":              selfRoutesReduced,
-	"routes-t4-admin/ovl-r-narrow/self-allowed":              selfRoutesReduced,
-	"routes-t4-admin/ovl-r-narrow/self-primary":              selfRoutesReduced,
-	"routes-t4-admin/ovl-r-via/self-allowed":                 selfRoutesReduced,
-	"routes-t4-admin/ovl-r-via/self-primary":                 selfRoutesReduced,
-	"routes-t5-oauth-routes-scope/ovl-r-ctrl/self-allowed":   selfRoutesReduced,
-	"routes-t5-oauth-routes-scope/ovl-r-ctrl/self-primary":   selfRoutesReduced,
-	"routes-t5-oauth-routes-scope/ovl-r-host4/self-allowed":  selfRoutesReduced,
-	"routes-t5-oauth-routes-scope/ovl-r-host6/self-allowed":  selfRoutesReduced,
-	"routes-t5-oauth-routes-scope/ovl-r-mapped/self-allowed": selfRoutesReduced,
-	"routes-t5-oauth-routes-scope/ovl-r-mapped/self-primary": selfRoutesReduced,
-	"routes-t5-oauth-routes-scope/ovl-r-narrow/self-allowed": selfRoutesReduced,
-	"routes-t5-oauth-routes-scope/ovl-r-narrow/self-primary": selfRoutesReduced,
-	"routes-t5-oauth-routes-scope/ovl-r-via/self-allowed":    selfRoutesReduced,
-	"routes-t5-oauth-routes-scope/ovl-r-via/self-primary":    selfRoutesReduced,
-}
+var routeOverlapSkipReasons = map[string]string{}
 
 // routeOverlapNotCompared lists, by key prefix, checks left out: SaaS's
 // answer there is in doubt, so it is no reference.
@@ -643,8 +600,9 @@ func sortedStrings(s []string) string {
 
 // TestRoutesNodeRangeSingleNotServed checks that a router's approved single
 // addresses inside the node ranges, in either spelling, reach no viewer
-// through a plain grant or a via grant. They stay approved, the router's own
-// entry keeps them, and its wider route is still served.
+// through a plain grant or a via grant. They stay approved and in the
+// router's own AllowedIPs, never in its PrimaryRoutes, and its wider route
+// is still served.
 func TestRoutesNodeRangeSingleNotServed(t *testing.T) {
 	t.Parallel()
 
@@ -704,9 +662,9 @@ func TestRoutesNodeRangeSingleNotServed(t *testing.T) {
 
 					return ok && views.SliceContains(p.PrimaryRoutes(), subnet)
 				})
-			router.WaitForCondition(t, "router holds its routes", 15*time.Second,
+			router.WaitForCondition(t, "router serves its subnet", 15*time.Second,
 				func(nm *netmap.NetworkMap) bool {
-					return views.SliceContains(nm.SelfNode.AllowedIPs(), subnet)
+					return views.SliceContains(nm.SelfNode.PrimaryRoutes(), subnet)
 				})
 
 			peer, _ := viewer.PeerByName("router")
@@ -719,6 +677,8 @@ func TestRoutesNodeRangeSingleNotServed(t *testing.T) {
 					"%s served in PrimaryRoutes", single)
 				assert.Truef(t, views.SliceContains(self.AllowedIPs(), single),
 					"%s missing from the router's own AllowedIPs", single)
+				assert.Falsef(t, views.SliceContains(self.PrimaryRoutes(), single),
+					"%s in the router's own PrimaryRoutes", single)
 			}
 
 			node, ok := srv.State().GetNodeByID(routerID)
