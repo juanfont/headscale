@@ -595,13 +595,12 @@ func KeyExpiryFor(id types.NodeID, expiry time.Time) Change {
 	return c
 }
 
-// EndpointOrDERPUpdate returns a [Change] for when a node's endpoints or DERP region changes.
-// The [Change.OriginNode] field enables self-update detection by the mapper.
-func EndpointOrDERPUpdate(id types.NodeID, patch *tailcfg.PeerChange) Change {
-	c := PeerPatched("endpoint/DERP update", patch)
-	c.OriginNode = id
-
-	return c
+// EndpointOrDERPUpdate returns a [Change] for when a node reports new
+// endpoints or a new DERP region. It has no [Change.OriginNode]: the node
+// already knows what it reported, so, as on Tailscale SaaS, only its peers
+// are sent the patch.
+func EndpointOrDERPUpdate(patch *tailcfg.PeerChange) Change {
+	return PeerPatched("endpoint/DERP update", patch)
 }
 
 // NodeKeyRotated returns a [Change] for a node re-logging in: its NodeKey (and
