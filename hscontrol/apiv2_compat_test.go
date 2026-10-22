@@ -99,14 +99,6 @@ var apiv2CompatSkipReasons = map[string]string{
 	"oauth/device:before/all/device-oauth-client": deviceOAuthClientMaker,
 	"oauth/device:joiner/all/device-oauth-client": deviceOAuthClientMaker,
 
-	"oauth/device:before/empty-route-lists":    emptyRouteListsOmitted,
-	"oauth/device:ci-runner/empty-route-lists": emptyRouteListsOmitted,
-	"oauth/device:joiner/empty-route-lists":    emptyRouteListsOmitted,
-	"oauth/device:laptop/empty-route-lists":    emptyRouteListsOmitted,
-	"oauth/device:managed/empty-route-lists":   emptyRouteListsOmitted,
-	"oauth/device:mixed/empty-route-lists":     emptyRouteListsOmitted,
-	"oauth/device:prod-db/empty-route-lists":   emptyRouteListsOmitted,
-
 	"policy-api/P7/0/body": hujsonFormatted,
 	"policy-api/P7/1/body": hujsonFormatted,
 }
@@ -154,7 +146,6 @@ const (
 	deletedClientGone           = "DELETED_CLIENT_GONE: SaaS keeps a deleted OAuth client readable as invalid and revoked; headscale removes it"
 	deletedClientCredentialText = "DELETED_CLIENT_CREDENTIAL_TEXT: SaaS refuses a deleted client's secret and tokens with API token invalid; headscale says invalid client credentials and unauthorized"
 	missingScopeText            = "MISSING_SCOPE_TEXT: SaaS refuses a delete outside the token's scopes with calling actor does not have enough permissions; headscale names the missing scope"
-	emptyRouteListsOmitted      = "EMPTY_ROUTE_LISTS_OMITTED: SaaS sends advertisedRoutes and enabledRoutes as [] for a device without routes under fields=all; headscale leaves both out"
 	hujsonFormatted             = "HUJSON_FORMATTED: SaaS stores a HuJSON policy formatted, comments kept; headscale stores the bytes as sent"
 )
 
