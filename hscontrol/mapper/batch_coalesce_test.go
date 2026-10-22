@@ -8,6 +8,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/tailcfg"
 )
 
 // TestProcessBatchedChangesCoalescesWhenInFlight verifies that at most one
@@ -20,6 +21,7 @@ func TestProcessBatchedChangesCoalescesWhenInFlight(t *testing.T) {
 
 	id := types.NodeID(1)
 	nc := newMultiChannelNodeConn(id, nil)
+	nc.addConnection(makeConnectionEntry("conn-1", make(chan *tailcfg.MapResponse, 1)))
 	b.nodes.Store(id, nc)
 
 	// A bundle is in flight: the new change must be retained, not queued.
@@ -44,4 +46,26 @@ func TestProcessBatchedChangesCoalescesWhenInFlight(t *testing.T) {
 	assert.True(t, nc.inFlight.Load(), "queued bundle must mark the node in-flight")
 
 	require.NotNil(t, b)
+}
+
+// TestProcessBatchedChangesSkipsNodesWithoutConnection drains a node that
+// kept its batcher entry after its last stream closed. Rendering its changes
+// is wasted, since send drops the result and its next stream opens with a
+// full map, so no work may be queued for it.
+func TestProcessBatchedChangesSkipsNodesWithoutConnection(t *testing.T) {
+	b := NewBatcher(50*time.Millisecond, 2, nil) // not started: no ticker, no workers
+
+	id := types.NodeID(1)
+	nc := newMultiChannelNodeConn(id, nil)
+	b.nodes.Store(id, nc)
+
+	nc.appendPending(change.PolicyChange())
+	b.processBatchedChanges()
+
+	nc.pendingMu.Lock()
+	pending := len(nc.pending)
+	nc.pendingMu.Unlock()
+	assert.Equal(t, 0, pending, "a node without a connection must not accumulate pending changes")
+	assert.Empty(t, b.workCh, "no work may be queued for a node without a connection")
+	assert.False(t, nc.inFlight.Load())
 }

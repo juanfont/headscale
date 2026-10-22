@@ -745,7 +745,7 @@ func (b *Batcher) processBatchedChanges() {
 			return true
 		}
 
-		pending := nc.drainPending()
+		pending := nc.takePending()
 		if len(pending) == 0 {
 			return true
 		}
