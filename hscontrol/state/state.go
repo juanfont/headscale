@@ -2115,6 +2115,8 @@ type newNodeParams struct {
 
 	// Optional: Pre-auth key specific fields
 	PreAuthKey *types.PreAuthKey
+	// Tags the key login was allowed to request; they replace the key's.
+	Tags []string
 
 	// Optional: Existing node for netinfo preservation
 	ExistingNodeForNetinfo types.NodeView
@@ -2391,10 +2393,15 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 
 	// Assign ownership based on PreAuthKey
 	if params.PreAuthKey != nil {
-		if params.PreAuthKey.IsTagged() {
+		tags := params.PreAuthKey.Tags
+		if params.Tags != nil {
+			tags = params.Tags
+		}
+
+		if len(tags) > 0 {
 			// Tagged nodes are owned by their tags, not a user.
 			// UserID is intentionally left nil.
-			nodeToRegister.Tags = params.PreAuthKey.Tags
+			nodeToRegister.Tags = tags
 
 			// Tagged nodes have key expiry disabled.
 			nodeToRegister.Expiry = nil
@@ -3024,24 +3031,35 @@ func (s *State) HandleNodeFromPreAuthKey(
 		}
 	}
 
-	// A pre-auth key node's tags come from the key, never from RequestTags.
 	// Advertising a subset of the key's tags is redundant, not an escalation,
-	// and the tailscale client's OAuth authkey flow always does it; any other
-	// tag is rejected, ahead of the key's own error, so new nodes and
+	// and the tailscale client's OAuth authkey flow always does it. Other
+	// requested tags replace the key's when a tagged key's tags own each one,
+	// or a user's key's user owns it directly, as on Tailscale SaaS; otherwise
+	// they are refused, ahead of the key's own error, so new nodes and
 	// re-registrations are held to the same rule.
-	var tagsErr error
+	var (
+		requestedTags []string
+		tagsErr       error
+	)
 
-	if regReq.Hostinfo != nil {
-		var extraTags []string
+	if regReq.Hostinfo != nil && slices.ContainsFunc(regReq.Hostinfo.RequestTags, func(tag string) bool {
+		return !slices.Contains(pak.Tags, tag)
+	}) {
+		var refused []string
 
 		for _, tag := range regReq.Hostinfo.RequestTags {
-			if !slices.Contains(pak.Tags, tag) {
-				extraTags = append(extraTags, tag)
+			owned := s.polMan.TagOwnedByTags(tag, pak.Tags) ||
+				(!pak.IsTagged() && pak.User != nil && s.polMan.UserCanHaveTag(pak.User.View(), tag))
+			if !owned {
+				refused = append(refused, tag)
 			}
 		}
 
-		if len(extraTags) > 0 {
-			tagsErr = fmt.Errorf("%w %v are invalid or not permitted", ErrRequestedTagsInvalidOrNotPermitted, extraTags)
+		if len(refused) > 0 {
+			tagsErr = fmt.Errorf("%w %v are invalid or not permitted", ErrRequestedTagsInvalidOrNotPermitted, refused)
+		} else {
+			// Sort a copy: RequestTags is the node's reported Hostinfo.
+			requestedTags = slices.Compact(slices.Sorted(slices.Values(regReq.Hostinfo.RequestTags)))
 		}
 	}
 
@@ -3100,7 +3118,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 	// a tagged node (findExistingNodeForPAK matches it under UserID 0); for a
 	// user-owned key it is true when the same user already has the node.
 	if existsSameUser && existingNodeSameUser.Valid() {
-		finalNode, before, err = s.reregisterNodeWithPAK(existingNodeSameUser, pak, regReq, machineKey, hostname, validHostinfo)
+		finalNode, before, err = s.reregisterNodeWithPAK(existingNodeSameUser, pak, requestedTags, regReq, machineKey, hostname, validHostinfo)
 		if err != nil {
 			return types.NodeView{}, s.policyChangeSince(genBefore), err
 		}
@@ -3179,6 +3197,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 			Expiry:                 reqExpiry,
 			RegisterMethod:         util.RegisterMethodAuthKey,
 			PreAuthKey:             pak,
+			Tags:                   requestedTags,
 			ExistingNodeForNetinfo: differentUserNode,
 		})
 		if err != nil {
@@ -3241,6 +3260,7 @@ func (s *State) approveRoutesAfterRegistration(
 func (s *State) reregisterNodeWithPAK(
 	existingNodeSameUser types.NodeView,
 	pak *types.PreAuthKey,
+	requestedTags []string,
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 	hostname string,
@@ -3322,10 +3342,19 @@ func (s *State) reregisterNodeWithPAK(
 		// node.AuthKeyID still holds the prior key's ID here (it is reassigned
 		// below), and SetNodeTags leaves AuthKeyID intact, so an admin retag
 		// cannot masquerade as a new key.
-		if pak.ConvertsNodeToTagged(node.View()) || pak.RetagsNode(node.View()) {
+		//
+		// Tags the login was allowed to request replace the node's instead.
+		tags := pak.Tags
+		retag := pak.ConvertsNodeToTagged(node.View()) || pak.RetagsNode(node.View())
+
+		if requestedTags != nil {
+			tags, retag = requestedTags, !slices.Equal(node.Tags, requestedTags)
+		}
+
+		if retag {
 			wasUserOwned := !node.IsTagged()
 
-			node.Tags = pak.Tags
+			node.Tags = tags
 			node.UserID = nil
 			node.User = nil
 
@@ -3339,7 +3368,8 @@ func (s *State) reregisterNodeWithPAK(
 			if wasUserOwned || node.IsExpiredAt(now) {
 				node.Expiry = nil
 			}
-		} else if node.IsTagged() && !pak.IsTagged() && prior.NodeKey != regReq.NodeKey {
+		} else if requestedTags == nil && node.IsTagged() && !pak.IsTagged() &&
+			prior.NodeKey != regReq.NodeKey {
 			// A user key that speaks for a tagged node, with a new node key,
 			// takes it back as that user's device, as on Tailscale SaaS. A
 			// relogin under the same node key keeps it tagged.
