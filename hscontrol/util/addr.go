@@ -1,6 +1,7 @@
 package util
 
 import (
+	"errors"
 	"fmt"
 	"iter"
 	"net/netip"
@@ -83,6 +84,45 @@ func ParseIPSet(arg string, bits *int) (*netipx.IPSet, error) {
 	ipSet.AddPrefix(netip.PrefixFrom(ip, int(bits8)))
 
 	return ipSet.IPSet()
+}
+
+// ParseIPRange errors.
+var (
+	ErrPrefixHostBits   = errors.New("prefix contains non-network bits set")
+	ErrInvalidIPAddress = errors.New("invalid IP address")
+)
+
+// ParseIPRange parses what [ParseIPSet] accepts, apart from "*", as the single
+// range it denotes, without building a set.
+func ParseIPRange(arg string) (netipx.IPRange, error) {
+	if strings.Contains(arg, "/") {
+		pfx, err := netip.ParsePrefix(arg)
+		if err != nil {
+			return netipx.IPRange{}, err
+		}
+
+		if pfx != pfx.Masked() {
+			return netipx.IPRange{}, fmt.Errorf("%w: %v", ErrPrefixHostBits, pfx)
+		}
+
+		return netipx.RangeOfPrefix(pfx), nil
+	}
+
+	if strings.Count(arg, "-") == 1 {
+		return netipx.ParseIPRange(arg)
+	}
+
+	ip, err := netip.ParseAddr(arg)
+	if err != nil {
+		return netipx.IPRange{}, fmt.Errorf("%w: %q", ErrInvalidIPAddress, arg)
+	}
+
+	r := netipx.IPRangeFrom(ip, ip)
+	if !r.IsValid() {
+		return netipx.IPRange{}, fmt.Errorf("%w: %q", ErrInvalidIPAddress, arg)
+	}
+
+	return r, nil
 }
 
 func GetIPPrefixEndpoints(na netip.Prefix) (netip.Addr, netip.Addr) {
