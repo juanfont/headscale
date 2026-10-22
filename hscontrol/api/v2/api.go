@@ -132,6 +132,15 @@ func Spec() ([]byte, error) {
 func Spec30() ([]byte, error) {
 	api := NewAPI(chi.NewMux(), Backend{})
 
+	// additionalProperties:true is the default, and spelled out it makes
+	// oapi-codegen write marshalers that drop a nil required list, sending
+	// {} where the server needs "tags":null.
+	for _, s := range api.OpenAPI().Components.Schemas.Map() {
+		if s.AdditionalProperties == true {
+			s.AdditionalProperties = nil
+		}
+	}
+
 	return api.OpenAPI().DowngradeYAML()
 }
 
