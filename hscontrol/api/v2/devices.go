@@ -53,24 +53,35 @@ type DeviceRoutes struct {
 	Enabled    []string `json:"enabledRoutes"    nullable:"false"`
 }
 
-// Request bodies match the Tailscale SDK wire shapes.
+// Request bodies match the Tailscale SDK wire shapes and, like Tailscale's,
+// ignore properties they do not define.
 type (
 	setAuthorizedRequest struct {
+		_ struct{} `additionalProperties:"true"`
+
 		Authorized bool `json:"authorized"`
 	}
 	setNameRequest struct {
+		_ struct{} `additionalProperties:"true"`
+
 		Name string `json:"name"`
 	}
 	// setTagsRequest.Tags is intentionally not nullable:"false": the SDK sends
 	// "tags":null for "make untagged", which the handler accepts as a no-op
 	// rather than failing to decode (Headscale cannot untag a node).
 	setTagsRequest struct {
+		_ struct{} `additionalProperties:"true"`
+
 		Tags []string `json:"tags"`
 	}
 	setKeyRequest struct {
+		_ struct{} `additionalProperties:"true"`
+
 		KeyExpiryDisabled bool `json:"keyExpiryDisabled"`
 	}
 	setSubnetRoutesRequest struct {
+		_ struct{} `additionalProperties:"true"`
+
 		Routes []string `json:"routes" nullable:"false"`
 	}
 )

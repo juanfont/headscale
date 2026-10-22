@@ -71,13 +71,7 @@ var apiv2CompatSkipReasons = map[string]string{
 	"key-list/setup-token-keys/4/tags": mintTagsNotEchoed,
 	"key-list/setup-token-keys/6/tags": mintTagsNotEchoed,
 
-	"oauth/K1/0/status":  unknownPropertyRefused,
-	"oauth/K1/0/outcome": unknownPropertyRefused,
-	"oauth/K1/1/status":  unknownPropertyRefused,
-	"oauth/K1/1/outcome": unknownPropertyRefused,
-	"oauth/K2/0/status":  unknownKeyType,
-	"oauth/K2/0/outcome": unknownKeyType,
-	"oauth/K5/0/status":  unknownKeyType,
+	"oauth/K5/0/status": unknownKeyType,
 
 	"oauth/E4/0/status": tagRefusalStatus,
 	"oauth/E5/0/status": tagRefusalStatus,
@@ -119,6 +113,7 @@ var apiv2CompatSkipReasons = map[string]string{
 	"oauth/key:K-ci/creator-user-id":          taggedKeyNoUserID,
 	"oauth/key:K-mixed/creator-user-id":       taggedKeyNoUserID,
 	"oauth/key:K-prod/creator-user-id":        taggedKeyNoUserID,
+	"oauth/key:K1/creator-user-id":            taggedKeyNoUserID,
 	"policy-api/key:J-server/creator-user-id": taggedKeyNoUserID,
 
 	"key-list/key:A-db/creator-user-id":          taggedKeyNoUserID,
@@ -205,8 +200,7 @@ const (
 const (
 	mintScopeRefusalStatus      = "TOKEN_SCOPE_REFUSAL_STATUS: SaaS refuses a token scope the client lacks with 403 and a message; headscale with 400 invalid_scope"
 	mintTagsNotEchoed           = "TOKEN_TAGS_NOT_ECHOED: SaaS's token answer names the token's tags; headscale's has no tags"
-	unknownPropertyRefused      = "UNKNOWN_PROPERTY_REFUSED: SaaS ignores a createKey property it does not define; headscale refuses the body with 422, so the key is never made"
-	unknownKeyType              = "UNKNOWN_KEY_TYPE: SaaS refuses an unknown keyType with 400 before it checks scopes; headscale makes an auth key from it"
+	unknownKeyType              = "UNKNOWN_KEY_TYPE: SaaS refuses an unknown keyType with 400 before it checks scopes; headscale checks the scope first and answers 403"
 	tagRefusalStatus            = "TAG_REFUSAL_STATUS: SaaS refuses a tag outside the token's grant with 400 requested tags are invalid or not permitted; headscale with 403"
 	keyListWithoutAll           = "KEY_LIST_WITHOUT_ALL: without all=true SaaS lists an OAuth token only the auth keys OAuth tokens made, whatever its tags and theirs; headscale lists every key"
 	keyListInvalidKeys          = "KEY_LIST_INVALID_KEYS: SaaS leaves spent and revoked auth keys out of a listing; headscale lists them"
