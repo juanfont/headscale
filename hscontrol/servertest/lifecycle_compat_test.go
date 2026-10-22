@@ -61,11 +61,6 @@ const (
 	ephemeralFollowsKey      = "EPHEMERAL_FOLLOWS_KEY: headscale takes a node's ephemeral flag from the key it last logged in with; SaaS keeps the flag the device was created with, so it is collected, or kept, as created"
 )
 
-// Used by reauthSkipReasons.
-const (
-	expiredPeerOffline = "EXPIRED_PEER_OFFLINE: headscale shows an expired peer offline while it is connected; SaaS shows it online"
-)
-
 // TestRouteApprovalCompat replays a user-owned router through admin
 // approvals and revokes, same-key and forced re-auth, a hostname change,
 // policy pushes, a withdraw and re-advertise, then logout and a login with

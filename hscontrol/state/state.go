@@ -4116,6 +4116,11 @@ func buildMapRequestChangeResponse(
 		return change.NodeAdded(id)
 	}
 
+	// Peers get an expired node without its endpoints or home DERP region.
+	if node.IsExpired() {
+		delta.endpointBroadcast, delta.derpChanged = false, false
+	}
+
 	var currentDERP tailcfg.DERPRegionID
 
 	if delta.derpChanged {
