@@ -78,6 +78,17 @@ secret is shown once:
 headscale oauth-clients create --scope auth_keys --tag tag:ci
 ```
 
+Scopes apply to the whole tailnet, as in Tailscale: an `auth_keys` token can read
+and revoke auth keys of any tag, an `oauth_keys` token every OAuth client, and a
+`devices:core:read` token reads every device, routes included with `fields=all`.
+Keep the secret as safe as any credential that can revoke keys. Without
+`all=true`, a token lists only the auth keys made through a token, whatever their
+tags; with it, every valid auth key. No listing holds a spent, expired or revoked
+key. Tags limit only the tags a token puts on keys, clients and devices, and
+which tagged devices it may retag. Deleting an OAuth client revokes its secret
+and its access tokens; auth keys, clients and nodes created with it stay until
+you remove them.
+
 Build the auth key from the secret:
 
 1. Swap the prefix: `hskey-client-…` becomes `tskey-client-…`. The client only

@@ -56,36 +56,11 @@ var apiv2CompatSkipReasons = map[string]string{
 
 	"oauth/O3/0/status": mintScopeRefusalStatus,
 	"oauth/O4/0/scope":  unknownScopeGranted,
+	"oauth/O4/0/tags":   unknownScopeGranted,
 
-	"oauth/O4/0/tags":  mintTagsNotEchoed,
-	"oauth/E1/0/tags":  mintTagsNotEchoed,
-	"oauth/E9a/0/tags": mintTagsNotEchoed,
-	"oauth/T1/0/tags":  mintTagsNotEchoed,
-	"oauth/D0/6/tags":  mintTagsNotEchoed,
-	"oauth/B1/0/tags":  mintTagsNotEchoed,
-	"oauth/B3/0/tags":  mintTagsNotEchoed,
-	"oauth/B11/1/tags": mintTagsNotEchoed,
-
-	"key-list/setup-token-keys/0/tags": mintTagsNotEchoed,
-	"key-list/setup-token-keys/2/tags": mintTagsNotEchoed,
-	"key-list/setup-token-keys/4/tags": mintTagsNotEchoed,
-	"key-list/setup-token-keys/6/tags": mintTagsNotEchoed,
+	"key-list/setup-token-keys/4/tags": mintTagsSorted,
 
 	"oauth/K5/0/status": unknownKeyType,
-
-	"oauth/E4/0/status": tagRefusalStatus,
-	"oauth/E5/0/status": tagRefusalStatus,
-	"oauth/T2/1/status": tagRefusalStatus,
-	"oauth/T3/1/status": tagRefusalStatus,
-
-	"oauth/T4/1/status":  retagRemovesUnownedTag,
-	"oauth/T4/1/outcome": retagRemovesUnownedTag,
-	"oauth/T4/2/tags":    retagRemovesUnownedTag,
-	"oauth/T4/2/owner":   retagRemovesUnownedTag,
-	"oauth/T5/1/status":  retagRemovesUnownedTag,
-	"oauth/T5/1/outcome": retagRemovesUnownedTag,
-	"oauth/T5/2/tags":    retagRemovesUnownedTag,
-	"oauth/T5/2/owner":   retagRemovesUnownedTag,
 
 	"oauth/D0/1/listed": emptyKeyListNull,
 
@@ -131,17 +106,11 @@ func notCompared(prefixes []string, key string) bool {
 	})
 }
 
-// Differences a planned change removes.
-const (
-	retagRemovesUnownedTag = "RETAG_REMOVES_UNOWNED_TAG: SaaS refuses a token's retag of a device holding a tag outside the token's grant with 400 cannot remove current tags; headscale replaces the tags"
-)
-
 // Differences no planned change removes yet.
 const (
 	mintScopeRefusalStatus      = "TOKEN_SCOPE_REFUSAL_STATUS: SaaS refuses a token scope the client lacks with 403 and a message; headscale with 400 invalid_scope"
-	mintTagsNotEchoed           = "TOKEN_TAGS_NOT_ECHOED: SaaS's token answer names the token's tags; headscale's has no tags"
+	mintTagsSorted              = "TOKEN_TAGS_SORTED: SaaS's token answer names the tags in the order its client was made with; headscale stores a client's tags sorted"
 	unknownKeyType              = "UNKNOWN_KEY_TYPE: SaaS refuses an unknown keyType with 400 before it checks scopes; headscale checks the scope first and answers 403"
-	tagRefusalStatus            = "TAG_REFUSAL_STATUS: SaaS refuses a tag outside the token's grant with 400 requested tags are invalid or not permitted; headscale with 403"
 	emptyKeyListNull            = "EMPTY_KEY_LIST_NULL: SaaS answers a listing that holds no key with keys null; headscale with []"
 	deletedClientGone           = "DELETED_CLIENT_GONE: SaaS keeps a deleted OAuth client readable as invalid and revoked; headscale removes it"
 	deletedClientCredentialText = "DELETED_CLIENT_CREDENTIAL_TEXT: SaaS refuses a deleted client's secret and tokens with API token invalid; headscale says invalid client credentials and unauthorized"
