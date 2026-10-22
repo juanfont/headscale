@@ -74,18 +74,6 @@ var apiv2CompatSkipReasons = map[string]string{
 	"oauth/device:before/all/device-oauth-client": deviceOAuthClientMaker,
 	"oauth/device:joiner/all/device-oauth-client": deviceOAuthClientMaker,
 
-	"policy-api/P2/0/status":     noV2Validate,
-	"policy-api/P2/0/message":    noV2Validate,
-	"policy-api/P3/0/status":     noV2Validate,
-	"policy-api/P3/0/message":    noV2Validate,
-	"policy-api/P4/0/status":     noV2Validate,
-	"policy-api/P4/0/outcome":    noV2Validate,
-	"policy-api/P5-R1/0/status":  noV2Validate,
-	"policy-api/P5-R1/0/message": noV2Validate,
-	"policy-api/P5-R2/0/status":  noV2Validate,
-	"policy-api/P5-R2/0/message": noV2Validate,
-	"policy-api/P5-R2/0/detail":  noV2Validate,
-
 	"policy-api/P7/0/body": hujsonFormatted,
 	"policy-api/P7/1/body": hujsonFormatted,
 }
@@ -127,7 +115,6 @@ const (
 	deletedClientGone           = "DELETED_CLIENT_GONE: SaaS keeps a deleted OAuth client readable as invalid and revoked; headscale removes it"
 	deletedClientCredentialText = "DELETED_CLIENT_CREDENTIAL_TEXT: SaaS refuses a deleted client's secret and tokens with API token invalid; headscale says invalid client credentials and unauthorized"
 	missingScopeText            = "MISSING_SCOPE_TEXT: SaaS refuses a delete outside the token's scopes with calling actor does not have enough permissions; headscale names the missing scope"
-	noV2Validate                = "NO_V2_VALIDATE: headscale's v2 API has no /acl/validate"
 	hujsonFormatted             = "HUJSON_FORMATTED: SaaS stores a HuJSON policy formatted, comments kept; headscale stores the bytes as sent"
 )
 
@@ -1144,10 +1131,7 @@ func (r *apiReplay) refusalChecks(t *testing.T, a testcapture.Action, endpoint s
 
 	require.NoError(t, json.Unmarshal(a.Response, &want))
 
-	// Headscale has no v2 validate, so only there may its answer not be JSON.
-	if err := json.Unmarshal(resp, &got); endpoint != "/tailnet/-/acl/validate" {
-		require.NoErrorf(t, err, "body: %s", resp)
-	}
+	require.NoErrorf(t, json.Unmarshal(resp, &got), "body: %s", resp)
 
 	users := func(data []struct {
 		User string `json:"user"`
