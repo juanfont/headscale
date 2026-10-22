@@ -62,19 +62,6 @@ var mapStreamSkipReasons = map[string]string{
 	"map-delivery/S2.5/laptop/endpoints-gap-bystander": restartEndpointsKept,
 	"map-delivery/S2.5/laptop/endpoints-gap-svc":       restartEndpointsKept,
 
-	"map-delivery/S3.1/appc/frames":      reconnectAnnounced,
-	"map-delivery/S3.1/bystander/frames": reconnectAnnounced,
-	"map-delivery/S3.1/router/frames":    reconnectAnnounced,
-	"map-delivery/S3.1/sshd/frames":      reconnectAnnounced,
-	"map-delivery/S3.1/svc/frames":       reconnectAnnounced,
-
-	"map-delivery/S3.4/appc/frames":      routerReconnectRecompute,
-	"map-delivery/S3.4/bystander/frames": routerReconnectRecompute,
-	"map-delivery/S3.4/db1/frames":       routerReconnectRecompute,
-	"map-delivery/S3.4/laptop/frames":    routerReconnectRecompute,
-	"map-delivery/S3.4/sshd/frames":      routerReconnectRecompute,
-	"map-delivery/S3.4/svc/frames":       routerReconnectRecompute,
-
 	"map-delivery/S3.6/bystander/peers": sameUserPeers,
 	"map-delivery/S3.6/laptop/peers":    sameUserPeers,
 
@@ -107,10 +94,6 @@ var mapStreamSkipReasons = map[string]string{
 	"policy-generation/G4/thor-1/peer-owners": sameUserPeers,
 	"policy-generation/G4/thor-2/peer-owners": sameUserPeers,
 
-	"user-role/S1-reconnect/own-a/frames": reconnectAnnounced,
-	"user-role/S1-reconnect/own-b/frames": reconnectAnnounced,
-	"user-role/S2-reconnect/own-a/frames": reconnectAnnounced,
-
 	"user-role/S0/tag-a/device-user": taggedDeviceUser,
 	"user-role/S0/tag-b/device-user": taggedDeviceUser,
 }
@@ -118,8 +101,6 @@ var mapStreamSkipReasons = map[string]string{
 const (
 	policyResponseToEveryNode = "POLICY_RESPONSE_TO_EVERY_NODE: headscale sends every connected node a policy response when the policy, a node's tags or approved routes, or the set of nodes change; SaaS sends only the nodes whose peers or filter change"
 	restartEndpointsKept      = "RESTART_ENDPOINTS_KEPT: headscale keeps a restarted node's last endpoints at its peers until it reports new ones; SaaS sends peers the node without endpoints until then"
-	reconnectAnnounced        = "RECONNECT_ANNOUNCED: headscale tells peers a node is online after a stream gap of a few seconds; SaaS sends them nothing"
-	routerReconnectRecompute  = "ROUTER_RECONNECT_RECOMPUTE: headscale sends every node a policy response when a subnet router's stream comes back after a few seconds; SaaS sends nothing"
 	taggedDeviceUser          = "TAGGED_DEVICE_USER: SaaS shows a tagged device's user as the login that made its key; headscale shows tagged-devices"
 )
 
