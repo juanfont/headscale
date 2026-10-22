@@ -354,22 +354,7 @@ func containsDeviceID(devs []apiv2.Device, id string) bool {
 // from SaaS, keyed <test_id>/<step>/<i>/<check>, where <i> is the call's index
 // in its step. A listed check that matches fails, so a fix must delete its
 // entry.
-var routesAPICompatSkipReasons = map[string]string{
-	// The GET after each refused probe reads back what headscale stored.
-	"routes-t4-admin/probe/0/status":     routeHostBitsAccepted,
-	"routes-t4-admin/probe/1/enabled":    routeHostBitsAccepted,
-	"routes-t4-admin/probe/2/status":     routeHostBitsAccepted,
-	"routes-t4-admin/probe/3/enabled":    routeHostBitsAccepted,
-	"routes-t4-admin/probe/0/v1-status":  routeHostBitsAccepted,
-	"routes-t4-admin/probe/1/v1-enabled": routeHostBitsAccepted,
-	"routes-t4-admin/probe/2/v1-status":  routeHostBitsAccepted,
-	"routes-t4-admin/probe/3/v1-enabled": routeHostBitsAccepted,
-
-	"routes-t5-oauth-routes-scope/probe/0/status":  routeHostBitsAccepted,
-	"routes-t5-oauth-routes-scope/probe/1/enabled": routeHostBitsAccepted,
-}
-
-const routeHostBitsAccepted = "ROUTE_HOST_BITS_ACCEPTED: SaaS refuses a route with host bits set with 400, headscale approves it as sent"
+var routesAPICompatSkipReasons = map[string]string{}
 
 // routeCall is one routes API answer, as the compat replays compare it.
 type routeCall struct {
