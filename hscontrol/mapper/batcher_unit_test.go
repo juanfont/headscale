@@ -449,6 +449,7 @@ func TestPendingBacklogCollapsesToCurrentState(t *testing.T) {
 
 	pending := nc.drainPending()
 	require.LessOrEqual(t, len(pending), 256, "state backlog must collapse while preserving pings")
+	require.True(t, pending[0].IsFull(), "the cap must collapse the backlog by itself")
 
 	// A retry must also collapse against a newer full update and keep older pings first.
 	nc.collapsePendingToFull([]change.Change{change.PingNode(id, &tailcfg.PingRequest{URL: "https://new"})})
