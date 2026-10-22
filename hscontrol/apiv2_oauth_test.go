@@ -15,9 +15,12 @@ import (
 	clientv2 "github.com/juanfont/headscale/gen/client/v2"
 	apiv2 "github.com/juanfont/headscale/hscontrol/api/v2"
 	"github.com/juanfont/headscale/hscontrol/scope"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/tailcfg"
+	tskey "tailscale.com/types/key"
 )
 
 // newOAuthTestServer builds the full v2 API (the auth+scope middleware and the
@@ -273,6 +276,66 @@ func TestAPIv2OAuth_ValidationErrorsBounded(t *testing.T) {
 	require.Len(t, out.Data, 1)
 	require.Len(t, out.Data[0].Errors, 21)
 	assert.Equal(t, "and 980 more", out.Data[0].Errors[20])
+}
+
+// TestAPIv2OAuth_TaggedKeyCreator: an admin key's user is the creator of the
+// tagged keys it makes and shows as their userId; a node joined with such a
+// key is tagged. A token's tagged key has no creator.
+func TestAPIv2OAuth_TaggedKeyCreator(t *testing.T) {
+	app, baseURL, admin := newOAuthTestServer(t)
+
+	owner := app.state.CreateUserForTest("odin")
+	ownerKey, apiKey, err := app.state.CreateAPIKey(nil)
+	require.NoError(t, err)
+	require.NoError(t, app.state.SetAPIKeyUser(apiKey.ID, types.UserID(owner.ID)))
+
+	create := func(bearer string) apiv2.Key {
+		t.Helper()
+
+		status, body := apiPost(t, baseURL+"/api/v2/tailnet/-/keys", bearer, apiv2.CreateKeyRequest{
+			Capabilities: &apiv2.KeyCapabilities{Devices: apiv2.KeyDeviceCapabilities{
+				Create: apiv2.KeyDeviceCreateCapabilities{Reusable: true, Tags: []string{"tag:ci"}},
+			}},
+		})
+		require.Equalf(t, http.StatusOK, status, "body: %s", body)
+
+		var key apiv2.Key
+		require.NoError(t, json.Unmarshal(body, &key))
+
+		return key
+	}
+
+	key := create(ownerKey)
+	assert.Equal(t, owner.StringID(), key.UserID)
+
+	status, body := apiReq(t, http.MethodGet, baseURL+"/api/v2/tailnet/-/keys/"+key.ID, admin, nil)
+	require.Equal(t, http.StatusOK, status)
+	assert.Contains(t, string(body), `"userId":"`+owner.StringID()+`"`)
+
+	node, _, err := app.state.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: key.Key},
+		NodeKey:  tskey.NewNode().Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "made-by-odin"},
+	}, tskey.NewMachine().Public())
+	require.NoError(t, err)
+	assert.True(t, node.IsTagged())
+	assert.Equal(t, []string{"tag:ci"}, node.Tags().AsSlice())
+
+	tok := mintScopedToken(t, baseURL, admin, scope.AuthKeys)
+	assert.Empty(t, create(tok).UserID)
+
+	// The key and the node's copy of it outlive the creator.
+	_, err = app.state.DeleteUser(*owner.TypedID())
+	require.NoError(t, err)
+
+	status, body = apiReq(t, http.MethodGet, baseURL+"/api/v2/tailnet/-/keys/"+key.ID, admin, nil)
+	require.Equalf(t, http.StatusOK, status, "body: %s", body)
+	assert.NotContains(t, string(body), `"userId"`)
+
+	nv, ok := app.state.GetNodeByID(node.ID())
+	require.True(t, ok)
+	require.True(t, nv.AuthKey().Valid())
+	assert.False(t, nv.AuthKey().User().Valid())
 }
 
 // TestAPIv2OAuth_UnknownKeyTypeRefused: a keyType other than auth or client
