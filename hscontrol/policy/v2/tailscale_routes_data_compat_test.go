@@ -366,6 +366,7 @@ func TestRoutesCompat(t *testing.T) {
 					gotRules := policyutil.ReduceFilterRules(
 						node.View(),
 						compiledRules,
+						nodeAddrSet(nodes.ViewSlice()),
 					)
 
 					wantRules := capture.PacketFilterRules

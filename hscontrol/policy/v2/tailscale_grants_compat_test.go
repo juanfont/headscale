@@ -281,6 +281,7 @@ func testGrantSuccess(
 				gotRules := policyutil.ReduceFilterRules(
 					node.View(),
 					pol.compileFilterRulesForNode(users, node.View(), nodes.ViewSlice()),
+					nodeAddrSet(nodes.ViewSlice()),
 				)
 
 				pmRules, err := pm.FilterForNode(node.View())
