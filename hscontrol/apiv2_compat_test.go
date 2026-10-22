@@ -105,23 +105,6 @@ var apiv2CompatSkipReasons = map[string]string{
 	"oauth/B7/0/message": deletedClientCredentialText,
 	"oauth/B7/1/message": deletedClientCredentialText,
 
-	"oauth/key:J-ci-runner/creator-user-id":   taggedKeyNoUserID,
-	"oauth/key:J-managed/creator-user-id":     taggedKeyNoUserID,
-	"oauth/key:J-mixed/creator-user-id":       taggedKeyNoUserID,
-	"oauth/key:J-prod-db/creator-user-id":     taggedKeyNoUserID,
-	"oauth/key:J-router/creator-user-id":      taggedKeyNoUserID,
-	"oauth/key:K-ci/creator-user-id":          taggedKeyNoUserID,
-	"oauth/key:K-mixed/creator-user-id":       taggedKeyNoUserID,
-	"oauth/key:K-prod/creator-user-id":        taggedKeyNoUserID,
-	"oauth/key:K1/creator-user-id":            taggedKeyNoUserID,
-	"policy-api/key:J-server/creator-user-id": taggedKeyNoUserID,
-
-	"key-list/key:A-db/creator-user-id":          taggedKeyNoUserID,
-	"key-list/key:A-late-prod/creator-user-id":   taggedKeyNoUserID,
-	"key-list/key:A-prod-db/creator-user-id":     taggedKeyNoUserID,
-	"key-list/key:A-prod-server/creator-user-id": taggedKeyNoUserID,
-	"key-list/key:A-prod/creator-user-id":        taggedKeyNoUserID,
-
 	"oauth/device:before/all/device-oauth-client":        deviceOAuthClientID,
 	"oauth/device:ci-runner/all/device-oauth-client":     deviceOAuthClientID,
 	"oauth/device:joiner/all/device-oauth-client":        deviceOAuthClientID,
@@ -207,7 +190,6 @@ const (
 	deletedClientGone           = "DELETED_CLIENT_GONE: SaaS keeps a deleted OAuth client readable as invalid and revoked; headscale removes it"
 	deletedClientCredentialText = "DELETED_CLIENT_CREDENTIAL_TEXT: SaaS refuses a deleted client's secret and tokens with API token invalid; headscale says invalid client credentials and unauthorized"
 	missingScopeText            = "MISSING_SCOPE_TEXT: SaaS refuses a delete outside the token's scopes with calling actor does not have enough permissions; headscale names the missing scope"
-	taggedKeyNoUserID           = "TAGGED_KEY_NO_USER_ID: SaaS shows the creating user's userId on a tagged auth key the admin made; headscale leaves userId off every tagged key"
 	deviceOAuthClientID         = "DEVICE_OAUTH_CLIENT_ID: SaaS device bodies carry oauthClientId, naming the join key or the OAuth client that made it; headscale's have no such field"
 	taggedDeviceUser            = "TAGGED_DEVICE_USER: SaaS shows a tagged device's user as the login that made its key, empty for a key a token made; headscale shows tagged-devices"
 	emptyRouteListsOmitted      = "EMPTY_ROUTE_LISTS_OMITTED: SaaS sends advertisedRoutes and enabledRoutes as [] for a device without routes under fields=all; headscale leaves both out"
