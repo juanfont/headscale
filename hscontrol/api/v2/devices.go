@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/netip"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -40,6 +41,10 @@ type Device struct {
 	OS                string     `json:"os"`
 	ClientVersion     string     `json:"clientVersion"`
 	UpdateAvailable   bool       `json:"updateAvailable"`
+	// OAuthClientID names the auth key the device joined with. For a key a
+	// token made, Tailscale names the token's OAuth client, which headscale
+	// does not record, so it is left out.
+	OAuthClientID string `json:"oauthClientId,omitempty"`
 
 	// Populated only when fields=all is requested.
 	AdvertisedRoutes []string `json:"advertisedRoutes,omitempty"`
@@ -456,6 +461,10 @@ func deviceFromView(view types.NodeView, allFields bool, baseDomain string) Devi
 		ClientVersion:     hostinfoVersion(view),
 	}
 
+	if key := view.AuthKey(); key.Valid() && !key.CreatedByToken() {
+		d.OAuthClientID = strconv.FormatUint(key.ID(), util.Base10)
+	}
+
 	if view.Expiry().Valid() {
 		exp := view.Expiry().Get()
 		d.Expires = &exp
@@ -482,10 +491,18 @@ func routesFromView(view types.NodeView) DeviceRoutes {
 	}
 }
 
-// deviceUser is the owning login. [types.NodeView.Owner] already resolves the
-// tags-as-identity rule: tagged nodes present the special TaggedDevices user,
-// user-owned nodes present their login, orphaned nodes present nothing.
+// deviceUser is the owning login. A tagged device, owned by its tags, shows
+// the login that made the key it joined with, as Tailscale does: nothing when
+// a token made that key.
 func deviceUser(view types.NodeView) string {
+	if view.IsTagged() {
+		if key := view.AuthKey(); key.Valid() && key.User().Valid() {
+			return key.User().Username()
+		}
+
+		return ""
+	}
+
 	owner := view.Owner()
 	if owner.Valid() {
 		return owner.Username()
