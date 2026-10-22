@@ -13,8 +13,10 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"pgregory.net/rapid"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
@@ -1225,6 +1227,37 @@ func TestIsExitNodeSubnetRouterAllocs(t *testing.T) {
 	require.Zero(t, allocs)
 }
 
+// TestCanAccessRoutesExitNeedsInternet checks that a viewer is offered a
+// peer's exit routes only when one of its rules reaches the internet, not for
+// any rule whose destination overlaps /0.
+func TestCanAccessRoutesExitNeedsInternet(t *testing.T) {
+	viewer := Node{IPv4: new(netip.MustParseAddr("100.64.0.1"))}
+	routes := []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6(), netip.MustParsePrefix("10.40.7.0/24")}
+	rule := func(src string, dsts ...string) []matcher.Match {
+		r := tailcfg.FilterRule{SrcIPs: []string{src}}
+		for _, dst := range dsts {
+			r.DstPorts = append(r.DstPorts, tailcfg.NetPortRange{IP: dst, Ports: tailcfg.PortRangeAny})
+		}
+
+		return matcher.MatchesFromFilterRules([]tailcfg.FilterRule{r})
+	}
+
+	internet := util.PrefixesToString(util.TheInternet().Prefixes())
+
+	for name, tt := range map[string]struct {
+		matchers []matcher.Match
+		want     []netip.Prefix
+	}{
+		"to a subnet":       {rule("100.64.0.1", "10.40.7.0/24"), routes[2:]},
+		"from anywhere":     {rule("*", "100.64.0.1"), routes[2:]},
+		"to everything":     {rule("100.64.0.1", "*"), routes},
+		"to the internet":   {rule("100.64.0.1", internet...), routes[:2]},
+		"to another viewer": {rule("100.64.0.1", "100.64.0.2"), nil},
+	} {
+		assert.Equalf(t, tt.want, viewer.CanAccessRoutes(tt.matchers, routes), "%s", name)
+	}
+}
+
 func TestCanAccessRoutesMatchesReference(t *testing.T) {
 	prefixStrings := []string{
 		"100.64.0.1/32", "100.64.0.2/32", "100.64.0.0/24",
@@ -1313,6 +1346,18 @@ func canAccessRouteReference(
 ) bool {
 	src := node.IPs()
 	subnetRoutes := node.SubnetRoutes()
+
+	if tsaddr.IsExitRoute(route) {
+		for _, matcher := range matchers {
+			fromNode := matcher.SrcsContainsIPs(src...) ||
+				(len(subnetRoutes) > 0 && matcher.SrcsOverlapsPrefixes(subnetRoutes...))
+			if fromNode && matcher.DestsIsTheInternet() {
+				return true
+			}
+		}
+
+		return false
+	}
 
 	for _, matcher := range matchers {
 		if matcher.SrcsContainsIPs(src...) && matcher.DestsOverlapsPrefixes(route) {

@@ -16,6 +16,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/rs/zerolog/log"
 	"go4.org/netipx"
@@ -1734,14 +1735,19 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 				continue
 			}
 
+			reachesInternet := grantReachesInternet(grant, resolvedDstPrefixes[i])
+
 			// A non-via grant covering routes that a via grant included
 			// defers to global HA primary election. Match by overlap so
 			// a broader or narrower regular dst still catches the
 			// routes the via grant added to Include.
 			for _, dstPrefix := range resolvedDstPrefixes[i] {
 				for _, p := range result.Include {
-					if dstPrefix.Overlaps(p) &&
-						!slices.Contains(result.UsePrimary, p) {
+					// Only a grant to the internet covers an exit route,
+					// as [types.Node.CanAccessRoutes] decides.
+					covers := dstPrefix.Overlaps(p) &&
+						(reachesInternet || !tsaddr.IsExitRoute(p))
+					if covers && !slices.Contains(result.UsePrimary, p) {
 						result.UsePrimary = append(result.UsePrimary, p)
 					}
 				}
@@ -1755,7 +1761,7 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 
 			// A regular grant to the internet lets the viewer use any
 			// exit node, not just the via-tagged ones.
-			if grantReachesInternet(grant) {
+			if reachesInternet {
 				result.Exclude = slices.DeleteFunc(result.Exclude, tsaddr.IsExitRoute)
 			}
 		}
@@ -1764,11 +1770,13 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 	return result
 }
 
-// grantReachesInternet reports whether a grant's destinations include
-// the internet. Neither the wildcard nor autogroup:internet resolves
-// to 0.0.0.0/0, so check the aliases themselves.
-func grantReachesInternet(grant Grant) bool {
-	return slices.ContainsFunc(grant.Destinations, func(d Alias) bool {
+// grantReachesInternet reports whether a grant's destinations, resolved
+// to dsts, reach the internet by the test the grant's filter rule gets
+// ([matcher.Match.DestsIsTheInternet]). Neither the wildcard nor
+// autogroup:internet resolves to the internet here, so check those
+// aliases themselves.
+func grantReachesInternet(grant Grant, dsts []netip.Prefix) bool {
+	internetAlias := slices.ContainsFunc(grant.Destinations, func(d Alias) bool {
 		if ag, ok := d.(*AutoGroup); ok {
 			return ag.Is(AutoGroupInternet)
 		}
@@ -1777,6 +1785,19 @@ func grantReachesInternet(grant Grant) bool {
 
 		return ok
 	})
+	if internetAlias {
+		return true
+	}
+
+	var b netipx.IPSetBuilder
+	for _, p := range dsts {
+		b.AddPrefix(p)
+	}
+
+	// Resolved prefixes are valid, so the builder cannot fail.
+	set, _ := b.IPSet()
+
+	return util.CoversTheInternet(set)
 }
 
 func (pm *PolicyManager) Version() int {
