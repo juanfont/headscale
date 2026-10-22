@@ -288,12 +288,13 @@ func apiv2TSCLI(t *testing.T, srv *servertest.TestServer, baseURL, apiKey string
 	assert.NotEmpty(t, created.ID)
 	assert.NotEmpty(t, created.Key, "secret returned on create")
 
-	// Server-side: tagged, reusable, described, no owner.
+	// Server-side: tagged, reusable, described, and the API key's user
+	// recorded as its creator.
 	pak := srvPreAuthKey(t, srv, created.ID)
 	assert.Equal(t, []string{"tag:ci"}, pak.Tags)
 	assert.True(t, pak.Reusable)
 	assert.Equal(t, "tscli", pak.Description)
-	assert.Nil(t, pak.User, "tagged key has no owning user")
+	assert.NotNil(t, pak.User, "the API key's user made the tagged key")
 
 	getOut := run("get", "key", "--key", created.ID, "-o", "json")
 
