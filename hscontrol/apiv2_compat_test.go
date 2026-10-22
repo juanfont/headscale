@@ -111,20 +111,6 @@ var apiv2CompatSkipReasons = map[string]string{
 	"oauth/device:prod-db/default/device-oauth-client":   deviceOAuthClientID,
 	"oauth/device:router/default/device-oauth-client":    deviceOAuthClientID,
 
-	"oauth/device:before/all/device-user":        taggedDeviceUser,
-	"oauth/device:ci-runner/all/device-user":     taggedDeviceUser,
-	"oauth/device:joiner/all/device-user":        taggedDeviceUser,
-	"oauth/device:laptop/all/device-user":        taggedDeviceUser,
-	"oauth/device:managed/all/device-user":       taggedDeviceUser,
-	"oauth/device:mixed/all/device-user":         taggedDeviceUser,
-	"oauth/device:prod-db/all/device-user":       taggedDeviceUser,
-	"oauth/device:router/all/device-user":        taggedDeviceUser,
-	"oauth/device:ci-runner/default/device-user": taggedDeviceUser,
-	"oauth/device:managed/default/device-user":   taggedDeviceUser,
-	"oauth/device:mixed/default/device-user":     taggedDeviceUser,
-	"oauth/device:prod-db/default/device-user":   taggedDeviceUser,
-	"oauth/device:router/default/device-user":    taggedDeviceUser,
-
 	"oauth/device:before/empty-route-lists":    emptyRouteListsOmitted,
 	"oauth/device:ci-runner/empty-route-lists": emptyRouteListsOmitted,
 	"oauth/device:joiner/empty-route-lists":    emptyRouteListsOmitted,
@@ -181,7 +167,6 @@ const (
 	deletedClientCredentialText = "DELETED_CLIENT_CREDENTIAL_TEXT: SaaS refuses a deleted client's secret and tokens with API token invalid; headscale says invalid client credentials and unauthorized"
 	missingScopeText            = "MISSING_SCOPE_TEXT: SaaS refuses a delete outside the token's scopes with calling actor does not have enough permissions; headscale names the missing scope"
 	deviceOAuthClientID         = "DEVICE_OAUTH_CLIENT_ID: SaaS device bodies carry oauthClientId, naming the join key or the OAuth client that made it; headscale's have no such field"
-	taggedDeviceUser            = "TAGGED_DEVICE_USER: SaaS shows a tagged device's user as the login that made its key, empty for a key a token made; headscale shows tagged-devices"
 	emptyRouteListsOmitted      = "EMPTY_ROUTE_LISTS_OMITTED: SaaS sends advertisedRoutes and enabledRoutes as [] for a device without routes under fields=all; headscale leaves both out"
 	hujsonFormatted             = "HUJSON_FORMATTED: SaaS stores a HuJSON policy formatted, comments kept; headscale stores the bytes as sent"
 )

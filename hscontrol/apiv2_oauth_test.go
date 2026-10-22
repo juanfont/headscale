@@ -339,6 +339,61 @@ func TestAPIv2OAuth_TaggedKeyCreator(t *testing.T) {
 	assert.False(t, nv.AuthKey().User().Valid())
 }
 
+// TestAPIv2OAuth_TaggedDeviceUser: a tagged device shows the login that made
+// the key it joined with, and nothing for a key a token made; it stays owned
+// by its tags.
+func TestAPIv2OAuth_TaggedDeviceUser(t *testing.T) {
+	app, baseURL, admin := newOAuthTestServer(t)
+
+	owner := app.state.CreateUserForTest("odin")
+	ownerKey, apiKey, err := app.state.CreateAPIKey(nil)
+	require.NoError(t, err)
+	require.NoError(t, app.state.SetAPIKeyUser(apiKey.ID, types.UserID(owner.ID)))
+
+	tok := mintScopedToken(t, baseURL, admin, scope.AuthKeys)
+
+	for bearer, want := range map[string]string{ownerKey: owner.Username(), tok: ""} {
+		status, body := apiPost(t, baseURL+"/api/v2/tailnet/-/keys", bearer, apiv2.CreateKeyRequest{
+			Capabilities: &apiv2.KeyCapabilities{Devices: apiv2.KeyDeviceCapabilities{
+				Create: apiv2.KeyDeviceCreateCapabilities{Tags: []string{"tag:ci"}},
+			}},
+		})
+		require.Equalf(t, http.StatusOK, status, "body: %s", body)
+
+		var key apiv2.Key
+		require.NoError(t, json.Unmarshal(body, &key))
+
+		node, _, err := app.state.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+			Auth:     &tailcfg.RegisterResponseAuth{AuthKey: key.Key},
+			NodeKey:  tskey.NewNode().Public(),
+			Hostinfo: &tailcfg.Hostinfo{Hostname: "tagged"},
+		}, tskey.NewMachine().Public())
+		require.NoError(t, err)
+		require.True(t, node.IsTagged())
+
+		status, body = apiReq(t, http.MethodGet, baseURL+"/api/v2/device/"+node.StringID(), admin, nil)
+		require.Equalf(t, http.StatusOK, status, "body: %s", body)
+
+		var dev apiv2.Device
+		require.NoError(t, json.Unmarshal(body, &dev))
+		assert.Equal(t, want, dev.User)
+		assert.Equal(t, []string{"tag:ci"}, dev.Tags)
+
+		if want == "" {
+			continue
+		}
+
+		// The creator's rename reaches the devices its keys made.
+		renamed, _, err := app.state.RenameUser(types.UserID(owner.ID), "thor")
+		require.NoError(t, err)
+
+		status, body = apiReq(t, http.MethodGet, baseURL+"/api/v2/device/"+node.StringID(), admin, nil)
+		require.Equalf(t, http.StatusOK, status, "body: %s", body)
+		require.NoError(t, json.Unmarshal(body, &dev))
+		assert.Equal(t, renamed.Username(), dev.User)
+	}
+}
+
 // TestAPIv2OAuth_KeyListing: a listing never holds an invalid key; without
 // all=true a token sees only the auth keys tokens made, whatever their tags.
 func TestAPIv2OAuth_KeyListing(t *testing.T) {
