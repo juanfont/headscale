@@ -1853,7 +1853,7 @@ func (c pakReregCase) reregister(
 	regReq tailcfg.RegisterRequest,
 ) (types.NodeView, error) {
 	hi := regReq.Hostinfo.Clone()
-	node, _, err := c.s.reregisterNodeWithPAK(view, pak, regReq, c.machineKey, hi.Hostname, hi)
+	node, _, err := c.s.reregisterNodeWithPAK(view, pak, nil, regReq, c.machineKey, hi.Hostname, hi)
 
 	return node, err
 }
@@ -3044,8 +3044,68 @@ func TestPAKWakeAcceptsRequestedTags(t *testing.T) {
 	assert.Equal(t, "h1", ns.Hostname)
 
 	req.NodeKey = key.NewNode().Public()
+	req.Hostinfo = &tailcfg.Hostinfo{Hostname: "h1", RequestTags: []string{"tag:other"}}
 	_, _, err = s.HandleNodeFromPreAuthKey(req, c.machineKey)
 	require.ErrorIs(t, err, ErrRequestedTagsInvalidOrNotPermitted)
+}
+
+// TestPAKLoginAppliesOwnedRequestTags: a key login gets the tags it requests
+// when a user's key's user owns each directly, or a tagged key's tags own it
+// one hop away; the requested tags replace the key's. Anything else is
+// refused.
+func TestPAKLoginAppliesOwnedRequestTags(t *testing.T) {
+	s := newRetagTestState(t)
+	user, _, err := s.CreateUser(types.User{Name: "tag-req-user"})
+	require.NoError(t, err)
+
+	_, err = s.SetPolicy([]byte(`{"tagOwners": {
+		"tag:base": ["tag-req-user@"],
+		"tag:mid":  ["tag:base"],
+		"tag:top":  ["tag:mid"]
+	}}`))
+	require.NoError(t, err)
+
+	userKey, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+	baseKey, err := s.CreatePreAuthKey(nil, true, false, nil, []string{"tag:base"})
+	require.NoError(t, err)
+
+	join := func(k *types.PreAuthKeyNew, tags ...string) (types.NodeView, error) {
+		node, _, err := s.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+			Auth:     &tailcfg.RegisterResponseAuth{AuthKey: k.Key},
+			NodeKey:  key.NewNode().Public(),
+			Hostinfo: &tailcfg.Hostinfo{Hostname: "h", RequestTags: tags},
+		}, key.NewMachine().Public())
+
+		return node, err
+	}
+
+	node, err := join(userKey, "tag:base")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"tag:base"}, node.Tags().AsSlice())
+	assert.False(t, node.UserID().Valid())
+	assert.False(t, node.Expiry().Valid())
+
+	node, err = join(baseKey, "tag:mid")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"tag:mid"}, node.Tags().AsSlice())
+
+	_, err = join(userKey, "tag:mid")
+	require.ErrorIs(t, err, ErrRequestedTagsInvalidOrNotPermitted, "a user owns only its tags")
+	_, err = join(baseKey, "tag:top")
+	require.ErrorIs(t, err, ErrRequestedTagsInvalidOrNotPermitted, "two hops")
+
+	c := registerForPAKRereg(t, s, userKey)
+	req := c.regReq
+	req.NodeKey = key.NewNode().Public()
+	req.Hostinfo = &tailcfg.Hostinfo{Hostname: "h1", RequestTags: []string{"tag:base"}}
+	_, _, err = s.HandleNodeFromPreAuthKey(req, c.machineKey)
+	require.NoError(t, err)
+
+	ns, row := c.fields(t)
+	assert.Equal(t, []string{"tag:base"}, ns.Tags, "converted in place")
+	assert.Equal(t, []string{"tag:base"}, row.Tags)
+	assert.Nil(t, ns.UserID)
 }
 
 // TestUserKeyOnTaggedMachine: a user key on a tagged machine re-authenticates
