@@ -180,10 +180,11 @@ func TestNodeExpiryPreservesControlConnection(t *testing.T) {
 				assert.True(c, client.Netmap().SelfNode.KeyExpiry().Before(time.Now()))
 				assert.False(c, client.Netmap().SelfNode.Online().Get())
 
+				// Peers still see the connected node online, as on Tailscale SaaS.
 				peer, found := observer.PeerByName(client.Name)
 				if assert.True(c, found) {
 					assert.True(c, peer.Expired())
-					assert.False(c, peer.Online().Get())
+					assert.True(c, peer.Online().Get())
 				}
 			}, 5*time.Second, 10*time.Millisecond, "expiry must take the node offline without ending its control session")
 
