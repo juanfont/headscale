@@ -60,6 +60,49 @@ type DebugStringInfo struct {
 	Content string `json:"content"`
 }
 
+// DebugRegistrationCacheInfo represents the registration cache in a JSON-safe
+// format for the debug endpoint.
+type DebugRegistrationCacheInfo struct {
+	Type       string                        `json:"type"`
+	Expiration string                        `json:"expiration"`
+	MaxEntries int                           `json:"max_entries"`
+	CurrentLen int                           `json:"current_len"`
+	Status     string                        `json:"status"`
+	Entries    []DebugRegistrationCacheEntry `json:"entries"`
+}
+
+// DebugRegistrationCacheEntry represents a pending auth cache entry without
+// exposing internal channels or one-time secrets.
+type DebugRegistrationCacheEntry struct {
+	ID                  string                                     `json:"id"`
+	Kind                string                                     `json:"kind"`
+	Registration        *DebugRegistrationCacheRegistration        `json:"registration,omitempty"`
+	SSHCheck            *DebugRegistrationCacheSSHCheck            `json:"ssh_check,omitempty"`
+	PendingConfirmation *DebugRegistrationCachePendingConfirmation `json:"pending_confirmation,omitempty"`
+}
+
+// DebugRegistrationCacheRegistration represents a pending node registration.
+type DebugRegistrationCacheRegistration struct {
+	Hostname    string     `json:"hostname,omitempty"`
+	HasHostinfo bool       `json:"has_hostinfo"`
+	Endpoints   []string   `json:"endpoints,omitempty"`
+	Expiry      *time.Time `json:"expiry,omitempty"`
+}
+
+// DebugRegistrationCacheSSHCheck represents a pending SSH check auth request.
+type DebugRegistrationCacheSSHCheck struct {
+	SrcNodeID types.NodeID `json:"src_node_id"`
+	DstNodeID types.NodeID `json:"dst_node_id"`
+}
+
+// DebugRegistrationCachePendingConfirmation represents pending OIDC
+// confirmation state without exposing the one-time CSRF token.
+type DebugRegistrationCachePendingConfirmation struct {
+	UserID     uint       `json:"user_id"`
+	NodeExpiry *time.Time `json:"node_expiry,omitempty"`
+	HasCSRF    bool       `json:"has_csrf"`
+}
+
 // DebugOverview returns a comprehensive overview of the current state for debugging.
 func (s *State) DebugOverview() string {
 	info := s.DebugOverviewJSON()
@@ -177,14 +220,76 @@ func (s *State) DebugSSHPolicies() map[string]*tailcfg.SSHPolicy {
 }
 
 // DebugRegistrationCache returns debug information about the registration cache.
-func (s *State) DebugRegistrationCache() map[string]any {
-	return map[string]any{
-		"type":        "expirable-lru",
-		"expiration":  registerCacheExpiration.String(),
-		"max_entries": defaultRegisterCacheMaxEntries,
-		"current_len": s.authCache.Len(),
-		"status":      "active",
+func (s *State) DebugRegistrationCache() DebugRegistrationCacheInfo {
+	keys := s.authCache.Keys()
+	entries := make([]DebugRegistrationCacheEntry, 0, len(keys))
+
+	for _, id := range keys {
+		entry, ok := s.authCache.Peek(id)
+		if !ok {
+			continue
+		}
+
+		entries = append(entries, debugRegistrationCacheEntry(id, entry))
 	}
+
+	return DebugRegistrationCacheInfo{
+		Type:       "expirable-lru",
+		Expiration: registerCacheExpiration.String(),
+		MaxEntries: defaultRegisterCacheMaxEntries,
+		CurrentLen: s.authCache.Len(),
+		Status:     "active",
+		Entries:    entries,
+	}
+}
+
+func debugRegistrationCacheEntry(
+	id types.AuthID,
+	request *types.AuthRequest,
+) DebugRegistrationCacheEntry {
+	entry := DebugRegistrationCacheEntry{
+		ID:   id.String(),
+		Kind: "unknown",
+	}
+
+	if request == nil {
+		return entry
+	}
+
+	if request.IsRegistration() {
+		registrationData := request.RegistrationData()
+		endpoints := make([]string, 0, len(registrationData.Endpoints))
+		for _, endpoint := range registrationData.Endpoints {
+			endpoints = append(endpoints, endpoint.String())
+		}
+
+		entry.Kind = "registration"
+		entry.Registration = &DebugRegistrationCacheRegistration{
+			Hostname:    registrationData.Hostname,
+			HasHostinfo: registrationData.Hostinfo != nil,
+			Endpoints:   endpoints,
+			Expiry:      registrationData.Expiry,
+		}
+	}
+
+	if request.IsSSHCheck() {
+		binding := request.SSHCheckBinding()
+		entry.Kind = "ssh_check"
+		entry.SSHCheck = &DebugRegistrationCacheSSHCheck{
+			SrcNodeID: binding.SrcNodeID,
+			DstNodeID: binding.DstNodeID,
+		}
+	}
+
+	if pendingConfirmation := request.PendingConfirmation(); pendingConfirmation != nil {
+		entry.PendingConfirmation = &DebugRegistrationCachePendingConfirmation{
+			UserID:     pendingConfirmation.UserID,
+			NodeExpiry: pendingConfirmation.NodeExpiry,
+			HasCSRF:    pendingConfirmation.CSRF != "",
+		}
+	}
+
+	return entry
 }
 
 // DebugConfig returns debug information about the current configuration.
