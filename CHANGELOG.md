@@ -125,6 +125,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 
 - PostgreSQL connection settings are assembled into a `postgres://` URL with proper escaping, so a password (or host, user, database name) containing spaces, quotes or other reserved characters no longer truncates the DSN [#3477](https://github.com/juanfont/headscale/pull/3477)
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
+- SSH policy validation errors now prefix their messages with `ssh:` so failures like `ssh: users must be specified` make it clear that the problem comes from an SSH rule violation [#3343](https://github.com/juanfont/headscale/pull/3343)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
 - Fix `headscale users destroy`/`rename` reporting "multiple users match query" when no user matches; an ambiguous match now lists the matching users [#3476](https://github.com/juanfont/headscale/pull/3476)
 - Deleting a user that still owns nodes now lists the nodes (ID and hostname) that must be deleted first [#3475](https://github.com/juanfont/headscale/pull/3475)
