@@ -1,8 +1,10 @@
 package v2
 
 import (
+	"encoding/json"
 	"fmt"
 	"maps"
+	"math/rand/v2"
 	"net/netip"
 	"slices"
 	"testing"
@@ -4174,4 +4176,91 @@ func BenchmarkNodeCapMapsConstruction(b *testing.B) {
 			}
 		}
 	}
+}
+
+// BenchmarkCompileWideACL compiles a CI-shaped policy: one rule per CI tag
+// to its own service, and one wide rule from every CI tag to the shared
+// services, which compiles to one grant per destination. new compiles from
+// scratch; set-nodes recompiles after a batch of tagged joins.
+func BenchmarkCompileWideACL(b *testing.B) {
+	const (
+		ciTags = 300
+		common = 100
+		ci     = 5000
+		joins  = 50
+	)
+
+	r := rand.New(rand.NewPCG(1, 2)) //nolint:gosec // reproducible benchmark input
+
+	owners := map[string][]string{}
+	tag := func(kind string, i int) string {
+		t := fmt.Sprintf("tag:%s%d", kind, i)
+		owners[t] = []string{}
+
+		return t
+	}
+
+	acls := make([]map[string]any, 0, ciTags+1)
+	wide := make([]string, 0, ciTags)
+	dsts := make([]string, 0, common)
+
+	for i := range ciTags {
+		acls = append(acls, map[string]any{"action": "accept", "src": []string{tag("ci-app", i)}, "dst": []string{tag("svc-app", i) + ":80"}})
+		wide = append(wide, tag("ci-app", i))
+	}
+
+	for i := range common {
+		dsts = append(dsts, tag("svc-common", i)+":80")
+	}
+
+	acls = append(acls, map[string]any{"action": "accept", "src": wide, "dst": dsts})
+	pol := must(json.Marshal(map[string]any{"tagOwners": owners, "acls": acls}))
+
+	node := func(i int, t string) *types.Node {
+		v4 := netip.AddrFrom4([4]byte{100, 64 + byte(i>>16), byte(i >> 8), byte(i)})                                           //nolint:gosec
+		v6 := netip.AddrFrom16([16]byte{0xfd, 0x7a, 0x11, 0x5c, 0xa1, 0xe0, 13: byte(i >> 16), 14: byte(i >> 8), 15: byte(i)}) //nolint:gosec
+
+		return &types.Node{ID: types.NodeID(i + 1), Hostname: fmt.Sprintf("n%d", i), IPv4: &v4, IPv6: &v6, Tags: []string{t}} //nolint:gosec
+	}
+
+	before := make(types.Nodes, 0, ciTags+common+ci)
+	for i := range ciTags {
+		before = append(before, node(len(before), fmt.Sprintf("tag:svc-app%d", i)))
+	}
+
+	for i := range common {
+		before = append(before, node(len(before), fmt.Sprintf("tag:svc-common%d", i)))
+	}
+
+	for range ci {
+		before = append(before, node(len(before), fmt.Sprintf("tag:ci-app%d", r.IntN(ciTags))))
+	}
+
+	after := slices.Clone(before)
+	for range joins {
+		after = append(after, node(len(after), fmt.Sprintf("tag:ci-app%d", r.IntN(ciTags))))
+	}
+
+	b.Run("new", func(b *testing.B) {
+		for b.Loop() {
+			_, err := NewPolicyManager(pol, nil, after.ViewSlice())
+			require.NoError(b, err)
+		}
+	})
+
+	b.Run("set-nodes", func(b *testing.B) {
+		pm, err := NewPolicyManager(pol, nil, before.ViewSlice())
+		require.NoError(b, err)
+
+		sets := []types.Nodes{after, before}
+
+		i := 0
+		for b.Loop() {
+			changed, err := pm.SetNodes(sets[i%2].ViewSlice())
+			require.NoError(b, err)
+			require.True(b, changed)
+
+			i++
+		}
+	})
 }
