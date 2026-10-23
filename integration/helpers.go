@@ -232,6 +232,13 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 			assert.True(c, exists, "Expected node %d not found in nodeStore", nodeID)
 		}
 
+		// Disconnected recipients retain historical maps from earlier logins.
+		for id := range mapResponses {
+			if recipient, ok := debugInfo.ConnectedNodes[id.String()]; !ok || !recipient.Connected {
+				delete(mapResponses, id)
+			}
+		}
+
 		// Check that we have map responses for expected nodes
 		mapResponseCount := len(mapResponses)
 		expectedCount := len(expectedNodes)
@@ -377,6 +384,8 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expectedNodes []types.NodeID) {
 	t.Helper()
 
+	connectedRecipients := make(map[string]bool)
+
 	// Stage 1: Verify batcher disconnection (should be immediate)
 	t.Logf("Stage 1: Verifying batcher disconnection for %d nodes", len(expectedNodes))
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -399,6 +408,14 @@ func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expec
 		}
 
 		assert.True(c, allBatcherOffline, "All nodes should be disconnected from batcher")
+
+		clear(connectedRecipients)
+
+		for id, nodeInfo := range debugInfo.ConnectedNodes {
+			if nodeInfo.Connected {
+				connectedRecipients[id] = true
+			}
+		}
 	}, integrationutil.ScaledTimeout(15*time.Second), 1*time.Second, "batcher disconnection validation")
 
 	// Stage 2: Verify nodestore offline status (up to 15 seconds due to disconnect detection delay)
@@ -427,6 +444,12 @@ func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expec
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second, "nodestore offline validation")
 
 	// Stage 3: Verify map response propagation (longest delay due to peer update timing)
+	// Disconnected recipients retain historical maps and cannot receive offline updates.
+	if len(connectedRecipients) == 0 {
+		t.Log("All nodes are offline; no connected recipients need map updates")
+		return
+	}
+
 	t.Logf("Stage 3: Verifying map response propagation for %d nodes (allowing for peer map update delays)", len(expectedNodes))
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		mapResponses, err := headscale.GetAllMapReponses()
@@ -442,6 +465,10 @@ func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expec
 		if len(expectedNodes) == 1 {
 			// Single node: check if it appears in map responses
 			for nodeID := range onlineMap {
+				if !connectedRecipients[nodeID.String()] {
+					continue
+				}
+
 				if slices.Contains(expectedNodes, nodeID) {
 					allMapResponsesOffline = false
 
@@ -452,6 +479,10 @@ func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expec
 			// Multi-node: check peer visibility
 			for _, nodeID := range expectedNodes {
 				for id, peerMap := range onlineMap {
+					if !connectedRecipients[id.String()] {
+						continue
+					}
+
 					if id == nodeID {
 						continue // Skip self-references
 					}
