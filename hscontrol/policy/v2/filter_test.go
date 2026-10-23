@@ -3956,7 +3956,7 @@ func TestCompileViaGrant(t *testing.T) {
 			nodeView := tt.node.View()
 			nodesSlice := tt.nodes.ViewSlice()
 
-			cg, err := tt.pol.compileOneGrant(tt.grant, users, nodesSlice)
+			cg, err := tt.pol.compileOneGrant(tt.grant, users, nodesSlice, nil)
 
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)
@@ -4129,7 +4129,7 @@ func TestCompileGrantWithAutogroupSelf_GrantPaths(t *testing.T) {
 			userIdx := buildUserNodeIndex(nodesSlice)
 
 			cg, err := tt.pol.compileOneGrant(
-				tt.grant, users, nodesSlice,
+				tt.grant, users, nodesSlice, nil,
 			)
 
 			if tt.wantErr != nil {

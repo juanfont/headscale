@@ -244,9 +244,10 @@ func (pol *Policy) compileGrants(
 	}
 
 	compiled := make([]compiledGrant, 0, len(grants))
+	srcs := sourceCache{}
 
 	for _, grant := range grants {
-		cg, err := pol.compileOneGrant(grant, users, nodes)
+		cg, err := pol.compileOneGrant(grant, users, nodes, srcs)
 		if err != nil {
 			log.Trace().Err(err).Msg("compiling grant")
 
@@ -271,6 +272,7 @@ func (pol *Policy) compileOneGrant(
 	grant Grant,
 	users types.Users,
 	nodes views.Slice[types.NodeView],
+	srcs sourceCache,
 ) (*compiledGrant, error) {
 	// Via grants: resolve sources, store deferred data.
 	if len(grant.Via) > 0 {
@@ -291,9 +293,9 @@ func (pol *Policy) compileOneGrant(
 	// Resolve sources per-alias, tracking non-wildcard sources
 	// separately so we can preserve their IPs alongside the
 	// wildcard CGNAT ranges (matching Tailscale SaaS behavior).
-	resolvedSrcs, nonWildcardSrcs, err := resolveSources(
-		pol, grant.Sources, users, nodes,
-	)
+	sources := srcs.get(pol, grant.Sources, users, nodes)
+
+	resolvedSrcs, err := sources.all, sources.err
 	if err != nil {
 		return nil, err
 	}
@@ -309,10 +311,7 @@ func (pol *Policy) compileOneGrant(
 
 	hasWildcard := sourcesHaveWildcard(grant.Sources)
 	hasDangerAll := sourcesHaveDangerAll(grant.Sources)
-	srcIPStrings := buildSrcIPStrings(
-		resolvedSrcs, nonWildcardSrcs,
-		hasWildcard, hasDangerAll, nodes,
-	)
+	srcIPStrings := sources.strings(hasWildcard, hasDangerAll, nodes)
 
 	cg := &compiledGrant{
 		srcIPStrings: srcIPStrings,
@@ -348,12 +347,78 @@ func mergeResolvedSrcs(resolvedSrcs []ResolvedAddresses) (resolved, error) {
 	var b netipx.IPSetBuilder
 
 	for _, ips := range resolvedSrcs {
+		if r, ok := ips.(resolved); ok {
+			b.AddSet(&r.ips)
+
+			continue
+		}
+
 		for _, pref := range ips.Prefixes() {
 			b.AddPrefix(pref)
 		}
 	}
 
 	return newResolved(&b)
+}
+
+// sourceCache holds each source list's resolution for one compile: an ACL
+// compiles to one grant per destination, all sharing its sources, and
+// resolving and merging them is most of a wide ACL's compile.
+type sourceCache map[sourcesKey]*grantSources
+
+// sourcesKey names a source list by its backing array, which the grants
+// of one ACL share.
+type sourcesKey struct {
+	first *Alias
+	n     int
+}
+
+// grantSources is a source list resolved per alias, all and without
+// wildcards, and its SrcIPs once built.
+type grantSources struct {
+	all, nonWild []ResolvedAddresses
+	err          error
+
+	built bool
+	strs  []string
+}
+
+// get resolves sources, once per source list; c may be nil.
+func (c sourceCache) get(
+	pol *Policy,
+	sources Aliases,
+	users types.Users,
+	nodes views.Slice[types.NodeView],
+) *grantSources {
+	key := sourcesKey{n: len(sources)}
+	if len(sources) > 0 {
+		key.first = &sources[0]
+	}
+
+	if s, ok := c[key]; ok {
+		return s
+	}
+
+	s := &grantSources{}
+	s.all, s.nonWild, s.err = resolveSources(pol, sources, users, nodes)
+
+	if c != nil {
+		c[key] = s
+	}
+
+	return s
+}
+
+// strings returns the SrcIPs of the sources. Both flags follow from the
+// sources, so every grant sharing them asks the same. The slice is shared
+// and clipped, so a caller appending to it copies.
+func (s *grantSources) strings(hasWildcard, hasDangerAll bool, nodes views.Slice[types.NodeView]) []string {
+	if !s.built {
+		s.strs = slices.Clip(buildSrcIPStrings(s.all, s.nonWild, hasWildcard, hasDangerAll, nodes))
+		s.built = true
+	}
+
+	return s.strs
 }
 
 // compileOneViaGrant resolves sources for a via grant and stores the
