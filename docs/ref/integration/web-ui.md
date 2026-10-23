@@ -59,5 +59,11 @@ Headscale doesn't provide a built-in web interface but users may pick one from t
       ![GitHub last commit](https://img.shields.io/github/last-commit/headscale-panel/panel)
     - A modern Headscale management panel with a clean, network-operations-focused
       UI
+- [Headscale Console](https://github.com/patel5d2/headscale-console)
+    - ![GitHub stars](https://img.shields.io/github/stars/patel5d2/headscale-console?style=flat)
+      ![GitHub last commit](https://img.shields.io/github/last-commit/patel5d2/headscale-console)
+    - A clean, Tailscale-style web admin console for Headscale with bulk actions,
+      audit log, policy history, Browser SSH, log analysis, and one-click
+      Headscale updates
 
 You can ask for support on our [Discord server](https://discord.gg/c84AZQhmpx) in the "web-interfaces" channel.
