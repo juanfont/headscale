@@ -6,13 +6,20 @@
 
 ### Security
 
-- Update `golang.org/x/net` to v0.60.0, `golang.org/x/text` to v0.42.0 and gRPC to v1.83.2 to fix reported HTTP/2 denial-of-service and text-processing vulnerabilities in the release dependencies ([x/net](https://pkg.go.dev/vuln/GO-2026-6617), [x/text](https://pkg.go.dev/vuln/GO-2026-6629), [gRPC](https://pkg.go.dev/vuln/GO-2026-6348))
-- Build with Go 1.27.3, which rejects certificate chains containing the compromised eMudhra intermediate keys (CVE-2026-111943). Rebuilds are required for binaries and containers to receive this protection [Go #82345](https://github.com/golang/go/issues/82345)
-- Refresh and pin the normal and debug container bases to images whose CA bundles no longer include `emSign ECC Root CA - G3` [#3579](https://github.com/juanfont/headscale/issues/3579)
+- Build with Go 1.27.3 to reject certificate chains containing the compromised eMudhra intermediate keys (CVE-2026-111943) [Go #82345](https://github.com/golang/go/issues/82345)
+- Update and pin the normal and debug container bases to images whose CA bundles no longer include `emSign ECC Root CA - G3` [#3579](https://github.com/juanfont/headscale/issues/3579)
+- Update `golang.org/x/net` to v0.60.0, `golang.org/x/text` to v0.42.0 and gRPC to v1.83.2 to address HTTP/2 denial-of-service and text-processing vulnerabilities ([x/net](https://pkg.go.dev/vuln/GO-2026-6617), [x/text](https://pkg.go.dev/vuln/GO-2026-6629), [gRPC](https://pkg.go.dev/vuln/GO-2026-6348))
+
+Custom builds must be rebuilt with Go 1.27.3 or newer to receive the certificate-chain protection.
 
 ### Changes
 
-- Update the Tailscale dependency to v1.102.0 for Go 1.27 JSON compatibility in SSH check responses; the minimum supported client version remains v1.80.0
+- Speed up peer-map construction on large tailnets by finding each node's matching rules once, instead of checking every pair of nodes against every rule [#3556](https://github.com/juanfont/headscale/pull/3556)
+- Build the peer map once per policy write instead of twice, and skip the rebuild when reloading an unchanged policy [#3557](https://github.com/juanfont/headscale/pull/3557)
+- Reduce work when broadcasting map updates by avoiding repeated recipient filtering [#3568](https://github.com/juanfont/headscale/pull/3568)
+- Avoid `INTERNAL_ERROR` stream errors when a node logs out or is deleted, or when Headscale shuts down; writes already in progress have a short grace period to finish, while clients that stop reading are still disconnected [#3575](https://github.com/juanfont/headscale/pull/3575)
+- Return database-open errors instead of risking a panic or returning a partially initialized database handle [#3496](https://github.com/juanfont/headscale/pull/3496)
+- Update the Tailscale dependency to v1.102.0 for Go 1.27 JSON compatibility in SSH check responses
 
 ## 0.29.5 (2026-10-13)
 
