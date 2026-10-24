@@ -34,7 +34,7 @@ require (
 	github.com/libdns/rfc2136 v1.0.1
 	github.com/mholt/acmez/v3 v3.1.7
 	github.com/miekg/dns v1.1.73
-	github.com/oapi-codegen/runtime v1.7.0
+	github.com/oapi-codegen/runtime v1.8.0
 	github.com/oauth2-proxy/mockoidc v0.0.0-20240214162133-caebfff84d25
 	github.com/ory/dockertest/v3 v3.12.0
 	github.com/pkg/profile v1.7.0
@@ -83,7 +83,7 @@ require (
 	// go get modernc.org/libc@v1.55.3 modernc.org/sqlite@v1.33.1
 	modernc.org/sqlite v1.61.0
 	pgregory.net/rapid v1.3.0
-	tailscale.com v1.105.0-pre.0.20261022061721-37fc7a7a7260
+	tailscale.com v1.105.0-pre.0.20261024004140-a6cffd0a6d11
 	tailscale.com/client/tailscale/v2 v2.12.0
 	zombiezen.com/go/postgrestest v1.0.1
 )
