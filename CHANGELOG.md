@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 0.29.6 (Unreleased)
+
+**Minimum supported Tailscale client version: v1.80.0**
+
+### Security
+
+- Update `golang.org/x/net` to v0.60.0, `golang.org/x/text` to v0.42.0 and gRPC to v1.83.2 to fix reported HTTP/2 denial-of-service and text-processing vulnerabilities in the release dependencies ([x/net](https://pkg.go.dev/vuln/GO-2026-6617), [x/text](https://pkg.go.dev/vuln/GO-2026-6629), [gRPC](https://pkg.go.dev/vuln/GO-2026-6348))
+- Build with Go 1.27.3, which rejects certificate chains containing the compromised eMudhra intermediate keys (CVE-2026-111943). Rebuilds are required for binaries and containers to receive this protection [Go #82345](https://github.com/golang/go/issues/82345)
+- Refresh and pin the normal and debug container bases to images whose CA bundles no longer include `emSign ECC Root CA - G3` [#3579](https://github.com/juanfont/headscale/issues/3579)
+
+### Changes
+
+- Update the Tailscale dependency to v1.102.0 for Go 1.27 JSON compatibility in SSH check responses; the minimum supported client version remains v1.80.0
+
 ## 0.29.5 (2026-10-13)
 
 **Minimum supported Tailscale client version: v1.80.0**

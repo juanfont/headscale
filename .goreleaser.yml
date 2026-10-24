@@ -2,7 +2,7 @@
 version: 2
 before:
   hooks:
-    - go mod tidy -compat=1.26
+    - go mod tidy -compat=1.27
     - go mod vendor
 
 release:
@@ -101,7 +101,7 @@ kos:
     # bare tells KO to only use the repository
     # for tagging and naming the container.
     bare: true
-    base_image: gcr.io/distroless/base-debian13
+    base_image: gcr.io/distroless/base-debian13@sha256:f5e95195e998742ff590b7569bae479accce1226e51ae6c3118954030121cdcb
     build: headscale
     main: ./cmd/headscale
     env:
@@ -130,7 +130,7 @@ kos:
       - headscale/headscale
 
     bare: true
-    base_image: gcr.io/distroless/base-debian13:debug
+    base_image: gcr.io/distroless/base-debian13:debug@sha256:864c3a9f9e4718b65712bbf0ebc2c1a001ff1a3c3b80cece822532d8dc67b0bf
     build: headscale
     main: ./cmd/headscale
     env:
