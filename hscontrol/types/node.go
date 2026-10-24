@@ -1288,8 +1288,9 @@ func (nv NodeView) TailNode(
 	// cfg.DNSConfig.Certificates.Enabled gates HTTPS, without which
 	// `tailscale serve` refuses to serve HTTPS.
 	capMap := tailcfg.NodeCapMap{
-		nodecap.Admin: []tailcfg.RawMessage{},
-		nodecap.SSH:   []tailcfg.RawMessage{},
+		nodecap.Admin:                   []tailcfg.RawMessage{},
+		nodecap.SSH:                     []tailcfg.RawMessage{},
+		nodecap.SSHEnvironmentVariables: []tailcfg.RawMessage{},
 	}
 
 	if cfg.Taildrop.Enabled {
