@@ -6,6 +6,11 @@ on:
     tags:
       - "*" # triggers only if push new tag version
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build
+        required: true
+        type: string
 
 jobs:
   goreleaser:
@@ -16,25 +21,7 @@ jobs:
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           fetch-depth: 0
-
-      - name: Pin Docker to v28 (avoid v29 breaking changes)
-        run: |
-          # Docker 29 breaks docker build via Go client libraries and
-          # docker load/save with certain tarball formats.
-          # Pin to Docker 28.x until our tooling is updated.
-          # https://github.com/actions/runner-images/issues/13474
-          sudo install -m 0755 -d /etc/apt/keyrings
-          curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-            | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-            https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
-            | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-          sudo apt-get update -qq
-          VERSION=$(apt-cache madison docker-ce | grep '28\.5' | head -1 | awk '{print $3}')
-          sudo apt-get install -y --allow-downgrades \
-            "docker-ce=${VERSION}" "docker-ce-cli=${VERSION}"
-          sudo systemctl restart docker
-          docker version
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
 
       - name: Login to DockerHub
         uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
@@ -57,6 +44,9 @@ jobs:
           restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
 
       - name: Run goreleaser
-        run: nix develop --command -- goreleaser release --clean
+        run: |
+          test "$(git describe --tags --exact-match)" = "$RELEASE_TAG"
+          nix develop --command -- goreleaser release --clean
         env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
