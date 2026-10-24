@@ -646,3 +646,54 @@ func TestSQLiteAllTestdataMigrations(t *testing.T) {
 		})
 	}
 }
+
+func TestOpenDBReturnsOpenError(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  func(t *testing.T) types.DatabaseConfig
+	}{
+		{
+			name: "sqlite-path-is-a-directory",
+			cfg: func(t *testing.T) types.DatabaseConfig {
+				t.Helper()
+
+				return types.DatabaseConfig{
+					Type:   types.DatabaseSqlite,
+					Sqlite: types.SqliteConfig{Path: t.TempDir()},
+				}
+			},
+		},
+		{
+			name: "postgres-unreachable-host",
+			cfg: func(t *testing.T) types.DatabaseConfig {
+				t.Helper()
+
+				return types.DatabaseConfig{
+					Type: types.DatabasePostgres,
+					Postgres: types.PostgresConfig{
+						Host: "127.0.0.1",
+						Port: 1,
+						Name: "headscale",
+						User: "headscale",
+						Ssl:  "false",
+					},
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var (
+				db  *gorm.DB
+				err error
+			)
+
+			require.NotPanics(t, func() {
+				db, err = openDB(tt.cfg(t))
+			})
+			require.Error(t, err)
+			assert.Nil(t, db)
+		})
+	}
+}
