@@ -2,8 +2,7 @@
   description = "headscale - Open Source Tailscale Control server";
 
   inputs = {
-    # Stable 26.05 tracks Go 1.26 patch releases; unstable lags them.
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
@@ -27,8 +26,8 @@
       overlays.default = _: prev:
         let
           pkgs = nixpkgs.legacyPackages.${prev.stdenv.hostPlatform.system};
-          # Go 1.26 builder.
-          buildGo = pkgs.buildGo126Module;
+          # Use the same Go toolchain for Nix builds and the release shell.
+          buildGo = pkgs.buildGoLatestModule;
           vendorHash = (builtins.fromJSON (builtins.readFile ./flakehashes.json)).vendor.sri;
         in
         {
@@ -96,48 +95,6 @@
             subPackages = [ "." ];
           };
 
-          # Build golangci-lint with stock Go 1.26 (upstream uses hardcoded Go
-          # version); it does not build against the pinned 1.26.5.
-          golangci-lint = buildGo rec {
-            pname = "golangci-lint";
-            version = "2.12.2";
-
-            src = pkgs.fetchFromGitHub {
-              owner = "golangci";
-              repo = "golangci-lint";
-              rev = "v${version}";
-              hash = "sha256-qR7fp1x2S+EwEAcplRHTvA3jWwLr/XSiYKSZtAwkrNU=";
-            };
-
-            vendorHash = "sha256-AG5wtLwWLz55bdp1oi3cW+9O3yj1W1P7MV9zxym7Pb4=";
-
-            subPackages = [ "cmd/golangci-lint" ];
-
-            nativeBuildInputs = [ pkgs.installShellFiles ];
-
-            ldflags = [
-              "-s"
-              "-w"
-              "-X main.version=${version}"
-              "-X main.commit=v${version}"
-              "-X main.date=1970-01-01T00:00:00Z"
-            ];
-
-            postInstall = ''
-              for shell in bash zsh fish; do
-                HOME=$TMPDIR $out/bin/golangci-lint completion $shell > golangci-lint.$shell
-                installShellCompletion golangci-lint.$shell
-              done
-            '';
-
-            meta = {
-              description = "Fast linters runner for Go";
-              homepage = "https://golangci-lint.run/";
-              changelog = "https://github.com/golangci/golangci-lint/blob/v${version}/CHANGELOG.md";
-              mainProgram = "golangci-lint";
-            };
-          };
-
           gotestsum = prev.gotestsum.override {
             buildGoModule = buildGo;
           };
@@ -162,7 +119,7 @@
           overlays = [ self.overlays.default ];
           inherit system;
         };
-        buildDeps = with pkgs; [ git go_1_26 gnumake ];
+        buildDeps = with pkgs; [ git go_latest gnumake ];
         devDeps = with pkgs;
           buildDeps
           ++ [
