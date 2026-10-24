@@ -24,7 +24,15 @@ import (
 
 const (
 	keepAliveInterval = 50 * time.Second
+
+	// stopWriteGrace is how long a stopped session's write in flight may
+	// take to finish before its stream is reset.
+	stopWriteGrace = 5 * time.Second
 )
+
+// errMapSessionStopped is a write refused because the batcher stopped the
+// session; the poll loop ends as if it had seen cancelCh.
+var errMapSessionStopped = errors.New("map session stopped")
 
 type contextKey string
 
@@ -39,6 +47,10 @@ type mapSession struct {
 	ch             chan *tailcfg.MapResponse
 	cancelCh       chan struct{}
 	cancelChClosed atomic.Bool
+
+	// writing is set while [mapSession.writeMap] runs, so
+	// [mapSession.stopFromBatcher] interrupts only a write that may be stuck.
+	writing atomic.Bool
 
 	keepAlive       time.Duration
 	keepAliveTicker *time.Ticker
@@ -97,10 +109,19 @@ func (m *mapSession) stopFromBatcher() {
 		close(m.cancelCh)
 
 		// A channel signal cannot interrupt a response write that is blocked on
-		// HTTP/2 flow control. Expire the stream's write deadline as well so a
-		// client that stopped reading cannot keep the map session, and therefore
-		// server shutdown, alive indefinitely.
-		err := http.NewResponseController(m.w).SetWriteDeadline(time.Now())
+		// HTTP/2 flow control, so a client that stopped reading would keep the
+		// map session, and therefore server shutdown, alive indefinitely.
+		// An expired write deadline resets the stream with INTERNAL_ERROR,
+		// which the client reports as a server error, so it is only a bound:
+		// an idle session sees cancelCh, and a write the client keeps reading
+		// finishes first, both ending the stream cleanly. writeMap checks
+		// cancelChClosed after raising writing, so one side always sees the
+		// other.
+		if !m.writing.Load() {
+			return
+		}
+
+		err := http.NewResponseController(m.w).SetWriteDeadline(time.Now().Add(stopWriteGrace))
 		if err != nil && !errors.Is(err, http.ErrNotSupported) {
 			m.log.Debug().Caller().Err(err).Msg("failed to interrupt map response write")
 		}
@@ -318,6 +339,12 @@ func (m *mapSession) serveLongPoll() {
 			}
 
 			err := m.writeMap(update)
+			if errors.Is(err, errMapSessionStopped) {
+				mapResponseEnded.WithLabelValues("cancelled").Inc()
+
+				return
+			}
+
 			if err != nil {
 				m.log.Error().Caller().Err(err).Msg("cannot write update to client")
 				return
@@ -328,6 +355,12 @@ func (m *mapSession) serveLongPoll() {
 
 		case <-m.keepAliveTicker.C:
 			err := m.writeMap(&keepAlive)
+			if errors.Is(err, errMapSessionStopped) {
+				mapResponseEnded.WithLabelValues("cancelled").Inc()
+
+				return
+			}
+
 			if err != nil {
 				m.log.Error().Caller().Err(err).Msg("cannot write keep alive")
 				return
@@ -348,6 +381,13 @@ func (m *mapSession) serveLongPoll() {
 // It also handles flushing the response if the [http.ResponseWriter]
 // implements [http.Flusher].
 func (m *mapSession) writeMap(msg *tailcfg.MapResponse) error {
+	m.writing.Store(true)
+	defer m.writing.Store(false)
+
+	if m.cancelChClosed.Load() {
+		return errMapSessionStopped
+	}
+
 	startWrite := time.Now()
 
 	err := writeMapResponse(m.w, m.req.Compress, m.isStreaming(), msg)
