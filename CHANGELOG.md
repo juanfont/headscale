@@ -128,7 +128,6 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
 - Fix `headscale users destroy`/`rename` reporting "multiple users match query" when no user matches; an ambiguous match now lists the matching users [#3476](https://github.com/juanfont/headscale/pull/3476)
 - Deleting a user that still owns nodes now lists the nodes (ID and hostname) that must be deleted first [#3475](https://github.com/juanfont/headscale/pull/3475)
-- Headscale now requires Go 1.27.3 to build, which carries the `crypto/x509` security fixes [#3560](https://github.com/juanfont/headscale/pull/3560)
 - `headscale preauthkeys create --user` accepts a user name as well as an ID
 - `derp.paths` files may be Tailscale JSON or HuJSON DERP maps as well as YAML
 - `dns.extra_records_path` files may be HuJSON or YAML as well as JSON
@@ -145,13 +144,31 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - The v2 tailnet setting `httpsEnabled` reports `dns.certificates.enabled` [#3554](https://github.com/juanfont/headscale/pull/3554)
 - `tls.acme.challenge_type` accepts `DNS-01`, using `dns.challenge.provider` [#3554](https://github.com/juanfont/headscale/pull/3554)
 - Fix the unix socket being created `0700` instead of the documented `0770` when `unix_socket_permission` is unset. The socket grants full admin access without authentication, so members of its group gain that access; check who is in it before upgrading [#3540](https://github.com/juanfont/headscale/pull/3540)
-- A policy write builds the peer map once instead of twice [#3557](https://github.com/juanfont/headscale/pull/3557)
-- Speed up the peer map build on large tailnets: each node's matchers are found once instead of checking every pair of nodes against every rule [#3556](https://github.com/juanfont/headscale/pull/3556)
 - Map sessions that fall behind during update bursts are no longer dropped; a session is only closed once it stops reading or a newer session of the same node replaces it [#3575](https://github.com/juanfont/headscale/pull/3575)
 - Node joins and deletions under churn, especially in tailnets with many tags, no longer stall registrations, map updates and API requests; ephemeral nodes are cleaned up within seconds instead of minutes [#3575](https://github.com/juanfont/headscale/pull/3575)
-- Clients no longer report an `INTERNAL_ERROR` stream error when their node logs out or is deleted, or when headscale shuts down [#3575](https://github.com/juanfont/headscale/pull/3575)
 - Shutdown keeps the LastSeen of connected nodes: it waits for their map sessions to close before closing the database [#3575](https://github.com/juanfont/headscale/pull/3575)
 - Deleting an ephemeral node no longer logs a spurious `ephemeral node deletion failed` error later [#3575](https://github.com/juanfont/headscale/pull/3575)
+
+## 0.29.6 (Unreleased)
+
+**Minimum supported Tailscale client version: v1.80.0**
+
+### Security
+
+- Build with Go 1.27.3 to reject certificate chains containing the compromised eMudhra intermediate keys (CVE-2026-111943) [Go #82345](https://github.com/golang/go/issues/82345)
+- Update and pin the normal and debug container bases to images whose CA bundles no longer include `emSign ECC Root CA - G3` [#3579](https://github.com/juanfont/headscale/issues/3579)
+- Update `golang.org/x/net` to v0.60.0, `golang.org/x/text` to v0.42.0 and gRPC to v1.83.2 to address HTTP/2 denial-of-service and text-processing vulnerabilities ([x/net](https://pkg.go.dev/vuln/GO-2026-6617), [x/text](https://pkg.go.dev/vuln/GO-2026-6629), [gRPC](https://pkg.go.dev/vuln/GO-2026-6348))
+
+Custom builds must be rebuilt with Go 1.27.3 or newer to receive the certificate-chain protection.
+
+### Changes
+
+- Speed up peer-map construction on large tailnets by finding each node's matching rules once, instead of checking every pair of nodes against every rule [#3556](https://github.com/juanfont/headscale/pull/3556)
+- Build the peer map once per policy write instead of twice, and skip the rebuild when reloading an unchanged policy [#3557](https://github.com/juanfont/headscale/pull/3557)
+- Reduce work when broadcasting map updates by avoiding repeated recipient filtering [#3568](https://github.com/juanfont/headscale/pull/3568)
+- Avoid `INTERNAL_ERROR` stream errors when a node logs out or is deleted, or when Headscale shuts down; writes already in progress have a short grace period to finish, while clients that stop reading are still disconnected [#3575](https://github.com/juanfont/headscale/pull/3575)
+- Return database-open errors instead of risking a panic or returning a partially initialized database handle [#3496](https://github.com/juanfont/headscale/pull/3496)
+- Update the Tailscale dependency to v1.102.0 for Go 1.27 JSON compatibility in SSH check responses
 
 ## 0.29.5 (2026-10-13)
 
