@@ -512,3 +512,14 @@ func TestEphemeralGarbageCollectorConcurrentScheduleAndClose(t *testing.T) {
 
 	t.Logf("Final number of goroutines: %d", runtime.NumGoroutine())
 }
+
+func TestEphemeralGarbageCollectorCloseTwice(t *testing.T) {
+	gc := NewEphemeralGarbageCollector(func(types.NodeID) {})
+	go gc.Start()
+
+	gc.Schedule(types.NodeID(1), time.Hour)
+
+	gc.Close()
+
+	assert.NotPanics(t, gc.Close)
+}
