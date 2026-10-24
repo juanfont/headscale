@@ -360,7 +360,17 @@ func (s *State) ReloadPolicy() ([]change.Change, error) {
 	// uses the [policy.PolicyManager]'s filters. Without this, nodes won't see
 	// newly allowed peers until a node is added/removed, causing autogroup:self
 	// policies to not propagate correctly when switching between policy types.
-	s.nodeStore.RebuildPeerMaps()
+	//
+	// An unchanged policy leaves the matchers as they were, and the other
+	// inputs of the peer map rebuild it themselves (node writes in the
+	// [NodeStore], [State.updatePolicyManagerNodes] and
+	// [State.updatePolicyManagerUsers]), so the O(n^2) rebuild is skipped
+	// then. The policy API handlers always get here that way: they apply
+	// the policy with [State.SetPolicy], which rebuilds, store it, and
+	// reload the very same bytes.
+	if policyChanged {
+		s.nodeStore.RebuildPeerMaps()
+	}
 
 	// Nodes whose CapMap shifted get their self refresh from
 	// [State.DrainSelfRefreshes] when these changes are dispatched.
