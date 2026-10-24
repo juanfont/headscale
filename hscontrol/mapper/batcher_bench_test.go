@@ -17,7 +17,10 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/puzpuzpuz/xsync/v4"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
 )
 
@@ -738,5 +741,184 @@ func BenchmarkMapResponseFromChange(b *testing.B) {
 				_, _ = batcher.MapResponseFromChange(allNodes[nodeIdx].n.ID, ch)
 			}
 		})
+	}
+}
+
+// Frozen from 1096abfc8; keep the body unchanged for differential tests and benchmarks.
+func baselineAddToBatch(b *Batcher, changes ...change.Change) {
+	// Clean up any nodes being permanently removed from the system.
+	//
+	// This handles the case where a node is deleted from state but the batcher
+	// still has it registered. By cleaning up here, we prevent "node not found"
+	// errors when workers try to generate map responses for deleted nodes.
+	//
+	// [change.Change.DeletedNodes] is an explicit internal lifecycle signal;
+	// [change.Change.PeersRemoved] remains only the protocol delta sent to clients
+	// when peers disappear from their view.
+	//
+	// See: https://github.com/juanfont/headscale/issues/2924
+	for _, ch := range changes {
+		for _, removedID := range ch.DeletedNodes {
+			if nc, existed := b.nodes.LoadAndDelete(removedID); existed {
+				b.totalNodes.Add(-1)
+
+				// Tear the node's map sessions down. Dropping the entry alone
+				// leaves [mapSession.serveLongPoll] streaming to a node that no
+				// longer exists: [Batcher.Close] ranges b.nodes and can no
+				// longer reach it, so shutdown blocks on clientStreamsOpen, and
+				// the client keeps polling a node it should be re-authenticating.
+				// See: https://github.com/juanfont/headscale/issues/3410
+				if nc != nil {
+					nc.close()
+				}
+
+				log.Debug().
+					Uint64(zf.NodeID, removedID.Uint64()).
+					Msg("removed deleted node from batcher")
+			}
+		}
+	}
+
+	// A full update supersedes every state change pending or in this call,
+	// but not the pings addressed to a node; those follow the full.
+	if change.HasFull(changes) {
+		b.nodes.Range(func(_ types.NodeID, nc *multiChannelNodeConn) bool {
+			if nc == nil {
+				return true
+			}
+
+			nc.collapsePendingToFull(changes)
+
+			return true
+		})
+
+		return
+	}
+
+	broadcast, targeted := change.SplitTargetedAndBroadcast(changes)
+
+	// Handle targeted changes - send only to the specific node
+	for _, ch := range targeted {
+		if nc, ok := b.nodes.Load(ch.TargetNode); ok && nc != nil {
+			nc.appendPending(ch)
+		}
+	}
+
+	// Handle broadcast changes - send to all nodes, filtering as needed
+	if len(broadcast) > 0 {
+		b.nodes.Range(func(nodeID types.NodeID, nc *multiChannelNodeConn) bool {
+			if nc == nil {
+				return true
+			}
+
+			filtered := change.FilterForNode(nodeID, broadcast)
+
+			if len(filtered) > 0 {
+				nc.appendPending(filtered...)
+			}
+
+			return true
+		})
+	}
+}
+
+var batchIngressImplementations = []struct {
+	name string
+	add  func(*Batcher, ...change.Change)
+}{
+	{"baseline", baselineAddToBatch},
+	{"candidate", (*Batcher).addToBatch},
+}
+
+// BenchmarkBatchIngressPaired measures enqueue work only; fixture construction,
+// delivery-count checks, and draining pending are outside the timer.
+func BenchmarkBatchIngressPaired(b *testing.B) {
+	level := zerolog.GlobalLevel()
+
+	zerolog.SetGlobalLevel(zerolog.Disabled)
+	defer zerolog.SetGlobalLevel(level)
+
+	for _, nodes := range []int{100, 1000, 10000} {
+		for _, batch := range []int{1, 8, 64} {
+			for _, mode := range []struct {
+				name  string
+				mixed bool
+				burst int
+			}{
+				{"broadcast", false, 1},
+				{"mixed", true, 1},
+				{"burst", false, 4},
+			} {
+				for _, impl := range batchIngressImplementations {
+					name := fmt.Sprintf(
+						"nodes=%d/batch=%d/%s/%s",
+						nodes,
+						batch,
+						mode.name,
+						impl.name,
+					)
+					b.Run(name, func(b *testing.B) {
+						b.StopTimer()
+
+						batcher, _ := benchBatcher(nodes, 1)
+						b.Cleanup(batcher.Close)
+
+						conns := make([]*multiChannelNodeConn, nodes)
+						for i := range conns {
+							conns[i], _ = batcher.nodes.Load(
+								types.NodeID(i + 1),
+							) //nolint:gosec // bounded benchmark
+						}
+
+						changes := make([]change.Change, 0, batch+2)
+						for i := range batch {
+							changes = append(
+								changes,
+								change.NodeOnline(types.NodeID(i+1)),
+							) //nolint:gosec // bounded benchmark
+						}
+
+						if mode.mixed {
+							changes = append(
+								changes,
+								change.SelfUpdate(1),
+								change.SelfUpdate(10001),
+							) //nolint:gosec // bounded benchmark
+						}
+
+						b.ReportAllocs()
+						b.ResetTimer()
+
+						for range b.N {
+							b.StartTimer()
+
+							for range mode.burst {
+								impl.add(batcher, changes...)
+							}
+
+							b.StopTimer()
+
+							for i, nc := range conns {
+								want := batch * mode.burst
+								if mode.mixed && i == 0 {
+									want += mode.burst
+								}
+
+								if got := len(nc.drainPending()); got != want {
+									b.Fatalf(
+										"node %d: got %d changes, want %d",
+										i+1,
+										got,
+										want,
+									)
+								}
+							}
+						}
+
+						b.ReportMetric(float64(mode.burst), "calls/op")
+					})
+				}
+			}
+		}
 	}
 }
