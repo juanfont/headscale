@@ -149,7 +149,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Shutdown keeps the LastSeen of connected nodes: it waits for their map sessions to close before closing the database [#3575](https://github.com/juanfont/headscale/pull/3575)
 - Deleting an ephemeral node no longer logs a spurious `ephemeral node deletion failed` error later [#3575](https://github.com/juanfont/headscale/pull/3575)
 
-## 0.29.6 (Unreleased)
+## 0.29.6 (2026-10-24)
 
 **Minimum supported Tailscale client version: v1.80.0**
 
