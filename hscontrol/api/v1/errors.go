@@ -7,6 +7,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"gorm.io/gorm"
 )
 
@@ -45,6 +46,10 @@ func mapError(msg string, err error) error {
 		errors.Is(err, types.ErrHostinfoTooLarge),
 		errors.Is(err, db.ErrUserStillHasNodes),
 		errors.Is(err, db.ErrCannotChangeOIDCUser),
+		errors.Is(err, util.ErrUsernameTooShort),
+		errors.Is(err, util.ErrUsernameMustStartLetter),
+		errors.Is(err, util.ErrUsernameTooManyAt),
+		errors.Is(err, util.ErrUsernameInvalidChar),
 		errors.Is(err, db.ErrPreAuthKeyNotTaggedOrOwned),
 		errors.Is(err, db.ErrSingleUseAuthKeyHasBeenUsed),
 		errors.Is(err, state.ErrInvalidPolicy):

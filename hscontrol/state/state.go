@@ -733,10 +733,21 @@ func (s *State) DeleteUser(userID types.UserID) (change.Change, error) {
 	return c, nil
 }
 
-// RenameUser changes a user's name. The new name must be unique.
+// RenameUser changes a user's name. The new name must be unique and a valid
+// username. OIDC users are refused: their name comes from the identity provider.
 func (s *State) RenameUser(userID types.UserID, newName string) (*types.User, change.Change, error) {
 	return s.UpdateUser(userID, func(user *types.User) error {
+		err := util.ValidateUsername(newName)
+		if err != nil {
+			return err
+		}
+
+		if user.Provider == util.RegisterMethodOIDC {
+			return hsdb.ErrCannotChangeOIDCUser
+		}
+
 		user.Name = newName
+
 		return nil
 	})
 }
