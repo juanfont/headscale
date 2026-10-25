@@ -2,7 +2,6 @@
 version: 2
 before:
   hooks:
-    - go mod tidy -compat=1.27
     - go mod vendor
 
 release:
@@ -27,6 +26,9 @@ builds:
       - linux_arm64
     flags:
       - -mod=readonly
+    hooks:
+      pre: bash tools/release-check.sh
+      post: bash tools/release-check.sh "{{ .Path }}"
 
 archives:
   - id: golang-cross
@@ -101,7 +103,11 @@ kos:
     # bare tells KO to only use the repository
     # for tagging and naming the container.
     bare: true
-    base_image: gcr.io/distroless/base-debian13@sha256:f5e95195e998742ff590b7569bae479accce1226e51ae6c3118954030121cdcb
+    base_image: gcr.io/distroless/base-debian13
+    labels:
+      org.opencontainers.image.source: https://github.com/juanfont/headscale
+    annotations:
+      org.opencontainers.image.source: https://github.com/juanfont/headscale
     build: headscale
     main: ./cmd/headscale
     env:
@@ -130,7 +136,11 @@ kos:
       - headscale/headscale
 
     bare: true
-    base_image: gcr.io/distroless/base-debian13:debug@sha256:864c3a9f9e4718b65712bbf0ebc2c1a001ff1a3c3b80cece822532d8dc67b0bf
+    base_image: gcr.io/distroless/base-debian13:debug
+    labels:
+      org.opencontainers.image.source: https://github.com/juanfont/headscale
+    annotations:
+      org.opencontainers.image.source: https://github.com/juanfont/headscale
     build: headscale
     main: ./cmd/headscale
     env:
