@@ -2,7 +2,6 @@
 version: 2
 before:
   hooks:
-    - go mod tidy
     - go mod vendor
 
 release:
@@ -27,6 +26,9 @@ builds:
       - linux_arm64
     flags:
       - -mod=readonly
+    hooks:
+      pre: bash tools/release-check.sh
+      post: bash tools/release-check.sh "{{ .Path }}"
 
 archives:
   - id: golang-cross
