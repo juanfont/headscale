@@ -462,9 +462,9 @@ type Tuning struct {
 	// valid before being eligible for eviction.
 	RegisterCacheExpiration time.Duration
 
-	// RegisterCacheMaxEntries bounds the number of pending registration
-	// entries the auth cache will hold. Older entries are evicted (LRU)
-	// when the cap is reached, preventing unauthenticated cache-fill DoS.
+	// RegisterCacheMaxEntries bounds pending registrations. At capacity, new
+	// registrations are refused without evicting admitted sessions. SSH checks
+	// can also use 64 reserved slots beyond this limit.
 	// A value of 0 falls back to defaultRegisterCacheMaxEntries (1024).
 	RegisterCacheMaxEntries int
 

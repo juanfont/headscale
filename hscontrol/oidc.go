@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -29,10 +31,10 @@ const (
 	defaultOAuthOptionsCount = 3
 	authCacheExpiration      = time.Minute * 15
 
-	// authCacheMaxEntries bounds the OIDC state→[AuthInfo] cache to prevent
-	// unauthenticated cache-fill DoS via repeated /register/{auth_id} or
-	// /auth/{auth_id} GETs that mint OIDC state cookies.
+	// Registrations may use authCacheMaxEntries slots; SSH checks may also use
+	// the reserve so new registrations cannot fill all pending OIDC capacity.
 	authCacheMaxEntries = 1024
+	authCacheSSHReserve = 64
 
 	// cookieNamePrefixLen is the number of leading characters from a
 	// state/nonce value that [getCookieName] splices into the cookie name.
@@ -47,7 +49,6 @@ var errOIDCStateTooShort = errors.New("oidc state parameter is too short")
 var (
 	errEmptyOIDCCallbackParams = errors.New("empty OIDC callback params")
 	errNoOIDCIDToken           = errors.New("extracting ID token")
-	errNoOIDCRegistrationInfo  = errors.New("registration info not in cache")
 	errOIDCAllowedDomains      = errors.New(
 		"authenticated principal does not match any allowed domain",
 	)
@@ -71,10 +72,11 @@ type AuthProviderOIDC struct {
 	serverURL string
 	cfg       *types.OIDCConfig
 
-	// authCache holds auth information between the auth and the callback
-	// steps. It is a bounded [expirable.LRU] keyed by OIDC state, evicting oldest
-	// entries to keep the cache footprint constant under attack.
-	authCache *expirable.LRU[string, AuthInfo]
+	// authCacheMu serializes non-evicting admission and single-use consumption.
+	// Reads use Peek to preserve insertion order, so the oldest entry expires first.
+	authCacheMu            sync.Mutex
+	authCacheRegistrations atomic.Int64
+	authCache              *expirable.LRU[string, AuthInfo]
 
 	oidcProvider *oidc.Provider
 	oauth2Config *oauth2.Config
@@ -101,21 +103,25 @@ func NewAuthProviderOIDC(
 		Scopes:       cfg.Scope,
 	}
 
-	authCache := expirable.NewLRU[string, AuthInfo](
-		authCacheMaxEntries,
-		nil,
-		authCacheExpiration,
-	)
-
-	return &AuthProviderOIDC{
+	a := &AuthProviderOIDC{
 		h:         h,
 		serverURL: serverURL,
 		cfg:       cfg,
-		authCache: authCache,
 
 		oidcProvider: oidcProvider,
 		oauth2Config: oauth2Config,
-	}, nil
+	}
+	a.authCache = expirable.NewLRU[string, AuthInfo](
+		authCacheMaxEntries+authCacheSSHReserve,
+		func(_ string, info AuthInfo) {
+			if info.Registration {
+				a.authCacheRegistrations.Add(-1)
+			}
+		},
+		authCacheExpiration,
+	)
+
+	return a, nil
 }
 
 // cookiesSecure reports whether the OIDC cookies should carry the Secure flag.
@@ -177,11 +183,24 @@ func (a *AuthProviderOIDC) authHandler(
 		return
 	}
 
-	// Set the state and nonce cookies to protect against CSRF attacks
-	state := a.setCSRFCookie(writer, req, "state")
+	authReq, ok := a.h.state.GetAuthCacheEntry(authID)
+	if !ok {
+		httpUserError(writer, NewHTTPError(http.StatusGone, "login session expired, try again", nil))
+		return
+	}
 
-	// Set the state and nonce cookies to protect against CSRF attacks
-	nonce := a.setCSRFCookie(writer, req, "nonce")
+	if registration && !authReq.IsRegistration() {
+		httpUserError(writer, NewHTTPError(http.StatusBadRequest, "auth session is not for node registration", nil))
+		return
+	}
+
+	if !registration && !authReq.IsSSHCheck() {
+		httpUserError(writer, NewHTTPError(http.StatusBadRequest, "auth session is not for SSH check", nil))
+		return
+	}
+
+	state := rands.HexString(64)
+	nonce := rands.HexString(64)
 
 	registrationInfo := AuthInfo{
 		AuthID:       authID,
@@ -218,8 +237,15 @@ func (a *AuthProviderOIDC) authHandler(
 
 	extras = append(extras, oidc.Nonce(nonce))
 
-	// Cache the registration info
-	a.authCache.Add(state, registrationInfo)
+	if !a.addAuthInfoToState(state, registrationInfo) {
+		writer.Header().Set("Retry-After", "10")
+		httpUserError(writer, NewHTTPError(http.StatusServiceUnavailable, "too many pending OIDC logins, try again later", nil))
+
+		return
+	}
+
+	a.setCSRFCookie(writer, req, "state", state)
+	a.setCSRFCookie(writer, req, "nonce", nonce)
 
 	authURL := a.oauth2Config.AuthCodeURL(state, extras...)
 	log.Debug().Caller().Msgf("redirecting to %s for authentication", authURL)
@@ -255,7 +281,20 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
-	oauth2Token, err := a.getOauth2Token(req.Context(), code, state)
+	// A cookie-bound callback spends its state even if authentication fails;
+	// retrying then requires a fresh login flow rather than reusing the callback.
+	authInfo := a.getAuthInfoFromState(state)
+	if authInfo == nil {
+		httpUserError(writer, NewHTTPError(http.StatusGone, "login session expired, try again", nil))
+		return
+	}
+
+	if req.URL.Query().Get("error") != "" {
+		httpUserError(writer, NewHTTPError(http.StatusForbidden, "OIDC authentication failed", nil))
+		return
+	}
+
+	oauth2Token, err := a.getOauth2Token(req.Context(), code, authInfo)
 	if err != nil {
 		httpUserError(writer, err)
 		return
@@ -339,18 +378,6 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 			"could not create or update user",
 			err,
 		))
-
-		return
-	}
-
-	// TODO(kradalby): Is this comment right?
-	// If the node exists, then the node should be reauthenticated,
-	// if the node does not exist, and the machine key exists, then
-	// this is a new node that should be registered.
-	authInfo := a.getAuthInfoFromState(state)
-	if authInfo == nil {
-		log.Debug().Caller().Str("state", state).Msg("state not found in cache, login session may have expired")
-		httpUserError(writer, NewHTTPError(http.StatusGone, "login session expired, try again", nil))
 
 		return
 	}
@@ -471,10 +498,11 @@ func (a *AuthProviderOIDC) determineNodeExpiry(idTokenExpiration time.Time) *tim
 func extractCodeAndStateParamFromRequest(
 	req *http.Request,
 ) (string, string, error) {
-	code := req.URL.Query().Get("code")
-	state := req.URL.Query().Get("state")
+	query := req.URL.Query()
+	code := query.Get("code")
+	state := query.Get("state")
 
-	if code == "" || state == "" {
+	if (code == "" && query.Get("error") == "") || state == "" {
 		return "", "", NewHTTPError(http.StatusBadRequest, "missing code or state parameter", errEmptyOIDCCallbackParams)
 	}
 
@@ -493,19 +521,12 @@ func extractCodeAndStateParamFromRequest(
 func (a *AuthProviderOIDC) getOauth2Token(
 	ctx context.Context,
 	code string,
-	state string,
+	authInfo *AuthInfo,
 ) (*oauth2.Token, error) {
 	var exchangeOpts []oauth2.AuthCodeOption
 
-	if a.cfg.PKCE.Enabled {
-		regInfo, ok := a.authCache.Get(state)
-		if !ok {
-			return nil, NewHTTPError(http.StatusNotFound, "registration not found", errNoOIDCRegistrationInfo)
-		}
-
-		if regInfo.Verifier != nil {
-			exchangeOpts = []oauth2.AuthCodeOption{oauth2.VerifierOption(*regInfo.Verifier)}
-		}
+	if a.cfg.PKCE.Enabled && authInfo.Verifier != nil {
+		exchangeOpts = []oauth2.AuthCodeOption{oauth2.VerifierOption(*authInfo.Verifier)}
 	}
 
 	oauth2Token, err := a.oauth2Config.Exchange(ctx, code, exchangeOpts...)
@@ -631,16 +652,54 @@ func doOIDCAuthorization(
 	return nil
 }
 
+func (a *AuthProviderOIDC) addAuthInfoToState(state string, info AuthInfo) bool {
+	a.authCacheMu.Lock()
+	defer a.authCacheMu.Unlock()
+
+	// Len includes expired entries until the sweeper removes their bucket.
+	for {
+		oldest, _, ok := a.authCache.GetOldest()
+		if !ok {
+			break
+		}
+
+		if _, live := a.authCache.Peek(oldest); live {
+			break
+		}
+
+		a.authCache.Remove(oldest)
+	}
+
+	if a.authCache.Contains(state) || a.authCache.Len() >= a.authCache.Cap() {
+		return false
+	}
+
+	if info.Registration && a.authCacheRegistrations.Load() >= int64(a.authCache.Cap()-authCacheSSHReserve) {
+		return false
+	}
+
+	// Increment before Add: an expiry callback may run as soon as it is stored.
+	if info.Registration {
+		a.authCacheRegistrations.Add(1)
+	}
+
+	a.authCache.Add(state, info)
+
+	return true
+}
+
 // getAuthInfoFromState retrieves and consumes the auth info for a state. The
 // entry is removed on read so a state is single-use: a replayed callback cannot
 // resolve the same auth session twice, even within the cache TTL.
 func (a *AuthProviderOIDC) getAuthInfoFromState(state string) *AuthInfo {
-	authInfo, ok := a.authCache.Get(state)
+	a.authCacheMu.Lock()
+	defer a.authCacheMu.Unlock()
+
+	authInfo, ok := a.authCache.Peek(state)
+	a.authCache.Remove(state)
 	if !ok {
 		return nil
 	}
-
-	a.authCache.Remove(state)
 
 	return &authInfo
 }
@@ -1101,9 +1160,8 @@ func (a *AuthProviderOIDC) setCSRFCookie(
 	w http.ResponseWriter,
 	r *http.Request,
 	name string,
-) string {
-	val := rands.HexString(64)
-
+	val string,
+) {
 	//nolint:gosec // G124: Secure from server_url scheme or req.TLS; HttpOnly + SameSite set below
 	c := &http.Cookie{
 		Path:     a.oidcCallbackPath(),
@@ -1120,6 +1178,4 @@ func (a *AuthProviderOIDC) setCSRFCookie(
 		SameSite: http.SameSiteLaxMode,
 	}
 	http.SetCookie(w, c)
-
-	return val
 }

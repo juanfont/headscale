@@ -3,6 +3,7 @@ package hscontrol
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -10,14 +11,19 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/oauth2-proxy/mockoidc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/oauth2"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
@@ -199,7 +205,7 @@ func TestSetCSRFCookieSameSite(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/auth/abcdef0123456789", nil)
 
-	a.setCSRFCookie(w, r, "state")
+	a.setCSRFCookie(w, r, "state", "state-value")
 
 	cookies := w.Result().Cookies()
 	require.Len(t, cookies, 1)
@@ -208,7 +214,7 @@ func TestSetCSRFCookieSameSite(t *testing.T) {
 }
 
 // TestExtractCodeAndStateParam covers the callback's first trust-boundary
-// checks: both params required, and a too-short state is rejected before
+// checks: a code or provider error is required, and a too-short state is rejected before
 // getCookieName can slice out of range.
 func TestExtractCodeAndStateParam(t *testing.T) {
 	_, _, err := extractCodeAndStateParamFromRequest(
@@ -242,6 +248,755 @@ func TestGetAuthInfoFromStateSingleUse(t *testing.T) {
 	assert.Nil(t, a.getAuthInfoFromState("state-x"), "a consumed state must not resolve again")
 }
 
+func newOIDCPendingProvider(t *testing.T, capacity int) *AuthProviderOIDC {
+	t.Helper()
+
+	a := &AuthProviderOIDC{
+		h:         createTestApp(t),
+		serverURL: "https://headscale.example",
+		cfg:       &types.OIDCConfig{},
+		oauth2Config: &oauth2.Config{
+			ClientID: "headscale-test",
+			Endpoint: oauth2.Endpoint{
+				AuthURL:   "https://issuer.example/authorize",
+				AuthStyle: oauth2.AuthStyleInParams,
+			},
+		},
+	}
+	t.Cleanup(func() { require.NoError(t, a.h.state.Close()) })
+
+	a.authCache = expirable.NewLRU[string, AuthInfo](capacity+authCacheSSHReserve, func(_ string, info AuthInfo) {
+		if info.Registration {
+			a.authCacheRegistrations.Add(-1)
+		}
+	}, time.Minute)
+	t.Cleanup(a.authCache.Close)
+
+	return a
+}
+
+func oidcPendingAuthRequest(t *testing.T, authID types.AuthID) *http.Request {
+	t.Helper()
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/register/"+authID.String(), nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("auth_id", authID.String())
+
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+func startOIDCPendingAuth(t *testing.T, a *AuthProviderOIDC, registration bool) (*httptest.ResponseRecorder, types.AuthID) {
+	t.Helper()
+
+	authID := types.MustAuthID()
+
+	authReq := types.NewSSHCheckAuthRequest(1, 2)
+	if registration {
+		authReq = types.NewRegisterAuthRequest(&types.RegistrationData{Hostname: "pending-oidc"})
+	}
+
+	require.NoError(t, a.h.state.SetAuthCacheEntry(authID, authReq))
+
+	rec := httptest.NewRecorder()
+	a.authHandler(rec, oidcPendingAuthRequest(t, authID), registration)
+
+	return rec, authID
+}
+
+func TestOIDCPendingAdmissionPreservesSessions(t *testing.T) {
+	a := newOIDCPendingProvider(t, 1)
+	a.cfg.PKCE.Enabled = true
+	a.cfg.PKCE.Method = types.PKCEMethodS256
+
+	states := make(map[string]AuthInfo)
+
+	for _, registration := range []bool{true, false} {
+		rec, authID := startOIDCPendingAuth(t, a, registration)
+		require.Equal(t, http.StatusFound, rec.Code)
+		location, err := rec.Result().Location()
+		require.NoError(t, err)
+
+		state := location.Query().Get("state")
+		info, ok := a.authCache.Peek(state)
+		require.True(t, ok)
+		require.NotNil(t, info.Verifier)
+		assert.Equal(t, authID, info.AuthID)
+		assert.Equal(t, registration, info.Registration)
+		assert.Equal(t, "S256", location.Query().Get("code_challenge_method"))
+
+		states[state] = info
+	}
+
+	rejected, _ := startOIDCPendingAuth(t, a, true)
+	assert.Equal(t, http.StatusServiceUnavailable, rejected.Code,
+		"a full pending-state cache must reject admission instead of evicting an in-flight login")
+	assert.Equal(t, "10", rejected.Header().Get("Retry-After"))
+	assert.Empty(t, rejected.Header().Get("Location"))
+	assert.Empty(t, rejected.Header().Values("Set-Cookie"))
+
+	for state, want := range states {
+		assert.Equal(t, &want, a.getAuthInfoFromState(state), "an admitted session must survive a rejected admission")
+	}
+
+	assert.Zero(t, a.authCache.Len())
+}
+
+func TestOIDCPendingAdmissionReservesSSHCapacity(t *testing.T) {
+	a := newOIDCPendingProvider(t, 2)
+	registrations := make(map[string]types.AuthID)
+
+	for range 2 {
+		rec, authID := startOIDCPendingAuth(t, a, true)
+		require.Equal(t, http.StatusFound, rec.Code)
+		location, err := rec.Result().Location()
+		require.NoError(t, err)
+
+		registrations[location.Query().Get("state")] = authID
+	}
+
+	rejected, _ := startOIDCPendingAuth(t, a, true)
+	assert.Equal(t, http.StatusServiceUnavailable, rejected.Code)
+	assert.Empty(t, rejected.Header().Values("Set-Cookie"))
+
+	for range 64 {
+		rec, authID := startOIDCPendingAuth(t, a, false)
+		require.Equal(t, http.StatusFound, rec.Code, "registration load must leave the SSH reserve available")
+		location, err := rec.Result().Location()
+		require.NoError(t, err)
+
+		info, ok := a.authCache.Peek(location.Query().Get("state"))
+		require.True(t, ok)
+		assert.Equal(t, authID, info.AuthID)
+		assert.False(t, info.Registration)
+	}
+
+	full, _ := startOIDCPendingAuth(t, a, false)
+	assert.Equal(t, http.StatusServiceUnavailable, full.Code, "the SSH reserve must also be bounded")
+	assert.Empty(t, full.Header().Get("Location"))
+	assert.Empty(t, full.Header().Values("Set-Cookie"))
+	assert.Equal(t, 66, a.authCache.Len())
+
+	for state, authID := range registrations {
+		info := a.getAuthInfoFromState(state)
+		require.NotNil(t, info, "admission at the total bound must not evict an earlier registration")
+		assert.Equal(t, authID, info.AuthID)
+	}
+}
+
+func TestOIDCPendingAdmissionConcurrent(t *testing.T) {
+	a := newOIDCPendingProvider(t, 2)
+
+	type result struct {
+		authID types.AuthID
+		rec    *httptest.ResponseRecorder
+	}
+
+	results := make(chan result, 4)
+	start := make(chan struct{})
+
+	var workers sync.WaitGroup
+
+	for range 4 {
+		authID := types.MustAuthID()
+		require.NoError(t, a.h.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{Hostname: "concurrent-oidc"})))
+		req := oidcPendingAuthRequest(t, authID)
+
+		workers.Go(func() {
+			<-start
+
+			rec := httptest.NewRecorder()
+			a.RegisterHandler(rec, req)
+
+			results <- result{authID: authID, rec: rec}
+		})
+	}
+
+	close(start)
+	workers.Wait()
+	close(results)
+
+	accepted := make(map[string]types.AuthID)
+	rejected := 0
+
+	for result := range results {
+		if result.rec.Code == http.StatusFound {
+			location, err := result.rec.Result().Location()
+			require.NoError(t, err)
+
+			accepted[location.Query().Get("state")] = result.authID
+		} else {
+			assert.Equal(t, http.StatusServiceUnavailable, result.rec.Code)
+			assert.Empty(t, result.rec.Header().Get("Location"))
+			assert.Empty(t, result.rec.Header().Values("Set-Cookie"))
+
+			rejected++
+		}
+	}
+
+	require.Len(t, accepted, 2, "concurrent admission must respect the pending-state bound")
+	assert.Equal(t, 2, rejected)
+	assert.Equal(t, 2, a.authCache.Len())
+
+	for state, authID := range accepted {
+		info := a.getAuthInfoFromState(state)
+		require.NotNil(t, info, "every successful admission must remain usable")
+		assert.Equal(t, authID, info.AuthID)
+	}
+}
+
+func TestOIDCPendingAdmissionDuplicateState(t *testing.T) {
+	a := newOIDCPendingProvider(t, 2)
+	verifier := "original-verifier"
+	info := AuthInfo{AuthID: types.MustAuthID(), Verifier: &verifier, Registration: true}
+	require.True(t, a.addAuthInfoToState("same-state", info))
+	assert.False(t, a.addAuthInfoToState("same-state", AuthInfo{AuthID: types.MustAuthID()}),
+		"a duplicate state must not replace the auth ID, flow type, or PKCE verifier")
+	assert.Equal(t, &info, a.getAuthInfoFromState("same-state"))
+	assert.Zero(t, a.authCacheRegistrations.Load())
+}
+
+func TestOIDCPendingAdmissionSSHUsesNormalSlots(t *testing.T) {
+	a := newOIDCPendingProvider(t, 1)
+	for i := range 65 {
+		require.True(t, a.addAuthInfoToState(fmt.Sprintf("ssh-state-%d", i), AuthInfo{AuthID: types.MustAuthID()}),
+			"SSH checks may use the regular slots as well as their reserve")
+	}
+
+	assert.False(t, a.addAuthInfoToState("one-too-many", AuthInfo{AuthID: types.MustAuthID()}))
+	assert.Equal(t, 65, a.authCache.Len())
+	assert.Zero(t, a.authCacheRegistrations.Load())
+}
+
+func TestOIDCPendingAdmissionRequiresAuthRequest(t *testing.T) {
+	for _, registration := range []bool{true, false} {
+		for _, existing := range []bool{false, true} {
+			t.Run(fmt.Sprintf("registration=%t/existing=%t", registration, existing), func(t *testing.T) {
+				a := newOIDCPendingProvider(t, 1)
+				authID := types.MustAuthID()
+				wantStatus := http.StatusGone
+
+				if existing {
+					// A registration cannot authorize an SSH check, or vice versa.
+					authReq := types.NewRegisterAuthRequest(&types.RegistrationData{Hostname: "wrong-flow"})
+					if registration {
+						authReq = types.NewSSHCheckAuthRequest(1, 2)
+					}
+
+					require.NoError(t, a.h.state.SetAuthCacheEntry(authID, authReq))
+
+					wantStatus = http.StatusBadRequest
+				}
+
+				rec := httptest.NewRecorder()
+				a.authHandler(rec, oidcPendingAuthRequest(t, authID), registration)
+				assert.Equal(t, wantStatus, rec.Code)
+				assert.Empty(t, rec.Header().Get("Location"))
+				assert.Empty(t, rec.Header().Values("Set-Cookie"))
+				assert.Zero(t, a.authCache.Len(), "invalid auth requests must not reserve OIDC capacity")
+			})
+		}
+	}
+}
+
+func TestOIDCPendingAdmissionInvalidPKCE(t *testing.T) {
+	a := newOIDCPendingProvider(t, 1)
+	a.cfg.PKCE.Enabled = true
+	a.cfg.PKCE.Method = "invalid"
+
+	rec, _ := startOIDCPendingAuth(t, a, true)
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	assert.Empty(t, rec.Header().Get("Location"))
+	assert.Empty(t, rec.Header().Values("Set-Cookie"))
+	assert.Zero(t, a.authCache.Len())
+
+	a.cfg.PKCE.Method = types.PKCEMethodPlain
+	rec, _ = startOIDCPendingAuth(t, a, true)
+	assert.Equal(t, http.StatusFound, rec.Code, "a preparation error must leave capacity available")
+}
+
+func TestOIDCPendingAdmissionReclaimsExpired(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		a := newOIDCPendingProvider(t, 2)
+		a.authCache.Close()
+
+		a.authCache = expirable.NewLRU[string, AuthInfo](66, func(_ string, info AuthInfo) {
+			if info.Registration {
+				a.authCacheRegistrations.Add(-1)
+			}
+		}, time.Second)
+		defer a.authCache.Close()
+
+		old, _ := startOIDCPendingAuth(t, a, true)
+		require.Equal(t, http.StatusFound, old.Code)
+		oldURL, err := old.Result().Location()
+		require.NoError(t, err)
+
+		<-time.After(time.Millisecond)
+
+		live, liveID := startOIDCPendingAuth(t, a, true)
+		require.Equal(t, http.StatusFound, live.Code)
+		liveURL, err := live.Result().Location()
+		require.NoError(t, err)
+
+		// Both entries share a cleanup bucket, which waits for the newer expiry.
+		<-time.After(time.Second - time.Millisecond + time.Nanosecond)
+		require.Equal(t, 2, a.authCache.Len(), "exercise expired entries that the sweeper has not removed")
+		_, ok := a.authCache.Peek(oldURL.Query().Get("state"))
+		require.False(t, ok)
+
+		next, _ := startOIDCPendingAuth(t, a, true)
+		assert.Equal(t, http.StatusFound, next.Code, "expired entries must not cause a false capacity rejection")
+		assert.Nil(t, a.getAuthInfoFromState(oldURL.Query().Get("state")))
+		info := a.getAuthInfoFromState(liveURL.Query().Get("state"))
+		require.NotNil(t, info, "reclaiming expiry must preserve the live session")
+		assert.Equal(t, liveID, info.AuthID)
+	})
+}
+
+func TestOIDCPendingAdmissionReclaimsSweptCapacity(t *testing.T) {
+	a := newOIDCPendingProvider(t, 1)
+	a.authCache.Close()
+
+	synctest.Test(t, func(t *testing.T) {
+		a.authCache = expirable.NewLRU[string, AuthInfo](65, func(_ string, info AuthInfo) {
+			if info.Registration {
+				a.authCacheRegistrations.Add(-1)
+			}
+		}, time.Second)
+		defer a.authCache.Close()
+
+		require.True(t, a.addAuthInfoToState("expires", AuthInfo{Registration: true}))
+
+		<-time.After(time.Second + 10*time.Millisecond)
+		synctest.Wait()
+		assert.Zero(t, a.authCache.Len())
+		assert.Zero(t, a.authCacheRegistrations.Load(), "background expiry must return the registration budget")
+		assert.True(t, a.addAuthInfoToState("replacement", AuthInfo{Registration: true}))
+	})
+}
+
+func TestOIDCPendingCallbackReleasesOnError(t *testing.T) {
+	for _, pkce := range []bool{false, true} {
+		for _, missingToken := range []bool{false, true} {
+			t.Run(fmt.Sprintf("pkce=%t/missingToken=%t", pkce, missingToken), func(t *testing.T) {
+				a := newOIDCPendingProvider(t, 1)
+				a.cfg.PKCE.Enabled = pkce
+				a.cfg.PKCE.Method = types.PKCEMethodS256
+
+				var exchanges atomic.Int32
+
+				tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					exchanges.Add(1)
+					w.Header().Set("Content-Type", "application/json")
+
+					if missingToken {
+						_, _ = io.WriteString(w, `{"access_token":"test-token","token_type":"Bearer"}`)
+					} else {
+						w.WriteHeader(http.StatusBadRequest)
+						_, _ = io.WriteString(w, `{"error":"invalid_grant"}`)
+					}
+				}))
+				t.Cleanup(tokenServer.Close)
+				a.oauth2Config.Endpoint.TokenURL = tokenServer.URL
+
+				started, authID := startOIDCPendingAuth(t, a, true)
+				require.Equal(t, http.StatusFound, started.Code)
+				location, err := started.Result().Location()
+				require.NoError(t, err)
+
+				state := location.Query().Get("state")
+				callbackURL := "/oidc/callback?code=test-code&state=" + state
+				callback := httptest.NewRequestWithContext(t.Context(), http.MethodGet, callbackURL, nil)
+				//nolint:gosec // G124: request cookies carry only name and value on the wire.
+				callback.AddCookie(&http.Cookie{Name: getCookieName("state", state), Value: state})
+
+				rec := httptest.NewRecorder()
+				a.OIDCCallbackHandler(rec, callback)
+
+				wantStatus := http.StatusForbidden
+				if missingToken {
+					wantStatus = http.StatusBadRequest
+				}
+
+				assert.Equal(t, wantStatus, rec.Code)
+				assert.Zero(t, a.authCache.Len(), "a callback error must release its pending-state slot")
+				_, pending := a.h.state.GetAuthCacheEntry(authID)
+				assert.True(t, pending, "consuming OIDC state must preserve the underlying auth request")
+
+				replay := httptest.NewRecorder()
+				a.OIDCCallbackHandler(replay, callback)
+				assert.Equal(t, http.StatusGone, replay.Code, "a failed callback must still consume its state")
+				assert.EqualValues(t, 1, exchanges.Load(), "a consumed state must not reach token exchange again")
+
+				next := httptest.NewRecorder()
+				a.RegisterHandler(next, oidcPendingAuthRequest(t, authID))
+				assert.Equal(t, http.StatusFound, next.Code, "the original auth request must support a fresh browser flow")
+				nextURL, err := next.Result().Location()
+				require.NoError(t, err)
+				assert.NotEqual(t, state, nextURL.Query().Get("state"))
+			})
+		}
+	}
+}
+
+func TestOIDCPendingCallbackProviderError(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		providerError string
+		code          string
+	}{
+		{name: "cancelled", providerError: "access_denied"},
+		{name: "error with code", providerError: "access_denied", code: "unused-code"},
+		{name: "unknown error", providerError: strings.Repeat("untrusted-provider-error-", 2048)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := newOIDCPendingProvider(t, 1)
+			a.cfg.PKCE.Enabled = true
+			a.cfg.PKCE.Method = types.PKCEMethodS256
+
+			var exchanges atomic.Int32
+
+			tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				exchanges.Add(1)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = io.WriteString(w, `{"error":"invalid_grant"}`)
+			}))
+			t.Cleanup(tokenServer.Close)
+			a.oauth2Config.Endpoint.TokenURL = tokenServer.URL
+
+			started, authID := startOIDCPendingAuth(t, a, true)
+			require.Equal(t, http.StatusFound, started.Code)
+			location, err := started.Result().Location()
+			require.NoError(t, err)
+
+			state := location.Query().Get("state")
+
+			full := httptest.NewRecorder()
+			a.RegisterHandler(full, oidcPendingAuthRequest(t, authID))
+			require.Equal(t, http.StatusServiceUnavailable, full.Code)
+
+			query := url.Values{
+				"error":             {tc.providerError},
+				"error_description": {strings.Repeat("untrusted-provider-description-", 2048)},
+				"state":             {state},
+				"code":              {tc.code},
+			}
+
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+
+			callback := httptest.NewRequestWithContext(ctx, http.MethodGet, "/oidc/callback?"+query.Encode(), nil)
+			//nolint:gosec // G124: request cookies carry only name and value on the wire.
+			callback.AddCookie(&http.Cookie{Name: getCookieName("state", state), Value: state})
+
+			rec := httptest.NewRecorder()
+			a.OIDCCallbackHandler(rec, callback)
+			assert.Equal(t, http.StatusForbidden, rec.Code)
+			assert.NotContains(t, rec.Body.String(), "untrusted-provider-description")
+			assert.NotContains(t, rec.Body.String(), "untrusted-provider-error")
+			assert.Less(t, rec.Body.Len(), 16*1024, "provider input must not inflate the error response")
+			assert.Zero(t, a.authCache.Len(), "provider cancellation must release its pending-state slot")
+			assert.Zero(t, a.authCacheRegistrations.Load())
+			_, pending := a.h.state.GetAuthCacheEntry(authID)
+			assert.True(t, pending, "provider cancellation must preserve the underlying auth request")
+
+			replay := httptest.NewRecorder()
+			a.OIDCCallbackHandler(replay, callback)
+			assert.Equal(t, http.StatusGone, replay.Code, "a provider-error callback must consume its state exactly once")
+			assert.Zero(t, exchanges.Load(), "provider-error callbacks must never exchange a code")
+
+			next := httptest.NewRecorder()
+			a.RegisterHandler(next, oidcPendingAuthRequest(t, authID))
+			require.Equal(t, http.StatusFound, next.Code, "cancellation must free capacity for a fresh login")
+			nextURL, err := next.Result().Location()
+			require.NoError(t, err)
+			assert.NotEqual(t, state, nextURL.Query().Get("state"))
+		})
+	}
+}
+
+func TestOIDCPendingCallbackProviderErrorValidation(t *testing.T) {
+	a := newOIDCPendingProvider(t, 1)
+	started, authID := startOIDCPendingAuth(t, a, true)
+	require.Equal(t, http.StatusFound, started.Code)
+	location, err := started.Result().Location()
+	require.NoError(t, err)
+
+	state := location.Query().Get("state")
+	cookieName := getCookieName("state", state)
+	cookie := cookieName + "=" + state
+	providerError := "error=access_denied&state=" + state
+
+	for _, tc := range []struct {
+		name   string
+		query  string
+		cookie string
+		status int
+	}{
+		{name: "missing state", query: "error=access_denied", cookie: cookie, status: http.StatusBadRequest},
+		{name: "short state", query: "error=access_denied&state=abc", cookie: "state_abc=abc", status: http.StatusBadRequest},
+		{name: "missing code and error", query: "state=" + state, cookie: cookie, status: http.StatusBadRequest},
+		{name: "empty error", query: "error=&state=" + state, cookie: cookie, status: http.StatusBadRequest},
+		{name: "description only", query: "error_description=cancelled&state=" + state, cookie: cookie, status: http.StatusBadRequest},
+		{name: "missing cookie", query: providerError, status: http.StatusBadRequest},
+		{name: "invalid cookie", query: providerError, cookie: cookieName + "=\"unterminated", status: http.StatusBadRequest},
+		{name: "empty cookie", query: providerError, cookie: cookieName + "=", status: http.StatusForbidden},
+		{name: "wrong cookie value", query: providerError, cookie: cookieName + "=different-state", status: http.StatusForbidden},
+		{name: "wrong cookie name", query: providerError, cookie: "state_other=" + state, status: http.StatusBadRequest},
+		{name: "unknown state", query: "error=access_denied&state=unknown-state", cookie: "state_unknow=unknown-state", status: http.StatusGone},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			callback := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/oidc/callback?"+tc.query, nil)
+			callback.Header.Set("Cookie", tc.cookie)
+
+			rec := httptest.NewRecorder()
+			a.OIDCCallbackHandler(rec, callback)
+			assert.Equal(t, tc.status, rec.Code)
+
+			info, ok := a.authCache.Peek(state)
+			require.True(t, ok, "invalid callbacks must preserve the pending state")
+			assert.Equal(t, authID, info.AuthID)
+
+			full := httptest.NewRecorder()
+			a.RegisterHandler(full, oidcPendingAuthRequest(t, authID))
+			assert.Equal(t, http.StatusServiceUnavailable, full.Code, "invalid callbacks must not free another browser's slot")
+		})
+	}
+}
+
+func TestOIDCPendingCallbackRequiresState(t *testing.T) {
+	a := newOIDCPendingProvider(t, 1)
+
+	var exchanges atomic.Int32
+
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		exchanges.Add(1)
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	t.Cleanup(tokenServer.Close)
+	a.oauth2Config.Endpoint.TokenURL = tokenServer.URL
+
+	const state = "unknown-oidc-state"
+
+	callback := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/oidc/callback?code=test-code&state="+state, nil)
+	//nolint:gosec // G124: request cookies carry only name and value on the wire.
+	callback.AddCookie(&http.Cookie{Name: getCookieName("state", state), Value: state})
+
+	rec := httptest.NewRecorder()
+	a.OIDCCallbackHandler(rec, callback)
+	assert.Equal(t, http.StatusGone, rec.Code)
+	assert.Zero(t, exchanges.Load(), "unknown state must be rejected before token exchange even without PKCE")
+}
+
+func TestOIDCPendingCallbackConcurrent(t *testing.T) {
+	a := newOIDCPendingProvider(t, 1)
+	a.cfg.PKCE.Enabled = true
+	a.cfg.PKCE.Method = types.PKCEMethodS256
+	entered := make(chan struct{}, 2)
+	release := make(chan struct{})
+
+	var releaseOnce sync.Once
+
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+
+	var exchanges atomic.Int32
+
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		exchanges.Add(1)
+
+		entered <- struct{}{}
+
+		<-release
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, `{"error":"invalid_grant"}`)
+	}))
+	t.Cleanup(tokenServer.Close)
+	t.Cleanup(unblock)
+
+	a.oauth2Config.Endpoint.TokenURL = tokenServer.URL
+
+	started, _ := startOIDCPendingAuth(t, a, true)
+	require.Equal(t, http.StatusFound, started.Code)
+	location, err := started.Result().Location()
+	require.NoError(t, err)
+
+	state := location.Query().Get("state")
+	callbackURL := "/oidc/callback?code=test-code&state=" + state
+	first := httptest.NewRequestWithContext(t.Context(), http.MethodGet, callbackURL, nil)
+	//nolint:gosec // G124: request cookies carry only name and value on the wire.
+	first.AddCookie(&http.Cookie{Name: getCookieName("state", state), Value: state})
+	second := first.Clone(t.Context())
+	firstRec, secondRec := httptest.NewRecorder(), httptest.NewRecorder()
+	firstDone, secondDone := make(chan struct{}), make(chan struct{})
+
+	go func() {
+		a.OIDCCallbackHandler(firstRec, first)
+		close(firstDone)
+	}()
+
+	select {
+	case <-entered:
+	case <-firstDone:
+		t.Fatal("the first callback must reach token exchange")
+	case <-time.After(5 * time.Second):
+		t.Fatal("the first callback did not reach token exchange")
+	}
+
+	go func() {
+		a.OIDCCallbackHandler(secondRec, second)
+		close(secondDone)
+	}()
+
+	select {
+	case <-secondDone:
+	case <-entered:
+		// Release both requests before asserting the single-exchange invariant.
+	case <-time.After(5 * time.Second):
+		t.Fatal("the duplicate callback did not finish or reach token exchange")
+	}
+
+	unblock()
+	<-firstDone
+	<-secondDone
+	assert.Equal(t, http.StatusForbidden, firstRec.Code)
+	assert.Equal(t, http.StatusGone, secondRec.Code)
+	assert.EqualValues(t, 1, exchanges.Load(), "only one callback may claim a pending state")
+	assert.Zero(t, a.authCache.Len())
+}
+
+func TestOIDCPendingCallbackCookieBinding(t *testing.T) {
+	a := newOIDCPendingProvider(t, 1)
+	started, _ := startOIDCPendingAuth(t, a, true)
+	require.Equal(t, http.StatusFound, started.Code)
+	location, err := started.Result().Location()
+	require.NoError(t, err)
+
+	state := location.Query().Get("state")
+
+	for _, value := range []string{"", "different-state"} {
+		callback := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/oidc/callback?code=test-code&state="+state, nil)
+		wantStatus := http.StatusBadRequest
+
+		if value != "" {
+			//nolint:gosec // G124: request cookies carry only name and value on the wire.
+			callback.AddCookie(&http.Cookie{Name: getCookieName("state", state), Value: value})
+
+			wantStatus = http.StatusForbidden
+		}
+
+		rec := httptest.NewRecorder()
+		a.OIDCCallbackHandler(rec, callback)
+		assert.Equal(t, wantStatus, rec.Code)
+
+		_, ok := a.authCache.Peek(state)
+		assert.True(t, ok, "an unbound callback must not consume another browser's pending state")
+	}
+}
+
+func TestOIDCPendingCallbackPKCEFlow(t *testing.T) {
+	for _, method := range []string{"", types.PKCEMethodPlain, types.PKCEMethodS256} {
+		t.Run("method="+method, func(t *testing.T) {
+			b := newOIDCBrowser(t)
+			a, ok := b.app.authProvider.(*AuthProviderOIDC)
+			require.True(t, ok)
+
+			a.cfg.PKCE.Enabled = method != ""
+			a.cfg.PKCE.Method = method
+			a.authCache.Resize(65)
+
+			authID, registerURL := b.pendingNode(t)
+
+			status, _, body := b.get(t, registerURL)
+			require.Equal(t, http.StatusOK, status)
+			assert.Contains(t, body, "Confirm node registration")
+			assert.Zero(t, a.authCache.Len(), "successful callbacks must release pending OIDC capacity")
+
+			authReq, ok := b.app.state.GetAuthCacheEntry(authID)
+			require.True(t, ok, "consuming OIDC state must preserve the registration for confirmation")
+			assert.NotNil(t, authReq.PendingConfirmation())
+		})
+	}
+}
+
+func TestOIDCPendingCallbackPreservesSSHVerdict(t *testing.T) {
+	b := newOIDCBrowser(t)
+	a, ok := b.app.authProvider.(*AuthProviderOIDC)
+	require.True(t, ok)
+
+	principal := mockoidc.DefaultUser()
+	user, _, err := a.createOrUpdateUserFromClaim(&types.OIDCClaims{
+		Iss:           b.idp.Issuer(),
+		Sub:           principal.Subject,
+		Username:      principal.PreferredUsername,
+		Email:         principal.Email,
+		EmailVerified: true,
+	})
+	require.NoError(t, err)
+
+	src := b.app.state.CreateNodeForTest(user, "oidc-ssh-source")
+	b.app.state.PutNodeInStoreForTest(*src)
+
+	authID := types.MustAuthID()
+	authReq := types.NewSSHCheckAuthRequest(src.ID, 2)
+	require.NoError(t, b.app.state.SetAuthCacheEntry(authID, authReq))
+
+	status, _, body := b.get(t, a.AuthURL(authID))
+	require.Equal(t, http.StatusOK, status)
+	assert.Contains(t, body, "You may return to your terminal.")
+	assert.Zero(t, a.authCache.Len())
+
+	cached, ok := b.app.state.GetAuthCacheEntry(authID)
+	require.True(t, ok, "completing OIDC must preserve the SSH verdict for its polling client")
+	assert.Same(t, authReq, cached)
+
+	select {
+	case verdict := <-cached.WaitForAuth():
+		assert.True(t, verdict.Accept())
+	default:
+		t.Fatal("successful SSH authentication must make its verdict available")
+	}
+}
+
+func TestOIDCPendingCallbackNonceBinding(t *testing.T) {
+	b := newOIDCBrowser(t)
+	a, ok := b.app.authProvider.(*AuthProviderOIDC)
+	require.True(t, ok)
+
+	b.client.CheckRedirect = func(req *http.Request, _ []*http.Request) error {
+		if req.URL.Path == "/oidc/callback" {
+			return http.ErrUseLastResponse
+		}
+
+		return nil
+	}
+	_, registerURL := b.pendingNode(t)
+	//nolint:noctx,bodyclose // local test browser; closed below
+	response, err := b.client.Get(registerURL)
+	require.NoError(t, err)
+
+	defer response.Body.Close()
+
+	callbackURL, err := response.Location()
+	require.NoError(t, err)
+	require.Equal(t, "/oidc/callback", callbackURL.Path)
+
+	callback := httptest.NewRequestWithContext(t.Context(), http.MethodGet, callbackURL.String(), nil)
+	for _, cookie := range b.client.Jar.Cookies(callbackURL) {
+		if strings.HasPrefix(cookie.Name, "nonce_") {
+			cookie.Value = "wrong-nonce"
+		}
+
+		callback.AddCookie(cookie)
+	}
+
+	rec := httptest.NewRecorder()
+	a.OIDCCallbackHandler(rec, callback)
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+	assert.Zero(t, a.authCache.Len(), "nonce rejection must release the consumed pending state")
+}
+
 // TestClearOIDCCallbackCookie asserts the cookie is expired (negative MaxAge) on
 // the same path it was set with, so the browser drops it.
 func TestClearOIDCCallbackCookie(t *testing.T) {
@@ -265,14 +1020,14 @@ func TestSetCSRFCookieSecure(t *testing.T) {
 
 	secureRec := httptest.NewRecorder()
 	secureProvider := &AuthProviderOIDC{serverURL: "https://hs.example.com"}
-	secureProvider.setCSRFCookie(secureRec, r, "state")
+	secureProvider.setCSRFCookie(secureRec, r, "state", "state-value")
 	require.Len(t, secureRec.Result().Cookies(), 1)
 	assert.True(t, secureRec.Result().Cookies()[0].Secure,
 		"https server_url must set Secure even when req.TLS is nil (proxy case)")
 
 	plainRec := httptest.NewRecorder()
 	plainProvider := &AuthProviderOIDC{serverURL: "http://hs.example.com"}
-	plainProvider.setCSRFCookie(plainRec, r, "state")
+	plainProvider.setCSRFCookie(plainRec, r, "state", "state-value")
 	require.Len(t, plainRec.Result().Cookies(), 1)
 	assert.False(t, plainRec.Result().Cookies()[0].Secure,
 		"plain-http server_url without req.TLS must not set Secure")
@@ -379,11 +1134,11 @@ func (b *oidcBrowser) pendingNode(t *testing.T) (types.AuthID, string) {
 	t.Helper()
 
 	authID := types.MustAuthID()
-	b.app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+	require.NoError(t, b.app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
 		MachineKey: key.NewMachine().Public(),
 		NodeKey:    key.NewNode().Public(),
 		Hostname:   "reload-victim",
-	}))
+	})))
 
 	return authID, b.publicURL + "/register/" + authID.String()
 }
@@ -710,10 +1465,10 @@ func TestOIDCRegistrationRejectsOversizedMergedHostinfo(t *testing.T) {
 
 	hostname := strings.Repeat("h", types.MaxHostnameLength)
 	authID := types.MustAuthID()
-	app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+	require.NoError(t, app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
 		MachineKey: node.MachineKey, NodeKey: key.NewNode().Public(),
 		Hostname: hostname, Hostinfo: &tailcfg.Hostinfo{Hostname: hostname},
-	}))
+	})))
 
 	provider := &AuthProviderOIDC{h: app}
 	changed, err := provider.handleRegistration(user, authID, nil)
