@@ -19,7 +19,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/templates"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/oauth2"
@@ -371,7 +370,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
-	user, _, err := a.createOrUpdateUserFromClaim(&claims)
+	user, err := a.createOrUpdateUserFromClaim(&claims)
 	if err != nil {
 		httpUserError(writer, NewHTTPError(
 			http.StatusInternalServerError,
@@ -697,6 +696,7 @@ func (a *AuthProviderOIDC) getAuthInfoFromState(state string) *AuthInfo {
 
 	authInfo, ok := a.authCache.Peek(state)
 	a.authCache.Remove(state)
+
 	if !ok {
 		return nil
 	}
@@ -706,17 +706,16 @@ func (a *AuthProviderOIDC) getAuthInfoFromState(state string) *AuthInfo {
 
 func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 	claims *types.OIDCClaims,
-) (*types.User, change.Change, error) {
+) (*types.User, error) {
 	var (
 		user    *types.User
 		err     error
 		newUser bool
-		c       change.Change
 	)
 
 	user, err = a.h.state.GetUserByOIDCIdentifier(claims.Identifier())
 	if err != nil && !errors.Is(err, db.ErrUserNotFound) {
-		return nil, change.Change{}, fmt.Errorf("creating or updating user: %w", err)
+		return nil, fmt.Errorf("creating or updating user: %w", err)
 	}
 
 	// if the user is still not found, create a new empty user.
@@ -730,21 +729,21 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 	user.FromClaim(claims, a.cfg.EmailVerifiedRequired)
 
 	if newUser {
-		user, c, err = a.h.state.CreateUser(*user)
+		user, _, err = a.h.state.CreateUser(*user)
 		if err != nil {
-			return nil, change.Change{}, fmt.Errorf("creating user: %w", err)
+			return nil, fmt.Errorf("creating user: %w", err)
 		}
 	} else {
-		_, c, err = a.h.state.UpdateUser(types.UserID(user.ID), func(u *types.User) error {
+		_, _, err = a.h.state.UpdateUser(types.UserID(user.ID), func(u *types.User) error {
 			*u = *user
 			return nil
 		})
 		if err != nil {
-			return nil, change.Change{}, fmt.Errorf("updating user: %w", err)
+			return nil, fmt.Errorf("updating user: %w", err)
 		}
 	}
 
-	return user, c, nil
+	return user, nil
 }
 
 // registerConfirmCSRFCookie is the cookie name used to bind the
