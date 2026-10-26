@@ -358,6 +358,69 @@ func serveRegister(t *testing.T, ns *noiseServer, body any) *httptest.ResponseRe
 	return rec
 }
 
+func TestRegistrationHandler_AdmissionRetry(t *testing.T) {
+	app := createTestApp(t, func(cfg *types.Config) {
+		cfg.Tuning.RegisterCacheMaxEntries = 1
+	})
+	defer func() { require.NoError(t, app.state.Close()) }()
+
+	require.NoError(t, app.state.SetAuthCacheEntry(types.MustAuthID(), types.NewAuthRequest()))
+
+	ns := &noiseServer{headscale: app, machineKey: key.NewMachine().Public()}
+	rec := serveRegister(t, ns, tailcfg.RegisterRequest{
+		Version:  capver.MinSupportedCapabilityVersion,
+		NodeKey:  key.NewNode().Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "node"},
+	})
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	require.NotEmpty(t, rec.Header().Get("Retry-After"))
+
+	var response tailcfg.RegisterResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Empty(t, response.AuthURL)
+	require.NotEmpty(t, response.Error)
+}
+
+func TestRegistrationHandler_RegistrationPayloadLimit(t *testing.T) {
+	app := createTestApp(t)
+	defer func() { require.NoError(t, app.state.Close()) }()
+
+	hostinfo := &tailcfg.Hostinfo{Hostname: "node", OS: strings.Repeat("x", types.MaxHostinfoSize-128)}
+	require.NoError(t, types.ValidateHostinfo(hostinfo), "the full registration must reach cache admission")
+
+	ns := &noiseServer{headscale: app, machineKey: key.NewMachine().Public()}
+	rec := serveRegister(t, ns, tailcfg.RegisterRequest{
+		Version:  capver.MinSupportedCapabilityVersion,
+		NodeKey:  key.NewNode().Public(),
+		Hostinfo: hostinfo,
+	})
+	require.Equal(t, http.StatusOK, rec.Code, "controlclient only surfaces RegisterResponse.Error with HTTP 200")
+	require.Empty(t, rec.Header().Get("Retry-After"))
+
+	var response tailcfg.RegisterResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Contains(t, response.Error, types.ErrRegistrationPayloadTooLarge.Error())
+	require.Contains(t, response.Error, strconv.Itoa(types.MaxRegistrationPayloadBytes))
+	require.Empty(t, response.AuthURL)
+	require.False(t, response.MachineAuthorized)
+	require.Zero(t, app.state.DebugRegistrationCache()["current_len"], "oversized registrations must not enter the auth cache")
+}
+
+func TestSSHActionFollowUp_ReleasesConsumedSession(t *testing.T) {
+	f := newSSHVerdictFixture(t)
+	authID, auth := f.mint(t)
+	auth.FinishAuth(types.AuthVerdict{})
+
+	_, ok := f.ns.headscale.state.GetAuthCacheEntry(authID)
+	require.True(t, ok, "approval must remain available until the client consumes it")
+
+	action := sshActionFromRecorder(t, f.followUp(t, authID))
+	require.True(t, action.Accept)
+
+	_, ok = f.ns.headscale.state.GetAuthCacheEntry(authID)
+	require.False(t, ok, "a consumed verdict must release its admission slot")
+}
+
 func requireBelowFloorRejected(t *testing.T, rec *httptest.ResponseRecorder) {
 	t.Helper()
 
@@ -721,10 +784,10 @@ func TestSSHActionFollowUp_RejectsBindingMismatch(t *testing.T) {
 
 	// Mint an SSH-check auth request bound to (srcCached, dstCached).
 	authID := types.MustAuthID()
-	app.state.SetAuthCacheEntry(
+	require.NoError(t, app.state.SetAuthCacheEntry(
 		authID,
 		types.NewSSHCheckAuthRequest(srcCached.ID, dstCached.ID),
-	)
+	))
 
 	// Build a follow-up that claims to be for (srcOther, dstOther) but
 	// reuses the bound auth_id. The Noise machineKey matches dstOther so
@@ -881,7 +944,7 @@ func TestSSHActionFollowUp_RejectsVerdictAfterCheckRemoved(t *testing.T) {
 			require.NoError(t, err)
 
 			authID := types.MustAuthID()
-			app.state.SetAuthCacheEntry(authID, types.NewSSHCheckAuthRequest(src.ID, dst.ID))
+			require.NoError(t, app.state.SetAuthCacheEntry(authID, types.NewSSHCheckAuthRequest(src.ID, dst.ID)))
 
 			auth, ok := app.state.GetAuthCacheEntry(authID)
 			require.True(t, ok)
@@ -2261,7 +2324,7 @@ func TestSSHActionFollowUp_ParksOneRequestPerSession(t *testing.T) {
 
 	authID := types.MustAuthID()
 	auth := types.NewSSHCheckAuthRequest(src.ID, dst.ID)
-	app.state.SetAuthCacheEntry(authID, auth)
+	require.NoError(t, app.state.SetAuthCacheEntry(authID, auth))
 
 	ns := &noiseServer{headscale: app, machineKey: dst.MachineKey}
 

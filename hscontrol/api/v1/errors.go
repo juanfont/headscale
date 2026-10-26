@@ -20,6 +20,13 @@ func mapError(msg string, err error) error {
 	}
 
 	switch {
+	case errors.Is(err, types.ErrRegistrationPayloadTooLarge):
+		return huma.Error413RequestEntityTooLarge(msg, err)
+
+	case errors.Is(err, state.ErrAuthCacheFull),
+		errors.Is(err, state.ErrAuthCacheClosed):
+		return huma.Error503ServiceUnavailable(msg, err)
+
 	case errors.Is(err, gorm.ErrRecordNotFound),
 		errors.Is(err, state.ErrNodeNotFound),
 		errors.Is(err, state.ErrNodeNotInNodeStore),
@@ -43,7 +50,8 @@ func mapError(msg string, err error) error {
 		return huma.Error400BadRequest(msg, err)
 
 	case errors.Is(err, state.ErrNodeKeyInUse),
-		errors.Is(err, state.ErrAmbiguousNodeOwnership):
+		errors.Is(err, state.ErrAmbiguousNodeOwnership),
+		errors.Is(err, state.ErrAuthCacheEntryExists):
 		return huma.Error409Conflict(msg, err)
 
 	default:

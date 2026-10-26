@@ -181,7 +181,8 @@ func (s *State) DebugRegistrationCache() map[string]any {
 	return map[string]any{
 		"type":        "expirable-lru",
 		"expiration":  registerCacheExpiration.String(),
-		"max_entries": defaultRegisterCacheMaxEntries,
+		"max_entries": s.authCacheMaxEntries,
+		"ssh_reserve": authCacheSSHReserve,
 		"current_len": s.authCache.Len(),
 		"status":      "active",
 	}

@@ -91,6 +91,34 @@ headscale users create <USER>
     listed as "online" in the output of `headscale nodes list`. The "User" column displays `tagged-devices` as the owner
     of the node. See the "Tags" column for the list of assigned tags.
 
+### Pending authentication limits
+
+Headscale keeps admitted authentication requests until they complete or expire.
+When registration capacity is reached, new requests receive HTTP 503 with
+`Retry-After` instead of invalidating someone else's pending approval. Existing
+approvals and pre-authenticated key registration remain available. SSH checks
+have 64 reserved entries beyond the registration allocation, including in the
+OIDC state cache.
+
+The default registration allocation is 1024 entries. The advanced
+`tuning.register_cache_max_entries` setting changes that allocation. Pending
+registration retains only hostname, OS and requested tags from Hostinfo; other
+metadata arrives with the node's first MapRequest. The full cached registration
+must fit within 64 KiB when serialized; larger payloads are rejected without
+truncating authentication metadata. Noise
+registrations return HTTP 200 with `RegisterResponse.Error` so the Tailscale
+client displays the permanent size error. The admin API reports this size error
+as HTTP 413.
+At the default allocation, retained registration payloads use at most 64 MiB
+plus record overhead. This is a cache-storage bound, not a bound on total server
+memory or concurrent request processing.
+
+OIDC login URLs must reference an existing pending authentication of the matching
+type. OIDC callback state is single-use, including when the identity provider
+exchange fails; restart the browser login flow after such an error. Capacity
+limits protect admitted requests but cannot guarantee admission during sustained
+overload.
+
 ### Pre authenticated key
 
 Registration with a pre authenticated key (or auth key) is a non-interactive way to register a new node. The Headscale

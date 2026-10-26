@@ -364,7 +364,7 @@ func TestAPIV1NodeRegister(t *testing.T) {
 				MachineKey: mk.Public(),
 				Hostname:   "registered-node",
 			}
-			app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(regData))
+			require.NoError(t, app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(regData)))
 		}
 
 		assertParityIsolated(t, seed, http.MethodPost,
@@ -452,4 +452,22 @@ func TestAPIV1NodeDebugCreate(t *testing.T) {
 		assert.Equal(t, "0001-01-01T00:00:00Z", got.Node["expiry"])
 		assert.Equal(t, "0001-01-01T00:00:00Z", got.Node["lastSeen"])
 	})
+}
+
+func TestAPIV1NodeDebugCreateAdmissionFailure(t *testing.T) {
+	app := createTestApp(t, func(cfg *types.Config) {
+		cfg.Tuning.RegisterCacheMaxEntries = 1
+	})
+	defer func() { require.NoError(t, app.state.Close()) }()
+
+	app.state.CreateUserForTest("alice")
+	require.NoError(t, app.state.SetAuthCacheEntry(types.MustAuthID(), types.NewAuthRequest()))
+
+	id := types.MustAuthID()
+	body := []byte(`{"user":"alice","key":"` + id.String() + `","name":"node","routes":[]}`)
+	res := callHandler(newHumaTestHandler(app), http.MethodPost, "/api/v1/debug/node", body)
+	require.Equal(t, http.StatusServiceUnavailable, res.status)
+
+	_, ok := app.state.GetAuthCacheEntry(id)
+	require.False(t, ok)
 }

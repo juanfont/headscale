@@ -7,6 +7,9 @@
 ### Security
 
 - Metrics are no longer exposed to unregistered clients through the Noise protocol. They remain available only on the configured metrics listener; an empty `metrics_listen_addr` disables that listener. [#3571](https://github.com/juanfont/headscale/issues/3571)
+- Preserve pending registrations and OIDC logins at capacity instead of evicting active approvals; refuse excess work with a retry response and reserve capacity for registered nodes' SSH checks.
+- Retain pending registration data as owned serialized payloads capped at 64 KiB, preserving tags and expiry while bounding stored data. Oversized interactive registrations are rejected explicitly.
+- Validate OIDC login session type before allocating state, consume callback state atomically, and release SSH authentication capacity after the client consumes its verdict.
 
 ### v1 REST API replaced; gRPC and Protobuf removed
 

@@ -566,10 +566,13 @@ func (ns *noiseServer) sshActionHoldAndDelegate(
 		)
 	}
 
-	ns.headscale.state.SetAuthCacheEntry(
+	err = ns.headscale.state.SetAuthCacheEntry(
 		authID,
 		types.NewSSHCheckAuthRequest(srcNodeID, dstNodeID),
 	)
+	if err != nil {
+		return nil, authAdmissionError(err)
+	}
 
 	authURL := ns.headscale.authProvider.AuthURL(authID)
 
@@ -690,6 +693,8 @@ func (ns *noiseServer) sshActionFollowUp(
 		return sessionGone("SSH check follow-up superseded; re-delegating")
 	case verdict, verdictOK = <-auth.WaitForAuth():
 	}
+
+	ns.headscale.state.DeleteAuthCacheEntry(authID)
 
 	// FinishAuth buffers one verdict, then closes the channel. A closed
 	// receive yields the zero verdict, which Accept() reports as success,
@@ -1004,6 +1009,7 @@ func (ns *noiseServer) RegistrationHandler(
 		return
 	}
 
+	statusCode := http.StatusOK
 	registerResponse := func() *tailcfg.RegisterResponse { //nolint:contextcheck
 		if decodeErr != nil {
 			return regErr(decodeErr)
@@ -1015,6 +1021,13 @@ func (ns *noiseServer) RegistrationHandler(
 		resp, err := ns.headscale.handleRegister(req.Context(), registerRequest, ns.machineKey)
 		if err != nil {
 			if httpErr, ok := errors.AsType[HTTPError](err); ok {
+				// Keep permanent errors in HTTP 200 so controlclient surfaces RegisterResponse.Error.
+				if httpErr.Code == http.StatusServiceUnavailable {
+					statusCode = http.StatusServiceUnavailable
+
+					writer.Header().Set("Retry-After", "10")
+				}
+
 				return &tailcfg.RegisterResponse{
 					Error: httpErr.Msg,
 				}
@@ -1027,7 +1040,7 @@ func (ns *noiseServer) RegistrationHandler(
 	}()
 
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
-	writer.WriteHeader(http.StatusOK)
+	writer.WriteHeader(statusCode)
 
 	err := json.NewEncoder(writer).Encode(registerResponse)
 	if err != nil {

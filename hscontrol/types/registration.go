@@ -8,14 +8,25 @@ import (
 	"tailscale.com/types/key"
 )
 
+// MaxRegistrationPayloadBytes limits the owned serialized registration payload
+// retained by an [AuthRequest] after [AuthRequest.PrepareForCache]. It covers
+// the authentication metadata and the minimal registration Hostinfo.
+// It bounds retained serialized bytes, not transient encoding or decoded heap
+// usage. A cache of 1024 entries retains at most 64 MiB of these payloads plus
+// record overhead; a different entry limit scales that budget.
+const MaxRegistrationPayloadBytes = 64 << 10
+
 // RegistrationData is the payload cached for a pending node registration.
 // It replaces the previous practice of caching a full *[Node] and carries
 // only the fields the registration callback path actually consumes when
 // promoting a pending registration to a real node.
 //
-// Any client can open a pending registration. The bounded-LRU cache that
-// holds these entries caps their number. Hostinfo retains only auth and
+// Any client can open a pending registration. Cache admission caps the number
+// of pending entries. Hostinfo retains only auth and
 // confirmation metadata, bounded by [ValidateHostinfo] before caching.
+//
+// [AuthRequest.PrepareForCache] retains an owned serialized representation
+// bounded by [MaxRegistrationPayloadBytes], releasing this decoded payload.
 type RegistrationData struct {
 	// MachineKey is the cryptographic identity of the machine being
 	// registered. Required.
