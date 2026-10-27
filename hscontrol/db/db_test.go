@@ -952,6 +952,30 @@ func TestRevokedKeysBackingNodesSurviveCollection(t *testing.T) {
 	assert.ElementsMatch(t, []types.NodeID{3, 5}, ids)
 }
 
+// TestNodeEphemeralMigrationRerunKeepsFlags simulates a start that committed
+// the node ephemeral migration but died before gormigrate recorded it, after
+// which node 3 was made permanent: the next start must neither fail on the
+// existing column nor backfill node 3 again.
+func TestNodeEphemeralMigrationRerunKeepsFlags(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale_test.db"
+
+	require.NoError(t, createSQLiteFromSQLFile("testdata/sqlite/headscale_0.29.3_dump.sql", dbPath))
+
+	hsdb, err := NewHeadscaleDatabase(sqliteTestConfig(dbPath))
+	require.NoError(t, err)
+	require.NoError(t, hsdb.DB.Exec(`UPDATE nodes SET ephemeral = false WHERE id = 3`).Error)
+	require.NoError(t, hsdb.DB.Exec(`DELETE FROM migrations WHERE id = '202610211300-node-ephemeral'`).Error)
+	require.NoError(t, hsdb.Close())
+
+	hsdb, err = NewHeadscaleDatabase(sqliteTestConfig(dbPath))
+	require.NoError(t, err)
+
+	ephemeral, err := hsdb.ListEphemeralNodes()
+	require.NoError(t, err)
+	require.Len(t, ephemeral, 1)
+	assert.Equal(t, types.NodeID(5), ephemeral[0].ID)
+}
+
 // TestInterruptedInitSchemaRecovers simulates a first start that created the
 // schema but died before gormigrate recorded the migrations, and asserts the
 // next start completes instead of failing on the existing credentials table.

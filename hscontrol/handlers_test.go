@@ -142,7 +142,7 @@ func TestHandleVerifyRequest_AdmitsByNodeKey(t *testing.T) {
 	app.state.PutNodeInStoreForTest(*tagged)
 
 	ephemeral := app.state.CreateNodeForTest(user, "ephemeral")
-	ephemeral.AuthKey = &types.Credential{Ephemeral: true}
+	ephemeral.Ephemeral = true
 	app.state.PutNodeInStoreForTest(*ephemeral)
 
 	expired := app.state.CreateNodeForTest(user, "expired")
