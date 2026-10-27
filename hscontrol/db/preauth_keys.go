@@ -339,9 +339,9 @@ func (hsdb *HSDatabase) GetPreAuthKeyByID(id uint64) (*types.PreAuthKey, error) 
 }
 
 // DestroyPreAuthKey destroys a preauthkey. Returns error if the [types.PreAuthKey]
-// does not exist. Referenced ephemeral keys are revoked instead, because their
-// nodes need the key row to retain ephemerality. Other keys are removed along
-// with their nodes' auth_key_id references.
+// does not exist. Referenced ephemeral keys are revoked instead, so their
+// nodes keep the key they joined with. Other keys are removed along with their
+// nodes' auth_key_id references.
 func DestroyPreAuthKey(tx *gorm.DB, id uint64) error {
 	return tx.Transaction(func(db *gorm.DB) error {
 		res := db.Model(&types.Credential{}).
@@ -421,8 +421,7 @@ func RevokePreAuthKey(tx *gorm.DB, id uint64) error {
 // DestroyRevokedPreAuthKeysBefore hard-deletes every key revoked before cutoff,
 // returning how many were removed. The background collector calls this to reap
 // soft-revoked keys after the retention window. Keys still referenced by a node
-// are kept: the node's ephemerality lives on its key, and revoking a key must
-// not change nodes already registered with it.
+// are kept, so revoking a key does not change nodes already registered with it.
 func (hsdb *HSDatabase) DestroyRevokedPreAuthKeysBefore(cutoff time.Time) (int, error) {
 	var count int
 

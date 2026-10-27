@@ -97,9 +97,7 @@ func (hsdb *HSDatabase) ListEphemeralNodes() (types.Nodes, error) {
 	return Read(hsdb.DB, func(rx *gorm.DB) (types.Nodes, error) {
 		nodes := types.Nodes{}
 
-		err := rx.Joins("AuthKey").
-			Where(`"AuthKey"."ephemeral" = true AND "AuthKey"."kind" = ?`, types.CredentialPreAuthKey).
-			Find(&nodes).Error
+		err := rx.Joins("AuthKey").Where("nodes.ephemeral = true").Find(&nodes).Error
 		if err != nil {
 			return nil, err
 		}
