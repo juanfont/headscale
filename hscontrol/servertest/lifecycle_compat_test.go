@@ -195,20 +195,7 @@ func runRouteLifecycleCompat(t *testing.T, id, observer string, skips map[string
 
 			join := first[router]
 
-			hsRoutes := func() (deviceRoutes, bool) {
-				nodes := r.machineNodes(router)
-				if len(nodes) != 1 {
-					return deviceRoutes{}, false
-				}
-
-				status, body := r.call(t, http.MethodGet, "/api/v2/device/"+nodes[0].StringID()+"/routes", nil)
-				require.Equal(t, http.StatusOK, status, "%s", body)
-
-				var out deviceRoutes
-				require.NoError(t, json.Unmarshal(body, &out))
-
-				return out, true
-			}
+			hsRoutes := func() (deviceRoutes, bool) { return r.hsDeviceRoutes(t, router) }
 
 			// hsPeer is the router as the observer's peer in headscale.
 			hsPeer := func() (tailcfg.NodeView, string) {
@@ -416,6 +403,25 @@ func holdChecks(
 type deviceRoutes struct {
 	Advertised []string `json:"advertisedRoutes"`
 	Enabled    []string `json:"enabledRoutes"`
+}
+
+// hsDeviceRoutes reads alias's routes from headscale's v2 API, while its
+// machine holds one node.
+func (r *stepReplay) hsDeviceRoutes(t *testing.T, alias string) (deviceRoutes, bool) {
+	t.Helper()
+
+	nodes := r.machineNodes(alias)
+	if len(nodes) != 1 {
+		return deviceRoutes{}, false
+	}
+
+	status, body := r.call(t, http.MethodGet, "/api/v2/device/"+nodes[0].StringID()+"/routes", nil)
+	require.Equal(t, http.StatusOK, status, "%s", body)
+
+	var out deviceRoutes
+	require.NoError(t, json.Unmarshal(body, &out))
+
+	return out, true
 }
 
 // saasDevice is the part of a SaaS device-list entry the checks read.
