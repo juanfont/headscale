@@ -31,14 +31,15 @@ const maxConcurrentMapSessionsPerNode = 4
 // after this error because the data was never delivered to any client.
 var errNoActiveConnections = errors.New("no active connections")
 
-// errNoReadyConnections is returned by [multiChannelNodeConn.send] when the
-// node's only connections are still waiting for their initial map
-// ([Batcher.AddNode] has registered them but not yet delivered the first full
-// response). Sending a delta now would make it the stream's first frame, which
-// Tailscale clients reject ("initial MapResponse lacked Node") — tearing down
-// the poll. Unlike [errNoActiveConnections], the change must be retried: the
-// in-flight initial map may have been generated from a snapshot older than
-// the change, so dropping it would lose the update.
+// errNoReadyConnections is returned by [multiChannelNodeConn.send], having
+// sent nothing, when any of the node's connections is still waiting for its
+// initial map ([Batcher.AddNode] has registered it but not yet delivered the
+// first full response). Sending a delta to it now would make it the stream's
+// first frame, which Tailscale clients reject ("initial MapResponse lacked
+// Node") — tearing down the poll. Unlike [errNoActiveConnections], the change
+// must be retried, and on every connection: the in-flight initial map may have
+// been generated from a snapshot older than the change, so dropping it would
+// lose the update.
 var errNoReadyConnections = errors.New("no connections ready for updates")
 
 // errConnectionBackpressure keeps unsent changes queued without declaring a busy client dead.
@@ -67,7 +68,7 @@ type connectionEntry struct {
 
 	// pendingInitial is set by [Batcher.AddNode] while this
 	// connection's initial map is still in flight, and cleared once it
-	// is delivered. Broadcast sends skip such connections so a delta
+	// is delivered. Broadcast sends to the node wait for it, so a delta
 	// can never become the stream's first frame ahead of the initial
 	// map. The zero value means the connection is ready.
 	pendingInitial atomic.Bool
@@ -435,9 +436,9 @@ func (mc *multiChannelNodeConn) takePending() []change.Change {
 // To avoid holding the write lock during bounded channel waits, the method
 // snapshots connections under a read lock, sends without any lock held, then
 // write-locks only to remove failures. New connections added between the
-// snapshot and cleanup are safe:
-// they receive a full initial map via [Batcher.AddNode], so missing this update
-// causes no data loss.
+// snapshot and cleanup are safe: [Batcher.AddNode] generates their initial
+// map under workMu, after this bundle, so missing this update causes no data
+// loss.
 func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 	if data == nil {
 		return nil
@@ -454,27 +455,22 @@ func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 		return errNoActiveConnections
 	}
 
-	// Copy only connections whose initial map has been delivered.
-	// A connection still awaiting its initial map receives one
-	// (generated from the current snapshot) from [Batcher.AddNode];
-	// pushing this update at it now would deliver a delta as the
-	// stream's first frame.
-	snapshot := make([]*connectionEntry, 0, len(mc.connections))
-
-	for _, conn := range mc.connections {
-		if !conn.pendingInitial.Load() {
-			snapshot = append(snapshot, conn)
-		}
-	}
-
-	mc.mutex.RUnlock()
-
-	if len(snapshot) == 0 {
+	// A connection still awaiting its initial map must not get this
+	// update first, and the map may predate it: send to none until the
+	// map is out, see [errNoReadyConnections].
+	if slices.ContainsFunc(mc.connections, func(conn *connectionEntry) bool {
+		return conn.pendingInitial.Load()
+	}) {
+		mc.mutex.RUnlock()
 		mc.log.Trace().
-			Msg("send: connections present but none ready, requeue")
+			Msg("send: a connection awaits its initial map, requeue")
 
 		return errNoReadyConnections
 	}
+
+	snapshot := slices.Clone(mc.connections)
+
+	mc.mutex.RUnlock()
 
 	mc.log.Trace().
 		Int("total_connections", len(snapshot)).
