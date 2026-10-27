@@ -86,6 +86,7 @@ CREATE TABLE nodes(
   register_method text,
   tags text,
   auth_key_id integer,
+  ephemeral numeric DEFAULT false,
   last_seen datetime,
   expiry datetime,
   approved_routes text,
