@@ -358,10 +358,6 @@ func nodesToPtables(nodes []clientv1.Node) (pterm.TableData, error) {
 	tableData[0] = tableHeader
 
 	for _, node := range nodes {
-		// An absent pre-auth key decodes into a zero NodePreAuthKey, so guard
-		// on Id before reading its flags.
-		ephemeral := node.PreAuthKey.Id != "" && node.PreAuthKey.Ephemeral
-
 		var lastSeenTime string
 		if node.LastSeen != nil {
 			lastSeenTime = node.LastSeen.Format(HeadscaleDateTimeFormat)
@@ -422,7 +418,7 @@ func nodesToPtables(nodes []clientv1.Node) (pterm.TableData, error) {
 			node.User.Name,
 			tags,
 			ipAddresses,
-			strconv.FormatBool(ephemeral),
+			strconv.FormatBool(node.Ephemeral),
 			lastSeenTime,
 			expiryTime,
 			online,
