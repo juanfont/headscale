@@ -219,6 +219,10 @@ type State struct {
 	// persistMu serialises node-row persistence and deletion so the database
 	// always converges on [NodeStore] rather than being clobbered by a stale
 	// caller snapshot or resurrected by an update racing with deletion.
+	// Every node's persist takes it, so paths a node can trigger must not
+	// hold it across a NodeStore write. Node persists must stay UPDATE-only;
+	// then a persist between the row delete and the NodeStore delete changes
+	// nothing.
 	persistMu sync.Mutex
 
 	// selfRefresh holds nodes whose own DNS config inputs changed (NextDNS
