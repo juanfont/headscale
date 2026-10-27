@@ -104,7 +104,7 @@ type (
 
 	listKeysInput struct {
 		Tailnet string `path:"tailnet"`
-		All     bool   `doc:"Accepted for compatibility; Headscale returns all keys." query:"all"`
+		All     bool   `doc:"Without it, a token sees only the auth keys tokens made." query:"all"`
 	}
 
 	keyByIDInput struct {
@@ -199,7 +199,15 @@ func registerKeys(api huma.API, b Backend) {
 				return nil, huma.Error500InternalServerError("listing auth keys", err)
 			}
 
+			now := time.Now()
+
+			// As Tailscale lists them: never an invalid key, and to a token
+			// without all=true only the keys tokens made.
 			for i := range keys {
+				if keys[i].ValidAt(now) != nil || isOAuth && !in.All && !keys[i].CreatedByToken {
+					continue
+				}
+
 				out.Body.Keys = append(out.Body.Keys, keyFromStored(&keys[i]))
 			}
 		}
@@ -412,7 +420,12 @@ func createAuthKey(ctx context.Context, b Backend, body CreateKeyRequest) (*keyO
 
 	expiration := time.Now().Add(expiryDuration(body.ExpirySeconds))
 
-	pak, err := b.State.CreatePreAuthKey(
+	createKey := b.State.CreatePreAuthKey
+	if isOAuth {
+		createKey = b.State.CreateTokenPreAuthKey
+	}
+
+	pak, err := createKey(
 		userID,
 		create.Reusable,
 		create.Ephemeral,

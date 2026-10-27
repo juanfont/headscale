@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -336,6 +337,69 @@ func TestAPIv2OAuth_TaggedKeyCreator(t *testing.T) {
 	require.True(t, ok)
 	require.True(t, nv.AuthKey().Valid())
 	assert.False(t, nv.AuthKey().User().Valid())
+}
+
+// TestAPIv2OAuth_KeyListing: a listing never holds an invalid key; without
+// all=true a token sees only the auth keys tokens made, whatever their tags.
+func TestAPIv2OAuth_KeyListing(t *testing.T) {
+	app, baseURL, admin := newOAuthTestServer(t)
+
+	adminKey := createAdminAuthKey(t, baseURL, admin)
+
+	revoked := createAdminAuthKey(t, baseURL, admin)
+	status, _ := apiReq(t, http.MethodDelete, baseURL+"/api/v2/tailnet/-/keys/"+revoked, admin, nil)
+	require.Equal(t, http.StatusOK, status)
+
+	maker := mintScopedToken(t, baseURL, admin, scope.AuthKeys)
+	require.Equal(t, http.StatusOK, createTaggedKey(t, baseURL, maker, []string{"tag:ci"}))
+
+	keys, err := app.state.ListPreAuthKeys()
+	require.NoError(t, err)
+
+	var tokenKey string
+
+	for _, k := range keys {
+		if k.CreatedByToken {
+			tokenKey = k.StringID()
+		}
+	}
+
+	require.NotEmpty(t, tokenKey, "the token's key is marked")
+
+	_, readerSecret := createClient(t, baseURL, admin, []string{"auth_keys:read"}, nil)
+	reader := tokenFor(t, baseURL, readerSecret)
+
+	listed := func(bearer, query string) []string {
+		t.Helper()
+
+		status, body := apiReq(t, http.MethodGet, baseURL+"/api/v2/tailnet/-/keys"+query, bearer, nil)
+		require.Equalf(t, http.StatusOK, status, "body: %s", body)
+
+		var out struct{ Keys []apiv2.Key }
+		require.NoError(t, json.Unmarshal(body, &out))
+
+		ids := make([]string, 0, len(out.Keys))
+		for _, k := range out.Keys {
+			if k.KeyType == "auth" {
+				ids = append(ids, k.ID)
+			}
+		}
+
+		slices.Sort(ids)
+
+		return ids
+	}
+
+	every := []string{adminKey, tokenKey}
+	slices.Sort(every)
+
+	for _, bearer := range []string{reader, maker} {
+		assert.Equal(t, []string{tokenKey}, listed(bearer, ""))
+		assert.Equal(t, every, listed(bearer, "?all=true"))
+	}
+
+	assert.Equal(t, every, listed(admin, ""))
+	assert.Equal(t, every, listed(admin, "?all=true"))
 }
 
 // TestAPIv2OAuth_UnknownKeyTypeRefused: a keyType other than auth or client
@@ -676,8 +740,9 @@ func TestAPIv2OAuth_KeysMultiplexIsolation(t *testing.T) {
 	clientID, _ := createClient(t, baseURL, admin, []string{"oauth_keys"}, []string{"tag:ci"})
 	require.Equal(t, http.StatusOK, createTaggedKey(t, baseURL, admin, []string{"tag:ci"}))
 
+	// all=true, so a token sees the admin's auth key too.
 	listKinds := func(bearer string) map[string]int {
-		st, body := apiReq(t, http.MethodGet, keysURL, bearer, nil)
+		st, body := apiReq(t, http.MethodGet, keysURL+"?all=true", bearer, nil)
 		require.Equalf(t, http.StatusOK, st, "%s", body)
 
 		var out struct {

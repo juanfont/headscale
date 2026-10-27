@@ -705,6 +705,53 @@ func TestSQLiteMigrationToCredentialsIsAtomic(t *testing.T) {
 	assert.True(t, pak.Reusable)
 }
 
+// TestSQLiteMigrationAddsCreatedByToken upgrades a database whose credentials
+// table predates the created_by_token column: existing keys read as not made
+// by a token, and the schema matches schema.sql again.
+func TestSQLiteMigrationAddsCreatedByToken(t *testing.T) {
+	dbPath := t.TempDir() + "/headscale_test.db"
+	cfg := &types.Config{
+		Database: types.DatabaseConfig{
+			Type:   "sqlite3",
+			Sqlite: types.SqliteConfig{Path: dbPath},
+		},
+		Policy: types.PolicyConfig{Mode: types.PolicyModeDB},
+	}
+
+	hsdb, err := NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	pak, err := hsdb.CreatePreAuthKey(nil, true, false, nil, []string{"tag:ci"})
+	require.NoError(t, err)
+	require.NoError(t, hsdb.Close())
+
+	raw, err := sql.Open("sqlite", dbPath)
+	require.NoError(t, err)
+
+	defer raw.Close()
+
+	for _, stmt := range []string{
+		`ALTER TABLE credentials DROP COLUMN created_by_token`,
+		`DELETE FROM migrations WHERE id = '202610221200-credential-created-by-token'`,
+	} {
+		_, err = raw.ExecContext(context.Background(), stmt)
+		require.NoError(t, err, stmt)
+	}
+
+	hsdb, err = NewHeadscaleDatabase(cfg)
+	require.NoError(t, err)
+
+	got, err := hsdb.GetPreAuthKeyByID(pak.ID)
+	require.NoError(t, err)
+	assert.False(t, got.CreatedByToken)
+
+	made, err := hsdb.CreateTokenPreAuthKey(nil, true, false, nil, []string{"tag:ci"})
+	require.NoError(t, err)
+	got, err = hsdb.GetPreAuthKeyByID(made.ID)
+	require.NoError(t, err)
+	assert.True(t, got.CreatedByToken)
+}
+
 // TestSQLiteRejectsPre029Database ensures a real pre-0.29 database is refused
 // rather than silently skipping the migrations that were removed.
 func TestSQLiteRejectsPre029Database(t *testing.T) {
