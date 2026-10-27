@@ -331,6 +331,33 @@ WHERE auth_key_id IN (
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			{
+				// Mark the auth keys an OAuth access token makes. A database
+				// that got the credentials table from the DDL above already
+				// has the column; no released version made keys from tokens,
+				// so existing rows stay false.
+				ID: "202610221200-credential-created-by-token",
+				Migrate: func(tx *gorm.DB) error {
+					return tx.Transaction(func(tx *gorm.DB) error {
+						if tx.Migrator().HasColumn(&types.Credential{}, "created_by_token") {
+							return nil
+						}
+
+						colType := "numeric"
+						if tx.Name() != "sqlite" {
+							colType = "boolean"
+						}
+
+						err := tx.Exec(`ALTER TABLE credentials ADD COLUMN created_by_token ` + colType + ` DEFAULT false`).Error
+						if err != nil {
+							return fmt.Errorf("adding created_by_token to credentials: %w", err)
+						}
+
+						return nil
+					})
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
