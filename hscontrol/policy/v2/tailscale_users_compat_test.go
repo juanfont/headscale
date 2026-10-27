@@ -206,9 +206,7 @@ var userTokenSkipReasons = map[string]string{
 	"users-bare-at-test-src/no-email-two/user-list":                               bareAtNoEmail,
 	"users-bare-at-test-src/okta-name-only/verdict":                               bareAtNoEmail,
 
-	"users-short-name/server/filter":  shortUsername,
-	"users-unknown-member/prod/ssh":   sshUIDZero,
-	"users-unknown-member/server/ssh": sshUIDZero,
+	"users-short-name/server/filter": shortUsername,
 }
 
 const (

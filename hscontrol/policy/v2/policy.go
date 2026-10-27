@@ -639,18 +639,22 @@ func sshNodesShareUser(srcNode, dstNode types.NodeView) bool {
 // sshRuleAllowsUser reports whether rule lets src log in as localUser,
 // mirroring the SSHUsers maps compileSSHPolicy emits: root when listed,
 // other users via autogroup:nonroot or a literal name, and anyone, root
-// included, whose name is the source user's localpart.
+// included, whose name is the source user's localpart. Login "0" only the
+// last way: the rule that maps root maps it to no local user.
 func (pm *PolicyManager) sshRuleAllowsUser(rule SSH, srcNode types.NodeView, localUser string) bool {
 	isRoot := localUser == "root"
 
 	switch {
 	case localUser == "":
 		return false
+	case localUser == uidZeroLogin:
 	case isRoot && rule.Users.ContainsRoot(),
 		!isRoot && rule.Users.ContainsNonRoot(),
 		!isRoot && slices.Contains(rule.Users.NormalUsers(), SSHUser(localUser)):
 		return true
-	case srcNode.IsTagged() || !srcNode.User().Valid() || !rule.Users.ContainsLocalpart():
+	}
+
+	if srcNode.IsTagged() || !srcNode.User().Valid() || !rule.Users.ContainsLocalpart() {
 		return false
 	}
 
