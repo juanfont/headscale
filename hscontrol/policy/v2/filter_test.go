@@ -460,7 +460,7 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 			want: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
 				{
 					Principals: user2Principal,
-					SSHUsers:   map[string]string{"root": "", "ssh-it-user": "ssh-it-user"},
+					SSHUsers:   map[string]string{"0": "", "root": "", "ssh-it-user": "ssh-it-user"},
 					Action:     acceptAction,
 				},
 			}},
@@ -487,7 +487,7 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 			want: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
 				{
 					Principals: user2Principal,
-					SSHUsers:   map[string]string{"root": "", "ubuntu": "ubuntu", "admin": "admin", "deploy": "deploy"},
+					SSHUsers:   map[string]string{"0": "", "root": "", "ubuntu": "ubuntu", "admin": "admin", "deploy": "deploy"},
 					Action:     acceptAction,
 				},
 			}},
@@ -514,7 +514,7 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 			want: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
 				{
 					Principals: user2Principal,
-					SSHUsers:   map[string]string{"*": "=", "root": ""},
+					SSHUsers:   map[string]string{"0": "", "*": "=", "root": ""},
 					Action:     acceptAction,
 				},
 			}},
@@ -541,7 +541,7 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 			want: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
 				{
 					Principals: user2Principal,
-					SSHUsers:   map[string]string{"root": "root"},
+					SSHUsers:   map[string]string{"0": "", "root": "root"},
 					Action:     acceptAction,
 				},
 			}},
@@ -568,7 +568,7 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 			want: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
 				{
 					Principals: user2Principal,
-					SSHUsers:   map[string]string{"*": "=", "root": "root"},
+					SSHUsers:   map[string]string{"0": "", "*": "=", "root": "root"},
 					Action:     acceptAction,
 				},
 			}},
@@ -595,7 +595,7 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 			want: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
 				{
 					Principals: user2Principal,
-					SSHUsers:   map[string]string{"*": "=", "root": "root", "ubuntu": "ubuntu", "admin": "admin"},
+					SSHUsers:   map[string]string{"0": "", "*": "=", "root": "root", "ubuntu": "ubuntu", "admin": "admin"},
 					Action:     acceptAction,
 				},
 			}},
@@ -715,7 +715,7 @@ func TestCompileSSHPolicy_LocalpartMapping(t *testing.T) {
 			want: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
 				{
 					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.2"}},
-					SSHUsers:   map[string]string{"root": ""},
+					SSHUsers:   map[string]string{"0": "", "root": ""},
 					Action:     acceptAction,
 				},
 				{
@@ -725,7 +725,7 @@ func TestCompileSSHPolicy_LocalpartMapping(t *testing.T) {
 				},
 				{
 					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.3"}},
-					SSHUsers:   map[string]string{"root": ""},
+					SSHUsers:   map[string]string{"0": "", "root": ""},
 					Action:     acceptAction,
 				},
 				{
@@ -735,12 +735,12 @@ func TestCompileSSHPolicy_LocalpartMapping(t *testing.T) {
 				},
 				{
 					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.4"}},
-					SSHUsers:   map[string]string{"root": ""},
+					SSHUsers:   map[string]string{"0": "", "root": ""},
 					Action:     acceptAction,
 				},
 				{
 					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.5"}},
-					SSHUsers:   map[string]string{"root": ""},
+					SSHUsers:   map[string]string{"0": "", "root": ""},
 					Action:     acceptAction,
 				},
 			}},
@@ -765,7 +765,7 @@ func TestCompileSSHPolicy_LocalpartMapping(t *testing.T) {
 			want: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
 				{
 					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.2"}},
-					SSHUsers:   map[string]string{"root": "root"},
+					SSHUsers:   map[string]string{"0": "", "root": "root"},
 					Action:     acceptAction,
 				},
 				{
@@ -775,7 +775,7 @@ func TestCompileSSHPolicy_LocalpartMapping(t *testing.T) {
 				},
 				{
 					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.3"}},
-					SSHUsers:   map[string]string{"root": "root"},
+					SSHUsers:   map[string]string{"0": "", "root": "root"},
 					Action:     acceptAction,
 				},
 				{
@@ -785,12 +785,12 @@ func TestCompileSSHPolicy_LocalpartMapping(t *testing.T) {
 				},
 				{
 					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.4"}},
-					SSHUsers:   map[string]string{"root": "root"},
+					SSHUsers:   map[string]string{"0": "", "root": "root"},
 					Action:     acceptAction,
 				},
 				{
 					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.5"}},
-					SSHUsers:   map[string]string{"root": "root"},
+					SSHUsers:   map[string]string{"0": "", "root": "root"},
 					Action:     acceptAction,
 				},
 			}},
@@ -815,22 +815,22 @@ func TestCompileSSHPolicy_LocalpartMapping(t *testing.T) {
 			want: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
 				{
 					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.2"}},
-					SSHUsers:   map[string]string{"root": ""},
+					SSHUsers:   map[string]string{"0": "", "root": ""},
 					Action:     acceptAction,
 				},
 				{
 					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.3"}},
-					SSHUsers:   map[string]string{"root": ""},
+					SSHUsers:   map[string]string{"0": "", "root": ""},
 					Action:     acceptAction,
 				},
 				{
 					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.4"}},
-					SSHUsers:   map[string]string{"root": ""},
+					SSHUsers:   map[string]string{"0": "", "root": ""},
 					Action:     acceptAction,
 				},
 				{
 					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.5"}},
-					SSHUsers:   map[string]string{"root": ""},
+					SSHUsers:   map[string]string{"0": "", "root": ""},
 					Action:     acceptAction,
 				},
 			}},
@@ -869,7 +869,7 @@ func TestCompileSSHPolicy_LocalpartMapping(t *testing.T) {
 			want: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
 				{
 					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.10"}},
-					SSHUsers:   map[string]string{"root": ""},
+					SSHUsers:   map[string]string{"0": "", "root": ""},
 					Action:     acceptAction,
 				},
 				{
@@ -913,7 +913,7 @@ func TestCompileSSHPolicy_LocalpartMapping(t *testing.T) {
 			want: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
 				{
 					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.5"}},
-					SSHUsers:   map[string]string{"root": ""},
+					SSHUsers:   map[string]string{"0": "", "root": ""},
 					Action:     acceptAction,
 				},
 			}},
@@ -942,7 +942,7 @@ func TestCompileSSHPolicy_LocalpartMapping(t *testing.T) {
 			want: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
 				{
 					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.2"}},
-					SSHUsers:   map[string]string{"root": ""},
+					SSHUsers:   map[string]string{"0": "", "root": ""},
 					Action:     acceptAction,
 				},
 				{
@@ -952,7 +952,7 @@ func TestCompileSSHPolicy_LocalpartMapping(t *testing.T) {
 				},
 				{
 					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.3"}},
-					SSHUsers:   map[string]string{"root": ""},
+					SSHUsers:   map[string]string{"0": "", "root": ""},
 					Action:     acceptAction,
 				},
 				{
@@ -962,7 +962,7 @@ func TestCompileSSHPolicy_LocalpartMapping(t *testing.T) {
 				},
 				{
 					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.4"}},
-					SSHUsers:   map[string]string{"root": ""},
+					SSHUsers:   map[string]string{"0": "", "root": ""},
 					Action:     acceptAction,
 				},
 				{
@@ -972,7 +972,7 @@ func TestCompileSSHPolicy_LocalpartMapping(t *testing.T) {
 				},
 				{
 					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.5"}},
-					SSHUsers:   map[string]string{"root": ""},
+					SSHUsers:   map[string]string{"0": "", "root": ""},
 					Action:     acceptAction,
 				},
 			}},
@@ -1057,6 +1057,7 @@ func TestCompileSSHPolicy_CheckAction(t *testing.T) {
 
 	// Verify SSH users are correctly mapped
 	expectedUsers := map[string]string{
+		"0":           "",
 		"ssh-it-user": "ssh-it-user",
 		"root":        "",
 	}
@@ -1201,7 +1202,7 @@ func TestSSHIntegrationReproduction(t *testing.T) {
 	want := &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
 		{
 			Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.2"}},
-			SSHUsers:   map[string]string{"root": "", "ssh-it-user": "ssh-it-user"},
+			SSHUsers:   map[string]string{"0": "", "root": "", "ssh-it-user": "ssh-it-user"},
 			Action: &tailcfg.SSHAction{
 				Accept:                    true,
 				AllowAgentForwarding:      true,
@@ -1252,7 +1253,7 @@ func TestSSHJSONSerialization(t *testing.T) {
 	want := &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
 		{
 			Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.1"}},
-			SSHUsers:   map[string]string{"root": "", "ssh-it-user": "ssh-it-user", "ubuntu": "ubuntu", "admin": "admin"},
+			SSHUsers:   map[string]string{"0": "", "root": "", "ssh-it-user": "ssh-it-user", "ubuntu": "ubuntu", "admin": "admin"},
 			Action: &tailcfg.SSHAction{
 				Accept:                    true,
 				AllowAgentForwarding:      true,
