@@ -173,6 +173,11 @@ type Node struct {
 	AuthKeyID *uint64 `sql:"DEFAULT:NULL"`
 	AuthKey   *Credential
 
+	// Ephemeral is taken from the key the node was created with. Logging in
+	// again with another key keeps it, as Tailscale does; a user claiming a
+	// tagged node clears it.
+	Ephemeral bool `gorm:"default:false"`
+
 	Expiry *time.Time
 
 	// LastSeen is when the node was last in contact with
