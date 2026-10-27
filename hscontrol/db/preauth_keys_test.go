@@ -162,6 +162,31 @@ func TestDestroyPreAuthKeyKeepsReferencedEphemeralKey(t *testing.T) {
 	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
 }
 
+// TestCreateTokenPreAuthKeyIsAtomic: a key a token makes is marked in the
+// transaction that creates it, so a failed mark leaves no unmarked key.
+func TestCreateTokenPreAuthKeyIsAtomic(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
+	pak, err := db.CreateTokenPreAuthKey(nil, true, false, nil, []string{"tag:ci"})
+	require.NoError(t, err)
+
+	got, err := db.GetPreAuthKeyByID(pak.ID)
+	require.NoError(t, err)
+	assert.True(t, got.CreatedByToken)
+
+	require.NoError(t, db.DB.Exec(`CREATE TRIGGER refuse_mark
+		BEFORE UPDATE OF created_by_token ON credentials
+		BEGIN SELECT RAISE(ABORT, 'refused'); END`).Error)
+
+	_, err = db.CreateTokenPreAuthKey(nil, true, false, nil, []string{"tag:ci"})
+	require.Error(t, err)
+
+	keys, err := db.ListPreAuthKeys()
+	require.NoError(t, err)
+	assert.Len(t, keys, 1, "the failed create left a key behind")
+}
+
 func TestCannotDeleteAssignedPreAuthKey(t *testing.T) {
 	db, err := newSQLiteTestDB()
 	require.NoError(t, err)

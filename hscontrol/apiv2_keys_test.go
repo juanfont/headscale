@@ -286,11 +286,11 @@ func TestAPIv2Key_Delete(t *testing.T) {
 	require.Equal(t, http.StatusOK, api.Delete("/api/v2/tailnet/-/keys/"+created.ID).Code)
 
 	// DELETE soft-revokes (Tailscale-faithful): the key stays retrievable with
-	// invalid set and a revoked timestamp, and is still listed.
+	// invalid set and a revoked timestamp, but listings leave it out.
 	got := getKey(t, api, created.ID)
 	assert.True(t, got.Invalid, "revoked key reports invalid")
 	assert.NotNil(t, got.Revoked, "revoked timestamp is populated")
-	assert.True(t, containsKeyID(listKeys(t, api), created.ID), "revoked key still listed")
+	assert.False(t, containsKeyID(listKeys(t, api), created.ID), "revoked key not listed")
 
 	// Server-side: row kept, revoked stamped.
 	pak := srvKey(t, app, created.ID)
