@@ -278,7 +278,7 @@ func (node *Node) ShouldBeOnline() bool {
 // IsEphemeral returns if the node is registered as an Ephemeral node.
 // https://tailscale.com/docs/features/ephemeral-nodes
 func (node *Node) IsEphemeral() bool {
-	return node.AuthKey != nil && node.AuthKey.Ephemeral
+	return node.Ephemeral
 }
 
 // IPs returns the node's allocated Tailscale addresses. Order is
