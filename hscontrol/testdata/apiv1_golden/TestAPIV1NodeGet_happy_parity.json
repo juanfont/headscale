@@ -6,6 +6,7 @@
       "availableRoutes": [],
       "createdAt": "\u003ctimestamp\u003e",
       "discoKey": "\u003csecret\u003e",
+      "ephemeral": false,
       "expiry": null,
       "givenName": "node-a",
       "id": "1",

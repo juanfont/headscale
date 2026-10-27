@@ -42,23 +42,12 @@ var lifecycleSkipReasons = map[string]string{
 	"ephemeral-lifecycle/E3-key-delete/2/keys":   deletedKeyListed,
 	"ephemeral-lifecycle/E3-key-delete/3/keys":   deletedKeyListed,
 	"ephemeral-lifecycle/E3-key-delete/4/status": deletedKeyDeleteNotFound,
-
-	"ephemeral-lifecycle/E4-reauth-other-key/eph-to-perm/ephemeral": ephemeralFollowsKey,
-	"ephemeral-lifecycle/E4-reauth-other-key/perm-to-eph/ephemeral": ephemeralFollowsKey,
-
-	"ephemeral-lifecycle/collection/eph-to-perm/left":             ephemeralFollowsKey,
-	"ephemeral-lifecycle/collection/eph-to-perm/removed-observer": ephemeralFollowsKey,
-	"ephemeral-lifecycle/collection/eph-to-perm/present-observer": ephemeralFollowsKey,
-	"ephemeral-lifecycle/collection/perm-to-eph/left":             ephemeralFollowsKey,
-	"ephemeral-lifecycle/collection/perm-to-eph/removed-observer": ephemeralFollowsKey,
-	"ephemeral-lifecycle/collection/perm-to-eph/present-observer": ephemeralFollowsKey,
 }
 
 const (
 	logoutAnswerUnauthorized = "LOGOUT_ANSWER_UNAUTHORIZED: headscale answers the logout that deletes an ephemeral node with MachineAuthorized false; SaaS answers true"
 	deletedKeyListed         = "DELETED_KEY_LISTED: headscale lists a deleted auth key; SaaS leaves it out of both key lists, while a read by ID still answers"
 	deletedKeyDeleteNotFound = "DELETED_KEY_DELETE_NOT_FOUND: headscale answers 404 to a second delete of an auth key; SaaS answers 200"
-	ephemeralFollowsKey      = "EPHEMERAL_FOLLOWS_KEY: headscale takes a node's ephemeral flag from the key it last logged in with; SaaS keeps the flag the device was created with, so it is collected, or kept, as created"
 )
 
 // TestRouteApprovalCompat replays a user-owned router through admin
