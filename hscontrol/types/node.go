@@ -205,6 +205,12 @@ type Node struct {
 	// returned by Connect as a "Connect ran" sentinel for its cleanup,
 	// and Disconnect logs it. Runtime-only.
 	SessionEpoch uint64 `gorm:"-"`
+
+	// SessionStart is when the node's current run of control sessions
+	// began: [State.Connect] sets it as the first of them opens, and an
+	// overlapping reconnect keeps it. Primary election prefers the
+	// oldest. Runtime-only.
+	SessionStart time.Time `gorm:"-"`
 }
 
 type Nodes []*Node
