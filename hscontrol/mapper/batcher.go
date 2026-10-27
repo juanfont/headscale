@@ -652,7 +652,22 @@ func (b *Batcher) worker(workerID int) {
 				var retry []change.Change
 
 				nc.workMu.Lock()
+				nc.sendBlocked.Store(0)
+
 				for i, ch := range w.changes {
+					// A node that drains slower than it is sent to must not
+					// hold the worker from the other nodes for its whole bundle.
+					if time.Duration(nc.sendBlocked.Load()) >= connectionSendWait {
+						retry = w.changes[i:]
+
+						wlog.Debug().
+							Uint64(zf.NodeID, w.nodeID.Uint64()).
+							Int("deferred_changes", len(retry)).
+							Msg("node drains slowly, deferring rest of bundle to next tick")
+
+						break
+					}
+
 					err := nc.change(ch)
 					if errors.Is(err, errNoReadyConnections) || errors.Is(err, errConnectionBackpressure) {
 						// Keep the unsent suffix ahead of newer pending changes.
