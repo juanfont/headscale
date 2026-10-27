@@ -183,8 +183,8 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 			return
 		}
 
-		// Ephemerality can change after the timer is armed: re-registration
-		// with a permanent key, or a user claiming a tagged node.
+		// A user claiming a tagged node can clear its ephemeral flag after
+		// the timer is armed.
 		if !node.IsEphemeral() {
 			log.Debug().Caller().EmbedObject(node).
 				Msg("node is no longer ephemeral, skipping garbage collection")
