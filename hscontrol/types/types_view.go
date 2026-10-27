@@ -281,7 +281,13 @@ func (v NodeView) ActiveSessions() int { return v.ж.ActiveSessions }
 // returned by Connect as a "Connect ran" sentinel for its cleanup,
 // and Disconnect logs it. Runtime-only.
 func (v NodeView) SessionEpoch() uint64 { return v.ж.SessionEpoch }
-func (v NodeView) String() string       { return v.ж.String() }
+
+// SessionStart is when the node's current run of control sessions
+// began: [State.Connect] sets it as the first of them opens, and an
+// overlapping reconnect keeps it. Primary election prefers the
+// oldest. Runtime-only.
+func (v NodeView) SessionStart() time.Time { return v.ж.SessionStart }
+func (v NodeView) String() string          { return v.ж.String() }
 
 // A compilation failure here means this code must be regenerated, with the command at the top of this file.
 var _NodeViewNeedsRegeneration = Node(struct {
@@ -311,6 +317,7 @@ var _NodeViewNeedsRegeneration = Node(struct {
 	Unhealthy      bool
 	ActiveSessions int
 	SessionEpoch   uint64
+	SessionStart   time.Time
 }{})
 
 // View returns a read-only view of PreAuthKey.
