@@ -63,6 +63,7 @@ type Device struct {
 	Name              string     `json:"name"`
 	NodeId            string     `json:"nodeId"`
 	NodeKey           string     `json:"nodeKey"`
+	OauthClientId     *string    `json:"oauthClientId,omitempty"`
 	Os                string     `json:"os"`
 	Tags              []string   `json:"tags"`
 	UpdateAvailable   bool       `json:"updateAvailable"`
