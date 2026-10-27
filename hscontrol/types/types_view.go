@@ -425,6 +425,9 @@ func (v PreAuthKeyView) Used() bool          { return v.ж.Used }
 // Tags are copied to the node during registration.
 // If non-empty, this creates tagged nodes (not user-owned).
 func (v PreAuthKeyView) Tags() views.Slice[string] { return views.SliceOf(v.ж.Tags) }
+
+// CreatedByToken is set when an OAuth access token made the key.
+func (v PreAuthKeyView) CreatedByToken() bool { return v.ж.CreatedByToken }
 func (v PreAuthKeyView) CreatedAt() views.ValuePointer[time.Time] {
 	return views.ValuePointerOf(v.ж.CreatedAt)
 }
@@ -442,19 +445,20 @@ func (v PreAuthKeyView) Revoked() views.ValuePointer[time.Time] {
 
 // A compilation failure here means this code must be regenerated, with the command at the top of this file.
 var _PreAuthKeyViewNeedsRegeneration = PreAuthKey(struct {
-	ID          uint64
-	Prefix      string
-	Hash        []byte
-	UserID      *uint
-	User        *User
-	Description string
-	Reusable    bool
-	Ephemeral   bool
-	Used        bool
-	Tags        []string
-	CreatedAt   *time.Time
-	Expiration  *time.Time
-	Revoked     *time.Time
+	ID             uint64
+	Prefix         string
+	Hash           []byte
+	UserID         *uint
+	User           *User
+	Description    string
+	Reusable       bool
+	Ephemeral      bool
+	Used           bool
+	Tags           []string
+	CreatedByToken bool
+	CreatedAt      *time.Time
+	Expiration     *time.Time
+	Revoked        *time.Time
 }{})
 
 // View returns a read-only view of Credential.
@@ -547,6 +551,10 @@ func (v CredentialView) LastSeen() views.ValuePointer[time.Time] {
 // ClientID links an OAuth access token (Kind == CredentialOAuthToken) back to
 // the Identifier of its issuing OAuth client.
 func (v CredentialView) ClientID() string { return v.ж.ClientID }
+
+// CreatedByToken marks a pre-auth key an OAuth access token made: a token
+// lists those without all=true.
+func (v CredentialView) CreatedByToken() bool { return v.ж.CreatedByToken }
 func (v CredentialView) CreatedAt() views.ValuePointer[time.Time] {
 	return views.ValuePointerOf(v.ж.CreatedAt)
 }
@@ -561,21 +569,22 @@ func (v CredentialView) Revoked() views.ValuePointer[time.Time] {
 
 // A compilation failure here means this code must be regenerated, with the command at the top of this file.
 var _CredentialViewNeedsRegeneration = Credential(struct {
-	ID          uint64
-	Kind        CredentialKind
-	Identifier  string
-	Hash        []byte
-	UserID      *uint
-	User        *User
-	Description string
-	Scopes      []string
-	Tags        []string
-	Reusable    bool
-	Ephemeral   bool
-	Used        bool
-	LastSeen    *time.Time
-	ClientID    string
-	CreatedAt   *time.Time
-	Expiration  *time.Time
-	Revoked     *time.Time
+	ID             uint64
+	Kind           CredentialKind
+	Identifier     string
+	Hash           []byte
+	UserID         *uint
+	User           *User
+	Description    string
+	Scopes         []string
+	Tags           []string
+	Reusable       bool
+	Ephemeral      bool
+	Used           bool
+	LastSeen       *time.Time
+	ClientID       string
+	CreatedByToken bool
+	CreatedAt      *time.Time
+	Expiration     *time.Time
+	Revoked        *time.Time
 }{})
