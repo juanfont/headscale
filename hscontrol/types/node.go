@@ -186,6 +186,11 @@ type Node struct {
 	// See [Node.Hostinfo]
 	ApprovedRoutes Prefixes `gorm:"column:approved_routes;serializer:json"`
 
+	// AutoApprovedRoutes are the approved routes only auto-approval granted.
+	// The node loses one when it stops announcing it; a route an admin
+	// approved stays.
+	AutoApprovedRoutes Prefixes `gorm:"column:auto_approved_routes;serializer:json"`
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt *time.Time
