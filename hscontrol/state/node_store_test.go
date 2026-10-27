@@ -1912,7 +1912,7 @@ var nodeFieldImpact = map[string]string{
 	"RegisterMethod": "payload", "AuthKeyID": "payload", "AuthKey": "payload",
 	"Expiry": "election", "LastSeen": "payload", "CreatedAt": "payload",
 	"UpdatedAt": "payload", "DeletedAt": "payload",
-	"ActiveSessions": "payload", "SessionEpoch": "payload",
+	"ActiveSessions": "payload", "SessionEpoch": "payload", "SessionStart": "election",
 }
 
 // TestUpdateChangesCoversEveryNodeField guards against a new types.Node
