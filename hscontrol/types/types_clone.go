@@ -108,6 +108,7 @@ var _NodeCloneNeedsRegeneration = Node(struct {
 	Unhealthy      bool
 	ActiveSessions int
 	SessionEpoch   uint64
+	SessionStart   time.Time
 }{})
 
 // Clone makes a deep copy of PreAuthKey.
