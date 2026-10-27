@@ -557,6 +557,7 @@ func TestListEphemeralNodes(t *testing.T) {
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      &pakEphID,
+		Ephemeral:      true,
 	}
 
 	err = db.DB.Save(&node).Error

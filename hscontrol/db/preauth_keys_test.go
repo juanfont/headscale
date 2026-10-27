@@ -124,6 +124,7 @@ func TestDestroyPreAuthKeyKeepsReferencedEphemeralKey(t *testing.T) {
 
 	node := &types.Node{
 		Hostname: "ephemeral-key-node", UserID: &user.ID, AuthKeyID: &pak.ID,
+		Ephemeral: true,
 	}
 	require.NoError(t, db.DB.Create(node).Error)
 	require.NoError(t, db.DeletePreAuthKey(pak.ID))
