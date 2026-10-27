@@ -3007,7 +3007,9 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						nodes, err = headscale.ListNodes()
 						assert.NoError(c, err)
 						requireNodeRouteCountWithCollect(c, MustFindNode(routerUsernet1.Hostname(), nodes), 1, 1, 1)
-						requireNodeRouteCountWithCollect(c, nodes[1], 1, 1, 0)
+						// The withdrawn sub-route was auto-approved, so it loses
+						// its approval.
+						requireNodeRouteCountWithCollect(c, nodes[1], 1, 0, 0)
 						requireNodeRouteCountWithCollect(c, nodes[2], 0, 0, 0)
 					}, assertTimeout, 500*time.Millisecond, "route state changes should propagate")
 
@@ -3047,7 +3049,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						nodes, err = headscale.ListNodes()
 						assert.NoError(c, err)
 						requireNodeRouteCountWithCollect(c, MustFindNode(routerUsernet1.Hostname(), nodes), 1, 1, 1)
-						requireNodeRouteCountWithCollect(c, nodes[1], 1, 1, 0)
+						requireNodeRouteCountWithCollect(c, nodes[1], 1, 0, 0)
 						requireNodeRouteCountWithCollect(c, nodes[2], 2, 2, 2)
 					}, assertTimeout, 500*time.Millisecond, "route state changes should propagate")
 
