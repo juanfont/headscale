@@ -35,14 +35,7 @@ import (
 // <test_id>/<step>[/<node or action index>]/<check>, with "collection" for
 // the step of what killed nodes leave behind. A listed check that matches
 // fails, so a fix must delete its entry.
-var lifecycleSkipReasons = map[string]string{
-	"ephemeral-lifecycle/E3-key-delete/2/keys": deletedKeyListed,
-	"ephemeral-lifecycle/E3-key-delete/3/keys": deletedKeyListed,
-}
-
-const (
-	deletedKeyListed = "DELETED_KEY_LISTED: headscale lists a deleted auth key; SaaS leaves it out of both key lists, while a read by ID still answers"
-)
+var lifecycleSkipReasons = map[string]string{}
 
 // TestRouteApprovalCompat replays a user-owned router through admin
 // approvals and revokes, same-key and forced re-auth, a hostname change,
