@@ -282,6 +282,18 @@ WHERE tags IS NOT NULL AND tags != '[]' AND tags != '' AND tags != 'null'
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			{
+				// Records which approved routes only auto-approval granted. It
+				// starts empty: the current policy cannot tell which earlier
+				// approvals were automatic, so all of them stay as an admin's.
+				ID: "202610211200-node-auto-approved-routes",
+				Migrate: func(tx *gorm.DB) error {
+					return tx.Transaction(func(tx *gorm.DB) error {
+						return tx.Exec(`ALTER TABLE nodes ADD COLUMN auto_approved_routes text`).Error
+					})
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
