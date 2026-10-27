@@ -48,6 +48,11 @@ var errConnectionBackpressure = errors.New("connection queue full")
 // Match the initial-map timeout while staying below reconnect grace and client keepalive.
 const connectionStallTimeout = 5 * time.Second
 
+// connectionSendWait is how long one send waits for room on a connection
+// before it counts as backpressure, and how long all sends of one bundle
+// may wait before [Batcher.worker] retries the rest next tick.
+const connectionSendWait = 50 * time.Millisecond
+
 // A full snapshot supersedes state backlog past this size; pings remain
 // one-shot work.
 const maxPendingSize = 256
@@ -148,6 +153,13 @@ type multiChannelNodeConn struct {
 	// worker pool cannot deliver tick N+1 before tick N: a non-FIFO workMu
 	// cannot reorder bundles that never coexist.
 	inFlight atomic.Bool
+
+	// sendBlocked is how long [multiChannelNodeConn.send] has waited on
+	// connections during the current bundle. The node decides how fast its
+	// connections drain and, through its own map requests, how many
+	// responses a bundle carries, while the worker holding workMu serves
+	// every node.
+	sendBlocked atomic.Int64
 
 	closeOnce   sync.Once
 	updateCount atomic.Int64
@@ -486,6 +498,9 @@ func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 		newestAccepted bool
 	)
 
+	start := time.Now()
+	defer func() { mc.sendBlocked.Add(int64(time.Since(start))) }()
+
 	for _, conn := range snapshot {
 		err := conn.send(conn.withSSHPolicyDelta(conn.withSelfDelta(data)))
 		if errors.Is(err, errConnectionBackpressure) {
@@ -588,7 +603,7 @@ func (entry *connectionEntry) send(data *tailcfg.MapResponse) error {
 	//
 	// Use a timer rather than time.After so the timeout is explicitly released
 	// on the fast path; both are GC-recoverable since Go 1.23.
-	timer := time.NewTimer(50 * time.Millisecond) //nolint:mnd
+	timer := time.NewTimer(connectionSendWait)
 	defer timer.Stop()
 
 	select {
