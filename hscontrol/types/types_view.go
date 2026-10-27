@@ -236,7 +236,12 @@ func (v NodeView) Tags() views.Slice[string] { return views.SliceOf(v.ж.Tags) }
 // authkey), which is what auth_key_id references.
 func (v NodeView) AuthKeyID() views.ValuePointer[uint64] { return views.ValuePointerOf(v.ж.AuthKeyID) }
 
-func (v NodeView) AuthKey() CredentialView               { return v.ж.AuthKey.View() }
+func (v NodeView) AuthKey() CredentialView { return v.ж.AuthKey.View() }
+
+// Ephemeral is taken from the key the node was created with. Logging in
+// again with another key keeps it, as Tailscale does; a user claiming a
+// tagged node clears it.
+func (v NodeView) Ephemeral() bool                       { return v.ж.Ephemeral }
 func (v NodeView) Expiry() views.ValuePointer[time.Time] { return views.ValuePointerOf(v.ж.Expiry) }
 
 // LastSeen is when the node was last in contact with
@@ -314,6 +319,7 @@ var _NodeViewNeedsRegeneration = Node(struct {
 	Tags               Strings
 	AuthKeyID          *uint64
 	AuthKey            *Credential
+	Ephemeral          bool
 	Expiry             *time.Time
 	LastSeen           *time.Time
 	ApprovedRoutes     Prefixes
