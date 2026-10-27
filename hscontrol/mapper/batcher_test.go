@@ -3197,3 +3197,81 @@ func TestInvisiblePeerChangeSendsNoFrame(t *testing.T) {
 	deliver(other, change.PingNode(other.n.ID, &tailcfg.PingRequest{URL: "https://ping.test"}))
 	assert.NotNil(t, expectReceive(t, other.ch, "ping").PingRequest)
 }
+
+// TestWorkerDefersBundleOfSlowConnection pins that a connection which keeps
+// draining, but slower than a bundle is sent, does not hold the worker for
+// every send of the bundle. The node chooses how many responses its bundle
+// carries, while the worker holds workMu and is shared by every other node:
+// once the sends have waited connectionSendWait in total, the rest of the
+// bundle waits in pending for the next tick.
+func TestWorkerDefersBundleOfSlowConnection(t *testing.T) {
+	testData, cleanup := setupBatcherWithTestData(
+		t,
+		NewBatcherAndMapper,
+		1,
+		1,
+		normalBufferSize,
+	)
+	defer cleanup()
+
+	// A batcher that never ticks, so deferred changes stay in pending.
+	b := NewBatcher(time.Hour, 1, testData.Batcher.mapper)
+
+	b.Start()
+	defer b.Close()
+
+	id := testData.Nodes[0].n.ID
+	ch := make(chan *tailcfg.MapResponse) // unbuffered
+
+	nc := newMultiChannelNodeConn(id, b.mapper)
+	nc.addConnection(makeConnectionEntry("slow", ch))
+	b.nodes.Store(id, nc)
+
+	// Read one response per fifth of the wait: every send blocks, but well
+	// short of backpressure.
+	done := make(chan struct{})
+	defer close(done)
+
+	go func() {
+		for {
+			select {
+			case <-time.After(connectionSendWait / 5):
+			case <-done:
+				return
+			}
+
+			select {
+			case <-ch:
+			case <-done:
+				return
+			}
+		}
+	}()
+
+	bundle := make([]change.Change, 100)
+	for i := range bundle {
+		bundle[i] = change.DERPMap()
+		bundle[i].Reason = fmt.Sprintf("derp map update %d", i)
+	}
+
+	start := time.Now()
+
+	nc.inFlight.Store(true)
+	b.queueWork(work{changes: bundle, nodeID: id})
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.False(c, nc.inFlight.Load())
+	}, 5*time.Second, time.Millisecond, "worker should finish with the bundle")
+
+	assert.Less(t, time.Since(start), 10*connectionSendWait,
+		"the sends of one bundle should not each wait for the connection")
+	assert.Equal(t, 1, nc.getActiveConnectionCount(),
+		"a connection that keeps draining is not stale")
+
+	pending := getPendingForNode(b, id)
+	sent := len(bundle) - len(pending)
+	assert.Positive(t, sent, "sends should go through until the wait is used up")
+	assert.NotEmpty(t, pending, "the rest of the bundle should be deferred")
+	assert.Equal(t, bundle[sent:], pending,
+		"what was not sent should be pending, in order")
+}
