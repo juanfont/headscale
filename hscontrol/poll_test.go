@@ -501,9 +501,10 @@ func TestStaleGCTimerSparesPermanentNode(t *testing.T) {
 	app.cfg.Node.Ephemeral.InactivityTimeout = time.Hour
 	app.StartEphemeralGCForTest(t)
 	user := app.state.CreateUserForTest("gc-permanent-user")
-	ephemeral, err := app.state.CreatePreAuthKey(user.TypedID(), true, true, nil, nil)
+	require.NoError(t, app.state.UpdatePolicyManagerUsersForTest())
+	_, err := app.state.SetPolicy([]byte(`{"tagOwners":{"tag:server":["gc-permanent-user@"]}}`))
 	require.NoError(t, err)
-	permanent, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	ephemeral, err := app.state.CreatePreAuthKey(user.TypedID(), true, true, nil, []string{"tag:server"})
 	require.NoError(t, err)
 
 	machineKey := key.NewMachine().Public()
@@ -523,8 +524,15 @@ func TestStaleGCTimerSparesPermanentNode(t *testing.T) {
 	_, epoch := app.state.Connect(node.ID())
 	app.ephemeralGC.Cancel(node.ID())
 
-	req.Auth.AuthKey = permanent.Key
-	_, err = app.handleRegisterWithAuthKey(req, machineKey)
+	// The user claiming the tagged node makes it permanent.
+	authID := types.MustAuthID()
+	app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+		MachineKey: machineKey,
+		NodeKey:    key.NewNode().Public(),
+		Hostname:   "gc-permanent-node",
+		Hostinfo:   &tailcfg.Hostinfo{Hostname: "gc-permanent-node"},
+	}))
+	_, _, err = app.state.HandleNodeFromAuthPath(authID, types.UserID(user.ID), nil, "webauth")
 	require.NoError(t, err)
 
 	fresh, ok := app.state.GetNodeByID(node.ID())
