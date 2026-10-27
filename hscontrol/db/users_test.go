@@ -29,6 +29,7 @@ func TestDestroyUserKeepsTaggedNodeEphemeral(t *testing.T) {
 		Hostname:  "tagged-ephemeral-node",
 		Tags:      []string{"tag:server"},
 		AuthKeyID: &pak.ID,
+		Ephemeral: true,
 	}
 	require.NoError(t, db.DB.Create(node).Error)
 	require.NoError(t, db.DestroyUser(types.UserID(user.ID)))
