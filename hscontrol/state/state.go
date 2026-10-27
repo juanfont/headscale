@@ -2106,6 +2106,11 @@ func (s *State) CreatePreAuthKey(userID *types.UserID, reusable bool, ephemeral 
 	return s.db.CreatePreAuthKey(userID, reusable, ephemeral, expiration, aclTags)
 }
 
+// CreateTokenPreAuthKey creates a key an OAuth access token makes.
+func (s *State) CreateTokenPreAuthKey(userID *types.UserID, reusable bool, ephemeral bool, expiration *time.Time, aclTags []string) (*types.PreAuthKeyNew, error) {
+	return s.db.CreateTokenPreAuthKey(userID, reusable, ephemeral, expiration, aclTags)
+}
+
 // Test helpers for the state layer
 
 // CreateUserForTest creates a test user. This is a convenience wrapper around the database layer.

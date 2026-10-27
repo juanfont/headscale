@@ -87,16 +87,7 @@ var apiv2CompatSkipReasons = map[string]string{
 	"oauth/T5/2/tags":    retagRemovesUnownedTag,
 	"oauth/T5/2/owner":   retagRemovesUnownedTag,
 
-	"oauth/D0/1/listed":  keyListWithoutAll,
-	"oauth/B11/0/listed": keyListWithoutAll,
-	"oauth/B11/2/listed": keyListWithoutAll,
-	"oauth/D0/2/listed":  keyListInvalidKeys,
-
-	"key-list/L-untagged/1/listed":         keyListWithoutAll,
-	"key-list/L-prod/1/listed":             keyListWithoutAll,
-	"key-list/L-prod-server/1/listed":      keyListWithoutAll,
-	"key-list/L-make-prod/0/listed":        keyListWithoutAll,
-	"key-list/L-make-prod-server/0/listed": keyListWithoutAll,
+	"oauth/D0/1/listed": emptyKeyListNull,
 
 	"oauth/D7/2/status":  deletedClientGone,
 	"oauth/D7/2/outcome": deletedClientGone,
@@ -185,8 +176,7 @@ const (
 	mintTagsNotEchoed           = "TOKEN_TAGS_NOT_ECHOED: SaaS's token answer names the token's tags; headscale's has no tags"
 	unknownKeyType              = "UNKNOWN_KEY_TYPE: SaaS refuses an unknown keyType with 400 before it checks scopes; headscale checks the scope first and answers 403"
 	tagRefusalStatus            = "TAG_REFUSAL_STATUS: SaaS refuses a tag outside the token's grant with 400 requested tags are invalid or not permitted; headscale with 403"
-	keyListWithoutAll           = "KEY_LIST_WITHOUT_ALL: without all=true SaaS lists an OAuth token only the auth keys OAuth tokens made, whatever its tags and theirs; headscale lists every key"
-	keyListInvalidKeys          = "KEY_LIST_INVALID_KEYS: SaaS leaves spent and revoked auth keys out of a listing; headscale lists them"
+	emptyKeyListNull            = "EMPTY_KEY_LIST_NULL: SaaS answers a listing that holds no key with keys null; headscale with []"
 	deletedClientGone           = "DELETED_CLIENT_GONE: SaaS keeps a deleted OAuth client readable as invalid and revoked; headscale removes it"
 	deletedClientCredentialText = "DELETED_CLIENT_CREDENTIAL_TEXT: SaaS refuses a deleted client's secret and tokens with API token invalid; headscale says invalid client credentials and unauthorized"
 	missingScopeText            = "MISSING_SCOPE_TEXT: SaaS refuses a delete outside the token's scopes with calling actor does not have enough permissions; headscale names the missing scope"
