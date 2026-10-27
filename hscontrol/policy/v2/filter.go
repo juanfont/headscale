@@ -283,6 +283,10 @@ type compiledSSHRule struct {
 	destRules []*tailcfg.SSHRule
 }
 
+// uidZeroLogin is a login name that can resolve to uid 0 on the node, so
+// every rule that maps root maps it to no local user, as Tailscale SaaS does.
+const uidZeroLogin = "0"
+
 // sshSources is what the sources of an [SSH] rule resolve to. It is
 // read-only once built: rules with the same source addresses share it.
 type sshSources struct {
@@ -406,6 +410,9 @@ func (pol *Policy) compileSSHRules(
 		for _, u := range rule.Users.NormalUsers() {
 			cr.sshUsers[u.String()] = u.String()
 		}
+
+		// After the literal users, so listing "0" cannot map it.
+		cr.sshUsers[uidZeroLogin] = ""
 
 		if cr.hasLocalpart {
 			cr.localpartByUser = resolveLocalparts(
