@@ -39,19 +39,20 @@ func credentialToOAuthClient(c *types.Credential) *types.OAuthClient {
 // the User association is carried through when preloaded.
 func credentialToPreAuthKey(c *types.Credential) *types.PreAuthKey {
 	return &types.PreAuthKey{
-		ID:          c.ID,
-		Prefix:      c.Identifier,
-		Hash:        c.Hash,
-		UserID:      c.UserID,
-		User:        c.User,
-		Description: c.Description,
-		Reusable:    c.Reusable,
-		Ephemeral:   c.Ephemeral,
-		Used:        c.Used,
-		Tags:        c.Tags,
-		CreatedAt:   c.CreatedAt,
-		Expiration:  c.Expiration,
-		Revoked:     c.Revoked,
+		ID:             c.ID,
+		Prefix:         c.Identifier,
+		Hash:           c.Hash,
+		UserID:         c.UserID,
+		User:           c.User,
+		Description:    c.Description,
+		Reusable:       c.Reusable,
+		Ephemeral:      c.Ephemeral,
+		Used:           c.Used,
+		Tags:           c.Tags,
+		CreatedByToken: c.CreatedByToken,
+		CreatedAt:      c.CreatedAt,
+		Expiration:     c.Expiration,
+		Revoked:        c.Revoked,
 	}
 }
 
