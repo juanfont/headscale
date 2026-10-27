@@ -57,6 +57,32 @@ func (hsdb *HSDatabase) CreatePreAuthKey(
 	})
 }
 
+// CreateTokenPreAuthKey is [HSDatabase.CreatePreAuthKey] for a key an OAuth
+// access token makes, marked as such in the same transaction.
+func (hsdb *HSDatabase) CreateTokenPreAuthKey(
+	uid *types.UserID,
+	reusable bool,
+	ephemeral bool,
+	expiration *time.Time,
+	aclTags []string,
+) (*types.PreAuthKeyNew, error) {
+	return Write(hsdb.DB, func(tx *gorm.DB) (*types.PreAuthKeyNew, error) {
+		pak, err := CreatePreAuthKey(tx, uid, reusable, ephemeral, expiration, aclTags)
+		if err != nil {
+			return nil, err
+		}
+
+		err = tx.Model(&types.Credential{}).
+			Where("id = ?", pak.ID).
+			Update("created_by_token", true).Error
+		if err != nil {
+			return nil, fmt.Errorf("marking key as made by a token: %w", err)
+		}
+
+		return pak, nil
+	})
+}
+
 const authKeyPrefix = "hskey-auth-"
 
 // CreatePreAuthKey creates a new [types.PreAuthKey] in a user, and returns it.
