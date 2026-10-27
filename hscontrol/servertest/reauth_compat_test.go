@@ -43,10 +43,6 @@ var reauthSkipReasons = map[string]string{
 	"owner-routes/r-admin/owner/served":      adminRetagNoApproval,
 	"owner-routes/r-admin/owner/self-routes": adminRetagNoApproval,
 
-	"owner-routes/r-retag/withdraw/enabled":         withdrawKeepsAutoApproval,
-	"owner-routes/r-expired-retag/withdraw/enabled": withdrawKeepsAutoApproval,
-	"owner-routes/u-convert/withdraw/enabled":       withdrawKeepsAutoApproval,
-
 	"identity/w-tagreq-relogin-tags/w-tagreq/owner":        keyLoginTagsRefused,
 	"identity/w-tagreq-relogin-tags/w-tagreq/outcome":      keyLoginTagsRefused,
 	"identity/w-tagreq-relogin-tags/w-tagreq/node-key":     keyLoginTagsRefused,
@@ -86,8 +82,7 @@ var reauthSkipReasons = map[string]string{
 }
 
 const (
-	adminRetagNoApproval      = "ADMIN_RETAG_NO_APPROVAL: an admin tag change does not auto-approve the routes the new tags may approve; SaaS approves them at once"
-	withdrawKeepsAutoApproval = "WITHDRAW_KEEPS_AUTO_APPROVAL: headscale keeps an auto-approved route once it is withdrawn; SaaS drops it and keeps only admin-set approvals"
+	adminRetagNoApproval = "ADMIN_RETAG_NO_APPROVAL: an admin tag change does not auto-approve the routes the new tags may approve; SaaS approves them at once"
 )
 
 const (

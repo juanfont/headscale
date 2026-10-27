@@ -120,6 +120,7 @@ var nodeUpdateColumns = []string{
 	"Expiry",
 	"LastSeen",
 	"ApprovedRoutes",
+	"AutoApprovedRoutes",
 	"UpdatedAt",
 }
 
@@ -1156,11 +1157,11 @@ func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView,
 // It returns a PolicyChange when a primary moved, the policy manager saw a
 // policy input change, or the node's peers changed; otherwise NodeAdded.
 func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (types.NodeView, change.Change, error) {
-	// TODO(kradalby): In principle we should call the AutoApprove logic here
-	// because even if the CLI removes an auto-approved route, it will be added
-	// back automatically.
+	// Every route an admin sets is the admin's, even one autoApprovers
+	// cover, so a withdrawal keeps it.
 	return s.updateApprovedRoutes(nodeID, func(node *types.Node) {
 		node.ApprovedRoutes = routes
+		node.AutoApprovedRoutes = nil
 	})
 }
 
@@ -1454,11 +1455,15 @@ func (s *State) SetPolicy(pol []byte) (bool, error) {
 	return changed, nil
 }
 
-// AutoApproveRoutes checks if a node's routes should be auto-approved.
-// AutoApproveRoutes checks if any routes should be auto-approved for a node and updates them.
+// AutoApproveRoutes approves the announced routes the policy lets a node
+// approve, and drops the auto-approved routes it no longer announces.
 func (s *State) AutoApproveRoutes(nv types.NodeView) (change.Change, error) {
 	approved, changed := policy.ApproveRoutesWithPolicy(s.polMan, nv, nv.ApprovedRoutes().AsSlice(), nv.AnnouncedRoutes())
-	if changed {
+	withdrawn := slices.ContainsFunc(nv.AutoApprovedRoutes().AsSlice(), func(route netip.Prefix) bool {
+		return !slices.Contains(nv.AnnouncedRoutes(), route)
+	})
+
+	if changed || withdrawn {
 		log.Debug().
 			EmbedObject(nv).
 			Strs("routes.announced", util.PrefixesToString(nv.AnnouncedRoutes())).
@@ -1467,7 +1472,10 @@ func (s *State) AutoApproveRoutes(nv types.NodeView) (change.Change, error) {
 			Msg("Single node auto-approval detected route changes")
 
 		// Recompute on the current node so an older view cannot undo an admin write.
-		_, c, err := s.updateApprovedRoutes(nv.ID(), s.approveAnnouncedRoutes)
+		_, c, err := s.updateApprovedRoutes(nv.ID(), func(n *types.Node) {
+			dropWithdrawnAutoApprovals(n)
+			s.approveAnnouncedRoutes(n)
+		})
 		if err != nil {
 			log.Error().
 				EmbedObject(nv).
@@ -1483,8 +1491,43 @@ func (s *State) AutoApproveRoutes(nv types.NodeView) (change.Change, error) {
 	return change.Change{}, nil
 }
 
-func (s *State) approveAnnouncedRoutes(n *types.Node) {
-	n.ApprovedRoutes, _ = policy.ApproveRoutesWithPolicy(s.polMan, n.View(), n.ApprovedRoutes, n.AnnouncedRoutes())
+// approveAnnouncedRoutes approves the announced routes the policy lets n
+// approve, and records the ones it adds as auto-approved.
+func (s *State) approveAnnouncedRoutes(n *types.Node) bool {
+	approved, changed := policy.ApproveRoutesWithPolicy(s.polMan, n.View(), n.ApprovedRoutes, n.AnnouncedRoutes())
+	if !changed {
+		return false
+	}
+
+	for _, route := range approved {
+		if !slices.Contains(n.ApprovedRoutes, route) {
+			n.AutoApprovedRoutes = append(n.AutoApprovedRoutes, route)
+		}
+	}
+
+	n.ApprovedRoutes = approved
+
+	return true
+}
+
+// dropWithdrawnAutoApprovals removes the auto-approved routes n no longer
+// announces, as Tailscale SaaS does. Routes an admin approved stay.
+func dropWithdrawnAutoApprovals(n *types.Node) bool {
+	announced := n.AnnouncedRoutes()
+	withdrawn := func(route netip.Prefix) bool {
+		return slices.Contains(n.AutoApprovedRoutes, route) && !slices.Contains(announced, route)
+	}
+
+	if !slices.ContainsFunc(n.ApprovedRoutes, withdrawn) {
+		return false
+	}
+
+	n.ApprovedRoutes = slices.DeleteFunc(slices.Clone(n.ApprovedRoutes), withdrawn)
+	n.AutoApprovedRoutes = slices.DeleteFunc(slices.Clone(n.AutoApprovedRoutes), func(route netip.Prefix) bool {
+		return !slices.Contains(announced, route)
+	})
+
+	return true
 }
 
 // GetPolicy retrieves the current policy from the database.
@@ -3639,10 +3682,9 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		Msg("Processing MapRequest for node")
 
 	var (
-		delta              mapRequestDelta
-		routeChange        bool
-		autoApprovedRoutes []netip.Prefix
-		staleNodeKey       bool
+		delta        mapRequestDelta
+		routeChange  bool
+		staleNodeKey bool
 	)
 	// Snapshot the primary assignment so we can tell whether the
 	// Hostinfo + auto-approval that follows shifted any prefix.
@@ -3729,40 +3771,7 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 
 		hostinfoToStore := delta.hostinfoChanged || delta.derpChanged
 
-		// Approvers run over every announced route, but only when the
-		// announced set changes: any other report would re-grant a route
-		// an admin revoked.
-		if delta.routesChanged {
-			// Extract announced routes from request
-			var announcedRoutes []netip.Prefix
-			if req.Hostinfo != nil {
-				announcedRoutes = req.Hostinfo.RoutableIPs
-			}
-
-			// Apply policy-based auto-approval if routes are announced
-			if len(announcedRoutes) > 0 {
-				autoApprovedRoutes, routeChange = policy.ApproveRoutesWithPolicy(
-					s.polMan,
-					currentNode.View(),
-					currentNode.ApprovedRoutes,
-					announcedRoutes,
-				)
-			}
-		}
-
-		// Log when routes change but approval doesn't
-		if delta.routesChanged && !routeChange {
-			if hi := req.Hostinfo; hi != nil {
-				log.Debug().
-					Caller().
-					Uint64(zf.NodeID, id.Uint64()).
-					Strs(zf.OldAnnouncedRoutes, util.PrefixesToString(currentNode.AnnouncedRoutes())).
-					Strs(zf.NewAnnouncedRoutes, util.PrefixesToString(hi.RoutableIPs)).
-					Strs(zf.ApprovedRoutes, util.PrefixesToString(currentNode.ApprovedRoutes)).
-					Bool(zf.RouteChanged, routeChange).
-					Msg("announced routes changed but approved routes did not")
-			}
-		}
+		oldAnnounced := currentNode.AnnouncedRoutes()
 
 		currentNode.ApplyPeerChange(&delta.peerChange)
 
@@ -3788,11 +3797,25 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 			}
 		}
 
-		if routeChange {
-			// Approving in this write keeps one request at one NodeStore
-			// write, one peer build and one row update. Persisting is
-			// already due: route approval only runs on a Hostinfo change.
-			currentNode.ApprovedRoutes = autoApprovedRoutes
+		// Approval follows the announced set, only when it changes: any
+		// other report would re-grant a route an admin revoked. Deciding in
+		// this write keeps one request at one NodeStore write, one peer
+		// build and one row update; persisting is already due, as the
+		// Hostinfo changed.
+		if delta.routesChanged {
+			oldApproved := currentNode.ApprovedRoutes
+			dropped := dropWithdrawnAutoApprovals(currentNode)
+			routeChange = s.approveAnnouncedRoutes(currentNode) || dropped
+
+			log.Debug().
+				Caller().
+				Uint64(zf.NodeID, id.Uint64()).
+				Strs(zf.OldAnnouncedRoutes, util.PrefixesToString(oldAnnounced)).
+				Strs(zf.NewAnnouncedRoutes, util.PrefixesToString(currentNode.AnnouncedRoutes())).
+				Strs(zf.RoutesApprovedOld, util.PrefixesToString(oldApproved)).
+				Strs(zf.RoutesApprovedNew, util.PrefixesToString(currentNode.ApprovedRoutes)).
+				Bool(zf.RouteChanged, routeChange).
+				Msg("announced routes changed")
 		}
 
 		// AllApprovedRoutes is announced ∩ approved; a Hostinfo
