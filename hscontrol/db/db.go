@@ -294,6 +294,43 @@ WHERE tags IS NOT NULL AND tags != '[]' AND tags != '' AND tags != 'null'
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			{
+				// Store a node's ephemeral flag on the node, taken from the
+				// key it references, so a login with another key keeps it.
+				ID: "202610211300-node-ephemeral",
+				Migrate: func(tx *gorm.DB) error {
+					// The column and backfill commit together, before gormigrate
+					// records the migration; a stop in between leaves both done.
+					if tx.Migrator().HasColumn(&types.Node{}, "ephemeral") {
+						return nil
+					}
+
+					return tx.Transaction(func(tx *gorm.DB) error {
+						colType := "numeric"
+						if tx.Name() != "sqlite" {
+							colType = "boolean"
+						}
+
+						err := tx.Exec(`ALTER TABLE nodes ADD COLUMN ephemeral ` + colType + ` DEFAULT false`).Error
+						if err != nil {
+							return fmt.Errorf("adding ephemeral to nodes: %w", err)
+						}
+
+						err = tx.Exec(`
+UPDATE nodes SET ephemeral = true
+WHERE auth_key_id IN (
+	SELECT id FROM credentials WHERE kind = ? AND ephemeral = true
+);
+							`, types.CredentialPreAuthKey).Error
+						if err != nil {
+							return fmt.Errorf("backfilling ephemeral on nodes: %w", err)
+						}
+
+						return nil
+					})
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
