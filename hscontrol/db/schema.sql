@@ -89,6 +89,7 @@ CREATE TABLE nodes(
   last_seen datetime,
   expiry datetime,
   approved_routes text,
+  auto_approved_routes text,
 
   created_at datetime,
   updated_at datetime,
