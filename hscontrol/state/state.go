@@ -15,6 +15,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/maphash"
 	"maps"
 	"net/netip"
 	"slices"
@@ -35,7 +36,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
@@ -199,18 +199,21 @@ type State struct {
 	// registerLocks serialises registration per machine key so concurrent
 	// registrations of the same machine resolve to a single node instead of
 	// racing the find-then-create section and each creating their own.
-	// ponytail: entries are never pruned; bounded by distinct machine keys
-	// seen, add cleanup on node delete only if it ever matters.
-	registerLocks *xsync.Map[key.MachinePublic, *sync.Mutex]
+	registerLocks    [256]sync.Mutex
+	registerLockSeed maphash.Seed
 }
 
 // lockRegistration serialises registration for a single machine key and
 // returns the unlock function.
 func (s *State) lockRegistration(machineKey key.MachinePublic) func() {
-	mu, _ := s.registerLocks.LoadOrStore(machineKey, &sync.Mutex{})
+	mu := &s.registerLocks[s.registerLockIndex(machineKey)]
 	mu.Lock()
 
 	return mu.Unlock
+}
+
+func (s *State) registerLockIndex(machineKey key.MachinePublic) uint64 {
+	return maphash.Comparable(s.registerLockSeed, machineKey) % uint64(len(s.registerLocks))
 }
 
 // NewState creates and initializes a new [State] instance, setting up the database,
@@ -287,8 +290,8 @@ func NewState(cfg *types.Config) (*State, error) {
 		nodeStore: nodeStore,
 		pings:     newPingTracker(),
 
-		sshCheckAuth:  make(map[sshCheckPair]time.Time),
-		registerLocks: xsync.NewMap[key.MachinePublic, *sync.Mutex](),
+		sshCheckAuth:     make(map[sshCheckPair]time.Time),
+		registerLockSeed: maphash.MakeSeed(),
 	}
 
 	// Surface nodes whose stored data would break map generation (e.g. an

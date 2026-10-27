@@ -2,6 +2,7 @@ package state
 
 import (
 	"errors"
+	"hash/maphash"
 	"net/netip"
 	"slices"
 	"sync"
@@ -797,6 +798,72 @@ func TestConcurrentPreAuthKeyRegistrationSameMachineKey(t *testing.T) {
 
 	require.Equal(t, 1, s.ListNodes().Len(),
 		"concurrent registrations of one machine key must yield a single node")
+}
+
+func TestLockRegistrationStripes(t *testing.T) {
+	s := &State{registerLockSeed: maphash.MakeSeed()}
+
+	keyWhere := func(match func(key.MachinePublic) bool) key.MachinePublic {
+		for {
+			if mk := key.NewMachine().Public(); match(mk) {
+				return mk
+			}
+		}
+	}
+
+	held := key.NewMachine().Public()
+	heldStripe := s.registerLockIndex(held)
+
+	tests := []struct {
+		name        string
+		other       key.MachinePublic
+		wantBlocked bool
+	}{
+		{
+			name:        "same machine key waits for the holder",
+			other:       held,
+			wantBlocked: true,
+		},
+		{
+			name:        "different machine key on the same stripe waits for the holder",
+			other:       keyWhere(func(mk key.MachinePublic) bool { return mk != held && s.registerLockIndex(mk) == heldStripe }),
+			wantBlocked: true,
+		},
+		{
+			name:        "machine key on another stripe proceeds immediately",
+			other:       keyWhere(func(mk key.MachinePublic) bool { return s.registerLockIndex(mk) != heldStripe }),
+			wantBlocked: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			unlockHeld := s.lockRegistration(held)
+
+			var acquired atomic.Bool
+
+			done := make(chan struct{})
+
+			go func() {
+				defer close(done)
+
+				unlock := s.lockRegistration(tt.other)
+
+				acquired.Store(true)
+				unlock()
+			}()
+
+			if tt.wantBlocked {
+				require.Never(t, acquired.Load, 50*time.Millisecond, 5*time.Millisecond)
+			} else {
+				require.Eventually(t, acquired.Load, time.Second, time.Millisecond)
+			}
+
+			unlockHeld()
+			<-done
+			require.True(t, acquired.Load())
+		})
+	}
 }
 
 // TestUpdatePolicyManagerUsersUnchangedKeepsSnapshot ensures re-sending the
