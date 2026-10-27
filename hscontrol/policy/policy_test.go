@@ -385,6 +385,7 @@ func TestSSHPolicyRules(t *testing.T) {
 						{NodeIP: "100.64.0.2"},
 					},
 					SSHUsers: map[string]string{
+						"0":    "",
 						"*":    "=",
 						"root": "",
 					},
@@ -424,6 +425,7 @@ func TestSSHPolicyRules(t *testing.T) {
 						{NodeIP: "100.64.0.2"},
 					},
 					SSHUsers: map[string]string{
+						"0":    "",
 						"*":    "=",
 						"root": "",
 					},
@@ -538,6 +540,7 @@ func TestSSHPolicyRules(t *testing.T) {
 						{NodeIP: "100.64.0.2"},
 					},
 					SSHUsers: map[string]string{
+						"0":                 "",
 						"autogroup:invalid": "autogroup:invalid",
 						"root":              "",
 					},
@@ -577,6 +580,7 @@ func TestSSHPolicyRules(t *testing.T) {
 						{NodeIP: "100.64.0.2"},
 					},
 					SSHUsers: map[string]string{
+						"0":    "",
 						"*":    "=",
 						"root": "",
 					},
@@ -616,6 +620,7 @@ func TestSSHPolicyRules(t *testing.T) {
 						{NodeIP: "100.64.0.2"},
 					},
 					SSHUsers: map[string]string{
+						"0":    "",
 						"*":    "=",
 						"root": "root",
 					},
@@ -655,6 +660,7 @@ func TestSSHPolicyRules(t *testing.T) {
 						{NodeIP: "100.64.0.2"},
 					},
 					SSHUsers: map[string]string{
+						"0":      "",
 						"root":   "root",
 						"ubuntu": "ubuntu",
 					},
@@ -705,6 +711,7 @@ func TestSSHPolicyRules(t *testing.T) {
 						{NodeIP: "100.64.0.2"},
 					},
 					SSHUsers: map[string]string{
+						"0":      "",
 						"debian": "debian",
 						"root":   "",
 					},
@@ -738,7 +745,7 @@ func TestSSHPolicyRules(t *testing.T) {
 			wantSSH: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
 				{
 					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.6"}},
-					SSHUsers:   map[string]string{"root": ""},
+					SSHUsers:   map[string]string{"0": "", "root": ""},
 					Action: &tailcfg.SSHAction{
 						Accept:                    true,
 						AllowAgentForwarding:      true,
@@ -758,7 +765,7 @@ func TestSSHPolicyRules(t *testing.T) {
 				},
 				{
 					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.7"}},
-					SSHUsers:   map[string]string{"root": ""},
+					SSHUsers:   map[string]string{"0": "", "root": ""},
 					Action: &tailcfg.SSHAction{
 						Accept:                    true,
 						AllowAgentForwarding:      true,
@@ -799,7 +806,7 @@ func TestSSHPolicyRules(t *testing.T) {
 			wantSSH: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
 				{
 					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.6"}},
-					SSHUsers:   map[string]string{"root": "root"},
+					SSHUsers:   map[string]string{"0": "", "root": "root"},
 					Action: &tailcfg.SSHAction{
 						Accept:                    true,
 						AllowAgentForwarding:      true,

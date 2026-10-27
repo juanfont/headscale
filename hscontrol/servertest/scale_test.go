@@ -470,7 +470,7 @@ func checkScaleSSH(
 	require.True(t, rule.Action.Accept)
 	require.False(t, rule.Action.Reject)
 	require.Empty(t, rule.Action.HoldAndDelegate)
-	require.Equal(t, map[string]string{"root": "root"}, rule.SSHUsers)
+	require.Equal(t, map[string]string{"0": "", "root": "root"}, rule.SSHUsers)
 
 	wantIPs := make(map[string]bool)
 
