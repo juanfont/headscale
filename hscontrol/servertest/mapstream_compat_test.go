@@ -127,11 +127,6 @@ var mapStreamSkipReasons = map[string]string{
 	"policy-generation/G4/thor-1/peer-owners": sameUserPeers,
 	"policy-generation/G4/thor-2/peer-owners": sameUserPeers,
 
-	"policy-generation/G4/rt/enabled": withdrawnRouteEnabled,
-	"policy-generation/G5/rt/enabled": withdrawnRouteEnabled,
-	"policy-generation/G7/rt/enabled": withdrawnRouteEnabled,
-	"policy-generation/G8/rt/enabled": withdrawnRouteEnabled,
-
 	"user-role/S1-reconnect/own-a/frames": reconnectAnnounced,
 	"user-role/S1-reconnect/own-b/frames": reconnectAnnounced,
 	"user-role/S2-reconnect/own-a/frames": reconnectAnnounced,
@@ -150,7 +145,6 @@ const (
 	peerHostinfoWhole         = "PEER_HOSTINFO_WHOLE: headscale sends peers a node's whole reported Hostinfo; SaaS sends only Hostname, OS, Services, the SSH host keys and AppConnector"
 	peerServicesWhole         = "PEER_SERVICES_WHOLE: headscale sends peers every service a node reports; SaaS leaves out peerapi-dns-proxy"
 	removalSentToAll          = "REMOVAL_SENT_TO_ALL: headscale tells every connected node that a deleted node is gone; SaaS tells only the nodes that had it as a peer"
-	withdrawnRouteEnabled     = "WITHDRAWN_ROUTE_ENABLED: headscale's routes API keeps a route the device stopped advertising in enabledRoutes; SaaS lists only advertised routes as enabled"
 	taggedDeviceUser          = "TAGGED_DEVICE_USER: SaaS shows a tagged device's user as the login that made its key; headscale shows tagged-devices"
 )
 
