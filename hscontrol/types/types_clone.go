@@ -144,19 +144,20 @@ func (src *PreAuthKey) Clone() *PreAuthKey {
 
 // A compilation failure here means this code must be regenerated, with the command at the top of this file.
 var _PreAuthKeyCloneNeedsRegeneration = PreAuthKey(struct {
-	ID          uint64
-	Prefix      string
-	Hash        []byte
-	UserID      *uint
-	User        *User
-	Description string
-	Reusable    bool
-	Ephemeral   bool
-	Used        bool
-	Tags        []string
-	CreatedAt   *time.Time
-	Expiration  *time.Time
-	Revoked     *time.Time
+	ID             uint64
+	Prefix         string
+	Hash           []byte
+	UserID         *uint
+	User           *User
+	Description    string
+	Reusable       bool
+	Ephemeral      bool
+	Used           bool
+	Tags           []string
+	CreatedByToken bool
+	CreatedAt      *time.Time
+	Expiration     *time.Time
+	Revoked        *time.Time
 }{})
 
 // Clone makes a deep copy of Credential.
@@ -193,21 +194,22 @@ func (src *Credential) Clone() *Credential {
 
 // A compilation failure here means this code must be regenerated, with the command at the top of this file.
 var _CredentialCloneNeedsRegeneration = Credential(struct {
-	ID          uint64
-	Kind        CredentialKind
-	Identifier  string
-	Hash        []byte
-	UserID      *uint
-	User        *User
-	Description string
-	Scopes      []string
-	Tags        []string
-	Reusable    bool
-	Ephemeral   bool
-	Used        bool
-	LastSeen    *time.Time
-	ClientID    string
-	CreatedAt   *time.Time
-	Expiration  *time.Time
-	Revoked     *time.Time
+	ID             uint64
+	Kind           CredentialKind
+	Identifier     string
+	Hash           []byte
+	UserID         *uint
+	User           *User
+	Description    string
+	Scopes         []string
+	Tags           []string
+	Reusable       bool
+	Ephemeral      bool
+	Used           bool
+	LastSeen       *time.Time
+	ClientID       string
+	CreatedByToken bool
+	CreatedAt      *time.Time
+	Expiration     *time.Time
+	Revoked        *time.Time
 }{})

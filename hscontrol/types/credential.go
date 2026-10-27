@@ -52,6 +52,10 @@ type Credential struct {
 	// the Identifier of its issuing OAuth client.
 	ClientID string
 
+	// CreatedByToken marks a pre-auth key an OAuth access token made: a token
+	// lists those without all=true.
+	CreatedByToken bool `gorm:"default:false"`
+
 	CreatedAt  *time.Time
 	Expiration *time.Time
 	Revoked    *time.Time
@@ -72,19 +76,20 @@ func (pak *PreAuthKey) AsCredential() *Credential {
 	}
 
 	return &Credential{
-		ID:          pak.ID,
-		Kind:        CredentialPreAuthKey,
-		Identifier:  pak.Prefix,
-		Hash:        pak.Hash,
-		UserID:      pak.UserID,
-		User:        pak.User,
-		Description: pak.Description,
-		Reusable:    pak.Reusable,
-		Ephemeral:   pak.Ephemeral,
-		Used:        pak.Used,
-		Tags:        pak.Tags,
-		CreatedAt:   pak.CreatedAt,
-		Expiration:  pak.Expiration,
-		Revoked:     pak.Revoked,
+		ID:             pak.ID,
+		Kind:           CredentialPreAuthKey,
+		Identifier:     pak.Prefix,
+		Hash:           pak.Hash,
+		UserID:         pak.UserID,
+		User:           pak.User,
+		Description:    pak.Description,
+		Reusable:       pak.Reusable,
+		Ephemeral:      pak.Ephemeral,
+		Used:           pak.Used,
+		Tags:           pak.Tags,
+		CreatedByToken: pak.CreatedByToken,
+		CreatedAt:      pak.CreatedAt,
+		Expiration:     pak.Expiration,
+		Revoked:        pak.Revoked,
 	}
 }
