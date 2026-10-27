@@ -252,6 +252,13 @@ func (v NodeView) LastSeen() views.ValuePointer[time.Time] {
 func (v NodeView) ApprovedRoutes() views.Slice[netip.Prefix] {
 	return views.SliceOf(v.ж.ApprovedRoutes)
 }
+
+// AutoApprovedRoutes are the approved routes only auto-approval granted.
+// The node loses one when it stops announcing it; a route an admin
+// approved stays.
+func (v NodeView) AutoApprovedRoutes() views.Slice[netip.Prefix] {
+	return views.SliceOf(v.ж.AutoApprovedRoutes)
+}
 func (v NodeView) CreatedAt() time.Time { return v.ж.CreatedAt }
 func (v NodeView) UpdatedAt() time.Time { return v.ж.UpdatedAt }
 func (v NodeView) DeletedAt() views.ValuePointer[time.Time] {
@@ -291,33 +298,34 @@ func (v NodeView) String() string          { return v.ж.String() }
 
 // A compilation failure here means this code must be regenerated, with the command at the top of this file.
 var _NodeViewNeedsRegeneration = Node(struct {
-	ID             NodeID
-	MachineKey     key.MachinePublic
-	NodeKey        key.NodePublic
-	DiscoKey       key.DiscoPublic
-	Endpoints      AddrPorts
-	Hostinfo       *tailcfg.Hostinfo
-	IPv4           *netip.Addr
-	IPv6           *netip.Addr
-	Hostname       string
-	GivenName      string
-	UserID         *uint
-	User           *User
-	RegisterMethod string
-	Tags           Strings
-	AuthKeyID      *uint64
-	AuthKey        *Credential
-	Expiry         *time.Time
-	LastSeen       *time.Time
-	ApprovedRoutes Prefixes
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	DeletedAt      *time.Time
-	IsOnline       *bool
-	Unhealthy      bool
-	ActiveSessions int
-	SessionEpoch   uint64
-	SessionStart   time.Time
+	ID                 NodeID
+	MachineKey         key.MachinePublic
+	NodeKey            key.NodePublic
+	DiscoKey           key.DiscoPublic
+	Endpoints          AddrPorts
+	Hostinfo           *tailcfg.Hostinfo
+	IPv4               *netip.Addr
+	IPv6               *netip.Addr
+	Hostname           string
+	GivenName          string
+	UserID             *uint
+	User               *User
+	RegisterMethod     string
+	Tags               Strings
+	AuthKeyID          *uint64
+	AuthKey            *Credential
+	Expiry             *time.Time
+	LastSeen           *time.Time
+	ApprovedRoutes     Prefixes
+	AutoApprovedRoutes Prefixes
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	DeletedAt          *time.Time
+	IsOnline           *bool
+	Unhealthy          bool
+	ActiveSessions     int
+	SessionEpoch       uint64
+	SessionStart       time.Time
 }{})
 
 // View returns a read-only view of PreAuthKey.
