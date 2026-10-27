@@ -117,6 +117,11 @@ func TestSQLiteMigrationAndDataValidation(t *testing.T) {
 				require.NoError(t, err)
 				require.Len(t, nodes, 5)
 
+				// Approvals from before the upgrade carry no auto-approval mark.
+				for _, n := range nodes {
+					assert.Empty(t, n.AutoApprovedRoutes, "node %d", n.ID)
+				}
+
 				// Pre-auth key ids are preserved, so every node keeps its key.
 				for _, n := range nodes {
 					require.NotNil(t, n.AuthKeyID, "node %d", n.ID)
