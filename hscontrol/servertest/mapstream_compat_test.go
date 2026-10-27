@@ -1,11 +1,13 @@
 // This file replays map stream captures from Tailscale SaaS: what each node
 // is sent when a device is retagged, when a running peer changes its DERP
 // home, disco key, hostname or port, when a node goes down and up around
-// policy pushes, and which Hostinfo fields peers and the node itself get.
+// policy pushes, and which Hostinfo fields peers and the node itself get;
+// what a node hears of nodes it cannot see; and what a router's peers hear
+// of routes it announces but has no approval for.
 //
-// Test data source: testdata/steps/map-delivery.hujson, loaded by name. Its
-// disco rotation also pins a row of TestBuildMapRequestChangeResponse in
-// ../state.
+// Test data source: testdata/steps/{map-delivery,hidden-peers,route-announce}.hujson,
+// loaded by name. The disco rotation of map-delivery also pins a row of
+// TestBuildMapRequestChangeResponse in ../state.
 // Source format:    github.com/juanfont/headscale/hscontrol/types/testcapture
 
 package servertest_test
@@ -22,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/servertest"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
@@ -82,10 +85,48 @@ var mapStreamSkipReasons = map[string]string{
 	"map-delivery/S2.0/appc/peer-hostinfo":      peerServicesWhole,
 	"map-delivery/S2.0/bystander/peer-hostinfo": peerServicesWhole,
 	"map-delivery/S2.0/sshd/peer-hostinfo":      peerServicesWhole,
+
+	"hidden-peers/S9/observer/removed":  removalSentToAll,
+	"hidden-peers/S10/observer/removed": removalSentToAll,
+	"hidden-peers/S13/observer/removed": removalSentToAll,
+
+	"hidden-peers/S2/witness/presence":   policyResponseToEveryNode,
+	"hidden-peers/S8/observer/presence":  policyResponseToEveryNode,
+	"hidden-peers/S9/observer/presence":  policyResponseToEveryNode,
+	"hidden-peers/S10/observer/presence": policyResponseToEveryNode,
+	"hidden-peers/S13/observer/presence": policyResponseToEveryNode,
+	"route-announce/RA3/srv/presence":    policyResponseToEveryNode,
+	"route-announce/RA3/wit/presence":    policyResponseToEveryNode,
+	"route-announce/RA4/srv/presence":    policyResponseToEveryNode,
+	"route-announce/RA4/wit/presence":    policyResponseToEveryNode,
+	"route-announce/RA6/rtr/presence":    policyResponseToEveryNode,
+	"route-announce/RA6/srv/presence":    policyResponseToEveryNode,
+	"route-announce/RA6/wit/presence":    policyResponseToEveryNode,
+	"route-announce/RA9/rtr/presence":    policyResponseToEveryNode,
+	"route-announce/RA9/srv/presence":    policyResponseToEveryNode,
+	"route-announce/RA9/wit/presence":    policyResponseToEveryNode,
+
+	"route-announce/RA7/wit/presence":  announcePolicyResend,
+	"route-announce/RA8/wit/presence":  announcePolicyResend,
+	"route-announce/RA10/wit/presence": announcePolicyResend,
+	"route-announce/RA11/wit/presence": announcePolicyResend,
+
+	"route-announce/RA0/rtr/self-routes":  selfRoutesReduced,
+	"route-announce/RA1/rtr/self-routes":  selfRoutesReduced,
+	"route-announce/RA2/rtr/self-routes":  selfRoutesReduced,
+	"route-announce/RA3/rtr/self-routes":  selfRoutesReduced,
+	"route-announce/RA4/rtr/self-routes":  selfRoutesReduced,
+	"route-announce/RA5/rtr/self-routes":  selfRoutesReduced,
+	"route-announce/RA6/rtr/self-routes":  selfRoutesReduced,
+	"route-announce/RA7/rtr/self-routes":  selfRoutesReduced,
+	"route-announce/RA8/rtr/self-routes":  selfRoutesReduced,
+	"route-announce/RA9/rtr/self-routes":  selfRoutesReduced,
+	"route-announce/RA10/rtr/self-routes": selfRoutesReduced,
+	"route-announce/RA11/rtr/self-routes": selfRoutesReduced,
 }
 
 const (
-	policyResponseToEveryNode = "POLICY_RESPONSE_TO_EVERY_NODE: headscale sends every connected node a policy response when tags or the policy change; SaaS sends only the nodes whose peers or filter change"
+	policyResponseToEveryNode = "POLICY_RESPONSE_TO_EVERY_NODE: headscale sends every connected node a policy response when the policy, a node's tags or approved routes, or the set of nodes change; SaaS sends only the nodes whose peers or filter change"
 	ownReportEchoed           = "OWN_REPORT_ECHOED: headscale sends a node its own endpoint or DERP report back; SaaS sends it nothing, so its own entry keeps the endpoints of its last full map"
 	restartEndpointsKept      = "RESTART_ENDPOINTS_KEPT: headscale keeps a restarted node's last endpoints at its peers until it reports new ones; SaaS sends peers the node without endpoints until then"
 	reconnectAnnounced        = "RECONNECT_ANNOUNCED: headscale tells peers a node is online after a stream gap of a few seconds; SaaS sends them nothing"
@@ -93,7 +134,39 @@ const (
 	selfHostinfoWhole         = "SELF_HOSTINFO_WHOLE: headscale sends a node its whole reported Hostinfo; SaaS sends only Hostname, RequestTags and Services"
 	peerHostinfoWhole         = "PEER_HOSTINFO_WHOLE: headscale sends peers a node's whole reported Hostinfo; SaaS sends only Hostname, OS, Services, the SSH host keys and AppConnector"
 	peerServicesWhole         = "PEER_SERVICES_WHOLE: headscale sends peers every service a node reports; SaaS leaves out peerapi-dns-proxy"
+	removalSentToAll          = "REMOVAL_SENT_TO_ALL: headscale tells every connected node that a deleted node is gone; SaaS tells only the nodes that had it as a peer"
+	announcePolicyResend      = "ANNOUNCE_POLICY_RESEND: under an autogroup:self or via policy, headscale sends every connected node a policy response when a router changes only routes nobody approved; SaaS sends nothing to nodes that cannot see the router"
 )
+
+// mapStreamNotCompared lists, by key prefix, checks left out: SaaS's answer
+// there is in doubt, so it is no reference.
+var mapStreamNotCompared = []string{
+	"route-announce/RA2/observer/presence",
+	"route-announce/RA2/srv/presence",
+	"route-announce/RA2/witness/presence",
+	"route-announce/RA5/observer/presence",
+	"route-announce/RA5/srv/presence",
+	"route-announce/RA5/witness/presence",
+	"route-announce/RA7/observer/presence",
+	"route-announce/RA7/srv/presence",
+	"route-announce/RA7/witness/presence",
+	"route-announce/RA8/observer/presence",
+	"route-announce/RA8/srv/presence",
+	"route-announce/RA8/witness/presence",
+	"route-announce/RA10/observer/presence",
+	"route-announce/RA10/srv/presence",
+	"route-announce/RA10/witness/presence",
+	"route-announce/RA11/observer/presence",
+	"route-announce/RA11/srv/presence",
+	"route-announce/RA11/witness/presence",
+}
+
+// compared drops the checks mapStreamNotCompared leaves out.
+func compared(prefix string, checks []stepCheck) []stepCheck {
+	return slices.DeleteFunc(checks, func(ch stepCheck) bool {
+		return notCompared(mapStreamNotCompared, prefix+ch.name)
+	})
+}
 
 // TestMapDeliveryCompat replays a device retagged through the API, a running
 // peer that picks new DERP homes, rotates its disco key, renames itself and
@@ -272,13 +345,6 @@ func (r *stepReplay) deliveryDaemon(ctx context.Context, t *testing.T, step test
 		require.NotNil(t, hi, "%s: no request from restarted %s", step.Name, a.Node)
 		require.NoError(t, cl.Restart(ctx, hi), "%s: restart", step.Name)
 
-	case args == "down":
-		cl.Disconnect(t)
-
-	case args == "up":
-		// tailscaled registers again on its node key, then polls.
-		require.NoError(t, cl.ReloginAndPoll(ctx), "%s: up", step.Name)
-
 	case args == "debug rotate-disco-key":
 		require.NoError(t, cl.RotateDisco(ctx), "%s: disco rotation", step.Name)
 
@@ -287,7 +353,7 @@ func (r *stepReplay) deliveryDaemon(ctx context.Context, t *testing.T, step test
 		// Only what the node reports changes.
 
 	default:
-		t.Fatalf("%s: no replay for %s %q", step.Name, a.Kind, a.Args)
+		r.daemon(ctx, t, step.Name, a)
 	}
 }
 
@@ -378,7 +444,7 @@ func (r *stepReplay) settle(t *testing.T) {
 	counts := func() map[string]int {
 		out := make(map[string]int, len(r.clients))
 		for alias, cl := range r.clients {
-			out[alias] = cl.UpdateCount()
+			out[alias] = cl.Frames()
 		}
 
 		return out
@@ -798,4 +864,273 @@ func renderPeerFields(peers, want map[string]map[string]json.RawMessage) string 
 	}
 
 	return strings.Join(out, "\n")
+}
+
+// TestHiddenPeerEventsCompat replays two users' nodes under a policy that
+// lets each reach only its own: nodes the observer cannot see go down, come
+// up, rename, join, are deleted and log out, then a one-way rule shows them
+// to it and is taken back. After each step it compares, per captured node,
+// whether it was sent anything, which nodes it was told were removed, and
+// its peers.
+func TestHiddenPeerEventsCompat(t *testing.T) {
+	t.Parallel()
+
+	t.Run("hidden-peers", func(t *testing.T) {
+		t.Parallel()
+
+		replayVisibility(t, "hidden-peers")
+	})
+}
+
+// TestRouteAnnouncementCompat replays a tagged router that renames itself
+// and announces and drops a route no auto-approver covers, which the admin
+// approves and revokes once, under a global, an autogroup:self and a via
+// policy. After each step it compares what [TestHiddenPeerEventsCompat]
+// does, plus the routes API, the router's own routes and how each captured
+// node is served by it.
+func TestRouteAnnouncementCompat(t *testing.T) {
+	t.Parallel()
+
+	t.Run("route-announce", func(t *testing.T) {
+		t.Parallel()
+
+		replayVisibility(t, "route-announce")
+	})
+}
+
+func TestMapStreamSkipEntriesNameCaptures(t *testing.T) {
+	t.Parallel()
+
+	requireSkipCaptures(t, mapStreamSkipReasons, "map-delivery", "hidden-peers", "route-announce")
+}
+
+// visibilityMark is what a client had been sent when a step began.
+type visibilityMark struct {
+	frames, removed int
+
+	// history indexes the client's last netmap before the step, so a peer
+	// held then and missing from the step's first netmap counts as removed.
+	history int
+}
+
+// replayVisibility replays capture id step by step, each action landing
+// before the next, and holds each step's [visibilityChecks] against
+// [mapStreamSkipReasons].
+func replayVisibility(t *testing.T, id string) {
+	t.Helper()
+
+	c := readStepCapture(t, id)
+	r := newStepReplay(t, c)
+	r.deltaUpdates = true
+	evaluated := map[string]bool{}
+
+	// Nodes kept from an earlier capture joined under the policy the tailnet
+	// held when this one began, before the step's own push.
+	r.setPolicy(t, "setup", c.Input.FullPolicy)
+
+	for _, step := range c.Steps {
+		require.Equal(t, "observed", step.Result, "%s: the replay follows every step", step.Name)
+
+		r.settle(t)
+
+		before := make(map[string]visibilityMark, len(r.clients))
+		for alias, cl := range r.clients {
+			before[alias] = visibilityMark{
+				frames:  cl.Frames(),
+				removed: len(cl.DeltaRemovedPeers()),
+				history: max(cl.UpdateCount()-1, 0),
+			}
+		}
+
+		for _, a := range step.Actions {
+			one := step
+			one.Actions = []testcapture.Action{a}
+			require.Empty(t, r.apply(t, one), "%s: every login succeeds", step.Name)
+			r.waitSession(t, step.Name, a)
+		}
+
+		t.Run(step.Name, func(t *testing.T) {
+			prefix := id + "/" + step.Name + "/"
+			holdChecks(t, mapStreamSkipReasons, prefix, compared(prefix, visibilityChecks(t, r, step, before)), evaluated)
+		})
+	}
+
+	for k := range mapStreamSkipReasons {
+		if strings.HasPrefix(k, id+"/") && !evaluated[k] {
+			t.Errorf("skip entry %q names no check", k)
+		}
+	}
+}
+
+// visibilityChecks compares, per node SaaS captured in the step (the nodes
+// whose streams it followed), whether it was sent anything, which nodes it
+// was told were removed and its peers.
+// After a step that read a router's routes, it also compares the routes
+// API, the router's own routes and how each captured node is served by it.
+func visibilityChecks(t *testing.T, r *stepReplay, step testcapture.Step, before map[string]visibilityMark) []stepCheck {
+	t.Helper()
+
+	subjects := stepSubjects(step)
+	captured := slices.Sorted(maps.Keys(step.Captures))
+
+	var checks []stepCheck
+
+	for _, x := range captured {
+		saas, cl := step.Captures[x].Netmap, r.clients[x]
+		if saas == nil || cl == nil {
+			continue
+		}
+
+		mark := before[x]
+
+		checks = append(checks,
+			stepCheck{x + "/presence", saasPresence(step.Frames[x], slices.Contains(subjects, x)), func() string {
+				if cl.Frames() > mark.frames {
+					return "frame"
+				}
+
+				return "silent"
+			}},
+			stepCheck{x + "/removed", saasRemovedPeers(step.Frames[x], r.saasAlias), func() string {
+				return r.hsRemovedPeers(cl, mark)
+			}},
+			stepCheck{x + "/peers", peerAliases(saas, r.saasAlias), func() string {
+				return peerAliases(cl.Netmap(), r.hsAlias)
+			}},
+		)
+	}
+
+	router, saasRoutes, ok := lastRoutesRead(t, step)
+	if !ok {
+		return checks
+	}
+
+	checks = append(checks,
+		stepCheck{router + "/advertised", sortedStrings(saasRoutes.Advertised), func() string {
+			got, ok := r.hsDeviceRoutes(t, router)
+			if !ok {
+				return "no single device"
+			}
+
+			return sortedStrings(got.Advertised)
+		}},
+		stepCheck{router + "/enabled", sortedStrings(saasRoutes.Enabled), func() string {
+			got, ok := r.hsDeviceRoutes(t, router)
+			if !ok {
+				return "no single device"
+			}
+
+			return sortedStrings(got.Enabled)
+		}},
+	)
+
+	if self := step.Captures[router].Netmap; self != nil && r.clients[router] != nil {
+		checks = append(checks, stepCheck{router + "/self-routes", selfRoutes(self), func() string {
+			nm := r.clients[router].Netmap()
+			if nm == nil {
+				return "no netmap"
+			}
+
+			return selfRoutes(nm)
+		}})
+	}
+
+	for _, v := range captured {
+		saas := step.Captures[v].Netmap
+		if v == router || saas == nil || r.clients[v] == nil {
+			continue
+		}
+
+		checks = append(checks, stepCheck{router + "/routes-" + v, servedRoutes(peerByID(saas, r.c.NodeIDs[router])), func() string {
+			nodes := r.machineNodes(router)
+			if len(nodes) != 1 {
+				return fmt.Sprintf("devices %d", len(nodes))
+			}
+
+			return servedRoutes(peerByID(r.clients[v].Netmap(), nodes[0].ID().NodeID()))
+		}})
+	}
+
+	return checks
+}
+
+// saasPresence says whether SaaS sent a node anything but keep-alives during
+// the step. A frame holding only the node's own Node counts only for a node
+// the step acted on: SaaS can send a node its own Node, with what the node
+// reported earlier, when another node's change reaches the tailnet, so to a
+// node the step left alone such a frame says nothing about the step.
+func saasPresence(frames []testcapture.Frame, actedOn bool) string {
+	for _, f := range frames {
+		resp := f.Response
+		if resp == nil || resp.KeepAlive || (!actedOn && selfOnly(f)) {
+			continue
+		}
+
+		return "frame"
+	}
+
+	return "silent"
+}
+
+// selfOnly reports whether a frame carries the node's own Node and nothing
+// else but ControlTime.
+func selfOnly(f testcapture.Frame) bool {
+	if f.Response.Node == nil || len(f.Empty) > 0 || len(f.Dropped) > 0 {
+		return false
+	}
+
+	rest := *f.Response
+	rest.Node, rest.ControlTime = nil, nil
+
+	b, err := json.Marshal(rest)
+
+	return err == nil && string(b) == "{}"
+}
+
+// saasRemovedPeers names the nodes the step's frames removed.
+func saasRemovedPeers(frames []testcapture.Frame, alias func(tailcfg.NodeID) (string, bool)) string {
+	set := map[string]bool{}
+
+	for _, f := range frames {
+		if f.Response == nil {
+			continue
+		}
+
+		for _, id := range f.Response.PeersRemoved {
+			if name, ok := alias(id); ok {
+				set[name] = true
+			}
+		}
+	}
+
+	return sortedStrings(slices.Collect(maps.Keys(set)))
+}
+
+// hsRemovedPeers names the nodes headscale told cl were removed since mark:
+// removals it applied as a delta, and peers its netmaps dropped.
+//
+// shortcut: a removal of a peer cl never held, sent with fields a delta
+// cannot carry (a policy response holds the self node and SSH policy), shows
+// in neither; record raw responses in the test client if a step needs it.
+func (r *stepReplay) hsRemovedPeers(cl *servertest.TestClient, mark visibilityMark) string {
+	set := map[string]bool{}
+
+	for _, id := range cl.DeltaRemovedPeers()[mark.removed:] {
+		if name, ok := r.hsAlias(id); ok {
+			set[name] = true
+		}
+	}
+
+	history := cl.History()[mark.history:]
+	for i := 1; i < len(history); i++ {
+		for _, p := range history[i-1].Peers {
+			if _, missing := peerByID(history[i], p.ID()); missing != "" {
+				if name, ok := r.hsAlias(p.ID()); ok {
+					set[name] = true
+				}
+			}
+		}
+	}
+
+	return sortedStrings(slices.Collect(maps.Keys(set)))
 }

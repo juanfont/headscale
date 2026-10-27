@@ -675,6 +675,10 @@ type stepReplay struct {
 	// endpoint, as a running tailscaled reports them.
 	paths bool
 
+	// deltaUpdates, when set, joins every client [servertest.WithDeltaUpdates],
+	// so it records removals of peers it never held.
+	deltaUpdates bool
+
 	// readAPI, when set, replays reads too and keeps headscale's answer to
 	// each admin exchange in answers, by action index, instead of failing on
 	// a status that differs from SaaS's.
@@ -782,6 +786,10 @@ func (r *stepReplay) apply(t *testing.T, step testcapture.Step) map[string]error
 				opts = append(opts, servertest.WithLoginFlags(controlclient.LoginEphemeral))
 			}
 
+			if r.deltaUpdates {
+				opts = append(opts, servertest.WithDeltaUpdates())
+			}
+
 			if r.paths {
 				hi.NetInfo = &tailcfg.NetInfo{PreferredDERP: 1}
 
@@ -884,10 +892,12 @@ func (r *stepReplay) apply(t *testing.T, step testcapture.Step) map[string]error
 				r.srv.App.Change(changes...)
 			}
 
-		case "wait":
-			// SaaS settle time. The test server runs no scheduled tasks
-			// (expiry, HA probes), so passing time alone changes nothing
-			// but ephemeral collection, which its consumers shorten.
+		case "wait", "barrier":
+			// SaaS settle time, and the probe's wait for SaaS to show the
+			// step's outcome; consumers hold their checks instead. The test
+			// server runs no scheduled tasks (expiry, HA probes), so passing
+			// time alone changes nothing but ephemeral collection, which its
+			// consumers shorten.
 
 		default:
 			t.Fatalf("%s: no replay for action %q", step.Name, a.Kind)
@@ -946,6 +956,13 @@ func (r *stepReplay) daemon(ctx context.Context, t *testing.T, stepName string, 
 	case strings.HasPrefix(args, "set --hostname="):
 		r.hostinfo[a.Node].Hostname = strings.TrimPrefix(args, "set --hostname=")
 		r.sendHostinfo(ctx, t, a.Node)
+
+	case a.Kind == "cli" && args == "down":
+		cl.Disconnect(t)
+
+	case a.Kind == "cli" && args == "up":
+		// tailscaled registers again on its node key, then polls.
+		require.NoError(t, cl.ReloginAndPoll(ctx), "%s: up", stepName)
 
 	default:
 		t.Fatalf("%s: no replay for %s %q", stepName, a.Kind, a.Args)
