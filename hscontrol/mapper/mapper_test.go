@@ -503,6 +503,20 @@ func TestBuildFromChangeFiltersUserProfilesByVisibility(t *testing.T) {
 		assert.NotEqual(t, user2.TailscaleUserProfile().ID, up.ID,
 			"n1 must not receive user2's profile; n2 is not ACL-visible to n1")
 	}
+
+	// What else the change carries still reaches n1, without n2 or user2's
+	// profile.
+	c = change.PolicyAndPeers(n2.ID)
+	resp, err = m.buildFromChange(n1.ID, tailcfg.CurrentCapabilityVersion, &c)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.NotNil(t, resp.PacketFilters)
+	assert.Empty(t, resp.PeersChanged)
+
+	for _, up := range resp.UserProfiles {
+		assert.NotEqual(t, user2.TailscaleUserProfile().ID, up.ID,
+			"n1 must not receive user2's profile with the policy change")
+	}
 }
 
 // TestBuildFromChangeVisibilityMatchesFullMap is the consolidation guard for
