@@ -623,6 +623,66 @@ func TestDeleteNodeTwiceReleasesAddressOnce(t *testing.T) {
 	require.ErrorIs(t, err, db.ErrCouldNotAllocateIP)
 }
 
+func TestPersistDuringDeleteDoesNotResurrectNode(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	node, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+	s.nodeStore.Stop()
+
+	entered, release := make(chan struct{}), make(chan struct{})
+
+	var enteredOnce sync.Once
+
+	s.nodeStore = NewNodeStore(
+		types.Nodes{node.AsStruct()},
+		func(nodes []types.NodeView) map[types.NodeID][]types.NodeID {
+			if len(nodes) == 0 {
+				enteredOnce.Do(func() { close(entered) })
+				<-release
+			}
+
+			return nil
+		},
+		TestBatchSize,
+		TestBatchTimeout,
+	)
+	s.nodeStore.Start()
+
+	var releaseOnce sync.Once
+
+	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
+
+	deleteDone := make(chan error, 1)
+
+	go func() {
+		_, err := s.DeleteNode(node)
+		deleteDone <- err
+	}()
+
+	<-entered
+
+	persistDone := make(chan error, 1)
+
+	go func() {
+		_, err := s.persistNode(node)
+		persistDone <- err
+	}()
+
+	select {
+	case err := <-persistDone:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Error("persist blocked behind the NodeStore delete")
+	}
+
+	_, err := s.db.GetNodeByID(nodeID)
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+	releaseOnce.Do(func() { close(release) })
+	require.NoError(t, <-deleteDone)
+}
+
 func TestDeleteNodeKeepsStoreOnDBFailure(t *testing.T) {
 	_, s, nodeID := persistTestSetup(t)
 	t.Cleanup(func() { _ = s.Close() })
