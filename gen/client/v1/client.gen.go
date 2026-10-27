@@ -229,6 +229,7 @@ type Node struct {
 	AvailableRoutes []string           `json:"availableRoutes"`
 	CreatedAt       time.Time          `json:"createdAt"`
 	DiscoKey        string             `json:"discoKey"`
+	Ephemeral       bool               `json:"ephemeral"`
 	Expiry          *time.Time         `json:"expiry"`
 	GivenName       string             `json:"givenName"`
 	Id              string             `json:"id"`
