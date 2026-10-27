@@ -99,6 +99,7 @@ var _NodeCloneNeedsRegeneration = Node(struct {
 	Tags               Strings
 	AuthKeyID          *uint64
 	AuthKey            *Credential
+	Ephemeral          bool
 	Expiry             *time.Time
 	LastSeen           *time.Time
 	ApprovedRoutes     Prefixes
