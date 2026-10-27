@@ -277,7 +277,7 @@ type ListDevicesParams struct {
 
 // ListKeysParams defines parameters for ListKeys.
 type ListKeysParams struct {
-	// All Accepted for compatibility; Headscale returns all keys.
+	// All Without it, a token sees only the auth keys tokens made.
 	All *bool `form:"all,omitempty" json:"all,omitempty"`
 }
 
