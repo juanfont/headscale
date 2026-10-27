@@ -65,6 +65,9 @@ type PreAuthKey struct {
 	// If non-empty, this creates tagged nodes (not user-owned).
 	Tags []string `gorm:"serializer:json"`
 
+	// CreatedByToken is set when an OAuth access token made the key.
+	CreatedByToken bool
+
 	CreatedAt  *time.Time
 	Expiration *time.Time
 
