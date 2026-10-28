@@ -207,11 +207,7 @@ func (h *Headscale) NoiseUpgradeHandler(
 		r.Post("/c2n", ns.NotImplementedHandler)
 	})
 
-	ns.httpBaseConfig = &http.Server{
-		Handler:           r,
-		ReadHeaderTimeout: types.HTTPTimeout,
-	}
-	ns.http2Server = &http2.Server{}
+	ns.httpBaseConfig, ns.http2Server = newNoiseHTTPServers(r, types.HTTPTimeout)
 
 	ns.http2Server.ServeConn(
 		noiseConn,
@@ -219,6 +215,23 @@ func (h *Headscale) NoiseUpgradeHandler(
 			BaseConfig: ns.httpBaseConfig,
 		},
 	)
+}
+
+// newNoiseHTTPServers builds the servers for one Noise tunnel. The hijack
+// drops the outer server's deadlines and any machine key gets a tunnel, so
+// this is where a stalled request body (ReadTimeout) and a tunnel with no open
+// stream (IdleTimeout) are bounded. WriteTimeout stays unset: it would cut
+// long polls and a follow-up waiting for its registration. ServeConn takes the
+// idle timeout from the [http2.Server], not from BaseConfig.
+func newNoiseHTTPServers(
+	handler http.Handler,
+	timeout time.Duration,
+) (*http.Server, *http2.Server) { //nolint:staticcheck // 0.29 serves tunnels via http2.ServeConn
+	return &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: timeout,
+		ReadTimeout:       timeout,
+	}, &http2.Server{IdleTimeout: timeout} //nolint:staticcheck // see above
 }
 
 func unsupportedClientError(version tailcfg.CapabilityVersion) error {
