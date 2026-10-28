@@ -150,6 +150,29 @@ func (pak *PreAuthKey) IsTagged() bool {
 	return len(pak.Tags) > 0
 }
 
+// CanReauthenticate reports whether this key speaks for node: a tagged key
+// (it brings its own tags), a key of the node's user, or a key of the user a
+// tagged node can be claimed by (see [NodeView.ClaimableBy]).
+func (pak *PreAuthKey) CanReauthenticate(node NodeView) bool {
+	if pak == nil || !node.Valid() {
+		return false
+	}
+
+	if pak.IsTagged() {
+		return true
+	}
+
+	if pak.User == nil {
+		return false
+	}
+
+	if node.IsTagged() {
+		return node.ClaimableBy(UserID(pak.User.ID))
+	}
+
+	return node.UserID().Valid() && node.UserID().Get() == pak.User.ID
+}
+
 // maskedPrefix returns the key prefix in masked format for safe logging.
 // SECURITY: Never log the full key or hash, only the masked prefix.
 func (pak *PreAuthKey) maskedPrefix() string {
