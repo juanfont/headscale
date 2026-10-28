@@ -19,9 +19,9 @@ type nodeHealthCheck struct {
 	check func(nv types.NodeView, cfg *types.Config) (problem, fixHint string, ok bool)
 }
 
-// nodeHealthChecks is the registry of node-data health checks. Today it carries
-// the one issue #3346 needs; append to it rather than reshaping callers.
-var nodeHealthChecks = []nodeHealthCheck{givenNameMapsToValidFQDN}
+// nodeHealthChecks is the registry of node-data health checks; append to it
+// rather than reshaping callers.
+var nodeHealthChecks = []nodeHealthCheck{givenNameMapsToValidFQDN, expiryIsEncodable}
 
 // givenNameMapsToValidFQDN flags a node whose stored GivenName cannot produce a
 // valid FQDN (empty, or longer than MaxHostnameLength once base_domain is
@@ -33,6 +33,27 @@ var givenNameMapsToValidFQDN = nodeHealthCheck{
 		err := types.ValidateGivenName(nv.GivenName(), cfg.BaseDomain)
 		if err != nil {
 			return err.Error(), fmt.Sprintf("headscale nodes rename %d <name>", nv.ID()), false
+		}
+
+		return "", "", true
+	},
+}
+
+// expiryIsEncodable flags a node whose stored key expiry cannot be encoded for
+// clients. Such a node cannot be rendered into a netmap — neither its own nor
+// any peer's — so its expiry must be reset to recover.
+var expiryIsEncodable = nodeHealthCheck{
+	name: "expiry-is-encodable",
+	check: func(nv types.NodeView, _ *types.Config) (string, string, bool) {
+		// No expiry is sent as the zero time, which is in range.
+		expiry, _ := nv.Expiry().GetOk()
+
+		_, err := types.ValidateExpiry(expiry)
+		if err != nil {
+			return err.Error(), fmt.Sprintf(
+				"headscale nodes expire --identifier %d",
+				nv.ID(),
+			), false
 		}
 
 		return "", "", true
@@ -87,6 +108,7 @@ func (s *State) logNodeHealth() {
 			Str("check", f.check).
 			Str("problem", f.problem).
 			Str("fix", f.fixHint).
-			Msg("node has invalid data that breaks map generation; rename it to restore connectivity")
+			Msg("node has invalid data that breaks map generation; " +
+				"run the fix to restore connectivity")
 	}
 }
