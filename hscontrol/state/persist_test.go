@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/netip"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -1367,4 +1368,159 @@ func TestLoadedExpiryIsUTC(t *testing.T) {
 	got := nv.Expiry().Get()
 	assert.True(t, expiry.Equal(got))
 	assert.Equal(t, time.UTC, got.Location())
+}
+
+// TestNewStateBoundsStoredClientReport covers legacy reports before they reach peers.
+func TestNewStateBoundsStoredClientReport(t *testing.T) {
+	endpoints := make([]netip.AddrPort, types.MaxEndpoints+1)
+	for i := range endpoints {
+		endpoints[i] = netip.AddrPortFrom(netip.MustParseAddr("192.0.2.1"), uint16(i))
+	}
+
+	routes := make([]netip.Prefix, types.MaxRoutableIPs+1)
+	for i := range routes {
+		routes[i] = netip.PrefixFrom(netip.AddrFrom16([16]byte{0xfd, byte(i >> 8), byte(i)}), 64)
+	}
+
+	for _, tt := range []struct {
+		name          string
+		hostname      string
+		endpoints     []netip.AddrPort
+		routes        []netip.Prefix
+		wantHostname  string
+		wantEndpoints []netip.AddrPort
+		wantRoutes    []netip.Prefix
+	}{
+		{
+			name:          "at limits",
+			hostname:      strings.Repeat("h", types.MaxHostnameLength),
+			endpoints:     endpoints[:types.MaxEndpoints],
+			routes:        routes[:types.MaxRoutableIPs],
+			wantHostname:  strings.Repeat("h", types.MaxHostnameLength),
+			wantEndpoints: endpoints[:types.MaxEndpoints],
+			wantRoutes:    routes[:types.MaxRoutableIPs],
+		},
+		{
+			name:          "over limits",
+			hostname:      strings.Repeat("h", types.MaxHostnameLength+1),
+			endpoints:     endpoints,
+			routes:        routes,
+			wantHostname:  strings.Repeat("h", types.MaxHostnameLength),
+			wantEndpoints: endpoints[:types.MaxEndpoints],
+			wantRoutes:    routes[:types.MaxRoutableIPs],
+		},
+		{
+			name:     "multibyte hostname and zoned endpoint",
+			hostname: strings.Repeat("h", types.MaxHostnameLength-1) + "é",
+			endpoints: []netip.AddrPort{
+				netip.MustParseAddrPort("[fe80::1%eth0]:41641"), endpoints[0],
+			},
+			wantHostname:  strings.Repeat("h", types.MaxHostnameLength-1),
+			wantEndpoints: endpoints[:1],
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			dbPath := t.TempDir() + "/headscale.db"
+			cfg := persistTestConfig(dbPath)
+			database, err := db.NewHeadscaleDatabase(cfg)
+			require.NoError(t, err)
+
+			user := database.CreateUserForTest("bound-user")
+			node := database.CreateRegisteredNodeForTest(user, "bounded")
+			err = database.DB.Model(node).Select("Hostname", "Endpoints", "Hostinfo").
+				Updates(&types.Node{
+					Hostname:  tt.hostname,
+					Endpoints: tt.endpoints,
+					Hostinfo: &tailcfg.Hostinfo{
+						Hostname: tt.hostname, RoutableIPs: tt.routes,
+						NetInfo: &tailcfg.NetInfo{PreferredDERP: 1, DERPLatency: map[string]float64{"1-v4": 0.01}},
+					},
+				}).Error
+			require.NoError(t, err)
+			require.NoError(t, database.Close())
+
+			s, err := NewState(cfg)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = s.Close() })
+
+			nv, ok := s.GetNodeByID(node.ID)
+			require.True(t, ok)
+			require.True(t, nv.Hostinfo().Valid())
+			assert.Equal(t, tailcfg.DERPRegionID(1), nv.Hostinfo().NetInfo().PreferredDERP())
+			assert.Nil(t, nv.Hostinfo().AsStruct().NetInfo.DERPLatency)
+			assert.Equal(t, tt.wantHostname, nv.Hostname())
+			assert.Equal(t, tt.wantHostname, nv.Hostinfo().Hostname())
+			assert.Equal(t, tt.wantEndpoints, nv.Endpoints().AsSlice())
+			assert.Equal(t, tt.wantRoutes, nv.Hostinfo().RoutableIPs().AsSlice())
+
+			c, err := s.UpdateNodeFromMapRequest(node.ID, tailcfg.MapRequest{
+				NodeKey: nv.NodeKey(), DiscoKey: key.NewDisco().Public(),
+			})
+			require.NoError(t, err)
+			require.Len(t, c.PeerPatches, 1)
+			assert.Equal(t, tt.wantEndpoints, c.PeerPatches[0].Endpoints)
+
+			row, err := s.DB().GetNodeByID(node.ID)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantHostname, row.Hostname, "the next persist rewrites the row")
+			assert.True(t, slices.Equal(tt.wantEndpoints, row.Endpoints), "persisted endpoints match the bounded report")
+			assert.Equal(t, tt.wantRoutes, row.Hostinfo.RoutableIPs)
+		})
+	}
+}
+
+func TestNewStateDiscardsOversizedHostinfo(t *testing.T) {
+	dbPath, s, nodeID := persistTestSetup(t)
+	err := s.DB().DB.Model(&types.Node{ID: nodeID}).Select("Hostinfo").
+		Updates(&types.Node{Hostinfo: &tailcfg.Hostinfo{
+			OSVersion: strings.Repeat("v", types.MaxHostinfoSize),
+		}}).Error
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+
+	nv, ok := persistTestReopen(t, dbPath).GetNodeByID(nodeID)
+	require.True(t, ok)
+	assert.False(t, nv.Hostinfo().Valid(),
+		"oversized Hostinfo is dropped until the node reports again")
+}
+
+// TestBootKeepsHostinfoTheMapPathStored pins that the startup bound keeps
+// what the map path accepted. A report without NetInfo keeps the stored one,
+// so a stored Hostinfo can combine fields from two reports.
+func TestBootKeepsHostinfoTheMapPathStored(t *testing.T) {
+	dbPath, s, nodeID := persistTestSetup(t)
+
+	nv, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+
+	for _, hi := range []*tailcfg.Hostinfo{
+		{
+			Hostname: nv.Hostname(),
+			NetInfo: &tailcfg.NetInfo{
+				PreferredDERP: 1,
+				LinkType:      strings.Repeat("l", 60<<10),
+			},
+		},
+		{Hostname: nv.Hostname(), OSVersion: strings.Repeat("v", 60<<10)},
+	} {
+		req := tailcfg.MapRequest{
+			NodeKey: nv.NodeKey(), DiscoKey: nv.DiscoKey(), Hostinfo: hi,
+		}
+		require.NoError(t, types.ValidateHostinfo(req.Hostinfo))
+
+		_, err := s.UpdateNodeFromMapRequest(nodeID, req)
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, s.Close())
+
+	reloaded, ok := persistTestReopen(t, dbPath).GetNodeByID(nodeID)
+	require.True(t, ok)
+	require.True(t, reloaded.Hostinfo().Valid(),
+		"the startup bound must keep a Hostinfo the map path stored")
+	assert.Equal(t, tailcfg.DERPRegionID(1),
+		reloaded.Hostinfo().NetInfo().PreferredDERP())
+
+	osVersionLen := len(reloaded.Hostinfo().OSVersion())
+	assert.Equal(t, 60<<10, osVersionLen)
 }
