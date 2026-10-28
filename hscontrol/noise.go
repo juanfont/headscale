@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -16,6 +17,7 @@ import (
 	"github.com/go-chi/metrics"
 	"github.com/juanfont/headscale/hscontrol/capver"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/net/http2"
@@ -786,6 +788,42 @@ func (ns *noiseServer) PollNetMapHandler(
 		return
 	}
 
+	// Keep preferred endpoints first; clients retry rejected reports unchanged.
+	count := min(len(mapRequest.Endpoints), types.MaxEndpoints)
+	mapRequest.Endpoints = slices.Clone(mapRequest.Endpoints[:count])
+
+	mapRequest.EndpointTypes = slices.Clone(mapRequest.EndpointTypes[:min(len(mapRequest.EndpointTypes), types.MaxEndpoints)])
+	for _, endpoint := range mapRequest.Endpoints {
+		if endpoint.Addr().Zone() != "" {
+			httpError(writer, NewHTTPError(http.StatusBadRequest, "endpoint must not include an IPv6 zone", nil))
+			return
+		}
+	}
+
+	if hi := mapRequest.Hostinfo; hi != nil {
+		if len(hi.RoutableIPs) > types.MaxRoutableIPs {
+			log.Warn().Uint64(zf.NodeID, uint64(nv.ID())).Int(zf.RoutableIPCount, len(hi.RoutableIPs)).
+				Msgf("client announced too many routes, keeping the first %d", types.MaxRoutableIPs)
+			hi.RoutableIPs = hi.RoutableIPs[:types.MaxRoutableIPs]
+		}
+
+		if hi.NetInfo != nil {
+			// Latency measurements are not used by the control server.
+			hi.NetInfo.DERPLatency = nil
+		}
+	}
+
+	// Reject before the session, the node or its peers keep the report.
+	err = types.ValidateHostinfo(mapRequest.Hostinfo)
+	if err != nil {
+		httpError(writer, NewHTTPError(http.StatusRequestEntityTooLarge, err.Error(), err))
+		return
+	}
+
+	// A repeated JSON key can leave a short slice backed by a larger array.
+	mapRequest.Hostinfo = mapRequest.Hostinfo.Clone()
+	mapRequest.DebugFlags = nil
+
 	sess := ns.headscale.newMapSession(req.Context(), mapRequest, writer, nv.AsStruct())
 	sess.log.Trace().Caller().Msg("a node sending a MapRequest with Noise protocol")
 
@@ -821,7 +859,29 @@ func (ns *noiseServer) RegistrationHandler(
 			return &regReq, regErr(err)
 		}
 
-		resp, err = ns.headscale.handleRegister(req.Context(), regReq, ns.conn.Peer())
+		if hi := regReq.Hostinfo; hi != nil {
+			if len(hi.RoutableIPs) > types.MaxRoutableIPs {
+				log.Warn().Str(zf.MachineKey, ns.machineKey.ShortString()).
+					Int(zf.RoutableIPCount, len(hi.RoutableIPs)).
+					Msgf("client announced too many routes, keeping the first %d", types.MaxRoutableIPs)
+				hi.RoutableIPs = hi.RoutableIPs[:types.MaxRoutableIPs]
+			}
+
+			if hi.NetInfo != nil {
+				hi.NetInfo.DERPLatency = nil
+			}
+		}
+
+		// Reject before a pending registration, a waiting follow-up or the node keeps it.
+		err = types.ValidateHostinfo(regReq.Hostinfo)
+		if err != nil {
+			return &regReq, regErr(err)
+		}
+
+		// A waiting follow-up must not retain the decoder's excess slice capacity.
+		regReq.Hostinfo = regReq.Hostinfo.Clone()
+
+		resp, err = ns.headscale.handleRegister(req.Context(), regReq, ns.machineKey)
 		if err != nil {
 			if httpErr, ok := errors.AsType[HTTPError](err); ok {
 				resp = &tailcfg.RegisterResponse{
