@@ -162,6 +162,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - At startup, trim stored hostnames, endpoints and routes to the client-report limits and remove zoned endpoints. Hostinfo exceeding its size or tag limit is dropped until the next valid report
 - Pending interactive registrations keep only the hostname, OS and requested tags; other device details arrive with the first map request. Reauthentication preserves routes, services and endpoints
 - Web reauthentication preserves the discovery key so peers can still reach the device
+- A stalled request body, or a Noise tunnel with no open request, is closed after 30 seconds
 
 ## 0.29.7 (202x-xx-xx)
 
