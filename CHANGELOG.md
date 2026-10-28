@@ -154,6 +154,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Deleting an ephemeral node no longer logs a spurious `ephemeral node deletion failed` error later [#3575](https://github.com/juanfont/headscale/pull/3575)
 - Add the v2 `acl/validate` endpoint, which Terraform provider 0.29.3 and newer call to check `tailscale_acl` at plan time; before it, those releases failed with `invalid character 'p' after top-level value`
 - A route that is a single address inside the node ranges, in either spelling, is approved and listed but never served; wider routes and `::ffff:` prefixes are still served
+- Require a valid pre-auth key to re-register an expired tagged node
 
 ## 0.29.7 (202x-xx-xx)
 
