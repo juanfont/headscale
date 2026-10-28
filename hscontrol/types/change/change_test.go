@@ -1,6 +1,7 @@
 package change
 
 import (
+	"encoding/json"
 	"net/netip"
 	"reflect"
 	"testing"
@@ -843,4 +844,20 @@ func TestNodeKeyRotatedEmitsPatchNotWholeNode(t *testing.T) {
 	require.NotNil(t, patch.KeyExpiry, "patch must carry KeyExpiry to (un)expire the peer")
 	assert.Equal(t, expiry, *patch.KeyExpiry)
 	assert.Equal(t, []netip.AddrPort(node.Endpoints), patch.Endpoints, "patch must carry endpoints")
+}
+
+// TestNodeKeyRotatedSendsExpiryInUTC proves the patch carries the expiry in
+// UTC, as [types.NodeView.TailNode] does. PostgreSQL loads it in the server's
+// zone, where an expiry late in 9999 is already in the year 10000, which
+// json.Marshal refuses.
+func TestNodeKeyRotatedSendsExpiryInUTC(t *testing.T) {
+	latest := time.Date(9999, time.December, 31, 23, 59, 59, 0, time.UTC)
+	loaded := latest.In(time.FixedZone("", 60*60))
+
+	c := NodeKeyRotated((&types.Node{ID: 7, Expiry: &loaded}).View())
+	require.Len(t, c.PeerPatches, 1)
+
+	_, err := json.Marshal(c.PeerPatches[0])
+	require.NoError(t, err)
+	assert.True(t, latest.Equal(*c.PeerPatches[0].KeyExpiry))
 }
