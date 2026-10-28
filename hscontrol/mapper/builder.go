@@ -2,6 +2,8 @@ package mapper
 
 import (
 	"cmp"
+	"errors"
+	"fmt"
 	"net/netip"
 	"slices"
 	"time"
@@ -283,12 +285,18 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 			// every node that can see it. Drop the offending peer, log it
 			// with the identity an operator needs to fix it, and keep
 			// building from the remaining valid peers.
+			fix := fmt.Sprintf("headscale nodes rename %d <name>", peer.ID())
+			if errors.Is(err, types.ErrExpiryOutOfRange) {
+				fix = fmt.Sprintf("headscale nodes expire --identifier %d", peer.ID())
+			}
+
 			log.Warn().Caller().
 				Err(err).
 				Uint64(zf.NodeID, peer.ID().Uint64()).
 				Str(zf.NodeHostname, peer.Hostname()).
 				Uint64("map.viewer.node.id", b.nodeID.Uint64()).
-				Msgf("dropping peer %d from map response: invalid node data; fix with `headscale nodes rename %d <name>`", peer.ID(), peer.ID())
+				Msgf("dropping peer %d from map response: invalid node data; "+
+					"fix with `%s`", peer.ID(), fix)
 
 			continue
 		}
@@ -321,9 +329,21 @@ func (b *MapResponseBuilder) WithPingRequest(pr *tailcfg.PingRequest) *MapRespon
 	return b
 }
 
-// WithPeerChangedPatch adds peer change patches.
+// WithPeerChangedPatch adds peer change patches. A patch whose key expiry
+// cannot be encoded is left out, as [MapResponseBuilder.buildTailPeers] leaves
+// out its peer, so it cannot fail the whole response.
 func (b *MapResponseBuilder) WithPeerChangedPatch(changes []*tailcfg.PeerChange) *MapResponseBuilder {
-	b.resp.PeersChangedPatch = changes
+	for _, pc := range changes {
+		if pc.KeyExpiry != nil {
+			_, err := types.ValidateExpiry(*pc.KeyExpiry)
+			if err != nil {
+				continue
+			}
+		}
+
+		b.resp.PeersChangedPatch = append(b.resp.PeersChangedPatch, pc)
+	}
+
 	return b
 }
 

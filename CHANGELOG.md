@@ -151,6 +151,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - A route that is a single address inside the node ranges, in either spelling, is approved and listed but never served; wider routes and `::ffff:` prefixes are still served
 - Require a valid pre-auth key to re-register an expired tagged node
 - Another user's key or login on a tagged machine now creates a new device for that user instead of re-authenticating the tagged node
+- Fix one node with a stored key expiry outside the years 0 to 9999 in UTC failing the map of every node that can see it; it is now left out of its peers' maps and the startup check names it with the fix command
 
 ## 0.29.6 (2026-10-24)
 
