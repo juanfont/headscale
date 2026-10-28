@@ -536,6 +536,45 @@ func (failingSetNodesPolicyManager) SetNodes(views.Slice[types.NodeView]) (bool,
 	return false, errInjectedPolicyNodeUpdate
 }
 
+func TestDeleteNodeTwiceReleasesAddressOnce(t *testing.T) {
+	prefix := netip.MustParsePrefix("100.64.0.0/30")
+	cfg := persistTestConfig(t.TempDir() + "/headscale.db")
+	cfg.PrefixV4 = &prefix
+	cfg.PrefixV6 = nil
+	cfg.IPAllocation = types.IPAllocationStrategyRandom
+
+	s, err := NewState(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	user := s.CreateUserForTest("delete-user")
+	pak, err := s.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+	node, _, err := s.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+		NodeKey:  key.NewNode().Public(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: "delete-node"},
+	}, key.NewMachine().Public())
+	require.NoError(t, err)
+
+	stale := node
+
+	_, _, err = s.ipAlloc.Next()
+	require.NoError(t, err)
+	_, err = s.DeleteNode(node)
+	require.NoError(t, err)
+	reissued, _, err := s.ipAlloc.Next()
+	require.NoError(t, err)
+	require.Equal(t, node.IPv4().Get(), *reissued)
+
+	changes, err := s.DeleteNode(stale)
+	require.NoError(t, err)
+	assert.Empty(t, changes)
+
+	_, _, err = s.ipAlloc.Next()
+	require.ErrorIs(t, err, db.ErrCouldNotAllocateIP)
+}
+
 func TestDeleteNodeKeepsStoreOnDBFailure(t *testing.T) {
 	_, s, nodeID := persistTestSetup(t)
 	t.Cleanup(func() { _ = s.Close() })
