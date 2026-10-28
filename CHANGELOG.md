@@ -161,6 +161,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Only the newest follow-up waits on a pending registration or SSH check; older ones are answered at once
 - Registration locks are freed once no registration uses them
 - Concurrent deletes of one node free its addresses and announce its removal once
+- OIDC verifies an email against the document supplying it; an `email_verified` flag without an address no longer verifies another document's email
 
 ## 0.29.6 (2026-10-24)
 
