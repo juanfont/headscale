@@ -724,6 +724,22 @@ func BoundMapRequest(req *tailcfg.MapRequest) error {
 	return BoundHostinfo(req.Hostinfo)
 }
 
+// BoundClientReport applies the bounds of [BoundMapRequest] to a node stored
+// before they existed. A Hostinfo still over the size budget is dropped; the
+// node's next report brings it back.
+func (node *Node) BoundClientReport() {
+	node.Hostname = boundString(node.Hostname, MaxHostnameLength)
+	node.Endpoints = boundList(node.Endpoints, MaxReportedListLen)
+
+	err := BoundHostinfo(node.Hostinfo)
+	if err != nil {
+		log.Warn().EmbedObject(node).Err(err).
+			Msg("dropping stored Hostinfo until the node reports again")
+
+		node.Hostinfo = nil
+	}
+}
+
 func boundList[S ~[]E, E any](s S, n int) S {
 	// Capacity past the length is copied away too: the decoder reuses a
 	// slice for a repeated key, so it can hold an earlier, longer list.

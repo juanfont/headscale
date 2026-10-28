@@ -154,6 +154,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Fix one node with a stored key expiry outside the years 0 to 9999 in UTC failing the map of every node that can see it; it is now left out of its peers' maps and the startup check names it with the fix command
 - Refuse a key expiry outside the years 0 to 9999 in UTC on registration, on the OIDC token-expiry path and in `headscale nodes expire` / `POST /api/v1/node/{nodeId}/expire` (400); the latest accepted expiry no longer fails node listings on PostgreSQL in a zone east of UTC
 - Bound what a client reports: Hostinfo lists and endpoints over 256 entries, announced routes over 4096 and hostnames over 255 bytes are cut, and a Hostinfo whose NetInfo or other fields encode to more than 64 KiB is refused
+- Nodes stored with reports beyond these bounds load with the bounded values; a stored Hostinfo still over the size limit is dropped until the node reports again
 
 ## 0.29.6 (2026-10-24)
 
