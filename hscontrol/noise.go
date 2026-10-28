@@ -201,16 +201,28 @@ func (h *Headscale) NoiseUpgradeHandler(
 		r.Post("/c2n", ns.NotImplementedHandler)
 	})
 
+	// Serve returns once the listener is drained; the connection outlives it.
+	_ = newNoiseHTTPServer(r, types.HTTPTimeout).
+		Serve(netutil.NewOneConnListener(noiseConn, nil))
+}
+
+// newNoiseHTTPServer builds the server for one Noise tunnel. The hijack drops
+// the outer server's deadlines and any machine key gets a tunnel, so this is
+// where a stalled request body (ReadTimeout) and a tunnel with no open stream
+// (IdleTimeout) are bounded. WriteTimeout stays unset: it would cut long polls
+// and a set-dns waiting for its record to propagate.
+func newNoiseHTTPServer(handler http.Handler, timeout time.Duration) *http.Server {
 	srv := &http.Server{
-		Handler:           r,
-		ReadHeaderTimeout: types.HTTPTimeout,
+		Handler:           handler,
+		ReadHeaderTimeout: timeout,
+		ReadTimeout:       timeout,
+		IdleTimeout:       timeout,
 		Protocols:         new(http.Protocols),
 	}
 	// Noise already encrypts, so HTTP/2 runs without TLS.
 	srv.Protocols.SetUnencryptedHTTP2(true)
 
-	// Serve returns once the listener is drained; the connection outlives it.
-	_ = srv.Serve(netutil.NewOneConnListener(noiseConn, nil))
+	return srv
 }
 
 func unsupportedClientError(version tailcfg.CapabilityVersion) error {

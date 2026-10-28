@@ -156,6 +156,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Bound what a client reports: Hostinfo lists and endpoints over 256 entries, announced routes over 4096 and hostnames over 255 bytes are cut, and a Hostinfo whose NetInfo or other fields encode to more than 64 KiB is refused
 - Nodes stored with reports beyond these bounds load with the bounded values; a stored Hostinfo still over the size limit is dropped until the node reports again
 - A pending interactive registration no longer stores announced routes; a new node's routes, and their auto-approval, arrive with its first map request
+- A stalled request body, or a Noise tunnel with no open request, is closed after 30 seconds
 
 ## 0.29.6 (2026-10-24)
 
