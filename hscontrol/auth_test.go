@@ -685,7 +685,8 @@ func TestAuthenticationFlows(t *testing.T) {
 				}
 
 				nodeToRegister := types.NewRegisterAuthRequest(&types.RegistrationData{
-					Hostname: "followup-success-node",
+					MachineKey: machineKey1.Public(),
+					Hostname:   "followup-success-node",
 				})
 				app.state.SetAuthCacheEntry(regID, nodeToRegister)
 
@@ -732,7 +733,8 @@ func TestAuthenticationFlows(t *testing.T) {
 				}
 
 				nodeToRegister := types.NewRegisterAuthRequest(&types.RegistrationData{
-					Hostname: "followup-timeout-node",
+					MachineKey: machineKey1.Public(),
+					Hostname:   "followup-timeout-node",
 				})
 				app.state.SetAuthCacheEntry(regID, nodeToRegister)
 				// Don't call FinishRegistration - will timeout
@@ -1569,7 +1571,8 @@ func TestAuthenticationFlows(t *testing.T) {
 				}
 
 				nodeToRegister := types.NewRegisterAuthRequest(&types.RegistrationData{
-					Hostname: "nil-response-node",
+					MachineKey: machineKey1.Public(),
+					Hostname:   "nil-response-node",
 				})
 				app.state.SetAuthCacheEntry(regID, nodeToRegister)
 
@@ -4428,7 +4431,7 @@ func TestWaitForFollowupMachineKeyMismatch(t *testing.T) {
 	app := createTestApp(t)
 
 	victimMachineKey := key.NewMachine()
-	attackerMachineKey := key.NewMachine()
+	foreignMachineKey := key.NewMachine()
 
 	// Park a completed registration in the auth cache, as a node that is
 	// already polling for its verdict would see it.
@@ -4463,7 +4466,9 @@ func TestWaitForFollowupMachineKeyMismatch(t *testing.T) {
 	}
 
 	t.Run("mismatched machine key is rejected", func(t *testing.T) {
-		resp, err := followup(newPendingFollowup("followup-mismatch"), attackerMachineKey.Public())
+		resp, err := followup(
+			newPendingFollowup("followup-mismatch"), foreignMachineKey.Public(),
+		)
 
 		require.Error(t, err, "followup with a foreign machine key must not succeed")
 		assert.Nil(t, resp, "no registration details should be returned")
@@ -4483,6 +4488,60 @@ func TestWaitForFollowupMachineKeyMismatch(t *testing.T) {
 		require.NotNil(t, resp)
 		assert.True(t, resp.MachineAuthorized)
 		assert.NotEmpty(t, resp.User.DisplayName, "the owner's identity is returned on the legitimate path")
+	})
+
+	// refusedAtOnce sends a follow-up that must be refused before it waits:
+	// a session hands out one verdict, so a waiter that is not the owner
+	// would take it from the owner.
+	refusedAtOnce := func(t *testing.T, url string, machineKey key.MachinePublic) {
+		t.Helper()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		resp, err := app.handleRegister(ctx, tailcfg.RegisterRequest{
+			Followup: url,
+			NodeKey:  key.NewNode().Public(),
+		}, machineKey)
+		require.NoError(t, ctx.Err(), "the follow-up must be refused, not left waiting")
+		require.Error(t, err)
+		assert.Nil(t, resp)
+
+		var httpErr HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusUnauthorized, httpErr.Code)
+	}
+
+	t.Run("mismatched machine key is refused while pending", func(t *testing.T) {
+		authID := types.MustAuthID()
+		regEntry := types.NewRegisterAuthRequest(&types.RegistrationData{
+			MachineKey: victimMachineKey.Public(),
+			NodeKey:    key.NewNode().Public(),
+			Hostname:   "followup-pending",
+		})
+		app.state.SetAuthCacheEntry(authID, regEntry)
+
+		url := fmt.Sprintf("http://localhost:8080/register/%s", authID)
+		refusedAtOnce(t, url, foreignMachineKey.Public())
+
+		user := app.state.CreateUserForTest("followup-pending-user")
+		node := app.state.CreateNodeForTest(user, "followup-pending")
+		node.MachineKey = victimMachineKey.Public()
+		node.User = user
+		regEntry.FinishAuth(types.AuthVerdict{Node: node.View()})
+
+		resp, err := followup(url, victimMachineKey.Public())
+		require.NoError(t, err)
+		assert.True(t, resp.MachineAuthorized,
+			"the owner must still collect the verdict")
+	})
+
+	t.Run("ssh check session is not a registration", func(t *testing.T) {
+		authID := types.MustAuthID()
+		app.state.SetAuthCacheEntry(authID, types.NewSSHCheckAuthRequest(1, 2))
+
+		refusedAtOnce(t, fmt.Sprintf("http://localhost:8080/register/%s", authID),
+			victimMachineKey.Public())
 	})
 }
 
@@ -4520,15 +4579,15 @@ func TestFollowupWaitPrefersCompletedAuthOverExpiredContext(t *testing.T) {
 		require.NoError(t, err)
 
 		authReq := types.NewRegisterAuthRequest(&types.RegistrationData{
-			Hostname: "followup-race-node",
+			MachineKey: machineKey,
+			Hostname:   "followup-race-node",
 		})
 		app.state.SetAuthCacheEntry(regID, authReq)
 
 		// Registration completes BEFORE we wait: verdict is buffered.
 		user := app.state.CreateUserForTest(fmt.Sprintf("followup-race-user-%d", i))
 		node := app.state.CreateNodeForTest(user, "followup-race-node")
-		// waitForFollowup fails closed unless the node carries the polling
-		// session's machine key; production sets this via the cached
+		// Production builds the node from the machine key cached in the
 		// RegistrationData. CreateNodeForTest picks a random one.
 		node.MachineKey = machineKey
 		authReq.FinishAuth(types.AuthVerdict{Node: node.View()})

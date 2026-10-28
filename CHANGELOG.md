@@ -163,6 +163,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Pending interactive registrations keep only the hostname, OS and requested tags; other device details arrive with the first map request. Reauthentication preserves routes, services and endpoints
 - Web reauthentication preserves the discovery key so peers can still reach the device
 - A stalled request body, or a Noise tunnel with no open request, is closed after 30 seconds
+- A registration follow-up from a machine other than the one that started the registration is refused before it waits
 
 ## 0.29.7 (202x-xx-xx)
 
