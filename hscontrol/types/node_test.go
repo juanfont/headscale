@@ -1,11 +1,14 @@
 package types
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -14,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
+	"tailscale.com/util/dnsname"
 )
 
 func Test_NodeCanAccess(t *testing.T) {
@@ -1072,4 +1076,297 @@ func TestNodeIsExpiredAt(t *testing.T) {
 		require.True(t, NodeView{}.IsExpiredAt(now),
 			"an invalid view counts as expired, like IsExpired")
 	})
+}
+
+func TestBoundHostinfo(t *testing.T) {
+	stock := func() *tailcfg.Hostinfo {
+		return &tailcfg.Hostinfo{
+			IPNVersion:   "1.96.0",
+			OS:           "linux",
+			OSVersion:    "6.12.0",
+			Hostname:     "laptop",
+			RoutableIPs:  []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")},
+			RequestTags:  []string{"tag:server"},
+			Services:     []tailcfg.Service{{Proto: tailcfg.PeerAPI4, Port: 41641}},
+			SSH_HostKeys: []string{"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPc"},
+			NetInfo: &tailcfg.NetInfo{
+				PreferredDERP: 1,
+				DERPLatency:   map[string]float64{"1-v4": 0.01, "2-v4": 0.02},
+			},
+		}
+	}
+
+	strs := func(n int) []string {
+		s := make([]string, n)
+		for i := range s {
+			s[i] = fmt.Sprintf("entry-%d", i)
+		}
+
+		return s
+	}
+
+	t.Run("stock report is kept as is", func(t *testing.T) {
+		hi := stock()
+		want := hi.Clone()
+		services := hi.Services
+
+		require.NoError(t, BoundHostinfo(hi))
+		require.Equal(t, want, hi)
+		require.Same(t, &services[0], &hi.Services[0],
+			"a list within bounds must not be copied")
+	})
+
+	// The longest hostnames in the node name capture: SaaS keeps each raw
+	// and derives a label cut at 63 bytes, so the bound must not cut them.
+	t.Run("captured long hostnames are kept as is", func(t *testing.T) {
+		for _, tc := range []struct{ hostname, label string }{
+			{
+				hostname: "label63-" + strings.Repeat("a", 55),
+				label:    "label63-" + strings.Repeat("a", 55),
+			},
+			{
+				hostname: "label64-" + strings.Repeat("b", 56),
+				label:    "label64-" + strings.Repeat("b", 55),
+			},
+			{
+				hostname: "dotted-" + strings.Repeat("d", 56) +
+					"." + strings.Repeat("e", 63) +
+					"." + strings.Repeat("f", 63) +
+					"." + strings.Repeat("g", 61),
+				label: "dotted-" + strings.Repeat("d", 56),
+			},
+		} {
+			hi := stock()
+			hi.Hostname = tc.hostname
+
+			require.NoError(t, BoundHostinfo(hi))
+			require.Equal(t, tc.hostname, hi.Hostname)
+			require.Equal(t, tc.label, dnsname.SanitizeHostname(hi.Hostname))
+		}
+	})
+
+	t.Run("long lists are cut to their head and copied", func(t *testing.T) {
+		hi := stock()
+
+		hi.Services = make([]tailcfg.Service, 1000)
+		for i := range hi.Services {
+			hi.Services[i] = tailcfg.Service{Proto: tailcfg.TCP, Port: uint16(i)}
+		}
+
+		hi.RequestTags = strs(1000)
+		hi.WoLMACs = strs(1000)
+		hi.SSH_HostKeys = strs(1000)
+
+		services := hi.Services
+		lists := map[string][]string{
+			"RequestTags":  hi.RequestTags,
+			"WoLMACs":      hi.WoLMACs,
+			"SSH_HostKeys": hi.SSH_HostKeys,
+		}
+
+		require.NoError(t, BoundHostinfo(hi))
+
+		require.Len(t, hi.Services, MaxReportedListLen)
+		require.NotSame(t, &services[0], &hi.Services[0],
+			"the cut tail must not stay reachable")
+		require.Equal(t, uint16(MaxReportedListLen-1),
+			hi.Services[MaxReportedListLen-1].Port)
+
+		for name, got := range map[string][]string{
+			"RequestTags":  hi.RequestTags,
+			"WoLMACs":      hi.WoLMACs,
+			"SSH_HostKeys": hi.SSH_HostKeys,
+		} {
+			require.Len(t, got, MaxReportedListLen, name)
+			require.NotSame(t, &lists[name][0], &got[0], name)
+			require.Equal(t, "entry-0", got[0], name)
+		}
+	})
+
+	t.Run("long hostname is cut", func(t *testing.T) {
+		hi := stock()
+		hi.Hostname = strings.Repeat("a", 1<<20)
+
+		require.NoError(t, BoundHostinfo(hi))
+
+		// Compare lengths, not strings: a failure must not print a megabyte.
+		got := len(hi.Hostname)
+		require.Equal(t, MaxHostnameLength, got)
+	})
+
+	t.Run("long hostname is cut at a rune boundary", func(t *testing.T) {
+		long := strings.Repeat("é", 1<<19)
+
+		hi := stock()
+		hi.Hostname = long
+
+		require.NoError(t, BoundHostinfo(hi))
+		require.True(t, utf8.ValidString(hi.Hostname), "cut must not split a rune")
+		require.LessOrEqual(t, len(hi.Hostname), MaxHostnameLength)
+		require.GreaterOrEqual(t, len(hi.Hostname), MaxHostnameLength-utf8.UTFMax)
+		require.True(t, strings.HasPrefix(long, hi.Hostname))
+	})
+
+	t.Run("routes are cut at the route bound", func(t *testing.T) {
+		hi := stock()
+
+		hi.RoutableIPs = make([]netip.Prefix, 5000)
+		for i := range hi.RoutableIPs {
+			addr := netip.AddrFrom4([4]byte{10, 0, byte(i >> 8), byte(i)})
+			hi.RoutableIPs[i] = netip.PrefixFrom(addr, 32)
+		}
+
+		routes := hi.RoutableIPs
+
+		require.NoError(t, BoundHostinfo(hi))
+		require.Len(t, hi.RoutableIPs, MaxRoutableIPs)
+		require.NotSame(t, &routes[0], &hi.RoutableIPs[0])
+		require.Equal(t, routes[:MaxRoutableIPs], hi.RoutableIPs)
+	})
+
+	t.Run("routes do not count against the size budget", func(t *testing.T) {
+		hi := stock()
+
+		hi.RoutableIPs = make([]netip.Prefix, MaxRoutableIPs)
+		for i := range hi.RoutableIPs {
+			addr := netip.AddrFrom16(
+				[16]byte{0xfd, 0, 0, 0, 0, 0, byte(i >> 8), byte(i)},
+			)
+			hi.RoutableIPs[i] = netip.PrefixFrom(addr, 64)
+		}
+
+		require.NoError(t, BoundHostinfo(hi))
+		require.Len(t, hi.RoutableIPs, MaxRoutableIPs)
+	})
+
+	t.Run("large DERP latency map is dropped", func(t *testing.T) {
+		hi := stock()
+
+		hi.NetInfo.DERPLatency = make(map[string]float64, 1000)
+		for i := range 1000 {
+			hi.NetInfo.DERPLatency[fmt.Sprintf("%d-v4", i)] = 0.01
+		}
+
+		require.NoError(t, BoundHostinfo(hi))
+		require.Nil(t, hi.NetInfo.DERPLatency)
+		require.Equal(t, tailcfg.DERPRegionID(1), hi.NetInfo.PreferredDERP,
+			"the rest of NetInfo is kept")
+	})
+
+	t.Run("oversized remaining fields are refused", func(t *testing.T) {
+		hi := stock()
+		hi.OSVersion = strings.Repeat("v", 64<<10)
+
+		err := BoundHostinfo(hi)
+		require.ErrorIs(t, err, ErrHostinfoTooLarge)
+	})
+
+	t.Run("NetInfo has a budget of its own", func(t *testing.T) {
+		// A report without NetInfo keeps the stored one, so what is stored
+		// can hold a full NetInfo next to full other fields.
+		hi := stock()
+		hi.OSVersion = strings.Repeat("v", 60<<10)
+		hi.NetInfo.LinkType = strings.Repeat("l", 60<<10)
+		require.NoError(t, BoundHostinfo(hi))
+
+		hi.NetInfo.LinkType = strings.Repeat("l", 64<<10)
+		require.ErrorIs(t, BoundHostinfo(hi), ErrHostinfoTooLarge)
+	})
+
+	t.Run("nil is fine", func(t *testing.T) {
+		require.NoError(t, BoundHostinfo(nil))
+	})
+}
+
+func TestBoundMapRequest(t *testing.T) {
+	endpoints := make([]netip.AddrPort, 1000)
+	endpointTypes := make([]tailcfg.EndpointType, 1000)
+
+	for i := range endpoints {
+		endpoints[i] = netip.AddrPortFrom(netip.MustParseAddr("192.0.2.1"), uint16(i))
+		endpointTypes[i] = tailcfg.EndpointType(i % 5)
+	}
+
+	req := &tailcfg.MapRequest{
+		Endpoints:     slices.Clone(endpoints),
+		EndpointTypes: slices.Clone(endpointTypes),
+		Hostinfo:      &tailcfg.Hostinfo{Hostname: strings.Repeat("a", 1<<20)},
+	}
+
+	require.NoError(t, BoundMapRequest(req))
+
+	require.Equal(t, endpoints[:MaxReportedListLen], req.Endpoints)
+
+	require.Equal(t, endpointTypes[:MaxReportedListLen], req.EndpointTypes,
+		"types must stay aligned with their endpoints")
+
+	gotHostname := len(req.Hostinfo.Hostname)
+	require.Equal(t, MaxHostnameLength, gotHostname, "the Hostinfo is bounded too")
+
+	t.Run("no Hostinfo and no endpoints", func(t *testing.T) {
+		req := &tailcfg.MapRequest{}
+		require.NoError(t, BoundMapRequest(req))
+		require.Nil(t, req.Endpoints, "nil endpoints mean unchanged and must stay nil")
+	})
+
+	t.Run("oversized Hostinfo is refused", func(t *testing.T) {
+		req := &tailcfg.MapRequest{
+			Hostinfo: &tailcfg.Hostinfo{OSVersion: strings.Repeat("v", 64<<10)},
+		}
+		require.ErrorIs(t, BoundMapRequest(req), ErrHostinfoTooLarge)
+	})
+}
+
+// TestBoundMapRequestRepeatedKeys pins that a list sent twice in one body
+// keeps nothing of the first. The decoder reuses the slice for the second
+// list, so a bound that only reads the length leaves the first in capacity.
+func TestBoundMapRequestRepeatedKeys(t *testing.T) {
+	report := func(n int) []byte {
+		req := tailcfg.MapRequest{Hostinfo: &tailcfg.Hostinfo{}}
+		hi := req.Hostinfo
+
+		for i := range n {
+			req.Endpoints = append(req.Endpoints,
+				netip.AddrPortFrom(netip.MustParseAddr("192.0.2.1"), uint16(i)))
+			req.EndpointTypes = append(req.EndpointTypes, tailcfg.EndpointLocal)
+			hi.RoutableIPs = append(hi.RoutableIPs,
+				netip.PrefixFrom(netip.AddrFrom4([4]byte{10, 0, 0, byte(i)}), 32))
+			hi.RequestTags = append(hi.RequestTags, fmt.Sprintf("tag:t%d", i))
+			hi.WoLMACs = append(hi.WoLMACs, fmt.Sprintf("00:00:00:00:00:%02x", i))
+			hi.SSH_HostKeys = append(hi.SSH_HostKeys, fmt.Sprintf("key-%d", i))
+			hi.Services = append(hi.Services, tailcfg.Service{
+				Proto:       tailcfg.TCP,
+				Port:        uint16(i),
+				Description: strings.Repeat("d", 1<<10),
+			})
+		}
+
+		encoded, err := json.Marshal(req)
+		require.NoError(t, err)
+
+		return encoded
+	}
+
+	// Every key of the long report appears again with a one-entry list.
+	long, short := report(8), report(1)
+	raw := slices.Concat(long[:len(long)-1], []byte{','}, short[1:])
+
+	var req tailcfg.MapRequest
+	require.NoError(t, json.Unmarshal(raw, &req))
+	require.NoError(t, BoundMapRequest(&req))
+
+	hi := req.Hostinfo
+	for name, lenCap := range map[string][2]int{
+		"Endpoints":     {len(req.Endpoints), cap(req.Endpoints)},
+		"EndpointTypes": {len(req.EndpointTypes), cap(req.EndpointTypes)},
+		"RoutableIPs":   {len(hi.RoutableIPs), cap(hi.RoutableIPs)},
+		"RequestTags":   {len(hi.RequestTags), cap(hi.RequestTags)},
+		"WoLMACs":       {len(hi.WoLMACs), cap(hi.WoLMACs)},
+		"SSH_HostKeys":  {len(hi.SSH_HostKeys), cap(hi.SSH_HostKeys)},
+		"Services":      {len(hi.Services), cap(hi.Services)},
+	} {
+		require.Equal(t, 1, lenCap[0], name)
+		require.Equal(t, lenCap[0], lenCap[1],
+			"%s keeps the first list past its length", name)
+	}
 }

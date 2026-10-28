@@ -1,6 +1,7 @@
 package types
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -15,6 +16,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
@@ -22,6 +24,7 @@ import (
 	"tailscale.com/types/key"
 	"tailscale.com/types/views"
 	"tailscale.com/util/dnsname"
+	"tailscale.com/util/truncate"
 )
 
 var (
@@ -34,6 +37,7 @@ var (
 	ErrExpiryOutOfRange     = errors.New(
 		"key expiry is outside the years 0 to 9999 in UTC",
 	)
+	ErrHostinfoTooLarge = errors.New("hostinfo too large")
 )
 
 // RouteFunc is a function that takes a node ID and returns a list of
@@ -652,6 +656,91 @@ func (node *Node) MarshalZerologObject(e *zerolog.Event) {
 	} else if node.UserID != nil {
 		e.Uint(zf.UserID, *node.UserID)
 	}
+}
+
+// BoundHostinfo cuts the hostname and lists a client reports to fixed
+// lengths, and refuses a report whose NetInfo, or whose other fields apart
+// from routes, encode larger than [MaxHostinfoSize]. The body limit counts
+// wire bytes only: small entries grow many times once decoded, and the
+// stored node is sent to every peer. Lists keep their head; a cut copies,
+// so the dropped tail can be freed.
+func BoundHostinfo(hi *tailcfg.Hostinfo) error {
+	if hi == nil {
+		return nil
+	}
+
+	hi.Hostname = boundString(hi.Hostname, MaxHostnameLength)
+
+	if len(hi.RoutableIPs) > MaxRoutableIPs {
+		log.Warn().
+			Str(zf.Hostname, hi.Hostname).
+			Int(zf.RoutableIPCount, len(hi.RoutableIPs)).
+			Msgf("client announced too many routes, keeping the first %d",
+				MaxRoutableIPs)
+	}
+
+	hi.RoutableIPs = boundList(hi.RoutableIPs, MaxRoutableIPs)
+	hi.RequestTags = boundList(hi.RequestTags, MaxReportedListLen)
+	hi.WoLMACs = boundList(hi.WoLMACs, MaxReportedListLen)
+	hi.Services = boundList(hi.Services, MaxReportedListLen)
+	hi.SSH_HostKeys = boundList(hi.SSH_HostKeys, MaxReportedListLen)
+
+	// Headscale never reads the latencies, and a map has no head to keep.
+	if hi.NetInfo != nil && len(hi.NetInfo.DERPLatency) > MaxReportedListLen {
+		hi.NetInfo.DERPLatency = nil
+	}
+
+	// Routes are bounded by count. Everything else, including fields
+	// tailcfg adds later, is bounded by its encoded size. NetInfo is
+	// measured apart: a report without one keeps the stored NetInfo, so
+	// the stored Hostinfo stays within these bounds however reports combine.
+	rest := *hi
+	rest.RoutableIPs = nil
+	rest.NetInfo = nil
+
+	for _, part := range []any{&rest, hi.NetInfo} {
+		encoded, err := json.Marshal(part)
+		if err != nil {
+			return fmt.Errorf("encoding hostinfo: %w", err)
+		}
+
+		if len(encoded) > MaxHostinfoSize {
+			return fmt.Errorf(
+				"%w: %d bytes, limit %d",
+				ErrHostinfoTooLarge, len(encoded), MaxHostinfoSize,
+			)
+		}
+	}
+
+	return nil
+}
+
+// BoundMapRequest applies [BoundHostinfo] and cuts the reported endpoints.
+// Endpoints and their types are cut at the same index, so they stay aligned.
+func BoundMapRequest(req *tailcfg.MapRequest) error {
+	req.Endpoints = boundList(req.Endpoints, MaxReportedListLen)
+	req.EndpointTypes = boundList(req.EndpointTypes, MaxReportedListLen)
+
+	return BoundHostinfo(req.Hostinfo)
+}
+
+func boundList[S ~[]E, E any](s S, n int) S {
+	// Capacity past the length is copied away too: the decoder reuses a
+	// slice for a repeated key, so it can hold an earlier, longer list.
+	s = s[:min(len(s), n)]
+	if len(s) == cap(s) {
+		return s
+	}
+
+	return slices.Clip(slices.Clone(s))
+}
+
+func boundString(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+
+	return strings.Clone(truncate.String(s, n))
 }
 
 // PeerChangeFromMapRequest takes a [tailcfg.MapRequest] and compares it to the node

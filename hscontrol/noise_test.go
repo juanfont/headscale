@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"slices"
 	"strconv"
@@ -1672,4 +1673,168 @@ func TestSetDNSHandlerDisabled(t *testing.T) {
 		Value:   challengeValue("laptop"),
 	})
 	assert.Equal(t, http.StatusNotImplemented, rec.Code)
+}
+
+func manyServices(n int) []tailcfg.Service {
+	services := make([]tailcfg.Service, n)
+	for i := range services {
+		services[i] = tailcfg.Service{Proto: tailcfg.TCP, Port: uint16(i)}
+	}
+
+	return services
+}
+
+// TestPollNetMapHandler_BoundsClientReport pins that a map request is cut to
+// the report bounds before the node stores it, and that the same report sent
+// again compares equal to what was stored.
+func TestPollNetMapHandler_BoundsClientReport(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("bound-map-user")
+	node := putTestNodeInStore(t, app, user, "bound-map-node")
+
+	endpoints := make([]netip.AddrPort, 1000)
+	for i := range endpoints {
+		endpoints[i] = netip.AddrPortFrom(netip.MustParseAddr("192.0.2.1"), uint16(i))
+	}
+
+	report := tailcfg.MapRequest{
+		Version:   tailcfg.CurrentCapabilityVersion,
+		NodeKey:   node.NodeKey,
+		DiscoKey:  node.DiscoKey,
+		OmitPeers: true,
+		Endpoints: endpoints,
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: strings.Repeat("h", 1<<20),
+			Services: manyServices(1000),
+		},
+	}
+
+	ns := &noiseServer{headscale: app, machineKey: node.MachineKey}
+	rec := httptest.NewRecorder()
+	ns.PollNetMapHandler(rec, newMapRequest(t, report))
+	require.Equal(t, http.StatusOK, rec.Code, "body=%q", rec.Body.String())
+
+	stored, ok := app.state.GetNodeByID(node.ID)
+	require.True(t, ok)
+
+	hostnameLen := len(stored.Hostname())
+	assert.Equal(t, types.MaxHostnameLength, hostnameLen)
+	assert.Equal(t, types.MaxReportedListLen, stored.Endpoints().Len())
+	assert.Equal(t, types.MaxReportedListLen, stored.Hostinfo().Services().Len())
+
+	again := report
+	require.NoError(t, types.BoundMapRequest(&again))
+
+	c, err := app.state.UpdateNodeFromMapRequest(node.ID, again)
+	require.NoError(t, err)
+	assert.True(t, c.IsEmpty(),
+		"an unchanged report must not be a change, got %s", c.Type())
+}
+
+// TestPollNetMapHandler_OversizedHostinfoRefused pins that a report over the
+// size budget is refused before the handler looks anything up.
+func TestPollNetMapHandler_OversizedHostinfoRefused(t *testing.T) {
+	t.Parallel()
+
+	// A nil headscale proves the refused request never reaches state.
+	ns := &noiseServer{machineKey: key.NewMachine().Public()}
+	rec := httptest.NewRecorder()
+
+	require.NotPanics(t, func() {
+		ns.PollNetMapHandler(rec, newMapRequest(t, tailcfg.MapRequest{
+			Version: tailcfg.CurrentCapabilityVersion,
+			NodeKey: key.NewNode().Public(),
+			Hostinfo: &tailcfg.Hostinfo{
+				OSVersion: strings.Repeat("v", types.MaxHostinfoSize),
+			},
+		}))
+	})
+
+	assert.Equal(t, http.StatusRequestEntityTooLarge, rec.Code,
+		"body=%q", rec.Body.String())
+}
+
+// TestRegistrationHandler_BoundsClientReport pins that a register request is
+// cut to the report bounds before a pending registration or a node keeps it.
+func TestRegistrationHandler_BoundsClientReport(t *testing.T) {
+	t.Parallel()
+
+	t.Run("pending registration", func(t *testing.T) {
+		t.Parallel()
+
+		app := createTestApp(t)
+		ns := &noiseServer{headscale: app, machineKey: key.NewMachine().Public()}
+
+		rec := serveRegister(t, ns, tailcfg.RegisterRequest{
+			Version: tailcfg.CurrentCapabilityVersion,
+			NodeKey: key.NewNode().Public(),
+			Hostinfo: &tailcfg.Hostinfo{
+				Hostname: "bound-pending-node",
+				Services: manyServices(1000),
+			},
+		})
+		require.Equal(t, http.StatusOK, rec.Code, "body=%q", rec.Body.String())
+
+		var resp tailcfg.RegisterResponse
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+
+		authID, err := extractRegistrationIDFromAuthURL(resp.AuthURL)
+		require.NoError(t, err, "resp=%+v", resp)
+
+		entry, ok := app.state.GetAuthCacheEntry(authID)
+		require.True(t, ok)
+		assert.Len(t, entry.RegistrationData().Hostinfo.Services,
+			types.MaxReportedListLen)
+	})
+
+	t.Run("oversized report", func(t *testing.T) {
+		t.Parallel()
+
+		// A nil headscale proves the refused request never reaches state, so
+		// it leaves no pending registration.
+		ns := &noiseServer{machineKey: key.NewMachine().Public()}
+
+		rec := serveRegister(t, ns, tailcfg.RegisterRequest{
+			Version: tailcfg.CurrentCapabilityVersion,
+			NodeKey: key.NewNode().Public(),
+			Hostinfo: &tailcfg.Hostinfo{
+				OSVersion: strings.Repeat("v", types.MaxHostinfoSize),
+			},
+		})
+		require.Equal(t, http.StatusOK, rec.Code, "body=%q", rec.Body.String())
+
+		var resp tailcfg.RegisterResponse
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+		assert.Contains(t, resp.Error, types.ErrHostinfoTooLarge.Error())
+		assert.Empty(t, resp.AuthURL)
+	})
+
+	t.Run("pre-auth key", func(t *testing.T) {
+		t.Parallel()
+
+		app := createTestApp(t)
+		user := app.state.CreateUserForTest("bound-pak-user")
+
+		pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+		require.NoError(t, err)
+
+		nodeKey := key.NewNode().Public()
+		ns := &noiseServer{headscale: app, machineKey: key.NewMachine().Public()}
+
+		rec := serveRegister(t, ns, tailcfg.RegisterRequest{
+			Version:  tailcfg.CurrentCapabilityVersion,
+			NodeKey:  nodeKey,
+			Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+			Hostinfo: &tailcfg.Hostinfo{Hostname: strings.Repeat("p", 1<<20)},
+		})
+		require.Equal(t, http.StatusOK, rec.Code, "body=%q", rec.Body.String())
+
+		node, ok := app.state.GetNodeByNodeKey(nodeKey)
+		require.True(t, ok)
+
+		hostnameLen := len(node.Hostname())
+		assert.Equal(t, types.MaxHostnameLength, hostnameLen)
+	})
 }

@@ -731,6 +731,18 @@ func (ns *noiseServer) PollNetMapHandler(
 		return
 	}
 
+	// Bound the report before the session, the node or its peers keep it.
+	err = types.BoundMapRequest(&mapRequest)
+	if err != nil {
+		httpError(writer, NewHTTPError(
+			http.StatusRequestEntityTooLarge,
+			"hostinfo too large",
+			err,
+		))
+
+		return
+	}
+
 	nv, err := ns.getAndValidateNode(mapRequest)
 	if err != nil {
 		// The node is gone, but the client does not know that. Tailscale
@@ -908,6 +920,12 @@ func (ns *noiseServer) RegistrationHandler(
 	var registerRequest tailcfg.RegisterRequest
 
 	decodeErr := json.NewDecoder(req.Body).Decode(&registerRequest)
+
+	// Bound the report before a pending registration, a waiting follow-up
+	// or the node keeps it.
+	if decodeErr == nil {
+		decodeErr = types.BoundHostinfo(registerRequest.Hostinfo)
+	}
 
 	// The floor must be enforced before handleRegister: a logout, pre-auth
 	// key use or auth-cache write it performs is not undone by a later 400.
