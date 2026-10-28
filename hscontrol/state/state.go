@@ -2011,7 +2011,7 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 				node.Expiry = regData.Expiry
 			}
 		case !wasTagged && isTagged:
-			// Personal → Tagged: clear expiry (tagged nodes don't expire)
+			// Personal → Tagged: clear expiry; tagged nodes disable it by default.
 			node.Expiry = nil
 		case params.IsConvertFromTag && !isTagged:
 			// Explicit conversion from tagged to user-owned: set expiry from client request
@@ -2028,13 +2028,12 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 				node.Expiry = regData.Expiry
 			}
 		case isTagged && node.IsExpired():
-			// Tagged → Tagged, but carrying a stale PAST expiry from an older
-			// headscale's logout stamp (#3371). Tagged nodes never expire, so
-			// clear it; a deliberate future expiry has IsExpired() == false and
-			// falls through to the no-op below.
+			// Tagged → Tagged and expired: a person re-authenticated it, so clear
+			// the past expiry. A future administrative expiry has not taken
+			// effect and falls through to the no-op below.
 			node.Expiry = nil
 		}
-		// Tagged → Tagged with no stale expiry: keep existing expiry - no action.
+		// Tagged → Tagged and not expired: keep existing expiry - no action.
 
 		// Apply default node expiry for non-tagged nodes when the
 		// resolved expiry is still nil or zero (e.g., CLI registration
@@ -2677,9 +2676,9 @@ func (s *State) findExistingNodeForPAK(
 // --authkey=KEY") re-presents a spent key legitimately. Anything that
 // authorises something new must present a valid key:
 //   - a node key rotation;
-//   - an expired user-owned node, which is re-authenticating rather than
-//     waking up. Tagged nodes never expire, so their past expiry is only a
-//     stale logout stamp and does not count;
+//   - an expired node. Tagged nodes can carry an administrative expiry or
+//     retain their expiry after an admin tags them. Legacy logout stamps
+//     were cleared by migration; logout no longer expires tagged nodes;
 //   - a tagged key converting a user-owned node to tagged;
 //   - a tagged key other than the one the node last authed with, which retags
 //     it.
@@ -2692,13 +2691,13 @@ func pakSkipsValidation(n types.NodeView, pak *types.PreAuthKey, nodeKey key.Nod
 	}
 
 	isNodeKeyRotation := n.NodeKey() != nodeKey
-	isExpiredUserOwned := !n.IsTagged() && n.IsExpiredAt(now)
+	isExpired := n.IsExpiredAt(now)
 	isOwnershipConversion := pak.ConvertsNodeToTagged(n)
 	isRetag := pak.RetagsNode(n)
 	ownershipMatches := n.IsTagged() ||
 		(pak.User != nil && n.UserID().Valid() && n.UserID().Get() == pak.User.ID)
 
-	return ownershipMatches && !isNodeKeyRotation && !isExpiredUserOwned &&
+	return ownershipMatches && !isNodeKeyRotation && !isExpired &&
 		!isOwnershipConversion && !isRetag
 }
 
@@ -2994,10 +2993,10 @@ func (s *State) reregisterNodeWithPAK(
 			node.User = nil
 
 			// Converting a user-owned node to tagged drops the user's key
-			// expiry (tagged nodes never expire). But retagging an
+			// expiry (tagged nodes disable it by default). But retagging an
 			// already-tagged node must preserve a deliberate FUTURE expiry
 			// set via `headscale nodes expire` - that is a node property, not
-			// tied to the auth key - and only clear a stale PAST expiry. This
+			// tied to the auth key - and only clear a past expiry with a valid key. This
 			// keeps the retag path symmetric with the same-key relogin path
 			// below rather than silently overriding an admin decision.
 			if wasUserOwned || node.IsExpiredAt(now) {
@@ -3033,10 +3032,8 @@ func (s *State) reregisterNodeWithPAK(
 				node.Expiry = nil
 			}
 		} else if node.IsExpiredAt(now) {
-			// A tagged node must never carry key expiry. Clear a stale
-			// PAST logout stamp so re-auth is not permanently blocked. A
-			// deliberate future expiry (headscale nodes expire) is not yet
-			// expired and is left untouched.
+			// A valid key re-authenticated this expired tagged node. A future
+			// administrative expiry has not taken effect and stays untouched.
 			node.Expiry = nil
 		}
 	})
