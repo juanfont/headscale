@@ -282,6 +282,10 @@ type AuthRequest struct {
 
 	finished chan AuthVerdict
 	closed   *atomic.Bool
+
+	// waiter is closed once a newer request parks on this session; see
+	// [AuthRequest.Park].
+	waiter atomic.Pointer[chan struct{}]
 }
 
 // NewAuthRequest creates a pending auth request with no payload, suitable
@@ -385,6 +389,22 @@ func (rn *AuthRequest) FinishAuth(verdict AuthVerdict) {
 
 func (rn *AuthRequest) WaitForAuth() <-chan AuthVerdict {
 	return rn.finished
+}
+
+// Park makes the caller the one request waiting on [AuthRequest.WaitForAuth]
+// and returns a channel that is closed once a newer caller takes its place.
+// [AuthRequest.FinishAuth] hands out one verdict, so a session needs one
+// waiter. The newest wins, so a client that reconnected is not kept out by
+// its own dead request. Parked requests are then bounded by the sessions in
+// the auth cache, not by how many requests clients send.
+func (rn *AuthRequest) Park() <-chan struct{} {
+	waiter := make(chan struct{})
+
+	if prev := rn.waiter.Swap(&waiter); prev != nil {
+		close(*prev)
+	}
+
+	return waiter
 }
 
 type AuthVerdict struct {
