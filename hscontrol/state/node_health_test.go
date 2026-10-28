@@ -2,6 +2,7 @@ package state
 
 import (
 	"testing"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -18,6 +19,36 @@ func TestGivenNameMapsToValidFQDNCheck(t *testing.T) {
 	require.False(t, ok, "an empty given name must fail the check")
 	require.NotEmpty(t, problem)
 	require.Contains(t, fixHint, "rename 7", "fix hint must name the offending node")
+}
+
+func TestExpiryIsEncodableCheck(t *testing.T) {
+	cfg := &types.Config{}
+
+	_, _, ok := expiryIsEncodable.check((&types.Node{ID: 1}).View(), cfg)
+	require.True(t, ok, "a node without expiry must pass the check")
+
+	earliest := time.Date(0, time.January, 1, 0, 0, 0, 0, time.UTC)
+	latest := time.Date(9999, time.December, 31, 23, 59, 59, 0, time.UTC)
+
+	for _, tt := range []struct {
+		expiry time.Time
+		ok     bool
+	}{
+		{earliest, true},
+		{earliest.Add(-time.Second), false},
+		{latest, true},
+		{latest.Add(time.Second), false},
+	} {
+		node := &types.Node{ID: 7, Expiry: &tt.expiry}
+		problem, fixHint, ok := expiryIsEncodable.check(node.View(), cfg)
+		require.Equal(t, tt.ok, ok, "expiry %s", tt.expiry)
+
+		if !ok {
+			require.NotEmpty(t, problem)
+			require.Equal(t, "headscale nodes expire --identifier 7", fixHint,
+				"the fix must name the node and keep an expired one expired")
+		}
+	}
 }
 
 // TestScanNodeHealthReportsInvalidNameWithoutMutating proves the boot scan

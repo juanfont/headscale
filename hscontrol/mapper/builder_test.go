@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -166,6 +167,26 @@ func TestMapResponseBuilder_WithPeerChangedPatch(t *testing.T) {
 
 	assert.Equal(t, changes, builder.resp.PeersChangedPatch)
 	assert.False(t, builder.hasErrors())
+}
+
+// TestMapResponseBuilder_WithPeerChangedPatchDropsUnencodableExpiry proves a
+// patch whose key expiry json.Marshal refuses is left out, as buildTailPeers
+// leaves out such a peer, instead of failing the viewer's whole response.
+func TestMapResponseBuilder_WithPeerChangedPatchDropsUnencodableExpiry(t *testing.T) {
+	m := &mapper{cfg: &types.Config{}, state: &state.State{}}
+
+	latest := time.Date(9999, time.December, 31, 23, 59, 59, 0, time.UTC)
+	beyond := latest.Add(time.Second)
+	changes := []*tailcfg.PeerChange{
+		{NodeID: 123, KeyExpiry: &beyond},
+		{NodeID: 456, KeyExpiry: &latest},
+	}
+
+	builder := m.NewMapResponseBuilder(types.NodeID(1)).WithPeerChangedPatch(changes)
+	assert.Equal(t, changes[1:], builder.resp.PeersChangedPatch)
+
+	_, err := json.Marshal(builder.resp)
+	require.NoError(t, err)
 }
 
 func TestMapResponseBuilder_WithPeersRemoved(t *testing.T) {

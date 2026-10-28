@@ -31,6 +31,9 @@ var (
 	ErrNodeUserHasNoName    = errors.New("node user has no name")
 	ErrCannotRemoveAllTags  = errors.New("cannot remove all tags from node")
 	ErrInvalidNodeView      = errors.New("cannot convert invalid NodeView to tailcfg.Node")
+	ErrExpiryOutOfRange     = errors.New(
+		"key expiry is outside the years 0 to 9999 in UTC",
+	)
 )
 
 // RouteFunc is a function that takes a node ID and returns a list of
@@ -610,6 +613,21 @@ func ValidateGivenName(givenName, baseDomain string) error {
 	}
 
 	return nil
+}
+
+// ValidateExpiry returns expiry in UTC, as [tailcfg.Node.KeyExpiry] carries it,
+// or an error when it cannot be sent to clients. [time.Time.MarshalJSON] refuses
+// a year outside [0,9999], failing every map response that carries it. A time
+// that is in range in its own zone can still leave the range in UTC.
+func ValidateExpiry(expiry time.Time) (time.Time, error) {
+	utc := expiry.UTC()
+	if year := utc.Year(); year < 0 || year > 9999 {
+		return time.Time{}, fmt.Errorf(
+			"%w: %s", ErrExpiryOutOfRange, expiry.Format(time.RFC3339),
+		)
+	}
+
+	return utc, nil
 }
 
 // AnnouncedRoutes returns the list of routes the node announces, as
@@ -1320,6 +1338,13 @@ func (nv NodeView) TailNode(
 		keyExpiry = nv.Expiry().Get()
 	}
 
+	// Fail here, where the mapper drops just this peer, rather than in
+	// json.Marshal, which fails the whole response.
+	keyExpiry, err = ValidateExpiry(keyExpiry)
+	if err != nil {
+		return nil, err
+	}
+
 	// disable-ipv4 (https://tailscale.com/docs/reference/troubleshooting/network-configuration/cgnat-conflicts)
 	// drops the node's own IPv4 CGNAT prefix from Addresses and from
 	// the AllowedIPs slot the node's own /32 occupies. Advertised
@@ -1386,7 +1411,7 @@ func (nv NodeView) TailNode(
 		User: nv.TailscaleUserID(),
 
 		Key:       nv.NodeKey(),
-		KeyExpiry: keyExpiry.UTC(),
+		KeyExpiry: keyExpiry,
 
 		Machine:       nv.MachineKey(),
 		DiscoKey:      nv.DiscoKey(),

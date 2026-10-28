@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/netip"
 	"strings"
@@ -537,8 +538,8 @@ func TestBuildFromChangeVisibilityMatchesFullMap(t *testing.T) {
 	}
 }
 
-// TestFullMapResponseSurvivesPeerWithInvalidName proves a single node with an
-// FQDN-invalid GivenName must not break map generation for its peers.
+// TestFullMapResponseSurvivesPeerWithInvalidData proves a single node with
+// stored data that cannot be sent must not break map generation for its peers.
 //
 // A node whose stored GivenName is empty (ErrNodeHasNoGivenName) or yields an
 // FQDN longer than MaxHostnameLength (ErrHostnameTooLong) makes GetFQDN, and
@@ -550,13 +551,32 @@ func TestBuildFromChangeVisibilityMatchesFullMap(t *testing.T) {
 // verbatim (NewNodeStore reads db.ListNodes() without re-sanitising names), so
 // the bad peer persists across restart. The build for an unaffected viewer
 // must succeed: the bad peer is dropped, valid peers and self survive.
-func TestFullMapResponseSurvivesPeerWithInvalidName(t *testing.T) {
+//
+// A key expiry outside the years [0,9999] in UTC is the same class, caught
+// later: TailNode sends it in UTC and json.Marshal refuses it.
+func TestFullMapResponseSurvivesPeerWithInvalidData(t *testing.T) {
+	// Each expiry is in range in its own zone and out of range in UTC.
+	west := time.FixedZone("", -(23*60+59)*60)
+	east := time.FixedZone("", (23*60+59)*60)
+
 	for _, tt := range []struct {
-		name    string
-		badName string
+		name   string
+		column string
+		value  any
 	}{
-		{"empty given name", ""},
-		{"over-long fqdn", strings.Repeat("a", types.MaxHostnameLength+1)},
+		{"empty given name", "given_name", ""},
+		{
+			"over-long fqdn", "given_name",
+			strings.Repeat("a", types.MaxHostnameLength+1),
+		},
+		{
+			"expiry after year 9999", "expiry",
+			time.Date(9999, time.December, 31, 23, 59, 59, 0, west),
+		},
+		{
+			"expiry before year 0", "expiry",
+			time.Date(0, time.January, 1, 0, 0, 0, 0, east),
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			tmp := t.TempDir()
@@ -588,14 +608,14 @@ func TestFullMapResponseSurvivesPeerWithInvalidName(t *testing.T) {
 
 			user := database.CreateUserForTest("u1")
 			n1 := database.CreateRegisteredNodeForTest(user, "n1")     // viewer, valid
-			bad := database.CreateRegisteredNodeForTest(user, "bad")   // peer, name corrupted below
+			bad := database.CreateRegisteredNodeForTest(user, "bad")   // peer, bad data
 			good := database.CreateRegisteredNodeForTest(user, "good") // peer, valid control
 
 			// Simulate a legacy/corrupt row that v29 loads verbatim.
 			require.NoError(t, database.DB.
 				Model(&types.Node{}).
 				Where("id = ?", bad.ID).
-				Update("given_name", tt.badName).Error)
+				Update(tt.column, tt.value).Error)
 			require.NoError(t, database.Close())
 
 			s, err := state.NewState(cfg)
@@ -610,16 +630,22 @@ func TestFullMapResponseSurvivesPeerWithInvalidName(t *testing.T) {
 			capVer := tailcfg.CurrentCapabilityVersion
 
 			resp, err := m.fullMapResponse(n1.ID, capVer)
-			require.NoError(t, err, "n1's map must build despite a peer with an invalid name")
+			require.NoError(t, err,
+				"n1's map must build despite a peer with invalid data")
 			require.NotNil(t, resp)
 			require.NotNil(t, resp.Node, "n1 must receive its own self node")
+
+			_, err = json.Marshal(resp)
+			require.NoError(t, err,
+				"n1's map must encode despite a peer with invalid data")
 
 			peers := map[tailcfg.NodeID]bool{}
 			for _, p := range resp.Peers {
 				peers[p.ID] = true
 			}
 
-			assert.False(t, peers[bad.ID.NodeID()], "the peer with an invalid name must be dropped")
+			assert.False(t, peers[bad.ID.NodeID()],
+				"the peer with invalid data must be dropped")
 			assert.True(t, peers[good.ID.NodeID()], "valid peers must remain in the map")
 		})
 	}

@@ -536,10 +536,12 @@ func NodeKeyRotated(node types.NodeView) Change {
 
 	// KeyExpiry is always set: the zero value clears any prior expiry
 	// timestamp on the peer, and a non-zero value carries the new expiry. It
-	// does not clear [tailcfg.Node.Expired].
+	// does not clear [tailcfg.Node.Expired]. It is sent in UTC, as
+	// [types.NodeView.TailNode] sends it: the stored zone depends on the
+	// database.
 	var expiry time.Time
 	if e, ok := node.Expiry().GetOk(); ok {
-		expiry = e
+		expiry = e.UTC()
 	}
 
 	c := PeerPatched("node key rotated (relogin)", &tailcfg.PeerChange{
