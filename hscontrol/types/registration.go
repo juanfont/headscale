@@ -13,11 +13,9 @@ import (
 // only the fields the registration callback path actually consumes when
 // promoting a pending registration to a real node.
 //
-// Combined with the bounded-LRU cache that holds these entries, this caps
-// the worst-case memory footprint of unauthenticated cache-fill attempts
-// at (max_entries × per_entry_size). The cache is sized so that the
-// product is bounded to a few MiB even with attacker-supplied 1 MiB
-// Hostinfos (the Noise body limit).
+// Any client can open a pending registration. The bounded-LRU cache that
+// holds these entries caps their number. Hostinfo retains only auth and
+// confirmation metadata, bounded by [ValidateHostinfo] before caching.
 type RegistrationData struct {
 	// MachineKey is the cryptographic identity of the machine being
 	// registered. Required.
@@ -34,14 +32,9 @@ type RegistrationData struct {
 	// Already validated/normalised by EnsureHostname at producer time.
 	Hostname string
 
-	// Hostinfo is the original [tailcfg.Hostinfo] from the [tailcfg.RegisterRequest],
-	// stored so that the auth callback can populate the new node's
-	// initial [tailcfg.Hostinfo] (and so that observability/CLI consumers see
-	// fields like OS, OSVersion, and IPNVersion before the first
-	// [tailcfg.MapRequest] restores the live set).
-	//
-	// May be nil if the client did not send [tailcfg.Hostinfo] in the original
-	// [tailcfg.RegisterRequest].
+	// Hostinfo carries hostname and requested tags for auth, and OS for the
+	// confirmation page. Other fields arrive in the first MapRequest.
+	// It may be nil when the registration did not include Hostinfo.
 	Hostinfo *tailcfg.Hostinfo
 
 	// Endpoints is the initial set of WireGuard endpoints the node

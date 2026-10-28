@@ -995,6 +995,11 @@ func (a *AuthProviderOIDC) handleRegistration(
 	if err != nil {
 		a.h.Change(nodeChange)
 
+		if errors.Is(err, types.ErrHostinfoTooLarge) {
+			return false, newHTTPUserError(http.StatusBadRequest, "node report too large",
+				"This device reports too much data. Ask your administrator to reduce its reported metadata, then sign in again.", err)
+		}
+
 		return false, fmt.Errorf("registering node: %w", err)
 	}
 

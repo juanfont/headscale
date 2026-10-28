@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"testing"
@@ -1638,15 +1639,8 @@ func TestAuthenticationFlows(t *testing.T) {
 		},
 
 		// === AUTH PROVIDER EDGE CASES ===
-		// TEST: Interactive workflow preserves custom hostinfo
-		// WHAT: Tests that custom hostinfo fields are preserved through interactive flow
-		// INPUT: Interactive registration with detailed hostinfo (OS, version, model)
-		// EXPECTED: Node registers with all hostinfo fields preserved
-		// WHY: Ensures interactive flow doesn't lose custom hostinfo data
-		// NOTE: RequestTags are NOT tested here because tag authorization via
-		// advertise-tags requires the user to have existing nodes (for IP-based
-		// ownership verification). New users registering their first node cannot
-		// claim tags via RequestTags - they must use a tagged PreAuthKey instead.
+		// Interactive registration retains auth metadata. The first map request
+		// supplies the remaining Hostinfo fields.
 		{
 			name: "interactive_workflow_with_custom_hostinfo",
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
@@ -1673,15 +1667,29 @@ func TestAuthenticationFlows(t *testing.T) {
 			validateCompleteResponse: true,
 			expectedAuthURLPattern:   "/register/",
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
-				// Verify custom hostinfo was preserved through interactive workflow
+				// Confirm the minimal cached report, then restore the operational fields.
 				node, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
 				assert.True(t, found, "node should be found after interactive registration")
 
 				if found {
 					assert.Equal(t, "custom-interactive-node", node.Hostname())
 					assert.Equal(t, "linux", node.Hostinfo().OS())
-					assert.Equal(t, "20.04", node.Hostinfo().OSVersion())
-					assert.Equal(t, "server", node.Hostinfo().DeviceModel())
+					assert.Empty(t, node.Hostinfo().OSVersion())
+					assert.Empty(t, node.Hostinfo().DeviceModel())
+
+					_, err := app.state.UpdateNodeFromMapRequest(node.ID(), tailcfg.MapRequest{
+						NodeKey: node.NodeKey(), DiscoKey: node.DiscoKey(),
+						Hostinfo: &tailcfg.Hostinfo{
+							Hostname: node.Hostname(), OS: "linux",
+							OSVersion: "20.04", DeviceModel: "server",
+						},
+					})
+					require.NoError(t, err)
+
+					updated, ok := app.state.GetNodeByID(node.ID())
+					require.True(t, ok)
+					assert.Equal(t, "20.04", updated.Hostinfo().OSVersion())
+					assert.Equal(t, "server", updated.Hostinfo().DeviceModel())
 				}
 			},
 		},
@@ -4340,14 +4348,14 @@ func TestHandleNodeFromAuthPath_ReloginWholeNode(t *testing.T) {
 	tests := []struct {
 		name      string
 		expired   bool
-		services  []tailcfg.Service
+		hostname  string
 		wantPatch bool
 	}{
 		{name: "keys only", wantPatch: true},
 		{name: "expired", expired: true},
 		{
-			name:     "peer-visible hostinfo",
-			services: []tailcfg.Service{{Proto: tailcfg.PeerAPI4, Port: 4242}},
+			name:     "peer-visible hostname",
+			hostname: "renamed-node",
 		},
 	}
 
@@ -4365,15 +4373,19 @@ func TestHandleNodeFromAuthPath_ReloginWholeNode(t *testing.T) {
 
 			app.state.PutNodeInStoreForTest(*node)
 
+			hostname := node.Hostname
+			if tt.hostname != "" {
+				hostname = tt.hostname
+			}
+
 			newNodeKey := key.NewNode()
 			authID := types.MustAuthID()
 			app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
 				MachineKey: node.MachineKey,
 				NodeKey:    newNodeKey.Public(),
-				Hostname:   node.Hostname,
+				Hostname:   hostname,
 				Hostinfo: &tailcfg.Hostinfo{
-					Hostname: node.Hostname,
-					Services: tt.services,
+					Hostname: hostname,
 				},
 			}))
 
@@ -4597,4 +4609,33 @@ func TestRegisterRejectsUnencodableExpiry(t *testing.T) {
 	stored, err := app.state.DB().GetNodeByID(node.ID())
 	require.NoError(t, err)
 	assert.True(t, latest.Equal(*stored.Expiry))
+}
+
+// TestPendingRegistrationKeepsAuthMetadata pins that operational reports do
+// not stay in the auth cache before the first MapRequest.
+func TestPendingRegistrationKeepsAuthMetadata(t *testing.T) {
+	app := createTestApp(t)
+	hostinfo := &tailcfg.Hostinfo{
+		Hostname: "pending-router", OS: "linux", OSVersion: "6.12.0",
+		RequestTags:  []string{"tag:router"},
+		RoutableIPs:  []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")},
+		Services:     []tailcfg.Service{{Proto: tailcfg.PeerAPI4, Port: 41641}},
+		NetInfo:      &tailcfg.NetInfo{PreferredDERP: 1},
+		SSH_HostKeys: []string{"ssh-ed25519 key"},
+	}
+	resp, err := app.handleRegister(context.Background(), tailcfg.RegisterRequest{
+		NodeKey: key.NewNode().Public(), Hostinfo: hostinfo,
+	}, key.NewMachine().Public())
+	require.NoError(t, err)
+	authID, err := extractRegistrationIDFromAuthURL(resp.AuthURL)
+	require.NoError(t, err)
+
+	entry, ok := app.state.GetAuthCacheEntry(authID)
+	require.True(t, ok)
+	assert.Equal(t, &tailcfg.Hostinfo{
+		Hostname: "pending-router", OS: "linux", RequestTags: []string{"tag:router"},
+	}, entry.RegistrationData().Hostinfo)
+	hostinfo.RequestTags[0] = "tag:changed"
+	assert.Equal(t, []string{"tag:router"}, entry.RegistrationData().Hostinfo.RequestTags)
+	assert.Len(t, hostinfo.RoutableIPs, 1, "the request itself must be left alone")
 }

@@ -2,12 +2,14 @@ package hscontrol
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 	"github.com/oauth2-proxy/mockoidc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
 
@@ -616,4 +619,44 @@ func TestRouterMethodNotAllowedIncludesAllow(t *testing.T) {
 
 	assert.Equal(t, http.StatusMethodNotAllowed, resp.StatusCode)
 	assert.Equal(t, []string{http.MethodGet}, resp.Header.Values("Allow"))
+}
+
+func TestOIDCRegistrationRejectsOversizedMergedHostinfo(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("oidc-report-user")
+	node := app.state.CreateNodeForTest(user, "oidc-report-node")
+	node.Hostinfo = &tailcfg.Hostinfo{Hostname: node.Hostname, OSVersion: "v"}
+	encoded, err := json.Marshal(node.Hostinfo)
+	require.NoError(t, err)
+
+	node.Hostinfo.OSVersion = strings.Repeat("v", types.MaxHostinfoSize-len(encoded))
+	require.NoError(t, types.ValidateHostinfo(node.Hostinfo))
+	before := app.state.PutNodeInStoreForTest(*node)
+
+	hostname := strings.Repeat("h", types.MaxHostnameLength)
+	authID := types.MustAuthID()
+	app.state.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+		MachineKey: node.MachineKey, NodeKey: key.NewNode().Public(),
+		Hostname: hostname, Hostinfo: &tailcfg.Hostinfo{Hostname: hostname},
+	}))
+
+	provider := &AuthProviderOIDC{h: app}
+	changed, err := provider.handleRegistration(user, authID, nil)
+	require.ErrorIs(t, err, types.ErrHostinfoTooLarge)
+
+	var httpErr HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, http.StatusBadRequest, httpErr.Code)
+	assert.Contains(t, strings.ToLower(httpErr.UserMsg), "reduce")
+	assert.Contains(t, httpErr.UserMsg, "metadata")
+	assert.Contains(t, httpErr.UserMsg, "sign")
+	assert.False(t, changed)
+
+	after, ok := app.state.GetNodeByID(node.ID)
+	require.True(t, ok)
+	assert.Equal(t, before.NodeKey(), after.NodeKey())
+	assert.Equal(t, before.Hostname(), after.Hostname())
+	assert.True(t, before.Hostinfo().AsStruct().Equal(after.Hostinfo().AsStruct()))
 }
