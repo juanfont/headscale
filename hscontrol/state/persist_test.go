@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"net/netip"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -689,6 +691,62 @@ func TestConcurrentPreAuthKeyRegistrationSameMachineKey(t *testing.T) {
 
 	require.Equal(t, 1, s.ListNodes().Len(),
 		"concurrent registrations of one machine key must yield a single node")
+	require.Zero(t, s.registerLocks.Size(),
+		"registration locks must not outlive the registrations using them")
+}
+
+// TestRejectedRegistrationLeavesNoRegisterLock pins that a refused
+// registration keeps nothing. The lock is taken before the pre-auth key is
+// checked, so a client without a credential reaches it with as many machine
+// keys as it likes.
+func TestRejectedRegistrationLeavesNoRegisterLock(t *testing.T) {
+	s, err := NewState(persistTestConfig(t.TempDir() + "/headscale.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	for range 100 {
+		_, _, err := s.HandleNodeFromPreAuthKey(tailcfg.RegisterRequest{
+			Auth:    &tailcfg.RegisterResponseAuth{AuthKey: "not-a-key"},
+			NodeKey: key.NewNode().Public(),
+		}, key.NewMachine().Public())
+		require.Error(t, err)
+	}
+
+	require.Zero(t, s.registerLocks.Size())
+}
+
+// TestLockRegistrationSerialisesSameMachineKey pins that dropping unused
+// locks never lets two registrations of one machine key run at once.
+func TestLockRegistrationSerialisesSameMachineKey(t *testing.T) {
+	s, err := NewState(persistTestConfig(t.TempDir() + "/headscale.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	machineKey := key.NewMachine().Public()
+
+	var (
+		wg      sync.WaitGroup
+		holders atomic.Int32
+		overlap atomic.Bool
+	)
+
+	for range 64 {
+		wg.Go(func() {
+			defer s.lockRegistration(machineKey)()
+
+			if holders.Add(1) != 1 {
+				overlap.Store(true)
+			}
+
+			runtime.Gosched()
+			holders.Add(-1)
+		})
+	}
+
+	wg.Wait()
+
+	require.False(t, overlap.Load(), "two registrations held the lock at once")
+	require.Zero(t, s.registerLocks.Size())
 }
 
 // TestUpdatePolicyManagerUsersUnchangedKeepsSnapshot ensures re-sending the
