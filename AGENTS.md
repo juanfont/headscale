@@ -297,6 +297,13 @@ major version. One provider instance serves both node certificates and certmagic
 so they move together; a provider on another libdns major cannot be added until
 certmagic moves.
 
+The servertest Terraform tests run the newest three `tailscale/tailscale`
+provider releases, listed in `terraformProviderVersions`
+(`hscontrol/servertest/apiv2_test.go`). The list is committed, not resolved at
+test time, so a new release arrives as a bump pull request rather than failing
+unrelated ones. A test of a provider feature calls `requireProvider` with the
+first release that has it.
+
 `Dockerfile.tailscale-HEAD` and `Dockerfile.derper` compile a tailscale tree
 cloned from an unpinned branch, so their builder image is a floor, not a
 target: it has to be at least upstream's `go` directive. They set

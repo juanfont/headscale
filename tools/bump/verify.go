@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"slices"
 	"strings"
 
 	"golang.org/x/mod/semver"
@@ -30,6 +31,7 @@ func cmdVerify(ctx context.Context) error {
 	findings = append(findings, verifyBuilders(ctx, r)...)
 	findings = append(findings, verifyToolchain(ctx, r)...)
 	findings = append(findings, verifyVendorHash(ctx, r)...)
+	findings = append(findings, verifyProviders(ctx, r)...)
 
 	if len(findings) == 0 {
 		log.Print("all version pins agree")
@@ -132,6 +134,27 @@ func verifyVendorHash(ctx context.Context, r *repo) []finding {
 	out, err := r.nixRun(ctx, "go", "run", "./cmd/vendorhash", "check")
 	if err != nil {
 		return []finding{finding("flakehashes.json is stale: " + strings.TrimSpace(out))}
+	}
+
+	return nil
+}
+
+// verifyProviders reports a tested provider set that has fallen behind the
+// registry. The tests never resolve it themselves, so nothing else notices.
+func verifyProviders(ctx context.Context, r *repo) []finding {
+	have, err := currentProviders(r)
+	if err != nil {
+		return []finding{finding(err.Error())}
+	}
+
+	want, err := newestProviders(ctx)
+	if err != nil {
+		return []finding{finding("could not resolve the Terraform provider releases: " + err.Error())}
+	}
+
+	if !slices.Equal(have, want) {
+		return []finding{finding(fmt.Sprintf("%s tests Terraform provider %s, but the newest %d releases are %s",
+			providerPinFile, strings.Join(have, ", "), testedProviders, strings.Join(want, ", ")))}
 	}
 
 	return nil
