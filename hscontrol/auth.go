@@ -339,6 +339,8 @@ func (h *Headscale) waitForFollowup(
 			)
 		}
 
+		superseded := reg.Park()
+
 		var verdict types.AuthVerdict
 		select {
 		// Prefer a completed registration even if the context has also
@@ -350,6 +352,12 @@ func (h *Headscale) waitForFollowup(
 			select {
 			case <-ctx.Done():
 				return nil, NewHTTPError(http.StatusUnauthorized, "registration timed out", ctx.Err())
+			case <-superseded:
+				// tailscaled keeps one follow-up in flight, so only a request
+				// it already abandoned is displaced.
+				return nil, NewHTTPError(
+					http.StatusConflict, "superseded by a newer followup request", nil,
+				)
 			case verdict = <-reg.WaitForAuth():
 			}
 		}
