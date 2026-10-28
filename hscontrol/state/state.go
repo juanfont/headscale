@@ -43,6 +43,7 @@ import (
 	"tailscale.com/types/key"
 	"tailscale.com/types/views"
 	"tailscale.com/util/dnsname"
+	"tailscale.com/util/truncate"
 )
 
 const (
@@ -258,6 +259,40 @@ func NewState(cfg *types.Config) (*State, error) {
 		// expiry is in the year 10000 and cannot be encoded.
 		if node.Expiry != nil {
 			node.Expiry = new(node.Expiry.UTC())
+		}
+
+		// Legacy reports must pass the same checks before entering the NodeStore.
+		// The next persist rewrites trimmed or discarded metadata.
+		if len(node.Hostname) > types.MaxHostnameLength {
+			log.Warn().Uint64(zf.NodeID, node.ID.Uint64()).Msg("trimming oversized stored hostname")
+			node.Hostname = strings.Clone(truncate.String(node.Hostname, types.MaxHostnameLength))
+		}
+
+		node.Endpoints = slices.DeleteFunc(node.Endpoints, func(ep netip.AddrPort) bool {
+			return ep.Addr().Zone() != ""
+		})
+		node.Endpoints = slices.Clone(node.Endpoints[:min(len(node.Endpoints), types.MaxEndpoints)])
+
+		if hi := node.Hostinfo; hi != nil {
+			if hi.NetInfo != nil {
+				hi.NetInfo.DERPLatency = nil
+			}
+
+			if len(hi.Hostname) > types.MaxHostnameLength {
+				hi.Hostname = strings.Clone(truncate.String(hi.Hostname, types.MaxHostnameLength))
+			}
+
+			if len(hi.RoutableIPs) > types.MaxRoutableIPs {
+				log.Warn().Uint64(zf.NodeID, node.ID.Uint64()).Msgf(
+					"too many stored routes, keeping the first %d", types.MaxRoutableIPs)
+				hi.RoutableIPs = slices.Clone(hi.RoutableIPs[:types.MaxRoutableIPs])
+			}
+		}
+
+		err := types.ValidateHostinfo(node.Hostinfo)
+		if err != nil {
+			log.Warn().Uint64(zf.NodeID, node.ID.Uint64()).Err(err).Msg("discarding stored Hostinfo until the node reports again")
+			node.Hostinfo = nil
 		}
 	}
 
