@@ -1975,6 +1975,35 @@ func TestRegistrationHandler_ValidatesClientReport(t *testing.T) {
 		}, entry.RegistrationData().Hostinfo)
 	})
 
+	t.Run("followup discards unused request data", func(t *testing.T) {
+		t.Parallel()
+		app := createTestApp(t)
+		ns := &noiseServer{headscale: app, machineKey: key.NewMachine().Public()}
+		rec := serveRegister(t, ns, tailcfg.RegisterRequest{
+			Version: tailcfg.CurrentCapabilityVersion, NodeKey: key.NewNode().Public(),
+			Followup: "http://localhost:8080/register/" + types.MustAuthID().String(),
+			Auth:     &tailcfg.RegisterResponseAuth{AuthKey: "unused-followup-key"},
+			Hostinfo: &tailcfg.Hostinfo{
+				Hostname: "followup-node", OS: "linux", RequestTags: []string{"tag:test"},
+				OSVersion: strings.Repeat("v", types.MaxHostinfoSize),
+			},
+			DeviceCert: []byte("unused"), Signature: []byte("unused"), Tailnet: "unused",
+		})
+		require.Equal(t, http.StatusOK, rec.Code)
+
+		var resp tailcfg.RegisterResponse
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+		require.Empty(t, resp.Error)
+		authID, err := extractRegistrationIDFromAuthURL(resp.AuthURL)
+		require.NoError(t, err)
+
+		entry, ok := app.state.GetAuthCacheEntry(authID)
+		require.True(t, ok)
+		assert.Equal(t, &tailcfg.Hostinfo{
+			Hostname: "followup-node", OS: "linux", RequestTags: []string{"tag:test"},
+		}, entry.RegistrationData().Hostinfo)
+	})
+
 	t.Run("oversized report", func(t *testing.T) {
 		t.Parallel()
 
@@ -2218,4 +2247,72 @@ func TestNoiseHTTPServerTimeouts(t *testing.T) {
 			t.Fatal("the server kept a tunnel with no open stream")
 		}
 	})
+}
+
+// TestSSHActionFollowUp_ParksOneRequestPerSession pins that a pending SSH
+// check keeps one waiting follow-up, the newest. Older waiters re-delegate at
+// once instead of staying parked until the session ends.
+func TestSSHActionFollowUp_ParksOneRequestPerSession(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	nodes := putSSHCheckNodes(t, app, "ssh-park-user", "src-node", "dst-node")
+	src, dst := nodes[0], nodes[1]
+
+	authID := types.MustAuthID()
+	auth := types.NewSSHCheckAuthRequest(src.ID, dst.ID)
+	app.state.SetAuthCacheEntry(authID, auth)
+
+	ns := &noiseServer{headscale: app, machineKey: dst.MachineKey}
+
+	const followups = 50
+
+	type answer struct {
+		action *tailcfg.SSHAction
+		err    error
+	}
+
+	answered := make(chan answer, followups)
+
+	for range followups {
+		go func() {
+			action, err := ns.sshActionFollowUp(
+				t.Context(), zerolog.Nop(), &tailcfg.SSHAction{},
+				authID.String(), src.ID, dst.ID, sshTestLocalUser,
+			)
+			answered <- answer{action, err}
+		}()
+	}
+
+	next := func(msg string) answer {
+		t.Helper()
+
+		select {
+		case a := <-answered:
+			return a
+		case <-time.After(5 * time.Second):
+			require.FailNow(t, msg)
+
+			return answer{}
+		}
+	}
+
+	for range followups - 1 {
+		a := next("more than one follow-up is parked on the session")
+		require.NoError(t, a.err)
+		assert.NotEqual(t, authID, requireSSHHold(t, *a.action),
+			"re-delegation must mint a new session")
+	}
+
+	select {
+	case a := <-answered:
+		require.FailNowf(t, "the newest follow-up must still be waiting", "got %+v", a)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	auth.FinishAuth(types.AuthVerdict{})
+
+	last := next("the parked follow-up did not collect the verdict")
+	require.NoError(t, last.err)
+	assert.True(t, last.action.Accept, "accept, got %+v", last.action)
 }
