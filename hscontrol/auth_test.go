@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"testing"
@@ -4597,4 +4598,35 @@ func TestRegisterRejectsUnencodableExpiry(t *testing.T) {
 	stored, err := app.state.DB().GetNodeByID(node.ID())
 	require.NoError(t, err)
 	assert.True(t, latest.Equal(*stored.Expiry))
+}
+
+// TestPendingRegistrationKeepsNoRoutes pins that a pending registration caches
+// the client's Hostinfo without its announced routes, the one list a client
+// makes long; the node's first MapRequest reports them again.
+func TestPendingRegistrationKeepsNoRoutes(t *testing.T) {
+	app := createTestApp(t)
+
+	hostinfo := &tailcfg.Hostinfo{
+		Hostname:    "pending-router",
+		OSVersion:   "6.12.0",
+		RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")},
+		Services:    []tailcfg.Service{{Proto: tailcfg.PeerAPI4, Port: 41641}},
+	}
+
+	resp, err := app.handleRegister(context.Background(), tailcfg.RegisterRequest{
+		NodeKey:  key.NewNode().Public(),
+		Hostinfo: hostinfo,
+	}, key.NewMachine().Public())
+	require.NoError(t, err)
+
+	authID, err := extractRegistrationIDFromAuthURL(resp.AuthURL)
+	require.NoError(t, err, "resp=%+v", resp)
+
+	entry, ok := app.state.GetAuthCacheEntry(authID)
+	require.True(t, ok)
+
+	want := hostinfo.Clone()
+	want.RoutableIPs = nil
+	assert.Equal(t, want, entry.RegistrationData().Hostinfo)
+	assert.Len(t, hostinfo.RoutableIPs, 1, "the request itself must be left alone")
 }

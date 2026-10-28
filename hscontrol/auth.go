@@ -389,24 +389,32 @@ func (h *Headscale) reqToNewRegisterResponse(
 }
 
 // registrationDataFromRequest builds the [types.RegistrationData] payload stored
-// in the auth cache for a pending registration. The original [tailcfg.Hostinfo] is
-// retained so that consumers (auth callback, observability) see the
-// fields the client originally announced; the bounded-LRU cap on the
-// cache is what bounds the unauthenticated cache-fill DoS surface.
+// in the auth cache for a pending registration. The [tailcfg.Hostinfo] is kept
+// so that consumers (auth callback, observability) see the fields the client
+// announced, except its routes: they are the one list a real client makes
+// long, and the node's first [tailcfg.MapRequest] reports them again.
 func registrationDataFromRequest(
 	req tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) *types.RegistrationData {
-	var hostname string
+	var (
+		hostname string
+		hostinfo *tailcfg.Hostinfo
+	)
+
 	if req.Hostinfo != nil {
 		hostname = req.Hostinfo.Hostname
+
+		hi := *req.Hostinfo
+		hi.RoutableIPs = nil
+		hostinfo = &hi
 	}
 
 	regData := &types.RegistrationData{
 		MachineKey: machineKey,
 		NodeKey:    req.NodeKey,
 		Hostname:   hostname,
-		Hostinfo:   req.Hostinfo,
+		Hostinfo:   hostinfo,
 	}
 
 	if !req.Expiry.IsZero() {
