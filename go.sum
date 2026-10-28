@@ -496,6 +496,7 @@ github.com/tailscale/certstore v0.1.1-0.20260409135935-3638fb84b77d h1:JcGKBZAL7
 github.com/tailscale/certstore v0.1.1-0.20260409135935-3638fb84b77d/go.mod h1:XrBNfAFN+pwoWuksbFS9Ccxnopa15zJGgXRFN90l3K4=
 github.com/tailscale/gliderssh v0.3.4-0.20260716005906-1a0f895faf28 h1:Azz5ILxxVsHN/KjIu3wkJPAmmtiijucZw4Ax5Ye8n+s=
 github.com/tailscale/gliderssh v0.3.4-0.20260716005906-1a0f895faf28/go.mod h1:wn16Km1EZOX4UEAyaZa3dBwfFGOJ7neck40NcwosJUw=
+github.com/tailscale/gliderssh v0.3.4-0.20261026144310-31f7cf365d3a h1:LQfS++EBVN2Bk9/FbFjJmdP/CsebU0OupOX58tO4p04=
 github.com/tailscale/go-winio v0.0.0-20231025203758-c4f33415bf55 h1:Gzfnfk2TWrk8Jj4P4c1a3CtQyMaTVCznlkLZI++hok4=
 github.com/tailscale/go-winio v0.0.0-20231025203758-c4f33415bf55/go.mod h1:4k4QO+dQ3R5FofL+SanAUZe+/QfeK0+OIuwDIRu2vSg=
 github.com/tailscale/golang-x-crypto v0.0.0-20260720160339-c86ca1284b96 h1:m9EAsCu/afUkg9YkknXaRqMPl/omkUNRol5yB7hbG0Y=
@@ -732,6 +733,8 @@ software.sslmate.com/src/go-pkcs12 v0.7.3 h1:JBQD3FDqYjTeyDAeZQklj2ar88ykBLtALlo
 software.sslmate.com/src/go-pkcs12 v0.7.3/go.mod h1:Qiz0EyvDRJjjxGyUQa2cCNZn/wMyzrRJ/qcDXOQazLI=
 tailscale.com v1.105.0-pre.0.20261022061721-37fc7a7a7260 h1:596mEtP2SQQfbmPfuoIUPRUNwPJkv8AALyJnPj6XZvs=
 tailscale.com v1.105.0-pre.0.20261022061721-37fc7a7a7260/go.mod h1:oGyNRNjPmnr64NnIb0cW9SzFuHaxv6rPkVN6Sh6KEHw=
+tailscale.com v1.105.0-pre.0.20261027200808-3a38840ccc77 h1:8P8bkrB8b2Jm/GUn+pJg/qgc8iEFiMBgolq+bC4lyZo=
+tailscale.com v1.105.0-pre.0.20261027200808-3a38840ccc77/go.mod h1:b4GBgU19aTCsTv+c8MX+vmnWZ8ln5hkHtAesD73gNHc=
 tailscale.com/client/tailscale/v2 v2.12.0 h1:v7oMM/u0/vuchgLTwCdT0nJ6PyD0Mlpm2mWnoUKVyBo=
 tailscale.com/client/tailscale/v2 v2.12.0/go.mod h1:FGjvGT3ThHelqo0gfdK3IN3k1dwNbRzYbQh2XO3C47U=
 zombiezen.com/go/postgrestest v1.0.1 h1:aXoADQAJmZDU3+xilYVut0pHhgc0sF8ZspPW9gFNwP4=

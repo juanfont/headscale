@@ -148,6 +148,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Node joins and deletions under churn, especially in tailnets with many tags, no longer stall registrations, map updates and API requests; ephemeral nodes are cleaned up within seconds instead of minutes [#3575](https://github.com/juanfont/headscale/pull/3575)
 - Shutdown keeps the LastSeen of connected nodes: it waits for their map sessions to close before closing the database [#3575](https://github.com/juanfont/headscale/pull/3575)
 - Deleting an ephemeral node no longer logs a spurious `ephemeral node deletion failed` error later [#3575](https://github.com/juanfont/headscale/pull/3575)
+- Update `tailscale.com` to `v1.105.0-pre.0.20261027200808-3a38840ccc77`, which includes the upstream bound on the DERP HTTP client's non-101 response body read (tailscale/tailscale#21980, the Tailworm derphttp client bomb: previously an unbounded `io.ReadAll` inlined a response body into an error). The embedded DERP server's `sendHistory` was already bounded by its client-set size in the previously pinned tree.
 
 ## 0.29.6 (2026-10-24)
 

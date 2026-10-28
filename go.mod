@@ -83,7 +83,7 @@ require (
 	// go get modernc.org/libc@v1.55.3 modernc.org/sqlite@v1.33.1
 	modernc.org/sqlite v1.61.0
 	pgregory.net/rapid v1.3.0
-	tailscale.com v1.105.0-pre.0.20261022061721-37fc7a7a7260
+	tailscale.com v1.105.0-pre.0.20261027200808-3a38840ccc77
 	tailscale.com/client/tailscale/v2 v2.12.0
 	zombiezen.com/go/postgrestest v1.0.1
 )
