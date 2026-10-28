@@ -2,9 +2,6 @@ package servertest_test
 
 import (
 	"context"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -38,6 +35,15 @@ import (
 // tofu is required, not optional: it ships in the nix dev shell, so a missing
 // binary means a broken environment and the test fails rather than skipping.
 func TestAPIv2OAuthScopes(t *testing.T) {
+	t.Parallel()
+	forEachProvider(t, apiv2OAuthScopes)
+}
+
+// apiv2OAuthScopes runs the matrix on one provider release. Each release gets
+// its own server: the policy_file row rewrites the policy the others rely on.
+func apiv2OAuthScopes(t *testing.T, version string) {
+	t.Helper()
+
 	srv := servertest.NewServer(t, servertest.WithRealListener())
 	owner := srv.CreateUser(t, "apiv2-oauth")
 	creator := owner.ID
@@ -288,7 +294,7 @@ resource "tailscale_tailnet_key" "k" {
 			secret, client, err := srv.State().CreateOAuthClient(tt.scopes, tt.tags, "scope-matrix", &creator)
 			require.NoError(t, err)
 
-			tf := newTofuOAuth(t, srv.URL, client.ClientID, secret, oauthHCL(tt.config))
+			tf := newTofuOAuth(t, version, srv.URL, client.ClientID, secret, tt.config)
 			tf.run("init", "-no-color", "-input=false")
 
 			if tt.deny {
@@ -323,23 +329,6 @@ func setScopeMatrixPolicy(t *testing.T, srv *servertest.TestServer) {
 	require.NoError(t, err)
 }
 
-// oauthHCL wraps a single-operation body with the provider block. The provider
-// authenticates via the OAuth env vars newTofuOAuth sets, so the block is empty.
-func oauthHCL(body string) string {
-	return `
-terraform {
-  required_providers {
-    tailscale = {
-      source  = "tailscale/tailscale"
-      version = "~> 0.21"
-    }
-  }
-}
-
-provider "tailscale" {}
-` + body
-}
-
 // newTofuOAuth is a newTofu variant whose provider authenticates with OAuth
 // client credentials instead of an API key: it sets TAILSCALE_OAUTH_CLIENT_ID /
 // TAILSCALE_OAUTH_CLIENT_SECRET (the env vars the tailscale/tailscale provider
@@ -347,35 +336,14 @@ provider "tailscale" {}
 // baseURL/api/v2/oauth/token. The client id is embedded in the secret, so the
 // secret embeds the client id (the provider sends both; the server derives the
 // client from the secret alone).
-func newTofuOAuth(t *testing.T, baseURL, clientID, clientSecret, config string) *tofu {
+func newTofuOAuth(t *testing.T, version, baseURL, clientID, clientSecret, config string) *tofu {
 	t.Helper()
 
-	bin, err := exec.LookPath("tofu")
-	require.NoErrorf(t, err, "tofu is required for TestAPIv2OAuthScopes (provided by the nix dev shell)")
-
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(config), 0o600))
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "plugin-cache"), 0o755))
-
-	env := append(
-		os.Environ(),
+	return newTofuEnv(t, version, config,
 		"TAILSCALE_BASE_URL="+baseURL,
 		"TAILSCALE_OAUTH_CLIENT_ID="+clientID,
 		"TAILSCALE_OAUTH_CLIENT_SECRET="+clientSecret,
-		"TAILSCALE_TAILNET=-",
-		// Keep provider plugins inside the temp dir so the run is self-contained.
-		"TF_PLUGIN_CACHE_DIR="+filepath.Join(dir, "plugin-cache"),
 	)
-
-	cmd := func(args ...string) *exec.Cmd {
-		c := exec.CommandContext(t.Context(), bin, args...)
-		c.Dir = dir
-		c.Env = env
-
-		return c
-	}
-
-	return &tofu{t: t, cmd: cmd}
 }
 
 // runExpectError runs apply expecting FAILURE, asserting the combined output
