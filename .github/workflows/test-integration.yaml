@@ -383,7 +383,7 @@ jobs:
           - TestTagsUserLoginReauthWithEmptyTagsRemovesAllTags
           - TestTagsAuthKeyWithoutUserInheritsTags
           - TestTagsAuthKeyWithoutUserRejectsAdvertisedTags
-          - TestTagsAuthKeyConvertToUserViaCLIRegister
+          - TestTagsAuthKeyWithoutUserCLIRegisterAddsUserDevice
           - TestTaggedNodeLogoutReloginSingleUseKeyOnline
           - TestTaggedNodeLogoutReloginReusableKeyOnline
           - TestTagsOIDCReauthAddOwnedTag
