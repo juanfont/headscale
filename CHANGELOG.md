@@ -157,6 +157,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Nodes stored with reports beyond these bounds load with the bounded values; a stored Hostinfo still over the size limit is dropped until the node reports again
 - A pending interactive registration no longer stores announced routes; a new node's routes, and their auto-approval, arrive with its first map request
 - A stalled request body, or a Noise tunnel with no open request, is closed after 30 seconds
+- A registration follow-up from a machine other than the one that started the registration is refused before it waits
 
 ## 0.29.6 (2026-10-24)
 

@@ -323,6 +323,22 @@ func (h *Headscale) waitForFollowup(
 	}
 
 	if reg, ok := h.state.GetAuthCacheEntry(followupReg); ok {
+		// The followup poll is only authenticated by the auth ID in the
+		// URL, so fail closed unless the Noise session asking for the
+		// result was started with the same machine key that opened the
+		// registration. Check before waiting: the session hands out one
+		// verdict, which another machine must not take from the owner.
+		// [State.HandleNodeFromAuthPath] builds the node from this cached
+		// [types.RegistrationData.MachineKey]. [Headscale.handleRegister]
+		// and [Headscale.handleLogout] apply the same check.
+		if !reg.IsRegistration() || reg.RegistrationData().MachineKey != machineKey {
+			return nil, NewHTTPError(
+				http.StatusUnauthorized,
+				"registration was opened by a different machine key",
+				nil,
+			)
+		}
+
 		var verdict types.AuthVerdict
 		select {
 		// Prefer a completed registration even if the context has also
@@ -342,18 +358,6 @@ func (h *Headscale) waitForFollowup(
 			if !verdict.Node.Valid() {
 				// registration is expired in the cache, instruct the client to try a new registration
 				return h.reqToNewRegisterResponse(req, machineKey)
-			}
-
-			// The followup poll is only authenticated by the auth ID in the
-			// URL, so fail closed unless the Noise session asking for the
-			// result was started with the same machine key that opened the
-			// registration. [State.HandleNodeFromAuthPath] resolves the node
-			// from the cached [types.RegistrationData.MachineKey], so the two
-			// match on the normal path. [Headscale.handleRegister] and
-			// [Headscale.handleLogout] apply the same check.
-			err := machineKeyMismatch(verdict.Node, machineKey)
-			if err != nil {
-				return nil, err
 			}
 
 			return nodeToRegisterResponse(verdict.Node), nil
