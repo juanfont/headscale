@@ -8,12 +8,14 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/servertest"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/mod/semver"
 	tsclient "tailscale.com/client/tailscale/v2"
 )
 
@@ -35,8 +37,7 @@ func TestAPIv2(t *testing.T) {
 	apiKey := srv.CreateAPIKey(t, owner)
 
 	// tag:ci must exist in policy for device SetTags; every policy the tests
-	// write keeps it, so subtest order is irrelevant. Terraform runs last so its
-	// ACL teardown does not strand the others.
+	// write keeps it, so subtest order is irrelevant.
 	setBaselinePolicy(t, srv)
 
 	t.Run("GoClient", func(t *testing.T) {
@@ -59,12 +60,28 @@ func TestAPIv2(t *testing.T) {
 		apiv2SettingsTSCLI(t, srv.URL, apiKey)
 	})
 
+	// Each provider release gets its own server: the configs rewrite the
+	// policy and retag a node, which parallel runs would race on one server.
 	t.Run("Terraform", func(t *testing.T) {
-		apiv2Terraform(t, srv, srv.URL, apiKey, owner)
-		apiv2UsersTerraform(t, srv, srv.URL, apiKey, owner)
+		forEachProvider(t, func(t *testing.T, version string) {
+			t.Helper()
 
-		node := srv.CreateRegisteredNode(t, owner, "dut-tf")
-		apiv2DevicesACLTerraform(t, srv, srv.URL, apiKey, node.Hostname(), node.ID())
+			srv := servertest.NewServer(t, servertest.WithRealListener())
+			owner := srv.CreateUser(t, "apiv2")
+			apiKey := srv.CreateAPIKey(t, owner)
+			setBaselinePolicy(t, srv)
+
+			apiv2Terraform(t, version, srv, srv.URL, apiKey, owner)
+			apiv2UsersTerraform(t, version, srv, srv.URL, apiKey, owner)
+
+			t.Run("ACLValidate", func(t *testing.T) {
+				requireProvider(t, version, providerACLValidate)
+				apiv2ACLValidateTerraform(t, version, srv, srv.URL, apiKey)
+			})
+
+			node := srv.CreateRegisteredNode(t, owner, "dut-tf")
+			apiv2DevicesACLTerraform(t, version, srv, srv.URL, apiKey, node.Hostname(), node.ID())
+		})
 	})
 }
 
@@ -317,17 +334,6 @@ func apiv2TSCLI(t *testing.T, srv *servertest.TestServer, baseURL, apiKey string
 // Terraform path. Outputs expose the provider's read-back for value + drift
 // checks.
 const terraformConfig = `
-terraform {
-  required_providers {
-    tailscale = {
-      source  = "tailscale/tailscale"
-      version = "~> 0.21"
-    }
-  }
-}
-
-provider "tailscale" {}
-
 resource "tailscale_tailnet_key" "test" {
   reusable      = true
   ephemeral     = false
@@ -344,10 +350,10 @@ output "key_description" { value = tailscale_tailnet_key.test.description }
 
 // apiv2Terraform runs a tofu init→apply→(no-drift)→destroy roundtrip on a
 // tailnet key, cross-checking the provider outputs and the server's stored key.
-func apiv2Terraform(t *testing.T, srv *servertest.TestServer, baseURL, apiKey string, owner *types.User) {
+func apiv2Terraform(t *testing.T, version string, srv *servertest.TestServer, baseURL, apiKey string, owner *types.User) {
 	t.Helper()
 
-	tf := newTofu(t, baseURL, apiKey, terraformConfig)
+	tf := newTofu(t, version, baseURL, apiKey, terraformConfig)
 
 	tf.run("init", "-no-color", "-input=false")
 	tf.run("apply", "-auto-approve", "-no-color", "-input=false", "-parallelism=1")
@@ -386,17 +392,6 @@ func apiv2Terraform(t *testing.T, srv *servertest.TestServer, baseURL, apiKey st
 // login name. Data sources create nothing, so the assertions are value
 // correctness plus no drift on re-read.
 const usersTFConfig = `
-terraform {
-  required_providers {
-    tailscale = {
-      source  = "tailscale/tailscale"
-      version = "~> 0.21"
-    }
-  }
-}
-
-provider "tailscale" {}
-
 data "tailscale_user" "owner" {
   login_name = "%s"
 }
@@ -420,10 +415,10 @@ output "via6"              { value = data.tailscale_4via6.site.ipv6 }
 // tailscale_user + tailscale_users data sources (and the provider-local
 // tailscale_4via6), cross-checking the data-source outputs against the server's
 // stored users.
-func apiv2UsersTerraform(t *testing.T, srv *servertest.TestServer, baseURL, apiKey string, owner *types.User) {
+func apiv2UsersTerraform(t *testing.T, version string, srv *servertest.TestServer, baseURL, apiKey string, owner *types.User) {
 	t.Helper()
 
-	tf := newTofu(t, baseURL, apiKey, fmt.Sprintf(usersTFConfig, owner.Username()))
+	tf := newTofu(t, version, baseURL, apiKey, fmt.Sprintf(usersTFConfig, owner.Username()))
 
 	tf.run("init", "-no-color", "-input=false")
 	tf.run("apply", "-auto-approve", "-no-color", "-input=false", "-parallelism=1")
@@ -448,6 +443,99 @@ func apiv2UsersTerraform(t *testing.T, srv *servertest.TestServer, baseURL, apiK
 	assert.GreaterOrEqual(t, srvUserCount(t, srv), 1, "users persist across data-source destroy")
 }
 
+// aclValidateTFConfig is a policy whose own test fails: an allowed flow its
+// test asserts is denied.
+const aclValidateTFConfig = `
+resource "tailscale_acl" "policy" {
+  acl = jsonencode({
+    acls  = [{ action = "accept", src = ["*"], dst = ["*:*"] }]
+    tests = [{ src = "100.64.0.9", deny = ["100.64.0.1:22"] }]
+  })
+  overwrite_existing_content = true
+}
+`
+
+// apiv2ACLValidateTerraform proves the provider's plan-time check reaches
+// acl/validate: plan refuses a policy whose test fails, with headscale's
+// reason, and stores nothing.
+func apiv2ACLValidateTerraform(t *testing.T, version string, srv *servertest.TestServer, baseURL, apiKey string) {
+	t.Helper()
+
+	before, err := srv.State().GetPolicy()
+	require.NoError(t, err)
+
+	tf := newTofu(t, version, baseURL, apiKey, aclValidateTFConfig)
+	tf.run("init", "-no-color", "-input=false")
+
+	out, err := tf.cmd("plan", "-no-color", "-input=false").CombinedOutput()
+	require.Errorf(t, err, "plan must refuse the policy:\n%s", out)
+	assert.Contains(t, string(out), "test(s) failed")
+
+	after, err := srv.State().GetPolicy()
+	require.NoError(t, err)
+	assert.Equal(t, before.Data, after.Data, "validate stores nothing")
+}
+
+// terraformProviderVersions are the tailscale/tailscale provider releases
+// the Terraform tests run against: the newest three, kept by tools/bump.
+// Committed rather than resolved at test time, so a new release arrives as a
+// bump pull request instead of failing unrelated ones.
+var terraformProviderVersions = []string{"0.29.1", "0.29.2", "0.29.3"}
+
+// providerACLValidate is the first provider release that validates
+// tailscale_acl at plan time, through acl/validate.
+const providerACLValidate = "0.29.3"
+
+// forEachProvider runs fn once per tested provider release, in parallel.
+func forEachProvider(t *testing.T, fn func(t *testing.T, version string)) {
+	t.Helper()
+
+	for _, version := range terraformProviderVersions {
+		t.Run(version, func(t *testing.T) {
+			t.Parallel()
+			fn(t, version)
+		})
+	}
+}
+
+// requireProvider skips t on a provider release older than since, the
+// first release with the feature under test.
+func requireProvider(t *testing.T, version, since string) {
+	t.Helper()
+
+	if semver.Compare("v"+version, "v"+since) < 0 {
+		t.Skipf("provider %s predates %s", version, since)
+	}
+}
+
+// tofuProviderBlock pins the provider release. newTofu writes it beside
+// every config, so no config names a version.
+const tofuProviderBlock = `
+terraform {
+  required_providers {
+    tailscale = {
+      source  = "tailscale/tailscale"
+      version = "%s"
+    }
+  }
+}
+
+provider "tailscale" {}
+`
+
+// tofuPluginCache is shared by every workspace, release and run, so each
+// release downloads once. tofu locks it against concurrent inits.
+var tofuPluginCache = sync.OnceValues(func() (string, error) {
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+
+	dir = filepath.Join(dir, "headscale", "tofu-plugins")
+
+	return dir, os.MkdirAll(dir, 0o755)
+})
+
 // tofu binds a tofu binary, working dir, and env for a single workspace. cmd is
 // a closure capturing the looked-up binary so subprocess construction stays in
 // one place.
@@ -456,24 +544,34 @@ type tofu struct {
 	cmd func(args ...string) *exec.Cmd
 }
 
-func newTofu(t *testing.T, baseURL, apiKey, config string) *tofu {
+func newTofu(t *testing.T, version, baseURL, apiKey, config string) *tofu {
+	t.Helper()
+
+	return newTofuEnv(t, version, config, "TAILSCALE_BASE_URL="+baseURL, "TAILSCALE_API_KEY="+apiKey)
+}
+
+// newTofuEnv writes a workspace for config on provider version. env carries
+// the provider's endpoint and credentials.
+func newTofuEnv(t *testing.T, version, config string, env ...string) *tofu {
 	t.Helper()
 
 	bin, err := exec.LookPath("tofu")
-	require.NoErrorf(t, err, "tofu is required for TestAPIv2 (provided by the nix dev shell)")
+	require.NoErrorf(t, err, "tofu is required (provided by the nix dev shell)")
+
+	cache, err := tofuPluginCache()
+	require.NoError(t, err)
 
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(config), 0o600))
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "plugin-cache"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "provider.tf"), fmt.Appendf(nil, tofuProviderBlock, version), 0o600))
 
-	env := append(
-		os.Environ(),
-		"TAILSCALE_BASE_URL="+baseURL,
-		"TAILSCALE_API_KEY="+apiKey,
+	env = append(os.Environ(), append(env,
 		"TAILSCALE_TAILNET=-",
-		// Keep provider plugins inside the temp dir so the run is self-contained.
-		"TF_PLUGIN_CACHE_DIR="+filepath.Join(dir, "plugin-cache"),
-	)
+		"TF_PLUGIN_CACHE_DIR="+cache,
+		// Without a lock file tofu otherwise downloads again to record
+		// checksums, cache or not. A throwaway workspace has no lock file.
+		"TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE=true",
+	)...)
 
 	cmd := func(args ...string) *exec.Cmd {
 		c := exec.CommandContext(t.Context(), bin, args...)

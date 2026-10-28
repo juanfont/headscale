@@ -353,17 +353,6 @@ func apiv2SettingsTSCLI(t *testing.T, baseURL, apiKey string) {
 // devicesACLTFConfig exercises Terraform device + ACL data sources AND resources.
 // %s is the test node's hostname (the tailscale_device data source key).
 const devicesACLTFConfig = `
-terraform {
-  required_providers {
-    tailscale = {
-      source  = "tailscale/tailscale"
-      version = "~> 0.21"
-    }
-  }
-}
-
-provider "tailscale" {}
-
 resource "tailscale_acl" "policy" {
   acl = jsonencode({
     tagOwners = { "tag:ci" = ["apiv2@"] }
@@ -417,10 +406,10 @@ output "enabled_routes" { value = tailscale_device_subnet_routes.dut.routes }
 // outputs (read path) against the server truth, and the resulting server state
 // (write path). parallelism=1 avoids racing concurrent mutations on the one
 // shared node.
-func apiv2DevicesACLTerraform(t *testing.T, srv *servertest.TestServer, baseURL, apiKey, hostname string, id types.NodeID) {
+func apiv2DevicesACLTerraform(t *testing.T, version string, srv *servertest.TestServer, baseURL, apiKey, hostname string, id types.NodeID) {
 	t.Helper()
 
-	tf := newTofu(t, baseURL, apiKey, fmt.Sprintf(devicesACLTFConfig, hostname))
+	tf := newTofu(t, version, baseURL, apiKey, fmt.Sprintf(devicesACLTFConfig, hostname))
 
 	tf.run("init", "-no-color", "-input=false")
 	tf.run("apply", "-auto-approve", "-no-color", "-input=false", "-parallelism=1")
