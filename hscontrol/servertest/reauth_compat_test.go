@@ -60,32 +60,6 @@ var reauthSkipReasons = map[string]string{
 	"reauth-user/a1-spent-key/u-spent/expiry":     sameKeyRenewsExpiry,
 	"reauth-user/a2-valid-key/u-valid/expiry":     sameKeyRenewsExpiry,
 
-	"reauth-foreign/t-reauth-foreign-relogin/t-reauth-foreign/devices":       otherUserKeyReauthsTagged,
-	"reauth-foreign/t-reauth-foreign-relogin/t-reauth-foreign/owner":         otherUserKeyReauthsTagged,
-	"reauth-foreign/t-reauth-foreign-relogin/t-reauth-foreign/node-key":      otherUserKeyReauthsTagged,
-	"reauth-foreign/t-reauth-foreign-relogin/t-reauth-foreign/expiry":        otherUserKeyReauthsTagged,
-	"reauth-foreign/t-reauth-foreign-relogin/t-reauth-foreign/ephemeral":     otherUserKeyReauthsTagged,
-	"reauth-foreign/t-reauth-foreign-relogin/t-reauth-foreign/peer-obs":      otherUserKeyReauthsTagged,
-	"reauth-foreign/t-reauth-foreign-relogin/obs/filter":                     otherUserKeyReauthsTagged,
-	"reauth-foreign/t-reauth-foreign-relogin/t-reauth-foreign/login-devices": loginTakesTaggedDevice,
-	"reauth-foreign/t-reauth-foreign-relogin/t-reauth-foreign/login-owner":   loginTakesTaggedDevice,
-	"reauth-foreign/t-exp-foreign-relogin/t-exp-foreign/devices":             otherUserKeyReauthsTagged,
-	"reauth-foreign/t-exp-foreign-relogin/t-exp-foreign/owner":               otherUserKeyReauthsTagged,
-	"reauth-foreign/t-exp-foreign-relogin/t-exp-foreign/node-key":            otherUserKeyReauthsTagged,
-	"reauth-foreign/t-exp-foreign-relogin/t-exp-foreign/expiry":              otherUserKeyReauthsTagged,
-	"reauth-foreign/t-exp-foreign-relogin/t-exp-foreign/ephemeral":           otherUserKeyReauthsTagged,
-	"reauth-foreign/t-exp-foreign-relogin/t-exp-foreign/peer-obs":            otherUserKeyReauthsTagged,
-	"reauth-foreign/t-exp-foreign-relogin/obs/filter":                        otherUserKeyReauthsTagged,
-	"reauth-foreign/t-exp-foreign-relogin/t-exp-foreign/login-devices":       loginTakesTaggedDevice,
-	"reauth-foreign/t-exp-foreign-relogin/t-exp-foreign/login-owner":         loginTakesTaggedDevice,
-
-	"reauth-foreign/t-eph-spent-foreign-key/t-eph/ephemeral": spentKeyRebindsNode,
-	"reauth-foreign/t-eph-logout/t-eph/devices":              spentKeyRebindsNode,
-	"reauth-foreign/t-eph-logout/t-eph/owner":                spentKeyRebindsNode,
-	"reauth-foreign/t-eph-logout/t-eph/expiry":               spentKeyRebindsNode,
-	"reauth-foreign/t-eph-logout/t-eph/ephemeral":            spentKeyRebindsNode,
-	"reauth-foreign/t-eph-logout/t-eph/peer-obs":             spentKeyRebindsNode,
-
 	"reauth-foreign/t-logout-logout/t-logout/expiry":    taggedLogoutNotExpired,
 	"reauth-foreign/t-logout-logout/t-logout/peer-obs":  taggedLogoutNotExpired,
 	"reauth-foreign/t-logout-relogin/t-logout/expiry":   taggedLogoutNotExpired,
@@ -105,10 +79,6 @@ var reauthSkipReasons = map[string]string{
 	"identity/w-tagreq-new-join/w-tagreq-new/peer-obs":      keyLoginTagsRefused,
 	"identity/w-tagreq-new-join/w-tagreq-new/peer-key-obs":  keyLoginTagsRefused,
 
-	"reauth-owner/u-tagged-reauth-relogin/u-tagged-reauth/owner":  adminTagsKeptOnUserLogin,
-	"reauth-owner/u-tagged-reauth-relogin/u-tagged-reauth/expiry": adminTagsKeptOnUserLogin,
-	"reauth-owner/u-tagged-reauth-relogin/obs/filter":             adminTagsKeptOnUserLogin,
-
 	"reauth/late-pak-spent-key/late-pak/text":        refusalText,
 	"reauth/late-pak-spent-key/late-pak/legacy-text": refusalText,
 }
@@ -120,16 +90,12 @@ const (
 )
 
 const (
-	expiredKeyNotRotated      = "EXPIRED_KEY_NOT_ROTATED: headscale answers an expired node's key login without asking for a new node key; SaaS answers NodeKeyExpired first, so the client rotates it"
-	sameKeyRenewsExpiry       = "SAME_KEY_LOGIN_RENEWS_EXPIRY: headscale renews a user node's expiry on a key login that keeps its node key; SaaS renews it only with a new node key"
-	otherUserKeyReauthsTagged = "OTHER_USER_KEY_REAUTHS_TAGGED: headscale re-registers a tagged device in place when another user's key logs in anew on its machine; SaaS keeps the tagged device and adds one for that user"
-	loginTakesTaggedDevice    = "LOGIN_TAKES_TAGGED_DEVICE: headscale's interactive login gives another user the tagged device on the machine; SaaS's key login keeps it and adds a device for that user"
-	spentKeyRebindsNode       = "SPENT_KEY_REBINDS_NODE: headscale binds a live node to the spent key it logs in with, so an ephemeral node stops being ephemeral and survives logout; SaaS keeps the node as it was"
-	taggedLogoutNotExpired    = "TAGGED_LOGOUT_NOT_EXPIRED: headscale leaves a tagged node unexpired when it logs out; SaaS expires it"
-	wakeWithTagsRefused       = "WAKE_WITH_TAGS_REFUSED: headscale refuses a key login that requests tags the key does not carry even when the node keeps its node key and tags; SaaS accepts it and changes nothing"
-	keyLoginTagsRefused       = "KEY_LOGIN_TAGS_REFUSED: headscale refuses a user's key login that requests tags the user owns; SaaS tags the device, converting it in place or creating it tagged"
-	adminTagsKeptOnUserLogin  = "ADMIN_TAGS_KEPT_ON_USER_LOGIN: headscale keeps an admin-tagged device tagged when its user's key logs in anew; SaaS turns it back into that user's device"
-	refusalText               = "REFUSAL_TEXT: SaaS refuses a key by naming its ID; headscale says why the key is refused"
+	expiredKeyNotRotated   = "EXPIRED_KEY_NOT_ROTATED: headscale answers an expired node's key login without asking for a new node key; SaaS answers NodeKeyExpired first, so the client rotates it"
+	sameKeyRenewsExpiry    = "SAME_KEY_LOGIN_RENEWS_EXPIRY: headscale renews a user node's expiry on a key login that keeps its node key; SaaS renews it only with a new node key"
+	taggedLogoutNotExpired = "TAGGED_LOGOUT_NOT_EXPIRED: headscale leaves a tagged node unexpired when it logs out; SaaS expires it"
+	wakeWithTagsRefused    = "WAKE_WITH_TAGS_REFUSED: headscale refuses a key login that requests tags the key does not carry even when the node keeps its node key and tags; SaaS accepts it and changes nothing"
+	keyLoginTagsRefused    = "KEY_LOGIN_TAGS_REFUSED: headscale refuses a user's key login that requests tags the user owns; SaaS tags the device, converting it in place or creating it tagged"
+	refusalText            = "REFUSAL_TEXT: SaaS refuses a key by naming its ID; headscale says why the key is refused"
 )
 
 // reauthNotCompared lists, by key prefix, checks left out: SaaS's answer
