@@ -1,6 +1,7 @@
 package apiv2
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/juanfont/headscale/hscontrol/scope"
+	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 )
@@ -39,6 +41,21 @@ type getACLInput struct {
 	Tailnet string `path:"tailnet"`
 	Accept  string `header:"Accept"`
 	Details bool   `doc:"Accepted for compatibility; ignored." query:"details"`
+}
+
+type validateACLInput struct {
+	Tailnet string `path:"tailnet"`
+	RawBody []byte `contentType:"application/json"`
+}
+
+// validateACLOutput is the verdict on a policy. Tailscale answers a refused
+// policy with 200, its reason as message and, for failed tests, one data
+// entry per failing test.
+type validateACLOutput struct {
+	Body struct {
+		Message string         `json:"message,omitempty"`
+		Data    []apiErrorData `json:"data,omitempty"`
+	}
 }
 
 type setACLInput struct {
@@ -142,6 +159,55 @@ func registerACL(api huma.API, b Backend) {
 
 		return streamPolicy([]byte(updated.Data), aclContentType(in.Accept)), nil
 	})
+
+	registerValidateACL(api, b, aclTags)
+}
+
+func registerValidateACL(api huma.API, b Backend, aclTags []string) {
+	huma.Register(api, requireScope(huma.Operation{
+		OperationID:      "validateACL",
+		Method:           http.MethodPost,
+		Path:             "/api/v2/tailnet/{tailnet}/acl/validate",
+		Summary:          "Validate a policy file",
+		Description:      "Checks a policy, its tests and its SSH rules without storing it. A refused policy answers 200 with the reason as message.",
+		Tags:             aclTags,
+		Security:         security,
+		DefaultStatus:    http.StatusOK,
+		SkipValidateBody: true,
+		Errors: []int{
+			http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden,
+			http.StatusNotFound, http.StatusInternalServerError,
+		},
+	}, scope.PolicyFileRead), func(ctx context.Context, in *validateACLInput) (*validateACLOutput, error) {
+		err := requireDefaultTailnet(in.Tailnet)
+		if err != nil {
+			return nil, err
+		}
+
+		// As on Tailscale SaaS, only a body with no policy at all is a 400.
+		if len(bytes.TrimSpace(in.RawBody)) == 0 {
+			return nil, huma.Error400BadRequest("unexpected end of JSON input")
+		}
+
+		out := &validateACLOutput{}
+
+		err = b.State.ValidatePolicy(in.RawBody)
+		if errors.Is(err, state.ErrInvalidPolicy) {
+			out.Body.Message, out.Body.Data = policyRefusal(err)
+
+			return out, nil
+		}
+
+		if err != nil {
+			return nil, huma.Error500InternalServerError("validating policy", err)
+		}
+
+		return out, nil
+	})
+
+	// huma requires a RawBody; the handler answers an empty one as Tailscale
+	// does.
+	api.OpenAPI().Paths["/api/v2/tailnet/{tailnet}/acl/validate"].Post.RequestBody.Required = false
 }
 
 // currentPolicy returns the stored policy bytes, or the allow-all default when

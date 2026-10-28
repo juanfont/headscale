@@ -68,6 +68,17 @@ const (
 // ErrUnsupportedPolicyMode is returned for invalid policy modes. Valid modes are "file" and "db".
 var ErrUnsupportedPolicyMode = errors.New("unsupported policy mode")
 
+// ErrInvalidPolicy is returned by [State.ValidatePolicy] for a policy it
+// refuses.
+var ErrInvalidPolicy = errors.New("invalid policy")
+
+// invalidPolicyError marks a refusal as [ErrInvalidPolicy] and keeps the
+// reason's own text, which API answers show as is.
+type invalidPolicyError struct{ reason error }
+
+func (e invalidPolicyError) Error() string   { return e.reason.Error() }
+func (e invalidPolicyError) Unwrap() []error { return []error{ErrInvalidPolicy, e.reason} }
+
 // ErrNodeNotFound is returned when a node cannot be found by its ID.
 var ErrNodeNotFound = errors.New("node not found")
 
@@ -1394,6 +1405,39 @@ func (s *State) GetPolicy() (*types.Policy, error) {
 // SetPolicyInDB stores policy data in the database.
 func (s *State) SetPolicyInDB(data string) (*types.Policy, error) {
 	return s.db.SetPolicy(data)
+}
+
+// ValidatePolicy reports whether a policy write would accept pol. It
+// compiles pol against the current users and nodes on a throwaway policy
+// manager; the live policy is not touched.
+func (s *State) ValidatePolicy(pol []byte) error {
+	users, err := s.ListAllUsers()
+	if err != nil {
+		return fmt.Errorf("loading users: %w", err)
+	}
+
+	nodes := s.ListNodes()
+
+	pm, err := policy.NewPolicyManager(nil, users, nodes)
+	if err != nil {
+		return fmt.Errorf("creating policy manager: %w", err)
+	}
+
+	_, err = pm.SetPolicy(pol)
+	if err != nil {
+		return invalidPolicyError{err}
+	}
+
+	// SSH rules compile per node, so a server without nodes cannot catch
+	// every case here.
+	if nodes.Len() > 0 {
+		_, err = pm.SSHPolicy(s.cfg.ServerURL, nodes.At(0))
+		if err != nil {
+			return invalidPolicyError{fmt.Errorf("verifying SSH rules: %w", err)}
+		}
+	}
+
+	return nil
 }
 
 // GetNodePrimaryRoutes returns the primary routes for a node.

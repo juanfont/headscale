@@ -2,11 +2,15 @@ package apiv2
 
 import (
 	"errors"
+	"strconv"
+	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/juanfont/headscale/hscontrol/db"
+	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"gorm.io/gorm"
+	"tailscale.com/util/multierr"
 )
 
 // apiError is the Tailscale API error body. The official Tailscale Go client
@@ -25,6 +29,9 @@ type apiErrorData struct {
 	User   string   `json:"user,omitempty"`
 	Errors []string `json:"errors,omitempty"`
 }
+
+// maxErrorDetails caps the failing tests one answer lists.
+const maxErrorDetails = 20
 
 // tailscaleErrorTransformer rewrites Huma's RFC 9457 error model into the
 // Tailscale error shape. It is registered on the v2 API config only, so the
@@ -82,4 +89,39 @@ func mapError(msg string, err error) error {
 	default:
 		return huma.Error500InternalServerError(msg, err)
 	}
+}
+
+// policyRefusal is a refused policy as Tailscale reports it: the reason as
+// message and, when tests failed, one data entry per failing test naming its
+// src.
+func policyRefusal(err error) (string, []apiErrorData) {
+	var failures []policyv2.TestFailure
+
+	// Range visits every wrapped error, so errors.As would count a failure
+	// once per wrapper above it.
+	multierr.Range(err, func(e error) bool {
+		if tf, ok := e.(*policyv2.TestsFailedError); ok { //nolint:errorlint
+			failures = append(failures, tf.Failures...)
+		}
+
+		return true
+	})
+
+	if len(failures) == 0 {
+		return err.Error(), nil
+	}
+
+	listed := failures[:min(len(failures), maxErrorDetails)]
+	data := make([]apiErrorData, 0, len(listed)+1)
+
+	for _, f := range listed {
+		// A policy writes a user known only by name as name@.
+		data = append(data, apiErrorData{User: strings.TrimSuffix(f.Src, "@"), Errors: f.Errors})
+	}
+
+	if more := len(failures) - len(listed); more > 0 {
+		data = append(data, apiErrorData{Errors: []string{"and " + strconv.Itoa(more) + " more"}})
+	}
+
+	return "test(s) failed", data
 }

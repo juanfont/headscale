@@ -148,6 +148,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Node joins and deletions under churn, especially in tailnets with many tags, no longer stall registrations, map updates and API requests; ephemeral nodes are cleaned up within seconds instead of minutes [#3575](https://github.com/juanfont/headscale/pull/3575)
 - Shutdown keeps the LastSeen of connected nodes: it waits for their map sessions to close before closing the database [#3575](https://github.com/juanfont/headscale/pull/3575)
 - Deleting an ephemeral node no longer logs a spurious `ephemeral node deletion failed` error later [#3575](https://github.com/juanfont/headscale/pull/3575)
+- Add the v2 `acl/validate` endpoint, which Terraform provider 0.29.3 and newer call to check `tailscale_acl` at plan time; before it, those releases failed with `invalid character 'p' after top-level value`
 
 ## 0.29.6 (2026-10-24)
 
