@@ -12,7 +12,6 @@ package mapper
 
 import (
 	"fmt"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -1150,52 +1149,30 @@ func TestBug6_StartCalledMultipleTimes_GoroutineLeak(t *testing.T) {
 	lb := setupLightweightBatcher(t, 3, 10)
 	lb.b.workers = 2
 
-	goroutinesBefore := runtime.NumGoroutine()
-
 	// Call Start() once - this should launch (workers + 1) goroutines
 	// (1 for doWork + workers for worker())
-	lb.b.Start()
-	time.Sleep(50 * time.Millisecond) //nolint:forbidigo // concurrency test coordination
-
-	goroutinesAfterFirst := runtime.NumGoroutine()
-	firstStartDelta := goroutinesAfterFirst - goroutinesBefore
-	t.Logf("goroutines: before=%d, after_first_Start=%d, delta=%d",
-		goroutinesBefore, goroutinesAfterFirst, firstStartDelta)
+	startLabelled(lb.b, t.Name())
+	require.Eventually(t, func() bool {
+		return batcherGoroutines(t.Name()) == 3
+	}, time.Second, 5*time.Millisecond, "first Start() should run doWork + 2 workers")
 
 	// Call Start() again - this SHOULD be a no-op
 	// BUG: it creates a NEW done channel (orphaning goroutines listening on the old one)
 	// and launches another doWork()+workers set
-	lb.b.Start()
+	startLabelled(lb.b, t.Name())
+	startLabelled(lb.b, t.Name())
 	time.Sleep(50 * time.Millisecond) //nolint:forbidigo // concurrency test coordination
 
-	goroutinesAfterSecond := runtime.NumGoroutine()
-	secondStartDelta := goroutinesAfterSecond - goroutinesAfterFirst
-	t.Logf("goroutines: after_second_Start=%d, delta=%d (should be 0)",
-		goroutinesAfterSecond, secondStartDelta)
+	extra := batcherGoroutines(t.Name()) - 3
 
-	// Call Start() a third time
-	lb.b.Start()
-	time.Sleep(50 * time.Millisecond) //nolint:forbidigo // concurrency test coordination
-
-	goroutinesAfterThird := runtime.NumGoroutine()
-	thirdStartDelta := goroutinesAfterThird - goroutinesAfterSecond
-	t.Logf("goroutines: after_third_Start=%d, delta=%d (should be 0)",
-		goroutinesAfterThird, thirdStartDelta)
-
-	// Close() only closes the LAST done channel, leaving earlier goroutines leaked
 	lb.b.Close()
-	time.Sleep(100 * time.Millisecond) //nolint:forbidigo // concurrency test coordination
-
-	goroutinesAfterClose := runtime.NumGoroutine()
-	t.Logf("goroutines after Close: %d (leaked: %d)",
-		goroutinesAfterClose, goroutinesAfterClose-goroutinesBefore)
 
 	// Second Start() should NOT have created new goroutines
-	assert.Zero(t, secondStartDelta,
-		"BUG #6: second Start() call leaked %d goroutines. "+
+	assert.Zero(t, extra,
+		"BUG #6: repeated Start() calls leaked %d goroutines. "+
 			"Start() has no idempotency guard, each call spawns new goroutines. "+
 			"Fix: add sync.Once or atomic.Bool to prevent multiple Start() calls",
-		secondStartDelta)
+		extra)
 }
 
 // TestBug7_CleanupOfflineNodes_PendingChangesCleanedStructurally verifies that
