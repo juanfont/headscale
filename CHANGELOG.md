@@ -153,6 +153,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Shutdown keeps the LastSeen of connected nodes: it waits for their map sessions to close before closing the database [#3575](https://github.com/juanfont/headscale/pull/3575)
 - Deleting an ephemeral node no longer logs a spurious `ephemeral node deletion failed` error later [#3575](https://github.com/juanfont/headscale/pull/3575)
 - Add the v2 `acl/validate` endpoint, which Terraform provider 0.29.3 and newer call to check `tailscale_acl` at plan time; before it, those releases failed with `invalid character 'p' after top-level value`
+- A route that is a single address inside the node ranges, in either spelling, is approved and listed but never served; wider routes and `::ffff:` prefixes are still served
 
 ## 0.29.7 (202x-xx-xx)
 

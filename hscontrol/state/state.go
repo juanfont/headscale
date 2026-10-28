@@ -1514,7 +1514,11 @@ func (s *State) RoutesForPeer(
 		}
 	}
 
-	return reduced
+	// Via inclusions come from the peer's routes, not the election, so
+	// the serving rule is applied here, to everything the viewer gets.
+	return slices.DeleteFunc(reduced, func(p netip.Prefix) bool {
+		return !s.cfg.ServesRoute(p)
+	})
 }
 
 // PrimaryRoutesString renders the current prefix→primary assignment
