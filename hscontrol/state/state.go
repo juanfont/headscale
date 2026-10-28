@@ -1809,7 +1809,7 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 				node.Expiry = regData.Expiry
 			}
 		case !wasTagged && isTagged:
-			// Personal → Tagged: clear expiry (tagged nodes don't expire)
+			// Personal → Tagged: clear expiry; tagged nodes disable it by default.
 			node.Expiry = nil
 		case params.IsConvertFromTag && !isTagged:
 			// Explicit conversion from tagged to user-owned: set expiry from client request
@@ -1826,13 +1826,12 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 				node.Expiry = regData.Expiry
 			}
 		case isTagged && node.IsExpired():
-			// Tagged → Tagged, but carrying a stale PAST expiry from an older
-			// headscale's logout stamp (#3371). Tagged nodes never expire, so
-			// clear it; a deliberate future expiry has IsExpired() == false and
-			// falls through to the no-op below.
+			// Tagged → Tagged and expired: a person re-authenticated it, so clear
+			// the past expiry. A future administrative expiry has not taken
+			// effect and falls through to the no-op below.
 			node.Expiry = nil
 		}
-		// Tagged → Tagged with no stale expiry: keep existing expiry - no action.
+		// Tagged → Tagged and not expired: keep existing expiry - no action.
 
 		// Apply default node expiry for non-tagged nodes when the
 		// resolved expiry is still nil or zero (e.g., CLI registration
@@ -2516,13 +2515,10 @@ func (s *State) HandleNodeFromPreAuthKey(
 	// after expiry would skip validation and be re-authorised with a spent or
 	// expired key; the boundary must not depend on the client rotating its key.
 	//
-	// Tagged nodes are excluded: they never expire (KB 1068), so an
-	// IsExpired() tagged node only reflects a stale logout stamp left by an
-	// older headscale (#3371). Forcing it down the re-validation path burns its
-	// fresh key and blocks re-auth forever; treat it as a plain re-registration
-	// and clear the stale expiry in the update below.
+	// Tagged nodes count too: they can carry an administrative expiry or
+	// retain their expiry after an admin tags them. Legacy logout stamps were
+	// cleared by migration; logout no longer expires tagged nodes.
 	isExpired := existsSameUser && existingNodeSameUser.Valid() &&
-		!existingNodeSameUser.IsTagged() &&
 		existingNodeSameUser.IsExpired()
 
 	// A tagged key presented for a currently user-owned node converts that node
@@ -2659,10 +2655,10 @@ func (s *State) HandleNodeFromPreAuthKey(
 				node.User = nil
 
 				// Converting a user-owned node to tagged drops the user's key
-				// expiry (tagged nodes never expire). But retagging an
+				// expiry (tagged nodes disable it by default). But retagging an
 				// already-tagged node must preserve a deliberate FUTURE expiry
 				// set via `headscale nodes expire` - that is a node property, not
-				// tied to the auth key - and only clear a stale PAST expiry. This
+				// tied to the auth key - and only clear a past expiry with a valid key. This
 				// keeps the retag path symmetric with the same-key relogin path
 				// (#3371) rather than silently overriding an admin decision.
 				if wasUserOwned || node.IsExpired() {
@@ -2691,11 +2687,8 @@ func (s *State) HandleNodeFromPreAuthKey(
 					node.Expiry = nil
 				}
 			} else if node.IsExpired() {
-				// #3371: a tagged node must never carry key expiry. Clear a
-				// stale PAST expiry left by a logout (older headscale) so
-				// re-auth is not permanently blocked. A deliberate future
-				// expiry (headscale nodes expire) has IsExpired() == false and
-				// is left untouched.
+				// A valid key re-authenticated this expired tagged node. A future
+				// administrative expiry has not taken effect and stays untouched.
 				node.Expiry = nil
 			}
 		})
