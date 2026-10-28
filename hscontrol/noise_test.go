@@ -1421,6 +1421,42 @@ func serveRegister(t *testing.T, ns *noiseServer, body any) *httptest.ResponseRe
 func TestRegistrationHandler_ValidatesClientReport(t *testing.T) {
 	t.Parallel()
 
+	t.Run("pending registration retains auth metadata", func(t *testing.T) {
+		t.Parallel()
+
+		app := createTestApp(t)
+		ns := &noiseServer{headscale: app, machineKey: key.NewMachine().Public()}
+
+		rec := serveRegister(t, ns, tailcfg.RegisterRequest{
+			Version: tailcfg.CurrentCapabilityVersion,
+			NodeKey: key.NewNode().Public(),
+			Hostinfo: &tailcfg.Hostinfo{
+				Hostname:    "report-pending-node",
+				OS:          "linux",
+				OSVersion:   "6.12",
+				RequestTags: []string{"tag:test"},
+				Services:    manyServices(300),
+				RoutableIPs: []netip.Prefix{netip.MustParsePrefix("192.0.2.0/24")},
+				NetInfo:     &tailcfg.NetInfo{PreferredDERP: 1},
+			},
+		})
+		require.Equal(t, http.StatusOK, rec.Code, "body=%q", rec.Body.String())
+
+		var resp tailcfg.RegisterResponse
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+
+		authID, err := extractRegistrationIDFromAuthURL(resp.AuthURL)
+		require.NoError(t, err, "resp=%+v", resp)
+
+		entry, ok := app.state.GetAuthCacheEntry(authID)
+		require.True(t, ok)
+		assert.Equal(t, &tailcfg.Hostinfo{
+			Hostname:    "report-pending-node",
+			OS:          "linux",
+			RequestTags: []string{"tag:test"},
+		}, entry.RegistrationData().Hostinfo)
+	})
+
 	t.Run("oversized report", func(t *testing.T) {
 		t.Parallel()
 

@@ -1,6 +1,7 @@
 package state
 
 import (
+	"encoding/json"
 	"errors"
 	"net/netip"
 	"slices"
@@ -325,7 +326,6 @@ func TestReauthRejectsNodeKeyClaimedByAnotherMachine(t *testing.T) {
 			Hostname:   "attacker",
 			Hostinfo:   &tailcfg.Hostinfo{},
 		},
-		ValidHostinfo:  &tailcfg.Hostinfo{},
 		Hostname:       "attacker",
 		User:           attacker,
 		RegisterMethod: util.RegisterMethodCLI,
@@ -386,7 +386,6 @@ func TestReauthPreservesEndpointsWhenClientOmitsThem(t *testing.T) {
 			Hostinfo:   &tailcfg.Hostinfo{},
 			Endpoints:  nil,
 		},
-		ValidHostinfo:  &tailcfg.Hostinfo{},
 		Hostname:       "node",
 		User:           user,
 		RegisterMethod: util.RegisterMethodCLI,
@@ -974,4 +973,177 @@ func TestBootKeepsHostinfoTheMapPathStored(t *testing.T) {
 
 	osVersionLen := len(reloaded.Hostinfo().OSVersion())
 	assert.Equal(t, 60<<10, osVersionLen)
+}
+
+// TestReauthKeepsOperationalMetadata covers a relogin before the next map request.
+// Pending registrations carry only auth metadata; live connectivity must survive.
+func TestReauthKeepsOperationalMetadata(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	route := netip.MustParsePrefix("10.0.0.0/24")
+
+	node, ok := s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
+		n.Hostinfo = &tailcfg.Hostinfo{
+			Hostname: n.Hostname, RoutableIPs: []netip.Prefix{route},
+			OS: "linux", OSVersion: "6.12.0",
+			Services:     []tailcfg.Service{{Proto: tailcfg.PeerAPI4, Port: 41641}},
+			SSH_HostKeys: []string{"ssh-ed25519 key"},
+			NetInfo:      &tailcfg.NetInfo{PreferredDERP: 1},
+		}
+		n.DiscoKey = key.NewDisco().Public()
+		n.Endpoints = []netip.AddrPort{netip.MustParseAddrPort("192.0.2.1:41641")}
+		n.ApprovedRoutes = []netip.Prefix{route}
+	})
+	require.True(t, ok)
+
+	_, epoch := s.Connect(nodeID)
+	require.NotZero(t, epoch)
+	require.Equal(t, []netip.Prefix{route}, s.GetNodePrimaryRoutes(nodeID),
+		"precondition: the node serves its route")
+
+	authID := types.MustAuthID()
+	s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+		MachineKey: node.MachineKey(),
+		NodeKey:    key.NewNode().Public(),
+		Hostname:   node.Hostname(),
+		Hostinfo:   &tailcfg.Hostinfo{Hostname: node.Hostname()},
+	}))
+
+	relogged, _, err := s.HandleNodeFromAuthPath(
+		authID, node.TypedUserID(), nil, util.RegisterMethodOIDC,
+	)
+	require.NoError(t, err)
+	require.Equal(t, nodeID, relogged.ID(), "relogin must update the existing node")
+
+	assert.Equal(t, []netip.Prefix{route}, relogged.AnnouncedRoutes())
+	assert.Equal(t, []netip.Prefix{route}, s.GetNodePrimaryRoutes(nodeID))
+	assert.True(t, node.Hostinfo().Equal(relogged.Hostinfo()))
+	assert.Equal(t, node.DiscoKey(), relogged.DiscoKey())
+	assert.Equal(t, node.Endpoints(), relogged.Endpoints())
+}
+
+func TestReauthKeepsTaggedFutureExpiry(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, err := s.SetPolicy([]byte(`{"tagOwners":{"tag:ci":["persist-user@"]}}`))
+	require.NoError(t, err)
+
+	node, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+
+	userID := node.TypedUserID()
+	_, _, err = s.SetNodeTags(nodeID, []string{"tag:ci"})
+	require.NoError(t, err)
+
+	future := time.Now().Add(time.Hour).UTC()
+	node, ok = s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
+		n.Expiry = &future
+	})
+	require.True(t, ok)
+	require.True(t, node.IsTagged())
+
+	authID := types.MustAuthID()
+	s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+		MachineKey: node.MachineKey(), NodeKey: key.NewNode().Public(),
+		Hostname: node.Hostname(),
+		Hostinfo: &tailcfg.Hostinfo{Hostname: node.Hostname(), RequestTags: []string{"tag:ci"}},
+	}))
+	relogged, _, err := s.HandleNodeFromAuthPath(authID, userID, nil, util.RegisterMethodOIDC)
+	require.NoError(t, err)
+	require.Equal(t, nodeID, relogged.ID())
+	require.True(t, relogged.IsTagged())
+	require.True(t, relogged.Expiry().Valid())
+	assert.True(t, future.Equal(relogged.Expiry().Get()))
+
+	row, err := s.DB().GetNodeByID(nodeID)
+	require.NoError(t, err)
+	require.NotNil(t, row.Expiry)
+	assert.True(t, future.Equal(*row.Expiry))
+}
+
+func TestReauthReplacesReportedTags(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	_, err := s.SetPolicy([]byte(`{"tagOwners":{"tag:a":["persist-user@"],"tag:b":["persist-user@"]}}`))
+	require.NoError(t, err)
+
+	node, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+
+	userID := node.TypedUserID()
+
+	for _, tags := range [][]string{{"tag:a"}, nil, {"tag:b"}} {
+		want := slices.Clone(tags)
+		authID := types.MustAuthID()
+		s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+			MachineKey: node.MachineKey(), NodeKey: key.NewNode().Public(),
+			Hostname: node.Hostname(),
+			Hostinfo: &tailcfg.Hostinfo{Hostname: node.Hostname(), RequestTags: tags},
+		}))
+		relogged, _, err := s.HandleNodeFromAuthPath(authID, userID, nil, util.RegisterMethodOIDC)
+		require.NoError(t, err)
+		require.Equal(t, nodeID, relogged.ID())
+		assert.Equal(t, want, relogged.Hostinfo().RequestTags().AsSlice())
+		assert.Equal(t, len(want) > 0, relogged.IsTagged())
+
+		if len(tags) > 0 {
+			tags[0] = "tag:changed"
+		}
+
+		stored, ok := s.GetNodeByID(nodeID)
+		require.True(t, ok)
+		assert.Equal(t, want, stored.Hostinfo().RequestTags().AsSlice(),
+			"cached tags must not alias stored Hostinfo")
+
+		row, err := s.DB().GetNodeByID(nodeID)
+		require.NoError(t, err)
+		assert.Equal(t, want, row.Hostinfo.RequestTags)
+	}
+}
+
+func TestReauthRejectsOversizedMergedHostinfo(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	node, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+
+	hi := &tailcfg.Hostinfo{Hostname: node.Hostname(), OSVersion: "v"}
+	encoded, err := json.Marshal(hi)
+	require.NoError(t, err)
+
+	hi.OSVersion = strings.Repeat("v", types.MaxHostinfoSize-len(encoded)+1)
+	require.NoError(t, types.ValidateHostinfo(hi))
+	_, err = s.UpdateNodeFromMapRequest(nodeID, tailcfg.MapRequest{
+		NodeKey: node.NodeKey(), DiscoKey: node.DiscoKey(), Hostinfo: hi,
+	})
+	require.NoError(t, err)
+
+	before, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+
+	rowBefore, err := s.DB().GetNodeByID(nodeID)
+	require.NoError(t, err)
+
+	hostname := strings.Repeat("h", types.MaxHostnameLength)
+	require.NoError(t, types.ValidateHostinfo(&tailcfg.Hostinfo{Hostname: hostname}))
+
+	authID := types.MustAuthID()
+	s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+		MachineKey: node.MachineKey(), NodeKey: key.NewNode().Public(),
+		Hostname: hostname, Hostinfo: &tailcfg.Hostinfo{Hostname: hostname},
+	}))
+	_, _, err = s.HandleNodeFromAuthPath(authID, node.TypedUserID(), nil, util.RegisterMethodOIDC)
+	require.ErrorIs(t, err, types.ErrHostinfoTooLarge)
+
+	after, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+	assert.Equal(t, before.AsStruct(), after.AsStruct(), "rejected merge leaves the live node unchanged")
+
+	rowAfter, err := s.DB().GetNodeByID(nodeID)
+	require.NoError(t, err)
+	assert.Equal(t, rowBefore, rowAfter, "rejected merge leaves the stored node unchanged")
 }

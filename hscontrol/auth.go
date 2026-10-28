@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -390,25 +391,32 @@ func (h *Headscale) reqToNewRegisterResponse(
 	}, nil
 }
 
-// registrationDataFromRequest builds the [types.RegistrationData] payload stored
-// in the auth cache for a pending registration. The original [tailcfg.Hostinfo] is
-// retained so that consumers (auth callback, observability) see the
-// fields the client originally announced; the bounded-LRU cap on the
-// cache is what bounds the unauthenticated cache-fill DoS surface.
+// registrationDataFromRequest keeps only auth and confirmation metadata;
+// operational metadata arrives with the node's first MapRequest.
 func registrationDataFromRequest(
 	req tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) *types.RegistrationData {
-	var hostname string
+	var (
+		hostname string
+		hostinfo *tailcfg.Hostinfo
+	)
+
 	if req.Hostinfo != nil {
 		hostname = req.Hostinfo.Hostname
+
+		hostinfo = &tailcfg.Hostinfo{
+			Hostname:    hostname,
+			OS:          req.Hostinfo.OS,
+			RequestTags: slices.Clone(req.Hostinfo.RequestTags),
+		}
 	}
 
 	regData := &types.RegistrationData{
 		MachineKey: machineKey,
 		NodeKey:    req.NodeKey,
 		Hostname:   hostname,
-		Hostinfo:   req.Hostinfo,
+		Hostinfo:   hostinfo,
 	}
 
 	if !req.Expiry.IsZero() {
