@@ -298,6 +298,7 @@ func (pol *Policy) compileSSHPolicy(
 		switch rule.Action {
 		case SSHActionAccept:
 			action = sshAccept
+			rule.applyForwarding(&action)
 		case SSHActionCheck:
 			action = sshCheck(baseURL)
 		default:

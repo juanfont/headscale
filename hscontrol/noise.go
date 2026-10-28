@@ -485,6 +485,15 @@ func (ns *noiseServer) sshAction(
 		return sshActionDeny(reqLog, &action), nil
 	}
 
+	// A check rule that denies forwarding must stay denied after the
+	// verdict accepts; the historical all-true default applies only
+	// when the rule sets nothing.
+	if agent, local, remote, fwdFound := ns.headscale.state.SSHCheckForwarding(
+		srcNodeID, dstNodeID, localUser,
+	); fwdFound {
+		applySSHCheckForwarding(&action, agent, local, remote)
+	}
+
 	// Follow-up request with auth_id — wait for the auth verdict.
 	if authIDStr != "" {
 		return ns.sshActionFollowUp(
@@ -522,6 +531,23 @@ func sshActionDeny(reqLog zerolog.Logger, action *tailcfg.SSHAction) *tailcfg.SS
 	reqLog.Info().Caller().Msg("SSH check denied: no matching check rule")
 
 	return action
+}
+
+// applySSHCheckForwarding overlays a check rule's explicit forwarding
+// settings onto action, leaving any kind the rule does not set at the
+// caller's default.
+func applySSHCheckForwarding(action *tailcfg.SSHAction, agent, local, remote *bool) {
+	if agent != nil {
+		action.AllowAgentForwarding = *agent
+	}
+
+	if local != nil {
+		action.AllowLocalPortForwarding = *local
+	}
+
+	if remote != nil {
+		action.AllowRemotePortForwarding = *remote
+	}
 }
 
 // sshActionHoldAndDelegate creates a new auth session bound to the
@@ -692,6 +718,14 @@ func (ns *noiseServer) sshActionFollowUp(
 	// client won't drop a connection still waiting on its check.
 	if _, ok := ns.headscale.state.SSHCheckParams(srcNodeID, dstNodeID, localUser); !ok {
 		return sshActionDeny(reqLog, action), nil
+	}
+
+	// Re-apply forwarding from the current rule, in case it changed
+	// while the user authenticated.
+	if agent, local, remote, fwdFound := ns.headscale.state.SSHCheckForwarding(
+		srcNodeID, dstNodeID, localUser,
+	); fwdFound {
+		applySSHCheckForwarding(action, agent, local, remote)
 	}
 
 	action.Accept = true

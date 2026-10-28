@@ -4260,3 +4260,260 @@ func TestDestinationsToNetPortRange_AutogroupInternet(t *testing.T) {
 		})
 	}
 }
+
+func TestCompileSSHPolicy_Forwarding(t *testing.T) {
+	users := types.Users{
+		{Name: "user1", ID: 1},
+		{Name: "user2", ID: 2},
+	}
+
+	nodeTaggedServer := types.Node{
+		Hostname: "tagged-server",
+		IPv4:     createAddr("100.64.0.1"),
+		UserID:   new(users[0].ID),
+		User:     new(users[0]),
+		Tags:     []string{"tag:server"},
+	}
+	nodeUser2Untagged := types.Node{
+		Hostname: "user2-device",
+		IPv4:     createAddr("100.64.0.3"),
+		UserID:   new(users[1].ID),
+		User:     new(users[1]),
+	}
+
+	nodes := types.Nodes{&nodeTaggedServer, &nodeUser2Untagged}
+	deny := false
+	allow := true
+
+	tests := []struct {
+		name string
+		rule SSH
+		want *tailcfg.SSHAction
+	}{
+		{
+			name: "unset preserves historical all-forwarding default",
+			rule: SSH{
+				Action:       "accept",
+				Sources:      SSHSrcAliases{gp("group:admins")},
+				Destinations: SSHDstAliases{tp("tag:server")},
+				Users:        []SSHUser{"ssh-it-user"},
+			},
+			want: &tailcfg.SSHAction{
+				Accept:                    true,
+				AllowAgentForwarding:      true,
+				AllowLocalPortForwarding:  true,
+				AllowRemotePortForwarding: true,
+			},
+		},
+		{
+			name: "all forwarding denied",
+			rule: SSH{
+				Action:                    "accept",
+				Sources:                   SSHSrcAliases{gp("group:admins")},
+				Destinations:              SSHDstAliases{tp("tag:server")},
+				Users:                     []SSHUser{"ssh-it-user"},
+				AllowAgentForwarding:      &deny,
+				AllowLocalPortForwarding:  &deny,
+				AllowRemotePortForwarding: &deny,
+			},
+			want: &tailcfg.SSHAction{
+				Accept:                    true,
+				AllowAgentForwarding:      false,
+				AllowLocalPortForwarding:  false,
+				AllowRemotePortForwarding: false,
+			},
+		},
+		{
+			name: "only local forwarding denied",
+			rule: SSH{
+				Action:                   "accept",
+				Sources:                  SSHSrcAliases{gp("group:admins")},
+				Destinations:             SSHDstAliases{tp("tag:server")},
+				Users:                    []SSHUser{"ssh-it-user"},
+				AllowLocalPortForwarding: &deny,
+			},
+			want: &tailcfg.SSHAction{
+				Accept:                    true,
+				AllowAgentForwarding:      true,
+				AllowLocalPortForwarding:  false,
+				AllowRemotePortForwarding: true,
+			},
+		},
+		{
+			name: "explicit allow is a no-op on the default",
+			rule: SSH{
+				Action:                    "accept",
+				Sources:                   SSHSrcAliases{gp("group:admins")},
+				Destinations:              SSHDstAliases{tp("tag:server")},
+				Users:                     []SSHUser{"ssh-it-user"},
+				AllowAgentForwarding:      &allow,
+				AllowLocalPortForwarding:  &allow,
+				AllowRemotePortForwarding: &allow,
+			},
+			want: &tailcfg.SSHAction{
+				Accept:                    true,
+				AllowAgentForwarding:      true,
+				AllowLocalPortForwarding:  true,
+				AllowRemotePortForwarding: true,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pol := &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:server"): Owners{up("user1@")},
+				},
+				Groups: Groups{
+					Group("group:admins"): []Username{Username("user2@")},
+				},
+				SSHs: []SSH{tt.rule},
+			}
+			require.NoError(t, pol.validate())
+
+			got, err := pol.compileSSHPolicy("unused-server-url", users, nodeTaggedServer.View(), nodes.ViewSlice())
+			require.NoError(t, err)
+			require.Len(t, got.Rules, 1)
+
+			if diff := cmp.Diff(tt.want, got.Rules[0].Action); diff != "" {
+				t.Errorf("compileSSHPolicy() action mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestSSHCheckForwarding(t *testing.T) {
+	users := types.Users{
+		{Name: "user1", ID: 1},
+		{Name: "user2", ID: 2},
+	}
+	users[0].Email = "user1@example.com"
+	users[1].Email = "user2@example.com"
+
+	nodeUser1 := types.Node{
+		ID:       1,
+		Hostname: "user1-device",
+		IPv4:     createAddr("100.64.0.1"),
+		UserID:   new(users[0].ID),
+		User:     new(users[0]),
+	}
+	nodeUser2 := types.Node{
+		ID:       2,
+		Hostname: "user2-device",
+		IPv4:     createAddr("100.64.0.2"),
+		UserID:   new(users[1].ID),
+		User:     new(users[1]),
+	}
+	nodeTaggedServer := types.Node{
+		ID:       3,
+		Hostname: "tagged-server",
+		IPv4:     createAddr("100.64.0.3"),
+		UserID:   new(users[0].ID),
+		User:     new(users[0]),
+		Tags:     []string{"tag:server"},
+	}
+
+	nodes := types.Nodes{&nodeUser1, &nodeUser2, &nodeTaggedServer}
+
+	tests := []struct {
+		name       string
+		policy     []byte
+		wantOK     bool
+		wantAgent  *bool
+		wantLocal  *bool
+		wantRemote *bool
+	}{
+		{
+			name: "all forwarding denied on a check rule",
+			policy: []byte(`{
+				"tagOwners": {"tag:server": ["user1@"]},
+				"ssh": [{
+					"action": "check",
+					"allowAgentForwarding": false,
+					"allowLocalPortForwarding": false,
+					"allowRemotePortForwarding": false,
+					"src": ["user2@"],
+					"dst": ["tag:server"],
+					"users": ["autogroup:nonroot"]
+				}]
+			}`),
+			wantOK:     true,
+			wantAgent:  boolPtr(false),
+			wantLocal:  boolPtr(false),
+			wantRemote: boolPtr(false),
+		},
+		{
+			name: "only local forwarding denied on a check rule",
+			policy: []byte(`{
+				"tagOwners": {"tag:server": ["user1@"]},
+				"ssh": [{
+					"action": "check",
+					"allowLocalPortForwarding": false,
+					"src": ["user2@"],
+					"dst": ["tag:server"],
+					"users": ["autogroup:nonroot"]
+				}]
+			}`),
+			wantOK:    true,
+			wantLocal: boolPtr(false),
+		},
+		{
+			name: "unset forwarding on a check rule is nil, not denied",
+			policy: []byte(`{
+				"tagOwners": {"tag:server": ["user1@"]},
+				"ssh": [{
+					"action": "check",
+					"src": ["user2@"],
+					"dst": ["tag:server"],
+					"users": ["autogroup:nonroot"]
+				}]
+			}`),
+			wantOK: true,
+		},
+		{
+			name: "no matching check rule",
+			policy: []byte(`{
+				"tagOwners": {"tag:server": ["user1@"]},
+				"ssh": [{
+					"action": "check",
+					"src": ["user1@"],
+					"dst": ["tag:server"],
+					"users": ["autogroup:nonroot"]
+				}]
+			}`),
+			wantOK: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pm, err := NewPolicyManager(tt.policy, users, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			agent, local, remote, ok := pm.SSHCheckForwarding(types.NodeID(2), types.NodeID(3), "alice")
+			assert.Equal(t, tt.wantOK, ok, "ok mismatch")
+
+			if tt.wantOK {
+				assertBoolPtr(t, tt.wantAgent, agent, "agent")
+				assertBoolPtr(t, tt.wantLocal, local, "local")
+				assertBoolPtr(t, tt.wantRemote, remote, "remote")
+			}
+		})
+	}
+}
+
+func boolPtr(b bool) *bool { return &b }
+
+func assertBoolPtr(t *testing.T, want, got *bool, kind string) {
+	t.Helper()
+
+	if want == nil {
+		assert.Nil(t, got, "%s forwarding should be unset", kind)
+
+		return
+	}
+
+	require.NotNil(t, got, "%s forwarding should be set", kind)
+	assert.Equal(t, *want, *got, "%s forwarding mismatch", kind)
+}

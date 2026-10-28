@@ -1295,6 +1295,16 @@ func (s *State) SSHCheckParams(
 	return s.polMan.SSHCheckParams(srcNodeID, dstNodeID, localUser)
 }
 
+// SSHCheckForwarding resolves the explicit forwarding settings of the
+// first matching check rule for src logging in to dst as localUser.
+// Each pointer is nil when the rule does not set that kind.
+func (s *State) SSHCheckForwarding(
+	srcNodeID, dstNodeID types.NodeID,
+	localUser string,
+) (agent, local, remote *bool, ok bool) {
+	return s.polMan.SSHCheckForwarding(srcNodeID, dstNodeID, localUser)
+}
+
 // Filter returns the current network filter rules and matches.
 func (s *State) Filter() ([]tailcfg.FilterRule, []matcher.Match) {
 	return s.polMan.Filter()

@@ -191,6 +191,33 @@ Used in Tailscale SSH rules to allow access to any user except root. Can only be
 }
 ```
 
+### SSH forwarding controls
+
+An SSH rule may set `allowAgentForwarding`, `allowLocalPortForwarding`, and `allowRemotePortForwarding` to `false` to
+deny that kind of forwarding for sessions matching the rule. This applies to both `accept` rules and `check` rules
+(once a check verdict accepts). A field that is omitted leaves the historical default in place, which allows all
+forwarding, so existing policies are unchanged.
+
+```json title="policy.json"
+{
+  "ssh": [
+    {
+      "action": "accept",
+      "src": ["autogroup:member"],
+      "dst": ["tag:server"],
+      "users": ["autogroup:nonroot"],
+      "allowAgentForwarding": false,
+      "allowLocalPortForwarding": false,
+      "allowRemotePortForwarding": false
+    }
+  ]
+}
+```
+
+This is a control-plane control only: it tells clients what forwarding they may use, it does not patch the
+privilege-escalation flaws in unpatched clients (see Tailworm, which affected Tailscale clients before v1.104.4).
+Denying forwarding here is defence in depth on top of upgrading clients, not a substitute for it.
+
 ### [`autogroup:danger-all`](https://tailscale.com/docs/reference/targets-and-selectors#autogroupdanger-all)
 
 This autogroup resolves to all IP addresses (`0.0.0.0/0` and `::/0`) which also includes all IP addresses outside the

@@ -25,6 +25,11 @@ type PolicyManager interface {
 	// dst as localUser from the current policy, avoiding trust of
 	// client-provided URL params.
 	SSHCheckParams(srcNodeID, dstNodeID types.NodeID, localUser string) (time.Duration, bool)
+	// SSHCheckForwarding resolves the explicit forwarding settings of
+	// the first matching check rule for src logging in to dst as
+	// localUser. Each pointer is nil when the rule does not set that
+	// kind; the final bool reports whether a matching rule was found.
+	SSHCheckForwarding(srcNodeID, dstNodeID types.NodeID, localUser string) (agent, local, remote *bool, ok bool)
 	SetPolicy(pol []byte) (bool, error)
 	// SetUsers replaces the user list. policyChanged reports whether clients
 	// need a policy refresh; peerMapChanged reports whether user-derived peer

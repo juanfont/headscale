@@ -148,6 +148,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Node joins and deletions under churn, especially in tailnets with many tags, no longer stall registrations, map updates and API requests; ephemeral nodes are cleaned up within seconds instead of minutes [#3575](https://github.com/juanfont/headscale/pull/3575)
 - Shutdown keeps the LastSeen of connected nodes: it waits for their map sessions to close before closing the database [#3575](https://github.com/juanfont/headscale/pull/3575)
 - Deleting an ephemeral node no longer logs a spurious `ephemeral node deletion failed` error later [#3575](https://github.com/juanfont/headscale/pull/3575)
+- SSH rules may set `allowAgentForwarding`, `allowLocalPortForwarding` and `allowRemotePortForwarding` to `false` to deny that forwarding kind for matching sessions, for both `accept` and `check` rules. Omitted fields keep the previous behaviour of allowing all forwarding. This is a control-plane control only and does not patch unpatched clients.
 
 ## 0.29.6 (2026-10-24)
 

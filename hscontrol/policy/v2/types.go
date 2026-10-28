@@ -2882,6 +2882,32 @@ type SSH struct {
 	Users        SSHUsers        `json:"users"`
 	CheckPeriod  *SSHCheckPeriod `json:"checkPeriod,omitempty"`
 	AcceptEnv    []string        `json:"acceptEnv,omitempty"`
+	// Forwarding controls for this rule, mirroring [tailcfg.SSHAction].
+	// A nil pointer leaves the historical default in place: all
+	// forwarding allowed for accept rules, and, for check rules, all
+	// forwarding allowed once the check verdict accepts. An explicit
+	// false denies that forwarding kind for the rule, which is the
+	// control Tailworm's SSH findings need on headscale: without it
+	// every accepted session was forwarding-granted.
+	AllowAgentForwarding      *bool `json:"allowAgentForwarding,omitempty"`
+	AllowLocalPortForwarding  *bool `json:"allowLocalPortForwarding,omitempty"`
+	AllowRemotePortForwarding *bool `json:"allowRemotePortForwarding,omitempty"`
+}
+
+// applyForwarding overlays the rule's explicit forwarding settings onto
+// action, leaving any field the rule does not set untouched.
+func (rule SSH) applyForwarding(action *tailcfg.SSHAction) {
+	if rule.AllowAgentForwarding != nil {
+		action.AllowAgentForwarding = *rule.AllowAgentForwarding
+	}
+
+	if rule.AllowLocalPortForwarding != nil {
+		action.AllowLocalPortForwarding = *rule.AllowLocalPortForwarding
+	}
+
+	if rule.AllowRemotePortForwarding != nil {
+		action.AllowRemotePortForwarding = *rule.AllowRemotePortForwarding
+	}
 }
 
 // SSHSrcAliases is a list of aliases that can be used as sources in an [SSH] rule.

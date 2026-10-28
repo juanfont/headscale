@@ -493,11 +493,44 @@ func (pm *PolicyManager) SSHCheckParams(
 	srcNodeID, dstNodeID types.NodeID,
 	localUser string,
 ) (time.Duration, bool) {
+	rule, ok := pm.findSSHCheckRule(srcNodeID, dstNodeID, localUser)
+	if !ok {
+		return 0, false
+	}
+
+	return checkPeriodFromRule(rule), true
+}
+
+// SSHCheckForwarding resolves the explicit forwarding settings of the
+// first matching check rule for src logging in to dst as localUser, so
+// a check verdict can honour a rule that denies forwarding instead of
+// silently re-enabling it on approval. Each returned pointer is nil
+// when the rule does not set that kind, and the final bool reports
+// whether a matching rule was found at all.
+func (pm *PolicyManager) SSHCheckForwarding(
+	srcNodeID, dstNodeID types.NodeID,
+	localUser string,
+) (agent, local, remote *bool, ok bool) {
+	rule, ok := pm.findSSHCheckRule(srcNodeID, dstNodeID, localUser)
+	if !ok {
+		return nil, nil, nil, false
+	}
+
+	return rule.AllowAgentForwarding, rule.AllowLocalPortForwarding, rule.AllowRemotePortForwarding, true
+}
+
+// findSSHCheckRule is the shared first-match lookup behind
+// [PolicyManager.SSHCheckParams] and [PolicyManager.SSHCheckForwarding].
+// Callers must hold no lock; it takes [PolicyManager.mu] itself.
+func (pm *PolicyManager) findSSHCheckRule(
+	srcNodeID, dstNodeID types.NodeID,
+	localUser string,
+) (SSH, bool) {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
 	if pm.pol == nil || len(pm.pol.SSHs) == 0 {
-		return 0, false
+		return SSH{}, false
 	}
 
 	// Find the source and destination node views.
@@ -519,7 +552,7 @@ func (pm *PolicyManager) SSHCheckParams(
 	}
 
 	if !srcNode.Valid() || !dstNode.Valid() {
-		return 0, false
+		return SSH{}, false
 	}
 
 	// Iterate SSH rules to find the first matching check rule.
@@ -548,7 +581,7 @@ func (pm *PolicyManager) SSHCheckParams(
 		for _, dst := range rule.Destinations {
 			if ag, isAG := dst.(*AutoGroup); isAG && ag.Is(AutoGroupSelf) {
 				if sshNodesShareUser(srcNode, dstNode) {
-					return checkPeriodFromRule(rule), true
+					return rule, true
 				}
 
 				continue
@@ -562,7 +595,7 @@ func (pm *PolicyManager) SSHCheckParams(
 			}
 
 			if slices.ContainsFunc(dstNode.IPs(), dstIPs.Contains) {
-				return checkPeriodFromRule(rule), true
+				return rule, true
 			}
 		}
 
@@ -572,15 +605,15 @@ func (pm *PolicyManager) SSHCheckParams(
 			slices.ContainsFunc(dstNode.IPs(), srcIPs.Contains) {
 			if dstNode.IsTagged() {
 				if srcNodeID == dstNodeID {
-					return checkPeriodFromRule(rule), true
+					return rule, true
 				}
 			} else if sshNodesShareUser(srcNode, dstNode) {
-				return checkPeriodFromRule(rule), true
+				return rule, true
 			}
 		}
 	}
 
-	return 0, false
+	return SSH{}, false
 }
 
 // sshNodesShareUser matches user-owned nodes with hydrated user associations.
