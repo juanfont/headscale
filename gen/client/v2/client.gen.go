@@ -18,6 +18,12 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// ApiErrorData defines model for ApiErrorData.
+type ApiErrorData struct {
+	Errors *[]string `json:"errors,omitempty"`
+	User   *string   `json:"user,omitempty"`
+}
+
 // CreateKeyRequest defines model for CreateKeyRequest.
 type CreateKeyRequest struct {
 	Capabilities *KeyCapabilities `json:"capabilities,omitempty"`
@@ -221,6 +227,12 @@ type User struct {
 	Type               string    `json:"type"`
 }
 
+// ValidateACLOutputBody defines model for ValidateACLOutputBody.
+type ValidateACLOutputBody struct {
+	Data    *[]ApiErrorData `json:"data,omitempty"`
+	Message *string         `json:"message,omitempty"`
+}
+
 // DeleteDeviceParams defines parameters for DeleteDevice.
 type DeleteDeviceParams struct {
 	// Fields Set to "all" for route fields.
@@ -254,6 +266,9 @@ type SetACLParams struct {
 	IfMatch *string `json:"If-Match,omitempty"`
 	Accept  *string `json:"Accept,omitempty"`
 }
+
+// ValidateACLJSONBody defines parameters for ValidateACL.
+type ValidateACLJSONBody = openapi_types.File
 
 // ListDevicesParams defines parameters for ListDevices.
 type ListDevicesParams struct {
@@ -295,6 +310,9 @@ type SetDeviceTagsJSONRequestBody = SetTagsRequest
 
 // SetACLJSONRequestBody defines body for SetACL for application/json ContentType.
 type SetACLJSONRequestBody = SetACLJSONBody
+
+// ValidateACLJSONRequestBody defines body for ValidateACL for application/json ContentType.
+type ValidateACLJSONRequestBody = ValidateACLJSONBody
 
 // CreateKeyJSONRequestBody defines body for CreateKey for application/json ContentType.
 type CreateKeyJSONRequestBody = CreateKeyRequest
@@ -511,6 +529,28 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/v2/tailnet/{tailnet}/acl (the `SetACL` operationId).
 	SetACL(ctx context.Context, tailnet string, params *SetACLParams, body SetACLJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ValidateACLWithBody Validate a policy file
+	//
+	// Checks a policy, its tests and its SSH rules without storing it. A refused policy answers 200 with the reason as message.
+	//
+	// Requires the `policy_file:read` OAuth scope (an admin API key is all-access).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v2/tailnet/{tailnet}/acl/validate (the `ValidateACL` operationId).
+	ValidateACLWithBody(ctx context.Context, tailnet string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ValidateACL Validate a policy file
+	//
+	// Checks a policy, its tests and its SSH rules without storing it. A refused policy answers 200 with the reason as message.
+	//
+	// Requires the `policy_file:read` OAuth scope (an admin API key is all-access).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v2/tailnet/{tailnet}/acl/validate (the `ValidateACL` operationId).
+	ValidateACL(ctx context.Context, tailnet string, body ValidateACLJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListDevices List devices
 	//
@@ -884,6 +924,48 @@ func (c *Client) SetACLWithBody(ctx context.Context, tailnet string, params *Set
 // Corresponds with POST /api/v2/tailnet/{tailnet}/acl (the `SetACL` operationId).
 func (c *Client) SetACL(ctx context.Context, tailnet string, params *SetACLParams, body SetACLJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetACLRequest(c.Server, tailnet, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ValidateACLWithBody Validate a policy file
+//
+// Checks a policy, its tests and its SSH rules without storing it. A refused policy answers 200 with the reason as message.
+//
+// Requires the `policy_file:read` OAuth scope (an admin API key is all-access).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v2/tailnet/{tailnet}/acl/validate (the `ValidateACL` operationId).
+func (c *Client) ValidateACLWithBody(ctx context.Context, tailnet string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewValidateACLRequestWithBody(c.Server, tailnet, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ValidateACL Validate a policy file
+//
+// Checks a policy, its tests and its SSH rules without storing it. A refused policy answers 200 with the reason as message.
+//
+// Requires the `policy_file:read` OAuth scope (an admin API key is all-access).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v2/tailnet/{tailnet}/acl/validate (the `ValidateACL` operationId).
+func (c *Client) ValidateACL(ctx context.Context, tailnet string, body ValidateACLJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewValidateACLRequest(c.Server, tailnet, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1656,6 +1738,53 @@ func NewSetACLRequestWithBody(server string, tailnet string, params *SetACLParam
 	return req, nil
 }
 
+// NewValidateACLRequest calls the generic ValidateACL builder with application/json body
+func NewValidateACLRequest(server string, tailnet string, body ValidateACLJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewValidateACLRequestWithBody(server, tailnet, "application/json", bodyReader)
+}
+
+// NewValidateACLRequestWithBody constructs an http.Request for the ValidateACL method, with any body, and a specified content type
+func NewValidateACLRequestWithBody(server string, tailnet string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tailnet", tailnet, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v2/tailnet/%s/acl/validate", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListDevicesRequest constructs an http.Request for the ListDevices method
 func NewListDevicesRequest(server string, tailnet string, params *ListDevicesParams) (*http.Request, error) {
 	var err error
@@ -2282,6 +2411,28 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/v2/tailnet/{tailnet}/acl (the `SetACL` operationId).
 	SetACLWithResponse(ctx context.Context, tailnet string, params *SetACLParams, body SetACLJSONRequestBody, reqEditors ...RequestEditorFn) (*SetACLResponse, error)
+
+	// ValidateACLWithBodyWithResponse Validate a policy file
+	//
+	// Checks a policy, its tests and its SSH rules without storing it. A refused policy answers 200 with the reason as message.
+	//
+	// Requires the `policy_file:read` OAuth scope (an admin API key is all-access).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v2/tailnet/{tailnet}/acl/validate (the `ValidateACL` operationId).
+	ValidateACLWithBodyWithResponse(ctx context.Context, tailnet string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ValidateACLResponse, error)
+
+	// ValidateACLWithResponse Validate a policy file
+	//
+	// Checks a policy, its tests and its SSH rules without storing it. A refused policy answers 200 with the reason as message.
+	//
+	// Requires the `policy_file:read` OAuth scope (an admin API key is all-access).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v2/tailnet/{tailnet}/acl/validate (the `ValidateACL` operationId).
+	ValidateACLWithResponse(ctx context.Context, tailnet string, body ValidateACLJSONRequestBody, reqEditors ...RequestEditorFn) (*ValidateACLResponse, error)
 
 	// ListDevicesWithResponse List devices
 	//
@@ -3172,6 +3323,89 @@ func (r SetACLResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r SetACLResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ValidateACLResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ValidateACLOutputBody
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *ErrorModel
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *ErrorModel
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *ErrorModel
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *ErrorModel
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ErrorModel
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *ErrorModel
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ValidateACLResponse) GetJSON200() *ValidateACLOutputBody {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r ValidateACLResponse) GetApplicationproblemJSON400() *ErrorModel {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ValidateACLResponse) GetApplicationproblemJSON401() *ErrorModel {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ValidateACLResponse) GetApplicationproblemJSON403() *ErrorModel {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r ValidateACLResponse) GetApplicationproblemJSON404() *ErrorModel {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r ValidateACLResponse) GetApplicationproblemJSON422() *ErrorModel {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ValidateACLResponse) GetApplicationproblemJSON500() *ErrorModel {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ValidateACLResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ValidateACLResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ValidateACLResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ValidateACLResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -4116,6 +4350,40 @@ func (c *ClientWithResponses) SetACLWithResponse(ctx context.Context, tailnet st
 	return ParseSetACLResponse(rsp)
 }
 
+// ValidateACLWithBodyWithResponse Validate a policy file
+//
+// Checks a policy, its tests and its SSH rules without storing it. A refused policy answers 200 with the reason as message.
+//
+// Requires the `policy_file:read` OAuth scope (an admin API key is all-access).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v2/tailnet/{tailnet}/acl/validate (the `ValidateACL` operationId).
+func (c *ClientWithResponses) ValidateACLWithBodyWithResponse(ctx context.Context, tailnet string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ValidateACLResponse, error) {
+	rsp, err := c.ValidateACLWithBody(ctx, tailnet, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseValidateACLResponse(rsp)
+}
+
+// ValidateACLWithResponse Validate a policy file
+//
+// Checks a policy, its tests and its SSH rules without storing it. A refused policy answers 200 with the reason as message.
+//
+// Requires the `policy_file:read` OAuth scope (an admin API key is all-access).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v2/tailnet/{tailnet}/acl/validate (the `ValidateACL` operationId).
+func (c *ClientWithResponses) ValidateACLWithResponse(ctx context.Context, tailnet string, body ValidateACLJSONRequestBody, reqEditors ...RequestEditorFn) (*ValidateACLResponse, error) {
+	rsp, err := c.ValidateACL(ctx, tailnet, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseValidateACLResponse(rsp)
+}
+
 // ListDevicesWithResponse List devices
 //
 // Requires the `devices:core:read` OAuth scope (an admin API key is all-access).
@@ -4912,6 +5180,74 @@ func ParseSetACLResponse(rsp *http.Response) (*SetACLResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseValidateACLResponse parses an HTTP response from a ValidateACLWithResponse call
+func ParseValidateACLResponse(rsp *http.Response) (*ValidateACLResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ValidateACLResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ValidateACLOutputBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ErrorModel
