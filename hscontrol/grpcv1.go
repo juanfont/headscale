@@ -486,6 +486,10 @@ func (api headscaleV1APIServer) ExpireNode(
 	node, nodeChange, err := api.h.state.SetNodeExpiry(
 		types.NodeID(request.GetNodeId()), &expiry,
 	)
+	if errors.Is(err, types.ErrExpiryOutOfRange) {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
 	if err != nil {
 		return nil, err
 	}

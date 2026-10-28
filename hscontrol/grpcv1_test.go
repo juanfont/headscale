@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
@@ -816,4 +817,37 @@ func TestDeleteApiKey_BothIdentifiers(t *testing.T) {
 	require.True(t, ok, "error should be a gRPC status error")
 	assert.Equal(t, codes.InvalidArgument, st.Code())
 	assert.Contains(t, st.Message(), "provide either id or prefix, not both")
+}
+
+// TestExpireNode_RefusesUnencodableExpiry proves ExpireNode refuses a key
+// expiry outside the years [0,9999] in UTC as invalid input, which
+// grpc-gateway answers with 400.
+func TestExpireNode_RefusesUnencodableExpiry(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	apiServer := newHeadscaleV1APIServer(app)
+
+	user := app.state.CreateUserForTest("expire-range-user")
+	node := app.state.CreateRegisteredNodeForTest(user, "expire-range-node")
+	app.state.PutNodeInStoreForTest(*node)
+
+	beyond, err := time.Parse(time.RFC3339, "9999-12-31T23:59:59-23:59")
+	require.NoError(t, err)
+
+	_, err = apiServer.ExpireNode(context.Background(), &v1.ExpireNodeRequest{
+		NodeId: uint64(node.ID),
+		Expiry: timestamppb.New(beyond),
+	})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok, "error should be a gRPC status error")
+	assert.Equal(t, codes.InvalidArgument, st.Code())
+
+	latest := time.Date(9999, time.December, 31, 23, 59, 59, 0, time.UTC)
+	_, err = apiServer.ExpireNode(context.Background(), &v1.ExpireNodeRequest{
+		NodeId: uint64(node.ID),
+		Expiry: timestamppb.New(latest),
+	})
+	require.NoError(t, err)
 }

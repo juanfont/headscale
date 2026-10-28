@@ -710,3 +710,111 @@ func TestUpdatePolicyManagerUsersUnchangedKeepsSnapshot(t *testing.T) {
 	require.NotSame(t, before, s.nodeStore.data.Load(),
 		"a user change must rebuild the peer map")
 }
+
+// TestSetNodeExpiryRejectsUnencodableExpiry proves an admin cannot store a key
+// expiry that every map carrying the node would fail to encode.
+func TestSetNodeExpiryRejectsUnencodableExpiry(t *testing.T) {
+	_, s, nodeID := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	beyond, err := time.Parse(time.RFC3339, "9999-12-31T23:59:59-23:59")
+	require.NoError(t, err)
+
+	before := s.nodeStore.data.Load()
+
+	_, _, err = s.SetNodeExpiry(nodeID, &beyond)
+	require.ErrorIs(t, err, types.ErrExpiryOutOfRange)
+	require.Same(t, before, s.nodeStore.data.Load(),
+		"a refused expiry must not reach the NodeStore")
+
+	latest := time.Date(9999, time.December, 31, 23, 59, 59, 0, time.UTC)
+	_, _, err = s.SetNodeExpiry(nodeID, &latest)
+	require.NoError(t, err)
+}
+
+// TestAuthPathRejectsUnencodableExpiry proves an expiry handed to the auth
+// path, such as an OIDC token's, cannot store what SetNodeExpiry refuses.
+func TestAuthPathRejectsUnencodableExpiry(t *testing.T) {
+	_, s, _ := persistTestSetup(t)
+	t.Cleanup(func() { _ = s.Close() })
+
+	user := s.CreateUserForTest("auth-path-user")
+	nodeKey := key.NewNode().Public()
+	authID := types.MustAuthID()
+	s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+		MachineKey: key.NewMachine().Public(),
+		NodeKey:    nodeKey,
+		Hostname:   "auth-path-node",
+	}))
+
+	// How go-oidc reads an exp claim in the year 10000.
+	beyond := time.Unix(253402300800, 0)
+
+	_, _, err := s.HandleNodeFromAuthPath(
+		authID, types.UserID(user.ID), &beyond, util.RegisterMethodOIDC,
+	)
+	require.ErrorIs(t, err, types.ErrExpiryOutOfRange)
+
+	_, found := s.GetNodeByNodeKey(nodeKey)
+	require.False(t, found, "a refused expiry must not create a node")
+}
+
+// TestAcceptedExpirySurvivesRestart proves an accepted expiry that is already in
+// the year 10000 in its own zone is stored so SQLite can load it at the next
+// start. go-oidc reads a token's exp in the server's zone, east of UTC here.
+func TestAcceptedExpirySurvivesRestart(t *testing.T) {
+	latest := time.Date(9999, time.December, 31, 23, 59, 59, 0, time.UTC)
+	east := latest.In(time.FixedZone("", 60*60))
+
+	dbPath, s, adminID := persistTestSetup(t)
+
+	_, _, err := s.SetNodeExpiry(adminID, &east)
+	require.NoError(t, err)
+
+	user := s.CreateUserForTest("oidc-user")
+	authID := types.MustAuthID()
+	s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+		MachineKey: key.NewMachine().Public(),
+		NodeKey:    key.NewNode().Public(),
+		Hostname:   "oidc-node",
+	}))
+
+	oidcNode, _, err := s.HandleNodeFromAuthPath(
+		authID, types.UserID(user.ID), &east, util.RegisterMethodOIDC,
+	)
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+
+	s = persistTestReopen(t, dbPath)
+
+	for _, id := range []types.NodeID{adminID, oidcNode.ID()} {
+		nv, ok := s.GetNodeByID(id)
+		require.True(t, ok)
+		assert.True(t, latest.Equal(nv.Expiry().Get()), "node %d", id)
+	}
+}
+
+// TestLoadedExpiryIsUTC proves an expiry the database returns in another zone is
+// served in UTC. PostgreSQL returns the server's zone, where the latest accepted
+// expiry is in the year 10000 and cannot be encoded.
+func TestLoadedExpiryIsUTC(t *testing.T) {
+	dbPath, s, nodeID := persistTestSetup(t)
+	require.NoError(t, s.Close())
+
+	expiry := time.Date(2030, time.January, 1, 0, 0, 0, 0, time.UTC)
+
+	database, err := db.NewHeadscaleDatabase(persistTestConfig(dbPath))
+	require.NoError(t, err)
+	require.NoError(t, database.DB.Model(&types.Node{}).Where("id = ?", nodeID).
+		Update("expiry", expiry.In(time.FixedZone("", 60*60))).Error)
+	require.NoError(t, database.Close())
+
+	s = persistTestReopen(t, dbPath)
+
+	nv, ok := s.GetNodeByID(nodeID)
+	require.True(t, ok)
+
+	got := nv.Expiry().Get()
+	assert.True(t, expiry.Equal(got))
+	assert.Equal(t, time.UTC, got.Location())
+}
