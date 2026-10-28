@@ -4327,3 +4327,57 @@ func TestFollowupWaitPrefersCompletedAuthOverExpiredContext(t *testing.T) {
 		timeouts, iterations)
 	assert.Equal(t, iterations, authorized, "every completed registration must be returned as authorized")
 }
+
+// TestRegisterRejectsUnencodableExpiry proves a registration cannot store a key
+// expiry that is in range in its own zone but outside the years [0,9999] in
+// UTC, which every map carrying the node would fail to encode.
+func TestRegisterRejectsUnencodableExpiry(t *testing.T) {
+	app := createTestApp(t)
+
+	user := app.state.CreateUserForTest("expiry-range-user")
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+
+	register := func(expiry time.Time) (key.NodePublic, error) {
+		nodeKey := key.NewNode().Public()
+
+		_, err := app.handleRegister(context.Background(), tailcfg.RegisterRequest{
+			Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+			NodeKey:  nodeKey,
+			Hostinfo: &tailcfg.Hostinfo{Hostname: "expiry-range-node"},
+			Expiry:   expiry,
+		}, key.NewMachine().Public())
+
+		return nodeKey, err
+	}
+
+	for _, raw := range []string{
+		"9999-12-31T23:59:59-23:59",
+		"0000-01-01T00:00:00+23:59",
+	} {
+		expiry, err := time.Parse(time.RFC3339, raw)
+		require.NoError(t, err)
+
+		nodeKey, err := register(expiry)
+
+		httpErr, ok := errors.AsType[HTTPError](err)
+		require.True(t, ok, "expiry %s: want an HTTPError, got %v", raw, err)
+		require.Equal(t, http.StatusBadRequest, httpErr.Code)
+
+		_, found := app.state.GetNodeByNodeKey(nodeKey)
+		require.False(t, found, "expiry %s must not create a node", raw)
+	}
+
+	// The latest encodable expiry still registers, and SQLite reads it back
+	// although it is in the year 10000 east of UTC.
+	latest := time.Date(9999, time.December, 31, 23, 59, 59, 0, time.UTC)
+	nodeKey, err := register(latest.In(time.FixedZone("", 60*60)))
+	require.NoError(t, err, "the latest encodable expiry must still register")
+
+	node, found := app.state.GetNodeByNodeKey(nodeKey)
+	require.True(t, found)
+
+	stored, err := app.state.DB().GetNodeByID(node.ID())
+	require.NoError(t, err)
+	assert.True(t, latest.Equal(*stored.Expiry))
+}

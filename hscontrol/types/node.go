@@ -619,6 +619,10 @@ func ValidateGivenName(givenName, baseDomain string) error {
 // or an error when it cannot be sent to clients. [time.Time.MarshalJSON] refuses
 // a year outside [0,9999], failing every map response that carries it. A time
 // that is in range in its own zone can still leave the range in UTC.
+//
+// Callers store the returned value: SQLite writes a time in its own zone and
+// cannot read back a year outside [0,9999], which that zone can reach when UTC
+// does not.
 func ValidateExpiry(expiry time.Time) (time.Time, error) {
 	utc := expiry.UTC()
 	if year := utc.Year(); year < 0 || year > 9999 {
