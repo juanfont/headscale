@@ -158,6 +158,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Another user's key or login on a tagged machine now creates a new device for that user instead of re-authenticating the tagged node
 - Fix one node with a stored key expiry outside the years 0 to 9999 in UTC failing the map of every node that can see it; it is now left out of its peers' maps and the startup check names it with the fix command
 - Refuse a key expiry outside the years 0 to 9999 in UTC on registration, on the OIDC token-expiry path and in `headscale nodes expire` / `POST /api/v1/node/{nodeId}/expire` (400); the latest accepted expiry no longer fails node listings on PostgreSQL in a zone east of UTC
+- Keep the first 256 endpoints and 4096 announced routes from client reports; oversized hostnames, requested tags or other metadata return a registration error or HTTP 413 on map updates. Zoned IPv6 endpoints are refused
 
 ## 0.29.7 (202x-xx-xx)
 

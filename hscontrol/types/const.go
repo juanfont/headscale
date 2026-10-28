@@ -14,3 +14,12 @@ const (
 
 	MaxHostnameLength = 255
 )
+
+// Client report limits are above what a stock client sends.
+// MaxHostinfoSize applies separately to NetInfo and the remaining fields without routes.
+const (
+	MaxEndpoints    = 256
+	MaxRequestTags  = 256
+	MaxRoutableIPs  = 4096
+	MaxHostinfoSize = 64 << 10
+)
