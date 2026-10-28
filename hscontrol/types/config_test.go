@@ -1573,3 +1573,33 @@ func TestPostgresConfigDSN(t *testing.T) {
 		})
 	}
 }
+
+func TestServesRoute(t *testing.T) {
+	v4 := netip.MustParsePrefix("100.64.0.0/10")
+	v6 := netip.MustParsePrefix("fd7a:115c:a1e0::/48")
+	cfg := &Config{PrefixV4: &v4, PrefixV6: &v6}
+
+	for route, want := range map[string]bool{
+		"100.64.0.11/32":                   false,
+		"fd7a:115c:a1e0::b/128":            false,
+		"::ffff:100.64.0.11/128":           false,
+		"100.64.1.2/31":                    true,
+		"100.64.2.0/24":                    true,
+		"fd7a:115c:a1e0::1:2/127":          true,
+		"fd7a:115c:a1e0::2:0/120":          true,
+		"::ffff:100.64.0.0/112":            true,
+		"100.64.0.8/29":                    true,
+		"0.0.0.0/1":                        true,
+		"0.0.0.0/0":                        true,
+		"10.9.0.1/32":                      true,
+		"::ffff:10.9.0.1/128":              true,
+		"fd00::1/128":                      true,
+		"fd7a:115c:a1e0:b1a:0:7:a09:5/128": true,
+	} {
+		assert.Equalf(t, want, cfg.ServesRoute(netip.MustParsePrefix(route)), "%s", route)
+	}
+
+	// Only the configured ranges hold nodes.
+	narrow := netip.MustParsePrefix("100.64.0.0/24")
+	assert.True(t, (&Config{PrefixV4: &narrow}).ServesRoute(netip.MustParsePrefix("100.100.0.1/32")))
+}
