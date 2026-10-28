@@ -324,9 +324,8 @@ func TestReloginOfExpiredNodeClearsPeerExpiry(t *testing.T) {
 }
 
 // TestReloginPeerVisibleHostinfoReachesPeers covers the rest of the #3531
-// class: a relogin stores the RegisterRequest's Hostinfo, so the following
-// MapRequest carries no Hostinfo delta, and a peer-visible change made at
-// relogin reaches peers only if the relogin itself sends the whole node.
+// class: peers must see changed services after the first MapRequest following
+// relogin. A key-only patch cannot carry that change.
 func TestReloginPeerVisibleHostinfoReachesPeers(t *testing.T) {
 	t.Parallel()
 

@@ -51,10 +51,8 @@ const (
 	registerCacheExpiration = time.Minute * 15
 
 	// defaultRegisterCacheMaxEntries is the default upper bound on the number
-	// of pending registration entries the auth cache will hold. With a 15-minute
-	// TTL and a stripped-down RegistrationData payload (~200 bytes per entry),
-	// 1024 entries cap the worst-case cache footprint at well under 1 MiB even
-	// under sustained unauthenticated cache-fill attempts.
+	// of pending registration entries the auth cache will hold. Entries keep
+	// only hostname, OS and requested tags.
 	defaultRegisterCacheMaxEntries = 1024
 
 	// defaultNodeStoreBatchSize is the default number of write operations to batch
@@ -1727,8 +1725,6 @@ type authNodeUpdateParams struct {
 	ExistingNode types.NodeView
 	// Cached registration payload from the originating client request.
 	RegData *types.RegistrationData
-	// Pre-validated hostinfo; NetInfo preserved from ExistingNode.
-	ValidHostinfo *tailcfg.Hostinfo
 	// Hostname from hostinfo, or generated from keys if client omits it.
 	Hostname string
 	// Auth user; may differ from ExistingNode.User() on conversion.
@@ -1805,19 +1801,27 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 		return types.NodeView{}, false, ErrNodeKeyInUse
 	}
 
-	// Update existing node in [NodeStore] - validation passed, safe to mutate
-	before, updatedNodeView, ok := s.nodeStore.UpdateNodeDiff(params.ExistingNode.ID(), func(node *types.Node) {
-		node.NodeKey = regData.NodeKey
-		node.DiscoKey = regData.DiscoKey
-		node.Hostname = params.Hostname
+	var hostinfoErr error
 
-		// Preserve NetInfo from existing node when re-registering
-		node.Hostinfo = params.ValidHostinfo
-		node.Hostinfo.NetInfo = preserveNetInfo(
-			params.ExistingNode,
-			params.ExistingNode.ID(),
-			params.ValidHostinfo,
-		)
+	// Read current operational metadata while holding the NodeStore writer lock.
+	before, updatedNodeView, ok := s.nodeStore.UpdateNodeDiff(params.ExistingNode.ID(), func(node *types.Node) {
+		hostinfo := cmp.Or(node.Hostinfo.Clone(), &tailcfg.Hostinfo{})
+
+		hostinfo.Hostname = params.Hostname
+		hostinfo.RequestTags = slices.Clone(requestTags)
+
+		hostinfoErr = types.ValidateHostinfo(hostinfo)
+		if hostinfoErr != nil {
+			return
+		}
+
+		node.NodeKey = regData.NodeKey
+		if !regData.DiscoKey.IsZero() {
+			node.DiscoKey = regData.DiscoKey
+		}
+
+		node.Hostname = params.Hostname
+		node.Hostinfo = hostinfo
 
 		// Preserve the node's live endpoints when the register request carried
 		// none. Web/OIDC relogins report endpoints via MapRequest, not register,
@@ -1851,34 +1855,11 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 		isTagged := node.IsTagged()
 
 		switch {
-		case wasTagged && !isTagged:
-			// Tagged → Personal: set expiry from client request
-			if params.Expiry != nil {
-				node.Expiry = params.Expiry
-			} else {
-				node.Expiry = regData.Expiry
-			}
-		case !wasTagged && isTagged:
-			// Personal → Tagged: clear expiry; tagged nodes disable it by default.
-			node.Expiry = nil
-		case params.IsConvertFromTag && !isTagged:
-			// Explicit conversion from tagged to user-owned: set expiry from client request
-			if params.Expiry != nil {
-				node.Expiry = params.Expiry
-			} else {
-				node.Expiry = regData.Expiry
-			}
 		case !isTagged:
-			// Personal → Personal: update expiry from client
-			if params.Expiry != nil {
-				node.Expiry = params.Expiry
-			} else {
-				node.Expiry = regData.Expiry
-			}
-		case isTagged && node.IsExpired():
-			// Tagged → Tagged and expired: a person re-authenticated it, so clear
-			// the past expiry. A future administrative expiry has not taken
-			// effect and falls through to the no-op below.
+			// User-owned nodes take the expiry from this authentication.
+			node.Expiry = cmp.Or(params.Expiry, regData.Expiry)
+		case !wasTagged || node.IsExpired():
+			// Becoming tagged disables expiry; reauth clears a past expiry.
 			node.Expiry = nil
 		}
 		// Tagged → Tagged and not expired: keep existing expiry - no action.
@@ -1897,6 +1878,10 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 
 	if !ok {
 		return types.NodeView{}, false, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, params.ExistingNode.ID())
+	}
+
+	if hostinfoErr != nil {
+		return types.NodeView{}, false, hostinfoErr
 	}
 
 	keysOnly := onlyKeysChanged(before, updatedNodeView, time.Now())
@@ -2336,7 +2321,6 @@ func (s *State) HandleNodeFromAuthPath(
 	// Common params for update operations
 	updateParams := authNodeUpdateParams{
 		RegData:        regData,
-		ValidHostinfo:  hostinfo,
 		Hostname:       hostname,
 		User:           user,
 		Expiry:         expiry,
