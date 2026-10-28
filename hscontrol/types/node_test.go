@@ -1,8 +1,10 @@
 package types
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1072,4 +1074,63 @@ func TestNodeIsExpiredAt(t *testing.T) {
 		require.True(t, NodeView{}.IsExpiredAt(now),
 			"an invalid view counts as expired, like IsExpired")
 	})
+}
+
+func TestValidateHostinfo(t *testing.T) {
+	t.Parallel()
+
+	routes := make([]netip.Prefix, MaxRoutableIPs)
+	for i := range routes {
+		routes[i] = netip.PrefixFrom(netip.AddrFrom16([16]byte{0xfd, byte(i >> 8), byte(i)}), 64)
+	}
+
+	latencies := make(map[string]float64, 300)
+	for i := range 300 {
+		latencies[fmt.Sprintf("%d-v4", i)] = 0.01
+	}
+
+	base, err := json.Marshal(&tailcfg.Hostinfo{OSVersion: "x"})
+	require.NoError(t, err)
+
+	exact := strings.Repeat("x", MaxHostinfoSize-len(base)+1)
+
+	for _, tt := range []struct {
+		name     string
+		hostinfo *tailcfg.Hostinfo
+		wantErr  bool
+	}{
+		{name: "nil"},
+		{name: "hostname at limit", hostinfo: &tailcfg.Hostinfo{Hostname: strings.Repeat("h", 255)}},
+		{name: "hostname over limit", hostinfo: &tailcfg.Hostinfo{Hostname: strings.Repeat("h", 256)}, wantErr: true},
+		{name: "hostname bytes", hostinfo: &tailcfg.Hostinfo{Hostname: strings.Repeat("é", 128)}, wantErr: true},
+		{name: "routes at limit", hostinfo: &tailcfg.Hostinfo{RoutableIPs: routes}},
+		{name: "routes over limit", hostinfo: &tailcfg.Hostinfo{RoutableIPs: append(slices.Clone(routes), routes[0])}, wantErr: true},
+		{name: "tags at limit", hostinfo: &tailcfg.Hostinfo{RequestTags: make([]string, 256)}},
+		{name: "tags over limit", hostinfo: &tailcfg.Hostinfo{RequestTags: make([]string, 257)}, wantErr: true},
+		{name: "metadata at byte limit", hostinfo: &tailcfg.Hostinfo{OSVersion: exact}},
+		{name: "metadata over byte limit", hostinfo: &tailcfg.Hostinfo{OSVersion: exact + "x"}, wantErr: true},
+		{name: "NetInfo over byte limit", hostinfo: &tailcfg.Hostinfo{NetInfo: &tailcfg.NetInfo{LinkType: strings.Repeat("n", MaxHostinfoSize)}}, wantErr: true},
+		{name: "budgets compose", hostinfo: &tailcfg.Hostinfo{OSVersion: strings.Repeat("o", 60<<10), NetInfo: &tailcfg.NetInfo{LinkType: strings.Repeat("n", 60<<10)}}},
+		{name: "small entries need no field-specific truncation", hostinfo: &tailcfg.Hostinfo{
+			Services:     make([]tailcfg.Service, 300),
+			WoLMACs:      make([]string, 300),
+			SSH_HostKeys: make([]string, 300),
+			NetInfo:      &tailcfg.NetInfo{DERPLatency: latencies},
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			want := tt.hostinfo.Clone()
+
+			err := ValidateHostinfo(tt.hostinfo)
+			if tt.wantErr {
+				require.ErrorIs(t, err, ErrHostinfoTooLarge)
+			} else {
+				require.NoError(t, err)
+			}
+
+			require.True(t, want.Equal(tt.hostinfo), "validation must not change the report")
+		})
+	}
 }
