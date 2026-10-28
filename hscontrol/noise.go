@@ -621,8 +621,9 @@ func (ns *noiseServer) sshActionHoldAndDelegate(
 }
 
 // sshActionFollowUp handles follow-up requests where the client
-// provides an auth_id. It blocks until the auth session resolves or
-// the request context is cancelled (e.g. the client disconnects).
+// provides an auth_id. It blocks until the auth session resolves, the
+// request context is cancelled (e.g. the client disconnects), or a newer
+// follow-up parks on the session.
 func (ns *noiseServer) sshActionFollowUp(
 	ctx context.Context,
 	reqLog zerolog.Logger,
@@ -686,6 +687,8 @@ func (ns *noiseServer) sshActionFollowUp(
 
 	reqLog.Trace().Caller().Msg("SSH action follow-up")
 
+	superseded := auth.Park()
+
 	var (
 		verdict   types.AuthVerdict
 		verdictOK bool
@@ -703,6 +706,10 @@ func (ns *noiseServer) sshActionFollowUp(
 			"ssh action follow-up cancelled",
 			ctx.Err(),
 		)
+	case <-superseded:
+		// The newer request collects the verdict; this one re-delegates, as
+		// it would on a consumed verdict, without waiting for it.
+		return sessionGone("SSH check follow-up superseded; re-delegating")
 	case verdict, verdictOK = <-auth.WaitForAuth():
 	}
 
@@ -870,6 +877,20 @@ func (ns *noiseServer) RegistrationHandler(
 		err := json.NewDecoder(req.Body).Decode(&regReq)
 		if err != nil {
 			return &regReq, regErr(err)
+		}
+
+		if regReq.Followup != "" {
+			// Keep only fields used by logout checks or a refreshed registration.
+			var auth *tailcfg.RegisterResponseAuth
+			if regReq.Auth != nil {
+				auth = &tailcfg.RegisterResponseAuth{}
+			}
+
+			regReq = tailcfg.RegisterRequest{
+				Version: regReq.Version, NodeKey: regReq.NodeKey,
+				Followup: regReq.Followup, Expiry: regReq.Expiry,
+				Auth: auth, Hostinfo: registrationDataFromRequest(regReq, ns.machineKey).Hostinfo,
+			}
 		}
 
 		if hi := regReq.Hostinfo; hi != nil {
