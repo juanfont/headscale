@@ -152,6 +152,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Require a valid pre-auth key to re-register an expired tagged node
 - Another user's key or login on a tagged machine now creates a new device for that user instead of re-authenticating the tagged node
 - Fix one node with a stored key expiry outside the years 0 to 9999 in UTC failing the map of every node that can see it; it is now left out of its peers' maps and the startup check names it with the fix command
+- Refuse a key expiry outside the years 0 to 9999 in UTC on registration, on the OIDC token-expiry path and in `headscale nodes expire` / `POST /api/v1/node/{nodeId}/expire` (400); the latest accepted expiry no longer fails node listings on PostgreSQL in a zone east of UTC
 
 ## 0.29.6 (2026-10-24)
 
