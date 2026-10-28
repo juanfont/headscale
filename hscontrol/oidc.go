@@ -313,8 +313,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	if userinfo != nil && userinfo.Claims(&userinfo2) == nil && userinfo2.Sub == claims.Sub {
 		// Update the user with the userinfo claims (with id token claims as fallback).
 		// TODO(kradalby): there might be more interesting fields here that we have not found yet.
-		claims.Email = cmp.Or(userinfo2.Email, claims.Email)
-		claims.EmailVerified = cmp.Or(userinfo2.EmailVerified, claims.EmailVerified)
+		claims.Email, claims.EmailVerified = mergeEmailClaims(&claims, &userinfo2)
 		claims.Username = cmp.Or(userinfo2.PreferredUsername, claims.Username)
 		claims.Name = cmp.Or(userinfo2.Name, claims.Name)
 
@@ -444,6 +443,22 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	if _, err := writer.Write(content.Bytes()); err != nil { //nolint:noinlineerr
 		util.LogErr(err, "Failed to write HTTP response")
 	}
+}
+
+// mergeEmailClaims keeps each verification flag with the address it describes.
+func mergeEmailClaims(
+	claims *types.OIDCClaims,
+	userinfo *types.OIDCUserInfo,
+) (string, types.FlexibleBoolean) {
+	if userinfo.Email == "" {
+		return claims.Email, claims.EmailVerified
+	}
+
+	if userinfo.Email == claims.Email {
+		return claims.Email, claims.EmailVerified || userinfo.EmailVerified
+	}
+
+	return userinfo.Email, userinfo.EmailVerified
 }
 
 func (a *AuthProviderOIDC) determineNodeExpiry(idTokenExpiration time.Time) *time.Time {
