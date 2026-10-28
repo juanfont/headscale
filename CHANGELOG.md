@@ -166,6 +166,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - A registration follow-up from a machine other than the one that started the registration is refused before it waits
 - Only the newest follow-up waits on a pending registration or SSH check; older ones are answered at once
 - Registration locks are freed once no registration uses them
+- Concurrent deletes of one node free its addresses and announce its removal once
 
 ## 0.29.7 (202x-xx-xx)
 
