@@ -358,7 +358,7 @@ jobs:
           - TestTagsReauthDifferentKeyRetagsNode
           - TestTagsReauthDifferentKeyRemovesTag
           - TestTagsAuthKeyWithTagCLICannotModifyAdminTags
-          - TestTagsAuthKeyWithoutTagCannotRequestTags
+          - TestTagsAuthKeyWithoutTagCanRequestOwnedTag
           - TestTagsAuthKeyWithoutTagRegisterNoTags
           - TestTagsAuthKeyWithoutTagCannotAddViaCLI
           - TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithReset
