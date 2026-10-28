@@ -621,6 +621,79 @@ func TestRouterMethodNotAllowedIncludesAllow(t *testing.T) {
 	assert.Equal(t, []string{http.MethodGet}, resp.Header.Values("Allow"))
 }
 
+type oidcUserWithInfo struct {
+	mockoidc.MockUser
+
+	info types.OIDCUserInfo
+}
+
+func (u *oidcUserWithInfo) Userinfo(_ []string) ([]byte, error) {
+	return json.Marshal(u.info)
+}
+
+func TestOIDCEmailClaims(t *testing.T) {
+	for _, tt := range []struct {
+		name          string
+		tokenEmail    string
+		tokenVerified bool
+		infoEmail     string
+		infoVerified  bool
+		wantStatus    int
+	}{
+		{"different address", "guest@other.example", true, "boss@corp.example", false, http.StatusUnauthorized},
+		{"flag without address", "boss@corp.example", false, "", true, http.StatusUnauthorized},
+		{"same address token flag", "boss@corp.example", true, "boss@corp.example", false, http.StatusOK},
+		{"same address userinfo flag", "boss@corp.example", false, "boss@corp.example", true, http.StatusOK},
+		{"no userinfo email", "boss@corp.example", true, "", false, http.StatusOK},
+		{"different verified address", "guest@other.example", false, "boss@corp.example", true, http.StatusOK},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			b := newOIDCBrowser(t)
+			provider, ok := b.app.authProvider.(*AuthProviderOIDC)
+			require.True(t, ok)
+
+			provider.cfg.EmailVerifiedRequired = true
+			provider.cfg.AllowedDomains = []string{"corp.example"}
+
+			b.idp.QueueUser(&oidcUserWithInfo{
+				Subject:       "email-pair",
+				Email:         tt.tokenEmail,
+				EmailVerified: tt.tokenVerified,
+				info: types.OIDCUserInfo{
+					Sub:           "email-pair",
+					Email:         tt.infoEmail,
+					EmailVerified: types.FlexibleBoolean(tt.infoVerified),
+				},
+			})
+			_, registerURL := b.pendingNode(t)
+			status, _, _ := b.get(t, registerURL)
+			assert.Equal(t, tt.wantStatus, status)
+		})
+	}
+}
+
+func TestMergeEmailClaims(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		token    types.OIDCClaims
+		info     types.OIDCUserInfo
+		email    string
+		verified types.FlexibleBoolean
+	}{
+		{"different address", types.OIDCClaims{Email: "old@example.com", EmailVerified: true}, types.OIDCUserInfo{Email: "new@example.com"}, "new@example.com", false},
+		{"flag without address", types.OIDCClaims{Email: "old@example.com"}, types.OIDCUserInfo{EmailVerified: true}, "old@example.com", false},
+		{"same address token flag", types.OIDCClaims{Email: "same@example.com", EmailVerified: true}, types.OIDCUserInfo{Email: "same@example.com"}, "same@example.com", true},
+		{"same address userinfo flag", types.OIDCClaims{Email: "same@example.com"}, types.OIDCUserInfo{Email: "same@example.com", EmailVerified: true}, "same@example.com", true},
+		{"no userinfo email", types.OIDCClaims{Email: "old@example.com", EmailVerified: true}, types.OIDCUserInfo{}, "old@example.com", true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			email, verified := mergeEmailClaims(&tt.token, &tt.info)
+			assert.Equal(t, tt.email, email)
+			assert.Equal(t, tt.verified, verified)
+		})
+	}
+}
+
 func TestOIDCRegistrationRejectsOversizedMergedHostinfo(t *testing.T) {
 	t.Parallel()
 
