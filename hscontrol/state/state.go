@@ -198,18 +198,53 @@ type State struct {
 	// registerLocks serialises registration per machine key so concurrent
 	// registrations of the same machine resolve to a single node instead of
 	// racing the find-then-create section and each creating their own.
-	// ponytail: entries are never pruned; bounded by distinct machine keys
-	// seen, add cleanup on node delete only if it ever matters.
-	registerLocks *xsync.Map[key.MachinePublic, *sync.Mutex]
+	// An entry lives only while a registration holds or waits for it: the
+	// lock is taken before the request is authenticated, and the client
+	// chooses the machine key.
+	registerLocks *xsync.Map[key.MachinePublic, *registerLock]
+}
+
+// registerLock is the registration lock of one machine key. refs counts the
+// holder and the waiters, and is only changed inside [xsync.Map.Compute].
+type registerLock struct {
+	mu   sync.Mutex
+	refs int
 }
 
 // lockRegistration serialises registration for a single machine key and
 // returns the unlock function.
 func (s *State) lockRegistration(machineKey key.MachinePublic) func() {
-	mu, _ := s.registerLocks.LoadOrStore(machineKey, &sync.Mutex{})
-	mu.Lock()
+	// Count this registration before blocking on the mutex, so the entry
+	// cannot be deleted and replaced while it waits.
+	lock, _ := s.registerLocks.Compute(
+		machineKey,
+		func(existing *registerLock, loaded bool) (*registerLock, xsync.ComputeOp) {
+			if !loaded {
+				existing = &registerLock{}
+			}
 
-	return mu.Unlock
+			existing.refs++
+
+			return existing, xsync.UpdateOp
+		},
+	)
+	lock.mu.Lock()
+
+	return func() {
+		lock.mu.Unlock()
+
+		s.registerLocks.Compute(
+			machineKey,
+			func(existing *registerLock, _ bool) (*registerLock, xsync.ComputeOp) {
+				existing.refs--
+				if existing.refs == 0 {
+					return existing, xsync.DeleteOp
+				}
+
+				return existing, xsync.CancelOp
+			},
+		)
+	}
 }
 
 // NewState creates and initializes a new [State] instance, setting up the database,
@@ -297,7 +332,7 @@ func NewState(cfg *types.Config) (*State, error) {
 		pings:     newPingTracker(),
 
 		sshCheckAuth:  make(map[sshCheckPair]time.Time),
-		registerLocks: xsync.NewMap[key.MachinePublic, *sync.Mutex](),
+		registerLocks: xsync.NewMap[key.MachinePublic, *registerLock](),
 	}
 
 	// Surface nodes whose stored data would break map generation (e.g. an

@@ -159,6 +159,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - A stalled request body, or a Noise tunnel with no open request, is closed after 30 seconds
 - A registration follow-up from a machine other than the one that started the registration is refused before it waits
 - Only the newest follow-up waits on a pending registration or SSH check; older ones are answered at once
+- Registration locks are freed once no registration uses them
 
 ## 0.29.6 (2026-10-24)
 
