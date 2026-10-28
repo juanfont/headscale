@@ -669,7 +669,9 @@ func (s *State) SaveNode(node types.NodeView) (types.NodeView, change.Change, er
 // Once the database deletion commits, the returned changes always start with
 // the node-removal notification, even if a later policy refresh fails. Callers
 // must publish the changes before handling the error so live sessions are
-// still torn down after a committed deletion.
+// still torn down after a committed deletion. Concurrent deletes of one node
+// act once: a call that finds the row already gone returns no changes, and
+// only the call that removed the row frees the addresses.
 func (s *State) DeleteNode(node types.NodeView) ([]change.Change, error) {
 	genBefore := s.polMan.NodesGeneration()
 
@@ -679,6 +681,10 @@ func (s *State) DeleteNode(node types.NodeView) ([]change.Change, error) {
 	s.persistMu.Unlock()
 
 	if err != nil {
+		if errors.Is(err, hsdb.ErrNodeNotFound) {
+			return nil, nil
+		}
+
 		return nil, err
 	}
 

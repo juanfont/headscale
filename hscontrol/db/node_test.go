@@ -67,6 +67,8 @@ func TestHardDeleteNode(t *testing.T) {
 
 	_, err = db.getNode(types.UserID(user.ID), "testnode3")
 	require.Error(t, err)
+
+	require.ErrorIs(t, db.DeleteNode(node), ErrNodeNotFound)
 }
 
 func TestListPeersManyNodes(t *testing.T) {
