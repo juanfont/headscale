@@ -545,6 +545,21 @@ func (c *Config) Domain() string {
 	return u.Hostname()
 }
 
+// ServesRoute reports whether an approved route is handed to clients. A
+// single address inside the node ranges, in either spelling, names a node
+// rather than a subnet, so it stays approved but is never served. 4via6
+// addresses stand for a site's IPv4 subnet, not a node.
+func (c *Config) ServesRoute(p netip.Prefix) bool {
+	if !p.IsSingleIP() || tsaddr.IsViaPrefix(p) {
+		return true
+	}
+
+	addr := p.Addr().Unmap()
+
+	return (c.PrefixV4 == nil || !c.PrefixV4.Contains(addr)) &&
+		(c.PrefixV6 == nil || !c.PrefixV6.Contains(addr))
+}
+
 // LoadConfig prepares and loads the Headscale configuration into Viper.
 // This means it sets the default values, reads the configuration file and
 // environment variables, and handles deprecated configuration options.

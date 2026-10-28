@@ -371,32 +371,6 @@ var routeOverlapCompatTests = []string{
 // keyed <test_id>/<node>/<check>. A listed check that matches fails, so a fix
 // must delete its entry.
 var routeOverlapSkipReasons = map[string]string{
-	"routes-t1-auto-v4-default/ovl-db/peer-routes":            tailnetSingleServed,
-	"routes-t1-auto-v4-default/ovl-observer/peer-routes":      tailnetSingleServed,
-	"routes-t1-auto-v4-default/ovl-r-wide-in/peer-routes":     tailnetSingleServed,
-	"routes-t1-auto-v4-default/ovl-r-wide-out/peer-routes":    tailnetSingleServed,
-	"routes-t1-auto-v4-default/ovl-viewer/peer-routes":        tailnetSingleServed,
-	"routes-t2-auto-v6-default/ovl-db/peer-routes":            tailnetSingleServed,
-	"routes-t2-auto-v6-default/ovl-observer/peer-routes":      tailnetSingleServed,
-	"routes-t2-auto-v6-default/ovl-r-wide-in/peer-routes":     tailnetSingleServed,
-	"routes-t2-auto-v6-default/ovl-r-wide-out/peer-routes":    tailnetSingleServed,
-	"routes-t2-auto-v6-default/ovl-viewer/peer-routes":        tailnetSingleServed,
-	"routes-t3-auto-narrow-keys/ovl-db/peer-routes":           tailnetSingleServed,
-	"routes-t3-auto-narrow-keys/ovl-observer/peer-routes":     tailnetSingleServed,
-	"routes-t3-auto-narrow-keys/ovl-r-wide-in/peer-routes":    tailnetSingleServed,
-	"routes-t3-auto-narrow-keys/ovl-r-wide-out/peer-routes":   tailnetSingleServed,
-	"routes-t3-auto-narrow-keys/ovl-viewer/peer-routes":       tailnetSingleServed,
-	"routes-t4-admin/ovl-db/peer-routes":                      tailnetSingleServed,
-	"routes-t4-admin/ovl-observer/peer-routes":                tailnetSingleServed,
-	"routes-t4-admin/ovl-r-wide-in/peer-routes":               tailnetSingleServed,
-	"routes-t4-admin/ovl-r-wide-out/peer-routes":              tailnetSingleServed,
-	"routes-t4-admin/ovl-viewer/peer-routes":                  tailnetSingleServed,
-	"routes-t5-oauth-routes-scope/ovl-db/peer-routes":         tailnetSingleServed,
-	"routes-t5-oauth-routes-scope/ovl-observer/peer-routes":   tailnetSingleServed,
-	"routes-t5-oauth-routes-scope/ovl-r-wide-in/peer-routes":  tailnetSingleServed,
-	"routes-t5-oauth-routes-scope/ovl-r-wide-out/peer-routes": tailnetSingleServed,
-	"routes-t5-oauth-routes-scope/ovl-viewer/peer-routes":     tailnetSingleServed,
-
 	// Once a router is sent its own routes, its self-primary also needs the
 	// approved singles in the tailnet range left unserved.
 	"routes-t1-auto-v4-default/ovl-r-ctrl/self-allowed":      selfRoutesReduced,
@@ -488,8 +462,6 @@ var routeOverlapNotCompared = []string{
 	"routes-t5-oauth-routes-scope/ovl-r-via/peer-routes",
 	"routes-t5-oauth-routes-scope/ovl-r-via/peers",
 }
-
-const tailnetSingleServed = "TAILNET_SINGLE_SERVED: headscale serves an approved single address inside the tailnet range, which SaaS approves but never serves"
 
 // TestRoutesTailnetOverlapCompat replays routers whose routes overlap the
 // tailnet's addresses and compares approvals, served routes, peers and
@@ -664,4 +636,91 @@ func prefixList(pfxs views.Slice[netip.Prefix]) string {
 
 func sortedStrings(s []string) string {
 	return fmt.Sprint(slices.Sorted(slices.Values(s)))
+}
+
+// TestRoutesNodeRangeSingleNotServed checks that a router's approved single
+// addresses inside the node ranges, in either spelling, reach no viewer
+// through a plain grant or a via grant. They stay approved, the router's own
+// entry keeps them, and its wider route is still served.
+func TestRoutesNodeRangeSingleNotServed(t *testing.T) {
+	t.Parallel()
+
+	subnet := netip.MustParsePrefix("10.9.0.0/24")
+	singles := []netip.Prefix{
+		netip.MustParsePrefix("100.64.0.50/32"),
+		netip.MustParsePrefix("fd7a:115c:a1e0::50/128"),
+		netip.MustParsePrefix("::ffff:100.64.0.50/128"),
+	}
+	routes := append([]netip.Prefix{subnet}, singles...)
+
+	for name, grant := range map[string]string{
+		"plain": `{"src": ["tag:client"], "dst": ["*"], "ip": ["*"]}`,
+		"via": `{"src": ["tag:client"], "ip": ["*"], "via": ["tag:router"],
+			"dst": ["10.9.0.0/24", "100.64.0.0/10", "fd7a:115c:a1e0::/48", "::ffff:0:0/96"]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			srv := servertest.NewServer(t)
+			user := srv.CreateUser(t, "routes-user")
+
+			changed, err := srv.State().SetPolicy([]byte(`{
+				"tagOwners": {"tag:client": ["routes-user@"], "tag:router": ["routes-user@"]},
+				"grants": [
+					{"src": ["tag:client"], "dst": ["tag:router"], "ip": ["*"]},
+					{"src": ["tag:router"], "dst": ["*"], "ip": ["*"]},
+					` + grant + `
+				]
+			}`))
+			require.NoError(t, err)
+
+			if changed {
+				changes, err := srv.State().ReloadPolicy()
+				require.NoError(t, err)
+				srv.App.Change(changes...)
+			}
+
+			router := servertest.NewClient(t, srv, "router",
+				servertest.WithUser(user), servertest.WithTags("tag:router"),
+				servertest.WithHostinfo(&tailcfg.Hostinfo{
+					BackendLogID: "servertest-router", Hostname: "router", RoutableIPs: routes,
+				}))
+			viewer := servertest.NewClient(t, srv, "viewer",
+				servertest.WithUser(user), servertest.WithTags("tag:client"))
+
+			viewer.WaitForPeers(t, 1, 15*time.Second)
+
+			routerID := findNodeID(t, srv, "router")
+			_, routeChange, err := srv.State().SetApprovedRoutes(routerID, routes)
+			require.NoError(t, err)
+			srv.App.Change(routeChange)
+
+			viewer.WaitForCondition(t, "viewer is served the subnet", 15*time.Second,
+				func(nm *netmap.NetworkMap) bool {
+					p, ok := viewer.PeerByName("router")
+
+					return ok && views.SliceContains(p.PrimaryRoutes(), subnet)
+				})
+			router.WaitForCondition(t, "router holds its routes", 15*time.Second,
+				func(nm *netmap.NetworkMap) bool {
+					return views.SliceContains(nm.SelfNode.AllowedIPs(), subnet)
+				})
+
+			peer, _ := viewer.PeerByName("router")
+			self := router.Netmap().SelfNode
+
+			for _, single := range singles {
+				assert.Falsef(t, views.SliceContains(peer.AllowedIPs(), single),
+					"%s served in AllowedIPs", single)
+				assert.Falsef(t, views.SliceContains(peer.PrimaryRoutes(), single),
+					"%s served in PrimaryRoutes", single)
+				assert.Truef(t, views.SliceContains(self.AllowedIPs(), single),
+					"%s missing from the router's own AllowedIPs", single)
+			}
+
+			node, ok := srv.State().GetNodeByID(routerID)
+			require.True(t, ok)
+			assert.ElementsMatch(t, routes, node.ApprovedRoutes().AsSlice())
+		})
+	}
 }
