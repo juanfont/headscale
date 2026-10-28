@@ -28,7 +28,6 @@ import (
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/ipproto"
-	"tailscale.com/types/key"
 	"tailscale.com/types/views"
 	"tailscale.com/util/must"
 	"tailscale.com/util/slicesx"
@@ -4368,6 +4367,10 @@ func TestHASubnetRouterFailoverDockerDisconnect(t *testing.T) {
 	for _, r := range []TailscaleClient{subRouter1, subRouter2} {
 		_, _, err = r.Execute([]string{
 			"tailscale", "set", "--advertise-routes=" + pref.String(),
+			// A router that accepts the other's route for pref keeps it in
+			// table 52 when its cable is pulled; docker then resolves the
+			// gateway through tailscale0 and cannot reattach the router.
+			"--accept-routes=false",
 		})
 		require.NoErrorf(t, err, "advertise route on %s", r.Hostname())
 	}
@@ -4485,37 +4488,9 @@ func TestHASubnetRouterFailoverDockerDisconnect(t *testing.T) {
 	// ============================================================
 	t.Log("=== Phase 4a: cable-pull r1, expect failover to r2. ===")
 
-	var r1Key key.NodePublic
-
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		st, err := subRouter1.Status()
-		if !assert.NoError(c, err) {
-			return
-		}
-
-		r1Key = st.Self.PublicKey
-	}, propagationTime, 200*time.Millisecond, "phase 4a: read r1's node key")
-
 	require.NoError(t, subRouter1.DisconnectFromNetwork(usernet1),
 		"phase 4a: docker disconnect r1")
 	requirePrimary(nodeID2, "phase 4a: r2 promoted after r1 down")
-
-	// Headscale can report the new primary before r2 has the netmap.
-	// Pulling r2's cable in that window strands r1's route for pref in
-	// r2's table 52, and docker then cannot set r2's gateway on reconnect.
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		st, err := subRouter2.Status()
-		if !assert.NoError(c, err) {
-			return
-		}
-
-		peer, ok := st.Peer[r1Key]
-		assert.True(c, ok, "r2 should list r1 as a peer")
-
-		if ok && peer.PrimaryRoutes != nil {
-			assert.NotContains(c, peer.PrimaryRoutes.AsSlice(), pref)
-		}
-	}, propagationTime, 200*time.Millisecond, "phase 4a: r2 no longer routes pref via r1")
 
 	t.Log("=== Phase 4b: cable-pull r2, primary must NOT flap to offline r1. ===")
 	require.NoError(t, subRouter2.DisconnectFromNetwork(usernet1),
