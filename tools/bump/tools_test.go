@@ -1,6 +1,7 @@
 package main
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -74,5 +75,43 @@ func TestPreCommitRevRewrite(t *testing.T) {
 	// The local repo block has no rev; nothing else may be touched.
 	if !strings.Contains(got, "  - repo: local") {
 		t.Error("rewrite disturbed the local hooks block")
+	}
+}
+
+func TestNewestReleases(t *testing.T) {
+	versions := []string{"0.9.0", "0.29.3", "0.10.0", "0.30.0-rc1", "0.29.1", "latest", "0.29.2"}
+
+	got := newestReleases(versions, 3)
+	if want := []string{"0.29.1", "0.29.2", "0.29.3"}; !slices.Equal(got, want) {
+		t.Errorf("newestReleases = %v, want %v", got, want)
+	}
+
+	if got := newestReleases([]string{"0.1.0"}, 3); !slices.Equal(got, []string{"0.1.0"}) {
+		t.Errorf("fewer releases than wanted = %v, want all of them", got)
+	}
+}
+
+// TestProviderPinInTree reads the real pin, so renaming the list in servertest
+// fails here rather than in the nightly bump.
+func TestProviderPinInTree(t *testing.T) {
+	r := &repo{Root: "../.."}
+
+	have, err := currentProviders(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(have) != testedProviders {
+		t.Fatalf("servertest tests %d provider releases, want %d: %v", len(have), testedProviders, have)
+	}
+
+	content, err := r.readFile(providerPinFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := providerPin.ReplaceAllString(content, `${1}"9.9.9"}`)
+	if !strings.Contains(got, `var terraformProviderVersions = []string{"9.9.9"}`) {
+		t.Error("rewrite did not land on the list")
 	}
 }

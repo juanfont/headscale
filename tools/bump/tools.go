@@ -5,12 +5,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"golang.org/x/mod/semver"
 )
 
-const pypiURL = "https://pypi.org/pypi/%s/json"
+const (
+	pypiURL = "https://pypi.org/pypi/%s/json"
+
+	providerRegistryURL = "https://registry.opentofu.org/v1/providers/tailscale/tailscale/versions"
+	// providerPinFile holds the provider releases the servertest Terraform
+	// tests run against.
+	providerPinFile = "hscontrol/servertest/apiv2_test.go"
+	// testedProviders is how many of the newest provider releases are tested:
+	// the latest, and the ones before it that users still run.
+	testedProviders = 3
+)
 
 var (
 	// preCommitRev matches the pinned revision of the upstream hook repository.
@@ -18,6 +29,10 @@ var (
 
 	// pyRequirement splits "mkdocs-materialx[imaging]~=10.1" into its parts.
 	pyRequirement = regexp.MustCompile(`^([A-Za-z0-9._-]+)(\[[^\]]*\])?~=(\d+)\.(\d+)$`)
+
+	// providerPin captures the body of the tested provider release list.
+	providerPin   = regexp.MustCompile(`(?m)^(var terraformProviderVersions = \[\]string\{)([^}]*)\}`)
+	quotedVersion = regexp.MustCompile(`"([^"]+)"`)
 )
 
 // applyOapiCodegen moves the generator pin in the Makefile. The generate area
@@ -210,6 +225,106 @@ func bumpRequirement(ctx context.Context, line string) (string, string, error) {
 		fmt.Sprintf("%s ~=%s -> ~=%s", name, have, want), nil
 }
 
+// newestProviders is the newest testedProviders releases of the
+// tailscale/tailscale Terraform provider, oldest first.
+func newestProviders(ctx context.Context) ([]string, error) {
+	body, err := fetch(ctx, providerRegistryURL)
+	if err != nil {
+		return nil, err
+	}
+
+	var listing struct {
+		Versions []struct {
+			Version string `json:"version"`
+		} `json:"versions"`
+	}
+
+	if err := json.Unmarshal(body, &listing); err != nil { //nolint:noinlineerr
+		return nil, fmt.Errorf("decoding provider versions: %w", err)
+	}
+
+	versions := make([]string, 0, len(listing.Versions))
+	for _, v := range listing.Versions {
+		versions = append(versions, v.Version)
+	}
+
+	newest := newestReleases(versions, testedProviders)
+	if len(newest) == 0 {
+		return nil, fmt.Errorf("%w: tailscale/tailscale provider release", errNoMatchingTag)
+	}
+
+	return newest, nil
+}
+
+// newestReleases is the newest n stable versions, oldest first. A
+// prerelease is not something users run, so it is never tested.
+func newestReleases(versions []string, n int) []string {
+	stable := slices.DeleteFunc(slices.Clone(versions), func(v string) bool {
+		return !semver.IsValid("v"+v) || semver.Prerelease("v"+v) != ""
+	})
+
+	slices.SortFunc(stable, func(a, b string) int { return semver.Compare("v"+a, "v"+b) })
+
+	return stable[max(0, len(stable)-n):]
+}
+
+// currentProviders reads the tested provider releases out of servertest.
+func currentProviders(r *repo) ([]string, error) {
+	content, err := r.readFile(providerPinFile)
+	if err != nil {
+		return nil, err
+	}
+
+	m := providerPin.FindStringSubmatch(content)
+	if m == nil {
+		return nil, fmt.Errorf("%w: terraformProviderVersions in %s", errNoMatchingTag, providerPinFile)
+	}
+
+	var versions []string
+	for _, q := range quotedVersion.FindAllStringSubmatch(m[2], -1) {
+		versions = append(versions, q[1])
+	}
+
+	return versions, nil
+}
+
+// applyProviders moves the tested Terraform provider releases to the newest
+// ones, so a provider release that breaks headscale shows up here rather than
+// on whichever pull request runs first after it.
+func applyProviders(ctx context.Context, r *repo) (change, error) {
+	have, err := currentProviders(r)
+	if err != nil {
+		return change{}, err
+	}
+
+	want, err := newestProviders(ctx)
+	if err != nil {
+		return change{}, err
+	}
+
+	if slices.Equal(have, want) {
+		return change{Empty: true}, nil
+	}
+
+	content, err := r.readFile(providerPinFile)
+	if err != nil {
+		return change{}, err
+	}
+
+	list := `"` + strings.Join(want, `", "`) + `"`
+
+	err = r.writeFile(providerPinFile, providerPin.ReplaceAllString(content, "${1}"+list+"}"))
+	if err != nil {
+		return change{}, err
+	}
+
+	return change{
+		Summary: "Terraform provider " + strings.Join(want, ", "),
+		Detail: []string{fmt.Sprintf("%s terraformProviderVersions %s -> %s",
+			providerPinFile, strings.Join(have, ", "), strings.Join(want, ", "))},
+	}, nil
+}
+
 func toolAreas() []area {
 	return []area{
 		{
@@ -227,6 +342,11 @@ func toolAreas() []area {
 			Name:    "tools:docs",
 			Apply:   applyDocsRequirements,
 			Message: func(c change) string { return "docs: raise " + c.Summary },
+		},
+		{
+			Name:    "tools:terraform-provider",
+			Apply:   applyProviders,
+			Message: func(c change) string { return "servertest: test " + c.Summary },
 		},
 	}
 }

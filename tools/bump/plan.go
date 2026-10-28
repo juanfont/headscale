@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 // cmdPlan resolves every upstream the bump reads and prints the gap against
@@ -27,6 +28,7 @@ func planLines(ctx context.Context, r *repo) []string {
 	lines = append(lines, planBuilders(ctx, r)...)
 	lines = append(lines, planLockstep(ctx, r)...)
 	lines = append(lines, planImages(ctx, r)...)
+	lines = append(lines, planProviders(ctx, r))
 
 	if version, err := oapiVersion(r); err != nil { //nolint:noinlineerr
 		lines = append(lines, "oapi-codegen: "+err.Error())
@@ -37,6 +39,20 @@ func planLines(ctx context.Context, r *repo) []string {
 	}
 
 	return lines
+}
+
+func planProviders(ctx context.Context, r *repo) string {
+	have, err := currentProviders(r)
+	if err != nil {
+		return "Terraform provider: " + err.Error()
+	}
+
+	want, err := newestProviders(ctx)
+	if err != nil {
+		return "Terraform provider: " + err.Error()
+	}
+
+	return gap("Terraform provider", strings.Join(have, ", "), strings.Join(want, ", "))
 }
 
 func planImages(ctx context.Context, r *repo) []string {
