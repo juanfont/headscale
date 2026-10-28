@@ -992,49 +992,57 @@ func TestIssue3371_TaggedNodePastExpirySelfHealsOnReregister(t *testing.T) {
 	require.Equal(t, nodeID, healed.ID(), "must be the same node")
 }
 
-// TestIssue3371_ExpiredTaggedNodeSameSpentKeyNotRevalidated is the gating test
-// for the isExpired-gate exclusion (state.go: `&& !existingNodeSameUser.IsTagged()`).
-// A tagged node carrying a stale PAST expiry, re-registering with the SAME
-// single-use key and the SAME node key (no rotation), must take the
-// skip-validation fast path — otherwise the spent key is re-validated and
-// rejected with "authkey already used", the exact lockout #3371 fixes. Without
-// the tagged exclusion this fails; with it the node self-heals. The neighbours
-// all rotate the node key or use a reusable key, so validation runs regardless
-// and none probes this fast-path exclusion.
-func TestIssue3371_ExpiredTaggedNodeSameSpentKeyNotRevalidated(t *testing.T) {
-	s := newRetagTestState(t)
+func TestExpiredTaggedNodeRequiresValidPreAuthKey(t *testing.T) {
+	for _, reusable := range []bool{false, true} {
+		t.Run(fmt.Sprintf("reusable=%t", reusable), func(t *testing.T) {
+			s := newRetagTestState(t)
+			pak, err := s.CreatePreAuthKey(nil, reusable, false, nil, []string{"tag:foo"})
+			require.NoError(t, err)
 
-	// Single-use tagged key.
-	pak, err := s.CreatePreAuthKey(nil, false, false, nil, []string{"tag:foo"})
-	require.NoError(t, err)
+			machineKey := key.NewMachine().Public()
+			regReq := tailcfg.RegisterRequest{
+				Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
+				NodeKey:  key.NewNode().Public(),
+				Hostinfo: &tailcfg.Hostinfo{Hostname: "h0"},
+				Expiry:   time.Now().Add(24 * time.Hour),
+			}
+			node, _, err := s.HandleNodeFromPreAuthKey(regReq, machineKey)
+			require.NoError(t, err)
 
-	machineKey := key.NewMachine()
-	nodeKey := key.NewNode()
-	regReq := tailcfg.RegisterRequest{
-		Auth:     &tailcfg.RegisterResponseAuth{AuthKey: pak.Key},
-		NodeKey:  nodeKey.Public(),
-		Hostinfo: &tailcfg.Hostinfo{Hostname: "spent-tagged"},
+			regReq.Hostinfo = &tailcfg.Hostinfo{Hostname: "h1"}
+
+			past := time.Now().Add(-time.Hour)
+			_, _, err = s.SetNodeExpiry(node.ID(), &past)
+			require.NoError(t, err)
+
+			_, _, err = s.HandleNodeFromPreAuthKey(regReq, machineKey)
+			if !reusable {
+				require.ErrorIs(t, err, types.PAKError("authkey already used"))
+
+				current, ok := s.GetNodeByID(node.ID())
+				require.True(t, ok)
+				require.True(t, current.IsExpired(), "a spent key must leave the node expired")
+				require.Equal(t, node.Hostname(), current.Hostname(), "a spent key must leave the node untouched")
+
+				stored, err := s.db.GetNodeByID(node.ID())
+				require.NoError(t, err)
+				require.NotNil(t, stored.Expiry, "a spent key must leave the row expired")
+				require.Equal(t, past.Unix(), stored.Expiry.Unix())
+
+				return
+			}
+
+			require.NoError(t, err)
+
+			current, ok := s.GetNodeByID(node.ID())
+			require.True(t, ok)
+			require.False(t, current.Expiry().Valid(), "a valid key disables tagged node expiry")
+
+			stored, err := s.db.GetNodeByID(node.ID())
+			require.NoError(t, err)
+			require.Nil(t, stored.Expiry)
+		})
 	}
-	node, _, err := s.HandleNodeFromPreAuthKey(regReq, machineKey.Public())
-	require.NoError(t, err)
-	require.True(t, node.IsTagged())
-
-	// Stale past (logout) expiry, and the single-use key is now spent.
-	past := time.Now().Add(-1 * time.Hour)
-	_, ok := s.nodeStore.UpdateNode(node.ID(), func(n *types.Node) {
-		n.Expiry = &past
-	})
-	require.True(t, ok)
-
-	// Re-register with the SAME key and the SAME node key (no rotation). The
-	// tagged exclusion from the isExpired gate must let this skip validation, so
-	// the spent single-use key is not rejected.
-	healed, _, err := s.HandleNodeFromPreAuthKey(regReq, machineKey.Public())
-	require.NoError(t, err,
-		"a tagged node with a stale past expiry must skip re-validation of its spent key")
-	require.False(t, healed.IsExpired(), "stale expiry cleared")
-	require.Nil(t, healed.AsStruct().Expiry, "tagged node key-expiry disabled")
-	require.Equal(t, node.ID(), healed.ID())
 }
 
 // TestTaggedPAKReauthRetagsExistingTaggedNode reproduces issue #3370: an
