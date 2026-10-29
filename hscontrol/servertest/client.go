@@ -3,12 +3,14 @@ package servertest
 import (
 	"context"
 	"fmt"
+	"path"
 	"slices"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"tailscale.com/control/controlclient"
 	"tailscale.com/health"
 	"tailscale.com/net/netmon"
@@ -36,11 +38,14 @@ type TestClient struct {
 	authKey string
 	user    *types.User
 
-	// machineKey and discoKey survive [TestClient.Relogin], as they survive
-	// a tailscaled login.
+	// machineKey survives every login and discoKey every login but
+	// [TestClient.Restart], as with tailscaled.
 	machineKey key.MachinePrivate
 	discoKey   key.DiscoPublic
 	logf       logger.Logf
+
+	// approve completes an interactive login; see [WithInteractiveLogin].
+	approve func(authID string) error
 
 	// Connection lifecycle.
 	pollCtx    context.Context //nolint:containedctx // test-only; context stored for cancel control
@@ -55,6 +60,9 @@ type TestClient struct {
 	// deltaUpdates and deltaRemoved: see [WithDeltaUpdates].
 	deltaUpdates bool
 	deltaRemoved []tailcfg.NodeID
+
+	// registers: see [TestClient.RegisterAttempts].
+	registers []testcapture.RegisterAttempt
 
 	// updates is a buffered channel that receives a signal
 	// each time a new [netmap.NetworkMap] arrives.
@@ -75,6 +83,8 @@ type clientConfig struct {
 	user         *types.User
 	authKey      string
 	deltaUpdates bool
+	hostinfo     *tailcfg.Hostinfo
+	approve      func(authID string) error
 }
 
 // WithDeltaUpdates makes the client accept incremental map updates the way
@@ -105,6 +115,20 @@ func WithAuthKey(key string) ClientOption {
 	return func(c *clientConfig) { c.authKey = key }
 }
 
+// WithHostinfo registers with hi instead of a Hostinfo holding only the
+// client's name, so a client can request tags or announce routes at
+// registration.
+func WithHostinfo(hi *tailcfg.Hostinfo) ClientOption {
+	return func(c *clientConfig) { c.hostinfo = hi }
+}
+
+// WithInteractiveLogin registers without an auth key, as `tailscale up`
+// does: the server answers with an auth URL and approve, given its auth ID,
+// completes the login, as `headscale auth register` would.
+func WithInteractiveLogin(approve func(authID string) error) ClientOption {
+	return func(c *clientConfig) { c.approve = approve }
+}
+
 // WithUser sets the user for the client. If not set, the harness
 // creates a default user.
 func WithUser(user *types.User) ClientOption {
@@ -114,6 +138,20 @@ func WithUser(user *types.User) ClientOption {
 // NewClient creates a [TestClient], registers it with the [TestServer]
 // using a pre-auth key, and starts long-polling for map updates.
 func NewClient(tb testing.TB, server *TestServer, name string, opts ...ClientOption) *TestClient {
+	tb.Helper()
+
+	tc, err := TryNewClient(tb, server, name, opts...)
+	if err != nil {
+		tb.Fatalf("servertest: NewClient(%s): %v", name, err)
+	}
+
+	return tc
+}
+
+// TryNewClient is [NewClient] for a registration that may be refused: it
+// returns the login error, and a client that holds no node and does not
+// poll.
+func TryNewClient(tb testing.TB, server *TestServer, name string, opts ...ClientOption) (*TestClient, error) {
 	tb.Helper()
 
 	cc := &clientConfig{
@@ -136,6 +174,8 @@ func NewClient(tb testing.TB, server *TestServer, name string, opts ...ClientOpt
 	var authKey string
 
 	switch {
+	case cc.approve != nil:
+		// Interactive: no key.
 	case cc.authKey != "":
 		authKey = cc.authKey
 	case cc.ephemeral:
@@ -163,7 +203,7 @@ func NewClient(tb testing.TB, server *TestServer, name string, opts ...ClientOpt
 		user:       user,
 		machineKey: key.NewMachine(),
 		discoKey:   key.NewDisco().Public(),
-		logf:       tb.Logf,
+		approve:    cc.approve,
 		updates:    make(chan *netmap.NetworkMap, 64),
 		bus:        bus,
 		dialer:     dialer,
@@ -172,10 +212,24 @@ func NewClient(tb testing.TB, server *TestServer, name string, opts ...ClientOpt
 		deltaUpdates: cc.deltaUpdates,
 	}
 
-	direct, err := tc.newDirect(persist.Persist{}, authKey, &tailcfg.Hostinfo{
-		BackendLogID: "servertest-" + name,
-		Hostname:     cc.hostname,
-	})
+	tc.logf = func(format string, args ...any) {
+		line := fmt.Sprintf(format, args...)
+		tb.Logf("%s", line)
+
+		tc.mu.Lock()
+		tc.registers, _ = testcapture.AppendRegisterLine(tc.registers, line)
+		tc.mu.Unlock()
+	}
+
+	hi := cc.hostinfo
+	if hi == nil {
+		hi = &tailcfg.Hostinfo{
+			BackendLogID: "servertest-" + name,
+			Hostname:     cc.hostname,
+		}
+	}
+
+	direct, err := tc.newDirect(persist.Persist{}, authKey, hi)
 	if err != nil {
 		tb.Fatalf("servertest: NewDirect(%s): %v", name, err)
 	}
@@ -186,13 +240,18 @@ func NewClient(tb testing.TB, server *TestServer, name string, opts ...ClientOpt
 		tc.cleanup()
 	})
 
-	// Register with the server.
-	tc.register(tb)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err = tc.tryLogin(ctx, controlclient.LoginDefault, tc.approve)
+	if err != nil {
+		return tc, err
+	}
 
 	// Start long-polling in the background.
 	tc.startPoll(tb)
 
-	return tc
+	return tc, nil
 }
 
 // newDirect builds a [controlclient.Direct] for the client's machine.
@@ -222,14 +281,64 @@ func (c *TestClient) register(tb testing.TB) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	url, err := c.direct.TryLogin(ctx, controlclient.LoginDefault)
+	err := c.tryLogin(ctx, controlclient.LoginDefault, c.approve)
 	if err != nil {
 		tb.Fatalf("servertest: TryLogin(%s): %v", c.Name, err)
 	}
+}
 
-	if url != "" {
-		tb.Fatalf("servertest: TryLogin(%s): unexpected auth URL: %s (expected auto-auth with preauth key)", c.Name, url)
+// tryLogin logs the current Direct in. An auth URL is completed through
+// approve, and is an error without it. A failed login is recorded in
+// [TestClient.RegisterAttempts], as tailscaled logs it.
+func (c *TestClient) tryLogin(ctx context.Context, flags controlclient.LoginFlags, approve func(string) error) error {
+	url, err := c.direct.TryLogin(ctx, flags)
+
+	switch {
+	case err != nil:
+	case url != "" && approve != nil:
+		err = c.waitLogin(ctx, url, approve)
+	case url != "":
+		err = fmt.Errorf("unexpected auth URL %q (expected auto-auth with preauth key)", url) //nolint:err113
 	}
+
+	if err != nil {
+		c.mu.Lock()
+		c.registers = append(c.registers, testcapture.RegisterAttempt{Err: err.Error()})
+		c.mu.Unlock()
+	}
+
+	return err
+}
+
+// waitLogin waits on the auth URL while approve completes the login it names.
+func (c *TestClient) waitLogin(ctx context.Context, url string, approve func(string) error) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	done := make(chan error, 1)
+
+	go func() {
+		_, err := c.direct.WaitLoginURL(ctx, url)
+		done <- err
+	}()
+
+	// The URL ends in the auth ID: /register/<id>.
+	err := approve(path.Base(url))
+	if err != nil {
+		return err
+	}
+
+	return <-done
+}
+
+// RegisterAttempts returns the client's /machine/register exchanges as
+// tailscaled logs them, with each failed login as its own entry; see
+// [testcapture.AppendRegisterLine]. Node keys are short forms, not labels.
+func (c *TestClient) RegisterAttempts() []testcapture.RegisterAttempt {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return slices.Clone(c.registers)
 }
 
 // startPoll begins the long-poll [tailcfg.MapRequest] loop.
@@ -481,56 +590,85 @@ func (c *TestClient) ReloginAndPoll(ctx context.Context) error {
 }
 
 // Relogin logs the client in again with authKey, as tailscaled does for
-// `tailscale up --auth-key` (force: `--force-reauth`). Like
-// LocalBackend.Start it builds a new [controlclient.Direct] that keeps the
-// machine key and the persisted node key, so the first request presents the
-// current node key unless force rotates it. hi replaces the Hostinfo, so
-// routes can be restated. The poll restarts once the login succeeds.
+// `tailscale up --auth-key` (force: `--force-reauth`): see [TestClient.Login],
+// with the current login. The first request presents the current node key
+// unless force rotates it. hi replaces the Hostinfo, so routes can be
+// restated.
 //
 // Safe to call from non-test goroutines.
 func (c *TestClient) Relogin(ctx context.Context, authKey string, force bool, hi *tailcfg.Hostinfo) error {
+	flags := controlclient.LoginDefault
+	if force {
+		flags = controlclient.LoginInteractive
+	}
+
+	return c.Login(ctx, c.Persist(), authKey, flags, hi, nil)
+}
+
+// Login logs the machine in from p, as LocalBackend.Start does: a new
+// [controlclient.Direct] keeps the machine key and presents p's node key,
+// unless flags ask for a new one. p is the current login ([TestClient.Persist])
+// for a relogin or restart, another profile's for a profile switch, and
+// empty for a new profile. With approve set and no authKey the login is
+// interactive, see [WithInteractiveLogin]. The poll restarts once the login
+// succeeds; after a failed one the client does not poll.
+//
+// Safe to call from non-test goroutines.
+func (c *TestClient) Login(
+	ctx context.Context,
+	p persist.Persist,
+	authKey string,
+	flags controlclient.LoginFlags,
+	hi *tailcfg.Hostinfo,
+	approve func(authID string) error,
+) error {
 	if c.pollCancel != nil {
 		c.pollCancel()
 
 		select {
 		case <-c.pollDone:
 		case <-ctx.Done():
-			return fmt.Errorf("servertest: Relogin(%s): poll did not exit: %w", c.Name, ctx.Err())
+			return fmt.Errorf("servertest: Login(%s): poll did not exit: %w", c.Name, ctx.Err())
 		}
-	}
-
-	var p persist.Persist
-	if v := c.direct.GetPersist(); v.Valid() {
-		p = *v.AsStruct()
 	}
 
 	direct, err := c.newDirect(p, authKey, hi)
 	if err != nil {
-		return fmt.Errorf("servertest: Relogin(%s): NewDirect: %w", c.Name, err)
+		return fmt.Errorf("servertest: Login(%s): NewDirect: %w", c.Name, err)
 	}
 
 	c.direct.Close()
 	c.direct = direct
 	c.authKey = authKey
 
-	flags := controlclient.LoginDefault
-	if force {
-		flags = controlclient.LoginInteractive
-	}
-
-	url, err := direct.TryLogin(ctx, flags)
+	err = c.tryLogin(ctx, flags, approve)
 	if err != nil {
-		return fmt.Errorf("servertest: Relogin(%s): %w", c.Name, err)
-	}
-
-	if url != "" {
-		return fmt.Errorf("servertest: Relogin(%s): unexpected auth URL %q", c.Name, url) //nolint:err113
+		return fmt.Errorf("servertest: Login(%s): %w", c.Name, err)
 	}
 
 	c.resetNetmapState()
 	c.startPollLoop()
 
 	return nil
+}
+
+// Restart logs the machine in again with a new disco key and no auth key,
+// as a restarted tailscaled does: its login is kept, its disco key is not.
+//
+// Safe to call from non-test goroutines.
+func (c *TestClient) Restart(ctx context.Context, hi *tailcfg.Hostinfo) error {
+	c.discoKey = key.NewDisco().Public()
+
+	return c.Login(ctx, c.Persist(), "", controlclient.LoginDefault, hi, nil)
+}
+
+// Persist returns the client's current login: its node keys and user.
+func (c *TestClient) Persist() persist.Persist {
+	if v := c.direct.GetPersist(); v.Valid() {
+		return *v.AsStruct()
+	}
+
+	return persist.Persist{}
 }
 
 // RestartPoll tears down the current long-poll session and immediately
