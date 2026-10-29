@@ -42,6 +42,7 @@ reported in Headscale: ANT-2026-MLP8ZR5T, ANT-2026-LYVGXVSW, ANT-2026-AWGRB7O1, 
 - Concurrent deletes of one node free its addresses and announce its removal once [#3603](https://github.com/juanfont/headscale/pull/3603)
 - OIDC verifies an email against the document supplying it; an `email_verified` flag without an address no longer verifies another document's email [#3603](https://github.com/juanfont/headscale/pull/3603)
 - Fix release builds reporting their version with a `+dirty` suffix [#3583](https://github.com/juanfont/headscale/issues/3583)
+- Fix SSH policy `acceptEnv` having no effect, so allowed environment variables reach SSH sessions. Upgrade SSH destination nodes to Tailscale v1.104.4 or newer before using `acceptEnv`, because older clients can disclose forwarded values [#3569](https://github.com/juanfont/headscale/pull/3569)
 
 ## 0.29.6 (2026-10-24)
 
