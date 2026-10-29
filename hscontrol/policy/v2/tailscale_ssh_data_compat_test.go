@@ -58,6 +58,68 @@ func loadSSHTestFile(t *testing.T, path string) *testcapture.Capture {
 	return c
 }
 
+// TestSSHForwardingDataCompat pins upstream forwarding actions and rejects
+// unsupported policy fields. The complete captures retain SSHUsers, but its new
+// numeric-user deny entry needs separate user-mapping compatibility coverage.
+func TestSSHForwardingDataCompat(t *testing.T) {
+	t.Parallel()
+
+	files, err := filepath.Glob(filepath.Join("testdata", "ssh_results", "forwarding", "ssh-*.hujson"))
+	require.NoError(t, err)
+	require.NotEmpty(t, files)
+
+	users := setupSSHDataCompatUsers()
+
+	for _, file := range files {
+		tf := loadSSHTestFile(t, file)
+
+		t.Run(tf.TestID, func(t *testing.T) {
+			t.Parallel()
+
+			require.Empty(t, tf.CaptureError)
+			require.NotEmpty(t, tf.Captures)
+
+			pol, err := unmarshalPolicy([]byte(tf.Input.FullPolicy))
+			if tf.Input.APIResponseCode != 200 {
+				require.Equal(t, 400, tf.Input.APIResponseCode)
+				require.NotNil(t, tf.Input.APIResponseBody)
+				field, ok := strings.CutPrefix(tf.Input.APIResponseBody.Message, "json: unknown field ")
+				require.True(t, ok, "expected an upstream unknown-field rejection")
+				require.ErrorIs(t, err, ErrUnknownField)
+				require.ErrorContains(t, err, fmt.Sprintf("%s: %s", ErrUnknownField, field))
+
+				return
+			}
+
+			require.NoError(t, err)
+
+			nodes := buildGrantsNodesFromCapture(users, tf)
+
+			for nodeName, capture := range tf.Captures {
+				t.Run(nodeName, func(t *testing.T) {
+					node := findNodeByGivenName(nodes, nodeName)
+					require.NotNil(t, node)
+
+					got, err := pol.compileSSHPolicy("https://unused", users, node.View(), nodes.ViewSlice())
+					require.NoError(t, err)
+
+					var rules []*tailcfg.SSHRule
+					if got != nil {
+						rules = got.Rules
+					}
+
+					require.Len(t, rules, len(capture.SSHRules))
+
+					for i, want := range capture.SSHRules {
+						require.NotNil(t, want.Action)
+						assert.Equal(t, want.Action, rules[i].Action)
+					}
+				})
+			}
+		})
+	}
+}
+
 // sshSkipReasons documents captures the upstream control plane accepts
 // but headscale cannot yet represent. Each entry names the feature gap.
 var sshSkipReasons = map[string]string{

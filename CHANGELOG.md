@@ -150,6 +150,22 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Deleting an ephemeral node no longer logs a spurious `ephemeral node deletion failed` error later [#3575](https://github.com/juanfont/headscale/pull/3575)
 - Add the v2 `acl/validate` endpoint, which Terraform provider 0.29.3 and newer call to check `tailscale_acl` at plan time; before it, those releases failed with `invalid character 'p' after top-level value`
 
+## 0.29.7 (202x-xx-xx)
+
+### Security
+
+We recommend that all users upgrade to Headscale 0.29.7 and Tailscale v1.104.4 or newer,
+especially those using Tailscale SSH. Tailscale v1.104.4 fixes vulnerabilities in SSH
+forwarding, SSH session handling and Serve. These fixes run in `tailscaled` on your
+nodes; upgrading Headscale alone does not apply them. See Tailscale's
+[security bulletins](https://tailscale.com/security-bulletins#ts-2026-014) and
+[Tailscale SSH: Findings and fixes](https://tailscale.com/blog/tailscale-ssh-findings-fixes).
+
+Headscale follows Tailscale's SSH policy behavior: forwarding is allowed by default,
+with no per-rule forwarding controls. As an interim mitigation for SSH forwarding
+vulnerabilities, set `TS_SSH_DISABLE_FORWARDING=1` in the destination `tailscaled`
+service environment and restart the service, as described in the security bulletin.
+
 ## 0.29.6 (2026-10-24)
 
 **Minimum supported Tailscale client version: v1.80.0**
