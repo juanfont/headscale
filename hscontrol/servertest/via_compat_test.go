@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -286,6 +287,56 @@ func TestViaGrantMapCompat(t *testing.T) {
 func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 	t.Helper()
 
+	_, clients := startViaMapCompat(t, c)
+	compareViaMapCompat(t, c, clients)
+}
+
+// startViaMapCompat starts a server holding the capture's policy and a
+// client per captured node, with the capture's routes approved, and waits
+// for every client's first netmap and the peers SaaS gave it.
+func startViaMapCompat(
+	t *testing.T,
+	c *testcapture.Capture,
+) (*servertest.TestServer, map[string]*servertest.TestClient) {
+	t.Helper()
+
+	srv, clients := startCaptureClients(t, c, true)
+
+	// Wait for peers based on golden [netmap.NetworkMap] expected counts.
+	for viewerName, cl := range clients {
+		capture := c.Captures[viewerName]
+		if capture.Netmap == nil {
+			continue
+		}
+
+		expected := 0
+
+		for _, peer := range capture.Netmap.Peers {
+			peerName := extractHostname(peer.Name())
+			if _, isOurs := clients[peerName]; isOurs {
+				expected++
+			}
+		}
+
+		if expected > 0 {
+			cl.WaitForPeers(t, expected, 30*time.Second)
+		}
+	}
+
+	return srv, clients
+}
+
+// startCaptureClients starts a server holding the capture's policy and a
+// client per captured node, advertises the capture's routes and waits for
+// every client's first netmap. With approve set, each node's approved_routes
+// are approved as an admin would; otherwise only the policy approves them.
+func startCaptureClients(
+	t *testing.T,
+	c *testcapture.Capture,
+	approve bool,
+) (*servertest.TestServer, map[string]*servertest.TestClient) {
+	t.Helper()
+
 	srv := servertest.NewServer(t)
 	tagUser := srv.CreateUser(t, "tag-user")
 	users := createCaptureUsers(t, srv)
@@ -384,6 +435,10 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 
 		cancel()
 
+		if !approve {
+			continue
+		}
+
 		nodeID := findNodeID(t, srv, name)
 		_, routeChange, err := srv.State().SetApprovedRoutes(
 			nodeID, nodeApproved[name],
@@ -392,29 +447,6 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 		srv.App.Change(routeChange)
 	}
 
-	// Wait for peers based on golden [netmap.NetworkMap] expected counts.
-	for viewerName, cl := range clients {
-		capture := c.Captures[viewerName]
-		if capture.Netmap == nil {
-			continue
-		}
-
-		expected := 0
-
-		for _, peer := range capture.Netmap.Peers {
-			peerName := extractHostname(peer.Name())
-			if _, isOurs := clients[peerName]; isOurs {
-				expected++
-			}
-		}
-
-		if expected > 0 {
-			cl.WaitForPeers(t, expected, 30*time.Second)
-		}
-	}
-
-	// Ensure all nodes have received at least one [tailcfg.MapResponse],
-	// including nodes with 0 expected peers that skipped [TestClient.WaitForPeers].
 	for name, cl := range clients {
 		cl.WaitForCondition(t, name+" initial netmap", 15*time.Second,
 			func(nm *netmap.NetworkMap) bool {
@@ -422,52 +454,73 @@ func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 			})
 	}
 
+	return srv, clients
+}
+
+// compareViaMapCompat compares every viewer's netmap and own routes with
+// the capture.
+func compareViaMapCompat(
+	t *testing.T,
+	c *testcapture.Capture,
+	clients map[string]*servertest.TestClient,
+) {
+	t.Helper()
+
 	saasAddrs := saasAddrsByNode(c, clients)
 
 	// Compare each viewer's [tailcfg.MapResponse] against the golden [netmap.NetworkMap].
 	// Route approvals reach clients asynchronously, so the peer-count wait
 	// above says nothing about routes, primaries or filters: retry the
-	// whole comparison until the viewer's netmap has caught up.
+	// whole comparison until the viewer's netmap has caught up. Each viewer
+	// reads only its own netmap, so the holds run at once.
+	var wg sync.WaitGroup
+
 	for viewerName, cl := range clients {
 		capture := c.Captures[viewerName]
 		if capture.Netmap == nil {
 			continue
 		}
 
-		t.Run(viewerName, func(t *testing.T) {
-			requireNetmapHolds(t, func(tt require.TestingT) {
-				nm := cl.Netmap()
-				require.NotNil(tt, nm, "netmap is nil")
-
-				require.Equal(tt, selfOffersExit(capture.Netmap), selfOffersExit(nm),
-					"SelfNode exit routes should match SaaS")
-
-				compareNetmap(tt, nm, capture, clients, saasAddrs, c.TestID+"/"+viewerName)
-			})
-
-			t.Run("self-routes", func(t *testing.T) {
-				key := c.TestID + "/" + viewerName + "/self-routes"
-				reason, listed := viaCompatSkipReasons[key]
-
+		wg.Go(func() {
+			t.Run(viewerName, func(t *testing.T) {
 				requireNetmapHolds(t, func(tt require.TestingT) {
-					want, got := selfRoutes(capture.Netmap), selfRoutes(cl.Netmap())
-					if !listed {
-						assert.Equal(tt, want, got, "own routes in AllowedIPs and PrimaryRoutes")
+					nm := cl.Netmap()
+					require.NotNil(tt, nm, "netmap is nil")
 
-						return
-					}
+					// Routes were approved on live sessions: verify that approval
+					// reached SelfNode throughout the stable comparison window.
+					require.Equal(tt, selfOffersExit(capture.Netmap), selfOffersExit(nm),
+						"SelfNode exit routes should match SaaS")
 
-					if got == want {
-						tt.Errorf("own routes match SaaS; delete viaCompatSkipReasons[%q]", key)
-					}
+					compareNetmap(tt, nm, capture, clients, saasAddrs, c.TestID+"/"+viewerName)
 				})
 
-				if listed {
-					t.Skip(reason)
-				}
+				t.Run("self-routes", func(t *testing.T) {
+					key := c.TestID + "/" + viewerName + "/self-routes"
+					reason, listed := viaCompatSkipReasons[key]
+
+					requireNetmapHolds(t, func(tt require.TestingT) {
+						want, got := selfRoutes(capture.Netmap), selfRoutes(cl.Netmap())
+						if !listed {
+							assert.Equal(tt, want, got, "own routes in AllowedIPs and PrimaryRoutes")
+
+							return
+						}
+
+						if got == want {
+							tt.Errorf("own routes match SaaS; delete viaCompatSkipReasons[%q]", key)
+						}
+					})
+
+					if listed {
+						t.Skip(reason)
+					}
+				})
 			})
 		})
 	}
+
+	wg.Wait()
 }
 
 // selfRoutes is the node's AllowedIPs minus its own addresses, and its
@@ -566,12 +619,9 @@ func (r *failRecorder) FailNow() {
 }
 
 // compareNetmap compares the headscale [tailcfg.MapResponse] against the
-// captured [netmap.NetworkMap] data in an IP-independent way. It validates:
-//   - Peer visibility (which peers are present, by hostname)
-//   - Route prefixes in AllowedIPs (non-Tailscale-IP entries like 10.44.0.0/16)
-//   - Number of Tailscale IPs per peer (should be 2: one v4 + one v6)
-//   - PrimaryRoutes per peer
-//   - PacketFilter (source, destination, ports) triples
+// captured [netmap.NetworkMap] data in an IP-independent way: the peers (see
+// [comparePeers]), the PacketFilter (source, destination, ports) triples and
+// the user profiles.
 //
 // key is <test_id>/<node>, the prefix of the viewer's viaCompatSkipReasons
 // entries. It takes [require.TestingT] so it can run inside
@@ -583,6 +633,26 @@ func compareNetmap(
 	clients map[string]*servertest.TestClient,
 	saasAddrs map[netip.Addr]string,
 	key string,
+) {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
+
+	comparePeers(t, got, want, clients)
+	comparePacketFilter(t, got, want, clients, saasAddrs, key+"/packet-filter", viaCompatSkipReasons)
+	compareUserProfiles(t, got, want.Netmap, clients)
+}
+
+// comparePeers validates, for the peers in clients:
+//   - Peer visibility (which peers are present, by hostname)
+//   - Route prefixes in AllowedIPs (non-Tailscale-IP entries like 10.44.0.0/16)
+//   - Number of Tailscale IPs per peer (should be 2: one v4 + one v6)
+//   - PrimaryRoutes per peer
+func comparePeers(
+	t require.TestingT,
+	got *netmap.NetworkMap,
+	want testcapture.Node,
+	clients map[string]*servertest.TestClient,
 ) {
 	if h, ok := t.(interface{ Helper() }); ok {
 		h.Helper()
@@ -715,9 +785,6 @@ func compareNetmap(
 			t.Errorf("peer %s: visible in headscale but NOT in Tailscale SaaS", name)
 		}
 	}
-
-	comparePacketFilter(t, got, want, clients, saasAddrs, key+"/packet-filter")
-	compareUserProfiles(t, got, want.Netmap, clients)
 }
 
 // compareUserProfiles compares the profile the viewer holds for itself and
@@ -793,7 +860,7 @@ func nodeProfiles(
 // that share sources while SaaS keeps one rule per policy entry, so rule
 // count and order differ without changing what the filter allows.
 // Tailscale IPs differ between SaaS and headscale allocation, so both
-// sides are re-keyed by peer identity.
+// sides are re-keyed by peer identity. A key listed in skips must differ.
 func comparePacketFilter(
 	t require.TestingT,
 	got *netmap.NetworkMap,
@@ -801,6 +868,7 @@ func comparePacketFilter(
 	clients map[string]*servertest.TestClient,
 	saasAddrs map[netip.Addr]string,
 	key string,
+	skips map[string]string,
 ) {
 	if h, ok := t.(interface{ Helper() }); ok {
 		h.Helper()
@@ -859,9 +927,9 @@ func comparePacketFilter(
 
 	wantList, gotList := sortedKeys(wantTriples), sortedKeys(gotTriples)
 
-	if reason, listed := viaCompatSkipReasons[key]; listed {
+	if reason, listed := skips[key]; listed {
 		if slices.Equal(wantList, gotList) {
-			t.Errorf("PacketFilter matches SaaS; delete viaCompatSkipReasons[%q] (%s)", key, reason)
+			t.Errorf("PacketFilter matches SaaS; delete the skip entry %q (%s)", key, reason)
 		}
 
 		return
