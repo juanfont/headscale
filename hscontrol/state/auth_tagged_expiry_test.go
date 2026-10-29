@@ -77,7 +77,7 @@ func TestTaggedReauthKeepsNilExpiry(t *testing.T) {
 	}
 
 	authID := types.MustAuthID()
-	s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(regData))
+	require.NoError(t, s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(regData)))
 
 	finalNode, _, err := s.HandleNodeFromAuthPath(
 		authID,
@@ -396,12 +396,12 @@ func TestAuthPathOnTaggedMachine(t *testing.T) {
 		t.Helper()
 
 		authID := types.MustAuthID()
-		s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+		require.NoError(t, s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
 			MachineKey: mk,
 			NodeKey:    nodeKey,
 			Hostname:   "multi",
 			Hostinfo:   &tailcfg.Hostinfo{Hostname: "multi"},
-		}))
+		})))
 
 		node, _, err := s.HandleNodeFromAuthPath(authID, types.UserID(user.ID), nil, util.RegisterMethodOIDC)
 
@@ -439,12 +439,12 @@ func TestUserKeyOnLoginJoinedTaggedNode(t *testing.T) {
 	nodeKey := key.NewNode().Public()
 
 	authID := types.MustAuthID()
-	s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+	require.NoError(t, s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
 		MachineKey: machineKey,
 		NodeKey:    nodeKey,
 		Hostname:   "login-node",
 		Hostinfo:   &tailcfg.Hostinfo{Hostname: "login-node"},
-	}))
+	})))
 	joined, _, err := s.HandleNodeFromAuthPath(authID, types.UserID(owner.ID), nil, util.RegisterMethodOIDC)
 	require.NoError(t, err)
 
@@ -595,7 +595,7 @@ func (n seededTaggedNode) reauth(t *testing.T, authUser *types.User, requestTags
 	rd.Expiry = clientExpiry
 
 	authID := types.MustAuthID()
-	n.s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&rd))
+	require.NoError(t, n.s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&rd)))
 
 	node, _, err := n.s.HandleNodeFromAuthPath(
 		authID,
@@ -997,7 +997,7 @@ func TestIssue3371_TaggedNodeInteractiveReloginAfterLogout(t *testing.T) {
 		},
 	}
 	authID := types.MustAuthID()
-	s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(regData))
+	require.NoError(t, s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(regData)))
 
 	relogged, _, err := s.HandleNodeFromAuthPath(
 		authID, types.UserID(user.ID), nil, util.RegisterMethodOIDC,

@@ -482,7 +482,10 @@ auto_update:
 #
 # tuning:
 #   # Maximum number of pending registration entries in the auth cache.
-#   # Oldest entries are evicted when the cap is reached.
+#   # At capacity, new registrations retry without displacing pending approvals.
+#   # SSH checks can use 64 additional reserved entries. Each registration
+#   # retains at most 64 KiB of serialized data, so the default registration
+#   # payload budget is 64 MiB plus record overhead.
 #   #
 #   # register_cache_max_entries: 1024
 #

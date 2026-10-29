@@ -851,3 +851,22 @@ func TestExpireNode_RefusesUnencodableExpiry(t *testing.T) {
 	})
 	require.NoError(t, err)
 }
+
+func TestDebugCreateNode_AdmissionFailure(t *testing.T) {
+	app := createTestApp(t, func(cfg *types.Config) {
+		cfg.Tuning.RegisterCacheMaxEntries = 1
+	})
+	defer func() { require.NoError(t, app.state.Close()) }()
+
+	app.state.CreateUserForTest("alice")
+	require.NoError(t, app.state.SetAuthCacheEntry(types.MustAuthID(), types.NewAuthRequest()))
+
+	id := types.MustAuthID()
+	_, err := newHeadscaleV1APIServer(app).DebugCreateNode(t.Context(), &v1.DebugCreateNodeRequest{
+		User: "alice", Key: id.String(), Name: "node",
+	})
+	require.Equal(t, codes.Unavailable, status.Code(err))
+
+	_, ok := app.state.GetAuthCacheEntry(id)
+	require.False(t, ok)
+}

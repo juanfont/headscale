@@ -854,7 +854,18 @@ func (api headscaleV1APIServer) DebugCreateNode(
 		Msg("adding debug machine via CLI, appending to registration cache")
 
 	authRegReq := types.NewRegisterAuthRequest(regData)
-	api.h.state.SetAuthCacheEntry(registrationId, authRegReq)
+
+	err = api.h.state.SetAuthCacheEntry(registrationId, authRegReq)
+	switch {
+	case errors.Is(err, state.ErrAuthCacheFull), errors.Is(err, state.ErrAuthCacheClosed):
+		return nil, status.Error(codes.Unavailable, err.Error())
+	case errors.Is(err, state.ErrAuthCacheEntryExists):
+		return nil, status.Error(codes.AlreadyExists, err.Error())
+	case errors.Is(err, types.ErrRegistrationPayloadTooLarge):
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	case err != nil:
+		return nil, fmt.Errorf("starting authentication: %w", err)
+	}
 
 	// Echo back a synthetic [types.Node] so the debug response surface stays
 	// stable. The actual node is created later by [headscaleV1APIServer.AuthApprove] via

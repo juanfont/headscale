@@ -839,11 +839,11 @@ func TestAuthPathRejectsUnencodableExpiry(t *testing.T) {
 	user := s.CreateUserForTest("auth-path-user")
 	nodeKey := key.NewNode().Public()
 	authID := types.MustAuthID()
-	s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+	require.NoError(t, s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
 		MachineKey: key.NewMachine().Public(),
 		NodeKey:    nodeKey,
 		Hostname:   "auth-path-node",
-	}))
+	})))
 
 	// How go-oidc reads an exp claim in the year 10000.
 	beyond := time.Unix(253402300800, 0)
@@ -871,11 +871,11 @@ func TestAcceptedExpirySurvivesRestart(t *testing.T) {
 
 	user := s.CreateUserForTest("oidc-user")
 	authID := types.MustAuthID()
-	s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+	require.NoError(t, s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
 		MachineKey: key.NewMachine().Public(),
 		NodeKey:    key.NewNode().Public(),
 		Hostname:   "oidc-node",
-	}))
+	})))
 
 	oidcNode, _, err := s.HandleNodeFromAuthPath(
 		authID, types.UserID(user.ID), &east, util.RegisterMethodOIDC,
@@ -1100,12 +1100,12 @@ func TestReauthKeepsOperationalMetadata(t *testing.T) {
 		"precondition: the node serves its route")
 
 	authID := types.MustAuthID()
-	s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+	require.NoError(t, s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
 		MachineKey: node.MachineKey(),
 		NodeKey:    key.NewNode().Public(),
 		Hostname:   node.Hostname(),
 		Hostinfo:   &tailcfg.Hostinfo{Hostname: node.Hostname()},
-	}))
+	})))
 
 	relogged, _, err := s.HandleNodeFromAuthPath(
 		authID, node.TypedUserID(), nil, util.RegisterMethodOIDC,
@@ -1142,11 +1142,11 @@ func TestReauthKeepsTaggedFutureExpiry(t *testing.T) {
 	require.True(t, node.IsTagged())
 
 	authID := types.MustAuthID()
-	s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+	require.NoError(t, s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
 		MachineKey: node.MachineKey(), NodeKey: key.NewNode().Public(),
 		Hostname: node.Hostname(),
 		Hostinfo: &tailcfg.Hostinfo{Hostname: node.Hostname(), RequestTags: []string{"tag:ci"}},
-	}))
+	})))
 	relogged, _, err := s.HandleNodeFromAuthPath(authID, userID, nil, util.RegisterMethodOIDC)
 	require.NoError(t, err)
 	require.Equal(t, nodeID, relogged.ID())
@@ -1175,11 +1175,11 @@ func TestReauthReplacesReportedTags(t *testing.T) {
 	for _, tags := range [][]string{{"tag:a"}, nil, {"tag:b"}} {
 		want := slices.Clone(tags)
 		authID := types.MustAuthID()
-		s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+		require.NoError(t, s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
 			MachineKey: node.MachineKey(), NodeKey: key.NewNode().Public(),
 			Hostname: node.Hostname(),
 			Hostinfo: &tailcfg.Hostinfo{Hostname: node.Hostname(), RequestTags: tags},
-		}))
+		})))
 		relogged, _, err := s.HandleNodeFromAuthPath(authID, userID, nil, util.RegisterMethodOIDC)
 		require.NoError(t, err)
 		require.Equal(t, nodeID, relogged.ID())
@@ -1229,10 +1229,10 @@ func TestReauthRejectsOversizedMergedHostinfo(t *testing.T) {
 	require.NoError(t, types.ValidateHostinfo(&tailcfg.Hostinfo{Hostname: hostname}))
 
 	authID := types.MustAuthID()
-	s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
+	require.NoError(t, s.SetAuthCacheEntry(authID, types.NewRegisterAuthRequest(&types.RegistrationData{
 		MachineKey: node.MachineKey(), NodeKey: key.NewNode().Public(),
 		Hostname: hostname, Hostinfo: &tailcfg.Hostinfo{Hostname: hostname},
-	}))
+	})))
 	_, _, err = s.HandleNodeFromAuthPath(authID, node.TypedUserID(), nil, util.RegisterMethodOIDC)
 	require.ErrorIs(t, err, types.ErrHostinfoTooLarge)
 
