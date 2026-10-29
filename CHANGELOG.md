@@ -1,15 +1,19 @@
 # CHANGELOG
 
-## 0.29.7 (202x-xx-xx)
+## 0.29.7 (2026-10-30)
 
 **Minimum supported Tailscale client version: v1.80.0**
 
 ### Security
 
-We recommend that all users upgrade to Headscale 0.29.7 and Tailscale v1.104.4 or newer,
+This is a security release and it includes fixes for findings from Anthropic's OSS Scanner project and findings from the Tailworm report. None of the issues found were critical, but some could lead to DOS and similar issues of Headscale and we recommend upgrading as soon as possible.
+
+We recommend that all users upgrade to Headscale 0.29.7 **and** Tailscale v1.104.4 or newer,
 especially those using Tailscale SSH. Tailscale v1.104.4 fixes vulnerabilities in SSH
 forwarding, SSH session handling and Serve. These fixes run in `tailscaled` on your
-nodes; upgrading Headscale alone does not apply them. See Tailscale's
+nodes; upgrading Headscale alone does not apply them.
+
+See Tailscale's
 [security bulletins](https://tailscale.com/security-bulletins#ts-2026-014) and
 [Tailscale SSH: Findings and fixes](https://tailscale.com/blog/tailscale-ssh-findings-fixes).
 
@@ -21,11 +25,13 @@ is also available in older clients.
 This release also fixes the issues that [oss-scanner](https://github.com/anthropics/oss-scanner/tree/main/projects/headscale)
 reported in Headscale: ANT-2026-MLP8ZR5T, ANT-2026-LYVGXVSW, ANT-2026-AWGRB7O1, ANT-2026-QMCAFJ1Q, ANT-2026-RQS7JAPP, ANT-2026-5B6KE87K, ANT-2026-KFCFFM34, ANT-2026-K903ZEUA, ANT-2026-NM50ZP4N, ANT-2026-ZC18AF82, ANT-2026-NWTIBB02, ANT-2026-MX8FKG4K. [#3603](https://github.com/juanfont/headscale/pull/3603)
 
-- Metrics are no longer exposed to unregistered clients through the Noise protocol. They remain available only on the configured metrics listener; an empty `metrics_listen_addr` disables that listener. [#3571](https://github.com/juanfont/headscale/issues/3571)
-- Update the Tailscale dependency to v1.104.4, which bounds how much of an unexpected DERP HTTP response is read [#3600](https://github.com/juanfont/headscale/pull/3600)
-
 ### Changes
 
+- Metrics are no longer exposed to unregistered clients through the Noise protocol. They remain available only on the configured metrics listener; an empty `metrics_listen_addr` disables that listener. [#3623](https://github.com/juanfont/headscale/pull/3623)
+- Update the Tailscale dependency to v1.104.4, which bounds how much of an unexpected DERP HTTP response is read [#3600](https://github.com/juanfont/headscale/pull/3600)
+- Preserve pending registrations and OIDC logins at capacity instead of evicting active approvals; refuse excess work with a retry response and reserve capacity for registered nodes' SSH checks. [#3586](https://github.com/juanfont/headscale/pull/3586)
+- Retain pending registration data as owned serialized payloads capped at 64 KiB, preserving tags and expiry while bounding stored data. Oversized interactive registrations are rejected explicitly. [#3586](https://github.com/juanfont/headscale/pull/3586)
+- Validate OIDC login session type before allocating state, consume callback state atomically, and release SSH authentication capacity after the client consumes its verdict. [#3586](https://github.com/juanfont/headscale/pull/3586)
 - A route that is a single address inside the node ranges, in either spelling, is approved and listed but never served; wider routes and `::ffff:` prefixes are still served [#3603](https://github.com/juanfont/headscale/pull/3603)
 - Require a valid pre-auth key to re-register an expired tagged node [#3603](https://github.com/juanfont/headscale/pull/3603)
 - Another user's key or login on a tagged machine now creates a new device for that user instead of re-authenticating the tagged node [#3603](https://github.com/juanfont/headscale/pull/3603)
