@@ -101,7 +101,8 @@ func TestSSHOneUserToAll(t *testing.T) {
 						new(policyv2.AutoGroupMember),
 						new(policyv2.AutoGroupTagged),
 					},
-					Users: []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
+					Users:     []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
+					AcceptEnv: []string{"HS_ACCEPTED"},
 				},
 			},
 		},
@@ -132,6 +133,7 @@ func TestSSHOneUserToAll(t *testing.T) {
 			}
 
 			assertSSHHostname(t, client, peer)
+			assertSSHAcceptEnv(t, client, peer)
 		}
 	}
 
@@ -577,6 +579,33 @@ func assertSSHHostname(t *testing.T, client TailscaleClient, peer TailscaleClien
 	require.NoError(t, err)
 
 	require.Contains(t, peer.ContainerID(), strings.ReplaceAll(result, "\n", ""))
+}
+
+func assertSSHAcceptEnv(t *testing.T, client TailscaleClient, peer TailscaleClient) {
+	t.Helper()
+
+	peerFQDN, err := peer.FQDN()
+	require.NoError(t, err)
+
+	command := []string{
+		"env", "HS_ACCEPTED=yes", "HS_REJECTED=yes",
+		"/usr/bin/ssh", "-o StrictHostKeyChecking=no", "-o ConnectTimeout=1",
+		"-o SendEnv=HS_ACCEPTED", "-o SendEnv=HS_REJECTED",
+		"ssh-it-user@" + peerFQDN, "'env'",
+	}
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		stdout, stderr, err := client.Execute(command)
+		if !assert.NoError(c, err, "SSH stderr: %s", stderr) {
+			return
+		}
+
+		vars := strings.Split(strings.TrimSpace(stdout), "\n")
+		assert.Contains(c, vars, "HS_ACCEPTED=yes")
+		assert.NotContains(c, vars, "HS_REJECTED=yes")
+	}, integrationutil.ScaledTimeout(10*time.Second), integrationutil.FastPoll,
+		"SSH from %s to %s should forward only acceptEnv variables",
+		client.Hostname(), peer.Hostname())
 }
 
 func assertSSHPermissionDenied(t *testing.T, client TailscaleClient, peer TailscaleClient) {
