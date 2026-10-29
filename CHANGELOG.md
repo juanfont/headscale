@@ -1,5 +1,30 @@
 # CHANGELOG
 
+## 0.29.7 (202x-xx-xx)
+
+**Minimum supported Tailscale client version: v1.80.0**
+
+### Security
+
+We recommend that all users upgrade to Headscale 0.29.7 and Tailscale v1.104.4 or newer,
+especially those using Tailscale SSH. Tailscale v1.104.4 fixes vulnerabilities in SSH
+forwarding, SSH session handling and Serve. These fixes run in `tailscaled` on your
+nodes; upgrading Headscale alone does not apply them. See Tailscale's
+[security bulletins](https://tailscale.com/security-bulletins#ts-2026-014) and
+[Tailscale SSH: Findings and fixes](https://tailscale.com/blog/tailscale-ssh-findings-fixes).
+
+To disable SSH agent and port forwarding on a node, set
+`TS_SSH_DISABLE_FORWARDING=1` in the `tailscaled` service environment and restart
+the service. This setting applies to all Tailscale SSH sessions on that node and
+is also available in older clients.
+
+- Metrics are no longer exposed to unregistered clients through the Noise protocol. They remain available only on the configured metrics listener; an empty `metrics_listen_addr` disables that listener. [#3571](https://github.com/juanfont/headscale/issues/3571)
+- Update the Tailscale dependency to v1.104.4, which bounds how much of an unexpected DERP HTTP response is read [#3600](https://github.com/juanfont/headscale/pull/3600)
+
+### Changes
+
+- Fix release builds reporting their version with a `+dirty` suffix [#3583](https://github.com/juanfont/headscale/issues/3583)
+
 ## 0.29.6 (2026-10-24)
 
 **Minimum supported Tailscale client version: v1.80.0**
