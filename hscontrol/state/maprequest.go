@@ -51,7 +51,7 @@ type mapRequestDelta struct {
 	// clearing DERP to zero cannot be sent as a patch and forces a
 	// whole-peer update.
 	derpChanged      bool
-	oldDERP, newDERP int
+	oldDERP, newDERP tailcfg.DERPRegionID
 
 	// endpointBroadcast reports whether the endpoint delta is worth fanning
 	// out (i.e., a newly-added useful non-STUN endpoint). Storage still
@@ -75,8 +75,8 @@ func (d mapRequestDelta) MarshalZerologObject(e *zerolog.Event) {
 		Bool("hostinfo.peer_changed", d.peerHostinfoChanged).
 		Bool("routes.changed", d.routesChanged).
 		Bool("derp.changed", d.derpChanged).
-		Int("derp.old", d.oldDERP).
-		Int("derp.new", d.newDERP).
+		Int("derp.old", int(d.oldDERP)).
+		Int("derp.new", int(d.newDERP)).
 		Bool("endpoint.broadcast", d.endpointBroadcast).
 		Bool("key.changed", d.keyChanged).
 		Bool("disco_key.changed", d.discoKeyChanged).
@@ -100,7 +100,7 @@ func netInfoFromMapRequest(
 		log.Debug().
 			Caller().
 			Uint64(zf.NodeID, nodeID.Uint64()).
-			Int(zf.DERP, currentHostinfo.NetInfo.PreferredDERP).
+			Int64(zf.DERP, currentHostinfo.NetInfo.PreferredDERP.Int64()).
 			Msg("using NetInfo from previous Hostinfo in MapRequest")
 
 		return currentHostinfo.NetInfo
@@ -125,7 +125,7 @@ func netInfoFromMapRequest(
 
 // hostinfoDERP returns the PreferredDERP value from a Hostinfo, or 0 when
 // either pointer is nil. 0 is the wire "unchanged" sentinel.
-func hostinfoDERP(hi *tailcfg.Hostinfo) int {
+func hostinfoDERP(hi *tailcfg.Hostinfo) tailcfg.DERPRegionID {
 	if hi == nil || hi.NetInfo == nil {
 		return 0
 	}

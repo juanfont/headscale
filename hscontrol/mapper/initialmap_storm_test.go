@@ -49,7 +49,7 @@ func setupStormBatcher(tb testing.TB, nodeCount, workers int, policy string) (*T
 		DERP: types.DERPConfig{
 			ServerEnabled: false,
 			DERPMap: &tailcfg.DERPMap{
-				Regions: map[int]*tailcfg.DERPRegion{999: {RegionID: 999}},
+				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{999: {RegionID: 999}},
 			},
 		},
 		Tuning: types.Tuning{

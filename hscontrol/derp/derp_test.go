@@ -19,7 +19,7 @@ func TestShuffleDERPMapDeterministic(t *testing.T) {
 			name:       "single region with 4 nodes",
 			baseDomain: "test1.example.com",
 			derpMap: &tailcfg.DERPMap{
-				Regions: map[int]*tailcfg.DERPRegion{
+				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{
 					1: {
 						RegionID:   1,
 						RegionCode: "nyc",
@@ -34,7 +34,7 @@ func TestShuffleDERPMapDeterministic(t *testing.T) {
 				},
 			},
 			expected: &tailcfg.DERPMap{
-				Regions: map[int]*tailcfg.DERPRegion{
+				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{
 					1: {
 						RegionID:   1,
 						RegionCode: "nyc",
@@ -53,7 +53,7 @@ func TestShuffleDERPMapDeterministic(t *testing.T) {
 			name:       "multiple regions with nodes",
 			baseDomain: "test2.example.com",
 			derpMap: &tailcfg.DERPMap{
-				Regions: map[int]*tailcfg.DERPRegion{
+				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{
 					10: {
 						RegionID:   10,
 						RegionCode: "sea",
@@ -77,7 +77,7 @@ func TestShuffleDERPMapDeterministic(t *testing.T) {
 				},
 			},
 			expected: &tailcfg.DERPMap{
-				Regions: map[int]*tailcfg.DERPRegion{
+				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{
 					10: {
 						RegionID:   10,
 						RegionCode: "sea",
@@ -105,7 +105,7 @@ func TestShuffleDERPMapDeterministic(t *testing.T) {
 			name:       "large region with many nodes",
 			baseDomain: "test3.example.com",
 			derpMap: &tailcfg.DERPMap{
-				Regions: map[int]*tailcfg.DERPRegion{
+				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{
 					4: {
 						RegionID:   4,
 						RegionCode: "fra",
@@ -120,7 +120,7 @@ func TestShuffleDERPMapDeterministic(t *testing.T) {
 				},
 			},
 			expected: &tailcfg.DERPMap{
-				Regions: map[int]*tailcfg.DERPRegion{
+				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{
 					4: {
 						RegionID:   4,
 						RegionCode: "fra",
@@ -139,7 +139,7 @@ func TestShuffleDERPMapDeterministic(t *testing.T) {
 			name:       "same region different base domain",
 			baseDomain: "different.example.com",
 			derpMap: &tailcfg.DERPMap{
-				Regions: map[int]*tailcfg.DERPRegion{
+				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{
 					4: {
 						RegionID:   4,
 						RegionCode: "fra",
@@ -154,7 +154,7 @@ func TestShuffleDERPMapDeterministic(t *testing.T) {
 				},
 			},
 			expected: &tailcfg.DERPMap{
-				Regions: map[int]*tailcfg.DERPRegion{
+				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{
 					4: {
 						RegionID:   4,
 						RegionCode: "fra",
@@ -173,7 +173,7 @@ func TestShuffleDERPMapDeterministic(t *testing.T) {
 			name:       "same dataset with another base domain",
 			baseDomain: "another.example.com",
 			derpMap: &tailcfg.DERPMap{
-				Regions: map[int]*tailcfg.DERPRegion{
+				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{
 					4: {
 						RegionID:   4,
 						RegionCode: "fra",
@@ -188,7 +188,7 @@ func TestShuffleDERPMapDeterministic(t *testing.T) {
 				},
 			},
 			expected: &tailcfg.DERPMap{
-				Regions: map[int]*tailcfg.DERPRegion{
+				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{
 					4: {
 						RegionID:   4,
 						RegionCode: "fra",
@@ -207,7 +207,7 @@ func TestShuffleDERPMapDeterministic(t *testing.T) {
 			name:       "same dataset with yet another base domain",
 			baseDomain: "yetanother.example.com",
 			derpMap: &tailcfg.DERPMap{
-				Regions: map[int]*tailcfg.DERPRegion{
+				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{
 					4: {
 						RegionID:   4,
 						RegionCode: "fra",
@@ -222,7 +222,7 @@ func TestShuffleDERPMapDeterministic(t *testing.T) {
 				},
 			},
 			expected: &tailcfg.DERPMap{
-				Regions: map[int]*tailcfg.DERPRegion{
+				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{
 					4: {
 						RegionID:   4,
 						RegionCode: "fra",
@@ -269,13 +269,13 @@ func TestShuffleDERPMapEdgeCases(t *testing.T) {
 		{
 			name: "empty derp map",
 			derpMap: &tailcfg.DERPMap{
-				Regions: map[int]*tailcfg.DERPRegion{},
+				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{},
 			},
 		},
 		{
 			name: "region with no nodes",
 			derpMap: &tailcfg.DERPMap{
-				Regions: map[int]*tailcfg.DERPRegion{
+				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{
 					1: {
 						RegionID:   1,
 						RegionCode: "empty",
@@ -288,7 +288,7 @@ func TestShuffleDERPMapEdgeCases(t *testing.T) {
 		{
 			name: "region with single node",
 			derpMap: &tailcfg.DERPMap{
-				Regions: map[int]*tailcfg.DERPRegion{
+				Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{
 					1: {
 						RegionID:   1,
 						RegionCode: "single",
@@ -314,7 +314,7 @@ func TestShuffleDERPMapWithoutBaseDomain(t *testing.T) {
 	resetDerpRandomForTesting()
 
 	derpMap := &tailcfg.DERPMap{
-		Regions: map[int]*tailcfg.DERPRegion{
+		Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{
 			1: {
 				RegionID:   1,
 				RegionCode: "test",

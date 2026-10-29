@@ -67,7 +67,7 @@ func TestDERPVerifyEndpoint(t *testing.T) {
 		},
 	}
 	derpMap := tailcfg.DERPMap{
-		Regions: map[int]*tailcfg.DERPRegion{
+		Regions: map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{
 			900: &derpRegion,
 		},
 	}
