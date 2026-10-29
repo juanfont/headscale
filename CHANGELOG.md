@@ -161,10 +161,10 @@ nodes; upgrading Headscale alone does not apply them. See Tailscale's
 [security bulletins](https://tailscale.com/security-bulletins#ts-2026-014) and
 [Tailscale SSH: Findings and fixes](https://tailscale.com/blog/tailscale-ssh-findings-fixes).
 
-Headscale follows Tailscale's SSH policy behavior: forwarding is allowed by default,
-with no per-rule forwarding controls. As an interim mitigation for SSH forwarding
-vulnerabilities, set `TS_SSH_DISABLE_FORWARDING=1` in the destination `tailscaled`
-service environment and restart the service, as described in the security bulletin.
+To disable SSH agent and port forwarding on a node, set
+`TS_SSH_DISABLE_FORWARDING=1` in the `tailscaled` service environment and restart
+the service. This setting applies to all Tailscale SSH sessions on that node and
+is also available in older clients.
 
 ## 0.29.6 (2026-10-24)
 
