@@ -4,6 +4,10 @@
 
 **Minimum supported Tailscale client version: v1.84.0**
 
+### Security
+
+- Metrics are no longer exposed to unregistered clients through the Noise protocol. They remain available only on the configured metrics listener; an empty `metrics_listen_addr` disables that listener. [#3571](https://github.com/juanfont/headscale/issues/3571)
+
 ### v1 REST API replaced; gRPC and Protobuf removed
 
 The v1 REST API now provides an OpenAPI 3.1 specification at

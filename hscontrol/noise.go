@@ -160,8 +160,6 @@ func (h *Headscale) NoiseUpgradeHandler(
 	r.Use(middleware.RequestLogger(&zerologRequestLogger{}))
 	r.Use(middleware.Recoverer)
 
-	r.Handle("/metrics", metrics.Handler())
-
 	r.Route("/machine", func(r chi.Router) {
 		r.Post("/register", ns.RegistrationHandler)
 		r.Post("/map", ns.PollNetMapHandler)
