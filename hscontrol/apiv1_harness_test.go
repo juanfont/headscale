@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode"
 
 	apiv1 "github.com/juanfont/headscale/hscontrol/api/v1"
 	"github.com/stretchr/testify/assert"
@@ -142,7 +143,15 @@ type goldenRecord struct {
 func goldenPath(t *testing.T) string {
 	t.Helper()
 
-	name := strings.NewReplacer("/", "_", " ", "_").Replace(t.Name())
+	// Go module zips refuse names with characters such as '>', and one
+	// such file stops go get from fetching headscale.
+	name := strings.Map(func(r rune) rune {
+		if r == '-' || r == '.' || unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return r
+		}
+
+		return '_'
+	}, t.Name())
 
 	return filepath.Join(goldenDir, name+".json")
 }
