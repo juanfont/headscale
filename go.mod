@@ -2,6 +2,23 @@ module github.com/juanfont/headscale
 
 go 1.27.3
 
+// NOTE: modernc sqlite has a fragile dependency
+// chain and it is important that they are updated
+// in lockstep to ensure that they do not break
+// some architectures and similar at runtime:
+// https://github.com/juanfont/headscale/issues/2188
+//
+// Fragile libc dependency:
+// https://pkg.go.dev/modernc.org/sqlite#hdr-Fragile_modernc_org_libc_dependency
+// https://gitlab.com/cznic/sqlite/-/issues/177
+//
+// To upgrade, determine the new SQLite version to
+// be used, and consult the `go.mod` file:
+// https://gitlab.com/cznic/sqlite/-/blob/master/go.mod
+// to find
+// the appropriate `libc` version, then upgrade them
+// together, e.g:
+// go get modernc.org/libc@v1.55.3 modernc.org/sqlite@v1.33.1
 require (
 	github.com/arl/statsviz v0.8.0
 	github.com/cenkalti/backoff/v5 v5.0.3
@@ -54,42 +71,11 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.1
+	modernc.org/sqlite v1.52.0
 	pgregory.net/rapid v1.3.0
 	tailscale.com v1.102.0
 	zombiezen.com/go/postgrestest v1.0.1
 )
-
-// NOTE: modernc sqlite has a fragile dependency
-// chain and it is important that they are updated
-// in lockstep to ensure that they do not break
-// some architectures and similar at runtime:
-// https://github.com/juanfont/headscale/issues/2188
-//
-// Fragile libc dependency:
-// https://pkg.go.dev/modernc.org/sqlite#hdr-Fragile_modernc_org_libc_dependency
-// https://gitlab.com/cznic/sqlite/-/issues/177
-//
-// To upgrade, determine the new SQLite version to
-// be used, and consult the `go.mod` file:
-// https://gitlab.com/cznic/sqlite/-/blob/master/go.mod
-// to find
-// the appropriate `libc` version, then upgrade them
-// together, e.g:
-// go get modernc.org/libc@v1.55.3 modernc.org/sqlite@v1.33.1
-require (
-	modernc.org/libc v1.72.3 // indirect
-	modernc.org/mathutil v1.7.1 // indirect
-	modernc.org/memory v1.11.0 // indirect
-	modernc.org/sqlite v1.52.0
-)
-
-// NOTE: gvisor must be updated in lockstep with
-// tailscale.com. The version used here should match
-// the version required by the tailscale.com dependency.
-// To find the correct version, check tailscale.com's
-// go.mod file for the gvisor.dev/gvisor version:
-// https://github.com/tailscale/tailscale/blob/main/go.mod
-require gvisor.dev/gvisor v0.0.0-20260224225140-573d5e7127a8 // indirect
 
 require (
 	atomicgo.dev/cursor v0.2.0 // indirect
@@ -249,7 +235,17 @@ require (
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	golang.zx2c4.com/wireguard/windows v0.5.3 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
+	// NOTE: gvisor must be updated in lockstep with
+	// tailscale.com. The version used here should match
+	// the version required by the tailscale.com dependency.
+	// To find the correct version, check tailscale.com's
+	// go.mod file for the gvisor.dev/gvisor version:
+	// https://github.com/tailscale/tailscale/blob/main/go.mod
+	gvisor.dev/gvisor v0.0.0-20260224225140-573d5e7127a8 // indirect
 	k8s.io/client-go v0.34.0 // indirect
+	modernc.org/libc v1.72.3 // indirect
+	modernc.org/mathutil v1.7.1 // indirect
+	modernc.org/memory v1.11.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 	software.sslmate.com/src/go-pkcs12 v0.4.0 // indirect
 )
