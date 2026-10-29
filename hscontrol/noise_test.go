@@ -29,10 +29,132 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/control/ts2021"
+	"tailscale.com/net/netmon"
+	"tailscale.com/net/tsdial"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 	"tailscale.com/util/zstdframe"
 )
+
+var privateDiagnosticPaths = []string{
+	"/metrics",
+	"/debug/",
+	"/debug/vars",
+	"/debug/varz",
+	"/debug/pprof/",
+	"/debug/pprof/goroutine",
+	"/debug/statsviz/",
+	"/debug/statsviz/ws",
+	"/debug/overview",
+	"/debug/config",
+	"/debug/policy",
+	"/debug/filter",
+	"/debug/ssh",
+	"/debug/derp",
+	"/debug/nodestore",
+	"/debug/registration-cache",
+	"/debug/routes",
+	"/debug/policy-manager",
+	"/debug/mapresponses",
+	"/debug/batcher",
+	"/debug/ping",
+}
+
+// TestNoiseRouter_DoesNotExposeAdministrativeEndpoints covers https://github.com/juanfont/headscale/issues/3571.
+func TestNoiseRouter_DoesNotExposeAdministrativeEndpoints(t *testing.T) {
+	t.Parallel()
+
+	for _, metricsAddr := range []string{"", "127.0.0.1:9090"} {
+		t.Run("metrics_addr="+metricsAddr, func(t *testing.T) {
+			t.Parallel()
+
+			serverKey := key.NewMachine()
+			app := &Headscale{
+				cfg:             &types.Config{MetricsAddr: metricsAddr},
+				noisePrivateKey: &serverKey,
+			}
+			server := httptest.NewServer(http.HandlerFunc(app.NoiseUpgradeHandler))
+			t.Cleanup(server.Close)
+
+			dialer := tsdial.NewDialer(netmon.NewStatic())
+
+			t.Cleanup(func() { assert.NoError(t, dialer.Close()) })
+
+			// A fresh machine key has no registered node or credentials.
+			client, err := ts2021.NewClient(ts2021.ClientOpts{
+				ServerURL:    server.URL,
+				PrivKey:      key.NewMachine(),
+				ServerPubKey: serverKey.Public(),
+				Dialer:       dialer,
+				Logf:         t.Logf,
+			})
+			require.NoError(t, err)
+			t.Cleanup(func() { assert.NoError(t, client.Close()) })
+
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+
+			resp, err := client.DoWithBody(ctx, http.MethodGet, "/machine/whoami", key.NodePublic{}, nil)
+			require.NoError(t, err)
+			assert.Equal(t, http.StatusNotImplemented, resp.StatusCode,
+				"the Noise protocol router must remain reachable before registration")
+			require.NoError(t, resp.Body.Close())
+
+			paths := slices.Concat(privateDiagnosticPaths, []string{
+				"/api/v1/node",
+				"/api/v1/apikey",
+				"/api/v1/debug/node",
+				"/api/v1/openapi.yaml",
+				"/api/v2/tailnet/-/settings",
+				"/api/v2/tailnet/-/keys",
+				"/api/v2/docs",
+			})
+			for _, path := range paths {
+				for _, method := range []string{http.MethodGet, http.MethodHead} {
+					t.Run(method+" "+path, func(t *testing.T) {
+						resp, err := client.DoWithBody(ctx, method, path, key.NodePublic{}, nil)
+						require.NoError(t, err)
+
+						defer resp.Body.Close()
+
+						assert.Equal(t, 2, resp.ProtoMajor)
+						assert.Equal(t, http.StatusNotFound, resp.StatusCode,
+							"administrative endpoints must not be mounted on Noise")
+					})
+				}
+			}
+		})
+	}
+}
+
+func TestMetricsRouterIsolation(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	public := app.HTTPHandler()
+
+	for _, path := range privateDiagnosticPaths {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
+			rec := httptest.NewRecorder()
+			public.ServeHTTP(rec, req)
+
+			assert.Equal(t, http.StatusNotFound, rec.Code,
+				"diagnostic endpoints must not be mounted on the public router")
+		})
+	}
+
+	private := app.debugHTTPServer().Handler
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil)
+	rec := httptest.NewRecorder()
+	private.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), "# HELP")
+}
 
 // newNoiseRouterWithBodyLimit builds a chi router with the same body-limit
 // middleware used in the real Noise router but wired to a test handler that
