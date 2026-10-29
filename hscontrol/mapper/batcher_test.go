@@ -2356,8 +2356,19 @@ func TestEvictedSessionLeavesPeerTrackingAlone(t *testing.T) {
 	nc, ok := b.nodes.Load(target)
 	require.True(t, ok)
 
-	_, sent := nc.lastSentPeers.Load(peer)
-	assert.True(t, sent, "the peer stays tracked as sent")
+	assert.True(t, tracked(nc, peer), "the peer stays tracked as sent")
+}
+
+// tracked reports whether nc tracks id as sent. It reads under workMu, as
+// the batcher does: a full map replaces the set with Clear then Store, so a
+// read outside it can land between the two.
+func tracked(nc *multiChannelNodeConn, id tailcfg.NodeID) bool {
+	nc.workMu.Lock()
+	defer nc.workMu.Unlock()
+
+	_, ok := nc.lastSentPeers.Load(id)
+
+	return ok
 }
 
 // TestOlderInitialMapLeavesNewerStreamsPeers keeps a stream whose initial map,
@@ -2447,8 +2458,7 @@ func TestOlderInitialMapLeavesNewerStreamsPeers(t *testing.T) {
 	nc, ok := b.nodes.Load(target)
 	require.True(t, ok)
 
-	_, sent := nc.lastSentPeers.Load(peer)
-	assert.True(t, sent, "the peer stays tracked as sent")
+	assert.True(t, tracked(nc, peer), "the peer stays tracked as sent")
 
 	for listed := false; !listed; {
 		select {
@@ -2974,11 +2984,6 @@ func TestAddNodeRemovalSurvivesPendingLoss(t *testing.T) {
 		// the removal entirely.
 		{"no_peers", 1},
 		{"with_peer", 2},
-	}
-
-	tracked := func(nc *multiChannelNodeConn, id tailcfg.NodeID) bool {
-		_, ok := nc.lastSentPeers.Load(id)
-		return ok
 	}
 
 	recv := func(t *testing.T, ch <-chan *tailcfg.MapResponse) *tailcfg.MapResponse {
