@@ -114,7 +114,7 @@ func TestNetInfoPreservationInRegistrationFlow(t *testing.T) {
 		// CORRECT: Using the existing node's hostinfo (has NetInfo)
 		correctResult := netInfoFromMapRequest(nodeID, existingNodeHostinfo, newRegistrationHostinfo)
 		assert.NotNil(t, correctResult, "Fix: Should preserve NetInfo when using correct hostinfo reference")
-		assert.Equal(t, 5, correctResult.PreferredDERP, "Should preserve the DERP region from existing node")
+		assert.Equal(t, tailcfg.DERPRegionID(5), correctResult.PreferredDERP, "Should preserve the DERP region from existing node")
 	})
 
 	t.Run("new_node_creation_for_different_user_should_preserve_netinfo", func(t *testing.T) {
@@ -140,7 +140,7 @@ func TestNetInfoPreservationInRegistrationFlow(t *testing.T) {
 		// When creating a new node for user2, we should preserve NetInfo from user1's node
 		result := netInfoFromMapRequest(types.NodeID(2), existingNodeUser1Hostinfo, newNodeUser2Hostinfo)
 		assert.NotNil(t, result, "New node for user2 should preserve NetInfo from user1's node")
-		assert.Equal(t, 7, result.PreferredDERP, "Should preserve DERP region from existing node")
+		assert.Equal(t, tailcfg.DERPRegionID(7), result.PreferredDERP, "Should preserve DERP region from existing node")
 	})
 }
 
@@ -376,7 +376,7 @@ func TestMapRequestDERPLatencyJitterEmitsNoPeerChange(t *testing.T) {
 
 	after, ok := s.GetNodeByID(nodeID)
 	require.True(t, ok)
-	require.Equal(t, 1, after.Hostinfo().NetInfo().PreferredDERP(),
+	require.Equal(t, tailcfg.DERPRegionID(1), after.Hostinfo().NetInfo().PreferredDERP(),
 		"the DERP region must survive a latency-only request")
 }
 
@@ -439,7 +439,7 @@ func TestMapRequestOmittedNetInfoIsNoChange(t *testing.T) {
 
 	after, ok := s.GetNodeByID(nodeID)
 	require.True(t, ok)
-	require.Equal(t, int(1), hostinfoDERP(after.AsStruct().Hostinfo),
+	require.Equal(t, tailcfg.DERPRegionID(1), hostinfoDERP(after.AsStruct().Hostinfo),
 		"stored NetInfo must survive a request that omits it")
 }
 
@@ -492,7 +492,7 @@ func TestMapRequestDERPClearToZeroIsStoredAndBroadcast(t *testing.T) {
 
 	after, ok := s.GetNodeByID(nodeID)
 	require.True(t, ok)
-	require.Equal(t, int(0), hostinfoDERP(after.AsStruct().Hostinfo),
+	require.Equal(t, tailcfg.DERPRegionID(0), hostinfoDERP(after.AsStruct().Hostinfo),
 		"clearing PreferredDERP must be stored")
 
 	require.Contains(t, c.PeersChanged, nodeID,
@@ -514,7 +514,7 @@ func TestMapRequestDERPOnlyChangeKeepsGivenName(t *testing.T) {
 
 	stored := nv.AsStruct()
 
-	req := func(derp int) tailcfg.MapRequest {
+	req := func(derp tailcfg.DERPRegionID) tailcfg.MapRequest {
 		return tailcfg.MapRequest{
 			NodeKey:  stored.NodeKey,
 			DiscoKey: stored.DiscoKey,
@@ -547,7 +547,7 @@ func TestConcurrentMapRequestDERPUsesPersistedState(t *testing.T) {
 	for _, rotateKey := range []bool{false, true} {
 		for _, tt := range []struct {
 			name                string
-			firstDERP, lastDERP int
+			firstDERP, lastDERP tailcfg.DERPRegionID
 		}{
 			{name: "newer region", firstDERP: 2, lastDERP: 3},
 			{name: "newer clear", firstDERP: 2, lastDERP: 0},
@@ -601,7 +601,7 @@ func TestConcurrentMapRequestDERPUsesPersistedState(t *testing.T) {
 
 				results := make(chan result, 2)
 
-				for _, derp := range []int{tt.firstDERP, tt.lastDERP} {
+				for _, derp := range []tailcfg.DERPRegionID{tt.firstDERP, tt.lastDERP} {
 					request := req
 					request.Hostinfo = req.Hostinfo.Clone()
 					request.Hostinfo.NetInfo.PreferredDERP = derp
@@ -940,10 +940,10 @@ func TestNetInfoEqualIgnoringDERP(t *testing.T) {
 }
 
 func TestHostinfoDERP(t *testing.T) {
-	require.Equal(t, int(0), hostinfoDERP(nil))
-	require.Equal(t, int(0), hostinfoDERP(&tailcfg.Hostinfo{}))
-	require.Equal(t, int(0), hostinfoDERP(&tailcfg.Hostinfo{NetInfo: &tailcfg.NetInfo{}}))
-	require.Equal(t, int(5), hostinfoDERP(&tailcfg.Hostinfo{NetInfo: &tailcfg.NetInfo{PreferredDERP: 5}}))
+	require.Equal(t, tailcfg.DERPRegionID(0), hostinfoDERP(nil))
+	require.Equal(t, tailcfg.DERPRegionID(0), hostinfoDERP(&tailcfg.Hostinfo{}))
+	require.Equal(t, tailcfg.DERPRegionID(0), hostinfoDERP(&tailcfg.Hostinfo{NetInfo: &tailcfg.NetInfo{}}))
+	require.Equal(t, tailcfg.DERPRegionID(5), hostinfoDERP(&tailcfg.Hostinfo{NetInfo: &tailcfg.NetInfo{PreferredDERP: 5}}))
 }
 
 func TestBuildMapRequestChangeResponse(t *testing.T) {
@@ -957,13 +957,13 @@ func TestBuildMapRequestChangeResponse(t *testing.T) {
 	tests := []struct {
 		name     string
 		delta    mapRequestDelta
-		nodeDERP int
+		nodeDERP tailcfg.DERPRegionID
 
 		wantEmpty     bool
 		wantWholePeer bool
 		wantKeys      bool
 		wantEndpoints bool
-		wantDERP      int
+		wantDERP      tailcfg.DERPRegionID
 	}{
 		{
 			name:  "nothing peer visible",

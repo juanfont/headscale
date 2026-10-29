@@ -3437,7 +3437,7 @@ func buildMapRequestChangeResponse(
 		return change.NodeAdded(id)
 	}
 
-	var currentDERP int
+	var currentDERP tailcfg.DERPRegionID
 
 	if delta.derpChanged {
 		if hi := node.Hostinfo(); hi.Valid() && hi.NetInfo().Valid() {

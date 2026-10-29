@@ -48,7 +48,7 @@ func (s SafeHostinfo) MarshalZerologObject(e *zerolog.Event) {
 	}
 
 	if s.hi.NetInfo != nil && s.hi.NetInfo.PreferredDERP != 0 {
-		e.Int(zf.DERP, s.hi.NetInfo.PreferredDERP)
+		e.Int64(zf.DERP, s.hi.NetInfo.PreferredDERP.Int64())
 	}
 
 	// SECURITY: The following fields are intentionally NOT logged:
