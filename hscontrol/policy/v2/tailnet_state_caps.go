@@ -139,11 +139,6 @@ var unmodelledTailnetStateCaps = []tailcfg.NodeCapability{
 	// server (no su, in-process SFTP). Internal tuning; the embedded
 	// server picks Tailscale-vendored defaults without the cap.
 	tailcfg.NodeAttrSSHBehaviorV1,
-
-	// [tailcfg.NodeAttrSSHEnvironmentVariables]: gates SendEnv
-	// forwarding in the embedded SSH server. Internal; default chosen
-	// by the server.
-	tailcfg.NodeAttrSSHEnvironmentVariables,
 }
 
 // strippedCapPrefixes lists URL/string prefixes for parameterized or
