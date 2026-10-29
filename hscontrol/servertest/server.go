@@ -5,6 +5,8 @@
 package servertest
 
 import (
+	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"net/netip"
@@ -14,6 +16,7 @@ import (
 	hscontrol "github.com/juanfont/headscale/hscontrol"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"tailscale.com/net/memnet"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
@@ -270,6 +273,34 @@ func (s *TestServer) CreateUser(tb testing.TB, name string) *types.User {
 	}
 
 	return u
+}
+
+// ApproveAuth registers the pending login authID to user, as
+// `headscale auth register` does.
+func (s *TestServer) ApproveAuth(_ context.Context, authID, user string) error {
+	id, err := types.AuthIDFromString(authID)
+	if err != nil {
+		return fmt.Errorf("servertest: ApproveAuth: %w", err)
+	}
+
+	u, err := s.st.GetUserByName(user)
+	if err != nil {
+		return fmt.Errorf("servertest: ApproveAuth: %w", err)
+	}
+
+	node, nodeChange, err := s.st.HandleNodeFromAuthPath(id, types.UserID(u.ID), nil, util.RegisterMethodCLI)
+	if err != nil {
+		return fmt.Errorf("servertest: ApproveAuth: %w", err)
+	}
+
+	routeChange, err := s.st.AutoApproveRoutes(node)
+	if err != nil {
+		return fmt.Errorf("servertest: ApproveAuth: %w", err)
+	}
+
+	s.App.Change(nodeChange, routeChange)
+
+	return nil
 }
 
 // CreatePreAuthKey creates a reusable pre-auth key for the given user.
