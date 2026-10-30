@@ -743,9 +743,9 @@ func deliveryChecks(d *deliveryStep) []stepCheck {
 	return checks
 }
 
-// subjectChecks compares how v sees x: online, its DERP home, endpoints,
-// name, routes, whether its disco key changed during the step and whether
-// its endpoints were cleared on the way.
+// subjectChecks compares how v sees x: online, last seen while offline, its
+// DERP home, endpoints, name, routes, whether its disco key changed during
+// the step and whether its endpoints were cleared on the way.
 func (d *deliveryStep) subjectChecks(x, v string) []stepCheck {
 	r := d.r
 	saasID := r.c.NodeIDs[x]
@@ -773,7 +773,7 @@ func (d *deliveryStep) subjectChecks(x, v string) []stepCheck {
 		hsBefore = peerDisco(d.hsBefore[v], id)
 	}
 
-	return []stepCheck{
+	checks := []stepCheck{
 		{x + "/online-" + v, peerOnline(saasPeer, saasMissing), func() string { return peerOnline(hsPeer()) }},
 		{x + "/derp-" + v, peerDERP(saasPeer, saasMissing), func() string { return peerDERP(hsPeer()) }},
 		{x + "/endpoints-" + v, peerEndpoints(saasPeer, saasMissing), func() string { return peerEndpoints(hsPeer()) }},
@@ -800,6 +800,14 @@ func (d *deliveryStep) subjectChecks(x, v string) []stepCheck {
 			return hsEndpointsCleared(r.clients[v].History()[d.updates[v]:], id)
 		}},
 	}
+
+	// A client can keep an old last-seen time through an online patch, so only
+	// an offline peer's says anything.
+	if saasMissing == "" && !saasPeer.Online().Get() {
+		checks = append(checks, stepCheck{x + "/seen-" + v, peerSeen(saasPeer, saasMissing), func() string { return peerSeen(hsPeer()) }})
+	}
+
+	return checks
 }
 
 // topologyAddrNames names each SaaS address in c's topology by alias, so a

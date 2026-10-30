@@ -516,6 +516,15 @@ func peerOnline(p tailcfg.NodeView, missing string) string {
 	return strconv.FormatBool(p.Online().Get())
 }
 
+// peerSeen compares presence only: SaaS sends a coarser time than headscale.
+func peerSeen(p tailcfg.NodeView, missing string) string {
+	if missing != "" {
+		return missing
+	}
+
+	return strconv.FormatBool(p.LastSeen().Valid())
+}
+
 // saasRemoved reports whether the peer, present before the step or once a
 // frame named it, was then removed or left out of a full peer list.
 func saasRemoved(before *netmap.NetworkMap, frames []testcapture.Frame, id tailcfg.NodeID) string {

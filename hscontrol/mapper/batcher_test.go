@@ -94,7 +94,7 @@ func (t *testBatcherWrapper) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapRe
 	// Do this BEFORE removing from batcher so the change can be processed
 	node, ok := t.state.GetNodeByID(id)
 	if ok {
-		t.AddWork(change.NodeOffline(node.ID()))
+		t.AddWork(change.NodeOffline(node.ID(), time.Time{}))
 	}
 
 	// Finally remove from the real batcher
