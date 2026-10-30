@@ -115,8 +115,8 @@ func (b *MapResponseBuilder) WithSelfNode() *MapResponseBuilder {
 	tailnode.MachineAuthorized = true
 	tailnode.Expired = false
 
-	// As on Tailscale SaaS. A client knows its own version.
-	tailnode.Cap = 0
+	// As on Tailscale SaaS. A client knows its own version and connection.
+	tailnode.Cap, tailnode.Online, tailnode.LastSeen = 0, nil, nil
 
 	tailnode.Hostinfo = types.SelfHostinfo(tailnode.Hostinfo)
 
