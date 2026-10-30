@@ -169,6 +169,14 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 			return
 		}
 
+		// Re-registering with a permanent key cancels nothing, and the poll
+		// path only cancels for ephemeral nodes, so the old timer still fires.
+		if !node.IsEphemeral() {
+			log.Debug().Caller().EmbedObject(node).Msg("node is no longer ephemeral, skipping garbage collection")
+
+			return
+		}
+
 		// Schedule and Cancel run outside the session transition, so a
 		// disconnecting session can arm a timer after a reconnect already
 		// cancelled it. The session count is authoritative; a stale timer
