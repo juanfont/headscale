@@ -86,6 +86,7 @@ var routesMapCompatTests = []struct {
 	{"routes-a1-wildcard-acl-includes-routes-in-srcips", "wildcard ACL, every router"},
 	{"routes-a2-tag-based-acl-excludes-routes", "router-to-router ACL"},
 	{"routes-a3-explicit-subnet-filter-to-router", "ACL to one subnet"},
+	{"routes-a3b-autogroup-member-to-subnet", "members to a subnet, the router in no rule"},
 	{"routes-a4-multiple-routes-same-router", "ACL to one route of a router with an exit route too"},
 	{"routes-e1-ha-two-routers-same-subnet", "HA pair, ACL to the shared subnet"},
 	{"routes-e2-ha-primary-in-allowedips", "HA primary in AllowedIPs"},
