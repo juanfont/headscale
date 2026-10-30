@@ -91,7 +91,7 @@ connected node to update its Tailscale client, like the "Start update" button of
 the Tailscale admin console. The request is sent over c2n, and the node only
 starts the update if it has auto-updates enabled and its platform supports them;
 otherwise its reason is reported back. `--force` updates even with active
-Tailscale SSH sessions. See [the client docs](https://headscale.net/stable/about/clients/#update-clients).
+Tailscale SSH sessions. See [the client docs](https://headscale.net/stable/about/clients/#update-clients). [#3632](https://github.com/juanfont/headscale/pull/3632)
 
 ### BREAKING
 
