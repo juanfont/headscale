@@ -917,6 +917,43 @@ func describeNetmap(c *servertest.TestClient) string {
 	return out.String()
 }
 
+// TestPeerLastSeenPatches takes a node down and up. As on Tailscale SaaS, its
+// peer gets a last seen time with the offline patch and none with the online
+// one. The recorder runs before the netmap lands, so a netmap settles both.
+func TestPeerLastSeenPatches(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t)
+	user := srv.CreateUser(t, "seen-user")
+
+	watcher := servertest.NewClient(t, srv, "seen-watcher",
+		servertest.WithUser(user), servertest.WithDeltaUpdates())
+	node := servertest.NewClient(t, srv, "seen-node", servertest.WithUser(user))
+
+	peerOnline := func(want bool) func(*netmap.NetworkMap) bool {
+		return func(nm *netmap.NetworkMap) bool {
+			return len(nm.Peers) == 1 && nm.Peers[0].Online().Valid() && nm.Peers[0].Online().Get() == want
+		}
+	}
+
+	// A new peer can first appear offline, which must not pass for going down.
+	watcher.WaitForCondition(t, "peer online", 15*time.Second, peerOnline(true))
+
+	down := time.Now()
+
+	node.Disconnect(t)
+	watcher.WaitForCondition(t, "peer offline", 30*time.Second, peerOnline(false))
+
+	seen := watcher.DeltaLastSeen()
+	require.Len(t, seen, 1, "offline patch carried no last seen time")
+	assert.WithinRange(t, seen[0], down, time.Now())
+
+	node.Reconnect(t)
+	watcher.WaitForCondition(t, "peer online", 15*time.Second, peerOnline(true))
+
+	assert.Len(t, watcher.DeltaLastSeen(), 1, "online patch carried a last seen time")
+}
+
 func TestServerStateCleanup(t *testing.T) {
 	var srv *servertest.TestServer
 

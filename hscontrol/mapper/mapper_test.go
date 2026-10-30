@@ -921,7 +921,7 @@ func TestMapResponseNeverContainsSelfAsPeer(t *testing.T) {
 					"policy change": change.PolicyChange(),
 					"self added":    change.NodeAdded(recipient),
 					"self online":   change.NodeOnline(recipient),
-					"self offline":  change.NodeOffline(recipient),
+					"self offline":  change.NodeOffline(recipient, time.Time{}),
 					// A batch naming every node, the recipient included.
 					// change.PeersChanged carries no OriginNode, so the
 					// self-update short circuit in buildFromChange never fires

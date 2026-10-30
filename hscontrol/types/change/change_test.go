@@ -451,10 +451,10 @@ func TestDedupePolicyChanges(t *testing.T) {
 		{
 			name: "peer patches survive between collapsed policy changes",
 			changes: []Change{
-				NodeOnline(1), PolicyChange(), NodeOnline(2), PolicyChange(), NodeOffline(3),
+				NodeOnline(1), PolicyChange(), NodeOnline(2), PolicyChange(), NodeOffline(3, time.Time{}),
 			},
 			want: []Change{
-				NodeOnline(1), PolicyChange(), NodeOnline(2), NodeOffline(3),
+				NodeOnline(1), PolicyChange(), NodeOnline(2), NodeOffline(3, time.Time{}),
 			},
 		},
 		{
@@ -514,8 +514,8 @@ func TestCoalescePeerDeltas(t *testing.T) {
 		},
 		{
 			name:    "patches for peers sent whole are dropped, others kept in order",
-			changes: []Change{NodeOnline(4), NodeAdded(2), NodeOffline(4), NodeOnline(2)},
-			want:    []Change{merged([]types.NodeID{2}, patch(NodeOnline(4)), patch(NodeOffline(4)))},
+			changes: []Change{NodeOnline(4), NodeAdded(2), NodeOffline(4, time.Time{}), NodeOnline(2)},
+			want:    []Change{merged([]types.NodeID{2}, patch(NodeOnline(4)), patch(NodeOffline(4, time.Time{})))},
 		},
 		{
 			name: "runs do not cross other changes",
@@ -940,13 +940,16 @@ func TestNodeOnlineOfflineForSubnetRouter(t *testing.T) {
 	view := router.View()
 	require.True(t, view.IsSubnetRouter(), "test node must be a subnet router")
 
+	seen := time.Date(2026, 1, 2, 3, 4, 5, 123456789, time.UTC)
+
 	tests := []struct {
 		name       string
 		got        Change
 		wantOnline bool
+		wantSeen   *time.Time
 	}{
 		{name: "online", got: NodeOnline(view.ID()), wantOnline: true},
-		{name: "offline", got: NodeOffline(view.ID()), wantOnline: false},
+		{name: "offline", got: NodeOffline(view.ID(), seen), wantOnline: false, wantSeen: &seen},
 	}
 
 	for _, tt := range tests {
@@ -965,6 +968,7 @@ func TestNodeOnlineOfflineForSubnetRouter(t *testing.T) {
 
 			require.NotNil(t, patch.Online)
 			assert.Equal(t, tt.wantOnline, *patch.Online)
+			assert.Equal(t, tt.wantSeen, patch.LastSeen)
 		})
 	}
 }

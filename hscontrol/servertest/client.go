@@ -70,9 +70,10 @@ type TestClient struct {
 	// streams and streamMaps: see [TestClient.Stream].
 	streams, streamMaps int
 
-	// deltaUpdates and deltaRemoved: see [WithDeltaUpdates].
+	// deltaUpdates, deltaRemoved and deltaSeen: see [WithDeltaUpdates].
 	deltaUpdates bool
 	deltaRemoved []tailcfg.NodeID
+	deltaSeen    []time.Time
 
 	// registers: see [TestClient.RegisterAttempts].
 	registers []testcapture.RegisterAttempt
@@ -482,8 +483,8 @@ func (c *TestClient) UpdateFullNetmap(nm *netmap.NetworkMap) {
 // deltaRecorder is the [controlclient.NetmapUpdater] of a [WithDeltaUpdates]
 // client. Like tailscaled it takes packet filter and user profile updates
 // narrowly, which lets [controlclient.Direct] try the delta path. It
-// records removals and declines the mutations, so the full netmap is
-// still delivered and the client's peer state stays exact.
+// records removals and last seen times and declines the mutations, so the
+// full netmap is still delivered and the client's peer state stays exact.
 type deltaRecorder struct{ *TestClient }
 
 func (d deltaRecorder) UpdatePacketFilter(views.Slice[tailcfg.FilterRule], []filter.Match) bool {
@@ -499,12 +500,24 @@ func (d deltaRecorder) UpdateNetmapDelta(muts []netmap.NodeMutation) bool {
 	defer d.mu.Unlock()
 
 	for _, m := range muts {
-		if _, ok := m.(netmap.NodeMutationRemove); ok {
+		switch m := m.(type) {
+		case netmap.NodeMutationRemove:
 			d.deltaRemoved = append(d.deltaRemoved, m.NodeIDBeingMutated())
+		case netmap.NodeMutationLastSeen:
+			d.deltaSeen = append(d.deltaSeen, m.LastSeen)
 		}
 	}
 
 	return false
+}
+
+// DeltaLastSeen returns the last seen times that arrived in a response the
+// client could apply incrementally; see [WithDeltaUpdates].
+func (c *TestClient) DeltaLastSeen() []time.Time {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return slices.Clone(c.deltaSeen)
 }
 
 // DeltaRemovedPeers returns the peers whose removal arrived in a response
