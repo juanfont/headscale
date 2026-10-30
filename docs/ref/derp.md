@@ -55,7 +55,8 @@ derp:
 
 The DERP map offered to clients can be customized with a [dedicated YAML-configuration
 file](https://github.com/juanfont/headscale/blob/main/derp-example.yaml). The file extension picks the format: `.yaml`
-or `.yml`, or the JSON format Tailscale serves DERP maps in as `.json` or `.hujson`. This allows to modify previously
+or `.yml`, or the JSON format Tailscale serves DERP maps in as `.json` or `.hujson`. Both JSON extensions are read as
+[HuJSON](https://github.com/tailscale/hujson), so comments and trailing commas are allowed. This allows to modify previously
 loaded DERP maps fetched via URL or to offer your own, custom DERP servers to nodes.
 
 === "Remove specific DERP regions"

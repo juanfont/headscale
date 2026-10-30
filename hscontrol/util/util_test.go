@@ -901,22 +901,28 @@ func TestUnmarshalByExt(t *testing.T) {
 		Port int    `json:"port"`
 	}
 
-	want := rec{Name: "a", Port: 1}
+	a1 := rec{Name: "a", Port: 1}
 
 	tests := []struct {
 		name       string
 		file       string
 		data       string
+		want       rec
 		wantFormat bool // want ErrUnknownFileFormat
 		wantErr    bool
 	}{
-		{name: "json", file: "x.json", data: `{"name": "a", "port": 1}`},
-		{name: "extension case is ignored", file: "x.JSON", data: `{"name": "a", "port": 1}`},
-		{name: "hujson", file: "x.hujson", data: "{\n  // comment\n  \"name\": \"a\",\n  \"port\": 1,\n}"},
-		{name: "yaml", file: "x.yaml", data: "name: a\nport: 1\n"},
-		{name: "yml", file: "x.yml", data: "name: a\nport: 1\n"},
-		// The extension is binding: a .json file does not get HuJSON leniency.
-		{name: "comments in json", file: "x.json", data: "{\n  // comment\n  \"name\": \"a\"\n}", wantErr: true},
+		{name: "json", file: "x.json", data: `{"name": "a", "port": 1}`, want: a1},
+		{name: "extension case is ignored", file: "x.JSON", data: `{"name": "a", "port": 1}`, want: a1},
+		{name: "json with line comments", file: "x.json", data: "{\n  // comment\n  \"name\": \"a\", // trailing\n  \"port\": 1\n}", want: a1},
+		{name: "json with block comments", file: "x.json", data: "/* header */ {\"name\": /* inline */ \"a\", \"port\": 1}", want: a1},
+		{name: "json with trailing commas", file: "x.json", data: `{"name": "a", "port": 1,}`, want: a1},
+		{name: "json comment markers inside strings are kept", file: "x.json", data: `{"name": "https://a/*b*/", "port": 1}`, want: rec{Name: "https://a/*b*/", Port: 1}},
+		{name: "hujson", file: "x.hujson", data: "{\n  // comment\n  \"name\": \"a\",\n  \"port\": 1,\n}", want: a1},
+		{name: "yaml", file: "x.yaml", data: "name: a\nport: 1\n", want: a1},
+		{name: "yml", file: "x.yml", data: "name: a\nport: 1\n", want: a1},
+		{name: "json with unterminated block comment", file: "x.json", data: `{"name": "a", "port": 1} /* open`, wantErr: true},
+		{name: "json with missing value", file: "x.json", data: `{"name": "a", "port": }`, wantErr: true},
+		{name: "json with wrong value type", file: "x.json", data: `{"name": "a", "port": "1"}`, wantErr: true},
 		{name: "unknown extension", file: "x.txt", data: `{"name": "a", "port": 1}`, wantFormat: true},
 		{name: "no extension", file: "x", data: `{"name": "a", "port": 1}`, wantFormat: true},
 	}
@@ -944,7 +950,7 @@ func TestUnmarshalByExt(t *testing.T) {
 				t.Fatalf("UnmarshalByExt(%q) error = %v", tt.file, err)
 			}
 
-			if diff := cmp.Diff(want, got); diff != "" {
+			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("UnmarshalByExt(%q) mismatch (-want +got):\n%s", tt.file, diff)
 			}
 		})
