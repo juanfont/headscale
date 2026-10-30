@@ -2,11 +2,14 @@ package state
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/util/dnsname"
 )
 
 // TestPutNodeGivenNameCollisionBumps is the reproduction for #3188.
@@ -231,4 +234,62 @@ func TestSetGivenNameIdempotent(t *testing.T) {
 	view, err := store.SetGivenName(1, "laptop")
 	require.NoError(t, err)
 	require.Equal(t, "laptop", view.GivenName())
+}
+
+func TestPutNodeGivenNameBumpFitsDNSLabel(t *testing.T) {
+	maxLabel := strings.Repeat("a", util.LabelHostnameLength)
+
+	tests := []struct {
+		name     string
+		hostname string
+		holders  int
+		want     string
+	}{
+		{name: "short base keeps full base", hostname: "laptop", holders: 1, want: "laptop-1"},
+		{name: "max length base trimmed for one digit suffix", hostname: maxLabel, holders: 1, want: strings.Repeat("a", 61) + "-1"},
+		{name: "max length base trimmed for two digit suffix", hostname: maxLabel, holders: 10, want: strings.Repeat("a", 60) + "-10"},
+		{name: "hyphen left at cut point is stripped", hostname: strings.Repeat("a", 60) + "-bb", holders: 1, want: strings.Repeat("a", 60) + "-1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+
+			store.Start()
+			defer store.Stop()
+
+			for id := range tt.holders {
+				store.PutNode(createTestNode(types.NodeID(id+1), 1, "alice", tt.hostname)) //nolint:gosec // test ids
+			}
+
+			got := store.PutNode(createTestNode(types.NodeID(tt.holders+1), 1, "alice", tt.hostname)).GivenName() //nolint:gosec // test ids
+
+			require.Equal(t, tt.want, got)
+			require.NoError(t, dnsname.ValidLabel(got))
+		})
+	}
+}
+
+func TestIsAutoDerivedGivenName(t *testing.T) {
+	maxLabel := strings.Repeat("a", util.LabelHostnameLength)
+
+	tests := []struct {
+		name     string
+		given    string
+		hostname string
+		want     bool
+	}{
+		{name: "sanitised hostname", given: "laptop", hostname: "laptop", want: true},
+		{name: "short bump", given: "laptop-1", hostname: "laptop", want: true},
+		{name: "signed suffix still accepted", given: "laptop-+1", hostname: "laptop", want: true},
+		{name: "trimmed max length bump", given: strings.Repeat("a", 61) + "-1", hostname: maxLabel, want: true},
+		{name: "trimmed prefix with mismatched suffix length", given: strings.Repeat("a", 61) + "-10", hostname: maxLabel, want: false},
+		{name: "admin rename", given: "workstation", hostname: "laptop", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, isAutoDerivedGivenName(tt.given, tt.hostname))
+		})
+	}
 }

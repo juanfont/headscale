@@ -3614,14 +3614,20 @@ func isAutoDerivedGivenName(given, hostname string) bool {
 		return true
 	}
 
-	suffix, ok := strings.CutPrefix(given, base+"-")
-	if !ok {
-		return false
+	for i := range len(given) {
+		if given[i] != '-' {
+			continue
+		}
+
+		suffix := given[i+1:]
+
+		_, err := strconv.Atoi(suffix)
+		if err == nil && given == bumpGivenName(base, suffix) {
+			return true
+		}
 	}
 
-	_, err := strconv.Atoi(suffix)
-
-	return err == nil
+	return false
 }
 
 // UpdateNodeFromMapRequest is the sync point where Hostinfo changes,
