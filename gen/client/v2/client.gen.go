@@ -69,6 +69,14 @@ type Device struct {
 	User              string     `json:"user"`
 }
 
+// DeviceClientUpdate defines model for DeviceClientUpdate.
+type DeviceClientUpdate struct {
+	Enabled   bool   `json:"enabled"`
+	Error     string `json:"error"`
+	Started   bool   `json:"started"`
+	Supported bool   `json:"supported"`
+}
+
 // DeviceRoutes defines model for DeviceRoutes.
 type DeviceRoutes struct {
 	AdvertisedRoutes []string `json:"advertisedRoutes"`
@@ -211,6 +219,11 @@ type TailnetSettings struct {
 	UsersRoleAllowedToJoinExternalTailnets string `json:"usersRoleAllowedToJoinExternalTailnets"`
 }
 
+// UpdateDeviceClientRequest defines model for UpdateDeviceClientRequest.
+type UpdateDeviceClientRequest struct {
+	Force *bool `json:"force,omitempty"`
+}
+
 // User defines model for User.
 type User struct {
 	Created            time.Time `json:"created"`
@@ -307,6 +320,9 @@ type SetDeviceRoutesJSONRequestBody = SetSubnetRoutesRequest
 
 // SetDeviceTagsJSONRequestBody defines body for SetDeviceTags for application/json ContentType.
 type SetDeviceTagsJSONRequestBody = SetTagsRequest
+
+// UpdateDeviceClientJSONRequestBody defines body for UpdateDeviceClient for application/json ContentType.
+type UpdateDeviceClientJSONRequestBody = UpdateDeviceClientRequest
 
 // SetACLJSONRequestBody defines body for SetACL for application/json ContentType.
 type SetACLJSONRequestBody = SetACLJSONBody
@@ -504,6 +520,28 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/v2/device/{id}/tags (the `SetDeviceTags` operationId).
 	SetDeviceTags(ctx context.Context, id string, body SetDeviceTagsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateDeviceClientWithBody Update a device's Tailscale client
+	//
+	// Asks a connected device over c2n to update its Tailscale client. The device only starts the update if it has auto-updates enabled and its platform supports them.
+	//
+	// Requires the `devices:core` OAuth scope (an admin API key is all-access).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v2/device/{id}/update-client (the `UpdateDeviceClient` operationId).
+	UpdateDeviceClientWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateDeviceClient Update a device's Tailscale client
+	//
+	// Asks a connected device over c2n to update its Tailscale client. The device only starts the update if it has auto-updates enabled and its platform supports them.
+	//
+	// Requires the `devices:core` OAuth scope (an admin API key is all-access).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v2/device/{id}/update-client (the `UpdateDeviceClient` operationId).
+	UpdateDeviceClient(ctx context.Context, id string, body UpdateDeviceClientJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetACL Get the policy file
 	//
@@ -869,6 +907,48 @@ func (c *Client) SetDeviceTagsWithBody(ctx context.Context, id string, contentTy
 // Corresponds with POST /api/v2/device/{id}/tags (the `SetDeviceTags` operationId).
 func (c *Client) SetDeviceTags(ctx context.Context, id string, body SetDeviceTagsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetDeviceTagsRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateDeviceClientWithBody Update a device's Tailscale client
+//
+// Asks a connected device over c2n to update its Tailscale client. The device only starts the update if it has auto-updates enabled and its platform supports them.
+//
+// Requires the `devices:core` OAuth scope (an admin API key is all-access).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v2/device/{id}/update-client (the `UpdateDeviceClient` operationId).
+func (c *Client) UpdateDeviceClientWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateDeviceClientRequestWithBody(c.Server, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateDeviceClient Update a device's Tailscale client
+//
+// Asks a connected device over c2n to update its Tailscale client. The device only starts the update if it has auto-updates enabled and its platform supports them.
+//
+// Requires the `devices:core` OAuth scope (an admin API key is all-access).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v2/device/{id}/update-client (the `UpdateDeviceClient` operationId).
+func (c *Client) UpdateDeviceClient(ctx context.Context, id string, body UpdateDeviceClientJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateDeviceClientRequest(c.Server, id, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1570,6 +1650,53 @@ func NewSetDeviceTagsRequestWithBody(server string, id string, contentType strin
 	}
 
 	operationPath := fmt.Sprintf("/api/v2/device/%s/tags", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewUpdateDeviceClientRequest calls the generic UpdateDeviceClient builder with application/json body
+func NewUpdateDeviceClientRequest(server string, id string, body UpdateDeviceClientJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateDeviceClientRequestWithBody(server, id, "application/json", bodyReader)
+}
+
+// NewUpdateDeviceClientRequestWithBody constructs an http.Request for the UpdateDeviceClient method, with any body, and a specified content type
+func NewUpdateDeviceClientRequestWithBody(server string, id string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v2/device/%s/update-client", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -2385,6 +2512,28 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/v2/device/{id}/tags (the `SetDeviceTags` operationId).
 	SetDeviceTagsWithResponse(ctx context.Context, id string, body SetDeviceTagsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetDeviceTagsResponse, error)
 
+	// UpdateDeviceClientWithBodyWithResponse Update a device's Tailscale client
+	//
+	// Asks a connected device over c2n to update its Tailscale client. The device only starts the update if it has auto-updates enabled and its platform supports them.
+	//
+	// Requires the `devices:core` OAuth scope (an admin API key is all-access).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v2/device/{id}/update-client (the `UpdateDeviceClient` operationId).
+	UpdateDeviceClientWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateDeviceClientResponse, error)
+
+	// UpdateDeviceClientWithResponse Update a device's Tailscale client
+	//
+	// Asks a connected device over c2n to update its Tailscale client. The device only starts the update if it has auto-updates enabled and its platform supports them.
+	//
+	// Requires the `devices:core` OAuth scope (an admin API key is all-access).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v2/device/{id}/update-client (the `UpdateDeviceClient` operationId).
+	UpdateDeviceClientWithResponse(ctx context.Context, id string, body UpdateDeviceClientJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateDeviceClientResponse, error)
+
 	// GetACLWithResponse Get the policy file
 	//
 	// Requires the `policy_file:read` OAuth scope (an admin API key is all-access).
@@ -3171,6 +3320,103 @@ func (r SetDeviceTagsResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r SetDeviceTagsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateDeviceClientResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DeviceClientUpdate
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *ErrorModel
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *ErrorModel
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *ErrorModel
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *ErrorModel
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *ErrorModel
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *ErrorModel
+	// ApplicationproblemJSON502 the response for an HTTP 502 `application/problem+json` response
+	ApplicationproblemJSON502 *ErrorModel
+	// ApplicationproblemJSON504 the response for an HTTP 504 `application/problem+json` response
+	ApplicationproblemJSON504 *ErrorModel
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateDeviceClientResponse) GetJSON200() *DeviceClientUpdate {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r UpdateDeviceClientResponse) GetApplicationproblemJSON401() *ErrorModel {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r UpdateDeviceClientResponse) GetApplicationproblemJSON403() *ErrorModel {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r UpdateDeviceClientResponse) GetApplicationproblemJSON404() *ErrorModel {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r UpdateDeviceClientResponse) GetApplicationproblemJSON409() *ErrorModel {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r UpdateDeviceClientResponse) GetApplicationproblemJSON422() *ErrorModel {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r UpdateDeviceClientResponse) GetApplicationproblemJSON500() *ErrorModel {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON502 returns the response for an HTTP 502 `application/problem+json` response
+func (r UpdateDeviceClientResponse) GetApplicationproblemJSON502() *ErrorModel {
+	return r.ApplicationproblemJSON502
+}
+
+// GetApplicationproblemJSON504 returns the response for an HTTP 504 `application/problem+json` response
+func (r UpdateDeviceClientResponse) GetApplicationproblemJSON504() *ErrorModel {
+	return r.ApplicationproblemJSON504
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateDeviceClientResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateDeviceClientResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateDeviceClientResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateDeviceClientResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -4305,6 +4551,40 @@ func (c *ClientWithResponses) SetDeviceTagsWithResponse(ctx context.Context, id 
 	return ParseSetDeviceTagsResponse(rsp)
 }
 
+// UpdateDeviceClientWithBodyWithResponse Update a device's Tailscale client
+//
+// Asks a connected device over c2n to update its Tailscale client. The device only starts the update if it has auto-updates enabled and its platform supports them.
+//
+// Requires the `devices:core` OAuth scope (an admin API key is all-access).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v2/device/{id}/update-client (the `UpdateDeviceClient` operationId).
+func (c *ClientWithResponses) UpdateDeviceClientWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateDeviceClientResponse, error) {
+	rsp, err := c.UpdateDeviceClientWithBody(ctx, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateDeviceClientResponse(rsp)
+}
+
+// UpdateDeviceClientWithResponse Update a device's Tailscale client
+//
+// Asks a connected device over c2n to update its Tailscale client. The device only starts the update if it has auto-updates enabled and its platform supports them.
+//
+// Requires the `devices:core` OAuth scope (an admin API key is all-access).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v2/device/{id}/update-client (the `UpdateDeviceClient` operationId).
+func (c *ClientWithResponses) UpdateDeviceClientWithResponse(ctx context.Context, id string, body UpdateDeviceClientJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateDeviceClientResponse, error) {
+	rsp, err := c.UpdateDeviceClient(ctx, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateDeviceClientResponse(rsp)
+}
+
 // GetACLWithResponse Get the policy file
 //
 // Requires the `policy_file:read` OAuth scope (an admin API key is all-access).
@@ -5066,6 +5346,88 @@ func ParseSetDeviceTagsResponse(rsp *http.Response) (*SetDeviceTagsResponse, err
 			return nil, err
 		}
 		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateDeviceClientResponse parses an HTTP response from a UpdateDeviceClientWithResponse call
+func ParseUpdateDeviceClientResponse(rsp *http.Response) (*UpdateDeviceClientResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateDeviceClientResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DeviceClientUpdate
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON502 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 504:
+		var dest ErrorModel
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON504 = &dest
 
 	}
 
