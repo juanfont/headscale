@@ -60,8 +60,6 @@ var mapStreamSkipReasons = map[string]string{
 	"map-delivery/S3.5-remove/db1/frames":  policyResponseToEveryNode,
 	"map-delivery/S3.5-restore/db1/frames": policyResponseToEveryNode,
 
-	"map-delivery/S2.0/own-entry/Machine":            machineKeySent,
-	"map-delivery/S2.0/peer-entry/Machine":           machineKeySent,
 	"map-delivery/S2.0/peer-entry/MachineAuthorized": peerAuthorizedSent,
 	"map-delivery/S2.0/own-entry/Cap":                ownCapSent,
 	"map-delivery/S2.0/own-entry/Online":             ownOnlineSent,
@@ -148,7 +146,6 @@ const (
 	restartEndpointsKept      = "RESTART_ENDPOINTS_KEPT: headscale keeps a restarted node's last endpoints at its peers until it reports new ones; SaaS sends peers the node without endpoints until then"
 	announcePeerResent        = "ANNOUNCE_PEER_RESENT: headscale sends a router's peers its entry again whenever its announced routes change; SaaS sends the unchanged entry only after some announcements"
 	deletedDeviceInRules      = "DELETED_DEVICE_IN_RULES: SaaS keeps a deleted device's addresses in other nodes' filter and SSH rules until the next policy change; headscale drops them with the device"
-	machineKeySent            = "MACHINE_KEY_SENT: headscale puts a node's machine key on its own entry and on its peers' copies; SaaS on neither"
 	peerAuthorizedSent        = "PEER_AUTHORIZED_SENT: headscale sets MachineAuthorized on peer entries; SaaS only on a node's own"
 	ownCapSent                = "OWN_CAP_SENT: headscale sets Cap on a node's own entry; SaaS only on peers"
 	ownOnlineSent             = "OWN_ONLINE_SENT: headscale sets Online on a node's own entry; SaaS only on peers"

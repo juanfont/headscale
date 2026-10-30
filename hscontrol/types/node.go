@@ -1473,7 +1473,6 @@ func (nv NodeView) TailNode(
 		Key:       nv.NodeKey(),
 		KeyExpiry: keyExpiry,
 
-		Machine:       nv.MachineKey(),
 		DiscoKey:      nv.DiscoKey(),
 		Addresses:     addresses,
 		PrimaryRoutes: primaryRoutes,
