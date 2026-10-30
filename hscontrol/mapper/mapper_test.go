@@ -42,6 +42,34 @@ var iap = func(ipStr string) *netip.Addr {
 	return &ip
 }
 
+func TestExitNodeFilteredSet(t *testing.T) {
+	tests := []struct {
+		name       string
+		magicDNS   bool
+		baseDomain string
+		want       []string
+	}{
+		{name: "magicdns", magicDNS: true, baseDomain: "Tail.Example.com", want: []string{".tail.example.com"}},
+		{name: "no magicdns", magicDNS: false, baseDomain: "tail.example.com"},
+		{name: "no base domain", magicDNS: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := generateDNSConfig(
+				&types.Config{
+					BaseDomain:       tt.baseDomain,
+					TailcfgDNSConfig: &tailcfg.DNSConfig{Proxied: tt.magicDNS},
+				},
+				(&types.Node{}).View(),
+				nil,
+			)
+
+			assert.Equal(t, tt.want, got.ExitNodeFilteredSet)
+		})
+	}
+}
+
 func TestDNSConfigMapResponse(t *testing.T) {
 	tests := []struct {
 		magicDNS bool
