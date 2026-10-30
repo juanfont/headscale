@@ -763,7 +763,7 @@ func resolveGivenName(
 func bumpedLabel(base string, n int) string {
 	suffix := "-" + strconv.Itoa(n)
 
-	return base[:min(len(base), util.LabelHostnameLength-len(suffix))] + suffix
+	return strings.TrimRight(base[:min(len(base), util.LabelHostnameLength-len(suffix))], "-") + suffix
 }
 
 // snapshotFromNodes builds a Snapshot from nodes. With reusePeers the

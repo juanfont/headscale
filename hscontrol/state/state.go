@@ -4114,8 +4114,18 @@ func isAutoDerivedGivenName(given, hostname string) bool {
 	}
 
 	n, err := strconv.Atoi(suffix)
+	if err != nil {
+		return false
+	}
 
-	return err == nil && given == bumpedLabel(base, n)
+	if given == bumpedLabel(base, n) {
+		return true
+	}
+
+	// Keep following labels generated before cut-point hyphens were trimmed.
+	suffix = "-" + strconv.Itoa(n)
+
+	return given == base[:min(len(base), util.LabelHostnameLength-len(suffix))]+suffix
 }
 
 func dnsMetadataChanged(previous, reported *tailcfg.Hostinfo) bool {
