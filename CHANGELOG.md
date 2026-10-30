@@ -4,13 +4,6 @@
 
 **Minimum supported Tailscale client version: v1.84.0**
 
-### Security
-
-- Metrics are no longer exposed to unregistered clients through the Noise protocol. They remain available only on the configured metrics listener; an empty `metrics_listen_addr` disables that listener. [#3571](https://github.com/juanfont/headscale/issues/3571)
-- Preserve pending registrations and OIDC logins at capacity instead of evicting active approvals; refuse excess work with a retry response and reserve capacity for registered nodes' SSH checks.
-- Retain pending registration data as owned serialized payloads capped at 64 KiB, preserving tags and expiry while bounding stored data. Oversized interactive registrations are rejected explicitly.
-- Validate OIDC login session type before allocating state, consume callback state atomically, and release SSH authentication capacity after the client consumes its verdict.
-
 ### v1 REST API replaced; gRPC and Protobuf removed
 
 The v1 REST API now provides an OpenAPI 3.1 specification at
@@ -131,7 +124,6 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 ### Changes
 
 - PostgreSQL connection settings are assembled into a `postgres://` URL with proper escaping, so a password (or host, user, database name) containing spaces, quotes or other reserved characters no longer truncates the DSN [#3477](https://github.com/juanfont/headscale/pull/3477)
-- Fix SSH policy `acceptEnv` having no effect, so allowed environment variables reach SSH sessions. Upgrade SSH destination nodes to Tailscale v1.104.4 or newer before using `acceptEnv`, because older clients can disclose forwarded values [#3569](https://github.com/juanfont/headscale/pull/3569)
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)
 - Fix `headscale users destroy`/`rename` reporting "multiple users match query" when no user matches; an ambiguous match now lists the matching users [#3476](https://github.com/juanfont/headscale/pull/3476)
@@ -157,43 +149,60 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Shutdown keeps the LastSeen of connected nodes: it waits for their map sessions to close before closing the database [#3575](https://github.com/juanfont/headscale/pull/3575)
 - Deleting an ephemeral node no longer logs a spurious `ephemeral node deletion failed` error later [#3575](https://github.com/juanfont/headscale/pull/3575)
 - Add the v2 `acl/validate` endpoint, which Terraform provider 0.29.3 and newer call to check `tailscale_acl` at plan time; before it, those releases failed with `invalid character 'p' after top-level value`
+- Reject overlapping TCP listener bindings (e.g. `listen_addr` vs ACME HTTP-01 on port 80) at config load [#3236](https://github.com/juanfont/headscale/pull/3236)
+- Improve config and bind-failure errors: every violation reported in one pass, named YAML keys, actionable operator hints [#3236](https://github.com/juanfont/headscale/pull/3236)
 
-## 0.29.7 (202x-xx-xx)
+## 0.29.7 (2026-10-30)
+
+**Minimum supported Tailscale client version: v1.80.0**
 
 ### Security
 
-We recommend that all users upgrade to Headscale 0.29.7 and Tailscale v1.104.4 or newer,
-especially those using Tailscale SSH. Tailscale v1.104.4 fixes vulnerabilities in SSH
-forwarding, SSH session handling and Serve. These fixes run in `tailscaled` on your
-nodes; upgrading Headscale alone does not apply them. See Tailscale's
+This is a security release. It fixes findings from Anthropic's oss-scanner project and
+the Tailworm report. None are critical, but some can cause denial of service in
+Headscale. We recommend that all users upgrade to Headscale 0.29.7 **and** Tailscale
+v1.104.4 or newer as soon as possible, especially those using Tailscale SSH.
+
+Tailscale v1.104.4 fixes vulnerabilities in SSH forwarding, SSH session handling and
+Serve. These fixes run in `tailscaled` on your nodes; upgrading Headscale alone does
+not apply them.
+
+See Tailscale's
 [security bulletins](https://tailscale.com/security-bulletins#ts-2026-014) and
 [Tailscale SSH: Findings and fixes](https://tailscale.com/blog/tailscale-ssh-findings-fixes).
 
 To disable SSH agent and port forwarding on a node, set
 `TS_SSH_DISABLE_FORWARDING=1` in the `tailscaled` service environment and restart
 the service. This setting applies to all Tailscale SSH sessions on that node and
-is also available in older clients.
+is also available in older clients. [#3624](https://github.com/juanfont/headscale/pull/3624)
 
 This release also fixes the issues that [oss-scanner](https://github.com/anthropics/oss-scanner/tree/main/projects/headscale)
 reported in Headscale: ANT-2026-MLP8ZR5T, ANT-2026-LYVGXVSW, ANT-2026-AWGRB7O1, ANT-2026-QMCAFJ1Q, ANT-2026-RQS7JAPP, ANT-2026-5B6KE87K, ANT-2026-KFCFFM34, ANT-2026-K903ZEUA, ANT-2026-NM50ZP4N, ANT-2026-ZC18AF82, ANT-2026-NWTIBB02, ANT-2026-MX8FKG4K. [#3603](https://github.com/juanfont/headscale/pull/3603)
 
 ### Changes
 
-- A route that is a single address inside the node ranges, in either spelling, is approved and listed but never served; wider routes and `::ffff:` prefixes are still served [#3603](https://github.com/juanfont/headscale/pull/3603)
+- Metrics are no longer exposed to unregistered clients through the Noise protocol. They remain available only on the configured metrics listener; an empty `metrics_listen_addr` disables that listener [#3623](https://github.com/juanfont/headscale/pull/3623)
+- Update the Tailscale dependency to v1.104.4, which bounds how much of an unexpected DERP HTTP response is read [#3577](https://github.com/juanfont/headscale/pull/3577)
+- Keep pending registrations and OIDC logins at capacity instead of evicting ones awaiting approval; new requests get a retry response, and registered nodes keep capacity for SSH checks [#3586](https://github.com/juanfont/headscale/pull/3586)
+- Cap stored pending registration data at 64 KiB, keeping tags and expiry; oversized interactive registrations are rejected [#3586](https://github.com/juanfont/headscale/pull/3586)
+- Check the OIDC login type before storing anything, accept each OIDC callback only once, and free an SSH check's slot once the client has read its result [#3586](https://github.com/juanfont/headscale/pull/3586)
+- Stop serving a route that is a single address inside the node IP ranges, such as `100.64.0.11/32` or `::ffff:100.64.0.11/128`, because it names a node, not a subnet; the route stays approved and listed, and wider routes are still served [#3603](https://github.com/juanfont/headscale/pull/3603)
 - Require a valid pre-auth key to re-register an expired tagged node [#3603](https://github.com/juanfont/headscale/pull/3603)
 - Another user's key or login on a tagged machine now creates a new device for that user instead of re-authenticating the tagged node [#3603](https://github.com/juanfont/headscale/pull/3603)
 - Fix one node with a stored key expiry outside the years 0 to 9999 in UTC failing the map of every node that can see it; it is now left out of its peers' maps and the startup check names it with the fix command [#3603](https://github.com/juanfont/headscale/pull/3603)
-- Refuse a key expiry outside the years 0 to 9999 in UTC on registration, on the OIDC token-expiry path and in `headscale nodes expire` / `POST /api/v1/node/{nodeId}/expire` (400); the latest accepted expiry no longer fails node listings on PostgreSQL in a zone east of UTC [#3603](https://github.com/juanfont/headscale/pull/3603)
+- Refuse a key expiry outside the years 0 to 9999 in UTC on registration, on the OIDC token-expiry path and in `headscale nodes expire` / `POST /api/v1/node/{node_id}/expire` (HTTP 400); the latest accepted expiry no longer fails node listings on PostgreSQL in a zone east of UTC [#3603](https://github.com/juanfont/headscale/pull/3603)
 - Keep the first 256 endpoints and 4096 announced routes from client reports; oversized hostnames, requested tags or other metadata return a registration error or HTTP 413 on map updates. Zoned IPv6 endpoints are refused [#3603](https://github.com/juanfont/headscale/pull/3603)
 - At startup, trim stored hostnames, endpoints and routes to the client-report limits and remove zoned endpoints. Hostinfo exceeding its size or tag limit is dropped until the next valid report [#3603](https://github.com/juanfont/headscale/pull/3603)
 - Pending interactive registrations and follow-up waits keep only the hostname, OS and requested tags; other device details arrive with the first map request. Reauthentication preserves routes, services and endpoints [#3603](https://github.com/juanfont/headscale/pull/3603)
-- Web reauthentication preserves the discovery key so peers can still reach the device [#3603](https://github.com/juanfont/headscale/pull/3603)
+- Fix web reauthentication dropping the discovery key, so peers could not reach the device [#3603](https://github.com/juanfont/headscale/pull/3603)
 - A stalled request body, or a Noise tunnel with no open request, is closed after 30 seconds [#3603](https://github.com/juanfont/headscale/pull/3603)
 - A registration follow-up from a machine other than the one that started the registration is refused before it waits [#3603](https://github.com/juanfont/headscale/pull/3603)
 - Only the newest follow-up waits on a pending registration or SSH check; older ones are answered at once [#3603](https://github.com/juanfont/headscale/pull/3603)
-- Registration locks are freed once no registration uses them [#3603](https://github.com/juanfont/headscale/pull/3603)
-- Concurrent deletes of one node free its addresses and announce its removal once [#3603](https://github.com/juanfont/headscale/pull/3603)
+- Fix registration locks staying in memory after the registration ends [#3603](https://github.com/juanfont/headscale/pull/3603)
+- Fix concurrent deletes of one node freeing its addresses and announcing its removal more than once [#3603](https://github.com/juanfont/headscale/pull/3603)
 - OIDC verifies an email against the document supplying it; an `email_verified` flag without an address no longer verifies another document's email [#3603](https://github.com/juanfont/headscale/pull/3603)
+- Fix release builds reporting their version with a `+dirty` suffix [#3584](https://github.com/juanfont/headscale/pull/3584)
+- Fix SSH policy `acceptEnv` having no effect, so allowed environment variables reach SSH sessions. Upgrade SSH destination nodes to Tailscale v1.104.4 or newer before using `acceptEnv`, because older clients can disclose forwarded values [#3569](https://github.com/juanfont/headscale/pull/3569)
 
 ## 0.29.6 (2026-10-24)
 
@@ -280,7 +289,6 @@ Custom builds must be rebuilt with Go 1.27.3 or newer to receive the certificate
 - Fix node registration falsely returning `401 registration timed out` when auth completes as the request context expires [#3392](https://github.com/juanfont/headscale/pull/3392)
 - Check the machine key on the followup registration poll so a leaked auth ID cannot return the registering user's identity [#3393](https://github.com/juanfont/headscale/pull/3393)
 - Reject `/key` requests below the supported capability version floor, matching `/ts2021` [#3391](https://github.com/juanfont/headscale/pull/3391)
-- Remove a leftover trace log that always rendered a JSON marshaling error [#3398](https://github.com/juanfont/headscale/pull/3398)
 
 ## 0.29.2 (2026-07-01)
 
@@ -594,8 +602,6 @@ connected" routers that maintain their control session but cannot route packets.
   - `oidc.expiry` has been removed; use `node.expiry` instead (applies to all registration methods including OIDC)
   - `ephemeral_node_inactivity_timeout` is deprecated in favour of `node.ephemeral.inactivity_timeout`
 - Add `trusted_proxies` to gate `True-Client-IP` / `X-Real-IP` / `X-Forwarded-For` (previously honoured from any client) [#3268](https://github.com/juanfont/headscale/pull/3268)
-- Reject overlapping TCP listener bindings (e.g. `listen_addr` vs ACME HTTP-01 on port 80) at config load [#3236](https://github.com/juanfont/headscale/pull/3236)
-- Improve config and bind-failure errors: every violation reported in one pass, named YAML keys, actionable operator hints [#3236](https://github.com/juanfont/headscale/pull/3236)
 
 #### Debug
 
