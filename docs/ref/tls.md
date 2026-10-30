@@ -12,6 +12,12 @@ tls:
 
 The certificate should contain the full chain, else some clients, like the Tailscale Android client, will reject it.
 
+### Reloading the certificate
+
+Headscale reads the certificate and key again when it receives a SIGHUP signal, so a renewed certificate takes effect without a restart. Either reload Headscale via its systemd service (`sudo systemctl reload headscale`) or send the signal directly (`sudo kill -HUP $(pidof headscale)`). The same signal also [reloads the policy](policy.md). New connections get the new certificate; open connections stay as they are.
+
+If the files cannot be loaded, or the certificate is expired or not yet valid, Headscale logs an error and keeps serving the previous certificate. `systemctl reload` reports success either way, because it only delivers the signal. Look for `TLS certificate reloaded` in the log, or [check the served certificate](#checking-certificate-expiry).
+
 ## Let's Encrypt / ACME
 
 To get a certificate automatically via [Let's Encrypt](https://letsencrypt.org/), set `tls.acme.hostname` to the desired certificate hostname. This name must resolve to the IP address(es) headscale is reachable on (i.e., it must correspond to the `server_url` configuration parameter). The certificate and Let's Encrypt account credentials will be stored in the directory configured in `tls.acme.cache_dir`. If the path is relative, it will be interpreted as relative to the directory the configuration file was read from.

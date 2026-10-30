@@ -123,6 +123,8 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 
 ### Changes
 
+- A SIGHUP now reloads the certificate from `tls.cert_path` and `tls.key_path` without a restart; a certificate that cannot be loaded or is not valid now is logged as an error and the previous one keeps serving [#3027](https://github.com/juanfont/headscale/issues/3027)
+- The NixOS module's `headscale` service now supports `systemctl reload`
 - PostgreSQL connection settings are assembled into a `postgres://` URL with proper escaping, so a password (or host, user, database name) containing spaces, quotes or other reserved characters no longer truncates the DSN [#3477](https://github.com/juanfont/headscale/pull/3477)
 - Expiring or deleting a non-existent pre-auth key now returns an error instead of silently succeeding [#3324](https://github.com/juanfont/headscale/pull/3324)
 - Improve systemd service file hardening [#3341](https://github.com/juanfont/headscale/pull/3341)

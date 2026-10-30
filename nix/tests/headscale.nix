@@ -70,6 +70,10 @@ in
 
     headscale.succeed("headscale policy set -f ${policy}")
 
+    # The docs tell operators to run this; it needs ExecReload in the unit.
+    headscale.succeed("systemctl reload headscale.service")
+    headscale.wait_until_succeeds("journalctl -u headscale.service --grep 'Received SIGHUP'")
+
     # Clients reconnect after a control restart, peer1 over the TLS listener.
     headscale.systemctl("restart headscale.service")
     headscale.wait_until_succeeds(
