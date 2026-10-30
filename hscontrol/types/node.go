@@ -1489,9 +1489,8 @@ func (nv NodeView) TailNode(
 		Expired: nv.IsExpired(),
 	}
 
-	// Set LastSeen only for offline nodes to avoid confusing Tailscale clients
-	// during rapid reconnection cycles. Online nodes should not have LastSeen set
-	// as this can make clients interpret them as "not online" despite Online=true.
+	// Only an offline entry has LastSeen, as on Tailscale SaaS. An online peer
+	// can still show one on a client, which keeps it through an online patch.
 	if nv.LastSeen().Valid() && nv.IsOnline().Valid() && !nv.IsOnline().Get() {
 		lastSeen := nv.LastSeen().Get()
 		tNode.LastSeen = &lastSeen

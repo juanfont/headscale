@@ -125,7 +125,7 @@ func TestAppendPendingBoundsFoldedPatches(t *testing.T) {
 		if i%2 == 0 {
 			nc.appendPending(change.NodeOnline(2))
 		} else {
-			nc.appendPending(change.NodeOffline(2))
+			nc.appendPending(change.NodeOffline(2, time.Time{}))
 		}
 	}
 
