@@ -202,6 +202,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Nodes stay ephemeral after key deletion. [#3640](https://github.com/juanfont/headscale/issues/3640), [#3619](https://github.com/juanfont/headscale/pull/3619)
 - User renames and OIDC updates refresh node users and clients without restarting Headscale. [#3471](https://github.com/juanfont/headscale/issues/3471), [#3619](https://github.com/juanfont/headscale/pull/3619)
 - Routers receive their own approved routes regardless of policy. [#3626](https://github.com/juanfont/headscale/issues/3626), [#3619](https://github.com/juanfont/headscale/pull/3619)
+- `.json` files in `dns.extra_records_path` and `derp.paths` may contain comments and trailing commas, like `.hujson` files [#3627](https://github.com/juanfont/headscale/issues/3627)
 
 ## 0.29.7 (2026-10-30)
 
