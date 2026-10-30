@@ -23,6 +23,7 @@ provides on overview of Headscale's feature and compatibility with the Tailscale
     - [x] [Route filtering with Via](https://tailscale.com/docs/features/access-control/grants/grants-via)
 - [x] Dual stack (IPv4 and IPv6)
 - [x] Ephemeral nodes
+- [x] [Client updates](clients.md#update-clients)
 - [x] Embedded [DERP server](../ref/derp.md)
 - [x] [Peer relays](https://tailscale.com/docs/features/peer-relay)
 - [x] [Policy](../ref/policy.md) ([GitHub label "policy"](https://github.com/juanfont/headscale/labels/policy%20%F0%9F%93%9D))
