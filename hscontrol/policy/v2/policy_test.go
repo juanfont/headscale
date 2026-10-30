@@ -1999,6 +1999,72 @@ func TestViaRoutesForPeer(t *testing.T) {
 		require.Empty(t, result.UsePrimary)
 	})
 
+	t.Run("acl_destinations_share_source_match", func(t *testing.T) {
+		t.Parallel()
+
+		nodes := types.Nodes{
+			{
+				ID:       1,
+				Hostname: "viewer",
+				IPv4:     ap("100.64.0.1"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Hostinfo: &tailcfg.Hostinfo{},
+			},
+			{
+				ID:       2,
+				Hostname: "router",
+				IPv4:     ap("100.64.0.2"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Tags:     []string{"tag:router"},
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{mp("10.0.0.0/24")},
+				},
+				ApprovedRoutes: []netip.Prefix{mp("10.0.0.0/24")},
+			},
+		}
+
+		// Only the last destination of each ACL covers the route, and only
+		// the sources of the second ACL match the viewer.
+		pol := func(secondSrc string) string {
+			return `{
+			"tagOwners": {
+				"tag:router": ["user1@"]
+			},
+			"acls": [{
+				"action": "accept",
+				"src": ["user2@"],
+				"dst": ["192.168.0.0/24:*", "10.0.0.0/24:*"]
+			}, {
+				"action": "accept",
+				"src": ["user2@", "` + secondSrc + `"],
+				"dst": ["192.168.0.0/24:*", "10.0.0.0/24:*"]
+			}],
+			"grants": [{
+				"src": ["user1@"],
+				"dst": ["10.0.0.0/24"],
+				"ip": ["*"],
+				"via": ["tag:router"]
+			}]
+		}`
+		}
+
+		pm, err := NewPolicyManager([]byte(pol("user1@")), users, nodes.ViewSlice())
+		require.NoError(t, err)
+
+		result := pm.ViaRoutesForPeer(nodes[0].View(), nodes[1].View())
+		require.Equal(t, []netip.Prefix{mp("10.0.0.0/24")}, result.Include)
+		require.Equal(t, []netip.Prefix{mp("10.0.0.0/24")}, result.UsePrimary)
+
+		pm, err = NewPolicyManager([]byte(pol("user2@")), users, nodes.ViewSlice())
+		require.NoError(t, err)
+
+		result = pm.ViaRoutesForPeer(nodes[0].View(), nodes[1].View())
+		require.Equal(t, []netip.Prefix{mp("10.0.0.0/24")}, result.Include)
+		require.Empty(t, result.UsePrimary)
+	})
+
 	t.Run("peer_does_not_advertise_destination", func(t *testing.T) {
 		t.Parallel()
 
