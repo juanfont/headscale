@@ -84,6 +84,15 @@ clients, and how to run the same setup without Nix.
 the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 `cloudflare`, `gigahost`, `hetzner`, `powerdns` or `rfc2136`. `dns.base_domain` must be a public domain you control. [#3554](https://github.com/juanfont/headscale/pull/3554)
 
+### Update clients remotely
+
+`headscale nodes update-client` and `POST /api/v2/device/{id}/update-client` ask a
+connected node to update its Tailscale client, like the "Start update" button of
+the Tailscale admin console. The request is sent over c2n, and the node only
+starts the update if it has auto-updates enabled and its platform supports them;
+otherwise its reason is reported back. `--force` updates even with active
+Tailscale SSH sessions. See [the client docs](https://headscale.net/stable/about/clients/#update-clients). [#3632](https://github.com/juanfont/headscale/pull/3632)
+
 ### BREAKING
 
 #### Database

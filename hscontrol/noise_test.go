@@ -2379,3 +2379,112 @@ func TestSSHActionFollowUp_ParksOneRequestPerSession(t *testing.T) {
 	require.NoError(t, last.err)
 	assert.True(t, last.action.Accept, "accept, got %+v", last.action)
 }
+
+func newC2NResponseRequest(c2nID string, body []byte) *http.Request {
+	return httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/machine/c2n-response?id="+c2nID,
+		bytes.NewReader(body),
+	)
+}
+
+// TestC2NResponseHandler_DeliversBody verifies that the target node's
+// Noise session completes its pending c2n request with the raw body.
+func TestC2NResponseHandler_DeliversBody(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("c2n-user")
+	node := putTestNodeInStore(t, app, user, "c2n-node")
+
+	c2nID, responseCh := app.state.RegisterC2N(node.ID)
+	defer app.state.CancelC2N(c2nID)
+
+	ns := &noiseServer{headscale: app, machineKey: node.MachineKey}
+
+	const raw = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}"
+
+	rec := httptest.NewRecorder()
+	ns.C2NResponseHandler(rec, newC2NResponseRequest(c2nID, []byte(raw)))
+
+	assert.Equal(t, http.StatusNoContent, rec.Code)
+
+	select {
+	case body := <-responseCh:
+		assert.Equal(t, raw, string(body))
+	case <-time.After(time.Second):
+		t.Fatal("c2n response not delivered")
+	}
+}
+
+// TestC2NResponseHandler_RejectsRogueMachineKey verifies that a Noise
+// session of another machine cannot answer a c2n request sent to a node.
+func TestC2NResponseHandler_RejectsRogueMachineKey(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("c2n-rogue-user")
+	node := putTestNodeInStore(t, app, user, "c2n-node")
+
+	c2nID, responseCh := app.state.RegisterC2N(node.ID)
+	defer app.state.CancelC2N(c2nID)
+
+	ns := &noiseServer{headscale: app, machineKey: key.NewMachine().Public()}
+
+	rec := httptest.NewRecorder()
+	ns.C2NResponseHandler(rec, newC2NResponseRequest(c2nID, []byte("HTTP/1.1 200 OK\r\n\r\n")))
+
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+
+	_, pending := app.state.C2NTarget(c2nID)
+	assert.True(t, pending, "rejected response must leave the request pending")
+
+	select {
+	case <-responseCh:
+		t.Fatal("rejected response must not be delivered")
+	default:
+	}
+}
+
+// TestC2NResponseHandler_UnknownID verifies that responses without a
+// pending request are refused.
+func TestC2NResponseHandler_UnknownID(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	ns := &noiseServer{headscale: app, machineKey: key.NewMachine().Public()}
+
+	for id, want := range map[string]int{
+		"":        http.StatusBadRequest,
+		"unknown": http.StatusNotFound,
+	} {
+		rec := httptest.NewRecorder()
+		ns.C2NResponseHandler(rec, newC2NResponseRequest(id, nil))
+
+		assert.Equal(t, want, rec.Code, "id %q", id)
+	}
+}
+
+// TestC2NResponseHandler_OversizedBody verifies that the body is capped
+// at [maxC2NResponseBytes] and the request stays pending.
+func TestC2NResponseHandler_OversizedBody(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("c2n-big-user")
+	node := putTestNodeInStore(t, app, user, "c2n-node")
+
+	c2nID, _ := app.state.RegisterC2N(node.ID)
+	defer app.state.CancelC2N(c2nID)
+
+	ns := &noiseServer{headscale: app, machineKey: node.MachineKey}
+
+	rec := httptest.NewRecorder()
+	ns.C2NResponseHandler(rec, newC2NResponseRequest(c2nID, bytes.Repeat([]byte("a"), maxC2NResponseBytes+1)))
+
+	assert.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+
+	_, pending := app.state.C2NTarget(c2nID)
+	assert.True(t, pending)
+}

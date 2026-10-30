@@ -172,3 +172,74 @@ func TestPingTracker_LatencyNonNegative(t *testing.T) {
 		t.Fatal("timed out")
 	}
 }
+
+func TestPingTracker_C2NRegisterComplete(t *testing.T) {
+	pt := newPingTracker()
+
+	c2nID, ch := pt.registerC2N(types.NodeID(7))
+	assert.NotEmpty(t, c2nID)
+
+	nodeID, ok := pt.c2nTarget(c2nID)
+	require.True(t, ok)
+	assert.Equal(t, types.NodeID(7), nodeID)
+
+	assert.True(t, pt.completeC2N(c2nID, []byte("HTTP/1.1 200 OK\r\n\r\n")))
+
+	select {
+	case body, ok := <-ch:
+		require.True(t, ok)
+		assert.Equal(t, "HTTP/1.1 200 OK\r\n\r\n", string(body))
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for c2n response")
+	}
+
+	_, ok = pt.c2nTarget(c2nID)
+	assert.False(t, ok, "completed c2n request should be forgotten")
+	assert.False(t, pt.completeC2N(c2nID, nil), "second complete should return false")
+}
+
+func TestPingTracker_C2NCancel(t *testing.T) {
+	pt := newPingTracker()
+
+	c2nID, ch := pt.registerC2N(types.NodeID(1))
+	pt.cancelC2N(c2nID)
+	pt.cancelC2N(c2nID)
+
+	_, ok := pt.c2nTarget(c2nID)
+	assert.False(t, ok)
+	assert.False(t, pt.completeC2N(c2nID, []byte("late")))
+
+	select {
+	case <-ch:
+		t.Fatal("channel should not receive after cancel")
+	case <-time.After(50 * time.Millisecond):
+		// Expected: no response.
+	}
+}
+
+func TestPingTracker_C2NSeparateFromPings(t *testing.T) {
+	pt := newPingTracker()
+
+	pingID, _ := pt.register(types.NodeID(1))
+	c2nID, _ := pt.registerC2N(types.NodeID(1))
+
+	assert.False(t, pt.completeC2N(pingID, nil), "ping ID must not complete a c2n request")
+	assert.False(t, pt.complete(c2nID), "c2n ID must not complete a ping")
+}
+
+func TestPingTracker_DrainC2N(t *testing.T) {
+	pt := newPingTracker()
+
+	_, ch := pt.registerC2N(types.NodeID(1))
+
+	pt.drain()
+
+	select {
+	case _, ok := <-ch:
+		assert.False(t, ok, "c2n channel should be closed, got value")
+	case <-time.After(time.Second):
+		t.Fatal("c2n channel not closed by drain")
+	}
+
+	assert.Empty(t, pt.c2n, "c2n map should be empty after drain")
+}

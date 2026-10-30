@@ -199,6 +199,10 @@ func (h *Headscale) NoiseUpgradeHandler(
 		r.Route("/webclient", func(r chi.Router) {})
 
 		r.Post("/c2n", ns.NotImplementedHandler)
+
+		// c2n response endpoint: receives the HTTP response a node produced for a
+		// c2n [tailcfg.PingRequest]. Only the target node's Noise session may answer.
+		r.Post("/c2n-response", ns.C2NResponseHandler)
 	})
 
 	// Serve returns once the listener is drained; the connection outlives it.
@@ -312,6 +316,56 @@ func overrideRemoteAddr(addr string) func(http.Handler) http.Handler {
 func (ns *noiseServer) NotImplementedHandler(writer http.ResponseWriter, req *http.Request) {
 	log.Trace().Caller().Str("path", req.URL.String()).Msg("not implemented handler hit")
 	http.Error(writer, "Not implemented yet", http.StatusNotImplemented)
+}
+
+// maxC2NResponseBytes bounds the c2n response body a node may send. The
+// responses headscale asks for are small JSON documents.
+const maxC2NResponseBytes = 64 << 10
+
+// C2NResponseHandler handles the POST a node makes with the HTTP response
+// to a c2n [tailcfg.PingRequest]. The c2n ID is unguessable, and the
+// response is only accepted over the Noise session of the node the
+// request was sent to.
+func (ns *noiseServer) C2NResponseHandler(
+	writer http.ResponseWriter,
+	req *http.Request,
+) {
+	c2nID := req.URL.Query().Get("id")
+	if c2nID == "" {
+		http.Error(writer, "missing c2n ID", http.StatusBadRequest)
+		return
+	}
+
+	nodeID, ok := ns.headscale.state.C2NTarget(c2nID)
+	if !ok {
+		http.Error(writer, "unknown or expired c2n request", http.StatusNotFound)
+		return
+	}
+
+	nv, ok := ns.headscale.state.GetNodeByID(nodeID)
+	if !ok {
+		httpError(writer, NewHTTPError(http.StatusNotFound, "node not found", errNodeNotInStore))
+		return
+	}
+
+	err := machineKeyMismatch(nv, ns.machineKey)
+	if err != nil {
+		httpError(writer, err)
+		return
+	}
+
+	body, err := io.ReadAll(http.MaxBytesReader(writer, req.Body, maxC2NResponseBytes))
+	if err != nil {
+		httpError(writer, NewHTTPError(http.StatusRequestEntityTooLarge, "reading c2n response", err))
+		return
+	}
+
+	if !ns.headscale.state.CompleteC2N(c2nID, body) {
+		http.Error(writer, "unknown or expired c2n request", http.StatusNotFound)
+		return
+	}
+
+	writer.WriteHeader(http.StatusNoContent)
 }
 
 // PingResponseHandler handles HEAD requests from clients responding to a

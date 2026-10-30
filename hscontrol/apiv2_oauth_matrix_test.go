@@ -120,6 +120,7 @@ func TestAPIv2OAuthMatrix_Enforcement(t *testing.T) {
 		{"setDeviceName", http.MethodPost, "/api/v2/device/1/name", scope.DevicesCore, map[string]any{}, false},
 		{"setDeviceTags", http.MethodPost, "/api/v2/device/1/tags", scope.DevicesCore, map[string]any{}, false},
 		{"setDeviceKey", http.MethodPost, "/api/v2/device/1/key", scope.DevicesCore, map[string]any{}, false},
+		{"updateDeviceClient", http.MethodPost, "/api/v2/device/1/update-client", scope.DevicesCore, map[string]any{}, false},
 		{"setDeviceRoutes", http.MethodPost, "/api/v2/device/1/routes", scope.DevicesRoutes, map[string]any{}, false},
 		{"getDeviceRoutes", http.MethodGet, "/api/v2/device/1/routes", scope.DevicesRoutesRead, nil, false},
 		{"getACL", http.MethodGet, "/api/v2/tailnet/-/acl", scope.PolicyFileRead, nil, false},
