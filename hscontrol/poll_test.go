@@ -574,6 +574,54 @@ func TestEphemeralGCArmedWhenPolicyRefreshFails(t *testing.T) {
 		"a saved ephemeral node must have a GC timer")
 }
 
+// TestEphemeralGCKeepsNodeReKeyedToPermanent pins that a timer armed while a
+// node was ephemeral does not delete it once a permanent key took over.
+func TestEphemeralGCKeepsNodeReKeyedToPermanent(t *testing.T) {
+	t.Parallel()
+
+	const timeout = time.Second
+
+	app := createTestApp(t)
+	app.cfg.Node.Ephemeral.InactivityTimeout = timeout
+	app.StartEphemeralGCForTest(t)
+
+	user := app.state.CreateUserForTest("eph-gc-rekey-user")
+	ephemeralKey, err := app.state.CreatePreAuthKey(user.TypedID(), false, true, nil, nil)
+	require.NoError(t, err)
+	permanentKey, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+	require.NoError(t, err)
+
+	nodeKey := key.NewNode()
+	machineKey := key.NewMachine()
+
+	for _, authKey := range []string{ephemeralKey.Key, permanentKey.Key} {
+		_, err = app.handleRegister(context.Background(), tailcfg.RegisterRequest{
+			Auth: &tailcfg.RegisterResponseAuth{
+				AuthKey: authKey,
+			},
+			NodeKey: nodeKey.Public(),
+			Hostinfo: &tailcfg.Hostinfo{
+				Hostname: "eph-gc-rekey-node",
+			},
+			Expiry: time.Now().Add(24 * time.Hour),
+		}, machineKey.Public())
+		require.NoError(t, err)
+	}
+
+	nodeView, ok := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, ok)
+	require.False(t, nodeView.IsEphemeral(), "test sanity: node must be permanent")
+	require.True(t, app.ephemeralGC.IsScheduled(nodeView.ID()),
+		"test sanity: the ephemeral registration's timer must still be armed")
+
+	assert.Never(t, func() bool {
+		_, ok := app.state.GetNodeByID(nodeView.ID())
+
+		return !ok
+	}, 2*timeout, 20*time.Millisecond,
+		"a stale timer must not delete a node that is no longer ephemeral")
+}
+
 // TestGitHubIssue3129_BlockedWriteSessionLifecycle
 // tests the scenario reported in
 // https://github.com/juanfont/headscale/issues/3129.
