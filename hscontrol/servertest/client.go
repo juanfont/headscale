@@ -3,6 +3,7 @@ package servertest
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"path"
 	"slices"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"tailscale.com/control/controlclient"
+	_ "tailscale.com/feature/c2n" // registers the c2n answer hook used by [WithC2NHandler]
 	"tailscale.com/health"
 	"tailscale.com/net/netmon"
 	"tailscale.com/net/tsdial"
@@ -54,6 +56,8 @@ type TestClient struct {
 
 	// stopFollowup ends the follow-up [TestClient.RotateDisco] left waiting.
 	stopFollowup context.CancelFunc
+	// c2nHandler answers c2n requests; see [WithC2NHandler].
+	c2nHandler http.Handler
 
 	// Connection lifecycle.
 	pollCtx    context.Context //nolint:containedctx // test-only; context stored for cancel control
@@ -107,6 +111,7 @@ type clientConfig struct {
 	approve      func(authID string) error
 	loginFlags   controlclient.LoginFlags
 	endpoints    []tailcfg.Endpoint
+	c2nHandler   http.Handler
 }
 
 // WithoutNetmapHistory retains only the latest netmap and one queued update.
@@ -168,6 +173,12 @@ func WithLoginFlags(flags controlclient.LoginFlags) ClientOption {
 // tailscaled does once it has found its paths.
 func WithEndpoints(eps ...tailcfg.Endpoint) ClientOption {
 	return func(c *clientConfig) { c.endpoints = eps }
+}
+
+// WithC2NHandler makes the client answer c2n requests from the server
+// with handler, as tailscaled answers them with its LocalBackend.
+func WithC2NHandler(handler http.Handler) ClientOption {
+	return func(c *clientConfig) { c.c2nHandler = handler }
 }
 
 // WithUser sets the user for the client. If not set, the harness
@@ -252,6 +263,7 @@ func TryNewClient(tb testing.TB, server *TestServer, name string, opts ...Client
 		approve:    cc.approve,
 		loginFlags: cc.loginFlags,
 		endpoints:  cc.endpoints,
+		c2nHandler: cc.c2nHandler,
 		updates:    make(chan *netmap.NetworkMap, updateBuffer),
 		bus:        bus,
 		dialer:     dialer,
@@ -326,6 +338,7 @@ func (c *TestClient) newDirect(
 		HealthTracker:        c.tracker,
 		Dialer:               c.dialer,
 		Bus:                  c.bus,
+		C2NHandler:           c.c2nHandler,
 	})
 	if err == nil && len(c.endpoints) > 0 {
 		direct.SetEndpoints(c.endpoints)
