@@ -246,6 +246,8 @@ jobs:
           - TestAuthKeyLogoutAndReloginSameUserExpiredKey
           - TestAuthKeyDeleteKey
           - TestAuthKeyLogoutAndReloginRoutesPreserved
+          - TestOIDCGroupsGrantAndRevokeAccess
+          - TestOIDCGroupsDisabledDoesNotPersist
           - TestOIDCAuthenticationPingAll
           - TestOIDCExpireNodesBasedOnTokenExpiry
           - TestOIDC024UserCreation

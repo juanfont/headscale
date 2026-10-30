@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/mail"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -95,6 +96,30 @@ type User struct {
 
 	// TODO(kradalby): See if we can fill in Gravatar here.
 	ProfilePicURL string
+
+	// Memberships are the user's identity-provider group memberships. It is
+	// preloaded for reads only (see [UserGroup]); use [User.GroupNames] to
+	// read the groups the policy resolves.
+	Memberships []UserGroup `gorm:"foreignKey:UserID;->;-:migration"`
+}
+
+// GroupNames returns the sorted, de-duplicated qualified names of the
+// identity-provider groups the user is a member of.
+func (u *User) GroupNames() []string {
+	return groupNames(u.Memberships)
+}
+
+// InGroup reports whether the user is a member of the identity-provider group
+// with the qualified name. Unlike [User.GroupNames] it does not allocate, as
+// the policy calls it for every user and group reference on each compile.
+func (u *User) InGroup(name string) bool {
+	for i := range u.Memberships {
+		if u.Memberships[i].Group.Name == name {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (u *User) StringID() string {
@@ -106,13 +131,15 @@ func (u *User) StringID() string {
 }
 
 // PolicyEqual reports whether the policy would resolve both users the same
-// way: the same row, and the same name, email, and provider identity that
-// user aliases match on.
+// way: the same row, the same name, email, and provider identity that user
+// aliases match on, and the same identity-provider groups that group aliases
+// match on.
 func (u *User) PolicyEqual(o *User) bool {
 	return u.ID == o.ID &&
 		u.Name == o.Name &&
 		u.Email == o.Email &&
-		u.ProviderIdentifier == o.ProviderIdentifier
+		u.ProviderIdentifier == o.ProviderIdentifier &&
+		slices.Equal(u.GroupNames(), o.GroupNames())
 }
 
 // TypedID returns a pointer to the user's ID as a [UserID] type.
@@ -160,6 +187,16 @@ func (v UserView) Display() string {
 	}
 
 	return v.ж.Display()
+}
+
+// GroupNames returns the user's identity-provider groups via the view; see
+// [User.GroupNames].
+func (v UserView) GroupNames() []string {
+	if !v.Valid() {
+		return nil
+	}
+
+	return v.ж.GroupNames()
 }
 
 // CreatedAt returns when the user was created.

@@ -128,7 +128,7 @@ func TestUserCommand(t *testing.T) {
 		},
 	}
 
-	if diff := tcmp.Diff(want, listByUsername, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt")); diff != "" {
+	if diff := tcmp.Diff(want, listByUsername, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt"), cmpopts.EquateEmpty()); diff != "" {
 		t.Errorf("unexpected users (-want +got):\n%s", diff)
 	}
 
@@ -159,7 +159,7 @@ func TestUserCommand(t *testing.T) {
 		},
 	}
 
-	if diff := tcmp.Diff(want, listByID, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt")); diff != "" {
+	if diff := tcmp.Diff(want, listByID, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt"), cmpopts.EquateEmpty()); diff != "" {
 		t.Errorf("unexpected users (-want +got):\n%s", diff)
 	}
 
@@ -201,7 +201,7 @@ func TestUserCommand(t *testing.T) {
 			},
 		}
 
-		if diff := tcmp.Diff(want, listAfterIDDelete, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt")); diff != "" {
+		if diff := tcmp.Diff(want, listAfterIDDelete, cmpopts.IgnoreUnexported(clientv1.User{}), cmpopts.IgnoreFields(clientv1.User{}, "CreatedAt"), cmpopts.EquateEmpty()); diff != "" {
 			assert.Fail(ct, "unexpected users", "diff (-want +got):\n%s", diff)
 		}
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)

@@ -27,6 +27,9 @@ type User struct {
 	ProviderID    string    `json:"providerId"`
 	Provider      string    `json:"provider"`
 	ProfilePicURL string    `json:"profilePicUrl"`
+	// Groups are the qualified identity-provider groups (<name>@<domain>) the
+	// user is a member of, as policies reference them with group:.
+	Groups []string `json:"groups" nullable:"false"`
 }
 
 // userFromView converts a domain user into the v1 response shape, reading
@@ -48,5 +51,6 @@ func userFromView(u types.UserView) User {
 		ProviderID:    u.ProviderIdentifier().String,
 		Provider:      u.Provider(),
 		ProfilePicURL: u.ProfilePicURL(),
+		Groups:        append([]string{}, u.GroupNames()...),
 	}
 }
