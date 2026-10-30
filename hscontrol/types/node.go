@@ -1486,8 +1486,7 @@ func (nv NodeView) TailNode(
 
 		Tags: nv.Tags().AsSlice(),
 
-		MachineAuthorized: !nv.IsExpired(),
-		Expired:           nv.IsExpired(),
+		Expired: nv.IsExpired(),
 	}
 
 	// Set LastSeen only for offline nodes to avoid confusing Tailscale clients

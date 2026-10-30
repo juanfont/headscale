@@ -68,11 +68,10 @@ func TestTailNode(t *testing.T) {
 			dnsConfig:  &tailcfg.DNSConfig{},
 			baseDomain: "",
 			want: &tailcfg.Node{
-				Name:              "empty",
-				StableID:          "0",
-				HomeDERP:          0,
-				Hostinfo:          hiview(tailcfg.Hostinfo{}),
-				MachineAuthorized: true,
+				Name:     "empty",
+				StableID: "0",
+				HomeDERP: 0,
+				Hostinfo: hiview(tailcfg.Hostinfo{}),
 
 				CapMap: tailcfg.NodeCapMap{
 					nodecap.Admin:                   []tailcfg.RawMessage{},
@@ -159,8 +158,6 @@ func TestTailNode(t *testing.T) {
 
 				Tags: []string{},
 
-				MachineAuthorized: true,
-
 				CapMap: tailcfg.NodeCapMap{
 					nodecap.Admin:                   []tailcfg.RawMessage{},
 					nodecap.SSH:                     []tailcfg.RawMessage{},
@@ -181,11 +178,10 @@ func TestTailNode(t *testing.T) {
 			baseDomain: "example.com",
 			want: &tailcfg.Node{
 				// a node name should have a dot appended
-				Name:              "minimal.example.com.",
-				StableID:          "0",
-				HomeDERP:          0,
-				Hostinfo:          hiview(tailcfg.Hostinfo{}),
-				MachineAuthorized: true,
+				Name:     "minimal.example.com.",
+				StableID: "0",
+				HomeDERP: 0,
+				Hostinfo: hiview(tailcfg.Hostinfo{}),
 
 				CapMap: tailcfg.NodeCapMap{
 					nodecap.Admin:                   []tailcfg.RawMessage{},
