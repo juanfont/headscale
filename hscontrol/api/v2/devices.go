@@ -2,6 +2,7 @@ package apiv2
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/netip"
 	"slices"
@@ -12,6 +13,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"tailscale.com/net/tsaddr"
+	"tailscale.com/tailcfg"
 )
 
 func init() {
@@ -53,6 +55,16 @@ type DeviceRoutes struct {
 	Enabled    []string `json:"enabledRoutes"    nullable:"false"`
 }
 
+// DeviceClientUpdate is the POST /device/{id}/update-client response. It mirrors
+// [tailcfg.C2NUpdateResponse], the device's own answer: Error carries its
+// reason when Started is false.
+type DeviceClientUpdate struct {
+	Enabled   bool   `json:"enabled"`
+	Supported bool   `json:"supported"`
+	Started   bool   `json:"started"`
+	Error     string `json:"error"`
+}
+
 // Request bodies match the Tailscale SDK wire shapes.
 type (
 	setAuthorizedRequest struct {
@@ -72,6 +84,11 @@ type (
 	}
 	setSubnetRoutesRequest struct {
 		Routes []string `json:"routes" nullable:"false"`
+	}
+	// updateDeviceClientRequest is headscale's own shape: Tailscale's
+	// update-client endpoint is undocumented, so its wire format is unknown.
+	updateDeviceClientRequest struct {
+		Force bool `json:"force,omitempty"`
 	}
 )
 
@@ -104,6 +121,10 @@ type (
 		DeviceID string `path:"id"`
 		Body     setSubnetRoutesRequest
 	}
+	updateDeviceClientInput struct {
+		DeviceID string                     `path:"id"`
+		Body     *updateDeviceClientRequest `required:"false"`
+	}
 
 	deviceOutput       struct{ Body Device }
 	deviceRoutesOutput struct{ Body DeviceRoutes }
@@ -113,6 +134,8 @@ type (
 		}
 	}
 	emptyOutput struct{ Body struct{} }
+
+	deviceClientUpdateOutput struct{ Body DeviceClientUpdate }
 )
 
 func registerDevices(api huma.API, b Backend) {
@@ -364,6 +387,62 @@ func registerDevices(api huma.API, b Backend) {
 
 		return &deviceRoutesOutput{Body: routesFromView(node)}, nil
 	})
+
+	huma.Register(api, requireScope(huma.Operation{
+		OperationID:   "updateDeviceClient",
+		Method:        http.MethodPost,
+		Path:          "/api/v2/device/{id}/update-client",
+		Summary:       "Update a device's Tailscale client",
+		Description:   "Asks a connected device over c2n to update its Tailscale client. The device only starts the update if it has auto-updates enabled and its platform supports them.",
+		Tags:          []string{"Devices"},
+		Security:      security,
+		DefaultStatus: http.StatusOK,
+		Errors: []int{
+			http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound,
+			http.StatusConflict, http.StatusBadGateway, http.StatusGatewayTimeout,
+		},
+	}, scope.DevicesCore), func(ctx context.Context, in *updateDeviceClientInput) (*deviceClientUpdateOutput, error) {
+		node, err := lookupNode(b, in.DeviceID)
+		if err != nil {
+			return nil, err
+		}
+
+		if !node.IsOnline().Valid() || !node.IsOnline().Get() {
+			return nil, huma.Error409Conflict("device is not connected")
+		}
+
+		force := in.Body != nil && in.Body.Force
+
+		res, err := sendC2N(ctx, b, node.ID(), c2nUpdatePath(force))
+		if err != nil {
+			return nil, err
+		}
+		defer res.Body.Close()
+
+		var update tailcfg.C2NUpdateResponse
+
+		err = json.NewDecoder(res.Body).Decode(&update)
+		if err != nil {
+			return nil, huma.Error502BadGateway("decoding client update response", err)
+		}
+
+		return &deviceClientUpdateOutput{Body: DeviceClientUpdate{
+			Enabled:   update.Enabled,
+			Supported: update.Supported,
+			Started:   update.Started,
+			Error:     update.Err,
+		}}, nil
+	})
+}
+
+// c2nUpdatePath is the c2n endpoint that starts a client update. force
+// overrides the client's refusal to update with active SSH sessions.
+func c2nUpdatePath(force bool) string {
+	if force {
+		return "/update?force=true"
+	}
+
+	return "/update"
 }
 
 // lookupNode resolves a device id to its NodeView, mapping a malformed or
