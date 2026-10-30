@@ -1,37 +1,65 @@
-// Replay golden HuJSON captures under testdata/sshtest_results/*.hujson:
-// the 200 path requires headscale's evaluateSSHTests to pass; the
-// non-200 path requires headscale to reject the same input with the
-// captured error body as a substring. Divergences are listed in
+// Replay golden HuJSON captures under testdata/sshtest_results/*.hujson with
+// the checks of [runTesterCompat]. Divergences are listed in
 // knownSSHTesterDivergences with the engine gap each represents.
 
 package v2
 
 import (
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/require"
 )
 
-// knownSSHTesterDivergences names the engine gap for each capture where
-// headscale and upstream disagree.
+// knownSSHTesterDivergences names the engine gap for each check where
+// headscale and upstream disagree, keyed <test_id>/<check>.
 var knownSSHTesterDivergences = map[string]string{
-	"sshtest-malformed-dst-bare-ipv6": "bare-IPv6 sshTests dst: upstream parse-accepts then engine-rejects; headscale accepts (IPv4 mirror passes both sides)",
+	"sshtest-accept-fail-no-ssh-rule/label":            sshTestNodeLabel,
+	"sshtest-accept-fail-wrong-login-user/label":       sshTestNodeLabel,
+	"sshtest-both-tests-pass-sshTests-fail/label":      sshTestNodeLabel,
+	"sshtest-deny-fail-policy-allows/label":            sshTestNodeLabel,
+	"sshtest-malformed-empty-user/label":               sshTestNodeLabel,
+	"sshtest-mixed-acls-tcp22-allow-no-ssh-rule/label": sshTestNodeLabel,
+	"sshtest-user-localpart-domain-mismatch/label":     sshTestNodeLabel,
+	"sshtest-user-nonroot-blocks-root/label":           sshTestNodeLabel,
+	"sshtest-fail-label-host-alias/label":              sshTestNodeLabel,
+	"sshtest-fail-label-ip-dst/label":                  sshTestNodeLabel,
+	"sshtest-fail-label-same-node-twice/label":         sshTestNodeLabel,
+	"sshtest-fail-label-user-dst/label":                sshTestNodeLabel,
+	"sshtest-repeated-names/label":                     sshTestNodeLabel,
+	"sshtest-report-multi/label":                       sshTestNodeLabel,
+	"sshtest-src-unassigned-ip-accept/label":           sshTestNodeLabel,
+
+	"sshtest-src-cidr24-deny/message":           sshTestSrcRange,
+	"sshtest-src-cidr31-empty-accept/message":   sshTestSrcRange,
+	"sshtest-src-cidr31-empty-deny/verdict":     sshTestSrcRange,
+	"sshtest-src-cidr31-hole-accept/message":    sshTestSrcRange,
+	"sshtest-src-cidr31-members-accept/verdict": sshTestSrcRange,
+	"sshtest-src-hosts-cidr-deny/verdict":       sshTestSrcRange,
+
+	"sshtest-fail-label-autogroup-member/message": sshTestDstMember,
+	"sshtest-check-reason-mixed-alias/message":    sshTestDstMember,
+
+	"sshtest-fail-label-same-node-twice/breakdown": "SSHTEST_PER_ALIAS: SaaS reports each dst alias, also two naming one node; headscale checks each node once",
+	"sshtest-fail-label-ip-no-device/breakdown":    sshTestNoDevice,
+	"sshtest-report-multi/breakdown":               "SSHTEST_PER_ALIAS+SSHTEST_NO_DEVICE: SaaS reports one line per dst alias and a deviceless alias as not reached; headscale one per node and an error",
+	"sshtest-src-unassigned-ip-accept/breakdown":   "SSHTEST_SRC_LABEL: SaaS labels a single-address source as written, headscale as a /32 prefix",
 }
+
+const (
+	sshTestNodeLabel = "SSHTEST_NODE_LABEL: headscale names each failing dst node by hostname; SaaS names the dst as written"
+	sshTestSrcRange  = "SSHTEST_SRC_RANGE: SaaS refuses a CIDR, or a host alias holding one, as an sshTests source when parsing; headscale evaluates it"
+	sshTestDstMember = "SSHTEST_DST_MEMBER: SaaS refuses autogroup:member as an sshTests destination when parsing; headscale evaluates it"
+	sshTestNoDevice  = "SSHTEST_NO_DEVICE: SaaS reports a dst that selects no device as not reached; headscale as an error"
+)
 
 func TestSSHTesterCompat(t *testing.T) {
 	t.Parallel()
 
 	files, err := filepath.Glob(filepath.Join("testdata", "sshtest_results", "*.hujson"))
 	require.NoError(t, err, "failed to glob test files")
-
-	if len(files) == 0 {
-		t.Skip("no sshtest captures yet")
-	}
-
-	users := setupSSHDataCompatUsers()
+	require.NotEmpty(t, files, "no sshtest captures")
 
 	for _, file := range files {
 		c, err := testcapture.Read(file)
@@ -40,49 +68,7 @@ func TestSSHTesterCompat(t *testing.T) {
 		t.Run(c.TestID, func(t *testing.T) {
 			t.Parallel()
 
-			if reason, skip := knownSSHTesterDivergences[c.TestID]; skip {
-				t.Skip(reason)
-			}
-
-			// Each capture pins its own topology IPs; build nodes
-			// from the capture so host-alias dsts resolve.
-			nodes := buildGrantsNodesFromCapture(users, c)
-
-			policyJSON := []byte(c.Input.FullPolicy)
-
-			pm, parseErr := NewPolicyManager(policyJSON, users, nodes.ViewSlice())
-
-			if c.Input.APIResponseCode == 200 {
-				require.NoError(t, parseErr,
-					"tailscale accepted this policy; headscale must parse it")
-
-				_, setErr := pm.SetPolicy(policyJSON)
-				require.NoError(t, setErr,
-					"tailscale accepted this policy; headscale sshTests must pass")
-
-				return
-			}
-
-			var got error
-
-			switch {
-			case parseErr != nil:
-				got = parseErr
-			default:
-				_, setErr := pm.SetPolicy(policyJSON)
-				got = setErr
-			}
-
-			require.Error(t, got, "tailscale rejected; headscale must reject too")
-
-			if c.Input.APIResponseBody == nil || c.Input.APIResponseBody.Message == "" {
-				return
-			}
-
-			want := c.Input.APIResponseBody.Message
-			if !strings.Contains(got.Error(), want) {
-				t.Errorf("error body mismatch\n  tailscale wants: %q\n  headscale got:   %q", want, got.Error())
-			}
+			runTesterCompat(t, c, knownSSHTesterDivergences)
 		})
 	}
 }

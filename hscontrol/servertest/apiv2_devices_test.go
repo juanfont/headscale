@@ -1,7 +1,10 @@
 package servertest_test
 
 import (
+	"cmp"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -13,6 +16,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/servertest"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -443,4 +447,91 @@ func apiv2DevicesACLTerraform(t *testing.T, version string, srv *servertest.Test
 
 	_, ok := srv.State().GetNodeByID(id)
 	assert.True(t, ok, "data-source node persists across destroy")
+}
+
+// TestAPIV2TaggedDeviceUserCompat replays the setup step of the user-role
+// capture, where odin and freya each join an untagged and a tag:server node
+// with keys they minted, and compares each device's user and tags in
+// headscale's v2 device list with SaaS's.
+//
+// Test data source: testdata/steps/user-role.hujson, loaded by name; its
+// role steps are TestUserChangeDispatchCompat's.
+func TestAPIV2TaggedDeviceUserCompat(t *testing.T) {
+	t.Parallel()
+
+	t.Run(userRoleID, func(t *testing.T) {
+		t.Parallel()
+
+		c := readStepCapture(t, userRoleID)
+		r := newStepReplay(t, c)
+		step := c.Steps[0]
+		require.Equal(t, userRoleSetup, step.Name)
+		requireUserRoleResult(t, step)
+
+		r.applyUserRole(t, step)
+
+		evaluated := map[string]bool{}
+		holdChecks(t, mapStreamSkipReasons, userRoleID+"/"+step.Name+"/", deviceListChecks(t, r, step), evaluated)
+
+		for k := range mapStreamSkipReasons {
+			if strings.HasPrefix(k, userRoleID+"/") && deviceListCheck(k) && !evaluated[k] {
+				t.Errorf("skip entry %q names no check", k)
+			}
+		}
+	})
+}
+
+// deviceListChecks compares, per device in the step's device list, its user,
+// SaaS emails mapped to user names, and its tags.
+func deviceListChecks(t *testing.T, r *stepReplay, step testcapture.Step) []stepCheck {
+	t.Helper()
+
+	hsDevice := func(alias string) (saasDevice, string) {
+		nodes := r.machineNodes(alias)
+		if len(nodes) != 1 {
+			return saasDevice{}, fmt.Sprintf("devices %d", len(nodes))
+		}
+
+		status, body := r.call(t, http.MethodGet, "/api/v2/tailnet/-/devices?fields=all", nil)
+		if status != http.StatusOK {
+			return saasDevice{}, fmt.Sprintf("status %d", status)
+		}
+
+		var list struct {
+			Devices []saasDevice `json:"devices"`
+		}
+		require.NoError(t, json.Unmarshal(body, &list))
+
+		for _, d := range list.Devices {
+			if d.ID == nodes[0].StringID() {
+				return d, ""
+			}
+		}
+
+		return saasDevice{}, "not listed"
+	}
+
+	devices := stepDevices(t, step)
+	checks := make([]stepCheck, 0, 2*len(devices))
+
+	for _, d := range devices {
+		x := deviceLabelAlias(d.ID)
+		user, ok := captureUserNames[d.User]
+		require.True(t, ok, "%s: %s's user %q is not a capture user", step.Name, x, d.User)
+
+		checks = append(checks,
+			stepCheck{x + "/device-user", user, func() string {
+				got, missing := hsDevice(x)
+
+				return cmp.Or(missing, got.User)
+			}},
+			stepCheck{x + "/device-tags", sortedStrings(d.Tags), func() string {
+				got, missing := hsDevice(x)
+
+				return cmp.Or(missing, sortedStrings(got.Tags))
+			}},
+		)
+	}
+
+	return checks
 }

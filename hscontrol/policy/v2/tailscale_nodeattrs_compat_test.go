@@ -239,26 +239,12 @@ func testNodeAttrsSuccess(
 	got, err := pol.compileNodeAttrs(users, nodes.ViewSlice())
 	require.NoErrorf(t, err, "%s: compileNodeAttrs", tf.TestID)
 
-	// Mirror the prod self-build: route function is irrelevant for CapMap.
-	//
-	// Taildrop.Enabled defaults to true here because every capture is
-	// taken with the SaaS default Send Files state. The Tailscale v2
-	// TailnetSettings API does not expose the Send Files toggle, so
-	// tscap cannot vary it; the off-path is covered directly by
-	// TestTaildropDisabledWithholdsFileSharingCap in servertest.
-	// TODO: wire Taildrop.Enabled from tf.Input.Tailnet.Settings.FileSharing
-	// once the field is added to the public TailnetSettings API.
-	cfg := &types.Config{Taildrop: types.TaildropConfig{Enabled: true}}
-	if v := tf.Input.Tailnet.Settings.DevicesAutoUpdatesOn; v != nil && *v {
-		cfg.AutoUpdate = types.AutoUpdateConfig{Enabled: true}
-	}
-
-	emptyRoutes := func(types.NodeID) []netip.Prefix { return nil }
+	cfg := nodeAttrsCompatConfig(tf)
 
 	selfCapMap := func(t *testing.T, node *types.Node) tailcfg.NodeCapMap {
 		t.Helper()
 
-		tn, err := node.View().TailNode(0, emptyRoutes, cfg, got[node.ID])
+		tn, err := node.View().TailNode(0, noRoutes, cfg, got[node.ID])
 		require.NoErrorf(t, err, "%s/%s: TailNode", tf.TestID, node.GivenName)
 
 		return tn.CapMap
@@ -318,6 +304,29 @@ func testNodeAttrsSuccess(
 		})
 	}
 }
+
+// nodeAttrsCompatConfig is the server config a capture's tailnet settings
+// stand for, as far as the self CapMap reads it.
+//
+// Taildrop.Enabled defaults to true here because every capture is
+// taken with the SaaS default Send Files state. The Tailscale v2
+// TailnetSettings API does not expose the Send Files toggle, so
+// tscap cannot vary it; the off-path is covered directly by
+// TestTaildropDisabledWithholdsFileSharingCap in servertest.
+// TODO: wire Taildrop.Enabled from tf.Input.Tailnet.Settings.FileSharing
+// once the field is added to the public TailnetSettings API.
+func nodeAttrsCompatConfig(tf *testcapture.Capture) *types.Config {
+	cfg := &types.Config{Taildrop: types.TaildropConfig{Enabled: true}}
+	if v := tf.Input.Tailnet.Settings.DevicesAutoUpdatesOn; v != nil && *v {
+		cfg.AutoUpdate = types.AutoUpdateConfig{Enabled: true}
+	}
+
+	return cfg
+}
+
+// noRoutes mirrors the self-build's route function, which the CapMap does
+// not read.
+func noRoutes(types.NodeID) []netip.Prefix { return nil }
 
 // capMapFromView materialises a captured CapMap view into the
 // [tailcfg.NodeCapMap] shape headscale renders, so both sides of the

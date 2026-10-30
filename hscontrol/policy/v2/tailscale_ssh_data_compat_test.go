@@ -10,6 +10,7 @@ package v2
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -121,21 +122,160 @@ func TestSSHForwardingDataCompat(t *testing.T) {
 }
 
 // sshSkipReasons documents captures the upstream control plane accepts
-// but headscale cannot yet represent. Each entry names the feature gap.
+// but headscale cannot yet represent, keyed <test_id> for the whole capture
+// or <test_id>/<node>/<check>. Each entry names the feature gap.
 var sshSkipReasons = map[string]string{
 	"ssh-b5":  "headscale has no passkey authentication; user:*@passkey wildcard unsupported",
 	"ssh-d10": "headscale has no passkey authentication; user:*@passkey wildcard unsupported",
+
+	"ssh-a1/bulbasaur/uid-zero":                                      sshUIDZero,
+	"ssh-a1/ivysaur/uid-zero":                                        sshUIDZero,
+	"ssh-a1/venusaur/uid-zero":                                       sshUIDZero,
+	"ssh-a2/bulbasaur/uid-zero":                                      sshUIDZero,
+	"ssh-a2/ivysaur/uid-zero":                                        sshUIDZero,
+	"ssh-a2/venusaur/uid-zero":                                       sshUIDZero,
+	"ssh-a3/bulbasaur/uid-zero":                                      sshUIDZero,
+	"ssh-a3/ivysaur/uid-zero":                                        sshUIDZero,
+	"ssh-a3/venusaur/uid-zero":                                       sshUIDZero,
+	"ssh-a4/beedrill/uid-zero":                                       sshUIDZero,
+	"ssh-a5/beedrill/uid-zero":                                       sshUIDZero,
+	"ssh-a6/bulbasaur/uid-zero":                                      sshUIDZero,
+	"ssh-a6/ivysaur/uid-zero":                                        sshUIDZero,
+	"ssh-a6/venusaur/uid-zero":                                       sshUIDZero,
+	"ssh-a7/bulbasaur/uid-zero":                                      sshUIDZero,
+	"ssh-a7/ivysaur/uid-zero":                                        sshUIDZero,
+	"ssh-a7/venusaur/uid-zero":                                       sshUIDZero,
+	"ssh-a8/bulbasaur/uid-zero":                                      sshUIDZero,
+	"ssh-a8/ivysaur/uid-zero":                                        sshUIDZero,
+	"ssh-a8/venusaur/uid-zero":                                       sshUIDZero,
+	"ssh-acceptenv-null/beedrill/uid-zero":                           sshUIDZero,
+	"ssh-acceptenv-omitted/beedrill/uid-zero":                        sshUIDZero,
+	"ssh-b1/beedrill/uid-zero":                                       sshUIDZero,
+	"ssh-b2/beedrill/uid-zero":                                       sshUIDZero,
+	"ssh-b3/beedrill/uid-zero":                                       sshUIDZero,
+	"ssh-b6/beedrill/uid-zero":                                       sshUIDZero,
+	"ssh-c1/bulbasaur/uid-zero":                                      sshUIDZero,
+	"ssh-c1/ivysaur/uid-zero":                                        sshUIDZero,
+	"ssh-c1/venusaur/uid-zero":                                       sshUIDZero,
+	"ssh-c2/beedrill/uid-zero":                                       sshUIDZero,
+	"ssh-c3/ivysaur/uid-zero":                                        sshUIDZero,
+	"ssh-c4/beedrill/uid-zero":                                       sshUIDZero,
+	"ssh-c4/kakuna/uid-zero":                                         sshUIDZero,
+	"ssh-checkperiod-null/beedrill/uid-zero":                         sshUIDZero,
+	"ssh-d11/beedrill/uid-zero":                                      sshUIDZero,
+	"ssh-d11/bulbasaur/uid-zero":                                     sshUIDZero,
+	"ssh-d11/ivysaur/uid-zero":                                       sshUIDZero,
+	"ssh-d11/venusaur/uid-zero":                                      sshUIDZero,
+	"ssh-d12/beedrill/uid-zero":                                      sshUIDZero,
+	"ssh-d12/bulbasaur/uid-zero":                                     sshUIDZero,
+	"ssh-d12/ivysaur/uid-zero":                                       sshUIDZero,
+	"ssh-d12/venusaur/uid-zero":                                      sshUIDZero,
+	"ssh-d2/beedrill/uid-zero":                                       sshUIDZero,
+	"ssh-d2/bulbasaur/uid-zero":                                      sshUIDZero,
+	"ssh-d2/ivysaur/uid-zero":                                        sshUIDZero,
+	"ssh-d2/venusaur/uid-zero":                                       sshUIDZero,
+	"ssh-d3/beedrill/uid-zero":                                       sshUIDZero,
+	"ssh-d3/bulbasaur/uid-zero":                                      sshUIDZero,
+	"ssh-d3/ivysaur/uid-zero":                                        sshUIDZero,
+	"ssh-d3/venusaur/uid-zero":                                       sshUIDZero,
+	"ssh-d4/beedrill/uid-zero":                                       sshUIDZero,
+	"ssh-d4/bulbasaur/uid-zero":                                      sshUIDZero,
+	"ssh-d4/ivysaur/uid-zero":                                        sshUIDZero,
+	"ssh-d4/venusaur/uid-zero":                                       sshUIDZero,
+	"ssh-d5/beedrill/uid-zero":                                       sshUIDZero,
+	"ssh-d5/bulbasaur/uid-zero":                                      sshUIDZero,
+	"ssh-d5/ivysaur/uid-zero":                                        sshUIDZero,
+	"ssh-d5/venusaur/uid-zero":                                       sshUIDZero,
+	"ssh-d6/beedrill/uid-zero":                                       sshUIDZero,
+	"ssh-d6/bulbasaur/uid-zero":                                      sshUIDZero,
+	"ssh-d6/ivysaur/uid-zero":                                        sshUIDZero,
+	"ssh-d6/venusaur/uid-zero":                                       sshUIDZero,
+	"ssh-d7/beedrill/uid-zero":                                       sshUIDZero,
+	"ssh-d7/bulbasaur/uid-zero":                                      sshUIDZero,
+	"ssh-d7/ivysaur/uid-zero":                                        sshUIDZero,
+	"ssh-d7/venusaur/uid-zero":                                       sshUIDZero,
+	"ssh-d8/bulbasaur/uid-zero":                                      sshUIDZero,
+	"ssh-d8/ivysaur/uid-zero":                                        sshUIDZero,
+	"ssh-d8/venusaur/uid-zero":                                       sshUIDZero,
+	"ssh-d9/bulbasaur/uid-zero":                                      sshUIDZero,
+	"ssh-d9/ivysaur/uid-zero":                                        sshUIDZero,
+	"ssh-d9/venusaur/uid-zero":                                       sshUIDZero,
+	"ssh-dst-trailing-whitespace/beedrill/uid-zero":                  sshUIDZero,
+	"ssh-duplicate-rules/beedrill/uid-zero":                          sshUIDZero,
+	"ssh-duplicate-rules/kakuna/uid-zero":                            sshUIDZero,
+	"ssh-e5/beedrill/uid-zero":                                       sshUIDZero,
+	"ssh-e5/kakuna/uid-zero":                                         sshUIDZero,
+	"ssh-e6/beedrill/uid-zero":                                       sshUIDZero,
+	"ssh-e6/bulbasaur/uid-zero":                                      sshUIDZero,
+	"ssh-e6/ivysaur/uid-zero":                                        sshUIDZero,
+	"ssh-e6/venusaur/uid-zero":                                       sshUIDZero,
+	"ssh-equal-src-aliases/beedrill/uid-zero":                        sshUIDZero,
+	"ssh-f1/beedrill/uid-zero":                                       sshUIDZero,
+	"ssh-f1/bulbasaur/uid-zero":                                      sshUIDZero,
+	"ssh-f1/ivysaur/uid-zero":                                        sshUIDZero,
+	"ssh-f1/venusaur/uid-zero":                                       sshUIDZero,
+	"ssh-f2/beedrill/uid-zero":                                       sshUIDZero,
+	"ssh-f3/beedrill/uid-zero":                                       sshUIDZero,
+	"ssh-f3/bulbasaur/uid-zero":                                      sshUIDZero,
+	"ssh-f3/ivysaur/uid-zero":                                        sshUIDZero,
+	"ssh-f3/venusaur/uid-zero":                                       sshUIDZero,
+	"ssh-f4/beedrill/uid-zero":                                       sshUIDZero,
+	"ssh-f4/bulbasaur/uid-zero":                                      sshUIDZero,
+	"ssh-f4/ivysaur/uid-zero":                                        sshUIDZero,
+	"ssh-f4/venusaur/uid-zero":                                       sshUIDZero,
+	"ssh-f5/beedrill/uid-zero":                                       sshUIDZero,
+	"ssh-f5/bulbasaur/uid-zero":                                      sshUIDZero,
+	"ssh-f5/ivysaur/uid-zero":                                        sshUIDZero,
+	"ssh-f5/venusaur/uid-zero":                                       sshUIDZero,
+	"ssh-g1/beedrill/uid-zero":                                       sshUIDZero,
+	"ssh-g2/beedrill/uid-zero":                                       sshUIDZero,
+	"ssh-malformed-acceptenv-bad-glob/beedrill/uid-zero":             sshUIDZero,
+	"ssh-malformed-acceptenv-glob-shapes/beedrill/uid-zero":          sshUIDZero,
+	"ssh-malformed-action-whitespace/beedrill/uid-zero":              sshUIDZero,
+	"ssh-malformed-checkperiod-exact-max/beedrill/uid-zero":          sshUIDZero,
+	"ssh-malformed-checkperiod-too-short/beedrill/uid-zero":          sshUIDZero,
+	"ssh-malformed-checkperiod-zero/beedrill/uid-zero":               sshUIDZero,
+	"ssh-malformed-user-autogroup-internet/beedrill/uid-zero":        sshUIDZero,
+	"ssh-malformed-user-autogroup-member/beedrill/uid-zero":          sshUIDZero,
+	"ssh-malformed-user-autogroup-self/beedrill/uid-zero":            sshUIDZero,
+	"ssh-malformed-user-autogroup-tagged/beedrill/uid-zero":          sshUIDZero,
+	"ssh-malformed-user-group-prefix/beedrill/uid-zero":              sshUIDZero,
+	"ssh-malformed-user-localpart-empty/beedrill/uid-zero":           sshUIDZero,
+	"ssh-malformed-user-localpart-no-at/beedrill/uid-zero":           sshUIDZero,
+	"ssh-malformed-user-localpart-no-domain/beedrill/uid-zero":       sshUIDZero,
+	"ssh-malformed-user-localpart-no-glob/beedrill/uid-zero":         sshUIDZero,
+	"ssh-malformed-user-tag-prefix/beedrill/uid-zero":                sshUIDZero,
+	"ssh-malformed-user-whitespace-leading/beedrill/uid-zero":        sshUIDZero,
+	"ssh-many-tags-as-dst/beedrill/uid-zero":                         sshUIDZero,
+	"ssh-many-tags-as-dst/kakuna/uid-zero":                           sshUIDZero,
+	"ssh-multi-rule-accept-then-check/beedrill/uid-zero":             sshUIDZero,
+	"ssh-multi-rule-check-then-accept/beedrill/uid-zero":             sshUIDZero,
+	"ssh-multi-rule-disjoint-srcs/beedrill/uid-zero":                 sshUIDZero,
+	"ssh-multi-rule-overlap-conflicting-acceptenv/beedrill/uid-zero": sshUIDZero,
+	"ssh-multi-rule-overlap-different-users/beedrill/uid-zero":       sshUIDZero,
+	"ssh-multi-src-multi-dst-multi-user/beedrill/uid-zero":           sshUIDZero,
+	"ssh-multi-src-multi-dst-multi-user/kakuna/uid-zero":             sshUIDZero,
+	"ssh-src-autogroup-tagged-no-tagged-nodes/beedrill/uid-zero":     sshUIDZero,
+	"ssh-src-leading-whitespace/beedrill/uid-zero":                   sshUIDZero,
+	"ssh-tab-in-user/beedrill/uid-zero":                              sshUIDZero,
+	"ssh-unicode-emoji-user/beedrill/uid-zero":                       sshUIDZero,
+	"ssh-unicode-rtl-user/beedrill/uid-zero":                         sshUIDZero,
 }
 
+const sshUIDZero = `SSH_UID_ZERO: SaaS maps login "0" to no local user in every rule; headscale leaves it out`
+
 // sshRejectSkipReasons documents captures the upstream control plane
-// rejects for reasons headscale cannot apply. Each entry names the
-// feature gap.
+// rejects for reasons headscale cannot apply, keyed <test_id> for the whole
+// capture or <test_id>/<check>. Each entry names the feature gap.
 var sshRejectSkipReasons = map[string]string{
 	"ssh-b4": "headscale has no associated-tailnet-domains config; user:*@domain / localpart:*@domain are not domain-validated",
 	"ssh-d1": "headscale has no associated-tailnet-domains config; user:*@domain / localpart:*@domain are not domain-validated",
 	"ssh-e1": "headscale has no associated-tailnet-domains config; user:*@domain / localpart:*@domain are not domain-validated",
 	"ssh-e2": "headscale has no associated-tailnet-domains config; user:*@domain / localpart:*@domain are not domain-validated",
 	"ssh-malformed-user-localpart-multi-glob": "headscale has no associated-tailnet-domains config; user:*@domain / localpart:*@domain are not domain-validated",
+
+	"ssh-check-tag-src/refused":                  "SSH_CHECK_TAG_SRC: SaaS refuses a check rule with a tag source; headscale accepts it",
+	"ssh-malformed-checkperiod-too-long/message": "SSH_CHECKPERIOD_TEXT: SaaS quotes a refused checkPeriod as written; headscale prints the parsed duration",
 }
 
 // TestSSHDataCompat loads every ssh-*.hujson capture, parses the policy
@@ -188,33 +328,7 @@ func TestSSHDataCompat(t *testing.T) {
 					return
 				}
 
-				pm, parseErr := NewPolicyManager(policyJSON, users, nodes.ViewSlice())
-
-				var got error
-
-				switch {
-				case parseErr != nil:
-					got = parseErr
-				default:
-					_, setErr := pm.SetPolicy(policyJSON)
-					got = setErr
-				}
-
-				require.Error(t, got, "tailscale rejected; headscale must reject too")
-
-				if tf.Input.APIResponseBody == nil ||
-					tf.Input.APIResponseBody.Message == "" {
-					return
-				}
-
-				want := tf.Input.APIResponseBody.Message
-				if !strings.Contains(got.Error(), want) {
-					t.Errorf(
-						"error body mismatch\n  tailscale wants: %q\n  headscale got:   %q",
-						want,
-						got.Error(),
-					)
-				}
+				testSSHRefusal(t, tf, users, nodes)
 
 				return
 			}
@@ -233,95 +347,212 @@ func TestSSHDataCompat(t *testing.T) {
 				tf.Input.FullPolicy,
 			)
 
+			// Nodes get their SSH policy through the manager's cache.
+			pm, err := NewPolicyManager(policyJSON, users, nodes.ViewSlice())
+			require.NoError(t, err, "%s: policy manager should load the policy", tf.TestID)
+
 			for nodeName, capture := range tf.Captures {
 				t.Run(nodeName, func(t *testing.T) {
 					node := findNodeByGivenName(nodes, nodeName)
 					require.NotNilf(t, node,
 						"golden node %s not found in test setup", nodeName)
 
-					// Compile headscale SSH policy for this node
-					gotSSH, err := pol.compileSSHPolicy(
-						"https://unused",
-						users,
-						node.View(),
-						nodes.ViewSlice(),
-					)
-					require.NoError(
-						t,
-						err,
-						"%s/%s: failed to compile SSH policy",
-						tf.TestID,
-						nodeName,
-					)
+					key := tf.TestID + "/" + nodeName + "/"
 
-					// Nil and empty SSHPolicy differ on the wire: nil
-					// keeps the client's previous rules, empty clears
-					// them. Take presence from the captured netmap.
-					wantSSH := &tailcfg.SSHPolicy{Rules: capture.SSHRules}
-					if capture.Netmap != nil && capture.Netmap.SSHPolicy == nil {
-						wantSSH = nil
-					}
+					compatCheck(t, sshSkipReasons, key+"ssh-rules", func() string {
+						return sshRulesMismatch(pol, pm, users, nodes, node, capture, withoutUIDZero)
+					})
 
-					// Compare headscale output against Tailscale expected.
-					// EquateEmpty treats nil and empty slices as equal.
-					// Sort principals within rules (order doesn't matter).
-					// Do NOT sort rules — order matters (first-match-wins).
-					//
-					opts := cmp.Options{
-						cmpopts.SortSlices(func(a, b *tailcfg.SSHPrincipal) bool {
-							return a.NodeIP < b.NodeIP
-						}),
-						cmpopts.EquateEmpty(),
-					}
-					if diff := cmp.Diff(wantSSH, gotSSH, opts...); diff != "" {
-						t.Errorf(
-							"%s/%s: SSH policy mismatch (-tailscale +headscale):\n%s",
-							tf.TestID,
-							nodeName,
-							diff,
-						)
-					}
-
-					// EquateEmpty hides "rules":null vs "rules":[];
-					// pin the captured shape separately.
-					if gotSSH != nil && capture.Netmap != nil &&
-						capture.Netmap.SSHPolicy != nil {
-						assert.Equalf(t,
-							capture.Netmap.SSHPolicy.Rules == nil,
-							gotSSH.Rules == nil,
-							"%s/%s: rules null-vs-[] mismatch", tf.TestID, nodeName,
-						)
-					}
-
-					// Separate presence check: the fields ignored by
-					// the diff above must still be populated on matching
-					// rules. This catches regressions where headscale
-					// would silently drop the HoldAndDelegate URL or
-					// flip Accept to false while we are not looking.
-					if wantSSH != nil && gotSSH != nil {
-						for i, wantRule := range wantSSH.Rules {
-							if i >= len(gotSSH.Rules) {
-								break
-							}
-
-							gotRule := gotSSH.Rules[i]
-							if wantRule.Action == nil || gotRule.Action == nil {
-								continue
-							}
-
-							wantIsCheck := wantRule.Action.HoldAndDelegate != ""
-							gotIsCheck := gotRule.Action.HoldAndDelegate != ""
-
-							assert.Equalf(t, wantIsCheck, gotIsCheck,
-								"%s/%s rule %d: HoldAndDelegate presence mismatch",
-								tf.TestID, nodeName, i,
-							)
-						}
-					}
+					compatCheck(t, sshSkipReasons, key+"uid-zero", func() string {
+						return uidZeroMismatch(pm, node, capture)
+					})
 				})
 			}
 		})
 	}
+}
+
+// testSSHRefusal replays a policy SaaS refused: headscale must refuse it
+// too, with the captured message in its error.
+func testSSHRefusal(t *testing.T, tf *testcapture.Capture, users types.Users, nodes types.Nodes) {
+	t.Helper()
+
+	policyJSON := []byte(tf.Input.FullPolicy)
+
+	pm, err := NewPolicyManager(policyJSON, users, nodes.ViewSlice())
+	if err == nil {
+		_, err = pm.SetPolicy(policyJSON)
+	}
+
+	key := tf.TestID + "/"
+
+	compatCheck(t, sshRejectSkipReasons, key+"refused", func() string {
+		if err == nil {
+			return "tailscale rejected; headscale accepted"
+		}
+
+		return ""
+	})
+
+	if err == nil {
+		compatChecksNotRun(t, sshRejectSkipReasons, key+"message")
+
+		return
+	}
+
+	var want string
+	if tf.Input.APIResponseBody != nil {
+		want = tf.Input.APIResponseBody.Message
+	}
+
+	compatCheck(t, sshRejectSkipReasons, key+"message", func() string {
+		if strings.Contains(err.Error(), want) {
+			return ""
+		}
+
+		return fmt.Sprintf("tailscale wants: %q\nheadscale got:   %q", want, err.Error())
+	})
+}
+
+// sshRulesMismatch compares the SSH policy headscale compiles for node,
+// directly and through the manager, with the captured one; "" is a match.
+// Each normalize runs on the captured rules and on headscale's alike.
+func sshRulesMismatch(
+	pol *Policy,
+	pm *PolicyManager,
+	users types.Users,
+	nodes types.Nodes,
+	node *types.Node,
+	capture testcapture.Node,
+	normalize ...func(testcapture.Node) testcapture.Node,
+) string {
+	gotSSH, err := pol.compileSSHPolicy("https://unused", users, node.View(), nodes.ViewSlice())
+	if err != nil {
+		return fmt.Sprintf("failed to compile SSH policy: %v", err)
+	}
+
+	pmSSH, err := pm.SSHPolicy("https://unused", node.View())
+	if err != nil {
+		return fmt.Sprintf("policy manager SSH policy: %v", err)
+	}
+
+	// Nil and empty SSHPolicy differ on the wire: nil keeps the client's
+	// previous rules, empty clears them. Take presence from the captured
+	// netmap.
+	rules := func(r []*tailcfg.SSHRule) []*tailcfg.SSHRule {
+		n := testcapture.Node{SSHRules: r}
+		for _, f := range normalize {
+			n = f(n)
+		}
+
+		return n.SSHRules
+	}
+
+	wantSSH := &tailcfg.SSHPolicy{Rules: rules(capture.SSHRules)}
+	if capture.Netmap != nil && capture.Netmap.SSHPolicy == nil {
+		wantSSH = nil
+	}
+
+	// EquateEmpty treats nil and empty slices as equal. Sort principals
+	// within rules (order doesn't matter). Do NOT sort rules — order
+	// matters (first-match-wins).
+	opts := cmp.Options{
+		cmpopts.SortSlices(func(a, b *tailcfg.SSHPrincipal) bool {
+			return a.NodeIP < b.NodeIP
+		}),
+		cmpopts.EquateEmpty(),
+	}
+
+	var diffs []string
+
+	for name, got := range map[string]*tailcfg.SSHPolicy{"compiled": gotSSH, "policy manager": pmSSH} {
+		compared := got
+		if got != nil {
+			compared = &tailcfg.SSHPolicy{Rules: rules(got.Rules)}
+		}
+
+		if diff := cmp.Diff(wantSSH, compared, opts...); diff != "" {
+			diffs = append(diffs, fmt.Sprintf("%s SSH policy mismatch (-tailscale +headscale):\n%s", name, diff))
+		}
+
+		// EquateEmpty hides "rules":null vs "rules":[]; pin the captured
+		// shape separately.
+		if capture.Netmap != nil && capture.Netmap.SSHPolicy != nil && got != nil &&
+			(capture.Netmap.SSHPolicy.Rules == nil) != (got.Rules == nil) {
+			diffs = append(diffs, name+": rules null-vs-[] mismatch")
+		}
+	}
+
+	// The fields ignored by the diff above must still be populated on
+	// matching rules, so a dropped HoldAndDelegate URL is caught.
+	if wantSSH != nil && gotSSH != nil {
+		for i, wantRule := range wantSSH.Rules {
+			if i >= len(gotSSH.Rules) {
+				break
+			}
+
+			gotRule := gotSSH.Rules[i]
+			if wantRule.Action == nil || gotRule.Action == nil {
+				continue
+			}
+
+			if (wantRule.Action.HoldAndDelegate != "") != (gotRule.Action.HoldAndDelegate != "") {
+				diffs = append(diffs, fmt.Sprintf("rule %d: HoldAndDelegate presence mismatch", i))
+			}
+		}
+	}
+
+	slices.Sort(diffs)
+
+	return strings.Join(diffs, "\n")
+}
+
+// withoutUIDZero drops the per-rule "0": "" login mapping, which
+// [uidZeroMismatch] checks on its own, so that one difference leaves the
+// rest of each rule compared.
+func withoutUIDZero(capture testcapture.Node) testcapture.Node {
+	rules := make([]*tailcfg.SSHRule, 0, len(capture.SSHRules))
+
+	for _, r := range capture.SSHRules {
+		if local, ok := r.SSHUsers["0"]; ok && local == "" {
+			c := *r
+			c.SSHUsers = maps.Clone(r.SSHUsers)
+			delete(c.SSHUsers, "0")
+			r = &c
+		}
+
+		rules = append(rules, r)
+	}
+
+	capture.SSHRules = rules
+
+	return capture
+}
+
+// uidZeroMismatch compares, rule by rule, which rules map login "0" to no
+// local user; "" is a match.
+func uidZeroMismatch(pm *PolicyManager, node *types.Node, capture testcapture.Node) string {
+	got, err := pm.SSHPolicy("https://unused", node.View())
+	if err != nil {
+		return fmt.Sprintf("policy manager SSH policy: %v", err)
+	}
+
+	uidZero := func(rules []*tailcfg.SSHRule) []bool {
+		out := make([]bool, 0, len(rules))
+		for _, r := range rules {
+			local, ok := r.SSHUsers["0"]
+			out = append(out, ok && local == "")
+		}
+
+		return out
+	}
+
+	var gotRules []*tailcfg.SSHRule
+	if got != nil {
+		gotRules = got.Rules
+	}
+
+	return cmp.Diff(uidZero(capture.SSHRules), uidZero(gotRules))
 }
 
 // sshLocalUser maps sshUser to a local user the way tailssh does for one
@@ -418,7 +649,9 @@ func TestSSHCheckParamsMatchesCaptures(t *testing.T) {
 
 	for _, file := range files {
 		tf := loadSSHTestFile(t, file)
-		if tf.Input.APIResponseCode != 200 {
+
+		// Validation-only captures hold no node rules to compare.
+		if tf.Input.APIResponseCode != 200 || len(tf.Captures) == 0 {
 			continue
 		}
 

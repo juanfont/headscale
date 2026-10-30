@@ -1,119 +1,76 @@
-// Compatibility tests for the policy `tests` block, replaying captures
-// recorded against a real Tailscale SaaS tailnet. The runner mirrors the
-// pattern in tailscale_grants_compat_test.go: a single Glob over a
-// testdata directory, one t.Run per file. Each capture is one of:
+// Compatibility tests for the policy `tests` and `sshTests` blocks, replaying
+// captures recorded against a real Tailscale SaaS tailnet. Each capture is
+// checked in steps, see [runTesterCompat]:
 //
-//   - APIResponseCode != 200 — the policy was rejected by the SaaS, the
-//     captured Message is the byte-exact body the user saw, and headscale
-//     must reject the same input with an error string that contains the
-//     same body (substring match, allowing wrapping like "test(s)
-//     failed:\n…").
-//   - APIResponseCode == 200 — the SaaS accepted the policy (its `tests`
-//     block passed); headscale's RunTests must also pass.
+//   - verdict: SaaS accepted the policy (200) exactly when headscale does;
+//   - message: a refusal's message is contained in headscale's error;
+//   - breakdown: the failures SaaS lists in its error data are the ones
+//     headscale's evaluators report, see [requireFailureBreakdown];
+//   - label: no node hostname appears in one report and not the other.
 //
-// Captures live in testdata/policytest_results/*.hujson. Scenarios in
-// knownPolicyTesterDivergences are skipped with their tracking note —
-// these are real Tailscale ↔ headscale divergences uncovered by the
-// captures that need engine-level fixes in follow-up PRs.
+// Captures live in testdata/policytest_results/*.hujson; the sshTests ones
+// are replayed by sshtester_compat_test.go.
 //
 // Source format: github.com/juanfont/headscale/hscontrol/types/testcapture
 
 package v2
 
 import (
+	"encoding/json"
+	"fmt"
+	"net/http"
 	"path"
 	"path/filepath"
+	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/require"
+	tsapi "tailscale.com/client/tailscale/v2"
 	"tailscale.com/tailcfg"
 )
 
-// knownPolicyTesterDivergences lists scenarios where headscale's evaluator
-// disagrees with Tailscale SaaS on whether the policy should be accepted.
-// Each entry is a real bug to fix in a follow-up; documenting them here
-// keeps the compat suite green and the divergence list visible.
-var knownPolicyTesterDivergences = map[string]string{} //nolint:gosec // strings here are human-readable notes, not credentials
+// knownPolicyTesterDivergences lists checks where headscale's evaluator
+// differs from Tailscale SaaS, keyed <test_id>/<check>.
+var knownPolicyTesterDivergences = map[string]string{ //nolint:gosec // strings here are human-readable notes, not credentials
+	"policytest-accept-fail-autogroup-tagged-src-tag-dst/breakdown": "TEST_SRC_SHAPE: SaaS refuses autogroup:tagged as a tests source as an unknown user or host; headscale evaluates it",
 
-// policyTesterCompatUsers / policyTesterCompatNodes mirror the small
-// shared topology used to record the captures. When more captures land
-// we'll also exercise an autogroup-heavy second topology — for now this
-// minimal one is enough to make the runner go.
-func policyTesterCompatUsers() types.Users {
-	return types.Users{
-		{ID: 1, Name: "odin", Email: "odin@example.com"},
-		{ID: 2, Name: "thor", Email: "thor@example.org"},
-		{ID: 3, Name: "freya", Email: "freya@example.com"},
-	}
+	"policytest-accept-fail-proto-icmp-not-allowed/breakdown": testEntryErrors,
+	"policytest-proto-icmp/breakdown":                         testEntryErrors,
+
+	"policytest-dst-unknown-group/breakdown":      testUnknownAlias,
+	"policytest-src-unknown-group/breakdown":      testUnknownAlias,
+	"policytest-src-unknown-user-email/breakdown": testUnknownAlias,
+
+	"policytest-src-cidr-accept/verdict":       testSrcShape,
+	"policytest-src-cidr-deny/breakdown":       testSrcShape,
+	"policytest-src-wildcard-accept/breakdown": testSrcShape,
+	"policytest-src-wildcard-deny/verdict":     testSrcShape,
+
+	"policytest-dst-multinode-partial-accept/verdict": "TEST_DST_EVERY_NODE: SaaS accepts only when every node of the dst alias is reached; headscale when one is",
+
+	"policytest-report-both-blocks/label": sshTestNodeLabel,
 }
 
-func policyTesterCompatNodes(users types.Users) types.Nodes {
-	return types.Nodes{
-		{
-			ID:        1,
-			GivenName: "bulbasaur",
-			User:      &users[0],
-			UserID:    &users[0].ID,
-			IPv4:      ptrAddr("100.90.199.68"),
-			IPv6:      ptrAddr("fd7a:115c:a1e0::2d01:c747"),
-			Hostinfo:  &tailcfg.Hostinfo{},
-		},
-		{
-			ID:        2,
-			GivenName: "ivysaur",
-			User:      &users[1],
-			UserID:    &users[1].ID,
-			IPv4:      ptrAddr("100.110.121.96"),
-			IPv6:      ptrAddr("fd7a:115c:a1e0::1737:7960"),
-			Hostinfo:  &tailcfg.Hostinfo{},
-		},
-		{
-			ID:        3,
-			GivenName: "venusaur",
-			User:      &users[2],
-			UserID:    &users[2].ID,
-			IPv4:      ptrAddr("100.103.90.82"),
-			IPv6:      ptrAddr("fd7a:115c:a1e0::9e37:5a52"),
-			Hostinfo:  &tailcfg.Hostinfo{},
-		},
-		{
-			ID:        4,
-			GivenName: "beedrill",
-			IPv4:      ptrAddr("100.108.74.26"),
-			IPv6:      ptrAddr("fd7a:115c:a1e0::b901:4a87"),
-			Tags:      []string{"tag:server"},
-			Hostinfo:  &tailcfg.Hostinfo{},
-		},
-		{
-			ID:        5,
-			GivenName: "kakuna",
-			IPv4:      ptrAddr("100.103.8.15"),
-			IPv6:      ptrAddr("fd7a:115c:a1e0::5b37:80f"),
-			Tags:      []string{"tag:client"},
-			Hostinfo:  &tailcfg.Hostinfo{},
-		},
-	}
-}
+const (
+	testEntryErrors  = "TEST_ENTRY_ERRORS: SaaS reports the first shape error of a tests entry, headscale every one"
+	testUnknownAlias = "TEST_UNKNOWN_ALIAS: SaaS reports a test naming an unknown user or group as not reached, headscale as an evaluation error"
+	testSrcShape     = "TEST_SRC_SHAPE: SaaS refuses a CIDR or \"*\" as a tests source as an unknown user or host; headscale evaluates it"
+)
 
 // TestPolicyTesterCompat replays every capture under
-// testdata/policytest_results/ against the engine. With no captures the
-// test is a no-op — committed early so the layout/wiring lands before
-// the bulk import.
+// testdata/policytest_results/ against the engine.
 func TestPolicyTesterCompat(t *testing.T) {
 	t.Parallel()
 
 	files, err := filepath.Glob(filepath.Join("testdata", "policytest_results", "*.hujson"))
 	require.NoError(t, err, "failed to glob test files")
-
-	if len(files) == 0 {
-		t.Skip("no policytest captures yet")
-	}
-
-	users := policyTesterCompatUsers()
-	nodes := policyTesterCompatNodes(users)
+	require.NotEmpty(t, files, "no policytest captures")
 
 	for _, file := range files {
 		c, err := testcapture.Read(file)
@@ -122,51 +79,297 @@ func TestPolicyTesterCompat(t *testing.T) {
 		t.Run(c.TestID, func(t *testing.T) {
 			t.Parallel()
 
-			if reason, skip := knownPolicyTesterDivergences[c.TestID]; skip {
-				t.Skip(reason)
-			}
-
-			policyJSON := []byte(c.Input.FullPolicy)
-
-			pm, parseErr := NewPolicyManager(policyJSON, users, nodes.ViewSlice())
-
-			// Tailscale validates and runs tests as one POST step:
-			// either failure mode produces the same 400. Headscale
-			// splits structural validation (parse) from test
-			// evaluation (SetPolicy). For the compat assertion, the
-			// two are equivalent — whichever surfaces first carries
-			// the captured body.
-			if c.Input.APIResponseCode == 200 {
-				require.NoError(t, parseErr, "tailscale accepted this policy; headscale must parse it")
-
-				_, setErr := pm.SetPolicy(policyJSON)
-				require.NoError(t, setErr, "tailscale accepted this policy; headscale tests should pass")
-
-				return
-			}
-
-			var got error
-
-			switch {
-			case parseErr != nil:
-				got = parseErr
-			default:
-				_, setErr := pm.SetPolicy(policyJSON)
-				got = setErr
-			}
-
-			require.Error(t, got, "tailscale rejected; headscale must reject too")
-
-			if c.Input.APIResponseBody == nil || c.Input.APIResponseBody.Message == "" {
-				return
-			}
-
-			want := c.Input.APIResponseBody.Message
-			if !strings.Contains(got.Error(), want) {
-				t.Errorf("error body mismatch\n  tailscale wants: %q\n  headscale got:   %q", want, got.Error())
-			}
+			runTesterCompat(t, c, knownPolicyTesterDivergences)
 		})
 	}
+}
+
+// runTesterCompat replays one tests or sshTests capture. SaaS validates the
+// policy and runs both blocks in one POST; headscale parses first and runs
+// the blocks in SetPolicy, so an error from either step is its refusal.
+func runTesterCompat(t *testing.T, c *testcapture.Capture, skips map[string]string) {
+	t.Helper()
+
+	users := setupSSHDataCompatUsers()
+
+	// Each capture pins its own topology IPs; range and address tests mean
+	// nothing against other nodes.
+	_ = runTesterCompatFor(t, c, skips, c.TestID+"/", users, buildGrantsNodesFromCapture(users, c))
+}
+
+// runTesterCompatFor is [runTesterCompat] against the given users and nodes,
+// with its checks keyed under key. It returns headscale's refusal, if any.
+func runTesterCompatFor(
+	t *testing.T,
+	c *testcapture.Capture,
+	skips map[string]string,
+	key string,
+	users types.Users,
+	nodes types.Nodes,
+) error {
+	t.Helper()
+
+	policyJSON := []byte(c.Input.FullPolicy)
+
+	pm, err := NewPolicyManager(policyJSON, users, nodes.ViewSlice())
+	if err == nil {
+		_, err = pm.SetPolicy(policyJSON)
+	} else {
+		pm = nil
+	}
+
+	var body testcapture.APIResponseBody
+	if c.Input.APIResponseBody != nil {
+		body = *c.Input.APIResponseBody
+	}
+
+	saasRefused := c.Input.APIResponseCode != http.StatusOK
+
+	compatCheck(t, skips, key+"verdict", func() string {
+		switch {
+		case saasRefused && err == nil:
+			return fmt.Sprintf("SaaS refused with %q; headscale accepted", body.Message)
+		case !saasRefused && err != nil:
+			return fmt.Sprintf("SaaS accepted; headscale refused: %v", err)
+		}
+
+		return ""
+	})
+
+	if !saasRefused || err == nil {
+		compatChecksNotRun(t, skips, key+"message", key+"breakdown", key+"label")
+
+		return err
+	}
+
+	compatCheck(t, skips, key+"message", func() string {
+		if strings.Contains(err.Error(), body.Message) {
+			return ""
+		}
+
+		return fmt.Sprintf("tailscale wants: %q\nheadscale got:   %q", body.Message, err.Error())
+	})
+
+	if len(body.Data) == 0 {
+		compatChecksNotRun(t, skips, key+"breakdown", key+"label")
+
+		return err
+	}
+
+	requireFailureBreakdown(t, skips, key+"breakdown", body.Data, c.Input.FullPolicy, pm, err)
+
+	compatCheck(t, skips, key+"label", func() string {
+		return cmp.Diff(nodeLabels(c, fmt.Sprint(body.Data)), nodeLabels(c, err.Error()))
+	})
+
+	return err
+}
+
+var (
+	// [acl test error]: address "tag:server:22" (protocol "tcp"): want: Accept, got: Drop.
+	saasTestFailRE = regexp.MustCompile(
+		`^\[acl test error\]: address "(.+)" \(protocol "[^"]*"\): want: (Accept|Drop), got: (?:Accept|Drop)$`)
+
+	// [ssh test error]: src "a" at "ip", dst "b" at "ip", ssh user "root": want: "accept" got: "deny".
+	saasSSHTestFailRE = regexp.MustCompile(
+		`^\[ssh test error\]: src ".*" at ".*", dst "([^"]*)" at "[^"]*", ssh user "(.*)": want: "(accept|check|deny)" got: "[a-z]+"$`)
+)
+
+// requireFailureBreakdown compares the failures SaaS lists in its error data
+// with the ones headscale's evaluators report, as sorted lines of
+// "src -> dst: want" (tests), "src/user: want @ dst" (sshTests) and
+// "src: error" for an entry that could not be evaluated. Repeats are kept.
+// An sshTests dst is the entry's alias in headscale's form: SaaS names the
+// alias, headscale the node, which the label check compares.
+func requireFailureBreakdown(
+	t *testing.T,
+	skips map[string]string,
+	key string,
+	data []tsapi.APIErrorData,
+	policy string,
+	pm *PolicyManager,
+	refusal error,
+) {
+	t.Helper()
+
+	var want []string
+
+	for _, d := range data {
+		for _, line := range d.Errors {
+			if m := saasTestFailRE.FindStringSubmatch(line); m != nil {
+				want = append(want, fmt.Sprintf("%s -> %s: %s", d.User, m[1], testWant(m[2] == "Accept")))
+
+				continue
+			}
+
+			if m := saasSSHTestFailRE.FindStringSubmatch(line); m != nil {
+				dst := m[1]
+
+				alias, err := parseAlias(dst)
+				if err == nil {
+					dst = alias.String()
+				}
+
+				want = append(want, fmt.Sprintf("%s/%s: %s @ %s", d.User, m[2], m[3], dst))
+
+				continue
+			}
+
+			want = append(want, d.User+": error")
+		}
+	}
+
+	slices.Sort(want)
+
+	compatCheck(t, skips, key, func() string {
+		if pm != nil {
+			return cmp.Diff(want, testerBreakdown(pm))
+		}
+
+		got, err := parseRefusalBreakdown(policy, refusal)
+		if err != nil {
+			return err.Error()
+		}
+
+		return cmp.Diff(want, got)
+	})
+}
+
+// parseRefusalEntryRE finds the entries a parse-time refusal names; the
+// parser reports tests and sshTests entries by index.
+var parseRefusalEntryRE = regexp.MustCompile(`(?m)^\s*(test|sshTest) (\d+)\b`)
+
+// parseRefusalBreakdown renders a refusal headscale gave before running the
+// tests: one "src: error" per entry it names.
+func parseRefusalBreakdown(policy string, refusal error) ([]string, error) {
+	type entry struct {
+		Src string `json:"src"`
+	}
+
+	var raw struct {
+		Tests    []entry `json:"tests"`
+		SSHTests []entry `json:"sshTests"`
+	}
+
+	err := json.Unmarshal([]byte(policy), &raw)
+	if err != nil {
+		return nil, fmt.Errorf("reading test entries: %w", err)
+	}
+
+	var out []string
+
+	for _, m := range parseRefusalEntryRE.FindAllStringSubmatch(refusal.Error(), -1) {
+		entries := raw.Tests
+		if m[1] == "sshTest" {
+			entries = raw.SSHTests
+		}
+
+		i, err := strconv.Atoi(m[2])
+		if err != nil || i >= len(entries) {
+			return nil, fmt.Errorf("refusal names %s %s, which the policy does not have: %w", m[1], m[2], refusal)
+		}
+
+		out = append(out, entries[i].Src+": error")
+	}
+
+	slices.Sort(out)
+
+	return out, nil
+}
+
+func testWant(accept bool) string {
+	if accept {
+		return "accept"
+	}
+
+	return "deny"
+}
+
+// testerBreakdown runs both blocks as the boot path does and renders the
+// failures as [requireFailureBreakdown] does.
+func testerBreakdown(pm *PolicyManager) []string {
+	var out []string
+
+	for _, res := range runPolicyTests(pm.pol, pm.filter, pm.users, pm.nodes).Results {
+		for range res.Errors {
+			out = append(out, res.Src+": error")
+		}
+
+		for _, dst := range res.AcceptFail {
+			out = append(out, fmt.Sprintf("%s -> %s: %s", res.Src, dst, testWant(true)))
+		}
+
+		for _, dst := range res.DenyFail {
+			out = append(out, fmt.Sprintf("%s -> %s: %s", res.Src, dst, testWant(false)))
+		}
+	}
+
+	cache := make(map[types.NodeID]*tailcfg.SSHPolicy)
+
+	// One result per entry, in policy order.
+	for i, res := range runSSHPolicyTests(pm.pol, pm.users, pm.nodes, cache).Results {
+		for range res.Errors {
+			out = append(out, res.Src+": error")
+		}
+
+		aliases := sshTestDstAliases(pm, pm.pol.SSHTests[i])
+
+		for want, fails := range map[string]map[string][]string{
+			"accept": res.AcceptFail,
+			"deny":   res.DenyFail,
+			"check":  res.CheckFail,
+		} {
+			for user, dsts := range fails {
+				for _, dst := range dsts {
+					out = append(out, fmt.Sprintf("%s/%s: %s @ %s", res.Src, user, want, aliases[dst]))
+				}
+			}
+		}
+	}
+
+	slices.Sort(out)
+
+	return out
+}
+
+// sshTestDstAliases maps each node hostname an sshTests entry reaches to the
+// first of its dst aliases that selects it, the one the evaluator checks the
+// node under.
+func sshTestDstAliases(pm *PolicyManager, test SSHPolicyTest) map[string]string {
+	_, srcUserID, _ := resolveSSHTestSource(test.Src, pm.pol, pm.users, pm.nodes)
+
+	out := make(map[string]string)
+
+	for _, alias := range test.Dst {
+		nodes, _, err := resolveSSHTestDestNodes(SSHTestDestinations{alias}, pm.pol, pm.users, pm.nodes, srcUserID)
+		if err != nil {
+			continue
+		}
+
+		for _, n := range nodes {
+			if _, ok := out[n.Hostname()]; !ok {
+				out[n.Hostname()] = alias.String()
+			}
+		}
+	}
+
+	return out
+}
+
+// nodeLabels lists the capture's hostnames that text names while the policy
+// does not, so they are there only because the report labels nodes.
+func nodeLabels(c *testcapture.Capture, text string) []string {
+	var out []string
+
+	for _, n := range c.Topology.Nodes {
+		if !strings.Contains(c.Input.FullPolicy, n.Hostname) && strings.Contains(text, n.Hostname) {
+			out = append(out, n.Hostname)
+		}
+	}
+
+	slices.Sort(out)
+
+	return out
 }
 
 // compatCheck runs one check of a capture as a subtest named after the last
@@ -189,4 +392,16 @@ func compatCheck(t *testing.T, skips map[string]string, key string, mismatch fun
 			t.Error(diff)
 		}
 	})
+}
+
+// compatChecksNotRun fails for a listed check that cannot run, since its
+// entry could never go stale.
+func compatChecksNotRun(t *testing.T, skips map[string]string, keys ...string) {
+	t.Helper()
+
+	for _, key := range keys {
+		if _, listed := skips[key]; listed {
+			t.Errorf("check %q does not run for this capture; delete its skip entry", key)
+		}
+	}
 }

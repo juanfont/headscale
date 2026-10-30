@@ -5,9 +5,13 @@ package mapper
 // handleNodeChange.
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"fmt"
-	"runtime"
+	"runtime/pprof"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -1450,28 +1454,18 @@ func TestMultiChannelSend_ConcurrentRemoveAndSend(t *testing.T) {
 func TestBatcher_CloseWaitsForWorkers(t *testing.T) {
 	b := NewBatcher(50*time.Millisecond, 4, nil)
 
-	goroutinesBefore := runtime.NumGoroutine()
+	startLabelled(b, t.Name())
 
-	b.Start()
-
-	// Give workers time to start.
-	time.Sleep(20 * time.Millisecond) //nolint:forbidigo // test timing
-
-	goroutinesDuring := runtime.NumGoroutine()
-
-	// We expect at least 5 new goroutines: 1 doWork + 4 workers.
-	assert.GreaterOrEqual(t, goroutinesDuring-goroutinesBefore, 5,
-		"expected doWork + 4 workers to be running")
+	// 1 doWork + 4 workers.
+	require.Eventually(t, func() bool {
+		return batcherGoroutines(t.Name()) == 5
+	}, time.Second, 5*time.Millisecond, "expected doWork + 4 workers to be running")
 
 	// Close should block until all workers have exited.
 	b.Close()
 
-	// After Close returns, goroutines should have dropped back.
-	// Allow a small margin for runtime goroutines.
-	goroutinesAfter := runtime.NumGoroutine()
-	assert.InDelta(t, goroutinesBefore, goroutinesAfter, 3,
-		"goroutines should return to baseline after Close(); before=%d after=%d",
-		goroutinesBefore, goroutinesAfter)
+	assert.Zero(t, batcherGoroutines(t.Name()),
+		"batcher goroutines still running after Close()")
 }
 
 // TestBatcher_CloseThenStartIsNoop verifies the lifecycle contract:
@@ -1480,22 +1474,52 @@ func TestBatcher_CloseWaitsForWorkers(t *testing.T) {
 func TestBatcher_CloseThenStartIsNoop(t *testing.T) {
 	b := NewBatcher(50*time.Millisecond, 2, nil)
 
-	b.Start()
+	startLabelled(b, t.Name())
 	b.Close()
 
-	goroutinesBefore := runtime.NumGoroutine()
-
 	// Second Start should be a no-op because started is already true.
-	b.Start()
+	startLabelled(b, t.Name())
 
 	// Allow a moment for any hypothetical goroutine to appear.
 	<-time.After(10 * time.Millisecond) //nolint:forbidigo // test timing
 
-	goroutinesAfter := runtime.NumGoroutine()
+	assert.Zero(t, batcherGoroutines(t.Name()),
+		"Start() after Close() should not spawn new goroutines")
+}
 
-	assert.InDelta(t, goroutinesBefore, goroutinesAfter, 1,
-		"Start() after Close() should not spawn new goroutines; before=%d after=%d",
-		goroutinesBefore, goroutinesAfter)
+// startLabelled starts b under a pprof label that its goroutines inherit, so
+// batcherGoroutines counts them and nothing else.
+func startLabelled(b *Batcher, label string) {
+	pprof.Do(context.Background(), pprof.Labels("batcher", label), func(context.Context) {
+		b.Start()
+	})
+}
+
+// batcherGoroutines counts goroutines in Batcher code started by startLabelled
+// with label. A runtime.NumGoroutine delta also moves when goroutines other
+// tests left behind exit.
+func batcherGoroutines(label string) int {
+	var buf bytes.Buffer
+
+	_ = pprof.Lookup("goroutine").WriteTo(&buf, 1)
+
+	want := fmt.Sprintf(`"batcher":%q`, label)
+	total := 0
+
+	for group := range strings.SplitSeq(buf.String(), "\n\n") {
+		if !strings.Contains(group, want) || !strings.Contains(group, ".(*Batcher).") {
+			continue
+		}
+
+		for line := range strings.Lines(group) {
+			if n, _, ok := strings.Cut(line, " @ "); ok {
+				c, _ := strconv.Atoi(n)
+				total += c
+			}
+		}
+	}
+
+	return total
 }
 
 // TestBatcher_CloseStopsTicker verifies that Close() stops the internal

@@ -22,6 +22,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/servertest"
 	"github.com/juanfont/headscale/hscontrol/state"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -30,6 +31,7 @@ import (
 	"tailscale.com/tailcfg/peercap"
 	"tailscale.com/types/netmap"
 	"tailscale.com/types/views"
+	"tailscale.com/wgengine/filter"
 )
 
 // viaCompatTests lists golden captures that exercise via grant steering.
@@ -69,6 +71,9 @@ var viaCompatTests = []struct {
 	{"via-grant-v60", "user-owned exit node outside the via tag; members have an autogroup:self rule"},
 	{"via-grant-v61", "via exit steering plus a member capability grant to a tagged host"},
 	{"via-grant-v62", "via exit steering plus a member rule to autogroup:internet on one port"},
+	{"via-grant-v63", "repeated and nested via destinations, and a second via grant on one port"},
+	{"via-grant-v66", "a user source steers a subnet via tag:router"},
+	{"via-grant-v67", "an empty group as the only via source"},
 }
 
 // routesMapCompatTests lists routes captures replayed through the mapper.
@@ -88,6 +93,12 @@ var routesMapCompatTests = []struct {
 	{"routes-f3-wildcard-src-specific-dst", "ACL to one port of a subnet"},
 	{"routes-h1-wildcard-srcips-format", "wildcard source to tagged routers"},
 	{"routes-pa1-partial-route-approval", "router with an unapproved route"},
+	{"routes-m1-wildcard-src-multi-range", "wildcard source to a tagged port, multi-route router"},
+	{"routes-m2-member-partial-subnet", "members to one route of a multi-route router"},
+	{"routes-m3-subnet-route-as-src", "one route of a multi-route router as source"},
+	{"routes-m4-member-self", "members to autogroup:self beside a multi-route router"},
+	{"routes-m5-wildcard-all", "allow-all with a multi-route router and an exit node"},
+	{"routes-m6-subnet-to-subnet-multi-route", "subnet of a multi-route router to a subnet of an exit node"},
 }
 
 // viaCompatSkipReasons lists checks where headscale differs from SaaS, keyed
@@ -96,10 +107,15 @@ var routesMapCompatTests = []struct {
 var viaCompatSkipReasons = map[string]string{
 	"tagged-self": "TAGGED_SELF_PROFILE: SaaS gives a tagged node a profile of its own, headscale the shared tagged-devices one",
 
-	// Adjacent member addresses merge into one prefix, and the reduced
-	// filter keeps all of it; SaaS lists only the node's own address.
-	"routes-f2-subnet-as-acl-source/ivysaur/packet-filter":  "FILTER_DST_MERGED: own filter names a neighbour's address",
-	"routes-f2-subnet-as-acl-source/venusaur/packet-filter": "FILTER_DST_MERGED: own filter names a neighbour's address",
+	// TestViaGrantSourceLossCompat, keyed <test_id>/rename/<node>/<check>.
+	"via-grant-v67/rename/squirtle/peers":          viaSourceLossNotSent,
+	"via-grant-v67/rename/squirtle/packet-filter":  viaSourceLossNotSent,
+	"via-grant-v67/rename/blastoise/peers":         viaSourceLossNotSent,
+	"via-grant-v67/rename/blastoise/packet-filter": viaSourceLossNotSent,
+	"via-grant-v67/rename/ivysaur/peers":           viaSourceLossNotSent,
+
+	"routes-f2-subnet-as-acl-source/ivysaur/packet-filter":  filterDstMerged,
+	"routes-f2-subnet-as-acl-source/venusaur/packet-filter": filterDstMerged,
 
 	// SaaS sends a router every approved route in its own AllowedIPs and
 	// every route it is primary for in PrimaryRoutes.
@@ -142,6 +158,16 @@ var viaCompatSkipReasons = map[string]string{
 	"routes-h1-wildcard-srcips-format/butterfree/self-routes":                 selfRoutesReduced,
 	"routes-h1-wildcard-srcips-format/metapod/self-routes":                    selfRoutesReduced,
 	"routes-pa1-partial-route-approval/butterfree/self-routes":                selfRoutesReduced,
+	"routes-m1-wildcard-src-multi-range/r-exit/self-routes":                   selfRoutesReduced,
+	"routes-m1-wildcard-src-multi-range/r-multi/self-routes":                  selfRoutesReduced,
+	"routes-m2-member-partial-subnet/r-exit/self-routes":                      selfRoutesReduced,
+	"routes-m2-member-partial-subnet/r-multi/self-routes":                     selfRoutesReduced,
+	"routes-m3-subnet-route-as-src/r-exit/self-routes":                        selfRoutesReduced,
+	"routes-m3-subnet-route-as-src/r-multi/self-routes":                       selfRoutesReduced,
+	"routes-m4-member-self/r-exit/self-routes":                                selfRoutesReduced,
+	"routes-m4-member-self/r-multi/self-routes":                               selfRoutesReduced,
+	"routes-m6-subnet-to-subnet-multi-route/r-exit/self-routes":               selfRoutesReduced,
+	"routes-m6-subnet-to-subnet-multi-route/r-multi/self-routes":              selfRoutesReduced,
 
 	"via-grant-v14/blastoise/self-routes": selfRoutesReduced,
 	"via-grant-v14/fearow/self-routes":    selfRoutesReduced,
@@ -215,7 +241,37 @@ var viaCompatSkipReasons = map[string]string{
 	"via-grant-v50/fearow/self-routes":    selfRoutesReduced,
 	"via-grant-v50/spearow/self-routes":   selfRoutesReduced,
 	"via-grant-v50/squirtle/self-routes":  selfRoutesReduced,
+	"via-grant-v63/blastoise/self-routes": selfRoutesReduced,
+	"via-grant-v63/fearow/self-routes":    selfRoutesReduced,
+	"via-grant-v63/spearow/self-routes":   selfRoutesReduced,
+	"via-grant-v63/squirtle/self-routes":  selfRoutesReduced,
+	"via-grant-v66/blastoise/self-routes": selfRoutesReduced,
+	"via-grant-v66/squirtle/self-routes":  selfRoutesReduced,
+	"via-grant-v67/blastoise/self-routes": selfRoutesReduced,
+	"via-grant-v67/squirtle/self-routes":  selfRoutesReduced,
+
+	"routes-m1-wildcard-src-multi-range/srv/peer-allowed-ips":         exitRoutesOnOverlap,
+	"routes-m6-subnet-to-subnet-multi-route/r-multi/peer-allowed-ips": exitRoutesOnOverlap,
+
+	"routes-m1-wildcard-src-multi-range/m-odin1/peers":     sameUserPeers,
+	"routes-m1-wildcard-src-multi-range/m-odin2/peers":     sameUserPeers,
+	"routes-m2-member-partial-subnet/m-odin1/peers":        sameUserPeers,
+	"routes-m2-member-partial-subnet/m-odin2/peers":        sameUserPeers,
+	"routes-m3-subnet-route-as-src/m-odin1/peers":          sameUserPeers,
+	"routes-m3-subnet-route-as-src/m-odin2/peers":          sameUserPeers,
+	"routes-m6-subnet-to-subnet-multi-route/m-odin1/peers": sameUserPeers,
+	"routes-m6-subnet-to-subnet-multi-route/m-odin2/peers": sameUserPeers,
 }
+
+const viaSourceLossNotSent = "VIA_SOURCE_LOSS_NOT_SENT: a user change that leaves a via grant without sources does not reach open streams"
+
+const exitRoutesOnOverlap = "EXIT_ROUTES_ON_OVERLAP: headscale offers a peer's exit routes to a viewer whose rules reach only nodes or subnets; SaaS leaves them out"
+
+// Adjacent member addresses merge into one prefix, and the reduced filter
+// keeps all of it; SaaS lists only the node's own address.
+const filterDstMerged = "FILTER_DST_MERGED: own filter names a neighbour's address"
+
+const sameUserPeers = "SAME_USER_PEERS: SaaS lists a user's own devices as each other's peers with no rule linking them; headscale peers only what the policy links"
 
 const selfRoutesReduced = "SELF_ROUTES_REDUCED: headscale sends a router only the primary routes its policy lets it reach"
 
@@ -286,6 +342,110 @@ func TestViaGrantMapCompat(t *testing.T) {
 	}
 }
 
+// TestViaGrantSourceLossCompat renames the only user a via grant names, so
+// the grant's source resolves to nothing, and checks that the open streams
+// of the routers and the user's node reach what SaaS sends for the same
+// grant with an empty source, without reconnecting.
+//
+// Test data source: ../policy/v2/testdata/grant_results/via-grant-v66.hujson
+// and via-grant-v67.hujson, shared with TestGrantsCompat and
+// TestViaGrantMapCompat.
+func TestViaGrantSourceLossCompat(t *testing.T) {
+	t.Parallel()
+
+	read := func(id string) *testcapture.Capture {
+		c, err := testcapture.Read(filepath.Join(
+			"..", "policy", "v2", "testdata", "grant_results", id+".hujson",
+		))
+		require.NoError(t, err, "failed to read %s", id)
+
+		return c
+	}
+
+	before, after := read("via-grant-v66"), read("via-grant-v67")
+
+	srv, clients := startViaMapCompat(t, before)
+	compareViaMapCompat(t, before, clients)
+
+	user, err := srv.State().GetUserByName("thor")
+	require.NoError(t, err)
+
+	_, userChange, err := srv.State().RenameUser(types.UserID(user.ID), "thor-renamed")
+	require.NoError(t, err)
+	srv.App.Change(userChange)
+
+	saasAddrs := saasAddrsByNode(after, clients)
+
+	for _, name := range []string{"squirtle", "blastoise", "ivysaur"} {
+		t.Run("rename/"+name, func(t *testing.T) {
+			t.Parallel()
+
+			key := after.TestID + "/rename/" + name + "/"
+			want := after.Captures[name]
+
+			current := func(tt require.TestingT) *netmap.NetworkMap {
+				nm := clients[name].Netmap()
+				require.NotNil(tt, nm, "netmap is nil")
+
+				return nm
+			}
+
+			// Profiles are left out: the rename changes the user's login
+			// by construction.
+			t.Run("peers", func(t *testing.T) {
+				t.Parallel()
+
+				holdsUnlessListed(t, key+"peers", func(tt require.TestingT) {
+					comparePeers(tt, current(tt), want, clients, "", nil)
+				})
+			})
+
+			t.Run("packet-filter", func(t *testing.T) {
+				t.Parallel()
+
+				holdsUnlessListed(t, key+"packet-filter", func(tt require.TestingT) {
+					comparePacketFilter(tt, current(tt), want, clients, saasAddrs, key+"packet-filter", nil)
+				})
+			})
+		})
+	}
+}
+
+// holdsUnlessListed requires check to hold, or, for a key listed in
+// viaCompatSkipReasons, to keep failing.
+func holdsUnlessListed(t *testing.T, key string, check func(require.TestingT)) {
+	t.Helper()
+
+	reason, listed := viaCompatSkipReasons[key]
+	if !listed {
+		requireNetmapHolds(t, check)
+
+		return
+	}
+
+	// Long enough for a change in flight to arrive.
+	assert.Never(t, func() bool { return passesOnce(check) }, 5*time.Second, 100*time.Millisecond,
+		"matches SaaS; delete viaCompatSkipReasons[%q]", key)
+	t.Skip(reason)
+}
+
+// passesOnce runs check once and reports whether it passed. It runs in its
+// own goroutine because a failing require stops the goroutine it runs in.
+func passesOnce(check func(require.TestingT)) bool {
+	rec := &failRecorder{CollectT: new(assert.CollectT)}
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		check(rec)
+	}()
+
+	<-done
+
+	return !rec.failed
+}
+
 func runViaMapCompat(t *testing.T, c *testcapture.Capture) {
 	t.Helper()
 
@@ -305,9 +465,14 @@ func startViaMapCompat(
 	srv, clients := startCaptureClients(t, c, true)
 
 	// Wait for peers based on golden [netmap.NetworkMap] expected counts.
+	// A viewer whose peers are a listed difference never reaches them.
 	for viewerName, cl := range clients {
 		capture := c.Captures[viewerName]
 		if capture.Netmap == nil {
+			continue
+		}
+
+		if _, listed := viaCompatSkipReasons[c.TestID+"/"+viewerName+"/peers"]; listed {
 			continue
 		}
 
@@ -572,6 +737,20 @@ func TestSelfRoutesKeepsHostRoutes(t *testing.T) {
 		selfRoutes(nm(subnet, host)))
 }
 
+func TestFilterSourcesKeepAddressFamily(t *testing.T) {
+	t.Parallel()
+
+	addrs := map[netip.Addr]string{
+		netip.MustParseAddr("100.64.0.1"):        "a",
+		netip.MustParseAddr("fd7a:115c:a1e0::1"): "a",
+	}
+
+	assert.Equal(t, []string{"peer:a/ipv4", "peer:a/ipv6"},
+		canonicaliseSrcStrings(t, []string{"100.64.0.1", "fd7a:115c:a1e0::1"}, addrs, 0))
+	assert.Equal(t, []string{"peer:a/ipv4"},
+		canonicaliseSrcStrings(t, []string{"100.64.0.1"}, addrs, 0))
+}
+
 // requireNetmapHolds retries check until it passes on several consecutive
 // ticks. One passing tick is not enough: a netmap that matches and then
 // drifts, such as a primary flipping away, is the bug these oracles guard.
@@ -642,27 +821,55 @@ func compareNetmap(
 		h.Helper()
 	}
 
-	comparePeers(t, got, want, clients)
+	comparePeers(t, got, want, clients, key, viaCompatSkipReasons)
 	comparePacketFilter(t, got, want, clients, saasAddrs, key+"/packet-filter", viaCompatSkipReasons)
 	compareUserProfiles(t, got, want.Netmap, clients)
 }
 
-// comparePeers validates, for the peers in clients:
-//   - Peer visibility (which peers are present, by hostname)
-//   - Route prefixes in AllowedIPs (non-Tailscale-IP entries like 10.44.0.0/16)
-//   - Number of Tailscale IPs per peer (should be 2: one v4 + one v6)
-//   - PrimaryRoutes per peer
+// comparePeers validates, for the peers in clients, each check apart so a
+// difference listed for one leaves the others asserted:
+//   - peers: visibility (which peers are present, by hostname)
+//   - peer-allowed-ips: route prefixes in AllowedIPs (non-Tailscale-IP
+//     entries like 10.44.0.0/16)
+//   - peer-addresses: the Tailscale IPs in AllowedIPs, by count and owner
+//   - peer-primary-routes: PrimaryRoutes
+//
+// The last three cover peers both sides list. A check listed in skips as
+// <key>/<check> must differ.
 func comparePeers(
 	t require.TestingT,
 	got *netmap.NetworkMap,
 	want testcapture.Node,
 	clients map[string]*servertest.TestClient,
+	key string,
+	skips map[string]string,
 ) {
 	if h, ok := t.(interface{ Helper() }); ok {
 		h.Helper()
 	}
 
 	require.NotNil(t, want.Netmap, "golden Netmap is nil")
+
+	check := map[string]require.TestingT{}
+	listed := map[string]*failRecorder{}
+
+	for _, name := range []string{"peers", "peer-allowed-ips", "peer-addresses", "peer-primary-routes"} {
+		check[name] = t
+
+		if _, ok := skips[key+"/"+name]; ok {
+			listed[name] = &failRecorder{CollectT: new(assert.CollectT)}
+			check[name] = listed[name]
+		}
+	}
+
+	defer func() {
+		for name, rec := range listed {
+			if !rec.failed {
+				t.Errorf("%s match SaaS; delete the skip entry %q (%s)",
+					name, key+"/"+name, skips[key+"/"+name])
+			}
+		}
+	}()
 
 	// Build golden peer map (only peers in our client set).
 	wantPeers := map[string]tailcfg.NodeView{}
@@ -734,7 +941,7 @@ func comparePeers(
 		gotPeer, visible := gotPeers[name]
 		if !visible {
 			wantRoutes := extractRoutePrefixesView(wantPeer.AllowedIPs())
-			t.Errorf("peer %s: visible in Tailscale SaaS (routes=%v), missing in headscale",
+			check["peers"].Errorf("peer %s: visible in Tailscale SaaS (routes=%v), missing in headscale",
 				name, wantRoutes)
 
 			continue
@@ -744,14 +951,14 @@ func comparePeers(
 		wantRoutes := extractRoutePrefixesView(wantPeer.AllowedIPs())
 		slices.Sort(wantRoutes)
 
-		assert.Equalf(t, wantRoutes, gotPeer.RoutePrefixes,
+		assert.Equalf(check["peer-allowed-ips"], wantRoutes, gotPeer.RoutePrefixes,
 			"peer %s: route prefixes in AllowedIPs mismatch", name)
 
 		// Tailscale IPs: count should match, and they must belong to
 		// this peer (not some other node's IPs).
 		wantTSIPCount := countTailscaleIPsView(wantPeer.AllowedIPs())
 
-		assert.Lenf(t, gotPeer.TailscaleIPs, wantTSIPCount,
+		assert.Lenf(check["peer-addresses"], gotPeer.TailscaleIPs, wantTSIPCount,
 			"peer %s: Tailscale IP count mismatch", name)
 
 		// Verify the Tailscale IPs are actually this peer's addresses.
@@ -766,7 +973,7 @@ func comparePeers(
 				}
 
 				for _, tsIP := range gotPeer.TailscaleIPs {
-					assert.Truef(t, peerAddrs[tsIP],
+					assert.Truef(check["peer-addresses"], peerAddrs[tsIP],
 						"peer %s: AllowedIPs contains Tailscale IP %s which is NOT this peer's address (peer has %v)",
 						name, tsIP, peerAddrs)
 				}
@@ -779,21 +986,22 @@ func comparePeers(
 			wantPRoutes = append(wantPRoutes, wantPeer.PrimaryRoutes().At(i).String())
 		}
 
-		assert.ElementsMatchf(t, wantPRoutes, gotPeer.PrimaryRoutes,
+		assert.ElementsMatchf(check["peer-primary-routes"], wantPRoutes, gotPeer.PrimaryRoutes,
 			"peer %s: PrimaryRoutes mismatch", name)
 	}
 
 	// Check for extra peers headscale shows that Tailscale SaaS doesn't.
 	for name := range gotPeers {
 		if _, expected := wantPeers[name]; !expected {
-			t.Errorf("peer %s: visible in headscale but NOT in Tailscale SaaS", name)
+			check["peers"].Errorf("peer %s: visible in headscale but NOT in Tailscale SaaS", name)
 		}
 	}
 }
 
 // compareUserProfiles compares the profile the viewer holds for itself and
-// for each peer in clients. Profile IDs differ between SaaS and headscale, so
-// a profile is its login, with SaaS emails mapped to user names, and its
+// for each peer in clients that both sides list; a peer on one side only is
+// the peers check's. Profile IDs differ between SaaS and headscale, so a
+// profile is its login, with SaaS emails mapped to user names, and its
 // display name.
 func compareUserProfiles(
 	t require.TestingT,
@@ -807,6 +1015,10 @@ func compareUserProfiles(
 	gotProfiles := nodeProfiles(got, clients)
 
 	for name, wantProfile := range nodeProfiles(want, clients) {
+		if _, ok := gotProfiles[name]; !ok {
+			continue
+		}
+
 		check := "peer"
 		if name == "" {
 			check = "self"
@@ -878,58 +1090,8 @@ func comparePacketFilter(
 		h.Helper()
 	}
 
-	hsAddrs := hsAddrsByPeer(clients)
-
-	wantTriples := map[string]struct{}{}
-
-	for i, rule := range want.PacketFilterRules {
-		srcs := strings.Join(canonicaliseSrcStrings(t, rule.SrcIPs, saasAddrs, i), ",")
-
-		for _, dp := range rule.DstPorts {
-			pfxs, err := parseDstPrefixes(dp.IP)
-			require.NoErrorf(t, err,
-				"golden DstPorts[%d].IP %q should parse as prefix, addr or range", i, dp.IP)
-
-			for _, pfx := range pfxs {
-				for _, dst := range peerIdents(t, pfx, saasAddrs, i) {
-					wantTriples[filterTriple(srcs, dst, dp.Ports.First, dp.Ports.Last)] = struct{}{}
-				}
-			}
-		}
-
-		for _, cg := range rule.CapGrant {
-			caps := slices.Collect(maps.Keys(cg.CapMap))
-			caps = append(caps, cg.Caps...)
-
-			for _, pfx := range cg.Dsts {
-				for _, dst := range peerIdents(t, pfx, saasAddrs, i) {
-					for _, c := range caps {
-						wantTriples[capTriple(srcs, dst, c)] = struct{}{}
-					}
-				}
-			}
-		}
-	}
-
-	gotTriples := map[string]struct{}{}
-
-	for i, match := range got.PacketFilter {
-		srcs := strings.Join(canonicaliseSrcPrefixes(t, match.Srcs, hsAddrs, i), ",")
-
-		for _, dp := range match.Dsts {
-			for _, dst := range peerIdents(t, dp.Net, hsAddrs, i) {
-				gotTriples[filterTriple(srcs, dst, dp.Ports.First, dp.Ports.Last)] = struct{}{}
-			}
-		}
-
-		for _, cm := range match.Caps {
-			for _, dst := range peerIdents(t, cm.Dst, hsAddrs, i) {
-				gotTriples[capTriple(srcs, dst, cm.Cap)] = struct{}{}
-			}
-		}
-	}
-
-	wantList, gotList := sortedKeys(wantTriples), sortedKeys(gotTriples)
+	wantList := saasFilterTriples(t, want.PacketFilterRules, saasAddrs)
+	gotList := hsFilterTriples(t, got.PacketFilter, hsAddrsByPeer(clients))
 
 	if reason, listed := skips[key]; listed {
 		if slices.Equal(wantList, gotList) {
@@ -941,6 +1103,75 @@ func comparePacketFilter(
 
 	assert.ElementsMatchf(t, wantList, gotList,
 		"PacketFilter (source, destination, ports) mismatch")
+}
+
+// saasFilterTriples renders captured PacketFilter rules as sorted (source,
+// destination, ports or capability) triples, peers named by saasAddrs.
+func saasFilterTriples(t require.TestingT, rules []tailcfg.FilterRule, saasAddrs map[netip.Addr]string) []string {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
+
+	triples := map[string]struct{}{}
+
+	for i, rule := range rules {
+		srcs := strings.Join(canonicaliseSrcStrings(t, rule.SrcIPs, saasAddrs, i), ",")
+
+		for _, dp := range rule.DstPorts {
+			pfxs, err := parseDstPrefixes(dp.IP)
+			require.NoErrorf(t, err,
+				"golden DstPorts[%d].IP %q should parse as prefix, addr or range", i, dp.IP)
+
+			for _, pfx := range pfxs {
+				for _, dst := range peerIdents(t, pfx, saasAddrs, i) {
+					triples[filterTriple(srcs, dst, dp.Ports.First, dp.Ports.Last)] = struct{}{}
+				}
+			}
+		}
+
+		for _, cg := range rule.CapGrant {
+			caps := slices.Collect(maps.Keys(cg.CapMap))
+			caps = append(caps, cg.Caps...)
+
+			for _, pfx := range cg.Dsts {
+				for _, dst := range peerIdents(t, pfx, saasAddrs, i) {
+					for _, c := range caps {
+						triples[capTriple(srcs, dst, c)] = struct{}{}
+					}
+				}
+			}
+		}
+	}
+
+	return sortedKeys(triples)
+}
+
+// hsFilterTriples renders a client's packet filter as the triples
+// [saasFilterTriples] gives, peers named by hsAddrs.
+func hsFilterTriples(t require.TestingT, matches []filter.Match, hsAddrs map[netip.Addr]string) []string {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
+
+	triples := map[string]struct{}{}
+
+	for i, match := range matches {
+		srcs := strings.Join(canonicaliseSrcPrefixes(t, match.Srcs, hsAddrs, i), ",")
+
+		for _, dp := range match.Dsts {
+			for _, dst := range peerIdents(t, dp.Net, hsAddrs, i) {
+				triples[filterTriple(srcs, dst, dp.Ports.First, dp.Ports.Last)] = struct{}{}
+			}
+		}
+
+		for _, cm := range match.Caps {
+			for _, dst := range peerIdents(t, cm.Dst, hsAddrs, i) {
+				triples[capTriple(srcs, dst, cm.Cap)] = struct{}{}
+			}
+		}
+	}
+
+	return sortedKeys(triples)
 }
 
 func filterTriple(srcs, dst string, first, last uint16) string {
@@ -1025,10 +1256,10 @@ func hsAddrsByPeer(clients map[string]*servertest.TestClient) map[netip.Addr]str
 
 // canonicaliseSrcStrings converts a SrcIPs slice (as produced by the
 // SaaS wire format) into a sorted list of canonical identifiers: "*"
-// for wildcard, "peer:<name>" for each Tailscale address or prefix
-// that resolves to a known peer, or the raw CIDR string for
-// non-Tailscale prefixes. A Tailscale prefix or address range expands
-// to the union of its contained peers.
+// for wildcard, "peer:<name>/ipv4" or "peer:<name>/ipv6" for each
+// Tailscale address or prefix that resolves to a known peer, or the
+// raw CIDR string for non-Tailscale prefixes. A Tailscale prefix or
+// address range expands to the union of its contained peers.
 func canonicaliseSrcStrings(
 	t require.TestingT,
 	srcs []string,
@@ -1115,7 +1346,14 @@ func addIdentsForSrc(
 
 	for addr, name := range addrToPeer {
 		if pfx.Contains(addr) {
-			seen["peer:"+name] = struct{}{}
+			// The family stays in the token so a rule that loses one
+			// family of a peer's addresses still differs.
+			family := "/ipv6"
+			if addr.Is4() {
+				family = "/ipv4"
+			}
+
+			seen["peer:"+name+family] = struct{}{}
 			matched = true
 		}
 	}
