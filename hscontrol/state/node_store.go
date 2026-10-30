@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"tailscale.com/net/tsaddr"
@@ -687,8 +688,14 @@ func resolveGivenName(nodes map[types.NodeID]types.Node, self types.NodeID, base
 			return candidate
 		}
 
-		candidate = base + "-" + strconv.Itoa(i)
+		candidate = bumpGivenName(base, strconv.Itoa(i))
 	}
+}
+
+func bumpGivenName(base, suffix string) string {
+	keep := min(len(base), util.LabelHostnameLength-len(suffix)-1)
+
+	return strings.TrimRight(base[:keep], "-") + "-" + suffix
 }
 
 // snapshotFromNodes builds a Snapshot from nodes. With reusePeers the
