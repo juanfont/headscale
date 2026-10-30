@@ -262,6 +262,7 @@ jobs:
           - TestAuthWebFlowReloginExpiredNode
           - TestAuthWebFlowLogoutAndReloginNewUser
           - TestTailscaleCert
+          - TestTLSCertificateReload
           - TestApiKeyCommand
           - TestApiKeyCommandValidation
           - TestAuthCommandValidation
