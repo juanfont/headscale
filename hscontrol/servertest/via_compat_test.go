@@ -107,6 +107,8 @@ var routesMapCompatTests = []struct {
 var viaCompatSkipReasons = map[string]string{
 	"tagged-self": "TAGGED_SELF_PROFILE: SaaS gives a tagged node a profile of its own, headscale the shared tagged-devices one",
 
+	"exit-node-filtered-set": "EXIT_NODE_FILTER_UNSET: headscale sends no ExitNodeFilteredSet, so an exit node proxies queries for the tailnet's own names; SaaS sends the suffixes those names sit under",
+
 	"routes-m1-wildcard-src-multi-range/m-odin1/peers":     sameUserPeers,
 	"routes-m1-wildcard-src-multi-range/m-odin2/peers":     sameUserPeers,
 	"routes-m2-member-partial-subnet/m-odin1/peers":        sameUserPeers,
