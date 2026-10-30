@@ -37,6 +37,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/netmap"
+	"tailscale.com/util/dnsname"
 )
 
 // mapStreamSkipReasons lists checks where headscale differs from SaaS, keyed
@@ -58,6 +59,12 @@ var mapStreamSkipReasons = map[string]string{
 
 	"map-delivery/S3.5-remove/db1/frames":  policyResponseToEveryNode,
 	"map-delivery/S3.5-restore/db1/frames": policyResponseToEveryNode,
+
+	"map-delivery/S2.0/own-entry/Machine":            machineKeySent,
+	"map-delivery/S2.0/peer-entry/Machine":           machineKeySent,
+	"map-delivery/S2.0/peer-entry/MachineAuthorized": peerAuthorizedSent,
+	"map-delivery/S2.0/own-entry/Cap":                ownCapSent,
+	"map-delivery/S2.0/own-entry/Online":             ownOnlineSent,
 
 	"map-delivery/S2.5/laptop/endpoints-gap-bystander": restartEndpointsKept,
 	"map-delivery/S2.5/laptop/endpoints-gap-svc":       restartEndpointsKept,
@@ -98,6 +105,10 @@ var mapStreamSkipReasons = map[string]string{
 const (
 	policyResponseToEveryNode = "POLICY_RESPONSE_TO_EVERY_NODE: headscale sends every connected node a policy response when the policy, a node's tags or approved routes, or the set of nodes change; SaaS sends only the nodes whose peers or filter change"
 	restartEndpointsKept      = "RESTART_ENDPOINTS_KEPT: headscale keeps a restarted node's last endpoints at its peers until it reports new ones; SaaS sends peers the node without endpoints until then"
+	machineKeySent            = "MACHINE_KEY_SENT: headscale puts a node's machine key on its own entry and on its peers' copies; SaaS on neither"
+	peerAuthorizedSent        = "PEER_AUTHORIZED_SENT: headscale sets MachineAuthorized on peer entries; SaaS only on a node's own"
+	ownCapSent                = "OWN_CAP_SENT: headscale sets Cap on a node's own entry; SaaS only on peers"
+	ownOnlineSent             = "OWN_ONLINE_SENT: headscale sets Online on a node's own entry; SaaS only on peers"
 )
 
 // mapStreamNotCompared lists, by key prefix, checks left out: SaaS's answer
@@ -168,7 +179,7 @@ func TestMapDeliveryCompat(t *testing.T) {
 		t.Parallel()
 
 		replayMapDelivery(t, "map-delivery", "", deliveryChecks, func(key string) bool {
-			return !strings.Contains(key, "hostinfo")
+			return !strings.Contains(key, "hostinfo") && !strings.Contains(key, "-entry/")
 		})
 	})
 }
@@ -191,6 +202,212 @@ func TestPeerHostinfoCompat(t *testing.T) {
 
 // hostinfoStep is the quiet step whose captures hold the Hostinfo snapshots.
 const hostinfoStep = "S2.0"
+
+// mapEntryFields are the entry fields SaaS sets by whom the entry is about.
+var mapEntryFields = []struct {
+	name string
+	has  func(tailcfg.NodeView) bool
+}{
+	{"Machine", func(n tailcfg.NodeView) bool { return !n.Machine().IsZero() }},
+	{"MachineAuthorized", tailcfg.NodeView.MachineAuthorized},
+	{"Cap", func(n tailcfg.NodeView) bool { return n.Cap() != 0 }},
+	{"Online", func(n tailcfg.NodeView) bool { return n.Online().Valid() }},
+	{"LastSeen", func(n tailcfg.NodeView) bool { return n.LastSeen().Valid() }},
+}
+
+// TestMapEntryFieldsCompat reads what SaaS put on the wire for a node's own
+// entry and for its peers, then replays the capture up to its quiet step and
+// compares which of those fields headscale's entries carry. Netmaps cannot
+// settle LastSeen: a client keeps it when an online patch arrives.
+func TestMapEntryFieldsCompat(t *testing.T) {
+	t.Parallel()
+
+	t.Run("wire", func(t *testing.T) {
+		t.Parallel()
+
+		for _, id := range []string{"map-delivery", "hidden-peers", "route-announce", "policy-generation", "user-role", "expiry"} {
+			for _, step := range readStepCapture(t, id).Steps {
+				for alias, frames := range step.Frames {
+					for _, f := range frames {
+						if f.Response != nil {
+							requireWireEntries(t, id+"/"+step.Name+"/"+alias, f.Response)
+						}
+					}
+				}
+			}
+		}
+	})
+
+	t.Run("map-delivery", func(t *testing.T) {
+		t.Parallel()
+
+		replayMapDelivery(t, "map-delivery", hostinfoStep, entryFieldChecks, func(key string) bool {
+			return strings.Contains(key, "-entry/")
+		})
+	})
+}
+
+// requireWireEntries holds one map response to the rules SaaS follows: a peer
+// has a capability version and an online state, and a last-seen time only
+// when offline; a node's own entry has none of those; only that entry is
+// authorised; and no entry names a machine key.
+func requireWireEntries(t *testing.T, at string, resp *tailcfg.MapResponse) {
+	t.Helper()
+
+	if n := resp.Node; n != nil {
+		require.True(t, n.Machine.IsZero(), "%s: own Machine", at)
+		require.True(t, n.MachineAuthorized, "%s: own MachineAuthorized", at)
+		require.Zero(t, n.Cap, "%s: own Cap", at)
+		require.Nil(t, n.Online, "%s: own Online", at)
+		require.Nil(t, n.LastSeen, "%s: own LastSeen", at)
+	}
+
+	for _, p := range slices.Concat(resp.Peers, resp.PeersChanged) {
+		require.True(t, p.Machine.IsZero(), "%s: peer Machine", at)
+		require.False(t, p.MachineAuthorized, "%s: peer MachineAuthorized", at)
+		require.NotZero(t, p.Cap, "%s: peer Cap", at)
+		require.NotNil(t, p.Online, "%s: peer Online", at)
+		require.Equal(t, !*p.Online, p.LastSeen != nil, "%s: peer LastSeen, online %t", at, *p.Online)
+	}
+
+	for _, p := range resp.PeersChangedPatch {
+		if p.Online != nil {
+			require.Equal(t, !*p.Online, p.LastSeen != nil, "%s: patch LastSeen, online %t", at, *p.Online)
+		}
+	}
+}
+
+// TestExitNodeFilteredSetCompat holds SaaS and headscale with MagicDNS on to
+// one rule: every name in a node's map falls under an entry an exit node
+// refuses to proxy. SaaS lists its own domains; headscale's names sit under
+// base_domain, and listing ts.net as well would refuse public names there. SaaS
+// also sends its list with MagicDNS off; generateDNSConfig says why headscale
+// does not.
+func TestExitNodeFilteredSetCompat(t *testing.T) {
+	t.Parallel()
+
+	t.Run("saas", func(t *testing.T) {
+		t.Parallel()
+
+		for _, id := range []string{"map-delivery", "names", "expiry"} {
+			for _, step := range readStepCapture(t, id).Steps {
+				for _, n := range step.Captures {
+					if n.Netmap != nil {
+						requireNamesFiltered(t, n.Netmap)
+					}
+				}
+			}
+		}
+	})
+
+	t.Run("headscale", func(t *testing.T) {
+		t.Parallel()
+
+		h := servertest.NewHarness(t, 2, servertest.WithServerOptions(servertest.WithMagicDNS("Tail.Example.com")))
+
+		holdsUnlessListed(t, "exit-node-filtered-set", func(c require.TestingT) {
+			nm := h.Client(0).Netmap()
+			requireNamesFiltered(c, nm)
+			require.Equal(c, []string{".tail.example.com"}, nm.DNS.ExitNodeFilteredSet)
+			require.Len(c, nm.Peers, 1)
+		})
+	})
+}
+
+// requireNamesFiltered matches every name in nm against its exit node filter
+// the way the client does.
+func requireNamesFiltered(t require.TestingT, nm *netmap.NetworkMap) {
+	require.NotNil(t, nm)
+
+	filtered := func(name string) {
+		name = strings.ToLower(name)
+
+		require.True(t, slices.ContainsFunc(nm.DNS.ExitNodeFilteredSet, func(entry string) bool {
+			if strings.HasPrefix(entry, ".") {
+				return dnsname.HasSuffix(name, entry)
+			}
+
+			return name == entry
+		}), "%q is not under %v", name, nm.DNS.ExitNodeFilteredSet)
+	}
+
+	filtered(nm.SelfNode.Name())
+
+	for _, p := range nm.Peers {
+		filtered(p.Name())
+	}
+}
+
+// entryFieldChecks compares, at the quiet step, whether all, some or none of
+// the captured nodes' own and peer entries carry each of [mapEntryFields].
+func entryFieldChecks(d *deliveryStep) []stepCheck {
+	if d.step.Name != hostinfoStep {
+		return nil
+	}
+
+	r := d.r
+	captured := slices.Sorted(maps.Keys(d.caps))
+
+	saas := make([]*netmap.NetworkMap, 0, len(captured))
+	for _, v := range captured {
+		saas = append(saas, d.caps[v].Netmap)
+	}
+
+	hs := func() []*netmap.NetworkMap {
+		out := make([]*netmap.NetworkMap, 0, len(captured))
+		for _, v := range captured {
+			out = append(out, r.clients[v].Netmap())
+		}
+
+		return out
+	}
+
+	var checks []stepCheck
+
+	for _, f := range mapEntryFields {
+		checks = append(checks,
+			stepCheck{"own-entry/" + f.name, entryPresence(saas, false, f.has), func() string { return entryPresence(hs(), false, f.has) }},
+			stepCheck{"peer-entry/" + f.name, entryPresence(saas, true, f.has), func() string { return entryPresence(hs(), true, f.has) }},
+		)
+	}
+
+	return checks
+}
+
+// entryPresence says whether all, some or none of the netmaps' own or peer
+// entries pass has.
+func entryPresence(nms []*netmap.NetworkMap, peers bool, has func(tailcfg.NodeView) bool) string {
+	var with, without int
+
+	count := func(n tailcfg.NodeView) {
+		if has(n) {
+			with++
+		} else {
+			without++
+		}
+	}
+
+	for _, nm := range nms {
+		switch {
+		case nm == nil:
+		case peers:
+			for _, p := range nm.Peers {
+				count(p)
+			}
+		default:
+			count(nm.SelfNode)
+		}
+	}
+
+	switch {
+	case with == 0:
+		return "none"
+	case without == 0:
+		return "all"
+	default:
+		return "some"
+	}
+}
 
 // settledGap is how far apart two actions must be sent for SaaS to have
 // handled them one after the other rather than in one batch.
