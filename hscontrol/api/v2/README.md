@@ -18,6 +18,11 @@ headscale's own conventions. The headscale-native admin API stays at `/api/v1`
 ## Conventions
 
 - Operations derived from Tailscale carry the `Tailscale compat` tag.
+- Operations on undocumented Tailscale paths do not carry it, since their wire
+  format cannot be checked. `POST /device/{id}/update-client`
+  (`updateDeviceClient`) is one: the Tailscale admin console calls it to start
+  a client update, which reaches the node as c2n `POST /update`. Its request
+  and response shapes are headscale's own.
 - The `{tailnet}` path segment must be `-` (the single Headscale tailnet);
   anything else is `404`. See `requireDefaultTailnet`.
 - Errors use **Tailscale's** body (`{"message","data","status"}`), installed as
