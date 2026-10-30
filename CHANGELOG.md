@@ -153,6 +153,7 @@ the ACME DNS-01 challenge through a built-in DNS provider: `acmedns`,
 - Improve config and bind-failure errors: every violation reported in one pass, named YAML keys, actionable operator hints [#3236](https://github.com/juanfont/headscale/pull/3236)
 - Ephemeral nodes that register but never connect are removed after `node.ephemeral.inactivity_timeout` instead of staying until restart [#3545](https://github.com/juanfont/headscale/pull/3545)
 - A node re-registered with a permanent key is no longer deleted by a timer armed while it was ephemeral [#3545](https://github.com/juanfont/headscale/pull/3545)
+- `.json` files in `dns.extra_records_path` and `derp.paths` may contain comments and trailing commas, like `.hujson` files [#3627](https://github.com/juanfont/headscale/issues/3627)
 
 ## 0.29.7 (2026-10-30)
 

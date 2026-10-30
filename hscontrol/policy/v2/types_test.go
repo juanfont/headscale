@@ -2347,6 +2347,101 @@ func TestUnmarshalPolicy(t *testing.T) {
 	}
 }
 
+func TestUnmarshalPolicyCommentsMatchPlainJSON(t *testing.T) {
+	const plain = `{
+		"groups": {"group:admins": ["admin@example.com"]},
+		"hosts": {"db": "100.64.0.10"},
+		"acls": [{"action": "accept", "src": ["group:admins"], "dst": ["db:5432"]}]
+	}`
+
+	want, err := unmarshalPolicy([]byte(plain))
+	require.NoError(t, err)
+
+	tests := []struct {
+		name    string
+		input   string
+		wantErr string
+	}{
+		{
+			name:  "plain json",
+			input: plain,
+		},
+		{
+			name: "line comments",
+			input: `{
+				// people allowed to reach the database
+				"groups": {"group:admins": ["admin@example.com"]}, // on-call rota
+				"hosts": {"db": "100.64.0.10"},
+				// postgres only
+				"acls": [{"action": "accept", "src": ["group:admins"], "dst": ["db:5432"]}]
+			}`,
+		},
+		{
+			name: "block comments",
+			input: `/* production policy */
+			{
+				"groups": {"group:admins": [/* lead */ "admin@example.com"]},
+				"hosts": {"db": "100.64.0.10"},
+				/*
+				  postgres only
+				*/
+				"acls": [{"action": "accept", "src": ["group:admins"], "dst": ["db:5432"]}]
+			}`,
+		},
+		{
+			name: "trailing commas",
+			input: `{
+				"groups": {"group:admins": ["admin@example.com",],},
+				"hosts": {"db": "100.64.0.10",},
+				"acls": [{"action": "accept", "src": ["group:admins",], "dst": ["db:5432",],},],
+			}`,
+		},
+		{
+			name: "comments and trailing commas mixed",
+			input: `{
+				"groups": {
+					"group:admins": [
+						"admin@example.com", // lead
+					],
+				},
+				/* inventory */
+				"hosts": {"db": "100.64.0.10",},
+				"acls": [
+					{"action": "accept", "src": ["group:admins"], "dst": ["db:5432"]}, // postgres
+				],
+			}`,
+		},
+		{
+			name:    "unterminated block comment",
+			input:   `{"acls": [] /* never closed`,
+			wantErr: "parsing HuJSON",
+		},
+	}
+
+	cmps := append(util.Comparers,
+		cmp.Comparer(func(x, y Prefix) bool {
+			return x == y
+		}),
+		cmpopts.IgnoreUnexported(Policy{}),
+	)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := unmarshalPolicy([]byte(tt.input))
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				return
+			}
+
+			require.NoError(t, err)
+
+			if diff := cmp.Diff(want, got, cmps...); diff != "" {
+				t.Errorf("unmarshalPolicy mismatch (-plain +commented):\n%s", diff)
+			}
+		})
+	}
+}
+
 func gp(s string) *Group          { return new(Group(s)) }
 func up(s string) *Username       { return new(Username(s)) }
 func hp(s string) *Host           { return new(Host(s)) }
