@@ -1240,3 +1240,68 @@ func TestNodeBackfillIPsCommand(t *testing.T) {
 		}
 	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 }
+
+// TestNodeUpdateClientCommand verifies that `headscale nodes update-client`
+// reaches a real tailscaled over c2n and reports its answer. The test
+// clients have auto-updates off, so each one must refuse with "not enabled".
+func TestNodeUpdateClientCommand(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{"node-update-user"},
+	}
+
+	scenario, err := NewScenario(spec)
+
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("cli-nodeupdate"))
+	require.NoError(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	require.NoError(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	require.NoError(t, err)
+
+	var nodes []*clientv1.Node
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err = headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, len(allClients))
+
+		for _, node := range nodes {
+			assert.True(c, node.Online, "node %s should be online", node.Name)
+		}
+	}, integrationutil.ScaledTimeout(30*time.Second), integrationutil.FastPoll, "Waiting for all nodes to be online")
+
+	for _, node := range nodes {
+		_, err := headscale.Execute([]string{
+			"headscale",
+			"nodes",
+			"update-client",
+			"--identifier",
+			node.Id,
+		})
+		require.Error(t, err, "node %s has auto-updates off and must refuse", node.Name)
+		assert.Contains(t, err.Error(), "node did not start the client update: not enabled",
+			"node %s should answer the c2n request with its refusal", node.Name)
+	}
+
+	// Unknown nodes are rejected before anything is sent.
+	_, err = headscale.Execute([]string{
+		"headscale",
+		"nodes",
+		"update-client",
+		"--identifier",
+		"9999",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "device not found")
+}

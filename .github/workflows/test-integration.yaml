@@ -275,6 +275,7 @@ jobs:
           - TestNodeTagCommand
           - TestNodeRouteCommands
           - TestNodeBackfillIPsCommand
+          - TestNodeUpdateClientCommand
           - TestOAuthClientCommand
           - TestOAuthClientCommandValidation
           - TestPolicyCheckCommand
