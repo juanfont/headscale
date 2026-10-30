@@ -2,14 +2,21 @@ package hscontrol
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/pem"
 	"log"
+	"math/big"
 	"net"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -219,6 +226,7 @@ func TestACMETLSSettings(t *testing.T) {
 			bundle, err := h.getTLSSettings(t.Context())
 			require.NoError(t, err)
 			t.Cleanup(bundle.Stop)
+			assert.Nil(t, bundle.Reload, "certmagic renews the certificate itself")
 
 			ln, err := tls.Listen("tcp", h.cfg.Addr, bundle.Config)
 			require.NoError(t, err)
@@ -266,4 +274,146 @@ func TestACMETLSSettings(t *testing.T) {
 			}
 		})
 	}
+}
+
+// testKeypair returns a new certificate as DER, and as PEM with its key.
+func testKeypair(t *testing.T, notBefore, notAfter time.Time) ([]byte, []byte, []byte) {
+	t.Helper()
+
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	template := &x509.Certificate{SerialNumber: big.NewInt(1), NotBefore: notBefore, NotAfter: notAfter}
+
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &priv.PublicKey, priv)
+	require.NoError(t, err)
+
+	keyDER, err := x509.MarshalPKCS8PrivateKey(priv)
+	require.NoError(t, err)
+
+	return der,
+		pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
+		pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
+}
+
+// servedCertificate returns the certificate a new connection gets.
+func servedCertificate(t *testing.T, cfg *tls.Config, serverName string) []byte {
+	t.Helper()
+
+	clientEnd, serverEnd := net.Pipe()
+
+	defer clientEnd.Close()
+	defer serverEnd.Close()
+
+	go func() { _ = tls.Server(serverEnd, cfg).HandshakeContext(t.Context()) }()
+
+	client := tls.Client(clientEnd, &tls.Config{ServerName: serverName, InsecureSkipVerify: true}) //nolint:gosec // reads the served certificate, trusts nothing
+	require.NoError(t, client.HandshakeContext(t.Context()))
+
+	return client.ConnectionState().PeerCertificates[0].Raw
+}
+
+func TestStaticTLSReload(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath := filepath.Join(dir, "cert.pem"), filepath.Join(dir, "key.pem")
+
+	write := func(t *testing.T, certPEM, keyPEM []byte) {
+		t.Helper()
+		require.NoError(t, os.WriteFile(certPath, certPEM, 0o600))
+		require.NoError(t, os.WriteFile(keyPath, keyPEM, 0o600))
+	}
+
+	now := time.Now()
+	derA, certA, keyA := testKeypair(t, now.Add(-time.Hour), now.Add(time.Hour))
+	derB, certB, keyB := testKeypair(t, now.Add(-time.Hour), now.Add(time.Hour))
+	_, certExpired, keyExpired := testKeypair(t, now.Add(-2*time.Hour), now.Add(-time.Hour))
+	_, certFuture, keyFuture := testKeypair(t, now.Add(time.Hour), now.Add(2*time.Hour))
+
+	write(t, certA, keyA)
+
+	h := &Headscale{cfg: &types.Config{TLS: types.TLSConfig{CertPath: certPath, KeyPath: keyPath}}}
+
+	bundle, err := h.getTLSSettings(t.Context())
+	require.NoError(t, err)
+	require.NotNil(t, bundle.Reload)
+
+	// A client without SNI is the one case where crypto/tls prefers a static
+	// Certificates entry over GetCertificate.
+	assertServed := func(t *testing.T, want []byte) {
+		t.Helper()
+
+		for _, serverName := range []string{"", "headscale.example.com"} {
+			assert.Equal(t, want, servedCertificate(t, bundle.Config, serverName), "SNI %q", serverName)
+		}
+	}
+
+	assertServed(t, derA)
+
+	write(t, certB, keyB)
+	require.NoError(t, bundle.Reload())
+	assertServed(t, derB)
+
+	for name, pair := range map[string][2][]byte{
+		"garbage":       {[]byte("garbage"), []byte("garbage")},
+		"mismatched":    {certA, keyB},
+		"expired":       {certExpired, keyExpired},
+		"not yet valid": {certFuture, keyFuture},
+	} {
+		t.Run(name, func(t *testing.T) {
+			write(t, pair[0], pair[1])
+			require.ErrorContains(t, bundle.Reload(), certPath, "the operator must see which file failed")
+			assertServed(t, derB)
+		})
+	}
+
+	// Meaningful under -race, which the gorace check runs on this package.
+	write(t, certA, keyA)
+
+	var wg sync.WaitGroup
+
+	wg.Go(func() {
+		for range 20 {
+			assert.NoError(t, bundle.Reload())
+		}
+	})
+
+	for range 20 {
+		servedCertificate(t, bundle.Config, "")
+	}
+
+	wg.Wait()
+}
+
+// Expiry only blocks a reload: refusing to start would also take down the
+// CLI socket, the tool an operator needs to recover.
+func TestStaticTLSExpiredAtStartup(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath := filepath.Join(dir, "cert.pem"), filepath.Join(dir, "key.pem")
+
+	now := time.Now()
+	der, certPEM, keyPEM := testKeypair(t, now.Add(-2*time.Hour), now.Add(-time.Hour))
+	require.NoError(t, os.WriteFile(certPath, certPEM, 0o600))
+	require.NoError(t, os.WriteFile(keyPath, keyPEM, 0o600))
+
+	h := &Headscale{cfg: &types.Config{TLS: types.TLSConfig{CertPath: certPath, KeyPath: keyPath}}}
+
+	bundle, err := h.getTLSSettings(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, der, servedCertificate(t, bundle.Config, ""))
+}
+
+func TestStaticTLSLoadErrorNamesConfigKeys(t *testing.T) {
+	h := &Headscale{cfg: &types.Config{TLS: types.TLSConfig{CertPath: "/nonexistent/cert", KeyPath: "/nonexistent/key"}}}
+
+	_, err := h.getTLSSettings(t.Context())
+	require.ErrorContains(t, err, "tls.cert_path")
+	require.ErrorContains(t, err, "tls.key_path")
+}
+
+func TestPlainHTTPHasNoTLSReload(t *testing.T) {
+	h := &Headscale{cfg: &types.Config{ServerURL: "http://headscale.example.com"}}
+
+	bundle, err := h.getTLSSettings(t.Context())
+	require.NoError(t, err)
+	assert.Nil(t, bundle.Reload)
 }
