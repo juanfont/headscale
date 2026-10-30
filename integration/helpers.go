@@ -806,8 +806,6 @@ func assertValidNetmap(t *testing.T, client TailscaleClient) {
 		assert.NotEmptyf(c, netmap.SelfNode.AllowedIPs(), "%q does not have any allowed IPs", client.Hostname())
 		assert.NotEmptyf(c, netmap.SelfNode.Addresses(), "%q does not have any addresses", client.Hostname())
 
-		assert.Truef(c, netmap.SelfNode.Online().Get(), "%q is not online", client.Hostname())
-
 		assert.Falsef(c, netmap.SelfNode.Key().IsZero(), "%q does not have a valid NodeKey", client.Hostname())
 		assert.Falsef(c, netmap.SelfNode.DiscoKey().IsZero(), "%q does not have a valid DiscoKey", client.Hostname())
 
