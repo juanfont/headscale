@@ -60,7 +60,6 @@ var mapStreamSkipReasons = map[string]string{
 	"map-delivery/S3.5-remove/db1/frames":  policyResponseToEveryNode,
 	"map-delivery/S3.5-restore/db1/frames": policyResponseToEveryNode,
 
-	"map-delivery/S2.0/own-entry/Cap":    ownCapSent,
 	"map-delivery/S2.0/own-entry/Online": ownOnlineSent,
 
 	"map-delivery/S3.2-down/laptop/seen-bystander":   offlinePatchUnseen,
@@ -145,7 +144,6 @@ const (
 	restartEndpointsKept      = "RESTART_ENDPOINTS_KEPT: headscale keeps a restarted node's last endpoints at its peers until it reports new ones; SaaS sends peers the node without endpoints until then"
 	announcePeerResent        = "ANNOUNCE_PEER_RESENT: headscale sends a router's peers its entry again whenever its announced routes change; SaaS sends the unchanged entry only after some announcements"
 	deletedDeviceInRules      = "DELETED_DEVICE_IN_RULES: SaaS keeps a deleted device's addresses in other nodes' filter and SSH rules until the next policy change; headscale drops them with the device"
-	ownCapSent                = "OWN_CAP_SENT: headscale sets Cap on a node's own entry; SaaS only on peers"
 	ownOnlineSent             = "OWN_ONLINE_SENT: headscale sets Online on a node's own entry; SaaS only on peers"
 	offlinePatchUnseen        = "OFFLINE_PATCH_UNSEEN: headscale's offline patch has no LastSeen, so a peer shows no last-seen time until the next full map; SaaS's has one"
 	userChangePushed          = "USER_CHANGE_PUSHED: headscale sends every connected node a policy response as soon as a user change alters what the policy resolves; SaaS sends an admin role change to no open stream, so a node gets it only on its next new stream"
