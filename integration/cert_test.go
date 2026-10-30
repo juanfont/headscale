@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"slices"
 	"strconv"
@@ -460,4 +461,68 @@ func parseChain(t *testing.T, chainPEM []byte) (*x509.Certificate, *x509.CertPoo
 	}
 
 	return certs[0], intermediates
+}
+
+// TestTLSCertificateReload covers what the handshake tests in hscontrol cannot:
+// a SIGHUP reaching the certificate. No policy is configured, so it also pins
+// that the reload runs before the signal handler skips the policy.
+func TestTLSCertificateReload(t *testing.T) {
+	IntegrationSkip(t)
+
+	const (
+		certPath = "/etc/headscale/tls.cert"
+		keyPath  = "/etc/headscale/tls.key"
+	)
+
+	scenario, err := NewScenario(ScenarioSpec{})
+	require.NoError(t, err)
+
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	headscale, err := scenario.Headscale(hsic.WithTestName("tlsreload"))
+	require.NoError(t, err)
+
+	endpoint, err := url.Parse(headscale.GetEndpoint())
+	require.NoError(t, err)
+
+	served := func() ([]byte, error) {
+		// CreateCertificate mints a new CA per call, so nothing here chains to
+		// the startup CA. This compares certificates; it trusts none of them.
+		conn, err := tls.Dial("tcp", endpoint.Host, &tls.Config{InsecureSkipVerify: true}) //nolint:gosec,noctx
+		if err != nil {
+			return nil, err
+		}
+		defer conn.Close()
+
+		return conn.ConnectionState().PeerCertificates[0].Raw, nil
+	}
+
+	_, certPEM, keyPEM, err := integrationutil.CreateCertificate(headscale.GetHostname())
+	require.NoError(t, err)
+
+	block, _ := pem.Decode(certPEM)
+	require.NotNil(t, block)
+
+	require.NoError(t, headscale.WriteFile(certPath, certPEM))
+	require.NoError(t, headscale.WriteFile(keyPath, keyPEM))
+	require.NoError(t, headscale.Reload())
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		der, err := served()
+		assert.NoError(c, err)
+		assert.Equal(c, block.Bytes, der)
+	}, 10*time.Second, 200*time.Millisecond, "a new connection should get the certificate now on disk")
+
+	require.NoError(t, headscale.WriteFile(keyPath, []byte("garbage")))
+	require.NoError(t, headscale.Reload())
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		stdout, stderr, err := headscale.ReadLog()
+		assert.NoError(c, err)
+		assert.Contains(c, stdout+stderr, "reloading TLS certificate failed")
+	}, 10*time.Second, 200*time.Millisecond, "the operator should see the failed reload in the log")
+
+	der, err := served()
+	require.NoError(t, err)
+	assert.Equal(t, block.Bytes, der, "a failed reload should keep the previous certificate")
 }
