@@ -20,6 +20,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -57,6 +58,7 @@ import (
 
 var (
 	errSTUNAddressNotSet                   = errors.New("STUN address not set")
+	errTLSCertificateNotValidNow           = errors.New("TLS certificate is not valid now")
 	errUnsupportedLetsEncryptChallengeType = errors.New(
 		"unknown value for Lets Encrypt challenge type",
 	)
@@ -888,11 +890,20 @@ func (h *Headscale) Serve() error {
 			case syscall.SIGHUP:
 				log.Info().
 					Str("signal", sig.String()).
-					Msg("Received SIGHUP, reloading ACL policy")
+					Msg("Received SIGHUP")
+
+				if tlsBundle.Reload != nil {
+					err := tlsBundle.Reload()
+					if err != nil {
+						log.Error().Err(err).Msg("reloading TLS certificate failed, still serving the previous one")
+					}
+				}
 
 				if h.cfg.Policy.IsEmpty() {
 					continue
 				}
+
+				log.Info().Msg("Reloading ACL policy")
 
 				changes, err := h.state.ReloadPolicy()
 				h.Change(changes...)
@@ -1043,6 +1054,10 @@ type tlsBundle struct {
 	Manage func(context.Context) error
 	// Stop ends certificate maintenance. Nil without ACME.
 	Stop func()
+	// Reload swaps in the certificate now on disk for new connections. On
+	// error the previous certificate keeps serving. Nil unless the
+	// certificate comes from tls.cert_path and tls.key_path.
+	Reload func() error
 }
 
 // acmeTrustedRoots verifies the ACME directory; nil means the system roots.
@@ -1186,19 +1201,59 @@ func (h *Headscale) getTLSSettings(ctx context.Context) (*tlsBundle, error) {
 		return &tlsBundle{}, nil
 	}
 
-	cert, err := tls.LoadX509KeyPair(h.cfg.TLS.CertPath, h.cfg.TLS.KeyPath)
-	if err != nil {
-		return nil, fmt.Errorf("loading TLS keypair (tls.cert_path=%q, tls.key_path=%q): %w",
-			h.cfg.TLS.CertPath, h.cfg.TLS.KeyPath, err)
+	load := func() (*tls.Certificate, error) {
+		cert, err := tls.LoadX509KeyPair(h.cfg.TLS.CertPath, h.cfg.TLS.KeyPath)
+		if err != nil {
+			return nil, fmt.Errorf("loading TLS keypair (tls.cert_path=%q, tls.key_path=%q): %w",
+				h.cfg.TLS.CertPath, h.cfg.TLS.KeyPath, err)
+		}
+
+		return &cert, nil
 	}
+
+	cert, err := load()
+	if err != nil {
+		return nil, err
+	}
+
+	var current atomic.Pointer[tls.Certificate]
+
+	current.Store(cert)
 
 	tlsConfig := &tls.Config{
-		NextProtos:   []string{"http/1.1"},
-		Certificates: []tls.Certificate{cert},
-		MinVersion:   tls.VersionTLS12,
+		NextProtos: []string{"http/1.1"},
+		// Not Certificates: crypto/tls prefers those when a client sends no
+		// SNI, so that client would never see a reload.
+		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return current.Load(), nil },
+		MinVersion:     tls.VersionTLS12,
 	}
 
-	return &tlsBundle{Config: tlsConfig}, nil
+	reload := func() error {
+		cert, err := load()
+		if err != nil {
+			return err
+		}
+
+		// Loading does not check validity. Swapping in a certificate no client
+		// accepts would turn a bad deploy into an outage.
+		now, leaf := time.Now(), cert.Leaf
+		if now.Before(leaf.NotBefore) || now.After(leaf.NotAfter) {
+			return fmt.Errorf("%w (tls.cert_path=%q): valid from %s until %s",
+				errTLSCertificateNotValidNow, h.cfg.TLS.CertPath,
+				leaf.NotBefore.Format(time.RFC3339), leaf.NotAfter.Format(time.RFC3339))
+		}
+
+		current.Store(cert)
+
+		log.Info().
+			Str("cert_path", h.cfg.TLS.CertPath).
+			Str("not_after", leaf.NotAfter.Format(time.RFC3339)).
+			Msg("TLS certificate reloaded")
+
+		return nil
+	}
+
+	return &tlsBundle{Config: tlsConfig, Reload: reload}, nil
 }
 
 // selfSignedTLSConfig returns a TLS config with a fresh in-memory certificate.
