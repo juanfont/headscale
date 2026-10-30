@@ -133,9 +133,6 @@ func TestTailNode(t *testing.T) {
 				),
 				KeyExpiry: expire,
 
-				Machine: mustMK(
-					"mkey:f08305b4ee4250b95a70f3b7504d048d75d899993c624a26d422c67af0422507",
-				),
 				DiscoKey: mustDK(
 					"discokey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
 				),
